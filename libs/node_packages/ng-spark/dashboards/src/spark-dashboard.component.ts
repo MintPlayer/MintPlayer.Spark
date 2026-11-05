@@ -35,7 +35,7 @@ interface DashboardSection {
 
 /**
  * The dashboard tile layout (D12): replaces a dashboard's attribute cards on the routed detail page
- * (`SPARK_DETAIL_LAYOUTS`, registered by `provideSparkDashboards()`). Each group of the model is a section, each
+ * (`SPARK_DETAIL_LAYOUTS`, registered by `withDashboards()`). Each group of the model is a section, each
  * attribute a tile: its label above its detail renderer (`spark-stat`, `spark-meter`, `spark-trend`,
  * `spark-dashboard-table`, …) or its plain value. `columnSpan` 2 takes two columns, 3 and more (and a table without one) the
  * whole row. An attribute the caller may not read is not on the object and has no tile. The page follows the object

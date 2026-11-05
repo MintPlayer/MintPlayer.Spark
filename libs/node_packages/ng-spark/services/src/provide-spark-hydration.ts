@@ -1,4 +1,5 @@
-import { EnvironmentProviders, InjectionToken } from '@angular/core';
+import { InjectionToken } from '@angular/core';
+import { sparkFeature, SparkFeature, SparkFeatureOrder } from '@mintplayer/ng-spark';
 import { provideClientHydration, withEventReplay, withHttpTransferCacheOptions } from '@angular/platform-browser';
 
 /**
@@ -37,9 +38,9 @@ export const SPARK_SERVER_RESPONSE = new InjectionToken<SparkServerResponse>('SP
  * Harmless on a page that was not server-rendered (the service worker's shell): Angular finds no
  * serialized state and renders on the client as before.
  */
-export function provideSparkHydration(): EnvironmentProviders {
-  return provideClientHydration(
+export function withHydration(): SparkFeature {
+  return sparkFeature('hydration', SparkFeatureOrder.hydration, [provideClientHydration(
     withEventReplay(),
     withHttpTransferCacheOptions({ includePostRequests: true }),
-  ) as unknown as EnvironmentProviders;
+  )]);
 }

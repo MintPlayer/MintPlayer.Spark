@@ -80,6 +80,20 @@ jobs:
       if: matrix.playwright
       uses: ./.github/actions/playwright
 
+    # #238: the OpenSearch provider's tests (Search/OpenSearchEngineTests) need a real engine; without
+    # SPARK_OPENSEARCH_URI they skip. Started detached, not as a job `services:` container, so nothing
+    # waits on its health check before "Run tests", which waits for it, bounded (2 min). On every
+    # Spark shard because the shard packing decides which one holds the class. Same pin as mintplayer.com
+    # (apps/MintPlayer/opensearch/Dockerfile).
+    - name: OpenSearch
+      if: matrix.projects == 'MintPlayer.Spark.Tests'
+      run: |
+        docker run -d --name opensearch -p 9200:9200 \
+          -e discovery.type=single-node -e DISABLE_SECURITY_PLUGIN=true -e DISABLE_INSTALL_DEMO_CONFIG=true \
+          -e OPENSEARCH_JAVA_OPTS='-Xms512m -Xmx512m' \
+          opensearchproject/opensearch:3.9.0
+        echo "SPARK_OPENSEARCH_URI=http://localhost:9200" >> "$GITHUB_ENV"
+
     # The package managers ubuntu-latest lacks, at the versions the S13/S14 spikes ran. npm, yarn,
     # dotnet, java/maven/gradle, go, cargo, php/composer and docker are on the image already.
     - name: Integration toolchains
@@ -96,6 +110,10 @@ jobs:
       # --output-style=stream: nx buffers each task's output until the task finishes, so a hung task
       # prints NOTHING. Streaming trades tidy grouping for a visible last line.
       run: |
+        if [ -n "$SPARK_OPENSEARCH_URI" ]; then
+          for i in $(seq 1 60); do curl -fs "$SPARK_OPENSEARCH_URI" > /dev/null && break; sleep 2; done
+          curl -fs "$SPARK_OPENSEARCH_URI" > /dev/null || { docker logs opensearch | tail -50; exit 1; }
+        fi
         if [ -n "${{ matrix.projects }}" ]; then
           npx nx run-many --target=${{ matrix.target || 'test' }} --projects='${{ matrix.projects }}' --output-style=stream
         else

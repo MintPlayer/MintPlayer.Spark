@@ -263,7 +263,7 @@ Notes:
 ### Sign-in/out re-fetch
 
 The menu tracks the optional `SPARK_AUTH_STATE` token — a `Signal<unknown>` that changes when
-the user changes. `provideSparkAuth()` supplies it automatically from `SparkAuthService.user`,
+the user changes. `withAuth()` supplies it automatically from `SparkAuthService.user`,
 so apps using `@mintplayer/ng-spark/auth` get the re-fetch with no wiring. An app with its own
 auth stack provides its own signal:
 

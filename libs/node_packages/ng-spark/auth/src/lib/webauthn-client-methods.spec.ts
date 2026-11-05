@@ -4,7 +4,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { SPARK_CLIENT_METHODS, SparkClientMethodRegistry } from '@mintplayer/ng-spark/client-operations';
 
 import { sparkAuthClientMethods } from './webauthn-client-methods';
-import { provideSparkAuth } from './provide-spark-auth';
+import { provideSpark } from '@mintplayer/ng-spark';
+import { withAuth } from './provide-spark-auth';
 
 /** jsdom implements none of WebAuthn, so it is stubbed; what is tested is the method's own logic. */
 function installWebAuthn(create: () => Promise<unknown>) {
@@ -69,9 +70,9 @@ describe("ng-spark/auth's webauthn.create client method", () => {
     expect(method.supported!()).toBe(true);
   });
 
-  it('is registered by provideSparkAuth()', () => {
+  it('is registered by withAuth()', () => {
     TestBed.resetTestingModule();
-    TestBed.configureTestingModule({ providers: [provideHttpClient(), provideSparkAuth()] });
+    TestBed.configureTestingModule({ providers: [provideHttpClient(), provideSpark(withAuth())] });
 
     const maps = TestBed.inject(SPARK_CLIENT_METHODS);
     expect(maps.some(map => map['webauthn.create'] === method)).toBe(true);

@@ -41,6 +41,10 @@
     <Content Include="Endpoints\PersistentObject\Selection\Data\*.json" CopyToOutputDirectory="PreserveNewest" />
     <!-- DateTimeOffset sort/filter fixtures (docs/datetimeoffset_query_sort_filter_PRD.md). -->
     <Content Include="Services\Data\*.json" CopyToOutputDirectory="PreserveNewest" />
+    <!-- #238 search fixtures (Search/SparkSearchTests.cs). -->
+    <Content Include="Search\Data\*.json" CopyToOutputDirectory="PreserveNewest" />
+    <!-- The generator's real output for SrchSong, pinned by its snapshot test; RavenSearchProviderTests deploys it. -->
+    <Content Include="..\MintPlayer.Spark.SourceGenerators.Tests\VerifyResults\SearchIndexGeneratorTests\SearchIndexGeneratorTests.The_search_tests_index.verified.txt" Link="Search\Data\Spark_Search.generated.txt" CopyToOutputDirectory="PreserveNewest" />
     <!-- xUnit only reads this from the output directory, not the project root. -->
     <Content Include="xunit.runner.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
@@ -79,6 +83,10 @@
     <ProjectReference Include="..\..\libs\notifications\MintPlayer.Spark.Notifications\MintPlayer.Spark.Notifications.csproj" />
     <ProjectReference Include="..\..\libs\boards\MintPlayer.Spark.Boards\MintPlayer.Spark.Boards.csproj" />
     <ProjectReference Include="..\..\libs\sitemap\MintPlayer.Spark.SitemapXml\MintPlayer.Spark.SitemapXml.csproj" />
+    <!-- #238 search: core, the OpenSearch engine provider and the OpenSearch description. -->
+    <ProjectReference Include="..\..\libs\search\MintPlayer.Spark.Search\MintPlayer.Spark.Search.csproj" />
+    <ProjectReference Include="..\..\libs\search\MintPlayer.Spark.Search.OpenSearch\MintPlayer.Spark.Search.OpenSearch.csproj" />
+    <ProjectReference Include="..\..\libs\search\MintPlayer.Spark.OpenSearchDescription\MintPlayer.Spark.OpenSearchDescription.csproj" />
     <!-- Contributions M5: the runtime, plus its generator through the targets imported below. -->
     <ProjectReference Include="..\..\libs\contributions\MintPlayer.Spark.Contributions\MintPlayer.Spark.Contributions.csproj" />
     <ProjectReference Include="..\..\libs\mail\MintPlayer.Spark.MailManager\MintPlayer.Spark.MailManager.csproj" />

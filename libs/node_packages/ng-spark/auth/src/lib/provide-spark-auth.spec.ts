@@ -2,9 +2,9 @@ import { TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
 import { describe, expect, it, beforeEach } from 'vitest';
 
-import { provideSparkAuth, withSparkAuth } from './provide-spark-auth';
+import { withAuth, withSparkAuth } from './provide-spark-auth';
 import { defaultSparkAuthConfig, SPARK_AUTH_CONFIG } from '@mintplayer/ng-spark/auth/models';
-import { SPARK_AUTH_STATE } from '@mintplayer/ng-spark';
+import { provideSpark, SPARK_AUTH_STATE } from '@mintplayer/ng-spark';
 
 /**
  * This file had NO spec, and the consequence was not just untested code — it was
@@ -17,11 +17,11 @@ import { SPARK_AUTH_STATE } from '@mintplayer/ng-spark';
  * So a spec here is worth more than its assertions: importing the file is what puts it
  * back in the measurement at all.
  */
-describe('provideSparkAuth', () => {
+describe('withAuth', () => {
   beforeEach(() => TestBed.resetTestingModule());
 
   it('falls back to the default config when given none', () => {
-    TestBed.configureTestingModule({ providers: [provideSparkAuth()] });
+    TestBed.configureTestingModule({ providers: [provideSpark(withAuth())] });
 
     expect(TestBed.inject(SPARK_AUTH_CONFIG)).toEqual(defaultSparkAuthConfig);
   });
@@ -30,7 +30,7 @@ describe('provideSparkAuth', () => {
     TestBed.configureTestingModule({
       // A real key of SparkAuthConfig: this used to pass `apiBase`, which does not exist, behind
       // `as never`, so the merge was never tested on a property the config actually has.
-      providers: [provideSparkAuth({ apiBasePath: '/custom-auth' })],
+      providers: [provideSpark(withAuth({ apiBasePath: '/custom-auth' }))],
     });
 
     const config = TestBed.inject(SPARK_AUTH_CONFIG);
@@ -46,7 +46,7 @@ describe('provideSparkAuth', () => {
     // The bridge exists so ng-spark can react to auth without depending on this package.
     // If it regressed to undefined, the program-units menu would simply never refresh.
     TestBed.configureTestingModule({
-      providers: [provideHttpClient(), provideSparkAuth()],
+      providers: [provideHttpClient(), provideSpark(withAuth())],
     });
 
     const state = TestBed.inject(SPARK_AUTH_STATE);

@@ -1,12 +1,11 @@
 import {
     EnvironmentInjector,
-    type EnvironmentProviders,
     Injectable,
     InjectionToken,
     inject,
-    makeEnvironmentProviders,
     runInInjectionContext,
 } from '@angular/core';
+import { sparkFeature, type SparkFeature, SparkFeatureOrder } from '@mintplayer/ng-spark';
 
 /**
  * One step a server action needs from the browser (`IRetryAccessor.Invoke` on the server): WebAuthn,
@@ -32,7 +31,7 @@ export interface SparkClientMethod {
 /** Client methods by the name the server invokes them with, e.g. `{ 'webauthn.create': { invoke: … } }`. */
 export type SparkClientMethodMap = Readonly<Record<string, SparkClientMethod>>;
 
-/** Multi-provider token; use {@link provideSparkClientMethods}. A later registration of a name wins. */
+/** Multi-provider token; use {@link withClientMethods}. A later registration of a name wins. */
 export const SPARK_CLIENT_METHODS = new InjectionToken<readonly SparkClientMethodMap[]>('SPARK_CLIENT_METHODS');
 
 /** The reason shown on an action whose client method is missing or unsupported, when the method names none. */
@@ -45,12 +44,13 @@ export const SPARK_CLIENT_UNSUPPORTED_REASON = 'common.clientUnsupported';
  * unknown name answers `Cancel`. Nothing the server sends is evaluated.
  *
  * @example
- * provideSparkClientMethods({
+ * withClientMethods({
  *   'clipboard.read': { invoke: () => navigator.clipboard.readText(), supported: () => !!navigator.clipboard },
  * })
  */
-export function provideSparkClientMethods(methods: SparkClientMethodMap): EnvironmentProviders {
-    return makeEnvironmentProviders([{ provide: SPARK_CLIENT_METHODS, useValue: methods, multi: true }]);
+export function withClientMethods(methods: SparkClientMethodMap): SparkFeature {
+    return sparkFeature('clientMethods', SparkFeatureOrder.registrations,
+        [{ provide: SPARK_CLIENT_METHODS, useValue: methods, multi: true }], { multi: true });
 }
 
 /** How a client method ended: its value, or a failure the server sees as `Cancel`. */

@@ -1,4 +1,5 @@
-import { Component, effect, input, Provider } from '@angular/core';
+import { Component, effect, input } from '@angular/core';
+import { provideSpark, type SparkFeature } from '@mintplayer/ng-spark';
 import { TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { provideRouter, Routes } from '@angular/router';
@@ -12,7 +13,7 @@ import { SparkPoDetailComponent } from './spark-po-detail.component';
 import { SparkService, SparkLanguageService } from '@mintplayer/ng-spark/services';
 import { SPARK_ATTRIBUTE_RENDERERS } from '@mintplayer/ng-spark/renderers';
 import { EntityType, PersistentObject, ShowedOn } from '@mintplayer/ng-spark/models';
-import { SparkDetailContext, provideSparkDetailActions, provideSparkDetailLayouts, provideSparkDetailPanels } from '@mintplayer/ng-spark/panels';
+import { SparkDetailContext, withDetailActions, withDetailLayouts, withDetailPanels } from '@mintplayer/ng-spark/panels';
 import { SparkQueryCardComponent } from '@mintplayer/ng-spark/grid';
 import { settle, StubComponent } from '../../src/test-utils';
 
@@ -47,7 +48,7 @@ const routes: Routes = [
   { path: '', component: StubComponent },
 ];
 
-async function setup(permissions: Record<string, boolean> = {}, extra: Provider[] = []) {
+async function setup(permissions: Record<string, boolean> = {}, ...extra: SparkFeature[]) {
   seen.length = 0;
   const service: any = {
     getEntityTypes: vi.fn().mockResolvedValue([personType]),
@@ -70,9 +71,11 @@ async function setup(permissions: Record<string, boolean> = {}, extra: Provider[
       { provide: SparkService, useValue: service },
       { provide: SparkLanguageService, useValue: { t: (k: string) => k } },
       { provide: SPARK_ATTRIBUTE_RENDERERS, useValue: [] },
-      provideSparkDetailPanels({ id: 'test-panel', component: TestPanel }),
-      provideSparkDetailActions({ id: 'test-action', component: TestAction }),
-      ...extra,
+      provideSpark(
+        withDetailPanels({ id: 'test-panel', component: TestPanel }),
+        withDetailActions({ id: 'test-action', component: TestAction }),
+        ...extra,
+      ),
     ],
   });
   const harness = await RouterTestingHarness.create();
@@ -144,7 +147,7 @@ describe('SparkPoDetailComponent — SPARK_DETAIL_PANELS / SPARK_DETAIL_ACTIONS 
     class TestLayout {
       context = input.required<SparkDetailContext>();
     }
-    const { harness } = await setup({}, provideSparkDetailLayouts(
+    const { harness } = await setup({}, withDetailLayouts(
       { id: 'never', component: TestPanel, matches: () => false },
       { id: 'test-layout', component: TestLayout, matches: po => po.name === 'Alice' },
     ));
@@ -158,7 +161,7 @@ describe('SparkPoDetailComponent — SPARK_DETAIL_PANELS / SPARK_DETAIL_ACTIONS 
   });
 
   it('keeps the attribute cards when no layout matches', async () => {
-    const { harness } = await setup({}, provideSparkDetailLayouts({ id: 'never', component: TestPanel, matches: () => false }));
+    const { harness } = await setup({}, withDetailLayouts({ id: 'never', component: TestPanel, matches: () => false }));
     await harness.navigateByUrl('/po/person/people%2F1', SparkPoDetailComponent);
     await settle(harness.fixture);
 

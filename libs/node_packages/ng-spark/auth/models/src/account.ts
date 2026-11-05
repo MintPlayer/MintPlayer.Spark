@@ -1,4 +1,5 @@
-import { InjectionToken, Provider } from '@angular/core';
+import { InjectionToken } from '@angular/core';
+import { sparkFeature, SparkFeature, SparkFeatureOrder } from '@mintplayer/ng-spark';
 
 /** `GET/POST /spark/auth/manage/profile` (#460, D16). */
 export interface SparkAccountProfile {
@@ -93,10 +94,11 @@ export interface SparkAccountProfileField {
   order?: number;
 }
 
-/** Multi-provider: the application's profile fields. Use {@link provideSparkAccountProfileFields}. */
+/** Multi-provider: the application's profile fields. Use {@link withAccountProfileFields}. */
 export const SPARK_ACCOUNT_PROFILE_FIELDS = new InjectionToken<SparkAccountProfileField[]>('SPARK_ACCOUNT_PROFILE_FIELDS');
 
-/** Registers profile fields; every call adds. */
-export function provideSparkAccountProfileFields(...fields: SparkAccountProfileField[]): Provider[] {
-  return fields.map(field => ({ provide: SPARK_ACCOUNT_PROFILE_FIELDS, useValue: field, multi: true }));
+/** Profile fields, for `provideSpark(...)` (every listing adds). */
+export function withAccountProfileFields(...fields: SparkAccountProfileField[]): SparkFeature {
+  return sparkFeature('accountProfileFields', SparkFeatureOrder.registrations,
+    fields.map(field => ({ provide: SPARK_ACCOUNT_PROFILE_FIELDS, useValue: field, multi: true })), { multi: true });
 }

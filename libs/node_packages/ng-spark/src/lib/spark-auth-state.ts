@@ -5,7 +5,7 @@ import { InjectionToken, Signal } from '@angular/core';
  * components react to sign-in/out without importing `@mintplayer/ng-spark/auth/*` (the non-auth
  * entry points must not import the auth ones, on purpose, so an app without auth pulls no auth code).
  *
- * `@mintplayer/ng-spark/auth`'s `provideSparkAuth()` supplies it from `SparkAuthService.user`;
+ * `@mintplayer/ng-spark/auth`'s `withAuth()` supplies it from `SparkAuthService.user`;
  * an app with its own auth stack provides any signal that changes on sign-in/out. Consumers
  * inject it `{ optional: true }` — absent, auth-sensitive data (the program-units menu) is
  * fetched once and never re-fetched.

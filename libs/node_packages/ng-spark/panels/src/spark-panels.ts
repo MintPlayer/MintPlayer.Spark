@@ -1,4 +1,4 @@
-import { InjectionToken, Provider, Type } from '@angular/core';
+import { InjectionToken, Type } from '@angular/core';
 import {
   EntityPermissions,
   EntityType,
@@ -134,11 +134,6 @@ export interface SparkQueryRowAction {
 /** Multi-provider: add-on entries of every Spark grid's row menu. */
 export const SPARK_QUERY_ROW_ACTIONS = new InjectionToken<SparkQueryRowAction[]>('SparkQueryRowActions');
 
-/** Registers grid row actions (multi — every call adds). */
-export function provideSparkQueryRowActions(...actions: SparkQueryRowAction[]): Provider[] {
-  return actions.map(action => ({ provide: SPARK_QUERY_ROW_ACTIONS, useValue: action, multi: true }));
-}
-
 /**
  * A layout that draws a detail page's attributes in place of the tabs and cards (#504), for objects it
  * `matches`: Dashboards' tile layout for objects carrying `metadata.dashboard`. It must declare
@@ -155,11 +150,6 @@ export interface SparkDetailLayout {
 /** Multi-provider: layouts that replace the attribute cards of the routed detail page for the objects they match. */
 export const SPARK_DETAIL_LAYOUTS = new InjectionToken<SparkDetailLayout[]>('SparkDetailLayouts');
 
-/** Registers detail layouts (multi — every call adds). */
-export function provideSparkDetailLayouts(...layouts: SparkDetailLayout[]): Provider[] {
-  return layouts.map(layout => ({ provide: SPARK_DETAIL_LAYOUTS, useValue: layout, multi: true }));
-}
-
 /** Multi-provider: panels under the attributes of the routed detail page. */
 export const SPARK_DETAIL_PANELS = new InjectionToken<SparkDetailPanel[]>('SparkDetailPanels');
 
@@ -168,21 +158,6 @@ export const SPARK_DETAIL_ACTIONS = new InjectionToken<SparkDetailAction[]>('Spa
 
 /** Multi-provider: extra buttons in the routed query page's action bar. */
 export const SPARK_QUERY_LIST_ACTIONS = new InjectionToken<SparkQueryListAction[]>('SparkQueryListActions');
-
-/** Registers detail panels (multi — every call adds). */
-export function provideSparkDetailPanels(...panels: SparkDetailPanel[]): Provider[] {
-  return panels.map(panel => ({ provide: SPARK_DETAIL_PANELS, useValue: panel, multi: true }));
-}
-
-/** Registers detail-page actions (multi — every call adds). */
-export function provideSparkDetailActions(...actions: SparkDetailAction[]): Provider[] {
-  return actions.map(action => ({ provide: SPARK_DETAIL_ACTIONS, useValue: action, multi: true }));
-}
-
-/** Registers query-page actions (multi — every call adds). */
-export function provideSparkQueryListActions(...actions: SparkQueryListAction[]): Provider[] {
-  return actions.map(action => ({ provide: SPARK_QUERY_LIST_ACTIONS, useValue: action, multi: true }));
-}
 
 /**
  * Normalises a multi-provided list: the last registration of an id wins (so an app can replace a

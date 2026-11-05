@@ -38,7 +38,7 @@ public interface IRetryAccessor
 
     /// <summary>
     /// Asks the browser to run the client method registered under <paramref name="clientMethod"/>
-    /// (<c>provideSparkClientMethods</c>) and hand its result back to this action. The same step
+    /// (<c>withClientMethods</c>) and hand its result back to this action. The same step
     /// pump as <see cref="Action"/>: on an unanswered step this throws and never returns; on the
     /// replay of an answered step it returns and <see cref="Result"/> holds the answer —
     /// <see cref="RetryResult.Value"/> on success, <see cref="RetryResult.Option"/> <c>"Cancel"</c>

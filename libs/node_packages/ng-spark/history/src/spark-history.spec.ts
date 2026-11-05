@@ -8,7 +8,8 @@ import { SPARK_DETAIL_PANELS } from '@mintplayer/ng-spark/panels';
 import { SparkHistoryService, SparkRevision } from './spark-history.service';
 import { SparkPoHistoryComponent } from './spark-po-history.component';
 import { SparkHistoryPanelComponent } from './spark-history-panel.component';
-import { provideSparkHistory } from './provide-spark-history';
+import { provideSpark } from '@mintplayer/ng-spark';
+import { withHistory } from './provide-spark-history';
 import { comparableValue, diffRevision } from './revision-diff';
 
 const entityType: EntityType = {
@@ -69,7 +70,7 @@ describe('history entry point (#460)', () => {
         provideNoopAnimations(),
         { provide: SparkService, useValue: spark },
         { provide: SparkLanguageService, useValue: { t: (k: string) => k } },
-        provideSparkHistory(),
+        provideSpark(withHistory()),
       ],
     });
   });

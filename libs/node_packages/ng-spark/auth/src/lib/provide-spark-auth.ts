@@ -1,7 +1,7 @@
-import { EnvironmentProviders, inject, makeEnvironmentProviders } from '@angular/core';
+import { inject } from '@angular/core';
 import { HttpFeature, HttpFeatureKind, withInterceptors, withXsrfConfiguration } from '@angular/common/http';
-import { SPARK_AUTH_STATE } from '@mintplayer/ng-spark';
-import { provideSparkClientMethods } from '@mintplayer/ng-spark/client-operations';
+import { SPARK_AUTH_STATE, sparkFeature, SparkFeature, SparkFeatureOrder } from '@mintplayer/ng-spark';
+import { withClientMethods } from '@mintplayer/ng-spark/client-operations';
 import {
   defaultSparkAuthConfig,
   SPARK_AUTH_CONFIG,
@@ -11,10 +11,12 @@ import { sparkAuthInterceptor } from '@mintplayer/ng-spark/auth/interceptors';
 import { SparkAuthService } from '@mintplayer/ng-spark/auth/core';
 import { sparkAuthClientMethods } from './webauthn-client-methods';
 
-export function provideSparkAuth(
-  config?: Partial<SparkAuthConfig>,
-): EnvironmentProviders {
-  return makeEnvironmentProviders([
+/**
+ * Spark authentication, for `provideSpark(...)`. The HTTP side is separate and keeps its name:
+ * `provideHttpClient(...withSparkAuth())`.
+ */
+export function withAuth(config?: Partial<SparkAuthConfig>): SparkFeature {
+  return sparkFeature('auth', SparkFeatureOrder.auth, [
     {
       provide: SPARK_AUTH_CONFIG,
       useValue: { ...defaultSparkAuthConfig, ...config },
@@ -26,7 +28,7 @@ export function provideSparkAuth(
       useFactory: () => inject(SparkAuthService).user,
     },
     // The browser steps the library's server actions invoke: `webauthn.create` for AddPasskey.
-    provideSparkClientMethods(sparkAuthClientMethods),
+    ...withClientMethods(sparkAuthClientMethods).providers,
   ]);
 }
 

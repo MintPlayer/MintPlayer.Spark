@@ -4,12 +4,13 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { EntityType, PersistentObject, ShowedOn } from '@mintplayer/ng-spark/models';
 import { SPARK_DETAIL_LAYOUTS, SparkDetailContext } from '@mintplayer/ng-spark/panels';
 import { SPARK_ATTRIBUTE_RENDERERS } from '@mintplayer/ng-spark/renderers';
+import { provideSpark } from '@mintplayer/ng-spark';
 import { SparkLanguageService } from '@mintplayer/ng-spark/services';
 import {
   formatSparkBytes,
   formatSparkDashboardValue,
   isSparkDashboard,
-  provideSparkDashboards,
+  withDashboards,
   SparkDashboardComponent,
   sparkDashboardRenderers,
   SparkDashboardTableComponent,
@@ -177,13 +178,13 @@ describe('spark-dashboard (tile layout)', () => {
     expect(el.querySelector('[data-generated]')?.textContent).toContain('Updated');
   });
 
-  it('recognises a dashboard by its metadata, and provideSparkDashboards registers the layout for it', () => {
+  it('recognises a dashboard by its metadata, and withDashboards registers the layout for it', () => {
     expect(isSparkDashboard(item)).toBe(true);
     expect(isSparkDashboard({ ...item, metadata: undefined })).toBe(false);
     expect(isSparkDashboard(null)).toBe(false);
 
     TestBed.resetTestingModule();
-    TestBed.configureTestingModule({ providers: [provideSparkDashboards()] });
+    TestBed.configureTestingModule({ providers: [provideSpark(withDashboards())] });
     const [layout] = TestBed.inject(SPARK_DETAIL_LAYOUTS);
     expect(layout.component).toBe(SparkDashboardComponent);
     expect(layout.matches(item, entityType)).toBe(true);

@@ -128,9 +128,9 @@ job that works on deleted rows sets `Spark:SoftDelete:ApplyInSystemContext = fal
 ## Angular UI (`@mintplayer/ng-spark/soft-delete`)
 
 ```ts
-import { provideSparkSoftDelete } from '@mintplayer/ng-spark/soft-delete';
+import { withSoftDelete } from '@mintplayer/ng-spark/soft-delete';
 
-providers: [provideSpark(...), provideSparkSoftDelete()]
+providers: [provideSpark(withSoftDelete(), /* … */)]
 ```
 
 This adds two things to the pages that `sparkRoutes()` routes to, through the `SPARK_QUERY_LIST_ACTIONS`

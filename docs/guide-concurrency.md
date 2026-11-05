@@ -178,7 +178,7 @@ By default the dialog says *when* the other change happened, never *who*. To nam
 
 ```ts
 providers: [
-  provideSpark({ conflictDialog: { showChangedBy: true } }),
+  provideSpark(withConfig({ conflictDialog: { showChangedBy: true } })),
 ],
 ```
 

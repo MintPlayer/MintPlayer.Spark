@@ -208,9 +208,9 @@ patch, ETL) still create revisions, but no interceptor hears of them.
 ## Angular UI (`@mintplayer/ng-spark/history`)
 
 ```ts
-import { provideSparkHistory } from '@mintplayer/ng-spark/history';
+import { withHistory } from '@mintplayer/ng-spark/history';
 
-providers: [provideSpark(...), provideSparkHistory()]
+providers: [provideSpark(withHistory(), /* … */)]
 ```
 
 This adds a History card to every detail page that `sparkRoutes()` routes to, through the

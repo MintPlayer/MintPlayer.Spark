@@ -1,4 +1,5 @@
-import { type EnvironmentProviders, inject, makeEnvironmentProviders } from '@angular/core';
+import { inject } from '@angular/core';
+import { sparkFeature, type SparkFeature, SparkFeatureOrder } from '@mintplayer/ng-spark';
 import { Router } from '@angular/router';
 import { resolveTranslation } from '@mintplayer/ng-spark/models';
 import type {
@@ -17,7 +18,7 @@ import { SparkQueryRefreshService } from './query-refresh.service';
 
 /**
  * Registers the built-in client-operation handlers: `notify`, `refreshQuery`,
- * `refreshAttribute`, `navigate` and `showSecret`. Apps add this once in their bootstrap providers.
+ * `refreshAttribute`, `navigate` and `showSecret`, for `provideSpark(...)`.
  *
  * `showSecret` opens {@link SparkSecretDialogService}'s dialog, which mounts itself: without it the
  * value the server shows once (a client secret, a token) would be lost, since the server keeps a hash.
@@ -39,8 +40,8 @@ import { SparkQueryRefreshService } from './query-refresh.service';
  * To register custom operation types alongside the built-ins, add additional
  * `multi: true` providers using <see cref="SPARK_CLIENT_OPERATION_HANDLERS" />.
  */
-export function provideSparkClientOperations(): EnvironmentProviders {
-    return makeEnvironmentProviders([
+export function withClientOperations(): SparkFeature {
+    return sparkFeature('clientOperations', SparkFeatureOrder.clientOperations, [
         {
             provide: SPARK_CLIENT_OPERATION_HANDLERS,
             useFactory: () => {

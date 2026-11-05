@@ -7,6 +7,10 @@
     "queryType": "MintPlayer.Indexes.VPerson",
     "indexName": "People_Overview",
     "breadcrumb": "{FullName}",
+    "search": {
+      "enabled": true,
+      "fields": ["FirstName", "LastName"]
+    },
     "seo": {
       "indexable": true,
       "schemaType": "Person",

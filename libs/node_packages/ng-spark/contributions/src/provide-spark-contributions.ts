@@ -1,6 +1,6 @@
-import { Provider } from '@angular/core';
+import { sparkFeature, SparkFeature, SparkFeatureOrder } from '@mintplayer/ng-spark';
 import { SparkAttributeRendererRegistration } from '@mintplayer/ng-spark/renderers';
-import { provideSparkDetailActions, provideSparkQueryRowActions } from '@mintplayer/ng-spark/panels';
+import { withDetailActions, withQueryRowActions } from '@mintplayer/ng-spark/panels';
 import { SparkContributionAttributionComponent } from './spark-contribution-attribution.component';
 import { SparkLineDiffComponent } from './spark-line-diff.component';
 import { SparkRevertContributionComponent, sparkRevertContributionRowAction } from './spark-revert-contribution';
@@ -11,21 +11,17 @@ import { SparkRevertContributionComponent, sparkRevertContributionRowAction } fr
  * Needs the server package `MintPlayer.Spark.Contributions`.
  *
  * ```ts
- * providers: [
- *   provideSpark(...),
- *   provideSparkContributions(),
- *   provideSparkAttributeRenderers([...sparkContributionRenderers, ...yourRenderers]),
- * ]
+ * provideSpark(
+ *   withContributions(),
+ *   withAttributeRenderers([...sparkContributionRenderers, ...yourRenderers]),
+ * )
  * ```
- *
- * The renderers are registered with the app's own, because `provideSparkAttributeRenderers` takes one
- * list: see {@link sparkContributionRenderers}.
  */
-export function provideSparkContributions(options?: { detailActionPriority?: number }): Provider[] {
-  return [
-    ...provideSparkQueryRowActions(sparkRevertContributionRowAction),
-    ...provideSparkDetailActions({ id: 'spark-revert-contribution', component: SparkRevertContributionComponent, priority: options?.detailActionPriority ?? 6 }),
-  ];
+export function withContributions(options?: { detailActionPriority?: number }): SparkFeature {
+  return sparkFeature('contributions', SparkFeatureOrder.modules, [
+    ...withQueryRowActions(sparkRevertContributionRowAction).providers,
+    ...withDetailActions({ id: 'spark-revert-contribution', component: SparkRevertContributionComponent, priority: options?.detailActionPriority ?? 6 }).providers,
+  ]);
 }
 
 /**

@@ -31,7 +31,7 @@ The package ships its own `DatabaseStatistics` dashboard (menu: *Dashboards → 
 `SparkDashboards/{name}` documents, one single-valued time series per value, raw points kept 7 days and a 5-minute
 rollup 90 days; that collection has revisions disabled.
 
-The Angular side is `@mintplayer/ng-spark/dashboards`: the tile layout (`provideSparkDashboards()`) and the
+The Angular side is `@mintplayer/ng-spark/dashboards`: the tile layout (`withDashboards()`) and the
 `spark-meter`, `spark-stat` and `spark-dashboard-table` renderers.
 
 Guide: [docs/guide-dashboards.md](https://github.com/MintPlayer/MintPlayer.Spark/blob/master/docs/guide-dashboards.md).

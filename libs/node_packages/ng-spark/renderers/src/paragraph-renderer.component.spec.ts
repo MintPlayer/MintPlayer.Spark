@@ -2,7 +2,8 @@ import { TestBed } from '@angular/core/testing';
 import { describe, expect, it, beforeEach } from 'vitest';
 
 import { SparkParagraphRendererComponent } from './paragraph-renderer.component';
-import { SPARK_ATTRIBUTE_RENDERERS, provideSparkAttributeRenderers } from './spark-attribute-renderer-registry';
+import { provideSpark } from '@mintplayer/ng-spark';
+import { SPARK_ATTRIBUTE_RENDERERS, withAttributeRenderers } from './spark-attribute-renderer-registry';
 
 /**
  * The core `paragraph` renderer (generic passkeys page, D5): escaped text by default, and an opt-out
@@ -74,7 +75,7 @@ describe('core renderers', () => {
     it('an app registration keeps the core ones, and its own of the same name wins', () => {
         class AppParagraph {}
         TestBed.configureTestingModule({
-            providers: [provideSparkAttributeRenderers([{ name: 'paragraph', detailComponent: AppParagraph as any }])],
+            providers: [provideSpark(withAttributeRenderers([{ name: 'paragraph', detailComponent: AppParagraph as any }]))],
         });
 
         const registry = TestBed.inject(SPARK_ATTRIBUTE_RENDERERS);

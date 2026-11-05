@@ -4,10 +4,11 @@ import { By } from '@angular/platform-browser';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { BsSparklineComponent } from '@mintplayer/ng-bootstrap/charts/sparkline';
 import { BsTrendChartComponent } from '@mintplayer/ng-bootstrap/charts/trend';
-import { SPARK_ATTRIBUTE_RENDERERS } from '@mintplayer/ng-spark/renderers';
+import { SPARK_ATTRIBUTE_RENDERERS, withAttributeRenderers } from '@mintplayer/ng-spark/renderers';
+import { provideSpark } from '@mintplayer/ng-spark';
 import {
   formatSparkDelta,
-  provideSparkScoreRenderers,
+  withScoreRenderers,
   resolveSparkScoreBands,
   SparkDeltaComponent,
   SparkGaugeComponent,
@@ -307,10 +308,10 @@ describe('SparkGaugeComponent', () => {
   });
 });
 
-describe('provideSparkScoreRenderers', () => {
+describe('withScoreRenderers', () => {
   it('registers the four renderers after the app ones, so an app name wins', () => {
     TestBed.configureTestingModule({
-      providers: [provideSparkScoreRenderers([{ name: 'spark-delta', columnComponent: SparkGaugeComponent }])],
+      providers: [provideSpark(withScoreRenderers([{ name: 'spark-delta', columnComponent: SparkGaugeComponent }]))],
     });
 
     const registry = TestBed.inject(SPARK_ATTRIBUTE_RENDERERS);
@@ -318,5 +319,15 @@ describe('provideSparkScoreRenderers', () => {
     expect(names).toEqual(expect.arrayContaining(['spark-gauge', 'spark-threshold-bar', 'spark-trend', 'spark-delta', 'paragraph']));
     expect(registry.find(r => r.name === 'spark-delta')!.columnComponent).toBe(SparkGaugeComponent);
     expect(registry.find(r => r.name === 'spark-trend')!.detailComponent).toBe(SparkTrendComponent);
+  });
+
+  it('merges with withAttributeRenderers in any listing order, the app renderer first', () => {
+    TestBed.configureTestingModule({
+      providers: [provideSpark(withScoreRenderers(), withAttributeRenderers([{ name: 'spark-gauge', columnComponent: SparkDeltaComponent }]))],
+    });
+
+    const registry = TestBed.inject(SPARK_ATTRIBUTE_RENDERERS);
+    expect(registry.find(r => r.name === 'spark-gauge')!.columnComponent).toBe(SparkDeltaComponent);
+    expect(registry.some(r => r.name === 'spark-trend')).toBe(true);
   });
 });

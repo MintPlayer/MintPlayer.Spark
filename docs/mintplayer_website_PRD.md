@@ -99,7 +99,9 @@ says otherwise:
 - **Not in Spark**: generators for sitemap, robots and OpenSearch. These are written in the app as minimal
   `MapGet` endpoints placed before the SPA fallback. *(Superseded for the sitemap, 2026-11-03: it is the generic
   `MintPlayer.Spark.SitemapXml` library with generator endpoints, `docs/spark_ssr_PRD.md` D17; `robots.txt` is a
-  static file in ClientApp/public.)*
+  static file in ClientApp/public.)* *(Superseded for OpenSearch and search, 2026-11-04: the generic
+  `MintPlayer.Spark.Search`, `MintPlayer.Spark.Search.OpenSearch` and `MintPlayer.Spark.OpenSearchDescription`
+  packages plus `@mintplayer/ng-spark/search`, `docs/spark_search_PRD.md`, #238.)*
 
 ### 2.4 Your libraries, checked against Angular 22 (npm, 2026-10-22)
 

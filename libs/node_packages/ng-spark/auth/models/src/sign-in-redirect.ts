@@ -20,7 +20,7 @@ export function resolveSignInUrl(config: SparkAuthConfig, router: Router): strin
     console.warn(
       `[ng-spark-auth] loginUrl is "${config.loginUrl}", but no route matches it, so redirecting an `
       + `unauthenticated user will land on a blank page. If this app runs with local credentials `
-      + `disabled, point loginUrl at its sign-in route (for example provideSparkAuth({ loginUrl: '/sign-in' })).`,
+      + `disabled, point loginUrl at its sign-in route (for example withAuth({ loginUrl: '/sign-in' })).`,
     );
   }
 

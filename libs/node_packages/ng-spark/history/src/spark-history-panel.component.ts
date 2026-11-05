@@ -5,7 +5,7 @@ import { SparkDetailContext } from '@mintplayer/ng-spark/panels';
 import { SparkPoHistoryComponent } from './spark-po-history.component';
 
 /**
- * The History card on the routed detail page (#460). Registered by {@link provideSparkHistory} as a
+ * The History card on the routed detail page (#460). Registered by {@link withHistory} as a
  * `SPARK_DETAIL_PANELS` entry; renders nothing for a caller without `History/T`.
  * After a Revert it asks the page to reload, so the attributes above show the reverted values.
  */

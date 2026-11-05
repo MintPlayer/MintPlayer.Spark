@@ -1,4 +1,5 @@
-import { EnvironmentProviders, inject, isDevMode, makeEnvironmentProviders, provideAppInitializer } from '@angular/core';
+import { inject, isDevMode, provideAppInitializer } from '@angular/core';
+import { sparkFeature, SparkFeature, SparkFeatureOrder } from '@mintplayer/ng-spark';
 import { SwRegistrationOptions, provideServiceWorker } from '@angular/service-worker';
 
 import { SparkNotificationClicks } from './spark-notification-clicks';
@@ -21,8 +22,8 @@ export interface SparkServiceWorkerOptions {
  * The application also needs an `ngsw-config.json` with Spark's navigation exclusions and
  * `serviceWorker` in its production build configuration; see `docs/guide-pwa.md`.
  */
-export function provideSparkServiceWorker(options: SparkServiceWorkerOptions = {}): EnvironmentProviders {
-  return makeEnvironmentProviders([
+export function withServiceWorker(options: SparkServiceWorkerOptions = {}): SparkFeature {
+  return sparkFeature('serviceWorker', SparkFeatureOrder.serviceWorker, [
     provideServiceWorker(options.script ?? 'ngsw-worker.js', {
       enabled: options.enabled ?? !isDevMode(),
       registrationStrategy: options.registrationStrategy ?? 'registerWhenStable:30000',

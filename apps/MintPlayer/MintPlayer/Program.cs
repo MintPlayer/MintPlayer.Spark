@@ -12,6 +12,9 @@ using MintPlayer.Spark.Extensions;
 using MintPlayer.Spark.History;
 using MintPlayer.Spark.MailManager;
 using MintPlayer.Spark.Messaging;
+using MintPlayer.Spark.OpenSearchDescription;
+using MintPlayer.Spark.Search;
+using MintPlayer.Spark.Search.OpenSearch;
 using MintPlayer.Spark.SitemapXml;
 using MintPlayer.Spark.SoftDelete;
 
@@ -58,6 +61,16 @@ builder.Services.AddSpark(builder.Configuration, spark =>
     // SeoTester crawl.sitemap: /sitemap.xml lists every public song, artist, person, medium type, tag and public
     // playlist (D17). robots.txt (ClientApp/public) names it.
     spark.AddSitemap();
+    // #238 (docs/spark_search_PRD.md): songs, artists and people ("search" in their model files), served at
+    // /spark/search and /spark/search/suggest. Production names its OpenSearch engine (docker-compose.yml); without
+    // one, and while it is down, the generated Spark_Search RavenDB index answers.
+    spark.AddSearch(search =>
+    {
+        if (builder.Configuration["Search:OpenSearch:Uri"] is { Length: > 0 } engine)
+            search.UseOpenSearch(o => o.Uri = new Uri(engine));
+    });
+    // The browser's "add search engine": /opensearch.xml, linked by withOpenSearchDescription() in app.config.ts.
+    spark.AddOpenSearchDescription(o => o.ShortName = "MintPlayer");
 });
 
 builder.Services.AddScoped<MintPlayerAccess>();

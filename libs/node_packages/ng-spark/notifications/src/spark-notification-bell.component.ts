@@ -82,7 +82,7 @@ export class SparkNotificationBellComponent {
   private readonly language = inject(SparkLanguageService);
   private readonly options = inject(SPARK_NOTIFICATIONS_OPTIONS);
 
-  /** Where "All notifications" goes. Default: `provideSparkNotifications({ listLink })`, else the `notifications` query page. */
+  /** Where "All notifications" goes. Default: `withNotifications({ listLink })`, else the `notifications` query page. */
   readonly allLink = input<string | readonly unknown[] | null>(null);
 
   readonly open = signal(false);

@@ -8,7 +8,8 @@ import { SPARK_DETAIL_ACTIONS, SPARK_QUERY_LIST_ACTIONS, SparkDetailContext, Spa
 import { SparkSoftDeleteService } from './spark-soft-delete.service';
 import { SparkDeletedToggleComponent } from './spark-deleted-toggle.component';
 import { SparkSoftDeleteActionsComponent } from './spark-soft-delete-actions.component';
-import { provideSparkSoftDelete } from './provide-spark-soft-delete';
+import { provideSpark } from '@mintplayer/ng-spark';
+import { withSoftDelete } from './provide-spark-soft-delete';
 
 function listContext(overrides: Partial<SparkQueryListContext> = {}): SparkQueryListContext {
   return {
@@ -47,7 +48,7 @@ describe('soft-delete entry point (#460)', () => {
         provideRouter([]),
         { provide: SparkService, useValue: spark },
         { provide: SparkLanguageService, useValue: { t: (k: string) => k } },
-        provideSparkSoftDelete(),
+        provideSpark(withSoftDelete()),
       ],
     });
   });

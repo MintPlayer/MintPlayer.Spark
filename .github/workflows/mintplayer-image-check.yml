@@ -13,12 +13,16 @@ on:
       - 'apps/MintPlayer/MintPlayer/**'
       - 'apps/MintPlayer/MintPlayer.Library/**'
       - 'apps/MintPlayer/docker-compose.yml'
+      - 'apps/MintPlayer/opensearch/**'
       # MintPlayer's transitive ProjectReference closure, the same list as the Dockerfile's COPY lines and
       # mintplayer-deploy.yml (tools/verify-mintplayer-deploy.test.mjs keeps the three equal to the csproj graph).
       - 'libs/attributes/MintPlayer.Spark.Attributes/**'
       - 'libs/authorization/MintPlayer.Spark.Authorization/**'
       - 'libs/boards/MintPlayer.Spark.Boards/**'
       - 'libs/sitemap/MintPlayer.Spark.SitemapXml/**'
+      - 'libs/search/MintPlayer.Spark.Search/**'
+      - 'libs/search/MintPlayer.Spark.Search.OpenSearch/**'
+      - 'libs/search/MintPlayer.Spark.OpenSearchDescription/**'
       - 'libs/authorization/MintPlayer.Spark.Authorization.Abstractions/**'
       - 'libs/history/MintPlayer.Spark.History/**'
       - 'libs/history/MintPlayer.Spark.History.Abstractions/**'
@@ -74,3 +78,10 @@ jobs:
         file: ./apps/MintPlayer/MintPlayer/Dockerfile
         push: false
         cache-from: type=gha,scope=mintplayer
+
+    - name: Build the search engine image
+      uses: docker/build-push-action@v7
+      with:
+        context: ./apps/MintPlayer/opensearch
+        push: false
+        cache-from: type=gha,scope=mintplayer-opensearch

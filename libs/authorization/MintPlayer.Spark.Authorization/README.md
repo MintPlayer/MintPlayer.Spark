@@ -496,15 +496,16 @@ After the first build, a `spark-auth.setup.ts` file appears in your SPA's `src/`
 import { ApplicationConfig } from '@angular/core';
 import { provideRouter } from '@angular/router';
 import { provideHttpClient } from '@angular/common/http';
-import { setupSparkAuthProviders, setupSparkAuthHttp } from './spark-auth.setup';
+import { provideSpark } from '@mintplayer/ng-spark';
+import { setupSparkAuth, setupSparkAuthHttp } from './spark-auth.setup';
 
 import { routes } from './app.routes';
 
 export const appConfig: ApplicationConfig = {
   providers: [
     provideRouter(routes),
-    provideHttpClient(setupSparkAuthHttp()),
-    ...setupSparkAuthProviders(),
+    provideHttpClient(...setupSparkAuthHttp()),
+    provideSpark(setupSparkAuth()),
   ]
 };
 ```
@@ -531,7 +532,7 @@ The generated setup file includes the following helpers:
 
 | Export | Description |
 |--------|-------------|
-| `setupSparkAuthProviders(config?)` | Returns providers array for `app.config.ts` |
+| `setupSparkAuth(config?)` | Returns the `withAuth` feature for `provideSpark(...)` in `app.config.ts` |
 | `setupSparkAuthHttp()` | Returns `HttpFeature` with auth interceptor (handles 401 redirects) |
 | `setupSparkAuthRoutes(config?)` | Returns route array with login, register, forgot-password, reset-password pages |
 | `sparkAuthGuard` | Route guard that redirects unauthenticated users to login |
@@ -586,12 +587,12 @@ match the server's exactly.
 
 ```typescript
 import { sparkAuthRoutes, withLocalLogin, withAccount } from '@mintplayer/ng-spark/auth/routes';
-import { provideSparkAccountProfileFields } from '@mintplayer/ng-spark/auth/models';
+import { withAccountProfileFields } from '@mintplayer/ng-spark/auth/models';
 
 // routes
 ...sparkAuthRoutes(withLocalLogin(), withAccount()),
-// providers (optional: app fields on the profile page)
-provideSparkAccountProfileFields(
+// a provideSpark(...) feature (optional: app fields on the profile page)
+withAccountProfileFields(
   { name: 'Bio', label: 'profile.bio', type: 'textarea', maxLength: 500 },
   { name: 'Newsletter', label: 'profile.newsletter', type: 'checkbox' },
 ),
@@ -640,13 +641,13 @@ provideSparkAccountProfileFields(
 The `spark-auth.setup.ts` file is generated **once** and never overwritten. You can freely customize it - for example, to change default configuration:
 
 ```typescript
-export function setupSparkAuthProviders(config?: Partial<SparkAuthConfig>) {
-  return [provideSparkAuth({
+export function setupSparkAuth(config?: Partial<SparkAuthConfig>) {
+  return withAuth({
     apiBasePath: '/spark/auth',
     defaultRedirectUrl: '/dashboard',
     loginUrl: '/sign-in',
     ...config,
-  })];
+  });
 }
 ```
 
@@ -655,7 +656,7 @@ export function setupSparkAuthProviders(config?: Partial<SparkAuthConfig>) {
 You can also skip the generated file and import directly from the npm package:
 
 ```typescript
-import { provideSparkAuth, withSparkAuth } from '@mintplayer/ng-spark/auth';
+import { withAuth, withSparkAuth } from '@mintplayer/ng-spark/auth';
 import {
   sparkAuthRoutes, withLocalLogin, withRegistration, withExternalLogin, githubProvider,
 } from '@mintplayer/ng-spark/auth/routes';

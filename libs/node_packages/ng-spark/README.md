@@ -31,7 +31,7 @@ export const appConfig: ApplicationConfig = {
   providers: [
     provideRouter(routes),
     provideHttpClient(...withSparkTimezone()),
-    provideSpark(),              // optional: { baseUrl: '/spark' } is the default
+    provideSpark(),              // features: provideSpark(withConfig({ baseUrl: '/spark' }), withAuth(), …)
   ],
 };
 
@@ -46,13 +46,21 @@ export const routes: Routes = [
 
 Routes with a parameterised first segment of your own must come **after** `sparkRoutes()`.
 
+`provideSpark(...features)` is the one call for everything Spark puts in the injector. Each entry point
+contributes `withX()` features (`withAuth`, `withBoards`, `withAttributeRenderers`, `withSeo`, …). The order
+you list them in does not matter: every feature carries an order number (`SparkFeatureOrder`) and is sorted
+by it. A feature listed twice throws, except the ones that collect registrations (renderers, panels, client
+methods), and a feature that needs another adds it when it is missing. `HttpClient` stays the app's
+(`provideHttpClient(...withSparkAuth())`); server rendering stays `provideSparkServerRendering()` in
+`app.config.server.ts`.
+
 ## Entry points
 
 Import from the entry point, not from the package root; each one is a separate chunk.
 
 | Entry point | What it provides |
 |---|---|
-| `@mintplayer/ng-spark` | `provideSpark(config?)`, `SPARK_CONFIG` (`baseUrl`), `SPARK_AUTH_STATE` (the bridge `ng-spark/auth` fills) |
+| `@mintplayer/ng-spark` | `provideSpark(...features)`, `withConfig(config)`, `sparkFeature`, `SparkFeatureOrder`, `SPARK_CONFIG` (`baseUrl`), `SPARK_AUTH_STATE` (the bridge `ng-spark/auth` fills) |
 | `/routes` | `sparkRoutes()` — the routed persistent-object and query pages |
 | `/services` | `SparkService`, `SparkLiveService`, `SparkLanguageService`, `SparkQueryActionsService`, `RetryActionService`; the timezone feature `withSparkTimezone()` |
 | `/models` | The wire types (persistent objects, attributes, queries, envelopes) |
@@ -62,21 +70,22 @@ Import from the entry point, not from the package root; each one is a separate c
 | `/column-filter` | `<spark-column-filter-panel>` |
 | `/po-detail`, `/po-create`, `/po-edit` | The routed detail, create and edit pages |
 | `/po-form` | `<spark-po-form>`, `<spark-reference-picker>`, `<spark-lookup-picker>` |
-| `/renderers` | `provideSparkAttributeRenderers([...])`, `SPARK_ATTRIBUTE_RENDERERS` (with the core `paragraph` renderer built in), `withDeclaredInputs` ([guide](https://github.com/MintPlayer/MintPlayer.Spark/blob/master/docs/guide-custom-attribute-renderers.md)) |
-| `/score-renderers` | `provideSparkScoreRenderers([...])` — the `spark-gauge`, `spark-threshold-bar`, `spark-trend` and `spark-delta` renderers, their components, bands and grade presets ([guide](https://github.com/MintPlayer/MintPlayer.Spark/blob/master/docs/guide-score-renderers.md)) |
-| `/panels` | `provideSparkDetailPanels(...)`, `provideSparkDetailActions(...)`, `provideSparkQueryListActions(...)` — how add-ons put components on the routed pages |
-| `/client-operations` | `provideSparkClientOperations()` — notify, navigate and refresh operations from server-side action code; the toast container |
+| `/renderers` | `withAttributeRenderers([...])`, `SPARK_ATTRIBUTE_RENDERERS` (with the core `paragraph` renderer built in), `withDeclaredInputs` ([guide](https://github.com/MintPlayer/MintPlayer.Spark/blob/master/docs/guide-custom-attribute-renderers.md)) |
+| `/score-renderers` | `withScoreRenderers([...])` — the `spark-gauge`, `spark-threshold-bar`, `spark-trend` and `spark-delta` renderers, their components, bands and grade presets ([guide](https://github.com/MintPlayer/MintPlayer.Spark/blob/master/docs/guide-score-renderers.md)) |
+| `/panels` | `withDetailPanels(...)`, `withDetailActions(...)`, `withQueryListActions(...)` — how add-ons put components on the routed pages |
+| `/client-operations` | `withClientOperations()` — notify, navigate and refresh operations from server-side action code; the toast container |
 | `/retry-action-modal` | The modal that answers a server's retry action ([guide](https://github.com/MintPlayer/MintPlayer.Spark/blob/master/docs/guide-manager-retry-actions.md)) |
 | `/attribute-description` | The [i] tooltip for attribute help text ([guide](https://github.com/MintPlayer/MintPlayer.Spark/blob/master/docs/guide-attribute-descriptions.md)) |
 | `/icon` | `<spark-icon>` |
 | `/pipes` | The pipes the pages use (attribute values, references, lookups, translations, router links) |
-| `/soft-delete` | `provideSparkSoftDelete()` — the Deleted toggle on query lists, the recycle bin, Restore / Purge |
-| `/history` | `provideSparkHistory()` — `<spark-po-history>`: revision list, read-only view, diff, Revert |
-| `/moderation` | `provideSparkModeration()`, `sparkModerationRoutes()`, `sparkModerationRenderers` — vote widget, flag button, review queue, reputation badge, moderator panel |
+| `/soft-delete` | `withSoftDelete()` — the Deleted toggle on query lists, the recycle bin, Restore / Purge |
+| `/history` | `withHistory()` — `<spark-po-history>`: revision list, read-only view, diff, Revert |
+| `/moderation` | `withModeration()`, `sparkModerationRoutes()`, `sparkModerationRenderers` — vote widget, flag button, review queue, reputation badge, moderator panel |
 | `/organizations` | `withOrganizationRoutes()` for `sparkAuthRoutes(...)`: the page a mailed organization invitation or join request opens (`organizations/accept/:token`), accepting on an explicit click; `<spark-organization-switcher>`: the current organization in the top bar, which lists of organization-owned rows and new rows follow ([guide](https://github.com/MintPlayer/MintPlayer.Spark/blob/master/docs/guide-organizations.md)) |
-| `/pwa` | `provideSparkServiceWorker()` — Angular's service worker with Spark's update policy (`SparkServiceWorkerUpdates`) and in-app navigation for a clicked push notification (`SparkNotificationClicks`) |
+| `/pwa` | `withServiceWorker()` — Angular's service worker with Spark's update policy (`SparkServiceWorkerUpdates`) and in-app navigation for a clicked push notification (`SparkNotificationClicks`) |
 | `/share` | `withShareRoutes(options?)` — the anonymous page a share link opens (`shared/:type/:token?id=…`); `SparkSharedObject` (the `/spark/share/load` answer). The page itself is `SparkSharedObjectComponent` in `/share/page`, lazy-loaded |
-| `/notifications` | `<spark-notification-bell>`, `<spark-push-toggle>`, `SparkNotificationsService` (live unread count, latest notifications, mark read, Web Push opt-in), `provideSparkNotifications()` — the client of MintPlayer.Spark.Notifications |
+| `/search` | `withSearch({ pagePath, singleHit })`, `withOpenSearchDescription({ title })` (adds `<link rel="search">`), `sparkSearchRoutes()`, `<spark-site-search>` (the site-wide box, not the grid's `<spark-search-box>`), `SparkSearchPageComponent`, `SparkSearchService` — the client of MintPlayer.Spark.Search ([guide](https://github.com/MintPlayer/MintPlayer.Spark/blob/master/docs/guide-site-search.md)) |
+| `/notifications` | `<spark-notification-bell>`, `<spark-push-toggle>`, `SparkNotificationsService` (live unread count, latest notifications, mark read, Web Push opt-in), `withNotifications()` — the client of MintPlayer.Spark.Notifications |
 
 ### Timezone (`withSparkTimezone`)
 
@@ -92,12 +101,12 @@ name as the server's `Spark:TimeZone:CookieName`; `cookieName: false` writes no 
 ### Panels and actions on the routed pages
 
 ```ts
-import { provideSparkDetailPanels, provideSparkDetailActions } from '@mintplayer/ng-spark/panels';
+import { withDetailPanels, withDetailActions } from '@mintplayer/ng-spark/panels';
 
-providers: [
-  provideSparkDetailPanels({ id: 'audit', component: AuditPanelComponent, order: 10 }),
-  provideSparkDetailActions({ id: 'export', component: ExportButtonComponent }),
-]
+provideSpark(
+  withDetailPanels({ id: 'audit', component: AuditPanelComponent, order: 10 }),
+  withDetailActions({ id: 'export', component: ExportButtonComponent }),
+)
 ```
 
 Each component declares `context = input.required<SparkDetailContext>()` (query-list actions:
@@ -182,17 +191,17 @@ This replaces streaming queries (`isStreamingQuery`, `SparkStreamingService`); t
 ### Soft delete, history and moderation
 
 ```ts
-import { provideSparkSoftDelete } from '@mintplayer/ng-spark/soft-delete';
-import { provideSparkHistory } from '@mintplayer/ng-spark/history';
-import { provideSparkModeration, sparkModerationRenderers, sparkModerationRoutes } from '@mintplayer/ng-spark/moderation';
-import { provideSparkAttributeRenderers } from '@mintplayer/ng-spark/renderers';
+import { withSoftDelete } from '@mintplayer/ng-spark/soft-delete';
+import { withHistory } from '@mintplayer/ng-spark/history';
+import { withModeration, sparkModerationRenderers, sparkModerationRoutes } from '@mintplayer/ng-spark/moderation';
+import { withAttributeRenderers } from '@mintplayer/ng-spark/renderers';
 
-providers: [
-  provideSparkSoftDelete(),
-  provideSparkHistory(),
-  provideSparkModeration(),
-  provideSparkAttributeRenderers([...sparkModerationRenderers]),
-]
+provideSpark(
+  withSoftDelete(),
+  withHistory(),
+  withModeration(),
+  withAttributeRenderers([...sparkModerationRenderers]),
+)
 
 // routes: ...sparkModerationRoutes() before ...sparkRoutes()
 ```
@@ -205,12 +214,12 @@ Each needs its server package: [SoftDelete](https://github.com/MintPlayer/MintPl
 ### Contributions (preview)
 
 ```ts
-import { provideSparkContributions, sparkContributionRenderers } from '@mintplayer/ng-spark/contributions';
+import { withContributions, sparkContributionRenderers } from '@mintplayer/ng-spark/contributions';
 
-providers: [
-  provideSparkContributions(),   // "Revert to this version" (row menu + contribution page)
-  provideSparkAttributeRenderers([...sparkContributionRenderers]), // attribution row line, lineDiff
-]
+provideSpark(
+  withContributions(),   // "Revert to this version" (row menu + contribution page)
+  withAttributeRenderers([...sparkContributionRenderers]), // attribution row line, lineDiff
+)
 ```
 
 No routes of its own: the History link opens `query/:queryId` with `?parentId=&parentType=` and one
@@ -220,11 +229,12 @@ column filter per slot, which the query page reads for any query. Needs
 ### Score renderers
 
 ```ts
-import { provideSparkScoreRenderers } from '@mintplayer/ng-spark/score-renderers';
+import { withScoreRenderers } from '@mintplayer/ng-spark/score-renderers';
 
-providers: [
-  provideSparkScoreRenderers([/* the app's own renderers */]),  // instead of provideSparkAttributeRenderers
-]
+provideSpark(
+  withScoreRenderers(),
+  withAttributeRenderers([/* the app's own renderers */]),  // merged; an app renderer of the same name wins
+)
 ```
 
 ```json
@@ -262,15 +272,15 @@ The client of the server package MintPlayer.Spark.Notifications (`spark.AddNotif
 - The bell shows the unread count and, in its menu, the latest notifications (title, message, relative time).
   Choosing one marks it read and follows its link, through the router when it is on this origin.
   "Mark all as read" and a link to the full list (`/query/notifications`; `[allLink]` or
-  `provideSparkNotifications({ listLink, recentCount })` change it) complete the menu.
+  `withNotifications({ listLink, recentCount })` change it) complete the menu.
 - `SparkNotificationsService` holds `unreadCount`, `recent`, `markRead(ids?)` and `open(notification)`. Both
   lists are live queries on the one `/spark/live` socket: no polling. They resubscribe when the signed-in user changes.
 - Web Push: `enablePush()` (call it from a click: it asks permission first), `disablePush()`, `pushState`
   (`unsupported` · `denied` · `off` · `on`) and `pushConfigured` (the server has VAPID keys). Push needs
-  `provideSparkServiceWorker()` with the worker enabled. On iPhone and iPad the app must be on the Home Screen
+  `withServiceWorker()` with the worker enabled. On iPhone and iPad the app must be on the Home Screen
   first; until then the state is `unsupported` and the toggle says so.
 - A push clicked while the app is open becomes an in-app navigation (`SparkNotificationClicks`, started by
-  `provideSparkServiceWorker()`). When the app is closed, Angular's service worker opens the page itself
+  `withServiceWorker()`). When the app is closed, Angular's service worker opens the page itself
   from the payload's `onActionClick`.
 
 ### Share links

@@ -3,7 +3,8 @@ import { provideRouter, Router } from '@angular/router';
 import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
 import { currentLanguage } from '@mintplayer/ng-spark/models';
 
-import { provideSparkClientOperations } from './provide';
+import { provideSpark } from '@mintplayer/ng-spark';
+import { withClientOperations } from './provide';
 import { SparkNotificationService } from './notification.service';
 import { NotificationKind } from './operations';
 import { SPARK_CLIENT_OPERATION_HANDLERS } from './handlers.token';
@@ -21,12 +22,12 @@ import type { ClientOperation } from './operations';
  * Asserting the registered SET — not just that individual handlers behave — is what makes the
  * next omission a failing test rather than a production mystery.
  */
-describe('provideSparkClientOperations', () => {
+describe('withClientOperations', () => {
   beforeEach(() => TestBed.resetTestingModule());
 
   function configure() {
     TestBed.configureTestingModule({
-      providers: [provideRouter([]), provideSparkClientOperations()],
+      providers: [provideRouter([]), provideSpark(withClientOperations())],
     });
   }
 

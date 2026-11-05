@@ -38,7 +38,7 @@ export interface CustomActionDefinition {
    */
   isDefault?: boolean;
   /**
-   * The client method the action needs in the browser (`provideSparkClientMethods`), e.g.
+   * The client method the action needs in the browser (`withClientMethods`), e.g.
    * `'webauthn.create'`. When it is not registered, or its `supported()` says no, the action is shown
    * disabled with the reason as its tooltip. Advisory: the server still handles a cancelled step.
    */

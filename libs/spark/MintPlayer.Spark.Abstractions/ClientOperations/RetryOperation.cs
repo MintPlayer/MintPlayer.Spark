@@ -26,7 +26,7 @@ public sealed class RetryOperation : ClientOperation
     public bool Cancellable { get; init; }
 
     /// <summary>
-    /// The name of a client method (<c>provideSparkClientMethods</c>) to run instead of showing a
+    /// The name of a client method (<c>withClientMethods</c>) to run instead of showing a
     /// modal, for example <c>"webauthn.create"</c>. Null for an ordinary prompt.
     /// </summary>
     /// <remarks>

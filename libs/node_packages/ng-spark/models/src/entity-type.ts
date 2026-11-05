@@ -118,6 +118,20 @@ export interface EntityTypeSeo {
   properties?: Record<string, string>;
 }
 
+/**
+ * Whether and how a type takes part in Spark search (`EntityTypeSearch` on the server, `docs/spark_search_PRD.md`
+ * D1). Absent or not enabled, its objects never appear in search.
+ */
+export interface EntityTypeSearch {
+  enabled: boolean;
+  /** The hit's label template (`{Attribute}` placeholders); absent, the breadcrumb template. */
+  label?: string;
+  /** The attributes whose text is searched; absent, the label's placeholders. */
+  fields?: string[];
+  /** Whether typos are tolerated; absent, the app's default. */
+  fuzzy?: boolean;
+}
+
 export interface EntityType {
   id: string;
   name: string;
@@ -152,6 +166,8 @@ export interface EntityType {
    * D12). Absent, the page keeps the breadcrumb as its title and is `noindex`.
    */
   seo?: EntityTypeSeo;
+  /** Whether and how objects of this type appear in Spark search (`docs/spark_search_PRD.md` D1). */
+  search?: EntityTypeSearch;
   /**
    * Breadcrumb template: literal text plus `{AttributeName}` placeholders. A scalar placeholder
    * renders its value; a reference placeholder renders the referenced entity's breadcrumb.

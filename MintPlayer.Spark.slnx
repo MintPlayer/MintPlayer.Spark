@@ -81,6 +81,11 @@
   <Folder Name="/libs/sitemap/">
     <Project Path="libs/sitemap/MintPlayer.Spark.SitemapXml/MintPlayer.Spark.SitemapXml.csproj" />
   </Folder>
+  <Folder Name="/libs/search/">
+    <Project Path="libs/search/MintPlayer.Spark.Search/MintPlayer.Spark.Search.csproj" />
+    <Project Path="libs/search/MintPlayer.Spark.Search.OpenSearch/MintPlayer.Spark.Search.OpenSearch.csproj" />
+    <Project Path="libs/search/MintPlayer.Spark.OpenSearchDescription/MintPlayer.Spark.OpenSearchDescription.csproj" />
+  </Folder>
   <Folder Name="/libs/client/">
     <Project Path="libs/client/MintPlayer.Spark.Client.Authorization/MintPlayer.Spark.Client.Authorization.csproj" />
     <Project Path="libs/client/MintPlayer.Spark.Client/MintPlayer.Spark.Client.csproj" />

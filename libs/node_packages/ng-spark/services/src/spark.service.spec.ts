@@ -8,8 +8,8 @@ import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
 
 import { SparkService } from './spark.service';
 import { RetryActionService } from './retry-action.service';
-import { SparkClientOperationDispatcher, provideSparkClientMethods, type SparkClientMethodMap } from '@mintplayer/ng-spark/client-operations';
-import { SPARK_CONFIG } from '@mintplayer/ng-spark';
+import { SparkClientOperationDispatcher, withClientMethods, type SparkClientMethodMap } from '@mintplayer/ng-spark/client-operations';
+import { provideSpark, SPARK_CONFIG } from '@mintplayer/ng-spark';
 
 /**
  * HTTP-shape tests for SparkService. The service is a thin client over a fixed
@@ -674,7 +674,7 @@ describe('SparkService', () => {
         providers: [
           provideHttpClient(),
           provideHttpClientTesting(),
-          provideSparkClientMethods(methods),
+          provideSpark(withClientMethods(methods)),
           { provide: SparkClientOperationDispatcher, useValue: dispatcher },
           { provide: RetryActionService, useValue: retryService },
         ],

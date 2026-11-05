@@ -1,4 +1,5 @@
-import { InjectionToken, Provider, Type } from '@angular/core';
+import { inject, InjectionToken, Type } from '@angular/core';
+import { sparkFeature, SparkFeature, SparkFeatureOrder } from '@mintplayer/ng-spark';
 import { SparkParagraphRendererComponent } from './paragraph-renderer.component';
 
 export interface SparkAttributeRendererRegistration {
@@ -57,26 +58,32 @@ export const sparkCoreRenderers: readonly SparkAttributeRendererRegistration[] =
   { name: 'paragraph', detailComponent: SparkParagraphRendererComponent, fullWidth: true },
 ];
 
+/** Multi-provider: one renderer list per `withAttributeRenderers(...)` (and `withScoreRenderers(...)`) listing. */
+export const SPARK_ATTRIBUTE_RENDERER_SETS = new InjectionToken<readonly SparkAttributeRendererRegistration[][]>('SparkAttributeRendererSets');
+
+/**
+ * Every registered renderer: the sets in `provideSpark` order (the app's before ng-spark's own, see
+ * `SparkFeatureOrder.builtInRegistrations`), then the core ones. `find` by name takes the first, so an app renderer
+ * replaces a shipped one of the same name.
+ */
 export const SPARK_ATTRIBUTE_RENDERERS = new InjectionToken<SparkAttributeRendererRegistration[]>(
   'SparkAttributeRenderers',
-  { factory: () => [...sparkCoreRenderers] }
+  { factory: () => [...(inject(SPARK_ATTRIBUTE_RENDERER_SETS, { optional: true }) ?? []).flat(), ...sparkCoreRenderers] }
 );
 
 /**
- * Register custom attribute renderers globally.
+ * Custom attribute renderers, for `provideSpark(...)` (every listing adds).
  *
  * @example
- * provideSparkAttributeRenderers([
+ * withAttributeRenderers([
  *   { name: 'video-player', detailComponent: VideoDetailComponent, columnComponent: VideoColumnComponent },
  *   { name: 'color-swatch', detailComponent: ColorDetailComponent, columnComponent: ColorColumnComponent },
  * ])
  */
-export function provideSparkAttributeRenderers(
-  renderers: SparkAttributeRendererRegistration[]
-): Provider {
-  return {
-    provide: SPARK_ATTRIBUTE_RENDERERS,
-    // The app's first, so `find` by name lets it replace a core renderer.
-    useValue: [...renderers, ...sparkCoreRenderers],
-  };
+export function withAttributeRenderers(
+  renderers: readonly SparkAttributeRendererRegistration[],
+  order: number = SparkFeatureOrder.registrations,
+): SparkFeature {
+  return sparkFeature('attributeRenderers', order,
+    [{ provide: SPARK_ATTRIBUTE_RENDERER_SETS, useValue: [...renderers], multi: true }], { multi: true });
 }

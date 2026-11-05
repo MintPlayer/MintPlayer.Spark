@@ -11,7 +11,9 @@
         "{workspaceRoot}/libs/*/*/App_Data/*.json",
         "{workspaceRoot}/tools/test-shard.mjs",
         "{workspaceRoot}/tools/test-shard-weights.json",
-        { "env": "SPARK_TEST_SHARD" }
+        "{workspaceRoot}/tests/MintPlayer.Spark.SourceGenerators.Tests/VerifyResults/SearchIndexGeneratorTests/*.verified.txt",
+        { "env": "SPARK_TEST_SHARD" },
+        { "env": "SPARK_OPENSEARCH_URI" }
       ],
       "options": {
         "cwd": "tests/MintPlayer.Spark.Tests",

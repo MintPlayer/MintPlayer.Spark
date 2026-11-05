@@ -8,7 +8,8 @@ import { SparkModerationService } from './spark-moderation.service';
 import { SparkVoteComponent, describeModerationError } from './spark-vote.component';
 import { SparkFlagButtonComponent } from './spark-flag-button.component';
 import { SparkModeratorPanelComponent } from './spark-moderator-panel.component';
-import { provideSparkModeration, sparkModerationRenderers, sparkModerationRoutes } from './provide-spark-moderation';
+import { provideSpark } from '@mintplayer/ng-spark';
+import { withModeration, sparkModerationRenderers, sparkModerationRoutes } from './provide-spark-moderation';
 import { SparkReviewQueueComponent } from './spark-review-queue.component';
 import { SparkReputationBadgeComponent } from './spark-reputation-badge.component';
 import { SparkReviewQueueLinkComponent } from './spark-review-queue-link.component';
@@ -38,7 +39,7 @@ describe('moderation entry point (#460)', () => {
         provideRouter([]),
         { provide: SparkService, useValue: spark },
         { provide: SparkLanguageService, useValue: { t: (k: string) => k } },
-        provideSparkModeration(),
+        provideSpark(withModeration()),
       ],
     });
   });

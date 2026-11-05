@@ -91,12 +91,13 @@ Spark__Moderation__NewAccounts__MaxPostsPerDay=3
 ## 4. Client
 
 ```ts
-import { provideSparkModeration, sparkModerationRenderers, sparkModerationRoutes } from '@mintplayer/ng-spark/moderation';
+import { withModeration, sparkModerationRenderers, sparkModerationRoutes } from '@mintplayer/ng-spark/moderation';
 
 providers: [
-  provideSpark(...),
-  provideSparkModeration(),
-  provideSparkAttributeRenderers([...sparkModerationRenderers]),
+  provideSpark(
+    withModeration(),
+    withAttributeRenderers([...sparkModerationRenderers]),
+  ),
 ],
 routes: [...sparkModerationRoutes(), ...sparkRoutes()],
 ```

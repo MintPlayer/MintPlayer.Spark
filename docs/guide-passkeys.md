@@ -30,7 +30,7 @@ whole: the virtual `Passkeys` type, its `my-passkeys` query and the `AddPasskey`
 and `RemovePasskey` actions, with their rights granted to `@authenticated`. An app declares none of
 it. `withAccount()` maps `/account/passkeys` to forward there and links it from the account overview,
 which `<spark-auth-bar>`'s Account button opens. `withPasskeys()` maps the forward alone (at
-`/passkeys`) for an app without the account area, but then nothing links to it. `provideSparkAuth()`
+`/passkeys`) for an app without the account area, but then nothing links to it. `withAuth()`
 registers the `webauthn.create` client method that Add runs in the browser.
 
 That is the whole setup. The sign-in page grows a "Sign in with a passkey" button on its own, once

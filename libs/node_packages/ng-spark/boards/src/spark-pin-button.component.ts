@@ -12,7 +12,7 @@ import { SparkBoardsService } from './spark-boards.service';
 
 /**
  * **Pin to dashboard** on the detail page of every object (#530). Registered by
- * {@link provideSparkBoards} as a `SPARK_DETAIL_ACTIONS` entry. It adds a `persistentObject` tile
+ * {@link withBoards} as a `SPARK_DETAIL_ACTIONS` entry. It adds a `persistentObject` tile
  * for this object to the pin board (`home` unless configured), once: an object already pinned is
  * left alone. The server decides whether the caller may customize, and whether the tile is allowed.
  */

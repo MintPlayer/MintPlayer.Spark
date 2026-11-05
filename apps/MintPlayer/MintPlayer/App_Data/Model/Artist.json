@@ -5,6 +5,9 @@
     "name": "Artist",
     "clrType": "MintPlayer.Entities.Artist",
     "breadcrumb": "{Name}",
+    "search": {
+      "enabled": true
+    },
     "seo": {
       "indexable": true,
       "schemaType": "MusicGroup",
