@@ -13,6 +13,8 @@ namespace CodeCoverage.PackageVersioning;
 /// backport:
 ///   onConflict: comment          # comment (default, D7) | draft: push the conflict markers, open a draft pull request
 ///   enqueue: true                # default (D12): hand each backport pull request to the merge queue, when it queues the line
+///   defaultLabels: all           # D5: all (default) | fixes: older lines only for fixes, the current line always (D16) | off
+///   fixLabels: [bug]             # what marks a fix under `fixes`, beside a fix: or fix(…): title
 ///   lines:                       # D4: override the lifecycle data per line
 ///     dotnet-8.x: keep           # keep past end of life | retire: no longer supported
 ///   markers:                     # D8
@@ -24,6 +26,9 @@ public static class BackportYml
 {
     public const string Comment = "comment";
     public const string Draft = "draft";
+    public const string All = "all";
+    public const string Fixes = "fixes";
+    public const string Off = "off";
 
     private static readonly IDeserializer Deserializer = new DeserializerBuilder()
         .WithNamingConvention(CamelCaseNamingConvention.Instance)
@@ -64,6 +69,16 @@ public static class BackportYml
 
         var enqueue = file.Enqueue ?? true;
 
+        // #570 M8b, D5. A misspelt mode labels nothing rather than everything.
+        var defaultLabels = file.DefaultLabels?.Trim() ?? All;
+        if (defaultLabels is not (All or Fixes or Off))
+        {
+            errors.Add($"backport.defaultLabels '{defaultLabels}' is not one of: {All}, {Fixes}, {Off}.");
+            defaultLabels = Off;
+        }
+        var fixLabels = file.FixLabels is null ? BackportSection.Default.FixLabels
+            : [.. file.FixLabels.Select(l => l?.Trim() ?? "").Where(l => l.Length is > 0 and <= 50).Distinct(StringComparer.OrdinalIgnoreCase)];
+
         // #570 M8, D4: the owner's override per line, keyed by the line's name.
         var lines = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (var (key, value) in file.Lines ?? [])
@@ -79,11 +94,13 @@ public static class BackportYml
         }
 
         if (errors.Count > 0)
-            return new(BackportSection.Default with { OnConflict = onConflict, Enqueue = enqueue }, errors);
+            return new(BackportSection.Default with { OnConflict = onConflict, Enqueue = enqueue, DefaultLabels = defaultLabels, FixLabels = fixLabels }, errors);
         return new(new BackportSection(onConflict,
             new PlatformMarkerOptions([.. disable.Distinct(StringComparer.OrdinalIgnoreCase)], [.. packages.Distinct(StringComparer.OrdinalIgnoreCase)]), enqueue)
         {
             Lines = lines,
+            DefaultLabels = defaultLabels,
+            FixLabels = fixLabels,
         }, []);
     }
 
@@ -96,6 +113,8 @@ public static class BackportYml
     {
         public string? OnConflict { get; set; }
         public bool? Enqueue { get; set; }
+        public string? DefaultLabels { get; set; }
+        public List<string?>? FixLabels { get; set; }
         public Dictionary<string, string?>? Lines { get; set; }
         public FileMarkers? Markers { get; set; }
     }
@@ -114,6 +133,12 @@ public sealed record BackportSection(string OnConflict, PlatformMarkerOptions Ma
 {
     /// <summary><c>backport.lines</c> (#570 M8, D4): <c>keep</c> or <c>retire</c> per line name, overriding the lifecycle data.</summary>
     public IReadOnlyDictionary<string, string> Lines { get; init; } = new Dictionary<string, string>(StringComparer.Ordinal);
+
+    /// <summary><c>backport.defaultLabels</c> (#570 M8b, D5): <see cref="BackportYml.All"/>, <see cref="BackportYml.Fixes"/> or <see cref="BackportYml.Off"/>.</summary>
+    public string DefaultLabels { get; init; } = BackportYml.All;
+
+    /// <summary><c>backport.fixLabels</c>: the labels that mark a pull request as a fix under <c>defaultLabels: fixes</c>, beside a <c>fix:</c> title.</summary>
+    public IReadOnlyList<string> FixLabels { get; init; } = ["bug"];
 
     public static readonly BackportSection Default = new(BackportYml.Comment, new PlatformMarkerOptions([], []));
 }

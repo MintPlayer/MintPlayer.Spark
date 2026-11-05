@@ -260,6 +260,8 @@ A `backport:` section in the default branch's `coverage.yml` adjusts this:
 backport:
   onConflict: draft          # comment (default) | draft
   enqueue: false             # default true: hand each backport pull request to the merge queue
+  defaultLabels: fixes       # all (default) | fixes | off
+  fixLabels: [bug]           # what marks a fix under `fixes`, beside a fix: title
   lines:
     dotnet-8.x: keep         # supported past its platform's end of life
     angular-20.x: retire     # no longer supported, whatever the lifecycle says
@@ -275,6 +277,11 @@ backport:
   `mergeQueue.branches` names its line, for instance through `supported-lines` ([merge-queue.md](merge-queue.md)).
   The queue's approvals and checks still apply. A draft, or a backport whose regenerated files are stale, is never
   enqueued.
+- **`defaultLabels`**: with release lines on, a pull request into the default branch gets a `backport: <line>` label,
+  when it opens, for each supported line whose ecosystem it changes (the same changed-files test as a release). Remove
+  the labels of the lines it should not reach; merging backports it to the rest. `fixes` labels the older lines only
+  for a `fix:` title or a `fixLabels` label, and the newest line always; `off` labels nothing. Every pull request
+  also gets an informational **Backport targets** check listing the lines and which apply.
 - **`lines`** overrides which lines are supported. By default a line is supported while its platform major has not
   reached end of life (the lifecycle data this app collects), and the newest line of each ecosystem always is. An
   ecosystem without lifecycle data supports only its newest line and the lines you `keep`. `retire` wins over

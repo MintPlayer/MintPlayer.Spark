@@ -156,6 +156,36 @@ internal sealed partial class GitWriterVersioningPlanEndpoint : IPostEndpoint<Ve
     }
 }
 
+/// <summary><c>POST /jobs/versioning/ecosystems</c>: the ecosystems a pull request touches (#570 M8b, PRD D5).</summary>
+internal sealed partial class GitWriterVersioningEcosystemsEndpoint : IPostEndpoint<VersioningEcosystemsRequestWire>
+{
+    public static string Path => "/jobs/versioning/ecosystems";
+
+    [Inject] private readonly VersioningRunService runs;
+    [Inject] private readonly IOptions<GitWriterOptions> options;
+
+    protected override async ValueTask<VersioningEcosystemsRequestWire?> BindRequestAsync(HttpContext context)
+        => await Body.ReadAsync<VersioningEcosystemsRequestWire>(context.Request.Body, context.Request.ContentLength, Body.SmallBytes, context.RequestAborted);
+
+    protected override ValueTask<IResult> OnBindFailedAsync(HttpContext context, EndpointBindingException? failure) => new(Refusal.Body(Body.SmallBytes));
+
+    public override async Task<IResult> HandleAsync(VersioningEcosystemsRequestWire request, CancellationToken cancellationToken)
+    {
+        var refusal = new Refusal();
+        if (!refusal.Check(WireValidation.IsRepo(request.Provider, request.RepoId), "repoId", WireValidation.RepoRule)
+            || refusal.Check(WireValidation.RemoteUrl(request.CloneUrl, options.Value.AllowInsecureHttp), "cloneUrl", WireValidation.RemoteUrlRule) is not { } cloneUrl
+            || refusal.Check(WireValidation.Credential(request.Credential), "credential", WireValidation.CredentialRule) is not { } credential
+            || refusal.Check(WireValidation.Branch(request.BaseBranch), "baseBranch", MergeQueueWireRules.BranchRule) is not { } baseBranch
+            || refusal.Check(WireValidation.HeadRef(request.HeadRef), "headRef", WireValidation.HeadRefRule) is not { } headRef
+            || refusal.Check(WireValidation.ObjectId(request.HeadSha), "headSha", WireValidation.ShaRule) is not { } headSha
+            || refusal.Check(GitWriterVersioningRunEndpoint.Settings(request.Settings), "settings", GitWriterVersioningRunEndpoint.SettingsRule) is not { } settings)
+            return refusal.Result();
+
+        return Results.Json(await runs.EcosystemsAsync(new VersioningEcosystemsJob($"{request.Provider}/{request.RepoId}", cloneUrl, credential, baseBranch,
+            headRef, headSha, settings)), GitWriterHost.Json);
+    }
+}
+
 /// <summary><c>POST /jobs/versioning/onboarding</c>: the onboarding pull request's commit (#153 D17).</summary>
 internal sealed partial class GitWriterVersioningOnboardingEndpoint : IPostEndpoint<VersioningOnboardingWire>
 {

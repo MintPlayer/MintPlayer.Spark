@@ -866,4 +866,45 @@ cascade: 66 of 72 conflicted only because #461 was missing). Script: a throwaway
   - `GitHubForgeMergeQueueTests`: the matching-refs listing; a traversal prefix throws. The conformance row.
   - `MergeQueueEngineTests`: an older line without lifecycle data is refused under `supported-lines`, and queued once
     `keep` names it.
+- **M8b, built (2026-11-05): default labels and the "Backport targets" check (D5, D16, D18).**
+
+  **Which ecosystems a pull request changes** is the versioning engine's own changed-inputs test (§5.2):
+  `ChangedEcosystems.OfAsync` runs `ReleasePlanner.ChangedInputsAsync` (now shared, with the same ignore globs and
+  test-project exclusion) for each package, and collects `Ecosystems.Of` of those with changes. It runs in the git
+  writer as `POST /jobs/versioning/ecosystems`: the job fetches the base branch and `refs/pull/N/head`, diffs from their
+  **merge base**, and reads the graph at the head. The merge base matters: the default branch's own changes since the
+  pull request branched off are not the pull request's (the writer test moves `main`'s Angular library after the
+  branch-off and expects only `dotnet`). A head that moved on answers `head-mismatch`; the newer push has its own
+  message. Cost accepted: one full fetch per push to a pull request into the default branch, in repositories with lines
+  on only, the same fetch the plan job already makes.
+
+  **Who gets processed** (`BackportTargetsEventsRecipient`, a filter on the forge-event lane): pull requests into the
+  default branch, not from a `backport/` head and not by a bot (a dependency update on the default branch is no
+  backport: each line gets its own, D13). The lane (`BackportTargetsRecipient`) then reads the default branch's
+  `coverage.yml` and stops unless `versioning.lines` is on (D18).
+
+  **Labels** (`BackportTargets.Labels`): `backport: <line>` for every supported line (M8a) whose ecosystem changed.
+  - `defaultLabels: all` (default) labels them all; `fixes` labels older lines only when the title is a conventional
+    fix (`fix:`, `fix(scope):`, `fix!:`) or the pull request carries one of `backport.fixLabels` (default `[bug]`), and
+    the current line always (D16); `off` labels nothing.
+  - A misspelt `defaultLabels` is an error and labels **nothing** (unlike `onConflict`, where the default is safe):
+    `all` would label everything because of a typo.
+  - Labels are added only on open or reopen, and only when the pull request carries no backport label yet, so a
+    maintainer's choice survives a reopen. They are never removed: after the open they are the maintainer's.
+  - The label names a line (`dotnet-10.x`), so the backport recipient now resolves line names through the
+    `versioning.lines` pattern when lines are on (`BackportRecipient.ResolveLine`); before M8b it only knew
+    `versioning.releaseBranches`, so `backport: dotnet-10.x` named no branch. A bare major (`10.x`) names no ecosystem
+    and resolves to nothing there. The backport head is `backport/<pr>-<line>`.
+
+  **The check** ("Backport targets", always neutral, on every head): a table of every existing line with supported
+  (and why not), changed and labelled, a title naming the lines that apply, and the `backport:` section's errors.
+
+  **Tests:**
+  - `ChangedEcosystemsTests` (engine): touched ecosystems; docs, tests and ignored files touch none; a line pin.
+  - `VersioningEcosystemsTests` (writer): the merge base, not the default branch's tip; a moved head.
+  - `BackportTargetsTests`: `all`, `fixes`, `off`; the fix title and labels; the check's rows and its empty case.
+  - `BackportTargetsRecipientTests`: labelled and checked on open; `fixes`; no relabel on a push or over an existing
+    label; a repository without lines untouched; a moved head.
+  - `BackportYmlTests`: `defaultLabels`, `fixLabels`, a misspelt mode. `BackportTests`: line names resolve.
+  - `GitWriterSidecarClientTests`: the route.
 - **Every automatic resolution is listed in the per-line report** (D6): path, strategy, and what each side added.

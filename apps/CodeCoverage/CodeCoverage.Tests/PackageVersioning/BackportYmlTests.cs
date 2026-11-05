@@ -43,7 +43,22 @@ public class BackportYmlTests
         BackportYml.Parse("backport:\n  enqueue: false\n").Section.Enqueue.Should().BeFalse();
     }
 
+    [Fact]
+    public void Default_labels_are_all_unless_set_and_fixes_are_recognised_by_the_bug_label_by_default()
+    {
+        // #570 M8b, D5.
+        BackportSection.Default.DefaultLabels.Should().Be(BackportYml.All);
+        BackportSection.Default.FixLabels.Should().Equal(["bug"]);
+
+        var parsed = BackportYml.Parse("backport:\n  defaultLabels: fixes\n  fixLabels: [bug, regression]\n");
+        parsed.Errors.Should().BeEmpty();
+        parsed.Section.DefaultLabels.Should().Be(BackportYml.Fixes);
+        parsed.Section.FixLabels.Should().Equal(["bug", "regression"]);
+        BackportYml.Parse("backport:\n  defaultLabels: off\n").Section.DefaultLabels.Should().Be(BackportYml.Off);
+    }
+
     [Theory]
+    [InlineData("backport:\n  defaultLabels: some\n", "backport.defaultLabels 'some'")]
     [InlineData("backport:\n  onConflict: push\n", "backport.onConflict 'push'")]
     [InlineData("backport:\n  markers:\n    disable: [docker]\n", "backport.markers.disable 'docker'")]
     [InlineData("backport:\n  markers:\n    packages: [\"*\"]\n", "backport.markers.packages '*'")]

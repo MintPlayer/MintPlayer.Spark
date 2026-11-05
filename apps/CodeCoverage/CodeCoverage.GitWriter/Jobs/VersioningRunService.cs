@@ -17,6 +17,10 @@ public sealed record VersioningPlanJob(
     public ReleaseLine? Line { get; init; }
 }
 
+/// <summary>A validated <c>POST /jobs/versioning/ecosystems</c> (#570 M8b).</summary>
+public sealed record VersioningEcosystemsJob(
+    string Repo, Uri CloneUrl, GitCredential Credential, string BaseBranch, string HeadRef, string HeadSha, VersioningSettings Settings);
+
 /// <summary>
 /// The server host's whole versioning run (#153 M6, PRD D2). The plan and the tags are the engine's
 /// <see cref="ReleaseRun"/>, the same the action's local host runs; this job supplies the repository: an empty bare one
@@ -95,6 +99,41 @@ public sealed class VersioningRunService(JobRunner jobs)
             throw new JobAbortedException(JobReasons.Error, e.Message);
         }
     }, (outcome, reason, detail, ms) => new VersioningPlanResponse(outcome, reason, [], [], [], detail, ms));
+
+    /// <summary>
+    /// #570 M8b (PRD D5): the ecosystems a pull request touches. The base branch and the pull request's head are fetched;
+    /// the diff runs from their merge base, so the default branch's own changes since the pull request branched off are
+    /// not counted, and the graph is the head's.
+    /// </summary>
+    public Task<VersioningEcosystemsResponse> EcosystemsAsync(VersioningEcosystemsJob job) => jobs.RunAsync("versioning-ecosystems", job.Repo, async context =>
+    {
+        const string head = "refs/heads/coverage-pr-head";
+        await context.RequireAsync(["init", "--bare", "--quiet", "--template=", context.GitDirectory], inRepository: false);
+        await context.RequireAsync(["fetch", "--quiet", "--no-tags", "--no-write-fetch-head", job.CloneUrl.AbsoluteUri,
+            $"+refs/heads/{job.BaseBranch}:refs/heads/{job.BaseBranch}", $"+{job.HeadRef}:{head}"], job.Credential);
+        context.EnsureWithinDisk();
+
+        var git = new GitCli(context.GitDirectory);
+        try
+        {
+            var fetched = (await git.RunAsync(["rev-parse", "--verify", "--quiet", head + "^{commit}"], cancellationToken: context.Deadline)).Text.Trim();
+            if (fetched != job.HeadSha)
+                return new VersioningEcosystemsResponse(JobOutcomes.HeadMismatch, null, [], $"{job.HeadRef} is at {fetched}, not {job.HeadSha}.", context.ElapsedMilliseconds);
+            var mergeBase = (await git.RunAsync(["merge-base", "refs/heads/" + job.BaseBranch, job.HeadSha], cancellationToken: context.Deadline))
+                .EnsureSuccess("merge-base").Text.Trim();
+            var graph = await ProjectGraphBuilder.BuildAsync(await GitTree.OpenAsync(git, job.HeadSha, context.Deadline), job.Settings.Ignore, context.Deadline);
+            var ecosystems = await ChangedEcosystems.OfAsync(graph, new GitInputDiff(git), mergeBase, job.HeadSha, job.Settings, context.Deadline);
+            return new VersioningEcosystemsResponse(JobOutcomes.Planned, null, ecosystems, null, context.ElapsedMilliseconds);
+        }
+        catch (GraphException e)
+        {
+            throw new JobAbortedException(JobReasons.Unplannable, e.Message);
+        }
+        catch (GitException e)
+        {
+            throw new JobAbortedException(JobReasons.Error, e.Message);
+        }
+    }, (outcome, reason, detail, ms) => new VersioningEcosystemsResponse(outcome, reason, [], detail, ms));
 
     internal static VersioningRunResponse Response(ReleaseRunResult result, long durationMs)
     {

@@ -76,6 +76,17 @@ public sealed record GitWriterVersioningPlanResult(
     public const string Planned = "planned";
 }
 
+/// <summary><c>POST jobs/versioning/ecosystems</c> (#570 M8b, D5): the ecosystems a pull request touches.</summary>
+/// <param name="HeadRef">Where the head is fetched from, <c>refs/pull/N/head</c>.</param>
+public sealed record GitWriterEcosystemsRequest(
+    string Provider, string RepoId, string CloneUrl, SidecarCredential Credential, string BaseBranch, string HeadRef, string HeadSha, VersioningSettings Settings);
+
+/// <param name="Outcome"><see cref="Planned"/>, <c>head-mismatch</c> when the pull request moved on, or a failure.</param>
+public sealed record GitWriterEcosystemsResult(string Outcome, string? Reason, IReadOnlyList<string>? Ecosystems, string? Detail, long DurationMs)
+{
+    public const string Planned = "planned";
+}
+
 /// <summary><c>POST jobs/versioning/backport</c> (#153 M10, D10): the merged pull request applied to release branches.</summary>
 public sealed record GitWriterBackportRequest(
     string Provider, string RepoId, string CloneUrl, SidecarCredential Credential, string SourceBranch, string Commit, int PullRequest, string Title,

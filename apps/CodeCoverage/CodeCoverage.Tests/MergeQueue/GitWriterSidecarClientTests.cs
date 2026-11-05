@@ -92,6 +92,7 @@ public class GitWriterSidecarClientTests
         { "POST /jobs/versioning/backport", w => w.VersioningBackportAsync(new GitWriterBackportRequest("github", "910040", "https://github.com/acme/widget.git", Credential, "master", "abc", 7, "Fix", [], null!, [])) },
         { "POST /jobs/versioning/backport/regenerated", w => w.VersioningBackportRegeneratedAsync(new GitWriterBackportRegeneratedRequest("github", "910040", "https://github.com/acme/widget.git", Credential, "backport/7-8.x", "abc", "", [], null!)) },
         { "POST /jobs/versioning/plan", w => w.VersioningPlanAsync(new GitWriterVersioningPlanRequest("github", "910040", "https://github.com/acme/widget.git", Credential, "master", "master", "abc", null, null!)) },
+        { "POST /jobs/versioning/ecosystems", w => w.VersioningEcosystemsAsync(new GitWriterEcosystemsRequest("github", "910040", "https://github.com/acme/widget.git", Credential, "master", "refs/pull/7/head", "abc", null!)) },
     };
 
     /// <summary>Every job but the four the merge queue requires of any writer.</summary>

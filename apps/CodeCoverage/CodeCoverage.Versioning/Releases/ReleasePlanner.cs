@@ -449,12 +449,16 @@ public static class ReleasePlanner
 	/// <c>versioning.ignore</c> globs, and test projects. Non-packable projects it references are compiled into it, so
 	/// their inputs count as its own.
 	/// </summary>
-	private static async Task<IReadOnlyList<string>> ChangedInputsAsync(ReleaseContext context, ProjectNode project, string since, CancellationToken cancellationToken)
+	private static Task<IReadOnlyList<string>> ChangedInputsAsync(ReleaseContext context, ProjectNode project, string since, CancellationToken cancellationToken)
+		=> ChangedInputsAsync(context.Graph, context.Settings, context.Diff, project, since, context.Head, cancellationToken);
+
+	/// <summary>The same test between any two commits; <see cref="ChangedEcosystems"/> uses it too (#570 D5).</summary>
+	internal static async Task<IReadOnlyList<string>> ChangedInputsAsync(ProjectGraph graph, VersioningSettings settings, IInputDiff diff, ProjectNode project,
+		string from, string to, CancellationToken cancellationToken)
 	{
-		var graph = context.Graph;
-		var ignore = context.Settings.Ignore.Select(g => new PathGlob(g)).ToList();
+		var ignore = settings.Ignore.Select(g => new PathGlob(g)).ToList();
 		var tests = graph.Projects.Where(IsTestProject).Select(p => p.Directory).Where(d => d.Length > 0 && d != project.Directory).ToList();
-		var changed = await context.Diff.ChangedAsync(since, context.Head, InputsOf(graph, project), cancellationToken);
+		var changed = await diff.ChangedAsync(from, to, InputsOf(graph, project), cancellationToken);
 		return changed.Where(path => !ignore.Any(g => g.Matches(path)) && !tests.Any(d => RepoPath.IsUnder(path, d))).ToList();
 	}
 

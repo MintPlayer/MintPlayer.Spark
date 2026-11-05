@@ -163,8 +163,9 @@ PRD §8.2.
   - **M8a supported lines** (D4, D16), **done (2026-11-05)**: branches from the forge, `PlatformRelease` phases,
     `backport.lines` `keep`/`retire`; `supported-lines` refuses an unsupported line at enqueue. Details are in PRD
     §8.3, "M8a, built".
-  - Default labels (D5, the current line always, D16).
-  - The "Backport targets" check run.
+  - **M8b default labels (D5, the current line always, D16) and the "Backport targets" check run, done
+    (2026-11-05)**: the writer's ecosystems job, `defaultLabels`/`fixLabels`, line names resolved for backports.
+    Details are in PRD §8.3, "M8b, built".
   - `backported: <line>` labels and the PR-body marker.
   - Recognising manual backport PRs and opening the PR on push (D7).
   - The cross-repo dependency diagnosis (D11).

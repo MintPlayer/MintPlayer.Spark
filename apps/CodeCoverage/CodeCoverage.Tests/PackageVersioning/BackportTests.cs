@@ -39,6 +39,15 @@ public class BackportTests
     public void A_line_resolves_only_through_the_release_patterns(string line, string? branch)
         => BackportRecipient.Resolve(Patterns, line).Should().Be(branch);
 
+    [Theory]
+    [InlineData("dotnet-10.x", "release/dotnet-10.x")]   // #570 M8b: what a default label names
+    [InlineData("release/dotnet-10.x", "release/dotnet-10.x")]
+    [InlineData("10.x", null)]                            // a bare major names no ecosystem
+    [InlineData("release/10.x", null)]
+    [InlineData("main", null)]
+    public void With_lines_on_a_line_resolves_through_the_line_pattern(string line, string? branch)
+        => BackportRecipient.ResolveLine(Versioning.Releases.ReleaseLinePattern.Default, line).Should().Be(branch);
+
     [Fact]
     public void A_conflict_names_the_files_and_the_commands_per_line()
     {

@@ -48,7 +48,9 @@ public partial class BackportEventsRecipient : IRecipient<ForgeWebhookMessage<Ba
 /// <remarks>
 /// Who may ask: a label or comment needs write access (T1, the role read from the forge per request, as the merge queue
 /// does). A request made by the labels a pull request carried as it merged needs no check: the merge needed write access.
-/// Which lines exist is read from <c>versioning.releaseBranches</c> on the default branch (D17), never from the request.
+/// Which lines exist is read from the default branch's <c>coverage.yml</c> (D17), never from the request: the
+/// <c>versioning.lines</c> pattern when release lines are on (#568 D15; <c>backport: dotnet-10.x</c>), else
+/// <c>versioning.releaseBranches</c>.
 /// </remarks>
 public partial class BackportRecipient : IRecipient<BackportMessage>
 {
@@ -119,18 +121,18 @@ public partial class BackportRecipient : IRecipient<BackportMessage>
         var unknown = new List<string>();
         foreach (var line in message.Lines)
         {
-            var branch = Resolve(config.EffectiveReleaseBranches, line);
+            var branch = config.EffectiveLines is { } linePattern ? ResolveLine(linePattern, line) : Resolve(config.EffectiveReleaseBranches, line);
             if (branch is null || string.IsNullOrEmpty(await git.GetBranchHeadAsync(repository, branch, cancellationToken)))
             {
                 unknown.Add(line);
                 continue;
             }
             if (branch == pull.BaseRef || targets.Any(t => t.Branch == branch)) continue;
-            targets.Add(new GitWriterBackportTarget(branch, $"{HeadPrefix}{pull.Number}-{Slug(line, branch)}", rules, draft, regeneratedPaths));
+            targets.Add(new GitWriterBackportTarget(branch, $"{HeadPrefix}{pull.Number}-{Slug(line, branch, config.EffectiveLines)}", rules, draft, regeneratedPaths));
         }
         if (unknown.Count > 0)
             return $"Nothing was backported: {string.Join(", ", unknown.Select(u => $"`{u}`"))} names no release branch "
-                + $"({string.Join(", ", config.EffectiveReleaseBranches.Select(p => $"`{p}`"))}).";
+                + (config.EffectiveLines is { } lines ? $"(`{lines.Text}`)." : $"({string.Join(", ", config.EffectiveReleaseBranches.Select(p => $"`{p}`"))}).");
         if (targets.Count == 0) return null;
 
         var subjects = (await git.GetPullRequestCommitsAsync(repository, pull.Number, cancellationToken))
@@ -340,9 +342,21 @@ public partial class BackportRecipient : IRecipient<BackportMessage>
         return ReleaseBranches.IsMatch(patterns, line, out _) ? line : null;
     }
 
-    /// <summary>The head's suffix: <c>8.x</c> for a major, else the branch with its slashes made dashes.</summary>
-    private static string Slug(string line, string branch)
-        => BackportCommand.Major(line) is { } major ? $"{major}.x" : branch.Replace('/', '-');
+    /// <summary>
+    /// With release lines on (#568 D15): the branch a line name (<c>dotnet-10.x</c>, what a default label names, #570 M8b)
+    /// formats to, or a branch the pattern matches. A bare major names no ecosystem, so it resolves to nothing.
+    /// </summary>
+    internal static string? ResolveLine(ReleaseLinePattern pattern, string line)
+    {
+        if (ReleaseLine.TryParse(line) is { } named) return pattern.Format(named);
+        return pattern.TryMatch(line, out _) ? line : null;
+    }
+
+    /// <summary>The head's suffix: <c>8.x</c> for a major, the line's name, else the branch with its slashes made dashes.</summary>
+    private static string Slug(string line, string branch, ReleaseLinePattern? pattern)
+        => BackportCommand.Major(line) is { } major ? $"{major}.x"
+            : pattern is not null && pattern.TryMatch(branch, out var named) && named is not null ? named.ToString()
+            : branch.Replace('/', '-');
 
     /// <summary>The line label in a backport's title: <c>8.x</c> for <c>release/8.x</c>, else the branch.</summary>
     private static string Line(string branch) => branch[(branch.LastIndexOf('/') + 1)..];

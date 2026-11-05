@@ -337,6 +337,26 @@ public sealed record VersioningPlanResponse(
     long DurationMs);
 
 /// <summary>
+/// <c>POST /jobs/versioning/ecosystems</c> (#570 M8b, PRD D5): which ecosystems a pull request touches, between the
+/// merge base of <see cref="BaseBranch"/> and <see cref="HeadSha"/>, fetched through <see cref="HeadRef"/>.
+/// </summary>
+public sealed class VersioningEcosystemsRequestWire
+{
+    public string? Provider { get; set; }
+    public string? RepoId { get; set; }
+    public string? CloneUrl { get; set; }
+    public CredentialWire? Credential { get; set; }
+    public string? BaseBranch { get; set; }
+    public string? HeadRef { get; set; }
+    public string? HeadSha { get; set; }
+    public VersioningSettingsWire? Settings { get; set; }
+}
+
+/// <param name="Outcome"><see cref="JobOutcomes.Planned"/>; <see cref="JobOutcomes.HeadMismatch"/> when the head moved; or a failure.</param>
+/// <param name="Ecosystems">The ecosystems touched, sorted; empty unless planned.</param>
+public sealed record VersioningEcosystemsResponse(string Outcome, string? Reason, IReadOnlyList<string> Ecosystems, string? Detail, long DurationMs);
+
+/// <summary>
 /// <c>POST /jobs/versioning/backport</c> (#153 M10, PRD D10): apply a merged pull request's change to release branches.
 /// Each target is merged in memory on its own, and one that applies gets <see cref="BackportTargetWire.Head"/>, a new
 /// branch for the app to open a pull request from, whatever the other targets do (#570 D6). The commit message is

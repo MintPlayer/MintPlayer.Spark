@@ -113,6 +113,10 @@ public interface IGitWriterSidecar
     Task<PackageVersioning.GitWriterVersioningPlanResult> VersioningPlanAsync(PackageVersioning.GitWriterVersioningPlanRequest request, CancellationToken cancellationToken = default)
         => throw new NotSupportedException("This git writer has no versioning plan job.");
 
+    /// <summary>#570 M8b: the ecosystems a pull request touches, for its default backport labels.</summary>
+    Task<PackageVersioning.GitWriterEcosystemsResult> VersioningEcosystemsAsync(PackageVersioning.GitWriterEcosystemsRequest request, CancellationToken cancellationToken = default)
+        => throw new NotSupportedException("This git writer has no ecosystems job.");
+
     /// <summary>#153 D17: the versioning onboarding commit on <c>mintplayer/versioning-onboarding</c>.</summary>
     Task<GitWriterDependencyResult> VersioningOnboardingAsync(GitWriterDependencyRequest request, CancellationToken cancellationToken = default)
         => throw new NotSupportedException("This git writer has no versioning onboarding job.");
@@ -173,6 +177,9 @@ public sealed class GitWriterSidecarClient(HttpClient http, IOptions<MergeQueueO
 
     public Task<PackageVersioning.GitWriterVersioningPlanResult> VersioningPlanAsync(PackageVersioning.GitWriterVersioningPlanRequest request, CancellationToken cancellationToken = default)
         => SendAsync<PackageVersioning.GitWriterVersioningPlanResult>(HttpMethod.Post, "jobs/versioning/plan", request, cancellationToken);
+
+    public Task<PackageVersioning.GitWriterEcosystemsResult> VersioningEcosystemsAsync(PackageVersioning.GitWriterEcosystemsRequest request, CancellationToken cancellationToken = default)
+        => SendAsync<PackageVersioning.GitWriterEcosystemsResult>(HttpMethod.Post, "jobs/versioning/ecosystems", request, cancellationToken);
 
     /// <summary>
     /// The request as the writer reads it: one flat object. The queue-branch push and the publish carry their prepare's
