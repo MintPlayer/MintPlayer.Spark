@@ -38,22 +38,30 @@ public static partial class MergeQueueWireRules
     /// <summary><c>keep-both</c> (O33, §10.4): both sides' insertions at one place, base branch first.</summary>
     public const string KeepBoth = "keep-both";
 
+    /// <summary><c>keyed-merge</c> (#570): a three-way merge per key of an MSBuild file's items and properties or a
+    /// package.json's entries; a package version both sides changed takes the highest.</summary>
+    public const string KeyedMerge = "keyed-merge";
+
     /// <summary><c>line-set</c> (§10.2): the sorted, de-duplicated union of lines, for files like <c>go.sum</c>.</summary>
     public const string LineSet = "line-set";
 
     /// <summary>Every strategy a rule may name; the writer's <c>ConflictResolverRegistry</c> holds exactly these.</summary>
-    public static IReadOnlySet<string> Strategies { get; } = new HashSet<string>(StringComparer.Ordinal) { TakeBase, KeepBoth, LineSet, Evict };
+    public static IReadOnlySet<string> Strategies { get; } = new HashSet<string>(StringComparer.Ordinal) { TakeBase, KeepBoth, LineSet, KeyedMerge, Evict };
 
     /// <summary>The content validators (§10.4 step 4). <c>no-conflict-markers</c> runs on every resolved content anyway;
     /// naming it is allowed and changes nothing.</summary>
     public const string Utf8 = "utf8", Json = "json", JsonNoDuplicateKeys = "json-no-duplicate-keys", Xml = "xml", NoConflictMarkers = "no-conflict-markers";
+
+    /// <summary><c>msbuild-no-duplicate-keys</c> (#570): <c>xml</c>, and no MSBuild group holds one item or property
+    /// key twice.</summary>
+    public const string MsBuildNoDuplicateKeys = "msbuild-no-duplicate-keys";
 
     /// <summary><c>yaml</c> and <c>github-workflow</c> (docs/code-coverage/dependency-updates-PRD.md R15): added for the
     /// dependency updater, and nameable by a merge-queue rule for <c>*.yml</c>/<c>*.yaml</c> files too.</summary>
     public const string Yaml = "yaml", GitHubWorkflow = "github-workflow";
 
     /// <summary>Every validator a rule may name; the writer's <c>ConflictResolverRegistry</c> holds exactly these.</summary>
-    public static IReadOnlySet<string> Validators { get; } = new HashSet<string>(StringComparer.Ordinal) { Utf8, Json, JsonNoDuplicateKeys, Xml, NoConflictMarkers, Yaml, GitHubWorkflow };
+    public static IReadOnlySet<string> Validators { get; } = new HashSet<string>(StringComparer.Ordinal) { Utf8, Json, JsonNoDuplicateKeys, Xml, MsBuildNoDuplicateKeys, NoConflictMarkers, Yaml, GitHubWorkflow };
 
     /// <summary>The most validators one rule names.</summary>
     public const int MaxValidators = 8;

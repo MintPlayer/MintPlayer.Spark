@@ -182,6 +182,23 @@ mergeQueue:
   # project files comes after the rules above (§10, O35, O36).
 ```
 
+`branches` also takes patterns and release lines (#570):
+
+```yaml
+  branches: [master, "hotfix/*", supported-lines]
+```
+
+- **A pattern** such as `hotfix/*` starts with a fixed segment. Its `*` stays within one segment, and `**` and `?`
+  are refused.
+- **`supported-lines`** is every branch that the same file's `versioning.lines` pattern matches, for example
+  `release/dotnet-10.x`. It needs that section. At enqueue it refuses a line that is not supported, with the reason:
+  one whose platform reached end of life, or an older line of an ecosystem without lifecycle data. `backport.lines`
+  overrides that per line ([versioning.md](versioning.md)). A line you name exactly or by a pattern is always queued.
+- **A release line's queue runs the line's own copy of each regenerate workflow.** Provenance is checked against the
+  line tip, not the default branch, so each line needs the workflow file under the same name.
+- **Backport pull requests into a queued line are enqueued automatically.** The exceptions are drafts and backports
+  whose regenerated files are stale. Set `backport: { enqueue: false }` to turn this off.
+
 A repository with lockfiles and its own workflow per tool might add:
 
 ```yaml
@@ -208,9 +225,9 @@ A repository with lockfiles and its own workflow per tool might add:
 | `postRebaseWhen` | `auto-resolved` · `always` · `never` | `auto-resolved` | Dispatch only after a resolved conflict, after every rebase, or never. |
 | `regeneratedPaths` | list of globs | `**/App_Data/modelHashes.json`, `**/App_Data/securityPosture.txt`, `**/package-lock.json`, `**/npm-shrinkwrap.json`, `**/yarn.lock`, `**/pnpm-lock.yaml`, `**/packages.lock.json` | The paths a regenerate patch may touch (T4). **Set, it replaces the default list entirely** (O37), even as `[]`; it is never merged into it. The path of every explicit `autoResolve` rule in `coverage.yml` that regenerates is added; a default or preset rule never adds its glob (below). At most 64 together, no empty pattern. An empty list is an error only when a workflow can run. |
 | `autoResolve[].path` | glob | — | Required. At most 64 entries, presets and defaults included. The first rule that matches a conflicted path decides. |
-| `autoResolve[].strategy` | `take-base` · `keep-both` · `line-set` · `evict` | `take-base` | `take-base`: the base branch's file, then the regenerate run rewrites it. `keep-both`: both sides' insertions at one place, base branch first (O33). `line-set`: the sorted, de-duplicated union of lines (`go.sum`). `evict`: never resolved; masks a later rule or default for its path. Anything else is an error (`json-union` was dropped, O1). |
+| `autoResolve[].strategy` | `take-base` · `keep-both` · `keyed-merge` · `line-set` · `evict` | `take-base` | `take-base`: the base branch's file, then the regenerate run rewrites it. `keep-both`: both sides' insertions at one place, base branch first (O33). `keyed-merge`: a three-way merge per key of an MSBuild file's items and properties or a `package.json`'s dependencies; a package version both sides changed takes the highest (below). `line-set`: the sorted, de-duplicated union of lines (`go.sum`). `evict`: never resolved; masks a later rule or default for its path. Anything else is an error (`json-union` was dropped, O1). |
 | `autoResolve[].keys` | list of top-level JSON member names | none | `take-base` only. None: a conflict on any line of the file resolves (O19). Given: only lines that hold one of these members do (O2), and every side must be a JSON object. At most 64 keys of 1–256 characters, no control character. |
-| `autoResolve[].validate` | list of `utf8` · `json` · `json-no-duplicate-keys` · `xml` · `no-conflict-markers` | none | At most 8. The resolved file must pass each, inputs first (§10.4); a cleanly merged file under the rule and a regenerated one too. `no-conflict-markers` always runs on resolved content. Not on `evict`. |
+| `autoResolve[].validate` | list of `utf8` · `json` · `json-no-duplicate-keys` · `xml` · `msbuild-no-duplicate-keys` · `no-conflict-markers` · `yaml` · `github-workflow` | none | At most 8. The resolved file must pass each, inputs first (§10.4); a cleanly merged file under the rule and a regenerated one too. `msbuild-no-duplicate-keys` is `xml` plus: no `ItemGroup` holds one item twice (type, `Include`/`Update`/`Remove` value, `Condition`) and no `PropertyGroup` sets one property twice (name, `Condition`), case-insensitive, so two sides that each added a package with another version stay a conflict. `no-conflict-markers` always runs on resolved content. Not on `evict`. |
 | `autoResolve[].regenerate` | bool | see the rule | Whether a resolution under the rule runs a regenerate workflow. `take-base`: always (`false` is an error). `keep-both`, `line-set`: `true` when a workflow exists for the rule (`action` or `postRebaseActionName`) and `postRebaseWhen` is not `never`, else `false`; `true` without one is an error. |
 | `autoResolve[].action` | file name | `postRebaseActionName` | The rule's own regenerate workflow, same file-name rule as `postRebaseActionName` (O36). Several distinct workflows run one after the other (§2.3). At most 8 distinct workflows. |
 | `autoResolveDefaults` | list of preset names | none | Opt-in `take-base` presets, appended after the explicit rules (table below). An unknown name is an error. |
@@ -250,7 +267,7 @@ for that path. The queue check's "Effective configuration" lists every rule with
 | `json` | `**/*.json` | `json-no-duplicate-keys` |
 | `ignoreFiles` | `**/.gitignore`, `**/.dockerignore`, `**/.prettierignore`, `**/.eslintignore` | `utf8` |
 | `changelog` | `**/CHANGELOG.md` | `utf8` |
-| `xmlProjects` | `**/*.csproj`, `**/Directory.Packages.props`, `**/*.props`, `**/*.targets` | `xml` |
+| `xmlProjects` | `**/*.csproj`, `**/Directory.Packages.props`, `**/*.props`, `**/*.targets` | `msbuild-no-duplicate-keys` |
 
 The lists are `CodeCoverage.Git/MergeQueue/AutoResolvePresets.cs`, the default `regeneratedPaths` too
 (`DefaultRegeneratedPaths`). A default group regenerates like any keep-both rule: with a `postRebaseActionName`, a
@@ -274,6 +291,32 @@ conflict marker (a Markdown setext underline of `=======` counts), a region that
 adding after a one-line last member, since that line gains a comma), and a region at the end of a file whose side lacks
 a final newline. The result keeps every byte of the sides, line endings included. `line-set` resolves only the same
 shape, then sorts and de-duplicates the whole file's lines.
+
+**keyed-merge (#570, `docs/coverage_backport_PRD.md` §8.3).** Opt-in: no default or preset names it. It reads
+`*.csproj`, `*.props`, `*.targets`, `package.json` and `composer.json` (`require`, `require-dev`; `php`, `ext-*` and
+`lib-*` are platform requirements and never take the highest), from the same diff3 regions, and merges each region per
+key. Any other file refuses: a further format is added for a repository that needs it. **Lockfiles are not its job**:
+`package-lock.json`, `packages.lock.json`, `pnpm-lock.yaml` and the rest stay with the presets (take-base, then the
+regenerate run). The two compose in one pull request: keyed-merge settles the manifest, and the regenerate run rebuilds
+the lockfile from it, so the lockfile follows the chosen versions.
+
+- **Keys.** An MSBuild item is keyed by its type, its `Include`/`Update`/`Remove` value and its `Condition`
+  (case-insensitively, as NuGet compares ids); a property by its name and `Condition`; a `package.json` line by its name.
+  A region inside a multi-line item (a child `<Version>` line) is widened to the whole item.
+- **Per key.** Equal on both sides: kept once. Changed on one side only: that side. An item's metadata merges the same way
+  per name, so one side's `Version` and the other's `PrivateAssets` both apply. A package version both sides changed
+  (`PackageReference`/`PackageVersion` `Version`, a range inside `dependencies`, `devDependencies`,
+  `peerDependencies` or `optionalDependencies` with one operator on both sides) takes the highest SemVer when **both
+  sides raised it**: a release outranks its prerelease, numeric prerelease parts compare as numbers (`rc.10` > `rc.9`).
+  A version lowered on either side refuses: a pin away from a broken release is deliberate, and the highest would undo
+  it.
+- **Refused** (`resolver-refused`): a property both sides changed (`<Version>`, a package's own `"version"`: one value,
+  no winner), any other value both sides changed, a key removed on one side and changed on the other, a version with no
+  order (`1.*`, a range, `$(X)`, two operators), and a region with a line that is not an entry (a target, a multi-line
+  comment, a group tag). Add/add conflicts too.
+- **Output.** The base branch's entries in their order, then the pull request's new ones. The text is edited, never
+  re-serialised; comments travel with the entry below them, and a `package.json` region's commas are set so the object
+  stays valid. Name `msbuild-no-duplicate-keys` or `json-no-duplicate-keys` as its validator.
 
 Unknown keys are ignored, so a newer file does not break an older server. Errors are returned, not thrown. A `/queue` or
 the button gets a `configuration` refusal that lists them, and so does the configured label on a broken section. A
@@ -815,7 +858,7 @@ kebab-cased by the writer.
 | `unsupported-conflict-type` | A modify/delete, rename, directory/file, binary, mode or submodule conflict. | Rebase by hand. |
 | `conflict-without-stages` | git reported a conflict without a conflicted file, e.g. a directory rename. | Rebase by hand. |
 | `unsupported-entry`, `too-large`, `not-json` | An allow-listed file's sides are not two or three regular 100644 files, a side is over its strategy's cap (take-base 16 MiB; keep-both, line-set and validated files 4 MiB, §10.6), or (a `keys:` rule) not a JSON object. | Rebase by hand. |
-| `resolver-refused` | The rule's strategy does not resolve this conflict's shape: for `keep-both` and `line-set`, an add/add conflict, a changed base line (adding after a one-line last member included), a marker-like line in a side, a side that is not UTF-8, or a conflict at the end of a file without a final newline (§2.2). | Rebase by hand. |
+| `resolver-refused` | The rule's strategy does not resolve this conflict's shape: for `keep-both` and `line-set`, an add/add conflict, a changed base line (adding after a one-line last member included), a marker-like line in a side, a side that is not UTF-8, or a conflict at the end of a file without a final newline (§2.2); for `keyed-merge`, a value both sides changed that is no package version, a removed-and-changed key, an unorderable version, or a line that is not an entry. | Rebase by hand. |
 | `invalid-side` | A side of the conflicted file already fails one of the rule's validators, so the queue does not judge a result (inputs first, §10.4). The message names the validator, the side and the position, never the content. | Fix the file, or rebase by hand. |
 | `invalid-result` | Every side passes the rule's validators, but the resolved file does not (for example both sides added the same JSON member), or it holds a conflict marker. The message names the validator and the position. | Rebase by hand. |
 | `merged-content-invalid` | git merged a file without a conflict, both sides pass its rule's validators, and the merged file does not (for example a duplicate member added at two places). | Rebase by hand. |

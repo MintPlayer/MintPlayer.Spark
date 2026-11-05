@@ -229,6 +229,28 @@ public class MergeQueueWebhookTests : CoverageRavenTest
         other.Messages.Should().BeEmpty();
     }
 
+    [Fact]
+    public async Task A_finished_run_is_raised_while_a_backport_waits_for_its_regeneration()
+    {
+        // #570 M6: the queue is idle, but a backport waits for its line's regenerate run.
+        using var store = GetDocumentStore();
+        await SeedAsync(store, busy: false);
+        using (var session = store.OpenAsyncSession())
+        {
+            await session.StoreAsync(new Entities.BackportRegenerations { Pending = [new Entities.BackportRegeneration { Head = "backport/7-8.x" }] },
+                Entities.BackportRegenerations.ForRepository(RepositoryId));
+            await session.SaveChangesAsync();
+        }
+
+        var run = await DeliverAsync(store, "workflow_run", $$$"""
+            {"action":"completed","workflow_run":{"id":9001,"head_sha":"{{{Sha}}}","conclusion":"success"},"repository":{{{Repo}}}}
+            """);
+        var check = await DeliverAsync(store, "status", $$$"""{"sha":"{{{Sha}}}","state":"success","context":"ci/x","repository":{{{Repo}}}}""");
+
+        run.Of<ForgeWebhookMessage<CiRunCompleted>>().Should().ContainSingle();
+        check.Of<ForgeWebhookMessage<CommitChecksChanged>>().Should().BeEmpty("a backport waits for runs only");
+    }
+
     // ── The checks a repository has seen (§11 D108 (a)) ──────────────────────────────────────────────
 
     private static string NamedCheckRun(string name, long appId, string slug = "gitguardian") => $$$"""

@@ -65,6 +65,9 @@ internal sealed class FakeForgeMergeQueue : IForgeMergeQueue
     public Task<string?> GetBranchHeadAsync(Repository repository, string branch, CancellationToken cancellationToken = default)
         => Task.FromResult(BranchHeads.TryGetValue(branch, out var sha) ? sha : null);
 
+    public Task<IReadOnlyList<string>> ListBranchesAsync(Repository repository, string prefix, CancellationToken cancellationToken = default)
+        => Task.FromResult<IReadOnlyList<string>>([.. BranchHeads.Keys.Where(b => b.StartsWith(prefix, StringComparison.Ordinal)).Order(StringComparer.Ordinal)]);
+
     public Task<ForgeCheckState> GetCheckStateAsync(Repository repository, string sha, CancellationToken cancellationToken = default)
         => Task.FromResult(CheckStates.TryGetValue(sha, out var state) ? state : new ForgeCheckState(sha, [], [], []));
 
@@ -212,15 +215,15 @@ internal sealed class FakeForgeMergeQueue : IForgeMergeQueue
     /// <summary>When set, the next listing of open pull requests throws it (a missing permission, a 5xx).</summary>
     public Exception? ListOpenPullRequestsThrows { get; set; }
 
-    public Task<IReadOnlyList<ForgeOpenPullRequest>> ListOpenPullRequestsAsync(Repository repository, string baseBranch, CancellationToken cancellationToken = default)
+    public Task<IReadOnlyList<ForgeOpenPullRequest>> ListOpenPullRequestsAsync(Repository repository, string? baseBranch, CancellationToken cancellationToken = default)
     {
-        OpenPullRequestQueries.Add(baseBranch);
+        OpenPullRequestQueries.Add(baseBranch ?? "*");
         if (ListOpenPullRequestsThrows is { } thrown)
         {
             ListOpenPullRequestsThrows = null;
             throw thrown;
         }
-        return Task.FromResult((IReadOnlyList<ForgeOpenPullRequest>)[.. OpenPullRequests.Where(p => p.BaseRef == baseBranch)]);
+        return Task.FromResult((IReadOnlyList<ForgeOpenPullRequest>)[.. OpenPullRequests.Where(p => baseBranch is null || p.BaseRef == baseBranch)]);
     }
 
     public Task<long> PublishQueueCheckAsync(Repository repository, string sha, ForgeQueueCheck check, long? existingId, CancellationToken cancellationToken = default)

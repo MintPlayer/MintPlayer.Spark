@@ -58,12 +58,19 @@ public interface IForgeEvent;
 /// equivalent field has the same problem, so the neutral event refuses to carry a value it cannot
 /// define. The pull-request event is the one writer of a parent, and means something precise by it.
 /// </remarks>
+/// <param name="Created">The push created the branch (#570 M8c: a hand-pushed backport branch gets its pull request).</param>
+/// <param name="PusherLogin">The signed delivery's sender (T1), whose role a hand-pushed backport branch is checked against.</param>
+/// <param name="PushedByBot">A bot pushed it, the app's own installation among them: its backport branches open their
+/// pull requests themselves, after regenerating.</param>
 public sealed record BranchCommitPushed(
     string RepositoryId,
     string Branch,
     string Sha,
     string? Message,
-    DateTimeOffset? AuthoredAt) : IForgeEvent;
+    DateTimeOffset? AuthoredAt,
+    bool Created = false,
+    bool PushedByBot = false,
+    string? PusherLogin = null) : IForgeEvent;
 
 /// <summary>
 /// A pull request was opened, reopened, had new commits pushed to it, was marked ready for review, or was retargeted.
@@ -341,7 +348,10 @@ public sealed record DependencyAlertRaised(string RepositoryId, string Ecosystem
 /// branch name. Whether each names a release branch is the recipient's to decide, from the repository's configuration.</param>
 /// <param name="ActorLogin">The signed webhook's sender (T1), never text from the comment or the label. A normaliser drops
 /// what a bot or the App itself did, and raises nothing when it cannot name the actor.</param>
-public sealed record BackportRequested(string RepositoryId, int Number, IReadOnlyList<string> Lines, string ActorLogin, EBackportSource Source) : IForgeEvent;
+/// <param name="Draft">The comment said <c>--draft</c> (#570 D7): a conflicting line gets a draft pull request with the
+/// conflict markers, whatever <c>backport.onConflict</c> says.</param>
+public sealed record BackportRequested(string RepositoryId, int Number, IReadOnlyList<string> Lines, string ActorLogin, EBackportSource Source,
+    bool Draft = false) : IForgeEvent;
 
 public enum EBackportSource
 {

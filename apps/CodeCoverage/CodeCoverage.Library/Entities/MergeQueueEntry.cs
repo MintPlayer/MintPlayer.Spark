@@ -313,6 +313,12 @@ public enum EMergeQueueCommandSource
     /// other condition (approval floor, rules, checks) holds as for a person.
     /// </summary>
     DependencyUpdates,
+
+    /// <summary>
+    /// A backport pull request the app opened (#570 M7, PRD D12): raised by the app itself, never by a normaliser. As for
+    /// <see cref="DependencyUpdates"/>, the App counts as a writer and never reaches a bypass role.
+    /// </summary>
+    Backports,
 }
 
 public sealed class MergeQueueEntryEvent
@@ -342,6 +348,10 @@ public sealed class MergeQueueConfigSnapshot
     public string? ConfigRef { get; set; }
 
     public List<string> Branches { get; set; } = [];
+
+    /// <summary><c>versioning.lines</c>' pattern when the file had one (#570 M7): a base it matches is a release line,
+    /// whose regenerate workflow is the line tip's copy (D9), not the default branch's.</summary>
+    public string? LinePattern { get; set; }
 
     public string Label { get; set; } = "merge-queue";
 
@@ -407,6 +417,8 @@ public enum EMergeQueueResolveStrategy
     KeepBoth,
     LineSet,
     Evict,
+    /// <summary>A three-way merge per key of MSBuild files and package.json (#570).</summary>
+    KeyedMerge,
 }
 
 public sealed class MergeQueueConfigValue
@@ -447,6 +459,7 @@ public sealed class MergeQueueAutoResolveRule
         EMergeQueueResolveStrategy.KeepBoth => "keep-both",
         EMergeQueueResolveStrategy.LineSet => "line-set",
         EMergeQueueResolveStrategy.Evict => "evict",
+        EMergeQueueResolveStrategy.KeyedMerge => "keyed-merge",
         _ => "take-base",
     };
 

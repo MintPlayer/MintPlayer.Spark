@@ -222,24 +222,8 @@ versioning:
 
 ## Release branches and backports (D10, D12)
 
-Branches matching `releaseBranches` are release lines. They are versioned like the default branch, within the major
-their own content computes. `master` on `net10.0` and `release/8.x` on `net8.0` release `10.2.3` and `8.1.2` side
-by side.
-
-**Auto-cut:** when a merge into the default branch moves a platform major, for example from `net10.0` to
-`net11.0`, the app creates `release/10.x` at the merge's first parent and comments on the pull request. Free
-packages never cut a branch.
-
-**Backport:** label a pull request `backport: 8.x`, or comment `/backport 8.x`. Once it is merged, the app
-dry-runs the cherry-pick onto every requested line.
-
-- If every line applies, it pushes `backport/<pr>-<line>` and opens one pull request per line. The CI run on that
-  pull request is the compile check against the old target.
-- If any line conflicts, it pushes nothing and comments the failing files and the commands for a manual backport.
-
-> **Protect release branches yourself.** A branch the app creates is unprotected unless a ruleset matches it. Add a
-> repository ruleset targeting `release/*` with at least *Restrict deletions* and *Block force pushes*, and require
-> your CI checks if you merge backports through it.
+Moved to [backports.md](backports.md): auto-cut release branches, `/backport`, the `backport:` section of
+`coverage.yml`, and where a change was backported.
 
 ## Ecosystem release lines (#568)
 
@@ -262,7 +246,7 @@ everything above still applies unchanged.
 - **npm dist-tags.** A stable release on an older line goes out as `v<major>-lts`; a prerelease of an older major as
   `v<major>-next`, so it never moves `next` away from the newest line.
 - **Workflows.** Run the versioning workflow on `release/**` pushes and pull requests too (MintPlayer.Spark's
-  `dotnet-build-master.yml` and `pull-request.yml` do), and protect `release/**` with a ruleset (see above).
+  `dotnet-build-master.yml` and `pull-request.yml` do), and protect `release/**` with a ruleset ([backports.md](backports.md)).
 
 **Platform lifecycle page.** The app collects each platform's support phases nightly (.NET from
 `releases-index.json`; Angular, React, Vue and Node.js from endoflife.date; a framework's preview major from its npm

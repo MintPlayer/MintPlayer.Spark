@@ -146,6 +146,81 @@ public class MergeQueueYmlTests
         parsed.IsUsable.Should().BeFalse();
     }
 
+    // ── #570 M7 (D12): patterns and supported-lines ──────────────────────────────────────────────────
+
+    [Theory]
+    [InlineData("master", true)]
+    [InlineData("release/dotnet-10.x", true)]
+    [InlineData("release/npm-22.x", true)]
+    [InlineData("hotfix/a", true)]
+    [InlineData("hotfix/a/b", false)]
+    [InlineData("release/other", false)]
+    [InlineData("develop", false)]
+    public void Branches_take_patterns_and_the_supported_lines_of_versioning_lines(string branch, bool queues)
+    {
+        var parsed = MergeQueueYml.Parse("""
+            mergeQueue:
+              enabled: true
+              branches: [master, "hotfix/*", supported-lines]
+            versioning:
+              lines: {}
+            """, "master");
+
+        parsed.Errors.Should().BeEmpty();
+        parsed.Section!.LinePattern.Should().Be("release/{ecosystem}-{major}.x");
+        parsed.Section.Queues(branch).Should().Be(queues);
+    }
+
+    [Fact]
+    public void A_keyed_merge_rule_round_trips_its_wire_name()
+    {
+        var parsed = MergeQueueYml.Parse("""
+            mergeQueue:
+              enabled: true
+              postRebaseActionName: regenerate.yml
+              autoResolve:
+                - path: "**/Versions.props"
+                  strategy: keyed-merge
+            """, "main");
+
+        parsed.Errors.Should().BeEmpty();
+        var rule = parsed.Section!.AutoResolve.Single(r => r.Path == "**/Versions.props");
+        rule.Strategy.Should().Be(EMergeQueueResolveStrategy.KeyedMerge);
+        MergeQueueAutoResolveRule.WireName(rule.Strategy).Should().Be("keyed-merge");
+    }
+
+    [Fact]
+    public void Supported_lines_without_versioning_lines_is_an_error()
+    {
+        var parsed = MergeQueueYml.Parse("mergeQueue:\n  enabled: true\n  branches: [master, supported-lines]\n", "master");
+
+        parsed.Errors.Should().ContainSingle(e => e.Contains("supported-lines") && e.Contains("versioning.lines"));
+    }
+
+    [Fact]
+    public void A_line_named_by_a_glob_still_knows_it_is_a_line()
+    {
+        var parsed = MergeQueueYml.Parse("""
+            mergeQueue:
+              enabled: true
+              branches: [master, "release/*"]
+            versioning:
+              lines: { pattern: "release/{ecosystem}-{major}" }
+            """, "master");
+
+        parsed.Errors.Should().BeEmpty();
+        parsed.Section!.Queues("release/npm-22").Should().BeTrue();
+        MergeQueueBranches.IsLine(parsed.Section.LinePattern, "release/npm-22").Should().BeTrue();
+        MergeQueueBranches.IsLine(parsed.Section.LinePattern, "master").Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData("branches: [\"release/**\"]")]
+    [InlineData("branches: [\"release/*?\"]")]
+    [InlineData("branches: [\"*\"]")]
+    public void A_branch_pattern_the_queue_cannot_bound_is_an_error(string line)
+        => MergeQueueYml.Parse($"mergeQueue:\n  enabled: true\n  {line}\n", "main").Errors.Should().Contain(e => e.Contains("mergeQueue.branches"));
+
     [Fact]
     public void Unreadable_yaml_is_an_error()
         => MergeQueueYml.Parse("mergeQueue: [unclosed", "main").Errors.Should().ContainSingle();

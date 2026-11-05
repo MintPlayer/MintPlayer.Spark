@@ -28,11 +28,11 @@ public sealed class ConflictResolverRegistry
 
     /// <summary>Every <see cref="IConflictResolver"/> of this assembly. Kept in step with the <c>[Register]</c>ed set by
     /// <c>ConflictResolverRegistryTests</c>.</summary>
-    public static IEnumerable<IConflictResolver> BuiltInResolvers() => [new TakeBaseResolver(), new KeepBothResolver(), new LineSetResolver(), new EvictResolver()];
+    public static IEnumerable<IConflictResolver> BuiltInResolvers() => [new TakeBaseResolver(), new KeepBothResolver(), new LineSetResolver(), new KeyedMergeResolver(Manifests.ManifestFormats.BuiltIn), new EvictResolver()];
 
     /// <summary>Every <see cref="IContentValidator"/> of this assembly.</summary>
     public static IEnumerable<IContentValidator> BuiltInValidators()
-        => [new Utf8Validator(), new JsonValidator(), new JsonNoDuplicateKeysValidator(), new XmlValidator(), new NoConflictMarkersValidator(),
+        => [new Utf8Validator(), new JsonValidator(), new JsonNoDuplicateKeysValidator(), new XmlValidator(), new MsBuildNoDuplicateKeysValidator(), new NoConflictMarkersValidator(),
             new YamlValidator(), new GitHubWorkflowValidator()];
 
     public IReadOnlyCollection<string> StrategyNames => resolvers.Keys;

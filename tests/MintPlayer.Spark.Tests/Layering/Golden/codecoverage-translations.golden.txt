@@ -926,6 +926,7 @@ prSizeLabelsUi.effective.off.repository	en="Off for this repository"	fr="Désact
 prSizeLabelsUi.effective.on.organization	en="On, as the account's setting"	fr="Activées, selon le paramètre du compte"	nl="Aan, volgens de instelling van het account"
 prSizeLabelsUi.effective.on.repository	en="On for this repository"	fr="Activées pour ce dépôt"	nl="Aan voor deze repository"
 prSizeLabelsUi.unavailable	en="Not available: Bitbucket pull requests have no labels"	fr="Non disponible : les pull requests Bitbucket n'ont pas d'étiquettes"	nl="Niet beschikbaar: Bitbucket-pull-requests hebben geen labels"
+programUnits.backportsSetup	en="Backports"	fr="Rétroportages"	nl="Backports"
 programUnits.connectAgent	en="Connect an AI agent"	fr="Connecter un agent IA"	nl="Een AI-agent koppelen"
 programUnits.coverageSetup	en="Coverage uploads"	fr="Envoi de la couverture"	nl="Coverage uploaden"
 programUnits.dependencyUpdatesSetup	en="Dependency updater"	fr="Mises à jour des dépendances"	nl="Dependency-updater"

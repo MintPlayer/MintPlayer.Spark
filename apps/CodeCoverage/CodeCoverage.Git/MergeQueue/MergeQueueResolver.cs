@@ -108,18 +108,21 @@ public sealed partial class MergeQueueResolver(GitRunner git, ConflictResolverRe
     /// <summary>Merges <paramref name="headRef"/> into <paramref name="baseRef"/> in the repository at
     /// <paramref name="gitDirectory"/>. Stage 2 is the base branch, stage 3 the pull request. In a partial clone
     /// (<c>--filter=blob:none</c>) merge-tree fetches the blobs it needs on demand; <paramref name="credential"/> is for those
-    /// fetches (docs/coverage_merge_queue_PRD.md S8).</summary>
-    public async Task<MergeOutcome> MergeAsync(string gitDirectory, string baseRef, string headRef, IReadOnlyList<AutoResolveRule> rules, CancellationToken cancellationToken, GitCredential? credential = null)
+    /// fetches (docs/coverage_merge_queue_PRD.md S8). <paramref name="mergeBase"/> replaces the computed merge base: a
+    /// backport takes the change against its own parent, a cherry-pick (#570 M5).</summary>
+    public async Task<MergeOutcome> MergeAsync(string gitDirectory, string baseRef, string headRef, IReadOnlyList<AutoResolveRule> rules, CancellationToken cancellationToken,
+        GitCredential? credential = null, string? mergeBase = null)
     {
         var format = (await RunAsync(gitDirectory, ["rev-parse", "--show-object-format"], cancellationToken)).StandardOutput.Trim();
         if (format != "sha1")
             throw new GitCommandException("rev-parse", $"object format '{format}' is not supported (the empty attribute tree is SHA-1).");
         var baseCommit = await ResolveCommitAsync(gitDirectory, baseRef, cancellationToken);
         var headCommit = await ResolveCommitAsync(gitDirectory, headRef, cancellationToken);
+        string[] explicitBase = mergeBase is null ? [] : ["--merge-base=" + await ResolveCommitAsync(gitDirectory, mergeBase, cancellationToken)];
 
         var merge = await git.RunAsync(new GitInvocation
         {
-            Arguments = ["merge-tree", "--write-tree", "-z", "--messages", baseCommit, headCommit],
+            Arguments = ["merge-tree", "--write-tree", "-z", "--messages", .. explicitBase, baseCommit, headCommit],
             GitDirectory = gitDirectory,
             Credential = credential,
             Timeout = Timeout,

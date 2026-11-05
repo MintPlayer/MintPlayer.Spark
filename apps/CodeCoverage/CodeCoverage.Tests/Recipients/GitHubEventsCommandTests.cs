@@ -60,6 +60,19 @@ public class GitHubEventsCommandTests : CoverageRavenTest
     }
 
     [Fact]
+    public async Task A_backport_comment_may_ask_for_a_draft()
+    {
+        // #570 M8d, D7: the per-request draft.
+        using var store = GetDocumentStore();
+        await SeedAsync(store, busy: false);
+
+        var bus = await DeliverAsync(store, "issue_comment", Comment("/backport 8.x --draft"));
+
+        Backports(bus).Should().ContainSingle().Which
+            .Should().BeEquivalentTo(new BackportRequested(RepositoryId, 7, ["8.x"], "maintainer", EBackportSource.Comment, Draft: true));
+    }
+
+    [Fact]
     public async Task A_dependency_command_is_raised_with_its_comment_and_argument()
     {
         using var store = GetDocumentStore();

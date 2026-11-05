@@ -1,4 +1,6 @@
 using CodeCoverage.CommitGraph;
+using CodeCoverage.Git.Backports;
+using CodeCoverage.MergeQueue;
 using CodeCoverage.Versioning.Releases;
 
 namespace CodeCoverage.PackageVersioning;
@@ -74,25 +76,79 @@ public sealed record GitWriterVersioningPlanResult(
     public const string Planned = "planned";
 }
 
+/// <summary><c>POST jobs/versioning/ecosystems</c> (#570 M8b, D5): the ecosystems a pull request touches.</summary>
+/// <param name="HeadRef">Where the head is fetched from, <c>refs/pull/N/head</c>.</param>
+public sealed record GitWriterEcosystemsRequest(
+    string Provider, string RepoId, string CloneUrl, SidecarCredential Credential, string BaseBranch, string HeadRef, string HeadSha, VersioningSettings Settings);
+
+/// <param name="Outcome"><see cref="Planned"/>, <c>head-mismatch</c> when the pull request moved on, or a failure.</param>
+public sealed record GitWriterEcosystemsResult(string Outcome, string? Reason, IReadOnlyList<string>? Ecosystems, string? Detail, long DurationMs)
+{
+    public const string Planned = "planned";
+}
+
 /// <summary><c>POST jobs/versioning/backport</c> (#153 M10, D10): the merged pull request applied to release branches.</summary>
 public sealed record GitWriterBackportRequest(
     string Provider, string RepoId, string CloneUrl, SidecarCredential Credential, string SourceBranch, string Commit, int PullRequest, string Title,
-    IReadOnlyList<string> Subjects, GitWriterTagger Committer, IReadOnlyList<GitWriterBackportTarget> Targets);
+    IReadOnlyList<string> Subjects, GitWriterTagger Committer, IReadOnlyList<GitWriterBackportTarget> Targets, PlatformMarkerOptions? Markers = null);
 
-public sealed record GitWriterBackportTarget(string Branch, string Head);
+/// <param name="AutoResolve">The merge queue's rules for this line's conflicts (#570 M5); stage 2 is the line.</param>
+/// <param name="Draft"><c>backport.onConflict: draft</c> (#570 D7): a conflict is pushed with its markers.</param>
+/// <param name="RegeneratedPaths">The merge queue's <c>regeneratedPaths</c> (#570 D9, M6): a path the change touches that
+/// matches one keeps the line's side and is listed in <see cref="GitWriterBackportTargetResult.Regenerate"/>.</param>
+public sealed record GitWriterBackportTarget(string Branch, string Head, IReadOnlyList<GitWriterAutoResolve>? AutoResolve = null, bool Draft = false,
+    IReadOnlyList<string>? RegeneratedPaths = null);
 
-/// <summary>The writer's answer. <see cref="Conflicted"/> means no target was pushed.</summary>
+/// <summary>The writer's answer. <see cref="Backported"/> when the job ran; each target then has its own outcome
+/// (#570 D6).</summary>
 public sealed record GitWriterBackportResult(
     string Outcome, string? Reason, string? Mode, string? Base, IReadOnlyList<GitWriterBackportTargetResult>? Targets, string? Detail, long DurationMs)
 {
     public const string Backported = "backported";
-    public const string Conflicted = "conflicted";
 }
 
-/// <param name="Push"><c>created</c>, <c>exists</c>, <c>empty</c> (the line already holds the change) or <c>rejected</c>.</param>
-public sealed record GitWriterBackportTargetResult(string Branch, string Head, string? Commit, string? Push, IReadOnlyList<string>? Conflicts, string? Detail = null)
+/// <param name="Push"><c>created</c>, <c>exists</c>, <c>empty</c> (the line already holds the change), <c>rejected</c>
+/// <c>conflicted</c> (nothing pushed to this line) or <c>drafted</c> (pushed with its conflict markers, #570 D7).</param>
+/// <param name="PlatformChanges">Platform values the change edits on this line's own platform (#570 S2, D8).</param>
+/// <param name="Resolutions">Conflicts the rules resolved; a <c>regenerate</c> one still needs the line's workflow (M6).</param>
+/// <param name="Regenerate">The paths the line's regenerate workflow must rewrite (#570 D9, M6): the regenerated paths the
+/// change touches, kept at the line's side, and the <c>regenerate</c> resolutions.</param>
+public sealed record GitWriterBackportTargetResult(string Branch, string Head, string? Commit, string? Push, IReadOnlyList<string>? Conflicts, string? Detail = null,
+    IReadOnlyList<GitWriterPlatformChange>? PlatformChanges = null, IReadOnlyList<GitWriterBackportResolution>? Resolutions = null,
+    IReadOnlyList<string>? Regenerate = null)
 {
+    /// <summary>First-party packages the change raised above this line's major, dropped by normalization (#570 D11).</summary>
+    public IReadOnlyList<GitWriterDependencyRaise>? Raises { get; init; }
+
     public const string Created = "created";
     public const string Exists = "exists";
     public const string Empty = "empty";
+    public const string Conflicted = "conflicted";
+    public const string Drafted = "drafted";
+}
+
+/// <summary>One platform value the change edits on the line's platform; <see cref="Before"/> is empty for an added one.</summary>
+public sealed record GitWriterPlatformChange(string Path, string Marker, string Before, string After);
+
+/// <summary>A first-party package the change raised that the line keeps at <see cref="LineValue"/> (#570 D11);
+/// <see cref="Kind"/> is <c>npm</c> or <c>nuget</c>.</summary>
+public sealed record GitWriterDependencyRaise(string Path, string Kind, string Package, string Before, string After, string LineValue);
+
+/// <summary>One conflict resolved on a line by an <c>autoResolve</c> rule.</summary>
+public sealed record GitWriterBackportResolution(string Path, string Strategy, bool Regenerate, int Rule);
+
+/// <summary>
+/// <c>POST jobs/versioning/backport/regenerated</c> (#570 M6, D9): the line's regenerate workflow ran on
+/// <see cref="Head"/> at <see cref="ExpectedSha"/>; its patch (base64, empty for none) is folded into the backport commit.
+/// </summary>
+public sealed record GitWriterBackportRegeneratedRequest(
+    string Provider, string RepoId, string CloneUrl, SidecarCredential Credential, string Head, string ExpectedSha, string Patch,
+    IReadOnlyList<string> RegeneratedPaths, GitWriterTagger Committer);
+
+/// <param name="Outcome"><see cref="Regenerated"/> (<see cref="Commit"/> is the branch's new head), <c>patch-rejected</c>,
+/// <c>branch-moved</c>, <c>push-rejected</c>, or a job failure.</param>
+/// <param name="Paths">The paths the patch changed, or the ones it was refused for.</param>
+public sealed record GitWriterBackportRegeneratedResult(string Outcome, string? Reason, string? Commit, IReadOnlyList<string>? Paths, string? Detail, long DurationMs)
+{
+    public const string Regenerated = "regenerated";
 }

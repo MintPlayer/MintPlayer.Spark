@@ -143,9 +143,12 @@ public partial class GitHubForgeVersioning : IForgeVersioning
         return ForgeWriteOutcome.Created;
     }
 
-    public async Task<int> OpenPullRequestAsync(Repository repository, string head, string @base, string title, string body, CancellationToken cancellationToken = default)
+    public async Task<int> OpenPullRequestAsync(Repository repository, string head, string @base, string title, string body, bool draft = false,
+        CancellationToken cancellationToken = default)
     {
         var request = new JsonObject { ["head"] = head, ["base"] = @base, ["title"] = title, ["body"] = body };
+        if (draft)
+            request["draft"] = true;
         using var reply = await SendAsync(repository, HttpMethod.Post, $"{RepoPath(repository)}/pulls", request, cancellationToken);
         if (reply.Status == HttpStatusCode.UnprocessableEntity)
         {

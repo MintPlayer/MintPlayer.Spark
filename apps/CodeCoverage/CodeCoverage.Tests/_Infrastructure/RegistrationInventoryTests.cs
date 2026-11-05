@@ -187,6 +187,17 @@ public class RegistrationInventoryTests : CoverageRavenTest
         typeof(IRecipient<ForgeWebhookMessage<PullRequestReviewed>>));
 
     /// <summary>
+    /// Backports and their regeneration (#570 M6). Without the step recipient a backport that needs regenerating never
+    /// opens its pull request; without the run forward it waits for the poll alone.
+    /// </summary>
+    [Fact]
+    public void Backports_and_their_regeneration_are_registered() => AssertRegistered(
+        typeof(global::CodeCoverage.PackageVersioning.IBackportRegenerationEngine),
+        typeof(IRecipient<global::CodeCoverage.PackageVersioning.BackportMessage>),
+        typeof(IRecipient<global::CodeCoverage.PackageVersioning.BackportRegenerationStepMessage>),
+        typeof(IRecipient<ForgeWebhookMessage<CiRunCompleted>>));
+
+    /// <summary>
     /// The checks a repository has seen, the options of the merge queue's exclusion lists (merge-queue PRD §11). Without
     /// the recorder or its recipients the pickers stay empty with no error; without the scheduler the nightly backfill
     /// silently stops, since the reconciles take it as optional.

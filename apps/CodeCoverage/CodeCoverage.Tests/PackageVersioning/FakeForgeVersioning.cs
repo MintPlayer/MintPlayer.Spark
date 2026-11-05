@@ -21,8 +21,11 @@ internal sealed class FakeForgeVersioning : IForgeVersioning
     public List<(string Workflow, string Branch)> Dispatches { get; } = [];
     public Exception? FailTitleUpdateWith { get; set; }
 
+    /// <summary>More pull requests by number, beside <see cref="PullRequest"/> (#570 M8c: a backport and its source).</summary>
+    public Dictionary<int, ForgePullRequestText> OtherPullRequests { get; } = [];
+
     public Task<ForgePullRequestText?> GetPullRequestTextAsync(Repository repository, int number, CancellationToken cancellationToken = default)
-        => Task.FromResult(PullRequest?.Number == number ? PullRequest : null);
+        => Task.FromResult(PullRequest?.Number == number ? PullRequest : OtherPullRequests.GetValueOrDefault(number));
 
     public Task<ForgeIssue?> GetIssueAsync(Repository repository, int number, CancellationToken cancellationToken = default)
         => Task.FromResult(Issues.TryGetValue(number, out var labels) ? new ForgeIssue(number, labels) : null);
@@ -55,8 +58,13 @@ internal sealed class FakeForgeVersioning : IForgeVersioning
         return Task.FromResult(ForgeWriteOutcome.Created);
     }
 
-    public Task<int> OpenPullRequestAsync(Repository repository, string head, string @base, string title, string body, CancellationToken cancellationToken = default)
+    /// <summary>The heads of the pull requests opened as drafts.</summary>
+    public List<string> DraftHeads { get; } = [];
+
+    public Task<int> OpenPullRequestAsync(Repository repository, string head, string @base, string title, string body, bool draft = false,
+        CancellationToken cancellationToken = default)
     {
+        if (draft) DraftHeads.Add(head);
         var index = OpenedPullRequests.FindIndex(p => p.Head == head && p.Base == @base);
         if (index < 0)
         {

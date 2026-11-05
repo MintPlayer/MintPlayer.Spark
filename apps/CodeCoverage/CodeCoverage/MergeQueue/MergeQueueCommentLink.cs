@@ -45,7 +45,7 @@ public static class MergeQueueCommentLink
         }
         var parsed = MergeQueueYml.Parse(yml, defaultBranch);
         if (!parsed.IsUsable || parsed.Section is not { } section) return null;
-        if (baseRef is not null && !section.Branches.Contains(baseRef, StringComparer.Ordinal)) return null;
+        if (baseRef is not null && !section.Queues(baseRef)) return null;
 
         var checks = $"https://github.com/{repository.OwnerLogin}/{repository.Name}/pull/{number}/checks";
         var latest = await session.LoadAsync<MergeQueueLatestCheck>(MergeQueueLatestCheck.DocumentId(repository.Id, number), cancellationToken);

@@ -3,6 +3,7 @@ using CodeCoverage.Entities;
 using CodeCoverage.Forge;
 using CodeCoverage.LookupReferences;
 using CodeCoverage.MergeQueue;
+using CodeCoverage.PackageVersioning;
 using CodeCoverage.Tests.Services;
 using Xunit;
 using GitHubInstallationPermissions = CodeCoverage.Services.GitHubInstallationPermissions;
@@ -1253,6 +1254,103 @@ public class MergeQueueEngineTests : CoverageRavenTest
         entry.EvictionReason.Should().Be("branch");
     }
 
+    // ── #570 M7 (D12): release lines have a queue of their own ───────────────────────────────────────
+
+    private const string Line = "release/dotnet-10.x";
+
+    private static string LineYml => MergeQueueHarness.Yml.Replace("branches: [master]", "branches: [master, supported-lines]")
+        + "\nversioning:\n  lines: {}\n";
+
+    [Fact]
+    public async Task A_pull_request_into_a_supported_line_is_queued_and_regenerated_with_the_lines_own_workflow()
+    {
+        var h = await HarnessAsync();
+        h.Forge.Files["master/coverage.yml"] = LineYml;
+        h.Forge.PullRequests[Number] = PullRequest() with { BaseRef = Line };
+        h.Queue.BranchHeads[Line] = BaseSha;
+        h.Writer.PrepareResults.Enqueue(FakeGitWriter.Prepared(BaseSha, Head, Prepared, "apps/A/App_Data/modelHashes.json"));
+        // The line's copy differs from the default branch's; the queue commit carries the line's (#570 D9, owner 2026-11-05).
+        h.Queue.Blobs[$"{Line}:{MergeQueueHarness.RegeneratePath}"] = "11ne";
+        h.Queue.Blobs[$"{Prepared}:{MergeQueueHarness.RegeneratePath}"] = "11ne";
+
+        await h.EnqueueAsync();
+        await h.DrainAsync();
+
+        var entry = await h.EntryAsync();
+        entry.EvictionReason.Should().BeNull();
+        entry.BaseBranch.Should().Be(Line);
+        entry.State.Should().Be(EMergeQueueEntryState.Regenerating);
+        h.Queue.Dispatches.Should().ContainSingle();
+    }
+
+    [Fact]
+    public async Task A_line_queue_never_runs_a_workflow_the_line_does_not_have_as_is()
+    {
+        var h = await HarnessAsync();
+        h.Forge.Files["master/coverage.yml"] = LineYml;
+        h.Forge.PullRequests[Number] = PullRequest() with { BaseRef = Line };
+        h.Queue.BranchHeads[Line] = BaseSha;
+        h.Writer.PrepareResults.Enqueue(FakeGitWriter.Prepared(BaseSha, Head, Prepared, "apps/A/App_Data/modelHashes.json"));
+        // The queue commit has the default branch's copy, the line its own: the line's is the one that may run.
+        h.Queue.Blobs[$"{Line}:{MergeQueueHarness.RegeneratePath}"] = "11ne";
+
+        await h.EnqueueAsync();
+        await h.DrainAsync();
+
+        var entry = await h.EntryAsync();
+        entry.EvictionReason.Should().Be("workflow-differs");
+        h.Queue.Dispatches.Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData("release/other")]
+    [InlineData("release/dotnet-10.x/extra")]
+    public async Task Supported_lines_queues_only_the_branches_the_line_pattern_names(string baseRef)
+    {
+        var h = await HarnessAsync(mergeBase: BaseSha);
+        h.Forge.Files["master/coverage.yml"] = LineYml;
+        h.Forge.PullRequests[Number] = PullRequest() with { BaseRef = baseRef };
+
+        await h.EnqueueAsync();
+
+        (await h.EntryAsync()).EvictionReason.Should().Be("branch");
+    }
+
+    [Theory]
+    [InlineData("", "branch")]
+    [InlineData("\nbackport:\n  lines:\n    dotnet-10.x: keep\n", null)]
+    public async Task Supported_lines_queues_an_older_line_only_while_it_is_supported(string backport, string? reason)
+    {
+        // #570 M8 (D4): 11.x is the current line; 10.x has no lifecycle data, so only `keep` makes it supported.
+        var h = await HarnessAsync();
+        h.Forge.Files["master/coverage.yml"] = LineYml + backport;
+        h.Forge.PullRequests[Number] = PullRequest() with { BaseRef = Line };
+        h.Queue.BranchHeads[Line] = BaseSha;
+        h.Queue.BranchHeads["release/dotnet-11.x"] = BaseSha;
+
+        await h.EnqueueAsync();
+
+        var entry = await h.EntryAsync();
+        entry.EvictionReason.Should().Be(reason);
+        if (reason is not null)
+            entry.EvictionMessage.Should().Contain("`release/dotnet-10.x` is not a supported line (dotnet has no lifecycle data");
+    }
+
+    [Fact]
+    public async Task A_backports_enqueue_counts_as_a_writer_without_asking_the_forge()
+    {
+        var h = await HarnessAsync(mergeBase: BaseSha);
+        h.Forge.Files["master/coverage.yml"] = LineYml;
+        h.Forge.PullRequests[Number] = PullRequest() with { BaseRef = Line };
+        h.Queue.BranchHeads[Line] = BaseSha;
+
+        await h.EnqueueAsync(BackportRegenerationEngine.QueueActor, EMergeQueueCommandSource.Backports);
+
+        var entry = await h.EntryAsync();
+        entry.EvictionReason.Should().NotBe("role");
+        entry.EnqueuedVia.Should().Be(EMergeQueueCommandSource.Backports);
+    }
+
     // ── M6: what the repository page lists (§0 D55) ──────────────────────────────────────────────────
 
     [Fact]
@@ -2073,6 +2171,38 @@ public class MergeQueueEngineTests : CoverageRavenTest
         h.Queue.Dispatches.Should().BeEmpty();
         entry.QueueBranchSha.Should().BeNull();
         h.Writer.Deletes.Should().BeEmpty("nothing was pushed, so nothing is deleted");
+    }
+
+    [Fact]
+    public async Task A_forks_dispatch_whose_regenerate_workflow_the_default_branch_lacks_is_evicted_before_anything_is_pushed()
+    {
+        var h = await ForkNeedingRegenerationAsync();
+        h.Queue.WorkflowFiles["master"] = [];
+
+        await h.EnqueueAsync();
+        await h.DrainAsync();
+
+        var entry = await h.EntryAsync();
+        entry.EvictionReason.Should().Be("workflow-missing");
+        entry.EvictionMessage.Should().Be("`.github/workflows/regenerate.yml` does not exist on the default branch, so the regenerate step cannot run.");
+        h.Writer.QueueBranchPushes.Should().BeEmpty();
+        h.Queue.Dispatches.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task A_regenerate_workflow_the_default_branch_lacks_is_never_dispatched()
+    {
+        var h = await HarnessAsync();
+        h.Writer.PrepareResults.Enqueue(FakeGitWriter.Prepared(BaseSha, Head, Prepared, "apps/A/App_Data/modelHashes.json"));
+        h.Queue.Blobs.Remove("master:.github/workflows/regenerate.yml");
+
+        await h.EnqueueAsync();
+        await h.DrainAsync();
+
+        var entry = await h.EntryAsync();
+        entry.EvictionReason.Should().Be("workflow-missing");
+        entry.EvictionMessage.Should().Be("`.github/workflows/regenerate.yml` does not exist on the default branch, so the regenerate step cannot run.");
+        h.Queue.Dispatches.Should().BeEmpty();
     }
 
     [Fact]

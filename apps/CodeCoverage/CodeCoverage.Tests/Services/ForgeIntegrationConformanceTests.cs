@@ -95,6 +95,7 @@ public class ForgeIntegrationConformanceTests
         (nameof(IForgeMergeQueue.GetActorRoleAsync), q => q.GetActorRoleAsync(SampleRepository, "octocat")),
         (nameof(IForgeMergeQueue.GetBranchRulesAsync), q => q.GetBranchRulesAsync(SampleRepository, "main")),
         (nameof(IForgeMergeQueue.GetBranchHeadAsync), q => q.GetBranchHeadAsync(SampleRepository, "main")),
+        (nameof(IForgeMergeQueue.ListBranchesAsync), q => q.ListBranchesAsync(SampleRepository, "release/")),
         (nameof(IForgeMergeQueue.GetCheckStateAsync), q => q.GetCheckStateAsync(SampleRepository, SampleSha)),
         (nameof(IForgeMergeQueue.RerunCheckAsync), q => q.RerunCheckAsync(SampleRepository, new ForgeCheckRun(1, "build", "completed", "failure", 11, "github-actions", null))),
         (nameof(IForgeMergeQueue.GetCheckNamesOnCommitAsync), q => q.GetCheckNamesOnCommitAsync(SampleRepository, SampleSha)),

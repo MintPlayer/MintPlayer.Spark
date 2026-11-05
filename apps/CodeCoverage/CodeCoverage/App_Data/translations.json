@@ -3531,6 +3531,11 @@
     }
   },
   "programUnits": {
+    "backportsSetup": {
+      "en": "Backports",
+      "fr": "Rétroportages",
+      "nl": "Backports"
+    },
     "connectAgent": {
       "en": "Connect an AI agent",
       "fr": "Connecter un agent IA",

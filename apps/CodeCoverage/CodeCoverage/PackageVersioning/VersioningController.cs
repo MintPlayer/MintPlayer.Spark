@@ -233,6 +233,8 @@ public partial class VersioningController : ControllerBase
     {
         Record(record, response);
         await session.StoreAsync(record, record.Id, cancellationToken);
+        // #570 D11: which repository releases each package, and what each release brought, for a later backport's report.
+        await UpstreamReleases.RecordAsync(session, repository.Id!, record.Releases, cancellationToken);
         await session.SaveChangesAsync(cancellationToken);
         // D15: the Releases follow on the versioning lane, one at a time, so a secondary rate limit parks the message
         // instead of holding this request (and the action's fallback clock) open.

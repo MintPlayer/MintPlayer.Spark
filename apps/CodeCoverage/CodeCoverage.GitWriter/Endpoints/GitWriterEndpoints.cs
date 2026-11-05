@@ -129,7 +129,7 @@ internal sealed partial class GitWriterPublishEndpoint : IPostEndpoint<PublishRe
     }
 
     /// <summary>The patch's bytes: empty for none, null when it is not base64.</summary>
-    private static byte[]? Patch(string? base64)
+    internal static byte[]? Patch(string? base64)
     {
         if (string.IsNullOrEmpty(base64))
             return [];

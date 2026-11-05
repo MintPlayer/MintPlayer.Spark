@@ -30,6 +30,27 @@ public class BackportTests
         BackportCommand.FromComment("/backport " + string.Join(' ', Enumerable.Range(1, 11))).Should().BeNull();
     }
 
+    [Theory]   // #570 M8d, D7: `--draft` asks for a draft on conflict for this request, wherever it stands
+    [InlineData("/backport 8.x --draft", true)]
+    [InlineData("/backport --draft 8.x 9.x", true)]
+    [InlineData("/backport 8.x --DRAFT", true)]
+    [InlineData("/backport 8.x", false)]
+    public void A_comment_may_ask_for_a_draft(string body, bool draft)
+    {
+        var request = BackportCommand.Parse(body);
+
+        request.Should().NotBeNull();
+        request!.Draft.Should().Be(draft);
+        request.Lines.Should().NotContain("--draft").And.Contain("8.x");
+    }
+
+    [Theory]
+    [InlineData("/backport --draft")]          // no line
+    [InlineData("/backport 8.x --force")]      // an unknown option is no command, never a line
+    [InlineData("/backport 8.x -draft")]
+    public void An_option_alone_or_unknown_is_no_command(string body)
+        => BackportCommand.Parse(body).Should().BeNull();
+
     [Theory]
     [InlineData("8", "release/8.x")]
     [InlineData("8.x", "release/8.x")]
@@ -39,27 +60,74 @@ public class BackportTests
     public void A_line_resolves_only_through_the_release_patterns(string line, string? branch)
         => BackportRecipient.Resolve(Patterns, line).Should().Be(branch);
 
+    [Theory]
+    [InlineData("dotnet-10.x", "release/dotnet-10.x")]   // #570 M8b: what a default label names
+    [InlineData("release/dotnet-10.x", "release/dotnet-10.x")]
+    [InlineData("10.x", null)]                            // a bare major names no ecosystem
+    [InlineData("release/10.x", null)]
+    [InlineData("main", null)]
+    public void With_lines_on_a_line_resolves_through_the_line_pattern(string line, string? branch)
+        => BackportRecipient.ResolveLine(Versioning.Releases.ReleaseLinePattern.Default, line).Should().Be(branch);
+
     [Fact]
     public void A_conflict_names_the_files_and_the_commands_per_line()
     {
-        var result = new GitWriterBackportResult(GitWriterBackportResult.Conflicted, null, "merge", "b4se", [
-            new("release/1.x", "backport/7-1.x", null, null, []),
-            new("release/2.x", "backport/7-2.x", null, null, ["README.md"]),
+        var result = new GitWriterBackportResult(GitWriterBackportResult.Backported, null, "merge", "b4se", [
+            new("release/1.x", "backport/7-1.x", "d1", GitWriterBackportTargetResult.Created, []),
+            new("release/2.x", "backport/7-2.x", null, GitWriterBackportTargetResult.Conflicted, ["README.md"]),
         ], null, 12);
 
-        var comment = BackportRecipient.ConflictComment("c0ffee", result);
+        var comment = BackportRecipient.ConflictSections("c0ffee", result);
 
         comment.Should().Contain("`release/2.x` conflicts on:").And.Contain("- `README.md`")
             .And.Contain("git switch -c backport/7-2.x origin/release/2.x").And.Contain("git cherry-pick -x -m 1 c0ffee")
+            .And.Contain("Push the branch and its pull request opens, or comment `/backport 2.x --draft`")
             .And.NotContain("release/1.x");
     }
 
     [Fact]
     public void A_rebase_conflict_picks_the_whole_run()
     {
-        var result = new GitWriterBackportResult(GitWriterBackportResult.Conflicted, null, "rebase", "b4se",
-            [new("release/2.x", "backport/7-2.x", null, null, ["a.txt"])], null, 1);
+        var result = new GitWriterBackportResult(GitWriterBackportResult.Backported, null, "rebase", "b4se",
+            [new("release/2.x", "backport/7-2.x", null, GitWriterBackportTargetResult.Conflicted, ["a.txt"])], null, 1);
 
-        BackportRecipient.ConflictComment("c0ffee", result).Should().Contain("git cherry-pick -x b4se..c0ffee");
+        BackportRecipient.ConflictSections("c0ffee", result).Should().Contain("git cherry-pick -x b4se..c0ffee");
+    }
+
+    [Fact]
+    public void A_conflict_on_a_platform_value_names_the_value()
+    {
+        var result = new GitWriterBackportResult(GitWriterBackportResult.Backported, null, "squash", "b4se",
+            [new("release/dotnet-10.x", "backport/7-dotnet-10.x", null, GitWriterBackportTargetResult.Conflicted, ["Lib/Lib.csproj"], null,
+                [new("Lib/Lib.csproj", "TargetFramework", "net11.0", "net10.0;net11.0")])], null, 1);
+
+        BackportRecipient.ConflictSections("c0ffee", result).Should()
+            .Contain("The change edits this line's platform:\n- `Lib/Lib.csproj`: TargetFramework `net11.0` → `net10.0;net11.0`\n");
+    }
+
+    [Fact]
+    public void A_conflict_says_why_and_a_platform_value_the_change_adds_reads_as_added()
+    {
+        var result = new GitWriterBackportResult(GitWriterBackportResult.Backported, null, "squash", "b4se",
+            [new("release/dotnet-10.x", "backport/7-dotnet-10.x", null, GitWriterBackportTargetResult.Conflicted, ["Lib/Lib.csproj"],
+                "The line's lock file could not be merged.", [new("Lib/Lib.csproj", "TargetFramework", "", "net10.0")])], null, 1);
+
+        BackportRecipient.ConflictSections("c0ffee", result).Should()
+            .Contain("- `Lib/Lib.csproj`\n\nThe line's lock file could not be merged.\n")
+            .And.Contain("- `Lib/Lib.csproj`: adds TargetFramework `net10.0`\n");
+    }
+
+    [Theory]
+    [InlineData("Repositories/github/1", "BackportRegenerations/github/1")]
+    [InlineData("repositories/7", "BackportRegenerations/7")]
+    public void A_repositorys_regenerations_live_beside_it(string repositoryId, string id)
+        => global::CodeCoverage.Entities.BackportRegenerations.ForRepository(repositoryId).Should().Be(id);
+
+    [Fact]
+    public void Only_a_repository_id_names_regenerations()
+    {
+        Action act = () => global::CodeCoverage.Entities.BackportRegenerations.ForRepository("Users/1");
+
+        act.Should().Throw<ArgumentException>();
     }
 }

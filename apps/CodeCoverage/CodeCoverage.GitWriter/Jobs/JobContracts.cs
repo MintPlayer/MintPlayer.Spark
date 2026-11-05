@@ -1,3 +1,5 @@
+using CodeCoverage.Git.Backports;
+
 namespace CodeCoverage.GitWriter.Jobs;
 
 // The writer's wire contract (camelCase JSON). Every request names the repository it works on and carries a short-lived,
@@ -335,9 +337,29 @@ public sealed record VersioningPlanResponse(
     long DurationMs);
 
 /// <summary>
+/// <c>POST /jobs/versioning/ecosystems</c> (#570 M8b, PRD D5): which ecosystems a pull request touches, between the
+/// merge base of <see cref="BaseBranch"/> and <see cref="HeadSha"/>, fetched through <see cref="HeadRef"/>.
+/// </summary>
+public sealed class VersioningEcosystemsRequestWire
+{
+    public string? Provider { get; set; }
+    public string? RepoId { get; set; }
+    public string? CloneUrl { get; set; }
+    public CredentialWire? Credential { get; set; }
+    public string? BaseBranch { get; set; }
+    public string? HeadRef { get; set; }
+    public string? HeadSha { get; set; }
+    public VersioningSettingsWire? Settings { get; set; }
+}
+
+/// <param name="Outcome"><see cref="JobOutcomes.Planned"/>; <see cref="JobOutcomes.HeadMismatch"/> when the head moved; or a failure.</param>
+/// <param name="Ecosystems">The ecosystems touched, sorted; empty unless planned.</param>
+public sealed record VersioningEcosystemsResponse(string Outcome, string? Reason, IReadOnlyList<string> Ecosystems, string? Detail, long DurationMs);
+
+/// <summary>
 /// <c>POST /jobs/versioning/backport</c> (#153 M10, PRD D10): apply a merged pull request's change to release branches.
-/// Every target is merged in memory first; when any one conflicts nothing is pushed, otherwise each target gets
-/// <see cref="BackportTargetWire.Head"/>, a new branch for the app to open a pull request from. The commit message is
+/// Each target is merged in memory on its own, and one that applies gets <see cref="BackportTargetWire.Head"/>, a new
+/// branch for the app to open a pull request from, whatever the other targets do (#570 D6). The commit message is
 /// built here from <see cref="Title"/> and the commits' ids, so a request can never carry an arbitrary message.
 /// </summary>
 public sealed class VersioningBackportRequestWire
@@ -358,6 +380,16 @@ public sealed class VersioningBackportRequestWire
     /// <summary>The committer; the author is the original commit's, with its date.</summary>
     public IdentityWire? Committer { get; set; }
     public List<BackportTargetWire>? Targets { get; set; }
+    /// <summary>The repository's <c>backport.markers</c> (#570 D8); absent: the built-in catalog.</summary>
+    public BackportMarkersWire? Markers { get; set; }
+}
+
+public sealed class BackportMarkersWire
+{
+    /// <summary>Built-in marker kinds to leave to the plain merge (<see cref="PlatformMarkerOptions.KindNames"/>).</summary>
+    public List<string>? Disable { get; set; }
+    /// <summary>The repository's own platform-anchored packages, <c>*</c> as wildcard.</summary>
+    public List<string>? Packages { get; set; }
 }
 
 public sealed class BackportTargetWire
@@ -366,15 +398,66 @@ public sealed class BackportTargetWire
     public string? Branch { get; set; }
     /// <summary>The branch to push the backport to: <c>backport/&lt;pr&gt;-&lt;line&gt;</c>.</summary>
     public string? Head { get; set; }
+    /// <summary>The merge queue's auto-resolve rules for this line's conflicts (the default branch's <c>coverage.yml</c>,
+    /// #570 M5, PRD §5.3 step 2), as the merge queue sends them; stage 2 is the line. None: every conflict is reported.</summary>
+    public List<AutoResolveWire>? AutoResolve { get; set; }
+    /// <summary><c>backport.onConflict: draft</c> (#570 D7): a conflict is pushed with git's conflict markers committed,
+    /// for a draft pull request, instead of only being reported.</summary>
+    public bool Draft { get; set; }
+    /// <summary>The merge queue's <c>regeneratedPaths</c> (#570 D9, M6): a path the change touches that matches one keeps the
+    /// line's side, and is listed in <see cref="BackportTargetResult.Regenerate"/> for the line's workflow.</summary>
+    public List<string>? RegeneratedPaths { get; set; }
 }
+
+/// <summary>
+/// <c>POST /jobs/versioning/backport/regenerated</c> (#570 M6, D9): the line's regenerate workflow ran on a backport
+/// branch; its patch is folded into the backport commit, which stays one commit on the line with its message and author.
+/// Validated like the merge queue's publish (T4): only <see cref="RegeneratedPaths"/>, regular files.
+/// </summary>
+public sealed class VersioningBackportRegeneratedRequestWire
+{
+    public string? Provider { get; set; }
+    public string? RepoId { get; set; }
+    public string? CloneUrl { get; set; }
+    public CredentialWire? Credential { get; set; }
+    /// <summary>The backport branch, <c>backport/…</c>.</summary>
+    public string? Head { get; set; }
+    /// <summary>The backport commit the workflow ran on; a branch elsewhere is <c>branch-moved</c>.</summary>
+    public string? ExpectedSha { get; set; }
+    /// <summary>The workflow's <c>git diff</c>, base64; empty leaves the commit as it is.</summary>
+    public string? Patch { get; set; }
+    public List<string>? RegeneratedPaths { get; set; }
+    public IdentityWire? Committer { get; set; }
+}
+
+/// <param name="Outcome"><c>regenerated</c> (<see cref="Commit"/> is the branch's head, the same one when the patch changed
+/// nothing), <c>patch-rejected</c>, <c>branch-moved</c>, <c>push-rejected</c>, or a job failure.</param>
+/// <param name="Paths">The paths the patch changed, or the ones it was refused for.</param>
+public sealed record BackportRegeneratedResponse(string Outcome, string? Reason, string? Commit, IReadOnlyList<string> Paths, string? Detail, long DurationMs);
 
 /// <param name="Commit">The backport commit; null when the target conflicts or already holds the change.</param>
 /// <param name="Push">One of <c>created</c>, <c>exists</c> (the head branch is there already), <c>empty</c> (the target
-/// already holds the change), <c>rejected</c>; null when nothing was pushed because a target conflicted.</param>
+/// already holds the change), <c>rejected</c>, <c>conflicted</c> (nothing was pushed to this target; the others
+/// stand on their own, #570 D6), or <c>drafted</c> (a draft target's conflict, pushed with its conflict markers; its
+/// <see cref="Conflicts"/> say where).</param>
 /// <param name="Conflicts">The paths the target conflicts on; empty when it applies.</param>
-public sealed record BackportTargetResult(string Branch, string Head, string? Commit, string? Push, IReadOnlyList<string> Conflicts, string? Detail = null);
+/// <param name="PlatformChanges">The platform values the change itself edits on this line's platform, left to the merge
+/// instead of normalized (#570 S2, D8); empty when there are none.</param>
+/// <param name="Resolutions">The conflicts the line's auto-resolve rules resolved (PRD §5.3 steps 2 and 4); a
+/// <c>regenerate</c> one still needs the line's regenerate workflow (M6).</param>
+/// <param name="Detail">Why a push was rejected, or why a conflict was not resolved.</param>
+/// <param name="Regenerate">The paths the line's regenerate workflow must rebuild before the pull request opens (D9, M6):
+/// the regenerated paths the change touches, which kept the line's side, and the <c>regenerate</c> resolutions.</param>
+public sealed record BackportTargetResult(
+    string Branch, string Head, string? Commit, string? Push, IReadOnlyList<string> Conflicts, IReadOnlyList<PlatformChange> PlatformChanges,
+    IReadOnlyList<ResolutionWire> Resolutions, string? Detail = null, IReadOnlyList<string>? Regenerate = null)
+{
+    /// <summary>The first-party packages the change raised above this line's major, which normalization dropped, so the
+    /// line keeps its own version (#570 D11); the app diagnoses the upstream release.</summary>
+    public IReadOnlyList<DependencyRaise> Raises { get; init; } = [];
+}
 
-/// <param name="Outcome"><see cref="JobOutcomes.Backported"/>, <see cref="JobOutcomes.Conflicted"/> (nothing pushed), or a failure.</param>
+/// <param name="Outcome"><see cref="JobOutcomes.Backported"/> when the job ran (each target has its own result), or a failure.</param>
 /// <param name="Mode"><c>merge</c>, <c>squash</c> or <c>rebase</c>: how the pull request was merged, which decides the base.</param>
 /// <param name="Base">The commit the change was taken against: the first parent, or for a rebase the commit before the run.</param>
 public sealed record VersioningBackportResponse(
@@ -428,6 +511,8 @@ public static class JobOutcomes
     public const string PlanRefused = "plan-refused";
     /// <summary>Backport: every target applied; each has its own push result.</summary>
     public const string Backported = "backported";
+    /// <summary>Backport regeneration (#570 M6): the workflow's patch is in the backport commit.</summary>
+    public const string Regenerated = "regenerated";
     /// <summary>Backport: a target conflicts (see its paths), so no target was pushed (D10).</summary>
     public const string Conflicted = "conflicted";
     /// <summary>Versioning plan: what a run would release, nothing written (D3 trigger B).</summary>

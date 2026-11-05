@@ -35,6 +35,12 @@ Output: a table in the PRD (§8 evidence) with the percentages. Done when the ca
 
 ### S2 — Marker normalization prototype
 
+**Status (2026-11-05): built.** It lives in `CodeCoverage.Git/Backports/PlatformMarkers.cs`, with tests in
+`PlatformMarkersTests` that merge with the real `git merge-file`. One deviation: the signature is
+`Normalize(path, ours, base, theirs)`, not `(path, blob, targetMarkers)`. S1's per-occurrence safety rule compares base
+with theirs, so one blob at a time can't decide. The line's own blob (ours) supplies the target values, so no catalog
+of target values is needed. Wiring it into `BackportService` is M5. The evidence is in PRD §8.3, "S2".
+
 - A pure function `Normalize(path, blob, targetMarkers) → blob` for csproj/props (XML),
   `global.json`, `package.json`, workflow YAML.
 - Tests, starting from research note 2's experiments:
@@ -104,8 +110,18 @@ On `PieterjanDeClippel/SparkTest` (scratch repo from #517), with a `release/dotn
 
 ## Milestones (after the grilling, D1–D18)
 
-**Status 2026-11-05 (#569):** M1, M2 (lines pattern, `packages.<id>.line`, per-line prerelease), M3 (collector, page),
-M4 and M11 (triggers, schema revision) are implemented; see PRD §8.2. Moved to #570: per-line keep/retire, the
+**Status 2026-11-05 (#569, merged as PR #572 at `e1908e0e5`):** M1, M2 (lines pattern, `packages.<id>.line`,
+per-line prerelease), M3 (collector, page), M4 and M11 (triggers, schema revision) are implemented and merged; see PRD
+§8.2. Next: #570 (spikes S1, S2, S5; M5–M8 without D11; Spark's lines cut per M11; plus the items moved below) on
+`feat/issue570-backports`. **#570 progress:** S1 done (PRD §8.1: plain 61/72 applied, normalized 72/72, every
+conflict a platform value); the merge queue's MSBuild keep-both now checks keys (PRD §8.3); `keyed-merge` built
+(`ea532ec93`, opt-in, PRD §8.3). **Keyed-merge milestones (owner: "small wins toward the end goal", 2026-11-05):**
+K1 a package version takes the highest only when **both sides raised it** (a downgrade on either side refuses); the
+release-line cap (nothing above the line's platform) lands with M5, where the backport gives the resolver its line; K2 one dialect per file format behind a seam (file pattern, entry
+reader, version order), `composer.json` the second JSON dialect; K3 **stop**: a further format (Maven, Gradle
+catalogs, PEP 440, go.mod, Cargo) is built only for a repository that needs it, with real fixtures (issue). Lockfiles
+stay take-base + regenerate (presets). Intent replay (re-run the updater's bump on the new base) goes to #571.
+`Directory.Packages.props` is an optional onboarding suggestion, never required. Moved to #570: per-line keep/retire, the
 retire-suggestion PRs, and the M2 keys whose consumers are backports (`defaultLabels`, `onConflict`, `markers`,
 `enqueue`). Rulesets (#554's action plus the release-line ruleset, with the user's own token) move to M10 in #571,
 PRD §8.2.
@@ -124,20 +140,43 @@ PRD §8.2.
   - Concurrency per S9 (D17), and the `v<major>-next` dist-tag.
   - Per-line prerelease.
 - **M5 Writer.**
-  - Marker normalization (S2, D8) plus the resolver registry in `BackportService` (G1).
-  - Independent per-line outcomes (D6), with an empty result reported as already present.
-  - Draft-with-markers mode (D7).
+  - Marker normalization (S2, D8) plus the resolver registry in `BackportService` (G1). **Normalization done
+    (2026-11-05).** **Resolvers done (2026-11-05):** the merge queue's resolver, with the default branch's
+    `mergeQueue.autoResolve` rules (O16), as PRD §8.3 records.
+  - Independent per-line outcomes (D6), with an empty result reported as already present. **Done (2026-11-05).**
+  - Draft-with-markers mode (D7). **Done (2026-11-05)** through `backport.onConflict: draft`, along with
+    `backport.markers` (D8). The per-request `/backport --draft` moves to M8. Details are in PRD §8.3, "M5, third
+    part".
 - **M6 Regeneration on backport branches** (S5, D9): dispatch the line's workflow, apply the patch, then open the PR.
-- **M7 Merge queue for lines** (D12):
-  - `mergeQueue.branches` patterns / `supported-lines`;
-  - automatic enqueue of backport PRs;
-  - the line's own regenerate workflow on its queue.
+  **Done (2026-11-05).** The workflow's provenance is the line tip's copy, and every regenerated path the change
+  touches triggers it (owner decisions). Any stop opens the PR with a "Not regenerated" note. The live check is S5.
+  Details are in PRD §8.3, "M6, built".
+- **M7 Merge queue for lines** (D12), **done (2026-11-05)**:
+  - `mergeQueue.branches` patterns / `supported-lines`. "Supported" is every match of the line pattern until M8's
+    `keep`/`retire`.
+  - automatic enqueue of backport PRs (`backport.enqueue`, default true). Drafts and "Not regenerated" PRs are never
+    enqueued.
+  - the line's own regenerate workflow on its queue: provenance against the line tip.
+
+  Details are in PRD §8.3, "M7, built".
 - **M8 Labels and reporting.**
-  - Default labels (D5, the current line always, D16).
-  - The "Backport targets" check run.
-  - `backported: <line>` labels and the PR-body marker.
-  - Recognising manual backport PRs and opening the PR on push (D7).
-  - The cross-repo dependency diagnosis (D11).
+  - **M8a supported lines** (D4, D16), **done (2026-11-05)**: branches from the forge, `PlatformRelease` phases,
+    `backport.lines` `keep`/`retire`; `supported-lines` refuses an unsupported line at enqueue. Details are in PRD
+    §8.3, "M8a, built".
+  - **M8b default labels (D5, the current line always, D16) and the "Backport targets" check run, done
+    (2026-11-05)**: the writer's ecosystems job, `defaultLabels`/`fixLabels`, line names resolved for backports.
+    Details are in PRD §8.3, "M8b, built".
+  - **M8c provenance, done (2026-11-05)**: the `<!-- backport-of: owner/repo#N -->` marker in every body the app
+    writes, `backported: <line>` on the source when a backport merges, hand-made backports recognised (body, head,
+    `cherry-pick -x` trailer) and linked by a comment, and the pull request opened when a person creates
+    `backport/<pr>-<line>` (D7). Details are in PRD §8.3, "M8c, built".
+  - **M8d `/backport <line> --draft`, done (2026-11-05)**: the per-request draft (D7), and the conflict comment names
+    it. Details are in PRD §8.3, "M8d, built".
+  - **M8e cross-repo dependency diagnosis (D11), done (2026-11-05)**: built in #570 rather than #571, since it only
+    reads the backport's own result. Normalization reports the first-party packages it dropped; a versioning run records
+    which repository releases each package (`PackageReleaseRecord`); the backport comment names the upstream release
+    and which of its pull requests the upstream already backported to the line's major. Details are in PRD §8.3,
+    "M8e, built".
 - **M9 Dependencies on lines** (D13): a rolling PR per supported line, platform packages capped at the line's major,
   patch/security default, advisories outside the allowed range flagged. Pack verified by S4 (D10b; no upper bounds,
   opt-in `major-bounded`).
@@ -151,5 +190,7 @@ PRD §8.2.
   - Cut `release/dotnet-11.x` and `release/angular-22.x` (current, D15), `release/dotnet-10.x` at `61c5c4276^` and
     `release/angular-21.x` at `1b5d7450e^` (D14), with seed tags.
 - **M12 Docs** (`docs/code-coverage/backports.md`, versioning.md, merge-queue.md), then the local test sweep, one push,
-  CI.
+  CI. **#570's part done (2026-11-05):** the backport section moved from versioning.md into `backports.md` unchanged,
+  with who may ask and what the report holds added; versioning.md keeps a pointer. #571 adds the dependency and
+  onboarding parts.
 - **After merge, deploy, then roll out** (C2) to MintPlayer's library repos one by one via the onboarding chooser.

@@ -1,0 +1,186 @@
+<div class="bp-setup py-3" data-backports-setup>
+  <h1 class="h3 mb-3"><i class="bi bi-arrow-return-left"></i> Backports</h1>
+  <p class="lead">
+    CodeCoverage carries a merged change onto your older release lines. Ask for it with a label or a comment; the app
+    cherry-picks the change onto every line you named and opens one pull request per line.
+  </p>
+  <p>
+    Each line is handled on its own: a line that conflicts never holds the others back. Platform values such as the
+    target framework are rewritten to the line's own first, so a change that only moved the platform does not conflict.
+  </p>
+
+  <nav aria-label="Steps" class="mb-4">
+    <ol class="mb-0" data-testid="bp-setup-steps">
+      @for (step of steps; track step.id) {
+        <li>
+          <a [routerLink]="[]" [fragment]="step.id" (click)="jumpTo(step.id)">{{ step.title }}</a>
+        </li>
+      }
+    </ol>
+  </nav>
+
+  @for (step of steps; track step.id; let n = $index) {
+    <bs-card class="mb-4" [attr.id]="step.id" [attr.data-step]="step.id">
+      <bs-card-header>
+        <h2 class="h5 mb-0"><bs-badge class="me-2" [color]="'primary'">{{ n + 1 }}</bs-badge>{{ step.title }}</h2>
+      </bs-card-header>
+      <bs-card-body>
+        @switch (step.id) {
+          @case ('release-lines') {
+            <p>
+              Branches matching <code>releaseBranches</code> in <code>coverage.yml</code> are release lines, such as
+              <code>release/dotnet-10.x</code> or <code>release/8.x</code>. They are versioned like the default branch,
+              within the major their own content computes, so <code>master</code> on <code>net11.0</code> and a line on
+              <code>net10.0</code> release <code>11.2.3</code> and <code>10.1.2</code> side by side.
+            </p>
+            <p data-testid="bp-setup-auto-cut">
+              <strong>A line is cut for you</strong> when a merge into the default branch moves a platform major, for
+              example from <code>net10.0</code> to <code>net11.0</code>: the app creates the old major's line at the
+              merge's first parent and comments on the pull request.
+            </p>
+            <p class="mb-0" data-testid="bp-setup-supported">
+              A line is <strong>supported</strong> while its platform major has not reached end of life (the
+              <strong>Platform lifecycle</strong> page under Guides lists the dates), and the newest line of each ecosystem always
+              is. Supported lines get the backport labels a pull request is given when it opens.
+              <code>lines:</code> in the <a [routerLink]="[]" fragment="configure" (click)="jumpTo('configure')">backport
+              section</a> keeps or retires a line.
+            </p>
+          }
+          @case ('ask') {
+            <p>Asking needs <strong>write access</strong> to the repository. Anything less gets a comment saying so, and nothing runs.</p>
+            <bs-table [responsive]="true" data-testid="bp-setup-requests">
+              <thead>
+                <tr><th>How</th><th>Meaning</th></tr>
+              </thead>
+              <tbody>
+                @for (request of requests; track request.how) {
+                  <tr><td class="text-nowrap"><code>{{ request.how }}</code></td><td>{{ request.meaning }}</td></tr>
+                }
+              </tbody>
+            </bs-table>
+            <p>
+              A line is named by its ecosystem and major (<code>dotnet-10.x</code>), its major alone (<code>8.x</code>,
+              <code>8</code>) or its branch (<code>release/8.x</code>). Edited comments and bots are never commands.
+            </p>
+            <p data-testid="bp-setup-default-labels">
+              <strong>Labels are suggested for you.</strong> A pull request into the default branch gets a
+              <code>backport: &lt;line&gt;</code> label when it opens, for each supported line whose ecosystem it changes.
+              Remove the labels of the lines it should not reach; merging backports it to the rest.
+            </p>
+            <bs-alert [color]="'info'" class="d-block mb-0" data-testid="bp-setup-targets-check">
+              Every such pull request also gets a <strong>Backport targets</strong> check listing the lines and which
+              apply. It is informational: it always completes <strong>neutral</strong> and never blocks a merge.
+            </bs-alert>
+          }
+          @case ('each-line') {
+            <ul class="mb-0" data-testid="bp-setup-each-line">
+              <li>
+                <strong>Platform values are normalized first.</strong> The target framework, the framework package
+                versions (<code>Microsoft.AspNetCore.*</code>, <code>.Extensions.*</code>,
+                <code>.EntityFrameworkCore.*</code>), the <code>global.json</code> SDK, the
+                <code>dotnet-version</code>/<code>node-version</code> of workflows, and the Angular, React and Vue ranges
+                of <code>package.json</code> are rewritten to the line's own values. A hunk that only moved the platform
+                vanishes, and an edit next to one merges.
+              </li>
+              <li>
+                <strong>A change to the line's own platform is never normalized away</strong>, such as
+                <code>net11.0</code> → <code>net10.0;net11.0</code> on a .NET 10 line. Git decides, and the comment names it.
+              </li>
+              <li>
+                <strong>Conflicts the merge queue may resolve are resolved</strong> by the default branch's
+                <code>mergeQueue.autoResolve</code> rules, with the line's side as the base.
+              </li>
+              <li>
+                <strong>Lockfiles and other regenerated files are never merged.</strong> A file matching
+                <code>mergeQueue.regeneratedPaths</code> keeps the line's version, and the line's own regenerate workflow
+                runs on the backport branch. Its patch is folded into the backport commit before the pull request opens.
+                If it cannot run, the pull request opens with a <strong>Not regenerated</strong> note listing the files.
+              </li>
+              <li>
+                <strong>A line that applies</strong> gets a <code>backport/&lt;pr&gt;-&lt;line&gt;</code> branch and its
+                own pull request, handed to the merge queue when the queue serves that line. Its CI run is the compile
+                check against the old target. A line that already holds the change gets nothing.
+              </li>
+            </ul>
+          }
+          @case ('comment') {
+            <p>
+              The original pull request gets <strong>one comment</strong>, with a line per release line: the backport
+              pull request (and whether it went to the merge queue), "already holds this change", a conflict, or a
+              rejected push.
+            </p>
+            <p data-testid="bp-setup-comment-details">
+              Underneath it lists the conflicts the rules resolved, the platform values the change edits on a line, and
+              the first-party packages a line keeps at its own major. For such a package the comment says the line
+              <em>probably needs</em> what the newer version brought and, when a public repository on this server
+              released it, which of that release's pull requests are already backported to the line's major. The app
+              never starts a backport in another repository.
+            </p>
+            <p class="mb-0" data-testid="bp-setup-backported-label">
+              When a backport merges, the original pull request gets a <code>backported: &lt;line&gt;</code> label, so
+              you can see where a change has been.
+            </p>
+          }
+          @case ('by-hand') {
+            <p>
+              A line that conflicts gets nothing pushed. The comment names its files and gives the commands to do it by
+              hand:
+            </p>
+            <pre class="mb-3" data-testid="bp-setup-commands"><code>{{ byHand }}</code></pre>
+            <p data-testid="bp-setup-pushed-branch">
+              Push a <code>backport/&lt;pr&gt;-&lt;line&gt;</code> branch yourself, with write access, and the app opens
+              its pull request into the line. Or comment <code>/backport &lt;line&gt; --draft</code> for a draft pull
+              request with the conflict markers committed: resolve them on that branch, then mark it ready.
+            </p>
+            <p class="mb-0">
+              A backport made entirely by hand is recognised too, when its description says <code>Backport of #N</code>,
+              its branch is <code>backport/&lt;N&gt;-&lt;line&gt;</code>, or its commits were picked with
+              <code>git cherry-pick -x</code>. The original then gets its <code>backported:</code> label and a comment
+              linking it.
+            </p>
+          }
+          @case ('configure') {
+            <p>
+              A <code>backport:</code> section in the default branch's <code>coverage.yml</code> adjusts all of this.
+              Every option is optional:
+            </p>
+            <bs-table [responsive]="true" data-testid="bp-setup-options">
+              <thead>
+                <tr><th>Option</th><th>Values</th><th>Default</th><th>Meaning</th></tr>
+              </thead>
+              <tbody>
+                @for (option of options; track option.key) {
+                  <tr>
+                    <td><code>{{ option.key }}</code></td>
+                    <td class="text-nowrap">{{ option.values }}</td>
+                    <td><code>{{ option.defaultValue }}</code></td>
+                    <td>{{ option.meaning }}</td>
+                  </tr>
+                }
+              </tbody>
+            </bs-table>
+            <pre class="mb-3" data-testid="bp-setup-example"><code>{{ example }}</code></pre>
+            <p class="mb-0">
+              Under <code>defaultLabels: fixes</code>, the older lines are labelled only for a <code>fix:</code> title or
+              a <code>fixLabels</code> label, and the newest line always. A section with errors is named in the backport
+              comment, and its defaults apply.
+            </p>
+          }
+          @case ('protect') {
+            <bs-alert [color]="'warning'" class="d-block mb-0" data-testid="bp-setup-protect">
+              A branch the app creates is unprotected unless a ruleset matches it. Add a repository ruleset targeting
+              <code>release/*</code> with at least <strong>Restrict deletions</strong> and <strong>Block force
+              pushes</strong>, and require your CI checks if you merge backports through it. The
+              <a routerLink="/merge-queue/setup">merge queue guide</a> shows how to set one up.
+            </bs-alert>
+          }
+        }
+      </bs-card-body>
+    </bs-card>
+  }
+
+  <p class="small text-body-secondary mb-0">
+    The full reference is
+    <a href="https://github.com/MintPlayer/MintPlayer.Spark/blob/master/docs/code-coverage/backports.md" target="_blank" rel="noopener">the backports guide</a>.
+  </p>
+</div>

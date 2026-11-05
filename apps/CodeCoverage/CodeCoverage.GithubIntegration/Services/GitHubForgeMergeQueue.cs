@@ -417,6 +417,20 @@ public partial class GitHubForgeMergeQueue : IForgeMergeQueue
         return sha is not null && CommitSha().IsMatch(sha) ? sha : null;
     }
 
+    /// <remarks><c>GET /git/matching-refs/heads/{prefix}</c>, every page: an empty array when no branch matches.</remarks>
+    public async Task<IReadOnlyList<string>> ListBranchesAsync(Repository repository, string prefix, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(prefix);
+        // A trailing '/' is the usual prefix ("release/"), and an empty one lists every branch; every segment before
+        // the last must be a real one.
+        var segments = prefix.Split('/');
+        if (segments[..^1].Any(segment => segment is "" or "." or "..") || segments[^1] is "." or "..")
+            throw new ArgumentException($"'{prefix}' is not a branch prefix.", nameof(prefix));
+        var path = prefix.Length == 0 ? "heads" : $"heads/{string.Join('/', segments.Select(Uri.EscapeDataString))}";
+        var refs = await GetPagedAsync(repository, $"{RepoPath(repository)}/git/matching-refs/{path}", null, cancellationToken);
+        return [.. refs.Select(r => Str(r, "ref")).OfType<string>().Where(r => r.StartsWith("refs/heads/", StringComparison.Ordinal)).Select(r => r["refs/heads/".Length..])];
+    }
+
     /// <summary>
     /// A GitHub Actions check run is a job, and re-runs through <c>POST /actions/jobs/{id}/rerun</c> (its check-run id
     /// is its job id); any other App's check run is asked again through <c>POST /check-runs/{id}/rerequest</c>, which
@@ -899,11 +913,11 @@ public partial class GitHubForgeMergeQueue : IForgeMergeQueue
     /// <c>GET /pulls?state=open&amp;base={branch}</c>, every page. A pull request with no number or title (never seen on
     /// GitHub) is left out rather than offered as #0.
     /// </summary>
-    public async Task<IReadOnlyList<ForgeOpenPullRequest>> ListOpenPullRequestsAsync(Repository repository, string baseBranch, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<ForgeOpenPullRequest>> ListOpenPullRequestsAsync(Repository repository, string? baseBranch, CancellationToken cancellationToken = default)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(baseBranch);
+        if (baseBranch is not null) ArgumentException.ThrowIfNullOrWhiteSpace(baseBranch);
         var pulls = await GetPagedAsync(repository,
-            $"{RepoPath(repository)}/pulls?state=open&base={Uri.EscapeDataString(baseBranch)}", null, cancellationToken);
+            $"{RepoPath(repository)}/pulls?state=open" + (baseBranch is null ? "" : $"&base={Uri.EscapeDataString(baseBranch)}"), null, cancellationToken);
 
         return [.. pulls
             .Select(pull => (Number: Num(pull, "number"), Title: Str(pull, "title"), Pull: pull))

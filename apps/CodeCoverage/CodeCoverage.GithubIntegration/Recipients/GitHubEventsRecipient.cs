@@ -362,7 +362,10 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
                 Branch: branch,
                 Sha: evt.After,
                 Message: evt.HeadCommit.Message,
-                AuthoredAt: authoredAt)), ct);
+                AuthoredAt: authoredAt,
+                Created: evt.Created,
+                PushedByBot: evt.Sender?.Type == Octokit.Webhooks.Models.UserType.Bot,
+                PusherLogin: evt.Sender?.Login)), ct);
 
         await RequestManifestScanAsync(evt, branch, repository, ct);
     }
@@ -575,7 +578,7 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
         // The dependency updater's commands (§7.5): the first word of a new comment, by a person (gap E), never the App.
         var dependencyCommand = command is null ? DependencyCommandParser.Parse(body) : null;
         // #153 D10: /backport 8.x 9.x, by a person; the recipient checks the role and that the pull request merged.
-        var backport = command is null && dependencyCommand is null ? BackportCommand.FromComment(body) : null;
+        var backport = command is null && dependencyCommand is null ? BackportCommand.Parse(body) : null;
         if (command is null && dependencyCommand is null && backport is null) return;
         if (IsOurApp(comment) || HumanSender(root) is not { } actor) return;
         if (Child(comment, "user") is { } author && (Text(author, "type") == "Bot" || Text(author, "login")?.EndsWith("[bot]", StringComparison.Ordinal) == true)) return;
@@ -583,7 +586,7 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
 
         if (backport is not null)
         {
-            await RaiseAsync(new BackportRequested(repositoryId, (int)number, backport, actor, EBackportSource.Comment), ct);
+            await RaiseAsync(new BackportRequested(repositoryId, (int)number, backport.Lines, actor, EBackportSource.Comment, backport.Draft), ct);
             return;
         }
         if (dependencyCommand is { } dependency)
@@ -686,9 +689,12 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
 
         if (Build(repositoryId) is not { } evt) return;
         var queue = await session.LoadAsync<MergeQueue>(MergeQueue.DocumentId(repositoryId), ct);
-        // The dependency updater waits for its own workflow runs and its rolling head's checks the same way.
+        // The dependency updater waits for its own workflow runs and its rolling head's checks the same way, and a backport
+        // for its line's regenerate run (#570 M6).
         if ((queue is null || !queue.IsBusy())
-            && await session.LoadAsync<DependencyUpdateRun>(DependencyUpdateRun.ForRepository(repositoryId), ct) is not { State: not EDependencyRunState.Idle })
+            && await session.LoadAsync<DependencyUpdateRun>(DependencyUpdateRun.ForRepository(repositoryId), ct) is not { State: not EDependencyRunState.Idle }
+            && (evt is not CiRunCompleted
+                || await session.LoadAsync<BackportRegenerations>(BackportRegenerations.ForRepository(repositoryId), ct) is not { Pending.Count: > 0 }))
             return;
 
         switch (evt)
