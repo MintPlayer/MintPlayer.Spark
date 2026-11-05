@@ -22,7 +22,7 @@ internal sealed class OpenSearchSync(
     SparkOpenSearchOptions options,
     ILogger<OpenSearchSync> logger) : BackgroundService
 {
-    private bool lastRunFailed;
+    private string? lastFailure;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -32,16 +32,17 @@ internal sealed class OpenSearchSync(
             try
             {
                 await SyncOnceAsync(stoppingToken);
-                if (lastRunFailed)
+                if (lastFailure is not null)
                     logger.LogInformation("The search engine is in sync again.");
-                lastRunFailed = false;
+                lastFailure = null;
             }
             catch (Exception ex) when (!stoppingToken.IsCancellationRequested)
             {
-                // Logged once per outage; searches meanwhile fall back to the RavenDB index.
-                if (!lastRunFailed)
+                // Logged once per distinct failure, not once per outage: an engine still starting refuses connections,
+                // and a bulk it then rejects must not hide behind that first warning (production, 2026-11-05).
+                if (ex.Message != lastFailure)
                     logger.LogWarning(ex, "Syncing the search engine failed; retrying every {Interval}.", options.SyncInterval);
-                lastRunFailed = true;
+                lastFailure = ex.Message;
             }
         }
         while (await timer.WaitForNextTickAsync(stoppingToken));
@@ -56,18 +57,7 @@ internal sealed class OpenSearchSync(
 
         while (!cancellationToken.IsCancellationRequested)
         {
-            using var session = store.OpenAsyncSession();
-            var rows = await session.Advanced.AsyncDocumentQuery<SparkSearchEntry>(SparkSearchIndex.Name)
-                .Statistics(out QueryStatistics stats)
-                .WhereGreaterThanOrEqual(SparkSearchIndex.LastModified, checkpoint.Since)
-                .OrderBy(SparkSearchIndex.LastModified)
-                .OrderBy(Raven.Client.Constants.Documents.Indexing.Fields.DocumentIdFieldName)
-                .Skip(checkpoint.Skip)
-                .Take(options.SyncBatchSize)
-                .SelectFields<SparkSearchEntry>(
-                    ProjectionBehavior.FromIndexOrThrow,
-                    SparkSearchIndex.Type, SparkSearchIndex.Text, SparkSearchIndex.IsDeleted, SparkSearchIndex.LastModified)
-                .ToListAsync(cancellationToken);
+            var (rows, isStale) = await ReadRowsAsync(store, checkpoint, options.SyncBatchSize, cancellationToken);
 
             if (rows.Count == 0)
                 break;
@@ -78,7 +68,7 @@ internal sealed class OpenSearchSync(
                 cancellationToken);
             copied += rows.Count;
 
-            if (stats.IsStale)
+            if (isStale)
                 break; // Copied, but the checkpoint stays: the next run reads these again, which is harmless.
 
             var newest = rows[^1].LastModified;
@@ -92,5 +82,46 @@ internal sealed class OpenSearchSync(
                 break;
         }
         return copied;
+    }
+
+    /// <summary>One batch of <c>Spark_Search</c> rows from the checkpoint on, in (<c>LastModified</c>, id) order.</summary>
+    internal static async Task<(List<SparkSearchEntry> Rows, bool IsStale)> ReadRowsAsync(
+        IDocumentStore store, SyncCheckpoint checkpoint, int take, CancellationToken cancellationToken)
+    {
+        using var session = store.OpenAsyncSession();
+        var rows = await session.Advanced.AsyncDocumentQuery<SparkSearchEntry>(SparkSearchIndex.Name)
+            .Statistics(out QueryStatistics stats)
+            .WhereGreaterThanOrEqual(SparkSearchIndex.LastModified, checkpoint.Since)
+            .OrderBy(SparkSearchIndex.LastModified)
+            .OrderBy(Raven.Client.Constants.Documents.Indexing.Fields.DocumentIdFieldName)
+            .Skip(checkpoint.Skip)
+            .Take(take)
+            .SelectFields<SyncRow>(
+                ProjectionBehavior.FromIndexOrThrow,
+                SparkSearchIndex.Type, SparkSearchIndex.Text, SparkSearchIndex.IsDeleted, SparkSearchIndex.LastModified)
+            .ToListAsync(cancellationToken);
+        var entries = rows.Select(r => new SparkSearchEntry
+        {
+            Id = r.Id ?? throw new InvalidOperationException($"{SparkSearchIndex.Name} answered a row without a document id."),
+            Type = r.Type ?? "",
+            Text = r.Text,
+            IsDeleted = r.IsDeleted,
+            LastModified = r.LastModified,
+        }).ToList();
+        return (entries, stats.IsStale);
+    }
+
+    /// <summary>
+    /// The projection's shape. Its <c>Id</c> must start out null: RavenDB fills a projection's id only into an empty
+    /// identity property, and <see cref="SparkSearchEntry.Id"/> starts out <c>""</c>, so it stayed blank and the engine
+    /// refused every bulk ("id is missing", production 2026-11-05).
+    /// </summary>
+    private sealed class SyncRow
+    {
+        public string? Id { get; set; }
+        public string? Type { get; set; }
+        public string? Text { get; set; }
+        public bool IsDeleted { get; set; }
+        public DateTime LastModified { get; set; }
     }
 }
