@@ -395,6 +395,33 @@ Evidence (`VersioningPlanReleaseTests`, real origins):
 - Reuse: the `PlatformCandidate` shape (`CodeCoverage.Git/Dependencies/DependencyContracts.cs:245-260`). It needs a
   released date and `maintained`. No C# fetcher exists yet, so the collector (M3) brings its own HTTP client.
 
+**S1, conflict census (#570, 2026-11-05, local replay).** A simulated `release/dotnet-10.x` cut at `c6513fc62`
+(`61c5c4276^`), and every first-parent master commit up to `e1908e0e5` (72) replayed onto it with
+`git merge-tree --write-tree --merge-base=<c^1> <line> <c>`, the way `BackportService` applies a change. After each
+applied commit the line is pinned back to its platform (TFM `net10.0`, `Microsoft.AspNetCore|Extensions|EntityFrameworkCore`
+`10.0.11`, `dotnet-version`/`global.json` SDK `10.0.100`), as a maintained line would be. A commit that conflicts is put
+on the line as master resolved it, pinned, so each commit is measured on its own (the first attempt let one conflict
+cascade: 66 of 72 conflicted only because #461 was missing). Script: a throwaway Node prototype, not committed.
+
+| Pass | Applied | Conflicted | Conflicted paths |
+|---|---|---|---|
+| Plain (today) | 61 (85 %) | 11 (15 %) | **all** platform-value files: `*.csproj` (9 commits), workflows and `.github/actions/setup/action.yml` (2), `global.json` (1) |
+| Normalized (S2 prototype) | **72 (100 %)** | 0 | — |
+| Normalized + line-side for generated `App_Data` and lockfiles | 72 | 0 | — (nothing left for the resolvers) |
+
+- **No conflict in source, in generated `App_Data`, or in a lockfile** in 72 commits. Platform values cause every
+  conflict, so S2 normalization is the main lever, and the resolver budget for .NET lines is small.
+- **D8's safety rule, sharpened.** The prototype's first rule ("the PR changed a marker in this file → don't
+  normalize the file") left 3 conflicts: #461 **added** framework packages at 11.x next to an existing one, `6e48f3326`
+  moved the SDK from 11 rc.1 to rc.2, `92c298bec` moved `setup-dotnet` into a composite action. None touches the
+  line's own platform. Rule now: compare **per occurrence** (a package by its `Include`, other values by position); an
+  occurrence present on both sides whose value changed **and** that involves the line's platform (`net10.0` →
+  `net10.0;net11.0`) is a platform change and conflicts; a change wholly above the line's major, and an added or
+  removed occurrence, is normalized. With it, the only commit flagged is #442, the net10 → net11 move itself.
+- **Not measured:** insertions at one place on both sides (keep-both and dedupe). The simulated line has no fixes of
+  its own, which is the only way a line diverges beyond platform values, so the census cannot see them. The Angular
+  line (`release/angular-21.x`) is not replayed; its markers are `package.json` ranges (S2).
+
 ### 8.2 Implementation decisions (#569, 2026-11-05)
 
 - **Auto-cut criterion with lines on (M4, D15).** The default branch tags nothing, so the old D12 trigger (a placed

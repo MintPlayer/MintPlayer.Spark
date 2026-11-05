@@ -107,7 +107,8 @@ On `PieterjanDeClippel/SparkTest` (scratch repo from #517), with a `release/dotn
 **Status 2026-11-05 (#569, merged as PR #572 at `e1908e0e5`):** M1, M2 (lines pattern, `packages.<id>.line`,
 per-line prerelease), M3 (collector, page), M4 and M11 (triggers, schema revision) are implemented and merged; see PRD
 §8.2. Next: #570 (spikes S1, S2, S5; M5–M8 without D11; Spark's lines cut per M11; plus the items moved below) on
-`feat/issue570-backports`. Moved to #570: per-line keep/retire, the
+`feat/issue570-backports`. **#570 progress:** S1 done (PRD §8.1: plain 61/72 applied, normalized 72/72, every
+conflict a platform value); the merge queue's MSBuild keep-both now checks keys (PRD §8.3). Moved to #570: per-line keep/retire, the
 retire-suggestion PRs, and the M2 keys whose consumers are backports (`defaultLabels`, `onConflict`, `markers`,
 `enqueue`). Rulesets (#554's action plus the release-line ruleset, with the user's own token) move to M10 in #571,
 PRD §8.2.
