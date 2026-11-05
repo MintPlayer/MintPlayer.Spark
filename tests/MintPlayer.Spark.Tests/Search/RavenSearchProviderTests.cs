@@ -107,6 +107,17 @@ public class RavenSearchProviderTests : SparkTestDriver
         => (await IdsAsync("/spark/search?q=bohemain")).Should().Equal(["SrchSongs/3"]);
 
     [Fact]
+    public async Task The_engine_sync_reads_every_row_with_its_document_id()
+    {
+        // Production (2026-11-05): every row reached the engine with Id "", and it refused each bulk ("id is missing").
+        var (rows, _) = await MintPlayer.Spark.Search.OpenSearch.OpenSearchSync.ReadRowsAsync(
+            Store, new MintPlayer.Spark.Search.OpenSearch.SyncCheckpoint(DateTime.MinValue, 0), 100, CancellationToken.None);
+
+        rows.Should().HaveCount(7);
+        rows.Select(r => r.Id.ToLowerInvariant()).Should().OnlyHaveUniqueItems().And.Contain("srchsongs/3");
+    }
+
+    [Fact]
     public async Task A_label_resolves_through_the_index()
     {
         var response = await _client.GetAsync("/spark/search/resolve?q=Queen%20(Srch%20Song%202)");
