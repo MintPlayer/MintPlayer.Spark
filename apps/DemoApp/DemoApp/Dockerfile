@@ -12,6 +12,8 @@ EXPOSE 8080
 EXPOSE 8081
 
 FROM mcr.microsoft.com/dotnet/sdk:11.0 AS build
+# No .git in the build context: the package versioning targets would only warn MPV003 per library (#565).
+ENV MintPlayerVersioningSkip=true
 # Node.js for the Angular build
 RUN apt-get update && \
     apt-get -y install curl && \
