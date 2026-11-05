@@ -203,6 +203,10 @@ versioning:
   packages:
     MintPlayer.SourceGenerators: { anchor: free }   # D7: free, or the id of the package whose major it follows
     "@acme/stable-lib": { prerelease: upstream }    # a package pin wins over the repository pin
+    Acme.Generators: { line: dotnet }               # #568 D19: the ecosystem whose lines release it
+  lines:                             # #568: present (even empty) = release only from release lines
+    pattern: "release/{ecosystem}-{major}.x"        # the default; both placeholders, once each
+    prerelease: { dotnet-10.x: upstream }           # D14: a label per line, between the package pin and `prerelease`
 ```
 
 - **`prerelease`** sets the label outright; upstream prereleases never override it. `upstream` (the default) mirrors
@@ -236,6 +240,34 @@ dry-runs the cherry-pick onto every requested line.
 > **Protect release branches yourself.** A branch the app creates is unprotected unless a ruleset matches it. Add a
 > repository ruleset targeting `release/*` with at least *Restrict deletions* and *Block force pushes*, and require
 > your CI checks if you merge backports through it.
+
+## Ecosystem release lines (#568)
+
+Add a `lines:` section (an empty `lines:` is enough) and packages release **only from release lines**, one per
+ecosystem and platform major: `release/dotnet-10.x`, `release/dotnet-11.x`, `release/angular-21.x`. The default
+branch then tags nothing; a change ships once its pull request is merged or backported onto a line. Without `lines:`
+everything above still applies unchanged.
+
+- **Which line releases a package.** A NuGet package is `dotnet`, netstandard included. An npm package takes its
+  framework's ecosystem (`@angular/core` → `angular`, also `react`, `vue`); a plain node library follows the
+  framework that all of the repository's npm packages share. An anchored package releases on the line of its major.
+  A free package (netstandard, generators, plain node) releases on the **newest** line of its ecosystem.
+  `packages.<id>.line` moves a package to another ecosystem.
+- **Auto-cut.** A run on the default branch cuts every line its anchored packages need and that has never released:
+  moving `Core` to `net11.0` creates `release/dotnet-11.x` at that commit and comments on the pull request. A line
+  whose major already has a tag is never cut again, so a deleted line is recreated by hand.
+- **Prereleases per line.** `versioning.prerelease` still applies to every line; `lines.prerelease` overrides it for
+  one line, so `dotnet-10.x: upstream` goes stable while `dotnet-11.x` stays on `preview`. A package's own pin wins
+  over both.
+- **npm dist-tags.** A stable release on an older line goes out as `v<major>-lts`; a prerelease of an older major as
+  `v<major>-next`, so it never moves `next` away from the newest line.
+- **Workflows.** Run the versioning workflow on `release/**` pushes and pull requests too (MintPlayer.Spark's
+  `dotnet-build-master.yml` and `pull-request.yml` do), and protect `release/**` with a ruleset (see above).
+
+**Platform lifecycle page.** The app collects each platform's support phases nightly (.NET from
+`releases-index.json`; Angular, React, Vue and Node.js from endoflife.date; a framework's preview major from its npm
+`next` dist-tag). Open *Guides → Platform lifecycle* to see which majors are in preview, active, maintenance or end of
+life, and so which lines are worth keeping.
 
 ## GitHub Releases and pull request titles (D14, D15)
 

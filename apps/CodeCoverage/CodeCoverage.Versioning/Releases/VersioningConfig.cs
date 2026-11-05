@@ -22,7 +22,9 @@ namespace CodeCoverage.Versioning.Releases;
 /// versioning:
 ///   mode: server                     # server | local (D2), default server
 ///   dispatch: publish.yml            # trigger B (D3): fired on a merge that changes a package
-///   releaseBranches: ["release/*.x"] # D10
+///   releaseBranches: ["release/*.x"] # D10, unused when lines are on
+///   lines:                           # #568 D15: packages release only from release lines, never from the default branch
+///     pattern: release/{ecosystem}-{major}.x # D2, the default
 ///   ignore: ["**/*.md"]              # D4: changed files that never release a package
 ///   prerelease: preview              # D8: every package releases with this label until the line is removed
 ///   groups:                          # D13
@@ -31,6 +33,7 @@ namespace CodeCoverage.Versioning.Releases;
 ///   packages:
 ///     MintPlayer.SourceGenerators: { anchor: free }   # D7: free, or a framework package id
 ///     "@mintplayer/ng-spark": { prerelease: upstream } # D8: a label, or upstream to take the label from what it ships against
+///     Acme.Generators: { line: dotnet }  # #568 D19: the ecosystem whose newest line releases an unanchored package
 /// </code>
 /// </remarks>
 public sealed class VersioningConfig
@@ -39,6 +42,7 @@ public sealed class VersioningConfig
 	public const string LocalMode = "local";
 	public const string UpstreamPrerelease = "upstream";
 	public const int MaxReleaseBranches = 16;
+	public const int MaxLinePrerelease = 32;
 	public const int MaxIgnore = 64;
 	public const int MaxGroups = 64;
 	public const int MaxGroupNameLength = 100;
@@ -54,6 +58,9 @@ public sealed class VersioningConfig
 
 	public List<VersioningGroupConfig>? Groups { get; set; }
 	public Dictionary<string, VersioningPackageConfig?>? Packages { get; set; }
+
+	/// <summary>#568 D15: present (even empty) turns release lines on; absent keeps default-branch releases (D18).</summary>
+	public VersioningLinesConfig? Lines { get; set; }
 
 	public string EffectiveMode => Mode ?? ServerMode;
 
@@ -114,7 +121,21 @@ public sealed class VersioningConfig
 					errors.Add($"versioning.packages.{id}.anchor must be 'free' or the id of the package whose major it follows.");
 				else if (!IsPrerelease(settings?.Prerelease))
 					errors.Add($"versioning.packages.{id}.prerelease must be one of alpha, beta, next, preview, rc or {UpstreamPrerelease}.");
+				else if (settings?.Line is { } line && !Ecosystems.IsName(line))
+					errors.Add($"versioning.packages.{id}.line must be an ecosystem name such as dotnet or angular (lower-case letters and digits).");
 			}
+		}
+
+		if (Lines is { } lines && ReleaseLinePattern.TryParse(lines.Pattern ?? ReleaseLinePattern.DefaultText, out var patternError) is null)
+			errors.Add(patternError!);
+		if (Lines?.Prerelease is { } linePrerelease)
+		{
+			if (linePrerelease.Count > MaxLinePrerelease) errors.Add($"versioning.lines.prerelease has more than {MaxLinePrerelease} lines.");
+			foreach (var (key, setting) in linePrerelease.Take(MaxLinePrerelease))
+				if (ReleaseLine.TryParse(key) is null)
+					errors.Add($"versioning.lines.prerelease: '{Shown(key)}' is not a line such as dotnet-11.x.");
+				else if (!IsPrerelease(setting) || setting is null)
+					errors.Add($"versioning.lines.prerelease.{key} must be one of alpha, beta, next, preview, rc or {UpstreamPrerelease}.");
 		}
 		return errors;
 	}
@@ -128,7 +149,30 @@ public sealed class VersioningConfig
 		ReleaseBranches = EffectiveReleaseBranches,
 		Prerelease = Pin(Prerelease),
 		PrereleasePins = (Packages ?? []).Where(p => p.Value?.Prerelease is not null).ToDictionary(p => p.Key, p => Pin(p.Value!.Prerelease), StringComparer.Ordinal),
+		Lines = EffectiveLines,
+		LinePins = (Packages ?? []).Where(p => p.Value?.Line is not null).ToDictionary(p => p.Key, p => p.Value!.Line!, StringComparer.Ordinal),
+		LinePrerelease = (Lines?.Prerelease ?? []).ToDictionary(p => ReleaseLine.TryParse(p.Key)!.ToString(), p => Pin(p.Value), StringComparer.Ordinal),
 	};
+
+	/// <summary>
+	/// Whether a run on <paramref name="branch"/> versions: the default branch, a release line when lines are on (#568 D1),
+	/// else a <c>releaseBranches</c> match (D10). <paramref name="branchMajor"/> is the line's or release branch's major.
+	/// </summary>
+	public bool IsVersionedBranch(string branch, string defaultBranch, out int? branchMajor)
+	{
+		branchMajor = null;
+		if (branch == defaultBranch) return true;
+		if (EffectiveLines is not { } lines) return Releases.ReleaseBranches.IsMatch(EffectiveReleaseBranches, branch, out branchMajor);
+		if (!lines.TryMatch(branch, out var line)) return false;
+		branchMajor = line!.Major;
+		return true;
+	}
+
+	/// <summary>What a refusal names as the versioned branches.</summary>
+	public string VersionedBranchesText => EffectiveLines is { } lines ? lines.Text : string.Join(", ", EffectiveReleaseBranches);
+
+	/// <summary>The line pattern when release lines are on (#568 D15), else null. Only for a section <see cref="Validate"/> accepted.</summary>
+	public ReleaseLinePattern? EffectiveLines => Lines is null ? null : ReleaseLinePattern.Parse(Lines.Pattern ?? ReleaseLinePattern.DefaultText);
 
 	private static PrereleaseLabel? Pin(string? setting) => setting is null or UpstreamPrerelease ? null : Labels.Parse(setting);
 
@@ -177,4 +221,20 @@ public sealed class VersioningPackageConfig
 
 	/// <summary>A label (D8) for this package alone, or <c>upstream</c> to exempt it from <c>versioning.prerelease</c>.</summary>
 	public string? Prerelease { get; set; }
+
+	/// <summary>#568 D19: the ecosystem whose lines release this package, when the default (NuGet → dotnet, npm → its framework) is wrong.</summary>
+	public string? Line { get; set; }
+}
+
+/// <summary>The <c>versioning.lines</c> block (#568 D2, D15).</summary>
+public sealed class VersioningLinesConfig
+{
+	/// <summary>The branch pattern with <c>{ecosystem}</c> and <c>{major}</c>; null is <see cref="ReleaseLinePattern.DefaultText"/>.</summary>
+	public string? Pattern { get; set; }
+
+	/// <summary>
+	/// #568 D14: the prerelease label of one line, keyed <c>{ecosystem}-{major}.x</c> (<c>dotnet-11.x: upstream</c>), so a
+	/// line goes stable, or stays on a label, apart from <c>versioning.prerelease</c>. A package's own pin still wins.
+	/// </summary>
+	public Dictionary<string, string>? Prerelease { get; set; }
 }

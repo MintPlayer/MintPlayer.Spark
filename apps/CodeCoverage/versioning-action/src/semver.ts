@@ -45,7 +45,12 @@ export function highest(versions: string[]): Version | null {
 export function distTag(version: string, released: string[]): string {
   const v = parse(version);
   if (!v) throw new Error(`'${version}' is not a semantic version.`);
-  if (v.prerelease.length > 0) return 'next';
+  // #568 D17: a prerelease of a major below the newest one released at all (an older line in preview) is
+  // `v<major>-next`, so it never takes `next` from the newest line.
+  if (v.prerelease.length > 0) {
+    const majors = released.map(parse).filter((x): x is Version => x !== null).map((x) => x.major);
+    return v.major >= Math.max(v.major, ...majors) ? 'next' : `v${v.major}-next`;
+  }
   const stableMajors = [...released, version].map(parse).filter((x): x is Version => x !== null && x.prerelease.length === 0).map((x) => x.major);
   return v.major >= Math.max(...stableMajors) ? 'latest' : `v${v.major}-lts`;
 }

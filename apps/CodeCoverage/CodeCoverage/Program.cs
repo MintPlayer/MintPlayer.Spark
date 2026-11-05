@@ -67,6 +67,13 @@ builder.Services.AddCodeCoverage();
 builder.Services.AddCodeCoverageCommitGraph(builder.Configuration);
 // The merge queue (docs/coverage_merge_queue_PRD.md): options and the coverage-git-writer client (M3).
 builder.Services.AddCodeCoverageMergeQueue(builder.Configuration);
+// The platform lifecycle (#568 M3): its sources, and a client bounded per request.
+builder.Services.Configure<CodeCoverage.PlatformLifecycle.PlatformLifecycleOptions>(builder.Configuration.GetSection(CodeCoverage.PlatformLifecycle.PlatformLifecycleOptions.Section));
+builder.Services.AddHttpClient(CodeCoverage.PlatformLifecycle.PlatformLifecycleOptions.HttpClientName, http =>
+{
+    http.Timeout = TimeSpan.FromSeconds(30);
+    http.DefaultRequestHeaders.UserAgent.ParseAdd("CodeCoverage-PlatformLifecycle");
+});
 // Outgoing mail (#460 M8, D10): MailManager under Spark:Mail. Added only when a relay
 // (Spark:Mail:Smtp:Host) AND a sender (Spark:Mail:From:Address) are configured; compose maps both
 // from MAIL_HOST / MAIL_FROM_ADDRESS, and an unset MAIL_FROM_ADDRESS leaves mail off. Without it the

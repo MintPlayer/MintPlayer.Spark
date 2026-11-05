@@ -4,8 +4,11 @@ on:
   push:
     branches:
       - 'master'
+      # Release lines (#568 D1): `versioning.lines` in coverage.yml decides what each line releases; without it,
+      # `versioning.releaseBranches` does (#153 D10), and a branch neither names is refused by the versioning step.
+      - 'release/**'
 
-# One run at a time on master. Besides saving runners, this serialises the schema-revision job
+# One run at a time per branch (a line runs beside master: #568 S9 scopes each plan's staleness check to its own line). Besides saving runners, this serialises the schema-revision job
 # below: two runs deciding "the schemas changed, the next revision is v{n+1}" at the same time
 # would both try to create it. A run cancelled part-way is harmless there: the release is created
 # by one API call, and the next run compares against whatever exists.
@@ -85,6 +88,24 @@ jobs:
           --jq '.[] | select(.draft | not) | .tag_name' \
           | sed -nE 's|^schemas/v([0-9]+)$|\1|p' | sort -n | tail -1)"
         latest="${latest:-0}"
+
+        # A release line (#568) never publishes a revision: the newest one is master's. It embeds the newest published
+        # revision whose schemas its own code generates, and a line whose schemas match none fails here, before
+        # anything is built: a backport that changes the schemas is the owner's call, not the bot's.
+        if [ "$GITHUB_REF_NAME" != "${{ github.event.repository.default_branch }}" ]; then
+          for candidate in $(seq "$latest" -1 1); do
+            published="$RUNNER_TEMP/schemas-v$candidate"
+            mkdir -p "$published"
+            gh release download "schemas/v$candidate" --repo "$REPO" --dir "$published" --pattern '*.schema.json' || continue
+            if diff -r -q "$GITHUB_WORKSPACE/schemas" "$published" > /dev/null; then
+              echo "The schemas match schemas/v$candidate."
+              echo "revision=$candidate" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          done
+          echo "::error::The schemas of $GITHUB_REF_NAME match no published schemas/v{n} release, and a release line never publishes one."
+          exit 1
+        fi
 
         changed=true
         if [ "$latest" -gt 0 ]; then

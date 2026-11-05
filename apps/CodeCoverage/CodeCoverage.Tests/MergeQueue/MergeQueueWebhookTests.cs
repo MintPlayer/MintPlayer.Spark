@@ -6,6 +6,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using MintPlayer.Spark.Webhooks.GitHub.Configuration;
 using MintPlayer.Spark.Webhooks.GitHub.Messages;
+using NSubstitute;
 using Octokit.Webhooks;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Session;
@@ -22,9 +23,9 @@ public class MergeQueueWebhookTests : CoverageRavenTest
 {
     private const long AppId = 4242;
     private const string Sha = "3333333333333333333333333333333333333333";
-    private static readonly string RepositoryId = Entities.Repository.DocumentId(EForgeProvider.GitHub, MergeQueueHarness.RepoGitHubId);
+    internal static readonly string RepositoryId = Entities.Repository.DocumentId(EForgeProvider.GitHub, MergeQueueHarness.RepoGitHubId);
 
-    private static async Task SeedAsync(IDocumentStore store, bool busy)
+    internal static async Task SeedAsync(IDocumentStore store, bool busy)
     {
         using var session = store.OpenAsyncSession();
         await session.StoreAsync(new Entities.Repository
@@ -42,7 +43,7 @@ public class MergeQueueWebhookTests : CoverageRavenTest
         await session.SaveChangesAsync();
     }
 
-    private static async Task<RecordingMessageBus> DeliverAsync(IDocumentStore store, string eventType, string json)
+    internal static async Task<RecordingMessageBus> DeliverAsync(IDocumentStore store, string eventType, string json)
     {
         var bus = new RecordingMessageBus();
         var services = new ServiceCollection();
@@ -419,6 +420,69 @@ public class MergeQueueWebhookTests : CoverageRavenTest
         signal.Kind.Should().Be(EMergeQueueSignal.Merged);
         signal.Number.Should().Be(7);
         signal.Sha.Should().Be(Sha);
+    }
+
+    [Fact]
+    public async Task A_close_a_review_a_run_and_a_check_reach_the_saga_only_while_something_is_queued()
+    {
+        using var store = GetDocumentStore();
+        await SeedAsync(store, busy: true);
+
+        var closed = await ForwardAsync(store, new PullRequestClosed(RepositoryId, 7));
+        var reviewed = await ForwardAsync(store, new PullRequestReviewed(RepositoryId, 7));
+        var run = await ForwardAsync(store, new CiRunCompleted(RepositoryId, 99, Sha, "success"));
+        var checks = await ForwardAsync(store, new CommitChecksChanged(RepositoryId, Sha));
+        // Pull request 8 has no entry: its close and its review are nobody's business.
+        var otherClosed = await ForwardAsync(store, new PullRequestClosed(RepositoryId, 8));
+        var otherReviewed = await ForwardAsync(store, new PullRequestReviewed(RepositoryId, 8));
+
+        closed.Of<MergeQueueSignalMessage>().Should().ContainSingle().Which.Kind.Should().Be(EMergeQueueSignal.Closed);
+        reviewed.Of<MergeQueueSignalMessage>().Should().ContainSingle().Which.Kind.Should().Be(EMergeQueueSignal.Reviewed);
+        var runSignal = run.Of<MergeQueueSignalMessage>().Should().ContainSingle().Which;
+        (runSignal.Kind, runSignal.RunId, runSignal.Sha).Should().Be((EMergeQueueSignal.RunCompleted, 99L, Sha));
+        checks.Of<MergeQueueSignalMessage>().Should().ContainSingle().Which.Kind.Should().Be(EMergeQueueSignal.ChecksChanged);
+        otherClosed.Messages.Should().BeEmpty();
+        otherReviewed.Messages.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Nothing_but_a_command_is_forwarded_for_an_idle_repository_or_a_finished_entry()
+    {
+        using var store = GetDocumentStore();
+        await SeedAsync(store, busy: false);
+        using (var session = store.OpenAsyncSession())
+        {
+            await session.StoreAsync(new MergeQueueEntry { Repository = RepositoryId, Number = 7, State = EMergeQueueEntryState.Merged },
+                MergeQueueEntry.DocumentId(RepositoryId, 7));
+            await session.SaveChangesAsync();
+        }
+
+        var forwarded = new[]
+        {
+            await ForwardAsync(store, new PullRequestClosed(RepositoryId, 7)),
+            await ForwardAsync(store, new PullRequestMerged(RepositoryId, 7, "feature", true, Sha)),
+            await ForwardAsync(store, new PullRequestReviewed(RepositoryId, 7)),
+            await ForwardAsync(store, new CiRunCompleted(RepositoryId, 99, Sha, "success")),
+            await ForwardAsync(store, new CommitChecksChanged(RepositoryId, Sha)),
+            await ForwardAsync(store, new BranchCommitPushed(RepositoryId, "master", Sha, null, null)),
+        };
+
+        forwarded.SelectMany(bus => bus.Messages).Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task The_sagas_lane_hands_every_step_and_signal_to_the_engine()
+    {
+        var engine = Substitute.For<IMergeQueueEngine>();
+        var recipient = new MergeQueueRecipient(engine);
+        var step = new MergeQueueStepMessage { EntryId = MergeQueueEntry.DocumentId(RepositoryId, 7), Run = 1, Generation = 1, Step = default };
+        var signal = new MergeQueueSignalMessage { RepositoryId = RepositoryId, Kind = EMergeQueueSignal.Closed, Number = 7 };
+
+        await recipient.HandleAsync(step);
+        await recipient.HandleAsync(signal);
+
+        await engine.Received(1).HandleStepAsync(step, Arg.Any<CancellationToken>());
+        await engine.Received(1).HandleSignalAsync(signal, Arg.Any<CancellationToken>());
     }
 
     [Fact]

@@ -1,3 +1,4 @@
+using System.Text;
 using CodeCoverage.Versioning.Git;
 using CodeCoverage.Versioning.Releases;
 using CodeCoverage.Versioning.Versions;
@@ -134,6 +135,55 @@ public class TagWriterTests
         var result = await new TagWriter(racing, "origin", ["refs/remotes/origin/main"], Bot).WriteAsync([tag]);
 
         result.Should().ContainSingle().Which.Outcome.Should().Be(TagOutcome.AlreadyPresent);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task A_local_tag_a_failed_run_left_is_replaced_or_kept(bool onTheSameCommit)
+    {
+        using var repository = new Repository();
+        var leftover = onTheSameCommit ? repository.First : repository.Second;
+        (await repository.Git.RunAsync(["tag", "Core/v10.0.0", leftover])).EnsureSuccess("tag");
+
+        var result = await repository.Writer().WriteAsync([Tag("Core", "10.0.0", repository.First)]);
+
+        result.Should().ContainSingle().Which.Outcome.Should().Be(TagOutcome.Created);
+        (await repository.RemoteTagCommitAsync("Core/v10.0.0")).Should().Be(repository.First);
+    }
+
+    [Fact]
+    public async Task The_token_reaches_git_only_on_authenticated_calls_as_a_basic_header()
+    {
+        using var repository = new Repository();
+        var git = new CliTagGit(repository.Git, token: "not-a-secret", username: "bot");
+
+        var authenticated = await git.RunAsync(["config", "--get", "http.extraHeader"], null, authenticated: true, null, default);
+        var anonymous = await git.RunAsync(["config", "--get", "http.extraHeader"], null, authenticated: false, null, default);
+
+        authenticated.Text.Trim().Should().Be("Authorization: Basic " + Convert.ToBase64String(Encoding.UTF8.GetBytes("bot:not-a-secret")));
+        anonymous.ExitCode.Should().Be(1, "no header is configured without authentication");
+    }
+
+    [Fact]
+    public async Task A_git_call_that_outlives_its_timeout_is_killed_and_reported()
+    {
+        using var repository = new Repository();
+        var slow = new GitCli(Path.Combine(repository.Checkout, ".git"), TimeSpan.FromTicks(1));
+
+        var act = () => slow.RunAsync(["log"]);
+
+        (await act.Should().ThrowAsync<GitException>()).Which.Message.Should().StartWith("git timed out after");
+    }
+
+    [Fact]
+    public async Task A_cancelled_git_call_throws_the_cancellation()
+    {
+        using var repository = new Repository();
+
+        var act = () => repository.Git.RunAsync(["log"], cancellationToken: new CancellationToken(canceled: true));
+
+        await act.Should().ThrowAsync<OperationCanceledException>();
     }
 
     /// <summary>Runs <paramref name="beforePush"/> once, just before the first push.</summary>

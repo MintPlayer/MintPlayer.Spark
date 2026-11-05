@@ -1,0 +1,158 @@
+{
+  "$schema": "../../../../../schemas/model.schema.json",
+  "persistentObject": {
+    "id": "2495479c-27d4-478d-ba25-034f4ef45f65",
+    "name": "PlatformRelease",
+    "clrType": "CodeCoverage.Entities.PlatformRelease",
+    "queryType": "CodeCoverage.Indexes.VPlatformRelease",
+    "indexName": "PlatformReleases_Overview",
+    "breadcrumb": "{Platform} {Name}",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "204c8346-eb36-4e08-ab13-aae7f3b97245",
+        "name": "ActiveSupportEndsOn",
+        "dataType": "datetime",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 7,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "d644f406-f8e7-4e51-9871-0f94194b8d4c",
+        "name": "CollectedAtUtc",
+        "dataType": "datetime",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 11,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "6493072b-0d98-40aa-90fe-a4876d0dc829",
+        "name": "IsLts",
+        "dataType": "boolean",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 5,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "5b9e4af2-c6f7-4ef2-8083-ab75f2a65ba6",
+        "name": "LatestVersion",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 9,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "72e7efe1-90ed-42a5-94a9-15102353a2f9",
+        "name": "Major",
+        "dataType": "number",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "49c303c5-a5b9-4ae0-9814-48e241d3f577",
+        "name": "Name",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 3,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "ae421fb8-0fbb-48c8-9b31-ddb81ee2128b",
+        "name": "Phase",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 4,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "fd2edf5f-34af-4ecd-ac0b-9970d123ba04",
+        "name": "Platform",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 1,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "148f52f6-1976-4802-a8e4-fbd4d0534be6",
+        "name": "ReleasedOn",
+        "dataType": "datetime",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 6,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "e59b4c17-d4d4-49d1-80b3-830a1d677150",
+        "name": "Source",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 10,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "b92897b3-952f-4cc1-8041-627bee6b54a5",
+        "name": "SupportEndsOn",
+        "dataType": "datetime",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 8,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      }
+    ],
+    "queries": []
+  },
+  "queries": [
+    {
+      "id": "01c3c921-93c8-4d0b-b3d9-82f86a74339b",
+      "name": "GetPlatformReleases",
+      "source": "Database.PlatformReleases",
+      "alias": "platform-lifecycle",
+      "sortColumns": [
+        {
+          "property": "Platform",
+          "direction": "asc"
+        },
+        {
+          "property": "Major",
+          "direction": "desc"
+        }
+      ],
+      "renderMode": "Pagination",
+      "indexName": "PlatformReleases_Overview",
+      "entityType": "PlatformRelease"
+    }
+  ]
+}

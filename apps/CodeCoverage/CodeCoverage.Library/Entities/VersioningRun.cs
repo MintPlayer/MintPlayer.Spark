@@ -98,11 +98,14 @@ public sealed class VersioningRunBranchCut
     public string Branch { get; set; } = string.Empty;
     public int Major { get; set; }
 
-    /// <summary>The release commit's first parent: the last commit of the old line.</summary>
+    /// <summary>The release commit's first parent, the last commit of the old line; for a release line, the commit that moved to the major.</summary>
     public string Commit { get; set; } = string.Empty;
 
     public List<string> Packages { get; set; } = [];
     public int? PullRequest { get; set; }
+
+    /// <summary>The ecosystem of a release line's cut (#568 D15); null for a D12 cut of the major a package left.</summary>
+    public string? Ecosystem { get; set; }
 
     /// <summary><c>created</c>, <c>exists</c>, <c>disabled</c> or <c>invalid</c> once handled; null while pending.</summary>
     public string? Outcome { get; set; }

@@ -13,12 +13,14 @@ Query/Account
 Query/Build
 Query/Commit
 Query/Home
+Query/PlatformRelease
 Query/Repository
 Query/VersioningRun
 Read/Account
 Read/Build
 Read/Commit
 Read/Home
+Read/PlatformRelease
 Read/Repository
 Read/VersioningRun
 
@@ -30,6 +32,7 @@ Anonymous visitors | grant | QueryRead/Build | c0e5a9e1-0000-4000-8000-000000000
 Anonymous visitors | grant | QueryRead/Commit | c0e5a9e1-0000-4000-8000-000000000003 | app
 Anonymous visitors | deny | QueryRead/Home/AccountCount | c0e5a9e1-0000-4000-8000-000000000088 | app
 Anonymous visitors | deny | QueryRead/Home/RepoCount | c0e5a9e1-0000-4000-8000-000000000089 | app
+Anonymous visitors | grant | QueryRead/PlatformRelease | c0e5a9e1-0000-4000-8000-0000000000aa | app
 Anonymous visitors | grant | QueryRead/Repository | c0e5a9e1-0000-4000-8000-000000000002 | app
 Anonymous visitors | deny | QueryRead/Repository/OwnerKey | c0e5a9e1-0000-4000-8000-000000000083 | app
 Anonymous visitors | deny | QueryRead/Repository/PreviousFullNames | c0e5a9e1-0000-4000-8000-000000000085 | app
@@ -57,6 +60,7 @@ Signed-in users | grant | QueryRead/Build | c0e5a9e1-0000-4000-8000-000000000014
 Signed-in users | grant | QueryRead/Commit | c0e5a9e1-0000-4000-8000-000000000013 | app
 Signed-in users | grant | QueryRead/ForgeCheck | c0e5a9e1-0000-4000-8000-000000000093 | app
 Signed-in users | grant | QueryRead/GitHubProject | c0e5a9e1-0000-4000-8000-000000000062 | app
+Signed-in users | grant | QueryRead/PlatformRelease | c0e5a9e1-0000-4000-8000-0000000000ab | app
 Signed-in users | grant | QueryRead/ProjectColumn | c0e5a9e1-0000-4000-8000-000000000065 | app
 Signed-in users | grant | QueryRead/Repository | c0e5a9e1-0000-4000-8000-000000000012 | app
 Signed-in users | deny | QueryRead/Repository/OwnerKey | c0e5a9e1-0000-4000-8000-000000000084 | app

@@ -90,9 +90,13 @@ public sealed class ScriptedDiffService(CommitComparison? comparison = null)
     /// <summary>How many times git access was asked for.</summary>
     public int GitAccessCalls { get; private set; }
 
+    /// <summary>When set, <see cref="GetGitAccessAsync"/> throws it: an App credential the forge refused.</summary>
+    public Exception? GitAccessFailure { get; set; }
+
     public Task<ForgeGitAccess?> GetGitAccessAsync(Repository repository, CancellationToken cancellationToken = default)
     {
         GitAccessCalls++;
+        if (GitAccessFailure is not null) return Task.FromException<ForgeGitAccess?>(GitAccessFailure);
         return Task.FromResult(repository.Id is not null && GitAccess.TryGetValue(repository.Id, out var access)
             ? access
             : ForgeGitAccess.Anonymous($"https://forge.example.invalid/{repository.FullName}.git"));
@@ -151,8 +155,13 @@ public sealed class ScriptedDiffService(CommitComparison? comparison = null)
         return Task.FromResult(Comparison);
     }
 
+    /// <summary>When set, <see cref="GetFileContentAsync"/> throws it: a forge that cannot serve the file right now.</summary>
+    public Exception? FileFailure { get; set; }
+
     public Task<string?> GetFileContentAsync(Repository repository, string sha, string path, CancellationToken cancellationToken = default)
-        => Task.FromResult(Files.TryGetValue($"{sha}/{path}", out var content) ? content : null);
+        => FileFailure is not null
+            ? Task.FromException<string?>(FileFailure)
+            : Task.FromResult(Files.TryGetValue($"{sha}/{path}", out var content) ? content : null);
 
     /// <summary>Trees by branch name; an unscripted branch lists as null (unavailable).</summary>
     public Dictionary<string, ForgeTree> Trees { get; } = new(StringComparer.Ordinal);

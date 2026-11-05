@@ -8,7 +8,11 @@ namespace CodeCoverage.GitWriter.Jobs;
 /// <summary>A validated <c>POST /jobs/tags</c>.</summary>
 /// <param name="Fingerprint">#552 D3: set for the release of a plan, which the tag history must still match.</param>
 public sealed record TagsJob(string Repo, Uri CloneUrl, GitCredential Credential, IReadOnlyList<string> Branches, GitIdentity Tagger, IReadOnlyList<TagToWrite> Tags,
-    string? Fingerprint = null);
+    string? Fingerprint = null)
+{
+    /// <summary>#568 D17: <see cref="Fingerprint"/> covers only <see cref="Tags"/>' packages at their majors.</summary>
+    public bool FingerprintScoped { get; init; }
+}
 
 /// <summary>
 /// The server host's tag writer (#153 M5, PRD D16). The decisions are the engine's <see cref="TagWriter"/>, the same the
@@ -31,7 +35,7 @@ public sealed class TagService(JobRunner jobs)
             try
             {
                 await ReleaseRun.RequireFreshAsync(new GitCli(context.GitDirectory), job.Tags.Select(t => t.Tag.Name).ToHashSet(StringComparer.Ordinal), fingerprint,
-                    context.Deadline);
+                    context.Deadline, job.FingerprintScoped ? [.. job.Tags.Select(t => t.Tag)] : null);
             }
             catch (StalePlanException e)
             {

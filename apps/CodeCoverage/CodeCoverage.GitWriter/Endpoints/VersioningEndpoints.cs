@@ -48,9 +48,20 @@ internal sealed partial class GitWriterVersioningRunEndpoint : IPostEndpoint<Ver
             || !refusal.Check(request.Run is null || Identifiers.IsRunUrl(request.Run), "run", RunRule))
             return refusal.Result();
 
-        var run = new ReleaseRunRequest(valid, settings, branch == defaultBranch, request.BranchMajor, request.Run);
+        // #568 D1: the line is read from the branch here, never taken from the app, as the major of a release branch is checked.
+        if (!refusal.Check(LineOf(settings, branch, defaultBranch, out var line), "branch", LineRule)) return refusal.Result();
+        var run = new ReleaseRunRequest(valid, settings, branch == defaultBranch, request.BranchMajor, request.Run) { Line = line };
         return Results.Json(await runs.RunAsync(new VersioningRunJob($"{request.Provider}/{request.RepoId}", cloneUrl, credential, branch, defaultBranch, tagger, run,
             request.PlanOnly)), GitWriterHost.Json);
+    }
+
+    public const string LineRule = "the default branch, or a release line of versioning.lines when lines are on";
+
+    /// <summary>The release line of <paramref name="branch"/> when lines are on (#568 D1); false for a branch that is neither it nor the default.</summary>
+    internal static bool LineOf(VersioningSettings settings, string branch, string defaultBranch, out ReleaseLine? line)
+    {
+        line = null;
+        return settings.Lines is not { } lines || branch == defaultBranch || lines.TryMatch(branch, out line);
     }
 
     private static GitIdentity? Tagger(IdentityWire? wire)
@@ -73,6 +84,13 @@ internal sealed partial class GitWriterVersioningRunEndpoint : IPostEndpoint<Ver
         var pins = wire.PrereleasePins ?? [];
         if (pins.Count > Limits.MaxPackagesPerRun || !pins.Keys.All(Identifiers.IsPackageId)) return null;
         if (wire.Prerelease is { } label && !Enum.IsDefined(label) || pins.Values.Any(p => p is { } pin && !Enum.IsDefined(pin))) return null;
+        ReleaseLinePattern? lines = null;
+        if (wire.Lines is { } linesWire && (lines = ReleaseLinePattern.TryParse(linesWire.Text, out _)) is null) return null;
+        var linePins = wire.LinePins ?? [];
+        if (linePins.Count > Limits.MaxPackagesPerRun || !linePins.All(p => Identifiers.IsPackageId(p.Key) && Ecosystems.IsName(p.Value))) return null;
+        var linePrerelease = wire.LinePrerelease ?? [];
+        if (linePrerelease.Count > VersioningConfig.MaxLinePrerelease
+            || !linePrerelease.All(p => ReleaseLine.TryParse(p.Key)?.ToString() == p.Key && (p.Value is not { } label || Enum.IsDefined(label)))) return null;
         return new VersioningSettings
         {
             Ignore = ignore,
@@ -81,6 +99,9 @@ internal sealed partial class GitWriterVersioningRunEndpoint : IPostEndpoint<Ver
             ReleaseBranches = releaseBranches,
             Prerelease = wire.Prerelease,
             PrereleasePins = new Dictionary<string, Versioning.Versions.PrereleaseLabel?>(pins, StringComparer.Ordinal),
+            Lines = lines,
+            LinePins = new Dictionary<string, string>(linePins, StringComparer.Ordinal),
+            LinePrerelease = new Dictionary<string, Versioning.Versions.PrereleaseLabel?>(linePrerelease, StringComparer.Ordinal),
         };
     }
 
@@ -126,9 +147,11 @@ internal sealed partial class GitWriterVersioningPlanEndpoint : IPostEndpoint<Ve
             || !refusal.Check(request.BranchMajor is null or (>= 0 and <= 999_999), "branchMajor", GitWriterVersioningRunEndpoint.BranchMajorRule)
             || refusal.Check(GitWriterVersioningRunEndpoint.Settings(request.Settings), "settings", GitWriterVersioningRunEndpoint.SettingsRule) is not { } settings)
             return refusal.Result();
+        if (!refusal.Check(GitWriterVersioningRunEndpoint.LineOf(settings, branch, defaultBranch, out var line), "branch", GitWriterVersioningRunEndpoint.LineRule))
+            return refusal.Result();
 
         return Results.Json(await runs.PlanAsync(new VersioningPlanJob($"{request.Provider}/{request.RepoId}", cloneUrl, credential, branch, defaultBranch, commit,
-            request.BranchMajor, settings)), GitWriterHost.Json);
+            request.BranchMajor, settings) { Line = line }), GitWriterHost.Json);
     }
 }
 

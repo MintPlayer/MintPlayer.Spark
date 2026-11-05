@@ -90,6 +90,39 @@ public class ProjectGraphTests
         graph.AnchorOf(lib).Major.Should().Be(11);
     }
 
+    [Theory]
+    [InlineData("..\\Directory.Build.props")]
+    [InlineData("$(MSBuildThisFileDirectory)../Directory.Build.props")]
+    public async Task A_props_chain_through_a_relative_import_resolves_and_is_an_input(string import)
+    {
+        var graph = await Build(new InMemoryTree()
+            .Add("Directory.Build.props", "<Project><PropertyGroup><Company>Acme</Company></PropertyGroup></Project>")
+            .Add("src/Directory.Build.props", $"<Project><Import Project=\"{import}\" /><Import Project=\"$(Unknown)\\Other.props\" />"
+                + "<PropertyGroup><PackageId>$(Company).$(MSBuildProjectName)</PackageId></PropertyGroup></Project>")
+            .Add("src/Lib/Lib.csproj", Library()));
+
+        graph.ById("Acme.Lib")!.Inputs.Should().Contain("Directory.Build.props");
+    }
+
+    [Fact]
+    public async Task Directory_Build_targets_and_a_projects_own_imports_are_inputs()
+    {
+        var graph = await Build(new InMemoryTree()
+            .Add("Directory.Build.targets", "<Project />")
+            .Add("build/Pack.targets", "<Project />")
+            .Add("build/Sign.targets", "<Project />")
+            .Add("src/Lib/Lib.csproj", Library(extra: """
+                <Import Project="..\..\build\Pack.targets" />
+                <Import Project="$(MSBuildThisFileDirectory)../../build/Sign.targets" />
+                <Import Project="$(SolutionDir)build/Ignored.targets" />
+                <Import Project="..\..\build\Missing.targets" />
+                """)));
+
+        foreach (var input in new[] { "Directory.Build.targets", "build/Pack.targets", "build/Sign.targets" })
+            graph.ById("Lib")!.Inputs.Should().Contain(input);
+        graph.ById("Lib")!.Inputs.Should().NotContain(i => i.Contains("Ignored") || i.Contains("Missing"));
+    }
+
     [Fact]
     public async Task An_unresolved_target_framework_is_taken_from_the_manifest()
     {

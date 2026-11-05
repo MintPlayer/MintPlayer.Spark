@@ -308,7 +308,8 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
                 return;
         }
 
-        if (!ghAccount.TryGetProperty("id", out var idElement) || !idElement.TryGetInt64(out var accountId))
+        // TryGetInt64 throws on a non-number rather than answering false.
+        if (!ghAccount.TryGetProperty("id", out var idElement) || idElement.ValueKind != JsonValueKind.Number || !idElement.TryGetInt64(out var accountId))
             return;
 
         var login = ghAccount.TryGetProperty("login", out var loginElement) ? loginElement.GetString() : null;
@@ -955,21 +956,4 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
         return await indexes.RepositoriesOfAccountAsync(session, account.Id, MaxRepositoriesPerAccount, ct);
     }
 
-    /// <summary>
-    /// Records the name a repository used to be known by, if it is really changing and we have not
-    /// already recorded it. Capped, because a repository renamed often would otherwise grow an
-    /// unbounded array inside an index.
-    /// </summary>
-
-    private async Task<Commit> GetOrCreateCommit(long repoGitHubId, string sha, CancellationToken ct)
-    {
-        var id = Commit.DocumentId(EForgeProvider.GitHub, repoGitHubId, sha);
-        var commit = await session.LoadAsync<Commit>(id, ct);
-        if (commit is null)
-        {
-            commit = new Commit { Sha = sha, Repository = Repository.DocumentId(EForgeProvider.GitHub, repoGitHubId), FirstSeenAtUtc = DateTimeOffset.UtcNow };
-            await session.StoreAsync(commit, id, ct);
-        }
-        return commit;
-    }
 }

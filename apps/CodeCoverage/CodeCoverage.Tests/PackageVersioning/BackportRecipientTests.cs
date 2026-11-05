@@ -65,6 +65,154 @@ public class BackportRecipientTests : CoverageRavenTest
         await writer.DidNotReceiveWithAnyArgs().VersioningBackportAsync(default!, default);
     }
 
+    private void WriterAnswers(GitWriterBackportResult result)
+        => writer.VersioningBackportAsync(Arg.Any<GitWriterBackportRequest>(), Arg.Any<CancellationToken>()).Returns(result);
+
+    private static GitWriterBackportTargetResult Target(string push, string? detail = null)
+        => new("release/8.x", "backport/7-8.x", new string('d', 40), push, [], detail);
+
+    [Fact]
+    public async Task A_requested_backport_is_queued_on_the_versioning_lane()
+    {
+        var bus = new RecordingMessageBus();
+
+        await new BackportEventsRecipient(bus).HandleAsync(new ForgeWebhookMessage<BackportRequested>(EForgeProvider.GitHub,
+            new BackportRequested(RepositoryId, 7, ["8.x"], "maintainer", EBackportSource.Label)));
+
+        bus.Of<BackportMessage>().Should().ContainSingle().Which.Should().BeEquivalentTo(new BackportMessage
+        {
+            RepositoryId = RepositoryId, Number = 7, Lines = ["8.x"], ActorLogin = "maintainer", Source = EBackportSource.Label,
+        });
+    }
+
+    [Theory]
+    [InlineData(EBackportSource.Comment, true)]
+    [InlineData(EBackportSource.Label, false)]
+    public async Task An_unmerged_pull_request_is_told_to_use_the_label_only_when_asked_by_comment(EBackportSource source, bool commented)
+    {
+        using var store = GetDocumentStore();
+        forge.PullRequest = forge.PullRequest! with { Merged = false, MergeCommitSha = null };
+
+        await HandleAsync(store, "maintainer", source, "8.x");
+
+        forge.Comments.Select(c => c.Body).Should().HaveCount(commented ? 1 : 0);
+        if (commented) forge.Comments.Single().Body.Should().Contain("Add the label `backport: 8.x`");
+        await writer.DidNotReceiveWithAnyArgs().VersioningBackportAsync(default!, default);
+    }
+
+    [Fact]
+    public async Task A_repository_without_a_versioning_section_has_nothing_to_backport_to()
+    {
+        using var store = GetDocumentStore();
+        integration.GetFileContentAsync(Arg.Any<Repository>(), "main", CoverageYml.FileName, Arg.Any<CancellationToken>()).Returns("coverage:\n  minimum: 80\n");
+
+        await HandleAsync(store, "maintainer", EBackportSource.Comment, "8.x");
+
+        forge.Comments.Single().Body.Should().Contain("has no versioning section");
+    }
+
+    public static TheoryData<string, Exception?> WriterUnavailable => new()
+    {
+        { "no-access", null },
+        { "refused", new GitWriterRefusedException("versioning/backport", "commit", "a sha") },
+        { "down", new HttpRequestException("Connection refused") },
+        { "timeout", new TaskCanceledException("The request timed out") },
+    };
+
+    [Theory]
+    [MemberData(nameof(WriterUnavailable))]
+    public async Task A_writer_that_cannot_run_the_backport_says_so_and_ends_the_credential(string why, Exception? thrown)
+    {
+        using var store = GetDocumentStore();
+        if (why == "no-access")
+            git.GetWriterAccessAsync(Arg.Any<Repository>(), null, false, Arg.Any<CancellationToken>()).Returns(new ForgePushAccess(null, "App not installed"));
+        else
+            writer.VersioningBackportAsync(Arg.Any<GitWriterBackportRequest>(), Arg.Any<CancellationToken>()).Returns<GitWriterBackportResult>(_ => throw thrown!);
+
+        await HandleAsync(store, "maintainer", EBackportSource.Label, "8.x");
+
+        forge.Comments.Single().Body.Should().Contain("could not run").And.Contain("add the label again");
+        await git.Received(why == "no-access" ? 0 : 1).RevokeWriterAccessAsync(Arg.Any<Repository>(), Arg.Any<ForgeWriterAccess>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task A_conflict_names_the_files_and_the_cherry_pick_and_a_failure_its_reason()
+    {
+        using var store = GetDocumentStore();
+        WriterAnswers(new GitWriterBackportResult(GitWriterBackportResult.Conflicted, null, "squash", null,
+            [new("release/8.x", "backport/7-8.x", null, null, ["src/Guard.cs"])], null, 1));
+
+        await HandleAsync(store, "maintainer", EBackportSource.Label, "8.x");
+
+        forge.Comments.Single().Body.Should().Contain("`src/Guard.cs`").And.Contain($"git cherry-pick -x {Merge}\n");
+
+        WriterAnswers(new GitWriterBackportResult("failed", "clone-failed", null, null, null, "remote hung up", 1));
+        await HandleAsync(store, "maintainer", EBackportSource.Label, "8.x");
+
+        forge.Comments[1].Body.Should().Be("The backport failed (clone-failed). remote hung up");
+    }
+
+    [Fact]
+    public async Task Each_line_reports_what_happened_to_it()
+    {
+        using var store = GetDocumentStore();
+        foreach (var major in new[] { "7", "6" })
+            git.GetBranchHeadAsync(Arg.Any<Repository>(), $"release/{major}.x", Arg.Any<CancellationToken>()).Returns(new string(major[0], 40));
+        WriterAnswers(new GitWriterBackportResult(GitWriterBackportResult.Backported, null, "squash", null,
+        [
+            Target(GitWriterBackportTargetResult.Exists) with { Branch = "release/8.x" },
+            Target(GitWriterBackportTargetResult.Empty) with { Branch = "release/7.x", Head = "backport/7-7.x" },
+            Target("rejected", "protected branch") with { Branch = "release/6.x", Head = "backport/7-6.x" },
+        ], null, 1));
+
+        await HandleAsync(store, "maintainer", EBackportSource.Label, "8.x", "7.x", "6.x");
+
+        forge.Comments.Single().Body.Should().Be(
+            "Backports:\n\n"
+            + "- `release/8.x`: `backport/7-8.x` exists already; nothing was pushed.\n"
+            + "- `release/7.x`: already holds this change.\n"
+            + "- `release/6.x`: the push was rejected. protected branch");
+        forge.OpenedPullRequests.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task The_commit_subjects_sent_are_one_line_each_and_bounded()
+    {
+        using var store = GetDocumentStore();
+        git.GetPullRequestCommitsAsync(Arg.Any<Repository>(), 7, Arg.Any<CancellationToken>()).Returns(
+        [
+            new ForgePullRequestCommit("a", null, null, null, false, "fix: guard\n\nThe body is not a subject."),
+            new ForgePullRequestCommit("b", null, null, null, false, "   "),
+            new ForgePullRequestCommit("c", null, null, null, false, new string('x', 300)),
+        ]);
+        WriterAnswers(new GitWriterBackportResult(GitWriterBackportResult.Backported, null, "squash", null, [], null, 1));
+
+        await HandleAsync(store, "maintainer", EBackportSource.Label, "8.x");
+
+        await writer.Received(1).VersioningBackportAsync(
+            Arg.Is<GitWriterBackportRequest>(r => r.Subjects.SequenceEqual(new[] { "fix: guard", "(no subject)", new string('x', 256) })),
+            Arg.Any<CancellationToken>());
+        forge.Comments.Should().BeEmpty("a backport with no targets to report says nothing");
+    }
+
+    public static TheoryData<Exception> ForgeFailures => new()
+    {
+        new ForgeAccessDeniedException("Resource not accessible by integration", "pull_requests=write"),
+        new ForgeRequestException("GitHub answered 502", 502),
+    };
+
+    [Theory]
+    [MemberData(nameof(ForgeFailures))]
+    public async Task A_forge_that_refuses_or_fails_is_logged_not_thrown(Exception thrown)
+    {
+        using var store = GetDocumentStore();
+        git.GetActorRoleAsync(Arg.Any<Repository>(), "maintainer", Arg.Any<CancellationToken>()).Returns<EForgeRepositoryRole>(_ => throw thrown);
+
+        await HandleAsync(store, "maintainer", EBackportSource.Comment, "8.x");
+
+        forge.Comments.Should().BeEmpty();
+    }
+
     [Fact]
     public async Task A_label_or_comment_needs_write_access_but_a_merge_does_not()
     {

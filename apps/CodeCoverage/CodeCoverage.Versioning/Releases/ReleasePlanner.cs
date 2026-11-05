@@ -31,6 +31,18 @@ public sealed record VersioningSettings
 
 	/// <summary><c>versioning.packages.&lt;id&gt;.prerelease</c>: a label, or null for <c>upstream</c>; wins over <see cref="Prerelease"/>.</summary>
 	public IReadOnlyDictionary<string, PrereleaseLabel?> PrereleasePins { get; init; } = new Dictionary<string, PrereleaseLabel?>();
+
+	/// <summary><c>versioning.lines</c> (#568 D15): packages release only from these lines; null releases from the default branch (D18).</summary>
+	public ReleaseLinePattern? Lines { get; init; }
+
+	/// <summary><c>versioning.packages.&lt;id&gt;.line</c> (#568 D19): the ecosystem a package releases in.</summary>
+	public IReadOnlyDictionary<string, string> LinePins { get; init; } = new Dictionary<string, string>();
+
+	/// <summary>
+	/// <c>versioning.lines.prerelease</c> (#568 D14), keyed by <see cref="ReleaseLine.ToString"/>: a label, or null for
+	/// <c>upstream</c>; on its line it wins over <see cref="Prerelease"/>, and a package pin wins over it.
+	/// </summary>
+	public IReadOnlyDictionary<string, PrereleaseLabel?> LinePrerelease { get; init; } = new Dictionary<string, PrereleaseLabel?>();
 }
 
 /// <summary>What the build knows about one packed package (D5): what static parsing cannot read.</summary>
@@ -68,8 +80,14 @@ public sealed record ReleaseContext
 
 	public bool OnDefaultBranch { get; init; } = true;
 
-	/// <summary>The major of the release branch being built (D10); null on the default branch.</summary>
+	/// <summary>The major of the release branch being built (D10); null on the default branch. Unused when <see cref="Line"/> is set.</summary>
 	public int? BranchMajor { get; init; }
+
+	/// <summary>
+	/// The release line being built when <see cref="VersioningSettings.Lines"/> is on (#568 D1); null elsewhere, which
+	/// then releases nothing (D15).
+	/// </summary>
+	public ReleaseLine? Line { get; init; }
 }
 
 /// <param name="Since">The commit of the previous tag on the package's line; null for a first release (the notes, D15).</param>
@@ -151,6 +169,7 @@ public static class ReleasePlanner
 		var skipped = new List<PackageNote>();
 		var refused = new List<PackageNote>();
 		var byHand = context.Tags.On(context.Head).ToDictionary(t => t.Tag.PackageId, StringComparer.Ordinal);
+		var newestMajors = new Dictionary<string, int?>(StringComparer.Ordinal);
 
 		foreach (var project in order)
 		{
@@ -175,7 +194,18 @@ public static class ReleasePlanner
 			try { anchor = AnchorOf(context, project, facts); }
 			catch (VersioningException e) { refused.Add(new PackageNote(id, e.Message)); continue; }
 
-			var lineMajor = anchor.Major ?? context.BranchMajor ?? history.LastOrDefault()?.Version.Major ?? 1;
+			// #568 D1, D19: with release lines on, a line releases its own ecosystem's packages at its major, and the newest
+			// line of an ecosystem releases its unanchored ones exactly as the default branch did before.
+			var onDefaultBranch = context.OnDefaultBranch;
+			var branchMajor = context.BranchMajor;
+			if (context.Settings.Lines is not null)
+			{
+				if (OutOfLine(context, project, anchor, history, newestMajors) is { } why) { skipped.Add(new PackageNote(id, why)); continue; }
+				onDefaultBranch = anchor.IsFree;
+				branchMajor = anchor.IsFree ? null : context.Line!.Major;
+			}
+
+			var lineMajor = anchor.Major ?? branchMajor ?? history.LastOrDefault()?.Version.Major ?? 1;
 			var lastOnLine = history.LastOrDefault(t => t.Version.Major == lineMajor);
 			var reasons = new List<string>();
 
@@ -206,12 +236,12 @@ public static class ReleasePlanner
 			var apiChanged = !(lastApiHash is not null && facts?.ApiHash is not null && lastApiHash == facts.ApiHash);
 			var decision = VersionCalculator.Next(new VersionRequest(
 				anchor,
-				context.BranchMajor is null ? history.LastOrDefault()?.Version : lastOnLine?.Version,
+				branchMajor is null ? history.LastOrDefault()?.Version : lastOnLine?.Version,
 				history.Select(t => t.Version).ToList(),
 				apiChanged,
 				ReleaseLabel(context, project, anchor, facts, released),
-				context.OnDefaultBranch,
-				context.BranchMajor));
+				onDefaultBranch,
+				branchMajor));
 
 			switch (decision)
 			{
@@ -222,7 +252,7 @@ public static class ReleasePlanner
 						version = groupVersion;
 					}
 					// The package's previous major is the major it computed at its last release, which stands for M(first parent).
-					var movedFrom = context.OnDefaultBranch && !anchor.IsFree && history.LastOrDefault() is { } previous && version.Major > previous.Version.Major
+					var movedFrom = onDefaultBranch && !anchor.IsFree && history.LastOrDefault() is { } previous && version.Major > previous.Version.Major
 						? previous.Version.Major
 						: (int?)null;
 					released[id] = new PlannedRelease(project, version, reasons, facts?.ApiHash, TaggedByHand: false,
@@ -264,6 +294,74 @@ public static class ReleasePlanner
 	}
 
 	/// <summary>
+	/// Why <paramref name="project"/> does not release on this run's line (#568 D1, D15, D19), or null when it does: it
+	/// is of the line's ecosystem and anchored at the line's major, or unanchored and this is its ecosystem's newest line.
+	/// A package that already has tags on this line releases here whatever it now computes, so a backport that moved its
+	/// platform is refused by the version arithmetic rather than skipped in silence.
+	/// </summary>
+	private static string? OutOfLine(ReleaseContext context, ProjectNode project, MajorAnchor anchor, IReadOnlyList<TaggedVersion> history,
+		Dictionary<string, int?> newestMajors)
+	{
+		var pattern = context.Settings.Lines!;
+		if (context.Line is not { } line) return $"Packages release only from release lines ({pattern.Text}), never from this branch.";
+		var ecosystem = Ecosystems.Of(context.Graph, project, context.Settings.LinePins);
+		if (ecosystem is null)
+			return $"{project.Id} is on no release line: set versioning.packages.{project.Id}.line to the ecosystem whose newest line releases it.";
+		if (anchor.IsFree)
+		{
+			if (!newestMajors.TryGetValue(ecosystem, out var newest)) newestMajors[ecosystem] = newest = NewestMajor(context, ecosystem);
+			if (ecosystem == line.Ecosystem && (newest is null || newest <= line.Major)) return null;
+			return newest is { } n
+				? $"An unanchored package releases from the newest {ecosystem} line, {pattern.Format(new ReleaseLine(ecosystem, n))}."
+				: $"An unanchored package releases from the newest {ecosystem} line.";
+		}
+		if (ecosystem == line.Ecosystem && (anchor.Major == line.Major || history.Any(t => t.Version.Major == line.Major))) return null;
+		return $"It releases from {pattern.Format(new ReleaseLine(ecosystem, anchor.Major!.Value))} ({anchor.Source}).";
+	}
+
+	/// <summary>
+	/// The release lines this commit's anchored packages need (#568 D15), each with the packages that put it there. A
+	/// package whose anchor is refused, or that is on no ecosystem, needs none: the run says why on its own.
+	/// </summary>
+	public static IReadOnlyDictionary<ReleaseLine, IReadOnlyList<string>> LinesOf(ReleaseContext context)
+	{
+		var lines = new Dictionary<ReleaseLine, List<string>>();
+		foreach (var package in context.Graph.Packages)
+		{
+			MajorAnchor anchor;
+			try { anchor = AnchorOf(context, package, context.Build.GetValueOrDefault(package.Id!)); }
+			catch (VersioningException) { continue; }
+			if (anchor.IsFree || anchor.Major is not { } major) continue;
+			if (Ecosystems.Of(context.Graph, package, context.Settings.LinePins) is not { } ecosystem) continue;
+			var line = new ReleaseLine(ecosystem, major);
+			if (!lines.TryGetValue(line, out var ids)) lines[line] = ids = [];
+			ids.Add(package.Id!);
+		}
+		return lines.ToDictionary(l => l.Key, l => (IReadOnlyList<string>)l.Value);
+	}
+
+	/// <summary>The highest major any anchored package of <paramref name="ecosystem"/> has a tag at: its newest line (D19).</summary>
+	private static int? NewestMajor(ReleaseContext context, string ecosystem)
+	{
+		int? newest = null;
+		foreach (var package in context.Graph.Packages)
+		{
+			if (Ecosystems.Of(context.Graph, package, context.Settings.LinePins) != ecosystem) continue;
+			try
+			{
+				if (AnchorOf(context, package, context.Build.GetValueOrDefault(package.Id!)).IsFree) continue;
+			}
+			catch (VersioningException)
+			{
+				// Its anchor is refused on its own; it says nothing about the newest line.
+			}
+			foreach (var tag in context.Tags.Of(package.Id!))
+				if (newest is null || tag.Version.Major > newest) newest = tag.Version.Major;
+		}
+		return newest;
+	}
+
+	/// <summary>
 	/// Whether a dependent must follow its released dependency (D4). .NET always follows: the new build raises its
 	/// <c>&gt;=</c> floor. npm follows only when the declared range stops admitting the new version, or a peer's major
 	/// moves; otherwise <c>npm update</c> already picks it up.
@@ -286,7 +384,8 @@ public static class ReleasePlanner
 	{
 		if (context.Settings.Anchors.TryGetValue(project.Id!, out var setting))
 		{
-			var resolved = string.Equals(setting, "free", StringComparison.OrdinalIgnoreCase) ? null
+			// Exact, as VersioningConfig.Validate and MajorAnchor.FromOverride read it: "FREE" is a package id.
+			var resolved = setting == "free" ? null
 				: project.Kind == PackageKind.Npm ? context.Graph.Lockfile?.Resolve(setting, project.Directory)
 				: facts?.ResolvedVersions.GetValueOrDefault(setting);
 			return MajorAnchor.FromOverride(setting, resolved);
@@ -297,12 +396,18 @@ public static class ReleasePlanner
 	/// <summary>
 	/// The label of the release (D8): a pin from <c>versioning.packages.&lt;id&gt;.prerelease</c> or
 	/// <c>versioning.prerelease</c> when there is one, which upstream never overrides; else <see cref="UpstreamLabel"/>.
+	/// On a release line, <c>versioning.lines.prerelease</c> for that line comes between the two (#568 D14).
 	/// </summary>
 	private static PrereleaseLabel? ReleaseLabel(ReleaseContext context, ProjectNode project, MajorAnchor anchor, PackageBuildFacts? facts,
 		Dictionary<string, PlannedRelease> released)
-		=> context.Settings.PrereleasePins.TryGetValue(project.Id!, out var pin)
+	{
+		var settings = context.Settings;
+		var pinned = settings.PrereleasePins.TryGetValue(project.Id!, out var pin)
+			|| context.Line is { } line && settings.LinePrerelease.TryGetValue(line.ToString(), out pin);
+		return pinned
 			? pin ?? UpstreamLabel(context, project, anchor, facts, released)
-			: context.Settings.Prerelease ?? UpstreamLabel(context, project, anchor, facts, released);
+			: settings.Prerelease ?? UpstreamLabel(context, project, anchor, facts, released);
+	}
 
 	/// <summary>
 	/// The least mature prerelease among what the package ships against (D8): its runtime and peer dependencies as
@@ -323,7 +428,10 @@ public static class ReleasePlanner
 		{
 			if (dependency.Id is not { } dependencyId || !dependency.Publishable) continue;
 			internalIds.Add(dependencyId);
-			var version = released.TryGetValue(dependencyId, out var release) ? release.Version : context.Tags.Of(dependencyId).LastOrDefault()?.Version;
+			// #568: on a line, a dependency's tag at the line's major when it has one; another line's prerelease is not what ships here.
+			var history = context.Tags.Of(dependencyId);
+			var lastTag = (context.Line is { } line ? history.LastOrDefault(t => t.Version.Major == line.Major) : null) ?? history.LastOrDefault();
+			var version = released.TryGetValue(dependencyId, out var release) ? release.Version : lastTag?.Version;
 			if (version is not null) versions.Add(version.ToString());
 		}
 		foreach (var dependency in project.Dependencies)

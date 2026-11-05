@@ -6,7 +6,11 @@ namespace CodeCoverage.Versioning.Releases;
 
 /// <summary>One run's inputs beside the repository: the manifest, the repository's settings and the branch's line (D10).</summary>
 /// <param name="Run">The workflow run's page, written into every tag (#544 D5); null writes none.</param>
-public sealed record ReleaseRunRequest(ReleaseManifest Manifest, VersioningSettings Settings, bool OnDefaultBranch, int? BranchMajor, string? Run = null);
+public sealed record ReleaseRunRequest(ReleaseManifest Manifest, VersioningSettings Settings, bool OnDefaultBranch, int? BranchMajor, string? Run = null)
+{
+	/// <summary>The release line being built when <see cref="VersioningSettings.Lines"/> is on (#568 D1).</summary>
+	public ReleaseLine? Line { get; init; }
+}
 
 /// <summary>What a run planned and what became of each tag. <see cref="Tags"/> is empty when the plan refused anything.</summary>
 /// <param name="Notes">Per tag name, the Release text (D15) of each tag the run created or found already in place.</param>
@@ -23,7 +27,14 @@ public sealed record ReleaseRunResult(ReleasePlan Plan, IReadOnlyList<TagWriteRe
 /// <see cref="ReleaseRun.ReleaseAsync"/> validates every field before it writes anything.
 /// </summary>
 /// <param name="Fingerprint">The tag history the plan was decided against, without the plan's own tags (D3).</param>
-public sealed record TagPlan(string Commit, string Fingerprint, string? Run, IReadOnlyList<PlannedTag> Tags);
+public sealed record TagPlan(string Commit, string Fingerprint, string? Run, IReadOnlyList<PlannedTag> Tags)
+{
+	/// <summary>
+	/// #568 D17: the plan was made on a release line, so <see cref="Fingerprint"/> covers only its own packages at their
+	/// planned majors (<see cref="TagHistory.Fingerprint"/>); false keeps #552's whole-history fingerprint (D18).
+	/// </summary>
+	public bool Scoped { get; init; }
+}
 
 public sealed record PlannedTag(string Name, string? ApiHash);
 
@@ -67,7 +78,7 @@ public static class ReleaseRun
 			throw new ReleaseRunException($"The build packed {string.Join(", ", missing)}, which the repository's projects do not declare as publishable packages"
 				+ (graph.Warnings.Count > 0 ? ": " + string.Join(" ", graph.Warnings) : "."));
 
-		var plan = await ReleasePlanner.PlanAsync(new ReleaseContext
+		var context = new ReleaseContext
 		{
 			Graph = graph,
 			Head = head,
@@ -78,7 +89,9 @@ public static class ReleaseRun
 			Sdk = request.Manifest.Sdk,
 			OnDefaultBranch = request.OnDefaultBranch,
 			BranchMajor = request.BranchMajor,
-		}, cancellationToken);
+			Line = request.Line,
+		};
+		var plan = await ReleasePlanner.PlanAsync(context, cancellationToken);
 
 		// All or nothing: a refused package (a major past its line, a lockstep group split across majors) stops the run
 		// before any tag is pushed, so a rerun after the fix starts from the same history.
@@ -99,9 +112,11 @@ public static class ReleaseRun
 
 		// A cut follows a tag in place, never a refused or failed one: the branch marks a line that was really left.
 		var warnings = graph.Warnings.ToList();
-		var cuts = request.OnDefaultBranch
-			? await ReleaseBranchCuts.ForAsync(git, head, placedReleases, request.Settings.ReleaseBranches, warnings, cancellationToken)
-			: [];
+		// With release lines on (#568 D15), the default branch tags nothing and instead cuts the line of each major it moved to.
+		var cuts = !request.OnDefaultBranch ? []
+			: request.Settings.Lines is { } pattern
+				? await ReleaseBranchCuts.ForLinesAsync(git, head, ReleasePlanner.LinesOf(context), context.Tags, pattern, cancellationToken)
+				: await ReleaseBranchCuts.ForAsync(git, head, placedReleases, request.Settings.ReleaseBranches, warnings, cancellationToken);
 		return new ReleaseRunResult(plan, written, warnings, notes, cuts);
 	}
 
@@ -115,9 +130,10 @@ public static class ReleaseRun
 		var result = await RunAsync(git, recorder, request, cancellationToken);
 		if (result.Plan.Refused.Count > 0) return (result, null);
 		var names = recorder.Recorded.Select(t => t.Tag.Name).ToHashSet(StringComparer.Ordinal);
-		var fingerprint = (await TagHistory.ReadAsync(git, cancellationToken)).Fingerprint(names);
+		var scoped = request.Line is not null;
+		var fingerprint = (await TagHistory.ReadAsync(git, cancellationToken)).Fingerprint(names, scoped ? [.. recorder.Recorded.Select(t => t.Tag)] : null);
 		return (result, new TagPlan(request.Manifest.Commit!, fingerprint, request.Run,
-			[.. recorder.Recorded.Select(t => new PlannedTag(t.Tag.Name, t.Annotation.ApiHash))]));
+			[.. recorder.Recorded.Select(t => new PlannedTag(t.Tag.Name, t.Annotation.ApiHash))]) { Scoped = scoped });
 	}
 
 	/// <summary>
@@ -138,14 +154,19 @@ public static class ReleaseRun
 			tags.Add(new TagToWrite(tag, commit, annotation));
 		}
 
-		await RequireFreshAsync(git, tags.Select(t => t.Tag.Name).ToHashSet(StringComparer.Ordinal), plan.Fingerprint, cancellationToken);
+		await RequireFreshAsync(git, tags.Select(t => t.Tag.Name).ToHashSet(StringComparer.Ordinal), plan.Fingerprint, cancellationToken,
+			plan.Scoped ? [.. tags.Select(t => t.Tag)] : null);
 		return tags.Count == 0 ? [] : await writer.WriteAsync(tags, cancellationToken);
 	}
 
-	/// <summary>Throws <see cref="StalePlanException"/> unless the tag history, without <paramref name="own"/>, is the one the plan saw (#552 D3).</summary>
-	public static async Task RequireFreshAsync(GitCli git, IReadOnlySet<string> own, string fingerprint, CancellationToken cancellationToken = default)
+	/// <summary>
+	/// Throws <see cref="StalePlanException"/> unless the tag history, without <paramref name="own"/>, is the one the plan
+	/// saw (#552 D3); within <paramref name="scope"/> only, for a release line's plan (#568 D17).
+	/// </summary>
+	public static async Task RequireFreshAsync(GitCli git, IReadOnlySet<string> own, string fingerprint, CancellationToken cancellationToken = default,
+		IReadOnlyCollection<VersionTag>? scope = null)
 	{
-		if ((await TagHistory.ReadAsync(git, cancellationToken)).Fingerprint(own) != fingerprint)
+		if ((await TagHistory.ReadAsync(git, cancellationToken)).Fingerprint(own, scope) != fingerprint)
 			throw new StalePlanException("The version tags changed after this plan was made (another run or a hand-pushed tag), so its versions may be wrong. "
 				+ "Use \"Re-run all jobs\" to plan again; \"Re-run failed jobs\" reuses this plan.");
 	}
@@ -156,7 +177,7 @@ public static class ReleaseRun
 	/// run will tag, because an unknown API hash always counts as changed.
 	/// </summary>
 	public static async Task<(ReleasePlan Plan, IReadOnlyList<string> Warnings)> PlanAsync(GitCli git, string head, VersioningSettings settings, bool onDefaultBranch,
-		int? branchMajor, CancellationToken cancellationToken = default)
+		int? branchMajor, CancellationToken cancellationToken = default, ReleaseLine? line = null)
 	{
 		var graph = await ProjectGraphBuilder.BuildAsync(await GitTree.OpenAsync(git, GitCli.RequireObjectId(head), cancellationToken), settings.Ignore, cancellationToken);
 		var plan = await ReleasePlanner.PlanAsync(new ReleaseContext
@@ -168,6 +189,7 @@ public static class ReleaseRun
 			Settings = settings,
 			OnDefaultBranch = onDefaultBranch,
 			BranchMajor = branchMajor,
+			Line = line,
 		}, cancellationToken);
 		return (plan, graph.Warnings);
 	}

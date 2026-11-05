@@ -204,7 +204,7 @@ internal sealed partial class GitWriterTagsEndpoint : IPostEndpoint<TagsRequestW
             || !refusal.Check(request.Fingerprint is null || toWrite.Select(t => t.Commit).Distinct(StringComparer.Ordinal).Count() == 1, "tags", OneCommitRule))
             return refusal.Result();
         return Results.Json(await tags.WriteAsync(new TagsJob($"{request.Provider}/{request.RepoId}", cloneUrl, credential, branches, tagger, toWrite,
-            request.Fingerprint)), GitWriterHost.Json);
+            request.Fingerprint) { FingerprintScoped = request.FingerprintScoped }), GitWriterHost.Json);
     }
 
     public const string FingerprintRule = "null, or a tag-history fingerprint sha256:<64 hex>";

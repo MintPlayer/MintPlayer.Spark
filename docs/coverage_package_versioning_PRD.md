@@ -338,6 +338,14 @@ their code in our container. So:
 
 ### D10 — Release branches and backports (Q7)
 
+> **Correction and supersession (#568, 2026-11-05).**
+> - As shipped, `BackportService` dry-runs with `RollingBranchReplay` but registers **no** `IConflictResolver`:
+>   step 1's "and the `IConflictResolver` registry" never held. Any conflict stops every target (G1 of
+>   [coverage_backport_PRD.md](coverage_backport_PRD.md)).
+> - When `versioning.lines` is set, lines are `release/{ecosystem}-{major}.x`, never `release/*.x`, and packages
+>   release only from lines, never from the default branch (#568 D1, D15).
+> - Without `versioning.lines`, everything below still holds (#568 D18).
+
 - Branches matching `versioning.releaseBranches` (default `release/*.x`) are release lines, versioned exactly like the
   default branch, within the major that the branch's own content computes. If `release/8.x` computes major 9, the run
   fails.
@@ -360,6 +368,11 @@ The action outputs, per npm package, the dist-tag to publish under: `latest` onl
 at 22. NuGet needs nothing (highest version wins).
 
 ### D12 — The bot cuts release branches when a platform major moves (Q12)
+
+> **Superseded when `versioning.lines` is set (#568 D15, 2026-11-05).** The default branch then cuts the **new**
+> major's line (`release/dotnet-12.x`) at the merge commit, and keeps asking until that line has released
+> (`ReleaseBranchCuts.ForLinesAsync`). It no longer cuts the old major at the first parent. Without
+> `versioning.lines`, the text below still holds.
 
 On a push to the default branch, when any package computes `M(merge commit) > M(first parent)`, the server creates
 `release/<M(first parent)>.x` at the first parent if it doesn't exist, and comments on the PR. Free packages never cut a

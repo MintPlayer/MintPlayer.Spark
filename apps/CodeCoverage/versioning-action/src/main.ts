@@ -92,7 +92,9 @@ export function versioningSection(yml: string | null, defaultBranch: string): Re
   const section = root?.versioning;
   if (!section || typeof section !== 'object' || Array.isArray(section))
     throw new Error(`coverage.yml on ${defaultBranch} has no versioning: section.`);
-  return section as Record<string, unknown>;
+  // #568 D15: an empty `lines:` switches release lines on with the default pattern; JSON null would read as absent.
+  const result = section as Record<string, unknown>;
+  return 'lines' in result && result.lines === null ? { ...result, lines: {} } : result;
 }
 
 function defaultBranchOf(eventPath: string): string {

@@ -20,6 +20,9 @@ public class VersioningDispatchState
     /// <summary><c>versioning.releaseBranches</c>, defaults applied.</summary>
     public List<string> ReleaseBranches { get; set; } = [];
 
+    /// <summary><c>versioning.lines.pattern</c> (#568 D2), defaults applied, when release lines are on; they replace <see cref="ReleaseBranches"/>.</summary>
+    public string? LinePattern { get; set; }
+
     public DateTime UpdatedAtUtc { get; set; }
 
     /// <summary><c>Repositories/github/1</c> becomes <c>VersioningDispatchStates/github/1</c>.</summary>

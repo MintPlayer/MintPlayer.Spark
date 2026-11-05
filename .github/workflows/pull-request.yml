@@ -2,7 +2,8 @@ name: pull-request
 
 on:
   pull_request:
-    branches: [ master ]
+    # Release lines too (#568): a backport PR's CI is the compile check against the line's platform.
+    branches: [ master, 'release/**' ]
 
 # A newer push to the same PR supersedes the run in progress, as in the sibling check workflows
 # (code-coverage-image-check.yml and others). Every run is a full round of paid CI, and only the

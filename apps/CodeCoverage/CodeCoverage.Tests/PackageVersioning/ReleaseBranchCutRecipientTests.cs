@@ -87,6 +87,20 @@ public class ReleaseBranchCutRecipientTests : CoverageRavenTest
     }
 
     [Fact]
+    public void A_release_line_cut_says_the_line_was_cut_not_left()
+    {
+        // The same text as the action's cutComment (releases.test.ts).
+        var cut = Cut(12);
+        cut.Branch = "release/dotnet-12.x";
+        cut.Ecosystem = "dotnet";
+
+        ReleaseBranchCutRecipient.Comment(cut).Should().Be(
+            "`Acme.Core` now target dotnet 12, so the release line `release/dotnet-12.x` was cut at aaaaaaaaaaaa. "
+            + "Packages release only from release lines: a change ships once its pull request is backported there.\n\n"
+            + "The branch is protected only when a ruleset matches it.");
+    }
+
+    [Fact]
     public async Task A_name_or_commit_that_is_not_plain_is_never_sent_to_the_forge()
     {
         using var store = GetDocumentStore();

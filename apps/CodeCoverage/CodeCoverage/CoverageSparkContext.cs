@@ -36,4 +36,6 @@ public partial class CoverageSparkContext : SparkContext
 
     // The versioning history (#153 M12): read-only, listed per repository by Custom.Repository_VersioningRuns.
     public IRavenQueryable<VersioningRun> VersioningRuns => Session.Query<VersioningRun>();
+    // The platform lifecycle (#568 M3): public, read-only, written by PlatformLifecycleCronJob.
+    public IRavenQueryable<PlatformRelease> PlatformReleases => Session.Query<PlatformRelease>();
 }

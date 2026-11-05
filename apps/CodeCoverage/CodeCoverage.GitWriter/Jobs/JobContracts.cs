@@ -213,6 +213,8 @@ public sealed class TagsRequestWire
     /// fingerprint; otherwise the job ends <c>stale-plan</c> and writes nothing. Every tag must then be on one commit.
     /// </summary>
     public string? Fingerprint { get; set; }
+    /// <summary>#568 D17: the fingerprint covers only the written packages at their majors (a release line's plan).</summary>
+    public bool FingerprintScoped { get; set; }
 }
 
 public sealed class TagWire
@@ -268,6 +270,17 @@ public sealed class VersioningSettingsWire
     public Versioning.Versions.PrereleaseLabel? Prerelease { get; set; }
     /// <summary><c>versioning.packages.&lt;id&gt;.prerelease</c>: a label, or null for <c>upstream</c>.</summary>
     public Dictionary<string, Versioning.Versions.PrereleaseLabel?>? PrereleasePins { get; set; }
+    /// <summary><c>versioning.lines</c> (#568 D15), as <see cref="Versioning.Releases.ReleaseLinePattern"/> serializes; null keeps them off.</summary>
+    public ReleaseLinesWire? Lines { get; set; }
+    /// <summary><c>versioning.packages.&lt;id&gt;.line</c> (#568 D19).</summary>
+    public Dictionary<string, string>? LinePins { get; set; }
+    /// <summary><c>versioning.lines.prerelease</c> (#568 D14): a label per line, or null for <c>upstream</c>.</summary>
+    public Dictionary<string, Versioning.Versions.PrereleaseLabel?>? LinePrerelease { get; set; }
+}
+
+public sealed class ReleaseLinesWire
+{
+    public string? Text { get; set; }
 }
 
 public sealed class LockstepGroupWire
@@ -284,7 +297,7 @@ public sealed record ReleaseWire(string Id, string Kind, string Version, string 
 public sealed record ReleaseNotesWire(string Name, string Body, bool Prerelease);
 
 /// <summary>A release branch a platform major move asks for (D12); the app creates it behind its auto-cut policy.</summary>
-public sealed record BranchCutWire(string Branch, int Major, string Commit, IReadOnlyList<string> Packages, int? PullRequest);
+public sealed record BranchCutWire(string Branch, int Major, string Commit, IReadOnlyList<string> Packages, int? PullRequest, string? Ecosystem = null);
 
 public sealed record PackageNoteWire(string Id, string Reason);
 

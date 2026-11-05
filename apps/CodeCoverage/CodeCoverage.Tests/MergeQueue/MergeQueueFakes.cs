@@ -367,10 +367,13 @@ internal sealed class FakeGitWriter : IGitWriterSidecar
         return Task.FromResult(PublishResults.Dequeue());
     }
 
+    /// <summary>What a queue-branch deletion answers (or throws); unset, the branch is deleted.</summary>
+    public Func<GitWriterDeleteQueueBranchRequest, GitWriterDeleteResult>? DeleteAnswer { get; set; }
+
     public Task<GitWriterDeleteResult> DeleteQueueBranchAsync(GitWriterDeleteQueueBranchRequest request, CancellationToken cancellationToken = default)
     {
         Deletes.Add(request);
-        return Task.FromResult(new GitWriterDeleteResult(GitWriterOutcomes.Deleted, null, null, 1));
+        return Task.FromResult(DeleteAnswer?.Invoke(request) ?? new GitWriterDeleteResult(GitWriterOutcomes.Deleted, null, null, 1));
     }
 
     // ── The dependency updater's jobs (dependency-updates PRD R4, R14, R16) ─────────────────────────

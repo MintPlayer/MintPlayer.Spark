@@ -40,6 +40,49 @@ public class DotnetApiListingTests
         Lines.Should().Contain("CodeCoverage.Versioning.Tests.Api.ApiFixture.Size public const field CodeCoverage.Versioning.Tests.Api.ApiFixture.Size Large = 2");
     }
 
+    private const string Shapes = "CodeCoverage.Versioning.Tests.Api.ApiFixture.Shapes`2";
+
+    [Theory]
+    [InlineData("System.Char Letter = 'x'")]
+    [InlineData("System.SByte Signed = -1")]
+    [InlineData("System.Int16 Short = -2")]
+    [InlineData("System.UInt16 UShort = 3")]
+    [InlineData("System.UInt32 UInt = 4")]
+    [InlineData("System.UInt64 ULong = 5")]
+    [InlineData("System.Single Single = 1.5")]
+    [InlineData("System.Double Double = 2.25")]
+    [InlineData("System.String Text = \"hi\"")]
+    [InlineData("System.Boolean Flag = true")]
+    public void Every_constant_type_shows_its_value(string field)
+        => Lines.Should().Contain($"{Shapes} public const field {field}");
+
+    [Fact]
+    public void Public_and_protected_events_are_listed_and_private_ones_are_not()
+    {
+        Lines.Should().Contain($"{Shapes} public event System.EventHandler Changed");
+        Lines.Should().Contain($"{Shapes} protected event System.EventHandler Guarded");
+        Lines.Should().NotContain(l => l.Contains("Hidden"));
+    }
+
+    [Fact]
+    public void Generic_parameters_show_their_variance_and_constraints()
+    {
+        Lines.Should().Contain("class CodeCoverage.Versioning.Tests.Api.ApiFixture.Shapes`2<`0:class+System.IComparable`1<!0>, `1:struct+new()+System.ValueType>");
+        Lines.Should().Contain("interface CodeCoverage.Versioning.Tests.Api.ApiFixture.IVariant`2<`0:out, `1:in>");
+        Lines.Should().Contain("CodeCoverage.Versioning.Tests.Api.ApiFixture.IVariant`2 public abstract method !0 Run(!1)");
+        Lines.Should().Contain($"{Shapes} public method !!0 Generic<`0:new()>(!!0)");
+        Lines.Should().Contain($"{Shapes} public method !0 Echo(!0, !1)");
+    }
+
+    [Theory]
+    [InlineData("System.Int32[,] Grid(System.Int32[,])")]
+    [InlineData("System.IntPtr Native(System.UIntPtr)")]
+    [InlineData("System.Void Read(System.Int32&, System.Int32&, out System.Int32&)")]
+    [InlineData("System.Environment+SpecialFolder Folder(System.Environment+SpecialFolder)")]
+    [InlineData("System.Object Nothing(System.Object = null)")]
+    public void Signatures_name_arrays_native_ints_by_ref_parameters_and_nested_framework_types(string method)
+        => Lines.Should().Contain($"{Shapes} public method {method}");
+
     [Fact]
     public void Lines_are_sorted_ordinally_and_the_hash_is_stable()
     {

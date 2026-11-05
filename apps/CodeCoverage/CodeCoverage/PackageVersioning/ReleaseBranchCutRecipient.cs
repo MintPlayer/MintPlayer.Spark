@@ -66,6 +66,10 @@ public partial class ReleaseBranchCutRecipient : IRecipient<CutReleaseBranchesMe
     internal static string Comment(VersioningRunBranchCut cut)
     {
         var major = cut.Major.ToString(CultureInfo.InvariantCulture);
+        if (cut.Ecosystem is { } ecosystem)
+            return $"{string.Join(", ", cut.Packages.Select(p => $"`{p}`"))} now target {ecosystem} {major}, so the release line `{cut.Branch}` was cut at {cut.Commit[..12]}. "
+                + "Packages release only from release lines: a change ships once its pull request is backported there.\n\n"
+                + "The branch is protected only when a ruleset matches it.";
         // "\n" spelled out: a raw literal would carry the checkout's line endings. The action's cutComment is the same text.
         return $"{string.Join(", ", cut.Packages.Select(p => $"`{p}`"))} left major {major}, so `{cut.Branch}` was cut at {cut.Commit[..12]}: "
             + $"patches for the {major}.x line merge there and are versioned as {major}.x.\n\n"

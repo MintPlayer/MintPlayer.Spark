@@ -22,6 +22,22 @@ public class VersioningYmlTests
         parsed.Errors.Should().BeEmpty();
         parsed.Config!.EffectiveMode.Should().Be("server");
         parsed.Config.EffectiveReleaseBranches.Should().BeEquivalentTo(["release/*.x"]);
+        parsed.Config.EffectiveLines.Should().BeNull();
+    }
+
+    [Theory]
+    [InlineData("versioning:\n  lines:\n", "release/{ecosystem}-{major}.x")]
+    [InlineData("versioning:\n  lines: {}\n", "release/{ecosystem}-{major}.x")]
+    [InlineData("versioning:\n  lines:\n    pattern: support/{ecosystem}/{major}\n", "support/{ecosystem}/{major}")]
+    public void A_lines_key_turns_release_lines_on(string yml, string pattern)
+    {
+        // #568 D15: an empty `lines:` is YAML null, and must switch lines on all the same.
+        var parsed = VersioningYml.Parse(yml);
+
+        parsed.Errors.Should().BeEmpty();
+        parsed.Config!.EffectiveLines!.Text.Should().Be(pattern);
+        parsed.Config.IsVersionedBranch("release/dotnet-10.x", "main", out var major).Should().Be(pattern.StartsWith("release/"));
+        parsed.Config.IsVersionedBranch("release/10.x", "main", out _).Should().BeFalse();
     }
 
     [Fact]
