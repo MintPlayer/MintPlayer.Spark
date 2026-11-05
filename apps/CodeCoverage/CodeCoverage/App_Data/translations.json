@@ -3597,6 +3597,11 @@
       "en": "PR size labels",
       "fr": "Étiquettes de taille de PR",
       "nl": "PR-groottelabels"
+    },
+    "backportsSetup": {
+      "en": "Backports",
+      "fr": "Rétroportages",
+      "nl": "Backports"
     }
   },
   "queries": {

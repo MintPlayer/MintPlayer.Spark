@@ -2,6 +2,7 @@
 
 How the app carries a merged change onto older release lines. Versioning itself (tags, releases, `lines:`) is in
 [versioning.md](versioning.md), and the queue that merges backports is in [merge-queue.md](merge-queue.md).
+The in-app guide for users is `/backports/setup` (Guides in the sidebar).
 
 **Who may ask.** A `/backport` comment, or a `backport:` label added to a merged pull request, needs **write access**
 to the repository. Anything less gets a comment saying so, and nothing runs. Labels already on a pull request when it
