@@ -351,7 +351,11 @@ public class BackportTests : WriterTestBase
         origin.Checkout("main").Write("README.md", "fixed\n");
         var squash = origin.Commit("fix: readme (#7)");
         origin.Push("main");
-        File.WriteAllText(Path.Combine(origin.Bare, "hooks", "pre-receive"), "#!/bin/sh\necho 'protected by a ruleset' >&2\nexit 1\n");
+        var hook = Path.Combine(origin.Bare, "hooks", "pre-receive");
+        File.WriteAllText(hook, "#!/bin/sh\necho 'protected by a ruleset' >&2\nexit 1\n");
+        // git runs a hook only when it is executable; Windows has no such bit, Linux CI does.
+        if (!OperatingSystem.IsWindows())
+            File.SetUnixFileMode(hook, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
         var request = Request(origin, squash, ["fix"], "1.x", "2.x");
         request["targets"] = new[] { new { branch = "release/1.x", head = "backport/7-1.x", draft = false }, new { branch = "release/2.x", head = "backport/7-2.x", draft = true } };
 
