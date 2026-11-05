@@ -240,6 +240,9 @@ dry-runs the cherry-pick onto every requested line. Each line is handled on its 
   vanishes, and an edit next to one merges.
 - **A change to the line's own platform is never normalized away.** For example, `net11.0` → `net10.0;net11.0` on
   a .NET 10 line. It merges or conflicts as git decides, and the comment names it.
+- **Conflicts the merge queue may resolve are resolved.** These are conflicts matching the default branch's
+  `mergeQueue.autoResolve` rules (never a line's own copy), with the line's side as the base. The pull request lists
+  each one.
 - **A line that applies** gets `backport/<pr>-<line>` and its own pull request. The CI run on that pull request is
   the compile check against the old target. A line that already holds the change gets nothing.
 - **A line that conflicts** gets nothing pushed. The comment names its files and gives the commands for a manual

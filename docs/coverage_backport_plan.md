@@ -141,7 +141,8 @@ PRD §8.2.
   - Per-line prerelease.
 - **M5 Writer.**
   - Marker normalization (S2, D8) plus the resolver registry in `BackportService` (G1). **Normalization done
-    (2026-11-05).** The resolver registry is still to do: it needs the line's `autoResolve` rules in the request.
+    (2026-11-05).** **Resolvers done (2026-11-05):** the merge queue's resolver, with the default branch's
+    `mergeQueue.autoResolve` rules (O16), as PRD §8.3 records.
   - Independent per-line outcomes (D6), with an empty result reported as already present. **Done (2026-11-05).**
   - Draft-with-markers mode (D7).
 - **M6 Regeneration on backport branches** (S5, D9): dispatch the line's workflow, apply the patch, then open the PR.

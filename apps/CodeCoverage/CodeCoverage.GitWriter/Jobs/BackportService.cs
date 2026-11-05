@@ -4,13 +4,18 @@ using System.Text.RegularExpressions;
 using CodeCoverage.Git;
 using CodeCoverage.Git.Backports;
 using CodeCoverage.Git.MergeQueue;
+using CodeCoverage.Git.MergeQueue.Resolution;
+using MintPlayer.SourceGenerators.Attributes;
 
 namespace CodeCoverage.GitWriter.Jobs;
 
 /// <summary>A validated <c>POST /jobs/versioning/backport</c>.</summary>
 public sealed record BackportJob(
     string Repo, Uri CloneUrl, GitCredential Credential, string SourceBranch, string Commit, int PullRequest, string Title,
-    IReadOnlyList<string> Subjects, GitIdentity Committer, IReadOnlyList<(string Branch, string Head)> Targets);
+    IReadOnlyList<string> Subjects, GitIdentity Committer, IReadOnlyList<BackportTarget> Targets);
+
+/// <summary>A release line, the branch its backport goes to, and the line's own auto-resolve rules (#570 M5).</summary>
+public sealed record BackportTarget(string Branch, string Head, IReadOnlyList<AutoResolveRule> Rules);
 
 /// <summary>
 /// A backport (#153 M10, PRD D10): the merged pull request's change applied to each release branch as one new commit,
@@ -27,8 +32,12 @@ public sealed record BackportJob(
 /// applied as one commit. The message is built here: the title and pull request, then one
 /// <c>(cherry picked from commit …)</c> trailer per original commit, the same trailer <c>git cherry-pick -x</c> writes.
 /// </remarks>
-public sealed partial class BackportService(JobRunner jobs)
+public sealed partial class BackportService
 {
+    [Inject] private readonly JobRunner jobs;
+    [Inject] private readonly GitRunner git;
+    [Inject] private readonly ConflictResolverRegistry registry;
+
     public const string Merge = "merge";
     public const string Squash = "squash";
     public const string Rebase = "rebase";
@@ -58,46 +67,44 @@ public sealed partial class BackportService(JobRunner jobs)
         var message = Message(job, commit, picked);
         var author = Author(commit.Raw) ?? job.Committer;
         var results = new List<BackportTargetResult>();
-        foreach (var (branch, head) in job.Targets)
+        foreach (var (branch, head, rules) in job.Targets)
         {
             var tip = WriterService.Oid(await context.RequireAsync(["rev-parse", "--verify", "refs/heads/" + branch + "^{commit}"]), "rev-parse");
             var (mergeBase, theirs, platformChanges) = await NormalizeAsync(context, job, tip, @base, job.Commit, markerPaths);
-            var merge = await context.GitAsync(["merge-tree", "--write-tree", "-z", "--messages", "--merge-base=" + mergeBase, tip, theirs], null);
-            if (merge.ExitCode is not (0 or 1))
-                throw new GitCommandException("merge-tree", merge);
-            MergeTreeOutput output;
-            try
-            {
-                output = MergeTreeOutput.Parse(merge.StandardOutput);
-            }
-            catch (FormatException e)
-            {
-                throw new GitCommandException("merge-tree", e.Message);
-            }
-            var conflicts = output.Stages.Select(s => s.Path)
-                .Concat(output.Messages.Where(m => m.Type.StartsWith("CONFLICT", StringComparison.Ordinal)).SelectMany(m => m.Paths))
-                .Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToList();
+
+            // The merge queue's resolver (PRD §5.3 step 2), stage 2 the line: a conflict the line's rules allow is resolved
+            // the way the queue would; any other conflict is reported. With no rules every conflict is reported.
+            var resolver = new MergeQueueResolver(git, registry) { Timeout = context.Remaining, ScratchDirectory = context.Scratch, Config = JobContext.WriterConfig };
+            var merged = await resolver.MergeAsync(context.GitDirectory, tip, theirs, rules, context.Deadline, job.Credential, mergeBase);
+            context.EnsureWithinDisk();
 
             // Each line stands on its own (#570 D6): a conflict here holds back no other line.
-            if (merge.ExitCode != 0 || conflicts.Count > 0)
+            if (merged is MergeOutcome.Evicted evicted)
             {
-                results.Add(new BackportTargetResult(branch, head, null, Conflicted, conflicts, platformChanges));
+                var detail = evicted.Reason == EvictionReason.ConflictOutsideAllowList ? null : evicted.Detail;
+                results.Add(new BackportTargetResult(branch, head, null, Conflicted, evicted.Paths, platformChanges, [], detail));
                 continue;
             }
+            var (tree, resolutions) = merged switch
+            {
+                MergeOutcome.Clean clean => (clean.Tree, (IReadOnlyList<ResolutionWire>)[]),
+                MergeOutcome.Resolved resolved => (resolved.Tree, [.. resolved.Resolutions.Select(r => new ResolutionWire(r.Path, r.Strategy, r.Regenerate, r.Rule))]),
+                _ => throw new InvalidOperationException("Unknown merge outcome."),
+            };
             var tipTree = WriterService.Oid(await context.RequireAsync(["rev-parse", "--verify", tip + "^{tree}"]), "rev-parse");
-            if (tipTree == output.Tree)
+            if (tipTree == tree)
             {
-                results.Add(new BackportTargetResult(branch, head, null, Empty, [], platformChanges));
+                results.Add(new BackportTargetResult(branch, head, null, Empty, [], platformChanges, resolutions));
                 continue;
             }
-            var built = WriterService.Oid(await context.RequireAsync(["commit-tree", output.Tree, "-p", tip, "-F", "-"], input: message, author: author, committer: job.Committer),
+            var built = WriterService.Oid(await context.RequireAsync(["commit-tree", tree, "-p", tip, "-F", "-"], input: message, author: author, committer: job.Committer),
                 "commit-tree");
             var push = await WriterService.PushAsync(context, job.CloneUrl, job.Credential, built, "refs/heads/" + head, expected: null);
             results.Add(push switch
             {
-                WriterService.Push.Done or WriterService.Push.UpToDate => new BackportTargetResult(branch, head, built, Created, [], platformChanges),
-                WriterService.Push.LeaseRejected => new BackportTargetResult(branch, head, built, Exists, [], platformChanges),
-                WriterService.Push.Rejected rejected => new BackportTargetResult(branch, head, built, Rejected, [], platformChanges, rejected.Detail),
+                WriterService.Push.Done or WriterService.Push.UpToDate => new BackportTargetResult(branch, head, built, Created, [], platformChanges, resolutions),
+                WriterService.Push.LeaseRejected => new BackportTargetResult(branch, head, built, Exists, [], platformChanges, resolutions),
+                WriterService.Push.Rejected rejected => new BackportTargetResult(branch, head, built, Rejected, [], platformChanges, resolutions, rejected.Detail),
                 _ => throw new InvalidOperationException(),
             });
         }

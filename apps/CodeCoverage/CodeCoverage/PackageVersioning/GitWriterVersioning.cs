@@ -1,4 +1,5 @@
 using CodeCoverage.CommitGraph;
+using CodeCoverage.MergeQueue;
 using CodeCoverage.Versioning.Releases;
 
 namespace CodeCoverage.PackageVersioning;
@@ -79,7 +80,8 @@ public sealed record GitWriterBackportRequest(
     string Provider, string RepoId, string CloneUrl, SidecarCredential Credential, string SourceBranch, string Commit, int PullRequest, string Title,
     IReadOnlyList<string> Subjects, GitWriterTagger Committer, IReadOnlyList<GitWriterBackportTarget> Targets);
 
-public sealed record GitWriterBackportTarget(string Branch, string Head);
+/// <param name="AutoResolve">The merge queue's rules for this line's conflicts (#570 M5); stage 2 is the line.</param>
+public sealed record GitWriterBackportTarget(string Branch, string Head, IReadOnlyList<GitWriterAutoResolve>? AutoResolve = null);
 
 /// <summary>The writer's answer. <see cref="Backported"/> when the job ran; each target then has its own outcome
 /// (#570 D6).</summary>
@@ -92,8 +94,9 @@ public sealed record GitWriterBackportResult(
 /// <param name="Push"><c>created</c>, <c>exists</c>, <c>empty</c> (the line already holds the change), <c>rejected</c>
 /// or <c>conflicted</c> (nothing pushed to this line).</param>
 /// <param name="PlatformChanges">Platform values the change edits on this line's own platform (#570 S2, D8).</param>
+/// <param name="Resolutions">Conflicts the rules resolved; a <c>regenerate</c> one still needs the line's workflow (M6).</param>
 public sealed record GitWriterBackportTargetResult(string Branch, string Head, string? Commit, string? Push, IReadOnlyList<string>? Conflicts, string? Detail = null,
-    IReadOnlyList<GitWriterPlatformChange>? PlatformChanges = null)
+    IReadOnlyList<GitWriterPlatformChange>? PlatformChanges = null, IReadOnlyList<GitWriterBackportResolution>? Resolutions = null)
 {
     public const string Created = "created";
     public const string Exists = "exists";
@@ -103,3 +106,6 @@ public sealed record GitWriterBackportTargetResult(string Branch, string Head, s
 
 /// <summary>One platform value the change edits on the line's platform; <see cref="Before"/> is empty for an added one.</summary>
 public sealed record GitWriterPlatformChange(string Path, string Marker, string Before, string After);
+
+/// <summary>One conflict resolved on a line by an <c>autoResolve</c> rule.</summary>
+public sealed record GitWriterBackportResolution(string Path, string Strategy, bool Regenerate, int Rule);

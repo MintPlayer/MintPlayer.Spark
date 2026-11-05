@@ -99,9 +99,11 @@ public partial class BackportRecipient : IRecipient<BackportMessage>
                 ? $"This pull request has not merged. Add the label `backport: {message.Lines[0]}` and the backport runs when it merges."
                 : null;
 
-        var parsed = VersioningYml.Parse(await integrations.For(repository).GetFileContentAsync(repository, defaultBranch, CoverageYml.FileName, cancellationToken));
+        var yml = await integrations.For(repository).GetFileContentAsync(repository, defaultBranch, CoverageYml.FileName, cancellationToken);
+        var parsed = VersioningYml.Parse(yml);
         if (parsed.Config is not { } config)
             return $"There is nothing to backport to: {CoverageYml.FileName} on {defaultBranch} has no versioning section.";
+        var rules = AutoResolveRules(yml, defaultBranch);
 
         var targets = new List<GitWriterBackportTarget>();
         var unknown = new List<string>();
@@ -114,7 +116,7 @@ public partial class BackportRecipient : IRecipient<BackportMessage>
                 continue;
             }
             if (branch == pull.BaseRef || targets.Any(t => t.Branch == branch)) continue;
-            targets.Add(new GitWriterBackportTarget(branch, $"{HeadPrefix}{pull.Number}-{Slug(line, branch)}"));
+            targets.Add(new GitWriterBackportTarget(branch, $"{HeadPrefix}{pull.Number}-{Slug(line, branch)}", rules));
         }
         if (unknown.Count > 0)
             return $"Nothing was backported: {string.Join(", ", unknown.Select(u => $"`{u}`"))} names no release branch "
@@ -176,9 +178,11 @@ public partial class BackportRecipient : IRecipient<BackportMessage>
                 case GitWriterBackportTargetResult.Created:
                     var opened = await forge.OpenPullRequestAsync(repository, target.Head, target.Branch, $"[{Line(target.Branch)}] {pull.Title}",
                         $"Backport of #{pull.Number} to `{target.Branch}`.\n\nCherry-picked from {commit}. CI on this pull request is the check against the line's platform."
-                        + PlatformNote(target),
+                        + PlatformNote(target) + ResolutionNote(target),
                         cancellationToken);
-                    lines.Add($"- `{target.Branch}`: #{opened}");
+                    lines.Add(target.Resolutions is { Count: > 0 } resolved
+                        ? $"- `{target.Branch}`: #{opened}, with {resolved.Count} conflict{(resolved.Count == 1 ? "" : "s")} resolved automatically"
+                        : $"- `{target.Branch}`: #{opened}");
                     break;
                 case GitWriterBackportTargetResult.Exists:
                     lines.Add($"- `{target.Branch}`: `{target.Head}` exists already; nothing was pushed.");
@@ -199,6 +203,15 @@ public partial class BackportRecipient : IRecipient<BackportMessage>
         return "Backports:\n\n" + string.Join('\n', lines) + ConflictSections(commit, result);
     }
 
+    /// <summary>
+    /// The merge queue's <c>autoResolve</c> rules for a backport's conflicts (#570 M5, PRD §5.3 step 2), from the
+    /// <b>default branch's</b> <c>coverage.yml</c> like everything else here. The line's own copy is never read: merge-queue
+    /// O16's reason holds for lines too, since a widened allow-list pushed to a branch must not govern merges into it. A
+    /// section with errors gives no rules, so every conflict is reported rather than resolved by a half-read list.
+    /// </summary>
+    internal static IReadOnlyList<GitWriterAutoResolve> AutoResolveRules(string? yml, string defaultBranch)
+        => MergeQueueYml.Parse(yml, defaultBranch) is { Section: { } section, Errors.Count: 0 } ? [.. section.AutoResolve.Select(GitWriterAutoResolve.From)] : [];
+
     /// <summary>Per conflicting line: the files, the platform values the change edits there, and the commands to do it
     /// by hand. Empty when no line conflicts.</summary>
     internal static string ConflictSections(string commit, GitWriterBackportResult result)
@@ -216,10 +229,24 @@ public partial class BackportRecipient : IRecipient<BackportMessage>
             builder.Append(CultureInfo.InvariantCulture, $"\n\n`{target.Branch}` conflicts on:\n");
             foreach (var path in (target.Conflicts ?? []).Take(50))
                 builder.Append(CultureInfo.InvariantCulture, $"- `{path}`\n");
+            if (target.Detail is { Length: > 0 } why)
+                builder.Append(CultureInfo.InvariantCulture, $"\n{why}\n");
             builder.Append(PlatformNote(target));
             builder.Append(CultureInfo.InvariantCulture,
                 $"\nTo do it by hand:\n\n```\ngit fetch origin\ngit switch -c {target.Head} origin/{target.Branch}\n{pick}\n```");
         }
+        return builder.ToString();
+    }
+
+    /// <summary>Each conflict the merge queue's rules resolved on the line (PRD §5.3 step 4), and which of them still
+    /// need the line's regenerate workflow: until M6 dispatches it, the pull request's CI is the check.</summary>
+    internal static string ResolutionNote(GitWriterBackportTargetResult target)
+    {
+        if (target.Resolutions is not { Count: > 0 } resolutions)
+            return "";
+        var builder = new StringBuilder("\n\nConflicts resolved by the `mergeQueue.autoResolve` rules (the line's side is stage 2):\n");
+        foreach (var resolution in resolutions.Take(50))
+            builder.Append(CultureInfo.InvariantCulture, $"- `{resolution.Path}`: {resolution.Strategy}{(resolution.Regenerate ? ", needs regenerating" : "")}\n");
         return builder.ToString();
     }
 

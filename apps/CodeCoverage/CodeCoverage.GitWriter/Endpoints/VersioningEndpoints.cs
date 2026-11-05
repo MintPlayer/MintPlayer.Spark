@@ -218,7 +218,8 @@ internal sealed partial class GitWriterVersioningBackportEndpoint : IPostEndpoin
     public const string PullRequestRule = "a pull request number above 0";
     public static readonly string TitleRule = $"1 to {MaxTitle} characters, no control characters";
     public static readonly string SubjectsRule = $"at most {MaxSubjects} commit subjects of 1 to {MaxTitle} characters, no control characters";
-    public static readonly string TargetsRule = $"1 to {MaxTargets} targets with distinct branches and heads, none the source branch, every head a branch under {HeadPrefix}";
+    public static readonly string TargetsRule = $"1 to {MaxTargets} targets with distinct branches and heads, none the source branch, every head a branch under {HeadPrefix}, "
+        + $"each autoResolve list valid ({WireValidation.AutoResolveEntriesRule})";
 
     public static string Path => "/jobs/versioning/backport";
 
@@ -254,15 +255,16 @@ internal sealed partial class GitWriterVersioningBackportEndpoint : IPostEndpoin
     private static GitIdentity? Committer(IdentityWire? wire)
         => wire is not null && MergeQueueWireRules.IsIdentity(wire.Name, wire.Email) ? new GitIdentity(wire.Name!, wire.Email!) : null;
 
-    internal static List<(string Branch, string Head)>? Targets(List<BackportTargetWire>? wires, string source)
+    internal static List<BackportTarget>? Targets(List<BackportTargetWire>? wires, string source)
     {
         if (wires is not { Count: > 0 and <= MaxTargets }) return null;
-        var targets = new List<(string Branch, string Head)>();
+        var targets = new List<BackportTarget>();
         foreach (var wire in wires)
         {
             if (WireValidation.Branch(wire.Branch) is not { } branch || WireValidation.Branch(wire.Head) is not { } head) return null;
             if (branch == source || !head.StartsWith(HeadPrefix, StringComparison.Ordinal) || head.Length == HeadPrefix.Length) return null;
-            targets.Add((branch, head));
+            if (WireValidation.Rules(wire.AutoResolve) is not { } rules) return null;
+            targets.Add(new BackportTarget(branch, head, rules));
         }
         var distinct = targets.Select(t => t.Branch).Concat(targets.Select(t => t.Head)).Distinct(StringComparer.Ordinal).Count() == targets.Count * 2;
         return distinct ? targets : null;

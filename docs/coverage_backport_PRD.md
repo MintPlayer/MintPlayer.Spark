@@ -635,7 +635,29 @@ cascade: 66 of 72 conflicted only because #461 was missing). Script: a throwaway
   - App: `A_conflicting_line_still_lets_the_clean_line_open_its_pull_request`, and the platform note.
 
   **Still M5:**
-  - the line's `autoResolve` rules and the resolver registry;
   - `onConflict: draft` (D7);
   - `backport.markers`.
+- **M5, second part (2026-11-05): the merge queue's resolver on lines (G1, §5.3 step 2).**
+
+  `BackportService` now merges through `MergeQueueResolver.MergeAsync`. It passes the merge base explicitly (new
+  `mergeBase` parameter, a cherry-pick), with stage 2 as the line.
+
+  **The rules come from the default branch's `coverage.yml` `mergeQueue.autoResolve`, never the line's own copy.**
+  Merge-queue O16 (owner, grill 9) holds for lines too: a widened allow-list pushed to a branch must not govern merges
+  into that branch. §5.3's "the line's `autoResolve` rules" is read that way, as the rules that apply to the line. A
+  section with errors gives no rules. The app sends the rules per target (`BackportTargetWire.AutoResolve`), so a future
+  per-line override needs no wire change.
+
+  A conflict outside the rules makes the line `conflicted`. The resolver's other refusals (for example, an unsupported
+  conflict type) are reported with their detail. A resolved line lists its `resolutions`, and the PR body names each
+  path and strategy. A `regenerate` resolution says "needs regenerating" until M6 dispatches the line's workflow.
+
+  **Tests:**
+  - Writer: `A_conflict_the_line_own_rules_allow_is_resolved_with_the_line_side`. A `modelHashes.json` conflict is
+    `conflicted` without rules, and resolved to the line's side with a take-base `anyLine` rule, while the PR's
+    `fix.txt` applies.
+  - Writer: a malformed rule is refused (400).
+  - App: the rules are read from the default branch, a broken section gives none, and resolutions are listed.
+
+  `BackportService` takes its dependencies through `[Inject]` fields (owner preference, 2026-11-05).
 - **Every automatic resolution is listed in the per-line report** (D6): path, strategy, and what each side added.

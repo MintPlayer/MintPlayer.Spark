@@ -188,11 +188,44 @@ public class BackportTests : WriterTestBase
         origin.Ref("refs/heads/backport/7-1.x").Should().BeNull();
     }
 
+    [Fact]
+    public async Task A_conflict_the_line_own_rules_allow_is_resolved_with_the_line_side()
+    {
+        // #570 M5, PRD §5.3 step 2: the merge queue's resolver with the line's autoResolve rules; stage 2 is the line.
+        const string Hashes = "App/App_Data/modelHashes.json";
+        var origin = Seed();
+        origin.Checkout("main").Write(Hashes, "{\n  \"a\": \"seed\"\n}\n");
+        origin.Commit("hashes");
+        origin.Push("main");
+        origin.Checkout("release/1.x", "main").Write(Hashes, "{\n  \"a\": \"line\"\n}\n");
+        origin.Commit("1.x: regenerate");
+        origin.Push("release/1.x");
+        origin.Checkout("main").Write(Hashes, "{\n  \"a\": \"main\"\n}\n").Write("fix.txt", "fixed\n");
+        var squash = origin.Commit("fix: thing (#7)");
+        origin.Push("main");
+
+        var request = Request(origin, squash, ["fix"], "1.x");
+        var unruled = await Writer.BackportAsync(request);
+        unruled.Targets.Single().Push.Should().Be(BackportService.Conflicted);
+        unruled.Targets.Single().Conflicts.Should().Equal(Hashes);
+
+        request["targets"] = new[] { new { branch = "release/1.x", head = "backport/7-1.x", autoResolve = new[] { new { path = "**/App_Data/modelHashes.json", anyLine = true } } } };
+        var response = await Writer.BackportAsync(request);
+
+        var target = response.Targets.Single();
+        target.Push.Should().Be(BackportService.Created, target.Detail);
+        target.Resolutions.Select(r => (r.Path, r.Strategy)).Should().Equal((Hashes, "take-base"));
+        var head = origin.Ref("refs/heads/backport/7-1.x")!;
+        origin.InBare("cat-file", "blob", head + ":" + Hashes).Should().Be("{\n  \"a\": \"line\"\n}\n");
+        origin.InBare("cat-file", "blob", head + ":fix.txt").Should().Be("fixed\n");
+    }
+
     [Theory]
     [InlineData("targets")]
     [InlineData("head")]
     [InlineData("source")]
     [InlineData("title")]
+    [InlineData("rules")]
     public async Task A_malformed_request_is_refused_before_any_git(string broken)
     {
         var origin = Lines();
@@ -203,6 +236,7 @@ public class BackportTests : WriterTestBase
             case "head": request["targets"] = new[] { new { branch = "release/1.x", head = "main" } }; break;
             case "source": request["targets"] = new[] { new { branch = "main", head = "backport/7-main" } }; break;
             case "title": request["title"] = "two\nlines"; break;
+            case "rules": request["targets"] = new[] { new { branch = "release/1.x", head = "backport/7-1.x", autoResolve = new[] { new { path = "a.json", strategy = "guess" } } } }; break;
         }
 
         var response = await Writer.PostBackportAsync(request);

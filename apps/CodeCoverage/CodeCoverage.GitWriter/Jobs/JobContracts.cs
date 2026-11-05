@@ -368,6 +368,9 @@ public sealed class BackportTargetWire
     public string? Branch { get; set; }
     /// <summary>The branch to push the backport to: <c>backport/&lt;pr&gt;-&lt;line&gt;</c>.</summary>
     public string? Head { get; set; }
+    /// <summary>The line's own auto-resolve rules (its <c>coverage.yml</c>, #570 M5, PRD §5.3 step 2), as the merge queue
+    /// sends them; stage 2 is the line. None: every conflict is reported.</summary>
+    public List<AutoResolveWire>? AutoResolve { get; set; }
 }
 
 /// <param name="Commit">The backport commit; null when the target conflicts or already holds the change.</param>
@@ -377,8 +380,12 @@ public sealed class BackportTargetWire
 /// <param name="Conflicts">The paths the target conflicts on; empty when it applies.</param>
 /// <param name="PlatformChanges">The platform values the change itself edits on this line's platform, left to the merge
 /// instead of normalized (#570 S2, D8); empty when there are none.</param>
+/// <param name="Resolutions">The conflicts the line's auto-resolve rules resolved (PRD §5.3 steps 2 and 4); a
+/// <c>regenerate</c> one still needs the line's regenerate workflow (M6).</param>
+/// <param name="Detail">Why a push was rejected, or why a conflict was not resolved.</param>
 public sealed record BackportTargetResult(
-    string Branch, string Head, string? Commit, string? Push, IReadOnlyList<string> Conflicts, IReadOnlyList<PlatformChange> PlatformChanges, string? Detail = null);
+    string Branch, string Head, string? Commit, string? Push, IReadOnlyList<string> Conflicts, IReadOnlyList<PlatformChange> PlatformChanges,
+    IReadOnlyList<ResolutionWire> Resolutions, string? Detail = null);
 
 /// <param name="Outcome"><see cref="JobOutcomes.Backported"/> when the job ran (each target has its own result), or a failure.</param>
 /// <param name="Mode"><c>merge</c>, <c>squash</c> or <c>rebase</c>: how the pull request was merged, which decides the base.</param>

@@ -229,10 +229,45 @@ public class BackportRecipientTests : CoverageRavenTest
 
         await HandleAsync(store, "visitor", EBackportSource.Merge, "8.x");
         await writer.Received(1).VersioningBackportAsync(
-            Arg.Is<GitWriterBackportRequest>(r => r.Commit == Merge && r.SourceBranch == "main" && r.Targets.Single() == new GitWriterBackportTarget("release/8.x", "backport/7-8.x")),
+            Arg.Is<GitWriterBackportRequest>(r => r.Commit == Merge && r.SourceBranch == "main" && r.Targets.Single().Branch == "release/8.x" && r.Targets.Single().Head == "backport/7-8.x"),
             Arg.Any<CancellationToken>());
         forge.OpenedPullRequests.Should().Equal(("backport/7-8.x", "release/8.x", "[8.x] fix: guard",
             $"Backport of #7 to `release/8.x`.\n\nCherry-picked from {Merge}. CI on this pull request is the check against the line's platform."));
+    }
+
+    /// <summary>A queue section that reads clean: take-base needs a regenerate workflow, and no keep-both defaults.</summary>
+    private const string QueueYml = "versioning:\nmergeQueue:\n  postRebaseActionName: regenerate.yml\n  keepBothDefaults: false\n  autoResolve:\n";
+
+    [Theory]
+    [InlineData(QueueYml + "    - path: \"**/App_Data/modelHashes.json\"\n", 1)]
+    [InlineData(QueueYml + "    - path: \"**/App_Data/modelHashes.json\"\n      strategy: guess\n", 0)]
+    [InlineData("versioning:\n", 0)]
+    public void The_rules_come_from_the_default_branch_and_a_broken_section_gives_none(string yml, int count)
+    {
+        // #570 M5: merge-queue O16 holds for lines too; a section with errors resolves nothing.
+        var rules = BackportRecipient.AutoResolveRules(yml, "main");
+
+        rules.Should().HaveCount(count);
+        if (count == 1)
+            (rules.Single().Path, rules.Single().AnyLine).Should().Be(("**/App_Data/modelHashes.json", true));
+    }
+
+    [Fact]
+    public async Task The_default_branch_rules_go_with_every_target_and_resolutions_are_listed()
+    {
+        using var store = GetDocumentStore();
+        integration.GetFileContentAsync(Arg.Any<Repository>(), "main", CoverageYml.FileName, Arg.Any<CancellationToken>())
+            .Returns(QueueYml + "    - path: \"**/packages.lock.json\"\n      strategy: take-base\n");
+        WriterAnswers(new GitWriterBackportResult(GitWriterBackportResult.Backported, null, "squash", null,
+            [Target(GitWriterBackportTargetResult.Created) with { Resolutions = [new("App/packages.lock.json", "take-base", true, 0)] }], null, 1));
+
+        await HandleAsync(store, "maintainer", EBackportSource.Label, "8.x");
+
+        await writer.Received(1).VersioningBackportAsync(
+            Arg.Is<GitWriterBackportRequest>(r => r.Targets.Single().AutoResolve!.Single().Path == "**/packages.lock.json"), Arg.Any<CancellationToken>());
+        forge.OpenedPullRequests.Single().Body.Should().EndWith(
+            "Conflicts resolved by the `mergeQueue.autoResolve` rules (the line's side is stage 2):\n- `App/packages.lock.json`: take-base, needs regenerating\n");
+        forge.Comments.Single().Body.Should().Contain(", with 1 conflict resolved automatically");
     }
 
     [Fact]
