@@ -291,7 +291,7 @@ public class GitHubEventsRecipientTests : CoverageRavenTest
     /// </remarks>
     private static string PullRequestJson(
         string headSha, string baseSha, string action = "opened",
-        bool merged = false, bool headFromFork = false, string? changes = null) => $$"""
+        bool merged = false, bool headFromFork = false, string? changes = null, string labels = "[]") => $$"""
         {
           "action": "{{action}}",
           {{(action == "synchronize" ? $"\"before\": \"{HeadSha}\", \"after\": \"{headSha}\"," : "")}}
@@ -319,7 +319,7 @@ public class GitHubEventsRecipientTests : CoverageRavenTest
             "merged_at": {{(merged ? "\"2026-08-18T10:00:00Z\"" : "null")}},
             "merge_commit_sha": {{(merged ? $"\"{BaseSha}\"" : "null")}},
             "assignee": null, "assignees": [], "requested_reviewers": [],
-            "requested_teams": [], "labels": [], "milestone": null,
+            "requested_teams": [], "labels": {{labels}}, "milestone": null,
             "draft": false, "author_association": "MEMBER", "active_lock_reason": null,
             "merged": {{(merged ? "true" : "false")}}, "mergeable": true, "rebaseable": true, "mergeable_state": "clean",
             "merged_by": null, "comments": 0, "review_comments": 0, "maintainer_can_modify": true,
@@ -621,6 +621,54 @@ public class GitHubEventsRecipientTests : CoverageRavenTest
 
         bus.Messages.OfType<ForgeWebhookMessage<PullRequestMerged>>().Should().ContainSingle()
             .Which.Event.MergeCommitSha.Should().Be(BaseSha, "the fixture's merge_commit_sha");
+    }
+
+    /// <summary>Labels as Octokit requires them, which is every field a delivery carries.</summary>
+    private static string LabelsJson(params string[] names) => "[" + string.Join(',', names.Select((name, i) => $$"""
+        { "id": {{i + 1}}, "node_id": "L_{{i + 1}}", "url": "https://api.github.com/repos/acme/widgets/labels/{{i + 1}}",
+          "name": "{{name}}", "color": "ededed", "default": false, "description": null }
+        """)) + "]";
+
+    private static IEnumerable<BackportRequested> Backports(RecordingMessageBus bus)
+        => bus.Of<ForgeWebhookMessage<BackportRequested>>().Select(m => m.Event);
+
+    /// <summary>
+    /// #153 D10: the backport labels a pull request carried as it merged ask for those lines, as the merger (who may be the
+    /// queue's bot: the label was applied by someone, and the merge needed write access). The merge is still raised.
+    /// </summary>
+    [Fact]
+    public async Task A_merge_carrying_backport_labels_asks_for_those_lines_as_the_merger()
+    {
+        using var store = GetDocumentStore();
+        using var session = store.OpenAsyncSession();
+        await SeedRepositoryAsync(session, EDeleteBranchPolicy.Inherit);
+        var recipient = CreateRecipient(session, out var bus);
+
+        await recipient.HandleAsync(Message("pull_request", PullRequestJson(HeadSha, BaseSha, action: "closed", merged: true,
+            labels: LabelsJson("backport 8.x", "bug", "backport: 9.x", "Backport 8.x"))));
+
+        Backports(bus).Should().ContainSingle().Which.Should().BeEquivalentTo(new BackportRequested(
+            Repository.DocumentId(EForgeProvider.GitHub, RepoId), 42, ["8.x", "9.x"], "acme", EBackportSource.Merge));
+        bus.Of<ForgeWebhookMessage<PullRequestMerged>>().Should().ContainSingle();
+    }
+
+    [Fact]
+    public async Task A_merge_without_backport_labels_or_of_an_unknown_repository_asks_for_nothing()
+    {
+        using var store = GetDocumentStore();
+        using var session = store.OpenAsyncSession();
+        var unknown = CreateRecipient(session, out var unknownBus);
+        await unknown.HandleAsync(Message("pull_request", PullRequestJson(HeadSha, BaseSha, action: "closed", merged: true,
+            labels: LabelsJson("backport 8.x"))));
+        await SeedRepositoryAsync(session, EDeleteBranchPolicy.Inherit);
+        var recipient = CreateRecipient(session, out var bus);
+
+        await recipient.HandleAsync(Message("pull_request", PullRequestJson(HeadSha, BaseSha, action: "closed", merged: true,
+            labels: LabelsJson("bug", "backported"))));
+
+        Backports(unknownBus).Should().BeEmpty();
+        Backports(bus).Should().BeEmpty();
+        bus.Of<ForgeWebhookMessage<PullRequestMerged>>().Should().ContainSingle();
     }
 
     [Fact]

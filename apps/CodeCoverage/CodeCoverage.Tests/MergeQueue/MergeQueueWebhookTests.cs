@@ -23,9 +23,9 @@ public class MergeQueueWebhookTests : CoverageRavenTest
 {
     private const long AppId = 4242;
     private const string Sha = "3333333333333333333333333333333333333333";
-    private static readonly string RepositoryId = Entities.Repository.DocumentId(EForgeProvider.GitHub, MergeQueueHarness.RepoGitHubId);
+    internal static readonly string RepositoryId = Entities.Repository.DocumentId(EForgeProvider.GitHub, MergeQueueHarness.RepoGitHubId);
 
-    private static async Task SeedAsync(IDocumentStore store, bool busy)
+    internal static async Task SeedAsync(IDocumentStore store, bool busy)
     {
         using var session = store.OpenAsyncSession();
         await session.StoreAsync(new Entities.Repository
@@ -43,7 +43,7 @@ public class MergeQueueWebhookTests : CoverageRavenTest
         await session.SaveChangesAsync();
     }
 
-    private static async Task<RecordingMessageBus> DeliverAsync(IDocumentStore store, string eventType, string json)
+    internal static async Task<RecordingMessageBus> DeliverAsync(IDocumentStore store, string eventType, string json)
     {
         var bus = new RecordingMessageBus();
         var services = new ServiceCollection();
