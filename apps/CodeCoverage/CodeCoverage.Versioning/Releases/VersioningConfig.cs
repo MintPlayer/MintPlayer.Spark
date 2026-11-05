@@ -25,6 +25,7 @@ namespace CodeCoverage.Versioning.Releases;
 ///   releaseBranches: ["release/*.x"] # D10, unused when lines are on
 ///   lines:                           # #568 D15: packages release only from release lines, never from the default branch
 ///     pattern: release/{ecosystem}-{major}.x # D2, the default
+///   dependencyRanges: minimum        # #568 D10b: minimum (>= x, the default) or major-bounded ([x, nextMajor))
 ///   ignore: ["**/*.md"]              # D4: changed files that never release a package
 ///   prerelease: preview              # D8: every package releases with this label until the line is removed
 ///   groups:                          # D13
@@ -62,6 +63,16 @@ public sealed class VersioningConfig
 	/// <summary>#568 D15: present (even empty) turns release lines on; absent keeps default-branch releases (D18).</summary>
 	public VersioningLinesConfig? Lines { get; set; }
 
+	/// <summary>
+	/// #568 D10b: how an in-repo dependency (ProjectReference) packs: <c>minimum</c> (absent: <c>&gt;= x</c>) or
+	/// <c>major-bounded</c> (<c>[x, nextMajor)</c>). The versioning action hands it to the pack as the MSBuild property
+	/// <c>MintPlayerVersioningDependencyRanges</c>.
+	/// </summary>
+	public string? DependencyRanges { get; set; }
+
+	public const string MinimumRanges = "minimum";
+	public const string MajorBoundedRanges = "major-bounded";
+
 	public string EffectiveMode => Mode ?? ServerMode;
 
 	public IReadOnlyList<string> EffectiveReleaseBranches => ReleaseBranches is { Count: > 0 } ? ReleaseBranches : Releases.ReleaseBranches.Default;
@@ -76,6 +87,8 @@ public sealed class VersioningConfig
 			errors.Add("versioning.dispatch must be a workflow file name under .github/workflows, such as publish.yml.");
 		if (!IsPrerelease(Prerelease))
 			errors.Add($"versioning.prerelease must be one of alpha, beta, next, preview, rc or {UpstreamPrerelease}.");
+		if (DependencyRanges is not (null or MinimumRanges or MajorBoundedRanges))
+			errors.Add($"versioning.dependencyRanges must be '{MinimumRanges}' or '{MajorBoundedRanges}'.");
 
 		if (ReleaseBranches is { } branches)
 		{

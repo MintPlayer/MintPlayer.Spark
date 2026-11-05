@@ -999,3 +999,35 @@ cascade: 66 of 72 conflicted only because #461 was missing). Script: a throwaway
   second only proposes labels a maintainer removes, and its backport needs the merge. The other forges raise none of
   these commands.
 - **Every automatic resolution is listed in the per-line report** (D6): path, strategy, and what each side added.
+
+### 8.4 Spikes and implementation decisions (#571, 2026-11-05)
+
+- **S4, packing on a line: confirmed, nothing to build for the default.** I built a scratch repository with projects
+  `A → B` (`ProjectReference`) that import `MintPlayer.Versioning.MSBuild.targets` from source. It is tagged `A/v10.0.0`
+  and `B/v10.0.0` at the base, `B/v10.1.0` and `A/v10.0.1` on `release/dotnet-10.x`, and `B/v11.0.0` and `A/v11.0.0` on
+  `main`. `dotnet pack A` (SDK 11.0.100-rc.3) on the line gives `A.10.0.1.nupkg` with
+  `<dependency id="B" version="10.1.0" />`. On `main` it gives `A.11.0.0` with `B 11.0.0`. Master's `B/v11.0.0` is
+  unreachable from the line, so D10b's default (`>=` the line's tag) holds as built. The reason is that
+  `MintPlayerVersioning` runs before `_GetOutputItemsFromPack`, and NuGet's `_GetProjectVersion` reads the referenced
+  project's `PackageVersion` from it.
+- **S4, the cost of `major-bounded`: one target, no NuGet task change.** The target runs `AfterTargets="_GetProjectReferenceVersions"`
+  and rewrites `_ProjectReferencesWithVersions`' `ProjectVersion` metadata to `[v, (major+1).0.0)`. NuGet's pack accepts
+  a range there: the line gives `version="[10.1.0, 11.0.0)"` and `main` gives `"[11.0.0, 12.0.0)"`. It only adds a
+  target to `MintPlayer.Versioning.MSBuild.targets`, behind the property `MintPlayerVersioningDependencyRanges=major-bounded`.
+- **S8, onboarding inventory.** Two onboardings open a pull request today:
+  - **Versioning:** the `SetUpVersioning` custom action → `VersioningOnboardingService` → GitWriter
+    `/jobs/versioning/onboarding`, branch `mintplayer/versioning-onboarding`.
+  - **Dependency updates:** the `dependency-updates-onboard` page and the `EnableDependencyUpdates` action → the engine →
+    GitWriter `/jobs/dependencies/files`, branch `mintplayer/dependencies-onboarding`.
+
+  Five more are static copy-paste guides with no state: `coverage/setup`, `merge-queue/setup` (regenerate workflow,
+  App permissions, ruleset steps), `pr-size-labels/setup`, `backports/setup` and `dependency-updates/setup`. What the two
+  PR flows share: the permission gate (`IDependencyOnboardingService.CheckAsync`), `IRepositoryTree`, the forge
+  pull-request find → create/update calls (`IForgeDependencyUpdates`), and the writer access calls. What they don't
+  share:
+  - each writes coverage.yml text its own way (no shared YAML editing);
+  - each GitWriter endpoint has its own path allow-list;
+  - each detects "already onboarded" differently;
+  - there is no single list of features and the App permissions each one needs.
+- **S7 (renaming a branch as the App): not run yet.** It needs the dev App on the scratch repository, and it is a live
+  check like S5.

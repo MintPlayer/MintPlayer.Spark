@@ -79,6 +79,26 @@ public class RealPackTests(RealPackTests.Repo repo) : IClassFixture<RealPackTest
         }
     }
 
+    // #571 S4 (backport PRD D10b): an in-repo dependency packs as ">= its tag" by default; the opt-in caps it below the next
+    // major, a prerelease included.
+    [Fact]
+    public void A_major_bounded_range_caps_an_in_repo_dependency_below_its_next_major()
+    {
+        repo.Tag("A/v1.2.3", "B/v11.0.0-preview.5");
+        try
+        {
+            repo.Pack("A/A.csproj", Push).Nuspec("A.1.2.3.nupkg")
+                .Should().Contain("<dependency id=\"B\" version=\"11.0.0-preview.5\"");
+
+            repo.Pack("A/A.csproj", Push, "-p:MintPlayerVersioningDependencyRanges=major-bounded").Nuspec("A.1.2.3.nupkg")
+                .Should().Contain("<dependency id=\"B\" version=\"[11.0.0-preview.5, 12.0.0)\"");
+        }
+        finally
+        {
+            repo.Untag("A/v1.2.3", "B/v11.0.0-preview.5");
+        }
+    }
+
     public sealed record PackResult(int ExitCode, string Output, string Folder)
     {
         public IReadOnlyList<string> Packages => Directory.Exists(Folder)

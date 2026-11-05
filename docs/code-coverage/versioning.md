@@ -197,6 +197,7 @@ versioning:
   releaseBranches: ["release/*.x"]   # release lines (D10); default release/*.x, at most 16
   ignore: ["**/*.md"]                # changed files that release nothing (D4); this list REPLACES the default
   prerelease: preview                # D8: alpha | beta | next | preview | rc | upstream; default upstream
+  dependencyRanges: minimum          # #568 D10b: minimum (>= x, the default) | major-bounded ([x, nextMajor))
   groups:                            # lockstep groups (D13)
     - name: mapper
       packages: [MintPlayer.Mapper, MintPlayer.Mapper.*]
@@ -212,6 +213,12 @@ versioning:
 - **`prerelease`** sets the label outright; upstream prereleases never override it. `upstream` (the default) mirrors
   the least mature upstream label, the SDK included. A per-package pin wins over the repository's.
 
+- **`dependencyRanges`**: a `ProjectReference` packs as a NuGet dependency on the referenced package's version. With
+  `minimum` (the default) that's `>= x`, where x is the referenced package's highest tag reachable from the commit. On
+  a release line that's the line's own tag, never the default branch's newer major. The target framework already
+  stops a net10 consumer from restoring the net11 package (NU1202). `major-bounded` writes `[x, nextMajor)`. The
+  versioning step sets the MSBuild property `MintPlayerVersioningDependencyRanges` for the pack that follows it, so a
+  pack in another job needs the variable passed on.
 - **`ignore`** globs also keep matching project files out of the package graph. Test fixtures that contain
   `.csproj` or `package.json` files belong here. Leave out `**/*.md` if your packages ship their README.
 - **`groups`**: members release together at the group's highest computed version whenever one of them releases,

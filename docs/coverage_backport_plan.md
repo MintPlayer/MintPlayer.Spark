@@ -177,6 +177,9 @@ PRD §8.2.
     which repository releases each package (`PackageReleaseRecord`); the backport comment names the upstream release
     and which of its pull requests the upstream already backported to the line's major. Details are in PRD §8.3,
     "M8e, built".
+- **#571 progress (2026-11-05, `feat/issue571-dependencies-onboarding`):** S4 and S8 done (PRD §8.4). D10b's default
+  needed nothing. Its opt-in `versioning.dependencyRanges: major-bounded` is built: an MSBuild target, the config key,
+  and the action's exported variable. S7 is a live check, still to do.
 - **M9 Dependencies on lines** (D13): a rolling PR per supported line, platform packages capped at the line's major,
   patch/security default, advisories outside the allowed range flagged. Pack verified by S4 (D10b; no upper bounds,
   opt-in `major-bounded`).

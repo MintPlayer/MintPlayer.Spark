@@ -71,6 +71,16 @@ export interface Outputs {
   allVersions?: Record<string, string>;
   /** phase: plan: the {@link PlanOutput} as JSON, for the release phase's `plan` input. */
   plan?: string;
+  /** Environment variables for the steps after this one (the pack), from {@link buildEnvironment}. */
+  environment?: Record<string, string>;
+}
+
+/**
+ * #568 D10b: what coverage.yml's versioning section tells the pack. MSBuild reads an environment variable as a
+ * property, so `dependencyRanges: major-bounded` reaches MintPlayer.Versioning.MSBuild's range target this way.
+ */
+export function buildEnvironment(section: Record<string, unknown>): Record<string, string> {
+  return section.dependencyRanges === 'major-bounded' ? { MintPlayerVersioningDependencyRanges: 'major-bounded' } : {};
 }
 
 export interface Dependencies {
@@ -135,6 +145,8 @@ export interface PlanOutput {
   response: RunResponse;
   /** The manifest's package ids: the release phase has no manifest, and reports `all-versions` over the same set. */
   packages: string[];
+  /** {@link buildEnvironment} of the plan's section, which the release phase exports again for its own pack. */
+  environment?: Record<string, string>;
 }
 
 export async function version(inputs: Inputs, deps: Dependencies): Promise<Outputs> {
@@ -188,7 +200,8 @@ export async function version(inputs: Inputs, deps: Dependencies): Promise<Outpu
   });
 
   const packages = (collected.manifest.packages as { id: string }[]).map((p) => p.id);
-  if (!planOnly) return finish(inputs, deps, mode, response, packages);
+  const environment = buildEnvironment(section);
+  if (!planOnly) return { ...await finish(inputs, deps, mode, response, packages), environment };
 
   for (const warning of response.warnings ?? []) deps.warn(warning);
   const failure = failureOf(response, true);
@@ -197,9 +210,9 @@ export async function version(inputs: Inputs, deps: Dependencies): Promise<Outpu
   // #552 D10: the stamps need no new tag (a release at its planned version, any other package at its last tag), so the
   // plan writes them, and whatever builds between the plan and the tests (a demo, a docs site) reads the right version.
   const distTags = await writeNpm(deps.exec, cwd, response.releases, deps.log, deps.warn);
-  const plan: PlanOutput = { commit: collected.manifest.commit, branch, mode, response, packages };
+  const plan: PlanOutput = { commit: collected.manifest.commit, branch, mode, response, packages, environment };
   return {
-    ...released(response.releases), outcome: 'planned', mode, distTags,
+    ...released(response.releases), outcome: 'planned', mode, distTags, environment,
     allVersions: await allVersionsOf(deps.exec, cwd, packages, response.releases), plan: JSON.stringify(plan),
   };
 }
@@ -275,7 +288,7 @@ async function release(inputs: Inputs, deps: Dependencies, branch: string, defau
     writeFileSync(planFile, JSON.stringify(plan.response));
     response = await pushTags(engineOptions(inputs, deps), { repo: cwd, plan: planFile, branch, out: path.join(work, 'result.json') });
   }
-  return finish(inputs, deps, mode, response, plan.packages ?? []);
+  return { ...await finish(inputs, deps, mode, response, plan.packages ?? []), environment: plan.environment ?? {} };
 }
 
 /**
@@ -360,6 +373,7 @@ export async function run(): Promise<void> {
     core.setOutput('dist-tags', JSON.stringify(outputs.distTags));
     core.setOutput('plan', outputs.plan ?? '');
     core.setOutput('all-versions', JSON.stringify(outputs.allVersions ?? {}));
+    for (const [name, value] of Object.entries(outputs.environment ?? {})) core.exportVariable(name, value);
   } catch (e) {
     core.setFailed((e as Error).message);
   }
