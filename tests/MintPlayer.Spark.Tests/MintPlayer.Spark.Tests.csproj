@@ -83,6 +83,7 @@
     <ProjectReference Include="..\..\libs\notifications\MintPlayer.Spark.Notifications\MintPlayer.Spark.Notifications.csproj" />
     <ProjectReference Include="..\..\libs\boards\MintPlayer.Spark.Boards\MintPlayer.Spark.Boards.csproj" />
     <ProjectReference Include="..\..\libs\sitemap\MintPlayer.Spark.SitemapXml\MintPlayer.Spark.SitemapXml.csproj" />
+    <ProjectReference Include="..\..\libs\minification\MintPlayer.Spark.Minification\MintPlayer.Spark.Minification.csproj" />
     <!-- #238 search: core, the OpenSearch engine provider and the OpenSearch description. -->
     <ProjectReference Include="..\..\libs\search\MintPlayer.Spark.Search\MintPlayer.Spark.Search.csproj" />
     <ProjectReference Include="..\..\libs\search\MintPlayer.Spark.Search.OpenSearch\MintPlayer.Spark.Search.OpenSearch.csproj" />

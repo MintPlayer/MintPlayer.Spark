@@ -28,6 +28,7 @@
 		<ProjectReference Include="..\..\..\libs\history\MintPlayer.Spark.History\MintPlayer.Spark.History.csproj" />
 		<ProjectReference Include="..\..\..\libs\boards\MintPlayer.Spark.Boards\MintPlayer.Spark.Boards.csproj" />
 		<ProjectReference Include="..\..\..\libs\sitemap\MintPlayer.Spark.SitemapXml\MintPlayer.Spark.SitemapXml.csproj" />
+		<ProjectReference Include="..\..\..\libs\minification\MintPlayer.Spark.Minification\MintPlayer.Spark.Minification.csproj" />
 		<ProjectReference Include="..\..\..\libs\search\MintPlayer.Spark.Search\MintPlayer.Spark.Search.csproj" />
 		<ProjectReference Include="..\..\..\libs\search\MintPlayer.Spark.Search.OpenSearch\MintPlayer.Spark.Search.OpenSearch.csproj" />
 		<ProjectReference Include="..\..\..\libs\search\MintPlayer.Spark.OpenSearchDescription\MintPlayer.Spark.OpenSearchDescription.csproj" />

@@ -1,7 +1,8 @@
 namespace MintPlayer.Spark.Abstractions.Builder;
 
 /// <summary>
-/// Where in <c>UseSpark()</c>'s pipeline a registered middleware runs.
+/// Where in the pipeline a registered middleware runs: two points in <c>UseSpark()</c>, and one in the SPA branch
+/// (<see cref="BeforePrerendering"/>).
 /// <para>
 /// Most module middleware wants to run <em>after</em> Spark has authenticated the caller and handled
 /// the request, which is why <see cref="AfterSpark"/> is the default and holds the enum's zero value:
@@ -41,4 +42,20 @@ public enum SparkMiddlewareStage
     /// </para>
     /// </summary>
     BeforeAuthentication = 1,
+
+    /// <summary>
+    /// Inside the SPA branch, just outside the server-side renderer: <c>UseSparkPrerendering()</c> applies it
+    /// immediately before <c>UseSpaPrerendering</c>, not <c>UseSpark()</c> (<c>docs/html_minification_PRD.md</c> G3).
+    /// <para>
+    /// Middleware here wraps the <em>rendered page</em>, not the <c>index.html</c> template the renderer reads
+    /// with its own <c>next()</c>. It runs after the static files, which have already ended their requests, and
+    /// never sees <c>/spark</c> when the app branches the SPA off it. Response compression, registered at the top
+    /// of the pipeline, stays outside it. HTML minification is the motivating case.
+    /// </para>
+    /// <para>
+    /// Only server-rendered apps have this point. Registering for it in an app that never calls
+    /// <c>UseSparkPrerendering()</c> fails the host's start, rather than leaving the middleware silently unused.
+    /// </para>
+    /// </summary>
+    BeforePrerendering = 2,
 }

@@ -12,6 +12,7 @@ using MintPlayer.Spark.Extensions;
 using MintPlayer.Spark.History;
 using MintPlayer.Spark.MailManager;
 using MintPlayer.Spark.Messaging;
+using MintPlayer.Spark.Minification;
 using MintPlayer.Spark.OpenSearchDescription;
 using MintPlayer.Spark.Search;
 using MintPlayer.Spark.Search.OpenSearch;
@@ -58,6 +59,9 @@ builder.Services.AddSpark(builder.Configuration, spark =>
     // docs/spark_ssr_PRD.md: every page is server-rendered with its data. Dates on a first visit render in
     // Brussels time (D10). /home is the "home" board, which names its path in boards.json (D15).
     spark.AddPrerendering(prerendering => prerendering.DefaultTimeZone = "Europe/Brussels");
+    // #563 (docs/html_minification_PRD.md): the rendered pages are minified, as the legacy site's were meant to be,
+    // inside UseResponseCompression and outside the renderer. Spark:Minification:Enabled=false turns it off.
+    spark.AddMinification();
     // SeoTester crawl.sitemap: /sitemap.xml lists every public song, artist, person, medium type, tag and public
     // playlist (D17). robots.txt (ClientApp/public) names it.
     spark.AddSitemap();
@@ -159,6 +163,7 @@ app.UseWhen(
         appBuilder.UseSpaImproved(spa =>
         {
             spa.Options.SourcePath = "ClientApp";
+            // UseSparkPrerendering also places AddMinification()'s middleware, just outside the renderer (#563).
             // In Development the server bundle is a watch build beside the dev server (tools/ssr-watch.mjs), so a
             // change to server-side code shows on the next render; in production it is the published build's.
             spa.UseSparkPrerendering(prerendering => prerendering.BootModuleBuilder = app.Environment.IsDevelopment()

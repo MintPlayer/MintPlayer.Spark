@@ -107,7 +107,7 @@ public class ServerRenderingTests
             await Microsoft.Playwright.Assertions.Expect(page.GetByText(shows).First).ToBeVisibleAsync(new() { Timeout = Timeout });
 
             lock (sparkRequests)
-                sparkRequests.Should().BeEmpty("on {0} every request the page makes was answered on the server and travels in the transfer state (I22)", path);
+                sparkRequests.Should().BeEmpty("on {0} every request the page makes was answered on the server and travels in the transfer state (I22). Console: {1}", path, string.Join(" | ", problems));
             lock (problems)
                 problems.Should().BeEmpty("hydration must not warn (I23)");
         }

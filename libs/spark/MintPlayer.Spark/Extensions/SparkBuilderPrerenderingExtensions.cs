@@ -54,6 +54,11 @@ public static class SparkBuilderPrerenderingExtensions
         dispatcher.Attach(app);
 
         spa.Options.DefaultPage = "/index.csr.html";
+
+        // Outside the renderer, so a module's middleware wraps the page the renderer writes, not the template it reads
+        // with its own next() (docs/html_minification_PRD.md §3, G3).
+        app.ApplicationServices.GetService<SparkModuleRegistry>()?.ApplyMiddleware(app, SparkMiddlewareStage.BeforePrerendering);
+
         spa.UseSpaPrerendering(options =>
         {
             options.BootModulePath = $"{spa.Options.SourcePath}/dist/ClientApp/server/main.server.mjs";
