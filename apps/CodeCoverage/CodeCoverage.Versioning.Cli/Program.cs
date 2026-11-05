@@ -48,7 +48,10 @@ static async Task<int> Manifest(Options options)
 	// The line whose last tag's hash a registry lookup completes: a release branch's major, else the latest line.
 	int? branchMajor = null;
 	if (options.Get("branch") is { } branch && options.Get("default-branch") is { } defaultBranch && branch != defaultBranch)
-		ReleaseBranches.IsMatch(config.EffectiveReleaseBranches, branch, out branchMajor);
+	{
+		if (config.EffectiveLines is { } lines) branchMajor = lines.TryMatch(branch, out var line) ? line!.Major : null;
+		else ReleaseBranches.IsMatch(config.EffectiveReleaseBranches, branch, out branchMajor);
+	}
 	var result = await BuildManifest.CollectAsync(git, new BuildManifestRequest(repo, commit, options.Get("configuration") ?? "Release", branchMajor,
 		options.Has("no-registry") ? null : new PublicPackageRegistry(http), config.ToSettings().Ignore, await DotnetSdk.VersionAsync(repo)));
 	await File.WriteAllTextAsync(options.Require("out"), JsonSerializer.Serialize(new { result.Manifest, result.Notes }, Wire.Json));
@@ -87,7 +90,14 @@ static async Task<int> Run(Options options)
 	if (config.Validate() is { Count: > 0 } configErrors) return await Write(LocalRunResponse.Refusal("invalid-config", null, configErrors));
 
 	int? branchMajor = null;
-	if (branch != defaultBranch && !ReleaseBranches.IsMatch(config.EffectiveReleaseBranches, branch, out branchMajor))
+	ReleaseLine? line = null;
+	if (config.EffectiveLines is { } lines)
+	{
+		// #568 D15: only a line releases; the default branch plans to release nothing, and says why per package.
+		if (branch != defaultBranch && !lines.TryMatch(branch, out line))
+			return await Write(LocalRunResponse.Refusal("branch-not-versioned", $"{branch} is neither the default branch nor a release line ({lines.Text})."));
+	}
+	else if (branch != defaultBranch && !ReleaseBranches.IsMatch(config.EffectiveReleaseBranches, branch, out branchMajor))
 		return await Write(LocalRunResponse.Refusal("branch-not-versioned", $"{branch} is neither the default branch nor a release branch."));
 
 	var git = new GitCli(GitDirectory(repo), TimeSpan.FromMinutes(5));
@@ -98,7 +108,7 @@ static async Task<int> Run(Options options)
 		// #544 D5: the tags name the run that wrote them; the CLI runs on the runner, so its environment says which.
 		var run = TagAnnotation.RunUrl(Environment.GetEnvironmentVariable("GITHUB_SERVER_URL"), Environment.GetEnvironmentVariable("GITHUB_REPOSITORY"),
 			Environment.GetEnvironmentVariable("GITHUB_RUN_ID"));
-		var request = new ReleaseRunRequest(manifest, config.ToSettings(), branch == defaultBranch, branchMajor, run);
+		var request = new ReleaseRunRequest(manifest, config.ToSettings(), branch == defaultBranch, branchMajor, run) { Line = line };
 		// #552 D1: decide and record, write nothing; push-tags writes the plan after the tests.
 		if (options.Has("plan-only"))
 		{

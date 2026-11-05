@@ -20,7 +20,7 @@ public sealed record GitWriterTagger(string Name, string Email);
 /// </summary>
 public sealed record GitWriterTagsRequest(
     string Provider, string RepoId, string CloneUrl, SidecarCredential Credential, IReadOnlyList<string> Branches, GitWriterTagger Tagger,
-    IReadOnlyList<GitWriterTag> Tags, string? Run = null, string? Fingerprint = null);
+    IReadOnlyList<GitWriterTag> Tags, string? Run = null, string? Fingerprint = null, bool FingerprintScoped = false);
 
 public sealed record GitWriterTag(string Name, string Commit, string? ApiHash = null);
 
@@ -59,7 +59,7 @@ public sealed record GitWriterReleaseNotes(string Name, string Body, bool Prerel
 public sealed record GitWriterPackageNote(string Id, string Reason);
 
 /// <summary>A release branch a platform major move asks for (D12): <see cref="Branch"/> at the release commit's first parent.</summary>
-public sealed record GitWriterBranchCut(string Branch, int Major, string Commit, IReadOnlyList<string>? Packages, int? PullRequest);
+public sealed record GitWriterBranchCut(string Branch, int Major, string Commit, IReadOnlyList<string>? Packages, int? PullRequest, string? Ecosystem = null);
 
 /// <summary><c>POST jobs/versioning/plan</c> (#153 M11, D3 trigger B): would a run on <see cref="Commit"/> release anything?</summary>
 public sealed record GitWriterVersioningPlanRequest(

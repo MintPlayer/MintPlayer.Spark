@@ -21,9 +21,15 @@ public sealed class TagHistory(IEnumerable<TaggedVersion> tags)
 	/// What a plan was decided against (#552 D3): every version tag but <paramref name="excluded"/> (the plan's own), by
 	/// name, commit and API hash. A tag added, moved or re-annotated between the plan and its release changes it.
 	/// </summary>
-	public string Fingerprint(IReadOnlySet<string> excluded) => Api.DotnetApiListing.Hash(byPackage
+	/// <remarks>
+	/// #568 D17 (S9): with <paramref name="scope"/>, only the tags of the scope's packages at the scope's majors count.
+	/// A release line's plan is scoped to its own tags, so another line releasing (another major, or another ecosystem)
+	/// never makes it stale, while a second release of the same package at the same major still does.
+	/// </remarks>
+	public string Fingerprint(IReadOnlySet<string> excluded, IReadOnlyCollection<VersionTag>? scope = null) => Api.DotnetApiListing.Hash(byPackage
 		.SelectMany(g => g)
 		.Where(t => !excluded.Contains(t.Tag.Name))
+		.Where(t => scope is null || scope.Any(s => s.PackageId == t.Tag.PackageId && s.Version.Major == t.Version.Major))
 		.Select(t => $"{t.Tag.Name} {t.Commit} {t.Annotation?.ApiHash}")
 		.Order(StringComparer.Ordinal));
 

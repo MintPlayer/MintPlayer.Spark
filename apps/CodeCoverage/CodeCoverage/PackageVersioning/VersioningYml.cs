@@ -32,6 +32,9 @@ public static class VersioningYml
             if (keys is null || !keys.ContainsKey("versioning"))
                 return new(null, []);
             var config = Deserializer.Deserialize<FileRoot?>(yml)?.Versioning ?? new VersioningConfig();
+            // #568 D15: an empty `lines:` switches release lines on with the default pattern, as an empty `versioning:` does.
+            if (config.Lines is null && keys["versioning"] is Dictionary<object, object?> section && section.ContainsKey("lines"))
+                config.Lines = new VersioningLinesConfig();
             return new(config, config.Validate());
         }
         catch (Exception ex) when (ex is YamlDotNet.Core.YamlException or InvalidCastException)

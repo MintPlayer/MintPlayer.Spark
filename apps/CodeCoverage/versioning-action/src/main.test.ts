@@ -65,6 +65,11 @@ describe('versioningSection', () => {
     expect(() => versioningSection('comment: {}\n', 'main')).toThrow(/no versioning/);
     expect(() => versioningSection(null, 'main')).toThrow(/does not exist/);
   });
+
+  it('keeps an empty lines: switched on (#568 D15)', () => {
+    expect(versioningSection('versioning:\n  lines:\n', 'main')).toEqual({ lines: {} });
+    expect(versioningSection('versioning:\n  lines:\n    pattern: support/{ecosystem}/{major}\n', 'main')).toEqual({ lines: { pattern: 'support/{ecosystem}/{major}' } });
+  });
 });
 
 describe('version', () => {

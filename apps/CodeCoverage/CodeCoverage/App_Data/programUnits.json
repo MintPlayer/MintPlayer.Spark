@@ -108,6 +108,15 @@
           "type": "url",
           "url": "/connect-agent",
           "order": 5
+        },
+        {
+          "id": "6b1f0d42-8c3e-4a75-9e21-d4a7c50b8f13",
+          "name": "programUnits.platformLifecycle",
+          "icon": "bi-calendar-range",
+          "type": "query",
+          "queryId": "01c3c921-93c8-4d0b-b3d9-82f86a74339b",
+          "alias": "platform-lifecycle",
+          "order": 6
         }
       ]
     },

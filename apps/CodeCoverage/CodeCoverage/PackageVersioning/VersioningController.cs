@@ -136,9 +136,8 @@ public partial class VersioningController : ControllerBase
         if (parsed.Errors.Count > 0)
             return Answer(StatusCodes.Status422UnprocessableEntity, "refused", "config", $"The versioning section of {CoverageYml.FileName} on {defaultBranch} is not usable.", errors: parsed.Errors);
 
-        int? branchMajor = null;
-        if (branch != defaultBranch && !ReleaseBranches.IsMatch(config.EffectiveReleaseBranches, branch, out branchMajor))
-            return Forbidden($"{branch} is neither the default branch nor a release branch ({string.Join(", ", config.EffectiveReleaseBranches)}).");
+        if (!config.IsVersionedBranch(branch, defaultBranch, out var branchMajor))
+            return Forbidden($"{branch} is neither the default branch nor a release branch ({config.VersionedBranchesText}).");
 
         if (!writer.IsConfigured)
             return Answer(StatusCodes.Status503ServiceUnavailable, "failed", "unavailable", "The git writer is not configured on this server.");
@@ -276,7 +275,7 @@ public partial class VersioningController : ControllerBase
             var result = await writer.TagsAsync(new GitWriterTagsRequest(
                 repository.Provider.ToCanonicalString(), repository.GitHubId.ToString(CultureInfo.InvariantCulture), access.CloneUrl,
                 new CommitGraph.SidecarCredential(access.Username, access.Password), [branch], Tagger,
-                [.. plan.Tags.Select(t => new GitWriterTag(t.Name, plan.Commit, t.ApiHash))], plan.Run, plan.Fingerprint), cancellationToken);
+                [.. plan.Tags.Select(t => new GitWriterTag(t.Name, plan.Commit, t.ApiHash))], plan.Run, plan.Fingerprint, plan.Scoped), cancellationToken);
             return (result.Outcome, result.Reason) switch
             {
                 (GitWriterTagsResult.Tagged, _) => (StatusCodes.Status200OK, Released(planned, result.Tags ?? [])),
@@ -318,7 +317,7 @@ public partial class VersioningController : ControllerBase
         return planned with
         {
             Releases = releases,
-            BranchCuts = planned.BranchCuts?.Where(c => (c.Packages ?? []).Any(placed.Contains)).ToList(),
+            BranchCuts = planned.BranchCuts?.Where(c => c.Ecosystem is not null || (c.Packages ?? []).Any(placed.Contains)).ToList(),
             Errors = failed.Count > 0 ? failed : planned.Errors,
             Plan = null,
             Seal = null,
@@ -379,7 +378,7 @@ public partial class VersioningController : ControllerBase
         record.Warnings = response.Warnings.Take(VersioningRun.MaxNotes).ToList();
         record.BranchCuts = (response.BranchCuts ?? []).Take(VersioningRun.MaxNotes).Select(c => new VersioningRunBranchCut
         {
-            Branch = c.Branch, Major = c.Major, Commit = c.Commit, Packages = [.. c.Packages ?? []], PullRequest = c.PullRequest,
+            Branch = c.Branch, Major = c.Major, Commit = c.Commit, Packages = [.. c.Packages ?? []], PullRequest = c.PullRequest, Ecosystem = c.Ecosystem,
         }).ToList();
     }
 

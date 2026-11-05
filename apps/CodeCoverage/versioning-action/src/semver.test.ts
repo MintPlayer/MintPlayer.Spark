@@ -21,6 +21,10 @@ describe('semver', () => {
     ['1.0.0', [], 'latest'],
     // A newer major only as a prerelease does not take latest from the stable line.
     ['22.4.0', ['23.0.0-rc.1', '22.3.0'], 'latest'],
+    // #568: an older line's prerelease keeps `next` for the newest line, stable or not.
+    ['21.10.0-preview.1', ['22.3.0', '21.9.0'], 'v21-next'],
+    ['22.5.0-preview.1', ['23.0.0-rc.1', '22.3.0'], 'v22-next'],
+    ['22.5.0-preview.1', ['22.3.0', '21.9.0'], 'next'],
   ])('%s with %j released is %s (D11)', (version, released, tag) => {
     expect(distTag(version, released)).toBe(tag);
   });

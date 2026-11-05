@@ -65,6 +65,11 @@ export async function cutReleaseBranches(options: ReleaseOptions, cuts: BranchCu
 
 /** The pull-request comment of a cut; the same text as the server's ReleaseBranchCutRecipient. */
 export function cutComment(cut: BranchCut): string {
+  if (cut.ecosystem) {
+    return `${cut.packages.map((p) => `\`${p}\``).join(', ')} now target ${cut.ecosystem} ${cut.major}, so the release line \`${cut.branch}\` was cut at ${cut.commit.slice(0, 12)}. `
+      + 'Packages release only from release lines: a change ships once its pull request is backported there.\n\n'
+      + 'The branch is protected only when a ruleset matches it.';
+  }
   return `${cut.packages.map((p) => `\`${p}\``).join(', ')} left major ${cut.major}, so \`${cut.branch}\` was cut at ${cut.commit.slice(0, 12)}: `
     + `patches for the ${cut.major}.x line merge there and are versioned as ${cut.major}.x.\n\n`
     + `To backport a merged pull request, label it \`backport: ${cut.major}.x\` or comment \`/backport ${cut.major}.x\`. `

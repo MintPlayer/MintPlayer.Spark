@@ -38,7 +38,11 @@ public partial class VersioningDispatchEventsRecipient : IRecipient<ForgeWebhook
         if (evt.Branch != defaultBranch)
         {
             var state = await session.LoadAsync<VersioningDispatchState>(VersioningDispatchState.ForRepository(evt.RepositoryId), cancellationToken);
-            if (state?.Dispatch is null || !ReleaseBranches.IsMatch(state.ReleaseBranches, evt.Branch, out _)) return;
+            if (state?.Dispatch is null) return;
+            var versioned = state.LinePattern is { } pattern
+                ? ReleaseLinePattern.TryParse(pattern, out _)?.TryMatch(evt.Branch, out _) == true
+                : ReleaseBranches.IsMatch(state.ReleaseBranches, evt.Branch, out _);
+            if (!versioned) return;
         }
         // Keyed on the commit: a redelivered push, or the same commit pushed to a second line, dispatches once.
         await messageBus.BroadcastOnceAsync(new VersioningDispatchMessage { RepositoryId = evt.RepositoryId, Branch = evt.Branch, Sha = evt.Sha },
@@ -80,8 +84,7 @@ public partial class VersioningDispatchRecipient : IRecipient<VersioningDispatch
             await RememberAsync(repository.Id!, config, cancellationToken);
             if (config?.Dispatch is not { } workflow) return;
 
-            int? branchMajor = null;
-            if (message.Branch != defaultBranch && !ReleaseBranches.IsMatch(config.EffectiveReleaseBranches, message.Branch, out branchMajor)) return;
+            if (!config.IsVersionedBranch(message.Branch, defaultBranch, out var branchMajor)) return;
 
             var plan = await PlanAsync(repository, git, message, defaultBranch, branchMajor, config.ToSettings(), cancellationToken);
             if (plan is null) return;
@@ -116,6 +119,7 @@ public partial class VersioningDispatchRecipient : IRecipient<VersioningDispatch
             if (state is null) await session.StoreAsync(state = new VersioningDispatchState(), id, cancellationToken);
             state.Dispatch = config.Dispatch;
             state.ReleaseBranches = [.. config.EffectiveReleaseBranches];
+            state.LinePattern = config.EffectiveLines?.Text;
             state.UpdatedAtUtc = clock.GetUtcNow().UtcDateTime;
         }
         await session.SaveChangesAsync(cancellationToken);

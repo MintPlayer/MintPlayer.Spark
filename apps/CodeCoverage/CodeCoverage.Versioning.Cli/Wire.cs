@@ -64,7 +64,7 @@ internal sealed record LocalRunResponse(
 		return this with
 		{
 			Releases = releases,
-			BranchCuts = BranchCuts?.Where(c => c.Packages.Any(placed.Contains)).ToList(),
+			BranchCuts = BranchCuts?.Where(c => c.Ecosystem is not null || c.Packages.Any(placed.Contains)).ToList(),
 			Errors = failed ? [.. written.Where(t => t.Outcome is not (TagOutcome.Created or TagOutcome.AlreadyPresent)).Select(t => $"{t.Tag.Name}: {t.Detail ?? t.Outcome.ToString()}")] : Errors,
 			Plan = null,
 		};

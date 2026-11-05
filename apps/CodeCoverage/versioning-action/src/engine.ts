@@ -35,6 +35,8 @@ export interface BranchCut {
   commit: string;
   packages: string[];
   pullRequest?: number | null;
+  /** Set on a release line's cut (#568 D15), cut at the commit that moved to the major. */
+  ecosystem?: string | null;
 }
 
 export interface Release {

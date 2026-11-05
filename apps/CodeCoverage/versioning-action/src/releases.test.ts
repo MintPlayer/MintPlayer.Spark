@@ -81,6 +81,13 @@ describe('cutReleaseBranches', () => {
       '`Acme.Core` left major 10, so `release/10.x` was cut at aaaaaaaaaaaa: patches for the 10.x line merge there and are versioned as 10.x.\n\n'
       + 'To backport a merged pull request, label it `backport: 10.x` or comment `/backport 10.x`. The branch is protected only when a ruleset matches it.');
   });
+
+  it('writes the same release-line comment as the server (#568 D15)', () => {
+    expect(cutComment({ ...cut(12, 42), branch: 'release/dotnet-12.x', ecosystem: 'dotnet' })).toBe(
+      '`Acme.Core` now target dotnet 12, so the release line `release/dotnet-12.x` was cut at aaaaaaaaaaaa. '
+      + 'Packages release only from release lines: a change ships once its pull request is backported there.\n\n'
+      + 'The branch is protected only when a ruleset matches it.');
+  });
 });
 
 describe('retryAfterMs', () => {

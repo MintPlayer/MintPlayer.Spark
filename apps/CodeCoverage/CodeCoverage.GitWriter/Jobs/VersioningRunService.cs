@@ -11,7 +11,11 @@ public sealed record VersioningRunJob(
 
 /// <summary>A validated <c>POST /jobs/versioning/plan</c>.</summary>
 public sealed record VersioningPlanJob(
-    string Repo, Uri CloneUrl, GitCredential Credential, string Branch, string DefaultBranch, string Commit, int? BranchMajor, VersioningSettings Settings);
+    string Repo, Uri CloneUrl, GitCredential Credential, string Branch, string DefaultBranch, string Commit, int? BranchMajor, VersioningSettings Settings)
+{
+    /// <summary>The release line of <see cref="Branch"/> when lines are on (#568 D1).</summary>
+    public ReleaseLine? Line { get; init; }
+}
 
 /// <summary>
 /// The server host's whole versioning run (#153 M6, PRD D2). The plan and the tags are the engine's
@@ -78,7 +82,7 @@ public sealed class VersioningRunService(JobRunner jobs)
             throw new JobAbortedException(JobReasons.Unplannable, $"The commit {job.Commit} is not on {job.Branch}.");
         try
         {
-            var (plan, warnings) = await ReleaseRun.PlanAsync(git, job.Commit, job.Settings, job.Branch == job.DefaultBranch, job.BranchMajor, context.Deadline);
+            var (plan, warnings) = await ReleaseRun.PlanAsync(git, job.Commit, job.Settings, job.Branch == job.DefaultBranch, job.BranchMajor, context.Deadline, job.Line);
             return new VersioningPlanResponse(JobOutcomes.Planned, null, plan.Releases.Select(r => r.Id).ToList(),
                 plan.Refused.Select(n => new PackageNoteWire(n.Id, n.Reason)).ToList(), warnings, null, context.ElapsedMilliseconds);
         }
@@ -105,6 +109,6 @@ public sealed class VersioningRunService(JobRunner jobs)
             result.Plan.Skipped.Select(n => new PackageNoteWire(n.Id, n.Reason)).ToList(),
             result.Plan.Refused.Select(n => new PackageNoteWire(n.Id, n.Reason)).ToList(),
             result.Warnings, null, durationMs,
-            (result.BranchCuts ?? []).Select(c => new BranchCutWire(c.Branch, c.Major, c.Commit, c.Packages, c.PullRequest)).ToList());
+            (result.BranchCuts ?? []).Select(c => new BranchCutWire(c.Branch, c.Major, c.Commit, c.Packages, c.PullRequest, c.Ecosystem)).ToList());
     }
 }

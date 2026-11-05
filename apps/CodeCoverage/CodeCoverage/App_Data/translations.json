@@ -2636,6 +2636,116 @@
         }
       }
     },
+    "PlatformRelease": {
+      "attributes": {
+        "ActiveSupportEndsOn": {
+          "description": {
+            "en": "When active support ends and only security fixes follow; null when the source has no such phase."
+          },
+          "label": {
+            "en": "Active support ends",
+            "fr": "Fin du support actif",
+            "nl": "Einde actieve ondersteuning"
+          }
+        },
+        "CollectedAtUtc": {
+          "label": {
+            "en": "Collected",
+            "fr": "Collecté le",
+            "nl": "Verzameld"
+          }
+        },
+        "IsLts": {
+          "label": {
+            "en": "LTS",
+            "fr": "LTS",
+            "nl": "LTS"
+          }
+        },
+        "LatestVersion": {
+          "description": {
+            "en": "The newest version of this major, as the source names it."
+          },
+          "label": {
+            "en": "Latest version",
+            "fr": "Dernière version",
+            "nl": "Laatste versie"
+          }
+        },
+        "Major": {
+          "label": {
+            "en": "Major",
+            "fr": "Version majeure",
+            "nl": "Hoofdversie"
+          }
+        },
+        "Name": {
+          "description": {
+            "en": "The source's own name for the release: 10.0, 22."
+          },
+          "label": {
+            "en": "Release",
+            "fr": "Version",
+            "nl": "Release"
+          }
+        },
+        "Phase": {
+          "description": {
+            "en": "preview, active, maintenance (security fixes only) or eol."
+          },
+          "label": {
+            "en": "Phase",
+            "fr": "Phase",
+            "nl": "Fase"
+          }
+        },
+        "Platform": {
+          "description": {
+            "en": "The platform's name as release lines spell their ecosystem: dotnet, angular, nodejs."
+          },
+          "label": {
+            "en": "Platform",
+            "fr": "Plateforme",
+            "nl": "Platform"
+          }
+        },
+        "ReleasedOn": {
+          "description": {
+            "en": "The first stable release, when the source says; null for a preview and for .NET, whose index has no GA date."
+          },
+          "label": {
+            "en": "Released",
+            "fr": "Publiée le",
+            "nl": "Uitgebracht"
+          }
+        },
+        "Source": {
+          "description": {
+            "en": "Where the facts came from."
+          },
+          "label": {
+            "en": "Source",
+            "fr": "Source",
+            "nl": "Bron"
+          }
+        },
+        "SupportEndsOn": {
+          "description": {
+            "en": "The end of support; null while it is not announced."
+          },
+          "label": {
+            "en": "Support ends",
+            "fr": "Fin du support",
+            "nl": "Einde ondersteuning"
+          }
+        }
+      },
+      "label": {
+        "en": "Platform release",
+        "fr": "Version de plateforme",
+        "nl": "Platformrelease"
+      }
+    },
     "PrSizeIgnoreRule": {
       "attributes": {
         "Glob": {
@@ -3478,6 +3588,11 @@
       "fr": "Miroirs",
       "nl": "Mirrors"
     },
+    "platformLifecycle": {
+      "en": "Platform lifecycle",
+      "fr": "Cycle de vie des plateformes",
+      "nl": "Levenscyclus van platformen"
+    },
     "prSizeLabelsSetup": {
       "en": "PR size labels",
       "fr": "Étiquettes de taille de PR",
@@ -3532,6 +3647,13 @@
         "en": "Set up dependency updates",
         "fr": "Configurer les mises à jour des dépendances",
         "nl": "Dependency-updates instellen"
+      }
+    },
+    "GetPlatformReleases": {
+      "label": {
+        "en": "Platform lifecycle",
+        "fr": "Cycle de vie des plateformes",
+        "nl": "Levenscyclus van platformen"
       }
     },
     "GetRepositoryGraphStates": {

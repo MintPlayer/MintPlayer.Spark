@@ -57,6 +57,34 @@ public class VersioningSettingsTests
     }
 
     [Fact]
+    public void Release_lines_survive_the_wire_from_the_app()
+    {
+        // #568 D2, D19: the pattern and the line pins reach the writer, which reads each run's line from the branch itself.
+        var sent = new Versioning.Releases.VersioningConfig
+        {
+            Lines = new() { Pattern = "support/{ecosystem}/{major}", Prerelease = new() { ["dotnet-11.x"] = "upstream", ["angular-23.x"] = "next" } },
+            Packages = new() { ["Acme.Generators"] = new() { Line = "dotnet" } },
+        }.ToSettings();
+        var json = System.Text.Json.JsonSerializer.Serialize(sent, System.Text.Json.JsonSerializerOptions.Web);
+
+        var settings = GitWriterVersioningRunEndpoint.Settings(System.Text.Json.JsonSerializer.Deserialize<VersioningSettingsWire>(json, GitWriterHost.Json));
+
+        settings!.Lines!.Text.Should().Be("support/{ecosystem}/{major}");
+        settings.LinePins["Acme.Generators"].Should().Be("dotnet");
+        settings.LinePrerelease["dotnet-11.x"].HasValue.Should().BeFalse();
+        settings.LinePrerelease["angular-23.x"].Should().Be(Versioning.Versions.PrereleaseLabel.Next);
+        GitWriterVersioningRunEndpoint.LineOf(settings, "support/dotnet/10", "main", out var line).Should().BeTrue();
+        line.Should().Be(new Versioning.Releases.ReleaseLine("dotnet", 10));
+        GitWriterVersioningRunEndpoint.LineOf(settings, "main", "main", out line).Should().BeTrue();
+        line.Should().BeNull();
+        GitWriterVersioningRunEndpoint.LineOf(settings, "release/10.x", "main", out _).Should().BeFalse();
+    }
+
+    [Fact]
+    public void Without_lines_every_branch_passes_to_the_old_release_branch_check()
+        => GitWriterVersioningRunEndpoint.LineOf(new Versioning.Releases.VersioningSettings(), "release/10.x", "main", out _).Should().BeTrue();
+
+    [Fact]
     public void An_unknown_label_on_the_wire_is_not_read()
     {
         var read = () => System.Text.Json.JsonSerializer.Deserialize<VersioningSettingsWire>("""{"prerelease":"gamma"}""", GitWriterHost.Json);
@@ -75,6 +103,11 @@ public class VersioningSettingsTests
         new VersioningSettingsWire { Ignore = [.. Enumerable.Repeat("**/*.md", 65)] },
         new VersioningSettingsWire { ReleaseBranches = ["release/../main"] },
         new VersioningSettingsWire { ReleaseBranches = ["release/*.x; rm"] },
+        new VersioningSettingsWire { Lines = new ReleaseLinesWire { Text = "release/{major}.x" } },
+        new VersioningSettingsWire { Lines = new ReleaseLinesWire() },
+        new VersioningSettingsWire { LinePins = new() { ["Acme"] = "Dot Net" } },
+        new VersioningSettingsWire { LinePrerelease = new() { ["release/dotnet-11.x"] = null } },
+        new VersioningSettingsWire { LinePrerelease = new() { ["dotnet-011.x"] = null } },
     };
 
     [Theory]

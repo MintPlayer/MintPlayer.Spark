@@ -1,16 +1,16 @@
-// The viewer ships no annotation colors of its own — the kinds are opaque
-// consumer strings, styled through shadow parts (not CSS variables; upstream
-// decision, see docs/PLAN.md M10).
-:host ::ng-deep mp-code-snippet {
-  &::part(annotation-covered) {
+// The viewer ships no annotation colors of its own: the kinds are opaque consumer strings. Since ng-bootstrap's
+// light-DOM code snippet (22.3x), each annotated row is `<div class="line annotation-<kind>">`, a class and no longer
+// the shadow part `annotation-<kind>` on `mp-code-snippet`, which matched nothing once the element was gone.
+:host ::ng-deep bs-code-snippet .line {
+  &.annotation-covered {
     background: var(--bs-success-bg-subtle);
   }
 
-  &::part(annotation-partial) {
+  &.annotation-partial {
     background: var(--bs-warning-bg-subtle);
   }
 
-  &::part(annotation-uncovered) {
+  &.annotation-uncovered {
     background: var(--bs-danger-bg-subtle);
   }
 }
