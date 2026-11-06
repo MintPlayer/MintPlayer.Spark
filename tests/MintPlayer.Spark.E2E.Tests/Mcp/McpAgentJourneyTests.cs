@@ -95,7 +95,10 @@ public sealed class McpAgentJourneyTests(FleetMcpE2EFixture fixture) : IAsyncLif
         (await page.ContentAsync()).Should().Contain("data-agent-trust=\"unverified\"", "a dynamically registered agent is labelled unverified (D5)");
         await allow.ClickAsync();
         var callback = await loopback.CallbackAsync.WaitAsync(TimeSpan.FromSeconds(30));
-        await page.WaitForURLAsync(url => url.StartsWith(redirect, StringComparison.Ordinal));
+        // The browser landed on the redirect: committing the navigation says so. The default waits for the loopback
+        // page's `load` too, which is not what this asserts; CI run 42258276477 waited 30 s for it after the callback
+        // had arrived (Playwright logged networkidle, never load).
+        await page.WaitForURLAsync(url => url.StartsWith(redirect, StringComparison.Ordinal), new() { WaitUntil = WaitUntilState.Commit });
 
         var answer = HttpUtility.ParseQueryString(new Uri(callback).Query);
         answer["state"].Should().Be(state);
