@@ -22,10 +22,37 @@ public class MergeQueueRulesetPlannerTests
         RequireCodeOwnerReviews: false, RequireConversationResolution: false, RequiredChecks: checks,
         RequiredLinearHistory: false, RequiredSignatures: false, HasPushRestrictions: false);
 
+    /// <summary>As GitHub stores it: the update rule without parameters (read live on 2026-11-06).</summary>
     private static ForgeRulesetDefinition Ruleset1(params ForgeRulesetActor[] actors) => new(
         RestrictUpdatesName, "branch", "active", ["~DEFAULT_BRANCH"], [],
-        [new("update", new JsonObject { ["update_allows_fetch_and_merge"] = false }), new("deletion"), new("non_fast_forward")],
+        [new("update"), new("deletion"), new("non_fast_forward")],
         actors.Length == 0 ? [App] : actors);
+
+    [Fact]
+    public void A_ruleset_created_by_the_plan_reads_back_as_configured()
+    {
+        // Regression: the plan sent update_allows_fetch_and_merge=false, GitHub stored {"type":"update"}, and the next
+        // run reported "rule changed: update" on the ruleset it had just created.
+        var created = PlanFor([], classic: null).Steps.OfType<CreateRulesetStep>().Select(s => s.Definition).ToList();
+        var stored = created.Select((d, i) => new ForgeExistingRuleset(i + 1, d)).ToList();
+
+        PlanFor(stored, classic: null).IsConfigured.Should().BeTrue();
+        ((JsonNode?)created[0].Rules.Single(r => r.Type == "update").Parameters).Should().BeNull();
+    }
+
+    [Fact]
+    public void An_update_rule_that_allows_fetch_and_merge_is_changed()
+    {
+        var allowing = Ruleset1() with
+        {
+            Rules = [new("update", new JsonObject { ["update_allows_fetch_and_merge"] = true }), new("deletion"), new("non_fast_forward")],
+        };
+
+        var plan = PlanFor([new(1, allowing), new(2, Ruleset2(0, ["build"]))], classic: null);
+
+        plan.Steps.Should().ContainSingle().Which.Should().BeOfType<UpdateRulesetStep>()
+            .Which.Changes.Should().Equal(["rule changed: update"]);
+    }
 
     private static ForgeRulesetDefinition Ruleset2(int approvals, string[] checks, params ForgeRulesetActor[] actors)
     {

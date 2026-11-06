@@ -203,7 +203,10 @@ public static class MergeQueueRulesetPlanner
 
         return new ForgeRulesetDefinition(RestrictUpdatesName, "branch", "active", include, [],
         [
-            new("update", new JsonObject { ["update_allows_fetch_and_merge"] = false }),
+            // No parameters: update_allows_fetch_and_merge=false is GitHub's default, and GitHub stores and returns the rule
+            // without it ({"type":"update"}, read live from PieterjanDeClippel/SparkTest on 2026-11-06). Sending it made
+            // every later run "update" a ruleset that was already right. A ruleset that allows it (true) still differs.
+            new("update"),
             new("deletion"),
             new("non_fast_forward"),
         ], actors);

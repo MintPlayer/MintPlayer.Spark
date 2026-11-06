@@ -65,7 +65,7 @@ public class GitHubForgeMergeQueueRulesetTests
     private static readonly string BotRuleset = $$$"""
         {"id":26211467,"name":"merge-queue: restrict updates","target":"branch","source_type":"Repository","source":"acme/widget",
          "enforcement":"disabled","conditions":{"ref_name":{"exclude":[],"include":["~DEFAULT_BRANCH"]}},
-         "rules":[{"type":"update","parameters":{"update_allows_fetch_and_merge":false}},{"type":"deletion"},{"type":"non_fast_forward"}],
+         "rules":[{"type":"update"},{"type":"deletion"},{"type":"non_fast_forward"}],
          "bypass_actors":[{"actor_id":{{{AppId}}},"actor_type":"Integration","bypass_mode":"always"}],"current_user_can_bypass":"always"}
         """;
 
