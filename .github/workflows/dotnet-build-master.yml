@@ -166,6 +166,12 @@ jobs:
       pull-requests: write
       packages: read
 
+    # #568 D15 (3): with release lines on, the default branch tags nothing, so it neither packs nor publishes. The
+    # versioning step still runs there, because it auto-cuts a new major's line. A line always packs and publishes,
+    # so a push that failed earlier is retried by the next run (--skip-duplicate skips the rest).
+    outputs:
+      publishes: ${{ steps.publishes.outputs.value }}
+
     steps:
     - name: Checkout
       uses: actions/checkout@v7
@@ -201,15 +207,30 @@ jobs:
       with:
         token: ${{ github.token }}
 
+    - name: Decide whether this run publishes
+      id: publishes
+      env:
+        RELEASED: ${{ steps.versioning.outputs.released }}
+        DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+      run: |
+        if [ "$GITHUB_REF_NAME" = "$DEFAULT_BRANCH" ] && { [ -z "$RELEASED" ] || [ "$RELEASED" = "[]" ]; }; then
+          echo "The default branch released nothing (release lines on, or no change): no pack, no publish."
+          echo "value=false" >> "$GITHUB_OUTPUT"
+        else
+          echo "value=true" >> "$GITHUB_OUTPUT"
+        fi
+
     # Every package is packed: one this commit did not release packs at the version its last tag gives it,
     # which the push skips as a duplicate. No --no-build: the build runs again so the assemblies, and the
     # nuspec dependencies restore reads, carry the versions the new tags give them (the Nx cache does not
     # know about tags, so a replayed build:release still holds the previous versions).
     # Output goes to nupkgs/ (outside any project's bin/) so cache replays can't delete the packages.
     - name: Pack
+      if: steps.publishes.outputs.value == 'true'
       run: dotnet pack --configuration Release /p:ContinuousIntegrationBuild=true -o nupkgs
 
     - name: Hand the packages to the publish job
+      if: steps.publishes.outputs.value == 'true'
       uses: actions/upload-artifact@v7
       with:
         name: packages
@@ -288,6 +309,7 @@ jobs:
   publish:
     name: publish-release
     needs: [release, tests]
+    if: needs.release.outputs.publishes == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     # `dotnet nuget push` to GitHub Packages needs packages: write; the rest mirrors the workflow level.

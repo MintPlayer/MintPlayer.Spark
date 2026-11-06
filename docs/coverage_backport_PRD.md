@@ -471,8 +471,14 @@ cascade: 66 of 72 conflicted only because #461 was missing). Script: a throwaway
   line's, and fails the run when none does: a line never publishes a schema revision.
 - **Workflows on lines (M11).** `dotnet-build-master.yml` pushes and `pull-request.yml` run on `release/**`. The
   deploy workflows stay `master`-only by their own triggers, so a line push cannot deploy. The coverage upload also
-  runs on lines (unverified how the server treats a non-default branch's whole-workspace upload; checked on the
-  first line push in #570).
+  runs on lines. ~~Unverified how the server treats a non-default branch's whole-workspace upload.~~ **Checked in code
+  (M11, 2026-11-06):** `CommitAssembler.Promote` (`CommitAssembler.cs:393-396`) moves the repository's headline
+  coverage only for an upload on the default branch, so a line's upload is stored as that branch's commit and never
+  replaces master's badge.
+- **Master neither packs nor publishes with lines on (M11, D15 (3)).** The `release` job's versioning step still runs
+  on the default branch, because it auto-cuts a new major's line. When that branch released nothing, a
+  "Decide whether this run publishes" step skips the pack, the artifact and the `publish` job. A line always packs and
+  publishes, so a push that failed earlier is retried by the next line run (`--skip-duplicate` skips the rest).
 - **Lifecycle page placement (M3, D4).** The `PlatformRelease` query is under *Guides* (alias `platform-lifecycle`),
   readable anonymously and signed in (`security.json` `…aa`/`…ab`): it is public data, like the guides. Collector:
   `PlatformLifecycleCronJob`, daily 04:17 UTC; a failing source keeps yesterday's rows (`PlatformLifecycleTests`,

@@ -47,7 +47,7 @@ spikes first.
 ## Resume here: M11, Spark on release lines (2026-11-06)
 
 - **Branch:** `feat/issue568-spark-release-lines`. `coverage.yml` turns `versioning.lines` on and queues
-  `supported-lines`. Only the current lines are cut (owner, 2026-11-06); see M11 below for why the past lines wait.
+  `supported-lines`; `dotnet-build-master.yml` no longer packs or publishes on master when it released nothing. Only the current lines are cut (owner, 2026-11-06); see M11 below for why the past lines wait.
 - **After merge:** push `release/dotnet-11.x` and `release/angular-22.x` at the merge commit, run "Set up rulesets" on
   MintPlayer.Spark so ruleset 1 covers the lines, then check S5's open half (regeneration on a backport branch) on
   the first backport pull request into a line.
@@ -833,7 +833,8 @@ PRD §8.2.
   expired.
 - **M11 Spark itself.**
   - Workflow triggers for `release/**`; `schema-revision`, baseline and deploys default-branch-only (D18). **Done in
-    #569.**
+    #569.** M11 adds: master skips the pack and the publish when it released nothing, and the line's coverage
+    upload is checked in code to leave master's badge alone (PRD §8.2).
   - The `release/**` ruleset. **Through "Set up rulesets" (#554) once the lines exist:** ruleset 1 then covers
     `refs/heads/release/*-*.x`.
   - Cut `release/dotnet-11.x` and `release/angular-22.x` (current, D15) from master after the pull request that turns
