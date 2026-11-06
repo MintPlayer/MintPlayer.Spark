@@ -7,6 +7,8 @@ export interface PersistentObjectAttribute {
   id: string;
   name: string;
   label?: TranslatedString;
+  /** The model's help text, shown as the (i) hint; a retry prompt's form reads it from here. */
+  description?: TranslatedString;
   value?: any;
   dataType: string;
   isArray?: boolean;

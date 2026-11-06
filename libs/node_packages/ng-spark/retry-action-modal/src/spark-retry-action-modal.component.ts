@@ -180,6 +180,7 @@ function attrToDefinition(attr: PersistentObjectAttribute): EntityAttributeDefin
     id: attr.id ?? '',
     name: attr.name,
     label: attr.label,
+    description: attr.description,
     dataType: attr.dataType,
     isArray: attr.isArray,
     isRequired: attr.isRequired,

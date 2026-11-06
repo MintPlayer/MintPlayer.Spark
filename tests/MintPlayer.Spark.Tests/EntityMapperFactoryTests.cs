@@ -36,6 +36,7 @@ public class EntityMapperFactoryTests
                     Name = "LicensePlate",
                     DataType = "string",
                     Label = TranslatedString.Create("License plate"),
+                    Description = TranslatedString.Create("As printed on the plate"),
                     IsRequired = true,
                     Order = 1,
                     Rules = [new ValidationRule { Type = "regex", Value = "^[A-Z]{3}-[0-9]{3}$" }],
@@ -90,6 +91,7 @@ public class EntityMapperFactoryTests
         var plate = po["LicensePlate"];
         plate.DataType.Should().Be("string");
         plate.Label!.GetValue("en").Should().Be("License plate");
+        plate.Description!.GetValue("en").Should().Be("As printed on the plate", "a retry prompt's form shows the (i) from it");
         plate.IsRequired.Should().BeTrue();
         plate.Order.Should().Be(1);
         plate.Rules.Should().HaveCount(1).And.Contain(r => r.Type == "regex");

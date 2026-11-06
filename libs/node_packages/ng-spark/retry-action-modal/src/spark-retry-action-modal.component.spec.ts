@@ -154,6 +154,24 @@ describe('SparkRetryActionModalComponent with PersistentObject', () => {
     await promise;
   });
 
+  it('keeps each attribute description, so the form shows its (i) hint', async () => {
+    const { component, service, fixture } = setupWithTypes([]);
+    const described: PersistentObject = {
+      ...scaffoldedPo,
+      attributes: scaffoldedPo.attributes.map(a => a.name === 'Confirmation' ? { ...a, description: { en: 'Type the plate again' } } : a),
+    };
+    const promise = service.show({ type: 'retry-action', step: 1, title: 'Delete car', options: ['Delete'], cancellable: true, persistentObject: described });
+    fixture.detectChanges();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    await new Promise(resolve => setTimeout(resolve, 0));
+
+    expect(component.entityType()?.attributes.find(a => a.name === 'Confirmation')?.description).toEqual({ en: 'Type the plate again' });
+    expect(component.entityType()?.attributes.find(a => a.name === 'LicensePlate')?.description).toBeUndefined();
+
+    component.onOption('Cancel');
+    await promise;
+  });
+
   it('populates the submitted PO with formData values on option click', async () => {
     const { component, service, fixture } = setupWithTypes([confirmDeleteCarType]);
     const promise = service.show({

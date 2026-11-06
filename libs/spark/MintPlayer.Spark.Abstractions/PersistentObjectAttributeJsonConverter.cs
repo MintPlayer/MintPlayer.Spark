@@ -125,6 +125,7 @@ public sealed class PersistentObjectAttributeJsonConverter : JsonConverterFactor
                     case "Id":              attr.Id             = ReadNullableString(prop.Value); break;
                     case "Name":            /* already set via required */                         break;
                     case "Label":           attr.Label          = Deserialize<TranslatedString>(prop.Value, options); break;
+                    case "Description":     attr.Description    = Deserialize<TranslatedString>(prop.Value, options); break;
                     case "Value":           attr.Value          = DeserializeValue(prop.Value); break;
                     case "DataType":        attr.DataType       = prop.Value.GetString() ?? "string"; break;
                     case "IsArray":         attr.IsArray        = prop.Value.GetBoolean(); break;
@@ -150,6 +151,10 @@ public sealed class PersistentObjectAttributeJsonConverter : JsonConverterFactor
             WritePropertyName(writer, "Id", options);              writer.WriteStringValue(value.Id);
             WritePropertyName(writer, "Name", options);            writer.WriteStringValue(value.Name);
             WritePropertyName(writer, "Label", options);           JsonSerializer.Serialize(writer, value.Label, options);
+            if (value.Description is not null)
+            {
+                WritePropertyName(writer, "Description", options); JsonSerializer.Serialize(writer, value.Description, options);
+            }
             WritePropertyName(writer, "Value", options);           JsonSerializer.Serialize(writer, value.Value, options);
             WritePropertyName(writer, "DataType", options);        writer.WriteStringValue(value.DataType);
             WritePropertyName(writer, "IsArray", options);         writer.WriteBooleanValue(value.IsArray);
@@ -203,7 +208,7 @@ public sealed class PersistentObjectAttributeJsonConverter : JsonConverterFactor
 
         private static readonly string[] KnownFieldNames =
         [
-            "Id", "Name", "Label", "Value", "DataType", "IsArray", "IsRequired",
+            "Id", "Name", "Label", "Description", "Value", "DataType", "IsArray", "IsRequired",
             "IsReadOnly", "IsValueChanged", "Order", "Query", "Breadcrumb", "Breadcrumbs", "ShowedOn",
             "Rules", "Group", "Renderer", "RendererOptions", "Options",
         ];
