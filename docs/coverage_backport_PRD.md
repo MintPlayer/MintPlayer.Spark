@@ -1070,6 +1070,39 @@ cascade: 66 of 72 conflicted only because #461 was missing). Script: a throwaway
   over are listed only when nothing lower ships (the engine's tier rule), so a line's pull request does not list "a
   minor exists" for every dependency. Tests: `LineCeilingTests`,
   `DependencyLineRunTests.D13_a_line_run_plans_under_its_ceiling…`.
+- **M10, one combined onboarding pull request** (owner, 2026-11-06, asked as "one combined PR or one PR per feature";
+  the owner chose combined). The chooser writes every picked feature into one `mintplayer/onboarding` pull request:
+  coverage.yml sections, workflows, the old → new line table and the versioning seeds. Why: per-feature pull requests
+  each edit coverage.yml and conflict with each other after the first merge. One merge also triggers the renames.
+- **M10, coverage.yml sections go in alphabetical order, and a bot pull request is rebuilt rather than merged**
+  (owner, 2026-11-06: "let the pull-requests the bot creates insert the sections in alphabetical order … several PRs
+  inserting a section in the same spot will probably again cause merge conflicts").
+  - Both onboardings appended their section to the end (`VersioningOnboarding.CoverageSectionAsync`,
+    `DependencyOnboarding.Plan`). Now one editor puts a section before the first top-level key that sorts after it,
+    or replaces the section when it is already there.
+  - The conflict is handled by rebuilding. The bot's coverage.yml change is an edit ("this section, with this
+    text"), not a stored file. Its onboarding pull request is replanned on the default branch's new head whenever
+    that head moves while the pull request is open. A bot pull request therefore never stays in conflict, however
+    many touched the same spot. The dependency onboarding already rebuilt on a new head
+    (`DependencyUpdateEngine.cs:1505`). The versioning onboarding did not.
+- **M10, dependency updates switch on when the onboarding pull request merges.** The engine skips its own onboarding
+  pull request once `dependency-lookup.yml` is on the default branch (`DependencyUpdateEngine.cs:1480-1481`). The
+  combined pull request carries the workflows, and the repository's `DependencyUpdates` is set to Enabled only after
+  the merge, so the engine then marks onboarding done and starts the first run. Enabling it earlier would open the
+  engine's own pull request beside the combined one. The bulk "Enable dependency updates" page stays as it is.
+- **M10, coverage is switched on, not written into CI.** Uploading coverage needs a step in the repository's own
+  build, whose shape varies (`/coverage/setup` has per-stack examples). The chooser turns the repository's coverage
+  on and puts the matching example in the pull request body as a checklist item. It does not edit a workflow it
+  cannot know.
+- **M10, rulesets are a step of the chooser** (owner, 2026-11-06), not a separate action. With the merge queue or
+  release lines picked, the ruleset plan is shown beside the pull request plan and applied with the user's token
+  (§8.2).
+- **M10, S7 is built on GitHub's documented rules and checked live after the deploy** (owner, 2026-11-06).
+  `POST /repos/{o}/{r}/branches/{b}/rename`: "The authenticated user must have push access to the branch. If the
+  branch is the default branch, the authenticated user must also have admin or owner permissions", and only the
+  default branch needs `administration:write` from a fine-grained token (docs.github.com, Branches API, read
+  2026-11-06). A line is never the default branch, so the App's Contents: write should do. The live check runs with
+  S5.
 - **M9c, a line's run reads coverage.yml from the default branch at every step** (`ConfigRef`). The default run
   keeps reading it at the commit it started on, as before. Found while wiring the ceiling: five later steps read the
   file at `ExpectedSha`, which for a line is the line's commit.

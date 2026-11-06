@@ -180,11 +180,27 @@ PRD §8.2.
 - **#571 progress (2026-11-05, `feat/issue571-dependencies-onboarding`):** S4 and S8 done (PRD §8.4). D10b's default
   needed nothing. Its opt-in `versioning.dependencyRanges: major-bounded` is built: an MSBuild target, the config key,
   and the action's exported variable. S7 is a live check, still to do.
-  **Resume here (paused 2026-11-05, draft PR):** M9 built and its .NET tests green. Open items:
-  - The guide-page specs (`dependency-updates-setup`, `backports-setup`, run via
-    `nx run @spark-apps/code-coverage:test -c local`) failed on their last run, and the failure was not read yet. Read
-    it first.
-  - Then M10, the M12 leftovers, S7, and the local sweep.
+  M9 built and its .NET tests green. The guide-page specs pass (2026-11-06). Their earlier failure was the run
+  command, not the code: page folders passed as test roots made the builder compile `.html`/`.scss`. Pass
+  workspace-relative `--include=<…>.spec.ts` paths instead.
+  **M10 sub-milestones (decided 2026-11-06, PRD §8.4 "M10"):**
+  - **M10a, coverage.yml sections:** one shared editor inserts a top-level section in alphabetical order, or
+    replaces it. The versioning and dependency onboardings use it instead of appending.
+  - **M10b, the planner:** a pure planner, one rule set per feature over one file overlay of the default branch
+    (generalising `VersioningOnboarding`'s rules). It returns the files, the body, the seeds, the renames, the lines
+    that need the regenerate workflow, and the settings to apply on merge.
+  - **M10c, the chooser:** a "Set up features" action on the Repository page (a checkbox form, then the plan) that
+    pushes one `mintplayer/onboarding` pull request. It is rebuilt on every new default-branch head while open.
+    It replaces "Set up versioning".
+  - **M10d, on merge:**
+    - apply the settings (dependency updates, size labels, coverage);
+    - push the seeds;
+    - rename the old lines (D2);
+    - open a pull request into each line that lacks the regenerate workflow (D9).
+  - **M10e, rulesets:** a step in the chooser. The plan is shown first, then applied with the user's token, with
+    the sign-in popup when that token is stale.
+  - **M10f:** the guide page and the docs.
+  - Then the M12 leftovers, S7 (live, after the deploy), and the local sweep.
 - **M9 Dependencies on lines** (D13): a rolling PR per supported line, platform packages capped at the line's major,
   patch/security default, advisories outside the allowed range flagged. Pack verified by S4 (D10b; no upper bounds,
   opt-in `major-bounded`). **Built (2026-11-05):** every supported line, the current one included (owner's choice). It
