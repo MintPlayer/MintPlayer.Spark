@@ -43,7 +43,12 @@ public sealed record ForgeClassicProtection(
 /// <param name="AppId">The App's own id: the bypass actor of ruleset 1.</param>
 /// <param name="Rulesets">The repository's own rulesets (not an organization's), every one, whatever it targets.</param>
 /// <param name="Classic">Classic protection on the default branch; null when there is none.</param>
-public sealed record ForgeRulesetState(long AppId, IReadOnlyList<ForgeExistingRuleset> Rulesets, ForgeClassicProtection? Classic);
+/// <param name="RulesetsAvailable">False when the repository's plan has no rulesets (a private repository on GitHub Free, D15).</param>
+public sealed record ForgeRulesetState(long AppId, IReadOnlyList<ForgeExistingRuleset> Rulesets, ForgeClassicProtection? Classic,
+    bool RulesetsAvailable = true);
+
+/// <summary>One step an apply carried out (#554): what it did, and where to see the result on the forge.</summary>
+public sealed record ForgeRulesetApplied(string Description, string? Url);
 
 /// <summary>What the person chose in the plan's prompt (#554 e3).</summary>
 /// <param name="RequiredApprovals">Ruleset 2's approval count: 0 for a single maintainer (merge-queue.md §3).</param>
@@ -111,6 +116,9 @@ public static class MergeQueueRulesetPlanner
 
         var blockers = new List<string>();
         var steps = new List<MergeQueueRulesetStep>();
+        if (!state.RulesetsAvailable)
+            return new MergeQueueRulesetPlan(steps,
+                ["This repository's plan has no rulesets (a private repository on GitHub Free). Make it public or upgrade the plan first."]);
         var include = choices.Branches is { Count: > 0 } branches ? branches.ToList() : [DefaultBranch];
 
         if (choices.RequiredApprovals is < 0 or > 10)

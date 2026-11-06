@@ -607,6 +607,26 @@ PRD §8.2.
       - Enqueue keeps master's behaviour: classic protection reads as `ChecksOnly`. Whether to bring back e5's
         refusals is decided in f2. A ruleset's approval count is readable with Metadata (`GET …/rules/branches/{b}`);
         a classic lock is not.
+
+      **f2 built (2026-11-06):**
+      - **Planner:** e1's `MergeQueueRulesetPlanner` was cherry-picked unchanged (commit `eed93cdc1`), with
+        `MergeQueueRulesetPlannerTests`.
+      - **Adapter:** both methods of `GitHubForgeMergeQueue.Rulesets.cs` take `accessToken` and send every repository
+        request with it, through `SendAsync(token, …)` and `GetPagedAsync(…, token)`. `AdministrationClientAsync`
+        and the scoped, revoked installation token are gone. The adapter never revokes anything: the caller's lease
+        does. `AppIdAsync` still asks `GET /app` with the App's JWT.
+      - **Refusals:** a 401/403 is a `ForgeAccessDeniedException` with GitHub's message and no `RequiredPermission`.
+        Accepting an App permission cannot help, since the person lacks admin or the organization has not approved the
+        OAuth app.
+      - **e5's enqueue refusals are not brought back here.** Enqueue runs on the installation token, which now has no
+        Administration and so cannot read classic protection's details. The ruleset half (Metadata) would be
+        readable. Master's `ChecksOnly` behaviour stays. Reopening this is the owner's call.
+      - **Tests:** `GitHubForgeMergeQueueRulesetTests` (6) checks four things:
+        - every repository request carries the given token, and no installation client is created;
+        - apply orders the creates before the delete, and calls no `/installation/token`;
+        - a 403 keeps GitHub's message;
+        - a blocked or empty plan sends nothing.
+        `ForgeIntegrationConformanceTests` passes a token. The three classes ran: 31 passed.
     - **f3, the "Set up rulesets" action on a repositories query, with multi-select:**
       - The form's (i) hints need `PersistentObjectAttribute.Description` again (the abandoned `80a3d1e60`). It is
         cherry-picked or rebuilt here.
