@@ -366,7 +366,10 @@ public class OnboardingPrTests
         plan.Files.Should().Contain(f => f.Path == ".github/workflows/nx-migrate.yml");
         plan.Files.Should().Contain(f => f.Path == ".github/workflows/angular-migrate.yml");
         plan.Files.Single(f => f.Path == ".github/workflows/dependency-apply.yml").Content.Should().Contain(DependencyOnboarding.ActionReference);
-        plan.Files.Single(f => f.Path == "coverage.yml").Content.Should().StartWith("mergeQueue:\n  enabled: true\n");
+        // #571 M10a: sections in alphabetical order, so the added dependencies section comes before the kept mergeQueue one.
+        var yml = plan.Files.Single(f => f.Path == "coverage.yml").Content!;
+        yml.Should().StartWith("# MintPlayer dependency updates");
+        yml.Should().Contain("\nmergeQueue:\n  enabled: true");
     }
 }
 
