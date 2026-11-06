@@ -111,8 +111,9 @@
                 <a routerLink="/coverage/setup">coverage guide</a> has one per stack.
               </li>
               <li>
-                <strong>The repository's rulesets</strong> for the merge queue: the App exempt from the one that restricts
-                updates, and the reviews and checks in a second one. See the
+                <strong>The repository's rulesets</strong> for the merge queue, only when the chooser could not set
+                them up. On GitHub, with the merge queue picked, it opens a GitHub popup and sets them up on the default
+                branch right after the pull request opens. Without that, or for release lines, see the
                 <a routerLink="/merge-queue/setup">merge queue guide</a>.
               </li>
               <li>Anything the pull request lists under <em>To do by hand</em>: a file the bot could not edit safely.</li>

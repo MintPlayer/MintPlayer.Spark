@@ -143,6 +143,7 @@ is **never written by a deploy**, and must have **LF line endings** — a CRLF f
 | `GITHUB_APP_CLIENT_ID` | `GitHub__Production__ClientId` | *(none)* | **Yes — startup throws without it** | OAuth client id for GitHub sign-in, the only sign-in provider. |
 | `GITHUB_APP_CLIENT_SECRET` | `GitHub__Production__ClientSecret` | *(none)* | Yes | OAuth client secret. |
 | `GITHUB_APP_SLUG` | `GitHub__Production__AppSlug` | empty | No | The App's public slug (`github.com/apps/<slug>`) for "install the App" links. Empty falls back to the generic apps page. |
+| `GITHUB_RULESETS_OAUTH_CLIENT_ID`, `GITHUB_RULESETS_OAUTH_CLIENT_SECRET` | `GitHub__Production__RulesetsOAuth__ClientId`, `…__ClientSecret` | empty | No | The rulesets OAuth app (#554, §4 `GitHub:{Env}:RulesetsOAuth:*`). Empty leaves the merge queue's rulesets to set by hand. |
 | `GITHUB_DEVELOPMENT_APP_ID` | `GitHub__Development__AppId` | empty | No | A *second*, development App whose webhooks this production instance should **not** process but forward to connected developer clients over a websocket, so both Apps can share one webhook URL. Ignored in Development. |
 | `COVERAGE_BADGE_SIGNING_KEY` | `Coverage__BadgeSigningKey` | empty | No | Signs the per-pull-request badge URL in the bot's PR comment, so a private repository's comment never carries the repo-wide badge token. Any high-entropy string (`openssl rand -hex 32`). Unset degrades those comments to text-only numbers; rotating it breaks only the badge images inside already-posted comments. |
 | `EXTERNAL_LOGIN_LINKING` | `Spark__Auth__ExternalLoginLinking` | `Disabled` | No | `Disabled` \| `WhenSignedIn` \| `ConfirmByEmail`. ⚠️ `ConfirmByEmail` without mail configured **refuses startup**. |
@@ -218,6 +219,7 @@ Keys the CodeCoverage assemblies read themselves. Environment-variable form repl
 | `GitHub:{Env}:ClientSecret` | unset | Yes | sign-in, user-token refresh | OAuth client secret. |
 | `GitHub:{Env}:AppId` | unset | Yes | webhooks (`ProductionAppId`), readiness probe, project automation's self-authored-event guard | The App this instance processes webhooks for. Locally that is the development App. |
 | `GitHub:{Env}:PrivateKeyPath` | unset | Yes | installation tokens, readiness probe | Path to the App's `.pem`. |
+| `GitHub:{Env}:RulesetsOAuth:ClientId`, `…:ClientSecret` | unset | No | `MergeQueue/GitHubRulesetsOAuth.cs` (registered in `Program.cs`) | A separate GitHub **OAuth app** (not the GitHub App), one per environment ("CoverageRulesets Development" with the callback `https://localhost:5200/spark/auth/oauth-callback`, "CoverageRulesets Production" with `https://coverage.mintplayer.com/spark/auth/oauth-callback`; device flow off). "Set up rulesets" and the onboarding chooser authorize it in a popup with the `repo` scope, use the token to set up the merge queue's rulesets, and revoke it when the action ends or after 5 minutes (`DELETE /applications/{client_id}/token`). This is why neither GitHub App needs Administration ([merge-queue.md](merge-queue.md) §3). Both unset: the action says it is not configured, and the chooser leaves the rulesets to set by hand. |
 | `GitHub:{Env}:AppSlug` | `coveragedevelopment` for `Development` (`appsettings.json`); unset otherwise | No | `Services/MyAccountsService.cs` | Install-link slug. |
 | `GitHub:Development:AppId` *(outside Development)* | unset | No | `Program.cs` → `DevelopmentAppId` | Forward this App's webhooks to connected developer clients instead of processing them. ⚠️ Never set it on a developer machine: the processor then skips every recipient. |
 | `AllowedHosts` | `*` (`appsettings.json`) | — | ASP.NET Core | Left open; Traefik's `Host` rule is the filter. Also why `Spark:ForwardedHeaders:ForwardHost` must stay off (§5). |
@@ -421,7 +423,8 @@ job gets one minted for it (`POST /app/installations/{id}/access_tokens` with th
 reviews (O11) and the pull request's commits, whose authors the squash credits as co-authors (D60). **Checks:
 write** publishes the "Merge queue" check run; read lists check runs and suites. **Administration is not
 requested**: classic branch protection's required checks are readable without it (`GET /branches/{b}`), its review
-settings are not, and the queue reports that as `ChecksOnly` rather than guessing. On the production App, the
+settings are not, and the queue reports that as `ChecksOnly` rather than guessing. Setting up the rulesets needs
+admin rights, so it uses the admin's own one-shot token from the rulesets OAuth app (§4, #554) and never the App's. On the production App, the
 Actions, Workflows and Commit statuses rows are new: each installation has to accept them (see the notice below,
 PRD O17) before the queue can run there; until then a refused call carries the permission GitHub named, for the
 queue check run to link.

@@ -220,6 +220,10 @@ services:
       - GitHub__Production__ClientId=${GITHUB_APP_CLIENT_ID}
       - GitHub__Production__ClientSecret=${GITHUB_APP_CLIENT_SECRET}
       - GitHub__Production__PrivateKeyPath=/run/secrets/github-app.pem
+      # Optional (#554): the OAuth app "Set up rulesets" authorizes in a popup for
+      # a one-shot token. Unset, the action says it is not configured.
+      - GitHub__Production__RulesetsOAuth__ClientId=${GITHUB_RULESETS_OAUTH_CLIENT_ID:-}
+      - GitHub__Production__RulesetsOAuth__ClientSecret=${GITHUB_RULESETS_OAUTH_CLIENT_SECRET:-}
       # Outgoing mail through Spark MailManager (#460 M8; was Coverage__Mail__*). The .env
       # variables are the same ones as before. MailManager is added only when Host AND
       # From:Address are set, so an unset MAIL_FROM_ADDRESS still means "this deployment

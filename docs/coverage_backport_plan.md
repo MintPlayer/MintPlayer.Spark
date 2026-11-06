@@ -670,7 +670,12 @@ PRD §8.2.
             `GetRepositories`.
           - `MergeQueueRulesetPlanner.Defaults`/`Describe` (from e3).
           - `CodeCoverage.Tests/CustomActions/SetUpRulesetsActionTests.cs` (6 tests).
-        - **RESUME HERE: f5** (docs). f4 is built, see below.
+        - **RESUME HERE: f6 and f0 (both the owner's).** f4 and f5 are built, see below.
+          - f6: the owner registers the two OAuth apps and sets their secrets. Production uses `.env`
+            `GITHUB_RULESETS_OAUTH_CLIENT_ID`/`_SECRET`; locally, user-secrets `GitHub:Development:RulesetsOAuth:*`.
+          - f0: the live spikes, for which the owner gives the go-ahead.
+          - After that come the final test run (including the ng-spark retry-modal spec and the two guide specs), the
+            push and the PR, all when asked.
         - **`CsrfSurfaceTests` needs no entry:** it covers mutating controller actions only, and the callback is a
           library GET.
         - **Known gap:** the apply pass re-reads and re-plans. A ruleset changed by someone else between the
@@ -705,6 +710,17 @@ PRD §8.2.
       - onboarding.md, and hosting.md (new config keys `GitHub:{Development|Production}:RulesetsOAuth:ClientId` and
         `:ClientSecret`, and the OAuth app's callback).
       - The in-app guides.
+      - **Built (2026-11-06):**
+        - merge-queue.md: §2 (the chooser and the action), §2.1 (admin rights only through the one-shot token), and
+          §3's new "Setting them up from CodeCoverage". §3 covers the steps, the org approval, and that release lines
+          are by hand.
+        - onboarding.md "Left to you".
+        - hosting.md: §2 has the `.env` row, §4 the `GitHub:{Env}:RulesetsOAuth:*` row with both callbacks, and the
+          permissions text.
+        - `docker-compose.yml` maps `GITHUB_RULESETS_OAUTH_CLIENT_ID`/`_SECRET` (optional, empty by default), and
+          `.env.example` lists them.
+        - The guides: `/onboarding/setup` (by hand only when the chooser could not), and `/merge-queue/setup` (a
+          paragraph at ruleset 1 pointing to both ways).
     - **f6, the owner registers the two OAuth apps** ("CoverageRulesets Development" with a localhost callback,
       "CoverageRulesets Production" with coverage.mintplayer.com) and sets their secrets. Device flow stays off.
   - **M10f:** the guide page and the docs. **Built (2026-11-06):** the in-app guide `/onboarding/setup` ("Getting

@@ -85,8 +85,11 @@ The code: the saga `CodeCoverage/MergeQueue/MergeQueueEngine.cs` (messaging lane
 
 The quickest way is **Set up features** → *Merge queue* on the repository's page ([onboarding.md](onboarding.md)). Its
 pull request adds the `mergeQueue:` section below. With *Release lines* also picked, the section queues the supported
-lines too (`branches: [<default>, supported-lines]`). The GitHub rulesets of §3 are still set by hand until #554 adds
-them to the chooser.
+lines too (`branches: [<default>, supported-lines]`). On GitHub, the chooser also sets up the two rulesets of §3 on the
+default branch: after the feature form it opens a GitHub popup and asks for the approvals and the admin bypass, the
+confirmation shows the rulesets' plan beside the pull request's, and the rulesets are applied right after the pull
+request opens (§3, "Setting them up from CodeCoverage"). For repositories that are already onboarded, **Set up
+rulesets** on the account's or the repository list does the same for every selected repository.
 
 ### 2.1 The GitHub App: permissions and events
 
@@ -105,6 +108,7 @@ The full App reference is [`hosting.md`](hosting.md) §6, "GitHub App". What the
 
 **Administration is not requested.** Classic branch protection's required checks are readable without it; its review
 settings are not. The queue then reports the branch as `ChecksOnly` and gives no O18 warnings from classic protection.
+Setting up the rulesets does need admin rights. It uses a one-shot token of the admin's own, never the App's (§3).
 
 **The git writer never holds the installation's token (T9, D59).** Each writer job (prepare, publish, the queue
 branch's reset and its deletion) gets a token minted for it alone: `POST /app/installations/{id}/access_tokens` with
@@ -538,6 +542,34 @@ below lists none, so admins too are held to the reviews and checks.
 The role check of §4.2 is independent of ruleset 1, so maintainers keep `write` and can still queue. An App exempt from
 ruleset 1 is still held to ruleset 2, even with `bypass_rules: true`; a direct push to the branch is rejected (GH013), and
 so is a merge while reviews or checks are unmet (D16).
+
+**Setting them up from CodeCoverage (#554).** There are two ways:
+
+- **Set up rulesets** on a repository list, for any number of repositories.
+- The onboarding chooser, for one repository (§2).
+
+Both open a popup to GitHub that authorizes a separate OAuth app, "CoverageRulesets", with the `repo` scope. Its
+token is the admin's own and lives at most 5 minutes. It is revoked as soon as the action ends, so the GitHub Apps
+never hold Administration. With that token CodeCoverage:
+
+1. reads each repository's rulesets and classic protection;
+2. asks for the approvals and whether admins may merge through a pull request, starting from what the repositories
+   have;
+3. shows each repository's exact plan, or why it can't be applied;
+4. after the confirmation, applies it one repository at a time. Ruleset 1 is applied first, so a classic protection
+   that is moved into the rulesets never leaves the branch open. Ruleset 2 requires the checks the default branch's
+   head reports, never the queue's own.
+
+Every repository gets its own success or warning.
+
+Requirements and limits:
+
+- The person who authorizes must be an admin of each repository.
+- An organization that restricts OAuth app access must approve the app first. GitHub then refuses the read, and
+  the warning carries GitHub's message.
+- The chooser applies the rulesets before its pull request merges.
+- Release lines still get their rulesets by hand.
+- Without the OAuth app configured (hosting.md §4, `GitHub:{Env}:RulesetsOAuth:*`), set up the rulesets as below.
 
 **Ruleset 1** (`ruleset-1.json`; `<APP_ID>` is the App's numeric id):
 
