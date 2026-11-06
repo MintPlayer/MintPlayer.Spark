@@ -5,7 +5,9 @@
 # live on the organization/repository pages (O15).
 mergeQueue:
   enabled: true
-  branches: [master]
+  # supported-lines: every branch versioning.lines' pattern matches (release/dotnet-11.x, release/angular-22.x), so
+  # backport pull requests go through the queue too (docs/coverage_backport_PRD.md D12).
+  branches: [master, supported-lines]
   mergeMethod: squash
   enqueue:
     label: merge-queue
@@ -49,3 +51,8 @@ versioning:
   packages:
     "@mintplayer/ng-spark": { prerelease: upstream }
     MintPlayer.Versioning.MSBuild: { prerelease: upstream }
+  # Release lines (#568 D15): packages release only from release/{ecosystem}-{major}.x, never from master. A change
+  # ships once its pull request is backported onto a line (D16: the current line is always labelled). Lines today:
+  # release/dotnet-11.x and release/angular-22.x. The past lines (dotnet-10.x, angular-21.x) are cut only when a fix
+  # must ship there, because their cut points predate tag versioning (#568 M11, owner 2026-11-06).
+  lines: {}

@@ -243,7 +243,13 @@ versioning action (`apps/CodeCoverage/versioning-action`, `mode: local` in `cove
 computes every changed package's next version and pushes a `<PackageId>/v<version>` tag. The pack
 then reads the highest reachable tag (`MintPlayer.Versioning.MSBuild`, imported from
 `Directory.Build.targets`), and the publish pushes everything with `--skip-duplicate`, so
-unchanged packages are skipped. The rules above are now enforced by the engine
+unchanged packages are skipped. **Since #568 M11, Spark releases only from release lines** (`versioning.lines`
+in `coverage.yml`): that job tags nothing on master, and runs the release on `release/dotnet-11.x` and
+`release/angular-22.x`. A change ships once its pull request is backported onto the line: a merged pull request
+gets a `backport: <line>` label per line whose ecosystem it changes, and the backport pull request goes through the
+merge queue. App deploys still come from master. The past lines (`dotnet-10.x`, `angular-21.x`) are not cut: their
+cut points predate tag versioning, so each needs a bootstrap first (owner, 2026-11-06,
+`docs/coverage_backport_plan.md` M11). The rules above are now enforced by the engine
 (`docs/coverage_package_versioning_PRD.md` D7): it takes the major from `TargetFramework` and
 from the resolved `@angular/core`, and an API break inside a platform generation is a minor.
 

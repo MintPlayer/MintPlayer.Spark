@@ -3,7 +3,7 @@
 Spec: [coverage_backport_PRD.md](coverage_backport_PRD.md). Tests run once per PR, at its end. Each PR runs its own
 spikes first.
 
-## Resume here: #554 (2026-11-06)
+## Done: #554 (2026-11-06)
 
 - **Branch:** `feat/issue554-rulesets-oauth`, a fresh start from master `b6b525ffb` (owner, 2026-11-06: "Start fresh
   on a blank branch"). Pushed with its pull request on the owner's request (2026-11-06); CI is the final test run.
@@ -40,8 +40,18 @@ spikes first.
 - **e5's enqueue refusal (classic lock, review count) and the eviction hint are dropped for good** (owner, 2026-11-06:
   "The github app won't have administration permissions on the repos, ever"). A classic lock cannot be read without
   Administration. A ruleset's approval count is readable with Metadata, if it is ever wanted.
-- **Next:** CI on the pull request, then merge and deploy. After the deploy: the production OAuth app live, with
-  the VPS `.env` values mapped by this branch's compose file.
+- **Merged and deployed** as PR #577 and PR #578 (#578 keeps another App's exemption on ruleset 1). Live on production
+  (2026-11-06, SparkTest): the plan was one step, "bypass added: App 4574022 (exempt)". After Apply, ruleset 26700976
+  lists both 4567511 and 4574022 as `exempt`, and ruleset 26700978 is unchanged.
+
+## Resume here: M11, Spark on release lines (2026-11-06)
+
+- **Branch:** `feat/issue568-spark-release-lines`. `coverage.yml` turns `versioning.lines` on and queues
+  `supported-lines`. Only the current lines are cut (owner, 2026-11-06); see M11 below for why the past lines wait.
+- **After merge:** push `release/dotnet-11.x` and `release/angular-22.x` at the merge commit, run "Set up rulesets" on
+  MintPlayer.Spark so ruleset 1 covers the lines, then check S5's open half (regeneration on a backport branch) on
+  the first backport pull request into a line.
+- **Then:** the rollout (C2) to MintPlayer's library repositories through the chooser.
 
 ## Three pull requests (owner exception to the one-PR rule, 2026-11-05)
 
@@ -822,10 +832,19 @@ PRD §8.2.
   plan shown first, applied with the signed-in user's GitHub token, a sign-in popup when that token is missing or
   expired.
 - **M11 Spark itself.**
-  - Workflow triggers for `release/**`; `schema-revision`, baseline and deploys default-branch-only (D18).
-  - The `release/**` ruleset.
-  - Cut `release/dotnet-11.x` and `release/angular-22.x` (current, D15), `release/dotnet-10.x` at `61c5c4276^` and
-    `release/angular-21.x` at `1b5d7450e^` (D14), with seed tags.
+  - Workflow triggers for `release/**`; `schema-revision`, baseline and deploys default-branch-only (D18). **Done in
+    #569.**
+  - The `release/**` ruleset. **Through "Set up rulesets" (#554) once the lines exist:** ruleset 1 then covers
+    `refs/heads/release/*-*.x`.
+  - Cut `release/dotnet-11.x` and `release/angular-22.x` (current, D15) from master after the pull request that turns
+    `versioning.lines` on. Their packages' tags are on master, so no seed tags are needed.
+  - ~~`release/dotnet-10.x` at `61c5c4276^` and `release/angular-21.x` at `1b5d7450e^` (D14), with seed tags.~~
+    **Deferred (owner, 2026-11-06: "Current lines only").** Both cut points predate tag versioning (#537,
+    2026-10-24): `c6513fc62` and `ae37fedc9` have a hard-coded `<Version>` (`10.0.0-preview.86`, `.34`), no
+    `versioning:` in coverage.yml, no `MintPlayer.Versioning.MSBuild` import, and `publish-release` triggers on
+    `master` only. A line cut there runs no CI and can never release. Each is cut when a fix must ship on it, with a
+    bootstrap pull request into the line: #537's versioning, the `release/**` triggers, and a seed tag per package at
+    its last published version (`MintPlayer.Spark/v10.0.0-preview.86`), with CI green on that tree.
 - **M12 Docs** (`docs/code-coverage/backports.md`, versioning.md, merge-queue.md), then the local test sweep, one push,
   CI. **#570's part done (2026-11-05):** the backport section moved from versioning.md into `backports.md` unchanged,
   with who may ask and what the report holds added; versioning.md keeps a pointer. #571 adds the dependency and
