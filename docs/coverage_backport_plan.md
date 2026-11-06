@@ -88,6 +88,19 @@ On `PieterjanDeClippel/SparkTest` (scratch repo from #517), with a `release/dotn
 - Check what GitHub does with open PRs based on the old name, branch protection/rulesets targeting it, and the
   old-name redirect for `git fetch`.
 
+**Result (2026-11-06, live on production, scratch repo `PieterjanDeClippel/SparkTest`):** Set up features with
+Package versioning + Release lines planned `release/10.0 → release/dotnet-10.x` (one packable `net10.0`/`net11.0`
+csproj). Merging onboarding PR #2 renamed it within seconds.
+- **Permission:** Contents: write is enough. CoverageProduction holds no Administration permission (installation
+  page: read/write on actions, checks, code, issues, pull requests, workflows) and the rename succeeded.
+- **Open PRs:** PR #1 (`fix-on-10` → `release/10.0`) was retargeted to `release/dotnet-10.x` and stayed open
+  (`gh api …/pulls/1`: `base.ref = release/dotnet-10.x`).
+- **REST API:** `GET /branches/release%2F10.0` answers 200 with the renamed branch.
+- **`git fetch` does not follow:** `git fetch <url> release/10.0` → `fatal: couldn't find remote ref release/10.0`.
+  The docs, the guide page and the onboarding PR body said GitHub "redirects the old names"; corrected to say clones
+  must switch.
+- **Rulesets/branch protection on the old name:** not tested; the scratch repo had none. Rulesets are #554's.
+
 ### S8 — Inventory of today's onboardings (D3)
 
 - List every per-feature onboarding (pages, PRs, coverage.yml sections, App permissions each needs).

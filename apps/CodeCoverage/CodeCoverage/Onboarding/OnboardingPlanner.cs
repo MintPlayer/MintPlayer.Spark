@@ -142,7 +142,7 @@ public static partial class OnboardingPlanner
         text.AppendLine($"`versioning.lines` turns release lines on. From then on, packages release only from their line (`release/<ecosystem>-<major>.x`), never from `{defaultBranch}`, and changes reach a line by backport pull request. See the [backports guide]({Guides}/backports/setup).");
         if (renames.Renames.Count > 0)
         {
-            text.AppendLine().AppendLine("These branches are renamed when this pull request merges. GitHub moves their open pull requests along and redirects the old names:").AppendLine();
+            text.AppendLine().AppendLine("These branches are renamed when this pull request merges. GitHub moves their open pull requests along, but `git fetch` does not follow the old names: switch your clones to the new branches. The renames:").AppendLine();
             text.AppendLine("| Branch now | Renamed to |").AppendLine("|---|---|");
             foreach (var rename in renames.Renames)
                 text.AppendLine($"| `{rename.From}` | `{rename.To}` |");
