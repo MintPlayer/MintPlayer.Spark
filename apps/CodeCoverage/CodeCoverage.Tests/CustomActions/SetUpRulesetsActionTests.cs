@@ -77,9 +77,11 @@ public class SetUpRulesetsActionTests : CoverageRavenTest
             Manager.GetTranslatedMessage(Arg.Any<string>(), Arg.Any<object[]>()).Returns(call => call.ArgAt<string>(0));
         }
 
+        public MergeQueueRulesetSetup Setup()
+            => new([Queue], OAuth, Microsoft.Extensions.Options.Options.Create(Options), Manager, NullLogger<MergeQueueRulesetSetup>.Instance);
+
         public SetUpRulesetsAction Action(IAsyncDocumentSessionHolder holder)
-            => new(new ScriptedOnboarding(), [Queue], OAuth, Microsoft.Extensions.Options.Options.Create(Options), holder.Session, Manager,
-                NullLogger<SetUpRulesetsAction>.Instance);
+            => new(new ScriptedOnboarding(), Setup(), holder.Session, Manager);
     }
 
     /// <summary>Keeps the session the action reads with.</summary>

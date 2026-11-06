@@ -3670,6 +3670,16 @@
         "en": "Branches renamed when it merges: {0}",
         "fr": "Branches renommées à la fusion : {0}",
         "nl": "Branches hernoemd bij het mergen: {0}"
+      },
+      "rulesets": {
+        "en": "Rulesets, set up now with your GitHub authorization (not at the merge):",
+        "fr": "Rulesets, configurés maintenant avec votre autorisation GitHub (pas à la fusion) :",
+        "nl": "Rulesets, nu ingesteld met je GitHub-autorisatie (niet bij het mergen):"
+      },
+      "rulesetsByHand": {
+        "en": "The merge queue's rulesets are left to set by hand (merge-queue.md §3): {0}",
+        "fr": "Les rulesets de la file de fusion restent à configurer à la main (merge-queue.md §3) : {0}",
+        "nl": "De rulesets van de merge queue moet je zelf instellen (merge-queue.md §3): {0}"
       }
     },
     "unavailable": {

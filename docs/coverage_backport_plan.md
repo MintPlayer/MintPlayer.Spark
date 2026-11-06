@@ -670,7 +670,7 @@ PRD §8.2.
             `GetRepositories`.
           - `MergeQueueRulesetPlanner.Defaults`/`Describe` (from e3).
           - `CodeCoverage.Tests/CustomActions/SetUpRulesetsActionTests.cs` (6 tests).
-        - **RESUME HERE: f4** (the chooser; its proposal below needs the owner's answer), then f5 (docs).
+        - **RESUME HERE: f5** (docs). f4 is built, see below.
         - **`CsrfSurfaceTests` needs no entry:** it covers mutating controller actions only, and the callback is a
           library GET.
         - **Known gap:** the apply pass re-reads and re-plans. A ruleset changed by someone else between the
@@ -681,9 +681,25 @@ PRD §8.2.
       - Which query it sits on (the Account's repositories, or the onboarding rows) is decided in f3.
     - **f4, the chooser:**
       - The at-merge apply of e2/e3 is dropped: no user is present at the merge to authorize.
-      - **Proposed, for the owner:** the chooser's ruleset step applies at confirmation time, with the same one-shot
-        token, so one click covers it, rather than leaving the chooser to point to the action. The rulesets do not
-        depend on the onboarding pull request's files.
+      - **Decided (owner, 2026-11-06): apply at confirmation.** The chooser's ruleset step applies at confirmation
+        time with the same one-shot token, so one click covers it. The chooser does not point to the action instead.
+        The rulesets do not depend on the onboarding pull request's files.
+        - **Accepted trap:** the rulesets go live before that pull request merges, so the queue check is required
+          before the workflow that reports it exists.
+      - **Built (2026-11-06):**
+        - **Shared steps:** `MergeQueue/MergeQueueRulesetSetup.cs` (`IMergeQueueRulesetSetup`) holds them: target,
+          popup, read, form, summary, apply, notify. "Set up rulesets" and the chooser both use it, so the steps are not
+          written twice.
+        - **The chooser with the merge queue picked:**
+          - After the checkbox form come the popup and the rulesets form.
+          - The confirmation adds "Rulesets, set up now …" with the plan.
+          - The rulesets apply after `OnboardAsync`, and only when the onboarding was not refused. A refused one leaves
+            no workflow to report ruleset 2's checks.
+        - **When the rulesets can't be set up** (not GitHub, no default branch, no OAuth app, a refused read), the
+          confirmation says "left to set by hand" with the reason, and the pull request still opens.
+        - **Cancelling** the popup or the rulesets form ends the chooser.
+        - **Release lines get no ruleset step:** the planner covers the default branch only.
+        - **Tests:** `SetUpFeaturesRulesetsTests` (4).
     - **f5, docs and guides:**
       - merge-queue.md §2.1/§3/§5: no Administration, the OAuth app, the org approval.
       - onboarding.md, and hosting.md (new config keys `GitHub:{Development|Production}:RulesetsOAuth:ClientId` and

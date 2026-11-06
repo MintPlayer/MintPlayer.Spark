@@ -1,0 +1,196 @@
+using CodeCoverage.Entities;
+using CodeCoverage.Forge;
+using Microsoft.Extensions.Options;
+using MintPlayer.SourceGenerators.Attributes;
+using MintPlayer.Spark.Abstractions;
+using MintPlayer.Spark.Abstractions.ClientOperations;
+using MintPlayer.Spark.Abstractions.Retry;
+using MintPlayer.Spark.Authorization.OneShotOAuth;
+
+namespace CodeCoverage.MergeQueue;
+
+/// <summary>
+/// The steps that set up the merge queue's rulesets with the admin's one-shot token (#554 f3/f4), shared by
+/// "Set up rulesets" (several repositories) and the onboarding chooser (one). Each step is one pass of the action's retry
+/// conversation: <see cref="AuthorizeAsync"/> is the popup, <see cref="ChooseAsync"/> the form; everything before
+/// <see cref="ApplyAsync"/> only reads, so the passes that carry the answers repeat it harmlessly.
+/// </summary>
+public interface IMergeQueueRulesetSetup
+{
+    /// <summary>Whether the rulesets OAuth app has a client id and secret (<see cref="GitHubRulesetsOAuth.IsConfigured"/>).</summary>
+    bool IsConfigured { get; }
+
+    /// <summary>The repository's target, or <see langword="null"/> with the translated reason it cannot have one.</summary>
+    RulesetTarget? TargetFor(Repository repository, out string? reason);
+
+    /// <summary>
+    /// The popup. <see langword="null"/> when it did not give a token; the admin has been told why, except when they
+    /// cancelled it. The caller disposes the lease, which revokes the token when the action ends.
+    /// </summary>
+    Task<ISparkOneShotOAuthLease?> AuthorizeAsync(CancellationToken cancellationToken);
+
+    /// <summary>Reads each target with the token; a refused or unsupported read becomes a failure, never an exception.</summary>
+    Task<(IReadOnlyList<RulesetRead> Read, IReadOnlyList<RulesetRepositoryResult> Failed)> ReadAsync(
+        IReadOnlyList<RulesetTarget> targets, string accessToken, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// The form (approvals, admin bypass), starting from what the repositories agree on, and each repository's plan with
+    /// the answer. <see langword="null"/> when the admin cancelled.
+    /// </summary>
+    Task<IReadOnlyList<RulesetPlanned>?> ChooseAsync(IReadOnlyList<RulesetRead> read, CancellationToken cancellationToken);
+
+    /// <summary>Each repository's name and its plan, one "- " line per step or blocker.</summary>
+    string Summary(IReadOnlyList<RulesetPlanned> planned);
+
+    /// <summary>Applies every plan that can apply, one repository at a time; a blocked or refused one is a failure.</summary>
+    Task<(IReadOnlyList<RulesetRepositoryResult> Applied, IReadOnlyList<RulesetRepositoryResult> Failed)> ApplyAsync(
+        IReadOnlyList<RulesetPlanned> planned, string accessToken, CancellationToken cancellationToken);
+
+    /// <summary>One success notification per repository set up, one warning per repository that was not.</summary>
+    void Notify(IReadOnlyList<RulesetRepositoryResult> applied, IReadOnlyList<RulesetRepositoryResult> failed);
+}
+
+/// <summary>A repository the rulesets can be set up on: GitHub, with a merge queue and a default branch.</summary>
+public sealed record RulesetTarget(Repository Repository, IForgeMergeQueue Queue, string Branch);
+
+/// <summary>A target as the token read it, and the choices its state suggests.</summary>
+public sealed record RulesetRead(RulesetTarget Target, ForgeRulesetState State, MergeQueueRulesetChoices Defaults);
+
+/// <summary>A target and its plan with the admin's choices.</summary>
+public sealed record RulesetPlanned(RulesetTarget Target, MergeQueueRulesetPlan Plan);
+
+/// <summary>One repository's outcome: what was done (<paramref name="Steps"/>), or why nothing was.</summary>
+public sealed record RulesetRepositoryResult(string RepositoryId, string FullName, string Message, IReadOnlyList<ForgeRulesetApplied> Steps)
+{
+    public static RulesetRepositoryResult Failure(Repository repository, string message) => new(repository.Id!, repository.FullName, message, []);
+}
+
+[Register(typeof(IMergeQueueRulesetSetup), ServiceLifetime.Scoped)]
+public partial class MergeQueueRulesetSetup : IMergeQueueRulesetSetup
+{
+    [Inject] private readonly IEnumerable<IForgeMergeQueue> queues;
+    [Inject] private readonly ISparkOneShotOAuth oauth;
+    [Inject] private readonly IOptions<SparkOneShotOAuthOptions> oauthOptions;
+    [Inject] private readonly IManager manager;
+    [Inject] private readonly ILogger<MergeQueueRulesetSetup> logger;
+
+    public bool IsConfigured => GitHubRulesetsOAuth.IsConfigured(oauthOptions.Value);
+
+    public RulesetTarget? TargetFor(Repository repository, out string? reason)
+    {
+        reason = null;
+        if (repository.Provider != EForgeProvider.GitHub || queues.FirstOrDefault(q => q.Provider == repository.Provider) is not { } queue)
+            reason = Reason("unsupported");
+        else if (repository.DefaultBranch is not { Length: > 0 } branch)
+            reason = Reason("noDefaultBranch");
+        else
+            return new RulesetTarget(repository, queue, branch);
+        return null;
+    }
+
+    public async Task<ISparkOneShotOAuthLease?> AuthorizeAsync(CancellationToken cancellationToken)
+    {
+        var authorized = await oauth.AuthorizeAsync(GitHubRulesetsOAuth.ClientName, [GitHubRulesetsOAuth.Scope], cancellationToken);
+        if (authorized.Succeeded)
+            return authorized.Lease;
+        if (authorized.Error != SparkOneShotOAuthErrors.Cancelled)
+            manager.Client.Notify(manager.GetTranslatedMessage(ErrorKey(authorized.Error)), NotificationKind.Error);
+        return null;
+    }
+
+    public async Task<(IReadOnlyList<RulesetRead> Read, IReadOnlyList<RulesetRepositoryResult> Failed)> ReadAsync(
+        IReadOnlyList<RulesetTarget> targets, string accessToken, CancellationToken cancellationToken)
+    {
+        var read = new List<RulesetRead>();
+        var failed = new List<RulesetRepositoryResult>();
+        foreach (var target in targets)
+        {
+            var (repository, queue, branch) = target;
+            try
+            {
+                if (await queue.GetRulesetStateAsync(repository, branch, accessToken, cancellationToken) is not { } state)
+                {
+                    failed.Add(RulesetRepositoryResult.Failure(repository, Reason("unsupported")));
+                    continue;
+                }
+                var head = await queue.GetBranchHeadAsync(repository, branch, cancellationToken);
+                var headChecks = head is null ? [] : await queue.GetCheckNamesOnCommitAsync(repository, head, cancellationToken);
+                read.Add(new RulesetRead(target, state, MergeQueueRulesetPlanner.Defaults(state, headChecks)));
+            }
+            catch (Exception ex) when (ex is ForgeAccessDeniedException or ForgeRequestException or HttpRequestException)
+            {
+                failed.Add(RulesetRepositoryResult.Failure(repository, ex.Message));
+            }
+        }
+        return (read, failed);
+    }
+
+    public async Task<IReadOnlyList<RulesetPlanned>?> ChooseAsync(IReadOnlyList<RulesetRead> read, CancellationToken cancellationToken)
+    {
+        var form = await manager.GetPersistentObjectAsync(Guid.Parse(PersistentObjectIds.Default.SetUpRulesets), cancellationToken: cancellationToken);
+        var approvalsStart = read.Select(r => r.Defaults.RequiredApprovals).Distinct().Count() == 1 ? read[0].Defaults.RequiredApprovals : 1;
+        var adminsStart = read.All(r => r.Defaults.AdminsMayMergeByPullRequest == true);
+        form[nameof(MergeQueueRulesetChoices.RequiredApprovals)].Value = approvalsStart;
+        form[nameof(MergeQueueRulesetChoices.AdminsMayMergeByPullRequest)].Value = adminsStart;
+        var next = manager.GetTranslatedMessage("onboarding.plan");
+        manager.Retry.Action(manager.GetTranslatedMessage("rulesets.chooseTitle"), [next], next, form,
+            manager.GetTranslatedMessage("rulesets.chooseMessage"), cancellable: true);
+        var chosen = manager.Retry.Result!;
+        if (chosen.Option == RetryResult.CancelOption)
+            return null;
+        var approvals = Math.Max(0, chosen.PersistentObject?[nameof(MergeQueueRulesetChoices.RequiredApprovals)].GetValue<int?>() ?? approvalsStart);
+        var admins = chosen.PersistentObject?[nameof(MergeQueueRulesetChoices.AdminsMayMergeByPullRequest)].GetValue<bool?>() ?? adminsStart;
+        return [.. read.Select(r => new RulesetPlanned(r.Target,
+            MergeQueueRulesetPlanner.Plan(r.State, r.Defaults with { RequiredApprovals = approvals, AdminsMayMergeByPullRequest = admins })))];
+    }
+
+    public string Summary(IReadOnlyList<RulesetPlanned> planned)
+        => string.Join("\n\n", planned.Select(p =>
+            p.Target.Repository.FullName + "\n" + string.Join("\n", MergeQueueRulesetPlanner.Describe(p.Plan).Select(l => "- " + l))));
+
+    public async Task<(IReadOnlyList<RulesetRepositoryResult> Applied, IReadOnlyList<RulesetRepositoryResult> Failed)> ApplyAsync(
+        IReadOnlyList<RulesetPlanned> planned, string accessToken, CancellationToken cancellationToken)
+    {
+        var applied = new List<RulesetRepositoryResult>();
+        var failed = new List<RulesetRepositoryResult>();
+        foreach (var ((repository, queue, branch), plan) in planned)
+        {
+            if (plan.Blockers.Count > 0)
+            {
+                failed.Add(RulesetRepositoryResult.Failure(repository, string.Join(" ", plan.Blockers)));
+                continue;
+            }
+            if (!plan.CanApply)
+                continue; // set up already
+            try
+            {
+                var steps = await queue.ApplyRulesetPlanAsync(repository, branch, plan, accessToken, cancellationToken);
+                applied.Add(new RulesetRepositoryResult(repository.Id!, repository.FullName, string.Join(" ", steps.Select(s => s.Description)), [.. steps]));
+            }
+            catch (Exception ex) when (ex is ForgeAccessDeniedException or ForgeRequestException or HttpRequestException)
+            {
+                logger.LogWarning(ex, "Set up rulesets: {Repository} was refused", repository.FullName);
+                failed.Add(RulesetRepositoryResult.Failure(repository, ex.Message));
+            }
+        }
+        return (applied, failed);
+    }
+
+    public void Notify(IReadOnlyList<RulesetRepositoryResult> applied, IReadOnlyList<RulesetRepositoryResult> failed)
+    {
+        foreach (var done in applied)
+            manager.Client.Notify(manager.GetTranslatedMessage("rulesets.applied", done.FullName, done.Message), NotificationKind.Success);
+        foreach (var refusal in failed)
+            manager.Client.Notify(manager.GetTranslatedMessage("rulesets.failed", refusal.FullName, refusal.Message), NotificationKind.Warning);
+    }
+
+    private static string ErrorKey(string? error) => error switch
+    {
+        SparkOneShotOAuthErrors.PopupBlocked => "rulesets.error.popupBlocked",
+        SparkOneShotOAuthErrors.Denied => "rulesets.error.denied",
+        SparkOneShotOAuthErrors.Expired => "rulesets.error.expired",
+        _ => "rulesets.error.failed",
+    };
+
+    private string Reason(string key) => manager.GetTranslatedMessage($"rulesets.reason.{key}");
+}
