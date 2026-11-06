@@ -205,6 +205,18 @@ PRD §8.2.
     - push the seeds;
     - rename the old lines (D2);
     - open a pull request into each line that lacks the regenerate workflow (D9).
+    **Built (2026-11-06):** `IOnboardingService.MergedAsync` is the merge's one entry point (owner, 2026-11-06: the
+    seeds recipient should not depend on two services). The merged webhook on `mintplayer/onboarding` (or the #153
+    branch) reaches it through `VersioningSeedsRecipient`, under the run lock. It pushes the seeds (`PushSeedsAsync`,
+    so a #153 pull request still gets them), switches dependency updates (plus the onboard signal) and size labels
+    on, and renames each planned line through the new `IForgeMergeQueue.RenameBranchAsync` (GitHub
+    `POST /branches/{b}/rename`; a refusal is noted, not retried). Then, for each supported line missing a workflow
+    that the default branch's `mergeQueue` names (`Workflows()`), it pushes `/jobs/onboarding` with `line` and opens
+    a pull request from `mintplayer/onboarding-<line>`. The writer's line mode accepts only 1–8
+    `.github/workflows/` files, with no deletions. `MergeHandledAt` stores the merge commit, so the merge is handled
+    once. Coverage has no setting to switch: its step stays a to-do in the body. A plan with no files (size labels
+    alone) applies its settings and renames at once, without a pull request. Tests: `OnboardingServiceTests` (+2),
+    `OnboardingWriterJobTests` (+3), `GitHubForgeMergeQueueTests` (rename), conformance row.
   - **M10e, rulesets:** a step in the chooser. The plan is shown first, then applied with the user's token, with
     the sign-in popup when that token is stale.
   - **M10f:** the guide page and the docs.

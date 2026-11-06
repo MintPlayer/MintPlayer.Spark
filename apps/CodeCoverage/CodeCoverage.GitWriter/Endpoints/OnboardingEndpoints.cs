@@ -17,6 +17,9 @@ internal sealed partial class GitWriterOnboardingEndpoint : IPostEndpoint<Versio
         + $"{GitWriterVersioningOnboardingEndpoint.MaxFileBytes / 1024} KiB text, each a versioning onboarding path or one of the dependency "
         + "onboarding's set; only .github/dependabot.yml or .yaml may be deleted";
 
+    /// <summary>#571 D9: a line's onboarding only adds workflows (the default branch's regenerate workflow).</summary>
+    public const string LineFilesRule = "for a line: 1 to 8 distinct .github/workflows/*.yml or *.yaml files of at most 256 KiB, no deletions";
+
     public static string Path => "/jobs/onboarding";
 
     [Inject] private readonly WriterService writer;
@@ -34,10 +37,15 @@ internal sealed partial class GitWriterOnboardingEndpoint : IPostEndpoint<Versio
         var refusal = new Refusal();
         if (DependencyFields.Job(refusal, request, options.Value.AllowInsecureHttp) is not { } job
             || DependencyFields.Commit(refusal, request) is not { } commit
-            || refusal.Check(Files(request.Files), "files", FilesRule) is not { } files)
+            || refusal.Check(job.Line is null ? Files(request.Files) : LineFiles(request.Files), "files", job.Line is null ? FilesRule : LineFilesRule) is not { } files)
             return refusal.Result();
         return Results.Json(await writer.OnboardingAsync(job, commit, files), GitWriterHost.Json);
     }
+
+    internal static List<(string Path, string? Content)>? LineFiles(List<DependencyFileWire>? wires)
+        => wires is { Count: > 0 and <= 8 } && wires.All(w => w is { Delete: false, Path: { } path } && path.StartsWith(".github/workflows/", StringComparison.Ordinal))
+            ? Files(wires)
+            : null;
 
     internal static List<(string Path, string? Content)>? Files(List<DependencyFileWire>? wires)
     {

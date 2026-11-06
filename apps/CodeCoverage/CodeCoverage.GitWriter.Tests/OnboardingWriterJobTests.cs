@@ -57,6 +57,42 @@ public class OnboardingWriterJobTests : WriterTestBase
             "D\t.github/dependabot.yml\nA\t.github/workflows/dependency-lookup.yml\nA\t.github/workflows/regenerate.yml\nA\tDirectory.Build.props\nM\tcoverage.yml");
     }
 
+    [Fact]
+    public async Task D9_a_line_job_adds_a_workflow_on_the_line_s_own_onboarding_branch()
+    {
+        var (origin, baseSha) = Seeded();
+        origin.SetBranch("release/dotnet-6.x", baseSha);
+        var job = Job(origin, baseSha, new { path = ".github/workflows/regenerate.yml", content = "name: regenerate\n" });
+        job["baseBranch"] = "release/dotnet-6.x";
+        job["line"] = "dotnet-6.x";
+
+        var response = await Writer.Client.PostAsJsonAsync("/jobs/onboarding", job, GitWriterHost.Json);
+        response.EnsureSuccessStatusCode();
+        var answer = (await response.Content.ReadFromJsonAsync<DependencyJobResponse>(GitWriterHost.Json))!;
+
+        answer.Outcome.Should().Be("pushed", answer.Detail);
+        DependencyBranches.FeatureOnboardingOf("dotnet-6.x").Should().Be("mintplayer/onboarding-dotnet-6.x");
+        origin.Ref("refs/heads/mintplayer/onboarding-dotnet-6.x").Should().Be(answer.Sha);
+        origin.Ref($"refs/heads/{DependencyBranches.FeatureOnboarding}").Should().BeNull();
+        origin.InBare("rev-parse", $"{answer.Sha}^").Trim().Should().Be(baseSha);
+    }
+
+    [Theory]
+    [InlineData("coverage.yml")]
+    [InlineData("Directory.Build.props")]
+    public async Task D9_a_line_job_writes_workflows_only(string path)
+    {
+        var (origin, baseSha) = Seeded();
+        origin.SetBranch("release/dotnet-6.x", baseSha);
+        var job = Job(origin, baseSha, new { path, content = "x\n" });
+        job["baseBranch"] = "release/dotnet-6.x";
+        job["line"] = "dotnet-6.x";
+
+        var response = await Writer.Client.PostAsJsonAsync("/jobs/onboarding", job, GitWriterHost.Json);
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
     [Theory]
     [InlineData(".github/CODEOWNERS", false)]
     [InlineData("coverage.yml", true)]

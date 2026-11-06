@@ -96,6 +96,7 @@ public class ForgeIntegrationConformanceTests
         (nameof(IForgeMergeQueue.GetBranchRulesAsync), q => q.GetBranchRulesAsync(SampleRepository, "main")),
         (nameof(IForgeMergeQueue.GetBranchHeadAsync), q => q.GetBranchHeadAsync(SampleRepository, "main")),
         (nameof(IForgeMergeQueue.ListBranchesAsync), q => q.ListBranchesAsync(SampleRepository, "release/")),
+        (nameof(IForgeMergeQueue.RenameBranchAsync), q => q.RenameBranchAsync(SampleRepository, "release/6.0", "release/dotnet-6.x")),
         (nameof(IForgeMergeQueue.GetCheckStateAsync), q => q.GetCheckStateAsync(SampleRepository, SampleSha)),
         (nameof(IForgeMergeQueue.RerunCheckAsync), q => q.RerunCheckAsync(SampleRepository, new ForgeCheckRun(1, "build", "completed", "failure", 11, "github-actions", null))),
         (nameof(IForgeMergeQueue.GetCheckNamesOnCommitAsync), q => q.GetCheckNamesOnCommitAsync(SampleRepository, SampleSha)),

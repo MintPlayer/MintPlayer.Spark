@@ -27,6 +27,8 @@ public sealed record VersioningOnboardingOutcome(string Outcome, string Note, in
 {
     public const string Opened = "opened";
     public const string Seeded = "seeded";
+    /// <summary>#571 M10d: the onboarding pull request's merge was handled.</summary>
+    public const string Merged = "merged";
     public const string Nothing = "nothing";
     public const string Refused = "refused";
 }

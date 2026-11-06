@@ -35,7 +35,7 @@ public partial class VersioningSeedsEventsRecipient : IRecipient<ForgeWebhookMes
 public partial class VersioningSeedsRecipient : IRecipient<VersioningSeedsMessage>
 {
     [Inject] private readonly Raven.Client.Documents.Session.IAsyncDocumentSession session;
-    [Inject] private readonly IVersioningOnboardingService onboarding;
+    [Inject] private readonly Onboarding.IOnboardingService onboarding;
     [Inject] private readonly VersioningRunLocks locks;
 
     public async Task HandleAsync(VersioningSeedsMessage message, CancellationToken cancellationToken = default)
@@ -44,6 +44,7 @@ public partial class VersioningSeedsRecipient : IRecipient<VersioningSeedsMessag
         if (repository is null || repository.Connection == RepositoryConnection.Disconnected || repository.Archived) return;
         using var held = await locks.TryEnterAsync(repository.Id!, cancellationToken)
             ?? throw new GitWriterUnavailableException("A versioning run of this repository is still going.");
-        await onboarding.PushSeedsAsync(repository, cancellationToken);
+        // #571 M10d: the seeds, then the chooser's settings, renames and line workflows (only the seeds for a #153 pull request).
+        await onboarding.MergedAsync(repository, cancellationToken);
     }
 }

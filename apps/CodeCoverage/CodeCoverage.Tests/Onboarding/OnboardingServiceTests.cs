@@ -1,6 +1,7 @@
 using CodeCoverage.Entities;
 using CodeCoverage.Feedback;
 using CodeCoverage.Forge;
+using CodeCoverage.LookupReferences;
 using CodeCoverage.MergeQueue;
 using CodeCoverage.Onboarding;
 using CodeCoverage.PackageVersioning;
@@ -28,7 +29,8 @@ public class OnboardingServiceTests : CoverageRavenTest
     private const string Csproj = "<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>net11.0</TargetFramework>\n"
         + "    <PackageId>Acme.Tools</PackageId>\n    <Version>11.2.0</Version>\n  </PropertyGroup>\n</Project>\n";
 
-    private sealed record Harness(IOnboardingService Service, FakeGitWriter Writer, FakeForgeDependencyUpdates Pulls, ScriptedDiffService Forge, FakeForgeMergeQueue Queue);
+    private sealed record Harness(IOnboardingService Service, FakeGitWriter Writer, FakeForgeDependencyUpdates Pulls, ScriptedDiffService Forge, FakeForgeMergeQueue Queue,
+        FakeForgeVersioning Versioning, RecordingMessageBus Bus, Raven.Client.Documents.Session.IAsyncDocumentSession Session);
 
     private sealed class Offline : HttpMessageHandler
     {
@@ -44,21 +46,25 @@ public class OnboardingServiceTests : CoverageRavenTest
         queue.BranchHeads["main"] = forge.Trees["main"].CommitSha;
         queue.BranchHeads["release/6.0"] = "6060606060606060606060606060606060606060";
         var writer = new FakeGitWriter();
+        var versioning = new FakeForgeVersioning();
+        var bus = new RecordingMessageBus();
+        var session = store.OpenAsyncSession();
 
         var services = new ServiceCollection();
         services.AddLogging(l => l.SetMinimumLevel(LogLevel.None));
-        services.AddSingleton(store.OpenAsyncSession());
+        services.AddSingleton(session);
+        services.AddSingleton<MintPlayer.Spark.Messaging.Abstractions.IMessageBus>(bus);
         services.AddSingleton<IForgeIntegration>(forge);
         services.AddSingleton<IForgeIntegrationResolver>(forge);
         services.AddSingleton<IForgeMergeQueue>(queue);
         services.AddSingleton<IForgeDependencyUpdates>(pulls);
-        services.AddSingleton<IForgeVersioning>(new FakeForgeVersioning());
+        services.AddSingleton<IForgeVersioning>(versioning);
         services.AddSingleton<IGitWriterSidecar>(writer);
         services.AddSingleton(TimeProvider.System);
         services.AddHttpClient(Microsoft.Extensions.Options.Options.DefaultName).ConfigurePrimaryHttpMessageHandler(() => new Offline());
         services.AddScoped<IVersioningOnboardingService, VersioningOnboardingService>();
         services.AddScoped<IOnboardingService, OnboardingService>();
-        return new Harness(services.BuildServiceProvider().GetRequiredService<IOnboardingService>(), writer, pulls, forge, queue);
+        return new Harness(services.BuildServiceProvider().GetRequiredService<IOnboardingService>(), writer, pulls, forge, queue, versioning, bus, session);
     }
 
     /// <summary>A .NET repository with coverage.yml at <paramref name="head"/>.</summary>
@@ -150,6 +156,61 @@ public class OnboardingServiceTests : CoverageRavenTest
         var moved = Create(store, forge, pulls);
         (await moved.Service.RebuildAsync(repository)).Outcome.Should().Be(VersioningOnboardingOutcome.Nothing);
         moved.Writer.Requests("onboarding").Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task M10d_the_merge_switches_settings_on_renames_the_lines_and_adds_the_regenerate_workflow_to_each_line()
+    {
+        using var store = GetDocumentStore();
+        await SeedRepositoryAsync(store);
+        var h = Create(store);
+        var repository = (await h.Session.LoadAsync<Repository>(CodeCoverage.Entities.Repository.DocumentId(EForgeProvider.GitHub, RepoId)))!;
+        var opened = await h.Service.OnboardAsync(repository, new HashSet<EOnboardingFeature>
+            { EOnboardingFeature.ReleaseLines, EOnboardingFeature.MergeQueue, EOnboardingFeature.SizeLabels, EOnboardingFeature.DependencyUpdates });
+        opened.Outcome.Should().Be(VersioningOnboardingOutcome.Opened, opened.Note);
+
+        // The merge: what the pull request wrote is on main now.
+        h.Forge.Files[$"main/{CoverageYml.FileName}"] = "versioning:\n  lines: {}\nmergeQueue:\n  enabled: true\n  postRebaseActionName: regenerate.yml\n";
+        h.Forge.Files["main/.github/workflows/regenerate.yml"] = "name: regenerate\n";
+        h.Versioning.PullRequest = new ForgePullRequestText(opened.PullRequest!.Value, OnboardingPlanner.Title, null, OnboardingPlanner.Branch, Head, "main",
+            false, true, true, "abcdabcdabcdabcdabcdabcdabcdabcdabcdabcd", []);
+
+        var merged = await h.Service.MergedAsync(repository);
+
+        merged.Outcome.Should().Be(VersioningOnboardingOutcome.Merged, merged.Note);
+        h.Queue.Renames.Should().Equal([("release/6.0", "release/dotnet-6.x")]);
+        var line = h.Writer.Requests("onboarding").Last();
+        (line.Line, line.BaseBranch, line.ExpectedSha).Should().Be(("dotnet-6.x", "release/dotnet-6.x", "6060606060606060606060606060606060606060"));
+        line.Files!.Select(f => (f.Path, f.Content)).Should().Equal([(".github/workflows/regenerate.yml", "name: regenerate\n")]);
+        var pull = h.Pulls.Created.Last();
+        (pull.Head, pull.Base, pull.Title).Should().Be((OnboardingPlanner.LineBranch("dotnet-6.x"), "release/dotnet-6.x", OnboardingPlanner.LineTitle));
+
+        using (var read = store.OpenAsyncSession())
+        {
+            var saved = (await read.LoadAsync<Repository>(repository.Id))!;
+            (saved.DependencyUpdates, saved.PrSizeLabels).Should().Be((EDependencyUpdatesPolicy.Enabled, EPrSizeLabelPolicy.Enabled));
+        }
+        h.Bus.Of<CodeCoverage.Dependencies.Lifecycle.DependencyUpdateSignalMessage>().Should().ContainSingle();
+        (await StateAsync(store, repository)).MergeHandledAt.Should().NotBeNull();
+
+        (await h.Service.MergedAsync(repository)).Outcome.Should().Be(VersioningOnboardingOutcome.Nothing, "a merge is handled once");
+        h.Queue.Renames.Should().HaveCount(1);
+    }
+
+    [Fact]
+    public async Task M10d_a_settings_only_choice_applies_at_once_without_a_pull_request()
+    {
+        using var store = GetDocumentStore();
+        await SeedRepositoryAsync(store);
+        var h = Create(store);
+        var repository = (await h.Session.LoadAsync<Repository>(CodeCoverage.Entities.Repository.DocumentId(EForgeProvider.GitHub, RepoId)))!;
+
+        var outcome = await h.Service.OnboardAsync(repository, new HashSet<EOnboardingFeature> { EOnboardingFeature.SizeLabels });
+
+        outcome.Outcome.Should().Be(VersioningOnboardingOutcome.Merged, outcome.Note);
+        h.Pulls.Created.Should().BeEmpty();
+        using var read = store.OpenAsyncSession();
+        (await read.LoadAsync<Repository>(repository.Id))!.PrSizeLabels.Should().Be(EPrSizeLabelPolicy.Enabled);
     }
 
     [Fact]

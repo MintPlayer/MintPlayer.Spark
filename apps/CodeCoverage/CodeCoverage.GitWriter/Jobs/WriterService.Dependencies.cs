@@ -212,9 +212,10 @@ public sealed partial class WriterService
     public Task<DependencyJobResponse> VersioningOnboardingAsync(DependencyJob job, DependencyCommit commit, IReadOnlyList<(string Path, string? Content)> files)
         => FilesOnBranchAsync("versioning-onboarding", DependencyBranches.VersioningOnboarding, job, commit, files);
 
-    /// <summary>#571 D3: the combined onboarding commit, force-pushed to <see cref="DependencyBranches.FeatureOnboarding"/>.</summary>
+    /// <summary>#571 D3: the combined onboarding commit, force-pushed to <see cref="DependencyBranches.FeatureOnboarding"/>;
+    /// a line's (D9) to <see cref="DependencyBranches.FeatureOnboardingOf"/>.</summary>
     public Task<DependencyJobResponse> OnboardingAsync(DependencyJob job, DependencyCommit commit, IReadOnlyList<(string Path, string? Content)> files)
-        => FilesOnBranchAsync("onboarding", DependencyBranches.FeatureOnboarding, job, commit, files);
+        => FilesOnBranchAsync("onboarding", DependencyBranches.FeatureOnboardingOf(job.Line), job, commit, files);
 
     /// <summary>R14: the work ref is removed after every run, while it is still at <paramref name="expectedSha"/>.</summary>
     public Task<DependencyJobResponse> DependencyDeleteWorkRefAsync(string repo, Uri cloneUrl, GitCredential credential, string? expectedSha, string? line = null)
@@ -347,4 +348,8 @@ public static class DependencyBranches
 
     /// <summary>#571 D3: the onboarding chooser's one pull request's head.</summary>
     public const string FeatureOnboarding = "mintplayer/onboarding";
+
+    /// <summary>#571 D9: the pull request that adds the default branch's regenerate workflow to a line,
+    /// <c>mintplayer/onboarding-dotnet-6.x</c>; the default branch's onboarding for null.</summary>
+    public static string FeatureOnboardingOf(string? line) => line is null ? FeatureOnboarding : $"{FeatureOnboarding}-{line}";
 }

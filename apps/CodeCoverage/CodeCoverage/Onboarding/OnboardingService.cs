@@ -1,7 +1,9 @@
 using System.Globalization;
 using CodeCoverage.Dependencies.Lifecycle;
 using CodeCoverage.Entities;
+using CodeCoverage.Feedback;
 using CodeCoverage.Forge;
+using CodeCoverage.LookupReferences;
 using CodeCoverage.MergeQueue;
 using CodeCoverage.PackageVersioning;
 using CodeCoverage.Versioning.Versions;
@@ -26,6 +28,14 @@ public interface IOnboardingService
 
     /// <summary>The default branch moved: rebuilds the open onboarding pull request on its new head, with the features it was opened for.</summary>
     Task<VersioningOnboardingOutcome> RebuildAsync(Repository repository, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The onboarding pull request merged (#571 M10d), the one entry point of a merge: pushes its seed tags
+    /// (<see cref="IVersioningOnboardingService.PushSeedsAsync"/>, also for a #153 pull request), switches its settings on, renames the old line branches (D2) and opens a
+    /// pull request into each supported line that lacks a regenerate workflow the default branch has (D9). Once only; a
+    /// rename or line the forge refuses is noted, not retried.
+    /// </summary>
+    Task<VersioningOnboardingOutcome> MergedAsync(Repository repository, CancellationToken cancellationToken = default);
 }
 
 /// <param name="Plan">Null when nothing could be planned; <paramref name="Refusal"/> says why.</param>
@@ -40,6 +50,8 @@ public partial class OnboardingService : IOnboardingService
     [Inject] private readonly IEnumerable<IForgeDependencyUpdates> updates;
     [Inject] private readonly IGitWriterSidecar writer;
     [Inject] private readonly IVersioningOnboardingService versioning;
+    [Inject] private readonly IEnumerable<IForgeVersioning> forges;
+    [Inject] private readonly MintPlayer.Spark.Messaging.Abstractions.IMessageBus messageBus;
     [Inject] private readonly IHttpClientFactory httpClients;
     [Inject] private readonly TimeProvider time;
     [Inject] private readonly ILogger<OnboardingService> logger;
@@ -87,8 +99,13 @@ public partial class OnboardingService : IOnboardingService
         }
 
         if (plan.Files.Count == 0)
-            return await NoteAsync(state, new(VersioningOnboardingOutcome.Nothing,
-                "Nothing to change in the repository: " + (plan.Notes.Count == 0 ? "it is set up already." : string.Join(" ", plan.Notes))), cancellationToken);
+        {
+            // No pull request to wait for: the settings and renames apply now (M10d).
+            var applied = await ApplyAsync(repository, git, plan.OnMerge, plan.Renames.Renames.Select(r => new OnboardingRename { From = r.From, To = r.To }), cancellationToken);
+            return await NoteAsync(state, new(applied.Count > 0 ? VersioningOnboardingOutcome.Merged : VersioningOnboardingOutcome.Nothing,
+                (applied.Count > 0 ? "Applied without a pull request: " + string.Join("; ", applied) + ". " : "")
+                + "Nothing to change in the repository: " + (plan.Notes.Count == 0 ? "it is set up already." : string.Join(" ", plan.Notes))), cancellationToken);
+        }
 
         // The same base and date rebuild the same commit, so a retry's force-push is a no-op.
         if (state.BaseSha != tree.Commit)
@@ -154,6 +171,142 @@ public partial class OnboardingService : IOnboardingService
         state.SeedCommit = null;
         state.MergeHandledAt = null;
         return await NoteAsync(state, new(VersioningOnboardingOutcome.Opened, $"Opened the onboarding pull request #{pull.Number}.", pull.Number), cancellationToken);
+    }
+
+    public async Task<VersioningOnboardingOutcome> MergedAsync(Repository repository, CancellationToken cancellationToken = default)
+    {
+        // The seeds first: a #153 pull request (no features) carries them too. A refusal is noted on the state and retried by
+        // the next versioning run, so it does not hold back the rest.
+        await versioning.PushSeedsAsync(repository, cancellationToken);
+
+        var state = await session.LoadAsync<VersioningOnboardingState>(VersioningOnboardingState.ForRepository(repository.Id!), cancellationToken);
+        if (state is not { Features.Count: > 0, PullRequestNumber: { } number, MergeHandledAt: null }
+            || forges.FirstOrDefault(f => f.Provider == repository.Provider) is not { } forge
+            || queues.FirstOrDefault(q => q.Provider == repository.Provider) is not { } git
+            || updates.FirstOrDefault(u => u.Provider == repository.Provider) is not { } pulls
+            || repository.DefaultBranch is not { } defaultBranch)
+            return new(VersioningOnboardingOutcome.Nothing, "No onboarding pull request waits for its merge.");
+        if (await forge.GetPullRequestTextAsync(repository, number, cancellationToken) is not { Merged: true } merged)
+            return new(VersioningOnboardingOutcome.Nothing, $"The onboarding pull request #{number} has not merged.");
+
+        var done = await ApplyAsync(repository, git, state.OnMerge, state.Renames, cancellationToken);
+        if (state.Features.Contains(EOnboardingFeature.ReleaseLines))
+            done.AddRange(await LineWorkflowsAsync(repository, git, pulls, defaultBranch, cancellationToken));
+
+        state.MergeHandledAt = merged.MergeCommitSha ?? merged.HeadSha;
+        return await NoteAsync(state, new(VersioningOnboardingOutcome.Merged,
+            $"The onboarding pull request #{number} merged" + (done.Count == 0 ? "." : ": " + string.Join("; ", done) + "."), number), cancellationToken);
+    }
+
+    /// <summary>Switches <paramref name="onMerge"/> on and renames the line branches (D2); what was done, or why not, per item.</summary>
+    private async Task<List<string>> ApplyAsync(Repository repository, IForgeMergeQueue git, IEnumerable<EOnboardingFeature> onMerge,
+        IEnumerable<OnboardingRename> renames, CancellationToken cancellationToken)
+    {
+        var done = new List<string>();
+        var settings = onMerge.ToHashSet();
+        if (settings.Contains(EOnboardingFeature.DependencyUpdates) && repository.DependencyUpdates != EDependencyUpdatesPolicy.Enabled)
+        {
+            repository.DependencyUpdates = EDependencyUpdatesPolicy.Enabled;
+            await DependencyUpdateSwitch.SignalAsync(messageBus, repository.Id!, DependencyUpdateSwitch.On, time.GetUtcNow(), expedite: false, cancellationToken);
+            done.Add("dependency updates are on");
+        }
+        if (settings.Contains(EOnboardingFeature.SizeLabels) && repository.PrSizeLabels != EPrSizeLabelPolicy.Enabled)
+        {
+            repository.PrSizeLabels = EPrSizeLabelPolicy.Enabled;
+            done.Add("PR size labels are on");
+        }
+        foreach (var rename in renames)
+        {
+            var refusal = await git.RenameBranchAsync(repository, rename.From, rename.To, cancellationToken);
+            done.Add(refusal is null ? $"renamed {rename.From} to {rename.To}" : $"{rename.From} was not renamed: {refusal}");
+        }
+        return done;
+    }
+
+    /// <summary>
+    /// D9: a pull request into each supported line that lacks one of the regenerate workflows the default branch's
+    /// <c>mergeQueue</c> names, copied from the default branch, so a backport regenerates with the line's own tools.
+    /// </summary>
+    private async Task<IReadOnlyList<string>> LineWorkflowsAsync(Repository repository, IForgeMergeQueue git, IForgeDependencyUpdates pulls, string defaultBranch,
+        CancellationToken cancellationToken)
+    {
+        var integration = integrations.For(repository);
+        var yml = await integration.GetFileContentAsync(repository, defaultBranch, CoverageYml.FileName, cancellationToken);
+        if (VersioningYml.Parse(yml).Config is not { EffectiveLines: { } pattern }
+            || MergeQueueYml.Parse(yml, defaultBranch).Section?.Workflows() is not { Count: > 0 } workflows)
+            return [];
+
+        var defaults = new List<(string Path, string Content)>();
+        foreach (var workflow in workflows)
+            if (await integration.GetFileContentAsync(repository, defaultBranch, WorkflowPath(workflow), cancellationToken) is { } content)
+                defaults.Add((WorkflowPath(workflow), content));
+        if (defaults.Count == 0) return [];
+
+        var notes = new List<string>();
+        foreach (var line in await SupportedLines.ReadAsync(session, git, repository, pattern, BackportYml.Parse(yml).Section.Lines, cancellationToken))
+        {
+            if (!line.Supported) continue;
+            var missing = new List<GitWriterFile>();
+            foreach (var (path, content) in defaults)
+                if (await integration.GetFileContentAsync(repository, line.Branch, path, cancellationToken) is null)
+                    missing.Add(new GitWriterFile(path, content));
+            if (missing.Count == 0) continue;
+            notes.Add(await LineWorkflowPullRequestAsync(repository, git, pulls, line, missing, cancellationToken));
+        }
+        return notes;
+    }
+
+    private static string WorkflowPath(string workflow) => $".github/workflows/{workflow}";
+
+    private async Task<string> LineWorkflowPullRequestAsync(Repository repository, IForgeMergeQueue git, IForgeDependencyUpdates pulls, LineSupport line,
+        IReadOnlyList<GitWriterFile> files, CancellationToken cancellationToken)
+    {
+        if (await git.GetBranchHeadAsync(repository, line.Branch, cancellationToken) is not { } head)
+            return $"{line.Branch} could not be read";
+        var push = await git.GetWriterAccessAsync(repository, null, pushesWorkflowChanges: true, cancellationToken);
+        if (push.Access is not { } access)
+            return $"no workflow pull request into {line.Branch}: {push.RefusalReason}";
+        var identity = new GitWriterIdentity(VersioningController.Tagger.Name, VersioningController.Tagger.Email, time.GetUtcNow());
+        GitWriterDependencyResult pushed;
+        try
+        {
+            pushed = await writer.OnboardingAsync(new GitWriterDependencyRequest(
+                repository.Provider.ToCanonicalString(), repository.GitHubId.ToString(CultureInfo.InvariantCulture), access.CloneUrl,
+                new CommitGraph.SidecarCredential(access.Username, access.Password), line.Branch, head)
+            {
+                Line = line.Line.ToString(), Author = identity, Committer = identity, Message = OnboardingPlanner.LineTitle, Files = files,
+            }, cancellationToken);
+        }
+        catch (GitWriterRefusedException ex)
+        {
+            return $"no workflow pull request into {line.Branch}: {ex.Message}";
+        }
+        finally
+        {
+            await git.RevokeWriterAccessAsync(repository, access, CancellationToken.None);
+        }
+        if (pushed.Outcome != GitWriterOutcomes.Pushed)
+        {
+            if (pushed.Outcome is GitWriterOutcomes.Busy or GitWriterOutcomes.Failed)
+                throw new GitWriterUnavailableException($"The git writer answered {line.Branch}'s onboarding with {pushed.Outcome}: {pushed.Detail}");
+            return $"no workflow pull request into {line.Branch} ({pushed.Outcome}): {pushed.Detail}";
+        }
+
+        var branch = OnboardingPlanner.LineBranch(line.Line.ToString());
+        var pull = await pulls.FindPullRequestAsync(repository, branch, line.Branch, cancellationToken);
+        if (pull is null)
+        {
+            try
+            {
+                pull = await pulls.CreatePullRequestAsync(repository, branch, line.Branch, OnboardingPlanner.LineTitle,
+                    OnboardingPlanner.LineBody(line.Branch, files.Select(f => f.Path)), draft: false, cancellationToken);
+            }
+            catch (ForgeRequestException ex) when (ex.StatusCode == 422)
+            {
+                pull = await pulls.FindPullRequestAsync(repository, branch, line.Branch, cancellationToken) ?? throw ex;
+            }
+        }
+        return $"opened #{pull.Number} into {line.Branch}";
     }
 
     private sealed record Planned(OnboardingPlan? Plan, ForgeRepositoryTree? Tree, IForgeMergeQueue? Git, IForgeDependencyUpdates? Pulls, string? Refusal)

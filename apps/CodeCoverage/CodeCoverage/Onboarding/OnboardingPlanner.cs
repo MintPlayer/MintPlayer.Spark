@@ -53,6 +53,22 @@ public static partial class OnboardingPlanner
     public const string Branch = "mintplayer/onboarding";
     private const string Guides = "https://coverage.mintplayer.com";
 
+    /// <summary>D9: the title of a line's pull request that adds the default branch's regenerate workflow.</summary>
+    public const string LineTitle = "Add the regenerate workflow to this release line";
+
+    /// <summary>D9: a line's onboarding branch; the git writer names it the same way (<c>DependencyBranches.FeatureOnboardingOf</c>).</summary>
+    public static string LineBranch(string line) => $"{Branch}-{line}";
+
+    public static string LineBody(string lineBranch, IEnumerable<string> paths)
+    {
+        var body = new StringBuilder();
+        body.AppendLine($"The merge queue on the default branch regenerates files with these workflows, and `{lineBranch}` does not have them yet:").AppendLine();
+        foreach (var path in paths)
+            body.AppendLine($"- `{path}`");
+        body.AppendLine().AppendLine($"They are copied from the default branch as they are. A backport into `{lineBranch}` runs them on the line itself, so lockfiles and generated files are rebuilt with the line's own tools. Check they build with this line's SDKs before merging. See the [backports guide]({Guides}/backports/setup).");
+        return body.ToString();
+    }
+
     /// <summary>The key that turns release lines on, with the default pattern (S3: present, even empty).</summary>
     internal const string LinesKey = "lines: {}                          # release lines, release/{ecosystem}-{major}.x: packages release only from them";
 
