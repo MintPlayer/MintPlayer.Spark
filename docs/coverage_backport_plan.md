@@ -33,6 +33,10 @@ spikes first.
   - `SetUpRulesetsActionTests.The_release_lines_in_coverage_yml_get_ruleset_1`.
   - `SetUpFeaturesRulesetsTests.With_release_lines_picked_ruleset_1_covers_the_lines_the_pull_request_adds`.
   - 43/43 green across the six affected classes.
+  - Live on SparkTest (2026-11-06, CoverageDevelopment). "Set up rulesets" read `versioning.lines` from `main`'s
+    coverage.yml. The confirmation showed one step: update ruleset 1, branches `~DEFAULT_BRANCH` →
+    `~DEFAULT_BRANCH, refs/heads/release/*-*.x`. After Apply, GitHub reports ruleset 26700976 `active`, with that
+    include and the App still `Integration/exempt`. Ruleset 26700978 is unchanged (`~DEFAULT_BRANCH`).
 - **e5's enqueue refusal (classic lock, review count) and the eviction hint are dropped for good** (owner, 2026-11-06:
   "The github app won't have administration permissions on the repos, ever"). A classic lock cannot be read without
   Administration. A ruleset's approval count is readable with Metadata, if it is ever wanted.
