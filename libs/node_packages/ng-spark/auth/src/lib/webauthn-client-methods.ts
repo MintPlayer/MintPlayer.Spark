@@ -1,5 +1,14 @@
+import { inject } from '@angular/core';
 import type { SparkClientMethodMap } from '@mintplayer/ng-spark/client-operations';
 import { passkeysSupported, sparkPasskeyError } from '@mintplayer/ng-spark/auth/models';
+import { SparkAuthService } from '@mintplayer/ng-spark/auth/core';
+
+/** What the server's `ISparkOneShotOAuth` hands `oauth.authorize`. */
+interface SparkOneShotOAuthArgs {
+  url: string;
+  nonce: string;
+  handle: string;
+}
 
 /**
  * The browser steps the Authorization library's server actions invoke (`IRetryAccessor.Invoke`),
@@ -16,6 +25,14 @@ import { passkeysSupported, sparkPasskeyError } from '@mintplayer/ng-spark/auth/
  *   error) resolves as `{ error }`, so the server can say it did not work.
  * - An unsupported browser never runs it (`supported`), and the action shows disabled with
  *   `auth.passkeyUnsupported` as the reason.
+ *
+ * `oauth.authorize` is `ISparkOneShotOAuth` (#554): it opens the provider's authorization page in a
+ * popup and waits for `/spark/auth/oauth-callback` to report. The token stays on the server; the
+ * answer is only the attempt's `handle`, which the server checks against the signed-in user.
+ *
+ * - A blocked popup resolves as `{ error: 'popup_blocked' }`, so the server can say so.
+ * - A wait that runs out (the user never finished) rejects: `Cancel`.
+ * - Any other report, success or not, answers with the handle: the server knows the outcome.
  */
 export const sparkAuthClientMethods: SparkClientMethodMap = {
   'webauthn.create': {
@@ -33,6 +50,21 @@ export const sparkAuthClientMethods: SparkClientMethodMap = {
         if (code === 'cancelled' || code === 'no_credential') throw error;
         return { error: code };
       }
+    },
+  },
+  'oauth.authorize': {
+    async invoke(args: unknown): Promise<unknown> {
+      // Synchronously, at the top: the injection context ends at the first await.
+      const auth = inject(SparkAuthService);
+      const { url, nonce, handle } = (args ?? {}) as Partial<SparkOneShotOAuthArgs>;
+      // Only a web page is opened, whatever the server sent.
+      if (typeof url !== 'string' || !/^https?:\/\//i.test(url) || typeof nonce !== 'string' || typeof handle !== 'string')
+        throw new Error('oauth.authorize: malformed arguments');
+
+      const result = await auth.authorizeInPopup(url, nonce);
+      if (result.error === 'popup_blocked') return { error: 'popup_blocked' };
+      if (result.error === 'popup_closed') throw new Error('oauth.authorize: no answer in time');
+      return { handle };
     },
   },
 };

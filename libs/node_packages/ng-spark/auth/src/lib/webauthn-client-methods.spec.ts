@@ -6,6 +6,8 @@ import { SPARK_CLIENT_METHODS, SparkClientMethodRegistry } from '@mintplayer/ng-
 import { sparkAuthClientMethods } from './webauthn-client-methods';
 import { provideSpark } from '@mintplayer/ng-spark';
 import { withAuth } from './provide-spark-auth';
+import { SparkAuthService } from '@mintplayer/ng-spark/auth/core';
+import type { SparkExternalLoginResult } from '@mintplayer/ng-spark/auth/models';
 
 /** jsdom implements none of WebAuthn, so it is stubbed; what is tested is the method's own logic. */
 function installWebAuthn(create: () => Promise<unknown>) {
@@ -79,5 +81,50 @@ describe("ng-spark/auth's webauthn.create client method", () => {
 
     installWebAuthn(async () => null);
     expect(TestBed.inject(SparkClientMethodRegistry).unavailableReason('webauthn.create')).toBeNull();
+  });
+});
+
+describe("ng-spark/auth's oauth.authorize client method (#554)", () => {
+  const oauth = sparkAuthClientMethods['oauth.authorize'];
+  const args = { url: 'https://github.com/login/oauth/authorize?client_id=x', nonce: 'n0nce-n0nce-n0nce-n0nce', handle: 'the-handle' };
+
+  function run(result: SparkExternalLoginResult, input: unknown = args) {
+    const authorizeInPopup = vi.fn(async () => result);
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({ providers: [{ provide: SparkAuthService, useValue: { authorizeInPopup } }] });
+    return { answer: TestBed.runInInjectionContext(() => oauth.invoke(input)), authorizeInPopup };
+  }
+
+  it('opens the server URL with its nonce and answers only the handle', async () => {
+    const { answer, authorizeInPopup } = run({ success: true });
+
+    expect(await answer).toEqual({ handle: 'the-handle' });
+    expect(authorizeInPopup).toHaveBeenCalledWith(args.url, args.nonce);
+  });
+
+  it('answers the handle on a reported failure too: the server knows the outcome', async () => {
+    expect(await run({ success: false, error: 'no_login_info' }).answer).toEqual({ handle: 'the-handle' });
+  });
+
+  it('says when the popup was blocked', async () => {
+    expect(await run({ success: false, error: 'popup_blocked' }).answer).toEqual({ error: 'popup_blocked' });
+  });
+
+  it('rejects when no answer came in time, so the server sees Cancel', async () => {
+    await expect(run({ success: false, error: 'popup_closed' }).answer).rejects.toThrow();
+  });
+
+  it('opens nothing but a web page', async () => {
+    const { answer, authorizeInPopup } = run({ success: true }, { ...args, url: 'javascript:alert(1)' });
+
+    await expect(answer).rejects.toThrow();
+    expect(authorizeInPopup).not.toHaveBeenCalled();
+  });
+
+  it('is registered by withAuth()', () => {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({ providers: [provideHttpClient(), provideSpark(withAuth())] });
+
+    expect(TestBed.inject(SPARK_CLIENT_METHODS).some(map => map['oauth.authorize'] === oauth)).toBe(true);
   });
 });

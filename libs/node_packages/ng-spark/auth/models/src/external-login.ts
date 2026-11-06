@@ -120,6 +120,12 @@ export const SPARK_EXTERNAL_LOGIN_QUERY_PARAM = 'sparkExternalLogin';
 /** How long a popup attempt waits for its result before it settles `popup_closed`. */
 export const SPARK_EXTERNAL_LOGIN_TIMEOUT_MS = 10 * 60 * 1000;
 
+/**
+ * How long a one-shot OAuth popup (`oauth.authorize`, #554) waits: the server's attempt lives five
+ * minutes, so a later result could only say "expired".
+ */
+export const SPARK_ONE_SHOT_OAUTH_TIMEOUT_MS = 5 * 60 * 1000;
+
 /** The `localStorage` key the callback page writes its payload to. */
 export function sparkExternalLoginStorageKey(nonce: string): string {
   return `spark:external-login:${nonce}`;
