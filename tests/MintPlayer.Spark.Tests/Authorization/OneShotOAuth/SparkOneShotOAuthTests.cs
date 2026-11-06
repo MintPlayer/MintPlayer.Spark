@@ -199,8 +199,12 @@ public class SparkOneShotOAuthTests
         outcome.Lease!.AccessToken.Should().Be(ProviderStub.Token);
         outcome.Lease.GrantedScope.Should().Be("repo");
 
-        var again = await Authorize(Handed(args));
-        again.Error.Should().Be(SparkOneShotOAuthErrors.Expired, "the token is handed out once");
+        var concurrent = await Authorize(Handed(args));
+        concurrent.Error.Should().Be(SparkOneShotOAuthErrors.Failed, "one pass holds the token at a time");
+
+        await outcome.Lease.DisposeAsync();
+        var after = await Authorize(Handed(args));
+        after.Error.Should().Be(SparkOneShotOAuthErrors.Expired, "a finished action spends the token");
     }
 
     [Fact]
@@ -387,6 +391,67 @@ public class SparkOneShotOAuthTests
         };
 
         await work.Should().ThrowAsync<InvalidOperationException>().WithMessage("the work failed");
+        revoked.Should().Equal(ProviderStub.Token);
+    }
+
+    /// <summary>One pass of an action that asks a prompt after authorizing: the prompt unwinds the pass.</summary>
+    private async Task PassWithPrompt(params RetryResult[] answered)
+    {
+        var services = Scope(answered);
+        var work = async () =>
+        {
+            await using var lease = (await services.GetRequiredService<ISparkOneShotOAuth>().AuthorizeAsync(ClientName, ["repo"])).Lease!;
+            services.GetRequiredService<IManager>().Retry.Action("Confirm?", ["Apply"]);
+        };
+        await work.Should().ThrowAsync<SparkRetryActionException>();
+    }
+
+    /// <summary>#554 f3: the token is read with, a confirmation shown, then the token applies: one popup.</summary>
+    [Fact]
+    public async Task A_prompt_after_authorizing_keeps_the_token_for_the_next_pass()
+    {
+        var (args, query) = await PassOne();
+        await Callback(query["state"]);
+
+        await PassWithPrompt(Handed(args));
+        revoked.Should().BeEmpty("the pass only waits for the confirmation");
+
+        var confirmed = new RetryResult { Step = 1, Option = "Apply" };
+        var services = Scope(Handed(args), confirmed);
+        var outcome = await services.GetRequiredService<ISparkOneShotOAuth>().AuthorizeAsync(ClientName, ["repo"]);
+        outcome.Lease!.AccessToken.Should().Be(ProviderStub.Token);
+        provider.TokenRequests.Should().ContainSingle("no second exchange");
+
+        await outcome.Lease.DisposeAsync();
+        revoked.Should().Equal(ProviderStub.Token);
+        (await Authorize(Handed(args))).Error.Should().Be(SparkOneShotOAuthErrors.Expired);
+    }
+
+    [Fact]
+    public async Task A_conversation_left_at_its_prompt_is_revoked_when_its_five_minutes_end()
+    {
+        var (args, query) = await PassOne();
+        await Callback(query["state"]);
+        await PassWithPrompt(Handed(args));
+
+        clock.Advance(TimeSpan.FromMinutes(5) + TimeSpan.FromSeconds(1));
+        await store.Idle();
+
+        revoked.Should().Equal(ProviderStub.Token);
+        (await Authorize(Handed(args))).Error.Should().Be(SparkOneShotOAuthErrors.Expired);
+    }
+
+    [Fact]
+    public async Task A_lease_disposed_after_its_five_minutes_does_not_revoke_twice()
+    {
+        var (args, query) = await PassOne();
+        await Callback(query["state"]);
+        var lease = (await Authorize(Handed(args))).Lease!;
+
+        clock.Advance(TimeSpan.FromMinutes(5) + TimeSpan.FromSeconds(1));
+        await store.Idle();
+        await lease.DisposeAsync();
+
         revoked.Should().Equal(ProviderStub.Token);
     }
 

@@ -10,6 +10,13 @@ public interface IRetryAccessor
     RetryResult? Result { get; }
 
     /// <summary>
+    /// True once this pass has asked a step that is not answered yet: <see cref="Action"/> or <see cref="Invoke"/>
+    /// threw to send it, the action is unwinding, and it runs again from the top when the answer comes. A resource
+    /// that must outlive the conversation's passes but not the action (a one-shot OAuth lease) reads it on dispose.
+    /// </summary>
+    bool IsWaiting { get; }
+
+    /// <summary>
     /// Requests the frontend to display a confirmation/dialog modal.
     /// On the first pass (unanswered step) this method throws internally and never returns.
     /// On replay of an already-answered step it returns normally and populates <see cref="Result"/>.

@@ -7,7 +7,8 @@ namespace MintPlayer.Spark.Authorization.OneShotOAuth;
 
 /// <summary>
 /// The in-memory hand-off between the OAuth callback and the action's pass 2 (#554 f1): one entry per
-/// authorization attempt, bound to its user, alive for <see cref="Lifetime"/>, taken at most once.
+/// authorization attempt, bound to its user, alive for <see cref="Lifetime"/>. Each pass of the action borrows it;
+/// it is taken out, and its token revoked, when the action ends or the lifetime does, whichever comes first.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -65,6 +66,31 @@ internal sealed partial class SparkOneShotOAuthStore : IDisposable
 
         if (orphaned && completion.AccessToken is { } token)
             StartRevocation(attempt.ClientName, token);
+    }
+
+    /// <summary>
+    /// Lends the attempt to one pass of the action, leaving it in the store (and its timer running) so a later pass
+    /// of the same conversation can borrow it again (#554 f3: the token outlives a confirmation prompt).
+    /// <see langword="null"/> when it is gone or another pass holds it.
+    /// </summary>
+    public Attempt? Borrow(string handle)
+    {
+        if (!attempts.TryGetValue(handle, out var attempt))
+            return null;
+        lock (attempt)
+        {
+            if (attempt.Removed || attempt.Borrowed)
+                return null;
+            attempt.Borrowed = true;
+        }
+        return attempt;
+    }
+
+    /// <summary>Gives a borrowed attempt back for the next pass; it still ends with its lifetime.</summary>
+    public void Return(Attempt attempt)
+    {
+        lock (attempt)
+            attempt.Borrowed = false;
     }
 
     /// <summary>Removes the attempt and returns it with its result, or <see langword="null"/> when it is gone.</summary>
@@ -142,6 +168,9 @@ internal sealed partial class SparkOneShotOAuthStore : IDisposable
 
         /// <summary>Whether the attempt has left the store. Read and written under the attempt's lock.</summary>
         public bool Removed { get; set; }
+
+        /// <summary>Whether a pass of the action holds it now. Read and written under the attempt's lock.</summary>
+        public bool Borrowed { get; set; }
 
         internal ITimer? Timer { get; set; }
 

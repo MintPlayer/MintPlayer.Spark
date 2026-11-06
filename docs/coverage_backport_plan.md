@@ -635,8 +635,23 @@ PRD §8.2.
       - `CheckAsync` checks every selected repository.
       - One form asks for the approvals and whether admins may merge by pull request; each repository's checks
         default from its own head (`MergeQueueRulesets.Defaults`).
-      - One confirmation lists every repository's plan or blockers. The token is minted only after confirmation.
-      - Then: authorize, apply one repository at a time, revoke in `finally`.
+      - ~~One confirmation lists every repository's plan or blockers. The token is minted only after confirmation.
+        Then: authorize, apply one repository at a time, revoke in `finally`.~~ **Superseded (owner, 2026-11-06:
+        "Popup first, then preview").** Order: form → popup → read every repository with the token → one
+        confirmation with each repository's exact plan or blockers → apply one at a time → revoke.
+        - **Why the old order cannot work.** GitHub's "Permissions required for GitHub Apps" lists
+          `GET /repos/{o}/{r}/branches/{b}/protection` under Administration (read), which the Apps no longer have. The
+          ruleset reads are Metadata, but "Get a repository ruleset" returns `bypass_actors` "only … if the user making
+          the API request has write access to the ruleset", and the planner needs them. So only the user's token can
+          read a full plan.
+        - **f1 changed for it.** The lease survives a prompt. `IRetryAccessor.IsWaiting` (new) is true while a pass
+          unwinds for an unanswered step. The lease's dispose then gives the attempt back (`Borrow`/`Return`), and
+          revokes otherwise. One pass holds it at a time, and the 5-minute lifetime still revokes it regardless. Tests:
+          `A_prompt_after_authorizing_keeps_the_token_for_the_next_pass`,
+          `A_conversation_left_at_its_prompt_is_revoked_when_its_five_minutes_end`,
+          `A_lease_disposed_after_its_five_minutes_does_not_revoke_twice`.
+        - **Accepted cost:** the token lives while the admin reads the confirmation, 5 minutes at most from pass 1.
+          Rejected: two popups (authorize twice), and no exact preview.
       - The report covers each repository. An unapproved organization gets the approval link (S-D). A private
         repository on Free gets S-E's answer.
       - Which query it sits on (the Account's repositories, or the onboarding rows) is decided in f3.

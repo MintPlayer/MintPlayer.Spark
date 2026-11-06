@@ -10,15 +10,16 @@ namespace MintPlayer.Spark.Authorization.OneShotOAuth;
 /// (<c>IRetryAccessor.Invoke("oauth.authorize")</c>). Pass 1 hands the browser the authorization URL and
 /// throws the retry; the browser opens it in a popup, the provider redirects to
 /// <c>/spark/auth/oauth-callback</c>, which exchanges the code (PKCE S256) and keeps the token in memory
-/// for at most five minutes, bound to the signed-in user. Pass 2 takes it out, once.
+/// for at most five minutes, bound to the signed-in user. Pass 2, and every later pass of the same action, borrows it.
 /// </para>
 /// <para>
-/// ⚠️ <b>The action re-runs from the top on pass 2</b>, so everything before this call must be side-effect
-/// free. Call it after the last confirmation the action asks for, so a token is only minted for work
-/// the user has agreed to.
+/// ⚠️ <b>The action re-runs from the top on every pass</b>, so everything before this call must be side-effect
+/// free. A prompt <em>after</em> it (a confirmation of what the token read) is allowed: the lease survives it.
 /// </para>
 /// <para>
-/// Dispose the lease in a <c>finally</c> (<c>await using</c>): that revokes the token.
+/// Dispose the lease in a <c>finally</c> (<c>await using</c>). While the pass unwinds for a prompt, that keeps the
+/// token for the next pass; when the action finishes, is cancelled or throws, it revokes the token. The five-minute
+/// lifetime revokes it in any case, so a conversation the user abandons leaves nothing valid behind.
 /// </para>
 /// </remarks>
 public interface ISparkOneShotOAuth
@@ -31,7 +32,7 @@ public interface ISparkOneShotOAuth
     Task<SparkOneShotOAuthOutcome> AuthorizeAsync(string client, IReadOnlyCollection<string> scopes, CancellationToken cancellationToken = default);
 }
 
-/// <summary>A borrowed token. Disposing it revokes the token.</summary>
+/// <summary>A borrowed token. Disposing it revokes the token, unless the pass is only waiting for a prompt.</summary>
 public interface ISparkOneShotOAuthLease : IAsyncDisposable
 {
     /// <summary>The access token. Never log it, store it or send it to the browser.</summary>

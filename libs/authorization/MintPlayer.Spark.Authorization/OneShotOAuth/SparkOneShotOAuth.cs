@@ -93,34 +93,32 @@ internal sealed partial class SparkOneShotOAuth : ISparkOneShotOAuth
 
     private SparkOneShotOAuthOutcome Take(string handle, string userId)
     {
-        var attempt = store.Take(handle);
+        var attempt = store.Borrow(handle);
         if (attempt is null)
-            return Failure(SparkOneShotOAuthErrors.Expired);
+            // Still in the store means another pass holds it right now: refused, and left to that pass.
+            return Failure(store.Find(handle) is null ? SparkOneShotOAuthErrors.Expired : SparkOneShotOAuthErrors.Failed);
 
         SparkOneShotOAuthStore.Completion? result;
         lock (attempt)
             result = attempt.Result;
 
-        // Taken out of the store either way: a handle that was refused once is spent, and a token that may
-        // no longer be handed out is revoked now rather than left valid at the provider.
+        // Anything but a usable token for this user spends the attempt: a handle refused once is gone, and a token
+        // that may no longer be handed out is revoked now rather than left valid at the provider.
         string? refusal =
             attempt.UserId != userId ? SparkOneShotOAuthErrors.Failed
             : store.Now > attempt.ExpiresAt ? SparkOneShotOAuthErrors.Expired
+            : result is null ? SparkOneShotOAuthErrors.Failed
+            : result.AccessToken is null ? result.Error ?? SparkOneShotOAuthErrors.Failed
             : null;
 
         if (refusal is not null)
         {
-            if (result?.AccessToken is { } stale)
+            if (store.Take(handle) is not null && result?.AccessToken is { } stale)
                 store.StartRevocation(attempt.ClientName, stale);
             return Failure(refusal);
         }
 
-        if (result is null)
-            return Failure(SparkOneShotOAuthErrors.Failed);
-        if (result.AccessToken is not { } token)
-            return Failure(result.Error ?? SparkOneShotOAuthErrors.Failed);
-
-        return new SparkOneShotOAuthOutcome(new Lease(store, attempt.ClientName, token, result.GrantedScope), null);
+        return new SparkOneShotOAuthOutcome(new Lease(store, attempt, result!.AccessToken!, result.GrantedScope, manager.Retry), null);
     }
 
     private static SparkOneShotOAuthOutcome Failure(string error) => new(null, error);
@@ -129,7 +127,14 @@ internal sealed partial class SparkOneShotOAuth : ISparkOneShotOAuth
 
     internal static string Base64Url(byte[] bytes) => WebEncoders.Base64UrlEncode(bytes);
 
-    private sealed class Lease(SparkOneShotOAuthStore store, string clientName, string accessToken, string? grantedScope) : ISparkOneShotOAuthLease
+    /// <summary>
+    /// One pass's hold on the token. Disposed while the pass unwinds to wait for a prompt
+    /// (<see cref="IRetryAccessor.IsWaiting"/>), it gives the attempt back for the next pass; disposed otherwise (the
+    /// action finished, was cancelled or threw), it takes the attempt out and revokes the token. The attempt's timer
+    /// revokes it at the end of its lifetime regardless.
+    /// </summary>
+    private sealed class Lease(SparkOneShotOAuthStore store, SparkOneShotOAuthStore.Attempt attempt, string accessToken, string? grantedScope,
+        IRetryAccessor retry) : ISparkOneShotOAuthLease
     {
         private int disposed;
 
@@ -139,8 +144,18 @@ internal sealed partial class SparkOneShotOAuth : ISparkOneShotOAuth
 
         public async ValueTask DisposeAsync()
         {
-            if (Interlocked.Exchange(ref disposed, 1) == 0)
-                await store.RevokeAsync(clientName, AccessToken);
+            if (Interlocked.Exchange(ref disposed, 1) != 0)
+                return;
+
+            if (retry.IsWaiting)
+            {
+                store.Return(attempt);
+                return;
+            }
+
+            // Null when the lifetime ended first: the timer has revoked it already.
+            if (store.Take(attempt.Handle) is not null)
+                await store.RevokeAsync(attempt.ClientName, AccessToken);
         }
     }
 }
