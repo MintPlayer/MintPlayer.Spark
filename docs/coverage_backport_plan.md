@@ -6,8 +6,7 @@ spikes first.
 ## Resume here: #554 (2026-11-06)
 
 - **Branch:** `feat/issue554-rulesets-oauth`, a fresh start from master `b6b525ffb` (owner, 2026-11-06: "Start fresh
-  on a blank branch"). It is local and has never been pushed, has no upstream, and no PR exists. Push it, as a draft
-  PR, only when the owner asks.
+  on a blank branch"). Pushed with its pull request on the owner's request (2026-11-06); CI is the final test run.
 - **The old branch `feat/issue554-rulesets` is abandoned.** It holds e0–e3, e5 and e6, which were built on
   Administration and are largely superseded. It stays local, unmerged. None of its code is on this branch: not e0's
   scoped tokens, not e1's planner and adapter, not e5's enqueue refusals, and not the retry-form attribute
@@ -15,13 +14,19 @@ spikes first.
 - **State:**
   - Administration is removed from both GitHub Apps; all four installations were checked.
   - The design is a one-shot token from a new OAuth app. See "#554 redesign" under M10e below.
-  - f1 (the one-shot OAuth token in Spark.Authorization and ng-spark) is built.
-- **Next:**
-  - f0, the live spikes S-A to S-F. They wait for the owner's go-ahead: a test OAuth app and a throwaway public
-    and private repository.
-  - Then f2–f6.
-- **Open for the owner:** f4. Should the chooser apply the rulesets when it is confirmed, with the same popup
-  (proposed), or only point to the "Set up rulesets" action?
+  - f1–f6 are built; f6's OAuth apps are registered and their secrets set. f4 was decided: apply at confirmation.
+  - f0: S-B, S-C, S-D and S-F answered live on SparkTest (see f0 under M10e). S-A and S-E are not run and not
+    blocking.
+  - Live test of the chooser with all six features (2026-11-06): onboarding PR SparkTest#5 and both rulesets. It found
+    and fixed the ruleset idempotency bug, made confirmations HTML, and moved the forge-free refusals before the popup.
+- **Open for the owner: two parts of PRD M10e not built on this branch.** If they are wanted, they land in this same PR.
+  - Ruleset 1 on the release lines. PRD §8.2/M10e: "creates ruleset 1 on the default branch and the lines". f4's
+    planner covers `~DEFAULT_BRANCH` only, and merge-queue.md §3 says the lines are set by hand.
+  - e5's enqueue refusal (classic lock, review count) and the eviction hint. f2 left them out because the installation
+    token has no Administration, so it cannot read classic protection's details. A ruleset's approval count is
+    readable with Metadata.
+- **Next:** CI on the pull request, then merge and deploy. After the deploy: the production OAuth app live, with
+  the VPS `.env` values mapped by this branch's compose file.
 
 ## Three pull requests (owner exception to the one-PR rule, 2026-11-05)
 
@@ -555,7 +560,12 @@ PRD §8.2.
         - Live end to end: popup → rulesets form (0 approvals) → confirmation listing coverage.yml and both
           rulesets → onboarding PR #5 opened (`mintplayer/onboarding`, coverage.yml) and both rulesets created,
           `active`, with the two success notifications.
-        - S-A, S-B, S-E: not run.
+        - S-B: **yes.** The user's one-shot token created "merge-queue: restrict updates" with the App as
+          `{"actor_id":4567511,"actor_type":"Integration","bypass_mode":"exempt"}`, read back live (ruleset 26700976,
+          `active`, 2026-11-06).
+        - S-A, S-E: not run, and not blocking. The scope stays `repo` for every repository (S-A would only narrow it for
+          public ones); a private repository on GitHub Free gets whatever GitHub answers, reported per repository (S-E).
+          Both need a throwaway repository on GitHub and wait for the owner.
       - **Development git writer (owner, 2026-11-06).** The first live run refused at the preview: locally
         `MergeQueue:GitWriterUrl` is unset, so the onboarding PR is impossible. The owner's choice is: in Development,
         clone locally into a folder (`C:\Repos` by default, cross-platform); in production, keep cloning in the sidecar
@@ -711,7 +721,7 @@ PRD §8.2.
             `GetRepositories`.
           - `MergeQueueRulesetPlanner.Defaults`/`Describe` (from e3).
           - `CodeCoverage.Tests/CustomActions/SetUpRulesetsActionTests.cs` (6 tests).
-        - **RESUME HERE: f6 and f0 (both the owner's).** f4 and f5 are built, see below.
+        - **Done: f6 and f0 (2026-11-06).** f4 and f5 are built, see below; the state is in "Resume here" at the top.
           - f6: **apps registered (2026-11-06, owner's request, via Playwright)** under the MintPlayer org:
             - "CoverageRulesets Development", app 3998060, client id `Ov23liwK8RNgonrIgR0N`, callback
               `https://localhost:5200/spark/auth/oauth-callback`.
@@ -726,9 +736,8 @@ PRD §8.2.
               secret line, 0 CRLF lines.
             - The VPS values take effect only after this branch is deployed, because the live compose file doesn't
               map them yet.
-          - f0: the live spikes, for which the owner gives the go-ahead.
-          - After that come the final test run (including the ng-spark retry-modal spec and the two guide specs), the
-            push and the PR, all when asked.
+          - f0: run live on SparkTest; the answers are under f0 above.
+          - The final test run is the pull request's CI (owner, 2026-11-06: "Create the pull-request").
         - **`CsrfSurfaceTests` needs no entry:** it covers mutating controller actions only, and the callback is a
           library GET.
         - **Known gap:** the apply pass re-reads and re-plans. A ruleset changed by someone else between the
