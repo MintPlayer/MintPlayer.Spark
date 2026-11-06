@@ -83,6 +83,11 @@ The code: the saga `CodeCoverage/MergeQueue/MergeQueueEngine.cs` (messaging lane
 
 ## 2. Enabling it for a repository
 
+The quickest way is **Set up features** → *Merge queue* on the repository's page ([onboarding.md](onboarding.md)). Its
+pull request adds the `mergeQueue:` section below. With *Release lines* also picked, the section queues the supported
+lines too (`branches: [<default>, supported-lines]`). The GitHub rulesets of §3 are still set by hand until #554 adds
+them to the chooser.
+
 ### 2.1 The GitHub App: permissions and events
 
 The full App reference is [`hosting.md`](hosting.md) §6, "GitHub App". What the queue needs:

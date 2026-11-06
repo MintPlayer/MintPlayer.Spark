@@ -1,5 +1,5 @@
 import type { Exec } from './exec';
-import { allVersionsOf, failureOf, readInputs, readPlan, version, versioningSection, type Dependencies } from './main';
+import { allVersionsOf, buildEnvironment, failureOf, readInputs, readPlan, version, versioningSection, type Dependencies } from './main';
 
 const release = (over: object = {}) => ({
   id: 'Acme.Core', kind: 'nuget', version: '1.2.0', tag: 'Acme.Core/v1.2.0', reasons: ['api changed'], taggedByHand: false, tagOutcome: 'created', ...over,
@@ -69,6 +69,14 @@ describe('versioningSection', () => {
   it('keeps an empty lines: switched on (#568 D15)', () => {
     expect(versioningSection('versioning:\n  lines:\n', 'main')).toEqual({ lines: {} });
     expect(versioningSection('versioning:\n  lines:\n    pattern: support/{ecosystem}/{major}\n', 'main')).toEqual({ lines: { pattern: 'support/{ecosystem}/{major}' } });
+  });
+});
+
+describe('buildEnvironment (#568 D10b)', () => {
+  it('hands major-bounded dependency ranges to the pack, and nothing else', () => {
+    expect(buildEnvironment({ dependencyRanges: 'major-bounded' })).toEqual({ MintPlayerVersioningDependencyRanges: 'major-bounded' });
+    expect(buildEnvironment({ dependencyRanges: 'minimum' })).toEqual({});
+    expect(buildEnvironment({})).toEqual({});
   });
 });
 

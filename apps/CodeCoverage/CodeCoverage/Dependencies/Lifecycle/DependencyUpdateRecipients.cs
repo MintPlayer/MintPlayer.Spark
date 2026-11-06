@@ -66,55 +66,64 @@ public partial class DependencyUpdateEventsRecipient :
     public async Task HandleAsync(ForgeWebhookMessage<DependencyCommandIssued> message, CancellationToken cancellationToken = default)
     {
         var evt = message.Event;
-        if (await RunAsync(evt.RepositoryId, cancellationToken) is not { } run || run.PullRequestNumber != evt.Number) return;
-        await SignalAsync(new DependencyUpdateSignalMessage
-        {
-            RepositoryId = evt.RepositoryId, Kind = EDependencySignal.Command, Number = evt.Number, CommentId = evt.CommentId,
-            Command = evt.Command, Argument = evt.Argument, Actor = evt.ActorLogin,
-        }, cancellationToken);
+        foreach (var run in await RunsAsync(evt.RepositoryId, cancellationToken))
+            if (run.PullRequestNumber == evt.Number)
+                await SignalAsync(new DependencyUpdateSignalMessage
+                {
+                    RepositoryId = evt.RepositoryId, Line = run.Line, Kind = EDependencySignal.Command, Number = evt.Number, CommentId = evt.CommentId,
+                    Command = evt.Command, Argument = evt.Argument, Actor = evt.ActorLogin,
+                }, cancellationToken);
     }
 
     public async Task HandleAsync(ForgeWebhookMessage<CiRunCompleted> message, CancellationToken cancellationToken = default)
     {
         var evt = message.Event;
-        if (await RunAsync(evt.RepositoryId, cancellationToken) is { } run && run.Pending()?.RunId == evt.RunId)
-            await SignalAsync(new DependencyUpdateSignalMessage { RepositoryId = evt.RepositoryId, Kind = EDependencySignal.RunCompleted, RunId = evt.RunId }, cancellationToken);
+        foreach (var run in await RunsAsync(evt.RepositoryId, cancellationToken))
+            if (run.Pending()?.RunId == evt.RunId)
+                await SignalAsync(new DependencyUpdateSignalMessage { RepositoryId = evt.RepositoryId, Line = run.Line, Kind = EDependencySignal.RunCompleted, RunId = evt.RunId }, cancellationToken);
     }
 
     public async Task HandleAsync(ForgeWebhookMessage<CommitChecksChanged> message, CancellationToken cancellationToken = default)
     {
         var evt = message.Event;
-        if (await RunAsync(evt.RepositoryId, cancellationToken) is { State: EDependencyRunState.AwaitingChecks or EDependencyRunState.Bisecting } run
-            && string.Equals(run.RollingSha, evt.Sha, StringComparison.OrdinalIgnoreCase))
-            await SignalAsync(new DependencyUpdateSignalMessage { RepositoryId = evt.RepositoryId, Kind = EDependencySignal.ChecksChanged, Sha = evt.Sha }, cancellationToken);
+        foreach (var run in await RunsAsync(evt.RepositoryId, cancellationToken))
+            if (run.State is EDependencyRunState.AwaitingChecks or EDependencyRunState.Bisecting && string.Equals(run.RollingSha, evt.Sha, StringComparison.OrdinalIgnoreCase))
+                await SignalAsync(new DependencyUpdateSignalMessage { RepositoryId = evt.RepositoryId, Line = run.Line, Kind = EDependencySignal.ChecksChanged, Sha = evt.Sha }, cancellationToken);
     }
 
     public async Task HandleAsync(ForgeWebhookMessage<PullRequestMerged> message, CancellationToken cancellationToken = default)
     {
         var evt = message.Event;
-        if (await RunAsync(evt.RepositoryId, cancellationToken) is { } run && (run.PullRequestNumber == evt.Number || run.OnboardingPullRequestNumber == evt.Number))
-            await SignalAsync(new DependencyUpdateSignalMessage { RepositoryId = evt.RepositoryId, Kind = EDependencySignal.Merged, Number = evt.Number }, cancellationToken);
+        foreach (var run in await RunsAsync(evt.RepositoryId, cancellationToken))
+            if (run.PullRequestNumber == evt.Number || run.OnboardingPullRequestNumber == evt.Number)
+                await SignalAsync(new DependencyUpdateSignalMessage { RepositoryId = evt.RepositoryId, Line = run.Line, Kind = EDependencySignal.Merged, Number = evt.Number }, cancellationToken);
     }
 
     public async Task HandleAsync(ForgeWebhookMessage<PullRequestClosed> message, CancellationToken cancellationToken = default)
     {
         var evt = message.Event;
-        if (await RunAsync(evt.RepositoryId, cancellationToken) is { } run && (run.PullRequestNumber == evt.Number || run.OnboardingPullRequestNumber == evt.Number))
-            await SignalAsync(new DependencyUpdateSignalMessage { RepositoryId = evt.RepositoryId, Kind = EDependencySignal.Closed, Number = evt.Number }, cancellationToken);
+        foreach (var run in await RunsAsync(evt.RepositoryId, cancellationToken))
+            if (run.PullRequestNumber == evt.Number || run.OnboardingPullRequestNumber == evt.Number)
+                await SignalAsync(new DependencyUpdateSignalMessage { RepositoryId = evt.RepositoryId, Line = run.Line, Kind = EDependencySignal.Closed, Number = evt.Number }, cancellationToken);
     }
 
-    /// <summary>R10: a vulnerable dependency starts an out-of-slot security run (or waits for the current one).</summary>
+    /// <summary>
+    /// R10: a vulnerable dependency starts an out-of-slot security run (or waits for the current one); #568 D13: each release
+    /// line with a run of its own gets one too, since the line ships the same dependency.
+    /// </summary>
     public async Task HandleAsync(ForgeWebhookMessage<DependencyAlertRaised> message, CancellationToken cancellationToken = default)
     {
         var evt = message.Event;
         if (await session.LoadAsync<Repository>(evt.RepositoryId, cancellationToken) is not { } repository) return;
         var account = repository.Account is null ? null : await session.LoadAsync<Account>(repository.Account, cancellationToken);
         if (!Repository.ResolveDependencyUpdates(repository, account)) return;
-        await SignalAsync(new DependencyUpdateSignalMessage
-        {
-            RepositoryId = evt.RepositoryId, Kind = EDependencySignal.Trigger, Trigger = EDependencyRunTrigger.Security,
-            SecurityFixes = [new DependencySecurityFixRecord { Ecosystem = evt.Ecosystem, DepName = evt.DepName, Advisory = evt.Advisory }],
-        }, cancellationToken);
+        var lines = (await RunsAsync(evt.RepositoryId, cancellationToken)).Where(r => r.Line is not null).Select(r => r.Line);
+        foreach (var line in lines.Prepend(null))
+            await SignalAsync(new DependencyUpdateSignalMessage
+            {
+                RepositoryId = evt.RepositoryId, Line = line, Kind = EDependencySignal.Trigger, Trigger = EDependencyRunTrigger.Security,
+                SecurityFixes = [new DependencySecurityFixRecord { Ecosystem = evt.Ecosystem, DepName = evt.DepName, Advisory = evt.Advisory }],
+            }, cancellationToken);
     }
 
     public Task HandleAsync(ForgeWebhookMessage<ReleasePublished> message, CancellationToken cancellationToken = default)
@@ -137,10 +146,15 @@ public partial class DependencyUpdateEventsRecipient :
         }, ct);
     }
 
-    private async Task<DependencyUpdateRun?> RunAsync(string repositoryId, CancellationToken ct)
-        => repositoryId.StartsWith("Repositories/", StringComparison.OrdinalIgnoreCase)
-            ? await session.LoadAsync<DependencyUpdateRun>(DependencyUpdateRun.ForRepository(repositoryId), ct)
-            : null;
+    /// <summary>The repository's run on its default branch, then its release lines' runs (#568 D13); each event goes to the run it is about.</summary>
+    private async Task<IReadOnlyList<DependencyUpdateRun>> RunsAsync(string repositoryId, CancellationToken ct)
+    {
+        if (!repositoryId.StartsWith("Repositories/", StringComparison.OrdinalIgnoreCase)) return [];
+        var runs = new List<DependencyUpdateRun>();
+        if (await session.LoadAsync<DependencyUpdateRun>(DependencyUpdateRun.ForRepository(repositoryId), ct) is { } main) runs.Add(main);
+        runs.AddRange(await session.Advanced.LoadStartingWithAsync<DependencyUpdateRun>(DependencyUpdateRun.LinesPrefix(repositoryId), pageSize: 64, token: ct));
+        return runs;
+    }
 
     private Task SignalAsync(DependencyUpdateSignalMessage signal, CancellationToken ct) => messageBus.BroadcastAsync(signal, ct);
 }

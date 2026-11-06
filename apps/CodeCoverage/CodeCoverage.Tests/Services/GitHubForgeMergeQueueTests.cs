@@ -574,6 +574,17 @@ public class GitHubForgeMergeQueueTests
     }
 
     [Fact]
+    public async Task D2_a_branch_is_renamed_and_a_taken_name_says_why_not()
+    {
+        var github = new StubGitHub()
+            .On(HttpMethod.Post, $"{Repo}/branches/release/6.0/rename", HttpStatusCode.Created, """{"name":"release/dotnet-6.x"}""")
+            .On(HttpMethod.Post, $"{Repo}/branches/release/7.0/rename", HttpStatusCode.UnprocessableEntity, """{"message":"New branch already exists"}""");
+
+        (await Queue(github).RenameBranchAsync(Target(), "release/6.0", "release/dotnet-6.x")).Should().BeNull();
+        (await Queue(github).RenameBranchAsync(Target(), "release/7.0", "release/dotnet-7.x")).Should().Contain("422");
+    }
+
+    [Fact]
     public async Task A_prefix_with_an_empty_or_dot_segment_is_refused()
         => await Throws<ArgumentException>(() => Queue(new StubGitHub()).ListBranchesAsync(Target(), "release/../"));
 

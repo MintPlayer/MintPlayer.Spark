@@ -26,8 +26,9 @@ action step after the build. That step tags every package that changed, then the
 
 ## Onboarding
 
-On the repository page in CodeCoverage, run **Set up versioning**. It plans from the default branch and opens a
-pull request from `mintplayer/versioning-onboarding` (D17) that:
+On the repository page in CodeCoverage, run **Set up features** and tick **Package versioning** (or **Release
+lines**, which includes it). It plans from the default branch and opens one pull request from
+`mintplayer/onboarding` (see [onboarding.md](onboarding.md)) that, for versioning:
 
 - adds `MintPlayer.Versioning.MSBuild` to `Directory.Build.props` (.NET), at the latest stable version on nuget.org
   (a built-in version when nuget.org cannot be read);
@@ -36,7 +37,7 @@ pull request from `mintplayer/versioning-onboarding` (D17) that:
 - gives the checkout of every job that runs `dotnet` `fetch-depth: 0`;
 - adds a `versioning:` section to `coverage.yml`.
 
-Each of these is a rule that checks before it edits, so **Set up versioning** can be run again on a repository that
+Each of these is a rule that checks before it edits, so **Set up features** can be run again on a repository that
 was onboarded before. It then opens a pull request with only what is still missing (for example a checkout added
 since), listed per rule under "Changes", or answers that there is nothing to change.
 
@@ -197,6 +198,7 @@ versioning:
   releaseBranches: ["release/*.x"]   # release lines (D10); default release/*.x, at most 16
   ignore: ["**/*.md"]                # changed files that release nothing (D4); this list REPLACES the default
   prerelease: preview                # D8: alpha | beta | next | preview | rc | upstream; default upstream
+  dependencyRanges: minimum          # #568 D10b: minimum (>= x, the default) | major-bounded ([x, nextMajor))
   groups:                            # lockstep groups (D13)
     - name: mapper
       packages: [MintPlayer.Mapper, MintPlayer.Mapper.*]
@@ -212,6 +214,12 @@ versioning:
 - **`prerelease`** sets the label outright; upstream prereleases never override it. `upstream` (the default) mirrors
   the least mature upstream label, the SDK included. A per-package pin wins over the repository's.
 
+- **`dependencyRanges`**: a `ProjectReference` packs as a NuGet dependency on the referenced package's version. With
+  `minimum` (the default) that's `>= x`, where x is the referenced package's highest tag reachable from the commit. On
+  a release line that's the line's own tag, never the default branch's newer major. The target framework already
+  stops a net10 consumer from restoring the net11 package (NU1202). `major-bounded` writes `[x, nextMajor)`. The
+  versioning step sets the MSBuild property `MintPlayerVersioningDependencyRanges` for the pack that follows it, so a
+  pack in another job needs the variable passed on.
 - **`ignore`** globs also keep matching project files out of the package graph. Test fixtures that contain
   `.csproj` or `package.json` files belong here. Leave out `**/*.md` if your packages ship their README.
 - **`groups`**: members release together at the group's highest computed version whenever one of them releases,

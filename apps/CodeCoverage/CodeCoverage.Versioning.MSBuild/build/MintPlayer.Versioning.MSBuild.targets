@@ -62,6 +62,20 @@
 		</PropertyGroup>
 	</Target>
 
+	<!-- In-repo dependencies (ProjectReference) pack as ">= the dependency's version", which on a release line is its highest
+	     tag reachable there (backport PRD §8.4, S4). MintPlayerVersioningDependencyRanges=major-bounded (D10b, opt-in;
+	     coverage.yml versioning.dependencyRanges) caps each below its next major: [10.1.0, 11.0.0). NuGet's pack takes the
+	     range from the ProjectVersion metadata as it is. -->
+	<Target Name="MintPlayerVersioningDependencyRanges" AfterTargets="_GetProjectReferenceVersions"
+	        Condition="'$(MintPlayerVersioningDependencyRanges)' == 'major-bounded'">
+		<ItemGroup>
+			<_ProjectReferencesWithVersions Update="@(_ProjectReferencesWithVersions)"
+			                                Condition="$([System.Text.RegularExpressions.Regex]::IsMatch('%(ProjectVersion)', '^\d+\.'))">
+				<ProjectVersion>[%(ProjectVersion), $([MSBuild]::Add($([System.Text.RegularExpressions.Regex]::Match('%(ProjectVersion)', '^\d+').Value), 1)).0.0)</ProjectVersion>
+			</_ProjectReferencesWithVersions>
+		</ItemGroup>
+	</Target>
+
 	<!-- A project packed on its own (not through a solution, which sets SolutionPath) is expected to produce a package,
 	     so the placeholder is an error there rather than the silent "not packed" a solution-wide pack wants (#544 D2).
 	     _IntermediatePack runs only for the project being packed, never for its ProjectReferences, so a build or a

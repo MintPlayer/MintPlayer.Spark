@@ -999,3 +999,122 @@ cascade: 66 of 72 conflicted only because #461 was missing). Script: a throwaway
   second only proposes labels a maintainer removes, and its backport needs the merge. The other forges raise none of
   these commands.
 - **Every automatic resolution is listed in the per-line report** (D6): path, strategy, and what each side added.
+
+### 8.4 Spikes and implementation decisions (#571, 2026-11-05)
+
+- **S4, packing on a line: confirmed, nothing to build for the default.** I built a scratch repository with projects
+  `A → B` (`ProjectReference`) that import `MintPlayer.Versioning.MSBuild.targets` from source. It is tagged `A/v10.0.0`
+  and `B/v10.0.0` at the base, `B/v10.1.0` and `A/v10.0.1` on `release/dotnet-10.x`, and `B/v11.0.0` and `A/v11.0.0` on
+  `main`. `dotnet pack A` (SDK 11.0.100-rc.3) on the line gives `A.10.0.1.nupkg` with
+  `<dependency id="B" version="10.1.0" />`. On `main` it gives `A.11.0.0` with `B 11.0.0`. Master's `B/v11.0.0` is
+  unreachable from the line, so D10b's default (`>=` the line's tag) holds as built. The reason is that
+  `MintPlayerVersioning` runs before `_GetOutputItemsFromPack`, and NuGet's `_GetProjectVersion` reads the referenced
+  project's `PackageVersion` from it.
+- **S4, the cost of `major-bounded`: one target, no NuGet task change.** The target runs `AfterTargets="_GetProjectReferenceVersions"`
+  and rewrites `_ProjectReferencesWithVersions`' `ProjectVersion` metadata to `[v, (major+1).0.0)`. NuGet's pack accepts
+  a range there: the line gives `version="[10.1.0, 11.0.0)"` and `main` gives `"[11.0.0, 12.0.0)"`. It only adds a
+  target to `MintPlayer.Versioning.MSBuild.targets`, behind the property `MintPlayerVersioningDependencyRanges=major-bounded`.
+- **S8, onboarding inventory.** Two onboardings open a pull request today:
+  - **Versioning:** the `SetUpVersioning` custom action → `VersioningOnboardingService` → GitWriter
+    `/jobs/versioning/onboarding`, branch `mintplayer/versioning-onboarding`.
+  - **Dependency updates:** the `dependency-updates-onboard` page and the `EnableDependencyUpdates` action → the engine →
+    GitWriter `/jobs/dependencies/files`, branch `mintplayer/dependencies-onboarding`.
+
+  Five more are static copy-paste guides with no state: `coverage/setup`, `merge-queue/setup` (regenerate workflow,
+  App permissions, ruleset steps), `pr-size-labels/setup`, `backports/setup` and `dependency-updates/setup`. What the two
+  PR flows share: the permission gate (`IDependencyOnboardingService.CheckAsync`), `IRepositoryTree`, the forge
+  pull-request find → create/update calls (`IForgeDependencyUpdates`), and the writer access calls. What they don't
+  share:
+  - each writes coverage.yml text its own way (no shared YAML editing);
+  - each GitWriter endpoint has its own path allow-list;
+  - each detects "already onboarded" differently;
+  - there is no single list of features and the App permissions each one needs.
+- **S7 (renaming a branch as the App): not run yet.** It needs the dev App on the scratch repository, and it is a live
+  check like S5.
+- **M9, which lines get dependency runs: every supported line, the current one included.** Owner's choice (2026-11-05,
+  asked as "Should the current line also get its own patch-only dependency run?"). The consequence: master's own rolling
+  dependency pull request gets no default `backport:` labels, since each line's runs keep that line up to date themselves.
+  That already holds: `BackportTargetsEventsRecipient` (#570 M8b) skips every pull request a bot opened.
+- **M9, one run document per line, beside the default branch's.** The default run keeps the id
+  `DependencyUpdateRuns/{provider}/{id}`. A line's run is `…/lines/{line}`, and its bulky half is
+  `DependencyUpdateRunData/…/lines/{line}`. Recipients load the line runs by that prefix (`LoadStartingWithAsync`, no
+  index). Why: the saga's state is per branch, and every per-run field (pending workflow run, rolling sha, pull request,
+  bisect, pins) would otherwise need a per-line map. Messages carry `Line`, so a step or signal reaches its own run.
+  Tests: `DependencyLineRunTests`.
+- **M9, the bot's branches per line: `mintplayer/dependencies-<line>` and `mintplayer/dependencies-work-<line>`.** A
+  '-' rather than a '/' because git cannot hold `mintplayer/dependencies` and `mintplayer/dependencies/x` at once
+  (D/F conflict in the ref namespace). The writer accepts only a line `ReleaseLine` itself writes
+  (`ReleaseLine.TryParse(line)?.ToString() == line`), so a branch is never built from other text. Tests:
+  `DependencyWriterJobTests.D13_*`. The merge queue recognises a line's rolling branch through
+  `DependencyUpdateRun.IsRollingBranch`, which never matches a work ref.
+- **M9, configuration and workflows stay the default branch's.** A line's run reads coverage.yml from the default
+  branch (O16's rule). It dispatches the lookup on the line's branch (D14: the run builds the line's head), and its
+  workflows must have the default branch's blob on the line's commit (D12). A line whose workflows drifted ends with
+  `workflow-differs` until the line has them again (D9's regenerate setup keeps them in step). The pull request's title
+  starts with `[<line>]`. A line's pull request is handed to the merge queue only when `mergeQueue.branches` queues the
+  line. The run token gets the line (`{githubId}-{line}-{run}-{n}`), so the artifact names never collide with the
+  default run's.
+- **M9, scheduling without reading files: `FileLines`.** The default branch's run reads the supported lines
+  (`SupportedLines`, with `backport.lines` overrides) at its start, into `DependencyUpdateRun.FileLines`. The ten-minute
+  scheduler then triggers each line's run in the same slot (dedup key `{slot}:{line}`). As with `FileDisabled`, no
+  tick reads a file. The cost: a line starts its runs one slot after the default run first reads it. A forge failure
+  keeps the lines read before. A security alert (R10) also triggers each line that already has a run.
+- **M9, `dependencies.lines`: `patch` (default), `all`, `security`, `off`.** It sets which updates a line's run may
+  take. `off` records no lines and ends a line's run as `disabled`. Tests: `DependenciesYmlTests`.
+- **M9c, the line ceiling is a level, not a version compare.** A line never takes a major. Under D13 the line's
+  platform major is the line's own, so "no major" keeps every platform-anchored package under it, with no per-package
+  major table to keep. `patch` takes patches. `all` takes up to minors. `security` takes only the run's security fixes.
+  A security fix may go up to a minor on any line. One that needs a major is held (`AboveLineCeiling`, "needs a major …
+  a human backports it"), so the pull request body lists it rather than dropping it. The ceiling is a candidate
+  problem like a hold, so a lower candidate of the same dependency still ships. As with a hold, the candidates passed
+  over are listed only when nothing lower ships (the engine's tier rule), so a line's pull request does not list "a
+  minor exists" for every dependency. Tests: `LineCeilingTests`,
+  `DependencyLineRunTests.D13_a_line_run_plans_under_its_ceiling…`.
+- **M10, one combined onboarding pull request** (owner, 2026-11-06, asked as "one combined PR or one PR per feature";
+  the owner chose combined). The chooser writes every picked feature into one `mintplayer/onboarding` pull request:
+  coverage.yml sections, workflows, the old → new line table and the versioning seeds. Why: per-feature pull requests
+  each edit coverage.yml and conflict with each other after the first merge. One merge also triggers the renames.
+- **M10, coverage.yml sections go in alphabetical order, and a bot pull request is rebuilt rather than merged**
+  (owner, 2026-11-06: "let the pull-requests the bot creates insert the sections in alphabetical order … several PRs
+  inserting a section in the same spot will probably again cause merge conflicts").
+  - Both onboardings appended their section to the end (`VersioningOnboarding.CoverageSectionAsync`,
+    `DependencyOnboarding.Plan`). Now one editor puts a section before the first top-level key that sorts after it,
+    or replaces the section when it is already there.
+  - The conflict is handled by rebuilding. The bot's coverage.yml change is an edit ("this section, with this
+    text"), not a stored file. Its onboarding pull request is replanned on the default branch's new head whenever
+    that head moves while the pull request is open. A bot pull request therefore never stays in conflict, however
+    many touched the same spot. The dependency onboarding already rebuilt on a new head
+    (`DependencyUpdateEngine.cs:1505`). The versioning onboarding did not.
+- **M10, dependency updates switch on when the onboarding pull request merges.** The engine skips its own onboarding
+  pull request once `dependency-lookup.yml` is on the default branch (`DependencyUpdateEngine.cs:1480-1481`). The
+  combined pull request carries the workflows, and the repository's `DependencyUpdates` is set to Enabled only after
+  the merge, so the engine then marks onboarding done and starts the first run. Enabling it earlier would open the
+  engine's own pull request beside the combined one. The bulk "Enable dependency updates" page stays as it is.
+- **M10, coverage is switched on, not written into CI.** Uploading coverage needs a step in the repository's own
+  build, whose shape varies (`/coverage/setup` has per-stack examples). The chooser turns the repository's coverage
+  on and puts the matching example in the pull request body as a checklist item. It does not edit a workflow it
+  cannot know.
+- **M10, rulesets are a step of the chooser** (owner, 2026-11-06), not a separate action. With the merge queue or
+  release lines picked, the ruleset plan is shown beside the pull request plan and applied with the user's token
+  (§8.2).
+- **M10e builds all of #554 and closes it** (owner, 2026-11-06, asked "how much of #554", answered "All of #554"
+  over "what the queue needs" and "both rulesets, no extras"). The chooser's ruleset step:
+  - creates ruleset 1 on the default branch and the lines, repairing `always` to `exempt`;
+  - creates ruleset 2, with the checks the default head reports confirmed in the plan and the approval count asked;
+  - migrates classic protection, ruleset 1 first, so the branch is never open.
+
+  #554's other parts are part of it too: organization rulesets on the Account page, the enqueue refusal for a locked
+  or review-blocked branch, and the eviction hint.
+  **In its own pull request, not #571's** (owner, 2026-11-06: "perhaps I'll allow you to split the work", then picked
+  "#554 as its own PR" over keeping it in #574 or splitting it in three). PR #574 ships the chooser without the
+  ruleset step. #554 follows on a branch from master once #574 has merged, so S7 is checked live sooner. Until it
+  ships, rulesets are set by hand (merge-queue.md §3).
+- **M10, S7 is built on GitHub's documented rules and checked live after the deploy** (owner, 2026-11-06).
+  `POST /repos/{o}/{r}/branches/{b}/rename`: "The authenticated user must have push access to the branch. If the
+  branch is the default branch, the authenticated user must also have admin or owner permissions", and only the
+  default branch needs `administration:write` from a fine-grained token (docs.github.com, Branches API, read
+  2026-11-06). A line is never the default branch, so the App's Contents: write should do. The live check runs with
+  S5.
+- **M9c, a line's run reads coverage.yml from the default branch at every step** (`ConfigRef`). The default run
+  keeps reading it at the commit it started on, as before. Found while wiring the ceiling: five later steps read the
+  file at `ExpectedSha`, which for a line is the line's commit.

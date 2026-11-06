@@ -436,7 +436,10 @@ settings for forges without the capability. The owner wants GitLab and Bitbucket
   (one single-target, one multi-target), an Angular library and a `netstandard2.0` generator exercises every flow:
   tagging, skipping unchanged packages, the dependent cascade, a preview, an auto-cut branch, a backport with a
   conflict, Releases, title correction, and the fallback (server stopped mid-run).
-- **Onboarding** (M13) is the repository page's detail action **Set up versioning** (`SetUpVersioning`), not a row
+- **[Superseded by #571 D3, 2026-11-06: the action is now **Set up features** (`SetUpFeatures`), which opens one
+  `mintplayer/onboarding` pull request for any mix of features; see `docs/code-coverage/onboarding.md`. The seed rules
+  below still hold.]**
+  **Onboarding** (M13) is the repository page's detail action **Set up versioning** (`SetUpVersioning`), not a row
   action: it runs synchronously, so the person sees the outcome (PR opened, seeded, nothing to do, refused). It needs
   the same managed-repository check as dependency onboarding (`IDependencyOnboardingService.CheckAsync`). It plans from the
   default branch's tree (`VersioningOnboarding.PlanAsync`). Packages that already have a `<PackageId>/v*` tag are left

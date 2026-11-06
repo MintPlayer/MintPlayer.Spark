@@ -41,6 +41,7 @@ public class DependenciesYmlTests
             node: {}
           lockFileMaintenance: true
           registries: ["npm.pkg.github.com", "NUGET.example.com:8443"]
+          lines: security
         """;
 
     private static string RepositoryFile()
@@ -104,7 +105,29 @@ public class DependenciesYmlTests
         s.Platform("python").Should().Be(DependencyPlatformSettings.Default);
         s.LockFileMaintenance.Should().BeTrue();
         s.Registries.Should().Equal(["npm.pkg.github.com", "nuget.example.com:8443"]);
+        s.Lines.Should().Be(EDependencyLineUpdates.Security);
     }
+
+    // #568 D13: release lines get patch updates by default; all, security or off otherwise.
+    [Theory]
+    [InlineData(null, EDependencyLineUpdates.Patch)]
+    [InlineData("all", EDependencyLineUpdates.All)]
+    [InlineData("patch", EDependencyLineUpdates.Patch)]
+    [InlineData("security", EDependencyLineUpdates.Security)]
+    [InlineData("off", EDependencyLineUpdates.Off)]
+    public void Release_lines_take_patch_updates_unless_told_otherwise(string? lines, EDependencyLineUpdates expected)
+    {
+        var parsed = DependenciesYml.Parse(lines is null ? "dependencies:\n  enabled: true\n" : $"dependencies:\n  lines: {lines}\n");
+
+        parsed.Errors.Should().BeEmpty();
+        parsed.Section.Lines.Should().Be(expected);
+        DependenciesYml.Parse(null).Section.Lines.Should().Be(EDependencyLineUpdates.Patch);
+    }
+
+    [Fact]
+    public void A_broken_section_still_honours_lines_off()
+        => DependenciesYml.Parse("dependencies:\n  lines: off\n  cooldown: forever\n").Section.Lines.Should().Be(EDependencyLineUpdates.Off,
+            "an opt-out survives the fallback to the defaults, like enabled: false");
 
     [Theory]
     [InlineData("autoMerge: { default: sometimes }", "autoMerge.default")]
@@ -128,6 +151,7 @@ public class DependenciesYmlTests
     [InlineData("rules: [{ match: [] }]", "match")]
     [InlineData("rules: [{ match: x, ecosystem: \"NPM DROP\" }]", "ecosystem")]
     [InlineData("ignore: [\"\"]", "ignore")]
+    [InlineData("lines: minor", "dependencies.lines")]
     public void An_invalid_value_is_an_error_and_the_section_falls_back_to_the_defaults(string body, string mentioned)
     {
         var parsed = DependenciesYml.Parse($"dependencies:\n  {body}\n");

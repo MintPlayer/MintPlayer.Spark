@@ -5,6 +5,7 @@ using CodeCoverage.Git.Dependencies;
 using CodeCoverage.Git.MergeQueue;
 using CodeCoverage.GitWriter.Jobs;
 using CodeCoverage.GitWriter.Jobs.Dependencies;
+using CodeCoverage.Versioning.Releases;
 using Microsoft.Extensions.Options;
 using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.SourceGenerators.Attributes;
@@ -180,9 +181,10 @@ internal sealed partial class GitWriterDependencyDeleteWorkRefEndpoint : IDelete
         if (!refusal.Check(WireValidation.IsRepo(request.Provider, request.RepoId), "repoId", WireValidation.RepoRule)
             || refusal.Check(WireValidation.RemoteUrl(request.CloneUrl, options.Value.AllowInsecureHttp), "cloneUrl", WireValidation.RemoteUrlRule) is not { } cloneUrl
             || refusal.Check(WireValidation.Credential(request.Credential), "credential", WireValidation.CredentialRule) is not { } credential
-            || !refusal.Check(request.ExpectedSha is null || WireValidation.ObjectId(request.ExpectedSha) is not null, "expectedSha", WireValidation.ShaRule))
+            || !refusal.Check(request.ExpectedSha is null || WireValidation.ObjectId(request.ExpectedSha) is not null, "expectedSha", WireValidation.ShaRule)
+            || !refusal.Check(DependencyFields.IsLine(request.Line), "line", DependencyFields.LineRule))
             return refusal.Result();
-        return Results.Json(await writer.DependencyDeleteWorkRefAsync($"{request.Provider}/{request.RepoId}", cloneUrl, credential, request.ExpectedSha), GitWriterHost.Json);
+        return Results.Json(await writer.DependencyDeleteWorkRefAsync($"{request.Provider}/{request.RepoId}", cloneUrl, credential, request.ExpectedSha, request.Line), GitWriterHost.Json);
     }
 }
 
@@ -208,10 +210,17 @@ internal static partial class DependencyFields
             || refusal.Check(WireValidation.RemoteUrl(request.CloneUrl, allowInsecureHttp), "cloneUrl", WireValidation.RemoteUrlRule) is not { } cloneUrl
             || refusal.Check(WireValidation.Credential(request.Credential), "credential", WireValidation.CredentialRule) is not { } credential
             || refusal.Check(WireValidation.Branch(request.BaseBranch), "baseBranch", MergeQueueWireRules.BranchRule) is not { } baseBranch
-            || refusal.Check(WireValidation.ObjectId(request.ExpectedSha), "expectedSha", WireValidation.ShaRule) is not { } expectedSha)
+            || refusal.Check(WireValidation.ObjectId(request.ExpectedSha), "expectedSha", WireValidation.ShaRule) is not { } expectedSha
+            || !refusal.Check(IsLine(request.Line), "line", LineRule))
             return null;
-        return new DependencyJob($"{request.Provider}/{request.RepoId}", cloneUrl, credential, baseBranch, expectedSha);
+        return new DependencyJob($"{request.Provider}/{request.RepoId}", cloneUrl, credential, baseBranch, expectedSha, request.Line);
     }
+
+    public const string LineRule = "absent, or a release line such as dotnet-10.x";
+
+    /// <summary>#568 D13: absent (the default branch's run) or a line name exactly as <see cref="ReleaseLine"/> writes it, so the
+    /// branch it names (<see cref="DependencyBranches.RollingOf"/>) can hold nothing else.</summary>
+    public static bool IsLine(string? line) => line is null || ReleaseLine.TryParse(line)?.ToString() == line;
 
     public static DependencyCommit? Commit(Refusal refusal, DependencyCommitJobWire request)
     {

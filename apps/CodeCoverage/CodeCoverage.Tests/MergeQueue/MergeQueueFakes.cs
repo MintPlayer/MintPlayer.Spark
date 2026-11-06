@@ -68,6 +68,20 @@ internal sealed class FakeForgeMergeQueue : IForgeMergeQueue
     public Task<IReadOnlyList<string>> ListBranchesAsync(Repository repository, string prefix, CancellationToken cancellationToken = default)
         => Task.FromResult<IReadOnlyList<string>>([.. BranchHeads.Keys.Where(b => b.StartsWith(prefix, StringComparison.Ordinal)).Order(StringComparer.Ordinal)]);
 
+    /// <summary>Every branch rename asked for (#571 D2), in order.</summary>
+    public List<(string From, string To)> Renames { get; } = [];
+
+    /// <summary>When set, a rename of that branch answers it (a refusal).</summary>
+    public Dictionary<string, string> RenameRefusals { get; } = new(StringComparer.Ordinal);
+
+    public Task<string?> RenameBranchAsync(Repository repository, string from, string to, CancellationToken cancellationToken = default)
+    {
+        Renames.Add((from, to));
+        if (RenameRefusals.TryGetValue(from, out var refusal)) return Task.FromResult<string?>(refusal);
+        if (BranchHeads.Remove(from, out var sha)) BranchHeads[to] = sha;
+        return Task.FromResult<string?>(null);
+    }
+
     public Task<ForgeCheckState> GetCheckStateAsync(Repository repository, string sha, CancellationToken cancellationToken = default)
         => Task.FromResult(CheckStates.TryGetValue(sha, out var state) ? state : new ForgeCheckState(sha, [], [], []));
 
@@ -429,8 +443,11 @@ internal sealed class FakeGitWriter : IGitWriterSidecar
     public Task<GitWriterDependencyResult> DependencyFilesAsync(GitWriterDependencyRequest request, CancellationToken cancellationToken = default)
         => DependencyAsync("files", request, () => new GitWriterDependencyResult(GitWriterOutcomes.Pushed, null, "e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5", null, [], null, 10));
 
+    public Task<GitWriterDependencyResult> OnboardingAsync(GitWriterDependencyRequest request, CancellationToken cancellationToken = default)
+        => DependencyAsync("onboarding", request, () => new GitWriterDependencyResult(GitWriterOutcomes.Pushed, null, "f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6", null, [], null, 10));
+
     public Task<GitWriterDependencyResult> DependencyDeleteWorkRefAsync(GitWriterDependencyRequest request, CancellationToken cancellationToken = default)
-        => DependencyAsync("delete", request, () => new GitWriterDependencyResult(GitWriterOutcomes.Deleted, null, null, null, [], null, 10));
+        => DependencyAsync("delete",request, () => new GitWriterDependencyResult(GitWriterOutcomes.Deleted, null, null, null, [], null, 10));
 
     public static GitWriterPrepareResult Prepared(string baseSha, string head, string prepared, params string[] resolved)
         => new(GitWriterOutcomes.Prepared, null, baseSha, head, prepared, resolved, [], null, 10);

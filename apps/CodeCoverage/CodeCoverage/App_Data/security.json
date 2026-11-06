@@ -288,7 +288,7 @@
     },
     {
       "key": "c0e5a9e1-0000-4000-8000-0000000000a9",
-      "resource": "SetUpVersioning/Repository",
+      "resource": "SetUpFeatures/Repository",
       "groupId": "00000000-0000-0000-0000-000000000001",
       "isDenied": false
     },

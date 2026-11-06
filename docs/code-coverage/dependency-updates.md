@@ -54,6 +54,9 @@ A slot whose rebuilt tree equals the pushed one pushes nothing and starts no CI.
    pull requests add the merge queue (*with* or *without*, defaulting to the account's setting). A notification then says
    what was enabled (and whether with the merge queue), another one per repository why it was not, and the list reloads
    with each one's new state. Nothing is switched on until you do this: closing the page changes nothing.
+   - For one repository, **Set up features** on its page does the same in the onboarding pull request it opens with
+     the other features you pick ([onboarding.md](onboarding.md)). The switch goes on when that pull request merges;
+     `dependency-lookup.yml` is on the default branch by then, so no second onboarding pull request is opened.
    - The same switch is on the Account page (*Dependency updates*, for every repository that does not decide for itself)
      and on the Repository page (which can also turn it off for itself), next to *Onboarding adds the merge queue* and the
      real state read from `coverage.yml`.
@@ -140,7 +143,27 @@ dependencies:
     dotnet: { strategy: replace, keepPrevious: 0, lockPackageMajor: false, locations: [], exclude: [] }
   lockFileMaintenance: false     # transitive-only refreshes, off by default
   registries: ["npm.pkg.github.com"]   # lockfile hosts allowed besides the public registries
+  lines: patch                   # release lines: patch (default) | all | security | off
 ```
+
+**Release lines.** With `versioning.lines` on ([versioning.md](versioning.md)), every supported release line, the
+current one included, gets a dependency run of its own on its line's branch, in the same slot as the default branch's
+run. Each line has its own rolling pull request (title `[dotnet-10.x] …`, branch `mintplayer/dependencies-dotnet-10.x`).
+A line never takes a major, so a platform-anchored package (say `Microsoft.*` on `dotnet-10.x`) stays under the line's
+major. `lines` decides the rest:
+
+| `lines` | A line's run takes |
+|---|---|
+| `patch` (default) | patches, and security fixes up to a minor |
+| `all` | patches and minors |
+| `security` | security fixes only, up to a minor |
+| `off` | nothing: no line runs |
+
+A security fix that needs a major is listed as held for a human to backport. Configuration still comes from the default
+branch, and so do the workflows: a line whose `dependency-lookup.yml` / `dependency-apply.yml` differ from the default
+branch's ends its run (`workflow-differs`) until it has them again. A line starts its runs one slot after the default
+branch's run first sees it. Because each line updates itself, the default branch's dependency pull request gets no
+`backport:` labels.
 
 **Thresholds.** The threshold is both "planned without asking" and "may auto-merge". Built in: `default: minor`,
 `@angular/*: never`, `actions/*: minor`; GitHub Actions and platforms never go above minor without an approval. Every

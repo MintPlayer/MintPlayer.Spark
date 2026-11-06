@@ -495,6 +495,8 @@ public static class DependencyPolicyEngine
                     (view.Problem, view.Detail) = (EDependencyReportReason.Held, fileHold);
                 else if (depHold is not null)
                     (view.Problem, view.Detail) = (EDependencyReportReason.Held, depHold.Reason);
+                else if (LineCeiling(view.Level, securityFix) is { } ceiling)
+                    (view.Problem, view.Detail) = (EDependencyReportReason.AboveLineCeiling, ceiling);
 
                 var (inCooldown, until) = Cooldown(record.Ecosystem, record.DepName, Token(candidate), candidate.ReleaseTimestamp,
                     securityFix, IsBotRuntime(record)
@@ -507,6 +509,26 @@ public static class DependencyPolicyEngine
                 .OrderByDescending(v => v.Level)
                 .ThenByDescending(v => UpdateTypeFloor.LeadingNumber(v.Candidate.Version) ?? long.MinValue)
                 .ThenBy(v => v.Index)];
+        }
+
+        /// <summary>
+        /// #568 D13: why a release line's run does not take an update of <paramref name="level"/>, or null when it does. A line
+        /// never takes a major (a platform-anchored package stays under the line's major); a security fix goes up to a minor;
+        /// otherwise <c>dependencies.lines</c> decides.
+        /// </summary>
+        private string? LineCeiling(EUpdateLevel level, bool securityFix)
+        {
+            if (input.LineUpdates is not { } lines) return null;
+            if (securityFix)
+                return level <= EUpdateLevel.Minor ? null : "a release line takes no major: this security fix needs a major, so a human backports it";
+            return lines switch
+            {
+                EDependencyLineUpdates.Security => "a release line here takes security fixes only (dependencies.lines: security)",
+                EDependencyLineUpdates.All when level <= EUpdateLevel.Minor => null,
+                EDependencyLineUpdates.All => "a release line takes no major (dependencies.lines: all)",
+                _ when level <= EUpdateLevel.Patch => null,
+                _ => "a release line takes patches only (dependencies.lines: patch)",
+            };
         }
 
         /// <summary>

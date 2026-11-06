@@ -46,7 +46,14 @@ dry-runs the cherry-pick onto every requested line. Each line is handled on its 
   `postRebaseActionName`, or the `action` of the rule that resolved the file. The workflow file must be the same as at
   the line's tip. Its `merge-queue-patch` is folded into the backport commit, and only then does the pull request open.
   If the regeneration cannot run or fails, the pull request opens anyway, with a **Not regenerated** note listing the
-  files to regenerate by hand.
+  files to regenerate by hand. A line without the workflow at all gets it from onboarding: when **Set up features**
+  with *Release lines* merges, each supported line missing a regenerate workflow that the default branch's
+  `mergeQueue` names gets a pull request adding it (#571 D9, [onboarding.md](onboarding.md#on-merge)).
+
+**Onboarding a repository with lines.** **Set up features** → *Release lines* adds `versioning.lines`, and when its
+pull request merges it renames old line branches (such as `release/6.0`) to `release/<ecosystem>-<major>.x` through
+GitHub's rename API (#571 D2). GitHub moves their open pull requests and redirects the old names. See
+[onboarding.md](onboarding.md).
 
 A `backport:` section in the default branch's `coverage.yml` adjusts this:
 
@@ -76,7 +83,9 @@ backport:
   when it opens, for each supported line whose ecosystem it changes (the same changed-files test as a release). Remove
   the labels of the lines it should not reach; merging backports it to the rest. `fixes` labels the older lines only
   for a `fix:` title or a `fixLabels` label, and the newest line always; `off` labels nothing. Every pull request
-  also gets an informational **Backport targets** check listing the lines and which apply.
+  also gets an informational **Backport targets** check listing the lines and which apply. A pull request a bot opened
+  gets no labels: the dependency updater gives each supported line a run of its own
+  ([dependency-updates.md](dependency-updates.md) §4, `dependencies.lines`).
 - **`lines`** overrides which lines are supported. By default a line is supported while its platform major has not
   reached end of life (the lifecycle data this app collects), and the newest line of each ecosystem always is. An
   ecosystem without lifecycle data supports only its newest line and the lines you `keep`. `retire` wins over

@@ -177,11 +177,72 @@ PRD §8.2.
     which repository releases each package (`PackageReleaseRecord`); the backport comment names the upstream release
     and which of its pull requests the upstream already backported to the line's major. Details are in PRD §8.3,
     "M8e, built".
+- **#571 progress (2026-11-05, `feat/issue571-dependencies-onboarding`):** S4 and S8 done (PRD §8.4). D10b's default
+  needed nothing. Its opt-in `versioning.dependencyRanges: major-bounded` is built: an MSBuild target, the config key,
+  and the action's exported variable. S7 is a live check, still to do.
+  M9 built and its .NET tests green. The guide-page specs pass (2026-11-06). Their earlier failure was the run
+  command, not the code: page folders passed as test roots made the builder compile `.html`/`.scss`. Pass
+  workspace-relative `--include=<…>.spec.ts` paths instead.
+  **M10 sub-milestones (decided 2026-11-06, PRD §8.4 "M10"):**
+  - **M10a, coverage.yml sections:** one shared editor inserts a top-level section in alphabetical order, or
+    replaces it. The versioning and dependency onboardings use it instead of appending.
+  - **M10b, the planner:** a pure planner, one rule set per feature over one file overlay of the default branch
+    (generalising `VersioningOnboarding`'s rules). It returns the files, the body, the seeds, the renames, the lines
+    that need the regenerate workflow, and the settings to apply on merge.
+  - **M10c, the chooser:** a "Set up features" action on the Repository page (a checkbox form, then the plan) that
+    pushes one `mintplayer/onboarding` pull request. It is rebuilt on every new default-branch head while open.
+    It replaces "Set up versioning".
+    **Built (2026-11-06):** git writer `POST /jobs/onboarding` (versioning paths plus the dependency set; only
+    Dependabot's file may be deleted) onto `mintplayer/onboarding`; `IOnboardingService` (preview, open, rebuild);
+    `SetUpFeaturesAction` (virtual `SetUpFeatures` checkbox form, then the plan for a confirmation); a push to the
+    default branch rebuilds the open pull request (`OnboardingRebuildEventsRecipient`). The state stays in
+    `VersioningOnboardingState` (the production collection), extended with the features, renames and on-merge
+    settings, so the existing seed push covers the new branch too. `IVersioningOnboardingService.OnboardAsync` is
+    gone; the service keeps `PushSeedsAsync`. Tests: `OnboardingServiceTests` (4), `OnboardingWriterJobTests` (5),
+    the client route table.
+  - **M10d, on merge:**
+    - apply the settings (dependency updates, size labels, coverage);
+    - push the seeds;
+    - rename the old lines (D2);
+    - open a pull request into each line that lacks the regenerate workflow (D9).
+    **Built (2026-11-06):** `IOnboardingService.MergedAsync` is the merge's one entry point (owner, 2026-11-06: the
+    seeds recipient should not depend on two services). The merged webhook on `mintplayer/onboarding` (or the #153
+    branch) reaches it through `VersioningSeedsRecipient`, under the run lock. It pushes the seeds (`PushSeedsAsync`,
+    so a #153 pull request still gets them), switches dependency updates (plus the onboard signal) and size labels
+    on, and renames each planned line through the new `IForgeMergeQueue.RenameBranchAsync` (GitHub
+    `POST /branches/{b}/rename`; a refusal is noted, not retried). Then, for each supported line missing a workflow
+    that the default branch's `mergeQueue` names (`Workflows()`), it pushes `/jobs/onboarding` with `line` and opens
+    a pull request from `mintplayer/onboarding-<line>`. The writer's line mode accepts only 1–8
+    `.github/workflows/` files, with no deletions. `MergeHandledAt` stores the merge commit, so the merge is handled
+    once. Coverage has no setting to switch: its step stays a to-do in the body. A plan with no files (size labels
+    alone) applies its settings and renames at once, without a pull request. Tests: `OnboardingServiceTests` (+2),
+    `OnboardingWriterJobTests` (+3), `GitHubForgeMergeQueueTests` (rename), conformance row.
+  - **M10e, rulesets:** a step in the chooser. The plan is shown first, then applied with the user's token, with
+    the sign-in popup when that token is stale. **All of #554** (owner, 2026-11-06; PRD §8 M10), **in its own pull
+    request after #574 merges** (owner, 2026-11-06), which closes #554:
+    - e1: the forge's ruleset/protection API on the user's token, and a pure planner (create, update or repair to
+      `exempt`, migrate the classic lock and review count after ruleset 1);
+    - e2: the chooser step and the `github.signIn` popup client method (`Retry.Invoke`);
+    - e3: ruleset 2 (the default head's checks confirmed, the approval count asked);
+    - e4: organization rulesets from the Account page;
+    - e5: the enqueue refusal for classic lock and review count, and the eviction hint;
+    - e6: merge-queue.md §2.1/§3.
+  - **M10f:** the guide page and the docs. **Built (2026-11-06):** the in-app guide `/onboarding/setup` ("Getting
+    started", first under Guides at order 0, so no other unit moved; `onboarding-setup.component.spec.ts`), the
+    reference `docs/code-coverage/onboarding.md` (indexed in its README), and versioning.md and dependency-updates.md
+    pointing to the chooser. The #153 PRD's "Set up versioning" is marked superseded.
+  - Then the M12 leftovers, S7 (live, after the deploy), and the local sweep. **M12 leftovers done (2026-11-06):**
+    backports.md (line renames, the line workflow pull request) and merge-queue.md §2 (the chooser; rulesets by hand
+    until #554); the dependency parts landed with M9c.
 - **M9 Dependencies on lines** (D13): a rolling PR per supported line, platform packages capped at the line's major,
   patch/security default, advisories outside the allowed range flagged. Pack verified by S4 (D10b; no upper bounds,
-  opt-in `major-bounded`).
+  opt-in `major-bounded`). **Built (2026-11-05):** every supported line, the current one included (owner's choice). It
+  has a run document, bot branches and a pull request per line, scheduled from the default run's `FileLines`.
+  `dependencies.lines` (patch/all/security/off) sets the ceiling, never a major, and a security fix needing a major is
+  held. User docs are in dependency-updates.md §4; decisions in PRD §8.4.
 - **M10 Onboarding chooser** (D3, S8), including the branch rename PR → rename on merge (D2, S7) and adding the
-  regenerate workflow to each line (D9). It also creates the rulesets (#554, extended to release lines; PRD §8.2):
+  regenerate workflow to each line (D9). The rulesets (#554, extended to release lines; PRD §8.2) follow in #554's
+  own pull request (owner, 2026-11-06):
   plan shown first, applied with the signed-in user's GitHub token, a sign-in popup when that token is missing or
   expired.
 - **M11 Spark itself.**

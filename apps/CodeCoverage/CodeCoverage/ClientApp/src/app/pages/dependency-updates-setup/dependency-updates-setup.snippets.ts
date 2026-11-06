@@ -32,7 +32,8 @@ export const DEPENDENCIES_YML = `dependencies:
   platforms:
     dotnet: { strategy: replace, keepPrevious: 0, lockPackageMajor: false, locations: [], exclude: [] }
   lockFileMaintenance: false     # transitive-only refreshes, off by default
-  registries: ["npm.pkg.github.com"]   # lockfile hosts allowed besides the public registries`;
+  registries: ["npm.pkg.github.com"]   # lockfile hosts allowed besides the public registries
+  lines: patch                   # release lines: patch (default) | all | security | off`;
 
 /** The least a repository needs in `coverage.yml` before the dependency pull request may auto-merge (R5). */
 export const MERGE_QUEUE_ON = `mergeQueue:

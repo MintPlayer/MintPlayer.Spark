@@ -18,6 +18,10 @@ public class DependencyJobWire
 
     /// <summary>The commit the lookup and the plan were made against.</summary>
     public string? ExpectedSha { get; set; }
+
+    /// <summary>#568 D13: the release line a line's run updates (<c>dotnet-10.x</c>), which names its own bot branches
+    /// (<see cref="DependencyBranches.RollingOf"/>); null for the default branch's run.</summary>
+    public string? Line { get; set; }
 }
 
 /// <summary>The fields of a job that builds a commit: dated identities (§0 D65) and a message.</summary>

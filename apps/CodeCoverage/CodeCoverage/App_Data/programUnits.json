@@ -28,6 +28,7 @@
     "its own Dashboards > Database entry under the same rule.",
     "",
     "The Guides group holds the static how-to pages, each an Angular route of its own and open to anonymous visitors:",
+    "getting started with the Set up features chooser (/onboarding/setup, first, at order 0 so no other unit moved),",
     "setting up coverage uploads (/coverage/setup, which was the repository page's setup panel), the merge queue's GitHub",
     "setup (/merge-queue/setup), the dependency updater's setup (/dependency-updates/setup), PR size labels",
     "(/pr-size-labels/setup), backports to release lines (/backports/setup) and connecting an AI agent to /mcp (/connect-agent, also the topbar's button). A url unit",
@@ -69,6 +70,14 @@
       "icon": "bi-book",
       "order": 2,
       "programUnits": [
+        {
+          "id": "5c71e0d4-9a2b-4f63-8e15-b07d3c4a9f28",
+          "name": "programUnits.onboardingSetup",
+          "icon": "bi-magic",
+          "type": "url",
+          "url": "/onboarding/setup",
+          "order": 0
+        },
         {
           "id": "3f8a6c1e-52d9-4b07-9e4a-c81b2d7f0e35",
           "name": "programUnits.coverageSetup",

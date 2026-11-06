@@ -86,8 +86,10 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
     {
         session.Advanced.OptimisticConcurrencyMode = OptimisticConcurrencyMode.Writes;
         var ct = cancellationToken;
+        // #568 D13: a line's run is created by a trigger only; onboarding belongs to the default branch's run.
+        if (signal.Line is not null && signal.Kind == EDependencySignal.Onboard) return;
         var create = signal.Kind is EDependencySignal.Trigger or EDependencySignal.Onboard;
-        if (await LoadContextAsync(signal.RepositoryId, create, ct) is not { } context) return;
+        if (await LoadContextAsync(signal.RepositoryId, signal.Line, create, ct) is not { } context) return;
         var run = context.Run;
 
         switch (signal.Kind)
@@ -136,7 +138,7 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
     {
         session.Advanced.OptimisticConcurrencyMode = OptimisticConcurrencyMode.Writes;
         var ct = cancellationToken;
-        if (await LoadContextAsync(step.RepositoryId, create: false, ct) is not { } context) return;
+        if (await LoadContextAsync(step.RepositoryId, step.Line, create: false, ct) is not { } context) return;
         var run = context.Run;
 
         if (step.Step == EDependencyStep.Cleanup)
@@ -254,7 +256,7 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
         }
         run.DefaultBranch = defaultBranch;
 
-        // O16's rule, here too: the configuration comes from the default branch only (§13.11.3 #13).
+        // O16's rule, here too: the configuration comes from the default branch only (§13.11.3 #13), a line's run included.
         var yml = await context.Forge.GetFileContentAsync(repository, defaultBranch, CoverageYml.FileName, ct);
         var parsed = DependenciesYml.Parse(yml);
         foreach (var error in parsed.Errors.Take(5))
@@ -270,24 +272,45 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
             return;
         }
 
-        var head = await context.Queue.GetBranchHeadAsync(repository, defaultBranch, ct)
-            ?? throw new ForgeRequestException($"The head of {defaultBranch} in {repository.FullName} could not be read.", null);
+        // #568 D13: the default branch's run reads the supported lines, which the scheduler then gives runs of their own.
+        if (run.Line is null)
+            run.FileLines = parsed.Section.Lines == EDependencyLineUpdates.Off ? [] : await SupportedLineNamesAsync(context, yml, ct);
+
+        // #568 D13: a line's run updates the line's own branch; the workflows stay the default branch's (D12 below).
+        var target = defaultBranch;
+        if (run.Line is { } line)
+        {
+            if (parsed.Section.Lines == EDependencyLineUpdates.Off)
+            {
+                await EndAsync(context, "disabled", "Dependency updates on release lines are off (`dependencies.lines: off`).", ct);
+                return;
+            }
+            if (LineBranch(yml, line) is not { } branch || await context.Queue.GetBranchHeadAsync(repository, branch, ct) is null)
+            {
+                await EndAsync(context, "line-missing", $"The release line `{line}` has no branch (`versioning.lines` in coverage.yml).", ct);
+                return;
+            }
+            run.DefaultBranch = target = branch;
+        }
+
+        var head = await context.Queue.GetBranchHeadAsync(repository, target, ct)
+            ?? throw new ForgeRequestException($"The head of {target} in {repository.FullName} could not be read.", null);
         run.ExpectedSha = head;
         run.ConfigBlob = await context.Queue.GetFileBlobShaAsync(repository, defaultBranch, CoverageYml.FileName, ct) ?? string.Empty;
         run.LookupAction = parsed.Section.LookupAction;
         run.ApplyAction = parsed.Section.ApplyAction;
 
-        if (!await WorkflowsUsableAsync(context, defaultBranch, head, [run.LookupAction, run.ApplyAction], allowSecrets: true, ct))
+        if (!await WorkflowsUsableAsync(context, head, [run.LookupAction, run.ApplyAction], allowSecrets: true, ct))
             return;
-        if (run.Onboarding != EDependencyOnboarding.Done)
+        if (run.Line is null && run.Onboarding != EDependencyOnboarding.Done)
         {
             run.Onboarding = EDependencyOnboarding.Done;
             run.Note(Now, "the dependency workflows are on the default branch");
         }
 
-        // D14: dispatched on the default branch, so the run builds its head; a head that moved in between is WrongCommit.
+        // D14: dispatched on the branch it updates, so the run builds its head; a head that moved in between is WrongCommit.
         var token = RunToken(context);
-        var request = new WorkflowHookRequest(run.LookupAction, defaultBranch, new Dictionary<string, string>
+        var request = new WorkflowHookRequest(run.LookupAction, target, new Dictionary<string, string>
         {
             ["expected_sha"] = head,
             ["run_id"] = token,
@@ -297,10 +320,12 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
 
     /// <summary>
     /// D12 and R12 before a dispatch: each workflow exists on the default branch, its blob at <paramref name="commit"/> is the
-    /// default branch's, and it holds T5's rules. False: the run was ended with the reason.
+    /// default branch's, and it holds T5's rules. False: the run was ended with the reason. A line's run (#568 D13) dispatches
+    /// on the line's commit, and the workflow there must still be the default branch's: a line keeps the bot's workflows as master has them.
     /// </summary>
-    private async Task<bool> WorkflowsUsableAsync(Context context, string defaultBranch, string commit, IReadOnlyList<string> workflows, bool allowSecrets, CancellationToken ct)
+    private async Task<bool> WorkflowsUsableAsync(Context context, string commit, IReadOnlyList<string> workflows, bool allowSecrets, CancellationToken ct)
     {
+        var defaultBranch = context.Repository.DefaultBranch ?? context.Run.DefaultBranch!;
         switch (await hook.VerifyProvenanceAsync(Saga(context), defaultBranch, commit, workflows, ct))
         {
             case { Kind: EWorkflowHookProvenance.Missing, Path: var path }:
@@ -451,7 +476,7 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
         var (repository, run) = (context.Repository, context.Run);
         var data = await DataAsync(context, ct);
         var lookup = DependencyContract.Deserialize<LookupDocument>(data.LookupJson!)!;
-        var section = DependenciesYml.Parse(await context.Forge.GetFileContentAsync(repository, run.ExpectedSha!, CoverageYml.FileName, ct)).Section;
+        var section = DependenciesYml.Parse(await context.Forge.GetFileContentAsync(repository, ConfigRef(context), CoverageYml.FileName, ct)).Section;
         var config = DependencyPolicyConfig.Resolve(section, repository, context.Account);
         var state = await stateStore.LoadAsync(repository.Id!, ct);
         var fleet = context.Account?.Id is { } accountId ? await stateStore.LoadFleetAsync(accountId, ct) : new DependencyFleetState();
@@ -481,6 +506,7 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
             IsScheduledSlot = run.Trigger == EDependencyRunTrigger.Scheduled && run.Evaluations == 0,
             Mode = run.Trigger == EDependencyRunTrigger.Security ? EDependencyRunMode.Security : EDependencyRunMode.Scheduled,
             SecurityFixes = [.. run.SecurityFixes.Select(f => new DependencySecurityFix(f.Ecosystem, f.DepName, f.Advisory))],
+            LineUpdates = run.Line is null ? null : section.Lines,
         });
         run.Evaluations++;
         Apply(state, outcome.NextState);
@@ -569,7 +595,7 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
                 break;
             case GitWriterDependencyOutcomes.BranchMoved:
                 run.WorkRefSha = null;
-                throw new GitWriterUnavailableException($"{DependencyUpdateRun.WorkBranch} moved under the plan commit: {result.Detail}");
+                throw new GitWriterUnavailableException($"{context.Run.WorkBranchName} moved under the plan commit: {result.Detail}");
             case GitWriterOutcomes.Busy or GitWriterOutcomes.Failed:
                 throw new GitWriterUnavailableException($"The git writer answered the plan commit with {result.Outcome}: {result.Detail}");
             default:
@@ -577,10 +603,10 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
                 return;
         }
 
-        if (!await WorkflowsUsableAsync(context, run.DefaultBranch!, run.PlanCommitSha!, [run.ApplyAction], allowSecrets: true, ct))
+        if (!await WorkflowsUsableAsync(context,run.PlanCommitSha!, [run.ApplyAction], allowSecrets: true, ct))
             return;
         var token = RunToken(context);
-        var request = new WorkflowHookRequest(run.ApplyAction, DependencyUpdateRun.WorkBranch, new Dictionary<string, string>
+        var request = new WorkflowHookRequest(run.ApplyAction, run.WorkBranchName, new Dictionary<string, string>
         {
             ["expected_sha"] = run.ExpectedSha!,
             ["run_id"] = token,
@@ -599,7 +625,7 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
         if (run.PullRequestNumber is null || run.RollingBotSha is not { } bot || data.RollingPlanJson is not { } previousJson
             || DependencyContract.Deserialize<DependencyPlan>(previousJson) is not { } previous)
             return (outcome, []);
-        var head = await context.Queue.GetBranchHeadAsync(repository, DependencyUpdateRun.RollingBranch, ct);
+        var head = await context.Queue.GetBranchHeadAsync(repository, run.RollingBranchName, ct);
         if (head is null || string.Equals(head, bot, StringComparison.OrdinalIgnoreCase))
             return (outcome, []);
         var comparison = await context.Forge.CompareAsync(repository, bot, head, ct);
@@ -610,7 +636,7 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
             return (outcome, []);
         var pinned = DependencyFixPins.Apply(outcome, previous, lookup, state);
         foreach (var pin in pinned.Pins)
-            run.Note(Now, $"{pin.DepName} stays at {pin.Version}: a fix on {DependencyUpdateRun.RollingBranch} was made against it (D-N1)");
+            run.Note(Now, $"{pin.DepName} stays at {pin.Version}: a fix on {run.RollingBranchName} was made against it (D-N1)");
         return pinned;
     }
 
@@ -687,7 +713,7 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
         var result = resultRead.Document;
         var patch = files["dependency.patch"];
         var claimed = result.Groups.Where(g => g.Status == EApplyGroupStatus.Applied).Select(g => g.Group).ToList();
-        var section = DependenciesYml.Parse(await context.Forge.GetFileContentAsync(repository, run.ExpectedSha!, CoverageYml.FileName, ct)).Section;
+        var section = DependenciesYml.Parse(await context.Forge.GetFileContentAsync(repository, ConfigRef(context), CoverageYml.FileName, ct)).Section;
 
         // The runner installed fresh packages: its patch is judged by the writer before anything is built from it.
         if (await WriterAsync(context, false, (access, credential) => writer.DependencyValidateAsync(Request(context, access, credential) with
@@ -768,11 +794,11 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
         var group = run.MigrationsPending[0];
         var planned = report.Groups.First(g => g.Group == group);
         var workflow = planned.MigrateWorkflow!;
-        if (!await WorkflowsUsableAsync(context, run.DefaultBranch!, run.StagedSha!, [workflow], allowSecrets: false, ct))
+        if (!await WorkflowsUsableAsync(context,run.StagedSha!, [workflow], allowSecrets: false, ct))
             return;
         var packages = JsonSerializer.Serialize(planned.Items.Select(i => new { name = i.DepName, from = i.From, to = i.NewVersion }).DistinctBy(p => p.name));
         var token = RunToken(context);
-        var request = new WorkflowHookRequest(workflow, DependencyUpdateRun.WorkBranch, new Dictionary<string, string>
+        var request = new WorkflowHookRequest(workflow, run.WorkBranchName, new Dictionary<string, string>
         {
             ["base_sha"] = run.StagedSha!,
             ["packages"] = packages,
@@ -799,7 +825,7 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
         }
 
         var data = await DataAsync(context, ct);
-        var lookupless = DependenciesYml.Parse(await context.Forge.GetFileContentAsync(repository, run.ExpectedSha!, CoverageYml.FileName, ct)).Section;
+        var lookupless = DependenciesYml.Parse(await context.Forge.GetFileContentAsync(repository, ConfigRef(context), CoverageYml.FileName, ct)).Section;
         var config = DependencyPolicyConfig.Resolve(lookupless, repository, context.Account);
         var state = await stateStore.LoadAsync(repository.Id!, ct);
         var fleet = context.Account?.Id is { } accountId ? await stateStore.LoadFleetAsync(accountId, ct) : new DependencyFleetState();
@@ -860,10 +886,10 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
         var data = await DataAsync(context, ct);
         var lookup = DependencyContract.Deserialize<LookupDocument>(data.LookupJson!)!;
         var report = Report(data);
-        var section = DependenciesYml.Parse(await context.Forge.GetFileContentAsync(repository, run.ExpectedSha!, CoverageYml.FileName, ct)).Section;
+        var section = DependenciesYml.Parse(await context.Forge.GetFileContentAsync(repository, ConfigRef(context), CoverageYml.FileName, ct)).Section;
         var claimed = DependencyContract.Deserialize<ApplyResult>(data.ApplyResultJson!)!.Groups
             .Where(g => g.Status == EApplyGroupStatus.Applied).Select(g => g.Group).ToList();
-        var rollingHead = await context.Queue.GetBranchHeadAsync(repository, DependencyUpdateRun.RollingBranch, ct);
+        var rollingHead = await context.Queue.GetBranchHeadAsync(repository, run.RollingBranchName, ct);
 
         if (await WriterAsync(context, run.RequiresWorkflowsPermission, (access, credential) => writer.DependencyRollingAsync(Request(context, access, credential) with
             {
@@ -900,7 +926,7 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
             case GitWriterOutcomes.Pushed when result.Sha is { } pushed:
                 run.RollingSha = pushed;
                 run.RollingBotSha = botSha ?? result.BotSha;
-                run.Note(Now, $"pushed {DependencyUpdateRun.RollingBranch} at {Short(pushed)}{(result.Replayed > 0 ? $" with {result.Replayed} human commit(s) replayed" : string.Empty)}");
+                run.Note(Now, $"pushed {run.RollingBranchName} at {Short(pushed)}{(result.Replayed > 0 ? $" with {result.Replayed} human commit(s) replayed" : string.Empty)}");
                 break;
             case GitWriterDependencyOutcomes.Unchanged when result.Sha is { } unchanged:
                 run.RollingSha = unchanged;
@@ -925,7 +951,7 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
             case GitWriterDependencyOutcomes.BranchMoved when botSha is not null:
                 // A person pushed while the lockfiles were regenerated: rebuild from the apply patch, with the new commits too.
                 ClearRelock(run);
-                Transition(run, EDependencyRunState.Publishing, $"{DependencyUpdateRun.RollingBranch} moved during the relock; rebuilding it");
+                Transition(run, EDependencyRunState.Publishing, $"{run.RollingBranchName} moved during the relock; rebuilding it");
                 await ScheduleAsync(run, EDependencyStep.Publish, null, ct);
                 return;
             case GitWriterOutcomes.Busy or GitWriterOutcomes.Failed or GitWriterDependencyOutcomes.BranchMoved:
@@ -1003,10 +1029,10 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
                 return;
         }
 
-        if (!await WorkflowsUsableAsync(context, run.DefaultBranch!, run.WorkRefSha!, [run.ApplyAction], allowSecrets: true, ct))
+        if (!await WorkflowsUsableAsync(context,run.WorkRefSha!, [run.ApplyAction], allowSecrets: true, ct))
             return;
         var token = RunToken(context);
-        var request = new WorkflowHookRequest(run.ApplyAction, DependencyUpdateRun.WorkBranch, new Dictionary<string, string>
+        var request = new WorkflowHookRequest(run.ApplyAction, run.WorkBranchName, new Dictionary<string, string>
         {
             ["expected_sha"] = replayed,
             ["run_id"] = token,
@@ -1035,7 +1061,7 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
             return;
         }
         var lookup = DependencyContract.Deserialize<LookupDocument>(data.LookupJson!)!;
-        var section = DependenciesYml.Parse(await context.Forge.GetFileContentAsync(repository, run.ExpectedSha!, CoverageYml.FileName, ct)).Section;
+        var section = DependenciesYml.Parse(await context.Forge.GetFileContentAsync(repository, ConfigRef(context), CoverageYml.FileName, ct)).Section;
         var patch = Convert.ToBase64String(files["dependency.patch"]);
         var relockJson = data.RelockPlanJson;
         // The relocked head still carries the dependency commit, workflow edits included (R15): same token as its first push.
@@ -1092,7 +1118,7 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
         ForgeBotPullRequest? pull = null;
         if (run.PullRequestNumber is { } number && await context.Updates.GetPullRequestAsync(repository, number, ct) is { IsOpen: true } open)
             pull = open;
-        pull ??= await context.Updates.FindPullRequestAsync(repository, DependencyUpdateRun.RollingBranch, run.DefaultBranch!, ct);
+        pull ??= await context.Updates.FindPullRequestAsync(repository, run.RollingBranchName, run.DefaultBranch!, ct);
         var title = DependencyPullRequestBody.Title(run, report);
         if (pull is null)
         {
@@ -1100,7 +1126,7 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
             var draft = !run.FirstPullRequestOpened;
             run.PullRequestIsDraft = draft;
             var body = DependencyPullRequestBody.Render(run, report, enqueueRefusal);
-            pull = await context.Updates.CreatePullRequestAsync(repository, DependencyUpdateRun.RollingBranch, run.DefaultBranch!, title, body, draft, ct);
+            pull = await context.Updates.CreatePullRequestAsync(repository, run.RollingBranchName, run.DefaultBranch!, title, body, draft, ct);
             run.FirstPullRequestOpened = true;
             run.Note(Now, $"opened #{pull.Number}{(draft ? " as a draft" : string.Empty)}");
         }
@@ -1278,10 +1304,12 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
 
         var data = await DataAsync(context, ct);
         var report = Report(data);
-        var yml = await context.Forge.GetFileContentAsync(repository, run.DefaultBranch!, CoverageYml.FileName, ct);
+        // coverage.yml is the default branch's, a line's run included (#568 D13); a line's pull request needs the queue to take its line.
+        var configBranch = repository.DefaultBranch ?? run.DefaultBranch!;
+        var yml = await context.Forge.GetFileContentAsync(repository, configBranch, CoverageYml.FileName, ct);
         var section = DependenciesYml.Parse(yml).Section;
-        var queueEnabled = MergeQueueYml.Parse(yml, run.DefaultBranch!).Section is { Enabled: true };
-        run.FileMergeQueue = DependencyFileMergeQueue.State(yml, run.DefaultBranch!);
+        var queueEnabled = MergeQueueYml.Parse(yml, configBranch).Section is { Enabled: true } queue && (run.Line is null || queue.Queues(run.DefaultBranch!));
+        run.FileMergeQueue = DependencyFileMergeQueue.State(yml, configBranch);
         var commit = await session.LoadAsync<Commit>(Commit.DocumentId(repository.Provider, repository.GitHubId, run.RollingSha!), ct);
         var (coverage, note) = DependencyCoverageGate.Evaluate(commit, section.MaxCoverageDrop);
         run.CoverageNote = note;
@@ -1335,7 +1363,7 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
             run.Note(Now, $"@{actor}'s {Word(command)} was refused: no write access");
             return;
         }
-        var data = await session.LoadAsync<DependencyUpdateRunData>(DependencyUpdateRunData.ForRepository(repository.Id!), ct);
+        var data = await session.LoadAsync<DependencyUpdateRunData>(DependencyUpdateRunData.ForRepository(repository.Id!, run.Line), ct);
         var report = data?.ReportJson is { } json ? JsonSerializer.Deserialize<DependencyRunReport>(json, JsonSerializerOptions.Web)! : new DependencyRunReport();
         var state = await stateStore.LoadAsync(repository.Id!, ct);
 
@@ -1413,7 +1441,7 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
         run.Pins = [];
         run.ReplayRetried = false;
         // D-N1: a merged or closed pull request takes its human fixes with it; nothing is pinned for them any more.
-        if (await session.LoadAsync<DependencyUpdateRunData>(DependencyUpdateRunData.ForRepository(context.Repository.Id!), ct) is { } data)
+        if (await session.LoadAsync<DependencyUpdateRunData>(DependencyUpdateRunData.ForRepository(context.Repository.Id!, context.Run.Line), ct) is { } data)
             data.RollingPlanJson = null;
         if (run.State is EDependencyRunState.AwaitingChecks or EDependencyRunState.Bisecting)
             await EndAsync(context, wasMerged ? "merged" : "closed", wasMerged ? "The pull request was merged." : "The pull request was closed.", ct);
@@ -1607,7 +1635,9 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
 
         // The runs the saga still waits for are cancelled; the bot's own branches go (DeleteBranchAsync never throws).
         await hook.AbandonAsync(Saga(context), run.Runs, ct);
-        foreach (var branch in new[] { DependencyUpdateRun.RollingBranch, DependencyUpdateRun.WorkBranch, DependencyUpdateRun.OnboardingBranch })
+        foreach (var branch in run.Line is null
+                     ? new[] { run.RollingBranchName, run.WorkBranchName, DependencyUpdateRun.OnboardingBranch }
+                     : [run.RollingBranchName, run.WorkBranchName])
             await context.Forge.DeleteBranchAsync(repository, branch, ct);
 
         run.PullRequestNumber = null;
@@ -1632,7 +1662,7 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
         }
         run.OnboardingBaseSha = run.OnboardingBranchSha = null;
         run.OnboardingStartedAtUtc = null;
-        if (await session.LoadAsync<DependencyUpdateRunData>(DependencyUpdateRunData.ForRepository(repository.Id!), ct) is { } data)
+        if (await session.LoadAsync<DependencyUpdateRunData>(DependencyUpdateRunData.ForRepository(repository.Id!, run.Line), ct) is { } data)
             data.RollingPlanJson = null;
         if (run.State != EDependencyRunState.Idle)
         {
@@ -1745,7 +1775,7 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
         run.WorkRefSha = null;
         await outbox.EnqueueAsync(session, new DependencyUpdateStepMessage
         {
-            RepositoryId = run.Repository, Run = run.Run, Generation = run.Generation, Step = EDependencyStep.Cleanup, ExpectedSha = sha,
+            RepositoryId = run.Repository, Line = run.Line, Run = run.Run, Generation = run.Generation, Step = EDependencyStep.Cleanup, ExpectedSha = sha,
         }, null, ct);
     }
 
@@ -1763,7 +1793,7 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
         }
         catch (Exception ex) when (ex is ForgeAccessDeniedException or GitWriterRefusedException)
         {
-            logger.LogWarning(ex, "Dependency updates: could not delete {Ref} in {Repository}", DependencyUpdateRun.WorkBranch, context.Repository.FullName);
+            logger.LogWarning(ex, "Dependency updates: could not delete {Ref} in {Repository}", context.Run.WorkBranchName, context.Repository.FullName);
         }
     }
 
@@ -1822,18 +1852,18 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
 
     private static GitWriterDependencyRequest Request(Context context, ForgeWriterAccess access, SidecarCredential credential)
         => new(context.Repository.Provider.ToCanonicalString(), context.Repository.GitHubId.ToString(CultureInfo.InvariantCulture), access.CloneUrl, credential,
-            context.Run.DefaultBranch ?? context.Repository.DefaultBranch ?? "main", context.Run.ExpectedSha);
+            context.Run.DefaultBranch ?? context.Repository.DefaultBranch ?? "main", context.Run.ExpectedSha) { Line = context.Run.Line };
 
     /// <summary>Dated with the run's start, so every job of the run builds the same commit from the same request (§0 D65).</summary>
     private GitWriterIdentity Identity(DependencyUpdateRun run)
         => new(CommitterName, options.Value.CommitterEmail, new DateTimeOffset(DateTime.SpecifyKind(run.StartedAtUtc ?? Now, DateTimeKind.Utc)));
 
     private string RunToken(Context context)
-        => $"{context.Repository.GitHubId.ToString(CultureInfo.InvariantCulture)}-{context.Run.Run.ToString(CultureInfo.InvariantCulture)}-{(context.Run.Runs.Count + 1).ToString(CultureInfo.InvariantCulture)}";
+        => $"{context.Repository.GitHubId.ToString(CultureInfo.InvariantCulture)}{(context.Run.Line is { } line ? "-" + line : string.Empty)}-{context.Run.Run.ToString(CultureInfo.InvariantCulture)}-{(context.Run.Runs.Count + 1).ToString(CultureInfo.InvariantCulture)}";
 
     private async Task<DependencyUpdateRunData> DataAsync(Context context, CancellationToken ct)
     {
-        var id = DependencyUpdateRunData.ForRepository(context.Repository.Id!);
+        var id = DependencyUpdateRunData.ForRepository(context.Repository.Id!, context.Run.Line);
         var data = await session.LoadAsync<DependencyUpdateRunData>(id, ct);
         if (data is null)
         {
@@ -1912,10 +1942,10 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
     private Task ScheduleAsync(DependencyUpdateRun run, EDependencyStep step, TimeSpan? delay, CancellationToken ct, bool expedite = false)
         => outbox.EnqueueAsync(session, new DependencyUpdateStepMessage
         {
-            RepositoryId = run.Repository, Run = run.Run, Generation = run.Generation, Step = step,
+            RepositoryId = run.Repository, Line = run.Line, Run = run.Run, Generation = run.Generation, Step = step,
         }, delay is null && !expedite ? null : new BroadcastOptions { Delay = delay, Expedite = expedite }, ct);
 
-    private async Task<Context?> LoadContextAsync(string repositoryId, bool create, CancellationToken ct)
+    private async Task<Context?> LoadContextAsync(string repositoryId, string? line, bool create, CancellationToken ct)
     {
         var repository = await session.LoadAsync<Repository>(repositoryId, ct);
         if (repository?.Id is null) return null;
@@ -1926,12 +1956,12 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
             logger.LogDebug("Dependency updates: {Provider} has no support ({Repository})", repository.Provider, repository.FullName);
             return null;
         }
-        var id = DependencyUpdateRun.ForRepository(repository.Id);
+        var id = DependencyUpdateRun.ForRepository(repository.Id, line);
         var run = await session.LoadAsync<DependencyUpdateRun>(id, ct);
         if (run is null)
         {
             if (!create) return null;
-            run = new DependencyUpdateRun { Id = id, Repository = repository.Id };
+            run = new DependencyUpdateRun { Id = id, Repository = repository.Id, Line = line };
             await session.StoreAsync(run, id, ct);
         }
         var account = repository.Account is null ? null : await session.LoadAsync<Account>(repository.Account, ct);
@@ -1954,7 +1984,7 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
             EWorkflowHookStep.Timeout => engine.ScheduleAsync(context.Run, EDependencyStep.Timeout, delay, cancellationToken),
             EWorkflowHookStep.CancelRun => engine.outbox.EnqueueAsync(engine.session, new DependencyUpdateStepMessage
             {
-                RepositoryId = context.Run.Repository, Run = context.Run.Run, Generation = context.Run.Generation, Step = EDependencyStep.CancelRun, RunId = runId,
+                RepositoryId = context.Run.Repository, Line = context.Run.Line, Run = context.Run.Run, Generation = context.Run.Generation, Step = EDependencyStep.CancelRun, RunId = runId,
             }, null, cancellationToken),
             _ => throw new ArgumentOutOfRangeException(nameof(step), step, null),
         };
@@ -1971,4 +2001,38 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
     private static string Word(EDependencyCommand command) => command.ToString().ToLowerInvariant();
 
     private static string Short(string? sha) => sha is { Length: > 12 } ? sha[..12] : sha ?? "?";
+
+    /// <summary>
+    /// #568 D13: the names of the repository's supported release lines (the current one included: the owner's choice, every
+    /// supported line). Best effort: a forge failure keeps the lines read last time, so one bad read stops no line's updates.
+    /// </summary>
+    private async Task<List<string>> SupportedLineNamesAsync(Context context, string? yml, CancellationToken ct)
+    {
+        if (PackageVersioning.VersioningYml.Parse(yml) is not { Config.EffectiveLines: { } pattern, Errors.Count: 0 }) return [];
+        try
+        {
+            var lines = await PackageVersioning.SupportedLines.ReadAsync(session, context.Queue, context.Repository, pattern,
+                PackageVersioning.BackportYml.Parse(yml).Section.Lines, ct);
+            return [.. lines.Where(l => l.Supported).Select(l => l.Line.ToString())];
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogWarning(ex, "Dependency updates: could not read the release lines of {Repository}", context.Repository.FullName);
+            return context.Run.FileLines;
+        }
+    }
+
+    /// <summary>
+    /// Where the run reads coverage.yml after its start: the commit it started on (the default branch's head), or, for a
+    /// release line's run (#568 D13), the default branch itself, since a line's own copy is not its configuration.
+    /// </summary>
+    private static string ConfigRef(Context context)
+        => context.Run.Line is null ? context.Run.ExpectedSha! : context.Repository.DefaultBranch ?? context.Run.ExpectedSha!;
+
+    /// <summary>#568 D13: the branch of release line <paramref name="line"/> under coverage.yml's <c>versioning.lines</c>; null without one.</summary>
+    internal static string? LineBranch(string? yml, string line)
+        => PackageVersioning.VersioningYml.Parse(yml) is { Config.EffectiveLines: { } pattern, Errors.Count: 0 }
+            && CodeCoverage.Versioning.Releases.ReleaseLine.TryParse(line) is { } named
+            ? pattern.Format(named)
+            : null;
 }

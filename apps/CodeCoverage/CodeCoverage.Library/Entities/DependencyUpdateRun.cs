@@ -59,7 +59,16 @@ public class DependencyUpdateRun
 
     // ── The run ─────────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>The default branch when the run started, and its commit: the lookup's and the plan's <c>expected_sha</c>.</summary>
+    /// <summary>
+    /// #568 D13: the release line this run updates (<c>dotnet-10.x</c>), or null for the default branch's run. A line's run
+    /// is a document of its own (<see cref="ForRepository(string, string?)"/>) with its own bot branches
+    /// (<see cref="RollingBranchOf"/>), and only patch/security updates under the line's platform major (dependencies.lines).
+    /// </summary>
+    public string? Line { get; set; }
+
+    /// <summary>The branch the run updates when it started, and its commit: the lookup's and the plan's <c>expected_sha</c>.
+    /// The default branch, or for a line's run the line's branch (<c>release/dotnet-10.x</c>). <c>coverage.yml</c> is
+    /// always read from the repository's default branch.</summary>
     public string? DefaultBranch { get; set; }
 
     public string? ExpectedSha { get; set; }
@@ -77,6 +86,13 @@ public class DependencyUpdateRun
 
     /// <summary>The file opted out (<c>dependencies.enabled: false</c>) when last read.</summary>
     public bool FileDisabled { get; set; }
+
+    /// <summary>
+    /// #568 D13, on the default branch's run: the supported release lines (<c>dotnet-10.x</c>, …) when the file was last read,
+    /// each of which the scheduler gives a run of its own in the same slot. Empty without <c>versioning.lines</c>, or with
+    /// <c>dependencies.lines: off</c>. Read at the run's start, so no scheduler tick reads a file.
+    /// </summary>
+    public List<string> FileLines { get; set; } = [];
 
     public string LookupAction { get; set; } = string.Empty;
 
@@ -232,6 +248,54 @@ public class DependencyUpdateRun
             throw new ArgumentException($"'{repositoryId}' is not a repository document id.", nameof(repositoryId));
         return Prefix + repositoryId[prefix.Length..];
     }
+
+    /// <summary>#568 D13: the run of one release line, <c>DependencyUpdateRuns/{provider}/{id}/lines/{line}</c>; null is the
+    /// default branch's run. Under <see cref="LinesPrefix"/>, so a repository's line runs load by id prefix (no query).</summary>
+    public static string ForRepository(string repositoryId, string? line)
+        => line is null ? ForRepository(repositoryId) : LinesPrefix(repositoryId) + CheckedLine(line);
+
+    /// <summary>The id prefix of a repository's line runs, for <c>LoadStartingWithAsync</c>.</summary>
+    public static string LinesPrefix(string repositoryId) => ForRepository(repositoryId) + "/lines/";
+
+    /// <summary>The line's rolling branch, <c>mintplayer/dependencies-dotnet-10.x</c> (the writer's <c>DependencyBranches.RollingOf</c>).</summary>
+    public static string RollingBranchOf(string? line) => line is null ? RollingBranch : $"{RollingBranch}-{CheckedLine(line)}";
+
+    /// <summary>The line's work ref, <c>mintplayer/dependencies-work-dotnet-10.x</c>.</summary>
+    public static string WorkBranchOf(string? line) => line is null ? WorkBranch : $"{WorkBranch}-{CheckedLine(line)}";
+
+    /// <summary>The run's own rolling branch.</summary>
+    public string RollingBranchName => RollingBranchOf(Line);
+
+    /// <summary>The run's own work ref.</summary>
+    public string WorkBranchName => WorkBranchOf(Line);
+
+    /// <summary>A line name as <c>ReleaseLine</c> writes it: lower-case ecosystem, '-', major, ".x". Anything else throws, so
+    /// a document id or a branch is never built from other text.</summary>
+    private static string CheckedLine(string line)
+        => IsLine(line) ? line : throw new ArgumentException($"'{line}' is not a release line such as dotnet-10.x.", nameof(line));
+
+    private static bool IsLine(string line)
+    {
+        var dash = line.LastIndexOf('-');
+        return dash > 0 && line.EndsWith(".x", StringComparison.Ordinal) && char.IsAsciiLetterLower(line[0])
+            && line[..dash].All(c => char.IsAsciiLetterLower(c) || char.IsAsciiDigit(c))
+            && line[(dash + 1)..^2] is { Length: > 0 and <= 9 } major && major[0] != '0' && major.All(char.IsAsciiDigit);
+    }
+
+    /// <summary>
+    /// Whether <paramref name="branch"/> is a rolling branch of the updater, and whose: <paramref name="line"/> is null for the
+    /// default branch's run, else the release line (#568 D13). The work refs are not rolling branches.
+    /// </summary>
+    public static bool IsRollingBranch(string? branch, out string? line)
+    {
+        line = null;
+        if (branch == RollingBranch) return true;
+        if (branch is null || !branch.StartsWith(RollingBranch + "-", StringComparison.Ordinal)) return false;
+        var rest = branch[(RollingBranch.Length + 1)..];
+        if (!IsLine(rest)) return false;
+        line = rest;
+        return true;
+    }
 }
 
 /// <summary>The bulky half of a run, loaded only where needed (<c>DependencyUpdateRunData/{provider}/{id}</c>).</summary>
@@ -278,6 +342,10 @@ public class DependencyUpdateRunData
 
     public static string ForRepository(string repositoryId)
         => Prefix + DependencyUpdateRun.ForRepository(repositoryId)[DependencyUpdateRun.Prefix.Length..];
+
+    /// <summary>#568 D13: the data of one line's run, beside <see cref="DependencyUpdateRun.ForRepository(string, string?)"/>.</summary>
+    public static string ForRepository(string repositoryId, string? line)
+        => Prefix + DependencyUpdateRun.ForRepository(repositoryId, line)[DependencyUpdateRun.Prefix.Length..];
 }
 
 public class DependencyMigrationRecord

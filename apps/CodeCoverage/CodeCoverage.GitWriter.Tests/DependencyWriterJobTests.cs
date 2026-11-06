@@ -149,6 +149,51 @@ public class DependencyWriterJobTests : WriterTestBase
         origin.Ref($"refs/heads/{DependencyBranches.Work}").Should().BeNull();
     }
 
+    // #568 D13: a release line's run has its own bot branches, named after the line, so it never touches the default branch's.
+    [Fact]
+    public async Task D13_a_line_job_writes_the_line_s_own_work_ref_and_rolling_branch()
+    {
+        var (origin, baseSha, patch) = Seeded();
+        var line = new Dictionary<string, object?> { ["line"] = "dotnet-10.x" };
+
+        var work = await PostAsync("work-ref", With(With(Job(origin, baseSha), line), new() { ["planJson"] = Plan(baseSha) }));
+        var rolling = await PostAsync("rolling", With(With(Job(origin, baseSha), line), new()
+        {
+            ["plan"] = Plan(baseSha), ["patch"] = Base64(patch), ["claimedGroups"] = new[] { "chalk" },
+        }));
+
+        work.Outcome.Should().Be("pushed", work.Detail);
+        rolling.Outcome.Should().Be("pushed", rolling.Detail);
+        origin.Ref($"refs/heads/{DependencyBranches.WorkOf("dotnet-10.x")}").Should().Be(work.Sha);
+        origin.Ref($"refs/heads/{DependencyBranches.RollingOf("dotnet-10.x")}").Should().Be(rolling.Sha);
+        origin.Ref($"refs/heads/{DependencyBranches.Work}").Should().BeNull();
+        origin.Ref($"refs/heads/{DependencyBranches.Rolling}").Should().BeNull();
+        DependencyBranches.RollingOf("dotnet-10.x").Should().Be("mintplayer/dependencies-dotnet-10.x");
+        DependencyBranches.WorkOf("dotnet-10.x").Should().Be("mintplayer/dependencies-work-dotnet-10.x");
+
+        using var delete = new HttpRequestMessage(HttpMethod.Delete, "/jobs/dependencies/work-ref")
+        {
+            Content = JsonContent.Create(With(With(Job(origin, baseSha), line), new() { ["expectedSha"] = work.Sha }), options: GitWriterHost.Json),
+        };
+        (await (await Writer.Client.SendAsync(delete)).Content.ReadFromJsonAsync<DependencyJobResponse>(GitWriterHost.Json))!.Outcome.Should().Be("deleted");
+        origin.Ref($"refs/heads/{DependencyBranches.WorkOf("dotnet-10.x")}").Should().BeNull();
+    }
+
+    [Theory]
+    [InlineData("main")]
+    [InlineData("dotnet-10.x/../x")]
+    [InlineData("Dotnet-10.x")]
+    [InlineData("dotnet-010.x")]
+    public async Task D13_a_line_that_is_no_line_name_is_refused(string line)
+    {
+        var (origin, baseSha, _) = Seeded();
+        var response = await Writer.Client.PostAsJsonAsync("/jobs/dependencies/work-ref",
+            With(Job(origin, baseSha), new() { ["line"] = line, ["planJson"] = Plan(baseSha) }), GitWriterHost.Json);
+
+        response.StatusCode.Should().Be(System.Net.HttpStatusCode.BadRequest);
+        (await response.Content.ReadAsStringAsync()).Should().Contain("line");
+    }
+
     [Fact]
     public async Task R4_the_rolling_branch_is_built_on_the_planned_commit_and_an_equal_rebuild_pushes_nothing()
     {

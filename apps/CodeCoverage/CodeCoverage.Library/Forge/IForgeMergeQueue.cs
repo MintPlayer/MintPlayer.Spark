@@ -59,6 +59,13 @@ public interface IForgeMergeQueue
     /// </summary>
     Task<IReadOnlyList<string>> ListBranchesAsync(Repository repository, string prefix, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Renames <paramref name="from"/> to <paramref name="to"/> (#571 D2: an old release line under the line pattern's name).
+    /// The forge retargets the open pull requests and redirects the old name. Null when renamed, else why not.
+    /// </summary>
+    Task<string?> RenameBranchAsync(Repository repository, string from, string to, CancellationToken cancellationToken = default)
+        => Task.FromResult<string?>("This forge cannot rename branches.");
+
     /// <summary>All check runs, commit statuses and check suites on <paramref name="sha"/> (O12; see <see cref="CheckGate"/>).</summary>
     Task<ForgeCheckState> GetCheckStateAsync(Repository repository, string sha, CancellationToken cancellationToken = default);
 

@@ -28,6 +28,19 @@ public class VersioningConfigTests
     public void A_group_needs_a_name_and_package_patterns(VersioningGroupConfig? group, string error)
         => new VersioningConfig { Groups = [group!] }.Validate().Should().Contain(e => e.StartsWith(error, StringComparison.Ordinal));
 
+    // #568 D10b: in-repo dependencies pack as ">= x" (minimum, the default) or "[x, nextMajor)" (major-bounded).
+    [Theory]
+    [InlineData(null)]
+    [InlineData("minimum")]
+    [InlineData("major-bounded")]
+    public void Dependency_ranges_are_minimum_or_major_bounded(string? ranges)
+        => new VersioningConfig { DependencyRanges = ranges }.Validate().Should().BeEmpty();
+
+    [Fact]
+    public void Another_dependency_range_is_refused()
+        => new VersioningConfig { DependencyRanges = "exact" }.Validate()
+            .Should().Equal("versioning.dependencyRanges must be 'minimum' or 'major-bounded'.");
+
     [Fact]
     public void A_group_name_is_used_once()
         => new VersioningConfig { Groups = [Group("core", "Acme.*"), Group("core", "Other.*")] }.Validate()

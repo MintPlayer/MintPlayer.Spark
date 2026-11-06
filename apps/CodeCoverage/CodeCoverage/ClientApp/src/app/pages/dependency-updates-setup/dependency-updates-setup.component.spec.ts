@@ -114,8 +114,10 @@ describe('DependencyUpdatesSetupComponent', () => {
     const yml = snippets().find(s => s.code() === DEPENDENCIES_YML);
     expect(yml?.language()).toBe('yaml');
     const keys = rows('du-setup-keys').map(([key]) => key);
-    for (const top of ['enabled', 'schedule', 'cooldown', 'ignore', 'exclude', 'lookupAction', 'applyAction', 'lockFileMaintenance', 'registries'])
+    for (const top of ['enabled', 'schedule', 'cooldown', 'ignore', 'exclude', 'lookupAction', 'applyAction', 'lockFileMaintenance', 'registries', 'lines'])
       expect(keys).toContain(top);
+    // #568 D13: release lines get their own runs, never a major.
+    expect(q('[data-testid="du-setup-release-lines"]')?.textContent).toContain('never takes a major');
     expect(keys).toEqual(expect.arrayContaining(['autoMerge.default', 'autoMerge.maxCoverageDrop', 'migrate[]', 'platforms.<sdk>']));
   });
 

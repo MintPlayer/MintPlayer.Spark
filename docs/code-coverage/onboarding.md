@@ -1,0 +1,67 @@
+# Set up features
+
+**Set up features** on a repository's page in CodeCoverage sets up any mix of the app's features in one pull request
+(#571, `docs/coverage_backport_PRD.md` D3). It replaced **Set up versioning**. The in-app guide is `/onboarding/setup`
+(Guides → Getting started).
+
+## Who may run it
+
+An owner of the organization, or an admin of the repository on the forge, checked when the action runs
+(`IDependencyOnboardingService.CheckAsync`). The repository must be connected, not archived, and have a default branch.
+The git writer must be configured on the server.
+
+## The features
+
+| Feature | In the pull request | When it merges |
+|---|---|---|
+| Code coverage | A checklist item pointing to the upload step for your stack (`/coverage/setup`). The bot never edits a CI workflow it cannot know. | — |
+| Dependency updates | `.github/workflows/dependency-lookup.yml` and `dependency-apply.yml`, a `dependencies:` section; `.github/dependabot.yml` is removed. See [dependency-updates.md](dependency-updates.md). | `DependencyUpdates` set to Enabled and the onboard signal sent. |
+| Merge queue | A `mergeQueue:` section. With release lines, `branches: [<default>, supported-lines]`. See [merge-queue.md](merge-queue.md). | — |
+| Package versioning | What [versioning.md § Onboarding](versioning.md#onboarding) lists. | One seed tag per package at the merge commit. |
+| Release lines | `versioning.lines: {}` and the table of old line branches to rename (D2). Picking it includes package versioning. See [backports.md](backports.md). | The renames, and a regenerate-workflow pull request into each supported line (D9). |
+| Size labels | Nothing. | `PrSizeLabels` set to Enabled. |
+
+A choice that changes no file (size labels alone, or features already set up) opens no pull request: its settings and
+renames apply at once.
+
+## The pull request
+
+- Branch `mintplayer/onboarding`, title "Set up MintPlayer CodeCoverage", one commit by the bot.
+- `coverage.yml` sections are inserted in alphabetical order, each as its own block, so two bot pull requests that each
+  add a section touch different lines (M10a).
+- **Rebuilt on every new default-branch head while open** (`OnboardingRebuildEventsRecipient`): the bot plans it again on
+  the new head and force-pushes the branch, so it never needs to merge the default branch and never conflicts. A push
+  of your own to the branch is replaced by the next rebuild.
+- Running **Set up features** again while it is open updates the same pull request with the new choice. Every step
+  checks before it edits, so a later run proposes only what is missing.
+
+The state lives in the repository's `VersioningOnboardingState` document (collection name kept for the production data):
+the features, the base commit, the pull request, the seeds, the renames and the on-merge settings.
+
+## On merge
+
+The merged webhook on `mintplayer/onboarding` reaches `IOnboardingService.MergedAsync` under the versioning run lock. In order:
+
+1. The seed tags are pushed (`IVersioningOnboardingService.PushSeedsAsync`). A versioning run on the merge commit that
+   gets there first pushes them itself; the other finds nothing pending.
+2. Dependency updates and size labels are switched on.
+3. Each planned rename runs through GitHub's `POST /repos/{o}/{r}/branches/{branch}/rename` with the App's token
+   (Contents: write; a line is never the default branch). GitHub moves the open pull requests and redirects the old
+   name. A refusal is noted on the state, not retried.
+4. For each supported line missing a workflow that the default branch's `mergeQueue` names (`postRebaseActionName`
+   and each `autoResolve` rule's `action`), the file is copied from the default branch onto
+   `mintplayer/onboarding-<line>` and a pull request into the line is opened. Check it builds with the line's SDKs.
+
+The merge is handled once: `MergeHandledAt` holds the merge commit.
+
+## Left to you
+
+- The coverage upload step in CI.
+- The merge queue's rulesets ([merge-queue.md §3](merge-queue.md)). Creating them from the chooser is #554, which
+  follows in its own pull request.
+- Anything under "To do by hand" in the pull request: a file the bot could not edit safely.
+
+## App permissions
+
+Contents: write and Pull requests: write; **Workflows: write** for the workflow files (the onboarding branch and the
+line pull requests). Without it the push is refused and the action says the installation's owner has to accept it.

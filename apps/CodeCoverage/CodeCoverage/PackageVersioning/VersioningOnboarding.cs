@@ -154,8 +154,8 @@ public static partial class VersioningOnboarding
     private static async Task CoverageSectionAsync(Context context)
     {
         var coverageYml = await context.Files.ReadAsync(CoverageYml.FileName);
-        if (!DependencyOnboarding.HasTopLevelKey(coverageYml, "versioning"))
-            context.Files.Write(CoverageYml.FileName, coverageYml is null ? Section.TrimStart('\n') : coverageYml.TrimEnd('\n', '\r') + "\n" + Section);
+        if (!CoverageYmlSections.Has(coverageYml, "versioning"))
+            context.Files.Write(CoverageYml.FileName, CoverageYmlSections.Add(coverageYml, "versioning", Section));
     }
 
     /// <summary>Runs a workflow rule over every workflow, each as the rules before left it.</summary>

@@ -6,7 +6,7 @@ using CodeCoverage.GitWriter.Jobs.Dependencies;
 namespace CodeCoverage.GitWriter.Jobs;
 
 /// <summary>A validated dependency job: the repository, the job's credential, the default branch and <c>expected_sha</c>.</summary>
-public sealed record DependencyJob(string Repo, Uri CloneUrl, GitCredential Credential, string BaseBranch, string ExpectedSha);
+public sealed record DependencyJob(string Repo, Uri CloneUrl, GitCredential Credential, string BaseBranch, string ExpectedSha, string? Line = null);
 
 /// <summary>The commit a dependency job builds: dated identities (§0 D65), so the same request builds the same commit.</summary>
 public sealed record DependencyCommit(GitIdentity Author, GitIdentity Committer, string Message);
@@ -55,10 +55,10 @@ public sealed partial class WriterService
             if (planJson is not null && await PlanCommitRule.CheckAsync(args => context.GitAsync(args, job.Credential), job.ExpectedSha, built) is { } broken)
                 return Answer(DependencyJobOutcomes.PlanRejected, detail: broken);
 
-            return await PushBotRefAsync(context, job, built, DependencyBranches.Work, expectedWorkSha) switch
+            return await PushBotRefAsync(context, job, built, DependencyBranches.WorkOf(job.Line), expectedWorkSha) switch
             {
                 Push.Done or Push.UpToDate => Answer(JobOutcomes.Pushed, sha: built),
-                Push.LeaseRejected => Answer(DependencyJobOutcomes.BranchMoved, detail: $"{DependencyBranches.Work} is not at {expectedWorkSha}."),
+                Push.LeaseRejected => Answer(DependencyJobOutcomes.BranchMoved, detail: $"{DependencyBranches.WorkOf(job.Line)} is not at {expectedWorkSha}."),
                 Push.Rejected rejected => Answer(JobOutcomes.PushRejected, detail: rejected.Detail),
                 _ => throw new InvalidOperationException("Unknown push outcome."),
             };
@@ -124,10 +124,10 @@ public sealed partial class WriterService
             string? oldTip = null;
             if (expectedRollingSha is not null)
             {
-                var fetched = await context.GitAsync(["fetch", "--quiet", "--no-tags", "--no-write-fetch-head", "origin", $"+refs/heads/{DependencyBranches.Rolling}:{RollingTracking}"], job.Credential);
+                var fetched = await context.GitAsync(["fetch", "--quiet", "--no-tags", "--no-write-fetch-head", "origin", $"+refs/heads/{DependencyBranches.RollingOf(job.Line)}:{RollingTracking}"], job.Credential);
                 oldTip = fetched.Succeeded ? await RevParseAsync(context, RollingTracking) : null;
                 if (oldTip != expectedRollingSha)
-                    return Answer(DependencyJobOutcomes.BranchMoved, detail: $"{DependencyBranches.Rolling} is at {oldTip ?? "nothing"}, not {expectedRollingSha}.");
+                    return Answer(DependencyJobOutcomes.BranchMoved, detail: $"{DependencyBranches.RollingOf(job.Line)} is at {oldTip ?? "nothing"}, not {expectedRollingSha}.");
                 context.EnsureWithinDisk();
             }
 
@@ -140,7 +140,7 @@ public sealed partial class WriterService
                 var humans = await replay.HumanCommitsAsync(context.GitDirectory, lastBotSha, oldTip, context.Deadline, job.Credential);
                 if (humans is null)
                     return Answer(DependencyJobOutcomes.RollingRewritten, sha: oldTip,
-                        detail: $"{DependencyBranches.Rolling} no longer holds the bot's commit {lastBotSha}: it was rewritten by hand, so nothing was replayed or pushed.");
+                        detail: $"{DependencyBranches.RollingOf(job.Line)} no longer holds the bot's commit {lastBotSha}: it was rewritten by hand, so nothing was replayed or pushed.");
                 var entries = DependencyPlanEntry.From(input.Plan)
                     .Select(e => new ReplayManifestEntry(e.DepName, e.PackageName, e.PackageFile, e.CurrentValue, e.NewValue)).ToList();
                 var relockable = input.Plan.Groups.SelectMany(g => g.Items).SelectMany(i => i.LockFiles).ToHashSet(StringComparer.Ordinal);
@@ -150,14 +150,14 @@ public sealed partial class WriterService
                         return Answer(DependencyJobOutcomes.ReplayConflict, sha: oldTip, paths: conflict.Paths, detail: conflict.Detail, values: conflict.HumanValues);
                     case ReplayOutcome.Replayed { RelockPaths.Count: > 0 } relock:
                         // D-N2: the replayed head goes to the work ref, where the apply workflow regenerates the lockfiles.
-                        return await PushBotRefAsync(context, job, relock.Tip, DependencyBranches.Work, expectedWorkSha) switch
+                        return await PushBotRefAsync(context, job, relock.Tip, DependencyBranches.WorkOf(job.Line), expectedWorkSha) switch
                         {
                             Push.Done or Push.UpToDate => Answer(DependencyJobOutcomes.RelockNeeded, sha: relock.Tip, bot: bot, paths: relock.RelockPaths,
                                 values: relock.HumanValues, replayed: relock.Commits.Count) with
                             {
                                 Verdict = VerdictWord(verdict.Outcome), AppliedGroups = verdict.AppliedGroups, RequiresWorkflowsPermission = verdict.RequiresWorkflowsPermission,
                             },
-                            Push.LeaseRejected => Answer(DependencyJobOutcomes.BranchMoved, detail: $"{DependencyBranches.Work} is not at {expectedWorkSha}."),
+                            Push.LeaseRejected => Answer(DependencyJobOutcomes.BranchMoved, detail: $"{DependencyBranches.WorkOf(job.Line)} is not at {expectedWorkSha}."),
                             Push.Rejected rejected => Answer(JobOutcomes.PushRejected, detail: rejected.Detail),
                             _ => throw new InvalidOperationException("Unknown push outcome."),
                         };
@@ -176,13 +176,13 @@ public sealed partial class WriterService
                     Verdict = VerdictWord(verdict.Outcome), AppliedGroups = verdict.AppliedGroups,
                 };
 
-            return await PushAsync(context, job.CloneUrl, job.Credential, tip, $"refs/heads/{DependencyBranches.Rolling}", expectedRollingSha) switch
+            return await PushAsync(context, job.CloneUrl, job.Credential, tip, $"refs/heads/{DependencyBranches.RollingOf(job.Line)}", expectedRollingSha) switch
             {
                 Push.Done or Push.UpToDate => Answer(JobOutcomes.Pushed, sha: tip, bot: bot, paths: verdict.Paths, values: values, replayed: replayed) with
                 {
                     Verdict = VerdictWord(verdict.Outcome), AppliedGroups = verdict.AppliedGroups, RequiresWorkflowsPermission = verdict.RequiresWorkflowsPermission,
                 },
-                Push.LeaseRejected => Answer(DependencyJobOutcomes.BranchMoved, detail: $"{DependencyBranches.Rolling} moved during the job."),
+                Push.LeaseRejected => Answer(DependencyJobOutcomes.BranchMoved, detail: $"{DependencyBranches.RollingOf(job.Line)} moved during the job."),
                 Push.Rejected rejected => Answer(JobOutcomes.PushRejected, detail: rejected.Detail),
                 _ => throw new InvalidOperationException("Unknown push outcome."),
             };
@@ -212,15 +212,20 @@ public sealed partial class WriterService
     public Task<DependencyJobResponse> VersioningOnboardingAsync(DependencyJob job, DependencyCommit commit, IReadOnlyList<(string Path, string? Content)> files)
         => FilesOnBranchAsync("versioning-onboarding", DependencyBranches.VersioningOnboarding, job, commit, files);
 
+    /// <summary>#571 D3: the combined onboarding commit, force-pushed to <see cref="DependencyBranches.FeatureOnboarding"/>;
+    /// a line's (D9) to <see cref="DependencyBranches.FeatureOnboardingOf"/>.</summary>
+    public Task<DependencyJobResponse> OnboardingAsync(DependencyJob job, DependencyCommit commit, IReadOnlyList<(string Path, string? Content)> files)
+        => FilesOnBranchAsync("onboarding", DependencyBranches.FeatureOnboardingOf(job.Line), job, commit, files);
+
     /// <summary>R14: the work ref is removed after every run, while it is still at <paramref name="expectedSha"/>.</summary>
-    public Task<DependencyJobResponse> DependencyDeleteWorkRefAsync(string repo, Uri cloneUrl, GitCredential credential, string? expectedSha)
+    public Task<DependencyJobResponse> DependencyDeleteWorkRefAsync(string repo, Uri cloneUrl, GitCredential credential, string? expectedSha, string? line = null)
         => jobs.RunAsync("dependencies-delete", repo, async context =>
         {
             await context.RequireAsync(["init", "--bare", "--quiet", "--template=", context.GitDirectory], inRepository: false);
-            return await PushAsync(context, cloneUrl, credential, null, $"refs/heads/{DependencyBranches.Work}", expectedSha, lease: expectedSha is not null) switch
+            return await PushAsync(context, cloneUrl, credential, null, $"refs/heads/{DependencyBranches.WorkOf(line)}", expectedSha, lease: expectedSha is not null) switch
             {
                 Push.Done or Push.UpToDate => new DependencyJobResponse(JobOutcomes.Deleted, null, null, null, [], null, context.ElapsedMilliseconds),
-                Push.LeaseRejected => new DependencyJobResponse(DependencyJobOutcomes.BranchMoved, null, null, null, [], $"{DependencyBranches.Work} is not at {expectedSha}.", context.ElapsedMilliseconds),
+                Push.LeaseRejected => new DependencyJobResponse(DependencyJobOutcomes.BranchMoved, null, null, null, [], $"{DependencyBranches.WorkOf(line)} is not at {expectedSha}.", context.ElapsedMilliseconds),
                 Push.Rejected rejected => new DependencyJobResponse(JobOutcomes.PushRejected, null, null, null, [], rejected.Detail, context.ElapsedMilliseconds),
                 _ => throw new InvalidOperationException("Unknown push outcome."),
             };
@@ -328,6 +333,23 @@ public static class DependencyBranches
     public const string Work = "mintplayer/dependencies-work";
     public const string Onboarding = "mintplayer/dependencies-onboarding";
 
+    /// <summary>
+    /// #568 D13: a release line's rolling branch, <c>mintplayer/dependencies-dotnet-10.x</c>; the default branch's for null.
+    /// A '-', never a '/': git cannot hold <c>mintplayer/dependencies/x</c> beside the branch <c>mintplayer/dependencies</c>.
+    /// The line is a validated <see cref="Versioning.Releases.ReleaseLine"/> name.
+    /// </summary>
+    public static string RollingOf(string? line) => line is null ? Rolling : $"{Rolling}-{line}";
+
+    /// <summary>#568 D13: a release line's work ref, <c>mintplayer/dependencies-work-dotnet-10.x</c>.</summary>
+    public static string WorkOf(string? line) => line is null ? Work : $"{Work}-{line}";
+
     /// <summary>#153 D17: the package versioning onboarding pull request's head.</summary>
     public const string VersioningOnboarding = "mintplayer/versioning-onboarding";
+
+    /// <summary>#571 D3: the onboarding chooser's one pull request's head.</summary>
+    public const string FeatureOnboarding = "mintplayer/onboarding";
+
+    /// <summary>#571 D9: the pull request that adds the default branch's regenerate workflow to a line,
+    /// <c>mintplayer/onboarding-dotnet-6.x</c>; the default branch's onboarding for null.</summary>
+    public static string FeatureOnboardingOf(string? line) => line is null ? FeatureOnboarding : $"{FeatureOnboarding}-{line}";
 }

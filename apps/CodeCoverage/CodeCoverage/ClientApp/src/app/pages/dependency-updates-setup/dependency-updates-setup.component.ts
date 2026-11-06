@@ -101,6 +101,7 @@ export default class DependencyUpdatesSetupComponent {
     { key: 'platforms.<sdk>', defaultValue: 'auto-detected', meaning: 'dotnet, node, python, java or go: strategy (replace or add, default replace), keepPrevious (0), lockPackageMajor (false), locations and exclude.' },
     { key: 'lockFileMaintenance', defaultValue: 'false', meaning: 'Also refresh transitive dependencies in the lockfiles.' },
     { key: 'registries', defaultValue: 'none', meaning: 'Lockfile hosts allowed besides the public registries, e.g. npm.pkg.github.com.' },
+    { key: 'lines', defaultValue: 'patch', meaning: 'What each supported release line\'s own run takes: patch, all (up to minors), security (its fixes only) or off. Never a major.' },
   ];
 
   /** The comment commands (dependency-updates.md §5). */

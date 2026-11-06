@@ -39,8 +39,8 @@
     "selectionRule": "=0",
     "refreshOnCompleted": true
   },
-  "SetUpVersioning": {
-    "icon": "Tags",
+  "SetUpFeatures": {
+    "icon": "Magic",
     "showedOn": "detail",
     "selectionRule": "=0",
     "refreshOnCompleted": false

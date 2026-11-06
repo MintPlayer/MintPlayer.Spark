@@ -452,6 +452,27 @@ public partial class GitHubForgeMergeQueue : IForgeMergeQueue
         return true;
     }
 
+    /// <remarks>
+    /// <c>POST /branches/{branch}/rename</c>, which needs push access for a non-default branch (GitHub's docs, S7 to verify
+    /// live): 201 renamed; 403 no permission; 404 no such branch; 422 the new name is taken or invalid.
+    /// </remarks>
+    public async Task<string?> RenameBranchAsync(Repository repository, string from, string to, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(from);
+        ArgumentException.ThrowIfNullOrEmpty(to);
+        var body = new Dictionary<string, object?> { ["new_name"] = to };
+        using var reply = await SendAsync(repository, HttpMethod.Post,
+            $"{RepoPath(repository)}/branches/{BranchPath(from)}/rename", body, DefaultApiVersion, cancellationToken);
+        return reply.Status switch
+        {
+            HttpStatusCode.Created or HttpStatusCode.OK => null,
+            HttpStatusCode.Forbidden => $"GitHub refused to rename {from} (403): the App needs Contents: write. {reply.Message}",
+            HttpStatusCode.NotFound => $"{from} no longer exists.",
+            HttpStatusCode.UnprocessableEntity => $"GitHub refused to rename {from} to {to} (422): {reply.Message}",
+            _ => $"GitHub answered {(int)reply.Status} to renaming {from}: {reply.Message}",
+        };
+    }
+
     // ── The regenerate workflow ──────────────────────────────────────────────────────────────────
 
     public async Task<ForgeWorkflowDispatch> DispatchWorkflowAsync(

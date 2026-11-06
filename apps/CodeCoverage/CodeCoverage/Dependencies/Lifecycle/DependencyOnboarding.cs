@@ -74,9 +74,7 @@ public static class DependencyOnboarding
     private static string Lf(string text) => text.ReplaceLineEndings("\n");
 
     /// <summary>Whether <paramref name="yml"/> has <paramref name="key"/> as a top-level key (not commented, not indented).</summary>
-    public static bool HasTopLevelKey(string? yml, string key)
-        => yml is not null && yml.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n')
-            .Any(line => line.StartsWith(key, StringComparison.Ordinal) && line.AsSpan(key.Length).TrimStart().StartsWith(":"));
+    public static bool HasTopLevelKey(string? yml, string key) => Feedback.CoverageYmlSections.Has(yml, key);
 
     /// <summary>The workflow templates, by repository path; the migrate ones only where their tool is used.</summary>
     public static IReadOnlyList<(string Path, string Resource)> Templates(IReadOnlyCollection<string> treePaths)
@@ -117,14 +115,13 @@ public static class DependencyOnboarding
             files.Add(new GitWriterFile(path, Pin(readTemplate(resource), actionSha)));
 
         var yml = coverageYml ?? string.Empty;
-        var text = yml.Length == 0 || yml.EndsWith('\n') ? yml : yml + "\n";
+        var text = yml;
         // R25: the merge queue is what R5 auto-merges through. Added only when the file has no mergeQueue section at all:
-        // one that is there, enabled or not, is the owner's choice.
+        // one that is there, enabled or not, is the owner's choice. Each section goes in alphabetical order (#571 M10a).
         if (addMergeQueue && !HasTopLevelKey(yml, "mergeQueue"))
-            text += MergeQueueSection;
-        if (!yml.Contains("\ndependencies:", StringComparison.Ordinal) && !yml.StartsWith("dependencies:", StringComparison.Ordinal)
-            && !yml.Contains("# dependencies:", StringComparison.Ordinal))
-            text += CommentedSection.TrimStart('\r', '\n') + "\n";
+            text = Feedback.CoverageYmlSections.Add(text, "mergeQueue", MergeQueueSection);
+        if (!HasTopLevelKey(yml, "dependencies") && !yml.Contains("# dependencies:", StringComparison.Ordinal))
+            text = Feedback.CoverageYmlSections.Add(text, "dependencies", CommentedSection);
         if (text != yml && text != yml + "\n")
             files.Add(new GitWriterFile("coverage.yml", text));
 

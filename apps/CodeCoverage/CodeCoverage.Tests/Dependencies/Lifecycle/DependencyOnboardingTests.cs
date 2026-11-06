@@ -176,7 +176,11 @@ public class DependencyOnboardingTests : CoverageRavenTest
         await h.SignalAsync(Onboard);
 
         var yml = h.Writer.Requests("files").Single().Files!.Single(f => f.Path == "coverage.yml").Content!;
-        yml.Should().StartWith("gate:\n  patchTarget: 80\n").And.Contain("mergeQueue:\n  enabled: true\n").And.Contain("# dependencies:");
+        // #571 M10a: each section in alphabetical order, the commented dependencies first, the owner's gate untouched.
+        yml.Should().EndWith("#       onMajor: nx-migrate.yml\n\ngate:\n  patchTarget: 80\n\n"
+            + "# The merge queue (added by the onboarding pull request): dependency pull requests within your thresholds merge through\n"
+            + "# it, and your own pull requests can use it too (label `merge-queue`, or comment `/queue`).\nmergeQueue:\n  enabled: true\n");
+        yml.Should().StartWith("# MintPlayer dependency updates");
         h.Updates.Created.Single().Body.Should().Contain("mergeQueue: { enabled: true }");
         (await h.RunAsync()).FileMergeQueue.Should().Be("absent", "what the file said when onboarding read it");
     }
@@ -204,7 +208,7 @@ public class DependencyOnboardingTests : CoverageRavenTest
         await h.SignalAsync(Onboard);
 
         var yml = h.Writer.Requests("files").Single().Files!.Single(f => f.Path == "coverage.yml").Content!;
-        yml.Should().StartWith("mergeQueue:\n  enabled: false\n");
+        yml.Should().EndWith("\n\nmergeQueue:\n  enabled: false\n", "the commented dependencies section sorts in front of it (#571 M10a)");
         yml.Should().NotContain("mergeQueue:\n  enabled: true", "nothing is added beside the owner's section");
         (await h.RunAsync()).FileMergeQueue.Should().Be("disabled");
     }
