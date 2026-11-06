@@ -10,7 +10,7 @@
     <bs-spinner />
   } @else if (detail(); as d) {
     @if (stats(); as s) {
-      <div class="mb-2 d-flex align-items-center gap-2">
+      <div class="m-2 d-flex align-items-center gap-2">
         <bs-badge [color]="s.coverable > 0 && s.covered / s.coverable >= 0.8 ? 'success' : 'warning'">
           {{ s.covered }}/{{ s.coverable }} lines covered
         </bs-badge>
