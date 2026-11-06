@@ -61,6 +61,14 @@ public partial class SetUpFeaturesAction : SparkCustomAction
             return;
         }
 
+        // What refuses without reading the forge refuses here, before the GitHub popup and the rulesets form: the admin
+        // must not authorize for a pull request that cannot open (#554, owner 2026-11-06).
+        if (onboarding.RefusalBeforePlanning(repository) is { } refusal)
+        {
+            Report(new(VersioningOnboardingOutcome.Refused, refusal), args);
+            return;
+        }
+
         // The rulesets step (#554 f4): with the merge queue picked, the popup and the rulesets form come here, and the
         // rulesets are applied at the confirmation with the admin's one-shot token, not at the merge.
         string? byHand = null;

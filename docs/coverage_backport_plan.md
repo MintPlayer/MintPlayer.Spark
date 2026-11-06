@@ -580,9 +580,11 @@ PRD §8.2.
         The onboarding and rulesets confirmations are now headings over `<ul><li>` lists, with the rulesets nested per
         repository. The rulesets toast keeps the plain-text `Summary`. Live: PR #5 was updated with all six features
         (dependency-apply.yml, dependency-lookup.yml, coverage.yml); the in-process writer answered 200 in 4.9 s.
-      - **Open UX defect:** a refusal that needs no GitHub data (no writer, disconnected repository) is only reported
-        after the popup and the rulesets form. Proposed fix: check those before the popup. Not built; awaiting the
-        owner.
+      - **UX defect, fixed (owner approved, 2026-11-06):** a refusal that needs no GitHub data (no writer, disconnected
+        repository) was only reported after the popup and the rulesets form. `IOnboardingService.RefusalBeforePlanning`
+        now holds those checks; the chooser asks it right after the feature form, and `PlanAsync` reuses it. Only the
+        refusals that need the forge (the default branch unreadable) still come after the popup, because the preview
+        reads the forge and runs once, after the popup. Test: `SetUpFeaturesRulesetsTests.A_refusal_known_without_the_forge_comes_before_the_popup`.
     - **f1, a one-shot OAuth token in Spark.Authorization** (generic, no GitHub-specific code):
       - `IOneShotOAuth` takes a named client (authorize URL, token URL, revoke callback) and scopes. Inside a custom
         action it returns an `IAsyncDisposable` token lease that revokes on dispose.

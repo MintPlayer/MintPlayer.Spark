@@ -10,6 +10,7 @@ using CodeCoverage.Versioning.Releases;
 using Microsoft.Extensions.Logging.Abstractions;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Actions;
+using MintPlayer.Spark.Abstractions.ClientOperations;
 using MintPlayer.Spark.Abstractions.Retry;
 using MintPlayer.Spark.Authorization.OneShotOAuth;
 using NSubstitute;
@@ -69,6 +70,8 @@ public class SetUpFeaturesRulesetsTests : CoverageRavenTest
             Queue.GetCheckNamesOnCommitAsync(Arg.Any<Repository>(), "abc123", Arg.Any<CancellationToken>()).Returns(["build"]);
             Queue.ApplyRulesetPlanAsync(Arg.Any<Repository>(), "master", Arg.Any<MergeQueueRulesetPlan>(), Token, Arg.Any<CancellationToken>())
                 .Returns([new ForgeRulesetApplied("Created ruleset.", "https://github.com/acme/widget/rules/1")]);
+            // NSubstitute answers a string member with "", which would refuse: no refusal is null.
+            Onboarding.RefusalBeforePlanning(Arg.Any<Repository>()).Returns((string?)null);
             Onboarding.PreviewAsync(Arg.Any<Repository>(), Arg.Any<IReadOnlySet<EOnboardingFeature>>(), Arg.Any<CancellationToken>())
                 .Returns(new OnboardingPreview(new OnboardingPlan([EOnboardingFeature.MergeQueue], [], [], new LineRenamePlan([], []), [], [], "body"), null));
             Onboarding.OnboardAsync(Arg.Any<Repository>(), Arg.Any<IReadOnlySet<EOnboardingFeature>>(), Arg.Any<CancellationToken>())
@@ -149,6 +152,27 @@ public class SetUpFeaturesRulesetsTests : CoverageRavenTest
 
         await f.Queue.DidNotReceiveWithAnyArgs().ApplyRulesetPlanAsync(default!, default!, default!, default!, default);
         f.Lease.Disposed.Should().Be(1);
+    }
+
+    /// <summary>
+    /// A refusal that needs no forge data (here: no git writer) comes before the popup (#554, owner 2026-11-06). Before,
+    /// the admin authorized and filled the rulesets form, and only the preview refused.
+    /// </summary>
+    [Fact]
+    public async Task A_refusal_known_without_the_forge_comes_before_the_popup()
+    {
+        var session = await SeedAsync();
+        var f = new Fixture();
+        f.Onboarding.RefusalBeforePlanning(Arg.Any<Repository>()).Returns("Not available here.");
+        f.Manager.Retry.Result.Returns(new RetryResult { Option = "onboarding.plan", PersistentObject = Features(true) });
+        var args = OnRepository();
+
+        await f.Action(session).ExecuteAsync(args);
+
+        await f.OAuth.DidNotReceiveWithAnyArgs().AuthorizeAsync(default!, default!, default);
+        await f.Onboarding.DidNotReceiveWithAnyArgs().PreviewAsync(default!, default!, default);
+        f.Manager.Retry.Received(1).Action(Arg.Any<string>(), Arg.Any<string[]>(), Arg.Any<string?>(), Arg.Any<PersistentObject?>(), Arg.Any<string?>(), Arg.Any<bool>());
+        f.Manager.Client.Received(1).Notify("Not available here.", NotificationKind.Warning);
     }
 
     [Fact]

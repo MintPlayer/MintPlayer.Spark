@@ -20,6 +20,14 @@ namespace CodeCoverage.Onboarding;
 /// </summary>
 public interface IOnboardingService
 {
+    /// <summary>
+    /// Why no onboarding pull request can be planned for <paramref name="repository"/> on this server, from what is known
+    /// without asking the forge (disconnected, archived, no default branch, no git writer, a forge without the
+    /// adapters), or <see langword="null"/>. The chooser asks it before the GitHub popup, so such a refusal comes before
+    /// any authorization (#554, owner 2026-11-06). <see cref="PreviewAsync"/> refuses the same.
+    /// </summary>
+    string? RefusalBeforePlanning(Repository repository);
+
     /// <summary>What <see cref="OnboardAsync"/> would do now; writes nothing.</summary>
     Task<OnboardingPreview> PreviewAsync(Repository repository, IReadOnlySet<EOnboardingFeature> features, CancellationToken cancellationToken = default);
 
@@ -57,6 +65,17 @@ public partial class OnboardingService : IOnboardingService
     [Inject] private readonly ILogger<OnboardingService> logger;
 
     private DateTime Now => time.GetUtcNow().UtcDateTime;
+
+    public string? RefusalBeforePlanning(Repository repository)
+    {
+        if (repository.DefaultBranch is not { Length: > 0 } || repository.Connection == RepositoryConnection.Disconnected || repository.Archived)
+            return "The repository is disconnected, archived or has no default branch.";
+        if (!writer.IsConfigured
+            || !queues.Any(q => q.Provider == repository.Provider)
+            || !updates.Any(u => u.Provider == repository.Provider))
+            return "The onboarding pull request is not available for this forge on this server.";
+        return null;
+    }
 
     public async Task<OnboardingPreview> PreviewAsync(Repository repository, IReadOnlySet<EOnboardingFeature> features, CancellationToken cancellationToken = default)
     {
@@ -318,12 +337,11 @@ public partial class OnboardingService : IOnboardingService
     {
         if (features.Count == 0)
             return Planned.Refused("Pick at least one feature.");
-        if (repository.DefaultBranch is not { } defaultBranch || repository.Connection == RepositoryConnection.Disconnected || repository.Archived)
-            return Planned.Refused("The repository is disconnected, archived or has no default branch.");
-        if (!writer.IsConfigured
-            || queues.FirstOrDefault(q => q.Provider == repository.Provider) is not { } git
-            || updates.FirstOrDefault(u => u.Provider == repository.Provider) is not { } pulls)
-            return Planned.Refused("The onboarding pull request is not available for this forge on this server.");
+        if (RefusalBeforePlanning(repository) is { } refusal)
+            return Planned.Refused(refusal);
+        var defaultBranch = repository.DefaultBranch!;
+        var git = queues.First(q => q.Provider == repository.Provider);
+        var pulls = updates.First(u => u.Provider == repository.Provider);
         if (await ForgeRepositoryTree.OpenAsync(integrations.For(repository), repository, defaultBranch, cancellationToken) is not { } tree)
             return Planned.Refused($"{defaultBranch} could not be read from the forge.");
 
