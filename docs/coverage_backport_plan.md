@@ -231,7 +231,9 @@ PRD §8.2.
     started", first under Guides at order 0, so no other unit moved; `onboarding-setup.component.spec.ts`), the
     reference `docs/code-coverage/onboarding.md` (indexed in its README), and versioning.md and dependency-updates.md
     pointing to the chooser. The #153 PRD's "Set up versioning" is marked superseded.
-  - Then the M12 leftovers, S7 (live, after the deploy), and the local sweep.
+  - Then the M12 leftovers, S7 (live, after the deploy), and the local sweep. **M12 leftovers done (2026-11-06):**
+    backports.md (line renames, the line workflow pull request) and merge-queue.md §2 (the chooser; rulesets by hand
+    until #554); the dependency parts landed with M9c.
 - **M9 Dependencies on lines** (D13): a rolling PR per supported line, platform packages capped at the line's major,
   patch/security default, advisories outside the allowed range flagged. Pack verified by S4 (D10b; no upper bounds,
   opt-in `major-bounded`). **Built (2026-11-05):** every supported line, the current one included (owner's choice). It
