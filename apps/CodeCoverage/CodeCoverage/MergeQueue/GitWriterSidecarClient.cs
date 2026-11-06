@@ -121,6 +121,10 @@ public interface IGitWriterSidecar
     Task<GitWriterDependencyResult> VersioningOnboardingAsync(GitWriterDependencyRequest request, CancellationToken cancellationToken = default)
         => throw new NotSupportedException("This git writer has no versioning onboarding job.");
 
+    /// <summary>#571 D3: the onboarding chooser's commit on <c>mintplayer/onboarding</c>.</summary>
+    Task<GitWriterDependencyResult> OnboardingAsync(GitWriterDependencyRequest request, CancellationToken cancellationToken = default)
+        => throw new NotSupportedException("This git writer has no onboarding job.");
+
     /// <summary>#153 D17: version tags pushed outside a run (the onboarding's seed tags), never with force.</summary>
     Task<PackageVersioning.GitWriterTagsResult> TagsAsync(PackageVersioning.GitWriterTagsRequest request, CancellationToken cancellationToken = default)
         => throw new NotSupportedException("This git writer has no tags job.");
@@ -162,6 +166,9 @@ public sealed class GitWriterSidecarClient(HttpClient http, IOptions<MergeQueueO
 
     public Task<GitWriterDependencyResult> VersioningOnboardingAsync(GitWriterDependencyRequest request, CancellationToken cancellationToken = default)
         => SendAsync<GitWriterDependencyResult>(HttpMethod.Post, "jobs/versioning/onboarding", request, cancellationToken);
+
+    public Task<GitWriterDependencyResult> OnboardingAsync(GitWriterDependencyRequest request, CancellationToken cancellationToken = default)
+        => SendAsync<GitWriterDependencyResult>(HttpMethod.Post, "jobs/onboarding", request, cancellationToken);
 
     public Task<PackageVersioning.GitWriterTagsResult> TagsAsync(PackageVersioning.GitWriterTagsRequest request, CancellationToken cancellationToken = default)
         => SendAsync<PackageVersioning.GitWriterTagsResult>(HttpMethod.Post, "jobs/tags", request, cancellationToken);

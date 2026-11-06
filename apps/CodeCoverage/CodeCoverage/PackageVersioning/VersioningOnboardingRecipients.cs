@@ -21,7 +21,8 @@ public partial class VersioningSeedsEventsRecipient : IRecipient<ForgeWebhookMes
     public Task HandleAsync(ForgeWebhookMessage<PullRequestMerged> message, CancellationToken cancellationToken = default)
     {
         var evt = message.Event;
-        if (!evt.HeadIsFromSameRepository || evt.HeadRef != VersioningOnboarding.Branch) return Task.CompletedTask;
+        // #571 D3: the chooser's pull request carries the seeds now; a #153 one opened before it still may.
+        if (!evt.HeadIsFromSameRepository || evt.HeadRef is not (VersioningOnboarding.Branch or Onboarding.OnboardingPlanner.Branch)) return Task.CompletedTask;
         return messageBus.BroadcastOnceAsync(new VersioningSeedsMessage { RepositoryId = evt.RepositoryId },
             $"versioning-seeds:{evt.RepositoryId}:{evt.Number}", cancellationToken);
     }

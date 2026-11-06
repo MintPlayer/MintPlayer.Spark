@@ -1,8 +1,11 @@
+using CodeCoverage.Onboarding;
+
 namespace CodeCoverage.Entities;
 
 /// <summary>
-/// A repository's versioning onboarding (#153 M13, PRD D17): the pull request the app opened on
-/// <c>mintplayer/versioning-onboarding</c>, and the seed tags to push once it merges.
+/// A repository's onboarding pull request and what follows its merge: since #571 D3 the chooser's
+/// <c>mintplayer/onboarding</c> (<see cref="Features"/> set), before it #153 D17's <c>mintplayer/versioning-onboarding</c>.
+/// The seed tags are pushed once it merges, whichever opened it. The name is kept: it is the production collection.
 /// </summary>
 /// <remarks>
 /// The seeds are pushed at the pull request's merge commit, by whichever comes first: the merged webhook, or the first
@@ -34,6 +37,19 @@ public class VersioningOnboardingState
 
     public DateTime UpdatedAtUtc { get; set; }
 
+    /// <summary>#571 D3: the features the chooser was asked for; the pull request is rebuilt with them on every new
+    /// default-branch head while it is open. Empty for a #153 versioning-only onboarding.</summary>
+    public List<EOnboardingFeature> Features { get; set; } = [];
+
+    /// <summary>#571 D3: the repository settings switched on once the pull request merges.</summary>
+    public List<EOnboardingFeature> OnMerge { get; set; } = [];
+
+    /// <summary>#571 D2: the old line branches renamed once the pull request merges.</summary>
+    public List<OnboardingRename> Renames { get; set; } = [];
+
+    /// <summary>#571 D3: the merge commit the on-merge steps ran for; null while they are pending.</summary>
+    public string? MergeHandledAt { get; set; }
+
     /// <summary>Seeds remain to be pushed.</summary>
     public bool SeedsPending => SeedCommit is null && Seeds.Count > 0 && PullRequestNumber is not null;
 
@@ -45,6 +61,12 @@ public class VersioningOnboardingState
             throw new ArgumentException($"'{repositoryId}' is not a repository document id.", nameof(repositoryId));
         return "VersioningOnboardingStates/" + repositoryId[prefix.Length..];
     }
+}
+
+public class OnboardingRename
+{
+    public string From { get; set; } = string.Empty;
+    public string To { get; set; } = string.Empty;
 }
 
 public class VersioningOnboardingSeed

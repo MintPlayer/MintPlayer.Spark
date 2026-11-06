@@ -133,6 +133,12 @@ internal sealed class FakeForgeDependencyUpdates : IForgeDependencyUpdates
         return Task.FromResult(Tags.TryGetValue($"{ownerRepo}@{tag}", out var sha) ? sha : null);
     }
 
+    /// <summary>The repository's own tag names, for <see cref="HasTagWithPrefixAsync"/> (versioning seeds).</summary>
+    public HashSet<string> RepositoryTags { get; } = new(StringComparer.Ordinal);
+
+    public Task<bool> HasTagWithPrefixAsync(Repository repository, string prefix, CancellationToken cancellationToken = default)
+        => Task.FromResult(RepositoryTags.Any(t => t.StartsWith(prefix, StringComparison.Ordinal)));
+
     public Task<string?> GetRepositoryFileAsync(Repository repository, string ownerRepo, string gitRef, string path, CancellationToken cancellationToken = default)
         => Task.FromResult(Files.TryGetValue($"{ownerRepo}@{gitRef}:{path}", out var text) ? text : null);
 

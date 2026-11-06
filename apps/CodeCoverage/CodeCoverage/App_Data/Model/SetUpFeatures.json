@@ -1,0 +1,84 @@
+{
+  "$schema": "../../../../../schemas/model.schema.json",
+  "_comment": [
+    "HAND-AUTHORED and NOT generated. A virtual type: no clrType, no documents. The \"Set up features\" action's form",
+    "(#571 M10c, coverage_backport_PRD D3), shown as a retry prompt: one checkbox per EOnboardingFeature. The action reads",
+    "the answers back from Retry.Result.PersistentObject, plans them, and shows the plan for a confirmation."
+  ],
+  "persistentObject": {
+    "id": "88a980ce-1c12-4622-b04f-00e3979a0fb4",
+    "name": "SetUpFeatures",
+    "breadcrumb": "Set up features",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "7be4e793-4b0c-437a-929a-f558d9a727d9",
+        "name": "Coverage",
+        "dataType": "boolean",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 1,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "d1188fcc-eff1-4a6c-b071-4fbe4e425d91",
+        "name": "DependencyUpdates",
+        "dataType": "boolean",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "2b03bb26-e47a-4094-8e51-b5d30c301c7d",
+        "name": "MergeQueue",
+        "dataType": "boolean",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 3,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "0d111f4b-03d5-4720-8a74-24060a9b2dfe",
+        "name": "Versioning",
+        "dataType": "boolean",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 4,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "00633e6c-fa20-4622-bc85-c7c80d9a3d51",
+        "name": "ReleaseLines",
+        "dataType": "boolean",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 5,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "dc23b9dd-a583-402f-9c91-2698ac9b0a6b",
+        "name": "SizeLabels",
+        "dataType": "boolean",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 6,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      }
+    ]
+  },
+  "queries": []
+}

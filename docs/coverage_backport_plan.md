@@ -192,6 +192,14 @@ PRD §8.2.
   - **M10c, the chooser:** a "Set up features" action on the Repository page (a checkbox form, then the plan) that
     pushes one `mintplayer/onboarding` pull request. It is rebuilt on every new default-branch head while open.
     It replaces "Set up versioning".
+    **Built (2026-11-06):** git writer `POST /jobs/onboarding` (versioning paths plus the dependency set; only
+    Dependabot's file may be deleted) onto `mintplayer/onboarding`; `IOnboardingService` (preview, open, rebuild);
+    `SetUpFeaturesAction` (virtual `SetUpFeatures` checkbox form, then the plan for a confirmation); a push to the
+    default branch rebuilds the open pull request (`OnboardingRebuildEventsRecipient`). The state stays in
+    `VersioningOnboardingState` (the production collection), extended with the features, renames and on-merge
+    settings, so the existing seed push covers the new branch too. `IVersioningOnboardingService.OnboardAsync` is
+    gone; the service keeps `PushSeedsAsync`. Tests: `OnboardingServiceTests` (4), `OnboardingWriterJobTests` (5),
+    the client route table.
   - **M10d, on merge:**
     - apply the settings (dependency updates, size labels, coverage);
     - push the seeds;

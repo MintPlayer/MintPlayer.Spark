@@ -429,8 +429,11 @@ internal sealed class FakeGitWriter : IGitWriterSidecar
     public Task<GitWriterDependencyResult> DependencyFilesAsync(GitWriterDependencyRequest request, CancellationToken cancellationToken = default)
         => DependencyAsync("files", request, () => new GitWriterDependencyResult(GitWriterOutcomes.Pushed, null, "e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5", null, [], null, 10));
 
+    public Task<GitWriterDependencyResult> OnboardingAsync(GitWriterDependencyRequest request, CancellationToken cancellationToken = default)
+        => DependencyAsync("onboarding", request, () => new GitWriterDependencyResult(GitWriterOutcomes.Pushed, null, "f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6", null, [], null, 10));
+
     public Task<GitWriterDependencyResult> DependencyDeleteWorkRefAsync(GitWriterDependencyRequest request, CancellationToken cancellationToken = default)
-        => DependencyAsync("delete", request, () => new GitWriterDependencyResult(GitWriterOutcomes.Deleted, null, null, null, [], null, 10));
+        => DependencyAsync("delete",request, () => new GitWriterDependencyResult(GitWriterOutcomes.Deleted, null, null, null, [], null, 10));
 
     public static GitWriterPrepareResult Prepared(string baseSha, string head, string prepared, params string[] resolved)
         => new(GitWriterOutcomes.Prepared, null, baseSha, head, prepared, resolved, [], null, 10);

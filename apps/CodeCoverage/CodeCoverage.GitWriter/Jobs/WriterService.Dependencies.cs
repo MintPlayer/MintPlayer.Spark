@@ -212,6 +212,10 @@ public sealed partial class WriterService
     public Task<DependencyJobResponse> VersioningOnboardingAsync(DependencyJob job, DependencyCommit commit, IReadOnlyList<(string Path, string? Content)> files)
         => FilesOnBranchAsync("versioning-onboarding", DependencyBranches.VersioningOnboarding, job, commit, files);
 
+    /// <summary>#571 D3: the combined onboarding commit, force-pushed to <see cref="DependencyBranches.FeatureOnboarding"/>.</summary>
+    public Task<DependencyJobResponse> OnboardingAsync(DependencyJob job, DependencyCommit commit, IReadOnlyList<(string Path, string? Content)> files)
+        => FilesOnBranchAsync("onboarding", DependencyBranches.FeatureOnboarding, job, commit, files);
+
     /// <summary>R14: the work ref is removed after every run, while it is still at <paramref name="expectedSha"/>.</summary>
     public Task<DependencyJobResponse> DependencyDeleteWorkRefAsync(string repo, Uri cloneUrl, GitCredential credential, string? expectedSha, string? line = null)
         => jobs.RunAsync("dependencies-delete", repo, async context =>
@@ -340,4 +344,7 @@ public static class DependencyBranches
 
     /// <summary>#153 D17: the package versioning onboarding pull request's head.</summary>
     public const string VersioningOnboarding = "mintplayer/versioning-onboarding";
+
+    /// <summary>#571 D3: the onboarding chooser's one pull request's head.</summary>
+    public const string FeatureOnboarding = "mintplayer/onboarding";
 }

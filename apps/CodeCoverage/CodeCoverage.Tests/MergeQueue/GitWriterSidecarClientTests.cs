@@ -87,6 +87,7 @@ public class GitWriterSidecarClientTests
         { "POST /jobs/dependencies/files", w => w.DependencyFilesAsync(Dependency) },
         { "DELETE /jobs/dependencies/work-ref", w => w.DependencyDeleteWorkRefAsync(Dependency) },
         { "POST /jobs/versioning/onboarding", w => w.VersioningOnboardingAsync(Dependency) },
+        { "POST /jobs/onboarding", w => w.OnboardingAsync(Dependency) },
         { "POST /jobs/tags", w => w.TagsAsync(new GitWriterTagsRequest("github", "910040", "https://github.com/acme/widget.git", Credential, ["master"], null!, [])) },
         { "POST /jobs/versioning/run", w => w.VersioningRunAsync(new GitWriterVersioningRequest("github", "910040", "https://github.com/acme/widget.git", Credential, "master", "master", null, null!, null!, null!)) },
         { "POST /jobs/versioning/backport", w => w.VersioningBackportAsync(new GitWriterBackportRequest("github", "910040", "https://github.com/acme/widget.git", Credential, "master", "abc", 7, "Fix", [], null!, [])) },
