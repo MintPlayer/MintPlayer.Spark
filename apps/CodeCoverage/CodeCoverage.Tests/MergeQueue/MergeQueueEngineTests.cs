@@ -927,6 +927,41 @@ public class MergeQueueEngineTests : CoverageRavenTest
     }
 
     [Fact]
+    public async Task A_failed_check_is_rerun_only_once_its_workflow_run_has_finished()
+    {
+        // PR #579 (2026-11-06): one job failed while the others of its run still ran; GitHub refuses that re-run (403
+        // "already running") and the queue evicted for "permission". The re-run waits for the rest instead.
+        var h = await HarnessAsync(mergeBase: BaseSha);
+        h.Queue.CheckStates[Head] = new ForgeCheckState(Head,
+            [
+                new ForgeCheckRun(42, "build", "completed", "failure", 11, "github-actions", null),
+                new ForgeCheckRun(44, "test", "in_progress", null, 11, "github-actions", null),
+            ],
+            [], [new ForgeCheckSuite(11, "in_progress", null, "github-actions", 2)]);
+
+        await h.EnqueueAsync();
+        await h.DrainAsync();
+
+        var waiting = await h.EntryAsync();
+        waiting.State.Should().Be(EMergeQueueEntryState.AwaitingChecks);
+        waiting.CheckRetries.Should().Be(0, "nothing is re-run while the run is in progress");
+        h.Queue.Reruns.Should().BeEmpty();
+
+        h.Queue.CheckStates[Head] = new ForgeCheckState(Head,
+            [
+                new ForgeCheckRun(42, "build", "completed", "failure", 11, "github-actions", null),
+                new ForgeCheckRun(44, "test", "completed", "success", 11, "github-actions", null),
+            ],
+            [], [new ForgeCheckSuite(11, "completed", "failure", "github-actions", 2)]);
+        await h.ReleaseAsync(EMergeQueueStep.PollChecks);
+
+        var rerun = await h.EntryAsync();
+        rerun.State.Should().Be(EMergeQueueEntryState.AwaitingChecks);
+        rerun.CheckRetries.Should().Be(1);
+        h.Queue.Reruns.Should().Equal([42L]);
+    }
+
+    [Fact]
     public async Task An_excluded_check_is_not_waited_for_and_is_listed_on_the_check_run()
     {
         var h = await HarnessAsync(mergeBase: BaseSha);

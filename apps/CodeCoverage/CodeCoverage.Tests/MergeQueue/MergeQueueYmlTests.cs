@@ -25,7 +25,7 @@ public class MergeQueueYmlTests
         parsed.Errors.Should().BeEmpty();
         parsed.IsUsable.Should().BeTrue();
         var section = parsed.Section!;
-        section.Branches.Should().Equal(["master"]);
+        section.Branches.Should().Equal(["master", "supported-lines"], "#568 M11: backports into the release lines are queued too");
         section.Label.Should().Be("merge-queue");
         section.PostRebaseActionName.Should().Be("regenerate.yml");
         section.PostRebaseTimeoutMinutes.Should().Be(20);

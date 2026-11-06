@@ -648,6 +648,33 @@ public class DependencySagaTests : CoverageRavenTest
     }
 
     [Fact]
+    public async Task N6_a_red_check_waits_for_the_rest_of_its_run_before_the_rerun()
+    {
+        // GitHub refuses to re-run a job while its workflow run is in progress (merge queue PR #579, 2026-11-06), so the
+        // re-run that guards against a flaky test would silently not happen.
+        var h = await HarnessAsync(bisectBudget: 4);
+        await PublishAsync(h, ChalkAndLodash());
+        var full = h.Writer.RollingSha;
+        h.Queue.CheckStates[full] = new ForgeCheckState(full,
+            [
+                new ForgeCheckRun(42, "build", "completed", "failure", 11, "github-actions", null),
+                new ForgeCheckRun(44, "test", "in_progress", null, 11, "github-actions", null),
+            ],
+            [], [new ForgeCheckSuite(11, "in_progress", null, "github-actions", 2)]);
+
+        await h.ReleaseAsync(EDependencyStep.PollChecks);
+
+        h.Queue.Reruns.Should().BeEmpty();
+        (await h.RunAsync()).Bisect.Should().BeNull();
+
+        h.Queue.CheckStates[full] = Red(full);
+        await h.ReleaseAsync(EDependencyStep.PollChecks);
+
+        h.Queue.Reruns.Should().Equal([42L]);
+        (await h.RunAsync()).State.Should().Be(EDependencyRunState.Bisecting);
+    }
+
+    [Fact]
     public async Task N6_red_reruns_once_then_leaves_suspects_out_and_holds_the_culprit()
     {
         var h = await HarnessAsync(bisectBudget: 4);
