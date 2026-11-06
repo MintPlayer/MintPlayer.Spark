@@ -742,7 +742,8 @@ PRD §8.2.
           library GET.
         - **Known gap:** the apply pass re-reads and re-plans. A ruleset changed by someone else between the
           confirmation and the apply is planned afresh, not refused.
-        - **Not committed on purpose:** `file.component.html` `mb-2` → `m-2` (owner's request, unrelated to #554).
+        - `file.component.html` `mb-2` → `m-2` (owner's request, unrelated to #554): committed by the owner on this
+          branch (`29e9c1b90`).
       - The report covers each repository. An unapproved organization gets the approval link (S-D). A private
         repository on Free gets S-E's answer.
       - Which query it sits on (the Account's repositories, or the onboarding rows) is decided in f3.
