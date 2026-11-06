@@ -128,6 +128,30 @@ public class MergeQueueRulesetPlannerTests
         update.Definition.BypassActors.Should().Equal([App]);
     }
 
+    /// <summary>
+    /// Regression (production, 2026-11-06): on a repository with the development App exempt, production's plan swapped it
+    /// for its own App, which locked the development App out. Another environment's App stays; one exempt any other way, or
+    /// a person, is still removed from ruleset 1.
+    /// </summary>
+    [Fact]
+    public void Another_apps_exemption_on_ruleset_1_is_kept()
+    {
+        var otherApp = new ForgeRulesetActor(4_567_511, "Integration", "exempt");
+        var ruleset2 = new ForgeExistingRuleset(2, Ruleset2(0, ["build"]));
+
+        var added = PlanFor([new(1, Ruleset1(otherApp)), ruleset2], classic: null);
+        var update = added.Steps.Should().ContainSingle().Which.Should().BeOfType<UpdateRulesetStep>().Which;
+        update.Changes.Should().Equal([$"bypass added: App {AppId} (exempt)"]);
+        update.Definition.BypassActors.Should().Equal([App, otherApp]);
+
+        PlanFor([new(1, Ruleset1(App, otherApp)), ruleset2], classic: null).IsConfigured.Should().BeTrue();
+
+        var always = otherApp with { BypassMode = "always" };
+        var person = new ForgeRulesetActor(42, "User", "always");
+        PlanFor([new(1, Ruleset1(App, always, person)), ruleset2], classic: null).Steps.Should().ContainSingle()
+            .Which.Should().BeOfType<UpdateRulesetStep>().Which.Definition.BypassActors.Should().Equal([App]);
+    }
+
     [Fact]
     public void The_app_is_removed_from_ruleset_2_and_people_stay()
     {

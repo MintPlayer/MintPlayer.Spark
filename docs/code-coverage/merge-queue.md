@@ -535,7 +535,9 @@ One ruleset cannot do both, because the App would need a bypass that also skips 
 **two rulesets** (O9), measured live with an App on a public scratch repository (D16). **Ruleset 1** restricts updates
 of the queue's branches. Its bypass actors are the App (mode `exempt`) and repository admins (mode `pull_request`, O21
 B), so *Squash and merge* is blocked for everyone else, maintainers included, and admins can only merge through a pull
-request, never push. **Ruleset 2** holds the reviews and required checks. **The App must not be a bypass actor of
+request, never push. "Set up rulesets" keeps any other App already `exempt` on ruleset 1, so a repository with both
+the development and the production App installed works with both. Remove an uninstalled App from the list on GitHub
+yourself. **Ruleset 2** holds the reviews and required checks. **The App must not be a bypass actor of
 ruleset 2** (O22). People may be, as your policy wants: a repository role, a team or a user. The recommended setup
 below lists none, so admins too are held to the reviews and checks.
 

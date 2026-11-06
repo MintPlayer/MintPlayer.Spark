@@ -90,8 +90,9 @@ public sealed record MergeQueueRulesetPlan(IReadOnlyList<MergeQueueRulesetStep> 
 /// <para>
 /// <b>Ruleset 1</b> ("merge-queue: restrict updates") holds exactly <c>update</c> (no fetch-and-merge), <c>deletion</c> and
 /// <c>non_fast_forward</c>, with the App <c>exempt</c> (D16: the UI's "Always allow" stores <c>always</c>, which refused
-/// the merge on ng-bootstrap #451) and, when chosen, the Repository admin role for pull requests only. Anything else on it
-/// is removed: an App exempt from a review or check rule would be a bypass (O22).
+/// the merge on ng-bootstrap #451) and, when chosen, the Repository admin role for pull requests only. Other Apps already
+/// <c>exempt</c> on it are kept (another environment's CodeCoverage App). Anything else on it is removed: an App exempt
+/// from a review or check rule would be a bypass (O22).
 /// </para>
 /// <para>
 /// <b>Ruleset 2</b> ("merge-queue: reviews and checks") holds the <c>pull_request</c> and <c>required_status_checks</c>
@@ -204,6 +205,12 @@ public static class MergeQueueRulesetPlanner
         var admins = choices.AdminsMayMergeByPullRequest
             ?? existing?.Definition.BypassActors.Any(IsAdminByPullRequest) ?? false;
         List<ForgeRulesetActor> actors = [new(state.AppId, "Integration", "exempt")];
+        // Another App exempt here is kept: a repository can have more than one CodeCoverage App installed (development and
+        // production), and each environment's setup removed the other's, so the other App's pushes were refused (production
+        // planned "bypass removed: App 4567511 (exempt)" on PieterjanDeClippel/SparkTest, 2026-11-06). An App that is
+        // uninstalled stays exempt until it is removed on GitHub by hand (owner, 2026-11-06: option 2).
+        actors.AddRange((existing?.Definition.BypassActors ?? [])
+            .Where(a => a is { ActorType: "Integration", BypassMode: "exempt" } && a.ActorId != state.AppId));
         if (admins) actors.Add(new(RepositoryAdminRoleId, "RepositoryRole", "pull_request"));
 
         return new ForgeRulesetDefinition(RestrictUpdatesName, "branch", "active", include, [],
