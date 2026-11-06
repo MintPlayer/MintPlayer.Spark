@@ -94,6 +94,13 @@ public sealed class ReleaseLinePattern
 		return true;
 	}
 
+	/// <summary>
+	/// Every line as a forge ref glob, the placeholders as <c>*</c>: <c>refs/heads/release/*-*.x</c> for the default. A
+	/// GitHub ruleset's <c>*</c> never crosses a <c>/</c>, and neither placeholder can hold one.
+	/// </summary>
+	public string RefGlob
+		=> "refs/heads/" + Text.Replace(EcosystemPlaceholder, "*", StringComparison.Ordinal).Replace(MajorPlaceholder, "*", StringComparison.Ordinal);
+
 	/// <summary>The branch of <paramref name="line"/>.</summary>
 	public string Format(ReleaseLine line)
 		=> Text.Replace(EcosystemPlaceholder, line.Ecosystem, StringComparison.Ordinal).Replace(MajorPlaceholder, line.Major.ToString(CultureInfo.InvariantCulture), StringComparison.Ordinal);

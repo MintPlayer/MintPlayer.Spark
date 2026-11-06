@@ -55,11 +55,15 @@ public class SetUpFeaturesRulesetsTests : CoverageRavenTest
         public ISparkOneShotOAuth OAuth { get; } = Substitute.For<ISparkOneShotOAuth>();
         public IForgeMergeQueue Queue { get; } = Substitute.For<IForgeMergeQueue>();
         public IOnboardingService Onboarding { get; } = Substitute.For<IOnboardingService>();
+        /// <summary>The App's reads: coverage.yml on the default branch (none).</summary>
+        public IForgeIntegration Forge { get; } = Substitute.For<IForgeIntegration>();
         public SparkOneShotOAuthOptions Options { get; } = new();
         public Lease Lease { get; } = new();
 
         public Fixture()
         {
+            Forge.Provider.Returns(EForgeProvider.GitHub);
+            Forge.GetFileContentAsync(Arg.Any<Repository>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns((string?)null);
             GitHubRulesetsOAuth.Configure(Options.Clients[GitHubRulesetsOAuth.ClientName] = new SparkOneShotOAuthClient(), "client-id", "client-secret");
             OAuth.AuthorizeAsync(GitHubRulesetsOAuth.ClientName, Arg.Any<IReadOnlyCollection<string>>(), Arg.Any<CancellationToken>())
                 .Returns(new SparkOneShotOAuthOutcome(Lease, null));
@@ -83,7 +87,8 @@ public class SetUpFeaturesRulesetsTests : CoverageRavenTest
 
         public SetUpFeaturesAction Action(Raven.Client.Documents.Session.IAsyncDocumentSession session)
             => new(new Managed(), Onboarding,
-                new MergeQueueRulesetSetup([Queue], OAuth, Microsoft.Extensions.Options.Options.Create(Options), Manager, NullLogger<MergeQueueRulesetSetup>.Instance),
+                new MergeQueueRulesetSetup([Queue], OAuth, Microsoft.Extensions.Options.Options.Create(Options), Manager, NullLogger<MergeQueueRulesetSetup>.Instance,
+                    new SingleForgeResolver(Forge)),
                 session, Manager);
     }
 
@@ -173,6 +178,31 @@ public class SetUpFeaturesRulesetsTests : CoverageRavenTest
         await f.Onboarding.DidNotReceiveWithAnyArgs().PreviewAsync(default!, default!, default);
         f.Manager.Retry.Received(1).Action(Arg.Any<string>(), Arg.Any<string[]>(), Arg.Any<string?>(), Arg.Any<PersistentObject?>(), Arg.Any<string?>(), Arg.Any<bool>());
         f.Manager.Client.Received(1).Notify("Not available here.", NotificationKind.Warning);
+    }
+
+    /// <summary>
+    /// Release lines picked: coverage.yml has no lines yet (the onboarding pull request adds them), so ruleset 1 covers the
+    /// default pattern's lines (#554, PRD §8.2).
+    /// </summary>
+    [Fact]
+    public async Task With_release_lines_picked_ruleset_1_covers_the_lines_the_pull_request_adds()
+    {
+        var session = await SeedAsync();
+        var f = new Fixture();
+        MergeQueueRulesetPlan? applied = null;
+        f.Queue.ApplyRulesetPlanAsync(Arg.Any<Repository>(), "master", Arg.Do<MergeQueueRulesetPlan>(p => applied = p), Token, Arg.Any<CancellationToken>())
+            .Returns([new ForgeRulesetApplied("Created ruleset.", null)]);
+        var picked = Features(true);
+        picked[nameof(EOnboardingFeature.ReleaseLines)].Value = true;
+        f.Manager.Retry.Result.Returns(
+            new RetryResult { Option = "onboarding.plan", PersistentObject = picked },
+            new RetryResult { Option = "onboarding.plan", PersistentObject = Rulesets(0) },
+            new RetryResult { Option = "onboarding.open" });
+
+        await f.Action(session).ExecuteAsync(OnRepository());
+
+        applied!.Steps.OfType<CreateRulesetStep>().Single(s => s.Definition.Name == MergeQueueRulesetPlanner.RestrictUpdatesName)
+            .Definition.Include.Should().Equal(["~DEFAULT_BRANCH", "refs/heads/release/*-*.x"]);
     }
 
     [Fact]

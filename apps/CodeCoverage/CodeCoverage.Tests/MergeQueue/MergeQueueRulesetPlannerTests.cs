@@ -228,12 +228,26 @@ public class MergeQueueRulesetPlannerTests
     }
 
     [Fact]
-    public void Release_lines_are_targeted_when_chosen()
+    public void Release_lines_get_ruleset_1_only()
     {
         var plan = Plan(new ForgeRulesetState(AppId, [], null),
-            new MergeQueueRulesetChoices(0, ["build"], Branches: ["~DEFAULT_BRANCH", "refs/heads/release/*-*.x"]));
+            new MergeQueueRulesetChoices(0, ["build"], ReleaseLines: ["refs/heads/release/*-*.x"]));
 
-        plan.Steps.Should().AllSatisfy(step => step.Should().BeOfType<CreateRulesetStep>()
-            .Which.Definition.Include.Should().Equal(["~DEFAULT_BRANCH", "refs/heads/release/*-*.x"]));
+        var created = plan.Steps.OfType<CreateRulesetStep>().ToDictionary(s => s.Definition.Name, s => s.Definition.Include);
+        created[RestrictUpdatesName].Should().Equal(["~DEFAULT_BRANCH", "refs/heads/release/*-*.x"]);
+        created[ReviewsAndChecksName].Should().Equal(["~DEFAULT_BRANCH"], "ruleset 2's checks are the default head's");
+    }
+
+    [Fact]
+    public void A_ruleset_1_on_the_default_branch_only_is_extended_to_the_lines()
+    {
+        var created = PlanFor([], classic: null).Steps.OfType<CreateRulesetStep>().Select(s => s.Definition).ToList();
+        var stored = created.Select((d, i) => new ForgeExistingRuleset(i + 1, d)).ToList();
+
+        var plan = Plan(new ForgeRulesetState(AppId, stored, null),
+            new MergeQueueRulesetChoices(0, ["build"], ReleaseLines: ["refs/heads/release/*-*.x"]));
+
+        plan.Steps.Should().ContainSingle().Which.Should().BeOfType<UpdateRulesetStep>()
+            .Which.Definition.Include.Should().Equal(["~DEFAULT_BRANCH", "refs/heads/release/*-*.x"]);
     }
 }

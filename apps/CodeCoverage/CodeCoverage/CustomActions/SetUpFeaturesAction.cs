@@ -90,7 +90,8 @@ public partial class SetUpFeaturesAction : SparkCustomAction
                     var (read, refused) = await rulesets.ReadAsync([target], lease.AccessToken, cancellationToken);
                     if (refused.Count > 0)
                         byHand = refused[0].Message;
-                    else if ((rulesetPlans = await rulesets.ChooseAsync(read, cancellationToken)) is null)
+                    else if ((rulesetPlans = await rulesets.ChooseAsync(read, cancellationToken,
+                        releaseLinesComing: features.Contains(EOnboardingFeature.ReleaseLines))) is null)
                         return;
                 }
             }

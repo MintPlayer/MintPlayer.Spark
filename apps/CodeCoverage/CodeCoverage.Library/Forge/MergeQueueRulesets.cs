@@ -54,12 +54,16 @@ public sealed record ForgeRulesetApplied(string Description, string? Url);
 /// <param name="RequiredApprovals">Ruleset 2's approval count: 0 for a single maintainer (merge-queue.md §3).</param>
 /// <param name="RequiredChecks">Ruleset 2's required checks, as confirmed. Never the queue's own check.</param>
 /// <param name="AdminsMayMergeByPullRequest">The Repository admin role as ruleset 1's <c>pull_request</c> bypass (O21 B); null keeps what ruleset 1 has, off when it does not exist.</param>
-/// <param name="Branches">The branch patterns both rulesets target; empty means the default branch.</param>
+/// <param name="ReleaseLines">
+/// The release lines' ref globs (<c>refs/heads/release/*-*.x</c>), which ruleset 1 targets beside the default branch.
+/// Ruleset 2 stays on the default branch: its checks are the default head's (PRD M10e, §8.2 "the lines get the same
+/// restriction", owner 2026-11-06: "The release branches should probably be protected too").
+/// </param>
 public sealed record MergeQueueRulesetChoices(
     int RequiredApprovals,
     IReadOnlyList<string> RequiredChecks,
     bool? AdminsMayMergeByPullRequest = null,
-    IReadOnlyList<string>? Branches = null);
+    IReadOnlyList<string>? ReleaseLines = null);
 
 /// <summary>One change the plan makes, in the order it must be made.</summary>
 public abstract record MergeQueueRulesetStep;
@@ -119,7 +123,8 @@ public static class MergeQueueRulesetPlanner
         if (!state.RulesetsAvailable)
             return new MergeQueueRulesetPlan(steps,
                 ["This repository's plan has no rulesets (a private repository on GitHub Free). Make it public or upgrade the plan first."]);
-        var include = choices.Branches is { Count: > 0 } branches ? branches.ToList() : [DefaultBranch];
+        List<string> include = [DefaultBranch];
+        List<string> restricted = [DefaultBranch, .. (choices.ReleaseLines ?? []).Where(l => l != DefaultBranch).Distinct(StringComparer.Ordinal)];
 
         if (choices.RequiredApprovals is < 0 or > 10)
             blockers.Add($"The approval count must be between 0 and 10, not {choices.RequiredApprovals}.");
@@ -132,7 +137,7 @@ public static class MergeQueueRulesetPlanner
         var existing1 = Single(state, RestrictUpdatesName, blockers);
         var existing2 = Single(state, ReviewsAndChecksName, blockers);
 
-        var desired1 = RestrictUpdates(state, choices, include, existing1);
+        var desired1 = RestrictUpdates(state, choices, restricted, existing1);
         var desired2 = ReviewsAndChecks(state, choices.RequiredApprovals, checks, include, existing2);
         AddStep(steps, existing1, desired1);
         AddStep(steps, existing2, desired2);

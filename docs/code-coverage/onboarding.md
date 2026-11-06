@@ -62,7 +62,7 @@ The merge is handled once: `MergeHandledAt` holds the merge commit.
 - The merge queue's rulesets, only when the chooser could not set them up. On GitHub, with the merge queue picked, it
   asks for a GitHub popup and sets them up on the default branch right after the pull request opens
   ([merge-queue.md §3](merge-queue.md)). Without the rulesets OAuth app, or when the read is refused, the confirmation
-  says they are left to set by hand. The release lines' rulesets are always set by hand.
+  says they are left to set by hand. Ruleset 1 covers the release lines too, so their updates go through the queue.
 - Anything under "To do by hand" in the pull request: a file the bot could not edit safely.
 
 ## App permissions

@@ -52,12 +52,16 @@ public class SetUpRulesetsActionTests : CoverageRavenTest
         public IManager Manager { get; } = Substitute.For<IManager>();
         public ISparkOneShotOAuth OAuth { get; } = Substitute.For<ISparkOneShotOAuth>();
         public IForgeMergeQueue Queue { get; } = Substitute.For<IForgeMergeQueue>();
+        /// <summary>The App's reads: coverage.yml on the default branch (none unless a test says so).</summary>
+        public IForgeIntegration Forge { get; } = Substitute.For<IForgeIntegration>();
         public SparkOneShotOAuthOptions Options { get; } = new();
         public Lease Lease { get; } = new();
         public MergeQueueRulesetPlan? Applied { get; set; }
 
         public Fixture()
         {
+            Forge.Provider.Returns(EForgeProvider.GitHub);
+            Forge.GetFileContentAsync(Arg.Any<Repository>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns((string?)null);
             GitHubRulesetsOAuth.Configure(Options.Clients[GitHubRulesetsOAuth.ClientName] = new SparkOneShotOAuthClient(), "client-id", "client-secret");
             OAuth.AuthorizeAsync(GitHubRulesetsOAuth.ClientName, Arg.Any<IReadOnlyCollection<string>>(), Arg.Any<CancellationToken>())
                 .Returns(new SparkOneShotOAuthOutcome(Lease, null));
@@ -78,7 +82,8 @@ public class SetUpRulesetsActionTests : CoverageRavenTest
         }
 
         public MergeQueueRulesetSetup Setup()
-            => new([Queue], OAuth, Microsoft.Extensions.Options.Options.Create(Options), Manager, NullLogger<MergeQueueRulesetSetup>.Instance);
+            => new([Queue], OAuth, Microsoft.Extensions.Options.Options.Create(Options), Manager, NullLogger<MergeQueueRulesetSetup>.Instance,
+                new SingleForgeResolver(Forge));
 
         public SetUpRulesetsAction Action(IAsyncDocumentSessionHolder holder)
             => new(new ScriptedOnboarding(), Setup(), holder.Session, Manager);
@@ -106,6 +111,25 @@ public class SetUpRulesetsActionTests : CoverageRavenTest
         await h.SeedAsync(enabled: false);
         await h.StoreAsync(new Repository { GitHubId = 920001, Name = "tool", FullName = "other-org/tool", OwnerLogin = "other-org", DefaultBranch = "main" }, Foreign);
         return new IAsyncDocumentSessionHolder(h.Store.OpenAsyncSession());
+    }
+
+    /// <summary>The release lines of coverage.yml get ruleset 1 too, and only ruleset 1 (#554, PRD §8.2; owner 2026-11-06).</summary>
+    [Fact]
+    public async Task The_release_lines_in_coverage_yml_get_ruleset_1()
+    {
+        var holder = await SeedAsync();
+        var f = new Fixture();
+        f.Forge.GetFileContentAsync(Arg.Is<Repository>(r => r.Id == RepositoryId), "master", "coverage.yml", Arg.Any<CancellationToken>())
+            .Returns("versioning:\n  lines: {}\n");
+        f.Manager.Retry.Result.Returns(
+            new RetryResult { Option = "onboarding.plan", PersistentObject = Form(0, false) },
+            new RetryResult { Option = "rulesets.apply" });
+
+        await f.Action(holder).ExecuteAsync(Selected(RepositoryId));
+
+        var created = f.Applied!.Steps.OfType<CreateRulesetStep>().ToDictionary(s => s.Definition.Name, s => s.Definition.Include);
+        created[MergeQueueRulesetPlanner.RestrictUpdatesName].Should().Equal(["~DEFAULT_BRANCH", "refs/heads/release/*-*.x"]);
+        created[MergeQueueRulesetPlanner.ReviewsAndChecksName].Should().Equal(["~DEFAULT_BRANCH"]);
     }
 
     [Fact]

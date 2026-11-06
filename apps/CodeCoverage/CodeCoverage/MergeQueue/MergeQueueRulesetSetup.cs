@@ -1,5 +1,8 @@
 using CodeCoverage.Entities;
+using CodeCoverage.Feedback;
 using CodeCoverage.Forge;
+using CodeCoverage.PackageVersioning;
+using CodeCoverage.Versioning.Releases;
 using Microsoft.Extensions.Options;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
@@ -35,9 +38,12 @@ public interface IMergeQueueRulesetSetup
 
     /// <summary>
     /// The form (approvals, admin bypass), starting from what the repositories agree on, and each repository's plan with
-    /// the answer. <see langword="null"/> when the admin cancelled.
+    /// the answer. <see langword="null"/> when the admin cancelled. Ruleset 1 also covers a repository's release lines
+    /// (<see cref="RulesetRead.Lines"/>); <paramref name="releaseLinesComing"/> (the chooser with Release lines picked)
+    /// assumes the default pattern where coverage.yml has none yet, because the onboarding pull request adds it.
     /// </summary>
-    Task<IReadOnlyList<RulesetPlanned>?> ChooseAsync(IReadOnlyList<RulesetRead> read, CancellationToken cancellationToken);
+    Task<IReadOnlyList<RulesetPlanned>?> ChooseAsync(IReadOnlyList<RulesetRead> read, CancellationToken cancellationToken,
+        bool releaseLinesComing = false);
 
     /// <summary>Each repository's name and its plan, one "- " line per step or blocker. Plain text, for a notification.</summary>
     string Summary(IReadOnlyList<RulesetPlanned> planned);
@@ -60,7 +66,8 @@ public interface IMergeQueueRulesetSetup
 public sealed record RulesetTarget(Repository Repository, IForgeMergeQueue Queue, string Branch);
 
 /// <summary>A target as the token read it, and the choices its state suggests.</summary>
-public sealed record RulesetRead(RulesetTarget Target, ForgeRulesetState State, MergeQueueRulesetChoices Defaults);
+/// <param name="Lines">The release lines of the default branch's coverage.yml (<c>versioning.lines</c>); null without them.</param>
+public sealed record RulesetRead(RulesetTarget Target, ForgeRulesetState State, MergeQueueRulesetChoices Defaults, ReleaseLinePattern? Lines = null);
 
 /// <summary>A target and its plan with the admin's choices.</summary>
 public sealed record RulesetPlanned(RulesetTarget Target, MergeQueueRulesetPlan Plan);
@@ -79,6 +86,7 @@ public partial class MergeQueueRulesetSetup : IMergeQueueRulesetSetup
     [Inject] private readonly IOptions<SparkOneShotOAuthOptions> oauthOptions;
     [Inject] private readonly IManager manager;
     [Inject] private readonly ILogger<MergeQueueRulesetSetup> logger;
+    [Inject] private readonly IForgeIntegrationResolver integrations;
 
     public bool IsConfigured => GitHubRulesetsOAuth.IsConfigured(oauthOptions.Value);
 
@@ -121,7 +129,11 @@ public partial class MergeQueueRulesetSetup : IMergeQueueRulesetSetup
                 }
                 var head = await queue.GetBranchHeadAsync(repository, branch, cancellationToken);
                 var headChecks = head is null ? [] : await queue.GetCheckNamesOnCommitAsync(repository, head, cancellationToken);
-                read.Add(new RulesetRead(target, state, MergeQueueRulesetPlanner.Defaults(state, headChecks)));
+                // The lines ruleset 1 covers (PRD §8.2), from the App's read of coverage.yml: a file that does not parse
+                // gives no lines, as it does for the merge queue (MergeQueueYml).
+                var yml = await integrations.For(repository).GetFileContentAsync(repository, branch, CoverageYml.FileName, cancellationToken);
+                var lines = yml is null ? null : VersioningYml.Parse(yml) is { Config: { } config, Errors.Count: 0 } ? config.EffectiveLines : null;
+                read.Add(new RulesetRead(target, state, MergeQueueRulesetPlanner.Defaults(state, headChecks), lines));
             }
             catch (Exception ex) when (ex is ForgeAccessDeniedException or ForgeRequestException or HttpRequestException)
             {
@@ -131,7 +143,8 @@ public partial class MergeQueueRulesetSetup : IMergeQueueRulesetSetup
         return (read, failed);
     }
 
-    public async Task<IReadOnlyList<RulesetPlanned>?> ChooseAsync(IReadOnlyList<RulesetRead> read, CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<RulesetPlanned>?> ChooseAsync(IReadOnlyList<RulesetRead> read, CancellationToken cancellationToken,
+        bool releaseLinesComing = false)
     {
         var form = await manager.GetPersistentObjectAsync(Guid.Parse(PersistentObjectIds.Default.SetUpRulesets), cancellationToken: cancellationToken);
         var approvalsStart = read.Select(r => r.Defaults.RequiredApprovals).Distinct().Count() == 1 ? read[0].Defaults.RequiredApprovals : 1;
@@ -147,7 +160,12 @@ public partial class MergeQueueRulesetSetup : IMergeQueueRulesetSetup
         var approvals = Math.Max(0, chosen.PersistentObject?[nameof(MergeQueueRulesetChoices.RequiredApprovals)].GetValue<int?>() ?? approvalsStart);
         var admins = chosen.PersistentObject?[nameof(MergeQueueRulesetChoices.AdminsMayMergeByPullRequest)].GetValue<bool?>() ?? adminsStart;
         return [.. read.Select(r => new RulesetPlanned(r.Target,
-            MergeQueueRulesetPlanner.Plan(r.State, r.Defaults with { RequiredApprovals = approvals, AdminsMayMergeByPullRequest = admins })))];
+            MergeQueueRulesetPlanner.Plan(r.State, r.Defaults with
+            {
+                RequiredApprovals = approvals,
+                AdminsMayMergeByPullRequest = admins,
+                ReleaseLines = (r.Lines ?? (releaseLinesComing ? ReleaseLinePattern.Default : null)) is { } lines ? [lines.RefGlob] : null,
+            })))];
     }
 
     public string Summary(IReadOnlyList<RulesetPlanned> planned)

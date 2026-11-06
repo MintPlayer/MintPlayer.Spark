@@ -86,4 +86,11 @@ public class SupportedLinesTests
     [InlineData("{ecosystem}-v{major}", "")]
     public void The_branch_prefix_is_the_patterns_fixed_start(string pattern, string prefix)
         => SupportedLines.BranchPrefix(ReleaseLinePattern.Parse(pattern)).Should().Be(prefix);
+
+    /// <summary>Ruleset 1's target for the lines (#554, PRD §8.2).</summary>
+    [Theory]
+    [InlineData("release/{ecosystem}-{major}.x", "refs/heads/release/*-*.x")]
+    [InlineData("lines/{major}/{ecosystem}", "refs/heads/lines/*/*")]
+    public void The_ref_glob_matches_every_line(string pattern, string glob)
+        => ReleaseLinePattern.Parse(pattern).RefGlob.Should().Be(glob);
 }

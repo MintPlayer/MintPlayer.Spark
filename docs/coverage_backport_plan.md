@@ -19,12 +19,23 @@ spikes first.
     blocking.
   - Live test of the chooser with all six features (2026-11-06): onboarding PR SparkTest#5 and both rulesets. It found
     and fixed the ruleset idempotency bug, made confirmations HTML, and moved the forge-free refusals before the popup.
-- **Open for the owner: two parts of PRD M10e not built on this branch.** If they are wanted, they land in this same PR.
-  - Ruleset 1 on the release lines. PRD §8.2/M10e: "creates ruleset 1 on the default branch and the lines". f4's
-    planner covers `~DEFAULT_BRANCH` only, and merge-queue.md §3 says the lines are set by hand.
-  - e5's enqueue refusal (classic lock, review count) and the eviction hint. f2 left them out because the installation
-    token has no Administration, so it cannot read classic protection's details. A ruleset's approval count is
-    readable with Metadata.
+- **f7, ruleset 1 on the release lines (owner, 2026-11-06: "The release branches should probably be protected too,
+  yes").** PRD §8.2/M10e. Ruleset 1 targets `~DEFAULT_BRANCH` plus the lines' ref glob
+  (`ReleaseLinePattern.RefGlob`, `release/{ecosystem}-{major}.x` → `refs/heads/release/*-*.x`). Ruleset 2 stays on
+  the default branch, because its checks are the default head's. The pattern comes from coverage.yml's
+  `versioning.lines` on the default branch. When the chooser picks Release lines and coverage.yml has none yet, the
+  default pattern is used, since the onboarding pull request adds it. An existing ruleset 1 on the default branch only
+  gets an update step that adds the glob.
+  Tests:
+  - `MergeQueueRulesetPlannerTests`: `Release_lines_get_ruleset_1_only` and
+    `A_ruleset_1_on_the_default_branch_only_is_extended_to_the_lines`.
+  - `SupportedLinesTests.The_ref_glob_matches_every_line`.
+  - `SetUpRulesetsActionTests.The_release_lines_in_coverage_yml_get_ruleset_1`.
+  - `SetUpFeaturesRulesetsTests.With_release_lines_picked_ruleset_1_covers_the_lines_the_pull_request_adds`.
+  - 43/43 green across the six affected classes.
+- **e5's enqueue refusal (classic lock, review count) and the eviction hint are dropped for good** (owner, 2026-11-06:
+  "The github app won't have administration permissions on the repos, ever"). A classic lock cannot be read without
+  Administration. A ruleset's approval count is readable with Metadata, if it is ever wanted.
 - **Next:** CI on the pull request, then merge and deploy. After the deploy: the production OAuth app live, with
   the VPS `.env` values mapped by this branch's compose file.
 
@@ -671,7 +682,8 @@ PRD §8.2.
         OAuth app.
       - **e5's enqueue refusals are not brought back here.** Enqueue runs on the installation token, which now has no
         Administration and so cannot read classic protection's details. The ruleset half (Metadata) would be
-        readable. Master's `ChecksOnly` behaviour stays. Reopening this is the owner's call.
+        readable. Master's `ChecksOnly` behaviour stays. The owner closed this on 2026-11-06: the App never gets
+        Administration.
       - **Tests:** `GitHubForgeMergeQueueRulesetTests` (6) checks four things:
         - every repository request carries the given token, and no installation client is created;
         - apply orders the creates before the delete, and calls no `/installation/token`;
@@ -766,7 +778,8 @@ PRD §8.2.
         - **When the rulesets can't be set up** (not GitHub, no default branch, no OAuth app, a refused read), the
           confirmation says "left to set by hand" with the reason, and the pull request still opens.
         - **Cancelling** the popup or the rulesets form ends the chooser.
-        - **Release lines get no ruleset step:** the planner covers the default branch only.
+        - ~~**Release lines get no ruleset step:** the planner covers the default branch only.~~ Superseded by f7
+          (see "Resume here"): ruleset 1 covers the lines too.
         - **Tests:** `SetUpFeaturesRulesetsTests` (4).
     - **f5, docs and guides:**
       - merge-queue.md §2.1/§3/§5: no Administration, the OAuth app, the org approval.

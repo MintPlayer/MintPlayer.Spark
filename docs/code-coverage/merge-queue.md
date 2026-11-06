@@ -568,7 +568,10 @@ Requirements and limits:
 - An organization that restricts OAuth app access must approve the app first. GitHub then refuses the read, and
   the warning carries GitHub's message.
 - The chooser applies the rulesets before its pull request merges.
-- Release lines still get their rulesets by hand.
+- Ruleset 1 also covers the release lines, through their ref glob (`refs/heads/release/*-*.x` for the default
+  `versioning.lines` pattern). Ruleset 2 stays on the default branch only. The lines are read from coverage.yml; when the
+  chooser picks Release lines and coverage.yml has none yet, the default pattern is used. Set by hand, add the glob to
+  ruleset 1's target next to the default branch.
 - Without the OAuth app configured (hosting.md §4, `GitHub:{Env}:RulesetsOAuth:*`), set up the rulesets as below.
 
 **Ruleset 1** (`ruleset-1.json`; `<APP_ID>` is the App's numeric id):
