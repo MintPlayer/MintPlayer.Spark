@@ -671,8 +671,20 @@ PRD §8.2.
           - `MergeQueueRulesetPlanner.Defaults`/`Describe` (from e3).
           - `CodeCoverage.Tests/CustomActions/SetUpRulesetsActionTests.cs` (6 tests).
         - **RESUME HERE: f6 and f0 (both the owner's).** f4 and f5 are built, see below.
-          - f6: the owner registers the two OAuth apps and sets their secrets. Production uses `.env`
-            `GITHUB_RULESETS_OAUTH_CLIENT_ID`/`_SECRET`; locally, user-secrets `GitHub:Development:RulesetsOAuth:*`.
+          - f6: **apps registered (2026-11-06, owner's request, via Playwright)** under the MintPlayer org:
+            - "CoverageRulesets Development", app 3998060, client id `Ov23liwK8RNgonrIgR0N`, callback
+              `https://localhost:5200/spark/auth/oauth-callback`.
+            - "CoverageRulesets Production", app 3998061, client id `Ov23liMQyURxiLowEn1R`, callback
+              `https://coverage.mintplayer.com/spark/auth/oauth-callback`.
+            - Both have device flow off and **"Expire user access tokens" off**. That GitHub option (on by default)
+              would also issue a long-lived refresh token, which the lease never uses or revokes.
+            - The production client id is in the VPS `.env` (backup `.env.bak-20261106-rulesets`), and the
+              development one is in user-secrets.
+            - **The secrets are the owner's** (owner, 2026-11-06: "You generate them"). **Both are set** (owner,
+              2026-11-06): the user-secret, and the VPS `.env`. The `.env` was checked by count only: one non-empty
+              secret line, 0 CRLF lines.
+            - The VPS values take effect only after this branch is deployed, because the live compose file doesn't
+              map them yet.
           - f0: the live spikes, for which the owner gives the go-ahead.
           - After that come the final test run (including the ng-spark retry-modal spec and the two guide specs), the
             push and the PR, all when asked.
