@@ -124,7 +124,7 @@ public class SetUpFeaturesRulesetsTests : CoverageRavenTest
         await f.Action(session).ExecuteAsync(OnRepository());
 
         f.Manager.Retry.Received(1).Action("onboarding.confirmTitle", Arg.Any<string[]>(), "onboarding.open", null,
-            Arg.Is<string>(m => m.Contains("onboarding.summary.rulesets\nacme/widget\n- Create ruleset")), true);
+            Arg.Is<string>(m => m.Contains("onboarding.summary.rulesets<ul><li>acme/widget<ul><li>Create ruleset")), true);
         Received.InOrder(() =>
         {
             f.Onboarding.OnboardAsync(Arg.Any<Repository>(), Arg.Any<IReadOnlySet<EOnboardingFeature>>(), Arg.Any<CancellationToken>());

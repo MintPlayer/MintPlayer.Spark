@@ -109,7 +109,7 @@ public partial class SetUpRulesetsAction : SparkCustomAction
             return;
         }
         var apply = manager.GetTranslatedMessage("rulesets.apply");
-        manager.Retry.Action(manager.GetTranslatedMessage("rulesets.confirmTitle"), [apply], apply, message: summary, cancellable: true);
+        manager.Retry.Action(manager.GetTranslatedMessage("rulesets.confirmTitle"), [apply], apply, message: rulesets.SummaryHtml(planned), cancellable: true);
         if (manager.Retry.Result!.Option == RetryResult.CancelOption)
             return;
 

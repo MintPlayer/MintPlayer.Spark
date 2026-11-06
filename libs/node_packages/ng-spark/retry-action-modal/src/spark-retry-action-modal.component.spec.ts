@@ -92,6 +92,26 @@ describe('SparkRetryActionModalComponent', () => {
   });
 });
 
+// The message is HTML: the server's own <br>/<ul>/<li> render as markup, and the sanitizer drops a script.
+describe('SparkRetryActionModalComponent message', () => {
+  it('renders the message as sanitized HTML', async () => {
+    const { service, fixture } = setupWithTypes([]);
+    service.show({
+      ...samplePayload,
+      message: 'Features:<ul><li>Merge queue</li><li>Size &lt;labels&gt;</li></ul>Rulesets<br>now<script>alert(1)</script><img src=x onerror="alert(1)">',
+    });
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const message = document.querySelector('.spark-retry-message')!;
+    expect(Array.from(message.querySelectorAll('li')).map(li => li.textContent)).toEqual(['Merge queue', 'Size <labels>']);
+    expect(message.querySelectorAll('br').length).toBe(1);
+    expect(message.querySelector('script')).toBeNull();
+    expect(message.querySelector('img')?.getAttribute('onerror') ?? null).toBeNull();
+  });
+});
+
 // The prompt's Cancel is the client's: labelled in the user's language, answering the identifier
 // 'Cancel' whatever it reads. The server asks for it with `cancellable`, never with an option.
 describe('SparkRetryActionModalComponent Cancel', () => {

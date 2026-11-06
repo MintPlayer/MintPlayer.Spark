@@ -33,8 +33,10 @@ import {
     <bs-modal [open]="isOpen()" (openChange)="!$event && onOption(cancel)">
       <ng-container *bsModalHeader>{{ retryActionService.payload()?.title }}</ng-container>
       @if (isOpen()) {
+        <!-- The message is HTML (IRetryAccessor.Action): the server encodes every value it puts in and writes
+             only its own markup (<br>, <ul>, <li>, …). Angular's [innerHTML] sanitizer is the second layer. -->
         @if (retryActionService.payload()?.message; as message) {
-          <p>{{ message }}</p>
+          <div class="spark-retry-message" [innerHTML]="message"></div>
         }
         @if (entityType(); as et) {
           <spark-po-form

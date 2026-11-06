@@ -39,8 +39,14 @@ public interface IMergeQueueRulesetSetup
     /// </summary>
     Task<IReadOnlyList<RulesetPlanned>?> ChooseAsync(IReadOnlyList<RulesetRead> read, CancellationToken cancellationToken);
 
-    /// <summary>Each repository's name and its plan, one "- " line per step or blocker.</summary>
+    /// <summary>Each repository's name and its plan, one "- " line per step or blocker. Plain text, for a notification.</summary>
     string Summary(IReadOnlyList<RulesetPlanned> planned);
+
+    /// <summary>
+    /// The same as <see cref="Summary"/> as HTML for a confirmation (<see cref="IRetryAccessor.Action"/>'s message): a list of
+    /// the repositories, each with a list of its steps, every value encoded.
+    /// </summary>
+    string SummaryHtml(IReadOnlyList<RulesetPlanned> planned);
 
     /// <summary>Applies every plan that can apply, one repository at a time; a blocked or refused one is a failure.</summary>
     Task<(IReadOnlyList<RulesetRepositoryResult> Applied, IReadOnlyList<RulesetRepositoryResult> Failed)> ApplyAsync(
@@ -147,6 +153,10 @@ public partial class MergeQueueRulesetSetup : IMergeQueueRulesetSetup
     public string Summary(IReadOnlyList<RulesetPlanned> planned)
         => string.Join("\n\n", planned.Select(p =>
             p.Target.Repository.FullName + "\n" + string.Join("\n", MergeQueueRulesetPlanner.Describe(p.Plan).Select(l => "- " + l))));
+
+    public string SummaryHtml(IReadOnlyList<RulesetPlanned> planned)
+        => HtmlMessage.List(planned.Select(p =>
+            HtmlMessage.Encode(p.Target.Repository.FullName) + HtmlMessage.List(MergeQueueRulesetPlanner.Describe(p.Plan).Select(HtmlMessage.Encode))));
 
     public async Task<(IReadOnlyList<RulesetRepositoryResult> Applied, IReadOnlyList<RulesetRepositoryResult> Failed)> ApplyAsync(
         IReadOnlyList<RulesetPlanned> planned, string accessToken, CancellationToken cancellationToken)

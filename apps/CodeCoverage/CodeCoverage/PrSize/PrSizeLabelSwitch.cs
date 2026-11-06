@@ -55,7 +55,7 @@ public static class PrSizeLabelSwitch
         var was = before is not null && Repository.ResolvePrSizeLabels(before, account).Enabled;
         var now = Repository.ResolvePrSizeLabels(after, account).Enabled;
         if (!was || now || after.PrSizeLabelState.Count == 0) return null;
-        return Ask(manager, $"Also remove the size labels from {after.FullName}? {Consequence}") ? Remove : null;
+        return Ask(manager, $"Also remove the size labels from {HtmlMessage.Encode(after.FullName)}? {Consequence}") ? Remove : null;
     }
 
     /// <summary>After an account's commit: one message per repository with labels, paced by the lane (D4.2).</summary>

@@ -122,7 +122,7 @@ public partial class CarActions : DefaultPersistentObjectActions<Car>,
             manager.Retry.Action(
                 title: "Report vehicle as stolen",
                 options: ["Confirm"],
-                message: $"Are you sure you want to mark {entity.LicensePlate} as stolen? This will lock the vehicle record."
+                message: $"Are you sure you want to mark {System.Net.WebUtility.HtmlEncode(entity.LicensePlate)} as stolen? This will lock the vehicle record."
             );
 
             // Cancel saves nothing (#482): a silent no-op, answered with the car as stored.
@@ -161,7 +161,7 @@ public partial class CarActions : DefaultPersistentObjectActions<Car>,
             options: ["Delete"],
             cancellable: true,
             persistentObject: popup,
-            message: $"Type the license plate to confirm deletion of {entity.LicensePlate}."
+            message: $"Type the license plate to confirm deletion of {System.Net.WebUtility.HtmlEncode(entity.LicensePlate)}."
         );
 
         var result = manager.Retry.Result!;

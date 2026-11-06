@@ -3647,14 +3647,14 @@
     },
     "summary": {
       "features": {
-        "en": "Features: {0}",
-        "fr": "Fonctionnalités : {0}",
-        "nl": "Functies: {0}"
+        "en": "Features:",
+        "fr": "Fonctionnalités :",
+        "nl": "Functies:"
       },
       "files": {
-        "en": "Files: {0}",
-        "fr": "Fichiers : {0}",
-        "nl": "Bestanden: {0}"
+        "en": "Files:",
+        "fr": "Fichiers :",
+        "nl": "Bestanden:"
       },
       "noFiles": {
         "en": "No file changes.",
@@ -3662,14 +3662,14 @@
         "nl": "Geen bestandswijzigingen."
       },
       "onMerge": {
-        "en": "Switched on when it merges: {0}",
-        "fr": "Activé à la fusion : {0}",
-        "nl": "Aangezet bij het mergen: {0}"
+        "en": "Switched on when it merges:",
+        "fr": "Activé à la fusion :",
+        "nl": "Aangezet bij het mergen:"
       },
       "renames": {
-        "en": "Branches renamed when it merges: {0}",
-        "fr": "Branches renommées à la fusion : {0}",
-        "nl": "Branches hernoemd bij het mergen: {0}"
+        "en": "Branches renamed when it merges:",
+        "fr": "Branches renommées à la fusion :",
+        "nl": "Branches hernoemd bij het mergen:"
       },
       "rulesets": {
         "en": "Rulesets, set up now with your GitHub authorization (not at the merge):",

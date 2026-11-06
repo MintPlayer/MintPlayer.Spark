@@ -24,6 +24,12 @@ public interface IRetryAccessor
     /// The <paramref name="options"/> are sent to the frontend exactly as specified, and shown as
     /// their own labels, so pass them translated.
     /// </summary>
+    /// <param name="message">
+    /// Shown above the form as <b>HTML</b>, so it can break lines (<c>&lt;br&gt;</c>) and list items
+    /// (<c>&lt;ul&gt;&lt;li&gt;</c>). Encode every value you put in it with
+    /// <see cref="System.Net.WebUtility.HtmlEncode(string)"/>; only your own markup may stay unencoded. The client
+    /// sanitizes it as well (Angular's <c>[innerHTML]</c>), which strips scripts but not a value's stray <c>&lt;</c>.
+    /// </param>
     /// <param name="cancellable">
     /// Offers a Cancel as well: the client adds its own button, labelled in the user's language
     /// (<c>common.cancel</c>), and answers it, or the modal being closed, with

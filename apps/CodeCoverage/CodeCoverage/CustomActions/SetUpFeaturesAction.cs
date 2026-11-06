@@ -135,25 +135,28 @@ public partial class SetUpFeaturesAction : SparkCustomAction
             ? NotificationKind.Success : NotificationKind.Warning);
     }
 
-    /// <summary>The plan in a few lines: the files, the renames, the settings switched on at the merge, and what is left by hand.</summary>
+    /// <summary>
+    /// The plan as the confirmation's HTML (<see cref="HtmlMessage"/>): a list each for the features, the files, the renames
+    /// and the settings switched on at the merge, the notes as lines, then the rulesets or why they are left by hand.
+    /// </summary>
     internal string Summary(OnboardingPlan plan, IReadOnlyList<RulesetPlanned>? rulesetPlans = null, string? rulesetsByHand = null)
     {
-        var lines = new List<string>
+        var html = new List<string>
         {
-            manager.GetTranslatedMessage("onboarding.summary.features", string.Join(", ", plan.Features)),
+            HtmlMessage.Section(manager.GetTranslatedMessage("onboarding.summary.features"), plan.Features.Select(f => f.ToString())),
             plan.Files.Count == 0
-                ? manager.GetTranslatedMessage("onboarding.summary.noFiles")
-                : manager.GetTranslatedMessage("onboarding.summary.files", string.Join(", ", plan.Files.Select(f => f.Delete ? $"-{f.Path}" : f.Path))),
+                ? HtmlMessage.Line(manager.GetTranslatedMessage("onboarding.summary.noFiles"))
+                : HtmlMessage.Section(manager.GetTranslatedMessage("onboarding.summary.files"), plan.Files.Select(f => f.Delete ? $"-{f.Path}" : f.Path)),
         };
         if (plan.Renames.Renames.Count > 0)
-            lines.Add(manager.GetTranslatedMessage("onboarding.summary.renames", string.Join(", ", plan.Renames.Renames.Select(r => $"{r.From} → {r.To}"))));
+            html.Add(HtmlMessage.Section(manager.GetTranslatedMessage("onboarding.summary.renames"), plan.Renames.Renames.Select(r => $"{r.From} → {r.To}")));
         if (plan.OnMerge.Count > 0)
-            lines.Add(manager.GetTranslatedMessage("onboarding.summary.onMerge", string.Join(", ", plan.OnMerge)));
-        lines.AddRange(plan.Notes);
+            html.Add(HtmlMessage.Section(manager.GetTranslatedMessage("onboarding.summary.onMerge"), plan.OnMerge.Select(o => o.ToString())));
+        html.AddRange(plan.Notes.Select(HtmlMessage.Line));
         if (rulesetPlans is not null)
-            lines.Add(manager.GetTranslatedMessage("onboarding.summary.rulesets") + "\n" + rulesets.Summary(rulesetPlans));
+            html.Add(HtmlMessage.Encode(manager.GetTranslatedMessage("onboarding.summary.rulesets")) + rulesets.SummaryHtml(rulesetPlans));
         if (rulesetsByHand is not null)
-            lines.Add(manager.GetTranslatedMessage("onboarding.summary.rulesetsByHand", rulesetsByHand));
-        return string.Join("\n", lines);
+            html.Add(HtmlMessage.Line(manager.GetTranslatedMessage("onboarding.summary.rulesetsByHand", rulesetsByHand)));
+        return string.Concat(html);
     }
 }

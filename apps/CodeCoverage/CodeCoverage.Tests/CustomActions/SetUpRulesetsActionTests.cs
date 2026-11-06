@@ -126,7 +126,7 @@ public class SetUpRulesetsActionTests : CoverageRavenTest
         f.Manager.Retry.Received(1).Action("rulesets.chooseTitle", Arg.Any<string[]>(), "onboarding.plan", Arg.Any<PersistentObject>(),
             "rulesets.chooseMessage", true);
         f.Manager.Retry.Received(1).Action("rulesets.confirmTitle", Arg.Any<string[]>(), "rulesets.apply", null,
-            Arg.Is<string>(m => m.StartsWith("acme/widget\n- Create ruleset")), true);
+            Arg.Is<string>(m => m.StartsWith("<ul><li>acme/widget<ul><li>Create ruleset")), true);
 
         f.Applied.Should().NotBeNull();
         var ruleset2 = f.Applied!.Steps.OfType<CreateRulesetStep>().Single(s => s.Definition.Name == MergeQueueRulesetPlanner.ReviewsAndChecksName);

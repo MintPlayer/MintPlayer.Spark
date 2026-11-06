@@ -567,6 +567,19 @@ PRD §8.2.
         `GitWriterHost` gained a `CreateBuilder(WebApplicationOptions)` overload, and the writer project sets
         `StaticWebAssetsEnabled=false`, because without it the app's Debug build failed on the referenced project's
         dotnet-watch module. Test: `DevelopmentGitWriterTests` (7).
+      - **Ruleset idempotency bug, fixed.** The all-features re-run planned "rule changed: update" on the ruleset it had
+        created minutes earlier. Cause: the plan sent `update_allows_fetch_and_merge: false`, GitHub's default, and
+        GitHub stores and returns the rule as `{"type":"update"}` (read live from SparkTest, 2026-11-06), so the
+        parameter comparison never matched. The plan now sends `update` with no parameters; a ruleset with the flag
+        `true` still differs. Red→green: `MergeQueueRulesetPlannerTests.A_ruleset_created_by_the_plan_reads_back_as_configured`.
+        Live after the fix: the confirmation said "The rulesets are set up already."
+      - **Confirmations are HTML (owner, 2026-11-06: "&lt;br&gt; and &lt;li&gt; tags", values encoded
+        "htmlentities-like").** `IRetryAccessor.Action`'s `message` is HTML. ng-spark's retry modal renders it with
+        `[innerHTML]`, which Angular sanitizes. The server encodes every value with `WebUtility.HtmlEncode`
+        (`CodeCoverage/HtmlMessage.cs`; PrSizeLabelSwitch and Fleet's CarActions encode their interpolated values).
+        The onboarding and rulesets confirmations are now headings over `<ul><li>` lists, with the rulesets nested per
+        repository. The rulesets toast keeps the plain-text `Summary`. Live: PR #5 was updated with all six features
+        (dependency-apply.yml, dependency-lookup.yml, coverage.yml); the in-process writer answered 200 in 4.9 s.
       - **Open UX defect:** a refusal that needs no GitHub data (no writer, disconnected repository) is only reported
         after the popup and the rulesets form. Proposed fix: check those before the popup. Not built; awaiting the
         owner.
