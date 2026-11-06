@@ -260,6 +260,29 @@ PRD §8.2.
     - CoverageProduction and CoverageDevelopment hold no Administration today (installation page, 2026-11-06), so
       each installation must accept the new permission; until then the step refuses with the acceptance link (D95/O17).
     - e4 (organization rulesets) needs the organization Administration permission as well.
+
+    No narrower permission exists: every permission heading on that page was checked, and there is no "Rulesets" or
+    "Branch protection" heading. Reading needs nothing new: `GET …/rulesets`, `GET …/rulesets/{id}` and
+    `GET …/rules/branches/{branch}` are under Metadata: read.
+
+    **#554 design (owner, 2026-11-06), replacing the user-token design above (e2's sign-in popup is dropped):**
+    1. CoverageProduction and CoverageDevelopment request repository Administration: write. Each installation accepts
+       it; until then the step refuses with the acceptance link (D95/O17).
+    2. **Ordinary installation tokens exclude Administration.** `GitHubInstallationService` (Spark.Webhooks.GitHub,
+       `CreateInstallationToken(installationId)` at the time of writing) passes no `permissions`, so GitHub grants the
+       token everything the installation accepted. It must request them explicitly: the installation's own
+       `permissions` (`GET /app/installations/{id}`) minus `administration`, not a hard-coded list that would drop a
+       permission added later. Through Octokit if it has a permissions overload, otherwise a raw
+       `POST /app/installations/{id}/access_tokens`.
+    3. **The ruleset step mints its own token:** `permissions: { administration: write }`, `repository_ids: [that
+       repository]`. It is never cached, lives only in that one method, and is revoked in a `finally`
+       (`DELETE /installation/token`). Installation tokens always last one hour (the lifetime cannot be set, so the
+       "3 minutes" asked for is met by revoking), so a failed revocation leaves a token that reaches one repository
+       and expires within the hour.
+    4. Reading and verifying rulesets uses the ordinary token (Metadata: read).
+    5. A test pins it: the ordinary token request never carries `administration` (WireMock on `access_tokens`), and
+       only the ruleset method asks for it.
+    Remaining exposure: the App's private key can mint Administration tokens for every installation.
   - **M10f:** the guide page and the docs. **Built (2026-11-06):** the in-app guide `/onboarding/setup` ("Getting
     started", first under Guides at order 0, so no other unit moved; `onboarding-setup.component.spec.ts`), the
     reference `docs/code-coverage/onboarding.md` (indexed in its README), and versioning.md and dependency-updates.md
