@@ -3738,6 +3738,11 @@
       "fr": "Miroirs",
       "nl": "Mirrors"
     },
+    "onboardingSetup": {
+      "en": "Getting started",
+      "fr": "Premiers pas",
+      "nl": "Aan de slag"
+    },
     "platformLifecycle": {
       "en": "Platform lifecycle",
       "fr": "Cycle de vie des plateformes",

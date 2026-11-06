@@ -1097,6 +1097,18 @@ cascade: 66 of 72 conflicted only because #461 was missing). Script: a throwaway
 - **M10, rulesets are a step of the chooser** (owner, 2026-11-06), not a separate action. With the merge queue or
   release lines picked, the ruleset plan is shown beside the pull request plan and applied with the user's token
   (§8.2).
+- **M10e builds all of #554 and closes it** (owner, 2026-11-06, asked "how much of #554", answered "All of #554"
+  over "what the queue needs" and "both rulesets, no extras"). The chooser's ruleset step:
+  - creates ruleset 1 on the default branch and the lines, repairing `always` to `exempt`;
+  - creates ruleset 2, with the checks the default head reports confirmed in the plan and the approval count asked;
+  - migrates classic protection, ruleset 1 first, so the branch is never open.
+
+  #554's other parts are part of it too: organization rulesets on the Account page, the enqueue refusal for a locked
+  or review-blocked branch, and the eviction hint.
+  **In its own pull request, not #571's** (owner, 2026-11-06: "perhaps I'll allow you to split the work", then picked
+  "#554 as its own PR" over keeping it in #574 or splitting it in three). PR #574 ships the chooser without the
+  ruleset step. #554 follows on a branch from master once #574 has merged, so S7 is checked live sooner. Until it
+  ships, rulesets are set by hand (merge-queue.md §3).
 - **M10, S7 is built on GitHub's documented rules and checked live after the deploy** (owner, 2026-11-06).
   `POST /repos/{o}/{r}/branches/{b}/rename`: "The authenticated user must have push access to the branch. If the
   branch is the default branch, the authenticated user must also have admin or owner permissions", and only the

@@ -1,0 +1,125 @@
+<div class="ob-setup py-3" data-onboarding-setup>
+  <h1 class="h3 mb-3"><i class="bi bi-magic"></i> Getting started</h1>
+  <p class="lead">
+    Pick the features you want for a repository, and CodeCoverage opens one pull request that sets them all up.
+    Review it, merge it, and the app switches the rest on.
+  </p>
+  <p>
+    The pull request is planned from your default branch as it is. The bot keeps it up to date while it is open, so it
+    never goes stale or conflicts with what merges in the meantime.
+  </p>
+
+  <nav aria-label="Steps" class="mb-4">
+    <ol class="mb-0" data-testid="ob-setup-steps">
+      @for (step of steps; track step.id) {
+        <li>
+          <a [routerLink]="[]" [fragment]="step.id" (click)="jumpTo(step.id)">{{ step.title }}</a>
+        </li>
+      }
+    </ol>
+  </nav>
+
+  @for (step of steps; track step.id; let n = $index) {
+    <bs-card class="mb-4" [attr.id]="step.id" [attr.data-step]="step.id">
+      <bs-card-header>
+        <h2 class="h5 mb-0"><bs-badge class="me-2" [color]="'primary'">{{ n + 1 }}</bs-badge>{{ step.title }}</h2>
+      </bs-card-header>
+      <bs-card-body>
+        @switch (step.id) {
+          @case ('choose') {
+            <p>
+              Open the repository in CodeCoverage and press <strong>Set up features</strong> in its header. Tick the
+              features you want; the ones you picked before are already ticked.
+            </p>
+            <p data-testid="ob-setup-who">
+              <strong>Who may run it:</strong> an owner of the organization, or an admin of the repository on GitHub.
+              Anyone else sees the action refused with the reason.
+            </p>
+            <p class="mb-0">
+              Next you see the plan: the files the pull request will change, what is switched on when it merges, and the
+              branches that will be renamed. Nothing is written until you confirm it.
+            </p>
+          }
+          @case ('features') {
+            <bs-table [responsive]="true" data-testid="ob-setup-features">
+              <thead>
+                <tr><th>Feature</th><th>What it does</th><th>In the pull request</th><th>When it merges</th></tr>
+              </thead>
+              <tbody>
+                @for (feature of features; track feature.name) {
+                  <tr>
+                    <td class="text-nowrap">
+                      @if (feature.guide) {
+                        <a [routerLink]="feature.guide">{{ feature.name }}</a>
+                      } @else {
+                        {{ feature.name }}
+                      }
+                    </td>
+                    <td>{{ feature.meaning }}</td>
+                    <td>{{ feature.pullRequest }}</td>
+                    <td>{{ feature.onMerge }}</td>
+                  </tr>
+                }
+              </tbody>
+            </bs-table>
+            <p class="mb-0" data-testid="ob-setup-settings-only">
+              A choice that changes no file, such as size labels alone, needs no pull request: it is switched on right
+              away.
+            </p>
+          }
+          @case ('pull-request') {
+            <p>
+              The pull request comes from <code>mintplayer/onboarding</code> and is titled
+              <em>Set up MintPlayer CodeCoverage</em>. Its description has a section per feature, a list of what to do by
+              hand, and what happens when it merges.
+            </p>
+            <p data-testid="ob-setup-coverage-yml">
+              <strong>coverage.yml sections are added in alphabetical order</strong>, each on its own, so two bot pull
+              requests that each add one do not touch the same lines.
+            </p>
+            <bs-alert [color]="'warning'" class="d-block mb-0" data-testid="ob-setup-rebuild">
+              Don't push to <code>mintplayer/onboarding</code>. Whenever the default branch moves, the bot plans the pull
+              request again on the new head and force-pushes it, which replaces your commits. To change what it sets up,
+              run <strong>Set up features</strong> again.
+            </bs-alert>
+          }
+          @case ('on-merge') {
+            <p>When you merge the pull request, the app:</p>
+            <ol data-testid="ob-setup-on-merge">
+              <li>pushes one <strong>seed tag</strong> per package at the merge commit, when package versioning was picked;</li>
+              <li>switches on <strong>dependency updates</strong> and <strong>PR size labels</strong>, when they were picked;</li>
+              <li><strong>renames the old line branches</strong> to <code>release/&lt;ecosystem&gt;-&lt;major&gt;.x</code>. GitHub moves their open pull requests along and redirects the old names;</li>
+              <li>opens a pull request into each supported release line that lacks the default branch's regenerate workflow, from <code>mintplayer/onboarding-&lt;line&gt;</code>.</li>
+            </ol>
+            <p class="mb-0" data-testid="ob-setup-line-workflow">
+              That last pull request copies the workflow as it is on the default branch. A backport into the line runs it
+              on the line itself, so lockfiles and generated files are rebuilt with the line's own tools. Check it builds
+              with the line's SDKs before you merge it.
+            </p>
+          }
+          @case ('again') {
+            <p class="mb-0" data-testid="ob-setup-again">
+              Every step checks before it edits, so <strong>Set up features</strong> can be run again at any time. It
+              opens a pull request with only what is still missing, or answers that there is nothing to change. Running it
+              while the pull request is open updates that pull request with the new choice.
+            </p>
+          }
+          @case ('by-hand') {
+            <ul class="mb-0" data-testid="ob-setup-by-hand">
+              <li>
+                <strong>The coverage upload step</strong> in your CI workflow: the
+                <a routerLink="/coverage/setup">coverage guide</a> has one per stack.
+              </li>
+              <li>
+                <strong>The repository's rulesets</strong> for the merge queue: the App exempt from the one that restricts
+                updates, and the reviews and checks in a second one. See the
+                <a routerLink="/merge-queue/setup">merge queue guide</a>.
+              </li>
+              <li>Anything the pull request lists under <em>To do by hand</em>: a file the bot could not edit safely.</li>
+            </ul>
+          }
+        }
+      </bs-card-body>
+    </bs-card>
+  }
+</div>

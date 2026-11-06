@@ -54,6 +54,9 @@ A slot whose rebuilt tree equals the pushed one pushes nothing and starts no CI.
    pull requests add the merge queue (*with* or *without*, defaulting to the account's setting). A notification then says
    what was enabled (and whether with the merge queue), another one per repository why it was not, and the list reloads
    with each one's new state. Nothing is switched on until you do this: closing the page changes nothing.
+   - For one repository, **Set up features** on its page does the same in the onboarding pull request it opens with
+     the other features you pick ([onboarding.md](onboarding.md)). The switch goes on when that pull request merges;
+     `dependency-lookup.yml` is on the default branch by then, so no second onboarding pull request is opened.
    - The same switch is on the Account page (*Dependency updates*, for every repository that does not decide for itself)
      and on the Repository page (which can also turn it off for itself), next to *Onboarding adds the merge queue* and the
      real state read from `coverage.yml`.

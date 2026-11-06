@@ -63,6 +63,7 @@ export const routes: Routes = [
       { path: 'pr-size-labels/setup', loadComponent: () => import('./pages/pr-size-labels-setup/pr-size-labels-setup.component') },
       // Backports to release lines (docs/code-coverage/backports.md); static, open to anonymous visitors.
       { path: 'backports/setup', loadComponent: () => import('./pages/backports-setup/backports-setup.component') },
+      { path: 'onboarding/setup', loadComponent: () => import('./pages/onboarding-setup/onboarding-setup.component') },
       // The dependency updater's onboarding page (dependency-updates PRD R20, R36): the GitHub App's Setup URL. Signed-in
       // only, and through the GUARD, which keeps the setup redirect's query (installation_id, setup_action) through the
       // sign-in. ⚠️ Never rely on the API's 401 bounce instead: the auth interceptor strips the query.

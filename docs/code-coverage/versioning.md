@@ -26,8 +26,9 @@ action step after the build. That step tags every package that changed, then the
 
 ## Onboarding
 
-On the repository page in CodeCoverage, run **Set up versioning**. It plans from the default branch and opens a
-pull request from `mintplayer/versioning-onboarding` (D17) that:
+On the repository page in CodeCoverage, run **Set up features** and tick **Package versioning** (or **Release
+lines**, which includes it). It plans from the default branch and opens one pull request from
+`mintplayer/onboarding` (see [onboarding.md](onboarding.md)) that, for versioning:
 
 - adds `MintPlayer.Versioning.MSBuild` to `Directory.Build.props` (.NET), at the latest stable version on nuget.org
   (a built-in version when nuget.org cannot be read);
@@ -36,7 +37,7 @@ pull request from `mintplayer/versioning-onboarding` (D17) that:
 - gives the checkout of every job that runs `dotnet` `fetch-depth: 0`;
 - adds a `versioning:` section to `coverage.yml`.
 
-Each of these is a rule that checks before it edits, so **Set up versioning** can be run again on a repository that
+Each of these is a rule that checks before it edits, so **Set up features** can be run again on a repository that
 was onboarded before. It then opens a pull request with only what is still missing (for example a checkout added
 since), listed per rule under "Changes", or answers that there is nothing to change.
 

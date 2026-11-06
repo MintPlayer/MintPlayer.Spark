@@ -218,8 +218,19 @@ PRD §8.2.
     alone) applies its settings and renames at once, without a pull request. Tests: `OnboardingServiceTests` (+2),
     `OnboardingWriterJobTests` (+3), `GitHubForgeMergeQueueTests` (rename), conformance row.
   - **M10e, rulesets:** a step in the chooser. The plan is shown first, then applied with the user's token, with
-    the sign-in popup when that token is stale.
-  - **M10f:** the guide page and the docs.
+    the sign-in popup when that token is stale. **All of #554** (owner, 2026-11-06; PRD §8 M10), **in its own pull
+    request after #574 merges** (owner, 2026-11-06), which closes #554:
+    - e1: the forge's ruleset/protection API on the user's token, and a pure planner (create, update or repair to
+      `exempt`, migrate the classic lock and review count after ruleset 1);
+    - e2: the chooser step and the `github.signIn` popup client method (`Retry.Invoke`);
+    - e3: ruleset 2 (the default head's checks confirmed, the approval count asked);
+    - e4: organization rulesets from the Account page;
+    - e5: the enqueue refusal for classic lock and review count, and the eviction hint;
+    - e6: merge-queue.md §2.1/§3.
+  - **M10f:** the guide page and the docs. **Built (2026-11-06):** the in-app guide `/onboarding/setup` ("Getting
+    started", first under Guides at order 0, so no other unit moved; `onboarding-setup.component.spec.ts`), the
+    reference `docs/code-coverage/onboarding.md` (indexed in its README), and versioning.md and dependency-updates.md
+    pointing to the chooser. The #153 PRD's "Set up versioning" is marked superseded.
   - Then the M12 leftovers, S7 (live, after the deploy), and the local sweep.
 - **M9 Dependencies on lines** (D13): a rolling PR per supported line, platform packages capped at the line's major,
   patch/security default, advisories outside the allowed range flagged. Pack verified by S4 (D10b; no upper bounds,
@@ -228,7 +239,8 @@ PRD §8.2.
   `dependencies.lines` (patch/all/security/off) sets the ceiling, never a major, and a security fix needing a major is
   held. User docs are in dependency-updates.md §4; decisions in PRD §8.4.
 - **M10 Onboarding chooser** (D3, S8), including the branch rename PR → rename on merge (D2, S7) and adding the
-  regenerate workflow to each line (D9). It also creates the rulesets (#554, extended to release lines; PRD §8.2):
+  regenerate workflow to each line (D9). The rulesets (#554, extended to release lines; PRD §8.2) follow in #554's
+  own pull request (owner, 2026-11-06):
   plan shown first, applied with the signed-in user's GitHub token, a sign-in popup when that token is missing or
   expired.
 - **M11 Spark itself.**
