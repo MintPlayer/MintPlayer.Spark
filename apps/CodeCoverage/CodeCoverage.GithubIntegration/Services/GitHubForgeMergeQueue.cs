@@ -1305,8 +1305,11 @@ public partial class GitHubForgeMergeQueue : IForgeMergeQueue
     }
 
     private async Task<Reply> SendAsync(Repository repository, HttpMethod method, string path, object? body, string apiVersion, CancellationToken cancellationToken)
+        => await SendAsync(await TokenAsync(repository, cancellationToken), method, path, body, apiVersion, cancellationToken);
+
+    /// <summary>As above, with a token the caller holds: a scoped one (#554), never logged.</summary>
+    private async Task<Reply> SendAsync(string token, HttpMethod method, string path, object? body, string apiVersion, CancellationToken cancellationToken)
     {
-        var token = await TokenAsync(repository, cancellationToken);
         var http = httpClientFactory.CreateClient(nameof(GitHubForgeMergeQueue));
 
         using var request = NewRequest(method, new Uri(ApiBase, path), token, apiVersion);
@@ -1367,14 +1370,17 @@ public partial class GitHubForgeMergeQueue : IForgeMergeQueue
     /// Every item of a listing, following <c>page</c> until a short page. <paramref name="arrayProperty"/> names
     /// the array in an object envelope (<c>check_runs</c>); null for a listing that is a bare array.
     /// </summary>
-    private async Task<IReadOnlyList<JsonElement>> GetPagedAsync(Repository repository, string path, string? arrayProperty, CancellationToken cancellationToken)
+    private async Task<IReadOnlyList<JsonElement>> GetPagedAsync(Repository repository, string path, string? arrayProperty, CancellationToken cancellationToken,
+        string? token = null)
     {
         var items = new List<JsonElement>();
         var separator = path.Contains('?') ? '&' : '?';
         for (var page = 1; page <= MaxPages; page++)
         {
-            using var reply = await SendAsync(repository, HttpMethod.Get,
-                $"{path}{separator}per_page={PageSize}&page={page.ToString(CultureInfo.InvariantCulture)}", null, DefaultApiVersion, cancellationToken);
+            var pagePath = $"{path}{separator}per_page={PageSize}&page={page.ToString(CultureInfo.InvariantCulture)}";
+            using var reply = token is null
+                ? await SendAsync(repository, HttpMethod.Get, pagePath, null, DefaultApiVersion, cancellationToken)
+                : await SendAsync(token, HttpMethod.Get, pagePath, null, DefaultApiVersion, cancellationToken);
             EnsureSuccess(reply);
 
             var root = reply.Json?.RootElement ?? default;

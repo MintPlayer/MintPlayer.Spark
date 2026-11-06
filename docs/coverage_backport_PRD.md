@@ -1109,6 +1109,17 @@ cascade: 66 of 72 conflicted only because #461 was missing). Script: a throwaway
   "#554 as its own PR" over keeping it in #574 or splitting it in three). PR #574 ships the chooser without the
   ruleset step. #554 follows on a branch from master once #574 has merged, so S7 is checked live sooner. Until it
   ships, rulesets are set by hand (merge-queue.md §3).
+- **#554's token: a one-shot OAuth app token, never Administration on the Apps** (owner, 2026-11-06, superseding
+  the user-token design and then the scoped-Administration design). Rulesets are applied by a Spark custom action
+  on the selected repositories:
+  - it authorizes a dedicated OAuth app (`repo` scope, PKCE) in a popup;
+  - it applies both rulesets to each repository;
+  - it revokes the token in a `finally`.
+  The Apps hold no Administration, so their private key cannot change rulesets. Organization rulesets (e4) are
+  dropped: the organization is on GitHub Free. Evidence, the spikes and the f0–f6 plan are in the plan doc under
+  "#554 redesign". The work restarted from master on `feat/issue554-rulesets-oauth` (owner, 2026-11-06: "Start fresh
+  on a blank branch"). The Administration-based e0–e6 stay on the abandoned `feat/issue554-rulesets` as reference
+  only.
 - **M10, S7 is built on GitHub's documented rules and checked live after the deploy** (owner, 2026-11-06).
   `POST /repos/{o}/{r}/branches/{b}/rename`: "The authenticated user must have push access to the branch. If the
   branch is the default branch, the authenticated user must also have admin or owner permissions", and only the

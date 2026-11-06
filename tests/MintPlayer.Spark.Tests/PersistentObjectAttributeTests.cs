@@ -26,6 +26,19 @@ public class PersistentObjectAttributeTests
     }
 
     [Fact]
+    public void The_description_travels_on_the_wire_both_ways()
+    {
+        var options = new System.Text.Json.JsonSerializerOptions { PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase };
+        var attr = new PersistentObjectAttribute { Name = "Test", Description = TranslatedString.Create("A hint") };
+
+        var json = System.Text.Json.JsonSerializer.Serialize(attr, options);
+        var back = System.Text.Json.JsonSerializer.Deserialize<PersistentObjectAttribute>(json, options)!;
+
+        json.Should().Contain("\"description\"");
+        back.Description!.GetValue("en").Should().Be("A hint");
+    }
+
+    [Fact]
     public void GetValue_ReturnsDefault_WhenValueIsNull()
     {
         var attr = new PersistentObjectAttribute { Name = "Test", Value = null };

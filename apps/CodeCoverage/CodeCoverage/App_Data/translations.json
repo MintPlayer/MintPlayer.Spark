@@ -48,6 +48,13 @@
         "nl": "Functies instellen"
       }
     },
+    "SetUpRulesets": {
+      "label": {
+        "en": "Set up rulesets",
+        "fr": "Configurer les rulesets",
+        "nl": "Rulesets instellen"
+      }
+    },
     "SyncColumns": {
       "label": {
         "en": "Sync columns",
@@ -3554,6 +3561,34 @@
         }
       }
     },
+    "SetUpRulesets": {
+      "attributes": {
+        "AdminsMayMergeByPullRequest": {
+          "description": {
+            "en": "Lets repository admins merge a pull request themselves, bypassing the queue. Pushes stay refused.",
+            "fr": "Permet aux administrateurs du dépôt de fusionner eux-mêmes une pull request, en contournant la file. Les push restent refusés.",
+            "nl": "Laat repository-admins zelf een pull request mergen, buiten de wachtrij om. Pushes blijven geweigerd."
+          },
+          "label": {
+            "en": "Admins may merge by pull request",
+            "fr": "Les administrateurs peuvent fusionner par pull request",
+            "nl": "Admins mogen mergen via een pull request"
+          }
+        },
+        "RequiredApprovals": {
+          "description": {
+            "en": "Approving reviews a pull request needs before it can be queued. 0 suits a single maintainer.",
+            "fr": "Revues approbatrices nécessaires avant qu'une pull request puisse entrer dans la file. 0 convient à un seul mainteneur.",
+            "nl": "Goedkeurende reviews die een pull request nodig heeft voor hij in de wachtrij mag. 0 past bij één maintainer."
+          },
+          "label": {
+            "en": "Required approvals",
+            "fr": "Approbations requises",
+            "nl": "Vereiste goedkeuringen"
+          }
+        }
+      }
+    },
     "VersioningRun": {
       "attributes": {
         "Outcome": {
@@ -3612,14 +3647,14 @@
     },
     "summary": {
       "features": {
-        "en": "Features: {0}",
-        "fr": "Fonctionnalités : {0}",
-        "nl": "Functies: {0}"
+        "en": "Features:",
+        "fr": "Fonctionnalités :",
+        "nl": "Functies:"
       },
       "files": {
-        "en": "Files: {0}",
-        "fr": "Fichiers : {0}",
-        "nl": "Bestanden: {0}"
+        "en": "Files:",
+        "fr": "Fichiers :",
+        "nl": "Bestanden:"
       },
       "noFiles": {
         "en": "No file changes.",
@@ -3627,14 +3662,24 @@
         "nl": "Geen bestandswijzigingen."
       },
       "onMerge": {
-        "en": "Switched on when it merges: {0}",
-        "fr": "Activé à la fusion : {0}",
-        "nl": "Aangezet bij het mergen: {0}"
+        "en": "Switched on when it merges:",
+        "fr": "Activé à la fusion :",
+        "nl": "Aangezet bij het mergen:"
       },
       "renames": {
-        "en": "Branches renamed when it merges: {0}",
-        "fr": "Branches renommées à la fusion : {0}",
-        "nl": "Branches hernoemd bij het mergen: {0}"
+        "en": "Branches renamed when it merges:",
+        "fr": "Branches renommées à la fusion :",
+        "nl": "Branches hernoemd bij het mergen:"
+      },
+      "rulesets": {
+        "en": "Rulesets, set up now with your GitHub authorization (not at the merge):",
+        "fr": "Rulesets, configurés maintenant avec votre autorisation GitHub (pas à la fusion) :",
+        "nl": "Rulesets, nu ingesteld met je GitHub-autorisatie (niet bij het mergen):"
+      },
+      "rulesetsByHand": {
+        "en": "The merge queue's rulesets are left to set by hand (merge-queue.md §3): {0}",
+        "fr": "Les rulesets de la file de fusion restent à configurer à la main (merge-queue.md §3) : {0}",
+        "nl": "De rulesets van de merge queue moet je zelf instellen (merge-queue.md §3): {0}"
       }
     },
     "unavailable": {
@@ -3845,6 +3890,92 @@
       "en": "This permanently deletes every commit, build and coverage report for this repository. It cannot be undone.",
       "fr": "Ceci supprime définitivement tous les commits, builds et rapports de couverture de ce dépôt. Cette action est irréversible.",
       "nl": "Dit verwijdert definitief alle commits, builds en dekkingsrapporten van deze repository. Dit kan niet ongedaan worden gemaakt."
+    }
+  },
+  "rulesets": {
+    "applied": {
+      "en": "Rulesets set up on {0}: {1}",
+      "fr": "Rulesets configurés sur {0} : {1}",
+      "nl": "Rulesets ingesteld op {0}: {1}"
+    },
+    "apply": {
+      "en": "Apply",
+      "fr": "Appliquer",
+      "nl": "Toepassen"
+    },
+    "chooseMessage": {
+      "en": "These apply to every selected repository. Each keeps its own required checks.",
+      "fr": "Ces réglages s'appliquent à chaque dépôt sélectionné. Chacun garde ses propres checks requis.",
+      "nl": "Dit geldt voor elke geselecteerde repository. Elke repository houdt zijn eigen vereiste checks."
+    },
+    "chooseTitle": {
+      "en": "The merge queue's rulesets",
+      "fr": "Les rulesets de la file de fusion",
+      "nl": "De rulesets van de merge-wachtrij"
+    },
+    "confirmTitle": {
+      "en": "Apply these rulesets?",
+      "fr": "Appliquer ces rulesets ?",
+      "nl": "Deze rulesets toepassen?"
+    },
+    "error": {
+      "denied": {
+        "en": "GitHub authorization was refused, so nothing was changed.",
+        "fr": "L'autorisation GitHub a été refusée ; rien n'a été modifié.",
+        "nl": "De GitHub-autorisatie werd geweigerd; er is niets gewijzigd."
+      },
+      "expired": {
+        "en": "The GitHub authorization expired. Run the action again.",
+        "fr": "L'autorisation GitHub a expiré. Relancez l'action.",
+        "nl": "De GitHub-autorisatie is verlopen. Voer de actie opnieuw uit."
+      },
+      "failed": {
+        "en": "GitHub authorization failed, so nothing was changed.",
+        "fr": "L'autorisation GitHub a échoué ; rien n'a été modifié.",
+        "nl": "De GitHub-autorisatie is mislukt; er is niets gewijzigd."
+      },
+      "popupBlocked": {
+        "en": "The browser blocked GitHub's authorization window. Allow pop-ups for this site and run the action again.",
+        "fr": "Le navigateur a bloqué la fenêtre d'autorisation de GitHub. Autorisez les fenêtres pour ce site et relancez l'action.",
+        "nl": "De browser blokkeerde het autorisatievenster van GitHub. Sta pop-ups toe voor deze site en voer de actie opnieuw uit."
+      }
+    },
+    "failed": {
+      "en": "Rulesets not set up on {0}: {1}",
+      "fr": "Rulesets non configurés sur {0} : {1}",
+      "nl": "Rulesets niet ingesteld op {0}: {1}"
+    },
+    "notConfigured": {
+      "en": "The GitHub OAuth app for rulesets is not configured on this server.",
+      "fr": "L'application OAuth GitHub des rulesets n'est pas configurée sur ce serveur.",
+      "nl": "De GitHub OAuth-app voor rulesets is niet geconfigureerd op deze server."
+    },
+    "nothingToApply": {
+      "en": "Nothing to apply.",
+      "fr": "Rien à appliquer.",
+      "nl": "Niets om toe te passen."
+    },
+    "reason": {
+      "noDefaultBranch": {
+        "en": "its default branch is not known yet",
+        "fr": "sa branche par défaut n'est pas encore connue",
+        "nl": "de standaardbranch is nog niet bekend"
+      },
+      "notFound": {
+        "en": "no such repository",
+        "fr": "dépôt introuvable",
+        "nl": "geen dergelijke repository"
+      },
+      "notManaged": {
+        "en": "you don't manage this repository",
+        "fr": "vous ne gérez pas ce dépôt",
+        "nl": "je beheert deze repository niet"
+      },
+      "unsupported": {
+        "en": "its forge has no rulesets",
+        "fr": "sa forge n'a pas de rulesets",
+        "nl": "de forge heeft geen rulesets"
+      }
     }
   },
   "security": {

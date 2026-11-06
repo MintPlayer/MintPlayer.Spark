@@ -518,6 +518,7 @@ internal partial class EntityMapper : IEntityMapper
             {
                 Name = def.Name,
                 Label = def.Label,
+                Description = def.Description,
                 DataType = def.DataType,
                 IsArray = def.IsArray,
                 IsRequired = def.IsRequired,
@@ -551,6 +552,7 @@ internal partial class EntityMapper : IEntityMapper
         {
             Name = def.Name,
             Label = def.Label,
+            Description = def.Description,
             DataType = def.DataType,
             IsArray = def.IsArray,
             IsRequired = def.IsRequired,

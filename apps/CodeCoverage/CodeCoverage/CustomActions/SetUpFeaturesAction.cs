@@ -9,6 +9,7 @@ using MintPlayer.Spark.Abstractions.Actions;
 using MintPlayer.Spark.Abstractions.ClientOperations;
 using MintPlayer.Spark.Abstractions.Retry;
 using MintPlayer.Spark.Actions;
+using MintPlayer.Spark.Authorization.OneShotOAuth;
 using Raven.Client.Documents.Session;
 
 namespace CodeCoverage.CustomActions;
@@ -20,11 +21,17 @@ namespace CodeCoverage.CustomActions;
 /// For the people who may change the repository's dependency updates (a manager of the account, or an administrator of the
 /// repository on the forge, checked now). Everything before the last prompt only reads, so the passes that carry the
 /// answers repeat it harmlessly.
+/// With the merge queue picked, the rulesets are a step of the chooser (#554 f4, owner 2026-11-06: "apply at
+/// confirmation"): the GitHub popup and the rulesets form follow the checkbox form, the rulesets' plan joins the
+/// confirmation, and they are applied right after the onboarding pull request opens, with the admin's one-shot token
+/// (<see cref="IMergeQueueRulesetSetup"/>). When they cannot be (not GitHub, no OAuth app, a refused read), the
+/// confirmation says they are left to set by hand and the pull request still opens.
 /// </summary>
 public partial class SetUpFeaturesAction : SparkCustomAction
 {
     [Inject] private readonly IDependencyOnboardingService permissions;
     [Inject] private readonly IOnboardingService onboarding;
+    [Inject] private readonly IMergeQueueRulesetSetup rulesets;
     [Inject] private readonly IAsyncDocumentSession session;
     [Inject] private readonly IManager manager;
 
@@ -54,27 +61,77 @@ public partial class SetUpFeaturesAction : SparkCustomAction
             return;
         }
 
-        // Step 1: the plan, for a confirmation.
-        VersioningOnboardingOutcome outcome;
+        // What refuses without reading the forge refuses here, before the GitHub popup and the rulesets form: the admin
+        // must not authorize for a pull request that cannot open (#554, owner 2026-11-06).
+        if (onboarding.RefusalBeforePlanning(repository) is { } refusal)
+        {
+            Report(new(VersioningOnboardingOutcome.Refused, refusal), args);
+            return;
+        }
+
+        // The rulesets step (#554 f4): with the merge queue picked, the popup and the rulesets form come here, and the
+        // rulesets are applied at the confirmation with the admin's one-shot token, not at the merge.
+        string? byHand = null;
+        IReadOnlyList<RulesetPlanned>? rulesetPlans = null;
+        ISparkOneShotOAuthLease? lease = null;
         try
         {
-            var preview = await onboarding.PreviewAsync(repository, features, cancellationToken);
-            if (preview.Plan is not { } planned)
+            if (features.Contains(EOnboardingFeature.MergeQueue))
             {
-                Report(new(VersioningOnboardingOutcome.Refused, preview.Refusal!), args);
-                return;
+                if (rulesets.TargetFor(repository, out var reason) is not { } target)
+                    byHand = reason;
+                else if (!rulesets.IsConfigured)
+                    byHand = manager.GetTranslatedMessage("rulesets.notConfigured");
+                else
+                {
+                    lease = await rulesets.AuthorizeAsync(cancellationToken);
+                    if (lease is null)
+                        return;
+                    var (read, refused) = await rulesets.ReadAsync([target], lease.AccessToken, cancellationToken);
+                    if (refused.Count > 0)
+                        byHand = refused[0].Message;
+                    else if ((rulesetPlans = await rulesets.ChooseAsync(read, cancellationToken,
+                        releaseLinesComing: features.Contains(EOnboardingFeature.ReleaseLines))) is null)
+                        return;
+                }
             }
-            var open = manager.GetTranslatedMessage("onboarding.open");
-            manager.Retry.Action(manager.GetTranslatedMessage("onboarding.confirmTitle"), [open], open, message: Summary(planned), cancellable: true);
-            if (manager.Retry.Result!.Option == RetryResult.CancelOption) return;
 
-            outcome = await onboarding.OnboardAsync(repository, features, cancellationToken);
+            // Step 1: the plan, for a confirmation.
+            VersioningOnboardingOutcome outcome;
+            try
+            {
+                var preview = await onboarding.PreviewAsync(repository, features, cancellationToken);
+                if (preview.Plan is not { } planned)
+                {
+                    Report(new(VersioningOnboardingOutcome.Refused, preview.Refusal!), args);
+                    return;
+                }
+                var open = manager.GetTranslatedMessage("onboarding.open");
+                manager.Retry.Action(manager.GetTranslatedMessage("onboarding.confirmTitle"), [open], open,
+                    message: Summary(planned, rulesetPlans, byHand), cancellable: true);
+                if (manager.Retry.Result!.Option == RetryResult.CancelOption) return;
+
+                outcome = await onboarding.OnboardAsync(repository, features, cancellationToken);
+            }
+            catch (Exception ex) when (ex is GitWriterUnavailableException or HttpRequestException)
+            {
+                outcome = new(VersioningOnboardingOutcome.Refused, manager.GetTranslatedMessage("onboarding.unavailable"));
+            }
+            Report(outcome, args);
+
+            // The rulesets follow only an onboarding that went through: a refused one leaves no workflow to report the
+            // checks ruleset 2 requires.
+            if (rulesetPlans is not null && lease is not null && outcome.Outcome is not VersioningOnboardingOutcome.Refused)
+            {
+                var (applied, failed) = await rulesets.ApplyAsync(rulesetPlans, lease.AccessToken, cancellationToken);
+                rulesets.Notify(applied, failed);
+            }
         }
-        catch (Exception ex) when (ex is GitWriterUnavailableException or HttpRequestException)
+        finally
         {
-            outcome = new(VersioningOnboardingOutcome.Refused, manager.GetTranslatedMessage("onboarding.unavailable"));
+            if (lease is not null)
+                await lease.DisposeAsync();
         }
-        Report(outcome, args);
     }
 
     private static bool IsChecked(PersistentObject? form, EOnboardingFeature feature)
@@ -87,21 +144,28 @@ public partial class SetUpFeaturesAction : SparkCustomAction
             ? NotificationKind.Success : NotificationKind.Warning);
     }
 
-    /// <summary>The plan in a few lines: the files, the renames, the settings switched on at the merge, and what is left by hand.</summary>
-    internal string Summary(OnboardingPlan plan)
+    /// <summary>
+    /// The plan as the confirmation's HTML (<see cref="HtmlMessage"/>): a list each for the features, the files, the renames
+    /// and the settings switched on at the merge, the notes as lines, then the rulesets or why they are left by hand.
+    /// </summary>
+    internal string Summary(OnboardingPlan plan, IReadOnlyList<RulesetPlanned>? rulesetPlans = null, string? rulesetsByHand = null)
     {
-        var lines = new List<string>
+        var html = new List<string>
         {
-            manager.GetTranslatedMessage("onboarding.summary.features", string.Join(", ", plan.Features)),
+            HtmlMessage.Section(manager.GetTranslatedMessage("onboarding.summary.features"), plan.Features.Select(f => f.ToString())),
             plan.Files.Count == 0
-                ? manager.GetTranslatedMessage("onboarding.summary.noFiles")
-                : manager.GetTranslatedMessage("onboarding.summary.files", string.Join(", ", plan.Files.Select(f => f.Delete ? $"-{f.Path}" : f.Path))),
+                ? HtmlMessage.Line(manager.GetTranslatedMessage("onboarding.summary.noFiles"))
+                : HtmlMessage.Section(manager.GetTranslatedMessage("onboarding.summary.files"), plan.Files.Select(f => f.Delete ? $"-{f.Path}" : f.Path)),
         };
         if (plan.Renames.Renames.Count > 0)
-            lines.Add(manager.GetTranslatedMessage("onboarding.summary.renames", string.Join(", ", plan.Renames.Renames.Select(r => $"{r.From} → {r.To}"))));
+            html.Add(HtmlMessage.Section(manager.GetTranslatedMessage("onboarding.summary.renames"), plan.Renames.Renames.Select(r => $"{r.From} → {r.To}")));
         if (plan.OnMerge.Count > 0)
-            lines.Add(manager.GetTranslatedMessage("onboarding.summary.onMerge", string.Join(", ", plan.OnMerge)));
-        lines.AddRange(plan.Notes);
-        return string.Join("\n", lines);
+            html.Add(HtmlMessage.Section(manager.GetTranslatedMessage("onboarding.summary.onMerge"), plan.OnMerge.Select(o => o.ToString())));
+        html.AddRange(plan.Notes.Select(HtmlMessage.Line));
+        if (rulesetPlans is not null)
+            html.Add(HtmlMessage.Encode(manager.GetTranslatedMessage("onboarding.summary.rulesets")) + rulesets.SummaryHtml(rulesetPlans));
+        if (rulesetsByHand is not null)
+            html.Add(HtmlMessage.Line(manager.GetTranslatedMessage("onboarding.summary.rulesetsByHand", rulesetsByHand)));
+        return string.Concat(html);
     }
 }

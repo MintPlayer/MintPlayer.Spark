@@ -70,7 +70,15 @@
 		<ProjectReference Include="..\..\..\libs\source_generators\MintPlayer.Spark.LibraryGenerators\MintPlayer.Spark.LibraryGenerators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
 	</ItemGroup>
 
-	<ItemGroup>
+	<!--
+	  Debug only: in Development the git writer runs in-process on a TestServer and clones into a local folder
+	  (MergeQueue:LocalGitWriterRoot, DevelopmentGitWriter.cs). A Release build, which is what the production image
+	  publishes, has neither the reference nor the code, so production writes only through the coverage-git-writer
+	  sidecar and the app container never holds the writer's push code (owner, 2026-11-06).
+	-->
+	<ItemGroup Condition="'$(Configuration)' == 'Debug'">
+		<ProjectReference Include="..\CodeCoverage.GitWriter\CodeCoverage.GitWriter.csproj" />
+		<PackageReference Include="Microsoft.AspNetCore.TestHost" Version="11.0.0-rc.1.26425.128" />
 	</ItemGroup>
 
 <ItemGroup>

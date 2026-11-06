@@ -4,6 +4,8 @@ using MintPlayer.Spark.Authorization.Configuration;
 using System.Threading.RateLimiting;
 using CodeCoverage;
 using CodeCoverage.ApiTokens;
+using CodeCoverage.MergeQueue;
+using MintPlayer.Spark.Authorization.OneShotOAuth;
 using CodeCoverage.Services;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.RateLimiting;
@@ -66,7 +68,7 @@ builder.Services.AddCodeCoverage();
 // The commit graph (#504): options, the coverage-git sidecar client and the avatar image client.
 builder.Services.AddCodeCoverageCommitGraph(builder.Configuration);
 // The merge queue (docs/coverage_merge_queue_PRD.md): options and the coverage-git-writer client (M3).
-builder.Services.AddCodeCoverageMergeQueue(builder.Configuration);
+builder.Services.AddCodeCoverageMergeQueue(builder.Configuration, builder.Environment);
 // The platform lifecycle (#568 M3): its sources, and a client bounded per request.
 builder.Services.Configure<CodeCoverage.PlatformLifecycle.PlatformLifecycleOptions>(builder.Configuration.GetSection(CodeCoverage.PlatformLifecycle.PlatformLifecycleOptions.Section));
 builder.Services.AddHttpClient(CodeCoverage.PlatformLifecycle.PlatformLifecycleOptions.HttpClientName, http =>
@@ -223,6 +225,12 @@ builder.Services.AddSpark(builder.Configuration, spark =>
             + $"user could sign in. Set it (and 'GitHub:{envPrefix}:ClientSecret') via "
             + "user-secrets for local development, or environment variables in production.");
     }
+    // #554: the one-shot OAuth app of "Set up rulesets" (the Apps hold no Administration). Registered even
+    // unconfigured, so GET /spark/auth/oauth-callback exists everywhere; the action says when it is not set up.
+    spark.AddOneShotOAuthClient(GitHubRulesetsOAuth.ClientName, client => GitHubRulesetsOAuth.Configure(client,
+        builder.Configuration[$"GitHub:{envPrefix}:RulesetsOAuth:ClientId"],
+        builder.Configuration[$"GitHub:{envPrefix}:RulesetsOAuth:ClientSecret"]));
+
     // Registered as a Spark credential scheme (non-ambient): the composite
     // default-authenticate scheme tries it, which both silences the
     // "refused by every registered scheme" warning on CI uploads and earns

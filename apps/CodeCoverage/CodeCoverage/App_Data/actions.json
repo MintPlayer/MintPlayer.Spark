@@ -44,5 +44,11 @@
     "showedOn": "detail",
     "selectionRule": "=0",
     "refreshOnCompleted": false
+  },
+  "SetUpRulesets": {
+    "icon": "ShieldLock",
+    "showedOn": "query",
+    "selectionRule": ">0",
+    "refreshOnCompleted": false
   }
 }

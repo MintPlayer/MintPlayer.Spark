@@ -12,6 +12,7 @@ import {
   SPARK_EXTERNAL_LOGIN_MESSAGE_TYPE,
   SPARK_EXTERNAL_LOGIN_QUERY_PARAM,
   SPARK_EXTERNAL_LOGIN_TIMEOUT_MS,
+  SPARK_ONE_SHOT_OAUTH_TIMEOUT_MS,
   SparkExternalLoginAck,
   SparkExternalLoginError,
   SparkExternalLoginMessage,
@@ -340,6 +341,35 @@ export class SparkAuthService {
     // sign-in page offers "Continue in this tab" instead.
     if (!popup) return Promise.resolve({ success: false, error: 'popup_blocked' });
 
+    return this.awaitPopupHandoff(popup, nonce, { signIn: true, timeoutMs: SPARK_EXTERNAL_LOGIN_TIMEOUT_MS });
+  }
+
+  /**
+   * Opens a one-shot OAuth authorization (#554, the `oauth.authorize` client method) in a popup and
+   * waits for `/spark/auth/oauth-callback` to report. Signs nobody in and never sees the token: the
+   * callback keeps it on the server for the action's next pass.
+   *
+   * The callback page reports on the sign-in's channels, told apart by the server-issued `nonce`. It
+   * settles `popup_blocked`, the callback's error, or `popup_closed` after
+   * {@link SPARK_ONE_SHOT_OAUTH_TIMEOUT_MS} (the server's attempt is gone by then). A popup that
+   * *looks* closed settles nothing, for the same COOP reason as a sign-in.
+   */
+  authorizeInPopup(url: string, nonce: string): Promise<SparkExternalLoginResult> {
+    const popup = window.open(url, 'spark-oauth-authorize', 'width=600,height=700');
+    if (!popup) return Promise.resolve({ success: false, error: 'popup_blocked' });
+    return this.awaitPopupHandoff(popup, nonce, { signIn: false, timeoutMs: SPARK_ONE_SHOT_OAUTH_TIMEOUT_MS });
+  }
+
+  /**
+   * Waits for the popup callback page's hand-off for `nonce`, on all four channels. With `signIn`,
+   * this is the external-login attempt: it supersedes and is superseded, drives
+   * {@link externalLoginPending}, and refreshes CSRF and the user on success.
+   */
+  private awaitPopupHandoff(
+    popup: Window,
+    nonce: string,
+    options: { signIn: boolean; timeoutMs: number },
+  ): Promise<SparkExternalLoginResult> {
     return new Promise<SparkExternalLoginResult>((resolve) => {
       const storageKey = sparkExternalLoginStorageKey(nonce);
       const doneKey = sparkExternalLoginDoneKey(nonce);
@@ -372,7 +402,7 @@ export class SparkAuthService {
         }
 
         this.zone.run(async () => {
-          if (!error) {
+          if (!error && options.signIn) {
             // Explicit, like login(): the identity just changed, so ask for a token bound to it
             // rather than relying on the server minting one on whatever response comes next.
             // Never fatal — the sign-in already happened, and a rejection here would leave this
@@ -433,7 +463,7 @@ export class SparkAuthService {
         clearInterval(poll);
         if (this.activeExternalAttempt === settle) this.pendingExternalLogin.set(false);
       }, POPUP_CLOSE_POLL_MS);
-      const timeout = setTimeout(() => settle('popup_closed'), SPARK_EXTERNAL_LOGIN_TIMEOUT_MS);
+      const timeout = setTimeout(() => settle('popup_closed'), options.timeoutMs);
 
       window.addEventListener('message', onMessage);
       window.addEventListener('storage', onStorage);
@@ -441,8 +471,10 @@ export class SparkAuthService {
       document.addEventListener('visibilitychange', onVisibility);
       channel?.addEventListener('message', onChannel);
 
-      this.activeExternalAttempt = settle;
-      this.pendingExternalLogin.set(true);
+      if (options.signIn) {
+        this.activeExternalAttempt = settle;
+        this.pendingExternalLogin.set(true);
+      }
     });
   }
 

@@ -17,6 +17,9 @@
 		<RootNamespace>CodeCoverage.GitWriter</RootNamespace>
 		<!-- An Exe under this repository is a Spark application by default (Directory.Build.targets); this one is not. -->
 		<SparkApplication>false</SparkApplication>
+		<!-- It serves no static files. Without this, the app's Debug build, which references this project for its
+		     in-process Development writer, fails on this project's static web assets (dotnet-watch's module). -->
+		<StaticWebAssetsEnabled>false</StaticWebAssetsEnabled>
 	</PropertyGroup>
 
 	<ItemGroup>

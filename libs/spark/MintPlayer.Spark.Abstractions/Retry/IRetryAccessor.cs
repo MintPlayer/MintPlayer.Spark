@@ -10,6 +10,13 @@ public interface IRetryAccessor
     RetryResult? Result { get; }
 
     /// <summary>
+    /// True once this pass has asked a step that is not answered yet: <see cref="Action"/> or <see cref="Invoke"/>
+    /// threw to send it, the action is unwinding, and it runs again from the top when the answer comes. A resource
+    /// that must outlive the conversation's passes but not the action (a one-shot OAuth lease) reads it on dispose.
+    /// </summary>
+    bool IsWaiting { get; }
+
+    /// <summary>
     /// Requests the frontend to display a confirmation/dialog modal.
     /// On the first pass (unanswered step) this method throws internally and never returns.
     /// On replay of an already-answered step it returns normally and populates <see cref="Result"/>.
@@ -17,6 +24,12 @@ public interface IRetryAccessor
     /// The <paramref name="options"/> are sent to the frontend exactly as specified, and shown as
     /// their own labels, so pass them translated.
     /// </summary>
+    /// <param name="message">
+    /// Shown above the form as <b>HTML</b>, so it can break lines (<c>&lt;br&gt;</c>) and list items
+    /// (<c>&lt;ul&gt;&lt;li&gt;</c>). Encode every value you put in it with
+    /// <see cref="System.Net.WebUtility.HtmlEncode(string)"/>; only your own markup may stay unencoded. The client
+    /// sanitizes it as well (Angular's <c>[innerHTML]</c>), which strips scripts but not a value's stray <c>&lt;</c>.
+    /// </param>
     /// <param name="cancellable">
     /// Offers a Cancel as well: the client adds its own button, labelled in the user's language
     /// (<c>common.cancel</c>), and answers it, or the modal being closed, with

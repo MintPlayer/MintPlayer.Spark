@@ -253,6 +253,14 @@ public class PersistentObjectAttribute
     /// </para>
     /// </summary>
     public EShowedOn ShowedOn { get; set; } = EShowedOn.Query | EShowedOn.PersistentObject;
+
+    /// <summary>
+    /// The help text (the form's (i) hint), copied from the model's translated <c>description</c>. It travels on
+    /// the object because a retry prompt's form is drawn from the object's attributes alone, not from the types
+    /// list (a virtual type usually has no read grant). Null when the model has none: no (i).
+    /// </summary>
+    public TranslatedString? Description { get; set; }
+
     public ValidationRule[] Rules { get; set; } = [];
     public Guid? Group { get; set; }
     public string? Renderer { get; set; }

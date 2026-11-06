@@ -66,6 +66,27 @@ public interface IForgeMergeQueue
     Task<string?> RenameBranchAsync(Repository repository, string from, string to, CancellationToken cancellationToken = default)
         => Task.FromResult<string?>("This forge cannot rename branches.");
 
+    /// <summary>
+    /// What the forge holds for the queue's rulesets (#554): the repository's own rulesets, classic protection on
+    /// <paramref name="branch"/> and the App's own id, for <see cref="MergeQueueRulesetPlanner"/>. Null when this forge has no
+    /// rulesets to set up.
+    /// </summary>
+    /// <param name="accessToken">
+    /// The signed-in admin's own token (a one-shot OAuth token, #554), which the caller revokes. The App holds no
+    /// administration permission, so it cannot read classic protection's details itself.
+    /// </param>
+    Task<ForgeRulesetState?> GetRulesetStateAsync(Repository repository, string branch, string accessToken, CancellationToken cancellationToken = default)
+        => Task.FromResult<ForgeRulesetState?>(null);
+
+    /// <summary>
+    /// Carries out <paramref name="plan"/>'s steps in order (#554) with <paramref name="accessToken"/>, the signed-in admin's
+    /// own token. A refused step throws, leaving the steps before it done: planning again from
+    /// <see cref="GetRulesetStateAsync"/> picks up where it stopped.
+    /// </summary>
+    Task<IReadOnlyList<ForgeRulesetApplied>> ApplyRulesetPlanAsync(Repository repository, string branch, MergeQueueRulesetPlan plan,
+        string accessToken, CancellationToken cancellationToken = default)
+        => throw new NotSupportedException("This forge cannot set up rulesets.");
+
     /// <summary>All check runs, commit statuses and check suites on <paramref name="sha"/> (O12; see <see cref="CheckGate"/>).</summary>
     Task<ForgeCheckState> GetCheckStateAsync(Repository repository, string sha, CancellationToken cancellationToken = default);
 

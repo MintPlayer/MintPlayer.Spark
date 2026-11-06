@@ -524,8 +524,9 @@ internal static class SparkAuthenticationExtensions
     /// </para>
     /// <para>Without a nonce (a pre-#490 client) it keeps the old behaviour: opener message, then close.</para>
     /// </remarks>
-    internal static string ExternalLoginPopupHtml(string? nonce, string safeReturnUrl, string? error)
+    internal static string ExternalLoginPopupHtml(string? nonce, string safeReturnUrl, string? error, PopupTexts? texts = null)
     {
+        texts ??= PopupTexts.SignIn;
         var payload = JsonSerializer.Serialize(new ExternalLoginMessage(
             Type: "spark:external-login",
             Success: error is null,
@@ -536,7 +537,7 @@ internal static class SparkAuthenticationExtensions
         {
             return $$"""
                 <!DOCTYPE html>
-                <html><head><meta charset="utf-8"><title>Signing in...</title></head>
+                <html><head><meta charset="utf-8"><title>{{texts.Title}}</title></head>
                 <body>
                 <script>
                 (function () {
@@ -552,13 +553,11 @@ internal static class SparkAuthenticationExtensions
         }
 
         var returnUrl = JsonSerializer.Serialize(safeReturnUrl);
-        var fallbackText = error is null
-            ? "Signed in — you can close this window and return to your browser."
-            : "Sign-in failed — you can close this window.";
+        var fallbackText = error is null ? texts.Succeeded : texts.Failed;
 
         return $$"""
             <!DOCTYPE html>
-            <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Signing in...</title></head>
+            <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>{{texts.Title}}</title></head>
             <body>
             <div id="spark-external-login-fallback" hidden>
             <p>{{fallbackText}}</p>
@@ -632,6 +631,30 @@ internal static class SparkAuthenticationExtensions
             </body></html>
             """;
     }
+
+    /// <summary>
+    /// The popup page's static texts. Constants only, never request data: they are spliced into the HTML.
+    /// </summary>
+    internal sealed record PopupTexts(string Title, string Succeeded, string Failed)
+    {
+        public static readonly PopupTexts SignIn = new(
+            "Signing in...",
+            "Signed in — you can close this window and return to your browser.",
+            "Sign-in failed — you can close this window.");
+
+        /// <summary>The one-shot OAuth callback (#554 f1), which signs nobody in.</summary>
+        public static readonly PopupTexts Authorize = new(
+            "Authorizing...",
+            "Authorized — you can close this window and return to your browser.",
+            "Authorization failed — you can close this window.");
+    }
+
+    /// <summary>
+    /// The popup page for a caller other than the external-login callbacks: the one-shot OAuth callback
+    /// reports on the same channels, told apart from a sign-in by its nonce.
+    /// </summary>
+    internal static IResult PopupPage(string? nonce, string? error, PopupTexts texts)
+        => new ExternalLoginPopupPage(ExternalLoginPopupHtml(nonce, "/", error, texts));
 
     /// <summary>The popup hand-off's wire payload. Property names are the contract the client reads.</summary>
     private sealed record ExternalLoginMessage(

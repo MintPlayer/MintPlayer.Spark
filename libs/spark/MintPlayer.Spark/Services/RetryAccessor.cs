@@ -46,6 +46,8 @@ internal sealed partial class RetryAccessor : IRetryAccessor
 
     public RetryResult? Result { get; private set; }
 
+    public bool IsWaiting { get; private set; }
+
     public void Action(
         string title,
         string[] options,
@@ -74,6 +76,7 @@ internal sealed partial class RetryAccessor : IRetryAccessor
         // envelope serializer picks it up alongside any non-blocking operations
         // emitted before this call. Then throw to unwind.
         ((ClientAccessor)clientAccessor).PushRetry(step, title, options, defaultOption, persistentObject, message, cancellable: cancellable);
+        IsWaiting = true;
         throw new SparkRetryActionException(step, title, options, defaultOption, persistentObject, message, cancellable: cancellable);
     }
 
@@ -103,6 +106,7 @@ internal sealed partial class RetryAccessor : IRetryAccessor
             : JsonSerializer.SerializeToElement(value, value.GetType(), jsonOptions?.Value.SerializerOptions ?? JsonSerializerOptions.Web);
 
         ((ClientAccessor)clientAccessor).PushRetry(step, clientMethod, [], null, null, null, clientMethod, serialized);
+        IsWaiting = true;
         throw new SparkRetryActionException(step, clientMethod, [], null, null, null, clientMethod, serialized);
     }
 }
