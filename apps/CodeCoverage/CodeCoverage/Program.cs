@@ -68,7 +68,7 @@ builder.Services.AddCodeCoverage();
 // The commit graph (#504): options, the coverage-git sidecar client and the avatar image client.
 builder.Services.AddCodeCoverageCommitGraph(builder.Configuration);
 // The merge queue (docs/coverage_merge_queue_PRD.md): options and the coverage-git-writer client (M3).
-builder.Services.AddCodeCoverageMergeQueue(builder.Configuration);
+builder.Services.AddCodeCoverageMergeQueue(builder.Configuration, builder.Environment);
 // The platform lifecycle (#568 M3): its sources, and a client bounded per request.
 builder.Services.Configure<CodeCoverage.PlatformLifecycle.PlatformLifecycleOptions>(builder.Configuration.GetSection(CodeCoverage.PlatformLifecycle.PlatformLifecycleOptions.Section));
 builder.Services.AddHttpClient(CodeCoverage.PlatformLifecycle.PlatformLifecycleOptions.HttpClientName, http =>

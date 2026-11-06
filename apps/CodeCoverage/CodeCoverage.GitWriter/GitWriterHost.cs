@@ -28,9 +28,14 @@ public static class GitWriterHost
     /// <summary>The API's JSON: System.Text.Json web defaults (camelCase).</summary>
     public static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
-    public static WebApplicationBuilder CreateBuilder(string[] args)
+    public static WebApplicationBuilder CreateBuilder(string[] args) => CreateBuilder(new WebApplicationOptions { Args = args });
+
+    /// <summary>The builder with explicit host options: the app's in-process Development writer passes its own
+    /// application name, environment and content root, so the writer never reads the app's configuration or user
+    /// secrets.</summary>
+    public static WebApplicationBuilder CreateBuilder(WebApplicationOptions options)
     {
-        var builder = WebApplication.CreateBuilder(args);
+        var builder = WebApplication.CreateBuilder(options);
         builder.Services.Configure<GitWriterOptions>(builder.Configuration.GetSection(GitWriterOptions.Section));
         builder.Services.AddSingleton(sp => new GitRunner(sp.GetRequiredService<IOptions<GitWriterOptions>>().Value.ToRunnerOptions(), sp.GetRequiredService<ILogger<GitRunner>>()));
         builder.Services.AddSingleton<JobRunner>();

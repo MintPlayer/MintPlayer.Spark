@@ -1019,7 +1019,8 @@ set in compose.
 
 | Key | Default | Meaning |
 |---|---|---|
-| `MergeQueue:GitWriterUrl` | unset; compose: `http://coverage-git-writer:8080` | Unset turns the git steps off. Case 1 still merges; anything needing a rebase evicts `writer-unavailable`. |
+| `MergeQueue:GitWriterUrl` | unset; compose: `http://coverage-git-writer:8080` | Unset turns the git steps off. Case 1 still merges; anything needing a rebase evicts `writer-unavailable`. **Development** with it unset runs the writer in-process instead (next row). |
+| `MergeQueue:LocalGitWriterRoot` | `C:\Repos` on Windows, `~/Repos` elsewhere | Development only, while `GitWriterUrl` is unset: the app boots the real writer (`GitWriterHost`) in-process on a TestServer (`DevelopmentGitWriter.cs`), and each job clones into `{root}/{job id}`, deleted when the job ends. Debug builds only: the Release build the production image publishes has neither the writer reference nor the code, so production writes only through the sidecar (owner, 2026-11-06). |
 | `MergeQueue:JobRequestTimeoutSeconds` | 240 | The bound on one writer request; keep it under the messaging claim of 5 min. |
 | `MergeQueue:CommitterName`, `CommitterEmail` | `CodeCoverage merge queue`, `merge-queue@noreply.coverage.mintplayer.com` | The committer of every commit the queue writes. |
 | `MergeQueue:AuthorEmailFormat` | `{login}@users.noreply.github.com` | The rebased commit's author email. Cosmetic: GitHub's squash sets the merged commit's author. |

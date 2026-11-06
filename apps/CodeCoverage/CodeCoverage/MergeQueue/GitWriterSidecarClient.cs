@@ -18,6 +18,19 @@ public sealed class MergeQueueOptions
     /// queue's git steps are off (<see cref="IGitWriterSidecar.IsConfigured"/>).</summary>
     public string? GitWriterUrl { get; set; }
 
+    /// <summary>
+    /// Development only, and only while <see cref="GitWriterUrl"/> is unset: the folder the in-process git writer clones
+    /// into, one <c>{root}/{job id}</c> directory per job, deleted when the job ends. Unset: <c>C:\Repos</c> on Windows,
+    /// <c>~/Repos</c> elsewhere (<see cref="LocalGitWriterRootOrDefault"/>). Production never runs the writer in-process.
+    /// </summary>
+    public string? LocalGitWriterRoot { get; set; }
+
+    public string LocalGitWriterRootOrDefault => !string.IsNullOrWhiteSpace(LocalGitWriterRoot)
+        ? LocalGitWriterRoot
+        : OperatingSystem.IsWindows()
+            ? Path.Combine(Path.GetPathRoot(Environment.SystemDirectory) ?? @"C:\", "Repos")
+            : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Repos");
+
     /// <summary>The bound on one job request: the writer's own job timeout (180 s) plus a slot wait (30 s) and a margin.
     /// Under the messaging ClaimTtl of 5 minutes (§5.5).</summary>
     public int JobRequestTimeoutSeconds { get; set; } = 240;

@@ -544,6 +544,32 @@ PRD §8.2.
       - S-E: GitHub Free with a private repository: is creating a ruleset accepted, refused, or accepted but not
         enforced? Is it visible through the API?
       - S-F: does a second authorization with `repo` show the consent page again, or pass silently?
+      - **Answers from the live onboarding test (2026-11-06, Development app, PieterjanDeClippel/SparkTest, public):**
+        - S-C: after the run, `DELETE /applications/Ov23liwK8RNgonrIgR0N/token` answered **204**, twice (once on a
+          refused preview, once after the apply). The 401 on reuse was not probed.
+        - S-D (consent page only): GitHub lists every organization the user belongs to. "Allowed" means the org has
+          no OAuth app access restrictions, NOT that the user owns it (2sky showed Allowed). Restricted orgs show
+          "Request" (member) or "Grant" (owner). The `repo` token reaches every Allowed org; it cannot be narrowed.
+        - S-F: **consent is shown again** on the second run, because the revoke removes the grant. Every run is an
+          explicit grant.
+        - Live end to end: popup → rulesets form (0 approvals) → confirmation listing coverage.yml and both
+          rulesets → onboarding PR #5 opened (`mintplayer/onboarding`, coverage.yml) and both rulesets created,
+          `active`, with the two success notifications.
+        - S-A, S-B, S-E: not run.
+      - **Development git writer (owner, 2026-11-06).** The first live run refused at the preview: locally
+        `MergeQueue:GitWriterUrl` is unset, so the onboarding PR is impossible. The owner's choice is: in Development,
+        clone locally into a folder (`C:\Repos` by default, cross-platform); in production, keep cloning in the sidecar
+        so a break-in into the app container gets no push code. Built: `DevelopmentGitWriter.cs` boots the real
+        `GitWriterHost` in-process on a TestServer (no port), root `MergeQueue:LocalGitWriterRoot` (default
+        `C:\Repos` / `~/Repos`). A sidecar URL still wins. The writer reference and code exist in **Debug builds
+        only**. Evidence: the Release build has no GitWriter/TestHost assembly in bin. The writer runs as Production
+        with its own application name and an empty content root, so it never reads the app's user secrets.
+        `GitWriterHost` gained a `CreateBuilder(WebApplicationOptions)` overload, and the writer project sets
+        `StaticWebAssetsEnabled=false`, because without it the app's Debug build failed on the referenced project's
+        dotnet-watch module. Test: `DevelopmentGitWriterTests` (7).
+      - **Open UX defect:** a refusal that needs no GitHub data (no writer, disconnected repository) is only reported
+        after the popup and the rulesets form. Proposed fix: check those before the popup. Not built; awaiting the
+        owner.
     - **f1, a one-shot OAuth token in Spark.Authorization** (generic, no GitHub-specific code):
       - `IOneShotOAuth` takes a named client (authorize URL, token URL, revoke callback) and scopes. Inside a custom
         action it returns an `IAsyncDisposable` token lease that revokes on dispose.
