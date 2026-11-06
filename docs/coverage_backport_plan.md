@@ -76,6 +76,15 @@ On `PieterjanDeClippel/SparkTest` (scratch repo from #517), with a `release/dotn
 - Dispatch the line's `regenerate.yml` on `backport/…`, apply its patch, and check the lockfile has the line's
   versions.
 
+**Result (2026-11-06, live on production, new scratch repo `PieterjanDeClippel/SparkTest`; the #517 one was
+deleted):** after the S7 rename, PR #3 into `main` (a `fix:` adding `Greeter.cs`) was labelled
+`backport: dotnet-10.x` when it opened (`defaultLabels`), with the **Backport targets** check "1 line applies:
+dotnet-10.x". Merging it opened backport PR #4 (`backport/3-dotnet-10.x` → `release/dotnet-10.x`, by
+`coverageproduction[bot]`) and the comment "Backports: `release/dotnet-10.x`: #4".
+- **CI on the line: yes.** The App-pushed branch started `pull_request` CI (run 42186052478, `build` success).
+- **Regeneration: not exercised.** The scratch repo has no `mergeQueue`, `regeneratedPaths` or lockfile, so that
+  half is still open live; it needs a repository with the merge queue's regenerate workflow and a lockfile.
+
 ### S6 — npm on an older major
 
 - Does `MintPlayer/github-actions/publish-npm-packages` honour `publishConfig.tag`?
@@ -240,6 +249,17 @@ PRD §8.2.
     - e4: organization rulesets from the Account page;
     - e5: the enqueue refusal for classic lock and review count, and the eviction hint;
     - e6: merge-queue.md §2.1/§3.
+
+    **Superseded token choice (owner, 2026-11-06): the App's installation token, not the user's.** If the App can
+    manage rulesets itself, the in-app GitHub sign-in for a user token goes away (e2's `github.signIn` popup with
+    it). Evidence: GitHub's "Permissions required for GitHub Apps" lists `POST /repos/{o}/{r}/rulesets` and
+    `PUT …/rulesets/{id}` under repository **Administration: write**, for user and installation tokens (UAT, IAT);
+    `POST /orgs/{org}/rulesets` under organization Administration: write. Costs to weigh in #554:
+    - Administration: write also covers `DELETE /repos/{o}/{r}` and the other repository settings, on every
+      installation.
+    - CoverageProduction and CoverageDevelopment hold no Administration today (installation page, 2026-11-06), so
+      each installation must accept the new permission; until then the step refuses with the acceptance link (D95/O17).
+    - e4 (organization rulesets) needs the organization Administration permission as well.
   - **M10f:** the guide page and the docs. **Built (2026-11-06):** the in-app guide `/onboarding/setup` ("Getting
     started", first under Guides at order 0, so no other unit moved; `onboarding-setup.component.spec.ts`), the
     reference `docs/code-coverage/onboarding.md` (indexed in its README), and versioning.md and dependency-updates.md
