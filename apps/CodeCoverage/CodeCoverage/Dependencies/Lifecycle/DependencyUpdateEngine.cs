@@ -1162,8 +1162,11 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
         };
         var gate = CheckGate.Evaluate(state, [], [], []);
         var settling = run.Bisect is { Rerun: true, Excluded.Count: 0 } && run.StateChangedAtUtc is { } since && Now - since < RerunSettle;
+        // The first red re-runs the failed checks (OnRedAsync), which GitHub refuses while their workflow run is still
+        // in progress (403 "already running", merge queue PR #579, 2026-11-06): wait for the rest before reacting.
+        var rerunTooEarly = gate.Verdict == ECheckVerdict.Failed && run.Bisect is null && (gate.Pending.Count > 0 || gate.PendingSuites.Count > 0);
         // Nothing reported yet is not green: a commit nobody checked proves nothing.
-        if (gate.Verdict == ECheckVerdict.Pending || gate.Verdict == ECheckVerdict.Passed && gate.Passed.Count == 0 || settling)
+        if (gate.Verdict == ECheckVerdict.Pending || gate.Verdict == ECheckVerdict.Passed && gate.Passed.Count == 0 || settling || rerunTooEarly)
         {
             if (fromPoll)
             {

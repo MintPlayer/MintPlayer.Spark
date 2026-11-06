@@ -241,7 +241,7 @@ A repository with lockfiles and its own workflow per tool might add:
 | `autoResolve[].action` | file name | `postRebaseActionName` | The rule's own regenerate workflow, same file-name rule as `postRebaseActionName` (O36). Several distinct workflows run one after the other (§2.3). At most 8 distinct workflows. |
 | `autoResolveDefaults` | list of preset names | none | Opt-in `take-base` presets, appended after the explicit rules (table below). An unknown name is an error. |
 | `keepBothDefaults` | `true` · `false` · map | all on | The `keep-both` defaults, appended after the presets (table below). `false` turns every group off; a map such as `{ json: false }` turns off the groups it names, the others stay on. |
-| `checks.retryFlaky` | int | `1` | 0–3. Re-runs of a failed check run before evicting (D9). |
+| `checks.retryFlaky` | int | `1` | 0–3. Re-runs of a failed check run before evicting (D9). The re-run waits until no other check is still running, because GitHub refuses to re-run a job while its workflow run is in progress. With no re-run left, a failure evicts at once. |
 | `checks.timeout` | duration | `60m` | 5–720 minutes, from the moment the queue starts waiting for checks. |
 
 Globs: `**` spans directories, `*` and `?` stay within one, and matching is case-sensitive, like git paths

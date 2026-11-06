@@ -1344,6 +1344,14 @@ public partial class MergeQueueEngine : IMergeQueueEngine
                 return;
 
             case ECheckVerdict.Failed when entry.CheckRetries < entry.Config.RetryFlaky:
+                // D9: the re-run waits until nothing else is running. GitHub refuses to re-run a job while its
+                // workflow run is still in progress (403 "The workflow run containing this job is already running",
+                // PR #579, 2026-11-06), which the forge reads as a missing permission and evicted the entry.
+                if (gate.Pending.Count > 0 || gate.PendingSuites.Count > 0)
+                {
+                    if (fromPoll) await ScheduleAsync(entry, EMergeQueueStep.PollChecks, ChecksPollInterval, ct);
+                    return;
+                }
                 // D9: one more chance for each failed check run; a commit status cannot be re-run.
                 var rerun = 0;
                 foreach (var run in state.CheckRuns.Where(r => gate.Failed.Contains(r.Name) && CheckGate.ReadRun(r.Status, r.Conclusion) == ECheckVerdict.Failed))

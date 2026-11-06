@@ -13,7 +13,8 @@
 /** What a Spark repository needs in `coverage.yml` on its default branch. */
 export const COVERAGE_YML = `mergeQueue:
   enabled: true
-  branches: [master]
+  # supported-lines: the release lines versioning.lines matches (it needs that section; drop it without lines).
+  branches: [master, supported-lines]
   mergeMethod: squash
   enqueue:
     label: merge-queue
