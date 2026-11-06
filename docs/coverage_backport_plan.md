@@ -76,6 +76,15 @@ On `PieterjanDeClippel/SparkTest` (scratch repo from #517), with a `release/dotn
 - Dispatch the line's `regenerate.yml` on `backport/…`, apply its patch, and check the lockfile has the line's
   versions.
 
+**Result (2026-11-06, live on production, new scratch repo `PieterjanDeClippel/SparkTest`; the #517 one was
+deleted):** after the S7 rename, PR #3 into `main` (a `fix:` adding `Greeter.cs`) was labelled
+`backport: dotnet-10.x` when it opened (`defaultLabels`), with the **Backport targets** check "1 line applies:
+dotnet-10.x". Merging it opened backport PR #4 (`backport/3-dotnet-10.x` → `release/dotnet-10.x`, by
+`coverageproduction[bot]`) and the comment "Backports: `release/dotnet-10.x`: #4".
+- **CI on the line: yes.** The App-pushed branch started `pull_request` CI (run 42186052478, `build` success).
+- **Regeneration: not exercised.** The scratch repo has no `mergeQueue`, `regeneratedPaths` or lockfile, so that
+  half is still open live; it needs a repository with the merge queue's regenerate workflow and a lockfile.
+
 ### S6 — npm on an older major
 
 - Does `MintPlayer/github-actions/publish-npm-packages` honour `publishConfig.tag`?
@@ -87,6 +96,19 @@ On `PieterjanDeClippel/SparkTest` (scratch repo from #517), with a `release/dotn
   Administration)? Try it on the scratch repo with the dev App.
 - Check what GitHub does with open PRs based on the old name, branch protection/rulesets targeting it, and the
   old-name redirect for `git fetch`.
+
+**Result (2026-11-06, live on production, scratch repo `PieterjanDeClippel/SparkTest`):** Set up features with
+Package versioning + Release lines planned `release/10.0 → release/dotnet-10.x` (one packable `net10.0`/`net11.0`
+csproj). Merging onboarding PR #2 renamed it within seconds.
+- **Permission:** Contents: write is enough. CoverageProduction holds no Administration permission (installation
+  page: read/write on actions, checks, code, issues, pull requests, workflows) and the rename succeeded.
+- **Open PRs:** PR #1 (`fix-on-10` → `release/10.0`) was retargeted to `release/dotnet-10.x` and stayed open
+  (`gh api …/pulls/1`: `base.ref = release/dotnet-10.x`).
+- **REST API:** `GET /branches/release%2F10.0` answers 200 with the renamed branch.
+- **`git fetch` does not follow:** `git fetch <url> release/10.0` → `fatal: couldn't find remote ref release/10.0`.
+  The docs, the guide page and the onboarding PR body said GitHub "redirects the old names"; corrected to say clones
+  must switch.
+- **Rulesets/branch protection on the old name:** not tested; the scratch repo had none. Rulesets are #554's.
 
 ### S8 — Inventory of today's onboardings (D3)
 
@@ -227,6 +249,40 @@ PRD §8.2.
     - e4: organization rulesets from the Account page;
     - e5: the enqueue refusal for classic lock and review count, and the eviction hint;
     - e6: merge-queue.md §2.1/§3.
+
+    **Superseded token choice (owner, 2026-11-06): the App's installation token, not the user's.** If the App can
+    manage rulesets itself, the in-app GitHub sign-in for a user token goes away (e2's `github.signIn` popup with
+    it). Evidence: GitHub's "Permissions required for GitHub Apps" lists `POST /repos/{o}/{r}/rulesets` and
+    `PUT …/rulesets/{id}` under repository **Administration: write**, for user and installation tokens (UAT, IAT);
+    `POST /orgs/{org}/rulesets` under organization Administration: write. Costs to weigh in #554:
+    - Administration: write also covers `DELETE /repos/{o}/{r}` and the other repository settings, on every
+      installation.
+    - CoverageProduction and CoverageDevelopment hold no Administration today (installation page, 2026-11-06), so
+      each installation must accept the new permission; until then the step refuses with the acceptance link (D95/O17).
+    - e4 (organization rulesets) needs the organization Administration permission as well.
+
+    No narrower permission exists: every permission heading on that page was checked, and there is no "Rulesets" or
+    "Branch protection" heading. Reading needs nothing new: `GET …/rulesets`, `GET …/rulesets/{id}` and
+    `GET …/rules/branches/{branch}` are under Metadata: read.
+
+    **#554 design (owner, 2026-11-06), replacing the user-token design above (e2's sign-in popup is dropped):**
+    1. CoverageProduction and CoverageDevelopment request repository Administration: write. Each installation accepts
+       it; until then the step refuses with the acceptance link (D95/O17).
+    2. **Ordinary installation tokens exclude Administration.** `GitHubInstallationService` (Spark.Webhooks.GitHub,
+       `CreateInstallationToken(installationId)` at the time of writing) passes no `permissions`, so GitHub grants the
+       token everything the installation accepted. It must request them explicitly: the installation's own
+       `permissions` (`GET /app/installations/{id}`) minus `administration`, not a hard-coded list that would drop a
+       permission added later. Through Octokit if it has a permissions overload, otherwise a raw
+       `POST /app/installations/{id}/access_tokens`.
+    3. **The ruleset step mints its own token:** `permissions: { administration: write }`, `repository_ids: [that
+       repository]`. It is never cached, lives only in that one method, and is revoked in a `finally`
+       (`DELETE /installation/token`). Installation tokens always last one hour (the lifetime cannot be set, so the
+       "3 minutes" asked for is met by revoking), so a failed revocation leaves a token that reaches one repository
+       and expires within the hour.
+    4. Reading and verifying rulesets uses the ordinary token (Metadata: read).
+    5. A test pins it: the ordinary token request never carries `administration` (WireMock on `access_tokens`), and
+       only the ruleset method asks for it.
+    Remaining exposure: the App's private key can mint Administration tokens for every installation.
   - **M10f:** the guide page and the docs. **Built (2026-11-06):** the in-app guide `/onboarding/setup` ("Getting
     started", first under Guides at order 0, so no other unit moved; `onboarding-setup.component.spec.ts`), the
     reference `docs/code-coverage/onboarding.md` (indexed in its README), and versioning.md and dependency-updates.md

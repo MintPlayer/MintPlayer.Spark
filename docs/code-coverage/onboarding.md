@@ -46,8 +46,10 @@ The merged webhook on `mintplayer/onboarding` reaches `IOnboardingService.Merged
    gets there first pushes them itself; the other finds nothing pending.
 2. Dependency updates and size labels are switched on.
 3. Each planned rename runs through GitHub's `POST /repos/{o}/{r}/branches/{branch}/rename` with the App's token
-   (Contents: write; a line is never the default branch). GitHub moves the open pull requests and redirects the old
-   name. A refusal is noted on the state, not retried.
+   (Contents: write; a line is never the default branch). GitHub moves the open pull requests to the new name, and
+   the REST API still answers for the old one, but `git fetch` does not: a clone tracking the old name must switch
+   to the new one (`git fetch origin` then `git switch <new name>`). A refusal is noted on the state, not retried.
+   Verified live on 2026-11-06 (#571 S7).
 4. For each supported line missing a workflow that the default branch's `mergeQueue` names (`postRebaseActionName`
    and each `autoResolve` rule's `action`), the file is copied from the default branch onto
    `mintplayer/onboarding-<line>` and a pull request into the line is opened. Check it builds with the line's SDKs.

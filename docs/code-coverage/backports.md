@@ -52,8 +52,8 @@ dry-runs the cherry-pick onto every requested line. Each line is handled on its 
 
 **Onboarding a repository with lines.** **Set up features** → *Release lines* adds `versioning.lines`, and when its
 pull request merges it renames old line branches (such as `release/6.0`) to `release/<ecosystem>-<major>.x` through
-GitHub's rename API (#571 D2). GitHub moves their open pull requests and redirects the old names. See
-[onboarding.md](onboarding.md).
+GitHub's rename API (#571 D2). GitHub moves their open pull requests to the new name. `git fetch` does not follow
+the old name, so local clones switch to the new branch themselves. See [onboarding.md](onboarding.md).
 
 A `backport:` section in the default branch's `coverage.yml` adjusts this:
 

@@ -88,7 +88,7 @@
             <ol data-testid="ob-setup-on-merge">
               <li>pushes one <strong>seed tag</strong> per package at the merge commit, when package versioning was picked;</li>
               <li>switches on <strong>dependency updates</strong> and <strong>PR size labels</strong>, when they were picked;</li>
-              <li><strong>renames the old line branches</strong> to <code>release/&lt;ecosystem&gt;-&lt;major&gt;.x</code>. GitHub moves their open pull requests along and redirects the old names;</li>
+              <li><strong>renames the old line branches</strong> to <code>release/&lt;ecosystem&gt;-&lt;major&gt;.x</code>. GitHub moves their open pull requests along, but <code>git fetch</code> does not follow the old name: switch your clones to the new branch;</li>
               <li>opens a pull request into each supported release line that lacks the default branch's regenerate workflow, from <code>mintplayer/onboarding-&lt;line&gt;</code>.</li>
             </ol>
             <p class="mb-0" data-testid="ob-setup-line-workflow">
