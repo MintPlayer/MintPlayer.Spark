@@ -117,6 +117,13 @@ public partial class RepositoryActions : DefaultPersistentObjectActions<Reposito
             target.DisableActions("DeleteData");
         }
 
+        // #554 f3: "Set up rulesets" belongs on the repository lists, not on the API token form's repository picker.
+        if (context.TargetKind == DisableActionsTargetKind.Query
+            && context.Query?.Name is not ("Account_Repositories" or "GetRepositories"))
+        {
+            target.DisableActions("SetUpRulesets");
+        }
+
         return Task.CompletedTask;
     }
 

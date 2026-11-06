@@ -652,6 +652,30 @@ PRD §8.2.
           `A_lease_disposed_after_its_five_minutes_does_not_revoke_twice`.
         - **Accepted cost:** the token lives while the admin reads the confirmation, 5 minutes at most from pass 1.
           Rejected: two popups (authorize twice), and no exact preview.
+      - **f3 built (2026-11-06).**
+        - **Commits:** `e1e7763e0` (attribute descriptions, cherry-picked from 80a3d1e60), `0449b299e` (the lease
+          that survives a prompt), and the f3 commit after them.
+        - **Evidence:** `SetUpRulesetsActionTests` (6), `MergeQueueRulesetPlannerTests`, `RouteTableSnapshotTests` and
+          `AnonymousSurfaceTests` gave 20 passed, 0 failed. The route snapshot gained exactly one line,
+          `GET /spark/auth/oauth-callback | authorize(...)`. `securityPosture.txt` is unchanged, because the new grant
+          goes to group `…0001`, not to anonymous callers. `modelHashes.json` was regenerated with
+          `--spark-synchronize-model`.
+        - **Contents:**
+          - `CustomActions/SetUpRulesetsAction.cs`.
+          - `MergeQueue/GitHubRulesetsOAuth.cs` (client, revoke via `DELETE /applications/{id}/token`, `IsConfigured`).
+          - `Program.cs` registers it always, with keys `GitHub:{env}:RulesetsOAuth:ClientId`/`:ClientSecret`.
+          - `App_Data`: `Model/SetUpRulesets.json`, the `SetUpRulesets` action (query, `>0`), the grant `…00ac`, and the
+            translations (`rulesets.*`, model, action).
+          - `RepositoryActions.OnDisableActionsAsync` disables the action outside `Account_Repositories` and
+            `GetRepositories`.
+          - `MergeQueueRulesetPlanner.Defaults`/`Describe` (from e3).
+          - `CodeCoverage.Tests/CustomActions/SetUpRulesetsActionTests.cs` (6 tests).
+        - **RESUME HERE: f4** (the chooser; its proposal below needs the owner's answer), then f5 (docs).
+        - **`CsrfSurfaceTests` needs no entry:** it covers mutating controller actions only, and the callback is a
+          library GET.
+        - **Known gap:** the apply pass re-reads and re-plans. A ruleset changed by someone else between the
+          confirmation and the apply is planned afresh, not refused.
+        - **Not committed on purpose:** `file.component.html` `mb-2` → `m-2` (owner's request, unrelated to #554).
       - The report covers each repository. An unapproved organization gets the approval link (S-D). A private
         repository on Free gets S-E's answer.
       - Which query it sits on (the Account's repositories, or the onboarding rows) is decided in f3.

@@ -143,6 +143,48 @@ public static class MergeQueueRulesetPlanner
         return new MergeQueueRulesetPlan(steps, blockers);
     }
 
+    /// <summary>
+    /// The starting answers for one repository: ruleset 2's own settings when it exists, else classic protection's, else
+    /// <paramref name="headChecks"/> (the checks on the default branch's head) and one approval. Never the queue's own
+    /// check (D62). (From the abandoned e3.)
+    /// </summary>
+    public static MergeQueueRulesetChoices Defaults(ForgeRulesetState state, IReadOnlyList<string> headChecks)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+        ArgumentNullException.ThrowIfNull(headChecks);
+        var ruleset1 = state.Rulesets.FirstOrDefault(r => r.Definition.Name == RestrictUpdatesName)?.Definition;
+        var ruleset2 = state.Rulesets.FirstOrDefault(r => r.Definition.Name == ReviewsAndChecksName)?.Definition;
+
+        var approvals = ruleset2?.Rules.FirstOrDefault(r => r.Type == "pull_request")?.Parameters?["required_approving_review_count"] is JsonValue count
+            && count.TryGetValue<int>(out var n) ? n : state.Classic?.RequiredApprovals ?? 1;
+        var ruleset2Checks = (ruleset2?.Rules.FirstOrDefault(r => r.Type == "required_status_checks")?.Parameters?["required_status_checks"] as JsonArray ?? [])
+            .OfType<JsonObject>().Select(c => c["context"] is JsonValue v && v.TryGetValue<string>(out var s) ? s : null).OfType<string>().ToList();
+        IEnumerable<string> checks = ruleset2Checks.Count > 0 ? ruleset2Checks
+            : state.Classic is { RequiredChecks.Count: > 0 } classic ? classic.RequiredChecks
+            : headChecks;
+        return new MergeQueueRulesetChoices(approvals,
+            [.. checks.Where(c => !string.IsNullOrWhiteSpace(c) && c != CheckGate.QueueCheckName).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)],
+            ruleset1?.BypassActors.Any(IsAdminByPullRequest) ?? false);
+    }
+
+    /// <summary>The plan as the confirmation shows it, one line per step or blocker. (From the abandoned e3.)</summary>
+    public static IReadOnlyList<string> Describe(MergeQueueRulesetPlan plan)
+    {
+        ArgumentNullException.ThrowIfNull(plan);
+        if (plan.Blockers.Count > 0)
+            return [.. plan.Blockers.Select(b => $"Blocked: {b}")];
+        if (plan.IsConfigured)
+            return ["The rulesets are set up already."];
+        return [.. plan.Steps.Select(step => step switch
+        {
+            CreateRulesetStep create => $"Create ruleset \"{create.Definition.Name}\" on {Patterns(create.Definition)}: "
+                + string.Join(", ", create.Definition.Rules.Select(r => r.Type)) + ".",
+            UpdateRulesetStep update => $"Update ruleset \"{update.Definition.Name}\": {string.Join("; ", update.Changes)}.",
+            DeleteClassicProtectionStep delete => "Delete the classic branch protection: " + string.Join(" ", delete.Notes),
+            _ => step.ToString()!,
+        })];
+    }
+
     private static ForgeExistingRuleset? Single(ForgeRulesetState state, string name, List<string> blockers)
     {
         var named = state.Rulesets.Where(r => r.Definition.Name == name).ToList();

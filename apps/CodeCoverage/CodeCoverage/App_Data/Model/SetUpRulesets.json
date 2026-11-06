@@ -1,0 +1,40 @@
+{
+  "$schema": "../../../../../schemas/model.schema.json",
+  "_comment": [
+    "HAND-AUTHORED and NOT generated. A virtual type: no clrType, no documents. The \"Set up rulesets\" query action's form",
+    "(#554 f3), shown as a retry prompt: the merge queue's rulesets as the person wants them on every selected repository.",
+    "Each repository's required checks start from its own state (MergeQueueRulesetPlanner.Defaults), so they are not asked here."
+  ],
+  "persistentObject": {
+    "id": "c5980da3-b622-46cb-b65e-e6fcbbbd48e7",
+    "name": "SetUpRulesets",
+    "breadcrumb": "Set up rulesets",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "af0d2adb-0b2a-43b1-8e07-55889822cc90",
+        "name": "RequiredApprovals",
+        "dataType": "number",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 1,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "de967270-1123-48f4-b894-503744c0e521",
+        "name": "AdminsMayMergeByPullRequest",
+        "dataType": "boolean",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      }
+    ]
+  },
+  "queries": []
+}
