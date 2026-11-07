@@ -73,6 +73,12 @@
   }
 
   <ng-container *bsModalFooter>
+    @if (addNew()) {
+      <!-- Always shown, matches or not: a near-match never hides it (reference add-new PRD D17). -->
+      <button type="button" class="spark-reference-add-new" [color]="colors.primary" [disabled]="addingNew()" (click)="onAddNew()">
+        + {{ 'common.addNewReference' | t }}
+      </button>
+    }
     <button type="button" [color]="colors.secondary" (click)="close()">{{ 'common.cancel' | t }}</button>
   </ng-container>
 </bs-modal>

@@ -119,7 +119,7 @@ public class ShowedOnProbeCarActions : DefaultPersistentObjectActions<ShowedOnPr
         return po;
     }
 
-    public override Task OnNewAsync(SparkNewArgs<ShowedOnProbeCar> args)
+    public override Task OnNewAsync(SparkNewArgs args)
     {
         // A new report is filed for a stolen car, so the field starts shown.
         args.PersistentObject["PoliceReport"].ShowedOn = EShowedOn.PersistentObject;

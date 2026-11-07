@@ -126,6 +126,82 @@ internal sealed partial class AttributeRightsEnforcement : IAttributeRightsEnfor
     private readonly Dictionary<(Guid Type, string Verb), IReadOnlySet<string>> denied = [];
     private readonly Dictionary<(Guid Type, string Verb), IReadOnlySet<string>> deniedByRights = [];
     private readonly Dictionary<Guid, IReadOnlySet<string>> hiddenReferences = [];
+    private readonly Dictionary<Guid, IReadOnlySet<string>> uncreatableReferences = [];
+    private readonly Dictionary<Guid, IReadOnlySet<string>> unpickableReferences = [];
+
+    /// <summary>
+    /// The attributes of <paramref name="definition"/> whose model sets <c>canAddNewReference</c> but
+    /// whose referenced type this caller may not create (no <c>New</c> right, or a target the model does
+    /// not declare): the picker must not offer <b>Add new</b> there. Empty outside a request and in
+    /// system context, where nothing reaches a client.
+    /// </summary>
+    private async Task<IReadOnlySet<string>> GetUncreatableReferencesAsync(
+        EntityTypeDefinition definition, CancellationToken cancellationToken)
+    {
+        if (uncreatableReferences.TryGetValue(definition.Id, out var cached))
+            return cached;
+
+        HashSet<string>? set = null;
+        if (httpContextAccessor?.HttpContext is not null
+            && !Abstractions.Authentication.SparkSystemContext.IsSystemContext(httpContextAccessor))
+        {
+            foreach (var attribute in definition.Attributes)
+            {
+                if (attribute is not { DataType: "Reference", CanAddNewReference: true })
+                    continue;
+
+                var target = modelLoader.GetReferenceTarget(queryLoader, attribute);
+                if (target is null || !await permissionService.IsAllowedAsync(SparkCoreActions.New, target.Name, cancellationToken))
+                    (set ??= new(StringComparer.OrdinalIgnoreCase)).Add(attribute.Name);
+            }
+
+            // No picker, so no Add new either (D14).
+            foreach (var name in await GetUnpickableReferencesAsync(definition, cancellationToken))
+                (set ??= new(StringComparer.OrdinalIgnoreCase)).Add(name);
+        }
+
+        IReadOnlySet<string> result = set ?? None;
+        uncreatableReferences[definition.Id] = result;
+        return result;
+    }
+
+    /// <summary>
+    /// The Reference attributes of <paramref name="definition"/> whose target the caller may read but not
+    /// query (reference add-new PRD D14): the value and its label are shown, but there is no picker to
+    /// choose another, so the attribute is read-only and a save keeps the stored value — the treatment of
+    /// an <c>Edit</c>-denied attribute, which is why <see cref="GetDeniedAsync"/> folds these into
+    /// <c>Edit</c> and <c>New</c>. A target the caller may not read hides the attribute instead
+    /// (<see cref="GetHiddenReferencesAsync"/>), so it is not listed here. Empty outside a request and in
+    /// system context.
+    /// </summary>
+    private async Task<IReadOnlySet<string>> GetUnpickableReferencesAsync(
+        EntityTypeDefinition definition, CancellationToken cancellationToken)
+    {
+        if (unpickableReferences.TryGetValue(definition.Id, out var cached))
+            return cached;
+
+        HashSet<string>? set = null;
+        if (httpContextAccessor?.HttpContext is not null
+            && !Abstractions.Authentication.SparkSystemContext.IsSystemContext(httpContextAccessor))
+        {
+            var hidden = await GetHiddenReferencesAsync(definition, cancellationToken);
+            foreach (var attribute in definition.Attributes)
+            {
+                if (attribute.DataType != "Reference" || hidden.Contains(attribute.Name)
+                    || modelLoader.GetReferenceTarget(queryLoader, attribute) is not { } target)
+                {
+                    continue;
+                }
+
+                if (!await permissionService.IsAllowedAsync(SparkCoreActions.Query, target.Name, cancellationToken))
+                    (set ??= new(StringComparer.OrdinalIgnoreCase)).Add(attribute.Name);
+            }
+        }
+
+        IReadOnlySet<string> result = set ?? None;
+        unpickableReferences[definition.Id] = result;
+        return result;
+    }
 
     public async Task<IReadOnlySet<string>> GetDeniedAsync(
         EntityTypeDefinition definition, string verb, CancellationToken cancellationToken = default)
@@ -135,11 +211,14 @@ internal sealed partial class AttributeRightsEnforcement : IAttributeRightsEnfor
 
         var byRights = await GetDeniedByAttributeRightsAsync(definition, verb, cancellationToken);
         var hidden = await GetHiddenReferencesAsync(definition, cancellationToken);
-        IReadOnlySet<string> result = hidden.Count == 0
+        var unpickable = verb is SparkCoreActions.Edit or SparkCoreActions.New
+            ? await GetUnpickableReferencesAsync(definition, cancellationToken)
+            : None;
+        IReadOnlySet<string> result = hidden.Count == 0 && unpickable.Count == 0
             ? byRights
-            : byRights.Count == 0
+            : byRights.Count == 0 && unpickable.Count == 0
                 ? hidden
-                : new HashSet<string>([.. byRights, .. hidden], StringComparer.OrdinalIgnoreCase);
+                : new HashSet<string>([.. byRights, .. hidden, .. unpickable], StringComparer.OrdinalIgnoreCase);
 
         denied[(definition.Id, verb)] = result;
         return result;
@@ -186,11 +265,9 @@ internal sealed partial class AttributeRightsEnforcement : IAttributeRightsEnfor
         {
             foreach (var attribute in definition.Attributes)
             {
-                if (attribute.DataType != "Reference" || string.IsNullOrEmpty(attribute.ReferenceType)
-                    || modelLoader.GetEntityTypeByClrType(attribute.ReferenceType) is not { } target)
-                {
+                // GetReferenceTarget, so a reference to a type with no C# class is checked too (D14).
+                if (modelLoader.GetReferenceTarget(queryLoader, attribute) is not { } target)
                     continue;
-                }
 
                 if (!await permissionService.IsAllowedAsync(SparkCoreActions.Read, target.Name, cancellationToken))
                     (set ??= new(StringComparer.OrdinalIgnoreCase)).Add(attribute.Name);
@@ -253,17 +330,30 @@ internal sealed partial class AttributeRightsEnforcement : IAttributeRightsEnfor
         var uncreatable = isNew ? await GetDeniedAsync(definition, SparkCoreActions.New, cancellationToken) : None;
         var uneditable = isNew ? None : await GetDeniedAsync(definition, SparkCoreActions.Edit, cancellationToken);
         var subQueries = await WithoutRefusedParentReferencesAsync(definition.Queries, cancellationToken);
-        if (unreadable.Count == 0 && uncreatable.Count == 0 && uneditable.Count == 0 && ReferenceEquals(subQueries, definition.Queries))
+        var noAddNew = await GetUncreatableReferencesAsync(definition, cancellationToken);
+        // Folded into the New denials, which remove an attribute from a create form; a reference without
+        // a picker stays visible there, read-only (D14).
+        var unpickable = await GetUnpickableReferencesAsync(definition, cancellationToken);
+        if (unreadable.Count == 0 && uncreatable.Count == 0 && uneditable.Count == 0 && noAddNew.Count == 0
+            && ReferenceEquals(subQueries, definition.Queries))
+        {
             return definition;
+        }
 
         var attributes = new List<EntityAttributeDefinition>(definition.Attributes.Length);
         foreach (var declared in definition.Attributes)
         {
-            if (unreadable.Contains(declared.Name) || uncreatable.Contains(declared.Name))
+            if (unreadable.Contains(declared.Name) || (uncreatable.Contains(declared.Name) && !unpickable.Contains(declared.Name)))
                 continue;
 
             var attribute = WithoutRefusedOptions(WithoutRefusedOptions(declared, unreadable), uncreatable);
-            if (uneditable.Contains(attribute.Name) && !attribute.IsReadOnly)
+            if (noAddNew.Contains(attribute.Name))
+            {
+                attribute = ReferenceEquals(attribute, declared) ? attribute.ShallowCopy() : attribute;
+                attribute.CanAddNewReference = false;
+            }
+
+            if ((uneditable.Contains(attribute.Name) || unpickable.Contains(attribute.Name)) && !attribute.IsReadOnly)
             {
                 var readOnly = ReferenceEquals(attribute, declared) ? attribute.ShallowCopy() : attribute;
                 readOnly.IsReadOnly = true;
@@ -473,6 +563,16 @@ internal sealed partial class AttributeRightsEnforcement : IAttributeRightsEnfor
                         if (readOnly.Contains(attribute.Name))
                             attribute.IsReadOnly = true;
                     }
+                }
+            }
+
+            var noAddNew = await GetUncreatableReferencesAsync(definition, cancellationToken);
+            if (noAddNew.Count > 0)
+            {
+                foreach (var attribute in po.Attributes)
+                {
+                    if (noAddNew.Contains(attribute.Name))
+                        attribute.CanAddNewReference = false;
                 }
             }
         }

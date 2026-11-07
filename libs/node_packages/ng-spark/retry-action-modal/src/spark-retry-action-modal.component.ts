@@ -189,6 +189,8 @@ function attrToDefinition(attr: PersistentObjectAttribute): EntityAttributeDefin
     isReadOnly: attr.isReadOnly,
     order: attr.order,
     query: attr.query,
+    // The picker's Add new (reference add-new PRD R7): the target resolves through `query`.
+    canAddNewReference: attr.canAddNewReference,
     asDetailType: attr.asDetailType,
     showedOn: attr.showedOn,
     rules: attr.rules ?? [],

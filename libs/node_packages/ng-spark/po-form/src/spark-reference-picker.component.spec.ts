@@ -18,6 +18,8 @@ const companies: QueryResultItem[] = [
 function createComponent(serviceOverrides: Partial<SparkService> = {}) {
   const service: any = {
     getEntityTypes: vi.fn().mockResolvedValue([companyType]),
+    // The target resolves through the query by name (reference add-new PRD D9).
+    getQueryByName: vi.fn().mockResolvedValue({ id: 'q-companies', name: 'GetCompanies', entityType: 'Company' }),
     ...serviceOverrides,
   };
   TestBed.configureTestingModule({
@@ -266,6 +268,66 @@ describe('SparkReferencePickerComponent', () => {
 
     expect(emitted).toHaveBeenCalledWith('companies/1');
     expect(component.showModal()).toBe(false);
+  });
+
+  describe('Add new (reference add-new PRD D16, D17)', () => {
+    it('resolves a target with no C# class through its query', async () => {
+      const virtualType: EntityType = { id: 't-tag', name: 'Tag', clrType: '', attributes: [] };
+      const { fixture, component } = createComponent({
+        getEntityTypes: vi.fn().mockResolvedValue([companyType, virtualType]),
+        getQueryByName: vi.fn().mockResolvedValue({ id: 'q-tags', name: 'GetTags', entityType: 'tag' }),
+        executeQueryByName: vi.fn().mockResolvedValue({ columns: [], items: [], totalItems: 0, skip: 0, take: 10 }),
+      } as any);
+      fixture.componentRef.setInput('query', 'GetTags');
+
+      await component.open();
+
+      expect(component.entityType()?.id).toBe('t-tag');
+    });
+
+    it('shows no [+] without an addNew callback', async () => {
+      const { fixture, component } = createComponent();
+      fixture.componentRef.setInput('options', companies);
+      fixture.componentRef.setInput('referenceType', 'Test.Company');
+      await component.open();
+      fixture.detectChanges();
+
+      expect(document.querySelector('.spark-reference-add-new')).toBeNull();
+    });
+
+    it('picks the created row like a clicked one, with the term in the box', async () => {
+      const { fixture, component } = createComponent();
+      const created: QueryResultItem = { id: 'companies/new', breadcrumb: 'Initech', values: [] };
+      const addNew = vi.fn().mockResolvedValue(created);
+      fixture.componentRef.setInput('options', companies);
+      fixture.componentRef.setInput('referenceType', 'Test.Company');
+      fixture.componentRef.setInput('addNew', addNew);
+      await component.open();
+      component.onSearchChange(' Initech ');
+      const picked = vi.fn();
+      component.valueChange.subscribe(picked);
+
+      await component.onAddNew();
+
+      expect(addNew).toHaveBeenCalledWith('Initech');
+      expect(picked).toHaveBeenCalledWith('companies/new');
+      expect(component.showModal()).toBe(false);
+    });
+
+    it('a cancelled popup changes nothing (R9)', async () => {
+      const { fixture, component } = createComponent();
+      fixture.componentRef.setInput('options', companies);
+      fixture.componentRef.setInput('referenceType', 'Test.Company');
+      fixture.componentRef.setInput('addNew', vi.fn().mockResolvedValue(null));
+      await component.open();
+      const picked = vi.fn();
+      component.valueChange.subscribe(picked);
+
+      await component.onAddNew();
+
+      expect(picked).not.toHaveBeenCalled();
+      expect(component.showModal()).toBe(true);
+    });
   });
 
   it('styles its trigger input as a form control inside a bs-form, red when invalid', () => {

@@ -304,9 +304,9 @@ public class GateSettingsTests
         ],
     };
 
-    private static SparkRefreshArgs<GateSettings> RefreshArgs(PersistentObject obj) =>
-        (SparkRefreshArgs<GateSettings>)Activator.CreateInstance(
-            typeof(SparkRefreshArgs<GateSettings>),
+    private static SparkRefreshArgs RefreshArgs(PersistentObject obj) =>
+        (SparkRefreshArgs)Activator.CreateInstance(
+            typeof(SparkRefreshArgs),
             System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic,
             binder: null,
             args: [obj, obj[nameof(GateSettings.ProjectMode)], false, CancellationToken.None],
