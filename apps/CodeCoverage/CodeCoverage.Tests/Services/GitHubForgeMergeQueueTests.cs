@@ -479,6 +479,7 @@ public class GitHubForgeMergeQueueTests
         var github = new StubGitHub()
             .On(HttpMethod.Post, $"{Repo}/actions/runs/41/rerun-failed-jobs", HttpStatusCode.Created, "{}")
             .On(HttpMethod.Post, $"{Repo}/actions/runs/42/rerun-failed-jobs", HttpStatusCode.UnprocessableEntity, """{"message":"This workflow run cannot be rerun."}""")
+            .On(HttpMethod.Post, $"{Repo}/actions/runs/45/rerun-failed-jobs", HttpStatusCode.Forbidden, """{"message":"The workflow run containing this job is already running"}""")
             .On(HttpMethod.Post, $"{Repo}/actions/runs/43/rerun-failed-jobs", (_, _) => WithHeader(
                 new HttpResponseMessage(HttpStatusCode.Forbidden) { Content = new StringContent("""{"message":"Resource not accessible by integration"}""") },
                 "X-Accepted-GitHub-Permissions", "actions=write"));
@@ -487,6 +488,7 @@ public class GitHubForgeMergeQueueTests
         (await queue.RerunFailedJobsAsync(Target(), 41)).Should().BeTrue();
         (await queue.RerunFailedJobsAsync(Target(), 42)).Should().BeFalse("422: too old, or nothing failed");
         (await queue.RerunFailedJobsAsync(Target(), 44)).Should().BeFalse("404: no such run");
+        (await queue.RerunFailedJobsAsync(Target(), 45)).Should().BeFalse("403 already running is not a missing permission (#589 D4)");
         await Throws<ForgeAccessDeniedException>(() => queue.RerunFailedJobsAsync(Target(), 43));
     }
 
@@ -588,30 +590,79 @@ public class GitHubForgeMergeQueueTests
     public async Task A_prefix_with_an_empty_or_dot_segment_is_refused()
         => await Throws<ArgumentException>(() => Queue(new StubGitHub()).ListBranchesAsync(Target(), "release/../"));
 
+    /// <summary>An Actions job's check run as GitHub lists it: <c>details_url</c> names its workflow run (#589 D3, measured 2026-11-07).</summary>
+    private static ForgeCheckRun Job(long id, long workflowRun, long suite)
+        => new(id, $"job {id}", "completed", "failure", suite, "github-actions", $"https://github.com/octo/repo/actions/runs/{workflowRun}/job/{id}");
+
     [Fact]
-    public async Task An_actions_check_reruns_its_job_and_another_apps_check_is_rerequested()
+    public async Task Failed_jobs_of_one_workflow_run_rerun_through_one_call_and_another_apps_check_is_rerequested()
     {
+        // PR #586 (#589): two failed jobs of run 42348601700. Re-running them one by one got 403 "already running" on the second.
         var github = new StubGitHub()
-            .On(HttpMethod.Post, $"{Repo}/actions/jobs/501/rerun", HttpStatusCode.Created, "{}")
+            .On(HttpMethod.Post, $"{Repo}/actions/runs/700/rerun-failed-jobs", HttpStatusCode.Created, "{}")
+            .On(HttpMethod.Post, $"{Repo}/actions/runs/800/rerun-failed-jobs", HttpStatusCode.Created, "{}")
             .On(HttpMethod.Post, $"{Repo}/check-runs/502/rerequest", HttpStatusCode.Created, "{}");
         var queue = Queue(github);
 
-        (await queue.RerunCheckAsync(Target(), new ForgeCheckRun(501, "build", "completed", "failure", 11, "github-actions", null))).Should().BeTrue();
-        (await queue.RerunCheckAsync(Target(), new ForgeCheckRun(502, "scan", "completed", "failure", 12, "scanner", null))).Should().BeTrue();
+        (await queue.RerunChecksAsync(Target(),
+        [
+            Job(501, 700, 11), Job(503, 700, 11), Job(504, 800, 12),
+            new ForgeCheckRun(502, "scan", "completed", "failure", 13, "scanner", null),
+        ])).Should().Be(4);
+
+        github.Calls.Should().Equal([
+            $"POST {Repo}/check-runs/502/rerequest",
+            $"POST {Repo}/actions/runs/700/rerun-failed-jobs",
+            $"POST {Repo}/actions/runs/800/rerun-failed-jobs",
+        ], "one call per workflow run, never one per job");
     }
 
     [Fact]
-    public async Task A_check_that_cannot_be_rerun_is_false_and_a_missing_permission_throws()
+    public async Task A_job_without_a_run_url_finds_its_run_through_its_suite_and_one_without_either_reruns_alone()
     {
         var github = new StubGitHub()
-            .On(HttpMethod.Post, $"{Repo}/actions/jobs/503/rerun", HttpStatusCode.UnprocessableEntity, """{"message":"This job is too old to re-run."}""")
-            .On(HttpMethod.Post, $"{Repo}/actions/jobs/504/rerun", (_, _) => WithHeader(
+            .On(HttpMethod.Get, $"{Repo}/actions/runs?check_suite_id=11&per_page=1", HttpStatusCode.OK, """{"total_count":1,"workflow_runs":[{"id":700}]}""")
+            .On(HttpMethod.Post, $"{Repo}/actions/runs/700/rerun-failed-jobs", HttpStatusCode.Created, "{}")
+            .On(HttpMethod.Post, $"{Repo}/actions/jobs/505/rerun", HttpStatusCode.Created, "{}");
+        var queue = Queue(github);
+
+        (await queue.RerunChecksAsync(Target(),
+        [
+            new ForgeCheckRun(501, "a", "completed", "failure", 11, "github-actions", null),
+            new ForgeCheckRun(503, "b", "completed", "failure", 11, "github-actions", "https://example.com/not-a-job"),
+            new ForgeCheckRun(505, "c", "completed", "failure", null, "github-actions", null),
+        ])).Should().Be(3);
+
+        github.Calls.Should().ContainSingle(c => c.Contains("check_suite_id"), "the suite is looked up once");
+        github.Calls.Should().ContainSingle(c => c.EndsWith("/rerun-failed-jobs"));
+    }
+
+    [Fact]
+    public void A_run_url_is_read_only_from_an_actions_job_url()
+    {
+        GitHubForgeMergeQueue.WorkflowRunIdOf("https://github.com/o/r/actions/runs/42348601700/job/128333608393").Should().Be(42348601700);
+        GitHubForgeMergeQueue.WorkflowRunIdOf("https://github.com/o/r/actions/runs/42/job/7?pr=586").Should().Be(42);
+        GitHubForgeMergeQueue.WorkflowRunIdOf("https://github.com/o/r/actions/runs/42").HasValue.Should().BeFalse();
+        GitHubForgeMergeQueue.WorkflowRunIdOf("https://github.com/o/r/actions/runs/0/job/7").HasValue.Should().BeFalse();
+        GitHubForgeMergeQueue.WorkflowRunIdOf(null).HasValue.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task A_run_that_cannot_be_rerun_or_is_already_running_counts_nothing_and_a_missing_permission_throws()
+    {
+        var github = new StubGitHub()
+            .On(HttpMethod.Post, $"{Repo}/actions/runs/700/rerun-failed-jobs", HttpStatusCode.UnprocessableEntity, """{"message":"This workflow run is too old to re-run."}""")
+            // #589 D4: GitHub's answer for a run that is in progress. Not a missing permission.
+            .On(HttpMethod.Post, $"{Repo}/actions/runs/800/rerun-failed-jobs", HttpStatusCode.Forbidden, """{"message":"The workflow run containing this job is already running"}""")
+            .On(HttpMethod.Post, $"{Repo}/actions/jobs/505/rerun", HttpStatusCode.Forbidden, """{"message":"The workflow run containing this job is already running"}""")
+            .On(HttpMethod.Post, $"{Repo}/actions/runs/900/rerun-failed-jobs", (_, _) => WithHeader(
                 new HttpResponseMessage(HttpStatusCode.Forbidden) { Content = new StringContent("""{"message":"Resource not accessible by integration"}""") },
                 "X-Accepted-GitHub-Permissions", "actions=write"));
         var queue = Queue(github);
 
-        (await queue.RerunCheckAsync(Target(), new ForgeCheckRun(503, "build", "completed", "failure", 11, "github-actions", null))).Should().BeFalse();
-        (await Throws<ForgeAccessDeniedException>(() => queue.RerunCheckAsync(Target(), new ForgeCheckRun(504, "build", "completed", "failure", 11, "github-actions", null))))
+        (await queue.RerunChecksAsync(Target(), [Job(501, 700, 11), Job(503, 800, 12)])).Should().Be(0);
+        (await queue.RerunChecksAsync(Target(), [new ForgeCheckRun(505, "c", "completed", "failure", null, "github-actions", null)])).Should().Be(0);
+        (await Throws<ForgeAccessDeniedException>(() => queue.RerunChecksAsync(Target(), [Job(504, 900, 13)])))
             .RequiredPermission.Should().Be("actions=write");
     }
 

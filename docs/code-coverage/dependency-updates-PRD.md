@@ -1261,7 +1261,7 @@ taken while building them (assistant, within R1–R19, D-S*, D-C*, D-V*, D-P*):
   and become Q11 holds, so the next slot does not fight the person. Replayed commits keep the person's author, committer,
   dates and message. ~~"Packages a human fix depends on stay pinned" (R4) is not built~~ **superseded by D-N1** (built), and
   ~~"a lockfile included, stops"~~ **superseded by D-N2** for the plan's own lockfiles.
-- **D-L7. Bisect (old §7.4).** One re-run of the failing check runs first (`RerunCheckAsync`), counted in the budget; a red
+- **D-L7. Bisect (old §7.4).** One re-run of the failing check runs first (`RerunChecksAsync`, all in one call since #589), counted in the budget; a red
   verdict within 2 minutes of it is the old one. Then suspects are left out **cumulatively** (majors first, then a version red
   elsewhere in the fleet, then the later plan groups, D-P10's order reversed), one re-plan + apply + CI run per step; the first
   green build names the last group left out, and a red build with one suspect left names that one. The culprit gets an

@@ -1209,8 +1209,8 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
                 return;
             }
             // Old §7.4: one re-run of the failing checks first, against flaky tests; it counts toward the budget.
-            foreach (var failed in failedRuns)
-                await BestEffortAsync(async () => await context.Queue.RerunCheckAsync(repository, failed, ct), "re-run a failed check");
+            // One call for all of them, so the jobs of one workflow run re-run together (#589).
+            await BestEffortAsync(async () => await context.Queue.RerunChecksAsync(repository, [.. failedRuns], ct), "re-run the failed checks");
             bisect.Rerun = true;
             bisect.Spent = 1;
             Transition(run, EDependencyRunState.Bisecting, $"CI failed ({string.Join(", ", gate.Failed)}); re-running the failed checks once");

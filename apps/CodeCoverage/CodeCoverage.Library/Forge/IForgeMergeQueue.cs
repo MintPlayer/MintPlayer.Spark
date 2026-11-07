@@ -91,10 +91,15 @@ public interface IForgeMergeQueue
     Task<ForgeCheckState> GetCheckStateAsync(Repository repository, string sha, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Asks the forge to run a failed check again (D9's <c>retryFlaky</c>). False when the forge cannot re-run this one
+    /// Asks the forge to run the failed <paramref name="checkRuns"/> again (D9's <c>retryFlaky</c>, the dependency bisect's
+    /// pre-run), all in one go, and returns how many of them are running again: 0 when the forge can re-run none of them
     /// (another App's check that does not support it, a run too old to re-run); the queue then evicts.
     /// </summary>
-    Task<bool> RerunCheckAsync(Repository repository, ForgeCheckRun checkRun, CancellationToken cancellationToken = default);
+    /// <remarks>
+    /// One call for the whole set, because a forge may group check runs: on GitHub, re-running one job of a workflow run
+    /// starts a new attempt of the whole run, and a second job's re-run is then refused (#589).
+    /// </remarks>
+    Task<int> RerunChecksAsync(Repository repository, IReadOnlyCollection<ForgeCheckRun> checkRuns, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// The names of every check run and commit status on <paramref name="sha"/>, ordinal-sorted and distinct, the
