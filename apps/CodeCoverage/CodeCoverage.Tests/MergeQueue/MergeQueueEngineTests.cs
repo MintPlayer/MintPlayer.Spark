@@ -2257,8 +2257,57 @@ public class MergeQueueEngineTests : CoverageRavenTest
         var push = h.Writer.QueueBranchPushes.Should().ContainSingle().Which;
         push.PreparedSha.Should().Be(Prepared);
         push.HeadFromFork.Should().BeTrue("O25, §0 D67: the writer refuses a fork's .github change on its own");
-        h.Queue.Dispatches.Should().ContainSingle();
+        h.Queue.Dispatches.Should().ContainSingle().Which.Inputs.Should().NotContainKey(MergeQueueForkGuard.ForkInput,
+            "GitHub refuses an input the workflow does not declare");
         entry.QueueBranchSha.Should().Be(Prepared);
+    }
+
+    /// <summary>
+    /// A regenerate workflow with a job only same-repository pull requests may run (owner, 2026-11-07): the guard exempts
+    /// it because a fork's dispatch sets <c>fork: true</c>, so the dispatch must, and a same-repository one must not.
+    /// </summary>
+    [Fact]
+    public async Task A_forks_dispatch_sets_the_fork_input_its_workflow_declares()
+    {
+        const string withTrustedJob = """
+            name: regenerate
+            on:
+              workflow_dispatch:
+                inputs:
+                  expected_sha:
+                    required: true
+                  fork:
+                    type: boolean
+                    default: false
+            permissions:
+              contents: read
+            jobs:
+              fork:
+                if: ${{ inputs.fork }}
+                runs-on: ubuntu-latest
+                steps:
+                  - run: make
+              trusted:
+                if: ${{ !inputs.fork }}
+                runs-on: ubuntu-latest
+                permissions:
+                  contents: read
+                  packages: read
+                env:
+                  GH_PKG_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+                steps:
+                  - run: make
+            """;
+        var h = await ForkNeedingRegenerationAsync();
+        h.Queue.WorkflowFiles["master"] = [new(RegeneratePath, withTrustedJob.ReplaceLineEndings("\n"))];
+
+        await h.EnqueueAsync();
+        await h.DrainAsync();
+
+        var entry = await h.EntryAsync();
+        entry.State.Should().Be(EMergeQueueEntryState.Regenerating);
+        entry.ForkInputWorkflows.Should().Equal("regenerate.yml");
+        h.Queue.Dispatches.Should().ContainSingle().Which.Inputs[MergeQueueForkGuard.ForkInput].Should().Be("true");
     }
 
     [Theory]

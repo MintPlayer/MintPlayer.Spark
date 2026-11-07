@@ -726,9 +726,15 @@ cascade: 66 of 72 conflicted only because #461 was missing). Script: a throwaway
         text under its own rule. The patch's allowed globs are still the whole `regeneratedPaths` list.
       - Accepted cost: a hand-written file in `regeneratedPaths` that merges cleanly is not regenerated on the line.
       - The same backports showed `regenerate.yml` had never restored: `nuget.config` maps `MintPlayer.*` to the
-        GitHub Packages feed, which needs credentials, and the workflow had none. It now gets `packages: read` and the
-        run's `GITHUB_TOKEN` (owner, 2026-11-07, accepting that the untrusted code can read the organization's
-        packages for the run's lifetime).
+        GitHub Packages feed, which needs credentials, and the workflow had none. **Superseded the same day:** a
+        workflow-wide `packages: read` + `GITHUB_TOKEN` failed the merge queue's own fork guard (PR #583 CI,
+        `MergeQueueForkGuardTests.This_repositorys_own_workflows…`: "`packages: read` grants more than `contents:
+        read`"), so a fork's pull request could never have been regenerated. Owner's choice (2026-11-07): split by
+        fork. The workflow declares a boolean `fork` input and has two jobs. `fork` (`if: inputs.fork`) has no
+        credential and restores from nuget.org only (`-p:RestoreConfigFile`, a config in `$RUNNER_TEMP`). `trusted`
+        (`if: !inputs.fork`) gets `packages: read` and the token. The queue sends `fork: true` for a fork's entry
+        when the workflow declares the input (`MergeQueueEntry.ForkInputWorkflows`, read with the fork precondition).
+        The guard skips exactly such a gated job (merge-queue.md §2.3, item 2). Backports are never forks.
 - **M6, built (2026-11-05): regeneration on backport branches (D9).**
 
   **Writer.**

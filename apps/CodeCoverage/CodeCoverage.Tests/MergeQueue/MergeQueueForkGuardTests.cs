@@ -209,6 +209,65 @@ public class MergeQueueForkGuardTests
         Evaluate(regenerate: regenerate).Should().BeEmpty(what);
     }
 
+    /// <summary>A second job with a credential, beside the template's job (owner, 2026-11-07).</summary>
+    private static string WithTrustedJob(string condition, string forkType = "boolean")
+        => SafeRegenerate.Replace("      expected_sha:\n        required: true\n",
+                "      expected_sha:\n        required: true\n      fork:\n        type: " + forkType + "\n", StringComparison.Ordinal)
+            + "\n  trusted:\n" + (condition.Length > 0 ? $"    if: {condition}\n" : "")
+            + "    runs-on: ubuntu-latest\n    permissions:\n      contents: read\n      packages: read\n"
+            + "    env:\n      GH_PKG_TOKEN: ${{ secrets.GITHUB_TOKEN }}\n    steps:\n      - run: dotnet build\n";
+
+    /// <summary>
+    /// A job a fork's run skips may hold a credential: the queue sends <c>fork: true</c> to a workflow that declares the
+    /// boolean input, and GitHub skips <c>if: ${{ !inputs.fork }}</c>. Every other condition still counts as running.
+    /// </summary>
+    [Theory]
+    [InlineData("${{ !inputs.fork }}", "boolean", false)]
+    // Unquoted, a leading `!` is a YAML tag, not a condition (GitHub: such an expression needs ${{ }} or quotes).
+    [InlineData("!inputs.fork", "boolean", true)]
+    [InlineData("'!inputs.fork'", "boolean", false)]
+    [InlineData("${{ ! inputs.fork }}", "boolean", false)]
+    [InlineData("", "boolean", true)]
+    [InlineData("${{ inputs.fork }}", "boolean", true)]
+    [InlineData("${{ !inputs.fork || github.actor == 'x' }}", "boolean", true)]
+    [InlineData("${{ !inputs.forked }}", "boolean", true)]
+    [InlineData("${{ !inputs.fork }}", "string", true)]
+    public void A_job_with_a_credential_is_safe_only_when_a_forks_run_skips_it(string condition, string forkType, bool unsafeForForks)
+    {
+        var findings = Evaluate(regenerate: WithTrustedJob(condition, forkType));
+
+        if (unsafeForForks)
+        {
+            findings.Should().Contain(f => f.Problem.Contains("packages: read"));
+            findings.Should().Contain(f => f.Problem.Contains("secrets"));
+        }
+        else
+        {
+            findings.Should().BeEmpty();
+        }
+    }
+
+    [Fact]
+    public void A_secret_at_the_top_level_reaches_the_forks_job_too()
+    {
+        var regenerate = WithTrustedJob("${{ !inputs.fork }}").Replace("permissions:\n  contents: read\n",
+            "permissions:\n  contents: read\nenv:\n  TOKEN: ${{ secrets.GITHUB_TOKEN }}\n", StringComparison.Ordinal);
+
+        Evaluate(regenerate: regenerate).Should().ContainSingle().Which.Problem.Should().Contain("secrets");
+    }
+
+    [Theory]
+    [InlineData("boolean", true)]
+    [InlineData("string", false)]
+    [InlineData(null, false)]
+    public void The_queue_sends_the_fork_input_only_to_a_workflow_that_declares_it(string? forkType, bool declares)
+    {
+        var content = forkType is null ? SafeRegenerate : WithTrustedJob("${{ !inputs.fork }}", forkType);
+
+        MergeQueueForkGuard.DeclaresForkInput(new ForgeWorkflowFile(RegeneratePath, content)).Should().Be(declares);
+        MergeQueueForkGuard.DeclaresForkInput(new ForgeWorkflowFile(RegeneratePath, "on: [")).Should().BeFalse();
+    }
+
     [Fact]
     public void A_job_that_overrides_the_top_level_permissions_is_judged_by_its_own()
     {
