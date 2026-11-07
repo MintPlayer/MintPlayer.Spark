@@ -6,13 +6,22 @@ name: regenerate
 # artifact. It never commits or pushes: the queue validates the patch against `regeneratedPaths` and
 # pushes it with the App token.
 #
-# SECURITY: this workflow builds and runs untrusted pull-request code. No secrets, no environment, no
-# `id-token`, no self-hosted runner, and `persist-credentials: false` on the checkout. The queue never
-# dispatches it for a PR that touches .github/** (unless the bypass role lets a same-repository one
-# through; a fork's never, O25), and checks this file's blob on the mq/ branch against master's before it
-# dispatches (D12), because a dispatched run uses the workflow file from the dispatched branch.
+# SECURITY: this workflow builds and runs untrusted pull-request code. No environment, no `id-token`, no
+# self-hosted runner, and `persist-credentials: false` on the checkout. The queue never dispatches it for a
+# PR that touches .github/** (unless the bypass role lets a same-repository one through; a fork's never,
+# O25), and checks this file's blob on the mq/ branch against master's before it dispatches (D12), because
+# a dispatched run uses the workflow file from the dispatched branch.
 #
-# The app list is the verify steps' list in pull-request.yml; keep the two equal.
+# Two jobs, one per kind of pull request (owner, 2026-11-07). The queue sends `fork: true` for a fork's pull
+# request, because this file declares the input:
+# - `fork` runs the fork's code with `contents: read` and no credential at all, restoring from nuget.org only
+#   (every MintPlayer.* package is there too, minutes after the GitHub feed).
+# - `trusted` runs a same-repository pull request's or a backport's code with the run's GITHUB_TOKEN and
+#   `packages: read`, because nuget.config maps MintPlayer.* to the GitHub Packages feed, which refuses
+#   anonymous reads (the first runs, on #580's backports, failed with 401).
+# CodeCoverage's fork guard exempts only a job whose `if:` is exactly `!inputs.fork`; keep it that way.
+#
+# The app list is the verify steps' list in pull-request.yml; keep the two equal (in both jobs).
 
 on:
   workflow_dispatch:
@@ -26,6 +35,11 @@ on:
       queue_run_id:
         description: The merge queue's id for this attempt (shown in the run name only).
         required: true
+      fork:
+        description: Set by the queue for a fork's pull request; that run gets no credential.
+        type: boolean
+        required: false
+        default: false
 
 run-name: 'regenerate PR #${{ inputs.pr_number }} (${{ inputs.queue_run_id }})'
 
@@ -37,9 +51,48 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  regenerate:
+  fork:
+    if: ${{ inputs.fork }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # The dispatched mq/ branch as of the dispatch; the action compares it with expected_sha (D14).
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      # nuget.org only, outside the checkout so the patch never contains it.
+      - name: NuGet config without the GitHub feed
+        run: |
+          printf '%s\n' '<?xml version="1.0" encoding="utf-8"?>' '<configuration>' '  <packageSources>' '    <clear />' \
+            '    <add key="nuget.org" value="https://api.nuget.org/v3/index.json" protocolVersion="3" />' \
+            '  </packageSources>' '</configuration>' > "$RUNNER_TEMP/nuget.org.config"
+
+      - uses: ./.github/actions/spark-regenerate
+        with:
+          expected_sha: ${{ inputs.expected_sha }}
+          extra-build-args: -p:RestoreConfigFile=${{ runner.temp }}/nuget.org.config
+          projects: |
+            apps/DemoApp/DemoApp/DemoApp.csproj
+            apps/HR/HR/HR.csproj
+            apps/Fleet/Fleet/Fleet.csproj
+            apps/QnA/QnA/QnA.csproj
+            apps/SparkId/SparkId/SparkId.csproj
+            apps/CodeCoverage/CodeCoverage/CodeCoverage.csproj
+            apps/SeoTester/SeoTester/SeoTester.csproj
+
+  trusted:
+    if: ${{ !inputs.fork }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: read
+    # nuget.config's github-mintplayer source, as in pull-request.yml.
+    env:
+      GH_PKG_USER: ${{ github.actor }}
+      GH_PKG_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v7
         with:

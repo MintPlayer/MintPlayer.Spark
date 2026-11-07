@@ -182,7 +182,11 @@ public sealed record WorkflowHookForkCheck(string PushedRef, string PushedBranch
 /// <summary>D65 (d)'s answer.</summary>
 /// <param name="MissingWorkflow">The first workflow (as <c>.github/workflows/…</c>) the default branch does not have; then no finding was looked for.</param>
 /// <param name="Findings">Every reason, each once, not to push the fork's commit; empty: it may be pushed.</param>
-public sealed record WorkflowHookForkVerdict(string? MissingWorkflow, IReadOnlyList<ForkGuardFinding> Findings)
+/// <param name="ForkInputWorkflows">
+/// The workflows (as given in the check) that declare the <see cref="MergeQueueForkGuard.ForkInput"/> input: the fork's
+/// dispatch must send it as <c>true</c>, or the jobs the guard exempted would run the fork's code with their rights.
+/// </param>
+public sealed record WorkflowHookForkVerdict(string? MissingWorkflow, IReadOnlyList<ForkGuardFinding> Findings, IReadOnlyList<string>? ForkInputWorkflows = null)
 {
     public bool Holds => MissingWorkflow is null && Findings.Count == 0;
 }
@@ -228,16 +232,19 @@ public partial class WorkflowHook : IWorkflowHook
         var pushed = await saga.Forge.GetWorkflowFilesAsync(saga.Repository, check.PushedRef, cancellationToken);
         var atDefaultBranch = await saga.Forge.GetWorkflowFilesAsync(saga.Repository, check.DefaultBranch, cancellationToken);
         var findings = new List<ForkGuardFinding>();
+        var forkInput = new List<string>();
         foreach (var file in check.Workflows)
         {
             var path = WorkflowPath(file);
-            if (!atDefaultBranch.Any(f => string.Equals(f.Path, path, StringComparison.Ordinal)))
+            if (atDefaultBranch.FirstOrDefault(f => string.Equals(f.Path, path, StringComparison.Ordinal)) is not { } workflow)
                 return new WorkflowHookForkVerdict(path, []);
+            if (MergeQueueForkGuard.DeclaresForkInput(workflow))
+                forkInput.Add(file);
             foreach (var finding in MergeQueueForkGuard.Evaluate(pushed, check.PushedBranch, atDefaultBranch, check.DefaultBranch, file, check.DispatchBranch))
                 if (!findings.Contains(finding))
                     findings.Add(finding);
         }
-        return new WorkflowHookForkVerdict(null, findings);
+        return new WorkflowHookForkVerdict(null, findings, forkInput);
     }
 
     public async Task<WorkflowHookProvenanceFailure?> VerifyProvenanceAsync(IWorkflowHookSaga saga, string defaultBranch, string commitSha, IReadOnlyList<string> workflows, CancellationToken cancellationToken = default)

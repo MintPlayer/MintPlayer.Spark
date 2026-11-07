@@ -400,6 +400,11 @@ in case an earlier dispatch's answer was lost. A run that finished by itself is 
    at most `contents: read`; no `id-token`; no `secrets` anywhere (a `${{ secrets.* }}`, a `secrets:` key, an `if:`
    reading it); no `environment:`; no reusable workflow (`uses:` at job level); and only GitHub-hosted runner labels
    (`ubuntu-*`, `windows-*`, `macos-*`), no `self-hosted`, no runner group, no expression.
+   **One exception:** a job whose `if:` is exactly `${{ !inputs.fork }}`, in a workflow that declares a boolean
+   `fork` input under `workflow_dispatch: inputs:`, is not judged. The queue dispatches a fork's run with
+   `fork: true` whenever the workflow declares the input, so GitHub skips that job, and it may hold credentials
+   for same-repository pull requests and backports (Spark's own `regenerate.yml` restores from the GitHub Packages
+   feed there; owner, 2026-11-07). A secret at the top level still counts, because it reaches every job.
 3. **no default-branch workflow follows its runs on that branch:** a `workflow_run:` trigger that names the regenerate
    workflow must have `branches-ignore: ['mq/**']` (or a `branches:` list that leaves `mq/` out).
 4. **no workflow runs on `check_run`, `check_suite`, `status`, `deployment` or `deployment_status`** (O25, D67), at the
