@@ -3586,6 +3586,18 @@
             "fr": "Approbations requises",
             "nl": "Vereiste goedkeuringen"
           }
+        },
+        "RequiredChecks": {
+          "description": {
+            "en": "Checks a pull request must pass before it can be queued. Only checks seen on this repository's pull requests are offered; add one by name if it has not reported yet.",
+            "fr": "Checks qu'une pull request doit réussir avant d'entrer dans la file. Seuls les checks vus sur les pull requests de ce dépôt sont proposés ; ajoutez-en un par son nom s'il n'a pas encore été signalé.",
+            "nl": "Checks waar een pull request voor moet slagen voor hij in de wachtrij mag. Alleen checks die op pull requests van deze repository gezien zijn, worden aangeboden; voeg er een toe op naam als hij nog niet gerapporteerd heeft."
+          },
+          "label": {
+            "en": "Required checks",
+            "fr": "Checks requis",
+            "nl": "Vereiste checks"
+          }
         }
       }
     },
@@ -3904,14 +3916,14 @@
       "nl": "Toepassen"
     },
     "chooseMessage": {
-      "en": "These apply to every selected repository. Each keeps its own required checks.",
-      "fr": "Ces réglages s'appliquent à chaque dépôt sélectionné. Chacun garde ses propres checks requis.",
-      "nl": "Dit geldt voor elke geselecteerde repository. Elke repository houdt zijn eigen vereiste checks."
+      "en": "These apply to this repository only; each selected repository gets its own prompt.",
+      "fr": "Ces réglages ne s'appliquent qu'à ce dépôt ; chaque dépôt sélectionné a sa propre invite.",
+      "nl": "Dit geldt alleen voor deze repository; elke geselecteerde repository krijgt een eigen vraag."
     },
     "chooseTitle": {
-      "en": "The merge queue's rulesets",
-      "fr": "Les rulesets de la file de fusion",
-      "nl": "De rulesets van de merge-wachtrij"
+      "en": "The merge queue's rulesets for {0}",
+      "fr": "Les rulesets de la file de fusion pour {0}",
+      "nl": "De rulesets van de merge-wachtrij voor {0}"
     },
     "confirmTitle": {
       "en": "Apply these rulesets?",
@@ -3976,6 +3988,11 @@
         "fr": "sa forge n'a pas de rulesets",
         "nl": "de forge heeft geen rulesets"
       }
+    },
+    "settingsPage": {
+      "en": "Fix it in the repository's rules settings: {0}",
+      "fr": "Corrigez-le dans les réglages des règles du dépôt : {0}",
+      "nl": "Los het op in de regelinstellingen van de repository: {0}"
     }
   },
   "security": {

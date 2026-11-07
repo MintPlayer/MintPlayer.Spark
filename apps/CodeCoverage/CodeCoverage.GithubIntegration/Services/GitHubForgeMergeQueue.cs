@@ -380,23 +380,27 @@ public partial class GitHubForgeMergeQueue : IForgeMergeQueue
         }
 
         var repo = Child(Child(root, "data"), "repository");
-        var commits = new List<JsonElement> { Child(Child(repo, "defaultBranchRef"), "target") };
+        // A pull request's head commit marks its checks OnPullRequest (#554); the default branch's head does not, because a
+        // push-only job reports there and must never be offered as a required check.
+        var commits = new List<(JsonElement Commit, bool OnPullRequest)> { (Child(Child(repo, "defaultBranchRef"), "target"), false) };
         foreach (var pull in Items(Child(repo, "pullRequests"), "nodes"))
-            commits.AddRange(Items(Child(pull, "commits"), "nodes").Select(node => Child(node, "commit")));
+            commits.AddRange(Items(Child(pull, "commits"), "nodes").Select(node => (Child(node, "commit"), true)));
 
         var found = new Dictionary<string, ForgeReportedCheck>(StringComparer.Ordinal);
-        foreach (var context in commits.SelectMany(commit => Items(Child(Child(commit, "statusCheckRollup"), "contexts"), "nodes")))
+        foreach (var (commit, onPullRequest) in commits)
+        foreach (var context in Items(Child(Child(commit, "statusCheckRollup"), "contexts"), "nodes"))
         {
             var check = Str(context, "__typename") switch
             {
                 "CheckRun" when Str(context, "name") is { Length: > 0 } name
-                    => new ForgeReportedCheck(name, EForgeCheckKind.CheckRun, Str(Child(Child(context, "checkSuite"), "app"), "slug")),
+                    => new ForgeReportedCheck(name, EForgeCheckKind.CheckRun, Str(Child(Child(context, "checkSuite"), "app"), "slug"), onPullRequest),
                 "StatusContext" when Str(context, "context") is { Length: > 0 } name
-                    => new ForgeReportedCheck(name, EForgeCheckKind.Status, null),
+                    => new ForgeReportedCheck(name, EForgeCheckKind.Status, null, onPullRequest),
                 _ => null,
             };
             if (check is null || check.Name == CheckGate.QueueCheckName) continue;
-            found.TryAdd(check.Name, check);
+            if (!found.TryAdd(check.Name, check) && check.OnPullRequest && !found[check.Name].OnPullRequest)
+                found[check.Name] = found[check.Name] with { OnPullRequest = true };
         }
 
         return [.. found.Values.OrderBy(check => check.Name, StringComparer.Ordinal)];

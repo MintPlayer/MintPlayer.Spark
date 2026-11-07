@@ -40,7 +40,9 @@ public class ForgeCheckLoadEndToEndTests
         po.Breadcrumb.Should().Be(name);
         var attribute = po.Attributes.Single(a => a.Name == "Name");
         attribute.Value.Should().Be(name);
-        attribute.IsReadOnly.Should().BeTrue();
+        // Name is writable since #554 (the required-checks picker's "Add new" names a check); the page stays read-only
+        // because nobody holds Edit, which is what Can.Edit says.
+        attribute.IsReadOnly.Should().BeFalse();
         po.Can.Should().NotBeNull();
         po.Can!.Edit.Should().BeFalse();
         po.Can.Delete.Should().BeFalse();
