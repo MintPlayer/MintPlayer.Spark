@@ -738,7 +738,14 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
         var reported = eventType switch
         {
             "check_run" when Child(root, "check_run") is { } check && !IsOurApp(check) && Text(check, "name") is { Length: > 0 } name
-                => new ForgeCheck { Name = name, Kind = EForgeCheckKind.CheckRun, AppSlug = Child(check, "app") is { } app ? Text(app, "slug") : null },
+                => new ForgeCheck
+                {
+                    Name = name, Kind = EForgeCheckKind.CheckRun, AppSlug = Child(check, "app") is { } app ? Text(app, "slug") : null,
+                    // GitHub lists the pull requests whose head the run is on; a fork's are not listed, and a status
+                    // names none, so those count only once the queue or the backfill sees them on a pull request (#554).
+                    OnPullRequest = check.TryGetProperty("pull_requests", out var pulls)
+                        && pulls.ValueKind == JsonValueKind.Array && pulls.GetArrayLength() > 0,
+                },
             "status" when Text(root, "context") is { Length: > 0 } context
                 => new ForgeCheck { Name = context, Kind = EForgeCheckKind.Status },
             _ => null,
@@ -748,7 +755,7 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
         // A point load the session already holds: LoadKnownRepositoryIdAsync read the same document.
         var repository = await session.LoadAsync<Repository>(repositoryId, ct);
         foreach (var due in ForgeCheck.Due(repository?.KnownChecks, [reported], DateTimeOffset.UtcNow.UtcDateTime))
-            await RaiseAsync(new CheckReported(repositoryId, due.Name, due.Kind, due.AppSlug), ct);
+            await RaiseAsync(new CheckReported(repositoryId, due.Name, due.Kind, due.AppSlug, due.OnPullRequest), ct);
     }
 
     /// <summary>

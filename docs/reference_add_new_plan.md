@@ -6,8 +6,8 @@ after this lands (branch `fix/554-required-checks-picker`).
 
 ## Resume here
 
-All spikes are answered (PRD D7–D18). M1–M3 are done; M4 is done: server tests, both specs and the E2E are green
-(targeted runs). Next: the owner's review, then commit and PR on request; then #554 (ForgeCheck exposes `Id` per D18). Nothing is committed yet.
+Merged as PR #580 (`ae99722f1`). The #554 consumer is on `fix/554-required-checks-picker`; see "#554: the
+required-checks picker" below. Ruleset 26719109 stays disabled until that ships.
 
 ## Context (why the rulesets work is waiting)
 
@@ -129,3 +129,32 @@ forge's settings page wherever the list cannot be written. The "names the user a
     - E2E `ReferencePicker/ReferenceAddNewTests` (1, HR, already in `E2E_APPS`): on Person's create page, the
       Company picker's [+] opens the popup with Name prefilled by the term; its Save stores the company and picks it
       while the person stays on `/new`; saving the person stores it pointing at that company.
+
+## #554: the required-checks picker (branch `fix/554-required-checks-picker`, 2026-11-07)
+
+Decisions (owner, 2026-11-07, in this session):
+
+- **One prompt per selected repository** ("Show the custom-action on the query page, let the user select at least one
+  repo => let the user walk through each selected repo (using a retryAction?)"). `MergeQueueRulesetSetup.ChooseAsync`
+  asks one retry step per repository, titled with its full name, prefilled from that repository's
+  `MergeQueueRulesetPlanner.Defaults`; each plan takes its own answers. Consecutive retry steps replay in order
+  (`RetryAccessor.Action`, step counter). Evidence: `SetUpRulesetsActionTests.Each_repository_gets_its_own_prompt_and_its_own_answers`.
+- **Options = checks seen on a pull request** ("Seen on pull requests (Recommended)"). `ForgeCheck.OnPullRequest` (sticky,
+  never cleared by the upsert patch) is set by a `check_run` webhook whose `pull_requests` is non-empty and by the
+  backfill for a pull request's head commit (not the default branch's head). The engine's own reads do not set it: the
+  PR head's `ExpectedChecks` come from the current protection, which can hold the very push-only names that broke
+  ruleset 26719109. A fork's runs list no pull request, so they count once the backfill sees them. Query
+  `Repository_PullRequestChecks` (the manager gate of `Repository_ForgeChecks`, filtered). Evidence:
+  `KnownChecksTests.A_known_name_first_seen_on_a_pull_request_is_due`, `.Seen_on_a_pull_request_sticks`,
+  `MergeQueueWebhookTests.A_check_run_on_a_pull_request_is_reported_as_seen_on_one`,
+  `GitHubForgeMergeQueueTests.Reported_checks_are_read_through_one_graphql_query_*`,
+  `RemainingActionsTests.Repository_PullRequestChecks_offers_only_checks_seen_on_a_pull_request`.
+- **Key derived from the name** (PRD D18 revised): `ForgeCheck : IHasNaturalId`, `Name` writable and required in
+  `ForgeCheck.json`, `New/ForgeCheck` granted to signed-in users (`security.json` key `…00ad`); the confirm stores
+  nothing. The detail page stays read-only (`Can.Edit = false`, no Edit right).
+- **No guess from the head commit:** `Defaults(state)` lost its `headChecks` parameter (ruleset 2 → classic → none), and
+  `ReadAsync` no longer reads the default branch's head.
+- **Summary:** a ruleset 2 creation names its required checks; a blocked repository gets a line with its GitHub rules
+  settings page (`rulesets.settingsPage`).
+- **Client:** the retry modal passes the prompt PO's `parent` to `spark-po-form` as `referenceParentId/Type`, so a
+  picker in a retry form queries under it (`spark-retry-action-modal.component.spec.ts`).

@@ -367,7 +367,8 @@ public enum EForgeClassicProtection
 
 /// <summary>A check that reported on some commit of the repository (<see cref="IForgeMergeQueue.GetReportedCheckNamesAsync"/>).</summary>
 /// <param name="AppSlug">The App that made the check run, when the forge says so; null for a commit status.</param>
-public sealed record ForgeReportedCheck(string Name, EForgeCheckKind Kind, string? AppSlug);
+/// <param name="OnPullRequest">It reported on a pull request's head commit, not only on the default branch (#554).</param>
+public sealed record ForgeReportedCheck(string Name, EForgeCheckKind Kind, string? AppSlug, bool OnPullRequest = false);
 
 /// <summary>Everything that reported on one commit.</summary>
 public sealed record ForgeCheckState(

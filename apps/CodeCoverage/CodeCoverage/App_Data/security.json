@@ -155,6 +155,12 @@
       "isDenied": false
     },
     {
+      "key": "c0e5a9e1-0000-4000-8000-0000000000ad",
+      "resource": "New/ForgeCheck",
+      "groupId": "00000000-0000-0000-0000-000000000001",
+      "isDenied": false
+    },
+    {
       "key": "c0e5a9e1-0000-4000-8000-000000000063",
       "resource": "Edit/GitHubProject",
       "groupId": "00000000-0000-0000-0000-000000000001",

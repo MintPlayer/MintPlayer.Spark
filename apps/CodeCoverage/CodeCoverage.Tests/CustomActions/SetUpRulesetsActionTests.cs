@@ -4,6 +4,7 @@ using CodeCoverage.Entities;
 using CodeCoverage.Forge;
 using CodeCoverage.MergeQueue;
 using CodeCoverage.Tests.Dependencies.Lifecycle;
+using System.Text.Json;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using MintPlayer.Spark.Abstractions;
@@ -68,8 +69,6 @@ public class SetUpRulesetsActionTests : CoverageRavenTest
             Queue.Provider.Returns(EForgeProvider.GitHub);
             Queue.GetRulesetStateAsync(Arg.Any<Repository>(), "master", Token, Arg.Any<CancellationToken>())
                 .Returns(new ForgeRulesetState(77, [], null));
-            Queue.GetBranchHeadAsync(Arg.Any<Repository>(), "master", Arg.Any<CancellationToken>()).Returns("abc123");
-            Queue.GetCheckNamesOnCommitAsync(Arg.Any<Repository>(), "abc123", Arg.Any<CancellationToken>()).Returns(["build", CheckGate.QueueCheckName]);
             Queue.ApplyRulesetPlanAsync(Arg.Any<Repository>(), "master", Arg.Any<MergeQueueRulesetPlan>(), Token, Arg.Any<CancellationToken>())
                 .Returns(call =>
                 {
@@ -92,15 +91,19 @@ public class SetUpRulesetsActionTests : CoverageRavenTest
     /// <summary>Keeps the session the action reads with.</summary>
     private sealed record IAsyncDocumentSessionHolder(Raven.Client.Documents.Session.IAsyncDocumentSession Session);
 
-    private static PersistentObject Form(int? approvals, bool? admins) => new()
+    private static PersistentObject Form(int? approvals, bool? admins, object? checks = null) => new()
     {
         Id = null, Name = "SetUpRulesets", ObjectTypeId = FormType,
         Attributes =
         [
             new PersistentObjectAttribute { Name = nameof(MergeQueueRulesetChoices.RequiredApprovals), Value = approvals },
             new PersistentObjectAttribute { Name = nameof(MergeQueueRulesetChoices.AdminsMayMergeByPullRequest), Value = admins },
+            new PersistentObjectAttribute { Name = nameof(MergeQueueRulesetChoices.RequiredChecks), Value = checks },
         ],
     };
+
+    /// <summary>A RequiredChecks answer as the wire carries it: a JSON array of the picked rows' ids.</summary>
+    private static JsonElement Wire(params string[] ids) => JsonSerializer.SerializeToElement(ids);
 
     private static CustomActionArgs Selected(params string[] ids)
         => new() { SelectedItems = [.. ids.Select(id => new QueryResultItem { Id = id, Values = [] })] };
@@ -138,7 +141,7 @@ public class SetUpRulesetsActionTests : CoverageRavenTest
         var holder = await SeedAsync();
         var f = new Fixture();
         f.Manager.Retry.Result.Returns(
-            new RetryResult { Option = "onboarding.plan", PersistentObject = Form(0, true) },
+            new RetryResult { Option = "onboarding.plan", PersistentObject = Form(0, true, Wire("build", CheckGate.QueueCheckName)) },
             new RetryResult { Option = "rulesets.apply" });
         var args = Selected(RepositoryId, Foreign);
 
@@ -157,7 +160,7 @@ public class SetUpRulesetsActionTests : CoverageRavenTest
         ruleset2.Definition.Rules.Single(r => r.Type == "pull_request").Parameters!["required_approving_review_count"]!.GetValue<int>()
             .Should().Be(0, "the form's answer");
         ruleset2.Definition.Rules.Single(r => r.Type == "required_status_checks").Parameters!["required_status_checks"]!.ToJsonString()
-            .Should().Contain("\"build\"").And.NotContain(CheckGate.QueueCheckName, "the head's checks, never the queue's own");
+            .Should().Contain("\"build\"").And.NotContain(CheckGate.QueueCheckName, "the picked checks, never the queue's own");
         f.Lease.Disposed.Should().Be(1, "the token is revoked when the action ends");
 
         var result = (SetUpRulesetsResult)args.Result!;
@@ -165,6 +168,43 @@ public class SetUpRulesetsActionTests : CoverageRavenTest
         result.NotApplied.Should().ContainSingle().Which.Should().Be(new RulesetRepositoryResult(Foreign, "other-org/tool", "rulesets.reason.notManaged", []));
         f.Manager.Client.Received(1).Notify(Arg.Any<string>(), NotificationKind.Success, Arg.Any<TimeSpan?>());
         f.Manager.Client.Received(1).Notify(Arg.Any<string>(), NotificationKind.Warning, Arg.Any<TimeSpan?>());
+    }
+
+    /// <summary>
+    /// One prompt per repository (#554, owner 2026-11-07): its parent is that repository, so the RequiredChecks picker
+    /// offers that repository's pull-request checks, and each plan takes its own answers.
+    /// </summary>
+    [Fact]
+    public async Task Each_repository_gets_its_own_prompt_and_its_own_answers()
+    {
+        var f = new Fixture();
+        RulesetRead Read(string id, string fullName)
+        {
+            var repository = new Repository { Id = id, FullName = fullName, OwnerLogin = "acme", Name = fullName[5..], DefaultBranch = "master" };
+            var state = new ForgeRulesetState(77, [], null);
+            return new RulesetRead(new RulesetTarget(repository, f.Queue, "master"), state, MergeQueueRulesetPlanner.Defaults(state));
+        }
+        var prompted = new List<PersistentObject>();
+        f.Manager.Retry.When(r => r.Action(Arg.Any<string>(), Arg.Any<string[]>(), Arg.Any<string?>(), Arg.Any<PersistentObject?>(), Arg.Any<string?>(), Arg.Any<bool>()))
+            .Do(call => prompted.Add(call.ArgAt<PersistentObject>(3)));
+        f.Manager.Retry.Result.Returns(
+            new RetryResult { Option = "onboarding.plan", PersistentObject = Form(1, false, Wire("build")) },
+            new RetryResult { Option = "onboarding.plan", PersistentObject = Form(2, true, Wire("lint", "test")) });
+
+        var planned = await f.Setup().ChooseAsync([Read("Repositories/github/1", "acme/one"), Read("Repositories/github/2", "acme/two")], CancellationToken.None);
+
+        prompted.Select(p => p.Parent?.Id).Should().Equal("Repositories/github/1", "Repositories/github/2");
+        prompted.Should().OnlyContain(p => p.Parent!.Name == nameof(Repository));
+        // No ruleset and no classic protection: nothing is guessed from the default branch's head.
+        ((string[])prompted[0][nameof(MergeQueueRulesetChoices.RequiredChecks)].Value!).Should().BeEmpty();
+        f.Manager.Received(1).GetTranslatedMessage("rulesets.chooseTitle", Arg.Is<object[]>(a => a.Length == 1 && (string)a[0] == "acme/two"));
+
+        string Checks(RulesetPlanned p) => p.Plan.Steps.OfType<CreateRulesetStep>()
+            .Single(s => s.Definition.Name == MergeQueueRulesetPlanner.ReviewsAndChecksName)
+            .Definition.Rules.Single(r => r.Type == "required_status_checks").Parameters!["required_status_checks"]!.ToJsonString();
+        planned!.Select(p => p.Target.Repository.FullName).Should().Equal("acme/one", "acme/two");
+        Checks(planned[0]).Should().Contain("\"build\"").And.NotContain("lint");
+        Checks(planned[1]).Should().Contain("\"lint\"").And.Contain("\"test\"").And.NotContain("build");
     }
 
     [Fact]

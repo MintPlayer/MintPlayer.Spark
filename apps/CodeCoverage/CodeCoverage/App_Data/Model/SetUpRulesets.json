@@ -2,8 +2,10 @@
   "$schema": "../../../../../schemas/model.schema.json",
   "_comment": [
     "HAND-AUTHORED and NOT generated. A virtual type: no clrType, no documents. The \"Set up rulesets\" query action's form",
-    "(#554 f3), shown as a retry prompt: the merge queue's rulesets as the person wants them on every selected repository.",
-    "Each repository's required checks start from its own state (MergeQueueRulesetPlanner.Defaults), so they are not asked here."
+    "(#554 f3), shown as a retry prompt once per selected repository (owner 2026-11-07): that repository's rulesets as the",
+    "person wants them, prefilled from its own state (MergeQueueRulesetPlanner.Defaults). The prompt's parent is the",
+    "repository, so RequiredChecks offers the checks seen on its pull requests (Repository_PullRequestChecks), and \"Add",
+    "new\" names one that has not reported yet."
   ],
   "persistentObject": {
     "id": "c5980da3-b622-46cb-b65e-e6fcbbbd48e7",
@@ -31,6 +33,21 @@
         "isReadOnly": false,
         "order": 2,
         "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "0b8e4c2a-6f1d-4e93-a7c5-3d9f2b6e8a14",
+        "name": "RequiredChecks",
+        "dataType": "Reference",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 3,
+        "query": "Repository_PullRequestChecks",
+        "referenceType": "CodeCoverage.Entities.ForgeCheck",
+        "canAddNewReference": true,
+        "defaultAttribute": "Name",
+        "isArray": true,
         "showedOn": "PersistentObject",
         "rules": []
       }
