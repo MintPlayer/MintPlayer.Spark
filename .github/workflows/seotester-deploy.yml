@@ -316,7 +316,9 @@ jobs:
 
           echo "$GITHUB_TOKEN" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
-          docker compose --env-file .env pull
+          # One pull at a time on the VPS: two deploys pulling a shared layer at once fail in containerd ("commit failed:
+          # rename .../ingest/... no such file or directory", code-coverage-deploy run 42339838410, 2026-11-07).
+          flock -w 120 /tmp/vps-deploy-pull.lock docker compose --env-file .env pull
           docker compose --env-file .env down --remove-orphans
           docker compose --env-file .env up -d --remove-orphans
 

@@ -386,7 +386,8 @@ public class BackportRecipientTests : CoverageRavenTest
     [Fact]
     public async Task Regenerated_paths_go_with_every_target_and_a_line_that_needs_regenerating_waits_for_its_workflow()
     {
-        // #570 M6, D9: the merge queue's regeneratedPaths keep the line's side; the pull request opens after the line's workflow.
+        // #570 M6, D9: the derived files (whole-file take-base rules that regenerate) keep the line's side; the pull request
+        // opens after the line's workflow.
         using var store = GetDocumentStore();
         integration.GetFileContentAsync(Arg.Any<Repository>(), "main", CoverageYml.FileName, Arg.Any<CancellationToken>())
             .Returns(QueueYml + "    - path: \"**/packages.lock.json\"\n      strategy: take-base\n      regenerate: true\n      action: lock.yml\n");
@@ -402,13 +403,35 @@ public class BackportRecipientTests : CoverageRavenTest
         await HandleAsync(store, "maintainer", EBackportSource.Label, "8.x");
 
         await writer.Received(1).VersioningBackportAsync(
-            Arg.Is<GitWriterBackportRequest>(r => r.Targets.Single().RegeneratedPaths!.Contains("**/package-lock.json")), Arg.Any<CancellationToken>());
+            Arg.Is<GitWriterBackportRequest>(r => r.Targets.Single().RegeneratedPaths!.SequenceEqual(new[] { "**/packages.lock.json" })), Arg.Any<CancellationToken>());
         forge.OpenedPullRequests.Should().BeEmpty();
         await regenerations.Received(1).BeginAsync(Arg.Any<Repository>(), Arg.Is<BackportRegeneration>(r =>
             r.Head == "backport/7-8.x" && r.Branch == "release/8.x" && r.Number == 7 && r.Sha == new string('d', 40)
             && r.Workflows.SequenceEqual(new[] { "lock.yml", "regenerate.yml" })
             && r.Paths.Count == 2 && r.Title == "[8.x] fix: guard" && r.Body.StartsWith("Backport of #7 to `release/8.x`.")), Arg.Any<CancellationToken>());
         forge.Comments.Single().Body.Should().Contain("- `release/8.x`: `backport/7-8.x` is pushed; its pull request opens once `lock.yml`, `regenerate.yml` regenerated 2 files on the line");
+    }
+
+    [Fact]
+    public async Task Hand_written_files_in_regeneratedPaths_merge_as_text_and_only_derived_files_keep_the_line_side()
+    {
+        // Owner, 2026-11-07: #580's backports reset Spark's Model/*.json and translations.json to the line's version, because
+        // they are in regeneratedPaths, and lost the change's hand-written edits. Only the take-base files are reset now.
+        using var store = GetDocumentStore();
+        integration.GetFileContentAsync(Arg.Any<Repository>(), "main", CoverageYml.FileName, Arg.Any<CancellationToken>())
+            .Returns(QueueYml
+                + "    - path: \"**/App_Data/modelHashes.json\"\n      strategy: take-base\n      regenerate: true\n"
+                + "    - path: \"**/App_Data/Model/*.json\"\n      strategy: keep-both\n      regenerate: true\n"
+                + "    - path: \"**/settings.json\"\n      strategy: take-base\n      keys: [version]\n      regenerate: true\n"
+                + "  regeneratedPaths:\n    - \"**/App_Data/modelHashes.json\"\n    - \"**/App_Data/Model/*.json\"\n"
+                + "    - \"**/App_Data/translations.json\"\n    - \"**/settings.json\"\n");
+        WriterAnswers(new GitWriterBackportResult(GitWriterBackportResult.Backported, null, "squash", null, [Target(GitWriterBackportTargetResult.Created)], null, 1));
+
+        await HandleAsync(store, "maintainer", EBackportSource.Label, "8.x");
+
+        await writer.Received(1).VersioningBackportAsync(
+            Arg.Is<GitWriterBackportRequest>(r => r.Targets.Single().RegeneratedPaths!.SequenceEqual(new[] { "**/App_Data/modelHashes.json" })),
+            Arg.Any<CancellationToken>());
     }
 
     [Fact]

@@ -69,7 +69,9 @@ jobs:
           curl -sf -H "Authorization: token $GITHUB_TOKEN" -o docker-compose.yml \
             https://raw.githubusercontent.com/${{ github.repository }}/master/apps/MailRelay/docker-compose.yml
 
-          docker compose --env-file .env pull
+          # One pull at a time on the VPS: two deploys pulling a shared layer at once fail in containerd ("commit failed:
+          # rename .../ingest/... no such file or directory", code-coverage-deploy run 42339838410, 2026-11-07).
+          flock -w 120 /tmp/vps-deploy-pull.lock docker compose --env-file .env pull
           # No `down` first: up recreates the container only when its configuration changed, and the queue lives in a
           # volume, so a no-op deploy does not interrupt delivery.
           docker compose --env-file .env up -d --remove-orphans
