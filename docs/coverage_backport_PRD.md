@@ -716,10 +716,25 @@ cascade: 66 of 72 conflicted only because #461 was missing). Script: a throwaway
     - Accepted cost: a backport that touches a lockfile waits for a workflow run, minutes, before its PR opens.
     - Rejected: regenerating only resolved conflicts, which lets a cleanly text-merged lockfile reach the line
       unverified.
+    - **Superseded in part (owner, 2026-11-07): only derived files take the line's side.** "Every path that matches
+      `regeneratedPaths`" was too wide. That list names what a regenerate patch may touch, and Spark's holds files with
+      hand-written content: `Model/*.json`, `translations.json`, `security.json`. #580's backports (#581, #582) reset
+      HR's `Person.json` and Spark's `translations.json` to the line's version and lost the change's edits (two
+      add-new flags, two translation keys), which no regeneration can bring back. They were restored by hand.
+      - Now: the paths of the whole-file `take-base` rules that regenerate (lockfiles, `modelHashes.json`,
+        `securityPosture.txt`) take the line's side (`BackportRecipient.LineSidePaths`). Every other file merges as
+        text under its own rule. The patch's allowed globs are still the whole `regeneratedPaths` list.
+      - Accepted cost: a hand-written file in `regeneratedPaths` that merges cleanly is not regenerated on the line.
+      - The same backports showed `regenerate.yml` had never restored: `nuget.config` maps `MintPlayer.*` to the
+        GitHub Packages feed, which needs credentials, and the workflow had none. It now gets `packages: read` and the
+        run's `GITHUB_TOKEN` (owner, 2026-11-07, accepting that the untrusted code can read the organization's
+        packages for the run's lifetime).
 - **M6, built (2026-11-05): regeneration on backport branches (D9).**
 
   **Writer.**
-  - Each target carries the default branch's effective `mergeQueue.regeneratedPaths` (`BackportTargetWire.RegeneratedPaths`).
+  - Each target carries the derived paths (`BackportTargetWire.RegeneratedPaths`): since 2026-11-07 those of the
+    whole-file `take-base` rules that regenerate, no longer the whole `mergeQueue.regeneratedPaths` (see the superseded
+    decision above).
   - Before the merge, every changed path that matches one is reset in "theirs" to the base's entry (removed when the
     base lacks it). The merge therefore keeps the line's side and cannot conflict there.
   - These paths are kept out of the platform-marker paths.
