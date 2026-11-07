@@ -20,6 +20,8 @@ regenerates the files and returns them as a patch. The queue then validates the 
    `--spark-synchronize-security`. This is the same `dotnet run` form as this repository's verify steps
    (`pull-request.yml`), so the files it writes are the ones `--spark-verify-*` accepts. Any non-zero exit
    fails the run (1 = synchronize stopped on an error such as an unparsable model file, 2 = misconfigured).
+   With `after-synchronize`, its bash commands then run from the repository root, for files derived from
+   what synchronize wrote (this repository rewrites its layering goldens with `SPARK_UPDATE_GOLDEN=1`).
 5. Runs the whole synchronize a **second** time and fails if that changes anything: synchronize must be at
    a fixed point, or every queue run would produce a fresh diff.
 6. Writes `git diff --binary` against `HEAD`, taken through a throwaway index so new files
@@ -44,6 +46,7 @@ binary (T4); the verify checks then run on the final commit.
 | `configuration` | `Debug` | Keep it equal to the verify step's configuration. |
 | `skip-spa-build` | `true` | Passes `-p:EnableSpaBuilder=false`. |
 | `extra-build-args` | `''` | Appended to every `dotnet build`. |
+| `after-synchronize` | `''` | Bash commands run after each synchronize pass (sees `CONFIGURATION`, `BUILD_ARGS`); what they write is in the patch and the fixed-point check, so list it in `regeneratedPaths`. |
 | `lockfiles` | `''` | Opt-in: ecosystems whose lockfiles to regenerate first (`npm`, `pnpm`, `yarn`, `nuget`), below. |
 | `pr_number` | `''` | With `lockfiles`: the dispatch's `pr_number`, for the marker rebuild and two-sided provenance. |
 | `token` | `${{ github.token }}` | With `lockfiles` and `pr_number`: fetches `refs/pull/<n>/head` of a private repository. |

@@ -81,6 +81,10 @@ jobs:
             apps/SparkId/SparkId/SparkId.csproj
             apps/CodeCoverage/CodeCoverage/CodeCoverage.csproj
             apps/SeoTester/SeoTester/SeoTester.csproj
+          # The layering goldens are derived from the apps' App_Data, like modelHashes.json: rewritten, never merged.
+          after-synchronize: |
+            SPARK_UPDATE_GOLDEN=1 dotnet test tests/MintPlayer.Spark.Tests/MintPlayer.Spark.Tests.csproj -c "$CONFIGURATION" $BUILD_ARGS \
+              --filter "FullyQualifiedName~MintPlayer.Spark.Tests.Layering"
 
   trusted:
     if: ${{ !inputs.fork }}
@@ -112,3 +116,7 @@ jobs:
             apps/SparkId/SparkId/SparkId.csproj
             apps/CodeCoverage/CodeCoverage/CodeCoverage.csproj
             apps/SeoTester/SeoTester/SeoTester.csproj
+          # The layering goldens are derived from the apps' App_Data, like modelHashes.json: rewritten, never merged.
+          after-synchronize: |
+            SPARK_UPDATE_GOLDEN=1 dotnet test tests/MintPlayer.Spark.Tests/MintPlayer.Spark.Tests.csproj -c "$CONFIGURATION" $BUILD_ARGS \
+              --filter "FullyQualifiedName~MintPlayer.Spark.Tests.Layering"
