@@ -15,6 +15,7 @@
       <input
         class="filter-search"
         type="search"
+        [value]="term()"
         [attr.aria-label]="'Search values'"
         (input)="onSearch($any($event.target).value)" />
     </div>
@@ -30,6 +31,7 @@
         [class.is-on]="inverse()"
         [attr.aria-pressed]="inverse()"
         [attr.aria-label]="'Exclude the selected values'"
+        [disabled]="readonly()"
         (click)="toggleInverse()">
         ≠
       </button>
@@ -40,6 +42,7 @@
           <bs-checkbox
             class="spark-filter-value"
             [checked]="isChecked(value)"
+            [disabled]="readonly()"
             (checkedChange)="toggle(value, $event === true)">
             {{ labelFor(value) }}
           </bs-checkbox>
@@ -54,6 +57,7 @@
           <bs-checkbox
             class="spark-filter-value is-remaining"
             [checked]="isChecked(value)"
+            [disabled]="readonly()"
             (checkedChange)="toggle(value, $event === true)">
             {{ labelFor(value) }}
           </bs-checkbox>
@@ -86,15 +90,16 @@
         class="filter-search"
         type="search"
         [value]="freeText()"
+        [readOnly]="readonly()"
         [attr.aria-label]="'Filter value'"
         (input)="freeText.set($any($event.target).value)"
         (keydown.enter)="applyFreeText()" />
     </div>
-    <button type="button" class="spark-filter-apply" (click)="applyFreeText()">Apply</button>
+    <button type="button" class="spark-filter-apply" [disabled]="readonly()" (click)="applyFreeText()">Apply</button>
   }
 
   <!-- Last, so it is never the landing spot. Kept in the tab order when disabled. -->
-  <button type="button" class="spark-filter-clear" [disabled]="!hasSelection()" (click)="clear()">
+  <button type="button" class="spark-filter-clear" [disabled]="readonly() || !hasSelection()" (click)="clear()">
     <spark-icon name="funnel" />
     <span>Clear the filter on {{ column().name }}</span>
   </button>
