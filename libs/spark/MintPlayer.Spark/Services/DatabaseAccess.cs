@@ -225,8 +225,14 @@ internal partial class DatabaseAccess : IDatabaseAccess
         var entityTypeDefinition = modelLoader.GetEntityType(persistentObject.ObjectTypeId)
             ?? throw new InvalidOperationException($"Could not find EntityType with ID '{persistentObject.ObjectTypeId}'");
 
-        var entityType = typeResolver.Resolve(entityTypeDefinition.ClrType)
-            ?? throw new InvalidOperationException($"Could not resolve type '{entityTypeDefinition.ClrType}'");
+        // Only a document type is stored as its own document (reference add-new PRD D11). A type with no
+        // C# class has no Query<T> to read it back, and a [ValueObject] lives inside its owner's
+        // document: writing either standalone would leave a stray document nothing lists. Refused like
+        // an unknown type; a picker's Add new for such a type is confirmed, not saved (D10,
+        // IPersistentObjectSavePath.ConfirmAsync).
+        var entityType = typeResolver.Resolve(entityTypeDefinition.ClrType);
+        if (entityType is null || Abstractions.Model.SparkValueObjects.IsKeyed(entityType))
+            throw new SparkAccessDeniedException($"Save/{entityTypeDefinition.Name}");
 
         // A restore names an existing document; it never creates one (#460, SoftDelete).
         var isRestore = operation == PersistentObjectOperation.Restore;

@@ -30,7 +30,7 @@ public partial class GateSettingsActions : DefaultPersistentObjectActions<GateSe
     /// invocation is handed a freshly scaffolded object, never the result of the last one, so an
     /// `if (fixed) show` with no `else` would leave the field visible forever after one visit.
     /// </remarks>
-    public override Task OnRefreshAsync(SparkRefreshArgs<GateSettings> args)
+    public override Task OnRefreshAsync(SparkRefreshArgs args)
     {
         ShapeForMode(args.PersistentObject);
         return Task.CompletedTask;

@@ -35,7 +35,7 @@ form while the user is still typing.
 **2. Override the hook** on the entity's actions class:
 
 ```csharp
-public override Task OnRefreshAsync(SparkRefreshArgs<Car> args)
+public override Task OnRefreshAsync(SparkRefreshArgs args)
 {
     var obj = args.PersistentObject;
     var stolen = obj[nameof(Car.Status)].Value?.ToString() == CarStatus.Stolen;
@@ -124,7 +124,7 @@ There is no `isVisible` (removed in #264). An attribute that appears only in som
 Fleet's `CarActions` (`apps/Fleet/Fleet/Actions/CarActions.cs`):
 
 ```csharp
-public override Task OnRefreshAsync(SparkRefreshArgs<Car> args)
+public override Task OnRefreshAsync(SparkRefreshArgs args)
 {
     ShapeForStatus(args.PersistentObject, refresh: true);
     return Task.CompletedTask;
@@ -138,7 +138,7 @@ public override async Task<PersistentObject?> OnLoadAsync(string id, PersistentO
     return po;
 }
 
-public override Task OnNewAsync(SparkNewArgs<Car> args)
+public override Task OnNewAsync(SparkNewArgs args)
 {
     ShapeForStatus(args.PersistentObject, refresh: false);
     return base.OnNewAsync(args);
@@ -187,7 +187,7 @@ type's own; the row is handed its owner for the context it cannot have alone:
 ```csharp
 public class CarreerJobActions : DefaultPersistentObjectActions<CarreerJob>
 {
-    public override async Task OnRefreshAsync(SparkRefreshArgs<CarreerJob> args)
+    public override async Task OnRefreshAsync(SparkRefreshArgs args)
     {
         var obj = args.PersistentObject;      // the row that changed
         var person = obj.Parent;              // the object it lives in — read-only context
@@ -235,7 +235,7 @@ Repository's.
 ```csharp
 public partial class GateSettingsActions : DefaultPersistentObjectActions<GateSettings>
 {
-    public override Task OnRefreshAsync(SparkRefreshArgs<GateSettings> args)
+    public override Task OnRefreshAsync(SparkRefreshArgs args)
     {
         var obj = args.PersistentObject;
         var isFixed = obj[nameof(GateSettings.ProjectMode)].GetValue<string>() == "fixed";

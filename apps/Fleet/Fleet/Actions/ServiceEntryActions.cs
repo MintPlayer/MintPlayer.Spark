@@ -27,13 +27,13 @@ public partial class ServiceEntryActions : DefaultPersistentObjectActions<Servic
     /// car, clicking Add and clicking away would raise an unsaved-changes prompt over a car nobody
     /// edited.
     /// <para>
-    /// The plate is read from the parent, which is what <see cref="SparkNewArgs{T}.AsDetailParent"/>
+    /// The plate is read from the parent, which is what <see cref="SparkNewArgs.AsDetailParent"/>
     /// is for, and read defensively: it is null when the vehicle has never been saved, and the
     /// indexer on <see cref="PersistentObject"/> throws rather than returning null for an attribute
     /// that is not there. A construction hook that throws turns an Add button into a 500.
     /// </para>
     /// </remarks>
-    public override Task OnNewAsync(SparkNewArgs<ServiceEntry> args)
+    public override Task OnNewAsync(SparkNewArgs args)
     {
         var entry = args.PersistentObject;
         entry[nameof(ServiceEntry.PerformedOn)].SetOriginalValue(DateOnly.FromDateTime(DateTime.Today));
@@ -51,7 +51,7 @@ public partial class ServiceEntryActions : DefaultPersistentObjectActions<Servic
     /// Refuses to release an entry that has already been invoiced.
     /// </summary>
     /// <remarks>
-    /// ⚠️ <b>Reads <see cref="SparkDeleteRowArgs{T}.Row"/>, which is the STORED row</b> — never the
+    /// ⚠️ <b>Reads <see cref="SparkDeleteRowArgs.Row"/>, which is the STORED row</b> — never the
     /// client's copy. That is the difference between a rule and a suggestion: had this read the
     /// submitted row, a caller would only have to send <c>IsInvoiced = false</c> to be allowed
     /// through, and the check would be consulting the very claim it exists to doubt.
@@ -63,7 +63,7 @@ public partial class ServiceEntryActions : DefaultPersistentObjectActions<Servic
     /// right is what makes it true.
     /// </para>
     /// </remarks>
-    public override Task OnDeleteRowAsync(SparkDeleteRowArgs<ServiceEntry> args)
+    public override Task OnDeleteRowAsync(SparkDeleteRowArgs args)
     {
         // The mapper emits a bool as a bool, but a value that has been through JSON can arrive as a
         // string — so compare on both rather than casting and hoping.

@@ -701,7 +701,7 @@ public class SparkModelVerifyChecksTests
 
     public sealed class VerifyRefreshedProbeActions(IEntityMapper mapper) : DefaultPersistentObjectActions<VerifyRefreshedProbe>(mapper)
     {
-        public override Task OnRefreshAsync(SparkRefreshArgs<VerifyRefreshedProbe> args) => Task.CompletedTask;
+        public override Task OnRefreshAsync(SparkRefreshArgs args) => Task.CompletedTask;
     }
 
     public sealed class VerifyCustomProbe { public string? Id { get; set; } }

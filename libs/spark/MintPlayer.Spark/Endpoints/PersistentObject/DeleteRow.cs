@@ -101,7 +101,7 @@ internal sealed partial class DeleteRowPersistentObject : IPostEndpoint<DeleteRo
     /// One rule is added that New has no need of: <b>the row must already be stored</b>. A key the
     /// parent's collection does not contain is refused identically to an unknown type, so the
     /// endpoint cannot be used to ask which keys exist. It is also the reason
-    /// <see cref="Actions.SparkDeleteRowArgs{T}.Parent"/> is non-nullable — an unsaved parent has no
+    /// <see cref="Actions.SparkDeleteRowArgs.Parent"/> is non-nullable — an unsaved parent has no
     /// stored rows, so there is nothing here for a client to ask about, and it does not ask.
     /// </remarks>
     private async Task<IResult> HandleCoreAsync(

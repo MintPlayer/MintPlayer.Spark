@@ -12,9 +12,12 @@ namespace MintPlayer.Spark.Actions;
 /// client to render, and for an <c>AsDetail</c> row the parent still owns the save. A hook that
 /// wants to write should do it in a before-save interceptor (<c>IBeforeSave</c>).
 /// </para>
+/// <para>
+/// Not generic: the same args reach a C# actions class and the name-resolved <c>{Name}Actions</c> of
+/// a type with no C# class (<c>public Task OnNewAsync(SparkNewArgs args)</c>).
+/// </para>
 /// </summary>
-/// <typeparam name="T">The entity type the actions class serves.</typeparam>
-public sealed class SparkNewArgs<T> where T : class
+public sealed class SparkNewArgs
 {
     internal SparkNewArgs(
         PersistentObject persistentObject,
@@ -23,6 +26,7 @@ public sealed class SparkNewArgs<T> where T : class
         string? asDetailAttribute,
         IReadOnlyDictionary<string, string>? parameters,
         SparkNewSubQueryContext? subQuery,
+        SparkNewReferenceContext? reference,
         CancellationToken cancellationToken)
     {
         PersistentObject = persistentObject;
@@ -31,16 +35,36 @@ public sealed class SparkNewArgs<T> where T : class
         AsDetailAttribute = asDetailAttribute;
         Parameters = parameters ?? EmptyParameters;
         this.subQuery = subQuery;
+        this.reference = reference;
         CancellationToken = cancellationToken;
     }
 
     private readonly SparkNewSubQueryContext? subQuery;
+    private readonly SparkNewReferenceContext? reference;
 
     /// <summary>
     /// The parent's entity type when New was started from a sub-query on the parent's detail page
-    /// (#460, D19); <see langword="null"/> otherwise — a standalone New or an <c>AsDetail</c> row.
+    /// (#460, D19) or from a Reference picker's <b>Add new</b> (the type that owns the picker, which may
+    /// be a virtual type such as a retry prompt's form); <see langword="null"/> otherwise — a standalone
+    /// New or an <c>AsDetail</c> row.
     /// </summary>
-    public EntityTypeDefinition? ParentType => subQuery?.ParentType;
+    public EntityTypeDefinition? ParentType => subQuery?.ParentType ?? reference?.ParentType;
+
+    /// <summary>
+    /// The Reference attribute whose picker's <b>Add new</b> asked for this object (single or array —
+    /// see its <c>IsArray</c>), verified against the model; <see langword="null"/> for any other New.
+    /// A hook that knows it runs for a picker can hide or lock attributes, or prefill them from
+    /// <see cref="Parameters"/> (for instance the picker's search term).
+    /// </summary>
+    /// <remarks>
+    /// The object is created on the popup's Save, before the picker's owner is saved. <see cref="Parent"/>
+    /// is that owner, with its own <c>Parent</c> chain (PRD D12): every level with an id is the server's
+    /// own read, checked like any read; a level without one (an unsaved create page, a retry prompt) is
+    /// scaffolded from the model and carries the values the user had typed. Treat those as input, never
+    /// as authority, exactly like a refresh hook's object. When the Reference declares a
+    /// <c>defaultAttribute</c>, the search term is already written into it (D17).
+    /// </remarks>
+    public EntityAttributeDefinition? ReferenceAttribute => reference?.Attribute;
 
     /// <summary>
     /// The sub-query New was started from (the parent's <c>Queries</c> entry resolved to its query);

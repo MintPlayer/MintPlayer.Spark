@@ -474,7 +474,7 @@ POST /spark/po/new
 - The parent is loaded through its gated read.
 - The query must be one of the parent type's `queries`, and must list the type being created.
   Otherwise the request is refused, like a missing row.
-- The Actions class's existing `OnNewAsync(SparkNewArgs<T> args)` then receives `args.Parent`,
+- The Actions class's existing `OnNewAsync(SparkNewArgs args)` then receives `args.Parent`,
   `args.ParentType`, `args.Query` and `args.ParentReference`.
 
 **The base `OnNewAsync` fills the parent reference** through `args.FillParentReference()`:
@@ -486,7 +486,7 @@ POST /spark/po/new
   fails at startup and in `--spark-verify-model`.
 
 ```csharp
-public override async Task OnNewAsync(SparkNewArgs<Answer> args)
+public override async Task OnNewAsync(SparkNewArgs args)
 {
     await base.OnNewAsync(args);                 // keeps the auto-fill
     args.PersistentObject[nameof(Answer.Body)].SetOriginalValue("Thanks for asking!");

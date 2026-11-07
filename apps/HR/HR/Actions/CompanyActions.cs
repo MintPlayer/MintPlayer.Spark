@@ -1,4 +1,5 @@
 using HR.Entities;
+using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Authorization;
 using MintPlayer.Spark.Actions;
 using MintPlayer.Spark.Services;
@@ -16,6 +17,21 @@ namespace HR.Actions;
 public class CompanyActions : DefaultPersistentObjectActions<Company>, ISparkOwnsRowSecurity
 {
     public CompanyActions(IEntityMapper entityMapper) : base(entityMapper) { }
+
+    /// <summary>
+    /// A company added from a person's Company picker (<b>Add new</b>, reference add-new PRD) gets a short
+    /// popup: the brand colours are left for the company's own page. The name is already prefilled with
+    /// the picker's search term (the Reference's <c>defaultAttribute</c>), before this runs.
+    /// </summary>
+    public override async Task OnNewAsync(SparkNewArgs args)
+    {
+        await base.OnNewAsync(args);
+        if (args.ReferenceAttribute is null)
+            return;
+
+        args.PersistentObject[nameof(Company.BrandColor)].ShowedOn = EShowedOn.Query;
+        args.PersistentObject[nameof(Company.AccentColor)].ShowedOn = EShowedOn.Query;
+    }
 
     /// <inheritdoc />
     public string RowSecurityRationale =>

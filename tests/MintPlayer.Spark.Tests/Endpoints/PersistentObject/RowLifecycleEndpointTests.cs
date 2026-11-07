@@ -92,14 +92,14 @@ public class RowLifecycleEndpointTests : SparkTestDriver
             "Test fixture. Lines are embedded in Invoice and reachable only through it, so they are "
             + "scoped by whatever scopes the parent.";
 
-        public override Task OnNewAsync(SparkNewArgs<InvoiceLine> args)
+        public override Task OnNewAsync(SparkNewArgs args)
         {
             args.PersistentObject["Description"].SetOriginalValue(
                 $"Line for {args.AsDetailParent?.Attributes.FirstOrDefault(a => a.Name == "Reference")?.Value}");
             return Task.CompletedTask;
         }
 
-        public override Task OnDeleteRowAsync(SparkDeleteRowArgs<InvoiceLine> args)
+        public override Task OnDeleteRowAsync(SparkDeleteRowArgs args)
         {
             var settled = args.Row.Attributes.FirstOrDefault(a => a.Name == "IsSettled")?.Value;
             if (settled is true || string.Equals(settled?.ToString(), "true", StringComparison.OrdinalIgnoreCase))

@@ -52,6 +52,17 @@ export interface EntityAttributeDefinition {
    * 'Dropdown'/absent (default) renders a `<bs-select>`. Hand-set in the model JSON.
    */
   referenceDisplayType?: EReferenceDisplayType;
+  /**
+   * For Reference attributes (single or array): the picker offers "Add new", a popup for a new object of
+   * the referenced type, created on Save. Hand-set in the model JSON; sent as false to a caller who may not
+   * create the referenced type.
+   */
+  canAddNewReference?: boolean;
+  /**
+   * With `canAddNewReference`: the String attribute of the referenced type that "Add new" prefills with
+   * the picker's search text (sent as `parameters.searchTerm`). Hand-set in the model JSON.
+   */
+  defaultAttribute?: string;
   /** For array AsDetail attributes: when true, rows can be drag-reordered (order = array position) */
   isSortable?: boolean;
   /**

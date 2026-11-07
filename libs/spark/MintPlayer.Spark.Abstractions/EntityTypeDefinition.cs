@@ -390,6 +390,25 @@ public sealed class EntityAttributeDefinition
     /// </summary>
     public EReferenceDisplayType? ReferenceDisplayType { get; set; }
     /// <summary>
+    /// For Reference attributes (single or array): when true, the picker offers <b>Add new</b>, a popup
+    /// form for a new object of the referenced type, built by that type's <c>OnNewAsync</c> and created
+    /// on the popup's Save; its id becomes the value (single) or is appended to it (array). Hand-set in
+    /// the model JSON and preserved across synchronize (like <see cref="ReferenceDisplayType"/>).
+    /// <para>
+    /// Not a write gate, so not structural: the create still needs the caller's <c>New</c> right on the
+    /// referenced type, and a caller without it is sent the flag as false.
+    /// </para>
+    /// </summary>
+    public bool? CanAddNewReference { get; set; }
+    /// <summary>
+    /// For a Reference with <see cref="CanAddNewReference"/>: the name of a String attribute of the
+    /// referenced type that <b>Add new</b> prefills with the text in the picker's search box, before the
+    /// type's <c>OnNewAsync</c> runs (which may change or lock it). It only prefills: the popup's Save
+    /// validates it like any value. Hand-set and preserved across synchronize; startup refuses a name
+    /// the referenced type does not declare as a writable String.
+    /// </summary>
+    public string? DefaultAttribute { get; set; }
+    /// <summary>
     /// For array AsDetail attributes and lists of plain values, when true the rows / items can be
     /// drag-reordered in the PO-edit UI (order = array position). Set by <c>[Sortable]</c> via the
     /// synchronizer. Null/absent for non-sortable attributes. Only meaningful when

@@ -16,6 +16,12 @@ export interface PersistentObjectAttribute {
   isReadOnly: boolean;
   order: number;
   query?: string;
+  /**
+   * For a Reference: whether the picker offers "Add new" for this object, already narrowed to the caller
+   * (false without the `New` right on the referenced type). A retry prompt's form reads it from here. The
+   * referenced type is not sent: `/spark/po/new` derives it from the owner type and this attribute's name.
+   */
+  canAddNewReference?: boolean;
   breadcrumb?: string;
   /**
    * For `dataType === 'Reference'` with `isArray === true`: resolved display label per

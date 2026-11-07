@@ -142,6 +142,7 @@ public sealed class PersistentObjectAttributeJsonConverter : JsonConverterFactor
                     case "Renderer":        attr.Renderer       = ReadNullableString(prop.Value); break;
                     case "RendererOptions": attr.RendererOptions = Deserialize<Dictionary<string, object>>(prop.Value, options); break;
                     case "Options":         attr.Options        = Deserialize<PersistentObjectAttributeOption[]>(prop.Value, options); break;
+                    case "CanAddNewReference": attr.CanAddNewReference = prop.Value.ValueKind == JsonValueKind.True; break;
                 }
             }
         }
@@ -172,6 +173,11 @@ public sealed class PersistentObjectAttributeJsonConverter : JsonConverterFactor
             WritePropertyName(writer, "Renderer", options);        writer.WriteStringValue(value.Renderer);
             WritePropertyName(writer, "RendererOptions", options); JsonSerializer.Serialize(writer, value.RendererOptions, options);
             WritePropertyName(writer, "Options", options);         JsonSerializer.Serialize(writer, value.Options, options);
+            // Only when on, like Description only when set: every other attribute's wire shape is unchanged.
+            if (value.CanAddNewReference)
+            {
+                WritePropertyName(writer, "CanAddNewReference", options); writer.WriteBooleanValue(true);
+            }
         }
 
         private static void WritePropertyName(Utf8JsonWriter writer, string clrName, JsonSerializerOptions options)
@@ -210,7 +216,7 @@ public sealed class PersistentObjectAttributeJsonConverter : JsonConverterFactor
         [
             "Id", "Name", "Label", "Description", "Value", "DataType", "IsArray", "IsRequired",
             "IsReadOnly", "IsValueChanged", "Order", "Query", "Breadcrumb", "Breadcrumbs", "ShowedOn",
-            "Rules", "Group", "Renderer", "RendererOptions", "Options",
+            "Rules", "Group", "Renderer", "RendererOptions", "Options", "CanAddNewReference",
         ];
 
         private static string? ReadNullableString(JsonElement el)

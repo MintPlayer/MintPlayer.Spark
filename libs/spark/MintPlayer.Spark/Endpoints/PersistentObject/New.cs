@@ -42,6 +42,8 @@ internal sealed partial class NewPersistentObject : IPostEndpoint<NewPersistentO
     [Inject] private readonly IQueryLoader queryLoader;
     [Inject] private readonly ILogger<NewPersistentObject> logger;
     [Inject] private readonly IHttpContextAccessor httpContextAccessor;
+    [Inject] private readonly IEffectiveObjectFactory effectiveObjectFactory;
+    [Inject] private readonly Raven.Client.Documents.Session.IAsyncDocumentSession session;
 
     /// <summary>A body that cannot be bound gets the refusal an unusable request gets below, never a parse error (PRD D3a).</summary>
     protected override ValueTask<IResult> OnBindFailedAsync(HttpContext context, EndpointBindingException? failure)
@@ -50,8 +52,17 @@ internal sealed partial class NewPersistentObject : IPostEndpoint<NewPersistentO
     public override async Task<IResult> HandleAsync(NewPersistentObjectRequest request, CancellationToken cancellationToken)
     {
         var httpContext = httpContextAccessor.HttpContext!;
-        var entityType = SparkRequestType.Resolve(modelLoader, request);
-        if (entityType is null)
+
+        // A picker's Add new names the picker, never the type (as the prior art sends its lookup query,
+        // not a type): the type is the attribute's target, so a client cannot ask a picker for another.
+        var picker = request.ReferenceAttribute is { Length: > 0 } ? ResolvePicker(request) : default;
+        var entityType = request.ReferenceAttribute is { Length: > 0 }
+            ? picker.Target
+            : SparkRequestType.Resolve(modelLoader, request);
+        if (entityType is null
+            // One origin per request: a picker's object is never also a row or a sub-query New.
+            || (picker.Target is not null && (request.AsDetailAttribute is { Length: > 0 } || request.QueryId is { Length: > 0 }
+                || (request.ObjectTypeId is { Length: > 0 } && modelLoader.ResolveEntityType(request.ObjectTypeId)?.Id != entityType.Id))))
         {
             return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);
         }
@@ -60,6 +71,9 @@ internal sealed partial class NewPersistentObject : IPostEndpoint<NewPersistentO
 
         try
         {
+            if (picker.Target is not null)
+                return await HandleReferencePickerAsync(httpContext, entityType, picker.OwnerType!, picker.Attribute!, request);
+
             return request.AsDetailAttribute is { Length: > 0 }
                 ? await HandleAsDetailRowAsync(httpContext, entityType, request)
                 : await HandleStandaloneAsync(httpContext, entityType, request);
@@ -105,8 +119,79 @@ internal sealed partial class NewPersistentObject : IPostEndpoint<NewPersistentO
         // Built for the caller (D13a): Read-denied absent, New-denied read-only, before the hook runs;
         // a value the hook writes onto a removed attribute goes nowhere.
         var po = await ScaffoldAsync(entityType, clrType, httpContext.RequestAborted);
-        await InvokeHookAsync(clrType, po, parent, asDetailParent: null, request, httpContext, subQuery);
+        await InvokeHookAsync(entityType, clrType, po, parent, asDetailParent: null, request, httpContext, subQuery);
         return ClientResult.Envelope(clientAccessor, po, StatusCodes.Status200OK);
+    }
+
+    /// <summary>
+    /// The popup object for a Reference picker's <b>Add new</b>: a standalone New of the referenced type,
+    /// told which picker asked.
+    /// </summary>
+    /// <remarks>
+    /// The picker is verified, not trusted (<see cref="ResolvePicker"/>), and every mismatch is refused
+    /// like an unknown type. The right is the constructed type's <c>New</c>, the same one the create on
+    /// Save checks. The owner arrives as <see cref="NewPersistentObjectRequest.Parent"/>, with its chain:
+    /// stored levels are re-read, unsaved or virtual ones (a create page, a retry prompt) keep only their
+    /// posted values (<see cref="NewOwnerChain"/>, PRD D12). The picker's search term
+    /// (<c>Parameters["searchTerm"]</c>) prefills the attribute's <c>defaultAttribute</c> before the hook
+    /// runs, so the hook can still change or lock it (D17).
+    /// </remarks>
+    private async Task<IResult> HandleReferencePickerAsync(
+        HttpContext httpContext, EntityTypeDefinition entityType, EntityTypeDefinition parentType,
+        EntityAttributeDefinition attrDef, NewPersistentObjectRequest request)
+    {
+        await permissionService.EnsureAuthorizedAsync("New", entityType.Name);
+
+        // The owner travels as an object; a bare ParentId would be a second way to name it.
+        if (request.ParentId is { Length: > 0 })
+            return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);
+
+        var (parent, refused) = await NewOwnerChain.ResolveAsync(
+            modelLoader, typeResolver, databaseAccess, effectiveObjectFactory, session,
+            parentType, request.Parent, httpContext.RequestAborted);
+        if (refused)
+            return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);
+
+        var clrType = typeResolver.Resolve(entityType.ClrType);
+        var po = await ScaffoldAsync(entityType, clrType, httpContext.RequestAborted);
+
+        if (attrDef.DefaultAttribute is { Length: > 0 } defaultAttribute
+            && request.Parameters?.TryGetValue(SearchTermParameter, out var term) == true
+            && !string.IsNullOrWhiteSpace(term)
+            && po.Attributes.FirstOrDefault(a => string.Equals(a.Name, defaultAttribute, StringComparison.Ordinal)) is { } prefilled)
+        {
+            prefilled.SetOriginalValue(term.Trim());
+        }
+
+        await InvokeHookAsync(entityType, clrType, po, parent, asDetailParent: null, request, httpContext,
+            reference: new SparkNewReferenceContext(parentType, attrDef));
+        return ClientResult.Envelope(clientAccessor, po, StatusCodes.Status200OK);
+    }
+
+    /// <summary>The <see cref="NewPersistentObjectRequest.Parameters"/> key a picker's search term travels under.</summary>
+    internal const string SearchTermParameter = "searchTerm";
+
+    /// <summary>
+    /// The picker a request names, checked against the model: <see cref="NewPersistentObjectRequest.ParentType"/>
+    /// resolves, <see cref="NewPersistentObjectRequest.ReferenceAttribute"/> is one of its Reference attributes
+    /// with <c>canAddNewReference</c>, and its target (<c>referenceType</c>, else its lookup query's row type)
+    /// is declared. All three null otherwise, which the caller refuses, so none of it answers "does this exist".
+    /// </summary>
+    private (EntityTypeDefinition? Target, EntityTypeDefinition? OwnerType, EntityAttributeDefinition? Attribute) ResolvePicker(
+        NewPersistentObjectRequest request)
+    {
+        if (request.ParentType is not { Length: > 0 } || modelLoader.ResolveEntityType(request.ParentType) is not { } ownerType)
+            return default;
+
+        var attribute = ownerType.Attributes?.FirstOrDefault(
+            a => string.Equals(a.Name, request.ReferenceAttribute, StringComparison.Ordinal));
+        if (attribute is not { DataType: "Reference", CanAddNewReference: true }
+            || modelLoader.GetReferenceTarget(queryLoader, attribute) is not { } target)
+        {
+            return default;
+        }
+
+        return (target, ownerType, attribute);
     }
 
     /// <summary>
@@ -198,7 +283,7 @@ internal sealed partial class NewPersistentObject : IPostEndpoint<NewPersistentO
 
         // Both references, and deliberately the same instance: they differ in meaning, not identity.
         // AsDetailParent is the narrow one that says the parent owns the save.
-        await InvokeHookAsync(clrType, po, parent, asDetailParent: parent, request, httpContext);
+        await InvokeHookAsync(entityType, clrType, po, parent, asDetailParent: parent, request, httpContext);
         return ClientResult.Envelope(clientAccessor, po, StatusCodes.Status200OK);
     }
 
@@ -248,16 +333,24 @@ internal sealed partial class NewPersistentObject : IPostEndpoint<NewPersistentO
     }
 
     private async Task InvokeHookAsync(
+        EntityTypeDefinition entityType,
         Type? clrType,
         Po po,
         Po? parent,
         Po? asDetailParent,
         NewPersistentObjectRequest request,
         HttpContext httpContext,
-        SparkNewSubQueryContext? subQuery = null)
+        SparkNewSubQueryContext? subQuery = null,
+        SparkNewReferenceContext? reference = null)
     {
+        // A type with no C# class: its name-resolved actions class, duck-typed (PRD D15). It is never
+        // an AsDetail row (an AsDetail type is a C# class) nor a sub-query New (a sub-query lists stored rows).
         if (clrType is null)
+        {
+            await newInvoker.InvokeVirtualAsync(
+                entityType.Name, po, parent, request.Parameters, httpContext.RequestAborted, reference);
             return;
+        }
 
         await newInvoker.InvokeAsync(
             clrType,
@@ -267,7 +360,8 @@ internal sealed partial class NewPersistentObject : IPostEndpoint<NewPersistentO
             request.AsDetailAttribute,
             request.Parameters,
             httpContext.RequestAborted,
-            subQuery);
+            subQuery,
+            reference);
     }
 }
 
@@ -298,10 +392,30 @@ internal sealed class NewPersistentObjectRequest : ISparkTypedRequest, IRetryabl
     /// <summary>
     /// The parent's id, or absent when the parent is itself unsaved. A present id is re-loaded
     /// server-side rather than trusted; an absent one means the hook is handed a null parent, which
-    /// is the honest answer — there is no parent state the server can vouch for yet.
+    /// is the honest answer — there is no parent state the server can vouch for yet. Not used by a
+    /// picker's Add new, which sends <see cref="Parent"/> instead.
     /// </summary>
     public string? ParentId { get; set; }
 
-    /// <summary>Free-form arguments, e.g. which variant a New menu chose.</summary>
+    /// <summary>
+    /// The Reference attribute of <see cref="ParentType"/> whose picker's <b>Add new</b> asked for this
+    /// object; with <see cref="ParentType"/> and <see cref="Parent"/>, and with neither
+    /// <see cref="AsDetailAttribute"/>, <see cref="QueryId"/> nor <see cref="ParentId"/>. The type
+    /// constructed is the attribute's target, so <see cref="ObjectTypeId"/> may be omitted; when sent, it
+    /// must be that type.
+    /// </summary>
+    public string? ReferenceAttribute { get; set; }
+
+    /// <summary>
+    /// A picker's owner as it is on screen, of <see cref="ParentType"/>, with its own <c>Parent</c> chain
+    /// (at most <see cref="NewOwnerChain.MaxDepth"/> levels). Levels with an id are re-read server-side;
+    /// the others keep only their posted values (PRD D12).
+    /// </summary>
+    public Po? Parent { get; set; }
+
+    /// <summary>
+    /// Free-form arguments, e.g. which variant a New menu chose, or a picker's search term
+    /// (<c>searchTerm</c>, which also prefills the Reference attribute's <c>defaultAttribute</c>).
+    /// </summary>
     public Dictionary<string, string>? Parameters { get; set; }
 }
