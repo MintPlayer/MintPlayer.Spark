@@ -29,9 +29,8 @@ export const COVERAGE_YML = `mergeQueue:
     - "**/App_Data/translations.json"
     - "**/App_Data/security.json"
     - "**/App_Data/Model/*.json"
-    # Files derived from those, rewritten by the regenerate action's after-synchronize step: MintPlayer.Spark's own
-    # layering goldens here. Replace them with yours, or drop them without such a step.
-    - "tests/MintPlayer.Spark.Tests/Layering/Golden/*.golden.txt"
+    # Files your regenerate workflow's after-synchronize step rewrites (snapshots, goldens) belong here too:
+    # - "tests/**/*.golden.txt"
   # Wholly generated files only: a conflict anywhere in them takes the base side and the
   # regenerate step rewrites them. A conflict in any other file evicts the pull request.
   autoResolve:
@@ -39,8 +38,9 @@ export const COVERAGE_YML = `mergeQueue:
       strategy: take-base
     - path: "**/App_Data/securityPosture.txt"
       strategy: take-base
-    - path: "tests/MintPlayer.Spark.Tests/Layering/Golden/*.golden.txt"
-      strategy: take-base
+    # Those after-synchronize files as well, with the same strategy:
+    # - path: "tests/**/*.golden.txt"
+    #   strategy: take-base
     # Lockfiles, optionally: take the base side, then a workflow of their own regenerates them (copy
     # lockfiles-regenerate.yml below); an explicit rule's path joins regeneratedPaths by itself.
     # - path: "**/package-lock.json"

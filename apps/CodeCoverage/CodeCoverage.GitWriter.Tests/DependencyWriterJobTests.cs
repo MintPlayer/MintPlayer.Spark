@@ -316,4 +316,141 @@ public class DependencyWriterJobTests : WriterTestBase
         answer.Outcome.Should().Be("patch-rejected");
         origin.Ref($"refs/heads/{DependencyBranches.Rolling}").Should().BeNull();
     }
+
+    [Fact]
+    public async Task Validate_runs_the_dependencies_profile_and_pushes_nothing()
+    {
+        var (origin, baseSha, patch) = Seeded();
+
+        var accepted = await PostAsync("validate", With(Job(origin, baseSha), new()
+        {
+            ["plan"] = Plan(baseSha), ["patch"] = Base64(patch), ["claimedGroups"] = new[] { "chalk" }, ["allowedHosts"] = new[] { "npm.example.com" },
+        }));
+        var emptyButClaimed = await PostAsync("validate", With(Job(origin, baseSha), new()
+        {
+            ["plan"] = Plan(baseSha), ["patch"] = "", ["claimedGroups"] = new[] { "chalk" },
+        }));
+        var emptyAndNothingClaimed = await PostAsync("validate", With(Job(origin, baseSha), new() { ["plan"] = Plan(baseSha), ["patch"] = "" }));
+
+        accepted.Outcome.Should().Be(DependencyJobOutcomes.Validated, accepted.Detail);
+        accepted.Verdict.Should().Be(DependencyJobOutcomes.Accepted, accepted.Detail);
+        emptyButClaimed.Verdict.Should().Be(DependencyJobOutcomes.Rejected);
+        emptyAndNothingClaimed.Verdict.Should().Be(DependencyJobOutcomes.Accepted);
+        origin.Ref($"refs/heads/{DependencyBranches.Rolling}").Should().BeNull();
+        origin.Ref($"refs/heads/{DependencyBranches.Work}").Should().BeNull();
+    }
+
+    [Fact]
+    public async Task R16_the_onboarding_files_are_one_commit_on_the_planned_commit()
+    {
+        var (origin, baseSha, _) = Seeded();
+
+        var answer = await PostAsync("files", With(Job(origin, baseSha), new()
+        {
+            ["files"] = new object[] { new { path = "coverage.yml", content = "dependencies:\n  enabled: true\n" } },
+        }));
+
+        answer.Outcome.Should().Be("pushed", answer.Detail);
+        answer.Paths.Should().Equal(["coverage.yml"]);
+        origin.Ref($"refs/heads/{DependencyBranches.Onboarding}").Should().Be(answer.Sha);
+        origin.InBare("rev-parse", $"{answer.Sha}^").Trim().Should().Be(baseSha);
+        origin.InBare("show", $"{answer.Sha}:coverage.yml").Should().Contain("enabled: true");
+    }
+
+    /// <summary>Each refusal names its field and is answered before anything is cloned.</summary>
+    [Theory]
+    [InlineData("work-ref", "both-plan-and-patch", "planJson")]
+    [InlineData("work-ref", "plan-for-another-commit", "planJson")]
+    [InlineData("work-ref", "bad-work-sha", "expectedWorkSha")]
+    [InlineData("work-ref", "staged-without-plan", "plan")]
+    [InlineData("validate", "no-plan", "plan")]
+    [InlineData("validate", "bad-base64", "patch")]
+    [InlineData("validate", "control-char-group", "claimedGroups")]
+    [InlineData("validate", "bad-host", "allowedHosts")]
+    [InlineData("validate", "empty-action-key", "targetActions")]
+    [InlineData("validate", "bad-expected-sha", "expectedSha")]
+    [InlineData("validate", "no-credential", "credential")]
+    [InlineData("rolling", "too-many-migrations", "migrations")]
+    [InlineData("rolling", "unnamed-migration", "migrations")]
+    [InlineData("rolling", "bad-last-bot-sha", "lastBotSha")]
+    [InlineData("rolling", "bad-rolling-sha", "expectedRollingSha")]
+    [InlineData("rolling", "no-message", "message")]
+    [InlineData("files", "no-files", "files")]
+    [InlineData("files", "outside-the-onboarding-set", "files")]
+    [InlineData("files", "same-file-twice", "files")]
+    [InlineData("files", "delete-with-content", "files")]
+    [InlineData("files", "neither-content-nor-delete", "files")]
+    [InlineData("files", "seventeen-files", "files")]
+    public async Task A_malformed_dependency_job_is_refused_with_its_field(string job, string variant, string field)
+    {
+        var origin = Seed();
+        var sha = new string('a', 40);
+        var plan = Plan(sha);
+        var patch = Base64("diff --git a/package.json b/package.json\n");
+        Dictionary<string, object?> body = variant switch
+        {
+            "both-plan-and-patch" => new() { ["planJson"] = plan, ["patch"] = patch, ["plan"] = plan },
+            "plan-for-another-commit" => new() { ["planJson"] = Plan(new string('b', 40)) },
+            "bad-work-sha" => new() { ["planJson"] = plan, ["expectedWorkSha"] = "main" },
+            "staged-without-plan" => new() { ["patch"] = patch },
+            "no-plan" => new() { ["patch"] = patch },
+            "bad-base64" => new() { ["plan"] = plan, ["patch"] = "not base64!" },
+            "control-char-group" => new() { ["plan"] = plan, ["patch"] = patch, ["claimedGroups"] = new[] { "chalk\n" } },
+            "bad-host" => new() { ["plan"] = plan, ["patch"] = patch, ["allowedHosts"] = new[] { "not a host" } },
+            "empty-action-key" => new() { ["plan"] = plan, ["patch"] = patch, ["targetActions"] = new Dictionary<string, string> { [""] = "name: x" } },
+            "bad-expected-sha" => new() { ["expectedSha"] = "HEAD", ["plan"] = plan, ["patch"] = patch },
+            "no-credential" => new() { ["credential"] = null, ["plan"] = plan, ["patch"] = patch },
+            "too-many-migrations" => new() { ["plan"] = plan, ["patch"] = patch, ["migrations"] = Enumerable.Range(0, 9).Select(i => new { group = $"g{i}", patch }).ToArray() },
+            "unnamed-migration" => new() { ["plan"] = plan, ["patch"] = patch, ["migrations"] = new[] { new { group = "", patch } } },
+            "bad-last-bot-sha" => new() { ["plan"] = plan, ["patch"] = patch, ["lastBotSha"] = "x" },
+            "bad-rolling-sha" => new() { ["plan"] = plan, ["patch"] = patch, ["expectedRollingSha"] = "x" },
+            "no-message" => new() { ["plan"] = plan, ["patch"] = patch, ["message"] = null },
+            "no-files" => new() { ["files"] = Array.Empty<object>() },
+            "outside-the-onboarding-set" => new() { ["files"] = new object[] { new { path = "README.md", content = "x" } } },
+            "same-file-twice" => new() { ["files"] = new object[] { new { path = "coverage.yml", content = "a" }, new { path = "coverage.yml", content = "b" } } },
+            "delete-with-content" => new() { ["files"] = new object[] { new { path = "coverage.yml", content = "a", delete = true } } },
+            "neither-content-nor-delete" => new() { ["files"] = new object[] { new { path = "coverage.yml" } } },
+            "seventeen-files" => new() { ["files"] = Enumerable.Range(0, 17).Select(_ => (object)new { path = "coverage.yml", content = "a" }).ToArray() },
+            _ => throw new ArgumentOutOfRangeException(nameof(variant)),
+        };
+
+        var response = await Writer.Client.PostAsJsonAsync($"/jobs/dependencies/{job}", With(Job(origin, sha), body), GitWriterHost.Json);
+
+        response.StatusCode.Should().Be(System.Net.HttpStatusCode.BadRequest);
+        (await response.Content.ReadAsStringAsync()).Should().Contain(field);
+    }
+
+    [Theory]
+    [InlineData("work-ref")]
+    [InlineData("validate")]
+    [InlineData("rolling")]
+    [InlineData("files")]
+    public async Task A_body_that_is_not_json_is_refused(string job)
+    {
+        using var content = new StringContent("{ not json", System.Text.Encoding.UTF8, "application/json");
+        var response = await Writer.Client.PostAsync($"/jobs/dependencies/{job}", content);
+        response.StatusCode.Should().Be(System.Net.HttpStatusCode.BadRequest);
+    }
+
+    [Theory]
+    [InlineData("expectedSha", "HEAD", "expectedSha")]
+    [InlineData("line", "main", "line")]
+    [InlineData("repoId", "", "repoId")]
+    public async Task Deleting_the_work_ref_refuses_a_malformed_request(string key, string value, string field)
+    {
+        var origin = Seed();
+        using var delete = new HttpRequestMessage(HttpMethod.Delete, "/jobs/dependencies/work-ref")
+        {
+            Content = JsonContent.Create(With(Job(origin, new string('a', 40)), new() { [key] = value }), options: GitWriterHost.Json),
+        };
+        var response = await Writer.Client.SendAsync(delete);
+        response.StatusCode.Should().Be(System.Net.HttpStatusCode.BadRequest);
+        (await response.Content.ReadAsStringAsync()).Should().Contain(field);
+
+        using var garbage = new HttpRequestMessage(HttpMethod.Delete, "/jobs/dependencies/work-ref")
+        {
+            Content = new StringContent("[", System.Text.Encoding.UTF8, "application/json"),
+        };
+        (await Writer.Client.SendAsync(garbage)).StatusCode.Should().Be(System.Net.HttpStatusCode.BadRequest);
+    }
 }
