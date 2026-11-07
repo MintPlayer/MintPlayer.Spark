@@ -4,6 +4,7 @@ using CodeCoverage.Forge;
 using CodeCoverage.Ingestion;
 using CodeCoverage.MergeQueue;
 using CodeCoverage.Migrations;
+using MintPlayer.Spark.Abstractions;
 using CodeCoverage.Tests.Services;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
@@ -70,7 +71,40 @@ public class KnownChecksTests : CoverageRavenTest
         due[0].Kind.Should().Be(EForgeCheckKind.CheckRun, "a repeat in the same batch fills in what the first sighting lacked");
     }
 
+    /// <summary>
+    /// A fresh known name first seen on a pull request is due, so "Set up rulesets" can offer it at once (#554); a sighting
+    /// off a pull request never clears the flag, and an id is the trimmed name (IHasNaturalId).
+    /// </summary>
+    [Fact]
+    public void A_known_name_first_seen_on_a_pull_request_is_due()
+    {
+        var onPull = new ForgeCheck { Name = " build ", Kind = EForgeCheckKind.CheckRun, AppSlug = "github-actions", OnPullRequest = true };
+        ForgeCheck.Due([Known("build", Now)], [onPull], Now).Should().ContainSingle().Which.OnPullRequest.Should().BeTrue();
+        ForgeCheck.Due([Known("build", Now)], [Seen("build"), onPull], Now).Should().ContainSingle()
+            .Which.OnPullRequest.Should().BeTrue("a repeat in the same batch adds what the first sighting lacked");
+
+        var stored = Known("build", Now);
+        stored.OnPullRequest = true;
+        ForgeCheck.Due([stored], [Seen("build")], Now).Should().BeEmpty();
+        ((IHasNaturalId)onPull).GetId().Should().Be("build");
+    }
+
     // ── The writer ───────────────────────────────────────────────────────────────────────────────────
+
+    /// <summary>The patch sets OnPullRequest and a later sighting off a pull request never clears it (#554).</summary>
+    [Fact]
+    public async Task Seen_on_a_pull_request_sticks()
+    {
+        using var store = GetDocumentStore();
+        await SeedRepositoryAsync(store, 1, r => r.KnownChecks = [Known("build", Now.AddDays(-3))]);
+
+        await RecordAsync(store, RepoId(1), Now.AddDays(-2), new ForgeCheck { Name = "build", OnPullRequest = true });
+        await RecordAsync(store, RepoId(1), Now, Seen("build"));
+
+        var build = (await LoadAsync(store, 1)).KnownChecks.Single(c => c.Id == "build");
+        build.OnPullRequest.Should().BeTrue();
+        build.LastSeenUtc.Should().Be(Now);
+    }
 
     private static string RepoId(long id) => Entities.Repository.DocumentId(EForgeProvider.GitHub, id);
 

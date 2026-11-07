@@ -1031,10 +1031,12 @@ public class GitHubForgeMergeQueueTests
 
         var checks = await Queue(github).GetReportedCheckNamesAsync(Target());
 
+        // #554: build, seen on the default branch first, is marked by the pull request that repeats it; ci/legacy reported
+        // on the default branch alone, so it is not offered as a required check.
         checks.Should().Equal([
-            new ForgeReportedCheck("GitGuardian Security Checks", EForgeCheckKind.CheckRun, "gitguardian"),
-            new ForgeReportedCheck("build", EForgeCheckKind.CheckRun, "github-actions"),
-            new ForgeReportedCheck("ci/legacy", EForgeCheckKind.Status, null)]);
+            new ForgeReportedCheck("GitGuardian Security Checks", EForgeCheckKind.CheckRun, "gitguardian", OnPullRequest: true),
+            new ForgeReportedCheck("build", EForgeCheckKind.CheckRun, "github-actions", OnPullRequest: true),
+            new ForgeReportedCheck("ci/legacy", EForgeCheckKind.Status, null, OnPullRequest: false)]);
         using var json = JsonDocument.Parse(posted!);
         var query = json.RootElement.GetProperty("query").GetString();
         query.Should().Be(GitHubForgeMergeQueue.ReportedChecksQuery);

@@ -454,6 +454,27 @@ public class RemainingActionsTests : CoverageRavenTest
         offered.Select(c => c.Id).Should().Equal("build", "GitGuardian Security Checks");
     }
 
+    /// <summary>"Set up rulesets"' required checks: only the checks seen on a pull request, behind the same gate (#554).</summary>
+    [Fact]
+    public async Task Repository_PullRequestChecks_offers_only_checks_seen_on_a_pull_request()
+    {
+        using var store = GetDocumentStore();
+        await SeedKnownChecksAsync(store);
+        using (var patch = store.OpenAsyncSession())
+        {
+            var repository = await patch.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, 1));
+            repository!.KnownChecks.Single(c => c.Id == "build").OnPullRequest = true;
+            await patch.SaveChangesAsync();
+        }
+        using var session = store.OpenAsyncSession();
+        var mine = Parent("Repository", Repository.DocumentId(EForgeProvider.GitHub, 1));
+
+        (await Create<ForgeCheckActions>(Managing("github:acme"), session).Repository_PullRequestChecks(QueryArgs(mine)))
+            .Select(c => c.Id).Should().Equal("build");
+        (await Create<ForgeCheckActions>(Managing("github:other"), session).Repository_PullRequestChecks(QueryArgs(mine)))
+            .Should().BeEmpty();
+    }
+
     /// <summary>Empty, never a 403 or 404 from inside the query (D112): not a manager, another parent type, no parent.</summary>
     [Fact]
     public async Task Repository_ForgeChecks_offers_nothing_to_a_non_manager_or_under_another_parent()

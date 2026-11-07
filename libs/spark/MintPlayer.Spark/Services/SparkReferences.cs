@@ -16,7 +16,8 @@ public static class SparkReferences
     /// <item>its <c>defaultAttribute</c> is not a String attribute of the referenced type (D17), so
     /// <b>Add new</b> would silently prefill nothing, or it is read-only, so the prefill would be dropped;</item>
     /// <item>with <paramref name="resolveClr"/> (startup, where the assemblies are loaded): it can add a
-    /// value object whose <c>[ValueKey]</c> is not a writable model attribute (D18).</item>
+    /// value object whose <c>[ValueKey]</c> is not a writable model attribute and which derives no
+    /// natural id (<see cref="IHasNaturalId"/>) either (D18).</item>
     /// </list>
     /// </summary>
     public static IReadOnlyList<string> Validate(
@@ -78,7 +79,10 @@ public static class SparkReferences
                     var target = attribute.ReferenceType is { Length: > 0 } clrName
                         ? types.FirstOrDefault(t => string.Equals(t.ClrType, clrName, StringComparison.Ordinal))
                         : null;
+                    // A natural id (IHasNaturalId) derives the key from the entity's own values, so the key
+                    // need not be an attribute (owner, 2026-11-07, revising D18).
                     if (target is null || resolveClr(target.ClrType) is not { } clr
+                        || typeof(IHasNaturalId).IsAssignableFrom(clr)
                         || Abstractions.Model.SparkValueObjects.GetKeyPropertyName(clr) is not { } keyName)
                         continue;
 

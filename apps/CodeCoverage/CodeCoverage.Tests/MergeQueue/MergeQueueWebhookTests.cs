@@ -279,6 +279,25 @@ public class MergeQueueWebhookTests : CoverageRavenTest
             .Should().Be(new CheckReported(RepositoryId, "ci/legacy", EForgeCheckKind.Status, null));
     }
 
+    /// <summary>
+    /// A check run GitHub lists against a pull request is one a ruleset may require (#554); without one listed (the run
+    /// above, a push to the default branch) it is not.
+    /// </summary>
+    [Fact]
+    public async Task A_check_run_on_a_pull_request_is_reported_as_seen_on_one()
+    {
+        using var store = GetDocumentStore();
+        await SeedAsync(store, busy: false);
+
+        var run = await DeliverAsync(store, "check_run", $$$"""
+            {"action":"completed","check_run":{"name":"tests","head_sha":"{{{Sha}}}","status":"completed","conclusion":"success",
+             "app":{"id":15368,"slug":"github-actions"},"pull_requests":[{"number":7}]},"repository":{{{Repo}}}}
+            """);
+
+        run.Of<ForgeWebhookMessage<CheckReported>>().Should().ContainSingle().Which.Event
+            .Should().Be(new CheckReported(RepositoryId, "tests", EForgeCheckKind.CheckRun, "github-actions", OnPullRequest: true));
+    }
+
     [Fact]
     public async Task The_Apps_own_check_runs_and_a_check_suite_report_no_check()
     {

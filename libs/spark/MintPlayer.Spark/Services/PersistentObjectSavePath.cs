@@ -137,13 +137,21 @@ internal sealed partial class PersistentObjectSavePath : IPersistentObjectSavePa
         // must be one its type's row rules allow. An embedded row type refuses every standalone row
         // (IsAllowedAsync false), and a confirm must not be the way around that.
         var clr = typeResolver.Resolve(entityType.ClrType);
-        if (clr is not null && !await rowSecurity.IsAllowedAsync(clr, SparkCoreActions.New, await MapAsync(clr, effective)))
+        var mapped = clr is null ? null : await MapAsync(clr, effective);
+        if (clr is not null && !await rowSecurity.IsAllowedAsync(clr, SparkCoreActions.New, mapped!))
             throw new SparkRowLevelAccessDeniedException($"{SparkCoreActions.New}/{entityType.Name}");
 
-        // D18: a value object's id is its [ValueKey] (what the owner's reference stores and the lookup
-        // lists); one without a key is invalid, never given a made-up id. A type with no C# class has no
-        // key: the posted id, or a new one.
-        if (clr is not null && Abstractions.Model.SparkValueObjects.GetKeyPropertyName(clr) is { } keyName)
+        // D18: a value object's id is its key (what the owner's reference stores and the lookup lists):
+        // its natural id when it derives one (IHasNaturalId, owner 2026-11-07), else its [ValueKey]
+        // attribute. One without a key is invalid, never given a made-up id. A type with no C# class has
+        // no key: the posted id, or a new one.
+        if (mapped is IHasNaturalId natural)
+        {
+            effective.Id = natural.GetId() is { Length: > 0 } derived
+                ? derived
+                : throw new SparkValidationException($"'{entityType.Name}' has no key: the values it derives its id from are empty.", null);
+        }
+        else if (clr is not null && Abstractions.Model.SparkValueObjects.GetKeyPropertyName(clr) is { } keyName)
         {
             effective.Id = KeyOf(keyName, effective)
                 ?? throw new SparkValidationException($"'{keyName}' is required.", keyName);
