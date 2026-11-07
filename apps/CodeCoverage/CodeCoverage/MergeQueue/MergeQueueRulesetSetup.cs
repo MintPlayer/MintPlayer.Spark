@@ -9,6 +9,7 @@ using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.ClientOperations;
 using MintPlayer.Spark.Abstractions.Retry;
 using MintPlayer.Spark.Authorization.OneShotOAuth;
+using System.Text.Json;
 
 namespace CodeCoverage.MergeQueue;
 
@@ -127,13 +128,11 @@ public partial class MergeQueueRulesetSetup : IMergeQueueRulesetSetup
                     failed.Add(RulesetRepositoryResult.Failure(repository, Reason("unsupported")));
                     continue;
                 }
-                var head = await queue.GetBranchHeadAsync(repository, branch, cancellationToken);
-                var headChecks = head is null ? [] : await queue.GetCheckNamesOnCommitAsync(repository, head, cancellationToken);
                 // The lines ruleset 1 covers (PRD §8.2), from the App's read of coverage.yml: a file that does not parse
                 // gives no lines, as it does for the merge queue (MergeQueueYml).
                 var yml = await integrations.For(repository).GetFileContentAsync(repository, branch, CoverageYml.FileName, cancellationToken);
                 var lines = yml is null ? null : VersioningYml.Parse(yml) is { Config: { } config, Errors.Count: 0 } ? config.EffectiveLines : null;
-                read.Add(new RulesetRead(target, state, MergeQueueRulesetPlanner.Defaults(state, headChecks), lines));
+                read.Add(new RulesetRead(target, state, MergeQueueRulesetPlanner.Defaults(state), lines));
             }
             catch (Exception ex) when (ex is ForgeAccessDeniedException or ForgeRequestException or HttpRequestException)
             {
@@ -146,35 +145,66 @@ public partial class MergeQueueRulesetSetup : IMergeQueueRulesetSetup
     public async Task<IReadOnlyList<RulesetPlanned>?> ChooseAsync(IReadOnlyList<RulesetRead> read, CancellationToken cancellationToken,
         bool releaseLinesComing = false)
     {
-        var form = await manager.GetPersistentObjectAsync(Guid.Parse(PersistentObjectIds.Default.SetUpRulesets), cancellationToken: cancellationToken);
-        var approvalsStart = read.Select(r => r.Defaults.RequiredApprovals).Distinct().Count() == 1 ? read[0].Defaults.RequiredApprovals : 1;
-        var adminsStart = read.All(r => r.Defaults.AdminsMayMergeByPullRequest == true);
-        form[nameof(MergeQueueRulesetChoices.RequiredApprovals)].Value = approvalsStart;
-        form[nameof(MergeQueueRulesetChoices.AdminsMayMergeByPullRequest)].Value = adminsStart;
+        // One prompt per repository (owner 2026-11-07, #554): its required checks are its own, picked from the checks seen
+        // on its pull requests, so a shared form could not ask them. The prompts are consecutive retry steps; each pass
+        // of the conversation replays the answered ones in the same order.
+        var planned = new List<RulesetPlanned>();
         var next = manager.GetTranslatedMessage("onboarding.plan");
-        manager.Retry.Action(manager.GetTranslatedMessage("rulesets.chooseTitle"), [next], next, form,
-            manager.GetTranslatedMessage("rulesets.chooseMessage"), cancellable: true);
-        var chosen = manager.Retry.Result!;
-        if (chosen.Option == RetryResult.CancelOption)
-            return null;
-        var approvals = Math.Max(0, chosen.PersistentObject?[nameof(MergeQueueRulesetChoices.RequiredApprovals)].GetValue<int?>() ?? approvalsStart);
-        var admins = chosen.PersistentObject?[nameof(MergeQueueRulesetChoices.AdminsMayMergeByPullRequest)].GetValue<bool?>() ?? adminsStart;
-        return [.. read.Select(r => new RulesetPlanned(r.Target,
-            MergeQueueRulesetPlanner.Plan(r.State, r.Defaults with
+        foreach (var r in read)
+        {
+            var repository = r.Target.Repository;
+            var form = await manager.GetPersistentObjectAsync(Guid.Parse(PersistentObjectIds.Default.SetUpRulesets), cancellationToken: cancellationToken);
+            // The parent makes the RequiredChecks picker query this repository's checks (CustomQueryArgs.Parent), and its
+            // "Add new" confirm run against it.
+            form.Parent = new PersistentObject { Id = repository.Id, Name = nameof(Repository), ObjectTypeId = Guid.Empty };
+            form[nameof(MergeQueueRulesetChoices.RequiredApprovals)].Value = r.Defaults.RequiredApprovals;
+            form[nameof(MergeQueueRulesetChoices.AdminsMayMergeByPullRequest)].Value = r.Defaults.AdminsMayMergeByPullRequest ?? false;
+            form[nameof(MergeQueueRulesetChoices.RequiredChecks)].Value = r.Defaults.RequiredChecks.ToArray();
+            manager.Retry.Action(manager.GetTranslatedMessage("rulesets.chooseTitle", repository.FullName), [next], next, form,
+                manager.GetTranslatedMessage("rulesets.chooseMessage"), cancellable: true);
+            var chosen = manager.Retry.Result!;
+            if (chosen.Option == RetryResult.CancelOption)
+                return null;
+
+            var answer = chosen.PersistentObject;
+            var approvals = Math.Max(0, answer?[nameof(MergeQueueRulesetChoices.RequiredApprovals)].GetValue<int?>() ?? r.Defaults.RequiredApprovals);
+            var admins = answer?[nameof(MergeQueueRulesetChoices.AdminsMayMergeByPullRequest)].GetValue<bool?>() ?? r.Defaults.AdminsMayMergeByPullRequest;
+            var checks = answer is null ? r.Defaults.RequiredChecks
+                : Names(answer[nameof(MergeQueueRulesetChoices.RequiredChecks)].Value);
+            planned.Add(new RulesetPlanned(r.Target, MergeQueueRulesetPlanner.Plan(r.State, r.Defaults with
             {
                 RequiredApprovals = approvals,
                 AdminsMayMergeByPullRequest = admins,
+                RequiredChecks = [.. checks.Select(ForgeCheck.GetId).Where(c => c.Length > 0 && c != CheckGate.QueueCheckName).Distinct(StringComparer.Ordinal)],
                 ReleaseLines = (r.Lines ?? (releaseLinesComing ? ReleaseLinePattern.Default : null)) is { } lines ? [lines.RefGlob] : null,
-            })))];
+            })));
+        }
+        return planned;
     }
 
     public string Summary(IReadOnlyList<RulesetPlanned> planned)
         => string.Join("\n\n", planned.Select(p =>
-            p.Target.Repository.FullName + "\n" + string.Join("\n", MergeQueueRulesetPlanner.Describe(p.Plan).Select(l => "- " + l))));
+            p.Target.Repository.FullName + "\n" + string.Join("\n", Lines(p).Select(l => "- " + l))));
 
     public string SummaryHtml(IReadOnlyList<RulesetPlanned> planned)
         => HtmlMessage.List(planned.Select(p =>
-            HtmlMessage.Encode(p.Target.Repository.FullName) + HtmlMessage.List(MergeQueueRulesetPlanner.Describe(p.Plan).Select(HtmlMessage.Encode))));
+            HtmlMessage.Encode(p.Target.Repository.FullName) + HtmlMessage.List(Lines(p).Select(HtmlMessage.Encode))));
+
+    /// <summary>
+    /// The plan's lines, and for a blocked plan where to fix it by hand: the repository's rules settings on GitHub (#554;
+    /// every target is a GitHub repository, <see cref="TargetFor"/>).
+    /// </summary>
+    private IEnumerable<string> Lines(RulesetPlanned p)
+    {
+        foreach (var line in MergeQueueRulesetPlanner.Describe(p.Plan))
+            yield return line;
+        if (p.Plan.Blockers.Count > 0)
+            yield return manager.GetTranslatedMessage("rulesets.settingsPage", RulesSettingsUrl(p.Target.Repository));
+    }
+
+    /// <summary>GitHub's page for a repository's rulesets.</summary>
+    internal static string RulesSettingsUrl(Repository repository)
+        => $"https://github.com/{Uri.EscapeDataString(repository.OwnerLogin)}/{Uri.EscapeDataString(repository.Name)}/settings/rules";
 
     public async Task<(IReadOnlyList<RulesetRepositoryResult> Applied, IReadOnlyList<RulesetRepositoryResult> Failed)> ApplyAsync(
         IReadOnlyList<RulesetPlanned> planned, string accessToken, CancellationToken cancellationToken)
@@ -211,6 +241,22 @@ public partial class MergeQueueRulesetSetup : IMergeQueueRulesetSetup
         foreach (var refusal in failed)
             manager.Client.Notify(manager.GetTranslatedMessage("rulesets.failed", refusal.FullName, refusal.Message), NotificationKind.Warning);
     }
+
+    /// <summary>
+    /// The ids an array reference answered with: a JSON array of strings from the wire, or the array the form was
+    /// prefilled with. <see cref="PersistentObjectAttribute.GetValue{T}"/> reads scalars only.
+    /// </summary>
+    internal static IReadOnlyList<string> Names(object? value) => value switch
+    {
+        null => [],
+        JsonElement { ValueKind: JsonValueKind.Array } array
+            => [.. array.EnumerateArray().Where(e => e.ValueKind == JsonValueKind.String).Select(e => e.GetString()!)],
+        JsonElement => [],
+        string single => [single],
+        IEnumerable<object?> items => [.. items.OfType<string>()],
+        System.Collections.IEnumerable items => [.. items.OfType<string>()],
+        _ => [],
+    };
 
     private static string ErrorKey(string? error) => error switch
     {

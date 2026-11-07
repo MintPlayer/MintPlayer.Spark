@@ -42,6 +42,8 @@ import {
           <spark-po-form
             [entityType]="et"
             [(formData)]="formData"
+            [referenceParentId]="referenceParent()?.id"
+            [referenceParentType]="referenceParent()?.name"
             [showButtons]="false">
           </spark-po-form>
         }
@@ -87,6 +89,17 @@ export class SparkRetryActionModalComponent {
    */
   entityType = signal<EntityType | null>(null);
   formData = signal<Record<string, any>>({});
+  /**
+   * The object the prompt is about, when the server set the PO's `parent`: the form's Reference
+   * pickers run their queries under it, as a sub-query's pickers run under their owner. A prompt
+   * PO is virtual and has no id of its own to scope a query by (#554: one prompt per repository,
+   * whose check picker lists that repository's checks). The server re-reads the parent with the
+   * caller's rights, as for any query parent.
+   */
+  protected readonly referenceParent = computed(() => {
+    const parent = this.retryActionService.payload()?.persistentObject?.parent;
+    return parent?.id && parent.name ? parent : null;
+  });
   private allEntityTypes: EntityType[] = [];
 
   constructor() {

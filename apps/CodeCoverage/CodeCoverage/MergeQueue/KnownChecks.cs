@@ -48,7 +48,8 @@ public partial class KnownChecksRecorder : IKnownChecksRecorder
     [Inject] private readonly TimeProvider time;
 
     /// <summary>
-    /// Upserts <c>args.checks</c> by <c>Id</c>: a later <c>LastSeenUtc</c> wins, a known kind or App is never cleared, and
+    /// Upserts <c>args.checks</c> by <c>Id</c>: a later <c>LastSeenUtc</c> wins, a known kind or App and a set
+    /// <c>OnPullRequest</c> are never cleared, and
     /// beyond <c>args.max</c> the oldest <c>LastSeenUtc</c> goes. Dates are ISO-8601 round-trip strings, which compare in
     /// time order as text.
     /// </summary>
@@ -67,6 +68,7 @@ public partial class KnownChecksRecorder : IKnownChecksRecorder
             if (!found.LastSeenUtc || seen.LastSeenUtc > found.LastSeenUtc) found.LastSeenUtc = seen.LastSeenUtc;
             if (seen.Kind !== null && seen.Kind !== undefined) found.Kind = seen.Kind;
             if (seen.AppSlug !== null && seen.AppSlug !== undefined) found.AppSlug = seen.AppSlug;
+            if (seen.OnPullRequest === true) found.OnPullRequest = true;
             found.Name = seen.Name;
         }
         if (list.length > args.max) {
@@ -109,7 +111,7 @@ public partial class KnownChecksRecipient : IRecipient<ForgeWebhookMessage<Check
     public Task HandleAsync(ForgeWebhookMessage<CheckReported> message, CancellationToken cancellationToken = default)
     {
         var evt = message.Event;
-        return recorder.RecordAsync(evt.RepositoryId, [new ForgeCheck { Name = evt.Name, Kind = evt.Kind, AppSlug = evt.AppSlug }], cancellationToken);
+        return recorder.RecordAsync(evt.RepositoryId, [new ForgeCheck { Name = evt.Name, Kind = evt.Kind, AppSlug = evt.AppSlug, OnPullRequest = evt.OnPullRequest }], cancellationToken);
     }
 }
 
@@ -162,7 +164,7 @@ public partial class RefreshKnownChecksRecipient : IRecipient<RefreshKnownChecks
         }
 
         await recorder.RecordAsync(repository.Id!,
-            reported.Select(check => new ForgeCheck { Name = check.Name, Kind = check.Kind, AppSlug = check.AppSlug }),
+            reported.Select(check => new ForgeCheck { Name = check.Name, Kind = check.Kind, AppSlug = check.AppSlug, OnPullRequest = check.OnPullRequest }),
             cancellationToken);
     }
 }

@@ -17,8 +17,20 @@ public class SparkReferencesTests
         public string Text { get; set; } = string.Empty;
     }
 
+    /// <summary>A value object whose key is derived from its name (IHasNaturalId), the key itself not a model attribute.</summary>
+    public class SrNatural : IHasNaturalId
+    {
+        public string Id { get; set; } = string.Empty;
+        public string Name { get; set; } = string.Empty;
+        public static string GetId(string name) => name.Trim();
+        string IHasNaturalId.GetId() => GetId(Name);
+    }
+
     static SparkReferencesTests()
-        => SparkValueObjects.Register(typeof(SrKeyed), nameof(SrKeyed.Code), row => ((SrKeyed)row).Code);
+    {
+        SparkValueObjects.Register(typeof(SrKeyed), nameof(SrKeyed.Code), row => ((SrKeyed)row).Code);
+        SparkValueObjects.Register(typeof(SrNatural), nameof(SrNatural.Id), row => ((SrNatural)row).Id);
+    }
 
     private static EntityAttributeDefinition Attr(string name, string dataType = "string", bool readOnly = false)
         => new() { Id = Guid.NewGuid(), Name = name, DataType = dataType, IsReadOnly = readOnly };
@@ -44,10 +56,17 @@ public class SparkReferencesTests
         new() { Id = Guid.NewGuid(), Name = "SrGetTargets", Source = "Database.Targets", EntityType = "SrTarget" },
         new() { Id = Guid.NewGuid(), Name = "SrGetOthers", Source = "Database.Others", EntityType = "SrOther" },
         new() { Id = Guid.NewGuid(), Name = "SrGetKeyed", Source = "Custom.Keyed", EntityType = "SrKeyed" },
+        new() { Id = Guid.NewGuid(), Name = "SrGetNatural", Source = "Custom.Natural", EntityType = "SrNatural" },
     ];
 
     private static Type? Resolve(string? clrType)
-        => new[] { typeof(SrOwner), typeof(SrTarget), typeof(SrOther), typeof(SrKeyed) }.FirstOrDefault(t => t.FullName == clrType);
+        => new[] { typeof(SrOwner), typeof(SrTarget), typeof(SrOther), typeof(SrKeyed), typeof(SrNatural) }.FirstOrDefault(t => t.FullName == clrType);
+
+    /// <summary>A natural id derives the key, so it need not be a writable attribute (owner 2026-11-07, revising D18).</summary>
+    [Fact]
+    public void Add_new_on_a_natural_id_value_object_needs_no_key_attribute()
+        => SparkReferences.Validate([Owner(Ref("SrGetNatural", typeof(SrNatural))), Type("SrNatural", typeof(SrNatural), Attr("Name"))], Queries, Resolve)
+            .Should().BeEmpty();
 
     [Fact]
     public void A_consistent_reference_passes()
