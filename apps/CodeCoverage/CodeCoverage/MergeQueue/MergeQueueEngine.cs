@@ -966,12 +966,17 @@ public partial class MergeQueueEngine : IMergeQueueEngine
         var file = entry.RegenerateWorkflows[entry.Dispatches.Count];
         // D53 (strays), D14 (correlation); per run (O36) each workflow gets postRebaseTimeout, and a new Generation retires
         // the previous run's timer.
-        var request = new WorkflowHookRequest(file, entry.QueueBranch, new Dictionary<string, string>
+        var inputs = new Dictionary<string, string>
         {
             ["expected_sha"] = entry.PreparedSha!,
             ["pr_number"] = entry.Number.ToString(CultureInfo.InvariantCulture),
             ["queue_run_id"] = $"{entry.Number}.{entry.Run}.{entry.PrepareAttempts}",
-        }, TimeSpan.FromMinutes(entry.Config.PostRebaseTimeoutMinutes), RegeneratePurpose);
+        };
+        // The fork guard exempted the jobs that skip a fork's run; this input is what skips them. Sent only to a workflow
+        // that declares it: GitHub refuses an undeclared input.
+        if (entry.IsFork && entry.ForkInputWorkflows.Contains(file, StringComparer.Ordinal))
+            inputs[MergeQueueForkGuard.ForkInput] = "true";
+        var request = new WorkflowHookRequest(file, entry.QueueBranch, inputs, TimeSpan.FromMinutes(entry.Config.PostRebaseTimeoutMinutes), RegeneratePurpose);
         var dispatch = await hook.DispatchAsync(Saga(context, entry), request, dispatched =>
         {
             entry.Dispatches.Add(new MergeQueueDispatch { Workflow = file, RunId = dispatched.RunId, RunUrl = dispatched.RunUrl });
@@ -1019,6 +1024,7 @@ public partial class MergeQueueEngine : IMergeQueueEngine
                 await EvictAsync(context, entry, MergeQueueForkGuard.ReasonCode, ForkRefusal(entry, findings), [.. findings.Select(f => f.Path).Distinct(StringComparer.Ordinal)], ct: ct);
                 return false;
             }
+            entry.ForkInputWorkflows = [.. verdict.ForkInputWorkflows ?? []];
             entry.Note(Now, $"the fork precondition holds: no workflow runs on a push of {entry.QueueBranch}, and {string.Join(", ", entry.RegenerateWorkflows)} "
                 + (entry.RegenerateWorkflows.Count == 1 ? "is" : "are") + " read-only");
         }
