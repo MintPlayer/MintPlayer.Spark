@@ -1163,6 +1163,105 @@ public class MergeQueueEngineTests : CoverageRavenTest
         (await h.EntryAsync()).EvictionReason.Should().Be("approval");
     }
 
+    // ── Backports the App opened and the approval floor (owner, 2026-11-07) ─────────────────────────────────────
+
+    /// <summary>A backport pull request by the App, recorded as the backport recipient records it; into master, which the
+    /// harness's queue takes, so <c>backport.enqueue</c>'s default lets the App queue it.</summary>
+    private static async Task<MergeQueueHarness> BackportAsync(MergeQueueHarness h, bool recorded = true, EMergeQueueApprovalFloorPolicy floor = EMergeQueueApprovalFloorPolicy.Inherit)
+    {
+        h.Forge.PullRequests[Number] = PullRequest(author: BotAuthor) with { HeadRef = $"backport/12-master" };
+        using var session = h.Store.OpenAsyncSession();
+        if (recorded)
+        {
+            var id = BackportPullRequest.DocumentId(RepositoryId, Number);
+            await session.StoreAsync(new BackportPullRequest { Id = id, Repository = RepositoryId, Number = Number, Source = 12, Branch = "master" }, id);
+        }
+        var repository = await session.LoadAsync<Entities.Repository>(RepositoryId);
+        repository.MergeQueueApprovalFloor = floor;
+        await session.SaveChangesAsync();
+        return h;
+    }
+
+    [Fact]
+    public async Task A_backport_the_App_opened_passes_the_external_authors_floor_without_a_person()
+    {
+        var h = await BackportAsync(await HarnessAsync(mergeBase: BaseSha));
+
+        await h.EnqueueAsync(BackportRegenerationEngine.QueueActor, EMergeQueueCommandSource.Backports, label: null);
+        await h.DrainAsync();
+
+        (await h.EntryAsync()).State.Should().Be(EMergeQueueEntryState.Merged, "#581-#585 were refused: \"@coverageproduction[bot] does not have write access\"");
+    }
+
+    [Fact]
+    public async Task A_bot_pull_request_on_a_backport_branch_the_App_did_not_record_needs_an_approval()
+    {
+        var h = await BackportAsync(await HarnessAsync(mergeBase: BaseSha), recorded: false);
+
+        await h.EnqueueAsync(BackportRegenerationEngine.QueueActor, EMergeQueueCommandSource.Backports, label: null);
+
+        (await h.EntryAsync()).EvictionReason.Should().Be("approval");
+    }
+
+    [Fact]
+    public async Task The_always_floor_still_holds_a_backport_the_App_opened()
+    {
+        var h = await BackportAsync(await HarnessAsync(mergeBase: BaseSha), floor: EMergeQueueApprovalFloorPolicy.Always);
+
+        await h.EnqueueAsync(BackportRegenerationEngine.QueueActor, EMergeQueueCommandSource.Backports, label: null);
+
+        (await h.EntryAsync()).EvictionReason.Should().Be("approval");
+    }
+
+    [Fact]
+    public async Task A_writers_approval_queues_a_backport_the_App_opened()
+    {
+        var h = await BackportAsync(await HarnessAsync(mergeBase: BaseSha), floor: EMergeQueueApprovalFloorPolicy.Always);
+        h.Queue.Reviews.Add(new ForgeReview(1, "maintainer", EForgeReviewState.Approved, Head, null));
+
+        await h.SignalAsync(EMergeQueueSignal.Reviewed, Number);
+        await h.DrainAsync();
+
+        var entry = await h.EntryAsync();
+        entry.EnqueuedVia.Should().Be(EMergeQueueCommandSource.Backports);
+        entry.State.Should().Be(EMergeQueueEntryState.Merged);
+    }
+
+    [Fact]
+    public async Task An_approval_without_write_access_does_not_queue_a_backport()
+    {
+        var h = await BackportAsync(await HarnessAsync(mergeBase: BaseSha), floor: EMergeQueueApprovalFloorPolicy.Always);
+        h.Queue.Reviews.Add(new ForgeReview(1, "contributor", EForgeReviewState.Approved, Head, null));
+
+        await h.SignalAsync(EMergeQueueSignal.Reviewed, Number);
+
+        (await h.EntryAsync()).Should().BeNull();
+    }
+
+    [Fact]
+    public async Task A_writers_request_for_changes_keeps_a_backport_out_of_the_queue()
+    {
+        var h = await BackportAsync(await HarnessAsync(mergeBase: BaseSha), floor: EMergeQueueApprovalFloorPolicy.Always);
+        h.Queue.Roles["reviewer"] = EForgeRepositoryRole.Write;
+        h.Queue.Reviews.Add(new ForgeReview(1, "maintainer", EForgeReviewState.Approved, Head, null));
+        h.Queue.Reviews.Add(new ForgeReview(2, "reviewer", EForgeReviewState.ChangesRequested, Head, null));
+
+        await h.SignalAsync(EMergeQueueSignal.Reviewed, Number);
+
+        (await h.EntryAsync()).Should().BeNull();
+    }
+
+    [Fact]
+    public async Task An_approval_of_a_pull_request_the_App_did_not_open_queues_nothing()
+    {
+        var h = await BackportAsync(await HarnessAsync(mergeBase: BaseSha), recorded: false, floor: EMergeQueueApprovalFloorPolicy.Always);
+        h.Queue.Reviews.Add(new ForgeReview(1, "maintainer", EForgeReviewState.Approved, Head, null));
+
+        await h.SignalAsync(EMergeQueueSignal.Reviewed, Number);
+
+        (await h.EntryAsync()).Should().BeNull();
+    }
+
     [Fact]
     public async Task A_later_change_request_withdraws_an_approval()
     {

@@ -56,7 +56,7 @@ public class BackportRecipientTests : CoverageRavenTest
             await seed.SaveChangesAsync();
         }
         using var session = store.OpenAsyncSession();
-        await new BackportRecipient(session, new SingleForgeResolver(integration), [forge], [git], writer, regenerations, outbox, NullLogger<BackportRecipient>.Instance)
+        await new BackportRecipient(session, new SingleForgeResolver(integration), [forge], [git], writer, regenerations, outbox, TimeProvider.System, NullLogger<BackportRecipient>.Instance)
             .HandleAsync(new BackportMessage { RepositoryId = RepositoryId, Number = 7, Lines = lines, ActorLogin = actor, Source = source, Draft = draft });
     }
 
@@ -481,6 +481,10 @@ public class BackportRecipientTests : CoverageRavenTest
         (signal.RepositoryId, signal.Kind, signal.Number, signal.Command, signal.Source, signal.Actor)
             .Should().Be((RepositoryId, EMergeQueueSignal.Command, 1000, EMergeQueueCommand.Enqueue, EMergeQueueCommandSource.Backports, BackportRegenerationEngine.QueueActor));
         forge.Comments.Single().Body.Should().Contain("- `release/8.x`: #1000, handed to the merge queue");
+        // The approval floor and a writer's approval know it as the App's own backport.
+        using var check = store.OpenAsyncSession();
+        var record = await check.LoadAsync<BackportPullRequest>(BackportPullRequest.DocumentId(RepositoryId, 1000));
+        (record.Number, record.Source, record.Branch).Should().Be((1000, 7, "release/8.x"));
     }
 
     [Theory]
@@ -498,6 +502,9 @@ public class BackportRecipientTests : CoverageRavenTest
 
         outbox.Messages.Select(m => m.Message).OfType<MergeQueueSignalMessage>().Should().BeEmpty();
         forge.OpenedPullRequests.Should().ContainSingle();
+        // Not queued now, but recorded: a writer's approval can still queue it.
+        using (var check = store.OpenAsyncSession())
+            (await check.LoadAsync<BackportPullRequest>(BackportPullRequest.DocumentId(RepositoryId, 1000))).Should().NotBeNull();
     }
 
     [Fact]

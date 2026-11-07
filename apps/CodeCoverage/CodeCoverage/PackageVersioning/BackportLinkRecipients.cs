@@ -71,10 +71,17 @@ public partial class BackportLinkRecipient : IRecipient<BackportMergedMessage>, 
     [Inject] private readonly IEnumerable<IForgeVersioning> forges;
     [Inject] private readonly IEnumerable<IForgeMergeQueue> queues;
     [Inject] private readonly IEnumerable<IForgeLabels> labellers;
+    [Inject] private readonly TimeProvider time;
     [Inject] private readonly ILogger<BackportLinkRecipient> logger;
 
     public async Task HandleAsync(BackportMergedMessage message, CancellationToken cancellationToken = default)
     {
+        // A merged backport is done: its record goes. A pull request closed without merging keeps it, since it may reopen.
+        if (await session.LoadAsync<BackportPullRequest>(BackportPullRequest.DocumentId(message.RepositoryId, message.Number), cancellationToken) is { } record)
+        {
+            session.Delete(record);
+            await session.SaveChangesAsync(cancellationToken);
+        }
         if (await ContextAsync(message.RepositoryId, cancellationToken) is not { } context) return;
         var (repository, forge, defaultBranch, config) = context;
         try
@@ -127,6 +134,9 @@ public partial class BackportLinkRecipient : IRecipient<BackportMergedMessage>, 
             var opened = await forge.OpenPullRequestAsync(repository, message.Branch, line, $"[{BackportRecipient.Line(line)}] {source.Title}",
                 $"Backport of #{source.Number} to `{line}`, pushed by hand.\n\n{BackportProvenance.Marker(repository.FullName, source.Number)}",
                 cancellationToken: cancellationToken);
+            // A writer pushed it, so it counts as the App's own backport for the approval floor and a writer's approval.
+            await BackportRegenerationEngine.RecordAsync(session, repository.Id!, opened, source.Number, line, time.GetUtcNow().UtcDateTime, cancellationToken);
+            await session.SaveChangesAsync(cancellationToken);
             logger.LogInformation("Backport link: opened #{Opened} for {Branch} of {Repository}", opened, message.Branch, repository.FullName);
         }
         catch (ForgeAccessDeniedException ex)

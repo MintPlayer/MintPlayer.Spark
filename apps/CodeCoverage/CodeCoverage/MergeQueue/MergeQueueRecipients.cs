@@ -118,7 +118,9 @@ public partial class MergeQueueEventsRecipient :
     public async Task HandleAsync(ForgeWebhookMessage<PullRequestReviewed> message, CancellationToken cancellationToken = default)
     {
         var evt = message.Event;
-        if (await HasActiveEntryAsync(evt.RepositoryId, evt.Number, cancellationToken))
+        // A backport the App opened is the saga's too when it is not queued: a writer's approval queues it.
+        if (await HasActiveEntryAsync(evt.RepositoryId, evt.Number, cancellationToken)
+            || await session.LoadAsync<BackportPullRequest>(BackportPullRequest.DocumentId(evt.RepositoryId, evt.Number), cancellationToken) is not null)
             await SignalAsync(evt.RepositoryId, EMergeQueueSignal.Reviewed, evt.Number, cancellationToken: cancellationToken);
     }
 
