@@ -898,6 +898,8 @@ export class SparkQueryGridComponent {
         const replaced = new Set(next.map(f => f.name));
         this.appliedPresetFilters.set(next);
         this.filters.set([...this.filters().filter(f => !previous.has(f.name) && !replaced.has(f.name)), ...next]);
+        const kept = Object.entries(this.datatableFilters()).filter(([name]) => !previous.has(name) && !replaced.has(name));
+        this.datatableFilters.set({ ...Object.fromEntries(kept), ...toDatatableFilters(next) });
         this.selection.set([]);
         this.onFilterChanged();
       });
@@ -1104,22 +1106,28 @@ export class SparkQueryGridComponent {
     return result;
   };
 
-  /** The datatable's `filters` model as it last reported it, to tell which columns a change touched. */
-  private datatableFilters: DatatableFilters = {};
+  /**
+   * The datatable's `filters` model, bound both ways. Down: preset (URL) filters and a query switch
+   * reach the panels as ticks (ng-bootstrap 22.35 applies an outside write in place, without echoing
+   * it through `filtersChange`). Up: {@link onFiltersChange} keeps the last reported model, to tell
+   * which columns a change touched.
+   */
+  protected readonly datatableFilters = signal<DatatableFilters>({});
 
   /**
    * The datatable's `filters` model changed (ng-bootstrap 22.30, #448): translates each column it
    * touched into the wire shape. The datatable itself goes back to page 1 and refetches, after this
    * handler has run (it emits first and reloads in a microtask), so the fetch reads the new filters.
    *
-   * Only the touched columns, because the model knows nothing of the host's preset (URL) filters,
-   * which live in `filters()` beside it. Every entry is the values shape: the panel only ever calls
-   * `ctx.apply(...)`, and comparison mode is never declared.
+   * Only the touched columns: an untouched column keeps its wire filter as it is, which matters for
+   * a preset whose wire form (say the `< none >` complement) the model's values shape does not hold.
+   * Every entry is the values shape: the panel only ever calls `ctx.apply(...)`, and comparison mode
+   * is never declared.
    */
   protected onFiltersChange(change: DatatableFilters | null): void {
     const next = change ?? {};
-    const previous = this.datatableFilters;
-    this.datatableFilters = next;
+    const previous = this.datatableFilters();
+    this.datatableFilters.set(next);
     for (const column of new Set([...Object.keys(previous), ...Object.keys(next)])) {
       const filter = next[column];
       if (JSON.stringify(filter) === JSON.stringify(previous[column])) continue;
@@ -1260,6 +1268,7 @@ export class SparkQueryGridComponent {
     // A filter belongs to the query it was applied to. Surviving a query switch would POST it
     // against the next query, where the column may not exist or may mean something else entirely.
     this.filters.set([]);
+    this.datatableFilters.set({});
     // The previous query's columns too: the new datatable would otherwise size its columns from
     // them against the new query's first page, and keep those widths for column names that no
     // longer exist (see the row-actions column in the template).
@@ -1283,6 +1292,7 @@ export class SparkQueryGridComponent {
       const preset = applicablePresetFilters(untracked(() => this.presetFilters()), et);
       this.appliedPresetFilters.set(preset);
       this.filters.set([...preset]);
+      this.datatableFilters.set(toDatatableFilters(preset));
       if (et) {
         const [permissions, actions] = await Promise.all([
           this.sparkService.getPermissions(et.id),
@@ -1480,6 +1490,16 @@ export class SparkQueryGridComponent {
   getColumnRendererInputs(component: Type<any>, item: QueryResultItem, column: QueryColumn): Record<string, any> {
     return this.gridRenderers.columnInputsFor(component, item, column);
   }
+}
+
+/**
+ * Wire filters as the datatable's `filters` model, so a preset shows as ticks in its column's panel.
+ * `excludes` is the inverse; a filter carrying both (never sent by the grid) shows its exclusions.
+ * The cast is sound: wire values are parsed JSON (a URL preset, a server answer).
+ */
+function toDatatableFilters(filters: readonly QueryColumnFilter[]): DatatableFilters {
+  type Values = DatatableFilters[string]['values'];
+  return Object.fromEntries(filters.map(f => [f.name, { values: [...(f.excludes ?? f.includes ?? [])] as Values, inverse: !!f.excludes }]));
 }
 
 function extractSourceName(source: string): string {

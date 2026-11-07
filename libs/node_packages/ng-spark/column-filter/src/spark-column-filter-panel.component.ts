@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, input, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, input, linkedSignal } from '@angular/core';
 import { DistinctValue, DistinctValues, FilterContext } from '@mintplayer/ng-bootstrap/datatable';
 import { QueryColumn } from '@mintplayer/ng-spark/models';
 import { BsCheckboxComponent } from '@mintplayer/ng-bootstrap/checkbox';
@@ -21,6 +21,12 @@ import { SparkIconComponent } from '@mintplayer/ng-spark/icon';
  * What the datatable still owns, and this component must not reimplement: the async distinct source
  * and its debounce, request cancellation, the matching/remaining bucketing, the change event, the
  * document-root overlay, the focus trap and Escape. This is markup over {@link FilterContext}.
+ *
+ * ⚠️ **No filter state lives here.** The datatable owns the selection and hands it over as
+ * `ctx.selection`; this panel renders from it and writes only through `ctx`. That keeps it correct
+ * however long it lives (ng-bootstrap creates it on a column's first open and keeps it after that,
+ * since 22.35 / #465) and when the selection changes from outside (URL presets, a query switch).
+ * A local copy of the ticks once made a reopened panel show none while the grid stayed filtered.
  *
  * ⚠️ **Styling is ours.** The panel is portalled out of the grid's subtree, so Bootstrap's
  * `.form-control` and `.btn` do not reach it — they are only styled inside `bs-*` components. Every
@@ -56,11 +62,21 @@ export class SparkColumnFilterPanelComponent {
   protected readonly listsDistincts = computed(() => this.column().canListDistincts !== false);
 
   /** Selected values, by value. Identity is the value, never the label — two rows may share text. */
-  private readonly selected = signal<DistinctValue[]>([]);
+  private readonly selected = computed(() => this.ctx().selection.values);
 
-  protected readonly inverse = signal(false);
+  protected readonly inverse = computed(() => this.ctx().selection.inverse);
 
-  protected readonly freeText = signal('');
+  /** `filtersReadonly` on the grid: the filters are set from outside only; the search box stays usable. */
+  protected readonly readonly = computed(() => this.ctx().readonly);
+
+  /** The datatable's search term. Bound, so a kept panel never shows text the table has reset. */
+  protected readonly term = computed(() => this.ctx().term);
+
+  /**
+   * What the user is typing before Apply, seeded from the applied text. A new `ctx` carrying the same
+   * applied text leaves the typing alone (the source is compared by value); a changed one replaces it.
+   */
+  protected readonly freeText = linkedSignal(() => String(this.ctx().selection.values[0]?.value ?? ''));
 
   protected readonly hasSelection = computed(() => this.selected().length > 0);
 
@@ -88,19 +104,18 @@ export class SparkColumnFilterPanelComponent {
   }
 
   protected toggle(value: DistinctValue, checked: boolean): void {
+    const current = this.selected();
     const next = checked
-      ? [...this.selected(), value]
-      : this.selected().filter(v => !sameValue(v.value, value.value));
+      ? (current.some(v => sameValue(v.value, value.value)) ? current : [...current, value])
+      : current.filter(v => !sameValue(v.value, value.value));
 
-    this.selected.set(next);
     this.ctx().apply(next, this.inverse());
   }
 
   protected toggleInverse(): void {
     // Not a flag on the wire: the grid moves the selected values between `includes` and `excludes`.
-    // Applying immediately keeps the panel's state and the grid's in step without an Apply button.
-    this.inverse.update(v => !v);
-    this.ctx().apply(this.selected(), this.inverse());
+    // Applied immediately, without an Apply button; the datatable keeps an inverse with no values too.
+    this.ctx().apply(this.selected(), !this.inverse());
   }
 
   protected onSearch(term: string): void {
@@ -118,13 +133,10 @@ export class SparkColumnFilterPanelComponent {
     const text = this.freeText().trim();
     const next: DistinctValue[] = text ? [{ value: text, label: text }] : [];
 
-    this.selected.set(next);
     this.ctx().apply(next, this.inverse());
   }
 
   protected clear(): void {
-    this.selected.set([]);
-    this.inverse.set(false);
     this.freeText.set('');
     this.ctx().clear();
   }
