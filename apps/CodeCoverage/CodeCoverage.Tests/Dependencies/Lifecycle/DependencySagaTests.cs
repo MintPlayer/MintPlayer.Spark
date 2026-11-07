@@ -685,6 +685,7 @@ public class DependencySagaTests : CoverageRavenTest
         await h.ReleaseAsync(EDependencyStep.PollChecks);
 
         h.Queue.Reruns.Should().Equal([42L]);
+        h.Queue.RerunCalls.Should().ContainSingle("the failed runs go to the forge in one call (#589)");
         var bisecting = await h.RunAsync();
         bisecting.State.Should().Be(EDependencyRunState.Bisecting);
         bisecting.Bisect!.Suspects.Should().Equal(["lodash", "chalk"], "the later plan group is more suspect (minor after patch)");

@@ -101,7 +101,7 @@ public class ForgeIntegrationConformanceTests
         (nameof(IForgeMergeQueue.ApplyRulesetPlanAsync), q => q.ApplyRulesetPlanAsync(SampleRepository, "main",
             new MergeQueueRulesetPlan([new DeleteClassicProtectionStep([])], []), "user-token")),
         (nameof(IForgeMergeQueue.GetCheckStateAsync), q => q.GetCheckStateAsync(SampleRepository, SampleSha)),
-        (nameof(IForgeMergeQueue.RerunCheckAsync), q => q.RerunCheckAsync(SampleRepository, new ForgeCheckRun(1, "build", "completed", "failure", 11, "github-actions", null))),
+        (nameof(IForgeMergeQueue.RerunChecksAsync), q => q.RerunChecksAsync(SampleRepository, [new ForgeCheckRun(1, "build", "completed", "failure", 11, "github-actions", null)])),
         (nameof(IForgeMergeQueue.GetCheckNamesOnCommitAsync), q => q.GetCheckNamesOnCommitAsync(SampleRepository, SampleSha)),
         (nameof(IForgeMergeQueue.GetReportedCheckNamesAsync), q => q.GetReportedCheckNamesAsync(SampleRepository)),
         (nameof(IForgeMergeQueue.DispatchWorkflowAsync), q => q.DispatchWorkflowAsync(SampleRepository, "regenerate.yml", "mq/main/pr-1", new Dictionary<string, string>())),

@@ -1420,11 +1420,10 @@ public partial class MergeQueueEngine : IMergeQueueEngine
                     if (fromPoll) await ScheduleAsync(entry, EMergeQueueStep.PollChecks, ChecksPollInterval, ct);
                     return;
                 }
-                // D9: one more chance for each failed check run; a commit status cannot be re-run.
-                var rerun = 0;
-                foreach (var run in state.CheckRuns.Where(r => gate.Failed.Contains(r.Name) && CheckGate.ReadRun(r.Status, r.Conclusion) == ECheckVerdict.Failed))
-                    if (await context.Queue.RerunCheckAsync(context.Repository, run, ct))
-                        rerun++;
+                // D9: one more chance for each failed check run; a commit status cannot be re-run. All in one call, so the
+                // forge can re-run the jobs of one workflow run together (#589).
+                var rerun = await context.Queue.RerunChecksAsync(context.Repository,
+                    [.. state.CheckRuns.Where(r => gate.Failed.Contains(r.Name) && CheckGate.ReadRun(r.Status, r.Conclusion) == ECheckVerdict.Failed)], ct);
                 if (rerun > 0)
                 {
                     entry.CheckRetries++;

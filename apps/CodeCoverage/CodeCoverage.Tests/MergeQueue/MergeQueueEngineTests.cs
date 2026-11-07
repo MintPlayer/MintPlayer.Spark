@@ -962,6 +962,29 @@ public class MergeQueueEngineTests : CoverageRavenTest
     }
 
     [Fact]
+    public async Task Every_failed_check_run_goes_to_the_forge_in_one_rerun_call()
+    {
+        // PR #586 (#589): two failed jobs of one workflow run, re-run one by one; the second got 403 "already running" and
+        // the queue evicted for "permission". The forge gets the whole set and groups it by workflow run.
+        var h = await HarnessAsync(mergeBase: BaseSha);
+        h.Queue.CheckStates[Head] = new ForgeCheckState(Head,
+            [
+                new ForgeCheckRun(42, "build", "completed", "failure", 11, "github-actions", null),
+                new ForgeCheckRun(44, "pull-request", "completed", "failure", 11, "github-actions", null),
+                new ForgeCheckRun(46, "lint", "completed", "success", 11, "github-actions", null),
+            ],
+            [], [new ForgeCheckSuite(11, "completed", "failure", "github-actions", 3)]);
+
+        await h.EnqueueAsync();
+        await h.DrainAsync();
+
+        var entry = await h.EntryAsync();
+        entry.State.Should().Be(EMergeQueueEntryState.AwaitingChecks);
+        entry.CheckRetries.Should().Be(1);
+        h.Queue.RerunCalls.Should().ContainSingle().Which.Should().Equal([42L, 44L]);
+    }
+
+    [Fact]
     public async Task An_excluded_check_is_not_waited_for_and_is_listed_on_the_check_run()
     {
         var h = await HarnessAsync(mergeBase: BaseSha);
