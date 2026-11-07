@@ -29,7 +29,9 @@ public sealed record ForkGuardFinding(string Path, string Ref, int? Line, string
 /// writer refuses it, §0 D67), so these are read at the base commit: GitHub reads a push run's workflow from the pushed
 /// commit, not from the default branch.</item>
 /// <item>The regenerate workflow (the default branch's, which D12 holds the queue branch's copy to) gives every job
-/// <c>contents: read</c> at most, references no secret, asks for no OIDC token and runs on GitHub-hosted runners only.</item>
+/// <c>contents: read</c> at most, references no secret, asks for no OIDC token and runs on GitHub-hosted runners only.
+/// A job a fork's run skips is exempt: <c>if: ${{ !inputs.fork }}</c> in a workflow that declares a boolean <c>fork</c>
+/// input, which the queue sets for a fork's pull request (<see cref="ForkInput"/>, owner 2026-11-07).</item>
 /// <item>No default-branch workflow runs on the regenerate workflow's runs on the queue branch (<c>workflow_run</c>).</item>
 /// <item>No workflow, at the base commit or on the default branch, runs on <c>check_run</c>, <c>check_suite</c>,
 /// <c>status</c>, <c>deployment</c> or <c>deployment_status</c>, whatever its activity types (O25). A check, a commit
@@ -157,9 +159,14 @@ public static partial class MergeQueueForkGuard
             Add(Child(root, "jobs"), "The regenerate workflow has no `jobs:` the queue can read.", "Use the setup guide's template.");
             return;
         }
+        var forkInput = DeclaresForkInput(root);
         foreach (var (key, value) in jobs.Children)
         {
             var job = Text(key);
+            // A job that never runs for a fork's pull request may hold more (owner, 2026-11-07): the queue dispatches a
+            // fork's run with `fork: true` whenever the workflow declares the input, so the job is skipped.
+            if (forkInput && value is YamlMappingNode gated && SkipsForks(gated))
+                continue;
             if (value is not YamlMappingNode body)
             {
                 Add(key, $"Job `{job}` is not a mapping the queue can read.", "Use the setup guide's template.");
@@ -181,8 +188,55 @@ public static partial class MergeQueueForkGuard
                 Add(at, $"Job `{job}`: {problem}", "Run it on a GitHub-hosted runner such as `ubuntu-latest`: the pull request's code would run on your machine.");
         }
 
-        foreach (var (at, problem) in SecretReferences(root))
+        // Everything but the jobs a fork's run skips: a top-level `env:` reaches every job.
+        List<YamlNode> scanned = [.. root.Children.Where(kv => kv.Value != jobs).SelectMany(kv => new[] { kv.Key, kv.Value }),
+            .. jobs.Children.Where(kv => !(forkInput && kv.Value is YamlMappingNode gated && SkipsForks(gated))).SelectMany(kv => new[] { kv.Key, kv.Value })];
+        foreach (var (at, problem) in scanned.SelectMany(SecretReferences).DistinctBy(f => f.At, ReferenceEqualityComparer.Instance))
             Add(at, problem, "Remove every secret from the regenerate workflow: it runs the pull request's code.");
+    }
+
+    /// <summary>The <c>workflow_dispatch</c> input the queue sets to <c>true</c> for a fork's pull request.</summary>
+    public const string ForkInput = "fork";
+
+    /// <summary>
+    /// Whether the workflow declares a boolean <see cref="ForkInput"/> under <c>on: workflow_dispatch: inputs:</c>. The queue
+    /// sends the input only then, because GitHub refuses a dispatch with an input the workflow does not declare.
+    /// </summary>
+    public static bool DeclaresForkInput(ForgeWorkflowFile file)
+    {
+        if (file.Content is not { } content)
+            return false;
+        try
+        {
+            var stream = new YamlStream();
+            stream.Load(new StringReader(content));
+            return stream.Documents.Count == 1 && stream.Documents[0].RootNode is YamlMappingNode root && DeclaresForkInput(root);
+        }
+        catch (YamlException)
+        {
+            return false;
+        }
+    }
+
+    private static bool DeclaresForkInput(YamlMappingNode root)
+        => root.Children.FirstOrDefault(kv => kv.Key is YamlScalarNode { Value: "on" }).Value is YamlMappingNode on
+            && Child(on, "workflow_dispatch") is YamlMappingNode dispatch
+            && Child(dispatch, "inputs") is YamlMappingNode inputs
+            && Child(inputs, ForkInput) is YamlMappingNode fork
+            && Child(fork, "type") is YamlScalarNode { Value: "boolean" };
+
+    /// <summary>
+    /// A job whose <c>if:</c> is exactly <c>!inputs.fork</c> (with or without <c>${{ }}</c>, spaces aside): GitHub skips it
+    /// when the input is true. Anything else, a longer condition included, counts as running.
+    /// </summary>
+    private static bool SkipsForks(YamlMappingNode job)
+    {
+        if (Child(job, "if") is not YamlScalarNode { Value: { } condition })
+            return false;
+        var compact = string.Concat(condition.Where(c => !char.IsWhiteSpace(c)));
+        if (compact.StartsWith("${{", StringComparison.Ordinal) && compact.EndsWith("}}", StringComparison.Ordinal))
+            compact = compact[3..^2];
+        return compact == $"!inputs.{ForkInput}";
     }
 
     /// <summary>What a <c>permissions:</c> value grants beyond <c>contents: read</c>; empty when nothing.</summary>
@@ -255,7 +309,7 @@ public static partial class MergeQueueForkGuard
 
     /// <summary>Every place the workflow reads the <c>secrets</c> context or passes secrets on: in an expression, an
     /// <c>if:</c> (an expression without the braces), or a <c>secrets:</c> key. Comments are not read.</summary>
-    private static IEnumerable<(YamlNode At, string Problem)> SecretReferences(YamlMappingNode root)
+    private static IEnumerable<(YamlNode At, string Problem)> SecretReferences(YamlNode root)
     {
         foreach (var node in Nodes(root))
         {

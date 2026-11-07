@@ -716,10 +716,31 @@ cascade: 66 of 72 conflicted only because #461 was missing). Script: a throwaway
     - Accepted cost: a backport that touches a lockfile waits for a workflow run, minutes, before its PR opens.
     - Rejected: regenerating only resolved conflicts, which lets a cleanly text-merged lockfile reach the line
       unverified.
+    - **Superseded in part (owner, 2026-11-07): only derived files take the line's side.** "Every path that matches
+      `regeneratedPaths`" was too wide. That list names what a regenerate patch may touch, and Spark's holds files with
+      hand-written content: `Model/*.json`, `translations.json`, `security.json`. #580's backports (#581, #582) reset
+      HR's `Person.json` and Spark's `translations.json` to the line's version and lost the change's edits (two
+      add-new flags, two translation keys), which no regeneration can bring back. They were restored by hand.
+      - Now: the paths of the whole-file `take-base` rules that regenerate (lockfiles, `modelHashes.json`,
+        `securityPosture.txt`) take the line's side (`BackportRecipient.LineSidePaths`). Every other file merges as
+        text under its own rule. The patch's allowed globs are still the whole `regeneratedPaths` list.
+      - Accepted cost: a hand-written file in `regeneratedPaths` that merges cleanly is not regenerated on the line.
+      - The same backports showed `regenerate.yml` had never restored: `nuget.config` maps `MintPlayer.*` to the
+        GitHub Packages feed, which needs credentials, and the workflow had none. **Superseded the same day:** a
+        workflow-wide `packages: read` + `GITHUB_TOKEN` failed the merge queue's own fork guard (PR #583 CI,
+        `MergeQueueForkGuardTests.This_repositorys_own_workflows…`: "`packages: read` grants more than `contents:
+        read`"), so a fork's pull request could never have been regenerated. Owner's choice (2026-11-07): split by
+        fork. The workflow declares a boolean `fork` input and has two jobs. `fork` (`if: inputs.fork`) has no
+        credential and restores from nuget.org only (`-p:RestoreConfigFile`, a config in `$RUNNER_TEMP`). `trusted`
+        (`if: !inputs.fork`) gets `packages: read` and the token. The queue sends `fork: true` for a fork's entry
+        when the workflow declares the input (`MergeQueueEntry.ForkInputWorkflows`, read with the fork precondition).
+        The guard skips exactly such a gated job (merge-queue.md §2.3, item 2). Backports are never forks.
 - **M6, built (2026-11-05): regeneration on backport branches (D9).**
 
   **Writer.**
-  - Each target carries the default branch's effective `mergeQueue.regeneratedPaths` (`BackportTargetWire.RegeneratedPaths`).
+  - Each target carries the derived paths (`BackportTargetWire.RegeneratedPaths`): since 2026-11-07 those of the
+    whole-file `take-base` rules that regenerate, no longer the whole `mergeQueue.regeneratedPaths` (see the superseded
+    decision above).
   - Before the merge, every changed path that matches one is reset in "theirs" to the base's entry (removed when the
     base lacks it). The merge therefore keeps the line's side and cannot conflict there.
   - These paths are kept out of the platform-marker paths.

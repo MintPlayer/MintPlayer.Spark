@@ -94,8 +94,10 @@ public sealed record GitWriterBackportRequest(
 
 /// <param name="AutoResolve">The merge queue's rules for this line's conflicts (#570 M5); stage 2 is the line.</param>
 /// <param name="Draft"><c>backport.onConflict: draft</c> (#570 D7): a conflict is pushed with its markers.</param>
-/// <param name="RegeneratedPaths">The merge queue's <c>regeneratedPaths</c> (#570 D9, M6): a path the change touches that
-/// matches one keeps the line's side and is listed in <see cref="GitWriterBackportTargetResult.Regenerate"/>.</param>
+/// <param name="RegeneratedPaths">The derived files a backport never merges (#570 D9, M6,
+/// <c>BackportRecipient.LineSidePaths</c>): a path the change touches that matches one keeps the line's side and is
+/// listed in <see cref="GitWriterBackportTargetResult.Regenerate"/>. Not the whole of the queue's <c>regeneratedPaths</c>,
+/// which holds hand-written files too.</param>
 public sealed record GitWriterBackportTarget(string Branch, string Head, IReadOnlyList<GitWriterAutoResolve>? AutoResolve = null, bool Draft = false,
     IReadOnlyList<string>? RegeneratedPaths = null);
 
