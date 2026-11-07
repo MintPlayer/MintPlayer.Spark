@@ -12,6 +12,7 @@ import { EntityType, QueryColumn, QueryResultItem } from '@mintplayer/ng-spark/m
 import { TranslateKeyPipe, ReferenceAttrValuePipe, LoadedReference, referenceLabel } from '@mintplayer/ng-spark/pipes';
 import { SparkAttributeDescriptionComponent } from '@mintplayer/ng-spark/attribute-description';
 import { SparkSearchBoxComponent } from '@mintplayer/ng-spark/grid';
+import { resolveReferenceTarget } from './reference-target';
 
 /** The parent a reference query runs under, as the form's option queries pass it. */
 export interface ReferenceQueryParent {
@@ -102,6 +103,28 @@ export class SparkReferencePickerComponent {
   fetchFn = signal<DatatableFetch<QueryResultItem> | null>(null);
 
   private readonly datatable = viewChild(BsDatatableComponent);
+  private readonly searchBox = viewChild(SparkSearchBoxComponent);
+
+  /**
+   * Opens the **Add new** popup with the term in the search box, resolving with the created row, or
+   * null when cancelled (reference add-new PRD D16, D17). Unset, the modal shows no [+].
+   */
+  addNew = input<((searchTerm: string) => Promise<QueryResultItem | null>) | null>(null);
+  protected readonly addingNew = signal(false);
+
+  /** [+]: the created row is picked exactly as a clicked row is, so the modal closes with it as the value. */
+  async onAddNew(): Promise<void> {
+    const addNew = this.addNew();
+    if (!addNew || this.addingNew()) return;
+    this.addingNew.set(true);
+    try {
+      const term = (this.searchBox()?.currentText() ?? this.searchTerm()).trim();
+      const item = await addNew(term);
+      if (item) this.select(item);
+    } finally {
+      this.addingNew.set(false);
+    }
+  }
   /** The last row picked here, so the textbox can label it even when the parent does not keep it. */
   private readonly picked = signal<QueryResultItem | null>(null);
 
@@ -152,10 +175,8 @@ export class SparkReferencePickerComponent {
     this.sortColumns.set([]);
 
     // Lazily resolve the target entity type; the modal shows its grid once it has.
-    const refType = this.referenceType();
-    if (!this.entityType() && refType) {
-      const types = await this.sparkService.getEntityTypes();
-      this.entityType.set(types.find(t => t.clrType === refType) || null);
+    if (!this.entityType()) {
+      this.entityType.set(await resolveReferenceTarget(this.sparkService, this.query(), this.referenceType()));
     }
 
     // A fresh closure per open: the datatable then fetches page 1 even if the last open ended there.

@@ -35,7 +35,7 @@ public class HandWrittenActionsCompatibilityTests
         public Task<LegacyEntity> MapAsync(PersistentObject obj, LegacyEntity? existing)
             => Task.FromResult(existing ?? new LegacyEntity());
 
-        public Task OnRefreshAsync(SparkRefreshArgs<LegacyEntity> args) => Task.CompletedTask;
+        public Task OnRefreshAsync(SparkRefreshArgs args) => Task.CompletedTask;
 
         public Task<bool> IsAllowedAsync(string action, LegacyEntity entity) => Task.FromResult(true);
 

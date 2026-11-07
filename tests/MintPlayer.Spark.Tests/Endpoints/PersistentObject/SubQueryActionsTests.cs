@@ -553,7 +553,7 @@ public class BqChildActions(IEntityMapper entityMapper, BqRecorder recorder, Rav
         return Task.CompletedTask;
     }
 
-    public override async Task OnNewAsync(SparkNewArgs<BqChild> args)
+    public override async Task OnNewAsync(SparkNewArgs args)
     {
         recorder.NewCalls.Add($"{args.Parent?.Id}|{args.ParentType?.Name}|{args.Query?.Alias}");
         await base.OnNewAsync(args);
@@ -563,13 +563,13 @@ public class BqChildActions(IEntityMapper entityMapper, BqRecorder recorder, Rav
 /// <summary>Overrides OnNewAsync without calling base: the auto-fill is lost, as intended.</summary>
 public class BqNoBaseActions(IEntityMapper entityMapper) : DefaultPersistentObjectActions<BqNoBase>(entityMapper)
 {
-    public override Task OnNewAsync(SparkNewArgs<BqNoBase> args) => Task.CompletedTask;
+    public override Task OnNewAsync(SparkNewArgs args) => Task.CompletedTask;
 }
 
 /// <summary>Overrides OnNewAsync and asks for the auto-fill through the helper instead of base.</summary>
 public class BqHelperActions(IEntityMapper entityMapper) : DefaultPersistentObjectActions<BqHelper>(entityMapper)
 {
-    public override Task OnNewAsync(SparkNewArgs<BqHelper> args)
+    public override Task OnNewAsync(SparkNewArgs args)
     {
         args.FillParentReference();
         return Task.CompletedTask;

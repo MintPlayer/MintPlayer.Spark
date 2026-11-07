@@ -44,7 +44,7 @@ public class RowLifecycleInvokerTests
         public PersistentObject? DeleteSawRow { get; private set; }
         public bool RefuseDelete { get; set; }
 
-        public override Task OnNewAsync(SparkNewArgs<LifecycleFixtureRow> args)
+        public override Task OnNewAsync(SparkNewArgs args)
         {
             NewInvocations++;
             NewSawParent = args.Parent;
@@ -56,7 +56,7 @@ public class RowLifecycleInvokerTests
             return Task.CompletedTask;
         }
 
-        public override Task OnDeleteRowAsync(SparkDeleteRowArgs<LifecycleFixtureRow> args)
+        public override Task OnDeleteRowAsync(SparkDeleteRowArgs args)
         {
             DeleteInvocations++;
             DeleteSawRowKey = args.RowKey;

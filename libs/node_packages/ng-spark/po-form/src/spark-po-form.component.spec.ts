@@ -1082,4 +1082,86 @@ describe('SparkPoFormComponent', () => {
       expect(last.querySelector('spark-attribute-description button')).toBeNull();
     });
   });
+
+  describe('Add new (reference add-new PRD D12, D16, D17)', () => {
+    const shopType: EntityType = {
+      id: 't-shop',
+      name: 'Shop',
+      clrType: 'Test.Shop',
+      attributes: [
+        attr({ id: 'a-name', name: 'Name', order: 1 }),
+        attr({ id: 'a-supplier', name: 'Supplier', dataType: 'Reference', order: 2, query: 'GetSuppliers', referenceType: 'Test.Supplier', canAddNewReference: true } as any),
+        attr({ id: 'a-plain', name: 'Plain', dataType: 'Reference', order: 3, query: 'GetSuppliers', referenceType: 'Test.Supplier' }),
+        attr({ id: 'a-labels', name: 'Labels', dataType: 'Reference', isArray: true, order: 4, query: 'GetSuppliers', referenceType: 'Test.Supplier', canAddNewReference: true } as any),
+        attr({ id: 'a-rows', name: 'Rows', dataType: 'AsDetail', isArray: true, order: 5 }),
+      ],
+    };
+    const supplierType: EntityType = { id: 't-supplier', name: 'Supplier', clrType: 'Test.Supplier', attributes: [] };
+
+    async function shopForm(open: (request: any) => Promise<PersistentObject | null>) {
+      const ctx = createComponent({
+        getEntityTypes: vi.fn().mockResolvedValue([shopType, supplierType]),
+        getQueryByName: vi.fn().mockResolvedValue({ id: 'q-suppliers', name: 'GetSuppliers', entityType: 'Supplier' }),
+        executeQueryByName: vi.fn().mockResolvedValue({ columns: [], items: [], totalItems: 0 }),
+      } as any);
+      const openSpy = vi.fn(open);
+      (ctx.component as any).newModal = { open: openSpy };
+      ctx.fixture.componentRef.setInput('formData', { Name: 'Corner', Supplier: null, Labels: [], Rows: [{ X: 1 }] });
+      await setEntityType(ctx.fixture, shopType);
+      return { ...ctx, openSpy };
+    }
+
+    it('ownerChain sends a stored object by id, without AsDetail values, under the popup owner it was given', async () => {
+      const { fixture, component } = await shopForm(async () => null);
+      const outer = { id: '', name: 'Mall', objectTypeId: 't-mall', attributes: [] } as any;
+      fixture.componentRef.setInput('objectId', 'shops/1');
+      fixture.componentRef.setInput('ownerParent', outer);
+
+      const chain = component.ownerChain();
+      expect(chain.id).toBe('shops/1');
+      expect(chain.objectTypeId).toBe('t-shop');
+      expect(chain.attributes.map(a => a.name)).not.toContain('Rows');
+      expect(chain.attributes.find(a => a.name === 'Name')!.value).toBe('Corner');
+      expect(chain.parent).toBe(outer);
+    });
+
+    it('ownerChain sends a row form without an id', async () => {
+      const { fixture, component } = await shopForm(async () => null);
+      fixture.componentRef.setInput('objectId', 'shops/1');
+      fixture.componentRef.setInput('triggerPathPrefix', 'Rows[0]');
+      expect(component.ownerChain().id).toBe('');
+    });
+
+    it('addNewFor gives a stable callback only when the attribute allows Add new', async () => {
+      const { component } = await shopForm(async () => null);
+      const supplier = shopType.attributes.find(a => a.name === 'Supplier')!;
+      expect(component.addNewFor(shopType.attributes.find(a => a.name === 'Plain')!)).toBeNull();
+      expect(component.addNewFor(supplier)).toBe(component.addNewFor(supplier));
+    });
+
+    it('the array [+] closes the panel, opens the popup with the typed term and appends the created row', async () => {
+      const { component, openSpy } = await shopForm(async () => ({ id: 'suppliers/9', breadcrumb: 'Initech', name: 'Supplier', objectTypeId: 't-supplier', attributes: [] }) as any);
+      const labels = shopType.attributes.find(a => a.name === 'Labels')!;
+      const treeSelect = { close: vi.fn() } as any;
+
+      component.noteTreeSearch(labels, ' Initech ');
+      await component.addNewTreeReference(labels, treeSelect);
+
+      expect(treeSelect.close).toHaveBeenCalled();
+      const request = openSpy.mock.calls[0][0];
+      expect(request.target.id).toBe('t-supplier');
+      expect(request.ownerType).toBe('t-shop');
+      expect(request.referenceAttribute).toBe('Labels');
+      expect(request.searchTerm).toBe('Initech');
+      expect(component.formData()['Labels']).toEqual(['suppliers/9']);
+      expect(component.referenceTreeValues()['Labels'].map(n => n.id)).toEqual(['suppliers/9']);
+    });
+
+    it('a cancelled array popup changes nothing', async () => {
+      const { component } = await shopForm(async () => null);
+      const labels = shopType.attributes.find(a => a.name === 'Labels')!;
+      await component.addNewTreeReference(labels, { close: vi.fn() } as any);
+      expect(component.formData()['Labels']).toEqual([]);
+    });
+  });
 });

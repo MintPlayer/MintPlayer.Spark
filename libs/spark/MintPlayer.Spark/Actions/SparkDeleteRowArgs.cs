@@ -7,7 +7,7 @@ namespace MintPlayer.Spark.Actions;
 /// removed from a parent's <c>AsDetail</c> collection: the stored row, the parent that owns it, and
 /// the chance to refuse.
 /// <para>
-/// The mirror of <see cref="SparkNewArgs{T}"/>, and subject to the same rule — nothing here is
+/// The mirror of <see cref="SparkNewArgs"/>, and subject to the same rule — nothing here is
 /// written. The row is spliced out of the client's collection and reaches the database only when
 /// the parent is saved, so a hook that wants to write something (an audit entry, a tombstone)
 /// writes it from a before-save interceptor (<c>IBeforeSave</c>) of the parent.
@@ -30,8 +30,7 @@ namespace MintPlayer.Spark.Actions;
 /// rights, where the save path will enforce it whether or not the round-trip is switched on.
 /// </para>
 /// </remarks>
-/// <typeparam name="T">The row entity type the actions class serves.</typeparam>
-public sealed class SparkDeleteRowArgs<T> where T : class
+public sealed class SparkDeleteRowArgs
 {
     internal SparkDeleteRowArgs(
         PersistentObject row,
@@ -69,7 +68,7 @@ public sealed class SparkDeleteRowArgs<T> where T : class
     /// The parent whose collection the row is being removed from. Never <see langword="null"/>.
     /// </summary>
     /// <remarks>
-    /// Non-nullable, unlike <see cref="SparkNewArgs{T}.AsDetailParent"/>, because an unsaved parent
+    /// Non-nullable, unlike <see cref="SparkNewArgs.AsDetailParent"/>, because an unsaved parent
     /// cannot reach this path at all: a row on a parent that has never been saved does not exist in
     /// the database, so there is nothing to consult and nothing to refuse. The client splices it out
     /// locally and no request is made.
@@ -78,7 +77,7 @@ public sealed class SparkDeleteRowArgs<T> where T : class
 
     /// <summary>
     /// The name of the parent's <c>AsDetail</c> attribute the row is being removed from — the same
-    /// discriminator <see cref="SparkNewArgs{T}.AsDetailAttribute"/> carries, and needed for the
+    /// discriminator <see cref="SparkNewArgs.AsDetailAttribute"/> carries, and needed for the
     /// same reason: one row type can hang off a parent twice.
     /// </summary>
     public string AsDetailAttribute { get; }

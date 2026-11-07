@@ -373,7 +373,7 @@ public class NestedRefreshPolicyActions : DefaultPersistentObjectActions<NestedR
 {
     public NestedRefreshPolicyActions(MintPlayer.Spark.Services.IEntityMapper mapper) : base(mapper) { }
 
-    public override Task OnRefreshAsync(SparkRefreshArgs<NestedRefreshPolicy> args)
+    public override Task OnRefreshAsync(SparkRefreshArgs args)
     {
         args.PersistentObject["Summary"].Value = "root hook ran";
         return Task.CompletedTask;
@@ -389,7 +389,7 @@ public class NestedRefreshGateActions : DefaultPersistentObjectActions<NestedRef
 {
     public NestedRefreshGateActions(MintPlayer.Spark.Services.IEntityMapper mapper) : base(mapper) { }
 
-    public override Task OnRefreshAsync(SparkRefreshArgs<NestedRefreshGate> args)
+    public override Task OnRefreshAsync(SparkRefreshArgs args)
     {
         var obj = args.PersistentObject;
         var isFixed = obj["Mode"].Value?.ToString() == "fixed";
@@ -408,7 +408,7 @@ public class NestedRefreshRowActions : DefaultPersistentObjectActions<NestedRefr
 {
     public NestedRefreshRowActions(MintPlayer.Spark.Services.IEntityMapper mapper) : base(mapper) { }
 
-    public override Task OnRefreshAsync(SparkRefreshArgs<NestedRefreshRow> args)
+    public override Task OnRefreshAsync(SparkRefreshArgs args)
     {
         var obj = args.PersistentObject;
         obj["Note"].IsReadOnly = obj["Kind"].Value?.ToString() == "special";

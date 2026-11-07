@@ -15,6 +15,8 @@
     "loading":     { "en": "Loading...", "fr": "Chargement...",  "nl": "Laden..." },
     "details":     { "en": "Details",    "fr": "Détails",        "nl": "Details" },
     "properties":  { "en": "Properties", "fr": "Propriétés",     "nl": "Eigenschappen" },
+    "addNewReference":   { "en": "Add new",          "fr": "Ajouter un nouveau", "nl": "Nieuw toevoegen" },
+    "createCancelled":   { "en": "Nothing was created.", "fr": "Rien n'a été créé.", "nl": "Er werd niets aangemaakt." },
     "selectPlaceholder": { "en": "-- Select --",     "fr": "-- Sélectionner --", "nl": "-- Selecteer --" },
     "noItemsFound":      { "en": "No items found",   "fr": "Aucun élément trouvé", "nl": "Geen items gevonden" },
     "notSet":            { "en": "(not set)",        "fr": "(non défini)",      "nl": "(niet ingesteld)" },
