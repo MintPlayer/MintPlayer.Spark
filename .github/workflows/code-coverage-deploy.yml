@@ -374,7 +374,9 @@ jobs:
             [ "$(docker network inspect -f '{{.Internal}}' "$net")" = "true" ] || { echo "::error::the network $net exists but is not internal: remove it (docker network rm $net) once nothing uses it, then redeploy"; exit 1; }
           done
 
-          docker compose --env-file .env pull
+          # One pull at a time on the VPS: two deploys pulling a shared layer at once fail in containerd ("commit failed:
+          # rename .../ingest/... no such file or directory", code-coverage-deploy run 42339838410, 2026-11-07).
+          flock -w 120 /tmp/vps-deploy-pull.lock docker compose --env-file .env pull
           docker compose --env-file .env down --remove-orphans
           # RavenDB first, then the app certificates (re)registered, then the rest: the apps never start against a server
           # that does not know their certificate. The first deploy after the TLS migration's preparation is the switch
