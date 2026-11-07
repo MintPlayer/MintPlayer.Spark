@@ -260,7 +260,7 @@ public class RefreshTestCarActions : DefaultPersistentObjectActions<RefreshTestC
 {
     public RefreshTestCarActions(MintPlayer.Spark.Services.IEntityMapper mapper) : base(mapper) { }
 
-    public override Task OnRefreshAsync(SparkRefreshArgs<RefreshTestCar> args)
+    public override Task OnRefreshAsync(SparkRefreshArgs args)
     {
         var obj = args.PersistentObject;
         var status = obj["Status"].Value?.ToString();

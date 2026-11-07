@@ -6,8 +6,8 @@ namespace MintPlayer.Spark.Actions;
 /// <summary>
 /// Where a New started from a sub-query came from (#460, D19): the parent's type, the sub-query, and
 /// the parent reference it names. Built by the framework only; a hook reads it through
-/// <see cref="SparkNewArgs{T}.ParentType"/>, <see cref="SparkNewArgs{T}.Query"/> and
-/// <see cref="SparkNewArgs{T}.ParentReference"/>.
+/// <see cref="SparkNewArgs.ParentType"/>, <see cref="SparkNewArgs.Query"/> and
+/// <see cref="SparkNewArgs.ParentReference"/>.
 /// </summary>
 public sealed class SparkNewSubQueryContext
 {

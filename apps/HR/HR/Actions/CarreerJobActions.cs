@@ -27,7 +27,7 @@ public partial class CarreerJobActions : DefaultPersistentObjectActions<Entities
 
     private const string FreelanceRegime = "Freelance";
 
-    public override async Task OnRefreshAsync(SparkRefreshArgs<Entities.CarreerJob> args)
+    public override async Task OnRefreshAsync(SparkRefreshArgs args)
     {
         var obj = args.PersistentObject;
         var professionId = obj[nameof(Entities.CarreerJob.ProfessionId)].Value?.ToString();

@@ -42,7 +42,22 @@ public interface INewInvoker
         string? asDetailAttribute,
         IReadOnlyDictionary<string, string>? parameters,
         CancellationToken cancellationToken,
-        SparkNewSubQueryContext? subQuery = null);
+        SparkNewSubQueryContext? subQuery = null,
+        SparkNewReferenceContext? reference = null);
+
+    /// <summary>
+    /// Runs the construction hook of a type with no C# class: its name-resolved <c>{Name}Actions</c>,
+    /// duck-typed like the virtual <c>OnLoadAsync</c> (<c>public Task OnNewAsync(SparkNewArgs args)</c>).
+    /// A no-op when there is no such class or it has no <c>OnNewAsync</c>; a method named
+    /// <c>OnNewAsync</c> with another shape throws, so a typo is not silently skipped (PRD D15).
+    /// </summary>
+    Task InvokeVirtualAsync(
+        string entityTypeName,
+        PersistentObject persistentObject,
+        PersistentObject? parent,
+        IReadOnlyDictionary<string, string>? parameters,
+        CancellationToken cancellationToken,
+        SparkNewReferenceContext? reference = null);
 
     /// <summary>
     /// Whether the entity's actions class overrides the construction hook. Lets a caller skip the
@@ -66,7 +81,8 @@ internal partial class NewInvoker : INewInvoker
         string? asDetailAttribute,
         IReadOnlyDictionary<string, string>? parameters,
         CancellationToken cancellationToken,
-        SparkNewSubQueryContext? subQuery = null)
+        SparkNewSubQueryContext? subQuery = null,
+        SparkNewReferenceContext? reference = null)
     {
         // The base hook is skipped as a no-op — except for a New from a sub-query, where the base is
         // NOT a no-op: it fills the parent reference (#460, D19, owner refinement).
@@ -75,8 +91,8 @@ internal partial class NewInvoker : INewInvoker
         if (method is null)
             return;
 
-        var args = CreateArgs(
-            entityType, persistentObject, parent, asDetailParent, asDetailAttribute, parameters, subQuery, cancellationToken);
+        var args = new SparkNewArgs(
+            persistentObject, parent, asDetailParent, asDetailAttribute, parameters, subQuery, reference, cancellationToken);
         var actions = actionsResolver.ResolveForType(entityType);
 
         // The hook returns Task, never Task<T>, so this cast is total. A null would mean the method
@@ -90,29 +106,37 @@ internal partial class NewInvoker : INewInvoker
             actions, HookInvoke, binder: null, parameters: [args], culture: null)!;
     }
 
-    private static object CreateArgs(
-        Type entityType,
+    public async Task InvokeVirtualAsync(
+        string entityTypeName,
         PersistentObject persistentObject,
         PersistentObject? parent,
-        PersistentObject? asDetailParent,
-        string? asDetailAttribute,
         IReadOnlyDictionary<string, string>? parameters,
-        SparkNewSubQueryContext? subQuery,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        SparkNewReferenceContext? reference = null)
     {
-        // ⚠️ The key is a tuple, not a bare Type. `GetOrAdd<TKey, TValue>` is ONE dictionary per
-        // (TKey, TValue) pair, so every invoker keying a ConstructorInfo by entity type shares it —
-        // and the first one to run for a given type hands its constructor to the others. That is not
-        // hypothetical: it made `DeleteRowInvoker` invoke `SparkNewArgs`'s constructor with a delete
-        // hook's arguments, failing on the third one. The discriminator is what keeps them apart.
-        var ctor = ReflectionCache.GetOrAdd<(string Op, Type Entity), ConstructorInfo>(
-            ("NewInvoker.args", entityType),
-            static k => typeof(SparkNewArgs<>).MakeGenericType(k.Entity)
-                .GetConstructors(BindingFlags.Instance | BindingFlags.NonPublic)
-                .Single());
+        var actions = actionsResolver.ResolveByEntityName(entityTypeName);
+        if (actions is null)
+            return;
 
-        return ctor.Invoke(
-            [persistentObject, parent, asDetailParent, asDetailAttribute, parameters, subQuery, cancellationToken]);
+        var method = ReflectionCache.GetOrAdd<(string Op, Type Actions), MethodInfo?>(
+            ("NewInvoker.VirtualOnNewAsync", actions.GetType()),
+            static k =>
+            {
+                var method = k.Actions.GetMethod("OnNewAsync", [typeof(SparkNewArgs)]);
+                if (method is not null && method.ReturnType == typeof(Task))
+                    return method;
+                if (k.Actions.GetMethods().Any(m => m.Name == "OnNewAsync"))
+                    throw new InvalidOperationException(
+                        $"'{k.Actions.FullName}' has an OnNewAsync that doesn't match the construction contract. " +
+                        "Expected: 'Task OnNewAsync(SparkNewArgs args)'.");
+                return null;
+            });
+        if (method is null)
+            return;
+
+        var args = new SparkNewArgs(
+            persistentObject, parent, asDetailParent: null, asDetailAttribute: null, parameters, subQuery: null, reference, cancellationToken);
+        await (Task)method.Invoke(actions, HookInvoke, binder: null, parameters: [args], culture: null)!;
     }
 
     /// <summary>
@@ -125,7 +149,7 @@ internal partial class NewInvoker : INewInvoker
         var actionsType = actionsResolver.ResolveForType(entityType).GetType();
         return ReflectionCache.GetOrAdd<(string Op, Type Actions, Type Entity), MethodInfo?>(
             ("NewInvoker.OnNewAsync.Base", actionsType, entityType),
-            static k => k.Actions.GetMethod("OnNewAsync", [typeof(SparkNewArgs<>).MakeGenericType(k.Entity)]));
+            static k => k.Actions.GetMethod("OnNewAsync", [typeof(SparkNewArgs)]));
     }
 
     /// <summary>
@@ -141,9 +165,7 @@ internal partial class NewInvoker : INewInvoker
             ("NewInvoker.OnNewAsync", actionsType, entityType),
             static k =>
             {
-                var method = k.Actions.GetMethod(
-                    "OnNewAsync",
-                    [typeof(SparkNewArgs<>).MakeGenericType(k.Entity)]);
+                var method = k.Actions.GetMethod("OnNewAsync", [typeof(SparkNewArgs)]);
 
                 var declaring = method?.DeclaringType;
                 if (declaring is null)

@@ -82,6 +82,17 @@ internal sealed partial class CreatePersistentObject : IPostEndpoint<PersistentO
 
         try
         {
+            // A type with no documents of its own (no C# class, or a [ValueObject]) is confirmed, never
+            // stored: a picker's Add new gets the validated object back with its key as id, and the
+            // owner's reference holds it until the owner is saved (reference add-new PRD D10, D11).
+            if (savePath.IsConfirmedNotStored(entityType))
+            {
+                if (resolved is not null)
+                    return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);
+                var confirmed = await savePath.ConfirmAsync(entityType, obj, httpContext.RequestAborted);
+                return ClientResult.Envelope(clientAccessor, confirmed, 200);
+            }
+
             // Authorize, validate, save and present: the shared sequence the MCP tools run too (MCP PRD
             // D9). It forces the id to null and the type to the resolved one (R2-M18).
             var presented = await savePath.CreateAsync(entityType, obj, resolved?.Parent, httpContext.RequestAborted);

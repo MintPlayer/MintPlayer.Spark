@@ -30,6 +30,12 @@ export interface PersistentObject {
    */
   etag?: string;
   attributes: PersistentObjectAttribute[];
+  /**
+   * The object this one is being edited inside: an AsDetail row's owner, or the owner a picker's
+   * **Add new** was started from, with its own `parent` in turn (reference add-new PRD D12). Sent as
+   * context only; the server re-reads every stored level.
+   */
+  parent?: PersistentObject | null;
   /** Per-row edit/delete affordances; undefined = fall back to type-level permissions. */
   can?: PersistentObjectPermissions;
   /**

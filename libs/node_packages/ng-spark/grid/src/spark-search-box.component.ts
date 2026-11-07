@@ -75,6 +75,14 @@ export class SparkSearchBoxComponent {
   /** What the input shows, which runs ahead of `term` while the debounce is pending. */
   protected readonly text = signal('');
 
+  /**
+   * The text in the box now, ahead of the debounce: what a picker's **Add new** prefills, read when
+   * [+] is clicked (reference add-new PRD D17).
+   */
+  currentText(): string {
+    return this.text();
+  }
+
   private timer: ReturnType<typeof setTimeout> | null = null;
 
   constructor() {

@@ -444,7 +444,7 @@ two hooks become reachable:
 ```csharp
 public partial class ServiceEntryActions : DefaultPersistentObjectActions<ServiceEntry>
 {
-    public override Task OnNewAsync(SparkNewArgs<ServiceEntry> args)
+    public override Task OnNewAsync(SparkNewArgs args)
     {
         // SetOriginalValue, NOT SetValue -- see below.
         args.PersistentObject[nameof(ServiceEntry.PerformedOn)]
@@ -452,7 +452,7 @@ public partial class ServiceEntryActions : DefaultPersistentObjectActions<Servic
         return Task.CompletedTask;
     }
 
-    public override Task OnDeleteRowAsync(SparkDeleteRowArgs<ServiceEntry> args)
+    public override Task OnDeleteRowAsync(SparkDeleteRowArgs args)
     {
         // args.Row is the STORED row, never the caller's copy of it.
         var invoiced = args.Row.Attributes

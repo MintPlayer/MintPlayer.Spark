@@ -10,7 +10,7 @@ import { BsGridComponent, BsGridRowDirective, BsGridColumnDirective } from '@min
 import { BsInputGroupComponent } from '@mintplayer/ng-bootstrap/input-group';
 import { BsButtonTypeDirective } from '@mintplayer/ng-bootstrap/button-type';
 import { BsSelectComponent, BsSelectOption } from '@mintplayer/ng-bootstrap/select';
-import { BsTreeSelectComponent, InMemoryTreeSelectProvider, TreeNode, type TreeSelectProvider } from '@mintplayer/ng-bootstrap/tree-select';
+import { BsTreeSelectComponent, BsTreeSelectFooterDirective, InMemoryTreeSelectProvider, TreeNode, type TreeSelectProvider } from '@mintplayer/ng-bootstrap/tree-select';
 import { BsModalComponent, BsModalHeaderDirective, BsModalFooterDirective } from '@mintplayer/ng-bootstrap/modal';
 import { BsCheckboxComponent } from '@mintplayer/ng-bootstrap/checkbox';
 import { BsSpinnerComponent } from '@mintplayer/ng-bootstrap/spinner';
@@ -75,6 +75,8 @@ import { SparkReferencePickerComponent } from './spark-reference-picker.componen
 import { SparkLookupPickerComponent } from './spark-lookup-picker.component';
 import { SparkPrimitiveListEditorComponent } from './spark-primitive-list-editor.component';
 import { ReferenceQueryTreeSelectProvider, referenceTreeNode } from './reference-query-tree-select-provider';
+import { resolveReferenceTarget } from './reference-target';
+import { SparkPoNewModalService } from './spark-po-new-modal.service';
 import { RefreshCoordinator, RefreshDispatch, effectiveTrigger, refreshDispatch } from './refresh-coordinator';
 
 /**
@@ -92,7 +94,7 @@ export interface NestedTriggerRequest {
 
 @Component({
   selector: 'spark-po-form',
-  imports: [CommonModule, NgTemplateOutlet, NgComponentOutlet, FormsModule, CdkDropList, CdkDrag, CdkDragHandle, CdkDragPreview, BsCardComponent, BsCardHeaderComponent, BsFormComponent, BsFormControlDirective, BsGridComponent, BsGridRowDirective, BsGridColumnDirective, BsColFormLabelDirective, BsButtonTypeDirective, BsInputGroupComponent, BsSelectComponent, BsSelectOption, BsTreeSelectComponent, BsModalComponent, BsModalHeaderDirective, BsModalFooterDirective, BsTableComponent, BsCheckboxComponent, BsSpinnerComponent, BsTabControlComponent, BsTabPageComponent, BsTabPageHeaderDirective, SparkIconComponent, SparkPoFormComponent, SparkReferencePickerComponent, SparkLookupPickerComponent, SparkPrimitiveListEditorComponent, TranslateKeyPipe, ResolveTranslationPipe, InputTypePipe, LookupDisplayTypePipe, LookupOptionsPipe, AsDetailDisplayValuePipe, AsDetailTypePipe, AsDetailColumnsPipe, AsDetailRowRendererPipe, AsDetailCellValuePipe, CanCreateDetailRowPipe, CanDeleteDetailRowPipe, CanEditDetailRowPipe, InlineRefOptionsPipe, ErrorForAttributePipe, SparkAttributeDescriptionComponent],
+  imports: [CommonModule, NgTemplateOutlet, NgComponentOutlet, FormsModule, CdkDropList, CdkDrag, CdkDragHandle, CdkDragPreview, BsCardComponent, BsCardHeaderComponent, BsFormComponent, BsFormControlDirective, BsGridComponent, BsGridRowDirective, BsGridColumnDirective, BsColFormLabelDirective, BsButtonTypeDirective, BsInputGroupComponent, BsSelectComponent, BsSelectOption, BsTreeSelectComponent, BsTreeSelectFooterDirective, BsModalComponent, BsModalHeaderDirective, BsModalFooterDirective, BsTableComponent, BsCheckboxComponent, BsSpinnerComponent, BsTabControlComponent, BsTabPageComponent, BsTabPageHeaderDirective, SparkIconComponent, SparkPoFormComponent, SparkReferencePickerComponent, SparkLookupPickerComponent, SparkPrimitiveListEditorComponent, TranslateKeyPipe, ResolveTranslationPipe, InputTypePipe, LookupDisplayTypePipe, LookupOptionsPipe, AsDetailDisplayValuePipe, AsDetailTypePipe, AsDetailColumnsPipe, AsDetailRowRendererPipe, AsDetailCellValuePipe, CanCreateDetailRowPipe, CanDeleteDetailRowPipe, CanEditDetailRowPipe, InlineRefOptionsPipe, ErrorForAttributePipe, SparkAttributeDescriptionComponent],
   templateUrl: './spark-po-form.component.html',
   // The CDK drag placeholder is a clone of the dragged row (so it keeps the exact row
   // height). Hide its contents but keep it occupying space, so the drop gap is blank and
@@ -146,6 +148,99 @@ export class SparkPoFormComponent {
 
   /** Per Reference attribute, the id(s) it was loaded with and their server labels. */
   protected readonly loadedReferences = computed<LoadedReferences>(() => loadedReferencesOf(this.loadedObject()));
+
+  /**
+   * The object this form's object is edited inside, for a form that is not nested in another
+   * `spark-po-form` (an **Add new** popup's form: the owner the popup was opened from, with its chain).
+   * A form inside another form's row modal finds its owner itself (reference add-new PRD D12).
+   */
+  ownerParent = input<PersistentObject | null | undefined>(undefined);
+  /** The form whose row modal this form is in, if any. */
+  private readonly outerForm = inject(SparkPoFormComponent, { optional: true, skipSelf: true });
+  private readonly newModal = inject(SparkPoNewModalService);
+
+  /**
+   * This form's object as it is now, with its `parent` chain: the owner an **Add new** sends (D12).
+   * A stored object goes with its id, so the server re-reads it; a row or an unsaved object goes with
+   * its values and no id. AsDetail values are left out: they are the form's own nested shape, not the
+   * wire's, and a picker's hook has no use for them.
+   */
+  ownerChain(): PersistentObject {
+    const et = this.entityType();
+    const values = this.formData();
+    return {
+      id: this.triggerPathPrefix() ? '' : (this.objectId() ?? ''),
+      name: et?.name ?? '',
+      objectTypeId: et?.id ?? this.objectTypeId() ?? '',
+      attributes: (et?.attributes ?? [])
+        .filter(a => a.dataType !== 'AsDetail')
+        .map(a => ({ name: a.name, value: values[a.name] ?? null, isValueChanged: true }) as PersistentObject['attributes'][number]),
+      parent: this.outerForm?.ownerChain() ?? this.ownerParent() ?? null,
+    };
+  }
+
+  /**
+   * Opens the Add new popup for a Reference attribute and resolves with the created row, labelled by
+   * its breadcrumb, or null when cancelled (D16). The term is what the picker's box held at the click (D17).
+   */
+  async addNewReference(attr: EntityAttributeDefinition, searchTerm: string): Promise<QueryResultItem | null> {
+    const owner = this.entityType();
+    if (!owner) return null;
+    const target = await resolveReferenceTarget(this.sparkService, attr.query, attr.referenceType);
+    if (!target) return null;
+
+    const created = await this.newModal.open({
+      target,
+      ownerType: owner.id,
+      referenceAttribute: attr.name,
+      parent: this.ownerChain(),
+      searchTerm: searchTerm || undefined,
+    });
+    return created ? { id: created.id, breadcrumb: created.breadcrumb || created.id, values: [] } : null;
+  }
+
+  /** The single picker's [+] callback per attribute, stable so the picker's input does not churn. */
+  private readonly addNewCallbacks = new Map<string, (term: string) => Promise<QueryResultItem | null>>();
+  addNewFor(attr: EntityAttributeDefinition): ((term: string) => Promise<QueryResultItem | null>) | null {
+    if (!attr.canAddNewReference) return null;
+    let callback = this.addNewCallbacks.get(attr.name);
+    if (!callback) {
+      callback = term => this.addNewReference(this.currentAttribute(attr.name) ?? attr, term);
+      this.addNewCallbacks.set(attr.name, callback);
+    }
+    return callback;
+  }
+
+  /**
+   * An array Reference's [+] in the tree-select footer: the panel closes, the popup opens with the
+   * typed term, and the created row is appended (R6) with its breadcrumb as the chip's label.
+   */
+  async addNewTreeReference(attr: EntityAttributeDefinition, treeSelect: BsTreeSelectComponent): Promise<void> {
+    const term = (this.treeSearchTerms.get(attr.name) ?? '').trim();
+    treeSelect.close();
+    const item = await this.addNewReference(attr, term);
+    const node = item ? referenceTreeNode(item) : null;
+    if (!node) return;
+    const current = this.referenceTreeValues()[attr.name] ?? [];
+    if (current.some(n => n.id === node.id)) return;
+    this.onReferenceTreeChange(attr, [...current, node]);
+  }
+
+  /**
+   * What each array Reference's textbox holds now. The tree-select keeps its query to itself and
+   * `searchStart` runs behind its debounce, so the textbox's own `input` events (they bubble to the
+   * host) are recorded, and `searchStart` catches a query the component reset itself (D17).
+   */
+  private readonly treeSearchTerms = new Map<string, string>();
+  noteTreeSearch(attr: EntityAttributeDefinition, event: Event | string): void {
+    const value = typeof event === 'string' ? event : (event.target as HTMLInputElement | null)?.value;
+    if (typeof value === 'string') this.treeSearchTerms.set(attr.name, value);
+  }
+
+  /** The attribute as drawn now (with the overlay), by name. */
+  private currentAttribute(name: string): EntityAttributeDefinition | undefined {
+    return this.editableAttributes().find(a => a.name === name);
+  }
 
   /**
    * Per AsDetail collection, its rows' loaded references by row key, kept beside the rows so the save
