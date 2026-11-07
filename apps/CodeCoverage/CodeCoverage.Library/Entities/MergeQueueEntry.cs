@@ -124,6 +124,13 @@ public class MergeQueueEntry
     /// (O36). Empty: nothing to regenerate.</summary>
     public List<string> RegenerateWorkflows { get; set; } = [];
 
+    /// <summary>
+    /// For a fork's pull request: the <see cref="RegenerateWorkflows"/> that declare the <c>fork</c> input, which their
+    /// dispatch sets to <c>true</c> so the jobs only same-repository pull requests may run are skipped. Read with the fork
+    /// precondition, before the first dispatch (owner, 2026-11-07).
+    /// </summary>
+    public List<string> ForkInputWorkflows { get; set; } = [];
+
     /// <summary>The regenerate runs dispatched so far, in <see cref="RegenerateWorkflows"/>' order (D14, O36).</summary>
     public List<MergeQueueDispatch> Dispatches { get; set; } = [];
 
