@@ -76,7 +76,7 @@ describe('SparkBoardComponent', () => {
     const byInput = await render({ boardId: 'home' });
     expect(byInput.service.get).toHaveBeenCalledWith('home');
     expect(byInput.board['board']()!.id).toBe('home');
-    expect(byInput.board['items']().map((i: { label: string }) => i.label)).toEqual(['Cars', 'car-count', 'Mine']);
+    expect(byInput.board['items']().map((i: { label?: string | null }) => i.label)).toEqual(['Cars', 'car-count', 'Mine']);
     expect(byInput.board['context']()).toEqual({ boardId: 'home', editing: false, reloadToken: 0 });
 
     TestBed.resetTestingModule();
@@ -149,7 +149,7 @@ describe('SparkBoardComponent', () => {
 
     b['customize']();
     b['onColumnCount']({ columnCount: 4 });
-    b['onLayoutChange']({ columnCount: 4, layouts: b['layouts'](), staleCounts: [2] });
+    b['onLayoutChange']({ columnCount: 4, layout: b['layouts']()[4], layouts: b['layouts'](), staleCounts: [2] });
     b['save']();
     expect(b['askNarrower']()).toBe(true);
     await b['send'](true);
@@ -157,7 +157,7 @@ describe('SparkBoardComponent', () => {
     expect(save).toHaveBeenCalledTimes(2);
 
     b['resetWidth']();
-    b['onLayoutChange']({ columnCount: 4, layouts: {}, staleCounts: [] });
+    b['onLayoutChange']({ columnCount: 4, layout: [], layouts: {}, staleCounts: [] });
     expect(b['draft']()).toBeNull();
   });
 
