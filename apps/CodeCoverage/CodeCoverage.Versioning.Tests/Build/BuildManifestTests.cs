@@ -78,6 +78,36 @@ public class BuildManifestTests : IDisposable
         result.Manifest.Validate().Should().BeEmpty();
     }
 
+    /// <summary>
+    /// #576 D2: a tag whose hash another listing version made can't be compared with this build's, so the last release is
+    /// hashed again from the registry. A tag with this listing's hash needs no registry.
+    /// </summary>
+    [Fact]
+    public async Task A_tag_hashed_by_another_listing_version_asks_the_registry()
+    {
+        Write("package.json", "{ \"private\": true, \"workspaces\": [\"packages/*\"] }\n");
+        Write("packages/old/package.json", "{ \"name\": \"@acme/old\", \"version\": \"0.0.0\" }\n");
+        Write("packages/old/index.d.ts", "export declare const styles = \"a { b: c; }\";\n");
+        Write("packages/new/package.json", "{ \"name\": \"@acme/new\", \"version\": \"0.0.0\" }\n");
+        Write("packages/new/index.d.ts", "export declare function render(): void;\n");
+        Git("init", "-q", "-b", "main");
+        Git("add", ".");
+        Git("commit", "-q", "-m", "packages");
+        var commit = Git("rev-parse", "HEAD");
+        Git("tag", "-a", "-m", "api-hash: sha256:" + new string('1', 64), "@acme/old/v1.0.0");
+        Git("tag", "-a", "-m", "api-hash: v2:sha256:" + new string('2', 64), "@acme/new/v1.0.0");
+
+        var registry = new FakeRegistry();
+        var result = await CollectAsync(commit, registry);
+
+        var packages = result.Manifest.Packages!.ToDictionary(p => p.Id!);
+        registry.Asked.Should().Equal("@acme/old 1.0.0");
+        packages["@acme/old"].PreviousApiHash.Should().Be(RegistryHash);
+        packages["@acme/new"].PreviousApiHash.Should().BeNull();
+        packages["@acme/new"].ApiHash.Should().StartWith("v2:sha256:");
+        result.Manifest.Validate().Should().BeEmpty();
+    }
+
     private sealed class AnsweringRegistry(Func<ProjectNode, string?> answer) : IPackageRegistry
     {
         public Task<string?> ApiHashAsync(ProjectNode package, string version, CancellationToken cancellationToken = default)

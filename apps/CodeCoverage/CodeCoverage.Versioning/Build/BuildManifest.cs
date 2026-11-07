@@ -43,12 +43,13 @@ public static class BuildManifest
 		{
 			var package = node.Kind == PackageKind.NuGet ? DotnetPackage(request, node, notes) : NpmPackage(request, node, notes);
 
-			// The planner compares against the last tag on the run's line; only a tag without an annotation needs the registry.
+			// The planner compares against the last tag on the run's line. The registry is needed only when that tag's
+			// annotation has no hash, or one made by another listing version (#576 D2), which can't be compared with this one.
 			var history = tags.Of(node.Id!);
 			var line = request.BranchMajor ?? history.LastOrDefault()?.Version.Major;
 			if (request.Registry is not null && package.ApiHash is not null
 				// A lightweight tag (one made by hand) has no annotation at all; `{ Annotation.ApiHash: null }` would skip it.
-				&& history.LastOrDefault(t => t.Version.Major == line) is { } last && last.Annotation?.ApiHash is null)
+				&& history.LastOrDefault(t => t.Version.Major == line) is { } last && !ApiHash.Comparable(last.Annotation?.ApiHash, package.ApiHash))
 			{
 				try
 				{

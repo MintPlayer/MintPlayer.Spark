@@ -224,7 +224,7 @@ public sealed class TagWire
     /// <summary><c>&lt;PackageId&gt;/v&lt;version&gt;</c> (D1).</summary>
     public string? Name { get; set; }
     public string? Commit { get; set; }
-    /// <summary><c>sha256:&lt;64 hex&gt;</c>, or null when the package's API could not be hashed (D6).</summary>
+    /// <summary><c>[v&lt;N&gt;:]sha256:&lt;64 hex&gt;</c>, or null when the package's API could not be hashed (D6, #576 D2).</summary>
     public string? ApiHash { get; set; }
 }
 

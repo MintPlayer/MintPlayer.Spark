@@ -39,6 +39,11 @@ public class IdentifiersTests
     [InlineData("sha256:0123456789ABCDEF0123456789abcdef0123456789abcdef0123456789abcdef", false)]
     [InlineData("sha256:0123456789abcdef", false)]
     [InlineData("sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\n", false)]
+    [InlineData("v2:sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", true)]
+    [InlineData("v99:sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", true)]
+    [InlineData("v1:sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", false)]
+    [InlineData("v02:sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", false)]
+    [InlineData("v100:sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", false)]
     public void Api_hashes(string hash, bool valid) => Identifiers.IsApiHash(hash).Should().Be(valid);
 
     [Theory]

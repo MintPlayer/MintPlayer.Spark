@@ -66,7 +66,7 @@ public sealed record TagAnnotation(string? ApiHash, string? EngineVersion, strin
 		var text = new StringBuilder().Append(tag.PackageId).Append(' ').Append(tag.Version).Append("\n\n");
 		if (ApiHash is not null)
 		{
-			if (!Identifiers.IsApiHash(ApiHash)) throw new VersioningException($"'{ApiHash}' is not an API hash of the form sha256:<64 hex>.");
+			if (!Identifiers.IsApiHash(ApiHash)) throw new VersioningException($"'{ApiHash}' is not an API hash of the form [v<N>:]sha256:<64 hex>.");
 			text.Append(ApiHashKey).Append(' ').Append(ApiHash).Append('\n');
 		}
 		text.Append(EngineKey).Append(" CodeCoverage.Versioning ").Append(EngineVersion ?? Engine.Version).Append('\n');

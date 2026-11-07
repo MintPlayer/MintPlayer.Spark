@@ -76,6 +76,53 @@ public class ReleasePlannerTests
         plan.Of("@acme/app")!.Reasons.Should().Contain(r => r.Contains("outside '~1.2.0'"));
     }
 
+    /// <summary>
+    /// #576 D2: the tag's hash came from listing 1 and this build's from listing 2, so they are not compared. The
+    /// registry's rehash of the last release (by listing 2) decides: equal is a patch, absent is a minor (D6).
+    /// </summary>
+    [Theory]
+    [InlineData(true, "1.2.1")]
+    [InlineData(false, "1.3.0")]
+    public async Task A_tag_hash_from_another_listing_version_is_replaced_by_the_registry_rehash(bool registryAnswered, string expected)
+    {
+        var current = "v2:sha256:" + new string('c', 64);
+        var graph = await ProjectGraphBuilder.BuildAsync(NpmWorkspace("dependencies", "^1.2.0"));
+        var plan = await ReleasePlanner.PlanAsync(new ReleaseContext
+        {
+            Graph = graph,
+            Head = "head",
+            Tags = new TagHistory([Tag("@acme/util", "1.2.0"), Tag("@acme/app", "1.0.0")]),
+            Diff = new FakeDiff("packages/util/index.js"),
+            Build = new Dictionary<string, PackageBuildFacts>
+            {
+                ["@acme/util"] = new() { ApiHash = current, PreviousApiHash = registryAnswered ? current : null },
+                ["@acme/app"] = new() { ApiHash = Hash },
+            },
+        });
+
+        plan.Of("@acme/util")!.Version.ToString().Should().Be(expected);
+    }
+
+    [Fact]
+    public async Task A_tag_hash_that_differs_only_by_its_listing_prefix_is_not_equal()
+    {
+        var graph = await ProjectGraphBuilder.BuildAsync(NpmWorkspace("dependencies", "^1.2.0"));
+        var plan = await ReleasePlanner.PlanAsync(new ReleaseContext
+        {
+            Graph = graph,
+            Head = "head",
+            Tags = new TagHistory([Tag("@acme/util", "1.2.0"), Tag("@acme/app", "1.0.0")]),
+            Diff = new FakeDiff("packages/util/index.js"),
+            Build = new Dictionary<string, PackageBuildFacts>
+            {
+                ["@acme/util"] = new() { ApiHash = "v2:" + Hash },
+                ["@acme/app"] = new() { ApiHash = Hash },
+            },
+        });
+
+        plan.Of("@acme/util")!.Version.ToString().Should().Be("1.3.0");
+    }
+
     [Fact]
     public async Task Npm_example_3_a_peer_range_that_admits_the_release_needs_nothing()
     {

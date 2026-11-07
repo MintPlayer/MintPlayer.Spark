@@ -65,10 +65,10 @@ public sealed record ManifestPackage
 	/// <summary><c>nuget</c> or <c>npm</c>.</summary>
 	public string? Kind { get; init; }
 
-	/// <summary><c>sha256:&lt;64 hex&gt;</c>, or null when the API could not be hashed (D6).</summary>
+	/// <summary><c>[v&lt;N&gt;:]sha256:&lt;64 hex&gt;</c> (<see cref="Api.ApiHash"/>), or null when the API could not be hashed (D6).</summary>
 	public string? ApiHash { get; init; }
 
-	/// <summary>The hash of the last tag's build, when its annotation has none (S7).</summary>
+	/// <summary>The hash of the last tag's build, when its annotation has none or one by another listing version (S7, #576 D2).</summary>
 	public string? PreviousApiHash { get; init; }
 
 	public IReadOnlyList<string>? TargetFrameworks { get; init; }
@@ -92,8 +92,8 @@ public sealed record ManifestPackage
 	{
 		if (PackageKind is not { } kind) return "kind must be nuget or npm.";
 		if (kind == Graph.PackageKind.NuGet ? !Identifiers.IsNuGetId(Id) : !Identifiers.IsNpmName(Id)) return "id is not a valid package id.";
-		if (ApiHash is not null && !Identifiers.IsApiHash(ApiHash)) return "apiHash must be sha256:<64 hex>.";
-		if (PreviousApiHash is not null && !Identifiers.IsApiHash(PreviousApiHash)) return "previousApiHash must be sha256:<64 hex>.";
+		if (ApiHash is not null && !Identifiers.IsApiHash(ApiHash)) return "apiHash must be [v<N>:]sha256:<64 hex>.";
+		if (PreviousApiHash is not null && !Identifiers.IsApiHash(PreviousApiHash)) return "previousApiHash must be [v<N>:]sha256:<64 hex>.";
 		if (TargetFrameworks is { } tfms && (tfms.Count > ReleaseManifest.MaxTargetFrameworks || !tfms.All(Identifiers.IsTargetFramework)))
 			return $"targetFrameworks holds at most {ReleaseManifest.MaxTargetFrameworks} target framework monikers.";
 		if (ResolvedVersions is { } resolved && (resolved.Count > ReleaseManifest.MaxResolvedVersions

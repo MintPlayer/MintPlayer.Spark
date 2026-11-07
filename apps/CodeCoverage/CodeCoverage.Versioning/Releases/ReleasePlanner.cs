@@ -1,3 +1,4 @@
+using CodeCoverage.Versioning.Api;
 using CodeCoverage.Versioning.Graph;
 using CodeCoverage.Versioning.Versions;
 
@@ -232,8 +233,10 @@ public static class ReleasePlanner
 			if (forced.TryGetValue(id, out var forcedReason)) reasons.Add(forcedReason);
 			if (reasons.Count == 0) continue;
 
-			var lastApiHash = lastOnLine?.Annotation?.ApiHash ?? facts?.PreviousApiHash;
-			var apiChanged = !(lastApiHash is not null && facts?.ApiHash is not null && lastApiHash == facts.ApiHash);
+			// The tag's hash counts only when this build's listing made it too (#576 D2); otherwise the action hashed the last
+			// release again from the registry. Neither, and the API counts as changed (D6).
+			var lastApiHash = lastOnLine?.Annotation?.ApiHash is { } recorded && ApiHash.Comparable(recorded, facts?.ApiHash) ? recorded : facts?.PreviousApiHash;
+			var apiChanged = !(ApiHash.Comparable(lastApiHash, facts?.ApiHash) && lastApiHash == facts!.ApiHash);
 			var decision = VersionCalculator.Next(new VersionRequest(
 				anchor,
 				branchMajor is null ? history.LastOrDefault()?.Version : lastOnLine?.Version,

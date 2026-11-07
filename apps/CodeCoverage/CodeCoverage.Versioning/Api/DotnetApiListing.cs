@@ -106,11 +106,10 @@ public static class DotnetApiListing
 		return lines;
 	}
 
-	public static string Hash(IEnumerable<string> lines)
-	{
-		var text = string.Join("\n", lines) + "\n";
-		return "sha256:" + Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(text))).ToLowerInvariant();
-	}
+	/// <summary>The listing's version (#576 D2): raise it whenever a change to the listing changes the lines of an unchanged API.</summary>
+	public const int Version = 1;
+
+	public static string Hash(IEnumerable<string> lines) => ApiHash.Of(lines, Version);
 
 	static bool IsVisible(MetadataReader md, TypeDefinition type)
 	{

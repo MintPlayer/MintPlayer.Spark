@@ -19,7 +19,8 @@ public static partial class Identifiers
 	[GeneratedRegex(@"^(?:@[a-z0-9~-][a-z0-9._~-]*/)?[a-z0-9~-][a-z0-9._~-]*\z", RegexOptions.CultureInvariant)]
 	private static partial Regex NpmNameGrammar();
 
-	[GeneratedRegex(@"^sha256:[0-9a-f]{64}\z", RegexOptions.CultureInvariant)]
+	/// <summary><c>sha256:&lt;64 hex&gt;</c>, after a <c>v&lt;N&gt;:</c> listing version from 2 to 99 (#576 D2, <see cref="Api.ApiHash"/>).</summary>
+	[GeneratedRegex(@"^(?:v(?:[2-9]|[1-9][0-9]):)?sha256:[0-9a-f]{64}\z", RegexOptions.CultureInvariant)]
 	private static partial Regex ApiHashGrammar();
 
 	[GeneratedRegex(@"^(?:net[0-9]+\.[0-9]+(?:-[a-z]+(?:[0-9]+(?:\.[0-9]+){0,3})?)?|net[0-9]{2,3}|netcoreapp[0-9]+\.[0-9]+|netstandard[0-9]+\.[0-9]+)\z", RegexOptions.CultureInvariant | RegexOptions.IgnoreCase)]

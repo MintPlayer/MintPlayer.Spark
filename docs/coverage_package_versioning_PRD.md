@@ -221,6 +221,9 @@ their code in our container. So:
   with a human's lightweight tag or a seed tag, the action hashes the previously published package from the registry.
   If that fails too, the package counts as changed and gets a minor. Over-bumping a minor is harmless under D8; missing
   one isn't.
+- **Amended by #576** ([coverage_api_hash_values_PRD.md](coverage_api_hash_values_PRD.md)): the TypeScript listing
+  lists a literal initializer as its type (a constant's value is not API), and a hash names the listing version that
+  made it (`v2:sha256:…`). A tag hash from another listing version counts as absent, so the registry path above applies.
 
 ### D7 — Where the major comes from (Q6, Q12)
 

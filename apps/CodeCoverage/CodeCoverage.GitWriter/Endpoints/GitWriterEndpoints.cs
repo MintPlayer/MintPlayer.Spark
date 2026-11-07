@@ -178,7 +178,7 @@ internal sealed partial class GitWriterTagsEndpoint : IPostEndpoint<TagsRequestW
     public const string BranchesRule = "1 to 64 branches, each " + MergeQueueWireRules.BranchRule;
     public const string TaggerRule = MergeQueueWireRules.IdentityRule;
     public static readonly string TagsRule = $"1 to {Versioning.Graph.Limits.MaxPackagesPerRun} distinct tags: a name <PackageId>/v<version>, "
-        + "a commit id of 40 lowercase hex characters and an optional apiHash sha256:<64 hex>";
+        + "a commit id of 40 lowercase hex characters and an optional apiHash [v<N>:]sha256:<64 hex>";
 
     public static string Path => "/jobs/tags";
 
