@@ -118,7 +118,10 @@
 
 // One row per value. Stacking is the parent flex column's doing, not this rule's.
 .spark-filter-value {
-  padding: 0.125rem 0;
+  // Vertical only: the host is Bootstrap's `.form-check`, whose `padding-left: 1.5em` is the gutter
+  // the box floats into (`margin-left: -1.5em`). Zeroing it pushed every box outside the scroller,
+  // where `overflow` clipped it — invisible checkboxes, working labels.
+  padding-block: 0.125rem;
 
   // Values that have left the current result set. `--bs-secondary-color` rather than opacity or a
   // hard-coded grey: both of those fail WCAG 1.4.3 at the sizes this renders at. Set on the host so
