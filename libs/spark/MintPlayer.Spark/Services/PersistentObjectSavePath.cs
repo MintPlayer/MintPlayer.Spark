@@ -94,6 +94,8 @@ internal sealed partial class PersistentObjectSavePath : IPersistentObjectSavePa
     [Inject] private readonly IAttributeRightsEnforcement attributeRights;
     [Inject] private readonly IRefreshInvoker refreshInvoker;
     [Inject] private readonly IValidationService validationService;
+    [Inject] private readonly IRowSecurity rowSecurity;
+    [Inject] private readonly IActionsResolver actionsResolver;
 
     public bool IsConfirmedNotStored(EntityTypeDefinition entityType)
         => typeResolver.Resolve(entityType.ClrType) is not { } clrType || Abstractions.Model.SparkValueObjects.IsKeyed(clrType);
@@ -131,10 +133,17 @@ internal sealed partial class PersistentObjectSavePath : IPersistentObjectSavePa
         if (!result.IsValid)
             throw new SparkSaveValidationException(result);
 
+        // WITH CHECK, as a create judges it (DatabaseAccess.SaveCoreAsync): the row the caller would get
+        // must be one its type's row rules allow. An embedded row type refuses every standalone row
+        // (IsAllowedAsync false), and a confirm must not be the way around that.
+        var clr = typeResolver.Resolve(entityType.ClrType);
+        if (clr is not null && !await rowSecurity.IsAllowedAsync(clr, SparkCoreActions.New, await MapAsync(clr, effective)))
+            throw new SparkRowLevelAccessDeniedException($"{SparkCoreActions.New}/{entityType.Name}");
+
         // D18: a value object's id is its [ValueKey] (what the owner's reference stores and the lookup
         // lists); one without a key is invalid, never given a made-up id. A type with no C# class has no
         // key: the posted id, or a new one.
-        if (typeResolver.Resolve(entityType.ClrType) is { } clr && Abstractions.Model.SparkValueObjects.GetKeyPropertyName(clr) is { } keyName)
+        if (clr is not null && Abstractions.Model.SparkValueObjects.GetKeyPropertyName(clr) is { } keyName)
         {
             effective.Id = KeyOf(keyName, effective)
                 ?? throw new SparkValidationException($"'{keyName}' is required.", keyName);
@@ -145,6 +154,18 @@ internal sealed partial class PersistentObjectSavePath : IPersistentObjectSavePa
         }
         await attributeRights.PresentAsync([effective], SparkCoreActions.New, cancellationToken);
         return effective;
+    }
+
+    /// <summary>The entity the type's actions class maps <paramref name="obj"/> to, as a create maps it.</summary>
+    private async Task<object> MapAsync(Type clrType, PersistentObject obj)
+    {
+        var actions = actionsResolver.ResolveForType(clrType);
+        var map = actions.GetType().GetMethod("MapAsync", [typeof(PersistentObject), clrType])
+            ?? throw new InvalidOperationException($"'{actions.GetType().FullName}' has no MapAsync for '{clrType.FullName}'.");
+        var task = (Task)map.Invoke(actions, [obj, null])!;
+        await task;
+        return task.GetType().GetProperty(nameof(Task<object>.Result))!.GetValue(task)
+            ?? throw new InvalidOperationException($"'{actions.GetType().FullName}.MapAsync' returned null.");
     }
 
     /// <summary>The <c>[ValueKey]</c> attribute's value, or null when it is absent or empty.</summary>

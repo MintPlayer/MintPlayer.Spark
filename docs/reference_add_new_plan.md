@@ -80,7 +80,10 @@ forge's settings page wherever the list cannot be written. The "names the user a
     - D14: an unpickable reference (no Query right on its target) is read-only on Edit/New.
     - D11: `DatabaseAccess.SaveCoreAsync` refuses a value object.
     - D10/D18: `IPersistentObjectSavePath.ConfirmAsync`, called by `Create.cs` for a type with no class or a value
-      object.
+      object. It applies the create's WITH CHECK row gate (the actions class's `MapAsync`, then
+      `IRowSecurity.IsAllowedAsync(New)`) before the key check. CI on PR #580 caught it missing: CodeCoverage's
+      embedded row types refuse every standalone row, and the confirm skipped that refusal
+      (`EmbeddedRowStandaloneWriteTests`, 400 instead of 404).
   - The solution builds (2026-11-06, 0 errors).
 - **M2 Client:** the Add new button in both pickers, the popup, assigning the id (single replace, multi append, label
   from the saved breadcrumb), cancel changes nothing.

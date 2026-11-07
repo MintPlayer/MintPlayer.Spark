@@ -62,7 +62,7 @@ internal sealed partial class NewPersistentObject : IPostEndpoint<NewPersistentO
         if (entityType is null
             // One origin per request: a picker's object is never also a row or a sub-query New.
             || (picker.Target is not null && (request.AsDetailAttribute is { Length: > 0 } || request.QueryId is { Length: > 0 }
-                || (request.ObjectTypeId is { Length: > 0 } && modelLoader.ResolveEntityType(request.ObjectTypeId)?.Id != entityType.Id))))
+                || (request.ObjectTypeId is { Length: > 0 } && SparkRequestType.Resolve(modelLoader, request)?.Id != entityType.Id))))
         {
             return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);
         }
