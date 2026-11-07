@@ -844,6 +844,31 @@ cascade: 66 of 72 conflicted only because #461 was missing). Script: a throwaway
   bypass role. The approval floor, rules and required checks apply as for a person. A backport the App opened is
   therefore still held by an `all` approval floor until someone approves it.
 
+  **The approval floor and the App's own backports (owner, 2026-11-07).**
+  - **Problem.** The paragraph above meant only an `all` floor to hold a backport. But the floor reads the pull request's
+    *author*, and the App (`coverageproduction[bot]`) is never a collaborator. So under `ExternalAuthors` too, every
+    backport was refused with "does not have write access". Measured: #581, #582, #584 and #585 on Spark were all refused
+    "approval" when queued with the check's button.
+  - **Record.** Every backport pull request the App opens is stored as a `BackportPullRequest`
+    (`BackportPullRequests/{provider}/{repositoryId}/{number}`): the report's created and drafted pull requests, the
+    regeneration saga's, and the one `BackportLinkRecipient` opens for a writer's hand-pushed `backport/<N>-<line>`. The
+    merge deletes the record. A close without a merge keeps it, because the pull request may reopen.
+  - **Exempt by default** (owner: "exempt our own bot id from the requirement"). Under `ExternalAuthors`, a recorded
+    backport whose head is not in a fork counts as a writer's pull request. A login or branch name alone would trust any
+    App, so the record is the proof. This is safe without tracking the head commit: the cherry-picked change passed the
+    floor on its own pull request, and only a writer or an App with write access can push to a branch in the base
+    repository. A writer's request for changes still vetoes, as for every pull request.
+  - **`all` floor: a writer's approval queues it** (owner: "react to approvals … and automatically add that PR to the
+    merge queue"). A review of a recorded backport that is not in the queue sends the review signal. The App then
+    queues it as the `Backports` source when some writer's latest review approves it and no writer's latest review
+    requests changes. Approvers are writers, the floor's own rule (D47; owner chose write access over admins). It applies
+    only where `backport.enqueue` and `mergeQueue.branches` let the App queue a fresh backport, so an approval elsewhere
+    stays silent. The floor itself is checked again at enqueue, on the pinned head.
+  - Backports opened before this change have no record. They still need an approval and a person to queue them.
+  - Tests: `MergeQueueEngineTests` (the exemption; an unrecorded bot pull request; `all` still holds; an approval
+    queues it; a non-writer's approval and a writer's request for changes do not; an unrecorded pull request is not
+    queued), `BackportRecipientTests` and `BackportLinkRecipientTests` (recorded; deleted on merge).
+
   **Tests:**
   - `MergeQueueYmlTests`: patterns and `supported-lines`; the keyword without `lines`; a glob-named line is still a
     line; unbounded patterns.
