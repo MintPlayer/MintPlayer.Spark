@@ -151,13 +151,16 @@ public static class MergeQueueRulesetPlanner
 
     /// <summary>
     /// The starting answers for one repository: ruleset 2's own settings when it exists, else classic protection's, else
-    /// <paramref name="headChecks"/> (the checks on the default branch's head) and one approval. Never the queue's own
-    /// check (D62). (From the abandoned e3.)
+    /// no required checks and one approval. Never the queue's own check (D62). (From the abandoned e3.)
     /// </summary>
-    public static MergeQueueRulesetChoices Defaults(ForgeRulesetState state, IReadOnlyList<string> headChecks)
+    /// <remarks>
+    /// No guess from the default branch's head (#554, 2026-11-07): it carried the checks of jobs that run on a push
+    /// alone (a deploy), which never report on a pull request, so ruleset 26719109 required checks no pull request could
+    /// pass. The admin now picks them per repository from the checks seen on its pull requests.
+    /// </remarks>
+    public static MergeQueueRulesetChoices Defaults(ForgeRulesetState state)
     {
         ArgumentNullException.ThrowIfNull(state);
-        ArgumentNullException.ThrowIfNull(headChecks);
         var ruleset1 = state.Rulesets.FirstOrDefault(r => r.Definition.Name == RestrictUpdatesName)?.Definition;
         var ruleset2 = state.Rulesets.FirstOrDefault(r => r.Definition.Name == ReviewsAndChecksName)?.Definition;
 
@@ -166,8 +169,7 @@ public static class MergeQueueRulesetPlanner
         var ruleset2Checks = (ruleset2?.Rules.FirstOrDefault(r => r.Type == "required_status_checks")?.Parameters?["required_status_checks"] as JsonArray ?? [])
             .OfType<JsonObject>().Select(c => c["context"] is JsonValue v && v.TryGetValue<string>(out var s) ? s : null).OfType<string>().ToList();
         IEnumerable<string> checks = ruleset2Checks.Count > 0 ? ruleset2Checks
-            : state.Classic is { RequiredChecks.Count: > 0 } classic ? classic.RequiredChecks
-            : headChecks;
+            : state.Classic?.RequiredChecks ?? [];
         return new MergeQueueRulesetChoices(approvals,
             [.. checks.Where(c => !string.IsNullOrWhiteSpace(c) && c != CheckGate.QueueCheckName).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)],
             ruleset1?.BypassActors.Any(IsAdminByPullRequest) ?? false);
@@ -184,12 +186,18 @@ public static class MergeQueueRulesetPlanner
         return [.. plan.Steps.Select(step => step switch
         {
             CreateRulesetStep create => $"Create ruleset \"{create.Definition.Name}\" on {Patterns(create.Definition)}: "
-                + string.Join(", ", create.Definition.Rules.Select(r => r.Type)) + ".",
+                + string.Join(", ", create.Definition.Rules.Select(r => r.Type)) + "."
+                + (RequiredCheckNames(create.Definition) is { Count: > 0 } checks ? $" Required checks: {string.Join(", ", checks)}." : ""),
             UpdateRulesetStep update => $"Update ruleset \"{update.Definition.Name}\": {string.Join("; ", update.Changes)}.",
             DeleteClassicProtectionStep delete => "Delete the classic branch protection: " + string.Join(" ", delete.Notes),
             _ => step.ToString()!,
         })];
     }
+
+    /// <summary>The contexts of a definition's <c>required_status_checks</c> rule, in its order (#554: the summary names them).</summary>
+    private static List<string> RequiredCheckNames(ForgeRulesetDefinition definition)
+        => [.. (definition.Rules.FirstOrDefault(r => r.Type == "required_status_checks")?.Parameters?["required_status_checks"] as JsonArray ?? [])
+            .OfType<JsonObject>().Select(c => c["context"] is JsonValue v && v.TryGetValue<string>(out var s) ? s : null).OfType<string>()];
 
     private static ForgeExistingRuleset? Single(ForgeRulesetState state, string name, List<string> blockers)
     {

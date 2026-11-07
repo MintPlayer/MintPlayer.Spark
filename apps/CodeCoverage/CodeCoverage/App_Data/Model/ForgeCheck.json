@@ -7,7 +7,11 @@
     "the options of the merge queue's exclusion lists; each row's id is the check's name, which is what the lists store.",
     "",
     "QueryRead is granted to signed-in users (security.json): without Read, GetHiddenReferencesAsync would remove the",
-    "two exclusion-list attributes altogether. The queries themselves answer managers only."
+    "two exclusion-list attributes altogether. The queries themselves answer managers only.",
+    "",
+    "#554: Repository_PullRequestChecks (the checks seen on a pull request) feeds SetUpRulesets.RequiredChecks, whose",
+    "\"Add new\" names a check that has not reported yet. So Name is writable and required, and signed-in users hold New:",
+    "the confirm (PersistentObjectSavePath.ConfirmAsync) stores nothing and derives the row id from Name (IHasNaturalId)."
   ],
   "persistentObject": {
     "id": "78d2126d-47e8-468b-bae5-ec52a02325f4",
@@ -21,8 +25,8 @@
         "id": "88dd5835-e558-4411-9123-a1841cb968eb",
         "name": "Name",
         "dataType": "string",
-        "isRequired": false,
-        "isReadOnly": true,
+        "isRequired": true,
+        "isReadOnly": false,
         "order": 1,
         "isArray": false,
         "showedOn": "Query, PersistentObject",
@@ -36,6 +40,19 @@
       "id": "b4dc8302-a7a2-46e0-b3e7-439a52f41220",
       "name": "Repository_ForgeChecks",
       "source": "Custom.Repository_ForgeChecks",
+      "sortColumns": [
+        {
+          "property": "Name",
+          "direction": "asc"
+        }
+      ],
+      "renderMode": "Pagination",
+      "entityType": "ForgeCheck"
+    },
+    {
+      "id": "5d0b6f3e-8a2c-4c71-b4e9-2f6a1d9c7e30",
+      "name": "Repository_PullRequestChecks",
+      "source": "Custom.Repository_PullRequestChecks",
       "sortColumns": [
         {
           "property": "Name",

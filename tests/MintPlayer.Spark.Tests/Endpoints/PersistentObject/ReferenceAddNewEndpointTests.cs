@@ -59,8 +59,20 @@ public class ReferenceAddNewEndpointTests : SparkTestDriver
         public Raven.Client.Documents.Linq.IRavenQueryable<RanSupplier> RanSuppliers => Session.Query<RanSupplier>();
     }
 
+    /// <summary>A value object whose key derives from its name (IHasNaturalId; owner 2026-11-07, revising D18).</summary>
+    public class RanCode : IHasNaturalId
+    {
+        public string Id { get; set; } = string.Empty;
+        public string Name { get; set; } = string.Empty;
+        public static string GetId(string? name) => name?.Trim() ?? string.Empty;
+        string IHasNaturalId.GetId() => GetId(Name);
+    }
+
     static ReferenceAddNewEndpointTests()
-        => SparkValueObjects.Register(typeof(RanLabel), nameof(RanLabel.Key), row => ((RanLabel)row).Key);
+    {
+        SparkValueObjects.Register(typeof(RanLabel), nameof(RanLabel.Key), row => ((RanLabel)row).Key);
+        SparkValueObjects.Register(typeof(RanCode), nameof(RanCode.Id), row => ((RanCode)row).Id);
+    }
 
     /// <summary>What the last <c>OnNewAsync</c> saw. One per host, so one per test.</summary>
     public sealed class Recorder
@@ -176,6 +188,21 @@ public class ReferenceAddNewEndpointTests : SparkTestDriver
         Queries = [new SparkQuery { Id = Guid.NewGuid(), Name = "RanGetLabels", Source = "Custom.RanLabels", EntityType = "RanLabel" }],
     };
 
+    private static readonly Guid CodeTypeId = Guid.Parse("7a2e0000-0000-4000-8000-7a2e00000005");
+
+    private static EntityTypeFile CodeModel() => new()
+    {
+        PersistentObject = new EntityTypeDefinition
+        {
+            Id = CodeTypeId,
+            Name = "RanCode",
+            ClrType = typeof(RanCode).FullName!,
+            Breadcrumb = "{Name}",
+            Attributes = [Attr("Name")],
+        },
+        Queries = [new SparkQuery { Id = Guid.NewGuid(), Name = "RanGetCodes", Source = "Custom.RanCodes", EntityType = "RanCode" }],
+    };
+
     /// <summary>No <c>ClrType</c>: a JSON-only virtual type.</summary>
     private static EntityTypeFile TagModel() => new()
     {
@@ -200,7 +227,7 @@ public class ReferenceAddNewEndpointTests : SparkTestDriver
         await base.InitializeAsync();
         _factory = new SparkEndpointFactory<RanContext>(
             Store,
-            [ShopModel(), SupplierModel(), LabelModel(), TagModel()],
+            [ShopModel(), SupplierModel(), LabelModel(), TagModel(), CodeModel()],
             configureServices: services =>
             {
                 services.AddSingleton(_recorder);
@@ -412,6 +439,26 @@ public class ReferenceAddNewEndpointTests : SparkTestDriver
             Wire.Typed(LabelTypeId, CreateBody(LabelTypeId, "RanLabel", ("Text", "Blue"))));
 
         status.Should().Be(HttpStatusCode.BadRequest, "an empty key is never replaced by a made-up id (D18)");
+    }
+
+    /// <summary>A natural id is the key: the id is derived from the posted name (owner 2026-11-07, revising D18).</summary>
+    [Fact]
+    public async Task Create_of_a_natural_id_value_object_confirms_it_with_its_derived_id()
+    {
+        var (status, body) = await PostAsync("/spark/po/create",
+            Wire.Typed(CodeTypeId, CreateBody(CodeTypeId, "RanCode", ("Name", " build "))));
+
+        status.Should().Be(HttpStatusCode.OK);
+        body.GetProperty("result").GetProperty("id").GetString().Should().Be("build");
+    }
+
+    [Fact]
+    public async Task Create_of_a_natural_id_value_object_with_an_empty_name_is_a_validation_error()
+    {
+        var (status, _) = await PostAsync("/spark/po/create",
+            Wire.Typed(CodeTypeId, CreateBody(CodeTypeId, "RanCode", ("Name", "  "))));
+
+        status.Should().Be(HttpStatusCode.BadRequest, "an empty derived key is never replaced by a made-up id (D18)");
     }
 
     [Fact]

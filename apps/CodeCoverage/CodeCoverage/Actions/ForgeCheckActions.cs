@@ -43,7 +43,8 @@ public partial class ForgeCheckActions : DefaultPersistentObjectActions<ForgeChe
     /// <see cref="ProjectColumnActions.RowSecurityRationale"/>).
     /// </remarks>
     public string RowSecurityRationale =>
-        "Rows are never served from a collection: the only queries, Repository_ForgeChecks and Account_ForgeChecks below, " +
+        "Rows are never served from a collection: the only queries, Repository_ForgeChecks (and Repository_PullRequestChecks, " +
+        "its subset) and Account_ForgeChecks below, " +
         "return the KnownChecks embedded in the parent repository, or in the repositories of the parent account, and " +
         "return empty unless CustomQueryArgs.Parent is present, is of the matching type, and the caller manages its owner " +
         "(ISparkVisibility.CanManageOwnerAsync). The endpoint has already resolved the parent through a Read-checked load " +
@@ -69,9 +70,10 @@ public partial class ForgeCheckActions : DefaultPersistentObjectActions<ForgeChe
     /// </para>
     /// <para>
     /// Mapped by the framework's own <see cref="IEntityMapper"/>, the mapper the base load uses, so the object is
-    /// scaffolded from <c>ForgeCheck.json</c> for this caller like any loaded one. It is read-only: <c>Name</c> is
-    /// read-only in the model, ForgeCheck grants no <c>Edit</c> or <c>Delete</c> (only <c>QueryRead</c>), and
-    /// <see cref="PersistentObject.Can"/> says so for the row as well.
+    /// scaffolded from <c>ForgeCheck.json</c> for this caller like any loaded one. It is read-only: ForgeCheck grants no
+    /// <c>Edit</c> or <c>Delete</c> (only <c>QueryRead</c>, and <c>New</c> for the required-checks picker's "Add new",
+    /// whose confirm stores nothing), and <see cref="PersistentObject.Can"/> says so for the row as well. <c>Name</c> is
+    /// writable in the model only so that "Add new" can name a check that has not reported yet (#554).
     /// </para>
     /// </remarks>
     public override async Task<PersistentObject?> OnLoadAsync(string id, PersistentObject? parent)
@@ -105,6 +107,15 @@ public partial class ForgeCheckActions : DefaultPersistentObjectActions<ForgeChe
 
         return DistinctRows(repository.KnownChecks ?? []);
     }
+
+    /// <summary>
+    /// The checks that have reported on a pull request of the parent repository: the options of "Set up rulesets"'
+    /// required checks (#554). A check that has only reported on the default branch (a deploy on push) never reports on
+    /// a pull request, so requiring it would block every merge; it is left out (owner 2026-11-07, "Seen on pull
+    /// requests"). The same gate as <see cref="Repository_ForgeChecks"/>.
+    /// </summary>
+    public async Task<IEnumerable<ForgeCheck>> Repository_PullRequestChecks(CustomQueryArgs args)
+        => (await Repository_ForgeChecks(args)).Where(check => check.OnPullRequest);
 
     /// <summary>
     /// One row per name, the most recent sighting's, compared ignoring case: Spark's row ids are case-insensitive (Raven
