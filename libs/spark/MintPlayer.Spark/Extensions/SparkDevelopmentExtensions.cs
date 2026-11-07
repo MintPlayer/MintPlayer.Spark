@@ -1190,6 +1190,8 @@ public static class SparkDevelopmentExtensions
 
         // #460, D19: the same check startup makes, in CI, so a bad parentReference never merges.
         var problems = new List<string>(Services.SparkSubQueries.ValidateParentReferences(allTypes, allQueries));
+        // Reference add-new PRD D13, D17: the same Reference checks startup makes.
+        problems.AddRange(Services.SparkReferences.Validate(allTypes, allQueries));
         foreach (var (alias, parentType) in subQueryAliases)
         {
             if (!sourcesByAlias.TryGetValue(alias, out var entry))

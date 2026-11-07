@@ -564,6 +564,8 @@ internal partial class EntityMapper : IEntityMapper
             Renderer = def.Renderer,
             RendererOptions = def.RendererOptions,
             Query = def.DataType == "Reference" ? def.Query : null,
+            // The model's flag; AttributeRightsEnforcement.PresentAsync narrows it to the caller.
+            CanAddNewReference = def.DataType == "Reference" && def.CanAddNewReference == true,
             Value = null,
         };
     }

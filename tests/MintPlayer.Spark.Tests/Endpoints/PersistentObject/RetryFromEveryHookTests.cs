@@ -111,7 +111,7 @@ public class RetryFromEveryHookTests(RetryFromEveryHookTests.Host host)
             return ValueTask.CompletedTask;
         }
 
-        public override Task OnRefreshAsync(SparkRefreshArgs<RetryProbe> args)
+        public override Task OnRefreshAsync(SparkRefreshArgs args)
         {
             PromptOnce("Refresh?");
             return Task.CompletedTask;
@@ -193,14 +193,14 @@ public class RetryFromEveryHookTests(RetryFromEveryHookTests.Host host)
 
         public string RowSecurityRationale => "Test fixture; lines are reachable only through RetryProbe.";
 
-        public override Task OnNewAsync(SparkNewArgs<RetryProbeLine> args)
+        public override Task OnNewAsync(SparkNewArgs args)
         {
             if (retry.Result is null)
                 retry.Action("New line?", ["Yes", "No"], defaultOption: "No", message: "Confirm?");
             return Task.CompletedTask;
         }
 
-        public override Task OnDeleteRowAsync(SparkDeleteRowArgs<RetryProbeLine> args)
+        public override Task OnDeleteRowAsync(SparkDeleteRowArgs args)
         {
             if (retry.Result is null)
                 retry.Action("Remove line?", ["Yes", "No"], defaultOption: "No", message: "Confirm?");

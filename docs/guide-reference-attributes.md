@@ -217,6 +217,63 @@ in-memory equivalents.
   *this caller* see" and structurally the wrong tool for "which rows belong to *this parent*".
   Parent scoping belongs in the query method.
 
+### Add new from the picker
+
+A user who cannot find the row they need can create it from the picker, without leaving the form.
+Set `canAddNewReference` on the Reference attribute in the model (it is hand-set and survives
+synchronization):
+
+```json
+{
+  "name": "Company",
+  "dataType": "Reference",
+  "query": "GetCompanies",
+  "referenceType": "HR.Entities.Company",
+  "canAddNewReference": true,
+  "defaultAttribute": "Name"
+}
+```
+
+The single picker's modal and an array Reference's dropdown then show **+ Add new**, whether or not
+the search matched anything. It opens a popup with a blank object of the referenced type. **Save**
+creates the object at once and puts its id into the reference: it replaces a single reference and
+is appended to an array. The owner form is **not** saved; only its reference changed, as if the user
+had picked an existing row. **Cancel** changes nothing. Popups stack, so a popup's own form can add
+new in turn, and the picker works in a retry prompt's form too.
+
+- **Who sees the button:** only a caller with `New` on the referenced type, and only for a
+  reference they may edit. The server sends the flag as false otherwise, and `/po/create` checks
+  `New` itself.
+- **`defaultAttribute`:** the String attribute of the new object that receives the text in the
+  picker's search box. It is filled in before the hook runs. Startup refuses a name that is not a
+  writable String of the referenced type, or one set without `canAddNewReference`.
+- **The hook is the referenced type's own `OnNewAsync`.** It can tell that it runs for a picker:
+  `args.ReferenceAttribute` is the verified attribute (`IsArray` tells single from array),
+  `args.ParentType` is the owner's type, `args.Parent` is the owner with its own `Parent` chain, and
+  `args.Parameters["searchTerm"]` is the raw term. A stored owner level is re-read from the database.
+  An unsaved one (a create page, a retry prompt) carries the posted values, which are input, never
+  authority. HR's `CompanyActions` hides the brand colours in the popup:
+
+  ```csharp
+  public override async Task OnNewAsync(SparkNewArgs args)
+  {
+      await base.OnNewAsync(args);
+      if (args.ReferenceAttribute is null) return;
+      args.PersistentObject[nameof(Company.BrandColor)].ShowedOn = EShowedOn.Query;
+      args.PersistentObject[nameof(Company.AccentColor)].ShowedOn = EShowedOn.Query;
+  }
+  ```
+
+- **Types without their own documents.** A type with no C# class runs `{Name}Actions.OnNewAsync` by
+  name. A `[ValueObject]` (embedded in its owner) is **confirmed, not stored**: `/po/create` validates
+  it and answers 200 with the object, whose id is its `[ValueKey]`. The owner's reference holds it
+  until the owner is saved. That key must be a writable model attribute (checked at startup); an
+  empty key is a validation error. A type with no C# class is confirmed the same way, keeping the
+  posted id or getting a new one.
+- **The lookup query decides the type.** A Reference's `query` must list its `referenceType`
+  (checked at startup); the target is resolved through the query by name, so a target with no C#
+  class works.
+
 ### Choosing between the three option sources
 
 The opening table lists three attribute shapes; this is the decision that actually matters between
@@ -244,6 +301,7 @@ C# types, so anything it derives is overwritten:
 | `lookupReferenceType` | **No — stripped** | Derived from `[LookupReference(typeof(...))]` |
 | `query`, `referenceType` | **No — stripped** | Derived from `[Reference(typeof(...), "...")]` |
 | An inline `queries` entry on an embedded type | **Yes** | Explicitly preserved by the synchronizer |
+| `canAddNewReference`, `defaultAttribute` | **Yes** | Hand-authored; see "Add new from the picker" |
 | A minted query's `name`, `alias`, `sortColumns` | **Yes** | Minted once; the file owns them afterwards. A stepped-aside `GetX2` stays the root's query (D11) |
 | The seed of a new attribute (`Hidden`, `Exclude`) | **Yes** | `spark.ModelAttributes(...)` runs only when an attribute is first created (D9) |
 

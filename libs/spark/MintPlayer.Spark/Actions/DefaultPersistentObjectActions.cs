@@ -483,13 +483,13 @@ public partial class DefaultPersistentObjectActions<T> : IPersistentObjectAction
     /// database access here as a cost, not a convenience.
     /// </para>
     /// </summary>
-    public virtual Task OnRefreshAsync(SparkRefreshArgs<T> args) => Task.CompletedTask;
+    public virtual Task OnRefreshAsync(SparkRefreshArgs args) => Task.CompletedTask;
 
     /// <inheritdoc />
     /// <remarks>
     /// <para>
     /// When New was started from a <b>sub-query</b> (#460, D19, owner refinement), the base fills the
-    /// new object's reference to the parent — <see cref="SparkNewArgs{T}.FillParentReference"/>: the
+    /// new object's reference to the parent — <see cref="SparkNewArgs.FillParentReference"/>: the
     /// single reference attribute whose target is the parent's type, or the one the sub-query names
     /// with <c>parentReference</c>. Zero or several candidates fill nothing (logged at Debug).
     /// </para>
@@ -505,7 +505,7 @@ public partial class DefaultPersistentObjectActions<T> : IPersistentObjectAction
     /// wants a parent's value sets it explicitly, from whichever object it likes.
     /// </para>
     /// </remarks>
-    public virtual Task OnNewAsync(SparkNewArgs<T> args)
+    public virtual Task OnNewAsync(SparkNewArgs args)
     {
         args.FillParentReference();
         return Task.CompletedTask;
@@ -520,7 +520,7 @@ public partial class DefaultPersistentObjectActions<T> : IPersistentObjectAction
     /// would tie a client-visible behaviour to the presence of a method, so adding a hook would
     /// silently start issuing requests from every grid the type appears in.
     /// </remarks>
-    public virtual Task OnDeleteRowAsync(SparkDeleteRowArgs<T> args) => Task.CompletedTask;
+    public virtual Task OnDeleteRowAsync(SparkDeleteRowArgs args) => Task.CompletedTask;
 
     // An app-stream method (a live query whose rows are not in RavenDB) is not declared here: it has
     // whatever name the query's source says and overrides nothing. Its shape:

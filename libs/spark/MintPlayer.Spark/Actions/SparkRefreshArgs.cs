@@ -12,8 +12,7 @@ namespace MintPlayer.Spark.Actions;
 /// changes what the form renders; it does not write anything.
 /// </para>
 /// </summary>
-/// <typeparam name="T">The entity type the actions class serves.</typeparam>
-public sealed class SparkRefreshArgs<T> where T : class
+public sealed class SparkRefreshArgs
 {
     internal SparkRefreshArgs(
         PersistentObject persistentObject,

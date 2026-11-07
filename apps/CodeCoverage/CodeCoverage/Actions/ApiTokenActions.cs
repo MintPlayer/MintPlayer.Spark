@@ -43,7 +43,7 @@ namespace CodeCoverage.Actions;
 /// </remarks>
 public partial class ApiTokenActions : DefaultPersistentObjectActions<ApiToken>, ISparkOwnsRowSecurity, IBeforeSave<ApiToken>, IAfterSave<ApiToken>
 {
-    public override async Task OnNewAsync(SparkNewArgs<ApiToken> args)
+    public override async Task OnNewAsync(SparkNewArgs args)
     {
         await base.OnNewAsync(args);
     }

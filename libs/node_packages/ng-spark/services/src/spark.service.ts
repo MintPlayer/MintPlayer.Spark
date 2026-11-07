@@ -28,6 +28,16 @@ export interface NewObjectOptions {
    * sub-query, and runs `OnNewAsync` with it — whose base fills the reference to the parent.
    */
   queryId?: string;
+  /**
+   * The owner's Reference attribute an **Add new** was started from (reference add-new PRD D8), with
+   * `parentType` and no `parentId`: the owner travels as `parent` instead.
+   */
+  referenceAttribute?: string;
+  /**
+   * The owner object with its chain (`parent.parent`…, at most 8 levels; D12). The server re-reads every
+   * stored level by its id and uses an unsaved level's values as input, never as authority.
+   */
+  parent?: PersistentObject;
 }
 
 /** Where a bulk delete was started from; see {@link SparkService.deleteMany}. */

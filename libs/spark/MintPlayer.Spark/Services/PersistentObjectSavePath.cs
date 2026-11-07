@@ -48,6 +48,23 @@ internal interface IPersistentObjectSavePath
     Task<bool> DeleteAsync(EntityTypeDefinition entityType, string id, string etag, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Whether <paramref name="entityType"/> is never stored as its own document: a type with no C# class,
+    /// or a <c>[ValueObject]</c> (reference add-new PRD D10, D11). A create of such a type is a
+    /// <see cref="ConfirmAsync"/>.
+    /// </summary>
+    bool IsConfirmedNotStored(EntityTypeDefinition entityType);
+
+    /// <summary>
+    /// A picker's <b>Add new</b> for a type that has no documents of its own (D10): the <c>New</c> right,
+    /// the values the caller may set, the refresh hook's rules and the validation, exactly as a create
+    /// decides them, and then <b>nothing is written</b>. The object comes back with its key as its id: a
+    /// value object's <c>[ValueKey]</c> value, else the posted id, else a new Guid. It exists in the
+    /// owner's reference value until the owner is saved. Throws <see cref="SparkSaveValidationException"/>
+    /// with every error.
+    /// </summary>
+    Task<PersistentObject> ConfirmAsync(EntityTypeDefinition entityType, PersistentObject obj, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Everything <see cref="CreateAsync"/> decides — the rights, the gates, the validation — and no write
     /// (MCP <c>propose_changes</c>). Throws what the create would throw. <paramref name="obj"/> is left as the
     /// create would save it: values the caller may not set are dropped.
@@ -73,6 +90,91 @@ internal sealed partial class PersistentObjectSavePath : IPersistentObjectSavePa
     [Inject] private readonly ISaveResponsePresenter saveResponse;
     [Inject] private readonly IRetryAccessor retryAccessor;
     [Inject] private readonly ISparkWriteUnit writeUnit;
+    [Inject] private readonly ISparkTypeResolver typeResolver;
+    [Inject] private readonly IAttributeRightsEnforcement attributeRights;
+    [Inject] private readonly IRefreshInvoker refreshInvoker;
+    [Inject] private readonly IValidationService validationService;
+    [Inject] private readonly IRowSecurity rowSecurity;
+    [Inject] private readonly IActionsResolver actionsResolver;
+
+    public bool IsConfirmedNotStored(EntityTypeDefinition entityType)
+        => typeResolver.Resolve(entityType.ClrType) is not { } clrType || Abstractions.Model.SparkValueObjects.IsKeyed(clrType);
+
+    public async Task<PersistentObject> ConfirmAsync(EntityTypeDefinition entityType, PersistentObject obj, CancellationToken cancellationToken = default)
+    {
+        await permissionService.EnsureAuthorizedAsync("New", entityType.Name);
+
+        // What a create keeps: the values the caller may set. A New-denied or model-read-only attribute
+        // keeps its scaffolded default and is not validated, as SaveValidation does on a create.
+        var unwritable = new HashSet<string>(
+            [.. await attributeRights.GetDeniedAsync(entityType, SparkCoreActions.New, cancellationToken),
+             .. entityType.Attributes.Where(a => a.IsReadOnly).Select(a => a.Name)],
+            StringComparer.OrdinalIgnoreCase);
+        var submitted = new PersistentObject
+        {
+            Id = obj.Id,
+            Name = obj.Name,
+            ObjectTypeId = entityType.Id,
+            Attributes = [.. obj.Attributes
+                .Where(a => !unwritable.Contains(a.Name))
+                .Select(a => new PersistentObjectAttribute { Name = a.Name, Value = a.Value, IsValueChanged = a.IsValueChanged })],
+        };
+
+        // The refresh hook shapes the rules (a C# type's; a type with no class has none), then validation.
+        var effective = await refreshInvoker.BuildEffectiveAsync(entityType, submitted, cancellationToken);
+        var validated = new PersistentObject
+        {
+            Id = effective.Id,
+            Name = effective.Name,
+            ObjectTypeId = effective.ObjectTypeId,
+            Attributes = [.. effective.Attributes.Where(a => !unwritable.Contains(a.Name))],
+        };
+        var result = validationService.ValidateEffective(validated);
+        if (!result.IsValid)
+            throw new SparkSaveValidationException(result);
+
+        // WITH CHECK, as a create judges it (DatabaseAccess.SaveCoreAsync): the row the caller would get
+        // must be one its type's row rules allow. An embedded row type refuses every standalone row
+        // (IsAllowedAsync false), and a confirm must not be the way around that.
+        var clr = typeResolver.Resolve(entityType.ClrType);
+        if (clr is not null && !await rowSecurity.IsAllowedAsync(clr, SparkCoreActions.New, await MapAsync(clr, effective)))
+            throw new SparkRowLevelAccessDeniedException($"{SparkCoreActions.New}/{entityType.Name}");
+
+        // D18: a value object's id is its [ValueKey] (what the owner's reference stores and the lookup
+        // lists); one without a key is invalid, never given a made-up id. A type with no C# class has no
+        // key: the posted id, or a new one.
+        if (clr is not null && Abstractions.Model.SparkValueObjects.GetKeyPropertyName(clr) is { } keyName)
+        {
+            effective.Id = KeyOf(keyName, effective)
+                ?? throw new SparkValidationException($"'{keyName}' is required.", keyName);
+        }
+        else
+        {
+            effective.Id = obj.Id is { Length: > 0 } posted ? posted : Guid.NewGuid().ToString();
+        }
+        await attributeRights.PresentAsync([effective], SparkCoreActions.New, cancellationToken);
+        return effective;
+    }
+
+    /// <summary>The entity the type's actions class maps <paramref name="obj"/> to, as a create maps it.</summary>
+    private async Task<object> MapAsync(Type clrType, PersistentObject obj)
+    {
+        var actions = actionsResolver.ResolveForType(clrType);
+        var map = actions.GetType().GetMethod("MapAsync", [typeof(PersistentObject), clrType])
+            ?? throw new InvalidOperationException($"'{actions.GetType().FullName}' has no MapAsync for '{clrType.FullName}'.");
+        // HookInvoke: a MapAsync that throws (validation, a retry prompt) arrives as itself (SparkHookInvocation).
+        var task = (Task)map.Invoke(actions, SparkHookInvocation.HookInvoke, binder: null, parameters: [obj, null], culture: null)!;
+        await task;
+        return task.GetType().GetProperty(nameof(Task<object>.Result))!.GetValue(task)
+            ?? throw new InvalidOperationException($"'{actions.GetType().FullName}.MapAsync' returned null.");
+    }
+
+    /// <summary>The <c>[ValueKey]</c> attribute's value, or null when it is absent or empty.</summary>
+    private static string? KeyOf(string keyName, PersistentObject obj)
+    {
+        var value = obj.Attributes.FirstOrDefault(a => string.Equals(a.Name, keyName, StringComparison.Ordinal))?.Value;
+        return value?.ToString() is { Length: > 0 } key ? key : null;
+    }
 
     public async Task<PersistentObject?> CreateAsync(EntityTypeDefinition entityType, PersistentObject obj, PersistentObject? parent, CancellationToken cancellationToken = default)
     {

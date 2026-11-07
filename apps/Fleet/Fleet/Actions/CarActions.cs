@@ -69,7 +69,7 @@ public partial class CarActions : DefaultPersistentObjectActions<Car>,
     /// cannot be saved.
     /// </para>
     /// </summary>
-    public override Task OnRefreshAsync(SparkRefreshArgs<Car> args)
+    public override Task OnRefreshAsync(SparkRefreshArgs args)
     {
         ShapeForStatus(args.PersistentObject, refresh: true);
         return Task.CompletedTask;
@@ -88,7 +88,7 @@ public partial class CarActions : DefaultPersistentObjectActions<Car>,
     }
 
     /// <summary>A new car starts in whatever status the form defaults to, shaped like any other.</summary>
-    public override Task OnNewAsync(SparkNewArgs<Car> args)
+    public override Task OnNewAsync(SparkNewArgs args)
     {
         ShapeForStatus(args.PersistentObject, refresh: false);
         return base.OnNewAsync(args);

@@ -261,6 +261,18 @@ public class PersistentObjectAttribute
     /// </summary>
     public TranslatedString? Description { get; set; }
 
+    /// <summary>
+    /// Whether the picker offers <b>Add new</b> for this object (the model's <c>canAddNewReference</c>),
+    /// already narrowed to the caller: false when they may not create the referenced type. A hook may
+    /// switch it off per object. Presentation only; the create checks <c>New</c> itself.
+    /// <para>
+    /// It travels on the object for the same reason as <see cref="Description"/>: a retry prompt's form is
+    /// drawn from the object alone. The referenced type does not travel: <c>/spark/po/new</c> derives it
+    /// from the owner type and this attribute's name, so the client never names it.
+    /// </para>
+    /// </summary>
+    public bool CanAddNewReference { get; set; }
+
     public ValidationRule[] Rules { get; set; } = [];
     public Guid? Group { get; set; }
     public string? Renderer { get; set; }

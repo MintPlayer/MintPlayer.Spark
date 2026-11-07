@@ -86,6 +86,7 @@
             }
           } @else if (attr.dataType === 'Reference' && attr.isArray) {
             <bs-tree-select
+              #referenceTree
               mode="multiple"
               variant="textbox"
               [showClear]="true"
@@ -93,7 +94,17 @@
               [provider]="getReferenceProvider(attr) ?? null"
               [ngModel]="referenceTreeValues()[attr.name] || []"
               (ngModelChange)="onReferenceTreeChange(attr, $event)"
+              (input)="noteTreeSearch(attr, $event)"
+              (searchStart)="noteTreeSearch(attr, $event.query)"
               [ngModelOptions]="{ standalone: true }">
+              @if (attr.canAddNewReference) {
+                <!-- Always shown, matches or not (reference add-new PRD D17). The provider is flat, so a
+                     new row is one more root: no "under which node" question. -->
+                <button *bsTreeSelectFooter type="button" class="spark-reference-add-new" [color]="colors.primary"
+                  (click)="addNewTreeReference(attr, referenceTree)">
+                  + {{ 'common.addNewReference' | t }}
+                </button>
+              }
             </bs-tree-select>
           } @else if (attr.dataType === 'Reference') {
             <spark-reference-picker
@@ -106,6 +117,7 @@
               [inputId]="attr.name"
               [title]="attr.label | resolveTranslation:attr.name"
               [isInvalid]="hasError(attr.name)"
+              [addNew]="addNewFor(attr)"
               (rowPicked)="rememberPickedReference(attr, $event)"
               (valueChange)="onReferenceValueChange(attr, $event)">
             </spark-reference-picker>

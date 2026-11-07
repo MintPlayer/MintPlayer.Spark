@@ -258,7 +258,7 @@ When its value changes the client posts the in-progress object to
 `ShowedOn`, rewrite `Rules`, replace an attribute's `Options`, or set a dependent value.
 
 ```csharp
-public override Task OnRefreshAsync(SparkRefreshArgs<Car> args)
+public override Task OnRefreshAsync(SparkRefreshArgs args)
 {
     var obj = args.PersistentObject;
     var stolen = obj[nameof(Car.Status)].Value?.ToString() == CarStatus.Stolen;
@@ -366,7 +366,7 @@ detail page's Edit and Delete buttons are these entries (D8).
 `{ "query", "selectionMode", "parentReference" }`, and `selectionMode` can also sit on the query
 itself (`auto` by default, derived from the actions the caller can use on the list: built-in Edit and
 Delete count, `single` no longer exists, and a row click always opens the row — #467 R1, D9, D10).
-- New on a sub-query calls `OnNewAsync(SparkNewArgs<T>)` with `args.Parent` / `ParentType` / `Query`.
+- New on a sub-query calls `OnNewAsync(SparkNewArgs)` with `args.Parent` / `ParentType` / `Query`.
 - **The base fills the reference to the parent.** If you override `OnNewAsync`, call
   `base.OnNewAsync(args)` or `args.FillParentReference()`, or the reference stays empty.
 - Name the attribute with `parentReference` when the row type references the parent more than once.

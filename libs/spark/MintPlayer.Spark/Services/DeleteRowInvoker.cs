@@ -61,7 +61,7 @@ internal partial class DeleteRowInvoker : IDeleteRowInvoker
         if (method is null)
             return;
 
-        var args = CreateArgs(entityType, row, parent, asDetailAttribute, rowKey, parameters, cancellationToken);
+        var args = new SparkDeleteRowArgs(row, parent, asDetailAttribute, rowKey, parameters, cancellationToken);
         var actions = actionsResolver.ResolveForType(entityType);
 
         // The hook returns Task, never Task<T>, so this cast is total. A null would mean the method
@@ -73,29 +73,6 @@ internal partial class DeleteRowInvoker : IDeleteRowInvoker
         // surfaces to the user as a 500. It also keeps the hook's own stack trace intact.
         await (Task)method.Invoke(
             actions, HookInvoke, binder: null, parameters: [args], culture: null)!;
-    }
-
-    private static object CreateArgs(
-        Type entityType,
-        PersistentObject row,
-        PersistentObject parent,
-        string asDetailAttribute,
-        string rowKey,
-        IReadOnlyDictionary<string, string>? parameters,
-        CancellationToken cancellationToken)
-    {
-        // ⚠️ The key is a tuple, not a bare Type. `GetOrAdd<TKey, TValue>` is ONE dictionary per
-        // (TKey, TValue) pair, so every invoker keying a ConstructorInfo by entity type shares it —
-        // and the first one to run for a given type hands its constructor to the others. That is not
-        // hypothetical: it made `DeleteRowInvoker` invoke `SparkNewArgs`'s constructor with a delete
-        // hook's arguments, failing on the third one. The discriminator is what keeps them apart.
-        var ctor = ReflectionCache.GetOrAdd<(string Op, Type Entity), ConstructorInfo>(
-            ("DeleteRowInvoker.args", entityType),
-            static k => typeof(SparkDeleteRowArgs<>).MakeGenericType(k.Entity)
-                .GetConstructors(BindingFlags.Instance | BindingFlags.NonPublic)
-                .Single());
-
-        return ctor.Invoke([row, parent, asDetailAttribute, rowKey, parameters, cancellationToken]);
     }
 
     /// <summary>
@@ -110,9 +87,7 @@ internal partial class DeleteRowInvoker : IDeleteRowInvoker
             ("DeleteRowInvoker.OnDeleteRowAsync", actionsType, entityType),
             static k =>
             {
-                var method = k.Actions.GetMethod(
-                    "OnDeleteRowAsync",
-                    [typeof(SparkDeleteRowArgs<>).MakeGenericType(k.Entity)]);
+                var method = k.Actions.GetMethod("OnDeleteRowAsync", [typeof(SparkDeleteRowArgs)]);
 
                 var declaring = method?.DeclaringType;
                 if (declaring is null)
