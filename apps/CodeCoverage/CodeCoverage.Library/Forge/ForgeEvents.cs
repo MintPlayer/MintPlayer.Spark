@@ -292,7 +292,11 @@ public sealed record PullRequestReviewed(string RepositoryId, int Number) : IFor
 /// (<see cref="Entities.ForgeCheck.Due"/>), so a repository is not rewritten on every delivery. The App's own check runs
 /// are not raised.
 /// </remarks>
-public sealed record CheckReported(string RepositoryId, string Name, Entities.EForgeCheckKind? Kind, string? AppSlug) : IForgeEvent;
+/// <param name="OnPullRequest">
+/// It reported on a pull request (or on the queue's commit for one), which makes it eligible as a ruleset's required
+/// check (#554).
+/// </param>
+public sealed record CheckReported(string RepositoryId, string Name, Entities.EForgeCheckKind? Kind, string? AppSlug, bool OnPullRequest = false) : IForgeEvent;
 
 // ── The dependency updater (dependency-updates PRD §7.5, §7.6, R10) ────────────────────────────────────────────────
 //

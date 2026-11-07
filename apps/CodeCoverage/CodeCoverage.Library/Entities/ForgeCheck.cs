@@ -12,9 +12,19 @@ namespace CodeCoverage.Entities;
 /// seconds and rate limit. The precedent is <see cref="ProjectColumn"/>.
 /// </para>
 /// </summary>
+/// <remarks>
+/// A natural id (<see cref="IHasNaturalId"/>, owner 2026-11-07, #554): a manager may add a check by name from a picker
+/// before it ever reported, and the key such a row gets is the name it was given, which is what an exclusion list or a
+/// ruleset stores.
+/// </remarks>
 [ValueObject]
-public partial class ForgeCheck
+public partial class ForgeCheck : IHasNaturalId
 {
+    /// <summary>The key of the check named <paramref name="name"/>: the name itself, trimmed (D110).</summary>
+    public static string GetId(string? name) => name?.Trim() ?? string.Empty;
+
+    string IHasNaturalId.GetId() => GetId(Name);
+
     /// <summary>The newest checks a repository keeps; the oldest <see cref="LastSeenUtc"/> is dropped beyond it (D107).</summary>
     public const int MaxKnown = 200;
 
@@ -46,9 +56,16 @@ public partial class ForgeCheck
     public DateTime LastSeenUtc { get; set; }
 
     /// <summary>
+    /// Whether the check has reported on a pull request (or on the queue's commit for one) at least once. Sticky: it is
+    /// never cleared. Only these may be offered as a ruleset's required checks, because a check that runs on pushes alone
+    /// would never report on a pull request and would block every merge (#554, owner 2026-11-07).
+    /// </summary>
+    public bool OnPullRequest { get; set; }
+
+    /// <summary>
     /// The sightings in <paramref name="reported"/> worth a write against <paramref name="known"/>: a name not known yet,
-    /// one last seen <see cref="RefreshAfter"/> or longer ago, or one that now says what kind or App it is. One per name,
-    /// the queue's own check left out.
+    /// one last seen <see cref="RefreshAfter"/> or longer ago, one that now says what kind or App it is, or one first seen
+    /// on a pull request. One per name, the queue's own check left out.
     /// </summary>
     public static IReadOnlyList<ForgeCheck> Due(IEnumerable<ForgeCheck>? known, IEnumerable<ForgeCheck> reported, DateTime nowUtc)
     {
@@ -59,21 +76,26 @@ public partial class ForgeCheck
         var due = new Dictionary<string, ForgeCheck>(StringComparer.Ordinal);
         foreach (var check in reported)
         {
-            var name = check.Name?.Trim();
+            var name = GetId(check.Name);
             if (string.IsNullOrEmpty(name) || name == Forge.CheckGate.QueueCheckName) continue;
 
-            var sighting = new ForgeCheck { Id = name, Name = name, Kind = check.Kind, AppSlug = check.AppSlug, LastSeenUtc = nowUtc };
+            var sighting = new ForgeCheck
+            {
+                Id = name, Name = name, Kind = check.Kind, AppSlug = check.AppSlug, LastSeenUtc = nowUtc, OnPullRequest = check.OnPullRequest,
+            };
             if (due.TryGetValue(name, out var earlier))
             {
                 earlier.Kind ??= sighting.Kind;
                 earlier.AppSlug ??= sighting.AppSlug;
+                earlier.OnPullRequest |= sighting.OnPullRequest;
                 continue;
             }
 
             if (!byName.TryGetValue(name, out var stored)
                 || nowUtc - stored.LastSeenUtc >= RefreshAfter
                 || (stored.Kind is null && sighting.Kind is not null)
-                || (stored.AppSlug is null && sighting.AppSlug is not null))
+                || (stored.AppSlug is null && sighting.AppSlug is not null)
+                || (!stored.OnPullRequest && sighting.OnPullRequest))
             {
                 due[name] = sighting;
             }

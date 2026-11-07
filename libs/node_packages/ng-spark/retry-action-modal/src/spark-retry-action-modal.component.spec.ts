@@ -174,6 +174,24 @@ describe('SparkRetryActionModalComponent with PersistentObject', () => {
     await promise;
   });
 
+  // #554: one prompt per repository; the PO's parent scopes the form's Reference pickers.
+  it('hands the PO parent to the form as the pickers\' query parent, and nothing without one', async () => {
+    const { component, service, fixture } = setupWithTypes([]);
+    const parented: PersistentObject = { ...scaffoldedPo, parent: { id: 'Repositories/github/1', name: 'Repository', objectTypeId: '', attributes: [] } as any };
+    const promise = service.show({ type: 'retry-action', step: 0, title: 'Rulesets', options: ['Next'], cancellable: true, persistentObject: parented });
+    fixture.detectChanges();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    await new Promise(resolve => setTimeout(resolve, 0));
+
+    expect((component as any).referenceParent()).toMatchObject({ id: 'Repositories/github/1', name: 'Repository' });
+
+    component.onOption('Cancel');
+    await promise;
+    service.show({ type: 'retry-action', step: 1, title: 'Delete car', options: ['Delete'], cancellable: true, persistentObject: scaffoldedPo });
+    expect((component as any).referenceParent()).toBeNull();
+    component.onOption('Cancel');
+  });
+
   it('keeps each attribute description, so the form shows its (i) hint', async () => {
     const { component, service, fixture } = setupWithTypes([]);
     const described: PersistentObject = {

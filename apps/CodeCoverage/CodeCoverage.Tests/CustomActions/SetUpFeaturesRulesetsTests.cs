@@ -70,8 +70,6 @@ public class SetUpFeaturesRulesetsTests : CoverageRavenTest
             Queue.Provider.Returns(EForgeProvider.GitHub);
             Queue.GetRulesetStateAsync(Arg.Any<Repository>(), "master", Token, Arg.Any<CancellationToken>())
                 .Returns(new ForgeRulesetState(77, [], null));
-            Queue.GetBranchHeadAsync(Arg.Any<Repository>(), "master", Arg.Any<CancellationToken>()).Returns("abc123");
-            Queue.GetCheckNamesOnCommitAsync(Arg.Any<Repository>(), "abc123", Arg.Any<CancellationToken>()).Returns(["build"]);
             Queue.ApplyRulesetPlanAsync(Arg.Any<Repository>(), "master", Arg.Any<MergeQueueRulesetPlan>(), Token, Arg.Any<CancellationToken>())
                 .Returns([new ForgeRulesetApplied("Created ruleset.", "https://github.com/acme/widget/rules/1")]);
             // NSubstitute answers a string member with "", which would refuse: no refusal is null.
@@ -106,6 +104,7 @@ public class SetUpFeaturesRulesetsTests : CoverageRavenTest
         [
             new PersistentObjectAttribute { Name = nameof(MergeQueueRulesetChoices.RequiredApprovals), Value = approvals },
             new PersistentObjectAttribute { Name = nameof(MergeQueueRulesetChoices.AdminsMayMergeByPullRequest), Value = false },
+            new PersistentObjectAttribute { Name = nameof(MergeQueueRulesetChoices.RequiredChecks), Value = new[] { "build" } },
         ],
     };
 
