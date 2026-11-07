@@ -429,6 +429,13 @@ its 250 ms debounce and `AbortSignal` cancellation, the `matching`/`remaining` r
 `filterChange` event, the overlay portal, the focus trap and Escape-restores-focus. `FilterContext`
 exposes `values()`, `loading()`, `search(term)`, `apply(values, inverse)`, `clear()` and `onChange()`.
 
+**The panel holds no filter state** (2026-11-07,
+[`column_filter_reopen_selection_PRD.md`](column_filter_reopen_selection_PRD.md)). The datatable owns the
+selection: the panel renders its ticks, inverse, search term and free text from `ctx` and writes only
+through it. A local copy of the selection once showed a reopened panel unticked while the grid stayed
+filtered. The grid binds `[filters]` both ways, so URL presets show as ticks and a query switch clears
+them. Since ng-bootstrap 22.35 (#465) the panel is also **kept** after a column's first open.
+
 **What Spark owns:** the panel's markup and its styles. Bootstrap CSS does **not** reach the
 document-root overlay — `.form-control` is only styled inside `bs-*` components — so the panel is
 styled explicitly and held visually close to the library's own.
