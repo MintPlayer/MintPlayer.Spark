@@ -63,7 +63,7 @@ public interface IPersistentObjectActions<T> where T : class
     /// establishes are enforced whether or not the client ever asked for a refresh.
     /// </para>
     /// </summary>
-    Task OnRefreshAsync(SparkRefreshArgs<T> args);
+    Task OnRefreshAsync(SparkRefreshArgs args);
 
     /// <summary>
     /// Called when a new object of this type is constructed, before the client ever sees it — for a
@@ -80,14 +80,14 @@ public interface IPersistentObjectActions<T> where T : class
     /// <para>
     /// ⚠️ <b>Construction is not persistence.</b> Nothing is written here and the object may never
     /// be saved. For an <c>AsDetail</c> row the parent owns the save, which is what
-    /// <see cref="SparkNewArgs{T}.AsDetailParent"/> signals.
+    /// <see cref="SparkNewArgs.AsDetailParent"/> signals.
     /// </para>
     /// </summary>
     /// <remarks>
     /// A default implementation, for the same reason as <see cref="OnQueryAsync"/>: most types have
     /// no defaults to set, and adding a required member would break every hand-written implementer.
     /// </remarks>
-    Task OnNewAsync(SparkNewArgs<T> args) => Task.CompletedTask;
+    Task OnNewAsync(SparkNewArgs args) => Task.CompletedTask;
 
     /// <summary>
     /// Called when a row of this type is removed from a parent's <c>AsDetail</c> collection, before
@@ -102,7 +102,7 @@ public interface IPersistentObjectActions<T> where T : class
     /// ⚠️ <b>A refusal here is an affordance, not enforcement.</b> It stops a cooperating client; it
     /// cannot stop one that never calls the endpoint and submits the parent with the row already
     /// gone. The save path's unconditional per-row <c>Delete/{RowType}</c> check is what stops that
-    /// one. See <see cref="SparkDeleteRowArgs{T}"/> for the full argument.
+    /// one. See <see cref="SparkDeleteRowArgs"/> for the full argument.
     /// </para>
     /// </summary>
     /// <remarks>
@@ -113,7 +113,7 @@ public interface IPersistentObjectActions<T> where T : class
     /// <c>IBeforeDelete</c>/<c>IAfterDelete</c>, which a removed AsDetail row never reaches.
     /// </para>
     /// </remarks>
-    Task OnDeleteRowAsync(SparkDeleteRowArgs<T> args) => Task.CompletedTask;
+    Task OnDeleteRowAsync(SparkDeleteRowArgs args) => Task.CompletedTask;
 
     // ---- Row-level security ------------------------------------------------------------------
     //

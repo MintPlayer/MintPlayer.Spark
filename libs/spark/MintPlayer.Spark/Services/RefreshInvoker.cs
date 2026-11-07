@@ -129,7 +129,7 @@ internal partial class RefreshInvoker : IRefreshInvoker
             : persistentObject.Attributes.FirstOrDefault(
                 a => string.Equals(a.Name, triggeredBy, StringComparison.Ordinal));
 
-        var args = CreateArgs(entityType, persistentObject, attribute, isNew, cancellationToken);
+        var args = new SparkRefreshArgs(persistentObject, attribute, isNew, cancellationToken);
         var actions = actionsResolver.ResolveForType(entityType);
 
         // The hook returns Task, never Task<T>, so this cast is total. A null would mean the method
@@ -145,27 +145,6 @@ internal partial class RefreshInvoker : IRefreshInvoker
             actions, HookInvoke, binder: null, parameters: [args], culture: null)!;
     }
 
-    private static object CreateArgs(
-        Type entityType,
-        PersistentObject persistentObject,
-        PersistentObjectAttribute? attribute,
-        bool isNew,
-        CancellationToken cancellationToken)
-    {
-        // ⚠️ The key is a tuple, not a bare Type. `GetOrAdd<TKey, TValue>` is ONE dictionary per
-        // (TKey, TValue) pair, so every invoker keying a ConstructorInfo by entity type shares it —
-        // and the first one to run for a given type hands its constructor to the others. That is not
-        // hypothetical: it made `DeleteRowInvoker` invoke `SparkNewArgs`'s constructor with a delete
-        // hook's arguments, failing on the third one. The discriminator is what keeps them apart.
-        var ctor = ReflectionCache.GetOrAdd<(string Op, Type Entity), ConstructorInfo>(
-            ("RefreshInvoker.args", entityType),
-            static k => typeof(SparkRefreshArgs<>).MakeGenericType(k.Entity)
-                .GetConstructors(BindingFlags.Instance | BindingFlags.NonPublic)
-                .Single());
-
-        return ctor.Invoke([persistentObject, attribute, isNew, cancellationToken]);
-    }
-
     /// <summary>
     /// Returns the hook only when the actions class actually overrides it. A method still declared
     /// on <see cref="DefaultPersistentObjectActions{T}"/> is the framework's own no-op: invoking it
@@ -179,9 +158,7 @@ internal partial class RefreshInvoker : IRefreshInvoker
             ("RefreshInvoker.OnRefreshAsync", actionsType, entityType),
             static k =>
             {
-                var method = k.Actions.GetMethod(
-                    "OnRefreshAsync",
-                    [typeof(SparkRefreshArgs<>).MakeGenericType(k.Entity)]);
+                var method = k.Actions.GetMethod("OnRefreshAsync", [typeof(SparkRefreshArgs)]);
 
                 var declaring = method?.DeclaringType;
                 if (declaring is null)

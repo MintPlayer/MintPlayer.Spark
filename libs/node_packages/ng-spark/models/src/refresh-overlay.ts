@@ -31,6 +31,8 @@ export interface AttributeOverlay {
   query?: string;
   /** `undefined` means the hook did not touch the options; an empty array means there are none. */
   options?: RefreshedOption[];
+  /** Whether a Reference's picker offers Add new for this object; the server sends it only when true (reference add-new PRD D7). */
+  canAddNewReference?: boolean;
 }
 
 export type RefreshOverlay = Record<string, AttributeOverlay>;
@@ -49,6 +51,7 @@ export function applyOverlay(
     showedOn: overlay.showedOn ?? attr.showedOn,
     rules: overlay.rules ?? attr.rules,
     query: overlay.query ?? attr.query,
+    canAddNewReference: overlay.canAddNewReference ?? attr.canAddNewReference,
   };
 }
 
@@ -71,6 +74,8 @@ export function overlayFromResponse(response: PersistentObject): RefreshOverlay 
       rules: attr.rules ?? [],
       query: attr.query,
       options: (attr as { options?: RefreshedOption[] | null }).options ?? undefined,
+      // Written by the server only when true (D7), so absent is a decision, not "untouched".
+      canAddNewReference: attr.canAddNewReference === true,
     };
   }
 

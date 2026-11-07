@@ -15,6 +15,33 @@ public interface IModelLoader
     IEnumerable<SparkQuery> GetQueries();
 }
 
+public static class ModelLoaderExtensions
+{
+    /// <summary>
+    /// The type a Reference attribute points at: the one its <c>referenceType</c> names by CLR type name,
+    /// and otherwise the row type of its lookup <c>query</c> — the picker's query, whose
+    /// <see cref="SparkQuery.EntityType"/> names a type by model name. The second is how a reference to a
+    /// JSON-only virtual type resolves at all: such a type has no CLR name for <c>referenceType</c> to match.
+    /// </summary>
+    /// <returns>Null for an attribute that is not a Reference, or whose target the model does not declare.</returns>
+    public static EntityTypeDefinition? GetReferenceTarget(
+        this IModelLoader modelLoader, IQueryLoader queryLoader, EntityAttributeDefinition attribute)
+    {
+        if (attribute.DataType != "Reference")
+            return null;
+
+        if (attribute.ReferenceType is { Length: > 0 } clrName && modelLoader.GetEntityTypeByClrType(clrName) is { } byClr)
+            return byClr;
+
+        // A Reference's query is a query NAME (synchronize writes `GetCompanies`), which is how the client
+        // resolves it too (`SparkService.getQueryByName`); an id or alias is accepted after it.
+        return attribute.Query is { Length: > 0 } lookup
+            && (queryLoader.GetQueryByName(lookup) ?? queryLoader.ResolveQuery(lookup)) is { EntityType: { Length: > 0 } rowType }
+                ? modelLoader.GetEntityTypeByName(rowType)
+                : null;
+    }
+}
+
 /// <summary>
 /// The composed model (<see cref="IModelSource"/>), deserialized, with every label resolved against the
 /// translations.

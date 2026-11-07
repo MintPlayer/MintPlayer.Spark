@@ -812,6 +812,16 @@ public static class SparkExtensions
         if (parentReferenceProblems.Count > 0)
             throw new InvalidOperationException(
                 "Invalid sub-query parentReference: " + string.Join(" ", parentReferenceProblems));
+
+        // A lookup listing another type than the reference targets, or a defaultAttribute that names no
+        // String of the target, would make a picker store the wrong type or prefill nothing (reference
+        // add-new PRD D13, D17). Refused here, naming every offender.
+        var referenceProblems = SparkReferences.Validate(
+            app.ApplicationServices.GetRequiredService<IModelLoader>().GetEntityTypes(), queries,
+            app.ApplicationServices.GetRequiredService<ISparkTypeResolver>().Resolve);
+        if (referenceProblems.Count > 0)
+            throw new InvalidOperationException(
+                "Invalid Reference attribute: " + string.Join(" ", referenceProblems));
     }
 
     /// <summary>

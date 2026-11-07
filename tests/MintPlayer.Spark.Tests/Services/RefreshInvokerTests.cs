@@ -37,7 +37,7 @@ public class RefreshInvokerTests
         public bool SawAttributeWasNull { get; private set; }
         public bool SawIsNew { get; private set; }
 
-        public override Task OnRefreshAsync(SparkRefreshArgs<RefreshFixtureEntity> args)
+        public override Task OnRefreshAsync(SparkRefreshArgs args)
         {
             Invocations++;
             SawAttributeName = args.Attribute?.Name;
