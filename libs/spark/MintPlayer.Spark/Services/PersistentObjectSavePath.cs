@@ -162,7 +162,8 @@ internal sealed partial class PersistentObjectSavePath : IPersistentObjectSavePa
         var actions = actionsResolver.ResolveForType(clrType);
         var map = actions.GetType().GetMethod("MapAsync", [typeof(PersistentObject), clrType])
             ?? throw new InvalidOperationException($"'{actions.GetType().FullName}' has no MapAsync for '{clrType.FullName}'.");
-        var task = (Task)map.Invoke(actions, [obj, null])!;
+        // HookInvoke: a MapAsync that throws (validation, a retry prompt) arrives as itself (SparkHookInvocation).
+        var task = (Task)map.Invoke(actions, SparkHookInvocation.HookInvoke, binder: null, parameters: [obj, null], culture: null)!;
         await task;
         return task.GetType().GetProperty(nameof(Task<object>.Result))!.GetValue(task)
             ?? throw new InvalidOperationException($"'{actions.GetType().FullName}.MapAsync' returned null.");
