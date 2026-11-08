@@ -75,7 +75,7 @@ export class SparkGridCellComponent {
   chips = input<ReferenceChip[]>([]);
 
   /** Route for a cell whose value references another entity. See the class comment. */
-  link = input<unknown[] | null>(null);
+  link = input<string | unknown[] | null>(null);
 
   protected readonly rendererComponent = computed(() => this.renderers.columnComponentFor(this.column()));
 
