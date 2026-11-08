@@ -1,6 +1,6 @@
 <bs-grid>
   @if (page.errorMessage(); as err) {
-    <bs-alert [color]="colors.danger" class="mb-3">{{ err }}</bs-alert>
+    <bs-alert [color]="'danger'" class="mb-3">{{ err }}</bs-alert>
   } @else if (page.item(); as song) {
     @if (page.entityType(); as et) {
       <div class="song-actionbar">

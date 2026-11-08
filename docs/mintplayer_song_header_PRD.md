@@ -198,6 +198,20 @@ Done: M1 (`5d505e17b`), M2–M6 (this PR's later commits). M7: see the end of th
    host (YouTube song, Vimeo song once resolved, song without media, Dailymotion-only song, phone width, dark mode) and the
    SSR HTML (`<img>`, og:image, canonical with `?lang`).
 
+**M7 results (2026-11-08):**
+- **Tests:**
+  - ng-spark vitest: 4825 tests. Six po-detail specs from M1 read the presenter before the load had settled. They now `await whenStable()`, and the file passes 55/55.
+  - MintPlayer.Tests 42/42 and MintPlayer.Migration.Tests 50/50, on the Developer licence.
+- **Browser** (local host, the `MintPlayer` dev database, signed out):
+  - The backfill migration queued 172 URLs. The recipient stored YouTube, Vimeo (`d_960`) and Dailymotion documents without errors.
+  - Songs/23 shows the YouTube header in dark mode. Play queues the song and starts the YouTube player. The layout holds at 390 px.
+  - `/po/song/Songs%2F23/edit` opens "Edit Song" (R7).
+  - The SSR HTML carries the `<img width=1280 height=720 fetchpriority=high>`, og:image = the thumbnail, and the canonical slug URL.
+  - The dev server caught one template error that `ngc --noEmit` missed: `bs-alert [color]` takes a string literal, not `Color`.
+- **Not checked live:**
+  - Edit/Delete for a signed-in editor. Its logic is po-detail's, through `detailBuiltInActions`, and the po-detail specs cover it.
+  - A song without media. None exists in the dev data; the unit test `Pick` with no media covers it.
+
 Release: the ng-spark change ships to npm once the merged PR is backported to `release/angular-22.x` (`backport` label).
 The app uses the workspace package, so mintplayer.com deploys from master without waiting for that.
 
