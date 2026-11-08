@@ -75,10 +75,15 @@ export class SparkPoPresenterComponent {
   /**
    * What the secondary reads depend on: the object's identity, not its every version. A live push or a server
    * patch replaces the object with the same id, and must not ask for the lookups again.
+   *
+   * Compared by ids, never by reference: every reload of the page fetches the catalogue afresh, so the type and the
+   * catalogue arrive as new objects with the same content. Compared by reference, each reload cleared the AsDetail
+   * row types, the tables lost their columns until the answers came back, and every cell was destroyed and drawn
+   * again, a row renderer's links included: a click in that gap went nowhere (E2E
+   * `QnAContributionsBrowserTests`, the History link, CI runs 42528696421 and 42532593223).
    */
   private readonly target = computed(
-    () => ({ id: this.item().id, entityType: this.entityType(), all: this.allEntityTypes() }),
-    { equal: (a, b) => a.id === b.id && a.entityType === b.entityType && a.all === b.all },
+    () => `${this.item().id}\n${this.entityType().id}\n${this.allEntityTypes().map(t => t.id).join(',')}`,
   );
   private generation = 0;
 
