@@ -1,6 +1,6 @@
 # Song page header: large thumbnail with a play button — PRD and plan
 
-Status: **spikes S1–S5 done** (2026-11-08, §4a), waiting on the owner for Q1–Q4. #602 merged (PR #605, `6781e44b3`), so this
+Status: **grilled** (2026-11-08, §4b D9–D22; spikes S1–S5 in §4a), ready for M1. #602 merged (PR #605, `6781e44b3`), so this
 is no longer blocked. Issue: #601. One pull request (ng-spark + apps/MintPlayer), per the one-PR rule.
 
 ## 1. Goal
@@ -70,7 +70,7 @@ presenter component.
 | D1 | **A dedicated, lazy-loaded song page** on the same URLs (`po/song/:id`, `po/song/:id/:slug`), placed before `sparkRoutes()` in `app.routes.ts`. | Owner, 2026-11-08. The URLs stay the same, so existing links, the legacy 301s (`LegacyRedirects.cs`) and the sitemap still work. |
 | D2 | **Extract a reusable presenter component from `spark-po-detail`** (working name `spark-po-presenter`). It takes a loaded `PersistentObject` + `EntityType` and renders the tabs, groups and attribute rows (html:81-294 + helpers, renderers included). `spark-po-detail` itself switches to it, so there is one implementation. | Owner, 2026-11-08: "will need to be built sooner or later anyway". |
 | D3 | **No `headerTemplate` input and no header registry.** | Owner, 2026-11-08: it "would unnecessarily add a new mechanism to the framework". *Supersedes the first draft's D2 (`headerTemplate`) and the grill's option B (`SPARK_DETAIL_HEADERS`).* |
-| D4 | *Revised by D9/D10 (the derivation moves to C#; the SSR reason stands).* **Thumbnail derived from the first medium whose URL a synchronous regex recognises** (YouTube, Dailymotion; Vimeo/SoundCloud per S3). No header when none matches, as legacy. | Must render during SSR: gating on `VideoApis.isPlayable` would render no header on the server (no LCP image, and a hydration mismatch). |
+| D4 | *Superseded by §4b D9–D16 (resolved asynchronously on the server and stored in `MediaThumbnails`; the SSR reason stands, because the value now comes with the loaded object).* **Thumbnail derived from the first medium whose URL a synchronous regex recognises** (YouTube, Dailymotion; Vimeo/SoundCloud per S3). No header when none matches, as legacy. | Must render during SSR: gating on `VideoApis.isPlayable` would render no header on the server (no LCP image, and a hydration mismatch). |
 | D5 | **Click = `PlayerService.add(...)`** with the same item shape as `MediaPlayButtonComponent` (append; start when idle), built by one shared helper. | Same as legacy and as the Media table's play button. A shared helper keeps the two buttons from drifting apart. *Open: Q2.* |
 | D6 | **Responsive `<img>`, not a CSS background**: `aspect-ratio: 16/9`, `object-fit: cover`, `width`/`height` attributes, `alt` = song title, `fetchpriority="high"`, no lazy loading. The button is a real `<button>` with an accessible name. | Legacy's fixed 480×360 box overflows on phones and has no alt text. The hero is the page's LCP element. |
 | D7 | **Per-song og:image / JSON-LD image** from the same thumbnail; the mechanism comes from S4 (*resolved: D11*). | Legacy had it (`show.component.ts:105,152,248,265`); today every song shares the app icon. |
@@ -130,46 +130,58 @@ No CSP in the app (`Program.cs`, `index.html`), so `i.ytimg.com` images are not 
 **S4 — per-song SEO image: already supported, no framework change.** `EntityTypeSeo.Image` names the attribute holding the
 og:image URL (`MintPlayer.Spark.Abstractions/EntityTypeDefinition.cs:305`); `spark-seo.service.ts:112` reads it (falling back to the
 site image), :251 writes `og:image` (+ `twitter:card=summary_large_image`), :131 the JSON-LD `image`. `Song.json:11-17` has no
-`image`, so every song gets `/icons/icon-512x512.png` (`seo.ts:15`). A C# get-only property becomes a read-only attribute and needs
-no load hook (`Subject.Media`, `Subject.cs:19`), so #261 does not block it. The server render runs the same service, so og:image
+`image`, so every song gets `/icons/icon-512x512.png` (`seo.ts:15`). *(The spike's "get-only property" route was superseded by
+§4b D15: virtual attributes filled in `OnLoadAsync`.)* The server render runs the same service, so og:image
 lands in the SSR HTML (`Program.cs:61,169`). Not written: an explicit `twitter:image` (X falls back to og:image).
 
 **S5 — Dailymotion still does not play.** `@mintplayer/dailymotion-player` is still `^20.1.0` (lockfile 20.1.0); the bug is the
 one in `docs/mintplayer_website_plan.md` (embed frame without the video id, refused by `frame-ancestors`). Not re-tested in a browser.
 
-## 4b. Decisions from the spikes (proposed, 2026-11-08, pending the owner)
+
+## 4b. Grilled decisions (owner, 2026-11-08)
+
+The spikes' first proposal (a get-only `Song.Thumbnail` computed from a URL regex, YouTube only) is *superseded* by the
+owner's design: thumbnails are resolved **asynchronously on the server** and cached in their own collection, so platforms
+that need a web request (oEmbed) are covered too.
 
 | # | Decision | Evidence / reason |
 |---|---|---|
-| D9 | **The hero is computed on the server**: get-only `Song.Thumbnail` (+ `Song.ThumbnailMedium`, the URL of the medium it came from) from a C# helper over `Subject.Media`. Read-only attributes, `showedOn: "None"`. *Revises D4's "client regex"*: still synchronous and SSR-safe, because the value comes with the object. | S4: `seo.image` takes an attribute, so one server value feeds both the header and og:image (single source of truth, read rights apply). A client helper would need a new `imageFor` hook in ng-spark. `ThumbnailMedium` makes the button queue the same medium the picture shows. |
-| D10 | **Hero source = the first YouTube medium** (`YouTubeUrl.VideoIdPattern`) → `hqdefault.jpg`. Dailymotion skipped (S5); Vimeo/SoundCloud get no hero in this PR (no synchronous URL; oEmbed would be a cached server call, out of scope). No YouTube medium → no header, as legacy. | S3 probes; S5. `hqdefault` is the only size that exists for every video. |
-| D11 | **`Song.json` seo block: `"image": "Thumbnail"`** and `properties.thumbnailUrl: "Thumbnail"`. | S4; replaces D7's "mechanism from S4". |
-| D12 | **Presenter is attributes-only** (`spark-po-presenter`, API per S2); the action bar is not extracted. The song page renders its own Edit/Delete (rights-gated). | S1/S2: the song page needs none of panels/layouts/deleted view; extracting the action bar has no second user yet. |
-| D13 | *Proposed, Q4:* a small reusable **object-page lifecycle** in ng-spark (load by type/id from route or `data.sparkType`, then `objectUrl.apply` + `seo.forObject`, `noIndex` on denial, `reset` on destroy, with PendingTasks), used by `spark-po-detail` **and** the song page. | S1: those calls live only in po-detail (PD:268, 396, 454-471); #602's tier (a) resolver was not built. Without this the song page copies ~80 lines of po-detail. |
+| D9 | **A `MediaThumbnails` collection**, one document per platform video, natural id `mediathumbnails/{platform}/{platformId}` → `{ Platform, PlatformId, ThumbnailUrl, CheckedAt }`. Nothing new is stored on `Medium`: the song keeps exactly what the editor typed. *Supersedes the first D9 (get-only property) and D4's client regex.* | Owner (G1–G3). The key is platform-wide, not song-specific: one video has one thumbnail whichever subject links it, so the name is `MediaThumbnails`, not `SongThumbnails` (owner, G6). |
+| D10 | **`MediaUrl.TryParse(url) → (Platform, Id)?` in `MintPlayer.Library`**, promoted from `MintPlayer.Migration/Transform/Playability.cs:19-36` (regexes copied verbatim from the player plugins' `urlRegexes`, platform names as in `mintplayer-ng-video-player`), extended with the platform name and the plugins' `match2id` logic (Spotify: `track:{id}` / `episode:{id}`). Migration's `IsPlayable` uses it too. | Owner (G4). The recipient is C#, the plugin library is TypeScript (`libs/video-player/src/lib/player-type-finder.ts`); `Playability` is the one existing C# copy. **Trap:** it drifts when the library adds or changes a platform; an unknown URL just gets no thumbnail. |
+| D11 | **Trigger: a hand-written message + `IRecipient`.** An `IBeforeSave<Song>` enqueues `MediaUrlsAdded(string[] Urls)` through `IMessageBus.EnqueueAsync(context.Session, …)`, so the message commits with the save and is dropped with it (`SparkInterceptors.cs:73, 244-247`; `MessageBus.cs:90`). The recipient parses each URL, batch-loads the existing ids, and resolves only the missing ones. Only Song saves enqueue in this PR. | Owner (G7: B over `IAfterSaveCommitted<Song>`, which was the alternative offered: `SparkCommittedInterceptors.cs:3-27`). The message carries URLs, not a song id, so it is reusable for Artist/Person later and needs no load. Messaging is already on (`Program.cs:52`). |
+| D12 | **Failures:** a failed request (timeout, 5xx, 429) **throws**, so Messaging retries it. A definitive "no" (404, private, platform refuses) stores the document with **`ThumbnailUrl = null`** + `CheckedAt`, so it is never asked again. | Owner (G8, G8b). **Trap:** the null is permanent; a video that becomes public later needs its document deleted. `CheckedAt` keeps a future re-check sweep possible (not in this PR). |
+| D13 | **Resolvers, one `IMediaThumbnailResolver` per platform:** YouTube `https://i.ytimg.com/vi/{id}/hqdefault.jpg` and Dailymotion `https://www.dailymotion.com/thumbnail/video/{id}` (derived, no HTTP); Vimeo, SoundCloud and **Spotify** via oEmbed `thumbnail_url` (typed `HttpClient`). A parsed platform without a resolver gets no document. | Owner (G10: B, Spotify included). S3 probes. oEmbed tests use WireMock with **real recorded bodies** (real-fixtures rule). |
+| D14 | **Backfill: an `ISparkMigration`** that streams all songs, collects the distinct parseable URLs and enqueues `MediaUrlsAdded` in batches of ~100. It does not resolve inline. | Owner (G9). `ISparkMigration.cs:3-38` (once per database, at startup); `Program.cs:30` already calls `AddMigrations()`. A throwing migration would abort startup, so outbound HTTP stays in the recipient. |
+| D15 | **The song page gets the hero through `SongActions.OnLoadAsync`** (decorate the base result): parse the media, one batched `LoadAsync` of the computed ids, then set two **JSON-only virtual attributes** in `Song.json`, `Thumbnail` and `ThumbnailMedium` (the URL the button queues). `GetDefaultIncludes` cannot help: it only follows ids stored in the document (`DefaultPersistentObjectActions.cs:210-218`). | Owner (G2: A). The detail load reads the document, not an index (`DatabaseAccess.cs:95-120`). Virtual attributes survive synchronization (#253), the mapper never writes them, and `OnLoadAsync` returns the `PersistentObject`, so #261 no longer blocks this. |
+| D16 | **Hero rule:** the first medium in **array order** whose thumbnail is non-null, whose `MediumType.Visible` is true, and whose platform is not in an "unplayable" set (today only `dailymotion`, S5). The same for every visitor; it does not follow the Media table. | Owner (G11; closes Q3). Legacy took `playerInfos[0]`. `MediumType` is a `[Reference]`, so `MaterializeAsync` already includes it. **Trap:** the unplayable set must be emptied by hand when the Dailymotion player is fixed. |
+| D17 | **No index in this PR.** A Songs list with a thumbnail column would need one (`[DefaultIndex(typeof(Song))]` + `[FromIndex]` view, map building the ids from `MediaUrl`'s `const` patterns like `Songs_ByYouTubeId.cs:27-31`, `LoadDocument` the thumbnail): one query instead of N+1. That is a separate change. | Owner (G5, G5b). **Trap:** a default index changes every Songs query (sort, search, filters), so it gets its own grill. |
+| D18 | **SEO:** `Song.json` seo block `"image": "Thumbnail"` and `properties.thumbnailUrl: "Thumbnail"`. *Resolves D7.* | S4: `EntityTypeSeo.Image` (`EntityTypeDefinition.cs:305`), read at `spark-seo.service.ts:112`. |
+| D19 | **Object-page lifecycle in ng-spark** (e.g. `sparkObjectPage()`): load by type/id from the route or `data.sparkType` (dropping overtaken loads, `PendingTasks`), then `objectUrl.apply` + `seo.forObject`, `noIndex` on refusal, `reset` on destroy. `spark-po-detail` and the song page both use it; embedding (`objectType`/`objectId` inputs, no SEO), live updates, patches and the deleted view stay in po-detail. | Owner (G12; closes Q4). S1: those calls live only in po-detail (PD:268, 396, 454-471), and #602's tier-(a) resolver was not built. **Trap:** the riskiest framework change here; the po-detail specs are the safety net. |
+| D20 | **Presenter: attributes only** (`spark-po-presenter`, API per S2). The song page renders its own Edit/Delete gated on `item.can`, using po-detail's delete flow, and `spark-query-card` for sub-queries if Song has any. No action-bar extraction. | Owner (G13). **Trap:** a future Song custom action is not shown on the song page until the action bar is extracted. |
+| D21 | **Play button: neutral round icon** (circle + triangle, scales with the image, accent colour on hover/focus, visible focus ring, `<button aria-label="Play {title}">`). *Closes Q1/D8.* | Owner (G14). With Vimeo/SoundCloud/Spotify heroes, a YouTube-shaped button would be wrong for most platforms. |
+| D22 | **Click appends** (`PlayerService.add`, through the shared queue-item helper of D5), no "added to queue" confirmation. *Closes Q2.* | Owner (G15). Same as the Media table (`media-play-button.component.ts:47-53`) and legacy. |
 
 ## 5. Milestones (one PR; #602 is merged)
 
-1. **M1 — extract `spark-po-presenter`** (D12, S2) and, if Q4 = yes, the object-page lifecycle (D13); `spark-po-detail` uses
-   both; po-detail specs stay green, rendering assertions move to a presenter spec. Release note (minor).
-2. **M2 — `Song.Thumbnail` / `ThumbnailMedium`** (D9, D10) in C# + unit tests with real URL shapes (no personal data): YouTube
-   watch/short/youtu.be/embed, Dailymotion and Vimeo skipped, no media → null, first YouTube medium wins. Model synchronize.
-3. **M3 — `SongHeaderComponent`** (image, centred play button, hover/focus, dark mode) + the shared queue-item helper also
-   used by `MediaPlayButtonComponent`.
-4. **M4 — dedicated song page + route** (`pages/song/song-detail-page.component.ts`, lazy, via `sparkObjectRoute({ type: 'song',
-   loadComponent })` before `sparkRoutes()`): header, presenter, Edit/Delete, slug/SEO per D13.
-5. **M5 — SEO image** (D11): `Song.json` seo block.
-6. **M6 — verify once at the end:** ng-spark + MintPlayer client tests, the C# helper tests, then a browser check on a running host
-   (YouTube song, song without media, Dailymotion-only song, phone width, dark mode), and check the SSR HTML has the `<img>`,
-   og:image and the canonical with `?lang`.
+1. **M1 — ng-spark:** `spark-po-presenter` (D20) and the object-page lifecycle (D19); `spark-po-detail` uses both; po-detail
+   specs rewired (rendering assertions to a presenter spec, no delegating getters). Release note (minor).
+2. **M2 — `MediaUrl`** (D10) in `MintPlayer.Library`, Migration switched to it; unit tests with real URL shapes (no personal
+   data): YouTube watch/m./youtu.be/shorts/live, Vimeo, Dailymotion, SoundCloud, Spotify track/episode, Wikipedia → null.
+3. **M3 — `MediaThumbnails` + resolvers** (D9, D12, D13): entity, the five resolvers, the `IRecipient<MediaUrlsAdded>`; tests
+   for skip-existing, null on 404/private, throw on 5xx/timeout (WireMock, real oEmbed bodies).
+4. **M4 — trigger + backfill** (D11, D14): `IBeforeSave<Song>` enqueue; the `ISparkMigration`.
+5. **M5 — load + SEO** (D15, D16, D18): `SongActions.OnLoadAsync`, the two virtual attributes, the seo block; tests for the hero
+   rule (order, hidden type, Dailymotion skipped, null thumbnail skipped).
+6. **M6 — client:** `SongHeaderComponent` (D21) + shared queue-item helper (D22) also used by `MediaPlayButtonComponent`; the
+   lazy song page via `sparkObjectRoute({ type: 'song', loadComponent })` before `sparkRoutes()`, with the presenter and
+   Edit/Delete (D20).
+7. **M7 — verify once at the end:** ng-spark + MintPlayer client tests, MintPlayer C# tests, then a browser check on a running
+   host (YouTube song, Vimeo song once resolved, song without media, Dailymotion-only song, phone width, dark mode) and the
+   SSR HTML (`<img>`, og:image, canonical with `?lang`).
 
 Release: the ng-spark change ships to npm once the merged PR is backported to `release/angular-22.x` (`backport` label).
 The app uses the workspace package, so mintplayer.com deploys from master without waiting for that.
 
-## 6. Open questions for the owner
+## 6. Open questions
 
-- **Q1** Play-button look: keep the legacy YouTube-shaped button, or a neutral round play icon (D8)?
-- **Q2** Click behaviour: append to the queue (legacy, D5), or **play now**?
-- **Q3** Thumbnail: always the first (YouTube) medium (D10), or follow a medium chosen in the Media table?
-- **Q4** Extract the object-page lifecycle (D13) into ng-spark in this PR, or let the song page call the URL/SEO services itself?
-  Recommendation: extract — it is #602's missing tier-(a) half, and po-detail becomes its first user.
-- **Q5** Confirm D9 (hero computed on the server, revising D4) and D10 (no hero for Vimeo/SoundCloud in this PR).
+None. Q1–Q5 were closed by the grill of 2026-11-08 (§4b, G1–G15).
