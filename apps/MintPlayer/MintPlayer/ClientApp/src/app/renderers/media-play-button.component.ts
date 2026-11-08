@@ -1,9 +1,10 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
-import { AS_DETAIL_BREADCRUMBS_KEY, EntityAttributeDefinition, PersistentObject } from '@mintplayer/ng-spark/models';
+import { EntityAttributeDefinition, PersistentObject } from '@mintplayer/ng-spark/models';
 import { SparkAttributeRowRenderer } from '@mintplayer/ng-spark/renderers';
 import { Color } from '@mintplayer/ng-bootstrap';
 import { BsButtonTypeDirective } from '@mintplayer/ng-bootstrap/button-type';
 import { PlayerService } from '../player/player.service';
+import { mediumQueueItem } from '../player/queue-item';
 import { VideoApis } from '../player/video-apis';
 
 /**
@@ -35,10 +36,6 @@ export class MediaPlayButtonComponent implements SparkAttributeRowRenderer {
 
   protected play() {
     const url = this.url();
-    if (!url) return;
-    const owner = this.owner();
-    // The medium's type ("Official Audio"), as the server resolved it for the Type column.
-    const type = (this.row()[AS_DETAIL_BREADCRUMBS_KEY] as Record<string, string> | undefined)?.['TypeId'];
-    this.player.add({ url, title: owner?.breadcrumb || owner?.name || url, subtitle: type, ownerId: owner?.id });
+    if (url) this.player.add(mediumQueueItem(this.owner(), url, this.row()));
   }
 }

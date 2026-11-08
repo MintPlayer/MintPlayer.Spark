@@ -1,6 +1,7 @@
 # Generic slug URLs for persistent objects — PRD and plan
 
-Status: **grilled** (2026-11-08, §7). Issue: #602. Blocks #601 (song page header).
+Status: **shipped** in PR #605 (squash `6781e44b3`, merged 2026-11-08; see "Outcome" and "Review round"). Grilled
+2026-11-08 (§7). Issue: #602 (closed). Unblocks #601 (song page header).
 Ships **in one pull request with #604** (language in the URL, `docs/spark_language_urls_PRD.md`), PR #605. Owner,
 2026-11-08 (#604 grill Q5).
 

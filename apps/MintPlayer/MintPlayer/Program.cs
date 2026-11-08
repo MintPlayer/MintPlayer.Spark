@@ -2,6 +2,7 @@ using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.ResponseCompression;
 using MintPlayer;
 using MintPlayer.AspNetCore.SpaServices.Extensions;
+using MintPlayer.Media;
 using MintPlayer.Services;
 using MintPlayer.Spark;
 using MintPlayer.Spark.Authorization.Configuration;
@@ -50,6 +51,8 @@ builder.Services.AddSpark(builder.Configuration, spark =>
     spark.AddExternalProviders(builder.Configuration);
 
     spark.AddMessaging();
+    // #601: MediaUrlsAddedRecipient resolves the songs' media thumbnails in the background.
+    spark.AddRecipients();
     spark.AddMailManager();
 
     spark.AddSoftDelete();
@@ -78,6 +81,7 @@ builder.Services.AddSpark(builder.Configuration, spark =>
 });
 
 builder.Services.AddScoped<MintPlayerAccess>();
+builder.Services.AddMediaThumbnails();
 // Liveness for the compose healthcheck and the deploy: no checks registered, so it depends on nothing that can be
 // misconfigured, and a bad secret cannot restart-loop the container.
 builder.Services.AddHealthChecks();

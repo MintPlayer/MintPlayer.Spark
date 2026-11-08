@@ -42,6 +42,7 @@
     <Project Path="apps/MintPlayer/MintPlayer.Library/MintPlayer.Library.csproj" />
     <Project Path="apps/MintPlayer/MintPlayer.Migration.Tests/MintPlayer.Migration.Tests.csproj" />
     <Project Path="apps/MintPlayer/MintPlayer.Migration/MintPlayer.Migration.csproj" />
+    <Project Path="apps/MintPlayer/MintPlayer.Tests/MintPlayer.Tests.csproj" />
     <Project Path="apps/MintPlayer/MintPlayer/MintPlayer.csproj" />
   </Folder>
   <Folder Name="/apps/QnA/">

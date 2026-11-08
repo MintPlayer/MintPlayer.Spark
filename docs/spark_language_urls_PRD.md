@@ -1,6 +1,7 @@
 # Language in the URL (`?lang=`), hreflang, sitemap alternates, linkable language picker — PRD and plan
 
-Status: **grilled** (2026-11-08, §6). Issue: #604. Ships **in the same pull request as #602** (generic slugs, PR #605; D12),
+Status: **shipped** in PR #605 (squash `6781e44b3`, merged 2026-11-08; see "Outcome"). Grilled 2026-11-08 (§6).
+Issue: #604 (closed). Shipped **in the same pull request as #602** (generic slugs, PR #605; D12),
 per the owner's grill answer.
 
 ## 1. Goal

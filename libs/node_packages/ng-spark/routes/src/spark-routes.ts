@@ -1,4 +1,6 @@
-import { Routes, Route } from '@angular/router';
+import { CanMatchFn, Routes, Route } from '@angular/router';
+
+const notTheEditPage: CanMatchFn = (_route, segments) => segments.at(-1)?.path !== 'edit';
 
 export interface SparkRouteConfig {
   queryList?: Route['loadComponent'];
@@ -76,6 +78,8 @@ export function sparkObjectRoute(config: SparkObjectRouteConfig): Routes {
   const data = { sparkType: config.type };
   return [
     { path, loadComponent, data },
-    { path: `${path}/:slug`, loadComponent, data },
+    // Never the slug `edit`: listed before sparkRoutes(), `po/<alias>/:id/:slug` would otherwise take
+    // `po/<alias>/:id/edit` from its edit page (#601), as sparkRoutes() itself lists edit before the slug.
+    { path: `${path}/:slug`, loadComponent, data, canMatch: [notTheEditPage] },
   ];
 }
