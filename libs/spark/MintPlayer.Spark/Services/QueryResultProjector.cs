@@ -171,17 +171,19 @@ internal static class QueryResultProjector
     /// </summary>
     public static async Task<IReadOnlyList<QueryResultItem>> ToItemsAsync(
         Raven.Client.Documents.Session.IAsyncDocumentSession session, RowSecurityGate.SecuredRows rows,
-        IReadOnlyList<QueryColumn> columns, string queryName, CancellationToken cancellationToken = default)
+        IReadOnlyList<QueryColumn> columns, string queryName, MintPlayer.Spark.Abstractions.Links.ISparkEntityLinks? links,
+        CancellationToken cancellationToken = default)
     {
         var etags = await RowChangeVectors.ReadAsync(session, rows.Rows.Select(row => row.Id), cancellationToken);
-        return ToItems(rows, columns, queryName, etags);
+        return ToItems(rows, columns, queryName, etags, links);
     }
 
     /// <param name="etags">The document change vector per row id (<see cref="RowChangeVectors"/>); a row
     /// with none (a computed row) carries no etag.</param>
+    /// <param name="links">Stamps each row's canonical page path (<c>href</c>, #602); null leaves it off.</param>
     public static IReadOnlyList<QueryResultItem> ToItems(
         RowSecurityGate.SecuredRows rows, IReadOnlyList<QueryColumn> columns, string queryName,
-        IReadOnlyDictionary<string, string>? etags = null)
+        IReadOnlyDictionary<string, string>? etags = null, MintPlayer.Spark.Abstractions.Links.ISparkEntityLinks? links = null)
     {
         var items = new List<QueryResultItem>();
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -211,6 +213,7 @@ internal static class QueryResultProjector
                 Id = row.Id,
                 Breadcrumb = row.Breadcrumb ?? row.Name,
                 Etag = etags is not null && etags.TryGetValue(row.Id, out var etag) ? etag : null,
+                Href = links?.DetailPath(row),
                 Values = [.. columns.Select(column => ToValue(row, column))],
             });
         }

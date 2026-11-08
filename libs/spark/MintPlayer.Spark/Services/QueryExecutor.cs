@@ -94,6 +94,9 @@ internal partial class QueryExecutor : IQueryExecutor
     /// </summary>
     [Inject] private readonly IAttributeRightsEnforcement? attributeRights = null;
 
+    // Each row's canonical page path (#602). Optional like the two above, for the hand-built executors in tests.
+    [Inject] private readonly MintPlayer.Spark.Abstractions.Links.ISparkEntityLinks? links = null;
+
     /// <summary>The caller's query surface: <paramref name="definition"/> minus its Query-denied attributes.</summary>
     private async Task<EntityTypeDefinition> QuerySurfaceAsync(EntityTypeDefinition definition, CancellationToken cancellationToken)
         => attributeRights is null ? definition : await attributeRights.ForQueryAsync(definition, cancellationToken);
@@ -405,7 +408,7 @@ internal partial class QueryExecutor : IQueryExecutor
             return new QueryResult
             {
                 Columns = authorColumns,
-                Items = await QueryResultProjector.ToItemsAsync(session, allResults, authorColumns, query.Name, cancellationToken),
+                Items = await QueryResultProjector.ToItemsAsync(session, allResults, authorColumns, query.Name, links, cancellationToken),
                 TotalItems = authorTotal,
                 Skip = skip,
                 Take = take,
@@ -449,7 +452,7 @@ internal partial class QueryExecutor : IQueryExecutor
         return new QueryResult
         {
             Columns = columns,
-            Items = await QueryResultProjector.ToItemsAsync(session, paged, columns, query.Name, cancellationToken),
+            Items = await QueryResultProjector.ToItemsAsync(session, paged, columns, query.Name, links, cancellationToken),
             TotalItems = totalItems,
             Skip = skip,
             Take = take,

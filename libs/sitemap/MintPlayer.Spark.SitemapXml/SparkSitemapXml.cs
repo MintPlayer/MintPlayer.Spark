@@ -31,9 +31,9 @@ internal static class SparkSitemapXml
     internal static SparkQuery? ListQuery(EntityTypeDefinition type, IEnumerable<SparkQuery> queries)
         => SparkEntityLinks.ListQuery(type, queries);
 
-    /// <summary>The page's canonical link (spark-po-detail <c>writeSeo</c>): <c>/po/:type/:id/:slug</c>, without the slug when it is empty or "edit".</summary>
-    internal static string DetailUrl(string origin, string typeSegment, QueryResultItem item)
-        => origin + SparkEntityLinks.DetailPath(typeSegment, item.Id, item.Breadcrumb);
+    /// <summary>The page's canonical link: the row's <c>href</c> (#602), the same path the page itself declares; null for a row with no page.</summary>
+    internal static string? DetailUrl(string origin, QueryResultItem item)
+        => string.IsNullOrEmpty(item.Href) ? null : origin + item.Href;
 
     /// <summary>A row value that is true: a <see cref="bool"/>, or a JSON <c>true</c>. Anything else, absence included, is not.</summary>
     internal static bool IsTrue(object? value) => value switch

@@ -155,6 +155,50 @@ Each spike is time-boxed (≤ 1 h), ends with a decision written here, and ships
   (CodeCoverage check-run deep links) that use the bare URL and would now get a 301 each time; the `LegacyRedirects.cs`
   chain in MintPlayer (avoid a double 301).
 
+### Spike results (2026-11-08)
+
+- **S1 → no resolver; a shared URL service instead.** Today `spark-po-detail` loads the object itself, and its load
+  carries the SSR hand-off:
+  - the transfer cache, kept alive by a `PendingTasks` task until the secondary reads are done (`load()`, see the comment
+    on SP3);
+  - reuse of the component when the route moves to another object;
+  - the deleted view, the embedded (board tile) mode, and retry handling.
+
+  A resolver that returns a `RedirectCommand` starts a second navigation, so the object is loaded twice, and po-detail's
+  load would have to be rebuilt around route data. Since the server answers every first load with a 301 (D2), browser-side
+  correction only matters for in-app navigation. **D6 is revised:** `SparkObjectUrlService.apply(item)` in
+  `@mintplayer/ng-spark/services` puts `item.href` in the address bar. It keeps the query (with `lang`, through #604's
+  serializer) and uses `location.replaceState`, so no navigation or second load happens. po-detail calls it in place of
+  `writeSlug`, and any custom page calls it after its own load. In dev mode it also warns when no client route matches the
+  `href` (S3's consistency check).
+- **S2 → `href` on the two payloads that matter, with a fallback for the rest.**
+  - `PersistentObject.href` is set by `ISparkEntityLinks` on the read path (`PersistentObjectReadPath.LoadAsync`, so the page
+    load, the live socket and the prerender's load all have it) and on the create/update results.
+  - `QueryResultItem.href` is set in `QueryResultProjector.ToItems`. It covers grid rows, search, the sitemap and the
+    moderation queue.
+  - References, program units with an `objectId`, board tiles, the `navigate` client operation and the invitation page link
+    through `SparkLinks.detail(type, id)`. That gives `/po/{alias}/{id}`, or the type's template without its slug. The server
+    301 (first load) or `SparkObjectUrlService` (in-app) completes it.
+  - Not stamped on references: the attribute payload has a hand-written converter and no target type, which is a separate
+    change. The client sends no slug of its own, so `spark-slug.ts` is deleted.
+- **S3 → templates and the redirect hook.**
+  - **Template:** `"route": "songs/{id}/{slug}"` on the entity type. Placeholders are `{type}` (alias or id), `{id}` (required)
+    and `{slug}` (optional, last segment only, dropped when the slug is empty or `slug: false`). It is parsed once, and an
+    invalid template throws when the model loads.
+  - **Server matching:** `ISparkEntityLinks.Match(path)` tries every template, then the default `po/{type}/{id}[/{slug}]`.
+    The prerender step then compares the request path with the loaded object's `href` and 301s on any difference. That one
+    rule covers a missing slug, a stale slug, `slug: false`, and a default URL of a type that has a template.
+  - **Client:** `sparkObjectRoute({ type, path?, loadComponent })` declares `path` and `path/:slug` with
+    `data.sparkType`, and po-detail reads the type from the route data when there is no `:type`.
+  - **Natural keys:** `ISparkEntityRedirect` (`Pattern` such as `{provider}/r/{owner}/{repo}`, and
+    `ResolveAsync(values) → SparkEntityTarget(type, id)?`), registered with `AddEntityRedirect<T>()`.
+    `SparkEntityRedirectPrerenderContributor` matches the pattern, calls the lookup, loads the object through `/spark/po/load`
+    (the normal read path) and 301s to its `href`. A null lookup and a denied or missing load all answer the load's own
+    refusal status (404, or 401 for anonymous callers), so the lookup never needs its own authorization.
+- **S5 → what the 301s affect.** No new endpoint, so the route snapshot doesn't change. Tests of `sparkSlug`/`writeSlug` and
+  `SparkSlugTests` move to the new service. MintPlayer's `LegacyRedirects` already carry the legacy slug, so a renamed song
+  costs one more 301 hop, which is accepted. CodeCoverage's bare `/po/...` links (check runs, the graph panel) get one 301.
+
 ## 6. Milestones (one PR)
 
 1. **M1 — server core:** public `ISparkEntityLinks` with the single slug implementation; the contributor 301s for a missing

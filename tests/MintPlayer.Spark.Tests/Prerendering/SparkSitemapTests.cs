@@ -12,17 +12,13 @@ namespace MintPlayer.Spark.Tests.Prerendering;
 public class SparkSitemapTests
 {
     [Fact]
-    public void A_url_is_the_pages_canonical_link()
-        => SparkSitemapXml.DetailUrl("https://mintplayer.com", "song", new QueryResultItem { Id = "Songs/23", Breadcrumb = "Coldplay - A Sky Full of Stars", Values = [] })
+    public void A_url_is_the_rows_href()
+        => SparkSitemapXml.DetailUrl("https://mintplayer.com", new QueryResultItem { Id = "Songs/23", Href = "/po/song/Songs%2F23/coldplay-a-sky-full-of-stars", Values = [] })
             .Should().Be("https://mintplayer.com/po/song/Songs%2F23/coldplay-a-sky-full-of-stars");
 
-    [Theory]
-    [InlineData(null)]
-    [InlineData("!!!")]
-    [InlineData("Edit")]
-    public void A_url_has_no_slug_when_the_page_writes_none(string? breadcrumb)
-        => SparkSitemapXml.DetailUrl("https://mintplayer.com", "tag", new QueryResultItem { Id = "Tags/1", Breadcrumb = breadcrumb, Values = [] })
-            .Should().Be("https://mintplayer.com/po/tag/Tags%2F1");
+    [Fact]
+    public void A_row_without_an_href_has_no_url()
+        => SparkSitemapXml.DetailUrl("https://mintplayer.com", new QueryResultItem { Id = "Tags/1", Values = [] }).Should().BeNull();
 
     [Fact]
     public void Only_a_true_value_makes_an_object_indexable()

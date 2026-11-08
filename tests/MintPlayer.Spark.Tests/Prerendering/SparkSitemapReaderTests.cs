@@ -56,7 +56,8 @@ public class SparkSitemapReaderTests
         => new() { Columns = [], Items = items, TotalItems = total, Skip = 0, Take = items.Length };
 
     private static QueryResultItem Row(string id, string breadcrumb, object? isPublic = null)
-        => new() { Id = id, Breadcrumb = breadcrumb, Values = isPublic is null ? [] : [new QueryResultItemValue { Key = "Public", Value = isPublic }] };
+        // The href the query path stamps (#602): "Songs/1" of breadcrumb "One" is /po/song/Songs%2F1/one.
+        => new() { Id = id, Breadcrumb = breadcrumb, Href = $"/po/{id.Split('/')[0].TrimEnd('s').ToLowerInvariant()}/{Uri.EscapeDataString(id)}/{breadcrumb.ToLowerInvariant()}", Values = isPublic is null ? [] : [new QueryResultItemValue { Key = "Public", Value = isPublic }] };
 
     private static string[] Locs(string xml)
         => System.Text.RegularExpressions.Regex.Matches(xml, "<loc>(.*?)</loc>").Select(m => m.Groups[1].Value).ToArray();

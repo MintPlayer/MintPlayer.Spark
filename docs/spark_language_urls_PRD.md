@@ -133,6 +133,37 @@ Each spike is time-boxed (≤ 1 h), ends with a decision written here, and ships
 - **S5 — single-language apps and `x-default`.** What exactly is rendered with one language (`hreflang="en"` + `x-default`,
   both self-referencing)? Does `?lang=en` on such an app redirect, 404 or render?
 
+### Spike results (2026-11-08)
+
+- **S1 → the serializer works for every router URL.** `RouterLink` builds its `href` with `router.serializeUrl`, and both
+  `navigate` and the address bar go through `UrlSerializer.serialize`. The rule:
+  - add the current `lang` when the tree has none and the current language isn't the default;
+  - never remove a `lang` the tree sets, so the picker's default-language link can carry `?lang=en` and works without JS
+    over a non-default cookie.
+
+  The serializer gets the language service lazily (through `Injector`), because the language service injects the
+  `Router`, which would otherwise be a DI cycle. External URLs never pass through it. Alternates and canonicals are built
+  as strings, not through the serializer, because the default-language alternate must have no `lang`.
+- **S2 → the tags.**
+  - `hreflang` uses the codes from `culture.json`.
+  - `og:locale` is written only for a code with a region (`nl-BE` → `nl_BE`); the Open Graph format needs one, and the apps'
+    plain `en`/`fr`/`nl` get none rather than a guessed region. `og:locale:alternate` follows the same rule.
+  - JSON-LD `inLanguage` is the code.
+  - The canonical is the path plus `?lang=current` when the current language isn't the default (D3: the language served).
+- **S3 → sitemap.** The package's `Url.Links` serializes as `link` in the `http://www.w3.org/1999/xhtml` namespace (checked by
+  reflection on 10.0.0), so the writer only declares the `xhtml` prefix. The page size stays `MaxTake` (1000) rows: 1000 × 3
+  languages is far below the protocol's 50,000 URLs.
+- **S4 → our own `<details>` picker.** `bs-dropdown-menu` only renders a `<details>` inside a navbar nav group, and Spark's
+  topbar isn't one (`spark-shell.component.html:5-27`). So `spark-language-selector` becomes a native
+  `<details><summary>` with a list of `routerLink`s, with component-scoped styles and no Bootstrap classes. Clicking a link
+  closes the `<details>`. Without JS the `<details>` still opens and the `href`s work.
+- **S5 → one language.** The alternates are the page itself (`hreflang="en"`) plus `x-default`. The picker stays hidden.
+  `?lang=en` renders the default language with the bare URL as its canonical.
+- **S6 → no generic refetch.** Labels and translated attribute values are `TranslatedString`s resolved on the client from
+  the language signal, so they follow a switch at once, and breadcrumbs don't depend on the language (§2). Text the server
+  resolves (dashboards, notifications) comes with each request's `Accept-Language`, so later requests are in the new
+  language. A view already on screen is not refetched; this is documented.
+
 ## 5. Milestones (one PR)
 
 1. **M1 — resolution:** `?lang` in `ResolveLanguage` (server), in `SparkLanguageService` (client) and the cookie write

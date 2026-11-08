@@ -18,6 +18,7 @@ internal sealed partial class SparkSearchService : ISparkSearch
     [Inject] private readonly SearchReadPath readPath;
     [Inject] private readonly ISparkSearchProvider provider;
     [Inject] private readonly SparkSearchOptions options;
+    [Inject] private readonly MintPlayer.Spark.Abstractions.Links.ISparkEntityLinks links;
 
     private static readonly StringComparer LabelComparer = StringComparer.OrdinalIgnoreCase;
 
@@ -139,13 +140,13 @@ internal sealed partial class SparkSearchService : ISparkSearch
             .ToList();
     }
 
-    private static SparkSearchHit ToHit(VisibleHit hit, string label)
+    private SparkSearchHit ToHit(VisibleHit hit, string label)
         => new(
             hit.Type.Name,
             hit.Type.Label,
             hit.Row.Id,
             label,
-            SparkEntityLinks.DetailPath(SparkEntityLinks.TypeSegment(hit.Type.Definition), hit.Row.Id, hit.Row.Breadcrumb));
+            links.DetailPath(hit.Type.Definition, hit.Row.Id, hit.Row.Breadcrumb));
 
     [GeneratedRegex(@"^(?<label>.+?) \((?<type>[^()]+?)(?: (?<n>[1-9][0-9]{0,5}))?\)$", RegexOptions.CultureInvariant)]
     private static partial Regex Suffix();

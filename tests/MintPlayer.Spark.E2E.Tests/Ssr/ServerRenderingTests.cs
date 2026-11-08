@@ -58,6 +58,40 @@ public class ServerRenderingTests
     }
 
     [Fact]
+    public async Task A_url_without_a_slug_is_a_301_to_the_canonical_one_keeping_the_query()
+    {
+        using var client = NewHttpClient();
+
+        // #602: the bare /po/{type}/{id} and the type's id instead of its alias are not the canonical page; ?lang stays.
+        using var response = await client.GetAsync($"/po/song/{Uri.EscapeDataString(MintPlayerTestHost.SongId)}?lang=nl");
+
+        response.StatusCode.Should().Be(HttpStatusCode.MovedPermanently);
+        response.Headers.Location!.OriginalString.Should().Be($"{SongPath}?lang=nl");
+    }
+
+    [Fact]
+    public async Task The_canonical_url_is_not_redirected()
+    {
+        using var client = NewHttpClient();
+
+        using var response = await client.GetAsync($"{SongPath}?lang=nl");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    [Fact]
+    public async Task A_missing_song_with_a_slug_is_not_redirected()
+    {
+        using var client = NewHttpClient();
+
+        // The slug of a denied or missing object is never revealed: the status, no Location.
+        using var response = await client.GetAsync($"/po/song/{Uri.EscapeDataString("Songs/e2e-missing")}/any-slug");
+
+        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+        response.Headers.Location.Should().BeNull();
+    }
+
+    [Fact]
     public async Task A_missing_song_is_not_a_200_and_is_not_indexed()
     {
         using var client = NewHttpClient();
