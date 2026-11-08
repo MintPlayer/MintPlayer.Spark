@@ -1,0 +1,30 @@
+<bs-grid>
+  @if (page.errorMessage(); as err) {
+    <bs-alert [color]="colors.danger" class="mb-3">{{ err }}</bs-alert>
+  } @else if (page.item(); as song) {
+    @if (page.entityType(); as et) {
+      <div class="song-actionbar">
+        <button type="button" [color]="colors.secondary" (click)="onBack()">
+          <spark-icon name="arrow-left" /> {{ 'common.back' | t }}
+        </button>
+        @if (editAction(); as edit) {
+          <button type="button" [color]="colors.primary" (click)="onEdit()">
+            @if (edit.icon) { <spark-icon [name]="edit.icon" /> } {{ edit.label | resolveTranslation }}
+          </button>
+        }
+        @if (deleteAction(); as del) {
+          <button type="button" [color]="colors.danger" (click)="onDelete()">
+            @if (del.icon) { <spark-icon [name]="del.icon" /> } {{ del.label | resolveTranslation }}
+          </button>
+        }
+      </div>
+      <app-song-header [item]="song" />
+      <h1 class="h2">{{ song.breadcrumb || song.name }}</h1>
+      <spark-po-presenter [item]="song" [entityType]="et" [allEntityTypes]="page.allEntityTypes()" />
+    }
+  } @else {
+    <div class="song-loading">
+      <bs-spinner />
+    </div>
+  }
+</bs-grid>

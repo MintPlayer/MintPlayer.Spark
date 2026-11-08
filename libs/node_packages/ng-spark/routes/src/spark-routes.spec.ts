@@ -167,5 +167,19 @@ describe('sparkRoutes', () => {
       expect(await harness.navigateByUrl('/artists/Artists%2F7/daft-punk')).toBeInstanceOf(EditStub);
       expect(router.routerState.snapshot.root.firstChild!.params).toEqual({ id: 'Artists/7', slug: 'daft-punk' });
     });
+
+    it("leaves the edit page to sparkRoutes() on Spark's own po/<alias> path", async () => {
+      TestBed.resetTestingModule();
+      TestBed.configureTestingModule({
+        providers: [provideRouter([
+          ...sparkObjectRoute({ type: 'song', path: 'po/song/:id', loadComponent: () => ListStub }),
+          ...sparkRoutes({ poDetail: () => DetailStub }),
+        ])],
+      });
+      const harness = await RouterTestingHarness.create();
+
+      expect(await harness.navigateByUrl('/po/song/Songs%2F23/a-sky-full-of-stars')).toBeInstanceOf(ListStub);
+      expect(await harness.navigateByUrl('/po/song/Songs%2F23/edit')).toBeInstanceOf(EditStub);
+    });
   });
 });

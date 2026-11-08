@@ -18,10 +18,9 @@ import {
   EntityType,
   PersistentObject,
   EntityPermissions,
-  builtInAction,
   confirmationText,
+  detailBuiltInActions,
   filterDetailActions,
-  isShowedOnDetail,
   subQueriesOf,
 } from '@mintplayer/ng-spark/models';
 import {
@@ -376,32 +375,12 @@ export class SparkPoDetailComponent {
       this.deleteAction.set(null);
       this.customActions.set([]);
     } else {
-      // Prefer the per-row affordances (#236 G5) when the server attached them — a row the
-      // caller may read but not mutate then hides its Edit/Delete buttons instead of rendering
-      // ones that 404. `can` is absent for types with no row rule, so fall back to type-level.
-      // The override (not an intersection) is safe because the server computes `can` as the
-      // intersection of type-level rights and the row rule (#243) — it never claims more than
-      // `permissions` does.
-      const can = item.can;
-      // The built-in actions honour `disabledActions` too (#460, D13): the server's
-      // OnDisableActionsAsync decides, and refuses a disabled Edit/Save/Delete with 403 at submit,
-      // so offering the button would only lead to that refusal. Case-insensitive, like the
-      // custom-action filter below.
-      const withheld = new Set((item.disabledActions ?? []).map(name => name.toLowerCase()));
-      // A row opened from the recycle bin (#460): Edit and Delete judge live rows only — the
-      // SoftDelete policy hides a deleted row from both — so they would 404. Restore/Purge come
-      // from the soft-delete entry point's detail action instead.
+      // A row opened from the recycle bin (#460) gets neither Edit and Delete nor custom actions: the SoftDelete
+      // policy hides a deleted row from them, and Restore/Purge come from the soft-delete entry point instead.
       const deletedView = this.isDeletedView();
-      // Edit and Delete come from the composed catalogue (#467, D8): listed only when the caller
-      // holds Edit/T or Delete/T, shown here when their showedOn includes the detail side (an app
-      // removes one with "Edit": null), and the row's `can` must allow it too. The selection rule
-      // does not apply: the page acts on the one object it shows.
-      const edit = builtInAction(actions, 'Edit');
-      const del = builtInAction(actions, 'Delete');
-      this.editAction.set(edit && isShowedOnDetail(edit.showedOn) && !deletedView
-        && (can ? can.edit : permissions.canEdit) && !withheld.has('edit') && !withheld.has('save') ? edit : null);
-      this.deleteAction.set(del && isShowedOnDetail(del.showedOn) && !deletedView
-        && (can ? can.delete : permissions.canDelete) && !withheld.has('delete') ? del : null);
+      const builtIns = detailBuiltInActions(actions, permissions, item, deletedView);
+      this.editAction.set(builtIns.edit);
+      this.deleteAction.set(builtIns.delete);
       // Custom actions only: the built-ins are rendered above as this page's Edit and Delete.
       this.customActions.set(deletedView ? [] : filterDetailActions(actions));
     }
