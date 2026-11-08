@@ -650,6 +650,7 @@ describe('SparkPoDetailComponent', () => {
     it('AsDetail attribute: detail renderer receives the nested PO as value AND in formData', async () => {
       const { harness } = await setup();
       await harness.navigateByUrl('/po/person/people%2F1', SparkPoDetailComponent);
+      await harness.fixture.whenStable();
       const c = presenterOf(harness);
       const item = {
         id: 'people/1',
@@ -668,6 +669,7 @@ describe('SparkPoDetailComponent', () => {
     it('renderer declaring only value gets a filtered bag', async () => {
       const { harness } = await setup();
       await harness.navigateByUrl('/po/person/people%2F1', SparkPoDetailComponent);
+      await harness.fixture.whenStable();
       const c = presenterOf(harness);
       const item = { id: 'people/1', attributes: [{ name: 'FirstName', value: 'Alice' }] } as PersistentObject;
 
@@ -678,6 +680,7 @@ describe('SparkPoDetailComponent', () => {
     it('AsDetail sub-table cell renderer receives the flat row as item', async () => {
       const { harness } = await setup();
       await harness.navigateByUrl('/po/person/people%2F1', SparkPoDetailComponent);
+      await harness.fixture.whenStable();
       const c = presenterOf(harness);
       const row = { Label: 'a', Code: 'X1' };
       const col = { name: 'Code' } as any;
@@ -703,6 +706,7 @@ describe('SparkPoDetailComponent', () => {
     async function mounted() {
       const { harness } = await setup({}, registry);
       await harness.navigateByUrl('/po/person/people%2F1', SparkPoDetailComponent);
+      await harness.fixture.whenStable();
       return presenterOf(harness);
     }
 
