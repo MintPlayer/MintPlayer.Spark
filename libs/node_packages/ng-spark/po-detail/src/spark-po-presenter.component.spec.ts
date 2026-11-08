@@ -66,6 +66,25 @@ describe('SparkPoPresenterComponent', () => {
     expect(getLookupReference).toHaveBeenCalledTimes(1);
   });
 
+  it('keeps its labels through a reload, which hands it a new type and catalogue with the same content', async () => {
+    const { fixture, getLookupReference } = mount();
+    fixture.componentRef.setInput('allEntityTypes', [songType]);
+    await fixture.whenStable();
+    const labels = fixture.componentInstance.lookupReferenceOptions();
+
+    // What sparkObjectPage publishes on every load: the catalogue is fetched afresh, so every object is new.
+    const reloadedType = structuredClone(songType);
+    fixture.componentRef.setInput('entityType', reloadedType);
+    fixture.componentRef.setInput('allEntityTypes', [reloadedType]);
+    fixture.componentRef.setInput('item', structuredClone(song));
+    fixture.detectChanges();
+
+    // Not cleared, not even for a moment: clearing redraws every AsDetail cell and loses a click on its links.
+    expect(fixture.componentInstance.lookupReferenceOptions()).toBe(labels);
+    await fixture.whenStable();
+    expect(getLookupReference).toHaveBeenCalledTimes(1);
+  });
+
   it('asks again for another object', async () => {
     const { fixture, getLookupReference } = mount();
     await fixture.whenStable();
