@@ -18,8 +18,8 @@
           </button>
         }
       </div>
-      <app-song-header [item]="song" />
       <h1 class="h2">{{ song.breadcrumb || song.name }}</h1>
+      <app-song-header [item]="song" />
       <spark-po-presenter [item]="song" [entityType]="et" [allEntityTypes]="page.allEntityTypes()" />
     }
   } @else {

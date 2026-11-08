@@ -13,7 +13,7 @@ import { SparkReturnNavigationService, SparkService } from '@mintplayer/ng-spark
 import { SongHeaderComponent } from './song-header.component';
 
 /**
- * A song's page (#601): the header with its thumbnail and play button, then the song's attributes. Spark's object
+ * A song's page (#601): the title, the header with its thumbnail and play button, then the song's attributes. Spark's object
  * page loads it (canonical URL, SEO, server render: D19) and Spark's presenter draws the attributes (D20); the page
  * adds Edit and Delete by the same rules as Spark's detail page, and no custom actions (Song has none).
  */
