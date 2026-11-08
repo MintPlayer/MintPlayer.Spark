@@ -217,6 +217,24 @@ Each spike is time-boxed (≤ 1 h), ends with a decision written here, and ships
    (301), a stale slug (301), the canonical URL (200), a denied object (404, no `Location`); a grid click lands on the slugged
    URL with no `replaceState`.
 
+### Outcome (2026-11-08, implemented in PR #605)
+
+- **M1–M3** as planned (commits `dbefcff28`, `acb2997c4`). `ISparkEntityLinks` is the only URL builder: links, search,
+  the sitemap, the 301 and the template's reverse `Match`. `spark-slug.ts` and `SparkSlug` are deleted. Tests:
+  `SparkEntityLinksTests` and `SparkCanonicalRedirectTests`, plus the E2E bare-id 301 that keeps `?lang`.
+- **M4 differs from the plan.** There is no `sparkObjectResolver`. `sparkObjectRoute({ type, path, loadComponent? })`
+  stores the type in `data.sparkType`, and `spark-po-detail` reads `params.type ?? data.sparkType` and loads as before.
+  This was chosen during implementation and has not been reviewed by the owner. The component already handles loading,
+  denial and not-found, and the server render already supplies the load. A resolver would only move that load without
+  changing what is fetched.
+- **M5.** The template is `EntityTypeDefinition.Route`. The tier (c) hook is `ISparkEntityRedirect` +
+  `AddEntityRedirect<T>()`, served by `SparkEntityRedirectPrerenderContributor`. Docs: [guide-object-urls.md](guide-object-urls.md).
+  The planned server/client route consistency check became a dev-mode warning from `SparkObjectUrlService` when no client
+  route matches an `href`.
+- **M6, CodeCoverage.** CodeCoverage has no server rendering, so its three `AddEntityRedirect` registrations
+  (`Services/VanityEntityRedirects.cs`) are inert today. The client guards in `vanity-redirects.ts` still do the work.
+  The registrations take effect when the app renders on the server.
+
 ## 7. Grill (owner, 2026-11-08)
 
 - ~~**Q1** Opt-in per app or default?~~ → **On for every app, no app switch; `sparkRoutes({ slugs })` goes away. An entity type

@@ -8,6 +8,7 @@ import { SPARK_CONFIG, SparkConfig, defaultSparkConfig } from './spark-config';
 export const SparkFeatureOrder = {
   config: 0,
   hydration: 10,
+  languageUrls: 15,
   serviceWorker: 20,
   auth: 100,
   clientOperations: 110,

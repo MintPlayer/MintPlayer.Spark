@@ -19,6 +19,7 @@ internal sealed partial class SparkSitemapReader
     [Inject] private readonly IModelLoader models;
     [Inject] private readonly IQueryLoader queries;
     [Inject] private readonly SparkSitemapOptions options;
+    [Inject] private readonly ICultureLoader cultures;
 
     /// <summary>One sitemap per <see cref="SparkSitemapXml.PageSize"/> readable rows of each indexable type's list.</summary>
     public Task<SitemapIndex> IndexAsync(HttpContext context)
@@ -50,11 +51,12 @@ internal sealed partial class SparkSitemapReader
             if (result is null)
                 return null;
             var origin = Origin(context);
+            var culture = cultures.GetCulture();
             return new UrlSet(result.Items
                 .Where(item => match.Type.Seo!.IndexableWhen is not { } attribute || SparkSitemapXml.IsTrue(item.Values.FirstOrDefault(v => v.Key == attribute)?.Value))
                 .Select(item => SparkSitemapXml.DetailUrl(origin, item))
                 .OfType<string>()
-                .Select(loc => new Url { Loc = loc }));
+                .SelectMany(loc => SparkSitemapXml.LanguageUrls(loc, culture)));
         });
 
     private IEnumerable<(EntityTypeDefinition Type, SparkQuery Query)> IndexableLists()

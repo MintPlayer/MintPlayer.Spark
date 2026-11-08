@@ -178,6 +178,35 @@ Each spike is time-boxed (≤ 1 h), ends with a decision written here, and ships
    `fr` cookie, the SSR HTML has the alternates and the right `<html lang>`, a click keeps `lang`, the sitemap lists the
    alternates; a SeoTester scan of the local site shows no `seo.hreflang` findings.
 
+### Outcome (2026-11-08, implemented in PR #605)
+
+- **M1.**
+  - `SparkPrerenderingService.ResolveLanguage(httpContext, languages)` reads `?lang`, then the cookie, each only when
+    configured, and returns the configured casing. `SparkPageLanguageTests` covers the URL over the cookie, an unknown
+    value, case and fallthrough.
+  - The client (`SparkLanguageService.loadCulture`) uses the same order and writes the cookie. Its router `NavigationEnd`
+    subscription follows a `lang` on in-app navigation.
+  - D10: `withSparkLanguage()` is now in every app's `provideHttpClient`. It is not made implicit in `provideSpark`,
+    because the root entry point can't import `services`, where the interceptor lives.
+- **M2.** `SparkUrlSerializer`, installed by `provideSpark(withLanguageUrls())` (`services/src/spark-url-serializer.ts`),
+  in all 8 apps. It resolves the language service through `Injector` at call time, which avoids the DI cycle (S1).
+  - *Superseded:* a first version bridged through `globalThis`. The owner rejected that as a hack (2026-11-08,
+    "globalThis? Please don't do hackish workarounds"), so the serializer is now a provider of its own.
+  - Tests: `spark-url-serializer.spec.ts`.
+- **M3.** `SparkSeoService.writeLanguageTags()` writes the canonical, `og:url`, the alternates (marked `data-spark-seo`),
+  `x-default` and `og:locale(:alternate)`. It runs from `forPage`, `forObject` and `reset`, and again from an effect when
+  the language or the language list changes (`/culture` can answer after the tags were set). JSON-LD gets `inLanguage`.
+  Tests: "language tags (#604)" in `spark-seo.service.spec.ts`.
+- **M4.** `SparkSitemapXml.LanguageUrls(loc, culture)` gives one plain entry for one language. With several languages it
+  gives one entry per language, each with every alternate plus `x-default`. `Write` declares the `xhtml` prefix. Tests in
+  `SparkSitemapTests`.
+- **M5.** `spark-language-selector` is a `<details>` menu with a sibling `.scss`. Its links are `UrlTree`s built from the
+  router's current URL, because the shell sits outside the outlet and a relative `routerLink` would resolve to `/`. Each
+  link names its language explicitly, the default one too. A click closes the menu. CodeCoverage's `bs-select` copy is
+  replaced by `<spark-language-selector />`. Tests: `spark-language-selector.component.spec.ts` and CodeCoverage's
+  `shell.component.spec.ts`.
+- **M6.** [guide-object-urls.md](guide-object-urls.md), guide-ssr.md, [release-notes-602-604.md](release-notes-602-604.md).
+
 ## 6. Grill (owner, 2026-11-08)
 
 - **Q1** Default-language URL → **bare URL = default language, `?lang=xx` for the others** (D2).

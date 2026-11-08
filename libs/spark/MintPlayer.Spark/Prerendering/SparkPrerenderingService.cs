@@ -21,6 +21,9 @@ internal sealed class SparkPrerenderingService : ISpaPrerenderingService
     /// <summary>The cookie ng-spark keeps the chosen language in (spark-language.service.ts).</summary>
     public const string LanguageCookieName = "spark-lang";
 
+    /// <summary>The query parameter that names the page's language (#604): absent for the default language.</summary>
+    public const string LanguageQueryName = "lang";
+
     private readonly SparkPrerenderDispatcher dispatcher;
     private readonly IEnumerable<ISparkPrerenderContributor> contributors;
     private readonly IOptions<SparkPrerenderingOptions> options;
@@ -89,13 +92,22 @@ internal sealed class SparkPrerenderingService : ISpaPrerenderingService
         };
     }
 
-    /// <summary>The <c>spark-lang</c> cookie when it names a configured language, else what an API request would resolve.</summary>
-    private string ResolveLanguage(HttpContext httpContext)
+    /// <summary>
+    /// The page's language (#604 D1): the URL's <c>?lang</c>, then the <c>spark-lang</c> cookie, each only when it names a
+    /// configured language, else what an API request would resolve (<c>Accept-Language</c>, then the default). The URL
+    /// wins so a shared or crawled <c>?lang=nl</c> link renders Dutch whatever the visitor last picked.
+    /// </summary>
+    internal string ResolveLanguage(HttpContext httpContext)
+        => ResolveLanguage(httpContext, cultureLoader.GetCulture().Languages.Keys) ?? cultureResolver.GetCurrentCulture();
+
+    /// <summary><c>?lang</c>, then the cookie, when configured; null otherwise. Case as configured.</summary>
+    internal static string? ResolveLanguage(HttpContext httpContext, IEnumerable<string> languages)
     {
-        var cookie = httpContext.Request.Cookies[LanguageCookieName];
-        if (!string.IsNullOrEmpty(cookie) && cultureLoader.GetCulture().Languages.ContainsKey(cookie))
-            return cookie;
-        return cultureResolver.GetCurrentCulture();
+        var configured = languages.ToList();
+        string? Known(string? code) => string.IsNullOrEmpty(code) ? null
+            : configured.FirstOrDefault(l => string.Equals(l, code, StringComparison.OrdinalIgnoreCase));
+        return Known(httpContext.Request.Query[LanguageQueryName].FirstOrDefault())
+            ?? Known(httpContext.Request.Cookies[LanguageCookieName]);
     }
 
     /// <summary>The timezone cookie when it names a known zone, else the application's default (D10).</summary>

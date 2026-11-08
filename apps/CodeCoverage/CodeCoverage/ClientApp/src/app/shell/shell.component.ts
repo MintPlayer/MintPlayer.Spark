@@ -1,13 +1,11 @@
-import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
-import { KeyValuePipe } from '@angular/common';
+import { ChangeDetectionStrategy, Component, signal } from '@angular/core';
 import { RouterModule } from '@angular/router';
-import { FormsModule } from '@angular/forms';
 import { BsAlertComponent } from '@mintplayer/ng-bootstrap/alert';
-import { BsSelectComponent, BsSelectOption } from '@mintplayer/ng-bootstrap/select';
 import { Color } from '@mintplayer/ng-bootstrap';
-import { SparkShellComponent, SparkShellTopbarEndDirective, SparkShellMainHeaderDirective } from '@mintplayer/ng-spark/shell';
-import { SparkLanguageService } from '@mintplayer/ng-spark/services';
-import { ResolveTranslationPipe, TranslateKeyPipe } from '@mintplayer/ng-spark/pipes';
+import {
+  SparkLanguageSelectorComponent, SparkShellComponent, SparkShellTopbarEndDirective, SparkShellMainHeaderDirective,
+} from '@mintplayer/ng-spark/shell';
+import { TranslateKeyPipe } from '@mintplayer/ng-spark/pipes';
 import { SparkAuthBarComponent } from '@mintplayer/ng-spark/auth/auth-bar';
 
 /**
@@ -29,10 +27,10 @@ import { SparkAuthBarComponent } from '@mintplayer/ng-spark/auth/auth-bar';
 @Component({
   selector: 'app-shell',
   imports: [
-    RouterModule, FormsModule, KeyValuePipe,
-    SparkShellComponent, SparkShellTopbarEndDirective, SparkShellMainHeaderDirective,
-    BsAlertComponent, BsSelectComponent, BsSelectOption,
-    ResolveTranslationPipe, TranslateKeyPipe,
+    RouterModule,
+    SparkShellComponent, SparkShellTopbarEndDirective, SparkShellMainHeaderDirective, SparkLanguageSelectorComponent,
+    BsAlertComponent,
+    TranslateKeyPipe,
     SparkAuthBarComponent,
   ],
   templateUrl: './shell.component.html',
@@ -40,8 +38,6 @@ import { SparkAuthBarComponent } from '@mintplayer/ng-spark/auth/auth-bar';
   changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class ShellComponent {
-  readonly lang = inject(SparkLanguageService);
-
   loginError = signal<string | null>(null);
   readonly dangerColor = Color.danger;
 

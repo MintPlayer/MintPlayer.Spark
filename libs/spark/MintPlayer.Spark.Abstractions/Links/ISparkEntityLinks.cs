@@ -23,7 +23,7 @@ public interface ISparkEntityLinks
     string DetailPath(EntityTypeDefinition type, string id, string? breadcrumb);
 
     /// <summary>
-    /// <see cref="DetailPath"/> for a loaded object, or <see langword="null"/> when it has no page of its own: no id, or a
+    /// <see cref="DetailPath(EntityTypeDefinition, string, string?)"/> for a loaded object, or <see langword="null"/> when it has no page of its own: no id, or a
     /// type that is unknown or only ever embedded.
     /// </summary>
     string? DetailPath(PersistentObject obj);

@@ -40,7 +40,9 @@ public class SparkSitemapReaderTests
     private SparkSitemapReader Reader()
     {
         var services = new ServiceCollection().AddSingleton(readPath).BuildServiceProvider();
-        return new SparkSitemapReader(services.GetRequiredService<IServiceScopeFactory>(), models, queries, new SparkSitemapOptions());
+        var cultures = Substitute.For<ICultureLoader>();
+        cultures.GetCulture().Returns(new CultureConfiguration());
+        return new SparkSitemapReader(services.GetRequiredService<IServiceScopeFactory>(), models, queries, new SparkSitemapOptions(), cultures);
     }
 
     private void Answer(SparkQuery query, Func<ExecuteQueryRequest, QueryResult?> answer)

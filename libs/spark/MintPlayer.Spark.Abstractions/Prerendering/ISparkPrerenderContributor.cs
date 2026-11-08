@@ -35,7 +35,7 @@ public interface ISparkPrerenderContext
     /// <summary>The page's query string, e.g. <c>?deleted=only</c>, or empty.</summary>
     QueryString QueryString { get; }
 
-    /// <summary>The language the page renders in (the <c>spark-lang</c> cookie, then <c>Accept-Language</c>, then the default).</summary>
+    /// <summary>The language the page renders in (the URL's <c>?lang</c>, the <c>spark-lang</c> cookie, then <c>Accept-Language</c>, then the default).</summary>
     string Language { get; }
 
     /// <summary>The viewer's IANA zone (the timezone cookie), or the application's default zone.</summary>
