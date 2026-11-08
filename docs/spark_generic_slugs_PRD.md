@@ -1,6 +1,6 @@
 # Generic slug URLs for persistent objects — PRD and plan
 
-Status: **investigated, decisions proposed, grill in progress** (2026-11-08). Issue: #602. Blocks #601 (song page header).
+Status: **grilled** (2026-11-08, §7). Issue: #602. Blocks #601 (song page header).
 Ships **in one pull request with #604** (language in the URL, `docs/spark_language_urls_PRD.md`), PR #605. Owner,
 2026-11-08 (#604 grill Q5).
 
@@ -90,7 +90,7 @@ All of these are proposals until the grill; the owner's own statements are marke
 | D4 | **The server sends the canonical path with each object** (`href`): on the PO payload, query result rows, reference attribute values, AsDetail rows, client-operation navigate, program units with an `objectId`, board tiles, create/update results. The client never computes a slug; `spark-slug.ts` is deleted. | One source of truth. Six of the ~12 link sites have no breadcrumb (§2 table), so a client helper cannot fix them anyway. The cost (payload size per row) is measured in S2. |
 | D5 | **One client entry point for links**: a `sparkHref` pipe / `SparkLinks.detail(item)` that reads `href` (and falls back to `/po/{type}/{id}` only where no object is at hand, e.g. a bare id). Every `['/po', …]` in §2 switches to it. | Replaces the scattered arrays; `/po` appears in one place on each side. |
 | D6 | **Client-side correction is a routing concern**: a framework resolver (`sparkObjectResolver`) on the detail routes loads the object and returns a `RedirectCommand` (replace URL, no history entry) when the URL is not `href`. The page gets the loaded object from the route; `writeSlug` goes away. It covers in-app navigations to an old URL (bookmarks inside the SPA, `navigate` client operations, app code). | Today only `spark-po-detail` corrects (`writeSlug`), so a custom page gets nothing. During SSR the server has already redirected (D2), so the resolver only acts in the browser. Feasibility in S1. |
-| D7 | **Custom-mapped pages, three tiers** (§4): (a) custom component on the standard URL: route helper, nothing else; (b) custom URL with the id in it: an entity-type URL template in the model; (c) natural-key URLs (vanity): the app's own prerender contributor using `ISparkEntityLinks`. | The owner's open question; see §4. |
+| D7 | **Custom-mapped pages, three tiers** (§4): (a) custom component on the standard URL: route helper, nothing else; (b) custom URL with the id in it: an entity-type URL template in the model; (c) natural-key URLs (vanity): a framework redirect hook where the app supplies only the key → id lookup. All three are built in this PR (owner, Q2/Q4). | The owner's open question; see §4. |
 | D8 | **Types with no meaningful slug** (singletons, empty breadcrumb, breadcrumb equal to the id): no slug segment; the canonical URL is `/po/{type}/{id}`, and a URL *with* a slug 301s to it. | Today an empty slug or `'edit'` already drops the segment (`writeSlug` :393-400). |
 | D9 | **Language: one slug per object, in every language**; only `?lang` differs, and the slug 301 keeps `?lang` (test case in M1). Resolved by #604 D11: the breadcrumb doesn't depend on the culture. *Earlier text, superseded:* **Language**: *open, depends on #604* (`?lang=` in the URL, hreflang, sitemap alternates). Until then the slug comes from the breadcrumb in the **default language**, so one object has one URL. *Pending S4 and #604.* | A slug per language only makes sense once the language is part of the URL (#604); with the cookie alone, the 301 target would depend on a cookie. Owner, 2026-11-08: the URL must carry the language for SEO, and that is its own issue (#604). |
 | D10 | **The `/po` prefix is centralised, not configurable**, except through the per-type URL template (D7b). | YAGNI: no app asked for another prefix; the template covers a real need per type. |
@@ -120,10 +120,17 @@ The client route is declared with `sparkObjectRoute({ type, path: 'songs/:id/:sl
 compares declared templates with the client route (S3).
 
 **(c) Natural-key URLs** (CodeCoverage's `:provider/r/:owner/:repo`). The key isn't the id, so no template can express it
-generically. The app writes its own `ISparkPrerenderContributor` that resolves the object and calls
-`context.Redirect(links.DetailPath(...), permanent: true)`. The public `ISparkEntityLinks` (D3) is what makes that a few
-lines. The existing client guard stays for in-app navigation. Whether CodeCoverage's vanity URLs move is a scope
-question (Q4).
+generically. The framework provides a **dedicated redirect hook** (working name `ISparkEntityRedirect`, shape in S3): the app
+registers a path pattern and a lookup that maps the matched values to `(entityType, id)` or nothing. The framework does
+the rest, the same way as the slug 301:
+- it loads the object through the normal read path, so row security and rights apply;
+- it answers `301` to `ISparkEntityLinks` `href`, keeping `?lang`;
+- a denied object and a missing one get the same response: 404, or 401 for anonymous callers. A private repository is
+  never revealed.
+
+The app only writes the lookup, never the redirect or the authorization. The existing client guard stays for in-app
+navigation. Owner, 2026-11-08 (Q4): CodeCoverage's vanity URLs move to it in this PR; a miss becomes a 404 instead of
+the current redirect home.
 
 ## 5. Spikes
 
@@ -158,17 +165,23 @@ Each spike is time-boxed (≤ 1 h), ends with a decision written here, and ships
    `writeSeo` uses `href`.
 4. **M4 — routing:** `sparkObjectResolver` + `sparkObjectRoute()` per S1; `sparkRoutes()` built on it; po-detail takes the
    resolved object.
-5. **M5 — custom pages:** the URL template (D7b) if S3 keeps it; the docs page for the three tiers; a guide example.
+5. **M5 — custom pages:** the URL template (D7b, owner Q2: built now) per S3, including the server/client route consistency
+   check; the docs page for the three tiers; a guide example per tier.
 6. **M6 — apps:** MintPlayer (slugs already on), CodeCoverage links (vanity redirects, graph panel, home) and whatever Q1/Q4
    decide; release note (ng-spark minor, breaking for apps that used `sparkSlug` or `data.sparkSlug`).
 7. **M7 — verify once at the end:** Spark + ng-spark tests, then on a running MintPlayer host: `curl -I` on `/po/song/{id}`
    (301), a stale slug (301), the canonical URL (200), a denied object (404, no `Location`); a grid click lands on the slugged
    URL with no `replaceState`.
 
-## 7. Open questions for the owner
+## 7. Grill (owner, 2026-11-08)
 
-- **Q1** Should slugs stay opt-in per app (`sparkRoutes({ slugs: true })` + a server option), or become the default for every
-  app? Recommendation: the default, since nothing breaks and SEO only improves; HR/Fleet are behind a login anyway.
-- **Q2** Do we build the per-type URL template (D7b) now, or document tiers (a) and (c) and defer (b) until an app needs it?
+- ~~**Q1** Opt-in per app or default?~~ → **On for every app, no app switch; `sparkRoutes({ slugs })` goes away. An entity type
+  can turn them off with a `"slug": false` property in its model JSON** (default `true`), e.g. when its breadcrumb holds
+  sensitive text. Such a type's `href` is `/po/{type}/{id}` and a URL with a slug 301s to it (same rule as D8). Owner,
+  2026-11-08 (grill: option A + the per-type bool).
+- ~~**Q2** Build the per-type URL template (D7b) now?~~ → **Yes, all three tiers in this PR.** Owner, 2026-11-08: "that provides the most advanced options". S3 designs the template; M5 builds it (no longer "if S3 keeps it").
 - ~~**Q3** Language (D9)~~ → one slug per object (D9, via #604 D11).
-- **Q4** Do CodeCoverage's vanity URLs move to a server contributor (real 301s) in this PR, or stay client guards?
+- ~~**Q4** CodeCoverage's vanity URLs?~~ → **Server-side 301s in this PR, through a framework hook** that ordinary apps don't
+  need (§4 (c)). CodeCoverage's `/{provider}/a/{login}`, `/{provider}/r/{owner}/{repo}` and `…/c/{sha}` become its first users;
+  the client guards stay for in-app navigation. Owner, 2026-11-08 (grill: option A, "The framework should provide a hook
+  that's not needed in normal scenarios").
