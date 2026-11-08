@@ -1,7 +1,8 @@
 # Song page header: large thumbnail with a play button — PRD and plan
 
-Status: **grilled** (2026-11-08, §4b D9–D22; spikes S1–S5 in §4a), ready for M1. #602 merged (PR #605, `6781e44b3`), so this
-is no longer blocked. Issue: #601. One pull request (ng-spark + apps/MintPlayer), per the one-PR rule.
+Status: **implemented** (2026-11-08, M1–M6; refinements found while building in §4c; M7 results in §5). Grilled
+2026-11-08 (§4b D9–D22; spikes S1–S5 in §4a). Issue: #601, PR #603. One pull request (ng-spark + apps/MintPlayer), per the
+one-PR rule. Release note: [release-notes-601.md](release-notes-601.md).
 
 ## 1. Goal
 
@@ -161,7 +162,25 @@ that need a web request (oEmbed) are covered too.
 | D21 | **Play button: neutral round icon** (circle + triangle, scales with the image, accent colour on hover/focus, visible focus ring, `<button aria-label="Play {title}">`). *Closes Q1/D8.* | Owner (G14). With Vimeo/SoundCloud/Spotify heroes, a YouTube-shaped button would be wrong for most platforms. |
 | D22 | **Click appends** (`PlayerService.add`, through the shared queue-item helper of D5), no "added to queue" confirmation. *Closes Q2.* | Owner (G15). Same as the Media table (`media-play-button.component.ts:47-53`) and legacy. |
 
+## 4c. Refinements made while implementing (2026-11-08)
+
+Each one narrows or corrects a §4b decision; the §4b text stays as the grilled record.
+
+| # | Refinement | Evidence |
+|---|---|---|
+| R1 (D11) | The interceptor enqueues through **`IMessageOutbox.EnqueueAsync(session, …)`** (`MintPlayer.Spark.Messaging`), the session-bound half of the bus, and only the URLs **added** by this save (`SongActions.AddedMediaUrls(context.Before, entity)`); an unchanged save enqueues nothing. | `SongActions.cs` `OnBeforeSaveAsync`; tests `SongHeroTests.AddedMediaUrls_*`. Re-sending known URLs would only cost a batched load, but an edit of the title should not wake the recipient. |
+| R2 (D12) | The recipient stores whatever resolved **before** rethrowing (`finally` + `SaveChangesAsync(CancellationToken.None)`), so a retry after a 503 on the third URL does not ask the first two again. A 429 throws `RetryAfterException` with the `Retry-After` delay (delta or date, else 1 min); 400/401/403/404 are the definitive "no". | `MediaUrlsAddedRecipient.cs`, `MediaThumbnailResolvers.cs` `OEmbedClient`; tests `MediaUrlsAddedRecipientTests.Keeps_answers_when_a_later_platform_throws`, `MediaThumbnailResolverTests.Too_many_requests_*`. |
+| R3 (D13) | Vimeo's oEmbed is asked with **`width=1280`**: without it the thumbnail is 295×166, too small for the header; with it, 1280×720. A `thumbnail_url` that is not absolute `https` is treated as none (mixed content on the page). | curl of `https://vimeo.com/api/oembed.json?url=https://vimeo.com/76979871` with and without `width=1280` (2026-11-08); recorded bodies in `MintPlayer.Tests/Fixtures/oembed/`. |
+| R4 (D16) | The hero platforms are an **allow-list, `{youtube, vimeo, soundcloud}`**, not "all but Dailymotion": the site's player loads only the YouTube, Vimeo, SoundCloud and Dailymotion plugins (`ClientApp/src/app/player/video-apis.ts`), Dailymotion does not play (S5), and Spotify and plain files have no plugin. Spotify and Dailymotion thumbnails are still resolved and stored (D13), for a later list or player. | `SongHero.Platforms`; test `SongHeroTests.Pick_skips_platforms_the_player_cannot_play`. **Trap:** add a platform here when its plugin is added to `video-apis.ts`. |
+| R5 (D15) | Overriding `OnLoadAsync` turns off `SupportsBatchedLoad` for Song, so a multi-id load of songs runs `OnLoadAsync` per id instead of one batch. Accepted: correct by design (the framework does this for every decorating actions class), and the song page loads one song. | `DatabaseAccess.cs:151-168`, `DefaultPersistentObjectActions.cs:76`. |
+| R6 (D20) | Edit/Delete visibility is one shared function, **`detailBuiltInActions`** (`@mintplayer/ng-spark/models`), used by both `spark-po-detail` and the song page, instead of a copy of po-detail's rules in the app. | `query-actions.ts`; `spark-po-detail.component.ts` `deriveActions`. |
+| R7 (new) | **`sparkObjectRoute` swallowed the edit page** (a #602 defect, latent until a custom page sat on Spark's own `po/<alias>` path): its `:id/:slug` route matched `po/song/<id>/edit`. The slug route now has a `canMatch` that refuses a last segment `edit`. | `spark-routes.ts` `notTheEditPage`; spec "leaves the edit page to sparkRoutes() on Spark's own po/<alias> path". |
+| R8 (D20) | Known gap, as the D20 trap said: the song page shows no add-on panels (e.g. History) and no custom actions. Song has no custom actions today. | `song-page.component.html`. |
+| R9 (D9) | Document ids are written `MediaThumbnails/{platform}/{platformId}` (RavenDB ids are case-insensitive, so this is the D9 id); a Spotify id is `track:{id}` / `episode:{id}`. | `MediaThumbnail.DocumentId`. |
+
 ## 5. Milestones (one PR; #602 is merged)
+
+Done: M1 (`5d505e17b`), M2–M6 (this PR's later commits). M7: see the end of this section.
 
 1. **M1 — ng-spark:** `spark-po-presenter` (D20) and the object-page lifecycle (D19); `spark-po-detail` uses both; po-detail
    specs rewired (rendering assertions to a presenter spec, no delegating getters). Release note (minor).
