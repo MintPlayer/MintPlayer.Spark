@@ -1,7 +1,7 @@
 # Language in the URL (`?lang=`), hreflang, sitemap alternates, linkable language picker — PRD and plan
 
-Status: **investigated, decisions proposed, not yet grilled** (2026-11-08). Issue: #604. Related: #602 (generic slugs,
-its D9 waits on this). One pull request (Spark core + sitemap + ng-spark + the apps that change).
+Status: **grilled** (2026-11-08, §6). Issue: #604. Ships **in the same pull request as #602** (generic slugs, PR #605; D12),
+per the owner's grill answer.
 
 ## 1. Goal
 
@@ -100,15 +100,16 @@ Each presentation language of a page has **its own URL**, and every page tells c
 | # | Decision | Evidence / reason |
 |---|---|---|
 | D1 | **Precedence: `?lang` (if configured) → cookie → `Accept-Language` → default**, the same on the server (`ResolveLanguage`) and the client (`SparkLanguageService`). An unknown `?lang` value is ignored. | The server render already passes its language to the in-process API calls and to Node (§2), so reading the query in `ResolveLanguage` is enough for SSR. The client must use the same order, or hydration flips. |
-| D2 | **URL policy: every language has an explicit `?lang=xx` URL, and the bare URL is `x-default`**, which keeps negotiating (cookie, then `Accept-Language`). Each `?lang=xx` page is its own canonical. *Open: Q1.* | Google's documented use of `x-default` is the "no language chosen / auto-negotiating" page. A bare URL declared as `en` would serve Dutch to a visitor with a `nl` cookie, so the declared and served language could differ. Legacy's alternative (no parameter = English) is simpler but has that mismatch. |
-| D3 | **Following a `?lang` link also writes the cookie**, so the visitor stays in that language on bare URLs. | Today the picker writes the cookie; a link must not do less. |
-| D4 | **Internal links keep `?lang`** when the current URL has it, generically at the router level (S1), so a crawler that enters at `?lang=nl` keeps crawling Dutch. | Nothing keeps query parameters today (§2). Without this, Dutch is reachable only one link deep and through the sitemap. |
+| D2 | **URL policy: the bare URL is the default language; every other language is `?lang=xx`** (legacy's rule). The default language's hreflang and `x-default` both point at the bare URL. Each page is its own canonical. | Owner, 2026-11-08 (grill Q1: option B; "the legacy app also just looks for the query parameter"). The mismatch that argued against B, a bare URL serving the cookie's language, disappears if the URL is the only source of the language (Q-cookie). *Supersedes the first draft's "explicit `?lang` for every language, bare URL = negotiating x-default".* |
+| D3 | **The cookie stays, as the fallback after the URL**: `?lang` → `spark-lang` cookie → `Accept-Language` → default, on the server render, in the client and in the pages outside the SPA (identity-provider consent, external-login two-factor). Following a `?lang` link writes the cookie. **No redirect** when the cookie decides on a bare URL. The head tags always describe the language actually served: a cookie-chosen Dutch render at a bare URL gets `?lang=nl` as its canonical. | Owner, 2026-11-08 (grill Q2: "url first, cookie as fallback", option C over a 302 to `?lang=xx`). Accepted trade-off: for a visitor with a non-default cookie, a bare URL serves a language other than the one hreflang declares for it. Crawlers send no cookie, so they always get the default language there. |
+| D4 | **Internal links keep `lang` through a custom `UrlSerializer` provided by ng-spark.** `serialize()` adds the current `lang` when the tree sets none, and leaves it out when it equals the default language. An explicit `lang` in the tree (the picker; `null` for the default) wins. Every other query parameter (`returnUrl`, …) keeps Angular's default: dropped unless the link passes it. Apps keep plain `routerLink`/`navigate`; the SSR `href`s carry `?lang`. | Owner, 2026-11-08 (grill Q3: option A). Legacy needed its own `@mintplayer/ng-router` because `queryParamsHandling` is all-or-nothing. `RouterLink`'s `href`, `navigate` and the address bar all go through `UrlSerializer.serialize`. Rejected: Spark's own link directive (invasive, a forgotten link drops `lang`) and a root guard (the `href`s lack `lang`, so crawlers lose it). S1 checks share links, external `redirect_uri`s and `routerLinkActive`/`isActive`. |
 | D5 | **`SparkSeoService` renders the alternates on every page** (`forPage` and `forObject`): one `<link rel="alternate" hreflang>` per configured language (`?lang=xx` URLs), plus `x-default` (bare URL), self-reference included; always, also with one language. `reset()` removes them. The canonical keeps `lang` and drops every other query parameter. | Owner, 2026-11-08 ("always, even for just one language"). SeoTester requires an exact self-reference and return links (§2). |
 | D6 | **The other language statements agree**: `<html lang>` (already set), `og:locale` + `og:locale:alternate`, JSON-LD `inLanguage`. Locale form (`nl` vs `nl_BE`) per S2. | Owner: "there are other places where the language is defined (meta tags)". |
 | D7 | **Sitemap: one `<url>` per object per language** (`?lang=xx`), each with `xhtml:link` alternates for every language plus `x-default`. The sitemap page size is divided by the number of languages to stay under the protocol's 50,000 URLs per file. | The NuGet model already has `Url.Links` (§2). The 50,000 limit is the sitemap protocol's. Serializer namespace check in S3. |
-| D8 | **The picker becomes a list of real links** (`<a href="?lang=xx">`, current path kept), in a `bs-dropdown-menu` whose items are in the SSR HTML. The label is the **language name in its own language** (English, Français, Nederlands). Flags are optional, per app. CodeCoverage's copy is replaced by the shared component. *Open: Q2.* | Crawlers follow `<a href>`, not `<option>` (§2). Flags stand for countries, not languages: Belgian users read Dutch and French, and a `nl` flag or a `fr` flag misrepresents them. Legacy used flags. |
-| D9 | **Switching language is a full page load** (a plain `href`, no `routerLink`), so the server renders the new language. | Strings the server resolves (notifications, breadcrumbs an app resolves itself, dashboards) don't refresh after `setLanguage` today. A full load fixes that without a refetch mechanism. Switching language is rare. |
+| D8 | **The picker is a dropdown of real links that also works with JavaScript disabled.** Items are `routerLink`s with `[queryParams]="{lang}"` (`null` for the default), labelled with the **language name in its own language** (English, Français, Nederlands), no flags. The container is a native `<details><summary>` (`bs-dropdown-menu`'s nav mode, if its SSR output is plain `<details>`; otherwise our own), so it opens without JS. The items stay `routerLink`s: SSR renders their `href`, so they work without JS too (a normal page load then), and with JS a click is an in-app navigation (D9). CodeCoverage's copy is replaced by the shared component. | Owner, 2026-11-08 (grill Q4: option A, "if possible, let the picker work with javascript disabled too (eg `<details>`)"). Crawlers follow `<a href>`, not `<option>` (§2). Flags stand for countries, not languages (Belgium: nl and fr). S4 checks the `<details>` output, keyboard and screen-reader behaviour, and closing after a choice. |
+| D9 | **Switching language is an in-app navigation, never a page reload.** The picker's links are `routerLink`s (`[queryParams]="{lang}"`, still a real `href` in the SSR HTML). The language service follows the `lang` query parameter, and data whose text the server resolves is fetched again when the language changes (S6). | Owner, 2026-11-08: "no page reloads please. At several occasions I already noticed an application reloading the entire page for no apparent reason". *Supersedes the first draft's "full page load".* Today strings the server resolves (notifications, breadcrumbs an app resolves itself, dashboards) don't refresh after `setLanguage`, so the refetch is new work. |
 | D10 | **`withSparkLanguage()` becomes the default**: the client always sends the chosen language as `Accept-Language`. | Without it, six apps resolve server-side strings in the browser's language, not the chosen one (§2). Preview, so no compat flag. |
+| D12 | **#602 and #604 ship in one pull request** (#605), with one combined milestone order: #602's server and link work first, then this plan's resolution, serializer, head tags, sitemap and picker on top. The slug 301 keeps `?lang`. | Owner, 2026-11-08 (grill Q5: option C). They overlap in the canonical link, the link helpers and the prerender step. |
 | D11 | **#602 D9 resolves to one slug per object**: the breadcrumb doesn't depend on the culture (§2), so the slug is the same in every language and only `?lang` differs. | `BreadcrumbResolver` has no culture code. If an app's breadcrumb ever became translated, the 301 would still be correct because it compares against the same breadcrumb. |
 
 ## 4. Spikes
@@ -125,6 +126,10 @@ Each spike is time-boxed (≤ 1 h), ends with a decision written here, and ships
   correctly? Page size versus 50,000 URLs and the 50 MB limit with three languages; robots.txt's `Sitemap:` line unchanged.
 - **S4 — the picker (D8).** `bs-dropdown-menu` nav mode: SSR output, keyboard and screen-reader behaviour, closing on
   selection, the topbar slot API, CodeCoverage's copy. Flags: reuse legacy's `app-flag` or skip them.
+- **S6 — refetch on a language change without a reload (D9).** Which client loads carry server-resolved text (PO load,
+  query results, dashboards, notifications, program units)? Options: the router re-runs resolvers on a `lang` change
+  (`runGuardsAndResolvers: 'paramsOrQueryParamsChange'`), or the loads become signal-driven (`resource()` keyed on the
+  language). The transfer cache must not serve the old language's response.
 - **S5 — single-language apps and `x-default`.** What exactly is rendered with one language (`hreflang="en"` + `x-default`,
   both self-referencing)? Does `?lang=en` on such an app redirect, 404 or render?
 
@@ -142,11 +147,10 @@ Each spike is time-boxed (≤ 1 h), ends with a decision written here, and ships
    `fr` cookie, the SSR HTML has the alternates and the right `<html lang>`, a click keeps `lang`, the sitemap lists the
    alternates; a SeoTester scan of the local site shows no `seo.hreflang` findings.
 
-## 6. Open questions for the owner
+## 6. Grill (owner, 2026-11-08)
 
-- **Q1** Default-language URL: explicit `?lang=en` for every language with the bare URL as a negotiating `x-default` (D2),
-  or legacy's "no parameter = default language"?
-- **Q2** Picker: language names (recommended), flags, or both?
-- **Q3** Should `?lang` stay on every internal link (D4), or only matter on entry (cookie afterwards, sitemap for crawlers)?
-- **Q4** Order with #602: both touch `SparkSeoService` canonical and the link helpers. Which lands first? Recommendation:
-  #602 first, as planned; this PR then adds `lang` to its link helper.
+- **Q1** Default-language URL → **bare URL = default language, `?lang=xx` for the others** (D2).
+- **Q2** The cookie → **stays, as the fallback after the URL; no redirect** (D3).
+- **Q3** Keeping `lang` on links → **a custom `UrlSerializer`** (D4).
+- **Q4** Picker → **language names in a `<details>` dropdown of `routerLink`s, working without JS** (D8).
+- **Q5** Order with #602 → **one pull request for #602 and #604 together** (D12).
