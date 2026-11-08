@@ -1,58 +1,27 @@
-import { ChangeDetectionStrategy, Component, DestroyRef, PendingTasks, computed, effect, inject, input, output, signal, TemplateRef, Type, untracked, viewChildren } from '@angular/core';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { ChangeDetectionStrategy, Component, DestroyRef, computed, effect, inject, input, output, signal, TemplateRef, untracked, viewChildren } from '@angular/core';
 import { CommonModule, NgTemplateOutlet, NgComponentOutlet } from '@angular/common';
-import { ActivatedRoute, Router, RouterModule } from '@angular/router';
+import { Router, RouterModule } from '@angular/router';
 import { HttpErrorResponse } from '@angular/common/http';
 import { Color } from '@mintplayer/ng-bootstrap';
 import { BsAlertComponent } from '@mintplayer/ng-bootstrap/alert';
 import { BsBadgeComponent } from '@mintplayer/ng-bootstrap/badge';
-import { BsCardComponent, BsCardHeaderComponent } from '@mintplayer/ng-bootstrap/card';
-import { BsGridComponent, BsGridRowDirective, BsGridColumnDirective } from '@mintplayer/ng-bootstrap/grid';
+import { BsGridComponent } from '@mintplayer/ng-bootstrap/grid';
 import { BsPriorityNavComponent, BsPriorityNavItemTemplateDirective } from '@mintplayer/ng-bootstrap/priority-nav';
-import { BsTableComponent } from '@mintplayer/ng-bootstrap/table';
-import { BsTabControlComponent, BsTabPageComponent, BsTabPageHeaderDirective } from '@mintplayer/ng-bootstrap/tab-control';
 import { BsSpinnerComponent } from '@mintplayer/ng-bootstrap/spinner';
-import { SparkService, SparkLanguageService, SparkLiveService, SparkReturnNavigationService, SparkSeoService, SparkObjectUrlService, describeSparkError } from '@mintplayer/ng-spark/services';
+import { SparkService, SparkLanguageService, SparkLiveService, SparkReturnNavigationService, describeSparkError } from '@mintplayer/ng-spark/services';
 import { SparkAttributePatch, SparkAttributeRefreshService, SparkClientMethodRegistry, SparkQueryRefreshService } from '@mintplayer/ng-spark/client-operations';
-import {
-  TranslateKeyPipe,
-  ResolveTranslationPipe,
-  AttributeValuePipe,
-  OrDashPipe,
-  LinesPipe,
-  RawAttributeValuePipe,
-  AsDetailColumnsPipe,
-  AsDetailCellValuePipe,
-  ArrayValuePipe,
-  ReferenceLinkRoutePipe,
-  ReferenceChipsPipe,
-  ParsedDatePipe,
-  AsDetailRowRendererPipe,
-  AsDetailLeadingRendererPipe,
-} from '@mintplayer/ng-spark/pipes';
+import { TranslateKeyPipe, ResolveTranslationPipe } from '@mintplayer/ng-spark/pipes';
 import { SparkIconComponent } from '@mintplayer/ng-spark/icon';
-import { SparkAttributeDescriptionComponent } from '@mintplayer/ng-spark/attribute-description';
-import { SparkQueryCardComponent, SparkGridCellComponent, SparkPriorityNavItemDirective, sparkPriorityNavItems } from '@mintplayer/ng-spark/grid';
-import { SPARK_ATTRIBUTE_RENDERERS, SparkResolvedRowRenderer, rendererValue, rowRendererInputs, withDeclaredInputs } from '@mintplayer/ng-spark/renderers';
+import { SparkQueryCardComponent, SparkPriorityNavItemDirective, sparkPriorityNavItems } from '@mintplayer/ng-spark/grid';
 import {
-  AttributeGroup,
-  AttributeTab,
   CustomActionDefinition,
-  EntityAttributeDefinition,
   EntityType,
-  LookupReference,
   PersistentObject,
-  QueryResultItem,
-  ShowedOn,
-  hasShowedOnFlag,
-  isPrimitiveArrayAttribute,
   EntityPermissions,
-  SparkDeletedFilter,
   builtInAction,
   confirmationText,
   filterDetailActions,
   isShowedOnDetail,
-  sparkDetailLink,
   subQueriesOf,
 } from '@mintplayer/ng-spark/models';
 import {
@@ -61,33 +30,29 @@ import {
   SPARK_DETAIL_PANELS,
   SparkDetailContext,
   orderSparkExtensions,
-  parseSparkDeletedParam,
 } from '@mintplayer/ng-spark/panels';
-import { Subscription, combineLatest } from 'rxjs';
+import { Subscription } from 'rxjs';
+import { sparkObjectPage } from './spark-object-page';
+import { SparkPoPresenterComponent } from './spark-po-presenter.component';
 
 @Component({
   selector: 'spark-po-detail',
-  imports: [CommonModule, NgTemplateOutlet, NgComponentOutlet, RouterModule, BsAlertComponent, BsBadgeComponent,BsCardComponent, BsCardHeaderComponent, BsGridComponent, BsGridRowDirective, BsGridColumnDirective, BsPriorityNavComponent, BsPriorityNavItemTemplateDirective, SparkPriorityNavItemDirective, BsTableComponent, BsTabControlComponent, BsTabPageComponent, BsTabPageHeaderDirective, BsSpinnerComponent, SparkIconComponent, SparkQueryCardComponent, SparkGridCellComponent, ResolveTranslationPipe, TranslateKeyPipe, AttributeValuePipe, OrDashPipe, LinesPipe, RawAttributeValuePipe, AsDetailColumnsPipe, AsDetailRowRendererPipe, AsDetailLeadingRendererPipe, AsDetailCellValuePipe, ArrayValuePipe, ReferenceLinkRoutePipe, ReferenceChipsPipe, ParsedDatePipe, SparkAttributeDescriptionComponent],
+  imports: [CommonModule, NgTemplateOutlet, NgComponentOutlet, RouterModule, BsAlertComponent, BsBadgeComponent, BsGridComponent, BsPriorityNavComponent, BsPriorityNavItemTemplateDirective, SparkPriorityNavItemDirective, BsSpinnerComponent, SparkIconComponent, SparkQueryCardComponent, SparkPoPresenterComponent, ResolveTranslationPipe, TranslateKeyPipe],
   templateUrl: './spark-po-detail.component.html',
   styleUrl: './spark-po-detail.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class SparkPoDetailComponent {
-  private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
-  private readonly objectUrl = inject(SparkObjectUrlService);
   private readonly sparkService = inject(SparkService);
-  private readonly pendingTasks = inject(PendingTasks);
   private readonly returnNavigation = inject(SparkReturnNavigationService);
   private readonly queryRefresh = inject(SparkQueryRefreshService);
   private readonly attributeRefresh = inject(SparkAttributeRefreshService);
   private readonly live = inject(SparkLiveService);
-  private readonly seo = inject(SparkSeoService);
   protected readonly lang = inject(SparkLanguageService);
   private readonly navItemDirectives = viewChildren(SparkPriorityNavItemDirective);
   protected readonly navItems = sparkPriorityNavItems(this.navItemDirectives);
   private readonly clientMethods = inject(SparkClientMethodRegistry);
-  protected readonly rendererRegistry = inject(SPARK_ATTRIBUTE_RENDERERS);
 
   /**
    * Add-on panels and action-bar buttons (#460, `SPARK_DETAIL_PANELS` / `SPARK_DETAIL_ACTIONS`).
@@ -150,21 +115,31 @@ export class SparkPoDetailComponent {
   customActionExecuted = output<{ action: CustomActionDefinition; item: PersistentObject; result?: unknown }>();
 
   colors = Color;
+
+  /**
+   * Which object, its load, and its URL and SEO (#601, D19). Declared after the inputs: the route's first emission
+   * arrives while this is built, and `embedded` reads `objectType`.
+   */
+  private readonly page = sparkObjectPage({
+    embedded: () => !!this.objectType(),
+    // The previous object's pushes must not land on this one, even when this load fails.
+    onTargetChange: () => this.stopFollowing(),
+    beforePublish: (et, item) => this.loadRights(et, item),
+  });
+
   /** The page could not be loaded: shown instead of the page. */
-  errorMessage = signal<string | null>(null);
+  readonly errorMessage = this.page.errorMessage;
   /** A custom action failed or was refused: shown above the page, which stays (it used to replace the page). */
   actionError = signal<string | null>(null);
-  entityType = signal<EntityType | null>(null);
+  readonly entityType = this.page.entityType;
 
   /** The sub-queries rendered as cards below the form, in object form (#460, D17). */
   protected readonly subQueries = computed(() => subQueriesOf(this.entityType()));
-  allEntityTypes = signal<EntityType[]>([]);
-  item = signal<PersistentObject | null>(null);
-  lookupReferenceOptions = signal<Record<string, LookupReference>>({});
-  asDetailTypes = signal<Record<string, EntityType>>({});
-  asDetailReferenceOptions = signal<Record<string, Record<string, QueryResultItem[]>>>({});
-  type = '';
-  id = '';
+  readonly allEntityTypes = this.page.allEntityTypes;
+  readonly item = this.page.item;
+  /** The type (id or alias) and the id of the object on screen. */
+  get type(): string { return this.page.type; }
+  get id(): string { return this.page.id; }
   /** The catalogue's Edit (#467, D8) when this page offers it: listed for the caller, on the detail side, and allowed on this row. */
   editAction = signal<CustomActionDefinition | null>(null);
   /** The catalogue's Delete, on the same terms as {@link editAction}. */
@@ -175,12 +150,8 @@ export class SparkPoDetailComponent {
   /** Type-level rights, kept for the add-on context; null until loaded. */
   permissions = signal<EntityPermissions | null>(null);
 
-  /**
-   * The route's `?deleted=` mode (#460, T2): `only` when the row was opened from the recycle bin.
-   * Sent with every load of this object; the server honours it only for `ViewDeleted` holders, so
-   * for anyone else a deleted row stays a 404.
-   */
-  deletedMode = signal<SparkDeletedFilter | null>(null);
+  /** The route's `?deleted=` mode (#460, T2): `only` when the row was opened from the recycle bin. */
+  readonly deletedMode = this.page.deletedMode;
 
   /** True when the page shows a soft-deleted row: nothing but Restore/Purge applies to it. */
   protected readonly isDeletedView = computed(() => this.deletedMode() === 'only');
@@ -232,23 +203,12 @@ export class SparkPoDetailComponent {
   });
 
   constructor() {
-    // The query map too: Restore navigates from `?deleted=only` to the same path without it, and the
-    // object must then be re-read as a live row. The first emission is synchronous, before the inputs
-    // are set, so an embedded object is told apart by the route having no `:type` (a board's route).
-    combineLatest([this.route.paramMap, this.route.queryParamMap])
-      .pipe(takeUntilDestroyed())
-      .subscribe(([params, query]) => {
-        // `:type` on the generic routes; a type's own route (sparkObjectRoute, #602) names it in its data.
-        const type = params.get('type') ?? this.route.snapshot.data['sparkType'] ?? null;
-        if (!type || this.objectType()) return;
-        this.onTargetChange(type, params.get('id') || '', query.get('deleted'));
-      });
-
-    // An embedded object: follows the inputs, and a change of them loads the other object.
+    // An embedded object: follows the inputs, and a change of them loads the other object. A routed one follows
+    // the route through the page lifecycle.
     effect(() => {
       const type = this.objectType();
       const id = this.objectId() ?? '';
-      if (type) untracked(() => this.onTargetChange(type, id, null));
+      if (type) untracked(() => void this.page.open(type, id, null));
     });
 
     // Server-issued `refreshAttribute` patches for the object this page is showing.
@@ -263,10 +223,7 @@ export class SparkPoDetailComponent {
       untracked(() => this.applyAttributePatches(patches));
     });
 
-    inject(DestroyRef).onDestroy(() => {
-      this.stopFollowing();
-      if (!this.objectType()) this.seo.reset();
-    });
+    inject(DestroyRef).onDestroy(() => this.stopFollowing());
   }
 
   // --- live (X4) ---------------------------------------------------------------------------------
@@ -376,99 +333,35 @@ export class SparkPoDetailComponent {
     if (changed) this.item.set({ ...current, attributes });
   }
 
-  private async onTargetChange(type: string, id: string, deleted: string | null): Promise<void> {
-    this.type = type;
-    this.id = id;
-    // The previous object's pushes must not land on this one, even when this load fails.
-    this.stopFollowing();
-    const mode = parseSparkDeletedParam(deleted);
-    // `exclude` is the default on the wire; keep it out of the request like an absent parameter.
-    this.deletedMode.set(mode === 'exclude' ? null : mode);
-    await this.load();
-  }
-
-  /**
-   * Puts the object's canonical page (`href`, #602) in the address bar, or corrects a stale slug, without a
-   * navigation. Not for an embedded object, nor a deleted view (its URL carries `?deleted` and stays as asked).
-   */
-  private writeUrl(item: PersistentObject): void {
-    if (this.objectType()) return;
-    this.objectUrl.apply(item);
-  }
-
-  /** The object as the page's current mode sees it. Only a set mode is sent. */
+  /** The object as the page's current mode sees it. */
   private loadItem(): Promise<PersistentObject> {
-    const deleted = this.deletedMode();
-    return deleted
-      ? this.sparkService.get(this.type, this.id, { deleted })
-      : this.sparkService.get(this.type, this.id);
+    return this.page.loadItem();
   }
 
   /** (Re)loads the object, its type, rights and actions. Also what add-ons call via `context.reload()`. */
-  async load(): Promise<void> {
-    this.errorMessage.set(null);
-    // A load overtaken by a move to another object publishes nothing.
-    const type = this.type, id = this.id;
-    const stale = () => type !== this.type || id !== this.id;
-    // The app is not stable until the load and its secondary reads are done. Angular turns its transfer cache off
-    // at the first stable moment after hydration, and that came between the last answered read and the next await's
-    // continuation: the AsDetail pickers' reads went to the server a second time instead of being answered from the
-    // render (docs/spark_ssr_PRD.md SP3, measured on the song page).
-    const done = this.pendingTasks.add();
-    let secondary: Promise<unknown> = Promise.resolve();
-    try {
-      const [entityTypes, item] = await Promise.all([
-        this.sparkService.getEntityTypes(),
-        this.loadItem()
-      ]);
+  load(): Promise<void> {
+    return this.page.load();
+  }
 
-      const et = entityTypes.find(t => t.id === this.type || t.alias === this.type) || null;
-      // Rights and actions are fetched BEFORE the object is published. The component is reused when
-      // the route moves to another object, so publishing the new object first would show it under
-      // the previous object's Edit/Delete/custom actions until these arrive: a Delete the caller
-      // holds on the page they came from flashed on one where they hold none.
-      const [permissions, actions] = et
-        ? await Promise.all([
-          this.sparkService.getPermissions(et.id),
-          this.sparkService.getCustomActions(et.id)
-        ])
-        : [null, null];
-      if (stale()) return;
-
-      this.allEntityTypes.set(entityTypes);
-      this.entityType.set(et);
-      this.item.set(item);
-      this.writeUrl(item);
-      this.writeSeo(et, item);
-      // Not awaited: the page shows without them.
-      secondary = Promise.all([this.loadLookupReferenceOptions(), this.loadAsDetailTypes()]);
-
+  /**
+   * The object's rights and actions, fetched BEFORE the object is published. The component is reused when the
+   * route moves to another object, so publishing the new object first would show it under the previous object's
+   * Edit/Delete/custom actions until these arrive: a Delete the caller holds on the page they came from flashed on
+   * one where they hold none. What is returned runs once the object is published.
+   */
+  private async loadRights(et: EntityType | null, item: PersistentObject): Promise<() => void> {
+    const [permissions, actions] = et
+      ? await Promise.all([
+        this.sparkService.getPermissions(et.id),
+        this.sparkService.getCustomActions(et.id)
+      ])
+      : [null, null];
+    return () => {
       this.permissions.set(et && permissions && actions ? permissions : null);
       this.loadedActions = et && permissions && actions ? actions : null;
       this.deriveActions(item);
       this.follow(et);
-    } catch (e) {
-      if (stale()) return;
-      const error = e as HttpErrorResponse;
-      this.errorMessage.set(error.error?.error || error.message || 'An unexpected error occurred');
-      if (!this.objectType()) this.seo.noIndex();
-    } finally {
-      secondary.then(done, done);
-    }
-  }
-
-  /**
-   * The page's title and SEO tags (D12), for a routed page only. The canonical URL is the object's `href`, as
-   * {@link writeUrl} puts it in the address bar. A deleted or historical view of
-   * the object is never indexed.
-   */
-  private writeSeo(et: EntityType | null, item: PersistentObject): void {
-    if (this.objectType()) return;
-    if (this.deletedMode()) {
-      this.seo.noIndex();
-      return;
-    }
-    this.seo.forObject(et, item, item.href || sparkDetailLink(et ?? this.type, this.id));
+    };
   }
 
   /**
@@ -512,183 +405,6 @@ export class SparkPoDetailComponent {
       // Custom actions only: the built-ins are rendered above as this page's Edit and Delete.
       this.customActions.set(deletedView ? [] : filterDetailActions(actions));
     }
-  }
-
-  /**
-   * Drawn from the loaded object's own `showedOn`, falling back to the model's (#264, G-Q3): an action sets
-   * it per object in `OnLoadAsync` — a stolen car's police report number is shown, the model says `None`.
-   */
-  visibleAttributes = computed(() => {
-    const loaded = new Map((this.item()?.attributes ?? []).map(a => [a.name, a] as const));
-    return this.entityType()?.attributes
-      .filter(a => hasShowedOnFlag(loaded.get(a.name)?.showedOn ?? a.showedOn, ShowedOn.PersistentObject))
-      .sort((a, b) => a.order - b.order) || [];
-  });
-
-  /** The compact view's fields: those marked `Summary`, by order, or every detail field when the type marks none. */
-  summaryAttributes = computed(() => {
-    const loaded = new Map((this.item()?.attributes ?? []).map(a => [a.name, a] as const));
-    const summary = this.entityType()?.attributes
-      .filter(a => hasShowedOnFlag(loaded.get(a.name)?.showedOn ?? a.showedOn, ShowedOn.Summary))
-      .sort((a, b) => a.order - b.order) ?? [];
-    return summary.length ? summary : this.visibleAttributes();
-  });
-
-  private static readonly DEFAULT_TAB: AttributeTab = { id: '__default__', name: 'Algemeen', label: { nl: 'Algemeen', en: 'General' }, order: 0 };
-
-  ungroupedAttributes = computed(() => {
-    const attrs = this.visibleAttributes();
-    const groupIds = new Set((this.entityType()?.groups || []).map(g => g.id));
-    return attrs.filter(a => !a.group || !groupIds.has(a.group));
-  });
-
-  resolvedTabs = computed((): AttributeTab[] => {
-    const et = this.entityType();
-    const definedTabs = et?.tabs?.length ? [...et.tabs].sort((a, b) => a.order - b.order) : [];
-    const hasUngroupedAttrs = this.ungroupedAttributes().length > 0;
-    const hasUntabbedGroups = (et?.groups || []).some(g => !g.tab);
-
-    if (hasUngroupedAttrs || hasUntabbedGroups || definedTabs.length === 0) {
-      return [SparkPoDetailComponent.DEFAULT_TAB, ...definedTabs];
-    }
-    return definedTabs;
-  });
-
-  groupsForTab(tab: AttributeTab): AttributeGroup[] {
-    const groups = this.entityType()?.groups || [];
-    if (tab.id === '__default__') {
-      return groups.filter(g => !g.tab).sort((a, b) => a.order - b.order);
-    }
-    return groups.filter(g => g.tab === tab.id).sort((a, b) => a.order - b.order);
-  }
-
-  attrsForGroup(group: AttributeGroup): EntityAttributeDefinition[] {
-    return this.visibleAttributes().filter(a => a.group === group.id);
-  }
-
-  /** A list of plain values (`List<string>`, `int[]`): one chip per item. */
-  isPrimitiveList(attr: EntityAttributeDefinition): boolean {
-    return isPrimitiveArrayAttribute(attr);
-  }
-
-  /** The non-blank items of a plain-value list, as text; empty for a missing list. */
-  primitiveListItems(value: unknown): string[] {
-    if (!Array.isArray(value)) return [];
-    return value.filter(v => v !== null && v !== undefined && String(v).trim() !== '').map(v => String(v));
-  }
-
-  /** Whether the attribute's renderer asks for the whole row, without a label (`fullWidth`). */
-  isFullWidthRenderer(attr: EntityAttributeDefinition): boolean {
-    if (!attr.renderer) return false;
-    return this.rendererRegistry.find(r => r.name === attr.renderer)?.fullWidth === true;
-  }
-
-  getDetailRendererComponent(attr: EntityAttributeDefinition): Type<any> | null {
-    if (!attr.renderer) return null;
-    return this.rendererRegistry.find(r => r.name === attr.renderer)?.detailComponent ?? null;
-  }
-
-  /** Inputs of an AsDetail row or leading-cell renderer: the row and the object that owns it. */
-  getRowRendererInputs(renderer: SparkResolvedRowRenderer, row: Record<string, any>, item: PersistentObject): Record<string, any> {
-    return rowRendererInputs(renderer, row, item?.id, item);
-  }
-
-  getDetailRendererInputs(component: Type<any>, attr: EntityAttributeDefinition, item: PersistentObject): Record<string, any> {
-    const itemAttr = item.attributes.find(a => a.name === attr.name);
-    const formData: Record<string, any> = {};
-    for (const a of item.attributes) {
-      formData[a.name] = rendererValue(a);
-    }
-    return withDeclaredInputs(component, {
-      value: rendererValue(itemAttr),
-      attribute: attr,
-      options: attr.rendererOptions,
-      formData,
-      item,
-    });
-  }
-
-  /** Column renderer for a cell of an AsDetail sub-table (so embedded rows honor `col.renderer` too). */
-  getAsDetailCellRendererComponent(col: EntityAttributeDefinition): Type<any> | null {
-    if (!col.renderer) return null;
-    return this.rendererRegistry.find(r => r.name === col.renderer)?.columnComponent ?? null;
-  }
-
-  getAsDetailCellRendererInputs(component: Type<any>, row: Record<string, any>, col: EntityAttributeDefinition): Record<string, any> {
-    return withDeclaredInputs(component, {
-      value: row[col.name],
-      attribute: col,
-      options: col.rendererOptions,
-      item: row,
-    });
-  }
-
-  private async loadLookupReferenceOptions(): Promise<void> {
-    const lookupAttrs = this.visibleAttributes().filter(a => a.lookupReferenceType);
-    if (lookupAttrs.length === 0) return;
-
-    const lookupNames = [...new Set(lookupAttrs.map(a => a.lookupReferenceType!))];
-    // A lookup that fails to load only costs its labels: the attribute then shows its raw value
-    // (attributeValue's fallback) instead of the whole page erroring over a secondary request (#453).
-    const entries = await Promise.all(
-      lookupNames.map(async name => {
-        const result = await this.sparkService.getLookupReference(name).catch(() => null);
-        return [name, result] as const;
-      })
-    );
-    this.lookupReferenceOptions.set(entries.reduce(
-      (acc, [k, v]) => v ? { ...acc, [k]: v } : acc,
-      {} as Record<string, LookupReference>));
-  }
-
-  /** Whether a row of the AsDetail attribute holds a reference in the column that the server sent no breadcrumb for. */
-  private needsReferenceLabels(attribute: string, column: string): boolean {
-    const rows = this.item()?.attributes.find(a => a.name === attribute)?.objects ?? [];
-    return rows.some(row => {
-      const reference = row.attributes.find(a => a.name === column);
-      return reference?.value != null && reference.value !== '' && !reference.breadcrumb;
-    });
-  }
-
-  private async loadAsDetailTypes(): Promise<void> {
-    const asDetailAttrs = this.visibleAttributes().filter(a => a.dataType === 'AsDetail' && a.isArray && a.asDetailType);
-    if (asDetailAttrs.length === 0) return;
-
-    const types = this.allEntityTypes();
-    const newAsDetailTypes: Record<string, EntityType> = {};
-    // Same fallback as the form: a row type is usually absent from the Query-gated catalogue, and
-    // the server now ships its definition alongside the parent (#385).
-    const embedded = this.entityType()?.detailTypes ?? [];
-
-    for (const attr of asDetailAttrs) {
-      const asDetailType =
-        types.find(t => t.clrType === attr.asDetailType)
-        ?? embedded.find(t => t.clrType === attr.asDetailType);
-      if (asDetailType) {
-        newAsDetailTypes[attr.name] = asDetailType;
-        // A cell shows the breadcrumb the server resolved (#185); the reference query's options only label a
-        // reference that came without one. Fetching them for every row cost the song page 14 of its 18 database
-        // requests (docs/spark_ssr_PRD.md I26).
-        const refCols = asDetailType.attributes.filter(a => a.dataType === 'Reference' && a.query
-          && this.needsReferenceLabels(attr.name, a.name));
-        if (refCols.length > 0) {
-          const refEntries = await Promise.all(
-            refCols.map(async col => {
-              const result = await this.sparkService.executeQueryByName(col.query!, {
-                parentId: this.id,
-                parentType: this.type,
-              });
-              return [col.name, result.items] as const;
-            })
-          );
-          this.asDetailReferenceOptions.update(prev => ({
-            ...prev,
-            [attr.name]: refEntries.reduce((acc, [k, v]) => ({ ...acc, [k]: v }), {} as Record<string, QueryResultItem[]>)
-          }));
-        }
-      }
-    }
-    this.asDetailTypes.set(newAsDetailTypes);
   }
 
   /**

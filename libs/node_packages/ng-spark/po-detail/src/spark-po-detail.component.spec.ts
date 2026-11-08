@@ -8,7 +8,9 @@ import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { HttpErrorResponse } from '@angular/common/http';
 import { describe, expect, it, vi, beforeAll, beforeEach, afterEach } from 'vitest';
 
+import { By } from '@angular/platform-browser';
 import { SparkPoDetailComponent } from './spark-po-detail.component';
+import { SparkPoPresenterComponent } from './spark-po-presenter.component';
 import { SparkService, SparkLanguageService } from '@mintplayer/ng-spark/services';
 import { SPARK_ATTRIBUTE_RENDERERS } from '@mintplayer/ng-spark/renderers';
 import {
@@ -113,6 +115,13 @@ async function setup(serviceOverrides: Partial<SparkService> = {}, renderers: an
   });
   const harness = await RouterTestingHarness.create();
   return { harness, service };
+}
+
+/** The attribute presenter the page drew (#601, D20): the attributes, their renderers and their labels live there. */
+function presenterOf(harness: RouterTestingHarness): SparkPoPresenterComponent {
+  const found = harness.fixture.debugElement.query(By.directive(SparkPoPresenterComponent));
+  if (!found) throw new Error('The page drew no attribute presenter.');
+  return found.componentInstance;
 }
 
 describe('SparkPoDetailComponent', () => {
@@ -285,10 +294,10 @@ describe('SparkPoDetailComponent', () => {
 
   it('visibleAttributes filters out query-only attributes', async () => {
     const { harness } = await setup();
-    const c = await harness.navigateByUrl('/po/person/people%2F1', SparkPoDetailComponent);
+    await harness.navigateByUrl('/po/person/people%2F1', SparkPoDetailComponent);
     await harness.fixture.whenStable();
 
-    const names = c.visibleAttributes().map(a => a.name);
+    const names = presenterOf(harness).visibleAttributes().map(a => a.name);
     expect(names).toEqual(['FirstName']);
   });
 
@@ -307,9 +316,9 @@ describe('SparkPoDetailComponent', () => {
         getEntityTypes: vi.fn().mockResolvedValue([withReport]),
         get: vi.fn().mockResolvedValue({ ...existingItem, attributes: [...existingItem.attributes, { id: 'a-report', name: 'PoliceReport', value: 'PV-1', ...report }] }),
       } as Partial<SparkService>);
-      const c = await harness.navigateByUrl('/po/person/people%2F1', SparkPoDetailComponent);
+      await harness.navigateByUrl('/po/person/people%2F1', SparkPoDetailComponent);
       await harness.fixture.whenStable();
-      return c;
+      return presenterOf(harness);
     }
 
     it('draws an attribute the model shows nowhere when the loaded object shows it', async () => {
@@ -640,7 +649,8 @@ describe('SparkPoDetailComponent', () => {
 
     it('AsDetail attribute: detail renderer receives the nested PO as value AND in formData', async () => {
       const { harness } = await setup();
-      const c = await harness.navigateByUrl('/po/person/people%2F1', SparkPoDetailComponent);
+      await harness.navigateByUrl('/po/person/people%2F1', SparkPoDetailComponent);
+      const c = presenterOf(harness);
       const item = {
         id: 'people/1',
         attributes: [
@@ -657,7 +667,8 @@ describe('SparkPoDetailComponent', () => {
 
     it('renderer declaring only value gets a filtered bag', async () => {
       const { harness } = await setup();
-      const c = await harness.navigateByUrl('/po/person/people%2F1', SparkPoDetailComponent);
+      await harness.navigateByUrl('/po/person/people%2F1', SparkPoDetailComponent);
+      const c = presenterOf(harness);
       const item = { id: 'people/1', attributes: [{ name: 'FirstName', value: 'Alice' }] } as PersistentObject;
 
       const inputs = c.getDetailRendererInputs(ValueOnlyRenderer, personType.attributes[0], item);
@@ -666,7 +677,8 @@ describe('SparkPoDetailComponent', () => {
 
     it('AsDetail sub-table cell renderer receives the flat row as item', async () => {
       const { harness } = await setup();
-      const c = await harness.navigateByUrl('/po/person/people%2F1', SparkPoDetailComponent);
+      await harness.navigateByUrl('/po/person/people%2F1', SparkPoDetailComponent);
+      const c = presenterOf(harness);
       const row = { Label: 'a', Code: 'X1' };
       const col = { name: 'Code' } as any;
 
@@ -690,7 +702,8 @@ describe('SparkPoDetailComponent', () => {
 
     async function mounted() {
       const { harness } = await setup({}, registry);
-      return harness.navigateByUrl('/po/person/people%2F1', SparkPoDetailComponent);
+      await harness.navigateByUrl('/po/person/people%2F1', SparkPoDetailComponent);
+      return presenterOf(harness);
     }
 
     it('resolves the detail component of a registered renderer', async () => {
@@ -842,8 +855,8 @@ describe('SparkPoDetailComponent', () => {
 
       // Deduplicated: two attributes share Roles, so it is asked once.
       expect(getLookupReference).toHaveBeenCalledTimes(2);
-      expect(Object.keys(c.lookupReferenceOptions())).toEqual(['Statuses']);
-      expect(c.lookupReferenceOptions()['Statuses']).toBe(statuses);
+      expect(Object.keys(presenterOf(harness).lookupReferenceOptions())).toEqual(['Statuses']);
+      expect(presenterOf(harness).lookupReferenceOptions()['Statuses']).toBe(statuses);
       expect(c.errorMessage()).toBeNull();
       expect(c.item()?.id).toBe('people/1');
     });
@@ -888,12 +901,12 @@ describe('SparkPoDetailComponent', () => {
       const c = await harness.navigateByUrl('/po/person/people%2F1', SparkPoDetailComponent);
       await settle(harness.fixture);
 
-      expect(c.asDetailTypes()['Lines']).toBe(lineType);
-      expect(Object.keys(c.asDetailTypes())).toEqual(['Lines']);
+      expect(presenterOf(harness).asDetailTypes()['Lines']).toBe(lineType);
+      expect(Object.keys(presenterOf(harness).asDetailTypes())).toEqual(['Lines']);
       // The sub-column's query runs scoped to the object on screen.
       expect(executeQueryByName).toHaveBeenCalledTimes(1);
       expect(executeQueryByName).toHaveBeenCalledWith('GetProducts', { parentId: 'people/1', parentType: 'person' });
-      expect(c.asDetailReferenceOptions()).toEqual({ Lines: { Product: products } });
+      expect(presenterOf(harness).asDetailReferenceOptions()).toEqual({ Lines: { Product: products } });
       // And the table resolves the reference id to its label through those options.
       const cells = Array.from(harness.routeNativeElement!.querySelectorAll('tbody td')).map(td => td.textContent?.trim());
       expect(cells).toContain('Widget');
@@ -917,7 +930,7 @@ describe('SparkPoDetailComponent', () => {
       const c = await harness.navigateByUrl('/po/person/people%2F1', SparkPoDetailComponent);
       await settle(harness.fixture);
 
-      expect(c.asDetailTypes()['Lines']).toBe(lineType);
+      expect(presenterOf(harness).asDetailTypes()['Lines']).toBe(lineType);
       expect(executeQueryByName).not.toHaveBeenCalled();
     });
 
@@ -932,7 +945,7 @@ describe('SparkPoDetailComponent', () => {
       const c = await harness.navigateByUrl('/po/person/people%2F1', SparkPoDetailComponent);
       await settle(harness.fixture);
 
-      expect(c.asDetailTypes()['Lines']).toBe(catalogueLine);
+      expect(presenterOf(harness).asDetailTypes()['Lines']).toBe(catalogueLine);
       // The catalogue copy has no Reference column, so there is nothing to query.
       expect(executeQueryByName).not.toHaveBeenCalled();
     });
@@ -945,8 +958,8 @@ describe('SparkPoDetailComponent', () => {
       const c = await harness.navigateByUrl('/po/person/people%2F1', SparkPoDetailComponent);
       await settle(harness.fixture);
 
-      expect(c.asDetailTypes()).toEqual({});
-      expect(c.asDetailReferenceOptions()).toEqual({});
+      expect(presenterOf(harness).asDetailTypes()).toEqual({});
+      expect(presenterOf(harness).asDetailReferenceOptions()).toEqual({});
     });
   });
 
