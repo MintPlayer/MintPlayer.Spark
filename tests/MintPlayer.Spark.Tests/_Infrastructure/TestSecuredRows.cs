@@ -8,7 +8,7 @@ namespace MintPlayer.Spark.Tests._Infrastructure;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <c>QueryResultProjector.ToItems</c> takes a <c>SecuredRows</c> so that no framework path can put
+/// <c>QueryResultProjector.Project</c> takes a <c>SecuredRows</c> so that no framework path can put
 /// rows on the wire without going through the gate. A test of the projector itself — id uniqueness,
 /// AsDetail shaping, column projection — has no rows to secure and nothing to secure them with, so
 /// it needs a way past that parameter.

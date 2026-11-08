@@ -93,6 +93,7 @@ describe('SparkSeoService', () => {
     expect(document.title).toBe('MintPlayer');
     expect(meta('name="robots"')).toBeNull();
     expect(meta('property="og:title"')).toBeNull();
+    expect(meta('property="og:url"')).toBeNull();
     expect(document.head.querySelector('link[rel="canonical"]')).toBeNull();
     expect(jsonLd()).toBeNull();
   });

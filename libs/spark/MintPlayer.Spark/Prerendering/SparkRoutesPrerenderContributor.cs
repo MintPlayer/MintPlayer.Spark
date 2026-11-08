@@ -260,6 +260,22 @@ internal sealed partial class SparkRoutesPrerenderContributor : ISparkPrerenderC
         return escaped.Replace("%21", "!").Replace("%27", "'").Replace("%28", "(").Replace("%29", ")").Replace("%2A", "*").ToString();
     }
 
+    /// <summary>
+    /// A redirect hook's target (#602, tier c): a 301 to a readable object's <c>href</c>, else the load's refusal as the
+    /// page's status. Probed, not supplied: the request names an id the URL does not show, and a supplied request
+    /// travels in the refused page's transfer state, so a private object's id would be in its HTML while a missing
+    /// one's page has none (the redirect hook's existence oracle, found by SparkEntityRedirectSecurityTests).
+    /// </summary>
+    internal static async Task RedirectToObjectAsync(ISparkPrerenderContext context, string type, string id)
+    {
+        var item = await context.ProbeAsync($"{Api}/po/load", new { objectTypeId = type, id });
+        context.SetPageStatus(item.Status);
+        if (item.IsSuccess
+            && item.Read<ObjectReference>()?.Href is { Length: > 0 } href
+            && !Segments(new PathString(href)).SequenceEqual(Segments(context.Path), StringComparer.Ordinal))
+            context.Redirect(href + context.QueryString, permanent: true);
+    }
+
     // The members of POST /spark/po/load the predictions and the 301 need.
     private sealed class ObjectReference
     {

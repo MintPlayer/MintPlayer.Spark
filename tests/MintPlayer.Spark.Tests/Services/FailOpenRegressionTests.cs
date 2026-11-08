@@ -123,7 +123,8 @@ public class FailOpenRegressionTests
             Substitute.For<ISparkContextResolver>(), Substitute.For<IIndexCatalog>(),
             Substitute.For<IPermissionService>(), actionsResolver,
             Substitute.For<IReferenceResolver>(), Substitute.For<IBreadcrumbResolver>(), rowSecurity,
-            TestRowSecurityGate.For(rowSecurity, entityMapper));
+            TestRowSecurityGate.For(rowSecurity, entityMapper),
+            TestQueryResultProjector.For(Substitute.For<IAsyncDocumentSession>(), modelLoader));
 
         var query = new SparkQuery
         {
@@ -184,7 +185,8 @@ public class FailOpenRegressionTests
             permissions, Substitute.For<IActionsResolver>(),
             Substitute.For<IReferenceResolver>(), Substitute.For<IBreadcrumbResolver>(),
             new PermissiveRowSecurity(),
-            TestRowSecurityGate.For(new PermissiveRowSecurity(), entityMapper));
+            TestRowSecurityGate.For(new PermissiveRowSecurity(), entityMapper),
+            TestQueryResultProjector.For(Substitute.For<IAsyncDocumentSession>(), modelLoader));
 
         return (executor, permissions);
     }

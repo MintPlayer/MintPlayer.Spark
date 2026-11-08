@@ -51,6 +51,7 @@ internal sealed partial class SparkSelectionResolver : ISparkSelectionResolver
     [Inject] private readonly Raven.Client.Documents.Session.IAsyncDocumentSession session;
     [Inject] private readonly ILogger<SparkSelectionResolver> logger;
     [Inject] private readonly IAttributeRightsEnforcement attributeRights;
+    [Inject] private readonly IQueryResultProjector projector;
 
     public async Task<IReadOnlyList<QueryResultItem>?> ResolveAsync(
         EntityTypeDefinition entityType,
@@ -108,7 +109,7 @@ internal sealed partial class SparkSelectionResolver : ISparkSelectionResolver
             // as the re-run branch above does.
             var surface = await attributeRights.ForQueryAsync(entityType, cancellationToken);
             var columns = QueryResultProjector.BuildColumns(surface, query);
-            rows = QueryResultProjector.ToItems(
+            rows = projector.ToItems(
                 RowSecurityGate.SecuredRows.FromRowGatedLoad([.. loaded]), columns, $"Selection '{entityType.Name}'");
         }
 

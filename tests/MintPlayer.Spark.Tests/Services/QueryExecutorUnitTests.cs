@@ -32,7 +32,8 @@ public class QueryExecutorUnitTests
         _session, _entityMapper, _modelLoader, _contextResolver,
         _indexCatalog, _permissionService, _actionsResolver, _referenceResolver, _breadcrumbResolver,
         new PermissiveRowSecurity(),
-        TestRowSecurityGate.For(new PermissiveRowSecurity(), _entityMapper));
+        TestRowSecurityGate.For(new PermissiveRowSecurity(), _entityMapper),
+        TestQueryResultProjector.For(_session, _modelLoader));
 
     private static SparkQuery Q(string source) => new()
     {

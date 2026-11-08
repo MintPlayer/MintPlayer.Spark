@@ -33,9 +33,11 @@ public class SparkCanonicalRedirectTests
         context.QueryString.Returns(new QueryString(query));
         context.GetAsync(Arg.Any<string>()).Returns(new SparkPrerenderResponse(200, "[]"));
         context.PostAsync(Arg.Any<string>(), Arg.Any<object?>()).Returns(new SparkPrerenderResponse(200, "{}"));
-        context.PostAsync("/spark/po/load", Arg.Any<object?>()).Returns(loadStatus == 200
+        var load = loadStatus == 200
             ? new SparkPrerenderResponse(200, $$"""{"id":"Songs/1","breadcrumb":"Halo","href":"{{Canonical}}"}""")
-            : new SparkPrerenderResponse(loadStatus, """{"error":"Authentication required"}"""));
+            : new SparkPrerenderResponse(loadStatus, """{"error":"Authentication required"}""");
+        context.PostAsync("/spark/po/load", Arg.Any<object?>()).Returns(load);
+        context.ProbeAsync("/spark/po/load", Arg.Any<object?>()).Returns(load);
         return context;
     }
 
@@ -117,6 +119,7 @@ public class SparkCanonicalRedirectTests
 
         redirect.Values.Should().BeEquivalentTo(new Dictionary<string, string> { ["provider"] = "GitHub", ["owner"] = "octo", ["repo"] = "repo" });
         context.Received(1).Redirect($"{Canonical}?lang=nl", true);
+        await context.DidNotReceiveWithAnyArgs().PostAsync(default!, default);
     }
 
     [Fact]

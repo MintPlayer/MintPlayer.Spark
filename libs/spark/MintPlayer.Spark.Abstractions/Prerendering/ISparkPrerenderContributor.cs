@@ -57,6 +57,14 @@ public interface ISparkPrerenderContext
     Task<SparkPrerenderResponse> PostAsync(string pathAndQuery, object? body);
 
     /// <summary>
+    /// Runs <c>POST <paramref name="pathAndQuery"/></c> as <see cref="PostAsync"/>, but does NOT supply the response to
+    /// the page: for a contributor deciding about the page (redirect it, or refuse it) rather than filling it. A
+    /// supplied request travels in the page's transfer state, key included, so a lookup by a key the URL does not
+    /// show (a redirect hook resolving a name to an id) would put that id in the HTML of the refused page.
+    /// </summary>
+    Task<SparkPrerenderResponse> ProbeAsync(string pathAndQuery, object? body);
+
+    /// <summary>
     /// The page's status: the status of its primary read (PRD D4), e.g. a 404 from the object the page
     /// shows. The first non-success status set wins.
     /// </summary>

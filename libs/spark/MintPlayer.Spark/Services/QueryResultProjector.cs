@@ -1,11 +1,36 @@
+using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
+using MintPlayer.Spark.Abstractions.Links;
 using MintPlayer.Spark.Abstractions.Reflection;
+using Raven.Client.Documents.Session;
 
 namespace MintPlayer.Spark.Services;
+
+/// <summary>Puts a query's secured rows on the wire (<see cref="QueryResultProjector"/>).</summary>
+internal interface IQueryResultProjector
+{
+    /// <summary>
+    /// The rows as wire items, each with its document etag (#467, D14) and its canonical page path (<c>href</c>, #602):
+    /// what every path that puts query rows on the wire calls. One metadata request per page (<see cref="RowChangeVectors"/>).
+    /// </summary>
+    /// <param name="rows">Rows that have been through <c>RowSecurityGate</c>; see <see cref="QueryResultProjector.Project"/>.</param>
+    /// <param name="queryName">Named in the diagnostics, because the author's question is always "which query?".</param>
+    Task<IReadOnlyList<QueryResultItem>> ToItemsAsync(
+        RowSecurityGate.SecuredRows rows, IReadOnlyList<QueryColumn> columns, string queryName, CancellationToken cancellationToken = default);
+
+    /// <summary>The rows as wire items with their <c>href</c> but no etag: a selection, which is never deleted from a grid.</summary>
+    IReadOnlyList<QueryResultItem> ToItems(RowSecurityGate.SecuredRows rows, IReadOnlyList<QueryColumn> columns, string queryName);
+}
 
 /// <summary>
 /// Turns the mapped rows of a query into the wire shape: columns once, then id + values per row.
 /// </summary>
+/// <remarks>
+/// A service, so the row half takes what it needs (the session for the etags, <see cref="ISparkEntityLinks"/> for the
+/// <c>href</c>) from DI instead of from every caller (#602 review). The column half, <see cref="BuildColumns"/>, and the
+/// projection itself, <see cref="Project"/>, stay static: pure functions of their arguments, used by tests and guards
+/// with no container.
+/// </remarks>
 /// <remarks>
 /// The mapping pipeline still builds a <see cref="PersistentObject"/> per row internally, and this
 /// projects it. That is deliberate rather than transitional: redaction
@@ -14,8 +39,24 @@ namespace MintPlayer.Spark.Services;
 /// implementations of the same security-relevant logic. Projecting at the boundary keeps one, and
 /// the saving that mattered — the wire — is realised either way.
 /// </remarks>
-internal static class QueryResultProjector
+[Register(typeof(IQueryResultProjector), ServiceLifetime.Scoped)]
+internal sealed partial class QueryResultProjector : IQueryResultProjector
 {
+    // Only its request executor is used, for a metadata read outside the session's tracking and request count: a caller
+    // on its own session (the live stream opens one per evaluation) loses nothing by the scope's.
+    [Inject] private readonly IAsyncDocumentSession session;
+    [Inject] private readonly ISparkEntityLinks links;
+
+    public async Task<IReadOnlyList<QueryResultItem>> ToItemsAsync(
+        RowSecurityGate.SecuredRows rows, IReadOnlyList<QueryColumn> columns, string queryName, CancellationToken cancellationToken = default)
+    {
+        var etags = await RowChangeVectors.ReadAsync(session, rows.Rows.Select(row => row.Id), cancellationToken);
+        return Project(rows, columns, queryName, etags, links);
+    }
+
+    public IReadOnlyList<QueryResultItem> ToItems(RowSecurityGate.SecuredRows rows, IReadOnlyList<QueryColumn> columns, string queryName)
+        => Project(rows, columns, queryName, etags: null, links);
+
     /// <summary>
     /// The columns of a query over <paramref name="definition"/>: the visible attributes flagged for
     /// the query surface, in declared order — or in the order the query's <c>columnOrder</c> draws them
@@ -165,25 +206,12 @@ internal static class QueryResultProjector
     /// the wire comes through here — so a new row-returning path cannot skip row security without
     /// changing this signature, which is a visible edit rather than a missing line.
     /// </param>
-    /// <summary>
-    /// <see cref="ToItems"/> with every row's document etag (#467, D14) — what every path that puts rows
-    /// on the wire calls: one metadata request per page (<see cref="RowChangeVectors"/>).
-    /// </summary>
-    public static async Task<IReadOnlyList<QueryResultItem>> ToItemsAsync(
-        Raven.Client.Documents.Session.IAsyncDocumentSession session, RowSecurityGate.SecuredRows rows,
-        IReadOnlyList<QueryColumn> columns, string queryName, MintPlayer.Spark.Abstractions.Links.ISparkEntityLinks? links,
-        CancellationToken cancellationToken = default)
-    {
-        var etags = await RowChangeVectors.ReadAsync(session, rows.Rows.Select(row => row.Id), cancellationToken);
-        return ToItems(rows, columns, queryName, etags, links);
-    }
-
     /// <param name="etags">The document change vector per row id (<see cref="RowChangeVectors"/>); a row
     /// with none (a computed row) carries no etag.</param>
     /// <param name="links">Stamps each row's canonical page path (<c>href</c>, #602); null leaves it off.</param>
-    public static IReadOnlyList<QueryResultItem> ToItems(
+    internal static IReadOnlyList<QueryResultItem> Project(
         RowSecurityGate.SecuredRows rows, IReadOnlyList<QueryColumn> columns, string queryName,
-        IReadOnlyDictionary<string, string>? etags = null, MintPlayer.Spark.Abstractions.Links.ISparkEntityLinks? links = null)
+        IReadOnlyDictionary<string, string>? etags = null, ISparkEntityLinks? links = null)
     {
         var items = new List<QueryResultItem>();
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);

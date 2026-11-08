@@ -8,7 +8,7 @@ namespace MintPlayer.Spark.Prerendering;
 /// <summary>
 /// The server half of <see cref="ISparkEntityRedirect"/> (#602, tier c): a page path that matches a registered pattern
 /// is answered before Angular renders. The lookup names an object, which is loaded through <c>POST /spark/po/load</c>
-/// like any page's object, and a readable one is a 301 to its <c>href</c>. Everything else (no object, a missing one,
+/// like any page's object (probed, so nothing of it reaches the page), and a readable one is a 301 to its <c>href</c>. Everything else (no object, a missing one,
 /// a denied one) is the uniform refusal: 404, or 401 for an anonymous caller in an app that can sign in.
 /// </summary>
 internal sealed partial class SparkEntityRedirectPrerenderContributor : ISparkPrerenderContributor
@@ -34,7 +34,8 @@ internal sealed partial class SparkEntityRedirectPrerenderContributor : ISparkPr
             }
 
             // The load decides the status (missing ≡ denied) and the 301 goes to its href, never to a path built here.
-            await SparkRoutesPrerenderContributor.SupplyObjectAsync(context, target.Type, target.Id, canonicalize: true);
+            // Nothing of the lookup is supplied to the page: see RedirectToObjectAsync.
+            await SparkRoutesPrerenderContributor.RedirectToObjectAsync(context, target.Type, target.Id);
             return;
         }
     }

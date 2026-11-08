@@ -82,7 +82,8 @@ public class QueryExecutorIntegrationTests : SparkTestDriver
             // IsAllowedAsync, so its ComposeRowFilterAsync returns null and nulls the queryable. The
             // executor and its gate share one permissive rule, which is what keeps them agreeing.
             executorRowSecurity,
-            TestRowSecurityGate.For(executorRowSecurity, entityMapper, breadcrumbResolver));
+            TestRowSecurityGate.For(executorRowSecurity, entityMapper, breadcrumbResolver),
+            TestQueryResultProjector.For(session, _modelLoader));
     }
 
     private static EntityTypeDefinition PersonTypeDefinition() => new()

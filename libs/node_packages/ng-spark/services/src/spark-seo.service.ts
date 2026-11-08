@@ -48,6 +48,11 @@ export function withSeo(options: SparkSeoOptions): SparkFeature {
 }
 
 const JSON_LD_SELECTOR = 'script[type="application/ld+json"][data-spark-seo]';
+/**
+ * The tags {@link SparkSeoService.reset} removes by name. `og:url` and `og:locale` are not here: they name the language
+ * served (`?lang=xx`, #604), so `writeLanguageTags` writes them beside the canonical, rewrites them when the language
+ * changes, and removes them when the page has no URL.
+ */
 const SEO_META = ['name="description"', 'name="robots"', 'property="og:title"', 'property="og:description"',
   'property="og:image"', 'property="og:type"', 'name="twitter:card"'];
 /** The page's language alternates (#604 D5), marked so {@link SparkSeoService.reset} removes exactly its own. */
@@ -162,6 +167,7 @@ export class SparkSeoService {
     this.objectTags = false;
     this.title.setTitle(this.siteTitle);
     for (const selector of SEO_META) this.meta.removeTag(selector);
+    // No page URL: writeLanguageTags removes the canonical, og:url, og:locale and the hreflang alternates.
     this.pageUrl.set(null);
     this.writeLanguageTags();
     this.setJsonLd(null);

@@ -17,23 +17,7 @@ import { ResolveTranslationPipe } from '@mintplayer/ng-spark/pipes';
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [RouterLink, ResolveTranslationPipe],
-  template: `
-    @if (choices().length > 1) {
-      <details #menu>
-        <summary [attr.aria-label]="lang.t('language', 'Language')">{{ lang.language().toUpperCase() }}</summary>
-        <ul>
-          @for (choice of choices(); track choice.code) {
-            <li>
-              <a [routerLink]="linkTo(choice.code)" [attr.hreflang]="choice.code" [attr.lang]="choice.code"
-                 [attr.aria-current]="choice.code === lang.language() ? 'true' : null" (click)="menu.open = false">
-                {{ choice.name | resolveTranslation }}
-              </a>
-            </li>
-          }
-        </ul>
-      </details>
-    }
-  `,
+  templateUrl: './spark-language-selector.component.html',
   styleUrl: './spark-language-selector.component.scss',
 })
 export class SparkLanguageSelectorComponent {

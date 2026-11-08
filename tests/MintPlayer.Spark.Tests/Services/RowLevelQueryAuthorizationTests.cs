@@ -120,7 +120,8 @@ public class RowLevelQueryAuthorizationTests : SparkTestDriver
             _permissionService, _actionsResolver, _referenceResolver,
             new BreadcrumbResolver(_modelLoader, new BreadcrumbClosure(_modelLoader), permissive, new SparkOptions()),
             rowSecurity,
-            TestRowSecurityGate.For(rowSecurity, entityMapper));
+            TestRowSecurityGate.For(rowSecurity, entityMapper),
+            TestQueryResultProjector.For(session, _modelLoader));
     }
 
     private Task SeedNotesAsync()

@@ -111,9 +111,8 @@ builder.Services.AddSpark(builder.Configuration, spark =>
 
     // The shareable URLs as Spark redirect hooks (#602): answered with a 301 by a server render. Inert until the app
     // renders on the server (AddPrerendering); the client guards in vanity-redirects.ts cover the browser until then.
-    spark.AddEntityRedirect<CodeCoverage.Services.AccountVanityRedirect>();
-    spark.AddEntityRedirect<CodeCoverage.Services.RepositoryVanityRedirect>();
-    spark.AddEntityRedirect<CodeCoverage.Services.CommitVanityRedirect>();
+    // Generated: registers every ISparkEntityRedirect in the project (Services/VanityEntityRedirects.cs).
+    spark.AddEntityRedirects();
 
     // ⚠️ THIS BLOCK CURRENTLY DOES NOTHING, and the comment that used to live here said otherwise.
     //

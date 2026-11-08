@@ -106,7 +106,7 @@ internal sealed class LiveAppStreamSubscription(LiveConnection connection, strin
         var rights = services.GetService<IAttributeRightsEnforcement>();
         var surface = rights is null ? definition : await rights.ForQueryAsync(definition, cancellationToken);
         var columns = QueryResultProjector.BuildColumns(surface, query);
-        var items = await QueryResultProjector.ToItemsAsync(session, secured, columns, query.Name, services.GetService<MintPlayer.Spark.Abstractions.Links.ISparkEntityLinks>(), cancellationToken);
+        var items = await services.GetRequiredService<IQueryResultProjector>().ToItemsAsync(secured, columns, query.Name, cancellationToken);
 
         var skip = Math.Max(0, request.Skip ?? 0);
         var take = Math.Clamp(request.Take ?? 50, 1, QueryReadPath.MaxTake);

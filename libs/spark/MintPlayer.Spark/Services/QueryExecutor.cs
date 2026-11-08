@@ -78,6 +78,7 @@ internal partial class QueryExecutor : IQueryExecutor
     [Inject] private readonly Breadcrumb.IBreadcrumbResolver breadcrumbResolver;
     [Inject] private readonly IRowSecurity rowSecurity;
     [Inject] private readonly IRowSecurityGate gate;
+    [Inject] private readonly IQueryResultProjector projector;
 
     /// <summary>
     /// Nullable so the distinct pass (#431) can recognise the breadcrumb redaction placeholder
@@ -93,9 +94,6 @@ internal partial class QueryExecutor : IQueryExecutor
     /// supplies it; without it the query surface is the whole definition.
     /// </summary>
     [Inject] private readonly IAttributeRightsEnforcement? attributeRights = null;
-
-    // Each row's canonical page path (#602). Optional like the two above, for the hand-built executors in tests.
-    [Inject] private readonly MintPlayer.Spark.Abstractions.Links.ISparkEntityLinks? links = null;
 
     /// <summary>The caller's query surface: <paramref name="definition"/> minus its Query-denied attributes.</summary>
     private async Task<EntityTypeDefinition> QuerySurfaceAsync(EntityTypeDefinition definition, CancellationToken cancellationToken)
@@ -408,7 +406,7 @@ internal partial class QueryExecutor : IQueryExecutor
             return new QueryResult
             {
                 Columns = authorColumns,
-                Items = await QueryResultProjector.ToItemsAsync(session, allResults, authorColumns, query.Name, links, cancellationToken),
+                Items = await projector.ToItemsAsync(allResults, authorColumns, query.Name, cancellationToken),
                 TotalItems = authorTotal,
                 Skip = skip,
                 Take = take,
@@ -452,7 +450,7 @@ internal partial class QueryExecutor : IQueryExecutor
         return new QueryResult
         {
             Columns = columns,
-            Items = await QueryResultProjector.ToItemsAsync(session, paged, columns, query.Name, links, cancellationToken),
+            Items = await projector.ToItemsAsync(paged, columns, query.Name, cancellationToken),
             TotalItems = totalItems,
             Skip = skip,
             Take = take,
@@ -739,7 +737,7 @@ internal sealed record DatabasePage(int TotalItems);
     /// </summary>
     /// <remarks>
     /// Reachable only for a row type with no readable <c>Id</c> at all — and such a type is already
-    /// refused, by name, the first time its grid renders (<c>QueryResultProjector.ToItems</c>), so
+    /// refused, by name, the first time its grid renders (<c>QueryResultProjector.Project</c>), so
     /// in practice nothing gets this far without having been told once already.
     /// </remarks>
     private static InvalidOperationException NoIdToMatchOn(

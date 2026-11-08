@@ -9,7 +9,8 @@ namespace MintPlayer.Spark.Abstractions.Links;
 /// object through the normal read path, and answers <c>301</c> to its canonical page. The app writes only the lookup:
 /// a <see langword="null"/> answer, a missing object and an object the caller may not read all get the same response
 /// (404, or 401 for an anonymous caller), so the lookup needs no authorization of its own and never reveals whether a
-/// private object exists. Register with <c>AddEntityRedirect&lt;T&gt;()</c>; it is resolved per request (scoped).
+/// private object exists. The generated <c>spark.AddEntityRedirects()</c> registers every implementation in the project
+/// (<c>AddSparkFull</c> calls it), or register one with <c>AddEntityRedirect&lt;T&gt;()</c>; it is resolved per request (scoped).
 /// </para>
 /// </summary>
 public interface ISparkEntityRedirect

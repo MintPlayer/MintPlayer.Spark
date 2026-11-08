@@ -235,6 +235,23 @@ Each spike is time-boxed (≤ 1 h), ends with a decision written here, and ships
   (`Services/VanityEntityRedirects.cs`) are inert today. The client guards in `vanity-redirects.ts` still do the work.
   The registrations take effect when the app renders on the server.
 
+### Review round (owner, PR #605, 2026-11-08)
+
+- **Generated registration.** `spark.AddEntityRedirects()` is generated (`EntityRedirectRegistrationGenerator`) for every
+  concrete `ISparkEntityRedirect` in the assembly and is also wired into `AddSparkFull`. CodeCoverage's three hand-written
+  calls are gone. Tests: `EntityRedirectRegistrationGeneratorTests`, and
+  `SparkFullGeneratorTests.Entity_redirects_are_wired_into_AddSparkFull_only_when_there_is_one`.
+- **Existence leak fixed.** `SparkEntityRedirectSecurityTests` runs the real pipeline (security.json, row rule,
+  `/spark/po/load`). It failed red first: a private repository's vanity URL answered 401 like a missing one, but the
+  page's transfer state still carried the load's key, so the private id `errepos/2` was in the HTML. Now the hook
+  loads through the new `ISparkPrerenderContext.ProbeAsync`, which never supplies its response to the page
+  (`SparkRoutesPrerenderContributor.RedirectToObjectAsync`). Green after the fix.
+- **`QueryResultProjector` is a scoped service** (`IQueryResultProjector`, `[Inject]` session + links), so callers no
+  longer thread `ISparkEntityLinks` through. `BuildColumns` and `Project` stay static pure functions for the unit tests.
+  Selection rows (`SparkSelectionResolver`) now carry `href` too.
+- **og:url** is written, rewritten and removed with the canonical by `writeLanguageTags`, since it carries `?lang`. It was
+  not dropped. The `reset()` spec asserts it is gone after `reset()`.
+
 ## 7. Grill (owner, 2026-11-08)
 
 - ~~**Q1** Opt-in per app or default?~~ → **On for every app, no app switch; `sparkRoutes({ slugs })` goes away. An entity type

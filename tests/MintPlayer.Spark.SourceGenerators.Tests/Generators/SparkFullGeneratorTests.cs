@@ -147,6 +147,43 @@ public class SparkFullGeneratorTests
     }
 
     [Fact]
+    public void Entity_redirects_are_wired_into_AddSparkFull_only_when_there_is_one()
+    {
+        var hook = """
+            using System.Collections.Generic;
+            using System.Threading;
+            using System.Threading.Tasks;
+            using MintPlayer.Spark;
+            using MintPlayer.Spark.Abstractions.Links;
+
+            namespace TestApp;
+
+            public class AppContext : SparkContext { }
+
+            internal sealed class AccountRedirect : ISparkEntityRedirect
+            {
+                public string Pattern => "a/{login}";
+                public Task<SparkEntityTarget?> ResolveAsync(IReadOnlyDictionary<string, string> values, CancellationToken cancellationToken) => Task.FromResult<SparkEntityTarget?>(null);
+            }
+            """;
+        var withoutHook = """
+            using MintPlayer.Spark;
+            namespace TestApp;
+            public class AppContext : SparkContext { }
+            """;
+
+        string Run(string source) => string.Join("\n", GeneratorHarness.Run(
+            GeneratorName,
+            [source],
+            referenceTypes: [typeof(SparkContext), typeof(MintPlayer.Spark.Abstractions.Links.ISparkEntityRedirect)],
+            rootNamespace: "TestApp",
+            generatorAssemblyName: GeneratorAssembly).GeneratedSources.Select(s => s.Source));
+
+        Run(hook).Should().Contain("global::TestApp.SparkEntityRedirectsBuilderExtensions.AddEntityRedirects(spark)");
+        Run(withoutHook).Should().NotContain("AddEntityRedirects", "the method is generated only where a hook exists");
+    }
+
+    [Fact]
     public void Migration_is_wired_into_AddSparkFull_via_fully_qualified_call()
     {
         var source = """
