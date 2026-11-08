@@ -1,7 +1,8 @@
 # Generic slug URLs for persistent objects — PRD and plan
 
-Status: **investigated, decisions proposed, not yet grilled** (2026-11-08). Issue: #602. Blocks #601 (song page header).
-One pull request (Spark core + ng-spark + the apps that change), per the one-PR rule.
+Status: **investigated, decisions proposed, grill in progress** (2026-11-08). Issue: #602. Blocks #601 (song page header).
+Ships **in one pull request with #604** (language in the URL, `docs/spark_language_urls_PRD.md`), PR #605. Owner,
+2026-11-08 (#604 grill Q5).
 
 ## 1. Goal
 
@@ -91,7 +92,7 @@ All of these are proposals until the grill; the owner's own statements are marke
 | D6 | **Client-side correction is a routing concern**: a framework resolver (`sparkObjectResolver`) on the detail routes loads the object and returns a `RedirectCommand` (replace URL, no history entry) when the URL is not `href`. The page gets the loaded object from the route; `writeSlug` goes away. It covers in-app navigations to an old URL (bookmarks inside the SPA, `navigate` client operations, app code). | Today only `spark-po-detail` corrects (`writeSlug`), so a custom page gets nothing. During SSR the server has already redirected (D2), so the resolver only acts in the browser. Feasibility in S1. |
 | D7 | **Custom-mapped pages, three tiers** (§4): (a) custom component on the standard URL: route helper, nothing else; (b) custom URL with the id in it: an entity-type URL template in the model; (c) natural-key URLs (vanity): the app's own prerender contributor using `ISparkEntityLinks`. | The owner's open question; see §4. |
 | D8 | **Types with no meaningful slug** (singletons, empty breadcrumb, breadcrumb equal to the id): no slug segment; the canonical URL is `/po/{type}/{id}`, and a URL *with* a slug 301s to it. | Today an empty slug or `'edit'` already drops the segment (`writeSlug` :393-400). |
-| D9 | **Language**: *open, depends on #604* (`?lang=` in the URL, hreflang, sitemap alternates). Until then the slug comes from the breadcrumb in the **default language**, so one object has one URL. *Pending S4 and #604.* | A slug per language only makes sense once the language is part of the URL (#604); with the cookie alone, the 301 target would depend on a cookie. Owner, 2026-11-08: the URL must carry the language for SEO, and that is its own issue (#604). |
+| D9 | **Language: one slug per object, in every language**; only `?lang` differs, and the slug 301 keeps `?lang` (test case in M1). Resolved by #604 D11: the breadcrumb doesn't depend on the culture. *Earlier text, superseded:* **Language**: *open, depends on #604* (`?lang=` in the URL, hreflang, sitemap alternates). Until then the slug comes from the breadcrumb in the **default language**, so one object has one URL. *Pending S4 and #604.* | A slug per language only makes sense once the language is part of the URL (#604); with the cookie alone, the 301 target would depend on a cookie. Owner, 2026-11-08: the URL must carry the language for SEO, and that is its own issue (#604). |
 | D10 | **The `/po` prefix is centralised, not configurable**, except through the per-type URL template (D7b). | YAGNI: no app asked for another prefix; the template covers a real need per type. |
 
 ## 4. Custom-mapped Angular pages (the owner's open question)
@@ -169,5 +170,5 @@ Each spike is time-boxed (≤ 1 h), ends with a decision written here, and ships
 - **Q1** Should slugs stay opt-in per app (`sparkRoutes({ slugs: true })` + a server option), or become the default for every
   app? Recommendation: the default, since nothing breaks and SEO only improves; HR/Fleet are behind a login anyway.
 - **Q2** Do we build the per-type URL template (D7b) now, or document tiers (a) and (c) and defer (b) until an app needs it?
-- **Q3** Language (D9): one slug in the default language, or a slug per language? Settle together with #604.
+- ~~**Q3** Language (D9)~~ → one slug per object (D9, via #604 D11).
 - **Q4** Do CodeCoverage's vanity URLs move to a server contributor (real 301s) in this PR, or stay client guards?
