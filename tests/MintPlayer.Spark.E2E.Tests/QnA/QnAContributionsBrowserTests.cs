@@ -56,9 +56,14 @@ public class QnAContributionsBrowserTests
         if (!response.Ok)
             throw new InvalidOperationException($"/po/update answered {response.Status}: {await response.TextAsync()}");
 
-        // The detail page, with or without its slug (#602): /po/question/{id}[/{slug}].
+        // The detail page, with or without its slug (#602): /po/question/{id}[/{slug}]. Not the edit page this save
+        // started on, /po/question/{id}/edit, which a bare "starts with {id}/" also matched: the helper then returned
+        // before the save navigated anywhere, and the next step raced that navigation (the History click lost to it
+        // on CI runs 42528696421, 42532593223 and 42533773731).
         var detail = "/po/question/" + Encoded(questionId);
-        await page.WaitForURLAsync(url => new Uri(url).AbsolutePath is var path && (path == detail || path.StartsWith(detail + "/", StringComparison.Ordinal)),
+        await page.WaitForURLAsync(url => new Uri(url).AbsolutePath is var path
+                && (path == detail || (path.StartsWith(detail + "/", StringComparison.Ordinal)
+                    && path[(detail.Length + 1)..] is var slug && slug.Length > 0 && !slug.Contains('/') && slug != "edit")),
             new() { Timeout = Timeout });
     }
 
