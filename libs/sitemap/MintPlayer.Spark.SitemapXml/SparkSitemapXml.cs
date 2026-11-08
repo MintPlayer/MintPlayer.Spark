@@ -23,6 +23,8 @@ internal static class SparkSitemapXml
     /// <summary>Rows per sitemap page: the read path's largest page, so a sitemap page is one query.</summary>
     internal const int PageSize = QueryReadPath.MaxTake;
 
+    private const string XhtmlNamespace = "http://www.w3.org/1999/xhtml";
+
     /// <summary>
     /// The type's list query, as <c>po/:type</c> finds it (<c>SparkRoutesPrerenderContributor.SupplyTypeListAsync</c>,
     /// mirroring spark-query-list.component.ts): the query of that entity type, else the one whose source names the
@@ -31,9 +33,33 @@ internal static class SparkSitemapXml
     internal static SparkQuery? ListQuery(EntityTypeDefinition type, IEnumerable<SparkQuery> queries)
         => SparkEntityLinks.ListQuery(type, queries);
 
-    /// <summary>The page's canonical link (spark-po-detail <c>writeSeo</c>): <c>/po/:type/:id/:slug</c>, without the slug when it is empty or "edit".</summary>
-    internal static string DetailUrl(string origin, string typeSegment, QueryResultItem item)
-        => origin + SparkEntityLinks.DetailPath(typeSegment, item.Id, item.Breadcrumb);
+    /// <summary>The page's canonical link: the row's <c>href</c> (#602), the same path the page itself declares; null for a row with no page.</summary>
+    internal static string? DetailUrl(string origin, QueryResultItem item)
+        => string.IsNullOrEmpty(item.Href) ? null : origin + item.Href;
+
+    /// <summary>
+    /// The page's entries, one per language (#604 D7): the default language's URL is bare and the others' carry
+    /// <c>?lang=xx</c>, as the page's own canonical does. With more than one language, every entry links all of them and
+    /// <c>x-default</c> as <c>xhtml:link</c> alternates. With one language, the page is one plain entry.
+    /// </summary>
+    internal static IEnumerable<Url> LanguageUrls(string loc, CultureConfiguration culture)
+    {
+        var languages = culture.Languages.Keys.ToList();
+        if (languages.Count <= 1)
+        {
+            yield return new Url { Loc = loc };
+            yield break;
+        }
+        string In(string language) => string.Equals(language, culture.DefaultLanguage, StringComparison.OrdinalIgnoreCase)
+            ? loc
+            : $"{loc}{(loc.Contains('?') ? '&' : '?')}lang={Uri.EscapeDataString(language)}";
+        foreach (var language in languages)
+        {
+            var links = languages.Select(l => new Link { Rel = "alternate", HrefLang = l, Href = In(l) }).ToList();
+            links.Add(new Link { Rel = "alternate", HrefLang = "x-default", Href = loc });
+            yield return new Url { Loc = In(language), Links = links };
+        }
+    }
 
     /// <summary>A row value that is true: a <see cref="bool"/>, or a JSON <c>true</c>. Anything else, absence included, is not.</summary>
     internal static bool IsTrue(object? value) => value switch
@@ -57,6 +83,8 @@ internal static class SparkSitemapXml
                 writer.WriteProcessingInstruction("xml-stylesheet", $"type=\"text/xsl\" href=\"{stylesheetUrl}\"");
             var namespaces = new XmlSerializerNamespaces();
             namespaces.Add(string.Empty, string.Empty);
+            // The language alternates (#604 D7) as xhtml:link, the prefix search engines document.
+            namespaces.Add("xhtml", XhtmlNamespace);
             Serializers.GetOrAdd(typeof(T), CreateSerializer).Serialize(writer, document, namespaces);
         }
         return builder.ToString();

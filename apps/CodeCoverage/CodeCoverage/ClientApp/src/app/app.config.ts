@@ -9,7 +9,7 @@ import { withScoreRenderers } from '@mintplayer/ng-spark/score-renderers';
 import { withDashboards, sparkDashboardRenderers } from '@mintplayer/ng-spark/dashboards';
 import { withBoards } from '@mintplayer/ng-spark/boards';
 import { withClientOperations } from '@mintplayer/ng-spark/client-operations';
-import { withSparkLanguage, withSparkTimezone } from '@mintplayer/ng-spark/services';
+import { withLanguageUrls, withSparkLanguage, withSparkTimezone } from '@mintplayer/ng-spark/services';
 
 import { routes } from './app.routes';
 import { HOME_URL } from './spark/home-route';
@@ -22,6 +22,7 @@ export const appConfig: ApplicationConfig = {
     provideHttpClient(...withSparkLanguage(), ...withSparkAuth(), ...withSparkTimezone()),
     provideAnimations(),
     provideSpark(
+      withLanguageUrls(),
       withServiceWorker(),
       // ⚠️ Not the default. loginUrl defaults to '/login', and this app mounts '/sign-in'
       // (sparkAuthRoutes(withExternalLogin(...)) in app.routes.ts) — so the route guard, the 401

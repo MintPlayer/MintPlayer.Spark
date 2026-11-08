@@ -166,6 +166,13 @@ export interface EntityType {
    */
   canRead?: boolean;
   alias?: string;
+  /** `false` keeps the breadcrumb's slug out of this type's page URLs (#602). Absent or `true`: slugged. */
+  slug?: boolean;
+  /**
+   * This type's own page URL template (#602), e.g. `songs/{id}/{slug}`, instead of `po/{type}/{id}/{slug}`. The app
+   * mounts a route for it with `sparkObjectRoute`.
+   */
+  route?: string;
   /**
    * Whether an object of this type is followed over `/spark/live` (X4): `spark-po-detail` replaces the
    * shown object when it changes and shows the unavailable state when it is deleted, and `spark-po-edit`

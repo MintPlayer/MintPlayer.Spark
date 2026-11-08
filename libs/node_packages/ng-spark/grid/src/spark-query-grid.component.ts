@@ -2,7 +2,7 @@ import { booleanAttribute, ChangeDetectionStrategy, Component, DestroyRef, Injec
 import { CommonModule, isPlatformBrowser } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import { toSignal } from '@angular/core/rxjs-interop';
-import { NavigationEnd, Router, RouterModule } from '@angular/router';
+import { NavigationEnd, Router, RouterModule, UrlTree } from '@angular/router';
 import { filter, map } from 'rxjs';
 import { Color } from '@mintplayer/ng-bootstrap';
 import { BsAlertComponent } from '@mintplayer/ng-bootstrap/alert';
@@ -268,10 +268,14 @@ export class SparkQueryGridComponent {
     if (target?.closest?.('a, button, input, select, textarea, label, [role="button"], .checkbox-cell')) return;
     if (original && (original.ctrlKey || original.metaKey || original.shiftKey || original.button === 1)) return;
     if (!row || !this.canRead()) return;
-    const route = this.rowRouteFor(row);
-    if (!route) return;
+    const link = this.rowLinkFor(row);
+    if (!link) return;
     this.rowClicked.emit(row);
-    void this.router.navigate(route, { queryParams: this.rowQueryParams() ?? undefined, state: this.rowLinkState() });
+    if (link instanceof UrlTree) {
+      void this.router.navigateByUrl(link, { state: this.rowLinkState() });
+      return;
+    }
+    void this.router.navigate(link, { queryParams: this.rowQueryParams() ?? undefined, state: this.rowLinkState() });
   }
 
   /**
@@ -364,6 +368,28 @@ export class SparkQueryGridComponent {
     if (!type?.clrType) return null;
 
     return ['/po', type.alias || type.id, row.id];
+  }
+
+  /**
+   * The first column's link: the host's `rowRoute`, else the row's canonical page (`href`, #602, slug and the type's
+   * route template included), else {@link rowRouteFor}.
+   *
+   * ⚠️ The href is handed over parsed, as a `UrlTree`: `routerLink` given a path string treats it as one command and
+   * encodes it again, so `/po/car/Cars%2F1` became `Cars%252F1` and the page found no car. A tree ignores
+   * `[queryParams]`, so the row's query parameters go into the tree.
+   */
+  protected isUrlTree(link: unknown): boolean {
+    return link instanceof UrlTree;
+  }
+
+  protected rowLinkFor(row: QueryResultItem): UrlTree | unknown[] | null {
+    if (this.rowRoute()) return this.rowRouteFor(row);
+    const route = this.rowRouteFor(row);
+    if (!route || !row.href) return route;
+    const tree = this.router.parseUrl(row.href);
+    const queryParams = this.rowQueryParams();
+    if (queryParams) tree.queryParams = { ...tree.queryParams, ...queryParams };
+    return tree;
   }
 
   query = signal<SparkQuery | null>(null);

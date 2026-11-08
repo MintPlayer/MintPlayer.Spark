@@ -56,7 +56,10 @@ public class QnAContributionsBrowserTests
         if (!response.Ok)
             throw new InvalidOperationException($"/po/update answered {response.Status}: {await response.TextAsync()}");
 
-        await page.WaitForURLAsync(url => url.EndsWith("/po/question/" + Encoded(questionId), StringComparison.Ordinal), new() { Timeout = Timeout });
+        // The detail page, with or without its slug (#602): /po/question/{id}[/{slug}].
+        var detail = "/po/question/" + Encoded(questionId);
+        await page.WaitForURLAsync(url => new Uri(url).AbsolutePath is var path && (path == detail || path.StartsWith(detail + "/", StringComparison.Ordinal)),
+            new() { Timeout = Timeout });
     }
 
     /// <summary>The edit page's own Save: the form's submit button, never the row editor's footer Save.</summary>

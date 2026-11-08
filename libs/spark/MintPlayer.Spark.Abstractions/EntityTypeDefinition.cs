@@ -36,6 +36,21 @@ public sealed class EntityTypeDefinition
     public string? Alias { get; set; }
 
     /// <summary>
+    /// Whether an object's URL carries the slug of its breadcrumb (<c>/po/song/Songs%2F23/a-sky-full-of-stars</c>), #602.
+    /// <c>null</c> (the default) and <c>true</c> mean yes; <c>false</c> leaves it out, for a type whose breadcrumb holds
+    /// text that should not end up in URLs, browser history and logs. A URL with a slug then 301s to the bare one.
+    /// </summary>
+    public bool? Slug { get; set; }
+
+    /// <summary>
+    /// The URL template of this type's detail page, instead of <c>po/{type}/{id}/{slug}</c> (#602, tier b), e.g.
+    /// <c>songs/{id}/{slug}</c>. Placeholders: <c>{type}</c> (the alias, else the id), <c>{id}</c> (required) and
+    /// <c>{slug}</c> (optional, last segment only). Links, the sitemap, search and the server's 301s follow it; the app
+    /// declares the matching client route with <c>sparkObjectRoute({ type, path })</c>. <c>null</c> keeps the default.
+    /// </summary>
+    public string? Route { get; set; }
+
+    /// <summary>
     /// Whether the current caller may open a single object of this type — the <c>Read</c> right,
     /// answered per request rather than stored in the model.
     /// </summary>

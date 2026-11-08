@@ -1,22 +1,13 @@
 <spark-shell [title]="'app.title' | t" breakpoint="md">
   <!--
-    Replaces the slot's default (<spark-language-selector/>), so the language
-    selector is re-rendered here explicitly — omitting it would silently drop it.
+    Replaces the slot's default (<spark-language-selector/>), so the library's language
+    selector is placed here explicitly — omitting it would silently drop it.
     The sign-in control is a plain link to /sign-in, which renders one button per provider
     the server reports. It is app-owned only because this topbar slot is; there is nothing
     forge-specific left in it.
   -->
   <div *sparkShellTopbarEnd class="d-flex align-items-center gap-2">
-    @if (lang.languages() | keyvalue; as langs) {
-      @if (langs.length > 1) {
-        <bs-select [ngModel]="lang.language()"
-                   (ngModelChange)="lang.setLanguage($event)">
-          @for (l of langs; track l.key) {
-            <option [ngValue]="l.key">{{ l.value | resolveTranslation }}</option>
-          }
-        </bs-select>
-      }
-    }
+    <spark-language-selector />
     <!--
       The library bar, not a hand-written copy of it. It renders Account + logout when signed in,
       and the sign-in link otherwise. The account page shows who is signed in and offers passkeys

@@ -109,6 +109,11 @@ builder.Services.AddSpark(builder.Configuration, spark =>
     spark.AddControllers();
     spark.UseControllers();
 
+    // The shareable URLs as Spark redirect hooks (#602): answered with a 301 by a server render. Inert until the app
+    // renders on the server (AddPrerendering); the client guards in vanity-redirects.ts cover the browser until then.
+    // Generated: registers every ISparkEntityRedirect in the project (Services/VanityEntityRedirects.cs).
+    spark.AddEntityRedirects();
+
     // ⚠️ THIS BLOCK CURRENTLY DOES NOTHING, and the comment that used to live here said otherwise.
     //
     // WarnOnly is documented as "ignored when RequireAntiforgery is off", and RequireAntiforgery is

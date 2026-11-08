@@ -4,7 +4,7 @@ import { provideHttpClient } from '@angular/common/http';
 import { provideAnimations } from '@angular/platform-browser/animations';
 import { provideSpark } from '@mintplayer/ng-spark';
 import { withServiceWorker } from '@mintplayer/ng-spark/pwa';
-import { withSparkLanguage, withSparkTimezone } from '@mintplayer/ng-spark/services';
+import { withLanguageUrls, withSparkLanguage, withSparkTimezone } from '@mintplayer/ng-spark/services';
 import { withAuth, withSparkAuth } from '@mintplayer/ng-spark/auth';
 import { withClientOperations } from '@mintplayer/ng-spark/client-operations';
 import { withNotifications } from '@mintplayer/ng-spark/notifications';
@@ -23,6 +23,7 @@ export const appConfig: ApplicationConfig = {
     provideHttpClient(...withSparkLanguage(), ...withSparkAuth(), ...withSparkTimezone()),
     provideAnimations(),
     provideSpark(
+      withLanguageUrls(),
       // The PWA (docs/guide-pwa.md): Spark's update policy, and push clicks navigate in-app (X10).
       withServiceWorker(),
       // External sign-in only: the sign-in page is /sign-in (there is no /login page; the default sent the auth bar and

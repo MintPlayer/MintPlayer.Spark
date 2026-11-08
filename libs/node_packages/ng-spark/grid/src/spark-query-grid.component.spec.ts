@@ -243,6 +243,16 @@ describe('SparkQueryGridComponent', () => {
       expect(c.permissions()?.canRead).toBe(true);
     });
 
+    it("links a row to its href without encoding the encoded id again, keeping ?deleted (#602)", async () => {
+      const page = { ...samplePage, items: [{ ...samplePage.items[0], href: '/po/person/people%2F1/alice' }] };
+      const { fixture } = await setup({ executeQuery: vi.fn().mockResolvedValue(page) }, { deleted: 'only' });
+
+      const link: HTMLAnchorElement | null = fixture.nativeElement.querySelector('a[href]');
+      // routerLink given the href string rendered /po/person/people%252F1/alice, a person who does not exist.
+      expect(link?.getAttribute('href')).toBe('/po/person/people%2F1/alice?deleted=only');
+      fixture.destroy();
+    });
+
     it('a click anywhere on a recycle-bin row opens it, with ?deleted and the list as the return URL', async () => {
       const { fixture, c } = await setup({}, { deleted: 'only' });
       const navigate = vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
@@ -254,6 +264,11 @@ describe('SparkQueryGridComponent', () => {
         queryParams: { deleted: 'only' },
         state: { sparkReturnUrl: TestBed.inject(Router).url },
       }));
+
+      // A row with an href (#602) opens its canonical page, the query parameters added.
+      const navigateByUrl = vi.spyOn(TestBed.inject(Router), 'navigateByUrl').mockResolvedValue(true);
+      (c as any).onRowClick({ row: { ...row, href: '/po/person/people%2F1/ada' }, rowIndex: 0, rowKey: 'people/1', originalEvent: new MouseEvent('click') });
+      expect(TestBed.inject(Router).serializeUrl(navigateByUrl.mock.calls[0][0] as any)).toBe('/po/person/people%2F1/ada?deleted=only');
 
       // A click on a control inside the row (a vote button, the link itself) is the control's.
       navigate.mockClear();

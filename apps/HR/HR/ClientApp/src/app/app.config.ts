@@ -1,7 +1,7 @@
 import { ApplicationConfig, provideBrowserGlobalErrorListeners, provideZonelessChangeDetection } from '@angular/core';
 import { provideRouter } from '@angular/router';
 import { provideHttpClient } from '@angular/common/http';
-import { withSparkTimezone } from '@mintplayer/ng-spark/services';
+import { withLanguageUrls, withSparkLanguage, withSparkTimezone } from '@mintplayer/ng-spark/services';
 import { provideAnimations } from '@angular/platform-browser/animations';
 import { provideSpark } from '@mintplayer/ng-spark';
 import { withServiceWorker } from '@mintplayer/ng-spark/pwa';
@@ -13,9 +13,9 @@ export const appConfig: ApplicationConfig = {
   providers: [
     provideBrowserGlobalErrorListeners(),
     provideRouter(routes),
-    provideHttpClient(...withSparkAuth(), ...withSparkTimezone()),
+    provideHttpClient(...withSparkAuth(), ...withSparkLanguage(), ...withSparkTimezone()),
     provideAnimations(),
-    provideSpark(withServiceWorker(), withAuth()),
+    provideSpark(withLanguageUrls(), withServiceWorker(), withAuth()),
     provideZonelessChangeDetection()
   ]
 };

@@ -68,6 +68,9 @@ internal sealed class SparkPrerenderContext : ISparkPrerenderContext
     public Task<SparkPrerenderResponse> PostAsync(string pathAndQuery, object? body)
         => SendAsync(HttpMethods.Post, pathAndQuery, SparkPrerenderRequestKey.CanonicalBody(body));
 
+    public async Task<SparkPrerenderResponse> ProbeAsync(string pathAndQuery, object? body)
+        => (await dispatcher.SendAsync(page, HttpMethods.Post, pathAndQuery, SparkPrerenderRequestKey.CanonicalBody(body))).Response;
+
     private async Task<SparkPrerenderResponse> SendAsync(string method, string pathAndQuery, string canonicalBody)
     {
         var key = SparkPrerenderRequestKey.For(method, pathAndQuery, canonicalBody);

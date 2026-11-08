@@ -1,4 +1,6 @@
+import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { SparkLanguageService } from './spark-language.service';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { EntityType, PersistentObject } from '@mintplayer/ng-spark/models';
 import { SPARK_SERVER_ORIGIN } from './provide-spark-hydration';
@@ -25,17 +27,29 @@ describe('SparkSeoService', () => {
     ],
   } as unknown as PersistentObject;
 
+  const language = signal('en');
+  const languages = signal<Record<string, unknown>>({});
   const create = (providers: unknown[] = []) => {
-    TestBed.configureTestingModule({ providers: [{ provide: SPARK_SERVER_ORIGIN, useValue: 'https://example.com' }, ...(providers as any[])] });
+    TestBed.configureTestingModule({
+      providers: [
+        { provide: SPARK_SERVER_ORIGIN, useValue: 'https://example.com' },
+        { provide: SparkLanguageService, useValue: { language, languages, defaultLanguage: signal('en') } },
+        ...(providers as any[]),
+      ],
+    });
     return TestBed.inject(SparkSeoService);
   };
+  const alternates = () => Array.from(document.head.querySelectorAll('link[rel="alternate"][hreflang]'))
+    .map(l => `${l.getAttribute('hreflang')} ${l.getAttribute('href')}`);
 
   const meta = (selector: string) => document.head.querySelector(`meta[${selector}]`)?.getAttribute('content') ?? null;
   const jsonLd = () => document.head.querySelector('script[type="application/ld+json"][data-spark-seo]')?.textContent ?? null;
 
   beforeEach(() => {
     TestBed.resetTestingModule();
-    document.head.querySelectorAll('meta, link[rel="canonical"], script[type="application/ld+json"]').forEach(e => e.remove());
+    language.set('en');
+    languages.set({});
+    document.head.querySelectorAll('meta, link[rel="canonical"], link[rel="alternate"], script[type="application/ld+json"]').forEach(e => e.remove());
     document.title = 'MintPlayer';
     document.head.querySelector('title')?.removeAttribute('data-spark-site');
   });
@@ -79,6 +93,7 @@ describe('SparkSeoService', () => {
     expect(document.title).toBe('MintPlayer');
     expect(meta('name="robots"')).toBeNull();
     expect(meta('property="og:title"')).toBeNull();
+    expect(meta('property="og:url"')).toBeNull();
     expect(document.head.querySelector('link[rel="canonical"]')).toBeNull();
     expect(jsonLd()).toBeNull();
   });
@@ -153,5 +168,67 @@ describe('SparkSeoService', () => {
     create().forObject(songType, { ...song, breadcrumb: 'Crazy in Love' } as PersistentObject, '/po/song/Songs%2F2');
 
     expect(document.title).toBe('Crazy in Love - MintPlayer');
+  });
+
+  describe('language tags (#604)', () => {
+    it('states the default language with a bare canonical, its own alternate and x-default', () => {
+      create().forPage('Songs', '/query/songs');
+
+      expect(alternates()).toEqual(['en https://example.com/query/songs', 'x-default https://example.com/query/songs']);
+      expect(document.head.querySelector('link[rel="canonical"]')?.getAttribute('href')).toBe('https://example.com/query/songs');
+      // A bare language has no region to put in og:locale.
+      expect(meta('property="og:locale"')).toBeNull();
+    });
+
+    it('links every language and names the one served in the canonical, og:url and JSON-LD', () => {
+      languages.set({ en: {}, 'nl-BE': {}, 'fr-BE': {} });
+      language.set('nl-BE');
+      create().forObject(songType, song, '/po/song/Songs%2F1/halo?lang=nl-BE');
+
+      const page = 'https://example.com/po/song/Songs%2F1/halo';
+      expect(alternates()).toEqual([`en ${page}`, `nl-BE ${page}?lang=nl-BE`, `fr-BE ${page}?lang=fr-BE`, `x-default ${page}`]);
+      expect(document.head.querySelector('link[rel="canonical"]')?.getAttribute('href')).toBe(`${page}?lang=nl-BE`);
+      expect(meta('property="og:url"')).toBe(`${page}?lang=nl-BE`);
+      expect(meta('property="og:locale"')).toBe('nl_BE');
+      expect(meta('property="og:locale:alternate"')).toBe('fr_BE');
+      expect(JSON.parse(jsonLd()!)).toMatchObject({ inLanguage: 'nl-BE', url: `${page}?lang=nl-BE` });
+    });
+
+    it('rewrites the tags when the language changes', () => {
+      languages.set({ en: {}, nl: {} });
+      const seo = create();
+      seo.forPage('Songs', '/query/songs');
+      language.set('nl');
+      TestBed.tick();
+
+      expect(document.head.querySelector('link[rel="canonical"]')?.getAttribute('href')).toBe('https://example.com/query/songs?lang=nl');
+    });
+
+    it("resets after the app's injector is destroyed, as a page's destroy hook does at the end of a server render", () => {
+      const seo = create();
+      seo.forPage('Songs', '/query/songs');
+      TestBed.resetTestingModule();
+
+      // NG0205 here ended the server renderer's whole Node process.
+      expect(() => seo.reset()).not.toThrow();
+      expect(document.head.querySelector('link[rel="canonical"]')).toBeNull();
+    });
+
+    it('resets without ever having described a page, after the injector is destroyed', () => {
+      const seo = create();
+      TestBed.resetTestingModule();
+
+      expect(() => seo.reset()).not.toThrow();
+    });
+
+    it('removes them all on reset', () => {
+      languages.set({ en: {}, nl: {} });
+      const seo = create();
+      seo.forPage('Songs', '/query/songs');
+      seo.reset();
+
+      expect(alternates()).toEqual([]);
+      expect(document.head.querySelector('link[rel="canonical"]')).toBeNull();
+    });
   });
 });

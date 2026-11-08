@@ -35,7 +35,9 @@ public class QueryExecutorRowShapeTests : SparkTestDriver
         Store.OpenAsyncSession(), _entityMapper, _modelLoader, _contextResolver,
         _indexCatalog, _permissionService, _actionsResolver, _referenceResolver, _breadcrumbResolver,
         new PermissiveRowSecurity(),
-        TestRowSecurityGate.For(new PermissiveRowSecurity(), _entityMapper));
+        TestRowSecurityGate.For(new PermissiveRowSecurity(), _entityMapper),
+        // Its etag read uses only the store's request executor, so another session of the same store serves.
+        TestQueryResultProjector.For(Store.OpenAsyncSession(), _modelLoader));
 
     private const string TypeName = "RowShapeEntity";
 

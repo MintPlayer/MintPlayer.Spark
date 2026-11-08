@@ -137,7 +137,7 @@ public class QueryResultProjectorColumnOrderTests
             ],
         };
 
-        var item = QueryResultProjector.ToItems(TestSecuredRows.Of(row), columns, "GetRepositories").Single();
+        var item = QueryResultProjector.Project(TestSecuredRows.Of(row), columns, "GetRepositories").Single();
 
         columns.Select(c => c.Name).Should().Equal("Owner", "Name");
         item.Values.Select(v => v.Key).Should().Equal("Owner", "Name");

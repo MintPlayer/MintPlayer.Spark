@@ -31,7 +31,7 @@ export const routes: Routes = [
       // Last: sparkRoutes() has parameterised first segments that would shadow anything after them.
       // Slugs, as the legacy URLs had: /po/song/Songs%2F23/a-sky-full-of-stars.
       // notFound: a URL nothing matches renders a 404 page, answered with status 404 (not a soft 404).
-      ...sparkRoutes({ slugs: true, notFound: true }),
+      ...sparkRoutes({ notFound: true }),
     ]
   }
 ];

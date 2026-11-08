@@ -740,7 +740,7 @@ public class ExecuteCustomActionTests
     private ExecuteCustomAction NewEndpoint() =>
         new(_modelLoader,
             new CustomActionExecution(_modelLoader, _rowSecurity, _typeResolver, _actionResolver, _permissions, _retryAccessor, NullLogger<CustomActionExecution>.Instance, _databaseAccess, _session, _catalogueLoader, _queryLoader,
-                new SparkSelectionResolver(_queryExecutor, _databaseAccess, _permissions, _rowSecurity, _typeResolver, _session, NullLogger<SparkSelectionResolver>.Instance, _attributeRights),
+                new SparkSelectionResolver(_queryExecutor, _databaseAccess, _permissions, _rowSecurity, _typeResolver, _session, NullLogger<SparkSelectionResolver>.Instance, _attributeRights, TestQueryResultProjector.For(_session, _modelLoader)),
                 new NothingDisabled(),
                 new HttpContextAccessor()),
             _sharedClientAccessor, NullLogger<ExecuteCustomAction>.Instance,

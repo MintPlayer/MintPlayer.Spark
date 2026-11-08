@@ -1,4 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
+import { TestBed } from '@angular/core/testing';
+import { provideRouter, Router, UrlTree } from '@angular/router';
 import { AS_DETAIL_ROW_KEY } from '@mintplayer/ng-spark/models';
 import { ArrayValuePipe } from './array-value.pipe';
 import { AsDetailCellValuePipe } from './as-detail-cell-value.pipe';
@@ -572,7 +574,17 @@ describe('ReferenceAttrValuePipe', () => {
 // referenceLinkRoute
 // ---------------------------------------------------------------------------
 describe('ReferenceLinkRoutePipe', () => {
-  const pipe = new ReferenceLinkRoutePipe();
+  let pipe: ReferenceLinkRoutePipe;
+  beforeEach(() => {
+    TestBed.configureTestingModule({ providers: [provideRouter([])] });
+    pipe = TestBed.runInInjectionContext(() => new ReferenceLinkRoutePipe());
+  });
+  it("parses a route template's path, so routerLink does not encode its encoded id again (#602)", () => {
+    const types = [{ id: 't1', clrType: 'TestApp.Car', alias: 'car', route: '/cars/{id}/{slug}' }] as any;
+    const tree = pipe.transform('TestApp.Car', 'Cars/1', types);
+    expect(tree).toBeInstanceOf(UrlTree);
+    expect(TestBed.inject(Router).serializeUrl(tree as UrlTree)).toBe('/cars/Cars%2F1');
+  });
   it('builds /po/{alias}/{id} route', () => {
     const types = [{ id: 't1', clrType: 'TestApp.Person', alias: 'person' }] as any;
     expect(pipe.transform('TestApp.Person', 'people/1', types)).toEqual(['/po', 'person', 'people/1']);
