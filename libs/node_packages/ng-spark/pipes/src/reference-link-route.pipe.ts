@@ -1,9 +1,12 @@
-import { Pipe, PipeTransform } from '@angular/core';
+import { Pipe, PipeTransform, inject } from '@angular/core';
+import { Router, UrlTree } from '@angular/router';
 import { EntityType, sparkDetailLink } from '@mintplayer/ng-spark/models';
 
 @Pipe({ name: 'referenceLinkRoute', standalone: true, pure: true })
 export class ReferenceLinkRoutePipe implements PipeTransform {
-  transform(referenceClrType: string, referenceId: any, allEntityTypes: EntityType[]): string | string[] | null {
+  private readonly router = inject(Router);
+
+  transform(referenceClrType: string, referenceId: any, allEntityTypes: EntityType[]): UrlTree | unknown[] | null {
     if (!referenceId || !referenceClrType) return null;
     const targetType = allEntityTypes.find(t => t.clrType === referenceClrType);
     if (!targetType) return null;
@@ -14,8 +17,9 @@ export class ReferenceLinkRoutePipe implements PipeTransform {
     // canRead and got it right. Same question, two answers.
     if (targetType.canRead === false) return null;
 
-    // A type with its own route template (#602) opens at that URL; the page adds the slug itself.
-    if (targetType.route) return sparkDetailLink(targetType, String(referenceId));
+    // A type with its own route template (#602) opens at that URL; the page adds the slug itself. Parsed, because
+    // `routerLink` given the path as a string would encode its already-encoded id a second time.
+    if (targetType.route) return this.router.parseUrl(sparkDetailLink(targetType, String(referenceId)));
     return ['/po', targetType.alias || targetType.id, referenceId];
   }
 }

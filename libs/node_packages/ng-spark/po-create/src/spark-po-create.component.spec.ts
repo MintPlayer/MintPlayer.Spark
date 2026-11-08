@@ -1,3 +1,4 @@
+import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { provideRouter, Router, Routes } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
@@ -61,7 +62,7 @@ async function setup(serviceOverrides: Partial<SparkService> = {}) {
       // The general-error <bs-alert> animates (@fadeInOut); a refused New renders it.
       provideNoopAnimations(),
       { provide: SparkService, useValue: service },
-      { provide: SparkLanguageService, useValue: { t: (k: string) => k } },
+      { provide: SparkLanguageService, useValue: { language: signal('en'), defaultLanguage: signal('en'), languages: signal({}), t: (k: string) => k } },
     ],
   });
   const harness = await RouterTestingHarness.create();

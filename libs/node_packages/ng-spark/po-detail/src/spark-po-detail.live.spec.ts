@@ -1,3 +1,4 @@
+import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { provideRouter, Routes } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
@@ -58,7 +59,7 @@ async function setup(type: EntityType = liveType) {
       provideHttpClientTesting(),
       { provide: SparkService, useValue: service },
       { provide: SparkLiveService, useValue: live },
-      { provide: SparkLanguageService, useValue: { t: (k: string) => k, resolve: (v: any) => v?.en ?? '' } },
+      { provide: SparkLanguageService, useValue: { language: signal('en'), defaultLanguage: signal('en'), languages: signal({}), t: (k: string) => k, resolve: (v: any) => v?.en ?? '' } },
       { provide: SPARK_ATTRIBUTE_RENDERERS, useValue: [] },
     ],
   });

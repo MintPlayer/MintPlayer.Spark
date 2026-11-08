@@ -203,6 +203,23 @@ describe('SparkSeoService', () => {
       expect(document.head.querySelector('link[rel="canonical"]')?.getAttribute('href')).toBe('https://example.com/query/songs?lang=nl');
     });
 
+    it("resets after the app's injector is destroyed, as a page's destroy hook does at the end of a server render", () => {
+      const seo = create();
+      seo.forPage('Songs', '/query/songs');
+      TestBed.resetTestingModule();
+
+      // NG0205 here ended the server renderer's whole Node process.
+      expect(() => seo.reset()).not.toThrow();
+      expect(document.head.querySelector('link[rel="canonical"]')).toBeNull();
+    });
+
+    it('resets without ever having described a page, after the injector is destroyed', () => {
+      const seo = create();
+      TestBed.resetTestingModule();
+
+      expect(() => seo.reset()).not.toThrow();
+    });
+
     it('removes them all on reset', () => {
       languages.set({ en: {}, nl: {} });
       const seo = create();

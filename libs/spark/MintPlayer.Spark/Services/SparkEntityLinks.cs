@@ -175,10 +175,7 @@ internal sealed partial class SparkEntityLinks : ISparkEntityLinks
             $"The route template '{text}' of entity type '{typeName}' is invalid: {why}. " +
             "Use whole-segment placeholders {type}, {id} and {slug}, e.g. \"songs/{id}/{slug}\".");
 
-        if (segments.Count(s => s == IdToken) != 1)
-            Fail("it must contain {id} exactly once");
-        if (segments.Count(s => s == SlugToken) > 1 || (segments.Contains(SlugToken) && segments[^1] != SlugToken))
-            Fail("{slug} may only be the last segment");
+        // A part-segment placeholder first: "songs/x{id}" lacks a whole {id} because of it, and saying so is the fix.
         foreach (var segment in segments)
         {
             if (segment is IdToken or TypeToken or SlugToken)
@@ -186,6 +183,10 @@ internal sealed partial class SparkEntityLinks : ISparkEntityLinks
             if (segment.Contains('{') || segment.Contains('}'))
                 Fail($"the segment '{segment}' is not a whole placeholder");
         }
+        if (segments.Count(s => s == IdToken) != 1)
+            Fail("it must contain {id} exactly once");
+        if (segments.Count(s => s == SlugToken) > 1 || (segments.Contains(SlugToken) && segments[^1] != SlugToken))
+            Fail("{slug} may only be the last segment");
         if (segments[0] == "po" && segments.Length > 1 && segments[1] == TypeToken)
             Fail("it repeats the default URL; leave route empty instead");
         return segments;

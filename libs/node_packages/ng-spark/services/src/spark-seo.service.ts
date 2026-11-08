@@ -75,9 +75,11 @@ export class SparkSeoService {
   private readonly siteTitle = this.document.head?.querySelector('title')?.getAttribute('data-spark-site') ?? this.title.getTitle();
   /** Whether the tags on the page are an object's, set by {@link forObject} and cleared by {@link reset}. */
   private objectTags = false;
-  // Resolved on use: the Router injects the TitleStrategy (which injects this service), and SparkLanguageService
-  // injects the Router.
+  // Resolved on first use, not injected: the Router injects the TitleStrategy (which injects this service), and
+  // SparkLanguageService injects the Router. Kept once resolved, and only asked for when there is a page to describe:
+  // a page's destroy hook calls reset() after a server render has destroyed the injector (NG0205 ended the renderer).
   private readonly injector = inject(Injector);
+  private languageService?: SparkLanguageService;
   /**
    * The page's URL without its query (origin + path), or null when the page has no canonical. The language tags derive
    * from it (#604): the canonical, `og:url`, the hreflang alternates and `og:locale`.
@@ -170,7 +172,7 @@ export class SparkSeoService {
    * language: bare for the default language, `?lang=xx` for the others (#604 D2).
    */
   private languageState(): { current: string; all: string[]; url: (code: string) => string } {
-    const languages = this.injector.get(SparkLanguageService);
+    const languages = this.languageService ??= this.injector.get(SparkLanguageService);
     const current = languages.language();
     const fallback = languages.defaultLanguage();
     const configured = Object.keys(languages.languages());
@@ -189,16 +191,23 @@ export class SparkSeoService {
    */
   private writeLanguageTags(): void {
     const page = this.pageUrl();
-    const { current, all, url } = this.languageState();
-    untracked(() => {
+    const removeAll = () => {
       for (const link of Array.from(this.document.head?.querySelectorAll(ALTERNATE_SELECTOR) ?? [])) link.remove();
       for (const tag of this.meta.getTags('property="og:locale:alternate"')) this.meta.removeTagElement(tag);
-      if (!page) {
+    };
+    if (!page) {
+      // Removing needs no language, so the language service is not asked (see languageService).
+      untracked(() => {
+        removeAll();
         this.setCanonical(null);
         this.setMeta('property', 'og:url', null);
         this.setMeta('property', 'og:locale', null);
-        return;
-      }
+      });
+      return;
+    }
+    const { current, all, url } = this.languageState();
+    untracked(() => {
+      removeAll();
       this.setCanonical(url(current));
       this.setMeta('property', 'og:url', url(current));
       for (const code of all) this.addAlternate(code, url(code));

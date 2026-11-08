@@ -11,11 +11,12 @@ import { SparkLanguageService } from './spark-language.service';
  */
 @Injectable()
 export class SparkUrlSerializer extends DefaultUrlSerializer {
-  // Resolved on first use: the Router injects the UrlSerializer, and SparkLanguageService injects the Router.
+  // Resolved on first use and kept: the Router injects the UrlSerializer, and SparkLanguageService injects the Router.
   private readonly injector = inject(Injector);
+  private languageService?: SparkLanguageService;
 
   override serialize(tree: UrlTree): string {
-    const languages = this.injector.get(SparkLanguageService);
+    const languages = this.languageService ??= this.injector.get(SparkLanguageService);
     const current = languages.language();
     if (current === languages.defaultLanguage() || 'lang' in tree.queryParams)
       return super.serialize(tree);

@@ -13,12 +13,16 @@
     "Description is the explanatory paragraph, filled from auth.passkeysDescription and drawn by the",
     "core 'paragraph' renderer (full width, no label). The my-passkeys grid below is declared on",
     "PasskeyRow.json; the three actions and their rights ship in this library's actions.json and",
-    "security.json, so an application states nothing to have the page."
+    "security.json, so an application states nothing to have the page.",
+    "",
+    "slug: false (#602): the page is the caller's own at the fixed id 'me', so the URL stays /po/passkeys/me",
+    "rather than gaining the breadcrumb's slug."
   ],
   "persistentObject": {
     "id": "cd8a0767-2a18-5c73-a608-14cf9efe99ac",
     "name": "Passkeys",
     "alias": "passkeys",
+    "slug": false,
     "tabs": [],
     "groups": [],
     "attributes": [

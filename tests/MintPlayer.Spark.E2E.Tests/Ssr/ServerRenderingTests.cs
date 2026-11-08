@@ -35,7 +35,7 @@ public class ServerRenderingTests
         using var response = await client.GetAsync(SongPath);
         var html = await response.Content.ReadAsStringAsync();
 
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        response.StatusCode.Should().Be(HttpStatusCode.OK, "the page renders. Host log:\n{0}", _fixture.Host.RecentLog(120));
         html.Should().Contain(">A Sky Full of Stars - MintPlayer</title>", "the title is written on the server (D12). Host log:\n{0}", _fixture.Host.RecentLog(120));
         html.Should().Contain("Coldplay", "the artists' breadcrumbs are rendered, not left for the browser");
         html.Should().Contain("Avicii");

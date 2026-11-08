@@ -90,7 +90,8 @@ public class ReferenceAddNewTests
                 await Task.Delay(100);
             }
 
-            var personId = Uri.UnescapeDataString(page.Url.TrimEnd('/').Split('/')[^1]);
+            // /po/person/{id}/{slug} (#602): the id is the third segment, not the last.
+            var personId = Uri.UnescapeDataString(new Uri(page.Url).AbsolutePath.Split('/')[3]);
             var person = await host.LoadAsync<StoredPerson>(personId);
             person.Should().NotBeNull($"the person '{personId}' must be stored");
             person!.LastName.Should().Be(surname);

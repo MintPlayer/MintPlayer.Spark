@@ -123,7 +123,8 @@
                     from it cannot make a row clickable that `canRead()` withheld, and returning
                     null from it suppresses the link for that one row. -->
             @if (first && canRead() && rowLinkFor(row); as route) {
-              <a [routerLink]="route" [queryParams]="rowQueryParams()" [state]="rowLinkState()"
+              <!-- A UrlTree (the row's href) carries its query parameters; routerLink refuses both (NG04017). -->
+              <a [routerLink]="route" [queryParams]="isUrlTree(route) ? null : rowQueryParams()" [state]="rowLinkState()"
                  (click)="rowClicked.emit(row)">
                 <ng-container *ngTemplateOutlet="cellContent; context: { $implicit: row, col: col }"></ng-container>
               </a>

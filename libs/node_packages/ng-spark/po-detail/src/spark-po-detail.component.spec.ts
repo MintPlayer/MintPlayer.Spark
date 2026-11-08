@@ -1,4 +1,4 @@
-import { Component, input } from '@angular/core';
+import { Component, input, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { provideRouter, Router, Routes } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
@@ -107,7 +107,7 @@ async function setup(serviceOverrides: Partial<SparkService> = {}, renderers: an
       provideHttpClient(),
       provideHttpClientTesting(),
       { provide: SparkService, useValue: service },
-      { provide: SparkLanguageService, useValue: { t: (k: string) => k } },
+      { provide: SparkLanguageService, useValue: { language: signal('en'), defaultLanguage: signal('en'), languages: signal({}), t: (k: string) => k } },
       { provide: SPARK_ATTRIBUTE_RENDERERS, useValue: renderers },
     ],
   });
