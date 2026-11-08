@@ -465,7 +465,10 @@ export class SparkPoEditComponent {
       const result = await this.sparkService.update(this.type, this.id, po);
       this.isSaving.set(false);
       this.saved.emit(result as PersistentObject);
-      this.router.navigate(['/po', this.type, this.id]);
+      // The saved object's canonical page (#602): a renamed object's slug is the new one.
+      const href = (result as PersistentObject | null)?.href;
+      if (href) void this.router.navigateByUrl(href);
+      else void this.router.navigate(['/po', this.type, this.id]);
     } catch (e) {
       this.isSaving.set(false);
       const error = e as HttpErrorResponse;

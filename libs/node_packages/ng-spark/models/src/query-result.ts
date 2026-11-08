@@ -90,6 +90,8 @@ export interface QueryResultItem {
   id: string;
   /** What to show when the row is named rather than tabulated (a reference picker's value). */
   breadcrumb?: string;
+  /** The row's canonical page path (#602), as {@link PersistentObject.href}. */
+  href?: string;
   /**
    * The document's change vector when the list loaded (#467, D14). A delete sends it back; a row
    * changed since is a 409. Absent for a row with no document behind it.

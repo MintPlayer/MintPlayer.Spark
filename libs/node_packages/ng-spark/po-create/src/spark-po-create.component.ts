@@ -232,7 +232,9 @@ export class SparkPoCreateComponent {
       // created, so the form stays as it is.
       if (!result) return;
       this.saved.emit(result);
-      this.router.navigate(['/po', this.type(), result.id]);
+      // The created object's canonical page (#602), slug included; the bare path when the caller may not read it.
+      if (result.href) void this.router.navigateByUrl(result.href);
+      else void this.router.navigate(['/po', this.type(), result.id]);
     } catch (e) {
       this.isSaving.set(false);
       const error = e as HttpErrorResponse;

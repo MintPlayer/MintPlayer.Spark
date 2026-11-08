@@ -1,9 +1,8 @@
 import { ChangeDetectionStrategy, Component, DestroyRef, PendingTasks, computed, effect, inject, input, output, signal, TemplateRef, Type, untracked, viewChildren } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { CommonModule, Location, NgTemplateOutlet, NgComponentOutlet } from '@angular/common';
+import { CommonModule, NgTemplateOutlet, NgComponentOutlet } from '@angular/common';
 import { ActivatedRoute, Router, RouterModule } from '@angular/router';
 import { HttpErrorResponse } from '@angular/common/http';
-import { sparkSlug } from './spark-slug';
 import { Color } from '@mintplayer/ng-bootstrap';
 import { BsAlertComponent } from '@mintplayer/ng-bootstrap/alert';
 import { BsBadgeComponent } from '@mintplayer/ng-bootstrap/badge';
@@ -13,7 +12,7 @@ import { BsPriorityNavComponent, BsPriorityNavItemTemplateDirective } from '@min
 import { BsTableComponent } from '@mintplayer/ng-bootstrap/table';
 import { BsTabControlComponent, BsTabPageComponent, BsTabPageHeaderDirective } from '@mintplayer/ng-bootstrap/tab-control';
 import { BsSpinnerComponent } from '@mintplayer/ng-bootstrap/spinner';
-import { SparkService, SparkLanguageService, SparkLiveService, SparkReturnNavigationService, SparkSeoService, describeSparkError } from '@mintplayer/ng-spark/services';
+import { SparkService, SparkLanguageService, SparkLiveService, SparkReturnNavigationService, SparkSeoService, SparkObjectUrlService, describeSparkError } from '@mintplayer/ng-spark/services';
 import { SparkAttributePatch, SparkAttributeRefreshService, SparkClientMethodRegistry, SparkQueryRefreshService } from '@mintplayer/ng-spark/client-operations';
 import {
   TranslateKeyPipe,
@@ -53,6 +52,7 @@ import {
   confirmationText,
   filterDetailActions,
   isShowedOnDetail,
+  sparkDetailLink,
   subQueriesOf,
 } from '@mintplayer/ng-spark/models';
 import {
@@ -75,7 +75,7 @@ import { Subscription, combineLatest } from 'rxjs';
 export class SparkPoDetailComponent {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
-  private readonly location = inject(Location);
+  private readonly objectUrl = inject(SparkObjectUrlService);
   private readonly sparkService = inject(SparkService);
   private readonly pendingTasks = inject(PendingTasks);
   private readonly returnNavigation = inject(SparkReturnNavigationService);
@@ -238,7 +238,8 @@ export class SparkPoDetailComponent {
     combineLatest([this.route.paramMap, this.route.queryParamMap])
       .pipe(takeUntilDestroyed())
       .subscribe(([params, query]) => {
-        const type = params.get('type');
+        // `:type` on the generic routes; a type's own route (sparkObjectRoute, #602) names it in its data.
+        const type = params.get('type') ?? this.route.snapshot.data['sparkType'] ?? null;
         if (!type || this.objectType()) return;
         this.onTargetChange(type, params.get('id') || '', query.get('deleted'));
       });
@@ -387,16 +388,12 @@ export class SparkPoDetailComponent {
   }
 
   /**
-   * With `sparkRoutes({ slugs: true })`, puts the breadcrumb's slug in the URL, or corrects a stale one, without a
-   * navigation. A slug of "edit" is left out: that URL is the edit page.
+   * Puts the object's canonical page (`href`, #602) in the address bar, or corrects a stale slug, without a
+   * navigation. Not for an embedded object, nor a deleted view (its URL carries `?deleted` and stays as asked).
    */
-  private writeSlug(item: PersistentObject): void {
-    if (this.objectType() || !this.route.snapshot.data['sparkSlug']) return;
-    const slug = sparkSlug(item.breadcrumb);
-    if (slug === (this.route.snapshot.paramMap.get('slug') ?? '')) return;
-    const commands = slug && slug !== 'edit' ? ['/po', this.type, this.id, slug] : ['/po', this.type, this.id];
-    const tree = this.router.createUrlTree(commands, { queryParams: this.route.snapshot.queryParams });
-    this.location.replaceState(this.router.serializeUrl(tree));
+  private writeUrl(item: PersistentObject): void {
+    if (this.objectType()) return;
+    this.objectUrl.apply(item);
   }
 
   /** The object as the page's current mode sees it. Only a set mode is sent. */
@@ -441,7 +438,7 @@ export class SparkPoDetailComponent {
       this.allEntityTypes.set(entityTypes);
       this.entityType.set(et);
       this.item.set(item);
-      this.writeSlug(item);
+      this.writeUrl(item);
       this.writeSeo(et, item);
       // Not awaited: the page shows without them.
       secondary = Promise.all([this.loadLookupReferenceOptions(), this.loadAsDetailTypes()]);
@@ -461,8 +458,8 @@ export class SparkPoDetailComponent {
   }
 
   /**
-   * The page's title and SEO tags (D12), for a routed page only. The canonical URL carries the breadcrumb's slug
-   * when the routes use slugs, as {@link writeSlug} puts it in the address bar. A deleted or historical view of
+   * The page's title and SEO tags (D12), for a routed page only. The canonical URL is the object's `href`, as
+   * {@link writeUrl} puts it in the address bar. A deleted or historical view of
    * the object is never indexed.
    */
   private writeSeo(et: EntityType | null, item: PersistentObject): void {
@@ -471,9 +468,7 @@ export class SparkPoDetailComponent {
       this.seo.noIndex();
       return;
     }
-    const slug = this.route.snapshot.data['sparkSlug'] ? sparkSlug(item.breadcrumb) : '';
-    const commands = slug && slug !== 'edit' ? ['/po', this.type, this.id, slug] : ['/po', this.type, this.id];
-    this.seo.forObject(et, item, this.router.serializeUrl(this.router.createUrlTree(commands)));
+    this.seo.forObject(et, item, item.href || sparkDetailLink(et ?? this.type, this.id));
   }
 
   /**

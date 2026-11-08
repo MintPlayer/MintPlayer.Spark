@@ -255,6 +255,11 @@ describe('SparkQueryGridComponent', () => {
         state: { sparkReturnUrl: TestBed.inject(Router).url },
       }));
 
+      // A row with an href (#602) opens its canonical page, the query parameters added.
+      const navigateByUrl = vi.spyOn(TestBed.inject(Router), 'navigateByUrl').mockResolvedValue(true);
+      (c as any).onRowClick({ row: { ...row, href: '/po/person/people%2F1/ada' }, rowIndex: 0, rowKey: 'people/1', originalEvent: new MouseEvent('click') });
+      expect(TestBed.inject(Router).serializeUrl(navigateByUrl.mock.calls[0][0] as any)).toBe('/po/person/people%2F1/ada?deleted=only');
+
       // A click on a control inside the row (a vote button, the link itself) is the control's.
       navigate.mockClear();
       const button = document.createElement('button');

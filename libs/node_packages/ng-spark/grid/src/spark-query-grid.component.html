@@ -122,7 +122,7 @@
                  3. `rowRoute` replaces the DESTINATION only, never the gate: returning a route
                     from it cannot make a row clickable that `canRead()` withheld, and returning
                     null from it suppresses the link for that one row. -->
-            @if (first && canRead() && rowRouteFor(row); as route) {
+            @if (first && canRead() && rowLinkFor(row); as route) {
               <a [routerLink]="route" [queryParams]="rowQueryParams()" [state]="rowLinkState()"
                  (click)="rowClicked.emit(row)">
                 <ng-container *ngTemplateOutlet="cellContent; context: { $implicit: row, col: col }"></ng-container>

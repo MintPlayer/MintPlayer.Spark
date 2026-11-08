@@ -20,6 +20,12 @@ export interface PersistentObject {
   objectTypeId: string;
   breadcrumb?: string;
   /**
+   * The object's canonical page path (#602), e.g. `/po/song/Songs%2F23/a-sky-full-of-stars`, built by the server
+   * from the type's alias, the id, the breadcrumb's slug and the type's `route` template. Link to it as is: the
+   * client never computes a slug. Absent when the caller may not read the object or it has no page.
+   */
+  href?: string;
+  /**
    * Optimistic-concurrency token -- RavenDB's change vector for the document behind this object.
    * The server stamps it on every `/po/load` and expects it back on update.
    *

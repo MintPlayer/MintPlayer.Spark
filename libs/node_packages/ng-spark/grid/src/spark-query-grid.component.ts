@@ -268,10 +268,18 @@ export class SparkQueryGridComponent {
     if (target?.closest?.('a, button, input, select, textarea, label, [role="button"], .checkbox-cell')) return;
     if (original && (original.ctrlKey || original.metaKey || original.shiftKey || original.button === 1)) return;
     if (!row || !this.canRead()) return;
-    const route = this.rowRouteFor(row);
-    if (!route) return;
+    const link = this.rowLinkFor(row);
+    if (!link) return;
     this.rowClicked.emit(row);
-    void this.router.navigate(route, { queryParams: this.rowQueryParams() ?? undefined, state: this.rowLinkState() });
+    const queryParams = this.rowQueryParams() ?? undefined;
+    if (typeof link !== 'string') {
+      void this.router.navigate(link, { queryParams, state: this.rowLinkState() });
+      return;
+    }
+    // A whole path (the row's href): parsed as is, so its encoded id is not encoded a second time.
+    const tree = this.router.parseUrl(link);
+    tree.queryParams = { ...tree.queryParams, ...(queryParams ?? {}) };
+    void this.router.navigateByUrl(tree, { state: this.rowLinkState() });
   }
 
   /**
@@ -364,6 +372,16 @@ export class SparkQueryGridComponent {
     if (!type?.clrType) return null;
 
     return ['/po', type.alias || type.id, row.id];
+  }
+
+  /**
+   * The first column's link: the host's `rowRoute`, else the row's canonical page (`href`, #602, slug and the type's
+   * route template included), else {@link rowRouteFor}. A string is a whole path, which `routerLink` parses as is.
+   */
+  protected rowLinkFor(row: QueryResultItem): string | unknown[] | null {
+    if (this.rowRoute()) return this.rowRouteFor(row);
+    const route = this.rowRouteFor(row);
+    return route && row.href ? row.href : route;
   }
 
   query = signal<SparkQuery | null>(null);
