@@ -1,6 +1,6 @@
 # Player polish and sortable AsDetail lists: PRD and plan
 
-Status: **implemented and verified in the browser** (2026-11-09, M1 to M7). There is no issue number yet. One
+Status: **implemented and verified in the browser** (2026-11-09, M1 to M7). There is no issue; the work is PR #608. One
 pull request covers it all (ng-spark plus apps/MintPlayer), per the one-PR rule. Requested by the owner on 2026-11-09,
 in two messages of one session.
 
