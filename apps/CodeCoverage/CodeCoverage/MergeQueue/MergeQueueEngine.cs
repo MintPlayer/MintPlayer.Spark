@@ -401,7 +401,7 @@ public partial class MergeQueueEngine : IMergeQueueEngine
         if (parsed.Errors.Count > 0)
             return new("configuration", "`coverage.yml` on the default branch has errors in `mergeQueue:`:\n" + string.Join("\n", parsed.Errors.Select(e => $"- {e}")));
         if (parsed.Section is not { Enabled: true } section)
-            return new("disabled", "The merge queue is not enabled: `coverage.yml` on the default branch needs `mergeQueue: { enabled: true }`.");
+            return new("disabled", "The merge queue is not enabled: `coverage.yml` on the default branch needs `mergeQueue: { enabled: true }`. A pull request that adds it is merged without the queue.");
         if (!pull.IsOpen)
             return new("closed", "The pull request is closed.");
         if (pull.IsDraft)

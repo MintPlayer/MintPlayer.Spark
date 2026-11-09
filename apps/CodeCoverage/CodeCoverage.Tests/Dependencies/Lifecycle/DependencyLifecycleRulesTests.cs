@@ -293,6 +293,25 @@ public class DependencyWorkflowGuardTests
     public void An_outdated_workflow_names_the_inputs_it_lacks(string text, string missing)
         => DependencyWorkflowGuard.MissingInputs(text, ["expected_sha", "run_id", "platforms"]).Should()
             .Equal(missing.Split(',', StringSplitOptions.RemoveEmptyEntries));
+
+    /// <summary>#613 item 4: a custom <c>lookupWorkflow</c> has no template, so the bot offers no pull request for it.</summary>
+    [Fact]
+    public void A_workflow_without_a_template_gets_no_refresh()
+        => DependencyOnboarding.RefreshFiles(["my-lookup.yml"], null, DependencyOnboarding.ReadTemplate).Should().BeNull();
+
+    [Fact]
+    public void The_refresh_pull_request_says_why_and_who_approves_it()
+    {
+        var files = DependencyOnboarding.RefreshFiles(["dependency-lookup.yml"], "0123456789abcdef0123456789abcdef01234567", DependencyOnboarding.ReadTemplate)!;
+
+        var body = DependencyOnboarding.RefreshBody(files, "`dependency-lookup.yml` declares no `platforms` input", "0123456789abcdef0123456789abcdef01234567");
+
+        body.Should().StartWith(DependencyPullRequestBody.Marker)
+            .And.Contain("declares no `platforms` input")
+            .And.Contain("`.github/workflows/dependency-lookup.yml`")
+            .And.Contain("`0123456789ab`")
+            .And.EndWith(DependencyOnboarding.ApprovalNote);
+    }
 }
 
 /// <summary>#606 D4: a platform major in a repository that releases packages without release lines is called out.</summary>

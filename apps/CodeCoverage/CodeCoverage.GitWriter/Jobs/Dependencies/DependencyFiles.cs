@@ -98,6 +98,17 @@ public static class DependencyFiles
             || name.EndsWith(".init.gradle", StringComparison.Ordinal) || name.EndsWith(".init.gradle.kts", StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// #613 item 3 (gap A, owner 2026-11-09: "Strict substitutions"): the denied files an EDIT may still touch, and only as a
+    /// strict substitution: a planned NuGet <c>current → new</c> swap on a line naming the package
+    /// (<see cref="SubstitutionCheck"/>), or a reported platform location (<see cref="PlatformSubstitution"/>). Versioning
+    /// onboarding itself puts <c>MintPlayer.Versioning.MSBuild</c> in <c>Directory.Build.props</c>
+    /// (<c>VersioningOnboarding.cs</c>), and a <c>&lt;TargetFramework&gt;</c> often lives there. Adding such a file, and any
+    /// other change to it (an <c>Import</c>, a <c>Target</c>, an <c>Exec</c>), stays refused.
+    /// </summary>
+    public static bool IsSubstitutionOnly(string path)
+        => FileName(path).ToLowerInvariant() is "directory.build.props" or "directory.build.targets";
+
     /// <summary>The bot's own files: the plan path and everything under <c>.mintplayer/</c> (R14).</summary>
     public static bool IsPlanPath(string path) => path.StartsWith(".mintplayer/", StringComparison.OrdinalIgnoreCase);
 

@@ -14,6 +14,11 @@ public sealed record WorkflowChangeRules(IReadOnlySet<(string Old, string New)> 
     /// it; a step whose <c>uses:</c> changed to one of these must pass only inputs it declares, pass every required input
     /// without a default, and be read only for outputs it declares.</summary>
     public IReadOnlyDictionary<string, string>? TargetActions { get; init; }
+
+    /// <summary>#613 item 2: (old, new) → the scalar change is a planned platform move of a location the lookup reported.
+    /// Asked only at platform paths: a setup action's version input, a matrix entry (block or flow style), a job's
+    /// <c>container</c> image and a service's <c>image</c>.</summary>
+    public Func<string, string, bool>? PlatformChange { get; init; }
 }
 
 /// <summary>One scalar the change altered, at a dotted path such as <c>jobs.build.steps[1].uses</c>.</summary>
@@ -220,7 +225,10 @@ public sealed partial class GitHubWorkflowValidator : IContentValidator
             case (YamlScalar bsc, YamlScalar asc):
                 if (bsc.Value == asc.Value && bsc.Style == asc.Style)
                     return;
-                if (here.ViaAlias || here.Anchored || here.Flow)
+                // #613 item 2: a matrix entry may sit in a flow list (`node: [20, 22]`); the line rule already held the rest of
+                // the line byte-identical, so only the entry's own value changed.
+                var flowMatrix = here.Flow && IsMatrixPath(path) && bsc.Style == asc.Style && !asc.IsBlock && rules.PlatformChange?.Invoke(bsc.Value, asc.Value) == true;
+                if (here.ViaAlias || here.Anchored || here.Flow && !flowMatrix)
                     throw new Refused(ContentVerdict.Invalid("a changed value in flow style, under an anchor or reached through an alias", asc.Line, asc.Column));
                 if (bsc.Style != asc.Style || asc.IsBlock)
                     throw new Refused(ContentVerdict.Invalid("a changed value whose scalar style changed or is a block scalar", asc.Line, asc.Column));
@@ -261,10 +269,21 @@ public sealed partial class GitHubWorkflowValidator : IContentValidator
             && RemoteUses().Match(uses.Value) is { Success: true } action
             && SetupActionVersionKeys.TryGetValue(action.Groups["action"].Value, out var keys) && keys.Contains(path[^1]))
         {
-            return VersionValue().IsMatch(old) && VersionValue().IsMatch(@new) && rules.PlannedWith.Contains((path[^1], old, @new));
+            return VersionValue().IsMatch(old) && VersionValue().IsMatch(@new)
+                   && (rules.PlannedWith.Contains((path[^1], old, @new)) || rules.PlatformChange?.Invoke(old, @new) == true);
         }
-        return false;
+        return (IsMatrixPath(path) || IsImagePath(path)) && rules.PlatformChange?.Invoke(old, @new) == true;
     }
+
+    /// <summary>A scalar under <c>jobs.&lt;job&gt;.strategy.matrix</c>, where a setup step's <c>${{ matrix.x }}</c> reads its
+    /// versions (#606 M6).</summary>
+    private static bool IsMatrixPath(List<string> p) => p.Count >= 5 && p[0] == "jobs" && p[2] == "strategy" && p[3] == "matrix";
+
+    /// <summary>A job's <c>container</c> (or <c>container.image</c>) and a service's <c>image</c> (#606 M6 workflow images).</summary>
+    private static bool IsImagePath(List<string> p)
+        => p.Count == 3 && p[0] == "jobs" && p[2] == "container"
+           || p.Count == 4 && p[0] == "jobs" && p[2] == "container" && p[3] == "image"
+           || p.Count == 5 && p[0] == "jobs" && p[2] == "services" && p[4] == "image";
 
     private static YamlNode? NodeAt(YamlNode root, IEnumerable<string> path)
     {

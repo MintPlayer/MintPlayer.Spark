@@ -13,7 +13,11 @@ public sealed record DependencyCommit(GitIdentity Author, GitIdentity Committer,
 
 /// <summary>The apply patch and what it is judged against (the <c>dependencies</c> profile).</summary>
 public sealed record DependencyPatchInput(DependencyPlan Plan, byte[] Patch, IReadOnlyCollection<string>? Claimed,
-    IReadOnlyDictionary<string, string>? TargetActions, IReadOnlyCollection<string> AllowedHosts);
+    IReadOnlyDictionary<string, string>? TargetActions, IReadOnlyCollection<string> AllowedHosts)
+{
+    /// <summary>#613 item 2: the lookup's non-computed platform locations.</summary>
+    public IReadOnlyList<DependencyPlatformLocation> PlatformLocations { get; init; } = [];
+}
 
 /// <summary>
 /// The dependency updater's writes (docs/code-coverage/dependency-updates-PRD.md R4, R14, R16, P6), on the merge queue's
@@ -249,7 +253,7 @@ public sealed partial class WriterService
 
     private async Task<DependencyPatchVerdict> ValidateDependencyPatchAsync(JobContext context, DependencyJob job, DependencyPatchInput input)
     {
-        var request = DependencyPatchRequest.From(input.Plan) with
+        var request = DependencyPatchRequest.From(input.Plan, locations: input.PlatformLocations) with
         {
             ClaimedAppliedGroups = input.Claimed,
             TargetActions = input.TargetActions,

@@ -49,6 +49,18 @@ public class DependencyPatchJobWire : DependencyCommitJobWire
 
     /// <summary>Gap B: the registry hosts a lockfile may name besides the public ones (the account's allow-list).</summary>
     public List<string>? AllowedHosts { get; set; }
+
+    /// <summary>#613 item 2: the lookup's non-computed platform locations, which a platform group's SDK move may edit.</summary>
+    public List<PlatformLocationWire>? PlatformLocations { get; set; }
+}
+
+/// <summary>One platform location the lookup reported (platform-record.schema.json).</summary>
+public sealed class PlatformLocationWire
+{
+    public string? Sdk { get; set; }
+    public string? File { get; set; }
+    public string? Kind { get; set; }
+    public string? Value { get; set; }
 }
 
 /// <summary>

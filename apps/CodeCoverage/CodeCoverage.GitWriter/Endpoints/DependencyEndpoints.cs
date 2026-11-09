@@ -197,11 +197,17 @@ internal static partial class DependencyFields
     public const int MaxActionBytes = 1024 * 1024;
     public const int MaxHosts = 50;
 
+    /// <summary>#613 item 2: the lookup's platform locations, each at most 512 + 200 characters plus its sdk and kind, so
+    /// the field stays under 1 MiB.</summary>
+    public const int MaxPlatformLocations = 1000;
+    public const int MaxPlatformLocationsBytes = 1024 * 1024;
+    public const string PlatformLocationsRule = "at most 1000 locations, each an sdk and kind of at most 32 characters, a path of at most 512 and a value of at most 200";
+
     public const string PlanRule = "plan.schema.json as JSON text of at most 4 MiB, with the request's expectedSha";
     public const string OnboardingFilesRule = "1 to 16 distinct files, each a path of the onboarding set and either content (at most 256 KiB) or delete";
 
     /// <summary>A body with <paramref name="patches"/> patches at the writer's cap, plus the plan and the rest.</summary>
-    public static long BodyBytes(GitWriterOptions options, int patches) => Body.PatchBytes(options.MaxPatchBytes) * patches + MaxPlanBytes + 4L * MaxActionBytes;
+    public static long BodyBytes(GitWriterOptions options, int patches) => Body.PatchBytes(options.MaxPatchBytes) * patches + MaxPlanBytes + 4L * MaxActionBytes + MaxPlatformLocationsBytes;
 
     /// <summary>The repository, the credential, the default branch and <c>expected_sha</c>.</summary>
     public static DependencyJob? Job(Refusal refusal, DependencyJobWire request, bool allowInsecureHttp)
@@ -238,9 +244,29 @@ internal static partial class DependencyFields
             || !refusal.Check(request.ClaimedGroups is null || request.ClaimedGroups.Count <= MaxGroups && request.ClaimedGroups.All(IsGroup), "claimedGroups", $"at most {MaxGroups} group names")
             || !refusal.Check(request.TargetActions is null || request.TargetActions.Count <= MaxTargetActions
                 && request.TargetActions.All(a => a.Key.Length is > 0 and <= 512 && a.Value.Length <= MaxActionBytes), "targetActions", $"at most {MaxTargetActions} action.yml texts of at most 1 MiB")
-            || !refusal.Check(request.AllowedHosts is null || request.AllowedHosts.Count <= MaxHosts && request.AllowedHosts.All(h => Host().IsMatch(h)), "allowedHosts", $"at most {MaxHosts} host names"))
+            || !refusal.Check(request.AllowedHosts is null || request.AllowedHosts.Count <= MaxHosts && request.AllowedHosts.All(h => Host().IsMatch(h)), "allowedHosts", $"at most {MaxHosts} host names")
+            || refusal.Check(PlatformLocations(request.PlatformLocations), "platformLocations", PlatformLocationsRule) is not { } locations)
             return null;
-        return new DependencyPatchInput(plan, patch, request.ClaimedGroups, request.TargetActions, request.AllowedHosts ?? []);
+        return new DependencyPatchInput(plan, patch, request.ClaimedGroups, request.TargetActions, request.AllowedHosts ?? []) { PlatformLocations = locations };
+    }
+
+    /// <summary>The platform locations, or null when one is malformed. The validator re-checks every path against the patch
+    /// rules, and every value against the file at <c>expected_sha</c>.</summary>
+    public static IReadOnlyList<DependencyPlatformLocation>? PlatformLocations(List<PlatformLocationWire>? wire)
+    {
+        if (wire is null)
+            return [];
+        if (wire.Count > MaxPlatformLocations)
+            return null;
+        var locations = new List<DependencyPlatformLocation>(wire.Count);
+        foreach (var l in wire)
+        {
+            if (l.Sdk is not { Length: > 0 and <= 32 } sdk || l.Kind is not { Length: > 0 and <= 32 } kind || l.File is not { Length: > 0 and <= 512 } file
+                || l.Value is not { Length: > 0 and <= 200 } value || new[] { sdk, kind, file, value }.Any(s => s.Any(char.IsControl)))
+                return null;
+            locations.Add(new DependencyPlatformLocation(sdk, file, kind, value));
+        }
+        return locations;
     }
 
     /// <summary>The plan, when it deserializes and names <paramref name="expectedSha"/>; the app validated it against the schema.</summary>
