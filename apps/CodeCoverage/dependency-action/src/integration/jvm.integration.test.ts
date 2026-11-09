@@ -33,7 +33,8 @@ ${inline}`;
     const ok = await applyOnRepo({ 'pom.xml': pom('1.0.0', '') }, [
       { group: 'liba', items: [item({ depName: 'com.acme:liba', datasource: 'maven', manager: 'maven', packageFile: 'pom.xml', currentValue: '1.0.0', newValue: '1.1.0', sharedVariableName: 'liba.version' })] },
     ]);
-    expect(ok.result.groups[0].status).toBe('applied');
+    // The whole group, so a failure prints Maven's blocker (PR #615's run 42663572547 got 'unresolvable' in 3.8 s, with no reason in the log).
+    expect(ok.result.groups[0]).toMatchObject({ status: 'applied' });
     expect(ok.read('pom.xml')).toBe(pom('1.1.0', ''));
     const missing = await applyOnRepo({ 'pom.xml': pom('1.0.0', '') }, [
       { group: 'liba', items: [item({ depName: 'com.acme:liba', datasource: 'maven', manager: 'maven', packageFile: 'pom.xml', currentValue: '1.0.0', newValue: '9.9.9', sharedVariableName: 'liba.version' })] },

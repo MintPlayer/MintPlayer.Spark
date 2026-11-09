@@ -6,6 +6,7 @@ using CodeCoverage.Forge;
 using CodeCoverage.LookupReferences;
 using CodeCoverage.MergeQueue;
 using CodeCoverage.PackageVersioning;
+using CodeCoverage.Versioning.Graph;
 using CodeCoverage.Versioning.Versions;
 using MintPlayer.SourceGenerators.Attributes;
 using Raven.Client.Documents.Session;
@@ -27,6 +28,12 @@ public interface IOnboardingService
     /// any authorization (#554, owner 2026-11-06). <see cref="PreviewAsync"/> refuses the same.
     /// </summary>
     string? RefusalBeforePlanning(Repository repository);
+
+    /// <summary>
+    /// The features the chooser's form starts with: what the repository has now (<see cref="OnboardingFeatureDetection"/>, over
+    /// the default branch's <c>coverage.yml</c>), plus what an onboarding pull request that is still open carries. Reads only.
+    /// </summary>
+    Task<IReadOnlySet<EOnboardingFeature>> CurrentFeaturesAsync(Repository repository, CancellationToken cancellationToken = default);
 
     /// <summary>What <see cref="OnboardAsync"/> would do now; writes nothing.</summary>
     Task<OnboardingPreview> PreviewAsync(Repository repository, IReadOnlySet<EOnboardingFeature> features, CancellationToken cancellationToken = default);
@@ -75,6 +82,24 @@ public partial class OnboardingService : IOnboardingService
             || !updates.Any(u => u.Provider == repository.Provider))
             return "The onboarding pull request is not available for this forge on this server.";
         return null;
+    }
+
+    public async Task<IReadOnlySet<EOnboardingFeature>> CurrentFeaturesAsync(Repository repository, CancellationToken cancellationToken = default)
+    {
+        var account = repository.Account is { Length: > 0 } accountId ? await session.LoadAsync<Account>(accountId, cancellationToken) : null;
+        string? yml = null;
+        if (repository.DefaultBranch is { Length: > 0 } defaultBranch
+            && await ForgeRepositoryTree.OpenAsync(integrations.For(repository), repository, defaultBranch, cancellationToken) is { } tree)
+            yml = await tree.ReadTextAsync(CoverageYml.FileName, Limits.MaxManifestBytes, cancellationToken);
+        var features = OnboardingFeatureDetection.Detect(repository, account, yml).ToHashSet();
+
+        // An open onboarding pull request's features are chosen already, though not applied yet. A closed one's are not.
+        var state = await session.LoadAsync<VersioningOnboardingState>(VersioningOnboardingState.ForRepository(repository.Id!), cancellationToken);
+        if (state is { Features.Count: > 0, PullRequestNumber: { } number, MergeHandledAt: null }
+            && updates.FirstOrDefault(u => u.Provider == repository.Provider) is { } pulls
+            && await pulls.GetPullRequestAsync(repository, number, cancellationToken) is { IsOpen: true })
+            features.UnionWith(state.Features);
+        return features;
     }
 
     public async Task<OnboardingPreview> PreviewAsync(Repository repository, IReadOnlySet<EOnboardingFeature> features, CancellationToken cancellationToken = default)

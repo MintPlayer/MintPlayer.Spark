@@ -334,7 +334,20 @@ public class GitHubForgeMergeQueueTests
         state.CheckRuns[0].Should().Be(new ForgeCheckRun(1, "ci", "completed", "success", 11, "github-actions", "https://github.com/acme/widget/actions/runs/1/job/1"));
         state.CheckRuns[1].Conclusion.Should().BeNull();
         state.Statuses.Should().Equal([new ForgeCommitStatus("GitGuardian Security Checks", "failure", "https://dashboard.gitguardian.com/x")]);
-        state.Suites.Should().Equal([new ForgeCheckSuite(11, "completed", "success", "github-actions", 1)]);
+        state.Suites.Should().Equal([new ForgeCheckSuite(11, "completed", "success", "github-actions", 1, RunsFollow: true)]);
+    }
+
+    [Fact]
+    public async Task Item616_only_github_actions_suites_are_marked_as_getting_runs()
+    {
+        var github = WithChecks(new StubGitHub(), "[]", suites: """
+            [{"id":11,"status":"queued","conclusion":null,"app":{"slug":"github-actions"},"latest_check_runs_count":0},
+             {"id":12,"status":"queued","conclusion":null,"app":{"slug":"nx-cloud"},"latest_check_runs_count":0}]
+            """);
+
+        var state = await Queue(github).GetCheckStateAsync(Target(), Head);
+
+        state.Suites.Select(suite => (suite.AppSlug, suite.RunsFollow)).Should().Equal([("github-actions", true), ("nx-cloud", false)]);
     }
 
     [Fact]

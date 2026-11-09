@@ -333,13 +333,21 @@ public partial class GitHubForgeMergeQueue : IForgeMergeQueue
                 Str(status, "context") ?? string.Empty,
                 Str(status, "state") ?? "pending",
                 Str(status, "target_url")))],
-            [.. suites.Select(suite => new ForgeCheckSuite(
-                Num(suite, "id") ?? 0,
-                Str(suite, "status") ?? "queued",
-                Str(suite, "conclusion"),
-                suite.TryGetProperty("app", out var app) ? Str(app, "slug") : null,
-                (int)(Num(suite, "latest_check_runs_count") ?? 0)))]);
+            [.. suites.Select(suite =>
+            {
+                var slug = suite.TryGetProperty("app", out var app) ? Str(app, "slug") : null;
+                return new ForgeCheckSuite(
+                    Num(suite, "id") ?? 0,
+                    Str(suite, "status") ?? "queued",
+                    Str(suite, "conclusion"),
+                    slug,
+                    (int)(Num(suite, "latest_check_runs_count") ?? 0),
+                    RunsFollow: slug == ActionsAppSlug);
+            })]);
     }
+
+    /// <summary>GitHub Actions' App: its suite belongs to a workflow run, so it always gets runs (#616).</summary>
+    internal const string ActionsAppSlug = "github-actions";
 
     public async Task<IReadOnlyList<string>> GetCheckNamesOnCommitAsync(Repository repository, string sha, CancellationToken cancellationToken = default)
     {

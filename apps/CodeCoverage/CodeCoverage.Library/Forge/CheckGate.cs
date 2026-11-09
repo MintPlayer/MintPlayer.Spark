@@ -20,6 +20,9 @@ namespace CodeCoverage.Forge;
 /// permission on every push, and one that never runs anything stays <c>queued</c> forever. The
 /// expected-minimum set is what catches a workflow that has not started yet. A suite whose every run is
 /// excluded is not waited for either, so an excluded slow scanner cannot hold the queue through its suite.
+/// The exception is a suite the forge marks <see cref="ForgeCheckSuite.RunsFollow"/> (GitHub Actions): with no runs
+/// yet, it is a workflow that has not started, and it is waited for (#616: #614 merged 13 s after its push, before
+/// its CI had a single run).
 /// </para>
 /// <para>
 /// Names compare ordinally, except against the exclusion list, which matches ignoring case (merge-queue PRD D118); a
@@ -105,7 +108,7 @@ public static class CheckGate
             .Select(run => run.SuiteId!.Value)
             .ToHashSet();
         var pendingSuites = state.Suites
-            .Where(suite => suite.LatestCheckRunsCount > 0 && suite.Status != "completed" && !ownSuites.Contains(suite.Id))
+            .Where(suite => (suite.LatestCheckRunsCount > 0 || suite.RunsFollow) && suite.Status != "completed" && !ownSuites.Contains(suite.Id))
             // A suite whose runs are all excluded is not waited for. One whose runs we have not seen (the
             // listing raced the suite) is.
             .Where(suite => countedSuites.Contains(suite.Id) || !state.CheckRuns.Any(run => run.SuiteId == suite.Id))

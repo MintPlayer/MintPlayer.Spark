@@ -531,7 +531,8 @@ other conclusion fails (`cancelled`, `timed_out`, `action_required` and `stale` 
 of that, every required check and every check that had reported on the **pinned head at enqueue** must report. So
 queue a pull request after its CI has started: a workflow that never ran on the queued commit is not in that minimum.
 A check suite with no runs is not waited for: GitHub creates one for every App with checks permission, and it can stay
-queued forever.
+queued forever. GitHub Actions' suites are the exception (D119): such a suite belongs to a workflow run that has not
+started its jobs yet, so the queue waits for it.
 
 ## 3. Recommended GitHub setup
 
