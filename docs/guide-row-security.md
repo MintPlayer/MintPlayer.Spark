@@ -105,7 +105,7 @@ builder.Services.AddSpark(builder.Configuration, spark => spark.AddSparkRowPolic
 - **Which rules count as "declaring a row policy".** The anonymous-readable startup validator counts the Actions class's rule and policies with `IsVisibilityDecision => true` — a soft-delete filter on every type does not satisfy it. The `SparkQueryPage<T>` refusal counts the Actions rule, check policies and visibility policies, not a non-visibility filter policy. The per-row `can` block is computed whenever any rule or policy applies.
 - **Everywhere `IRowSecurity` is asked**: list, detail, custom queries, sub-queries, distinct values, live pushes and app streams ([live updates](guide-live-updates.md)), breadcrumbs, the edit/delete gates, custom-action selections and `WITH CHECK`.
 
-⚠️ **Known gap (D1, documented, not fixed):** an Actions class that overrides `OnLoadAsync` without calling the base takes over the read gate for its type — policies included. The write side has no such gap since #482: the framework owns every write, and `WITH CHECK` cannot be skipped. References are not row-checked on save.
+⚠️ **Known gap (D1, documented, not fixed):** an Actions class that overrides `OnLoadAsync` without calling the base takes over the read gate for its type — policies included. The write side has no such gap since #482: the framework owns every write, and `WITH CHECK` cannot be skipped. References are not row-checked on save; since #609 a save only checks that a newly written reference id names a document in the declared collection ([guide](guide-reference-attributes.md#the-save-checks-the-target)), and breadcrumb reference loads drop a document of another collection before row security is asked.
 
 ## Persistence interceptors (#460, #482)
 

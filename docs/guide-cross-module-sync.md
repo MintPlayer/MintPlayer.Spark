@@ -126,6 +126,16 @@ When a user edits a replicated entity in the consumer module (e.g., editing a Ca
 4. The owner module applies the changes through its normal actions pipeline
 5. Because the owner's data changed, the ETL task pushes the updated document back to the consumer
 
+### Reference ids are checked by the owner
+
+Because the owner applies the change through its normal save pipeline, it also checks every reference
+id the change newly writes (#609, see
+[The save checks the target](guide-reference-attributes.md#the-save-checks-the-target)): the id must name
+a document **in the owner's database**, in the collection the reference declares. A consumer that sets a
+reference to a document only it holds gets the sync action refused with a `referenceTarget` validation
+error. A target the owner receives by ETL passes, because the ETL task writes it with the right
+`@collection` (the demos' replicated `People` do).
+
 ### Partial Property Updates
 
 The sync action only sends the properties that exist on the replicated entity type. This prevents a consumer with a subset of fields from overwriting properties it does not know about:
