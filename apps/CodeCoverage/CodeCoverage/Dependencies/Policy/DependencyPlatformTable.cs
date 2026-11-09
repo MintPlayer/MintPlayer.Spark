@@ -16,7 +16,7 @@ namespace CodeCoverage.Dependencies.Policy;
 /// Rust beta's dated toolchain (<c>beta-2026-11-08</c>, D11), which the plan writes to rust-toolchain.toml.
 /// <c>lts</c> is null for an SDK without LTS releases, so a <c>track: lts</c> there falls back to stable (D8).
 /// </remarks>
-public static class DependencyPlatformTable
+public static partial class DependencyPlatformTable
 {
     /// <summary>The table from every collected channel (a few dozen documents, read by id prefix: no index to wait for).</summary>
     public static async Task<string> JsonAsync(IAsyncDocumentSession session, IReadOnlyList<string> unstable, CancellationToken ct)
@@ -27,7 +27,10 @@ public static class DependencyPlatformTable
         var sdks = new SortedDictionary<string, List<Dictionary<string, object?>>>(StringComparer.Ordinal);
         foreach (var release in releases)
         {
-            if (release.Phase == "eol" || !DependenciesYml.PlatformSdks.Contains(release.Platform, StringComparer.Ordinal))
+            // #613 item 1: a row the lookup's parsePlatformTable (feeds.ts) would refuse fails EVERY lookup, so it never goes
+            // in: the per-major rows written before #606 had no channel ("channel":"" failed 10 of 10 first lookups on
+            // 2026-11-09, e.g. MintPlayer/mintplayer-ng-seo run 42650847860).
+            if (release.Phase == "eol" || !DependenciesYml.PlatformSdks.Contains(release.Platform, StringComparer.Ordinal) || !IsChannel(release.Channel))
                 continue;
             if (!sdks.TryGetValue(release.Platform, out var list))
                 sdks[release.Platform] = list = [];
@@ -49,6 +52,12 @@ public static class DependencyPlatformTable
             ["unstable"] = unstable,
         });
     }
+
+    /// <summary>A channel the action accepts: <c>^\d{1,4}(\.\d{1,4})?$</c> (dependency-action/src/platform/feeds.ts).</summary>
+    public static bool IsChannel(string? channel) => channel is not null && ChannelPattern().IsMatch(channel);
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"\A\d{1,4}(\.\d{1,4})?\z", System.Text.RegularExpressions.RegexOptions.CultureInvariant)]
+    private static partial System.Text.RegularExpressions.Regex ChannelPattern();
 
     private static string? Date(DateTime? value) => value?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
 }

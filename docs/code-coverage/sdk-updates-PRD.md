@@ -5,8 +5,9 @@ job already fetches the released SDKs (.NET, Node, PHP, …), so the bot should 
 repository can take a new SDK (`net10.0` → `net11.0`). Combining it with the package updater is an option; this
 document decides the path.
 
-Status: **M1–M7 implemented 2026-11-09 on `feat/issue606-sdk-updater` (§10); spikes S1–S7 recorded (§5); M8 is the
-owner's live rollout.** .NET 11 goes GA the night of 2026-11-09; the owner migrates their repositories to the current
+Status: **M1–M7 merged 2026-11-09 (PR #611, §10); spikes S1–S7 recorded (§5). M8 rollout: all 14 MintPlayer
+repositories onboarded 2026-11-09; its seven problems (issue #613) are fixed in PR #614 (§11). Left of M8: after #614
+deploys, re-trigger the failed lookups and see one `platform:dotnet 11.0` move through on DependencyUpdaterTest.** .NET 11 goes GA the night of 2026-11-09; the owner migrates their repositories to the current
 action the same day (D9).
 
 Related: [dependency-updates-PRD.md](dependency-updates-PRD.md) (#419, the rolling updater; §13 is its current design),
@@ -280,3 +281,33 @@ All milestones in one change on `feat/issue606-sdk-updater`, after `5a06a0b5b` (
   `pull-request` failed only as a consequence.
 - **M8 Rollout** is the owner's: update the action pin in each repository (the bot refuses an outdated lookup
   workflow), then one live platform PR on `PieterjanDeClippel/DependencyUpdaterTest` as listed in §4.
+
+## 11. Rollout fixes (#613, 2026-11-09)
+
+The M8 rollout onboarded the 14 MintPlayer repositories on 2026-11-09 and found seven problems (issue #613). One pull
+request, on `fix/issue613-sdk-rollout`.
+
+| # | Decision | Rejected | Evidence | By |
+|---|---|---|---|---|
+| D19 | The lookup table skips a `PlatformRelease` row whose channel the action refuses (`DependencyPlatformTable.IsChannel`, the action's `^\d{1,4}(\.\d{1,4})?$`). A host whose stored rows are not in that shape collects once at startup (`PlatformLifecycleStartup`); an empty table is left to the daily slot | waiting for the 04:17 UTC slot; a run-now endpoint | 10 of 10 first lookups failed: the deploy kept the per-major rows written before #606, which have no channel. Spark Cron has no catch-up (`libs/cron/MintPlayer.Spark.Cron/README.md`). Tests: `PlatformLifecycleTests.A_row_without_a_channel_never_reaches_the_lookup_table`, `…A_collection_deletes_the_rows_in_the_old_shape` | implementation |
+| D20 | A platform group's edits travel to the writer as `PlatformLocations` in the validate, work-ref and rolling requests, built from the lookup's non-computed `PlatformRecord.Locations`. The plan file is unchanged | a new field in the plan | `plan.schema.json` has `additionalProperties: false`, and the fleet's runners are pinned at `5c992693d`: a new plan field fails every apply | implementation |
+| D21 | A platform edit is admitted only as a token swap: the line's prefix and suffix stay, the old value was reported at that file, and the new token names the target channel, version or SDK version (`PlatformSubstitution.Explain`); `TargetFramework`→`TargetFrameworks` only for `strategy: add` | admitting any edit of a reported file | every SDK move was refused as `OutsidePlannedFiles`. Tests: `DependencyPlatformPatchTests` | implementation |
+| D22 | Completeness is not enforced: a reported location may stay unedited (ranges and minimums are reported only, D16), but an applied platform group needs at least one platform edit | every reported location must change | `applyPlatform.ts` edits only the value span and never the reported-only kinds | implementation |
+| D23 | Gap A: an **edit** of an existing `Directory.Build.props`/`.targets` is admitted only as a strict substitution: a planned NuGet `current → new` on a line naming the package (`SubstitutionCheck`), or a reported platform location. Adding, deleting or renaming one, or any other change, stays refused | admitting the files outright; keeping them refused | `MintPlayer.Versioning.MSBuild` is referenced from `Directory.Build.props` in several repositories, and refusing the file refused the whole patch | owner, 2026-11-09 ("Strict substitutions") |
+| D24 | Workflow platform edits: a `setup-*` input, a matrix entry (`jobs.*.strategy.matrix.*`, flow style included) and an image (`container`, `container.image`, `services.*.image`) accept a platform substitution; a `run:` line never does | treating workflow platform edits as unplanned | `WorkflowChangeRules.PlatformChange`; test `DependencyPlatformPatchTests` (setup action + flow matrix accepted, `run:` refused) | implementation |
+| D25 | `workflow-outdated` opens *Update the MintPlayer dependency workflows* on the onboarding branch, with the current template pinned as onboarding pins it. A workflow without a template (a custom `lookupAction`) gets no pull request, and a line's run opens none | a message only | SpaServices and DependencyUpdaterTest were stuck: onboarding skips a repository whose lookup workflow exists. Tests: `DependencySagaTests.Item613_*` | implementation |
+| D26 | The onboarding's commented section shows `platforms:` with no track pinned (the built-in track inherits the account's) | `track: stable` in the comment | uncommenting must keep the defaults, and `DependencyPlatformSettings.Default.Track` is `Inherit`. Test: `The_commented_section_shows_platforms_and_uncommented_keeps_the_defaults` | implementation |
+| D27 | GitHub's own merge queue is also detected on a **classic** protection rule, through GraphQL `repository.mergeQueue(branch:)`. The onboarding pull request names it, and the `/queue` "not enabled" refusal says that a pull request adding the section is merged without the queue | REST only | mintplayer-ng-video-player #109: REST `rules/branches/master` = `[]` and the classic protection says nothing about a queue, while GraphQL answered `mergeQueue { configuration { mergeMethod: SQUASH } }` on 2026-11-09. Tests: `GitHubForgeMergeQueueTests.A_classic_rule_that_requires_githubs_merge_queue_is_reported`, `DependencyOnboardingTests.Item613_…` | implementation |
+| D28 | The approval rule is stated (onboarding and refresh pull request bodies, guide §2 step 4): someone with write access approves a bot pull request before `/queue` | — | Spark #612, mintplayer-ng-bootstrap #469: "…[bot] does not have write access, so an approval … is needed" | implementation |
+
+**Fixed on the way:** three R16 saga tests read the repository's own `.github/dependabot.yml`, which #612 deleted
+(`e27ad5bbe`), so they have failed on master since that merge (`FileNotFoundException`). They now read the file as it was
+before #612, kept as a fixture (`CodeCoverage.Tests/Dependencies/Lifecycle/Fixtures/dependabot-spark-before-612.yml`).
+
+**Verified locally (2026-11-09):** the affected classes only. GitWriter.Tests (Dependency*, WorkflowRef*,
+GitHubWorkflowValidator, Hardening) 187/187. CodeCoverage.Tests (PlatformLifecycle, DependencyOnboarding, DependencySaga,
+DependencyLifecycleRules, GitHubForgeMergeQueue, MergeQueueEngine, DependencyUpdateEngine*) 356/356 after the fixture fix.
+
+**After the deploy (operational):** a repository whose first lookup failed on the old table runs again when its
+dependency switch is turned off and on (D-O15 expedites it). SpaServices and DependencyUpdaterTest get the D25 pull
+request on their next run.

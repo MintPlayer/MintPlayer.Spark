@@ -217,6 +217,45 @@ public class PlatformLifecycleTests : CoverageRavenTest
         document.RootElement.GetProperty("unstable").EnumerateArray().Select(u => u.GetString()).Should().Equal("@types/node");
     }
 
+    /// <summary>
+    /// #613 item 1: the rows written before #606 were per major, without a channel. Production still held them after the
+    /// deploy, and the table carried <c>"channel":""</c>, which the action refuses: 10 of 10 first lookups failed with
+    /// "input platforms.sdks.dotnet[0].channel must be a channel such as 10.0 or 24" (2026-11-09).
+    /// </summary>
+    [Fact]
+    public void A_row_without_a_channel_never_reaches_the_lookup_table()
+    {
+        var old = new PlatformRelease { Id = "PlatformReleases/dotnet/11", Platform = "dotnet", Major = 11, Name = "11.0", Phase = "preview", LatestVersion = "11.0.0-rc.3" };
+        var current = new PlatformRelease { Id = PlatformRelease.IdFor("dotnet", "10.0"), Platform = "dotnet", Channel = "10.0", Major = 10, Name = "10.0", Phase = "active", LatestVersion = "10.0.1" };
+
+        var table = CodeCoverage.Dependencies.Policy.DependencyPlatformTable.Json([old, current], []);
+
+        using var document = System.Text.Json.JsonDocument.Parse(table);
+        document.RootElement.GetProperty("sdks").GetProperty("dotnet").EnumerateArray().Select(c => c.GetProperty("channel").GetString()).Should().Equal("10.0");
+        PlatformLifecycleStartup.NeedsCollection([old, current]).Should().BeTrue("a row in the old shape is recollected at startup");
+        PlatformLifecycleStartup.NeedsCollection([current]).Should().BeFalse();
+        PlatformLifecycleStartup.NeedsCollection([]).Should().BeFalse("an empty table fails no lookup, and a test host makes no outbound request");
+    }
+
+    /// <summary>#613 item 1: one collection replaces the old per-major rows, so the startup run heals the table.</summary>
+    [Fact]
+    public async Task A_collection_deletes_the_rows_in_the_old_shape()
+    {
+        using var store = GetDocumentStore();
+        using (var session = store.OpenAsyncSession())
+        {
+            await session.StoreAsync(new PlatformRelease { Id = "PlatformReleases/dotnet/11", Platform = "dotnet", Major = 11, Name = "11.0", Phase = "preview" });
+            await session.SaveChangesAsync();
+        }
+
+        await RunAsync(store, Sources(AllSources()).Handler);
+
+        using var check = store.OpenAsyncSession();
+        var stored = await check.Advanced.LoadStartingWithAsync<PlatformRelease>(PlatformRelease.Prefix, pageSize: 1024);
+        stored.Should().NotContain(r => r.Id == "PlatformReleases/dotnet/11");
+        PlatformLifecycleStartup.NeedsCollection(stored).Should().BeFalse();
+    }
+
     private static Dictionary<string, string?> AllSources() => new()
     {
         ["https://dotnet.example/index.json"] = Fixture.Read("PlatformLifecycle/dotnet-releases-index.json"),

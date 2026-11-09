@@ -144,6 +144,48 @@ public partial class GitHubForgeMergeQueue : IForgeMergeQueue
         return accumulator.Build(rulesetsAvailable, rulesets, classic);
     }
 
+    private const string MergeQueueQuery = """
+        query($owner: String!, $name: String!, $branch: String!) {
+          repository(owner: $owner, name: $name) { mergeQueue(branch: $branch) { id } }
+        }
+        """;
+
+    /// <summary>
+    /// GitHub's own merge queue is on for <paramref name="branchPath"/> (GraphQL <c>repository.mergeQueue</c>, non-null for a
+    /// ruleset's queue and a classic rule's alike). Owner, name and branch go as variables. A reply that is not an answer
+    /// (no GraphQL access, a missing repository) reads as no queue and is logged; a rate limit is thrown, as elsewhere.
+    /// </summary>
+    private async Task<bool> HasMergeQueueAsync(Repository repository, string branchPath, CancellationToken cancellationToken)
+    {
+        var body = new Dictionary<string, object?>
+        {
+            ["query"] = MergeQueueQuery,
+            ["variables"] = new Dictionary<string, object?>
+            {
+                ["owner"] = repository.OwnerLogin,
+                ["name"] = repository.Name,
+                ["branch"] = Uri.UnescapeDataString(branchPath),
+            },
+        };
+        using var reply = await SendAsync(repository, HttpMethod.Post, "graphql", body, DefaultApiVersion, cancellationToken);
+        if (reply.Status != HttpStatusCode.OK)
+        {
+            logger.LogWarning("Could not ask GitHub whether {FullName} has a merge queue ({Status}).", repository.FullName, (int)reply.Status);
+            return false;
+        }
+        var root = reply.Json?.RootElement ?? default;
+        var errors = Items(root, "errors").ToList();
+        if (errors.Count > 0)
+        {
+            if (GraphQLRateLimit(errors, $"the merge queue of {repository.FullName}") is { } limited)
+                throw new ForgeRequestException($"GitHub rate-limited the merge-queue read of {repository.FullName}.", (int)reply.Status, limited);
+            logger.LogWarning("Could not ask GitHub whether {FullName} has a merge queue: {Errors}", repository.FullName,
+                string.Join("; ", errors.Select(e => Str(e, "message") ?? "no message")));
+            return false;
+        }
+        return Child(Child(Child(root, "data"), "repository"), "mergeQueue").ValueKind == JsonValueKind.Object;
+    }
+
     private static bool IsPlanWithoutRulesets(string message)
         => message.Contains("Upgrade to GitHub Pro", StringComparison.OrdinalIgnoreCase);
 
@@ -188,6 +230,11 @@ public partial class GitHubForgeMergeQueue : IForgeMergeQueue
                 && protection.TryGetProperty("required_status_checks", out var checks))
                 accumulator.AddClassicChecks(checks);
         }
+
+        // #613 item 6: a classic protection rule can require GitHub's merge queue, and no REST answer says so (neither
+        // rules/branches nor branches/{b}/protection: mintplayer-ng-video-player's master, 2026-11-09). GraphQL does.
+        if (await HasMergeQueueAsync(repository, branchPath, cancellationToken))
+            accumulator.AddRule("merge_queue", default);
 
         using var detail = await SendAsync(repository, HttpMethod.Get, $"{RepoPath(repository)}/branches/{branchPath}/protection", null, DefaultApiVersion, cancellationToken);
         switch (detail.Status)

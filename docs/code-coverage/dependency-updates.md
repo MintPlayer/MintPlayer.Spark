@@ -73,7 +73,15 @@ A slot whose rebuilt tree equals the pushed one pushes nothing and starts no CI.
    - and it removes the version-update entries of `.github/dependabot.yml`, translating its `ignore:` into rules.
      Dependabot **alerts** stay on: they feed the security trigger (§6).
    - and, when you chose *with the merge queue*, `mergeQueue: { enabled: true }` unless `coverage.yml` already has it.
-4. **Merge it.** The first rolling pull request after onboarding is a **draft** and never auto-merges: review it once.
+4. **Approve, then merge it.** The bot cannot approve its own pull request, and `/queue` refuses a pull request by
+   an author without write access until someone **with write access approves** its head commit ("…[bot] does not have
+   write access, so an approval of commit … is needed"). Approve it, then merge it or comment `/queue`. The same applies
+   to every bot pull request (#613). The first rolling pull request after onboarding is a **draft** and never
+   auto-merges: review it once.
+5. **When the bot's workflow is outdated.** A lookup workflow from before the bot's current inputs (for example, one
+   without `platforms`, #606) ends its run with `workflow-outdated`. The bot then opens *Update the MintPlayer dependency
+   workflows* on `mintplayer/dependencies-onboarding`, with the current template pinned as onboarding pins it. Merging it
+   starts a run. A renamed workflow (`lookupAction`) has no template: update it by hand.
 
 **The workflows are all you add.** There is no other action to install and no secret to create (the lookup's optional
 `host-rules` secret is for private feeds only). The bot dispatches the workflows by file name: keep them on the default
@@ -283,7 +291,8 @@ Edited comments and comments by bots are ignored. The bot reacts 👍 or 👎.
 - **Feed secrets** reach only the lookup and the apply of ecosystems whose relock runs no package code (npm, pnpm, yarn,
   NuGet restore, Composer with `--no-plugins`, Cargo, Go, Maven); never Gradle; uv only with `--no-build`.
 - **Every patch is judged by the bot, not by the runner**: only planned package files that exist, each changed line a
-  planned `current → new` swap on a line naming the dependency, no added or deleted files, no `Directory.Build.*`,
+  planned `current → new` swap on a line naming the dependency (or, for a platform group, a swap of a location the lookup
+  reported to the target version), no added or deleted files, no `Directory.Build.*` change other than such a swap,
   `.npmrc`, `NuGet.Config`, install scripts or `.github/` (except `uses:` refs and `setup-*` versions, validated against
   the target `action.yml`), lockfile URLs on known registries only, integrity on every entry, and more than 25 new
   packages needs a person. The plan file never reaches the rolling branch.

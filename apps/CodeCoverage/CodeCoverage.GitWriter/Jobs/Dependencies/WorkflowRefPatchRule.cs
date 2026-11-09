@@ -6,7 +6,11 @@ namespace CodeCoverage.GitWriter.Jobs.Dependencies;
 /// <summary>What the line rule accepted in one workflow file: the planned entries it applies and the uses:/with: value
 /// pairs the YAML comparison must then find, and nothing else.</summary>
 public sealed record WorkflowRefPlan(IReadOnlyList<DependencyPlanEntry> Entries, IReadOnlySet<(string Old, string New)> Uses,
-    IReadOnlySet<(string Key, string Old, string New)> With);
+    IReadOnlySet<(string Key, string Old, string New)> With)
+{
+    /// <summary>#613 item 2: the platform groups whose reported locations explain a changed line of this file.</summary>
+    public IReadOnlySet<string> PlatformGroups { get; init; } = new HashSet<string>(StringComparer.Ordinal);
+}
 
 /// <summary>
 /// The R15 carve-out at the line level (docs/code-coverage/dependency-updates-PRD.md gap C), for
@@ -37,12 +41,17 @@ public static partial class WorkflowRefPatchRule
     [GeneratedRegex(@"\A[0-9a-f]{40}\z", RegexOptions.CultureInvariant)]
     private static partial Regex Sha();
 
-    /// <summary>The verdict on one workflow file's hunks against the entries planned for it.</summary>
-    public static (WorkflowRefPlan? Plan, string? Reason, string? Detail) Check(PatchFile file, IReadOnlyList<DependencyPlanEntry> entries)
+    /// <summary>The verdict on one workflow file's hunks against the entries planned for it and, #613 item 2, the platform
+    /// locations the lookup reported in it: a line no planned entry explains may still be a
+    /// <see cref="PlatformSubstitution"/> of one of those (a setup-action version, a matrix entry, a container tag). The
+    /// YAML comparison then confirms each such change is a scalar at a platform path.</summary>
+    public static (WorkflowRefPlan? Plan, string? Reason, string? Detail) Check(PatchFile file, IReadOnlyList<DependencyPlanEntry> entries,
+        IReadOnlyList<(DependencyPlatformMove Move, DependencyPlatformLocation Location)>? platform = null)
     {
         var used = new List<DependencyPlanEntry>();
         var uses = new HashSet<(string, string)>();
         var with = new HashSet<(string, string, string)>();
+        var platformGroups = new HashSet<string>(StringComparer.Ordinal);
         foreach (var hunk in file.Hunks)
         {
             foreach (var block in hunk.Blocks())
@@ -53,6 +62,12 @@ public static partial class WorkflowRefPatchRule
                 {
                     var line = block.OldLine + k;
                     var (old, @new) = (block.Removed[k], block.Added[k]);
+                    if (platform is { Count: > 0 } && PlatformSubstitution.Explain(old, @new, platform) is { } group
+                        && !(UsesLine().IsMatch(old) && !old.Contains("docker://", StringComparison.Ordinal)))
+                    {
+                        platformGroups.Add(group);
+                        continue;
+                    }
                     if (UsesLine().Match(old) is { Success: true } o && UsesLine().Match(@new) is { Success: true } n)
                     {
                         var pair = UsesPair(o, n, entries, line);
@@ -83,7 +98,7 @@ public static partial class WorkflowRefPatchRule
                 }
             }
         }
-        return (new WorkflowRefPlan(used.Distinct().ToList(), uses, with), null, null);
+        return (new WorkflowRefPlan(used.Distinct().ToList(), uses, with) { PlatformGroups = platformGroups }, null, null);
     }
 
     private readonly record struct PairVerdict(DependencyPlanEntry? Entry, string? Reason, string? Detail);

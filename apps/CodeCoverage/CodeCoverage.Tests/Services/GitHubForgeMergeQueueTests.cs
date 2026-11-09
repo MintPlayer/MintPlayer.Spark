@@ -263,6 +263,48 @@ public class GitHubForgeMergeQueueTests
         rules.RequiredApprovals.Should().Be(2);
         rules.RequiredChecks.Should().Equal(["test"]);
         rules.RequireUpToDateBranch.Should().BeTrue();
+        rules.HasNativeMergeQueue.Should().BeFalse("the GraphQL read was not answered");
+    }
+
+    /// <summary>
+    /// #613 item 6: mintplayer-ng-video-player's master, 2026-11-09. A classic rule required GitHub's merge queue; REST answered
+    /// <c>[]</c> for the rules and a protection without a word of it, GraphQL answered <c>mergeQueue { … }</c>.
+    /// </summary>
+    [Fact]
+    public async Task A_classic_rule_that_requires_githubs_merge_queue_is_reported()
+    {
+        string? asked = null;
+        var github = new StubGitHub()
+            .On(HttpMethod.Get, $"{Repo}/rules/branches/master", HttpStatusCode.OK, "[]")
+            .On(HttpMethod.Get, $"{Repo}/branches/master", HttpStatusCode.OK, """{"name":"master","protected":true,"protection":{"enabled":true}}""")
+            .On(HttpMethod.Get, $"{Repo}/branches/master/protection", HttpStatusCode.OK, """
+                {"required_signatures":{"enabled":false},"enforce_admins":{"enabled":false},"required_linear_history":{"enabled":false},
+                 "allow_force_pushes":{"enabled":false},"allow_deletions":{"enabled":false},"lock_branch":{"enabled":false}}
+                """)
+            .On(HttpMethod.Post, "/graphql", (_, body) =>
+            {
+                asked = body;
+                return StubHttpMessageHandler.Json(HttpStatusCode.OK,
+                    """{"data":{"repository":{"mergeQueue":{"id":"MQ_kwDOxyz"}}}}""");
+            });
+
+        var rules = await Queue(github).GetBranchRulesAsync(Target(), "master");
+
+        rules.HasNativeMergeQueue.Should().BeTrue();
+        rules.ClassicProtection.Should().Be(EForgeClassicProtection.Read);
+        asked.Should().Contain("\"branch\":\"master\"").And.Contain("\"owner\":\"acme\"", "values go as variables, never into the query");
+    }
+
+    [Fact]
+    public async Task A_classic_rule_without_githubs_merge_queue_is_not_one()
+    {
+        var github = new StubGitHub()
+            .On(HttpMethod.Get, $"{Repo}/rules/branches/master", HttpStatusCode.OK, "[]")
+            .On(HttpMethod.Get, $"{Repo}/branches/master", HttpStatusCode.OK, """{"name":"master","protected":true,"protection":{"enabled":true}}""")
+            .On(HttpMethod.Get, $"{Repo}/branches/master/protection", HttpStatusCode.OK, """{"enforce_admins":{"enabled":false}}""")
+            .On(HttpMethod.Post, "/graphql", HttpStatusCode.OK, """{"data":{"repository":{"mergeQueue":null}}}""");
+
+        (await Queue(github).GetBranchRulesAsync(Target(), "master")).HasNativeMergeQueue.Should().BeFalse();
     }
 
     // ── Checks ───────────────────────────────────────────────────────────────────────────────────

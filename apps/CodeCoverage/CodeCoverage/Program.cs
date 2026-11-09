@@ -76,6 +76,8 @@ builder.Services.AddHttpClient(CodeCoverage.PlatformLifecycle.PlatformLifecycleO
     http.Timeout = TimeSpan.FromSeconds(30);
     http.DefaultRequestHeaders.UserAgent.ParseAdd("CodeCoverage-PlatformLifecycle");
 });
+// #613 item 1: rows in an old shape fail every dependency lookup; they are recollected at startup, not at the next slot.
+builder.Services.AddHostedService<CodeCoverage.PlatformLifecycle.PlatformLifecycleStartup>();
 // Outgoing mail (#460 M8, D10): MailManager under Spark:Mail. Added only when a relay
 // (Spark:Mail:Smtp:Host) AND a sender (Spark:Mail:From:Address) are configured; compose maps both
 // from MAIL_HOST / MAIL_FROM_ADDRESS, and an unset MAIL_FROM_ADDRESS leaves mail off. Without it the

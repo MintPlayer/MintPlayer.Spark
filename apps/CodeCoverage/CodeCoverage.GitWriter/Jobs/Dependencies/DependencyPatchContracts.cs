@@ -45,8 +45,8 @@ public sealed record DependencyPlanEntry(string DepName, string PackageFile, str
         Manager = item.Manager,
     };
 
-    /// <summary>Every item of every group of <paramref name="plan"/>, in plan order. A platform group carries no items: its
-    /// edits are the SDK adapter's, which this profile does not cover.</summary>
+    /// <summary>Every item of every group of <paramref name="plan"/>, in plan order. A platform group's items are its
+    /// companion riders; the SDK adapter's own edits are <see cref="DependencyPatchRequest.Platforms"/> (#613 item 2).</summary>
     public static IReadOnlyList<DependencyPlanEntry> From(DependencyPlan plan)
         => [.. plan.Groups.SelectMany(g => g.Items.Select(i => From(i, g.Group)))];
 }
@@ -82,14 +82,22 @@ public sealed record DependencyPatchRequest(IReadOnlyList<DependencyPlanEntry> P
     /// <summary>The target <c>action.yml</c> per new <c>uses:</c> value, when the caller fetched them (a later milestone).</summary>
     public IReadOnlyDictionary<string, string>? TargetActions { get; init; }
 
+    /// <summary>#613 item 2: the plan's platform groups, each with the locations the lookup reported for its SDK. The SDK
+    /// adapter's edits are admitted only on these, as <see cref="PlatformSubstitution"/> substitutions.</summary>
+    public IReadOnlyList<DependencyPlatformMove> Platforms { get; init; } = [];
+
     /// <summary>The request for the contract <paramref name="plan"/>; with <paramref name="result"/>, its <c>applied</c>
-    /// groups become the claim the patch must equal (§13.11.3 #4, D-V5).</summary>
-    public static DependencyPatchRequest From(DependencyPlan plan, ApplyResult? result = null) => new(DependencyPlanEntry.From(plan))
-    {
-        ClaimedAppliedGroups = result is null
-            ? null
-            : [.. result.Groups.Where(g => g.Status == EApplyGroupStatus.Applied).Select(g => g.Group)],
-    };
+    /// groups become the claim the patch must equal (§13.11.3 #4, D-V5). <paramref name="locations"/> are the lookup's
+    /// non-computed platform locations; a platform group's move admits the ones of its SDK.</summary>
+    public static DependencyPatchRequest From(DependencyPlan plan, ApplyResult? result = null, IReadOnlyList<DependencyPlatformLocation>? locations = null)
+        => new(DependencyPlanEntry.From(plan))
+        {
+            ClaimedAppliedGroups = result is null
+                ? null
+                : [.. result.Groups.Where(g => g.Status == EApplyGroupStatus.Applied).Select(g => g.Group)],
+            Platforms = [.. plan.Groups.Where(g => g.Platform is not null).Select(g => new DependencyPlatformMove(g.Group, g.Platform!,
+                [.. (locations ?? []).Where(l => l.Sdk == g.Platform!.Sdk)]))],
+        };
 }
 
 public enum DependencyPatchOutcome
