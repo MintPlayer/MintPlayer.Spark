@@ -1,9 +1,7 @@
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Reflection;
-using Raven.Client;
-using Raven.Client.Documents;
-using Raven.Client.Documents.Session;
+using MintPlayer.Spark.Abstractions.Storage;
 using System.Collections;
 using System.Text.Json;
 
@@ -55,8 +53,8 @@ internal interface IReferenceTargetValidation
 [Register(typeof(IReferenceTargetValidation), ServiceLifetime.Scoped)]
 internal sealed partial class ReferenceTargetValidation : IReferenceTargetValidation
 {
-    [Inject] private readonly IDocumentStore documentStore;
-    [Inject] private readonly IAsyncDocumentSession requestSession;
+    [Inject] private readonly ISparkStore store;
+    [Inject] private readonly ISparkSession requestSession;
     [Inject] private readonly IModelLoader modelLoader;
     [Inject] private readonly ISparkTypeResolver typeResolver;
 
@@ -91,12 +89,12 @@ internal sealed partial class ReferenceTargetValidation : IReferenceTargetValida
         // from that session, without a server call. Everything else from a side session, so nothing
         // this check loads (a foreign document, a stale-typed JObject) ends up tracked in the request.
         var ids = candidates.Select(c => c.Id).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-        var found = new Dictionary<string, (object Doc, IAsyncDocumentSession Session)>(StringComparer.OrdinalIgnoreCase);
-        foreach (var id in ids.Where(requestSession.Advanced.IsLoaded))
+        var found = new Dictionary<string, (object Doc, ISparkSession Session)>(StringComparer.OrdinalIgnoreCase);
+        foreach (var id in ids.Where(requestSession.IsLoaded))
             if (await requestSession.LoadAsync<object>(id, cancellationToken) is { } tracked)
                 found[id] = (tracked, requestSession);
 
-        using var sideSession = documentStore.OpenAsyncSession();
+        using var sideSession = store.OpenSession();
         var remaining = ids.Where(id => !found.ContainsKey(id)).ToList();
         if (remaining.Count > 0)
             foreach (var (id, doc) in await sideSession.LoadAsync<object>(remaining, cancellationToken))
@@ -125,21 +123,19 @@ internal sealed partial class ReferenceTargetValidation : IReferenceTargetValida
             throw new SparkSaveValidationException(result);
     }
 
-    private bool IsInTargetCollection(IAsyncDocumentSession session, object doc, Type target)
+    private bool IsInTargetCollection(ISparkSession session, object doc, Type target)
     {
-        var conventions = documentStore.Conventions;
-        if (!session.Advanced.GetMetadataFor(doc).TryGetValue(Constants.Documents.Metadata.Collection, out var raw)
-            || raw?.ToString() is not { Length: > 0 } actual)
+        if (session.GetStoredCollectionName(doc) is not { Length: > 0 } actual)
             return false;
 
-        if (string.Equals(actual, conventions.GetCollectionName(target), StringComparison.Ordinal))
+        if (string.Equals(actual, store.GetCollectionName(target), StringComparison.Ordinal))
             return true;
 
         // A genuine subtype behind a base-typed edge lives in its own collection.
         var docType = doc.GetType();
         return docType != target
             && target.IsAssignableFrom(docType)
-            && string.Equals(actual, conventions.GetCollectionName(docType), StringComparison.Ordinal);
+            && string.Equals(actual, store.GetCollectionName(docType), StringComparison.Ordinal);
     }
 
     /// <summary>The CLR type a reference attribute's ids must be documents of; null when it has no documents to check.</summary>

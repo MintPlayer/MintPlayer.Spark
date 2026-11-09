@@ -5,8 +5,7 @@ using MintPlayer.Spark.Abstractions.Authorization;
 using MintPlayer.Spark.Endpoints.Queries;
 using MintPlayer.Spark.Queries;
 using MintPlayer.Spark.Services;
-using Raven.Client.Documents;
-using Raven.Client.Documents.Session;
+using MintPlayer.Spark.Abstractions.Storage;
 
 namespace MintPlayer.Spark.Live;
 
@@ -37,7 +36,7 @@ internal sealed class LiveAppStreamSubscription(LiveConnection connection, strin
     private Exception? failure;
     private bool started;
     private AsyncServiceScope? streamScope;
-    private IAsyncDocumentSession? streamSession;
+    private ISparkSession? streamSession;
     private CancellationTokenSource? streamCancellation;
     private Task? pump;
     private LiveAppStreamMethod? method;
@@ -153,8 +152,8 @@ internal sealed class LiveAppStreamSubscription(LiveConnection connection, strin
 
         // #239 M4: a stream open for minutes is not "a request" — its request count would sail past RavenDB's
         // 30-cap purely from doing its job — so the method's own session is uncapped.
-        var session = scope.ServiceProvider.GetRequiredService<IDocumentStore>().OpenAsyncSession();
-        session.Advanced.MaxNumberOfRequestsPerSession = int.MaxValue;
+        var session = scope.ServiceProvider.GetRequiredService<ISparkStore>().OpenSession();
+        session.MaxNumberOfRequests = int.MaxValue;
         streamSession = session;
         var cancellation = CancellationTokenSource.CreateLinkedTokenSource(Connection.Aborted);
         streamCancellation = cancellation;

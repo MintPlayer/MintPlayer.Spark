@@ -32,7 +32,7 @@ public class QueryExecutorIntegrationTests : SparkTestDriver
 
     public class TestSparkContext : SparkContext
     {
-        public IRavenQueryable<Person> People => Session.Query<Person>();
+        public IQueryable<Person> People => Session.Query<Person>();
     }
 
     private readonly IModelLoader _modelLoader = Substitute.For<IModelLoader>();
@@ -51,7 +51,7 @@ public class QueryExecutorIntegrationTests : SparkTestDriver
         _modelLoader.GetEntityType(PersonTypeId).Returns(PersonTypeDefinition());
         _modelLoader.GetEntityTypeByClrType(typeof(Person).FullName!).Returns(PersonTypeDefinition());
 
-        _contextResolver.ResolveContext(Arg.Any<IAsyncDocumentSession>())
+        _contextResolver.ResolveContext(Arg.Any<MintPlayer.Spark.Abstractions.Storage.ISparkSession>())
             .Returns(ci =>
             {
                 var ctx = new TestSparkContext();

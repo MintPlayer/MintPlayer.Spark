@@ -120,8 +120,8 @@ public class MultiMapDefaultIndexTests : SparkTestDriver
 
     public class MmContext : SparkContext
     {
-        public IRavenQueryable<MmCar> MmCars => Session.Query<MmCar>();
-        public IRavenQueryable<MmVan> MmVans => Session.Query<MmVan>();
+        public IQueryable<MmCar> MmCars => Session.Query<MmCar>();
+        public IQueryable<MmVan> MmVans => Session.Query<MmVan>();
     }
 
     /// <summary>When enabled, the row policy of both queried types: only owner "a".</summary>

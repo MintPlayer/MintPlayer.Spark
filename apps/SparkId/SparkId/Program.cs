@@ -14,6 +14,9 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddSpark(builder.Configuration, spark =>
 {
+    // The store (#551): RavenDB, configured from Spark:RavenDb.
+    spark.UseRavenDb();
+
     spark.UseContext<SparkIdContext>();
     spark.AddMigrations(); // generated: discovers ISparkMigration classes, runs them once at startup
 

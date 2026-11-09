@@ -24,10 +24,31 @@ public interface ISparkSession : IDisposable
     /// <summary>The collection of <typeparamref name="T"/> as a queryable.</summary>
     IQueryable<T> Query<T>() where T : class;
 
+    /// <summary>
+    /// The rows of the index <typeparamref name="TIndex"/> as <typeparamref name="T"/> (a view root: the generated
+    /// <c>VPeople =&gt; Session.Query&lt;VPerson, People_Overview&gt;()</c>). A store without indexes throws
+    /// <see cref="NotSupportedException"/>.
+    /// </summary>
+    IQueryable<T> Query<T, TIndex>() where T : class where TIndex : class, new();
+
     Task<T?> LoadAsync<T>(string id, CancellationToken cancellationToken = default) where T : class;
 
     /// <summary>Loads by id; a missing id maps to null. Keys are the ids asked for.</summary>
     Task<IReadOnlyDictionary<string, T?>> LoadAsync<T>(IEnumerable<string> ids, CancellationToken cancellationToken = default) where T : class;
+
+    /// <summary>
+    /// Loads by id and asks the store to bring the documents named by <paramref name="includePaths"/> (reference id
+    /// properties) along in the same round trip, so later loads of them are served from the session. A hint only: a
+    /// provider without includes loads the ids alone, and the references are loaded when read.
+    /// </summary>
+    Task<IReadOnlyDictionary<string, T?>> LoadAsync<T>(IEnumerable<string> ids, IReadOnlyCollection<string> includePaths, CancellationToken cancellationToken = default) where T : class;
+
+    /// <summary>
+    /// Brings documents of different types into the session in as few round trips as the store allows (RavenDB: one,
+    /// as lazy loads), so the typed loads that follow are served from the session. A hint only: a provider whose loads
+    /// are cheap does nothing.
+    /// </summary>
+    Task PreloadAsync(IReadOnlyCollection<(Type EntityType, string Id)> documents, CancellationToken cancellationToken = default);
 
     /// <summary>Untyped <see cref="LoadAsync{T}(string, CancellationToken)"/>, for callers that hold a <see cref="Type"/>.</summary>
     Task<object?> LoadAsync(Type entityType, string id, CancellationToken cancellationToken = default);
@@ -126,8 +147,10 @@ public interface ISparkStore
     /// Waits, bounded by <paramref name="bound"/>, until reads over <paramref name="collections"/> see the
     /// writes committed before the call. Never throws; a provider whose reads are always current returns at once.
     /// </summary>
-    Task WaitForConsistencyAsync(
-        ISparkSession session, IReadOnlyCollection<string> collections, TimeSpan bound,
+    /// <param name="session">The session whose database is meant, or <see langword="null"/> for the store's default.</param>
+    /// <returns>Whether the reads caught up within the bound.</returns>
+    Task<bool> WaitForConsistencyAsync(
+        ISparkSession? session, IReadOnlyCollection<string> collections, TimeSpan bound,
         Action<Exception, string, TimeSpan>? onUnfinished, CancellationToken cancellationToken);
 }
 

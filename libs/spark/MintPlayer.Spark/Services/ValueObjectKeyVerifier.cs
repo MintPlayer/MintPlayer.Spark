@@ -1,7 +1,6 @@
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Model;
-using Raven.Client.Documents;
-using Raven.Client.Documents.Session;
+using MintPlayer.Spark.Abstractions.Storage;
 using System.Reflection;
 
 namespace MintPlayer.Spark.Services;
@@ -37,48 +36,12 @@ internal static class ValueObjectKeyVerifier
     /// <summary>One embedded collection to check: where it lives, and what its key is called.</summary>
     private readonly record struct KeyedCollection(string Collection, string Path, string KeyProperty);
 
-    /// <summary>The projection of one scanned document: how many of its rows on the path lack a key.</summary>
-    private sealed class KeylessCount
-    {
-        public int Keyless { get; set; }
-    }
-
     /// <summary>
-    /// Counts the rows at a dot-separated <c>path</c> whose <c>key</c> is absent, null or "". Every
-    /// array met on the way is flattened, so <c>Sessions.Reports</c> reaches the reports of every
-    /// session. A null element is not a row.
+    /// Discovery is the model's (here); reading the stored rows is the provider's (<see cref="ISparkStoreRowKeyScan"/>,
+    /// #551 D18).
     /// </summary>
-    private const string KeylessRowsFunction = """
-        declare function keylessRows(doc, path, key) {
-            var nodes = [doc];
-            var segments = path.split('.');
-            for (var i = 0; i < segments.length; i++) {
-                var next = [];
-                for (var j = 0; j < nodes.length; j++) {
-                    var value = nodes[j][segments[i]];
-                    if (value === null || value === undefined) continue;
-                    if (Array.isArray(value)) {
-                        for (var k = 0; k < value.length; k++) {
-                            if (value[k] !== null && value[k] !== undefined) next.push(value[k]);
-                        }
-                    } else {
-                        next.push(value);
-                    }
-                }
-                nodes = next;
-            }
-            var keyless = 0;
-            for (var j = 0; j < nodes.length; j++) {
-                var id = nodes[j][key];
-                if (id === null || id === undefined || id === '') keyless++;
-            }
-            return keyless;
-        }
-
-        """;
-
     public static async Task VerifyAsync(
-        Type contextType, IDocumentStore store, Action<string> log, CancellationToken cancellationToken)
+        Type contextType, ISparkStore store, ISparkStoreRowKeyScan scan, Action<string> log, CancellationToken cancellationToken)
     {
         var targets = Discover(contextType, store);
         if (targets.Count == 0)
@@ -86,39 +49,14 @@ internal static class ValueObjectKeyVerifier
 
         var offenders = new List<string>();
 
-        using var session = store.OpenAsyncSession();
         foreach (var target in targets)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            // ⚠️ A collection SCAN, not a `where` query (D-O18). `where Lines[].Id == null` creates an
-            // auto index per root collection on every application at startup — indexes belong to the
-            // application — and the request write path then waits on those auto indexes after every
-            // write to the collection. A collection query without `where` uses no index, and the
-            // JavaScript projection sends back one number per document instead of the document.
-            //
             // A row counts as keyless when its key is absent, null or "": the empty string is the shape
             // a key that defaults to "" leaves behind (ProjectColumn and EventColumnMapping derive
             // theirs, so a row saved before the deriving hook existed holds a present-but-useless key).
-            //
-            // Only the collection is spliced, because RQL takes no parameter for it; it comes from the
-            // collection-name convention and is validated anyway. Path and key are parameters.
-            var collection = RqlIdentifier.Collection(target.Collection);
-            var rql = KeylessRowsFunction + $"from '{collection}' as d select {{ Keyless: keylessRows(d, $path, $key) }}";
-
-            var query = session.Advanced.AsyncRawQuery<KeylessCount>(rql)
-                .AddParameter("path", target.Path)
-                .AddParameter("key", target.KeyProperty);
-
-            var documents = 0;
-            await using (var stream = await session.Advanced.StreamAsync(query, cancellationToken))
-            {
-                while (await stream.MoveNextAsync())
-                {
-                    if (stream.Current.Document?.Keyless > 0)
-                        documents++;
-                }
-            }
+            var documents = await scan.CountDocumentsWithKeylessRowsAsync(target.Collection, target.Path, target.KeyProperty, cancellationToken);
 
             if (documents > 0)
                 offenders.Add($"{target.Collection}.{target.Path} ({documents} document(s))");
@@ -144,15 +82,15 @@ internal static class ValueObjectKeyVerifier
 
     /// <summary>
     /// Every embedded collection of a registered value object reachable from the context's
-    /// <c>IRavenQueryable&lt;T&gt;</c> properties, with the RQL path to it.
+    /// query-root properties, with the dot-separated path to it.
     /// </summary>
-    private static List<KeyedCollection> Discover(Type contextType, IDocumentStore store)
+    private static List<KeyedCollection> Discover(Type contextType, ISparkStore store)
     {
         var found = new List<KeyedCollection>();
 
         foreach (var root in RootTypes(contextType))
         {
-            var collection = store.Conventions.FindCollectionName(root);
+            var collection = store.GetCollectionName(root);
             Walk(root, collection, prefix: null, found, new HashSet<Type>());
         }
 
@@ -164,9 +102,8 @@ internal static class ValueObjectKeyVerifier
         => contextType
             .GetProperties(BindingFlags.Public | BindingFlags.Instance)
             .Select(p => p.PropertyType)
-            .Where(t => t.IsGenericType
-                && t.GetGenericTypeDefinition().Name.StartsWith("IRavenQueryable", StringComparison.Ordinal))
-            .Select(t => t.GetGenericArguments()[0]);
+            .Select(SparkContextQueryables.ElementType)
+            .OfType<Type>();
 
     private static void Walk(
         Type owner, string collection, string? prefix, List<KeyedCollection> found, HashSet<Type> visiting)

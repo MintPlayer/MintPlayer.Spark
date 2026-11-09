@@ -1,17 +1,17 @@
 using Microsoft.Extensions.Logging;
-using Raven.Client.Documents.Session;
+using MintPlayer.Spark.Abstractions.Storage;
 using System.Runtime.CompilerServices;
 
 namespace MintPlayer.Spark;
 
 /// <summary>
-/// Extension methods for RavenDB session types.
+/// Extension methods for <see cref="ISparkSession"/>, for every store provider.
 /// </summary>
-public static class SessionExtensions
+public static class SparkSessionExtensions
 {
     /// <summary>
     /// Temporarily disables the per-session request budget for the duration of the returned
-    /// scope. On dispose, the original <c>MaxNumberOfRequestsPerSession</c> is restored.
+    /// scope. On dispose, the original <see cref="ISparkSession.MaxNumberOfRequests"/> is restored.
     /// If <paramref name="logger"/> is supplied and the scope performs more than
     /// <paramref name="expectedMaximumRequests"/> (default: the session's pre-scope max),
     /// a warning is logged.
@@ -21,31 +21,7 @@ public static class SessionExtensions
     /// must not silently elevate the budget for the remainder of the request.
     /// </remarks>
     public static IDisposable IgnoreMaxRequests(
-        this IAsyncDocumentSession session,
-        int? expectedMaximumRequests = null,
-        ILogger? logger = null,
-        [CallerMemberName] string? scope = null)
-    {
-        ArgumentNullException.ThrowIfNull(session);
-        var advanced = session.Advanced;
-        return new MaxRequestsScope(() => advanced.MaxNumberOfRequestsPerSession, max => advanced.MaxNumberOfRequestsPerSession = max, () => advanced.NumberOfRequests, expectedMaximumRequests, logger, scope);
-    }
-
-    /// <inheritdoc cref="IgnoreMaxRequests(IAsyncDocumentSession, int?, ILogger?, string?)"/>
-    public static IDisposable IgnoreMaxRequests(
-        this IDocumentSession session,
-        int? expectedMaximumRequests = null,
-        ILogger? logger = null,
-        [CallerMemberName] string? scope = null)
-    {
-        ArgumentNullException.ThrowIfNull(session);
-        var advanced = session.Advanced;
-        return new MaxRequestsScope(() => advanced.MaxNumberOfRequestsPerSession, max => advanced.MaxNumberOfRequestsPerSession = max, () => advanced.NumberOfRequests, expectedMaximumRequests, logger, scope);
-    }
-
-    /// <inheritdoc cref="IgnoreMaxRequests(IAsyncDocumentSession, int?, ILogger?, string?)"/>
-    public static IDisposable IgnoreMaxRequests(
-        this Abstractions.Storage.ISparkSession session,
+        this ISparkSession session,
         int? expectedMaximumRequests = null,
         ILogger? logger = null,
         [CallerMemberName] string? scope = null)
@@ -54,7 +30,8 @@ public static class SessionExtensions
         return new MaxRequestsScope(() => session.MaxNumberOfRequests, max => session.MaxNumberOfRequests = max, () => session.NumberOfRequests, expectedMaximumRequests, logger, scope);
     }
 
-    private sealed class MaxRequestsScope : IDisposable
+    /// <summary>The scope <c>IgnoreMaxRequests</c> returns, over any session's request counters; providers build their own overloads on it.</summary>
+    public sealed class MaxRequestsScope : IDisposable
     {
         private readonly Action<int> setMax;
         private readonly Func<int> requests;

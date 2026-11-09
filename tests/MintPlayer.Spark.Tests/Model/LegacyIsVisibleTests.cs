@@ -128,5 +128,5 @@ public class LivPerson
 
 public class LivContext : SparkContext
 {
-    public IRavenQueryable<LivPerson> People => Session.Query<LivPerson>();
+    public IQueryable<LivPerson> People => Session.Query<LivPerson>();
 }

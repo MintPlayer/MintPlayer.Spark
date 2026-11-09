@@ -40,11 +40,47 @@ internal sealed class RavenSparkSession : ISparkSession
 
     public IQueryable<T> Query<T>() where T : class => Session.Query<T>();
 
+    public IQueryable<T> Query<T, TIndex>() where T : class where TIndex : class, new()
+        => IndexQuery<T, TIndex>.Open(Session);
+
+    /// <summary>
+    /// RavenDB's <c>Query&lt;T, TIndex&gt;</c> constrains <typeparamref name="TIndex"/> to its own index base, which the
+    /// neutral contract cannot name: bound once per pair, by reflection.
+    /// </summary>
+    private static class IndexQuery<T, TIndex> where T : class where TIndex : class, new()
+    {
+        private static readonly Func<IAsyncDocumentSession, IQueryable<T>> open = Bind();
+
+        public static IQueryable<T> Open(IAsyncDocumentSession session) => open(session);
+
+        private static Func<IAsyncDocumentSession, IQueryable<T>> Bind()
+        {
+            if (!typeof(global::Raven.Client.Documents.Indexes.AbstractCommonApiForIndexes).IsAssignableFrom(typeof(TIndex)))
+                throw new ArgumentException($"{typeof(TIndex).FullName} is not a RavenDB index.", nameof(TIndex));
+            var method = typeof(IAsyncDocumentSession).GetMethods()
+                .Single(m => m.Name == nameof(IAsyncDocumentSession.Query) && m.GetGenericArguments().Length == 2 && m.GetParameters().Length == 0)
+                .MakeGenericMethod(typeof(T), typeof(TIndex));
+            return method.CreateDelegate<Func<IAsyncDocumentSession, IQueryable<T>>>();
+        }
+    }
+
     public Task<T?> LoadAsync<T>(string id, CancellationToken cancellationToken = default) where T : class
         => Session.LoadAsync<T>(id, cancellationToken)!;
 
     public async Task<IReadOnlyDictionary<string, T?>> LoadAsync<T>(IEnumerable<string> ids, CancellationToken cancellationToken = default) where T : class
         => (await Session.LoadAsync<T>(ids, cancellationToken))!;
+
+    public async Task<IReadOnlyDictionary<string, T?>> LoadAsync<T>(IEnumerable<string> ids, IReadOnlyCollection<string> includePaths, CancellationToken cancellationToken = default) where T : class
+    {
+        if (includePaths.Count == 0)
+            return await LoadAsync<T>(ids, cancellationToken);
+        // RavenDB takes includes only on the same fluent call: there is no pre-registering them on the session.
+        return (await Session.LoadAsync<T>(ids, builder =>
+        {
+            foreach (var path in includePaths)
+                builder.IncludeDocuments(path);
+        }, cancellationToken))!;
+    }
 
     public async Task<object?> LoadAsync(Type entityType, string id, CancellationToken cancellationToken = default)
     {
@@ -227,4 +263,27 @@ internal sealed class RavenSparkSession : ISparkSession
 
     private static readonly ConcurrentDictionary<Type, MethodInfo> LoadOne = new();
     private static readonly ConcurrentDictionary<Type, MethodInfo> LoadMany = new();
+
+    /// <remarks>
+    /// A typed lazy load per document, executed together: one round trip. Typed, so the later typed read of the same
+    /// id finds an entity of its own type.
+    /// </remarks>
+    public async Task PreloadAsync(IReadOnlyCollection<(Type EntityType, string Id)> documents, CancellationToken cancellationToken = default)
+    {
+        if (documents.Count == 0)
+            return;
+        var lazily = Session.Advanced.Lazily;
+        foreach (var (entityType, id) in documents)
+            LazyLoad.GetOrAdd(entityType, static t => LazyLoadOpen.MakeGenericMethod(t)).Invoke(lazily, [id, cancellationToken]);
+        await Session.Advanced.Eagerly.ExecuteAllPendingLazyOperationsAsync(cancellationToken);
+    }
+
+    private static readonly MethodInfo LazyLoadOpen = typeof(global::Raven.Client.Documents.Session.Operations.Lazy.IAsyncLazySessionOperations)
+        .GetMethods()
+        .Single(m => m.Name == nameof(global::Raven.Client.Documents.Session.Operations.Lazy.IAsyncLazySessionOperations.LoadAsync)
+            && m.IsGenericMethodDefinition
+            && m.GetParameters() is [{ ParameterType: var id }, { ParameterType: var token }]
+            && id == typeof(string) && token == typeof(CancellationToken));
+
+    private static readonly ConcurrentDictionary<Type, MethodInfo> LazyLoad = new();
 }

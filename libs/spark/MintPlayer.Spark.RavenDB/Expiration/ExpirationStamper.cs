@@ -1,8 +1,10 @@
 using System.Collections.Concurrent;
+using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
-using MintPlayer.Spark.Services;
+using MintPlayer.Spark.Abstractions.Storage;
 using Raven.Client;
 using Raven.Client.Documents;
+using Raven.Client.Documents.Operations.Expiration;
 using Raven.Client.Documents.Session;
 
 namespace MintPlayer.Spark.Expiration;
@@ -23,19 +25,30 @@ namespace MintPlayer.Spark.Expiration;
 /// model type declares one; after that the property alone decides, so code can extend, shorten or
 /// clear it. "New" is a document the session has no change vector for.
 /// </para>
+/// <para>RavenDB's <see cref="ISparkStoreExpiration"/> (#551 D18): core passes the model's defaults as data.</para>
 /// </remarks>
-internal static class ExpirationStamper
+[Register(typeof(ISparkStoreExpiration), ServiceLifetime.Singleton)]
+internal sealed partial class ExpirationStamper : ISparkStoreExpiration
 {
-    public static void Install(IDocumentStore store, IModelLoader modelLoader, TimeProvider time)
+    [Inject] private readonly IDocumentStore store;
+
+    public void EnableSweep(TimeSpan deleteFrequency)
+        => store.Maintenance.Send(new ConfigureExpirationOperation(new ExpirationConfiguration
+        {
+            Disabled = false,
+            DeleteFrequencyInSec = (long)Math.Ceiling(deleteFrequency.TotalSeconds),
+        }));
+
+    public IDisposable InstallStamper(Func<Type, TimeSpan?> defaultExpiresAfter, TimeProvider time)
     {
         if (store is not DocumentStoreBase storeBase)
-            return;
+            return new Removal(null);
 
         // Per CLR type: the model's expiresAfter, or null. The model is fixed for the process (a
         // translations reload rebuilds labels, not structure), so caching is safe.
         var defaults = new ConcurrentDictionary<Type, TimeSpan?>();
 
-        storeBase.OnBeforeStore += (_, e) =>
+        EventHandler<BeforeStoreEventArgs> handler = (_, e) =>
         {
             if (e.Entity is not IExpiring expiring)
                 return;
@@ -43,13 +56,21 @@ internal static class ExpirationStamper
             var metadata = e.DocumentMetadata;
             if (expiring.ExpiresAtUtc is null
                 && !metadata.ContainsKey(Constants.Documents.Metadata.ChangeVector)
-                && defaults.GetOrAdd(e.Entity.GetType(), type => modelLoader.GetEntityTypeByClrType(type.FullName ?? type.Name)?.ExpiresAfter) is { } after)
+                && defaults.GetOrAdd(e.Entity.GetType(), defaultExpiresAfter) is { } after)
             {
                 expiring.ExpiresAtUtc = time.GetUtcNow().UtcDateTime + after;
             }
 
             Stamp(metadata, expiring);
         };
+        storeBase.OnBeforeStore += handler;
+        return new Removal(() => storeBase.OnBeforeStore -= handler);
+    }
+
+    private sealed class Removal(Action? remove) : IDisposable
+    {
+        private Action? remove = remove;
+        public void Dispose() => Interlocked.Exchange(ref remove, null)?.Invoke();
     }
 
     /// <summary>Mirrors <see cref="IExpiring.ExpiresAtUtc"/> into <c>@expires</c>, normalised to UTC.</summary>
@@ -57,7 +78,7 @@ internal static class ExpirationStamper
     {
         if (expiring.ExpiresAtUtc is { } expires)
         {
-            var utc = SparkExpiration.ToUtc(expires);
+            var utc = Spark.Expiration.SparkExpiration.ToUtc(expires);
             expiring.ExpiresAtUtc = utc;
             metadata[Constants.Documents.Metadata.Expires] = utc.ToString("O");
         }

@@ -12,10 +12,10 @@ namespace SeoTester;
 /// </summary>
 public partial class SeoContext : SparkContext
 {
-    public IRavenQueryable<Site> Sites => Session.Query<Site>();
-    public IRavenQueryable<AuditRun> AuditRuns => Session.Query<AuditRun>();
-    public IRavenQueryable<CheckDefinition> CheckDefinitions => Session.Query<CheckDefinition>();
-    public IRavenQueryable<AuditLogEntry> AuditLogEntries => Session.Query<AuditLogEntry>();
+    public IQueryable<Site> Sites => Session.Query<Site>();
+    public IQueryable<AuditRun> AuditRuns => Session.Query<AuditRun>();
+    public IQueryable<CheckDefinition> CheckDefinitions => Session.Query<CheckDefinition>();
+    public IQueryable<AuditLogEntry> AuditLogEntries => Session.Query<AuditLogEntry>();
 
     /// <summary>
     /// The package's organizations, as a plain entity root (<c>docs/default_index_PRD.md</c>, D6): it mints the query
@@ -25,7 +25,7 @@ public partial class SeoContext : SparkContext
     /// (SP3). The minted alias steps aside from that query's (<c>organizations-2</c>, D11), and the audit-named
     /// <c>CreatedBy</c> is created hidden by the default <c>spark.ModelAttributes</c> convention (D9).
     /// </summary>
-    public IRavenQueryable<Organization> Organizations => Session.Query<Organization>();
+    public IQueryable<Organization> Organizations => Session.Query<Organization>();
 }
 
 /// <summary>SeoTester's custom actions (<c>App_Data/actions.json</c>); their class is the name plus <c>Action</c>.</summary>

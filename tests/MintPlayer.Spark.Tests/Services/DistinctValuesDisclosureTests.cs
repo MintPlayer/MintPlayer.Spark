@@ -59,7 +59,7 @@ public class DistinctValuesDisclosureTests(DistinctValuesDisclosureTests.Data da
 
     public class TestContext : SparkContext
     {
-        public IRavenQueryable<DistinctVault> Vaults => Session.Query<DistinctVault>();
+        public IQueryable<DistinctVault> Vaults => Session.Query<DistinctVault>();
     }
 
     private static EntityTypeFile DistinctVaultModel(

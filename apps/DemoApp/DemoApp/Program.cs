@@ -11,6 +11,9 @@ var builder = WebApplication.CreateBuilder(args);
 // Add services to the container.
 builder.Services.AddSpark(builder.Configuration, spark =>
 {
+    // The store (#551): RavenDB, configured from Spark:RavenDb.
+    spark.UseRavenDb();
+
     spark.UseContext<DemoSparkContext>();
 
     // Mounted through Spark rather than with endpoints.MapControllers(), so the controllers

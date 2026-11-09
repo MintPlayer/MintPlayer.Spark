@@ -148,6 +148,6 @@ public class MR_TaggedActions : DefaultPersistentObjectActions<MR_Tagged>
 
 public class MultiRefContext : SparkContext
 {
-    public IRavenQueryable<MR_Tag> Tags => Session.Query<MR_Tag>();
-    public IRavenQueryable<MR_Tagged> Taggeds => Session.Query<MR_Tagged>();
+    public IQueryable<MR_Tag> Tags => Session.Query<MR_Tag>();
+    public IQueryable<MR_Tagged> Taggeds => Session.Query<MR_Tagged>();
 }

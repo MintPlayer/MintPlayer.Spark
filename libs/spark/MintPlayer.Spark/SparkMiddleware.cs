@@ -10,14 +10,8 @@ using MintPlayer.Spark.Exceptions;
 using MintPlayer.Spark.Abstractions.Reflection;
 using MintPlayer.Spark.Actions;
 using MintPlayer.Spark.Configuration;
-using MintPlayer.Spark.Converters;
 using MintPlayer.Spark.Extensions;
 using MintPlayer.Spark.Services;
-using Raven.Client.Documents;
-using Raven.Client.Documents.Indexes;
-using Raven.Client.Documents.Session;
-using Raven.Client.Json.Serialization.NewtonsoftJson;
-using Raven.Client.ServerWide.Operations;
 using System.Reflection;
 
 namespace MintPlayer.Spark;
@@ -199,57 +193,8 @@ public static class SparkExtensions
         // authorization handlers; the handler resolves the scoped IAccessControl per evaluation.
         services.AddSingleton<Microsoft.AspNetCore.Authorization.IAuthorizationHandler, Services.SparkAuthorizeHandler>();
 
-        services.AddSingleton<IDocumentStore>(sp =>
-        {
-            var store = new DocumentStore
-            {
-                Urls = options.RavenDb.Urls.Length > 0 ? options.RavenDb.Urls : ["http://localhost:8080"],
-                Database = options.RavenDb.Database,
-            };
-
-            // One call, shared with the test drivers. Configuring a store by hand here is how
-            // production and the suite drifted apart -- see SparkStoreConfiguration.
-            store.ApplySparkConventions();
-
-            // A secured server: the client certificate and a private server authority, from
-            // Spark:RavenDb. Nothing configured = nothing changes (local dev, the tests).
-            SparkRavenDbSecurity.Apply(store, options.RavenDb);
-
-            store.Initialize();
-
-            // Wait for RavenDB to become available (handles container startup ordering in docker-compose, etc.)
-            WaitForRavenDbConnection(store, options.RavenDb);
-
-            var hostEnvironment = sp.GetRequiredService<IHostEnvironment>();
-            if (hostEnvironment.IsDevelopment() || options.RavenDb.EnsureDatabaseCreated)
-            {
-                var databaseNames = store.Maintenance.Server.Send(new GetDatabaseNamesOperation(0, int.MaxValue));
-                if (!databaseNames.Contains(options.RavenDb.Database))
-                {
-                    store.Maintenance.Server.Send(new CreateDatabaseOperation(o =>
-                        o.Regular(options.RavenDb.Database).WithReplicationFactor(1)
-                    ));
-                }
-            }
-
-            return store;
-        });
-
-        // Request-scoped Raven sessions. One session per HTTP request, disposed when the
-        // DI scope ends. MaxNumberOfRequestsPerSession stays at Raven's default (30) — if
-        // a single method needs more headroom, use SessionExtensions.IgnoreMaxRequests().
-        services.AddScoped<IAsyncDocumentSession>(sp =>
-            sp.GetRequiredService<IDocumentStore>().OpenAsyncSession());
-
-        // The storage seam (docs/spark_editor_PRD.md D2/D3): the RavenDB provider, still registered by core until
-        // MintPlayer.Spark.RavenDB takes it over. The request-scoped ISparkSession wraps the request's own Raven
-        // session, so code still holding IAsyncDocumentSession shares its unit of work.
-        services.AddSingleton<Abstractions.Storage.ISparkStore>(sp => new Storage.Raven.RavenSparkStore(sp.GetRequiredService<IDocumentStore>()));
-        services.AddScoped<Abstractions.Storage.ISparkSession>(sp => new Storage.Raven.RavenSparkSession(sp.GetRequiredService<IAsyncDocumentSession>()));
-        services.AddScoped<Abstractions.Storage.ISparkQueryProvider, Storage.Raven.RavenSparkQueryProvider>();
-
-        services.AddScoped<IDocumentSession>(sp =>
-            sp.GetRequiredService<IDocumentStore>().OpenSession());
+        // The store provider (#551 D17/D18) registers the store, its sessions and the storage seam: UseRavenDb() in
+        // MintPlayer.Spark.RavenDB, or another provider, from configure() below.
 
         // Let modules register their services
         configure(builder);
@@ -578,112 +523,6 @@ public static class SparkExtensions
         return endpoints;
     }
 
-    private static void WaitForRavenDbConnection(IDocumentStore store, Configuration.RavenDbOptions ravenDbOptions)
-    {
-        var maxRetries = ravenDbOptions.MaxConnectionRetries;
-        if (maxRetries <= 0) return;
-
-        var delay = TimeSpan.FromSeconds(Math.Max(ravenDbOptions.RetryDelaySeconds, 1));
-
-        for (var attempt = 1; attempt <= maxRetries; attempt++)
-        {
-            try
-            {
-                store.Maintenance.Server.Send(new GetDatabaseNamesOperation(0, 1));
-                if (attempt > 1)
-                {
-                    Console.WriteLine($"Successfully connected to RavenDB after {attempt} attempts.");
-                }
-                return;
-            }
-            catch (Exception ex) when (attempt < maxRetries)
-            {
-                Console.WriteLine($"Waiting for RavenDB to become available (attempt {attempt}/{maxRetries}): {ex.Message}");
-                Thread.Sleep(delay);
-            }
-        }
-
-        // Final attempt — let the exception propagate if it still fails
-        store.Maintenance.Server.Send(new GetDatabaseNamesOperation(0, 1));
-    }
-
-    /// <summary>
-    /// Registers the index types declared in <paramref name="targetAssembly"/>.
-    /// <para>
-    /// Pure reflection — no database, no host, no DI — so the offline paths (model synchronization
-    /// and the startup model-hash check) can populate the catalog without a live
-    /// <c>IDocumentStore</c>. An unpopulated catalog does not fail: it silently emits projection
-    /// types as their own model files and skips the query-type merge. Deliberately does not swallow
-    /// exceptions: a catalog that failed to populate has to fail the run.
-    /// </para>
-    /// <para>
-    /// Separate from projection registration so callers spanning several assemblies can register
-    /// every index before any projection. A projection resolves its index by name, so with a single
-    /// combined pass a projection in one assembly over an index in a later-scanned assembly would
-    /// fail to resolve — and the failure is only a console warning.
-    /// </para>
-    /// </summary>
-    internal static void PopulateIndexTypes(IIndexCatalog indexCatalog, Assembly targetAssembly)
-    {
-        var indexTypes = ReflectionCache.GetOrAdd<(string Op, Assembly Asm), IReadOnlyList<Type>>(
-            ("SparkMiddleware.IndexTypes", targetAssembly),
-            static k => GetLoadableTypes(k.Asm)
-                .Where(t => !t.IsAbstract && IsAbstractIndexCreationTask(t))
-                .ToArray());
-
-        foreach (var indexType in indexTypes)
-        {
-            indexCatalog.RegisterIndex(indexType);
-        }
-    }
-
-    /// <summary>Registers the <c>[FromIndex]</c> projection types declared in <paramref name="targetAssembly"/>.</summary>
-    internal static void PopulateProjectionTypes(IIndexCatalog indexCatalog, Assembly targetAssembly)
-    {
-        var projectionTypes = ReflectionCache.GetOrAdd<(string Op, Assembly Asm), IReadOnlyList<Type>>(
-            ("SparkMiddleware.ProjectionTypes", targetAssembly),
-            static k => GetLoadableTypes(k.Asm)
-                .Where(t => t.GetCachedCustomAttribute<FromIndexAttribute>() != null)
-                .ToArray());
-
-        foreach (var projectionType in projectionTypes)
-        {
-            var attr = projectionType.GetCachedCustomAttribute<FromIndexAttribute>()!;
-            indexCatalog.RegisterProjection(projectionType, attr.IndexType);
-        }
-    }
-
-    /// <summary>
-    /// The types of an assembly, keeping what loaded when some types cannot.
-    /// <para>
-    /// <c>Assembly.GetTypes()</c> walks the entire metadata tables and throws if any type fails to
-    /// load — typically an optional peer dependency that is simply absent. That is a deployment fact
-    /// rather than a Spark defect, and now that several assemblies are scanned, one such assembly
-    /// must not stop an application from starting. A genuinely malformed index type still throws out
-    /// of registration, so a real failure is not masked.
-    /// </para>
-    /// <para>
-    /// Callers cache this through <c>ReflectionCache</c>, which stores a throwing factory and
-    /// re-throws it for the lifetime of the process — so the catch has to live here, inside the
-    /// factory, not around the cache lookup.
-    /// </para>
-    /// </summary>
-    private static IEnumerable<Type> GetLoadableTypes(Assembly assembly)
-    {
-        try
-        {
-            return assembly.GetTypes();
-        }
-        catch (ReflectionTypeLoadException ex)
-        {
-            var loaded = ex.Types.Where(t => t is not null).Select(t => t!).ToArray();
-            Console.WriteLine(
-                $"Warning: {assembly.GetName().Name} has {ex.Types.Length - loaded.Length} type(s) that could not be " +
-                $"loaded; scanning the {loaded.Length} that did. First loader error: {ex.LoaderExceptions.FirstOrDefault()?.Message}");
-            return loaded;
-        }
-    }
-
     /// <summary>
     /// Refuses to start while any stored embedded row is missing its key.
     /// </summary>
@@ -695,9 +534,10 @@ public static class SparkExtensions
     /// </remarks>
     private static void VerifySparkValueObjectKeys(IApplicationBuilder app)
     {
-        var store = app.ApplicationServices.GetService<Raven.Client.Documents.IDocumentStore>();
-        if (store is null)
+        // A provider that cannot hold a keyless row (one fed only through Spark) has nothing to scan.
+        if (app.ApplicationServices.GetService<Abstractions.Storage.ISparkStoreRowKeyScan>() is not { } scan)
             return;
+        var store = app.ApplicationServices.GetRequiredService<Abstractions.Storage.ISparkStore>();
 
         using var scope = app.ApplicationServices.CreateScope();
         var sparkContext = scope.ServiceProvider.GetService<SparkContext>();
@@ -708,7 +548,7 @@ public static class SparkExtensions
         }
 
         ValueObjectKeyVerifier
-            .VerifyAsync(sparkContext.GetType(), store, Console.WriteLine, CancellationToken.None)
+            .VerifyAsync(sparkContext.GetType(), store, scan, Console.WriteLine, CancellationToken.None)
             .GetAwaiter()
             .GetResult();
     }
@@ -927,101 +767,21 @@ public static class SparkExtensions
         IReadOnlyList<Assembly> assemblies,
         Func<Type, bool>? deploymentFilter)
     {
-        var documentStore = app.ApplicationServices.GetRequiredService<IDocumentStore>();
-
         if (assemblies.Count == 0)
         {
             Console.WriteLine("Warning: Could not determine any assembly to scan for index creation.");
             return;
         }
 
-        // Materialize every assembly before the first database call. Catalog population is a
-        // correctness precondition — the model-hash check runs straight after this and must see a
-        // complete catalog even when RavenDB is unreachable and the deployment below fails.
-        //
-        // Indexes across all assemblies first, then projections across all of them: a projection
-        // resolves its index by name, so a projection in one assembly over an index in another must
-        // not depend on which assembly was scanned first.
-        //
-        // Freezing runs the [DefaultIndex] validation, so an ambiguous default fails startup here —
-        // before any query can resolve through it.
+        // Catalog population is a correctness precondition, before any database call: the model-hash check runs
+        // straight after this and must see a complete catalog even when the store is unreachable and the deployment
+        // below fails. Freezing runs the [DefaultIndex] validation, so an ambiguous default fails startup here.
         var indexCatalog = app.ApplicationServices.GetRequiredService<IIndexCatalog>();
-
-        foreach (var assembly in assemblies)
-            PopulateIndexTypes(indexCatalog, assembly);
-
-        foreach (var assembly in assemblies)
-            PopulateProjectionTypes(indexCatalog, assembly);
-
+        indexCatalog.RegisterAssemblies(assemblies);
         indexCatalog.Freeze();
 
-        // Deployment is best-effort, but per assembly: one unreachable or broken module must not
-        // cost every other module its indexes, which is what a single surrounding catch did.
-        //
-        // A deployment filter (SparkModuleRegistry.IndexDeploymentFilter, set by test hosts) narrows
-        // only this loop. The catalog above was populated from every index regardless, so the model
-        // hash and query resolution mean the same thing with or without it.
-        foreach (var assembly in assemblies)
-        {
-            try
-            {
-                if (deploymentFilter is null)
-                {
-                    IndexCreation.CreateIndexes(assembly, documentStore);
-                    Console.WriteLine($"RavenDB indexes created/updated from assembly: {assembly.GetName().Name}");
-                    continue;
-                }
-
-                var candidates = DeployableIndexTypes(assembly);
-                var tasks = candidates
-                    .Where(deploymentFilter)
-                    .Select(t => (IAbstractIndexCreationTask)Activator.CreateInstance(t)!)
-                    .ToList();
-
-                if (tasks.Count > 0)
-                    IndexCreation.CreateIndexes(tasks, documentStore);
-                Console.WriteLine(
-                    $"RavenDB indexes created/updated from assembly: {assembly.GetName().Name} " +
-                    $"({tasks.Count} of {candidates.Count}, deployment filter set)");
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Error creating RavenDB indexes from {assembly.GetName().Name}: {ex.Message}");
-            }
-        }
+        // The provider writes the definitions (#551 D20); a store without indexes has nothing to deploy. A deployment
+        // filter (SparkModuleRegistry.IndexDeploymentFilter, set by test hosts) narrows only this step.
+        app.ApplicationServices.GetService<Abstractions.Storage.ISparkIndexDeployment>()?.Deploy(assemblies, deploymentFilter);
     }
-
-    /// <summary>
-    /// Whether RavenDB will deploy this type as an index — the gate on Spark's own discovery.
-    /// </summary>
-    /// <remarks>
-    /// ⚠️ This used to be an open-generic identity test against <c>AbstractIndexCreationTask&lt;&gt;</c>
-    /// and <c>AbstractMultiMapIndexCreationTask&lt;&gt;</c>, which silently excluded a two-argument
-    /// map-reduce index. Because this gates discovery, such an index was never even registered — so
-    /// not even <c>IndexCatalog</c>'s "could not determine collection type" warning appeared — while
-    /// <c>IndexCreation.CreateIndexes</c> below deployed it using RavenDB's own criterion. Spark and
-    /// RavenDB have to agree on what an index is, so both now ask the same question.
-    /// </remarks>
-    private static bool IsAbstractIndexCreationTask(Type type) => RavenIndexHierarchy.IsIndex(type);
-
-    /// <summary>
-    /// The types <c>IndexCreation.CreateIndexes(assembly, store)</c> would deploy from
-    /// <paramref name="assembly"/>, by RavenDB's own criterion, so a filtered deployment is a strict
-    /// subset of the unfiltered one rather than a second opinion about what an index is.
-    /// </summary>
-    /// <remarks>
-    /// RavenDB 7.2 (<c>IndexCreation.GetAllInstancesOfType</c>): a non-abstract class implementing
-    /// <see cref="IAbstractIndexCreationTask"/>, instantiated with <see cref="Activator.CreateInstance(Type)"/>
-    /// — so a type without a public parameterless constructor fails the same way in both paths.
-    /// Deliberately not <see cref="RavenIndexHierarchy.IsIndex"/>: that is Spark's discovery gate and
-    /// covers only <c>AbstractIndexCreationTask</c>, while RavenDB also deploys JavaScript, counters
-    /// and time-series index tasks.
-    /// </remarks>
-    private static IReadOnlyList<Type> DeployableIndexTypes(Assembly assembly)
-        => ReflectionCache.GetOrAdd<(string Op, Assembly Asm), IReadOnlyList<Type>>(
-            ("SparkMiddleware.DeployableIndexTypes", assembly),
-            static k => GetLoadableTypes(k.Asm)
-                .Where(t => t.IsClass && !t.IsAbstract && typeof(IAbstractIndexCreationTask).IsAssignableFrom(t))
-                .ToArray());
-
 }

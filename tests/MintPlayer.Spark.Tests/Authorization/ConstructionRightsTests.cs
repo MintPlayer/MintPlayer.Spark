@@ -78,8 +78,8 @@ public class ConstructionRightsTests(ConstructionRightsTests.Host host)
 
     public sealed class CanaryContext : SparkContext
     {
-        public IRavenQueryable<CanaryVault> CanaryVaults => Session.Query<CanaryVault>();
-        public IRavenQueryable<CanaryVaultEntry> CanaryVaultEntries => Session.Query<CanaryVaultEntry>();
+        public IQueryable<CanaryVault> CanaryVaults => Session.Query<CanaryVault>();
+        public IQueryable<CanaryVaultEntry> CanaryVaultEntries => Session.Query<CanaryVaultEntry>();
     }
 
     public class CanaryVaultActions(IEntityMapper mapper)

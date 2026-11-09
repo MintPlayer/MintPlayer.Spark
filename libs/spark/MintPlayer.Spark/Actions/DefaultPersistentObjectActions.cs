@@ -3,8 +3,6 @@ using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Reflection;
 using MintPlayer.Spark.Queries;
 using MintPlayer.Spark.Services;
-using Raven.Client.Documents;
-using Raven.Client.Documents.Session;
 
 namespace MintPlayer.Spark.Actions;
 
@@ -252,14 +250,8 @@ public partial class DefaultPersistentObjectActions<T> : IPersistentObjectAction
             .Concat(GetDefaultIncludes() ?? [])
             .Distinct(StringComparer.Ordinal)
             .ToArray();
-        // Includes are a RavenDB round-trip saving; a provider without them loads the references when read.
-        if (includes is { Length: > 0 } && session.Native is IAsyncDocumentSession raven)
-            return await raven.LoadAsync<T>(ids, builder =>
-            {
-                foreach (var path in includes)
-                    builder.IncludeDocuments(path);
-            });
-        return (await session.LoadAsync<T>(ids)).ToDictionary(kv => kv.Key, kv => kv.Value!, StringComparer.OrdinalIgnoreCase);
+        // Includes are a round-trip saving; a provider without them loads the references when read.
+        return (await session.LoadAsync<T>(ids, includes)).ToDictionary(kv => kv.Key, kv => kv.Value!, StringComparer.OrdinalIgnoreCase);
     }
 
     /// <inheritdoc />

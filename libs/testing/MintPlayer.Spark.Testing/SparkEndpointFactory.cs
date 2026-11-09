@@ -168,6 +168,8 @@ public class SparkEndpointFactory<TContext> : IAsyncDisposable
                         services.AddRouting();
                         services.AddSpark(spark =>
                         {
+                            // RavenDB, its store replaced by the test driver's below.
+                            spark.UseRavenDb();
                             spark.UseContext<TContext>();
                             // Before configureSpark, so a fixture can still replace or clear it.
                             if (!deployAllIndexes)

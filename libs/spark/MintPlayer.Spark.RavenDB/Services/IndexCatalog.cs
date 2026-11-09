@@ -1,3 +1,4 @@
+using System.Reflection;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Reflection;
@@ -5,104 +6,7 @@ using Raven.Client.Documents.Indexes;
 
 namespace MintPlayer.Spark.Services;
 
-/// <summary>
-/// The application's RavenDB indexes, keyed by index name (issue #279).
-/// <para>
-/// Runtime resolution is declared, never ambient: a Spark query names its index (<c>indexName</c>),
-/// the entity's model file names the default binding, and this catalog turns either name into the
-/// CLR index and projection types. The only per-type question left is the synchronizer's —
-/// "which index is this entity type's default" — answered by <c>[DefaultIndex]</c> via
-/// <see cref="GetDefaultFor"/>, and validated at <see cref="Freeze"/> so runtime startup and the
-/// offline model commands reject an ambiguous default identically.
-/// </para>
-/// </summary>
-public interface IIndexCatalog
-{
-    /// <summary>
-    /// Adds an index type, deriving its collection type from the <c>AbstractIndexCreationTask&lt;T&gt;</c>
-    /// generic argument. Duplicate index names throw: two CLR types would deploy to the same RavenDB
-    /// index, silently overwriting each other's definition.
-    /// </summary>
-    void RegisterIndex(Type indexType);
-
-    /// <summary>Attaches a <c>[FromIndex]</c> projection type to its index's entry.</summary>
-    void RegisterProjection(Type projectionType, Type indexType);
-
-    /// <summary>
-    /// Seals the catalog and elects each entity type's default index (<c>docs/default_index_PRD.md</c>,
-    /// D3/D4): a type claimed by exactly one <c>[DefaultIndex]</c> has that index, with or without a view;
-    /// an unclaimed type has its sole mapping index that has a view, if there is exactly one. Two claims,
-    /// or several viewed indexes and no claim, are errors naming the candidates. So is a marker the
-    /// catalog cannot honour: types on a single-map that are not its mapped type, a multi-map that lists
-    /// none or does not derive from <c>SparkMultiMapIndexCreationTask</c>, an index whose collection
-    /// Spark cannot read.
-    /// </summary>
-    void Freeze();
-
-    /// <summary>The entry deployed under <paramref name="indexName"/> (case-insensitive), or <c>null</c>.</summary>
-    IndexCatalogEntry? GetByIndexName(string indexName);
-
-    /// <summary>
-    /// The default index of <paramref name="entityType"/>, or <c>null</c> when it has none. It shapes the
-    /// type's model file (through its view, when it has one) and is stamped on the type's minted
-    /// <c>Database.*</c> queries. Synchronizer/model-shape concern only — runtime query paths resolve by
-    /// name.
-    /// </summary>
-    IndexCatalogEntry? GetDefaultFor(Type entityType);
-
-    /// <summary>Every entry, unordered.</summary>
-    IEnumerable<IndexCatalogEntry> GetAllEntries();
-}
-
-/// <summary>One deployed index: its name, CLR type, mapped collection, optional projection, and default claims.</summary>
-public sealed class IndexCatalogEntry
-{
-    public required string IndexName { get; init; }
-    public required Type IndexType { get; init; }
-
-    /// <summary>
-    /// The mapped collection, or <see langword="null"/> when the index names none — a multi-map (which
-    /// maps several and names none in its type arguments) or an otherwise opaque index.
-    /// </summary>
-    /// <remarks>
-    /// ⚠️ Nullable on purpose. While this was <c>required Type</c>, an index with no derivable
-    /// collection could not be entered in the catalog at all and was dropped, so an explicit
-    /// <c>indexName</c> binding to it could never resolve. It is now registered and reachable by name,
-    /// and a multi-map becomes a default only for the types its marker lists (<see cref="ClaimedTypes"/>).
-    /// </remarks>
-    public required Type? CollectionType { get; init; }
-    public Type? ProjectionType { get; internal set; }
-
-    /// <summary>
-    /// The entity types this index's <c>[DefaultIndex]</c> marker claims: the mapped type for a bare marker
-    /// on a single-map, the listed types for a multi-map, empty without a marker. Resolved and validated at
-    /// freeze.
-    /// </summary>
-    public IReadOnlyList<Type> ClaimedTypes { get; internal set; } = [];
-
-    /// <summary>The entity types this index was elected the default of. Computed at freeze.</summary>
-    public IReadOnlyList<Type> DefaultFor { get; internal set; } = [];
-
-    /// <summary>Whether this entry is the default index of at least one entity type. Computed at freeze.</summary>
-    public bool IsDefault => DefaultFor.Count > 0;
-
-    /// <summary>
-    /// The entity types whose rows this index serves: its mapped collection type, plus every type its marker
-    /// claims (a multi-map's). Startup checks that inspect "indexes over type X" iterate this, so a multi-map
-    /// default is not skipped for having no single collection.
-    /// </summary>
-    public IEnumerable<Type> EntityTypes
-        => CollectionType is null ? ClaimedTypes : ClaimedTypes.Contains(CollectionType) ? ClaimedTypes : [CollectionType, .. ClaimedTypes];
-
-    /// <summary>
-    /// Whether a query for <paramref name="entityType"/> on this index must be narrowed to that type's
-    /// collection: the index is a multi-map default of the type, so its entries also hold the other mapped
-    /// collections' rows. The narrowing reads the injected <see cref="SparkCollectionRow.FieldName"/> field.
-    /// </summary>
-    public bool FiltersByCollection(Type entityType)
-        => CollectionType is null && DefaultFor.Contains(entityType);
-}
-
+/// <summary>The RavenDB implementation of <see cref="IIndexCatalog"/>: it classifies index types (#551 D20).</summary>
 [Register(typeof(IIndexCatalog), ServiceLifetime.Singleton)]
 internal partial class IndexCatalog : IIndexCatalog
 {
@@ -305,6 +209,84 @@ internal partial class IndexCatalog : IIndexCatalog
                 return true;
         }
         return false;
+    }
+
+    public void RegisterAssemblies(IReadOnlyList<Assembly> assemblies)
+    {
+        foreach (var assembly in assemblies)
+        {
+            var indexTypes = ReflectionCache.GetOrAdd<(string Op, Assembly Asm), IReadOnlyList<Type>>(
+                ("IndexCatalog.IndexTypes", assembly),
+                static k => LoadableTypes(k.Asm).Where(t => !t.IsAbstract && RavenIndexHierarchy.IsIndex(t)).ToArray());
+            foreach (var indexType in indexTypes)
+                RegisterIndex(indexType);
+        }
+
+        foreach (var assembly in assemblies)
+        {
+            var projectionTypes = ReflectionCache.GetOrAdd<(string Op, Assembly Asm), IReadOnlyList<Type>>(
+                ("IndexCatalog.ProjectionTypes", assembly),
+                static k => LoadableTypes(k.Asm).Where(t => t.GetCachedCustomAttribute<FromIndexAttribute>() != null).ToArray());
+            foreach (var projectionType in projectionTypes)
+                RegisterProjection(projectionType, projectionType.GetCachedCustomAttribute<FromIndexAttribute>()!.IndexType);
+        }
+    }
+
+    /// <summary>
+    /// The types of an assembly, keeping what loaded when some types cannot: an optional peer dependency that is absent
+    /// is a deployment fact, not a Spark defect. Inside the cache factory, because <c>ReflectionCache</c> re-throws a
+    /// throwing factory for the life of the process.
+    /// </summary>
+    private static IEnumerable<Type> LoadableTypes(Assembly assembly)
+    {
+        try
+        {
+            return assembly.GetTypes();
+        }
+        catch (ReflectionTypeLoadException ex)
+        {
+            var loaded = ex.Types.Where(t => t is not null).Select(t => t!).ToArray();
+            Console.WriteLine(
+                $"Warning: {assembly.GetName().Name} has {ex.Types.Length - loaded.Length} type(s) that could not be " +
+                $"loaded; scanning the {loaded.Length} that did. First loader error: {ex.LoaderExceptions.FirstOrDefault()?.Message}");
+            return loaded;
+        }
+    }
+
+    /// <remarks>
+    /// Every map's fields, not only the map over this type's collection: offline there is no document store to name
+    /// collections with, and a field another map emits is indexed, so sorting on it is no error.
+    /// </remarks>
+    public void BuildDefinition(IndexCatalogEntry entry)
+        => (Activator.CreateInstance(entry.IndexType) as AbstractIndexCreationTask)?.CreateIndexDefinition();
+
+    public IReadOnlySet<string>? GetQuerySurface(IndexCatalogEntry entry)
+    {
+        IndexDefinition definition;
+        try
+        {
+            if (Activator.CreateInstance(entry.IndexType) is not IAbstractIndexCreationTask task) return null;
+            definition = task.CreateIndexDefinition();
+        }
+        catch (Exception ex) when (ex is MissingMethodException or NotSupportedException or TargetInvocationException or InvalidOperationException)
+        {
+            Console.WriteLine($"Warning: could not read the maps of viewless default index '{entry.IndexName}' ({ex.Message}); " +
+                              "its attributes keep the default sort and filter capabilities.");
+            return null;
+        }
+
+        var fields = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var map in definition.Maps)
+        {
+            if (SparkMapScanner.EmittedFields(map) is not { } emitted)
+            {
+                Console.WriteLine($"Warning: could not read the fields emitted by a map of viewless default index '{entry.IndexName}'; " +
+                                  "its attributes keep the default sort and filter capabilities.");
+                return null;
+            }
+            fields.UnionWith(emitted);
+        }
+        return fields;
     }
 
     private void ThrowIfFrozen()

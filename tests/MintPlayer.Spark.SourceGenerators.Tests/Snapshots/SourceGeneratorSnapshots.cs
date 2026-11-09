@@ -234,9 +234,9 @@ public class SourceGeneratorSnapshots
             {
                 public partial class AppContext : SparkContext
                 {
-                    public IRavenQueryable<Car> Cars => Session.Query<Car>();
-                    public IRavenQueryable<Person> People => Session.Query<Person>();
-                    public IRavenQueryable<Person> NamedPeople => Session.Query<Person>().Where(p => p.Name != null);
+                    public IQueryable<Car> Cars => Session.Query<Car>();
+                    public IQueryable<Person> People => Session.Query<Person>();
+                    public IQueryable<Person> NamedPeople => Session.Query<Person>().Where(p => p.Name != null);
                     public string VPeople => "taken";
                 }
             }

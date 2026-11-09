@@ -33,6 +33,7 @@
     <ProjectReference Include="..\..\libs\testing\MintPlayer.Spark.Testing\MintPlayer.Spark.Testing.csproj" />
     <ProjectReference Include="..\..\libs\spark\MintPlayer.Spark.Abstractions\MintPlayer.Spark.Abstractions.csproj" />
     <ProjectReference Include="..\..\libs\spark\MintPlayer.Spark\MintPlayer.Spark.csproj" />
+    <ProjectReference Include="..\..\libs\spark\MintPlayer.Spark.RavenDB\MintPlayer.Spark.RavenDB.csproj" />
   </ItemGroup>
 
   <!--

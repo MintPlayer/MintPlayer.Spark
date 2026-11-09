@@ -2,8 +2,7 @@ using System.Collections.Concurrent;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using MintPlayer.Spark.Abstractions.Live;
-using Raven.Client.Documents;
-using Raven.Client.Documents.Changes;
+using MintPlayer.Spark.Abstractions.Storage;
 
 namespace MintPlayer.Spark.Live;
 
@@ -29,7 +28,7 @@ internal sealed class LiveHub : ISparkLiveNotifier, IDisposable
     /// <summary>How long a seen (id, change vector) pair suppresses its echo from the other source.</summary>
     internal static readonly TimeSpan DedupeWindow = TimeSpan.FromSeconds(5);
 
-    private readonly IDocumentStore store;
+    private readonly ISparkChangeFeed? feed;
     private readonly IOptionsMonitor<SparkLiveOptions> options;
     private readonly ILogger<LiveHub> logger;
     private readonly TimeProvider time;
@@ -41,16 +40,31 @@ internal sealed class LiveHub : ISparkLiveNotifier, IDisposable
     private readonly Dictionary<string, IDisposable> watches = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, long> seen = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<string, int> sockets = new(StringComparer.Ordinal);
-    private IDatabaseChanges? changes;
     private IDisposable? actionsSource;
     private long published, deduplicated;
 
-    public LiveHub(IDocumentStore store, IOptionsMonitor<SparkLiveOptions> options, ILogger<LiveHub> logger, TimeProvider? time = null)
+    /// <param name="feed">The store's change feed; <see langword="null"/> when the provider has none
+    /// (<see cref="SparkStoreCapabilities.ChangeNotifications"/>), and then only explicit
+    /// <see cref="ISparkLiveNotifier"/> calls mark subscriptions dirty.</param>
+    public LiveHub(IOptionsMonitor<SparkLiveOptions> options, ILogger<LiveHub> logger, ISparkChangeFeed? feed = null, TimeProvider? time = null)
     {
-        this.store = store;
+        this.feed = feed;
         this.options = options;
         this.logger = logger;
         this.time = time ?? TimeProvider.System;
+        if (feed is not null)
+            feed.Reconnected += MarkAllDirty;
+    }
+
+    /// <summary>
+    /// Starts the in-process half (<see cref="ISparkChangeFeed.OnCommitted"/>), unless the source is <c>Changes</c>
+    /// only. The subscription is removed when this hub goes: the store may outlive the host.
+    /// </summary>
+    internal void StartCommittedSource()
+    {
+        if (feed is null || Source == SparkLiveSource.Changes)
+            return;
+        actionsSource = feed.OnCommitted(c => Publish(new LiveChange(c.DocumentId, c.Collection, c.Version, FromChanges: false)));
     }
 
     /// <summary>Changes dispatched, and changes dropped as the other source's echo (for the spike numbers).</summary>
@@ -213,52 +227,21 @@ internal sealed class LiveHub : ISparkLiveNotifier, IDisposable
     /// <summary>Only what someone watches: a document or a collection, never every document (D33).</summary>
     private Task? Watch(string watchKey, string kind, string key)
     {
+        if (feed is null)
+            return null;
         try
         {
-            var connection = Connection();
-            var observable = kind == "doc:" ? connection.ForDocument(key) : connection.ForDocumentsInCollection(key);
-            watches[watchKey] = observable.Subscribe(new Observer(this));
-            return observable.EnsureSubscribedNow();
+            Action<SparkStoreChange> handler = c => Publish(new LiveChange(c.DocumentId, c.Collection, c.Version, FromChanges: true));
+            var watch = kind == "doc:" ? feed.WatchDocument(key, handler) : feed.WatchCollection(key, handler);
+            watches[watchKey] = watch.Subscription;
+            return watch.Confirmed;
         }
         catch (Exception ex)
         {
-            // The Changes API is the cross-process half; this process's own writes still arrive.
-            logger.LogWarning(ex, "Live updates could not watch {Key} through the RavenDB Changes API; only this process's writes will be seen for it", watchKey);
+            // The store's notifications are the cross-process half; this process's own writes still arrive.
+            logger.LogWarning(ex, "Live updates could not watch {Key} through the store's change notifications; only this process's writes will be seen for it", watchKey);
             return null;
         }
-    }
-
-    private IDatabaseChanges Connection()
-    {
-        if (changes is not null)
-            return changes;
-        changes = store.Changes(store.Database);
-        changes.ConnectionStatusChanged += (_, _) =>
-        {
-            // Notifications are not durable: whatever was missed while disconnected is recovered by
-            // re-evaluating everything once the connection is back.
-            if (changes?.Connected == true)
-                MarkAllDirty();
-        };
-        changes.OnError += ex => logger.LogWarning(ex, "The RavenDB Changes connection used by live updates failed; it reconnects by itself");
-        return changes;
-    }
-
-    private sealed class Observer(LiveHub hub) : IObserver<DocumentChange>
-    {
-        public void OnNext(DocumentChange value)
-        {
-            try
-            {
-                hub.Publish(new LiveChange(value.Id, value.CollectionName, value.ChangeVector, FromChanges: true));
-            }
-            catch
-            {
-                // Revalidate recovers a lost notification.
-            }
-        }
-        public void OnError(Exception error) { }
-        public void OnCompleted() { }
     }
 
     // ---- sockets per user (D36) -------------------------------------------------------------------------------
@@ -285,9 +268,6 @@ internal sealed class LiveHub : ISparkLiveNotifier, IDisposable
         }
     }
 
-    /// <summary>The in-process source's store handlers, removed when this hub goes (the store may outlive the host).</summary>
-    internal void AttachActionsSource(IDisposable source) => actionsSource = source;
-
     public void Dispose()
     {
         lock (gate)
@@ -297,6 +277,7 @@ internal sealed class LiveHub : ISparkLiveNotifier, IDisposable
             watches.Clear();
         }
         Interlocked.Exchange(ref actionsSource, null)?.Dispose();
-        changes?.Dispose();
+        if (feed is not null)
+            feed.Reconnected -= MarkAllDirty;
     }
 }

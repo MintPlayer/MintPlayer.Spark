@@ -20,7 +20,7 @@ public class SparkContextResolverTests
     {
         var services = new ServiceCollection().BuildServiceProvider();
         var resolver = new SparkContextResolver(services);
-        var session = Substitute.For<IAsyncDocumentSession>();
+        var session = Substitute.For<MintPlayer.Spark.Abstractions.Storage.ISparkSession>();
 
         resolver.ResolveContext(session).Should().BeNull();
     }
@@ -33,7 +33,7 @@ public class SparkContextResolverTests
             .AddSingleton<SparkContext>(ctx)
             .BuildServiceProvider();
         var resolver = new SparkContextResolver(services);
-        var session = Substitute.For<IAsyncDocumentSession>();
+        var session = Substitute.For<MintPlayer.Spark.Abstractions.Storage.ISparkSession>();
 
         var resolved = resolver.ResolveContext(session);
 
@@ -52,8 +52,8 @@ public class SparkContextResolverTests
             .AddSingleton<SparkContext>(ctx)
             .BuildServiceProvider();
         var resolver = new SparkContextResolver(services);
-        var first = Substitute.For<IAsyncDocumentSession>();
-        var second = Substitute.For<IAsyncDocumentSession>();
+        var first = Substitute.For<MintPlayer.Spark.Abstractions.Storage.ISparkSession>();
+        var second = Substitute.For<MintPlayer.Spark.Abstractions.Storage.ISparkSession>();
 
         resolver.ResolveContext(first);
         resolver.ResolveContext(second);

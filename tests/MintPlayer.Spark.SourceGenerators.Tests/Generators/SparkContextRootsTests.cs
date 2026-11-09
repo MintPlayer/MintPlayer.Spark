@@ -129,7 +129,7 @@ public class SparkContextRootsTests
 
             public partial class AppContext : SparkContext
             {
-                public IRavenQueryable<VCar> VCars => Session.Query<VCar, Cars_Overview>();
+                public IQueryable<VCar> VCars => Session.Query<VCar, Cars_Overview>();
             }
             """);
 
@@ -381,7 +381,7 @@ public class SparkContextRootsTests
 
             public partial class AppContext : SparkContext
             {
-                public IRavenQueryable<Bike> Bikes => Session.Query<Bike>();
+                public IQueryable<Bike> Bikes => Session.Query<Bike>();
                 public IRavenQueryable<Bike> GetterArrowBikes { get => this.Session.Query<Bike>(); }
                 public IRavenQueryable<Bike> BlockBikes { get { return Session.Query<Bike>(); } }
             }
@@ -410,11 +410,11 @@ public class SparkContextRootsTests
 
             public partial class AppContext : SparkContext
             {
-                public IRavenQueryable<Bike> Bikes => Session.Query<Bike>();
-                public IRavenQueryable<Bike> ArchivedBikes => Session.Query<Bike>().Where(b => b.Archived);
-                public IRavenQueryable<Bike> IndexBikes => Session.Query<Bike>("Bikes/ByModel");
-                public IRavenQueryable<Bike> CollectionBikes => Session.Query<Bike>(collectionName: "OtherBikes");
-                public IRavenQueryable<Bike> CustomizedBikes => Session.Query<Bike>().Customize(x => x.WaitForNonStaleResults());
+                public IQueryable<Bike> Bikes => Session.Query<Bike>();
+                public IQueryable<Bike> ArchivedBikes => Session.Query<Bike>().Where(b => b.Archived);
+                public IQueryable<Bike> IndexBikes => Session.Query<Bike>("Bikes/ByModel");
+                public IQueryable<Bike> CollectionBikes => Session.Query<Bike>(collectionName: "OtherBikes");
+                public IQueryable<Bike> CustomizedBikes => Session.Query<Bike>().Customize(x => x.WaitForNonStaleResults());
                 public IRavenQueryable<Bike> HelperBikes => Q<Bike>();
                 public IRavenQueryable<Bike> LocalBikes { get { var q = Session.Query<Bike>(); return q; } }
                 private IRavenQueryable<T> Q<T>() => Session.Query<T>();
@@ -443,7 +443,7 @@ public class SparkContextRootsTests
 
             public abstract class AppBase : SparkContext
             {
-                public IRavenQueryable<Bike> Bikes => Session.Query<Bike>();
+                public IQueryable<Bike> Bikes => Session.Query<Bike>();
             }
 
             public partial class AppContext : AppBase { }
@@ -467,7 +467,7 @@ public class SparkContextRootsTests
 
             public class AppContext : SparkContext
             {
-                public IRavenQueryable<Bike> Bikes => Session.Query<Bike>();
+                public IQueryable<Bike> Bikes => Session.Query<Bike>();
             }
             """, entity: Bike);
 
@@ -500,7 +500,7 @@ public class SparkContextRootsTests
 
                 public partial class AppContext : SparkContext
                 {
-                    public IRavenQueryable<Person> People => Session.Query<Person>();
+                    public IQueryable<Person> People => Session.Query<Person>();
                 }
 
                 public static class Unrelated

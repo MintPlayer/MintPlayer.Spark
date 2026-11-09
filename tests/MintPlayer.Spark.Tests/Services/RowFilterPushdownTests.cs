@@ -321,7 +321,7 @@ public class RowFilterPushdownTests : SparkTestDriver
 
     public class TestContext : SparkContext
     {
-        public IRavenQueryable<Note> Notes => Session.Query<Note>();
+        public IQueryable<Note> Notes => Session.Query<Note>();
     }
 
     [Fact]
@@ -353,7 +353,7 @@ public class RowFilterPushdownTests : SparkTestDriver
         modelLoader.GetEntityTypeByClrType(typeof(Note).FullName!).Returns(noteDef);
         modelLoader.GetEntityType(noteDef.Id).Returns(noteDef);
 
-        contextResolver.ResolveContext(Arg.Any<IAsyncDocumentSession>()).Returns(ci =>
+        contextResolver.ResolveContext(Arg.Any<MintPlayer.Spark.Abstractions.Storage.ISparkSession>()).Returns(ci =>
         {
             var ctx = new TestContext();
             typeof(SparkContext).GetProperty(nameof(SparkContext.Session))!

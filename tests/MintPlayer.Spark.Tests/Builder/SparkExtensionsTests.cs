@@ -42,15 +42,13 @@ public class SparkExtensionsTests
             })
             .Build();
 
-        SparkOptions? observedOptions = null;
-        services.AddSpark(configuration, builder =>
-        {
-            observedOptions = ((SparkBuilder)builder).Options;
-        });
+        services.AddSpark(configuration, builder => builder.UseRavenDb());
 
+        // UseRavenDb binds Spark:RavenDb into the options it registers (#551: the section moved off SparkOptions).
+        var observedOptions = services.Single(d => d.ServiceType == typeof(RavenDbOptions)).ImplementationInstance as RavenDbOptions;
         observedOptions.Should().NotBeNull();
-        observedOptions!.RavenDb.Database.Should().Be("Bound");
-        observedOptions.RavenDb.MaxConnectionRetries.Should().Be(0);
+        observedOptions!.Database.Should().Be("Bound");
+        observedOptions.MaxConnectionRetries.Should().Be(0);
     }
 
     [Fact]
@@ -603,6 +601,6 @@ public class SparkExtensionsTests
     /// </summary>
     public sealed class OneEntityTestSparkContext : SparkContext
     {
-        public Raven.Client.Documents.Linq.IRavenQueryable<SyncProbe> SyncProbes => Session.Query<SyncProbe>();
+        public IQueryable<SyncProbe> SyncProbes => Session.Query<SyncProbe>();
     }
 }

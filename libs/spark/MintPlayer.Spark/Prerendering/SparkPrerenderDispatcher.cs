@@ -3,8 +3,7 @@ using Microsoft.AspNetCore.Http.Features;
 using Microsoft.Net.Http.Headers;
 using MintPlayer.Spark.Abstractions.Prerendering;
 using MintPlayer.Spark.Services;
-using Raven.Client.Documents;
-using Raven.Client.Documents.Session;
+using MintPlayer.Spark.Abstractions.Storage;
 
 namespace MintPlayer.Spark.Prerendering;
 
@@ -179,14 +178,11 @@ internal sealed class SparkPrerenderDispatcher
     }
 
     /// <summary>
-    /// The requests the request's RavenDB session made. Each request has a session of its own, so Raven's
+    /// The requests the request's store session made. Each request has a session of its own, so Raven's
     /// per-session limit never sees a page's total; this does (PRD D14). Opening the session to read it sends nothing.
     /// </summary>
     private static int DatabaseRequests(IServiceProvider services)
-        => services.GetService<IDocumentStore>() is not null
-            && services.GetService<IAsyncDocumentSession>() is InMemoryDocumentSessionOperations session
-            ? session.NumberOfRequests
-            : 0;
+        => services.GetService<ISparkSession>()?.NumberOfRequests ?? 0;
 }
 
 /// <summary>What one page's requests cost, summed across their scopes.</summary>

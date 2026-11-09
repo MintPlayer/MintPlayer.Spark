@@ -49,7 +49,7 @@ public class DisableActionsTests : SparkTestDriver
 
     private sealed class DisProbeContext : SparkContext
     {
-        public Raven.Client.Documents.Linq.IRavenQueryable<DisProbe> Probes => Session.Query<DisProbe>();
+        public IQueryable<DisProbe> Probes => Session.Query<DisProbe>();
     }
 
     /// <summary>What the hook and the actions saw, so a test can assert calls rather than infer them.</summary>

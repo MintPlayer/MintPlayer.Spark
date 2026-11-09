@@ -5,7 +5,6 @@ using MintPlayer.Spark.Abstractions.Reflection;
 using MintPlayer.Spark.Actions;
 using MintPlayer.Spark.Exceptions;
 using MintPlayer.Spark.Queries;
-using Raven.Client.Documents.Session;
 
 using static MintPlayer.Spark.Services.SparkHookInvocation;
 

@@ -89,7 +89,7 @@ public class BreadcrumbCompanionRuntimeTests : SparkTestDriver
 
     public class TestContext : SparkContext
     {
-        public IRavenQueryable<BreadcrumbPerson> People => Session.Query<BreadcrumbPerson>();
+        public IQueryable<BreadcrumbPerson> People => Session.Query<BreadcrumbPerson>();
     }
 
     private static EntityTypeFile PersonModel() => new()

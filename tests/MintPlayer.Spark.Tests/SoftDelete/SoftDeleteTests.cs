@@ -1083,12 +1083,12 @@ public sealed class SdObserver(SdRecorder recorder) : IAfterDeleteCommitted<SdNo
 
 public class SdContext : SparkContext
 {
-    public Raven.Client.Documents.Linq.IRavenQueryable<SdNote> Notes => Session.Query<SdNote>();
-    public Raven.Client.Documents.Linq.IRavenQueryable<SdPerson> People => Session.Query<SdPerson>();
-    public Raven.Client.Documents.Linq.IRavenQueryable<SdSlug> Slugs => Session.Query<SdSlug>();
+    public IQueryable<SdNote> Notes => Session.Query<SdNote>();
+    public IQueryable<SdPerson> People => Session.Query<SdPerson>();
+    public IQueryable<SdSlug> Slugs => Session.Query<SdSlug>();
 }
 
 public class SdBrokenContext : SparkContext
 {
-    public Raven.Client.Documents.Linq.IRavenQueryable<SdBroken> Broken => Session.Query<SdBroken>();
+    public IQueryable<SdBroken> Broken => Session.Query<SdBroken>();
 }

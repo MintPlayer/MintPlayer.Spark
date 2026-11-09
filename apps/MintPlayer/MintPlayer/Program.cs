@@ -26,6 +26,9 @@ var builder = WebApplication.CreateBuilder(args);
 // Spark:ForwardedHeaders in the deployment's environment, never from appsettings.json.
 builder.Services.AddSpark(builder.Configuration, spark =>
 {
+    // The store (#551): RavenDB, configured from Spark:RavenDb.
+    spark.UseRavenDb();
+
     spark.UseContext<MintPlayerContext>();
     spark.AddActions();
     spark.AddMigrations();

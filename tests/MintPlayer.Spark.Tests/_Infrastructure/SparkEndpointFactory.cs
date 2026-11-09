@@ -57,8 +57,8 @@ public static class TestModelScope
 /// </summary>
 public class TestSparkContext : SparkContext
 {
-    public IRavenQueryable<Person> People => Session.Query<Person>();
-    public IRavenQueryable<Company> Companies => Session.Query<Company>();
+    public IQueryable<Person> People => Session.Query<Person>();
+    public IQueryable<Company> Companies => Session.Query<Company>();
 }
 
 public sealed class Person

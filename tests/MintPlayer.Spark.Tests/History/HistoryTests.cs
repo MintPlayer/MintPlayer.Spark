@@ -750,5 +750,5 @@ public class HiNoteActions(IEntityMapper mapper) : DefaultPersistentObjectAction
 
 public class HiContext : SparkContext
 {
-    public Raven.Client.Documents.Linq.IRavenQueryable<HiNote> Notes => Session.Query<HiNote>();
+    public IQueryable<HiNote> Notes => Session.Query<HiNote>();
 }

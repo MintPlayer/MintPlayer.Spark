@@ -1,6 +1,5 @@
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Authorization;
-using Raven.Client.Documents.Session;
 
 namespace MintPlayer.Spark.Services;
 

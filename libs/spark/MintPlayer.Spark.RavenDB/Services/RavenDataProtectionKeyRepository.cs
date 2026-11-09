@@ -1,5 +1,6 @@
 using System.Xml.Linq;
-using Microsoft.AspNetCore.DataProtection.Repositories;
+using MintPlayer.SourceGenerators.Attributes;
+using MintPlayer.Spark.Abstractions.Storage;
 using Raven.Client.Documents;
 
 namespace MintPlayer.Spark.Services;
@@ -23,8 +24,11 @@ namespace MintPlayer.Spark.Services;
 /// the same posture as the file-system repository: whoever can read the database can read the keys.
 /// </para>
 /// </remarks>
-internal sealed class RavenDataProtectionKeyRepository(IDocumentStore store) : IXmlRepository
+[Register(typeof(ISparkDataProtectionKeyStore), ServiceLifetime.Singleton)]
+internal sealed partial class RavenDataProtectionKeyRepository : ISparkDataProtectionKeyStore
 {
+    [Inject] private readonly IDocumentStore store;
+
     /// <summary>The document id prefix. Production data — see the remarks.</summary>
     internal const string IdPrefix = "DataProtectionKeys/";
 

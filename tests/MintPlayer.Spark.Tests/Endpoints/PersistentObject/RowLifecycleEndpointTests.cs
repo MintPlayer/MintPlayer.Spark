@@ -58,7 +58,7 @@ public class RowLifecycleEndpointTests : SparkTestDriver
 
     private class InvoiceContext : SparkContext
     {
-        public Raven.Client.Documents.Linq.IRavenQueryable<Invoice> Invoices => Session.Query<Invoice>();
+        public IQueryable<Invoice> Invoices => Session.Query<Invoice>();
     }
 
     static RowLifecycleEndpointTests()

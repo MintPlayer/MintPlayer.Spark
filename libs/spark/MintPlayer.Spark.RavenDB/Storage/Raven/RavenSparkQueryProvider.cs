@@ -1,5 +1,6 @@
 using System.Linq.Expressions;
 using System.Reflection;
+using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions.Reflection;
 using MintPlayer.Spark.Abstractions.Storage;
 using MintPlayer.Spark.Services;
@@ -11,8 +12,12 @@ using Raven.Client.Documents.Session;
 namespace MintPlayer.Spark.Storage.Raven;
 
 /// <summary><see cref="ISparkQueryProvider"/> over the request's RavenDB session.</summary>
-internal sealed class RavenSparkQueryProvider(ISparkSession session, IIndexCatalog indexCatalog) : ISparkQueryProvider
+[Register(typeof(ISparkQueryProvider), ServiceLifetime.Scoped)]
+internal sealed partial class RavenSparkQueryProvider : ISparkQueryProvider
 {
+    [Inject] private readonly ISparkSession session;
+    [Inject] private readonly IIndexCatalog indexCatalog;
+
     private IAsyncDocumentSession Session => session.AsRavenSession();
 
     public bool IsStoreQuery(IQueryable source)

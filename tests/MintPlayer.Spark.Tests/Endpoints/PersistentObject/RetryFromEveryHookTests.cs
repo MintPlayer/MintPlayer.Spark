@@ -76,8 +76,8 @@ public class RetryFromEveryHookTests(RetryFromEveryHookTests.Host host)
 
     public class RetryProbeContext : SparkContext
     {
-        public Raven.Client.Documents.Linq.IRavenQueryable<RetryProbe> Orders => Session.Query<RetryProbe>();
-        public Raven.Client.Documents.Linq.IRavenQueryable<RetryProbeRead> Reads => Session.Query<RetryProbeRead>();
+        public IQueryable<RetryProbe> Orders => Session.Query<RetryProbe>();
+        public IQueryable<RetryProbeRead> Reads => Session.Query<RetryProbeRead>();
     }
 
     static RetryFromEveryHookTests()

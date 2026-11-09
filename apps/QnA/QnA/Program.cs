@@ -28,6 +28,9 @@ var builder = WebApplication.CreateBuilder(args);
 // app into every environment.
 builder.Services.AddSpark(builder.Configuration, spark =>
 {
+    // The store (#551): RavenDB, configured from Spark:RavenDb.
+    spark.UseRavenDb();
+
     spark.UseContext<QnAContext>();
     spark.AddActions();
     spark.AddInterceptors();

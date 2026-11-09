@@ -99,7 +99,7 @@ public sealed class ShowedOnProbeCar
 
 public class ShowedOnProbeContext : SparkContext
 {
-    public IRavenQueryable<ShowedOnProbeCar> ShowedOnProbeCars => Session.Query<ShowedOnProbeCar>();
+    public IQueryable<ShowedOnProbeCar> ShowedOnProbeCars => Session.Query<ShowedOnProbeCar>();
 }
 
 /// <summary>The documented pattern: the model says None, the action shows the field when the state calls for it.</summary>

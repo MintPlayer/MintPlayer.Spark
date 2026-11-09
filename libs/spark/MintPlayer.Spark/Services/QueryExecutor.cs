@@ -5,7 +5,6 @@ using MintPlayer.Spark.Abstractions.Authorization;
 using MintPlayer.Spark.Abstractions.Model;
 using MintPlayer.Spark.Abstractions.Reflection;
 using MintPlayer.Spark.Queries;
-using Raven.Client.Documents.Session;
 using System.Linq.Expressions;
 using System.Reflection;
 using System.Text.Json;
@@ -66,8 +65,6 @@ public interface IQueryExecutor
 internal partial class QueryExecutor : IQueryExecutor
 {
     [Inject] private readonly Abstractions.Storage.ISparkSession sparkSession;
-    // Only the SparkContext still takes the RavenDB session; it moves onto ISparkSession with D15 (#551 M3).
-    private IAsyncDocumentSession session => sparkSession.AsRavenSession();
     [Inject] private readonly IEntityMapper entityMapper;
     [Inject] private readonly IModelLoader modelLoader;
     [Inject] private readonly ISparkContextResolver sparkContextResolver;
@@ -563,7 +560,7 @@ internal partial class QueryExecutor : IQueryExecutor
         if (!query.Source.StartsWith("Database.", StringComparison.OrdinalIgnoreCase))
             return null;
 
-        var sparkContext = sparkContextResolver.ResolveContext(session);
+        var sparkContext = sparkContextResolver.ResolveContext(sparkSession);
         if (sparkContext is null)
             return null;
 
@@ -855,7 +852,7 @@ internal sealed record DatabasePage(int TotalItems);
     private async Task<(object Queryable, Type EntityType, EntityTypeDefinition Definition, EntityTypeDefinition Surface, Type ResultType, Type? IndexType)> ResolveDatabaseSourceAsync(
         SparkQuery query, string propertyName, CancellationToken cancellationToken)
     {
-        var sparkContext = sparkContextResolver.ResolveContext(session)
+        var sparkContext = sparkContextResolver.ResolveContext(sparkSession)
             ?? throw new InvalidOperationException(
                 $"Query '{query.Name}' reads 'Database.{propertyName}', but this application registers no " +
                 $"SparkContext. A Database.* query resolves its rows from a context property; without a " +

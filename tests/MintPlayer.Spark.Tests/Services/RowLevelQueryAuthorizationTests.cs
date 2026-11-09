@@ -60,8 +60,8 @@ public class RowLevelQueryAuthorizationTests : SparkTestDriver
 
     public class TestContext : SparkContext
     {
-        public IRavenQueryable<Note> Notes => Session.Query<Note>();
-        public IRavenQueryable<Memo> Memos => Session.Query<Memo>();
+        public IQueryable<Note> Notes => Session.Query<Note>();
+        public IQueryable<Memo> Memos => Session.Query<Memo>();
     }
 
     private readonly IModelLoader _modelLoader = Substitute.For<IModelLoader>();
@@ -94,7 +94,7 @@ public class RowLevelQueryAuthorizationTests : SparkTestDriver
         _modelLoader.GetEntityType(noteDef.Id).Returns(noteDef);
         _modelLoader.GetEntityType(memoDef.Id).Returns(memoDef);
 
-        _contextResolver.ResolveContext(Arg.Any<IAsyncDocumentSession>()).Returns(ci =>
+        _contextResolver.ResolveContext(Arg.Any<MintPlayer.Spark.Abstractions.Storage.ISparkSession>()).Returns(ci =>
         {
             var ctx = new TestContext();
             typeof(SparkContext).GetProperty(nameof(SparkContext.Session))!

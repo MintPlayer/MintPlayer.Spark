@@ -1583,7 +1583,7 @@ public class MS_IgnoredBreadcrumb
 
 public class IgnoredContext : SparkContext
 {
-    public IRavenQueryable<MS_IgnoredPerson> People => Session.Query<MS_IgnoredPerson>();
+    public IQueryable<MS_IgnoredPerson> People => Session.Query<MS_IgnoredPerson>();
 }
 
 // --- showedOn preservation fixtures (#274) ---
@@ -1611,7 +1611,7 @@ public class MS_ProjectedBookViewWithoutTitle
 
 public class ProjectedBookContext : SparkContext
 {
-    public IRavenQueryable<MS_ProjectedBook> Books => Session.Query<MS_ProjectedBook>();
+    public IQueryable<MS_ProjectedBook> Books => Session.Query<MS_ProjectedBook>();
 }
 
 // --- get-only computed property fixtures (#253) ---
@@ -1628,7 +1628,7 @@ public class MS_ComputedOrder
 
 public class ComputedContext : SparkContext
 {
-    public IRavenQueryable<MS_ComputedOrder> Orders => Session.Query<MS_ComputedOrder>();
+    public IQueryable<MS_ComputedOrder> Orders => Session.Query<MS_ComputedOrder>();
 }
 
 public class MS_IndexerEntity
@@ -1648,22 +1648,22 @@ public class MS_IndexerEntity
 
 public class IndexerContext : SparkContext
 {
-    public IRavenQueryable<MS_IndexerEntity> Entities => Session.Query<MS_IndexerEntity>();
+    public IQueryable<MS_IndexerEntity> Entities => Session.Query<MS_IndexerEntity>();
 }
 
 public class IgnoredEmbeddedContext : SparkContext
 {
-    public IRavenQueryable<MS_IgnoredHolder> Holders => Session.Query<MS_IgnoredHolder>();
+    public IQueryable<MS_IgnoredHolder> Holders => Session.Query<MS_IgnoredHolder>();
 }
 
 public class EmbeddedChildContext : SparkContext
 {
-    public IRavenQueryable<MS_EmbeddedChildParent> Parents => Session.Query<MS_EmbeddedChildParent>();
+    public IQueryable<MS_EmbeddedChildParent> Parents => Session.Query<MS_EmbeddedChildParent>();
 }
 
 public class IgnoredBreadcrumbContext : SparkContext
 {
-    public IRavenQueryable<MS_IgnoredBreadcrumb> Items => Session.Query<MS_IgnoredBreadcrumb>();
+    public IQueryable<MS_IgnoredBreadcrumb> Items => Session.Query<MS_IgnoredBreadcrumb>();
 }
 
 public class EmptyContext : SparkContext { }
@@ -1678,82 +1678,82 @@ public class MS_StampedNote
 
 public class StampedContext : SparkContext
 {
-    public IRavenQueryable<MS_StampedNote> Notes => Session.Query<MS_StampedNote>();
+    public IQueryable<MS_StampedNote> Notes => Session.Query<MS_StampedNote>();
 }
 
 public class SinglePersonContext : SparkContext
 {
-    public IRavenQueryable<MS_TestPerson> People => Session.Query<MS_TestPerson>();
+    public IQueryable<MS_TestPerson> People => Session.Query<MS_TestPerson>();
 }
 
 public class TwoEntityContext : SparkContext
 {
-    public IRavenQueryable<MS_TestPerson> People => Session.Query<MS_TestPerson>();
-    public IRavenQueryable<MS_TestCar> Cars => Session.Query<MS_TestCar>();
+    public IQueryable<MS_TestPerson> People => Session.Query<MS_TestPerson>();
+    public IQueryable<MS_TestCar> Cars => Session.Query<MS_TestCar>();
 }
 
 public class ProjectionOnlyContext : SparkContext
 {
-    public IRavenQueryable<MS_TestVehicle> Vehicles => Session.Query<MS_TestVehicle>();
+    public IQueryable<MS_TestVehicle> Vehicles => Session.Query<MS_TestVehicle>();
 }
 
 // The marker the generator emits for a plain root (docs/default_index_PRD.md, D6); this project does not run it.
 [SparkPlainRoot(typeof(MS_TestTag), nameof(Tags))]
 public class TaggedContext : SparkContext
 {
-    public IRavenQueryable<MS_TestTagged> Tagged => Session.Query<MS_TestTagged>();
-    public IRavenQueryable<MS_TestTag> Tags => Session.Query<MS_TestTag>();
+    public IQueryable<MS_TestTagged> Tagged => Session.Query<MS_TestTagged>();
+    public IQueryable<MS_TestTag> Tags => Session.Query<MS_TestTag>();
 }
 
 public class BreadcrumbContext : SparkContext
 {
-    public IRavenQueryable<MS_BreadcrumbPerson> People => Session.Query<MS_BreadcrumbPerson>();
+    public IQueryable<MS_BreadcrumbPerson> People => Session.Query<MS_BreadcrumbPerson>();
 }
 
 public class NamedContext : SparkContext
 {
-    public IRavenQueryable<MS_NamedThing> Things => Session.Query<MS_NamedThing>();
+    public IQueryable<MS_NamedThing> Things => Session.Query<MS_NamedThing>();
 }
 
 public class OrderedContext : SparkContext
 {
-    public IRavenQueryable<MS_OrderedParent> Parents => Session.Query<MS_OrderedParent>();
+    public IQueryable<MS_OrderedParent> Parents => Session.Query<MS_OrderedParent>();
 }
 
 public class MarkedThingContext : SparkContext
 {
-    public IRavenQueryable<MS_MarkedThing> Things => Session.Query<MS_MarkedThing>();
+    public IQueryable<MS_MarkedThing> Things => Session.Query<MS_MarkedThing>();
 }
 
 // #276: rename-retarget fixtures — the same entity exposed under an old and a new property name.
 public class RenameV1Context : SparkContext
 {
-    public IRavenQueryable<MS_TestPerson> People => Session.Query<MS_TestPerson>();
+    public IQueryable<MS_TestPerson> People => Session.Query<MS_TestPerson>();
 }
 
 public class RenameV2Context : SparkContext
 {
-    public IRavenQueryable<MS_TestPerson> Persons => Session.Query<MS_TestPerson>();
+    public IQueryable<MS_TestPerson> Persons => Session.Query<MS_TestPerson>();
 }
 
 public class MultiRenameV1Context : SparkContext
 {
-    public IRavenQueryable<MS_TestCar> Cars => Session.Query<MS_TestCar>();
-    public IRavenQueryable<MS_TestCar> ArchivedCars => Session.Query<MS_TestCar>();
+    public IQueryable<MS_TestCar> Cars => Session.Query<MS_TestCar>();
+    public IQueryable<MS_TestCar> ArchivedCars => Session.Query<MS_TestCar>();
 }
 
 public class MultiRenameV2Context : SparkContext
 {
-    public IRavenQueryable<MS_TestCar> Vehicles => Session.Query<MS_TestCar>();
-    public IRavenQueryable<MS_TestCar> ArchivedVehicles => Session.Query<MS_TestCar>();
+    public IQueryable<MS_TestCar> Vehicles => Session.Query<MS_TestCar>();
+    public IQueryable<MS_TestCar> ArchivedVehicles => Session.Query<MS_TestCar>();
 }
 
 public class BadBreadcrumbContext : SparkContext
 {
-    public IRavenQueryable<MS_BadBreadcrumb> Items => Session.Query<MS_BadBreadcrumb>();
+    public IQueryable<MS_BadBreadcrumb> Items => Session.Query<MS_BadBreadcrumb>();
 }
 
 public class UnbalancedBreadcrumbContext : SparkContext
 {
-    public IRavenQueryable<MS_UnbalancedBreadcrumb> Items => Session.Query<MS_UnbalancedBreadcrumb>();
+    public IQueryable<MS_UnbalancedBreadcrumb> Items => Session.Query<MS_UnbalancedBreadcrumb>();
 }

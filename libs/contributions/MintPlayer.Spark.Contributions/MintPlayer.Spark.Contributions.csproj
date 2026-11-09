@@ -35,6 +35,7 @@
 
 	<ItemGroup>
 		<ProjectReference Include="..\..\spark\MintPlayer.Spark\MintPlayer.Spark.csproj" />
+		<ProjectReference Include="..\..\spark\MintPlayer.Spark.RavenDB\MintPlayer.Spark.RavenDB.csproj" />
 		<ProjectReference Include="..\MintPlayer.Spark.Contributions.Abstractions\MintPlayer.Spark.Contributions.Abstractions.csproj" />
 		<!--
 		  Compile-time only (PrivateAssets): the runtime soft-deletes (withdraws) and hides contributions

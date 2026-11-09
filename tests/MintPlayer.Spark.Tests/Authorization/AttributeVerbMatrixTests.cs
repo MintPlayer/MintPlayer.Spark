@@ -63,8 +63,8 @@ public sealed class VmPingAction : ICustomAction
 
 public class VmContext : SparkContext
 {
-    public IRavenQueryable<VmItem> Items => Session.Query<VmItem>();
-    public IRavenQueryable<VmSong> Songs => Session.Query<VmSong>();
+    public IQueryable<VmItem> Items => Session.Query<VmItem>();
+    public IQueryable<VmSong> Songs => Session.Query<VmSong>();
 }
 
 /// <summary>

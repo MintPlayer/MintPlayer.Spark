@@ -1,6 +1,5 @@
 using MintPlayer.Spark.Abstractions.Model;
 using MintPlayer.Spark.Abstractions.Reflection;
-using Raven.Client.Documents.Linq;
 
 namespace MintPlayer.Spark.Services;
 
@@ -91,9 +90,7 @@ public static class ModelShapeDiscovery
 
     private static IEnumerable<Type> QueryableRoots(Type sparkContextType)
         => sparkContextType.GetCachedProperties()
-            .Where(p => p.PropertyType.IsGenericType
-                     && p.PropertyType.GetGenericTypeDefinition() == typeof(IRavenQueryable<>))
-            .Select(p => p.PropertyType.GetGenericArguments().FirstOrDefault())
+            .Select(p => SparkContextQueryables.ElementType(p.PropertyType))
             .Where(t => t is not null)
             .Select(t => t!);
 

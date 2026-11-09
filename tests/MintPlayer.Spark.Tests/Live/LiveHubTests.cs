@@ -27,8 +27,8 @@ public class LiveHubTests
     {
         var options = Substitute.For<IOptionsMonitor<SparkLiveOptions>>();
         options.CurrentValue.Returns(new SparkLiveOptions { Source = source, MaxSocketsPerUser = maxSockets });
-        // A substitute store: these tests register under Actions only, or never reach the Changes connection.
-        return new LiveHub(Substitute.For<IDocumentStore>(), options, NullLogger<LiveHub>.Instance);
+        // No change feed: these tests publish directly, under Actions only, or never reach a store watch.
+        return new LiveHub(options, NullLogger<LiveHub>.Instance);
     }
 
     [Fact]

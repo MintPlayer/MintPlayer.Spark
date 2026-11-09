@@ -37,6 +37,6 @@ public class ExpiresAfterModelTests
 
     private sealed class ExSyncContext : SparkContext
     {
-        public Raven.Client.Documents.Linq.IRavenQueryable<ExSyncProbe> Probes => Session.Query<ExSyncProbe>();
+        public IQueryable<ExSyncProbe> Probes => Session.Query<ExSyncProbe>();
     }
 }

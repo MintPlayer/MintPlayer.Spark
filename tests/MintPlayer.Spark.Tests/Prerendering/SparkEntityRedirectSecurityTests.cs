@@ -38,7 +38,7 @@ public class ErRepoActions(IEntityMapper mapper)
 
 public class ErContext : SparkContext
 {
-    public IRavenQueryable<ErRepo> Repos => Session.Query<ErRepo>();
+    public IQueryable<ErRepo> Repos => Session.Query<ErRepo>();
 }
 
 /// <summary>

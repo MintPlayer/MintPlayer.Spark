@@ -245,5 +245,5 @@ public class WcNoteActions(IEntityMapper entityMapper) : DefaultPersistentObject
 
 public class WcContext : SparkContext
 {
-    public Raven.Client.Documents.Linq.IRavenQueryable<WcNote> Notes => Session.Query<WcNote>();
+    public IQueryable<WcNote> Notes => Session.Query<WcNote>();
 }

@@ -11,6 +11,6 @@ namespace QnA;
 /// </summary>
 public partial class QnAContext : SparkContext
 {
-    public IRavenQueryable<Question> Questions => Session.Query<Question>();
-    public IRavenQueryable<Answer> Answers => Session.Query<Answer>();
+    public IQueryable<Question> Questions => Session.Query<Question>();
+    public IQueryable<Answer> Answers => Session.Query<Answer>();
 }

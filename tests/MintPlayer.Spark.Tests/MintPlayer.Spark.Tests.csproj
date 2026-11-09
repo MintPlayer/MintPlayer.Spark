@@ -60,6 +60,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\libs\spark\MintPlayer.Spark\MintPlayer.Spark.csproj" />
+    <ProjectReference Include="..\..\libs\spark\MintPlayer.Spark.RavenDB\MintPlayer.Spark.RavenDB.csproj" />
     <ProjectReference Include="..\..\libs\spark\MintPlayer.Spark.Abstractions\MintPlayer.Spark.Abstractions.csproj" />
     <ProjectReference Include="..\..\libs\authorization\MintPlayer.Spark.Authorization\MintPlayer.Spark.Authorization.csproj" />
     <ProjectReference Include="..\..\libs\webhooks\MintPlayer.Spark.Webhooks.GitHub\MintPlayer.Spark.Webhooks.GitHub.csproj" />
