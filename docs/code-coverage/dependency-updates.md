@@ -291,7 +291,8 @@ Edited comments and comments by bots are ignored. The bot reacts 👍 or 👎.
 - **Feed secrets** reach only the lookup and the apply of ecosystems whose relock runs no package code (npm, pnpm, yarn,
   NuGet restore, Composer with `--no-plugins`, Cargo, Go, Maven); never Gradle; uv only with `--no-build`.
 - **Every patch is judged by the bot, not by the runner**: only planned package files that exist, each changed line a
-  planned `current → new` swap on a line naming the dependency, no added or deleted files, no `Directory.Build.*`,
+  planned `current → new` swap on a line naming the dependency (or, for a platform group, a swap of a location the lookup
+  reported to the target version), no added or deleted files, no `Directory.Build.*` change other than such a swap,
   `.npmrc`, `NuGet.Config`, install scripts or `.github/` (except `uses:` refs and `setup-*` versions, validated against
   the target `action.yml`), lockfile URLs on known registries only, integrity on every entry, and more than 25 new
   packages needs a person. The plan file never reaches the rolling branch.

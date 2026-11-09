@@ -643,6 +643,11 @@ neutralised (`allowed-updates` / `ignore` down to exactly the pinned version).
   static glob list: the `packageFile`s plus their manager's lockfiles. The existing preset already lists the
   lockfiles (`AutoResolvePresets.cs:20-34`). Everything else is refused, as are `Directory.Build.*`, `*.targets`,
   `nuget.config`, `.npmrc` and install scripts.
+  - **Superseded in part (#613 D23, owner 2026-11-09, "strict substitutions"):** an *edit* of an existing
+    `Directory.Build.props`/`.targets` is admitted when every changed line is a planned NuGet `current → new` swap or a
+    reported platform location swap; adding, deleting or renaming one, and any other change, is still refused. Reason:
+    `MintPlayer.Versioning.MSBuild` lives in `Directory.Build.props`, and refusing the file refused the whole patch
+    ([sdk-updates-PRD.md §11](sdk-updates-PRD.md)).
   - **`.github/workflows/*` carve-out** for Actions `uses:` bumps. Only hunks whose `-`/`+` lines differ solely in
     the ref after `uses: owner/repo@` are allowed. The writer token then gets `workflows: write`, which it already
     can when needed (`GitHubForgeMergeQueue.cs:1127-1185`).

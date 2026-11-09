@@ -5,8 +5,9 @@ job already fetches the released SDKs (.NET, Node, PHP, …), so the bot should 
 repository can take a new SDK (`net10.0` → `net11.0`). Combining it with the package updater is an option; this
 document decides the path.
 
-Status: **M1–M7 implemented 2026-11-09 on `feat/issue606-sdk-updater` (§10); spikes S1–S7 recorded (§5); M8 is the
-owner's live rollout.** .NET 11 goes GA the night of 2026-11-09; the owner migrates their repositories to the current
+Status: **M1–M7 merged 2026-11-09 (PR #611, §10); spikes S1–S7 recorded (§5). M8 rollout: all 14 MintPlayer
+repositories onboarded 2026-11-09; its seven problems (issue #613) are fixed in PR #614 (§11). Left of M8: after #614
+deploys, re-trigger the failed lookups and see one `platform:dotnet 11.0` move through on DependencyUpdaterTest.** .NET 11 goes GA the night of 2026-11-09; the owner migrates their repositories to the current
 action the same day (D9).
 
 Related: [dependency-updates-PRD.md](dependency-updates-PRD.md) (#419, the rolling updater; §13 is its current design),
