@@ -77,9 +77,9 @@
   @if (addUrlOpen()) {
     <bs-form>
       <label for="player-add-url">Enter a YouTube, Vimeo, SoundCloud or Dailymotion URL</label>
-      <input id="player-add-url" #urlInput type="url" autocomplete="off" [value]="urlToAdd()" [class.is-invalid]="urlInvalid()"
+      <input id="player-add-url" #urlInput type="url" autocomplete="off" [(ngModel)]="urlToAdd" [class.is-invalid]="urlInvalid()"
         [attr.aria-invalid]="urlInvalid()" aria-describedby="player-add-url-feedback"
-        (input)="setUrlToAdd($any($event.target).value)" (keydown.enter)="$event.preventDefault(); addUrl()" />
+        (keydown.enter)="$event.preventDefault(); addUrl()" />
       @if (urlInvalid()) {
         <div id="player-add-url-feedback" class="text-danger small mt-1">This URL is not supported.</div>
       }

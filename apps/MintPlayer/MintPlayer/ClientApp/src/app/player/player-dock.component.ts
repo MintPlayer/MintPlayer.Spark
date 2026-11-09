@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, effect, ElementRef, inject, signal, viewChild } from '@angular/core';
 import { CdkDrag, CdkDragHandle } from '@angular/cdk/drag-drop';
+import { FormsModule } from '@angular/forms';
 import { VideoPlayerComponent } from '@mintplayer/ng-video-player';
 import { EPlayerState } from '@mintplayer/player-provider';
 import { BsOffcanvasComponent, BsOffcanvasHeaderDirective } from '@mintplayer/ng-bootstrap/offcanvas';
@@ -20,7 +21,7 @@ import { VideoApis } from './video-apis';
   imports: [
     VideoPlayerComponent, BsOffcanvasComponent, BsOffcanvasHeaderDirective, BsListGroupComponent, BsListGroupItemComponent,
     BsCardComponent, BsCardHeaderComponent, BsCardBodyComponent, BsButtonTypeDirective, BsProgressComponent, BsProgressBarComponent,
-    BsModalComponent, BsModalHeaderDirective, BsModalFooterDirective, BsFormComponent, BsFormControlDirective, CdkDrag, CdkDragHandle,
+    BsModalComponent, BsModalHeaderDirective, BsModalFooterDirective, BsFormComponent, BsFormControlDirective, FormsModule, CdkDrag, CdkDragHandle,
   ],
   templateUrl: './player-dock.component.html',
   styleUrl: './player-dock.component.scss',
@@ -67,25 +68,22 @@ export class PlayerDockComponent {
   // Add a URL to the queue (the legacy sidebar's "Add URL" modal): any URL one of the player's sites can play.
   protected readonly addUrlOpen = signal(false);
   protected readonly urlToAdd = signal('');
-  protected readonly urlInvalid = signal(false);
+  /** The input as it was when refused: the error shows until the text changes. */
+  private readonly rejectedUrl = signal<string | null>(null);
+  protected readonly urlInvalid = computed(() => this.rejectedUrl() === this.urlToAdd());
   private readonly urlInput = viewChild<ElementRef<HTMLInputElement>>('urlInput');
 
   protected openAddUrl() {
     this.urlToAdd.set('');
-    this.urlInvalid.set(false);
+    this.rejectedUrl.set(null);
     this.addUrlOpen.set(true);
     setTimeout(() => this.urlInput()?.nativeElement.focus(), 20);
-  }
-
-  protected setUrlToAdd(value: string) {
-    this.urlToAdd.set(value);
-    this.urlInvalid.set(false);
   }
 
   protected addUrl() {
     const url = this.urlToAdd().trim();
     if (!this.videoApis.isPlayable(url)) {
-      this.urlInvalid.set(true);
+      this.rejectedUrl.set(this.urlToAdd());
       return;
     }
     this.player.add({ url, title: url });
