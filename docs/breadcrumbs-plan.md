@@ -166,6 +166,43 @@ Outstanding before merge: version bumps per `project_ci_autopublish.md`; optiona
 
 ---
 
+## Follow-up — #251: a reference label naming the wrong document ✅ (2026-11-09)
+
+The issue (filed 2026-08-15 on preview.46) saw a `Commit.Repository` breadcrumb render the literal
+text `JObject`. Investigation found two causes, one already fixed:
+
+1. **Stale `@Raven-Clr-Type` (fixed before this follow-up).** The resolver loaded references as
+   `object`; Coverage's documents carry the pre-monorepo type name, so RavenDB materialized them as
+   `JObject` and the render fell through to the CLR type name. Fixed in `b632d521` (2026-09-03,
+   preview.71): references load under the type their edge declares. Pinned by
+   `BreadcrumbResolverTests.Reference_whose_stored_clr_type_no_longer_resolves_*` and
+   `Reference_with_no_entity_type_definition_renders_its_id_never_a_clr_type_name`. A trace of every
+   writer of a reference breadcrumb (`EntityMapper.cs:330/365/377`) found that the PO GET, query
+   execute (index, projection, custom, composed, streaming and sub-queries via `RowSecurityGate`),
+   MCP and bulk-delete paths all reach it only through `BreadcrumbResolver`. `GetDefaultIncludes()`
+   only warms the session cache that the typed loads read.
+2. **A reference id into a foreign collection (fixed here).** A document's collection is its
+   `@collection` metadata, not its id prefix, and a reference value is a bare id string. A typed
+   `LoadAsync<T>` does not check the collection: `Driver = "accounts/1"` on a `Person`-typed edge
+   loaded the account *as a Person*. It rendered the account's fields through Person's template,
+   under Person's Read right and row rule rather than its own. **Red:**
+   `Reference_id_into_another_collection_is_not_rendered_as_the_declared_type` failed with
+   `Expected result.Get("accounts/1") to be null, but found "Secret Owner"`. **Fix:**
+   `BreadcrumbResolver.LoadManyAsync` drops a loaded document whose `@collection` is not that of the
+   type it materialized as (`ICollectionGuard`, the same guard the PO load and save paths use). The
+   outcome is the same as for a dangling id. It judges the *materialized* type, not the declared one,
+   so two cases stay valid, each pinned by a test that passed before and after the fix:
+   - a genuine subtype in its own collection (`Reference_to_a_subtype_stored_in_its_own_collection_still_renders`);
+   - a document whose id prefix differs from its collection (`Reference_id_whose_prefix_differs_from_its_collection_still_renders`).
+
+**Not changed:** the untyped branch of `LoadManyAsync` (a JSON-only virtual type with no CLR type).
+There, a foreign document materializes as its own type and is judged under its own right and row
+rule, so the label is the wrong one but nothing crosses a boundary. Writes still accept any id
+string as a reference value. Validating the target collection on save is a separate change, not
+done here.
+
+---
+
 ## Sequencing & risk notes
 
 - Phases 1→4 are strictly ordered (metadata → parser → resolver → wiring). Phase 5 can start once Phase 4 lands on a branch. Phase 0 de-risks the two load-batching assumptions the whole design rests on — **do not skip it**.
