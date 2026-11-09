@@ -448,6 +448,91 @@ public class BreadcrumbResolverTests : SparkTestDriver
         result.Get("cars/1").Should().Be("CAR-1 (people/1)");
     }
 
+    // --- reference ids into a foreign collection (#251) ---
+    // A reference value is a bare id string, and RavenDB's typed LoadAsync<T> does not check the
+    // collection: handed another collection's id it deserializes that document into T all the same.
+
+    /// <summary>Field-compatible with <see cref="BR_Person"/> but stored in its own collection.</summary>
+    public class BR_Account { public string? Id { get; set; } public string FirstName { get; set; } = ""; public string LastName { get; set; } = ""; }
+    /// <summary>A subtype of <see cref="BR_Person"/>; RavenDB stores it in its own collection.</summary>
+    public class BR_Chauffeur : BR_Person { public string Licence { get; set; } = ""; }
+
+    [Fact]
+    public async Task Reference_id_into_another_collection_is_not_rendered_as_the_declared_type()
+    {
+        using (var seed = Store.OpenAsyncSession())
+        {
+            await seed.StoreAsync(new BR_Account { FirstName = "Secret", LastName = "Owner" }, "accounts/1");
+            await seed.StoreAsync(new BR_Car { LicensePlate = "CAR-1", Driver = "accounts/1" }, "cars/1");
+            await seed.SaveChangesAsync();
+        }
+
+        var person = Def(typeof(BR_Person), "{FirstName} {LastName}", null, Scalar("FirstName"), Scalar("LastName"));
+        var car = Def(typeof(BR_Car), "{LicensePlate} ({Driver})", null, Scalar("LicensePlate"), Ref("Driver", typeof(BR_Person)));
+        var (resolver, rowSecurity) = Build(person, car);
+
+        using var session = Store.OpenAsyncSession();
+        var carEntity = await session.LoadAsync<BR_Car>("cars/1");
+
+        var result = await resolver.ResolveAsync(session, [carEntity], car);
+
+        // The Driver edge declares BR_Person, but accounts/1 is a BR_Account. Loaded as a person it
+        // rendered the account's fields through Person's template, judged under Person's Read right
+        // and row rule rather than its own: another document's label, across its own boundary.
+        // Not in the edge's collection, it is no valid target: the same outcome as a dangling id.
+        result.Get("accounts/1").Should().BeNull();
+        result.Get("cars/1").Should().Be("CAR-1 ()");
+        await rowSecurity.DidNotReceive().IsAllowedAsync(typeof(BR_Person), "Read", Arg.Is<object>(o => o is BR_Person));
+    }
+
+    [Fact]
+    public async Task Reference_id_whose_prefix_differs_from_its_collection_still_renders()
+    {
+        using (var seed = Store.OpenAsyncSession())
+        {
+            // The id prefix is only a convention; the collection comes from the stored type.
+            await seed.StoreAsync(new BR_Person { FirstName = "Ada", LastName = "Lovelace" }, "accounts/2");
+            await seed.StoreAsync(new BR_Car { LicensePlate = "CAR-1", Driver = "accounts/2" }, "cars/1");
+            await seed.SaveChangesAsync();
+        }
+
+        var person = Def(typeof(BR_Person), "{FirstName} {LastName}", null, Scalar("FirstName"), Scalar("LastName"));
+        var car = Def(typeof(BR_Car), "{LicensePlate} ({Driver})", null, Scalar("LicensePlate"), Ref("Driver", typeof(BR_Person)));
+        var (resolver, _) = Build(person, car);
+
+        using var session = Store.OpenAsyncSession();
+        var carEntity = await session.LoadAsync<BR_Car>("cars/1");
+
+        var result = await resolver.ResolveAsync(session, [carEntity], car);
+
+        result.Get("accounts/2").Should().Be("Ada Lovelace");
+        result.Get("cars/1").Should().Be("CAR-1 (Ada Lovelace)");
+    }
+
+    [Fact]
+    public async Task Reference_to_a_subtype_stored_in_its_own_collection_still_renders()
+    {
+        using (var seed = Store.OpenAsyncSession())
+        {
+            await seed.StoreAsync(new BR_Chauffeur { FirstName = "Grace", LastName = "Hopper", Licence = "B" }, "chauffeurs/1");
+            await seed.StoreAsync(new BR_Car { LicensePlate = "CAR-1", Driver = "chauffeurs/1" }, "cars/1");
+            await seed.SaveChangesAsync();
+        }
+
+        var person = Def(typeof(BR_Person), "{FirstName} {LastName}", null, Scalar("FirstName"), Scalar("LastName"));
+        var car = Def(typeof(BR_Car), "{LicensePlate} ({Driver})", null, Scalar("LicensePlate"), Ref("Driver", typeof(BR_Person)));
+        var (resolver, _) = Build(person, car);
+
+        using var session = Store.OpenAsyncSession();
+        var carEntity = await session.LoadAsync<BR_Car>("cars/1");
+
+        var result = await resolver.ResolveAsync(session, [carEntity], car);
+
+        // A base-typed edge to a genuine subtype document is valid: the guard judges the type the
+        // document materialized as, which RavenDB recovered from its own metadata.
+        result.Get("chauffeurs/1").Should().Be("Grace Hopper");
+    }
+
     [Fact]
     public async Task Projection_only_root_loads_the_collection_document_to_render_collection_fields()
     {
