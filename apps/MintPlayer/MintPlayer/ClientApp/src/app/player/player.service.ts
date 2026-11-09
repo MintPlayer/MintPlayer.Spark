@@ -1,6 +1,7 @@
 import { computed, Injectable, signal } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { EPlayerState } from '@mintplayer/player-provider';
+import { PlayerProgress } from '@mintplayer/player-progress';
 import { ERepeatMode, PlaylistController } from '@mintplayer/playlist-controller';
 import { map } from 'rxjs';
 
@@ -12,12 +13,6 @@ export interface QueueItem {
   /** The medium's type, e.g. "Official Audio". */
   subtitle?: string;
   ownerId?: string;
-}
-
-/** The video player's progress event, in seconds. */
-export interface PlayerPosition {
-  currentTime: number;
-  duration: number;
 }
 
 /**
@@ -45,7 +40,10 @@ export class PlayerService {
   readonly state = signal(EPlayerState.unstarted);
   readonly isPlaying = computed(() => this.state() === EPlayerState.playing);
   /** Where the current medium is, in seconds, for the queue's progress bar (as the legacy playlist sidebar showed). */
-  readonly position = signal<PlayerPosition>({ currentTime: 0, duration: 0 });
+  readonly position = signal<PlayerProgress>({ currentTime: 0, duration: 0 });
+  /** 0-100, two-way bound to the video player. Kept here so the next site's player gets it too. */
+  readonly volume = signal(100);
+  readonly muted = signal(false);
 
   add(item: QueueItem) {
     this.controller.addToPlaylist(item);
@@ -90,7 +88,7 @@ export class PlayerService {
   }
 
   /** Feeds the progress bar, and lets previous restart the current medium once it has played 5 seconds. */
-  progress(position: PlayerPosition) {
+  progress(position: PlayerProgress) {
     this.position.set({ currentTime: position.currentTime, duration: position.duration });
     this.controller.currentVideoPosition = position.currentTime;
   }

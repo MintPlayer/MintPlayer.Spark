@@ -12,6 +12,7 @@ import { ERepeatMode } from '@mintplayer/playlist-controller';
 import { BsProgressBarComponent, BsProgressComponent } from '@mintplayer/ng-bootstrap/progress-bar';
 import { BsModalComponent, BsModalFooterDirective, BsModalHeaderDirective } from '@mintplayer/ng-bootstrap/modal';
 import { BsFormComponent, BsFormControlDirective } from '@mintplayer/ng-bootstrap/form';
+import { BsRangeComponent } from '@mintplayer/ng-bootstrap/range';
 import { PlayerService } from './player.service';
 import { VideoApis } from './video-apis';
 
@@ -21,7 +22,7 @@ import { VideoApis } from './video-apis';
   imports: [
     VideoPlayerComponent, BsOffcanvasComponent, BsOffcanvasHeaderDirective, BsListGroupComponent, BsListGroupItemComponent,
     BsCardComponent, BsCardHeaderComponent, BsCardBodyComponent, BsButtonTypeDirective, BsProgressComponent, BsProgressBarComponent,
-    BsModalComponent, BsModalHeaderDirective, BsModalFooterDirective, BsFormComponent, BsFormControlDirective, FormsModule, CdkDrag, CdkDragHandle,
+    BsModalComponent, BsModalHeaderDirective, BsModalFooterDirective, BsFormComponent, BsFormControlDirective, BsRangeComponent, FormsModule, CdkDrag, CdkDragHandle,
   ],
   templateUrl: './player-dock.component.html',
   styleUrl: './player-dock.component.scss',
@@ -49,6 +50,23 @@ export class PlayerDockComponent {
   /** Runs after the two-way binding has stored the state (it is bound first in the template). */
   protected onStateChange(state: EPlayerState) {
     if (state === EPlayerState.ended) this.player.ended();
+  }
+
+  /**
+   * A new site's player (YouTube, then Vimeo...) starts at its own volume, and the bindings don't push an unchanged
+   * value again. It reports its capabilities as soon as it exists, before its first (debounced) volume report.
+   */
+  protected applyVolume() {
+    const videoPlayer = this.videoPlayer();
+    if (!videoPlayer) return;
+    videoPlayer.volume = this.player.volume();
+    videoPlayer.mute = this.player.muted();
+  }
+
+  /** Moving the slider unmutes, as on the sites' own players. */
+  protected setVolume(volume: number) {
+    this.player.volume.set(volume);
+    this.player.muted.set(false);
   }
 
   /** The current medium's position as a share of its length, 0 while the length is unknown. */
