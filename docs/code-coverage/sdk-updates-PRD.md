@@ -273,5 +273,10 @@ All milestones in one change on `feat/issue606-sdk-updater`, after `5a06a0b5b` (
   YAML `Root` helper shared by the workflow guard; `Day`/`IsFalse` in `PlatformLifecycleSources`; `ToPlatforms` uses
   `ChannelComparer` instead of its own version parse; `MajorOf` in the policy engine; the `dependencyOnboardingUi` translations
   nested (`panel: { … }`) instead of dotted keys.
+- **CI on PR #611 (run 42640595247):** two red suites, both from this change. The setup page's `DEPENDENCIES_YML` must
+  equal §4 of `dependency-updates.md` byte for byte and lacked the new `track`/`companions` lines. The CodeCoverage
+  translations golden (`SparkTranslationLayersTests`) lacked the 7 new keys; regenerated with `SPARK_UPDATE_GOLDEN=1`,
+  and the diff is additions only (the nested `panel: { … }` composes to the same dotted keys). "coverage upload" and
+  `pull-request` failed only as a consequence.
 - **M8 Rollout** is the owner's: update the action pin in each repository (the bot refuses an outdated lookup
   workflow), then one live platform PR on `PieterjanDeClippel/DependencyUpdaterTest` as listed in §4.
