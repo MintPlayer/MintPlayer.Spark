@@ -4,7 +4,7 @@ Issue: [#62](https://github.com/MintPlayer/MintPlayer.Spark/issues/62) (VS + VS 
 [#536](https://github.com/MintPlayer/MintPlayer.Spark/issues/536) (SQL Server support, a later consumer of
 the storage seam). Supersedes PR #63 (closed 2026-10-26; it predates the `apps/` + `libs/` layout).
 
-Status: **planned**. Decisions grilled with the owner on 2026-10-26 (D1–D14 below). Nothing implemented.
+Status: **PR A in progress** (§8, re-scoped 2026-11-09). Decisions D1–D14 grilled with the owner on 2026-10-26; D16–D20 decided on 2026-11-09 (§8.1).
 
 ## 1. Goal
 
@@ -509,7 +509,7 @@ internal sealed record SparkQuerySpec(
 | T6 | `Where(p => p.Active == false)` | raven = `[people/2]`; **memory = `[people/2, people/3]`** | **The providers disagree** on an absent field; see D16 |
 | T6b | `Where(p => p.Active != true)` | raven = `[people/2, people/3]`; memory = the same | Agree |
 
-**D16 (proposed, awaiting owner) — absent-field semantics are Spark's, not the store's.**
+**D16 (decided 2026-11-09, §8.1) — absent-field semantics are Spark's, not the store's.**
 - The divergence: LINQ-to-objects sees the CLR default (`false`) for the absent field, and SQL Server will too,
   because a NOT NULL column has a default. RavenDB treats an absent field as *no value*, so `== false` doesn't
   match it (memory note "Absent field ≠ `== false`").
@@ -547,6 +547,8 @@ internal sealed record SparkQuerySpec(
 Tests run once at the end of each PR, not per milestone.
 
 ### PR A — storage-agnostic core
+
+*Items 3–6 are re-planned as M3–M9 in §8.3.*
 
 1. S2 + S3 complete, with tables written into this PRD.
 2. The provider contract in core (load, stage, commit, query spec, consistency wait, capabilities), with
@@ -595,3 +597,111 @@ Tests run once at the end of each PR, not per milestone.
 - Editing users, or any other database-resident data, from the editor.
 - Generating C# from the editor. The model JSON is the editor's whole world, and C# stays authoritative only
   through Synchronize.
+
+## 8. PR A plan, re-scoped 2026-11-09
+
+The branch was rebased onto master `dce3c6725` on 2026-11-09; M2 survived with five conflicts. All five came from
+master code written on the Raven session in the meantime, and each was resolved onto `ISparkSession`:
+- `MaterializeAsync`'s reference includes
+- the breadcrumb loader's collection guard
+- the `QueryResultProjector` service
+- `EntityMapper.RowWouldChangeAsync`
+- the `TestQueryResultProjector` helper
+
+The test project builds after the rebase.
+
+### 8.1 Decisions (owner, 2026-11-09)
+
+- **D16 — absent = CLR default: decided.** Owner chose the recommendation of §4c.
+  - The Raven provider rewrites `member == default` on non-nullable value types into
+    `!(member > default || member < default)`, and into `!= true` for `bool`.
+  - The conformance suite pins every type the rewrite covers (S12).
+- **D17 — core drops `RavenDB.Client`.** Owner preference, 2026-11-09. The alternatives were "seam only, the
+  reference stays" and "stage it into #536".
+  - Every Raven type moves to `MintPlayer.Spark.RavenDB`, and core compiles without the package.
+  - That is the only guarantee that nothing new in core grows a Raven dependency. It is also what lets a SQL Server
+    app (#536) run without loading Raven.
+- **D18 — provider packages build on `MintPlayer.Spark.Abstractions`, not on core.** Owner, 2026-11-09: "Spark.Abstractions
+  will need to ship the necessary interfaces, Spark.Ravendb and Spark.SqlServer will later both build on it".
+  - Every contract a provider implements is in Abstractions, together with `ISparkBuilder`
+    (`MintPlayer.Spark.Abstractions/Builder/ISparkBuilder.cs`) and `UseRavenDb()` as its extension.
+  - The policy pipeline stays in core (D2/D3). A provider can't call it, so it can't bypass it.
+  - Where a Raven half needs something core-internal (`IModelLoader`, `IIndexCatalog` are core today,
+    `Services/ModelLoader.cs`, `Services/IndexCatalog.cs`), core passes **data** to a provider hook instead of
+    exposing the service. For example, core computes the expiration configuration and hands it over.
+  - **Placement rule** (owner, 2026-11-09: "The classes that can live in Spark.Core should live in core,
+    database-dependent classes will live in Spark.RavenDB or Spark.SqlServer").
+    - A class moves only if it depends on the database. An S11 file that merely uses Raven types is split: the
+      neutral part stays in core, and the Raven half becomes a provider implementation of an Abstractions contract.
+    - For example, `LiveHub` stays in core and the Changes-API feed moves. `IndexCatalog` stays in core and index
+      deployment moves. The expiration policy stays in core and `ConfigureExpirationOperation` moves.
+  - Feature libraries that use Raven directly (messaging, identity provider, …) reference `MintPlayer.Spark.RavenDB`
+    as well as core.
+- **D19 — Live consumes a neutral change feed (S10).** It is a provider capability, `ChangeNotifications`.
+- **D20 — indexes are a Raven concept; the model's `indexName` stays neutral.**
+  - These move to the Raven package: `SparkIndexCreationTask`, the index deploy half of `ModelSynchronizer`, the
+    Raven wait in `SparkIndexWait` and `RavenIndexHierarchy`.
+  - Core keeps a neutral catalog entry: name, projection type and collection narrowing, which is what
+    `QueryExecutor` reads.
+  - A provider without the `Indexes` capability fails at startup on a model that names an index.
+
+### 8.2 Spike results
+
+- **S11 — the real inventory: core compiled without `RavenDB.Client`** (2026-11-09).
+  - The package reference was removed from `MintPlayer.Spark.csproj` for one build and then restored.
+  - Result: 128 errors in 40 files.
+  - 4 of the 40 files are `Storage/Raven/*` and move as they are.
+  - The rest, by concern:
+    - registration: `SparkMiddleware`, `SparkDocumentStoreConventions`, `SparkRavenDbSecurity`
+    - Live: `LiveHub`, `LiveActionsSource`, `LiveConnection`, `LiveAppStreamSubscription`, `LiveQueryCollections`,
+      `LiveStartup`
+    - indexes and model: `SparkIndexCreationTask`, `IndexCatalog`, `RavenIndexHierarchy`, `ModelSynchronizer`,
+      `ModelShapeDiscovery`, `ValueObjectKeyVerifier`, `SparkIndexWait`
+    - Expiration: `ExpirationStamper`, `ExpirationStartup`
+    - data protection: `RavenDataProtectionKeyRepository`, `SparkDataProtection`
+    - the context and session: `SparkContext`, `SparkContextResolver`, `SparkInterceptorContextExtensions`,
+      `LiveQueryArgs`, `SessionExtensions`, `ProgramUnits/Get`, `DefaultPersistentObjectActions`, `QueryExecutor`
+      (`AsRavenSession`), `DisabledActionsEvaluator`, `PersistentObjectPresenter`, `RetryPresentation`
+    - not in the S2 table (§4a): `ReferenceTargetValidation`, `NewOwnerChain` (lazy operations),
+      `SparkPrerenderDispatcher` (casts to `InMemoryDocumentSessionOperations`), `Endpoints/PersistentObject/New`
+  - Other libraries:
+    - 16 libraries carry their own `RavenDB.Client` reference.
+    - 4 get it only through core and need the Raven package: contributions, search, search.OpenSearch and mcp.
+  - `IRavenQueryable<` appears in about 23 app and library files, not the 32 of §4a. Counted by a read-only
+    inventory on 2026-11-09.
+- **S10 — what Live takes from RavenDB** (`Live/LiveHub.cs:214-262`, `Live/LiveActionsSource.cs:38-113`):
+  - **in process:** committed stores, with id, collection and change vector (`OnAfterSaveChanges`), and deletes,
+    remembered at `OnBeforeDelete` and reported at the next commit or at dispose
+  - **across processes:** a watch on one document or one collection (`ForDocument`, `ForDocumentsInCollection`),
+    and a "reconnected" signal that marks everything dirty
+  - The contract is therefore `ISparkChangeFeed`: `WatchDocument(id)` and `WatchCollection(name)`, each
+    returning a subscription; an in-process committed-change event; and a `Reconnected` event.
+  - InMemory raises the committed events itself, and its watches see the same events, because there is one process.
+- **S12 — D16 on the other value types** (`DateTime`, `Guid`, enums stored as strings). Run as conformance-suite
+  cases in M7 on both providers. The results are recorded here when they come in.
+
+### 8.3 Milestones (they replace §5 PR A 3–6)
+
+- **M3 — contracts in Abstractions** (D18, D19, D20): `ISparkChangeFeed`, `SparkProviderCapabilities` with the
+  required-capability declaration, the neutral index catalog entry, and the maintenance hooks (expiration, index
+  deploy, consistency wait).
+- **M4 — `MintPlayer.Spark.RavenDB`** (`libs/spark/MintPlayer.Spark.RavenDB`, references Abstractions and
+  `RavenDB.Client`):
+  - `UseRavenDb()` on `ISparkBuilder`, `RavenDbOptions`, the store and session registration
+  - the Raven halves of the S11 files (D18 placement rule)
+  - `RavenPersistentObjectActions<T>`
+- **M5 — core without `RavenDB.Client`:**
+  - Every S11 file moves or is rewired onto the contracts.
+  - `SparkContext.Session` becomes `ISparkSession`.
+  - `IRavenQueryable` declarations move to `IQueryable<T>` plus the Raven package's operators (D15).
+- **M6 — every app and library on the new layout:**
+  - each app calls `UseRavenDb()`
+  - feature libraries reference the Raven package and declare their capabilities
+  - the test infrastructure (`SparkTestDriver` and the other bases) is wired through it
+- **M7 — `MintPlayer.Spark.InMemory`, the conformance suite, DemoApp on `UseInMemory()` with seed data** (D14, D16,
+  S12).
+- **M8 — the startup capability check plus SPARK060:** a feature package referenced without a capable provider
+  (D13).
+  - SPARK059 is the highest diagnostic id today (`BoardsConfigurationAnalyzer.cs:54`).
+- **M9 — save and delete for a type with no `clrType` go through `{Name}Actions`** (§5 item 6). Then guides,
+  this PRD's log, the test run and the pull request.
