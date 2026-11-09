@@ -13,6 +13,7 @@ import { BsProgressBarComponent, BsProgressComponent } from '@mintplayer/ng-boot
 import { BsModalComponent, BsModalFooterDirective, BsModalHeaderDirective } from '@mintplayer/ng-bootstrap/modal';
 import { BsFormComponent, BsFormControlDirective } from '@mintplayer/ng-bootstrap/form';
 import { BsRangeComponent } from '@mintplayer/ng-bootstrap/range';
+import { SparkIconComponent } from '@mintplayer/ng-spark/icon';
 import { PlayerService } from './player.service';
 import { VideoApis } from './video-apis';
 
@@ -22,7 +23,7 @@ import { VideoApis } from './video-apis';
   imports: [
     VideoPlayerComponent, BsOffcanvasComponent, BsOffcanvasHeaderDirective, BsListGroupComponent, BsListGroupItemComponent,
     BsCardComponent, BsCardHeaderComponent, BsCardBodyComponent, BsButtonTypeDirective, BsProgressComponent, BsProgressBarComponent,
-    BsModalComponent, BsModalHeaderDirective, BsModalFooterDirective, BsFormComponent, BsFormControlDirective, BsRangeComponent, FormsModule, CdkDrag, CdkDragHandle,
+    BsModalComponent, BsModalHeaderDirective, BsModalFooterDirective, BsFormComponent, BsFormControlDirective, BsRangeComponent, SparkIconComponent, FormsModule, CdkDrag, CdkDragHandle,
   ],
   templateUrl: './player-dock.component.html',
   styleUrl: './player-dock.component.scss',
