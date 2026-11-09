@@ -351,28 +351,38 @@ request, on `fix/issue617-preview-to-ga`.
 
 ### 12.2 Spikes
 
+S8 was planned on Renovate's `semver-coerced` versioning. D29 takes in-channel moves away from Renovate, so it was
+replaced before it ran.
+
 | # | Question | Method |
 |---|---|---|
-| S8 | Does Renovate 44.125.2 offer `global.json` (`nuget`, `semver-coerced`) an rc → rc and an rc → GA SDK, and why not rc.1 → rc.2? | Renovate's own `semver-coerced` and `npm` versioning (from the 44.125.2 npm package, in the job's temp dir) on the real values; Docker is not running here, so no full capture |
-| S9 | What do Microsoft's `releases-index.json` and `11.0/releases.json` say today (phase, `latest-sdk`, release date)? | fetch both, compare with the bot's `PlatformLifecycleSources` mapping |
-| S10 | What does `setup-dotnet` do with `dotnet-quality` beside an exact `dotnet-version`, and beside `11.0.x`? Is removing the line equal to `ga`? | `actions/setup-dotnet` README and source at the version the fleet pins |
+| S8 | Does the stored table carry what an in-channel move needs: a channel's latest version, its latest SDK and a release date for the cooldown, for .NET (Microsoft's index) and for the endoflife.date SDKs? | read `PlatformLifecycleSources` and `DependencyPlatformTable` against the real fixtures; fetch Microsoft's `releases-index.json` today |
+| S9 | What does `setup-dotnet` do with `dotnet-quality` beside an exact `dotnet-version`, and beside `11.0.x`? Is removing the line equal to `ga`? | `actions/setup-dotnet` README and source at the version the fleet pins |
+| S10 | Can a runner on an older pinned action receive an in-channel platform plan it does not understand? | read the bot's lookup-workflow pin check (D25) and `applyPlatform` with `fromChannel == toChannel` |
 
 ### 12.3 Milestones (one pull request)
 
-- **M1 Fixture.** A hand-written recorded lookup, shaped like the real Spark capture: `net11.0`, `global.json` and two
+- **M1 Red tests.** A hand-written recorded lookup shaped like the real Spark capture: `net11.0`, `global.json` and two
   `setup-dotnet` steps at an rc SDK (one with `dotnet-quality: preview`), an rc `Microsoft.AspNetCore.*` package, and a
-  platform table with 11.0 GA. Red tests for G1–G3 first.
-- **M2 Every pin in the group (G1).** Per D29.
-- **M3 One target per SDK group (G2).** Per D30.
-- **M4 `dotnet-quality` reset (G3, G4).** Per D31.
-- **M5 Docs.** This section's decision log and implementation log.
+  platform table with 11.0 GA. Red first, including one end-to-end red/green test on a `SparkTestDriver` (the real
+  composition root and database, owner request 2026-11-09): the lookup goes in, the stored plan comes out with one
+  `platform:dotnet 11.0` group that moves `global.json` and every `setup-dotnet` pin to the GA SDK, drops
+  `dotnet-quality`, and carries the companions at `11.0.0`.
+- **M2 Action: the in-channel candidate (D29).** `buildPlatformRecord` also offers the current channel when an exact pin
+  is below its latest version or SDK, or a `dotnet-quality` line is stale on a GA channel; the fold drops every
+  candidate of a platform location (in-channel ones too).
+- **M3 Bot: the in-channel group (D29, D32, D33).** `EvaluatePlatformMove` plans it at patch level, with riders on
+  preview → GA.
+- **M4 `dotnet-quality` (D31).** Scanned beside `dotnet-version`, removed by `applyPlatform`, admitted by the writer's
+  platform check as a removal of that one key.
+- **M5 Docs.** This section's decision and implementation logs.
 
-### 12.4 Decision log
-
-Decisions are grilled before implementation; rows are filled in as they are decided.
+### 12.4 Decision log (grilled 2026-11-09)
 
 | # | Decision | Rejected | Evidence | By |
 |---|---|---|---|---|
-| D29 | *open:* how `global.json` gets the candidate its `setup-dotnet` siblings get | | S8 | |
-| D30 | *open:* how one SDK group gets one target | | G2 | |
-| D31 | *open:* where and how `dotnet-quality` is reset | | S10, G3, G4 | |
+| D29 | **The platform table is the single source for SDK moves inside a channel too.** The platform record offers the current channel as a candidate when a pin is below the channel's latest (`latestSdk` for .NET, `latestVersion` otherwise); R31 then folds away every candidate of a platform location, in-channel ones included. The move is a platform group (`platform:<sdk> <channel>`), which edits every location to one target in one pull request | keeping Renovate for in-channel moves with a `versioning` rule for `global.json` plus one-target enforcement in the policy engine; `.NET` only | G1/G2: the recorded Spark lookup offered rc.2 to the three `setup-dotnet` pins and nothing to `global.json` at the same value. §3.6 (D6/D9) already makes the stored table the one feed for channel moves | owner, 2026-11-09 |
+| D30 | *Superseded by D29:* a platform group has one target, so no separate rule for one target per SDK group is needed | forcing one target among Renovate records | `PlanPlatform` has one `SdkVersion`/`ToVersion` (`DependencyPolicyEngine.cs:548-560`) | follows from D29 |
+| D31 | **`dotnet-quality` is removed** from every `setup-dotnet` step of the group once the target channel is GA. A stale quality line alone (a floating `11.0.x` with `preview`) is enough to offer the group | setting it to `ga`; resetting only beside a pin move | owner, 2026-11-09; setup-dotnet's default per S9 | owner, 2026-11-09 |
+| D32 | **An in-channel move is a patch** (same channel, same TFM): it auto-merges or waits for approval as the account's rules say for a patch. A channel move keeps its minor floor, and a major one never auto-merges (R7) | minor like a channel move; patch that never auto-merges | owner preference | owner, 2026-11-09 |
+| D33 | **Companions ride on preview → GA.** When a location is on a preview and the target is GA, every companion rides at its GA version in the same group, waiting for it as D3 does (or `--force`). A GA → GA patch carries no riders | never riding in-channel; always riding | the D2 lockstep; owner, 2026-11-09 | owner, 2026-11-09 |
