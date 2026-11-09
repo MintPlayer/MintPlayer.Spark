@@ -395,7 +395,12 @@ public sealed record ForgeCommitStatus(string Context, string State, string? Tar
 /// ⚠️ GitHub creates a suite for every App with checks permission on every push, and one with no runs can
 /// stay <c>queued</c> forever. See <see cref="CheckGate"/> for how such a suite is read.
 /// </param>
-public sealed record ForgeCheckSuite(long Id, string Status, string? Conclusion, string? AppSlug, int LatestCheckRunsCount);
+/// <param name="RunsFollow">
+/// The forge knows this suite always gets runs, so one with none yet has not started (#616). GitHub Actions' suite belongs
+/// to a workflow run, which always creates its jobs; GitHub creates it seconds before the first run (#614: 17:05:43, first
+/// run after 17:06:00), and 152 such suites on 40 commits never stayed empty (measured 2026-11-09).
+/// </param>
+public sealed record ForgeCheckSuite(long Id, string Status, string? Conclusion, string? AppSlug, int LatestCheckRunsCount, bool RunsFollow = false);
 
 /// <summary>What a workflow dispatch did.</summary>
 /// <param name="RunId">The started run, when the forge says (D14).</param>
