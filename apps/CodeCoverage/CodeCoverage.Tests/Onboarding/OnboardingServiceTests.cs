@@ -143,6 +143,29 @@ public class OnboardingServiceTests : CoverageRavenTest
     }
 
     [Fact]
+    public async Task Item615_the_form_starts_from_the_repository_plus_an_open_pull_requests_features_and_drops_a_closed_ones()
+    {
+        using var store = GetDocumentStore();
+        var repository = await SeedRepositoryAsync(store);
+        var pulls = new FakeForgeDependencyUpdates();
+        var forge = Repository(Head);
+        forge.Files[$"{Head}/{CoverageYml.FileName}"] = "versioning: {}\n";
+        var h = Create(store, forge, pulls);
+        // Only coverage.yml has anything.
+        (await h.Service.CurrentFeaturesAsync(repository)).Should().BeEquivalentTo([EOnboardingFeature.Versioning]);
+
+        // The open pull request's choice counts.
+        var opened = await h.Service.OnboardAsync(repository, new HashSet<EOnboardingFeature> { EOnboardingFeature.MergeQueue });
+        (await Create(store, forge, pulls).Service.CurrentFeaturesAsync(repository))
+            .Should().BeEquivalentTo([EOnboardingFeature.Versioning, EOnboardingFeature.MergeQueue]);
+
+        // A closed pull request applied nothing.
+        await pulls.ClosePullRequestAsync(repository, opened.PullRequest!.Value);
+        (await Create(store, forge, pulls).Service.CurrentFeaturesAsync(repository))
+            .Should().BeEquivalentTo([EOnboardingFeature.Versioning]);
+    }
+
+    [Fact]
     public async Task D3_a_closed_pull_request_is_not_rebuilt()
     {
         using var store = GetDocumentStore();
