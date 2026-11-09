@@ -36,9 +36,9 @@
     },
     "RunScheduledSlotNow": {
       "label": {
-        "en": "Run the scheduled slot now",
-        "fr": "Lancer le créneau planifié maintenant",
-        "nl": "Geplande run nu starten"
+        "en": "Update SDK + dependencies",
+        "fr": "Mettre à jour SDK + dépendances",
+        "nl": "SDK + afhankelijkheden bijwerken"
       }
     },
     "SetUpFeatures": {
@@ -207,9 +207,9 @@
       "nl": "Je beheert deze repository niet."
     },
     "runNow.started": {
-      "en": "The scheduled run started.",
-      "fr": "Le passage planifié a démarré.",
-      "nl": "De geplande run is gestart."
+      "en": "The SDK and dependency update started.",
+      "fr": "La mise à jour du SDK et des dépendances a démarré.",
+      "nl": "De update van SDK en afhankelijkheden is gestart."
     },
     "state.Blocked": {
       "en": "onboarding blocked",
