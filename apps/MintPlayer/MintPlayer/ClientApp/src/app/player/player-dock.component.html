@@ -1,7 +1,7 @@
 @if (player.current(); as current) {
   <bs-card class="shadow player-dock" cdkDrag>
     <bs-card-header cdkDragHandle class="player-dock-handle">Currently playing</bs-card-header>
-    <video-player [width]="320" [height]="180" [(playerState)]="player.state" (playerStateChange)="onStateChange($event)" (progressChange)="player.progress($event.currentTime)" />
+    <video-player [width]="320" [height]="180" [(playerState)]="player.state" (playerStateChange)="onStateChange($event)" (progressChange)="player.progress($event)" />
     <bs-card-body>
       <div class="d-flex align-items-center gap-1">
         <div class="flex-grow-1 small overflow-hidden">
@@ -39,6 +39,18 @@
           }
         }
       </div>
+      @if (player.current(); as current) {
+        <!-- The legacy playlist sidebar's progress bar, between the elapsed and the total time. -->
+        <div class="d-flex align-items-center gap-2 small mb-1">
+          <span class="text-nowrap">{{ time(player.position().currentTime) }}</span>
+          <bs-progress class="flex-grow-1" label="Playback progress">
+            <bs-progress-bar [minimum]="0" [maximum]="100" [value]="percent()" label="Playback progress"
+              [valueText]="time(player.position().currentTime) + ' of ' + time(player.position().duration)" />
+          </bs-progress>
+          <span class="text-nowrap">{{ time(player.position().duration) }}</span>
+        </div>
+        <div class="text-truncate small text-body-secondary mb-3" [title]="current.title">{{ current.title }}</div>
+      }
       <bs-list-group>
         @for (item of player.queue(); track $index; let i = $index) {
           <bs-list-group-item [active]="i === player.index()">
@@ -54,5 +66,27 @@
           <bs-list-group-item [disabled]="true">The queue is empty.</bs-list-group-item>
         }
       </bs-list-group>
+      <div class="d-grid mt-2">
+        <button type="button" [color]="colors.secondary" (click)="openAddUrl()"><i class="bi bi-plus-lg"></i> Add URL</button>
+      </div>
   }
 </bs-offcanvas>
+
+<bs-modal [open]="addUrlOpen()" (openChange)="addUrlOpen.set($event)">
+  <ng-container *bsModalHeader>Add URL</ng-container>
+  @if (addUrlOpen()) {
+    <bs-form>
+      <label for="player-add-url">Enter a YouTube, Vimeo, SoundCloud or Dailymotion URL</label>
+      <input id="player-add-url" #urlInput type="url" autocomplete="off" [value]="urlToAdd()" [class.is-invalid]="urlInvalid()"
+        [attr.aria-invalid]="urlInvalid()" aria-describedby="player-add-url-feedback"
+        (input)="setUrlToAdd($any($event.target).value)" (keydown.enter)="$event.preventDefault(); addUrl()" />
+      @if (urlInvalid()) {
+        <div id="player-add-url-feedback" class="text-danger small mt-1">This URL is not supported.</div>
+      }
+    </bs-form>
+  }
+  <ng-container *bsModalFooter>
+    <button type="button" [color]="colors.secondary" (click)="addUrlOpen.set(false)">Cancel</button>
+    <button type="button" [color]="colors.primary" (click)="addUrl()"><i class="bi bi-plus-lg"></i> Add to the queue</button>
+  </ng-container>
+</bs-modal>

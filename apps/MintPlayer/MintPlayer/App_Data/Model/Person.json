@@ -155,6 +155,7 @@
         "order": 6,
         "asDetailType": "MintPlayer.Entities.Medium",
         "isArray": true,
+        "isSortable": true,
         "inQueryType": false,
         "showedOn": "PersistentObject",
         "rules": []

@@ -827,7 +827,11 @@ internal partial class EntityMapper : IEntityMapper
                         // succeed, with the rest unchanged. Not populating IS the restore -- the
                         // stored instance goes back exactly as it was.
                         items.Add(storedRow);
-                        restored++;
+                        // Only a row the caller tried to change was restored. A row posted back as it
+                        // is stored (every row of a reorder, or of a save that edited only the parent)
+                        // lost nothing, and warning about it told the user their edits were gone.
+                        if (await RowWouldChangeAsync(childPo, storedRow, session, depth: 0, cancellationToken))
+                            restored++;
                         continue;
                     }
 
@@ -886,6 +890,145 @@ internal partial class EntityMapper : IEntityMapper
         await PopulateObjectValuesAsync(attr.Object, child, session, cancellationToken);
         AccessorCache.GetSetter(property)(entity, child);
     }
+
+    /// <summary>
+    /// Whether populating <paramref name="stored"/> from <paramref name="po"/> would change it: each
+    /// attribute the populate would write is written onto a scratch instance seeded with a copy of the
+    /// stored value, and the results are compared as JSON. Nested AsDetail rows are compared row by row,
+    /// in order and by key.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ Decides only whether a restore is <em>announced</em>; the stored row is restored either way.
+    /// So every doubt (a value the row cannot take, a type that cannot be copied, too deep a nesting)
+    /// answers "changed": the worst a wrong answer can do is a needless warning, never a silent loss.
+    /// The stored row is never written to — a TranslatedString merge mutates the instance it merges
+    /// into, which is why the scratch gets a copy.
+    /// </remarks>
+    private async Task<bool> RowWouldChangeAsync(PersistentObject po, object stored,
+        IAsyncDocumentSession? session, int depth, CancellationToken cancellationToken)
+    {
+        const int maxDepth = 8;
+        if (depth > maxDepth)
+            return true;
+
+        var rowType = stored.GetType();
+        var schemaAttributes = GetSchemaAttributeMap(rowType);
+
+        foreach (var attribute in po.Attributes)
+        {
+            // The same skips as PopulateObjectValuesAsync: what it would not write cannot change the row.
+            if (attribute.Name.Contains('.') || !IsWritableBySchema(attribute, schemaAttributes))
+                continue;
+
+            var property = rowType.GetCachedProperty(attribute.Name);
+            if (property is null || !property.CanWrite)
+                continue;
+
+            var current = AccessorCache.GetGetter(property)(stored);
+
+            if (attribute is PersistentObjectAttributeAsDetail asDetail)
+            {
+                if (await AsDetailWouldChangeAsync(asDetail, current, session, depth + 1, cancellationToken))
+                    return true;
+                continue;
+            }
+
+            try
+            {
+                var scratch = Activator.CreateInstance(rowType);
+                if (scratch is null || !TryCopyValue(current, property.PropertyType, out var seed))
+                    return true;
+
+                AccessorCache.GetSetter(property)(scratch, seed);
+                await WritePropertyAsync(property, scratch, attribute, session, includedDocuments: null, cancellationToken);
+
+                if (!SameValue(AccessorCache.GetGetter(property)(scratch), current, property.PropertyType))
+                    return true;
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception)
+            {
+                // A value the row cannot take (or a row type without a parameterless constructor) is
+                // not "unchanged".
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>The AsDetail half of <see cref="RowWouldChangeAsync"/>: same rows, same order, same content.</summary>
+    private async Task<bool> AsDetailWouldChangeAsync(PersistentObjectAttributeAsDetail attr, object? current,
+        IAsyncDocumentSession? session, int depth, CancellationToken cancellationToken)
+    {
+        if (!attr.IsArray)
+        {
+            if (attr.Object is null)
+                return current is not null;
+            return current is null || await RowWouldChangeAsync(attr.Object, current, session, depth, cancellationToken);
+        }
+
+        var incoming = attr.Objects ?? [];
+        var stored = current is System.Collections.IEnumerable rows && current is not string
+            ? rows.Cast<object?>().ToList()
+            : [];
+
+        if (incoming.Count != stored.Count)
+            return true;
+
+        for (var i = 0; i < incoming.Count; i++)
+        {
+            var (row, storedRow) = (incoming[i], stored[i]);
+            if (row is null || storedRow is null)
+            {
+                if (row is not null || storedRow is not null)
+                    return true;
+                continue;
+            }
+
+            // A different key at this position is a reorder, an add or a remove: a change either way.
+            if (string.IsNullOrEmpty(row.Id) || row.Id != Abstractions.Model.SparkValueObjects.GetKey(storedRow))
+                return true;
+
+            if (await RowWouldChangeAsync(row, storedRow, session, depth, cancellationToken))
+                return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// A copy of <paramref name="value"/> that a write may mutate. Strings and value types are
+    /// copied by assignment; anything else goes through a JSON round trip.
+    /// </summary>
+    private static bool TryCopyValue(object? value, Type type, out object? copy)
+    {
+        if (value is null || value is string || value.GetType().IsValueType)
+        {
+            copy = value;
+            return true;
+        }
+
+        try
+        {
+            copy = JsonSerializer.Deserialize(JsonSerializer.Serialize(value, type, RowComparisonOptions), type, RowComparisonOptions);
+            return true;
+        }
+        catch (Exception ex) when (ex is JsonException or NotSupportedException or InvalidOperationException)
+        {
+            copy = null;
+            return false;
+        }
+    }
+
+    private static bool SameValue(object? left, object? right, Type type)
+        => JsonSerializer.Serialize(left, type, RowComparisonOptions) == JsonSerializer.Serialize(right, type, RowComparisonOptions);
+
+    /// <summary>Plain options for copying and comparing row values: every property, as stored.</summary>
+    private static readonly JsonSerializerOptions RowComparisonOptions = new();
 
     /// <summary>
     /// The rows currently stored on <paramref name="entity"/>, keyed so an incoming row can claim

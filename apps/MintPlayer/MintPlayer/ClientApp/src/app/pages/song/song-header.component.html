@@ -1,14 +1,19 @@
 @if (thumbnail(); as src) {
-  <div class="song-header">
-    <!-- The page's largest image (LCP): loaded first, sized so nothing shifts while it loads. -->
-    <img class="song-header-image" [src]="src" [alt]="title()" width="1280" height="720" fetchpriority="high" decoding="async" />
-    @if (medium()) {
-      <button type="button" class="song-header-play" [attr.aria-label]="'Play ' + title()" [title]="'Play ' + title()" (click)="play()">
-        <svg viewBox="0 0 64 64" aria-hidden="true" focusable="false">
+  @if (medium()) {
+    <!-- The whole thumbnail adds the medium to the queue; the round play button is its visual cue. -->
+    <button type="button" class="song-header song-header-trigger mx-auto" [attr.aria-label]="'Play ' + title()" [title]="'Play ' + title()" (click)="play()">
+      <!-- The page's largest image (LCP): loaded first, sized so nothing shifts while it loads. -->
+      <img class="song-header-image" [src]="src" alt="" width="1280" height="720" fetchpriority="high" decoding="async" />
+      <span class="song-header-play" aria-hidden="true">
+        <svg viewBox="0 0 64 64" focusable="false">
           <circle cx="32" cy="32" r="30" />
           <path d="M26 20 L46 32 L26 44 Z" />
         </svg>
-      </button>
-    }
-  </div>
+      </span>
+    </button>
+  } @else {
+    <div class="song-header mx-auto">
+      <img class="song-header-image" [src]="src" [alt]="title()" width="1280" height="720" fetchpriority="high" decoding="async" />
+    </div>
+  }
 }

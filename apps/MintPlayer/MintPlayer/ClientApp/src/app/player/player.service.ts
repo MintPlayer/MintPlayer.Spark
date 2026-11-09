@@ -14,6 +14,12 @@ export interface QueueItem {
   ownerId?: string;
 }
 
+/** The video player's progress event, in seconds. */
+export interface PlayerPosition {
+  currentTime: number;
+  duration: number;
+}
+
 /**
  * The play queue behind the floating player (G7): signals over the playlist controller, which owns the queue, the
  * played history, shuffle and repeat. Its playlist holds its own copy of every added item, so a duplicate is told
@@ -38,6 +44,8 @@ export class PlayerService {
   /** Two-way bound to the video player: it reports its state here, and setting it plays or pauses. */
   readonly state = signal(EPlayerState.unstarted);
   readonly isPlaying = computed(() => this.state() === EPlayerState.playing);
+  /** Where the current medium is, in seconds, for the queue's progress bar (as the legacy playlist sidebar showed). */
+  readonly position = signal<PlayerPosition>({ currentTime: 0, duration: 0 });
 
   add(item: QueueItem) {
     this.controller.addToPlaylist(item);
@@ -81,9 +89,10 @@ export class PlayerService {
     this.controller.playerEnded();
   }
 
-  /** Lets previous restart the current medium once it has played 5 seconds. */
-  progress(seconds: number) {
-    this.controller.currentVideoPosition = seconds;
+  /** Feeds the progress bar, and lets previous restart the current medium once it has played 5 seconds. */
+  progress(position: PlayerPosition) {
+    this.position.set({ currentTime: position.currentTime, duration: position.duration });
+    this.controller.currentVideoPosition = position.currentTime;
   }
 
   toggleShuffle() {

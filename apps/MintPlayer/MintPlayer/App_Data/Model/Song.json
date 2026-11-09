@@ -29,6 +29,7 @@
         "order": 3,
         "asDetailType": "MintPlayer.Entities.SongArtist",
         "isArray": true,
+        "isSortable": true,
         "showedOn": "PersistentObject, Summary",
         "rules": []
       },
@@ -130,6 +131,7 @@
         "order": 6,
         "asDetailType": "MintPlayer.Entities.Medium",
         "isArray": true,
+        "isSortable": true,
         "showedOn": "PersistentObject",
         "rules": []
       },
