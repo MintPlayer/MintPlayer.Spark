@@ -195,11 +195,42 @@ text `JObject`. Investigation found two causes, one already fixed:
    - a genuine subtype in its own collection (`Reference_to_a_subtype_stored_in_its_own_collection_still_renders`);
    - a document whose id prefix differs from its collection (`Reference_id_whose_prefix_differs_from_its_collection_still_renders`).
 
+3. **The write half: a save stored any id string as a reference value (fixed here).** New
+   `ReferenceTargetValidation`, called by `DatabaseAccess` right after `SaveValidation`. It runs on
+   every save through the pipeline (endpoints, MCP `propose_changes` via `checkOnly`, sync,
+   Actions-class saves), not only on saves an endpoint asked to validate. Every reference id the save
+   **newly** writes must name a document in the `[Reference]`'s target collection. That covers single
+   references, reference arrays and references inside AsDetail rows; the error names the top-level
+   attribute, `RuleType = "referenceTarget"`, and the save answers 400.
+   - **Foreign and missing are refused alike, with one message that names no id.** This is the owner's
+     choice (2026-11-09) over refusing only foreign ids, which would have made the 400 an existence
+     oracle for any document id in the database.
+   - **Not judged:**
+     - an id the stored row already holds for the same target type, so a legacy dangling reference
+       does not block edits;
+     - value-object and class-less targets, which have no documents of their own (reference add-new
+       PRD D10);
+     - attributes the caller may not write.
+   - **How:** an untyped load in a side session, then the `@collection` metadata. A typed load would
+     deserialize a foreign document into the target type. A document in the target collection passes
+     whatever its `@Raven-Clr-Type` says (Coverage's legacy documents); one in another collection
+     passes only as a genuine subtype stored in its own collection.
+   - **Evidence:** `ReferenceTargetCollectionTests` has 15 cases. With the call disabled, the 5 refusal
+     cases failed and the 10 legitimate-save cases passed: target type, the HTTP `JsonElement` shapes,
+     odd id prefix, subtype, stale CLR type, array, AsDetail row, value object, kept dangling id,
+     clearing. With it on, all 15 passed. So did `CrossCollectionBindingTests`,
+     `MultiReferenceIntegrationTests`, `ReferenceAddNewEndpointTests`,
+     `AsDetailRowIdentityRoundTripTests` and `BreadcrumbResolverTests`: 72/72.
+
 **Not changed:** the untyped branch of `LoadManyAsync` (a JSON-only virtual type with no CLR type).
 There, a foreign document materializes as its own type and is judged under its own right and row
-rule, so the label is the wrong one but nothing crosses a boundary. Writes still accept any id
-string as a reference value. Validating the target collection on save is a separate change, not
-done here.
+rule, so the label is the wrong one but nothing crosses a boundary.
+
+**A target stored by the same request, not yet committed** (an Actions class creating the person and
+then the car, or a write batch) is judged from the request session. The side session would not see it
+and would have refused the save. Pinned by
+`A_reference_to_a_document_this_request_stored_but_has_not_committed_saves`, which brings the class to
+16/16. That test was written with the fix and was not run against the side-session-only version.
 
 ---
 
