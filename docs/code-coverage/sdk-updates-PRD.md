@@ -316,3 +316,63 @@ request on their next run.
 `OnboardingPrTests`, which still read the deleted `.github/dependabot.yml`. That class now reads the fixture too. The
 merge itself was the merge queue's gap (#616, merge-queue PRD D119): an empty GitHub Actions suite was not waited for,
 and Spark's ruleset 26719109 was disabled. The gate fix and the re-enabled ruleset are in that PR's description.
+
+## 12. A preview superseded by its release on the same channel (#617, 2026-11-09)
+
+.NET 11 goes GA on 2026-11-10. Spark and every repository on the 11.0 RC then need one pull request that moves the
+exact SDK pins (`global.json` `sdk.version`, every `actions/setup-dotnet` `dotnet-version`) from the RC to the GA SDK,
+the RC companions (`Microsoft.AspNetCore.*` `11.0.0-rc.*`) to `11.0.0`, and drops `dotnet-quality: preview`. One pull
+request, on `fix/issue617-preview-to-ga`.
+
+### 12.1 Findings (investigated 2026-11-09, read, not run)
+
+- **The platform group stays silent, correctly.** It offers only channels newer than the repository's highest
+  (`feeds.ts:66-67`); 11.0 GA is not newer than 11.0, and `net11.0` does not change.
+- **The pins move as Renovate records.** R31 keeps the in-channel candidates (`foldPlatform.ts:58-81`); both kinds of
+  pin map to ecosystem `platform:dotnet`, depName `dotnet-sdk` (`mapReport.ts:65,89,103-113`), so they share the group
+  key `dotnet-sdk` (`DependencyPolicyEngine.cs:79-83`) and cannot land in separate pull requests.
+- **G1, `global.json` gets no candidate.** In the recorded Spark lookup
+  (`CodeCoverage.Tests/Fixtures/Dependencies/renovate/mintplayer-spark/report.json`) the three `setup-dotnet` pins at
+  `11.0.100-rc.1.26425.128` (manager `github-actions`, versioning `npm`) are offered `11.0.100-rc.2.26504.105`;
+  `global.json` at the same value (manager `nuget`, versioning `semver-coerced`) is offered **nothing**. It is never in
+  the group, so the pull request moves the workflows and leaves `global.json` behind. Whether `semver-coerced` offers
+  the GA `11.0.100` is unknown (S8).
+- **G2, one group, several targets.** Each member picks its own best candidate (`DependencyPolicyEngine.cs:303-310`)
+  and falls back on its own under cooldown (`:367-374`). Different candidate lists give one group different targets.
+- **G3, `dotnet-quality` is never touched.** Nothing in `apps/CodeCoverage` reads or edits it;
+  `SETUP_ACTIONS.dotnet.keys` is `['dotnet-version']` (`locations.ts:44`). The line editor has no helper that removes a
+  line (`core/lineEdit.ts`).
+- **G4, the phase is not in the plan.** The bot keeps `support-phase` (`PlatformLifecycleSources.cs:38-45`, `go-live` →
+  `preview`) and sends the action `preview` per channel (`DependencyPlatformTable.cs:33-48`); a Renovate record's plan
+  item carries no phase.
+- **Tests.** Planning ("one group") is asserted in C# (`DependencyTestKit.Evaluate`, `PlatformTrackCompanionTests`);
+  the fold and the edits in vitest (`foldPlatform.test.ts`, fixtures under `test/fixtures/renovate/<name>`). The
+  action's platform table still has 11.0 as `go-live` rc.2.
+
+### 12.2 Spikes
+
+| # | Question | Method |
+|---|---|---|
+| S8 | Does Renovate 44.125.2 offer `global.json` (`nuget`, `semver-coerced`) an rc → rc and an rc → GA SDK, and why not rc.1 → rc.2? | Renovate's own `semver-coerced` and `npm` versioning (from the 44.125.2 npm package, in the job's temp dir) on the real values; Docker is not running here, so no full capture |
+| S9 | What do Microsoft's `releases-index.json` and `11.0/releases.json` say today (phase, `latest-sdk`, release date)? | fetch both, compare with the bot's `PlatformLifecycleSources` mapping |
+| S10 | What does `setup-dotnet` do with `dotnet-quality` beside an exact `dotnet-version`, and beside `11.0.x`? Is removing the line equal to `ga`? | `actions/setup-dotnet` README and source at the version the fleet pins |
+
+### 12.3 Milestones (one pull request)
+
+- **M1 Fixture.** A hand-written recorded lookup, shaped like the real Spark capture: `net11.0`, `global.json` and two
+  `setup-dotnet` steps at an rc SDK (one with `dotnet-quality: preview`), an rc `Microsoft.AspNetCore.*` package, and a
+  platform table with 11.0 GA. Red tests for G1–G3 first.
+- **M2 Every pin in the group (G1).** Per D29.
+- **M3 One target per SDK group (G2).** Per D30.
+- **M4 `dotnet-quality` reset (G3, G4).** Per D31.
+- **M5 Docs.** This section's decision log and implementation log.
+
+### 12.4 Decision log
+
+Decisions are grilled before implementation; rows are filled in as they are decided.
+
+| # | Decision | Rejected | Evidence | By |
+|---|---|---|---|---|
+| D29 | *open:* how `global.json` gets the candidate its `setup-dotnet` siblings get | | S8 | |
+| D30 | *open:* how one SDK group gets one target | | G2 | |
+| D31 | *open:* where and how `dotnet-quality` is reset | | S10, G3, G4 | |
