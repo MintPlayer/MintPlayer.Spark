@@ -347,7 +347,9 @@ public class OnboardingPrTests
 {
     private const string Sha = "0123456789abcdef0123456789abcdef01234567";
 
-    private static string RealDependabot() => File.ReadAllText(Path.Combine(DependencyTestKit.RepositoryRoot(), ".github", "dependabot.yml"));
+    /// <summary>Spark's own dependabot.yml as it was before #612 deleted it (the R16 saga tests read the same fixture).</summary>
+    private static string RealDependabot() => File.ReadAllText(Path.Combine(DependencyTestKit.RepositoryRoot(),
+        "apps", "CodeCoverage", "CodeCoverage.Tests", "Dependencies", "Lifecycle", "Fixtures", "dependabot-spark-before-612.yml"));
 
     [Fact]
     public void This_repositorys_dependabot_yml_loses_every_version_update_and_is_deleted()
