@@ -53,17 +53,6 @@ export class PlayerDockComponent {
     if (state === EPlayerState.ended) this.player.ended();
   }
 
-  /**
-   * A new site's player (YouTube, then Vimeo...) starts at its own volume, and the bindings don't push an unchanged
-   * value again. It reports its capabilities as soon as it exists, before its first (debounced) volume report.
-   */
-  protected applyVolume() {
-    const videoPlayer = this.videoPlayer();
-    if (!videoPlayer) return;
-    videoPlayer.volume = this.player.volume();
-    videoPlayer.mute = this.player.muted();
-  }
-
   /** Moving the slider unmutes, as on the sites' own players. */
   protected setVolume(volume: number) {
     this.player.volume.set(volume);

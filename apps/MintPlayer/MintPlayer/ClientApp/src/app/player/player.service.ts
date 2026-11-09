@@ -41,7 +41,10 @@ export class PlayerService {
   readonly isPlaying = computed(() => this.state() === EPlayerState.playing);
   /** Where the current medium is, in seconds, for the queue's progress bar (as the legacy playlist sidebar showed). */
   readonly position = signal<PlayerProgress>({ currentTime: 0, duration: 0 });
-  /** 0-100, two-way bound to the video player. Kept here so the next site's player gets it too. */
+  /**
+   * 0-100, two-way bound to the video player, which keeps both across media and sites since video-player 20.1.1
+   * (mintplayer-ng-video-player#105).
+   */
   readonly volume = signal(100);
   readonly muted = signal(false);
 

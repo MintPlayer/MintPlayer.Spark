@@ -2,7 +2,7 @@
   <bs-card class="shadow player-dock" cdkDrag>
     <bs-card-header cdkDragHandle class="player-dock-handle">Currently playing</bs-card-header>
     <video-player [width]="320" [height]="180" [(playerState)]="player.state" (playerStateChange)="onStateChange($event)" (progressChange)="player.progress($event)"
-      [(volume)]="player.volume" [(mute)]="player.muted" (capabilitiesChange)="applyVolume()" />
+      [(volume)]="player.volume" [(mute)]="player.muted" />
     <bs-card-body>
       <div class="d-flex align-items-center gap-1">
         <div class="flex-grow-1 small overflow-hidden">
