@@ -15,12 +15,14 @@ describe('inputs', () => {
   });
 
   it('refuses an unknown mode, a short sha and an unknown migrate tool before running anything', async () => {
-    const base = { expectedSha: '', baseSha: '', outputDir: '/tmp/x', workspace: '.', feedSecrets: false, migrateTool: '', migratePackages: '' };
+    const base = { expectedSha: '', baseSha: '', outputDir: '/tmp/x', workspace: '.', feedSecrets: false, migrateTool: '', migratePackages: '', platforms: '' };
     const never = async () => {
       throw new Error('must not run');
     };
     await expect(runMode({ ...base, mode: 'push' }, never)).rejects.toThrow(/mode must be lookup, apply or migrate/);
     await expect(runMode({ ...base, mode: 'apply', expectedSha: 'abc' }, never)).rejects.toThrow(/full 40-hex/);
     await expect(runMode({ ...base, mode: 'migrate', migrateTool: 'react' }, never)).rejects.toThrow(/angular or nx/);
+    // #606 D9: a lookup without the bot's channel table is refused, never run feed-less.
+    await expect(runMode({ ...base, mode: 'lookup', expectedSha: 'a'.repeat(40) }, never)).rejects.toThrow(/dependency-lookup workflow/);
   });
 });

@@ -8,7 +8,7 @@
       "group": "platform:dotnet 11.0",
       "items": [],
       "platform": {
-        "sdk": "ruby",
+        "sdk": "swift",
         "fromChannel": "10.0",
         "toChannel": "11.0",
         "toVersion": "11.0.0-rc.2",

@@ -1,7 +1,7 @@
 import type { PlatformPlan } from '../contracts/types';
 import { parseText, serializeText } from '../core/lineEdit';
 import type { RepoFiles } from '../util/repoFiles';
-import { compareChannels, rewriteTfm, rewriteVersionValue, tfmChannel } from './channels';
+import { compareChannels, isPreviewVersion, rewriteTfm, rewriteVersionValue, tfmChannel } from './channels';
 import { scanLocations, type Found } from './locations';
 
 export interface PlatformApplyResult {
@@ -61,6 +61,10 @@ export function notEditedReason(f: Found): string | null {
   switch (f.kind) {
     case 'types-node':
     case 'requires-python':
+    // #606: ranges and minimums are reported, never narrowed or raised (D11: the MSRV is never raised).
+    case 'composer-require':
+    case 'gemspec-ruby':
+    case 'rust-version':
       return f.reason ?? 'reported only';
     case 'docker':
       return f.sdk === 'dotnet' && /^\d+\.\d+\.\d+/.test(f.value)
@@ -76,6 +80,10 @@ export function notEditedReason(f: Found): string | null {
     case 'version-file':
     case 'tool-versions':
     case 'engines':
+    case 'composer-platform':
+    case 'gemfile-ruby':
+    case 'rust-toolchain':
+    case 'matrix':
       return null;
     default:
       return 'unsupported location';
@@ -118,8 +126,19 @@ function replacementFor(f: Found, plan: PlatformPlan): { replacement?: Replaceme
     case 'setup-action':
     case 'version-file':
     case 'tool-versions':
-    case 'engines': {
+    case 'engines':
+    case 'composer-platform':
+    case 'gemfile-ruby':
+    case 'rust-toolchain':
+    // #606 M6: a matrix entry on the from-channel moves like any other pin; the matrix's older entries stay.
+    case 'matrix': {
       if (f.channel !== plan.fromChannel) return {};
+      // #606 D11: Rust's preview is the beta channel. A pinned toolchain moves to the dated beta the
+      // plan names (`beta-2026-11-08`), since a beta has no stable version number to pin.
+      if (sdk === 'rust' && plan.toVersion && isPreviewVersion(plan.toVersion) && (f.kind === 'rust-toolchain' || f.kind === 'version-file' || f.kind === 'setup-action' || f.kind === 'tool-versions')) {
+        if (!plan.sdkVersion) return { report: `the plan moves to a Rust beta and names no toolchain (sdkVersion)` };
+        return { replacement: [{ line: f.line, start: f.start, end: f.end, text: plan.sdkVersion }] };
+      }
       // dotnet: a full SDK version (feature band >= 100, e.g. setup-dotnet `10.0.100`) takes the SDK
       // version of the plan, not the runtime version (S19: 10.0.100 -> 11.0.100-rc.1.26425.128).
       const sdkLike = sdk === 'dotnet' && f.kind === 'setup-action' && /^\d+\.\d+\.(\d{3,})/.test(f.value);

@@ -1,9 +1,10 @@
 import type { LookupRecord, PlatformRecord, Sdk } from '../contracts/types';
+import { SDKS as ALL_SDKS } from '../contracts/types';
 import { notEditedReason } from '../platform/applyPlatform';
 import { channelOf } from '../platform/channels';
 import { platformOfImage, type Found } from '../platform/locations';
 
-const SDKS = new Set<Sdk>(['dotnet', 'node', 'python', 'java', 'go']);
+const SDKS = new Set<Sdk>(ALL_SDKS);
 
 /** The sdk a Renovate record would be a platform location of: a platform ecosystem, or a platform image. */
 function sdkOf(record: LookupRecord): Sdk | null {
@@ -45,10 +46,11 @@ export interface FoldResult {
  * .tool-versions, global.json, engines, go.mod) loses every candidate that moves it to another
  * channel: that move is the platform group's, so one approval moves every location to one target.
  * A record left without candidates is dropped; one with in-channel candidates (20.11.0 -> 20.20.2,
- * which the platform plan never does) stays with only those.
+ * which the platform plan never does) stays with only those. A workflow's `container:`, `image:` and
+ * `uses: docker://` images are docker locations too (#606 M6), so they fold like a Dockerfile's FROM.
  *
  * Kept whole, because the platform plan would not move it:
- *  - a location the scanner does not recognise (a workflow `container:` image, `uses: docker://`);
+ *  - a location the scanner does not recognise;
  *  - a location the adapter only reports (computed, digest-pinned, a full-version mcr tag);
  *  - a location on a lower channel than the platform's current one (the plan's fromChannel is the
  *    highest, so the bot never moves it).

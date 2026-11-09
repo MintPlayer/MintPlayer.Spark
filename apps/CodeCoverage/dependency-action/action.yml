@@ -18,6 +18,9 @@ inputs:
   output-dir:
     description: 'Where lookup.json / result.json + dependency.patch / migrate-result.json + migrate.patch are written. Default: $RUNNER_TEMP/dependency-update.'
     required: false
+  platforms:
+    description: 'lookup (required): the bot''s platform channel table, JSON {"sdks":{"<sdk>":[candidate,...]},"unstable":["<glob>",...]}. SDK moves are offered from it and the unstable globs get prereleases (#606 D8, D9); the action fetches no feed.'
+    required: false
   github-token:
     description: 'lookup only: a READ token for Renovate GitHub lookups and action.yml interface diffs (github.token is enough). Never passed to apply or migrate.'
     required: false

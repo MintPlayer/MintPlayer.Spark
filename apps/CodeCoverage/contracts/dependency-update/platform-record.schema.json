@@ -2,14 +2,14 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://coverage.mintplayer.com/contracts/dependency-update/platform-record.schema.json",
   "title": "A platform/SDK record (R7, R8, D-S12c)",
-  "description": "Emitted by the lookup's platform step from adapter detection plus an official feed (dotnet releases-index.json, endoflife.date). A channel is the platform's major line as the platform names it: dotnet '10.0', node '24', python '3.13', java '21', go '1.25'.",
+  "description": "Emitted by the lookup's platform step from adapter detection plus the bot's channel table (#606 D9: the bot's daily copy of dotnet releases-index.json and endoflife.date, passed as the lookup's platforms input). A channel is the platform's release line as the platform names it: dotnet '10.0', node '24', python '3.13', java '21', go '1.25', php '8.4', ruby '3.4', rust '1.99'.",
   "type": "object",
   "additionalProperties": false,
   "required": ["contractVersion", "kind", "sdk", "source", "current", "locations", "candidates"],
   "properties": {
     "contractVersion": { "const": 1 },
     "kind": { "const": "platform" },
-    "sdk": { "enum": ["dotnet", "node", "python", "java", "go"] },
+    "sdk": { "enum": ["dotnet", "node", "python", "java", "go", "php", "ruby", "rust"] },
     "source": { "enum": ["releases-index", "endoflife.date", "none"] },
     "current": {
       "type": "object",
@@ -29,7 +29,7 @@
         "properties": {
           "file": { "type": "string" },
           "kind": {
-            "enum": ["tfm", "global.json", "dotnet-tools", "docker", "setup-action", "version-file", "engines", "types-node", "tool-versions", "go.mod", "toolchain", "requires-python", "maven-release", "package-version"]
+            "enum": ["tfm", "global.json", "dotnet-tools", "docker", "setup-action", "version-file", "engines", "types-node", "tool-versions", "go.mod", "toolchain", "requires-python", "maven-release", "package-version", "composer-require", "composer-platform", "gemfile-ruby", "gemspec-ruby", "rust-toolchain", "rust-version", "matrix"]
           },
           "value": { "type": "string" },
           "channel": { "type": ["string", "null"] },

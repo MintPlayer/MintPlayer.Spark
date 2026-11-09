@@ -105,6 +105,7 @@ public static class DependencyPullRequestBody
             notes.Add(human);
         if (report.Groups.Any(g => g.Platform && g.Level == Policy.EUpdateLevel.Major))
             notes.Add("A platform major moves the SDK under every project; it never auto-merges.");
+        notes.AddRange(UnlinedProducerNotes(run, report));
         if (enqueueRefusal is { Length: > 0 })
             notes.Add($"Not auto-merged: {enqueueRefusal}");
         notes.AddRange(report.LiftedHolds.Select(h => $"Hold lifted: {h}."));
@@ -124,6 +125,19 @@ public static class DependencyPullRequestBody
         var text = body.ToString();
         return text.Length <= MaxLength ? text : text[..(MaxLength - 40)] + "\n\n… (shortened to GitHub's limit)\n";
     }
+
+    /// <summary>
+    /// #606 D4: a platform major in a repository that releases packages without release lines. Its packages move to the new
+    /// platform with this merge, and nothing keeps releasing for the previous one.
+    /// </summary>
+    internal static IEnumerable<string> UnlinedProducerNotes(DependencyUpdateRun run, DependencyRunReport report)
+        => report.Groups
+            .Where(g => g.Platform && g.Level == Policy.EUpdateLevel.Major)
+            .Select(g => (g.Group, Sdk: g.Group["platform:".Length..].Split(' ')[0]))
+            .Where(g => run.FileUnlinedSdks.Contains(g.Sdk, StringComparer.Ordinal))
+            .Select(g => $"⚠️ `{g.Group}` replaces the {g.Sdk} platform this repository's packages target, and coverage.yml keeps no release lines: "
+                + "consumers on the previous platform stop receiving releases. Add `versioning.lines` to keep a line for them, "
+                + $"or `dependencies.platforms.{g.Sdk}.strategy: add` to target both.");
 
     private static string Level(DependencyReportGroup group)
         => group.Level.ToString().ToLowerInvariant() + (group.Approved ? " (approved)" : string.Empty) + (group.Security ? " 🔒" : string.Empty);

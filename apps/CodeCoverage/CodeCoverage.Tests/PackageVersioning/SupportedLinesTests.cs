@@ -10,8 +10,12 @@ public class SupportedLinesTests
 {
     private static readonly ReleaseLinePattern Pattern = ReleaseLinePattern.Default;
 
+    /// <summary>A release row as the collector stores it since #606: one per channel, .NET's spelled <c>10.0</c>.</summary>
     private static PlatformRelease Release(string platform, int major, string phase)
-        => new() { Id = PlatformRelease.IdFor(platform, major), Platform = platform, Major = major, Phase = phase };
+    {
+        var channel = platform == "dotnet" ? $"{major}.0" : $"{major}";
+        return new() { Id = PlatformRelease.IdFor(platform, channel), Platform = platform, Channel = channel, Major = major, Name = channel, Phase = phase };
+    }
 
     private static readonly PlatformRelease[] Releases =
     [

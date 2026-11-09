@@ -1,63 +1,50 @@
-import type { PlatformCandidate, PlatformRecord, Sdk } from '../contracts/types';
-import { CONTRACT_VERSION } from '../contracts/types';
-import { channelOf, compareChannels, isPreviewVersion, sortChannelsDesc } from './channels';
+import type { PlatformCandidate, PlatformRecord, PlatformTable, Sdk } from '../contracts/types';
+import { CONTRACT_VERSION, SDKS } from '../contracts/types';
+import { compareChannels, isPreviewVersion, sortChannelsDesc } from './channels';
 import { toLocation, type Found } from './locations';
 
-/** Official feeds (D-S12c). Fixtures of both are real captures (test/fixtures/platform-feeds). */
-export const RELEASES_INDEX_URL = 'https://dotnetcli.blob.core.windows.net/dotnet/release-metadata/releases-index.json';
-export const ENDOFLIFE_PRODUCT: Record<Exclude<Sdk, 'dotnet'>, string> = {
-  node: 'nodejs',
-  python: 'python',
-  java: 'eclipse-temurin',
-  go: 'go',
-};
-
-export interface ReleasesIndexEntry {
-  'channel-version': string;
-  'latest-release'?: string;
-  'latest-release-date'?: string;
-  'latest-sdk'?: string;
-  'support-phase'?: string;
-  'release-type'?: string;
-  'eol-date'?: string | null;
+/**
+ * #606 D9: the channel table is the bot's, passed as the lookup's required `platforms` input. The action fetches no
+ * feed: the bot collects Microsoft's releases-index.json (.NET) and endoflife.date (every other SDK) once a day, plus
+ * each SDK's preview feed, and every repository is offered moves from the same facts.
+ */
+export function parsePlatformTable(raw: string): PlatformTable {
+  if (raw.trim() === '') {
+    throw new Error('input platforms is required for mode lookup: the bot passes its channel table (update the dependency-lookup workflow to the current template)');
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new Error('input platforms must be the JSON channel table {"sdks":{...},"unstable":[...]}');
+  }
+  const { sdks, unstable } = (parsed ?? {}) as Record<string, unknown>;
+  if (typeof sdks !== 'object' || sdks === null || Array.isArray(sdks)) throw new Error('input platforms.sdks must be an object of channel lists');
+  if (!Array.isArray(unstable) || unstable.some((g) => typeof g !== 'string')) throw new Error('input platforms.unstable must be an array of package globs');
+  const table: PlatformTable = { sdks: {}, unstable: unstable as string[] };
+  for (const [sdk, list] of Object.entries(sdks)) {
+    if (!(SDKS as readonly string[]).includes(sdk)) continue; // an SDK this action has no adapter for yet
+    if (!Array.isArray(list)) throw new Error(`input platforms.sdks.${sdk} must be an array`);
+    table.sdks[sdk as Sdk] = list.map((c, i) => candidate(c, `platforms.sdks.${sdk}[${i}]`));
+  }
+  return table;
 }
 
-export function candidatesFromReleasesIndex(json: { 'releases-index': ReleasesIndexEntry[] }): PlatformCandidate[] {
-  return json['releases-index']
-    .filter((e) => Number(e['channel-version'].split('.')[0]) >= 5)
-    .map((e) => {
-      const latest = e['latest-release'] ?? null;
-      const phase = (e['support-phase'] ?? '').toLowerCase();
-      return {
-        channel: e['channel-version'],
-        latestVersion: latest,
-        latestSdk: e['latest-sdk'] ?? null,
-        releaseTimestamp: e['latest-release-date'] ?? null,
-        preview: phase === 'preview' || phase === 'go-live' || (latest !== null && isPreviewVersion(latest)),
-        eol: phase === 'eol' ? true : (e['eol-date'] ?? null),
-        lts: e['release-type'] ? e['release-type'] === 'lts' : null,
-      };
-    });
-}
-
-export interface EndOfLifeCycle {
-  cycle: string;
-  releaseDate?: string;
-  eol?: string | boolean;
-  latest?: string;
-  latestReleaseDate?: string;
-  lts?: string | boolean;
-}
-
-export function candidatesFromEndOfLife(sdk: Exclude<Sdk, 'dotnet'>, cycles: EndOfLifeCycle[]): PlatformCandidate[] {
-  return cycles.map((c) => ({
-    channel: channelOf(sdk, String(c.cycle)) ?? String(c.cycle),
-    latestVersion: c.latest ?? null,
-    releaseTimestamp: c.latestReleaseDate ?? c.releaseDate ?? null,
-    preview: false,
-    eol: c.eol ?? null,
-    lts: c.lts === undefined ? null : c.lts !== false,
-  }));
+function candidate(value: unknown, at: string): PlatformCandidate {
+  const c = (value ?? {}) as Record<string, unknown>;
+  const str = (k: string) => (typeof c[k] === 'string' ? (c[k] as string) : null);
+  if (typeof c.channel !== 'string' || !/^\d{1,4}(\.\d{1,4})?$/.test(c.channel)) throw new Error(`input ${at}.channel must be a channel such as 10.0 or 24`);
+  const eol = c.eol;
+  const latestVersion = str('latestVersion');
+  return {
+    channel: c.channel,
+    latestVersion,
+    latestSdk: str('latestSdk'),
+    releaseTimestamp: str('releaseTimestamp'),
+    preview: c.preview === true || (latestVersion !== null && isPreviewVersion(latestVersion)),
+    eol: typeof eol === 'string' || typeof eol === 'boolean' ? eol : null,
+    lts: typeof c.lts === 'boolean' ? c.lts : null,
+  };
 }
 
 function isEol(eol: string | boolean | null, now: Date): boolean {
@@ -68,8 +55,8 @@ function isEol(eol: string | boolean | null, now: Date): boolean {
 
 /**
  * One platform record per sdk that has at least one location. Candidates are the channels newer than
- * the highest current one and not end-of-life; previews are kept and flagged (R7: the bot follows a
- * preview only when the repo is already on one).
+ * the highest current one and not end-of-life; previews are kept and flagged: the bot decides per the
+ * SDK's track (#606 D8) which one it offers.
  */
 export function buildPlatformRecord(sdk: Sdk, found: Found[], feed: PlatformCandidate[] | null, now = new Date()): PlatformRecord {
   const editable = found.filter((f) => !f.computed && f.channel !== null && f.kind !== 'package-version');
@@ -89,20 +76,4 @@ export function buildPlatformRecord(sdk: Sdk, found: Found[], feed: PlatformCand
     locations: found.map(toLocation),
     candidates,
   };
-}
-
-export type Fetcher = (url: string) => Promise<unknown>;
-
-export const realFetcher: Fetcher = async (url) => {
-  const res = await fetch(url, { headers: { accept: 'application/json', 'user-agent': 'mintplayer-dependency-update-action' } });
-  if (!res.ok) throw new Error(`GET ${url}: HTTP ${res.status}`);
-  return res.json();
-};
-
-export async function fetchCandidates(sdk: Sdk, fetcher: Fetcher): Promise<PlatformCandidate[]> {
-  if (sdk === 'dotnet') {
-    return candidatesFromReleasesIndex((await fetcher(RELEASES_INDEX_URL)) as { 'releases-index': ReleasesIndexEntry[] });
-  }
-  const product = ENDOFLIFE_PRODUCT[sdk];
-  return candidatesFromEndOfLife(sdk, (await fetcher(`https://endoflife.date/api/${product}.json`)) as EndOfLifeCycle[]);
 }

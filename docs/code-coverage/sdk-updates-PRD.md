@@ -5,8 +5,9 @@ job already fetches the released SDKs (.NET, Node, PHP, …), so the bot should 
 repository can take a new SDK (`net10.0` → `net11.0`). Combining it with the package updater is an option; this
 document decides the path.
 
-Status: **investigated and grilled 2026-11-09 (D1–D11, §9); spikes S1–S7 next, no code yet.** .NET 11 goes GA the
-night of 2026-11-09; the owner migrates their repositories to the current action the same day (D9).
+Status: **M1–M7 implemented 2026-11-09 on `feat/issue606-sdk-updater` (§10); spikes S1–S7 recorded (§5); M8 is the
+owner's live rollout.** .NET 11 goes GA the night of 2026-11-09; the owner migrates their repositories to the current
+action the same day (D9).
 
 Related: [dependency-updates-PRD.md](dependency-updates-PRD.md) (#419, the rolling updater; §13 is its current design),
 [dependency-updates.md](dependency-updates.md) (user guide).
@@ -75,17 +76,22 @@ override (D5). One setting; it replaces today's implicit "follow a preview only 
 ### 3.3 Companion packages (D2)
 
 An explicit per-SDK companion list in the account lookups, overridable per repository. dotnet default:
-`Microsoft.AspNetCore.*`, `Microsoft.Extensions.*`, `Microsoft.EntityFrameworkCore.*`, `Microsoft.NET.*`, `System.*`
-(S2 confirms the list). Matching packages leave their own groups and move with the platform group, at the target major,
-in one commit. A package that locks to the TFM but is not listed (Npgsql, Pomelo) goes red and is added to the list;
+`Microsoft.AspNetCore.*`, `Microsoft.Extensions.*`, `Microsoft.EntityFrameworkCore*`, `Microsoft.NET.*`, `System.*`;
+node: `@types/node`. S2 split them in two (§5): AspNetCore and EF Core 11.x need `net11.0`; Extensions and System.* 11.x
+still target `net10.0` and stay companions for the lockstep (D13). Only a package on the SDK's current major is a
+companion (`System.IO.Abstractions` 22.x matches `System.*` and is not). Matching packages leave their own groups and move
+with the platform group, at the target major, in one commit; their next major is listed as "moves with the platform"
+until then. A platform kept beside the previous one (`strategy: add`, `keepPrevious`, `lockPackageMajor`) has no
+companions: its packages must keep building for the older target. A package that locks to the TFM but is not listed (Npgsql, Pomelo) goes red and is added to the list;
 owner, 2026-11-09: new packages usually follow a new SDK, so a missing release means *wait* (D3), not red.
 
 ### 3.4 Readiness (D3)
 
 A platform group is **pending** — shown in the PR body and the fleet view ("dotnet 11.0 waiting on
 Npgsql.EntityFrameworkCore.PostgreSQL"), not offered for approval — while a companion has no release at the target
-major on the SDK's track, or a dependency declares it does not support the target (npm `engines`, Packagist
-`require.php`; .NET is forward-compatible, so there it is mostly the companions). Re-judged at every lookup.
+major on the SDK's track. Re-judged at every lookup. A dependency's own declaration of support (npm `engines`,
+Packagist `require.php`) is not read: S3 found no per-release compatibility in Renovate's lookup, and a registry call per
+dependency per run is not worth it while .NET, the urgent case, is forward-compatible (D14).
 `approve platform:<sdk> <channel> --force` takes the move anyway: missing companions stay at their major and a person
 fixes the build on the branch (the human-commit replay keeps it). Phase is read through one interface (D7 trap).
 
@@ -97,10 +103,13 @@ platform group's PR body warns that the previous platform's consumers stop recei
 
 ### 3.6 One feed (D6, D9)
 
-The bot's daily `PlatformRelease` is the truth: **Microsoft's `releases-index.json` for .NET** (released majors and
-previews; the GA date from the channel's `releases.json`, `release-date` of `x.0.0`), **endoflife.date v1 for every
-other SDK** (php, ruby, rust, python, java = `eclipse-temurin`, go, node). Names unified (`nodejs` → `node`). Previews
-outside .NET and the npm frameworks: node, php, python, ruby, rust release-candidate feeds, decided by S6.
+The bot's daily `PlatformRelease` is the truth, **one row per channel** (`PlatformReleases/dotnet/10.0`,
+`PlatformReleases/python/3.14`): **Microsoft's `releases-index.json` for .NET** (released channels and previews), and
+**endoflife.date v1 for every other SDK** (php, ruby, rust, python, java = `eclipse-temurin`, go, node). Names unified
+(`nodejs` → `node`); a source that answered deletes the rows it no longer lists, so the per-major ids go. Previews
+outside .NET and the npm frameworks come from the S6 feeds (§5). The .NET GA date is **not** read: a channel's
+`releases.json` weighs 1.15 MB (10.0, 2026-11-09) for one date, so a candidate's age is its latest release's date
+(`latest-release-date`), which is also what the cooldown needs (D15).
 
 Evidence for keeping .NET off endoflife.date (2026-11-09, the day of .NET 11 GA): endoflife.date's `dotnet` product had
 no 11 at all and still listed `10.0.13`, while Microsoft's index had shipped `10.0.14` on 2026-10-25 and listed `11.0`
@@ -114,14 +123,18 @@ migrates all their repositories on 2026-11-09).
 ### 3.7 SDKs (D10, D11)
 
 dotnet, node, python, java, go, plus:
-- **PHP:** `composer.json` `require.php` (a range: widen only), `config.platform.php` (exact), `setup-php`
-  `php-version`, `php:*` images, `.php-version`/`.tool-versions`. No LTS.
-- **Ruby:** channels are minors (`3.3` → `3.4`), like Python: `.ruby-version`, `Gemfile` `ruby`, `setup-ruby`
-  `ruby-version`, `ruby:*` images, `.tool-versions`, gemspec `required_ruby_version` (widen only). No LTS.
+- **PHP:** `config.platform.php` (exact), `setup-php` `php-version`, `php:*` images, `.php-version`/`.tool-versions`
+  are moved; `composer.json` `require.php` (a range) is reported. No LTS.
+- **Ruby:** channels are minors (`3.3` → `3.4`), like Python: `.ruby-version`, an exact `Gemfile` `ruby`, `setup-ruby`
+  `ruby-version`, `ruby:*` images, `.tool-versions` are moved; a `Gemfile` range and gemspec `required_ruby_version` are
+  reported. No LTS.
 - **Rust (D11):** the channel is `1.x`. A pinned `rust-toolchain(.toml)` channel and CI `toolchain:` inputs move
-  together; `Cargo.toml` `rust-version` (MSRV) is widened only, never raised; a floating `stable`/`nightly` has nothing
-  to edit. `track: preview` maps to `beta`; `lts` is refused. **Editions** (`2021` → `2024`) are out of scope; they can
-  come later through the `migrate:` hook without changing the model.
+  together; `Cargo.toml` `rust-version` (MSRV) is reported, never raised; a floating `stable`/`nightly` is reported.
+  `track: preview` maps to `beta`, written as the dated toolchain the table names (`beta-2026-11-08`); `lts` is refused.
+  **Editions** (`2021` → `2024`) are out of scope; they can come later through the `migrate:` hook without changing the
+  model.
+- **Ranges are reported, never edited** (D16): `require.php`, a Gemfile range, `required_ruby_version`, `rust-version`,
+  `requires-python`. Widening a range needs each ecosystem's range grammar, and the PR's report already names the file.
 
 ## 4. Milestones (one pull request, in this order: D7)
 
@@ -161,6 +174,18 @@ approved groups land on the one rolling branch and build together (what M1 autom
 
 No spike runs CI or paid resources; S2 and S5 run locally on fixtures.
 
+### Results (2026-11-09)
+
+| Spike | Result | Evidence |
+|---|---|---|
+| S1 | **Fits; no bot endpoint.** The five SDKs the action fixture carries serialize to 10,325 characters; the table from every real capture (eight SDKs, end-of-life channels left out) is asserted under half the 65,535 cap | `dependency-action/test/fixtures/platform-feeds/platform-table.json`; `PlatformLifecycleTests.The_lookup_table_from_every_real_source_fits_one_dispatch_input` |
+| S2 | **Two kinds of companion.** Restoring 11.0.0-rc.3.26522.148 into a `net10.0` project (SDK 11.0.100-rc.3): `Microsoft.AspNetCore.Authentication.JwtBearer` and `Microsoft.EntityFrameworkCore` fail with NU1202 ("supports: net11.0"); `Microsoft.Extensions.Hosting` and `System.Text.Json` restore and build (they ship `lib/net10.0`, `net462`, `netstandard2.0`). The list stays, for the lockstep (D13) | `DependencyCompanions.cs` remarks; the restore ran in the job's temp dir, not committed |
+| S3 | **Renovate carries no per-release compatibility.** Its reports have the repository's own constraints (`extractedConstraints`, an `engines` dep, `requires-python`) and nothing per candidate, in all 14 real report fixtures | `CodeCoverage.Tests/Fixtures/Dependencies/renovate/*/report.json`; D14 |
+| S4 | The PHP, Ruby and Rust locations are scanned on the real fixtures; ranges are reported (D16) | `platform.test.ts` S4 tests |
+| S5 | `add`/`keepPrevious` lists were already right (`platform.test.ts:216`). **Gap found and closed:** a `PropertyGroup`/`ItemGroup` `Condition` testing `'$(TargetFramework)' == 'net10.0'` went silently dead on `replace`; it is now reported beside the move. `IsTargetFrameworkCompatible` conditions survive a move and are left alone | `locations.ts` `scanTfmConditions`; `platform.test.ts` "S5" |
+| S6 | Preview feeds: node `download/rc/index.json`, python.org `downloads/release/?pre_release=true`, php.net `pre-release-builds.php?format=json` (`release-candidates.php` now redirects there), ruby-lang.org `_data/releases.yml`, Rust `channel-rust-beta.toml`. LTS is flagged for node (12 releases) and java (5) by endoflife.date v1 and for .NET by Microsoft's index; go, php, python, ruby and rust flag none (`DependenciesYml.LtsSdks`). **php.net writes `"enabled": false` on a withdrawn RC and nothing on a published one**: a reader that required `enabled: true` would never see a PHP preview | `CodeCoverage.Tests/Fixtures/PlatformLifecycle/SOURCE.md`; `PlatformLifecycleTests.A_php_candidate_is_skipped_only_when_it_says_it_is_disabled` |
+| S7 | **Overtaken by M4: not run as a diff.** The action no longer fetches feeds, so there is no second reader left to disagree. Its test table was generated from the same five real captures with the old `feeds.ts` mapping (`git show 5a06a0b5b:…/feeds.ts`); no channel-by-channel comparison with the bot's rows was made | `dependency-action/test/fixtures/platform-feeds/SOURCE.md` |
+
 ## 6. Test plan (outline)
 
 - Action (vitest): companions in a platform group (M1), the table as the only feed input (M4), PHP/Ruby/Rust locations
@@ -174,8 +199,8 @@ No spike runs CI or paid resources; S2 and S5 run locally on fixtures.
 
 - **A wrong move is a major.** Majors never auto-merge (unchanged); the companion list is per SDK and explicit, so no
   unrelated major rides along.
-- **Constraint widening.** `require.php`, `requires-python`, `required_ruby_version`, `rust-version` are ranges or
-  minimums; narrowing or raising one breaks consumers of a library. Only widen.
+- **Constraints.** `require.php`, `requires-python`, `required_ruby_version`, `rust-version` are ranges or
+  minimums; narrowing or raising one breaks consumers of a library. They are reported, never edited (D16).
 - **No fallback (D9).** A repository with an old action pin gets no dependency updates at all until the pin moves.
 - **`apps/CodeCoverage` is production.** The committed `dist` bundles of the action are rebuilt from the main checkout
   only (CLAUDE.md).
@@ -207,3 +232,46 @@ PR #609 (#251) was squash-merged as `b690be479` before its guides were updated. 
 | D10 | SDKs: add PHP, Ruby and Rust | PHP only; none (a separate PR) | — | owner |
 | D11 | Rust: channel `1.x`, MSRV widened only, `preview` = `beta`, `lts` refused, editions out of scope | editions as the platform major (code migration per crate); toolchain only | — | owner |
 | D12 | Embedded reference targets must be `[ValueObject]`; documentation narrowed, `ReferenceTargetValidation` unchanged | skip collection-less targets in code | #609 save check; no app affected (checked 2026-11-09) | owner |
+| D13 | `Microsoft.Extensions.*` and `System.*` stay dotnet companions although their 11.x still targets `net10.0` | narrowing the list to the net11-only families | S2 (§5): they build under `net10.0`; ASP.NET Core 11 depends on Extensions 11, and a `net10.0` library taking Extensions 11 alone pushes it onto its consumers early | implementation, 2026-11-09 (owner may revisit) |
+| D14 | Readiness reads only the companions' releases, not each dependency's declared support | npm `engines` / Packagist `require.php` per dependency | S3 (§5): not in Renovate's output; a registry call per dependency per run | implementation, 2026-11-09 |
+| D15 | No .NET GA date; a candidate's date is its latest release's | the channel's `releases.json` | 1.15 MB for 10.0 (2026-11-09) for one date; the cooldown needs the latest release anyway | implementation, 2026-11-09 |
+| D16 | Ranges and minimums are reported, never edited (supersedes "widen only" in the first draft of §3.7 and §7) | widening per ecosystem's range grammar | a range edit needs four grammars; the PR's report names the file, and D11 already forbids raising the MSRV | implementation, 2026-11-09 |
+| D17 | A CI matrix entry that feeds a `setup-*` `${{ matrix.x }}` is moved like any pin on the from-channel; older entries stay | adding the new channel beside the old | `strategy: replace` semantics; `add` users list their channels | implementation, 2026-11-09 |
+| D18 | "Producer" for D4 = the manifest says it produces packages, or coverage.yml has a `versioning:` section; the warning goes to platform majors of the SDKs on `strategy: replace` | warning every repository | `DependencyUpdateEngine` `FileUnlinedSdks` | implementation, 2026-11-09 |
+
+## 10. Implementation log (2026-11-09)
+
+All milestones in one change on `feat/issue606-sdk-updater`, after `5a06a0b5b` (this document).
+
+- **M1 Companions:** `DependencyCompanions` (built-in lists), `platforms.<sdk>.companions` in coverage.yml,
+  `DependencyPolicyConfig.Companions`; the engine finds them before grouping (`FindCompanions`, `ForGrouping`), they ride
+  in the platform group's items and are listed `MovesWithPlatform` otherwise. Tests: `PlatformTrackCompanionTests`.
+- **M2 Readiness + `--force`:** `EDependencyReportReason.Pending`; `approve <group> --force` (`DependencyUpdateEngine`,
+  `DependencyHolds.Approve(force)`, `DependencyApproval.Force`); the fleet view counts pending as blocked.
+- **M3 Tracks:** `track` on file rules, platforms and account `DependencyRule`s (`EDependencyTrack`, Inherit = 0);
+  `PlatformTrack`/`PackageTrack`, an enforced rule narrows; `lts` refused for packages and for SDKs outside `LtsSdks`.
+  The lookup's `unstable` globs come from `UnstableGlobs()`.
+- **M4 One feed:** `PlatformRelease` per channel (`Channel`, `LatestReleasedOn`, `LatestSdk`), `PlatformLifecycleOptions.Platforms`
+  with the S6 preview feeds; `DependencyPlatformTable` is the lookup's required `platforms` input; the action's feed code
+  is gone (`parsePlatformTable`); a lookup workflow without the input ends the run as `workflow-outdated`
+  (`DependencyWorkflowGuard.MissingInputs`).
+- **M5 PHP, Ruby, Rust:** scanners and edits in `locations.ts`/`applyPlatform.ts` (Rust beta writes the table's dated
+  toolchain); `DependenciesYml.PlatformSdks`.
+- **M6 Folding:** workflow `container:`/`image:`/`uses: docker://` are docker locations; matrix entries are the `matrix`
+  kind (D17).
+- **M7 Fleet view:** `RepositoryManifest.LookupPlatforms` from the lookup ingest; the repository panel lists the SDKs
+  and their next stable/preview channel; SDK readiness reads it.
+- **D4:** `DependencyUpdateRun.FileUnlinedSdks`, the PR body's warning (`UnlinedProducerNotes`).
+- **Fixed on the way:** the collector asked npm for `/-/package/<package>` without `/dist-tags`; npm answers 404
+  (`curl` 2026-11-09: 404 without, 200 with), so since #568 M3 no framework preview major (Angular 23) was ever stored.
+  The PHP preview reader required `"enabled": true`, which php.net never writes (S6). Within this change (never
+  shipped): M4 kept the cron's `Ecosystems.IsName` guard (`[a-z0-9]` only) on the endoflife.date product, which skipped
+  the new `eclipse-temurin`; the product now has its own slug check (caught by the S1 table test, which found no `java`). The
+  composer manager's `php` dependency (`require.php`, a range) was briefly mapped to `platform:php` by the M5 change;
+  it stays `github-tags` (D16), as the existing `mapReport` test required.
+- **Refactors on the way** (owner, 2026-11-09: allowed in this PR): `scanQuoted`/`reported` in `locations.ts`; the
+  YAML `Root` helper shared by the workflow guard; `Day`/`IsFalse` in `PlatformLifecycleSources`; `ToPlatforms` uses
+  `ChannelComparer` instead of its own version parse; `MajorOf` in the policy engine; the `dependencyOnboardingUi` translations
+  nested (`panel: { … }`) instead of dotted keys.
+- **M8 Rollout** is the owner's: update the action pin in each repository (the bot refuses an outdated lookup
+  workflow), then one live platform PR on `PieterjanDeClippel/DependencyUpdaterTest` as listed in §4.

@@ -1,5 +1,6 @@
 using CodeCoverage.Entities;
 using CodeCoverage.Git.Dependencies;
+using CodeCoverage.PlatformLifecycle;
 
 namespace CodeCoverage.Dependencies;
 
@@ -60,9 +61,31 @@ public static class DependencyLookupIngest
     public static void Apply(RepositoryManifest manifest, LookupDocument lookup, DateTimeOffset now)
     {
         manifest.LookupConsumes = ToConsumes(lookup);
+        manifest.LookupPlatforms = ToPlatforms(lookup);
         manifest.LookupSha = lookup.ExpectedSha;
         manifest.LookupAt = now;
     }
+
+    /// <summary>
+    /// #606 M7 (G7): each SDK the lookup found, the channels it is on and the newest it could move to. A platform record's
+    /// candidates are already newer and not end-of-life, so the newest released and the newest preview are all there is to keep.
+    /// </summary>
+    public static List<ManifestPlatform> ToPlatforms(LookupDocument lookup)
+        => [.. lookup.Platforms
+            .Where(p => p.Current.Channels.Count > 0)
+            .OrderBy(p => p.Sdk, StringComparer.Ordinal)
+            .Select(p =>
+            {
+                var stable = p.Candidates.Where(c => !c.Preview).Select(c => c.Channel).FirstOrDefault();
+                var preview = p.Candidates.Where(c => c.Preview).Select(c => c.Channel).FirstOrDefault();
+                return new ManifestPlatform
+                {
+                    Sdk = p.Sdk,
+                    Channels = [.. p.Current.Channels],
+                    NextStable = stable,
+                    NextPreview = preview is not null && (stable is null || PlatformLifecycleSources.ChannelComparer.Instance.Compare(preview, stable) > 0) ? preview : null,
+                };
+            })];
 
     /// <summary>
     /// What the graph and the fleet view read as the repository's dependencies: the lookup's when there is one, plus the

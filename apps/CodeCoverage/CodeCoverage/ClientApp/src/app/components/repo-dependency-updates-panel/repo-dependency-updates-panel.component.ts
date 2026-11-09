@@ -83,6 +83,19 @@ import { chip, HEALTH, time } from '../dependency-updates/dependency-health';
               <dt>Coverage</dt>
               <dd>{{ s.coverageNote }}</dd>
             }
+            <!-- #606 M7: the SDKs and the channels a move is offered to. -->
+            @if (s.platforms?.length) {
+              <dt>{{ t('dependencyOnboardingUi.panel.platforms', 'Platforms') }}</dt>
+              <dd data-testid="du-platforms">
+                @for (p of s.platforms; track p.sdk) {
+                  <div>
+                    {{ p.sdk }} {{ p.channels.join(', ') }}
+                    @if (p.nextStable) { → {{ p.nextStable }} }
+                    @if (p.nextPreview) { <span class="text-muted">({{ format('dependencyOnboardingUi.panel.platformPreview', 'preview {0}', p.nextPreview) }})</span> }
+                  </div>
+                }
+              </dd>
+            }
           </dl>
 
           @if (s.holds.length > 0) {

@@ -275,6 +275,14 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
         // #568 D13: the default branch's run reads the supported lines, which the scheduler then gives runs of their own.
         if (run.Line is null)
             run.FileLines = parsed.Section.Lines == EDependencyLineUpdates.Off ? [] : await SupportedLineNamesAsync(context, yml, ct);
+        // #606 D4: a producer without release lines that replaces its SDK leaves the previous platform's consumers behind.
+        // A producer: packages in its manifests (P12) or a `versioning:` section.
+        var versioning = PackageVersioning.VersioningYml.Parse(yml).Config;
+        var produces = versioning is not null
+            || (await session.LoadAsync<RepositoryManifest>(RepositoryManifest.ForRepository(repository.Id!), ct))?.Produces.Count > 0;
+        run.FileUnlinedSdks = produces && versioning?.Lines is null
+            ? [.. DependenciesYml.PlatformSdks.Where(sdk => parsed.Section.Platform(sdk).Strategy == "replace")]
+            : [];
 
         // #568 D13: a line's run updates the line's own branch; the workflows stay the default branch's (D12 below).
         var target = defaultBranch;
@@ -300,7 +308,7 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
         run.LookupAction = parsed.Section.LookupAction;
         run.ApplyAction = parsed.Section.ApplyAction;
 
-        if (!await WorkflowsUsableAsync(context, head, [run.LookupAction, run.ApplyAction], allowSecrets: true, ct))
+        if (!await WorkflowsUsableAsync(context, head, [run.LookupAction, run.ApplyAction], allowSecrets: true, ct, (run.LookupAction, LookupInputs)))
             return;
         if (run.Line is null && run.Onboarding != EDependencyOnboarding.Done)
         {
@@ -309,11 +317,14 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
         }
 
         // D14: dispatched on the branch it updates, so the run builds its head; a head that moved in between is WrongCommit.
+        // #606 D9: with the bot's channel table, which the lookup requires.
         var token = RunToken(context);
+        var unstable = DependencyPolicyConfig.Resolve(parsed.Section, repository, context.Account).UnstableGlobs();
         var request = new WorkflowHookRequest(run.LookupAction, target, new Dictionary<string, string>
         {
             ["expected_sha"] = head,
             ["run_id"] = token,
+            ["platforms"] = await DependencyPlatformTable.JsonAsync(session, unstable, ct),
         }, LookupTimeout, "lookup");
         await DispatchAsync(context, request, "lookup", head, $"dependency-lookup-{token}", null, EDependencyRunState.Looking, ct);
     }
@@ -323,7 +334,11 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
     /// default branch's, and it holds T5's rules. False: the run was ended with the reason. A line's run (#568 D13) dispatches
     /// on the line's commit, and the workflow there must still be the default branch's: a line keeps the bot's workflows as master has them.
     /// </summary>
-    private async Task<bool> WorkflowsUsableAsync(Context context, string commit, IReadOnlyList<string> workflows, bool allowSecrets, CancellationToken ct)
+    /// <summary>The inputs the bot dispatches the lookup with; a workflow declaring fewer predates them (#606 D9).</summary>
+    private static readonly string[] LookupInputs = ["expected_sha", "run_id", "platforms"];
+
+    private async Task<bool> WorkflowsUsableAsync(Context context, string commit, IReadOnlyList<string> workflows, bool allowSecrets, CancellationToken ct,
+        (string Workflow, string[] Inputs)? required = null)
     {
         var defaultBranch = context.Repository.DefaultBranch ?? context.Run.DefaultBranch!;
         switch (await hook.VerifyProvenanceAsync(Saga(context), defaultBranch, commit, workflows, ct))
@@ -343,6 +358,13 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
             if (DependencyWorkflowGuard.Refusal(file?.Content, allowSecrets) is { } refusal)
             {
                 await EndAsync(context, "workflow-unsafe", $"`{workflow}` is not run by the bot: {refusal} (the bot's workflows read only, with no `id-token`).", ct);
+                return false;
+            }
+            if (required is { } r && r.Workflow == workflow
+                && DependencyWorkflowGuard.MissingInputs(file?.Content, r.Inputs) is { Count: > 0 } missing)
+            {
+                await EndAsync(context, "workflow-outdated",
+                    $"`{workflow}` declares no `{string.Join("`, `", missing)}` input: update it to the current dependency-lookup template (the bot passes its channel table since #606).", ct);
                 return false;
             }
         }
@@ -1372,14 +1394,19 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
 
         switch (command)
         {
-            case EDependencyCommand.Approve when argument is { } group:
-                if (DependencyHolds.Approve(state, report.AsOutcome(state), group, run.ConfigBlob, actor, commentId, time.GetUtcNow()) is null)
+            case EDependencyCommand.Approve when argument is { } approved:
+                // #606 D3: a trailing --force also takes an SDK move that is pending on its companions.
+                var force = approved.EndsWith(" --force", StringComparison.Ordinal);
+                var group = force ? approved[..^" --force".Length].TrimEnd() : approved;
+                if (DependencyHolds.Approve(state, report.AsOutcome(state), group, run.ConfigBlob, actor, commentId, time.GetUtcNow(), force) is null)
                 {
                     await ReactAsync(context, commentId, EForgeReaction.ThumbsDown, ct);
-                    await CommentAsync(context, $"Nothing named `{group}` waits for approval (an update above an enforced account rule cannot be approved).", ct);
+                    await CommentAsync(context, report.Held.Any(e => e.Group == group && e.Reason == EDependencyReportReason.Pending)
+                        ? $"`{group}` is waiting on its companion packages; comment `approve {group} --force` to move without them."
+                        : $"Nothing named `{group}` waits for approval (an update above an enforced account rule cannot be approved).", ct);
                     return;
                 }
-                run.Note(Now, $"@{actor} approved {group}");
+                run.Note(Now, force ? $"@{actor} approved {group} (--force)" : $"@{actor} approved {group}");
                 break;
             case EDependencyCommand.Hold when argument is { } target:
                 var isGroup = report.Groups.Any(g => g.Group == target) || report.AwaitingApproval.Concat(report.Held).Concat(report.Available).Any(e => e.Group == target);

@@ -20,8 +20,10 @@ namespace CodeCoverage.Dependencies.Policy;
 /// enforced ceiling (Q9), within its threshold or approved (R6), and old enough (Q16) — falling back, member by member, to
 /// a smaller candidate of the same level that is. The first level that passes is planned; every level above it is
 /// reported (awaiting approval, cooldown, held).</para>
-/// <para><b>Platforms</b> (R7): the highest channel above the current one, previews only when the repository is already on
-/// one; a major never auto-merges; computed locations are reported, never planned (R8).</para>
+/// <para><b>Platforms</b> (R7): the highest channel above the current one on the SDK's track (#606 D8: lts, stable or
+/// preview); a major never auto-merges; computed locations are reported, never planned (R8). Platforms are evaluated before
+/// the package groups: on a major move the SDK's companions ride in its group at the new major, and the move is pending
+/// until each one has a release there (#606 D2, D3).</para>
 /// </remarks>
 public static class DependencyPolicyEngine
 {
@@ -33,8 +35,7 @@ public static class DependencyPolicyEngine
         context.LiftHolds();
         context.RecordFirstSeen();
 
-        var groups = new Dictionary<string, List<LookupRecord>>(StringComparer.Ordinal);
-        var order = new List<string>();
+        var considered = new List<LookupRecord>();
         foreach (var record in input.Lookup.Records)
         {
             if (record.Candidates.Count == 0)
@@ -44,6 +45,20 @@ public static class DependencyPolicyEngine
                 context.Report(screened);
                 continue;
             }
+            considered.Add(record);
+        }
+
+        // #606 D2: the platforms go first, so a companion that rides in its SDK's group leaves the package groups.
+        context.FindCompanions(considered, input.Lookup.Platforms);
+        foreach (var platform in input.Lookup.Platforms)
+            context.EvaluatePlatform(platform);
+
+        var groups = new Dictionary<string, List<LookupRecord>>(StringComparer.Ordinal);
+        var order = new List<string>();
+        foreach (var original in considered)
+        {
+            if (context.ForGrouping(original) is not { } record)
+                continue;
             var group = GroupOf(input.Config, record);
             if (!groups.TryGetValue(group, out var members))
             {
@@ -55,9 +70,6 @@ public static class DependencyPolicyEngine
 
         foreach (var group in order)
             context.EvaluateGroup(group, groups[group]);
-
-        foreach (var platform in input.Lookup.Platforms)
-            context.EvaluatePlatform(platform);
 
         return context.Outcome();
     }
@@ -119,6 +131,82 @@ public static class DependencyPolicyEngine
         private readonly HashSet<(string Eco, string Dep, string Version)> own = input.Fleet.OwnReleases
             .Select(r => (r.Ecosystem, r.DepName, r.Version)).ToHashSet();
         private readonly HashSet<(string Eco, string Dep)> security = input.SecurityFixes.Select(s => (s.Ecosystem, s.DepName)).ToHashSet();
+
+        // #606 D2: each SDK's companion records (on the SDK's current major), and the ones riding in its planned group.
+        private readonly Dictionary<string, List<LookupRecord>> companions = new(StringComparer.Ordinal);
+        private readonly Dictionary<LookupRecord, string> companionOf = new(ReferenceEqualityComparer.Instance);
+        private readonly HashSet<LookupRecord> riding = new(ReferenceEqualityComparer.Instance);
+
+        private static long? MajorOf(LookupRecord record) => UpdateTypeFloor.LeadingNumber(record.CurrentVersion ?? record.CurrentValue);
+
+        private static long? MajorOf(LookupCandidate candidate) => UpdateTypeFloor.LeadingNumber(candidate.Version ?? candidate.Value);
+
+        /// <summary>
+        /// #606 D2: the records that move with an SDK's major. A record is a companion of an SDK whose platform record the
+        /// lookup has, when it lives in the SDK's package ecosystem, matches a companion glob, and is on the SDK's current
+        /// major today (<c>System.IO.Abstractions</c> 22.x matches <c>System.*</c> but is not a .NET 10 companion). A platform
+        /// kept beside the previous one (<c>strategy: add</c>, <c>keepPrevious</c>, <c>lockPackageMajor</c>) has none: its
+        /// packages must keep building for the older target too.
+        /// </summary>
+        public void FindCompanions(IReadOnlyList<LookupRecord> records, IEnumerable<PlatformRecord> platforms)
+        {
+            foreach (var platform in platforms)
+            {
+                var sdk = platform.Sdk;
+                var settings = config.File.Platform(sdk);
+                if (DependencyCompanions.Ecosystem(sdk) is not { } ecosystem || settings.Strategy != "replace" || settings.KeepPrevious > 0 || settings.LockPackageMajor)
+                    continue;
+                if (UpdateTypeFloor.LeadingNumber(platform.Current.Channels.FirstOrDefault()) is not { } major)
+                    continue;
+                var globs = config.Companions(sdk);
+                if (globs.Count == 0)
+                    continue;
+                var list = new List<LookupRecord>();
+                foreach (var record in records.Where(r => r.Ecosystem == ecosystem && !companionOf.ContainsKey(r)))
+                {
+                    if (!globs.Any(g => DependencyGlob.Matches(g, record.DepName)))
+                        continue;
+                    if (MajorOf(record) != major)
+                        continue;
+                    list.Add(record);
+                    companionOf[record] = sdk;
+                }
+                if (list.Count > 0)
+                    companions[sdk] = list;
+            }
+        }
+
+        /// <summary>
+        /// The record as the package groups see it: null for a companion riding in its SDK's group, and a companion without
+        /// the candidates above its SDK's current major (they move only with the SDK, #606 D2); the record itself otherwise.
+        /// </summary>
+        public LookupRecord? ForGrouping(LookupRecord record)
+        {
+            if (riding.Contains(record))
+                return null;
+            if (!companionOf.ContainsKey(record))
+                return record;
+            var major = MajorOf(record);
+            var within = record.Candidates.Where(c => !(MajorOf(c) > major)).ToList();
+            return within.Count == 0 ? null : record with { Candidates = within };
+        }
+
+        /// <summary>The companions of an SDK whose next major is not riding: each is listed as moving with the platform.</summary>
+        private void ReportStranded(string sdk)
+        {
+            foreach (var record in companions.GetValueOrDefault(sdk) ?? [])
+            {
+                if (riding.Contains(record))
+                    continue;
+                var major = MajorOf(record);
+                var above = record.Candidates.FirstOrDefault(c => MajorOf(c) > major);
+                if (above is null)
+                    continue;
+                Report(new DependencyReportEntry($"platform:{sdk}", record.Ecosystem, record.DepName, record.PackageFile, record.CurrentValue,
+                    Token(above), EUpdateLevel.Major, EDependencyReportReason.MovesWithPlatform,
+                    $"a companion of {sdk}: its next major moves with the SDK's major, in the platform:{sdk} group (#606 D2)"));
+            }
+        }
 
         public void LiftHolds()
         {
@@ -187,7 +275,8 @@ public static class DependencyPolicyEngine
         {
             var list = entry.Reason switch
             {
-                EDependencyReportReason.Cooldown or EDependencyReportReason.PreviewNotFollowed or EDependencyReportReason.NotInSecurityRun => available,
+                EDependencyReportReason.Cooldown or EDependencyReportReason.PreviewNotFollowed or EDependencyReportReason.NotInSecurityRun
+                    or EDependencyReportReason.MovesWithPlatform => available,
                 EDependencyReportReason.AwaitingApproval => awaiting,
                 EDependencyReportReason.Ignored or EDependencyReportReason.Excluded or EDependencyReportReason.Skipped => ignored,
                 _ => held,
@@ -323,19 +412,34 @@ public static class DependencyPolicyEngine
             Add(groupPlan, picks.Select(v => Entry(group, v, EDependencyReportReason.NotInSecurityRun, "left for the next scheduled slot (R10)")));
         }
 
-        private void Add(DependencyPlannedGroup group, IEnumerable<DependencyReportEntry> ifDeferred)
+        private bool Add(DependencyPlannedGroup group, IEnumerable<DependencyReportEntry> ifDeferred)
         {
             // R10: an out-of-slot security run carries only the fixes and what may auto-merge anyway.
             if (input.Mode == EDependencyRunMode.Security && !group.Security && !group.AutoMerge)
             {
                 foreach (var entry in ifDeferred)
                     Report(entry);
-                return;
+                return false;
             }
             planned.Add(group);
+            return true;
         }
 
         public void EvaluatePlatform(PlatformRecord platform)
+        {
+            EvaluatePlatformMove(platform);
+            ReportStranded(platform.Sdk);
+        }
+
+        /// <summary>#606 D8: whether a channel is on the SDK's track (lts: an LTS release; stable: no preview; preview: any).</summary>
+        private static bool OnTrack(PlatformCandidate candidate, EDependencyTrack track) => track switch
+        {
+            EDependencyTrack.Lts => candidate.Lts == true && !candidate.Preview,
+            EDependencyTrack.Preview => true,
+            _ => !candidate.Preview,
+        };
+
+        private void EvaluatePlatformMove(PlatformRecord platform)
         {
             var eco = PlatformEcosystem(platform);
             foreach (var location in platform.Locations.Where(l => l.Computed))
@@ -345,13 +449,16 @@ public static class DependencyPolicyEngine
             if (current is null || !platform.Locations.Any(l => !l.Computed) || platform.Candidates.Count == 0)
                 return;
 
+            var track = config.PlatformTrack(platform.Sdk);
             var top = platform.Candidates[0];
-            var target = platform.Candidates.FirstOrDefault(c => !c.Preview || platform.Current.Preview);
+            var target = platform.Candidates.FirstOrDefault(c => OnTrack(c, track));
             DependencyReportEntry Entry(PlatformCandidate candidate, EUpdateLevel? level, EDependencyReportReason reason, string detail)
                 => new($"platform:{platform.Sdk} {candidate.Channel}", eco, eco, platform.Locations.First(l => !l.Computed).File, current, candidate.Channel, level, reason, detail);
 
-            if (top.Preview && !platform.Current.Preview)
-                Report(Entry(top, null, EDependencyReportReason.PreviewNotFollowed, "a preview channel; previews are followed only when the repository is on one (R7)"));
+            if (!OnTrack(top, track))
+                Report(Entry(top, null, EDependencyReportReason.PreviewNotFollowed, track == EDependencyTrack.Lts && !top.Preview
+                    ? $"not an LTS release; {platform.Sdk} follows the lts track (platforms.{platform.Sdk}.track)"
+                    : $"a preview channel; {platform.Sdk} follows the {track.ToString().ToLowerInvariant()} track (set platforms.{platform.Sdk}.track: preview to follow it)"));
             if (target is null)
                 return;
 
@@ -376,6 +483,32 @@ public static class DependencyPolicyEngine
 
             var targets = new[] { $"{eco}@{UpdateTypeFloor.TargetMajor(target.Channel)}" };
             currentTargets.Add((group, eco, targets[0]));
+
+            // #606 D2/D3: on a major move, every companion rides at the new major; the move waits until each one has a
+            // release there, unless a writer approved it with --force.
+            var riders = new List<View>();
+            var missing = new List<string>();
+            if (companions.GetValueOrDefault(platform.Sdk) is { } family
+                && UpdateTypeFloor.LeadingNumber(target.Channel) is { } toMajor && UpdateTypeFloor.LeadingNumber(current) is { } fromMajor && toMajor > fromMajor)
+            {
+                foreach (var record in family)
+                {
+                    var pick = Candidates(record).FirstOrDefault(v => v.Problem is null && MajorOf(v.Candidate) == toMajor);
+                    if (pick is null)
+                        missing.Add(record.DepName);
+                    else
+                        riders.Add(pick);
+                }
+                missing = [.. missing.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)];
+                if (missing.Count > 0 && !Approved(group, [eco], targets, force: true))
+                {
+                    var names = missing.Count <= 5 ? string.Join(", ", missing) : $"{string.Join(", ", missing.Take(5))} and {missing.Count - 5} more";
+                    Report(Entry(target, level, EDependencyReportReason.Pending,
+                        $"waiting on {names} to release {toMajor}.x: comment 'approve {group} --force' to move without them"));
+                    return;
+                }
+            }
+
             var ceiling = config.Ceiling(eco, eco);
             if ((int)level > (int)ceiling)
             {
@@ -411,6 +544,7 @@ public static class DependencyPolicyEngine
                 Approved = approved,
                 DepNames = [eco],
                 TargetMajors = targets,
+                Items = [.. riders.Select(v => new DependencyPlannedItem(v.Record, v.Candidate, v.Level))],
                 Platform = new PlanPlatform
                 {
                     Sdk = platform.Sdk,
@@ -425,7 +559,8 @@ public static class DependencyPolicyEngine
                     Exclude = settings.Exclude.Count == 0 ? null : [.. settings.Exclude],
                 },
             };
-            Add(planGroup, [Entry(target, level, EDependencyReportReason.NotInSecurityRun, "left for the next scheduled slot (R10)")]);
+            if (Add(planGroup, [Entry(target, level, EDependencyReportReason.NotInSecurityRun, "left for the next scheduled slot (R10)")]))
+                riding.UnionWith(riders.Select(v => v.Record));
         }
 
         public DependencyPolicyOutcome Outcome()
@@ -455,8 +590,8 @@ public static class DependencyPolicyEngine
             };
         }
 
-        private bool Approved(string group, IReadOnlyList<string> depNames, IReadOnlyList<string> targets)
-            => next.Approvals.Any(a => a.Group == group && a.ConfigBlob == input.ConfigBlob
+        private bool Approved(string group, IReadOnlyList<string> depNames, IReadOnlyList<string> targets, bool force = false)
+            => next.Approvals.Any(a => a.Group == group && a.ConfigBlob == input.ConfigBlob && (!force || a.Force)
                 && a.DepNames.SequenceEqual(depNames, StringComparer.Ordinal) && a.TargetMajors.SequenceEqual(targets, StringComparer.Ordinal));
 
         /// <summary>Every candidate of a record through R1, R17 and the member-level gates, best first.</summary>
@@ -588,6 +723,7 @@ public static class DependencyPolicyEngine
             ApprovedBy = a.ApprovedBy,
             ApprovedAtUtc = a.ApprovedAtUtc,
             CommentId = a.CommentId,
+            Force = a.Force,
         })],
     };
 }
