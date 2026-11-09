@@ -8,7 +8,7 @@ using Xunit;
 namespace CodeCoverage.Tests.Controllers;
 
 /// <summary>
-/// "Run the scheduled slot now" (dependency-updates PRD R28, R21) starts a run (SDK and package updates alike) only on a
+/// "Update SDK + dependencies" (RunScheduledSlotNow; dependency-updates PRD R28, R21) starts a run (SDK and package updates alike) only on a
 /// repository the caller manages: a manager of its account, or an administrator of that one repository on the forge. Any
 /// other signed-in caller gets exactly the answer of a repository that does not exist, and nothing is queued; an anonymous
 /// caller gets the uniform refusal.

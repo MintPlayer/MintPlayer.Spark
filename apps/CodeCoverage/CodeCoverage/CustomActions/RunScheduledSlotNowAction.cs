@@ -12,7 +12,7 @@ using Raven.Client.Documents.Session;
 namespace CodeCoverage.CustomActions;
 
 /// <summary>
-/// "Run the scheduled slot now" (dependency-updates PRD R28, S18-D4), on a Repository's page: a run exactly like the
+/// "Update SDK + dependencies" (labelled "Run the scheduled slot now" until 2026-11-09; dependency-updates PRD R28, S18-D4), on a Repository's page: a run exactly like the
 /// scheduled one, which is the only kind that may auto-merge (D-L), started now. For R21's people (a manager of the account,
 /// or an administrator of the repository on the forge, checked now). Refused while a run is in progress for the repository.
 /// </summary>
