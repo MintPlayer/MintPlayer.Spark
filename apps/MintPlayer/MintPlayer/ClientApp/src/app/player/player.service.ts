@@ -42,7 +42,7 @@ export class PlayerService {
   /** Where the current medium is, in seconds, for the queue's progress bar (as the legacy playlist sidebar showed). */
   readonly position = signal<PlayerProgress>({ currentTime: 0, duration: 0 });
   /**
-   * 0-100, two-way bound to the video player, which keeps both across media and sites since video-player 20.1.1
+   * 0-100, two-way bound to the video player, which keeps both across media and sites since video-player 20.2.0
    * (mintplayer-ng-video-player#105).
    */
   readonly volume = signal(100);
@@ -81,12 +81,7 @@ export class PlayerService {
     this.controller.next();
   }
 
-  /**
-   * Leaves `ended` out of the bound state: the binding would push it back into the player, and the YouTube player
-   * stops on `ended`, which stopped the next medium. `unstarted` is a no-op in every player.
-   */
   ended() {
-    this.state.set(EPlayerState.unstarted);
     this.controller.playerEnded();
   }
 

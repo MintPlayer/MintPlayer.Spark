@@ -41,8 +41,6 @@ export class PlayerDockComponent {
     // restarts a medium (repeatOne, or previous after 5 seconds).
     effect(() => {
       const { item } = this.player.play();
-      // The previous medium's state isn't this one's, and a player that never reports one would keep it.
-      this.player.state.set(EPlayerState.unstarted);
       this.player.position.set({ currentTime: 0, duration: 0 });
       if (item) this.videoPlayer()?.setUrl(item.url);
     });
