@@ -7,7 +7,10 @@ after this lands (branch `fix/554-required-checks-picker`).
 ## Resume here
 
 Merged as PR #580 (`ae99722f1`). The #554 consumer is on `fix/554-required-checks-picker`; see "#554: the
-required-checks picker" below. Ruleset 26719109 stays disabled until that ships.
+required-checks picker" below. ~~Ruleset 26719109 stays disabled until that ships.~~ **Re-enabled 2026-11-09** through
+"Set up rulesets" (picker shipped in #586): enforcement active, 23 required checks, all reported on pull requests (the
+push-only jobs and the path-filtered "Schema revision" removed). While it was disabled, #614 merged before its CI started
+(#616, fixed in PR #615).
 
 ## Context (why the rulesets work is waiting)
 

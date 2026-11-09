@@ -311,3 +311,8 @@ DependencyLifecycleRules, GitHubForgeMergeQueue, MergeQueueEngine, DependencyUpd
 **After the deploy (operational):** a repository whose first lookup failed on the old table runs again when its
 dependency switch is turned off and on (D-O15 expedites it). SpaServices and DependencyUpdaterTest get the D25 pull
 request on their next run.
+
+**Follow-up (PR #615, 2026-11-09):** #614 merged 13 s after its CI started, and master run 42661277346 went red on
+`OnboardingPrTests`, which still read the deleted `.github/dependabot.yml`. That class now reads the fixture too. The
+merge itself was the merge queue's gap (#616, merge-queue PRD D119): an empty GitHub Actions suite was not waited for,
+and Spark's ruleset 26719109 was disabled. The gate fix and the re-enabled ruleset are in that PR's description.
