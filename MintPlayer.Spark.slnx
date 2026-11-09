@@ -171,6 +171,7 @@
   <Folder Name="/libs/spark/">
     <Project Path="libs/spark/MintPlayer.Spark.Abstractions/MintPlayer.Spark.Abstractions.csproj" />
     <Project Path="libs/spark/MintPlayer.Spark/MintPlayer.Spark.csproj" />
+    <Project Path="libs/spark/MintPlayer.Spark.InMemory/MintPlayer.Spark.InMemory.csproj" />
     <Project Path="libs/spark/MintPlayer.Spark.RavenDB/MintPlayer.Spark.RavenDB.csproj" />
     <Project Path="libs/spark/MintPlayer.Spark.SafeHttp/MintPlayer.Spark.SafeHttp.csproj" />
   </Folder>

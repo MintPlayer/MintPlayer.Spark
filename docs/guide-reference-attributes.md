@@ -580,7 +580,8 @@ public class Car
 ```
 
 See also:
-- `Demo/DemoApp/DemoApp.Library/Entities/Car.cs` -- entity with references
-- `Demo/DemoApp/DemoApp.Library/LookupReferences/` -- lookup reference definitions
-- `Demo/DemoApp/DemoApp/App_Data/Model/Car.json` -- generated model JSON
-- `Demo/DemoApp/DemoApp/Indexes/Cars_Overview.cs` -- index with `LoadDocument` for reference data
+- `apps/DemoApp/DemoApp.Library/Entities/Car.cs` -- entity with references
+- `apps/DemoApp/DemoApp.Library/LookupReferences/` -- lookup reference definitions
+- `apps/DemoApp/DemoApp/App_Data/Model/Car.json` -- generated model JSON
+- `apps/Fleet/Fleet.Library/Entities/Car.cs` -- RavenDB: `[GenerateIndex]` emits `Cars_Overview` and its `VCar`, with
+  the reference data joined in. DemoApp runs on the in-memory store (#551), which has no indexes.

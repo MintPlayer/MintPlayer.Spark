@@ -43,5 +43,5 @@ public sealed partial class ValueObjectCompletenessAnalyzer
         category: "Correctness",
         defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true,
-        description: "Types reachable from a SparkContext's IRavenQueryable properties are walked, and every complex type embedded along the way must carry [ValueObject] so the generator can give it a stable row key. Rows are matched by that key when a parent is saved; without one the save cannot distinguish an edit from a delete plus a create, which is what the row type's New, Edit and Delete rights are decided from.");
+        description: "Types reachable from a SparkContext's IQueryable properties are walked, and every complex type embedded along the way must carry [ValueObject] so the generator can give it a stable row key. Rows are matched by that key when a parent is saved; without one the save cannot distinguish an edit from a delete plus a create, which is what the row type's New, Edit and Delete rights are decided from.");
 }

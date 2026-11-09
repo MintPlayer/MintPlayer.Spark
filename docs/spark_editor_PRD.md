@@ -705,3 +705,62 @@ The test project builds after the rebase.
   - SPARK059 is the highest diagnostic id today (`BoardsConfigurationAnalyzer.cs:54`).
 - **M9 — save and delete for a type with no `clrType` go through `{Name}Actions`** (§5 item 6). Then guides,
   this PRD's log, the test run and the pull request.
+
+### 8.4 Implementation log
+
+- **D21 — namespaces are kept when a type moves package.** A type that moved to `MintPlayer.Spark.RavenDB` keeps its
+  namespace (`MintPlayer.Spark.Services.IndexCatalog`, `MintPlayer.Spark.Storage.Raven.*`). An app then changes a
+  `PackageReference`, not its `using`s. Evidence: `libs/spark/MintPlayer.Spark.RavenDB/Services/IndexCatalog.cs` and
+  `RavenRowKeyScan` still declare `namespace MintPlayer.Spark.Services`.
+- **D22 — providers reference Abstractions only.** Owner, 2026-11-09: "I would've said yes, reference Spark.Core - But
+  if you could do it with Spark.Abstractions only, that would be better for writing tests". Both
+  `MintPlayer.Spark.RavenDB.csproj` and `MintPlayer.Spark.InMemory.csproj` reference `MintPlayer.Spark.Abstractions` and
+  no other Spark project.
+- **D20, as built.** `IndexCatalog` itself moved to the Raven package, not just index deployment. Its entries are built
+  from `AbstractIndexCreationTask` instances, so it depends on the database by the placement rule. Core keeps
+  `EmptyIndexCatalog`, which a store without indexes uses.
+  - Its two Raven-only uses in core became contract members:
+    - `IIndexCatalog.BuildDefinition(entry)` for the development compile check (`SparkDevelopmentExtensions`)
+    - `ISparkSession.Query<T, TIndex>()` for the generated view roots; InMemory throws `NotSupportedException`
+- **`IgnoreMaxRequests` is neutral.** `SparkSessionExtensions` (Abstractions/Storage) carries the scope for
+  `ISparkSession`. The Raven package's overloads for `IAsyncDocumentSession` and `IDocumentSession` reuse its
+  `MaxRequestsScope`.
+- **M6 regression, found in M7: plain-root markers were gone in every app.** The generator recognised a plain root
+  only as `IRavenQueryable<T>` over a Raven session's `Query<T>()`, and only when the compilation referenced
+  RavenDB. After M6, every root is `IQueryable<T>` over `ISparkSession`, so no `[SparkPlainRoot]` was written. A
+  query-less `[Reference]` then lost its lookup query.
+  - Evidence: DemoApp's synchronize dropped `"query": "GetBicycles"` from `Person.Bicycle` and warned "none of the
+    context's roots of 'Bicycle' (Bicycles) is the plain 'Session.Query<Bicycle>()'". `DemoApp.dll` contained no
+    `SparkPlainRootAttribute`.
+  - Fix:
+    - `PlainRootClassifier`, SPARK056, SPARK017, the context generator and the SPARK056 code fix now take
+      `System.Linq.IQueryable<T>` over `MintPlayer.Spark.Abstractions.Storage`.
+    - The context partial is gated on Spark alone (`knowsSparkContextProvider`), not on RavenDB.
+  - After the fix, `DemoApp.dll` carries the marker and the synchronize keeps `GetBicycles`, with no warning.
+- **The synchronizer repairs a dead `indexName` on a custom query too.** Until now it repaired dead bindings on
+  `Database.*` queries only.
+  - Evidence: DemoApp's `Company_Cars` kept `indexName: Company_Cars` after its index was deleted. `QueryExecutor`
+    refuses such a binding ("no deployed index has that name").
+  - Now it is cleared with a console note. A live authored binding is still preserved verbatim.
+- **DemoApp on `UseInMemory()` (D14).**
+  - Removed: the indexes and views (`Indexes/*`), Messaging (recipients, messages and the committed interceptors),
+    and Cron (`HeartbeatJob`). All of them need RavenDB.
+    - The views and indexes need RavenDB's indexes.
+    - Messaging runs on subscriptions. `IAfterSaveCommitted`/`IAfterDeleteCommitted` need it: without
+      `AddMessaging()`, `SparkCommittedInterceptorsStartupCheck` refuses to start (`SparkAfterCommitDispatcher.cs:75`).
+    - Cron stores its schedule as RavenDB documents.
+  - This is consistent with CLAUDE.md's "core only" DemoApp. HR, Fleet and QnA keep those features.
+  - Its two sub-queries are plain LINQ over the collection, `Company_Cars` and `Company_People`.
+  - `DemoSeed` writes three companies, three people, three cars, two bicycles, two motorcycles and two stocks, all
+    fictional.
+  - The synchronizer never deletes an attribute (`docs/issue_253_PRD.md` D1). The four projection-only attributes
+    were therefore removed by hand: `Person.FullName`, `Car.OwnerFullName`, and `Bicycle.Details`/`Motorcycle.Details`.
+    Their translations were removed as well, and `Company_People` now sorts on `LastName`.
+  - A synchronize after that leaves the model unchanged.
+- **The conformance suite** is `tests/MintPlayer.Spark.Tests/Storage/SparkStoreConformanceTests.cs`. It is one
+  abstract class with a RavenDB and an InMemory derivation. It covers:
+  - round-tripped values: S12's DateTime (Utc and Unspecified), Guid, enum, decimal and DateOnly
+  - D16 on load
+  - collection names, the identity map and change tracking
+  - `BeforeStore` timing, delete, both concurrency checks with an atomic commit, `LoadStartingWith` paging,
+    filtered queries and the request budget

@@ -709,7 +709,8 @@ typeof(Motorcycle))]` (`SPARK052` for a bare marker), each must have an `AddMap<
 index must derive from `SparkMultiMapIndexCreationTask<TReduceResult>` (`SPARK055`). That base writes a collection field
 into every map, and the executor narrows T's queries on it before row security, paging and totals. Without the
 narrowing a motorcycle would come back as a bicycle, outside the bicycle's row policy. A JavaScript index cannot be a
-default (`SPARK054`). DemoApp's `TwoWheelers_Overview` is the demo.
+default (`SPARK054`). `tests/MintPlayer.Spark.Tests/Queries/MultiMapDefaultIndexTests.cs` is the worked example and
+pins the narrowing.
 
 At runtime, `IIndexCatalog.GetDefaultFor(Type)` answers the election (it replaces `GetDefaultForCollectionType`).
 Every other index of the type stays usable by hand through `session.Query<TView, TIndex>()`, or for a reference
@@ -1106,21 +1107,19 @@ When the frontend requests a query:
 
 ## Complete Example
 
-From the DemoApp:
+Indexes are RavenDB's (#551): DemoApp runs on the in-memory store, which has none, so its queries read the
+collections. For an index with a projection, see the Fleet app:
 
 ```
-Demo/DemoApp/
-  DemoApp/
+apps/Fleet/
+  Fleet/
     App_Data/
-      Model/Person.json          <-- merged entity + projection attributes
-      Queries/GetPeople.json     <-- query definition with sort config
-    Data/VPerson.cs              <-- projection type with [FromIndex]
-    Indexes/People_Overview.cs   <-- RavenDB index with computed FullName
-  DemoApp.Library/
-    Entities/Person.cs           <-- entity with FirstName, LastName, etc.
+      Model/Car.json             <-- merged entity + projection attributes, and the queries with their sort config
+  Fleet.Library/
+    Entities/Car.cs              <-- [GenerateIndex]: emits Cars_Overview and its [FromIndex] VCar in the application
 ```
 
-The entity lives in a class library here while the index and projection sit in the application. That
+The entity lives in a class library here while the index and projection are emitted in the application. That
 is not incidental — see below.
 
 ## Indexes and projections in a class library
@@ -1160,8 +1159,8 @@ running application read the same registry, so both agree. If computed columns a
 is logged, check that the declaring assembly is registered.
 
 See also:
-- `Demo/DemoApp/DemoApp/Indexes/Cars_Overview.cs` -- index with cross-document `LoadDocument`
-- `Demo/DemoApp/DemoApp/Data/VCar.cs` -- projection with `[LookupReference]`
+- `apps/HR/HR/Indexes/Professions_Lookup.cs` -- a hand-written index in an application
+- `apps/Fleet/Fleet.Library/Entities/Car.cs` -- `[GenerateIndex]`, whose `VCar` carries a `[LookupReference]`
 - `MintPlayer.Spark/Services/QueryExecutor.cs` -- query execution with sorting and projection
 
 ## Per-column sort and filter capabilities (#431)

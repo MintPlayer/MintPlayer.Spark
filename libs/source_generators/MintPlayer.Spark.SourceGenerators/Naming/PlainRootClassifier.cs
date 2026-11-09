@@ -15,12 +15,12 @@ namespace MintPlayer.Spark.SourceGenerators.Naming;
 /// </summary>
 internal static class PlainRootClassifier
 {
-    internal const string RavenQueryableMetadataName = "Raven.Client.Documents.Linq.IRavenQueryable`1";
-    private const string RavenSessionNamespace = "Raven.Client.Documents.Session";
+    internal const string RootQueryableMetadataName = "System.Linq.IQueryable`1";
+    private const string SparkSessionNamespace = "MintPlayer.Spark.Abstractions.Storage";
 
     /// <summary>
     /// Every plain root of <paramref name="contextType"/>, own or inherited from a base in this compilation: a public
-    /// instance <c>IRavenQueryable&lt;T&gt;</c> property over a non-view <c>T</c>, not hidden by a derived member of the
+    /// instance <c>IQueryable&lt;T&gt;</c> property over a non-view <c>T</c>, not hidden by a derived member of the
     /// same name, whose body <see cref="IsPlainRoot">is plain</see>.
     /// </summary>
     /// <remarks>
@@ -28,7 +28,7 @@ internal static class PlainRootClassifier
     /// come from its own generator run (D6), and the callers read those separately.
     /// </remarks>
     internal static IEnumerable<(IPropertySymbol Property, ITypeSymbol Entity)> PlainRoots(
-        INamedTypeSymbol contextType, INamedTypeSymbol ravenQueryable, Compilation compilation, CancellationToken ct)
+        INamedTypeSymbol contextType, INamedTypeSymbol rootQueryable, Compilation compilation, CancellationToken ct)
     {
         var seen = new HashSet<string>(System.StringComparer.Ordinal);
         for (var current = contextType; current is not null; current = current.BaseType)
@@ -40,7 +40,7 @@ internal static class PlainRootClassifier
                 // The synchronizer reads public roots only, and a root hidden by a derived one is not the root.
                 if (property.IsStatic || property.DeclaredAccessibility != Accessibility.Public) continue;
                 if (property.Type is not INamedTypeSymbol { TypeArguments.Length: 1 } queryable
-                    || !SymbolEqualityComparer.Default.Equals(queryable.OriginalDefinition, ravenQueryable))
+                    || !SymbolEqualityComparer.Default.Equals(queryable.OriginalDefinition, rootQueryable))
                     continue;
                 if (!seen.Add(property.Name)) continue;
 
@@ -56,7 +56,7 @@ internal static class PlainRootClassifier
     /// <summary>
     /// Whether <paramref name="property"/> is the plain entity root of <paramref name="entity"/> (PRD §7, SP3): its body,
     /// in any of the three forms (<c>=&gt; e</c>, <c>get =&gt; e</c>, <c>get { return e; }</c>), is a single
-    /// <c>Query&lt;T&gt;()</c> call with no arguments on a RavenDB session (<c>Session.Query&lt;T&gt;()</c>,
+    /// <c>Query&lt;T&gt;()</c> call with no arguments on the context's Spark session (<c>Session.Query&lt;T&gt;()</c>,
     /// <c>this.Session.Query&lt;T&gt;()</c>).
     /// </summary>
     /// <remarks>
@@ -100,6 +100,6 @@ internal static class PlainRootClassifier
         return method.Name == "Query"
             && method.TypeArguments.Length == 1
             && SymbolEqualityComparer.Default.Equals(method.TypeArguments[0], entity)
-            && method.ContainingType?.ContainingNamespace?.ToDisplayString() == RavenSessionNamespace;
+            && method.ContainingType?.ContainingNamespace?.ToDisplayString() == SparkSessionNamespace;
     }
 }

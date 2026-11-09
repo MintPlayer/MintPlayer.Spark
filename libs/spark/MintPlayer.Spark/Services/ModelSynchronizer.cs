@@ -190,6 +190,18 @@ internal partial class ModelSynchronizer : IModelSynchronizer
                 // else: authored binding to a known non-default index — preserved verbatim.
             }
 
+            // A custom query's binding is always authored, so it is never stamped; a dead one is still repaired, for
+            // the same reason as above. DemoApp's Company_Cars kept 'indexName: Company_Cars' after its index was
+            // removed (#551 D14), which the runtime resolves and refuses ("no deployed index has that name").
+            foreach (var customQuery in queriesForType.Where(q =>
+                         !q.Source.StartsWith("Database.", StringComparison.Ordinal)
+                         && !string.IsNullOrEmpty(q.IndexName)
+                         && indexCatalog.GetByIndexName(q.IndexName) is null))
+            {
+                Console.WriteLine($"Cleared indexName '{customQuery.IndexName}' on query '{customQuery.Name}': no index with that name exists.");
+                customQuery.IndexName = null;
+            }
+
             // After the bindings above settle: D10 reads a query's index to decide how an append is written.
             MaintainColumnOrders(entityTypeDef, queriesForType);
 
