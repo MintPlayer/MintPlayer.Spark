@@ -106,7 +106,9 @@ export type PlatformLocationKind =
   | 'gemspec-ruby'
   | 'rust-toolchain'
   | 'rust-version'
-  | 'matrix';
+  | 'matrix'
+  // #617 D31: a setup-dotnet `dotnet-quality:` input, removed once the plan's target is GA.
+  | 'dotnet-quality';
 
 export interface PlatformLocation {
   file: string;

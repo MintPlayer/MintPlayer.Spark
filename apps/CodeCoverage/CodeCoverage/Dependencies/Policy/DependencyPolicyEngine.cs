@@ -247,7 +247,7 @@ public static class DependencyPolicyEngine
                     See(record.Ecosystem, record.DepName, Token(candidate));
             foreach (var platform in input.Lookup.Platforms)
                 foreach (var candidate in platform.Candidates)
-                    See(PlatformEcosystem(platform), PlatformEcosystem(platform), candidate.Channel);
+                    See(PlatformEcosystem(platform), PlatformEcosystem(platform), PlatformToken(candidate, platform.Current.Channels.FirstOrDefault()));
 
             if (next.FirstSeen.Count > DependencyUpdateState.MaxFirstSeen)
                 next.FirstSeen = [.. next.FirstSeen.OrderByDescending(s => s.FirstSeenAtUtc).Take(DependencyUpdateState.MaxFirstSeen)];
@@ -439,6 +439,15 @@ public static class DependencyPolicyEngine
             _ => !candidate.Preview,
         };
 
+        /// <summary>
+        /// What a platform candidate moves to: its channel, or, for the row of the channel the repository is on (#617 D29),
+        /// the version inside it (the SDK where the table has one), so a cooldown, a red version and an approval name it.
+        /// </summary>
+        private static string PlatformToken(PlatformCandidate candidate, string? current)
+            => candidate.Channel == current ? candidate.LatestSdk ?? candidate.LatestVersion ?? candidate.Channel : candidate.Channel;
+
+        private static bool IsPreviewToken(string? version) => version?.Contains('-', StringComparison.Ordinal) == true;
+
         private void EvaluatePlatformMove(PlatformRecord platform)
         {
             var eco = PlatformEcosystem(platform);
@@ -450,117 +459,144 @@ public static class DependencyPolicyEngine
                 return;
 
             var track = config.PlatformTrack(platform.Sdk);
+            // #617 D29: the table's row for the current channel is the move inside it (an RC to its release, a patch). It is
+            // on any track unless it is a preview: an lts repository on an STS channel still takes that channel's patches.
+            bool Follows(PlatformCandidate c) => c.Channel == current ? !c.Preview || track == EDependencyTrack.Preview : OnTrack(c, track);
             var top = platform.Candidates[0];
-            var target = platform.Candidates.FirstOrDefault(c => OnTrack(c, track));
+            var target = platform.Candidates.FirstOrDefault(Follows);
             DependencyReportEntry Entry(PlatformCandidate candidate, EUpdateLevel? level, EDependencyReportReason reason, string detail)
-                => new($"platform:{platform.Sdk} {candidate.Channel}", eco, eco, platform.Locations.First(l => !l.Computed).File, current, candidate.Channel, level, reason, detail);
+                => new($"platform:{platform.Sdk} {candidate.Channel}", eco, eco, platform.Locations.First(l => !l.Computed).File, current, PlatformToken(candidate, current), level, reason, detail);
 
-            if (!OnTrack(top, track))
+            if (!Follows(top))
                 Report(Entry(top, null, EDependencyReportReason.PreviewNotFollowed, track == EDependencyTrack.Lts && !top.Preview
                     ? $"not an LTS release; {platform.Sdk} follows the lts track (platforms.{platform.Sdk}.track)"
                     : $"a preview channel; {platform.Sdk} follows the {track.ToString().ToLowerInvariant()} track (set platforms.{platform.Sdk}.track: preview to follow it)"));
-            if (target is null)
+            if (target is null || PlanMove(target))
                 return;
+            // #617 D36: a channel move that is not planned (awaiting approval, pending, cooling down) leaves the patches of the
+            // channel the repository is on, which are offered instead. Never both: the two edit the same pins.
+            if (target.Channel != current && platform.Candidates.FirstOrDefault(c => c.Channel == current && Follows(c)) is { } patch)
+                PlanMove(patch);
 
-            var group = $"platform:{platform.Sdk} {target.Channel}";
-            var level = UpdateTypeFloor.Apply(EUpdateLevel.Minor, current, target.Channel);
-            if (config.IgnoredBy(eco, eco) is { } why)
+            bool PlanMove(PlatformCandidate target)
             {
-                Report(Entry(target, level, EDependencyReportReason.Ignored, why));
-                return;
-            }
-            var hold = config.FileHold(eco, eco) ?? next.Holds.FirstOrDefault(h => h.Group == group || (h.Group.Length == 0 && h.DepNames.Contains(eco)))?.Reason;
-            if (hold is not null)
-            {
-                Report(Entry(target, level, EDependencyReportReason.Held, hold));
-                return;
-            }
-            if (red.Contains((eco, eco, target.Channel)))
-            {
-                Report(Entry(target, level, EDependencyReportReason.FleetRed, "red in another repository of the fleet (Q15)"));
-                return;
-            }
-
-            var targets = new[] { $"{eco}@{UpdateTypeFloor.TargetMajor(target.Channel)}" };
-            currentTargets.Add((group, eco, targets[0]));
-
-            // #606 D2/D3: on a major move, every companion rides at the new major; the move waits until each one has a
-            // release there, unless a writer approved it with --force.
-            var riders = new List<View>();
-            var missing = new List<string>();
-            if (companions.GetValueOrDefault(platform.Sdk) is { } family
-                && UpdateTypeFloor.LeadingNumber(target.Channel) is { } toMajor && UpdateTypeFloor.LeadingNumber(current) is { } fromMajor && toMajor > fromMajor)
-            {
-                foreach (var record in family)
+                var group = $"platform:{platform.Sdk} {target.Channel}";
+                var inChannel = target.Channel == current;
+                // #617 D32: a move inside the channel is a patch, under the account's rules like any other.
+                var level = inChannel ? EUpdateLevel.Patch : UpdateTypeFloor.Apply(EUpdateLevel.Minor, current, target.Channel);
+                var token = PlatformToken(target, current);
+                if (config.IgnoredBy(eco, eco) is { } why)
                 {
-                    var pick = Candidates(record).FirstOrDefault(v => v.Problem is null && MajorOf(v.Candidate) == toMajor);
-                    if (pick is null)
-                        missing.Add(record.DepName);
-                    else
-                        riders.Add(pick);
+                    Report(Entry(target, level, EDependencyReportReason.Ignored, why));
+                    return false;
                 }
-                missing = [.. missing.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)];
-                if (missing.Count > 0 && !Approved(group, [eco], targets, force: true))
+                var hold = config.FileHold(eco, eco) ?? next.Holds.FirstOrDefault(h => h.Group == group || (h.Group.Length == 0 && h.DepNames.Contains(eco)))?.Reason;
+                if (hold is not null)
                 {
-                    var names = missing.Count <= 5 ? string.Join(", ", missing) : $"{string.Join(", ", missing.Take(5))} and {missing.Count - 5} more";
-                    Report(Entry(target, level, EDependencyReportReason.Pending,
-                        $"waiting on {names} to release {toMajor}.x: comment 'approve {group} --force' to move without them"));
-                    return;
+                    Report(Entry(target, level, EDependencyReportReason.Held, hold));
+                    return false;
                 }
-            }
-
-            var ceiling = config.Ceiling(eco, eco);
-            if ((int)level > (int)ceiling)
-            {
-                Report(Entry(target, level, EDependencyReportReason.AboveAccountRule, $"above the account rule's ceiling ({ceiling.ToString().ToLowerInvariant()})"));
-                return;
-            }
-            var threshold = config.Threshold(eco, eco);
-            var approved = false;
-            if ((int)level > (int)config.Inclusion(eco, eco))
-            {
-                if (!Approved(group, [eco], targets))
+                if (red.Contains((eco, eco, token)))
                 {
-                    Report(Entry(target, level, EDependencyReportReason.AwaitingApproval, $"platform {level.ToString().ToLowerInvariant()} {current} → {target.Channel}: comment 'approve {group}'"));
-                    return;
+                    Report(Entry(target, level, EDependencyReportReason.FleetRed, "red in another repository of the fleet (Q15)"));
+                    return false;
                 }
-                approved = true;
-            }
 
-            var (inCooldown, until) = Cooldown(eco, eco, target.Channel, target.ReleaseTimestamp, securityFix: false);
-            if (inCooldown)
-            {
-                Report(Entry(target, level, EDependencyReportReason.Cooldown, $"released less than {Days(config.Cooldown)} ago") with { Until = until });
-                return;
-            }
+                // #617: an in-channel move's target is the version it moves to, so an approval of the channel move (or of an
+                // earlier patch) never carries over to it.
+                var targets = new[] { $"{eco}@{(inChannel ? token : UpdateTypeFloor.TargetMajor(target.Channel))}" };
+                currentTargets.Add((group, eco, targets[0]));
 
-            var settings = config.File.Platform(platform.Sdk);
-            var planGroup = new DependencyPlannedGroup
-            {
-                Group = group,
-                Level = level,
-                // R7: a platform major never auto-merges, whatever the file says.
-                AutoMerge = (int)level <= (int)threshold && level != EUpdateLevel.Major && !approved,
-                Approved = approved,
-                DepNames = [eco],
-                TargetMajors = targets,
-                Items = [.. riders.Select(v => new DependencyPlannedItem(v.Record, v.Candidate, v.Level))],
-                Platform = new PlanPlatform
+                // #606 D2/D3: on a major move, every companion rides at the new major; the move waits until each one has a
+                // release there, unless a writer approved it with --force. #617 D33: a preview's companions ride to the release
+                // the same way (each one's stable version on the major); a move between two releases carries none.
+                var riders = new List<View>();
+                var missing = new List<string>();
+                var fromMajor = UpdateTypeFloor.LeadingNumber(current);
+                var toMajor = UpdateTypeFloor.LeadingNumber(target.Channel);
+                var majorMove = toMajor > fromMajor;
+                var toRelease = inChannel && platform.Current.Preview && !target.Preview;
+                if (companions.GetValueOrDefault(platform.Sdk) is { } family && toMajor is { } major && (majorMove || toRelease))
                 {
-                    Sdk = platform.Sdk,
-                    FromChannel = current,
-                    ToChannel = target.Channel,
-                    ToVersion = target.LatestVersion,
-                    SdkVersion = target.LatestSdk,
-                    Strategy = settings.Strategy,
-                    KeepPrevious = settings.KeepPrevious,
-                    LockPackageMajor = settings.LockPackageMajor,
-                    Locations = settings.Locations.Count == 0 ? null : [.. settings.Locations],
-                    Exclude = settings.Exclude.Count == 0 ? null : [.. settings.Exclude],
-                },
-            };
-            if (Add(planGroup, [Entry(target, level, EDependencyReportReason.NotInSecurityRun, "left for the next scheduled slot (R10)")]))
+                    foreach (var record in family)
+                    {
+                        var pick = Candidates(record).FirstOrDefault(v => v.Problem is null && MajorOf(v.Candidate) == major
+                            && (!toRelease || !IsPreviewToken(Token(v.Candidate))));
+                        if (pick is null)
+                        {
+                            // #617 D33: a companion already on the release has nothing to ride with.
+                            if (!toRelease || IsPreviewToken(record.CurrentVersion ?? record.CurrentValue))
+                                missing.Add(record.DepName);
+                        }
+                        else
+                            riders.Add(pick);
+                    }
+                    missing = [.. missing.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)];
+                    if (missing.Count > 0 && !Approved(group, [eco], targets, force: true))
+                    {
+                        var names = missing.Count <= 5 ? string.Join(", ", missing) : $"{string.Join(", ", missing.Take(5))} and {missing.Count - 5} more";
+                        var waitsFor = toRelease ? $"their {major} release" : $"{major}.x";
+                        Report(Entry(target, level, EDependencyReportReason.Pending,
+                            $"waiting on {names} to release {waitsFor}: comment 'approve {group} --force' to move without them"));
+                        return false;
+                    }
+                }
+
+                var ceiling = config.Ceiling(eco, eco);
+                if ((int)level > (int)ceiling)
+                {
+                    Report(Entry(target, level, EDependencyReportReason.AboveAccountRule, $"above the account rule's ceiling ({ceiling.ToString().ToLowerInvariant()})"));
+                    return false;
+                }
+                var threshold = config.Threshold(eco, eco);
+                var approved = false;
+                if ((int)level > (int)config.Inclusion(eco, eco))
+                {
+                    if (!Approved(group, [eco], targets))
+                    {
+                        Report(Entry(target, level, EDependencyReportReason.AwaitingApproval, $"platform {level.ToString().ToLowerInvariant()} {current} → {token}: comment 'approve {group}'"));
+                        return false;
+                    }
+                    approved = true;
+                }
+
+                var (inCooldown, until) = Cooldown(eco, eco, token, target.ReleaseTimestamp, securityFix: false);
+                if (inCooldown)
+                {
+                    Report(Entry(target, level, EDependencyReportReason.Cooldown, $"released less than {Days(config.Cooldown)} ago") with { Until = until });
+                    return false;
+                }
+
+                var settings = config.File.Platform(platform.Sdk);
+                var planGroup = new DependencyPlannedGroup
+                {
+                    Group = group,
+                    Level = level,
+                    // R7: a platform major never auto-merges, whatever the file says.
+                    AutoMerge = (int)level <= (int)threshold && level != EUpdateLevel.Major && !approved,
+                    Approved = approved,
+                    DepNames = [eco],
+                    TargetMajors = targets,
+                    Items = [.. riders.Select(v => new DependencyPlannedItem(v.Record, v.Candidate, v.Level))],
+                    Platform = new PlanPlatform
+                    {
+                        Sdk = platform.Sdk,
+                        FromChannel = current,
+                        ToChannel = target.Channel,
+                        ToVersion = target.LatestVersion,
+                        SdkVersion = target.LatestSdk,
+                        Strategy = settings.Strategy,
+                        KeepPrevious = settings.KeepPrevious,
+                        LockPackageMajor = settings.LockPackageMajor,
+                        Locations = settings.Locations.Count == 0 ? null : [.. settings.Locations],
+                        Exclude = settings.Exclude.Count == 0 ? null : [.. settings.Exclude],
+                    },
+                };
+                if (!Add(planGroup, [Entry(target, level, EDependencyReportReason.NotInSecurityRun, "left for the next scheduled slot (R10)")]))
+                    return false;
                 riding.UnionWith(riders.Select(v => v.Record));
+                return true;
+            }
         }
 
         public DependencyPolicyOutcome Outcome()

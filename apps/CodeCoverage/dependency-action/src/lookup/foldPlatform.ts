@@ -1,4 +1,4 @@
-import type { LookupRecord, PlatformRecord, Sdk } from '../contracts/types';
+import type { LookupRecord, PlatformRecord, PlatformTable, Sdk } from '../contracts/types';
 import { SDKS as ALL_SDKS } from '../contracts/types';
 import { notEditedReason } from '../platform/applyPlatform';
 import { channelOf } from '../platform/channels';
@@ -45,9 +45,13 @@ export interface FoldResult {
  * platform adapter edits (a setup-* `with:` version, a platform image's tag, a version file,
  * .tool-versions, global.json, engines, go.mod) loses every candidate that moves it to another
  * channel: that move is the platform group's, so one approval moves every location to one target.
- * A record left without candidates is dropped; one with in-channel candidates (20.11.0 -> 20.20.2,
- * which the platform plan never does) stays with only those. A workflow's `container:`, `image:` and
+ * A record left without candidates is dropped. A workflow's `container:`, `image:` and
  * `uses: docker://` images are docker locations too (#606 M6), so they fold like a Dockerfile's FROM.
+ *
+ * #617 D29/D34: the in-channel candidates (20.11.0 -> 20.20.2, 11.0.100-rc.2 -> 11.0.100) fold away too when the bot's
+ * table has a row for the location's channel: the platform record then offers that move itself, to one target for every
+ * location (Renovate offered `global.json` nothing beside its `setup-dotnet` siblings, #617 G1). Only a channel the table
+ * has no row for keeps Renovate's in-channel candidates, so each location has exactly one source.
  *
  * Kept whole, because the platform plan would not move it:
  *  - a location the scanner does not recognise;
@@ -55,8 +59,9 @@ export interface FoldResult {
  *  - a location on a lower channel than the platform's current one (the plan's fromChannel is the
  *    highest, so the bot never moves it).
  */
-export function foldPlatformLocations(records: readonly LookupRecord[], found: readonly Found[], platforms: readonly PlatformRecord[]): FoldResult {
+export function foldPlatformLocations(records: readonly LookupRecord[], found: readonly Found[], platforms: readonly PlatformRecord[], table?: PlatformTable): FoldResult {
   const fromChannel = new Map(platforms.map((p) => [p.sdk, p.current.channels[0]] as const));
+  const tabled = (sdk: Sdk, channel: string) => table?.sdks[sdk]?.some((c) => c.channel === channel) === true;
   const out: LookupRecord[] = [];
   const folded: string[] = [];
   for (const record of records) {
@@ -66,10 +71,12 @@ export function foldPlatformLocations(records: readonly LookupRecord[], found: r
       out.push(record);
       continue;
     }
-    const candidates = record.candidates.filter((c) => {
-      const v = c.version ?? c.value;
-      return v === null || channelOf(sdk, v) === location.channel;
-    });
+    const candidates = tabled(sdk, location.channel)
+      ? []
+      : record.candidates.filter((c) => {
+          const v = c.version ?? c.value;
+          return v === null || channelOf(sdk, v) === location.channel;
+        });
     if (candidates.length === 0) {
       // The location is already listed on the platform record, which now carries its only move.
       folded.push(`${record.packageFile} ${record.depName} ${record.currentValue}`);

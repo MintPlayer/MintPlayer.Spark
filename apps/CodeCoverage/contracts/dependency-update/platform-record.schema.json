@@ -29,7 +29,7 @@
         "properties": {
           "file": { "type": "string" },
           "kind": {
-            "enum": ["tfm", "global.json", "dotnet-tools", "docker", "setup-action", "version-file", "engines", "types-node", "tool-versions", "go.mod", "toolchain", "requires-python", "maven-release", "package-version", "composer-require", "composer-platform", "gemfile-ruby", "gemspec-ruby", "rust-toolchain", "rust-version", "matrix"]
+            "enum": ["tfm", "global.json", "dotnet-tools", "docker", "setup-action", "version-file", "engines", "types-node", "tool-versions", "go.mod", "toolchain", "requires-python", "maven-release", "package-version", "composer-require", "composer-platform", "gemfile-ruby", "gemspec-ruby", "rust-toolchain", "rust-version", "matrix", "dotnet-quality"]
           },
           "value": { "type": "string" },
           "channel": { "type": ["string", "null"] },

@@ -19,6 +19,10 @@ public sealed record WorkflowChangeRules(IReadOnlySet<(string Old, string New)> 
     /// Asked only at platform paths: a setup action's version input, a matrix entry (block or flow style), a job's
     /// <c>container</c> image and a service's <c>image</c>.</summary>
     public Func<string, string, bool>? PlatformChange { get; init; }
+
+    /// <summary>#617 D31: (key, value) → a planned platform move removes this <c>with:</c> input of a setup step. Asked only
+    /// for the inputs of <see cref="GitHubWorkflowValidator.RemovableWithKeys"/> (setup-dotnet's <c>dotnet-quality</c>).</summary>
+    public Func<string, string, bool>? RemovableWith { get; init; }
 }
 
 /// <summary>One scalar the change altered, at a dotted path such as <c>jobs.build.steps[1].uses</c>.</summary>
@@ -50,6 +54,14 @@ public sealed partial class GitHubWorkflowValidator : IContentValidator
             ["actions/setup-java"] = new HashSet<string>(StringComparer.Ordinal) { "java-version" },
             ["actions/setup-go"] = new HashSet<string>(StringComparer.Ordinal) { "go-version" },
             ["ruby/setup-ruby"] = new HashSet<string>(StringComparer.Ordinal) { "ruby-version" },
+        };
+
+    /// <summary>#617 D31: the closed list of setup-action inputs a platform move may remove: setup-dotnet's
+    /// <c>dotnet-quality</c>, which names the preview a release no longer needs. Never configurable.</summary>
+    public static IReadOnlyDictionary<string, IReadOnlySet<string>> RemovableWithKeys { get; } =
+        new Dictionary<string, IReadOnlySet<string>>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["actions/setup-dotnet"] = new HashSet<string>(StringComparer.Ordinal) { "dotnet-quality" },
         };
 
     /// <summary>Every key of <see cref="SetupActionVersionKeys"/>.</summary>
@@ -199,11 +211,14 @@ public sealed partial class GitHubWorkflowValidator : IContentValidator
         switch (b, a)
         {
             case (YamlMapping bm, YamlMapping am):
-                if (bm.IsFlow != am.IsFlow || bm.Entries.Count != am.Entries.Count)
+                var entries = bm.Entries;
+                if (!bm.IsFlow && !am.IsFlow && bm.Entries.Count > am.Entries.Count)
+                    entries = WithoutRemoved(bm, path, here, afterRoot, rules, changes);
+                if (bm.IsFlow != am.IsFlow || entries.Count != am.Entries.Count)
                     throw new Refused(ContentVerdict.Invalid("a mapping's keys or style changed", am.Line, am.Column));
-                for (var i = 0; i < bm.Entries.Count; i++)
+                for (var i = 0; i < entries.Count; i++)
                 {
-                    var (bk, bv) = bm.Entries[i];
+                    var (bk, bv) = entries[i];
                     var (ak, av) = am.Entries[i];
                     if (bk.Value != ak.Value || bk.Style != ak.Style || bk.Anchor != ak.Anchor || bk.Tag != ak.Tag)
                         throw new Refused(ContentVerdict.Invalid("a mapping's keys or style changed", ak.Line, ak.Column));
@@ -237,6 +252,36 @@ public sealed partial class GitHubWorkflowValidator : IContentValidator
                 changes.Add(new WorkflowChange(string.Join('.', path).Replace(".[", "[", StringComparison.Ordinal), bsc.Value, asc.Value, asc.Line));
                 return;
         }
+    }
+
+    /// <summary>
+    /// #617 D31: a setup step's block <c>with:</c> mapping without the entries a planned move removes: a key of
+    /// <see cref="RemovableWithKeys"/> for the step's action, a plain or quoted scalar not anchored or reached through an
+    /// alias, that <see cref="WorkflowChangeRules.RemovableWith"/> admits. Each removal is a change with an empty new value;
+    /// the remaining entries are then compared as usual, so nothing else may go.
+    /// </summary>
+    private static List<KeyValuePair<YamlScalar, YamlNode>> WithoutRemoved(YamlMapping before, List<string> path, Inherited here,
+        YamlMapping afterRoot, WorkflowChangeRules rules, List<WorkflowChange> changes)
+    {
+        var withPath = path.Count > 0 && path[^1] == "with" ? WithStepPath([.. path, "_"]) : null;
+        if (rules.RemovableWith is null || here.ViaAlias || here.Anchored || before.Anchor is not null || withPath is null
+            || NodeAt(afterRoot, withPath) is not YamlMapping step
+            || step["uses"] is not { } usesNode || YamlDocument.Resolve(usesNode) is not YamlScalar uses
+            || RemoteUses().Match(uses.Value) is not { Success: true } action
+            || !RemovableWithKeys.TryGetValue(action.Groups["action"].Value, out var removable))
+            return before.Entries;
+        var kept = new List<KeyValuePair<YamlScalar, YamlNode>>();
+        foreach (var entry in before.Entries)
+        {
+            if (removable.Contains(entry.Key.Value) && entry.Key.Anchor is null && entry.Value is YamlScalar value
+                && value.Anchor is null && !value.IsBlock && rules.RemovableWith(entry.Key.Value, value.Value))
+            {
+                changes.Add(new WorkflowChange(string.Join('.', [.. path, entry.Key.Value]).Replace(".[", "[", StringComparison.Ordinal), value.Value, string.Empty, value.Line));
+                continue;
+            }
+            kept.Add(entry);
+        }
+        return kept;
     }
 
     private static bool IsUsesPath(List<string> p)
