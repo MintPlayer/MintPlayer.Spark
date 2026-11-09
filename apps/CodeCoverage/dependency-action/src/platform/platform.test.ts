@@ -2,9 +2,9 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { copyTree, diffPairs, fixture, readFixture, readJsonFixture, tempDir, writeTree, type LinePair } from '../testing/helpers';
 import { directoryFiles } from '../util/repoFiles';
-import { applyPlatform, nextTfmList } from './applyPlatform';
+import { applyPlatform, nextTfmList, notEditedReason } from './applyPlatform';
 import { channelOf, compareChannels, rewriteTfm, rewriteVersionValue } from './channels';
-import { buildPlatformRecord, candidatesFromEndOfLife, candidatesFromReleasesIndex, type EndOfLifeCycle, type ReleasesIndexEntry } from './feeds';
+import { buildPlatformRecord, parsePlatformTable } from './feeds';
 import { scanLocations } from './locations';
 
 const NOW = new Date('2026-10-16T08:00:00Z');
@@ -21,6 +21,14 @@ describe('channels', () => {
     ['go', '1.21.5', '1.21'],
     ['go', 'go1.22', '1.22'],
     ['node', 'lts/*', null],
+    ['php', '8.4.14', '8.4'],
+    ['php', '8.4-fpm', '8.4'],
+    ['php', '8.6.0RC5', '8.6'],
+    ['ruby', 'ruby-3.4.7', '3.4'],
+    ['ruby', '4.1.0-preview1', '4.1'],
+    ['rust', '1.99.0', '1.99'],
+    ['rust', '1.100.0-beta.13', '1.100'],
+    ['rust', 'stable', null],
   ] as const)('%s %s -> %s', (sdk, v, ch) => expect(channelOf(sdk, v)).toBe(ch));
 
   it('compares numerically', () => {
@@ -51,26 +59,28 @@ describe('channels', () => {
   });
 });
 
-describe('platform feeds (real captures, test/fixtures/platform-feeds)', () => {
-  it('releases-index.json: channels, the go-live 11.0 is a preview, eol phases', () => {
-    const c = candidatesFromReleasesIndex(readJsonFixture<{ 'releases-index': ReleasesIndexEntry[] }>('platform-feeds/releases-index.json'));
-    const eleven = c.find((x) => x.channel === '11.0')!;
-    expect(eleven).toMatchObject({ preview: true, latestVersion: '11.0.0-rc.2', latestSdk: '11.0.100-rc.2.26504.105', lts: false });
-    expect(c.find((x) => x.channel === '10.0')).toMatchObject({ preview: false, lts: true });
-    expect(c.every((x) => Number(x.channel.split('.')[0]) >= 5)).toBe(true);
+describe('the platform table (#606 D9, test/fixtures/platform-feeds/platform-table.json)', () => {
+  const raw = readFixture('platform-feeds/platform-table.json');
+
+  it('parses the table the bot dispatches', () => {
+    const table = parsePlatformTable(raw);
+    expect(table.sdks.dotnet!.find((x) => x.channel === '11.0')).toMatchObject({ preview: true, latestVersion: '11.0.0-rc.2', latestSdk: '11.0.100-rc.2.26504.105', lts: false });
+    expect(table.sdks.node!.find((x) => x.channel === '26')).toMatchObject({ latestVersion: '26.12.0', preview: false });
+    expect(table.sdks.java!.find((x) => x.channel === '25')?.lts).toBe(true);
+    expect(table.unstable).toEqual([]);
   });
 
-  it('endoflife.date: node cycles, java temurin, go', () => {
-    const node = candidatesFromEndOfLife('node', readJsonFixture<EndOfLifeCycle[]>('platform-feeds/nodejs.json'));
-    expect(node.find((x) => x.channel === '26')).toMatchObject({ latestVersion: '26.12.0', preview: false });
-    const go = candidatesFromEndOfLife('go', readJsonFixture<EndOfLifeCycle[]>('platform-feeds/go.json'));
-    expect(go.every((x) => /^1\.\d+$/.test(x.channel))).toBe(true);
-    const java = candidatesFromEndOfLife('java', readJsonFixture<EndOfLifeCycle[]>('platform-feeds/eclipse-temurin.json'));
-    expect(java.find((x) => x.channel === '25')?.lts).toBe(true);
-  });
+  it.each([
+    ['', /dependency-lookup workflow/],
+    ['nope', /JSON channel table/],
+    ['{"sdks":[],"unstable":[]}', /sdks must be an object/],
+    ['{"sdks":{},"unstable":[1]}', /unstable must be an array of package globs/],
+    ['{"sdks":{"node":{}},"unstable":[]}', /sdks.node must be an array/],
+    ['{"sdks":{"node":[{"channel":"lts"}]},"unstable":[]}', /channel such as/],
+  ])('refuses %j', (input, error) => expect(() => parsePlatformTable(input)).toThrow(error));
 
   it('a record lists only newer, non-EOL channels, previews flagged', () => {
-    const feed = candidatesFromReleasesIndex(readJsonFixture<{ 'releases-index': ReleasesIndexEntry[] }>('platform-feeds/releases-index.json'));
+    const feed = parsePlatformTable(raw).sdks.dotnet!;
     const loc = { sdk: 'dotnet' as const, file: 'a.csproj', kind: 'tfm' as const, value: 'net10.0', channel: '10.0', computed: false, reason: null, line: 0, start: 0, end: 7 };
     const rec = buildPlatformRecord('dotnet', [loc], feed, NOW);
     expect(rec.current).toEqual({ channels: ['10.0'], preview: false });
@@ -88,7 +98,8 @@ describe('location scanning on file trees', () => {
     expect(by('dotnet', 'docker')).toEqual(['Dockerfile=8.0.100', 'Dockerfile=8.0']);
     expect(by('dotnet', 'setup-action')).toEqual(['.github/workflows/ci.yml=8.0.100']);
     expect(by('node', 'version-file').sort()).toEqual(['.node-version=20.11.0', '.nvmrc=20.11.0']);
-    expect(by('node', 'docker')).toEqual(['Dockerfile=20.11.0-alpine']);
+    // #606 M6: a workflow's `container:` image is a docker location too.
+    expect(by('node', 'docker')).toEqual(['.github/workflows/ci.yml=18.19.0', 'Dockerfile=20.11.0-alpine']);
     expect(by('node', 'setup-action')).toEqual(['.github/workflows/ci.yml=20.11.0']);
     expect(by('node', 'tool-versions')).toEqual(['.tool-versions=20.11.0']);
     expect(by('python', 'docker')).toEqual(['Dockerfile=3.11-slim (computed)']);
@@ -116,6 +127,65 @@ describe('location scanning on file trees', () => {
       ['src/Multi/Multi.csproj', 'net10.0;net48', '10.0', false],
     ]);
     expect(found.filter((f) => f.kind === 'package-version')).toEqual([]);
+  });
+
+  it('S4: PHP, Ruby and Rust locations in real repositories; ranges and the MSRV reported, never edited (#606 D10/D11)', async () => {
+    // Each directory is a repository of its own: a workflow is only one at the root's `.github/workflows/`.
+    const root = fixture('platform/s4-php-ruby-rust');
+    const found: Awaited<ReturnType<typeof scanLocations>> = [];
+    for (const repo of fs.readdirSync(root, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name).sort()) {
+      for (const f of await scanLocations(directoryFiles(path.join(root, repo)), ['php', 'ruby', 'rust'])) found.push({ ...f, file: `${repo}/${f.file}` });
+    }
+    const row = (f: (typeof found)[number]) => `${f.file} ${f.kind}=${f.value} ${f.channel ?? '-'}${notEditedReason(f) === null ? '' : ' (reported)'}`;
+    expect(found.filter((f) => f.kind !== 'matrix').map(row).sort()).toEqual([
+      'discourse/Gemfile gemfile-ruby=~> 4.0.0 - (reported)',
+      'laravel/composer.json composer-require=^8.3 - (reported)',
+      'mastodon/.ruby-version version-file=4.0.9 4.0',
+      ...Array(3).fill('rubocop/.github/workflows/rubocop.yml setup-action=${{ matrix.ruby }} - (reported)'),
+      'rubocop/.github/workflows/rubocop.yml setup-action=2.7 2.7',
+      'rubocop/.github/workflows/rubocop.yml setup-action=jruby -',
+      'rubocop/.github/workflows/rubocop.yml setup-action=ruby -',
+      'rubocop/rubocop.gemspec gemspec-ruby=>= 2.7.0 - (reported)',
+      'ruff/Cargo.toml rust-version=1.97 - (reported)',
+      'ruff/rust-toolchain.toml rust-toolchain=1.99.0 1.99',
+      'symfony-demo/composer.json composer-platform=8.4.1 8.4',
+      'symfony-demo/composer.json composer-require=>=8.4 - (reported)',
+    ].sort());
+    // mastodon's `ruby file: '.ruby-version'` names no version; laravel/framework's local composite action is not setup-php.
+    expect(found.some((f) => f.file === 'mastodon/Gemfile' || f.file.startsWith('laravel-framework/'))).toBe(false);
+  });
+
+  it('M6: the matrix lists a setup-* step reads, inline and block, on a real workflow (rubocop)', async () => {
+    const found = await scanLocations(directoryFiles(fixture('platform/s4-php-ruby-rust/rubocop')), ['ruby']);
+    const matrix = found.filter((f) => f.kind === 'matrix').map((f) => `${f.line + 1}:${f.value}=${f.channel ?? '-'}`);
+    expect(matrix).toEqual([
+      ...['2.7', '3.0', '3.1', '3.2', '3.3', '3.4', '4.0'].map((v) => `28:${v}=${v}`),
+      '28:head=-',
+      '67:2.7=2.7',
+      '68:ruby=-',
+      '94:2.7=2.7',
+      '95:ruby=-',
+    ]);
+    // The token span is the value inside its quotes, so an edit keeps them.
+    const doc = fs.readFileSync(fixture('platform/s4-php-ruby-rust/rubocop/.github/workflows/rubocop.yml'), 'utf8').split('\n');
+    for (const f of found.filter((x) => x.kind === 'matrix')) expect(doc[f.line].replace(/\r$/, '').slice(f.start, f.end)).toBe(f.value);
+  });
+
+  it('M6: workflow images (container:, image:, uses: docker://) are docker locations', async () => {
+    const root = tempDir();
+    writeTree(root, {
+      '.github/workflows/ci.yml':
+        'jobs:\n  a:\n    container: node:22.11.0\n    services:\n      db:\n        image: postgres:16\n    steps:\n      - uses: docker://node:22-alpine\n      - uses: actions/setup-node@v4\n  b:\n    container:\n      image: "node:20"\n',
+    });
+    const found = await scanLocations(directoryFiles(root), ['node']);
+    expect(found.filter((f) => f.kind === 'docker').map((f) => `${f.line + 1}:${f.value}=${f.channel}`)).toEqual(['3:22.11.0=22', '8:22-alpine=22', '12:20=20']);
+    const { read } = await applyOn(
+      { '.github/workflows/ci.yml': 'jobs:\n  a:\n    container: node:22.11.0\n    strategy:\n      matrix:\n        node: [20, 22]\n    steps:\n      - uses: actions/setup-node@v4\n        with:\n          node-version: ${{ matrix.node }}\n' },
+      { sdk: 'node', fromChannel: '22', toChannel: '24', toVersion: '24.11.1' },
+    );
+    expect(read('.github/workflows/ci.yml')).toBe(
+      'jobs:\n  a:\n    container: node:24.11.1\n    strategy:\n      matrix:\n        node: [20, 24]\n    steps:\n      - uses: actions/setup-node@v4\n        with:\n          node-version: ${{ matrix.node }}\n',
+    );
   });
 });
 
@@ -169,6 +239,19 @@ describe('applyPlatform', () => {
     expect(read('C.csproj')).toBe(files['C.csproj']);
   });
 
+  it('S5: a condition that tests the TFM for the old channel is reported beside the move, never edited', async () => {
+    const project =
+      '<Project>\n  <PropertyGroup>\n    <TargetFramework>net10.0</TargetFramework>\n  </PropertyGroup>\n' +
+      '  <PropertyGroup Condition="\'$(TargetFramework)\' == \'net10.0\'">\n    <DefineConstants>NET10</DefineConstants>\n  </PropertyGroup>\n' +
+      '  <ItemGroup Condition="$([MSBuild]::IsTargetFrameworkCompatible(\'$(TargetFramework)\', \'net10.0\'))">\n  </ItemGroup>\n</Project>\n';
+    const { result, read } = await applyOn({ 'A.csproj': project }, dotnet);
+    expect(result.edited).toEqual(['A.csproj']);
+    expect(result.reported).toHaveLength(1);
+    expect(result.reported[0]).toMatchObject({ file: 'A.csproj', value: "'$(TargetFramework)' == 'net10.0'" });
+    expect(result.reported[0].reason).toContain('PropertyGroup condition');
+    expect(read('A.csproj')).toBe(project.replace('<TargetFramework>net10.0<', '<TargetFramework>net11.0<'));
+  });
+
   it('lockPackageMajor moves the project version major only when opted in', async () => {
     const files = { 'Directory.Build.props': '<Project><PropertyGroup>\n<TargetFramework>net10.0</TargetFramework>\n<Version>10.0.0-preview.84</Version>\n</PropertyGroup></Project>\n' };
     expect((await applyOn(files, dotnet)).read('Directory.Build.props')).toContain('<Version>10.0.0-preview.84</Version>');
@@ -216,6 +299,39 @@ describe('applyPlatform', () => {
     const go = await applyOn({ 'go.mod': 'module x\n\ngo 1.24\n\ntoolchain go1.24.3\n', Dockerfile: 'FROM golang:1.24-alpine\n' }, { sdk: 'go', fromChannel: '1.24', toChannel: '1.25', toVersion: '1.25.2' });
     expect(go.read('go.mod')).toBe('module x\n\ngo 1.25\n\ntoolchain go1.25.2\n');
     expect(go.read('Dockerfile')).toBe('FROM golang:1.25-alpine\n');
+  });
+
+  it('php, ruby and rust (#606 D10/D11): exact pins move, ranges and the MSRV are reported', async () => {
+    const php = await applyOn(
+      { 'composer.json': '{\n  "require": {\n    "php": ">=8.4"\n  },\n  "config": {\n    "platform": {\n      "php": "8.4.1"\n    }\n  }\n}\n', Dockerfile: 'FROM php:8.4-fpm\n' },
+      { sdk: 'php', fromChannel: '8.4', toChannel: '8.5', toVersion: '8.5.1' },
+    );
+    expect(php.read('composer.json')).toContain('"php": ">=8.4"');
+    expect(php.read('composer.json')).toContain('"php": "8.5.1"');
+    expect(php.read('Dockerfile')).toBe('FROM php:8.5-fpm\n');
+    expect(php.result.reported).toEqual([expect.objectContaining({ file: 'composer.json' })]);
+
+    const ruby = await applyOn(
+      { '.ruby-version': '3.4.7\n', Gemfile: 'source "https://rubygems.org"\nruby "3.4.7"\n', 'x.gemspec': 'Gem::Specification.new do |s|\n  s.required_ruby_version = ">= 3.2"\nend\n' },
+      { sdk: 'ruby', fromChannel: '3.4', toChannel: '4.0', toVersion: '4.0.1' },
+    );
+    expect(ruby.read('.ruby-version')).toBe('4.0.1\n');
+    expect(ruby.read('Gemfile')).toBe('source "https://rubygems.org"\nruby "4.0.1"\n');
+    expect(ruby.result.reported).toEqual([expect.objectContaining({ file: 'x.gemspec' })]);
+
+    const rust = await applyOn(
+      { 'rust-toolchain.toml': '[toolchain]\nchannel = "1.99.0"\n', 'Cargo.toml': '[package]\nrust-version = "1.97"\n' },
+      { sdk: 'rust', fromChannel: '1.99', toChannel: '1.100', toVersion: '1.100.0' },
+    );
+    expect(rust.read('rust-toolchain.toml')).toBe('[toolchain]\nchannel = "1.100.0"\n');
+    expect(rust.read('Cargo.toml')).toBe('[package]\nrust-version = "1.97"\n');
+
+    // Preview = the beta channel: the pinned toolchain moves to the dated beta the plan names.
+    const beta = await applyOn(
+      { 'rust-toolchain.toml': '[toolchain]\nchannel = "1.99.0"\n' },
+      { sdk: 'rust', fromChannel: '1.99', toChannel: '1.100', toVersion: '1.100.0-beta.13', sdkVersion: 'beta-2026-11-08' },
+    );
+    expect(beta.read('rust-toolchain.toml')).toBe('[toolchain]\nchannel = "beta-2026-11-08"\n');
   });
 });
 

@@ -97,6 +97,39 @@ public class DependencyFleetViewTests
         readiness.Blockers.Should().ContainSingle().Which.Should().Be(new DependencyBlockerCount("@nx/angular", 1));
     }
 
+    /// <summary>#606 M7: an SDK's readiness reads the lookup's platform record, and a move pending on companions is blocked.</summary>
+    [Fact]
+    public void Sdk_readiness_reads_the_lookups_channel_and_a_pending_move_is_blocked()
+    {
+        var app = Repo(1, "app");
+        var lib = Repo(2, "lib");
+        var web = Repo(3, "web");
+        static RepositoryManifest On(string channel, string? preview = null) => new()
+        {
+            LookupAt = DependencyTestKit.Now,
+            LookupPlatforms = [new ManifestPlatform { Sdk = "dotnet", Channels = [channel], NextPreview = preview }],
+        };
+        DependencyReportEntry Move(EDependencyReportReason reason, string detail)
+            => new("platform:dotnet 11.0", "platform:dotnet", "platform:dotnet", "global.json", "10.0", "11.0", EUpdateLevel.Major, reason, detail);
+        var input = new DependencyFleetInput
+        {
+            Repositories = [app, lib, web],
+            Now = DependencyTestKit.Now,
+            Manifests = new Dictionary<string, RepositoryManifest> { [app.Id!] = On("10.0", "11.0"), [lib.Id!] = On("10.0", "11.0"), [web.Id!] = On("11.0") },
+            Reports = new Dictionary<string, DependencyRunReport>
+            {
+                [app.Id!] = new() { AwaitingApproval = [Move(EDependencyReportReason.AwaitingApproval, "a major")] },
+                [lib.Id!] = new() { Held = [Move(EDependencyReportReason.Pending, "waiting on Microsoft.Extensions.Hosting to release 11.x")] },
+            },
+        };
+
+        var readiness = DependencyFleetView.Build(input).Readiness.Should().ContainSingle().Which;
+
+        (readiness.Platform, readiness.NextMajor, readiness.Ready, readiness.Total).Should().Be((".NET", "11", 2, 3));
+        readiness.Repositories.Select(r => $"{r.FullName} {r.Current}: {r.Status}").Should().Equal(["acme/app 10.0: ready", "acme/lib 10.0: blocked", "acme/web 11.0: on-target"]);
+        DependencyFleetView.Status(input, app).Platforms.Should().ContainSingle().Which.Should().BeEquivalentTo(new { Sdk = "dotnet", Channels = new[] { "10.0" }, NextStable = (string?)null, NextPreview = "11.0" });
+    }
+
     [Fact]
     public void A_platform_everyone_is_on_is_not_listed()
     {

@@ -62,11 +62,11 @@
       "additionalProperties": false,
       "required": ["sdk", "fromChannel", "toChannel"],
       "properties": {
-        "sdk": { "enum": ["dotnet", "node", "python", "java", "go"] },
+        "sdk": { "enum": ["dotnet", "node", "python", "java", "go", "php", "ruby", "rust"] },
         "fromChannel": { "type": "string", "pattern": "^[0-9]+(\\.[0-9]+)?$" },
         "toChannel": { "type": "string", "pattern": "^[0-9]+(\\.[0-9]+)?$" },
         "toVersion": { "type": ["string", "null"], "description": "Latest full version of the target channel (for locations holding a full version)." },
-        "sdkVersion": { "type": ["string", "null"], "description": "dotnet: the SDK version written to global.json." },
+        "sdkVersion": { "type": ["string", "null"], "description": "dotnet: the SDK version written to global.json. rust: the dated beta toolchain (beta-YYYY-MM-DD) a preview move pins (#606 D11)." },
         "strategy": { "enum": ["replace", "add"] },
         "keepPrevious": { "type": "integer", "minimum": 0, "maximum": 5 },
         "lockPackageMajor": { "type": "boolean", "description": "Also move the repo's own <Version> major to the platform major (explicit opt-in, R8)." },

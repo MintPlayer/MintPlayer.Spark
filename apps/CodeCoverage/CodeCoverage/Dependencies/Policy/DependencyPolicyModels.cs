@@ -89,6 +89,13 @@ public enum EDependencyReportReason
 
     /// <summary>#568 D13: above what a release line's run takes (<c>dependencies.lines</c>; never a major).</summary>
     AboveLineCeiling,
+
+    /// <summary>#606 D3: an SDK move waiting until every companion has a release at the new major;
+    /// <c>approve &lt;group&gt; --force</c> takes it anyway.</summary>
+    Pending,
+
+    /// <summary>#606 D2: a companion's next major, which moves only with its SDK's platform group.</summary>
+    MovesWithPlatform,
 }
 
 /// <summary>One line of the pull request body's available / held / awaiting-approval / ignored tables.</summary>

@@ -22,6 +22,17 @@
         "rules": []
       },
       {
+        "id": "34838dca-27ea-4678-85bc-5dd5d3437546",
+        "name": "Channel",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 12,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
         "id": "d644f406-f8e7-4e51-9871-0f94194b8d4c",
         "name": "CollectedAtUtc",
         "dataType": "datetime",
@@ -39,6 +50,28 @@
         "isRequired": true,
         "isReadOnly": false,
         "order": 5,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "bbf30fe4-8cd9-4c9b-b90f-32c476b01a98",
+        "name": "LatestReleasedOn",
+        "dataType": "datetime",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 13,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "779f090f-2e22-4b28-9940-15f7683c7acd",
+        "name": "LatestSdk",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 14,
         "isArray": false,
         "showedOn": "Query, PersistentObject",
         "rules": []

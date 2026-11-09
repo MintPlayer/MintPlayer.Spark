@@ -6,7 +6,7 @@ import type { Sdk } from '../contracts/types';
  * tokens; full versions come from the official feed (D-S12c), never from arithmetic.
  */
 export function channelOf(sdk: Sdk, version: string): string | null {
-  const v = version.trim().replace(/^(v|go|temurin-|openjdk-|zulu-|corretto-|adoptopenjdk-)/i, '');
+  const v = version.trim().replace(/^(v|go|temurin-|openjdk-|zulu-|corretto-|adoptopenjdk-|ruby-)/i, '');
   let m: RegExpMatchArray | null;
   switch (sdk) {
     case 'dotnet':
@@ -15,9 +15,14 @@ export function channelOf(sdk: Sdk, version: string): string | null {
     case 'node':
       m = v.match(/^(\d+)(?=$|[.\-x*])/);
       return m ? m[1] : null;
+    // #606 D10/D11: a release line per minor. PHP '8.4' (8.4.14, 8.4-fpm, 8.6.0RC5), Ruby '3.4' (3.4.7,
+    // 4.1.0-preview1), Rust '1.99' (1.99.0, 1.100.0-beta.13).
     case 'python':
     case 'go':
-      m = v.match(/^(\d+)\.(\d+)(?=$|[.\-x*a-z])/);
+    case 'php':
+    case 'ruby':
+    case 'rust':
+      m = v.match(/^(\d+)\.(\d+)(?=$|[.\-x*a-zA-Z])/);
       return m ? `${m[1]}.${m[2]}` : null;
     case 'java':
       m = v.match(/^1\.(\d+)(?=$|[._\-])/) ?? v.match(/^(\d+)(?=$|[.+_\-])/);
@@ -77,5 +82,6 @@ export function tfmChannel(tfm: string): string | null {
 }
 
 export function isPreviewVersion(v: string): boolean {
-  return /-(preview|rc|alpha|beta)/i.test(v);
+  // PHP spells its candidates without a dash (8.6.0RC5); Python too (3.16.0a1, 3.15.0rc2).
+  return /-(preview|rc|alpha|beta)/i.test(v) || /^\d+\.\d+\.\d+(RC|alpha|beta|a|b|rc)\d+$/.test(v);
 }

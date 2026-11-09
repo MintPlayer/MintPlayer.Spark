@@ -1,7 +1,7 @@
 {
   "contractVersion": 1,
   "kind": "platform",
-  "sdk": "ruby",
+  "sdk": "swift",
   "source": "endoflife.date",
   "current": {
     "channels": [

@@ -45,7 +45,8 @@ namespace CodeCoverage.Dependencies;
 ///     - match: "@angular/core"
 ///       onMajor: angular-migrate.yml
 ///   platforms:                        # R8
-///     dotnet: { strategy: replace, keepPrevious: 0, lockPackageMajor: false, locations: [], exclude: [] }
+///     dotnet: { track: stable, strategy: replace, keepPrevious: 0, lockPackageMajor: false, locations: [], exclude: [],
+///               companions: ["Microsoft.AspNetCore.*"] }   # #606: track lts|stable|preview; companions move with the major
 ///   lockFileMaintenance: false        # D-S12e, off by default
 ///   registries: ["npm.pkg.github.com"]   # gap B: extra lockfile hosts besides the public registries
 /// </code>
@@ -56,8 +57,11 @@ public static partial class DependenciesYml
     public const string DefaultLookupAction = "dependency-lookup.yml";
     public const string DefaultApplyAction = "dependency-apply.yml";
 
-    /// <summary>The SDKs a platform adapter exists for (R7).</summary>
-    public static IReadOnlyList<string> PlatformSdks { get; } = ["dotnet", "node", "python", "java", "go"];
+    /// <summary>The SDKs a platform adapter exists for (R7, #606 D10).</summary>
+    public static IReadOnlyList<string> PlatformSdks { get; } = ["dotnet", "node", "python", "java", "go", "php", "ruby", "rust"];
+
+    /// <summary>#606 D8: the SDKs whose release feed flags LTS releases; <c>track: lts</c> is refused for any other.</summary>
+    public static IReadOnlyList<string> LtsSdks { get; } = ["dotnet", "node", "java"];
 
     private static readonly IDeserializer Deserializer = new DeserializerBuilder()
         .WithNamingConvention(CamelCaseNamingConvention.Instance)
@@ -121,8 +125,10 @@ public static partial class DependenciesYml
                 "true" => "held by coverage.yml",
                 var reason => reason,
             };
+            var track = Track(rule.Track, $"{key}.track", errors);
+            if (track == EDependencyTrack.Lts) errors.Add($"{key}.track: a package has no LTS releases; use stable or preview (lts is for platforms).");
             section.Rules.Add(new DependencyFileRule(match, Ecosystem(rule.Ecosystem, $"{key}.ecosystem", errors), rule.AllowMajor,
-                string.IsNullOrEmpty(group) ? null : group, rule.Ignore ?? false, hold));
+                string.IsNullOrEmpty(group) ? null : group, rule.Ignore ?? false, hold, track));
         }
 
         foreach (var path in Strings(file.Exclude, "dependencies.exclude", errors))
@@ -163,7 +169,12 @@ public static partial class DependenciesYml
             var exclude = Strings(platform?.Exclude, $"{key}.exclude", errors);
             foreach (var path in locations.Concat(exclude).Where(p => !IsPathGlob(p)))
                 errors.Add($"{key}: '{path}' is not a path glob.");
-            section.Platforms[sdk] = new DependencyPlatformSettings(strategy, Math.Clamp(keepPrevious, 0, 5), platform?.LockPackageMajor ?? false, locations, exclude);
+            var track = Track(platform?.Track, $"{key}.track", errors);
+            if (track == EDependencyTrack.Lts && !LtsSdks.Contains(sdk, StringComparer.Ordinal))
+                errors.Add($"{key}.track: {sdk}'s release feed names no LTS releases; use stable or preview (lts is for {string.Join(", ", LtsSdks)}).");
+            IReadOnlyList<string>? companions = platform?.Companions is null ? null : Strings(platform.Companions, $"{key}.companions", errors);
+            section.Platforms[sdk] = new DependencyPlatformSettings(strategy, Math.Clamp(keepPrevious, 0, 5), platform?.LockPackageMajor ?? false, locations, exclude,
+                track, companions);
         }
 
         section.LockFileMaintenance = file.LockFileMaintenance ?? false;
@@ -188,6 +199,16 @@ public static partial class DependenciesYml
         if (section.Lines == EDependencyLineUpdates.Off) fallback.Lines = EDependencyLineUpdates.Off;
         return new DependenciesYmlResult(fallback, errors);
     }
+
+    /// <summary>#606 D8: <c>lts</c>, <c>stable</c> or <c>preview</c>; <see cref="EDependencyTrack.Inherit"/> when absent.</summary>
+    private static EDependencyTrack Track(string? value, string key, List<string> errors) => value?.Trim().ToLowerInvariant() switch
+    {
+        null or "" => EDependencyTrack.Inherit,
+        "lts" => EDependencyTrack.Lts,
+        "stable" => EDependencyTrack.Stable,
+        "preview" => EDependencyTrack.Preview,
+        var other => Error(errors, $"{key} '{other}' is not lts, stable or preview.", EDependencyTrack.Inherit),
+    };
 
     /// <summary>#568 D13: what a release line's own run may update; <c>patch</c> when absent.</summary>
     private static EDependencyLineUpdates Lines(string? value, List<string> errors) => value?.Trim().ToLowerInvariant() switch
@@ -400,6 +421,7 @@ public static partial class DependenciesYml
         public string? Group { get; set; }
         public bool? Ignore { get; set; }
         public string? Hold { get; set; }
+        public string? Track { get; set; }
     }
 
     private sealed class FileMigrate
@@ -415,6 +437,8 @@ public static partial class DependenciesYml
         public bool? LockPackageMajor { get; set; }
         public object? Locations { get; set; }
         public object? Exclude { get; set; }
+        public string? Track { get; set; }
+        public object? Companions { get; set; }
     }
 }
 
@@ -448,13 +472,19 @@ public sealed record DependencyThresholdGlob(string Glob, EDependencyThreshold T
 
 /// <summary>A <c>rules</c> entry, or an <c>ignore</c> glob as a rule.</summary>
 /// <param name="Hold">A reason when the rule holds the matching dependencies; null otherwise.</param>
-public sealed record DependencyFileRule(IReadOnlyList<string> Match, string? Ecosystem, bool? AllowMajor, string? Group, bool Ignore, string? Hold);
+/// <param name="Track">#606 D8: <c>stable</c> or <c>preview</c> (<see cref="EDependencyTrack.Inherit"/> when the rule sets none).</param>
+public sealed record DependencyFileRule(IReadOnlyList<string> Match, string? Ecosystem, bool? AllowMajor, string? Group, bool Ignore, string? Hold,
+    EDependencyTrack Track = EDependencyTrack.Inherit);
 
 /// <summary>A <c>migrate</c> entry (R9): the workflow dispatched after an approved major of a matching dependency.</summary>
 public sealed record DependencyMigrateRule(IReadOnlyList<string> Match, string OnMajor);
 
-/// <summary><c>platforms.&lt;sdk&gt;</c> (R8).</summary>
-public sealed record DependencyPlatformSettings(string Strategy, int KeepPrevious, bool LockPackageMajor, IReadOnlyList<string> Locations, IReadOnlyList<string> Exclude)
+/// <summary><c>platforms.&lt;sdk&gt;</c> (R8, #606).</summary>
+/// <param name="Track">D8: which channels are offered; <see cref="EDependencyTrack.Inherit"/> defers to the account rules, then stable.</param>
+/// <param name="Companions">D2: package globs that move with the SDK's major; null keeps the built-in list
+/// (<see cref="Policy.DependencyCompanions"/>), an empty list turns companions off.</param>
+public sealed record DependencyPlatformSettings(string Strategy, int KeepPrevious, bool LockPackageMajor, IReadOnlyList<string> Locations, IReadOnlyList<string> Exclude,
+    EDependencyTrack Track = EDependencyTrack.Inherit, IReadOnlyList<string>? Companions = null)
 {
     public static DependencyPlatformSettings Default { get; } = new("replace", 0, false, [], []);
 }

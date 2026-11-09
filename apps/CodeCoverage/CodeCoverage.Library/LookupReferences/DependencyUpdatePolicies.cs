@@ -133,6 +133,38 @@ public enum EDependencyThreshold
     Major,
 }
 
+/// <summary>
+/// Which releases an SDK, or a package, is offered from (#606 D8): <c>lts &lt; stable &lt; preview</c>. On an account's
+/// <c>DependencyRule</c> it is the rule's default track, or, for an enforced rule, the widest track the repository may choose.
+/// </summary>
+/// <remarks>⚠️ <see cref="Inherit"/> is the zero value on purpose: a rule written before the field existed sets no track. The
+/// order of the other members IS the order of the tracks; code compares them.</remarks>
+public enum EDependencyTrack
+{
+    Inherit,
+
+    Lts,
+
+    Stable,
+
+    Preview,
+}
+
+public sealed class DependencyTrack : TransientLookupReference<EDependencyTrack>
+{
+    private DependencyTrack() { }
+
+    public override ELookupDisplayType DisplayType => ELookupDisplayType.Dropdown;
+
+    public static IReadOnlyCollection<DependencyTrack> Items { get; } =
+    [
+        new DependencyTrack { Key = EDependencyTrack.Inherit, Description = "No track: the repository's file or the built-in stable decides", Values = _TS("No track", "Aucune piste", "Geen spoor") },
+        new DependencyTrack { Key = EDependencyTrack.Lts, Description = "Only long-term-support releases (SDKs whose feed names them: .NET, Node.js, Java)", Values = _TS("LTS", "LTS", "LTS") },
+        new DependencyTrack { Key = EDependencyTrack.Stable, Description = "The newest stable release", Values = _TS("Stable", "Stable", "Stabiel") },
+        new DependencyTrack { Key = EDependencyTrack.Preview, Description = "Previews and release candidates too", Values = _TS("Preview", "Préversion", "Preview") },
+    ];
+}
+
 public sealed class DependencyUpdatesPolicy : TransientLookupReference<EDependencyUpdatesPolicy>
 {
     private DependencyUpdatesPolicy() { }

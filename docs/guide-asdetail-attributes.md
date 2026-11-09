@@ -58,6 +58,9 @@ public partial class CarreerJob
 ```
 
 Note that AsDetail sub-objects can themselves contain `[Reference]` attributes pointing to other entities.
+A save checks those ids like top-level ones: a newly written id must name a document in the target
+collection, and a refusal names the **AsDetail attribute** (here `Jobs`), not the row's field (#609, see
+[The save checks the target](guide-reference-attributes.md#the-save-checks-the-target)).
 
 ## Step 2: Add the Property to the Parent Entity
 

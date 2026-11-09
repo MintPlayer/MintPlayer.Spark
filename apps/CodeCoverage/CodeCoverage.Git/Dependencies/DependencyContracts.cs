@@ -205,10 +205,10 @@ public sealed record PlatformRecord
     public int ContractVersion { get; init; } = DependencyContract.Version;
     public string Kind { get; init; } = DependencyContract.PlatformKind;
 
-    /// <summary><c>dotnet</c>, <c>node</c>, <c>python</c>, <c>java</c> or <c>go</c>.</summary>
+    /// <summary><c>dotnet</c>, <c>node</c>, <c>python</c>, <c>java</c>, <c>go</c>, <c>php</c>, <c>ruby</c> or <c>rust</c> (#606 D10).</summary>
     public string Sdk { get; init; } = string.Empty;
 
-    /// <summary><c>releases-index</c>, <c>endoflife.date</c> or <c>none</c>.</summary>
+    /// <summary><c>releases-index</c>, <c>endoflife.date</c> or <c>none</c>: the source the bot's channel table (#606 D9) names.</summary>
     public string Source { get; init; } = "none";
 
     public PlatformCurrent Current { get; init; } = new();

@@ -2,7 +2,8 @@
 
 CodeCoverage keeps a repository's dependencies current with **one rolling pull request**, `mintplayer/dependencies`,
 rebuilt on a schedule. It updates any ecosystem the lookup reports (npm, pnpm, yarn, NuGet, Maven, Gradle, Cargo, Go,
-Python, Composer, Bundler, Docker, GitHub Actions, …) and the platform SDKs (.NET, Node.js, Python, Java, Go). Nothing of
+Python, Composer, Bundler, Docker, GitHub Actions, …) and the platform SDKs (.NET, Node.js, Python, Java, Go, PHP, Ruby,
+Rust). Nothing of
 your repository ever runs on the CodeCoverage server: every restore, relock and migration runs in **your own GitHub
 Actions**, in workflows the bot dispatches and whose results it checks before anything is pushed.
 
@@ -140,7 +141,8 @@ dependencies:
     - match: "@angular/core"
       onMajor: angular-migrate.yml
   platforms:
-    dotnet: { strategy: replace, keepPrevious: 0, lockPackageMajor: false, locations: [], exclude: [] }
+    dotnet: { track: stable, strategy: replace, keepPrevious: 0, lockPackageMajor: false, locations: [], exclude: [] }
+    node: { track: lts, companions: ["@types/node"] }   # companions: packages that move with the SDK's major
   lockFileMaintenance: false     # transitive-only refreshes, off by default
   registries: ["npm.pkg.github.com"]   # lockfile hosts allowed besides the public registries
   lines: patch                   # release lines: patch (default) | all | security | off
@@ -169,6 +171,33 @@ branch's run first sees it. Because each line updates itself, the default branch
 `@angular/*: never`, `actions/*: minor`; GitHub Actions and platforms never go above minor without an approval. Every
 group of a library family (`@angular/*`, `nx` + `@nx/*`, …) moves together.
 
+**Tracks.** `platforms.<sdk>.track` decides which channel of an SDK is offered:
+
+| `track` | Offered |
+|---|---|
+| `lts` | only a major the release feed flags LTS (.NET, Node.js, Java). Refused for any other SDK. .NET 11 is STS, so an `lts` repository on `net10.0` waits for `net12.0`. |
+| `stable` (default) | the newest released major |
+| `preview` | the newest major, previews included (.NET `preview`/`go-live`, Node release candidates, Python alphas, PHP RCs, Ruby previews, Rust `beta`) |
+
+A package rule takes `track: stable | preview` (`lts` is refused there). An account rule on the ecosystem
+`platform:<sdk>` sets the default track; an enforced one is the widest track the file may choose. A track decides what
+is offered: a repository already on a newer phase is never moved back.
+
+**Companions.** The packages that belong to an SDK move with its major, in the platform group: for .NET
+`Microsoft.AspNetCore.*`, `Microsoft.Extensions.*`, `Microsoft.EntityFrameworkCore*`, `Microsoft.NET.*` and `System.*`, for
+Node.js `@types/node`. Only a package on the SDK's current major is one (`System.IO.Abstractions` 22.x is not).
+`companions:` replaces the list; `[]` turns it off. Until the SDK moves, a companion's next major is listed as *moves with
+the platform*. A platform kept beside the previous one (`strategy: add`, `keepPrevious`, `lockPackageMajor`) has no
+companions, since its packages must keep building for the older target.
+
+**Which SDK locations move.** .NET: TFMs and `global.json`'s SDK. Every SDK: Dockerfile `FROM`,
+workflow `container:`/`image:`/`uses: docker://`, `setup-*` inputs, matrix entries on the old channel, `.tool-versions`.
+PHP: `config.platform.php`, `.php-version`. Ruby (channels are minors, `3.3` → `3.4`): `.ruby-version`, an exact Gemfile
+`ruby`. Rust (channels are `1.x`): the `rust-toolchain(.toml)` channel and CI `toolchain:` inputs; `preview` writes the
+dated beta toolchain (`beta-2026-11-08`). **Ranges are reported, never edited:** `require.php`, a Gemfile range,
+`required_ruby_version`, Cargo's `rust-version`, `requires-python`; so are a computed TFM, an MSBuild condition that tests
+the old TFM, and a floating `stable`/`nightly` Rust toolchain.
+
 ## 5. Approvals and commands
 
 Writers (write access or above) comment on the rolling pull request, one command per comment:
@@ -176,6 +205,7 @@ Writers (write access or above) comment on the rolling pull request, one command
 | Command | Does |
 |---|---|
 | `approve <group>` | Takes an over-threshold group (a major) into the pull request. Bound to the exact dependency set, the target major and the `coverage.yml` it was given under: a newer major, a changed group or another `coverage.yml` expires it. Checked again at apply time: an approver who lost write access loses the approval. |
+| `approve platform:<sdk> <channel> --force` | Takes a *pending* SDK move (a companion has no release at the target major yet, §6) anyway: those companions stay at their major and a person fixes the build on the branch. |
 | `hold <group or package>` | Holds it until `unhold`. |
 | `unhold <group or package>` | Lifts a comment or human hold (the bot's own holds lift by themselves). |
 | `bisect` | Bisects a red pull request now (budget 4 when the setting is off). |
@@ -214,8 +244,17 @@ Edited comments and comments by bots are ignored. The bot reacts 👍 or 👎.
   `nx migrate --run-migrations` with no secrets. A migration that does not complete drops its group. A pull request with
   migrations never auto-merges and says so.
 - **A platform SDK moves** (`net10.0` → `net11.0`, Node 22 → 24). Every location moves together (TFM, `global.json`,
-  Dockerfile `FROM`, `setup-*`); a computed TFM is reported, never guessed. Previews are followed only when the repository
-  is already on one. A platform major never auto-merges.
+  Dockerfile `FROM`, `setup-*`, companions); a computed TFM is reported, never guessed. Which channel is offered is the
+  SDK's `track` (§4). A platform major never auto-merges.
+  - **A companion has no release at the target major yet.** The move is *pending*, not offered for approval: the pull
+    request and the account's platform readiness say "dotnet 11.0 waiting on <package>". It is judged again at every
+    lookup; `approve … --force` (§5) takes it anyway.
+  - **The repository publishes packages and has no `versioning.lines`.** The pull request warns that the previous
+    platform's consumers stop receiving releases with this move, and points at `versioning.lines` or `strategy: add`.
+- **The platform channels.** The bot collects every SDK's channels once a day (Microsoft's release index for .NET,
+  endoflife.date and each SDK's preview feed for the others) and passes the table to the lookup workflow as its required
+  `platforms` input. A lookup workflow that declares no such input (a template from before #606) ends the run as
+  `workflow-outdated`: update the action pin and the workflow to the current template.
 
 ## 7. Seeing the state
 
@@ -262,6 +301,7 @@ The last run's outcome is on the repository panel; the full story is in *Recent 
 | Outcome | Meaning | What to do |
 |---|---|---|
 | `workflow-missing` | The lookup or apply workflow is not on the default branch. | Merge the onboarding pull request, or copy the templates (§2). |
+| `workflow-outdated` | The lookup workflow declares no `platforms` input (a template from before #606). | Copy the current `dependency-lookup.yml` template and its action pin (§2). |
 | `workflow-differs`, `workflow-unsafe` | The dispatched workflow is not the default branch's, or it may write. | Restore the template's permissions. |
 | `dispatch-uncorrelated`, `*-timeout`, `*-missing` | A run never answered ("silent"). | Check the Actions tab; the next slot retries. |
 | `lookup-failed`, `apply-failed` | The workflow run failed. | Open the run from the history. |

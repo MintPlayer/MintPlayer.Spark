@@ -1,6 +1,6 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import type { LookupDocument, PlatformRecord } from '../contracts/types';
+import type { LookupDocument, PlatformRecord, PlatformTable } from '../contracts/types';
 import { applyPlatform } from '../platform/applyPlatform';
 import { copyTree, fixture, gitRepo, readJsonFixture, tempDir } from '../testing/helpers';
 import { realExec } from '../util/exec';
@@ -8,20 +8,13 @@ import { directoryFiles } from '../util/repoFiles';
 import { runLookup } from './lookup';
 import type { RenovateReport } from './mapReport';
 
-const FEEDS: Record<string, string> = {
-  'https://dotnetcli.blob.core.windows.net/dotnet/release-metadata/releases-index.json': 'releases-index.json',
-  'https://endoflife.date/api/nodejs.json': 'nodejs.json',
-  'https://endoflife.date/api/python.json': 'python.json',
-  'https://endoflife.date/api/go.json': 'go.json',
-  'https://endoflife.date/api/eclipse-temurin.json': 'eclipse-temurin.json',
-};
-const fetcher = async (url: string) => readJsonFixture(`platform-feeds/${FEEDS[url]}`);
+const platforms = readJsonFixture<PlatformTable>('platform-feeds/platform-table.json');
 
 async function lookup(name: string): Promise<LookupDocument> {
   const { dir, sha } = gitRepo({}, fixture(`renovate/${name}/input`));
   const report = readJsonFixture<RenovateReport>(`renovate/${name}/report.json`);
   const { document } = await runLookup({
-    exec: realExec, repoDir: dir, outDir: tempDir(), workDir: tempDir(), expectedSha: sha, fetcher,
+    exec: realExec, repoDir: dir, outDir: tempDir(), workDir: tempDir(), expectedSha: sha, platforms,
     fetchActionYml: async () => null,
     renovate: async () => ({ report, seconds: 1, log: '' }), now: () => new Date('2026-10-16T08:00:00Z'),
   });
@@ -116,7 +109,7 @@ describe('R31 (S18-D1): the platform record owns its locations', () => {
       repositories: { local: { packageFiles: { ...record('.github/workflows/ci.yml', '20', 'github-actions', 'github-releases'), ...record('.nvmrc', '22', 'nvm', 'node-version') } } },
     };
     const { document } = await runLookup({
-      exec: realExec, repoDir: dir, outDir: tempDir(), workDir: tempDir(), expectedSha: sha, fetcher, fetchActionYml: async () => null,
+      exec: realExec, repoDir: dir, outDir: tempDir(), workDir: tempDir(), expectedSha: sha, platforms, fetchActionYml: async () => null,
       renovate: async () => ({ report, seconds: 1, log: '' }), now: () => new Date('2026-10-16T08:00:00Z'),
     });
     expect(document.platforms[0].current.channels).toEqual(['22', '20']);
