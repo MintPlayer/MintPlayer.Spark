@@ -34,6 +34,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
     [Inject] private readonly IDisabledActionsEvaluator disabledActions;
     [Inject] private readonly IAttributeWriteShield attributeWriteShield;
     [Inject] private readonly ISaveValidation saveValidation;
+    [Inject] private readonly IReferenceTargetValidation referenceTargets;
     [Inject] private readonly Microsoft.AspNetCore.Http.IHttpContextAccessor? httpContextAccessor;
     [Inject] private readonly Microsoft.Extensions.Logging.ILogger<DatabaseAccess>? logger;
 
@@ -392,6 +393,11 @@ internal partial class DatabaseAccess : IDatabaseAccess
         // Validation the endpoint asked for (contributions M2d): on the shielded values, skipping what
         // the caller may not write, after every gate and before anything hooks, intercepts or writes.
         await saveValidation.ValidateAsync(persistentObject, entityTypeDefinition, before, shield.Unwritable);
+
+        // Every reference id the save newly writes must name a document in the collection its
+        // [Reference] declares (#251): on every save, not only the ones an endpoint asked to validate,
+        // since a sync or an Actions-class save writes a caller's id just the same.
+        await referenceTargets.EnsureValidAsync(persistentObject, entityTypeDefinition, before, shield.Unwritable);
 
         if (checkOnly)
             return persistentObject;
