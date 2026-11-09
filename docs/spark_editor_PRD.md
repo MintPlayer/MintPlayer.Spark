@@ -764,3 +764,44 @@ The test project builds after the rebase.
   - collection names, the identity map and change tracking
   - `BeforeStore` timing, delete, both concurrency checks with an atomic commit, `LoadStartingWith` paging,
     filtered queries and the request budget
+- **M8 — D13 as built: one declaration, checked twice.**
+  - **At startup:** a feature's registration method calls `builder.RequireStore(feature, capabilities, provider)`
+    (`Abstractions/Storage/SparkStoreRequirement.cs`), which registers a `SparkStoreRequirement`.
+    - `UseSpark()` compares every requirement with the registered `ISparkStore`
+      (`SparkStoreRequirementExtensions.Unmet`). It throws once, listing each unmet one, e.g. "Spark.Messaging needs
+      Subscriptions; the InMemory provider doesn't offer it."
+    - With no store registered, it says to call `spark.UseRavenDb()`.
+  - **At build time (SPARK060, `StoreRequirementAnalyzer`):** the provider's method carries `[SparkStoreProvider]` and
+    the feature's carries `[SparkRequiresStore]`, so the check also works across package boundaries.
+    - Calls are compared within one lambda body. A body with no provider call reports nothing, and the startup check
+      covers it.
+    - Tests: `tests/MintPlayer.Spark.SourceGenerators.Tests/Diagnostics/StoreRequirementAnalyzerTests.cs`.
+  - **Declared:**
+
+    | Feature | Requires |
+    |---|---|
+    | Messaging | Subscriptions, RavenDB only |
+    | Replication | Subscriptions, RavenDB only |
+    | History | Revisions, RavenDB only |
+    | IdentityProvider | RavenDB only |
+    | Cron | RavenDB only |
+    | Contributions | RavenDB only |
+
+    "RavenDB only" means the library uses `IDocumentStore` itself, beyond the capability.
+  - **Not declared yet:** authorization, boards, dashboards, mail, mcp, migrations, moderation, notifications,
+    organizations, search, settings, soft_delete and subscription_worker still inject `IDocumentStore` (grep over
+    `libs/*`, 2026-11-09).
+    - On another provider they fail when `IDocumentStore` is resolved, not with this message.
+    - #536 declares or ports each one when SQL Server makes it reachable. DemoApp uses none of them.
+- **M9 — a class-less type's save and delete go through its `{Name}Actions`.** Same duck-typed contract as the
+  existing virtual `OnLoadAsync`/`OnNewAsync`: `Task<PersistentObject> OnSaveAsync(PersistentObject)` and
+  `Task<bool> OnDeleteAsync(string id, string? etag)`. `DatabaseAccess.VirtualHook` resolves them, and a method of
+  that name with another shape throws.
+  - **Kept in front of the hook:** the New/Edit (Delete) right, the static attribute write rights
+    (`IAttributeWriteShield.ApplyClasslessAsync`), the save validation and the reference-target check.
+  - **Left to the hook:** per-row gates and the etag. The framework has no stored row to judge.
+  - **Unchanged without the hooks:** reference add-new D10/D11. `IsConfirmedNotStored` is still true without
+    `OnSaveAsync`, and a delete without `OnDeleteAsync` answers "nothing to delete". Purge, sync and bulk delete
+    stay refused.
+  - Tests: `tests/MintPlayer.Spark.Tests/Endpoints/PersistentObject/VirtualObjectWriteTests.cs`. Guide:
+    `docs/guide-program-units.md`.

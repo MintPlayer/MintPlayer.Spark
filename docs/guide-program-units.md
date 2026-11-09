@@ -126,7 +126,8 @@ CLR class at all** — a start page, a dashboard, a per-user landing page. The r
 
 1. **A hand-authored model file** — `App_Data/Model/StartPage.json` declaring the attributes
    (read-only), tabs/groups, breadcrumb — and **no `clrType`**. That absence is what makes the
-   type virtual: everything document-shaped (load, query, save) 404s for it. Run
+   type virtual: everything document-shaped (load, query, save) 404s for it, unless the actions class
+   serves it (below). Run
    `--spark-synchronize-model` afterwards so `modelHashes.json` covers the file; synchronize
    preserves hand-authored files.
 
@@ -143,13 +144,13 @@ CLR class at all** — a start page, a dashboard, a per-user landing page. The r
    public partial class StartPageActions
    {
        [Inject] private readonly IManager manager;
-       [Inject] private readonly IAsyncDocumentSession session;
+       [Inject] private readonly ISparkSession session;
 
        public async Task<PersistentObject?> OnLoadAsync(string id, PersistentObject? parent)
        {
            var obj = await manager.GetPersistentObjectAsync("StartPage");   // for this caller, null values
            obj["Welcome"].Value = "Hello!";
-           obj["PeopleCount"].Value = await session.Query<Person>().CountAsync();
+           obj["PeopleCount"].Value = await session.CountAsync(session.Query<Person>());
            return obj;                                           // null ⇒ 404
        }
    }
@@ -174,6 +175,22 @@ and **instead of** the entity pipeline — no document load, no collection guard
 no Etag. `can.edit`/`can.delete` are forced false unless the hook sets them, so the generic
 detail page renders it read-only with the breadcrumb as heading. Anything interactive on such a
 page is a custom action, which carries its own authorization.
+
+**A class-less type that stores itself (#551).** A type with no `clrType` can also be saved and
+deleted, when its actions class owns the storage. Two more hooks, checked the same reflective way:
+
+```csharp
+public Task<PersistentObject> OnSaveAsync(PersistentObject obj);   // set obj.Id on a create; return it
+public Task<bool> OnDeleteAsync(string id, string? etag);          // false ⇒ there was no such row
+```
+
+The framework still checks the `New`/`Edit` (or `Delete`) right, drops the attributes the caller may
+not write, and runs the save validation and the reference checks. Then it hands over and writes
+nothing itself. Per-row gates and the etag check are the hook's job, because only it knows the row.
+For the page to offer Edit and Delete, `OnLoadAsync` sets `can`, and an `Etag` if the hook checks one.
+Without `OnSaveAsync`, a create is confirmed, not stored, as a picker's Add new is. Without
+`OnDeleteAsync`, a delete finds nothing to delete. A purge, a sync and a bulk delete stay refused:
+each needs a stored document.
 
 ## `spark-shell` — the application frame
 

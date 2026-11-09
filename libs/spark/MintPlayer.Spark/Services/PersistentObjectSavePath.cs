@@ -98,7 +98,10 @@ internal sealed partial class PersistentObjectSavePath : IPersistentObjectSavePa
     [Inject] private readonly IActionsResolver actionsResolver;
 
     public bool IsConfirmedNotStored(EntityTypeDefinition entityType)
-        => typeResolver.Resolve(entityType.ClrType) is not { } clrType || Abstractions.Model.SparkValueObjects.IsKeyed(clrType);
+        => typeResolver.Resolve(entityType.ClrType) is { } clrType
+            ? Abstractions.Model.SparkValueObjects.IsKeyed(clrType)
+            // #551 M9: a type with no C# class is stored when its actions class saves it itself.
+            : actionsResolver.ResolveByEntityName(entityType.Name)?.GetType().GetMethod("OnSaveAsync", [typeof(PersistentObject)]) is null;
 
     public async Task<PersistentObject> ConfirmAsync(EntityTypeDefinition entityType, PersistentObject obj, CancellationToken cancellationToken = default)
     {

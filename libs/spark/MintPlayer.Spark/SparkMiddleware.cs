@@ -270,6 +270,14 @@ public static class SparkExtensions
         // #482, D17: a durable after-commit interceptor with nothing to deliver it is refused at startup.
         Services.SparkCommittedInterceptorsStartupCheck.Run(app.ApplicationServices);
 
+        // #551 D13: a feature library on a store that can't serve it is refused here, naming what is missing, rather
+        // than failing on its first request (or, for a provider's own client, in the container).
+        var unmet = MintPlayer.Spark.Abstractions.Storage.SparkStoreRequirementExtensions.Unmet(
+            app.ApplicationServices.GetServices<MintPlayer.Spark.Abstractions.Storage.SparkStoreRequirement>(),
+            app.ApplicationServices.GetService<MintPlayer.Spark.Abstractions.Storage.ISparkStore>());
+        if (unmet.Count > 0)
+            throw new InvalidOperationException(string.Join(Environment.NewLine, unmet));
+
         var registry = app.ApplicationServices.GetRequiredService<SparkModuleRegistry>();
 
         // Middleware that must reject a request before the cost of authenticating it is paid — a rate

@@ -226,9 +226,28 @@ internal partial class DatabaseAccess : IDatabaseAccess
         // Only a document type is stored as its own document (reference add-new PRD D11). A type with no
         // C# class has no Query<T> to read it back, and a [ValueObject] lives inside its owner's
         // document: writing either standalone would leave a stray document nothing lists. Refused like
-        // an unknown type; a picker's Add new for such a type is confirmed, not saved (D10,
-        // IPersistentObjectSavePath.ConfirmAsync).
+        // an unknown type, unless the class-less type's actions class saves it itself (below); a picker's
+        // Add new for such a type is confirmed, not saved (D10, IPersistentObjectSavePath.ConfirmAsync).
+        // #551 M9: a type with no C# class saves only through its {Name}Actions' own OnSaveAsync, which owns
+        // the storage. The framework still checks the New/Edit right first, and writes nothing itself.
         var entityType = typeResolver.Resolve(entityTypeDefinition.ClrType);
+        if (entityType is null && operation is PersistentObjectOperation.Save or PersistentObjectOperation.New
+            && VirtualHook(entityTypeDefinition, "OnSaveAsync", [typeof(PersistentObject)], typeof(Task<PersistentObject>),
+                "Task<PersistentObject> OnSaveAsync(PersistentObject obj)") is { } virtualSave)
+        {
+            await EnsureSaveAuthorizedAsync(persistentObject);
+
+            // The attribute rights and the validation as on a stored save. No stored row for the framework to
+            // judge, so no per-row hook, row gate or concurrency check: the hook owns those, with its storage.
+            var verb = string.IsNullOrEmpty(persistentObject.Id) ? SparkCoreActions.New : SparkCoreActions.Edit;
+            var classless = await attributeWriteShield.ApplyClasslessAsync(persistentObject, entityTypeDefinition, verb);
+            await saveValidation.ValidateAsync(persistentObject, entityTypeDefinition, null, classless.Unwritable);
+            await referenceTargets.EnsureValidAsync(persistentObject, entityTypeDefinition, null, classless.Unwritable);
+            if (checkOnly)
+                return persistentObject;
+            var task = (Task<PersistentObject>)virtualSave.Method.Invoke(virtualSave.Actions, HookInvoke, binder: null, parameters: [persistentObject], culture: null)!;
+            return await task;
+        }
         if (entityType is null || Abstractions.Model.SparkValueObjects.IsKeyed(entityType))
             throw new SparkAccessDeniedException($"Save/{entityTypeDefinition.Name}");
 
@@ -480,7 +499,19 @@ internal partial class DatabaseAccess : IDatabaseAccess
 
         var clrType = entityTypeDefinition.ClrType;
         var entityType = typeResolver.Resolve(clrType);
-        if (entityType == null) return false;
+        if (entityType == null)
+        {
+            // #551 M9: a type with no C# class deletes only through its {Name}Actions' OnDeleteAsync, which
+            // answers whether there was a row and checks the etag itself. No hook: nothing to delete, as before.
+            // Never a purge or a sync, whose own semantics (soft delete, replication) need a stored document.
+            if (operation != PersistentObjectOperation.Delete
+                || VirtualHook(entityTypeDefinition, "OnDeleteAsync", [typeof(string), typeof(string)], typeof(Task<bool>),
+                    "Task<bool> OnDeleteAsync(string id, string? etag)") is not { } virtualDelete)
+                return false;
+            if (checkOnly)
+                return true;
+            return await (Task<bool>)virtualDelete.Method.Invoke(virtualDelete.Actions, HookInvoke, binder: null, parameters: [id, etag], culture: null)!;
+        }
 
         // Row-level Delete gate (R2-H2): the same shape as the Edit gate in
         // SavePersistentObjectAsync — load the entity in a side session and ask the Actions class.
@@ -1082,6 +1113,33 @@ internal partial class DatabaseAccess : IDatabaseAccess
     /// silently 404ing — the contract is reflective, so this is where a typo surfaces.
     /// </para>
     /// </summary>
+    /// <summary>
+    /// A write hook on a JSON-only type's <c>{Name}Actions</c> (#551 M9), duck-typed like
+    /// <see cref="LoadVirtualObjectViaActionsAsync"/>: null when there is no actions class or no method of that
+    /// name. A method of that name with another shape throws, so a typo surfaces instead of a silent refusal.
+    /// </summary>
+    private (object Actions, MethodInfo Method)? VirtualHook(
+        EntityTypeDefinition entityTypeDefinition, string name, Type[] parameters, Type returnType, string expected)
+    {
+        var actions = actionsResolver.ResolveByEntityName(entityTypeDefinition.Name);
+        if (actions is null)
+            return null;
+
+        var method = ReflectionCache.GetOrAdd<(string Op, Type Actions, string Name), MethodInfo?>(
+            ("DatabaseAccess.VirtualWriteHook", actions.GetType(), name),
+            k =>
+            {
+                var found = k.Actions.GetMethod(k.Name, parameters);
+                if (found is not null && found.ReturnType == returnType)
+                    return found;
+                if (k.Actions.GetMethods().Any(m => m.Name == k.Name))
+                    throw new InvalidOperationException(
+                        $"'{k.Actions.FullName}' has a {k.Name} that doesn't match the write contract. Expected: '{expected}'.");
+                return null;
+            });
+        return method is null ? null : (actions, method);
+    }
+
     private async Task<PersistentObject?> LoadVirtualObjectViaActionsAsync(
         EntityTypeDefinition entityTypeDefinition, string id)
     {

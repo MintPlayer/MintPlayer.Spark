@@ -33,6 +33,7 @@ public sealed class InMemoryOptions
 public static class SparkInMemoryExtensions
 {
     /// <summary>Uses an in-memory store, seeded by <paramref name="configure"/>.</summary>
+    [global::MintPlayer.Spark.Abstractions.Storage.SparkStoreProvider(global::MintPlayer.Spark.Abstractions.Storage.SparkStoreProviders.InMemory, global::MintPlayer.Spark.Abstractions.Storage.SparkStoreCapabilities.ChangeNotifications)]
     public static ISparkBuilder UseInMemory(this ISparkBuilder builder, Action<InMemoryOptions>? configure = null)
     {
         var options = new InMemoryOptions();

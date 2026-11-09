@@ -19,6 +19,7 @@ namespace MintPlayer.Spark;
 public static class SparkRavenDbExtensions
 {
     /// <summary>Uses RavenDB, configured from <c>Spark:RavenDb</c>, then by <paramref name="configure"/>.</summary>
+    [global::MintPlayer.Spark.Abstractions.Storage.SparkStoreProvider(global::MintPlayer.Spark.Abstractions.Storage.SparkStoreProviders.RavenDb, global::MintPlayer.Spark.Abstractions.Storage.SparkStoreCapabilities.Subscriptions | global::MintPlayer.Spark.Abstractions.Storage.SparkStoreCapabilities.Revisions | global::MintPlayer.Spark.Abstractions.Storage.SparkStoreCapabilities.FullTextSearch | global::MintPlayer.Spark.Abstractions.Storage.SparkStoreCapabilities.Attachments | global::MintPlayer.Spark.Abstractions.Storage.SparkStoreCapabilities.Expiration | global::MintPlayer.Spark.Abstractions.Storage.SparkStoreCapabilities.ChangeNotifications | global::MintPlayer.Spark.Abstractions.Storage.SparkStoreCapabilities.Indexes)]
     public static ISparkBuilder UseRavenDb(this ISparkBuilder builder, Action<RavenDbOptions>? configure = null)
     {
         var options = new RavenDbOptions();
