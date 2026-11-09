@@ -72,7 +72,7 @@ export async function runLookup(o: LookupOptions): Promise<{ document: LookupDoc
   const problems = reportProblems(run.report);
   const { platforms, found } = await scanPlatforms(o.repoDir, o.platforms, problems, o.now?.() ?? new Date());
   // R31: the platform record owns its locations; their channel moves are never offered separately.
-  const { records } = foldPlatformLocations(mapReport(run.report), found, platforms);
+  const { records } = foldPlatformLocations(mapReport(run.report), found, platforms, o.platforms);
   const interfaceDiffs = await interfaceDiffsFor(records, await workflowUsages(o.repoDir), o.fetchActionYml);
   const document: LookupDocument = {
     contractVersion: CONTRACT_VERSION,

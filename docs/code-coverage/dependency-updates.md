@@ -191,6 +191,16 @@ A package rule takes `track: stable | preview` (`lts` is refused there). An acco
 `platform:<sdk>` sets the default track; an enforced one is the widest track the file may choose. A track decides what
 is offered: a repository already on a newer phase is never moved back.
 
+**Moves inside a channel** (#617). The same table offers the channel a repository is already on when a pin is behind
+it: the RC SDK once the release is out (`11.0.100-rc.2…` → `11.0.100`), or a GA patch (`10.0.402` → `10.0.403`). It is
+the `platform:<sdk> <channel>` group, a **patch** under the account's rules, and it moves `global.json` and every
+`setup-*` pin to one version. Every track takes the current channel's release patches (an `lts` repository on 9.0 still
+gets them, and while a move to a newer channel waits for approval, the patch is offered instead); a newer RC inside the
+channel is a preview and only the `preview` track follows it. On RC → release, the RC
+companions ride to their release in the same group and the move waits for each one (or `--force`), as on a major; a
+patch between two releases carries none. setup-dotnet's `dotnet-quality: preview` is removed once the target is a
+release (its default is GA); as a step's only input it is reported instead.
+
 **Companions.** The packages that belong to an SDK move with its major, in the platform group: for .NET
 `Microsoft.AspNetCore.*`, `Microsoft.Extensions.*`, `Microsoft.EntityFrameworkCore*`, `Microsoft.NET.*` and `System.*`, for
 Node.js `@types/node`. Only a package on the SDK's current major is one (`System.IO.Abstractions` 22.x is not).

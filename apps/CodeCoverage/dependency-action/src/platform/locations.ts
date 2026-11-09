@@ -308,19 +308,37 @@ function scanSetupAction(sdk: Sdk, file: string, doc: TextDoc): Found[] {
         }
       }
     }
+    const step: Found[] = [];
+    const keyIndents: number[] = [];
+    let quality: { line: number; start: number; raw: string; indent: number } | null = null;
     for (let j = i + 1; j < lines.length; j++) {
       const t = lines[j].text;
       if (/^\s*$/.test(t) || /^\s*#/.test(t)) continue;
       const indent = t.match(/^(\s*)/)![1].length;
       if (indent <= stepIndent) break;
+      if (/^\s*[A-Za-z0-9_-]+:/.test(t)) keyIndents.push(indent);
       for (const key of keys) {
         const km = t.match(new RegExp(`^(\\s*${key}:\\s*)(['"]?)([^'"#\\n]*?)\\2(\\s*(#.*)?)$`));
         if (!km) continue;
         const raw = km[3];
         const start = km[1].length + km[2].length;
         const computed = raw === '' || raw === '|' || raw === '>' || /\$\{\{/.test(raw);
-        out.push(loc(sdk, file, 'setup-action', j, start, raw, { computed, reason: computed ? 'expression or multi-line value' : null }));
+        step.push(loc(sdk, file, 'setup-action', j, start, raw, { computed, reason: computed ? 'expression or multi-line value' : null }));
       }
+      const qm = sdk === 'dotnet' ? t.match(/^(\s*dotnet-quality:\s*)(['"]?)([^'"#\s]*)\2(\s*(#.*)?)$/) : null;
+      if (qm) quality = { line: j, start: qm[1].length + qm[2].length, raw: qm[3], indent };
+    }
+    out.push(...step);
+    if (quality) {
+      // #617 D31: the quality applies to the step's version; removing it must leave the `with:` mapping non-empty.
+      const version = step.find((f) => !f.computed);
+      const alone = keyIndents.filter((n) => n === quality!.indent).length <= 1;
+      const computed = alone || quality.raw === '' || /\$\{\{/.test(quality.raw);
+      out.push(loc(sdk, file, 'dotnet-quality', quality.line, quality.start, quality.raw, {
+        channel: version?.channel ?? null,
+        computed,
+        reason: alone ? "the step's only with: input" : computed ? 'expression or empty value' : null,
+      }));
     }
   }
   return out;

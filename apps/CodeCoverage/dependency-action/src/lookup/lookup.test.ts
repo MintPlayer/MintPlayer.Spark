@@ -25,13 +25,14 @@ describe('runLookup (Renovate injected, everything else real)', () => {
     });
     expect(isValid('lookup', JSON.parse(fs.readFileSync(file, 'utf8'))).errors).toBe('');
     expect(path.basename(file)).toBe('lookup.json');
-    // 33 deps in the report; 7 platform locations whose only move is a channel move fold into their
-    // platform record (R31, foldPlatform.test.ts).
-    expect(document.records).toHaveLength(26);
+    // 33 deps in the report; the 15 records of platform locations on a channel the table carries fold into their platform record,
+    // in-channel moves included (R31, #617 D34, foldPlatform.test.ts).
+    expect(document.records).toHaveLength(18);
     expect(document.platforms.map((p) => p.sdk).sort()).toEqual(['dotnet', 'go', 'java', 'node', 'python']);
     const dotnet = document.platforms.find((p) => p.sdk === 'dotnet')!;
     expect(dotnet.current.channels).toEqual(['8.0']);
-    expect(dotnet.candidates.map((c) => c.channel)).toEqual(['11.0', '10.0', '9.0']);
+    // #617 D29: 8.0's own row last, its pins (8.0.100) behind its latest SDK.
+    expect(dotnet.candidates.map((c) => c.channel)).toEqual(['11.0', '10.0', '9.0', '8.0']);
     // Majors of actions with a captured pair get a diff (checkout v4 -> v7 is served the v5 file here).
     expect(document.interfaceDiffs.map((d) => d.action)).toEqual(expect.arrayContaining(['actions/checkout']));
     expect(document.engine.seconds).toBe(21);

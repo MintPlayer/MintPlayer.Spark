@@ -360,6 +360,22 @@ replaced before it ran.
 | S9 | What does `setup-dotnet` do with `dotnet-quality` beside an exact `dotnet-version`, and beside `11.0.x`? Is removing the line equal to `ga`? | `actions/setup-dotnet` README and source at the version the fleet pins |
 | S10 | Can a runner on an older pinned action receive an in-channel platform plan it does not understand? | read the bot's lookup-workflow pin check (D25) and `applyPlatform` with `fromChannel == toChannel` |
 
+#### Results (2026-11-09)
+
+- **S8: yes, nothing to add.** `DependencyPlatformTable.Json` (`DependencyPlatformTable.cs:38-47`) already sends each
+  channel's `latestVersion`, `latestSdk` and `releaseTimestamp` (`LatestReleasedOn ?? ReleasedOn`). Microsoft's
+  `releases-index.json` fetched on 2026-11-09: 11.0 is `go-live`, latest `11.0.0-rc.3`, SDK `11.0.100-rc.3.26522.148`,
+  released 2026-10-25; 10.0 is `active`, 10.0.14 / SDK 10.0.403. The day 11.0 ships, its row turns `active` with
+  `11.0.0` / `11.0.100`, which is the move.
+- **S9: removing the line is `ga`.** setup-dotnet v6's README: `dotnet-quality` is ignored for a full `A.B.C` version, it
+  applies to `A.B`, `A.B.x`, `A`, `A.x` and `A.B.Cxx`, and its default is GA. So the line only matters beside a
+  floating pin, and removing it is the same as writing `ga` (D31).
+- **S10: an older runner degrades gracefully.** The bot checks the lookup workflow's required inputs
+  (`workflow-outdated`), not the action version. An older action never builds an in-channel candidate (the lookup and
+  the apply are the same action), so it is never planned one; were it handed one, its `applyPlatform` with
+  `fromChannel == toChannel` still moves `global.json` and the exact `setup-dotnet` pins to `sdkVersion`, and leaves
+  `dotnet-quality` alone.
+
 ### 12.3 Milestones (one pull request)
 
 - **M1 Red tests.** A hand-written recorded lookup shaped like the real Spark capture: `net11.0`, `global.json` and two
@@ -386,3 +402,28 @@ replaced before it ran.
 | D31 | **`dotnet-quality` is removed** from every `setup-dotnet` step of the group once the target channel is GA. A stale quality line alone (a floating `11.0.x` with `preview`) is enough to offer the group | setting it to `ga`; resetting only beside a pin move | owner, 2026-11-09; setup-dotnet's default per S9 | owner, 2026-11-09 |
 | D32 | **An in-channel move is a patch** (same channel, same TFM): it auto-merges or waits for approval as the account's rules say for a patch. A channel move keeps its minor floor, and a major one never auto-merges (R7) | minor like a channel move; patch that never auto-merges | owner preference | owner, 2026-11-09 |
 | D33 | **Companions ride on preview → GA.** When a location is on a preview and the target is GA, every companion rides at its GA version in the same group, waiting for it as D3 does (or `--force`). A GA → GA patch carries no riders | never riding in-channel; always riding | the D2 lockstep; owner, 2026-11-09 | owner, 2026-11-09 |
+| D34 | **Renovate's in-channel candidates of a platform location are kept only when the table has no row for that channel.** With a row, the fold drops the record whole (`foldPlatform.ts`, `tabled`); without one (an SDK the bot does not collect), the R31 filter of #606 still applies, so nothing goes unoffered | dropping them always (an untabled SDK would lose its patches); keeping them beside the platform group (two groups editing one pin, G2) | D29; the S12 fold test now expects every tabled platform-location record folded (`foldPlatform.test.ts`) | implementation, follows from D29 |
+| D35 | **An in-channel move is keyed on the version it moves to,** not the channel: its approval target is `platform:<sdk>@<sdk or version>`, and its cooldown, fleet-red check and first-seen time use that token (`PlatformToken`). An approval of the channel move or of an earlier patch never carries over | the channel token (`platform:dotnet@11`), which every later patch on the channel would share | `DependencyPolicyEngine.cs` `PlatformToken`; `PlatformInChannelMoveTests.The_cooldown_names_the_version_inside_the_channel` | implementation, follows from D32 |
+| D36 | **The current channel's row is on every track unless it is a preview;** a preview row only on the `preview` track. An `lts` repository on an STS channel still takes that channel's patches, and a stable repository already on an RC is not moved to the next RC. When the channel move is not planned (awaiting approval, pending, cooling down), the current channel's patch is offered instead; never both, since the two edit the same pins | `OnTrack` unchanged (an `lts` track would leave a repository on 9.0 without its patches) | `PlatformInChannelMoveTests.An_lts_track_still_takes_the_patches_of_the_sts_channel_it_is_on`, `..._a_newer_rc_inside_the_channel_is_a_preview_the_stable_track_does_not_follow` | implementation, follows from D8/D29 |
+| D37 | **The writer admits the removal of a `dotnet-quality` line, and nothing else that removes lines.** The line rule sets aside a removed line only when it is `dotnet-quality: <value>` (not `ga`), the lookup reported that location in the file, and a dotnet move targets a release (`WorkflowRefPatchRule.RemovedQuality`); every other line is still paired 1:1. The YAML comparison then lets a setup-dotnet `with:` mapping lose exactly that entry (`GitHubWorkflowValidator.RemovableWithKeys`, a closed list in code), and the change must show up as a removal | a general "removable keys" setting; admitting it in the line rule alone | `DependencyPlatformQualityPatchTests` (five cases: admitted, a move to another preview, an unreported quality, another removed line, another action's input) | implementation, follows from D31 |
+| D38 | **A computed quality is reported, not removed** (R8): the quality as a step's only `with:` input, an expression, or an empty value. A companion already on its release has nothing to ride and does not hold the move | removing it anyway; counting the companion as missing | `previewToGa.test.ts` (the scan test); `DependencyPolicyEngine.cs` (the `toRelease` branch) | implementation, follows from R8/D33 |
+
+### 12.5 Implementation log (2026-11-09)
+
+- **Action (M2, M4).** `locations.ts` scans `dotnet-quality:` beside a setup-dotnet version (new kind `dotnet-quality`
+  in `types.ts` and `platform-record.schema.json`; the C# `PlatformLocation.Kind` is a string). `channels.ts`
+  `isNewerVersion` orders an RC below its release and RCs by their numbers, and never moves a pin back.
+  `applyPlatform.ts`: `inChannelMoveChanges` decides whether the current channel is a candidate; an in-channel plan only
+  moves a pin forward, and removes a stale quality line when the target is a release. `feeds.ts` offers the current
+  channel's row after the newer ones. `foldPlatform.ts` takes the table (D34).
+- **Bot (M3).** `DependencyPolicyEngine.EvaluatePlatformMove`: patch level in-channel (D32), version token (D35), the
+  in-channel track rule and the fallback to the patch when the channel move is not planned (D36; found by the lts test, which first failed with "Expected ... to contain \"platform:dotnet 9.0\", but found {empty}"), riders on preview → release (D33, D38).
+- **Writer (M4).** `WorkflowRefPatchRule` and `GitHubWorkflowValidator` (D37); `DependencyPatchValidator` passes
+  `RemovableWith` and checks every removal is a change the comparison found.
+- **Tests.** Fixture `dependency-action/test/fixtures/renovate/dotnet-preview-to-ga/` (hand-written, `SOURCE.md` says
+  why: 11.0 GA is not out). `previewToGa.test.ts` (lookup red on an RC table and green on a GA one, apply, scan,
+  `isNewerVersion`); `PlatformInChannelMoveTests` (policy); `DependencyPlatformQualityPatchTests` (writer);
+  `DependencyPreviewToReleaseEndToEndTests` on `SparkTestDriver`: stored `PlatformRelease` row → the lookup dispatch's
+  `platforms` input → plan. **Red before M3** (engine at `04f191aee`): "Expected plan.Groups to contain a single item,
+  but found 2: Microsoft.AspNetCore.OpenApi, platform:dotnet 11.0", the RC package in a group of its own beside the SDK
+  move.

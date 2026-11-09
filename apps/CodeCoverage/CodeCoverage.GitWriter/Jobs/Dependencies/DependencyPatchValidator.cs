@@ -289,6 +289,8 @@ public static class DependencyPatchValidator
         {
             TargetActions = request.TargetActions,
             PlatformChange = platform.Count == 0 ? null : (old, @new) => PlatformSubstitution.Explain(old, @new, platform) is not null,
+            // #617 D31: only the inputs whose line the line rule saw removed under a move to a release.
+            RemovableWith = plan.RemovedWith.Count == 0 ? null : (key, value) => plan.RemovedWith.Contains((key, value)),
         };
         var change = GitHubWorkflowValidator.ValidateChange(before, after, rules);
         if (!change.Verdict.Valid)
@@ -297,7 +299,8 @@ public static class DependencyPatchValidator
         // Every pair the line rule accepted must be a node change the comparison found: belt and braces, since the
         // comparison already refuses every unplanned difference.
         var covered = plan.Uses.All(u => change.Changes.Any(c => c.Old == u.Old && c.New == u.New))
-                      && plan.With.All(w => change.Changes.Any(c => c.Path.EndsWith($".with.{w.Key}", StringComparison.Ordinal) && c.Old == w.Old && c.New == w.New));
+                      && plan.With.All(w => change.Changes.Any(c => c.Path.EndsWith($".with.{w.Key}", StringComparison.Ordinal) && c.Old == w.Old && c.New == w.New))
+                      && plan.RemovedWith.All(r => change.Changes.Any(c => c.Path.EndsWith($".with.{r.Key}", StringComparison.Ordinal) && c.Old == r.Value && c.New.Length == 0));
         if (!covered)
             return (DependencyPatchVerdict.Reject(DependencyPatchReasons.WorkflowEdit, "A changed line is not a uses: or with: value of a step.", file.Path), [], none);
         return (null, plan.Entries, plan.PlatformGroups);

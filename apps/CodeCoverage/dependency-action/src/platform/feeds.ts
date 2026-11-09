@@ -1,6 +1,7 @@
 import type { PlatformCandidate, PlatformRecord, PlatformTable, Sdk } from '../contracts/types';
 import { CONTRACT_VERSION, SDKS } from '../contracts/types';
 import { compareChannels, isPreviewVersion, sortChannelsDesc } from './channels';
+import { inChannelMoveChanges } from './applyPlatform';
 import { toLocation, type Found } from './locations';
 
 /**
@@ -57,16 +58,24 @@ function isEol(eol: string | boolean | null, now: Date): boolean {
  * One platform record per sdk that has at least one location. Candidates are the channels newer than
  * the highest current one and not end-of-life; previews are kept and flagged: the bot decides per the
  * SDK's track (#606 D8) which one it offers.
+ *
+ * #617 D29: the highest current channel itself is a candidate too (last, after every newer one) when a move within it
+ * changes something: a pin below the channel's latest version or SDK (11.0.100-rc.2 → 11.0.100, 20.11.0 → 20.20.2), or
+ * a `dotnet-quality` to drop once the channel's latest is a release. The table is then the one source of every SDK move,
+ * and R31 folds Renovate's in-channel candidates of the same locations away.
  */
 export function buildPlatformRecord(sdk: Sdk, found: Found[], feed: PlatformCandidate[] | null, now = new Date()): PlatformRecord {
-  const editable = found.filter((f) => !f.computed && f.channel !== null && f.kind !== 'package-version');
+  const editable = found.filter((f) => !f.computed && f.channel !== null && f.kind !== 'package-version' && f.kind !== 'dotnet-quality');
   const channels = sortChannelsDesc(editable.map((f) => f.channel!));
   const highest = channels[0];
   const preview = editable.some((f) => isPreviewVersion(f.value));
-  const candidates = (feed ?? [])
+  const newer = (feed ?? [])
     .filter((c) => !highest || compareChannels(c.channel, highest) > 0)
     .filter((c) => !isEol(c.eol, now))
     .sort((a, b) => compareChannels(b.channel, a.channel));
+  const same = highest ? (feed ?? []).find((c) => c.channel === highest) : undefined;
+  const inChannel = same && inChannelMoveChanges(found, { sdk, fromChannel: highest, toChannel: highest, toVersion: same.latestVersion, sdkVersion: same.latestSdk ?? null });
+  const candidates = inChannel ? [...newer, same] : newer;
   return {
     contractVersion: CONTRACT_VERSION,
     kind: 'platform',
