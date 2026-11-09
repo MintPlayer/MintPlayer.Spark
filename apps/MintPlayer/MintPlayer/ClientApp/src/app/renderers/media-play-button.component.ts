@@ -3,6 +3,7 @@ import { EntityAttributeDefinition, PersistentObject } from '@mintplayer/ng-spar
 import { SparkAttributeRowRenderer } from '@mintplayer/ng-spark/renderers';
 import { Color } from '@mintplayer/ng-bootstrap';
 import { BsButtonTypeDirective } from '@mintplayer/ng-bootstrap/button-type';
+import { SparkIconComponent } from '@mintplayer/ng-spark/icon';
 import { PlayerService } from '../player/player.service';
 import { mediumQueueItem } from '../player/queue-item';
 import { VideoApis } from '../player/video-apis';
@@ -13,7 +14,7 @@ import { VideoApis } from '../player/video-apis';
  */
 @Component({
   selector: 'app-media-play-button',
-  imports: [BsButtonTypeDirective],
+  imports: [BsButtonTypeDirective, SparkIconComponent],
   templateUrl: './media-play-button.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })

@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
 import { SparkAttributeColumnRenderer, SparkAttributeDetailRenderer } from '@mintplayer/ng-spark/renderers';
+import { SparkIconComponent } from '@mintplayer/ng-spark/icon';
 
 /**
  * The `media-player` renderer of `Medium.Value`: the medium's URL as a link, with the site's icon. Only http(s) URLs
@@ -7,6 +8,7 @@ import { SparkAttributeColumnRenderer, SparkAttributeDetailRenderer } from '@min
  */
 @Component({
   selector: 'app-media-link',
+  imports: [SparkIconComponent],
   templateUrl: './media-link.component.html',
   styleUrl: './media-link.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -27,10 +29,10 @@ export class MediaLinkComponent implements SparkAttributeDetailRenderer, SparkAt
 
   protected readonly icon = computed(() => {
     const host = this.url()?.hostname.replace(/^www\./, '') ?? '';
-    if (host === 'youtu.be' || host.endsWith('youtube.com')) return 'bi-youtube';
-    if (host.endsWith('spotify.com')) return 'bi-spotify';
-    if (host.endsWith('soundcloud.com')) return 'bi-soundwave';
-    if (host.endsWith('wikipedia.org')) return 'bi-wikipedia';
-    return 'bi-link-45deg';
+    if (host === 'youtu.be' || host.endsWith('youtube.com')) return 'youtube';
+    if (host.endsWith('spotify.com')) return 'spotify';
+    if (host.endsWith('soundcloud.com')) return 'soundwave';
+    if (host.endsWith('wikipedia.org')) return 'wikipedia';
+    return 'link-45deg';
   });
 }

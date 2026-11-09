@@ -1,15 +1,16 @@
 @if (player.current(); as current) {
   <bs-card class="shadow player-dock" cdkDrag>
     <bs-card-header cdkDragHandle class="player-dock-handle">Currently playing</bs-card-header>
-    <video-player [width]="320" [height]="180" [(playerState)]="player.state" (playerStateChange)="onStateChange($event)" (progressChange)="player.progress($event.currentTime)" />
+    <video-player [width]="320" [height]="180" [(playerState)]="player.state" (playerStateChange)="onStateChange($event)" (progressChange)="player.progress($event)"
+      [(volume)]="player.volume" [(mute)]="player.muted" />
     <bs-card-body>
       <div class="d-flex align-items-center gap-1">
         <div class="flex-grow-1 small overflow-hidden">
           <div class="text-truncate" [title]="current.title">{{ current.title }}</div>
           @if (current.subtitle) { <div class="text-truncate text-body-secondary" [title]="current.subtitle">{{ current.subtitle }}</div> }
         </div>
-        <button type="button" [color]="colors.secondary" class="text-nowrap" title="Queue" aria-label="Queue" (click)="player.queueOpen.set(true)"><i class="bi bi-music-note-list"></i> {{ player.queue().length }}</button>
-        <button type="button" [color]="colors.secondary" title="Stop and clear the queue" aria-label="Stop and clear the queue" (click)="player.clear()"><i class="bi bi-x-lg"></i></button>
+        <button type="button" [color]="colors.secondary" class="text-nowrap" title="Queue" aria-label="Queue" (click)="player.queueOpen.set(true)"><spark-icon name="music-note-list" /> {{ player.queue().length }}</button>
+        <button type="button" [color]="colors.secondary" title="Stop and clear the queue" aria-label="Stop and clear the queue" (click)="player.clear()"><spark-icon name="x-lg" /></button>
       </div>
     </bs-card-body>
   </bs-card>
@@ -18,28 +19,49 @@
 <bs-offcanvas position="end" [open]="player.queueOpen()" (openChange)="player.queueOpen.set($event)">
   <ng-container *bsOffcanvasHeader>Queue</ng-container>
   @if (player.queueOpen()) {
+    <!-- A column the height of the sidebar: the queue takes what the controls leave, Add URL sits at the bottom. -->
+    <div class="queue-panel d-flex flex-column">
       <div class="d-flex justify-content-center gap-2 mb-2">
-        <button type="button" [color]="colors.secondary" title="Previous" aria-label="Previous" [disabled]="!player.current()" (click)="player.previous()"><i class="bi bi-skip-start-fill"></i></button>
+        <button type="button" [color]="colors.secondary" title="Previous" aria-label="Previous" [disabled]="!player.current()" (click)="player.previous()"><spark-icon name="skip-start-fill" /></button>
         <button type="button" [color]="colors.primary" [title]="player.isPlaying() ? 'Pause' : 'Play'" [attr.aria-label]="player.isPlaying() ? 'Pause' : 'Play'" [disabled]="!player.current()" (click)="player.togglePlay()">
-          <i class="bi" [class.bi-pause-fill]="player.isPlaying()" [class.bi-play-fill]="!player.isPlaying()"></i>
+          <spark-icon [name]="player.isPlaying() ? 'pause-fill' : 'play-fill'" />
         </button>
-        <button type="button" [color]="colors.secondary" title="Next" aria-label="Next" [disabled]="!player.current()" (click)="player.next()"><i class="bi bi-skip-end-fill"></i></button>
+        <button type="button" [color]="colors.secondary" title="Next" aria-label="Next" [disabled]="!player.current()" (click)="player.next()"><spark-icon name="skip-end-fill" /></button>
       </div>
       <div class="d-flex justify-content-center gap-2 mb-3">
-        <button type="button" [color]="player.shuffle() ? colors.primary : colors.secondary" [title]="player.shuffle() ? 'Shuffle: on' : 'Shuffle: off'" aria-label="Shuffle" [attr.aria-pressed]="player.shuffle()" (click)="player.toggleShuffle()"><i class="bi bi-shuffle"></i></button>
+        <button type="button" [color]="player.shuffle() ? colors.primary : colors.secondary" [title]="player.shuffle() ? 'Shuffle: on' : 'Shuffle: off'" aria-label="Shuffle" [attr.aria-pressed]="player.shuffle()" (click)="player.toggleShuffle()"><spark-icon name="shuffle" /></button>
         @switch (player.repeat()) {
           @case (repeatModes.repeatAll) {
-            <button type="button" [color]="colors.primary" title="Repeat: all" aria-label="Repeat: all" (click)="player.cycleRepeat()"><i class="bi bi-repeat"></i></button>
+            <button type="button" [color]="colors.primary" title="Repeat: all" aria-label="Repeat: all" (click)="player.cycleRepeat()"><spark-icon name="repeat" /></button>
           }
           @case (repeatModes.repeatOne) {
-            <button type="button" [color]="colors.primary" title="Repeat: one" aria-label="Repeat: one" (click)="player.cycleRepeat()"><i class="bi bi-repeat-1"></i></button>
+            <button type="button" [color]="colors.primary" title="Repeat: one" aria-label="Repeat: one" (click)="player.cycleRepeat()"><spark-icon name="repeat-1" /></button>
           }
           @default {
-            <button type="button" [color]="colors.secondary" title="Repeat: off" aria-label="Repeat: off" (click)="player.cycleRepeat()"><i class="bi bi-repeat"></i></button>
+            <button type="button" [color]="colors.secondary" title="Repeat: off" aria-label="Repeat: off" (click)="player.cycleRepeat()"><spark-icon name="repeat" /></button>
           }
         }
       </div>
-      <bs-list-group>
+      @if (player.current(); as current) {
+        <!-- The legacy playlist sidebar's progress bar, between the elapsed and the total time. -->
+        <div class="d-flex align-items-center gap-2 small mb-1">
+          <span class="text-nowrap">{{ time(player.position().currentTime) }}</span>
+          <bs-progress class="flex-grow-1" label="Playback progress">
+            <bs-progress-bar [minimum]="0" [maximum]="100" [value]="percent()" label="Playback progress"
+              [valueText]="time(player.position().currentTime) + ' of ' + time(player.position().duration)" />
+          </bs-progress>
+          <span class="text-nowrap">{{ time(player.position().duration) }}</span>
+        </div>
+        <div class="text-truncate small text-body-secondary mb-2" [title]="current.title">{{ current.title }}</div>
+      }
+      <div class="d-flex align-items-center gap-2 mb-3">
+        <button type="button" [color]="colors.secondary" [title]="player.muted() ? 'Unmute' : 'Mute'" [attr.aria-label]="player.muted() ? 'Unmute' : 'Mute'"
+          [attr.aria-pressed]="player.muted()" (click)="player.muted.set(!player.muted())">
+          <spark-icon [name]="player.muted() || player.volume() === 0 ? 'volume-mute-fill' : player.volume() < 50 ? 'volume-down-fill' : 'volume-up-fill'" />
+        </button>
+        <bs-range class="flex-grow-1" [min]="0" [max]="100" label="Volume" [value]="player.volume()" (valueChange)="setVolume($event)" />
+      </div>
+      <bs-list-group class="queue-list">
         @for (item of player.queue(); track $index; let i = $index) {
           <bs-list-group-item [active]="i === player.index()">
             <div class="d-flex align-items-center gap-2">
@@ -47,12 +69,35 @@
                 {{ item.title }}
                 @if (item.subtitle) { <small class="d-block opacity-75">{{ item.subtitle }}</small> }
               </div>
-              <button type="button" [color]="colors.danger" title="Remove" aria-label="Remove" (click)="player.remove(i)"><i class="bi bi-trash"></i></button>
+              <button type="button" [color]="colors.danger" title="Remove" aria-label="Remove" (click)="player.remove(i)"><spark-icon name="trash" /></button>
             </div>
           </bs-list-group-item>
         } @empty {
           <bs-list-group-item [disabled]="true">The queue is empty.</bs-list-group-item>
         }
       </bs-list-group>
+      <div class="d-grid mt-2">
+        <button type="button" [color]="colors.secondary" (click)="openAddUrl()"><spark-icon name="plus-lg" /> Add URL</button>
+      </div>
+    </div>
   }
 </bs-offcanvas>
+
+<bs-modal [open]="addUrlOpen()" (openChange)="addUrlOpen.set($event)">
+  <ng-container *bsModalHeader>Add URL</ng-container>
+  @if (addUrlOpen()) {
+    <bs-form>
+      <label for="player-add-url">Enter a YouTube, Vimeo, SoundCloud or Dailymotion URL</label>
+      <input id="player-add-url" #urlInput type="url" autocomplete="off" [(ngModel)]="urlToAdd" [class.is-invalid]="urlInvalid()"
+        [attr.aria-invalid]="urlInvalid()" aria-describedby="player-add-url-feedback"
+        (keydown.enter)="$event.preventDefault(); addUrl()" />
+      @if (urlInvalid()) {
+        <div id="player-add-url-feedback" class="text-danger small mt-1">This URL is not supported.</div>
+      }
+    </bs-form>
+  }
+  <ng-container *bsModalFooter>
+    <button type="button" [color]="colors.secondary" (click)="addUrlOpen.set(false)">Cancel</button>
+    <button type="button" [color]="colors.primary" (click)="addUrl()"><spark-icon name="plus-lg" /> Add to the queue</button>
+  </ng-container>
+</bs-modal>

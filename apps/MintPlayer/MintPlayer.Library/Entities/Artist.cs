@@ -10,6 +10,8 @@ public partial class Artist : Subject
     public string Name { get; set; } = string.Empty;
     public int? YearStarted { get; set; }
     public int? YearQuit { get; set; }
+    // Drag to reorder in the editor. A plain comment: a /// summary would become the attribute's description.
+    [Sortable]
     public List<ArtistMember> Members { get; set; } = [];
 }
 

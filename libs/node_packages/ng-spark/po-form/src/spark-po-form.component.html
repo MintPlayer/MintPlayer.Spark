@@ -122,6 +122,8 @@
               (valueChange)="onReferenceValueChange(attr, $event)">
             </spark-reference-picker>
           } @else if (attr.dataType === 'AsDetail' && attr.isArray && attr.editMode === 'inline') {
+            <!-- Drag-reorder: a [Sortable] attribute, for a caller who may edit its rows (fail closed, like the cells). -->
+            @let reorderable = !!attr.isSortable && (attr | canEditDetailRow:asDetailPermissions());
             <!-- One source of truth for an inline cell, reused by the row and by the drag
                  preview. The preview is a live Angular view (not a cloneNode), so its
                  <bs-select> binds to row[col.name] and shows the value while dragging. -->
@@ -235,7 +237,7 @@
             <bs-table [responsive]="true" class="mb-1">
               <thead>
                 <tr>
-                  @if (attr.isSortable) {
+                  @if (reorderable) {
                     <th style="width: 32px"></th>
                   }
                   @for (col of (attr | asDetailColumns:asDetailTypes():rendererRegistry); track col.name) {
@@ -245,10 +247,10 @@
                 </tr>
               </thead>
               @let inlineRowRenderer = (attr | asDetailRowRenderer:asDetailTypes():rendererRegistry);
-              <tbody class="align-middle" cdkDropList [cdkDropListDisabled]="!attr.isSortable" (cdkDropListDropped)="onAsDetailReorder(attr, $event)">
+              <tbody class="align-middle" cdkDropList [cdkDropListDisabled]="!reorderable" (cdkDropListDropped)="onAsDetailReorder(attr, $event)">
                 @for (row of formData()[attr.name] || []; track $index; let rowIndex = $index) {
-                  <tr cdkDrag [cdkDragDisabled]="!attr.isSortable">
-                    @if (attr.isSortable) {
+                  <tr cdkDrag [cdkDragDisabled]="!reorderable">
+                    @if (reorderable) {
                       <td class="text-center text-muted" style="cursor: move; touch-action: none" cdkDragHandle>
                         <spark-icon name="grip-vertical" />
                       </td>
@@ -275,7 +277,7 @@
                       <bs-table [responsive]="true" class="d-block bg-body shadow-sm spark-drag-preview">
                         <tbody class="align-middle">
                           <tr>
-                            @if (attr.isSortable) {
+                            @if (reorderable) {
                               <td class="text-center text-muted" style="width: 32px"><spark-icon name="grip-vertical" /></td>
                             }
                             @for (col of (attr | asDetailColumns:asDetailTypes():rendererRegistry); track col.name) {
@@ -288,7 +290,7 @@
                   </tr>
                 } @empty {
                   <tr>
-                    <td [attr.colspan]="(attr | asDetailColumns:asDetailTypes():rendererRegistry).length + (attr.isSortable ? 2 : 1)" class="text-center text-muted">
+                    <td [attr.colspan]="(attr | asDetailColumns:asDetailTypes():rendererRegistry).length + (reorderable ? 2 : 1)" class="text-center text-muted">
                       {{ 'common.noItemsFound' | t }}
                     </td>
                   </tr>
@@ -304,6 +306,7 @@
               </button>
             }
           } @else if (attr.dataType === 'AsDetail' && attr.isArray) {
+            @let reorderable = !!attr.isSortable && (attr | canEditDetailRow:asDetailPermissions());
             <!-- One source of truth for a modal-edited row's cell, reused by the row and by its drag preview. -->
             <ng-template #modalDetailCell let-row="row" let-col="col" let-attr="attr" let-rowRenderer="rowRenderer">
               <td>
@@ -322,7 +325,7 @@
             <bs-table [responsive]="true" class="mb-1">
               <thead>
                 <tr>
-                  @if (attr.isSortable) {
+                  @if (reorderable) {
                     <th style="width: 32px"></th>
                   }
                   @for (col of (attr | asDetailColumns:asDetailTypes():rendererRegistry); track col.name) {
@@ -331,11 +334,11 @@
                   <th style="width: 80px"></th>
                 </tr>
               </thead>
-              <tbody class="align-middle" cdkDropList [cdkDropListDisabled]="!attr.isSortable" (cdkDropListDropped)="onAsDetailReorder(attr, $event)">
+              <tbody class="align-middle" cdkDropList [cdkDropListDisabled]="!reorderable" (cdkDropListDropped)="onAsDetailReorder(attr, $event)">
                 @let modalRowRenderer = (attr | asDetailRowRenderer:asDetailTypes():rendererRegistry);
                 @for (row of formData()[attr.name] || []; track $index) {
-                  <tr cdkDrag [cdkDragDisabled]="!attr.isSortable">
-                    @if (attr.isSortable) {
+                  <tr cdkDrag [cdkDragDisabled]="!reorderable">
+                    @if (reorderable) {
                       <td class="text-center text-muted" style="cursor: move; touch-action: none" cdkDragHandle>
                         <spark-icon name="grip-vertical" />
                       </td>
@@ -362,7 +365,7 @@
                       <bs-table [responsive]="true" class="d-block bg-body shadow-sm spark-drag-preview">
                         <tbody class="align-middle">
                           <tr>
-                            @if (attr.isSortable) {
+                            @if (reorderable) {
                               <td class="text-center text-muted" style="width: 32px"><spark-icon name="grip-vertical" /></td>
                             }
                             @for (col of (attr | asDetailColumns:asDetailTypes():rendererRegistry); track col.name) {
@@ -375,7 +378,7 @@
                   </tr>
                 } @empty {
                   <tr>
-                    <td [attr.colspan]="(attr | asDetailColumns:asDetailTypes():rendererRegistry).length + (attr.isSortable ? 2 : 1)" class="text-center text-muted">
+                    <td [attr.colspan]="(attr | asDetailColumns:asDetailTypes():rendererRegistry).length + (reorderable ? 2 : 1)" class="text-center text-muted">
                       {{ 'common.noItemsFound' | t }}
                     </td>
                   </tr>

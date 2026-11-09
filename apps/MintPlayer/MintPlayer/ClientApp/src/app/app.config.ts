@@ -13,6 +13,7 @@ import { withOpenSearchDescription } from '@mintplayer/ng-spark/search';
 import { provideVideoApis } from '@mintplayer/ng-video-player';
 import { mintPlayerRenderers } from './renderers/renderers';
 import { videoPlugins } from './player/video-apis';
+import { provideAppIcons } from './icons';
 import { mintPlayerSeo } from './seo';
 
 import { routes } from './app.routes';
@@ -39,6 +40,7 @@ export const appConfig: ApplicationConfig = {
       withOpenSearchDescription({ title: 'MintPlayer' }),
     ),
     provideVideoApis(...videoPlugins),
+    provideAppIcons(),
     provideZonelessChangeDetection(),
   ]
 };

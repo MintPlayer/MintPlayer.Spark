@@ -94,6 +94,7 @@
         "order": 5,
         "asDetailType": "MintPlayer.Entities.Medium",
         "isArray": true,
+        "isSortable": true,
         "showedOn": "PersistentObject",
         "rules": []
       },
@@ -106,6 +107,7 @@
         "order": 4,
         "asDetailType": "MintPlayer.Entities.ArtistMember",
         "isArray": true,
+        "isSortable": true,
         "showedOn": "PersistentObject",
         "rules": []
       },
