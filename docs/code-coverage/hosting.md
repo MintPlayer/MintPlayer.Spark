@@ -541,7 +541,7 @@ silently:
 | `VPS_SSH_KEY` | Yes | Private half of a dedicated deploy key (ed25519) in that user's `authorized_keys`. |
 | `VPS_PORT` | No | SSH port. |
 | `VPS_SSH_KEY_PASSPHRASE` | No | If the deploy key has one. |
-| `NX_CACHE_SERVER`, `NX_CACHE_RW_TOKEN`, `NX_CACHE_RO_TOKEN` | No | Exported as workflow env for the Nx remote cache; the Docker build deliberately does not use them (`--skip-nx-cache`). |
+| `NX_CACHE_SERVER`, `NX_CACHE_RW_TOKEN` | No | Exported as workflow env for the Nx remote cache (reads need no token, [guide](../guide-nx-remote-cache.md)); the Docker build deliberately does not use them (`--skip-nx-cache`). |
 | `GITHUB_TOKEN` | automatic | Pushing the image, and — passed to the server — downloading `docker-compose.yml` and `docker login ghcr.io` there. |
 
 **Job `build-and-push`** (permissions `contents: read`, `id-token: write`, `packages: write`,
