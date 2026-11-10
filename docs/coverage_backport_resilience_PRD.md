@@ -21,7 +21,25 @@ history shows it is the normal outcome, not an exception.
   `QueryResultProjector.cs`, `spark-routes.ts`, …). #603 then blocks #607 and #608.
 - Evidence: `git log 5fd324b13..origin/master`, `gh pr view N --json labels`, bot comments; conflict cascade
   confirmed by cherry-picking #605 onto the line (conflicts on `SparkSitemapReaderTests.cs`, which #593 changed
-  first). Replay of the full chain not yet done (spike S4).
+  first).
+- **Replay (spike S4, 2026-11-10, `C:\Repos\backport-resilience-sandbox\spikes\S4\RESULT.md`):** the 21 master
+  commits picked onto the cut point (`5fd324b13`) one by one with `cherry-pick -x`:
+
+  | Run | Result |
+  |---|---|
+  | E1: all 21 in master order | 21 clean, 0 conflicts |
+  | E2: the 15 that touch more than `apps/`, `docs/`, `.github/`, in master order, those paths stripped | 15 clean, 0 conflicts |
+  | E3: as E2, #605 skipped (the forgotten label) | 3 conflicts: #603 (`po-detail`, `spark-routes.ts`), #607 (presenter + spec), #620 (`QueryExecutor.cs`, `QueryResultProjector.cs`, ~10 test files) |
+  | E4: from the **real line tip**, the unported ones in master order | 12 clean, 0 conflicts; 3 already on the line |
+  | E5: as E2, #603 and #605 swapped | 2 conflicts (#603, #607) |
+
+  **Master order removes every conflict; one skip or one swap produces them.** E4 also means today's backlog,
+  #620 included, applies cleanly from the line's tip if picked in order (§8).
+  **"Already on the line" detection is broken today:** the line holds #580, #586 and #609 as squashed backport PRs
+  titled `[dotnet-11.x] … (#581)` / `(#592)` / `(#610)`, with **no `cherry picked from` trailer** and the backport
+  PR's number, not the original's. Trailer matching and exact-subject matching both miss them (#580 then conflicts
+  in `SparkReferences.cs`, `PersistentObjectSavePath.cs`); only subject matching with the prefix and number stripped
+  finds them (§3.4).
 
 This matches what the backport PRD already measured on Angular's history (66 of 72 conflicts from one missing PR,
 `docs/coverage_backport_PRD.md:404`) and accepted under D6 "lines are independent".
@@ -73,6 +91,18 @@ This matches what the backport PRD already measured on Angular's history (66 of 
   and keep master's order on every target, so nothing is forgotten silently (Q8).
 - ASP.NET Core shows that per-PR independent backports work when they carry **only fixes, not features**. Their order
   doesn't matter because fixes rarely overlap.
+- **Other projects (web research, 2026-11-10):**
+
+  | Project | Forgotten target | Order | Conflict made visible by | Tested before landing |
+  |---|---|---|---|---|
+  | Node.js ([backporting](https://github.com/nodejs/node/blob/main/doc/contributing/backporting-to-release-lines.md), [releases](https://github.com/nodejs/node/blob/main/doc/contributing/releases.md)) | Can't be lost: the releaser lists **every** main commit not on staging (`branch-diff`), excluding only explicit labels (`dont-land-on-vN.x`, `backport-requested-vN.x`, …) | main's (`--reverse`) | `backport-requested-vN.x` + comment, then `backport-open-`, `backported-to-`; **`backport-blocked-vN.x`** marks PRs waiting on another PR's backport | yes, `make test` before pushing staging |
+  | Electron ([trop](https://raw.githubusercontent.com/electron/trop/main/docs/usage.md)) | `target/*` label or `/trop run backport-to <branch>` after merge | merge order | `target/<b>` swapped for **`needs-manual-bp/<b>`** + comment; the conflicting PR is left out, the rest ship | backport PR's CI |
+  | CPython ([miss-islington](https://github.com/python/miss-islington)) | label before merge; later: unverified | not documented | comment + the merger assigned | CI + core-dev approval |
+  | Kubernetes ([cherry-picks](https://github.com/kubernetes/community/blob/master/contributors/devel/sig-release/cherry-picks.md)) | picks only after merge; a skipped branch must be explained on the PR | newest branch first | author resolves; release-manager approval label | pick PR's CI |
+  | Rust ([backporting](https://forge.rust-lang.org/release/backporting.html)) | `beta-nominated` any time | not specified | release team's rollup PR | yes |
+
+  Only Node.js makes forgetting impossible: the default is "everything on main lands", and **not landing** is the
+  explicit act. Everyone tests the pick before it lands except Angular.
 - **Spark does not copy Angular's untested direct push.** A pick reaches a line only through a backport PR that
   passes the merge queue's checks on that line (owner, 2026-11-10: "cherry-picks into the release branches aren't
   tested before they arrive, and they can go red... I'm not sure about this"). What Spark copies is the **order**:
@@ -187,6 +217,19 @@ While master's platform major for an ecosystem equals a line's major, that line 
     app with a link, and a failing check on master PRs: "release/dotnet-11.x blocked by #N".
   - **A conflict becomes a PR too**, a draft with the conflict markers in the same position, instead of the comment
     it gets today (`BackportRecipients.cs:238-239`). The developer resolves it on that branch.
+  - **The PRs waiting behind it** get `backport: blocked by #N` (Node.js's `backport-blocked-vN.x`), so every one
+    of them says why it isn't moving.
+  - **Board column (owner idea, 2026-11-10):** a setting in the app picks a project-board column (a Projects v2
+    Status option) that held backport PRs are moved to, and one they return to when merged. This reuses the existing
+    board automation (`ProjectAutomationRecipient.cs`, rules with a `TargetColumnOptionId`, "Sync columns") with new
+    triggers "backport held" and "backport merged" next to `EWebhookEventType`'s pull-request events. Limits: Apps
+    can set a single-select field with `updateProjectV2ItemFieldValue`, but the `projects_v2_item` webhook exists
+    only for organization boards ([docs](https://docs.github.com/en/webhooks/webhook-events-and-payloads#projects_v2_item)),
+    and App access to **user-owned** boards fails in community reports (unverified). MintPlayer is an organization.
+  - **Title marker (owner idea, 2026-11-10):** the app prefixes a held PR's title with `⚠️` and removes it when the
+    PR turns green. The marker is owned by the app (a person's own edit is kept). The queue must squash with the
+    title **without** the marker, or it ends up in the line's commit subject and release notes. The label stays the
+    source of truth; the title and board are views of it.
   - **One automatic re-run** before a red result counts as blocking.
   - **Explicit way out:** `/backport skip <line>` records that the change deliberately doesn't go to that line
     (state `skipped`) and releases the line. A skip is a visible decision, never a silent loss like #605.
@@ -222,11 +265,28 @@ While master's platform major for an ecosystem equals a line's major, that line 
   count for nothing **and are removed from the patch** by resetting them to the line's copy (the D9 step,
   `BackportService.cs:85`).
 - A failed ecosystem lookup makes the check **fail visibly** instead of logging.
+- **A forgotten target can't be lost (owner question, 2026-11-10: "what happens when a user (or we) forgot to apply
+  the correct target labels on a pull-request before it's squashed?").** Proposed, after Node.js (§1b):
+  - **The default is "lands".** Every master commit since the split is a ledger item per line. One whose diff is
+    relevant to the line (the rule above) is targeted automatically, label or not. Labels only override.
+  - **Not landing is the explicit act:** `/backport skip <line>` (or removing the label the app added), recorded as
+    `skipped` with who and when. A commit with no relevant paths is recorded `not applicable` by the app, with the
+    reason (e.g. "only `apps/`, `docs/`").
+  - **With in-order delivery (§3.2) nothing can pass an undecided item.** If the computation fails or an item is
+    neither targeted nor skipped, the line holds at that item and shows "needs a decision". Forgetting becomes a
+    visible stop, never a silent gap.
+  - **Adding a line late keeps working:** a `backport:` label or `/backport <line>` on a merged PR already starts a
+    backport today (`GitHubEventsRecipient.cs:519`, `:580`). If later master commits are already on the line, it is
+    picked on the tip (§3.4) and conflicts become a held draft PR like any other.
 
 ### 3.4 A commit assigned after its descendant is on the line (F-D)
 Steps, in order:
 1. **Already present?** `-x` trailers on line commits since the split, then patch-id of the normalised diff, then
    "the three-way merge leaves the tip's tree unchanged". Any yes → mark `done` / label `backported:` without a PR.
+   **S4 found that today's line commits carry no trailer** (#580, #586, #609 are squashed backport PRs titled
+   `[dotnet-11.x] … (#581)` with the backport PR's number, §1). So: the backport squash message must carry a
+   `Backport-of: <master sha> (#<source PR>)` trailer, the ledger records source PR → backport PR, and for the
+   existing commits a one-off match on the subject with the `[line]` prefix and `(#N)` stripped.
 2. **Otherwise pick C on the tip.** The cherry-pick's merge base is C's parent, so reverse order is harmless unless
    the edits overlap.
 3. **On conflict, pick the closure:** the master commits since the split that are not on the line, are targeted or
@@ -261,6 +321,8 @@ With §3.1 this scenario cannot arise on a following line: the line is a prefix 
 | Q8 | Release-line backport PRs delivered **in master's order and never evicted**: a red or conflicting one keeps its place and blocks only its own line until fixed or `/backport skip` (§3.2). Owner direction 2026-11-10, open for further discussion | Yes, with the attention signals, one auto re-run and the skip gesture | One forgotten red PR freezes that line's releases; a long-blocked line accumulates a queue that all needs re-testing |
 | Q8a | ~~Angular-style atomic backport (dry-run pick on every target before the master merge, then direct push)~~ | **Dropped 2026-11-10:** Angular's picks are pushed untested (§1b); Spark keeps queue-tested backport PRs. The dry-run idea can return as an early warning only | — |
 | Q10 | Should the master merge be refused when the trial pick onto a line conflicts (Angular's `_assertMergeableOrThrow`), or only warn on the PR? | Open; warn only, since in-order delivery handles the conflict on the line | Refusing ties master's pace to the lines; warning only means the conflict is found later |
+| Q11 | Default "lands": every relevant master commit is targeted automatically, and `/backport skip <line>` is the only manual act; an undecided item holds the line (§3.3, Node.js model) | Yes | A change someone meant to keep off a line ships unless they skip it; with D16 that is today's intent anyway |
+| Q12 | Held backport PRs: board column picked in the app + `⚠️` title prefix + `backport: blocked by #N` on the ones waiting (§3.2) | Yes; the label is the source of truth | The title prefix leaks into the line's commit subject unless the queue strips it; org boards only |
 | Q9 | Past lines take **fixes only** by default (`defaultLabels: fixes`, D5), as Angular and ASP.NET Core do | Yes | A feature someone wants on an old line needs an explicit label |
 
 ## 5. Spikes
@@ -274,7 +336,7 @@ additionally need a throwaway GitHub repository with the CodeCoverage App instal
 | S1 | Can an admin push an `-s ours` merge to a queue-protected master (linear-history and non-fast-forward rules)? Can the App fast-forward a line through an `update`-rule bypass? Do master's checks still count on the line after a fast-forward (checks attach to the SHA)? | GitHub sandbox | each answered with the API responses recorded |
 | S2 | Versioning on a fast-forwarded line: both lines on one SHA, each releasing only its own ecosystem, no double tags; `TagWriter` ancestry holds; MSBuild sees `preview.117` after the `-s ours` merge | local sandbox + GitHub sandbox | the plan for both lines and the packed versions match expectations |
 | S3 | Migration check: `git range-diff 5fd324b13..release/<line>` vs the master originals shows no line-only change | this repo, read-only | an empty "line-only" list, or the list to port to master first |
-| S4 | Offline census: replay the 21 commits since the cut through §3.2–§3.4 (recomputed labels, master-only stripping, in-order delivery, closure picks). How many are ported, blocked, conflicted vs reality (7 PRs ported as 9 backport commits, 6 conflicts, 0 finished)? | local sandbox (clone) | a table per commit; target: no unfinished conflict caused by an unlabelled predecessor |
+| S4 | Offline census: replay the 21 commits since the cut through §3.2–§3.4 (recomputed labels, master-only stripping, in-order delivery, closure picks). How many are ported, blocked, conflicted vs reality (7 PRs ported as 9 backport commits, 6 conflicts, 0 finished)? | local sandbox (clone) | a table per commit; target: no unfinished conflict caused by an unlabelled predecessor. **Git half done 2026-11-10** (§1: master order 0 conflicts, one skip/swap 2–3); label recompute and closure picks not replayed yet |
 | S5 | Label recompute on #605, #593, #583, #608 against their squash commits | unit tests over the real diffs | #605 → both, #593 → both, #583 → none, #608 without its `apps/` files |
 | S6 | `requested_action` retry button round-trip and permissions | GitHub sandbox | button re-runs one line's backport |
 | S8 | In-order delivery in the merge queue (Q8): how `MergeQueueEngine` would hold a red or conflicting release-line PR in place instead of evicting it, per base branch, while master and other lines keep moving; how the PRs behind it wait and get re-picked on the new tip; where the "blocked" signals come from | this repo, read-only, then the GitHub sandbox | a design note with file:line of the eviction path and the per-branch ordering, and a sandbox run: P red → Q waits → P fixed → P, Q merge in order |
@@ -282,7 +344,7 @@ additionally need a throwaway GitHub repository with the CodeCoverage App instal
 
 ## 6. Milestones (one PR)
 
-- **M0** Spikes S3, S4, S5, S7 (offline), then S1, S2, S6, S8 (sandbox, after approval). Owner decisions Q1–Q10.
+- **M0** Spikes S3, S4, S5, S7 (offline), then S1, S2, S6, S8 (sandbox, after approval). Owner decisions Q1–Q12.
 - **M1** Tag hygiene: reachable-only history, lines-only check first, tag-push webhook warning (§3.5).
 - **M2** Selection at merge: label ownership record, recompute on push and at merge, tests by project graph,
   `backport.masterOnly` stripping, visible lookup failure (§3.3).
@@ -303,4 +365,6 @@ additionally need a throwaway GitHub repository with the CodeCoverage App instal
 
 ## 8. Open items for the PR #620 backport itself
 Under Q1 + Q2 the pending #620 conflict disappears with the migration (M6). If Q1 is rejected, the stopgap is to
-backport #593 → #605 → #608 → #620 in master order (the order S4 must confirm), and fix #605's missing labels by hand.
+backport the unported commits in master order. S4's E4 confirmed it: from the real `release/dotnet-11.x` tip, the 12
+unported commits apply in master order with 0 conflicts (#580, #586, #609 are already there). The angular line was
+not replayed.
