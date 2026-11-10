@@ -1,7 +1,11 @@
 # Backport resilience: release lines without friction — PRD and plan
 
 Status: **draft, 2026-11-10.** Nothing is decided yet; §4 lists the decisions for the owner. The owner wants further
-discussion and investigation before any implementation starts (2026-11-10). Builds on
+discussion and investigation before any implementation starts (2026-11-10). Tracked in #621.
+
+**Where the discussion stands (2026-11-10, end of session):** a grilling session on §4 started with Q1 and was paused
+by the owner, who first wants to explain how they see some things. Q1 was put as three options (§4, "Q1 as asked");
+no answer yet. The cache side of §3.7 moved on separately: the Nx remote cache now serves public reads (PR #622). Builds on
 [coverage_backport_PRD.md](coverage_backport_PRD.md) (D1–D18) and
 [coverage_package_versioning_PRD.md](coverage_package_versioning_PRD.md). Paths below are under `apps/CodeCoverage/`
 unless they start with `docs/`, `.github/` or `libs/`.
@@ -372,6 +376,15 @@ With §3.1 this scenario cannot arise on a following line: the line is a prefix 
   cacheable (`nx.json:59-60`), but no earlier run had the same inputs: the line's tree differs from master's (it
   lacks the unported commits), and only master pushes may write the remote cache (`test.yml:26`), so the line push
   can't reuse the queue run of **the same tree**.
+- **Cache change done 2026-11-10 (PR #622, owner request):** the cache moved to `public.nx-cache.mintplayer.com`
+  (VPS `/var/www/public-nx-cache`): reads need no token, a `PUT` without `NX_CACHE_RW_TOKEN` goes to a sink and is
+  discarded, the RO token is retired, and the leaked tokens were rotated. Fork PRs now get cache hits (PR #622's
+  "build + verify": 71 remote hits, 0 errors). Writes stay master-push only. Letting PR or queue runs **write** was
+  rejected for the cache-poisoning risk ([CREEP](https://nx.dev/blog/cve-2025-36852-critical-cache-poisoning-vulnerability-creep));
+  "test each tree once" (item 1 below) reuses the queue's **verdict**, not cache entries.
+  Open gap, owner's call: `NX_CACHE_RW_TOKEN` is an org secret passed by `secrets: inherit`, so a same-repository PR
+  run (e.g. an App's dependency update) can reach it by editing its own workflow; an environment limited to `master`
+  would close it (`docs/guide-nx-remote-cache.md`).
 - **Proposed:**
   1. **Test each tree once.** The queue tests `mq/{base}/pr-{n}` and squashes exactly that tree. The push run on the
      line, and on master, re-tests an already-tested tree. Let the release job accept "a green queue run exists for
@@ -424,6 +437,22 @@ With §3.1 this scenario cannot arise on a following line: the line is a prefix 
 | Q14 | Test each tree once: the line/master push skips the suite when a green queue run exists for the same tree hash, and the release job relies on it (§3.7). Changes #544 D3's "tests before release in the push" | Yes, after a spike that proves the tree hash matches | A run that was green for the tree but on a different runner image is trusted; a cache bug would ship untested code |
 | Q15 | Batch in-order picks on a diverged line (test the next N together, bisect on red) (§3.7) | Later, only if lines diverge (Q1 rejected or past lines cut) | Bisection costs extra runs when failures are frequent ([Bors](https://forum.bors.tech/t/optimized-bisection/514)) |
 | Q9 | Past lines take **fixes only** by default (`defaultLabels: fixes`, D5), as Angular and ASP.NET Core do | Yes | A feature someone wants on an old line needs an explicit label |
+
+**Q1 as asked in the grilling session (2026-11-10, unanswered).** Q1 is asked first because Q8, Q11, Q13, Q14 and Q15
+matter for the current line only if D16 stays.
+- **A. Fast-forward (reverses D16):** while master's platform majors equal the line's, the App fast-forwards each line
+  to every green master commit; cherry-picks start only after the split. The line keeps existing, so #568 M11 ("release
+  only from lines") stays true. Needs the one-time `-s ours` migration (Q2).
+- **B. Keep D16, made robust:** every change stays a backport PR, with in-order delivery (Q8), default lands (Q11), no
+  second approval (Q13) and test each tree once (Q14).
+- **C. No current line (reverses #568 M11):** release from master while the majors match; the App cuts a line only at
+  the moment master moves to the next major. Release workflows and rulesets then switch branch at every cut.
+- **Recommended: A.** B reaches master's exact tree anyway (S4: in-order picks, 0 conflicts), one PR at a time at about
+  160 extra job-minutes per change. C reverses a decision made on 2026-11-06.
+- **Trap of A:** it only holds while the line never gets a commit of its own. A line-only hotfix makes it diverge, and
+  B's machinery is needed for the current line too. A therefore needs a hard rule, enforced by a ruleset: **nothing lands
+  on a following line except by fast-forward**; a fix for the line goes to master first.
+- **Also asked:** if A, does the owner accept "no line-only commits while the line follows master"?
 
 ## 5. Spikes
 
