@@ -805,3 +805,24 @@ The test project builds after the rebase.
     stay refused.
   - Tests: `tests/MintPlayer.Spark.Tests/Endpoints/PersistentObject/VirtualObjectWriteTests.cs`. Guide:
     `docs/guide-program-units.md`.
+- **PR #620 first CI run (2026-11-10): one product defect, the rest stale tests.**
+  - **Defect: every index-backed root failed on first use under RavenDB.**
+    - Cause: `RavenSparkSession.Query<T, TIndex>()` bound RavenDB's `Query<T, TIndex>` with
+      `MethodInfo.CreateDelegate` as an open-instance delegate. The runtime refuses that for a generic interface
+      method: `NotSupportedException` "Specified method is not supported", thrown from the type initializer.
+    - Evidence: `UnindexedFieldDegradationTests` (all three tests) failed with that exception, raised by
+      `LedgerContext.Ledgers`.
+    - Fix: the binding is now a compiled expression call. New test
+      `RavenSparkStoreConformanceTests.An_index_query_reads_through_the_index`; the shared conformance suite had no
+      index query, because in-memory refuses one by design.
+  - **Conformance suite:** the request-budget case now probes with `LoadAsync`. RavenDB's `ExistsAsync` does not
+    count against `MaxNumberOfRequestsPerSession`, so 40 calls never threw (the test failed on Raven only).
+  - **Stale tests:** these tests still built core-only containers or reached helpers that moved to the provider:
+    - `AddSpark(...)` without `UseRavenDb()`
+    - Data Protection without the provider's key store; they now call `AddRavenDbSessions()`
+    - `ci.Arg<IAsyncDocumentSession>()` for the context session, which is an `ISparkSession`
+    - reflection on helpers that moved to `MintPlayer.Spark.RavenDB` (`WaitForConnection`, `RavenIndexHierarchy.IsIndex`,
+      `ColorNewtonsoftJsonConverter`)
+    - generator fixtures still typed `IRavenQueryable` (D15)
+  - **Deploy closure:** the production Dockerfiles and workflow path filters gained `MintPlayer.Spark.RavenDB`, and
+    CodeCoverage's also gained its other new references (`tools/verify-*-deploy.test.mjs`).

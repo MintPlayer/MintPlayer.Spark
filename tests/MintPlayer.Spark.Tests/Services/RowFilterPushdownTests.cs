@@ -357,7 +357,7 @@ public class RowFilterPushdownTests : SparkTestDriver
         {
             var ctx = new TestContext();
             typeof(SparkContext).GetProperty(nameof(SparkContext.Session))!
-                .SetValue(ctx, ci.Arg<IAsyncDocumentSession>());
+                .SetValue(ctx, ci.Arg<MintPlayer.Spark.Abstractions.Storage.ISparkSession>());
             return ctx;
         });
         indexCatalog.GetByIndexName(Arg.Any<string>()).Returns((IndexCatalogEntry?)null);

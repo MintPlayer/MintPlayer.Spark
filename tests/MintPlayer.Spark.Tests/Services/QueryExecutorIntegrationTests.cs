@@ -57,7 +57,7 @@ public class QueryExecutorIntegrationTests : SparkTestDriver
                 var ctx = new TestSparkContext();
                 typeof(SparkContext)
                     .GetProperty(nameof(SparkContext.Session))!
-                    .SetValue(ctx, ci.Arg<IAsyncDocumentSession>());
+                    .SetValue(ctx, ci.Arg<MintPlayer.Spark.Abstractions.Storage.ISparkSession>());
                 return ctx;
             });
 

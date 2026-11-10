@@ -60,7 +60,11 @@ internal sealed class RavenSparkSession : ISparkSession
             var method = typeof(IAsyncDocumentSession).GetMethods()
                 .Single(m => m.Name == nameof(IAsyncDocumentSession.Query) && m.GetGenericArguments().Length == 2 && m.GetParameters().Length == 0)
                 .MakeGenericMethod(typeof(T), typeof(TIndex));
-            return method.CreateDelegate<Func<IAsyncDocumentSession, IQueryable<T>>>();
+            // A compiled call, not MethodInfo.CreateDelegate: an open-instance delegate over a generic interface method
+            // throws NotSupportedException ("Specified method is not supported").
+            var session = System.Linq.Expressions.Expression.Parameter(typeof(IAsyncDocumentSession), "session");
+            return System.Linq.Expressions.Expression.Lambda<Func<IAsyncDocumentSession, IQueryable<T>>>(
+                System.Linq.Expressions.Expression.Call(session, method), session).Compile();
         }
     }
 

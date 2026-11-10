@@ -89,6 +89,7 @@ public class ReferenceIncludeTests : SparkTestDriver
         using var session = Store.OpenAsyncSession();
         var services = new ServiceCollection()
             .AddSingleton<IAsyncDocumentSession>(session)
+            .AddSingleton(session.AsSparkSession())
             .AddSingleton<IReferenceResolver>(CreateResolver())
             .BuildServiceProvider();
         var actions = new DefaultPersistentObjectActions<Book>(new EntityMapper(Substitute.For<IModelLoader>()));

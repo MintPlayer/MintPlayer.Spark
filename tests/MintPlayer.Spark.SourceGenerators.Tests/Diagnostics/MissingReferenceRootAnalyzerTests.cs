@@ -58,7 +58,7 @@ public class MissingReferenceRootAnalyzerTests
     {
         var diagnostics = await RunAsync("""
             using MintPlayer.Spark;
-            using Raven.Client.Documents.Linq;
+            using System.Linq;
             using TestApp.Entities;
 
             namespace TestApp;
@@ -82,7 +82,7 @@ public class MissingReferenceRootAnalyzerTests
     {
         var diagnostics = await RunAsync("""
             using MintPlayer.Spark;
-            using Raven.Client.Documents.Linq;
+            using System.Linq;
             using TestApp.Entities;
 
             namespace TestApp;
@@ -120,7 +120,7 @@ public class MissingReferenceRootAnalyzerTests
 
         var diagnostics = await RunAsync("""
             using MintPlayer.Spark;
-            using Raven.Client.Documents.Linq;
+            using System.Linq;
             using TestApp.Entities;
 
             namespace TestApp;
@@ -153,7 +153,7 @@ public class MissingReferenceRootAnalyzerTests
     {
         var diagnostics = await RunAsync("""
             using MintPlayer.Spark;
-            using Raven.Client.Documents.Linq;
+            using System.Linq;
             using TestApp.Entities;
 
             namespace TestApp;
@@ -175,7 +175,7 @@ public class MissingReferenceRootAnalyzerTests
     {
         var diagnostics = await RunAsync("""
             using MintPlayer.Spark;
-            using Raven.Client.Documents.Linq;
+            using System.Linq;
             using TestApp.Entities;
 
             namespace TestApp;
@@ -203,7 +203,6 @@ public class MissingReferenceRootAnalyzerTests
             using System.Linq;
             using MintPlayer.Spark;
             using Raven.Client.Documents;
-            using Raven.Client.Documents.Linq;
             using TestApp.Entities;
 
             namespace TestApp;
@@ -230,7 +229,6 @@ public class MissingReferenceRootAnalyzerTests
             using System.Linq;
             using MintPlayer.Spark;
             using Raven.Client.Documents;
-            using Raven.Client.Documents.Linq;
             using TestApp.Entities;
 
             namespace TestApp;
@@ -253,14 +251,13 @@ public class MissingReferenceRootAnalyzerTests
             using System.Linq;
             using MintPlayer.Spark;
             using Raven.Client.Documents;
-            using Raven.Client.Documents.Linq;
             using TestApp.Entities;
 
             namespace TestApp;
 
             public abstract class AppBase : SparkContext
             {
-                public IQueryable<Organization> Organizations => Session.Query<Organization>().Customize(x => x.WaitForNonStaleResults());
+                public IQueryable<Organization> Organizations => Session.Query<Organization>().OrderBy(o => o.Name);
             }
 
             public partial class AppContext : AppBase
@@ -278,7 +275,7 @@ public class MissingReferenceRootAnalyzerTests
     {
         var diagnostics = await RunAsync("""
             using MintPlayer.Spark;
-            using Raven.Client.Documents.Linq;
+            using System.Linq;
             using TestApp.Entities;
 
             namespace TestApp;
@@ -341,7 +338,7 @@ public class MissingReferenceRootAnalyzerTests
                         """),
                     ("AppContext.cs", """
                         using MintPlayer.Spark;
-                        using Raven.Client.Documents.Linq;
+                        using System.Linq;
                         using TestApp.Entities;
 
                         namespace TestApp;

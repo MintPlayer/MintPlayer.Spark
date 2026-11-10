@@ -37,6 +37,8 @@ public class SparkDataProtectionTests : SparkTestDriver
         services.AddSingleton<IConfiguration>(new ConfigurationBuilder().AddInMemoryCollection(configuration).Build());
         services.AddSingleton<IHostEnvironment>(new HostingEnvironment { EnvironmentName = environment, ContentRootPath = Path.GetTempPath() });
         services.AddSingleton(Store);
+        // The key ring lives in the store: the RavenDB provider registers ISparkDataProtectionKeyStore (#551 D20).
+        services.AddRavenDbSessions();
         services.AddLogging();
         services.AddSparkDataProtection();
         return services.BuildServiceProvider().GetRequiredService<IDataProtectionProvider>();

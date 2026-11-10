@@ -325,11 +325,12 @@ public abstract class SparkStoreConformanceTests : IAsyncLifetime
     [Fact]
     public async Task The_request_budget_is_enforced_and_can_be_lifted()
     {
+        // Loads, not ExistsAsync: RavenDB's ExistsAsync does not count against MaxNumberOfRequestsPerSession.
         using var session = Store.OpenSession();
         var act = async () =>
         {
             for (var i = 0; i < 40; i++)
-                await session.ExistsAsync($"ConfDocs/budget-{i}");
+                await session.LoadAsync<ConfDoc>($"ConfDocs/budget-{i}");
         };
         await act.Should().ThrowAsync<InvalidOperationException>();
 
@@ -337,7 +338,7 @@ public abstract class SparkStoreConformanceTests : IAsyncLifetime
         using (lifted.IgnoreMaxRequests())
         {
             for (var i = 0; i < 40; i++)
-                await lifted.ExistsAsync($"ConfDocs/budget-{i}");
+                await lifted.LoadAsync<ConfDoc>($"ConfDocs/budget-{i}");
         }
     }
 }
@@ -357,6 +358,36 @@ public sealed class RavenSparkStoreConformanceTests : SparkStoreConformanceTests
         => ((IRavenQueryable<T>)query).Customize(c => c.WaitForNonStaleResults(TimeSpan.FromSeconds(30)));
 
     public override async Task DisposeAsync() => await driver.DisposeAsync();
+
+    public class ConfDocs_ByName : Raven.Client.Documents.Indexes.AbstractIndexCreationTask<ConfDoc>
+    {
+        public ConfDocs_ByName()
+        {
+            Map = docs => from d in docs select new { d.Name };
+        }
+    }
+
+    /// <summary>
+    /// An index-backed root (<c>Session.Query&lt;T, TIndex&gt;()</c>, what every generated view root calls). Its binding used
+    /// to be an open-instance delegate over a generic interface method, which the runtime refuses with
+    /// NotSupportedException, so each index root failed on first use.
+    /// </summary>
+    [Fact]
+    public async Task An_index_query_reads_through_the_index()
+    {
+        await new ConfDocs_ByName().ExecuteAsync(driver.DocumentStore);
+        using (var write = Store.OpenSession())
+        {
+            await write.StoreAsync(new ConfDoc { Id = "ConfDocs/indexed-1", Name = "Indexed" });
+            await write.StoreAsync(new ConfDoc { Id = "ConfDocs/indexed-2", Name = "Other" });
+            await write.SaveChangesAsync();
+        }
+
+        using var session = Store.OpenSession();
+        var found = await session.ToListAsync(Settled(session.Query<ConfDoc, ConfDocs_ByName>()).Where(d => d.Name == "Indexed"));
+
+        found.Select(d => d.Id).Should().Equal(["ConfDocs/indexed-1"]);
+    }
 
     private sealed class Driver : SparkTestDriver
     {
