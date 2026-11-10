@@ -824,5 +824,11 @@ The test project builds after the rebase.
     - reflection on helpers that moved to `MintPlayer.Spark.RavenDB` (`WaitForConnection`, `RavenIndexHierarchy.IsIndex`,
       `ColorNewtonsoftJsonConverter`)
     - generator fixtures still typed `IRavenQueryable` (D15)
+  - **Second run:**
+    - DemoApp's `--spark-verify-model` refused `Person.GetPeople` and `Company_People`. They sort by `LastName`
+      (since M7 dropped `People_Overview` and its `FullName`), which was shown on the detail page only.
+      `FirstName` and `LastName` are now shown in the grid as well. The neutral view that would bring `FullName`
+      back is #536 Q5.
+    - `UseSparkOptionsTests` still set Spark up without a store provider.
   - **Deploy closure:** the production Dockerfiles and workflow path filters gained `MintPlayer.Spark.RavenDB`, and
     CodeCoverage's also gained its other new references (`tools/verify-*-deploy.test.mjs`).

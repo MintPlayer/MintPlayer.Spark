@@ -70,10 +70,11 @@ are at #551 M2.
 | Q2 | Schema evolution: EF migrations, or a schema-less JSON column synchronised from the model, against Spark's Synchronize, which must never remove (D8)? | a decision with the round trip shown |
 | Q3 | Query translation: do row-security, column-filter, `AnyContains` and the D16 rewrites translate with no client evaluation? | the conformance suite's query cases on SQL Server (LocalDB on the owner's machine, a service container on CI) |
 | Q4 | Concurrency: `rowversion` as the version string, and the D14 etag (#467) on the wire | a conflicting save refused with the existing concurrency error |
+| Q5 | Neutral views (owner, 2026-11-10): a view becomes a provider-neutral declaration that each provider renders — RavenDB as an index, SQL Server as a database view, in-memory as a LINQ projection evaluated on read — and `[GenerateIndex]` emits the declaration plus the provider's rendering. Today both halves are RavenDB-only: the generator emits an `AbstractIndexCreationTask`, and `ISparkSession.Query<T, TIndex>()` binds to RavenDB's index base. | DemoApp's `VPerson` (with the computed `FullName` column it lost in #551 M7) served by the in-memory store and by SQL Server from one declaration |
 
 ## 6. Milestones
 
-1. Spikes Q1–Q4, with this PRD updated and the owner's sign-off.
+1. Spikes Q1–Q5, with this PRD updated and the owner's sign-off.
 2. `MintPlayer.Spark.SqlServer`: `UseSqlServer()`, session, store, query provider and capabilities.
 3. The conformance suite on SQL Server, in a CI job that stays within the 20-job limit
    (`.github/workflows/test.yml`).

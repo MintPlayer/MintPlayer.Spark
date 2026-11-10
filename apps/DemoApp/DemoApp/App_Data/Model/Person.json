@@ -85,7 +85,7 @@
         "isReadOnly": false,
         "order": 1,
         "isArray": false,
-        "showedOn": "PersistentObject",
+        "showedOn": "Query, PersistentObject",
         "rules": [
           {
             "type": "minLength",
@@ -117,7 +117,7 @@
         "isReadOnly": false,
         "order": 2,
         "isArray": false,
-        "showedOn": "PersistentObject",
+        "showedOn": "Query, PersistentObject",
         "rules": [
           {
             "type": "minLength",
