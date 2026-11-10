@@ -32,7 +32,7 @@ public class QueryExecutorIntegrationTests : SparkTestDriver
 
     public class TestSparkContext : SparkContext
     {
-        public IRavenQueryable<Person> People => Session.Query<Person>();
+        public IQueryable<Person> People => Session.Query<Person>();
     }
 
     private readonly IModelLoader _modelLoader = Substitute.For<IModelLoader>();
@@ -51,13 +51,13 @@ public class QueryExecutorIntegrationTests : SparkTestDriver
         _modelLoader.GetEntityType(PersonTypeId).Returns(PersonTypeDefinition());
         _modelLoader.GetEntityTypeByClrType(typeof(Person).FullName!).Returns(PersonTypeDefinition());
 
-        _contextResolver.ResolveContext(Arg.Any<IAsyncDocumentSession>())
+        _contextResolver.ResolveContext(Arg.Any<MintPlayer.Spark.Abstractions.Storage.ISparkSession>())
             .Returns(ci =>
             {
                 var ctx = new TestSparkContext();
                 typeof(SparkContext)
                     .GetProperty(nameof(SparkContext.Session))!
-                    .SetValue(ctx, ci.Arg<IAsyncDocumentSession>());
+                    .SetValue(ctx, ci.Arg<MintPlayer.Spark.Abstractions.Storage.ISparkSession>());
                 return ctx;
             });
 
@@ -76,14 +76,15 @@ public class QueryExecutorIntegrationTests : SparkTestDriver
         var session = Store.OpenAsyncSession();
         var executorRowSecurity = new PermissiveRowSecurity();
         return new QueryExecutor(
-            session, entityMapper, _modelLoader, _contextResolver,
+            session.AsSparkSession(), entityMapper, _modelLoader, _contextResolver,
             _indexCatalog, _permissionService, _actionsResolver, _referenceResolver, breadcrumbResolver,
             // Not the substitute above: that one exists for the breadcrumb resolver and answers only
             // IsAllowedAsync, so its ComposeRowFilterAsync returns null and nulls the queryable. The
             // executor and its gate share one permissive rule, which is what keeps them agreeing.
             executorRowSecurity,
             TestRowSecurityGate.For(executorRowSecurity, entityMapper, breadcrumbResolver),
-            TestQueryResultProjector.For(session, _modelLoader));
+            TestQueryResultProjector.For(session, _modelLoader),
+            queryProvider: TestQueryProvider.For(session.AsSparkSession(), _indexCatalog));
     }
 
     private static EntityTypeDefinition PersonTypeDefinition() => new()

@@ -9,7 +9,6 @@ using MintPlayer.Spark.Abstractions.Sharing;
 using MintPlayer.Spark.Endpoints.PersistentObject;
 using MintPlayer.Spark.Endpoints.Queries;
 using MintPlayer.Spark.Services;
-using Raven.Client.Documents;
 
 namespace MintPlayer.Spark.Sharing;
 
@@ -60,7 +59,7 @@ public sealed record SharedObject(
     IReadOnlyDictionary<string, TranslatedString?> QueryLabels);
 
 internal sealed class SparkShareLinks(
-    IDocumentStore store,
+    Abstractions.Storage.ISparkStore store,
     IServiceScopeFactory scopes,
     IModelLoader modelLoader,
     IQueryLoader queryLoader,
@@ -83,7 +82,7 @@ internal sealed class SparkShareLinks(
     {
         if (string.IsNullOrEmpty(id) || !await IsEnabledAsync(typeName, cancellationToken) || Definition(typeName) is not { } definition)
             return false;
-        using var session = store.OpenAsyncSession();
+        using var session = store.OpenSession();
         return await LoadAsync(session, definition.ClrType, id, cancellationToken) is { } entity
             && await IsEnabledForAsync(definition.TypeName, entity, cancellationToken);
     }
@@ -175,7 +174,7 @@ internal sealed class SparkShareLinks(
             || modelLoader.GetEntityTypeByName(definition.TypeName) is not { } entityType)
             return null;
 
-        using var session = store.OpenAsyncSession();
+        using var session = store.OpenSession();
         var loaded = await LoadAsync(session, definition.ClrType, id, cancellationToken);
         if (loaded is not ISparkShareable shareable || shareable.ShareTokenHash is not { Length: > 0 } stored)
             return null;
@@ -258,7 +257,7 @@ internal sealed class SparkShareLinks(
 
     private async Task SetHashAsync(SparkShareDefinition definition, string id, string? hash, CancellationToken cancellationToken)
     {
-        using var session = store.OpenAsyncSession();
+        using var session = store.OpenSession();
         var loaded = await LoadAsync(session, definition.ClrType, id, cancellationToken);
         if (loaded is not ISparkShareable shareable)
             throw new InvalidOperationException($"No {definition.TypeName} '{id}'.");
@@ -266,14 +265,9 @@ internal sealed class SparkShareLinks(
         await session.SaveChangesAsync(cancellationToken);
     }
 
-    private static async Task<object?> LoadAsync(Raven.Client.Documents.Session.IAsyncDocumentSession session, Type clrType, string id, CancellationToken cancellationToken)
+    private static async Task<object?> LoadAsync(Abstractions.Storage.ISparkSession session, Type clrType, string id, CancellationToken cancellationToken)
     {
-        var method = typeof(Raven.Client.Documents.Session.IAsyncDocumentSession).GetMethods()
-            .Single(m => m.Name == nameof(session.LoadAsync) && m.IsGenericMethodDefinition && m.GetParameters() is [{ ParameterType: var p }, { ParameterType: var c }] && p == typeof(string) && c == typeof(CancellationToken))
-            .MakeGenericMethod(clrType);
-        var task = (Task)method.Invoke(session, [id, cancellationToken])!;
-        await task;
-        var loaded = task.GetType().GetProperty("Result")!.GetValue(task);
+        var loaded = await session.LoadAsync(clrType, id, cancellationToken);
         return loaded is not null && clrType.IsInstanceOfType(loaded) ? loaded : null;
     }
 

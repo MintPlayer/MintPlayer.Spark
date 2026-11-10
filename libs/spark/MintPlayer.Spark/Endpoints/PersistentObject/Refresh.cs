@@ -51,7 +51,7 @@ internal sealed partial class RefreshPersistentObject : IPostEndpoint<RefreshPer
     [Inject] private readonly IRowSecurity rowSecurity;
     // The request-scoped session — the same instance IDatabaseAccess uses, so a scope opened here
     // covers the row-gated load below as well as anything the hook does.
-    [Inject] private readonly Raven.Client.Documents.Session.IAsyncDocumentSession session;
+    [Inject] private readonly Abstractions.Storage.ISparkSession session;
     [Inject] private readonly ILogger<RefreshPersistentObject> logger;
     [Inject] private readonly IHttpContextAccessor httpContextAccessor;
 

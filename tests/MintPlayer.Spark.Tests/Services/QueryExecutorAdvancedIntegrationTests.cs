@@ -44,8 +44,8 @@ public class QueryExecutorAdvancedIntegrationTests : SparkTestDriver
 
     public class TestContext : SparkContext
     {
-        public IRavenQueryable<Company> Companies => Session.Query<Company>();
-        public IRavenQueryable<Employee> Employees => Session.Query<Employee>();
+        public IQueryable<Company> Companies => Session.Query<Company>();
+        public IQueryable<Employee> Employees => Session.Query<Employee>();
     }
 
     private static EntityTypeFile CompanyModel() => new()

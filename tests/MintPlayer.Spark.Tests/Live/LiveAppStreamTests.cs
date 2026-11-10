@@ -186,7 +186,7 @@ public class LsTicker
 
 public class LsContext : SparkContext
 {
-    public IRavenQueryable<LsTicker> Tickers => Session.Query<LsTicker>();
+    public IQueryable<LsTicker> Tickers => Session.Query<LsTicker>();
 }
 
 public class LsTickerActions(MintPlayer.Spark.Services.IEntityMapper mapper) : DefaultPersistentObjectActions<LsTicker>(mapper), ISparkOwnsRowSecurity

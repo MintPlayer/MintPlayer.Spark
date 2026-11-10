@@ -67,7 +67,7 @@ public class ValueObjectKeyVerifierTests : SparkTestDriver
     // reflected call would keep compiling after the method was renamed or its signature changed.
     private static Task VerifyAsync(IDocumentStore store)
         => MintPlayer.Spark.Services.ValueObjectKeyVerifier.VerifyAsync(
-            typeof(TestContext), store, _ => { }, CancellationToken.None);
+            typeof(TestContext), new MintPlayer.Spark.Storage.Raven.RavenSparkStore(store), new MintPlayer.Spark.Services.RavenRowKeyScan(store), _ => { }, CancellationToken.None);
 
     private static async Task StripKeysAsync(IDocumentStore store, string arrayPath)
     {

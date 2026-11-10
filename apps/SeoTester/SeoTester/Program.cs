@@ -38,6 +38,9 @@ var builder = WebApplication.CreateBuilder(args);
 // Spark:Live, and expiration switches itself on for the IExpiring types the packages below declare.
 builder.Services.AddSpark(builder.Configuration, spark =>
 {
+    // The store (#551): RavenDB, configured from Spark:RavenDb.
+    spark.UseRavenDb();
+
     spark.UseContext<SeoContext>();
     // Generated over this assembly: the Actions classes (Actions/), the custom actions (CustomActions/), the
     // interceptors that keep a site's server-owned fields (Interceptors/) and the re-verification sweep (cron).

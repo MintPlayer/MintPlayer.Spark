@@ -1,7 +1,6 @@
 using Microsoft.Extensions.Options;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Services;
-using Raven.Client.Documents;
 
 namespace MintPlayer.Spark.Live;
 
@@ -24,11 +23,7 @@ internal static class LiveStartup
         var options = services.GetRequiredService<IOptions<SparkLiveOptions>>().Value;
         Validate(options);
 
-        if (options.Source != SparkLiveSource.Changes)
-        {
-            var hub = services.GetRequiredService<LiveHub>();
-            hub.AttachActionsSource(LiveActionsSource.Install(services.GetRequiredService<IDocumentStore>(), hub));
-        }
+        services.GetRequiredService<LiveHub>().StartCommittedSource();
 
         var modelLoader = services.GetRequiredService<IModelLoader>();
         var problems = new List<string>();

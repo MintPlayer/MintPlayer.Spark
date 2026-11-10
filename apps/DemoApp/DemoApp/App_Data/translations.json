@@ -108,13 +108,6 @@
             "nl": "Merk"
           }
         },
-        "Details": {
-          "label": {
-            "en": "Details",
-            "fr": "Détails",
-            "nl": "Details"
-          }
-        },
         "FrameSize": {
           "description": {
             "en": "Frame size in centimetres."
@@ -223,13 +216,6 @@
             "nl": "Eigenaar"
           }
         },
-        "OwnerFullName": {
-          "label": {
-            "en": "Owner Full Name",
-            "fr": "Nom complet du propriétaire",
-            "nl": "Volledige naam eigenaar"
-          }
-        },
         "Status": {
           "description": {
             "en": "Current state of the car: in use, on the parking lot, in maintenance or stolen.",
@@ -323,13 +309,6 @@
             "en": "Brand",
             "fr": "Marque",
             "nl": "Merk"
-          }
-        },
-        "Details": {
-          "label": {
-            "en": "Details",
-            "fr": "Détails",
-            "nl": "Details"
           }
         },
         "EngineCapacity": {
@@ -436,13 +415,6 @@
               "fr": "Le prénom doit contenir au moins 2 caractères.",
               "nl": "Voornaam moet minstens 2 tekens bevatten."
             }
-          }
-        },
-        "FullName": {
-          "label": {
-            "en": "Full Name",
-            "fr": "Nom complet",
-            "nl": "Volledige naam"
           }
         },
         "IsActive": {
@@ -661,7 +633,7 @@
   "queries": {
     "Company_Cars": {
       "label": {
-        "en": "Cars owned by this company. A sub-query: rendered on the Company detail page, filtered by that company through the Company_Cars index.",
+        "en": "Cars owned by this company. A sub-query: rendered on the Company detail page, filtered by that company.",
         "fr": "Voitures de cette entreprise.",
         "nl": "Auto's van dit bedrijf."
       }

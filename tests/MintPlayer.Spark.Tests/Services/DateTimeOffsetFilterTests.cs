@@ -43,7 +43,7 @@ public class DateTimeOffsetFilterTests : SparkTestDriver
 
     public class TestContext : SparkContext
     {
-        public IRavenQueryable<Slot> Slots => Session.Query<Slot>();
+        public IQueryable<Slot> Slots => Session.Query<Slot>();
     }
 
     private SparkEndpointFactory<TestContext>? _factory;

@@ -75,7 +75,7 @@ public class StaticIndexSearchTests : SparkTestDriver
 
     public class Sp4Context : SparkContext
     {
-        public IRavenQueryable<Sp4Gadget> Gadgets => Session.Query<Sp4Gadget>();
+        public IQueryable<Sp4Gadget> Gadgets => Session.Query<Sp4Gadget>();
     }
 
     private static EntityTypeFile GadgetModel(bool bindIndex = false) => new()

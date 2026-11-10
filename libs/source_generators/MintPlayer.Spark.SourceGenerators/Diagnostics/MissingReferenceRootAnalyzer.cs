@@ -18,11 +18,11 @@ namespace MintPlayer.Spark.SourceGenerators.Diagnostics;
 /// about.
 /// </para>
 /// <para>
-/// What counts as a plain entity root: an <c>IRavenQueryable&lt;T&gt;</c> property of a context, hand-written or inherited
+/// What counts as a plain entity root: an <c>IQueryable&lt;T&gt;</c> property of a context, hand-written or inherited
 /// from a base in this compilation, whose body is the plain <c>Session.Query&lt;T&gt;()</c> (the generator's own
 /// <see cref="Naming.PlainRootClassifier"/>), or a <c>[SparkPlainRoot(typeof(T), …)]</c> marker on a context or a base
 /// context (a referenced base carries its own). A filtered or customized root does not count, and neither does a
-/// <b>view</b> root (<c>IRavenQueryable&lt;VT&gt;</c> over a <c>[FromIndex]</c> class), which mints no query. When
+/// <b>view</b> root (<c>IQueryable&lt;VT&gt;</c> over a <c>[FromIndex]</c> class), which mints no query. When
 /// <c>T</c> has several roots, the reference resolves to the plain one (SP3), so several roots are fine.
 /// </para>
 /// <para>
@@ -39,7 +39,7 @@ public sealed class MissingReferenceRootAnalyzer : DiagnosticAnalyzer
     private const string FromIndexAttributeFullName = "MintPlayer.Spark.Abstractions.FromIndexAttribute";
     private const string SparkPlainRootAttributeFullName = "MintPlayer.Spark.Abstractions.SparkPlainRootAttribute";
     private const string ReadOnlyAttributeFullName = "System.ComponentModel.ReadOnlyAttribute";
-    private const string RavenQueryableMetadataName = "Raven.Client.Documents.Linq.IRavenQueryable`1";
+    private const string RootQueryableMetadataName = "System.Linq.IQueryable`1";
 
     /// <summary>Diagnostic property: the referenced entity type's metadata name, for the code fix.</summary>
     internal const string EntityTypeProperty = "EntityType";
@@ -50,7 +50,7 @@ public sealed class MissingReferenceRootAnalyzer : DiagnosticAnalyzer
     internal static readonly DiagnosticDescriptor MissingRootRule = new(
         id: "SPARK056",
         title: "Reference without a query to a type the context has no plain entity root of",
-        messageFormat: "'{0}' references '{1}' without naming a query, and '{2}' has no plain entity root of '{1}' (one whose body is Session.Query<{3}>()), so the reference gets no query and its picker no options. Add 'public IRavenQueryable<{3}> {4} => Session.Query<{3}>();' to '{2}', or name a query in [Reference(typeof({3}), \"…\")]",
+        messageFormat: "'{0}' references '{1}' without naming a query, and '{2}' has no plain entity root of '{1}' (one whose body is Session.Query<{3}>()), so the reference gets no query and its picker no options. Add 'public IQueryable<{3}> {4} => Session.Query<{3}>();' to '{2}', or name a query in [Reference(typeof({3}), \"…\")]",
         category: "Correctness",
         defaultSeverity: DiagnosticSeverity.Warning,
         isEnabledByDefault: true,
@@ -82,8 +82,8 @@ public sealed class MissingReferenceRootAnalyzer : DiagnosticAnalyzer
         context.RegisterCompilationStartAction(static compilationStart =>
         {
             var sparkContext = compilationStart.Compilation.GetTypeByMetadataName(SparkContextFullName);
-            var ravenQueryable = compilationStart.Compilation.GetTypeByMetadataName(RavenQueryableMetadataName);
-            if (sparkContext is null || ravenQueryable is null) return;
+            var rootQueryable = compilationStart.Compilation.GetTypeByMetadataName(RootQueryableMetadataName);
+            if (sparkContext is null || rootQueryable is null) return;
 
             var contexts = new ConcurrentBag<INamedTypeSymbol>();
             var candidates = new ConcurrentBag<Candidate>();
@@ -113,7 +113,7 @@ public sealed class MissingReferenceRootAnalyzer : DiagnosticAnalyzer
 
                 var rooted = new HashSet<ITypeSymbol>(SymbolEqualityComparer.Default);
                 foreach (var contextType in allContexts)
-                    CollectPlainRoots(contextType, ravenQueryable, endContext.Compilation, rooted, endContext.CancellationToken);
+                    CollectPlainRoots(contextType, rootQueryable, endContext.Compilation, rooted, endContext.CancellationToken);
 
                 var reportOn = allContexts[0];
                 foreach (var candidate in candidates)
@@ -178,10 +178,10 @@ public sealed class MissingReferenceRootAnalyzer : DiagnosticAnalyzer
     /// with the markers it writes even where the generated partial is absent (a context that is not partial).
     /// </remarks>
     private static void CollectPlainRoots(
-        INamedTypeSymbol contextType, INamedTypeSymbol ravenQueryable, Compilation compilation, HashSet<ITypeSymbol> rooted,
+        INamedTypeSymbol contextType, INamedTypeSymbol rootQueryable, Compilation compilation, HashSet<ITypeSymbol> rooted,
         System.Threading.CancellationToken ct)
     {
-        foreach (var root in PlainRootClassifier.PlainRoots(contextType, ravenQueryable, compilation, ct))
+        foreach (var root in PlainRootClassifier.PlainRoots(contextType, rootQueryable, compilation, ct))
             rooted.Add(root.Entity);
 
         for (var current = contextType; current is not null; current = current.BaseType)

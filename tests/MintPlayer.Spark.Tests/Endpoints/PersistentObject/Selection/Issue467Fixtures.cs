@@ -117,11 +117,11 @@ public class I467Item
 
 public class I467Context : SparkContext
 {
-    public IRavenQueryable<I467Note> Notes => Session.Query<I467Note>();
+    public IQueryable<I467Note> Notes => Session.Query<I467Note>();
     public IRavenQueryable<I467Task> OpenTasks => (IRavenQueryable<I467Task>)Session.Query<I467Task>().Where(t => !t.Locked);
     public IRavenQueryable<I467Task> LockedTasks => (IRavenQueryable<I467Task>)Session.Query<I467Task>().Where(t => t.Locked);
-    public IRavenQueryable<I467Item> Items => Session.Query<I467Item>();
-    public IRavenQueryable<I467Prompt> Prompts => Session.Query<I467Prompt>();
+    public IQueryable<I467Item> Items => Session.Query<I467Item>();
+    public IQueryable<I467Prompt> Prompts => Session.Query<I467Prompt>();
 }
 
 public static class I467Models

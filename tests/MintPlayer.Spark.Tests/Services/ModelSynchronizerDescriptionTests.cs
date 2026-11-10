@@ -326,5 +326,5 @@ public class MSD_Widget
 
 public class MSD_Context : SparkContext
 {
-    public IRavenQueryable<MSD_Widget> Widgets => Session.Query<MSD_Widget>();
+    public IQueryable<MSD_Widget> Widgets => Session.Query<MSD_Widget>();
 }

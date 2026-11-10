@@ -24,8 +24,12 @@ public static class SparkBoardsExtensions
     /// Registers the <c>/spark/boards</c> endpoints, the four built-in tile kinds and the boards of
     /// <c>App_Data/boards.json</c>. A malformed board or an unknown kind refuses startup.
     /// </summary>
+    [global::MintPlayer.Spark.Abstractions.Storage.SparkRequiresStore("Spark.Boards", Provider = global::MintPlayer.Spark.Abstractions.Storage.SparkStoreProviders.RavenDb)]
     public static ISparkBuilder AddBoards(this ISparkBuilder builder, Action<SparkBoardsOptions>? configure = null)
     {
+        // #551 D13: the board service reads and writes through RavenDB's own client.
+        global::MintPlayer.Spark.Abstractions.Storage.SparkStoreRequirementExtensions.RequireStore(builder, "Spark.Boards", provider: global::MintPlayer.Spark.Abstractions.Storage.SparkStoreProviders.RavenDb);
+
         var services = builder.Services;
         if (services.Any(d => d.ServiceType == typeof(BoardsMarker)))
         {

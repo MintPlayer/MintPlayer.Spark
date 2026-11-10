@@ -2,8 +2,7 @@ using MintPlayer.Spark.Abstractions.Authorization;
 using DemoApp.Library.Entities;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
-using Raven.Client.Documents;
-using Raven.Client.Documents.Session;
+using MintPlayer.Spark.Abstractions.Storage;
 
 namespace DemoApp.Actions;
 
@@ -28,15 +27,15 @@ public partial class StartPageActions : ISparkOwnsRowSecurity
         "GetCollections itself, because a computed row has no document for the framework to judge.";
 
     [Inject] private readonly IManager manager;
-    [Inject] private readonly IAsyncDocumentSession session;
+    [Inject] private readonly ISparkSession session;
 
     public async Task<PersistentObject?> OnLoadAsync(string id, PersistentObject? parent)
     {
         var obj = await manager.GetPersistentObjectAsync("StartPage");
 
-        var peopleCount = await session.Query<Person>().CountAsync();
-        var companyCount = await session.Query<Company>().CountAsync();
-        var carCount = await session.Query<Car>().CountAsync();
+        var peopleCount = await session.CountAsync(session.Query<Person>());
+        var companyCount = await session.CountAsync(session.Query<Company>());
+        var carCount = await session.CountAsync(session.Query<Car>());
 
         obj["Welcome"].Value =
             $"Welcome to the Spark demo!\n" +
@@ -71,9 +70,9 @@ public partial class StartPageActions : ISparkOwnsRowSecurity
         // name it, and the framework refuses a null or repeated one rather than collapsing the grid.
         return
         [
-            new CollectionRow("collections/people", "People", await session.Query<Person>().CountAsync()),
-            new CollectionRow("collections/companies", "Companies", await session.Query<Company>().CountAsync()),
-            new CollectionRow("collections/cars", "Cars", await session.Query<Car>().CountAsync()),
+            new CollectionRow("collections/people", "People", await session.CountAsync(session.Query<Person>())),
+            new CollectionRow("collections/companies", "Companies", await session.CountAsync(session.Query<Company>())),
+            new CollectionRow("collections/cars", "Cars", await session.CountAsync(session.Query<Car>())),
         ];
     }
 }

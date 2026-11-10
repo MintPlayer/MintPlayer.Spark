@@ -129,7 +129,7 @@ public class AsDetailRowRightsTests(SparkSharedDatabase database)
         using var session = Store.OpenAsyncSession();
 
         var act = () => Mapper(Permissions("New"))
-            .PopulateObjectValuesAsync(Po(Row("a", "111"), Row("b", "222")), parent, session);
+            .PopulateObjectValuesAsync(Po(Row("a", "111"), Row("b", "222")), parent, session.AsSparkSession());
 
         await act.Should().ThrowAsync<UnauthorizedAccessException>(
             "a key absent from the stored set is a creation of the row type, whatever right the "
@@ -143,7 +143,7 @@ public class AsDetailRowRightsTests(SparkSharedDatabase database)
         using var session = Store.OpenAsyncSession();
 
         await Mapper(Permissions())
-            .PopulateObjectValuesAsync(Po(Row("a", "111"), Row("b", "222")), parent, session);
+            .PopulateObjectValuesAsync(Po(Row("a", "111"), Row("b", "222")), parent, session.AsSparkSession());
 
         parent.Phones.Should().HaveCount(2);
     }
@@ -158,7 +158,7 @@ public class AsDetailRowRightsTests(SparkSharedDatabase database)
         using var session = Store.OpenAsyncSession();
 
         var act = () => Mapper(Permissions("Delete"))
-            .PopulateObjectValuesAsync(Po(Row("a", "111")), parent, session);
+            .PopulateObjectValuesAsync(Po(Row("a", "111")), parent, session.AsSparkSession());
 
         await act.Should().ThrowAsync<UnauthorizedAccessException>(
             "a stored key absent from the incoming collection is a deletion of the row type");
@@ -173,7 +173,7 @@ public class AsDetailRowRightsTests(SparkSharedDatabase database)
         };
         using var session = Store.OpenAsyncSession();
 
-        await Mapper(Permissions()).PopulateObjectValuesAsync(Po(Row("a", "111")), parent, session);
+        await Mapper(Permissions()).PopulateObjectValuesAsync(Po(Row("a", "111")), parent, session.AsSparkSession());
 
         parent.Phones.Should().ContainSingle().Which.Id.Should().Be("a");
     }
@@ -190,7 +190,7 @@ public class AsDetailRowRightsTests(SparkSharedDatabase database)
         using var session = Store.OpenAsyncSession();
 
         await Mapper(Permissions("Edit"))
-            .PopulateObjectValuesAsync(Po(Row("a", "666")), parent, session);
+            .PopulateObjectValuesAsync(Po(Row("a", "666")), parent, session.AsSparkSession());
 
         parent.Phones.Should().ContainSingle().Which.Number.Should().Be("111",
             "the row is restored from storage rather than the save being refused");
@@ -202,7 +202,7 @@ public class AsDetailRowRightsTests(SparkSharedDatabase database)
         var parent = new Parent { Phones = [new PhoneNumber { Id = "a", Number = "111" }] };
         using var session = Store.OpenAsyncSession();
 
-        await Mapper(Permissions()).PopulateObjectValuesAsync(Po(Row("a", "666")), parent, session);
+        await Mapper(Permissions()).PopulateObjectValuesAsync(Po(Row("a", "666")), parent, session.AsSparkSession());
 
         parent.Phones.Should().ContainSingle().Which.Number.Should().Be("666");
     }
@@ -216,7 +216,7 @@ public class AsDetailRowRightsTests(SparkSharedDatabase database)
         var parent = new Parent();
         using var session = Store.OpenAsyncSession();
 
-        var act = () => Mapper(Permissions("New")).PopulateObjectValuesAsync(Po(Row("a", "111")), parent, session);
+        var act = () => Mapper(Permissions("New")).PopulateObjectValuesAsync(Po(Row("a", "111")), parent, session.AsSparkSession());
 
         await act.Should().ThrowAsync<UnauthorizedAccessException>();
     }
@@ -232,7 +232,7 @@ public class AsDetailRowRightsTests(SparkSharedDatabase database)
         using var session = Store.OpenAsyncSession();
 
         await Mapper(Permissions("New", "Edit", "Delete"))
-            .PopulateObjectValuesAsync(Po(Row("a", "111")), parent, session);
+            .PopulateObjectValuesAsync(Po(Row("a", "111")), parent, session.AsSparkSession());
 
         parent.Phones.Should().ContainSingle().Which.Number.Should().Be("111");
     }
@@ -253,7 +253,7 @@ public class AsDetailRowRightsTests(SparkSharedDatabase database)
             permissionService: Permissions("Edit"),
             clientAccessor: client);
 
-        await mapper.PopulateObjectValuesAsync(Po(Row("a", "666")), parent, session);
+        await mapper.PopulateObjectValuesAsync(Po(Row("a", "666")), parent, session.AsSparkSession());
 
         client.Received(1).Notify(
             Arg.Is<string>(m => m.Contains("PhoneNumber")),
@@ -278,7 +278,7 @@ public class AsDetailRowRightsTests(SparkSharedDatabase database)
         };
         using var session = Store.OpenAsyncSession();
 
-        await MapperWith(client, "Edit").PopulateObjectValuesAsync(Po(Row("b", "222"), Row("a", "111")), parent, session);
+        await MapperWith(client, "Edit").PopulateObjectValuesAsync(Po(Row("b", "222"), Row("a", "111")), parent, session.AsSparkSession());
 
         parent.Phones.Select(p => p.Id).Should().Equal(["b", "a"]);
         client.DidNotReceiveWithAnyArgs().Notify(default(string)!, default, default);
@@ -292,7 +292,7 @@ public class AsDetailRowRightsTests(SparkSharedDatabase database)
         var parent = new Parent { Phones = [new PhoneNumber { Id = "a", Number = "111" }] };
         using var session = Store.OpenAsyncSession();
 
-        await MapperWith(client, "Edit").PopulateObjectValuesAsync(Po(Row("a", "111")), parent, session);
+        await MapperWith(client, "Edit").PopulateObjectValuesAsync(Po(Row("a", "111")), parent, session.AsSparkSession());
 
         client.DidNotReceiveWithAnyArgs().Notify(default(string)!, default, default);
     }
@@ -314,7 +314,7 @@ public class AsDetailRowRightsTests(SparkSharedDatabase database)
         using var session = Store.OpenAsyncSession();
 
         await MapperWith(client, "Edit").PopulateObjectValuesAsync(
-            Po(Row("c", "333"), Row("a", "666"), Row("b", "222")), parent, session);
+            Po(Row("c", "333"), Row("a", "666"), Row("b", "222")), parent, session.AsSparkSession());
 
         parent.Phones.Select(p => p.Number).Should().Equal(["333", "111", "222"], "the edit is restored, the order kept");
         client.Received(1).Notify(
@@ -346,7 +346,7 @@ public class AsDetailRowRightsTests(SparkSharedDatabase database)
         using var session = Store.OpenAsyncSession();
 
         var act = () => Mapper(Permissions("Delete"))
-            .PopulateObjectValuesAsync(Po(Row("different-key", "111")), parent, session);
+            .PopulateObjectValuesAsync(Po(Row("different-key", "111")), parent, session.AsSparkSession());
 
         await act.Should().ThrowAsync<UnauthorizedAccessException>(
             "an unmatched stored key is a deletion as far as the save can tell, which is exactly why "

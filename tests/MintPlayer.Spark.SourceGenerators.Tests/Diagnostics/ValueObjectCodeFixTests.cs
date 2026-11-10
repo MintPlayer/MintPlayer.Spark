@@ -30,21 +30,21 @@ public class ValueObjectCodeFixTests
         typeof(SparkContext),
         typeof(ValueObjectAttribute),
         typeof(ReferenceAttribute),
-        typeof(Raven.Client.Documents.Linq.IRavenQueryable<>),
+        typeof(MintPlayer.Spark.Abstractions.Storage.ISparkSession),
     ];
 
     /// <summary>The application half: a context whose one query roots a document with a collection.</summary>
     private const string AppSource = """
         using System.Collections.Generic;
         using MintPlayer.Spark;
-        using Raven.Client.Documents.Linq;
+        using System.Linq;
         using TestLib;
 
         namespace TestApp;
 
         public class AppContext : SparkContext
         {
-            public IRavenQueryable<Person> People { get; set; } = null!;
+            public IQueryable<Person> People { get; set; } = null!;
         }
         """;
 

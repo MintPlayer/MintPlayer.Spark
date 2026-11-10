@@ -3,7 +3,6 @@ using MintPlayer.AspNetCore.SpaServices.Extensions;
 using MintPlayer.Spark;
 using MintPlayer.Spark.Controllers;
 using MintPlayer.Spark.Extensions;
-using MintPlayer.Spark.Messaging;
 using System.Text.RegularExpressions;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -11,6 +10,10 @@ var builder = WebApplication.CreateBuilder(args);
 // Add services to the container.
 builder.Services.AddSpark(builder.Configuration, spark =>
 {
+    // The store (#551 D14): in memory, so the demo needs no database. Data resets on restart; DemoSeed
+    // writes the starting records. For RavenDB (indexes, messaging, cron), see the HR and Fleet apps.
+    spark.UseInMemory(store => store.Seed(DemoSeed.WriteAsync));
+
     spark.UseContext<DemoSparkContext>();
 
     // Mounted through Spark rather than with endpoints.MapControllers(), so the controllers
@@ -20,9 +23,6 @@ builder.Services.AddSpark(builder.Configuration, spark =>
     spark.UseControllers();
 
     spark.AddActions();
-    spark.AddMessaging();
-    spark.AddRecipients();
-    spark.AddCronJobs();
 });
 
 // Configure SPA static files

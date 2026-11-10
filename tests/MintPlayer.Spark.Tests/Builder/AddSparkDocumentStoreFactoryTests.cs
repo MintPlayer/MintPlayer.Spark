@@ -11,7 +11,7 @@ using Raven.Client.ServerWide.Operations;
 namespace MintPlayer.Spark.Tests.Builder;
 
 /// <summary>
-/// The IDocumentStore singleton factory inside <c>AddSpark</c> is normally bypassed by tests
+/// The IDocumentStore singleton factory inside <c>UseRavenDb()</c> is normally bypassed by tests
 /// that pre-register an embedded Raven instance via <see cref="MintPlayer.Spark.Testing.SparkEndpointFactory{TContext}"/>.
 /// This fixture instead lets the factory build its own DocumentStore against the embedded
 /// server's HTTP URL — pinning the GUID id-generator wiring, the JSON converters, the
@@ -40,7 +40,7 @@ public class AddSparkDocumentStoreFactoryTests(SparkSharedDatabase database)
         var env = Substitute.For<IHostEnvironment>();
         env.EnvironmentName.Returns(development ? Environments.Development : Environments.Production);
         services.AddSingleton(env);
-        services.AddSpark(configuration, _ => { });
+        services.AddSpark(configuration, spark => spark.UseRavenDb());
         return services.BuildServiceProvider();
     }
 

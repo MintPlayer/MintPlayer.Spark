@@ -2,8 +2,6 @@ using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Reflection;
 using MintPlayer.Spark.Exceptions;
-using Raven.Client.Documents;
-using Raven.Client.Documents.Session;
 using System.Collections.Concurrent;
 using System.Reflection;
 using System.Text.Json;
@@ -21,7 +19,7 @@ namespace MintPlayer.Spark.Services;
 [Register(typeof(ISyncActionHandler), ServiceLifetime.Scoped)]
 internal partial class SyncActionHandler : ISyncActionHandler
 {
-    [Inject] private readonly IDocumentStore documentStore;
+    [Inject] private readonly Abstractions.Storage.ISparkStore store;
     [Inject] private readonly IModelLoader modelLoader;
     [Inject] private readonly IEntityMapper entityMapper;
     [Inject] private readonly IDatabaseAccess databaseAccess;
@@ -46,11 +44,11 @@ internal partial class SyncActionHandler : ISyncActionHandler
         // landing between this read and the save is a conflict, not overwritten.
         if (mustExist && !string.IsNullOrEmpty(documentId))
         {
-            using var checkSession = documentStore.OpenAsyncSession();
-            var stored = await checkSession.LoadAsync<object>(documentId);
-            if (stored is null)
+            using var checkSession = store.OpenSession();
+            var stored = await checkSession.GetVersionsAsync([documentId]);
+            if (!stored.TryGetValue(documentId, out var version))
                 throw SparkConcurrencyException.DeletedSinceLoaded("sync");
-            po.Etag = checkSession.Advanced.GetChangeVectorFor(stored);
+            po.Etag = version;
         }
 
         // Through the same chokepoint as every other write (F4/M11). This path used to invoke the
@@ -274,7 +272,7 @@ internal partial class SyncActionHandler : ISyncActionHandler
             var clrType = SparkTypeResolver.ResolveClrType(entityTypeDef.ClrType);
             if (clrType == null) continue;
 
-            var collectionName = documentStore.Conventions.FindCollectionName(clrType);
+            var collectionName = store.GetCollectionName(clrType);
             if (string.Equals(collectionName, collection, StringComparison.OrdinalIgnoreCase))
             {
                 resolved = clrType;

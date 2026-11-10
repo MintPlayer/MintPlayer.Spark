@@ -3,7 +3,7 @@ using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Model;
 using MintPlayer.Spark.Abstractions.Reflection;
 using MintPlayer.Spark.Configuration;
-using Raven.Client.Documents.Session;
+using MintPlayer.Spark.Abstractions.Storage;
 using System.Collections;
 using System.Reflection;
 using System.Text;
@@ -88,7 +88,7 @@ internal interface IBreadcrumbResolver
     /// roots' own tokens. Referenced documents are always judged for <c>Read</c>.
     /// </param>
     Task<BreadcrumbResult> ResolveAsync(
-        IAsyncDocumentSession session, IReadOnlyList<object> roots, EntityTypeDefinition? rootDef, CancellationToken ct = default,
+        ISparkSession session, IReadOnlyList<object> roots, EntityTypeDefinition? rootDef, CancellationToken ct = default,
         string action = "Read");
 }
 
@@ -112,7 +112,7 @@ internal partial class BreadcrumbResolver : IBreadcrumbResolver
     private const string AllTokens = "*";
 
     public async Task<BreadcrumbResult> ResolveAsync(
-        IAsyncDocumentSession session, IReadOnlyList<object> roots, EntityTypeDefinition? rootDef, CancellationToken ct = default,
+        ISparkSession session, IReadOnlyList<object> roots, EntityTypeDefinition? rootDef, CancellationToken ct = default,
         string action = "Read")
     {
         if (roots.Count == 0)
@@ -319,7 +319,7 @@ internal partial class BreadcrumbResolver : IBreadcrumbResolver
     /// shown, as in redaction.
     /// </remarks>
     private async Task<Dictionary<string, IReadOnlySet<string>>> ResolveBlankedTokensAsync(
-        IAsyncDocumentSession session,
+        ISparkSession session,
         Dictionary<string, object> renderEntity,
         Dictionary<string, EntityTypeDefinition?> defById,
         HashSet<string> rootIds,
@@ -685,7 +685,7 @@ internal partial class BreadcrumbResolver : IBreadcrumbResolver
     /// </para>
     /// </summary>
     private async Task<Dictionary<string, object>> LoadManyAsync(
-        IAsyncDocumentSession session, Type? entityType, IReadOnlyCollection<string> ids, CancellationToken ct)
+        ISparkSession session, Type? entityType, IReadOnlyCollection<string> ids, CancellationToken ct)
     {
         // Document ids are case-insensitive, and an index-projected Id can differ in case from the
         // stored one — the same comparer RavenDB builds its own result with.
@@ -693,32 +693,12 @@ internal partial class BreadcrumbResolver : IBreadcrumbResolver
         if (ids.Count == 0)
             return result;
 
-        if (entityType is null)
-        {
-            foreach (var (id, doc) in await session.LoadAsync<object>(ids, ct))
-                if (doc is not null) result[id] = doc;
-            return result;
-        }
-
-        var loadMethod = ReflectionCache.GetOrAdd<(string Op, Type Entity), MethodInfo?>(
-            ("BreadcrumbResolver.SessionLoadManyAsync", entityType),
-            static k => typeof(IAsyncDocumentSession)
-                .GetMethod(nameof(IAsyncDocumentSession.LoadAsync), [typeof(IEnumerable<string>), typeof(CancellationToken)])
-                ?.MakeGenericMethod(k.Entity));
-
-        // Reflection applies no default arguments, so the token is passed explicitly.
-        if (loadMethod?.Invoke(session, [ids, ct]) is not Task task)
-            return result;
-
-        await task;
-
-        // Task<Dictionary<string, TEntity>>, copied into the object-valued shape callers hold.
-        var guard = collectionGuard ?? DefaultCollectionGuard;
-        if (task.GetCompletedTaskResult() is IDictionary loaded)
-            foreach (DictionaryEntry entry in loaded)
-                if (entry.Value is not null
-                    && guard.BelongsToAuthorizedCollection(session, entry.Value, entry.Value.GetType()))
-                    result[(string)entry.Key] = entry.Value;
+        // An untyped load has no declared type to hold the document to; a typed one is checked against
+        // the collection of the type it materialized as (#251).
+        var guard = entityType is null ? null : collectionGuard ?? DefaultCollectionGuard;
+        foreach (var (id, doc) in await session.LoadAsync(entityType ?? typeof(object), ids, ct))
+            if (doc is not null && (guard is null || guard.BelongsToAuthorizedCollection(session, doc, doc.GetType())))
+                result[id] = doc;
 
         return result;
     }

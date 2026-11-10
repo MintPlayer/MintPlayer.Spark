@@ -739,8 +739,8 @@ public class ExecuteCustomActionTests
     // The gates live in CustomActionExecution since the MCP work (PRD D9); the endpoint maps its outcome.
     private ExecuteCustomAction NewEndpoint() =>
         new(_modelLoader,
-            new CustomActionExecution(_modelLoader, _rowSecurity, _typeResolver, _actionResolver, _permissions, _retryAccessor, NullLogger<CustomActionExecution>.Instance, _databaseAccess, _session, _catalogueLoader, _queryLoader,
-                new SparkSelectionResolver(_queryExecutor, _databaseAccess, _permissions, _rowSecurity, _typeResolver, _session, NullLogger<SparkSelectionResolver>.Instance, _attributeRights, TestQueryResultProjector.For(_session, _modelLoader)),
+            new CustomActionExecution(_modelLoader, _rowSecurity, _typeResolver, _actionResolver, _permissions, _retryAccessor, NullLogger<CustomActionExecution>.Instance, _databaseAccess, _session.AsSparkSession(), _catalogueLoader, _queryLoader,
+                new SparkSelectionResolver(_queryExecutor, _databaseAccess, _permissions, _rowSecurity, _typeResolver, _session.AsSparkSession(), NullLogger<SparkSelectionResolver>.Instance, _attributeRights, TestQueryResultProjector.For(_session, _modelLoader)),
                 new NothingDisabled(),
                 new HttpContextAccessor()),
             _sharedClientAccessor, NullLogger<ExecuteCustomAction>.Instance,

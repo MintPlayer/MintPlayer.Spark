@@ -24,7 +24,7 @@ public class SynchronizeFailsClosedTests
 
     public sealed class FcContext : SparkContext
     {
-        public IRavenQueryable<FcProbe> Probes => Session.Query<FcProbe>();
+        public IQueryable<FcProbe> Probes => Session.Query<FcProbe>();
     }
 
     [Fact]

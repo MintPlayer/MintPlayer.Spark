@@ -1,8 +1,6 @@
 using System.Linq.Expressions;
 using MintPlayer.Spark.Abstractions.Authorization;
-using Raven.Client.Documents;
-using Raven.Client.Documents.Linq;
-using Raven.Client.Documents.Session;
+using MintPlayer.Spark.Abstractions.Storage;
 
 namespace MintPlayer.Spark.Services;
 
@@ -25,7 +23,7 @@ namespace MintPlayer.Spark.Services;
 internal sealed class SparkRowRule<T>(
     IRowSecurity rowSecurity,
     IActionsResolver actionsResolver,
-    IAsyncDocumentSession session) : ISparkRowRule<T> where T : class
+    ISparkSession session) : ISparkRowRule<T> where T : class
 {
     public Task<IReadOnlyList<T>> ApplyAsync(
         IQueryable<T> query, string action, CancellationToken cancellationToken = default)
@@ -41,7 +39,7 @@ internal sealed class SparkRowRule<T>(
         var composed = (IQueryable<TResult>)(await rowSecurity
             .ComposeRowFilterAsync(query, typeof(T), typeof(TResult), action)).Queryable;
 
-        var rows = await MaterializeAsync(composed, cancellationToken);
+        var rows = await MaterializeAsync(session, composed, cancellationToken);
 
         var visible = await rowSecurity.FilterAsync(
             session, rows, typeof(T), typeof(TResult), action);
@@ -61,17 +59,11 @@ internal sealed class SparkRowRule<T>(
         => (Expression<Func<T, bool>>?)await rowSecurity.GetFilterExpressionAsync(typeof(T), action);
 
     /// <summary>
-    /// Materializes without deciding for the caller whether the query is RavenDB's. A RavenDB query
-    /// goes over the wire and must be awaited; an in-memory one (a test double, a pre-materialized
-    /// list) has no async form at all, and calling <c>ToListAsync</c> on it throws.
+    /// Materializes through the provider (D15 rule 3), which awaits a query of its own and enumerates an in-memory
+    /// one (a test double, a pre-materialized list), which has no async form.
     /// </summary>
     private static async Task<IReadOnlyList<object>> MaterializeAsync<TResult>(
-        IQueryable<TResult> query, CancellationToken cancellationToken)
+        ISparkSession session, IQueryable<TResult> query, CancellationToken cancellationToken)
         where TResult : class
-    {
-        if (query is IRavenQueryable<TResult> ravenQuery)
-            return [.. await ravenQuery.ToListAsync(cancellationToken)];
-
-        return [.. query];
-    }
+        => [.. await session.ToListAsync(query, cancellationToken)];
 }

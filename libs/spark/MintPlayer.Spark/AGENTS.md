@@ -45,6 +45,7 @@ For writing *tests*, the `MintPlayer.Spark.Testing` package ships its own `AGENT
 ```csharp
 builder.Services.AddSpark(builder.Configuration, spark =>
 {
+    spark.UseRavenDb();                    // required — the store provider (or spark.UseInMemory(): no server, resets on restart)
     spark.UseContext<MySparkContext>();   // required — the entity surface
     spark.AddActions();                    // generated: discovers your {Entity}Actions classes
     // optional modules:
@@ -73,12 +74,13 @@ The build-time commands open **no database connection**, which is what lets them
 ```csharp
 public class MySparkContext : SparkContext
 {
-    public IRavenQueryable<Person> People => Session.Query<Person>();
-    public IRavenQueryable<Car> Cars => Session.Query<Car>();
+    public IQueryable<Person> People => Session.Query<Person>();
+    public IQueryable<Car> Cars => Session.Query<Car>();
 }
 ```
 
-Each property is a queryable collection. The synchronizer reflects over the property **types** and
+Each property is a queryable collection over the store-neutral `ISparkSession`. Raven-only session work (patches,
+operations, attachments) injects `IAsyncDocumentSession`, which shares the request's unit of work. The synchronizer reflects over the property **types** and
 never invokes a getter, so it needs no session — but that also means a property here is what makes
 a type part of the model. A type not reachable from the context is not a PersistentObject.
 

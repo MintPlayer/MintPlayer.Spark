@@ -60,8 +60,8 @@ public class RowLevelQueryAuthorizationTests : SparkTestDriver
 
     public class TestContext : SparkContext
     {
-        public IRavenQueryable<Note> Notes => Session.Query<Note>();
-        public IRavenQueryable<Memo> Memos => Session.Query<Memo>();
+        public IQueryable<Note> Notes => Session.Query<Note>();
+        public IQueryable<Memo> Memos => Session.Query<Memo>();
     }
 
     private readonly IModelLoader _modelLoader = Substitute.For<IModelLoader>();
@@ -94,11 +94,11 @@ public class RowLevelQueryAuthorizationTests : SparkTestDriver
         _modelLoader.GetEntityType(noteDef.Id).Returns(noteDef);
         _modelLoader.GetEntityType(memoDef.Id).Returns(memoDef);
 
-        _contextResolver.ResolveContext(Arg.Any<IAsyncDocumentSession>()).Returns(ci =>
+        _contextResolver.ResolveContext(Arg.Any<MintPlayer.Spark.Abstractions.Storage.ISparkSession>()).Returns(ci =>
         {
             var ctx = new TestContext();
             typeof(SparkContext).GetProperty(nameof(SparkContext.Session))!
-                .SetValue(ctx, ci.Arg<IAsyncDocumentSession>());
+                .SetValue(ctx, ci.Arg<MintPlayer.Spark.Abstractions.Storage.ISparkSession>());
             return ctx;
         });
 
@@ -116,12 +116,13 @@ public class RowLevelQueryAuthorizationTests : SparkTestDriver
         var session = Store.OpenAsyncSession();
         var rowSecurity = new RowSecurity(_actionsResolver);
         return new QueryExecutor(
-            session, entityMapper, _modelLoader, _contextResolver, _indexCatalog,
+            session.AsSparkSession(), entityMapper, _modelLoader, _contextResolver, _indexCatalog,
             _permissionService, _actionsResolver, _referenceResolver,
             new BreadcrumbResolver(_modelLoader, new BreadcrumbClosure(_modelLoader), permissive, new SparkOptions()),
             rowSecurity,
             TestRowSecurityGate.For(rowSecurity, entityMapper),
-            TestQueryResultProjector.For(session, _modelLoader));
+            TestQueryResultProjector.For(session, _modelLoader),
+            queryProvider: TestQueryProvider.For(session.AsSparkSession(), _indexCatalog));
     }
 
     private Task SeedNotesAsync()

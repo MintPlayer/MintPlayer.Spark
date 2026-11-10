@@ -46,7 +46,7 @@ namespace MintPlayer.Spark.SourceGenerators.Diagnostics;
 public sealed partial class ValueObjectCompletenessAnalyzer : DiagnosticAnalyzer
 {
     private const string SparkContextFullName = "MintPlayer.Spark.SparkContext";
-    private const string RavenQueryableMetadataName = "Raven.Client.Documents.Linq.IRavenQueryable`1";
+    private const string RootQueryableMetadataName = "System.Linq.IQueryable`1";
     private const string ValueObjectAttributeFullName = "MintPlayer.Spark.Abstractions.ValueObjectAttribute";
     private const string ContributionAttributeFullName = "MintPlayer.Spark.Contributions.ContributionAttribute";
 
@@ -81,7 +81,7 @@ public sealed partial class ValueObjectCompletenessAnalyzer : DiagnosticAnalyzer
         // intended and no fix was ever offered, while SPARK016 — emitted from a generator, of all
         // things — offered its fix without trouble.
         //
-        // Nothing was lost by moving. The roots of the walk are the context's own IRavenQueryable
+        // Nothing was lost by moving. The roots of the walk are the context's own IQueryable
         // properties, so a symbol action on the SparkContext subclass has everything the
         // compilation-wide version had; the old comment here claimed otherwise and was simply
         // wrong about its own analyzer.
@@ -108,7 +108,7 @@ public sealed partial class ValueObjectCompletenessAnalyzer : DiagnosticAnalyzer
         if (contextBase is null || !InheritsFrom(contextType, contextBase))
             return;
 
-        var queryable = compilation.GetTypeByMetadataName(RavenQueryableMetadataName);
+        var queryable = compilation.GetTypeByMetadataName(RootQueryableMetadataName);
         if (queryable is null)
             return;
 
@@ -195,7 +195,7 @@ public sealed partial class ValueObjectCompletenessAnalyzer : DiagnosticAnalyzer
 
     /// <summary>
     /// The document types the model starts from: the generic arguments of every
-    /// <c>IRavenQueryable&lt;T&gt;</c> property on a <c>SparkContext</c> subclass.
+    /// <c>IQueryable&lt;T&gt;</c> property on a <c>SparkContext</c> subclass.
     /// </summary>
     /// <remarks>
     /// Each root carries the location of the property that declared it. That property lives on the

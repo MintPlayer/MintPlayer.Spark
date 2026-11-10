@@ -4,10 +4,7 @@
     "id": "550e8400-e29b-41d4-a716-446655440000",
     "name": "Person",
     "clrType": "DemoApp.Library.Entities.Person",
-    "queryType": "DemoApp.Indexes.VPerson",
-    "indexName": "People_Overview",
     "breadcrumb": "{FirstName} {LastName}",
-    "breadcrumbProjectionSatisfiable": false,
     "tabs": [],
     "groups": [],
     "attributes": [
@@ -20,7 +17,6 @@
         "order": 7,
         "asDetailType": "DemoApp.Library.Entities.Address",
         "isArray": false,
-        "inQueryType": false,
         "showedOn": "PersistentObject",
         "rules": [],
         "renderer": "address-card"
@@ -59,7 +55,6 @@
         "isReadOnly": false,
         "order": 5,
         "isArray": false,
-        "inQueryType": false,
         "showedOn": "PersistentObject",
         "rules": []
       },
@@ -90,8 +85,7 @@
         "isReadOnly": false,
         "order": 1,
         "isArray": false,
-        "inQueryType": false,
-        "showedOn": "PersistentObject",
+        "showedOn": "Query, PersistentObject",
         "rules": [
           {
             "type": "minLength",
@@ -103,18 +97,6 @@
             "value": 50
           }
         ]
-      },
-      {
-        "id": "566e4dad-f60c-464d-b2f6-18fb9a5e0ac4",
-        "name": "FullName",
-        "dataType": "string",
-        "isRequired": false,
-        "isReadOnly": false,
-        "order": 3,
-        "isArray": false,
-        "inCollectionType": false,
-        "showedOn": "Query",
-        "rules": []
       },
       {
         "id": "65cf3b91-01bd-4b10-a5e9-a81b549bc69e",
@@ -135,8 +117,7 @@
         "isReadOnly": false,
         "order": 2,
         "isArray": false,
-        "inQueryType": false,
-        "showedOn": "PersistentObject",
+        "showedOn": "Query, PersistentObject",
         "rules": [
           {
             "type": "minLength",
@@ -160,7 +141,7 @@
       "alias": "company-people",
       "sortColumns": [
         {
-          "property": "FullName",
+          "property": "LastName",
           "direction": "asc"
         }
       ],
@@ -173,12 +154,11 @@
       "source": "Database.People",
       "sortColumns": [
         {
-          "property": "FullName",
+          "property": "LastName",
           "direction": "asc"
         }
       ],
       "renderMode": "Pagination",
-      "indexName": "People_Overview",
       "entityType": "Person"
     }
   ]

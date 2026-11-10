@@ -578,11 +578,11 @@ public class BqHelperActions(IEntityMapper entityMapper) : DefaultPersistentObje
 
 public class BqContext : SparkContext
 {
-    public IRavenQueryable<BqParent> Parents => Session.Query<BqParent>();
-    public IRavenQueryable<BqChild> Children => Session.Query<BqChild>();
-    public IRavenQueryable<BqNoRef> NoRefs => Session.Query<BqNoRef>();
-    public IRavenQueryable<BqTwoRef> TwoRefs => Session.Query<BqTwoRef>();
-    public IRavenQueryable<BqNoBase> NoBases => Session.Query<BqNoBase>();
-    public IRavenQueryable<BqHelper> Helpers => Session.Query<BqHelper>();
-    public IRavenQueryable<BqSoft> Softs => Session.Query<BqSoft>();
+    public IQueryable<BqParent> Parents => Session.Query<BqParent>();
+    public IQueryable<BqChild> Children => Session.Query<BqChild>();
+    public IQueryable<BqNoRef> NoRefs => Session.Query<BqNoRef>();
+    public IQueryable<BqTwoRef> TwoRefs => Session.Query<BqTwoRef>();
+    public IQueryable<BqNoBase> NoBases => Session.Query<BqNoBase>();
+    public IQueryable<BqHelper> Helpers => Session.Query<BqHelper>();
+    public IQueryable<BqSoft> Softs => Session.Query<BqSoft>();
 }

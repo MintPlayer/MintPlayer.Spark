@@ -1,6 +1,5 @@
 using MintPlayer.Spark.Abstractions.Model;
 using MintPlayer.Spark.Abstractions.Reflection;
-using Raven.Client.Documents.Linq;
 
 namespace MintPlayer.Spark.Services;
 
@@ -8,7 +7,7 @@ namespace MintPlayer.Spark.Services;
 /// Walks a <see cref="SparkContext"/> type and produces the set of entities the model covers —
 /// the queryable roots plus the transitive closure of embedded complex types.
 /// <para>
-/// Lives here rather than in Abstractions because it needs <c>IRavenQueryable&lt;&gt;</c>,
+/// Lives here rather than in Abstractions because it needs the query-root rule (<see cref="SparkContextQueryables"/>),
 /// <see cref="SparkContext"/> and <see cref="IIndexCatalog"/>, none of which Abstractions can see.
 /// The hashing itself is in <see cref="SparkModelShape"/>, which stays dependency-free.
 /// </para>
@@ -91,9 +90,7 @@ public static class ModelShapeDiscovery
 
     private static IEnumerable<Type> QueryableRoots(Type sparkContextType)
         => sparkContextType.GetCachedProperties()
-            .Where(p => p.PropertyType.IsGenericType
-                     && p.PropertyType.GetGenericTypeDefinition() == typeof(IRavenQueryable<>))
-            .Select(p => p.PropertyType.GetGenericArguments().FirstOrDefault())
+            .Select(p => SparkContextQueryables.ElementType(p.PropertyType))
             .Where(t => t is not null)
             .Select(t => t!);
 

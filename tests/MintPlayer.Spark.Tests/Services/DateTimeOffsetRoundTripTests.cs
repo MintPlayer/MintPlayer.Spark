@@ -117,7 +117,7 @@ public class DateTimeOffsetRoundTripTests(DateTimeOffsetRoundTripTests.SeededMee
 
     public class TestContext : SparkContext
     {
-        public IRavenQueryable<Meeting> Meetings => Session.Query<Meeting>();
+        public IQueryable<Meeting> Meetings => Session.Query<Meeting>();
     }
 
     /// <summary>The class's database with the three meetings indexed, and the host the executor cases query.</summary>

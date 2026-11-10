@@ -2,7 +2,6 @@ using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Links;
 using MintPlayer.Spark.Abstractions.Reflection;
-using Raven.Client.Documents.Session;
 
 namespace MintPlayer.Spark.Services;
 
@@ -11,7 +10,7 @@ internal interface IQueryResultProjector
 {
     /// <summary>
     /// The rows as wire items, each with its document etag (#467, D14) and its canonical page path (<c>href</c>, #602):
-    /// what every path that puts query rows on the wire calls. One metadata request per page (<see cref="RowChangeVectors"/>).
+    /// what every path that puts query rows on the wire calls. One metadata request per page (<see cref="Abstractions.Storage.ISparkSession.GetVersionsAsync"/>).
     /// </summary>
     /// <param name="rows">Rows that have been through <c>RowSecurityGate</c>; see <see cref="QueryResultProjector.Project"/>.</param>
     /// <param name="queryName">Named in the diagnostics, because the author's question is always "which query?".</param>
@@ -42,15 +41,15 @@ internal interface IQueryResultProjector
 [Register(typeof(IQueryResultProjector), ServiceLifetime.Scoped)]
 internal sealed partial class QueryResultProjector : IQueryResultProjector
 {
-    // Only its request executor is used, for a metadata read outside the session's tracking and request count: a caller
+    // Only its version read is used, which runs outside the session's tracking and request count: a caller
     // on its own session (the live stream opens one per evaluation) loses nothing by the scope's.
-    [Inject] private readonly IAsyncDocumentSession session;
+    [Inject] private readonly Abstractions.Storage.ISparkSession session;
     [Inject] private readonly ISparkEntityLinks links;
 
     public async Task<IReadOnlyList<QueryResultItem>> ToItemsAsync(
         RowSecurityGate.SecuredRows rows, IReadOnlyList<QueryColumn> columns, string queryName, CancellationToken cancellationToken = default)
     {
-        var etags = await RowChangeVectors.ReadAsync(session, rows.Rows.Select(row => row.Id), cancellationToken);
+        var etags = await session.GetVersionsAsync(rows.Rows.Select(row => row.Id).OfType<string>(), cancellationToken);
         return Project(rows, columns, queryName, etags, links);
     }
 
@@ -206,7 +205,7 @@ internal sealed partial class QueryResultProjector : IQueryResultProjector
     /// the wire comes through here — so a new row-returning path cannot skip row security without
     /// changing this signature, which is a visible edit rather than a missing line.
     /// </param>
-    /// <param name="etags">The document change vector per row id (<see cref="RowChangeVectors"/>); a row
+    /// <param name="etags">The document change vector per row id (<see cref="Abstractions.Storage.ISparkSession.GetVersionsAsync"/>); a row
     /// with none (a computed row) carries no etag.</param>
     /// <param name="links">Stamps each row's canonical page path (<c>href</c>, #602); null leaves it off.</param>
     internal static IReadOnlyList<QueryResultItem> Project(

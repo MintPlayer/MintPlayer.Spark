@@ -136,7 +136,7 @@ public sealed class PolicedLockPolicy : RowCheckPolicy<PolicedDoc>
 
 public class PolicedContext : SparkContext
 {
-    public IRavenQueryable<PolicedDoc> Docs => Session.Query<PolicedDoc>();
+    public IQueryable<PolicedDoc> Docs => Session.Query<PolicedDoc>();
 }
 
 public static class PolicedDocModel

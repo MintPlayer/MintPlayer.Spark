@@ -8,8 +8,9 @@ using static MintPlayer.Spark.Services.SparkHookInvocation;
 namespace MintPlayer.Spark.Services;
 
 /// <summary>
-/// Discovers <see cref="ReferenceAttribute"/> properties and chains RavenDB <c>.Include()</c> so a
-/// query's first-level references are primed into the session cache. Breadcrumb resolution itself
+/// Discovers <see cref="ReferenceAttribute"/> properties and the include paths a query hands its provider
+/// (<see cref="Abstractions.Storage.ISparkQueryProvider.Include"/>), so a query's first-level references are
+/// primed into the session cache. Breadcrumb resolution itself
 /// (recursive, batched) lives in <see cref="Breadcrumb.IBreadcrumbResolver"/>.
 /// </summary>
 internal interface IReferenceResolver
@@ -22,13 +23,6 @@ internal interface IReferenceResolver
     /// Returns PropertyInfo from <paramref name="entityType"/> paired with ReferenceAttribute from <paramref name="fallbackType"/>.
     /// </summary>
     List<(PropertyInfo Property, ReferenceAttribute Attribute)> GetReferenceProperties(Type entityType, Type fallbackType);
-
-    /// <summary>
-    /// Chains RavenDB <c>.Include(path)</c> on a queryable of <paramref name="elementType"/> so the
-    /// named referenced documents are loaded in the same round-trip. Returns the (possibly wrapped)
-    /// queryable. Paths are dotted JSON paths into the document.
-    /// </summary>
-    object ApplyIncludes(object queryable, Type elementType, IReadOnlyCollection<string> paths);
 
     /// <summary>The paths a type's Actions class declares via <c>GetDefaultIncludes()</c>, or null.</summary>
     IReadOnlyCollection<string>? GetDefaultIncludes(Type entityType);
@@ -91,35 +85,6 @@ internal partial class ReferenceResolver : IReferenceResolver
         }
 
         return result;
-    }
-
-    public object ApplyIncludes(object queryable, Type elementType, IReadOnlyCollection<string> paths)
-    {
-        if (paths.Count == 0)
-            return queryable;
-
-        // RavenDB's Include on a queryable is the STATIC extension
-        // LinqExtensions.Include<TResult>(IQueryable<TResult>, string) — there is NO instance
-        // Include on RavenQueryInspector<T> (the prior code reflected for one and silently no-oped,
-        // so Spark applied no includes at all). Invoke the static generic extension reflectively,
-        // the same shape RowSecurity.ComposeRowFilter uses for Queryable.Where. Cached per element
-        // type.
-        var includeMethod = ReflectionCache.GetOrAdd<(string Op, Type Element), MethodInfo>(
-            ("ReferenceResolver.LinqInclude", elementType),
-            static k => typeof(Raven.Client.Documents.LinqExtensions).GetMethods()
-                .First(m => m.Name == "Include"
-                    && m.IsGenericMethodDefinition
-                    && m.GetGenericArguments().Length == 1
-                    && m.GetParameters() is { Length: 2 } ps
-                    && ps[0].ParameterType.IsGenericType
-                    && ps[0].ParameterType.GetGenericTypeDefinition() == typeof(System.Linq.IQueryable<>)
-                    && ps[1].ParameterType == typeof(string))
-                .MakeGenericMethod(k.Element));
-
-        foreach (var path in paths)
-            queryable = includeMethod.Invoke(null, [queryable, path])!;
-
-        return queryable;
     }
 
     public IReadOnlyCollection<string>? GetDefaultIncludes(Type entityType)

@@ -625,19 +625,19 @@ public class ExBroken : IExpiring
 
 public class ExContext : SparkContext
 {
-    public IRavenQueryable<ExPage> Pages => Session.Query<ExPage>();
-    public IRavenQueryable<ExNote> Notes => Session.Query<ExNote>();
-    public IRavenQueryable<ExFolder> Folders => Session.Query<ExFolder>();
+    public IQueryable<ExPage> Pages => Session.Query<ExPage>();
+    public IQueryable<ExNote> Notes => Session.Query<ExNote>();
+    public IQueryable<ExFolder> Folders => Session.Query<ExFolder>();
 }
 
 public class ExPlainContext : SparkContext
 {
-    public IRavenQueryable<ExPlain> Plains => Session.Query<ExPlain>();
+    public IQueryable<ExPlain> Plains => Session.Query<ExPlain>();
 }
 
 public class ExBrokenContext : SparkContext
 {
-    public IRavenQueryable<ExBroken> Broken => Session.Query<ExBroken>();
+    public IQueryable<ExBroken> Broken => Session.Query<ExBroken>();
 }
 
 /// <summary>The sub-query on a folder's page: its pages, from a raw session query — the filter still applies.</summary>

@@ -399,6 +399,6 @@ public class RT_CarActions : DefaultPersistentObjectActions<RT_Car>
 
 public class RtContext : SparkContext
 {
-    public IRavenQueryable<RT_Person> RtPeople => Session.Query<RT_Person>();
-    public IRavenQueryable<RT_Car> RtCars => Session.Query<RT_Car>();
+    public IQueryable<RT_Person> RtPeople => Session.Query<RT_Person>();
+    public IQueryable<RT_Car> RtCars => Session.Query<RT_Car>();
 }

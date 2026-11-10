@@ -31,13 +31,18 @@ public class QueryExecutorRowShapeTests : SparkTestDriver
     private readonly IReferenceResolver _referenceResolver = Substitute.For<IReferenceResolver>();
     private readonly IBreadcrumbResolver _breadcrumbResolver = Substitute.For<IBreadcrumbResolver>();
 
-    private QueryExecutor CreateExecutor() => new(
-        Store.OpenAsyncSession(), _entityMapper, _modelLoader, _contextResolver,
-        _indexCatalog, _permissionService, _actionsResolver, _referenceResolver, _breadcrumbResolver,
-        new PermissiveRowSecurity(),
-        TestRowSecurityGate.For(new PermissiveRowSecurity(), _entityMapper),
-        // Its etag read uses only the store's request executor, so another session of the same store serves.
-        TestQueryResultProjector.For(Store.OpenAsyncSession(), _modelLoader));
+    private QueryExecutor CreateExecutor()
+    {
+        var session = Store.OpenAsyncSession().AsSparkSession();
+        return new(
+            session, _entityMapper, _modelLoader, _contextResolver,
+            _indexCatalog, _permissionService, _actionsResolver, _referenceResolver, _breadcrumbResolver,
+            new PermissiveRowSecurity(),
+            TestRowSecurityGate.For(new PermissiveRowSecurity(), _entityMapper),
+            // Its etag read uses only the store's request executor, so another session of the same store serves.
+            TestQueryResultProjector.For(Store.OpenAsyncSession(), _modelLoader),
+            queryProvider: TestQueryProvider.For(session, _indexCatalog));
+    }
 
     private const string TypeName = "RowShapeEntity";
 

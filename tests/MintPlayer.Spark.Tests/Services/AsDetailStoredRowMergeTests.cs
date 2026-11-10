@@ -144,7 +144,7 @@ public class AsDetailStoredRowMergeTests(SparkSharedDatabase database)
         using var session = Store.OpenAsyncSession();
 
         await new EntityMapper(ModelLoader())
-            .PopulateObjectValuesAsync(Po(RuleRow("a", "renamed")), parent, session);
+            .PopulateObjectValuesAsync(Po(RuleRow("a", "renamed")), parent, session.AsSparkSession());
 
         parent.Rules.Should().HaveCount(1);
         parent.Rules[0].Name.Should().Be("renamed");
@@ -165,7 +165,7 @@ public class AsDetailStoredRowMergeTests(SparkSharedDatabase database)
         using var session = Store.OpenAsyncSession();
 
         await new EntityMapper(ModelLoader())
-            .PopulateObjectValuesAsync(Po(RuleRow("a", "renamed")), parent, session);
+            .PopulateObjectValuesAsync(Po(RuleRow("a", "renamed")), parent, session.AsSparkSession());
 
         parent.Rules.Should().ContainSingle().Which.Should().BeSameAs(stored);
     }
@@ -177,7 +177,7 @@ public class AsDetailStoredRowMergeTests(SparkSharedDatabase database)
         using var session = Store.OpenAsyncSession();
 
         await new EntityMapper(ModelLoader())
-            .PopulateObjectValuesAsync(Po(RuleRow("a", "kept"), RuleRow(null, "added")), parent, session);
+            .PopulateObjectValuesAsync(Po(RuleRow("a", "kept"), RuleRow(null, "added")), parent, session.AsSparkSession());
 
         parent.Rules.Should().HaveCount(2);
         parent.Rules[1].Name.Should().Be("added");
@@ -195,7 +195,7 @@ public class AsDetailStoredRowMergeTests(SparkSharedDatabase database)
         using var session = Store.OpenAsyncSession();
 
         await new EntityMapper(ModelLoader())
-            .PopulateObjectValuesAsync(Po(RuleRow("a", "first"), RuleRow("a", "second")), parent, session);
+            .PopulateObjectValuesAsync(Po(RuleRow("a", "first"), RuleRow("a", "second")), parent, session.AsSparkSession());
 
         parent.Rules.Should().HaveCount(2);
         parent.Rules[0].Should().NotBeSameAs(parent.Rules[1]);
@@ -213,7 +213,7 @@ public class AsDetailStoredRowMergeTests(SparkSharedDatabase database)
         using var session = Store.OpenAsyncSession();
 
         await new EntityMapper(ModelLoader())
-            .PopulateObjectValuesAsync(Po(RuleRow("a", "a")), parent, session);
+            .PopulateObjectValuesAsync(Po(RuleRow("a", "a")), parent, session.AsSparkSession());
 
         parent.Rules.Should().ContainSingle().Which.Id.Should().Be("a");
     }
@@ -248,7 +248,7 @@ public class AsDetailStoredRowMergeTests(SparkSharedDatabase database)
             ],
         };
 
-        await new EntityMapper(ModelLoader()).PopulateObjectValuesAsync(po, parent, session);
+        await new EntityMapper(ModelLoader()).PopulateObjectValuesAsync(po, parent, session.AsSparkSession());
 
         parent.Config.Label.Should().Be("renamed");
         parent.Config.ComputedAtUtc.Should().Be("2026-01-01");

@@ -18,6 +18,9 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddSpark(builder.Configuration, spark =>
 {
+    // The store (#551): RavenDB, configured from Spark:RavenDb.
+    spark.UseRavenDb();
+
     // Mounted through Spark rather than with endpoints.MapControllers(), so the controllers
     // share Spark's pipeline — its authentication schemes, its antiforgery scope, and
     // [SparkAuthorize]. A bare MapControllers() is reported by SPARK010.

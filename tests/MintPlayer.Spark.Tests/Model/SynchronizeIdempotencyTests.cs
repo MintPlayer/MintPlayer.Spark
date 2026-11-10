@@ -443,8 +443,8 @@ public sealed class IdemProbe
 
 public sealed class IdemContext : SparkContext
 {
-    public IRavenQueryable<IdemProbe> IdemProbes => Session.Query<IdemProbe>();
-    public IRavenQueryable<IdemSortProbe> IdemSortProbes => Session.Query<IdemSortProbe>();
+    public IQueryable<IdemProbe> IdemProbes => Session.Query<IdemProbe>();
+    public IQueryable<IdemSortProbe> IdemSortProbes => Session.Query<IdemSortProbe>();
 }
 
 /// <summary>
@@ -616,8 +616,8 @@ public sealed class IdemProbeProjection
 
 public sealed class TwoRootsContext : SparkContext
 {
-    public IRavenQueryable<IdemProbe> Probes => Session.Query<IdemProbe>();
-    public IRavenQueryable<IdemProbe> ArchivedProbes => Session.Query<IdemProbe>();
+    public IQueryable<IdemProbe> Probes => Session.Query<IdemProbe>();
+    public IQueryable<IdemProbe> ArchivedProbes => Session.Query<IdemProbe>();
 }
 
 public sealed class IdemSortProbe

@@ -43,6 +43,8 @@
 
 	<ItemGroup>
 		<InternalsVisibleTo Include="MintPlayer.Spark" />
+		<!-- The index catalog's implementation sets IndexCatalogEntry's computed members (#551 D20). -->
+		<InternalsVisibleTo Include="MintPlayer.Spark.RavenDB" />
 		<InternalsVisibleTo Include="MintPlayer.Spark.Authorization" />
 		<InternalsVisibleTo Include="MintPlayer.Spark.Tests" />
 		<InternalsVisibleTo Include="MintPlayer.Spark.E2E.Tests" />

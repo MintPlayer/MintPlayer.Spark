@@ -1,0 +1,46 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<TargetFramework>net11.0</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+		<OutputType>Library</OutputType>
+		<IsPackable>true</IsPackable>
+
+		<!-- NuGet Package Metadata -->
+		<PackageId>MintPlayer.Spark.InMemory</PackageId>
+		<Version>0.0.0-PLACEHOLDER</Version>
+		<Authors>MintPlayer</Authors>
+		<Company>MintPlayer</Company>
+		<Description>An in-memory storage provider for MintPlayer.Spark: spark.UseInMemory(). Dictionary storage in the process, LINQ-to-objects queries and an in-process change feed. Data resets on restart: for demos, prototypes and tests, not production.</Description>
+		<PackageTags>low-code;framework;in-memory;storage-provider</PackageTags>
+		<PackageLicenseExpression>MIT</PackageLicenseExpression>
+		<PackageProjectUrl>https://github.com/MintPlayer/MintPlayer.Spark</PackageProjectUrl>
+		<RepositoryUrl>https://github.com/MintPlayer/MintPlayer.Spark.git</RepositoryUrl>
+		<RepositoryType>git</RepositoryType>
+	</PropertyGroup>
+
+	<!--
+	  #551 D14 (docs/spark_editor_PRD.md): the provider that proves the seam. Like MintPlayer.Spark.RavenDB it builds on
+	  MintPlayer.Spark.Abstractions only (D18/D22). Documents are kept as JSON, serialized with Newtonsoft.Json the way
+	  the RavenDB client serializes them, so a session never shares an instance with the store or another session.
+	-->
+	<ItemGroup>
+		<FrameworkReference Include="Microsoft.AspNetCore.App" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<PackageReference Include="MintPlayer.SourceGenerators" Version="13.0.0">
+			<PrivateAssets>all</PrivateAssets>
+			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+		</PackageReference>
+		<PackageReference Include="MintPlayer.SourceGenerators.Attributes" Version="13.0.0" />
+		<PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+		<ProjectReference Include="..\MintPlayer.Spark.Abstractions\MintPlayer.Spark.Abstractions.csproj" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<InternalsVisibleTo Include="MintPlayer.Spark.Tests" />
+	</ItemGroup>
+
+</Project>

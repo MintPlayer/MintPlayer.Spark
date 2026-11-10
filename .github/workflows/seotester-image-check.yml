@@ -36,6 +36,7 @@ on:
       - 'libs/spark/MintPlayer.Spark/**'
       - 'libs/spark/MintPlayer.Spark.SafeHttp/**'
       - 'libs/spark/MintPlayer.Spark.Abstractions/**'
+      - 'libs/spark/MintPlayer.Spark.RavenDB/**'
       - 'libs/subscription_worker/MintPlayer.Spark.SubscriptionWorker.Abstractions/**'
       - 'libs/webpush/MintPlayer.Spark.WebPush/**'
       - 'libs/node_packages/ng-spark/**'

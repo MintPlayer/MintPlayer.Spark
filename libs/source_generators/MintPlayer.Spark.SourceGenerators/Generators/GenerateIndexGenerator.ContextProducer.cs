@@ -27,7 +27,6 @@ namespace MintPlayer.Spark.SourceGenerators.Generators;
 /// </summary>
 public class SparkContextRootsProducer : Producer, IDiagnosticReporter
 {
-    private const string RavenLinq = "global::Raven.Client.Documents.Linq";
     private const string SparkAbstractions = "global::MintPlayer.Spark.Abstractions";
 
     private readonly List<ContextRootsPlan> plans;
@@ -147,7 +146,7 @@ public class SparkContextRootsProducer : Producer, IDiagnosticReporter
 
                 writer.WriteLine($"/// <summary>Index-backed query root for <see cref=\"{root.ViewFullName}\"/>.</summary>");
                 writer.WriteLine(
-                    $"public {RavenLinq}.IRavenQueryable<{root.ViewFullName}> {root.MemberName}"
+                    $"public global::System.Linq.IQueryable<{root.ViewFullName}> {root.MemberName}"
                     + $" => Session.Query<{root.ViewFullName}, {root.IndexFullName}>();");
             }
         }

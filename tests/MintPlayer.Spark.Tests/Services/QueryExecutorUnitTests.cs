@@ -29,11 +29,12 @@ public class QueryExecutorUnitTests
     private readonly IBreadcrumbResolver _breadcrumbResolver = Substitute.For<IBreadcrumbResolver>();
 
     private QueryExecutor CreateExecutor() => new(
-        _session, _entityMapper, _modelLoader, _contextResolver,
+        _session.AsSparkSession(), _entityMapper, _modelLoader, _contextResolver,
         _indexCatalog, _permissionService, _actionsResolver, _referenceResolver, _breadcrumbResolver,
         new PermissiveRowSecurity(),
         TestRowSecurityGate.For(new PermissiveRowSecurity(), _entityMapper),
-        TestQueryResultProjector.For(_session, _modelLoader));
+        TestQueryResultProjector.For(_session, _modelLoader),
+        queryProvider: TestQueryProvider.For(_session.AsSparkSession(), _indexCatalog));
 
     private static SparkQuery Q(string source) => new()
     {
@@ -69,7 +70,7 @@ public class QueryExecutorUnitTests
         // #327 M6. This used to return an empty grid, which is the same thing a correctly
         // configured query over an empty collection returns — so an application that forgot to
         // register a context looked like one with no data.
-        _contextResolver.ResolveContext(Arg.Any<IAsyncDocumentSession>()).Returns((SparkContext?)null);
+        _contextResolver.ResolveContext(Arg.Any<MintPlayer.Spark.Abstractions.Storage.ISparkSession>()).Returns((SparkContext?)null);
         var executor = CreateExecutor();
 
         var act = () => executor.ExecuteQueryAsync(Q("Database.People"));
@@ -83,7 +84,7 @@ public class QueryExecutorUnitTests
     [Fact]
     public async Task Database_query_naming_a_property_the_context_does_not_have_says_so()
     {
-        _contextResolver.ResolveContext(Arg.Any<IAsyncDocumentSession>()).Returns(new EmptyContext());
+        _contextResolver.ResolveContext(Arg.Any<MintPlayer.Spark.Abstractions.Storage.ISparkSession>()).Returns(new EmptyContext());
         var executor = CreateExecutor();
 
         var act = () => executor.ExecuteQueryAsync(Q("Database.NoSuchProperty"));
@@ -121,7 +122,7 @@ public class QueryExecutorUnitTests
     [Fact]
     public async Task Database_prefix_match_is_case_insensitive()
     {
-        _contextResolver.ResolveContext(Arg.Any<IAsyncDocumentSession>()).Returns((SparkContext?)null);
+        _contextResolver.ResolveContext(Arg.Any<MintPlayer.Spark.Abstractions.Storage.ISparkSession>()).Returns((SparkContext?)null);
         var executor = CreateExecutor();
 
         var act = () => executor.ExecuteQueryAsync(Q("DATABASE.People"));

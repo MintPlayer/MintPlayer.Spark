@@ -34,8 +34,12 @@ public static class SparkOrganizationsExtensions
     /// organization on sign-in, the account deletion and export hooks, the invitation mails and
     /// <c>POST /spark/organizations/accept</c>. Needs <c>AddAuthentication&lt;TUser&gt;()</c>, in either order.
     /// </summary>
+    [global::MintPlayer.Spark.Abstractions.Storage.SparkRequiresStore("Spark.Organizations", Provider = global::MintPlayer.Spark.Abstractions.Storage.SparkStoreProviders.RavenDb)]
     public static ISparkBuilder AddOrganizations(this ISparkBuilder builder, Action<SparkOrganizationsOptions>? configure = null)
     {
+        // #551 D13: memberships go through RavenDB's own client.
+        global::MintPlayer.Spark.Abstractions.Storage.SparkStoreRequirementExtensions.RequireStore(builder, "Spark.Organizations", provider: global::MintPlayer.Spark.Abstractions.Storage.SparkStoreProviders.RavenDb);
+
         var services = builder.Services;
         if (services.Any(d => d.ServiceType == typeof(OrganizationsMarker)))
         {

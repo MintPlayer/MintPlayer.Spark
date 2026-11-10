@@ -175,16 +175,12 @@ public static class SparkDevelopmentExtensions
         ArgumentNullException.ThrowIfNull(contextType);
         ArgumentNullException.ThrowIfNull(contentRootPath);
 
-        var indexCatalog = new IndexCatalog();
+        var indexCatalog = SparkIndexCatalogs.CreateOffline(services);
 
         var assemblies = (services is null ? null : GetRegistrationTimeModuleRegistry(services)?.ResolveIndexAssemblies())
             ?? (Assembly.GetEntryAssembly() is { } entryAssembly ? [entryAssembly] : (IReadOnlyList<Assembly>)[]);
 
-        foreach (var assembly in assemblies)
-            SparkExtensions.PopulateIndexTypes(indexCatalog, assembly);
-
-        foreach (var assembly in assemblies)
-            SparkExtensions.PopulateProjectionTypes(indexCatalog, assembly);
+        indexCatalog.RegisterAssemblies(assemblies);
 
         configureIndexCatalog?.Invoke(indexCatalog);
 
@@ -589,7 +585,7 @@ public static class SparkDevelopmentExtensions
                 // mints new attributes that way; older ones need it by hand).
                 if (entry.DefaultFor.Any(t => string.Equals(t.FullName, definition.ClrType, StringComparison.Ordinal)))
                 {
-                    if (ModelSynchronizer.ViewlessQuerySurface(entry) is not { } surface) continue;
+                    if (indexCatalog.GetQuerySurface(entry) is not { } surface) continue;
 
                     foreach (var sort in query.SortColumns.Where(s => !surface.Contains(s.Property)))
                         offenders.Add($"{definition.Name}.{query.Name}: sorts on '{sort.Property}', which viewless default index '{indexName}' does not emit");
@@ -652,8 +648,7 @@ public static class SparkDevelopmentExtensions
         {
             try
             {
-                var instance = Activator.CreateInstance(entry.IndexType);
-                (instance as Raven.Client.Documents.Indexes.AbstractIndexCreationTask)?.CreateIndexDefinition();
+                indexCatalog.BuildDefinition(entry);
             }
             catch (Exception ex)
             {
@@ -1541,7 +1536,7 @@ public static class SparkDevelopmentExtensions
     /// </summary>
     private static bool TryBuildIndexCatalog(IServiceCollection services, out IIndexCatalog indexCatalog)
     {
-        var catalog = new IndexCatalog();
+        var catalog = SparkIndexCatalogs.CreateOffline(services);
         indexCatalog = catalog;
 
         var assemblies = GetRegistrationTimeModuleRegistry(services)?.ResolveIndexAssemblies()
@@ -1555,13 +1550,9 @@ public static class SparkDevelopmentExtensions
             return false;
         }
 
-        // Indexes across every assembly before any projection: a projection resolves its index by
-        // name, so cross-assembly projections must not depend on scan order.
-        foreach (var assembly in assemblies)
-            SparkExtensions.PopulateIndexTypes(catalog, assembly);
-
-        foreach (var assembly in assemblies)
-            SparkExtensions.PopulateProjectionTypes(catalog, assembly);
+        // Indexes across every assembly before any projection (RegisterAssemblies): a projection resolves its index
+        // by name, so cross-assembly projections must not depend on scan order.
+        catalog.RegisterAssemblies(assemblies);
 
         try
         {
@@ -1637,7 +1628,7 @@ public static class SparkDevelopmentExtensions
     /// resolving a <see cref="Type"/> instead removes that barrier, so the check has to be deliberate.
     /// <para>
     /// It matters because the failure is silent and lands far from its cause. The property scan looks
-    /// for <c>IRavenQueryable&lt;&gt;</c> properties, and the base type has none — so the model shape
+    /// for <c>IQueryable&lt;&gt;</c> root properties, and the base type has none — so the model shape
     /// comes back empty, and while no model file is deleted, <c>modelHashes.json</c> is rewritten to
     /// certify an empty model over a still-populated model directory. <c>--spark-verify-model</c>
     /// cannot catch it, because it derives both sides of its comparison from the same caller-supplied

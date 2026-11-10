@@ -250,5 +250,5 @@ public class QpNote
 
 public class QpContext : SparkContext
 {
-    public IRavenQueryable<QpNote> Notes => Session.Query<QpNote>();
+    public IQueryable<QpNote> Notes => Session.Query<QpNote>();
 }

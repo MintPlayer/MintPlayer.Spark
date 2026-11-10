@@ -43,10 +43,14 @@ public static class SparkIdentityProviderExtensions
     /// <see cref="SparkIdentityProviderOptions.Endpoints"/> and <see cref="SparkIdentityProviderOptions.AgentsOnly"/> choose fewer.
     /// </remarks>
     /// <exception cref="InvalidOperationException">The chosen flows and endpoints do not fit together (the message names the dependency).</exception>
+    [global::MintPlayer.Spark.Abstractions.Storage.SparkRequiresStore("Spark.IdentityProvider", Provider = global::MintPlayer.Spark.Abstractions.Storage.SparkStoreProviders.RavenDb)]
     public static ISparkBuilder AddIdentityProvider(
         this ISparkBuilder builder,
         Action<SparkIdentityProviderOptions>? configure = null)
     {
+        // #551 D13: its stores use RavenDB's own client.
+        global::MintPlayer.Spark.Abstractions.Storage.SparkStoreRequirementExtensions.RequireStore(builder, "Spark.IdentityProvider", provider: global::MintPlayer.Spark.Abstractions.Storage.SparkStoreProviders.RavenDb);
+
         var options = new SparkIdentityProviderOptions();
         // Spark:IdentityProvider first, the lambda second: code wins over configuration, as everywhere in Spark.
         builder.Configuration?.GetSection("Spark:IdentityProvider").Bind(options);

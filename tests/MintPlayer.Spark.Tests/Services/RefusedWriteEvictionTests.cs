@@ -164,7 +164,7 @@ public class EvSide
 
 public class EvContext : SparkContext
 {
-    public IRavenQueryable<EvNote> Notes => Session.Query<EvNote>();
+    public IQueryable<EvNote> Notes => Session.Query<EvNote>();
 }
 
 /// <summary>WITH CHECK refuses a note whose resulting title is <see cref="Forbidden"/>.</summary>

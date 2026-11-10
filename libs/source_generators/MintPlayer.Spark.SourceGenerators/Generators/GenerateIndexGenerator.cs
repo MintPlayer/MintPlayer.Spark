@@ -58,7 +58,7 @@ public class GenerateIndexGenerator : IncrementalGenerator
     }
 
     private const string SparkPlainRootAttributeFullName = "MintPlayer.Spark.Abstractions.SparkPlainRootAttribute";
-    private const string RavenQueryableMetadataName = "Raven.Client.Documents.Linq.IRavenQueryable`1";
+    private const string RootQueryableMetadataName = "System.Linq.IQueryable`1";
 
     /// <summary>Marks a <see cref="SparkContextInfo.QueryableTypeFullNames"/> entry that names an unresolved (not yet generated) type.</summary>
     private const string UnresolvedTypePrefix = "?";
@@ -297,8 +297,13 @@ public class GenerateIndexGenerator : IncrementalGenerator
             })
             .WithTrackingName(TrackingNames.ContextPlans);
 
+        // The context partial is storage-neutral (#551): its [SparkPlainRoot] markers serve an app on any store, so it
+        // needs Spark, not RavenDB. A view root does need RavenDB, but there is none without a [FromIndex] view.
+        var knowsSparkContextProvider = context.CompilationProvider
+            .Select(static (compilation, ct) => compilation.GetTypeByMetadataName(GenerateIndexAttributeFullName) != null);
+
         var contextSourceProvider = contextPlansProvider
-            .Combine(knowsSparkProvider)
+            .Combine(knowsSparkContextProvider)
             .Combine(knowsPlainRootProvider)
             .Combine(settingsProvider)
             .Select(static Producer (providers, ct) => new SparkContextRootsProducer(
@@ -542,7 +547,7 @@ public class GenerateIndexGenerator : IncrementalGenerator
         for (var current = contextType; current is not null; current = current.ContainingType)
             isPartial &= IsDeclaredPartial(current, ct);
 
-        var ravenQueryable = compilation.GetTypeByMetadataName(RavenQueryableMetadataName);
+        var rootQueryable = compilation.GetTypeByMetadataName(RootQueryableMetadataName);
         var queryableTypes = new SortedSet<string>(System.StringComparer.Ordinal);
 
         for (var current = contextType; current is not null; current = current.BaseType)
@@ -555,9 +560,9 @@ public class GenerateIndexGenerator : IncrementalGenerator
 
                 if (property.IsStatic) continue;
                 if (!isOwn && property.DeclaredAccessibility == Accessibility.Private) continue;
-                if (ravenQueryable is null
+                if (rootQueryable is null
                     || property.Type is not INamedTypeSymbol { TypeArguments.Length: 1 } queryable
-                    || !SymbolEqualityComparer.Default.Equals(queryable.OriginalDefinition, ravenQueryable))
+                    || !SymbolEqualityComparer.Default.Equals(queryable.OriginalDefinition, rootQueryable))
                     continue;
 
                 var exposed = queryable.TypeArguments[0];
@@ -573,9 +578,9 @@ public class GenerateIndexGenerator : IncrementalGenerator
 
         // Shared with SPARK056 (MissingReferenceRootAnalyzer), which must agree with the markers written here. A base
         // context from a referenced assembly has no syntax here: its markers come from its own generator run (D6).
-        var plainRoots = ravenQueryable is null
+        var plainRoots = rootQueryable is null
             ? new List<PlainRootInfo>()
-            : PlainRootClassifier.PlainRoots(contextType, ravenQueryable, compilation, ct)
+            : PlainRootClassifier.PlainRoots(contextType, rootQueryable, compilation, ct)
                 .Select(root => new PlainRootInfo
                 {
                     EntityFullName = root.Entity.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
@@ -658,7 +663,7 @@ public class GenerateIndexGenerator : IncrementalGenerator
     /// Resolves every context's view roots (D6, D7). The sources are merged first — the generator's own
     /// <c>[GenerateIndex]</c> pairs (it never sees its own output), then hand-written views in this project and in
     /// referenced assemblies — and a view appears once, its generated pair first. A view the context already exposes
-    /// through an <c>IRavenQueryable&lt;V&gt;</c> member, own or inherited, gets no second root. Every other view takes
+    /// through an <c>IQueryable&lt;V&gt;</c> member, own or inherited, gets no second root. Every other view takes
     /// <c>IndexNaming</c>'s name, or the first free <c>{Name}2</c>, <c>{Name}3</c>, … against the context's members
     /// including inherited ones and the roots already chosen in this pass.
     /// </summary>

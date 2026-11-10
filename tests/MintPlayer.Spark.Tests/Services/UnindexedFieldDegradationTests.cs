@@ -58,7 +58,7 @@ public class UnindexedFieldDegradationTests : SparkTestDriver
 
     public class LedgerContext : SparkContext
     {
-        public IRavenQueryable<DegradationLedger> Ledgers => Session.Query<DegradationLedger, DegradationLedgers_Overview>();
+        public IQueryable<DegradationLedger> Ledgers => Session.Query<DegradationLedger, DegradationLedgers_Overview>();
     }
 
     private static EntityTypeFile LedgerModel() => new()

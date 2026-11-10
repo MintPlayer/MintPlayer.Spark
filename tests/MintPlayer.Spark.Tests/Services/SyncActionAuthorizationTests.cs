@@ -49,7 +49,7 @@ public class SyncActionAuthorizationTests
     }
 
     private SyncActionHandler CreateHandler()
-        => new(_documentStore, _modelLoader, _entityMapper, _databaseAccess, _logger);
+        => new(_documentStore.AsSparkStore(), _modelLoader, _entityMapper, _databaseAccess, _logger);
 
     /// <summary>Registers TestCar as a known entity type so the schema path is taken.</summary>
     private void RegisterCar()

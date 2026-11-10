@@ -82,7 +82,7 @@ public class DefaultIndexEndToEndTests : SparkTestDriver
     [SparkPlainRoot(typeof(DeProfession), nameof(DeProfessions))]
     public class DeProfessionContext : SparkContext
     {
-        public IRavenQueryable<DeProfession> DeProfessions => Session.Query<DeProfession>();
+        public IQueryable<DeProfession> DeProfessions => Session.Query<DeProfession>();
     }
 
     [Fact]
@@ -152,9 +152,9 @@ public class DefaultIndexEndToEndTests : SparkTestDriver
     [SparkPlainRoot(typeof(DeOrganization), nameof(DeOrganizations))]
     public class DeSiteContext : SparkContext
     {
-        public IRavenQueryable<DeSite> DeSites => Session.Query<DeSite>();
-        public IRavenQueryable<DeOrganization> DeOrganizations => Session.Query<DeOrganization>();
-        public IRavenQueryable<DeOrganization> ActiveDeOrganizations => Session.Query<DeOrganization>().Where(o => o.IsActive);
+        public IQueryable<DeSite> DeSites => Session.Query<DeSite>();
+        public IQueryable<DeOrganization> DeOrganizations => Session.Query<DeOrganization>();
+        public IQueryable<DeOrganization> ActiveDeOrganizations => Session.Query<DeOrganization>().Where(o => o.IsActive);
     }
 
     [Fact]

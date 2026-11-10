@@ -42,8 +42,8 @@ public class PeDriverActions(IEntityMapper mapper)
 
 public class PeContext : SparkContext
 {
-    public IRavenQueryable<PeCar> Cars => Session.Query<PeCar>();
-    public IRavenQueryable<PeDriver> Drivers => Session.Query<PeDriver>();
+    public IQueryable<PeCar> Cars => Session.Query<PeCar>();
+    public IQueryable<PeDriver> Drivers => Session.Query<PeDriver>();
 }
 
 /// <summary>

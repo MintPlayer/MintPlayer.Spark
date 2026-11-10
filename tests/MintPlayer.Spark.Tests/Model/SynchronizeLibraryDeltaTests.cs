@@ -147,5 +147,5 @@ public sealed class LibGadget
 
 public sealed class LibGadgetContext : SparkContext
 {
-    public IRavenQueryable<LibGadget> LibGadgets => Session.Query<LibGadget>();
+    public IQueryable<LibGadget> LibGadgets => Session.Query<LibGadget>();
 }

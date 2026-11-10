@@ -89,6 +89,9 @@ var mailConfigured = !string.IsNullOrWhiteSpace(builder.Configuration["Spark:Mai
 
 builder.Services.AddSpark(builder.Configuration, spark =>
 {
+    // The store (#551): RavenDB, configured from Spark:RavenDb.
+    spark.UseRavenDb();
+
     spark.UseContext<CoverageSparkContext>();
 
     // security.json grants QueryRead on the four entity types to BOTH well-known

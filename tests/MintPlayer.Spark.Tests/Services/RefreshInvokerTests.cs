@@ -76,7 +76,7 @@ public class RefreshInvokerTests
         new(new ActionsResolver(provider),
             new EffectiveObjectFactory(provider.GetRequiredService<IEntityMapper>()),
             new SparkTypeResolver(),
-            Substitute.For<Raven.Client.Documents.Session.IAsyncDocumentSession>(),
+            Substitute.For<MintPlayer.Spark.Abstractions.Storage.ISparkSession>(),
             Substitute.For<Microsoft.Extensions.Logging.ILogger<RefreshInvoker>>());
 
     private static PersistentObject Object(string? id = null)
