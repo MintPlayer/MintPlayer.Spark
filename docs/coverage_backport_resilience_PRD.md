@@ -454,6 +454,37 @@ matter for the current line only if D16 stays.
   on a following line except by fast-forward**; a fix for the line goes to master first.
 - **Also asked:** if A, does the owner accept "no line-only commits while the line follows master"?
 
+**Decided in the grilling session (owner, 2026-11-10).** These supersede the rows above where they differ.
+- **Q1 = B, D16 stays.** Every change reaches a line as a bot backport PR. Q2 (`-s ours` migration) is dropped: it
+  existed only for fast-forward.
+- **Q1b, current lines take no line-only commits.** Only bot picks of master commits land on a line whose platform major
+  equals master's; a fix goes to master first. **Past lines accept human PRs** (version-specific fixes). Enforced by an
+  App-bound required check "Line policy" on one static ruleset over `refs/heads/release/*`: the App decides per line
+  from the SDK majors, so a platform upgrade edits no ruleset, and the .NET and Angular lines are judged independently.
+- **Q1c, the App detects the split** from the SDK versions it already resolves: the upgrade's squash commit cuts the new
+  line and makes the old one past. **Q1d, previews count** (owner: "I'm already publishing packages for preview-sdks, so
+  A is pretty much a must"), matching how `dotnet-11.x` was cut on .NET 11 previews.
+- **Q8, who fixes a held pick:** one automatic re-run, then the source PR's author; fork authors and dependency-update
+  PRs fall back to the code owners of the changed paths. Reminder after 2 working days, then escalation to the code
+  owners.
+- **Q10, trial pick at the master merge: configurable per line, default warn** (`trialPick: warn | refuse | off`).
+- **Q12, attention signals (replaces the board column and the ⚠️ title):** the database is the source of truth. The bot
+  posts a comment with a link to a Spark CustomQuery in the app that lists, for the signed-in user, the held backport
+  PRs of source PRs they authored plus all held backport PRs in repos they administer (filtered server-side by current
+  GitHub access). GitHub also shows a `backport: needs attention` label on the held PR and an informational (not
+  required) check "Line blocked by #N" on each waiting PR, both re-applied from the database. No title change, so the
+  queue strips nothing.
+- **Q13, no approval for backport PRs** (owner: "I really don't like manual approval … backporting features into
+  previous/current versions should be effortless"). Made safe by a new ruleset on `refs/heads/backport/*` (restrict
+  creation/updates/deletion, bypass: queue App and repository admins), so a backport PR's content is always the bot's
+  pick or an admin's conflict resolution; set up by "Set up rulesets". A developer's own PR into a past line goes
+  through the queue by `/queue` with master's approval rules.
+- **Release build from source:** the line push's `build:release` / pack runs with `--skip-nx-cache`, so published
+  packages and deploys never come from a cache entry; tests keep their cache hits (owner: "Publish and deploy is more
+  reliable that way"). Q14's custom tree-hash verdict is replaced by Nx's own input hash.
+- **Parked: Q11** (default lands, whole commits on current lines, nominations on past lines), with Q3, Q4 and Q9 that
+  depend on it.
+
 ## 5. Spikes
 
 Sandbox: a blank local repository at `C:\Repos\backport-resilience-sandbox` for offline git spikes; S1, S2 and S6
