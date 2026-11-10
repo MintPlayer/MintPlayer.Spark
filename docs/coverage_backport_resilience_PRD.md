@@ -101,8 +101,31 @@ This matches what the backport PRD already measured on Angular's history (66 of 
   | Kubernetes ([cherry-picks](https://github.com/kubernetes/community/blob/master/contributors/devel/sig-release/cherry-picks.md)) | picks only after merge; a skipped branch must be explained on the PR | newest branch first | author resolves; release-manager approval label | pick PR's CI |
   | Rust ([backporting](https://forge.rust-lang.org/release/backporting.html)) | `beta-nominated` any time | not specified | release team's rollup PR | yes |
 
+  | Go ([minor releases](https://go.dev/wiki/MinorReleases)) | "@gopherbot please backport" opens one `[1.N backport]` issue per release on the minor-release milestone; open ones roll to the next milestone, so they stay visible | — | issue + `CherryPickCandidate` → `CherryPickApproved` | not stated |
+  | LLVM ([GitHub](https://llvm.org/docs/GitHub.html)) | release milestone + `/cherry-pick <sha…>` comment | — | comment with the failed job; a human opens the PR | PR CI |
+  | ClickHouse ([backports](https://clickhouse.com/docs/development/backports)) | **an hourly sweep** finds merged, labelled PRs whose commit isn't reachable from the branch and lacks `pr-backports-created`; `v25.3-must-backport` = that release **and every newer one** | — | assigned to author + merger, pinged at 3 days, closed at 7 | a reduced CI set |
+  | TypeScript ([script](https://github.com/microsoft/TypeScript/blob/786e36ecaf68ddb9d1e1cdd14c7c43cf059678fc/scripts/open-cherry-pick-pr.ts)) | `@typescript-bot cherry-pick this to release-X` (allow-listed users) | — | bot says to pick manually | PR CI |
+  | Grafana ([backporting](https://grafana.com/docs/writers-toolkit/review/backporting/)) | `backport <branch>` label before or after merge | — | follow-up PR per label; copied labels have broken later pipelines ([Loki](https://grafana.com/docs/loki/next/community/maintaining/release/backport-commits)) | PR CI |
+  | GitLab ([handbook](https://handbook.gitlab.com/handbook/engineering/releases/backports)) | release managers decide per request; multi-release only for security | — | release tracker | yes |
+
   Only Node.js makes forgetting impossible: the default is "everything on main lands", and **not landing** is the
-  explicit act. Everyone tests the pick before it lands except Angular.
+  explicit act. ClickHouse closes the gap a different way, with a periodic sweep. **Of the 13 projects, Angular is the only
+  one known to land picks untested** (Go's practice is not documented) (it pushes them directly and relies on CI after the push plus Google-internal tests,
+  `requiredStatuses: google-internal-tests`, `.ng-dev/pull-request.mjs:32`). None of them backports features
+  routinely; Spark (D16) is the exception.
+- **Tools and merge queues** (same research):
+  - Backport tools ([sorenlouv/backport](https://github.com/sorenlouv/backport), [korthout/backport-action](https://github.com/korthout/backport-action),
+    [Mergify backport](https://docs.mergify.com/workflow/actions/backport)): label → PR per branch. Mergify creates
+    the PR **even on conflict** (`ignore_conflicts: true`), labels it `conflicts`, and assigns `{{ author }}` /
+    `{{ merged_by }}`.
+  - **Zuul** ([gating](https://zuul-ci.org/docs/zuul/latest/gating.html)): dependent pipelines test each change
+    together with the ones ahead of it; a failing change drops out and the ones behind restart without it.
+    `Depends-On:` keeps a dependent change from merging first.
+  - **Mergify / Trunk / Bors** ([batches](https://docs.mergify.com/merge-queue/batches),
+    [Trunk](https://docs.trunk.io/merge-queue/batching)): test a batch together, bisect on failure. Trunk's "pending
+    failure depth" holds a failed item while its successors test, so a transient failure isn't evicted early.
+  - **GitHub's own queue** ([docs](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/configuring-pull-request-merges/managing-a-merge-queue)):
+    removes a failing PR and rebuilds the next group without it; no wildcard branches.
 - **Spark does not copy Angular's untested direct push.** A pick reaches a line only through a backport PR that
   passes the merge queue's checks on that line (owner, 2026-11-10: "cherry-picks into the release branches aren't
   tested before they arrive, and they can go red... I'm not sure about this"). What Spark copies is the **order**:
@@ -284,7 +307,9 @@ Steps, in order:
 1. **Already present?** `-x` trailers on line commits since the split, then patch-id of the normalised diff, then
    "the three-way merge leaves the tip's tree unchanged". Any yes → mark `done` / label `backported:` without a PR.
    **S4 found that today's line commits carry no trailer** (#580, #586, #609 are squashed backport PRs titled
-   `[dotnet-11.x] … (#581)` with the backport PR's number, §1). So: the backport squash message must carry a
+   `[dotnet-11.x] … (#581)` with the backport PR's number, §1). The cause: the backport branch's commit does carry
+   `(cherry picked from commit …)` (`CodeCoverage.GitWriter/Jobs/BackportService.cs:340-351`), but the queue's squash
+   message is `<title> (#backportPR)` plus `Co-authored-by` only (`MergeQueueEngine.cs:1936-1945`), so it is lost. So: the backport squash message must carry a
    `Backport-of: <master sha> (#<source PR>)` trailer, the ledger records source PR → backport PR, and for the
    existing commits a one-off match on the subject with the `[line]` prefix and `(#N)` stripped.
 2. **Otherwise pick C on the tip.** The cherry-pick's merge base is C's parent, so reverse order is harmless unless
@@ -307,6 +332,78 @@ With §3.1 this scenario cannot arise on a following line: the line is a prefix 
   create-only push stays the backstop. Pre-split master tags stay reachable from the line, so they still count.
 - **Lines-only check first:** move it before the hand-tag branch (`ReleasePlanner.cs:306` before `:185`).
 
+### 3.6 What the queue holds today, and the smallest change (spike S8, code reading 2026-11-10)
+- **Model:** one `MergeQueue` document per repository with **one lane per base branch**, each with one `Current`
+  entry, an ordered `Waiting` list and a `Paused` flag (`CodeCoverage.Library/Entities/MergeQueue.cs:3-30,95-121`).
+  Lanes are strictly serial, no batching (`MergeQueueEngine.cs:1692-1715`). Lanes are already independent, so a
+  held release line never stops master.
+- **Eviction today:** red checks (after `RetryFlaky` re-runs, default 1, `:1414-1434`) → `EvictAsync("checks-failed")`
+  (`:1436`); a conflict → `EvictWriterAsync` (`:890`) → `EvictAsync` (`:1647`). `EndAsync` clears the entry, deletes
+  `mq/{base}/pr-{n}`, removes the label, comments "Queue it again with `/queue`" and starts the next
+  (`:1653-1688`).
+- **Smallest change for in-order delivery (§3.2):**
+  1. In `EvictAsync`, for a base matching `entry.Config.LinePattern` (`MergeQueueEntry.cs:327`), set a new `Held`
+     state, keep `lane.Current`, and don't call `StartNextAsync`.
+  2. Resume automatically on a push to the PR's branch or when its checks turn green; no `/queue` needed.
+  3. Insert into `Waiting` by master order instead of appending (`:317`). This needs the source merge SHA on
+     `BackportPullRequest` (today only `Source`, `Branch`, `OpenedUtc`: `BackportPullRequest.cs:24-43`).
+  4. Keep the `Backport-of:` trailer in the squash message (`:1936-1945`, §3.4).
+- **No backport list exists in the app** (no Spark query or model over backports); the repository page has only the
+  merge-queue panel (`ClientApp/src/app/components/repo-merge-queue-panel/`).
+
+### 3.7 Testing and CI cost (measured 2026-11-10)
+- **Every backport PR runs the full suite, and so does the line push after it.** `pull-request.yml:4-6` triggers on
+  `master` and `release/**` without path filters and calls `test.yml` in full; `dotnet-build-master.yml:4-9` runs
+  the tests again on the push before the release job (#544 D3).
+- **Measured (job-minutes = the sum of all jobs' durations):**
+
+  | Change | Master PR | Master push | Backport PR | Line push |
+  |---|---|---|---|---|
+  | #609 → #610 (code) | 73.2 (run 42619954148) | 69.5 | 80.3 (42621020791) | 83.7 (42622887029, failed) |
+  | #583 → #585 (tooling) | 37.6 | 38.5 | 39.1 | 33.2 |
+
+  A code change that reaches one line costs about 300 job-minutes; each extra line adds about 160.
+- **Minutes are free, the runner cap is not.** Standard GitHub-hosted runners are free for public repositories;
+  larger runners are billed even there ([billing](https://docs.github.com/en/billing/managing-billing-for-your-products/managing-billing-for-github-actions/about-billing-for-github-actions)).
+  Every job here is `ubuntu-latest`. A free organization gets **20 concurrent jobs**
+  ([limits](https://docs.github.com/en/actions/reference/limits)), and one run is ~21 jobs (CLAUDE.md), so each
+  backport run occupies the whole cap and makes master PRs wait. The real cost is wall time.
+- **The Nx cache doesn't help the tests.** #610's run had 107 cache hits, all `:build`; 0 `:test`. Tests are
+  cacheable (`nx.json:59-60`), but no earlier run had the same inputs: the line's tree differs from master's (it
+  lacks the unported commits), and only master pushes may write the remote cache (`test.yml:26`), so the line push
+  can't reuse the queue run of **the same tree**.
+- **Proposed:**
+  1. **Test each tree once.** The queue tests `mq/{base}/pr-{n}` and squashes exactly that tree. The push run on the
+     line, and on master, re-tests an already-tested tree. Let the release job accept "a green queue run exists for
+     this tree hash" instead of re-running (Q14). Saves ~80 job-minutes per backport and the same on every master
+     merge.
+  2. **Under Q1, a following line costs nothing:** it moves to a SHA master already tested.
+  3. **On a diverged line, batch in order:** test the next N waiting picks together in one run (Zuul/Mergify, §1b),
+     bisect on red. In-order delivery makes a batch natural: it is just the next N in master order.
+  4. Keep the full suite before every release. A reduced set per pick (ClickHouse) is not proposed: the per-tree
+     rule above already removes the duplicate runs without lowering the bar.
+
+### 3.8 The code owner's work, today and proposed
+**Today**, per merged PR and line (S8 code reading):
+1. Label the PR `backport: <line>` (or rely on labels set at open, `BackportTargets.cs:9,46`), or `/backport` after merge.
+2. A writer **approves each clean backport PR** before the App queues it (approval floor `Always`,
+   `MergeQueueEngine.cs:555-583`).
+3. A backport with stale regenerated files is not auto-queued; someone queues it (`BackportRecipients.cs:222-223`).
+4. On conflict: read the comment, then resolve by hand and push `backport/<pr>-<line>`, or `/backport <line> --draft`
+   (`BackportRecipients.cs:330-340`); resolve the markers, mark ready, approve (`:246,251`).
+5. After an eviction: fix, then `/queue` again (`MergeQueueEngine.cs:1655`).
+
+**Proposed: zero steps on the happy path, one place to look otherwise.**
+
+| Today's step | Proposed | Section |
+|---|---|---|
+| 1. labels | targets computed at merge, default lands; `/backport skip` is the only gesture; an hourly sweep (ClickHouse) re-checks every line against the ledger in case a webhook was lost | §3.3, Q11 |
+| 2. approve each clean pick | no second approval when the pick's patch equals the approved source's (patch-id, after stripping master-only paths); a pick that needed changes still needs one | Q13 |
+| 3. stale regenerated files | the regeneration finishes, then the App queues it | §3.2 |
+| 4. conflicts | always a draft PR in its position, assigned to author + merger, board column, ⚠️, reminders at 3 and 7 days (never auto-closed: the line waits on it) | §3.2, Q12 |
+| 5. `/queue` after eviction | no eviction on lines; the held entry resumes on push or green checks | §3.6 |
+| — finding out what's stuck | one **Backports** page per repository: per line, every master commit since the split as done / held / pending / skipped / not applicable, with *retry* and *skip* buttons; and a failing "line blocked by #N" check on master PRs | §3.2 |
+
 ## 4. Decisions for the owner
 
 | # | Question | Recommendation | Trap of the recommendation |
@@ -323,6 +420,9 @@ With §3.1 this scenario cannot arise on a following line: the line is a prefix 
 | Q10 | Should the master merge be refused when the trial pick onto a line conflicts (Angular's `_assertMergeableOrThrow`), or only warn on the PR? | Open; warn only, since in-order delivery handles the conflict on the line | Refusing ties master's pace to the lines; warning only means the conflict is found later |
 | Q11 | Default "lands": every relevant master commit is targeted automatically, and `/backport skip <line>` is the only manual act; an undecided item holds the line (§3.3, Node.js model) | Yes | A change someone meant to keep off a line ships unless they skip it; with D16 that is today's intent anyway |
 | Q12 | Held backport PRs: board column picked in the app + `⚠️` title prefix + `backport: blocked by #N` on the ones waiting (§3.2) | Yes; the label is the source of truth | The title prefix leaks into the line's commit subject unless the queue strips it; org boards only |
+| Q13 | A clean pick whose patch equals the already-approved source PR's needs no second approval (§3.8) | Yes | A clean pick can still behave differently on an older line; CI on the line is then the only guard |
+| Q14 | Test each tree once: the line/master push skips the suite when a green queue run exists for the same tree hash, and the release job relies on it (§3.7). Changes #544 D3's "tests before release in the push" | Yes, after a spike that proves the tree hash matches | A run that was green for the tree but on a different runner image is trusted; a cache bug would ship untested code |
+| Q15 | Batch in-order picks on a diverged line (test the next N together, bisect on red) (§3.7) | Later, only if lines diverge (Q1 rejected or past lines cut) | Bisection costs extra runs when failures are frequent ([Bors](https://forum.bors.tech/t/optimized-bisection/514)) |
 | Q9 | Past lines take **fixes only** by default (`defaultLabels: fixes`, D5), as Angular and ASP.NET Core do | Yes | A feature someone wants on an old line needs an explicit label |
 
 ## 5. Spikes
@@ -344,7 +444,7 @@ additionally need a throwaway GitHub repository with the CodeCoverage App instal
 
 ## 6. Milestones (one PR)
 
-- **M0** Spikes S3, S4, S5, S7 (offline), then S1, S2, S6, S8 (sandbox, after approval). Owner decisions Q1–Q12.
+- **M0** Spikes S3, S4, S5, S7 (offline), then S1, S2, S6, S8 (sandbox, after approval). Owner decisions Q1–Q15.
 - **M1** Tag hygiene: reachable-only history, lines-only check first, tag-push webhook warning (§3.5).
 - **M2** Selection at merge: label ownership record, recompute on push and at merge, tests by project graph,
   `backport.masterOnly` stripping, visible lookup failure (§3.3).
