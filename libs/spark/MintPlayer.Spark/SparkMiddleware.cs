@@ -274,7 +274,12 @@ public static class SparkExtensions
         // than failing on its first request (or, for a provider's own client, in the container).
         var unmet = MintPlayer.Spark.Abstractions.Storage.SparkStoreRequirementExtensions.Unmet(
             app.ApplicationServices.GetServices<MintPlayer.Spark.Abstractions.Storage.SparkStoreRequirement>(),
-            app.ApplicationServices.GetService<MintPlayer.Spark.Abstractions.Storage.ISparkStore>());
+            app.ApplicationServices.GetService<MintPlayer.Spark.Abstractions.Storage.ISparkStore>())
+            // #551 D20: an index binding in the model, on a store without indexes.
+            .Concat(Services.SparkIndexBindingStartupCheck.Unmet(
+                app.ApplicationServices.GetRequiredService<Services.IModelLoader>(),
+                app.ApplicationServices.GetService<MintPlayer.Spark.Abstractions.Storage.ISparkStore>()))
+            .ToList();
         if (unmet.Count > 0)
             throw new InvalidOperationException(string.Join(Environment.NewLine, unmet));
 

@@ -163,9 +163,13 @@ public class Company
 ```csharp
 public class MySparkContext : SparkContext
 {
-    public IRavenQueryable<Company> Companies => Session.Query<Company>();
+    public IQueryable<Company> Companies => Session.Query<Company>();
 }
 ```
+
+`Session` is the store-neutral `ISparkSession`: the same context runs on `spark.UseRavenDb()` and
+`spark.UseInMemory()`. Index-backed roots (`Session.Query<T, TIndex>()`) and a query's `indexName` need a
+provider with indexes (RavenDB); the in-memory provider refuses a model that binds one at startup.
 
 ### Step 2: Synchronize
 
@@ -734,9 +738,9 @@ injection works like any other scoped service:
 ```csharp
 public class MyAppContext(ICurrentUser currentUser) : SparkContext
 {
-    public IRavenQueryable<Account> Accounts => Session.Query<Account>();
+    public IQueryable<Account> Accounts => Session.Query<Account>();
 
-    public IRavenQueryable<Account> MyAccounts =>
+    public IQueryable<Account> MyAccounts =>
         Session.Query<Account>().Where(a => a.OwnerId == currentUser.Id);
 }
 ```
@@ -783,18 +787,17 @@ declared `sortColumns`, header-click sorting, row-filter pushdown, search pushdo
 and `.Include()` all apply.
 
 ```csharp
-public async Task<IRavenQueryable<VCar>> Recent_Cars()
+public async Task<IQueryable<VCar>> Recent_Cars()
     => await Task.FromResult(session.Query<VCar, Cars_Overview>().Where(c => c.Year >= 2020));
 ```
 
 Capabilities are inferred from the **object the method returns**, not from its declared type. That
-matters because the declared type is routinely weaker than the object: `session.Query<T>()` assigned
-to `IQueryable<T>` is the common idiom, and it still gets the RavenDB path.
+matters because the declared type is routinely weaker than the object: `session.Query<T>()` declared
+as `IQueryable<T>` is the common idiom, and it still gets the store's path.
 
 | Return type | Treated as |
 |---|---|
-| `IRavenQueryable<T>` / `Task<IRavenQueryable<T>>` | full RavenDB query |
-| `IQueryable<T>` / `Task<IQueryable<T>>` backed by `session.Query<T>()` | full RavenDB query |
+| `IQueryable<T>` / `Task<IQueryable<T>>` backed by the store's `session.Query<T>()` (`ISparkSession`, or RavenDB's `IAsyncDocumentSession`) | full store query, executed by the provider |
 | `IQueryable<T>` over an in-memory source | in-memory queryable — sorting and row filtering only |
 | `IEnumerable<T>` / `Task<IEnumerable<T>>` | already materialized; sorted in memory by the framework |
 | `SparkQueryPage<T>` / `Task<SparkQueryPage<T>>` | the method's own page — see [taking over paging](#taking-over-paging-sparkquerypaget) |

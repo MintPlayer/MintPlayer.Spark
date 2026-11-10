@@ -70,7 +70,7 @@ internal partial class ModelSynchronizer : IModelSynchronizer
         libraryColumnOrders = ColumnOrderMaintenance.LibraryColumnOrders(Libraries ?? SparkLayerCatalog.Libraries);
         var (existingEntityTypes, existingQueries) = LoadExistingEntityTypeFiles();
 
-        // Find all IRavenQueryable<T> properties on the SparkContext
+        // Find all query-root (IQueryable<T>) properties on the SparkContext
         var queryableProperties = contextType.GetCachedProperties()
             .Where(p => SparkContextQueryables.IsQueryRoot(p.PropertyType))
             .ToList();
@@ -83,7 +83,7 @@ internal partial class ModelSynchronizer : IModelSynchronizer
         var typesToProcess = new Queue<Type>();
 
         // Grouped by entity type, because a context may expose the same type more than once
-        // (e.g. Cars and ArchivedCars, both IRavenQueryable<Car>). Both map to the same
+        // (e.g. Cars and ArchivedCars, both IQueryable<Car>). Both map to the same
         // {TypeName}.json, and writing per property meant the second write dropped the query the
         // first had just added — from a snapshot of the directory taken once, before any write.
         //
@@ -412,7 +412,7 @@ internal partial class ModelSynchronizer : IModelSynchronizer
     /// has content in it.
     /// </summary>
     /// <remarks>
-    /// A context with no <c>IRavenQueryable&lt;&gt;</c> properties produces no model files, and this
+    /// A context with no <c>IQueryable&lt;&gt;</c> root properties produces no model files, and this
     /// method deletes none — so the directory keeps whatever a previous run wrote. Writing the hash
     /// file anyway records "the model is empty" alongside a populated directory, which is the one
     /// combination nothing downstream can detect: <c>--spark-verify-model</c> derives both sides of

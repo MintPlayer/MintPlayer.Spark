@@ -8,7 +8,8 @@ namespace MintPlayer.Spark.Services;
 /// A provider with the <c>Indexes</c> capability registers its own catalog after core's, and that registration wins.
 /// </summary>
 /// <remarks>
-/// A model that names an index on a provider without them is refused at startup by the capability check (M8), not here:
+/// A model that names an index on a provider without them is refused at startup by
+/// <see cref="SparkIndexBindingStartupCheck"/> (run by <c>UseSpark()</c>), not here:
 /// <see cref="RegisterIndex"/> throws only for a caller that hands it an index type directly.
 /// </remarks>
 [Register(typeof(IIndexCatalog), ServiceLifetime.Singleton)]

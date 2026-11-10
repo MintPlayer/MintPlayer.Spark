@@ -40,8 +40,12 @@ public static class SparkNotificationsExtensions
     /// its SSRF-safe client, the save rules and the account deletion and export hooks. Needs
     /// <c>AddAuthentication&lt;TUser&gt;()</c>; Web Push also needs <c>AddMessaging()</c> (startup says so).
     /// </summary>
+    [global::MintPlayer.Spark.Abstractions.Storage.SparkRequiresStore("Spark.Notifications", Provider = global::MintPlayer.Spark.Abstractions.Storage.SparkStoreProviders.RavenDb)]
     public static ISparkBuilder AddNotifications(this ISparkBuilder builder, Action<SparkNotificationsOptions>? configure = null)
     {
+        // #551 D13: notifications are kept in RavenDB, through its own client.
+        global::MintPlayer.Spark.Abstractions.Storage.SparkStoreRequirementExtensions.RequireStore(builder, "Spark.Notifications", provider: global::MintPlayer.Spark.Abstractions.Storage.SparkStoreProviders.RavenDb);
+
         var services = builder.Services;
         if (services.Any(d => d.ServiceType == typeof(NotificationsMarker)))
         {

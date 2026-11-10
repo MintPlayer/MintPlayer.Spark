@@ -38,8 +38,12 @@ public static class SparkDashboardsExtensions
     /// again (from another library or module) to declare more.
     /// </summary>
     /// <exception cref="ArgumentException">A dashboard or history name is not a plain identifier.</exception>
+    [global::MintPlayer.Spark.Abstractions.Storage.SparkRequiresStore("Spark.Dashboards", Provider = global::MintPlayer.Spark.Abstractions.Storage.SparkStoreProviders.RavenDb)]
     public static ISparkBuilder AddDashboards(this ISparkBuilder builder, Action<SparkDashboardsBuilder>? configure = null)
     {
+        // #551 D13: widgets query through RavenDB's own client.
+        global::MintPlayer.Spark.Abstractions.Storage.SparkStoreRequirementExtensions.RequireStore(builder, "Spark.Dashboards", provider: global::MintPlayer.Spark.Abstractions.Storage.SparkStoreProviders.RavenDb);
+
         var services = builder.Services;
         var catalog = services.FirstOrDefault(d => d.ServiceType == typeof(DashboardCatalog))?.ImplementationInstance as DashboardCatalog;
         if (catalog is null)
@@ -72,6 +76,7 @@ public static class SparkDashboardsExtensions
     }
 
     /// <summary>As <see cref="AddDashboards(ISparkBuilder, Action{SparkDashboardsBuilder}?)"/>, with options in code (applied after <c>Spark:Dashboards</c>).</summary>
+    [global::MintPlayer.Spark.Abstractions.Storage.SparkRequiresStore("Spark.Dashboards", Provider = global::MintPlayer.Spark.Abstractions.Storage.SparkStoreProviders.RavenDb)]
     public static ISparkBuilder AddDashboards(this ISparkBuilder builder, Action<SparkDashboardsOptions> options, Action<SparkDashboardsBuilder>? configure = null)
     {
         builder.AddDashboards(configure);

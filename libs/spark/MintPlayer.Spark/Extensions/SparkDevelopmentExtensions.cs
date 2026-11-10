@@ -1628,7 +1628,7 @@ public static class SparkDevelopmentExtensions
     /// resolving a <see cref="Type"/> instead removes that barrier, so the check has to be deliberate.
     /// <para>
     /// It matters because the failure is silent and lands far from its cause. The property scan looks
-    /// for <c>IRavenQueryable&lt;&gt;</c> properties, and the base type has none — so the model shape
+    /// for <c>IQueryable&lt;&gt;</c> root properties, and the base type has none — so the model shape
     /// comes back empty, and while no model file is deleted, <c>modelHashes.json</c> is rewritten to
     /// certify an empty model over a still-populated model directory. <c>--spark-verify-model</c>
     /// cannot catch it, because it derives both sides of its comparison from the same caller-supplied

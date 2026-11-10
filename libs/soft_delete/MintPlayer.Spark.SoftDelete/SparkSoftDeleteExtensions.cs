@@ -25,8 +25,12 @@ public static class SparkSoftDeleteExtensions
     /// <c>ViewDeleted/T</c> (see <see cref="SoftDeleteRights"/>). Without them nobody can restore,
     /// purge or see the recycle bin — deleting still works under <c>Delete/T</c>.
     /// </remarks>
+    [global::MintPlayer.Spark.Abstractions.Storage.SparkRequiresStore("Spark.SoftDelete", Provider = global::MintPlayer.Spark.Abstractions.Storage.SparkStoreProviders.RavenDb)]
     public static ISparkBuilder AddSoftDelete(this ISparkBuilder builder, Action<SparkSoftDeleteOptions>? configure = null)
     {
+        // #551 D13: the purge and restore go through RavenDB's own client.
+        global::MintPlayer.Spark.Abstractions.Storage.SparkStoreRequirementExtensions.RequireStore(builder, "Spark.SoftDelete", provider: global::MintPlayer.Spark.Abstractions.Storage.SparkStoreProviders.RavenDb);
+
         var section = builder.Configuration?.GetSection(ConfigurationSection);
         builder.Services.AddOptions<SparkSoftDeleteOptions>().Configure(options =>
         {

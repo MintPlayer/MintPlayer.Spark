@@ -78,6 +78,7 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddSpark(builder.Configuration, spark =>
 {
+    spark.UseRavenDb();       // The store: MintPlayer.Spark.RavenDB. Or spark.UseInMemory() (MintPlayer.Spark.InMemory)
     spark.UseContext<MySparkContext>();
     spark.AddActions();       // Source-generated: registers all Actions classes
     spark.AddMessaging();     // Optional: durable message bus
@@ -112,21 +113,24 @@ app.Run();
 
 In development mode, Spark automatically creates the database if it does not exist.
 
+Core has no database of its own: the store comes from a provider package. `spark.UseRavenDb()` (`MintPlayer.Spark.RavenDB`) reads the section above. `spark.UseInMemory()` (`MintPlayer.Spark.InMemory`) needs no server and no configuration; its data resets on restart, and it has no indexes, subscriptions or revisions, so features that need them (messaging, history, …) refuse to start on it and say why.
+
 ### 3. Define SparkContext
 
-Create a context class that exposes your entity collections. Each public `IRavenQueryable<T>` property defines a collection that Spark will manage:
+Create a context class that exposes your entity collections. Each public `IQueryable<T>` property defines a collection that Spark will manage:
 
 ```csharp
 using MyApp.Library.Entities;
 using MintPlayer.Spark;
-using Raven.Client.Documents.Linq;
 
 public class MySparkContext : SparkContext
 {
-    public IRavenQueryable<Person> People => Session.Query<Person>();
-    public IRavenQueryable<Company> Companies => Session.Query<Company>();
+    public IQueryable<Person> People => Session.Query<Person>();
+    public IQueryable<Company> Companies => Session.Query<Company>();
 }
 ```
+
+`Session` is the store-neutral `ISparkSession`, so the same context runs on any provider.
 
 The property names (`People`, `Companies`) are used to generate default query names (`GetPeople`, `GetCompanies`).
 
@@ -183,7 +187,7 @@ The universal data container that replaces traditional DTOs. Contains an ID, typ
 
 ### SparkContext
 
-A registry pattern (similar to EF Core's DbContext) that tracks available entity types through `IRavenQueryable<T>` properties. The framework discovers entities by reflecting over these properties.
+A registry pattern (similar to EF Core's DbContext) that tracks available entity types through `IQueryable<T>` properties. The framework discovers entities by reflecting over these properties.
 
 ### Natural IDs
 
@@ -375,7 +379,7 @@ The process exits after synchronization. Run it again whenever you add or change
 
 ### What Model Synchronization Does
 
-For each `IRavenQueryable<T>` property on your SparkContext:
+For each `IQueryable<T>` property on your SparkContext:
 
 1. Reflects over the entity type's public properties
 2. Creates or updates `App_Data/Model/{EntityName}.json` with attribute definitions
@@ -653,8 +657,10 @@ public class People_Overview : AbstractIndexCreationTask<Person>
 Then reference the projection in your SparkContext:
 
 ```csharp
-public IRavenQueryable<VPerson> PeopleOverview => Session.Query<VPerson, People_Overview>();
+public IQueryable<VPerson> PeopleOverview => Session.Query<VPerson, People_Overview>();
 ```
+
+Indexes need a provider with them (`spark.UseRavenDb()`); on `UseInMemory()` a model that binds one is refused at startup.
 
 ## Angular Frontend
 

@@ -1,5 +1,8 @@
+using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Storage;
+using MintPlayer.Spark.Services;
 using MintPlayer.Spark.Storage.InMemory;
+using NSubstitute;
 
 namespace MintPlayer.Spark.Tests.Storage;
 
@@ -42,5 +45,47 @@ public class SparkStoreRequirementTests
         var unmet = SparkStoreRequirementExtensions.Unmet([new SparkStoreRequirement("Spark.Messaging", SparkStoreCapabilities.Subscriptions)], null);
 
         unmet.Should().Equal("Spark.Messaging needs a store, and none is registered: call spark.UseRavenDb() in AddSpark.");
+    }
+
+    // ---- D20: index bindings in the model -------------------------------------------------------------------
+
+    private static IModelLoader Model(EntityTypeDefinition[] types, SparkQuery[] queries)
+    {
+        var loader = Substitute.For<IModelLoader>();
+        loader.GetEntityTypes().Returns(types);
+        loader.GetQueries().Returns(queries);
+        return loader;
+    }
+
+    [Fact]
+    public void An_index_binding_on_a_store_without_indexes_names_every_binding()
+    {
+        var model = Model(
+            [new EntityTypeDefinition { Id = Guid.NewGuid(), Name = "Person", IndexName = "People_Overview" }],
+            [
+                new SparkQuery { Id = Guid.NewGuid(), Name = "GetPeople", Source = "Database.People", IndexName = "People_Overview" },
+                new SparkQuery { Id = Guid.NewGuid(), Name = "GetCars", Source = "Database.Cars" },
+            ]);
+
+        var unmet = SparkIndexBindingStartupCheck.Unmet(model, InMemory);
+
+        unmet.Should().ContainSingle();
+        unmet[0].Should().Contain("The InMemory provider has no indexes");
+        unmet[0].Should().Contain("entity type 'Person' (indexName 'People_Overview')");
+        unmet[0].Should().Contain("query 'GetPeople' (indexName 'People_Overview')");
+        unmet[0].Should().NotContain("GetCars");
+    }
+
+    [Fact]
+    public void A_model_without_index_bindings_or_a_store_with_indexes_passes()
+    {
+        var bound = Model([], [new SparkQuery { Id = Guid.NewGuid(), Name = "GetPeople", Source = "Database.People", IndexName = "People_Overview" }]);
+        var withIndexes = Substitute.For<ISparkStore>();
+        withIndexes.Capabilities.Returns(SparkStoreCapabilities.Indexes);
+
+        SparkIndexBindingStartupCheck.Unmet(Model([], [new SparkQuery { Id = Guid.NewGuid(), Name = "GetPeople", Source = "Database.People" }]), InMemory)
+            .Should().BeEmpty();
+        SparkIndexBindingStartupCheck.Unmet(bound, withIndexes).Should().BeEmpty();
+        SparkIndexBindingStartupCheck.Unmet(bound, null).Should().BeEmpty();
     }
 }

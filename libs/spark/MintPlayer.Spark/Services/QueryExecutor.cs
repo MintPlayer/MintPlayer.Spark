@@ -884,7 +884,7 @@ internal sealed record DatabasePage(int TotalItems);
             throw new InvalidOperationException(
                 $"Query '{query.Name}' reads '{contextType.Name}.{propertyName}', typed " +
                 $"'{queryableType.Name}', which names no element type. A context property must be an " +
-                $"IRavenQueryable<T> so the framework knows what a row is.");
+                $"IQueryable<T> so the framework knows what a row is.");
         }
 
         var entityTypeDefinition = modelLoader.GetEntityTypeByClrType(entityType.FullName ?? entityType.Name)
@@ -1429,7 +1429,7 @@ internal sealed record DatabasePage(int TotalItems);
 
         // ⚠️ Resolved BEFORE anything composes onto the queryable, and kept for the column metadata.
         //
-        // A custom query commonly returns IRavenQueryable<TEntity> over a static index — OfType<T>()
+        // A custom query commonly returns IQueryable<TEntity> over a RavenDB static index — OfType<T>()
         // back to the documents is the idiomatic shape — so its row type is the ENTITY, which carries
         // every property while the index map carries only what it selected. Without this the column
         // metadata reports a field the index never emits as sortable, and ordering by it is an
@@ -1475,7 +1475,7 @@ internal sealed record DatabasePage(int TotalItems);
             throw new InvalidOperationException(
                 $"Custom query method '{methodName}' on '{actionsInstance.GetType().Name}' returned a " +
                 $"'{result.GetType().Name}', which is not a sequence. It must return IQueryable<T>, " +
-                $"IRavenQueryable<T>, IEnumerable<T> or SparkQueryPage<T> (or a Task<> of one of those).");
+                $"IEnumerable<T> or SparkQueryPage<T> (or a Task<> of one of those).");
         }
 
         // Row-level authorization, as on the database path. A custom query is a developer saying
@@ -1627,7 +1627,7 @@ internal sealed record DatabasePage(int TotalItems);
     private static string DescribeUnusableCustomQuery(Type actionsType, string methodName)
     {
         const string expected =
-            "Expected a public method returning IQueryable<T>, IRavenQueryable<T>, IEnumerable<T>, " +
+            "Expected a public method returning IQueryable<T>, IEnumerable<T>, " +
             "or a Task<> of one of those, with zero parameters or one CustomQueryArgs parameter.";
 
         var method = actionsType.GetMethod(methodName, BindingFlags.Public | BindingFlags.Instance);
@@ -1713,7 +1713,7 @@ internal sealed record DatabasePage(int TotalItems);
                 returnType = returnType.GetGenericArguments()[0];
             }
 
-            // Extract the element type from IQueryable<T> or IRavenQueryable<T>
+            // Extract the element type from IQueryable<T> (a provider's own queryable implements it)
             var elementType = ExtractQueryableElementType(returnType);
             if (elementType == null || IsUnusableRowType(elementType))
                 return null;

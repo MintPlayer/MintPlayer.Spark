@@ -16,8 +16,12 @@ public static class SparkMigrationsExtensions
     /// Prefer the generated <c>spark.AddMigrations()</c> (no argument), which auto-discovers every
     /// <see cref="ISparkMigration"/> in the project. This overload is the manual escape hatch.
     /// </remarks>
+    [global::MintPlayer.Spark.Abstractions.Storage.SparkRequiresStore("Spark.Migrations", Provider = global::MintPlayer.Spark.Abstractions.Storage.SparkStoreProviders.RavenDb)]
     public static ISparkBuilder AddMigrations(this ISparkBuilder builder, Action<ISparkMigrationsBuilder> configure)
     {
+        // #551 D13: migrations run against RavenDB's own client.
+        global::MintPlayer.Spark.Abstractions.Storage.SparkStoreRequirementExtensions.RequireStore(builder, "Spark.Migrations", provider: global::MintPlayer.Spark.Abstractions.Storage.SparkStoreProviders.RavenDb);
+
         var registry = GetOrAddInfrastructure(builder);
         configure(new SparkMigrationsBuilder(builder.Services, registry));
         return builder;

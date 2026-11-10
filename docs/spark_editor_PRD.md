@@ -151,7 +151,8 @@ Each decision states its evidence: a file:line, a measurement, or "owner prefere
     predicate. Each provider translates it: RQL for Raven, LINQ-to-objects for InMemory, SQL later.
   - *Refined by D15 (§4a): these become `IQueryable<T>` extensions in the provider package (EF Core pattern).* Raven-specific overloads (`.Search()`, `.Customize()`, `.Include()`, named indexes, `.ProjectInto<>()`) stay
     reachable through `RavenPersistentObjectActions<T>` with `IAsyncDocumentSession`/`IRavenQueryable`, so app
-    code isn't rewritten.
+    code isn't rewritten. *Superseded (2026-11-10): no such base class; actions inject `IAsyncDocumentSession`
+    (§8.4 "RavenPersistentObjectActions dropped").*
   - PR #63's `ISparkSession` with a plain `IQueryable` made these unreachable or forced casts back to Raven types,
     which leaks the abstraction. Not repeated.
   - **Row security and filters are applied by core, never left to the provider.** A provider conformance suite
@@ -298,7 +299,8 @@ Method: `grep -rE "IDocumentStore|IAsyncDocumentSession|IRavenQueryable|IDocumen
       - Truly store-specific operators (`UseIndex<TIndex>()`, `Customize(…)`) stay in the provider package. They
         are deliberate, visible pins to one provider.
     - `SparkContext.Session` moves to a `RavenSparkContext` base in the Raven package. Raw session work (patches,
-      operations, attachments) stays in `RavenPersistentObjectActions<T>`.
+      operations, attachments) stays in `RavenPersistentObjectActions<T>`. *Superseded (2026-11-10): actions
+      inject `IAsyncDocumentSession` instead (§8.4).*
 - **F2 — 32 files outside core return `IRavenQueryable<T>`**, including DemoApp's custom queries over index
   projections (`apps/DemoApp/DemoApp/Actions/CarActions.cs:39`, `PersonActions.cs:62`). Moving DemoApp to InMemory
   (D14) means rewriting those two queries as LINQ over `Set<T>()`, with no index.
@@ -342,7 +344,7 @@ core and takes a neutral contract type instead of the session, **Cap** moves to 
 | `Live/LiveHub.cs:32,48,253`, `LiveActionsSource.cs:38-98`, `LiveConnection.cs:44,62`, `LiveStartup.cs:30` | Changes API feed | Cap `ChangeNotifications` (InMemory can offer it: it sees every write) |
 | `Live/LiveAppStreamSubscription.cs:40,92,156` | streaming session | Cap `ChangeNotifications` |
 | `Services/DatabaseAccess.cs:21-22, 1056-1063, 771-879, 976` | load, store, delete, commit | C — the provider seam (D2/D3) |
-| `Actions/DefaultPersistentObjectActions.cs:109,199,246,269` | session for load and etag | C — `RavenPersistentObjectActions<T>` keeps the session |
+| `Actions/DefaultPersistentObjectActions.cs:109,199,246,269` | session for load and etag | C — ~~`RavenPersistentObjectActions<T>` keeps the session~~ actions inject `IAsyncDocumentSession` (§8.4) |
 | `EntityMapper.cs:114,591,698,775,1071-1081` | reference loads | C (batch load by ids) |
 | `ReferenceResolver.cs:103-109` | `.Include()` | C — include paths become a spec hint the provider may ignore |
 | `Breadcrumb/BreadcrumbResolver.cs:91,112,319,676-694` | batch loads | C |
@@ -487,7 +489,7 @@ internal sealed record SparkQuerySpec(
 - Raven-only operators become `IQueryable<T>` extensions in `MintPlayer.Spark.RavenDB`, rather than requiring
   raw session code: `.Customize()`, `ProjectInto<>` with an explicit view, named index queries in custom sources,
   and `.Include()` beyond the model's reference paths. Only raw session work (patches, operations, attachments)
-  still needs `RavenPersistentObjectActions<T>`.
+  still needs ~~`RavenPersistentObjectActions<T>`~~ the injected `IAsyncDocumentSession` (superseded 2026-11-10, §8.4).
 
 ### 4c. S9 result — D15 on a real RavenDB (2026-10-26)
 
@@ -553,7 +555,7 @@ Tests run once at the end of each PR, not per milestone.
 1. S2 + S3 complete, with tables written into this PRD.
 2. The provider contract in core (load, stage, commit, query spec, consistency wait, capabilities), with
    `DatabaseAccess` and `QueryExecutor` rewired onto it. Behaviour must stay unchanged for Raven.
-3. `MintPlayer.Spark.RavenDB` extracted, with `UseRavenDb()` and `RavenPersistentObjectActions<T>`. Every app
+3. `MintPlayer.Spark.RavenDB` extracted, with `UseRavenDb()` ~~and `RavenPersistentObjectActions<T>`~~ (dropped, §8.4). Every app
    and library is moved onto it, and feature libraries declare their capabilities.
 4. Startup capability check plus an analyzer for a feature package referenced without a capable provider.
 5. `MintPlayer.Spark.InMemory`, the provider conformance suite (run by both providers), and DemoApp on
@@ -576,7 +578,7 @@ Tests run once at the end of each PR, not per milestone.
 
 ## 6. Acceptance
 
-- DemoApp starts and serves CRUD with **no** RavenDB server.
+- DemoApp starts and serves CRUD with **no** RavenDB server. *Verified 2026-11-10, §8.4 "DemoApp without RavenDB".*
 - Every existing suite stays green on Raven, and the conformance suite passes for both Raven and InMemory.
 - From VS Code and from Visual Studio, on HR and Fleet at the same time, one server and two tabs show no
   cross-talk (D10).
@@ -689,7 +691,7 @@ The test project builds after the rebase.
   `RavenDB.Client`):
   - `UseRavenDb()` on `ISparkBuilder`, `RavenDbOptions`, the store and session registration
   - the Raven halves of the S11 files (D18 placement rule)
-  - `RavenPersistentObjectActions<T>`
+  - ~~`RavenPersistentObjectActions<T>`~~ — dropped, see §8.4 "RavenPersistentObjectActions dropped".
 - **M5 — core without `RavenDB.Client`:**
   - Every S11 file moves or is rewired onto the contracts.
   - `SparkContext.Session` becomes `ISparkSession`.
@@ -786,13 +788,49 @@ The test project builds after the rebase.
     | IdentityProvider | RavenDB only |
     | Cron | RavenDB only |
     | Contributions | RavenDB only |
+    | Authorization (`AddAuthentication<TUser>`) | RavenDB only |
+    | Boards, Dashboards, MailManager, Mcp, Migrations | RavenDB only |
+    | Moderation, Notifications, Organizations | RavenDB only |
+    | Search (`AddSearch`, also behind `UseOpenSearch`) | RavenDB only |
+    | Settings (`AddSettings`, `AddQuotas`), SoftDelete | RavenDB only |
 
     "RavenDB only" means the library uses `IDocumentStore` itself, beyond the capability.
-  - **Not declared yet:** authorization, boards, dashboards, mail, mcp, migrations, moderation, notifications,
-    organizations, search, settings, soft_delete and subscription_worker still inject `IDocumentStore` (grep over
-    `libs/*`, 2026-11-09).
-    - On another provider they fail when `IDocumentStore` is resolved, not with this message.
-    - #536 declares or ports each one when SQL Server makes it reachable. DemoApp uses none of them.
+    - The second block was added 2026-11-10 (the audit after PR #620's second CI run). Before it these libraries
+      failed on another provider only when `IDocumentStore` was resolved, not with this message (grep for
+      `IDocumentStore` over `libs/*`, 2026-11-09). #536 ports each one, or lifts its declaration, when SQL Server
+      makes it reachable.
+    - Each registering overload calls `RequireStore` and carries `[SparkRequiresStore]`; an overload that delegates
+      carries the attribute only, for SPARK060.
+    - **Not declared: `subscription_worker`.** It has only an `IServiceCollection` registration, no `ISparkBuilder`
+      method to declare on, and its only callers are Messaging and Replication, which already declare
+      Subscriptions + RavenDB only.
+  - **Index bindings (D20), added 2026-11-10:** a model whose entity type or query names an `indexName` on a
+    provider without `Indexes` is refused by `UseSpark()`, naming every binding
+    (`Services/SparkIndexBindingStartupCheck.cs`, thrown together with the requirement messages).
+    - Before it, `EmptyIndexCatalog`'s remark claimed this check existed. It did not: the application started, and
+      the binding failed on its first query.
+    - Tests: `SparkStoreRequirementTests.An_index_binding_on_a_store_without_indexes_names_every_binding` and
+      `A_model_without_index_bindings_or_a_store_with_indexes_passes`.
+  - **`RavenPersistentObjectActions<T>` dropped (M4, §5 item 3), 2026-11-10.** It was planned as the home of
+    Raven-only actions code (session, `IRavenQueryable`, attachments). It is not needed:
+    - `AddRavenDbSessions()` registers the request's `IAsyncDocumentSession` as scoped, and the `ISparkSession`
+      wraps that same instance (`SparkRavenDbExtensions.cs:81,86`), so an action that injects
+      `IAsyncDocumentSession` shares the framework's unit of work.
+    - Every app already does that with `[Inject] private readonly IAsyncDocumentSession session;` (e.g.
+      `apps/Fleet/Fleet/Actions/CarActions.cs:22`, `apps/HR/HR/Actions/PersonActions.cs:12`, the MintPlayer and
+      SeoTester actions). PR #620's third CI run (commit 3572bd53a) passed every finished check with them.
+    - A base class would add a second hierarchy to choose between for no capability the injection lacks.
+  - **DemoApp without RavenDB (acceptance item), verified 2026-11-10.** `dotnet run --project apps/DemoApp/DemoApp
+    --launch-profile https`:
+    - The host logged "Spark store: in-memory. Data resets on restart." and the dev server came up; its output
+      folder holds no `Raven*` assembly.
+    - The Companies grid rendered the three seed companies in the browser.
+    - Over the HTTP API (with the XSRF cookie): `po/create` a Company → 201, `po/load` → 200 with its etag,
+      `po/update` (rename) → 200 and the reload shows the new name, `po/delete` → 204, `po/load` afterwards → 404.
+  - **Docs off `IRavenQueryable` (D15), 2026-11-10.** Core's README and AGENTS.md, and the queries, reference and
+    search guides, now declare roots as `IQueryable<T>` over `ISparkSession` and show `UseRavenDb()` /
+    `UseInMemory()`. Core's own messages no longer name `IRavenQueryable` (`QueryExecutor`, `ModelSynchronizer`,
+    `SparkQuery`). Tests that run on RavenDB keep the Raven type on purpose.
 - **M9 — a class-less type's save and delete go through its `{Name}Actions`.** Same duck-typed contract as the
   existing virtual `OnLoadAsync`/`OnNewAsync`: `Task<PersistentObject> OnSaveAsync(PersistentObject)` and
   `Task<bool> OnDeleteAsync(string id, string? etag)`. `DatabaseAccess.VirtualHook` resolves them, and a method of

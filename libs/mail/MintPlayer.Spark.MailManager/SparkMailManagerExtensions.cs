@@ -37,8 +37,12 @@ public static class SparkMailManagerExtensions
     /// 32-character secret, <c>Development:RedirectTo</c> in Production, and — in Development — a
     /// transport that delivers to real recipients without <c>Development:RedirectTo</c>. The Authorization package's account mail goes through this automatically.
     /// </remarks>
+    [global::MintPlayer.Spark.Abstractions.Storage.SparkRequiresStore("Spark.MailManager", Provider = global::MintPlayer.Spark.Abstractions.Storage.SparkStoreProviders.RavenDb)]
     public static ISparkBuilder AddMailManager(this ISparkBuilder builder, Action<SparkMailOptions>? configure = null)
     {
+        // #551 D13: deliveries are kept in RavenDB, through its own client.
+        global::MintPlayer.Spark.Abstractions.Storage.SparkStoreRequirementExtensions.RequireStore(builder, "Spark.MailManager", provider: global::MintPlayer.Spark.Abstractions.Storage.SparkStoreProviders.RavenDb);
+
         var section = builder.Configuration?.GetSection(ConfigurationSection);
         builder.Services.AddOptions<SparkMailOptions>().Configure(options =>
         {

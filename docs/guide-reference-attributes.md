@@ -88,7 +88,7 @@ type's **plain entity root**: the SparkContext property whose body is exactly `S
 ([default_index_PRD.md](default_index_PRD.md), D6).
 
 ```csharp
-// SparkContext has: public IRavenQueryable<Company> Companies => Session.Query<Company>();
+// SparkContext has: public IQueryable<Company> Companies => Session.Query<Company>();
 [Reference(typeof(Company))]  // query auto-resolved to "GetCompanies"
 public string? Owner { get; set; }
 ```
@@ -107,7 +107,7 @@ which root a reference uses:
   generator writes such a root for every public `[FromIndex]` view, as a typed C# shortcut.
 - **A type from a package needs a root too.** A reference to a package's type, such as `Organization` from
   `MintPlayer.Spark.Organizations`, resolves only when your context has
-  `public IRavenQueryable<Organization> Organizations => Session.Query<Organization>();`. The root's attributes are
+  `public IQueryable<Organization> Organizations => Session.Query<Organization>();`. The root's attributes are
   derived from the CLR type, through the `spark.ModelAttributes(...)` hook (see
   [Hand-editing the model](#hand-editing-the-model-what-survives-synchronization)).
 - **No root at all** leaves the attribute without a query, and the edit page's picker without options. A writable
@@ -212,7 +212,7 @@ without this check a `Person` reference holding `accounts/1` would later be read
 - **Reading is bound too:** the breadcrumb resolver drops a loaded target whose collection is not
   the declared type's, so an old foreign id renders as a missing target, never as the wrong record.
 
-A `Custom.*` method may return `IQueryable<T>`, `IRavenQueryable<T>`, `IEnumerable<T>`, or a `Task<>`
+A `Custom.*` method may return `IQueryable<T>`, `IEnumerable<T>`, or a `Task<>`
 of any of those. Returning a plain in-memory sequence is fully supported: every Raven-specific step
 (projection, `.Include()`, row-filter push-down, search push-down, provider sorting) is guarded on
 the returned object actually being a Raven queryable, and sorting, search and paging fall back to
