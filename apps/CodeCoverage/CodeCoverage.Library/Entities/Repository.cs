@@ -335,6 +335,36 @@ public class Repository : IForgeConnectable
     public EMergeQueueBypassRolePolicy MergeQueueBypassRole { get; set; }
 
     /// <summary>
+    /// The lowest GitHub repository role whose holders may promote the release lines with <c>/release</c> in this
+    /// repository, or the account's setting.
+    /// </summary>
+    /// <remarks>Segment P, P3 (<c>docs/release_lines_recovery_plan.md</c> §2b).</remarks>
+    [IgnoreForIndex]
+    [LookupReference(typeof(ReleaseRolePolicy))]
+    public EReleaseRolePolicy ReleaseRole { get; set; }
+
+    /// <summary>
+    /// The effective release role (P3), the one place the two levels are combined. A missing account resolves to
+    /// <see cref="EReleaseRole.Maintain"/>.
+    /// </summary>
+    public static EReleaseRole ResolveReleaseRole(Repository? repository, Account? account)
+        => repository?.ReleaseRole switch
+        {
+            EReleaseRolePolicy.Write => EReleaseRole.Write,
+            EReleaseRolePolicy.Maintain => EReleaseRole.Maintain,
+            EReleaseRolePolicy.Admin => EReleaseRole.Admin,
+            _ => account?.ReleaseRole ?? EReleaseRole.Maintain,
+        };
+
+    /// <summary>Whether <paramref name="role"/> may release under <paramref name="releaseRole"/> (P3).</summary>
+    public static bool MayRelease(EForgeRepositoryRole role, EReleaseRole releaseRole) => releaseRole switch
+    {
+        EReleaseRole.Write => role >= EForgeRepositoryRole.Write,
+        EReleaseRole.Admin => role >= EForgeRepositoryRole.Admin,
+        _ => role >= EForgeRepositoryRole.Maintain,
+    };
+
+    /// <summary>
     /// The effective approval floor and where it came from (<c>repository</c> or <c>organization</c>), the one place
     /// the two levels are combined (O11, O15). A missing account resolves to O11's default.
     /// </summary>

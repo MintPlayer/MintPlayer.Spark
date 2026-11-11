@@ -430,6 +430,19 @@
         "group": "5c8e2f17-3a94-4d6b-9e01-b7f4c2a8d613"
       },
       {
+        "id": "8ce09f16-25ee-4887-8e12-6d3703e98809",
+        "name": "ReleaseRole",
+        "dataType": "string",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 27,
+        "isArray": false,
+        "lookupReferenceType": "ReleaseRole",
+        "inQueryType": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
         "id": "47ee693b-379e-469b-ba29-22a472796297",
         "name": "Type",
         "dataType": "string",

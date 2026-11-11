@@ -357,6 +357,14 @@ public sealed record DependencyAlertRaised(string RepositoryId, string Ecosystem
 public sealed record BackportRequested(string RepositoryId, int Number, IReadOnlyList<string> Lines, string ActorLogin, EBackportSource Source,
     bool Draft = false) : IForgeEvent;
 
+/// <summary>
+/// A person asked for release lines to be promoted (segment P): a <c>/release</c> comment on an issue or a pull request.
+/// </summary>
+/// <param name="Number">The issue or pull request the comment is on; the answer is posted there.</param>
+/// <param name="ActorLogin">The signed webhook's sender, never text from the comment. Whether that person may release is
+/// read from the forge per request (P3).</param>
+public sealed record ReleaseRequested(string RepositoryId, int Number, ReleaseCommentRequest Request, string ActorLogin) : IForgeEvent;
+
 public enum EBackportSource
 {
     /// <summary>A label added to a pull request that had already merged.</summary>

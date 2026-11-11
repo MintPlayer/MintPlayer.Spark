@@ -222,6 +222,15 @@ Dependencies: R before all; B before C; D before E; C before F. G and H are inde
   - **M6** versions: `Pkg@ver`, tag-push detection, validation and recording, placement at promotion, and the
     server check the versioning action calls.
   - **M7** docs, the sandbox trial on SparkTest, the tests once, the PR.
+- **Status (2026-11-11):**
+  - **M1 done:** `VersioningLinesConfig.Current/Past/Trigger/Workflow` with validation (`workflow` is required with
+    `current: promote`: a commit is green when that workflow's run on the default branch concluded `success`, my call,
+    because "publish-release" is a workflow *name* and the forge lists runs by file); `ReleaseLinePattern.CurrentLines`;
+    `ReleaseCommand` (parser) and the `ReleaseRequested` event, raised from `OnIssueCommentAsync` on issues and pull
+    requests alike.
+  - **M2 done:** `Account.ReleaseRole` (`EReleaseRole`, zero value `Maintain` so old documents need no migration) and
+    `Repository.ReleaseRole` (`EReleaseRolePolicy`, `Inherit`), `Repository.ResolveReleaseRole` / `MayRelease`; model
+    synchronized. The translations golden still needs `SPARK_UPDATE_GOLDEN=1` (done with the tests at the end).
 - **P6, sandbox (SP7 = A):** `PieterjanDeClippel/SparkTest`, two lines and a `publish-release` without publish
   secrets. Standing permission to push branches and tags and change rulesets there; ask before deleting anything that
   was there before.

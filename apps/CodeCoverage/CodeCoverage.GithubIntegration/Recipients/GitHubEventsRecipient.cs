@@ -565,9 +565,19 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
         using var payload = JsonDocument.Parse(message.EventJson);
         var root = payload.RootElement;
         if (Text(root, "action") != "created") return;
-        if (Child(root, "issue") is not { } issue || Child(issue, "pull_request") is null) return;
+        if (Child(root, "issue") is not { } issue) return;
         if (Number(issue, "number") is not { } number) return;
         if (Child(root, "comment") is not { } comment || Text(comment, "body") is not { } body) return;
+
+        // Segment P: /release works on an issue as well as on a pull request; the recipient checks the role (P3).
+        if (ReleaseCommand.Parse(body) is { } release)
+        {
+            if (IsOurApp(comment) || HumanSender(root) is not { } releaser || IsBotAuthor(comment)) return;
+            if (await LoadKnownRepositoryIdAsync(root, ct) is not { } releaseRepositoryId) return;
+            await RaiseAsync(new ReleaseRequested(releaseRepositoryId, (int)number, release, releaser), ct);
+            return;
+        }
+        if (Child(issue, "pull_request") is null) return;
 
         var command = body.TrimStart().Split((char[])['\r', '\n', ' ', '\t'], 2)[0].ToLowerInvariant() switch
         {
@@ -581,7 +591,7 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
         var backport = command is null && dependencyCommand is null ? BackportCommand.Parse(body) : null;
         if (command is null && dependencyCommand is null && backport is null) return;
         if (IsOurApp(comment) || HumanSender(root) is not { } actor) return;
-        if (Child(comment, "user") is { } author && (Text(author, "type") == "Bot" || Text(author, "login")?.EndsWith("[bot]", StringComparison.Ordinal) == true)) return;
+        if (IsBotAuthor(comment)) return;
         if (await LoadKnownRepositoryIdAsync(root, ct) is not { } repositoryId) return;
 
         if (backport is not null)
@@ -597,6 +607,9 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
         }
         await RaiseAsync(new MergeQueueCommandIssued(repositoryId, (int)number, command!.Value, actor, EMergeQueueCommandSource.Comment), ct);
     }
+
+    private static bool IsBotAuthor(JsonElement comment)
+        => Child(comment, "user") is { } author && (Text(author, "type") == "Bot" || Text(author, "login")?.EndsWith("[bot]", StringComparison.Ordinal) == true);
 
     /// <summary>A published release of a known repository (§7.6, gap E's event leg); drafts and pre-releases included as
     /// GitHub publishes them, since a registry publish may follow either.</summary>

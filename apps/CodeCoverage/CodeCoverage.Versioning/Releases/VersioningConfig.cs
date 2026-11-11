@@ -150,6 +150,16 @@ public sealed class VersioningConfig
 				else if (!IsPrerelease(setting) || setting is null)
 					errors.Add($"versioning.lines.prerelease.{key} must be one of alpha, beta, next, preview, rc or {UpstreamPrerelease}.");
 		}
+		if (Lines?.Current is { } current && current is not (VersioningLinesConfig.Promote or VersioningLinesConfig.Backport))
+			errors.Add($"versioning.lines.current must be '{VersioningLinesConfig.Promote}' or '{VersioningLinesConfig.Backport}'.");
+		if (Lines?.Past is { } past && past != VersioningLinesConfig.Backport)
+			errors.Add($"versioning.lines.past must be '{VersioningLinesConfig.Backport}'.");
+		if (Lines?.Trigger is { } trigger && trigger != VersioningLinesConfig.Manual)
+			errors.Add($"versioning.lines.trigger must be '{VersioningLinesConfig.Manual}'.");
+		if (Lines?.Workflow is { } workflow && !IsWorkflowFile(workflow))
+			errors.Add("versioning.lines.workflow must be a workflow file name under .github/workflows, such as publish.yml.");
+		else if (Lines is { Current: VersioningLinesConfig.Promote, Workflow: null })
+			errors.Add("versioning.lines.workflow is required with current: promote: it names the workflow whose success on the default branch makes a commit releasable.");
 		return errors;
 	}
 
@@ -250,4 +260,30 @@ public sealed class VersioningLinesConfig
 	/// line goes stable, or stays on a label, apart from <c>versioning.prerelease</c>. A package's own pin still wins.
 	/// </summary>
 	public Dictionary<string, string>? Prerelease { get; set; }
+
+	/// <summary>
+	/// Segment P (P0): how a current line (the highest major among its ecosystem's line branches) takes the default
+	/// branch's changes. <see cref="Promote"/> moves it to a green default-branch commit on <c>/release</c>;
+	/// <see cref="Backport"/> (also null) cherry-picks labelled pull requests onto it.
+	/// </summary>
+	public string? Current { get; set; }
+
+	/// <summary>How the older lines take changes; only <see cref="Backport"/> for now (null is the same).</summary>
+	public string? Past { get; set; }
+
+	/// <summary>What starts a promotion; only <see cref="Manual"/> (<c>/release</c>) for now (null is the same).</summary>
+	public string? Trigger { get; set; }
+
+	/// <summary>
+	/// P2: the workflow file (under <c>.github/workflows</c>) whose run on the default branch marks a commit green; a
+	/// promotion moves a line only to a commit whose run of it concluded <c>success</c>. Required with <c>current: promote</c>.
+	/// </summary>
+	public string? Workflow { get; set; }
+
+	public const string Promote = "promote";
+	public const string Backport = "backport";
+	public const string Manual = "manual";
+
+	/// <summary>Whether current lines are promoted (P0). Only for a section <see cref="VersioningConfig.Validate"/> accepted.</summary>
+	public bool PromotesCurrent => Current == Promote;
 }
