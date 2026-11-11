@@ -35,7 +35,7 @@ public interface ISparkPrerenderContext
     /// <summary>The page's query string, e.g. <c>?deleted=only</c>, or empty.</summary>
     QueryString QueryString { get; }
 
-    /// <summary>The language the page renders in (the <c>spark-lang</c> cookie, then <c>Accept-Language</c>, then the default).</summary>
+    /// <summary>The language the page renders in (the URL's <c>?lang</c>, the <c>spark-lang</c> cookie, then <c>Accept-Language</c>, then the default).</summary>
     string Language { get; }
 
     /// <summary>The viewer's IANA zone (the timezone cookie), or the application's default zone.</summary>
@@ -55,6 +55,14 @@ public interface ISparkPrerenderContext
     /// one the page leaves out (<c>undefined</c>), and member order does not matter.
     /// </summary>
     Task<SparkPrerenderResponse> PostAsync(string pathAndQuery, object? body);
+
+    /// <summary>
+    /// Runs <c>POST <paramref name="pathAndQuery"/></c> as <see cref="PostAsync"/>, but does NOT supply the response to
+    /// the page: for a contributor deciding about the page (redirect it, or refuse it) rather than filling it. A
+    /// supplied request travels in the page's transfer state, key included, so a lookup by a key the URL does not
+    /// show (a redirect hook resolving a name to an id) would put that id in the HTML of the refused page.
+    /// </summary>
+    Task<SparkPrerenderResponse> ProbeAsync(string pathAndQuery, object? body);
 
     /// <summary>
     /// The page's status: the status of its primary read (PRD D4), e.g. a 404 from the object the page

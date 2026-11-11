@@ -43,6 +43,7 @@ public class SparkFullProducer : Producer
         var hasCron = discoveryList.Any(d => d.Kind == "CronJob");
         var hasMigrations = discoveryList.Any(d => d.Kind == "Migration") || flags.HasReferencedMigrations;
         var hasInterceptors = discoveryList.Any(d => d.Kind == "Interceptor");
+        var hasEntityRedirects = discoveryList.Any(d => d.Kind == "EntityRedirect");
 
         writer.WriteLine(Header);
         writer.WriteLine();
@@ -53,7 +54,7 @@ public class SparkFullProducer : Producer
         {
             using (writer.OpenBlock("internal static class SparkFullBuilderExtensions"))
             {
-                WriteAddSparkFull(writer, contextType, userType, hasActions, hasCustomActions, hasRecipients, hasCron, hasMigrations, hasInterceptors);
+                WriteAddSparkFull(writer, contextType, userType, hasActions, hasCustomActions, hasRecipients, hasCron, hasMigrations, hasInterceptors, hasEntityRedirects);
                 writer.WriteLine();
                 WriteUseSparkFull(writer);
                 writer.WriteLine();
@@ -71,7 +72,8 @@ public class SparkFullProducer : Producer
         bool hasRecipients,
         bool hasCron,
         bool hasMigrations,
-        bool hasInterceptors)
+        bool hasInterceptors,
+        bool hasEntityRedirects)
     {
         writer.WriteLine("/// <summary>");
         writer.WriteLine("/// Registers all Spark services, modules, and discovered actions/recipients.");
@@ -84,6 +86,9 @@ public class SparkFullProducer : Producer
 
             using (writer.OpenBlock("global::MintPlayer.Spark.SparkExtensions.AddSpark(services, configuration, spark =>"))
             {
+                // The full bundle runs on RavenDB (#551): its feature packages (contributions, search, messaging…)
+                // are RavenDB-backed.
+                writer.WriteLine("global::MintPlayer.Spark.SparkRavenDbExtensions.UseRavenDb(spark);");
                 writer.WriteLine($"global::MintPlayer.Spark.SparkExtensions.UseContext<{contextType}>(spark);");
 
                 // These registration extensions are generated into {RootNamespace} by the other
@@ -104,6 +109,9 @@ public class SparkFullProducer : Producer
 
                 if (hasInterceptors)
                     writer.WriteLine($"global::{RootNamespace}.SparkInterceptorsBuilderExtensions.AddInterceptors(spark);");
+
+                if (hasEntityRedirects)
+                    writer.WriteLine($"global::{RootNamespace}.SparkEntityRedirectsBuilderExtensions.AddEntityRedirects(spark);");
 
                 if (userType != null)
                 {

@@ -14,6 +14,15 @@ public sealed record WorkflowChangeRules(IReadOnlySet<(string Old, string New)> 
     /// it; a step whose <c>uses:</c> changed to one of these must pass only inputs it declares, pass every required input
     /// without a default, and be read only for outputs it declares.</summary>
     public IReadOnlyDictionary<string, string>? TargetActions { get; init; }
+
+    /// <summary>#613 item 2: (old, new) → the scalar change is a planned platform move of a location the lookup reported.
+    /// Asked only at platform paths: a setup action's version input, a matrix entry (block or flow style), a job's
+    /// <c>container</c> image and a service's <c>image</c>.</summary>
+    public Func<string, string, bool>? PlatformChange { get; init; }
+
+    /// <summary>#617 D31: (key, value) → a planned platform move removes this <c>with:</c> input of a setup step. Asked only
+    /// for the inputs of <see cref="GitHubWorkflowValidator.RemovableWithKeys"/> (setup-dotnet's <c>dotnet-quality</c>).</summary>
+    public Func<string, string, bool>? RemovableWith { get; init; }
 }
 
 /// <summary>One scalar the change altered, at a dotted path such as <c>jobs.build.steps[1].uses</c>.</summary>
@@ -45,6 +54,14 @@ public sealed partial class GitHubWorkflowValidator : IContentValidator
             ["actions/setup-java"] = new HashSet<string>(StringComparer.Ordinal) { "java-version" },
             ["actions/setup-go"] = new HashSet<string>(StringComparer.Ordinal) { "go-version" },
             ["ruby/setup-ruby"] = new HashSet<string>(StringComparer.Ordinal) { "ruby-version" },
+        };
+
+    /// <summary>#617 D31: the closed list of setup-action inputs a platform move may remove: setup-dotnet's
+    /// <c>dotnet-quality</c>, which names the preview a release no longer needs. Never configurable.</summary>
+    public static IReadOnlyDictionary<string, IReadOnlySet<string>> RemovableWithKeys { get; } =
+        new Dictionary<string, IReadOnlySet<string>>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["actions/setup-dotnet"] = new HashSet<string>(StringComparer.Ordinal) { "dotnet-quality" },
         };
 
     /// <summary>Every key of <see cref="SetupActionVersionKeys"/>.</summary>
@@ -194,11 +211,14 @@ public sealed partial class GitHubWorkflowValidator : IContentValidator
         switch (b, a)
         {
             case (YamlMapping bm, YamlMapping am):
-                if (bm.IsFlow != am.IsFlow || bm.Entries.Count != am.Entries.Count)
+                var entries = bm.Entries;
+                if (!bm.IsFlow && !am.IsFlow && bm.Entries.Count > am.Entries.Count)
+                    entries = WithoutRemoved(bm, path, here, afterRoot, rules, changes);
+                if (bm.IsFlow != am.IsFlow || entries.Count != am.Entries.Count)
                     throw new Refused(ContentVerdict.Invalid("a mapping's keys or style changed", am.Line, am.Column));
-                for (var i = 0; i < bm.Entries.Count; i++)
+                for (var i = 0; i < entries.Count; i++)
                 {
-                    var (bk, bv) = bm.Entries[i];
+                    var (bk, bv) = entries[i];
                     var (ak, av) = am.Entries[i];
                     if (bk.Value != ak.Value || bk.Style != ak.Style || bk.Anchor != ak.Anchor || bk.Tag != ak.Tag)
                         throw new Refused(ContentVerdict.Invalid("a mapping's keys or style changed", ak.Line, ak.Column));
@@ -220,7 +240,10 @@ public sealed partial class GitHubWorkflowValidator : IContentValidator
             case (YamlScalar bsc, YamlScalar asc):
                 if (bsc.Value == asc.Value && bsc.Style == asc.Style)
                     return;
-                if (here.ViaAlias || here.Anchored || here.Flow)
+                // #613 item 2: a matrix entry may sit in a flow list (`node: [20, 22]`); the line rule already held the rest of
+                // the line byte-identical, so only the entry's own value changed.
+                var flowMatrix = here.Flow && IsMatrixPath(path) && bsc.Style == asc.Style && !asc.IsBlock && rules.PlatformChange?.Invoke(bsc.Value, asc.Value) == true;
+                if (here.ViaAlias || here.Anchored || here.Flow && !flowMatrix)
                     throw new Refused(ContentVerdict.Invalid("a changed value in flow style, under an anchor or reached through an alias", asc.Line, asc.Column));
                 if (bsc.Style != asc.Style || asc.IsBlock)
                     throw new Refused(ContentVerdict.Invalid("a changed value whose scalar style changed or is a block scalar", asc.Line, asc.Column));
@@ -229,6 +252,36 @@ public sealed partial class GitHubWorkflowValidator : IContentValidator
                 changes.Add(new WorkflowChange(string.Join('.', path).Replace(".[", "[", StringComparison.Ordinal), bsc.Value, asc.Value, asc.Line));
                 return;
         }
+    }
+
+    /// <summary>
+    /// #617 D31: a setup step's block <c>with:</c> mapping without the entries a planned move removes: a key of
+    /// <see cref="RemovableWithKeys"/> for the step's action, a plain or quoted scalar not anchored or reached through an
+    /// alias, that <see cref="WorkflowChangeRules.RemovableWith"/> admits. Each removal is a change with an empty new value;
+    /// the remaining entries are then compared as usual, so nothing else may go.
+    /// </summary>
+    private static List<KeyValuePair<YamlScalar, YamlNode>> WithoutRemoved(YamlMapping before, List<string> path, Inherited here,
+        YamlMapping afterRoot, WorkflowChangeRules rules, List<WorkflowChange> changes)
+    {
+        var withPath = path.Count > 0 && path[^1] == "with" ? WithStepPath([.. path, "_"]) : null;
+        if (rules.RemovableWith is null || here.ViaAlias || here.Anchored || before.Anchor is not null || withPath is null
+            || NodeAt(afterRoot, withPath) is not YamlMapping step
+            || step["uses"] is not { } usesNode || YamlDocument.Resolve(usesNode) is not YamlScalar uses
+            || RemoteUses().Match(uses.Value) is not { Success: true } action
+            || !RemovableWithKeys.TryGetValue(action.Groups["action"].Value, out var removable))
+            return before.Entries;
+        var kept = new List<KeyValuePair<YamlScalar, YamlNode>>();
+        foreach (var entry in before.Entries)
+        {
+            if (removable.Contains(entry.Key.Value) && entry.Key.Anchor is null && entry.Value is YamlScalar value
+                && value.Anchor is null && !value.IsBlock && rules.RemovableWith(entry.Key.Value, value.Value))
+            {
+                changes.Add(new WorkflowChange(string.Join('.', [.. path, entry.Key.Value]).Replace(".[", "[", StringComparison.Ordinal), value.Value, string.Empty, value.Line));
+                continue;
+            }
+            kept.Add(entry);
+        }
+        return kept;
     }
 
     private static bool IsUsesPath(List<string> p)
@@ -261,10 +314,21 @@ public sealed partial class GitHubWorkflowValidator : IContentValidator
             && RemoteUses().Match(uses.Value) is { Success: true } action
             && SetupActionVersionKeys.TryGetValue(action.Groups["action"].Value, out var keys) && keys.Contains(path[^1]))
         {
-            return VersionValue().IsMatch(old) && VersionValue().IsMatch(@new) && rules.PlannedWith.Contains((path[^1], old, @new));
+            return VersionValue().IsMatch(old) && VersionValue().IsMatch(@new)
+                   && (rules.PlannedWith.Contains((path[^1], old, @new)) || rules.PlatformChange?.Invoke(old, @new) == true);
         }
-        return false;
+        return (IsMatrixPath(path) || IsImagePath(path)) && rules.PlatformChange?.Invoke(old, @new) == true;
     }
+
+    /// <summary>A scalar under <c>jobs.&lt;job&gt;.strategy.matrix</c>, where a setup step's <c>${{ matrix.x }}</c> reads its
+    /// versions (#606 M6).</summary>
+    private static bool IsMatrixPath(List<string> p) => p.Count >= 5 && p[0] == "jobs" && p[2] == "strategy" && p[3] == "matrix";
+
+    /// <summary>A job's <c>container</c> (or <c>container.image</c>) and a service's <c>image</c> (#606 M6 workflow images).</summary>
+    private static bool IsImagePath(List<string> p)
+        => p.Count == 3 && p[0] == "jobs" && p[2] == "container"
+           || p.Count == 4 && p[0] == "jobs" && p[2] == "container" && p[3] == "image"
+           || p.Count == 5 && p[0] == "jobs" && p[2] == "services" && p[4] == "image";
 
     private static YamlNode? NodeAt(YamlNode root, IEnumerable<string> path)
     {

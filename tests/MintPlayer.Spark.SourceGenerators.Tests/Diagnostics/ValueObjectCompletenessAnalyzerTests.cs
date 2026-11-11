@@ -21,20 +21,20 @@ public class ValueObjectCompletenessAnalyzerTests
         typeof(SparkContext),
         typeof(ValueObjectAttribute),
         typeof(ReferenceAttribute),
-        typeof(Raven.Client.Documents.Linq.IRavenQueryable<>),
+        typeof(MintPlayer.Spark.Abstractions.Storage.ISparkSession),
     ];
 
     private const string ContextAndPerson = """
         using System.Collections.Generic;
         using MintPlayer.Spark;
         using MintPlayer.Spark.Abstractions;
-        using Raven.Client.Documents.Linq;
+        using System.Linq;
 
         namespace TestApp;
 
         public class AppContext : SparkContext
         {
-            public IRavenQueryable<Person> People { get; set; } = null!;
+            public IQueryable<Person> People { get; set; } = null!;
         }
 
         public class Person
@@ -109,13 +109,13 @@ public class ValueObjectCompletenessAnalyzerTests
     {
         var diagnostics = await RunAsync("""
             using MintPlayer.Spark;
-            using Raven.Client.Documents.Linq;
+            using System.Linq;
 
             namespace TestApp;
 
             public class AppContext : SparkContext
             {
-                public IRavenQueryable<Build> Builds { get; set; } = null!;
+                public IQueryable<Build> Builds { get; set; } = null!;
             }
 
             public class Build
@@ -143,13 +143,13 @@ public class ValueObjectCompletenessAnalyzerTests
         var diagnostics = await RunAsync("""
             using System.Collections.Generic;
             using MintPlayer.Spark;
-            using Raven.Client.Documents.Linq;
+            using System.Linq;
 
             namespace TestApp;
 
             public class AppContext : SparkContext
             {
-                public IRavenQueryable<Build> Builds { get; set; } = null!;
+                public IQueryable<Build> Builds { get; set; } = null!;
             }
 
             public class Build
@@ -184,13 +184,13 @@ public class ValueObjectCompletenessAnalyzerTests
             using System.Collections.Generic;
             using MintPlayer.Spark;
             using MintPlayer.Spark.Abstractions;
-            using Raven.Client.Documents.Linq;
+            using System.Linq;
 
             namespace TestApp;
 
             public class AppContext : SparkContext
             {
-                public IRavenQueryable<Person> People { get; set; } = null!;
+                public IQueryable<Person> People { get; set; } = null!;
             }
 
             public class Person
@@ -219,13 +219,13 @@ public class ValueObjectCompletenessAnalyzerTests
         var diagnostics = await RunAsync("""
             using System.Collections.Generic;
             using MintPlayer.Spark;
-            using Raven.Client.Documents.Linq;
+            using System.Linq;
 
             namespace TestApp;
 
             public class AppContext : SparkContext
             {
-                public IRavenQueryable<Person> People { get; set; } = null!;
+                public IQueryable<Person> People { get; set; } = null!;
             }
 
             public class Person
@@ -251,13 +251,13 @@ public class ValueObjectCompletenessAnalyzerTests
     {
         var diagnostics = await RunAsync("""
             using MintPlayer.Spark;
-            using Raven.Client.Documents.Linq;
+            using System.Linq;
 
             namespace TestApp;
 
             public class AppContext : SparkContext
             {
-                public IRavenQueryable<Person> People { get; set; } = null!;
+                public IQueryable<Person> People { get; set; } = null!;
             }
 
             public class Person
@@ -305,13 +305,13 @@ public class ValueObjectCompletenessAnalyzerTests
             using System.Collections.Generic;
             using MintPlayer.Spark;
             using MintPlayer.Spark.Abstractions;
-            using Raven.Client.Documents.Linq;
+            using System.Linq;
 
             namespace TestApp;
 
             public class AppContext : SparkContext
             {
-                public IRavenQueryable<Node> Nodes { get; set; } = null!;
+                public IQueryable<Node> Nodes { get; set; } = null!;
             }
 
             public class Node
@@ -353,13 +353,13 @@ public class ValueObjectCompletenessAnalyzerTests
             using System.Collections.Generic;
             using MintPlayer.Spark;
             using MintPlayer.Spark.Contributions;
-            using Raven.Client.Documents.Linq;
+            using System.Linq;
 
             namespace TestApp;
 
             public class AppContext : SparkContext
             {
-                public IRavenQueryable<Song> Songs { get; set; } = null!;
+                public IQueryable<Song> Songs { get; set; } = null!;
             }
 
             public class Song
@@ -390,13 +390,13 @@ public class ValueObjectCompletenessAnalyzerTests
             using System.Collections.Generic;
             using MintPlayer.Spark;
             using MintPlayer.Spark.Contributions;
-            using Raven.Client.Documents.Linq;
+            using System.Linq;
 
             namespace TestApp;
 
             public class AppContext : SparkContext
             {
-                public IRavenQueryable<Song> Songs { get; set; } = null!;
+                public IQueryable<Song> Songs { get; set; } = null!;
             }
 
             public class Song
@@ -430,7 +430,7 @@ public class ValueObjectCompletenessAnalyzerTests
         var diagnostics = await RunAsync("""
             using System.Collections.Generic;
             using MintPlayer.Spark;
-            using Raven.Client.Documents.Linq;
+            using System.Linq;
 
             namespace TestApp;
 
@@ -439,7 +439,7 @@ public class ValueObjectCompletenessAnalyzerTests
 
             public class AppContext : SparkContext
             {
-                public IRavenQueryable<Song> Songs { get; set; } = null!;
+                public IQueryable<Song> Songs { get; set; } = null!;
             }
 
             public class Song

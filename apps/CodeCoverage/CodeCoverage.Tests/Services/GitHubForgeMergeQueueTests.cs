@@ -263,6 +263,48 @@ public class GitHubForgeMergeQueueTests
         rules.RequiredApprovals.Should().Be(2);
         rules.RequiredChecks.Should().Equal(["test"]);
         rules.RequireUpToDateBranch.Should().BeTrue();
+        rules.HasNativeMergeQueue.Should().BeFalse("the GraphQL read was not answered");
+    }
+
+    /// <summary>
+    /// #613 item 6: mintplayer-ng-video-player's master, 2026-11-09. A classic rule required GitHub's merge queue; REST answered
+    /// <c>[]</c> for the rules and a protection without a word of it, GraphQL answered <c>mergeQueue { … }</c>.
+    /// </summary>
+    [Fact]
+    public async Task A_classic_rule_that_requires_githubs_merge_queue_is_reported()
+    {
+        string? asked = null;
+        var github = new StubGitHub()
+            .On(HttpMethod.Get, $"{Repo}/rules/branches/master", HttpStatusCode.OK, "[]")
+            .On(HttpMethod.Get, $"{Repo}/branches/master", HttpStatusCode.OK, """{"name":"master","protected":true,"protection":{"enabled":true}}""")
+            .On(HttpMethod.Get, $"{Repo}/branches/master/protection", HttpStatusCode.OK, """
+                {"required_signatures":{"enabled":false},"enforce_admins":{"enabled":false},"required_linear_history":{"enabled":false},
+                 "allow_force_pushes":{"enabled":false},"allow_deletions":{"enabled":false},"lock_branch":{"enabled":false}}
+                """)
+            .On(HttpMethod.Post, "/graphql", (_, body) =>
+            {
+                asked = body;
+                return StubHttpMessageHandler.Json(HttpStatusCode.OK,
+                    """{"data":{"repository":{"mergeQueue":{"id":"MQ_kwDOxyz"}}}}""");
+            });
+
+        var rules = await Queue(github).GetBranchRulesAsync(Target(), "master");
+
+        rules.HasNativeMergeQueue.Should().BeTrue();
+        rules.ClassicProtection.Should().Be(EForgeClassicProtection.Read);
+        asked.Should().Contain("\"branch\":\"master\"").And.Contain("\"owner\":\"acme\"", "values go as variables, never into the query");
+    }
+
+    [Fact]
+    public async Task A_classic_rule_without_githubs_merge_queue_is_not_one()
+    {
+        var github = new StubGitHub()
+            .On(HttpMethod.Get, $"{Repo}/rules/branches/master", HttpStatusCode.OK, "[]")
+            .On(HttpMethod.Get, $"{Repo}/branches/master", HttpStatusCode.OK, """{"name":"master","protected":true,"protection":{"enabled":true}}""")
+            .On(HttpMethod.Get, $"{Repo}/branches/master/protection", HttpStatusCode.OK, """{"enforce_admins":{"enabled":false}}""")
+            .On(HttpMethod.Post, "/graphql", HttpStatusCode.OK, """{"data":{"repository":{"mergeQueue":null}}}""");
+
+        (await Queue(github).GetBranchRulesAsync(Target(), "master")).HasNativeMergeQueue.Should().BeFalse();
     }
 
     // ── Checks ───────────────────────────────────────────────────────────────────────────────────
@@ -292,7 +334,20 @@ public class GitHubForgeMergeQueueTests
         state.CheckRuns[0].Should().Be(new ForgeCheckRun(1, "ci", "completed", "success", 11, "github-actions", "https://github.com/acme/widget/actions/runs/1/job/1"));
         state.CheckRuns[1].Conclusion.Should().BeNull();
         state.Statuses.Should().Equal([new ForgeCommitStatus("GitGuardian Security Checks", "failure", "https://dashboard.gitguardian.com/x")]);
-        state.Suites.Should().Equal([new ForgeCheckSuite(11, "completed", "success", "github-actions", 1)]);
+        state.Suites.Should().Equal([new ForgeCheckSuite(11, "completed", "success", "github-actions", 1, RunsFollow: true)]);
+    }
+
+    [Fact]
+    public async Task Item616_only_github_actions_suites_are_marked_as_getting_runs()
+    {
+        var github = WithChecks(new StubGitHub(), "[]", suites: """
+            [{"id":11,"status":"queued","conclusion":null,"app":{"slug":"github-actions"},"latest_check_runs_count":0},
+             {"id":12,"status":"queued","conclusion":null,"app":{"slug":"nx-cloud"},"latest_check_runs_count":0}]
+            """);
+
+        var state = await Queue(github).GetCheckStateAsync(Target(), Head);
+
+        state.Suites.Select(suite => (suite.AppSlug, suite.RunsFollow)).Should().Equal([("github-actions", true), ("nx-cloud", false)]);
     }
 
     [Fact]
@@ -479,6 +534,7 @@ public class GitHubForgeMergeQueueTests
         var github = new StubGitHub()
             .On(HttpMethod.Post, $"{Repo}/actions/runs/41/rerun-failed-jobs", HttpStatusCode.Created, "{}")
             .On(HttpMethod.Post, $"{Repo}/actions/runs/42/rerun-failed-jobs", HttpStatusCode.UnprocessableEntity, """{"message":"This workflow run cannot be rerun."}""")
+            .On(HttpMethod.Post, $"{Repo}/actions/runs/45/rerun-failed-jobs", HttpStatusCode.Forbidden, """{"message":"The workflow run containing this job is already running"}""")
             .On(HttpMethod.Post, $"{Repo}/actions/runs/43/rerun-failed-jobs", (_, _) => WithHeader(
                 new HttpResponseMessage(HttpStatusCode.Forbidden) { Content = new StringContent("""{"message":"Resource not accessible by integration"}""") },
                 "X-Accepted-GitHub-Permissions", "actions=write"));
@@ -487,6 +543,7 @@ public class GitHubForgeMergeQueueTests
         (await queue.RerunFailedJobsAsync(Target(), 41)).Should().BeTrue();
         (await queue.RerunFailedJobsAsync(Target(), 42)).Should().BeFalse("422: too old, or nothing failed");
         (await queue.RerunFailedJobsAsync(Target(), 44)).Should().BeFalse("404: no such run");
+        (await queue.RerunFailedJobsAsync(Target(), 45)).Should().BeFalse("403 already running is not a missing permission (#589 D4)");
         await Throws<ForgeAccessDeniedException>(() => queue.RerunFailedJobsAsync(Target(), 43));
     }
 
@@ -588,30 +645,79 @@ public class GitHubForgeMergeQueueTests
     public async Task A_prefix_with_an_empty_or_dot_segment_is_refused()
         => await Throws<ArgumentException>(() => Queue(new StubGitHub()).ListBranchesAsync(Target(), "release/../"));
 
+    /// <summary>An Actions job's check run as GitHub lists it: <c>details_url</c> names its workflow run (#589 D3, measured 2026-11-07).</summary>
+    private static ForgeCheckRun Job(long id, long workflowRun, long suite)
+        => new(id, $"job {id}", "completed", "failure", suite, "github-actions", $"https://github.com/octo/repo/actions/runs/{workflowRun}/job/{id}");
+
     [Fact]
-    public async Task An_actions_check_reruns_its_job_and_another_apps_check_is_rerequested()
+    public async Task Failed_jobs_of_one_workflow_run_rerun_through_one_call_and_another_apps_check_is_rerequested()
     {
+        // PR #586 (#589): two failed jobs of run 42348601700. Re-running them one by one got 403 "already running" on the second.
         var github = new StubGitHub()
-            .On(HttpMethod.Post, $"{Repo}/actions/jobs/501/rerun", HttpStatusCode.Created, "{}")
+            .On(HttpMethod.Post, $"{Repo}/actions/runs/700/rerun-failed-jobs", HttpStatusCode.Created, "{}")
+            .On(HttpMethod.Post, $"{Repo}/actions/runs/800/rerun-failed-jobs", HttpStatusCode.Created, "{}")
             .On(HttpMethod.Post, $"{Repo}/check-runs/502/rerequest", HttpStatusCode.Created, "{}");
         var queue = Queue(github);
 
-        (await queue.RerunCheckAsync(Target(), new ForgeCheckRun(501, "build", "completed", "failure", 11, "github-actions", null))).Should().BeTrue();
-        (await queue.RerunCheckAsync(Target(), new ForgeCheckRun(502, "scan", "completed", "failure", 12, "scanner", null))).Should().BeTrue();
+        (await queue.RerunChecksAsync(Target(),
+        [
+            Job(501, 700, 11), Job(503, 700, 11), Job(504, 800, 12),
+            new ForgeCheckRun(502, "scan", "completed", "failure", 13, "scanner", null),
+        ])).Should().Be(4);
+
+        github.Calls.Should().Equal([
+            $"POST {Repo}/check-runs/502/rerequest",
+            $"POST {Repo}/actions/runs/700/rerun-failed-jobs",
+            $"POST {Repo}/actions/runs/800/rerun-failed-jobs",
+        ], "one call per workflow run, never one per job");
     }
 
     [Fact]
-    public async Task A_check_that_cannot_be_rerun_is_false_and_a_missing_permission_throws()
+    public async Task A_job_without_a_run_url_finds_its_run_through_its_suite_and_one_without_either_reruns_alone()
     {
         var github = new StubGitHub()
-            .On(HttpMethod.Post, $"{Repo}/actions/jobs/503/rerun", HttpStatusCode.UnprocessableEntity, """{"message":"This job is too old to re-run."}""")
-            .On(HttpMethod.Post, $"{Repo}/actions/jobs/504/rerun", (_, _) => WithHeader(
+            .On(HttpMethod.Get, $"{Repo}/actions/runs?check_suite_id=11&per_page=1", HttpStatusCode.OK, """{"total_count":1,"workflow_runs":[{"id":700}]}""")
+            .On(HttpMethod.Post, $"{Repo}/actions/runs/700/rerun-failed-jobs", HttpStatusCode.Created, "{}")
+            .On(HttpMethod.Post, $"{Repo}/actions/jobs/505/rerun", HttpStatusCode.Created, "{}");
+        var queue = Queue(github);
+
+        (await queue.RerunChecksAsync(Target(),
+        [
+            new ForgeCheckRun(501, "a", "completed", "failure", 11, "github-actions", null),
+            new ForgeCheckRun(503, "b", "completed", "failure", 11, "github-actions", "https://example.com/not-a-job"),
+            new ForgeCheckRun(505, "c", "completed", "failure", null, "github-actions", null),
+        ])).Should().Be(3);
+
+        github.Calls.Should().ContainSingle(c => c.Contains("check_suite_id"), "the suite is looked up once");
+        github.Calls.Should().ContainSingle(c => c.EndsWith("/rerun-failed-jobs"));
+    }
+
+    [Fact]
+    public void A_run_url_is_read_only_from_an_actions_job_url()
+    {
+        GitHubForgeMergeQueue.WorkflowRunIdOf("https://github.com/o/r/actions/runs/42348601700/job/128333608393").Should().Be(42348601700);
+        GitHubForgeMergeQueue.WorkflowRunIdOf("https://github.com/o/r/actions/runs/42/job/7?pr=586").Should().Be(42);
+        GitHubForgeMergeQueue.WorkflowRunIdOf("https://github.com/o/r/actions/runs/42").HasValue.Should().BeFalse();
+        GitHubForgeMergeQueue.WorkflowRunIdOf("https://github.com/o/r/actions/runs/0/job/7").HasValue.Should().BeFalse();
+        GitHubForgeMergeQueue.WorkflowRunIdOf(null).HasValue.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task A_run_that_cannot_be_rerun_or_is_already_running_counts_nothing_and_a_missing_permission_throws()
+    {
+        var github = new StubGitHub()
+            .On(HttpMethod.Post, $"{Repo}/actions/runs/700/rerun-failed-jobs", HttpStatusCode.UnprocessableEntity, """{"message":"This workflow run is too old to re-run."}""")
+            // #589 D4: GitHub's answer for a run that is in progress. Not a missing permission.
+            .On(HttpMethod.Post, $"{Repo}/actions/runs/800/rerun-failed-jobs", HttpStatusCode.Forbidden, """{"message":"The workflow run containing this job is already running"}""")
+            .On(HttpMethod.Post, $"{Repo}/actions/jobs/505/rerun", HttpStatusCode.Forbidden, """{"message":"The workflow run containing this job is already running"}""")
+            .On(HttpMethod.Post, $"{Repo}/actions/runs/900/rerun-failed-jobs", (_, _) => WithHeader(
                 new HttpResponseMessage(HttpStatusCode.Forbidden) { Content = new StringContent("""{"message":"Resource not accessible by integration"}""") },
                 "X-Accepted-GitHub-Permissions", "actions=write"));
         var queue = Queue(github);
 
-        (await queue.RerunCheckAsync(Target(), new ForgeCheckRun(503, "build", "completed", "failure", 11, "github-actions", null))).Should().BeFalse();
-        (await Throws<ForgeAccessDeniedException>(() => queue.RerunCheckAsync(Target(), new ForgeCheckRun(504, "build", "completed", "failure", 11, "github-actions", null))))
+        (await queue.RerunChecksAsync(Target(), [Job(501, 700, 11), Job(503, 800, 12)])).Should().Be(0);
+        (await queue.RerunChecksAsync(Target(), [new ForgeCheckRun(505, "c", "completed", "failure", null, "github-actions", null)])).Should().Be(0);
+        (await Throws<ForgeAccessDeniedException>(() => queue.RerunChecksAsync(Target(), [Job(504, 900, 13)])))
             .RequiredPermission.Should().Be("actions=write");
     }
 

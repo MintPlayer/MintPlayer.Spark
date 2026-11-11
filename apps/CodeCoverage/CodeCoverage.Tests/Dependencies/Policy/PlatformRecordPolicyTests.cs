@@ -33,7 +33,8 @@ public class PlatformRecordPolicyTests
     public void From_a_preview_the_next_preview_major_waits_for_approval_and_is_planned_for_the_SDK_adapter_once_approved()
     {
         var dotnet = Fixture("platform.s19-dotnet.json") with { Current = new PlatformCurrent { Channels = ["10.0"], Preview = true } };
-        var config = Config("dependencies:\n  platforms:\n    dotnet: { lockPackageMajor: true }\n");
+        // #606 D8: the preview track offers it; being on a preview no longer does by itself.
+        var config = Config("dependencies:\n  platforms:\n    dotnet: { track: preview, lockPackageMajor: true }\n");
         var lookup = WithPlatforms(dotnet);
 
         var waiting = Evaluate(lookup, config, now: Later, configBlob: "b");

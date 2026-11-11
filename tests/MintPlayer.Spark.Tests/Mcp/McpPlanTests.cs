@@ -55,8 +55,8 @@ public class McpWtDriverActions(IEntityMapper mapper)
 
 public class McpWtContext : SparkContext
 {
-    public IRavenQueryable<McpWtCar> Cars => Session.Query<McpWtCar>();
-    public IRavenQueryable<McpWtDriver> Drivers => Session.Query<McpWtDriver>();
+    public IQueryable<McpWtCar> Cars => Session.Query<McpWtCar>();
+    public IQueryable<McpWtDriver> Drivers => Session.Query<McpWtDriver>();
 }
 
 /// <summary>

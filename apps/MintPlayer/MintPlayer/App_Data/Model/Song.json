@@ -5,15 +5,17 @@
     "name": "Song",
     "clrType": "MintPlayer.Entities.Song",
     "breadcrumb": "{Title}",
-    "search": {
-      "enabled": true
-    },
     "seo": {
       "indexable": true,
       "schemaType": "MusicRecording",
+      "image": "Thumbnail",
       "properties": {
-        "datePublished": "Released"
+        "datePublished": "Released",
+        "thumbnailUrl": "Thumbnail"
       }
+    },
+    "search": {
+      "enabled": true
     },
     "tabs": [],
     "groups": [],
@@ -27,6 +29,7 @@
         "order": 3,
         "asDetailType": "MintPlayer.Entities.SongArtist",
         "isArray": true,
+        "isSortable": true,
         "showedOn": "PersistentObject, Summary",
         "rules": []
       },
@@ -128,6 +131,7 @@
         "order": 6,
         "asDetailType": "MintPlayer.Entities.Medium",
         "isArray": true,
+        "isSortable": true,
         "showedOn": "PersistentObject",
         "rules": []
       },
@@ -175,6 +179,28 @@
         "referenceType": "MintPlayer.Entities.Tag",
         "isArray": true,
         "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "e3c1f6a2-5b7d-4f08-9a4e-2d6b8c1f0a37",
+        "name": "Thumbnail",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 16,
+        "isArray": false,
+        "showedOn": "None",
+        "rules": []
+      },
+      {
+        "id": "7a9d2e4b-1c3f-4e6a-8b0d-5f2a9c7e1b64",
+        "name": "ThumbnailMedium",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 17,
+        "isArray": false,
+        "showedOn": "None",
         "rules": []
       },
       {

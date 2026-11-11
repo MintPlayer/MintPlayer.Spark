@@ -1,6 +1,7 @@
-import { Injectable, PLATFORM_ID, effect, inject, signal } from '@angular/core';
+import { DestroyRef, Injectable, PLATFORM_ID, effect, inject, signal } from '@angular/core';
 import { DOCUMENT, isPlatformBrowser } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
+import { NavigationEnd, Router } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 import { TranslatedString, currentLanguage } from '@mintplayer/ng-spark/models';
 import { SPARK_CONFIG } from '@mintplayer/ng-spark';
@@ -39,6 +40,9 @@ export class SparkLanguageService {
 
   readonly languages = signal<Record<string, TranslatedString>>({});
 
+  /** The app's default language (`culture.json`): its pages have no `?lang` (#604 D2). */
+  readonly defaultLanguage = signal('en');
+
   constructor() {
     // A server render knows its language before /culture answers, and must render in it even if that
     // request was not supplied.
@@ -47,22 +51,51 @@ export class SparkLanguageService {
     // renderer's whole Node process (SpaServices runs one for every request).
     this.loadCulture().catch(() => undefined);
     this.loadTranslations().catch(() => undefined);
+
+    // An in-app navigation to a URL with `?lang` (the picker's links, a shared link opened in the app) switches the
+    // language, without a reload (#604 D9). A URL without it keeps the current language: the links carry it
+    // (SparkUrlSerializer), so its absence means the default language only when the URL also says nothing else.
+    if (this.document) {
+      const router = inject(Router, { optional: true });
+      const subscription = router?.events.subscribe(event => {
+        if (!(event instanceof NavigationEnd)) return;
+        const lang = this.known(router!.parseUrl(event.urlAfterRedirects).queryParamMap.get('lang'));
+        if (lang && lang !== this.currentLang()) this.setLanguage(lang);
+      });
+      inject(DestroyRef).onDestroy(() => subscription?.unsubscribe());
+    }
+  }
+
+  /** The configured language matching `code` (case-insensitively), or null. */
+  private known(code: string | null | undefined): string | null {
+    if (!code) return null;
+    const lower = code.toLowerCase();
+    return Object.keys(this.languages()).find(l => l.toLowerCase() === lower) ?? null;
+  }
+
+  /** The page URL's `?lang`, read from the document: the router has not parsed the first URL yet when /culture answers. */
+  private urlLanguage(): string | null {
+    try {
+      return new URLSearchParams(this.document?.location?.search ?? '').get('lang');
+    } catch {
+      return null;
+    }
   }
 
   private async loadCulture(): Promise<void> {
     const config = await firstValueFrom(this.http.get<CultureConfiguration>(`${this.baseUrl}/culture`));
     this.languages.set(config.languages);
+    this.defaultLanguage.set(config.defaultLanguage);
     if (this.serverLanguage) {
       // Server render: the request's language, resolved by the .NET side from the same cookie the
       // browser reads below. The process-wide currentLanguage is left alone (see activeLanguage).
       this.currentLang.set(this.serverLanguage);
       return;
     }
-    // The cookie is the source of truth, because it is what a server render sees: preferring
-    // localStorage would hydrate a page in one language and switch it to another. localStorage is
-    // read only for a viewer whose choice predates the cookie.
-    const saved = this.readCookie() ?? readStoredLanguage();
-    const lang = saved ?? config.defaultLanguage;
+    // The URL's `?lang` first, then the cookie (#604 D1), as a server render resolves them: anything else would
+    // hydrate a page in one language and switch it to another. localStorage is read only for a viewer whose choice
+    // predates the cookie. A `?lang` is also remembered in the cookie, the fallback for a URL without one (D3).
+    const lang = this.known(this.urlLanguage()) ?? this.known(this.readCookie()) ?? this.known(readStoredLanguage()) ?? config.defaultLanguage;
     this.currentLang.set(lang);
     currentLanguage.set(lang);
     this.writeCookie(lang);

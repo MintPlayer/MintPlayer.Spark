@@ -105,6 +105,59 @@ public sealed class DependencyPolicyConfig
     public EDependencyThreshold Ceiling(string ecosystem, string depName)
         => Enforced(ecosystem, depName).Select(r => r.MaxUpdate).DefaultIfEmpty(EDependencyThreshold.Major).Min();
 
+    /// <summary>
+    /// The track an SDK (and its companions) is offered from (#606 D5/D8): the file's <c>platforms.&lt;sdk&gt;.track</c>, else a
+    /// non-enforced account rule's on <c>platform:&lt;sdk&gt;</c>, else stable; never wider than an enforced rule's track. A
+    /// resolved <c>lts</c> on an SDK whose feed flags no LTS release falls back to stable.
+    /// </summary>
+    public EDependencyTrack PlatformTrack(string sdk)
+    {
+        var ecosystem = $"platform:{sdk}";
+        var chosen = File.Platforms.TryGetValue(sdk, out var settings) && settings.Track != EDependencyTrack.Inherit
+            ? settings.Track
+            : TrackOf(Defaults(ecosystem, sdk)) ?? EDependencyTrack.Stable;
+        var track = MinTrack(chosen, TrackOf(Enforced(ecosystem, sdk)));
+        return track == EDependencyTrack.Lts && !DependenciesYml.LtsSdks.Contains(sdk) ? EDependencyTrack.Stable : track;
+    }
+
+    /// <summary>
+    /// The track a package is offered from (#606 D8): the file's first rule naming it with a track, else a non-enforced
+    /// account rule's, else stable; never wider than an enforced rule's. <c>lts</c> has no meaning for a package and reads as stable.
+    /// </summary>
+    public EDependencyTrack PackageTrack(string ecosystem, string depName)
+    {
+        var chosen = FileRules(ecosystem, depName).Select(r => r.Track).FirstOrDefault(t => t != EDependencyTrack.Inherit) is var file && file != EDependencyTrack.Inherit
+            ? file
+            : TrackOf(Defaults(ecosystem, depName)) ?? EDependencyTrack.Stable;
+        var track = MinTrack(chosen, TrackOf(Enforced(ecosystem, depName)));
+        return track == EDependencyTrack.Preview ? EDependencyTrack.Preview : EDependencyTrack.Stable;
+    }
+
+    /// <summary>The companion globs of an SDK: the file's <c>platforms.&lt;sdk&gt;.companions</c>, else the built-in list (#606 D2).</summary>
+    public IReadOnlyList<string> Companions(string sdk)
+        => File.Platforms.TryGetValue(sdk, out var settings) && settings.Companions is { } own ? own : DependencyCompanions.BuiltIn(sdk);
+
+    /// <summary>
+    /// The package globs Renovate must look up with prereleases (#606 D8): the file's and the account's preview-track rules
+    /// on packages, and the companions of every SDK on the preview track. A superset is harmless: the engine still screens
+    /// each candidate against <see cref="PackageTrack"/>, and an enforced rule narrows it there.
+    /// </summary>
+    public IReadOnlyList<string> UnstableGlobs()
+    {
+        static bool OnPackages(string? ecosystem) => ecosystem is null || !ecosystem.Trim().StartsWith("platform:", StringComparison.Ordinal);
+        return File.Rules.Where(r => r.Track == EDependencyTrack.Preview && OnPackages(r.Ecosystem)).SelectMany(r => r.Match)
+            .Concat(AccountRules.Where(r => !r.Enforced && r.Track == EDependencyTrack.Preview && OnPackages(r.Ecosystem)).Select(r => r.Match.Trim()))
+            .Concat(DependenciesYml.PlatformSdks.Where(sdk => PlatformTrack(sdk) == EDependencyTrack.Preview).SelectMany(Companions))
+            .Distinct(StringComparer.Ordinal).ToList();
+    }
+
+    private static EDependencyTrack? TrackOf(IEnumerable<DependencyRule> rules)
+        => rules.OrderByDescending(r => DependencyGlob.Specificity(r.Match)).Select(r => r.Track).FirstOrDefault(t => t != EDependencyTrack.Inherit) is var t && t != EDependencyTrack.Inherit ? t : null;
+
+    /// <summary>The narrower of two tracks (lts &lt; stable &lt; preview); a null ceiling leaves the track.</summary>
+    internal static EDependencyTrack MinTrack(EDependencyTrack track, EDependencyTrack? ceiling)
+        => ceiling is { } c && c < track ? c : track;
+
     /// <summary>The <c>migrate</c> workflow for an approved major of the dependency (R9), or null.</summary>
     public string? MigrateWorkflow(string depName)
         => File.Migrate.FirstOrDefault(m => m.Match.Any(glob => DependencyGlob.Matches(glob, depName)))?.OnMajor;

@@ -116,9 +116,9 @@ public static class FilteredDocModel
 
 public class GuardedContext : SparkContext
 {
-    public IRavenQueryable<GuardedDoc> Docs => Session.Query<GuardedDoc>();
-    public IRavenQueryable<GuardedCoded> Codeds => Session.Query<GuardedCoded>();
-    public IRavenQueryable<FilteredDoc> FilteredDocs => Session.Query<FilteredDoc>();
+    public IQueryable<GuardedDoc> Docs => Session.Query<GuardedDoc>();
+    public IQueryable<GuardedCoded> Codeds => Session.Query<GuardedCoded>();
+    public IQueryable<FilteredDoc> FilteredDocs => Session.Query<FilteredDoc>();
 }
 
 public static class GuardedDocModel

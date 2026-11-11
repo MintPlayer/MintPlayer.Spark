@@ -45,7 +45,7 @@ public class PagingPushdownParityTests : SparkTestDriver
 
     public class TestContext : SparkContext
     {
-        public IRavenQueryable<PagedLedger> PagedLedgers => Session.Query<PagedLedger>();
+        public IQueryable<PagedLedger> PagedLedgers => Session.Query<PagedLedger>();
     }
 
     private static EntityTypeFile PagedLedgerModel() => new()

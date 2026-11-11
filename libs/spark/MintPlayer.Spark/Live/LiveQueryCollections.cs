@@ -1,6 +1,6 @@
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Services;
-using Raven.Client.Documents;
+using MintPlayer.Spark.Abstractions.Storage;
 
 namespace MintPlayer.Spark.Live;
 
@@ -26,7 +26,7 @@ namespace MintPlayer.Spark.Live;
 /// </remarks>
 internal static class LiveQueryCollections
 {
-    public static IReadOnlyCollection<string> Resolve(SparkQuery query, IModelLoader modelLoader, IIndexCatalog indexCatalog, IDocumentStore store)
+    public static IReadOnlyCollection<string> Resolve(SparkQuery query, IModelLoader modelLoader, IIndexCatalog indexCatalog, ISparkStore store)
     {
         var collections = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var definition = query.EntityType is null ? null : modelLoader.GetEntityTypeByName(query.EntityType);
@@ -34,11 +34,11 @@ internal static class LiveQueryCollections
             return collections;
 
         if (SparkTypeResolver.ResolveClrType(definition.ClrType) is { } entityType)
-            collections.Add(store.Conventions.GetCollectionName(entityType));
+            collections.Add(store.GetCollectionName(entityType));
 
         var indexName = !string.IsNullOrEmpty(query.IndexName) ? query.IndexName : definition.IndexName;
         if (!string.IsNullOrEmpty(indexName) && indexCatalog.GetByIndexName(indexName)?.CollectionType is { } mapped)
-            collections.Add(store.Conventions.GetCollectionName(mapped));
+            collections.Add(store.GetCollectionName(mapped));
 
         return collections;
     }

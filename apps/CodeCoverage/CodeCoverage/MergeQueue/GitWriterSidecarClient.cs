@@ -398,6 +398,9 @@ public sealed record GitWriterDependencyRequest(string Provider, string RepoId, 
     public IReadOnlyDictionary<string, string>? TargetActions { get; init; }
     public IReadOnlyList<string>? AllowedHosts { get; init; }
 
+    /// <summary>#613 item 2: the lookup's non-computed platform locations, which a platform group's SDK move may edit.</summary>
+    public IReadOnlyList<GitWriterPlatformLocation>? PlatformLocations { get; init; }
+
     /// <summary>Work ref: the plan file's content for the plan commit (R14).</summary>
     public string? PlanJson { get; init; }
 
@@ -411,6 +414,9 @@ public sealed record GitWriterDependencyRequest(string Provider, string RepoId, 
 }
 
 public sealed record GitWriterMigratePatch(string Group, string Patch);
+
+/// <summary>One platform location of the lookup (platform-record.schema.json), as the writer's patch rule reads it.</summary>
+public sealed record GitWriterPlatformLocation(string Sdk, string File, string Kind, string Value);
 
 /// <summary>One onboarding file: <paramref name="Content"/>, or <paramref name="Delete"/>.</summary>
 public sealed record GitWriterFile(string Path, string? Content, bool Delete = false);

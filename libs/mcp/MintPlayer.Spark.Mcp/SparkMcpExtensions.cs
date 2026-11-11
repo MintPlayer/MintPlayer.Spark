@@ -42,8 +42,12 @@ public static class SparkMcpExtensions
     /// <c>MapSpark()</c>.
     /// </summary>
     /// <exception cref="InvalidOperationException">Called twice, or the options are unusable.</exception>
+    [global::MintPlayer.Spark.Abstractions.Storage.SparkRequiresStore("Spark.Mcp", Provider = global::MintPlayer.Spark.Abstractions.Storage.SparkStoreProviders.RavenDb)]
     public static ISparkBuilder AddMcp(this ISparkBuilder builder, Action<SparkMcpOptions>? configure = null)
     {
+        // #551 D13: the planner queries through a RavenDB session.
+        global::MintPlayer.Spark.Abstractions.Storage.SparkStoreRequirementExtensions.RequireStore(builder, "Spark.Mcp", provider: global::MintPlayer.Spark.Abstractions.Storage.SparkStoreProviders.RavenDb);
+
         var services = builder.Services;
         if (services.Any(d => d.ServiceType == typeof(SparkMcpOptions)))
             throw new InvalidOperationException("AddMcp was called twice. One application has one MCP server; configure it in one call.");

@@ -17,10 +17,10 @@ namespace TestApp
     public partial class AppContext
     {
         /// <summary>Index-backed query root for <see cref="global::TestApp.Indexes.VCar"/>.</summary>
-        public global::Raven.Client.Documents.Linq.IRavenQueryable<global::TestApp.Indexes.VCar> VCars => Session.Query<global::TestApp.Indexes.VCar, global::TestApp.Indexes.Cars_Overview>();
+        public global::System.Linq.IQueryable<global::TestApp.Indexes.VCar> VCars => Session.Query<global::TestApp.Indexes.VCar, global::TestApp.Indexes.Cars_Overview>();
         
         /// <summary>Index-backed query root for <see cref="global::TestApp.Entities.VPerson"/>.</summary>
-        public global::Raven.Client.Documents.Linq.IRavenQueryable<global::TestApp.Entities.VPerson> VPeople2 => Session.Query<global::TestApp.Entities.VPerson, global::TestApp.Entities.People_ByName>();
+        public global::System.Linq.IQueryable<global::TestApp.Entities.VPerson> VPeople2 => Session.Query<global::TestApp.Entities.VPerson, global::TestApp.Entities.People_ByName>();
     }
 }
 

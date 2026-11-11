@@ -483,6 +483,18 @@ export interface DependencyRepoStatus {
   mergeQueueInFile?: string | null;
   /** R30 / D-O7: a message waiting for the forge's rate limit; null when nothing waits. */
   rateLimit?: DependencyRateLimitView | null;
+  /** #606 M7: the SDKs the last lookup found, with the channels it could move to; empty before a lookup. */
+  platforms?: DependencyPlatformView[];
+}
+
+export interface DependencyPlatformView {
+  sdk: string;
+  /** The channels the repository is on, newest first. */
+  channels: string[];
+  /** The newest released channel it could move to, or null. */
+  nextStable: string | null;
+  /** The newest preview channel, when newer than nextStable. */
+  nextPreview: string | null;
 }
 
 export interface DependencyRateLimitView {

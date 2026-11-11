@@ -249,6 +249,12 @@ public abstract class SparkInterceptorContext
     public required object Session { get; init; }
 
     /// <summary>
+    /// The same unit of work as <see cref="Session"/>, through the provider-neutral storage contract
+    /// (docs/spark_editor_PRD.md D2/D3). Null only where a context is built outside the framework (a test).
+    /// </summary>
+    public Storage.ISparkSession? StorageSession { get; init; }
+
+    /// <summary>
     /// Small facts a before-interceptor records for the durable after-commit interceptors (#482, D17): they get a
     /// payload, never the live entity, so what they need to know about the entity is copied here — a
     /// delete reason, the attributes an edit changed, the author of a deleted post. Captured after the

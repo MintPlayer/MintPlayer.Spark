@@ -28,7 +28,7 @@ public class ContextWithDependenciesTests
     /// <summary>A context shaped like the motivating use case: it depends on a service, and scopes a query by it.</summary>
     private sealed class ScopedContext(CurrentUser currentUser) : SparkContext
     {
-        public IRavenQueryable<DepProbe> MyProbes => Session.Query<DepProbe>().Where(p => p.OwnerId == currentUser.Id);
+        public IQueryable<DepProbe> MyProbes => Session.Query<DepProbe>().Where(p => p.OwnerId == currentUser.Id);
     }
 
     private sealed class DepProbe
@@ -40,7 +40,7 @@ public class ContextWithDependenciesTests
 
     private abstract class AbstractContext : SparkContext
     {
-        public IRavenQueryable<DepProbe> Probes => Session.Query<DepProbe>();
+        public IQueryable<DepProbe> Probes => Session.Query<DepProbe>();
     }
 
     [Fact]

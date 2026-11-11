@@ -274,5 +274,5 @@ public sealed class HashProbe
 
 public sealed class HashProbeContext : SparkContext
 {
-    public IRavenQueryable<HashProbe> HashProbes => Session.Query<HashProbe>();
+    public IQueryable<HashProbe> HashProbes => Session.Query<HashProbe>();
 }

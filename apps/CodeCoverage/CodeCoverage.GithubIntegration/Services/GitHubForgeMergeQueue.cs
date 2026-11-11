@@ -144,6 +144,48 @@ public partial class GitHubForgeMergeQueue : IForgeMergeQueue
         return accumulator.Build(rulesetsAvailable, rulesets, classic);
     }
 
+    private const string MergeQueueQuery = """
+        query($owner: String!, $name: String!, $branch: String!) {
+          repository(owner: $owner, name: $name) { mergeQueue(branch: $branch) { id } }
+        }
+        """;
+
+    /// <summary>
+    /// GitHub's own merge queue is on for <paramref name="branchPath"/> (GraphQL <c>repository.mergeQueue</c>, non-null for a
+    /// ruleset's queue and a classic rule's alike). Owner, name and branch go as variables. A reply that is not an answer
+    /// (no GraphQL access, a missing repository) reads as no queue and is logged; a rate limit is thrown, as elsewhere.
+    /// </summary>
+    private async Task<bool> HasMergeQueueAsync(Repository repository, string branchPath, CancellationToken cancellationToken)
+    {
+        var body = new Dictionary<string, object?>
+        {
+            ["query"] = MergeQueueQuery,
+            ["variables"] = new Dictionary<string, object?>
+            {
+                ["owner"] = repository.OwnerLogin,
+                ["name"] = repository.Name,
+                ["branch"] = Uri.UnescapeDataString(branchPath),
+            },
+        };
+        using var reply = await SendAsync(repository, HttpMethod.Post, "graphql", body, DefaultApiVersion, cancellationToken);
+        if (reply.Status != HttpStatusCode.OK)
+        {
+            logger.LogWarning("Could not ask GitHub whether {FullName} has a merge queue ({Status}).", repository.FullName, (int)reply.Status);
+            return false;
+        }
+        var root = reply.Json?.RootElement ?? default;
+        var errors = Items(root, "errors").ToList();
+        if (errors.Count > 0)
+        {
+            if (GraphQLRateLimit(errors, $"the merge queue of {repository.FullName}") is { } limited)
+                throw new ForgeRequestException($"GitHub rate-limited the merge-queue read of {repository.FullName}.", (int)reply.Status, limited);
+            logger.LogWarning("Could not ask GitHub whether {FullName} has a merge queue: {Errors}", repository.FullName,
+                string.Join("; ", errors.Select(e => Str(e, "message") ?? "no message")));
+            return false;
+        }
+        return Child(Child(Child(root, "data"), "repository"), "mergeQueue").ValueKind == JsonValueKind.Object;
+    }
+
     private static bool IsPlanWithoutRulesets(string message)
         => message.Contains("Upgrade to GitHub Pro", StringComparison.OrdinalIgnoreCase);
 
@@ -188,6 +230,11 @@ public partial class GitHubForgeMergeQueue : IForgeMergeQueue
                 && protection.TryGetProperty("required_status_checks", out var checks))
                 accumulator.AddClassicChecks(checks);
         }
+
+        // #613 item 6: a classic protection rule can require GitHub's merge queue, and no REST answer says so (neither
+        // rules/branches nor branches/{b}/protection: mintplayer-ng-video-player's master, 2026-11-09). GraphQL does.
+        if (await HasMergeQueueAsync(repository, branchPath, cancellationToken))
+            accumulator.AddRule("merge_queue", default);
 
         using var detail = await SendAsync(repository, HttpMethod.Get, $"{RepoPath(repository)}/branches/{branchPath}/protection", null, DefaultApiVersion, cancellationToken);
         switch (detail.Status)
@@ -286,13 +333,21 @@ public partial class GitHubForgeMergeQueue : IForgeMergeQueue
                 Str(status, "context") ?? string.Empty,
                 Str(status, "state") ?? "pending",
                 Str(status, "target_url")))],
-            [.. suites.Select(suite => new ForgeCheckSuite(
-                Num(suite, "id") ?? 0,
-                Str(suite, "status") ?? "queued",
-                Str(suite, "conclusion"),
-                suite.TryGetProperty("app", out var app) ? Str(app, "slug") : null,
-                (int)(Num(suite, "latest_check_runs_count") ?? 0)))]);
+            [.. suites.Select(suite =>
+            {
+                var slug = suite.TryGetProperty("app", out var app) ? Str(app, "slug") : null;
+                return new ForgeCheckSuite(
+                    Num(suite, "id") ?? 0,
+                    Str(suite, "status") ?? "queued",
+                    Str(suite, "conclusion"),
+                    slug,
+                    (int)(Num(suite, "latest_check_runs_count") ?? 0),
+                    RunsFollow: slug == ActionsAppSlug);
+            })]);
     }
+
+    /// <summary>GitHub Actions' App: its suite belongs to a workflow run, so it always gets runs (#616).</summary>
+    internal const string ActionsAppSlug = "github-actions";
 
     public async Task<IReadOnlyList<string>> GetCheckNamesOnCommitAsync(Repository repository, string sha, CancellationToken cancellationToken = default)
     {
@@ -436,24 +491,87 @@ public partial class GitHubForgeMergeQueue : IForgeMergeQueue
     }
 
     /// <summary>
-    /// A GitHub Actions check run is a job, and re-runs through <c>POST /actions/jobs/{id}/rerun</c> (its check-run id
-    /// is its job id); any other App's check run is asked again through <c>POST /check-runs/{id}/rerequest</c>, which
-    /// that App may honour or not. 403 is a missing permission (<c>actions: write</c>, O17); 404 and 422 (a run too old,
-    /// a check that cannot be re-requested) are "cannot".
+    /// A GitHub Actions check run is a job of a workflow run, and re-running one job starts a new attempt of the whole run,
+    /// so a second job's re-run is refused with 403 "already running" (#589 D2). The failed jobs are therefore grouped by
+    /// workflow run and each run re-runs through one <c>POST /actions/runs/{id}/rerun-failed-jobs</c>, which takes its
+    /// failed jobs and their dependants into one attempt. Any other App's check run is asked again through
+    /// <c>POST /check-runs/{id}/rerequest</c>, which that App may honour or not.
     /// </summary>
-    public async Task<bool> RerunCheckAsync(Repository repository, ForgeCheckRun checkRun, CancellationToken cancellationToken = default)
+    /// <remarks>
+    /// 403 is a missing permission (<c>actions: write</c>, O17), except "already running" (D4); 404 and 422 (a run too
+    /// old, a check that cannot be re-requested) are "cannot".
+    /// </remarks>
+    public async Task<int> RerunChecksAsync(Repository repository, IReadOnlyCollection<ForgeCheckRun> checkRuns, CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(checkRun);
-        if (checkRun.Id <= 0) return false;
+        ArgumentNullException.ThrowIfNull(checkRuns);
+        var rerun = 0;
+        var workflowRuns = new Dictionary<long, int>();
+        var suiteRuns = new Dictionary<long, long?>();
+        foreach (var checkRun in checkRuns.Where(r => r.Id > 0).DistinctBy(r => r.Id))
+        {
+            var id = checkRun.Id.ToString(CultureInfo.InvariantCulture);
+            if (checkRun.AppSlug != "github-actions")
+            {
+                if (await RerunOneAsync(repository, $"{RepoPath(repository)}/check-runs/{id}/rerequest", cancellationToken)) rerun++;
+                continue;
+            }
 
-        var id = checkRun.Id.ToString(CultureInfo.InvariantCulture);
-        var path = checkRun.AppSlug == "github-actions"
-            ? $"{RepoPath(repository)}/actions/jobs/{id}/rerun"
-            : $"{RepoPath(repository)}/check-runs/{id}/rerequest";
+            // D3: the run from the job's own URL, else from its check suite (an Actions suite is one workflow run).
+            var runId = WorkflowRunIdOf(checkRun.DetailsUrl);
+            if (runId is null && checkRun.SuiteId is { } suite)
+            {
+                if (!suiteRuns.TryGetValue(suite, out runId))
+                    suiteRuns[suite] = runId = await WorkflowRunOfSuiteAsync(repository, suite, cancellationToken);
+            }
+
+            if (runId is { } workflowRun)
+                workflowRuns[workflowRun] = workflowRuns.GetValueOrDefault(workflowRun) + 1;
+            else if (await RerunOneAsync(repository, $"{RepoPath(repository)}/actions/jobs/{id}/rerun", cancellationToken))
+                rerun++;
+        }
+
+        foreach (var (workflowRun, jobs) in workflowRuns)
+            if (await RerunFailedJobsAsync(repository, workflowRun, cancellationToken))
+                rerun += jobs;
+        return rerun;
+    }
+
+    /// <summary>One job's re-run or another App's re-request: true when the forge accepted it.</summary>
+    private async Task<bool> RerunOneAsync(Repository repository, string path, CancellationToken cancellationToken)
+    {
         using var reply = await SendAsync(repository, HttpMethod.Post, path, null, DefaultApiVersion, cancellationToken);
-        if (reply.Status is HttpStatusCode.NotFound or HttpStatusCode.UnprocessableEntity) return false;
+        if (reply.Status is HttpStatusCode.NotFound or HttpStatusCode.UnprocessableEntity || IsAlreadyRunning(reply)) return false;
         EnsureSuccess(reply);
         return true;
+    }
+
+    /// <summary>
+    /// #589 D4: GitHub's 403 for re-running a job or a run whose workflow run is in progress. Not a missing permission (that
+    /// one says "Resource not accessible by integration"): the run cannot be re-run now.
+    /// </summary>
+    private bool IsAlreadyRunning(Reply reply)
+    {
+        if (reply.Status != HttpStatusCode.Forbidden || reply.Message?.Contains("already running", StringComparison.OrdinalIgnoreCase) != true)
+            return false;
+        logger.LogInformation("GitHub refused {Method} {Path}: {Message}", reply.Method, reply.Path, reply.Message);
+        return true;
+    }
+
+    /// <summary>The workflow run in an Actions job's URL, <c>https://github.com/{owner}/{repo}/actions/runs/{run}/job/{job}</c>.</summary>
+    internal static long? WorkflowRunIdOf(string? detailsUrl)
+        => detailsUrl is not null && ActionsJobUrl().Match(detailsUrl) is { Success: true } match
+           && long.TryParse(match.Groups[1].ValueSpan, NumberStyles.None, CultureInfo.InvariantCulture, out var runId) && runId > 0
+            ? runId
+            : null;
+
+    /// <summary>The workflow run of an Actions check suite (<c>GET /actions/runs?check_suite_id=</c>); null when there is none.</summary>
+    private async Task<long?> WorkflowRunOfSuiteAsync(Repository repository, long suiteId, CancellationToken cancellationToken)
+    {
+        using var reply = await SendAsync(repository, HttpMethod.Get,
+            $"{RepoPath(repository)}/actions/runs?check_suite_id={suiteId.ToString(CultureInfo.InvariantCulture)}&per_page=1", null, DefaultApiVersion, cancellationToken);
+        if (reply.Status == HttpStatusCode.NotFound) return null;
+        EnsureSuccess(reply);
+        return Items(reply.Json!.RootElement, "workflow_runs").Select(r => Num(r, "id")).FirstOrDefault(id => id > 0);
     }
 
     /// <remarks>
@@ -551,14 +669,15 @@ public partial class GitHubForgeMergeQueue : IForgeMergeQueue
 
     /// <summary>
     /// <c>POST /actions/runs/{id}/rerun-failed-jobs</c>, which re-runs the failed and cancelled jobs and what depends on them.
-    /// Like <see cref="RerunCheckAsync"/>: 403 is the missing <c>actions: write</c> (O17), 404 and 422 are "cannot".
+    /// Like <see cref="RerunChecksAsync"/>: 403 is the missing <c>actions: write</c> (O17) unless the run is already running
+    /// (#589 D4); 404 and 422 are "cannot".
     /// </summary>
     public async Task<bool> RerunFailedJobsAsync(Repository repository, long runId, CancellationToken cancellationToken = default)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(runId);
         using var reply = await SendAsync(repository, HttpMethod.Post,
             $"{RepoPath(repository)}/actions/runs/{runId.ToString(CultureInfo.InvariantCulture)}/rerun-failed-jobs", null, DefaultApiVersion, cancellationToken);
-        if (reply.Status is HttpStatusCode.NotFound or HttpStatusCode.UnprocessableEntity) return false;
+        if (reply.Status is HttpStatusCode.NotFound or HttpStatusCode.UnprocessableEntity || IsAlreadyRunning(reply)) return false;
         EnsureSuccess(reply, "actions=write");
         return true;
     }
@@ -1487,4 +1606,7 @@ public partial class GitHubForgeMergeQueue : IForgeMergeQueue
 
     [GeneratedRegex(@"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}\.ya?ml$")]
     private static partial Regex WorkflowFileName();
+
+    [GeneratedRegex(@"/actions/runs/([0-9]{1,19})/job/[0-9]{1,19}(?:[/?#]|$)")]
+    private static partial Regex ActionsJobUrl();
 }

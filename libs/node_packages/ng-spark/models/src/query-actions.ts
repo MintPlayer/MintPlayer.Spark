@@ -1,4 +1,6 @@
 import { CustomActionDefinition } from './custom-action';
+import { EntityPermissions } from './entity-permissions';
+import { PersistentObject } from './persistent-object';
 import { resolveTranslation } from './translated-string';
 
 /**
@@ -13,6 +15,34 @@ export function confirmationText(action: CustomActionDefinition | undefined | nu
 /** The built-in action named `name` (`New`, `Edit`, `Delete`) in `actions`, when the server listed it. */
 export function builtInAction(actions: CustomActionDefinition[], name: 'New' | 'Edit' | 'Delete'): CustomActionDefinition | undefined {
   return actions.find(a => !!a.isDefault && a.name.toLowerCase() === name.toLowerCase());
+}
+
+/**
+ * The Edit and Delete a detail page offers for `item` (#467 D8): listed in the composed catalogue (the caller holds
+ * `Edit/T` / `Delete/T`), `showedOn` including the detail side, allowed by the row's `can` when the server attached
+ * one (#236 G5; else the type-level `permissions`), and not withheld by `disabledActions` (#460 D13). Nothing on a
+ * row opened from the recycle bin: Edit and Delete judge live rows only. Shared by `spark-po-detail` and the custom
+ * object pages an app builds on `sparkObjectPage()` (#601 D20).
+ */
+export function detailBuiltInActions(
+  actions: CustomActionDefinition[],
+  permissions: EntityPermissions,
+  item: PersistentObject,
+  deletedView = false,
+): { edit: CustomActionDefinition | null; delete: CustomActionDefinition | null } {
+  if (deletedView) return { edit: null, delete: null };
+  // The override (not an intersection) is safe: the server computes `can` as the intersection of the type-level
+  // rights and the row rule (#243), so it never claims more than `permissions` does.
+  const can = item.can;
+  const withheld = new Set((item.disabledActions ?? []).map(name => name.toLowerCase()));
+  const edit = builtInAction(actions, 'Edit');
+  const del = builtInAction(actions, 'Delete');
+  return {
+    edit: edit && isShowedOnDetail(edit.showedOn) && (can ? can.edit : permissions.canEdit)
+      && !withheld.has('edit') && !withheld.has('save') ? edit : null,
+    delete: del && isShowedOnDetail(del.showedOn) && (can ? can.delete : permissions.canDelete)
+      && !withheld.has('delete') ? del : null,
+  };
 }
 
 /** Whether `showedOn` offers the action on a query: `"query"` or `"both"`, in any casing. */

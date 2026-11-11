@@ -63,9 +63,9 @@
         "order": 6,
         "query": "GetCompanies",
         "referenceType": "HR.Entities.Company",
-        "isArray": false,
         "canAddNewReference": true,
         "defaultAttribute": "Name",
+        "isArray": false,
         "showedOn": "Query, PersistentObject",
         "rules": [],
         "group": "b1b2c3d4-0002-0002-0002-000000000003"
@@ -181,9 +181,9 @@
         "order": 9,
         "query": "GetProfessions",
         "referenceType": "HR.Entities.Profession",
-        "isArray": true,
         "canAddNewReference": true,
         "defaultAttribute": "Label",
+        "isArray": true,
         "showedOn": "PersistentObject",
         "rules": [],
         "group": "b1b2c3d4-0002-0002-0002-000000000003"

@@ -116,10 +116,13 @@ public static class DependencyHolds
     /// </summary>
     /// <remarks>The caller checks the commenter's role (write or above, <c>created</c> comments only) before, and again at
     /// apply time (N6).</remarks>
+    /// <remarks>#606 D3: <paramref name="force"/> also approves a platform group that is pending on its companions.</remarks>
     public static DependencyApproval? Approve(DependencyUpdateState state, DependencyPolicyOutcome outcome, string group, string configBlob,
-        string by, long? commentId, DateTimeOffset now)
+        string by, long? commentId, DateTimeOffset now, bool force = false)
     {
-        var entries = outcome.AwaitingApproval.Where(e => e.Group == group && e.Target is not null).ToList();
+        var entries = outcome.AwaitingApproval
+            .Concat(force ? outcome.Held.Where(e => e.Reason == EDependencyReportReason.Pending) : [])
+            .Where(e => e.Group == group && e.Target is not null).ToList();
         if (entries.Count == 0)
             return null;
         var approval = new DependencyApproval
@@ -131,6 +134,7 @@ public static class DependencyHolds
             ApprovedBy = by,
             ApprovedAtUtc = now.UtcDateTime,
             CommentId = commentId,
+            Force = force,
         };
         state.Approvals.RemoveAll(a => a.Group == group);
         state.Approvals.Add(approval);

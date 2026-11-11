@@ -137,7 +137,8 @@ public class DependenciesYmlTests
     [InlineData("applyAction: apply.sh", "applyAction")]
     [InlineData("migrate: [{ match: x, onMajor: run.sh }]", "onMajor")]
     [InlineData("migrate: [{ onMajor: m.yml }]", "match")]
-    [InlineData("platforms: { rust: {} }", "rust")]
+    [InlineData("platforms: { swift: {} }", "swift")] // rust is an SDK since #606 M5
+    [InlineData("platforms: { php: { track: lts } }", "track")] // #606 D8: php's feed names no LTS
     [InlineData("platforms: { dotnet: { strategy: merge } }", "strategy")]
     [InlineData("platforms: { node: { keepPrevious: 9 } }", "keepPrevious")]
     [InlineData("platforms: { node: { locations: [\"../x\"] } }", "../x")]

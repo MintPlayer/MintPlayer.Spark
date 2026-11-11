@@ -20,8 +20,8 @@ It is opt-in per app. MintPlayer uses it; the demos, CodeCoverage and SeoTester 
    requests are served from it.
 
 The page's status is its primary read's (D4): a missing or denied object is a 401 for an anonymous visitor and a 404
-for a signed-in one, the same for both cases, so a page never tells whether something exists. A stale slug is a 301 to
-the canonical one, only for a readable object. Every rendered response carries `Cache-Control: private, no-store` and
+for a signed-in one, the same for both cases, so a page never tells whether something exists. A missing or stale slug
+is a 301 to the object's canonical URL, only for a readable object ([Object URLs](guide-object-urls.md)). Every rendered response carries `Cache-Control: private, no-store` and
 `Vary: Cookie` (D7), and a non-200 one `X-Robots-Tag: noindex`.
 
 ## Setting it up
@@ -75,7 +75,7 @@ dev server's.
 ## What gets supplied
 
 - **The shell**: culture, translations, program units, the signed-in user.
-- **Spark's routes** (`sparkRoutes()`): `po/:type/:id[/:slug]` (the object, the types, rights, actions, lookups and
+- **Spark's routes** (`sparkRoutes()`, `sparkObjectRoute()`): `po/:type/:id[/:slug]` or a type's own `route` template (the object, the types, rights, actions, lookups and
   AsDetail reference queries), `po/:type` and `query/:id` (the query, rights, actions and the first page of rows).
   A live or virtual-scrolling grid renders its rows after hydration; the live socket never opens on the server (D9).
 - **Boards** on their declared `paths` (D14, D15): the board, and each tile's content when the board has at most 7
@@ -85,7 +85,8 @@ dev server's.
   `PostAsync` run it in-process. Only an endpoint marked `[SparkPrerenderable]` (`WithMetadata(SparkPrerenderableAttribute.Instance)`)
   runs; any other answers 404 and is not supplied.
 
-The server's language is the `spark-lang` cookie, then `Accept-Language`, then the default; its timezone is the
+The server's language is the URL's `?lang`, then the `spark-lang` cookie, then `Accept-Language`, then the default
+([languages in the URL](guide-object-urls.md#the-language-in-the-url)); its timezone is the
 timezone cookie, else `DefaultTimeZone` (D10).
 
 ## Search engines and link previews
@@ -103,8 +104,8 @@ A type describes its detail page in the model (D12):
 }
 ```
 
-`spark-po-detail` sets the title (the breadcrumb), the description, `robots`, the canonical link (the slugged URL),
-Open Graph tags and JSON-LD, on the server and on client navigation alike. Every name is an attribute of the
+`spark-po-detail` sets the title (the breadcrumb), the description, `robots`, the canonical link (the object's `href`,
+with `?lang` in a non-default language), the hreflang alternates, Open Graph tags and JSON-LD, on the server and on client navigation alike. Every name is an attribute of the
 **presented** object, so a value the visitor may not read is absent. Robots is `index` only for a readable object of
 an indexable type; a type without `seo`, an error, a deleted view, and the new and edit forms are `noindex`.
 
@@ -138,7 +139,8 @@ last.
 The `MintPlayer.Spark.SitemapXml` package adds `spark.AddSitemap()` (in `AddSpark`; `MapSpark()` maps it with the
 other modules' endpoints). `/sitemap.xml` is a sitemap index with one sitemap per 1000 rows of each indexable type's
 list (`/sitemap/{type}/{page}.xml`). Together they hold the detail page of every object an anonymous visitor may
-read, for every type with `seo.indexable` (and `indexableWhen` true), by the same canonical URL the page writes. It
+read, for every type with `seo.indexable` (and `indexableWhen` true), by the same canonical URL the page writes, once
+per language with `xhtml:link` alternates when the app has more than one. It
 uses MintPlayer.AspNetCore.SitemapXml's types and stylesheet (`/sitemap.xsl`); see its
 [README](../libs/sitemap/MintPlayer.Spark.SitemapXml/README.md). Name it in a `robots.txt` (`Sitemap: https://example.com/sitemap.xml`) in the app's `public`
 folder.

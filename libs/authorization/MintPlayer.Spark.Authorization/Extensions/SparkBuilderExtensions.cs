@@ -31,12 +31,16 @@ public static class SparkBuilderAuthorizationExtensions
     /// <c>spark.AddGoogle(…)</c>, <c>spark.AddOpenIdConnect(…)</c>, <c>spark.AddExternalProviders(configuration)</c>,
     /// or <c>spark.AddExternalScheme(scheme, policy)</c> for a handler registered by hand.
     /// </remarks>
+    [global::MintPlayer.Spark.Abstractions.Storage.SparkRequiresStore("Spark.Authorization", Provider = global::MintPlayer.Spark.Abstractions.Storage.SparkStoreProviders.RavenDb)]
     public static ISparkBuilder AddAuthentication<TUser>(
         this ISparkBuilder builder,
         Action<SparkAuthenticationOptions>? configure = null,
         Action<IdentityOptions>? configureIdentity = null)
         where TUser : SparkUser, new()
     {
+        // #551 D13: users, roles and tokens are RavenDB documents, through its own client.
+        global::MintPlayer.Spark.Abstractions.Storage.SparkStoreRequirementExtensions.RequireStore(builder, "Spark.Authorization", provider: global::MintPlayer.Spark.Abstractions.Storage.SparkStoreProviders.RavenDb);
+
         var options = new SparkAuthenticationOptions();
         configure?.Invoke(options);
 

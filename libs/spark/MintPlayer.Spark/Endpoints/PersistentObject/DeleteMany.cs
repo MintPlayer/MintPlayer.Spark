@@ -49,7 +49,7 @@ internal sealed partial class DeleteManyPersistentObjects : IPostEndpoint<Delete
     [Inject] private readonly IRetryAccessor retryAccessor;
     [Inject] private readonly IClientAccessor clientAccessor;
     [Inject] private readonly ILogger<DeleteManyPersistentObjects> logger;
-    [Inject] private readonly Raven.Client.Documents.Session.IAsyncDocumentSession session;
+    [Inject] private readonly Abstractions.Storage.ISparkSession session;
     [Inject] private readonly IHttpContextAccessor httpContextAccessor;
 
     /// <summary>A body that cannot be bound gets the refusal an unusable request gets below, never a parse error (PRD D3a).</summary>

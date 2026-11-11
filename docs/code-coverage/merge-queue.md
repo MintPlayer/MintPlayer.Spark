@@ -241,7 +241,7 @@ A repository with lockfiles and its own workflow per tool might add:
 | `autoResolve[].action` | file name | `postRebaseActionName` | The rule's own regenerate workflow, same file-name rule as `postRebaseActionName` (O36). Several distinct workflows run one after the other (§2.3). At most 8 distinct workflows. |
 | `autoResolveDefaults` | list of preset names | none | Opt-in `take-base` presets, appended after the explicit rules (table below). An unknown name is an error. |
 | `keepBothDefaults` | `true` · `false` · map | all on | The `keep-both` defaults, appended after the presets (table below). `false` turns every group off; a map such as `{ json: false }` turns off the groups it names, the others stay on. |
-| `checks.retryFlaky` | int | `1` | 0–3. Re-runs of a failed check run before evicting (D9). The re-run waits until no other check is still running, because GitHub refuses to re-run a job while its workflow run is in progress. With no re-run left, a failure evicts at once. |
+| `checks.retryFlaky` | int | `1` | 0–3. Re-runs of a failed check run before evicting (D9). The re-run waits until no other check is still running, because GitHub refuses to re-run a job while its workflow run is in progress. The failed jobs of one workflow run re-run together, in one new attempt of that run (#589). With no re-run left, a failure evicts at once. |
 | `checks.timeout` | duration | `60m` | 5–720 minutes, from the moment the queue starts waiting for checks. |
 
 Globs: `**` spans directories, `*` and `?` stay within one, and matching is case-sensitive, like git paths
@@ -531,7 +531,8 @@ other conclusion fails (`cancelled`, `timed_out`, `action_required` and `stale` 
 of that, every required check and every check that had reported on the **pinned head at enqueue** must report. So
 queue a pull request after its CI has started: a workflow that never ran on the queued commit is not in that minimum.
 A check suite with no runs is not waited for: GitHub creates one for every App with checks permission, and it can stay
-queued forever.
+queued forever. GitHub Actions' suites are the exception (D119): such a suite belongs to a workflow run that has not
+started its jobs yet, so the queue waits for it.
 
 ## 3. Recommended GitHub setup
 
@@ -1008,7 +1009,7 @@ July 2025 fixes (D29). Details: [`hosting.md`](hosting.md) §1, "Compose service
 | One writer request from the app | 240 s (the job's 180 s, a 30 s slot wait and a margin) | `MergeQueue:JobRequestTimeoutSeconds` |
 | The regenerate run | `postRebaseTimeout` (20 m) from the dispatch. Polled every 3 min besides the `workflow_run` webhook. | `coverage.yml` |
 | The checks wait | `checks.timeout` (60 m) from entering it, then one last look. Polled every 2 min besides the check webhooks. | `coverage.yml` |
-| A failed check run | `checks.retryFlaky` re-runs (default 1): an Actions job is re-run, another App's check re-requested | `coverage.yml` |
+| A failed check run | `checks.retryFlaky` re-runs (default 1): an Actions workflow run re-runs its failed jobs, another App's check is re-requested | `coverage.yml` |
 | The merge request | Polls after 15 s, 30 s and 60 s, then every 2 min; after 40 polls `merge-timeout` | `MergeQueueEngine.MaxMergePolls` |
 | "Head branch was modified" | One retry after 15 s: GitHub may not have registered the queue's own push yet (D17) | `HeadModifiedRetryDelay` |
 | Base moves in one run | 5 restarts, then `base-churn` | `MaxPrepareAttempts` |

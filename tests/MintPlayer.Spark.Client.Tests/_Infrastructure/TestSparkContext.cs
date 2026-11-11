@@ -11,7 +11,7 @@ namespace MintPlayer.Spark.Client.Tests._Infrastructure;
 /// </summary>
 public sealed class TestSparkContext : SparkContext
 {
-    public IRavenQueryable<Person> People => Session.Query<Person>();
+    public IQueryable<Person> People => Session.Query<Person>();
 }
 
 public sealed class Person

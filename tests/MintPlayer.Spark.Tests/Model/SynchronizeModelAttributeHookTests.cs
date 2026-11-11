@@ -221,7 +221,7 @@ public sealed class HkNote
 
 public sealed class HkNoteContext : SparkContext
 {
-    public IRavenQueryable<HkNote> Notes => Session.Query<HkNote>();
+    public IQueryable<HkNote> Notes => Session.Query<HkNote>();
 }
 
 /// <summary>Stands in for <c>Organization</c>: a library type whose model has no <c>CreatedBy</c>.</summary>
@@ -235,7 +235,7 @@ public sealed class HkLibOrganization
 
 public sealed class HkLibraryContext : SparkContext
 {
-    public IRavenQueryable<HkLibOrganization> Organizations => Session.Query<HkLibOrganization>();
+    public IQueryable<HkLibOrganization> Organizations => Session.Query<HkLibOrganization>();
 }
 
 public sealed class HkDocket
@@ -258,5 +258,5 @@ public sealed class HkLine
 
 public sealed class HkDocketContext : SparkContext
 {
-    public IRavenQueryable<HkDocket> Dockets => Session.Query<HkDocket>();
+    public IQueryable<HkDocket> Dockets => Session.Query<HkDocket>();
 }

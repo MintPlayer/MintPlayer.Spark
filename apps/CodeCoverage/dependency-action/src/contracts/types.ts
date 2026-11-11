@@ -71,7 +71,19 @@ export interface InterfaceDiff {
   verdict: 'compatible' | 'incompatible' | 'unknown';
 }
 
-export type Sdk = 'dotnet' | 'node' | 'python' | 'java' | 'go';
+export type Sdk = 'dotnet' | 'node' | 'python' | 'java' | 'go' | 'php' | 'ruby' | 'rust';
+
+/** Every SDK a platform adapter exists for (R7, #606 D10), in scan order. */
+export const SDKS: readonly Sdk[] = ['dotnet', 'node', 'python', 'java', 'go', 'php', 'ruby', 'rust'];
+
+/**
+ * The bot's channel table (#606 D9), the lookup's required `platforms` input: per SDK the channels its daily feed
+ * collected (not end-of-life), and the package globs whose prereleases are offered (`track: preview`, D8).
+ */
+export interface PlatformTable {
+  sdks: Partial<Record<Sdk, PlatformCandidate[]>>;
+  unstable: string[];
+}
 
 export type PlatformLocationKind =
   | 'tfm'
@@ -87,7 +99,16 @@ export type PlatformLocationKind =
   | 'toolchain'
   | 'requires-python'
   | 'maven-release'
-  | 'package-version';
+  | 'package-version'
+  | 'composer-require'
+  | 'composer-platform'
+  | 'gemfile-ruby'
+  | 'gemspec-ruby'
+  | 'rust-toolchain'
+  | 'rust-version'
+  | 'matrix'
+  // #617 D31: a setup-dotnet `dotnet-quality:` input, removed once the plan's target is GA.
+  | 'dotnet-quality';
 
 export interface PlatformLocation {
   file: string;

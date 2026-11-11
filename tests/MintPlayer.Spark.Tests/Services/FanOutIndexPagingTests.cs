@@ -50,7 +50,7 @@ public class FanOutIndexPagingTests : SparkTestDriver
 
     public class TestContext : SparkContext
     {
-        public IRavenQueryable<FanoutProbe> FanoutProbes => Session.Query<FanoutProbe>();
+        public IQueryable<FanoutProbe> FanoutProbes => Session.Query<FanoutProbe>();
     }
 
     private SparkEndpointFactory<TestContext>? _factory;

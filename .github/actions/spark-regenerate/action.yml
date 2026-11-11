@@ -34,6 +34,13 @@ inputs:
     description: Extra arguments for every `dotnet build`, split on whitespace.
     required: false
     default: ''
+  after-synchronize:
+    description: >
+      Optional bash commands, run from the repository root after every synchronize pass, for files derived from what
+      synchronize wrote: golden files a test rewrites, for example. They see CONFIGURATION and BUILD_ARGS. What they
+      write is part of the patch and of the fixed-point check, so it must also be listed in the queue's regeneratedPaths.
+    required: false
+    default: ''
   lockfiles:
     description: >
       Opt-in. Lockfile ecosystems to regenerate before the build, one per line - npm, pnpm, yarn, nuget - with the
@@ -99,6 +106,7 @@ runs:
         CONFIGURATION: ${{ inputs.configuration }}
         BUILD_ARGS: ${{ inputs.skip-spa-build == 'true' && '-p:EnableSpaBuilder=false ' || '' }}${{ inputs.extra-build-args }}
         LOCKFILES: ${{ inputs.lockfiles }}
+        AFTER_SYNCHRONIZE: ${{ inputs.after-synchronize }}
         PR_HEAD: ${{ steps.pr.outputs.pr-head }}
         MERGE_BASE: ${{ steps.pr.outputs.merge-base }}
         COREPACK_ENABLE_DOWNLOAD_PROMPT: '0'

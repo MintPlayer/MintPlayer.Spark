@@ -4,7 +4,7 @@ using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Interceptors;
 using MintPlayer.Spark.Abstractions.Reflection;
-using Raven.Client.Documents.Session;
+using MintPlayer.Spark.Abstractions.Storage;
 
 namespace MintPlayer.Spark.Services;
 
@@ -32,10 +32,10 @@ internal interface ISparkInterceptorPipeline
     /// Runs <see cref="IAfterMaterialize"/> interceptors (F1) for each of <paramref name="entities"/> not already
     /// intercepted in this request (by reference).
     /// </summary>
-    Task RunAfterMaterializeAsync(Type entityType, IAsyncDocumentSession session, IEnumerable<object> entities, MaterializeReason reason);
+    Task RunAfterMaterializeAsync(Type entityType, ISparkSession session, IEnumerable<object> entities, MaterializeReason reason);
 
     /// <summary>Runs <see cref="IAfterLoad"/> interceptors for each loaded object.</summary>
-    Task RunAfterLoadAsync(Type entityType, IAsyncDocumentSession session, IReadOnlyList<PersistentObject> objects);
+    Task RunAfterLoadAsync(Type entityType, ISparkSession session, IReadOnlyList<PersistentObject> objects);
 
     /// <summary>
     /// Runs after-interceptors, each isolated: a failure is logged and neither turns the committed write
@@ -123,7 +123,7 @@ internal sealed partial class SparkInterceptorPipeline : ISparkInterceptorPipeli
         return interceptor;
     }
 
-    public async Task RunAfterMaterializeAsync(Type entityType, IAsyncDocumentSession session, IEnumerable<object> entities, MaterializeReason reason)
+    public async Task RunAfterMaterializeAsync(Type entityType, ISparkSession session, IEnumerable<object> entities, MaterializeReason reason)
     {
         var interceptors = For<IAfterMaterialize>(entityType);
         if (interceptors.Count == 0)
@@ -140,7 +140,8 @@ internal sealed partial class SparkInterceptorPipeline : ISparkInterceptorPipeli
             {
                 EntityType = entityType,
                 Entity = entity,
-                Session = session,
+                Session = session.Native,
+                StorageSession = session,
                 Reason = reason,
                 User = user,
                 IsSystemContext = system,
@@ -150,7 +151,7 @@ internal sealed partial class SparkInterceptorPipeline : ISparkInterceptorPipeli
         }
     }
 
-    public async Task RunAfterLoadAsync(Type entityType, IAsyncDocumentSession session, IReadOnlyList<PersistentObject> objects)
+    public async Task RunAfterLoadAsync(Type entityType, ISparkSession session, IReadOnlyList<PersistentObject> objects)
     {
         var interceptors = For<IAfterLoad>(entityType);
         if (interceptors.Count == 0 || objects.Count == 0)
@@ -160,7 +161,7 @@ internal sealed partial class SparkInterceptorPipeline : ISparkInterceptorPipeli
         var system = IsSystemContext;
         foreach (var obj in objects)
         {
-            var context = new LoadContext { EntityType = entityType, PersistentObject = obj, Session = session, User = user, IsSystemContext = system };
+            var context = new LoadContext { EntityType = entityType, PersistentObject = obj, Session = session.Native, StorageSession = session, User = user, IsSystemContext = system };
             foreach (var interceptor in interceptors)
                 await interceptor.OnAfterLoadAsync(context);
         }

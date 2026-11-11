@@ -44,8 +44,8 @@ public class RtDriverActions(IEntityMapper mapper)
 
 public class RtContext : SparkContext
 {
-    public IRavenQueryable<RtCar> Cars => Session.Query<RtCar>();
-    public IRavenQueryable<RtDriver> Drivers => Session.Query<RtDriver>();
+    public IQueryable<RtCar> Cars => Session.Query<RtCar>();
+    public IQueryable<RtDriver> Drivers => Session.Query<RtDriver>();
 }
 
 /// <summary>

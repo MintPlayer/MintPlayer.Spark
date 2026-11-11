@@ -35,6 +35,19 @@ public static class SparkBuilderPrerenderingExtensions
         builder.Services.TryAddSingleton<SparkPrerenderDispatcher>();
         builder.Services.TryAddScoped<ISpaPrerenderingService, SparkPrerenderingService>();
         builder.Services.TryAddEnumerable(ServiceDescriptor.Scoped<ISparkPrerenderContributor, SparkRoutesPrerenderContributor>());
+        builder.Services.TryAddEnumerable(ServiceDescriptor.Scoped<ISparkPrerenderContributor, SparkEntityRedirectPrerenderContributor>());
+        return builder;
+    }
+
+    /// <summary>
+    /// Answers the pages of <typeparamref name="T"/>'s <see cref="ISparkEntityRedirect.Pattern"/> with a 301 to the
+    /// object its lookup names, before Angular renders (#602, tier c). Needs <see cref="AddPrerendering"/>; resolved per
+    /// request. Idempotent.
+    /// </summary>
+    public static ISparkBuilder AddEntityRedirect<T>(this ISparkBuilder builder)
+        where T : class, MintPlayer.Spark.Abstractions.Links.ISparkEntityRedirect
+    {
+        builder.Services.TryAddEnumerable(ServiceDescriptor.Scoped<MintPlayer.Spark.Abstractions.Links.ISparkEntityRedirect, T>());
         return builder;
     }
 

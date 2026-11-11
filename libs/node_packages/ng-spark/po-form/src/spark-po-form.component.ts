@@ -1306,6 +1306,8 @@ export class SparkPoFormComponent {
   // (po-edit flags AsDetail attributes isValueChanged on save).
   onAsDetailReorder(attr: EntityAttributeDefinition, event: CdkDragDrop<Record<string, any>[]>): void {
     if (event.previousIndex === event.currentIndex) return;
+    // The template only enables the drop list then; a drop that gets here anyway changes nothing.
+    if (!attr.isSortable || !this.asDetailPermissions()[attr.name]?.canEdit) return;
     const data = { ...this.formData() };
     const arr = [...(data[attr.name] ?? [])];
     moveItemInArray(arr, event.previousIndex, event.currentIndex);

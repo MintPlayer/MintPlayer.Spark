@@ -91,7 +91,7 @@ public class DependencyContractTests
     {
         // record.schema.json reaches platform-record.schema.json through a $ref: the reference must resolve and bite.
         var lookup = JsonNode.Parse(DependencyTestKit.ContractFixture("valid", "lookup.docker-actions-platform.json"))!;
-        lookup["platforms"]![0]!["sdk"] = "rust";
+        lookup["platforms"]![0]!["sdk"] = "swift"; // not an SDK (rust is one since #606 M5)
 
         DependencyContractReader.ReadLookup(lookup.ToJsonString()).IsValid.Should().BeFalse();
     }

@@ -153,7 +153,9 @@ row-security filter  →  search  →  sort  →  page
 Two shapes cannot push the search into the database, and both fall back to filtering in memory after
 materialization:
 
-- a `Custom.` query whose method does not return an `IRavenQueryable<T>`;
+- a `Custom.` query whose method does not return the store's own query (`session.Query<T>()`, whatever the
+  declared type);
+- any query on a provider without full-text search (`UseInMemory()`);
 - a query type with no text field at all.
 
 The fallback is correct but reads the whole result set, so prefer an index-backed query for anything large. It is

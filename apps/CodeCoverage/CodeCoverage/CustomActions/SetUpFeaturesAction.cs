@@ -45,11 +45,12 @@ public partial class SetUpFeaturesAction : SparkCustomAction
             return;
         }
 
-        // Step 0: which features. The form starts from what the open onboarding pull request carries.
-        var state = await session.LoadAsync<VersioningOnboardingState>(VersioningOnboardingState.ForRepository(repository.Id!), cancellationToken);
+        // Step 0: which features. The form starts from what the repository has now, plus what an open onboarding pull
+        // request carries (OnboardingFeatureDetection), not from what this chooser last asked for.
+        var current = await onboarding.CurrentFeaturesAsync(repository, cancellationToken);
         var form = await manager.GetPersistentObjectAsync(Guid.Parse(PersistentObjectIds.Default.SetUpFeatures));
         foreach (var feature in Enum.GetValues<EOnboardingFeature>())
-            form[feature.ToString()].Value = state?.Features.Contains(feature) ?? false;
+            form[feature.ToString()].Value = current.Contains(feature);
         var plan = manager.GetTranslatedMessage("onboarding.plan");
         manager.Retry.Action(manager.GetTranslatedMessage("onboarding.chooseTitle"), [plan], plan, form, manager.GetTranslatedMessage("onboarding.chooseMessage"), cancellable: true);
         var chosen = manager.Retry.Result!;

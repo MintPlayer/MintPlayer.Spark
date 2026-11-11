@@ -13,8 +13,12 @@ namespace MintPlayer.Spark.Search;
 /// </summary>
 public static class SparkSearchExtensions
 {
+    [global::MintPlayer.Spark.Abstractions.Storage.SparkRequiresStore("Spark.Search", Provider = global::MintPlayer.Spark.Abstractions.Storage.SparkStoreProviders.RavenDb)]
     public static ISparkBuilder AddSearch(this ISparkBuilder builder, Action<SparkSearchOptions>? configure = null)
     {
+        // #551 D13: the default provider searches RavenDB's indexes, and OpenSearch syncs from its client.
+        global::MintPlayer.Spark.Abstractions.Storage.SparkStoreRequirementExtensions.RequireStore(builder, "Spark.Search", provider: global::MintPlayer.Spark.Abstractions.Storage.SparkStoreProviders.RavenDb);
+
         // A second call would map the endpoints twice. AddOpenSearchDescription adds search itself when it is missing,
         // so a configured AddSearch must come first.
         if (builder.Services.Any(d => d.ServiceType == typeof(ISparkSearch)))

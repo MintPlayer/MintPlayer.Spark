@@ -48,20 +48,25 @@ public sealed record DependencyRunReport
         ExpiredApprovals = [.. outcome.ExpiredApprovals.Select(a => a.Group)],
     };
 
-    /// <summary>The awaiting-approval half as the policy outcome <see cref="DependencyHolds.Approve"/> reads (R6, gap E).</summary>
-    public DependencyPolicyOutcome AsOutcome(DependencyUpdateState state) => new() { AwaitingApproval = AwaitingApproval, NextState = state };
+    /// <summary>What <see cref="DependencyHolds.Approve"/> reads (R6, gap E): the awaiting-approval half, and the held half for
+    /// a <c>--force</c> of a pending SDK move (#606 D3).</summary>
+    public DependencyPolicyOutcome AsOutcome(DependencyUpdateState state) => new() { AwaitingApproval = AwaitingApproval, Held = Held, NextState = state };
 }
 
 public sealed record DependencyReportGroup(string Group, EUpdateLevel Level, bool AutoMerge, bool Approved, bool Security, string? MigrateWorkflow,
     bool Platform, List<DependencyReportItem> Items)
 {
+    /// <summary>A group's rows: a platform group's SDK move first, then the companions riding with it (#606 D2).</summary>
     public static DependencyReportGroup From(DependencyPlannedGroup group) => new(group.Group, group.Level, group.AutoMerge, group.Approved, group.Security,
         group.MigrateWorkflow, group.Platform is not null,
-        group.Platform is { } platform
-            ? [new DependencyReportItem($"platform:{platform.Sdk}", "(platform)", $"platform:{platform.Sdk}", "platform", platform.FromChannel, platform.ToChannel, platform.ToVersion ?? platform.ToChannel, null)]
-            : [.. group.Items.Select(i => new DependencyReportItem(i.Record.DepName, i.Record.PackageFile, i.Record.Ecosystem, i.Record.Manager,
+        [
+            .. group.Platform is { } platform
+                ? [new DependencyReportItem($"platform:{platform.Sdk}", "(platform)", $"platform:{platform.Sdk}", "platform", platform.FromChannel, platform.ToChannel, platform.ToVersion ?? platform.ToChannel, null)]
+                : Array.Empty<DependencyReportItem>(),
+            .. group.Items.Select(i => new DependencyReportItem(i.Record.DepName, i.Record.PackageFile, i.Record.Ecosystem, i.Record.Manager,
                 i.Record.CurrentVersion ?? i.Record.CurrentValue ?? string.Empty, i.Candidate.Value ?? i.Record.CurrentValue ?? string.Empty, i.Candidate.Version ?? string.Empty,
-                i.Candidate.ReleaseTimestamp))]);
+                i.Candidate.ReleaseTimestamp)),
+        ]);
 }
 
 public sealed record DependencyReportItem(string DepName, string PackageFile, string Ecosystem, string Manager, string From, string To, string NewVersion, string? ReleaseTimestamp);
@@ -383,19 +388,8 @@ public static class DependencyWorkflowGuard
     {
         if (text is null)
             return "it could not be read";
-        YamlMappingNode root;
-        try
-        {
-            var stream = new YamlStream();
-            stream.Load(new StringReader(text));
-            if (stream.Documents.Count != 1 || stream.Documents[0].RootNode is not YamlMappingNode mapping)
-                return "it is not one YAML mapping";
-            root = mapping;
-        }
-        catch (YamlDotNet.Core.YamlException ex)
-        {
-            return $"it is not valid YAML ({ex.Message})";
-        }
+        if (Root(text, out var error) is not { } root)
+            return error;
 
         if (!root.Children.TryGetValue(new YamlScalarNode("permissions"), out var permissions))
             return "it has no top-level `permissions:`";
@@ -414,6 +408,40 @@ public static class DependencyWorkflowGuard
         if (!allowSecrets && text.Contains("secrets.", StringComparison.Ordinal))
             return "it reads repository secrets";
         return null;
+    }
+
+    /// <summary>
+    /// The <paramref name="inputs"/> a workflow's <c>on.workflow_dispatch.inputs</c> does not declare (#606 D9): a dispatch
+    /// with an undeclared input is refused by GitHub, so an outdated workflow is named instead of failing at the forge.
+    /// An unreadable workflow misses nothing here; <see cref="Refusal"/> has already said why.
+    /// </summary>
+    public static IReadOnlyList<string> MissingInputs(string? text, IEnumerable<string> inputs)
+    {
+        if (text is null || Root(text, out _) is not { } root || !root.Children.TryGetValue(new YamlScalarNode("on"), out var on))
+            return [];
+        var declared = on is YamlMappingNode map
+            && map.Children.TryGetValue(new YamlScalarNode("workflow_dispatch"), out var dispatch) && dispatch is YamlMappingNode d
+            && d.Children.TryGetValue(new YamlScalarNode("inputs"), out var declaredInputs) && declaredInputs is YamlMappingNode i
+                ? i.Children.Keys.OfType<YamlScalarNode>().Select(k => k.Value).OfType<string>().ToHashSet(StringComparer.Ordinal)
+                : [];
+        return [.. inputs.Where(name => !declared.Contains(name))];
+    }
+
+    /// <summary>The workflow's root mapping, or null with why not: not valid YAML, or not exactly one mapping.</summary>
+    private static YamlMappingNode? Root(string text, out string error)
+    {
+        try
+        {
+            var stream = new YamlStream();
+            stream.Load(new StringReader(text));
+            error = "it is not one YAML mapping";
+            return stream.Documents.Count == 1 ? stream.Documents[0].RootNode as YamlMappingNode : null;
+        }
+        catch (YamlDotNet.Core.YamlException ex)
+        {
+            error = $"it is not valid YAML ({ex.Message})";
+            return null;
+        }
     }
 
     private static bool WritesAnything(YamlNode node) => node switch
@@ -438,18 +466,7 @@ public static class DependencyWorkflowGuard
     {
         if (!path.StartsWith(".github/workflows/", StringComparison.Ordinal))
             return true;
-        if (text is null)
-            return false;
-        try
-        {
-            var stream = new YamlStream();
-            stream.Load(new StringReader(text));
-            return stream.Documents.Count == 1 && stream.Documents[0].RootNode is YamlMappingNode root
-                && root.Children.TryGetValue(new YamlScalarNode("on"), out var on) && Triggers(on).Contains("pull_request");
-        }
-        catch (YamlDotNet.Core.YamlException)
-        {
-            return false;
-        }
+        return text is not null && Root(text, out _) is { } root
+            && root.Children.TryGetValue(new YamlScalarNode("on"), out var on) && Triggers(on).Contains("pull_request");
     }
 }

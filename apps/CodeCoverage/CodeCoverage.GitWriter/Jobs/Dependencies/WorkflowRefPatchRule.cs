@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using CodeCoverage.Git.Dependencies;
 using CodeCoverage.Git.MergeQueue.Resolution;
 
 namespace CodeCoverage.GitWriter.Jobs.Dependencies;
@@ -6,7 +7,14 @@ namespace CodeCoverage.GitWriter.Jobs.Dependencies;
 /// <summary>What the line rule accepted in one workflow file: the planned entries it applies and the uses:/with: value
 /// pairs the YAML comparison must then find, and nothing else.</summary>
 public sealed record WorkflowRefPlan(IReadOnlyList<DependencyPlanEntry> Entries, IReadOnlySet<(string Old, string New)> Uses,
-    IReadOnlySet<(string Key, string Old, string New)> With);
+    IReadOnlySet<(string Key, string Old, string New)> With)
+{
+    /// <summary>#613 item 2: the platform groups whose reported locations explain a changed line of this file.</summary>
+    public IReadOnlySet<string> PlatformGroups { get; init; } = new HashSet<string>(StringComparer.Ordinal);
+
+    /// <summary>#617 D31: the (key, value) <c>with:</c> inputs whose line a move to a release removed (<c>dotnet-quality</c>).</summary>
+    public IReadOnlySet<(string Key, string Value)> RemovedWith { get; init; } = new HashSet<(string, string)>();
+}
 
 /// <summary>
 /// The R15 carve-out at the line level (docs/code-coverage/dependency-updates-PRD.md gap C), for
@@ -37,22 +45,46 @@ public static partial class WorkflowRefPatchRule
     [GeneratedRegex(@"\A[0-9a-f]{40}\z", RegexOptions.CultureInvariant)]
     private static partial Regex Sha();
 
-    /// <summary>The verdict on one workflow file's hunks against the entries planned for it.</summary>
-    public static (WorkflowRefPlan? Plan, string? Reason, string? Detail) Check(PatchFile file, IReadOnlyList<DependencyPlanEntry> entries)
+    /// <summary>The verdict on one workflow file's hunks against the entries planned for it and, #613 item 2, the platform
+    /// locations the lookup reported in it: a line no planned entry explains may still be a
+    /// <see cref="PlatformSubstitution"/> of one of those (a setup-action version, a matrix entry, a container tag). The
+    /// YAML comparison then confirms each such change is a scalar at a platform path.</summary>
+    public static (WorkflowRefPlan? Plan, string? Reason, string? Detail) Check(PatchFile file, IReadOnlyList<DependencyPlanEntry> entries,
+        IReadOnlyList<(DependencyPlatformMove Move, DependencyPlatformLocation Location)>? platform = null)
     {
         var used = new List<DependencyPlanEntry>();
         var uses = new HashSet<(string, string)>();
         var with = new HashSet<(string, string, string)>();
+        var platformGroups = new HashSet<string>(StringComparer.Ordinal);
+        var removedWith = new HashSet<(string, string)>();
         foreach (var hunk in file.Hunks)
         {
             foreach (var block in hunk.Blocks())
             {
-                if (block.Removed.Count != block.Added.Count)
-                    return (null, DependencyPatchReasons.WorkflowEdit, $"Line {block.OldLine}: a workflow edit that adds or removes lines.");
+                // #617 D31: a dotnet-quality line a move to a release removes is not paired; every other line still is, 1:1.
+                var kept = new List<(int Line, string Old)>();
                 for (var k = 0; k < block.Removed.Count; k++)
                 {
-                    var line = block.OldLine + k;
-                    var (old, @new) = (block.Removed[k], block.Added[k]);
+                    if (platform is { Count: > 0 } && RemovedQuality(block.Removed[k], platform) is { } removal)
+                    {
+                        platformGroups.Add(removal.Group);
+                        removedWith.Add((removal.Key, removal.Value));
+                        continue;
+                    }
+                    kept.Add((block.OldLine + k, block.Removed[k]));
+                }
+                if (kept.Count != block.Added.Count)
+                    return (null, DependencyPatchReasons.WorkflowEdit, $"Line {block.OldLine}: a workflow edit that adds or removes lines.");
+                for (var k = 0; k < kept.Count; k++)
+                {
+                    var (line, old) = kept[k];
+                    var @new = block.Added[k];
+                    if (platform is { Count: > 0 } && PlatformSubstitution.Explain(old, @new, platform) is { } group
+                        && !(UsesLine().IsMatch(old) && !old.Contains("docker://", StringComparison.Ordinal)))
+                    {
+                        platformGroups.Add(group);
+                        continue;
+                    }
                     if (UsesLine().Match(old) is { Success: true } o && UsesLine().Match(@new) is { Success: true } n)
                     {
                         var pair = UsesPair(o, n, entries, line);
@@ -83,8 +115,35 @@ public static partial class WorkflowRefPatchRule
                 }
             }
         }
-        return (new WorkflowRefPlan(used.Distinct().ToList(), uses, with), null, null);
+        return (new WorkflowRefPlan(used.Distinct().ToList(), uses, with) { PlatformGroups = platformGroups, RemovedWith = removedWith }, null, null);
     }
+
+    /// <summary>
+    /// #617 D31: a removed line that is a <c>dotnet-quality: &lt;value&gt;</c> input the lookup reported in this file, under a
+    /// dotnet move whose target is a release (neither its version nor its SDK a preview). Which step the key is under is
+    /// the YAML comparison's to check (<see cref="GitHubWorkflowValidator.RemovableWithKeys"/>).
+    /// </summary>
+    private static (string Group, string Key, string Value)? RemovedQuality(string removed,
+        IReadOnlyList<(DependencyPlatformMove Move, DependencyPlatformLocation Location)> platform)
+    {
+        if (KeyLine().Match(removed) is not { Success: true } m || m.Groups["lead"].Value.Contains('-', StringComparison.Ordinal))
+            return null;
+        var (key, value) = (m.Groups["key"].Value, m.Groups["value"].Value);
+        if (key != "dotnet-quality" || value.Length == 0 || string.Equals(value, "ga", StringComparison.OrdinalIgnoreCase))
+            return null;
+        foreach (var (move, location) in platform)
+        {
+            if (location.Kind == "dotnet-quality" && location.Value == value && move.Move.Sdk == "dotnet" && TargetsRelease(move.Move))
+                return (move.Group, key, value);
+        }
+        return null;
+    }
+
+    /// <summary>The move's target is a release: it names a version or an SDK, and neither is a preview.</summary>
+    public static bool TargetsRelease(PlanPlatform move)
+        => (move.SdkVersion ?? move.ToVersion) is { Length: > 0 }
+           && move.SdkVersion?.Contains('-', StringComparison.Ordinal) != true
+           && move.ToVersion?.Contains('-', StringComparison.Ordinal) != true;
 
     private readonly record struct PairVerdict(DependencyPlanEntry? Entry, string? Reason, string? Detail);
 

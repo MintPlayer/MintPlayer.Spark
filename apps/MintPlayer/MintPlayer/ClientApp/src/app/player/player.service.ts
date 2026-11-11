@@ -1,6 +1,7 @@
 import { computed, Injectable, signal } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { EPlayerState } from '@mintplayer/player-provider';
+import { PlayerProgress } from '@mintplayer/player-progress';
 import { ERepeatMode, PlaylistController } from '@mintplayer/playlist-controller';
 import { map } from 'rxjs';
 
@@ -38,6 +39,14 @@ export class PlayerService {
   /** Two-way bound to the video player: it reports its state here, and setting it plays or pauses. */
   readonly state = signal(EPlayerState.unstarted);
   readonly isPlaying = computed(() => this.state() === EPlayerState.playing);
+  /** Where the current medium is, in seconds, for the queue's progress bar (as the legacy playlist sidebar showed). */
+  readonly position = signal<PlayerProgress>({ currentTime: 0, duration: 0 });
+  /**
+   * 0-100, two-way bound to the video player, which keeps both across media and sites since video-player 20.2.0
+   * (mintplayer-ng-video-player#105).
+   */
+  readonly volume = signal(100);
+  readonly muted = signal(false);
 
   add(item: QueueItem) {
     this.controller.addToPlaylist(item);
@@ -72,18 +81,14 @@ export class PlayerService {
     this.controller.next();
   }
 
-  /**
-   * Leaves `ended` out of the bound state: the binding would push it back into the player, and the YouTube player
-   * stops on `ended`, which stopped the next medium. `unstarted` is a no-op in every player.
-   */
   ended() {
-    this.state.set(EPlayerState.unstarted);
     this.controller.playerEnded();
   }
 
-  /** Lets previous restart the current medium once it has played 5 seconds. */
-  progress(seconds: number) {
-    this.controller.currentVideoPosition = seconds;
+  /** Feeds the progress bar, and lets previous restart the current medium once it has played 5 seconds. */
+  progress(position: PlayerProgress) {
+    this.position.set({ currentTime: position.currentTime, duration: position.duration });
+    this.controller.currentVideoPosition = position.currentTime;
   }
 
   toggleShuffle() {

@@ -166,6 +166,74 @@ Outstanding before merge: version bumps per `project_ci_autopublish.md`; optiona
 
 ---
 
+## Follow-up — #251: a reference label naming the wrong document ✅ (2026-11-09)
+
+The issue (filed 2026-08-15 on preview.46) saw a `Commit.Repository` breadcrumb render the literal
+text `JObject`. Investigation found two causes, one already fixed:
+
+1. **Stale `@Raven-Clr-Type` (fixed before this follow-up).** The resolver loaded references as
+   `object`; Coverage's documents carry the pre-monorepo type name, so RavenDB materialized them as
+   `JObject` and the render fell through to the CLR type name. Fixed in `b632d521` (2026-09-03,
+   preview.71): references load under the type their edge declares. Pinned by
+   `BreadcrumbResolverTests.Reference_whose_stored_clr_type_no_longer_resolves_*` and
+   `Reference_with_no_entity_type_definition_renders_its_id_never_a_clr_type_name`. A trace of every
+   writer of a reference breadcrumb (`EntityMapper.cs:330/365/377`) found that the PO GET, query
+   execute (index, projection, custom, composed, streaming and sub-queries via `RowSecurityGate`),
+   MCP and bulk-delete paths all reach it only through `BreadcrumbResolver`. `GetDefaultIncludes()`
+   only warms the session cache that the typed loads read.
+2. **A reference id into a foreign collection (fixed here).** A document's collection is its
+   `@collection` metadata, not its id prefix, and a reference value is a bare id string. A typed
+   `LoadAsync<T>` does not check the collection: `Driver = "accounts/1"` on a `Person`-typed edge
+   loaded the account *as a Person*. It rendered the account's fields through Person's template,
+   under Person's Read right and row rule rather than its own. **Red:**
+   `Reference_id_into_another_collection_is_not_rendered_as_the_declared_type` failed with
+   `Expected result.Get("accounts/1") to be null, but found "Secret Owner"`. **Fix:**
+   `BreadcrumbResolver.LoadManyAsync` drops a loaded document whose `@collection` is not that of the
+   type it materialized as (`ICollectionGuard`, the same guard the PO load and save paths use). The
+   outcome is the same as for a dangling id. It judges the *materialized* type, not the declared one,
+   so two cases stay valid, each pinned by a test that passed before and after the fix:
+   - a genuine subtype in its own collection (`Reference_to_a_subtype_stored_in_its_own_collection_still_renders`);
+   - a document whose id prefix differs from its collection (`Reference_id_whose_prefix_differs_from_its_collection_still_renders`).
+
+3. **The write half: a save stored any id string as a reference value (fixed here).** New
+   `ReferenceTargetValidation`, called by `DatabaseAccess` right after `SaveValidation`. It runs on
+   every save through the pipeline (endpoints, MCP `propose_changes` via `checkOnly`, sync,
+   Actions-class saves), not only on saves an endpoint asked to validate. Every reference id the save
+   **newly** writes must name a document in the `[Reference]`'s target collection. That covers single
+   references, reference arrays and references inside AsDetail rows; the error names the top-level
+   attribute, `RuleType = "referenceTarget"`, and the save answers 400.
+   - **Foreign and missing are refused alike, with one message that names no id.** This is the owner's
+     choice (2026-11-09) over refusing only foreign ids, which would have made the 400 an existence
+     oracle for any document id in the database.
+   - **Not judged:**
+     - an id the stored row already holds for the same target type, so a legacy dangling reference
+       does not block edits;
+     - value-object and class-less targets, which have no documents of their own (reference add-new
+       PRD D10);
+     - attributes the caller may not write.
+   - **How:** an untyped load in a side session, then the `@collection` metadata. A typed load would
+     deserialize a foreign document into the target type. A document in the target collection passes
+     whatever its `@Raven-Clr-Type` says (Coverage's legacy documents); one in another collection
+     passes only as a genuine subtype stored in its own collection.
+   - **Evidence:** `ReferenceTargetCollectionTests` has 15 cases. With the call disabled, the 5 refusal
+     cases failed and the 10 legitimate-save cases passed: target type, the HTTP `JsonElement` shapes,
+     odd id prefix, subtype, stale CLR type, array, AsDetail row, value object, kept dangling id,
+     clearing. With it on, all 15 passed. So did `CrossCollectionBindingTests`,
+     `MultiReferenceIntegrationTests`, `ReferenceAddNewEndpointTests`,
+     `AsDetailRowIdentityRoundTripTests` and `BreadcrumbResolverTests`: 72/72.
+
+**Not changed:** the untyped branch of `LoadManyAsync` (a JSON-only virtual type with no CLR type).
+There, a foreign document materializes as its own type and is judged under its own right and row
+rule, so the label is the wrong one but nothing crosses a boundary.
+
+**A target stored by the same request, not yet committed** (an Actions class creating the person and
+then the car, or a write batch) is judged from the request session. The side session would not see it
+and would have refused the save. Pinned by
+`A_reference_to_a_document_this_request_stored_but_has_not_committed_saves`, which brings the class to
+16/16. That test was written with the fix and was not run against the side-session-only version.
+
+---
+
 ## Sequencing & risk notes
 
 - Phases 1→4 are strictly ordered (metadata → parser → resolver → wiring). Phase 5 can start once Phase 4 lands on a branch. Phase 0 de-risks the two load-batching assumptions the whole design rests on — **do not skip it**.

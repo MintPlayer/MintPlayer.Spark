@@ -360,10 +360,13 @@ describe('SparkPoFormComponent', () => {
       ],
     });
 
+    const rowRights = (canEdit: boolean) => ({ canQuery: true, canRead: true, canCreate: true, canEdit, canDelete: true });
+
     it('onAsDetailReorder moves a row to the new index in formData', async () => {
       const { fixture, component } = createComponent();
       await setEntityType(fixture, personType);
       const steps = attr({ name: 'Steps', dataType: 'AsDetail', isArray: true, isSortable: true });
+      component.asDetailPermissions.set({ Steps: rowRights(true) });
       component.formData.set({ Steps: [{ Label: 'a' }, { Label: 'b' }, { Label: 'c' }] });
 
       component.onAsDetailReorder(steps, { previousIndex: 2, currentIndex: 0 } as any);
@@ -382,6 +385,33 @@ describe('SparkPoFormComponent', () => {
 
       // Reference is untouched — no needless re-emit / change-flag.
       expect(component.formData()['Steps']).toBe(before);
+    });
+
+    // Reordering needs the row type's Edit right, the same fail-closed gate as the cells.
+    it('onAsDetailReorder is a no-op when the caller may not edit the rows', async () => {
+      const { fixture, component } = createComponent();
+      await setEntityType(fixture, personType);
+      const steps = attr({ name: 'Steps', dataType: 'AsDetail', isArray: true, isSortable: true });
+      component.asDetailPermissions.set({ Steps: rowRights(false) });
+      const before = [{ Label: 'a' }, { Label: 'b' }];
+      component.formData.set({ Steps: before });
+
+      component.onAsDetailReorder(steps, { previousIndex: 1, currentIndex: 0 } as any);
+
+      expect(component.formData()['Steps']).toBe(before);
+    });
+
+    it.each(['inline', 'modal'] as const)('renders no %s drag handle when the caller may not edit the rows', async (editMode) => {
+      const { fixture, component } = createComponent({
+        getEntityTypes: vi.fn().mockResolvedValue([sortableParent(true, editMode), stepType]),
+        getPermissions: vi.fn().mockResolvedValue(rowRights(false)),
+      });
+      component.formData.set({ Steps: [{ Label: 'a' }, { Label: 'b' }] });
+      await setEntityType(fixture, sortableParent(true, editMode));
+      fixture.detectChanges();
+
+      expect(fixture.nativeElement.querySelectorAll('.bi-grip-vertical').length).toBe(0);
+      expect(fixture.nativeElement.querySelectorAll('.cdk-drag-handle').length).toBe(0);
     });
 
     // CDK puts the floating preview at the end of <body>, outside every component, so it has to be a <bs-table>:

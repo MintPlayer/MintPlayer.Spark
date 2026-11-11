@@ -98,7 +98,7 @@ internal sealed partial class CustomActionExecution : ICustomActionExecution
     [Inject] private readonly IDatabaseAccess databaseAccess;
     // The request-scoped session — the same instance IDatabaseAccess uses, so an IgnoreMaxRequests
     // scope opened here covers the row-gated loads below.
-    [Inject] private readonly Raven.Client.Documents.Session.IAsyncDocumentSession session;
+    [Inject] private readonly Abstractions.Storage.ISparkSession session;
     [Inject] private readonly IActionsCatalogueLoader catalogueLoader;
     [Inject] private readonly IQueryLoader queryLoader;
     [Inject] private readonly ISparkSelectionResolver selectionResolver;

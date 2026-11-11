@@ -4,7 +4,7 @@ using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Authorization;
 using MintPlayer.Spark.Abstractions.Reflection;
 using MintPlayer.Spark.Services;
-using Raven.Client.Documents;
+using MintPlayer.Spark.Abstractions.Storage;
 using MintPlayer.Spark.Abstractions.Prerendering;
 
 namespace MintPlayer.Spark.Endpoints.ProgramUnits;
@@ -23,7 +23,7 @@ internal sealed partial class GetProgramUnits : IGetEndpoint
     [Inject] private readonly IModelLoader modelLoader;
     [Inject] private readonly IQueryLoader queryLoader;
     [Inject] private readonly ISparkContextResolver sparkContextResolver;
-    [Inject] private readonly IDocumentStore documentStore;
+    [Inject] private readonly ISparkStore store;
     [Inject] private readonly ILogger<GetProgramUnits> logger;
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
@@ -84,7 +84,7 @@ internal sealed partial class GetProgramUnits : IGetEndpoint
 
         try
         {
-            using var session = documentStore.OpenAsyncSession();
+            using var session = store.OpenSession();
             var sparkContext = sparkContextResolver.ResolveContext(session);
             if (sparkContext is null) return map;
 

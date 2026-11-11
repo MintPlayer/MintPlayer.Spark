@@ -1,0 +1,74 @@
+:host {
+  display: block;
+}
+
+// Capped at 60vh tall; the width follows from the 16:9 ratio, so a capped header stays 16:9 and .mx-auto centres it.
+.song-header {
+  position: relative;
+  display: block;
+  width: 100%;
+  max-width: calc(60vh * 16 / 9);
+  aspect-ratio: 16 / 9;
+  margin-bottom: 1rem;
+  overflow: hidden;
+  border-radius: 0.5rem;
+  background: var(--bs-secondary-bg, #222);
+}
+
+// The whole thumbnail is the play trigger (a button), with the round play button as its cue.
+.song-header-trigger {
+  padding: 0;
+  border: 0;
+  cursor: pointer;
+
+  &:focus-visible {
+    outline: 3px solid var(--bs-primary, #0d6efd);
+    outline-offset: 3px;
+  }
+
+  &:hover .song-header-play,
+  &:focus-visible .song-header-play {
+    color: var(--bs-primary, #0d6efd);
+    transform: translate(-50%, -50%) scale(1.08);
+  }
+}
+
+// YouTube's hqdefault is 4:3 with letterbox bars; cover crops them away.
+.song-header-image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+// D21: a neutral round button that scales with the image, with the accent colour on hover and focus.
+.song-header-play {
+  position: absolute;
+  inset: 50% auto auto 50%;
+  width: clamp(3rem, 14%, 6rem);
+  aspect-ratio: 1;
+  color: rgba(0, 0, 0, 0.6);
+  transform: translate(-50%, -50%);
+  transition: color 0.15s ease-in-out, transform 0.15s ease-in-out;
+  pointer-events: none;
+
+  svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+
+    circle {
+      fill: currentColor;
+    }
+
+    path {
+      fill: #fff;
+    }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .song-header-play {
+    transition: none;
+  }
+}

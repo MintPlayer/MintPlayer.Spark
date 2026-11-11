@@ -57,7 +57,8 @@ public class HRCreatePersonTests
                 await Task.Delay(100);
             }
 
-            var id = Uri.UnescapeDataString(page.Url.TrimEnd('/').Split('/')[^1]);
+            // /po/person/{id}/{slug} (#602): the id is the third segment, not the last.
+            var id = Uri.UnescapeDataString(new Uri(page.Url).AbsolutePath.Split('/')[3]);
             var stored = await host.LoadAsync<StoredPerson>(id);
             stored.Should().NotBeNull($"the person '{id}' must be stored");
             stored!.FirstName.Should().Be("Jane");

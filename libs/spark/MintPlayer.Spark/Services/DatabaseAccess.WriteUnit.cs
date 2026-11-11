@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions.Storage;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Interceptors;
 using MintPlayer.Spark.Exceptions;
@@ -90,8 +91,8 @@ internal partial class DatabaseAccess : ISparkWriteUnit
             // Nothing of the batch may reach a later SaveChangesAsync in this request. Clear, not the per-operation
             // snapshot eviction: a delete is recorded as a deferred command, which a session cannot withdraw on its
             // own (SessionWriteSnapshot's caveat), and the batch owns the request's writes while it is open.
-            session.Advanced.Clear();
-            if (ex is Raven.Client.Exceptions.ConcurrencyException)
+            session.Clear();
+            if (ex is SparkStoreConcurrencyException)
                 throw new SparkConcurrencyException(ex);
             throw;
         }

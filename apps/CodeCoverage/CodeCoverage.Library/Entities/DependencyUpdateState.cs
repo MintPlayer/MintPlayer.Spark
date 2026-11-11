@@ -163,6 +163,10 @@ public class DependencyApproval
     public DateTime ApprovedAtUtc { get; set; }
 
     public long? CommentId { get; set; }
+
+    /// <summary>#606 D3: <c>approve platform:&lt;sdk&gt; … --force</c>, which takes an SDK move whose companions have no
+    /// release at the new major yet.</summary>
+    public bool Force { get; set; }
 }
 
 /// <summary>

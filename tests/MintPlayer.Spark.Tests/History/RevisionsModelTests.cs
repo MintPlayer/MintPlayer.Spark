@@ -53,6 +53,6 @@ public class RevisionsModelTests
 
     private sealed class HiSyncContext : SparkContext
     {
-        public Raven.Client.Documents.Linq.IRavenQueryable<HiSyncProbe> Probes => Session.Query<HiSyncProbe>();
+        public IQueryable<HiSyncProbe> Probes => Session.Query<HiSyncProbe>();
     }
 }

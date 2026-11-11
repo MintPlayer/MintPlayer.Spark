@@ -21,10 +21,14 @@ public static class SparkBuilderReplicationExtensions
     /// nothing, silently and with no error.
     /// </para>
     /// </summary>
+    [global::MintPlayer.Spark.Abstractions.Storage.SparkRequiresStore("Spark.Replication", global::MintPlayer.Spark.Abstractions.Storage.SparkStoreCapabilities.Subscriptions, Provider = global::MintPlayer.Spark.Abstractions.Storage.SparkStoreProviders.RavenDb)]
     public static ISparkBuilder AddReplication(
         this ISparkBuilder builder,
         Action<SparkReplicationOptions> configure)
     {
+        // #551 D13: ETL and its subscriptions are RavenDB's.
+        global::MintPlayer.Spark.Abstractions.Storage.SparkStoreRequirementExtensions.RequireStore(builder, "Spark.Replication", global::MintPlayer.Spark.Abstractions.Storage.SparkStoreCapabilities.Subscriptions, global::MintPlayer.Spark.Abstractions.Storage.SparkStoreProviders.RavenDb);
+
         var section = builder.Configuration?.GetSection(ConfigurationSection);
 
         builder.Services.AddSparkReplication(options =>

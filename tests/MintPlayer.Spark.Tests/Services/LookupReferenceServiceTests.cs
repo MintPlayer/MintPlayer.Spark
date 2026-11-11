@@ -17,7 +17,7 @@ public class LookupReferenceServiceTests : SparkTestDriver
 {
     private readonly ILookupReferenceDiscoveryService _discovery = Substitute.For<ILookupReferenceDiscoveryService>();
 
-    private LookupReferenceService CreateService() => new(_discovery, Store);
+    private LookupReferenceService CreateService() => new(_discovery, Store.AsSparkStore());
 
     /// <summary>
     /// R2-L8 — LookupReferenceService.ValidateName rejects names whose shape would

@@ -1,3 +1,21 @@
+# MintPlayer dependency updates (added by the onboarding pull request). Every line is a default: uncomment to change it.
+# dependencies:
+#   enabled: true
+#   schedule: { frequency: weekly, weekday: monday, hour: 6 }   # in the account's time zone
+#   cooldown: 3d                     # third-party releases wait this long; may only lengthen the account's
+#   autoMerge:                       # the largest update merged through the merge queue without an approval
+#     default: minor
+#     "@angular/*": never            # never: every update waits for `approve <group>`
+#     maxCoverageDrop: 0.5           # percentage points
+#   rules:
+#     - match: ["some-package"]
+#       ignore: true
+#   migrate:                         # approved majors run a migration workflow after the apply
+#     - match: "@angular/core"
+#       onMajor: angular-migrate.yml
+#     - match: "nx"
+#       onMajor: nx-migrate.yml
+
 # CodeCoverage's in-repository policy (coverage.mintplayer.com).
 #
 # `mergeQueue:` is read from the DEFAULT branch only (docs/coverage_merge_queue_PRD.md O16), so a pull
@@ -23,6 +41,8 @@ mergeQueue:
     - "**/App_Data/translations.json"
     - "**/App_Data/security.json"
     - "**/App_Data/Model/*.json"
+    # The layering goldens, rewritten by regenerate.yml's after-synchronize step (SPARK_UPDATE_GOLDEN=1).
+    - "tests/MintPlayer.Spark.Tests/Layering/Golden/*.golden.txt"
   # take-base for the wholly generated files (O1, O19): a conflict anywhere in them takes the base side and
   # the regenerate step rewrites them. These explicit rules come first; after them, keepBothDefaults (on
   # unless set to false, O35/O36) adds keep-both for **/*.json (json-no-duplicate-keys), ignore files,
@@ -32,6 +52,8 @@ mergeQueue:
     - path: "**/App_Data/modelHashes.json"
       strategy: take-base
     - path: "**/App_Data/securityPosture.txt"
+      strategy: take-base
+    - path: "tests/MintPlayer.Spark.Tests/Layering/Golden/*.golden.txt"
       strategy: take-base
 
 # Package versions (#153, docs/coverage_package_versioning_PRD.md D2): the versioning action in

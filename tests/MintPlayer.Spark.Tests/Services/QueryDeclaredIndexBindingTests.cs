@@ -27,7 +27,7 @@ public class QueryDeclaredIndexBindingTests : SparkTestDriver
 
     public class TestContext : SparkContext
     {
-        public IRavenQueryable<Commit> Commits => Session.Query<Commit>();
+        public IQueryable<Commit> Commits => Session.Query<Commit>();
     }
 
     /// <summary>The generic-surface index — the model-shaping default.</summary>

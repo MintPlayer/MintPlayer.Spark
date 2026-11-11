@@ -130,8 +130,8 @@ public class CustomQueryColumnFilterTests(CustomQueryColumnFilterTests.Host host
 
     public class ParcelContext : SparkContext
     {
-        public IRavenQueryable<Parcel> Parcels => Session.Query<Parcel>();
-        public IRavenQueryable<SecuredParcel> SecuredParcels => Session.Query<SecuredParcel>();
+        public IQueryable<Parcel> Parcels => Session.Query<Parcel>();
+        public IQueryable<SecuredParcel> SecuredParcels => Session.Query<SecuredParcel>();
     }
 
     private static EntityTypeFile ParcelModel() => new()

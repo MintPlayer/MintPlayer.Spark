@@ -3,7 +3,7 @@ using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Model;
 using MintPlayer.Spark.Abstractions.Reflection;
 using MintPlayer.Spark.Configuration;
-using Raven.Client.Documents.Session;
+using MintPlayer.Spark.Abstractions.Storage;
 using System.Collections;
 using System.Reflection;
 using System.Text;
@@ -88,7 +88,7 @@ internal interface IBreadcrumbResolver
     /// roots' own tokens. Referenced documents are always judged for <c>Read</c>.
     /// </param>
     Task<BreadcrumbResult> ResolveAsync(
-        IAsyncDocumentSession session, IReadOnlyList<object> roots, EntityTypeDefinition? rootDef, CancellationToken ct = default,
+        ISparkSession session, IReadOnlyList<object> roots, EntityTypeDefinition? rootDef, CancellationToken ct = default,
         string action = "Read");
 }
 
@@ -104,12 +104,15 @@ internal partial class BreadcrumbResolver : IBreadcrumbResolver
     [Inject] private readonly IAttributeRightsEnforcement? attributeRights = null;
     // The TARGET type's Read right (MCP PRD D19). Optional for the same reason; DI always supplies it.
     [Inject] private readonly Abstractions.Authorization.IPermissionService? permissionService = null;
+    // Optional for the same reason; the default is the registered implementation (see LoadManyAsync).
+    [Inject] private readonly ICollectionGuard? collectionGuard = null;
+    private static readonly ICollectionGuard DefaultCollectionGuard = new CollectionGuard();
 
     /// <summary>A blanking-set entry meaning "every field token": an unverifiable row shows none.</summary>
     private const string AllTokens = "*";
 
     public async Task<BreadcrumbResult> ResolveAsync(
-        IAsyncDocumentSession session, IReadOnlyList<object> roots, EntityTypeDefinition? rootDef, CancellationToken ct = default,
+        ISparkSession session, IReadOnlyList<object> roots, EntityTypeDefinition? rootDef, CancellationToken ct = default,
         string action = "Read")
     {
         if (roots.Count == 0)
@@ -316,7 +319,7 @@ internal partial class BreadcrumbResolver : IBreadcrumbResolver
     /// shown, as in redaction.
     /// </remarks>
     private async Task<Dictionary<string, IReadOnlySet<string>>> ResolveBlankedTokensAsync(
-        IAsyncDocumentSession session,
+        ISparkSession session,
         Dictionary<string, object> renderEntity,
         Dictionary<string, EntityTypeDefinition?> defById,
         HashSet<string> rootIds,
@@ -671,9 +674,18 @@ internal partial class BreadcrumbResolver : IBreadcrumbResolver
     /// rather than one per level; a page's references span a handful of types, and the alternative
     /// is a result that is wrong whenever the metadata is.
     /// </para>
+    /// <para>
+    /// A typed load does not check the collection either (#251): handed another collection's id —
+    /// and a reference value is a bare id string — it deserializes that document into the declared
+    /// type all the same. Its fields would then render through the declared type's template, under
+    /// the declared type's Read right and row rule rather than its own. So a document whose real
+    /// <c>@collection</c> is not that of the type it materialized as is dropped, exactly like a
+    /// dangling id. The type it materialized as, not the declared one, so a genuine subtype stored
+    /// in its own collection behind a base-typed edge stays valid.
+    /// </para>
     /// </summary>
-    private static async Task<Dictionary<string, object>> LoadManyAsync(
-        IAsyncDocumentSession session, Type? entityType, IReadOnlyCollection<string> ids, CancellationToken ct)
+    private async Task<Dictionary<string, object>> LoadManyAsync(
+        ISparkSession session, Type? entityType, IReadOnlyCollection<string> ids, CancellationToken ct)
     {
         // Document ids are case-insensitive, and an index-projected Id can differ in case from the
         // stored one — the same comparer RavenDB builds its own result with.
@@ -681,30 +693,12 @@ internal partial class BreadcrumbResolver : IBreadcrumbResolver
         if (ids.Count == 0)
             return result;
 
-        if (entityType is null)
-        {
-            foreach (var (id, doc) in await session.LoadAsync<object>(ids, ct))
-                if (doc is not null) result[id] = doc;
-            return result;
-        }
-
-        var loadMethod = ReflectionCache.GetOrAdd<(string Op, Type Entity), MethodInfo?>(
-            ("BreadcrumbResolver.SessionLoadManyAsync", entityType),
-            static k => typeof(IAsyncDocumentSession)
-                .GetMethod(nameof(IAsyncDocumentSession.LoadAsync), [typeof(IEnumerable<string>), typeof(CancellationToken)])
-                ?.MakeGenericMethod(k.Entity));
-
-        // Reflection applies no default arguments, so the token is passed explicitly.
-        if (loadMethod?.Invoke(session, [ids, ct]) is not Task task)
-            return result;
-
-        await task;
-
-        // Task<Dictionary<string, TEntity>>, copied into the object-valued shape callers hold.
-        if (task.GetCompletedTaskResult() is IDictionary loaded)
-            foreach (DictionaryEntry entry in loaded)
-                if (entry.Value is not null)
-                    result[(string)entry.Key] = entry.Value;
+        // An untyped load has no declared type to hold the document to; a typed one is checked against
+        // the collection of the type it materialized as (#251).
+        var guard = entityType is null ? null : collectionGuard ?? DefaultCollectionGuard;
+        foreach (var (id, doc) in await session.LoadAsync(entityType ?? typeof(object), ids, ct))
+            if (doc is not null && (guard is null || guard.BelongsToAuthorizedCollection(session, doc, doc.GetType())))
+                result[id] = doc;
 
         return result;
     }

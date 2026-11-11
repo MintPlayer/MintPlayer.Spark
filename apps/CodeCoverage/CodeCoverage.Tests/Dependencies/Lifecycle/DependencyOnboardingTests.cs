@@ -177,7 +177,7 @@ public class DependencyOnboardingTests : CoverageRavenTest
 
         var yml = h.Writer.Requests("files").Single().Files!.Single(f => f.Path == "coverage.yml").Content!;
         // #571 M10a: each section in alphabetical order, the commented dependencies first, the owner's gate untouched.
-        yml.Should().EndWith("#       onMajor: nx-migrate.yml\n\ngate:\n  patchTarget: 80\n\n"
+        yml.Should().EndWith("[] turns them off\n\ngate:\n  patchTarget: 80\n\n"
             + "# The merge queue (added by the onboarding pull request): dependency pull requests within your thresholds merge through\n"
             + "# it, and your own pull requests can use it too (label `merge-queue`, or comment `/queue`).\nmergeQueue:\n  enabled: true\n");
         yml.Should().StartWith("# MintPlayer dependency updates");
@@ -213,6 +213,28 @@ public class DependencyOnboardingTests : CoverageRavenTest
         (await h.RunAsync()).FileMergeQueue.Should().Be("disabled");
     }
 
+    /// <summary>
+    /// #613 item 6: mintplayer-ng-video-player #109's master required GitHub's own merge queue, which the bot's cannot share
+    /// (D8): <c>/queue</c> and <c>gh pr merge --squash</c> were both refused. The onboarding pull request says so up front.
+    /// </summary>
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Item613_a_default_branch_on_githubs_merge_queue_is_named_in_the_onboarding_pull_request(bool githubQueue)
+    {
+        var h = await OnboardableAsync(yml: "gate:\n  patchTarget: 80\n");
+        h.Queue.Rules = h.Queue.Rules with { HasNativeMergeQueue = githubQueue };
+
+        await h.SignalAsync(Onboard);
+
+        var body = h.Updates.Created.Should().ContainSingle().Which.Body;
+        if (githubQueue)
+            body.Should().Contain(DependencyOnboarding.GitHubMergeQueueNote);
+        else
+            body.Should().NotContain("GitHub's own merge queue");
+        body.Should().Contain(DependencyOnboarding.ApprovalNote, "#613 item 7: a bot pull request needs a writer's approval before /queue");
+    }
+
     [Theory]
     [InlineData("mergeQueue:\n  enabled: true\n", true)]
     [InlineData("gate: {}\nmergeQueue: { enabled: false }\n", true)]
@@ -221,6 +243,25 @@ public class DependencyOnboardingTests : CoverageRavenTest
     [InlineData(null, false)]
     public void Only_a_top_level_key_is_a_section(string? yml, bool expected)
         => DependencyOnboarding.HasTopLevelKey(yml, "mergeQueue").Should().Be(expected);
+
+    /// <summary>
+    /// #613 item 5: the commented section shows <c>platforms:</c> (mintplayer-ng-seo #28 had no word of it), and uncommented
+    /// it is valid and still the defaults: no track is pinned (the built-in track inherits the account's), and Node's
+    /// companions are the built-in list.
+    /// </summary>
+    [Fact]
+    public void The_commented_section_shows_platforms_and_uncommented_keeps_the_defaults()
+    {
+        var lines = DependencyOnboarding.CommentedSection.Split('\n');
+        var uncommented = string.Join('\n', lines.SkipWhile(l => l != "# dependencies:").Select(l => l.StartsWith("# ", StringComparison.Ordinal) ? l[2..] : l));
+
+        var parsed = CodeCoverage.Dependencies.DependenciesYml.Parse(uncommented);
+
+        parsed.Errors.Should().BeEmpty();
+        parsed.Section.Platform("dotnet").Should().BeEquivalentTo(CodeCoverage.Dependencies.DependencyPlatformSettings.Default);
+        parsed.Section.Platform("node").Track.Should().Be(EDependencyTrack.Inherit);
+        parsed.Section.Platform("node").Companions.Should().Equal("@types/node");
+    }
 
     // ── R24: offboarding ─────────────────────────────────────────────────────────────────────────
 

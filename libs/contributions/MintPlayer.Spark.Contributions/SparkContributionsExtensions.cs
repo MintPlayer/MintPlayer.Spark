@@ -35,9 +35,12 @@ public static class SparkContributionsExtensions
     /// <see cref="ContributionRights"/>), served by <c>POST /spark/po/revert-contribution</c>, which this maps.
     /// </para>
     /// </remarks>
+    [global::MintPlayer.Spark.Abstractions.Storage.SparkRequiresStore("Spark.Contributions", Provider = global::MintPlayer.Spark.Abstractions.Storage.SparkStoreProviders.RavenDb)]
     public static ISparkBuilder AddContributions(this ISparkBuilder builder, params Assembly[] declaringAssemblies)
     {
         ArgumentNullException.ThrowIfNull(builder);
+        // #551 D13: contributions are kept and applied through RavenDB's own client.
+        global::MintPlayer.Spark.Abstractions.Storage.SparkStoreRequirementExtensions.RequireStore(builder, "Spark.Contributions", provider: global::MintPlayer.Spark.Abstractions.Storage.SparkStoreProviders.RavenDb);
         foreach (var assembly in declaringAssemblies)
             ContributionCatalog.EnsureInitialized(assembly);
         ContributionCatalog.EnsureEntryAssembliesInitialized();

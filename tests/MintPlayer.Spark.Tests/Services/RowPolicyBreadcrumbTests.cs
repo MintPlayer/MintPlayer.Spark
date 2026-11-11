@@ -140,7 +140,7 @@ public class RowPolicyBreadcrumbTests : SparkTestDriver
         using var session = Store.OpenAsyncSession();
         var spots = (await session.LoadAsync<BpSpot>(Enumerable.Range(0, 5).Select(i => $"spots/{i}"))).Values.Cast<object>().ToList();
 
-        var result = await resolver.ResolveAsync(session, spots, spot);
+        var result = await resolver.ResolveAsync(session.AsSparkSession(), spots, spot);
 
         result.Get("spots/0").Should().Be("CAR-0 (P0) (0,0)", "nothing hides this chain");
         result.Get("cars/1").Should().Be("CAR-1 (—)", "the soft-deleted driver is hidden by a filter policy");
@@ -159,7 +159,7 @@ public class RowPolicyBreadcrumbTests : SparkTestDriver
         var spots = (await session.LoadAsync<BpSpot>(Enumerable.Range(0, n).Select(i => $"spots/{i}"))).Values.Cast<object>().ToList();
 
         var before = session.Advanced.NumberOfRequests;
-        await resolver.ResolveAsync(session, spots, spot);
+        await resolver.ResolveAsync(session.AsSparkSession(), spots, spot);
         var added = session.Advanced.NumberOfRequests - before;
 
         added.Should().Be(2, "one batched load per breadcrumb level (cars, then people) — policies add no request");

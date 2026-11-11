@@ -17,7 +17,7 @@ namespace MintPlayer.Spark.SourceGenerators.CodeFixes;
 
 /// <summary>
 /// SPARK056: adds the entity root the reference resolves through (<c>docs/default_index_PRD.md</c>, D8) —
-/// <c>public IRavenQueryable&lt;T&gt; {Plural} =&gt; Session.Query&lt;T&gt;();</c> — to the context, written the way the
+/// <c>public IQueryable&lt;T&gt; {Plural} =&gt; Session.Query&lt;T&gt;();</c> — to the context, written the way the
 /// app contexts write theirs, so the generator classifies it as the plain root (SP3).
 /// </summary>
 /// <remarks>
@@ -29,7 +29,7 @@ namespace MintPlayer.Spark.SourceGenerators.CodeFixes;
 [ExportCodeFixProvider(LanguageNames.CSharp, Name = nameof(MissingReferenceRootCodeFixProvider)), Shared]
 public sealed class MissingReferenceRootCodeFixProvider : CodeFixProvider
 {
-    private const string RavenLinqNamespace = "Raven.Client.Documents.Linq";
+    private const string LinqNamespace = "System.Linq";
 
     public override ImmutableArray<string> FixableDiagnosticIds { get; } = ImmutableArray.Create("SPARK056");
 
@@ -77,15 +77,15 @@ public sealed class MissingReferenceRootCodeFixProvider : CodeFixProvider
         var memberName = FreeName(contextType, IndexNaming.Pluralize(entity.Name));
 
         var property = (MemberDeclarationSyntax)SyntaxFactory.ParseMemberDeclaration(
-            $"public IRavenQueryable<{entity.Name}> {memberName} => Session.Query<{entity.Name}>();")!;
+            $"public IQueryable<{entity.Name}> {memberName} => Session.Query<{entity.Name}>();")!;
         property = property.WithAdditionalAnnotations(Formatter.Annotation);
 
         // After the context's last root, so the new one reads as one of them; otherwise first.
         var classDeclaration = target.Syntax;
         var lastRoot = classDeclaration.Members
             .OfType<PropertyDeclarationSyntax>()
-            .LastOrDefault(p => p.Type is GenericNameSyntax { Identifier.ValueText: "IRavenQueryable" }
-                || (p.Type is QualifiedNameSyntax { Right: GenericNameSyntax { Identifier.ValueText: "IRavenQueryable" } }));
+            .LastOrDefault(p => p.Type is GenericNameSyntax { Identifier.ValueText: "IQueryable" }
+                || (p.Type is QualifiedNameSyntax { Right: GenericNameSyntax { Identifier.ValueText: "IQueryable" } }));
         var members = classDeclaration.Members;
         var index = lastRoot is null ? 0 : members.IndexOf(lastRoot) + 1;
         var newClass = classDeclaration.WithMembers(members.Insert(index, property));
@@ -94,7 +94,7 @@ public sealed class MissingReferenceRootCodeFixProvider : CodeFixProvider
         if (root is not CompilationUnitSyntax unit) return null;
 
         unit = unit.ReplaceNode(classDeclaration, newClass);
-        unit = AddUsing(unit, RavenLinqNamespace);
+        unit = AddUsing(unit, LinqNamespace);
 
         var contextNamespace = contextType.ContainingNamespace?.ToDisplayString() ?? string.Empty;
         var entityNamespace = entity.ContainingNamespace is { IsGlobalNamespace: false } ns ? ns.ToDisplayString() : null;

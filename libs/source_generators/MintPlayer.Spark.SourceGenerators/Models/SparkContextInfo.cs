@@ -6,7 +6,7 @@ namespace MintPlayer.Spark.SourceGenerators.Models;
 
 /// <summary>
 /// The application's <c>SparkContext</c>, so query roots can be contributed to it — the
-/// <c>IRavenQueryable&lt;VCar&gt; VCars =&gt; Session.Query&lt;VCar, Cars_Overview&gt;()</c> members that Fleet
+/// <c>IQueryable&lt;VCar&gt; VCars =&gt; Session.Query&lt;VCar, Cars_Overview&gt;()</c> members that Fleet
 /// and HR write by hand today — and its plain entity roots marked (<c>docs/default_index_PRD.md</c>, D6).
 /// </summary>
 [GenerateEquality]
@@ -35,7 +35,7 @@ public partial class SparkContextInfo
     public List<string> TakenMemberNames { get; set; } = new();
 
     /// <summary>
-    /// The <c>T</c> of every <c>IRavenQueryable&lt;T&gt;</c> property the context already has, own or inherited,
+    /// The <c>T</c> of every <c>IQueryable&lt;T&gt;</c> property the context already has, own or inherited,
     /// <c>global::</c>-prefixed. A view already exposed (by hand, or by a base context's own generator run) gets no
     /// second root.
     /// </summary>

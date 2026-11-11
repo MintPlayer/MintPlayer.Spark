@@ -19,6 +19,7 @@ internal sealed partial class SparkSitemapReader
     [Inject] private readonly IModelLoader models;
     [Inject] private readonly IQueryLoader queries;
     [Inject] private readonly SparkSitemapOptions options;
+    [Inject] private readonly ICultureLoader cultures;
 
     /// <summary>One sitemap per <see cref="SparkSitemapXml.PageSize"/> readable rows of each indexable type's list.</summary>
     public Task<SitemapIndex> IndexAsync(HttpContext context)
@@ -50,9 +51,12 @@ internal sealed partial class SparkSitemapReader
             if (result is null)
                 return null;
             var origin = Origin(context);
+            var culture = cultures.GetCulture();
             return new UrlSet(result.Items
                 .Where(item => match.Type.Seo!.IndexableWhen is not { } attribute || SparkSitemapXml.IsTrue(item.Values.FirstOrDefault(v => v.Key == attribute)?.Value))
-                .Select(item => new Url { Loc = SparkSitemapXml.DetailUrl(origin, typeSegment, item) }));
+                .Select(item => SparkSitemapXml.DetailUrl(origin, item))
+                .OfType<string>()
+                .SelectMany(loc => SparkSitemapXml.LanguageUrls(loc, culture)));
         });
 
     private IEnumerable<(EntityTypeDefinition Type, SparkQuery Query)> IndexableLists()
@@ -63,7 +67,7 @@ internal sealed partial class SparkSitemapReader
             .Select(l => (l.Type, l.Query!));
 
     /// <summary>The type's segment of a page URL, as the app's links write it: the alias, else the id.</summary>
-    private static string TypeSegment(EntityTypeDefinition type) => SparkEntityLinks.TypeSegment(type);
+    private static string TypeSegment(EntityTypeDefinition type) => SparkEntityLinks.TypeSegmentOf(type);
 
     private static string Origin(HttpContext context)
         => $"{context.Request.Scheme}://{context.Request.Host}{context.Request.PathBase}";

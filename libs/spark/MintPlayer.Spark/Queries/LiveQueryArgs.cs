@@ -1,5 +1,5 @@
 using MintPlayer.Spark.Abstractions;
-using Raven.Client.Documents.Session;
+using MintPlayer.Spark.Abstractions.Storage;
 
 namespace MintPlayer.Spark.Queries;
 
@@ -42,7 +42,7 @@ public sealed class LiveQueryArgs
     /// A session for the method's own reads, held for the stream's life. Its request count is uncapped: a
     /// socket open for minutes is not one request. The framework's per-batch reads use their own sessions.
     /// </summary>
-    public required IAsyncDocumentSession Session { get; init; }
+    public required ISparkSession Session { get; init; }
 
     /// <summary>Cancelled when the viewer unsubscribes, changes page/sort/search, or disconnects.</summary>
     public required CancellationToken CancellationToken { get; init; }

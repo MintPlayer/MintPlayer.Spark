@@ -5,7 +5,7 @@ import { runApply } from './apply/apply';
 import { githubActionYmlFetcher } from './lookup/interfaceDiff';
 import { runLookup } from './lookup/lookup';
 import { runMigrate, type MigratePackage } from './migrate/migrate';
-import { realFetcher } from './platform/feeds';
+import { parsePlatformTable } from './platform/feeds';
 import { realExec, type Exec } from './util/exec';
 
 export interface Inputs {
@@ -17,6 +17,8 @@ export interface Inputs {
   feedSecrets: boolean;
   migrateTool: string;
   migratePackages: string;
+  /** lookup: the bot's channel table (#606 D9), raw JSON. */
+  platforms: string;
 }
 
 const SHA = /^[0-9a-f]{40}$/;
@@ -33,6 +35,7 @@ export function readInputs(env: NodeJS.ProcessEnv = process.env): Inputs {
     feedSecrets: get('feed-secrets') === 'true',
     migrateTool: get('migrate-tool'),
     migratePackages: get('migrate-packages'),
+    platforms: get('platforms'),
   };
 }
 
@@ -68,7 +71,7 @@ export async function runMode(inputs: Inputs, exec: Exec = realExec, log: (m: st
         outDir,
         workDir,
         expectedSha: requireSha('expected-sha', inputs.expectedSha),
-        fetcher: realFetcher,
+        platforms: parsePlatformTable(inputs.platforms),
         fetchActionYml: githubActionYmlFetcher(process.env['INPUT_GITHUB-TOKEN'] || undefined),
         githubTokenEnv: process.env['INPUT_GITHUB-TOKEN'] ? 'INPUT_GITHUB-TOKEN' : undefined,
         hostRulesEnv: process.env['INPUT_HOST-RULES'] ? 'INPUT_HOST-RULES' : undefined,

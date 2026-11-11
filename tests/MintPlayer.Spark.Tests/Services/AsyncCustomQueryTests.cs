@@ -83,8 +83,8 @@ public class AsyncCustomQueryTests(AsyncCustomQueryTests.SeededCrews host)
 
     public class TestContext : SparkContext
     {
-        public IRavenQueryable<Crew> Crews => Session.Query<Crew>();
-        public IRavenQueryable<Squad> Squads => Session.Query<Squad>();
+        public IQueryable<Crew> Crews => Session.Query<Crew>();
+        public IQueryable<Squad> Squads => Session.Query<Squad>();
     }
 
     /// <summary>

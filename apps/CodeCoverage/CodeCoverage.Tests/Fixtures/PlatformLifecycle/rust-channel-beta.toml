@@ -1,0 +1,6 @@
+manifest-version = "2"
+date = "2026-11-08"
+
+[pkg.rust]
+version = "1.100.0-beta.13 (3b0202dcd 2026-11-07)"
+git_commit_hash = "3b0202dcde0ac75d57351de7b10dfa396747bd5e"

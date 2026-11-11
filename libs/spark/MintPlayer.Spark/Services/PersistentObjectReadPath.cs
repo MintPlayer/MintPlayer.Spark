@@ -28,6 +28,7 @@ internal sealed partial class PersistentObjectReadPath : IPersistentObjectReadPa
     [Inject] private readonly IRetryAccessor retryAccessor;
     [Inject] private readonly IDisabledActionsEvaluator disabledActions;
     [Inject] private readonly IRowPolicyRequestState rowPolicyRequestState;
+    [Inject] private readonly MintPlayer.Spark.Abstractions.Links.ISparkEntityLinks links;
 
     public async Task<PersistentObject?> LoadAsync(PersistentObjectReferenceRequest request, CancellationToken cancellationToken)
     {
@@ -78,6 +79,10 @@ internal sealed partial class PersistentObjectReadPath : IPersistentObjectReadPa
             // read-only — before OnLoadAsync saw it, and the boundary net checks it on the way out.
             // This is also what the M1c conflict dialog re-fetches, so a removed attribute can never
             // reach it.
+            //
+            // The canonical page path (#602), after OnLoadAsync and every presentation step, so it carries the
+            // breadcrumb the caller is shown. The prerender's 301 compares the request path against it.
+            obj.Href = links.DetailPath(obj);
             return obj;
         }
         catch (SparkAccessDeniedException)

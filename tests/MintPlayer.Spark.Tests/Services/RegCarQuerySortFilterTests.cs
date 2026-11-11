@@ -132,7 +132,7 @@ public class RegCarQuerySortFilterTests(RegCarQuerySortFilterTests.SeededRegCars
 
     public class RegContext : SparkContext
     {
-        public IRavenQueryable<RegCar> RegCars => Session.Query<RegCar>();
+        public IQueryable<RegCar> RegCars => Session.Query<RegCar>();
     }
 
     /// <summary>

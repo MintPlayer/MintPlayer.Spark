@@ -30,6 +30,11 @@ on:
       - 'libs/spark/MintPlayer.Spark/**'
       - 'libs/spark/MintPlayer.Spark.SafeHttp/**'
       - 'libs/spark/MintPlayer.Spark.Abstractions/**'
+      - 'libs/spark/MintPlayer.Spark.RavenDB/**'
+      - 'libs/model/MintPlayer.Spark.Model/**'
+      - 'libs/mcp/MintPlayer.Spark.Mcp/**'
+      - 'libs/identity_provider/MintPlayer.Spark.IdentityProvider/**'
+      - 'libs/authorization/MintPlayer.Spark.Authorization.Abstractions/**'
       - 'libs/attributes/MintPlayer.Spark.Attributes/**'
       - 'libs/authorization/MintPlayer.Spark.Authorization/**'
       - 'libs/boards/MintPlayer.Spark.Boards/**'
@@ -65,7 +70,7 @@ env:
   IMAGE_NAME: mintplayer/codecoverage
   APP_NAME: code-coverage
   NX_SELF_HOSTED_REMOTE_CACHE_SERVER: ${{ secrets.NX_CACHE_SERVER }}
-  NX_SELF_HOSTED_REMOTE_CACHE_ACCESS_TOKEN: ${{ (github.event_name == 'push' && github.ref_name == github.event.repository.default_branch) && secrets.NX_CACHE_RW_TOKEN || secrets.NX_CACHE_RO_TOKEN }}
+  NX_SELF_HOSTED_REMOTE_CACHE_ACCESS_TOKEN: ${{ (github.event_name == 'push' && github.ref_name == github.event.repository.default_branch) && secrets.NX_CACHE_RW_TOKEN || '' }}
 
 jobs:
   build-and-push:

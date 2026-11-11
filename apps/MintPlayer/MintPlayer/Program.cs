@@ -2,6 +2,7 @@ using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.ResponseCompression;
 using MintPlayer;
 using MintPlayer.AspNetCore.SpaServices.Extensions;
+using MintPlayer.Media;
 using MintPlayer.Services;
 using MintPlayer.Spark;
 using MintPlayer.Spark.Authorization.Configuration;
@@ -25,6 +26,9 @@ var builder = WebApplication.CreateBuilder(args);
 // Spark:ForwardedHeaders in the deployment's environment, never from appsettings.json.
 builder.Services.AddSpark(builder.Configuration, spark =>
 {
+    // The store (#551): RavenDB, configured from Spark:RavenDb.
+    spark.UseRavenDb();
+
     spark.UseContext<MintPlayerContext>();
     spark.AddActions();
     spark.AddMigrations();
@@ -50,6 +54,8 @@ builder.Services.AddSpark(builder.Configuration, spark =>
     spark.AddExternalProviders(builder.Configuration);
 
     spark.AddMessaging();
+    // #601: MediaUrlsAddedRecipient resolves the songs' media thumbnails in the background.
+    spark.AddRecipients();
     spark.AddMailManager();
 
     spark.AddSoftDelete();
@@ -78,6 +84,7 @@ builder.Services.AddSpark(builder.Configuration, spark =>
 });
 
 builder.Services.AddScoped<MintPlayerAccess>();
+builder.Services.AddMediaThumbnails();
 // Liveness for the compose healthcheck and the deploy: no checks registered, so it depends on nothing that can be
 // misconfigured, and a bad secret cannot restart-loop the container.
 builder.Services.AddHealthChecks();

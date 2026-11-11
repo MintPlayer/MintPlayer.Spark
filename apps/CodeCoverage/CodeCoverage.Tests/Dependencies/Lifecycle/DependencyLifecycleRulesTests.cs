@@ -18,6 +18,7 @@ public class DependencyCommandParserTests
     [InlineData("unhold lodash", EDependencyCommand.Unhold, "lodash")]
     [InlineData("bisect", EDependencyCommand.Bisect, null)]
     [InlineData("refresh\r\n", EDependencyCommand.Refresh, null)]
+    [InlineData("approve platform:dotnet 11.0 --force", EDependencyCommand.Approve, "platform:dotnet 11.0 --force")] // #606 D3: the engine reads the flag
     public void A_command_is_the_first_word_of_the_first_line(string body, EDependencyCommand command, string? argument)
     {
         var parsed = DependencyCommandParser.Parse(body);
@@ -278,6 +279,67 @@ public class DependencyWorkflowGuardTests
     [InlineData("tools/action/action.yml", null, true)]
     public void R15_a_uses_edit_is_tested_only_by_a_workflow_that_runs_on_pull_request(string path, string? text, bool tested)
         => DependencyWorkflowGuard.RunsOnPullRequest(path, text).Should().Be(tested);
+
+    /// <summary>#606 D9: a dispatch with an undeclared input fails at GitHub, so a lookup workflow from before the table is named.</summary>
+    [Fact]
+    public void The_shipped_lookup_template_declares_every_dispatched_input()
+        => DependencyWorkflowGuard.MissingInputs(DependencyOnboarding.ReadTemplate("dependency-lookup.yml"), ["expected_sha", "run_id", "platforms"]).Should().BeEmpty();
+
+    [Theory]
+    [InlineData("on:\n  workflow_dispatch:\n    inputs:\n      expected_sha: { required: true }\n      run_id: { required: true }\njobs: {}\n", "platforms")]
+    [InlineData("on: workflow_dispatch\njobs: {}\n", "expected_sha,run_id,platforms")]
+    [InlineData("on:\n  workflow_dispatch:\njobs: {}\n", "expected_sha,run_id,platforms")]
+    [InlineData("on: [", "")] // not YAML: Refusal says why
+    public void An_outdated_workflow_names_the_inputs_it_lacks(string text, string missing)
+        => DependencyWorkflowGuard.MissingInputs(text, ["expected_sha", "run_id", "platforms"]).Should()
+            .Equal(missing.Split(',', StringSplitOptions.RemoveEmptyEntries));
+
+    /// <summary>#613 item 4: a custom <c>lookupWorkflow</c> has no template, so the bot offers no pull request for it.</summary>
+    [Fact]
+    public void A_workflow_without_a_template_gets_no_refresh()
+        => DependencyOnboarding.RefreshFiles(["my-lookup.yml"], null, DependencyOnboarding.ReadTemplate).Should().BeNull();
+
+    [Fact]
+    public void The_refresh_pull_request_says_why_and_who_approves_it()
+    {
+        var files = DependencyOnboarding.RefreshFiles(["dependency-lookup.yml"], "0123456789abcdef0123456789abcdef01234567", DependencyOnboarding.ReadTemplate)!;
+
+        var body = DependencyOnboarding.RefreshBody(files, "`dependency-lookup.yml` declares no `platforms` input", "0123456789abcdef0123456789abcdef01234567");
+
+        body.Should().StartWith(DependencyPullRequestBody.Marker)
+            .And.Contain("declares no `platforms` input")
+            .And.Contain("`.github/workflows/dependency-lookup.yml`")
+            .And.Contain("`0123456789ab`")
+            .And.EndWith(DependencyOnboarding.ApprovalNote);
+    }
+}
+
+/// <summary>#606 D4: a platform major in a repository that releases packages without release lines is called out.</summary>
+public class UnlinedProducerNoteTests
+{
+    private static DependencyReportGroup Group(string group, EUpdateLevel level, bool platform = true)
+        => new(group, level, AutoMerge: false, Approved: true, Security: false, MigrateWorkflow: null, platform, []);
+
+    private static DependencyRunReport Report(params DependencyReportGroup[] groups) => new() { Groups = [.. groups] };
+
+    [Fact]
+    public void A_platform_major_of_an_unlined_sdk_is_warned_about()
+    {
+        var run = new DependencyUpdateRun { FileUnlinedSdks = ["dotnet"] };
+
+        var notes = DependencyPullRequestBody.UnlinedProducerNotes(run, Report(Group("platform:dotnet 11.0", EUpdateLevel.Major), Group("platform:node 26", EUpdateLevel.Major)));
+
+        notes.Should().ContainSingle().Which.Should().Contain("`platform:dotnet 11.0`").And.Contain("dependencies.platforms.dotnet.strategy: add");
+    }
+
+    [Fact]
+    public void A_minor_platform_move_or_a_package_group_is_not()
+    {
+        var run = new DependencyUpdateRun { FileUnlinedSdks = ["python"] };
+
+        DependencyPullRequestBody.UnlinedProducerNotes(run, Report(Group("platform:python 3.15", EUpdateLevel.Minor), Group("python-deps", EUpdateLevel.Major, platform: false)))
+            .Should().BeEmpty();
+    }
 }
 
 /// <summary>R16: the onboarding pull request's content, on this repository's real #501 dependabot.yml.</summary>
@@ -285,7 +347,9 @@ public class OnboardingPrTests
 {
     private const string Sha = "0123456789abcdef0123456789abcdef01234567";
 
-    private static string RealDependabot() => File.ReadAllText(Path.Combine(DependencyTestKit.RepositoryRoot(), ".github", "dependabot.yml"));
+    /// <summary>Spark's own dependabot.yml as it was before #612 deleted it (the R16 saga tests read the same fixture).</summary>
+    private static string RealDependabot() => File.ReadAllText(Path.Combine(DependencyTestKit.RepositoryRoot(),
+        "apps", "CodeCoverage", "CodeCoverage.Tests", "Dependencies", "Lifecycle", "Fixtures", "dependabot-spark-before-612.yml"));
 
     [Fact]
     public void This_repositorys_dependabot_yml_loses_every_version_update_and_is_deleted()

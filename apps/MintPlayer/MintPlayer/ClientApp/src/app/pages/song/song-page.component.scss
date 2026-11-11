@@ -1,0 +1,16 @@
+:host {
+  display: block;
+}
+
+.song-actionbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0.5rem 0;
+}
+
+.song-loading {
+  display: flex;
+  justify-content: center;
+  padding: 3rem;
+}

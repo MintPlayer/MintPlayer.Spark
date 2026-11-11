@@ -62,6 +62,14 @@ internal interface IAttributeWriteShield
     Task<AttributeWriteShieldResult> ApplyAsync(
         PersistentObject posted, EntityTypeDefinition definition, Type entityType, object? stored,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The same drop for a type with no C# class (#551 M9), whose actions class stores it: the static rights
+    /// for <paramref name="verb"/> (<c>New</c> or <c>Edit</c>) only. There is no stored row for the framework to
+    /// judge, so the per-row hook does not apply.
+    /// </summary>
+    Task<AttributeWriteShieldResult> ApplyClasslessAsync(
+        PersistentObject posted, EntityTypeDefinition definition, string verb, CancellationToken cancellationToken = default);
 }
 
 /// <summary>What <see cref="IAttributeWriteShield.ApplyAsync"/> kept out of a save.</summary>
@@ -96,7 +104,17 @@ internal sealed partial class AttributeWriteShield : IAttributeWriteShield
     {
         var (always, unlessChanged) = await PerRowAsync(entityType, stored);
         var verb = stored is null ? SparkCoreActions.New : SparkCoreActions.Edit;
+        return await ApplyCoreAsync(posted, definition, stored, verb, always, unlessChanged, cancellationToken);
+    }
 
+    public Task<AttributeWriteShieldResult> ApplyClasslessAsync(
+        PersistentObject posted, EntityTypeDefinition definition, string verb, CancellationToken cancellationToken = default)
+        => ApplyCoreAsync(posted, definition, stored: null, verb, None, None, cancellationToken);
+
+    private async Task<AttributeWriteShieldResult> ApplyCoreAsync(
+        PersistentObject posted, EntityTypeDefinition definition, object? stored, string verb,
+        IReadOnlySet<string> always, IReadOnlySet<string> unlessChanged, CancellationToken cancellationToken)
+    {
         var refused = new List<string>();
         await ShieldAsync(
             posted, definition, stored, verb,

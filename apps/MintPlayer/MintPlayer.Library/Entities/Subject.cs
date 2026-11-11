@@ -14,8 +14,12 @@ public abstract partial class Subject : ISoftDeletable, IAuditable
     public string? Id { get; set; }
 
     /// <summary>Links to this subject elsewhere: YouTube, Spotify, Wikipedia, the official site.</summary>
-    /// <remarks>Detail pages only, so it is kept out of the list indexes.</remarks>
+    /// <remarks>
+    /// Detail pages only, so it is kept out of the list indexes. Ordered by the editor (drag to reorder, as on the
+    /// legacy song-edit page): the first playable medium is the one the song header plays.
+    /// </remarks>
     [IgnoreForIndex]
+    [Sortable]
     public List<Medium> Media { get; set; } = [];
 
     [Reference(typeof(Tag))]

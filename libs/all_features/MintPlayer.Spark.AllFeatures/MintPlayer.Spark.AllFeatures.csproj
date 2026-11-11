@@ -28,6 +28,7 @@
 	<!-- Reference all Spark packages (become transitive NuGet dependencies for consumers) -->
 	<ItemGroup>
 		<ProjectReference Include="..\..\spark\MintPlayer.Spark\MintPlayer.Spark.csproj" />
+		<ProjectReference Include="..\..\spark\MintPlayer.Spark.RavenDB\MintPlayer.Spark.RavenDB.csproj" />
 		<ProjectReference Include="..\..\authorization\MintPlayer.Spark.Authorization\MintPlayer.Spark.Authorization.csproj" />
 		<ProjectReference Include="..\..\messaging\MintPlayer.Spark.Messaging\MintPlayer.Spark.Messaging.csproj" />
 		<ProjectReference Include="..\..\replication\MintPlayer.Spark.Replication\MintPlayer.Spark.Replication.csproj" />

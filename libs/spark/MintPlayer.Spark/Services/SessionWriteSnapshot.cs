@@ -1,4 +1,4 @@
-using Raven.Client.Documents.Session;
+using MintPlayer.Spark.Abstractions.Storage;
 
 namespace MintPlayer.Spark.Services;
 
@@ -9,7 +9,7 @@ namespace MintPlayer.Spark.Services;
 /// </summary>
 /// <remarks>
 /// <para>
-/// Why a snapshot of <see cref="IAdvancedDocumentSessionOperations.GetTrackedEntities"/> and not the
+/// Why a snapshot of <see cref="ISparkSession.TrackedEntities"/> and not the
 /// session's events: <c>OnBeforeStore</c>/<c>OnBeforeDelete</c> fire inside <c>SaveChangesAsync</c>,
 /// which a refused operation never reaches, and nothing fires on <c>StoreAsync</c> or on mutating a
 /// loaded entity. The tracked-entity list is the session's own record of what the next
@@ -30,28 +30,27 @@ namespace MintPlayer.Spark.Services;
 /// </remarks>
 internal sealed class SessionWriteSnapshot
 {
-    private readonly IAsyncDocumentSession session;
+    private readonly ISparkSession session;
     private readonly HashSet<object> tracked = new(ReferenceEqualityComparer.Instance);
     private readonly HashSet<object> dirty = new(ReferenceEqualityComparer.Instance);
     private readonly HashSet<object> deleted = new(ReferenceEqualityComparer.Instance);
 
-    private SessionWriteSnapshot(IAsyncDocumentSession session)
+    private SessionWriteSnapshot(ISparkSession session)
     {
         this.session = session;
-        foreach (var info in session.Advanced.GetTrackedEntities().Values)
+        foreach (var info in session.TrackedEntities)
         {
-            if (info.Entity is not { } entity)
-                continue;
+            var entity = info.Entity;
             tracked.Add(entity);
             if (info.IsDeleted)
                 deleted.Add(entity);
-            else if (session.Advanced.HasChanged(entity))
+            else if (session.HasChanged(entity))
                 dirty.Add(entity);
         }
     }
 
     /// <summary>Records what <paramref name="session"/> tracks right now.</summary>
-    public static SessionWriteSnapshot Take(IAsyncDocumentSession session) => new(session);
+    public static SessionWriteSnapshot Take(ISparkSession session) => new(session);
 
     /// <summary>
     /// Evicts every entity the session started tracking, changed or deleted since the snapshot.
@@ -60,10 +59,9 @@ internal sealed class SessionWriteSnapshot
     public int EvictWrittenSince()
     {
         var evict = new List<object>();
-        foreach (var info in session.Advanced.GetTrackedEntities().Values)
+        foreach (var info in session.TrackedEntities)
         {
-            if (info.Entity is not { } entity)
-                continue;
+            var entity = info.Entity;
 
             if (!tracked.Contains(entity))
                 evict.Add(entity);
@@ -72,12 +70,12 @@ internal sealed class SessionWriteSnapshot
                 if (!deleted.Contains(entity))
                     evict.Add(entity);
             }
-            else if (!dirty.Contains(entity) && session.Advanced.HasChanged(entity))
+            else if (!dirty.Contains(entity) && session.HasChanged(entity))
                 evict.Add(entity);
         }
 
         foreach (var entity in evict)
-            session.Advanced.Evict(entity);
+            session.Evict(entity);
         return evict.Count;
     }
 }

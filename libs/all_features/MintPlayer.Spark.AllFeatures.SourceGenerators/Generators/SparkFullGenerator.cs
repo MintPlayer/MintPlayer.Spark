@@ -64,6 +64,15 @@ public class SparkFullGenerator : IncrementalGenerator
                         baseType = baseType.BaseType;
                     }
 
+                    if (global::MintPlayer.Spark.SourceGenerators.Generators.EntityRedirectFilter.IsRegistrable(classSymbol))
+                    {
+                        return new SparkFullDiscoveredType
+                        {
+                            Kind = "EntityRedirect",
+                            TypeName = string.Empty
+                        };
+                    }
+
                     // Check interfaces for ICustomAction and IRecipient<T>
                     foreach (var iface in classSymbol.AllInterfaces)
                     {

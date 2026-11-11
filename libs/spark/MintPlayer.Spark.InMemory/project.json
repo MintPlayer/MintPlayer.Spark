@@ -1,0 +1,11 @@
+{
+  "name": "MintPlayer.Spark.InMemory",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "namedInputs": {
+    "production": [
+      "default",
+      "!{projectRoot}/**/bin/**/*",
+      "!{projectRoot}/**/obj/**/*"
+    ]
+  }
+}

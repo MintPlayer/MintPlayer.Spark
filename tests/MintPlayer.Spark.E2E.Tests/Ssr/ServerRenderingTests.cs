@@ -35,7 +35,7 @@ public class ServerRenderingTests
         using var response = await client.GetAsync(SongPath);
         var html = await response.Content.ReadAsStringAsync();
 
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        response.StatusCode.Should().Be(HttpStatusCode.OK, "the page renders. Host log:\n{0}", _fixture.Host.RecentLog(120));
         html.Should().Contain(">A Sky Full of Stars - MintPlayer</title>", "the title is written on the server (D12). Host log:\n{0}", _fixture.Host.RecentLog(120));
         html.Should().Contain("Coldplay", "the artists' breadcrumbs are rendered, not left for the browser");
         html.Should().Contain("Avicii");
@@ -55,6 +55,40 @@ public class ServerRenderingTests
 
         response.StatusCode.Should().Be(HttpStatusCode.MovedPermanently);
         response.Headers.Location!.OriginalString.Should().EndWith($"/{MintPlayerTestHost.SongSlug}");
+    }
+
+    [Fact]
+    public async Task A_url_without_a_slug_is_a_301_to_the_canonical_one_keeping_the_query()
+    {
+        using var client = NewHttpClient();
+
+        // #602: the bare /po/{type}/{id} and the type's id instead of its alias are not the canonical page; ?lang stays.
+        using var response = await client.GetAsync($"/po/song/{Uri.EscapeDataString(MintPlayerTestHost.SongId)}?lang=nl");
+
+        response.StatusCode.Should().Be(HttpStatusCode.MovedPermanently);
+        response.Headers.Location!.OriginalString.Should().Be($"{SongPath}?lang=nl");
+    }
+
+    [Fact]
+    public async Task The_canonical_url_is_not_redirected()
+    {
+        using var client = NewHttpClient();
+
+        using var response = await client.GetAsync($"{SongPath}?lang=nl");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    [Fact]
+    public async Task A_missing_song_with_a_slug_is_not_redirected()
+    {
+        using var client = NewHttpClient();
+
+        // The slug of a denied or missing object is never revealed: the status, no Location.
+        using var response = await client.GetAsync($"/po/song/{Uri.EscapeDataString("Songs/e2e-missing")}/any-slug");
+
+        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+        response.Headers.Location.Should().BeNull();
     }
 
     [Fact]

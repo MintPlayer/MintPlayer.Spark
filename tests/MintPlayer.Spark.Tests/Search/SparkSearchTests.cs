@@ -31,7 +31,7 @@ public class SrchSongActions(IEntityMapper entityMapper) : DefaultPersistentObje
 
 public class SrchContext : SparkContext
 {
-    public IRavenQueryable<SrchSong> SrchSongs => Session.Query<SrchSong>();
+    public IQueryable<SrchSong> SrchSongs => Session.Query<SrchSong>();
 }
 
 /// <summary>

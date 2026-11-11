@@ -1,3 +1,4 @@
+import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { provideRouter, Router, Routes } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
@@ -68,7 +69,7 @@ async function setup(serviceOverrides: Partial<SparkService> = {}, config?: Spar
       provideRouter(routes),
       { provide: SparkService, useValue: service },
       // Echoes the key; the "changed by"/"changed at" keys also {user} and {time} slots so tests can see who and whether a time was shown.
-      { provide: SparkLanguageService, useValue: { t: (k: string) => k === 'common.conflictChangedByAt' ? `${k}({user}|{time})` : k.startsWith('common.conflictChangedBy') ? `${k}({user})` : k === 'common.conflictChangedAt' ? `${k}({time})` : k, resolve: (ts: any) => ts?.en ?? '' } },
+      { provide: SparkLanguageService, useValue: { language: signal('en'), defaultLanguage: signal('en'), languages: signal({}), t: (k: string) => k === 'common.conflictChangedByAt' ? `${k}({user}|{time})` : k.startsWith('common.conflictChangedBy') ? `${k}({user})` : k === 'common.conflictChangedAt' ? `${k}({time})` : k, resolve: (ts: any) => ts?.en ?? '' } },
       ...(config ? [{ provide: SPARK_CONFIG, useValue: config }] : []),
     ],
   });

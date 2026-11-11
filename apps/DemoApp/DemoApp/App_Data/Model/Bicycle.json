@@ -4,8 +4,6 @@
     "id": "86fa2120-c5c2-44e0-8b93-0493896aad6c",
     "name": "Bicycle",
     "clrType": "DemoApp.Library.Entities.Bicycle",
-    "queryType": "DemoApp.Indexes.VTwoWheeler",
-    "indexName": "TwoWheelers_Overview",
     "breadcrumb": "{Brand} {Model}",
     "tabs": [],
     "groups": [],
@@ -22,18 +20,6 @@
         "rules": []
       },
       {
-        "id": "34b7719f-9bb7-438d-b085-2d69c01360ff",
-        "name": "Details",
-        "dataType": "string",
-        "isRequired": false,
-        "isReadOnly": false,
-        "order": 4,
-        "isArray": false,
-        "inCollectionType": false,
-        "showedOn": "Query",
-        "rules": []
-      },
-      {
         "id": "41802a16-093b-471c-9a75-922504c395c5",
         "name": "FrameSize",
         "dataType": "number",
@@ -41,7 +27,6 @@
         "isReadOnly": false,
         "order": 3,
         "isArray": false,
-        "inQueryType": false,
         "showedOn": "PersistentObject",
         "rules": []
       },
@@ -71,7 +56,6 @@
         }
       ],
       "renderMode": "Pagination",
-      "indexName": "TwoWheelers_Overview",
       "entityType": "Bicycle"
     }
   ]

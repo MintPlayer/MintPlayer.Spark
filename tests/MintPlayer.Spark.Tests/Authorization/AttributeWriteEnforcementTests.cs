@@ -114,8 +114,8 @@ public sealed class WrPromptAction(IDatabaseAccess databaseAccess, IRetryAccesso
 
 public class WrContext : SparkContext
 {
-    public IRavenQueryable<WrItem> Items => Session.Query<WrItem>();
-    public IRavenQueryable<WrTag> Tags => Session.Query<WrTag>();
+    public IQueryable<WrItem> Items => Session.Query<WrItem>();
+    public IQueryable<WrTag> Tags => Session.Query<WrTag>();
 }
 
 /// <summary>

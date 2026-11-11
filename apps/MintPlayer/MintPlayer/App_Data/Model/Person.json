@@ -7,10 +7,6 @@
     "queryType": "MintPlayer.Indexes.VPerson",
     "indexName": "People_Overview",
     "breadcrumb": "{FullName}",
-    "search": {
-      "enabled": true,
-      "fields": ["FirstName", "LastName"]
-    },
     "seo": {
       "indexable": true,
       "schemaType": "Person",
@@ -18,6 +14,13 @@
         "birthDate": "Born",
         "deathDate": "Died"
       }
+    },
+    "search": {
+      "enabled": true,
+      "fields": [
+        "FirstName",
+        "LastName"
+      ]
     },
     "tabs": [],
     "groups": [],
@@ -152,6 +155,7 @@
         "order": 6,
         "asDetailType": "MintPlayer.Entities.Medium",
         "isArray": true,
+        "isSortable": true,
         "inQueryType": false,
         "showedOn": "PersistentObject",
         "rules": []

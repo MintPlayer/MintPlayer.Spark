@@ -66,6 +66,12 @@ function withoutTrailingComment(line: string): string {
   return line.trimEnd();
 }
 
+/** MintPlayer.Spark's own layering goldens (rewritten by regenerate.yml's after-synchronize step), whole lines. */
+const REPOSITORY_ONLY_ENTRIES = [
+  '\n    - "tests/MintPlayer.Spark.Tests/Layering/Golden/*.golden.txt"',
+  '\n    - path: "tests/MintPlayer.Spark.Tests/Layering/Golden/*.golden.txt"\n      strategy: take-base',
+];
+
 describe('the setup page\'s copied snippets', () => {
   it('show docs/code-coverage/templates/regenerate.yml byte for byte', async () => {
     // The snippet leaves out the file's final newline, so the code block ends on its last line.
@@ -79,10 +85,16 @@ describe('the setup page\'s copied snippets', () => {
   // Compared without comments: the page's comments leave out the plan's decision numbers on purpose, and no comment
   // changes what the queue reads. Every key, value, indent and line order must match, so a change to any of them, on
   // either side, fails.
+  // Except the entries only this repository has: the page is a copy-paste template for any repository, so it shows
+  // those as commented-out examples instead. Each must still be in coverage.yml, so a stale list fails too.
   it('show the mergeQueue: section of the repository\'s coverage.yml, with the same keys and values', async () => {
-    const root = mergeQueueSection(await repositoryFile('coverage.yml'));
+    let root = withoutComments(mergeQueueSection(await repositoryFile('coverage.yml')));
+    for (const entry of REPOSITORY_ONLY_ENTRIES) {
+      expect(root).toContain(entry);
+      root = root.replace(entry, '');
+    }
 
-    expect(withoutComments(COVERAGE_YML)).toBe(withoutComments(root));
+    expect(withoutComments(COVERAGE_YML)).toBe(root);
   });
 
   it('compare coverage.yml by everything but its comments', () => {

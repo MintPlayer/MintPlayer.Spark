@@ -182,10 +182,10 @@ public class ContributionsModelSyncTests : IDisposable
 
 public sealed class CoModelContext : SparkContext
 {
-    public IRavenQueryable<CoSong> CoSongs => Session.Query<CoSong>();
+    public IQueryable<CoSong> CoSongs => Session.Query<CoSong>();
 }
 
 public sealed class CoUnrelatedContext : SparkContext
 {
-    public IRavenQueryable<CoIdentity> CoIdentities => Session.Query<CoIdentity>();
+    public IQueryable<CoIdentity> CoIdentities => Session.Query<CoIdentity>();
 }
