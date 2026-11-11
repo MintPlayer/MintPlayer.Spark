@@ -528,14 +528,17 @@ public sealed class HandTagRequestWire
     public string? Tag { get; set; }
     /// <summary>What the webhook said the tag points at; the deletion is leased on it.</summary>
     public string? TagObject { get; set; }
-    /// <summary>The current lines (<see cref="PromoteLineWire.OnlyIfChanged"/> is ignored).</summary>
+    /// <summary>Every release line, current and past (<see cref="PromoteLineWire.OnlyIfChanged"/> is ignored; segment T).</summary>
     public List<PromoteLineWire>? Lines { get; set; }
+    /// <summary><c>versioning.lines.current: promote</c>: a tag of a current line's major is recorded for its next promotion.</summary>
+    public bool Promotes { get; set; }
     public VersioningSettingsWire? Settings { get; set; }
 }
 
 /// <param name="Outcome"><see cref="JobOutcomes.Planned"/> when the job ran, or a failure.</param>
-/// <param name="Tag"><c>recorded</c>, <c>refused</c>, <c>not-a-package</c> (left alone) or <c>moved</c> (left alone).</param>
-/// <param name="Branch">The current line of the package's ecosystem.</param>
+/// <param name="Tag"><c>recorded</c> (deleted, for the next promotion), <c>accepted</c> (left in place), <c>refused</c>
+/// (deleted), <c>not-a-package</c> (left alone) or <c>moved</c> (left alone).</param>
+/// <param name="Branch">The line the tag belongs to: the current line for <c>recorded</c>, the line of its major otherwise.</param>
 /// <param name="Commit">The commit the tag pointed at, for the comment on a refused one.</param>
 /// <param name="Detail">For <c>refused</c>: why; for a failure: what failed.</param>
 public sealed record HandTagResponse(string Outcome, string? Reason, string? Tag, string? Branch, string? Commit, string? Detail, long DurationMs);

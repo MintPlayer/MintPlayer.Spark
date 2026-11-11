@@ -70,6 +70,25 @@ public partial class SetUpFeaturesAction : SparkCustomAction
             return;
         }
 
+        // Step 1: the plan. It only reads, and it comes before the rulesets step because ruleset 3 depends on it: a pull
+        // request that turns on `current: promote` needs the App's bypass there (segment T).
+        OnboardingPlan planned;
+        try
+        {
+            var preview = await onboarding.PreviewAsync(repository, features, cancellationToken);
+            if (preview.Plan is null)
+            {
+                Report(new(VersioningOnboardingOutcome.Refused, preview.Refusal!), args);
+                return;
+            }
+            planned = preview.Plan;
+        }
+        catch (Exception ex) when (ex is GitWriterUnavailableException or HttpRequestException)
+        {
+            Report(new(VersioningOnboardingOutcome.Refused, manager.GetTranslatedMessage("onboarding.unavailable")), args);
+            return;
+        }
+
         // The rulesets step (#554 f4): with the merge queue picked, the popup and the rulesets form come here, and the
         // rulesets are applied at the confirmation with the admin's one-shot token, not at the merge.
         string? byHand = null;
@@ -92,21 +111,15 @@ public partial class SetUpFeaturesAction : SparkCustomAction
                     if (refused.Count > 0)
                         byHand = refused[0].Message;
                     else if ((rulesetPlans = await rulesets.ChooseAsync(read, cancellationToken,
-                        releaseLinesComing: features.Contains(EOnboardingFeature.ReleaseLines))) is null)
+                        releaseLinesComing: features.Contains(EOnboardingFeature.ReleaseLines), promotesLinesComing: planned.PromotesLines)) is null)
                         return;
                 }
             }
 
-            // Step 1: the plan, for a confirmation.
+            // Step 2: the plan, for a confirmation.
             VersioningOnboardingOutcome outcome;
             try
             {
-                var preview = await onboarding.PreviewAsync(repository, features, cancellationToken);
-                if (preview.Plan is not { } planned)
-                {
-                    Report(new(VersioningOnboardingOutcome.Refused, preview.Refusal!), args);
-                    return;
-                }
                 var open = manager.GetTranslatedMessage("onboarding.open");
                 manager.Retry.Action(manager.GetTranslatedMessage("onboarding.confirmTitle"), [open], open,
                     message: Summary(planned, rulesetPlans, byHand), cancellable: true);

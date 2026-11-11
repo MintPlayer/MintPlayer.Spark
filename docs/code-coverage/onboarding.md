@@ -18,7 +18,7 @@ The git writer must be configured on the server.
 | Dependency updates | `.github/workflows/dependency-lookup.yml` and `dependency-apply.yml`, a `dependencies:` section; `.github/dependabot.yml` is removed. See [dependency-updates.md](dependency-updates.md). | `DependencyUpdates` set to Enabled and the onboard signal sent. |
 | Merge queue | A `mergeQueue:` section. With release lines, `branches: [<default>, supported-lines]`. See [merge-queue.md](merge-queue.md). | — |
 | Package versioning | What [versioning.md § Onboarding](versioning.md#onboarding) lists. | One seed tag per package at the merge commit. |
-| Release lines | `versioning.lines: {}` and the table of old line branches to rename (D2). Picking it includes package versioning. See [backports.md](backports.md). | The renames, and a regenerate-workflow pull request into each supported line (D9). |
+| Release lines | `versioning.lines` and the table of old line branches to rename (D2). With exactly one push workflow running the versioning step, the current lines are promoted with `/release` and wait for that workflow (`current: promote`, segment T6; [versioning.md](versioning.md#promoted-lines-release-segment-p)), and ruleset 3 gives the App its bypass at once. With none or several, `lines: {}` (backports) and a note saying how to switch. Picking it includes package versioning. See [backports.md](backports.md). | The renames, and a regenerate-workflow pull request into each supported line (D9). |
 | Size labels | Nothing. | `PrSizeLabels` set to Enabled. |
 
 A choice that changes no file (size labels alone, or features already set up) opens no pull request: its settings and

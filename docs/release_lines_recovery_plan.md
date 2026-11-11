@@ -303,6 +303,65 @@ Dependencies: R before all; B before C; D before E; C before F. G and H are inde
   secrets. Standing permission to push branches and tags and change rulesets there; ask before deleting anything that
   was there before.
 
+## 2c. Segment T: hand tags follow their own line, and onboarding promotes (2026-11-11)
+
+**Why.** Owner, 2026-11-11, after PR #626: "We probably need to make sure that tags pushed to a specific
+release-branch actually belong to that branch (v8.1.2 should be pushed for branch dotnet-8 and not for dotnet-7) - and
+per branch, tags should be increasing, never react to a downgrading tag on a release branch". Then: "I was thinking
+about just validating the pushed tag(s), see if these increment, not check all tags in the repo", and "But I'll let you
+decide". T1–T6 below are therefore my decisions, made under that delegation.
+
+Before T, a hand tag was compared with **every** tag of its package across majors (`is not above the package's tag`).
+That refused a valid `v8.1.2` once a `v9.0.0` existed elsewhere. It only ran in `current: promote` repositories
+(`HandTagRecipient` returned early otherwise), so a backport repository's `v7.0.4` pushed onto the dotnet-8 line was
+never looked at. Found reading `PromoteService.CheckHandTagAsync` and `ReleaseVersions.cs` at master 537da108.
+
+Re-onboarding SparkTest (2026-11-11, onboarding PR #5, ruleset 27049210) showed the second gap. Onboarding wrote
+`lines: {}` only, so no new repository could get `/release` from the chooser. Ruleset 3 was created without the
+App's bypass, because `MergeQueueRulesetSetup.ReadAsync` reads `PromotesLines` from the default branch's coverage.yml
+(the one before the onboarding pull request).
+
+- **T1, the predecessor.** A tag is compared with one tag: its package's highest tag reachable from the tagged commit
+  (`git tag --merged <commit> --list <id>/v*`). The pack reads that same tag (`tag --merged HEAD`,
+  `MintPlayer.Versioning.MSBuild.cs:91`), so "increasing per branch" means exactly "above what this commit would
+  version from". For a tag the next promotion places (T4), the line's tip counts as well, because the promotion
+  commit has both as parents. Rejected: every tag of the package (the old rule, wrong across majors); the tags on the
+  line branch only (a tag on a default-branch commit has none).
+- **T2, the rule.** Any higher version with the predecessor's major is valid. "Exactly the next patch/minor" was
+  rejected: a skipped version harms nothing, and the engine skips none itself. Without a predecessor (a package's
+  first tag) the major must be that of a release line of its ecosystem. This is the "belongs to its branch" half: a
+  new major starts with its release line, never with a hand tag.
+- **T3, scope.** Every repository with `versioning.lines`, promoted or not. The owner's rule names release branches,
+  not promotion. A repository without `lines` is not touched (test
+  `A_repository_without_release_lines_never_asks_the_writer_about_its_tags`).
+- **T4, outcomes.**
+  - Invalid: deleted with a lease on the tag object, plus a commit comment naming the pusher and the reason.
+  - Valid, in a promote repository, with the current line's major: deleted and recorded for `/release`, as in M6.
+  - Any other valid tag: left in place (`accepted`), and recorded as placed on its commit with no comment, so a
+    promote repository's older-line run passes `tags/verify`.
+  - nuget.org and npm are asked only on the recorded path: a tag left in place publishes through the line's own run,
+    which skips published versions.
+- **T5, promotions** use the same predecessor rule from the promotion's parents (tip, green commit), for the asked
+  versions and the recorded ones. A recorded version that fails it is reported in `Unplaced` and forgotten, as in M6.
+- **T6, onboarding defaults to promote.** When it adds `versioning.lines` and exactly one push workflow runs the
+  versioning step, it writes `current: promote, trigger: manual, workflow: <that file>`. With none or several the bot
+  cannot tell which green run proves a commit, so it writes `lines: {}` and a note that says how to switch. The
+  chooser now plans before the rulesets step, and `ChooseAsync(promotesLinesComing:)` gives ruleset 3 the App's
+  `exempt` bypass when the onboarding pull request turns promotion on.
+
+**Code:**
+- Writer: `PromoteService` (`PredecessorAsync`, `FollowProblem`, `AboveProblemsAsync`, `HandTagAccepted`), and
+  `HandTagRequestWire.Promotes` with all lines (at most 50).
+- Server: `HandTagRecipient` (every `lines` repository, `RecordPlacedAsync`).
+- Onboarding: `OnboardingPlanner.PromoteLinesKey`, `VersioningOnboarding.VersioningWorkflowsAsync`,
+  `SetUpFeaturesAction`, `MergeQueueRulesetSetup.ChooseAsync`.
+- Tests: PromoteTests (hand-tag theories for promote and backport, the tip as predecessor, a past line, a first tag),
+  ReleaseFlowTests, OnboardingPlannerTests, SetUpRulesetsActionTests.
+
+**After deploy:** re-run "Set up rulesets" on MintPlayer.Spark, so ruleset 27018553 gets the bypass. Re-onboard
+SparkTest: close PR #5 and run the chooser again, so it gets `current: promote` and the bypass. Then the SparkTest
+trial, and only then the first `/release` on Spark.
+
 ## 4. Spikes
 
 | Spike | Question | How | Feeds |

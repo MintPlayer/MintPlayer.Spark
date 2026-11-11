@@ -283,15 +283,34 @@ versioning:
   is not promoted; the comment names the paths and the commits. Bring the change to the default branch first.
 - **Versions.** `/release Acme.Core@11.4.0` releases that exact version: the App places a `Acme.Core/v11.4.0` tag on
   the promotion commit in the same push. The version must be unpublished (nuget.org and npm are asked), carry the
-  line's major, and lie above the package's existing tags; otherwise the line is not promoted.
-- **Tags pushed by hand.** A package tag (`<id>/v<version>`) pushed by a person is removed at once. When it is valid
-  it is recorded and placed on the next promotion of its line; either way the App comments on the tagged commit and
-  names the pusher. A tag whose id is no package (`schemas/v3`) is left alone. A recorded version that no longer fits
-  by the time of the promotion (the line released past it) is reported in the comment and forgotten.
+  line's major, and lie above the tag it follows: the package's highest tag reachable from the line's tip or the green
+  commit (the promotion's two parents). Otherwise the line is not promoted.
+- **Tags pushed by hand for the current line.** A valid package tag (`<id>/v<version>`) of the current line's major
+  is removed at once, recorded, and placed on the next promotion of its line. Left in place, it would become reachable
+  from the line at that promotion and move every later version. The App comments on the tagged commit and names the
+  pusher. A recorded version that no longer fits by the time of the promotion (the line released past it) is reported
+  in the comment and forgotten. Tags of older lines follow the rules below and stay where they are.
 - **The release run checks.** With `current: promote`, the versioning step of a line's run asks
   `POST /api/versioning/tags/verify` about every hand tag on the commit, and fails on one the App did not place there,
   or when the server cannot be reached. The check sees tags, not who copied an annotation onto one: a ruleset that
   lets only the App and `github-actions` create `*/v*` tags closes that gap, and is left to the repository owner.
+
+### Tags pushed by hand on release lines (segment T)
+
+In every repository with `lines:`, promoted or not, the App checks each package tag a person pushes. It compares the
+tag with **the one tag it follows**: the package's highest tag reachable from the tagged commit, the same tag the pack
+reads (`tag --merged HEAD`). Other tags in the repository, on other branches or lines, play no part.
+
+- **Valid:** above the tag it follows, with the same major (`Acme.Core/v8.1.2` after `Acme.Core/v8.1.1`). Any higher
+  version is accepted, not only the next one, so a skipped patch is fine.
+- **Without a tag to follow** (a package's first tag), the major must be one of a release line of its ecosystem:
+  `v8.1.2` needs `release/dotnet-8.x`.
+- **Invalid tags are deleted**, with a commit comment that names the pusher and the reason: a lower or equal version
+  (`v8.1.0` after `v8.1.1`), or another major (`v7.0.4` after `v8.1.1`, or `v9.0.0` on the dotnet-8 line). A new
+  major starts with its release line, never with a hand tag. Nothing builds on a refused tag.
+- **Valid tags stay** on their commit and are recorded as placed there (no comment), so a promoted repository's
+  older-line run passes `tags/verify`. The current line's tags in a promoted repository are the exception above.
+- A tag whose id is no package at its commit (`schemas/v3`) is left alone.
 
 **Platform lifecycle page.** The app collects each platform's support phases nightly (.NET from
 `releases-index.json`; Angular, React, Vue and Node.js from endoflife.date; a framework's preview major from its npm

@@ -93,12 +93,14 @@ public partial class TagPushedEventsRecipient : IRecipient<ForgeWebhookMessage<T
 }
 
 /// <summary>
-/// A person's version tag in a repository whose current lines are promoted (segment P, P5, Q6b = C): the writer checks
-/// it against the current line of its package's ecosystem and deletes it; a valid one is recorded as a
-/// <see cref="ReleaseVersion"/> that the line's next <c>/release</c> places, an invalid one gets a commit comment.
+/// A person's version tag in a repository with release lines (segment P, P5, Q6b = C; segment T): the writer checks it
+/// against the one tag it follows (above it, same major). An invalid one is deleted and gets a commit comment. A valid
+/// one of a promoted current line is deleted and recorded as a <see cref="ReleaseVersion"/> that the line's next
+/// <c>/release</c> places; any other valid one stays in place and is recorded as placed on its commit, so a promoted
+/// repository's release run accepts it (<c>tags/verify</c>).
 /// </summary>
 /// <remarks>A tag whose id is no package at its commit (Spark's <c>schemas/v3</c>) is left alone by the writer, and a
-/// repository without <c>versioning.lines.current: promote</c> is not even asked about.</remarks>
+/// repository without <c>versioning.lines</c> is not even asked about.</remarks>
 public partial class HandTagRecipient : IRecipient<HandTagMessage>
 {
     [Inject] private readonly Raven.Client.Documents.Session.IAsyncDocumentSession session;
@@ -122,9 +124,11 @@ public partial class HandTagRecipient : IRecipient<HandTagMessage>
         try
         {
             var yml = await integrations.For(repository).GetFileContentAsync(repository, defaultBranch, CoverageYml.FileName, cancellationToken);
-            if (VersioningYml.Parse(yml).Config is not { Lines.PromotesCurrent: true, EffectiveLines: { } pattern } config) return;
-            var current = pattern.CurrentLines(await git.ListBranchesAsync(repository, SupportedLines.BranchPrefix(pattern), cancellationToken));
-            if (current.Count == 0) return;
+            if (VersioningYml.Parse(yml).Config is not { EffectiveLines: { } pattern } config) return;
+            var lines = (await git.ListBranchesAsync(repository, SupportedLines.BranchPrefix(pattern), cancellationToken))
+                .Select(b => pattern.TryMatch(b, out var line) ? line : null).OfType<ReleaseLine>()
+                .OrderByDescending(l => l.Major).Take(GitWriterHandTagLines).ToList();
+            if (lines.Count == 0) return;
 
             var push = await git.GetWriterAccessAsync(repository, null, false, cancellationToken);
             if (push.Access is not { } access)
@@ -138,7 +142,8 @@ public partial class HandTagRecipient : IRecipient<HandTagMessage>
                 result = await writer.VersioningHandTagAsync(new GitWriterHandTagRequest(
                     repository.Provider.ToCanonicalString(), repository.GitHubId.ToString(CultureInfo.InvariantCulture), access.CloneUrl,
                     new CommitGraph.SidecarCredential(access.Username, access.Password), message.Tag, message.TagObject,
-                    [.. current.Select(l => new GitWriterPromoteLine(pattern.Format(l), l.Ecosystem, l.Major, false))], config.ToSettings()), cancellationToken);
+                    [.. lines.Select(l => new GitWriterPromoteLine(pattern.Format(l), l.Ecosystem, l.Major, false))], config.Lines?.PromotesCurrent == true,
+                    config.ToSettings()), cancellationToken);
             }
             finally
             {
@@ -165,6 +170,12 @@ public partial class HandTagRecipient : IRecipient<HandTagMessage>
                     await RecordAsync(session, repository.Id!, tag, message.PusherLogin, ReleaseVersion.FromTag, clock.GetUtcNow().UtcDateTime, cancellationToken);
                     await session.SaveChangesAsync(cancellationToken);
                 }
+            }
+            else if (result.Tag == GitWriterHandTagResult.Accepted && result.Commit is { } placedOn)
+            {
+                // Segment T: the tag stays; recorded as placed there, so a promoted repository's past line releases it.
+                await RecordPlacedAsync(session, repository.Id!, tag, message.PusherLogin, placedOn, clock.GetUtcNow().UtcDateTime, cancellationToken);
+                await session.SaveChangesAsync(cancellationToken);
             }
             if (result.Tag is GitWriterHandTagResult.Recorded or GitWriterHandTagResult.Refused && result.Commit is { } commit)
                 await forge.CommentOnCommitAsync(repository, commit, Comment(message.PusherLogin, tag, result.Branch, refusal), cancellationToken);
@@ -196,7 +207,30 @@ public partial class HandTagRecipient : IRecipient<HandTagMessage>
         }, id, cancellationToken);
     }
 
+    /// <summary>The most lines sent to the writer, highest majors first (its endpoint takes 50).</summary>
+    internal const int GitWriterHandTagLines = 50;
+
+    /// <summary>Records <paramref name="tag"/> as placed on <paramref name="commit"/> by the person who pushed it (segment T).</summary>
+    internal static async Task RecordPlacedAsync(Raven.Client.Documents.Session.IAsyncDocumentSession session, string repositoryId, VersionTag tag, string actor,
+        string commit, DateTime nowUtc, CancellationToken cancellationToken)
+    {
+        var id = ReleaseVersion.DocumentId(repositoryId, tag.Name);
+        var record = await session.LoadAsync<ReleaseVersion>(id, cancellationToken);
+        if (record is null)
+        {
+            record = new ReleaseVersion
+            {
+                Id = id, Repository = repositoryId, PackageId = tag.PackageId, Version = tag.Version.ToString(), Tag = tag.Name, Source = ReleaseVersion.FromTag,
+                RecordedUtc = nowUtc,
+            };
+            await session.StoreAsync(record, id, cancellationToken);
+        }
+        record.Actor = actor;
+        record.PlacedCommit = commit;
+        record.PlacedUtc = nowUtc;
+    }
+
     internal static string Comment(string pusher, VersionTag tag, string? branch, string? refusal) => refusal is null
         ? $"@{pusher}: `{tag.Name}` is recorded and was removed from here; it goes on the next promotion of `{branch}` (`/release`), which releases {tag.PackageId} {tag.Version}."
-        : $"@{pusher}: `{tag.Name}` was removed: {refusal}. A version tag in this repository is placed by `/release`; see the release lines' documentation.";
+        : $"@{pusher}: `{tag.Name}` was removed: {refusal}. A version tag must be above the tag it follows and keep its major; see the release lines' documentation.";
 }
