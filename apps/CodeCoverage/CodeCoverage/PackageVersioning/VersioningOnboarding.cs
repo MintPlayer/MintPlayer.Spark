@@ -130,6 +130,7 @@ public static partial class VersioningOnboarding
         new($"`nuget.config` maps `{PackageId}` to nuget.org", c => c.NuGet.Count == 0 ? Task.CompletedTask : NuGetConfigAsync(c.Files, c.Tree, c.Owner, c.Notes)),
         new("The versioning step runs before the first pack or publish", c => WorkflowsAsync(c, (path, text, notes) => VersioningStep(path, text, c.ActionSha, notes))),
         new("Pack builds again and the NuGet push skips published versions", c => WorkflowsAsync(c, PackAndPush)),
+        new("The default branch packs and publishes only what it released", c => WorkflowsAsync(c, PublishGate)),
         new("Publishing jobs may push the tags", c => WorkflowsAsync(c, PublishPermissions)),
         new("A newer push cancels the older publish run", c => WorkflowsAsync(c, Concurrency)),
         new("Checkouts of .NET jobs fetch the history and its tags", c => c.NuGet.Count == 0 ? Task.CompletedTask : WorkflowsAsync(c, FullHistory)),
@@ -598,6 +599,84 @@ public static partial class VersioningOnboarding
         return edits.Count == 0 ? null : Apply(lines, edits);
     }
 
+    /// <summary>The id of the step that decides whether a run publishes (Spark's own dotnet-build-master.yml has the same step).</summary>
+    internal const string GateId = "publishes";
+
+    /// <summary>
+    /// The SparkTest trial's gap G1 (docs/release_lines_recovery_plan.md §2d): with release lines on, the default branch
+    /// tags nothing, so a package with no tag yet (no seed: it declared no version) packs at the placeholder and
+    /// <c>dotnet pack</c> of the project fails with MPV005, which keeps the default branch red and leaves <c>/release</c>
+    /// no green commit to promote. Each publishing job gets the step Spark's own workflow has: on the default branch, a run
+    /// that released nothing packs and publishes nothing. Every step from the first pack or publish to the last one gets
+    /// its <c>if:</c>, so a check between them (the packages' versions) is skipped with them. A step with its own
+    /// <c>if:</c>, or that starts with a block scalar, is left to the merger. Null when every job has it.
+    /// </summary>
+    internal static string? PublishGate(string path, string text, List<string> notes)
+    {
+        if (Parse(path, text, null) is not var (root, jobs)) return null;
+        var lines = text.Split('\n');
+        var edits = new List<LineEdit>();
+        foreach (var (key, job) in PublishingJobs(root, jobs))
+        {
+            var steps = (YamlSequenceNode)Child(job, "steps")!;
+            var first = PublishStep(job)!.Value;
+            if (VersioningStepIndex(steps) is not { } versioning || versioning > first) continue;
+            if (Scalar(steps.Children[versioning], "id") is not { } versioningId)
+            {
+                notes.Add($"`{path}` job `{key.Value}`: the versioning step has no `id`, so the onboarding cannot keep the default branch from packing what it did not release; give it `id: versioning`.");
+                continue;
+            }
+            var last = Enumerable.Range(first, steps.Children.Count - first).Last(i => Publishes(steps.Children[i]));
+            var keyIndent = new string(' ', (int)steps.Children[first].Start.Column - 1);
+
+            if (!steps.Children.Any(s => Scalar(s, "id") == GateId))
+            {
+                var stepLine = Line(steps.Children[first].Start) - 1;
+                var at = stepLine;
+                while (at > 0 && lines[at - 1].TrimStart().StartsWith('#')) at--;
+                var dash = new string(' ', lines[stepLine].IndexOf('-'));
+                var step = new List<string>
+                {
+                    $"{dash}# With release lines on, the default branch tags nothing: a package with no tag yet would fail its",
+                    $"{dash}# pack (MPV005). The release lines pack and publish; the default branch only when it released.",
+                    $"{dash}- name: Decide whether this run publishes",
+                    $"{keyIndent}id: {GateId}",
+                    $"{keyIndent}env:",
+                    $"{keyIndent}  RELEASED: ${{{{ steps.{versioningId}.outputs.released }}}}",
+                    $"{keyIndent}  DEFAULT_BRANCH: ${{{{ github.event.repository.default_branch }}}}",
+                    $"{keyIndent}run: |",
+                    $"{keyIndent}  if [ \"$GITHUB_REF_NAME\" = \"$DEFAULT_BRANCH\" ] && {{ [ -z \"$RELEASED\" ] || [ \"$RELEASED\" = \"[]\" ]; }}; then",
+                    $"{keyIndent}    echo \"The default branch released nothing (release lines on, or no change): no pack, no publish.\"",
+                    $"{keyIndent}    echo \"value=false\" >> \"$GITHUB_OUTPUT\"",
+                    $"{keyIndent}  else",
+                    $"{keyIndent}    echo \"value=true\" >> \"$GITHUB_OUTPUT\"",
+                    $"{keyIndent}  fi",
+                };
+                if (at > 0 && lines[at - 1].Trim().Length == 0) step.Add("");
+                edits.Add(new LineEdit(at, null, step));
+            }
+
+            for (var i = first; i <= last; i++)
+            {
+                var condition = Scalar(steps.Children[i], "if");
+                if (condition?.Contains($"steps.{GateId}.outputs.value", StringComparison.Ordinal) == true) continue;
+                var startLine = Line(steps.Children[i].Start) - 1;
+                var name = Scalar(steps.Children[i], "name") ?? $"step {i + 1}";
+                if (condition is not null || BlockScalarStart().IsMatch(lines[startLine]))
+                {
+                    notes.Add($"`{path}` job `{key.Value}` step `{name}`: add `steps.{GateId}.outputs.value == 'true'` to its `if:` by hand, so the default branch packs only what it released.");
+                    continue;
+                }
+                edits.Add(new LineEdit(startLine + 1, null, [$"{keyIndent}if: steps.{GateId}.outputs.value == 'true'"]));
+            }
+        }
+        return edits.Count == 0 ? null : Apply(lines, edits);
+    }
+
+    /// <summary>A line that opens a block scalar (<c>run: |</c>, <c>&gt;-</c>), after which no key can be inserted.</summary>
+    [GeneratedRegex(@"[|>][+-]?\s*$")]
+    private static partial Regex BlockScalarStart();
+
     /// <summary>Each publishing job's token gets <c>contents: write</c> and <c>id-token: write</c>; null when it has them.</summary>
     internal static string? PublishPermissions(string path, string text, List<string> notes)
     {
@@ -803,18 +882,18 @@ public static partial class VersioningOnboarding
     {
         if (Child(job, "steps") is not YamlSequenceNode steps) return null;
         for (var i = 0; i < steps.Children.Count; i++)
-        {
-            if (Scalar(steps.Children[i], "run") is { } run && (run.Contains("dotnet pack", StringComparison.Ordinal)
-                || run.Contains("dotnet nuget push", StringComparison.Ordinal) || RawNpmPublish().IsMatch(run)))
-                return i;
-            // JS-DevTools/npm-publish (mintplayer-ng-video-player) publishes only versions the registry lacks (`strategy: all`)
-            // and takes its dist-tag from publishConfig.tag, so it works unchanged behind the versioning step.
-            if (Scalar(steps.Children[i], "uses") is { } uses && (uses.StartsWith("MintPlayer/github-actions/publish-npm-packages", StringComparison.OrdinalIgnoreCase)
-                || uses.StartsWith("JS-DevTools/npm-publish@", StringComparison.OrdinalIgnoreCase)))
-                return i;
-        }
+            if (Publishes(steps.Children[i])) return i;
         return null;
     }
+
+    /// <summary>Whether the step packs or publishes a package.</summary>
+    private static bool Publishes(YamlNode step)
+        => (Scalar(step, "run") is { } run && (run.Contains("dotnet pack", StringComparison.Ordinal)
+                || run.Contains("dotnet nuget push", StringComparison.Ordinal) || RawNpmPublish().IsMatch(run)))
+            // JS-DevTools/npm-publish (mintplayer-ng-video-player) publishes only versions the registry lacks (`strategy: all`)
+            // and takes its dist-tag from publishConfig.tag, so it works unchanged behind the versioning step.
+            || (Scalar(step, "uses") is { } uses && (uses.StartsWith("MintPlayer/github-actions/publish-npm-packages", StringComparison.OrdinalIgnoreCase)
+                || uses.StartsWith("JS-DevTools/npm-publish@", StringComparison.OrdinalIgnoreCase)));
 
     private static bool OnPush(YamlNode? on) => on switch
     {
