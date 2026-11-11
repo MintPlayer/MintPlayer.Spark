@@ -131,6 +131,27 @@ why #593, #608 and #620 produced nothing, although the conflict path does open d
 - **No approval:** with that ruleset in place, the approval floor no longer applies to the App's backports
   (`MergeQueueEngine.cs:494-503`, `QueueApprovedBackportAsync` `:555-583` removed).
 
+**D done (2026-11-11, branch `feat/backport-branches-protected`, stacked on C).**
+- **Ruleset 4:** `MergeQueueRulesetPlanner` plans "merge-queue: backport branches" whenever release lines are chosen:
+  `refs/heads/backport/*`, rules `creation`, `update`, `deletion`, bypass App `exempt` and repository admin (role 5)
+  `always`. An existing one keeps its other rules and other exempt Apps; a person's bypass is dropped. Tests:
+  `Release_lines_get_a_backport_branches_ruleset_only_the_App_and_admins_pass` (idempotent second run),
+  `A_backport_branches_ruleset_loses_a_persons_bypass_and_keeps_another_App`,
+  `Without_lines_there_is_no_backport_branches_ruleset`.
+- **No approval:** `ApprovalFloorRefusalAsync` skips the floor for the App's own backport (`IsAppsOwnBackportAsync`)
+  when `BackportBranchProtectedAsync` sees, on the head branch's live rules, one ruleset holding all three
+  restrictions with the App `exempt`. Bypass actor lists are not readable with metadata access, so the admin entry is
+  not checked; a ruleset that lets more people write still needs an admin to set it up. Tests:
+  `A_backport_the_App_opened_onto_a_protected_branch_needs_no_approval_under_the_always_floor`,
+  `A_backport_branch_ruleset_that_leaves_a_gap_keeps_the_approval` (partial rules, bypass Never/Unknown),
+  `A_protected_branch_does_not_excuse_a_pull_request_the_App_did_not_open`.
+- **Deviation: `QueueApprovedBackportAsync` is kept, not removed** (owner, 2026-11-11: "Keep it"). A repository that has not re-run "Set up rulesets"
+  (or set them up by hand, without the OAuth app) has no ruleset 4, and its backports under the `Always` floor would
+  otherwise have no way to merge. The live check makes the approval path dead code once ruleset 4 exists.
+- **Consequence:** a writer can no longer push a `backport/*` branch; hand conflict resolution is an admin's (PRD Q13:
+  "an admin's conflict resolution"). backports.md "Who may ask" says so.
+- **After deploy:** re-run "Set up rulesets" on Spark and SparkTest to create ruleset 4.
+
 **Segment E, "Line policy" check.** An App-bound required check on `release/*`, judged from the SDK majors:
 current lines take only bot picks, past lines take human PRs (grilling Q1b, Q1c, Q1d).
 

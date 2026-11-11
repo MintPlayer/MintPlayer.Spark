@@ -358,6 +358,44 @@ public class MergeQueueRulesetPlannerTests
 
         plan.Steps.OfType<UpdateRulesetStep>().Should().ContainSingle()
             .Which.Definition.Include.Should().Equal(["~DEFAULT_BRANCH", Lines]);
-        plan.Steps.OfType<CreateRulesetStep>().Should().ContainSingle().Which.Definition.Name.Should().Be(LineChecksName);
+        plan.Steps.OfType<CreateRulesetStep>().Select(s => s.Definition.Name).Should().Equal([LineChecksName, BackportBranchesName]);
+    }
+
+    [Fact]
+    public void Release_lines_get_a_backport_branches_ruleset_only_the_App_and_admins_pass()
+    {
+        // Segment D (Q13): what lets the App's backports merge without an approval.
+        var plan = Plan(new ForgeRulesetState(AppId, [], null), new MergeQueueRulesetChoices(0, ["build"], ReleaseLines: [Lines]));
+
+        var backports = plan.Steps.OfType<CreateRulesetStep>().Single(s => s.Definition.Name == BackportBranchesName).Definition;
+        backports.Include.Should().Equal([BackportBranchesPattern]);
+        backports.Rules.Select(r => r.Type).Should().Equal(["creation", "update", "deletion"]);
+        backports.BypassActors.Should().Equal([new ForgeRulesetActor(AppId, "Integration", "exempt"), new ForgeRulesetActor(RepositoryAdminRoleId, "RepositoryRole", "always")]);
+
+        var stored = plan.Steps.OfType<CreateRulesetStep>().Select((s, i) => new ForgeExistingRuleset(i + 1, s.Definition)).ToList();
+        Plan(new ForgeRulesetState(AppId, stored, null), new MergeQueueRulesetChoices(0, ["build"], ReleaseLines: [Lines]))
+            .IsConfigured.Should().BeTrue("a second run changes nothing");
+    }
+
+    [Fact]
+    public void A_backport_branches_ruleset_loses_a_persons_bypass_and_keeps_another_App()
+    {
+        var other = new ForgeRulesetActor(4567511, "Integration", "exempt");
+        var person = new ForgeRulesetActor(4, "RepositoryRole", "always");
+        var existing = new ForgeRulesetDefinition(BackportBranchesName, "branch", "active", [BackportBranchesPattern], [],
+            [new("update")], [other, person]);
+
+        var plan = Plan(new ForgeRulesetState(AppId, [new(4, existing)], null), new MergeQueueRulesetChoices(0, ["build"], ReleaseLines: [Lines]));
+
+        var update = plan.Steps.OfType<UpdateRulesetStep>().Single(s => s.Definition.Name == BackportBranchesName);
+        update.Definition.BypassActors.Should().Equal([new ForgeRulesetActor(AppId, "Integration", "exempt"), other, new ForgeRulesetActor(RepositoryAdminRoleId, "RepositoryRole", "always")]);
+        update.Definition.Rules.Select(r => r.Type).Should().Equal(["creation", "update", "deletion"]);
+    }
+
+    [Fact]
+    public void Without_lines_there_is_no_backport_branches_ruleset()
+    {
+        PlanFor([], classic: null).Steps.OfType<CreateRulesetStep>()
+            .Should().NotContain(s => s.Definition.Name == BackportBranchesName);
     }
 }
