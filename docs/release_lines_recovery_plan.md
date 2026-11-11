@@ -34,6 +34,24 @@ Evidence below comes from three read-only investigations on 2026-11-11 (raw outp
    (O2, O3).
 5. **R5** The first green line run releases; check that the versions it tags follow from the last line tags.
 
+**R done by hand, 2026-11-11 (owner: "Fix the repository manually"), by the Q-A recommendation, a promotion merge.**
+- **The commits:** each line got one commit whose tree is exactly master 5b71146ae's (#622, green in run 42818431316),
+  with the line and that master commit as parents. `release/dotnet-11.x`: da8be3a91 → 6e7481da6; `release/angular-22.x`:
+  92f44ccee → 55d7dfffb.
+- **What was checked before the push:**
+  - a trial `git merge-tree` of each line into master;
+  - its conflict hunks were only the lines' older copies of master commits that #620 later reworked;
+  - the lines' #586 copies (a9743b376, c2e5e9e32) differ from 3121cdda9 only in JSON key order in
+    `apps/HR/HR/App_Data/Model/Person.json`.
+
+  So nothing that existed only on a line was dropped.
+- **How it was pushed:** a fast-forward push from this device, through a temporary *Repository admin* "always" bypass
+  on ruleset 26211184. The bypass was added in the browser (GitHub asked the owner to confirm access) and removed
+  through the API right after. The ruleset was verified back to the queue App only (exempt), active, with the same
+  targets and rules.
+- **What it covers:** this covers R1 (the red E2E at da8be3a91 is replaced by master's green tree), R3 and R4.
+- **Still open:** R2 (required checks on line PRs) and R5 (the release runs 42983233148 and 42983232601 publish).
+
 **Segment B, no silent losses.** Every `backport:` target ends in an open backport PR (a draft on conflict) or a
 recorded, visible failure (comment on the source PR and a row in the app). The source merge sha is stored on
 `BackportPullRequest` (today it stores none, `CodeCoverage.Library/Entities/BackportPullRequest.cs:24-43`). SP5 finds
@@ -102,7 +120,55 @@ Dependencies: R before all; B before C; D before E; C before F. G and H are inde
   - **Per PR:** `/backport <line>` on each missing PR in master order, one queue run each, waiting for each merge.
   - **One catch-up PR per line:** all picks in order. One CI run, but the repository merges by squash only, so the
     line gets one commit for all of them. The individual picks stay visible in the PR, and the PR body lists them.
-- **Parked from the grilling:** Q11 (O2) and Q6b (a tag ruleset would reverse versioning D3's "push a tag" gesture).
+- **Decided 2026-11-11 (owner):**
+  - **O2 = everything, whole commits, in master's order.** A current line's tree equals master's, labels are
+    ignored on current lines, and nothing is stripped (settles Q11, Q3 and Q4 for current lines; labels nominate only
+    on past lines).
+  - **O3 = B′.**
+    1. A script cherry-picks the missing commits in master order onto `catch-up/<line>` from the line, and a PR runs
+       the full CI on it.
+    2. When it is green, the owner gets a temporary bypass entry on ruleset 26211184 (set in the browser, not the
+       ruleset disabled).
+    3. `git push origin <tested sha>:release/<line>` from this device, a fast-forward of exactly the green commit.
+    4. The bypass is removed and verified gone, and the PR is closed.
+
+    The line keeps one commit per pick with its cherry-pick trailer, so no "synced to" marker is needed, and one push
+    means one release. These picks have no queue record.
+- **Superseded the same day by Q-L (owner, 2026-11-11), which reverses D16.**
+  - **The challenge:** the owner asked "if you're just hardcoding the release lines to contain all the same commits
+    from master, then what's the point of the release lines?", and pointed out that the queue serves other
+    repositories and self-hosters too.
+  - **Elsewhere, a line always holds back something master has:**
+    - Angular: features;
+    - Node.js: semver-majors and changes not yet baked;
+    - Rust: everything newer than the last promotion;
+    - Kubernetes, TypeScript, Electron and Go: everything after the cut;
+    - git.git and Cassandra: features, with fixes merged upwards from the oldest branch.
+
+    Spark locks the major to the platform, so a current line has nothing to hold back except *time*.
+  - **Decided, Q-L = A: two line modes per line pattern in `coverage.yml`.**
+    - **`mode: promote`:** fast-forward only, to a default-branch commit that went green. The trigger is `manual`
+      (`/release` or the app), `schedule` (cron) or `each-commit`. The line must be an ancestor of the default
+      branch, and the app refuses `promote` otherwise.
+    - **`mode: backport`:** ordered cherry-picks, held rather than evicted. `select` is `nominated`, `fixes` or
+      `all`.
+    - **The split:** repositories that anchor majors on the platform (versioning D7) switch a `promote` line to
+      `backport` when master's platform major moves, and cut a new `promote` line. Other repositories switch only by
+      config.
+    - **No lines configured:** releases come from the default branch.
+  - **Spark:** current lines `promote` + `manual`, past lines `backport` + `nominated`. O2, O3 (B′) and R3 no longer
+    apply to current lines. Their catch-up becomes a one-time alignment that makes each line an ancestor of master
+    (see the next open question), followed by a promotion.
+- **Q-A, how a `promote` line moves (open; the manual recovery used B).**
+  - **A:** a one-time `-s ours` merge on master, then pure fast-forwards.
+  - **B:** each promotion is a merge commit whose tree is exactly the green master commit's, with the line and that
+    commit as parents (`git commit-tree`). No alignment and no push to master are needed, it works on any onboarding
+    repository, and tags stay reachable.
+  - **C:** reset the line, which orphans its tags.
+
+  Recommended: B. The app shows the line-only diff before promoting, and a code owner confirms it when it is
+  non-empty. Lookups use ancestry, not sha equality.
+- **Parked from the grilling:** Q6b (a tag ruleset would reverse versioning D3's "push a tag" gesture).
 
 ## 4. Spikes
 
@@ -116,7 +182,22 @@ Dependencies: R before all; B before C; D before E; C before F. G and H are inde
 | SP6 | Does a held lane survive an App restart and the messaging retry (the step message for a held PR must not be dead-lettered)? | code reading of `MergeQueueStepMessage` handling | C |
 | SP7 | GitHub sandbox repository with the App installed, for C-F end to end | needs owner approval first | C-F |
 
-## 5. Not in scope here
+## 5. Where it stands and what is next (2026-11-11)
+
+1. **R5:** read the result of the line release runs 42983233148 and 42983232601. On red, read the log first.
+2. **R2:** require the PR checks on the lines (SP2 first).
+3. **Owner decisions still open:** Q-A (B recommended), O1 (Blocking/Evicting on the merge-queue lane, not on Spark
+   messaging; recommended), Q6b (tag ruleset vs versioning D3), and SP7 (the GitHub sandbox repository).
+4. **The segments to build, re-ordered for Q-L:**
+   - **B (no silent losses), smallest first:** still needed for past lines and `backport` repositories.
+   - **P, a new segment: `mode: promote` with `trigger: manual`** (`/release` and an app button). It turns today's manual
+     recovery into the App's own action. Until P exists, the bot keeps cherry-picking labelled master PRs onto Spark's
+     lines, which apply cleanly now that each line equals master.
+   - **Then C to H as listed.** C (hold) matters only for `backport` lines.
+5. **Do not** run the manual promotion again without the same checks: a trial `merge-tree`, a review of the line-only
+   diff, a fast-forward check, and the bypass removed and verified.
+
+## 6. Not in scope here
 
 - Past lines (`dotnet-10.x`, `angular-21.x`): still deferred (`docs/coverage_backport_plan.md` M11).
 - Issue #600 (pack major on older lines) and #599 (onboarding with release lines): separate issues; #600 matters only
