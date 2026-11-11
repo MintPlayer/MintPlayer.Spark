@@ -140,7 +140,7 @@ public class SetUpRulesetsActionTests : CoverageRavenTest
         var line = created[MergeQueueRulesetPlanner.LineChecksName];
         line.Include.Should().Equal(["refs/heads/release/*-*.x"]);
         line.Rules.Single().Parameters!["required_status_checks"]!.AsArray().Select(c => c!["context"]!.GetValue<string>())
-            .Should().Equal(["build", "e2e"], "the lines' own answer, not ruleset 2's");
+            .Should().Equal([MergeQueueRulesetPlanner.LinePolicyCheckName, "build", "e2e"], "the lines' own answer, not ruleset 2's, and the line policy");
     }
 
     [Fact]

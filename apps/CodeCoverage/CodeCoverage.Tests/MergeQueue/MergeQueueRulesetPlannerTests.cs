@@ -271,7 +271,10 @@ public class MergeQueueRulesetPlannerTests
         line.Include.Should().Equal([Lines]);
         line.Rules.Select(r => r.Type).Should().Equal(["required_status_checks"], "no pull_request rule: the App's backports need no review");
         line.BypassActors.Should().BeEmpty("the App must not bypass the lines' checks");
-        ContextsOf(line).Should().Equal(["build", "e2e"]);
+        ContextsOf(line).Should().Equal([LinePolicyCheckName, "build", "e2e"]);
+        line.Rules.Single().Parameters!["required_status_checks"]!.AsArray().OfType<JsonObject>()
+            .Single(c => c["context"]!.GetValue<string>() == LinePolicyCheckName)["integration_id"]!.GetValue<long>()
+            .Should().Be(AppId, "segment E: only the App can report the line policy");
         plan.CanApply.Should().BeTrue();
     }
 
@@ -284,7 +287,7 @@ public class MergeQueueRulesetPlannerTests
 
         var created = plan.Steps.OfType<CreateRulesetStep>().ToDictionary(s => s.Definition.Name, s => s.Definition);
         created[LineChecksName].BypassActors.Should().Equal([new ForgeRulesetActor(AppId, "Integration", "exempt")]);
-        ContextsOf(created[LineChecksName]).Should().Equal(["build"]);
+        ContextsOf(created[LineChecksName]).Should().Equal([LinePolicyCheckName, "build"]);
         created[ReviewsAndChecksName].BypassActors.Should().BeEquivalentTo(
             Plan(new ForgeRulesetState(AppId, [], null), new MergeQueueRulesetChoices(0, ["build"], ReleaseLines: [Lines], LineRequiredChecks: ["build"]))
                 .Steps.OfType<CreateRulesetStep>().Single(s => s.Definition.Name == ReviewsAndChecksName).Definition.BypassActors);
@@ -304,7 +307,7 @@ public class MergeQueueRulesetPlannerTests
             new MergeQueueRulesetChoices(0, ["build", "test"], ReleaseLines: [Lines]));
 
         ContextsOf(plan.Steps.OfType<CreateRulesetStep>().Single(s => s.Definition.Name == LineChecksName).Definition)
-            .Should().Equal(["build", "test"]);
+            .Should().Equal([LinePolicyCheckName, "build", "test"]);
     }
 
     [Fact]
@@ -335,16 +338,45 @@ public class MergeQueueRulesetPlannerTests
 
         var update = plan.Steps.Should().ContainSingle().Which.Should().BeOfType<UpdateRulesetStep>().Which;
         update.Definition.Name.Should().Be(LineChecksName);
-        ContextsOf(update.Definition).Should().Equal(["build", "e2e"], "the rule lists its checks in ordinal order");
+        ContextsOf(update.Definition).Should().Equal([LinePolicyCheckName, "build", "e2e"], "the rule lists its checks in ordinal order");
     }
 
     [Fact]
-    public void Empty_line_checks_create_no_line_checks_ruleset()
+    public void Empty_line_checks_still_require_the_line_policy()
     {
+        // Segment E: the line policy is what keeps people's pull requests off a current line, so it never goes.
         var plan = Plan(new ForgeRulesetState(AppId, [], null),
             new MergeQueueRulesetChoices(0, ["build"], ReleaseLines: [Lines], LineRequiredChecks: []));
 
-        plan.Steps.OfType<CreateRulesetStep>().Should().NotContain(s => s.Definition.Name == LineChecksName);
+        ContextsOf(plan.Steps.OfType<CreateRulesetStep>().Single(s => s.Definition.Name == LineChecksName).Definition)
+            .Should().Equal([LinePolicyCheckName]);
+    }
+
+    [Fact]
+    public void The_form_never_offers_the_line_policy_and_a_second_run_changes_nothing()
+    {
+        var choices = new MergeQueueRulesetChoices(0, ["build"], ReleaseLines: [Lines], LineRequiredChecks: ["e2e"]);
+        var stored = Plan(new ForgeRulesetState(AppId, [], null), choices)
+            .Steps.OfType<CreateRulesetStep>().Select((s, i) => new ForgeExistingRuleset(i + 1, s.Definition)).ToList();
+
+        Defaults(new ForgeRulesetState(AppId, stored, null)).LineRequiredChecks.Should().Equal(["e2e"]);
+        Plan(new ForgeRulesetState(AppId, stored, null), choices).IsConfigured.Should().BeTrue();
+    }
+
+    [Fact]
+    public void A_line_policy_bound_to_another_App_is_bound_to_this_one()
+    {
+        var stored = Plan(new ForgeRulesetState(AppId, [], null), new MergeQueueRulesetChoices(0, ["build"], ReleaseLines: [Lines]))
+            .Steps.OfType<CreateRulesetStep>().Select((s, i) => new ForgeExistingRuleset(i + 1, s.Definition)).ToList();
+        var line = stored.Single(r => r.Definition.Name == LineChecksName);
+        var other = (JsonObject)line.Definition.Rules.Single().Parameters!.DeepClone();
+        other["required_status_checks"]!.AsArray().OfType<JsonObject>().Single(c => c["context"]!.GetValue<string>() == LinePolicyCheckName)["integration_id"] = 42;
+        stored[stored.IndexOf(line)] = line with { Definition = line.Definition with { Rules = [new("required_status_checks", other)] } };
+
+        var update = Plan(new ForgeRulesetState(AppId, stored, null), new MergeQueueRulesetChoices(0, ["build"], ReleaseLines: [Lines]))
+            .Steps.OfType<UpdateRulesetStep>().Single(s => s.Definition.Name == LineChecksName);
+        update.Definition.Rules.Single().Parameters!["required_status_checks"]!.AsArray().OfType<JsonObject>()
+            .Single(c => c["context"]!.GetValue<string>() == LinePolicyCheckName)["integration_id"]!.GetValue<long>().Should().Be(AppId);
     }
 
     [Fact]
