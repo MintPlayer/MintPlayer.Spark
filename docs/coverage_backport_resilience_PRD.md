@@ -384,9 +384,12 @@ With §3.1 this scenario cannot arise on a following line: the line is a prefix 
 - **Cache change done 2026-11-10 (PR #622, owner request):** the cache moved to `public.nx-cache.mintplayer.com`
   (VPS `/var/www/public-nx-cache`): reads need no token, a `PUT` without `NX_CACHE_RW_TOKEN` goes to a sink and is
   discarded, the RO token is retired, and the leaked tokens were rotated. Fork PRs now get cache hits (PR #622's
-  "build + verify": 71 remote hits, 0 errors). Writes stay master-push only. Letting PR or queue runs **write** was
-  rejected for the cache-poisoning risk ([CREEP](https://nx.dev/blog/cve-2025-36852-critical-cache-poisoning-vulnerability-creep));
-  "test each tree once" (item 1 below) reuses the queue's **verdict**, not cache entries.
+  "build + verify": 71 remote hits, 0 errors). ~~Writes stay master-push only. Letting PR or queue runs **write** was
+  rejected for the cache-poisoning risk~~ ([CREEP](https://nx.dev/blog/cve-2025-36852-critical-cache-poisoning-vulnerability-creep)).
+  **Superseded by Q16 = B** (owner, grilling 2026-11-10, confirmed 2026-11-11: "PR runs write - as long as it's not
+  from a fork"). Same-repository PR runs write too, except the dependency-update App's `mintplayer/dependencies*`
+  branches, and the line's release build skips the cache, so a poisoned entry can at worst fake a green test
+  (segment H). "Test each tree once" (item 1 below) reuses the queue's **verdict**, not cache entries.
   Open gap, owner's call: `NX_CACHE_RW_TOKEN` is an org secret passed by `secrets: inherit`, so a same-repository PR
   run (e.g. an App's dependency update) can reach it by editing its own workflow; an environment limited to `master`
   would close it (`docs/guide-nx-remote-cache.md`).
