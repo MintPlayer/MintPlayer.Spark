@@ -208,6 +208,20 @@ Dependencies: R before all; B before C; D before E; C before F. G and H are inde
     same step, so the line's release run cannot race it.
   - The line's versioning step asks the server and refuses a tag the App has not recorded as valid (one call from the
     action; if the server is unreachable the step fails rather than publishing).
+- **P0, configuration (my call, not grilled; reason: no SDK detection needed, and the auto-cut of a new line already
+  exists):** `versioning.lines.current: promote | backport` and `past: backport`, with `trigger: manual` (the only
+  trigger for now). A line is *current* when it has the highest major among its ecosystem's existing line branches.
+  The default stays `backport`, so other repositories keep today's behaviour. A promote line takes no cherry-picked
+  backports: the backport targeting skips it.
+- **Milestones (one PR):**
+  - **M1** config (`current`, `past`, `trigger`) and the `/release` parser, with tests.
+  - **M2** the release role setting on Account and Repository (model, translations, goldens).
+  - **M3** the server side of `/release`: role, green commit lookup, line selection, the comment.
+  - **M4** the GitWriter promote job: fetch, line-only check, `commit-tree`, push with tags.
+  - **M5** backport targeting skips promote lines; ruleset 3 gets the App bypass when `current: promote`.
+  - **M6** versions: `Pkg@ver`, tag-push detection, validation and recording, placement at promotion, and the
+    server check the versioning action calls.
+  - **M7** docs, the sandbox trial on SparkTest, the tests once, the PR.
 - **P6, sandbox (SP7 = A):** `PieterjanDeClippel/SparkTest`, two lines and a `publish-release` without publish
   secrets. Standing permission to push branches and tags and change rulesets there; ask before deleting anything that
   was there before.
