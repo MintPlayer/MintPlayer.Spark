@@ -107,6 +107,7 @@ public class SetUpFeaturesRulesetsTests : CoverageRavenTest
             new PersistentObjectAttribute { Name = nameof(MergeQueueRulesetChoices.RequiredApprovals), Value = approvals },
             new PersistentObjectAttribute { Name = nameof(MergeQueueRulesetChoices.AdminsMayMergeByPullRequest), Value = false },
             new PersistentObjectAttribute { Name = nameof(MergeQueueRulesetChoices.RequiredChecks), Value = new[] { "build" } },
+            new PersistentObjectAttribute { Name = nameof(MergeQueueRulesetChoices.LineRequiredChecks), Value = new[] { "build" } },
         ],
     };
 
@@ -204,6 +205,8 @@ public class SetUpFeaturesRulesetsTests : CoverageRavenTest
 
         applied!.Steps.OfType<CreateRulesetStep>().Single(s => s.Definition.Name == MergeQueueRulesetPlanner.RestrictUpdatesName)
             .Definition.Include.Should().Equal(["~DEFAULT_BRANCH", "refs/heads/release/*-*.x"]);
+        applied.Steps.OfType<CreateRulesetStep>().Single(s => s.Definition.Name == MergeQueueRulesetPlanner.LineChecksName)
+            .Definition.Include.Should().Equal(["refs/heads/release/*-*.x"], "ruleset 3 requires the lines' checks (R2)");
     }
 
     [Fact]

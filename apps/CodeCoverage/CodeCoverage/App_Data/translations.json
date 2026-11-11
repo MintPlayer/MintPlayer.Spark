@@ -3612,6 +3612,18 @@
             "nl": "Admins mogen mergen via een pull request"
           }
         },
+        "LineRequiredChecks": {
+          "description": {
+            "en": "Checks a pull request into a release line must pass. A line runs the workflows of its own tree, so an older line may lack a check the default branch has; pick only checks its pull requests report.",
+            "fr": "Checks qu'une pull request vers une ligne de release doit réussir. Une ligne exécute les workflows de son propre arbre : une ligne plus ancienne peut ne pas avoir un check de la branche par défaut ; choisissez uniquement les checks que ses pull requests signalent.",
+            "nl": "Checks waar een pull request naar een release-lijn voor moet slagen. Een lijn draait de workflows van haar eigen boom, dus een oudere lijn mist misschien een check van de standaardbranch; kies alleen checks die haar pull requests rapporteren."
+          },
+          "label": {
+            "en": "Required checks on release lines",
+            "fr": "Checks requis sur les lignes de release",
+            "nl": "Vereiste checks op release-lijnen"
+          }
+        },
         "RequiredApprovals": {
           "description": {
             "en": "Approving reviews a pull request needs before it can be queued. 0 suits a single maintainer.",

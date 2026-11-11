@@ -55,15 +55,22 @@ public sealed record ForgeRulesetApplied(string Description, string? Url);
 /// <param name="RequiredChecks">Ruleset 2's required checks, as confirmed. Never the queue's own check.</param>
 /// <param name="AdminsMayMergeByPullRequest">The Repository admin role as ruleset 1's <c>pull_request</c> bypass (O21 B); null keeps what ruleset 1 has, off when it does not exist.</param>
 /// <param name="ReleaseLines">
-/// The release lines' ref globs (<c>refs/heads/release/*-*.x</c>), which ruleset 1 targets beside the default branch.
-/// Ruleset 2 stays on the default branch: its checks are the default head's (PRD M10e, §8.2 "the lines get the same
-/// restriction", owner 2026-11-06: "The release branches should probably be protected too").
+/// The release lines' ref globs (<c>refs/heads/release/*-*.x</c>), which ruleset 1 targets beside the default branch
+/// (PRD M10e, §8.2 "the lines get the same restriction", owner 2026-11-06: "The release branches should probably be
+/// protected too"), and the lines' own checks ruleset targets. Ruleset 2 stays on the default branch.
+/// </param>
+/// <param name="LineRequiredChecks">
+/// The release lines' required checks (ruleset 3), chosen apart from the default branch's: a line runs the workflows of
+/// its own tree, so an older line may never report a check master added later (docs/release_lines_recovery_plan.md R2,
+/// owner 2026-11-11). Null keeps ruleset 3's own checks, or takes <paramref name="RequiredChecks"/> when it does not
+/// exist; empty creates no ruleset 3 and leaves an existing one as it is.
 /// </param>
 public sealed record MergeQueueRulesetChoices(
     int RequiredApprovals,
     IReadOnlyList<string> RequiredChecks,
     bool? AdminsMayMergeByPullRequest = null,
-    IReadOnlyList<string>? ReleaseLines = null);
+    IReadOnlyList<string>? ReleaseLines = null,
+    IReadOnlyList<string>? LineRequiredChecks = null);
 
 /// <summary>One change the plan makes, in the order it must be made.</summary>
 public abstract record MergeQueueRulesetStep;
@@ -100,6 +107,12 @@ public sealed record MergeQueueRulesetPlan(IReadOnlyList<MergeQueueRulesetStep> 
 /// plan does not manage (GitHub's <c>allowed_merge_methods</c>, a check's <c>integration_id</c>) are kept as they are.
 /// </para>
 /// <para>
+/// <b>Ruleset 3</b> ("merge-queue: release-line checks") holds only <c>required_status_checks</c>, on the release lines,
+/// with checks chosen apart from ruleset 2's (R2, owner 2026-11-11). No <c>pull_request</c> rule: only the App updates a
+/// line (ruleset 1), through the queue, whose approval floor applies. It exists only when the repository has release
+/// lines; its other rules and people bypass actors are kept, as on ruleset 2.
+/// </para>
+/// <para>
 /// <b>Classic protection is moved, then deleted</b> (owner, 2026-11-06): the steps run ruleset 1, ruleset 2, then the
 /// deletion, so the branch is never open in between.
 /// </para>
@@ -108,6 +121,7 @@ public static class MergeQueueRulesetPlanner
 {
     public const string RestrictUpdatesName = "merge-queue: restrict updates";
     public const string ReviewsAndChecksName = "merge-queue: reviews and checks";
+    public const string LineChecksName = "merge-queue: release-line checks";
 
     /// <summary>GitHub's id of the Repository admin role as a bypass actor (merge-queue.md §3).</summary>
     public const long RepositoryAdminRoleId = 5;
@@ -125,13 +139,15 @@ public static class MergeQueueRulesetPlanner
             return new MergeQueueRulesetPlan(steps,
                 ["This repository's plan has no rulesets (a private repository on GitHub Free). Make it public or upgrade the plan first."]);
         List<string> include = [DefaultBranch];
-        List<string> restricted = [DefaultBranch, .. (choices.ReleaseLines ?? []).Where(l => l != DefaultBranch).Distinct(StringComparer.Ordinal)];
+        List<string> lines = [.. (choices.ReleaseLines ?? []).Where(l => l != DefaultBranch).Distinct(StringComparer.Ordinal)];
+        List<string> restricted = [DefaultBranch, .. lines];
 
         if (choices.RequiredApprovals is < 0 or > 10)
             blockers.Add($"The approval count must be between 0 and 10, not {choices.RequiredApprovals}.");
-        var checks = choices.RequiredChecks.Where(c => !string.IsNullOrWhiteSpace(c)).Distinct(StringComparer.Ordinal).ToList();
-        if (checks.Contains(CheckGate.QueueCheckName, StringComparer.Ordinal))
-            blockers.Add($"\"{CheckGate.QueueCheckName}\" cannot be a required check: it is still running while the queue merges, so every merge would be refused (D62).");
+        var checks = Checks(choices.RequiredChecks, blockers);
+        var existing3 = Single(state, LineChecksName, blockers);
+        var lineChecks = lines.Count == 0 ? []
+            : Checks(choices.LineRequiredChecks ?? (existing3 is null ? choices.RequiredChecks : RequiredCheckNames(existing3.Definition)), blockers);
         if (state.Classic?.HasPushRestrictions == true)
             blockers.Add("Classic protection limits pushes to named people, teams or Apps. Rulesets have no such setting, so remove the restriction by hand first.");
 
@@ -142,6 +158,8 @@ public static class MergeQueueRulesetPlanner
         var desired2 = ReviewsAndChecks(state, choices.RequiredApprovals, checks, include, existing2);
         AddStep(steps, existing1, desired1);
         AddStep(steps, existing2, desired2);
+        if (lineChecks.Count > 0)
+            AddStep(steps, existing3, LineChecks(state, lineChecks, lines, existing3));
 
         if (state.Classic is { } classic)
             steps.Add(new DeleteClassicProtectionStep(ClassicNotes(classic, choices.RequiredApprovals, checks)));
@@ -170,9 +188,24 @@ public static class MergeQueueRulesetPlanner
             .OfType<JsonObject>().Select(c => c["context"] is JsonValue v && v.TryGetValue<string>(out var s) ? s : null).OfType<string>().ToList();
         IEnumerable<string> checks = ruleset2Checks.Count > 0 ? ruleset2Checks
             : state.Classic?.RequiredChecks ?? [];
-        return new MergeQueueRulesetChoices(approvals,
-            [.. checks.Where(c => !string.IsNullOrWhiteSpace(c) && c != CheckGate.QueueCheckName).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)],
-            ruleset1?.BypassActors.Any(IsAdminByPullRequest) ?? false);
+        // Ruleset 3's own checks; without it, null, so the form starts from ruleset 2's (a current line runs master's tree).
+        var ruleset3 = state.Rulesets.FirstOrDefault(r => r.Definition.Name == LineChecksName)?.Definition;
+        return new MergeQueueRulesetChoices(approvals, Clean(checks),
+            ruleset1?.BypassActors.Any(IsAdminByPullRequest) ?? false,
+            LineRequiredChecks: ruleset3 is null ? null : Clean(RequiredCheckNames(ruleset3)));
+    }
+
+    private static List<string> Clean(IEnumerable<string> checks)
+        => [.. checks.Where(c => !string.IsNullOrWhiteSpace(c) && c != CheckGate.QueueCheckName).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)];
+
+    /// <summary>The non-blank, distinct checks; the queue's own check is a blocker (D62), named once however many lists hold it.</summary>
+    private static List<string> Checks(IEnumerable<string> chosen, List<string> blockers)
+    {
+        var checks = chosen.Where(c => !string.IsNullOrWhiteSpace(c)).Distinct(StringComparer.Ordinal).ToList();
+        var blocker = $"\"{CheckGate.QueueCheckName}\" cannot be a required check: it is still running while the queue merges, so every merge would be refused (D62).";
+        if (checks.Contains(CheckGate.QueueCheckName, StringComparer.Ordinal) && !blockers.Contains(blocker))
+            blockers.Add(blocker);
+        return checks;
     }
 
     /// <summary>The plan as the confirmation shows it, one line per step or blocker. (From the abandoned e3.)</summary>
@@ -251,18 +284,7 @@ public static class MergeQueueRulesetPlanner
         rules.Add(new("pull_request", pullRequest));
 
         if (checks.Count > 0)
-        {
-            var statusChecks = Clone(kept.FirstOrDefault(r => r.Type == "required_status_checks")?.Parameters);
-            var byContext = (statusChecks["required_status_checks"] as JsonArray ?? [])
-                .OfType<JsonObject>()
-                .Where(c => c["context"] is JsonValue)
-                .GroupBy(c => c["context"]!.GetValue<string>(), StringComparer.Ordinal)
-                .ToDictionary(g => g.Key, g => g.First(), StringComparer.Ordinal);
-            statusChecks["strict_required_status_checks_policy"] = true;
-            statusChecks["required_status_checks"] = new JsonArray([.. checks.Order(StringComparer.Ordinal)
-                .Select(c => (JsonNode)(byContext.TryGetValue(c, out var known) ? known.DeepClone() : new JsonObject { ["context"] = c }))]);
-            rules.Add(new("required_status_checks", statusChecks));
-        }
+            rules.Add(StatusChecks(kept, checks));
 
         if (classic?.RequiredLinearHistory == true && kept.All(r => r.Type != "required_linear_history"))
             rules.Add(new("required_linear_history"));
@@ -274,6 +296,36 @@ public static class MergeQueueRulesetPlanner
             .Where(a => !(a.ActorType == "Integration" && a.ActorId == state.AppId))
             .ToList();
         return new ForgeRulesetDefinition(ReviewsAndChecksName, "branch", "active", include, [], rules, actors);
+    }
+
+    /// <summary>Ruleset 3: the lines' required checks and nothing the plan does not manage removed.</summary>
+    private static ForgeRulesetDefinition LineChecks(ForgeRulesetState state, List<string> checks, List<string> lines,
+        ForgeExistingRuleset? existing)
+    {
+        var kept = existing?.Definition.Rules ?? [];
+        List<ForgeRulesetRule> rules = [StatusChecks(kept, checks), .. kept.Where(r => r.Type != "required_status_checks")];
+        var actors = (existing?.Definition.BypassActors ?? [])
+            .Where(a => !(a.ActorType == "Integration" && a.ActorId == state.AppId))
+            .ToList();
+        return new ForgeRulesetDefinition(LineChecksName, "branch", "active", lines, [], rules, actors);
+    }
+
+    /// <summary>
+    /// A <c>required_status_checks</c> rule with these checks, strict, keeping what the forge holds for a check already
+    /// required (its <c>integration_id</c>) and the rule's other parameters.
+    /// </summary>
+    private static ForgeRulesetRule StatusChecks(IReadOnlyList<ForgeRulesetRule> kept, List<string> checks)
+    {
+        var statusChecks = Clone(kept.FirstOrDefault(r => r.Type == "required_status_checks")?.Parameters);
+        var byContext = (statusChecks["required_status_checks"] as JsonArray ?? [])
+            .OfType<JsonObject>()
+            .Where(c => c["context"] is JsonValue)
+            .GroupBy(c => c["context"]!.GetValue<string>(), StringComparer.Ordinal)
+            .ToDictionary(g => g.Key, g => g.First(), StringComparer.Ordinal);
+        statusChecks["strict_required_status_checks_policy"] = true;
+        statusChecks["required_status_checks"] = new JsonArray([.. checks.Order(StringComparer.Ordinal)
+            .Select(c => (JsonNode)(byContext.TryGetValue(c, out var known) ? known.DeepClone() : new JsonObject { ["context"] = c }))]);
+        return new("required_status_checks", statusChecks);
     }
 
     private static void AddStep(List<MergeQueueRulesetStep> steps, ForgeExistingRuleset? existing, ForgeRulesetDefinition desired)

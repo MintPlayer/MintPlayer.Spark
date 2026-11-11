@@ -580,6 +580,12 @@ Requirements and limits:
   `versioning.lines` pattern). Ruleset 2 stays on the default branch only. The lines are read from coverage.yml; when the
   chooser picks Release lines and coverage.yml has none yet, the default pattern is used. Set by hand, add the glob to
   ruleset 1's target next to the default branch.
+- With release lines, **ruleset 3** ("merge-queue: release-line checks") requires the lines' own checks on the same
+  glob: the form's "Required checks on release lines", prefilled from ruleset 3, else from ruleset 2's checks. It has
+  no pull_request rule, so the App's backport pull requests need no review, and no bypass for the App, so a line moves
+  only through a green pull request. Before it, line pull requests merged with no required check at all (#610 and the
+  lines' red E2E, `docs/release_lines_recovery_plan.md` A-4, R2). Empty checks create no ruleset 3 and leave an existing
+  one as it is.
 - Without the OAuth app configured (hosting.md §4, `GitHub:{Env}:RulesetsOAuth:*`), set up the rulesets as below.
 
 **Ruleset 1** (`ruleset-1.json`; `<APP_ID>` is the App's numeric id):
@@ -632,10 +638,28 @@ role. Picking "Repository admin" in the UI's bypass list writes the same entry.
 
 ![Ruleset 2's Require status checks to pass rule on GitHub, with Require branches to be up to date before merging ticked and the repository's CI check required, not the Merge queue check](https://github.com/user-attachments/assets/8d8fbe19-6195-4325-9131-3698d0b1773c)
 
+**Ruleset 3** (`ruleset-3.json`; only with release lines, one entry per check the lines require):
+
+```json
+{
+  "name": "merge-queue: release-line checks",
+  "target": "branch",
+  "enforcement": "active",
+  "conditions": { "ref_name": { "include": ["refs/heads/release/*-*.x"], "exclude": [] } },
+  "rules": [
+    { "type": "required_status_checks", "parameters": {
+        "strict_required_status_checks_policy": true,
+        "required_status_checks": [{ "context": "<CHECK_NAME>" }] } }
+  ],
+  "bypass_actors": []
+}
+```
+
 ```bash
 gh api apps/<app-slug> --jq .id                                       # <APP_ID>
 gh api --method POST repos/<owner>/<repo>/rulesets --input ruleset-1.json
 gh api --method POST repos/<owner>/<repo>/rulesets --input ruleset-2.json
+gh api --method POST repos/<owner>/<repo>/rulesets --input ruleset-3.json   # with release lines
 gh api repos/<owner>/<repo>/rules/branches/<branch>                   # what now applies to the branch
 ```
 
