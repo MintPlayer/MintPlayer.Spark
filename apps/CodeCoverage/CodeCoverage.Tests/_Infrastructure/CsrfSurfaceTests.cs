@@ -68,6 +68,8 @@ public class CsrfSurfaceTests
         // #552 D6: the plan and release halves of a run, the same OIDC-only scheme as Run.
         "VersioningController.Plan",
         "VersioningController.Release",
+        // Segment P (P5): the line's versioning step asks which hand tags the App placed; OIDC-only, read-only.
+        "VersioningController.VerifyTags",
     ];
 
     /// <summary>

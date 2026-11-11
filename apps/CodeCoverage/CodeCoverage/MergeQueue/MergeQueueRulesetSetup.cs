@@ -131,8 +131,10 @@ public partial class MergeQueueRulesetSetup : IMergeQueueRulesetSetup
                 // The lines ruleset 1 covers (PRD §8.2), from the App's read of coverage.yml: a file that does not parse
                 // gives no lines, as it does for the merge queue (MergeQueueYml).
                 var yml = await integrations.For(repository).GetFileContentAsync(repository, branch, CoverageYml.FileName, cancellationToken);
-                var lines = yml is null ? null : VersioningYml.Parse(yml) is { Config: { } config, Errors.Count: 0 } ? config.EffectiveLines : null;
-                read.Add(new RulesetRead(target, state, MergeQueueRulesetPlanner.Defaults(state), lines));
+                var versioning = yml is null ? null : VersioningYml.Parse(yml) is { Config: { } config, Errors.Count: 0 } ? config : null;
+                // Segment P: a repository that promotes its lines lets the App push the promotion past ruleset 3.
+                read.Add(new RulesetRead(target, state, MergeQueueRulesetPlanner.Defaults(state) with { PromotesLines = versioning?.Lines?.PromotesCurrent == true },
+                    versioning?.EffectiveLines));
             }
             catch (Exception ex) when (ex is ForgeAccessDeniedException or ForgeRequestException or HttpRequestException)
             {

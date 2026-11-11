@@ -134,6 +134,18 @@ public class Account : IForgeConnectable
     public LookupReferences.EMergeQueueBypassRole MergeQueueBypassRole { get; set; }
 
     /// <summary>
+    /// The lowest GitHub repository role whose holders may promote the release lines with <c>/release</c>, in every
+    /// repository of this account that does not set its own.
+    /// </summary>
+    /// <remarks>
+    /// Segment P, P3 (<c>docs/release_lines_recovery_plan.md</c> §2b); a repository overrides it with
+    /// <see cref="Repository.ReleaseRole"/>. Maintain by default. [IgnoreForIndex]: see <see cref="MergeQueueApprovalFloor"/>.
+    /// </remarks>
+    [IgnoreForIndex]
+    [LookupReference(typeof(LookupReferences.ReleaseRole))]
+    public LookupReferences.EReleaseRole ReleaseRole { get; set; }
+
+    /// <summary>
     /// Keep a rolling dependency-update pull request in every repository of this account that does not decide for itself.
     /// </summary>
     /// <remarks>

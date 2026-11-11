@@ -586,6 +586,12 @@ Requirements and limits:
   only through a green pull request. Before it, line pull requests merged with no required check at all (#610 and the
   lines' red E2E, `docs/release_lines_recovery_plan.md` A-4, R2). Empty checks create no ruleset 3 and leave an existing
   one as it is.
+- With `versioning.lines.current: promote` (versioning.md, "Promoted lines"), ruleset 3 does give the App an
+  `exempt` bypass: a promotion is a merge commit the App pushes straight onto the line after `/release`, and a check
+  cannot pass on a commit before it is pushed. The commit is already green on the default branch, and the line's own
+  run tests it again before it publishes. The bypass covers every line the glob matches, but the App pushes only
+  promotions: backports onto older lines still go through pull requests and their checks. Re-run "Set up rulesets"
+  after switching coverage.yml to `promote`.
 - Without the OAuth app configured (hosting.md §4, `GitHub:{Env}:RulesetsOAuth:*`), set up the rulesets as below.
 
 **Ruleset 1** (`ruleset-1.json`; `<APP_ID>` is the App's numeric id):

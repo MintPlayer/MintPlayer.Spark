@@ -56,6 +56,9 @@ public interface IForgeVersioning
     /// <summary>Comments on an issue or pull request.</summary>
     Task CommentAsync(Repository repository, int number, string body, CancellationToken cancellationToken = default);
 
+    /// <summary>Comments on a commit (segment P: a refused hand tag has no issue or pull request to answer on).</summary>
+    Task CommentOnCommitAsync(Repository repository, string sha, string body, CancellationToken cancellationToken = default);
+
     /// <summary>Fires <c>workflow_dispatch</c> on a workflow file of the repository at a branch (trigger B, D3).</summary>
     Task DispatchWorkflowAsync(Repository repository, string workflowFile, string branch, CancellationToken cancellationToken = default);
 }

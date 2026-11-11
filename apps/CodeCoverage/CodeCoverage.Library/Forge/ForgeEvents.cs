@@ -357,6 +357,23 @@ public sealed record DependencyAlertRaised(string RepositoryId, string Ecosystem
 public sealed record BackportRequested(string RepositoryId, int Number, IReadOnlyList<string> Lines, string ActorLogin, EBackportSource Source,
     bool Draft = false) : IForgeEvent;
 
+/// <summary>
+/// A person asked for release lines to be promoted (segment P): a <c>/release</c> comment on an issue or a pull request.
+/// </summary>
+/// <param name="Number">The issue or pull request the comment is on; the answer is posted there.</param>
+/// <param name="ActorLogin">The signed webhook's sender, never text from the comment. Whether that person may release is
+/// read from the forge per request (P3).</param>
+public sealed record ReleaseRequested(string RepositoryId, int Number, ReleaseCommentRequest Request, string ActorLogin) : IForgeEvent;
+
+/// <summary>
+/// A person pushed a new tag (segment P, P5): in a repository whose current lines are promoted, a version tag is
+/// validated, recorded and moved to its line's next promotion commit, and an invalid one is deleted.
+/// </summary>
+/// <param name="Tag">The tag's name, without <c>refs/tags/</c>.</param>
+/// <param name="TagObject">What the ref points at (an annotated tag's object, or the commit): the lease of the deletion.</param>
+/// <param name="PusherLogin">The signed webhook's sender; bots (the App, the versioning action) are never reported.</param>
+public sealed record TagPushed(string RepositoryId, string Tag, string TagObject, string PusherLogin) : IForgeEvent;
+
 public enum EBackportSource
 {
     /// <summary>A label added to a pull request that had already merged.</summary>

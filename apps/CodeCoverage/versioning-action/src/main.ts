@@ -11,7 +11,7 @@ import { checkBranchName, fetchTags, prepareHistory, showOnDefaultBranch, tagged
 import { discoverPackages, PLACEHOLDER, writeVersions, type Stamp } from './npm';
 import { distTag, highest } from './semver';
 import { createReleases, cutReleaseBranches } from './releases';
-import { planOnServer, releaseOnServer, runOnServer } from './server';
+import { planOnServer, releaseOnServer, runOnServer, verifyTagsOnServer } from './server';
 
 export interface Inputs {
   /** #552 D4: all (plan and tag in one step), plan (decide, write nothing) or release (write the plan's tags). */
@@ -199,6 +199,8 @@ export async function version(inputs: Inputs, deps: Dependencies): Promise<Outpu
     repo: cwd, manifest: manifestFile, config, branch, defaultBranch, out: path.join(work, 'result.json'), planOnly,
   });
 
+  await verifyHandTags(inputs, deps, section, collected.manifest.commit as string, response);
+
   const packages = (collected.manifest.packages as { id: string }[]).map((p) => p.id);
   const environment = buildEnvironment(section);
   if (!planOnly) return { ...await finish(inputs, deps, mode, response, packages), environment };
@@ -229,6 +231,24 @@ export async function allVersionsOf(exec: Exec, cwd: string, packages: string[],
     if (version) versions[id] = version;
   }
   return versions;
+}
+
+/**
+ * Segment P (P5): with `versioning.lines.current: promote`, a version tagged by hand on the commit releases only when
+ * the app placed that tag there, at a `/release`. Anything else, an unreachable app included, fails the step before a
+ * tag is written or a package is packed.
+ */
+export async function verifyHandTags(inputs: Inputs, deps: Dependencies, section: Record<string, unknown>, commit: string, response: RunResponse): Promise<void> {
+  const lines = section.lines as Record<string, unknown> | undefined;
+  if (lines?.current !== 'promote') return;
+  const tags = response.releases.filter((r) => r.taggedByHand).map((r) => r.tag);
+  if (tags.length === 0) return;
+  const answer = await verifyTagsOnServer({ url: inputs.url, idToken: deps.idToken, fetch: deps.fetch }, commit, tags);
+  if (answer.kind === 'failed')
+    throw new Error(`The hand tags ${tags.join(', ')} could not be checked with ${inputs.url} (${answer.reason}); nothing is released.`);
+  if (answer.refused.length > 0)
+    throw new Error(`${answer.refused.join(', ')} ${answer.refused.length === 1 ? 'was' : 'were'} not placed by \`/release\`: a version tag on a promoted line `
+      + 'is placed by the app. Delete the tag, then ask for the version with `/release <package>@<version>`.');
 }
 
 /** A 4xx keeps the app's own outcome only when it names a failure. */

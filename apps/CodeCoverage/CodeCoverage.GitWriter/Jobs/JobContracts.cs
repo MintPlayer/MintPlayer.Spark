@@ -463,6 +463,89 @@ public sealed record BackportTargetResult(
 public sealed record VersioningBackportResponse(
     string Outcome, string? Reason, string? Mode, string? Base, IReadOnlyList<BackportTargetResult> Targets, string? Detail, long DurationMs);
 
+/// <summary>
+/// <c>POST /jobs/versioning/promote</c> (segment P): move release lines to a green default-branch commit, each with one
+/// merge commit whose tree is <see cref="Commit"/>'s. The commit message is built here, so a request never carries one.
+/// </summary>
+public sealed class VersioningPromoteRequestWire
+{
+    public string? Provider { get; set; }
+    public string? RepoId { get; set; }
+    public string? CloneUrl { get; set; }
+    public CredentialWire? Credential { get; set; }
+    /// <summary>The default branch, which must hold <see cref="Commit"/>.</summary>
+    public string? DefaultBranch { get; set; }
+    public string? Commit { get; set; }
+    public IdentityWire? Committer { get; set; }
+    public List<PromoteLineWire>? Lines { get; set; }
+    /// <summary>For the change detection of a line with <see cref="PromoteLineWire.OnlyIfChanged"/>, and the ecosystem of a version's package.</summary>
+    public VersioningSettingsWire? Settings { get; set; }
+    /// <summary>The versions to release (P5), each tagged on the promotion commit of the line that releases its package.</summary>
+    public List<PromoteVersionWire>? Versions { get; set; }
+}
+
+public sealed class PromoteLineWire
+{
+    public string? Branch { get; set; }
+    /// <summary>The line's ecosystem, as the engine names it (<c>dotnet</c>, <c>angular</c>).</summary>
+    public string? Ecosystem { get; set; }
+    /// <summary>The line's major: a version placed on it must have it (P5).</summary>
+    public int Major { get; set; }
+    /// <summary>Move the line only when its ecosystem changed since its last promotion (P4).</summary>
+    public bool OnlyIfChanged { get; set; }
+}
+
+public sealed class PromoteVersionWire
+{
+    public string? PackageId { get; set; }
+    public string? Version { get; set; }
+    /// <summary>True for a version recorded earlier (a hand tag): when it no longer fits it is reported, not a refusal.</summary>
+    public bool Recorded { get; set; }
+}
+
+/// <param name="Outcome"><c>promoted</c>, <c>contained</c>, <c>unchanged</c>, <c>line-only</c>, <c>version-refused</c>, <c>moved</c> or <c>rejected</c>.</param>
+/// <param name="Commit">The promotion commit when promoted; otherwise the line's tip.</param>
+/// <param name="Paths">For <c>line-only</c>: the paths the default branch does not hold (at most 50).</param>
+/// <param name="Commits">For <c>line-only</c>: the line's commits that touched them, <c>sha subject</c>, newest first.</param>
+/// <param name="Tags">For <c>promoted</c>: the version tags pushed with the line (P5).</param>
+public sealed record PromoteLineResult(string Branch, string Outcome, string Commit, IReadOnlyList<string> Paths, IReadOnlyList<string> Commits, string? Detail = null)
+{
+    public IReadOnlyList<string> Tags { get; init; } = [];
+}
+
+/// <summary>A version no promoted line took (P5): its package is unknown, or no line in the request releases it.</summary>
+public sealed record PromoteVersionResult(string PackageId, string Version, string Detail);
+
+/// <param name="Outcome"><see cref="JobOutcomes.Promoted"/> when the job ran (each line has its own result), or a failure.</param>
+/// <summary><c>POST /jobs/versioning/hand-tag</c> (segment P, P5): a person's new tag, checked and deleted.</summary>
+public sealed class HandTagRequestWire
+{
+    public string? Provider { get; set; }
+    public string? RepoId { get; set; }
+    public string? CloneUrl { get; set; }
+    public CredentialWire? Credential { get; set; }
+    /// <summary>The tag's name, a version tag <c>&lt;PackageId&gt;/v&lt;version&gt;</c>.</summary>
+    public string? Tag { get; set; }
+    /// <summary>What the webhook said the tag points at; the deletion is leased on it.</summary>
+    public string? TagObject { get; set; }
+    /// <summary>The current lines (<see cref="PromoteLineWire.OnlyIfChanged"/> is ignored).</summary>
+    public List<PromoteLineWire>? Lines { get; set; }
+    public VersioningSettingsWire? Settings { get; set; }
+}
+
+/// <param name="Outcome"><see cref="JobOutcomes.Planned"/> when the job ran, or a failure.</param>
+/// <param name="Tag"><c>recorded</c>, <c>refused</c>, <c>not-a-package</c> (left alone) or <c>moved</c> (left alone).</param>
+/// <param name="Branch">The current line of the package's ecosystem.</param>
+/// <param name="Commit">The commit the tag pointed at, for the comment on a refused one.</param>
+/// <param name="Detail">For <c>refused</c>: why; for a failure: what failed.</param>
+public sealed record HandTagResponse(string Outcome, string? Reason, string? Tag, string? Branch, string? Commit, string? Detail, long DurationMs);
+
+/// <param name="Unplaced">The versions that belong to no line of the request; nothing was refused for them.</param>
+public sealed record VersioningPromoteResponse(string Outcome, string? Reason, IReadOnlyList<PromoteLineResult> Lines, string? Detail, long DurationMs)
+{
+    public IReadOnlyList<PromoteVersionResult> Unplaced { get; init; } = [];
+}
+
 /// <summary>The body of a 400 (§0 D57): the first field that broke its rule, and the rule. Never the value.</summary>
 public sealed record RefusedResponse(string Outcome, string Field, string Detail);
 
@@ -511,6 +594,8 @@ public static class JobOutcomes
     public const string PlanRefused = "plan-refused";
     /// <summary>Backport: every target applied; each has its own push result.</summary>
     public const string Backported = "backported";
+    /// <summary>Promote (segment P): the job ran; each line has its own result.</summary>
+    public const string Promoted = "promoted";
     /// <summary>Backport regeneration (#570 M6): the workflow's patch is in the backport commit.</summary>
     public const string Regenerated = "regenerated";
     /// <summary>Backport: a target conflicts (see its paths), so no target was pushed (D10).</summary>

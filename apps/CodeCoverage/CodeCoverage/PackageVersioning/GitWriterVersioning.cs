@@ -87,6 +87,57 @@ public sealed record GitWriterEcosystemsResult(string Outcome, string? Reason, I
     public const string Planned = "planned";
 }
 
+/// <summary><c>POST jobs/versioning/promote</c> (segment P): release lines moved to a green default-branch commit.</summary>
+public sealed record GitWriterPromoteRequest(
+    string Provider, string RepoId, string CloneUrl, SidecarCredential Credential, string DefaultBranch, string Commit, GitWriterTagger Committer,
+    IReadOnlyList<GitWriterPromoteLine> Lines, VersioningSettings Settings, IReadOnlyList<GitWriterPromoteVersion> Versions);
+
+public sealed record GitWriterPromoteLine(string Branch, string Ecosystem, int Major, bool OnlyIfChanged);
+
+/// <summary><c>POST jobs/versioning/hand-tag</c> (segment P, P5): a person's new tag, checked and deleted.</summary>
+/// <param name="Lines">The current lines (their <c>OnlyIfChanged</c> is ignored).</param>
+public sealed record GitWriterHandTagRequest(
+    string Provider, string RepoId, string CloneUrl, SidecarCredential Credential, string Tag, string TagObject, IReadOnlyList<GitWriterPromoteLine> Lines,
+    VersioningSettings Settings);
+
+/// <param name="Tag">One of the constants below, when <see cref="Outcome"/> is <see cref="Planned"/>.</param>
+public sealed record GitWriterHandTagResult(string Outcome, string? Reason, string? Tag, string? Branch, string? Commit, string? Detail, long DurationMs)
+{
+    public const string Planned = "planned";
+    public const string Recorded = "recorded";
+    public const string Refused = "refused";
+    public const string NotAPackage = "not-a-package";
+    public const string Moved = "moved";
+}
+
+/// <summary>A version to release (P5): tagged <c>&lt;PackageId&gt;/v&lt;Version&gt;</c> on its line's promotion commit.</summary>
+/// <param name="Recorded">A version recorded earlier from a hand tag: when it no longer fits, the writer reports it instead of refusing its line.</param>
+public sealed record GitWriterPromoteVersion(string PackageId, string Version, bool Recorded = false);
+
+/// <param name="Outcome"><see cref="Promoted"/> when the job ran (each line then has its own outcome), or a failure.</param>
+/// <param name="Unplaced">Versions no line of the request releases, with the reason.</param>
+public sealed record GitWriterPromoteResult(string Outcome, string? Reason, IReadOnlyList<GitWriterPromoteLineResult>? Lines, string? Detail, long DurationMs,
+    IReadOnlyList<GitWriterPromoteUnplaced>? Unplaced = null)
+{
+    public const string Promoted = "promoted";
+}
+
+public sealed record GitWriterPromoteUnplaced(string PackageId, string Version, string Detail);
+
+/// <param name="Outcome">One of the constants below.</param>
+/// <param name="Tags">For <see cref="Promoted"/>: the version tags pushed with the line.</param>
+public sealed record GitWriterPromoteLineResult(string Branch, string Outcome, string Commit, IReadOnlyList<string>? Paths, IReadOnlyList<string>? Commits, string? Detail = null,
+    IReadOnlyList<string>? Tags = null)
+{
+    public const string Promoted = "promoted";
+    public const string Contained = "contained";
+    public const string Unchanged = "unchanged";
+    public const string LineOnly = "line-only";
+    public const string VersionRefused = "version-refused";
+    public const string Moved = "moved";
+    public const string Rejected = "rejected";
+}
+
 /// <summary><c>POST jobs/versioning/backport</c> (#153 M10, D10): the merged pull request applied to release branches.</summary>
 public sealed record GitWriterBackportRequest(
     string Provider, string RepoId, string CloneUrl, SidecarCredential Credential, string SourceBranch, string Commit, int PullRequest, string Title,

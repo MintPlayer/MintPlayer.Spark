@@ -216,6 +216,43 @@ public partial class VersioningController : ControllerBase
         return await FinishAsync(record, repository, branch, status, response, cancellationToken);
     }
 
+    /// <summary>The body of <c>tags/verify</c>: the hand tags the engine found on the run's commit (segment P, P5).</summary>
+    public sealed record VersioningTagsVerifyRequest(string? Commit, IReadOnlyList<string>? Tags);
+
+    /// <param name="Refused">The tags the App did not place on this commit; the versioning step fails on any.</param>
+    public sealed record VersioningTagsVerifyResponse(IReadOnlyList<string> Refused);
+
+    public const int MaxVerifiedTags = 100;
+
+    /// <summary>
+    /// Segment P (P5, Q6b = C): with <c>versioning.lines.current: promote</c>, a version tag on a released commit must be
+    /// one the App placed there (a recorded <see cref="ReleaseVersion"/> with that <see cref="ReleaseVersion.PlacedCommit"/>).
+    /// The token pins the repository and the commit, so a run can ask only about its own commit; the answer names the
+    /// tags that are not, and changes nothing.
+    /// </summary>
+    [RequireAntiforgeryToken(false)]
+    [HttpPost("tags/verify")]
+    [RequestSizeLimit(64 * 1024)]
+    public async Task<IActionResult> VerifyTags([FromBody] VersioningTagsVerifyRequest? request, CancellationToken cancellationToken)
+    {
+        if (request is not { Commit: { Length: 40 } commit, Tags: { Count: > 0 and <= MaxVerifiedTags } tags }
+            || !commit.All(char.IsAsciiHexDigitLower) || tags.Any(t => !Versioning.Versions.VersionTag.TryParse(t, out _)))
+            return Answer(StatusCodes.Status400BadRequest, "refused", "request", $"The body names a commit and 1 to {MaxVerifiedTags} version tags.");
+        if (!long.TryParse(User.FindFirst(Oidc.RepositoryIdClaim)?.Value, NumberStyles.None, CultureInfo.InvariantCulture, out var repoId))
+            return Forbidden("The token names no repository.");
+        if (!string.Equals(User.FindFirst(Oidc.CommitClaim)?.Value, commit, StringComparison.Ordinal))
+            return Forbidden("The commit is not the commit the workflow run is for.");
+        var repository = await session.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, repoId), cancellationToken);
+        if (repository is null)
+            return Forbidden("The repository is not known to CodeCoverage: install the GitHub App on it.");
+
+        var ids = tags.Distinct(StringComparer.Ordinal).ToDictionary(t => t, t => ReleaseVersion.DocumentId(repository.Id!, t), StringComparer.Ordinal);
+        var records = await session.LoadAsync<ReleaseVersion>(ids.Values, cancellationToken);
+        var refused = ids.Where(p => records.GetValueOrDefault(p.Value) is not { } r || r.Tag != p.Key || r.PlacedCommit != commit)
+            .Select(p => p.Key).Order(StringComparer.Ordinal).ToList();
+        return Ok(new VersioningTagsVerifyResponse(refused));
+    }
+
     private VersioningRun NewRecord(Repository repository, long repoId, long runId, int runAttempt, string branch, string commit) => new()
     {
         Id = VersioningRun.DocumentId(repository.Provider, repoId, runId, runAttempt),

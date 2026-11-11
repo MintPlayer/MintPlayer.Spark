@@ -238,6 +238,35 @@ public class ReleaseLinesTests
         => new VersioningConfig { Lines = new VersioningLinesConfig { Prerelease = new() { [key] = label } } }
             .Validate().Should().ContainSingle(e => e.Contains(error));
 
+    [Theory]   // Segment P, P0
+    [InlineData("promote", null, null, "publish.yml", null)]
+    [InlineData("backport", "backport", "manual", null, null)]
+    [InlineData("fast-forward", null, null, null, "versioning.lines.current")]
+    [InlineData(null, "promote", null, null, "versioning.lines.past")]
+    [InlineData(null, null, "nightly", null, "versioning.lines.trigger")]
+    [InlineData("promote", null, null, null, "versioning.lines.workflow is required")]
+    [InlineData("promote", null, null, "../x.yml", "versioning.lines.workflow must be")]
+    public void Current_past_and_trigger_take_only_their_modes(string? current, string? past, string? trigger, string? workflow, string? error)
+    {
+        var errors = new VersioningConfig { Lines = new VersioningLinesConfig { Current = current, Past = past, Trigger = trigger, Workflow = workflow } }.Validate();
+        if (error is null) errors.Should().BeEmpty();
+        else errors.Should().ContainSingle(e => e.Contains(error));
+    }
+
+    [Fact]
+    public void Lines_are_backported_unless_current_says_promote()
+    {
+        new VersioningLinesConfig().PromotesCurrent.Should().BeFalse();
+        new VersioningLinesConfig { Current = "backport" }.PromotesCurrent.Should().BeFalse();
+        new VersioningLinesConfig { Current = "promote" }.PromotesCurrent.Should().BeTrue();
+    }
+
+    [Fact]   // Segment P, P0: the current line is the highest major of its ecosystem
+    public void The_current_line_of_each_ecosystem_has_the_highest_major()
+        => ReleaseLinePattern.Default.CurrentLines(["master", "release/dotnet-10.x", "release/dotnet-11.x", "release/angular-22.x", "release/angular-21.x",
+                "release/dotnet-9.x", "feature/x"])
+            .Should().Equal(new ReleaseLine("angular", 22), new ReleaseLine("dotnet", 11));
+
     [Theory]
     [InlineData("@angular/core", "angular")]
     [InlineData("react", "react")]

@@ -122,6 +122,14 @@ public interface IGitWriterSidecar
     Task<PackageVersioning.GitWriterBackportRegeneratedResult> VersioningBackportRegeneratedAsync(PackageVersioning.GitWriterBackportRegeneratedRequest request, CancellationToken cancellationToken = default)
         => throw new NotSupportedException("This git writer has no backport regenerate job.");
 
+    /// <summary>Segment P: moves release lines to a green default-branch commit, one promotion commit each.</summary>
+    Task<PackageVersioning.GitWriterPromoteResult> VersioningPromoteAsync(PackageVersioning.GitWriterPromoteRequest request, CancellationToken cancellationToken = default)
+        => throw new NotSupportedException("This git writer has no promote job.");
+
+    /// <summary>Segment P (P5): a person's new version tag, checked against the current lines and deleted.</summary>
+    Task<PackageVersioning.GitWriterHandTagResult> VersioningHandTagAsync(PackageVersioning.GitWriterHandTagRequest request, CancellationToken cancellationToken = default)
+        => throw new NotSupportedException("This git writer has no hand-tag job.");
+
     /// <summary>#153 M11: the release plan for a pushed commit, without a build and without writing anything.</summary>
     Task<PackageVersioning.GitWriterVersioningPlanResult> VersioningPlanAsync(PackageVersioning.GitWriterVersioningPlanRequest request, CancellationToken cancellationToken = default)
         => throw new NotSupportedException("This git writer has no versioning plan job.");
@@ -194,6 +202,12 @@ public sealed class GitWriterSidecarClient(HttpClient http, IOptions<MergeQueueO
 
     public Task<PackageVersioning.GitWriterBackportRegeneratedResult> VersioningBackportRegeneratedAsync(PackageVersioning.GitWriterBackportRegeneratedRequest request, CancellationToken cancellationToken = default)
         => SendAsync<PackageVersioning.GitWriterBackportRegeneratedResult>(HttpMethod.Post, "jobs/versioning/backport/regenerated", request, cancellationToken);
+
+    public Task<PackageVersioning.GitWriterPromoteResult> VersioningPromoteAsync(PackageVersioning.GitWriterPromoteRequest request, CancellationToken cancellationToken = default)
+        => SendAsync<PackageVersioning.GitWriterPromoteResult>(HttpMethod.Post, "jobs/versioning/promote", request, cancellationToken);
+
+    public Task<PackageVersioning.GitWriterHandTagResult> VersioningHandTagAsync(PackageVersioning.GitWriterHandTagRequest request, CancellationToken cancellationToken = default)
+        => SendAsync<PackageVersioning.GitWriterHandTagResult>(HttpMethod.Post, "jobs/versioning/hand-tag", request, cancellationToken);
 
     public Task<PackageVersioning.GitWriterVersioningPlanResult> VersioningPlanAsync(PackageVersioning.GitWriterVersioningPlanRequest request, CancellationToken cancellationToken = default)
         => SendAsync<PackageVersioning.GitWriterVersioningPlanResult>(HttpMethod.Post, "jobs/versioning/plan", request, cancellationToken);

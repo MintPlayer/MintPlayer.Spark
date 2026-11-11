@@ -2098,7 +2098,7 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
         try
         {
             var lines = await PackageVersioning.SupportedLines.ReadAsync(session, context.Queue, context.Repository, pattern,
-                PackageVersioning.BackportYml.Parse(yml).Section.Lines, ct);
+                PackageVersioning.BackportYml.Parse(yml).Section.Lines, ct, PackageVersioning.SupportedLines.PromotesCurrent(yml));
             return [.. lines.Where(l => l.Supported).Select(l => l.Line.ToString())];
         }
         catch (Exception ex) when (ex is not OperationCanceledException)

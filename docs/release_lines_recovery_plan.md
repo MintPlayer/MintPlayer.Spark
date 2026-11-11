@@ -167,16 +167,141 @@ Dependencies: R before all; B before C; D before E; C before F. G and H are inde
   - **Spark:** current lines `promote` + `manual`, past lines `backport` + `nominated`. O2, O3 (B′) and R3 no longer
     apply to current lines. Their catch-up becomes a one-time alignment that makes each line an ancestor of master
     (see the next open question), followed by a promotion.
-- **Q-A, how a `promote` line moves (open; the manual recovery used B).**
-  - **A:** a one-time `-s ours` merge on master, then pure fast-forwards.
-  - **B:** each promotion is a merge commit whose tree is exactly the green master commit's, with the line and that
-    commit as parents (`git commit-tree`). No alignment and no push to master are needed, it works on any onboarding
-    repository, and tags stay reachable.
-  - **C:** reset the line, which orphans its tags.
+- **Q-A, how a `promote` line moves: decided B (owner, 2026-11-11).** Each promotion is a merge commit whose tree is
+  exactly the green master commit's, with the line and that commit as parents (`git commit-tree`). This supersedes
+  Q-L's "fast-forward only, the line must be an ancestor of the default branch": the line is not an ancestor; the
+  promotion commit is a fast-forward *of the line*. Lookups use ancestry, not sha equality. A reset (orphans tags) and
+  a one-time `-s ours` merge on master were rejected.
+  - **Ruleset 3 refuses a direct push** of that commit (its new sha has no checks, the App has no bypass, and squash
+    merges would drop master from the ancestry). **Decided (Q-A = B, second round): the App bypasses ruleset 3 for
+    the promotion push only**, after verifying that the commit's tree sha equals a green master commit's tree sha.
+    Not a PR run per promotion: the tree already passed all checks, and the line's own `publish-release` still runs
+    the tests before it tags or publishes (that is what held back da8be3a91). Trap accepted: ruleset 3's guarantee
+    now rests on the App's tree check.
+- **O1 = (a) only (owner, 2026-11-11: "A only").** The hold lives on the merge-queue lane; Spark messaging stays
+  evicting. On a backport line a held conflict waits for the author or a maintainer to resolve it on the cherry-pick
+  branch (owner). Holding keeps the order but does not add a commit that was skipped for that line, so an
+  angular+dotnet PR after an angular-only one still conflicts on the dotnet line; on promote lines this cannot happen.
+- **Q6b = C (owner, 2026-11-11), see segment P.** Human version tags stay allowed, recorded and validated by the App.
 
-  Recommended: B. The app shows the line-only diff before promoting, and a code owner confirms it when it is
-  non-empty. Lookups use ancestry, not sha equality.
-- **Parked from the grilling:** Q6b (a tag ruleset would reverse versioning D3's "push a tag" gesture).
+## 2b. Segment P, `mode: promote` with `trigger: manual` (decided 2026-11-11, second grilling)
+
+- **P1, line-only changes (Q-P1 = A):** the App diffs the line's tree against its merge base with the default branch
+  and drops changes that are older copies of default-branch commits. Anything left refuses the promotion, with a
+  comment listing the files and commits. Nothing is ever dropped silently.
+- **P2, which commit (Q-P2 = B):** the newest default-branch commit whose `publish-release` run concluded `success`
+  ("green"), or `/release <sha>` when that commit is green and newer than the line's last promotion. The comment names
+  the promoted commit and PR, and what was left out.
+- **P3, who (Q-P3 = B):** a configurable lowest repository role, default `maintain`, per account with a per-repository
+  override (the same shape as `MergeQueueBypassRole`). The role is read live from GitHub on every request, never
+  cached.
+- **P4, which lines (Q-P4 = C):** by default only the promote lines whose ecosystem has changes since their last
+  promotion (the versioning engine's own change detection); `/release <line>` moves one line even without changes,
+  `/release all` moves every promote line. Skipped lines are listed with the reason.
+- **P5, versions (Q6b = C, owner: "if we detect tag-pushes and record them in the database, then we can pick option C";
+  "Yes, invalid tags can be refused"):**
+  - `/release [<line>] <PackageId>@<version>` names a version. It must keep the platform major, be higher than the
+    last tag, and not exist on the registry.
+  - A human push of `<PackageId>/v<version>` is detected from the webhook, validated the same way and recorded as
+    that package's next version. An invalid tag is deleted, with a comment to the pusher.
+  - At the next promotion of a line that releases the package, the App puts the tag on the promotion commit in the
+    same step, so the line's release run cannot race it.
+  - The line's versioning step asks the server and refuses a tag the App has not recorded as valid (one call from the
+    action; if the server is unreachable the step fails rather than publishing).
+- **P0, configuration (my call, not grilled; reason: no SDK detection needed, and the auto-cut of a new line already
+  exists):** `versioning.lines.current: promote | backport` and `past: backport`, with `trigger: manual` (the only
+  trigger for now). A line is *current* when it has the highest major among its ecosystem's existing line branches.
+  The default stays `backport`, so other repositories keep today's behaviour. A promote line takes no cherry-picked
+  backports: the backport targeting skips it.
+- **Milestones (one PR):**
+  - **M1** config (`current`, `past`, `trigger`) and the `/release` parser, with tests.
+  - **M2** the release role setting on Account and Repository (model, translations, goldens).
+  - **M3** the server side of `/release`: role, green commit lookup, line selection, the comment.
+  - **M4** the GitWriter promote job: fetch, line-only check, `commit-tree`, push with tags.
+  - **M5** backport targeting skips promote lines; ruleset 3 gets the App bypass when `current: promote`.
+  - **M6** versions: `Pkg@ver`, tag-push detection, validation and recording, placement at promotion, and the
+    server check the versioning action calls.
+  - **M7** docs, the sandbox trial on SparkTest, the tests once, the PR.
+    - Docs done: versioning.md "Promoted lines: `/release`", merge-queue.md (ruleset 3's App bypass with `promote`).
+    - Spark's coverage.yml: `lines: { current: promote, trigger: manual, workflow: dotnet-build-master.yml }`. After the
+      deploy, "Set up rulesets" must be re-run on Spark so ruleset 3 (27018553) gets the App's bypass; until then the
+      ruleset rejects a `/release` push (line outcome `rejected`).
+    - The versioning action's `dist` rebuilt from the main checkout.
+    - **The SparkTest trial runs after the deploy, not before the PR.** `/release`, the tag webhook and the writer job
+      are handled by the production App, which runs master. Order: tests once → PR → merge queue → deploy → re-run
+      "Set up rulesets" on SparkTest and Spark → trial on SparkTest (`/release`, `/release Pkg@ver`, a hand tag, a
+      line-only refusal) → only then the first `/release` on Spark. Until the trial passes, nobody comments
+      `/release` on Spark; with `promote`, Spark's current lines take no backports in the meantime, which delays
+      releases but publishes nothing wrong.
+- **Status (2026-11-11):**
+  - **M1 done:** `VersioningLinesConfig.Current/Past/Trigger/Workflow` with validation (`workflow` is required with
+    `current: promote`: a commit is green when that workflow's run on the default branch concluded `success`, my call,
+    because "publish-release" is a workflow *name* and the forge lists runs by file); `ReleaseLinePattern.CurrentLines`;
+    `ReleaseCommand` (parser) and the `ReleaseRequested` event, raised from `OnIssueCommentAsync` on issues and pull
+    requests alike.
+  - **M2 done:** `Account.ReleaseRole` (`EReleaseRole`, zero value `Maintain` so old documents need no migration) and
+    `Repository.ReleaseRole` (`EReleaseRolePolicy`, `Inherit`), `Repository.ResolveReleaseRole` / `MayRelease`; model
+    synchronized. The translations golden still needs `SPARK_UPDATE_GOLDEN=1` (done with the tests at the end).
+  - **M3 done:** `ReleaseRecipient` (`PackageVersioning/ReleaseRecipients.cs`): role check against the forge per
+    request, `coverage.yml` read from the default branch, current lines from the line branches, the green run from
+    `ListWorkflowRunsAsync(workflow)`, the writer call, the comment. The comment names the commit and links its run, not
+    the PR (my call: a squash commit's PR is in its subject, and a merge-queue commit can carry several); "left out"
+    counts only newer commits without a successful run, so naming an older green sha does not call newer green ones
+    "not passed".
+  - **M4 done:** `PromoteService` + `POST /jobs/versioning/promote`. The line-only check is "suspect paths" = changed
+    on the line since the merge base ∩ different from the commit; a suspect is an older copy when its blob (or its
+    absence) is one the default branch wrote between the merge base and the commit (`git log --raw base..commit --
+    path`). P4's change detection runs in the writer, from the line's merge base (= its last promotion) to the commit,
+    with the engine's `ChangedEcosystems`. The push carries a lease on the checked tip (outcome `moved`).
+  - **M5 done:** a promoted current line is *unsupported* in `SupportedLines.Evaluate(..., promotesCurrent)` (reason
+    `PromotedReason`), my call: besides backport labels and the "Backport targets" check, that also stops per-line
+    dependency updates and the onboarding's line-workflow PRs, each of which would be a line-only change blocking the
+    next promotion (P1). `BackportRecipient` drops promote lines from explicit `backport:` labels and refuses with a
+    pointer to `/release` when none is left. `MergeQueueRulesetChoices.PromotesLines` (from `coverage.yml` in
+    "Set up rulesets") puts the App as an `exempt` bypass on ruleset 3 only.
+  - **M6 keeps P5's "same step":** a recorded tag goes in the promotion's own push (one atomic push of the line and
+    its tags). A separate tags job right after would race the line's release run, whose checkout fetches the tags
+    within seconds of the push.
+  - **M6 design (my calls, each with its reason):**
+    - *Record:* `ReleaseVersion` documents (`ReleaseVersions/{repo}/{sha256(package@version)[..16]}`), plain documents
+      like `BackportPullRequest`, no model: state `Pending` (asked for, not placed) or `Placed` (with the commit).
+    - *`/release … Pkg@ver`:* the server refuses a version that nuget.org or npm already has (both registries are
+      asked, because the server does not know the package's ecosystem before the writer's graph; an id on the wrong
+      registry is at worst a needless refusal). The writer then checks, at the green commit's graph: the id is a
+      package, a promoted line releases its ecosystem, the major is that line's, and the version is above every
+      `<id>/v*` tag. A failing version refuses its line (outcome `version-refused`), so a release never ships at an
+      unintended version. The tag is lightweight (no engine annotation), so the line's engine sees a hand tag on the
+      commit and releases exactly that version (`ReleasePlanner`'s `byHand`).
+    - *Human tag pushes:* only in repositories with `current: promote`, only human senders (the App's and the action's
+      own tag pushes are bots), only names of the form `<id>/v<semver>`. A writer job reads the tag's commit's graph:
+      a tag whose id is no package (Spark's `schemas/v*`) is left alone. A package tag is always deleted (lease on its
+      oid), because left in place it becomes reachable from the line at the next promotion and moves every later
+      version; a valid one is recorded `Pending` and placed at the next promotion of its line, an invalid one gets a
+      commit comment that names the pusher and the reason.
+    - *The action's check:* with `versioning.lines.current: promote`, a release the engine reports `taggedByHand`
+      is sent to `POST /api/versioning/tags/verify` (OIDC, like `run`); a tag the server has not recorded as `Placed`
+      on that commit fails the step, and so does an unreachable server. Limit, documented: a human tag that carries a
+      copied engine annotation is a re-run to the engine, not a hand tag, so it is not checked; a tag ruleset that
+      lets only the App and `github-actions` create `*/v*` tags closes that, and is left to the owner.
+  - **M6 done (code, tests written, not run):** writer `PromoteJob.Versions` (atomic push `WriterService.PushAtomicAsync`,
+    outcome `version-refused`, `Unplaced`), `POST /jobs/versioning/hand-tag` (`PromoteService.CheckHandTagAsync`);
+    server `ReleaseVersion`, `PublishedVersions`, `TagPushed` from the push webhook → `HandTagRecipient` (commit comment
+    via the new `IForgeVersioning.CommentOnCommitAsync`, needs `contents: write`, which the App has), `ReleaseRecipient`
+    passes the comment's and the pending versions and records the placed tags, `POST /api/versioning/tags/verify`
+    (CSRF list and route snapshot updated); action `verifyHandTags` (+ tests). The action's `dist` is rebuilt from the
+    main checkout before the PR.
+    - A pending version whose package the comment also names is left pending (the comment's wins this time).
+    - A version the comment asks for, on a line that holds the commit already, is `version-refused` (no promotion
+      commit to tag). A recorded (pending) version there leaves the line `contained` and stays pending.
+    - A recorded version is flagged `Recorded` on the writer request. When it no longer fits (its package is gone, or
+      the line released past it since it was recorded) the writer reports it in `Unplaced` and promotes the line
+      without it, and the server deletes its record. Only a version the comment names refuses its line. Why: a stale
+      record would otherwise refuse every later promotion of its line, with no command to clear it (found while
+      writing M6; test `A_recorded_version_the_line_released_past_is_reported_and_does_not_hold_the_line`). A recorded
+      version whose line the release does not take stays pending without a word.
+- **P6, sandbox (SP7 = A):** `PieterjanDeClippel/SparkTest`, two lines and a `publish-release` without publish
+  secrets. Standing permission to push branches and tags and change rulesets there; ask before deleting anything that
+  was there before.
 
 ## 4. Spikes
 
@@ -193,10 +318,9 @@ Dependencies: R before all; B before C; D before E; C before F. G and H are inde
 ## 5. Where it stands and what is next (2026-11-11)
 
 1. **R5:** done, both runs green.
-2. **R2:** ruleset 3 in the planner and form (this branch, `feat/release-line-rulesets`); after the deploy, run "Set
-   up rulesets" on Spark, or create ruleset 3 by hand from `merge-queue.md`'s JSON with the 23 checks.
-3. **Owner decisions still open:** Q-A (B recommended), O1 (Blocking/Evicting on the merge-queue lane, not on Spark
-   messaging; recommended), Q6b (tag ruleset vs versioning D3), and SP7 (the GitHub sandbox repository).
+2. **R2:** done. PR #624 (c627a9197) shipped ruleset 3; "Set up rulesets" created it on Spark as ruleset 27018553
+   (23 checks, strict, no bypass), 2026-11-11. Segment R is complete.
+3. **No owner decision is open.** Segment P (§2b) is being built on `feat/release-lines-promote`.
 4. **The segments to build, re-ordered for Q-L:**
    - **B (no silent losses), smallest first:** still needed for past lines and `backport` repositories.
    - **P, a new segment: `mode: promote` with `trigger: manual`** (`/release` and an app button). It turns today's manual

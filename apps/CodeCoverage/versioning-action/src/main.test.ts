@@ -1,5 +1,5 @@
 import type { Exec } from './exec';
-import { allVersionsOf, buildEnvironment, failureOf, readInputs, readPlan, version, versioningSection, type Dependencies } from './main';
+import { allVersionsOf, buildEnvironment, failureOf, readInputs, readPlan, verifyHandTags, version, versioningSection, type Dependencies } from './main';
 
 const release = (over: object = {}) => ({
   id: 'Acme.Core', kind: 'nuget', version: '1.2.0', tag: 'Acme.Core/v1.2.0', reasons: ['api changed'], taggedByHand: false, tagOutcome: 'created', ...over,
@@ -19,6 +19,41 @@ describe('failureOf', () => {
     const refused = failureOf({ outcome: 'plan-refused', releases: [], refused: [{ id: 'Acme.Core', reason: 'major past its line' }], skipped: 0, warnings: [] });
     expect(refused).toContain('plan-refused');
     expect(refused).toContain('Acme.Core: major past its line');
+  });
+});
+
+describe('verifyHandTags (segment P, P5)', () => {
+  const commit = 'a'.repeat(40);
+  const promote = { lines: { current: 'promote', workflow: 'release.yml' } };
+  const handTagged = { outcome: 'versioned', releases: [release({ taggedByHand: true }), release({ id: 'Acme.Web', tag: 'Acme.Web/v1.0.0' })] as any, refused: [], skipped: 0, warnings: [] };
+  const deps = (answer: () => Promise<Response>, asked: unknown[] = []): Dependencies => ({
+    exec: (async () => ({ code: 0, stdout: '', stderr: '' })) as unknown as Exec, engineProject: 'x', idToken: async () => 'token',
+    fetch: (async (_url: string, init: RequestInit) => { asked.push(JSON.parse(init.body as string)); return answer(); }) as unknown as typeof fetch,
+    log: () => {}, warn: () => {},
+  });
+  const inputs = { ...readInputs({}), url: 'https://coverage.example.invalid' };
+
+  it('asks about the hand tags only, and passes when the app placed them', async () => {
+    const asked: unknown[] = [];
+    await verifyHandTags(inputs, deps(async () => new Response(JSON.stringify({ refused: [] }), { status: 200 }), asked), promote, commit, handTagged);
+    expect(asked).toEqual([{ commit, tags: ['Acme.Core/v1.2.0'] }]);
+  });
+
+  it('fails on a tag the app did not place, and on an app that cannot answer', async () => {
+    await expect(verifyHandTags(inputs, deps(async () => new Response(JSON.stringify({ refused: ['Acme.Core/v1.2.0'] }), { status: 200 })), promote, commit, handTagged))
+      .rejects.toThrow(/Acme.Core\/v1.2.0 was not placed by `\/release`/);
+    await expect(verifyHandTags(inputs, deps(async () => new Response('down', { status: 503 })), promote, commit, handTagged))
+      .rejects.toThrow(/could not be checked/);
+    await expect(verifyHandTags(inputs, deps(async () => { throw new Error('ECONNREFUSED'); }), promote, commit, handTagged))
+      .rejects.toThrow(/ECONNREFUSED/);
+  });
+
+  it('asks nothing without current: promote or without hand tags', async () => {
+    const asked: unknown[] = [];
+    const never = deps(async () => { throw new Error('asked'); }, asked);
+    await verifyHandTags(inputs, never, { lines: { current: 'backport' } }, commit, handTagged);
+    await verifyHandTags(inputs, never, promote, commit, { ...handTagged, releases: [release()] as any });
+    expect(asked).toEqual([]);
   });
 });
 

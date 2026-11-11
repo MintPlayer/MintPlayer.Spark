@@ -560,6 +560,28 @@ public sealed partial class WriterService(GitRunner git, JobRunner jobs, IOption
         throw new GitCommandException("push", result);
     }
 
+    /// <summary>
+    /// One <c>--atomic</c> push of several refs, each with a lease (<c>Expected</c> null: the ref must not exist): the
+    /// forge applies all or none (segment P: a line and its version tags). A refused lease on any ref is
+    /// <see cref="Push.LeaseRejected"/>; anything else <see cref="PushAsync"/> would throw, throws.
+    /// </summary>
+    internal static async Task<Push> PushAtomicAsync(JobContext context, Uri url, GitCredential credential, IReadOnlyList<(string Source, string Ref, string? Expected)> updates)
+    {
+        if (updates.Count == 1) return await PushAsync(context, url, credential, updates[0].Source, updates[0].Ref, updates[0].Expected);
+        var arguments = new List<string> { "push", "--porcelain", "--atomic", "--no-verify", "--no-recurse-submodules" };
+        arguments.AddRange(updates.Select(u => $"--force-with-lease={u.Ref}:{u.Expected ?? ""}"));
+        arguments.Add(url.AbsoluteUri);
+        arguments.AddRange(updates.Select(u => $"{u.Source}:{u.Ref}"));
+        var result = await context.GitAsync(arguments, credential);
+        var refused = result.StandardOutput.Split('\n').Where(l => l.StartsWith('!')).ToList();
+        // --atomic marks the refs it did not try "(atomic push failed)"; the cause is on the others.
+        var cause = refused.FirstOrDefault(l => !l.Contains("atomic push failed", StringComparison.Ordinal)) ?? refused.FirstOrDefault();
+        if (cause is not null)
+            return cause.Contains("(stale info)", StringComparison.Ordinal) ? new Push.LeaseRejected() : new Push.Rejected($"{cause.Trim()} {result.StandardError.Trim()}".Trim());
+        if (result.Succeeded) return new Push.Done();
+        throw new GitCommandException("push", result);
+    }
+
     internal static string Oid(GitResult result, string verb)
     {
         var oid = result.StandardOutput.Trim();

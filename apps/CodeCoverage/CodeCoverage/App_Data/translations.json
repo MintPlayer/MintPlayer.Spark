@@ -898,6 +898,11 @@
             "nl": "Release per versietag"
           }
         },
+        "ReleaseRole": {
+          "description": {
+            "en": "The lowest GitHub repository role whose holders may promote the release lines with /release, in every repository of this account that does not set its own."
+          }
+        },
         "Type": {
           "description": {
             "en": "\"User\" or \"Organization\".",
@@ -3389,6 +3394,11 @@
             "en": "Release per version tag",
             "fr": "Release par tag de version",
             "nl": "Release per versietag"
+          }
+        },
+        "ReleaseRole": {
+          "description": {
+            "en": "The lowest GitHub repository role whose holders may promote the release lines with /release in this repository, or the account's setting."
           }
         }
       }

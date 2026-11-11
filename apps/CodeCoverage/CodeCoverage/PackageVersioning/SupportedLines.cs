@@ -25,8 +25,15 @@ public static class SupportedLines
     public const string Keep = "keep";
     public const string Retire = "retire";
 
+    /// <summary>The reason a current line with <c>versioning.lines.current: promote</c> is not backported to (segment P, P0).</summary>
+    public const string PromotedReason = "promoted with `/release`, so it takes no backports";
+
+    /// <param name="promotesCurrent"><c>versioning.lines.current: promote</c> (segment P, P0): every current line is then
+    /// unsupported here, whatever <c>backport.lines</c> says. Its changes arrive by promotion, so a backport, a default
+    /// label, a per-line dependency update or a line workflow pull request would only be a line-only change that blocks
+    /// the next promotion (P1).</param>
     public static IReadOnlyList<LineSupport> Evaluate(ReleaseLinePattern pattern, IEnumerable<string> branches, IReadOnlyCollection<PlatformRelease> releases,
-        IReadOnlyDictionary<string, string> overrides)
+        IReadOnlyDictionary<string, string> overrides, bool promotesCurrent = false)
     {
         var lines = new Dictionary<ReleaseLine, string>();
         foreach (var branch in branches)
@@ -42,6 +49,7 @@ public static class SupportedLines
             {
                 var (line, branch) = (pair.Key, pair.Value);
                 var isCurrent = current[line.Ecosystem] == line.Major;
+                if (isCurrent && promotesCurrent) return new LineSupport(line, branch, false, true, PromotedReason);
                 overrides.TryGetValue(line.ToString(), out var setting);
                 if (setting == Retire) return new LineSupport(line, branch, false, isCurrent, $"`{Retire}` in coverage.yml");
                 if (setting == Keep) return new LineSupport(line, branch, true, isCurrent, $"`{Keep}` in coverage.yml");
@@ -65,12 +73,16 @@ public static class SupportedLines
     /// every collected <see cref="PlatformRelease"/> (a few dozen documents, read by id prefix: no index to wait for).
     /// </summary>
     public static async Task<IReadOnlyList<LineSupport>> ReadAsync(Raven.Client.Documents.Session.IAsyncDocumentSession session, Forge.IForgeMergeQueue forge,
-        Repository repository, ReleaseLinePattern pattern, IReadOnlyDictionary<string, string> overrides, CancellationToken cancellationToken)
+        Repository repository, ReleaseLinePattern pattern, IReadOnlyDictionary<string, string> overrides, CancellationToken cancellationToken,
+        bool promotesCurrent = false)
     {
         var branches = await forge.ListBranchesAsync(repository, BranchPrefix(pattern), cancellationToken);
         var releases = await session.Advanced.LoadStartingWithAsync<PlatformRelease>(PlatformRelease.Prefix, pageSize: 1024, token: cancellationToken);
-        return Evaluate(pattern, branches, [.. releases], overrides);
+        return Evaluate(pattern, branches, [.. releases], overrides, promotesCurrent);
     }
+
+    /// <summary>Whether <paramref name="yml"/>'s <c>versioning.lines.current</c> is <c>promote</c> (segment P).</summary>
+    public static bool PromotesCurrent(string? yml) => VersioningYml.Parse(yml).Config?.Lines?.PromotesCurrent == true;
 
     /// <summary>The fixed start of <paramref name="pattern"/>, what the forge's branch listing filters on.</summary>
     public static string BranchPrefix(ReleaseLinePattern pattern)
