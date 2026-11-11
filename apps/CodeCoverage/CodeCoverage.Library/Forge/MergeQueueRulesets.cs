@@ -136,6 +136,12 @@ public static class MergeQueueRulesetPlanner
     public const string LineChecksName = "merge-queue: release-line checks";
     public const string BackportBranchesName = "merge-queue: backport branches";
 
+    /// <summary>
+    /// The App's own check on release lines (segment E, Q1b): a current line takes only the App's backports. Ruleset 3
+    /// always requires it, bound to the App (<c>integration_id</c>), so nobody else can report it green.
+    /// </summary>
+    public const string LinePolicyCheckName = "Line policy";
+
     /// <summary>The branches the App's backports are pushed to (<c>backport/&lt;pr&gt;-&lt;line&gt;</c>).</summary>
     public const string BackportBranchesPattern = "refs/heads/backport/*";
 
@@ -167,6 +173,8 @@ public static class MergeQueueRulesetPlanner
         var existing3 = Single(state, LineChecksName, blockers);
         var lineChecks = lines.Count == 0 ? []
             : Checks(choices.LineRequiredChecks ?? (existing3 is null ? choices.RequiredChecks : RequiredCheckNames(existing3.Definition)), blockers);
+        // Segment E: the line policy is always required on the lines, whatever else the admin picks.
+        lineChecks.RemoveAll(c => c == LinePolicyCheckName);
         if (state.Classic?.HasPushRestrictions == true)
             blockers.Add("Classic protection limits pushes to named people, teams or Apps. Rulesets have no such setting, so remove the restriction by hand first.");
 
@@ -177,10 +185,9 @@ public static class MergeQueueRulesetPlanner
         var desired2 = ReviewsAndChecks(state, choices.RequiredApprovals, checks, include, existing2);
         AddStep(steps, existing1, desired1);
         AddStep(steps, existing2, desired2);
-        if (lineChecks.Count > 0)
-            AddStep(steps, existing3, LineChecks(state, lineChecks, lines, existing3, choices.PromotesLines));
         if (lines.Count > 0)
         {
+            AddStep(steps, existing3, LineChecks(state, lineChecks, lines, existing3, choices.PromotesLines));
             var existing4 = Single(state, BackportBranchesName, blockers);
             AddStep(steps, existing4, BackportBranches(state, existing4));
         }
@@ -219,8 +226,10 @@ public static class MergeQueueRulesetPlanner
             LineRequiredChecks: ruleset3 is null ? null : Clean(RequiredCheckNames(ruleset3)));
     }
 
+    /// <summary>The checks the form offers: never the queue's own (D62), nor the line policy, which the plan always adds.</summary>
     private static List<string> Clean(IEnumerable<string> checks)
-        => [.. checks.Where(c => !string.IsNullOrWhiteSpace(c) && c != CheckGate.QueueCheckName).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)];
+        => [.. checks.Where(c => !string.IsNullOrWhiteSpace(c) && c is not (CheckGate.QueueCheckName or LinePolicyCheckName))
+            .Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)];
 
     /// <summary>The non-blank, distinct checks; the queue's own check is a blocker (D62), named once however many lists hold it.</summary>
     private static List<string> Checks(IEnumerable<string> chosen, List<string> blockers)
@@ -330,7 +339,12 @@ public static class MergeQueueRulesetPlanner
         ForgeExistingRuleset? existing, bool promotes)
     {
         var kept = existing?.Definition.Rules ?? [];
-        List<ForgeRulesetRule> rules = [StatusChecks(kept, checks), .. kept.Where(r => r.Type != "required_status_checks")];
+        var statusChecks = StatusChecks(kept, [.. checks, LinePolicyCheckName]);
+        // Bound to this App, replacing whatever the check was bound to: another App's green must not pass it.
+        foreach (var check in ((JsonArray)statusChecks.Parameters!["required_status_checks"]!).OfType<JsonObject>())
+            if (check["context"] is JsonValue v && v.TryGetValue<string>(out var name) && name == LinePolicyCheckName)
+                check["integration_id"] = state.AppId;
+        List<ForgeRulesetRule> rules = [statusChecks, .. kept.Where(r => r.Type != "required_status_checks")];
         var actors = (existing?.Definition.BypassActors ?? [])
             .Where(a => !(a.ActorType == "Integration" && a.ActorId == state.AppId))
             .ToList();

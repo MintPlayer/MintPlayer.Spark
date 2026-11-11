@@ -10,6 +10,9 @@ merges are backported on the merger's behalf: the merge itself needed write acce
 you push yourself opens its pull request only when you have write access. With release lines, "Set up rulesets" adds
 a ruleset on `backport/*` that only the App and repository admins pass (merge-queue.md §3, ruleset 4): resolving a
 conflicted backport by hand is then an admin's job, and in return the App's backports merge without an approval.
+A pull request of your own into a release line passes the required "Line policy" check only on a **past** line; the
+current line of each ecosystem takes only the App's backports, so a fix goes to the default branch first
+(merge-queue.md §3, ruleset 3).
 Edited comments and bots are never commands.
 
 **What you get back.** One comment on the original pull request, with a line per release line: the backport pull

@@ -481,7 +481,12 @@ public partial class MergeQueueEngine : IMergeQueueEngine
         if (rules.RequiredChecks.Contains(CheckGate.QueueCheckName, StringComparer.Ordinal))
             return new("self-required", $"`{pull.BaseRef}` requires the \"{CheckGate.QueueCheckName}\" check, which is the queue's own: it is still in progress while the queue merges, "
                 + "so GitHub would refuse every merge the queue asks for. Remove it from the branch's required checks (ruleset or branch protection).");
-        foreach (var ruleset in rules.Rulesets.Where(r => r.RuleTypes.Any(t => t is "pull_request" or "required_status_checks")))
+        // Segment E: on a release line, a checks-only ruleset may exempt the App (ruleset 3 with `current: promote`, so the
+        // App can push promotions). Nothing merges unchecked: the queue waits for the required checks itself (below), and
+        // there is no review rule for GitHub to waive.
+        var onLine = MergeQueueBranches.IsLine(entry.Config.LinePattern, pull.BaseRef);
+        foreach (var ruleset in rules.Rulesets.Where(r => r.RuleTypes.Any(t => t is "pull_request" or "required_status_checks")
+            && !(onLine && r.Bypass == EForgeRulesetBypass.Exempt && !r.RuleTypes.Contains("pull_request", StringComparer.Ordinal))))
         {
             if (ruleset.Bypass != EForgeRulesetBypass.Never)
                 return new("bypass", ruleset.Bypass == EForgeRulesetBypass.Unknown

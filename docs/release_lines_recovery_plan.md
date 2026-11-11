@@ -155,6 +155,32 @@ why #593, #608 and #620 produced nothing, although the conflict path does open d
 **Segment E, "Line policy" check.** An App-bound required check on `release/*`, judged from the SDK majors:
 current lines take only bot picks, past lines take human PRs (grilling Q1b, Q1c, Q1d).
 
+**E done (2026-11-11, branch `feat/backport-line-policy`, rebased onto master after D merged as #633).**
+- **The check:** `LinePolicyEventsRecipient` forwards every pull request event whose base is not the default branch
+  (bots included: the queue's pushes to a backport need the check on each new head) to `LinePolicyRecipient`, on the
+  versioning lane. It reads coverage.yml's line pattern. A base the pattern does not match gets no check. Otherwise
+  `LinePolicy.Check` passes a past line, passes the App's own backport on the current line, and fails anything else
+  there. The App's own backport means a `BackportPullRequest` record for this number onto this base, plus a
+  `backport/` head. Tests: `LinePolicyRecipientTests` (6).
+- **Current = newest line of its ecosystem** (owner, 2026-11-11, chose this over a literal reading of Q1c's "from the
+  SDK versions") (`ReleaseLinePattern.CurrentLines`, D15, the same rule segment P's
+  promotion uses), not a fresh read of the SDK majors. Q1c's split is the upgrade cutting the new line, so the two agree
+  once the line exists. Reusing it keeps one definition of "current" across backports, promotions and this check.
+- **Ruleset 3** (owner, 2026-11-11: "Always with lines", reversing "empty checks create no ruleset 3") always carries
+  `Line policy` with `integration_id` = the App, so it exists whenever lines do, even
+  with no other checks picked (it used to be skipped then). The form never offers it (`Defaults`/`Clean`). A binding
+  to another App is rebound. Tests: `Empty_line_checks_still_require_the_line_policy`,
+  `The_form_never_offers_the_line_policy_and_a_second_run_changes_nothing`,
+  `A_line_policy_bound_to_another_App_is_bound_to_this_one`, updated contexts in 5 existing tests.
+- **Defect fixed (owner: "y", 2026-11-11):** with `current: promote`, ruleset 3 exempts the App on every line. The
+  queue refused any ruleset with checks or reviews that the App bypasses (`MergeQueueEngine.cs`, `bypass`), so every
+  App backport onto a past line in a promote repository would have been refused. Spark has no past lines yet, so it
+  never showed. On a line base, a ruleset without `pull_request` may now exempt the App, because the queue's own gate
+  waits for `RequiredChecks`. Test: `Only_a_checks_only_ruleset_on_a_line_may_exempt_the_App` (line accepted; review
+  rule or default branch still `bypass`).
+- **After deploy:** re-run "Set up rulesets" on Spark and SparkTest (ruleset 3 gains the line policy, ruleset 4 is
+  created). Open pull requests into a line get the check on their next push.
+
 **Segment F, attention.**
 - **Who is asked:** one auto re-run, then the author, with the code owners as fallback; a reminder after 2 working
   days.

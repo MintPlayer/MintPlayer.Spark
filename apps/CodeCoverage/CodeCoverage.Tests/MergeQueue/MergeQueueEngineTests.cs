@@ -1644,6 +1644,34 @@ public class MergeQueueEngineTests : CoverageRavenTest
         await session.SaveChangesAsync();
     }
 
+    [Theory]
+    [InlineData(true, false, null)]
+    [InlineData(true, true, "bypass")]
+    [InlineData(false, false, "bypass")]
+    public async Task Only_a_checks_only_ruleset_on_a_line_may_exempt_the_App(bool onLine, bool withReviews, string? reason)
+    {
+        // Segment E: ruleset 3 exempts the App on every line once the current one is promoted; the queue still waits for
+        // its checks, so a backport onto a past line must not be refused for it. A review rule, or the default branch, is.
+        var h = await HarnessAsync(mergeBase: BaseSha);
+        if (onLine) await LineBackportAsync(h, Number, SourceA);
+        h.Queue.Rules = h.Queue.Rules with
+        {
+            Rulesets =
+            [
+                new ForgeRuleset(1, "Restrict updates", ["update"], EForgeRulesetBypass.Exempt),
+                new ForgeRuleset(3, MergeQueueRulesetPlanner.LineChecksName,
+                    withReviews ? ["pull_request", "required_status_checks"] : ["required_status_checks"], EForgeRulesetBypass.Exempt),
+            ],
+        };
+
+        await h.EnqueueAsync(BackportRegenerationEngine.QueueActor, EMergeQueueCommandSource.Backports, label: null);
+        await h.DrainAsync();
+
+        var entry = await h.EntryAsync();
+        if (reason is null) entry.State.Should().Be(EMergeQueueEntryState.Merged);
+        else entry.EvictionReason.Should().Be(reason);
+    }
+
     private static async Task<MergeQueueHarness> HeldOnRedAsync(MergeQueueHarness h)
     {
         await LineBackportAsync(h, Number, SourceA);

@@ -609,14 +609,22 @@ Requirements and limits:
   glob: the form's "Required checks on release lines", prefilled from ruleset 3, else from ruleset 2's checks. It has
   no pull_request rule, so the App's backport pull requests need no review, and no bypass for the App, so a line moves
   only through a green pull request. Before it, line pull requests merged with no required check at all (#610 and the
-  lines' red E2E, `docs/release_lines_recovery_plan.md` A-4, R2). Empty checks create no ruleset 3 and leave an existing
-  one as it is.
+  lines' red E2E, `docs/release_lines_recovery_plan.md` A-4, R2). Ruleset 3 always requires the App's own **"Line
+  policy"** check as well, bound to the App (`integration_id`), whatever checks are picked (segment E, resilience PRD
+  Q1b): on a **current** line, the newest of its ecosystem, it fails every pull request but the App's own
+  backports, so a fix goes to the default branch first; on a **past** line it passes, since those take version-specific
+  fixes from people. A platform upgrade that cuts a new line changes which line is current without a ruleset edit.
+  Ruleset 3 therefore exists whenever there are lines, even with no other checks picked. The form never lists the line
+  policy among the checks to pick.
 - With `versioning.lines.current: promote` (versioning.md, "Promoted lines"), ruleset 3 does give the App an
   `exempt` bypass: a promotion is a merge commit the App pushes straight onto the line after `/release`, and a check
   cannot pass on a commit before it is pushed. The commit is already green on the default branch, and the line's own
   run tests it again before it publishes. The bypass covers every line the glob matches, but the App pushes only
   promotions: backports onto older lines still go through pull requests and their checks. Re-run "Set up rulesets"
-  after switching coverage.yml to `promote`.
+  after switching coverage.yml to `promote`. The queue accepts this one bypass: on a release line, a ruleset with no
+  `pull_request` rule may exempt the App, since the queue waits for its required checks itself before it merges. Any
+  other bypass of a review or check ruleset still refuses the pull request (`bypass`). Before segment E it refused this
+  one too, so a promote repository could not queue a backport onto a past line.
 - With release lines, **ruleset 4** ("merge-queue: backport branches") restricts creating, updating and deleting
   `refs/heads/backport/*`. Only the App (exempt) and repository admins (always) pass it, so a backport pull request
   holds the App's pick or an admin's conflict resolution, never a writer's own content. While the branch's rules
@@ -676,7 +684,7 @@ role. Picking "Repository admin" in the UI's bypass list writes the same entry.
 
 ![Ruleset 2's Require status checks to pass rule on GitHub, with Require branches to be up to date before merging ticked and the repository's CI check required, not the Merge queue check](https://github.com/user-attachments/assets/8d8fbe19-6195-4325-9131-3698d0b1773c)
 
-**Ruleset 3** (`ruleset-3.json`; only with release lines, one entry per check the lines require):
+**Ruleset 3** (`ruleset-3.json`; only with release lines, the line policy plus one entry per check the lines require):
 
 ```json
 {
@@ -687,7 +695,9 @@ role. Picking "Repository admin" in the UI's bypass list writes the same entry.
   "rules": [
     { "type": "required_status_checks", "parameters": {
         "strict_required_status_checks_policy": true,
-        "required_status_checks": [{ "context": "<CHECK_NAME>" }] } }
+        "required_status_checks": [
+          { "context": "Line policy", "integration_id": <APP_ID> },
+          { "context": "<CHECK_NAME>" }] } }
   ],
   "bypass_actors": []
 }
