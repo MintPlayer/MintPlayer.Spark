@@ -102,6 +102,22 @@ public class GitHubEventsCommandTests : CoverageRavenTest
         """;
 
     [Fact]
+    public async Task A_release_comment_asks_for_a_release_and_any_other_comment_does_not()
+    {
+        using var store = GetDocumentStore();
+        await SeedAsync(store, busy: false);
+
+        var bus = await DeliverAsync(store, "issue_comment", Comment("/release dotnet-11.x Acme.Core@11.4.0"));
+        var other = await DeliverAsync(store, "issue_comment", Comment("we should /release soon"));
+
+        var asked = bus.Of<ForgeWebhookMessage<ReleaseRequested>>().Should().ContainSingle().Which.Event;
+        (asked.RepositoryId, asked.Number, asked.ActorLogin).Should().Be((RepositoryId, 7, "maintainer"));
+        asked.Request.Lines.Should().Equal("dotnet-11.x");
+        asked.Request.Versions.Should().Equal(new ReleaseVersionRequest("Acme.Core", "11.4.0"));
+        other.Of<ForgeWebhookMessage<ReleaseRequested>>().Should().BeEmpty();
+    }
+
+    [Fact]
     public async Task A_published_release_is_raised_with_its_tag_and_time()
     {
         using var store = GetDocumentStore();

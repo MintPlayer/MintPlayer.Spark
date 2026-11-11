@@ -142,6 +142,28 @@ public class BackportRecipientTests : CoverageRavenTest
     }
 
     [Fact]
+    public async Task A_promoted_current_line_takes_no_backport_while_a_past_line_still_does()
+    {
+        using var store = GetDocumentStore();
+        integration.GetFileContentAsync(Arg.Any<Repository>(), "main", CoverageYml.FileName, Arg.Any<CancellationToken>())
+            .Returns("versioning:\n  lines:\n    current: promote\n    trigger: manual\n    workflow: release.yml\n");
+        foreach (var major in new[] { "10", "11" })
+            git.GetBranchHeadAsync(Arg.Any<Repository>(), $"release/dotnet-{major}.x", Arg.Any<CancellationToken>()).Returns(new string(major[1], 40));
+        git.ListBranchesAsync(Arg.Any<Repository>(), Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(["release/dotnet-10.x", "release/dotnet-11.x"]);
+        GitWriterBackportRequest? sent = null;
+        writer.VersioningBackportAsync(Arg.Do<GitWriterBackportRequest>(r => sent = r), Arg.Any<CancellationToken>())
+            .Returns(new GitWriterBackportResult(GitWriterBackportResult.Backported, null, "squash", null,
+                [Target(GitWriterBackportTargetResult.Exists) with { Branch = "release/dotnet-10.x" }], null, 1));
+
+        await HandleAsync(store, "maintainer", EBackportSource.Comment, "dotnet-11.x");
+        forge.Comments.Single().Body.Should().Contain("`release/dotnet-11.x` is a current line, promoted with `/release`");
+        await writer.DidNotReceiveWithAnyArgs().VersioningBackportAsync(default!, default);
+
+        await HandleAsync(store, "maintainer", EBackportSource.Comment, "dotnet-10.x", "dotnet-11.x");
+        sent!.Targets.Select(t => t.Branch).Should().Equal("release/dotnet-10.x");
+    }
+
+    [Fact]
     public async Task A_conflict_names_the_files_and_the_cherry_pick_and_a_failure_its_reason()
     {
         using var store = GetDocumentStore();
