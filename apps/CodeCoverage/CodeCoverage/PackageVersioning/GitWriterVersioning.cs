@@ -183,6 +183,29 @@ public sealed record GitWriterBackportTargetResult(string Branch, string Head, s
     public const string Drafted = "drafted";
 }
 
+/// <summary><c>POST jobs/versioning/backport/trial</c> (segment G): <paramref name="Base"/>..<paramref name="Commit"/> tried on
+/// each line before the merge, nothing pushed. <paramref name="HeadRef"/> is <c>refs/pull/N/head</c>, at <paramref name="Commit"/>.</summary>
+public sealed record GitWriterBackportTrialRequest(
+    string Provider, string RepoId, string CloneUrl, SidecarCredential Credential, string HeadRef, string Base, string Commit,
+    IReadOnlyList<GitWriterBackportTrialTarget> Targets, PlatformMarkerOptions? Markers = null);
+
+/// <summary>A line to try, with the backport's own rules (<see cref="GitWriterBackportTarget"/>).</summary>
+public sealed record GitWriterBackportTrialTarget(string Branch, IReadOnlyList<GitWriterAutoResolve>? AutoResolve = null, IReadOnlyList<string>? RegeneratedPaths = null);
+
+/// <summary>The writer's answer: <see cref="Tried"/> when the job ran, each line then with its own outcome.</summary>
+public sealed record GitWriterBackportTrialResult(string Outcome, string? Reason, IReadOnlyList<GitWriterBackportTrialTargetResult>? Targets, string? Detail, long DurationMs)
+{
+    public const string Tried = "tried";
+}
+
+/// <param name="Outcome"><see cref="Clean"/>, <see cref="Empty"/> (the line already holds it) or <see cref="Conflicted"/>.</param>
+public sealed record GitWriterBackportTrialTargetResult(string Branch, string Outcome, IReadOnlyList<string>? Conflicts, string? Detail = null)
+{
+    public const string Clean = "clean";
+    public const string Empty = "empty";
+    public const string Conflicted = "conflicted";
+}
+
 /// <summary>One platform value the change edits on the line's platform; <see cref="Before"/> is empty for an added one.</summary>
 public sealed record GitWriterPlatformChange(string Path, string Marker, string Before, string After);
 

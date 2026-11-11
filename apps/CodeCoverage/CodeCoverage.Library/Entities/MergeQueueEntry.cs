@@ -167,6 +167,9 @@ public class MergeQueueEntry
     /// <summary>The commit whose checks the queue waits for and that it merges.</summary>
     public string? FinalSha { get; set; }
 
+    /// <summary>The <see cref="FinalSha"/> whose backports were tried (segment G), so a commit is tried and commented on once.</summary>
+    public string? TrialPickedSha { get; set; }
+
     /// <summary>
     /// Whether <see cref="FinalSha"/> is the pinned head itself (O20 case 1: it already contains the latest base), so
     /// nothing was published.

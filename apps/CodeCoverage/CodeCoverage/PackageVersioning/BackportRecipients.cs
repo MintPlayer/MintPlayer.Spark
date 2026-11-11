@@ -159,10 +159,8 @@ public partial class BackportRecipient : IRecipient<BackportMessage>
             return $"Nothing was backported: {string.Join(", ", unknown.Select(u => $"`{u}`"))} names no release branch "
                 + (config.EffectiveLines is { } lines ? $"(`{lines.Text}`)." : $"({string.Join(", ", config.EffectiveReleaseBranches.Select(p => $"`{p}`"))}).");
         // Segment P (P0): a current line that is promoted takes no backports; the change reaches it with the next `/release`.
-        if (config is { Lines.PromotesCurrent: true, EffectiveLines: { } promotePattern } && targets.Count > 0)
+        if (targets.Count > 0 && await PromotedBranchesAsync(config, git, repository, cancellationToken) is { Count: > 0 } current)
         {
-            var current = promotePattern.CurrentLines(await git.ListBranchesAsync(repository, SupportedLines.BranchPrefix(promotePattern), cancellationToken))
-                .Select(promotePattern.Format).ToHashSet(StringComparer.Ordinal);
             var promoted = targets.Where(t => current.Contains(t.Branch)).Select(t => t.Branch).ToList();
             targets.RemoveAll(t => current.Contains(t.Branch));
             if (promoted.Count > 0 && targets.Count == 0)
@@ -181,6 +179,14 @@ public partial class BackportRecipient : IRecipient<BackportMessage>
         var errors = $"The `backport:` section of {CoverageYml.FileName} on {defaultBranch} has errors, so its defaults were used:\n"
             + string.Join('\n', backport.Errors.Take(10).Select(e => $"- {e}"));
         return report is null ? errors : report + "\n\n" + errors;
+    }
+
+    /// <summary>Segment P (P0): the branches of the current lines when they are promoted rather than backported to; empty otherwise.</summary>
+    internal static async Task<IReadOnlySet<string>> PromotedBranchesAsync(VersioningConfig config, IForgeMergeQueue git, Repository repository, CancellationToken cancellationToken)
+    {
+        if (config is not { Lines.PromotesCurrent: true, EffectiveLines: { } pattern }) return new HashSet<string>(StringComparer.Ordinal);
+        return pattern.CurrentLines(await git.ListBranchesAsync(repository, SupportedLines.BranchPrefix(pattern), cancellationToken))
+            .Select(pattern.Format).ToHashSet(StringComparer.Ordinal);
     }
 
     private async Task<GitWriterBackportResult?> RunAsync(Repository repository, IForgeMergeQueue git, string source, string commit, int number, string title,
@@ -338,7 +344,7 @@ public partial class BackportRecipient : IRecipient<BackportMessage>
     internal static IReadOnlyList<GitWriterAutoResolve> AutoResolveRules(string? yml, string defaultBranch)
         => AutoResolveRules(QueueSection(yml, defaultBranch));
 
-    private static IReadOnlyList<GitWriterAutoResolve> AutoResolveRules(MergeQueueSection? section)
+    internal static IReadOnlyList<GitWriterAutoResolve> AutoResolveRules(MergeQueueSection? section)
         => section is null ? [] : [.. section.AutoResolve.Select(GitWriterAutoResolve.From)];
 
     /// <summary>
@@ -371,7 +377,7 @@ public partial class BackportRecipient : IRecipient<BackportMessage>
         => backport.Enqueue && queue is { Enabled: true } && queue.Queues(branch);
 
     /// <summary>The default branch's <c>mergeQueue</c> section, or null when it has errors (or there is none).</summary>
-    private static MergeQueueSection? QueueSection(string? yml, string defaultBranch)
+    internal static MergeQueueSection? QueueSection(string? yml, string defaultBranch)
         => MergeQueueYml.Parse(yml, defaultBranch) is { Section: { } section, Errors.Count: 0 } ? section : null;
 
     /// <summary>Per conflicting line: the files, the platform values the change edits there, and the commands to do it

@@ -476,6 +476,9 @@ matter for the current line only if D16 stays.
   PRs fall back to the code owners of the changed paths. Reminder after 2 working days, then escalation to the code
   owners.
 - **Q10, trial pick at the master merge: configurable per line, default warn** (`trialPick: warn | refuse | off`).
+  Built in segment G (2026-11-11): owner, "In the queue, pre-merge" and "Labelled lines, PR comment". `backport.trialPick`
+  is the default and `backport.trialPicks` sets it per line. The trial runs while the queued commit's checks run, and a
+  trial that cannot run never blocks (`docs/release_lines_recovery_plan.md`, "G done").
 - **Q12, attention signals (replaces the board column and the ⚠️ title):** the database is the source of truth. The bot
   posts a comment with a link to a Spark CustomQuery in the app that lists, for the signed-in user, the held backport
   PRs of source PRs they authored plus all held backport PRs in repos they administer (filtered server-side by current

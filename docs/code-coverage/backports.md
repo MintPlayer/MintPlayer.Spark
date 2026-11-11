@@ -69,6 +69,9 @@ backport:
   enqueue: false             # default true: hand each backport pull request to the merge queue
   defaultLabels: fixes       # all (default) | fixes | off
   fixLabels: [bug]           # what marks a fix under `fixes`, beside a fix: title
+  trialPick: warn            # warn (default) | refuse | off: try the backports before the merge queue merges
+  trialPicks:
+    dotnet-11.x: refuse      # the same, per line
   lines:
     dotnet-8.x: keep         # supported past its platform's end of life
     angular-20.x: retire     # no longer supported, whatever the lifecycle says
@@ -92,6 +95,13 @@ backport:
   also gets an informational **Backport targets** check listing the lines and which apply. A pull request a bot opened
   gets no labels: the dependency updater gives each supported line a run of its own
   ([dependency-updates.md](dependency-updates.md) §4, `dependencies.lines`).
+- **`trialPick`** (default `warn`): when the merge queue is about to merge a pull request into the default branch, it
+  first tries the backport onto each line the pull request is labelled for, exactly as the backport will merge it, and
+  pushes nothing. It runs while the queued commit's checks run, so a label can still be removed. Under `warn`, a line that
+  would conflict gets one comment with its files, and the merge goes on. Under `refuse`, the queue removes the pull
+  request instead. `off` tries nothing. `trialPicks` sets the mode of one line. A current line that is promoted
+  (`/release`) is never tried, since it takes no backport. A trial that cannot run never holds a merge back: the backport
+  after the merge reports the conflict as it always did.
 - **`lines`** overrides which lines are supported. By default a line is supported while its platform major has not
   reached end of life (the lifecycle data this app collects), and the newest line of each ecosystem always is. An
   ecosystem without lifecycle data supports only its newest line and the lines you `keep`. `retire` wins over

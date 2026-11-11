@@ -319,6 +319,54 @@ internal sealed partial class GitWriterVersioningBackportEndpoint : IPostEndpoin
     }
 }
 
+/// <summary><c>POST /jobs/versioning/backport/trial</c>: the backport a merge would start, tried with nothing pushed (segment G).</summary>
+internal sealed partial class GitWriterVersioningBackportTrialEndpoint : IPostEndpoint<VersioningBackportTrialRequestWire>
+{
+    public static readonly string TargetsRule = $"1 to {GitWriterVersioningBackportEndpoint.MaxTargets} targets with distinct branches, "
+        + $"each autoResolve list valid ({WireValidation.AutoResolveEntriesRule}) and each regeneratedPaths list too ({WireValidation.RegeneratedPathsRule})";
+
+    public static string Path => "/jobs/versioning/backport/trial";
+
+    [Inject] private readonly BackportService backports;
+    [Inject] private readonly IOptions<GitWriterOptions> options;
+
+    protected override async ValueTask<VersioningBackportTrialRequestWire?> BindRequestAsync(HttpContext context)
+        => await Body.ReadAsync<VersioningBackportTrialRequestWire>(context.Request.Body, context.Request.ContentLength, Body.SmallBytes, context.RequestAborted);
+
+    protected override ValueTask<IResult> OnBindFailedAsync(HttpContext context, EndpointBindingException? failure) => new(Refusal.Body(Body.SmallBytes));
+
+    public override async Task<IResult> HandleAsync(VersioningBackportTrialRequestWire request, CancellationToken cancellationToken)
+    {
+        var refusal = new Refusal();
+        if (!refusal.Check(WireValidation.IsRepo(request.Provider, request.RepoId), "repoId", WireValidation.RepoRule)
+            || refusal.Check(WireValidation.RemoteUrl(request.CloneUrl, options.Value.AllowInsecureHttp), "cloneUrl", WireValidation.RemoteUrlRule) is not { } cloneUrl
+            || refusal.Check(WireValidation.Credential(request.Credential), "credential", WireValidation.CredentialRule) is not { } credential
+            || refusal.Check(WireValidation.HeadRef(request.HeadRef), "headRef", WireValidation.HeadRefRule) is not { } headRef
+            || refusal.Check(WireValidation.ObjectId(request.Base), "base", WireValidation.ShaRule) is not { } @base
+            || refusal.Check(WireValidation.ObjectId(request.Commit), "commit", WireValidation.ShaRule) is not { } commit
+            || refusal.Check(Targets(request.Targets), "targets", TargetsRule) is not { } targets
+            || refusal.Check(GitWriterVersioningBackportEndpoint.Markers(request.Markers), "markers", GitWriterVersioningBackportEndpoint.MarkersRule) is not { } markers)
+            return refusal.Result();
+
+        return Results.Json(await backports.TrialAsync(new BackportTrialJob($"{request.Provider}/{request.RepoId}", cloneUrl, credential, headRef, @base, commit,
+            targets, markers)), GitWriterHost.Json);
+    }
+
+    internal static List<BackportTrialTarget>? Targets(List<BackportTrialTargetWire>? wires)
+    {
+        if (wires is not { Count: > 0 and <= GitWriterVersioningBackportEndpoint.MaxTargets }) return null;
+        var targets = new List<BackportTrialTarget>();
+        foreach (var wire in wires)
+        {
+            if (WireValidation.Branch(wire.Branch) is not { } branch) return null;
+            if (WireValidation.Rules(wire.AutoResolve) is not { } rules) return null;
+            if (WireValidation.Globs(wire.RegeneratedPaths) is not { } globs) return null;
+            targets.Add(new BackportTrialTarget(branch, rules, globs));
+        }
+        return targets.Select(t => t.Branch).Distinct(StringComparer.Ordinal).Count() == targets.Count ? targets : null;
+    }
+}
+
 /// <summary><c>POST /jobs/versioning/hand-tag</c>: a person's new version tag, checked against the tag it follows (segment P, P5; segment T).</summary>
 internal sealed partial class GitWriterVersioningHandTagEndpoint : IPostEndpoint<HandTagRequestWire>
 {

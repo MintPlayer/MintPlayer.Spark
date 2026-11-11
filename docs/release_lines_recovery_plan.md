@@ -144,6 +144,28 @@ current lines take only bot picks, past lines take human PRs (grilling Q1b, Q1c,
 **Segment G, trial pick.** `trialPick: warn | refuse | off` per line in `coverage.yml` (`BackportYml.cs`), default
 warn (Q10).
 
+**G done (2026-11-11, branch `feat/backport-trial-pick`).** Owner, 2026-11-11, on when and what: "In the queue, pre-merge"
+and "Labelled lines, PR comment". The labels are the ones set when the pull request opens from the supported SDK lines it
+touches (`BackportTargets.Labels`, owner: "the labels which are applied when a pull-request is opened would probably be
+determined by the supported versions of an SDK").
+- **When:** `MergeQueueEngine.TrialPickRefusedAsync`, at the start of `EnterAwaitingChecksAsync`, so once the commit to
+  merge (`FinalSha`) is known and while its checks run. That leaves time to remove a label before the merge. Only entries
+  into the default branch, and each commit once (`MergeQueueEntry.TrialPickedSha`).
+- **What is tried:** `BackportTrialPicks` reads the pull request's `backport: <line>` labels and resolves them as the
+  backport does (`BackportRecipient.ResolveLine`/`Resolve`). It skips promoted current lines (`PromotedBranchesAsync`,
+  extracted from the backport) and lines whose mode is `off`. The writer's new `POST /jobs/versioning/backport/trial`
+  merges `BaseSha..FinalSha`, fetched through `refs/pull/N/head`, onto each line. It uses the backport's own per-line step
+  (`BackportService.PickAsync`, shared with `RunAsync`: markers, auto-resolve rules, line-side paths), and pushes nothing.
+- **What it does:** `warn` posts one comment naming each conflicting line and its files and the label to remove; the run
+  goes on. `refuse` evicts with reason `trial-pick`. One conflicting line under `refuse` is enough.
+- **Per line (Q10):** `backport.trialPick` is the default and `backport.trialPicks: { <line>: mode }` overrides it. A
+  misspelt mode is reported and warns: it never refuses a merge nobody asked to refuse.
+- **Fails open:** a trial that cannot run lets the merge go on: no writer, no access, a head that moved, a refusal, or an
+  exception. The backport after the merge reports the conflict as before. This is the fallback because `refs/pull/N/head`
+  may lag a publish briefly (head mismatch).
+- **Tests:** `BackportTrialTests` (writer), `BackportTrialPicksTests`, `BackportYmlTests`, `MergeQueueEngineTests`
+  (segment G block), and the route in `GitWriterSidecarClientTests`.
+
 **Segment H, CI cache.**
 - **Cache writes:** same-repo PR runs write the Nx cache, except the dependency-update App's branches (Q16).
 - **Release build:** the line's `build:release` runs with `--skip-nx-cache` (`dotnet-build-master.yml:195`).

@@ -54,6 +54,7 @@ public partial class MergeQueueEngine : IMergeQueueEngine
     [Inject] private readonly IEnumerable<IForgeMergeQueue> forgeQueues;
     [Inject] private readonly IEnumerable<IForgeInstallationPermissions> permissionSources;
     [Inject] private readonly IGitWriterSidecar writer;
+    [Inject] private readonly PackageVersioning.IBackportTrialPicks trialPicks;
     [Inject] private readonly IMessageOutbox outbox;
     [Inject] private readonly TimeProvider time;
     [Inject] private readonly IOptions<MergeQueueOptions> options;
@@ -1516,11 +1517,48 @@ public partial class MergeQueueEngine : IMergeQueueEngine
 
     private async Task EnterAwaitingChecksAsync(Context context, MergeQueueEntry entry, string why, CancellationToken ct)
     {
+        if (await TrialPickRefusedAsync(context, entry, ct)) return;
         Transition(entry, EMergeQueueEntryState.AwaitingChecks, why);
         await ScheduleAsync(entry, EMergeQueueStep.PollChecks, ChecksPollInterval, ct);
         await ScheduleAsync(entry, EMergeQueueStep.Timeout, TimeSpan.FromMinutes(entry.Config.ChecksTimeoutMinutes), ct);
         await PublishCheckAsync(context, entry, ct);
         await EvaluateChecksAsync(context, entry, fromPoll: false, ct);
+    }
+
+    /// <summary>
+    /// Segment G (owner, 2026-11-11: "In the queue, pre-merge"): once the commit to merge into the default branch is known,
+    /// its backports onto the labelled lines are tried, so a conflict is said while the checks run rather than after the
+    /// merge. <c>warn</c> comments and goes on; <c>refuse</c> evicts. Each commit is tried once. A trial that cannot run
+    /// lets the merge go on: the backport after it reports what the trial would have.
+    /// </summary>
+    private async Task<bool> TrialPickRefusedAsync(Context context, MergeQueueEntry entry, CancellationToken ct)
+    {
+        if (entry.FinalSha is not { } commit || entry.BaseSha is not { } baseSha
+            || !string.Equals(entry.BaseBranch, context.Repository.DefaultBranch, StringComparison.Ordinal)
+            || string.Equals(entry.TrialPickedSha, commit, StringComparison.OrdinalIgnoreCase))
+            return false;
+        entry.TrialPickedSha = commit;
+
+        PackageVersioning.BackportTrialVerdict? verdict;
+        try
+        {
+            verdict = await trialPicks.RunAsync(context.Repository, entry.Number, baseSha, commit, ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogWarning(ex, "Merge queue: the trial pick of #{Number} in {Repository} could not run", entry.Number, context.Repository.FullName);
+            return false;
+        }
+        if (verdict is null) return false;
+
+        if (verdict.Refuse)
+        {
+            await EvictAsync(context, entry, "trial-pick", verdict.Message, verdict.Paths, ct: ct);
+            return true;
+        }
+        entry.Note(Now, $"trial pick: the backport would conflict on {verdict.Paths.Count} path(s)");
+        await BestEffortAsync(() => context.Queue.PostCommentAsync(context.Repository, entry.Number, verdict.Message, ct), "trial-pick comment");
+        return false;
     }
 
     private async Task EvaluateChecksAsync(Context context, MergeQueueEntry entry, bool fromPoll, CancellationToken ct)

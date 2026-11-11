@@ -58,6 +58,51 @@ public class BackportYmlTests
     }
 
     [Theory]
+    [InlineData(null, BackportYml.Warn)]
+    [InlineData("backport:\n  trialPick: refuse\n", BackportYml.Refuse)]
+    [InlineData("backport:\n  trialPick: off\n", BackportYml.Off)]
+    [InlineData("backport:\n  trialPick: warn\n", BackportYml.Warn)]
+    public void The_trial_pick_warns_unless_set(string? yml, string expected)
+    {
+        // Segment G.
+        var parsed = BackportYml.Parse(yml);
+
+        parsed.Errors.Should().BeEmpty();
+        parsed.Section.TrialPick.Should().Be(expected);
+    }
+
+    [Fact]
+    public void A_misspelt_trial_pick_warns_and_never_refuses()
+    {
+        var parsed = BackportYml.Parse("backport:\n  trialPick: block\n");
+
+        parsed.Errors.Should().ContainSingle().Which.Should().StartWith("backport.trialPick 'block'");
+        parsed.Section.TrialPick.Should().Be(BackportYml.Warn);
+    }
+
+    [Fact]
+    public void A_line_has_its_own_trial_pick_and_the_rest_take_the_default()
+    {
+        // Q10: "configurable per line, default warn".
+        var parsed = BackportYml.Parse("backport:\n  trialPick: off\n  trialPicks:\n    dotnet-11.x: refuse\n");
+
+        parsed.Errors.Should().BeEmpty();
+        parsed.Section.TrialPickFor("dotnet-11.x").Should().Be(BackportYml.Refuse);
+        parsed.Section.TrialPickFor("dotnet-10.x").Should().Be(BackportYml.Off);
+    }
+
+    [Theory]
+    [InlineData("backport:\n  trialPicks:\n    \"10.x\": refuse\n", "backport.trialPicks '10.x'")]
+    [InlineData("backport:\n  trialPicks:\n    dotnet-10.x: block\n", "backport.trialPicks.dotnet-10.x 'block'")]
+    public void A_broken_line_trial_pick_says_why_and_warns(string yml, string error)
+    {
+        var parsed = BackportYml.Parse(yml);
+
+        parsed.Errors.Should().ContainSingle().Which.Should().StartWith(error);
+        parsed.Section.TrialPickFor("dotnet-10.x").Should().Be(BackportYml.Warn);
+    }
+
+    [Theory]
     [InlineData("backport:\n  defaultLabels: some\n", "backport.defaultLabels 'some'")]
     [InlineData("backport:\n  onConflict: push\n", "backport.onConflict 'push'")]
     [InlineData("backport:\n  markers:\n    disable: [docker]\n", "backport.markers.disable 'docker'")]
