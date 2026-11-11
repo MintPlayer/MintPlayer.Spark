@@ -149,10 +149,17 @@ public sealed class ScriptedDiffService(CommitComparison? comparison = null)
     /// <summary>What <see cref="CompareAsync"/> answers; the constructor's value until a test scripts another.</summary>
     public CommitComparison? Comparison { get; set; } = comparison;
 
+    /// <summary>Answers for one (base, head) pair, ahead of <see cref="Comparison"/>.</summary>
+    public Dictionary<(string Base, string Head), CommitComparison?> Comparisons { get; } = [];
+
+    /// <summary>When set, <see cref="CompareAsync"/> throws it: a forge that cannot compare right now.</summary>
+    public Exception? CompareFailure { get; set; }
+
     public Task<CommitComparison?> CompareAsync(Repository repository, string baseRef, string headSha, CancellationToken cancellationToken = default)
     {
         Calls.Add((baseRef, headSha));
-        return Task.FromResult(Comparison);
+        if (CompareFailure is { } failure) throw failure;
+        return Task.FromResult(Comparisons.TryGetValue((baseRef, headSha), out var scripted) ? scripted : Comparison);
     }
 
     /// <summary>When set, <see cref="GetFileContentAsync"/> throws it: a forge that cannot serve the file right now.</summary>

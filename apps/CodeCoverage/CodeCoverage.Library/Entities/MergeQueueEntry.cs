@@ -294,6 +294,13 @@ public enum EMergeQueueEntryState
 
     /// <summary>The enqueue itself was refused (role, draft, approvals, configuration, rules).</summary>
     Refused,
+
+    /// <summary>
+    /// A backport the App opened onto a release line went red, conflicted or was pushed over. It keeps its lane, so the
+    /// line takes its backports in order, and resumes on a push to its branch or when its checks turn green (release lines
+    /// recovery plan, segment C). The reason and message are in the eviction fields.
+    /// </summary>
+    Held,
 }
 
 public static class MergeQueueEntryStates

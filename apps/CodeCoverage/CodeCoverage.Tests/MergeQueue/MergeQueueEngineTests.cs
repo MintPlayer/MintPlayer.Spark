@@ -1508,6 +1508,188 @@ public class MergeQueueEngineTests : CoverageRavenTest
         entry.EnqueuedVia.Should().Be(EMergeQueueCommandSource.Backports);
     }
 
+    // ── Release lines recovery plan, segment C: the App's backports are held, not evicted ────────────
+
+    private const string SourceA = "a000000000000000000000000000000000000001";
+    private const string SourceB = "b000000000000000000000000000000000000002";
+
+    /// <summary>A backport the App opened into <see cref="Line"/>, recorded with its source commit as the recipient does.</summary>
+    private static async Task LineBackportAsync(MergeQueueHarness h, int number, string? sourceSha, bool recorded = true, string head = Head)
+    {
+        h.Forge.Files["master/coverage.yml"] = LineYml;
+        h.Queue.BranchHeads[Line] = BaseSha;
+        h.Forge.PullRequests[number] = PullRequest(number, head, author: recorded ? BotAuthor : "author") with { BaseRef = Line, HeadRef = $"backport/{number + 100}-dotnet-10.x" };
+        if (!recorded) return;
+        using var session = h.Store.OpenAsyncSession();
+        var id = BackportPullRequest.DocumentId(RepositoryId, number);
+        await session.StoreAsync(new BackportPullRequest { Id = id, Repository = RepositoryId, Number = number, Source = number + 100, SourceSha = sourceSha, Branch = Line }, id);
+        await session.SaveChangesAsync();
+    }
+
+    private static async Task<MergeQueueHarness> HeldOnRedAsync(MergeQueueHarness h)
+    {
+        await LineBackportAsync(h, Number, SourceA);
+        h.Queue.CheckStates[Head] = Red(Head);
+        await h.EnqueueAsync(BackportRegenerationEngine.QueueActor, EMergeQueueCommandSource.Backports, label: null);
+        await h.DrainAsync();
+        await h.ReleaseAsync(EMergeQueueStep.PollChecks);
+        return h;
+    }
+
+    [Fact]
+    public async Task A_red_backport_on_a_line_is_held_keeps_its_lane_and_merges_once_its_checks_pass()
+    {
+        var h = await HeldOnRedAsync(await HarnessAsync(mergeBase: BaseSha));
+
+        var held = await h.EntryAsync();
+        held.State.Should().Be(EMergeQueueEntryState.Held);
+        held.EvictionReason.Should().Be("checks-failed");
+        (await h.QueueDocumentAsync())!.LaneFor(Line).Current.Should().Be(held.Id, "the line waits for it");
+        h.Queue.Comments.Should().ContainSingle().Which.Body.Should().StartWith("The merge queue holds this backport: Checks failed")
+            .And.Contain("re-run its checks").And.NotContain("Queue it again");
+
+        // The line's next backport waits behind it.
+        await LineBackportAsync(h, 8, SourceB);
+        await h.EnqueueAsync(BackportRegenerationEngine.QueueActor, EMergeQueueCommandSource.Backports, label: null, number: 8);
+        (await h.EntryAsync(8)).State.Should().Be(EMergeQueueEntryState.Queued);
+
+        // Still red: nothing moves.
+        await h.SignalAsync(EMergeQueueSignal.ChecksChanged, sha: Head);
+        (await h.EntryAsync()).State.Should().Be(EMergeQueueEntryState.Held);
+
+        // A person re-ran them, and they passed.
+        h.Queue.CheckStates[Head] = Green(Head);
+        await h.SignalAsync(EMergeQueueSignal.ChecksChanged, sha: Head);
+        await h.DrainAsync();
+
+        var merged = await h.EntryAsync();
+        merged.State.Should().Be(EMergeQueueEntryState.Merged);
+        merged.EvictionReason.Should().BeNull();
+        (await h.EntryAsync(8)).State.Should().NotBe(EMergeQueueEntryState.Queued, "the lane moved on");
+    }
+
+    [Fact]
+    public async Task A_push_to_a_held_backport_starts_it_again_on_the_new_head()
+    {
+        const string pushed = "9999999999999999999999999999999999999999";
+        var h = await HeldOnRedAsync(await HarnessAsync(mergeBase: BaseSha));
+        (await h.EntryAsync()).State.Should().Be(EMergeQueueEntryState.Held);
+
+        h.Forge.PullRequests[Number] = h.Forge.PullRequests[Number] with { HeadSha = pushed };
+        h.Queue.CheckNames[pushed] = ["build"];
+        h.Queue.CheckStates[pushed] = Green(pushed);
+        await h.SignalAsync(EMergeQueueSignal.HeadPushed, Number, pushed);
+
+        var resumed = await h.EntryAsync();
+        resumed.State.Should().Be(EMergeQueueEntryState.Preparing);
+        resumed.PinnedHeadSha.Should().Be(pushed);
+        resumed.EvictionReason.Should().BeNull();
+
+        await h.DrainAsync();
+        (await h.EntryAsync()).State.Should().Be(EMergeQueueEntryState.Merged);
+        h.Queue.MergeRequests.Should().Equal([(Number, pushed)]);
+    }
+
+    [Fact]
+    public async Task A_conflicting_backport_on_a_line_is_held_and_a_push_running_one_starts_it_again()
+    {
+        var h = await HarnessAsync();
+        await LineBackportAsync(h, Number, SourceA);
+        h.Writer.PrepareResults.Enqueue(new GitWriterPrepareResult(GitWriterOutcomes.Evicted, "conflict-outside-allow-list", BaseSha, Head, null, [],
+            ["src/Guard.cs"], "Only allow-listed generated files are resolved automatically.", 10));
+
+        await h.EnqueueAsync(BackportRegenerationEngine.QueueActor, EMergeQueueCommandSource.Backports, label: null);
+        await h.DrainAsync();
+
+        var held = await h.EntryAsync();
+        held.State.Should().Be(EMergeQueueEntryState.Held);
+        held.EvictionPaths.Should().Equal(["src/Guard.cs"]);
+        h.Queue.Comments.Should().ContainSingle().Which.Body.Should().NotContain("re-run its checks");
+
+        // A person can always let the line go on without it.
+        await h.DequeueAsync("maintainer");
+        (await h.EntryAsync()).State.Should().Be(EMergeQueueEntryState.Dequeued);
+        (await h.QueueDocumentAsync())!.LaneFor(Line).Current.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task A_persons_pull_request_into_a_line_is_still_evicted()
+    {
+        var h = await HarnessAsync(mergeBase: BaseSha);
+        await LineBackportAsync(h, Number, sourceSha: null, recorded: false);
+        h.Queue.CheckStates[Head] = Red(Head);
+
+        await h.EnqueueAsync();
+        await h.DrainAsync();
+        await h.ReleaseAsync(EMergeQueueStep.PollChecks);
+
+        var entry = await h.EntryAsync();
+        entry.State.Should().Be(EMergeQueueEntryState.Evicted);
+        entry.EvictionReason.Should().Be("checks-failed");
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task A_backport_waits_in_the_order_its_source_merged(bool earlier)
+    {
+        // #7 runs (checks pending); #8 waits, from source B; #9 is queued next, from source A.
+        var h = await HarnessAsync(mergeBase: BaseSha);
+        await LineBackportAsync(h, Number, "c000000000000000000000000000000000000003");
+        h.Queue.CheckStates[Head] = Pending(Head);
+        await h.EnqueueAsync(BackportRegenerationEngine.QueueActor, EMergeQueueCommandSource.Backports, label: null);
+        await h.DrainAsync();
+        await LineBackportAsync(h, 8, SourceB);
+        await h.EnqueueAsync(BackportRegenerationEngine.QueueActor, EMergeQueueCommandSource.Backports, label: null, number: 8);
+        await LineBackportAsync(h, 9, SourceA);
+        // Source A is an ancestor of source B (merged first), or not.
+        h.Forge.Comparisons[(SourceA, SourceB)] = new CommitComparison(earlier ? SourceA : "d000000000000000000000000000000000000004", [], false);
+
+        await h.EnqueueAsync(BackportRegenerationEngine.QueueActor, EMergeQueueCommandSource.Backports, label: null, number: 9);
+
+        (await h.QueueDocumentAsync())!.LaneFor(Line).Waiting.Should().Equal(earlier
+            ? [MergeQueueEntry.DocumentId(RepositoryId, 9), MergeQueueEntry.DocumentId(RepositoryId, 8)]
+            : [MergeQueueEntry.DocumentId(RepositoryId, 8), MergeQueueEntry.DocumentId(RepositoryId, 9)]);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task A_backport_that_cannot_be_ordered_goes_last(bool forgeFails)
+    {
+        // A forge that cannot compare, or a record from before segment B (no source commit): the old behaviour, last.
+        var h = await HarnessAsync(mergeBase: BaseSha);
+        await LineBackportAsync(h, Number, "c000000000000000000000000000000000000003");
+        h.Queue.CheckStates[Head] = Pending(Head);
+        await h.EnqueueAsync(BackportRegenerationEngine.QueueActor, EMergeQueueCommandSource.Backports, label: null);
+        await h.DrainAsync();
+        await LineBackportAsync(h, 8, SourceB);
+        await h.EnqueueAsync(BackportRegenerationEngine.QueueActor, EMergeQueueCommandSource.Backports, label: null, number: 8);
+        await LineBackportAsync(h, 9, forgeFails ? SourceA : null);
+        h.Forge.Comparisons[(SourceA, SourceB)] = new CommitComparison(SourceA, [], false);
+        if (forgeFails) h.Forge.CompareFailure = new HttpRequestException("compare unavailable");
+
+        await h.EnqueueAsync(BackportRegenerationEngine.QueueActor, EMergeQueueCommandSource.Backports, label: null, number: 9);
+
+        (await h.QueueDocumentAsync())!.LaneFor(Line).Waiting.Should().Equal(
+            [MergeQueueEntry.DocumentId(RepositoryId, 8), MergeQueueEntry.DocumentId(RepositoryId, 9)]);
+    }
+
+    [Fact]
+    public async Task A_base_move_tries_a_held_backport_again()
+    {
+        var h = await HeldOnRedAsync(await HarnessAsync(mergeBase: BaseSha));
+        (await h.EntryAsync()).State.Should().Be(EMergeQueueEntryState.Held);
+
+        h.Queue.BranchHeads[Line] = NewBase;
+        await h.SignalAsync(EMergeQueueSignal.BranchPushed, sha: NewBase, branch: Line);
+
+        var resumed = await h.EntryAsync();
+        resumed.State.Should().Be(EMergeQueueEntryState.Preparing);
+        resumed.EvictionReason.Should().BeNull("the hold's reason does not carry into the new run");
+        resumed.PrepareAttempts.Should().BeLessThanOrEqualTo(1);
+    }
+
     // ── M6: what the repository page lists (§0 D55) ──────────────────────────────────────────────────
 
     [Fact]

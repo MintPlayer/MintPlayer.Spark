@@ -340,7 +340,7 @@ export interface MergeQueueEntry {
   number: number;
   title: string | null;
   authorLogin: string | null;
-  /** The saga's state: `Queued`, `Preparing`, `Regenerating`, `Publishing`, `AwaitingChecks`, `Merging`. */
+  /** The saga's state: `Queued`, `Preparing`, `Regenerating`, `Publishing`, `AwaitingChecks`, `Merging`, `Held` (a backport its release line waits for). */
   state: string;
   /** The last thing the queue did for it, as its check run says. */
   step: string | null;
