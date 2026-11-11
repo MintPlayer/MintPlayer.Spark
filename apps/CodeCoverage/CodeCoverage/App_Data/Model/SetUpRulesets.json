@@ -6,7 +6,8 @@
     "person wants them, prefilled from its own state (MergeQueueRulesetPlanner.Defaults). The prompt's parent is the",
     "repository, so RequiredChecks offers the checks seen on its pull requests (Repository_PullRequestChecks), and \"Add",
     "new\" names one that has not reported yet. LineRequiredChecks (R2, docs/release_lines_recovery_plan.md) are the release",
-    "lines' own required checks (ruleset 3); the action shows the field only for a repository with release lines."
+    "lines' own required checks (ruleset 3); the action hides the field for a repository without release lines, where the",
+    "planner ignores it."
   ],
   "persistentObject": {
     "id": "c5980da3-b622-46cb-b65e-e6fcbbbd48e7",
@@ -64,7 +65,7 @@
         "canAddNewReference": true,
         "defaultAttribute": "Name",
         "isArray": true,
-        "showedOn": "None",
+        "showedOn": "PersistentObject",
         "rules": []
       }
     ]
