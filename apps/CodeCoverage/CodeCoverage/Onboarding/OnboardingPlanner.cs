@@ -162,6 +162,10 @@ public static partial class OnboardingPlanner
             else
                 notes.Add("`versioning:` in coverage.yml is not a block the bot can extend, so it did not add `versioning.lines`: add `lines: {}` under `versioning:` to turn release lines on.");
         }
+        // Gap G2 (SparkTest trial, plan §2d): an existing `versioning.lines` stays as it is (T6), but a repository that could
+        // promote is told so, since nothing else would.
+        else if (!promotes && await VersioningOnboarding.VersioningWorkflowsAsync(overlay, cancellationToken) is [var only])
+            notes.Add($"coverage.yml has `versioning.lines` already, so the bot left it alone and the current lines take backports: set it to `{{ current: promote, trigger: manual, workflow: {only} }}` to release them with `/release` instead.");
 
         var graph = await ProjectGraphBuilder.BuildAsync(overlay, cancellationToken: cancellationToken);
         var ecosystems = graph.Packages.Select(p => Ecosystems.Of(graph, p, EmptyPins)).OfType<string>().ToHashSet(StringComparer.Ordinal);

@@ -15,6 +15,31 @@ public class VersioningOnboardingTests
 
     private static Dictionary<string, string?> ByPath(VersioningOnboardingPlan plan) => plan.Files.ToDictionary(f => f.Path, f => f.Content);
 
+    /// <summary>The raw literals' line ending, which follows the checkout (CRLF on Windows, LF on CI).</summary>
+    private static readonly string Nl = """
+        a
+        b
+        """.Contains('\r') ? "\r\n" : "\n";
+
+    /// <summary>The step that keeps the default branch from packing what it did not release (gap G1), with its steps' dash at <paramref name="dash"/>.</summary>
+    private static string Gate(string dash, string? newline = null) => string.Join(newline ?? Nl, new[]
+    {
+        $"{dash}# With release lines on, the default branch tags nothing: a package with no tag yet would fail its",
+        $"{dash}# pack (MPV005). The release lines pack and publish; the default branch only when it released.",
+        $"{dash}- name: Decide whether this run publishes",
+        $"{dash}  id: publishes",
+        $"{dash}  env:",
+        $"{dash}    RELEASED: ${{{{ steps.versioning.outputs.released }}}}",
+        $"{dash}    DEFAULT_BRANCH: ${{{{ github.event.repository.default_branch }}}}",
+        $"{dash}  run: |",
+        $"{dash}    if [ \"$GITHUB_REF_NAME\" = \"$DEFAULT_BRANCH\" ] && {{ [ -z \"$RELEASED\" ] || [ \"$RELEASED\" = \"[]\" ]; }}; then",
+        $"{dash}      echo \"The default branch released nothing (release lines on, or no change): no pack, no publish.\"",
+        $"{dash}      echo \"value=false\" >> \"$GITHUB_OUTPUT\"",
+        $"{dash}    else",
+        $"{dash}      echo \"value=true\" >> \"$GITHUB_OUTPUT\"",
+        $"{dash}    fi",
+    });
+
     [Fact]
     public async Task A_dotnet_repository_gets_the_package_once_placeholders_and_the_step_before_its_pack()
     {
@@ -169,20 +194,39 @@ public class VersioningOnboardingTests
                   id: versioning
                   uses: MintPlayer/MintPlayer.Spark/apps/CodeCoverage/versioning-action@{{{Sha}}} # versioning-v1
 
+                # With release lines on, the default branch tags nothing: a package with no tag yet would fail its
+                # pack (MPV005). The release lines pack and publish; the default branch only when it released.
+                - name: Decide whether this run publishes
+                  id: publishes
+                  env:
+                    RELEASED: ${{ steps.versioning.outputs.released }}
+                    DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+                  run: |
+                    if [ "$GITHUB_REF_NAME" = "$DEFAULT_BRANCH" ] && { [ -z "$RELEASED" ] || [ "$RELEASED" = "[]" ]; }; then
+                      echo "The default branch released nothing (release lines on, or no change): no pack, no publish."
+                      echo "value=false" >> "$GITHUB_OUTPUT"
+                    else
+                      echo "value=true" >> "$GITHUB_OUTPUT"
+                    fi
+
                 # No --no-build: the versions are decided after the tests, so pack builds again to stamp them into the
                 # assemblies (--no-build also skips restore, which leaves the nuspec's dependency versions stale).
                 - name: Pack
+                  if: steps.publishes.outputs.value == 'true'
                   run: dotnet pack --configuration Release /p:ContinuousIntegrationBuild=true
 
                 # The --no-build pack once shipped 99.9.9.0 (#187): check the packages before anything is pushed.
                 - name: Assert package versions
+                  if: steps.publishes.outputs.value == 'true'
                   shell: pwsh
                   run: ./eng/Assert-PackageVersions.ps1 -Path .
 
                 - name: PushNuget
+                  if: steps.publishes.outputs.value == 'true'
                   run: dotnet nuget push **/*.nupkg --source https://api.nuget.org/v3/index.json --api-key ${{ secrets.NUGET }} --skip-duplicate
 
                 - name: PushGithub
+                  if: steps.publishes.outputs.value == 'true'
                   run: dotnet nuget push **/*.nupkg --no-symbols --skip-duplicate
                   env:
                     NUGET_AUTH_TOKEN: ${{ github.token }}
@@ -315,7 +359,9 @@ public class VersioningOnboardingTests
                   - name: Version the packages
                     id: versioning
                     uses: MintPlayer/MintPlayer.Spark/apps/CodeCoverage/versioning-action@{{{Sha}}} # versioning-v1
+            {{{Gate("      ")}}}
                   - name: Publish
+                    if: steps.publishes.outputs.value == 'true'
                     uses: MintPlayer/github-actions/publish-npm-packages@b08fbddf0b285a8633ac138b89d79ceb8cc8c888
                     with:
                       folder: dist/libs
@@ -330,7 +376,9 @@ public class VersioningOnboardingTests
                   - name: Version the packages
                     id: versioning
                     uses: MintPlayer/MintPlayer.Spark/apps/CodeCoverage/versioning-action@{{{Sha}}} # versioning-v1
+            {{{Gate("      ")}}}
                   - name: Publish snippets
+                    if: steps.publishes.outputs.value == 'true'
                     uses: MintPlayer/github-actions/publish-npm-packages@b08fbddf0b285a8633ac138b89d79ceb8cc8c888
                     with:
                       folder: libs/snippets
@@ -372,7 +420,7 @@ public class VersioningOnboardingTests
         var plan = await VersioningOnboarding.PlanAsync(tree, None, Sha);
 
         plan.Notes.Should().BeEmpty();
-        ByPath(plan)[".github/workflows/publish-master.yml"].Should().Contain($$"""
+        ByPath(plan)[".github/workflows/publish-master.yml"].Should().Contain($$$"""
                   contents: write
                   id-token: write
                 steps:
@@ -381,9 +429,12 @@ public class VersioningOnboardingTests
 
                 - name: Version the packages
                   id: versioning
-                  uses: MintPlayer/MintPlayer.Spark/apps/CodeCoverage/versioning-action@{{Sha}} # versioning-v1
+                  uses: MintPlayer/MintPlayer.Spark/apps/CodeCoverage/versioning-action@{{{Sha}}} # versioning-v1
+
+            {{{Gate("    ")}}}
 
                 - name: Push to NPM
+                  if: steps.publishes.outputs.value == 'true'
                   uses: JS-DevTools/npm-publish@v4
             """);
     }
@@ -664,9 +715,32 @@ public class VersioningOnboardingTests
             + "    permissions:\n      packages: write\n      contents: write\n      id-token: write\n\n"
             + "    steps:\n      - name: Version the packages\n        id: versioning\n"
             + "        uses: MintPlayer/MintPlayer.Spark/apps/CodeCoverage/versioning-action@versioning-v1\n"
+            + Gate("      ", "\n") + "\n"
             + "      # No --no-build: the versions are decided after the tests, so pack builds again to stamp them into the\n"
             + "      # assemblies (--no-build also skips restore, which leaves the nuspec's dependency versions stale).\n"
-            + "      - run: dotnet pack -o nupkgs\n      - run: dotnet nuget push 'nupkgs/*.nupkg' --source github --skip-duplicate\n");
+            + "      - run: dotnet pack -o nupkgs\n        if: steps.publishes.outputs.value == 'true'\n"
+            + "      - run: dotnet nuget push 'nupkgs/*.nupkg' --source github --skip-duplicate\n        if: steps.publishes.outputs.value == 'true'\n");
+    }
+
+    [Fact]
+    public void A_publish_step_with_its_own_condition_or_a_versioning_step_without_an_id_is_left_to_the_merger()
+    {
+        // Gap G1 (release lines recovery plan §2d): the gate goes in, but a condition the onboarding cannot merge is noted.
+        var notes = new List<string>();
+        var gated = VersioningOnboarding.PublishGate("ci.yml", "on: push\njobs:\n  pack:\n    steps:\n"
+            + "      - uses: x/versioning-action@v1\n        id: v\n"
+            + "      - name: Pack\n        if: github.ref_type == 'branch'\n        run: dotnet pack\n"
+            + "      - name: Push\n        run: dotnet nuget push x.nupkg\n", notes);
+
+        notes.Should().ContainSingle().Which.Should().Contain("step `Pack`: add `steps.publishes.outputs.value == 'true'` to its `if:` by hand");
+        gated.Should().Contain("RELEASED: ${{ steps.v.outputs.released }}")
+            .And.Contain("      - name: Push\n        if: steps.publishes.outputs.value == 'true'\n        run: dotnet nuget push");
+        VersioningOnboarding.PublishGate("ci.yml", gated!, notes).Should().BeNull();
+
+        notes.Clear();
+        VersioningOnboarding.PublishGate("ci.yml", "on: push\njobs:\n  pack:\n    steps:\n      - uses: x/versioning-action@v1\n      - run: dotnet pack\n", notes)
+            .Should().BeNull();
+        notes.Should().ContainSingle().Which.Should().Contain("the versioning step has no `id`");
     }
 
     [Fact]

@@ -34,6 +34,9 @@ lines**, which includes it). It plans from the default branch and opens one pull
   (a built-in version when nuget.org cannot be read);
 - replaces hand-edited versions with `0.0.0-PLACEHOLDER`;
 - adds the action step, and `permissions: contents: write` and `id-token: write`, to the publish workflow;
+- adds the "Decide whether this run publishes" step behind it, and its `if:` to every step from the first pack or
+  publish to the last, so the default branch packs only what it released (without it, a default branch with release
+  lines and a package with no tag yet fails its pack with MPV005; a step with its own `if:` is noted instead);
 - gives the checkout of every job that runs `dotnet` `fetch-depth: 0`;
 - adds a `versioning:` section to `coverage.yml`.
 
@@ -71,11 +74,26 @@ steps:
   - run: dotnet test -c Release --no-build
   - id: versioning
     uses: MintPlayer/MintPlayer.Spark/apps/CodeCoverage/versioning-action@versioning-v1
+  # With release lines on, the default branch tags nothing: a package with no tag yet would fail its
+  # pack (MPV005). The release lines pack and publish; the default branch only when it released.
+  - id: publishes
+    env:
+      RELEASED: ${{ steps.versioning.outputs.released }}
+      DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+    run: |
+      if [ "$GITHUB_REF_NAME" = "$DEFAULT_BRANCH" ] && { [ -z "$RELEASED" ] || [ "$RELEASED" = "[]" ]; }; then
+        echo "value=false" >> "$GITHUB_OUTPUT"
+      else
+        echo "value=true" >> "$GITHUB_OUTPUT"
+      fi
   # No --no-build: the versions are decided after the tests, so pack builds again to stamp them into the
   # assemblies (--no-build also skips restore, which leaves the nuspec's dependency versions stale).
-  - run: dotnet pack -c Release -o nupkgs
-  - run: dotnet nuget push 'nupkgs/*.nupkg' --source https://api.nuget.org/v3/index.json --api-key "${{ secrets.NUGET_API_KEY }}" --skip-duplicate
-  - uses: MintPlayer/github-actions/publish-npm-packages@b08fbddf0b285a8633ac138b89d79ceb8cc8c888
+  - if: steps.publishes.outputs.value == 'true'
+    run: dotnet pack -c Release -o nupkgs
+  - if: steps.publishes.outputs.value == 'true'
+    run: dotnet nuget push 'nupkgs/*.nupkg' --source https://api.nuget.org/v3/index.json --api-key "${{ secrets.NUGET_API_KEY }}" --skip-duplicate
+  - if: steps.publishes.outputs.value == 'true'
+    uses: MintPlayer/github-actions/publish-npm-packages@b08fbddf0b285a8633ac138b89d79ceb8cc8c888
     with:
       folder: dist/libs
       registries: |
@@ -391,7 +409,7 @@ Versioning is GitHub only (D16). On GitLab and Bitbucket repositories the Versio
 | The run answers `503 seeds` | The onboarding's seed tags could not be pushed yet. The run waits instead of releasing untagged packages. |
 | Nothing is released after a merge | No input of any package changed: only ignored files did, or only files outside the project directories. |
 | The run failed or was cancelled after the Version step | The tags exist but some packages were not pushed. **Re-run it** (the commit graph's re-run button, or GitHub's "Re-run failed jobs"). The re-run finds its own tags, releases the same versions and pushes what is missing. A tag whose package never ships is harmless: the next release of that package gets the next version. |
-| `MPV005: <id> has no version tag on this push build` | A single project was packed on its own on a push build, and it has no tag. Pass `-p:Version`, tag it, pack the solution instead, or set `IsPackable=false` on a project that is never released. |
+| `MPV005: <id> has no version tag on this push build` | A single project was packed on its own on a push build, and it has no tag. On the default branch of a repository with release lines this is the onboarding's "Decide whether this run publishes" step missing: the default branch tags nothing there, so a package that declared no version (no seed tag) has none until a line releases it. Add the step and its `if:` as in the example above. Otherwise pass `-p:Version`, tag it, pack the solution instead, or set `IsPackable=false` on a project that is never released. |
 | `-p:Version` is ignored | `MintPlayer.Versioning.MSBuild` older than the #544 release. Update the package. |
 | Restore warns `NU1603: <Q> depends on <P> (>= X) but <P> X was not found` | A run was cancelled or failed partway through its push, and a later release of P skipped the dangling version X. Re-run the failed run **before** the next one, so that it publishes P X. |
 | Restore fails with **403** from `nuget.pkg.github.com` for `MintPlayer.Versioning.MSBuild` | The repository restores from GitHub Packages without a mapping (see "GitHub Packages as a restore source" above). Merge the onboarding's `nuget.config`, or map the id to nuget.org yourself. |

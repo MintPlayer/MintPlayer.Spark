@@ -98,6 +98,20 @@ public class OnboardingPlannerTests
     }
 
     [Fact]
+    public async Task Existing_lines_that_could_promote_are_left_alone_and_a_note_says_how_to_switch()
+    {
+        // Gap G2 (SparkTest trial): its coverage.yml had `lines: {}` already, so T6 never fired and nothing said so.
+        var tree = DotnetRepository("versioning:\n  mode: server\n  lines: {}\n").Add(".github/workflows/publish.yml", PublishWorkflow);
+
+        var plan = await OnboardingPlanner.PlanAsync(tree, Inputs(EOnboardingFeature.ReleaseLines));
+
+        plan.PromotesLines.Should().BeFalse();
+        plan.Files.Should().NotContain(f => f.Path == "coverage.yml");
+        plan.Notes.Should().Contain(n => n.StartsWith("coverage.yml has `versioning.lines` already", StringComparison.Ordinal)
+            && n.Contains("`{ current: promote, trigger: manual, workflow: publish.yml }`", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task Planning_again_on_the_result_changes_nothing()
     {
         var tree = DotnetRepository();

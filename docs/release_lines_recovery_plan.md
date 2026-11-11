@@ -362,6 +362,46 @@ App's bypass, because `MergeQueueRulesetSetup.ReadAsync` reads `PromotesLines` f
 SparkTest: close PR #5 and run the chooser again, so it gets `current: promote` and the bypass. Then the SparkTest
 trial, and only then the first `/release` on Spark.
 
+**Done 2026-11-11:** PR #627 merged as 93e1ae75 and was deployed. Ruleset 27018553 has the App's `exempt` bypass
+(read back after "Set up rulesets"). SparkTest was re-onboarded (onboarding PR #8, its ruleset 27049210 got the bypass).
+
+## 2d. The SparkTest trial and the gaps it found (2026-11-11)
+
+**Trial** (`PieterjanDeClippel/SparkTest`, issue #10; its packages are packed only and pushed to no registry, owner
+2026-11-11: "avoid publishing these test-packages"):
+- `/release dotnet-11.x` promoted `release/dotnet-11.x` to 20b9c4ad. Its parents are the tip 1c5337e and the green
+  commit c68f08f, and its committer is "CodeCoverage versioning". The line's run released `SparkTest.Lib 11.0.0-rc.1`
+  ("first release") and packed it.
+- Hand tags pushed under the owner's account: `v11.0.0-beta.1` (below its predecessor) and `v10.5.0` (no line has
+  major 10) were refused, deleted, and commented with the pusher's name. `v11.0.0` on main was recorded.
+- A bare `/release` after PR #11 promoted to 74d61290 and placed `SparkTest.Lib/v11.0.0`. The line's run packed
+  11.0.0, and `tags/verify` passed.
+- Not tried end to end: the line-only refusal. It is covered by PromoteTests.
+
+**G1, a red default branch (fixed in this PR).** With `versioning.lines` on, the default branch tags nothing. A
+package that declared no `<Version>` gets no seed tag, so `dotnet pack` of its project on the default branch fails
+with MPV005. SparkTest's main went red that way (worked around by hand in SparkTest PR #9: pack only on `release/*`).
+A red default branch leaves `/release` no green commit to promote.
+- **Fix:** a new onboarding rule, "The default branch packs and publishes only what it released"
+  (`VersioningOnboarding.PublishGate`). It adds the step Spark's own `dotnet-build-master.yml:210-221` has ("Decide
+  whether this run publishes", `id: publishes`, false on the default branch when `released` is empty). Every step
+  from the first pack or publish to the last gets `if: steps.publishes.outputs.value == 'true'`.
+- A step with its own `if:`, one that starts with a block scalar, or a versioning step without an `id` gets a note
+  instead.
+- The rule applies with or without lines. Without lines, the default branch releases every changed package, and an
+  empty `released` means nothing changed, so skipping the pack loses nothing.
+- Evidence: SparkTest main's red run before PR #9, and `VersioningOnboardingTests` (four byte-for-byte expectations
+  plus `A_publish_step_with_its_own_condition_or_a_versioning_step_without_an_id_is_left_to_the_merger`). The
+  idempotency theory still passes.
+
+**G2, no hint for existing lines (fixed in this PR).** SparkTest's coverage.yml already had `lines: {}`, so T6 never
+fired and nothing said promotion was possible. An existing `versioning.lines` is still left alone (T6). When it takes
+backports and exactly one push workflow runs the versioning step, a note now gives the exact `{ current: promote,
+trigger: manual, workflow: <file> }`. Test: `Existing_lines_that_could_promote_are_left_alone_and_a_note_says_how_to_switch`.
+
+**Left to the owner:** the first `/release` on Spark. It publishes real NuGet and npm packages, which are permanent,
+and nothing in segments B-H needs it. Spark's lines release when a maintainer comments `/release`.
+
 ## 4. Spikes
 
 | Spike | Question | How | Feeds |
@@ -379,12 +419,12 @@ trial, and only then the first `/release` on Spark.
 1. **R5:** done, both runs green.
 2. **R2:** done. PR #624 (c627a9197) shipped ruleset 3; "Set up rulesets" created it on Spark as ruleset 27018553
    (23 checks, strict, no bypass), 2026-11-11. Segment R is complete.
-3. **No owner decision is open.** Segment P (§2b) is being built on `feat/release-lines-promote`.
+3. **No owner decision is open.** Segment P (§2b, PR #626) and segment T (§2c, PR #627) are merged and deployed. The
+   SparkTest trial passed; its gaps G1 and G2 are fixed in the trial-gaps PR (§2d).
 4. **The segments to build, re-ordered for Q-L:**
    - **B (no silent losses), smallest first:** still needed for past lines and `backport` repositories.
-   - **P, a new segment: `mode: promote` with `trigger: manual`** (`/release` and an app button). It turns today's manual
-     recovery into the App's own action. Until P exists, the bot keeps cherry-picking labelled master PRs onto Spark's
-     lines, which apply cleanly now that each line equals master.
+   - **P, a new segment: `mode: promote` with `trigger: manual`** (`/release`): done (#626). Spark's current lines
+     take no backports since.
    - **Then C to H as listed.** C (hold) matters only for `backport` lines.
 5. **Do not** run the manual promotion again without the same checks: a trial `merge-tree`, a review of the line-only
    diff, a fast-forward check, and the bypass removed and verified.

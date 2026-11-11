@@ -12,7 +12,8 @@ unless they start with `docs/`, `.github/` or `libs/`.
 
 > **2026-11-11:** the work continues in `docs/release_lines_recovery_plan.md`. The owner split it into small segments,
 > repaired the lines by hand (promotion merge), and chose per-line modes `promote` / `backport` (Q-L), which reverses
-> D16. Where this PRD and that plan differ, the plan wins.
+> D16. Where this PRD and that plan differ, the plan wins. Status: segments R, P (#626) and T (#627) are shipped,
+> the SparkTest trial passed, and its gaps are fixed (plan §2d). Segments B-H are next.
 
 ## 1. Why
 
