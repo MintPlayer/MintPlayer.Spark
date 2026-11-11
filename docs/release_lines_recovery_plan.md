@@ -98,6 +98,33 @@ why #593, #608 and #620 produced nothing, although the conflict path does open d
   `IsAppsOwnBackportAsync`, `:546`), so other PRs keep being evicted.
 - **Order:** backports are inserted in master order (`:317`) by the stored source sha from B.
 
+**C done (2026-11-11, branch `feat/backport-hold-on-lines`, stacked on B).**
+- **Who is held:** `EMergeQueueEntryState.Held` applies only to a backport the App opened (`IsAppsOwnBackportAsync`)
+  into a branch the line pattern matches (`MergeQueueEngine.HoldsAsync`). A person's pull request into a line, and
+  everything on the default branch, is evicted as before. Test: `A_persons_pull_request_into_a_line_is_still_evicted`.
+- **What holds:** an eviction the pull request's branch can fix: `checks-failed`, `checks-timeout`, every writer
+  conflict (`EvictWriterAsync`) and `author-push`. Everything else still evicts: permissions, base missing, retargeted,
+  workflow guards, the merge's refusals. `HoldAsync`:
+  - keeps `lane.Current`, the label and the queue branch, and does not call `StartNextAsync`;
+  - abandons the regenerate run;
+  - turns the check red as `Held: <reason>`, with the **Remove from queue** button;
+  - comments what the backport waits for.
+- **What resumes it:**
+  - **A push** (`HeadPushed`) restarts from prepare on the new head (`ResumeAsync`). This also replaces the
+    `author-push` eviction for a running line backport.
+  - **Checks that pass after a re-run** (`ChecksChanged` on `FinalSha`, `ResumeOnGreenAsync`) go on to the merge. Only
+    for a hold on red or late checks.
+  - **A base move** (`BranchPushed`) tries it again.
+  - `/dequeue` ends it and starts the next.
+
+  Tests: `A_red_backport_on_a_line_is_held_keeps_its_lane_and_merges_once_its_checks_pass`,
+  `A_push_to_a_held_backport_starts_it_again_on_the_new_head`, `A_conflicting_backport_on_a_line_is_held_and_…`.
+- **Order:** `SourceOrderPositionAsync` puts a new App backport before the first waiting one whose source the forge's
+  compare shows to be later (`merge-base(source, other) == source`). With no recorded `SourceSha` (records from before
+  B), or a forge error, it goes last. Test: `A_backport_waits_in_the_order_its_source_merged`.
+- **Not done here:** who is asked, reminders and the "blocked by" check are segment F. A hold whose `author-push` came
+  from a writer step waits for the push's webhook to resume it.
+
 **Segment D, backport branches protected, no approval.**
 - **The ruleset:** a new ruleset on `refs/heads/backport/*` that only the queue App and repository admins can update
   (`CodeCoverage.Library/Forge/MergeQueueRulesets.cs:107-179`, `MergeQueueRulesetSetup.cs`).
@@ -460,10 +487,11 @@ and nothing in segments B-H needs it. Spark's lines release when a maintainer co
 3. **No owner decision is open.** Segment P (§2b, PR #626) and segment T (§2c, PR #627) are merged and deployed. The
    SparkTest trial passed; its gaps G1 and G2 are fixed in the trial-gaps PR (§2d).
 4. **The segments to build, re-ordered for Q-L:**
-   - **B (no silent losses), smallest first:** still needed for past lines and `backport` repositories.
+   - **B (no silent losses):** done, PR #629 (backport attempt records, SP5 answered).
    - **P, a new segment: `mode: promote` with `trigger: manual`** (`/release`): done (#626). Spark's current lines
      take no backports since.
-   - **Then C to H as listed.** C (hold) matters only for `backport` lines.
+   - **C (hold, not evict):** done, stacked on B (its PR follows #629's merge). It matters only for `backport` lines.
+   - **Then D to H as listed.**
 5. **Do not** run the manual promotion again without the same checks: a trial `merge-tree`, a review of the line-only
    diff, a fast-forward check, and the bypass removed and verified.
 

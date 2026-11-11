@@ -19,6 +19,7 @@ const STATES: Record<string, { label: string; color: string }> = {
   Publishing: { label: 'publishing', color: 'info' },
   AwaitingChecks: { label: 'waiting for checks', color: 'primary' },
   Merging: { label: 'merging', color: 'primary' },
+  Held: { label: 'held', color: 'danger' },
   Merged: { label: 'merged', color: 'success' },
   Evicted: { label: 'evicted', color: 'danger' },
   Dequeued: { label: 'dequeued', color: 'secondary' },

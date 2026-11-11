@@ -17,7 +17,8 @@ wrong until synchronize runs again on the rebased branch ([`../model-hash.md`](.
 GitHub's own merge queue evicts on any conflict. This one takes the base side of the wholly generated files, has the
 repository's regenerate workflow rewrite them on a queue branch, publishes **one** squashed commit to the pull request,
 waits for every check, and merges. Any other conflict, a failed check, or a push it did not make evicts the pull
-request, with the reason on its check run.
+request, with the reason on its check run. The exception is the App's own backports into a release line, which are
+held in their place instead ([§2.2, release lines](#22-coverageyml--mergequeue)).
 
 ```
 enqueue: label · /queue · panel button (O8) · "Add to merge queue" on the check (O30)
@@ -207,6 +208,17 @@ mergeQueue:
   line tip, not the default branch, so each line needs the workflow file under the same name.
 - **Backport pull requests into a queued line are enqueued automatically.** The exceptions are drafts and backports
   whose regenerated files are stale. Set `backport: { enqueue: false }` to turn this off.
+- **A line takes the App's backports in the order their sources merged, and holds one that fails.** A backport the
+  App opened waits before any waiting backport whose source merged later on the default branch. When its checks fail
+  or time out, it conflicts, or someone pushes to it, it is **held**, not evicted. It stays the line's current entry,
+  so the backports behind it wait. Its check turns red with `Held: <reason>`, and a comment says what it waits for.
+  It resumes by itself:
+  - on a push to its branch, from the rebase;
+  - when its checks pass after a re-run;
+  - when the line moves.
+
+  `/dequeue` (or the check's button) lets the line go on without it. A person's pull request into a line is evicted as
+  before.
 
 A repository with lockfiles and its own workflow per tool might add:
 

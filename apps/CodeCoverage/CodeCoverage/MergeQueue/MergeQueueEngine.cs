@@ -138,6 +138,12 @@ public partial class MergeQueueEngine : IMergeQueueEngine
                     await GuardedAsync(context, pushed, EMergeQueueStep.Publish, () => PublishAsync(context, pushed, ct), ct);
                     break;
                 }
+                // Segment C: on a release line the App's backports keep their place; a push is the fix the line waits for.
+                if (await HoldsAsync(context, pushed, ct))
+                {
+                    await ResumeAsync(context, pushed, sha, ct);
+                    break;
+                }
                 // T3. No PRD id in what people read (§0 D72): the eviction message goes on the check run and in a comment.
                 await EvictAsync(context, pushed, "author-push",
                     $"The pull request's branch moved to `{sha}`, a commit the queue did not write. The queue merges only the commit that was queued: queue it again to merge the new one.", ct: ct);
@@ -164,8 +170,18 @@ public partial class MergeQueueEngine : IMergeQueueEngine
                 {
                     if (entry.BaseBranch != branch || entry.BaseSha is null || string.Equals(entry.BaseSha, baseSha, StringComparison.OrdinalIgnoreCase)) continue;
                     // O20 / §5.1: a base that moves while the run waits sends it back to prepare; it is not the PR's fault.
+                    // A held backport tries again too: what it was checked against, or conflicted with, is gone.
                     if (entry.State is EMergeQueueEntryState.Regenerating or EMergeQueueEntryState.AwaitingChecks)
                         await RestartAsync(context, entry, $"{branch} moved to {Short(baseSha)}; rebasing again.", ct);
+                    else if (entry.State == EMergeQueueEntryState.Held)
+                    {
+                        entry.PrepareAttempts = 0;
+                        // As ResumeAsync: the hold's reason no longer applies to the new run.
+                        entry.EvictionReason = null;
+                        entry.EvictionMessage = null;
+                        entry.EvictionPaths = [];
+                        await RestartAsync(context, entry, $"{branch} moved to {Short(baseSha)}; trying the held backport again.", ct);
+                    }
                 }
                 break;
 
@@ -177,8 +193,13 @@ public partial class MergeQueueEngine : IMergeQueueEngine
 
             case EMergeQueueSignal.ChecksChanged when signal.Sha is { } checkedSha:
                 foreach (var entry in await LoadCurrentEntriesAsync(context, ct))
-                    if (entry.State == EMergeQueueEntryState.AwaitingChecks && string.Equals(entry.FinalSha, checkedSha, StringComparison.OrdinalIgnoreCase))
+                {
+                    if (!string.Equals(entry.FinalSha, checkedSha, StringComparison.OrdinalIgnoreCase)) continue;
+                    if (entry.State == EMergeQueueEntryState.AwaitingChecks)
                         await GuardedAsync(context, entry, EMergeQueueStep.PollChecks, () => EvaluateChecksAsync(context, entry, fromPoll: false, ct), ct);
+                    else if (entry.State == EMergeQueueEntryState.Held)
+                        await ResumeOnGreenAsync(context, entry, ct);
+                }
                 break;
 
             case EMergeQueueSignal.Reviewed when signal.Number is { } number:
@@ -314,7 +335,11 @@ public partial class MergeQueueEngine : IMergeQueueEngine
         }
 
         Transition(entry, EMergeQueueEntryState.Queued, $"queued by @{actor} ({source.ToString().ToLowerInvariant()})");
-        context.Document.LaneFor(entry.BaseBranch).Waiting.Add(entry.Id!);
+        var waiting = context.Document.LaneFor(entry.BaseBranch).Waiting;
+        if (await SourceOrderPositionAsync(context, entry, waiting, ct) is { } before)
+            waiting.Insert(before, entry.Id!);
+        else
+            waiting.Add(entry.Id!);
         // Its turn first: on an idle lane it starts at once, and its first check run is the one in progress. A pull request
         // that waits gets its "Queued" check, with "Remove from queue" (§0 O32), from the line's refresh, or here when it is
         // further back than the refresh reaches.
@@ -546,6 +571,109 @@ public partial class MergeQueueEngine : IMergeQueueEngine
     private async Task<bool> IsAppsOwnBackportAsync(Context context, MergeQueueEntry entry, CancellationToken ct)
         => !entry.IsFork && context.Repository.Id is { } repositoryId
            && await session.LoadAsync<BackportPullRequest>(BackportPullRequest.DocumentId(repositoryId, entry.Number), ct) is not null;
+
+    // ═══ Held backports on release lines (release lines recovery plan, segment C) ════════════════════
+
+    /// <summary>
+    /// A backport the App opened onto a release line is held rather than evicted: its line takes backports in the default
+    /// branch's order, and evicting one would let the next one merge without it. Every other pull request, a person's
+    /// pull request into a line included, is evicted as before.
+    /// </summary>
+    private async Task<bool> HoldsAsync(Context context, MergeQueueEntry entry, CancellationToken ct)
+        => MergeQueueBranches.IsLine(entry.Config.LinePattern, entry.BaseBranch) && await IsAppsOwnBackportAsync(context, entry, ct);
+
+    /// <summary>
+    /// Keeps the entry as its lane's current one, so nothing behind it starts, and tells the pull request what it waits for.
+    /// The label stays; the regenerate run is abandoned as on an eviction. The queue branch stays until the run ends.
+    /// </summary>
+    private async Task HoldAsync(Context context, MergeQueueEntry entry, string reason, string message, IReadOnlyList<string>? paths, CancellationToken ct)
+    {
+        entry.EvictionReason = reason;
+        entry.EvictionMessage = message;
+        entry.EvictionPaths = [.. paths ?? []];
+        await AbandonRunAsync(context, entry, ct);
+        Transition(entry, EMergeQueueEntryState.Held, $"held ({reason})");
+        await PublishCheckAsync(context, entry, ct);
+        var checks = reason is "checks-failed" or "checks-timeout" ? ", or re-run its checks until they pass," : string.Empty;
+        await BestEffortAsync(() => context.Queue.PostCommentAsync(context.Repository, entry.Number,
+            $"The merge queue holds this backport: {message}\n\n`{entry.BaseBranch}` takes its backports in the order they merged, so the ones "
+            + $"behind this one wait for it. Push a fix to `{entry.HeadBranch}`{checks} and the queue takes it up again by itself. "
+            + "`/dequeue` lets the line go on without it.", ct), "comment");
+        logger.LogInformation("Merge queue: holding #{Number} in {Repository} on {Line}: {Reason}", entry.Number, context.Repository.FullName, entry.BaseBranch, reason);
+    }
+
+    /// <summary>
+    /// A push to a held (or running) backport: the run starts again on the new head, from prepare. A backport still waiting
+    /// for its turn only takes the new head.
+    /// </summary>
+    private async Task ResumeAsync(Context context, MergeQueueEntry entry, string sha, CancellationToken ct)
+    {
+        entry.PinnedHeadSha = sha;
+        entry.ExpectedHeadSha = sha;
+        Remember(entry, sha);
+        entry.EvictionReason = null;
+        entry.EvictionMessage = null;
+        entry.EvictionPaths = [];
+        if (entry.State == EMergeQueueEntryState.Queued)
+        {
+            entry.Note(Now, $"the branch moved to {Short(sha)}; the queue takes that head when its turn comes");
+            await PublishCheckAsync(context, entry, ct);
+            return;
+        }
+        entry.PrepareAttempts = 0;
+        await RestartAsync(context, entry, $"the branch moved to {Short(sha)}; starting again on that head", ct);
+    }
+
+    /// <summary>
+    /// Checks on a backport held for red or late checks changed. Once every counted check passes (a person re-ran them), the
+    /// run goes on to the merge; anything else leaves it held.
+    /// </summary>
+    private async Task ResumeOnGreenAsync(Context context, MergeQueueEntry entry, CancellationToken ct)
+    {
+        if (entry.EvictionReason is not ("checks-failed" or "checks-timeout") || entry.FinalSha is null) return;
+        var state = await context.Queue.GetCheckStateAsync(context.Repository, entry.FinalSha, ct);
+        if (CheckGate.Evaluate(state, entry.Config.CheckExclusions, entry.RequiredChecks, entry.ExpectedChecks).Verdict != ECheckVerdict.Passed) return;
+
+        entry.EvictionReason = null;
+        entry.EvictionMessage = null;
+        entry.EvictionPaths = [];
+        Transition(entry, EMergeQueueEntryState.AwaitingChecks, $"checks on {Short(entry.FinalSha)} passed; the held backport goes on");
+        await GuardedAsync(context, entry, EMergeQueueStep.PollChecks, () => EvaluateChecksAsync(context, entry, fromPoll: false, ct), ct);
+    }
+
+    /// <summary>
+    /// Where a backport the App opened goes in its line's waiting list: before the first waiting backport whose source
+    /// merged later on the default branch, so the line takes them in that order. Null: at the end, as every other pull
+    /// request (no recorded source commit, or the forge cannot compare them).
+    /// </summary>
+    private async Task<int?> SourceOrderPositionAsync(Context context, MergeQueueEntry entry, List<string> waiting, CancellationToken ct)
+    {
+        if (waiting.Count == 0 || !await HoldsAsync(context, entry, ct)) return null;
+        var repositoryId = context.Repository.Id!;
+        if (await session.LoadAsync<BackportPullRequest>(BackportPullRequest.DocumentId(repositoryId, entry.Number), ct) is not { SourceSha: { } source })
+            return null;
+
+        for (var i = 0; i < waiting.Count; i++)
+        {
+            if (await session.LoadAsync<MergeQueueEntry>(waiting[i], ct) is not { IsFork: false } other) continue;
+            if (await session.LoadAsync<BackportPullRequest>(BackportPullRequest.DocumentId(repositoryId, other.Number), ct) is not { SourceSha: { } otherSource }
+                || string.Equals(source, otherSource, StringComparison.OrdinalIgnoreCase))
+                continue;
+            try
+            {
+                // The merge base of the two sources is this one's source: it is an ancestor of the other's, so it merged first.
+                if (await context.Forge.CompareAsync(context.Repository, source, otherSource, ct) is { MergeBaseSha: { } mergeBase }
+                    && string.Equals(mergeBase, source, StringComparison.OrdinalIgnoreCase))
+                    return i;
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                logger.LogWarning(ex, "Merge queue: could not order #{Number} in {Repository} by its source; it goes last", entry.Number, context.Repository.FullName);
+                return null;
+            }
+        }
+        return null;
+    }
 
     /// <summary>
     /// A review on a pull request that is not in the queue. When it is a backport the App opened, the queue takes that
@@ -898,7 +1026,7 @@ public partial class MergeQueueEngine : IMergeQueueEngine
                 _ => $"Rebasing onto `{entry.BaseBranch}` conflicts in files the queue may not resolve ({reason}). Rebase it onto `{entry.BaseBranch}` by hand.",
             }
             + (detail is { Length: > 0 } text ? $"\n\n{text}" : string.Empty),
-            paths, ct: ct);
+            paths, ct: ct, holdable: true);
 
     /// <summary>O25: a fork's change under <c>.github/**</c> that needs the regenerate workflow. Never bypassed.</summary>
     internal const string ForkTouchesWorkflows = "fork-touches-workflows";
@@ -1435,7 +1563,7 @@ public partial class MergeQueueEngine : IMergeQueueEngine
 
             case ECheckVerdict.Failed:
                 await EvictAsync(context, entry, "checks-failed",
-                    $"Checks failed on `{Short(entry.FinalSha)}`: {string.Join(", ", gate.Failed.Select(f => $"`{f}`"))}.", ct: ct);
+                    $"Checks failed on `{Short(entry.FinalSha)}`: {string.Join(", ", gate.Failed.Select(f => $"`{f}`"))}.", ct: ct, holdable: true);
                 return;
 
             default:
@@ -1457,7 +1585,7 @@ public partial class MergeQueueEngine : IMergeQueueEngine
         var generation = entry.Generation;
         await EvaluateChecksAsync(context, entry, fromPoll: false, ct);
         if (entry.State == EMergeQueueEntryState.AwaitingChecks && entry.Generation == generation)
-            await EvictAsync(context, entry, "checks-timeout", $"Checks on `{Short(entry.FinalSha)}` did not finish within {entry.Config.ChecksTimeoutMinutes} minutes (`checks.timeout`).", ct: ct);
+            await EvictAsync(context, entry, "checks-timeout", $"Checks on `{Short(entry.FinalSha)}` did not finish within {entry.Config.ChecksTimeoutMinutes} minutes (`checks.timeout`).", ct: ct, holdable: true);
     }
 
     // ═══ Step 5: merge (O9, D13, D17, O18) ══════════════════════════════════════════════════════════
@@ -1644,8 +1772,15 @@ public partial class MergeQueueEngine : IMergeQueueEngine
     // ═══ Ending a run ═══════════════════════════════════════════════════════════════════════════════
 
     /// <summary>Ends the run with a reason the check run and a comment carry; the label goes, the next entry starts.</summary>
-    private async Task EvictAsync(Context context, MergeQueueEntry entry, string reason, string message, IReadOnlyList<string>? paths = null, bool permissions = false, CancellationToken ct = default)
+    /// <param name="holdable">A failure the pull request's own branch can fix (red checks, a conflict, a push the queue did
+    /// not write): on a release line, the App's backport is held instead (segment C).</param>
+    private async Task EvictAsync(Context context, MergeQueueEntry entry, string reason, string message, IReadOnlyList<string>? paths = null, bool permissions = false, CancellationToken ct = default, bool holdable = false)
     {
+        if ((holdable || reason == "author-push") && await HoldsAsync(context, entry, ct))
+        {
+            await HoldAsync(context, entry, reason, message, paths, ct);
+            return;
+        }
         entry.EvictionReason = reason;
         entry.EvictionPaths = [.. paths ?? []];
         if (permissions) entry.PermissionsUrl = await PermissionsUrlAsync(context, ct);
