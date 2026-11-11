@@ -167,16 +167,50 @@ Dependencies: R before all; B before C; D before E; C before F. G and H are inde
   - **Spark:** current lines `promote` + `manual`, past lines `backport` + `nominated`. O2, O3 (B′) and R3 no longer
     apply to current lines. Their catch-up becomes a one-time alignment that makes each line an ancestor of master
     (see the next open question), followed by a promotion.
-- **Q-A, how a `promote` line moves (open; the manual recovery used B).**
-  - **A:** a one-time `-s ours` merge on master, then pure fast-forwards.
-  - **B:** each promotion is a merge commit whose tree is exactly the green master commit's, with the line and that
-    commit as parents (`git commit-tree`). No alignment and no push to master are needed, it works on any onboarding
-    repository, and tags stay reachable.
-  - **C:** reset the line, which orphans its tags.
+- **Q-A, how a `promote` line moves: decided B (owner, 2026-11-11).** Each promotion is a merge commit whose tree is
+  exactly the green master commit's, with the line and that commit as parents (`git commit-tree`). This supersedes
+  Q-L's "fast-forward only, the line must be an ancestor of the default branch": the line is not an ancestor; the
+  promotion commit is a fast-forward *of the line*. Lookups use ancestry, not sha equality. A reset (orphans tags) and
+  a one-time `-s ours` merge on master were rejected.
+  - **Ruleset 3 refuses a direct push** of that commit (its new sha has no checks, the App has no bypass, and squash
+    merges would drop master from the ancestry). **Decided (Q-A = B, second round): the App bypasses ruleset 3 for
+    the promotion push only**, after verifying that the commit's tree sha equals a green master commit's tree sha.
+    Not a PR run per promotion: the tree already passed all checks, and the line's own `publish-release` still runs
+    the tests before it tags or publishes (that is what held back da8be3a91). Trap accepted: ruleset 3's guarantee
+    now rests on the App's tree check.
+- **O1 = (a) only (owner, 2026-11-11: "A only").** The hold lives on the merge-queue lane; Spark messaging stays
+  evicting. On a backport line a held conflict waits for the author or a maintainer to resolve it on the cherry-pick
+  branch (owner). Holding keeps the order but does not add a commit that was skipped for that line, so an
+  angular+dotnet PR after an angular-only one still conflicts on the dotnet line; on promote lines this cannot happen.
+- **Q6b = C (owner, 2026-11-11), see segment P.** Human version tags stay allowed, recorded and validated by the App.
 
-  Recommended: B. The app shows the line-only diff before promoting, and a code owner confirms it when it is
-  non-empty. Lookups use ancestry, not sha equality.
-- **Parked from the grilling:** Q6b (a tag ruleset would reverse versioning D3's "push a tag" gesture).
+## 2b. Segment P, `mode: promote` with `trigger: manual` (decided 2026-11-11, second grilling)
+
+- **P1, line-only changes (Q-P1 = A):** the App diffs the line's tree against its merge base with the default branch
+  and drops changes that are older copies of default-branch commits. Anything left refuses the promotion, with a
+  comment listing the files and commits. Nothing is ever dropped silently.
+- **P2, which commit (Q-P2 = B):** the newest default-branch commit whose `publish-release` run concluded `success`
+  ("green"), or `/release <sha>` when that commit is green and newer than the line's last promotion. The comment names
+  the promoted commit and PR, and what was left out.
+- **P3, who (Q-P3 = B):** a configurable lowest repository role, default `maintain`, per account with a per-repository
+  override (the same shape as `MergeQueueBypassRole`). The role is read live from GitHub on every request, never
+  cached.
+- **P4, which lines (Q-P4 = C):** by default only the promote lines whose ecosystem has changes since their last
+  promotion (the versioning engine's own change detection); `/release <line>` moves one line even without changes,
+  `/release all` moves every promote line. Skipped lines are listed with the reason.
+- **P5, versions (Q6b = C, owner: "if we detect tag-pushes and record them in the database, then we can pick option C";
+  "Yes, invalid tags can be refused"):**
+  - `/release [<line>] <PackageId>@<version>` names a version. It must keep the platform major, be higher than the
+    last tag, and not exist on the registry.
+  - A human push of `<PackageId>/v<version>` is detected from the webhook, validated the same way and recorded as
+    that package's next version. An invalid tag is deleted, with a comment to the pusher.
+  - At the next promotion of a line that releases the package, the App puts the tag on the promotion commit in the
+    same step, so the line's release run cannot race it.
+  - The line's versioning step asks the server and refuses a tag the App has not recorded as valid (one call from the
+    action; if the server is unreachable the step fails rather than publishing).
+- **P6, sandbox (SP7 = A):** `PieterjanDeClippel/SparkTest`, two lines and a `publish-release` without publish
+  secrets. Standing permission to push branches and tags and change rulesets there; ask before deleting anything that
+  was there before.
 
 ## 4. Spikes
 
@@ -193,10 +227,9 @@ Dependencies: R before all; B before C; D before E; C before F. G and H are inde
 ## 5. Where it stands and what is next (2026-11-11)
 
 1. **R5:** done, both runs green.
-2. **R2:** ruleset 3 in the planner and form (this branch, `feat/release-line-rulesets`); after the deploy, run "Set
-   up rulesets" on Spark, or create ruleset 3 by hand from `merge-queue.md`'s JSON with the 23 checks.
-3. **Owner decisions still open:** Q-A (B recommended), O1 (Blocking/Evicting on the merge-queue lane, not on Spark
-   messaging; recommended), Q6b (tag ruleset vs versioning D3), and SP7 (the GitHub sandbox repository).
+2. **R2:** done. PR #624 (c627a9197) shipped ruleset 3; "Set up rulesets" created it on Spark as ruleset 27018553
+   (23 checks, strict, no bypass), 2026-11-11. Segment R is complete.
+3. **No owner decision is open.** Segment P (§2b) is being built on `feat/release-lines-promote`.
 4. **The segments to build, re-ordered for Q-L:**
    - **B (no silent losses), smallest first:** still needed for past lines and `backport` repositories.
    - **P, a new segment: `mode: promote` with `trigger: manual`** (`/release` and an app button). It turns today's manual
