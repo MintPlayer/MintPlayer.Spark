@@ -10,6 +10,10 @@ no answer yet. The cache side of §3.7 moved on separately: the Nx remote cache 
 [coverage_package_versioning_PRD.md](coverage_package_versioning_PRD.md). Paths below are under `apps/CodeCoverage/`
 unless they start with `docs/`, `.github/` or `libs/`.
 
+> **2026-11-11:** the work continues in `docs/release_lines_recovery_plan.md`. The owner split it into small segments,
+> repaired the lines by hand (promotion merge), and chose per-line modes `promote` / `backport` (Q-L), which reverses
+> D16. Where this PRD and that plan differ, the plan wins.
+
 ## 1. Why
 
 PR #620 (#551) merged on 2026-11-10 and its backport to `release/dotnet-11.x` conflicted in 15 files. #620 was not
