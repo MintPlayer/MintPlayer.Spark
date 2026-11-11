@@ -36,6 +36,9 @@ public partial class CoverageSparkContext : SparkContext
 
     // The versioning history (#153 M12): read-only, listed per repository by Custom.Repository_VersioningRuns.
     public IQueryable<VersioningRun> VersioningRuns => Session.Query<VersioningRun>();
+    // What became of each backport (release lines recovery plan, segment B): read-only, listed per repository by
+    // Custom.Repository_BackportAttempts.
+    public IQueryable<BackportAttempt> BackportAttempts => Session.Query<BackportAttempt>();
     // The platform lifecycle (#568 M3): public, read-only, written by PlatformLifecycleCronJob.
     public IQueryable<PlatformRelease> PlatformReleases => Session.Query<PlatformRelease>();
 }

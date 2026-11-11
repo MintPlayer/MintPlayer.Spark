@@ -135,7 +135,9 @@ public partial class BackportLinkRecipient : IRecipient<BackportMergedMessage>, 
                 $"Backport of #{source.Number} to `{line}`, pushed by hand.\n\n{BackportProvenance.Marker(repository.FullName, source.Number)}",
                 cancellationToken: cancellationToken);
             // A writer pushed it, so it counts as the App's own backport for the approval floor and a writer's approval.
-            await BackportRegenerationEngine.RecordAsync(session, repository.Id!, opened, source.Number, line, time.GetUtcNow().UtcDateTime, cancellationToken);
+            await BackportRegenerationEngine.RecordAsync(session, repository.Id!, opened, source.Number, source.MergeCommitSha, line, time.GetUtcNow().UtcDateTime, cancellationToken);
+            await BackportAttempts.RecordAsync(session, repository, source.Number, source.MergeCommitSha, line, BackportAttempt.Opened, opened,
+                $"pushed by hand by {message.PusherLogin}", time.GetUtcNow().UtcDateTime, cancellationToken);
             await session.SaveChangesAsync(cancellationToken);
             logger.LogInformation("Backport link: opened #{Opened} for {Branch} of {Repository}", opened, message.Branch, repository.FullName);
         }

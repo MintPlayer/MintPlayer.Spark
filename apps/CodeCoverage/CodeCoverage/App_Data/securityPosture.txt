@@ -10,6 +10,7 @@ identity-provider | MintPlayer.Spark.IdentityProvider | a47cb40caae8 | switched 
 ## Reachable without signing in (expanded)
 Browse/Coverage
 Query/Account
+Query/BackportAttempt
 Query/Build
 Query/Commit
 Query/Home
@@ -17,6 +18,7 @@ Query/PlatformRelease
 Query/Repository
 Query/VersioningRun
 Read/Account
+Read/BackportAttempt
 Read/Build
 Read/Commit
 Read/Home
@@ -28,6 +30,7 @@ Read/VersioningRun
 Anonymous visitors | grant | Browse/Coverage | c0e5a9e1-0000-4000-8000-000000000021 | app
 Anonymous visitors | grant | QueryRead/Account | c0e5a9e1-0000-4000-8000-000000000001 | app
 Anonymous visitors | deny | QueryRead/Account/OwnerKey | c0e5a9e1-0000-4000-8000-000000000081 | app
+Anonymous visitors | grant | QueryRead/BackportAttempt | c0e5a9e1-0000-4000-8000-0000000000ae | app
 Anonymous visitors | grant | QueryRead/Build | c0e5a9e1-0000-4000-8000-000000000004 | app
 Anonymous visitors | grant | QueryRead/Commit | c0e5a9e1-0000-4000-8000-000000000003 | app
 Anonymous visitors | deny | QueryRead/Home/AccountCount | c0e5a9e1-0000-4000-8000-000000000088 | app
@@ -57,6 +60,7 @@ Signed-in users | grant | Query/DependencyOnboardingRow | c0e5a9e1-0000-4000-800
 Signed-in users | grant | Query/MyAccountRow | c0e5a9e1-0000-4000-8000-000000000051 | app
 Signed-in users | grant | QueryRead/Account | c0e5a9e1-0000-4000-8000-000000000011 | app
 Signed-in users | deny | QueryRead/Account/OwnerKey | c0e5a9e1-0000-4000-8000-000000000082 | app
+Signed-in users | grant | QueryRead/BackportAttempt | c0e5a9e1-0000-4000-8000-0000000000af | app
 Signed-in users | grant | QueryRead/Build | c0e5a9e1-0000-4000-8000-000000000014 | app
 Signed-in users | grant | QueryRead/Commit | c0e5a9e1-0000-4000-8000-000000000013 | app
 Signed-in users | grant | QueryRead/ForgeCheck | c0e5a9e1-0000-4000-8000-000000000093 | app

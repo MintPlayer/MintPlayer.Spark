@@ -51,6 +51,9 @@ public class BackportRegeneration
     /// <summary>The backport branch's head: the backport commit, then each regenerated fold of it.</summary>
     public string Sha { get; set; } = string.Empty;
 
+    /// <summary>The backported pull request's merge commit (segment B), recorded on the pull request once it opens.</summary>
+    public string? SourceSha { get; set; }
+
     /// <summary>The workflows to run, one after the other, each on the commit the one before it left (O36's order).</summary>
     public List<string> Workflows { get; set; } = [];
 

@@ -1038,6 +1038,40 @@
         }
       }
     },
+    "BackportAttempt": {
+      "attributes": {
+        "Branch": {
+          "description": {
+            "en": "The release line."
+          }
+        },
+        "Detail": {
+          "description": {
+            "en": "Why it failed or conflicts."
+          }
+        },
+        "Outcome": {
+          "description": {
+            "en": "What became of it: opened, draft, regenerating, conflicts, failed, …"
+          }
+        },
+        "PullRequest": {
+          "description": {
+            "en": "The backport pull request, when one was opened."
+          }
+        },
+        "Source": {
+          "description": {
+            "en": "The backported pull request."
+          }
+        },
+        "SourceSha": {
+          "description": {
+            "en": "Its merge commit on the default branch."
+          }
+        }
+      }
+    },
     "Build": {
       "attributes": {
         "CarryForward": {

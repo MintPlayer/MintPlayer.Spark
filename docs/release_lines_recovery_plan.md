@@ -66,6 +66,30 @@ recorded, visible failure (comment on the source PR and a row in the app). The s
 why #593, #608 and #620 produced nothing, although the conflict path does open drafts
 (`CodeCoverage/PackageVersioning/BackportRecipients.cs:243-252`).
 
+**B done (2026-11-11, branch `feat/backport-no-silent-losses`).**
+- **SP5 answer:** none of the three was lost silently. Each got a "conflicts; nothing was pushed" comment from the
+  App: #593 at 2026-11-07T11:02:59Z on `merge-queue-setup.snippets.ts`, #608 at 2026-11-09T11:55:56Z on both lines,
+  and #620 at 2026-11-10T07:37:45Z on `EntityMapper.cs`, `QueryExecutor.cs` and others. Spark's `backport.onConflict`
+  is the default `comment`, so a conflict opens no draft. The loss was that a comment was the only trace: no pull
+  request, nothing in the app.
+- **The silent paths in the code:** a forge refusal or error before any comment was only logged (`HandleAsync`'s
+  catches). A line the writer did not report produced nothing.
+- **What changed:**
+  - **A new `BackportAttempt` record**, `BackportAttempts/{provider}/{repoId}/{source}/{line}`, one per backported
+    pull request and line. It is written on every outcome:
+    - opened, or opened with stale regenerated files;
+    - a draft, or regenerating (moved to opened when the saga opens the pull request);
+    - already on the line, or the branch exists;
+    - conflicts, or failed (writer unavailable or failed, push rejected, the line not reported, a forge refusal or
+      error).
+  - **A retry overwrites the record**, so the latest outcome holds.
+  - **The repository page lists the records** (`Custom.Repository_BackportAttempts`, streamed by id prefix, no index;
+    `QueryRead` only, rows filtered to visible repositories like versioning runs).
+  - **The source merge sha** is stored on `BackportPullRequest.SourceSha` (and carried by `BackportRegeneration`),
+    for segment C's master order. A record from before B has none.
+- **The default stays `onConflict: comment`.** B's goal is that nothing is lost unseen, and the record does that.
+  Switching Spark to drafts is a coverage.yml choice, not code.
+
 **Segment C, hold instead of evict on lines.** This is the owner's "Blocking or Evicting" (see O1).
 - **What happens to the PR:** a red or pushed-over backport PR on a line goes to a new `Held` state instead of
   `EvictAsync` (`CodeCoverage/MergeQueue/MergeQueueEngine.cs:1647-1662`). `lane.Current` is kept, and the held PR
@@ -410,7 +434,7 @@ and nothing in segments B-H needs it. Spark's lines release when a maintainer co
 | SP2 | Which checks does a PR into a line report, and are they the 23 the ruleset would require? | read #610's check runs | R2 |
 | SP3 | What differs between the #586 backports and master, and is #587 needed on the lines? | `git diff 3121cdda9 a9743b376` (and c2e5e9e32), read #587 | R3 |
 | SP4 | Do the missing commits apply cleanly to today's tips in master order (S4 repeated with #620-#622)? | local replay in a scratch clone, no push | R4, O2 |
-| SP5 | Why did #593, #608 and #620 get no backport PR? | the app's backport records and logs on production (read-only), `BackportRecipients.cs` | B |
+| SP5 | Why did #593, #608 and #620 get no backport PR? | the app's backport records and logs on production (read-only), `BackportRecipients.cs` | B. **Answered:** they conflicted, and `onConflict: comment` left only a comment (see B done) |
 | SP6 | Does a held lane survive an App restart and the messaging retry (the step message for a held PR must not be dead-lettered)? | code reading of `MergeQueueStepMessage` handling | C |
 | SP7 | GitHub sandbox repository with the App installed, for C-F end to end | needs owner approval first | C-F |
 
