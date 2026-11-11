@@ -181,6 +181,12 @@ public partial class GitHubForgeVersioning : IForgeVersioning
         reply.EnsureSuccess("issues=write or pull_requests=write");
     }
 
+    public async Task CommentOnCommitAsync(Repository repository, string sha, string body, CancellationToken cancellationToken = default)
+    {
+        using var reply = await SendAsync(repository, HttpMethod.Post, $"{RepoPath(repository)}/commits/{Uri.EscapeDataString(sha)}/comments", new JsonObject { ["body"] = body }, cancellationToken);
+        reply.EnsureSuccess("contents=write");
+    }
+
     public async Task DispatchWorkflowAsync(Repository repository, string workflowFile, string branch, CancellationToken cancellationToken = default)
     {
         var path = $"{RepoPath(repository)}/actions/workflows/{Uri.EscapeDataString(workflowFile)}/dispatches";

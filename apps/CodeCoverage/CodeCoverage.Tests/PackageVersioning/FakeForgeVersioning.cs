@@ -83,6 +83,14 @@ internal sealed class FakeForgeVersioning : IForgeVersioning
         return Task.CompletedTask;
     }
 
+    public List<(string Sha, string Body)> CommitComments { get; } = [];
+
+    public Task CommentOnCommitAsync(Repository repository, string sha, string body, CancellationToken cancellationToken = default)
+    {
+        CommitComments.Add((sha, body));
+        return Task.CompletedTask;
+    }
+
     public Task DispatchWorkflowAsync(Repository repository, string workflowFile, string branch, CancellationToken cancellationToken = default)
     {
         Dispatches.Add((workflowFile, branch));

@@ -5,6 +5,7 @@ using CodeCoverage.Feedback;
 using CodeCoverage.Forge;
 using CodeCoverage.MergeQueue;
 using CodeCoverage.Versioning.Releases;
+using CodeCoverage.Versioning.Versions;
 using Microsoft.Extensions.Logging;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Messaging;
@@ -58,6 +59,8 @@ public partial class ReleaseRecipient : IRecipient<ReleaseMessage>
     [Inject] private readonly IEnumerable<IForgeVersioning> forges;
     [Inject] private readonly IEnumerable<IForgeMergeQueue> queues;
     [Inject] private readonly IGitWriterSidecar writer;
+    [Inject] private readonly IHttpClientFactory httpClients;
+    [Inject] private readonly TimeProvider time;
     [Inject] private readonly ILogger<ReleaseRecipient> logger;
 
     public async Task HandleAsync(ReleaseMessage message, CancellationToken cancellationToken = default)
@@ -107,6 +110,29 @@ public partial class ReleaseRecipient : IRecipient<ReleaseMessage>
         if (Select(message.Request, pattern, current) is not { } selected)
             return Refusal(message.Request, pattern, current);
 
+        // P5: the comment's versions (each refused when a registry has it), then the recorded ones still waiting.
+        var versions = new List<VersionTag>();
+        foreach (var asked in message.Request.Versions)
+        {
+            if (!VersionTag.TryParse(asked.PackageId + VersionTag.Separator + asked.Version, out var tag))
+                return $"Nothing was released: `{asked.PackageId}@{asked.Version}` is not a package id and version that can be tagged.";
+            switch (await PublishedVersions.ExistsAsync(httpClients.CreateClient(), tag.PackageId, tag.Version.ToString(), cancellationToken))
+            {
+                case true: return $"Nothing was released: {tag.PackageId} {tag.Version} is published already.";
+                case null: return "Nothing was released: the package registries could not be asked whether the versions are published already; comment `/release` again to retry.";
+            }
+            versions.Add(tag);
+        }
+        var pending = (await session.Advanced.LoadStartingWithAsync<ReleaseVersion>(ReleaseVersion.Prefix(repository.Id!), pageSize: 256, token: cancellationToken))
+            .Where(r => r.PlacedCommit is null).ToList();
+        var recorded = new Dictionary<string, ReleaseVersion>(StringComparer.Ordinal);
+        foreach (var record in pending.OrderBy(r => r.RecordedUtc))
+            if (!versions.Any(v => v.PackageId == record.PackageId) && VersionTag.TryParse(record.Tag, out var tag))
+            {
+                versions.Add(tag);
+                recorded[tag.Name] = record;
+            }
+
         var runs = await git.ListWorkflowRunsAsync(repository, workflow, defaultBranch, cancellationToken);
         if (Green(runs, message.Request.Sha) is not { } green)
             return message.Request.Sha is { } sha
@@ -126,7 +152,8 @@ public partial class ReleaseRecipient : IRecipient<ReleaseMessage>
             result = await writer.VersioningPromoteAsync(new GitWriterPromoteRequest(
                 repository.Provider.ToCanonicalString(), repository.GitHubId.ToString(CultureInfo.InvariantCulture), access.CloneUrl,
                 new CommitGraph.SidecarCredential(access.Username, access.Password), defaultBranch, green.HeadSha, VersioningController.Tagger,
-                [.. selected.Select(l => new GitWriterPromoteLine(pattern.Format(l), l.Ecosystem, onlyIfChanged))], config.ToSettings()), cancellationToken);
+                [.. selected.Select(l => new GitWriterPromoteLine(pattern.Format(l), l.Ecosystem, l.Major, onlyIfChanged))], config.ToSettings(),
+                [.. versions.Select(v => new GitWriterPromoteVersion(v.PackageId, v.Version.ToString(), recorded.ContainsKey(v.Name)))]), cancellationToken);
         }
         catch (Exception ex) when (ex is GitWriterRefusedException or HttpRequestException or TaskCanceledException && !cancellationToken.IsCancellationRequested)
         {
@@ -137,6 +164,23 @@ public partial class ReleaseRecipient : IRecipient<ReleaseMessage>
         {
             await git.RevokeWriterAccessAsync(repository, access, CancellationToken.None);
         }
+
+        // What the line's versioning step asks about: each tag pushed, recorded as placed on its promotion commit.
+        var now = time.GetUtcNow().UtcDateTime;
+        foreach (var line in (result.Lines ?? []).Where(l => l.Outcome == GitWriterPromoteLineResult.Promoted))
+            foreach (var name in line.Tags ?? [])
+            {
+                if (!VersionTag.TryParse(name, out var tag)) continue;
+                await HandTagRecipient.RecordAsync(session, repository.Id!, tag, message.ActorLogin, ReleaseVersion.FromComment, now, cancellationToken);
+                if (await session.LoadAsync<ReleaseVersion>(ReleaseVersion.DocumentId(repository.Id!, name), cancellationToken) is { } record)
+                    (record.PlacedCommit, record.PlacedUtc) = (line.Commit, now);
+            }
+        // A recorded version the writer could not place no longer fits (no package, or its line released past it):
+        // it is reported once in the comment and forgotten, so it never holds a later release.
+        foreach (var stale in result.Unplaced ?? [])
+            if (recorded.GetValueOrDefault(stale.PackageId + VersionTag.Separator + stale.Version) is { } record)
+                session.Delete(record);
+        await session.SaveChangesAsync(cancellationToken);
         return Report(repository, defaultBranch, workflow, green, runs, result);
     }
 
@@ -184,7 +228,10 @@ public partial class ReleaseRecipient : IRecipient<ReleaseMessage>
         {
             text.Append(line.Outcome switch
             {
+                GitWriterPromoteLineResult.Promoted when line.Tags is { Count: > 0 } tags
+                    => $"- `{line.Branch}`: promoted ({line.Commit[..12]}) with {string.Join(", ", tags.Select(t => $"`{t}`"))}; its release run starts now.",
                 GitWriterPromoteLineResult.Promoted => $"- `{line.Branch}`: promoted ({line.Commit[..12]}); its release run starts now.",
+                GitWriterPromoteLineResult.VersionRefused => $"- `{line.Branch}`: **not promoted**. {line.Detail}".TrimEnd(),
                 GitWriterPromoteLineResult.Contained => $"- `{line.Branch}`: holds this commit already.",
                 GitWriterPromoteLineResult.Unchanged => $"- `{line.Branch}`: left as it is, nothing in its ecosystem changed (`/release {Line(line.Branch)}` moves it anyway).",
                 GitWriterPromoteLineResult.LineOnly => $"- `{line.Branch}`: **not promoted**: it holds changes {defaultBranch} does not, which a promotion would drop.",
@@ -203,6 +250,8 @@ public partial class ReleaseRecipient : IRecipient<ReleaseMessage>
                 foreach (var commit in commits) text.Append(CultureInfo.InvariantCulture, $"- {commit}\n");
             }
         }
+        foreach (var version in result.Unplaced ?? [])
+            text.Append(CultureInfo.InvariantCulture, $"\n`{version.PackageId}@{version.Version}` was not placed: {version.Detail}\n");
         // P2: what was left out, the default branch's newer runs that have not passed (yet).
         // A named older sha leaves newer green commits out by choice; those are not "not passed".
         var newer = runs.TakeWhile(r => r.Id != green.Id).GroupBy(r => r.HeadSha, StringComparer.Ordinal)

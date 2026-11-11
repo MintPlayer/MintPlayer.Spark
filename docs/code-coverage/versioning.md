@@ -256,6 +256,43 @@ everything above still applies unchanged.
 - **Workflows.** Run the versioning workflow on `release/**` pushes and pull requests too (MintPlayer.Spark's
   `dotnet-build-master.yml` and `pull-request.yml` do), and protect `release/**` with a ruleset ([backports.md](backports.md)).
 
+### Promoted lines: `/release` (segment P)
+
+With `current: promote`, the **current** line of each ecosystem (the highest major among its line branches) no longer
+takes cherry-picked backports. A maintainer moves it to a green default-branch commit with a pull request or issue
+comment instead; older lines keep taking backports.
+
+```yaml
+versioning:
+  lines:
+    current: promote                    # backport (the default) cherry-picks onto every line
+    trigger: manual                     # the only trigger for now: a /release comment
+    workflow: dotnet-build-master.yml   # its successful run on the default branch marks a commit green
+```
+
+- **`/release`** promotes every current line whose ecosystem changed since the line's last promotion, to the newest
+  default-branch commit whose `workflow` run succeeded. `/release <sha>` takes that green commit instead;
+  `/release dotnet-11.x` (or the branch name) and `/release all` promote the named lines, or all of them, changed or
+  not. The App answers with a comment that lists each line and any newer commit left out.
+- **Who may.** The commenter needs the repository's release role (maintain by default; *Release role* on the
+  repository or the account).
+- **The commit.** A promotion is a merge commit (the green commit's tree, parents the line's tip and the green commit)
+  that the App pushes with a lease. Ruleset 3 gives the App an `exempt` bypass for it (merge-queue.md). The line's own
+  run then tests the commit and publishes.
+- **Line-only changes refuse.** A line that holds a change the default branch does not (a hotfix made on the line)
+  is not promoted; the comment names the paths and the commits. Bring the change to the default branch first.
+- **Versions.** `/release Acme.Core@11.4.0` releases that exact version: the App places a `Acme.Core/v11.4.0` tag on
+  the promotion commit in the same push. The version must be unpublished (nuget.org and npm are asked), carry the
+  line's major, and lie above the package's existing tags; otherwise the line is not promoted.
+- **Tags pushed by hand.** A package tag (`<id>/v<version>`) pushed by a person is removed at once. When it is valid
+  it is recorded and placed on the next promotion of its line; either way the App comments on the tagged commit and
+  names the pusher. A tag whose id is no package (`schemas/v3`) is left alone. A recorded version that no longer fits
+  by the time of the promotion (the line released past it) is reported in the comment and forgotten.
+- **The release run checks.** With `current: promote`, the versioning step of a line's run asks
+  `POST /api/versioning/tags/verify` about every hand tag on the commit, and fails on one the App did not place there,
+  or when the server cannot be reached. The check sees tags, not who copied an annotation onto one: a ruleset that
+  lets only the App and `github-actions` create `*/v*` tags closes that gap, and is left to the repository owner.
+
 **Platform lifecycle page.** The app collects each platform's support phases nightly (.NET from
 `releases-index.json`; Angular, React, Vue and Node.js from endoflife.date; a framework's preview major from its npm
 `next` dist-tag). Open *Guides → Platform lifecycle* to see which majors are in preview, active, maintenance or end of

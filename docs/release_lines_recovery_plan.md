@@ -222,6 +222,11 @@ Dependencies: R before all; B before C; D before E; C before F. G and H are inde
   - **M6** versions: `Pkg@ver`, tag-push detection, validation and recording, placement at promotion, and the
     server check the versioning action calls.
   - **M7** docs, the sandbox trial on SparkTest, the tests once, the PR.
+    - Docs done: versioning.md "Promoted lines: `/release`", merge-queue.md (ruleset 3's App bypass with `promote`).
+    - Spark's coverage.yml: `lines: { current: promote, trigger: manual, workflow: dotnet-build-master.yml }`. After the
+      deploy, "Set up rulesets" must be re-run on Spark so ruleset 3 (27018553) gets the App's bypass; until then the
+      ruleset rejects a `/release` push (line outcome `rejected`).
+    - The versioning action's `dist` rebuilt from the main checkout.
 - **Status (2026-11-11):**
   - **M1 done:** `VersioningLinesConfig.Current/Past/Trigger/Workflow` with validation (`workflow` is required with
     `current: promote`: a commit is green when that workflow's run on the default branch concluded `success`, my call,
@@ -251,6 +256,43 @@ Dependencies: R before all; B before C; D before E; C before F. G and H are inde
   - **M6 keeps P5's "same step":** a recorded tag goes in the promotion's own push (one atomic push of the line and
     its tags). A separate tags job right after would race the line's release run, whose checkout fetches the tags
     within seconds of the push.
+  - **M6 design (my calls, each with its reason):**
+    - *Record:* `ReleaseVersion` documents (`ReleaseVersions/{repo}/{sha256(package@version)[..16]}`), plain documents
+      like `BackportPullRequest`, no model: state `Pending` (asked for, not placed) or `Placed` (with the commit).
+    - *`/release … Pkg@ver`:* the server refuses a version that nuget.org or npm already has (both registries are
+      asked, because the server does not know the package's ecosystem before the writer's graph; an id on the wrong
+      registry is at worst a needless refusal). The writer then checks, at the green commit's graph: the id is a
+      package, a promoted line releases its ecosystem, the major is that line's, and the version is above every
+      `<id>/v*` tag. A failing version refuses its line (outcome `version-refused`), so a release never ships at an
+      unintended version. The tag is lightweight (no engine annotation), so the line's engine sees a hand tag on the
+      commit and releases exactly that version (`ReleasePlanner`'s `byHand`).
+    - *Human tag pushes:* only in repositories with `current: promote`, only human senders (the App's and the action's
+      own tag pushes are bots), only names of the form `<id>/v<semver>`. A writer job reads the tag's commit's graph:
+      a tag whose id is no package (Spark's `schemas/v*`) is left alone. A package tag is always deleted (lease on its
+      oid), because left in place it becomes reachable from the line at the next promotion and moves every later
+      version; a valid one is recorded `Pending` and placed at the next promotion of its line, an invalid one gets a
+      commit comment that names the pusher and the reason.
+    - *The action's check:* with `versioning.lines.current: promote`, a release the engine reports `taggedByHand`
+      is sent to `POST /api/versioning/tags/verify` (OIDC, like `run`); a tag the server has not recorded as `Placed`
+      on that commit fails the step, and so does an unreachable server. Limit, documented: a human tag that carries a
+      copied engine annotation is a re-run to the engine, not a hand tag, so it is not checked; a tag ruleset that
+      lets only the App and `github-actions` create `*/v*` tags closes that, and is left to the owner.
+  - **M6 done (code, tests written, not run):** writer `PromoteJob.Versions` (atomic push `WriterService.PushAtomicAsync`,
+    outcome `version-refused`, `Unplaced`), `POST /jobs/versioning/hand-tag` (`PromoteService.CheckHandTagAsync`);
+    server `ReleaseVersion`, `PublishedVersions`, `TagPushed` from the push webhook → `HandTagRecipient` (commit comment
+    via the new `IForgeVersioning.CommentOnCommitAsync`, needs `contents: write`, which the App has), `ReleaseRecipient`
+    passes the comment's and the pending versions and records the placed tags, `POST /api/versioning/tags/verify`
+    (CSRF list and route snapshot updated); action `verifyHandTags` (+ tests). The action's `dist` is rebuilt from the
+    main checkout before the PR.
+    - A pending version whose package the comment also names is left pending (the comment's wins this time).
+    - A version the comment asks for, on a line that holds the commit already, is `version-refused` (no promotion
+      commit to tag). A recorded (pending) version there leaves the line `contained` and stays pending.
+    - A recorded version is flagged `Recorded` on the writer request. When it no longer fits (its package is gone, or
+      the line released past it since it was recorded) the writer reports it in `Unplaced` and promotes the line
+      without it, and the server deletes its record. Only a version the comment names refuses its line. Why: a stale
+      record would otherwise refuse every later promotion of its line, with no command to clear it (found while
+      writing M6; test `A_recorded_version_the_line_released_past_is_reported_and_does_not_hold_the_line`). A recorded
+      version whose line the release does not take stays pending without a word.
 - **P6, sandbox (SP7 = A):** `PieterjanDeClippel/SparkTest`, two lines and a `publish-release` without publish
   secrets. Standing permission to push branches and tags and change rulesets there; ask before deleting anything that
   was there before.

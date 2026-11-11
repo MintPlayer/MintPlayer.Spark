@@ -61,6 +61,7 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
                 await OnAccountRenamed(message, cancellationToken);
                 break;
             case "push":
+                await OnTagPushAsync(message, cancellationToken);
                 await OnPush(Deserialize<PushEvent>(message), cancellationToken);
                 break;
             case "pull_request":
@@ -328,6 +329,22 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
                 NewAvatarUrl: ghAccount.TryGetProperty("avatar_url", out var avatarElement)
                     ? avatarElement.GetString()
                     : null)), ct);
+    }
+
+    /// <summary>
+    /// Segment P (P5): a person's new tag, for the version-tag check. Only creations: a deletion or a moved tag needs no
+    /// check, and the App's own deletions would otherwise come back here. Bots are left out, because the App places the
+    /// recorded tags itself and the versioning action writes the engine's.
+    /// </summary>
+    private async Task OnTagPushAsync(GitHubWebhookMessage message, CancellationToken ct)
+    {
+        using var payload = JsonDocument.Parse(message.EventJson);
+        var root = payload.RootElement;
+        if (Text(root, "ref") is not { } reference || !reference.StartsWith("refs/tags/", StringComparison.Ordinal)) return;
+        if (!Flag(root, "created") || Flag(root, "deleted")) return;
+        if (Text(root, "after") is not { Length: 40 } after || HumanSender(root) is not { } pusher) return;
+        if (await LoadKnownRepositoryIdAsync(root, ct) is not { } repositoryId) return;
+        await RaiseAsync(new TagPushed(repositoryId, reference["refs/tags/".Length..], after, pusher), ct);
     }
 
     private async Task OnPush(PushEvent evt, CancellationToken ct)

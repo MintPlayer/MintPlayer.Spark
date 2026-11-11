@@ -80,6 +80,74 @@ public class ReleaseRecipientTests
     }
 
     [Fact]
+    public void The_report_names_placed_tags_refused_versions_and_versions_no_line_takes()
+    {
+        IReadOnlyList<ForgeWorkflowRun> runs = [Run(3, "cccc000000000000000000000000000000000000", "success")];
+        var result = new GitWriterPromoteResult(GitWriterPromoteResult.Promoted, null,
+        [
+            new("release/dotnet-11.x", GitWriterPromoteLineResult.Promoted, "1111000000000000000000000000000000000000", [], [], Tags: ["Acme.Core/v11.4.0"]),
+            new("release/angular-22.x", GitWriterPromoteLineResult.VersionRefused, "2222000000000000000000000000000000000000", [], [],
+                "Not released: @acme/ng/v21.0.0 does not have release/angular-22.x's major 22."),
+        ], null, 10, [new("Nope", "1.0.0", "Nope is no package at cccc00000000.")]);
+
+        var text = ReleaseRecipient.Report(new Repository { FullName = "acme/widgets" }, "master", "release.yml", runs[0], runs, result);
+
+        text.Should().Contain("promoted (111100000000) with `Acme.Core/v11.4.0`")
+            .And.Contain("- `release/angular-22.x`: **not promoted**. Not released: @acme/ng/v21.0.0 does not have")
+            .And.Contain("`Nope@1.0.0` was not placed: Nope is no package");
+    }
+
+    [Fact]
+    public void A_record_id_is_per_repository_and_keeps_the_scope_out()
+    {
+        var id = ReleaseVersion.DocumentId("Repositories/github/42", "@acme/ng/v22.1.0");
+        id.Should().StartWith(ReleaseVersion.Prefix("Repositories/github/42")).And.NotContain("@");
+        id.Should().NotBe(ReleaseVersion.DocumentId("Repositories/github/43", "@acme/ng/v22.1.0"));
+    }
+
+    [Fact]
+    public void The_hand_tag_comment_names_the_pusher_and_what_happens_next()
+    {
+        CodeCoverage.Versioning.Versions.VersionTag.TryParse("Acme.Core/v11.4.0", out var tag).Should().BeTrue();
+        HandTagRecipient.Comment("octo", tag, "release/dotnet-11.x", null).Should().Contain("@octo").And.Contain("next promotion of `release/dotnet-11.x`");
+        HandTagRecipient.Comment("octo", tag, null, "it is published already").Should().Contain("was removed: it is published already");
+    }
+
+    private sealed class Registry(Func<HttpRequestMessage, HttpResponseMessage> answer) : HttpMessageHandler
+    {
+        public List<string> Asked { get; } = [];
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            Asked.Add(request.RequestUri!.AbsoluteUri);
+            return Task.FromResult(answer(request));
+        }
+    }
+
+    private static HttpResponseMessage Json(string body) => new(System.Net.HttpStatusCode.OK) { Content = new StringContent(body) };
+
+    [Fact]
+    public async Task A_nuget_id_is_asked_on_nuget_and_found_in_its_version_list()
+    {
+        var registry = new Registry(r => r.RequestUri!.Host == "api.nuget.org" ? Json("""{ "versions": ["11.3.0", "11.4.0"] }""") : new(System.Net.HttpStatusCode.NotFound));
+
+        (await PublishedVersions.ExistsAsync(new HttpClient(registry), "Acme.Core", "11.4.0", default)).Should().BeTrue();
+        (await PublishedVersions.ExistsAsync(new HttpClient(registry), "Acme.Core", "11.5.0", default)).Should().BeFalse();
+        registry.Asked.Should().AllSatisfy(u => u.Should().Be("https://api.nuget.org/v3-flatcontainer/acme.core/index.json"));
+    }
+
+    [Fact]
+    public async Task A_scoped_npm_name_is_asked_on_npm_only_and_a_failing_registry_is_no_answer()
+    {
+        var registry = new Registry(_ => Json("""{ "versions": { "22.1.0": {} } }"""));
+        (await PublishedVersions.ExistsAsync(new HttpClient(registry), "@acme/ng", "22.1.0", default)).Should().BeTrue();
+        registry.Asked.Should().Equal("https://registry.npmjs.org/@acme%2Fng");
+
+        var down = new Registry(_ => new(System.Net.HttpStatusCode.BadGateway));
+        (await PublishedVersions.ExistsAsync(new HttpClient(down), "@acme/ng", "22.2.0", default)).HasValue.Should().BeFalse("a failing registry is no answer");
+    }
+
+    [Fact]
     public void A_named_older_commit_does_not_call_newer_green_commits_not_passed()
     {
         IReadOnlyList<ForgeWorkflowRun> runs =

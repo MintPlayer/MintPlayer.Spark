@@ -29,6 +29,33 @@ export const planOnServer = (options: ServerOptions, manifest: unknown) => post(
  */
 export const releaseOnServer = (options: ServerOptions, seal: string) => post(options, 'release', { seal });
 
+export type VerifyAnswer = { kind: 'answer'; refused: string[] } | { kind: 'failed'; reason: string };
+
+/**
+ * Segment P (P5): asks the app whether it placed these hand tags on the run's commit. Unlike a run there is no fallback:
+ * any answer but a 200 with the list fails the step, since only the app knows which tags it placed.
+ */
+export async function verifyTagsOnServer(options: ServerOptions, commit: string, tags: string[]): Promise<VerifyAnswer> {
+  const base = options.url.replace(/\/+$/, '');
+  try {
+    const token = await options.idToken(base);
+    const response = await (options.fetch ?? fetch)(`${base}/api/versioning/tags/verify`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json', accept: 'application/json' },
+      body: JSON.stringify({ commit, tags }),
+      signal: AbortSignal.timeout(options.timeoutMs ?? 60_000),
+    });
+    const text = await response.text();
+    if (response.status !== 200) return { kind: 'failed', reason: `the app answered ${response.status}: ${text.slice(0, 500)}` };
+    const parsed = JSON.parse(text) as { refused?: unknown };
+    if (!Array.isArray(parsed.refused) || parsed.refused.some((t) => typeof t !== 'string'))
+      return { kind: 'failed', reason: `the app's answer is not a list of tags: ${text.slice(0, 500)}` };
+    return { kind: 'answer', refused: parsed.refused as string[] };
+  } catch (e) {
+    return { kind: 'failed', reason: (e as Error).message };
+  }
+}
+
 async function post(options: ServerOptions, route: 'run' | 'plan' | 'release', body: unknown): Promise<ServerAnswer> {
   const base = options.url.replace(/\/+$/, '');
   let token: string;
