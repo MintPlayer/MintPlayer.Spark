@@ -284,9 +284,9 @@ public class PromoteTests : WriterTestBase
     public async Task A_commit_that_is_not_on_the_default_branch_is_refused()
     {
         var origin = Line();
-        origin.Checkout("feature", "main").Write("x.txt", "x\n");
+        origin.Checkout("stray-work", "main").Write("x.txt", "x\n");
         var stray = origin.Commit("stray");
-        origin.Push("feature");
+        origin.Push("stray-work");
 
         var response = await Writer.PromoteAsync(Request(origin, stray, "dotnet-1.x"));
 

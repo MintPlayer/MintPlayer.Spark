@@ -440,7 +440,8 @@
         "lookupReferenceType": "ReleaseRole",
         "inQueryType": false,
         "showedOn": "PersistentObject",
-        "rules": []
+        "rules": [],
+        "group": "5c8e2f17-3a94-4d6b-9e01-b7f4c2a8d613"
       },
       {
         "id": "47ee693b-379e-469b-ba29-22a472796297",

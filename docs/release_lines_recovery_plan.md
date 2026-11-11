@@ -227,6 +227,12 @@ Dependencies: R before all; B before C; D before E; C before F. G and H are inde
       deploy, "Set up rulesets" must be re-run on Spark so ruleset 3 (27018553) gets the App's bypass; until then the
       ruleset rejects a `/release` push (line outcome `rejected`).
     - The versioning action's `dist` rebuilt from the main checkout.
+    - **The SparkTest trial runs after the deploy, not before the PR.** `/release`, the tag webhook and the writer job
+      are handled by the production App, which runs master. Order: tests once → PR → merge queue → deploy → re-run
+      "Set up rulesets" on SparkTest and Spark → trial on SparkTest (`/release`, `/release Pkg@ver`, a hand tag, a
+      line-only refusal) → only then the first `/release` on Spark. Until the trial passes, nobody comments
+      `/release` on Spark; with `promote`, Spark's current lines take no backports in the meantime, which delays
+      releases but publishes nothing wrong.
 - **Status (2026-11-11):**
   - **M1 done:** `VersioningLinesConfig.Current/Past/Trigger/Workflow` with validation (`workflow` is required with
     `current: promote`: a commit is green when that workflow's run on the default branch concluded `success`, my call,
