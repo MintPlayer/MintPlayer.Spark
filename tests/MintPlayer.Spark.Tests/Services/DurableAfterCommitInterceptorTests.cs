@@ -291,8 +291,8 @@ public class DurableAfterCommitInterceptorTests : SparkTestDriver
 
 public class DurableContext : SparkContext
 {
-    public IRavenQueryable<InterceptedNote> Notes => Session.Query<InterceptedNote>();
-    public IRavenQueryable<DurableNote> DurableNotes => Session.Query<DurableNote>();
+    public IQueryable<InterceptedNote> Notes => Session.Query<InterceptedNote>();
+    public IQueryable<DurableNote> DurableNotes => Session.Query<DurableNote>();
 }
 
 public class DurableNote

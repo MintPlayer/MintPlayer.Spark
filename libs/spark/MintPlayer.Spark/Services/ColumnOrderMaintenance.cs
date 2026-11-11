@@ -105,7 +105,7 @@ internal static class ColumnOrderMaintenance
                 .Select(p => p.Name)
                 .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-        return ModelSynchronizer.ViewlessQuerySurface(entry) is { } emitted
+        return indexCatalog.GetQuerySurface(entry) is { } emitted
             ? emitted.ToHashSet(StringComparer.OrdinalIgnoreCase)
             : null;
     }

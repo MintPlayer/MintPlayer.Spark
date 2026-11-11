@@ -11,19 +11,12 @@ namespace MintPlayer.Spark.Tests.Converters;
 /// </summary>
 public class ColorNewtonsoftJsonConverterTests
 {
-    // The converter is internal; we hit it indirectly through the standard Newtonsoft
+    // The converter lives in the RavenDB provider (#551); we hit it through the standard Newtonsoft
     // pipeline, which is how Raven invokes it in production.
-    private static readonly JsonSerializerSettings Settings;
-
-    static ColorNewtonsoftJsonConverterTests()
+    private static readonly JsonSerializerSettings Settings = new()
     {
-        Settings = new JsonSerializerSettings();
-        var converterType = typeof(MintPlayer.Spark.Services.IEntityMapper).Assembly
-            .GetType("MintPlayer.Spark.Converters.ColorNewtonsoftJsonConverter")
-            ?? throw new InvalidOperationException("ColorNewtonsoftJsonConverter type not found.");
-        var converter = (Newtonsoft.Json.JsonConverter)Activator.CreateInstance(converterType)!;
-        Settings.Converters.Add(converter);
-    }
+        Converters = { new MintPlayer.Spark.Converters.ColorNewtonsoftJsonConverter() },
+    };
 
     private sealed class Holder
     {

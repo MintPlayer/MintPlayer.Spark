@@ -685,6 +685,7 @@ public class DependencySagaTests : CoverageRavenTest
         await h.ReleaseAsync(EDependencyStep.PollChecks);
 
         h.Queue.Reruns.Should().Equal([42L]);
+        h.Queue.RerunCalls.Should().ContainSingle("the failed runs go to the forge in one call (#589)");
         var bisecting = await h.RunAsync();
         bisecting.State.Should().Be(EDependencyRunState.Bisecting);
         bisecting.Bisect!.Suspects.Should().Equal(["lodash", "chalk"], "the later plan group is more suspect (minor after patch)");
@@ -711,6 +712,58 @@ public class DependencySagaTests : CoverageRavenTest
         after.Trigger.Should().Be(EDependencyRunTrigger.Refresh, "everything but the culprit is rebuilt");
     }
 
+    // ── #613 item 4: an outdated lookup workflow is refreshed by a pull request ───────────────────
+
+    /// <summary>The lookup template as onboarded before #606: no <c>platforms</c> input (SpaServices, 2026-11-09).</summary>
+    private static DependencyHarness WithLookupBefore606(DependencyHarness h)
+    {
+        var workflows = h.Queue.WorkflowFiles["master"];
+        var index = workflows.FindIndex(f => f.Path == ".github/workflows/dependency-lookup.yml");
+        workflows[index] = workflows[index] with
+        {
+            Content = System.Text.RegularExpressions.Regex.Replace(workflows[index].Content!, @"(?m)^      platforms:", "      channels_before_606:"),
+        };
+        h.Updates.Tags[$"{DependencyOnboarding.ActionRepository}@{DependencyOnboarding.ActionTag}"] = ActionSha;
+        return h;
+    }
+
+    [Fact]
+    public async Task Item613_an_outdated_lookup_workflow_ends_the_run_and_opens_a_pull_request_with_the_current_template()
+    {
+        var h = WithLookupBefore606(await HarnessAsync());
+
+        await h.TriggerAsync();
+        await h.DrainAsync();
+
+        h.Queue.Dispatches.Should().BeEmpty("the lookup would fail on the input it does not declare");
+        var files = h.Writer.Requests("files").Should().ContainSingle().Which.Files!;
+        var lookup = files.Should().ContainSingle("only the outdated workflow is replaced").Which;
+        lookup.Path.Should().Be(".github/workflows/dependency-lookup.yml");
+        DependencyWorkflowGuard.MissingInputs(lookup.Content, ["expected_sha", "run_id", "platforms"]).Should().BeEmpty();
+        lookup.Content.Should().Contain($"dependency-action@{ActionSha} # dependency-update-v1");
+        var pull = h.Updates.Created.Should().ContainSingle().Which;
+        pull.Head.Should().Be(DependencyUpdateRun.OnboardingBranch);
+        pull.Title.Should().Be(DependencyOnboarding.RefreshTitle);
+        pull.Body.Should().StartWith(DependencyPullRequestBody.Marker).And.Contain("`platforms`").And.Contain(DependencyOnboarding.ApprovalNote);
+        var run = await h.RunAsync();
+        run.Onboarding.Should().Be(EDependencyOnboarding.PullRequestOpened, "merging it starts a run, as the onboarding pull request's merge does");
+        run.OnboardingPullRequestNumber.Should().Be(pull.Number(h));
+    }
+
+    [Fact]
+    public async Task Item613_a_second_run_while_the_refresh_is_open_does_not_push_again()
+    {
+        var h = WithLookupBefore606(await HarnessAsync());
+        await h.TriggerAsync();
+        await h.DrainAsync();
+
+        await h.TriggerAsync();
+        await h.DrainAsync();
+
+        h.Writer.Requests("files").Should().ContainSingle();
+        h.Updates.Created.Should().ContainSingle();
+    }
+
     // ── R16: onboarding ───────────────────────────────────────────────────────────────────────────
 
     private const string ActionSha = "0123456789abcdef0123456789abcdef01234567";
@@ -719,7 +772,8 @@ public class DependencySagaTests : CoverageRavenTest
     {
         h.Queue.Blobs.Remove("master:.github/workflows/dependency-lookup.yml");
         h.SetYml("mergeQueue:\n  enabled: true\n");
-        h.Forge.Files["master/.github/dependabot.yml"] = File.ReadAllText(Path.Combine(DependencyTestKit.RepositoryRoot(), ".github", "dependabot.yml"));
+        h.Forge.Files["master/.github/dependabot.yml"] = File.ReadAllText(Path.Combine(DependencyTestKit.RepositoryRoot(),
+            "apps", "CodeCoverage", "CodeCoverage.Tests", "Dependencies", "Lifecycle", "Fixtures", "dependabot-spark-before-612.yml"));
         h.Forge.Trees["master"] = new ForgeTree(BaseSha, "tree", [new ForgeTreeEntry("package.json", 10), new ForgeTreeEntry("nx.json", 10)], false);
         h.Updates.Tags[$"{DependencyOnboarding.ActionRepository}@{DependencyOnboarding.ActionTag}"] = ActionSha;
         return h;

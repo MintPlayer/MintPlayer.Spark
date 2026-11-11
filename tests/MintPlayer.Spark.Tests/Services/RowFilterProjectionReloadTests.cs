@@ -126,7 +126,7 @@ public class RowFilterProjectionReloadTests : SparkTestDriver
         using var session = Store.OpenAsyncSession();
 
         var visible = await rowSecurity.FilterAsync(
-            session, Projections(aliceId, bobId), typeof(Ledger), typeof(VLedger), "Query");
+            session.AsSparkSession(), Projections(aliceId, bobId), typeof(Ledger), typeof(VLedger), "Query");
 
         visible.Should().ContainSingle().Which.Should().BeOfType<VLedger>()
             .Which.Title.Should().Be("Alice's");
@@ -143,7 +143,7 @@ public class RowFilterProjectionReloadTests : SparkTestDriver
         using var session = Store.OpenAsyncSession();
 
         var visible = await rowSecurity.FilterAsync(
-            session, Projections(aliceId, bobId), typeof(Ledger), typeof(VLedger), "Query");
+            session.AsSparkSession(), Projections(aliceId, bobId), typeof(Ledger), typeof(VLedger), "Query");
 
         visible.Should().ContainSingle().Which.Should().BeOfType<VLedger>()
             .Which.Title.Should().Be("Alice's");
@@ -168,7 +168,7 @@ public class RowFilterProjectionReloadTests : SparkTestDriver
         using var session = Store.OpenAsyncSession();
 
         var visible = await rowSecurity.FilterAsync(
-            session, Projections(aliceId, bobId), typeof(Ledger), typeof(VLedger), "Query");
+            session.AsSparkSession(), Projections(aliceId, bobId), typeof(Ledger), typeof(VLedger), "Query");
 
         visible.Should().BeEmpty("alice's document is gone and bob's row fails the filter");
     }
@@ -190,7 +190,7 @@ public class RowFilterProjectionReloadTests : SparkTestDriver
 
         using var session = Store.OpenAsyncSession();
         await rowSecurity.RedactAsync(
-            session, [(alicePo, rows[0]), (bobPo, rows[1])], typeof(Ledger), typeof(VLedger), "Query");
+            session.AsSparkSession(), [(alicePo, rows[0]), (bobPo, rows[1])], typeof(Ledger), typeof(VLedger), "Query");
 
         alicePo["Secret"].Value.Should().Be("tok-a", "the caller owns this row");
         bobPo["Secret"].Value.Should().BeNull(
@@ -215,7 +215,7 @@ public class RowFilterProjectionReloadTests : SparkTestDriver
         projected.Should().HaveCount(2, "the projection query touched exactly the ids the reload will ask for");
 
         var visible = await rowSecurity.FilterAsync(
-            session, Projections(aliceId, bobId), typeof(Ledger), typeof(VLedger), "Query");
+            session.AsSparkSession(), Projections(aliceId, bobId), typeof(Ledger), typeof(VLedger), "Query");
 
         visible.Should().ContainSingle().Which.Should().BeOfType<VLedger>()
             .Which.Title.Should().Be("Alice's");
@@ -233,7 +233,7 @@ public class RowFilterProjectionReloadTests : SparkTestDriver
         using var session = Store.OpenAsyncSession();
 
         await rowSecurity.FilterAsync(
-            session, Projections(aliceId, bobId), typeof(Ledger), typeof(VLedger), "Query");
+            session.AsSparkSession(), Projections(aliceId, bobId), typeof(Ledger), typeof(VLedger), "Query");
 
         (await session.LoadAsync<object>(aliceId)).Should().BeOfType<Ledger>();
         session.Advanced.NumberOfRequests.Should().Be(1, "served from the identity map, not a second request");

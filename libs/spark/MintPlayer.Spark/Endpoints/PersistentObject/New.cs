@@ -43,7 +43,7 @@ internal sealed partial class NewPersistentObject : IPostEndpoint<NewPersistentO
     [Inject] private readonly ILogger<NewPersistentObject> logger;
     [Inject] private readonly IHttpContextAccessor httpContextAccessor;
     [Inject] private readonly IEffectiveObjectFactory effectiveObjectFactory;
-    [Inject] private readonly Raven.Client.Documents.Session.IAsyncDocumentSession session;
+    [Inject] private readonly Abstractions.Storage.ISparkSession session;
 
     /// <summary>A body that cannot be bound gets the refusal an unusable request gets below, never a parse error (PRD D3a).</summary>
     protected override ValueTask<IResult> OnBindFailedAsync(HttpContext context, EndpointBindingException? failure)

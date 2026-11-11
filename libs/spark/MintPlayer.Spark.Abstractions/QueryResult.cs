@@ -132,6 +132,13 @@ public sealed class QueryResultItem
     public string? Breadcrumb { get; init; }
 
     /// <summary>
+    /// The row's canonical page path (#602), as <see cref="PersistentObject.Href"/>. <see langword="null"/> for a row of a
+    /// type without a page of its own (an embedded or computed row).
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public string? Href { get; init; }
+
+    /// <summary>
     /// The change vector of the document behind this row — the document's, also for an index
     /// projection (#467, D14). A delete from the grid sends it back; a row changed since is a 409.
     /// Null for a row with no document behind it.

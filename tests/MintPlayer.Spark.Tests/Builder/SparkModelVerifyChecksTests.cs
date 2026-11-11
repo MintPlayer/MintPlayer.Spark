@@ -735,7 +735,7 @@ public class SparkModelVerifyChecksTests
 
     public sealed class DescribedTestSparkContext : SparkContext
     {
-        public IRavenQueryable<DescribedProbe> DescribedProbes => Session.Query<DescribedProbe>();
+        public IQueryable<DescribedProbe> DescribedProbes => Session.Query<DescribedProbe>();
     }
 
     public abstract class AbstractVerifyContext : SparkContext;

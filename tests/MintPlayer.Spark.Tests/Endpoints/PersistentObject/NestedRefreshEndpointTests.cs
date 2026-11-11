@@ -366,7 +366,7 @@ public sealed class NestedRefreshRow
 
 public class NestedRefreshContext : SparkContext
 {
-    public IRavenQueryable<NestedRefreshPolicy> NestedRefreshPolicies => Session.Query<NestedRefreshPolicy>();
+    public IQueryable<NestedRefreshPolicy> NestedRefreshPolicies => Session.Query<NestedRefreshPolicy>();
 }
 
 public class NestedRefreshPolicyActions : DefaultPersistentObjectActions<NestedRefreshPolicy>

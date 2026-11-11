@@ -85,10 +85,14 @@ internal sealed class FakeForgeMergeQueue : IForgeMergeQueue
     public Task<ForgeCheckState> GetCheckStateAsync(Repository repository, string sha, CancellationToken cancellationToken = default)
         => Task.FromResult(CheckStates.TryGetValue(sha, out var state) ? state : new ForgeCheckState(sha, [], [], []));
 
-    public Task<bool> RerunCheckAsync(Repository repository, ForgeCheckRun checkRun, CancellationToken cancellationToken = default)
+    /// <summary>Every call's check-run ids, one entry per call (#589: the set goes to the forge in one call).</summary>
+    public List<long[]> RerunCalls { get; } = [];
+
+    public Task<int> RerunChecksAsync(Repository repository, IReadOnlyCollection<ForgeCheckRun> checkRuns, CancellationToken cancellationToken = default)
     {
-        Reruns.Add(checkRun.Id);
-        return Task.FromResult(RerunResult);
+        RerunCalls.Add([.. checkRuns.Select(r => r.Id)]);
+        Reruns.AddRange(checkRuns.Select(r => r.Id));
+        return Task.FromResult(RerunResult ? checkRuns.Count : 0);
     }
 
     public Task<IReadOnlyList<string>> GetCheckNamesOnCommitAsync(Repository repository, string sha, CancellationToken cancellationToken = default)

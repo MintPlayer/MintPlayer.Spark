@@ -16,6 +16,14 @@ public sealed class PersistentObject : IDisablable
     public string? Breadcrumb { get; set; }
 
     /// <summary>
+    /// The object's canonical page path, e.g. <c>/po/song/Songs%2F23/a-sky-full-of-stars</c> (#602), from
+    /// <see cref="Links.ISparkEntityLinks"/>. Set on the way out by the read path and the create/update results;
+    /// <see langword="null"/> for a new or embedded object, which has no page of its own.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Href { get; set; }
+
+    /// <summary>
     /// The object this one is nested inside, for an AsDetail row being refreshed.
     /// <see langword="null"/> for a top-level object, which is the usual case.
     /// <para>

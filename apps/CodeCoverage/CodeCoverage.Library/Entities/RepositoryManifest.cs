@@ -83,6 +83,12 @@ public class RepositoryManifest
     /// </summary>
     public List<ManifestDependency> LookupConsumes { get; set; } = [];
 
+    /// <summary>
+    /// #606 M7 (G7): the SDKs the lookup found and the channels it offers each one, from the same lookup as
+    /// <see cref="LookupConsumes"/>. The fleet view shows them per repository.
+    /// </summary>
+    public List<ManifestPlatform> LookupPlatforms { get; set; } = [];
+
     /// <summary>The default-branch commit of the lookup behind <see cref="LookupConsumes"/>.</summary>
     public string? LookupSha { get; set; }
 
@@ -105,6 +111,22 @@ public class RepositoryManifest
             throw new ArgumentException($"'{repositoryId}' is not a repository document id.", nameof(repositoryId));
         return "RepositoryManifests/" + repositoryId[prefix.Length..];
     }
+}
+
+/// <summary>One SDK of a repository as its lookup saw it (#606 M7).</summary>
+public class ManifestPlatform
+{
+    /// <summary><c>dotnet</c>, <c>node</c>, <c>python</c>, … (the lookup's platform record).</summary>
+    public string Sdk { get; set; } = string.Empty;
+
+    /// <summary>The channels the repository is on, newest first (<c>10.0</c>, or <c>24</c> and <c>22</c>).</summary>
+    public List<string> Channels { get; set; } = [];
+
+    /// <summary>The newest channel it could move to that is released, or null.</summary>
+    public string? NextStable { get; set; }
+
+    /// <summary>The newest channel it could move to on the preview track, when newer than <see cref="NextStable"/>.</summary>
+    public string? NextPreview { get; set; }
 }
 
 /// <summary>A package a repository publishes.</summary>

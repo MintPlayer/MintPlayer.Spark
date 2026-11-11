@@ -161,5 +161,5 @@ public sealed class TriggerProbe
 
 public sealed class TriggerContext : SparkContext
 {
-    public IRavenQueryable<TriggerProbe> TriggerProbes => Session.Query<TriggerProbe>();
+    public IQueryable<TriggerProbe> TriggerProbes => Session.Query<TriggerProbe>();
 }

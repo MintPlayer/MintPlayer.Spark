@@ -36,6 +36,7 @@ internal sealed partial class SaveResponsePresenter : ISaveResponsePresenter
     [Inject] private readonly IDatabaseAccess databaseAccess;
     [Inject] private readonly IDisabledActionsEvaluator disabledActions;
     [Inject] private readonly IAttributeRightsEnforcement attributeRights;
+    [Inject] private readonly MintPlayer.Spark.Abstractions.Links.ISparkEntityLinks links;
 
     public async Task<PersistentObject> PresentAsync(EntityTypeDefinition definition, PersistentObject saved, bool isNew, CancellationToken cancellationToken = default)
     {
@@ -60,8 +61,11 @@ internal sealed partial class SaveResponsePresenter : ISaveResponsePresenter
             return saved;
         }
 
-        // The reload was built for the caller (D13a); only the page-load affordances are added here.
+        // The reload was built for the caller (D13a); only the page-load affordances are added here, and the
+        // canonical page path a create or save redirects to (#602). Only on the reload: a caller who may not
+        // read the row gets no href, so the client falls back to the bare /po/{type}/{id}.
         await disabledActions.ApplyOnLoadAsync(reloaded);
+        reloaded.Href = links.DetailPath(reloaded);
         return reloaded;
     }
 }

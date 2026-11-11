@@ -5,7 +5,7 @@ using Microsoft.AspNetCore.DataProtection.Repositories;
 using Microsoft.Extensions.Options;
 using MintPlayer.Spark.Configuration;
 using MintPlayer.Spark.Extensions;
-using Raven.Client.Documents;
+using MintPlayer.Spark.Abstractions.Storage;
 
 namespace MintPlayer.Spark.Services;
 
@@ -100,7 +100,10 @@ internal static class SparkDataProtection
 
             if (value.Storage == SparkDataProtectionStorage.RavenDb)
             {
-                options.XmlRepository = new RavenDataProtectionKeyRepository(services.GetRequiredService<IDocumentStore>());
+                options.XmlRepository = services.GetService<ISparkDataProtectionKeyStore>()
+                    ?? throw new InvalidOperationException(
+                        "Spark:DataProtection:Storage = RavenDb keeps the key ring in the application's database, but the store " +
+                        "provider registers no ISparkDataProtectionKeyStore. Call UseRavenDb(), or set Storage = File.");
                 return;
             }
 

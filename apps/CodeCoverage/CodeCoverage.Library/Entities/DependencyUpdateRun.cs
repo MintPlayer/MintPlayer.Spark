@@ -94,6 +94,13 @@ public class DependencyUpdateRun
     /// </summary>
     public List<string> FileLines { get; set; } = [];
 
+    /// <summary>
+    /// #606 D4: the SDKs a platform major would move with <c>strategy: replace</c> in a repository that releases packages
+    /// (packages in its manifests, or a <c>versioning:</c> section) and keeps no release lines, so the previous platform's consumers stop receiving
+    /// releases. The pull request warns on such a move. Read at the run's start, like <see cref="FileLines"/>.
+    /// </summary>
+    public List<string> FileUnlinedSdks { get; set; } = [];
+
     public string LookupAction { get; set; } = string.Empty;
 
     public string ApplyAction { get; set; } = string.Empty;

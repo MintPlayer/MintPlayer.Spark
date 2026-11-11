@@ -1,8 +1,5 @@
-using System.Reflection;
 using MintPlayer.Spark.Abstractions;
-using MintPlayer.Spark.Abstractions.Reflection;
-using Raven.Client.Documents.Session;
-using Raven.Client.Documents.Session.Operations.Lazy;
+using MintPlayer.Spark.Abstractions.Storage;
 
 namespace MintPlayer.Spark.Services;
 
@@ -18,7 +15,7 @@ namespace MintPlayer.Spark.Services;
 /// an id is scaffolded from the model and carries only the posted values (<see cref="IEffectiveObjectFactory"/>,
 /// as a refresh hook's object): input, never authority.
 /// <para>
-/// The stored levels cost one round trip: a typed lazy load per level, executed together, after which
+/// The stored levels cost one round trip (<see cref="ISparkSession.PreloadAsync"/>), after which
 /// each level's read finds its document in the scoped session (<see cref="DatabaseAccess"/> shares it).
 /// </para>
 /// </remarks>
@@ -38,7 +35,7 @@ internal static class NewOwnerChain
         ISparkTypeResolver typeResolver,
         IDatabaseAccess databaseAccess,
         IEffectiveObjectFactory effectiveObjectFactory,
-        IAsyncDocumentSession session,
+        ISparkSession session,
         EntityTypeDefinition ownerType,
         PersistentObject? posted,
         CancellationToken cancellationToken)
@@ -62,17 +59,13 @@ internal static class NewOwnerChain
         }
 
         // One round trip for every stored level backed by a document.
-        var pending = false;
+        var preload = new List<(Type, string)>();
         foreach (var (level, type) in levels)
         {
-            if (level.Id is not { Length: > 0 } id || typeResolver.Resolve(type.ClrType) is not { } clrType)
-                continue;
-
-            LazyLoad(clrType).Invoke(session.Advanced.Lazily, [id, cancellationToken]);
-            pending = true;
+            if (level.Id is { Length: > 0 } id && typeResolver.Resolve(type.ClrType) is { } clrType)
+                preload.Add((clrType, id));
         }
-        if (pending)
-            await session.Advanced.Eagerly.ExecuteAllPendingLazyOperationsAsync(cancellationToken);
+        await session.PreloadAsync(preload, cancellationToken);
 
         var resolved = new PersistentObject[levels.Count];
         for (var i = 0; i < levels.Count; i++)
@@ -95,19 +88,4 @@ internal static class NewOwnerChain
         resolved[^1].Parent = null;
         return (resolved[0], false);
     }
-
-    /// <summary>
-    /// <c>IAsyncLazySessionOperations.LoadAsync&lt;T&gt;(string, CancellationToken)</c>, closed over the
-    /// level's CLR type. Typed, so the later typed read of the same id finds an entity of its own type.
-    /// </summary>
-    private static MethodInfo LazyLoad(Type clrType) =>
-        ReflectionCache.GetOrAdd<(string Op, Type Type), MethodInfo>(
-            ("NewOwnerChain.LazyLoad", clrType),
-            static k => typeof(IAsyncLazySessionOperations)
-                .GetMethods()
-                .Single(m => m.Name == nameof(IAsyncLazySessionOperations.LoadAsync)
-                    && m.IsGenericMethodDefinition
-                    && m.GetParameters() is [{ ParameterType: var id }, { ParameterType: var token }]
-                    && id == typeof(string) && token == typeof(CancellationToken))
-                .MakeGenericMethod(k.Type));
 }

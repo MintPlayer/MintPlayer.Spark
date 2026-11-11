@@ -132,6 +132,7 @@ describe('app routes: navigation', () => {
 
     for (const [url, path] of [
       ['/po/x/1', 'po/:type/:id'],
+      ['/po/x/1/some-slug', 'po/:type/:id/:slug'],
       ['/po/r/123/edit', 'po/:type/:id/edit'],
       ['/po/x/new', 'po/:type/new'],
       ['/po/x', 'po/:type'],

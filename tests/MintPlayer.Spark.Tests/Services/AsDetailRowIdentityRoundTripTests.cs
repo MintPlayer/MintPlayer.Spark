@@ -51,7 +51,7 @@ public class AsDetailRowIdentityRoundTripTests(AsDetailRowIdentityRoundTripTests
 
     public class OrderContext : SparkContext
     {
-        public Raven.Client.Documents.Linq.IRavenQueryable<Order> Orders => Session.Query<Order>();
+        public IQueryable<Order> Orders => Session.Query<Order>();
     }
 
     static AsDetailRowIdentityRoundTripTests()

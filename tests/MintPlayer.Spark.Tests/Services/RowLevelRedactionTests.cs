@@ -99,7 +99,7 @@ public class RowLevelRedactionTests : SparkTestDriver
 
         using var session = Store.OpenAsyncSession();
         await rowSecurity.RedactAsync(
-            session, [(minePo, mine), (foreignPo, foreign)], typeof(Repo), typeof(Repo), "Query");
+            session.AsSparkSession(), [(minePo, mine), (foreignPo, foreign)], typeof(Repo), typeof(Repo), "Query");
 
         minePo["BadgeToken"].Value.Should().Be("tok-1", "the caller manages this row");
         foreignPo["BadgeToken"].Value.Should().BeNull("redaction is per row, per caller");
@@ -131,7 +131,7 @@ public class RowLevelRedactionTests : SparkTestDriver
 
         using var redactSession = Store.OpenAsyncSession();
         await rowSecurity.RedactAsync(
-            redactSession,
+            redactSession.AsSparkSession(),
             [(minePo, mineRow), (foreignPo, foreignRow)],
             typeof(Repo), typeof(VRepo), "Query");
 
@@ -149,7 +149,7 @@ public class RowLevelRedactionTests : SparkTestDriver
         var row = new VRepo { Id = "repos/gone", BadgeToken = "tok-x" };
 
         using var session = Store.OpenAsyncSession();
-        await rowSecurity.RedactAsync(session, [(po, row)], typeof(Repo), typeof(VRepo), "Query");
+        await rowSecurity.RedactAsync(session.AsSparkSession(), [(po, row)], typeof(Repo), typeof(VRepo), "Query");
 
         po.Attributes.Should().OnlyContain(a => a.Value == null,
             "the rule can't be asked without the document — unverifiable is not shown");
@@ -169,7 +169,7 @@ public class RowLevelRedactionTests : SparkTestDriver
         var po = mapper.AsSystem().ToPersistentObject(repo, RepoTypeId);
 
         using var session = Store.OpenAsyncSession();
-        await rowSecurity.RedactAsync(session, [(po, repo)], typeof(Repo), typeof(Repo), "Query");
+        await rowSecurity.RedactAsync(session.AsSparkSession(), [(po, repo)], typeof(Repo), typeof(Repo), "Query");
 
         po["BadgeToken"].Value.Should().Be("tok");
         session.Advanced.NumberOfRequests.Should().Be(0, "no hook, no work");
@@ -209,7 +209,7 @@ public class RowLevelRedactionTests : SparkTestDriver
 
         var repo = new Repo { Id = "repos/1", Owner = "bob" };
         using var session = Store.OpenAsyncSession();
-        await rowSecurity.RedactAsync(session, [(po, repo)], typeof(Repo), typeof(Repo), "Query");
+        await rowSecurity.RedactAsync(session.AsSparkSession(), [(po, repo)], typeof(Repo), typeof(Repo), "Query");
 
         child["Salary"].Value.Should().BeNull(
             "embedded rows aren't rows — the row filter can't reach them, redaction must");
@@ -232,7 +232,7 @@ public class RowLevelRedactionTests : SparkTestDriver
         var po = mapper.AsSystem().ToPersistentObject(foreign, RepoTypeId);
 
         using var session = Store.OpenAsyncSession();
-        await rowSecurity.RedactAsync(session, [(po, foreign)], typeof(Repo), typeof(Repo), "Query");
+        await rowSecurity.RedactAsync(session.AsSparkSession(), [(po, foreign)], typeof(Repo), typeof(Repo), "Query");
 
         po["BadgeToken"].Value.Should().Be("tok-2", "sync must replicate full values");
     }

@@ -307,7 +307,7 @@ public class EntityMapperInverseTests
         session.LoadAsync<TestCustomer>("customers/1", Arg.Any<CancellationToken>())
             .Returns(customer);
 
-        await _mapper.PopulateObjectValuesAsync(po, order, session);
+        await _mapper.PopulateObjectValuesAsync(po, order, session.AsSparkSession());
 
         order.Customer.Should().BeSameAs(customer);
         _ = session.Received(1).LoadAsync<TestCustomer>("customers/1", Arg.Any<CancellationToken>());
@@ -325,7 +325,7 @@ public class EntityMapperInverseTests
         var session = Substitute.For<IAsyncDocumentSession>();
         // Sync overload accepts includedDocuments directly; async overload does too via
         // the common WritePropertyAsync core — this test exercises that path.
-        await _mapper.PopulateObjectValuesAsync(po, order, session);
+        await _mapper.PopulateObjectValuesAsync(po, order, session.AsSparkSession());
 
         // (We can't easily test the "includedDocuments wins" behavior on the async overload
         // through the public surface since includedDocuments isn't a parameter there. The

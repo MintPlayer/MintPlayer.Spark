@@ -1,9 +1,9 @@
 import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
-import type { LookupDocument, PlatformRecord, Sdk } from '../contracts/types';
-import { CONTRACT_VERSION } from '../contracts/types';
+import type { LookupDocument, PlatformRecord, PlatformTable, Sdk } from '../contracts/types';
+import { CONTRACT_VERSION, SDKS } from '../contracts/types';
 import { assertValid } from '../contracts/validate';
-import { buildPlatformRecord, fetchCandidates, type Fetcher } from '../platform/feeds';
+import { buildPlatformRecord } from '../platform/feeds';
 import { scanLocations, type Found } from '../platform/locations';
 import type { Exec } from '../util/exec';
 import { revParse } from '../util/git';
@@ -19,7 +19,8 @@ export interface LookupOptions {
   outDir: string;
   workDir: string;
   expectedSha: string;
-  fetcher: Fetcher;
+  /** #606 D9: the bot's channel table; SDK moves are offered from it only. */
+  platforms: PlatformTable;
   fetchActionYml: ActionYmlFetcher;
   githubTokenEnv?: string;
   hostRulesEnv?: string;
@@ -28,13 +29,11 @@ export interface LookupOptions {
   now?: () => Date;
 }
 
-const SDKS: Sdk[] = ['dotnet', 'node', 'python', 'java', 'go'];
-
-export async function platformRecords(repoDir: string, fetcher: Fetcher, problems: LookupDocument['problems'], now = new Date()): Promise<PlatformRecord[]> {
-  return (await scanPlatforms(repoDir, fetcher, problems, now)).platforms;
+export async function platformRecords(repoDir: string, table: PlatformTable, problems: LookupDocument['problems'], now = new Date()): Promise<PlatformRecord[]> {
+  return (await scanPlatforms(repoDir, table, problems, now)).platforms;
 }
 
-async function scanPlatforms(repoDir: string, fetcher: Fetcher, problems: LookupDocument['problems'], now: Date): Promise<{ platforms: PlatformRecord[]; found: Found[] }> {
+async function scanPlatforms(repoDir: string, table: PlatformTable, problems: LookupDocument['problems'], now: Date): Promise<{ platforms: PlatformRecord[]; found: Found[] }> {
   const found = await scanLocations(directoryFiles(repoDir), SDKS);
   const bySdk = new Map<Sdk, Found[]>();
   for (const f of found) bySdk.set(f.sdk, [...(bySdk.get(f.sdk) ?? []), f]);
@@ -42,12 +41,8 @@ async function scanPlatforms(repoDir: string, fetcher: Fetcher, problems: Lookup
   for (const sdk of SDKS) {
     const locations = bySdk.get(sdk);
     if (!locations?.length) continue;
-    let feed = null;
-    try {
-      feed = await fetchCandidates(sdk, fetcher);
-    } catch (err) {
-      problems.push({ source: `platform:${sdk}`, message: String((err as Error).message ?? err) });
-    }
+    const feed = table.sdks[sdk] ?? null;
+    if (feed === null) problems.push({ source: `platform:${sdk}`, message: `the bot's channel table has no ${sdk} channels` });
     out.push(buildPlatformRecord(sdk, locations, feed, now));
   }
   return { platforms: out, found };
@@ -73,11 +68,11 @@ export async function runLookup(o: LookupOptions): Promise<{ document: LookupDoc
   }
   const run = o.renovate
     ? await o.renovate()
-    : await runRenovate({ exec: o.exec, repoDir: o.repoDir, workDir: o.workDir, githubTokenEnv: o.githubTokenEnv, hostRulesEnv: o.hostRulesEnv });
+    : await runRenovate({ exec: o.exec, repoDir: o.repoDir, workDir: o.workDir, githubTokenEnv: o.githubTokenEnv, hostRulesEnv: o.hostRulesEnv, unstable: o.platforms.unstable });
   const problems = reportProblems(run.report);
-  const { platforms, found } = await scanPlatforms(o.repoDir, o.fetcher, problems, o.now?.() ?? new Date());
+  const { platforms, found } = await scanPlatforms(o.repoDir, o.platforms, problems, o.now?.() ?? new Date());
   // R31: the platform record owns its locations; their channel moves are never offered separately.
-  const { records } = foldPlatformLocations(mapReport(run.report), found, platforms);
+  const { records } = foldPlatformLocations(mapReport(run.report), found, platforms, o.platforms);
   const interfaceDiffs = await interfaceDiffsFor(records, await workflowUsages(o.repoDir), o.fetchActionYml);
   const document: LookupDocument = {
     contractVersion: CONTRACT_VERSION,

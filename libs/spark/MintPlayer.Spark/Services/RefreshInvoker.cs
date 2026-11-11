@@ -72,7 +72,7 @@ internal partial class RefreshInvoker : IRefreshInvoker
     [Inject] private readonly IActionsResolver actionsResolver;
     [Inject] private readonly IEffectiveObjectFactory effectiveObjectFactory;
     [Inject] private readonly ISparkTypeResolver typeResolver;
-    [Inject] private readonly Raven.Client.Documents.Session.IAsyncDocumentSession session;
+    [Inject] private readonly Abstractions.Storage.ISparkSession session;
     [Inject] private readonly ILogger<RefreshInvoker> logger;
 
     /// <summary>

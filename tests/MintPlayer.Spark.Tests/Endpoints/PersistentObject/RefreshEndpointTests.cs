@@ -249,7 +249,7 @@ public sealed class RefreshTestCar
 
 public class RefreshTestContext : SparkContext
 {
-    public IRavenQueryable<RefreshTestCar> RefreshTestCars => Session.Query<RefreshTestCar>();
+    public IQueryable<RefreshTestCar> RefreshTestCars => Session.Query<RefreshTestCar>();
 }
 
 /// <summary>

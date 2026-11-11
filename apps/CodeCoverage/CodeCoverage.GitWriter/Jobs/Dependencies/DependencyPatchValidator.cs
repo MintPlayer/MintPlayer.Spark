@@ -12,7 +12,13 @@ namespace CodeCoverage.GitWriter.Jobs.Dependencies;
 /// <item>The strict shape of <see cref="PatchValidator"/> (modes, symlinks, binaries, copies, exact hunks, caps), with
 /// <c>.github/</c> open only to the workflow carve-out.</item>
 /// <item>Every profile refuses the bot's plan path (<c>.mintplayer/</c>, R14) and <c>coverage.yml</c>; then the deny-list
-/// (<see cref="DependencyFiles.IsDenied"/>) wins over every allow rule; then no file may be added, deleted or renamed.</item>
+/// (<see cref="DependencyFiles.IsDenied"/>) wins over every allow rule; then no file may be added, deleted or renamed.
+/// The one exception to the deny-list (#613 D23, owner): an EDIT of an existing <c>Directory.Build.props</c>/<c>.targets</c>
+/// (<see cref="DependencyFiles.IsSubstitutionOnly"/>) passes when every changed line is a planned NuGet substitution or a
+/// platform location swap; anything else in it is <see cref="DependencyPatchReasons.DeniedPath"/>.</item>
+/// <item>Platform groups (#613 D20–D22, D24): the request's <see cref="DependencyPatchRequest.Platforms"/> carry each
+/// SDK move with the locations the lookup reported; a changed line in such a file must be
+/// <see cref="PlatformSubstitution.Explain"/>'s token swap, and an applied platform group needs at least one.</item>
 /// <item>The allow-list is the plan's package files that match a code-defined name for their datasource AND exist at
 /// <c>expected_sha</c> as regular files, plus their code-defined lockfiles; the report can select, never widen.</item>
 /// <item>Manifests: <see cref="SubstitutionCheck"/> on every changed line pair; <c>global.json</c>'s
@@ -35,6 +41,9 @@ public static class DependencyPatchValidator
 
         foreach (var file in files)
         {
+            // #613 item 3: an existing Directory.Build.* may get strict substitutions; a new, deleted or renamed one stays denied.
+            if ((file.IsNew || file.IsDeleted || file.IsRename) && (DependencyFiles.IsDenied(file.Path) || file.IsRename && DependencyFiles.IsDenied(file.OldPath)))
+                return DependencyPatchVerdict.Reject(DependencyPatchReasons.DeniedPath, "The deny-list wins over every allow rule.", file.IsRename ? [file.OldPath, file.NewPath] : [file.Path]);
             if (file.IsNew || file.IsDeleted || file.IsRename)
                 return DependencyPatchVerdict.Reject(DependencyPatchReasons.AddedOrDeleted,
                     "The dependencies profile only edits files that exist; it adds, deletes and renames none.", file.IsRename ? [file.OldPath, file.NewPath] : [file.Path]);
@@ -46,10 +55,13 @@ public static class DependencyPatchValidator
         foreach (var entry in request.Plan)
         {
             var path = entry.PackageFile;
-            if (!PatchValidator.IsWritablePath(path) || DependencyFiles.IsPlanPath(path) || DependencyFiles.IsCoverageConfig(path) || DependencyFiles.IsDenied(path))
+            // #613 item 3: Directory.Build.props/.targets hold NuGet references too; edited only by SubstitutionCheck.
+            var substitutionOnly = DependencyFiles.IsSubstitutionOnly(path) && entry.Datasource == "nuget";
+            if (!PatchValidator.IsWritablePath(path) || DependencyFiles.IsPlanPath(path) || DependencyFiles.IsCoverageConfig(path)
+                || DependencyFiles.IsDenied(path) && !substitutionOnly)
                 continue;
             var target = DependencyFiles.IsWorkflowFile(path) ? DependencyFiles.WorkflowDatasources.Contains(entry.Datasource) ? workflows : null
-                : DependencyFiles.IsManifest(entry.Datasource, path) ? manifests : null;
+                : DependencyFiles.IsManifest(entry.Datasource, path) || substitutionOnly ? manifests : null;
             if (target is null || await baseTree.ModeAsync(path, cancellationToken) != "100644")
                 continue;
             if (!target.TryGetValue(path, out var list))
@@ -57,24 +69,51 @@ public static class DependencyPatchValidator
             list.Add(entry);
         }
 
+        // #613 item 2: the files the lookup reported a platform location in, for the plan's platform groups.
+        var platforms = new Dictionary<string, List<(DependencyPlatformMove, DependencyPlatformLocation)>>(StringComparer.Ordinal);
+        foreach (var move in request.Platforms)
+        {
+            foreach (var location in move.Locations)
+            {
+                var path = location.File;
+                if (!PatchValidator.IsWritablePath(path) || DependencyFiles.IsPlanPath(path) || DependencyFiles.IsCoverageConfig(path)
+                    || DependencyFiles.IsDenied(path) && !DependencyFiles.IsSubstitutionOnly(path)
+                    || PatchValidator.IsUnderGitHub(path) && !DependencyFiles.IsWorkflowFile(path)
+                    || DependencyFiles.LockfileNames.Contains(DependencyFiles.FileName(path)))
+                    continue;
+                if (!platforms.TryGetValue(path, out var list))
+                {
+                    if (await baseTree.ModeAsync(path, cancellationToken) != "100644")
+                        continue;
+                    platforms[path] = list = [];
+                }
+                list.Add((move, location));
+            }
+        }
+
         var used = new HashSet<DependencyPlanEntry>();
+        var platformApplied = new HashSet<string>(StringComparer.Ordinal);
         var lockfiles = new List<PatchFile>();
         var requiresWorkflows = false;
         foreach (var file in files)
         {
             var path = file.Path;
-            if (workflows.TryGetValue(path, out var workflowEntries))
+            var platformHere = platforms.GetValueOrDefault(path) ?? [];
+            var workflowEntries = workflows.GetValueOrDefault(path);
+            if (workflowEntries is not null || platformHere.Count > 0 && DependencyFiles.IsWorkflowFile(path))
             {
-                var (workflowRefused, workflowApplied) = await WorkflowAsync(file, workflowEntries, request, baseTree, cancellationToken);
+                var (workflowRefused, workflowApplied, workflowPlatforms) = await WorkflowAsync(file, workflowEntries ?? [], platformHere, request, baseTree, cancellationToken);
                 if (workflowRefused is not null)
                     return workflowRefused;
                 used.UnionWith(workflowApplied);
+                platformApplied.UnionWith(workflowPlatforms);
                 requiresWorkflows |= DependencyFiles.NeedsWorkflowsPermission(path);
                 continue;
             }
-            if (manifests.TryGetValue(path, out var manifestEntries))
+            var manifestEntries = manifests.GetValueOrDefault(path);
+            if (manifestEntries is not null || platformHere.Count > 0)
             {
-                if (await ManifestAsync(file, manifestEntries, baseTree, used, cancellationToken) is { } refused)
+                if (await ManifestAsync(file, manifestEntries ?? [], platformHere, baseTree, used, platformApplied, cancellationToken) is { } refused)
                     return refused;
                 continue;
             }
@@ -83,8 +122,11 @@ public static class DependencyPatchValidator
                 lockfiles.Add(file);
                 continue;
             }
+            if (DependencyFiles.IsSubstitutionOnly(path))
+                return DependencyPatchVerdict.Reject(DependencyPatchReasons.DeniedPath,
+                    "Directory.Build.props/.targets change only by a planned NuGet swap or a reported platform location, and this patch plans neither here.", path);
             return DependencyPatchVerdict.Reject(DependencyPatchReasons.OutsidePlannedFiles,
-                "Not a planned package file at the planned commit, nor a lockfile of one, nor a workflow the plan updates.", path);
+                "Not a planned package file at the planned commit, nor a lockfile of one, nor a workflow the plan updates, nor a reported platform location.", path);
         }
 
         // Lockfile-only entries apply when a lockfile of theirs changed; every changed lockfile needs an applied owner.
@@ -107,10 +149,13 @@ public static class DependencyPatchValidator
         }
 
         // Groups, derived from the patch: whole groups only, and exactly the ones result.json claims.
-        var applied = used.Select(e => e.GroupName).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToList();
+        var applied = used.Select(e => e.GroupName).Concat(platformApplied).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToList();
         foreach (var group in applied)
         {
             var missing = request.Plan.Where(e => e.GroupName == group && !used.Contains(e)).Select(e => $"{e.DepName} in {e.PackageFile}").ToList();
+            // #613 item 2: a platform group's companions ride its SDK move; they never apply without it.
+            if (request.Platforms.Any(p => p.Group == group) && !platformApplied.Contains(group))
+                missing.Add("its SDK move");
             if (missing.Count > 0)
                 return DependencyPatchVerdict.Reject(DependencyPatchReasons.PartialGroup,
                     $"Group '{group}' is applied without {string.Join(", ", missing)}; a group moves together.");
@@ -140,13 +185,18 @@ public static class DependencyPatchValidator
             return PatchVerdict.Reject(DependencyPatchReasons.PlanPath, "The bot's plan file (R14) is never part of a patch.", path);
         if (!PatchValidator.IsWritablePath(path) || PatchValidator.IsUnderGitHub(path) && !DependencyFiles.IsWorkflowFile(path))
             return PatchVerdict.Reject(PatchReasons.UnsafePath, null, path);
-        if (DependencyFiles.IsCoverageConfig(path) || DependencyFiles.IsDenied(path))
+        // #613 item 3: Directory.Build.props/.targets pass here and are held to strict substitutions below; an added one is
+        // refused there with every other added file.
+        if (DependencyFiles.IsCoverageConfig(path) || DependencyFiles.IsDenied(path) && !DependencyFiles.IsSubstitutionOnly(path))
             return PatchVerdict.Reject(DependencyPatchReasons.DeniedPath, "The deny-list wins over every allow rule.", path);
         return null;
     }
 
-    private static async Task<DependencyPatchVerdict?> ManifestAsync(PatchFile file, List<DependencyPlanEntry> entries, IBaseTree baseTree,
-        HashSet<DependencyPlanEntry> used, CancellationToken cancellationToken)
+    /// <summary>A manifest, or a file holding a reported platform location: every changed line is a planned
+    /// <see cref="SubstitutionCheck"/> swap or a <see cref="PlatformSubstitution"/> of a reported location (#613 item 2).</summary>
+    private static async Task<DependencyPatchVerdict?> ManifestAsync(PatchFile file, List<DependencyPlanEntry> entries,
+        List<(DependencyPlatformMove, DependencyPlatformLocation)> platform, IBaseTree baseTree, HashSet<DependencyPlanEntry> used,
+        HashSet<string> platformApplied, CancellationToken cancellationToken)
     {
         (int From, int To)? sdks = null;
         if (DependencyFiles.FileName(file.Path) == "global.json")
@@ -169,10 +219,18 @@ public static class DependencyPatchValidator
                     if (sdks is { } s && line >= s.From && line <= s.To)
                         return DependencyPatchVerdict.Reject(DependencyPatchReasons.DeniedPath, $"Line {line}: global.json's msbuild-sdks are never edited.", file.Path);
                     var above = block.Before.Concat(block.Removed.Take(k)).ToList();
-                    if (SubstitutionCheck.Explain(block.Removed[k], block.Added[k], above, entries) is not { } explained)
-                        return DependencyPatchVerdict.Reject(DependencyPatchReasons.UnplannedChange,
-                            $"Line {line}: the change is not a planned current → new swap on a line naming the dependency.", file.Path);
-                    used.UnionWith(explained);
+                    if (entries.Count > 0 && SubstitutionCheck.Explain(block.Removed[k], block.Added[k], above, entries) is { } explained)
+                    {
+                        used.UnionWith(explained);
+                        continue;
+                    }
+                    if (PlatformSubstitution.Explain(block.Removed[k], block.Added[k], platform) is { } group)
+                    {
+                        platformApplied.Add(group);
+                        continue;
+                    }
+                    return DependencyPatchVerdict.Reject(DependencyPatchReasons.UnplannedChange,
+                        $"Line {line}: the change is not a planned current → new swap on a line naming the dependency, nor a planned platform move of a reported location.", file.Path);
                 }
             }
         }
@@ -217,24 +275,34 @@ public static class DependencyPatchValidator
     }
 
     /// <summary>One workflow file: the line rule, then the YAML comparison of the file before and after the patch.</summary>
-    private static async Task<(DependencyPatchVerdict? Refused, IReadOnlyList<DependencyPlanEntry> Entries)> WorkflowAsync(PatchFile file,
-        List<DependencyPlanEntry> entries, DependencyPatchRequest request, IBaseTree baseTree, CancellationToken cancellationToken)
+    private static async Task<(DependencyPatchVerdict? Refused, IReadOnlyList<DependencyPlanEntry> Entries, IReadOnlySet<string> Platforms)> WorkflowAsync(
+        PatchFile file, List<DependencyPlanEntry> entries, List<(DependencyPlatformMove Move, DependencyPlatformLocation Location)> platform,
+        DependencyPatchRequest request, IBaseTree baseTree, CancellationToken cancellationToken)
     {
-        var (plan, reason, detail) = WorkflowRefPatchRule.Check(file, entries);
+        var none = new HashSet<string>();
+        var (plan, reason, detail) = WorkflowRefPatchRule.Check(file, entries, platform);
         if (plan is null)
-            return (DependencyPatchVerdict.Reject(reason!, detail, file.Path), []);
+            return (DependencyPatchVerdict.Reject(reason!, detail, file.Path), [], none);
         if (await baseTree.ReadTextAsync(file.Path, cancellationToken) is not { } before || file.ApplyTo(before) is not { } after)
-            return (DependencyPatchVerdict.Reject(PatchReasons.ApplyFailed, "The patch does not apply to the file at the planned commit.", file.Path), []);
-        var change = GitHubWorkflowValidator.ValidateChange(before, after, new WorkflowChangeRules(plan.Uses, plan.With) { TargetActions = request.TargetActions });
+            return (DependencyPatchVerdict.Reject(PatchReasons.ApplyFailed, "The patch does not apply to the file at the planned commit.", file.Path), [], none);
+        var rules = new WorkflowChangeRules(plan.Uses, plan.With)
+        {
+            TargetActions = request.TargetActions,
+            PlatformChange = platform.Count == 0 ? null : (old, @new) => PlatformSubstitution.Explain(old, @new, platform) is not null,
+            // #617 D31: only the inputs whose line the line rule saw removed under a move to a release.
+            RemovableWith = plan.RemovedWith.Count == 0 ? null : (key, value) => plan.RemovedWith.Contains((key, value)),
+        };
+        var change = GitHubWorkflowValidator.ValidateChange(before, after, rules);
         if (!change.Verdict.Valid)
             return (DependencyPatchVerdict.Reject(PatchReasons.InvalidContent,
-                $"After the patch, the file fails github-workflow at {change.Verdict.Position}: {change.Verdict.Problem}.", file.Path), []);
+                $"After the patch, the file fails github-workflow at {change.Verdict.Position}: {change.Verdict.Problem}.", file.Path), [], none);
         // Every pair the line rule accepted must be a node change the comparison found: belt and braces, since the
         // comparison already refuses every unplanned difference.
         var covered = plan.Uses.All(u => change.Changes.Any(c => c.Old == u.Old && c.New == u.New))
-                      && plan.With.All(w => change.Changes.Any(c => c.Path.EndsWith($".with.{w.Key}", StringComparison.Ordinal) && c.Old == w.Old && c.New == w.New));
+                      && plan.With.All(w => change.Changes.Any(c => c.Path.EndsWith($".with.{w.Key}", StringComparison.Ordinal) && c.Old == w.Old && c.New == w.New))
+                      && plan.RemovedWith.All(r => change.Changes.Any(c => c.Path.EndsWith($".with.{r.Key}", StringComparison.Ordinal) && c.Old == r.Value && c.New.Length == 0));
         if (!covered)
-            return (DependencyPatchVerdict.Reject(DependencyPatchReasons.WorkflowEdit, "A changed line is not a uses: or with: value of a step.", file.Path), []);
-        return (null, plan.Entries);
+            return (DependencyPatchVerdict.Reject(DependencyPatchReasons.WorkflowEdit, "A changed line is not a uses: or with: value of a step.", file.Path), [], none);
+        return (null, plan.Entries, plan.PlatformGroups);
     }
 }

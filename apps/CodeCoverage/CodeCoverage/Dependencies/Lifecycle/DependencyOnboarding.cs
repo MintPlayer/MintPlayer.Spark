@@ -25,6 +25,42 @@ public static class DependencyOnboarding
 
     public const string Title = "Set up MintPlayer dependency updates";
 
+    /// <summary>#613 item 4: the title of the pull request that replaces an outdated workflow with the current template.</summary>
+    public const string RefreshTitle = "Update the MintPlayer dependency workflows";
+
+    /// <summary>
+    /// #613 item 4: the files of the refresh pull request: each outdated workflow the bot owns a template for, replaced by the
+    /// current template pinned like onboarding's. Null when none of <paramref name="workflows"/> has a template (a custom
+    /// <c>lookupWorkflow</c> name is the owner's to update).
+    /// </summary>
+    public static IReadOnlyList<GitWriterFile>? RefreshFiles(IReadOnlyCollection<string> workflows, string? actionSha, Func<string, string> readTemplate)
+    {
+        var files = Templates([])
+            .Where(t => workflows.Contains(Path.GetFileName(t.Path), StringComparer.Ordinal))
+            .Select(t => new GitWriterFile(t.Path, Pin(readTemplate(t.Resource), actionSha)))
+            .ToList();
+        return files.Count == 0 ? null : files;
+    }
+
+    /// <summary>#613 item 4: the refresh pull request's body.</summary>
+    public static string RefreshBody(IReadOnlyList<GitWriterFile> files, string reason, string? actionSha)
+    {
+        var body = new StringBuilder();
+        body.Append(DependencyPullRequestBody.Marker).Append('\n');
+        body.Append("The dependency updater could not run: ").Append(reason).Append("\n\n");
+        body.Append("This pull request replaces ").Append(string.Join(" and ", files.Select(f => $"`{f.Path}`")))
+            .Append(" with the current template")
+            .Append(actionSha is { Length: 40 } ? $", with the action pinned to `{actionSha[..12]}` ({ActionTag})" : string.Empty)
+            .Append(". Changes you made to the file are replaced too: put them back before merging if you still need them.\n\n");
+        body.Append("Merging it starts a dependency run, as the onboarding pull request did.\n\n");
+        body.Append(ApprovalNote);
+        return body.ToString();
+    }
+
+    /// <summary>#613 item 7: the bot's pull requests are authored by an App, which has no write access of its own, so the merge
+    /// queue takes them only with an approval by someone who has (MergeQueueEngine's approval floor).</summary>
+    public const string ApprovalNote = "The bot cannot approve its own pull request: someone with write access approves it first, then merges it or comments `/queue`.";
+
     /// <summary>What an added file is for, in the onboarding pull request's list; null for one that needs no word.</summary>
     internal static string? Describe(string path) => Path.GetFileName(path) switch
     {
@@ -55,6 +91,9 @@ public static class DependencyOnboarding
         #       onMajor: angular-migrate.yml
         #     - match: "nx"
         #       onMajor: nx-migrate.yml
+        #   platforms:                       # SDK moves (TFMs, global.json, setup-* inputs, Dockerfile FROM, …), per SDK
+        #     dotnet: { strategy: replace }  # track: lts | stable | preview (the account's, else stable); strategy: add keeps the old TFM too
+        #     node: { companions: ["@types/node"] }   # packages that move with the SDK's major; [] turns them off
         """);
 
     /// <summary>R25: what the onboarding pull request adds to <c>coverage.yml</c> when its setting resolves to Yes.</summary>
@@ -108,7 +147,7 @@ public static class DependencyOnboarding
             : template;
 
     public static DependencyOnboardingPlan Plan(IReadOnlyCollection<string> treePaths, string? coverageYml, string? dependabotPath, string? dependabotYml,
-        string? actionSha, Func<string, string> readTemplate, bool addMergeQueue = false)
+        string? actionSha, Func<string, string> readTemplate, bool addMergeQueue = false, bool githubMergeQueue = false)
     {
         var files = new List<GitWriterFile>();
         foreach (var (path, resource) in Templates(treePaths))
@@ -130,8 +169,14 @@ public static class DependencyOnboarding
             files.Add(new GitWriterFile(dependabotPath, newDependabot, Delete: newDependabot is null));
 
         return new DependencyOnboardingPlan(files, rules, removed, registries, actionSha is { Length: 40 },
-            Body(files, rules, removed, registries, actionSha, dependabotPath, addMergeQueue && !HasTopLevelKey(yml, "mergeQueue")));
+            Body(files, rules, removed, registries, actionSha, dependabotPath, addMergeQueue && !HasTopLevelKey(yml, "mergeQueue"), githubMergeQueue));
     }
+
+    /// <summary>
+    /// #613 item 6: the default branch requires GitHub's own merge queue (mintplayer-ng-video-player #109: <c>/queue</c> refused,
+    /// <c>gh pr merge --squash</c> refused, merged with <c>--admin</c>). The bot's queue refuses such a branch (D8, "native-queue").
+    /// </summary>
+    public const string GitHubMergeQueueNote = "⚠️ The default branch requires **GitHub's own merge queue** (a branch protection rule or ruleset). The bot's merge queue cannot share a branch with it, so dependency pull requests will not auto-merge. Turn GitHub's merge-queue rule off (Settings → Branches or Rules) and merge this pull request; or keep it, merge this through GitHub's queue, and merge the bot's pull requests by hand.";
 
     /// <summary>
     /// <c>dependabot.yml</c> without its <c>updates:</c> (version updates, every ecosystem: R12 covers whatever the lookup reports),
@@ -246,7 +291,7 @@ public static class DependencyOnboarding
         => node.Children.TryGetValue(new YamlScalarNode(key), out var value) && value is YamlScalarNode scalar ? scalar.Value : null;
 
     private static string Body(IReadOnlyList<GitWriterFile> files, IReadOnlyList<string> rules, IReadOnlyList<string> removed, IReadOnlyList<string> registries,
-        string? actionSha, string? dependabotPath, bool mergeQueueAdded = false)
+        string? actionSha, string? dependabotPath, bool mergeQueueAdded = false, bool githubMergeQueue = false)
     {
         var body = new StringBuilder();
         body.AppendLine(DependencyPullRequestBody.Marker);
@@ -257,6 +302,8 @@ public static class DependencyOnboarding
         body.AppendLine();
         if (mergeQueueAdded)
             body.AppendLine("`coverage.yml` gets `mergeQueue: { enabled: true }`: dependency pull requests within your thresholds merge through the merge queue, and your own pull requests can use it too. See the [merge queue guide](https://coverage.mintplayer.com/merge-queue/setup). Remove the section to keep merging by hand.").AppendLine();
+        if (githubMergeQueue)
+            body.AppendLine(GitHubMergeQueueNote).AppendLine();
         var action = ActionReference[..ActionReference.LastIndexOf('@')];
         body.AppendLine(actionSha is { Length: 40 }
             ? $"The workflows call the GitHub Action `{action}`, pinned to `{actionSha}` (`{ActionTag}`). The rolling pull request keeps that pin current, without the cooldown other updates wait for: it is the bot's own runtime."
@@ -287,6 +334,8 @@ public static class DependencyOnboarding
         }
         body.AppendLine("## Permissions").AppendLine();
         body.AppendLine("The App needs **Workflows: write** on this repository to open this pull request and to bump Actions `uses:` lines. If an installation has not accepted it yet, GitHub shows an accept-new-permissions prompt to its owner.").AppendLine();
+        body.AppendLine("## Merging").AppendLine();
+        body.AppendLine(ApprovalNote).AppendLine();
         body.AppendLine("After this merges, the first rolling pull request is opened as a draft.");
         return body.ToString();
     }

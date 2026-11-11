@@ -1,0 +1,8 @@
+@use '../../styles/chip';
+@use '../../styles/swatch';
+
+// An AsDetail table's leading-cell column (leadingComponent) is as narrow as its content.
+.spark-leading-cell {
+  width: 1%;
+  white-space: nowrap;
+}

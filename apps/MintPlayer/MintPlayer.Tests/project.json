@@ -1,0 +1,24 @@
+{
+  "name": "MintPlayer.Tests",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "targets": {
+    "test": {
+      "inputs": [
+        "default",
+        "^production",
+        "{workspaceRoot}/apps/MintPlayer/MintPlayer/App_Data/**/*",
+        "{workspaceRoot}/apps/MintPlayer/MintPlayer/appsettings*.json"
+      ],
+      "options": {
+        "cwd": "apps/MintPlayer/MintPlayer.Tests",
+        "command": "dotnet test --no-build --no-restore --settings ../../../coverlet.runsettings --collect:\"XPlat Code Coverage\" --results-directory coverage",
+        "args": []
+      },
+      "configurations": {
+        "local": {
+          "command": "dotnet test --no-build --no-restore"
+        }
+      }
+    }
+  }
+}

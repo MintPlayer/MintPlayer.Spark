@@ -275,6 +275,14 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
         // #568 D13: the default branch's run reads the supported lines, which the scheduler then gives runs of their own.
         if (run.Line is null)
             run.FileLines = parsed.Section.Lines == EDependencyLineUpdates.Off ? [] : await SupportedLineNamesAsync(context, yml, ct);
+        // #606 D4: a producer without release lines that replaces its SDK leaves the previous platform's consumers behind.
+        // A producer: packages in its manifests (P12) or a `versioning:` section.
+        var versioning = PackageVersioning.VersioningYml.Parse(yml).Config;
+        var produces = versioning is not null
+            || (await session.LoadAsync<RepositoryManifest>(RepositoryManifest.ForRepository(repository.Id!), ct))?.Produces.Count > 0;
+        run.FileUnlinedSdks = produces && versioning?.Lines is null
+            ? [.. DependenciesYml.PlatformSdks.Where(sdk => parsed.Section.Platform(sdk).Strategy == "replace")]
+            : [];
 
         // #568 D13: a line's run updates the line's own branch; the workflows stay the default branch's (D12 below).
         var target = defaultBranch;
@@ -300,7 +308,7 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
         run.LookupAction = parsed.Section.LookupAction;
         run.ApplyAction = parsed.Section.ApplyAction;
 
-        if (!await WorkflowsUsableAsync(context, head, [run.LookupAction, run.ApplyAction], allowSecrets: true, ct))
+        if (!await WorkflowsUsableAsync(context, head, [run.LookupAction, run.ApplyAction], allowSecrets: true, ct, (run.LookupAction, LookupInputs)))
             return;
         if (run.Line is null && run.Onboarding != EDependencyOnboarding.Done)
         {
@@ -309,11 +317,14 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
         }
 
         // D14: dispatched on the branch it updates, so the run builds its head; a head that moved in between is WrongCommit.
+        // #606 D9: with the bot's channel table, which the lookup requires.
         var token = RunToken(context);
+        var unstable = DependencyPolicyConfig.Resolve(parsed.Section, repository, context.Account).UnstableGlobs();
         var request = new WorkflowHookRequest(run.LookupAction, target, new Dictionary<string, string>
         {
             ["expected_sha"] = head,
             ["run_id"] = token,
+            ["platforms"] = await DependencyPlatformTable.JsonAsync(session, unstable, ct),
         }, LookupTimeout, "lookup");
         await DispatchAsync(context, request, "lookup", head, $"dependency-lookup-{token}", null, EDependencyRunState.Looking, ct);
     }
@@ -323,7 +334,11 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
     /// default branch's, and it holds T5's rules. False: the run was ended with the reason. A line's run (#568 D13) dispatches
     /// on the line's commit, and the workflow there must still be the default branch's: a line keeps the bot's workflows as master has them.
     /// </summary>
-    private async Task<bool> WorkflowsUsableAsync(Context context, string commit, IReadOnlyList<string> workflows, bool allowSecrets, CancellationToken ct)
+    /// <summary>The inputs the bot dispatches the lookup with; a workflow declaring fewer predates them (#606 D9).</summary>
+    private static readonly string[] LookupInputs = ["expected_sha", "run_id", "platforms"];
+
+    private async Task<bool> WorkflowsUsableAsync(Context context, string commit, IReadOnlyList<string> workflows, bool allowSecrets, CancellationToken ct,
+        (string Workflow, string[] Inputs)? required = null)
     {
         var defaultBranch = context.Repository.DefaultBranch ?? context.Run.DefaultBranch!;
         switch (await hook.VerifyProvenanceAsync(Saga(context), defaultBranch, commit, workflows, ct))
@@ -343,6 +358,17 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
             if (DependencyWorkflowGuard.Refusal(file?.Content, allowSecrets) is { } refusal)
             {
                 await EndAsync(context, "workflow-unsafe", $"`{workflow}` is not run by the bot: {refusal} (the bot's workflows read only, with no `id-token`).", ct);
+                return false;
+            }
+            if (required is { } r && r.Workflow == workflow
+                && DependencyWorkflowGuard.MissingInputs(file?.Content, r.Inputs) is { Count: > 0 } missing)
+            {
+                var reason = $"`{workflow}` declares no `{string.Join("`, `", missing)}` input: update it to the current dependency-lookup template (the bot passes its channel table since #606).";
+                await EndAsync(context, "workflow-outdated", reason, ct);
+                // #613 item 4: the bot offers the update itself, on the onboarding branch (SpaServices and DependencyUpdaterTest
+                // were stuck on this after #606: onboarding skips a repository whose lookup workflow exists).
+                if (context.Run.Line is null)
+                    await OnboardAsync(context, false, ct, ([workflow], reason));
                 return false;
             }
         }
@@ -678,6 +704,24 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
 
     // ═══ Apply: R3, the patch verdict, R2 holds, R9 migrations ══════════════════════════════════════
 
+    /// <summary>
+    /// #613 item 2: the lookup's non-computed locations of every SDK the plan moves, which the writer's patch rule admits as
+    /// substitutions (<c>PlatformSubstitution</c>). Without them, a platform group's edits were outside every allow rule and
+    /// each SDK move was refused (<c>outside-planned-files</c>, <c>denied-path</c>). Capped at the writer's 1000.
+    /// </summary>
+    private static List<GitWriterPlatformLocation>? PlatformLocations(LookupDocument lookup, DependencyPlan plan)
+    {
+        var sdks = plan.Groups.Where(g => g.Platform is not null).Select(g => g.Platform!.Sdk).ToHashSet(StringComparer.Ordinal);
+        if (sdks.Count == 0)
+            return null;
+        return [.. lookup.Platforms.Where(p => sdks.Contains(p.Sdk))
+            .SelectMany(p => p.Locations.Where(l => !l.Computed && l.File.Length is > 0 and <= 512 && l.Value.Length is > 0 and <= 200
+                                              && !l.File.Any(char.IsControl) && !l.Value.Any(char.IsControl))
+                .Select(l => new GitWriterPlatformLocation(p.Sdk, l.File, l.Kind, l.Value)))
+            .Distinct()
+            .Take(1000)];
+    }
+
     private async Task CollectApplyAsync(Context context, DependencyWorkflowRun pending, CancellationToken ct)
     {
         var (repository, run) = (context.Repository, context.Run);
@@ -719,6 +763,7 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
         if (await WriterAsync(context, false, (access, credential) => writer.DependencyValidateAsync(Request(context, access, credential) with
             {
                 Plan = data.PlanJson, Patch = Convert.ToBase64String(patch), ClaimedGroups = claimed, TargetActions = data.TargetActions, AllowedHosts = section.Registries,
+                PlatformLocations = PlatformLocations(lookup, plan),
             }, ct), ct) is not { } verdict)
             return;
         if (verdict.Outcome is GitWriterOutcomes.Busy or GitWriterOutcomes.Failed)
@@ -774,6 +819,7 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
             {
                 Author = Identity(run), Committer = Identity(run), Message = $"Dependency plan {run.PlanId}, applied", Plan = data.PlanJson, Patch = data.Patch,
                 ClaimedGroups = claimed, TargetActions = data.TargetActions, AllowedHosts = section.Registries, ExpectedWorkSha = run.WorkRefSha,
+                PlatformLocations = PlatformLocations(lookup, plan),
             }, ct), ct) is not { } staged)
             return;
         if (staged.Outcome != GitWriterOutcomes.Pushed || staged.Sha is null)
@@ -895,6 +941,7 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
             {
                 Author = Identity(run), Committer = Identity(run), Message = CommitMessage(report),
                 Plan = data.PlanJson, Patch = data.Patch, ClaimedGroups = claimed, TargetActions = data.TargetActions, AllowedHosts = section.Registries,
+                PlatformLocations = PlatformLocations(lookup, DependencyContract.Deserialize<DependencyPlan>(data.PlanJson!)!),
                 Migrations = [.. data.Migrations.Select(m => new GitWriterMigratePatch(m.Group, m.Patch))],
                 ExpectedRollingSha = rollingHead, LastBotSha = rollingHead is null ? null : run.RollingBotSha, ExpectedWorkSha = run.WorkRefSha,
             }, ct), ct) is not { } result)
@@ -1209,8 +1256,8 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
                 return;
             }
             // Old §7.4: one re-run of the failing checks first, against flaky tests; it counts toward the budget.
-            foreach (var failed in failedRuns)
-                await BestEffortAsync(async () => await context.Queue.RerunCheckAsync(repository, failed, ct), "re-run a failed check");
+            // One call for all of them, so the jobs of one workflow run re-run together (#589).
+            await BestEffortAsync(async () => await context.Queue.RerunChecksAsync(repository, [.. failedRuns], ct), "re-run the failed checks");
             bisect.Rerun = true;
             bisect.Spent = 1;
             Transition(run, EDependencyRunState.Bisecting, $"CI failed ({string.Join(", ", gate.Failed)}); re-running the failed checks once");
@@ -1372,14 +1419,19 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
 
         switch (command)
         {
-            case EDependencyCommand.Approve when argument is { } group:
-                if (DependencyHolds.Approve(state, report.AsOutcome(state), group, run.ConfigBlob, actor, commentId, time.GetUtcNow()) is null)
+            case EDependencyCommand.Approve when argument is { } approved:
+                // #606 D3: a trailing --force also takes an SDK move that is pending on its companions.
+                var force = approved.EndsWith(" --force", StringComparison.Ordinal);
+                var group = force ? approved[..^" --force".Length].TrimEnd() : approved;
+                if (DependencyHolds.Approve(state, report.AsOutcome(state), group, run.ConfigBlob, actor, commentId, time.GetUtcNow(), force) is null)
                 {
                     await ReactAsync(context, commentId, EForgeReaction.ThumbsDown, ct);
-                    await CommentAsync(context, $"Nothing named `{group}` waits for approval (an update above an enforced account rule cannot be approved).", ct);
+                    await CommentAsync(context, report.Held.Any(e => e.Group == group && e.Reason == EDependencyReportReason.Pending)
+                        ? $"`{group}` is waiting on its companion packages; comment `approve {group} --force` to move without them."
+                        : $"Nothing named `{group}` waits for approval (an update above an enforced account rule cannot be approved).", ct);
                     return;
                 }
-                run.Note(Now, $"@{actor} approved {group}");
+                run.Note(Now, force ? $"@{actor} approved {group} (--force)" : $"@{actor} approved {group}");
                 break;
             case EDependencyCommand.Hold when argument is { } target:
                 var isGroup = report.Groups.Any(g => g.Group == target) || report.AwaitingApproval.Concat(report.Held).Concat(report.Available).Any(e => e.Group == target);
@@ -1452,6 +1504,21 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
 
     // ═══ Onboarding (R16) ═══════════════════════════════════════════════════════════════════════════
 
+    /// <summary>#613 item 6: the default branch requires GitHub's own merge queue, which the bot's cannot share (D8). A rules read
+    /// the installation is refused counts as no: the note is advice, and the queue's enable-time check reads the rules again.</summary>
+    private async Task<bool> GitHubMergeQueueAsync(Context context, string defaultBranch, CancellationToken ct)
+    {
+        try
+        {
+            return (await context.Queue.GetBranchRulesAsync(context.Repository, defaultBranch, ct)).HasNativeMergeQueue;
+        }
+        catch (ForgeAccessDeniedException ex)
+        {
+            logger.LogDebug(ex, "Dependency updates: could not read {Repository}'s branch rules for the onboarding note", context.Repository.FullName);
+            return false;
+        }
+    }
+
     /// <summary>
     /// R16, made idempotent (P15): every step is "look up, then create or reuse", and its progress is saved before the next
     /// external call, so a retry after a failure anywhere (a rate limit, a crash, a lost answer) neither fails on what the
@@ -1465,7 +1532,9 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
     /// number). Switching the feature off and on again (<see cref="OffboardAsync"/>) clears the last one, so an explicit
     /// re-enable onboards again.
     /// </remarks>
-    private async Task OnboardAsync(Context context, bool expedite, CancellationToken ct)
+    /// <remarks>#613 item 4: with <paramref name="refresh"/>, the same machinery opens the pull request that replaces outdated
+    /// workflows with the current templates, on the onboarding branch; merging it starts a run as the onboarding's does.</remarks>
+    private async Task OnboardAsync(Context context, bool expedite, CancellationToken ct, (IReadOnlyList<string> Workflows, string Reason)? refresh = null)
     {
         var (repository, run) = (context.Repository, context.Run);
         if (run.Onboarding is EDependencyOnboarding.PullRequestOpened || repository.DefaultBranch is not { } defaultBranch) return;
@@ -1480,8 +1549,8 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
         // merged onboarding pull request does (PullRequestEndedAsync); a re-enabled repository otherwise waited for its
         // schedule (Monday 06:00). Done already (switched off and on again: offboarding keeps Done, D-O5) is the same case.
         // Expedited when a person flipped the switch.
-        if (run.Onboarding == EDependencyOnboarding.Done
-            || await context.Queue.GetFileBlobShaAsync(repository, defaultBranch, ".github/workflows/dependency-lookup.yml", ct) is not null)
+        if (refresh is null && (run.Onboarding == EDependencyOnboarding.Done
+            || await context.Queue.GetFileBlobShaAsync(repository, defaultBranch, ".github/workflows/dependency-lookup.yml", ct) is not null))
         {
             if (run.Onboarding != EDependencyOnboarding.Done)
             {
@@ -1514,18 +1583,6 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
             await session.SaveChangesAsync(ct);
         }
 
-        var tree = await context.Forge.GetTreeAsync(repository, defaultBranch, ct);
-        var coverageYml = await context.Forge.GetFileContentAsync(repository, defaultBranch, CoverageYml.FileName, ct);
-        run.FileMergeQueue = DependencyFileMergeQueue.State(coverageYml, defaultBranch);
-        string? dependabotPath = null, dependabotYml = null;
-        foreach (var path in new[] { ".github/dependabot.yml", ".github/dependabot.yaml" })
-        {
-            if (await context.Forge.GetFileContentAsync(repository, defaultBranch, path, ct) is { } text)
-            {
-                (dependabotPath, dependabotYml) = (path, text);
-                break;
-            }
-        }
         string? actionSha = null;
         try
         {
@@ -1535,8 +1592,34 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
         {
             logger.LogWarning(ex, "Dependency updates: could not resolve {Tag}; the onboarding templates keep the tag", DependencyOnboarding.ActionTag);
         }
-        var plan = DependencyOnboarding.Plan([.. tree?.Entries.Select(e => e.Path) ?? []], coverageYml, dependabotPath, dependabotYml, actionSha, DependencyOnboarding.ReadTemplate,
-            addMergeQueue: Repository.ResolveDependencyOnboardingMergeQueue(repository, context.Account));
+        IReadOnlyList<GitWriterFile> files;
+        string title, body;
+        if (refresh is { } r)
+        {
+            if (DependencyOnboarding.RefreshFiles(r.Workflows, actionSha, DependencyOnboarding.ReadTemplate) is not { } refreshed)
+                return;
+            (files, title, body) = (refreshed, DependencyOnboarding.RefreshTitle, DependencyOnboarding.RefreshBody(refreshed, r.Reason, actionSha));
+        }
+        else
+        {
+            var tree = await context.Forge.GetTreeAsync(repository, defaultBranch, ct);
+            var coverageYml = await context.Forge.GetFileContentAsync(repository, defaultBranch, CoverageYml.FileName, ct);
+            run.FileMergeQueue = DependencyFileMergeQueue.State(coverageYml, defaultBranch);
+            string? dependabotPath = null, dependabotYml = null;
+            foreach (var path in new[] { ".github/dependabot.yml", ".github/dependabot.yaml" })
+            {
+                if (await context.Forge.GetFileContentAsync(repository, defaultBranch, path, ct) is { } text)
+                {
+                    (dependabotPath, dependabotYml) = (path, text);
+                    break;
+                }
+            }
+            var addMergeQueue = Repository.ResolveDependencyOnboardingMergeQueue(repository, context.Account);
+            var plan = DependencyOnboarding.Plan([.. tree?.Entries.Select(e => e.Path) ?? []], coverageYml, dependabotPath, dependabotYml, actionSha, DependencyOnboarding.ReadTemplate,
+                addMergeQueue: addMergeQueue,
+                githubMergeQueue: (addMergeQueue || run.FileMergeQueue == "enabled") && await GitHubMergeQueueAsync(context, defaultBranch, ct));
+            (files, title, body) = (plan.Files, DependencyOnboarding.Title, plan.Body);
+        }
 
         // §7.2: Workflows: write (and the rest of the feature's needs) must be declared by the App and accepted by the
         // installation before the templates can be pushed; say which, and where, instead of failing on the push.
@@ -1559,7 +1642,7 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
                 var job = await hook.RunWriterJobAsync(Saga(context), null, pushesWorkflowChanges: true, (access, credential) => writer.DependencyFilesAsync(
                     new GitWriterDependencyRequest(repository.Provider.ToCanonicalString(), repository.GitHubId.ToString(CultureInfo.InvariantCulture), access.CloneUrl, credential, defaultBranch, head)
                     {
-                        Author = identity, Committer = identity, Message = DependencyOnboarding.Title, Files = plan.Files,
+                        Author = identity, Committer = identity, Message = title, Files = files,
                     }, ct), ct);
                 pushed = job.Ran ? job.Result : null;
                 if (!job.Ran)
@@ -1597,7 +1680,7 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
         {
             try
             {
-                pull = await context.Updates.CreatePullRequestAsync(repository, DependencyUpdateRun.OnboardingBranch, defaultBranch, DependencyOnboarding.Title, plan.Body, draft: false, ct);
+                pull = await context.Updates.CreatePullRequestAsync(repository, DependencyUpdateRun.OnboardingBranch, defaultBranch, title, body, draft: false, ct);
             }
             catch (ForgeRequestException ex) when (ex.StatusCode == 422)
             {
@@ -1608,9 +1691,9 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
         }
         else
         {
-            await context.Updates.UpdatePullRequestAsync(repository, pull.Number, DependencyOnboarding.Title, plan.Body, ct);
+            await context.Updates.UpdatePullRequestAsync(repository, pull.Number, title, body, ct);
         }
-        Opened(run, pull.Number, $"opened the onboarding pull request #{pull.Number}");
+        Opened(run, pull.Number, refresh is null ? $"opened the onboarding pull request #{pull.Number}" : $"opened #{pull.Number}, which updates the outdated dependency workflows");
     }
 
     /// <summary>

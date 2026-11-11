@@ -35,9 +35,13 @@ public static class SparkModerationExtensions
     /// does not validate against <c>security.json</c>.
     /// </para>
     /// </remarks>
+    [global::MintPlayer.Spark.Abstractions.Storage.SparkRequiresStore("Spark.Moderation", Provider = global::MintPlayer.Spark.Abstractions.Storage.SparkStoreProviders.RavenDb)]
     public static ISparkBuilder AddModeration<TUser>(this ISparkBuilder builder, Action<SparkModerationOptions>? configure = null)
         where TUser : SparkUser
     {
+        // #551 D13: reviews, votes and the ledger go through RavenDB's own client.
+        global::MintPlayer.Spark.Abstractions.Storage.SparkStoreRequirementExtensions.RequireStore(builder, "Spark.Moderation", provider: global::MintPlayer.Spark.Abstractions.Storage.SparkStoreProviders.RavenDb);
+
         if (builder.Configuration is IConfigurationBuilder configurationBuilder)
             configurationBuilder.AddSparkModerationFile();
 

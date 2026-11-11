@@ -1,0 +1,116 @@
+{
+  "problems": [],
+  "repositories": {
+    "local": {
+      "problems": [],
+      "packageFiles": {
+        "github-actions": [
+          {
+            "packageFile": ".github/workflows/ci.yml",
+            "deps": [
+              {
+                "depName": "actions/checkout",
+                "versioning": "github-actions",
+                "depType": "action",
+                "replaceString": "actions/checkout@v6",
+                "currentValue": "v6",
+                "datasource": "github-tags",
+                "packageName": "actions/checkout",
+                "updates": []
+              },
+              {
+                "depName": "actions/setup-dotnet",
+                "versioning": "github-actions",
+                "depType": "action",
+                "replaceString": "actions/setup-dotnet@v6",
+                "currentValue": "v6",
+                "datasource": "github-tags",
+                "packageName": "actions/setup-dotnet",
+                "updates": []
+              },
+              {
+                "datasource": "dotnet-version",
+                "packageName": "dotnet-sdk",
+                "versioning": "npm",
+                "currentValue": "11.0.100-rc.2.26504.105",
+                "depType": "uses-with",
+                "depName": "dotnet-sdk",
+                "updates": [
+                  {
+                    "bucket": "non-major",
+                    "newVersion": "11.0.100",
+                    "newValue": "11.0.100",
+                    "releaseTimestamp": "2026-11-10T00:00:00.000Z",
+                    "newMajor": 11,
+                    "newMinor": 0,
+                    "newPatch": 100,
+                    "updateType": "patch",
+                    "isBreaking": true,
+                    "branchName": "renovate/dotnet-sdk-11.x"
+                  }
+                ],
+                "warnings": []
+              },
+              {
+                "datasource": "dotnet-version",
+                "packageName": "dotnet-sdk",
+                "versioning": "npm",
+                "currentValue": "11.0.x",
+                "depType": "uses-with",
+                "depName": "dotnet-sdk",
+                "updates": [],
+                "warnings": []
+              }
+            ]
+          }
+        ],
+        "nuget": [
+          {
+            "packageFile": "global.json",
+            "deps": [
+              {
+                "depType": "dotnet-sdk",
+                "depName": "dotnet-sdk",
+                "currentValue": "11.0.100-rc.2.26504.105",
+                "datasource": "dotnet-version",
+                "packageName": "dotnet-sdk",
+                "updates": [],
+                "versioning": "semver-coerced",
+                "warnings": []
+              }
+            ]
+          },
+          {
+            "packageFile": "src/Web/Web.csproj",
+            "deps": [
+              {
+                "datasource": "nuget",
+                "depType": "nuget",
+                "depName": "Microsoft.AspNetCore.OpenApi",
+                "currentValue": "11.0.0-rc.2.26504.105",
+                "packageName": "Microsoft.AspNetCore.OpenApi",
+                "updates": [
+                  {
+                    "bucket": "non-major",
+                    "newVersion": "11.0.0",
+                    "newValue": "11.0.0",
+                    "releaseTimestamp": "2026-11-10T17:05:44.163Z",
+                    "newMajor": 11,
+                    "newMinor": 0,
+                    "newPatch": 0,
+                    "updateType": "patch",
+                    "isBreaking": false,
+                    "isBump": true,
+                    "branchName": "renovate/microsoft.aspnetcore.openapi-11.x"
+                  }
+                ],
+                "versioning": "nuget",
+                "warnings": []
+              }
+            ]
+          }
+        ]
+      }
+    }
+  }
+}

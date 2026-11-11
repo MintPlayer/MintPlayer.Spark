@@ -39,6 +39,7 @@
 	<ItemGroup>
 		<!-- The shared read paths (MCP PRD D9) are internal to core, which grants this assembly access. -->
 		<ProjectReference Include="..\..\spark\MintPlayer.Spark\MintPlayer.Spark.csproj" />
+		<ProjectReference Include="..\..\spark\MintPlayer.Spark.RavenDB\MintPlayer.Spark.RavenDB.csproj" />
 	</ItemGroup>
 
 	<ItemGroup>

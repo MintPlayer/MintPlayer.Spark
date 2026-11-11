@@ -57,7 +57,7 @@ public class SortColumnDisclosureTests(SortColumnDisclosureTests.Host host)
 
     public class TestContext : SparkContext
     {
-        public IRavenQueryable<Vault> Vaults => Session.Query<Vault>();
+        public IQueryable<Vault> Vaults => Session.Query<Vault>();
     }
 
     /// <summary>

@@ -60,8 +60,8 @@ public class TypeConflationTests : SparkTestDriver
 
     private class ConflationContext : SparkContext
     {
-        public Raven.Client.Documents.Linq.IRavenQueryable<ConflationOpen> Opens => Session.Query<ConflationOpen>();
-        public Raven.Client.Documents.Linq.IRavenQueryable<ConflationClosed> Closeds => Session.Query<ConflationClosed>();
+        public IQueryable<ConflationOpen> Opens => Session.Query<ConflationOpen>();
+        public IQueryable<ConflationClosed> Closeds => Session.Query<ConflationClosed>();
     }
 
     public class ConflationOpenActions : DefaultPersistentObjectActions<ConflationOpen>, ISparkOwnsRowSecurity

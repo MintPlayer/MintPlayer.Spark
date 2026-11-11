@@ -91,10 +91,15 @@ public interface IForgeMergeQueue
     Task<ForgeCheckState> GetCheckStateAsync(Repository repository, string sha, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Asks the forge to run a failed check again (D9's <c>retryFlaky</c>). False when the forge cannot re-run this one
+    /// Asks the forge to run the failed <paramref name="checkRuns"/> again (D9's <c>retryFlaky</c>, the dependency bisect's
+    /// pre-run), all in one go, and returns how many of them are running again: 0 when the forge can re-run none of them
     /// (another App's check that does not support it, a run too old to re-run); the queue then evicts.
     /// </summary>
-    Task<bool> RerunCheckAsync(Repository repository, ForgeCheckRun checkRun, CancellationToken cancellationToken = default);
+    /// <remarks>
+    /// One call for the whole set, because a forge may group check runs: on GitHub, re-running one job of a workflow run
+    /// starts a new attempt of the whole run, and a second job's re-run is then refused (#589).
+    /// </remarks>
+    Task<int> RerunChecksAsync(Repository repository, IReadOnlyCollection<ForgeCheckRun> checkRuns, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// The names of every check run and commit status on <paramref name="sha"/>, ordinal-sorted and distinct, the
@@ -390,7 +395,12 @@ public sealed record ForgeCommitStatus(string Context, string State, string? Tar
 /// ⚠️ GitHub creates a suite for every App with checks permission on every push, and one with no runs can
 /// stay <c>queued</c> forever. See <see cref="CheckGate"/> for how such a suite is read.
 /// </param>
-public sealed record ForgeCheckSuite(long Id, string Status, string? Conclusion, string? AppSlug, int LatestCheckRunsCount);
+/// <param name="RunsFollow">
+/// The forge knows this suite always gets runs, so one with none yet has not started (#616). GitHub Actions' suite belongs
+/// to a workflow run, which always creates its jobs; GitHub creates it seconds before the first run (#614: 17:05:43, first
+/// run after 17:06:00), and 152 such suites on 40 commits never stayed empty (measured 2026-11-09).
+/// </param>
+public sealed record ForgeCheckSuite(long Id, string Status, string? Conclusion, string? AppSlug, int LatestCheckRunsCount, bool RunsFollow = false);
 
 /// <summary>What a workflow dispatch did.</summary>
 /// <param name="RunId">The started run, when the forge says (D14).</param>

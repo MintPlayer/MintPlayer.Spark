@@ -1,11 +1,9 @@
 using MintPlayer.Spark.Abstractions.Authorization;
-using DemoApp.Indexes;
 using DemoApp.Library.Entities;
 using MintPlayer.SourceGenerators.Attributes;
+using MintPlayer.Spark.Abstractions.Storage;
 using MintPlayer.Spark.Actions;
 using MintPlayer.Spark.Queries;
-using Raven.Client.Documents.Linq;
-using Raven.Client.Documents.Session;
 
 namespace DemoApp.Actions;
 
@@ -15,14 +13,13 @@ public partial class CarActions : DefaultPersistentObjectActions<Car>, ISparkOwn
     public string RowSecurityRationale =>
         "Demo data, published in full on purpose — see PersonActions. Note the Fleet demo scopes its own Car type by driver, which is the shape a real application wants.";
 
-    [Inject] private readonly IAsyncDocumentSession session;
+    [Inject] private readonly ISparkSession session;
 
     /// <summary>
     /// The cars owned by the company whose detail page this sub-query is rendered on.
     /// <para>
-    /// Source: <c>Custom.Company_Cars</c>, bound to the <c>Company_Cars</c> index through the
-    /// query's <c>indexName</c> — which is why it can filter on <c>CompanyId</c>, a field
-    /// <c>VCar</c> (the list screen's projection) does not carry.
+    /// Source: <c>Custom.Company_Cars</c>. Plain LINQ over the collection, so it runs on any store provider; for the
+    /// same query over a RavenDB index, see the Fleet and HR apps.
     /// </para>
     /// </summary>
     /// <remarks>
@@ -36,10 +33,10 @@ public partial class CarActions : DefaultPersistentObjectActions<Car>, ISparkOwn
     /// itself is the only filter; see the composed-queries section of the query guide.
     /// </para>
     /// </remarks>
-    public IRavenQueryable<VCompanyCar> Company_Cars(CustomQueryArgs args)
+    public IQueryable<Car> Company_Cars(CustomQueryArgs args)
     {
         args.EnsureParent("Company");
-        return session.Query<VCompanyCar, Company_Cars>()
-            .Where(c => c.CompanyId == args.Parent!.Id);
+        return session.Query<Car>()
+            .Where(c => c.Owner == args.Parent!.Id);
     }
 }

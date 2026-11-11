@@ -58,15 +58,15 @@ public class MissingReferenceRootAnalyzerTests
     {
         var diagnostics = await RunAsync("""
             using MintPlayer.Spark;
-            using Raven.Client.Documents.Linq;
+            using System.Linq;
             using TestApp.Entities;
 
             namespace TestApp;
 
             public partial class AppContext : SparkContext
             {
-                public IRavenQueryable<Site> Sites => Session.Query<Site>();
-                public IRavenQueryable<Organization> Organizations => Session.Query<Organization>();
+                public IQueryable<Site> Sites => Session.Query<Site>();
+                public IQueryable<Organization> Organizations => Session.Query<Organization>();
             }
             """);
 
@@ -82,14 +82,14 @@ public class MissingReferenceRootAnalyzerTests
     {
         var diagnostics = await RunAsync("""
             using MintPlayer.Spark;
-            using Raven.Client.Documents.Linq;
+            using System.Linq;
             using TestApp.Entities;
 
             namespace TestApp;
 
             public partial class AppContext : SparkContext
             {
-                public IRavenQueryable<Site> Sites => Session.Query<Site>();
+                public IQueryable<Site> Sites => Session.Query<Site>();
             }
             """,
             entities: Entities + """
@@ -103,7 +103,7 @@ public class MissingReferenceRootAnalyzerTests
         var diagnostic = diagnostics.Should().ContainSingle().Which;
         diagnostic.Severity.Should().Be(DiagnosticSeverity.Warning);
         diagnostic.GetMessage().Should().Contain("'Site.OrganizationId' references 'TestApp.Entities.Organization'");
-        diagnostic.GetMessage().Should().Contain("public IRavenQueryable<Organization> Organizations => Session.Query<Organization>();");
+        diagnostic.GetMessage().Should().Contain("public IQueryable<Organization> Organizations => Session.Query<Organization>();");
     }
 
     /// <summary>The trigger's shape: the target type comes from a library, and nothing roots it.</summary>
@@ -120,14 +120,14 @@ public class MissingReferenceRootAnalyzerTests
 
         var diagnostics = await RunAsync("""
             using MintPlayer.Spark;
-            using Raven.Client.Documents.Linq;
+            using System.Linq;
             using TestApp.Entities;
 
             namespace TestApp;
 
             public partial class AppContext : SparkContext
             {
-                public IRavenQueryable<Site> Sites => Session.Query<Site>();
+                public IQueryable<Site> Sites => Session.Query<Site>();
             }
             """,
             entities: """
@@ -153,14 +153,14 @@ public class MissingReferenceRootAnalyzerTests
     {
         var diagnostics = await RunAsync("""
             using MintPlayer.Spark;
-            using Raven.Client.Documents.Linq;
+            using System.Linq;
             using TestApp.Entities;
 
             namespace TestApp;
 
             public partial class AppContext : SparkContext
             {
-                public IRavenQueryable<Site> Sites => Session.Query<Site>();
+                public IQueryable<Site> Sites => Session.Query<Site>();
             }
             """,
             entities: Entities.Replace(
@@ -175,14 +175,14 @@ public class MissingReferenceRootAnalyzerTests
     {
         var diagnostics = await RunAsync("""
             using MintPlayer.Spark;
-            using Raven.Client.Documents.Linq;
+            using System.Linq;
             using TestApp.Entities;
 
             namespace TestApp;
 
             public partial class AppContext : SparkContext
             {
-                public IRavenQueryable<Site> Sites => Session.Query<Site>();
+                public IQueryable<Site> Sites => Session.Query<Site>();
             }
             """,
             entities: Entities.Replace(
@@ -203,16 +203,15 @@ public class MissingReferenceRootAnalyzerTests
             using System.Linq;
             using MintPlayer.Spark;
             using Raven.Client.Documents;
-            using Raven.Client.Documents.Linq;
             using TestApp.Entities;
 
             namespace TestApp;
 
             public partial class AppContext : SparkContext
             {
-                public IRavenQueryable<Site> Sites => Session.Query<Site>();
-                public IRavenQueryable<Organization> NamedOrganizations => Session.Query<Organization>().Where(o => o.Name != null);
-                public IRavenQueryable<Organization> Organizations => Session.Query<Organization>();
+                public IQueryable<Site> Sites => Session.Query<Site>();
+                public IQueryable<Organization> NamedOrganizations => Session.Query<Organization>().Where(o => o.Name != null);
+                public IQueryable<Organization> Organizations => Session.Query<Organization>();
             }
             """);
 
@@ -230,15 +229,14 @@ public class MissingReferenceRootAnalyzerTests
             using System.Linq;
             using MintPlayer.Spark;
             using Raven.Client.Documents;
-            using Raven.Client.Documents.Linq;
             using TestApp.Entities;
 
             namespace TestApp;
 
             public partial class AppContext : SparkContext
             {
-                public IRavenQueryable<Site> Sites => Session.Query<Site>();
-                public IRavenQueryable<Organization> NamedOrganizations => Session.Query<Organization>().Where(o => o.Name != null);
+                public IQueryable<Site> Sites => Session.Query<Site>();
+                public IQueryable<Organization> NamedOrganizations => Session.Query<Organization>().Where(o => o.Name != null);
             }
             """);
 
@@ -253,19 +251,18 @@ public class MissingReferenceRootAnalyzerTests
             using System.Linq;
             using MintPlayer.Spark;
             using Raven.Client.Documents;
-            using Raven.Client.Documents.Linq;
             using TestApp.Entities;
 
             namespace TestApp;
 
             public abstract class AppBase : SparkContext
             {
-                public IRavenQueryable<Organization> Organizations => Session.Query<Organization>().Customize(x => x.WaitForNonStaleResults());
+                public IQueryable<Organization> Organizations => Session.Query<Organization>().OrderBy(o => o.Name);
             }
 
             public partial class AppContext : AppBase
             {
-                public IRavenQueryable<Site> Sites => Session.Query<Site>();
+                public IQueryable<Site> Sites => Session.Query<Site>();
             }
             """);
 
@@ -278,19 +275,19 @@ public class MissingReferenceRootAnalyzerTests
     {
         var diagnostics = await RunAsync("""
             using MintPlayer.Spark;
-            using Raven.Client.Documents.Linq;
+            using System.Linq;
             using TestApp.Entities;
 
             namespace TestApp;
 
             public abstract class AppBase : SparkContext
             {
-                public IRavenQueryable<Organization> Organizations => Session.Query<Organization>();
+                public IQueryable<Organization> Organizations => Session.Query<Organization>();
             }
 
             public partial class AppContext : AppBase
             {
-                public IRavenQueryable<Site> Sites => Session.Query<Site>();
+                public IQueryable<Site> Sites => Session.Query<Site>();
             }
             """);
 
@@ -341,14 +338,14 @@ public class MissingReferenceRootAnalyzerTests
                         """),
                     ("AppContext.cs", """
                         using MintPlayer.Spark;
-                        using Raven.Client.Documents.Linq;
+                        using System.Linq;
                         using TestApp.Entities;
 
                         namespace TestApp;
 
                         public partial class AppContext : SparkContext
                         {
-                            public IRavenQueryable<Site> Sites => Session.Query<Site>();
+                            public IQueryable<Site> Sites => Session.Query<Site>();
 
                             public int Unrelated { get; set; }
                         }
@@ -362,8 +359,8 @@ public class MissingReferenceRootAnalyzerTests
         var context = result.Document("AppContext.cs");
         context.Should().Contain("using Organizations;");
         context.Should().Contain(
-            "    public IRavenQueryable<Site> Sites => Session.Query<Site>();\n"
-            + "    public IRavenQueryable<Organization> Organizations => Session.Query<Organization>();\n");
+            "    public IQueryable<Site> Sites => Session.Query<Site>();\n"
+            + "    public IQueryable<Organization> Organizations => Session.Query<Organization>();\n");
         result.Document("Site.cs").Should().NotContain("IRavenQueryable");
     }
 }

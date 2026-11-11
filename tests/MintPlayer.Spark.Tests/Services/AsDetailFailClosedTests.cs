@@ -85,7 +85,7 @@ public class AsDetailFailClosedTests : SparkTestDriver
 
         var parent = new Parent();
         using var session = Store.OpenAsyncSession();
-        var act = () => mapper.PopulateObjectValuesAsync(po, parent, session);
+        var act = () => mapper.PopulateObjectValuesAsync(po, parent, session.AsSparkSession());
 
         await act.Should().ThrowAsync<InvalidOperationException>()
             .WithMessage("*no registered model*",

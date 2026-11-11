@@ -4,7 +4,7 @@ import { provideHttpClient } from '@angular/common/http';
 import { provideAnimations } from '@angular/platform-browser/animations';
 import { provideSpark } from '@mintplayer/ng-spark';
 import { withServiceWorker } from '@mintplayer/ng-spark/pwa';
-import { withHydration, withSeo, withSparkLanguage, withSparkTimezone } from '@mintplayer/ng-spark/services';
+import { withHydration, withSeo, withLanguageUrls, withSparkLanguage, withSparkTimezone } from '@mintplayer/ng-spark/services';
 import { withAuth, withSparkAuth } from '@mintplayer/ng-spark/auth';
 import { withClientOperations } from '@mintplayer/ng-spark/client-operations';
 import { withBoards } from '@mintplayer/ng-spark/boards';
@@ -13,6 +13,7 @@ import { withOpenSearchDescription } from '@mintplayer/ng-spark/search';
 import { provideVideoApis } from '@mintplayer/ng-video-player';
 import { mintPlayerRenderers } from './renderers/renderers';
 import { videoPlugins } from './player/video-apis';
+import { provideAppIcons } from './icons';
 import { mintPlayerSeo } from './seo';
 
 import { routes } from './app.routes';
@@ -25,6 +26,7 @@ export const appConfig: ApplicationConfig = {
     provideHttpClient(...withSparkLanguage(), ...withSparkAuth(), ...withSparkTimezone()),
     provideAnimations(),
     provideSpark(
+      withLanguageUrls(),
       withServiceWorker(),
       withAuth(),
       withClientOperations(),
@@ -38,6 +40,7 @@ export const appConfig: ApplicationConfig = {
       withOpenSearchDescription({ title: 'MintPlayer' }),
     ),
     provideVideoApis(...videoPlugins),
+    provideAppIcons(),
     provideZonelessChangeDetection(),
   ]
 };

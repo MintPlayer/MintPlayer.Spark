@@ -20,7 +20,7 @@ public class SparkContextRootsTests
 
     /// <summary>
     /// A stand-in for <c>MintPlayer.Spark.SparkContext</c>, matched by full name, so the fixture compiles
-    /// without referencing the runtime assembly. Its <c>Session</c> is a real RavenDB session type, so the generated
+    /// without referencing the runtime assembly. Its <c>Session</c> is the real <c>ISparkSession</c>, so the generated
     /// roots and the plain-root classifier bind exactly as they do against the real context.
     /// </summary>
     private const string SparkContextStub = """
@@ -28,7 +28,7 @@ public class SparkContextRootsTests
 
         public abstract class SparkContext
         {
-            public Raven.Client.Documents.Session.IAsyncDocumentSession Session { get; set; } = null!;
+            public MintPlayer.Spark.Abstractions.Storage.ISparkSession Session { get; set; } = null!;
         }
         """;
 
@@ -45,7 +45,7 @@ public class SparkContextRootsTests
         """;
 
     private static readonly Type[] References =
-        [typeof(GenerateIndexAttribute), typeof(Raven.Client.Documents.Indexes.AbstractIndexCreationTask)];
+        [typeof(GenerateIndexAttribute), typeof(Raven.Client.Documents.Indexes.AbstractIndexCreationTask), typeof(MintPlayer.Spark.Abstractions.Storage.ISparkSession)];
 
     private static GeneratorRunResult Run(string contextSource, string entity = Entity, IEnumerable<MetadataReference>? additionalReferences = null)
         => GeneratorHarness.Run(
@@ -78,7 +78,7 @@ public class SparkContextRootsTests
         var generated = RootsFile(result);
         generated.Should().Contain("public partial class AppContext");
         generated.Should().Contain(
-            "public global::Raven.Client.Documents.Linq.IRavenQueryable<global::TestApp.Indexes.VCar> VCars"
+            "public global::System.Linq.IQueryable<global::TestApp.Indexes.VCar> VCars"
             + " => Session.Query<global::TestApp.Indexes.VCar, global::TestApp.Indexes.Cars_Overview>();");
         Errors(result).Should().BeEmpty();
     }
@@ -122,14 +122,14 @@ public class SparkContextRootsTests
     {
         var result = Run("""
             using MintPlayer.Spark;
-            using Raven.Client.Documents.Linq;
+            using System.Linq;
             using TestApp.Indexes;
 
             namespace TestApp;
 
             public partial class AppContext : SparkContext
             {
-                public IRavenQueryable<VCar> VCars => Session.Query<VCar, Cars_Overview>();
+                public IQueryable<VCar> VCars => Session.Query<VCar, Cars_Overview>();
             }
             """);
 
@@ -231,7 +231,7 @@ public class SparkContextRootsTests
             """, entity: HandWrittenView);
 
         RootsFile(result).Should().Contain(
-            "public global::Raven.Client.Documents.Linq.IRavenQueryable<global::TestApp.Views.VPersonName> VPersonNames"
+            "public global::System.Linq.IQueryable<global::TestApp.Views.VPersonName> VPersonNames"
             + " => Session.Query<global::TestApp.Views.VPersonName, global::TestApp.Views.People_ByName>();");
         Errors(result).Should().BeEmpty();
     }
@@ -265,7 +265,7 @@ public class SparkContextRootsTests
             """, entity: "// the view comes from the library", additionalReferences: [library]);
 
         RootsFile(result).Should().Contain(
-            "IRavenQueryable<global::TestApp.Views.VPersonName> VPersonNames"
+            "IQueryable<global::TestApp.Views.VPersonName> VPersonNames"
             + " => Session.Query<global::TestApp.Views.VPersonName, global::TestApp.Views.People_ByName>();");
         Errors(result).Should().BeEmpty();
     }
@@ -287,7 +287,7 @@ public class SparkContextRootsTests
             }
             """);
 
-        RootsFile(result).Should().Contain("IRavenQueryable<global::TestApp.Indexes.VCar> VCars3 =>");
+        RootsFile(result).Should().Contain("IQueryable<global::TestApp.Indexes.VCar> VCars3 =>");
         var renamed = result.GeneratorDiagnostics.Should().ContainSingle(d => d.Id == "SPARK_INDEX_013").Which;
         renamed.Severity.Should().Be(DiagnosticSeverity.Info);
         renamed.GetMessage().Should().Contain("'VCars3'");
@@ -321,8 +321,8 @@ public class SparkContextRootsTests
             """);
 
         var generated = RootsFile(result);
-        generated.Should().Contain("IRavenQueryable<global::TestApp.Indexes.VCar> VCars2 =>");
-        generated.Should().Contain("IRavenQueryable<global::TestApp.Indexes.VPerson> VPeople =>");
+        generated.Should().Contain("IQueryable<global::TestApp.Indexes.VCar> VCars2 =>");
+        generated.Should().Contain("IQueryable<global::TestApp.Indexes.VPerson> VPeople =>");
         result.GeneratorDiagnostics.Where(d => d.Id == "SPARK_INDEX_013").Should().ContainSingle();
     }
 
@@ -356,8 +356,8 @@ public class SparkContextRootsTests
             """);
 
         var generated = RootsFile(result);
-        generated.Should().Contain("IRavenQueryable<global::TestApp.Fleet.VCar> VCars =>");
-        generated.Should().Contain("IRavenQueryable<global::TestApp.Rental.VCar> VCars2 =>");
+        generated.Should().Contain("IQueryable<global::TestApp.Fleet.VCar> VCars =>");
+        generated.Should().Contain("IQueryable<global::TestApp.Rental.VCar> VCars2 =>");
         Errors(result).Should().BeEmpty();
     }
 
@@ -374,16 +374,16 @@ public class SparkContextRootsTests
     {
         var result = Run("""
             using MintPlayer.Spark;
-            using Raven.Client.Documents.Linq;
+            using System.Linq;
             using TestApp.Entities;
 
             namespace TestApp;
 
             public partial class AppContext : SparkContext
             {
-                public IRavenQueryable<Bike> Bikes => Session.Query<Bike>();
-                public IRavenQueryable<Bike> GetterArrowBikes { get => this.Session.Query<Bike>(); }
-                public IRavenQueryable<Bike> BlockBikes { get { return Session.Query<Bike>(); } }
+                public IQueryable<Bike> Bikes => Session.Query<Bike>();
+                public IQueryable<Bike> GetterArrowBikes { get => this.Session.Query<Bike>(); }
+                public IQueryable<Bike> BlockBikes { get { return Session.Query<Bike>(); } }
             }
             """, entity: Bike);
 
@@ -403,21 +403,20 @@ public class SparkContextRootsTests
             using System.Linq;
             using MintPlayer.Spark;
             using Raven.Client.Documents;
-            using Raven.Client.Documents.Linq;
             using TestApp.Entities;
 
             namespace TestApp;
 
             public partial class AppContext : SparkContext
             {
-                public IRavenQueryable<Bike> Bikes => Session.Query<Bike>();
-                public IRavenQueryable<Bike> ArchivedBikes => Session.Query<Bike>().Where(b => b.Archived);
-                public IRavenQueryable<Bike> IndexBikes => Session.Query<Bike>("Bikes/ByModel");
-                public IRavenQueryable<Bike> CollectionBikes => Session.Query<Bike>(collectionName: "OtherBikes");
-                public IRavenQueryable<Bike> CustomizedBikes => Session.Query<Bike>().Customize(x => x.WaitForNonStaleResults());
-                public IRavenQueryable<Bike> HelperBikes => Q<Bike>();
-                public IRavenQueryable<Bike> LocalBikes { get { var q = Session.Query<Bike>(); return q; } }
-                private IRavenQueryable<T> Q<T>() => Session.Query<T>();
+                public IQueryable<Bike> Bikes => Session.Query<Bike>();
+                public IQueryable<Bike> ArchivedBikes => Session.Query<Bike>().Where(b => b.Archived);
+                public IQueryable<Bike> SortedBikes => Session.Query<Bike>().OrderBy(b => b.Model);
+                public IQueryable<Bike> FirstBikes => Session.Query<Bike>().Take(10);
+                public IQueryable<Bike> LaterBikes => Session.Query<Bike>().Skip(1);
+                public IQueryable<Bike> HelperBikes => Q<Bike>();
+                public IQueryable<Bike> LocalBikes { get { var q = Session.Query<Bike>(); return q; } }
+                private IQueryable<T> Q<T>() where T : class => Session.Query<T>();
             }
             """, entity: Bike);
 
@@ -436,14 +435,14 @@ public class SparkContextRootsTests
     {
         var result = Run("""
             using MintPlayer.Spark;
-            using Raven.Client.Documents.Linq;
+            using System.Linq;
             using TestApp.Entities;
 
             namespace TestApp;
 
             public abstract class AppBase : SparkContext
             {
-                public IRavenQueryable<Bike> Bikes => Session.Query<Bike>();
+                public IQueryable<Bike> Bikes => Session.Query<Bike>();
             }
 
             public partial class AppContext : AppBase { }
@@ -460,14 +459,14 @@ public class SparkContextRootsTests
     {
         var result = Run("""
             using MintPlayer.Spark;
-            using Raven.Client.Documents.Linq;
+            using System.Linq;
             using TestApp.Entities;
 
             namespace TestApp;
 
             public class AppContext : SparkContext
             {
-                public IRavenQueryable<Bike> Bikes => Session.Query<Bike>();
+                public IQueryable<Bike> Bikes => Session.Query<Bike>();
             }
             """, entity: Bike);
 
@@ -493,14 +492,14 @@ public class SparkContextRootsTests
             GeneratorName,
             [HandWrittenView, """
                 using MintPlayer.Spark;
-                using Raven.Client.Documents.Linq;
+                using System.Linq;
                 using TestApp.Views;
 
                 namespace TestApp;
 
                 public partial class AppContext : SparkContext
                 {
-                    public IRavenQueryable<Person> People => Session.Query<Person>();
+                    public IQueryable<Person> People => Session.Query<Person>();
                 }
 
                 public static class Unrelated

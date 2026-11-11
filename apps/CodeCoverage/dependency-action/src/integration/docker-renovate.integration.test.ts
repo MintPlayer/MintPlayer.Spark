@@ -27,7 +27,7 @@ describe.skipIf(!runnable)('Renovate lookup (pinned image)', () => {
     const out = tempDir();
     const { document } = await runLookup({
       exec: realExec, repoDir: dir, outDir: out, workDir: tempDir(), expectedSha: sha,
-      fetcher: async () => ({ 'releases-index': [] }), fetchActionYml: async () => null,
+      platforms: { sdks: {}, unstable: [] }, fetchActionYml: async () => null,
       githubTokenEnv: process.env.GITHUB_TOKEN ? 'GITHUB_TOKEN' : undefined,
     });
     expect(isValid('lookup', document).errors).toBe('');

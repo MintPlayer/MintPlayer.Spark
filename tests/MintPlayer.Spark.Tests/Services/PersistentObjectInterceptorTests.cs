@@ -315,7 +315,7 @@ public sealed class RecordingReplicationInterceptor(ReplicationLog sync) : IAfte
 
 public class InterceptedContext : SparkContext
 {
-    public IRavenQueryable<InterceptedNote> Notes => Session.Query<InterceptedNote>();
+    public IQueryable<InterceptedNote> Notes => Session.Query<InterceptedNote>();
 }
 
 public static class InterceptedNoteModel

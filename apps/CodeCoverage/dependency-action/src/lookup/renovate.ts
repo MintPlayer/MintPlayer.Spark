@@ -15,7 +15,7 @@ export const RENOVATE_IMAGE =
  * packages carry one groupName. D-S12b: the separate* options so holds and cooldown have fallback
  * candidates (without them Renovate reports one candidate per bucket).
  */
-export function renovateConfig(): Record<string, unknown> {
+export function renovateConfig(unstable: readonly string[] = []): Record<string, unknown> {
   return {
     extends: ['group:monorepos', 'group:recommended'],
     separateMajorMinor: true,
@@ -26,6 +26,9 @@ export function renovateConfig(): Record<string, unknown> {
     onboarding: false,
     requireConfig: 'optional',
     dependencyDashboard: false,
+    // #606 D8: a package on the preview track (a `track: preview` rule, or a companion of an SDK on it) is offered
+    // prereleases; everything else keeps Renovate's default of stable releases only.
+    ...(unstable.length > 0 ? { packageRules: [{ matchPackageNames: [...unstable], ignoreUnstable: false }] } : {}),
   };
 }
 
@@ -44,6 +47,8 @@ export interface RenovateOptions {
   /** Env var NAME holding a RENOVATE_HOST_RULES JSON array (private feeds, §13.3). Passed by NAME. */
   hostRulesEnv?: string;
   image?: string;
+  /** #606 D8: package globs offered prereleases. */
+  unstable?: readonly string[];
 }
 
 /**
@@ -91,7 +96,7 @@ export async function runRenovate(o: RenovateOptions): Promise<RenovateRun> {
   await fs.mkdir(outDir, { recursive: true });
   await fs.chmod(outDir, 0o777).catch(() => undefined);
   const configFile = path.join(o.workDir, 'renovate.json');
-  await fs.writeFile(configFile, JSON.stringify(renovateConfig(), null, 2));
+  await fs.writeFile(configFile, JSON.stringify(renovateConfig(o.unstable ?? []), null, 2));
   const image = o.image ?? RENOVATE_IMAGE;
   const env: Record<string, string | undefined> = {};
   if (o.githubTokenEnv) env.RENOVATE_GITHUB_COM_TOKEN = process.env[o.githubTokenEnv];

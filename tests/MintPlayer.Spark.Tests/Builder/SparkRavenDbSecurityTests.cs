@@ -97,7 +97,7 @@ public sealed class SparkRavenDbSecurityTests : IDisposable
         var env = Substitute.For<IHostEnvironment>();
         env.EnvironmentName.Returns(Environments.Production);
         services.AddSingleton(env);
-        services.AddSpark(configuration, _ => { });
+        services.AddSpark(configuration, spark => spark.UseRavenDb());
         return services.BuildServiceProvider().GetRequiredService<IDocumentStore>();
     }
 

@@ -1,3 +1,4 @@
+import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { provideRouter, Routes } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
@@ -53,7 +54,7 @@ async function setup(type: EntityType = personType, overrides: Record<string, un
       provideRouter(routes),
       { provide: SparkService, useValue: service },
       { provide: SparkLiveService, useValue: live },
-      { provide: SparkLanguageService, useValue: { t: (k: string) => k, resolve: (ts: any) => ts?.en ?? '' } },
+      { provide: SparkLanguageService, useValue: { language: signal('en'), defaultLanguage: signal('en'), languages: signal({}), t: (k: string) => k, resolve: (ts: any) => ts?.en ?? '' } },
     ],
   });
   const harness = await RouterTestingHarness.create();

@@ -221,6 +221,26 @@ public class CheckGateTests
             .Verdict.Should().Be(ECheckVerdict.Passed);
 
     [Fact]
+    public void Item616_a_workflow_suite_with_no_runs_yet_keeps_the_gate_pending()
+    {
+        // #614's head at 17:05:47: the early checks concluded, both Actions suites created at 17:05:43 with no runs yet.
+        var state = State([Run("PR size", suite: 5), Run("GitGuardian Security Checks", suite: 6)],
+            suites: [Suite(5, slug: "coverageproduction"), Suite(6, slug: "gitguardian"), Suite(9, "queued", runs: 0, slug: "nx-cloud"),
+                new ForgeCheckSuite(11, "queued", null, "github-actions", 0, RunsFollow: true),
+                new ForgeCheckSuite(12, "in_progress", null, "github-actions", 0, RunsFollow: true)]);
+
+        var result = Evaluate(state);
+
+        result.Verdict.Should().Be(ECheckVerdict.Pending);
+        result.PendingSuites.Should().Equal(["github-actions"]);
+    }
+
+    [Fact]
+    public void Item616_a_completed_workflow_suite_with_no_runs_does_not_hold_the_gate()
+        => Evaluate(State([Run("build")], suites: [Suite(1), new ForgeCheckSuite(11, "completed", "success", "github-actions", 0, RunsFollow: true)]))
+            .Verdict.Should().Be(ECheckVerdict.Passed);
+
+    [Fact]
     public void A_suite_of_excluded_runs_is_not_waited_for()
         => Evaluate(State([Run("build"), Run("slow-scan", "in_progress", suite: 3)], suites: [Suite(1), Suite(3, "in_progress")]),
                 exclusions: ["slow-scan"])

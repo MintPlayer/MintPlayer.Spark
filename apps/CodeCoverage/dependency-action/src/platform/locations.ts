@@ -1,7 +1,8 @@
 import type { PlatformLocation, PlatformLocationKind, Sdk } from '../contracts/types';
+import { SDKS } from '../contracts/types';
 import { parseText, type TextDoc } from '../core/lineEdit';
 import { basename, isDockerfile, isWorkflowFile, type RepoFiles } from '../util/repoFiles';
-import { channelOf, tfmChannel } from './channels';
+import { channelOf, sortChannelsDesc, tfmChannel } from './channels';
 
 /**
  * Platform location scanning (R7/R8, S19), shared by the lookup (platform records) and the apply
@@ -28,6 +29,9 @@ const DOCKER_IMAGES: Record<Sdk, RegExp> = {
   python: /^(?:docker\.io\/)?(?:library\/)?python$/,
   java: /^(?:docker\.io\/)?(?:library\/)?(?:eclipse-temurin|openjdk|amazoncorretto|ibm-semeru-runtimes)$/,
   go: /^(?:docker\.io\/)?(?:library\/)?golang$/,
+  php: /^(?:docker\.io\/)?(?:library\/)?php$/,
+  ruby: /^(?:docker\.io\/)?(?:library\/)?ruby$/,
+  rust: /^(?:docker\.io\/)?(?:library\/)?rust$/,
 };
 
 /** The sdk whose platform record owns this Docker image's tags (D-S12c), or null. */
@@ -42,6 +46,9 @@ const SETUP_ACTIONS: Record<Sdk, { action: string; keys: string[] }> = {
   python: { action: 'actions/setup-python', keys: ['python-version'] },
   java: { action: 'actions/setup-java', keys: ['java-version'] },
   go: { action: 'actions/setup-go', keys: ['go-version'] },
+  php: { action: 'shivammathur/setup-php', keys: ['php-version'] },
+  ruby: { action: 'ruby/setup-ruby', keys: ['ruby-version'] },
+  rust: { action: 'actions-rust-lang/setup-rust-toolchain', keys: ['toolchain'] },
 };
 
 const VERSION_FILES: Record<Sdk, string[]> = {
@@ -50,6 +57,10 @@ const VERSION_FILES: Record<Sdk, string[]> = {
   python: ['.python-version'],
   java: ['.java-version'],
   go: ['.go-version'],
+  php: ['.php-version'],
+  ruby: ['.ruby-version'],
+  // The legacy toolchain file holds just the channel; rust-toolchain.toml is scanned on its own.
+  rust: ['rust-toolchain'],
 };
 
 const TOOL_VERSIONS_NAMES: Record<Sdk, string[]> = {
@@ -58,6 +69,9 @@ const TOOL_VERSIONS_NAMES: Record<Sdk, string[]> = {
   python: ['python'],
   java: ['java'],
   go: ['golang', 'go'],
+  php: ['php'],
+  ruby: ['ruby'],
+  rust: ['rust'],
 };
 
 function loc(sdk: Sdk, file: string, kind: PlatformLocationKind, line: number, start: number, value: string, opts: Partial<Found> = {}): Found {
@@ -105,7 +119,38 @@ function scanTfm(file: string, doc: TextDoc): Found[] {
         }),
       );
     }
+    out.push(...scanTfmConditions(file, l.text, i));
   });
+  return out;
+}
+
+/** `'$(TargetFramework)' == 'net10.0'` (or `!=`, either side): an equality test on the TFM, not a compatibility test. */
+const TFM_EQUALITY = /\$\(TargetFramework\)['"]?\s*[!=]=|[!=]=\s*['"]?\$\(TargetFramework\)/;
+
+/**
+ * #606 S5: a `Condition` that compares the TFM with a literal (`<PropertyGroup Condition="'$(TargetFramework)' ==
+ * 'net10.0'">`) goes dead when `strategy: replace` moves the TFM, and nothing fails until what it guarded is missed. It is
+ * reported for review, never edited. `IsTargetFrameworkCompatible(...)` conditions survive a move and are left alone, as
+ * are the conditions on a TargetFramework element itself, which {@link scanTfm} already reports.
+ */
+function scanTfmConditions(file: string, text: string, line: number): Found[] {
+  const out: Found[] = [];
+  const re = /<(\w+)\b[^>]*?\bCondition\s*=\s*(["'])(.*?)\2/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) {
+    const [whole, element, , condition] = m;
+    if (/^TargetFrameworks?$/.test(element) || !TFM_EQUALITY.test(condition)) continue;
+    const [channel] = sortChannelsDesc([...condition.matchAll(/'(net\d+\.\d+)'/g)].map((t) => tfmChannel(t[1])).filter((c): c is string => c !== null));
+    if (channel === undefined) continue;
+    const start = m.index + whole.length - 1 - condition.length;
+    out.push(
+      loc('dotnet', file, 'tfm', line, start, condition, {
+        channel,
+        computed: true,
+        reason: `a ${element} condition tests the TFM for net${channel}: review it when the TFM moves`,
+      }),
+    );
+  }
   return out;
 }
 
@@ -180,6 +225,68 @@ function scanDocker(sdk: Sdk, file: string, doc: TextDoc): Found[] {
 }
 
 /**
+ * #606 M6 (G6): a workflow's own images: `container: node:22`, `image: node:22-alpine` (under `container:` or
+ * `services:`) and `uses: docker://node:22`. Kind `docker`, as a Dockerfile's FROM, so Renovate's docker record of the
+ * same tag folds into the platform record (R31).
+ */
+function scanWorkflowImage(sdk: Sdk, file: string, doc: TextDoc): Found[] {
+  const out: Found[] = [];
+  doc.lines.forEach((l, i) => {
+    const m = l.text.match(/^(\s*(?:-\s+)?(?:container|image|uses):\s*(['"]?)(docker:\/\/)?)([^\s:@'"]+):([^\s@'"#]+)(@sha256:[0-9a-f]{64})?\2\s*(#.*)?$/);
+    if (!m || (/uses:/.test(m[1]) && !m[3]) || !DOCKER_IMAGES[sdk].test(m[4])) return;
+    const digest = !!m[6];
+    const computed = digest || /\$\{\{/.test(m[5]);
+    out.push(
+      loc(sdk, file, 'docker', i, m[1].length + m[4].length + 1, m[5], {
+        computed,
+        reason: digest ? 'digest-pinned image (the bot plans image digests as docker records)' : computed ? 'expression' : null,
+      }),
+    );
+  });
+  return out;
+}
+
+/**
+ * #606 M6 (G6): the entries of a matrix list a setup-* step reads (`node-version: ${{ matrix.node }}` with
+ * `node: [20, 22]` or a block list). Each entry is a location of kind `matrix`; the step's own value stays computed.
+ */
+function scanMatrix(sdk: Sdk, file: string, doc: TextDoc): Found[] {
+  const keys = new Set(
+    scanSetupAction(sdk, file, doc)
+      .map((f) => f.value.match(/^\$\{\{\s*matrix\.([\w-]+)\s*\}\}$/)?.[1])
+      .filter((k): k is string => k !== undefined),
+  );
+  const out: Found[] = [];
+  const entry = (line: number, start: number, raw: string) => {
+    const value = raw.replace(/^(['"])(.*)\1$/, '$2');
+    if (value === '' || /\$\{\{/.test(value)) return;
+    out.push(loc(sdk, file, 'matrix', line, start + (value === raw ? 0 : 1), value));
+  };
+  const lines = doc.lines;
+  for (let i = 0; i < lines.length; i++) {
+    const m = lines[i].text.match(/^(\s*)([\w-]+):(\s*)(\[.*\])?\s*(#.*)?$/);
+    if (!m || !keys.has(m[2])) continue;
+    if (m[4]) {
+      // Inline: `node: [20, '22.x']`.
+      let offset = m[1].length + m[2].length + 1 + m[3].length + 1;
+      for (const part of m[4].slice(1, -1).split(',')) {
+        const value = part.trim();
+        if (value) entry(i, offset + part.indexOf(value), value);
+        offset += part.length + 1;
+      }
+      continue;
+    }
+    // Block: `node:` then `- 20` lines indented deeper.
+    for (let j = i + 1; j < lines.length; j++) {
+      const b = lines[j].text.match(/^(\s*)-\s+([^\s#]+)\s*(#.*)?$/);
+      if (!b || b[1].length <= m[1].length) break;
+      entry(j, lines[j].text.indexOf(b[2]), b[2]);
+    }
+  }
+  return out;
+}
+
+/**
  * `with:` keys of a setup-* step, found line-by-line: a `uses: actions/setup-x@` line, then the
  * following lines indented deeper than the step's `- `, up to the next step.
  */
@@ -201,19 +308,37 @@ function scanSetupAction(sdk: Sdk, file: string, doc: TextDoc): Found[] {
         }
       }
     }
+    const step: Found[] = [];
+    const keyIndents: number[] = [];
+    let quality: { line: number; start: number; raw: string; indent: number } | null = null;
     for (let j = i + 1; j < lines.length; j++) {
       const t = lines[j].text;
       if (/^\s*$/.test(t) || /^\s*#/.test(t)) continue;
       const indent = t.match(/^(\s*)/)![1].length;
       if (indent <= stepIndent) break;
+      if (/^\s*[A-Za-z0-9_-]+:/.test(t)) keyIndents.push(indent);
       for (const key of keys) {
         const km = t.match(new RegExp(`^(\\s*${key}:\\s*)(['"]?)([^'"#\\n]*?)\\2(\\s*(#.*)?)$`));
         if (!km) continue;
         const raw = km[3];
         const start = km[1].length + km[2].length;
         const computed = raw === '' || raw === '|' || raw === '>' || /\$\{\{/.test(raw);
-        out.push(loc(sdk, file, 'setup-action', j, start, raw, { computed, reason: computed ? 'expression or multi-line value' : null }));
+        step.push(loc(sdk, file, 'setup-action', j, start, raw, { computed, reason: computed ? 'expression or multi-line value' : null }));
       }
+      const qm = sdk === 'dotnet' ? t.match(/^(\s*dotnet-quality:\s*)(['"]?)([^'"#\s]*)\2(\s*(#.*)?)$/) : null;
+      if (qm) quality = { line: j, start: qm[1].length + qm[2].length, raw: qm[3], indent };
+    }
+    out.push(...step);
+    if (quality) {
+      // #617 D31: the quality applies to the step's version; removing it must leave the `with:` mapping non-empty.
+      const version = step.find((f) => !f.computed);
+      const alone = keyIndents.filter((n) => n === quality!.indent).length <= 1;
+      const computed = alone || quality.raw === '' || /\$\{\{/.test(quality.raw);
+      out.push(loc(sdk, file, 'dotnet-quality', quality.line, quality.start, quality.raw, {
+        channel: version?.channel ?? null,
+        computed,
+        reason: alone ? "the step's only with: input" : computed ? 'expression or empty value' : null,
+      }));
     }
   }
   return out;
@@ -276,17 +401,62 @@ function scanMavenRelease(file: string, doc: TextDoc): Found[] {
   return out;
 }
 
-function scanRequiresPython(file: string, doc: TextDoc): Found[] {
+/**
+ * Every `<prefix>"value"` / `<prefix>'value'` on a line of its own, where `prefix` is a line-start
+ * pattern such as `requires-python\s*=\s*`. `opts` decides, per value, what the location reports.
+ */
+function scanQuoted(sdk: Sdk, file: string, doc: TextDoc, kind: PlatformLocationKind, prefix: RegExp, opts: (value: string) => Partial<Found> = () => ({})): Found[] {
+  const re = new RegExp(`^(\\s*${prefix.source})(['"])([^'"]+)\\2`);
   const out: Found[] = [];
   doc.lines.forEach((l, i) => {
-    const m = l.text.match(/^(\s*requires-python\s*=\s*")([^"]+)"/);
-    if (!m) return;
-    out.push(loc('python', file, 'requires-python', i, m[1].length, m[2], { channel: null, computed: true, reason: 'a range (reported, not edited)' }));
+    const m = l.text.match(re);
+    if (m) out.push(loc(sdk, file, kind, i, m[1].length + 1, m[3], opts(m[3])));
   });
   return out;
 }
 
-export async function scanLocations(files: RepoFiles, sdks: readonly Sdk[] = ['dotnet', 'node', 'python', 'java', 'go']): Promise<Found[]> {
+const RANGE_REASON = 'a range or minimum: widened by hand, never narrowed or raised (#606)';
+const reported = (reason: string) => (): Partial<Found> => ({ channel: null, computed: true, reason });
+
+function scanRequiresPython(file: string, doc: TextDoc): Found[] {
+  return scanQuoted('python', file, doc, 'requires-python', /requires-python\s*=\s*/, reported('a range (reported, not edited)'));
+}
+
+/** composer.json: `require.php` is a range (reported); `config.platform.php` is the exact version composer resolves for (edited). */
+function scanComposer(file: string, doc: TextDoc): Found[] {
+  const require = scanJsonKey('php', file, doc, 'php', 'composer-require', /"require"\s*:/).map((f) => ({
+    ...f,
+    channel: null,
+    computed: true,
+    reason: RANGE_REASON,
+  }));
+  const platform = scanJsonKey('php', file, doc, 'php', 'composer-platform', /"platform"\s*:/);
+  return [...require, ...platform];
+}
+
+/** Gemfile `ruby "3.4.7"` (exact: edited) or `ruby "~> 4.0.0"` (a range: reported); `ruby file: ...` names no version. */
+function scanGemfile(file: string, doc: TextDoc): Found[] {
+  return scanQuoted('ruby', file, doc, 'gemfile-ruby', /ruby\s*\(?\s*/, (v) => (/^\d+\.\d+(\.\d+)?$/.test(v) ? {} : reported(RANGE_REASON)()));
+}
+
+/** A gemspec's `required_ruby_version`: a gem's minimum, reported only. */
+function scanGemspec(file: string, doc: TextDoc): Found[] {
+  return scanQuoted('ruby', file, doc, 'gemspec-ruby', /\w+\.required_ruby_version\s*=\s*/, reported(RANGE_REASON));
+}
+
+/** rust-toolchain.toml `channel = "1.99.0"` (edited); a floating `stable`/`beta`/`nightly` names no channel to move. */
+function scanRustToolchain(file: string, doc: TextDoc): Found[] {
+  return scanQuoted('rust', file, doc, 'rust-toolchain', /channel\s*=\s*/, (v) =>
+    channelOf('rust', v) === null ? reported('a floating channel (stable, beta, nightly): nothing to move')() : {},
+  );
+}
+
+/** Cargo.toml `rust-version` (the MSRV): reported only, never raised (#606 D11). */
+function scanRustVersion(file: string, doc: TextDoc): Found[] {
+  return scanQuoted('rust', file, doc, 'rust-version', /rust-version\s*=\s*/, reported('the MSRV: widened only, never raised by an SDK move (#606 D11)'));
+}
+
+export async function scanLocations(files: RepoFiles, sdks: readonly Sdk[] = SDKS): Promise<Found[]> {
   const out: Found[] = [];
   const all = await files.list();
   for (const file of all) {
@@ -305,10 +475,15 @@ export async function scanLocations(files: RepoFiles, sdks: readonly Sdk[] = ['d
       if (sdk === 'python' && name === 'pyproject.toml') wanted.push((d) => scanRequiresPython(file, d));
       if (sdk === 'java' && name === 'pom.xml') wanted.push((d) => scanMavenRelease(file, d));
       if (sdk === 'go' && name === 'go.mod') wanted.push((d) => scanGoMod(file, d));
+      if (sdk === 'php' && name === 'composer.json') wanted.push((d) => scanComposer(file, d));
+      if (sdk === 'ruby' && (name === 'Gemfile' || name === 'gems.rb')) wanted.push((d) => scanGemfile(file, d));
+      if (sdk === 'ruby' && name.endsWith('.gemspec')) wanted.push((d) => scanGemspec(file, d));
+      if (sdk === 'rust' && name === 'rust-toolchain.toml') wanted.push((d) => scanRustToolchain(file, d));
+      if (sdk === 'rust' && name === 'Cargo.toml') wanted.push((d) => scanRustVersion(file, d));
       if (VERSION_FILES[sdk].includes(name)) wanted.push((d) => scanVersionFile(sdk, file, d));
       if (name === '.tool-versions') wanted.push((d) => scanToolVersions(sdk, file, d));
       if (isDockerfile(file)) wanted.push((d) => scanDocker(sdk, file, d));
-      if (isWorkflowFile(file)) wanted.push((d) => scanSetupAction(sdk, file, d));
+      if (isWorkflowFile(file)) wanted.push((d) => scanSetupAction(sdk, file, d), (d) => scanWorkflowImage(sdk, file, d), (d) => scanMatrix(sdk, file, d));
     }
     if (wanted.length === 0) continue;
     let doc: TextDoc;

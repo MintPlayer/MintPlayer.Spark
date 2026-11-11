@@ -110,6 +110,18 @@ public partial class MergeQueueEngine : IMergeQueueEngine
             return;
         }
 
+        // A review of a pull request that is not queued may queue a backport the App opened, like a command would, so the
+        // repository may have no queue document yet. It is stored only when the backport is queued.
+        if (signal.Kind == EMergeQueueSignal.Reviewed && signal.Number is { } approvedNumber && await LoadActiveAsync(signal.RepositoryId, approvedNumber, ct) is null)
+        {
+            if (await LoadContextAsync(signal.RepositoryId, create: false, ct, orUnsaved: true) is { } approvalContext)
+            {
+                await QueueApprovedBackportAsync(approvalContext, approvedNumber, ct);
+                await session.SaveChangesAsync(ct);
+            }
+            return;
+        }
+
         if (await LoadContextAsync(signal.RepositoryId, create: false, ct) is not { } context) return;
 
         switch (signal.Kind)
@@ -389,7 +401,7 @@ public partial class MergeQueueEngine : IMergeQueueEngine
         if (parsed.Errors.Count > 0)
             return new("configuration", "`coverage.yml` on the default branch has errors in `mergeQueue:`:\n" + string.Join("\n", parsed.Errors.Select(e => $"- {e}")));
         if (parsed.Section is not { Enabled: true } section)
-            return new("disabled", "The merge queue is not enabled: `coverage.yml` on the default branch needs `mergeQueue: { enabled: true }`.");
+            return new("disabled", "The merge queue is not enabled: `coverage.yml` on the default branch needs `mergeQueue: { enabled: true }`. A pull request that adds it is merged without the queue.");
         if (!pull.IsOpen)
             return new("closed", "The pull request is closed.");
         if (pull.IsDraft)
@@ -483,6 +495,13 @@ public partial class MergeQueueEngine : IMergeQueueEngine
             && await context.Queue.GetActorRoleAsync(context.Repository, author, ct) >= EForgeRepositoryRole.Write)
             return null;
 
+        // A backport the App opened counts as a writer's under ExternalAuthors (owner, 2026-11-07: "exempt our own bot").
+        // The App is never a collaborator, so without this every backport waited for a person. The change passed the floor
+        // on its own pull request, and only a writer or an App with write access pushes to a branch in the base repository.
+        // Always still holds it until a writer approves, and that approval queues it (QueueApprovedBackportAsync).
+        if (floor == EMergeQueueApprovalFloor.ExternalAuthors && await IsAppsOwnBackportAsync(context, entry, ct))
+            return null;
+
         // Dependency-updates PRD R27 (S18-D3): the updater's own rolling pull request counts as approved when its pinned head
         // is the commit the bot pushed and validated itself and no human commit is on the branch. The App is never a
         // collaborator, so the floor could otherwise never pass without a person. A replayed human commit makes the head a
@@ -518,6 +537,49 @@ public partial class MergeQueueEngine : IMergeQueueEngine
             && number == entry.Number
             && string.Equals(rolling, bot, StringComparison.OrdinalIgnoreCase)
             && string.Equals(entry.PinnedHeadSha, rolling, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// <paramref name="entry"/> is a backport pull request the App opened: a <see cref="BackportPullRequest"/> records it,
+    /// and its head is not in a fork.
+    /// </summary>
+    private async Task<bool> IsAppsOwnBackportAsync(Context context, MergeQueueEntry entry, CancellationToken ct)
+        => !entry.IsFork && context.Repository.Id is { } repositoryId
+           && await session.LoadAsync<BackportPullRequest>(BackportPullRequest.DocumentId(repositoryId, entry.Number), ct) is not null;
+
+    /// <summary>
+    /// A review on a pull request that is not in the queue. When it is a backport the App opened, the queue takes that
+    /// line's backports, and a writer's latest review approves it with no writer's latest review requesting changes,
+    /// the App queues it as it queues a fresh backport (owner, 2026-11-07). The approval floor is checked again at enqueue.
+    /// </summary>
+    private async Task QueueApprovedBackportAsync(Context context, int number, CancellationToken ct)
+    {
+        var repository = context.Repository;
+        if (repository.Id is not { } repositoryId || repository.DefaultBranch is not { } defaultBranch) return;
+        if (await session.LoadAsync<BackportPullRequest>(BackportPullRequest.DocumentId(repositoryId, number), ct) is not { } backport) return;
+
+        // Like a fresh backport (#570 M7, D12): only where the default branch's backport.enqueue and mergeQueue.branches
+        // let the App queue one. Elsewhere a person queues it, and an approval says nothing.
+        var yml = await context.Forge.GetFileContentAsync(repository, defaultBranch, CoverageYml.FileName, ct);
+        var queue = MergeQueueYml.Parse(yml, defaultBranch) is { Section: { } section, Errors.Count: 0 } ? section : null;
+        if (!PackageVersioning.BackportRecipient.Enqueues(PackageVersioning.BackportYml.Parse(yml).Section, queue, backport.Branch)) return;
+
+        var latest = (await context.Queue.GetReviewsAsync(repository, number, ct))
+            .Where(r => r.ReviewerLogin is not null && r.State is EForgeReviewState.Approved or EForgeReviewState.ChangesRequested or EForgeReviewState.Dismissed)
+            .GroupBy(r => r.ReviewerLogin!, StringComparer.OrdinalIgnoreCase)
+            .Select(g => g.Last())
+            .ToList();
+        var approved = false;
+        foreach (var review in latest.Where(r => r.State is EForgeReviewState.Approved or EForgeReviewState.ChangesRequested))
+        {
+            if (await context.Queue.GetActorRoleAsync(repository, review.ReviewerLogin!, ct) < EForgeRepositoryRole.Write) continue;
+            if (review.State == EForgeReviewState.ChangesRequested) return;
+            approved = true;
+        }
+        if (!approved) return;
+        // The context may hold an unsaved queue document (a repository whose queue never held anything); enqueueing needs it.
+        await session.StoreAsync(context.Document, context.Document.Id, ct);
+        await EnqueueAsync(context, number, PackageVersioning.BackportRegenerationEngine.QueueActor, EMergeQueueCommandSource.Backports, null, ct);
     }
 
     /// <summary>What a run of this configuration takes of the App (§0 D95).</summary>
@@ -1358,11 +1420,10 @@ public partial class MergeQueueEngine : IMergeQueueEngine
                     if (fromPoll) await ScheduleAsync(entry, EMergeQueueStep.PollChecks, ChecksPollInterval, ct);
                     return;
                 }
-                // D9: one more chance for each failed check run; a commit status cannot be re-run.
-                var rerun = 0;
-                foreach (var run in state.CheckRuns.Where(r => gate.Failed.Contains(r.Name) && CheckGate.ReadRun(r.Status, r.Conclusion) == ECheckVerdict.Failed))
-                    if (await context.Queue.RerunCheckAsync(context.Repository, run, ct))
-                        rerun++;
+                // D9: one more chance for each failed check run; a commit status cannot be re-run. All in one call, so the
+                // forge can re-run the jobs of one workflow run together (#589).
+                var rerun = await context.Queue.RerunChecksAsync(context.Repository,
+                    [.. state.CheckRuns.Where(r => gate.Failed.Contains(r.Name) && CheckGate.ReadRun(r.Status, r.Conclusion) == ECheckVerdict.Failed)], ct);
                 if (rerun > 0)
                 {
                     entry.CheckRetries++;

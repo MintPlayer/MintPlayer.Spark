@@ -68,4 +68,27 @@ public class DependencyLookupIngestTests
         graph.Nodes.Single(n => n.Id == app.Id).ScannedAt.Should().Be(DependencyTestKit.Now, "a repository whose lookup ran counts as scanned");
         appManifest.LookupSha.Should().Be(DependencyTestKit.Sha);
     }
+
+    /// <summary>#606 M7: what the repository status shows per SDK, from the real S19 records.</summary>
+    [Fact]
+    public void The_platforms_are_the_current_channels_and_the_next_stable_and_newer_preview()
+    {
+        PlatformRecord Platform(string name) => DependencyContractReader.ReadPlatform(DependencyTestKit.ContractFixture("valid", name)).Document!;
+        var node = Platform("platform.s19-node.json");
+        var dotnet = Platform("platform.s19-dotnet.json");
+        var rust = new PlatformRecord
+        {
+            Sdk = "rust", Source = "endoflife.date", Current = new PlatformCurrent { Channels = ["1.98"] },
+            Candidates = [new() { Channel = "1.100", Preview = true }, new() { Channel = "1.99" }],
+        };
+        var none = new PlatformRecord { Sdk = "go", Source = "endoflife.date", Current = new PlatformCurrent() };
+        var lookup = DependencyTestKit.Lookup() with { Platforms = [rust, node, dotnet, none] };
+
+        var platforms = DependencyLookupIngest.ToPlatforms(lookup);
+
+        platforms.Select(p => $"{p.Sdk} {string.Join(",", p.Channels)} → {p.NextStable ?? "-"} / {p.NextPreview ?? "-"}").Should().Equal(
+            "dotnet 10.0 → - / 11.0",
+            "node 22 → 26 / -",
+            "rust 1.98 → 1.99 / 1.100");
+    }
 }

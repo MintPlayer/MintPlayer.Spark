@@ -12,17 +12,13 @@ namespace MintPlayer.Spark.Tests.Prerendering;
 public class SparkSitemapTests
 {
     [Fact]
-    public void A_url_is_the_pages_canonical_link()
-        => SparkSitemapXml.DetailUrl("https://mintplayer.com", "song", new QueryResultItem { Id = "Songs/23", Breadcrumb = "Coldplay - A Sky Full of Stars", Values = [] })
+    public void A_url_is_the_rows_href()
+        => SparkSitemapXml.DetailUrl("https://mintplayer.com", new QueryResultItem { Id = "Songs/23", Href = "/po/song/Songs%2F23/coldplay-a-sky-full-of-stars", Values = [] })
             .Should().Be("https://mintplayer.com/po/song/Songs%2F23/coldplay-a-sky-full-of-stars");
 
-    [Theory]
-    [InlineData(null)]
-    [InlineData("!!!")]
-    [InlineData("Edit")]
-    public void A_url_has_no_slug_when_the_page_writes_none(string? breadcrumb)
-        => SparkSitemapXml.DetailUrl("https://mintplayer.com", "tag", new QueryResultItem { Id = "Tags/1", Breadcrumb = breadcrumb, Values = [] })
-            .Should().Be("https://mintplayer.com/po/tag/Tags%2F1");
+    [Fact]
+    public void A_row_without_an_href_has_no_url()
+        => SparkSitemapXml.DetailUrl("https://mintplayer.com", new QueryResultItem { Id = "Tags/1", Values = [] }).Should().BeNull();
 
     [Fact]
     public void Only_a_true_value_makes_an_object_indexable()
@@ -64,5 +60,31 @@ public class SparkSitemapTests
 
         SparkSitemapXml.Write(new SitemapIndex([new Sitemap { Loc = "https://mintplayer.com/sitemap/tag/1.xml" }]), null)
             .Should().Contain("<sitemapindex").And.Contain("<loc>https://mintplayer.com/sitemap/tag/1.xml</loc>").And.NotContain("lastmod");
+    }
+
+    [Fact]
+    public void With_one_language_a_page_is_one_plain_entry()
+        => SparkSitemapXml.LanguageUrls("https://mintplayer.com/po/tag/Tags%2F1", new CultureConfiguration())
+            .Should().ContainSingle().Which.Links.Should().BeNullOrEmpty();
+
+    [Fact]
+    public void Each_language_gets_an_entry_that_links_them_all()
+    {
+        var culture = new CultureConfiguration
+        {
+            DefaultLanguage = "en",
+            Languages = new() { ["en"] = TranslatedString.Create("English"), ["nl"] = TranslatedString.Create("Nederlands") },
+        };
+        const string page = "https://mintplayer.com/po/tag/Tags%2F1/rock";
+
+        var urls = SparkSitemapXml.LanguageUrls(page, culture).ToList();
+
+        urls.Select(u => u.Loc).Should().Equal(page, page + "?lang=nl");
+        foreach (var url in urls)
+            url.Links.Select(l => $"{l.HrefLang} {l.Href}").Should().Equal($"en {page}", $"nl {page}?lang=nl", $"x-default {page}");
+
+        var xml = SparkSitemapXml.Write(new UrlSet(urls), null);
+        xml.Should().Contain("xmlns:xhtml=\"http://www.w3.org/1999/xhtml\"")
+            .And.Contain("<xhtml:link ").And.Contain("hreflang=\"x-default\"");
     }
 }

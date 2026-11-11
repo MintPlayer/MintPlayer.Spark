@@ -139,7 +139,7 @@ public sealed class SynchronizeReferenceRootTests : IDisposable
 
         QueryOf(nameof(RrSite), nameof(RrSite.OrganizationId)).Should().BeNull();
         output.Should().Contain("Warning").And.Contain("RrSite.OrganizationId")
-            .And.Contain("public IRavenQueryable<RrOrganization> RrOrganizations => Session.Query<RrOrganization>();");
+            .And.Contain("public IQueryable<RrOrganization> RrOrganizations => Session.Query<RrOrganization>();");
     }
 
     [Fact]
@@ -416,64 +416,64 @@ public sealed class RrAuditedSite
 [SparkPlainRoot(typeof(RrOrganization), nameof(Organizations))]
 public sealed class RrSeveralRootsContext : SparkContext
 {
-    public IRavenQueryable<RrSite> Sites => Session.Query<RrSite>();
-    public IRavenQueryable<RrOrganization> Organizations => Session.Query<RrOrganization>();
-    public IRavenQueryable<RrOrganization> ActiveOrganizations => Session.Query<RrOrganization>().Where(o => o.IsActive);
+    public IQueryable<RrSite> Sites => Session.Query<RrSite>();
+    public IQueryable<RrOrganization> Organizations => Session.Query<RrOrganization>();
+    public IQueryable<RrOrganization> ActiveOrganizations => Session.Query<RrOrganization>().Where(o => o.IsActive);
 }
 
 [SparkPlainRoot(typeof(RrOrganization), nameof(Organizations))]
 public abstract class RrBaseContext : SparkContext
 {
-    public IRavenQueryable<RrOrganization> Organizations => Session.Query<RrOrganization>();
+    public IQueryable<RrOrganization> Organizations => Session.Query<RrOrganization>();
 }
 
 [SparkPlainRoot(typeof(RrSite), nameof(Sites))]
 public sealed class RrDerivedContext : RrBaseContext
 {
-    public IRavenQueryable<RrSite> Sites => Session.Query<RrSite>();
-    public IRavenQueryable<RrOrganization> ActiveOrganizations => Session.Query<RrOrganization>().Where(o => o.IsActive);
+    public IQueryable<RrSite> Sites => Session.Query<RrSite>();
+    public IQueryable<RrOrganization> ActiveOrganizations => Session.Query<RrOrganization>().Where(o => o.IsActive);
 }
 
 [SparkPlainRoot(typeof(RrSite), nameof(Sites))]
 public sealed class RrNoPlainRootContext : SparkContext
 {
-    public IRavenQueryable<RrSite> Sites => Session.Query<RrSite>();
-    public IRavenQueryable<RrOrganization> ActiveOrganizations => Session.Query<RrOrganization>().Where(o => o.IsActive);
+    public IQueryable<RrSite> Sites => Session.Query<RrSite>();
+    public IQueryable<RrOrganization> ActiveOrganizations => Session.Query<RrOrganization>().Where(o => o.IsActive);
 }
 
 [SparkPlainRoot(typeof(RrExplicitSite), nameof(Sites))]
 [SparkPlainRoot(typeof(RrOrganization), nameof(Organizations))]
 public sealed class RrExplicitContext : SparkContext
 {
-    public IRavenQueryable<RrExplicitSite> Sites => Session.Query<RrExplicitSite>();
-    public IRavenQueryable<RrOrganization> Organizations => Session.Query<RrOrganization>();
-    public IRavenQueryable<RrOrganization> ActiveOrganizations => Session.Query<RrOrganization>().Where(o => o.IsActive);
+    public IQueryable<RrExplicitSite> Sites => Session.Query<RrExplicitSite>();
+    public IQueryable<RrOrganization> Organizations => Session.Query<RrOrganization>();
+    public IQueryable<RrOrganization> ActiveOrganizations => Session.Query<RrOrganization>().Where(o => o.IsActive);
 }
 
 [SparkPlainRoot(typeof(RrSite), nameof(Sites))]
 public sealed class RrViewOnlyContext : SparkContext
 {
-    public IRavenQueryable<RrSite> Sites => Session.Query<RrSite>();
-    public IRavenQueryable<VRrOrganization> VOrganizations => Session.Query<VRrOrganization>();
+    public IQueryable<RrSite> Sites => Session.Query<RrSite>();
+    public IQueryable<VRrOrganization> VOrganizations => Session.Query<VRrOrganization>();
 }
 
 [SparkPlainRoot(typeof(RrSite), nameof(Sites))]
 public sealed class RrUnrootedContext : SparkContext
 {
-    public IRavenQueryable<RrSite> Sites => Session.Query<RrSite>();
+    public IQueryable<RrSite> Sites => Session.Query<RrSite>();
 }
 
 [SparkPlainRoot(typeof(RrAuditedSite), nameof(Sites))]
 public sealed class RrReadOnlyReferenceContext : SparkContext
 {
-    public IRavenQueryable<RrAuditedSite> Sites => Session.Query<RrAuditedSite>();
+    public IQueryable<RrAuditedSite> Sites => Session.Query<RrAuditedSite>();
 }
 
 [SparkPlainRoot(typeof(RrAuditedSite), nameof(Sites))]
 public sealed class RrReadOnlyNoPlainRootContext : SparkContext
 {
-    public IRavenQueryable<RrAuditedSite> Sites => Session.Query<RrAuditedSite>();
-    public IRavenQueryable<RrOrganization> ActiveOrganizations => Session.Query<RrOrganization>().Where(o => o.IsActive);
+    public IQueryable<RrAuditedSite> Sites => Session.Query<RrAuditedSite>();
+    public IQueryable<RrOrganization> ActiveOrganizations => Session.Query<RrOrganization>().Where(o => o.IsActive);
 }
 
 public sealed class RrSatOwner
@@ -499,8 +499,8 @@ public sealed class RrSatNote
 [SparkPlainRoot(typeof(RrSatNote), nameof(RrSatNotes))]
 public sealed class RrSatelliteContext : SparkContext
 {
-    public IRavenQueryable<RrSatOwner> RrSatOwners => Session.Query<RrSatOwner>();
-    public IRavenQueryable<RrSatNote> RrSatNotes => Session.Query<RrSatNote>();
+    public IQueryable<RrSatOwner> RrSatOwners => Session.Query<RrSatOwner>();
+    public IQueryable<RrSatNote> RrSatNotes => Session.Query<RrSatNote>();
 }
 
 /// <summary>Stands in for <c>Organization</c>, which <c>libs/organizations</c> ships with its own model and query.</summary>
@@ -522,6 +522,6 @@ public sealed class RrLibSite
 [SparkPlainRoot(typeof(RrLibOrganization), nameof(RrLibOrganizations))]
 public sealed class RrLibraryContext : SparkContext
 {
-    public IRavenQueryable<RrLibSite> RrLibSites => Session.Query<RrLibSite>();
-    public IRavenQueryable<RrLibOrganization> RrLibOrganizations => Session.Query<RrLibOrganization>();
+    public IQueryable<RrLibSite> RrLibSites => Session.Query<RrLibSite>();
+    public IQueryable<RrLibOrganization> RrLibOrganizations => Session.Query<RrLibOrganization>();
 }

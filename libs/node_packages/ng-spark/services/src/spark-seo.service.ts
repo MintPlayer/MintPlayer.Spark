@@ -1,10 +1,11 @@
 import { DOCUMENT } from '@angular/common';
-import { Injectable, InjectionToken, inject } from '@angular/core';
+import { Injectable, InjectionToken, Injector, effect, inject, signal, untracked } from '@angular/core';
 import { sparkFeature, SparkFeature, SparkFeatureOrder } from '@mintplayer/ng-spark';
 import { Meta, Title } from '@angular/platform-browser';
 import { RouterStateSnapshot, TitleStrategy } from '@angular/router';
 import { EntityType, PersistentObject, PersistentObjectAttribute } from '@mintplayer/ng-spark/models';
 import { SPARK_SERVER_ORIGIN } from './provide-spark-hydration';
+import { SparkLanguageService } from './spark-language.service';
 
 /**
  * Rich JSON-LD for one type's page (`docs/spark_ssr_PRD.md` D12): members merged over the ones the model mapping
@@ -47,8 +48,15 @@ export function withSeo(options: SparkSeoOptions): SparkFeature {
 }
 
 const JSON_LD_SELECTOR = 'script[type="application/ld+json"][data-spark-seo]';
+/**
+ * The tags {@link SparkSeoService.reset} removes by name. `og:url` and `og:locale` are not here: they name the language
+ * served (`?lang=xx`, #604), so `writeLanguageTags` writes them beside the canonical, rewrites them when the language
+ * changes, and removes them when the page has no URL.
+ */
 const SEO_META = ['name="description"', 'name="robots"', 'property="og:title"', 'property="og:description"',
-  'property="og:url"', 'property="og:image"', 'property="og:type"', 'name="twitter:card"'];
+  'property="og:image"', 'property="og:type"', 'name="twitter:card"'];
+/** The page's language alternates (#604 D5), marked so {@link SparkSeoService.reset} removes exactly its own. */
+const ALTERNATE_SELECTOR = 'link[rel="alternate"][hreflang][data-spark-seo]';
 /** Google shows about this many characters of a description. */
 const DESCRIPTION_LENGTH = 160;
 
@@ -72,6 +80,21 @@ export class SparkSeoService {
   private readonly siteTitle = this.document.head?.querySelector('title')?.getAttribute('data-spark-site') ?? this.title.getTitle();
   /** Whether the tags on the page are an object's, set by {@link forObject} and cleared by {@link reset}. */
   private objectTags = false;
+  // Resolved on first use, not injected: the Router injects the TitleStrategy (which injects this service), and
+  // SparkLanguageService injects the Router. Kept once resolved, and only asked for when there is a page to describe:
+  // a page's destroy hook calls reset() after a server render has destroyed the injector (NG0205 ended the renderer).
+  private readonly injector = inject(Injector);
+  private languageService?: SparkLanguageService;
+  /**
+   * The page's URL without its query (origin + path), or null when the page has no canonical. The language tags derive
+   * from it (#604): the canonical, `og:url`, the hreflang alternates and `og:locale`.
+   */
+  private readonly pageUrl = signal<string | null>(null);
+
+  constructor() {
+    // Again when the language or the list of languages changes: /culture may answer after the page's tags were set.
+    effect(() => this.writeLanguageTags());
+  }
 
   /**
    * The tags for a readable object.
@@ -80,7 +103,9 @@ export class SparkSeoService {
   forObject(type: EntityType | null, po: PersistentObject, canonicalPath: string): void {
     const seo = type?.seo;
     const name = po.breadcrumb || po.name;
-    const url = this.origin() + canonicalPath;
+    this.pageUrl.set(this.origin() + (canonicalPath.split(/[?#]/)[0] || '/'));
+    const language = untracked(() => this.languageState());
+    const url = language.url(language.current);
     const typeDescription = type ? this.options?.description?.[type.name] : undefined;
     const description = clip(seo?.description ? attributeText(po, seo.description)
       : typeDescription && type ? typeDescription(po, type) : null);
@@ -92,14 +117,16 @@ export class SparkSeoService {
     this.setPageTitle(name);
     this.setMeta('name', 'robots', indexable ? 'index, follow' : 'noindex');
     this.setMeta('name', 'description', description);
-    this.setOpenGraph(name, description, url, image);
-    this.setCanonical(url);
+    this.setOpenGraph(name, description, image);
+    this.writeLanguageTags();
 
     if (!type || !seo?.schemaType) {
       this.setJsonLd(null);
       return;
     }
-    const data: Record<string, unknown> = { '@context': 'https://schema.org', '@type': seo.schemaType, name, url };
+    const data: Record<string, unknown> = {
+      '@context': 'https://schema.org', '@type': seo.schemaType, name, url, inLanguage: language.current,
+    };
     if (description) data['description'] = description;
     if (image) data['image'] = image;
     for (const [property, attribute] of Object.entries(seo.properties ?? {})) {
@@ -123,10 +150,10 @@ export class SparkSeoService {
     if (this.meta.getTag('name="robots"')?.content === 'noindex') return;
 
     const description = clip(this.options?.siteDescription ?? null);
-    const url = this.origin() + (path.split(/[?#]/)[0] || '/');
+    this.pageUrl.set(this.origin() + (path.split(/[?#]/)[0] || '/'));
     this.setMeta('name', 'description', description);
-    this.setOpenGraph(routeTitle ?? this.siteTitle, description, url, this.siteImage());
-    this.setCanonical(url);
+    this.setOpenGraph(routeTitle ?? this.siteTitle, description, this.siteImage());
+    this.writeLanguageTags();
   }
 
   /** A page that must not be indexed: an error, a new object, an edit form. */
@@ -140,8 +167,72 @@ export class SparkSeoService {
     this.objectTags = false;
     this.title.setTitle(this.siteTitle);
     for (const selector of SEO_META) this.meta.removeTag(selector);
-    this.setCanonical(null);
+    // No page URL: writeLanguageTags removes the canonical, og:url, og:locale and the hreflang alternates.
+    this.pageUrl.set(null);
+    this.writeLanguageTags();
     this.setJsonLd(null);
+  }
+
+  /**
+   * The current language, every configured one (the current alone until /culture answers) and the page's URL in a
+   * language: bare for the default language, `?lang=xx` for the others (#604 D2).
+   */
+  private languageState(): { current: string; all: string[]; url: (code: string) => string } {
+    const languages = this.languageService ??= this.injector.get(SparkLanguageService);
+    const current = languages.language();
+    const fallback = languages.defaultLanguage();
+    const configured = Object.keys(languages.languages());
+    const page = this.pageUrl() ?? '';
+    return {
+      current,
+      all: configured.length ? configured : [current],
+      url: code => code === fallback ? page : `${page}?lang=${encodeURIComponent(code)}`,
+    };
+  }
+
+  /**
+   * The tags that state the page's language (#604 D5, D6): the canonical and `og:url` in the language served, one
+   * `hreflang` alternate per language (itself included, also with one language) plus `x-default`, and `og:locale` for
+   * a code with a region. All removed when the page has no URL.
+   */
+  private writeLanguageTags(): void {
+    const page = this.pageUrl();
+    const removeAll = () => {
+      for (const link of Array.from(this.document.head?.querySelectorAll(ALTERNATE_SELECTOR) ?? [])) link.remove();
+      for (const tag of this.meta.getTags('property="og:locale:alternate"')) this.meta.removeTagElement(tag);
+    };
+    if (!page) {
+      // Removing needs no language, so the language service is not asked (see languageService).
+      untracked(() => {
+        removeAll();
+        this.setCanonical(null);
+        this.setMeta('property', 'og:url', null);
+        this.setMeta('property', 'og:locale', null);
+      });
+      return;
+    }
+    const { current, all, url } = this.languageState();
+    untracked(() => {
+      removeAll();
+      this.setCanonical(url(current));
+      this.setMeta('property', 'og:url', url(current));
+      for (const code of all) this.addAlternate(code, url(code));
+      this.addAlternate('x-default', page);
+      this.setMeta('property', 'og:locale', ogLocale(current));
+      for (const code of all) {
+        const locale = code === current ? null : ogLocale(code);
+        if (locale) this.meta.addTag({ property: 'og:locale:alternate', content: locale });
+      }
+    });
+  }
+
+  private addAlternate(hreflang: string, href: string): void {
+    const link = this.document.createElement('link');
+    link.setAttribute('rel', 'alternate');
+    link.setAttribute('hreflang', hreflang);
+    link.setAttribute('href', href);
+    link.setAttribute('data-spark-seo', '');
+    this.document.head?.appendChild(link);
   }
 
   private origin(): string {
@@ -153,11 +244,10 @@ export class SparkSeoService {
     this.document.head?.querySelector('title')?.setAttribute('data-spark-site', this.siteTitle);
   }
 
-  private setOpenGraph(title: string, description: string | null, url: string, image: string | null): void {
+  private setOpenGraph(title: string, description: string | null, image: string | null): void {
     this.setMeta('property', 'og:type', 'website');
     this.setMeta('property', 'og:title', title);
     this.setMeta('property', 'og:description', description);
-    this.setMeta('property', 'og:url', url);
     this.setMeta('property', 'og:image', image);
     this.setMeta('name', 'twitter:card', image ? 'summary_large_image' : 'summary');
   }
@@ -243,4 +333,10 @@ export function attributeText(po: PersistentObject, name: string): string | null
   return typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean'
     ? String(value) || null
     : null;
+}
+
+/** Open Graph's locale (`nl_BE`) of a code with a region (`nl-BE`); null for a bare language, whose region would be a guess. */
+function ogLocale(code: string): string | null {
+  const [language, region] = code.split(/[-_]/);
+  return language && region ? `${language.toLowerCase()}_${region.toUpperCase()}` : null;
 }

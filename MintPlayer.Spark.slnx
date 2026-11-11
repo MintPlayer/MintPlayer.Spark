@@ -42,6 +42,7 @@
     <Project Path="apps/MintPlayer/MintPlayer.Library/MintPlayer.Library.csproj" />
     <Project Path="apps/MintPlayer/MintPlayer.Migration.Tests/MintPlayer.Migration.Tests.csproj" />
     <Project Path="apps/MintPlayer/MintPlayer.Migration/MintPlayer.Migration.csproj" />
+    <Project Path="apps/MintPlayer/MintPlayer.Tests/MintPlayer.Tests.csproj" />
     <Project Path="apps/MintPlayer/MintPlayer/MintPlayer.csproj" />
   </Folder>
   <Folder Name="/apps/QnA/">
@@ -170,6 +171,8 @@
   <Folder Name="/libs/spark/">
     <Project Path="libs/spark/MintPlayer.Spark.Abstractions/MintPlayer.Spark.Abstractions.csproj" />
     <Project Path="libs/spark/MintPlayer.Spark/MintPlayer.Spark.csproj" />
+    <Project Path="libs/spark/MintPlayer.Spark.InMemory/MintPlayer.Spark.InMemory.csproj" />
+    <Project Path="libs/spark/MintPlayer.Spark.RavenDB/MintPlayer.Spark.RavenDB.csproj" />
     <Project Path="libs/spark/MintPlayer.Spark.SafeHttp/MintPlayer.Spark.SafeHttp.csproj" />
   </Folder>
   <Folder Name="/libs/subscription_worker/">

@@ -36,9 +36,9 @@
     },
     "RunScheduledSlotNow": {
       "label": {
-        "en": "Run the scheduled slot now",
-        "fr": "Lancer le créneau planifié maintenant",
-        "nl": "Geplande run nu starten"
+        "en": "Update SDK + dependencies",
+        "fr": "Mettre à jour SDK + dépendances",
+        "nl": "SDK + afhankelijkheden bijwerken"
       }
     },
     "SetUpFeatures": {
@@ -207,9 +207,9 @@
       "nl": "Je beheert deze repository niet."
     },
     "runNow.started": {
-      "en": "The scheduled run started.",
-      "fr": "Le passage planifié a démarré.",
-      "nl": "De geplande run is gestart."
+      "en": "The SDK and dependency update started.",
+      "fr": "La mise à jour du SDK et des dépendances a démarré.",
+      "nl": "De update van SDK en afhankelijkheden is gestart."
     },
     "state.Blocked": {
       "en": "onboarding blocked",
@@ -293,25 +293,27 @@
       "fr": "L'activation demande si les pull requests d'intégration activent aussi la file de fusion, qui fusionne automatiquement les pull requests de dépendances au vert et sert ensuite aussi à vos propres pull requests.",
       "nl": "Bij het inschakelen wordt gevraagd of de onboarding-pull-requests ook de merge queue aanzetten, die groene dependency-pull-requests automatisch merget en daarna ook voor je eigen pull requests beschikbaar is."
     },
-    "mergeQueueInFile.absent": {
-      "en": "not in coverage.yml",
-      "fr": "absente de coverage.yml",
-      "nl": "niet in coverage.yml"
-    },
-    "mergeQueueInFile.disabled": {
-      "en": "disabled in coverage.yml",
-      "fr": "désactivée dans coverage.yml",
-      "nl": "uitgeschakeld in coverage.yml"
-    },
-    "mergeQueueInFile.enabled": {
-      "en": "enabled in coverage.yml",
-      "fr": "activée dans coverage.yml",
-      "nl": "ingeschakeld in coverage.yml"
-    },
-    "mergeQueueInFile.unknown": {
-      "en": "not read yet",
-      "fr": "pas encore lue",
-      "nl": "nog niet gelezen"
+    "mergeQueueInFile": {
+      "absent": {
+        "en": "not in coverage.yml",
+        "fr": "absente de coverage.yml",
+        "nl": "niet in coverage.yml"
+      },
+      "disabled": {
+        "en": "disabled in coverage.yml",
+        "fr": "désactivée dans coverage.yml",
+        "nl": "uitgeschakeld in coverage.yml"
+      },
+      "enabled": {
+        "en": "enabled in coverage.yml",
+        "fr": "activée dans coverage.yml",
+        "nl": "ingeschakeld in coverage.yml"
+      },
+      "unknown": {
+        "en": "not read yet",
+        "fr": "pas encore lue",
+        "nl": "nog niet gelezen"
+      }
     },
     "narrowed": {
       "en": "Showing the repositories of this installation",
@@ -328,35 +330,47 @@
       "fr": "Compte → Connexions liées",
       "nl": "Account → Gekoppelde aanmeldingen"
     },
-    "panel.accountOff": {
-      "en": "Dependency updates are not on for this account's repositories.",
-      "fr": "Les mises à jour des dépendances ne sont pas activées pour les dépôts de ce compte.",
-      "nl": "Dependency-updates staan niet aan voor de repositories van dit account."
-    },
-    "panel.enableLink": {
-      "en": "Enable it for your repositories →",
-      "fr": "Activez-le pour vos dépôts →",
-      "nl": "Schakel het in voor je repositories →"
-    },
-    "panel.mergeQueue": {
-      "en": "Merge queue",
-      "fr": "File de fusion",
-      "nl": "Merge queue"
-    },
-    "panel.onboardingPr": {
-      "en": "Onboarding pull request #{0}",
-      "fr": "Pull request d'intégration n°{0}",
-      "nl": "Onboarding-pull-request #{0}"
-    },
-    "panel.rateLimit": {
-      "en": "waiting for GitHub's rate limit until {0} (park {1} of {2})",
-      "fr": "en attente de la limite de débit de GitHub jusqu'à {0} (attente {1} sur {2})",
-      "nl": "wacht op GitHubs rate limit tot {0} (park {1} van {2})"
-    },
-    "panel.repoOff": {
-      "en": "Dependency updates are off for this repository.",
-      "fr": "Les mises à jour des dépendances sont désactivées pour ce dépôt.",
-      "nl": "Dependency-updates staan uit voor deze repository."
+    "panel": {
+      "accountOff": {
+        "en": "Dependency updates are not on for this account's repositories.",
+        "fr": "Les mises à jour des dépendances ne sont pas activées pour les dépôts de ce compte.",
+        "nl": "Dependency-updates staan niet aan voor de repositories van dit account."
+      },
+      "enableLink": {
+        "en": "Enable it for your repositories →",
+        "fr": "Activez-le pour vos dépôts →",
+        "nl": "Schakel het in voor je repositories →"
+      },
+      "mergeQueue": {
+        "en": "Merge queue",
+        "fr": "File de fusion",
+        "nl": "Merge queue"
+      },
+      "onboardingPr": {
+        "en": "Onboarding pull request #{0}",
+        "fr": "Pull request d'intégration n°{0}",
+        "nl": "Onboarding-pull-request #{0}"
+      },
+      "platformPreview": {
+        "en": "preview {0}",
+        "fr": "préversion {0}",
+        "nl": "preview {0}"
+      },
+      "platforms": {
+        "en": "Platforms",
+        "fr": "Plateformes",
+        "nl": "Platformen"
+      },
+      "rateLimit": {
+        "en": "waiting for GitHub's rate limit until {0} (park {1} of {2})",
+        "fr": "en attente de la limite de débit de GitHub jusqu'à {0} (attente {1} sur {2})",
+        "nl": "wacht op GitHubs rate limit tot {0} (park {1} van {2})"
+      },
+      "repoOff": {
+        "en": "Dependency updates are off for this repository.",
+        "fr": "Les mises à jour des dépendances sont désactivées pour ce dépôt.",
+        "nl": "Dependency-updates staan uit voor deze repository."
+      }
     },
     "reauth": {
       "en": "Your GitHub sign-in has expired. Sign out and sign in with GitHub again to see every repository you manage.",
@@ -1905,6 +1919,11 @@
             "fr": "Mise à jour maximale",
             "nl": "Grootste update"
           }
+        },
+        "Track": {
+          "description": {
+            "en": "Which releases the matching dependencies are offered from: LTS, stable or preview."
+          }
         }
       }
     },
@@ -2655,6 +2674,11 @@
             "nl": "Einde actieve ondersteuning"
           }
         },
+        "Channel": {
+          "description": {
+            "en": "The channel as the platform names it: 10.0, 24, 3.14, 1.99."
+          }
+        },
         "CollectedAtUtc": {
           "label": {
             "en": "Collected",
@@ -2669,6 +2693,16 @@
             "nl": "LTS"
           }
         },
+        "LatestReleasedOn": {
+          "description": {
+            "en": "When LatestVersion was released, when the source says."
+          }
+        },
+        "LatestSdk": {
+          "description": {
+            "en": ".NET: the newest SDK of the channel (global.json pins an SDK, not a runtime)."
+          }
+        },
         "LatestVersion": {
           "description": {
             "en": "The newest version of this major, as the source names it."
@@ -2680,6 +2714,9 @@
           }
         },
         "Major": {
+          "description": {
+            "en": "The channel's leading number, which release lines compare."
+          },
           "label": {
             "en": "Major",
             "fr": "Version majeure",

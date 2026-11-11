@@ -69,7 +69,7 @@ public class ColumnFilterDisclosureTests(ColumnFilterDisclosureTests.Host host)
 
     public class TestContext : SparkContext
     {
-        public IRavenQueryable<Crate> Crates => Session.Query<Crate>();
+        public IQueryable<Crate> Crates => Session.Query<Crate>();
     }
 
     private static EntityTypeFile CrateModel(bool? regionCanFilter = null) => new()

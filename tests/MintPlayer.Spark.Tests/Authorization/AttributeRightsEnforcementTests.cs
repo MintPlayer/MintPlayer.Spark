@@ -64,8 +64,8 @@ public class AttributeRightsEnforcementTests(AttributeRightsEnforcementTests.Hos
 
     public sealed class AttrContext : SparkContext
     {
-        public IRavenQueryable<AttrVault> Vaults => Session.Query<AttrVault>();
-        public IRavenQueryable<AttrKeeper> Keepers => Session.Query<AttrKeeper>();
+        public IQueryable<AttrVault> Vaults => Session.Query<AttrVault>();
+        public IQueryable<AttrKeeper> Keepers => Session.Query<AttrKeeper>();
     }
 
     /// <summary>The per-row hook: a locked vault's Pin is protected.</summary>

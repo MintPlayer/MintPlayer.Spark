@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
 import { CommonModule, NgComponentOutlet } from '@angular/common';
-import { RouterModule } from '@angular/router';
+import { RouterModule, UrlTree } from '@angular/router';
 import { EntityAttributeDefinition, SparkCellColumn } from '@mintplayer/ng-spark/models';
 import { ReferenceChip } from '@mintplayer/ng-spark/pipes';
 import { SparkGridRenderers } from './spark-grid-renderers';
@@ -75,7 +75,7 @@ export class SparkGridCellComponent {
   chips = input<ReferenceChip[]>([]);
 
   /** Route for a cell whose value references another entity. See the class comment. */
-  link = input<unknown[] | null>(null);
+  link = input<UrlTree | unknown[] | null>(null);
 
   protected readonly rendererComponent = computed(() => this.renderers.columnComponentFor(this.column()));
 

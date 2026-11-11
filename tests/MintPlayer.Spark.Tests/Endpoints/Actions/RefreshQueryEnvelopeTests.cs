@@ -39,7 +39,7 @@ public class RefreshQueryEnvelopeTests : SparkTestDriver
 
     private sealed class RefProbeContext : SparkContext
     {
-        public Raven.Client.Documents.Linq.IRavenQueryable<RefProbe> Probes => Session.Query<RefProbe>();
+        public IQueryable<RefProbe> Probes => Session.Query<RefProbe>();
     }
 
     /// <summary>The key the action passes to <c>RefreshQuery</c>, set per test.</summary>

@@ -1,7 +1,7 @@
 import type { PlatformPlan } from '../contracts/types';
 import { parseText, serializeText } from '../core/lineEdit';
 import type { RepoFiles } from '../util/repoFiles';
-import { compareChannels, rewriteTfm, rewriteVersionValue, tfmChannel } from './channels';
+import { compareChannels, isNewerVersion, isPreviewVersion, rewriteTfm, rewriteVersionValue, tfmChannel } from './channels';
 import { scanLocations, type Found } from './locations';
 
 export interface PlatformApplyResult {
@@ -61,6 +61,10 @@ export function notEditedReason(f: Found): string | null {
   switch (f.kind) {
     case 'types-node':
     case 'requires-python':
+    // #606: ranges and minimums are reported, never narrowed or raised (D11: the MSRV is never raised).
+    case 'composer-require':
+    case 'gemspec-ruby':
+    case 'rust-version':
       return f.reason ?? 'reported only';
     case 'docker':
       return f.sdk === 'dotnet' && /^\d+\.\d+\.\d+/.test(f.value)
@@ -76,10 +80,40 @@ export function notEditedReason(f: Found): string | null {
     case 'version-file':
     case 'tool-versions':
     case 'engines':
+    case 'composer-platform':
+    case 'gemfile-ruby':
+    case 'rust-toolchain':
+    case 'matrix':
+    case 'dotnet-quality':
       return null;
     default:
       return 'unsupported location';
   }
+}
+
+/** #617 D31: the plan's target is a release (neither its SDK nor its version is a preview), so a quality goes. */
+export function targetsRelease(plan: PlatformPlan): boolean {
+  const target = plan.sdkVersion ?? plan.toVersion;
+  return !!target && !isPreviewVersion(target) && !(plan.toVersion && isPreviewVersion(plan.toVersion));
+}
+
+/** #617 D31: a `dotnet-quality:` line this plan removes: a non-`ga` quality once the target is a release. */
+function removesQuality(f: Found, plan: PlatformPlan): boolean {
+  return f.kind === 'dotnet-quality' && notEditedReason(f) === null && f.value.toLowerCase() !== 'ga' && targetsRelease(plan);
+}
+
+/**
+ * #617 D29: whether a move to `plan.toChannel` that stays on the same channel changes anything: a pin below the
+ * channel's latest (never one above it: a table older than the repository moves nothing back), or a quality to drop.
+ */
+export function inChannelMoveChanges(found: readonly Found[], plan: PlatformPlan): boolean {
+  return found.some((f) => {
+    if (f.computed || (f.channel !== null && f.channel !== plan.fromChannel)) return false;
+    if (f.kind === 'dotnet-quality') return removesQuality(f, plan);
+    if (f.kind === 'tfm' || f.kind === 'package-version' || f.channel === null) return false;
+    const { replacement } = replacementFor(f, plan);
+    return replacement?.length === 1 && replacement[0].text !== f.value && isNewerVersion(replacement[0].text, f.value);
+  });
 }
 
 function replacementFor(f: Found, plan: PlatformPlan): { replacement?: Replacement[]; report?: string } {
@@ -118,8 +152,19 @@ function replacementFor(f: Found, plan: PlatformPlan): { replacement?: Replaceme
     case 'setup-action':
     case 'version-file':
     case 'tool-versions':
-    case 'engines': {
+    case 'engines':
+    case 'composer-platform':
+    case 'gemfile-ruby':
+    case 'rust-toolchain':
+    // #606 M6: a matrix entry on the from-channel moves like any other pin; the matrix's older entries stay.
+    case 'matrix': {
       if (f.channel !== plan.fromChannel) return {};
+      // #606 D11: Rust's preview is the beta channel. A pinned toolchain moves to the dated beta the
+      // plan names (`beta-2026-11-08`), since a beta has no stable version number to pin.
+      if (sdk === 'rust' && plan.toVersion && isPreviewVersion(plan.toVersion) && (f.kind === 'rust-toolchain' || f.kind === 'version-file' || f.kind === 'setup-action' || f.kind === 'tool-versions')) {
+        if (!plan.sdkVersion) return { report: `the plan moves to a Rust beta and names no toolchain (sdkVersion)` };
+        return { replacement: [{ line: f.line, start: f.start, end: f.end, text: plan.sdkVersion }] };
+      }
       // dotnet: a full SDK version (feature band >= 100, e.g. setup-dotnet `10.0.100`) takes the SDK
       // version of the plan, not the runtime version (S19: 10.0.100 -> 11.0.100-rc.1.26425.128).
       const sdkLike = sdk === 'dotnet' && f.kind === 'setup-action' && /^\d+\.\d+\.(\d{3,})/.test(f.value);
@@ -146,21 +191,37 @@ function replacementFor(f: Found, plan: PlatformPlan): { replacement?: Replaceme
 export async function applyPlatform(files: RepoFiles, plan: PlatformPlan): Promise<PlatformApplyResult> {
   const found = (await scanLocations(files, [plan.sdk])).filter((f) => inScope(f.file, plan));
   const byFile = new Map<string, Replacement[]>();
+  const removals = new Map<string, number[]>();
   const reported: PlatformApplyResult['reported'] = [];
+  const inChannel = plan.fromChannel === plan.toChannel;
   for (const f of found) {
     // Locations on other channels are not ours (e.g. a net48 test project, an older Docker stage).
     if (f.kind !== 'tfm' && f.channel !== null && f.channel !== plan.fromChannel) continue;
+    if (f.kind === 'dotnet-quality') {
+      // #617 D31: a computed quality (the step's only input, an expression) is reported only when it would go.
+      if (f.value.toLowerCase() === 'ga' || !targetsRelease(plan)) continue;
+      if (removesQuality(f, plan)) removals.set(f.file, [...(removals.get(f.file) ?? []), f.line]);
+      else reported.push({ file: f.file, value: f.value, reason: notEditedReason(f) ?? 'not removed' });
+      continue;
+    }
     const { replacement, report } = replacementFor(f, plan);
     if (report) reported.push({ file: f.file, value: f.value, reason: report });
-    if (replacement) byFile.set(f.file, [...(byFile.get(f.file) ?? []), ...replacement]);
+    // #617 D29: an in-channel move only ever moves a pin forward; a TFM or a floating pin it rewrites to itself stays.
+    const changing = replacement?.filter((r) => r.text !== f.value && !(inChannel && replacement.length === 1 && !isNewerVersion(r.text, f.value)));
+    if (changing?.length) byFile.set(f.file, [...(byFile.get(f.file) ?? []), ...changing]);
   }
   const edited: string[] = [];
-  for (const [file, reps] of byFile) {
+  for (const file of new Set([...byFile.keys(), ...removals.keys()])) {
     const doc = parseText(await files.readBytes(file), file);
+    const reps = byFile.get(file) ?? [];
     reps.sort((a, b) => b.line - a.line || b.start - a.start);
     for (const r of reps) {
       const line = doc.lines[r.line];
       line.text = line.text.slice(0, r.start) + r.text + line.text.slice(r.end);
+    }
+    for (const at of [...new Set(removals.get(file) ?? [])].sort((a, b) => b - a)) {
+      const [gone] = doc.lines.splice(at, 1);
+      if (gone.eol === '' && at > 0) doc.lines[at - 1].eol = '';
     }
     await files.write(file, serializeText(doc));
     edited.push(file);

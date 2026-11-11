@@ -129,6 +129,16 @@ public partial class BackportRegenerationEngine : IBackportRegenerationEngine
             RepositoryId = repositoryId, Kind = EMergeQueueSignal.Command, Number = number, Command = EMergeQueueCommand.Enqueue,
             Actor = QueueActor, Source = EMergeQueueCommandSource.Backports,
         }, null, ct);
+
+    /// <summary>
+    /// Records a backport pull request the App opened (<see cref="BackportPullRequest"/>), so the approval floor and a
+    /// writer's approval can tell it from anyone else's. The caller saves the session.
+    /// </summary>
+    internal static Task RecordAsync(IAsyncDocumentSession session, string repositoryId, int number, int source, string branch, DateTime nowUtc, CancellationToken ct)
+    {
+        var id = BackportPullRequest.DocumentId(repositoryId, number);
+        return session.StoreAsync(new BackportPullRequest { Id = id, Repository = repositoryId, Number = number, Source = source, Branch = branch, OpenedUtc = nowUtc }, id, ct);
+    }
     public const string Purpose = "backport regenerate";
 
     private DateTime Now => time.GetUtcNow().UtcDateTime;
@@ -404,6 +414,7 @@ public partial class BackportRegenerationEngine : IBackportRegenerationEngine
         await hook.AbandonAsync(new Saga(this, context), item.Runs, ct);
         var body = item.Body + (why is null ? RegeneratedNote(item) : NotRegeneratedNote(item.Paths, why));
         var opened = await context.Forge.OpenPullRequestAsync(context.Repository, item.Head, item.Branch, item.Title, body, cancellationToken: ct);
+        await RecordAsync(session, context.Repository.Id!, opened, item.Number, item.Branch, Now, ct);
         // #570 M7: only a regenerated backport is queued; stale files wait for a person.
         var enqueue = why is null && item.Enqueue;
         if (enqueue)

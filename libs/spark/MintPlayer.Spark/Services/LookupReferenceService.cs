@@ -1,7 +1,7 @@
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Reflection;
-using Raven.Client.Documents;
+using MintPlayer.Spark.Abstractions.Storage;
 using System.Reflection;
 
 namespace MintPlayer.Spark.Services;
@@ -22,7 +22,7 @@ public interface ILookupReferenceService
 internal partial class LookupReferenceService : ILookupReferenceService
 {
     [Inject] private readonly ILookupReferenceDiscoveryService discoveryService;
-    [Inject] private readonly IDocumentStore documentStore;
+    [Inject] private readonly ISparkStore store;
 
     /// <summary>
     /// R2-L8: refuse LookupReference names that aren't standard identifiers.
@@ -129,7 +129,7 @@ internal partial class LookupReferenceService : ILookupReferenceService
         if (info.IsTransient)
             throw new InvalidOperationException($"Cannot add values to transient LookupReference '{name}'");
 
-        using var session = documentStore.OpenAsyncSession();
+        using var session = store.OpenSession();
 
         ValidateName(name);
         var documentId = $"LookupReferences/{name}";
@@ -165,7 +165,7 @@ internal partial class LookupReferenceService : ILookupReferenceService
         if (info.IsTransient)
             throw new InvalidOperationException($"Cannot update values in transient LookupReference '{name}'");
 
-        using var session = documentStore.OpenAsyncSession();
+        using var session = store.OpenSession();
 
         ValidateName(name);
         var documentId = $"LookupReferences/{name}";
@@ -205,7 +205,7 @@ internal partial class LookupReferenceService : ILookupReferenceService
         if (info.IsTransient)
             throw new InvalidOperationException($"Cannot delete values from transient LookupReference '{name}'");
 
-        using var session = documentStore.OpenAsyncSession();
+        using var session = store.OpenSession();
 
         ValidateName(name);
         var documentId = $"LookupReferences/{name}";
@@ -224,7 +224,7 @@ internal partial class LookupReferenceService : ILookupReferenceService
 
     private async Task<DynamicLookupReferenceDocument?> LoadDynamicLookupAsync(string name)
     {
-        using var session = documentStore.OpenAsyncSession();
+        using var session = store.OpenSession();
         ValidateName(name);
         var documentId = $"LookupReferences/{name}";
         return await session.LoadAsync<DynamicLookupReferenceDocument>(documentId);

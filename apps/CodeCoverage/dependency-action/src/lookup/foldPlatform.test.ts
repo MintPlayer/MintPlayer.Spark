@@ -1,6 +1,6 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import type { LookupDocument, PlatformRecord } from '../contracts/types';
+import type { LookupDocument, PlatformRecord, PlatformTable } from '../contracts/types';
 import { applyPlatform } from '../platform/applyPlatform';
 import { copyTree, fixture, gitRepo, readJsonFixture, tempDir } from '../testing/helpers';
 import { realExec } from '../util/exec';
@@ -8,20 +8,13 @@ import { directoryFiles } from '../util/repoFiles';
 import { runLookup } from './lookup';
 import type { RenovateReport } from './mapReport';
 
-const FEEDS: Record<string, string> = {
-  'https://dotnetcli.blob.core.windows.net/dotnet/release-metadata/releases-index.json': 'releases-index.json',
-  'https://endoflife.date/api/nodejs.json': 'nodejs.json',
-  'https://endoflife.date/api/python.json': 'python.json',
-  'https://endoflife.date/api/go.json': 'go.json',
-  'https://endoflife.date/api/eclipse-temurin.json': 'eclipse-temurin.json',
-};
-const fetcher = async (url: string) => readJsonFixture(`platform-feeds/${FEEDS[url]}`);
+const platforms = readJsonFixture<PlatformTable>('platform-feeds/platform-table.json');
 
 async function lookup(name: string): Promise<LookupDocument> {
   const { dir, sha } = gitRepo({}, fixture(`renovate/${name}/input`));
   const report = readJsonFixture<RenovateReport>(`renovate/${name}/report.json`);
   const { document } = await runLookup({
-    exec: realExec, repoDir: dir, outDir: tempDir(), workDir: tempDir(), expectedSha: sha, fetcher,
+    exec: realExec, repoDir: dir, outDir: tempDir(), workDir: tempDir(), expectedSha: sha, platforms,
     fetchActionYml: async () => null,
     renovate: async () => ({ report, seconds: 1, log: '' }), now: () => new Date('2026-10-16T08:00:00Z'),
   });
@@ -73,7 +66,7 @@ describe('R31 (S18-D1): the platform record owns its locations', () => {
     expect(fs.readFileSync(path.join(root, 'src/Lib/Lib.csproj'), 'utf8')).toContain('<TargetFramework>net10.0</TargetFramework>');
   });
 
-  it('S12: channel moves fold, in-channel updates and unrecognised locations stay their own records', async () => {
+  it('S12 + #617 D29: channel and in-channel moves of a platform location fold, unrecognised locations stay their own records', async () => {
     const doc = await lookup('docker-actions-platform');
     const byKey = new Map(doc.records.map((r) => [key(r), r]));
     const values = (k: string) => byKey.get(k)?.candidates.map((c) => c.value);
@@ -86,18 +79,19 @@ describe('R31 (S18-D1): the platform record owns its locations', () => {
     // Not a platform image at all.
     expect(values('Dockerfile ubuntu 22.04')).toEqual(['26.04']);
 
-    // Platform locations keep only the in-channel update the platform plan never makes...
-    for (const k of ['.github/workflows/ci.yml node 20.11.0', '.nvmrc node 20.11.0', '.node-version node 20.11.0', '.tool-versions node 20.11.0']) {
-      expect(values(k)).toEqual(['20.20.2']);
-    }
-    expect(values('Dockerfile node 20.11.0-alpine')).toEqual(['20.20.2-alpine']);
-    expect(values('.github/workflows/ci.yml dotnet-sdk 8.0.100')).toEqual(['8.0.426']);
-    expect(values('global.json dotnet-sdk 8.0.100')).toEqual(['8.0.426']);
-    expect(values('.tool-versions java 17.0.8+7')).toEqual(['17.0.20+8']);
-    // ...and a location whose only move is a channel move is folded away entirely.
-    for (const k of ['Dockerfile mcr.microsoft.com/dotnet/aspnet 8.0', '.python-version python 3.11.4', '.tool-versions python 3.11.4', '.github/workflows/ci.yml python 3.11.4', '.github/workflows/ci.yml java-jdk 17', '.tool-versions golang 1.21.0', '.github/workflows/ci.yml go 1.21.0']) {
+    // #617 D29/D34: a platform location on a channel the table has loses its in-channel candidates as well as its channel
+    // moves; the platform record offers the in-channel move itself, to one target for every location...
+    for (const k of [
+      '.github/workflows/ci.yml node 20.11.0', '.nvmrc node 20.11.0', '.node-version node 20.11.0', '.tool-versions node 20.11.0',
+      'Dockerfile node 20.11.0-alpine', '.github/workflows/ci.yml dotnet-sdk 8.0.100', 'global.json dotnet-sdk 8.0.100', '.tool-versions java 17.0.8+7',
+      'Dockerfile mcr.microsoft.com/dotnet/aspnet 8.0', '.python-version python 3.11.4', '.tool-versions python 3.11.4', '.github/workflows/ci.yml python 3.11.4',
+      '.github/workflows/ci.yml java-jdk 17', '.tool-versions golang 1.21.0', '.github/workflows/ci.yml go 1.21.0',
+    ]) {
       expect(byKey.has(k), k).toBe(false);
     }
+    const last = (sdk: string) => doc.platforms.find((p) => p.sdk === sdk)!.candidates.at(-1)!;
+    expect(last('node')).toMatchObject({ channel: '20', latestVersion: '20.20.2' });
+    expect(last('dotnet')).toMatchObject({ channel: '8.0', latestSdk: '8.0.426' });
     // No candidate on a platform location crosses a channel any more.
     for (const r of doc.records.filter((r) => r.ecosystem.startsWith('platform:'))) {
       expect(r.candidates.every((c) => c.updateType !== 'major'), key(r)).toBe(true);
@@ -116,7 +110,7 @@ describe('R31 (S18-D1): the platform record owns its locations', () => {
       repositories: { local: { packageFiles: { ...record('.github/workflows/ci.yml', '20', 'github-actions', 'github-releases'), ...record('.nvmrc', '22', 'nvm', 'node-version') } } },
     };
     const { document } = await runLookup({
-      exec: realExec, repoDir: dir, outDir: tempDir(), workDir: tempDir(), expectedSha: sha, fetcher, fetchActionYml: async () => null,
+      exec: realExec, repoDir: dir, outDir: tempDir(), workDir: tempDir(), expectedSha: sha, platforms, fetchActionYml: async () => null,
       renovate: async () => ({ report, seconds: 1, log: '' }), now: () => new Date('2026-10-16T08:00:00Z'),
     });
     expect(document.platforms[0].current.channels).toEqual(['22', '20']);

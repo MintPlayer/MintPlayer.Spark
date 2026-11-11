@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Authorization;
 using MintPlayer.Spark.Services;
+using MintPlayer.Spark.Tests._Infrastructure;
 using NSubstitute;
 using Raven.Client.Documents.Session;
 
@@ -27,9 +28,10 @@ public class SparkSelectionResolverTests
         _permissions,
         Substitute.For<IRowSecurity>(),
         Substitute.For<ISparkTypeResolver>(),
-        Substitute.For<IAsyncDocumentSession>(),
+        Substitute.For<MintPlayer.Spark.Abstractions.Storage.ISparkSession>(),
         NullLogger<SparkSelectionResolver>.Instance,
-        Substitute.For<IAttributeRightsEnforcement>());
+        Substitute.For<IAttributeRightsEnforcement>(),
+        TestQueryResultProjector.For(Substitute.For<IAsyncDocumentSession>()));
 
     private static EntityTypeDefinition Type(string? clrType) => new()
     {

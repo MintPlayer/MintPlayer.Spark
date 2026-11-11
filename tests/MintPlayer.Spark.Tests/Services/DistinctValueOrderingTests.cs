@@ -37,7 +37,7 @@ public class DistinctValueOrderingTests : SparkTestDriver
 
     public class TestContext : SparkContext
     {
-        public IRavenQueryable<Tally> Tallies => Session.Query<Tally>();
+        public IQueryable<Tally> Tallies => Session.Query<Tally>();
     }
 
     private SparkEndpointFactory<TestContext>? _factory;

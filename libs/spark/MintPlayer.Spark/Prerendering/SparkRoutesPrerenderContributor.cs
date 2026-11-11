@@ -1,5 +1,7 @@
 using System.Text;
 using System.Text.Json;
+using MintPlayer.SourceGenerators.Attributes;
+using MintPlayer.Spark.Abstractions.Links;
 using MintPlayer.Spark.Abstractions.Prerendering;
 
 namespace MintPlayer.Spark.Prerendering;
@@ -13,9 +15,11 @@ namespace MintPlayer.Spark.Prerendering;
 /// body) must change it here too, or the page misses it (logged as <c>[spark-ssr] miss</c>).
 /// </para>
 /// </summary>
-internal sealed class SparkRoutesPrerenderContributor : ISparkPrerenderContributor
+internal sealed partial class SparkRoutesPrerenderContributor : ISparkPrerenderContributor
 {
     private const string Api = "/spark";
+
+    [Inject] private readonly ISparkEntityLinks links;
 
     public Task ContributeAsync(ISparkPrerenderContext context)
     {
@@ -34,10 +38,9 @@ internal sealed class SparkRoutesPrerenderContributor : ISparkPrerenderContribut
             case ["po", _, "new"]:
                 supplies.Add(context.GetAsync($"{Api}/types"));
                 break;
-            // po/:type/:id, po/:type/:id/edit, po/:type/:id/:slug
-            case ["po", var type, var id, ..] when segments.Length <= 4:
-                var slug = segments is [_, _, _, var s] && s != "edit" ? s : null;
-                supplies.Add(SupplyObjectAsync(context, type, id, slug: slug));
+            // po/:type/:id/edit: the object, never a redirect (the edit page has no slug).
+            case ["po", var type, var id, "edit"]:
+                supplies.Add(SupplyObjectAsync(context, type, id));
                 break;
             // po/:type
             case ["po", var type]:
@@ -47,14 +50,22 @@ internal sealed class SparkRoutesPrerenderContributor : ISparkPrerenderContribut
             case ["query", var queryId]:
                 supplies.Add(SupplyGridAsync(context, queryId));
                 break;
+            // po/:type/:id[/:slug], or a type's own route template (#602): the object, and a 301 when the path is
+            // not its canonical one.
+            default:
+                if (links.Match(context.Path.Value ?? "") is { } match)
+                    supplies.Add(SupplyObjectAsync(context, match.Type, match.Id, canonicalize: true));
+                break;
         }
         return Task.WhenAll(supplies);
     }
 
     /// <summary>spark-po-detail.component.ts <c>load()</c>: the object and the types, then the type's rights and actions.</summary>
     /// <param name="primary">Whether the object is the page's primary read, whose status becomes the page's (D4); a board tile's is not.</param>
-    /// <param name="slug">The URL's slug segment (<c>po/:type/:id/:slug</c>), or null when the URL has none.</param>
-    internal static async Task SupplyObjectAsync(ISparkPrerenderContext context, string type, string id, bool primary = true, string? slug = null)
+    /// <param name="canonicalize">Whether the request path is the object's detail page, to be redirected to the object's
+    /// <c>href</c> when it differs (#602: a missing or stale slug, the type's id instead of its alias, the default URL of a
+    /// type with a route template).</param>
+    internal static async Task SupplyObjectAsync(ISparkPrerenderContext context, string type, string id, bool primary = true, bool canonicalize = false)
     {
         var objectTask = context.PostAsync($"{Api}/po/load", new { objectTypeId = type, id });
         var typesTask = context.GetAsync($"{Api}/types");
@@ -65,20 +76,14 @@ internal sealed class SparkRoutesPrerenderContributor : ISparkPrerenderContribut
         if (primary)
             context.SetPageStatus(item.Status);
 
-        // A stale slug is a 301 to the canonical one (D4), decided only on a readable object: a denied or
-        // missing one keeps its status above, so the slug is never revealed. The canonical slug is the one
-        // the page writes itself (spark-po-detail writeSlug); no slug at all is left to the page.
-        if (primary && slug is not null && item.IsSuccess)
+        // A non-canonical path is a 301 to the object's href (D4), decided only on a readable object: a denied or
+        // missing one keeps its status above, so the slug is never revealed. The query string (?lang) is kept.
+        if (primary && canonicalize && item.IsSuccess
+            && item.Read<ObjectReference>()?.Href is { Length: > 0 } href
+            && !Segments(new PathString(href)).SequenceEqual(Segments(context.Path), StringComparer.Ordinal))
         {
-            var canonical = SparkSlug(item.Read<ObjectReference>()?.Breadcrumb);
-            if (canonical != slug)
-            {
-                var location = canonical is "" or "edit"
-                    ? $"/po/{EncodeUriComponent(type)}/{EncodeUriComponent(id)}"
-                    : $"/po/{EncodeUriComponent(type)}/{EncodeUriComponent(id)}/{canonical}";
-                context.Redirect(location + context.QueryString, permanent: true);
-                return;
-            }
+            context.Redirect(href + context.QueryString, permanent: true);
+            return;
         }
 
         var types = (await typesTask).Read<List<EntityTypeReference>>() ?? [];
@@ -248,26 +253,6 @@ internal sealed class SparkRoutesPrerenderContributor : ISparkPrerenderContribut
     internal static string[] Segments(PathString path)
         => (path.Value ?? "").Split('/', StringSplitOptions.RemoveEmptyEntries).Select(Uri.UnescapeDataString).ToArray();
 
-    /// <summary>
-    /// ng-spark's <c>sparkSlug</c> (po-detail/src/spark-slug.ts): lower case, accents dropped, every run of other
-    /// characters one dash. "Beyoncé - Halo!" → "beyonce-halo".
-    /// </summary>
-    internal static string SparkSlug(string? text)
-    {
-        var slug = new StringBuilder();
-        foreach (var c in (text ?? "").Normalize(NormalizationForm.FormD))
-        {
-            if (c is >= '̀' and <= 'ͯ')
-                continue;
-            var lower = char.ToLowerInvariant(c);
-            if (lower is >= 'a' and <= 'z' or >= '0' and <= '9')
-                slug.Append(lower);
-            else if (slug.Length > 0 && slug[^1] != '-')
-                slug.Append('-');
-        }
-        return slug.ToString().TrimEnd('-');
-    }
-
     /// <summary>JavaScript's <c>encodeURIComponent</c>, which the page's requests use: it leaves <c>!'()*</c> as they are.</summary>
     internal static string EncodeUriComponent(string value)
     {
@@ -275,11 +260,28 @@ internal sealed class SparkRoutesPrerenderContributor : ISparkPrerenderContribut
         return escaped.Replace("%21", "!").Replace("%27", "'").Replace("%28", "(").Replace("%29", ")").Replace("%2A", "*").ToString();
     }
 
-    // The member of POST /spark/po/load the slug needs.
+    /// <summary>
+    /// A redirect hook's target (#602, tier c): a 301 to a readable object's <c>href</c>, else the load's refusal as the
+    /// page's status. Probed, not supplied: the request names an id the URL does not show, and a supplied request
+    /// travels in the refused page's transfer state, so a private object's id would be in its HTML while a missing
+    /// one's page has none (the redirect hook's existence oracle, found by SparkEntityRedirectSecurityTests).
+    /// </summary>
+    internal static async Task RedirectToObjectAsync(ISparkPrerenderContext context, string type, string id)
+    {
+        var item = await context.ProbeAsync($"{Api}/po/load", new { objectTypeId = type, id });
+        context.SetPageStatus(item.Status);
+        if (item.IsSuccess
+            && item.Read<ObjectReference>()?.Href is { Length: > 0 } href
+            && !Segments(new PathString(href)).SequenceEqual(Segments(context.Path), StringComparer.Ordinal))
+            context.Redirect(href + context.QueryString, permanent: true);
+    }
+
+    // The members of POST /spark/po/load the predictions and the 301 need.
     private sealed class ObjectReference
     {
         public string? Id { get; set; }
         public string? Breadcrumb { get; set; }
+        public string? Href { get; set; }
         public List<AttributeValue>? Attributes { get; set; }
     }
 

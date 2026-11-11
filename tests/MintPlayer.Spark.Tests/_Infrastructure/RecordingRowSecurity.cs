@@ -1,7 +1,7 @@
 using System.Linq.Expressions;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Services;
-using Raven.Client.Documents.Session;
+using MintPlayer.Spark.Abstractions.Storage;
 
 namespace MintPlayer.Spark.Tests._Infrastructure;
 
@@ -56,7 +56,7 @@ internal sealed class RecordingRowSecurity : IRowSecurity
         return Task.FromResult(true);
     }
 
-    public Task<bool> AreAllowedAsync(IAsyncDocumentSession session, Type entityType, string action, IReadOnlyCollection<string> ids)
+    public Task<bool> AreAllowedAsync(ISparkSession session, Type entityType, string action, IReadOnlyCollection<string> ids)
     {
         calls.Add(new Call(nameof(AreAllowedAsync), entityType, null, action, ids.Count));
         return Task.FromResult(true);
@@ -67,7 +67,7 @@ internal sealed class RecordingRowSecurity : IRowSecurity
     public bool HasRowRule(Type entityType) => false;
 
     public Task<IReadOnlyList<object>> FilterAsync(
-        IAsyncDocumentSession session,
+        ISparkSession session,
         IReadOnlyList<object> entities,
         Type entityType,
         Type resultType,
@@ -94,7 +94,7 @@ internal sealed class RecordingRowSecurity : IRowSecurity
     }
 
     public Task RedactAsync(
-        IAsyncDocumentSession session,
+        ISparkSession session,
         IReadOnlyList<(PersistentObject Po, object Row)> items,
         Type entityType,
         Type resultType,

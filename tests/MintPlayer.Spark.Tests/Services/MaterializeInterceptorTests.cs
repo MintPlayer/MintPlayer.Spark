@@ -313,7 +313,7 @@ public class MzLineDoc
 
 public class MzContext : SparkContext
 {
-    public Raven.Client.Documents.Linq.IRavenQueryable<MzSong> Songs => Session.Query<MzSong>();
+    public IQueryable<MzSong> Songs => Session.Query<MzSong>();
 }
 
 public class MzSongActions(IEntityMapper mapper) : DefaultPersistentObjectActions<MzSong>(mapper), ISparkOwnsRowSecurity

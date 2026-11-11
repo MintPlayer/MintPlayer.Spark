@@ -48,8 +48,8 @@ public class ScopedContextPropertyTests : SparkTestDriver
     /// <summary>The motivating shape: a grid scoped to the signed-in user.</summary>
     public class ScopedTestContext : SparkContext
     {
-        public IRavenQueryable<Account> MyAccounts => Session.Query<Account>().Where(a => a.OwnerId == Me);
-        public IRavenQueryable<Account> AllAccounts => Session.Query<Account>();
+        public IQueryable<Account> MyAccounts => Session.Query<Account>().Where(a => a.OwnerId == Me);
+        public IQueryable<Account> AllAccounts => Session.Query<Account>();
     }
 
     private static EntityTypeFile AccountModel(string? indexName) => new()

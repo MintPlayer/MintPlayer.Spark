@@ -42,7 +42,7 @@ public class BackportLinkRecipientTests : CoverageRavenTest
             await seed.StoreAsync(new Repository { FullName = "acme/widgets", Provider = EForgeProvider.GitHub, DefaultBranch = "main" }, RepositoryId);
             await seed.SaveChangesAsync();
         }
-        return new BackportLinkRecipient(store.OpenAsyncSession(), new SingleForgeResolver(integration), [forge], [git], [labels], NullLogger<BackportLinkRecipient>.Instance);
+        return new BackportLinkRecipient(store.OpenAsyncSession(), new SingleForgeResolver(integration), [forge], [git], [labels], TimeProvider.System, NullLogger<BackportLinkRecipient>.Instance);
     }
 
     private async Task MergedAsync(IDocumentStore store, ForgePullRequestText backport)
@@ -60,6 +60,23 @@ public class BackportLinkRecipientTests : CoverageRavenTest
 
         await labels.Received(1).AddLabelAsync(Arg.Any<Repository>(), 7, "backported: dotnet-10.x", Arg.Any<CancellationToken>());
         forge.Comments.Should().BeEmpty("the app's own report already linked it");
+    }
+
+    [Fact]
+    public async Task A_merged_backport_loses_its_record()
+    {
+        using var store = GetDocumentStore();
+        var id = BackportPullRequest.DocumentId(RepositoryId, 20);
+        using (var seed = store.OpenAsyncSession())
+        {
+            await seed.StoreAsync(new BackportPullRequest { Id = id, Repository = RepositoryId, Number = 20, Source = 7, Branch = Line }, id);
+            await seed.SaveChangesAsync();
+        }
+
+        await MergedAsync(store, Pull(20, "[dotnet-10.x] fix: guard", "Backport of #7.\n\n" + BackportProvenance.Marker("acme/widgets", 7), "backport/7-dotnet-10.x", Line));
+
+        using var check = store.OpenAsyncSession();
+        (await check.LoadAsync<BackportPullRequest>(id)).Should().BeNull();
     }
 
     [Theory]
@@ -126,6 +143,9 @@ public class BackportLinkRecipientTests : CoverageRavenTest
         opened.Base.Should().Be(Line);
         opened.Title.Should().Be("[dotnet-10.x] fix: guard");
         opened.Body.Should().Contain(BackportProvenance.Marker("acme/widgets", 7));
+        // A writer pushed it, so it is recorded like the App's own backports.
+        using var check = store.OpenAsyncSession();
+        (await check.LoadAsync<BackportPullRequest>(BackportPullRequest.DocumentId(RepositoryId, 1000))).Source.Should().Be(7);
     }
 
     [Theory]

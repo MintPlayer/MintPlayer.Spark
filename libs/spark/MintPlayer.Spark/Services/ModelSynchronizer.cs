@@ -6,8 +6,6 @@ using MintPlayer.Spark.Configuration;
 using MintPlayer.Spark.Helpers;
 using MintPlayer.Spark.Layering;
 using MintPlayer.Spark.Services.Breadcrumb;
-using Raven.Client.Documents.Indexes;
-using Raven.Client.Documents.Linq;
 using System.Reflection;
 using System.Text.Encodings.Web;
 using System.Text.Json;
@@ -72,9 +70,9 @@ internal partial class ModelSynchronizer : IModelSynchronizer
         libraryColumnOrders = ColumnOrderMaintenance.LibraryColumnOrders(Libraries ?? SparkLayerCatalog.Libraries);
         var (existingEntityTypes, existingQueries) = LoadExistingEntityTypeFiles();
 
-        // Find all IRavenQueryable<T> properties on the SparkContext
+        // Find all query-root (IQueryable<T>) properties on the SparkContext
         var queryableProperties = contextType.GetCachedProperties()
-            .Where(p => IsRavenQueryable(p.PropertyType))
+            .Where(p => SparkContextQueryables.IsQueryRoot(p.PropertyType))
             .ToList();
 
         // Track types to process (including embedded types)
@@ -85,7 +83,7 @@ internal partial class ModelSynchronizer : IModelSynchronizer
         var typesToProcess = new Queue<Type>();
 
         // Grouped by entity type, because a context may expose the same type more than once
-        // (e.g. Cars and ArchivedCars, both IRavenQueryable<Car>). Both map to the same
+        // (e.g. Cars and ArchivedCars, both IQueryable<Car>). Both map to the same
         // {TypeName}.json, and writing per property meant the second write dropped the query the
         // first had just added — from a snapshot of the directory taken once, before any write.
         //
@@ -150,7 +148,7 @@ internal partial class ModelSynchronizer : IModelSynchronizer
             // A viewless default (SP4) is queried for entity documents, but RavenDB can only sort and
             // filter on what its maps emit: anything else is "The field '…' is not indexed", a 500.
             // Null for a viewed default or no default — the view is the surface then.
-            var querySurface = defaultEntry is { ProjectionType: null } ? ViewlessQuerySurface(defaultEntry) : null;
+            var querySurface = defaultEntry is { ProjectionType: null } ? indexCatalog.GetQuerySurface(defaultEntry) : null;
 
             // Find or create entity type definition (merging with projection type if present)
             var existingDef = existingEntityTypes.Values.FirstOrDefault(e => e.ClrType == clrType);
@@ -190,6 +188,18 @@ internal partial class ModelSynchronizer : IModelSynchronizer
                         : $"Retargeted indexName '{stored}' -> '{indexName}' on query '{databaseQuery.Name}': no index named '{stored}' exists.");
                 }
                 // else: authored binding to a known non-default index — preserved verbatim.
+            }
+
+            // A custom query's binding is always authored, so it is never stamped; a dead one is still repaired, for
+            // the same reason as above. DemoApp's Company_Cars kept 'indexName: Company_Cars' after its index was
+            // removed (#551 D14), which the runtime resolves and refuses ("no deployed index has that name").
+            foreach (var customQuery in queriesForType.Where(q =>
+                         !q.Source.StartsWith("Database.", StringComparison.Ordinal)
+                         && !string.IsNullOrEmpty(q.IndexName)
+                         && indexCatalog.GetByIndexName(q.IndexName) is null))
+            {
+                Console.WriteLine($"Cleared indexName '{customQuery.IndexName}' on query '{customQuery.Name}': no index with that name exists.");
+                customQuery.IndexName = null;
             }
 
             // After the bindings above settle: D10 reads a query's index to decide how an append is written.
@@ -402,7 +412,7 @@ internal partial class ModelSynchronizer : IModelSynchronizer
     /// has content in it.
     /// </summary>
     /// <remarks>
-    /// A context with no <c>IRavenQueryable&lt;&gt;</c> properties produces no model files, and this
+    /// A context with no <c>IQueryable&lt;&gt;</c> root properties produces no model files, and this
     /// method deletes none — so the directory keeps whatever a previous run wrote. Writing the hash
     /// file anyway records "the model is empty" alongside a populated directory, which is the one
     /// combination nothing downstream can detect: <c>--spark-verify-model</c> derives both sides of
@@ -423,7 +433,7 @@ internal partial class ModelSynchronizer : IModelSynchronizer
             return false;
 
         Console.Error.WriteLine(
-            $"Spark: '{contextType.Name}' declares no IRavenQueryable<> properties, but {modelPath} " +
+            $"Spark: '{contextType.Name}' declares no IQueryable<> properties, but {modelPath} " +
             "already contains model files. Refusing to write a model hash that would certify an empty " +
             "model over them — the running application would then fail at startup instead. Check that " +
             "the context type passed to model synchronization is the application's own context.");
@@ -487,7 +497,7 @@ internal partial class ModelSynchronizer : IModelSynchronizer
     internal static IReadOnlyList<string> DescribeDescriptionDrift(Type contextType, string contentRootPath)
     {
         var entityTypes = contextType.GetCachedProperties()
-            .Where(p => IsRavenQueryable(p.PropertyType))
+            .Where(p => SparkContextQueryables.IsQueryRoot(p.PropertyType))
             .Select(p => GetQueryableEntityType(p.PropertyType))
             .Where(t => t is not null)
             .Cast<Type>()
@@ -1395,7 +1405,7 @@ internal partial class ModelSynchronizer : IModelSynchronizer
             if (!writable) return;
 
             var name = target.Name;
-            var fix = $"Add 'public IRavenQueryable<{name}> {new CollectionHelper().GetCollectionName(name)} => Session.Query<{name}>();' " +
+            var fix = $"Add 'public IQueryable<{name}> {new CollectionHelper().GetCollectionName(name)} => Session.Query<{name}>();' " +
                       $"to the context, or name a query in [Reference(typeof({name}), \"…\")].";
 
             if (rootsByType.TryGetValue(target, out var roots))
@@ -1637,18 +1647,7 @@ internal partial class ModelSynchronizer : IModelSynchronizer
         return false;
     }
 
-    private static bool IsRavenQueryable(Type type)
-    {
-        if (!type.IsGenericType) return false;
-        var genericDef = type.GetGenericTypeDefinition();
-        return genericDef == typeof(IRavenQueryable<>);
-    }
-
-    private static Type? GetQueryableEntityType(Type queryableType)
-    {
-        if (!queryableType.IsGenericType) return null;
-        return queryableType.GetGenericArguments().FirstOrDefault();
-    }
+    private static Type? GetQueryableEntityType(Type queryableType) => SparkContextQueryables.ElementType(queryableType);
 
     // Delegates to the shared shape definition so the generator and the startup hash check can
     // never disagree about what a property's data type is.
@@ -1739,45 +1738,6 @@ internal partial class ModelSynchronizer : IModelSynchronizer
             ?? candidates.FirstOrDefault(a => a.DataType == "string");
 
         return sortAttr?.Name;
-    }
-
-    /// <summary>
-    /// The fields a viewless default index's maps emit (<see cref="SparkMapScanner.EmittedFields"/>), or
-    /// <see langword="null"/> when they cannot be read — then nothing is restricted and the author sets
-    /// <c>canSort</c>/<c>canFilter</c> by hand.
-    /// </summary>
-    /// <remarks>
-    /// Every map's fields, not only the map over this type's collection: the synchronizer has no document
-    /// store to name collections with, and a field another map emits is indexed, so sorting on it is no
-    /// error (this type's entries simply have no value for it).
-    /// </remarks>
-    internal static IReadOnlySet<string>? ViewlessQuerySurface(IndexCatalogEntry entry)
-    {
-        IndexDefinition definition;
-        try
-        {
-            if (Activator.CreateInstance(entry.IndexType) is not IAbstractIndexCreationTask task) return null;
-            definition = task.CreateIndexDefinition();
-        }
-        catch (Exception ex) when (ex is MissingMethodException or NotSupportedException or TargetInvocationException or InvalidOperationException)
-        {
-            Console.WriteLine($"Warning: could not read the maps of viewless default index '{entry.IndexName}' ({ex.Message}); " +
-                              "its attributes keep the default sort and filter capabilities.");
-            return null;
-        }
-
-        var fields = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var map in definition.Maps)
-        {
-            if (SparkMapScanner.EmittedFields(map) is not { } emitted)
-            {
-                Console.WriteLine($"Warning: could not read the fields emitted by a map of viewless default index '{entry.IndexName}'; " +
-                                  "its attributes keep the default sort and filter capabilities.");
-                return null;
-            }
-            fields.UnionWith(emitted);
-        }
-        return fields;
     }
 }
 

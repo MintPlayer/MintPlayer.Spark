@@ -1,4 +1,4 @@
-import { Component, effect, input } from '@angular/core';
+import { Component, effect, input, signal } from '@angular/core';
 import { provideSpark, type SparkFeature } from '@mintplayer/ng-spark';
 import { TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
@@ -69,7 +69,7 @@ async function setup(permissions: Record<string, boolean> = {}, ...extra: SparkF
       provideHttpClient(),
       provideHttpClientTesting(),
       { provide: SparkService, useValue: service },
-      { provide: SparkLanguageService, useValue: { t: (k: string) => k } },
+      { provide: SparkLanguageService, useValue: { language: signal('en'), defaultLanguage: signal('en'), languages: signal({}), t: (k: string) => k } },
       { provide: SPARK_ATTRIBUTE_RENDERERS, useValue: [] },
       provideSpark(
         withDetailPanels({ id: 'test-panel', component: TestPanel }),

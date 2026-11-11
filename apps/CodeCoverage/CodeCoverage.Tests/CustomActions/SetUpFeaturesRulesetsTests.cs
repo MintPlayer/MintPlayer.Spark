@@ -74,6 +74,8 @@ public class SetUpFeaturesRulesetsTests : CoverageRavenTest
                 .Returns([new ForgeRulesetApplied("Created ruleset.", "https://github.com/acme/widget/rules/1")]);
             // NSubstitute answers a string member with "", which would refuse: no refusal is null.
             Onboarding.RefusalBeforePlanning(Arg.Any<Repository>()).Returns((string?)null);
+            Onboarding.CurrentFeaturesAsync(Arg.Any<Repository>(), Arg.Any<CancellationToken>())
+                .Returns(Task.FromResult<IReadOnlySet<EOnboardingFeature>>(new HashSet<EOnboardingFeature>()));
             Onboarding.PreviewAsync(Arg.Any<Repository>(), Arg.Any<IReadOnlySet<EOnboardingFeature>>(), Arg.Any<CancellationToken>())
                 .Returns(new OnboardingPreview(new OnboardingPlan([EOnboardingFeature.MergeQueue], [], [], new LineRenamePlan([], []), [], [], "body"), null));
             Onboarding.OnboardAsync(Arg.Any<Repository>(), Arg.Any<IReadOnlySet<EOnboardingFeature>>(), Arg.Any<CancellationToken>())

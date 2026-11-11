@@ -74,6 +74,18 @@
         "lookupReferenceType": "DependencyThreshold",
         "showedOn": "Query, PersistentObject",
         "rules": []
+      },
+      {
+        "id": "4b0c0ac5-6d9a-4e6a-a606-a121d57b79b9",
+        "name": "Track",
+        "dataType": "string",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 7,
+        "isArray": false,
+        "lookupReferenceType": "DependencyTrack",
+        "showedOn": "Query, PersistentObject",
+        "rules": []
       }
     ],
     "queries": []

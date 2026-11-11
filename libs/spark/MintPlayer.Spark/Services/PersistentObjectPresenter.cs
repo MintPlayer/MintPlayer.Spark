@@ -1,6 +1,5 @@
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
-using Raven.Client.Documents.Session;
 
 namespace MintPlayer.Spark.Services;
 
@@ -32,7 +31,7 @@ public interface IPersistentObjectPresenter
 [Register(typeof(IPersistentObjectPresenter), ServiceLifetime.Scoped)]
 internal sealed partial class PersistentObjectPresenter : IPersistentObjectPresenter
 {
-    [Inject] private readonly IAsyncDocumentSession session;
+    [Inject] private readonly Abstractions.Storage.ISparkSession session;
     [Inject] private readonly IModelLoader modelLoader;
     [Inject] private readonly IEntityMapper entityMapper;
     [Inject] private readonly IRowSecurity rowSecurity;

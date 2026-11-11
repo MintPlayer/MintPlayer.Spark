@@ -272,6 +272,23 @@ PRD §8.2.
     settings, so the existing seed push covers the new branch too. `IVersioningOnboardingService.OnboardAsync` is
     gone; the service keeps `PushSeedsAsync`. Tests: `OnboardingServiceTests` (4), `OnboardingWriterJobTests` (5),
     the client route table.
+    **Revised (PR #615, 2026-11-09):** the form used to start from `VersioningOnboardingState.Features`, which holds
+    what this chooser last asked for, so it was wrong for any feature that arrived another way. Evidence: MintPlayer.Spark
+    showed all six boxes unchecked, but it has all six. The cause: the dependency switch opens its own onboarding pull
+    request, older repositories came through "Set up versioning", and `coverage.yml` can be edited by hand (owner: the
+    checkboxes "don't always correspond with what features have been applied"). The form now starts from
+    `IOnboardingService.CurrentFeaturesAsync`, which reads where each feature lives
+    (`OnboardingFeatureDetection`):
+    - **Coverage:** a report was uploaded.
+    - **Dependency updates:** the effective setting is on, and `dependencies.enabled` doesn't opt out.
+    - **PR size labels:** the effective setting is on.
+    - **Merge queue:** `mergeQueue.enabled: true`.
+    - **Versioning:** a `versioning:` section is present.
+    - **Release lines:** a `versioning.lines` key is present.
+
+    It adds the features of an onboarding pull request that is still open, not those of a closed one. Re-planning a
+    feature that is set up already changes nothing: the planner only adds what is missing. Tests:
+    `OnboardingFeatureDetectionTests` (4), `OnboardingServiceTests.Item615_the_form_starts_from_the_repository_plus_an_open_pull_requests_features_and_drops_a_closed_ones`.
   - **M10d, on merge:**
     - apply the settings (dependency updates, size labels, coverage);
     - push the seeds;

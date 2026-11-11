@@ -18,7 +18,7 @@ public sealed class SparkQuery
 
     /// <summary>
     /// Query data source. Two formats supported:
-    /// - "Database.PropertyName" — resolves to an IRavenQueryable property on SparkContext
+    /// - "Database.PropertyName" — resolves to an IQueryable&lt;T&gt; property on SparkContext
     /// - "Custom.MethodName" — resolves to a method on the entity's Actions class
     /// </summary>
     public required string Source { get; set; }
@@ -44,11 +44,12 @@ public sealed class SparkQuery
     public SparkQueryRenderMode RenderMode { get; set; } = SparkQueryRenderMode.Pagination;
 
     /// <summary>
-    /// The RavenDB index this query runs against, resolved by name through the index catalog; its
+    /// The index this query runs against (RavenDB), resolved by name through the index catalog; its
     /// <c>[FromIndex]</c> projection (when it has one) becomes the result shape. Stamped with the
     /// entity's default index when the synchronizer mints the query; a hand-authored value is
     /// preserved and authoritative. Empty falls back to the entity file's declared binding, and an
-    /// empty binding queries the raw collection.
+    /// empty binding queries the raw collection. A provider without indexes refuses a model that sets
+    /// one at startup (#551 D20).
     /// </summary>
     public string? IndexName { get; set; }
 
@@ -56,7 +57,7 @@ public sealed class SparkQuery
     /// The entity/view-model type name this query returns (e.g., "Person", "CompanyProductsOverview").
     /// Optional. When set, the framework uses the corresponding EntityTypeDefinition from
     /// App_Data/Model/ to map results via IEntityMapper. When not set, the type is inferred:
-    /// - For Database queries: from the IRavenQueryable generic parameter
+    /// - For Database queries: from the IQueryable&lt;T&gt; generic parameter
     /// - For Custom queries: from the method return type's generic parameter
     /// </summary>
     public string? EntityType { get; set; }

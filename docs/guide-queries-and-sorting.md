@@ -163,9 +163,13 @@ public class Company
 ```csharp
 public class MySparkContext : SparkContext
 {
-    public IRavenQueryable<Company> Companies => Session.Query<Company>();
+    public IQueryable<Company> Companies => Session.Query<Company>();
 }
 ```
+
+`Session` is the store-neutral `ISparkSession`: the same context runs on `spark.UseRavenDb()` and
+`spark.UseInMemory()`. Index-backed roots (`Session.Query<T, TIndex>()`) and a query's `indexName` need a
+provider with indexes (RavenDB); the in-memory provider refuses a model that binds one at startup.
 
 ### Step 2: Synchronize
 
@@ -709,7 +713,8 @@ typeof(Motorcycle))]` (`SPARK052` for a bare marker), each must have an `AddMap<
 index must derive from `SparkMultiMapIndexCreationTask<TReduceResult>` (`SPARK055`). That base writes a collection field
 into every map, and the executor narrows T's queries on it before row security, paging and totals. Without the
 narrowing a motorcycle would come back as a bicycle, outside the bicycle's row policy. A JavaScript index cannot be a
-default (`SPARK054`). DemoApp's `TwoWheelers_Overview` is the demo.
+default (`SPARK054`). `tests/MintPlayer.Spark.Tests/Queries/MultiMapDefaultIndexTests.cs` is the worked example and
+pins the narrowing.
 
 At runtime, `IIndexCatalog.GetDefaultFor(Type)` answers the election (it replaces `GetDefaultForCollectionType`).
 Every other index of the type stays usable by hand through `session.Query<TView, TIndex>()`, or for a reference
@@ -733,9 +738,9 @@ injection works like any other scoped service:
 ```csharp
 public class MyAppContext(ICurrentUser currentUser) : SparkContext
 {
-    public IRavenQueryable<Account> Accounts => Session.Query<Account>();
+    public IQueryable<Account> Accounts => Session.Query<Account>();
 
-    public IRavenQueryable<Account> MyAccounts =>
+    public IQueryable<Account> MyAccounts =>
         Session.Query<Account>().Where(a => a.OwnerId == currentUser.Id);
 }
 ```
@@ -782,18 +787,17 @@ declared `sortColumns`, header-click sorting, row-filter pushdown, search pushdo
 and `.Include()` all apply.
 
 ```csharp
-public async Task<IRavenQueryable<VCar>> Recent_Cars()
+public async Task<IQueryable<VCar>> Recent_Cars()
     => await Task.FromResult(session.Query<VCar, Cars_Overview>().Where(c => c.Year >= 2020));
 ```
 
 Capabilities are inferred from the **object the method returns**, not from its declared type. That
-matters because the declared type is routinely weaker than the object: `session.Query<T>()` assigned
-to `IQueryable<T>` is the common idiom, and it still gets the RavenDB path.
+matters because the declared type is routinely weaker than the object: `session.Query<T>()` declared
+as `IQueryable<T>` is the common idiom, and it still gets the store's path.
 
 | Return type | Treated as |
 |---|---|
-| `IRavenQueryable<T>` / `Task<IRavenQueryable<T>>` | full RavenDB query |
-| `IQueryable<T>` / `Task<IQueryable<T>>` backed by `session.Query<T>()` | full RavenDB query |
+| `IQueryable<T>` / `Task<IQueryable<T>>` backed by the store's `session.Query<T>()` (`ISparkSession`, or RavenDB's `IAsyncDocumentSession`) | full store query, executed by the provider |
 | `IQueryable<T>` over an in-memory source | in-memory queryable — sorting and row filtering only |
 | `IEnumerable<T>` / `Task<IEnumerable<T>>` | already materialized; sorted in memory by the framework |
 | `SparkQueryPage<T>` / `Task<SparkQueryPage<T>>` | the method's own page — see [taking over paging](#taking-over-paging-sparkquerypaget) |
@@ -1106,21 +1110,19 @@ When the frontend requests a query:
 
 ## Complete Example
 
-From the DemoApp:
+Indexes are RavenDB's (#551): DemoApp runs on the in-memory store, which has none, so its queries read the
+collections. For an index with a projection, see the Fleet app:
 
 ```
-Demo/DemoApp/
-  DemoApp/
+apps/Fleet/
+  Fleet/
     App_Data/
-      Model/Person.json          <-- merged entity + projection attributes
-      Queries/GetPeople.json     <-- query definition with sort config
-    Data/VPerson.cs              <-- projection type with [FromIndex]
-    Indexes/People_Overview.cs   <-- RavenDB index with computed FullName
-  DemoApp.Library/
-    Entities/Person.cs           <-- entity with FirstName, LastName, etc.
+      Model/Car.json             <-- merged entity + projection attributes, and the queries with their sort config
+  Fleet.Library/
+    Entities/Car.cs              <-- [GenerateIndex]: emits Cars_Overview and its [FromIndex] VCar in the application
 ```
 
-The entity lives in a class library here while the index and projection sit in the application. That
+The entity lives in a class library here while the index and projection are emitted in the application. That
 is not incidental — see below.
 
 ## Indexes and projections in a class library
@@ -1160,8 +1162,8 @@ running application read the same registry, so both agree. If computed columns a
 is logged, check that the declaring assembly is registered.
 
 See also:
-- `Demo/DemoApp/DemoApp/Indexes/Cars_Overview.cs` -- index with cross-document `LoadDocument`
-- `Demo/DemoApp/DemoApp/Data/VCar.cs` -- projection with `[LookupReference]`
+- `apps/HR/HR/Indexes/Professions_Lookup.cs` -- a hand-written index in an application
+- `apps/Fleet/Fleet.Library/Entities/Car.cs` -- `[GenerateIndex]`, whose `VCar` carries a `[LookupReference]`
 - `MintPlayer.Spark/Services/QueryExecutor.cs` -- query execution with sorting and projection
 
 ## Per-column sort and filter capabilities (#431)

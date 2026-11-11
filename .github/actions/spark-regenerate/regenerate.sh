@@ -10,6 +10,9 @@
 #   PATCH_PATH     where the patch is written. Default: $RUNNER_TEMP/merge-queue.patch.
 #   LOCKFILES      optional. Ecosystems for ../lockfile-regenerate/lockfiles.sh, run before the build. Empty: skipped.
 #   PR_HEAD, MERGE_BASE  optional, for lockfiles.sh (../lockfile-regenerate/fetch-pr-head.sh writes them).
+#   AFTER_SYNCHRONIZE  optional. Bash commands run after every synchronize pass, from the repository root, for files
+#                  derived from what synchronize wrote (e.g. golden files a test rewrites). Their output is in both
+#                  snapshots, so the fixed-point check covers it. Empty: skipped.
 #
 # Exit codes: 0 patch written (possibly empty), 1 any failure. Nothing is ever committed or pushed: the
 # patch is the whole output, and the queue validates and applies it (D4, T4).
@@ -89,6 +92,11 @@ synchronize() {
       echo "::endgroup::"
     done
   done
+  if [ -n "$(printf '%s' "${AFTER_SYNCHRONIZE:-}" | tr -d '[:space:]')" ]; then
+    echo "::group::after-synchronize (pass $1)"
+    CONFIGURATION="$CONFIGURATION" BUILD_ARGS="$BUILD_ARGS" bash -euo pipefail -c "$AFTER_SYNCHRONIZE" || fail "after-synchronize failed (pass $1)."
+    echo "::endgroup::"
+  fi
 }
 
 synchronize 1

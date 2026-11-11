@@ -1,6 +1,5 @@
 using MintPlayer.SourceGenerators.Attributes;
-using Raven.Client;
-using Raven.Client.Documents.Session;
+using MintPlayer.Spark.Abstractions.Storage;
 
 namespace MintPlayer.Spark.Services;
 
@@ -26,21 +25,21 @@ public interface ICollectionGuard
     /// foreign id even when the two types are field-compatible. A tracked entity with no metadata
     /// (should not happen for a stored document) fails closed.
     /// </summary>
-    bool BelongsToAuthorizedCollection(IAsyncDocumentSession session, object entity, Type expectedType);
+    bool BelongsToAuthorizedCollection(ISparkSession session, object entity, Type expectedType);
 }
 
 [Register(typeof(ICollectionGuard), ServiceLifetime.Singleton)]
 internal sealed class CollectionGuard : ICollectionGuard
 {
     public bool BelongsToAuthorizedCollection(
-        IAsyncDocumentSession session, object entity, Type expectedType)
+        ISparkSession session, object entity, Type expectedType)
     {
-        var expected = session.Advanced.DocumentStore.Conventions.GetCollectionName(expectedType);
+        var expected = session.GetCollectionName(expectedType);
 
-        var metadata = session.Advanced.GetMetadataFor(entity);
-        if (!metadata.TryGetValue(Constants.Documents.Metadata.Collection, out var actual))
+        var actual = session.GetStoredCollectionName(entity);
+        if (actual is null)
             return false;
 
-        return string.Equals(actual?.ToString(), expected, StringComparison.Ordinal);
+        return string.Equals(actual, expected, StringComparison.Ordinal);
     }
 }

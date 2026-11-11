@@ -45,4 +45,10 @@ public partial class DependencyRule
 
     /// <summary>A ceiling the repository's file cannot exceed (default), or a default it replaces.</summary>
     public bool Enforced { get; set; } = true;
+
+    /// <summary>Which releases the matching dependencies are offered from: LTS, stable or preview.</summary>
+    // #606 D8: on a platform:<sdk> ecosystem it is that SDK's track (and its companions'); elsewhere stable or preview. A
+    // non-enforced rule is a default; an enforced one is the widest track the file may choose.
+    [LookupReference(typeof(DependencyTrack))]
+    public EDependencyTrack Track { get; set; }
 }

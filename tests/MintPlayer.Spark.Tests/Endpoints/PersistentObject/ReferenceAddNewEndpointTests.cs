@@ -55,8 +55,8 @@ public class ReferenceAddNewEndpointTests : SparkTestDriver
 
     private class RanContext : SparkContext
     {
-        public Raven.Client.Documents.Linq.IRavenQueryable<RanShop> RanShops => Session.Query<RanShop>();
-        public Raven.Client.Documents.Linq.IRavenQueryable<RanSupplier> RanSuppliers => Session.Query<RanSupplier>();
+        public IQueryable<RanShop> RanShops => Session.Query<RanShop>();
+        public IQueryable<RanSupplier> RanSuppliers => Session.Query<RanSupplier>();
     }
 
     /// <summary>A value object whose key derives from its name (IHasNaturalId; owner 2026-11-07, revising D18).</summary>

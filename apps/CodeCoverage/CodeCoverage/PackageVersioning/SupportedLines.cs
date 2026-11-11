@@ -48,7 +48,9 @@ public static class SupportedLines
                 if (isCurrent) return new LineSupport(line, branch, true, true, $"the current {line.Ecosystem} line");
                 if (!known.Contains(line.Ecosystem))
                     return new LineSupport(line, branch, false, false, $"{line.Ecosystem} has no lifecycle data; `{Keep}` the line to backport to it");
-                var release = releases.FirstOrDefault(r => r.Platform == line.Ecosystem && r.Major == line.Major);
+                // #606: rows are per channel; a major with several (Python 3.13, 3.14) is judged by its newest.
+                var release = releases.Where(r => r.Platform == line.Ecosystem && r.Major == line.Major)
+                    .OrderByDescending(r => r.Channel, PlatformLifecycle.PlatformLifecycleSources.ChannelComparer.Instance).FirstOrDefault();
                 return release switch
                 {
                     null => new LineSupport(line, branch, false, false, $"{line.Ecosystem} {line.Major} is not in the lifecycle data; `{Keep}` the line to backport to it"),

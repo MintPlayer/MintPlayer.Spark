@@ -23,7 +23,7 @@ env:
   GH_PKG_USER: ${{ github.actor }}
   GH_PKG_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   NX_SELF_HOSTED_REMOTE_CACHE_SERVER: ${{ secrets.NX_CACHE_SERVER }}
-  NX_SELF_HOSTED_REMOTE_CACHE_ACCESS_TOKEN: ${{ (github.event_name == 'push' && github.ref_name == github.event.repository.default_branch) && secrets.NX_CACHE_RW_TOKEN || secrets.NX_CACHE_RO_TOKEN }}
+  NX_SELF_HOSTED_REMOTE_CACHE_ACCESS_TOKEN: ${{ (github.event_name == 'push' && github.ref_name == github.event.repository.default_branch) && secrets.NX_CACHE_RW_TOKEN || '' }}
   # Runs the E2E suite's Fleet host under dotnet-coverage (FleetTestHost.HostCoverageEnabled).
   SPARK_E2E_HOST_COVERAGE: 'true'
 
@@ -50,13 +50,13 @@ jobs:
           # set the pace of the whole run (9.3 min, 16-22 min once the commerce suites joined it).
           - { name: Library suites, artifact: libs, projects: 'MintPlayer.Spark.SourceGenerators.Tests,MintPlayer.Spark.Client.Tests,MintPlayer.Spark.Gs1.Tests,MintPlayer.Migration.Tests' }
           - { name: CodeCoverage git suites, artifact: codecoverage-git, projects: 'CodeCoverage.Git.Tests,CodeCoverage.GitMirror.Tests,CodeCoverage.GitWriter.Tests' }
-          - { name: App suites, artifact: apps, projects: 'DemoApp.Tests,SparkId.Tests,Fleet.Tests,QnA.Tests,HR.Tests' }
+          - { name: App suites, artifact: apps, projects: 'DemoApp.Tests,SparkId.Tests,Fleet.Tests,QnA.Tests,HR.Tests,MintPlayer.Tests' }
           # The Angular and action suites (vitest), among them the dependency-update action's `test` target
           # (unit + committed-bundle smoke test).
           - { name: Angular suites, artifact: angular, projects: '@mintplayer/ng-spark,@spark-apps/*,@spark-demo/*,@mintplayer/coverage-upload-action,@mintplayer/dependency-update-action' }
           # Everything not named above, so a new test project runs without being added here. Keep this list
           # in step with the entries above.
-          - { name: Other suites, artifact: other, exclude: 'MintPlayer.Spark.Tests,MintPlayer.Spark.E2E.Tests,CodeCoverage.Tests,SeoTester.Tests,MintPlayer.Spark.SourceGenerators.Tests,MintPlayer.Spark.Client.Tests,MintPlayer.Spark.Gs1.Tests,MintPlayer.Migration.Tests,CodeCoverage.Git.Tests,CodeCoverage.GitMirror.Tests,CodeCoverage.GitWriter.Tests,DemoApp.Tests,SparkId.Tests,Fleet.Tests,QnA.Tests,HR.Tests,@mintplayer/ng-spark,@spark-apps/*,@spark-demo/*,@mintplayer/coverage-upload-action,@mintplayer/dependency-update-action' }
+          - { name: Other suites, artifact: other, exclude: 'MintPlayer.Spark.Tests,MintPlayer.Spark.E2E.Tests,CodeCoverage.Tests,SeoTester.Tests,MintPlayer.Spark.SourceGenerators.Tests,MintPlayer.Spark.Client.Tests,MintPlayer.Spark.Gs1.Tests,MintPlayer.Migration.Tests,CodeCoverage.Git.Tests,CodeCoverage.GitMirror.Tests,CodeCoverage.GitWriter.Tests,DemoApp.Tests,SparkId.Tests,Fleet.Tests,QnA.Tests,HR.Tests,MintPlayer.Tests,@mintplayer/ng-spark,@spark-apps/*,@spark-demo/*,@mintplayer/coverage-upload-action,@mintplayer/dependency-update-action' }
           # The dependency-update action against real package managers and LOCAL registries
           # (docs/code-coverage/dependency-updates-PRD.md §13.11.2): its own `test-integration` target, so
           # "Other suites" (target `test`) never runs it. Two ecosystem groups per slice, 15 minutes each;

@@ -68,6 +68,7 @@ const DATASOURCE_ECOSYSTEM: Record<string, string> = {
   'java-version': 'platform:java',
   'golang-version': 'platform:go',
   'rust-version': 'platform:rust',
+  'ruby-version': 'platform:ruby',
   'gradle-version': 'gradle-wrapper',
   'github-runners': 'github-runners',
 };
@@ -86,12 +87,17 @@ const PLATFORM_DEP_NAMES: Record<string, string> = {
   java: 'platform:java',
   'java-jdk': 'platform:java',
   'dotnet-sdk': 'platform:dotnet',
+  // #606 D10: setup-php/setup-ruby `with:` versions and asdf tools.
+  php: 'platform:php',
+  ruby: 'platform:ruby',
+  rust: 'platform:rust',
 };
 
 const PLATFORM_MANAGERS: Record<string, string> = {
   nvm: 'platform:node',
   nodenv: 'platform:node',
   pyenv: 'platform:python',
+  'ruby-version': 'platform:ruby',
 };
 
 export function ecosystemOf(manager: string, datasource: string, depName = ''): string {
@@ -100,7 +106,9 @@ export function ecosystemOf(manager: string, datasource: string, depName = ''): 
     // A `uses: owner/repo@ref` names a repository; a bare name under github-releases/-tags is a
     // setup-* `with:` version or an asdf tool (S12: setup-node's node-version is github-releases "node").
     if (manager === 'github-actions' && depName.includes('/')) return 'github-actions';
-    if (PLATFORM_DEP_NAMES[depName]) return PLATFORM_DEP_NAMES[depName];
+    // composer's `php` is composer.json's `require.php`, a range: reported by the platform scan, never a platform
+    // dependency (#606 D16).
+    if (manager !== 'composer' && PLATFORM_DEP_NAMES[depName]) return PLATFORM_DEP_NAMES[depName];
   }
   if (manager === 'asdf' && PLATFORM_DEP_NAMES[depName]) return PLATFORM_DEP_NAMES[depName];
   return DATASOURCE_ECOSYSTEM[datasource] ?? datasource;

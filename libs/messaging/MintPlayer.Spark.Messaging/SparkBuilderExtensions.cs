@@ -23,10 +23,14 @@ public static class SparkBuilderMessagingExtensions
     /// appsettings, environment variables and user secrets override property by property.
     /// </para>
     /// </summary>
+    [global::MintPlayer.Spark.Abstractions.Storage.SparkRequiresStore("Spark.Messaging", global::MintPlayer.Spark.Abstractions.Storage.SparkStoreCapabilities.Subscriptions, Provider = global::MintPlayer.Spark.Abstractions.Storage.SparkStoreProviders.RavenDb)]
     public static ISparkBuilder AddMessaging(
         this ISparkBuilder builder,
         Action<SparkMessagingOptions>? configure = null)
     {
+        // #551 D13: delivery runs on RavenDB subscriptions, through the store's own client.
+        global::MintPlayer.Spark.Abstractions.Storage.SparkStoreRequirementExtensions.RequireStore(builder, "Spark.Messaging", global::MintPlayer.Spark.Abstractions.Storage.SparkStoreCapabilities.Subscriptions, global::MintPlayer.Spark.Abstractions.Storage.SparkStoreProviders.RavenDb);
+
         var section = builder.Configuration?.GetSection(ConfigurationSection);
 
         builder.Services.AddSparkMessaging(options =>

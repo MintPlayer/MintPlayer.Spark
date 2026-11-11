@@ -33,7 +33,15 @@ public sealed record DependencyRepoStatus(
 
     /// <summary>R30: "waiting for the forge's rate limit until hh:mm (park n of m)"; null when nothing waits.</summary>
     public DependencyRateLimitView? RateLimit { get; init; }
+
+    /// <summary>#606 M7: the SDKs the last lookup found, with the channels it could move to; empty before a lookup.</summary>
+    public IReadOnlyList<DependencyPlatformView> Platforms { get; init; } = [];
 }
+
+/// <param name="Channels">The channels the repository is on, newest first.</param>
+/// <param name="NextStable">The newest released channel it could move to, or null.</param>
+/// <param name="NextPreview">The newest preview channel, when newer than <paramref name="NextStable"/>.</param>
+public sealed record DependencyPlatformView(string Sdk, IReadOnlyList<string> Channels, string? NextStable, string? NextPreview);
 
 /// <param name="UntilUtc">When the bus retries the waiting message.</param>
 /// <param name="Park">This message's park count, 1-based.</param>
@@ -102,6 +110,8 @@ public static class DependencyFleetView
         ("Python", "platform:python", "platform:python"),
         ("Java", "platform:java", "platform:java"),
         ("Go", "platform:go", "platform:go"),
+        ("PHP", "platform:php", "platform:php"),
+        ("Ruby", "platform:ruby", "platform:ruby"),
     ];
 
     private static readonly HashSet<string> RedOutcomes = new(StringComparer.Ordinal) { "red", "bisected" };
@@ -158,6 +168,7 @@ public static class DependencyFleetView
         {
             OnboardingPullRequest = run?.OnboardingPullRequestNumber is { } onboarding ? new DependencyPullRequestLink(onboarding, PullRequestUrl(repository, onboarding), false) : null,
             MergeQueueInFile = run?.FileMergeQueue,
+            Platforms = [.. (input.Manifests.GetValueOrDefault(id)?.LookupPlatforms ?? []).Select(p => new DependencyPlatformView(p.Sdk, p.Channels, p.NextStable, p.NextPreview))],
             RateLimit = run?.RateLimitedUntilUtc is { } until && until > input.Now.UtcDateTime
                 ? new DependencyRateLimitView(until, run.RateLimitParks, run.RateLimitParkBudget)
                 : null,
@@ -309,7 +320,9 @@ public static class DependencyFleetView
                     : null;
                 var entries = report is null ? [] : report.AwaitingApproval.Concat(report.Held).Concat(report.Available).Where(e => e.DepName == anchor).ToList();
                 var planned = report?.Groups.SelectMany(g => g.Items).Where(i => i.DepName == anchor).ToList() ?? [];
-                var current = manifestUse?.Version ?? manifestUse?.Constraint ?? entries.Select(e => e.Current).FirstOrDefault(c => c is not null) ?? planned.Select(p => p.From).FirstOrDefault();
+                // #606 M7: an SDK's current channel is the lookup's platform record, kept on the manifest.
+                var platformUse = input.Manifests.GetValueOrDefault(id)?.LookupPlatforms.FirstOrDefault(p => $"platform:{p.Sdk}" == ecosystem)?.Channels.FirstOrDefault();
+                var current = platformUse ?? manifestUse?.Version ?? manifestUse?.Constraint ?? entries.Select(e => e.Current).FirstOrDefault(c => c is not null) ?? planned.Select(p => p.From).FirstOrDefault();
                 if (current is null && entries.Count == 0 && planned.Count == 0)
                     continue;
 
@@ -326,6 +339,8 @@ public static class DependencyFleetView
                         EDependencyReportReason.AwaitingApproval or EDependencyReportReason.AboveAccountRule or EDependencyReportReason.Cooldown
                             or EDependencyReportReason.NotInSecurityRun => ("ready", entry.Detail, []),
                         EDependencyReportReason.FleetRed => ("blocked", entry.Detail, []),
+                        // #606 D3: an SDK move waiting on its companions' releases.
+                        EDependencyReportReason.Pending => ("blocked", entry.Detail, []),
                         EDependencyReportReason.Held when state?.Holds.FirstOrDefault(h => h.Kind == EDependencyHoldKind.Blocker
                             && (h.Group == entry.Group || h.DepNames.Contains(anchor))) is { } blocker
                             => ("blocked", blocker.Reason, [.. blocker.Blockers.Select(b => b.DepName)]),

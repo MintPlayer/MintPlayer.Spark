@@ -47,7 +47,7 @@ public class QueryHookReachTests
     /// <summary>A context whose property declares the element type the model is keyed on.</summary>
     private sealed class HookedContext : SparkContext
     {
-        public IRavenQueryable<HookedDoc> Docs => Session.Query<HookedDoc>();
+        public IQueryable<HookedDoc> Docs => Session.Query<HookedDoc>();
     }
 
     private static (QueryExecutor Executor, HookedDocActions Actions) Setup()
@@ -68,16 +68,18 @@ public class QueryHookReachTests
         modelLoader.GetEntityTypeByName("HookedDoc").Returns(definition);
         actionsResolver.ResolveForType(typeof(HookedDoc)).Returns(actions);
         actionsResolver.ResolveByEntityName("HookedDoc").Returns(actions);
-        contextResolver.ResolveContext(Arg.Any<IAsyncDocumentSession>()).Returns(new HookedContext());
+        contextResolver.ResolveContext(Arg.Any<MintPlayer.Spark.Abstractions.Storage.ISparkSession>()).Returns(new HookedContext());
 
         var entityMapper = Substitute.For<IEntityMapper>();
         var executor = new QueryExecutor(
-            Substitute.For<IAsyncDocumentSession>(), entityMapper, modelLoader,
+            Substitute.For<IAsyncDocumentSession>().AsSparkSession(), entityMapper, modelLoader,
             contextResolver, Substitute.For<IIndexCatalog>(),
             Substitute.For<IPermissionService>(), actionsResolver,
             Substitute.For<IReferenceResolver>(), Substitute.For<IBreadcrumbResolver>(),
             new PermissiveRowSecurity(),
-            TestRowSecurityGate.For(new PermissiveRowSecurity(), entityMapper));
+            TestRowSecurityGate.For(new PermissiveRowSecurity(), entityMapper),
+            TestQueryResultProjector.For(Substitute.For<IAsyncDocumentSession>(), modelLoader),
+            queryProvider: TestQueryProvider.For(Substitute.For<IAsyncDocumentSession>().AsSparkSession()));
 
         return (executor, actions);
     }

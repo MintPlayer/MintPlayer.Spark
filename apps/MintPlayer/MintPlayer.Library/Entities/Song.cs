@@ -7,6 +7,9 @@ public partial class Song : Subject
 {
     public string Title { get; set; } = string.Empty;
     public DateOnly? Released { get; set; }
+
+    // Drag to reorder in the editor. A plain comment: a /// summary would become the attribute's description.
+    [Sortable]
     public List<SongArtist> Artists { get; set; } = [];
 
     /// <summary>The lyrics, one line per row. <c>null</c> until someone adds them.</summary>

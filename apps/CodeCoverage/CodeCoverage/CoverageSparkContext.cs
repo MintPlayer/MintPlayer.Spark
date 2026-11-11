@@ -6,10 +6,10 @@ namespace CodeCoverage;
 
 public partial class CoverageSparkContext : SparkContext
 {
-    public IRavenQueryable<Account> Accounts => Session.Query<Account>();
-    public IRavenQueryable<Repository> Repositories => Session.Query<Repository>();
-    public IRavenQueryable<Commit> Commits => Session.Query<Commit>();
-    public IRavenQueryable<Build> Builds => Session.Query<Build>();
+    public IQueryable<Account> Accounts => Session.Query<Account>();
+    public IQueryable<Repository> Repositories => Session.Query<Repository>();
+    public IQueryable<Commit> Commits => Session.Query<Commit>();
+    public IQueryable<Build> Builds => Session.Query<Build>();
 
     /// <summary>
     /// GitHub Projects V2 boards and their automation rules. Registering the property here is what
@@ -17,7 +17,7 @@ public partial class CoverageSparkContext : SparkContext
     /// discovers types through this context, so an entity that exists but is not listed here gets no
     /// model, no endpoints and no grid, silently.
     /// </summary>
-    public IRavenQueryable<GitHubProject> GitHubProjects => Session.Query<GitHubProject>();
+    public IQueryable<GitHubProject> GitHubProjects => Session.Query<GitHubProject>();
 
     /// <summary>
     /// Upload tokens, so they are managed through the generic UI rather than a hand-written card.
@@ -29,13 +29,13 @@ public partial class CoverageSparkContext : SparkContext
     /// <c>ApiToken.Hash</c> is absent from <c>ApiToken.json</c> so it is never projected onto the
     /// wire. Adding Hash to the model would undo the second one silently.
     /// </remarks>
-    public IRavenQueryable<ApiToken> ApiTokens => Session.Query<ApiToken>();
+    public IQueryable<ApiToken> ApiTokens => Session.Query<ApiToken>();
 
     // The commit-graph mirrors (#504, M5b): the administrators' list, with each mirror's size.
-    public IRavenQueryable<RepositoryGraphState> RepositoryGraphStates => Session.Query<RepositoryGraphState>();
+    public IQueryable<RepositoryGraphState> RepositoryGraphStates => Session.Query<RepositoryGraphState>();
 
     // The versioning history (#153 M12): read-only, listed per repository by Custom.Repository_VersioningRuns.
-    public IRavenQueryable<VersioningRun> VersioningRuns => Session.Query<VersioningRun>();
+    public IQueryable<VersioningRun> VersioningRuns => Session.Query<VersioningRun>();
     // The platform lifecycle (#568 M3): public, read-only, written by PlatformLifecycleCronJob.
-    public IRavenQueryable<PlatformRelease> PlatformReleases => Session.Query<PlatformRelease>();
+    public IQueryable<PlatformRelease> PlatformReleases => Session.Query<PlatformRelease>();
 }

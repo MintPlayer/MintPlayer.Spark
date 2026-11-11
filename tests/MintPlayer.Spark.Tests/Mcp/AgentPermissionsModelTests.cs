@@ -101,6 +101,6 @@ public class AgentPermissionsModelTests
 
     private sealed class ApSyncContext : SparkContext
     {
-        public Raven.Client.Documents.Linq.IRavenQueryable<ApSyncProbe> Probes => Session.Query<ApSyncProbe>();
+        public IQueryable<ApSyncProbe> Probes => Session.Query<ApSyncProbe>();
     }
 }

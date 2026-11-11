@@ -48,8 +48,12 @@ public class UseSparkOptionsTests : SparkTestDriver
                 .ConfigureServices(services =>
                 {
                     services.AddRouting();
-                    services.AddSpark(spark => spark.UseContext<TestSparkContext>());
-                    // Override the AddSpark-registered IDocumentStore (it would otherwise try
+                    services.AddSpark(spark =>
+                    {
+                        spark.UseContext<TestSparkContext>();
+                        spark.UseRavenDb();
+                    });
+                    // Override the UseRavenDb-registered IDocumentStore (it would otherwise try
                     // to connect to localhost:8080) with our embedded test store.
                     var existing = services.Single(d => d.ServiceType == typeof(IDocumentStore));
                     services.Remove(existing);

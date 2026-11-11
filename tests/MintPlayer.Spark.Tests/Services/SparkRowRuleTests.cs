@@ -268,7 +268,7 @@ public class VRowRuleLedger
 
 public class RowRuleContext : SparkContext
 {
-    public IRavenQueryable<GuardedDoc> Docs => Session.Query<GuardedDoc>();
-    public IRavenQueryable<RowRuleLedger> Ledgers => Session.Query<RowRuleLedger>();
-    public IRavenQueryable<RowRuleOpen> Opens => Session.Query<RowRuleOpen>();
+    public IQueryable<GuardedDoc> Docs => Session.Query<GuardedDoc>();
+    public IQueryable<RowRuleLedger> Ledgers => Session.Query<RowRuleLedger>();
+    public IQueryable<RowRuleOpen> Opens => Session.Query<RowRuleOpen>();
 }

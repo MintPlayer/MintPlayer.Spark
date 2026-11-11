@@ -179,7 +179,7 @@ public class SourceGeneratorSnapshots
         var result = GeneratorHarness.Run(
             "GenerateIndexGenerator",
             [source],
-            referenceTypes: [typeof(GenerateIndexAttribute), typeof(Raven.Client.Documents.Indexes.AbstractIndexCreationTask)],
+            referenceTypes: [typeof(GenerateIndexAttribute), typeof(Raven.Client.Documents.Indexes.AbstractIndexCreationTask), typeof(MintPlayer.Spark.Abstractions.Storage.ISparkSession)],
             rootNamespace: "TestApp",
             outputKind: OutputKind.ConsoleApplication);
 
@@ -219,14 +219,13 @@ public class SourceGeneratorSnapshots
             using System.Linq;
             using MintPlayer.Spark;
             using Raven.Client.Documents;
-            using Raven.Client.Documents.Linq;
             using TestApp.Entities;
 
             namespace MintPlayer.Spark
             {
                 public abstract class SparkContext
                 {
-                    public Raven.Client.Documents.Session.IAsyncDocumentSession Session { get; set; } = null!;
+                    public MintPlayer.Spark.Abstractions.Storage.ISparkSession Session { get; set; } = null!;
                 }
             }
 
@@ -234,9 +233,9 @@ public class SourceGeneratorSnapshots
             {
                 public partial class AppContext : SparkContext
                 {
-                    public IRavenQueryable<Car> Cars => Session.Query<Car>();
-                    public IRavenQueryable<Person> People => Session.Query<Person>();
-                    public IRavenQueryable<Person> NamedPeople => Session.Query<Person>().Where(p => p.Name != null);
+                    public IQueryable<Car> Cars => Session.Query<Car>();
+                    public IQueryable<Person> People => Session.Query<Person>();
+                    public IQueryable<Person> NamedPeople => Session.Query<Person>().Where(p => p.Name != null);
                     public string VPeople => "taken";
                 }
             }
@@ -245,7 +244,7 @@ public class SourceGeneratorSnapshots
         var result = GeneratorHarness.Run(
             "GenerateIndexGenerator",
             [entities, context],
-            referenceTypes: [typeof(GenerateIndexAttribute), typeof(Raven.Client.Documents.Indexes.AbstractIndexCreationTask)],
+            referenceTypes: [typeof(GenerateIndexAttribute), typeof(Raven.Client.Documents.Indexes.AbstractIndexCreationTask), typeof(MintPlayer.Spark.Abstractions.Storage.ISparkSession)],
             rootNamespace: "TestApp",
             outputKind: OutputKind.ConsoleApplication);
 

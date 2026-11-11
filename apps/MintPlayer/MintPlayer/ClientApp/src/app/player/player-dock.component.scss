@@ -14,6 +14,17 @@
   cursor: move;
 }
 
+// The queue sidebar's content fills the offcanvas body; the list scrolls in what the controls and Add URL leave.
+.queue-panel {
+  height: 100%;
+}
+
+.queue-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+
 // The player's iframe would swallow the pointer events of a fast drag.
 .player-dock.cdk-drag-dragging video-player {
   pointer-events: none;

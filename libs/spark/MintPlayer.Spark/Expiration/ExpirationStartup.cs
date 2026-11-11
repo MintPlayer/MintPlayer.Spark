@@ -3,9 +3,8 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Builder;
+using MintPlayer.Spark.Abstractions.Storage;
 using MintPlayer.Spark.Services;
-using Raven.Client.Documents;
-using Raven.Client.Documents.Operations.Expiration;
 
 namespace MintPlayer.Spark.Expiration;
 
@@ -65,10 +64,16 @@ internal static class ExpirationStartup
                 "Document expiration cannot govern these types:" + Environment.NewLine
                 + string.Join(Environment.NewLine, problems.Select(p => "  - " + p)));
 
-        if (services.GetService<IDocumentStore>() is not { } store)
+        // A provider without the capability still hides expired rows (the row policy); they only stay on disk.
+        if (services.GetService<ISparkStoreExpiration>() is not { } store)
             return;
 
-        ExpirationStamper.Install(store, modelLoader, services.GetService<TimeProvider>() ?? TimeProvider.System);
+        var stamper = store.InstallStamper(
+            type => modelLoader.GetEntityTypeByClrType(type.FullName ?? type.Name)?.ExpiresAfter,
+            services.GetService<TimeProvider>() ?? TimeProvider.System);
+        // Removed with the host: the store can outlive it (test hosts share one), and a stamper reading a disposed
+        // host's model loader would fail every later save on that store.
+        services.GetService<Microsoft.Extensions.Hosting.IHostApplicationLifetime>()?.ApplicationStopped.Register(stamper.Dispose);
 
         if (expiring.Count > 0 && services.GetService<IIndexCatalog>() is { } catalog)
         {
@@ -99,13 +104,8 @@ internal static class ExpirationStartup
                 string.Join(", ", requesters));
             return;
         }
-        var frequency = SparkExpiration.ValidateDeleteFrequency(options.DeleteFrequency);
-
-        store.Maintenance.Send(new ConfigureExpirationOperation(new ExpirationConfiguration
-        {
-            Disabled = false,
-            DeleteFrequencyInSec = frequency,
-        }));
+        SparkExpiration.ValidateDeleteFrequency(options.DeleteFrequency);
+        store.EnableSweep(options.DeleteFrequency);
         logger.LogDebug("Document expiration enabled every {Frequency} for {Requesters}.", options.DeleteFrequency, string.Join(", ", requesters));
     }
 

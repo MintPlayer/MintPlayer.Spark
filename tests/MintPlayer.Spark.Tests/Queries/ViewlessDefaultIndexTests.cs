@@ -58,7 +58,7 @@ public class ViewlessDefaultIndexTests : SparkTestDriver
 
     public class VlBookContext : SparkContext
     {
-        public IRavenQueryable<VlBook> VlBooks => Session.Query<VlBook>();
+        public IQueryable<VlBook> VlBooks => Session.Query<VlBook>();
     }
 
     private static IndexCatalog Catalog()
@@ -301,7 +301,7 @@ public class ViewlessDefaultIndexTests : SparkTestDriver
         var loader = Substitute.For<IModelLoader>();
         loader.GetEntityTypeByName(nameof(VlBook)).Returns(definition);
 
-        var collections = MintPlayer.Spark.Live.LiveQueryCollections.Resolve(BooksQuery(), loader, Catalog(), Store);
+        var collections = MintPlayer.Spark.Live.LiveQueryCollections.Resolve(BooksQuery(), loader, Catalog(), new MintPlayer.Spark.Storage.Raven.RavenSparkStore(Store));
 
         collections.Should().BeEquivalentTo(["VlBooks"]);
     }

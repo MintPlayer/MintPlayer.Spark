@@ -459,8 +459,8 @@ public class MoPlain
 
 public class MoContext : SparkContext
 {
-    public Raven.Client.Documents.Linq.IRavenQueryable<MoPost> Posts => Session.Query<MoPost>();
-    public Raven.Client.Documents.Linq.IRavenQueryable<MoPlain> Plains => Session.Query<MoPlain>();
+    public IQueryable<MoPost> Posts => Session.Query<MoPost>();
+    public IQueryable<MoPlain> Plains => Session.Query<MoPlain>();
 }
 
 /// <summary>A row rule: a post titled "hidden" is invisible to everyone (the #453 existence test).</summary>

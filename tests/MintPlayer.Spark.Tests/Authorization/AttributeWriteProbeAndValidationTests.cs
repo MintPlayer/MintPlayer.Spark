@@ -40,7 +40,7 @@ public class WvItemActions(IEntityMapper mapper)
 
 public class WvContext : SparkContext
 {
-    public IRavenQueryable<WvItem> Items => Session.Query<WvItem>();
+    public IQueryable<WvItem> Items => Session.Query<WvItem>();
 }
 
 /// <summary>

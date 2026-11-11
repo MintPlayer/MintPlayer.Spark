@@ -1,4 +1,6 @@
+import { Component } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { provideRouter, Router } from '@angular/router';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -13,7 +15,7 @@ import { SparkLanguageService } from './spark-language.service';
 describe('SparkLanguageService', () => {
   let httpTesting: HttpTestingController;
 
-  const culture = { languages: { en: { en: 'English' }, nl: { en: 'Dutch' } }, defaultLanguage: 'nl' };
+  const culture = { languages: { en: { en: 'English' }, nl: { en: 'Dutch' }, fr: { en: 'French' } }, defaultLanguage: 'nl' };
 
   const create = (providers: unknown[] = []) => {
     TestBed.configureTestingModule({
@@ -101,6 +103,48 @@ describe('SparkLanguageService', () => {
     await load();
 
     expect(document.cookie).toContain('spark-lang=fr');
+  });
+
+  describe('the language in the URL (#604)', () => {
+    afterEach(() => history.replaceState(null, '', '/'));
+
+    it("takes the URL's ?lang over the cookie, and remembers it in the cookie", async () => {
+      history.replaceState(null, '', '/query/songs?lang=FR');
+      document.cookie = 'spark-lang=en; path=/';
+      const service = create();
+      await load();
+
+      expect(service.language()).toBe('fr');
+      expect(document.cookie).toContain('spark-lang=fr');
+    });
+
+    it('ignores a ?lang the app does not offer', async () => {
+      history.replaceState(null, '', '/?lang=xx');
+      document.cookie = 'spark-lang=en; path=/';
+      const service = create();
+      await load();
+
+      expect(service.language()).toBe('en');
+    });
+
+    it('publishes the default language', async () => {
+      const service = create();
+      await load();
+
+      expect(service.defaultLanguage()).toBe('nl');
+    });
+
+    it('switches on an in-app navigation to a ?lang, without a reload', async () => {
+      @Component({ standalone: true, template: '' })
+      class Page {}
+      const service = create([provideRouter([{ path: '**', component: Page }])]);
+      await load();
+
+      await TestBed.inject(Router).navigateByUrl('/query/songs?lang=en');
+
+      expect(service.language()).toBe('en');
+      expect(document.cookie).toContain('spark-lang=en');
+    });
   });
 
   describe('resolve', () => {

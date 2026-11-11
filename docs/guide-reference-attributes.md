@@ -88,7 +88,7 @@ type's **plain entity root**: the SparkContext property whose body is exactly `S
 ([default_index_PRD.md](default_index_PRD.md), D6).
 
 ```csharp
-// SparkContext has: public IRavenQueryable<Company> Companies => Session.Query<Company>();
+// SparkContext has: public IQueryable<Company> Companies => Session.Query<Company>();
 [Reference(typeof(Company))]  // query auto-resolved to "GetCompanies"
 public string? Owner { get; set; }
 ```
@@ -107,7 +107,7 @@ which root a reference uses:
   generator writes such a root for every public `[FromIndex]` view, as a typed C# shortcut.
 - **A type from a package needs a root too.** A reference to a package's type, such as `Organization` from
   `MintPlayer.Spark.Organizations`, resolves only when your context has
-  `public IRavenQueryable<Organization> Organizations => Session.Query<Organization>();`. The root's attributes are
+  `public IQueryable<Organization> Organizations => Session.Query<Organization>();`. The root's attributes are
   derived from the CLR type, through the `spark.ModelAttributes(...)` hook (see
   [Hand-editing the model](#hand-editing-the-model-what-survives-synchronization)).
 - **No root at all** leaves the attribute without a query, and the edit page's picker without options. A writable
@@ -184,7 +184,35 @@ to documents just to make it pickable. Note what supplies the stored value: the 
 CLR `Id` property directly rather than asking RavenDB for a document id, so whatever `Id` holds is
 what the picker writes.
 
-A `Custom.*` method may return `IQueryable<T>`, `IRavenQueryable<T>`, `IEnumerable<T>`, or a `Task<>`
+**An embedded target must be a `[ValueObject]`** (registered by the source generator, so the
+project needs the generator reference). A save checks every reference id it newly writes against
+the target collection (see [The save checks the target](#the-save-checks-the-target) below). Only
+a `[ValueObject]` target, or a `referenceType` with no C# class, is skipped. A plain embedded class
+with an `Id` has no documents to find, so a save that writes one of its ids is refused (#609, owner
+decision 2026-11-09: narrow the contract rather than skip the check).
+
+#### The save checks the target
+
+Since #609 (#251), a save refuses a reference id that does not name a document **in the collection
+the attribute's `referenceType` maps to**. A typed RavenDB load does not check the collection, so
+without this check a `Person` reference holding `accounts/1` would later be read as a person.
+
+- **Refused:** a foreign document and a missing one alike, with one message that names neither the
+  id nor what was found ("Driver refers to a record that does not exist.", `RuleType` =
+  `referenceTarget`, HTTP 400). Treating the two the same means the answer cannot be used to probe
+  which document ids exist.
+- **Passes:** a document in the target collection, whatever its id prefix or its
+  `@Raven-Clr-Type`; a genuine subtype stored in its own collection behind a base-typed reference;
+  and a target this request has stored but not yet committed (it is read from the request's own
+  session).
+- **Judged only when newly written:** an id the stored row already holds for the same target passes,
+  so a row with an old dangling reference stays editable. An attribute the caller may not write, or a
+  read-only one, is not judged.
+- **Arrays and AsDetail rows** are checked per id; the error names the top-level attribute.
+- **Reading is bound too:** the breadcrumb resolver drops a loaded target whose collection is not
+  the declared type's, so an old foreign id renders as a missing target, never as the wrong record.
+
+A `Custom.*` method may return `IQueryable<T>`, `IEnumerable<T>`, or a `Task<>`
 of any of those. Returning a plain in-memory sequence is fully supported: every Raven-specific step
 (projection, `.Include()`, row-filter push-down, search push-down, provider sorting) is guarded on
 the returned object actually being a Raven queryable, and sorting, search and paging fall back to
@@ -209,9 +237,11 @@ in-memory equivalents.
   server default applies. Fine for a handful of child rows; wrong for a large collection. The
   picker's search box filters the already-fetched array in memory — it does not re-query.
 - **A stored value that cannot be loaded degrades, it does not break.** The breadcrumb resolver
-  attempts one batched load and skips misses silently; the client then falls back to matching the
-  value against the loaded option list, and finally to showing the raw value. For an embedded target
-  there is no document to load, so the option list is what makes the label readable.
+  attempts one batched load and skips misses (and documents of another collection) silently; the
+  client then falls back to matching the value against the loaded option list, and finally to
+  showing the raw value. For an embedded target there is no document to load, so the option list is
+  what makes the label readable. This covers values already stored: a save cannot newly write a
+  dangling id any more (see [The save checks the target](#the-save-checks-the-target)).
 - **`GetRowFilterAsync` cannot do parent scoping.** Its signature is `(string action)` and nothing
   else; the parent is never forwarded into row security. It is the right tool for "which rows may
   *this caller* see" and structurally the wrong tool for "which rows belong to *this parent*".
@@ -550,7 +580,8 @@ public class Car
 ```
 
 See also:
-- `Demo/DemoApp/DemoApp.Library/Entities/Car.cs` -- entity with references
-- `Demo/DemoApp/DemoApp.Library/LookupReferences/` -- lookup reference definitions
-- `Demo/DemoApp/DemoApp/App_Data/Model/Car.json` -- generated model JSON
-- `Demo/DemoApp/DemoApp/Indexes/Cars_Overview.cs` -- index with `LoadDocument` for reference data
+- `apps/DemoApp/DemoApp.Library/Entities/Car.cs` -- entity with references
+- `apps/DemoApp/DemoApp.Library/LookupReferences/` -- lookup reference definitions
+- `apps/DemoApp/DemoApp/App_Data/Model/Car.json` -- generated model JSON
+- `apps/Fleet/Fleet.Library/Entities/Car.cs` -- RavenDB: `[GenerateIndex]` emits `Cars_Overview` and its `VCar`, with
+  the reference data joined in. DemoApp runs on the in-memory store (#551), which has no indexes.

@@ -4,7 +4,7 @@ import { provideHttpClient } from '@angular/common/http';
 import { provideAnimations } from '@angular/platform-browser/animations';
 import { provideSpark } from '@mintplayer/ng-spark';
 import { withServiceWorker } from '@mintplayer/ng-spark/pwa';
-import { withSparkTimezone } from '@mintplayer/ng-spark/services';
+import { withLanguageUrls, withSparkLanguage, withSparkTimezone } from '@mintplayer/ng-spark/services';
 import { withAuth, withSparkAuth } from '@mintplayer/ng-spark/auth';
 import { withAttributeRenderers } from '@mintplayer/ng-spark/renderers';
 import { withClientOperations } from '@mintplayer/ng-spark/client-operations';
@@ -22,10 +22,11 @@ export const appConfig: ApplicationConfig = {
     provideRouter(routes),
     // withSparkTimezone() (#460 M9): the browser's zone travels as a header on every Spark call and is
     // kept in the spark-timezone cookie, so a server-side render could read it too.
-    provideHttpClient(...withSparkAuth(), ...withSparkTimezone()),
+    provideHttpClient(...withSparkAuth(), ...withSparkLanguage(), ...withSparkTimezone()),
     provideAnimations(),
     provideZonelessChangeDetection(),
     provideSpark(
+      withLanguageUrls(),
       withServiceWorker(),
       withAuth(),
       withClientOperations(),

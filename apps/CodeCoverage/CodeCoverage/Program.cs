@@ -76,6 +76,8 @@ builder.Services.AddHttpClient(CodeCoverage.PlatformLifecycle.PlatformLifecycleO
     http.Timeout = TimeSpan.FromSeconds(30);
     http.DefaultRequestHeaders.UserAgent.ParseAdd("CodeCoverage-PlatformLifecycle");
 });
+// #613 item 1: rows in an old shape fail every dependency lookup; they are recollected at startup, not at the next slot.
+builder.Services.AddHostedService<CodeCoverage.PlatformLifecycle.PlatformLifecycleStartup>();
 // Outgoing mail (#460 M8, D10): MailManager under Spark:Mail. Added only when a relay
 // (Spark:Mail:Smtp:Host) AND a sender (Spark:Mail:From:Address) are configured; compose maps both
 // from MAIL_HOST / MAIL_FROM_ADDRESS, and an unset MAIL_FROM_ADDRESS leaves mail off. Without it the
@@ -87,6 +89,9 @@ var mailConfigured = !string.IsNullOrWhiteSpace(builder.Configuration["Spark:Mai
 
 builder.Services.AddSpark(builder.Configuration, spark =>
 {
+    // The store (#551): RavenDB, configured from Spark:RavenDb.
+    spark.UseRavenDb();
+
     spark.UseContext<CoverageSparkContext>();
 
     // security.json grants QueryRead on the four entity types to BOTH well-known
@@ -108,6 +113,11 @@ builder.Services.AddSpark(builder.Configuration, spark =>
     // registration is idempotent and the JsonStringEnumConverter survives.
     spark.AddControllers();
     spark.UseControllers();
+
+    // The shareable URLs as Spark redirect hooks (#602): answered with a 301 by a server render. Inert until the app
+    // renders on the server (AddPrerendering); the client guards in vanity-redirects.ts cover the browser until then.
+    // Generated: registers every ISparkEntityRedirect in the project (Services/VanityEntityRedirects.cs).
+    spark.AddEntityRedirects();
 
     // ⚠️ THIS BLOCK CURRENTLY DOES NOTHING, and the comment that used to live here said otherwise.
     //

@@ -399,7 +399,7 @@ public class SpRun
 
 public class SpContext : SparkContext
 {
-    public IRavenQueryable<SpRun> Runs => Session.Query<SpRun>();
+    public IQueryable<SpRun> Runs => Session.Query<SpRun>();
 }
 
 public class SpRunActions(MintPlayer.Spark.Services.IEntityMapper mapper) : DefaultPersistentObjectActions<SpRun>(mapper), ISparkOwnsRowSecurity

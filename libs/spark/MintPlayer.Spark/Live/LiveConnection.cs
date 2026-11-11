@@ -10,7 +10,7 @@ using MintPlayer.Spark.Endpoints.PersistentObject;
 using MintPlayer.Spark.Endpoints.Queries;
 using MintPlayer.Spark.Exceptions;
 using MintPlayer.Spark.Services;
-using Raven.Client.Documents;
+using MintPlayer.Spark.Abstractions.Storage;
 
 namespace MintPlayer.Spark.Live;
 
@@ -41,7 +41,7 @@ internal sealed class LiveConnection
     private readonly IQueryLoader queryLoader;
     private readonly IModelLoader modelLoader;
     private readonly IIndexCatalog indexCatalog;
-    private readonly IDocumentStore store;
+    private readonly ISparkStore store;
     private readonly TimeProvider time;
     private readonly DateTimeOffset deadline;
     private readonly Dictionary<string, LiveSubscription> subscriptions = new(StringComparer.Ordinal);
@@ -59,7 +59,7 @@ internal sealed class LiveConnection
         queryLoader = services.GetRequiredService<IQueryLoader>();
         modelLoader = services.GetRequiredService<IModelLoader>();
         indexCatalog = services.GetRequiredService<IIndexCatalog>();
-        store = services.GetRequiredService<IDocumentStore>();
+        store = services.GetRequiredService<ISparkStore>();
         time = services.GetService<TimeProvider>() ?? TimeProvider.System;
         Scopes = services.GetRequiredService<IServiceScopeFactory>();
         Json = services.GetRequiredService<Microsoft.Extensions.Options.IOptions<Microsoft.AspNetCore.Http.Json.JsonOptions>>().Value.SerializerOptions;
@@ -399,7 +399,7 @@ internal sealed class LiveConnection
             {
                 // The callback also fires for an index that went away under the wait, which then goes on with
                 // whatever replaced it; only the final outcome says whether the read may be stale.
-                caughtUp = await SparkIndexWait.WaitAsync(store, store.Database, collections, options.IndexWait,
+                caughtUp = await store.WaitForConsistencyAsync(null, collections, options.IndexWait,
                     (ex, index, elapsed) => Logger.LogDebug(ex,
                         "Live subscription {Subscription}: waiting for index {Index} ended after {Elapsed} ms",
                         subscription.Id, index, (long)elapsed.TotalMilliseconds),

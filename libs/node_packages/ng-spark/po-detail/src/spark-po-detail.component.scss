@@ -1,6 +1,4 @@
 @use '../../styles/actionbar';
-@use '../../styles/chip';
-@use '../../styles/swatch';
 
 // Bootstrap's `.container` sets the content width here — its own gutter, and a max-width that
 // changes per breakpoint. So the action bar aligns to the container rather than bleeding to the
@@ -10,10 +8,4 @@
 // so it meets the app's top bar when stuck.
 .container {
   --spark-content-inset-inline: 0px;
-}
-
-// An AsDetail table's leading-cell column (leadingComponent) is as narrow as its content.
-.spark-leading-cell {
-  width: 1%;
-  white-space: nowrap;
 }

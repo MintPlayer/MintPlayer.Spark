@@ -13,21 +13,21 @@ using Raven.Client.Documents.Indexes;
 namespace MintPlayer.Spark.Tests.Builder;
 
 /// <summary>
-/// The private statics inside <see cref="SparkExtensions"/> can't be exercised by the public
-/// API alone without a real cluster (retry loop) or a curated entry assembly (index discovery).
-/// This fixture invokes them via reflection — that's a deliberate trade: the tests pin the
-/// branches the public API delegates to, and a rename of the private method is a fast,
-/// localized failure rather than a silent coverage regression.
+/// The private statics behind <c>UseSpark()</c> (<see cref="SparkExtensions"/>) and <c>UseRavenDb()</c>
+/// (<see cref="SparkRavenDbExtensions"/>) can't be exercised by the public API alone without a real cluster
+/// (retry loop) or a curated entry assembly (index discovery). This fixture invokes them via reflection —
+/// that's a deliberate trade: the tests pin the branches the public API delegates to, and a rename of the
+/// private method is a fast, localized failure rather than a silent coverage regression.
 /// </summary>
 public class SparkExtensionsPrivateHelpersTests : SparkTestDriver
 {
-    private static readonly Type ExtType = typeof(SparkExtensions);
+    private static MethodInfo PrivateMethod(string name) => PrivateMethod(typeof(SparkExtensions), name);
 
-    private static MethodInfo PrivateMethod(string name)
-        => ExtType.GetMethod(name, BindingFlags.Static | BindingFlags.NonPublic)
-           ?? throw new InvalidOperationException($"private static {name} not found on SparkExtensions");
+    private static MethodInfo PrivateMethod(Type type, string name)
+        => type.GetMethod(name, BindingFlags.Static | BindingFlags.NonPublic)
+           ?? throw new InvalidOperationException($"private static {name} not found on {type.Name}");
 
-    // --- IsAbstractIndexCreationTask ------------------------------------
+    // --- RavenIndexHierarchy.IsIndex (the catalog's discovery gate) ------
 
     [Theory]
     [InlineData(typeof(SimpleProbeIndex), true)]
@@ -37,21 +37,17 @@ public class SparkExtensionsPrivateHelpersTests : SparkTestDriver
     [InlineData(typeof(SparkExtensionsPrivateHelpersTests), false)]
     public void IsAbstractIndexCreationTask_agrees_with_what_RavenDB_will_actually_deploy(Type type, bool expected)
     {
-        var method = PrivateMethod("IsAbstractIndexCreationTask");
-
-        var result = (bool)method.Invoke(null, [type])!;
-
-        result.Should().Be(expected);
+        RavenIndexHierarchy.IsIndex(type).Should().Be(expected);
     }
 
-    // --- WaitForRavenDbConnection ---------------------------------------
+    // --- UseRavenDb's WaitForConnection -----------------------------------
 
     [Fact]
     public void WaitForRavenDbConnection_with_zero_max_retries_returns_immediately_without_touching_the_store()
     {
         var store = Substitute.For<IDocumentStore>();
         var options = new RavenDbOptions { MaxConnectionRetries = 0 };
-        var method = PrivateMethod("WaitForRavenDbConnection");
+        var method = PrivateMethod(typeof(SparkRavenDbExtensions), "WaitForConnection");
 
         method.Invoke(null, [store, options]);
 
@@ -65,7 +61,7 @@ public class SparkExtensionsPrivateHelpersTests : SparkTestDriver
         // Use the embedded test store — it's already connected, so the first call succeeds
         // and the loop exits at the early `return` inside the try (line 322 in the source).
         var options = new RavenDbOptions { MaxConnectionRetries = 3, RetryDelaySeconds = 0 };
-        var method = PrivateMethod("WaitForRavenDbConnection");
+        var method = PrivateMethod(typeof(SparkRavenDbExtensions), "WaitForConnection");
 
         var act = () => method.Invoke(null, [Store, options]);
 
@@ -111,25 +107,28 @@ public class SparkExtensionsPrivateHelpersTests : SparkTestDriver
 
         PrivateMethod("CreateSparkIndexes").Invoke(null, [app, (IReadOnlyList<Assembly>)[thisAssembly], null]);
 
-        // Every fixture-local index must have been registered, including the two whose collection type
-        // is not derivable. Registering them is the point: a multi-map or map-reduce index that is not
-        // in the catalog cannot be resolved by an explicit "indexName" binding, even though RavenDB
-        // has deployed it.
-        indexCatalog.Received().RegisterIndex(typeof(SimpleProbeIndex));
-        indexCatalog.Received().RegisterIndex(typeof(MultiMapProbeIndex));
-        indexCatalog.Received().RegisterIndex(typeof(MapReduceProbeIndex));
+        // UseSpark hands the assemblies to the catalog and seals it (#551 D20: the provider's catalog classifies).
+        indexCatalog.Received().RegisterAssemblies(Arg.Is<IReadOnlyList<Assembly>>(a => a.Contains(thisAssembly)));
+        indexCatalog.Received().Freeze();
+
+        // The RavenDB catalog registers every fixture-local index, including the two whose collection type is not
+        // derivable. Registering them is the point: a multi-map or map-reduce index that is not in the catalog
+        // cannot be resolved by an explicit "indexName" binding, even though RavenDB has deployed it.
+        var catalog = new IndexCatalog();
+        catalog.RegisterAssemblies([thisAssembly]);
+        catalog.GetByIndexName(nameof(SimpleProbeIndex))!.IndexType.Should().Be(typeof(SimpleProbeIndex));
+        catalog.GetByIndexName(nameof(MultiMapProbeIndex))!.IndexType.Should().Be(typeof(MultiMapProbeIndex));
+        catalog.GetByIndexName(nameof(MapReduceProbeIndex))!.IndexType.Should().Be(typeof(MapReduceProbeIndex));
     }
 
     [Fact]
     public void CreateSparkIndexes_registers_each_FromIndex_attributed_projection_with_the_index_catalog()
     {
-        var indexCatalog = Substitute.For<IIndexCatalog>();
-        var app = BuildAppBuilder(Store, indexCatalog);
-        var thisAssembly = typeof(SparkExtensionsPrivateHelpersTests).Assembly;
+        var catalog = new IndexCatalog();
 
-        PrivateMethod("CreateSparkIndexes").Invoke(null, [app, (IReadOnlyList<Assembly>)[thisAssembly], null]);
+        catalog.RegisterAssemblies([typeof(SparkExtensionsPrivateHelpersTests).Assembly]);
 
-        indexCatalog.Received().RegisterProjection(typeof(ProbeProjection), typeof(SimpleProbeIndex));
+        catalog.GetByIndexName(nameof(SimpleProbeIndex))!.ProjectionType.Should().Be(typeof(ProbeProjection));
     }
 
     [Fact]
@@ -165,9 +164,8 @@ public class SparkExtensionsPrivateHelpersTests : SparkTestDriver
 
         PrivateMethod("CreateSparkIndexes").Invoke(null, [app, (IReadOnlyList<Assembly>)[thisAssembly], filter]);
 
-        indexCatalog.Received().RegisterIndex(typeof(SimpleProbeIndex));
-        indexCatalog.Received().RegisterIndex(typeof(MultiMapProbeIndex));
-        indexCatalog.Received().RegisterIndex(typeof(MapReduceProbeIndex));
+        // Discovery is the whole assembly, unfiltered.
+        indexCatalog.Received().RegisterAssemblies(Arg.Is<IReadOnlyList<Assembly>>(a => a.Contains(thisAssembly)));
 
         var deployed = await Store.Maintenance.SendAsync(
             new Raven.Client.Documents.Operations.Indexes.GetIndexNamesOperation(0, int.MaxValue));
@@ -181,6 +179,8 @@ public class SparkExtensionsPrivateHelpersTests : SparkTestDriver
         var services = new ServiceCollection();
         services.AddSingleton(store);
         services.AddSingleton(indexCatalog);
+        // The provider writes the definitions (#551 D20).
+        services.AddSingleton<Abstractions.Storage.ISparkIndexDeployment>(new RavenIndexDeployment(store));
         var app = Substitute.For<IApplicationBuilder>();
         app.ApplicationServices.Returns(services.BuildServiceProvider());
         return app;

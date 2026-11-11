@@ -255,6 +255,8 @@ internal static class GeneratorHarness
                 typeof(System.Collections.Generic.List<>).Assembly,
                 typeof(System.ComponentModel.AttributeProviderAttribute).Assembly,
                 typeof(System.Linq.Enumerable).Assembly,
+                // Context roots are IQueryable<T> (#551 D15): Where/OrderBy on them bind to Queryable, as in a real project.
+                typeof(System.Linq.Queryable).Assembly,
             }
             .Concat(AppDomain.CurrentDomain.GetAssemblies()
                 .Where(a => !a.IsDynamic && !string.IsNullOrEmpty(a.Location))
@@ -263,8 +265,22 @@ internal static class GeneratorHarness
                          || a.GetName().Name == "mscorlib"))
             .Select(a => (MetadataReference)MetadataReference.CreateFromFile(a.Location)));
 
+        // A referenced Spark assembly brings the Spark assemblies it references, as a ProjectReference or a
+        // package does transitively: a project referencing MintPlayer.Spark binds SparkContext.Session's
+        // ISparkSession from MintPlayer.Spark.Abstractions without naming it (#551).
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        void Add(Assembly assembly)
+        {
+            if (string.IsNullOrEmpty(assembly.Location) || !seen.Add(assembly.Location))
+                return;
+            references.Add(MetadataReference.CreateFromFile(assembly.Location));
+            foreach (var name in assembly.GetReferencedAssemblies())
+                if (name.Name?.StartsWith("MintPlayer.Spark", StringComparison.Ordinal) == true)
+                    Add(Assembly.Load(name));
+        }
+
         foreach (var t in referenceTypes)
-            references.Add(MetadataReference.CreateFromFile(t.Assembly.Location));
+            Add(t.Assembly);
 
         return references;
     }

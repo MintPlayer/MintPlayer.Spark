@@ -24,6 +24,9 @@ on:
       run_id:
         description: The bot's id for this lookup (artifact name and run name).
         required: true
+      platforms:
+        description: The bot's platform channel table (JSON). SDK moves are offered from it; the action fetches no feed itself.
+        required: true
 
 run-name: 'dependency lookup (${{ inputs.run_id }})'
 
@@ -49,6 +52,8 @@ jobs:
         with:
           mode: lookup
           expected-sha: ${{ inputs.expected_sha }}
+          # The channel table (#606 D9): passed as an action input, never through a shell.
+          platforms: ${{ inputs.platforms }}
           # Read-only: Renovate's GitHub tag/release lookups and the action.yml interface diffs (R15).
           github-token: ${{ github.token }}
           # host-rules: ${{ secrets.RENOVATE_HOST_RULES }}

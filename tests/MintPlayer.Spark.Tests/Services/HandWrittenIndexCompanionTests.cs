@@ -130,7 +130,7 @@ public class HandWrittenIndexCompanionTests(HandWrittenIndexCompanionTests.Seede
 
     public class HwContext : SparkContext
     {
-        public IRavenQueryable<HwCar> HwCars => Session.Query<HwCar>();
+        public IQueryable<HwCar> HwCars => Session.Query<HwCar>();
     }
 
     /// <summary>The §6 fixture's plates, brands and offsets, as HwCars.</summary>
