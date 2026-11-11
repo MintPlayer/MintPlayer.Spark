@@ -231,6 +231,26 @@ Dependencies: R before all; B before C; D before E; C before F. G and H are inde
   - **M2 done:** `Account.ReleaseRole` (`EReleaseRole`, zero value `Maintain` so old documents need no migration) and
     `Repository.ReleaseRole` (`EReleaseRolePolicy`, `Inherit`), `Repository.ResolveReleaseRole` / `MayRelease`; model
     synchronized. The translations golden still needs `SPARK_UPDATE_GOLDEN=1` (done with the tests at the end).
+  - **M3 done:** `ReleaseRecipient` (`PackageVersioning/ReleaseRecipients.cs`): role check against the forge per
+    request, `coverage.yml` read from the default branch, current lines from the line branches, the green run from
+    `ListWorkflowRunsAsync(workflow)`, the writer call, the comment. The comment names the commit and links its run, not
+    the PR (my call: a squash commit's PR is in its subject, and a merge-queue commit can carry several); "left out"
+    counts only newer commits without a successful run, so naming an older green sha does not call newer green ones
+    "not passed".
+  - **M4 done:** `PromoteService` + `POST /jobs/versioning/promote`. The line-only check is "suspect paths" = changed
+    on the line since the merge base ∩ different from the commit; a suspect is an older copy when its blob (or its
+    absence) is one the default branch wrote between the merge base and the commit (`git log --raw base..commit --
+    path`). P4's change detection runs in the writer, from the line's merge base (= its last promotion) to the commit,
+    with the engine's `ChangedEcosystems`. The push carries a lease on the checked tip (outcome `moved`).
+  - **M5 done:** a promoted current line is *unsupported* in `SupportedLines.Evaluate(..., promotesCurrent)` (reason
+    `PromotedReason`), my call: besides backport labels and the "Backport targets" check, that also stops per-line
+    dependency updates and the onboarding's line-workflow PRs, each of which would be a line-only change blocking the
+    next promotion (P1). `BackportRecipient` drops promote lines from explicit `backport:` labels and refuses with a
+    pointer to `/release` when none is left. `MergeQueueRulesetChoices.PromotesLines` (from `coverage.yml` in
+    "Set up rulesets") puts the App as an `exempt` bypass on ruleset 3 only.
+  - **M6 keeps P5's "same step":** a recorded tag goes in the promotion's own push (one atomic push of the line and
+    its tags). A separate tags job right after would race the line's release run, whose checkout fetches the tags
+    within seconds of the push.
 - **P6, sandbox (SP7 = A):** `PieterjanDeClippel/SparkTest`, two lines and a `publish-release` without publish
   secrets. Standing permission to push branches and tags and change rulesets there; ask before deleting anything that
   was there before.

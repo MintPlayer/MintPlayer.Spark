@@ -287,7 +287,8 @@ public partial class OnboardingService : IOnboardingService
         if (defaults.Count == 0) return [];
 
         var notes = new List<string>();
-        foreach (var line in await SupportedLines.ReadAsync(session, git, repository, pattern, BackportYml.Parse(yml).Section.Lines, cancellationToken))
+        foreach (var line in await SupportedLines.ReadAsync(session, git, repository, pattern, BackportYml.Parse(yml).Section.Lines, cancellationToken,
+            SupportedLines.PromotesCurrent(yml)))
         {
             if (!line.Supported) continue;
             var missing = new List<GitWriterFile>();

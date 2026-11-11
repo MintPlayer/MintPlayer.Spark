@@ -276,6 +276,21 @@ public class MergeQueueRulesetPlannerTests
     }
 
     [Fact]
+    public void Promoted_lines_let_the_App_bypass_the_line_checks_ruleset_and_nothing_else_changes()
+    {
+        // Segment P, Q-A = B: the promotion commit is pushed by the App; its checks run on the line afterwards (publish-release).
+        var plan = Plan(new ForgeRulesetState(AppId, [], null),
+            new MergeQueueRulesetChoices(0, ["build"], ReleaseLines: [Lines], LineRequiredChecks: ["build"], PromotesLines: true));
+
+        var created = plan.Steps.OfType<CreateRulesetStep>().ToDictionary(s => s.Definition.Name, s => s.Definition);
+        created[LineChecksName].BypassActors.Should().Equal([new ForgeRulesetActor(AppId, "Integration", "exempt")]);
+        ContextsOf(created[LineChecksName]).Should().Equal(["build"]);
+        created[ReviewsAndChecksName].BypassActors.Should().BeEquivalentTo(
+            Plan(new ForgeRulesetState(AppId, [], null), new MergeQueueRulesetChoices(0, ["build"], ReleaseLines: [Lines], LineRequiredChecks: ["build"]))
+                .Steps.OfType<CreateRulesetStep>().Single(s => s.Definition.Name == ReviewsAndChecksName).Definition.BypassActors);
+    }
+
+    [Fact]
     public void Without_lines_there_is_no_line_checks_ruleset()
     {
         PlanFor([], classic: null).Steps.OfType<CreateRulesetStep>()

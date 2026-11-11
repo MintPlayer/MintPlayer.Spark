@@ -87,6 +87,30 @@ public sealed record GitWriterEcosystemsResult(string Outcome, string? Reason, I
     public const string Planned = "planned";
 }
 
+/// <summary><c>POST jobs/versioning/promote</c> (segment P): release lines moved to a green default-branch commit.</summary>
+public sealed record GitWriterPromoteRequest(
+    string Provider, string RepoId, string CloneUrl, SidecarCredential Credential, string DefaultBranch, string Commit, GitWriterTagger Committer,
+    IReadOnlyList<GitWriterPromoteLine> Lines, VersioningSettings Settings);
+
+public sealed record GitWriterPromoteLine(string Branch, string Ecosystem, bool OnlyIfChanged);
+
+/// <param name="Outcome"><see cref="Promoted"/> when the job ran (each line then has its own outcome), or a failure.</param>
+public sealed record GitWriterPromoteResult(string Outcome, string? Reason, IReadOnlyList<GitWriterPromoteLineResult>? Lines, string? Detail, long DurationMs)
+{
+    public const string Promoted = "promoted";
+}
+
+/// <param name="Outcome">One of the constants below.</param>
+public sealed record GitWriterPromoteLineResult(string Branch, string Outcome, string Commit, IReadOnlyList<string>? Paths, IReadOnlyList<string>? Commits, string? Detail = null)
+{
+    public const string Promoted = "promoted";
+    public const string Contained = "contained";
+    public const string Unchanged = "unchanged";
+    public const string LineOnly = "line-only";
+    public const string Moved = "moved";
+    public const string Rejected = "rejected";
+}
+
 /// <summary><c>POST jobs/versioning/backport</c> (#153 M10, D10): the merged pull request applied to release branches.</summary>
 public sealed record GitWriterBackportRequest(
     string Provider, string RepoId, string CloneUrl, SidecarCredential Credential, string SourceBranch, string Commit, int PullRequest, string Title,

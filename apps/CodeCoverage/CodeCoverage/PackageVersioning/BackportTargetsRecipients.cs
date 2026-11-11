@@ -82,7 +82,8 @@ public partial class BackportTargetsRecipient : IRecipient<BackportTargetsMessag
             var backport = BackportYml.Parse(yml);
 
             if (await EcosystemsAsync(repository, git, defaultBranch, message, config.ToSettings(), cancellationToken) is not { } ecosystems) return;
-            var lines = await SupportedLines.ReadAsync(session, git, repository, pattern, backport.Section.Lines, cancellationToken);
+            var lines = await SupportedLines.ReadAsync(session, git, repository, pattern, backport.Section.Lines, cancellationToken,
+                config.Lines?.PromotesCurrent == true);
             var current = await labels.ListPullRequestLabelsAsync(repository, message.Number, cancellationToken);
             var carried = new List<string>(current);
 

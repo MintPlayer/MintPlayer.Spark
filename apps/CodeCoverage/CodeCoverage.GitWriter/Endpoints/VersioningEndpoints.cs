@@ -318,6 +318,55 @@ internal sealed partial class GitWriterVersioningBackportEndpoint : IPostEndpoin
     }
 }
 
+/// <summary><c>POST /jobs/versioning/promote</c>: move release lines to a green default-branch commit (segment P).</summary>
+internal sealed partial class GitWriterVersioningPromoteEndpoint : IPostEndpoint<VersioningPromoteRequestWire>
+{
+    public const int MaxLines = 10;
+    public const int MaxEcosystemLength = 32;
+    public static readonly string LinesRule = $"1 to {MaxLines} lines with distinct branches, none the default branch, each with an ecosystem of lower-case letters and digits";
+
+    public static string Path => "/jobs/versioning/promote";
+
+    [Inject] private readonly PromoteService promotions;
+    [Inject] private readonly IOptions<GitWriterOptions> options;
+
+    protected override async ValueTask<VersioningPromoteRequestWire?> BindRequestAsync(HttpContext context)
+        => await Body.ReadAsync<VersioningPromoteRequestWire>(context.Request.Body, context.Request.ContentLength, Body.SmallBytes, context.RequestAborted);
+
+    protected override ValueTask<IResult> OnBindFailedAsync(HttpContext context, EndpointBindingException? failure) => new(Refusal.Body(Body.SmallBytes));
+
+    public override async Task<IResult> HandleAsync(VersioningPromoteRequestWire request, CancellationToken cancellationToken)
+    {
+        var refusal = new Refusal();
+        if (!refusal.Check(WireValidation.IsRepo(request.Provider, request.RepoId), "repoId", WireValidation.RepoRule)
+            || refusal.Check(WireValidation.RemoteUrl(request.CloneUrl, options.Value.AllowInsecureHttp), "cloneUrl", WireValidation.RemoteUrlRule) is not { } cloneUrl
+            || refusal.Check(WireValidation.Credential(request.Credential), "credential", WireValidation.CredentialRule) is not { } credential
+            || refusal.Check(WireValidation.Branch(request.DefaultBranch), "defaultBranch", MergeQueueWireRules.BranchRule) is not { } defaultBranch
+            || refusal.Check(WireValidation.ObjectId(request.Commit), "commit", WireValidation.ShaRule) is not { } commit
+            || refusal.Check(request.Committer is { } c && MergeQueueWireRules.IsIdentity(c.Name, c.Email) ? new GitIdentity(c.Name!, c.Email!) : null,
+                "committer", MergeQueueWireRules.IdentityRule) is not { } committer
+            || refusal.Check(Lines(request.Lines, defaultBranch), "lines", LinesRule) is not { } lines
+            || refusal.Check(GitWriterVersioningRunEndpoint.Settings(request.Settings), "settings", GitWriterVersioningRunEndpoint.SettingsRule) is not { } settings)
+            return refusal.Result();
+
+        return Results.Json(await promotions.RunAsync(new PromoteJob($"{request.Provider}/{request.RepoId}", cloneUrl, credential, defaultBranch, commit, committer,
+            lines, settings)), GitWriterHost.Json);
+    }
+
+    internal static List<PromoteLine>? Lines(List<PromoteLineWire>? wires, string defaultBranch)
+    {
+        if (wires is not { Count: > 0 and <= MaxLines }) return null;
+        var lines = new List<PromoteLine>();
+        foreach (var wire in wires)
+        {
+            if (WireValidation.Branch(wire.Branch) is not { } branch || branch == defaultBranch) return null;
+            if (wire.Ecosystem is not { Length: > 0 and <= MaxEcosystemLength } ecosystem || !ecosystem.All(ch => char.IsAsciiLetterLower(ch) || char.IsAsciiDigit(ch))) return null;
+            lines.Add(new PromoteLine(branch, ecosystem, wire.OnlyIfChanged));
+        }
+        return lines.Select(l => l.Branch).Distinct(StringComparer.Ordinal).Count() == lines.Count ? lines : null;
+    }
+}
+
 /// <summary><c>POST /jobs/versioning/backport/regenerated</c>: the line's regenerate patch folded into a backport (#570 M6, D9).</summary>
 internal sealed partial class GitWriterVersioningBackportRegeneratedEndpoint : IPostEndpoint<VersioningBackportRegeneratedRequestWire>
 {

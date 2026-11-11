@@ -136,6 +136,18 @@ public partial class BackportRecipient : IRecipient<BackportMessage>
         if (unknown.Count > 0)
             return $"Nothing was backported: {string.Join(", ", unknown.Select(u => $"`{u}`"))} names no release branch "
                 + (config.EffectiveLines is { } lines ? $"(`{lines.Text}`)." : $"({string.Join(", ", config.EffectiveReleaseBranches.Select(p => $"`{p}`"))}).");
+        // Segment P (P0): a current line that is promoted takes no backports; the change reaches it with the next `/release`.
+        if (config is { Lines.PromotesCurrent: true, EffectiveLines: { } promotePattern } && targets.Count > 0)
+        {
+            var current = promotePattern.CurrentLines(await git.ListBranchesAsync(repository, SupportedLines.BranchPrefix(promotePattern), cancellationToken))
+                .Select(promotePattern.Format).ToHashSet(StringComparer.Ordinal);
+            var promoted = targets.Where(t => current.Contains(t.Branch)).Select(t => t.Branch).ToList();
+            targets.RemoveAll(t => current.Contains(t.Branch));
+            if (promoted.Count > 0 && targets.Count == 0)
+                return message.Source == EBackportSource.Merge ? null
+                    : $"Nothing was backported: {string.Join(", ", promoted.Select(p => $"`{p}`"))} {(promoted.Count == 1 ? "is a current line" : "are current lines")}, "
+                        + "promoted with `/release` instead of backported. The change reaches it with the next release.";
+        }
         if (targets.Count == 0) return null;
 
         var subjects = (await git.GetPullRequestCommitsAsync(repository, pull.Number, cancellationToken))
