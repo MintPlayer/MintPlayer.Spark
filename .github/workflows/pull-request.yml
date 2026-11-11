@@ -32,7 +32,12 @@ env:
   GH_PKG_USER: ${{ github.actor }}
   GH_PKG_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   NX_SELF_HOSTED_REMOTE_CACHE_SERVER: ${{ secrets.NX_CACHE_SERVER }}
-  NX_SELF_HOSTED_REMOTE_CACHE_ACCESS_TOKEN: ${{ (github.event_name == 'push' && github.ref_name == github.event.repository.default_branch) && secrets.NX_CACHE_RW_TOKEN || '' }}
+  # The write token (segment H, resilience PRD Q16 = B, owner 2026-11-10): master pushes, and same-repository pull
+  # requests except the dependency-update App's branches. A compromised package in a dependency bump runs its install
+  # script in the job but cannot change this file, which decides on the head branch. Forks get no secrets anyway.
+  # The release build never reads the cache (dotnet-build-master.yml), so a poisoned entry can at worst fake a green
+  # test, never ship. Keep this expression the same in test.yml.
+  NX_SELF_HOSTED_REMOTE_CACHE_ACCESS_TOKEN: ${{ ((github.event_name == 'push' && github.ref_name == github.event.repository.default_branch) || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && !startsWith(github.head_ref, 'mintplayer/dependencies'))) && secrets.NX_CACHE_RW_TOKEN || '' }}
   # Runs the E2E suite's Fleet host under dotnet-coverage, so the framework code it
   # exercises there is measured (FleetTestHost.HostCoverageEnabled). Workflow-level
   # rather than on the test step: the path verifier reads it too, to require the report.

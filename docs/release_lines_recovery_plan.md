@@ -123,6 +123,20 @@ warn (Q10).
 - **Docs:** `docs/guide-nx-remote-cache.md` states that members who can push a branch can poison test results.
 - **Order:** independent of everything else.
 
+**H done (2026-11-11, branch `feat/ci-cache-writes`).** The owner confirmed Q16 = B on 2026-11-11: "PR runs write - as
+long as it's not from a fork". The PRD's earlier "rejected" line is marked superseded.
+- **Cache writes:** `pull-request.yml` and `test.yml` give `NX_CACHE_RW_TOKEN` to master pushes and to `pull_request`
+  runs whose head is in this repository (`github.event.pull_request.head.repo.full_name == github.repository`) and not
+  `mintplayer/dependencies*` (`DependencyUpdateRun.RollingBranch`/`WorkBranch`). Forks get no secrets from GitHub
+  either way. `dotnet-build-master.yml` and the deploy workflows keep master-push-only writes.
+- **Release build:** in `dotnet-build-master.yml`, `build:release` and the ng-spark build add `--skip-nx-cache` on
+  every branch but the default one, so a line's packages and its npm `dist` are built from source. The default branch
+  keeps the cache: with lines on it releases nothing (#628), and it populates the cache for PRs.
+- **Docs:** `docs/guide-nx-remote-cache.md`: the expression, the trigger table, and "members who can push a branch here
+  can poison test results".
+- **Verification:** this PR's own run is a same-repository PR, so its jobs should show remote cache writes (no "writes
+  discarded"). The line part shows on the next line push.
+
 Dependencies: R before all; B before C; D before E; C before F. G and H are independent.
 
 ## 3. Open questions for the owner
