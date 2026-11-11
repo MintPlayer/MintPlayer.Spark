@@ -94,17 +94,20 @@ public sealed record GitWriterPromoteRequest(
 
 public sealed record GitWriterPromoteLine(string Branch, string Ecosystem, int Major, bool OnlyIfChanged);
 
-/// <summary><c>POST jobs/versioning/hand-tag</c> (segment P, P5): a person's new tag, checked and deleted.</summary>
-/// <param name="Lines">The current lines (their <c>OnlyIfChanged</c> is ignored).</param>
+/// <summary><c>POST jobs/versioning/hand-tag</c> (segment P, P5; segment T): a person's new tag, checked against the tag it follows.</summary>
+/// <param name="Lines">Every release line, current and past (their <c>OnlyIfChanged</c> is ignored).</param>
+/// <param name="Promotes"><c>versioning.lines.current: promote</c>: a tag of a current line's major is recorded for its next promotion.</param>
 public sealed record GitWriterHandTagRequest(
     string Provider, string RepoId, string CloneUrl, SidecarCredential Credential, string Tag, string TagObject, IReadOnlyList<GitWriterPromoteLine> Lines,
-    VersioningSettings Settings);
+    bool Promotes, VersioningSettings Settings);
 
 /// <param name="Tag">One of the constants below, when <see cref="Outcome"/> is <see cref="Planned"/>.</param>
 public sealed record GitWriterHandTagResult(string Outcome, string? Reason, string? Tag, string? Branch, string? Commit, string? Detail, long DurationMs)
 {
     public const string Planned = "planned";
     public const string Recorded = "recorded";
+    /// <summary>Valid and left in place (segment T): a past line's tag, or any line's in a repository that backports.</summary>
+    public const string Accepted = "accepted";
     public const string Refused = "refused";
     public const string NotAPackage = "not-a-package";
     public const string Moved = "moved";

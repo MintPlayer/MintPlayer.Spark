@@ -232,6 +232,7 @@ public class ReleaseFlowTests : CoverageRavenTest
         record!.Source.Should().Be(ReleaseVersion.FromTag);
         record.Actor.Should().Be("octo");
         record.PlacedCommit.Should().BeNull();
+        await writer.Received(1).VersioningHandTagAsync(Arg.Is<GitWriterHandTagRequest>(r => r.Promotes), Arg.Any<CancellationToken>());
         forge.CommitComments.Single().Should().Be((Tagged, HandTagRecipient.Comment("octo", Parse("Acme.Core/v11.5.0"), "release/dotnet-11.x", null)));
         await git.Received(1).RevokeWriterAccessAsync(Arg.Any<Repository>(), Arg.Any<ForgeWriterAccess>(), Arg.Any<CancellationToken>());
     }
@@ -256,23 +257,47 @@ public class ReleaseFlowTests : CoverageRavenTest
     {
         using var store = GetDocumentStore();
         await SeedAsync(store);
-        WriterJudges(GitWriterHandTagResult.Refused, "Acme.Core/v12.0.0 does not have release/dotnet-11.x's major 11");
+        WriterJudges(GitWriterHandTagResult.Refused, "Acme.Core/v12.0.0 does not keep the major of Acme.Core/v11.4.0, the tag it follows");
 
         await TagAsync(store, "Acme.Core/v12.0.0");
         WriterJudges(GitWriterHandTagResult.NotAPackage);
         await TagAsync(store, "schemas/v3.0.0");
 
-        forge.CommitComments.Should().ContainSingle().Which.Body.Should().Contain("was removed: Acme.Core/v12.0.0 does not have");
+        forge.CommitComments.Should().ContainSingle().Which.Body.Should().Contain("was removed: Acme.Core/v12.0.0 does not keep the major")
+            .And.Contain("must be above the tag it follows");
         using var check = store.OpenAsyncSession();
         (await check.Advanced.LoadStartingWithAsync<ReleaseVersion>(ReleaseVersion.Prefix(RepositoryId))).Should().BeEmpty();
     }
 
     [Fact]
-    public async Task A_repository_that_does_not_promote_never_asks_the_writer_about_its_tags()
+    public async Task A_backport_repositorys_valid_tag_stays_and_is_recorded_where_it_is()
     {
+        // Segment T3: every repository with release lines has its tags checked, not only a promoting one.
         using var store = GetDocumentStore();
         await SeedAsync(store);
         Yml("versioning:\n  lines: {}\n");
+        GitWriterHandTagRequest? request = null;
+        writer.VersioningHandTagAsync(Arg.Do<GitWriterHandTagRequest>(r => request = r), Arg.Any<CancellationToken>())
+            .Returns(new GitWriterHandTagResult(GitWriterHandTagResult.Planned, null, GitWriterHandTagResult.Accepted, "release/dotnet-11.x", Tagged, null, 5));
+
+        await TagAsync(store);
+
+        request!.Promotes.Should().BeFalse();
+        request.Lines.Select(l => (l.Branch, l.Major)).Should().Equal(("release/angular-22.x", 22), ("release/dotnet-11.x", 11));
+        using var check = store.OpenAsyncSession();
+        var record = await check.LoadAsync<ReleaseVersion>(ReleaseVersion.DocumentId(RepositoryId, "Acme.Core/v11.5.0"));
+        record!.PlacedCommit.Should().Be(Tagged);
+        record.Actor.Should().Be("octo");
+        forge.CommitComments.Should().BeEmpty("a tag that stays needs no word");
+        asked.Should().BeEmpty("only a tag recorded for a promotion asks the registries");
+    }
+
+    [Fact]
+    public async Task A_repository_without_release_lines_never_asks_the_writer_about_its_tags()
+    {
+        using var store = GetDocumentStore();
+        await SeedAsync(store);
+        Yml("versioning:\n");
 
         await TagAsync(store);
 

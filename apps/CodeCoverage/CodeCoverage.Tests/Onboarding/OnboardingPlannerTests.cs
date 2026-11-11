@@ -1,4 +1,5 @@
 using CodeCoverage.Onboarding;
+using CodeCoverage.PackageVersioning;
 using CodeCoverage.Versioning.Graph;
 using Xunit;
 
@@ -61,6 +62,39 @@ public class OnboardingPlannerTests
 
         plan.Features.Should().BeEquivalentTo([EOnboardingFeature.ReleaseLines, EOnboardingFeature.Versioning]);
         CoverageYml(plan).Should().Contain("versioning:\n  lines: {}");
+    }
+
+    private const string PublishWorkflow = "on: push\njobs:\n  pack:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v5\n"
+        + "      - name: Version the packages\n        uses: MintPlayer/MintPlayer.Spark/apps/CodeCoverage/versioning-action@versioning-v1\n"
+        + "      - run: dotnet pack\n      - run: dotnet nuget push '*.nupkg' --source https://api.nuget.org/v3/index.json --skip-duplicate\n";
+
+    [Fact]
+    public async Task With_one_versioning_workflow_the_current_lines_are_promoted()
+    {
+        // Segment T6: the default is `/release`, waiting for the one push workflow that runs the versioning step.
+        var plan = await OnboardingPlanner.PlanAsync(DotnetRepository().Add(".github/workflows/publish.yml", PublishWorkflow), Inputs(EOnboardingFeature.ReleaseLines));
+
+        plan.PromotesLines.Should().BeTrue();
+        CoverageYml(plan).Should().Contain("versioning:\n  lines:").And.Contain("\n    current: promote").And.Contain("\n    trigger: manual\n    workflow: publish.yml");
+        VersioningYml.Parse(CoverageYml(plan)).Config!.Lines!.PromotesCurrent.Should().BeTrue();
+        plan.Body.Should().Contain("comments `/release`");
+        plan.Notes.Should().NotContain(n => n.Contains("take backports", StringComparison.Ordinal));
+    }
+
+    [Theory]
+    [InlineData(0, "No push workflow runs the versioning step")]
+    [InlineData(2, "`deploy.yml`, `publish.yml`")]
+    public async Task Without_exactly_one_versioning_workflow_the_lines_take_backports_and_a_note_says_how_to_switch(int workflows, string note)
+    {
+        var tree = DotnetRepository();
+        if (workflows > 0) tree.Add(".github/workflows/publish.yml", PublishWorkflow);
+        if (workflows > 1) tree.Add(".github/workflows/deploy.yml", PublishWorkflow);
+
+        var plan = await OnboardingPlanner.PlanAsync(tree, Inputs(EOnboardingFeature.ReleaseLines));
+
+        plan.PromotesLines.Should().BeFalse();
+        CoverageYml(plan).Should().Contain("versioning:\n  lines: {}");
+        plan.Notes.Should().Contain(n => n.Contains(note, StringComparison.Ordinal) && n.Contains("current: promote", StringComparison.Ordinal));
     }
 
     [Fact]

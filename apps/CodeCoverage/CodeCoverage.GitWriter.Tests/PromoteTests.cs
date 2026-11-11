@@ -182,7 +182,7 @@ public class PromoteTests : WriterTestBase
 
     [Theory]
     [InlineData("2.0.0", "does not have release/dotnet-1.x's major 1")]
-    [InlineData("1.2.0", "is not above the package's tag Core/v1.2.0")]
+    [InlineData("1.2.0", "is not above Core/v1.2.0, the tag it follows")]
     public async Task A_version_the_line_cannot_release_refuses_the_line(string version, string reason)
     {
         using var origin = new Origin(Server, "promote-bad-version-" + version.Replace('.', '-'));
@@ -223,11 +223,11 @@ public class PromoteTests : WriterTestBase
         var line = response.Lines.Single();
         line.Outcome.Should().Be(PromoteService.Promoted, line.Detail ?? response.Detail);
         line.Tags.Should().BeEmpty();
-        response.Unplaced.Should().ContainSingle().Which.Detail.Should().Contain("is not above the package's tag Core/v1.2.0");
+        response.Unplaced.Should().ContainSingle().Which.Detail.Should().Contain("is not above Core/v1.2.0, the tag it follows");
         origin.Ref("refs/tags/Core/v1.1.0").Should().BeNull();
     }
 
-    private static Dictionary<string, object?> HandTag(Origin origin, string tag, string tagObject) => new()
+    private static Dictionary<string, object?> HandTag(Origin origin, string tag, string tagObject, bool promotes = true, params int[] majors) => new()
     {
         ["provider"] = "github",
         ["repoId"] = "1001",
@@ -235,7 +235,8 @@ public class PromoteTests : WriterTestBase
         ["credential"] = Credential(Token),
         ["tag"] = tag,
         ["tagObject"] = tagObject,
-        ["lines"] = new[] { new { branch = "release/dotnet-1.x", ecosystem = "dotnet", major = 1 } },
+        ["lines"] = (majors.Length == 0 ? [1] : majors).Select(m => new { branch = $"release/dotnet-{m}.x", ecosystem = "dotnet", major = m }).ToArray(),
+        ["promotes"] = promotes,
         ["settings"] = new VersioningSettingsWire { Lines = new ReleaseLinesWire { Text = ReleaseLinePattern.DefaultText } },
     };
 
@@ -248,9 +249,9 @@ public class PromoteTests : WriterTestBase
 
     [Theory]
     [InlineData("Core/v1.3.0", PromoteService.HandTagRecorded, null)]
-    [InlineData("Core/v1.1.0", PromoteService.HandTagRefused, "is not above the package's tag Core/v1.2.0")]
-    [InlineData("Core/v3.0.0", PromoteService.HandTagRefused, "major 1")]
-    public async Task A_hand_tag_of_a_package_is_checked_and_always_deleted(string tag, string outcome, string? reason)
+    [InlineData("Core/v1.1.0", PromoteService.HandTagRefused, "Core/v1.1.0 is not above Core/v1.2.0, the tag it follows")]
+    [InlineData("Core/v3.0.0", PromoteService.HandTagRefused, "does not keep the major of Core/v1.2.0")]
+    public async Task A_hand_tag_for_a_promoted_line_is_checked_and_always_deleted(string tag, string outcome, string? reason)
     {
         using var origin = new Origin(Server, "hand-" + tag.Replace('/', '-').Replace('.', '-'));
         var commit = PackageLine(origin);
@@ -264,6 +265,79 @@ public class PromoteTests : WriterTestBase
         if (reason is not null) response.Detail.Should().Contain(reason);
         origin.Ref("refs/tags/" + tag).Should().BeNull();
         origin.Ref("refs/tags/Core/v1.2.0").Should().NotBeNull("only the pushed tag is deleted");
+    }
+
+    [Theory]
+    [InlineData("Core/v1.3.0", PromoteService.HandTagAccepted, null)]
+    [InlineData("Core/v1.0.5", PromoteService.HandTagRefused, "is not above Core/v1.2.0")]
+    [InlineData("Core/v2.0.0", PromoteService.HandTagRefused, "does not keep the major of Core/v1.2.0")]
+    public async Task Without_promotion_a_valid_hand_tag_stays_and_an_invalid_one_is_deleted(string tag, string outcome, string? reason)
+    {
+        // Segment T3: a backport repository's tags are checked against the tag they follow too.
+        using var origin = new Origin(Server, "hand-backport-" + tag.Replace('/', '-').Replace('.', '-'));
+        var commit = PackageLine(origin);
+        origin.InBare("tag", tag, commit);
+
+        var response = await HandTagAsync(HandTag(origin, tag, commit, promotes: false));
+
+        response.Tag.Should().Be(outcome, response.Detail);
+        if (reason is not null) response.Detail.Should().Contain(reason);
+        origin.Ref("refs/tags/" + tag).Should().Be(outcome == PromoteService.HandTagAccepted ? commit : null);
+    }
+
+    [Fact]
+    public async Task A_tag_for_the_promoted_line_follows_the_lines_tip_as_well()
+    {
+        // The next promotion commit has the line's tip as a parent, so a tag on the tip is the one this version follows.
+        using var origin = new Origin(Server, "hand-follows-tip");
+        var commit = PackageLine(origin);
+        // A commit only the line has (a past promotion), so its tag is not in the main commit's history.
+        origin.Checkout("release/dotnet-1.x").Write("src/Core/Line.cs", "namespace Core; public class Line { }\n");
+        var lineTip = origin.Commit("line: promotion");
+        origin.Push("release/dotnet-1.x");
+        origin.Checkout("main");
+        origin.InBare("tag", "Core/v1.4.0", lineTip);
+        origin.InBare("tag", "Core/v1.3.0", commit);
+
+        var promoted = await HandTagAsync(HandTag(origin, "Core/v1.3.0", commit));
+        promoted.Tag.Should().Be(PromoteService.HandTagRefused);
+        promoted.Detail.Should().Contain("is not above Core/v1.4.0");
+
+        origin.InBare("tag", "Core/v1.3.0", commit);
+        var backported = await HandTagAsync(HandTag(origin, "Core/v1.3.0", commit, promotes: false));
+        backported.Tag.Should().Be(PromoteService.HandTagAccepted, "without promotion only the commit's own history counts");
+    }
+
+    [Fact]
+    public async Task A_tag_for_a_past_line_of_a_promoted_repository_stays_in_place()
+    {
+        using var origin = new Origin(Server, "hand-past-line");
+        var commit = PackageLine(origin);
+        origin.Checkout("release/dotnet-2.x", "main").Push("release/dotnet-2.x");
+        origin.InBare("tag", "Core/v1.3.0", commit);
+
+        var response = await HandTagAsync(HandTag(origin, "Core/v1.3.0", commit, true, 1, 2));
+
+        response.Tag.Should().Be(PromoteService.HandTagAccepted, response.Detail);
+        response.Branch.Should().Be("release/dotnet-1.x");
+        origin.Ref("refs/tags/Core/v1.3.0").Should().Be(commit);
+    }
+
+    [Fact]
+    public async Task A_first_tag_needs_a_release_lines_major()
+    {
+        using var origin = new Origin(Server, "hand-first-tag");
+        origin.Write("src/Core/Core.csproj", Csproj);
+        var commit = origin.Commit("packages");
+        origin.Push("main");
+        origin.Checkout("release/dotnet-1.x", "main").Push("release/dotnet-1.x");
+        origin.InBare("tag", "Core/v5.0.0", commit);
+
+        var response = await HandTagAsync(HandTag(origin, "Core/v5.0.0", commit, promotes: false));
+
+        response.Tag.Should().Be(PromoteService.HandTagRefused);
+        response.Detail.Should().Contain("follows no tag of Core, and no release line has its major 5");
+        origin.Ref("refs/tags/Core/v5.0.0").Should().BeNull();
     }
 
     [Fact]

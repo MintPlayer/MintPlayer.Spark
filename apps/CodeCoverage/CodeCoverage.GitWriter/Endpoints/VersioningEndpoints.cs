@@ -319,10 +319,14 @@ internal sealed partial class GitWriterVersioningBackportEndpoint : IPostEndpoin
     }
 }
 
-/// <summary><c>POST /jobs/versioning/hand-tag</c>: a person's new version tag, checked and deleted (segment P, P5).</summary>
+/// <summary><c>POST /jobs/versioning/hand-tag</c>: a person's new version tag, checked against the tag it follows (segment P, P5; segment T).</summary>
 internal sealed partial class GitWriterVersioningHandTagEndpoint : IPostEndpoint<HandTagRequestWire>
 {
     public const string TagRule = "a version tag <id>/v<version>";
+
+    /// <summary>Every line of the repository, past ones included (segment T), so more than a promotion's.</summary>
+    public const int MaxLines = 50;
+    public static readonly string LinesRule = $"1 to {MaxLines} lines with distinct branches, each with an ecosystem of lower-case letters and digits and a major from 0 to {GitWriterVersioningPromoteEndpoint.MaxMajor}";
 
     public static string Path => "/jobs/versioning/hand-tag";
 
@@ -342,11 +346,11 @@ internal sealed partial class GitWriterVersioningHandTagEndpoint : IPostEndpoint
             || refusal.Check(WireValidation.Credential(request.Credential), "credential", WireValidation.CredentialRule) is not { } credential
             || refusal.Check(VersionTag.TryParse(request.Tag, out var parsed) && parsed.Name == request.Tag ? parsed : null, "tag", TagRule) is not { } tag
             || refusal.Check(WireValidation.ObjectId(request.TagObject), "tagObject", WireValidation.ShaRule) is not { } tagObject
-            || refusal.Check(GitWriterVersioningPromoteEndpoint.Lines(request.Lines, ""), "lines", GitWriterVersioningPromoteEndpoint.LinesRule) is not { } lines
+            || refusal.Check(GitWriterVersioningPromoteEndpoint.Lines(request.Lines, "", MaxLines), "lines", LinesRule) is not { } lines
             || refusal.Check(GitWriterVersioningRunEndpoint.Settings(request.Settings), "settings", GitWriterVersioningRunEndpoint.SettingsRule) is not { } settings)
             return refusal.Result();
 
-        return Results.Json(await promotions.CheckHandTagAsync(new HandTagJob($"{request.Provider}/{request.RepoId}", cloneUrl, credential, tag, tagObject, lines, settings)),
+        return Results.Json(await promotions.CheckHandTagAsync(new HandTagJob($"{request.Provider}/{request.RepoId}", cloneUrl, credential, tag, tagObject, lines, request.Promotes, settings)),
             GitWriterHost.Json);
     }
 }
@@ -409,9 +413,9 @@ internal sealed partial class GitWriterVersioningPromoteEndpoint : IPostEndpoint
         return tags.Select(t => t.PackageId).Distinct(StringComparer.Ordinal).Count() == tags.Count ? tags : null;
     }
 
-    internal static List<PromoteLine>? Lines(List<PromoteLineWire>? wires, string defaultBranch)
+    internal static List<PromoteLine>? Lines(List<PromoteLineWire>? wires, string defaultBranch, int maxLines = MaxLines)
     {
-        if (wires is not { Count: > 0 and <= MaxLines }) return null;
+        if (wires is null || wires.Count == 0 || wires.Count > maxLines) return null;
         var lines = new List<PromoteLine>();
         foreach (var wire in wires)
         {

@@ -38,7 +38,11 @@ public sealed record OnboardingInputs
 /// <param name="OnMerge">The repository settings switched on once it merges.</param>
 /// <param name="Notes">What the bot could not do itself, for the person merging.</param>
 public sealed record OnboardingPlan(IReadOnlyList<EOnboardingFeature> Features, IReadOnlyList<GitWriterFile> Files, IReadOnlyList<VersioningSeed> Seeds,
-    LineRenamePlan Renames, IReadOnlyList<EOnboardingFeature> OnMerge, IReadOnlyList<string> Notes, string Body);
+    LineRenamePlan Renames, IReadOnlyList<EOnboardingFeature> OnMerge, IReadOnlyList<string> Notes, string Body)
+{
+    /// <summary>The pull request turns on <c>versioning.lines.current: promote</c> (segment T), so ruleset 3 lets the App push promotions.</summary>
+    public bool PromotesLines { get; init; }
+}
 
 /// <summary>
 /// The onboarding chooser's one pull request (#571 M10b, coverage_backport_PRD D3 and §8.4 "M10"). Each feature plans over
@@ -72,6 +76,17 @@ public static partial class OnboardingPlanner
     /// <summary>The key that turns release lines on, with the default pattern (S3: present, even empty).</summary>
     internal const string LinesKey = "lines: {}                          # release lines, release/{ecosystem}-{major}.x: packages release only from them";
 
+    /// <summary>
+    /// Segment T: release lines whose current lines are promoted by <c>/release</c> (the default, owner delegated
+    /// 2026-11-11), waiting for <paramref name="workflow"/>, the push workflow that runs the versioning step.
+    /// </summary>
+    internal static string PromoteLinesKey(string workflow) => $"""
+        lines:                             # release lines, release/{"{ecosystem}"}-{"{major}"}.x: packages release only from them
+          current: promote                 # a maintainer's `/release` moves each current line to the newest commit {workflow} passed
+          trigger: manual
+          workflow: {workflow}
+        """;
+
     public static async Task<OnboardingPlan> PlanAsync(IRepositoryTree tree, OnboardingInputs inputs, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(tree);
@@ -85,6 +100,7 @@ public static partial class OnboardingPlanner
         var sections = new List<(string Heading, string Text)>();
         IReadOnlyList<VersioningSeed> seeds = [];
         var renames = new LineRenamePlan([], []);
+        var promotes = false;
 
         if (features.Contains(EOnboardingFeature.Versioning))
         {
@@ -97,8 +113,8 @@ public static partial class OnboardingPlanner
         }
         if (features.Contains(EOnboardingFeature.ReleaseLines))
         {
-            renames = await ReleaseLinesAsync(overlay, inputs, notes, cancellationToken);
-            sections.Add(("Release lines", ReleaseLinesText(renames, inputs.DefaultBranch)));
+            (renames, promotes) = await ReleaseLinesAsync(overlay, inputs, notes, cancellationToken);
+            sections.Add(("Release lines", ReleaseLinesText(renames, inputs.DefaultBranch, promotes)));
         }
         if (features.Contains(EOnboardingFeature.MergeQueue))
             sections.Add(("Merge queue", await MergeQueueAsync(overlay, inputs.DefaultBranch, features.Contains(EOnboardingFeature.ReleaseLines), notes, cancellationToken)));
@@ -114,32 +130,52 @@ public static partial class OnboardingPlanner
         var ordered = Enum.GetValues<EOnboardingFeature>().Where(features.Contains).ToList();
         var onMerge = ordered.Where(f => f is EOnboardingFeature.DependencyUpdates or EOnboardingFeature.SizeLabels).ToList();
         return new OnboardingPlan(ordered, await overlay.ChangesAsync(cancellationToken), seeds, renames, onMerge, notes,
-            Body(ordered, sections, notes, seeds, renames, onMerge, inputs.DefaultBranch));
+            Body(ordered, sections, notes, seeds, renames, onMerge, inputs.DefaultBranch)) { PromotesLines = promotes };
     }
 
-    private static async Task<LineRenamePlan> ReleaseLinesAsync(OverlayTree overlay, OnboardingInputs inputs, List<string> notes, CancellationToken cancellationToken)
+    /// <summary>
+    /// Adds <c>versioning.lines</c> when coverage.yml has none (an existing one is left as it is). Segment T: with exactly
+    /// one push workflow running the versioning step, the current lines are promoted with <c>/release</c> and wait for that
+    /// workflow; with none or several the bot cannot tell which one proves a commit, so the lines take backports and a
+    /// note says how to switch.
+    /// </summary>
+    private static async Task<(LineRenamePlan Renames, bool Promotes)> ReleaseLinesAsync(OverlayTree overlay, OnboardingInputs inputs, List<string> notes,
+        CancellationToken cancellationToken)
     {
         var yml = await overlay.ReadTextAsync(CoverageYml.FileName, Limits.MaxManifestBytes, cancellationToken);
-        var pattern = VersioningYml.Parse(yml).Config?.EffectiveLines;
+        var config = VersioningYml.Parse(yml).Config;
+        var pattern = config?.EffectiveLines;
+        var promotes = config?.Lines?.PromotesCurrent == true;
         if (pattern is null)
         {
-            if (CoverageYmlSections.AddKey(yml ?? string.Empty, "versioning", "lines", LinesKey) is { } edited)
+            var workflows = await VersioningOnboarding.VersioningWorkflowsAsync(overlay, cancellationToken);
+            var key = workflows.Count == 1 ? PromoteLinesKey(workflows[0]) : LinesKey;
+            if (CoverageYmlSections.AddKey(yml ?? string.Empty, "versioning", "lines", key) is { } edited)
+            {
                 overlay.Write(CoverageYml.FileName, edited);
+                promotes = workflows.Count == 1;
+                if (!promotes)
+                    notes.Add(workflows.Count == 0
+                        ? "No push workflow runs the versioning step, so the release lines take backports: once one does, set `versioning.lines` to `{ current: promote, trigger: manual, workflow: <its file> }` to release them with `/release` instead."
+                        : $"Several push workflows run the versioning step ({string.Join(", ", workflows.Select(w => $"`{w}`"))}), so the release lines take backports: set `versioning.lines` to `{{ current: promote, trigger: manual, workflow: <the one whose green run proves a commit> }}` to release them with `/release` instead.");
+            }
             else
                 notes.Add("`versioning:` in coverage.yml is not a block the bot can extend, so it did not add `versioning.lines`: add `lines: {}` under `versioning:` to turn release lines on.");
         }
 
         var graph = await ProjectGraphBuilder.BuildAsync(overlay, cancellationToken: cancellationToken);
         var ecosystems = graph.Packages.Select(p => Ecosystems.Of(graph, p, EmptyPins)).OfType<string>().ToHashSet(StringComparer.Ordinal);
-        return LineRenames.Plan(inputs.Branches, inputs.DefaultBranch, ecosystems, pattern ?? ReleaseLinePattern.Default);
+        return (LineRenames.Plan(inputs.Branches, inputs.DefaultBranch, ecosystems, pattern ?? ReleaseLinePattern.Default), promotes);
     }
 
     private static readonly IReadOnlyDictionary<string, string> EmptyPins = new Dictionary<string, string>(StringComparer.Ordinal);
 
-    private static string ReleaseLinesText(LineRenamePlan renames, string defaultBranch)
+    private static string ReleaseLinesText(LineRenamePlan renames, string defaultBranch, bool promotes)
     {
         var text = new StringBuilder();
-        text.AppendLine($"`versioning.lines` turns release lines on. From then on, packages release only from their line (`release/<ecosystem>-<major>.x`), never from `{defaultBranch}`, and changes reach a line by backport pull request. See the [backports guide]({Guides}/backports/setup).");
+        text.AppendLine(promotes
+            ? $"`versioning.lines` turns release lines on. From then on, packages release only from their line (`release/<ecosystem>-<major>.x`), never from `{defaultBranch}`. The current line of each platform moves when a maintainer comments `/release`, to the newest `{defaultBranch}` commit whose workflow passed; older lines take backport pull requests. See the [backports guide]({Guides}/backports/setup)."
+            : $"`versioning.lines` turns release lines on. From then on, packages release only from their line (`release/<ecosystem>-<major>.x`), never from `{defaultBranch}`, and changes reach a line by backport pull request. See the [backports guide]({Guides}/backports/setup).");
         if (renames.Renames.Count > 0)
         {
             text.AppendLine().AppendLine("These branches are renamed when this pull request merges. GitHub moves their open pull requests along, but `git fetch` does not follow the old names: switch your clones to the new branches. The renames:").AppendLine();

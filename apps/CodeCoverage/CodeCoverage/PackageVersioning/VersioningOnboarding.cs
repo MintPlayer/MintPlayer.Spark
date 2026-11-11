@@ -176,6 +176,20 @@ public static partial class VersioningOnboarding
         return false;
     }
 
+    /// <summary>
+    /// The file names of the push-triggered workflows that run the versioning step in front of a publish, sorted (segment T:
+    /// the workflow whose green run on the default branch a promotion waits for, <c>versioning.lines.workflow</c>).
+    /// </summary>
+    internal static async Task<IReadOnlyList<string>> VersioningWorkflowsAsync(IRepositoryTree tree, CancellationToken cancellationToken = default)
+    {
+        var found = new List<string>();
+        foreach (var path in tree.Entries.Keys.Where(IsWorkflow).Order(StringComparer.Ordinal))
+            if (await tree.ReadTextAsync(path, Limits.MaxManifestBytes, cancellationToken) is { } text && Parse(path, text, null) is var (root, jobs)
+                && PublishingJobs(root, jobs).Any(j => Child(j.Job, "steps") is YamlSequenceNode steps && VersioningStepIndex(steps) is not null))
+                found.Add(path[".github/workflows/".Length..]);
+        return found;
+    }
+
     private static VersioningSeed? Seed(ProjectNode package, List<string> notes)
     {
         var declared = package.DeclaredVersion;

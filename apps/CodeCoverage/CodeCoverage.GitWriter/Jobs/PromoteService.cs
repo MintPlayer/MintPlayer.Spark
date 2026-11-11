@@ -16,10 +16,11 @@ public sealed record PromoteJob(
     string Repo, Uri CloneUrl, GitCredential Credential, string DefaultBranch, string Commit, GitIdentity Committer, IReadOnlyList<PromoteLine> Lines,
     VersioningSettings Settings, IReadOnlyList<VersionTag> Versions, IReadOnlySet<string> Recorded);
 
-/// <summary>A validated <c>POST /jobs/versioning/hand-tag</c> (P5): a person's new tag, leased on <paramref name="TagObject"/>.</summary>
-/// <param name="Lines">The repository's current lines; a version tag must fit the one of its package's ecosystem.</param>
+/// <summary>A validated <c>POST /jobs/versioning/hand-tag</c> (P5, segment T): a person's new tag, leased on <paramref name="TagObject"/>.</summary>
+/// <param name="Lines">Every release line of the repository, current and past; the current one of an ecosystem is its highest major.</param>
+/// <param name="Promotes"><c>versioning.lines.current: promote</c>: a tag of a current line's major is placed by the next promotion.</param>
 public sealed record HandTagJob(string Repo, Uri CloneUrl, GitCredential Credential, VersionTag Tag, string TagObject, IReadOnlyList<PromoteLine> Lines,
-    VersioningSettings Settings);
+    bool Promotes, VersioningSettings Settings);
 
 /// <summary>A line to promote: its branch, ecosystem and major, and whether it moves only when that ecosystem changed (P4).</summary>
 public sealed record PromoteLine(string Branch, string Ecosystem, int Major, bool OnlyIfChanged);
@@ -38,7 +39,8 @@ public sealed record PromoteLine(string Branch, string Ecosystem, int Major, boo
 /// <para>Each line stands on its own: a refusal on one holds back no other. The push carries a lease on the tip that was
 /// checked, so a line that moved during the job is reported, never overwritten.</para>
 /// <para>A requested version (P5) is checked against the commit's graph: its id is a package, the package's ecosystem is
-/// a line of the request, the major is that line's, and the version is above every tag of the package. It is pushed as a
+/// a line of the request, the major is that line's, and the version is above the tag it follows: the package's highest
+/// tag reachable from the promotion commit's parents, the line's tip and the commit (segment T). It is pushed as a
 /// lightweight tag on the promotion commit in the same atomic push as the line, so the line's release run never sees the
 /// line without it; lightweight, so the engine reads it as a hand tag and releases exactly that version. A failing
 /// version refuses its line, so a release never ships at a version nobody asked for; a line with a version moves even
@@ -135,7 +137,7 @@ public sealed class PromoteService(JobRunner jobs)
             foreach (var recorded in versions.Where(v => job.Recorded.Contains(v.Name)).ToList())
             {
                 var problems = VersionProblems([recorded], line);
-                if (problems.Count == 0) problems = await AboveProblemsAsync(context, [recorded], line, null);
+                if (problems.Count == 0) problems = await AboveProblemsAsync(context, [recorded], [tip, job.Commit], null);
                 if (problems.Count == 0) continue;
                 versions.Remove(recorded);
                 unplaced.Add(new PromoteVersionResult(recorded.PackageId, recorded.Version.ToString(), string.Join("; ", problems) + "."));
@@ -158,7 +160,7 @@ public sealed class PromoteService(JobRunner jobs)
                 }
             }
 
-            if (await VersionRefusalAsync(context, line, versions) is { } refusal)
+            if (await VersionRefusalAsync(context, line, versions, [tip, job.Commit]) is { } refusal)
             {
                 results.Add(new PromoteLineResult(line.Branch, VersionRefused, tip, [], [], refusal));
                 continue;
@@ -192,10 +194,10 @@ public sealed class PromoteService(JobRunner jobs)
 
     /// <summary>
     /// Why <paramref name="versions"/> cannot go on <paramref name="line"/> (P5): a major other than the line's, two
-    /// versions of one package, or a version not above every tag of its package. Null when all can.
+    /// versions of one package, or a version not above the tag it follows from <paramref name="parents"/>. Null when all can.
     /// </summary>
-    private static async Task<string?> VersionRefusalAsync(JobContext context, PromoteLine line, IReadOnlyList<VersionTag> versions)
-        => VersionProblems(versions, line) is { Count: > 0 } early ? Sentence(early) : Sentence(await AboveProblemsAsync(context, versions, line, null));
+    private static async Task<string?> VersionRefusalAsync(JobContext context, PromoteLine line, IReadOnlyList<VersionTag> versions, IReadOnlyList<string> parents)
+        => VersionProblems(versions, line) is { Count: > 0 } early ? Sentence(early) : Sentence(await AboveProblemsAsync(context, versions, parents, null));
 
     private static string? Sentence(IReadOnlyList<string> problems) => problems.Count == 0 ? null : "Not released: " + string.Join("; ", problems) + ".";
 
@@ -213,39 +215,74 @@ public sealed class PromoteService(JobRunner jobs)
         return problems;
     }
 
-    /// <summary>Each version must be above every fetched tag of its package, <paramref name="except"/> left out.</summary>
-    private static async Task<List<string>> AboveProblemsAsync(JobContext context, IReadOnlyList<VersionTag> versions, PromoteLine line, string? except)
+    /// <summary>
+    /// Each version must be above the tag it follows (segment T), and keep that tag's major: only that one tag is compared,
+    /// never every tag of the package in the repository.
+    /// </summary>
+    private static async Task<List<string>> AboveProblemsAsync(JobContext context, IReadOnlyList<VersionTag> versions, IReadOnlyList<string> commits, string? except)
     {
         var problems = new List<string>();
         foreach (var version in versions)
-        {
-            var refs = (await context.RequireAsync(["for-each-ref", "--format=%(refname:strip=2)", "refs/tags/" + VersionTag.Prefix(version.PackageId) + "*"])).StandardOutput;
-            var highest = refs.Split('\n', StringSplitOptions.RemoveEmptyEntries).Where(n => n != except)
-                .Select(n => VersionTag.TryParse(n, out var t) && t.PackageId == version.PackageId ? t : null).OfType<VersionTag>()
-                .MaxBy(t => t.Version);
-            if (highest is not null && version.Version.CompareTo(highest.Version) <= 0)
-                problems.Add($"{version.Name} is not above the package's tag {highest.Name}");
-        }
+            if (FollowProblem(version, await PredecessorAsync(context, version.PackageId, commits, except)) is { } problem)
+                problems.Add(problem);
         return problems;
     }
 
+    /// <summary>Why <paramref name="version"/> cannot follow <paramref name="predecessor"/>: not above it, or another major.</summary>
+    private static string? FollowProblem(VersionTag version, VersionTag? predecessor)
+    {
+        if (predecessor is null) return null;
+        if (version.Version.CompareTo(predecessor.Version) <= 0)
+            return $"{version.Name} is not above {predecessor.Name}, the tag it follows";
+        return version.Version.Major != predecessor.Version.Major
+            ? $"{version.Name} does not keep the major of {predecessor.Name}, the tag it follows (a new major starts with its release line)"
+            : null;
+    }
+
+    /// <summary>
+    /// The tag a version follows (segment T): its package's highest tag reachable from any of <paramref name="commits"/>,
+    /// <paramref name="except"/> left out. That is the tag the pack reads at a commit (<c>tag --merged HEAD</c>,
+    /// MintPlayer.Versioning.MSBuild); a tag on another branch or of another line plays no part.
+    /// </summary>
+    private static async Task<VersionTag?> PredecessorAsync(JobContext context, string packageId, IReadOnlyList<string> commits, string? except)
+    {
+        VersionTag? highest = null;
+        foreach (var commit in commits.Distinct(StringComparer.Ordinal))
+        {
+            var refs = (await context.RequireAsync(["tag", "--merged", commit, "--list", VersionTag.Prefix(packageId) + "*"])).StandardOutput;
+            foreach (var name in refs.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                if (name != except && VersionTag.TryParse(name, out var tag) && tag.PackageId == packageId && (highest is null || tag.Version.CompareTo(highest.Version) > 0))
+                    highest = tag;
+        }
+        return highest;
+    }
+
     public const string HandTagRecorded = "recorded";
+    public const string HandTagAccepted = "accepted";
     public const string HandTagRefused = "refused";
     public const string HandTagNotAPackage = "not-a-package";
     public const string HandTagMoved = "moved";
 
     /// <summary>
-    /// A person's tag (P5): left alone when its id is no package at its commit (<c>schemas/v3</c>), else checked as a
-    /// promotion would check it, against the current line of its ecosystem, and deleted either way (leased on
-    /// <see cref="HandTagJob.TagObject"/>): left in place it would become reachable from the line at the next promotion
-    /// and move every later version. <see cref="HandTagRecorded"/> means the server records it for that promotion.
+    /// A person's tag (P5, segment T). Left alone when its id is no package at its commit (<c>schemas/v3</c>). Otherwise it
+    /// is checked against the one tag it follows (<see cref="PredecessorAsync"/>): it must be above it and keep its major;
+    /// with none, its major must be a release line's of its ecosystem.
+    /// <list type="bullet">
+    /// <item>A refused tag is deleted (leased on <see cref="HandTagJob.TagObject"/>): <see cref="HandTagRefused"/>.</item>
+    /// <item>With <see cref="HandTagJob.Promotes"/> and the current line's major, the tag follows from the commit or the
+    /// line's tip (the next promotion commit has both as parents), and a valid one is deleted too: left in place it would
+    /// become reachable from the line at that promotion and move every later version. <see cref="HandTagRecorded"/>
+    /// means the server records it for that promotion.</item>
+    /// <item>Any other valid tag stays where it is: <see cref="HandTagAccepted"/>.</item>
+    /// </list>
     /// </summary>
     public Task<HandTagResponse> CheckHandTagAsync(HandTagJob job) => jobs.RunAsync("versioning-hand-tag", job.Repo, async context =>
     {
         await context.RequireAsync(["init", "--bare", "--quiet", "--template=", context.GitDirectory], inRepository: false);
         var prefix = VersionTag.Prefix(job.Tag.PackageId);
         await context.RequireAsync(["fetch", "--quiet", "--no-tags", "--no-write-fetch-head", job.CloneUrl.AbsoluteUri,
-            $"+refs/tags/{prefix}*:refs/tags/{prefix}*"], job.Credential);
+            $"+refs/tags/{prefix}*:refs/tags/{prefix}*",
+            .. job.Lines.Select(l => l.Branch).Distinct(StringComparer.Ordinal).Select(b => $"+refs/heads/{b}:refs/heads/{b}")], job.Credential);
         context.EnsureWithinDisk();
 
         var name = job.Tag.Name;
@@ -268,15 +305,23 @@ public sealed class PromoteService(JobRunner jobs)
 
         string? refusal;
         string? branch = null;
-        if (Ecosystems.Of(graph, package, job.Settings.LinePins) is not { } ecosystem || job.Lines.FirstOrDefault(l => l.Ecosystem == ecosystem) is not { } line)
-            refusal = $"no current release line releases {job.Tag.PackageId}";
+        var placed = false;
+        var lines = Ecosystems.Of(graph, package, job.Settings.LinePins) is { } ecosystem ? job.Lines.Where(l => l.Ecosystem == ecosystem).ToList() : [];
+        if (lines.Count == 0)
+            refusal = $"no release line releases {job.Tag.PackageId}";
         else
         {
-            branch = line.Branch;
-            var problems = VersionProblems([job.Tag], line);
-            if (problems.Count == 0) problems = await AboveProblemsAsync(context, [job.Tag], line, name);
-            refusal = problems.Count == 0 ? null : string.Join("; ", problems);
+            var currentLine = lines.MaxBy(l => l.Major)!;
+            placed = job.Promotes && job.Tag.Version.Major == currentLine.Major;
+            var predecessor = await PredecessorAsync(context, job.Tag.PackageId, placed ? [commit, "refs/heads/" + currentLine.Branch] : [commit], name);
+            var own = lines.FirstOrDefault(l => l.Major == job.Tag.Version.Major);
+            branch = placed ? currentLine.Branch : own?.Branch;
+            refusal = predecessor is null
+                ? own is null ? $"{name} follows no tag of {job.Tag.PackageId}, and no release line has its major {job.Tag.Version.Major}" : null
+                : FollowProblem(job.Tag, predecessor);
         }
+        if (refusal is null && !placed)
+            return new HandTagResponse(JobOutcomes.Planned, null, HandTagAccepted, branch, commit, null, context.ElapsedMilliseconds);
 
         var push = await WriterService.PushAsync(context, job.CloneUrl, job.Credential, null, "refs/tags/" + name, job.TagObject);
         if (push is WriterService.Push.LeaseRejected)
