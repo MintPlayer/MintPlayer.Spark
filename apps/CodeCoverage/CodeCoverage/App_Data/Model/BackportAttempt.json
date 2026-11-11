@@ -1,5 +1,5 @@
 {
-  "$schema": "https://schemas.spark.mintplayer.com/v14/model.schema.json",
+  "$schema": "../../../../../schemas/model.schema.json",
   "persistentObject": {
     "id": "3b90aa6b-d759-42c5-a605-55655755009e",
     "name": "BackportAttempt",
