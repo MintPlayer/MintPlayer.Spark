@@ -482,6 +482,9 @@ does not (D47). **A writer's request for changes vetoes** under both floors, app
 latest review is "changes requested", the queue refuses (`approval`) at enqueue, and evicts (`approval-withdrawn`)
 right before the merge (D61).
 
+**The App's backports skip the floor** under any value while ruleset 4 protects their `backport/*` branch (§3,
+resilience PRD Q13): only the App and admins can write it, so there is no outside content to approve.
+
 **Bypass role (O22, D64).** "Merge queue bypass role" names the lowest GitHub repository role whose holders bypass the
 queue's own rules when they queue a pull request. It is the enqueuer's role, read from GitHub at enqueue, when a prepare
 decides the dispatch, and right before the merge, like O9's role.
@@ -604,6 +607,13 @@ Requirements and limits:
   run tests it again before it publishes. The bypass covers every line the glob matches, but the App pushes only
   promotions: backports onto older lines still go through pull requests and their checks. Re-run "Set up rulesets"
   after switching coverage.yml to `promote`.
+- With release lines, **ruleset 4** ("merge-queue: backport branches") restricts creating, updating and deleting
+  `refs/heads/backport/*`. Only the App (exempt) and repository admins (always) pass it, so a backport pull request
+  holds the App's pick or an admin's conflict resolution, never a writer's own content. While the branch's rules
+  show all three restrictions with the App exempt (read live from `GET /rules/branches/{branch}` on every enqueue),
+  the App's backports need **no approval under any approval floor** (`docs/coverage_backport_resilience_PRD.md` Q13).
+  Without it, or with one of the restrictions removed, the floor applies to them again, and a writer's approval queues
+  them as before. Other rules and other exempt Apps on an existing ruleset 4 are kept; a person's bypass is removed.
 - Without the OAuth app configured (hosting.md §4, `GitHub:{Env}:RulesetsOAuth:*`), set up the rulesets as below.
 
 **Ruleset 1** (`ruleset-1.json`; `<APP_ID>` is the App's numeric id):
@@ -673,11 +683,28 @@ role. Picking "Repository admin" in the UI's bypass list writes the same entry.
 }
 ```
 
+**Ruleset 4** (`ruleset-4.json`; only with release lines):
+
+```json
+{
+  "name": "merge-queue: backport branches",
+  "target": "branch",
+  "enforcement": "active",
+  "conditions": { "ref_name": { "include": ["refs/heads/backport/*"], "exclude": [] } },
+  "rules": [{ "type": "creation" }, { "type": "update" }, { "type": "deletion" }],
+  "bypass_actors": [
+    { "actor_id": <APP_ID>, "actor_type": "Integration", "bypass_mode": "exempt" },
+    { "actor_id": 5, "actor_type": "RepositoryRole", "bypass_mode": "always" }
+  ]
+}
+```
+
 ```bash
 gh api apps/<app-slug> --jq .id                                       # <APP_ID>
 gh api --method POST repos/<owner>/<repo>/rulesets --input ruleset-1.json
 gh api --method POST repos/<owner>/<repo>/rulesets --input ruleset-2.json
 gh api --method POST repos/<owner>/<repo>/rulesets --input ruleset-3.json   # with release lines
+gh api --method POST repos/<owner>/<repo>/rulesets --input ruleset-4.json   # with release lines
 gh api repos/<owner>/<repo>/rules/branches/<branch>                   # what now applies to the branch
 ```
 

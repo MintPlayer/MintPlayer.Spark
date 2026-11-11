@@ -59,8 +59,11 @@ internal sealed class FakeForgeMergeQueue : IForgeMergeQueue
         return Task.FromResult(Roles.TryGetValue(login, out var role) ? role : EForgeRepositoryRole.None);
     }
 
+    /// <summary>Rules of one branch, ahead of <see cref="Rules"/> (a <c>backport/*</c> head's own ruleset).</summary>
+    public Dictionary<string, ForgeBranchRules> BranchRules { get; } = new(StringComparer.Ordinal);
+
     public Task<ForgeBranchRules> GetBranchRulesAsync(Repository repository, string branch, CancellationToken cancellationToken = default)
-        => Task.FromResult(Rules);
+        => Task.FromResult(BranchRules.TryGetValue(branch, out var rules) ? rules : Rules);
 
     public Task<string?> GetBranchHeadAsync(Repository repository, string branch, CancellationToken cancellationToken = default)
         => Task.FromResult(BranchHeads.TryGetValue(branch, out var sha) ? sha : null);

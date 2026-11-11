@@ -119,6 +119,12 @@ public sealed record MergeQueueRulesetPlan(IReadOnlyList<MergeQueueRulesetStep> 
 /// lines; its other rules and people bypass actors are kept, as on ruleset 2.
 /// </para>
 /// <para>
+/// <b>Ruleset 4</b> ("merge-queue: backport branches", also only with release lines) restricts <c>creation</c>,
+/// <c>update</c> and <c>deletion</c> of <c>refs/heads/backport/*</c>, with the App <c>exempt</c> and the Repository admin
+/// role <c>always</c> (segment D, Q13). The queue reads it back through the branch's rules before it lets the App's
+/// backport merge without an approval (<c>MergeQueueEngine.BackportBranchProtectedAsync</c>).
+/// </para>
+/// <para>
 /// <b>Classic protection is moved, then deleted</b> (owner, 2026-11-06): the steps run ruleset 1, ruleset 2, then the
 /// deletion, so the branch is never open in between.
 /// </para>
@@ -128,6 +134,13 @@ public static class MergeQueueRulesetPlanner
     public const string RestrictUpdatesName = "merge-queue: restrict updates";
     public const string ReviewsAndChecksName = "merge-queue: reviews and checks";
     public const string LineChecksName = "merge-queue: release-line checks";
+    public const string BackportBranchesName = "merge-queue: backport branches";
+
+    /// <summary>The branches the App's backports are pushed to (<c>backport/&lt;pr&gt;-&lt;line&gt;</c>).</summary>
+    public const string BackportBranchesPattern = "refs/heads/backport/*";
+
+    /// <summary>What ruleset 4 restricts: a backport branch's content is the App's pick or an admin's resolution (Q13).</summary>
+    public static readonly IReadOnlyList<string> BackportBranchRules = ["creation", "update", "deletion"];
 
     /// <summary>GitHub's id of the Repository admin role as a bypass actor (merge-queue.md §3).</summary>
     public const long RepositoryAdminRoleId = 5;
@@ -166,6 +179,11 @@ public static class MergeQueueRulesetPlanner
         AddStep(steps, existing2, desired2);
         if (lineChecks.Count > 0)
             AddStep(steps, existing3, LineChecks(state, lineChecks, lines, existing3, choices.PromotesLines));
+        if (lines.Count > 0)
+        {
+            var existing4 = Single(state, BackportBranchesName, blockers);
+            AddStep(steps, existing4, BackportBranches(state, existing4));
+        }
 
         if (state.Classic is { } classic)
             steps.Add(new DeleteClassicProtectionStep(ClassicNotes(classic, choices.RequiredApprovals, checks)));
@@ -318,6 +336,22 @@ public static class MergeQueueRulesetPlanner
             .ToList();
         if (promotes) actors.Insert(0, new(state.AppId, "Integration", "exempt"));
         return new ForgeRulesetDefinition(LineChecksName, "branch", "active", lines, [], rules, actors);
+    }
+
+    /// <summary>
+    /// Ruleset 4 (segment D, Q13): only the App and repository admins create, update or delete a <c>backport/*</c> branch,
+    /// so the App's backports need no approval in the queue. Other Apps already exempt are kept, as on ruleset 1; its other
+    /// rules are kept, its other people bypass actors are not (they could push what then merges unreviewed).
+    /// </summary>
+    private static ForgeRulesetDefinition BackportBranches(ForgeRulesetState state, ForgeExistingRuleset? existing)
+    {
+        var kept = existing?.Definition.Rules ?? [];
+        List<ForgeRulesetRule> rules = [.. BackportBranchRules.Select(type => new ForgeRulesetRule(type)), .. kept.Where(r => !BackportBranchRules.Contains(r.Type))];
+        List<ForgeRulesetActor> actors = [new(state.AppId, "Integration", "exempt")];
+        actors.AddRange((existing?.Definition.BypassActors ?? [])
+            .Where(a => a is { ActorType: "Integration", BypassMode: "exempt" } && a.ActorId != state.AppId));
+        actors.Add(new(RepositoryAdminRoleId, "RepositoryRole", "always"));
+        return new ForgeRulesetDefinition(BackportBranchesName, "branch", "active", [BackportBranchesPattern], [], rules, actors);
     }
 
     /// <summary>

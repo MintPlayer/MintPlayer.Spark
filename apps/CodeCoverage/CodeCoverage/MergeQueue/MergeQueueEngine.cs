@@ -528,6 +528,13 @@ public partial class MergeQueueEngine : IMergeQueueEngine
         if (floor == EMergeQueueApprovalFloor.ExternalAuthors && await IsAppsOwnBackportAsync(context, entry, ct))
             return null;
 
+        // Segment D (Q13, owner: "backporting features into previous/current versions should be effortless"): under any floor,
+        // a backport the App opened needs no approval while ruleset 4 keeps everyone but the App and the admins off its
+        // branch, so its content is the App's pick or an admin's resolution. Read live from the branch's rules each time: a
+        // ruleset removed or loosened later brings the approval back. A writer's request for changes (above) still vetoes.
+        if (await IsAppsOwnBackportAsync(context, entry, ct) && await BackportBranchProtectedAsync(context, entry, ct))
+            return null;
+
         // Dependency-updates PRD R27 (S18-D3): the updater's own rolling pull request counts as approved when its pinned head
         // is the commit the bot pushed and validated itself and no human commit is on the branch. The App is never a
         // collaborator, so the floor could otherwise never pass without a person. A replayed human commit makes the head a
@@ -572,6 +579,19 @@ public partial class MergeQueueEngine : IMergeQueueEngine
     private async Task<bool> IsAppsOwnBackportAsync(Context context, MergeQueueEntry entry, CancellationToken ct)
         => !entry.IsFork && context.Repository.Id is { } repositoryId
            && await session.LoadAsync<BackportPullRequest>(BackportPullRequest.DocumentId(repositoryId, entry.Number), ct) is not null;
+
+    /// <summary>
+    /// A ruleset on the pull request's <c>backport/*</c> head restricts its creation, updates and deletion, and the App is
+    /// exempt from it: only the App and whoever else that ruleset lets through can have written the branch. Ruleset 4 of
+    /// "Set up rulesets" is that ruleset; any ruleset with the same rules counts.
+    /// </summary>
+    private async Task<bool> BackportBranchProtectedAsync(Context context, MergeQueueEntry entry, CancellationToken ct)
+    {
+        if (entry.HeadBranch is not { } head || !head.StartsWith("backport/", StringComparison.Ordinal)) return false;
+        var rules = await context.Queue.GetBranchRulesAsync(context.Repository, head, ct);
+        return rules.Rulesets.Any(r => r.Bypass == EForgeRulesetBypass.Exempt
+            && MergeQueueRulesetPlanner.BackportBranchRules.All(type => r.RuleTypes.Contains(type, StringComparer.Ordinal)));
+    }
 
     // ═══ Held backports on release lines (release lines recovery plan, segment C) ════════════════════
 

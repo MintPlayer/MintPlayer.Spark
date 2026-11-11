@@ -1312,6 +1312,48 @@ public class MergeQueueEngineTests : CoverageRavenTest
         (await h.EntryAsync()).EvictionReason.Should().Be("approval");
     }
 
+    /// <summary>The branch's rules with one ruleset of these types and this bypass for the App (segment D's ruleset 4).</summary>
+    private static ForgeBranchRules BackportBranchRules(EForgeRulesetBypass bypass, params string[] types)
+        => new(true, [], 0, false, false, false, false, [new ForgeRuleset(9, MergeQueueRulesetPlanner.BackportBranchesName, types, bypass)], EForgeClassicProtection.None);
+
+    [Fact]
+    public async Task A_backport_the_App_opened_onto_a_protected_branch_needs_no_approval_under_the_always_floor()
+    {
+        // Segment D (Q13): only the App and the admins can write `backport/*`, so the content is never a person's own.
+        var h = await BackportAsync(await HarnessAsync(mergeBase: BaseSha), floor: EMergeQueueApprovalFloorPolicy.Always);
+        h.Queue.BranchRules["backport/12-master"] = BackportBranchRules(EForgeRulesetBypass.Exempt, "creation", "update", "deletion");
+
+        await h.EnqueueAsync(BackportRegenerationEngine.QueueActor, EMergeQueueCommandSource.Backports, label: null);
+        await h.DrainAsync();
+
+        (await h.EntryAsync()).State.Should().Be(EMergeQueueEntryState.Merged);
+    }
+
+    [Theory]
+    [InlineData(EForgeRulesetBypass.Exempt, "creation", "update")]
+    [InlineData(EForgeRulesetBypass.Never, "creation", "update", "deletion")]
+    [InlineData(EForgeRulesetBypass.Unknown, "creation", "update", "deletion")]
+    public async Task A_backport_branch_ruleset_that_leaves_a_gap_keeps_the_approval(EForgeRulesetBypass bypass, params string[] types)
+    {
+        var h = await BackportAsync(await HarnessAsync(mergeBase: BaseSha), floor: EMergeQueueApprovalFloorPolicy.Always);
+        h.Queue.BranchRules["backport/12-master"] = BackportBranchRules(bypass, types);
+
+        await h.EnqueueAsync(BackportRegenerationEngine.QueueActor, EMergeQueueCommandSource.Backports, label: null);
+
+        (await h.EntryAsync()).EvictionReason.Should().Be("approval");
+    }
+
+    [Fact]
+    public async Task A_protected_branch_does_not_excuse_a_pull_request_the_App_did_not_open()
+    {
+        var h = await BackportAsync(await HarnessAsync(mergeBase: BaseSha), recorded: false, floor: EMergeQueueApprovalFloorPolicy.Always);
+        h.Queue.BranchRules["backport/12-master"] = BackportBranchRules(EForgeRulesetBypass.Exempt, "creation", "update", "deletion");
+
+        await h.EnqueueAsync(BackportRegenerationEngine.QueueActor, EMergeQueueCommandSource.Backports, label: null);
+
+        (await h.EntryAsync()).EvictionReason.Should().Be("approval");
+    }
+
     [Fact]
     public async Task A_writers_approval_queues_a_backport_the_App_opened()
     {
