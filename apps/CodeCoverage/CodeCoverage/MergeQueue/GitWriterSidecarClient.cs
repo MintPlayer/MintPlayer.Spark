@@ -118,6 +118,10 @@ public interface IGitWriterSidecar
     Task<PackageVersioning.GitWriterBackportResult> VersioningBackportAsync(PackageVersioning.GitWriterBackportRequest request, CancellationToken cancellationToken = default)
         => throw new NotSupportedException("This git writer has no backport job.");
 
+    /// <summary>Segment G: the backport a merge would start, tried before the merge; nothing is pushed.</summary>
+    Task<PackageVersioning.GitWriterBackportTrialResult> VersioningBackportTrialAsync(PackageVersioning.GitWriterBackportTrialRequest request, CancellationToken cancellationToken = default)
+        => throw new NotSupportedException("This git writer has no backport trial job.");
+
     /// <summary>#570 M6: folds a line's regenerate patch into a backport commit.</summary>
     Task<PackageVersioning.GitWriterBackportRegeneratedResult> VersioningBackportRegeneratedAsync(PackageVersioning.GitWriterBackportRegeneratedRequest request, CancellationToken cancellationToken = default)
         => throw new NotSupportedException("This git writer has no backport regenerate job.");
@@ -199,6 +203,9 @@ public sealed class GitWriterSidecarClient(HttpClient http, IOptions<MergeQueueO
 
     public Task<PackageVersioning.GitWriterBackportResult> VersioningBackportAsync(PackageVersioning.GitWriterBackportRequest request, CancellationToken cancellationToken = default)
         => SendAsync<PackageVersioning.GitWriterBackportResult>(HttpMethod.Post, "jobs/versioning/backport", request, cancellationToken);
+
+    public Task<PackageVersioning.GitWriterBackportTrialResult> VersioningBackportTrialAsync(PackageVersioning.GitWriterBackportTrialRequest request, CancellationToken cancellationToken = default)
+        => SendAsync<PackageVersioning.GitWriterBackportTrialResult>(HttpMethod.Post, "jobs/versioning/backport/trial", request, cancellationToken);
 
     public Task<PackageVersioning.GitWriterBackportRegeneratedResult> VersioningBackportRegeneratedAsync(PackageVersioning.GitWriterBackportRegeneratedRequest request, CancellationToken cancellationToken = default)
         => SendAsync<PackageVersioning.GitWriterBackportRegeneratedResult>(HttpMethod.Post, "jobs/versioning/backport/regenerated", request, cancellationToken);

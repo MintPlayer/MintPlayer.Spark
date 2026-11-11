@@ -384,6 +384,41 @@ public sealed class VersioningBackportRequestWire
     public BackportMarkersWire? Markers { get; set; }
 }
 
+/// <summary>
+/// <c>POST /jobs/versioning/backport/trial</c> (segment G): the backport a merge into the default branch would start, tried
+/// before the merge, with nothing pushed. The change is <see cref="Base"/>..<see cref="Commit"/>, the commit the merge queue
+/// is about to merge, which is not on the default branch yet and is fetched through <see cref="HeadRef"/>.
+/// </summary>
+public sealed class VersioningBackportTrialRequestWire
+{
+    public string? Provider { get; set; }
+    public string? RepoId { get; set; }
+    public string? CloneUrl { get; set; }
+    public CredentialWire? Credential { get; set; }
+    /// <summary><c>refs/pull/N/head</c>, which must be at <see cref="Commit"/>.</summary>
+    public string? HeadRef { get; set; }
+    /// <summary>The default branch's commit the change was tested on; an ancestor of <see cref="Commit"/>.</summary>
+    public string? Base { get; set; }
+    public string? Commit { get; set; }
+    public List<BackportTrialTargetWire>? Targets { get; set; }
+    public BackportMarkersWire? Markers { get; set; }
+}
+
+/// <summary>A line to try: the backport's own <see cref="BackportTargetWire"/> without the branch it would push to.</summary>
+public sealed class BackportTrialTargetWire
+{
+    public string? Branch { get; set; }
+    public List<AutoResolveWire>? AutoResolve { get; set; }
+    public List<string>? RegeneratedPaths { get; set; }
+}
+
+/// <param name="Outcome"><c>clean</c> (it applies, through the line's rules if need be), <c>empty</c> (the line already holds
+/// it) or <c>conflicted</c>.</param>
+public sealed record BackportTrialTargetResult(string Branch, string Outcome, IReadOnlyList<string> Conflicts, string? Detail = null);
+
+/// <param name="Outcome"><see cref="JobOutcomes.Tried"/>; <see cref="JobOutcomes.HeadMismatch"/> when the head moved; or a failure.</param>
+public sealed record BackportTrialResponse(string Outcome, string? Reason, IReadOnlyList<BackportTrialTargetResult> Targets, string? Detail, long DurationMs);
+
 public sealed class BackportMarkersWire
 {
     /// <summary>Built-in marker kinds to leave to the plain merge (<see cref="PlatformMarkerOptions.KindNames"/>).</summary>
@@ -599,6 +634,8 @@ public static class JobOutcomes
     public const string Backported = "backported";
     /// <summary>Promote (segment P): the job ran; each line has its own result.</summary>
     public const string Promoted = "promoted";
+    /// <summary>Backport trial (segment G): every target was tried and nothing pushed; each has its own result.</summary>
+    public const string Tried = "tried";
     /// <summary>Backport regeneration (#570 M6): the workflow's patch is in the backport commit.</summary>
     public const string Regenerated = "regenerated";
     /// <summary>Backport: a target conflicts (see its paths), so no target was pushed (D10).</summary>

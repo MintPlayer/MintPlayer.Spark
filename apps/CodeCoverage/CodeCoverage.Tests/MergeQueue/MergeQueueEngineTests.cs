@@ -47,6 +47,82 @@ public class MergeQueueEngineTests : CoverageRavenTest
         (await h.QueueDocumentAsync())!.IsBusy().Should().BeFalse();
     }
 
+    // ── Segment G: the backports a merge would start, tried before it ────────────────────────────────
+
+    [Fact]
+    public async Task A_commit_to_merge_into_the_default_branch_is_trial_picked_once_and_merges_when_nothing_conflicts()
+    {
+        var h = await HarnessAsync(mergeBase: BaseSha);
+
+        await h.EnqueueAsync();
+        await h.DrainAsync();
+
+        h.TrialPicks.Calls.Should().Equal([(Number, BaseSha, Head)]);
+        var entry = await h.EntryAsync();
+        entry.TrialPickedSha.Should().Be(Head);
+        entry.State.Should().Be(EMergeQueueEntryState.Merged);
+        h.Queue.Comments.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task A_trial_pick_that_warns_comments_once_and_the_merge_goes_on()
+    {
+        var h = await HarnessAsync(mergeBase: BaseSha);
+        h.TrialPicks.Verdict = new BackportTrialVerdict(false, "Its backport onto `release/dotnet-10.x` will conflict once this merges.", ["src/A.cs"]);
+
+        await h.EnqueueAsync();
+        await h.DrainAsync();
+
+        (await h.EntryAsync()).State.Should().Be(EMergeQueueEntryState.Merged);
+        h.Queue.Comments.Should().ContainSingle().Which.Body.Should().Be("Its backport onto `release/dotnet-10.x` will conflict once this merges.");
+        h.Queue.MergeRequests.Should().Equal([(Number, Head)]);
+    }
+
+    [Fact]
+    public async Task A_trial_pick_that_refuses_evicts_before_the_checks_and_nothing_merges()
+    {
+        var h = await HarnessAsync(mergeBase: BaseSha);
+        h.TrialPicks.Verdict = new BackportTrialVerdict(true, "its backport onto `release/dotnet-10.x` would conflict, and `backport.trialPick` is `refuse`.", ["src/A.cs"]);
+
+        await h.EnqueueAsync();
+        await h.DrainAsync();
+
+        var entry = await h.EntryAsync();
+        entry.State.Should().Be(EMergeQueueEntryState.Evicted);
+        entry.EvictionReason.Should().Be("trial-pick");
+        entry.EvictionPaths.Should().Equal("src/A.cs");
+        h.Queue.MergeRequests.Should().BeEmpty();
+        h.Queue.Comments.Should().ContainSingle().Which.Body.Should().StartWith("The merge queue removed this pull request: its backport onto `release/dotnet-10.x` would conflict");
+    }
+
+    [Fact]
+    public async Task A_merge_into_a_branch_other_than_the_default_one_is_not_trial_picked()
+    {
+        var h = await HarnessAsync(mergeBase: BaseSha);
+        h.Forge.Files["master/coverage.yml"] = LineYml;
+        h.Forge.PullRequests[Number] = PullRequest() with { BaseRef = Line };
+        h.Queue.BranchHeads[Line] = BaseSha;
+
+        await h.EnqueueAsync();
+        await h.DrainAsync();
+
+        (await h.EntryAsync()).State.Should().Be(EMergeQueueEntryState.Merged);
+        h.TrialPicks.Calls.Should().BeEmpty("a line's merges start no backport, so there is nothing to try");
+    }
+
+    [Fact]
+    public async Task A_trial_pick_that_cannot_run_lets_the_merge_go_on()
+    {
+        var h = await HarnessAsync(mergeBase: BaseSha);
+        h.TrialPicks.Failure = new ForgeRequestException("coverage.yml could not be read", null);
+
+        await h.EnqueueAsync();
+        await h.DrainAsync();
+
+        (await h.EntryAsync()).State.Should().Be(EMergeQueueEntryState.Merged);
+        h.TrialPicks.Calls.Should().ContainSingle();
+    }
+
     [Fact]
     public async Task Case_2_a_clean_rebase_is_published_checked_and_merged()
     {

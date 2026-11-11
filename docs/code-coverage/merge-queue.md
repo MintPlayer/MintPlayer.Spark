@@ -970,6 +970,7 @@ kebab-cased by the writer.
 | `writer-unavailable` | This server has no git writer (`MergeQueue:GitWriterUrl` unset); only case 1 can merge. | Operator: §7. |
 | `writer-refused` | The git writer refused the queue's own request: the field and the rule it broke are shown (D57). The parser and the enqueue checks hold everything to the same rules, so this points at a defect. | Report it with the message. |
 | `checks-failed` | A counted check failed, after `retryFlaky` re-runs of the failed check runs. A commit status cannot be re-run. | Fix and queue again, or exclude a check that must not gate (§2.4). |
+| `trial-pick` | Before checks: the backport onto a labelled line under `backport.trialPick: refuse` would conflict ([backports.md](backports.md)). The comment names the lines and files. | Remove that line's `backport: <line>` label, or change the pull request so it applies there, and queue again. |
 | `checks-timeout` | A counted check was still pending after `checks.timeout`, even after a last look. | Raise the timeout, or exclude a check that never finishes. |
 | `role-revoked` | The person who queued it lost `write` before the merge (O9). | Someone with `write` queues it again. |
 | `approval-withdrawn` | Right before the merge, the approval floor no longer held: an approval was dismissed or withdrawn, or a writer requested changes (D61). | Get the approval back; queue again. |
