@@ -36,6 +36,10 @@ public class BackportPullRequest
     /// <summary>The release line it targets.</summary>
     public string Branch { get; set; } = string.Empty;
 
+    // The backported pull request's merge commit on the default branch (release lines recovery plan, segment B), so the
+    // queue can order a line's backports by master order. Null on a record written before segment B.
+    public string? SourceSha { get; set; }
+
     public DateTime OpenedUtc { get; set; }
 
     /// <summary><c>BackportPullRequests/{provider}/{repositoryId}/{number}</c>.</summary>

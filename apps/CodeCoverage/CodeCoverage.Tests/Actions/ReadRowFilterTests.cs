@@ -227,6 +227,36 @@ public class ReadRowFilterTests : CoverageRavenTest
     }
 
     [Fact]
+    public async Task Repository_BackportAttempts_is_scoped_to_its_parent_and_newest_first()
+    {
+        using var store = GetDocumentStore();
+        await SeedAsync(store);
+        using (var seed = store.OpenAsyncSession())
+        {
+            // Segment B. Repository 71010 shares the digits' prefix: the trailing slash keeps its attempt out of the stream.
+            foreach (var (repo, source, day) in new[] { (PublicRepo, 10, 3), (PublicRepo, 11, 5), (PrivateRepo, 12, 4), (71010L, 13, 6) })
+                await seed.StoreAsync(new BackportAttempt
+                {
+                    Repository = Repository.DocumentId(EForgeProvider.GitHub, repo),
+                    Source = source,
+                    Branch = "release/dotnet-10.x",
+                    Outcome = BackportAttempt.Conflicted,
+                    AttemptedAtUtc = new DateTime(2026, 10, day, 12, 0, 0, DateTimeKind.Utc),
+                }, BackportAttempt.DocumentId(EForgeProvider.GitHub, repo, source, "release/dotnet-10.x"));
+            await seed.SaveChangesAsync();
+        }
+
+        using var session = store.OpenAsyncSession();
+        var actions = CreateActions<BackportAttemptActions>(VisibilityFor(session), session);
+        var rows = (await actions.Repository_BackportAttempts(
+            ParentArgs("Repository", Repository.DocumentId(EForgeProvider.GitHub, PublicRepo)))).ToList();
+
+        rows.Select(r => r.Source).Should().Equal(11, 10);
+        await new Func<Task>(() => actions.Repository_BackportAttempts(ParentArgs("Account", "Accounts/github/1")))
+            .Should().ThrowExactlyAsync<SparkQueryParentRequiredException>();
+    }
+
+    [Fact]
     public async Task Repository_VersioningRuns_refuses_a_parent_of_the_wrong_type()
     {
         using var store = GetDocumentStore();

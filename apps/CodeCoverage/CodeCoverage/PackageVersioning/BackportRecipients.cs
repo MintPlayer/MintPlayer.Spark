@@ -87,10 +87,32 @@ public partial class BackportRecipient : IRecipient<BackportMessage>
         catch (ForgeAccessDeniedException ex)
         {
             logger.LogWarning(ex, "Backport: missing permission {Permission} on {Repository}", ex.RequiredPermission, repository.FullName);
+            await FailedAsync(repository, message, $"the App is missing the {ex.RequiredPermission} permission", cancellationToken);
         }
         catch (ForgeRequestException ex) when (ForgeRateLimitedException.Find(ex) is null)
         {
             logger.LogWarning(ex, "Backport of #{Number} in {Repository} failed", message.Number, repository.FullName);
+            await FailedAsync(repository, message, $"the forge answered an error: {ex.Message}", cancellationToken);
+        }
+    }
+
+    /// <summary>
+    /// Segment B: a backport the forge failed is recorded for every line asked for (under the name it was asked by, since
+    /// the line may not have been resolved), so it shows on the repository page although no comment could be posted.
+    /// </summary>
+    private async Task FailedAsync(Repository repository, BackportMessage message, string detail, CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var fresh = session.Advanced.DocumentStore.OpenAsyncSession();
+            foreach (var line in message.Lines.Distinct(StringComparer.Ordinal))
+                await BackportAttempts.RecordAsync(fresh, repository, message.Number, null, line, BackportAttempt.Failed, null, detail, time.GetUtcNow().UtcDateTime,
+                    cancellationToken);
+            await fresh.SaveChangesAsync(cancellationToken);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogWarning(ex, "Backport: could not record the failure of #{Number} in {Repository}", message.Number, repository.FullName);
         }
     }
 
@@ -153,7 +175,7 @@ public partial class BackportRecipient : IRecipient<BackportMessage>
         var subjects = (await git.GetPullRequestCommitsAsync(repository, pull.Number, cancellationToken))
             .Select(c => BackportSubject(c.Message)).Take(250).ToList();
         var result = await RunAsync(repository, git, pull.BaseRef, commit, pull.Number, pull.Title, subjects, targets, backport.Section.Markers, cancellationToken);
-        var report = await ReportAsync(repository, forge, pull, commit, result, queue, backport.Section, cancellationToken);
+        var report = await ReportAsync(repository, forge, pull, commit, [.. targets.Select(t => t.Branch)], result, queue, backport.Section, cancellationToken);
         if (backport.Errors.Count == 0)
             return report;
         var errors = $"The `backport:` section of {CoverageYml.FileName} on {defaultBranch} has errors, so its defaults were used:\n"
@@ -193,13 +215,24 @@ public partial class BackportRecipient : IRecipient<BackportMessage>
         }
     }
 
-    private async Task<string?> ReportAsync(Repository repository, IForgeVersioning forge, ForgePullRequestText pull, string commit,
+    private async Task<string?> ReportAsync(Repository repository, IForgeVersioning forge, ForgePullRequestText pull, string commit, IReadOnlyList<string> targets,
         GitWriterBackportResult? result, MergeQueueSection? queue, BackportSection backport, CancellationToken cancellationToken)
     {
-        if (result is null)
-            return "The backport could not run (the git writer was unavailable); add the label again to retry.";
-        if (result.Outcome != GitWriterBackportResult.Backported)
-            return $"The backport failed ({result.Reason ?? result.Outcome}). {result.Detail}".TrimEnd();
+        var now = time.GetUtcNow().UtcDateTime;
+        // Segment B: every line asked for ends in a record, whatever the comment says.
+        Task Attempt(string branch, string outcome, int? opened = null, string? detail = null)
+            => BackportAttempts.RecordAsync(session, repository, pull.Number, commit, branch, outcome, opened, detail, now, cancellationToken);
+
+        if (result is null || result.Outcome != GitWriterBackportResult.Backported)
+        {
+            var failure = result is null
+                ? "The backport could not run (the git writer was unavailable); add the label again to retry."
+                : $"The backport failed ({result.Reason ?? result.Outcome}). {result.Detail}".TrimEnd();
+            foreach (var branch in targets)
+                await Attempt(branch, BackportAttempt.Failed, detail: failure);
+            await session.SaveChangesAsync(cancellationToken);
+            return failure;
+        }
 
         // Each line has its own outcome (#570 D6): a conflict on one holds back no other.
         var lines = new List<string>();
@@ -218,9 +251,10 @@ public partial class BackportRecipient : IRecipient<BackportMessage>
                         var plan = BackportRegenerationEngine.Plan(queue, target);
                         if (plan.Refusal is null && target.Commit is { } backportCommit)
                         {
+                            await Attempt(target.Branch, BackportAttempt.Regenerating, detail: $"{target.Head} waits for {string.Join(", ", plan.Workflows)}");
                             await regenerations.BeginAsync(repository, new BackportRegeneration
                             {
-                                Head = target.Head, Branch = target.Branch, Number = pull.Number, Title = title, Body = body, Sha = backportCommit,
+                                Head = target.Head, Branch = target.Branch, Number = pull.Number, Title = title, Body = body, Sha = backportCommit, SourceSha = commit,
                                 Workflows = [.. plan.Workflows], RegeneratedPaths = [.. plan.Globs], Paths = [.. regenerate],
                                 PostRebaseTimeoutMinutes = queue!.PostRebaseTimeoutMinutes, Enqueue = Enqueues(backport, queue, target.Branch),
                             }, cancellationToken);
@@ -233,7 +267,10 @@ public partial class BackportRecipient : IRecipient<BackportMessage>
                     var opened = await forge.OpenPullRequestAsync(repository, target.Head, target.Branch, title, body, cancellationToken: cancellationToken);
                     // #570 M7, D12: a backport with stale regenerated files waits for a person.
                     var enqueue = target.Regenerate is not { Count: > 0 } && Enqueues(backport, queue, target.Branch);
-                    await BackportRegenerationEngine.RecordAsync(session, repository.Id!, opened, pull.Number, target.Branch, time.GetUtcNow().UtcDateTime, cancellationToken);
+                    await BackportRegenerationEngine.RecordAsync(session, repository.Id!, opened, pull.Number, commit, target.Branch, now, cancellationToken);
+                    await (target.Regenerate is { Count: > 0 } notRegenerated
+                        ? Attempt(target.Branch, BackportAttempt.NotRegenerated, opened, $"{notRegenerated.Count} regenerated file(s) are stale")
+                        : Attempt(target.Branch, BackportAttempt.Opened, opened));
                     if (enqueue)
                         await BackportRegenerationEngine.EnqueueAsync(outbox, session, repository.Id!, opened, cancellationToken);
                     await session.SaveChangesAsync(cancellationToken);
@@ -242,12 +279,15 @@ public partial class BackportRecipient : IRecipient<BackportMessage>
                         : $"- `{target.Branch}`: #{opened}") + (enqueue ? ", handed to the merge queue" : ""));
                     break;
                 case GitWriterBackportTargetResult.Exists:
+                    await Attempt(target.Branch, BackportAttempt.BranchExists, detail: target.Head);
                     lines.Add($"- `{target.Branch}`: `{target.Head}` exists already; nothing was pushed.");
                     break;
                 case GitWriterBackportTargetResult.Empty:
+                    await Attempt(target.Branch, BackportAttempt.AlreadyOnLine);
                     lines.Add($"- `{target.Branch}`: already holds this change.");
                     break;
                 case GitWriterBackportTargetResult.Conflicted:
+                    await Attempt(target.Branch, BackportAttempt.Conflicted, detail: string.Join(", ", (target.Conflicts ?? []).Take(50)));
                     lines.Add($"- `{target.Branch}`: conflicts; nothing was pushed (see below).");
                     break;
                 case GitWriterBackportTargetResult.Drafted:
@@ -261,15 +301,24 @@ public partial class BackportRecipient : IRecipient<BackportMessage>
                             repository.FullName, pull.Number),
                         draft: true, cancellationToken: cancellationToken);
                     // Once someone resolves the conflicts, a writer's approval queues it like any other backport.
-                    await BackportRegenerationEngine.RecordAsync(session, repository.Id!, draft, pull.Number, target.Branch, time.GetUtcNow().UtcDateTime, cancellationToken);
+                    await BackportRegenerationEngine.RecordAsync(session, repository.Id!, draft, pull.Number, commit, target.Branch, now, cancellationToken);
+                    await Attempt(target.Branch, BackportAttempt.Drafted, draft, string.Join(", ", (target.Conflicts ?? []).Take(50)));
                     await session.SaveChangesAsync(cancellationToken);
                     lines.Add($"- `{target.Branch}`: #{draft}, a draft with {target.Conflicts?.Count ?? 0} conflicting file{(target.Conflicts?.Count == 1 ? "" : "s")} to resolve");
                     break;
                 default:
+                    await Attempt(target.Branch, BackportAttempt.Failed, detail: $"the push was rejected. {target.Detail}".TrimEnd());
                     lines.Add($"- `{target.Branch}`: the push was rejected. {target.Detail}".TrimEnd());
                     break;
             }
         }
+        // A line the writer did not answer for is lost otherwise.
+        foreach (var branch in targets.Where(b => result.Targets?.Any(t => t.Branch == b) != true))
+        {
+            await Attempt(branch, BackportAttempt.Failed, detail: "the git writer did not report this line");
+            lines.Add($"- `{branch}`: the git writer did not report this line; add the label again to retry.");
+        }
+        await session.SaveChangesAsync(cancellationToken);
         if (lines.Count == 0)
             return null;
         // #570 D11: whatever each line's outcome, a first-party package the change raised above the line's major is named

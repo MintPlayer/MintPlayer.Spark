@@ -1,0 +1,120 @@
+{
+  "$schema": "https://schemas.spark.mintplayer.com/v14/model.schema.json",
+  "persistentObject": {
+    "id": "3b90aa6b-d759-42c5-a605-55655755009e",
+    "name": "BackportAttempt",
+    "clrType": "CodeCoverage.Entities.BackportAttempt",
+    "breadcrumb": "{Repository}",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "2cf6f1b2-617c-46e0-a463-985d127ecf04",
+        "name": "AttemptedAtUtc",
+        "dataType": "datetime",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 8,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "7dacdbfc-9b20-42bb-bfb7-1bbce0306a40",
+        "name": "Branch",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 4,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "d485d934-b350-4bc3-893e-821fd8d3728f",
+        "name": "Detail",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 7,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "bf3fce36-2f2e-4297-b89b-b20b076eae90",
+        "name": "Outcome",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 5,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "b16d6919-68fd-42a0-b195-54adecdccba3",
+        "name": "PullRequest",
+        "dataType": "number",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 6,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "c8cfc0df-af83-4315-af80-70e3c3be4190",
+        "name": "Repository",
+        "dataType": "Reference",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 1,
+        "query": "GetRepositories",
+        "referenceType": "CodeCoverage.Entities.Repository",
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "e457a10b-6373-4af2-b2ae-e1ccf450d1fe",
+        "name": "Source",
+        "dataType": "number",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "621dc703-0a15-48ff-952c-2cf48f6c5b51",
+        "name": "SourceSha",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 3,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      }
+    ],
+    "queries": []
+  },
+  "queries": [
+    {
+      "id": "b0f59034-d0d1-4106-ae35-7c94b2148d1f",
+      "name": "GetBackportAttempts",
+      "source": "Custom.Repository_BackportAttempts",
+      "alias": "repository-backport-attempts",
+      "sortColumns": [
+        {
+          "property": "AttemptedAtUtc",
+          "direction": "desc"
+        }
+      ],
+      "renderMode": "Pagination",
+      "entityType": "BackportAttempt"
+    }
+  ]
+}

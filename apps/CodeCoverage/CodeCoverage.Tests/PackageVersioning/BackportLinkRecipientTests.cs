@@ -145,7 +145,11 @@ public class BackportLinkRecipientTests : CoverageRavenTest
         opened.Body.Should().Contain(BackportProvenance.Marker("acme/widgets", 7));
         // A writer pushed it, so it is recorded like the App's own backports.
         using var check = store.OpenAsyncSession();
-        (await check.LoadAsync<BackportPullRequest>(BackportPullRequest.DocumentId(RepositoryId, 1000))).Source.Should().Be(7);
+        var record = await check.LoadAsync<BackportPullRequest>(BackportPullRequest.DocumentId(RepositoryId, 1000));
+        (record.Source, record.SourceSha).Should().Be((7, SourceMerge));
+        // Segment B: the repository page lists it with the App's own backports.
+        (await check.LoadAsync<BackportAttempt>(BackportAttempt.DocumentId(EForgeProvider.GitHub, 0, 7, Line)))
+            .Should().BeEquivalentTo(new { Outcome = BackportAttempt.Opened, PullRequest = (int?)1000, SourceSha = SourceMerge });
     }
 
     [Theory]

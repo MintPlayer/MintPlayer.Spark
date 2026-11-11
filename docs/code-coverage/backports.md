@@ -14,6 +14,12 @@ request (and whether it went to the merge queue), "already holds this change", a
 commands for a manual backport, or a rejected push. Conflicts the rules resolved, platform values the change edits on
 the line, and first-party packages the line keeps at its own major are listed underneath.
 
+**Where every backport ends up.** The repository page's **Backport attempts** list has one row per backported pull
+request and line. Each row shows the outcome (opened, draft with conflicts, regenerating, already on the line, branch
+exists, conflicts or failed), the backport pull request and the reason. A retry replaces the row. A backport the
+forge refused before any comment could be posted (a missing App permission, a forge error) still gets its row,
+under the line's name as it was asked for. A comment can be missed; the list is where a lost backport shows up.
+
 ## Release branches
 
 Branches matching `releaseBranches` are release lines. They are versioned like the default branch, within the major
