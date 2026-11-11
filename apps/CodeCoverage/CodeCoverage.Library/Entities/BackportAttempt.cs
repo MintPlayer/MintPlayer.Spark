@@ -40,6 +40,8 @@ public class BackportAttempt
     public const string Conflicted = "conflicts";
     /// <summary>It could not be done: the writer was unavailable or refused, the push was rejected, the forge failed.</summary>
     public const string Failed = "failed";
+    /// <summary>The merge queue holds its pull request on the line (segment C), and the line waits for it (segment F).</summary>
+    public const string Held = "held";
 
     public static string DocumentId(EForgeProvider provider, long repositoryId, int source, string branch)
         => $"{ForRepository(provider, repositoryId)}{source}/{branch.Replace('/', '-')}";
@@ -55,6 +57,9 @@ public class BackportAttempt
 
     /// <summary>The backported pull request.</summary>
     public int Source { get; set; }
+
+    /// <summary>Who opened the backported pull request.</summary>
+    public string? SourceAuthor { get; set; }
 
     /// <summary>Its merge commit on the default branch.</summary>
     public string? SourceSha { get; set; }

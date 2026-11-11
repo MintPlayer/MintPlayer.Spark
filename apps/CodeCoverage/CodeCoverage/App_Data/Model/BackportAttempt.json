@@ -88,6 +88,17 @@
         "rules": []
       },
       {
+        "id": "7b0ffa6e-ff83-4037-87cd-3e3cc2ab6bb9",
+        "name": "SourceAuthor",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 9,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
         "id": "621dc703-0a15-48ff-952c-2cf48f6c5b51",
         "name": "SourceSha",
         "dataType": "string",
@@ -107,6 +118,20 @@
       "name": "GetBackportAttempts",
       "source": "Custom.Repository_BackportAttempts",
       "alias": "repository-backport-attempts",
+      "sortColumns": [
+        {
+          "property": "AttemptedAtUtc",
+          "direction": "desc"
+        }
+      ],
+      "renderMode": "Pagination",
+      "entityType": "BackportAttempt"
+    },
+    {
+      "id": "86c1238e-410e-42ad-8658-eb01cef8a67c",
+      "name": "GetHeldBackports",
+      "source": "Custom.BackportAttempts_Held",
+      "alias": "held-backports",
       "sortColumns": [
         {
           "property": "AttemptedAtUtc",

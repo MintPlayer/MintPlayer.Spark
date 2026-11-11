@@ -73,6 +73,12 @@ public enum EMergeQueueStep
     /// entry has ended by design, and a redelivered step skips the issues that are closed already.
     /// </summary>
     CloseIssues,
+
+    /// <summary>
+    /// Remind the people a held backport waits for (release lines recovery plan, segment F, PRD Q8): after 2 working days,
+    /// and the code owners after 2 more. Gated like the others, so a backport that went on since is not reminded.
+    /// </summary>
+    HeldReminder,
 }
 
 /// <summary>

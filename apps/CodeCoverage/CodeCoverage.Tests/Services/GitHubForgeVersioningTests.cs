@@ -73,7 +73,27 @@ public class GitHubForgeVersioningTests
         var pull = (await Forge(github).GetPullRequestTextAsync(Target, 7))!;
 
         pull.Should().BeEquivalentTo(new ForgePullRequestText(7, "Bump x", null, "dependabot/x", "1111111111111111111111111111111111111111", "master",
-            IsOpen: false, Merged: true, AuthorIsBot: true, MergeCommitSha: Sha, Labels: ["deps", "backport release/dotnet-10.x"]));
+            IsOpen: false, Merged: true, AuthorIsBot: true, MergeCommitSha: Sha, Labels: ["deps", "backport release/dotnet-10.x"])
+        {
+            AuthorLogin = "dependabot[bot]",
+            HeadIsFork = true, // GitHub left out the head's repository: a deleted fork reads the same way.
+        });
+    }
+
+    [Theory]
+    [InlineData(5, false)]
+    [InlineData(6, true)]
+    public void A_pull_request_says_who_opened_it_and_whether_its_head_is_a_fork(long headRepositoryId, bool fork)
+    {
+        using var json = System.Text.Json.JsonDocument.Parse($$$"""
+            {"number":8,"title":"Fix","body":"text","state":"closed","merged":true,"merge_commit_sha":"{{{Sha}}}",
+             "user":{"login":"octocat","type":"User"},
+             "head":{"ref":"fix","sha":"{{{Sha}}}","repo":{"id":{{{headRepositoryId}}} } },"base":{"ref":"master","repo":{"id":5} } }
+            """);
+
+        var pull = GitHubForgeVersioning.ReadPullRequest(json.RootElement);
+
+        (pull.AuthorLogin, pull.HeadIsFork).Should().Be(("octocat", fork));
     }
 
     [Fact]

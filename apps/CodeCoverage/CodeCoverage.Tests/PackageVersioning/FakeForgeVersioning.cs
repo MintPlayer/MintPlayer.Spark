@@ -24,8 +24,13 @@ internal sealed class FakeForgeVersioning : IForgeVersioning
     /// <summary>More pull requests by number, beside <see cref="PullRequest"/> (#570 M8c: a backport and its source).</summary>
     public Dictionary<int, ForgePullRequestText> OtherPullRequests { get; } = [];
 
+    /// <summary>When set, reading a pull request throws this (a forge that is down).</summary>
+    public Exception? ReadFailure { get; set; }
+
     public Task<ForgePullRequestText?> GetPullRequestTextAsync(Repository repository, int number, CancellationToken cancellationToken = default)
-        => Task.FromResult(PullRequest?.Number == number ? PullRequest : OtherPullRequests.GetValueOrDefault(number));
+        => ReadFailure is { } failure
+            ? Task.FromException<ForgePullRequestText?>(failure)
+            : Task.FromResult(PullRequest?.Number == number ? PullRequest : OtherPullRequests.GetValueOrDefault(number));
 
     public Task<ForgeIssue?> GetIssueAsync(Repository repository, int number, CancellationToken cancellationToken = default)
         => Task.FromResult(Issues.TryGetValue(number, out var labels) ? new ForgeIssue(number, labels) : null);

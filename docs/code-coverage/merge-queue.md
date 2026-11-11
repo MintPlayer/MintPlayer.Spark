@@ -219,6 +219,16 @@ mergeQueue:
 
   `/dequeue` (or the check's button) lets the line go on without it. A person's pull request into a line is evicted as
   before.
+- **A held backport asks someone to fix it.** Before it holds on red checks, the queue re-runs the failed ones once,
+  even with `retryFlaky: 0`. Then:
+  - **Who:** the author of the backported pull request is assigned and named in the comment. For a fork's or a bot's
+    pull request, the CODEOWNERS of its files on the line are asked instead (people are assigned, teams mentioned).
+  - **What shows:** the `backport: needs attention` label, and a neutral **Line blocked by #N** check on every pull
+    request waiting behind it. The check never blocks a merge; it turns green when the hold ends.
+  - **Reminders:** after 2 working days the same people are reminded, and 2 working days later the code owners. Then
+    the queue stops reminding.
+  - **The list:** the app's **Held backports** page (`/query/held-backports`, linked from the comment) lists the held
+    backports you authored, and those in repositories you administer or whose account you manage.
 
 A repository with lockfiles and its own workflow per tool might add:
 

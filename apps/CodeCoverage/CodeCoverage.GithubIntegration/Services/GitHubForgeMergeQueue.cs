@@ -1200,6 +1200,21 @@ public partial class GitHubForgeMergeQueue : IForgeMergeQueue
         }
     }
 
+    public async Task AddAssigneesAsync(Repository repository, int number, IReadOnlyCollection<string> logins, CancellationToken cancellationToken = default)
+    {
+        if (logins.Count == 0) return;
+        var client = await ClientAsync(repository, cancellationToken);
+        try
+        {
+            // GitHub silently leaves out a login that cannot be assigned, and takes at most 10 per call.
+            await client.Issue.Assignee.AddAssignees(repository.OwnerLogin, repository.Name, number, new AssigneesUpdate([.. logins.Take(10)]));
+        }
+        catch (ApiException ex) when (ex.StatusCode == HttpStatusCode.Forbidden)
+        {
+            throw new ForgeAccessDeniedException(ex.Message, "pull_requests=write");
+        }
+    }
+
     public async Task<long> PostCommentAsync(Repository repository, int number, string body, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrEmpty(body);

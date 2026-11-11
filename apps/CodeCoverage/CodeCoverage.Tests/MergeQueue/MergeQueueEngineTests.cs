@@ -1808,6 +1808,128 @@ public class MergeQueueEngineTests : CoverageRavenTest
         resumed.PrepareAttempts.Should().BeLessThanOrEqualTo(1);
     }
 
+    // ── Release lines recovery plan, segment F: a held backport gets someone's attention ─────────────
+
+    [Fact]
+    public async Task A_held_backport_names_who_fixes_it_and_schedules_a_reminder()
+    {
+        var h = await HarnessAsync(mergeBase: BaseSha);
+        h.Attention.Asked = "@author, this backports your #107, so it is yours to fix.";
+        await HeldOnRedAsync(h);
+
+        var held = await h.EntryAsync();
+        held.HeldSinceUtc.HasValue.Should().BeTrue();
+        held.HeldReminders.Should().Be(0);
+        h.Attention.Calls.Should().Equal(["held #7 behind:"]);
+        h.Queue.Comments.Should().ContainSingle().Which.Body.Should().Contain("@author, this backports your #107");
+        h.Delayed.Should().Contain(s => s.Step == EMergeQueueStep.HeldReminder);
+    }
+
+    [Fact]
+    public async Task A_backport_held_with_others_waiting_tells_attention_who_waits()
+    {
+        var h = await HarnessAsync(mergeBase: BaseSha);
+        await LineBackportAsync(h, Number, SourceA);
+        h.Queue.CheckStates[Head] = Red(Head);
+        await h.EnqueueAsync(BackportRegenerationEngine.QueueActor, EMergeQueueCommandSource.Backports, label: null);
+        await h.DrainAsync();
+        // #8 joins while #7 still runs: not blocked yet.
+        await LineBackportAsync(h, 8, SourceB);
+        await h.EnqueueAsync(BackportRegenerationEngine.QueueActor, EMergeQueueCommandSource.Backports, label: null, number: 8);
+        h.Attention.Calls.Should().BeEmpty();
+
+        await h.ReleaseAsync(EMergeQueueStep.PollChecks);
+
+        (await h.EntryAsync()).State.Should().Be(EMergeQueueEntryState.Held);
+        h.Attention.Calls.Should().Equal(["held #7 behind:8"]);
+    }
+
+    [Fact]
+    public async Task A_held_backport_is_reminded_then_escalated_and_then_left_alone()
+    {
+        var h = await HeldOnRedAsync(await HarnessAsync(mergeBase: BaseSha));
+        var before = h.Queue.Comments.Count;
+
+        await h.ReleaseAsync(EMergeQueueStep.HeldReminder);
+        await h.ReleaseAsync(EMergeQueueStep.HeldReminder);
+
+        h.Attention.Calls.Where(c => c.StartsWith("reminder", StringComparison.Ordinal)).Should().Equal(["reminder 1 #7", "reminder 2 #7"]);
+        h.Queue.Comments.Skip(before).Select(c => c.Body).Should().Equal(["reminder 1", "reminder 2"]);
+        (await h.EntryAsync()).HeldReminders.Should().Be(2);
+        h.Delayed.Should().NotContain(s => s.Step == EMergeQueueStep.HeldReminder, "two reminders are all it sends");
+    }
+
+    [Fact]
+    public async Task A_reminder_with_nobody_to_ask_posts_nothing()
+    {
+        var h = await HeldOnRedAsync(await HarnessAsync(mergeBase: BaseSha));
+        var before = h.Queue.Comments.Count;
+        h.Attention.Reminder = _ => null;
+
+        await h.ReleaseAsync(EMergeQueueStep.HeldReminder);
+
+        h.Queue.Comments.Count.Should().Be(before);
+    }
+
+    [Fact]
+    public async Task A_backport_that_joins_behind_a_held_one_is_marked_blocked()
+    {
+        var h = await HeldOnRedAsync(await HarnessAsync(mergeBase: BaseSha));
+
+        await LineBackportAsync(h, 8, SourceB);
+        await h.EnqueueAsync(BackportRegenerationEngine.QueueActor, EMergeQueueCommandSource.Backports, label: null, number: 8);
+
+        h.Attention.Calls.Should().Contain("blocked #8 by #7");
+    }
+
+    [Fact]
+    public async Task A_held_backport_that_passes_is_released_and_no_longer_reminded()
+    {
+        var h = await HeldOnRedAsync(await HarnessAsync(mergeBase: BaseSha));
+
+        h.Queue.CheckStates[Head] = Green(Head);
+        await h.SignalAsync(EMergeQueueSignal.ChecksChanged, sha: Head);
+        await h.DrainAsync();
+
+        h.Attention.Calls.Should().Contain("released #7");
+        var merged = await h.EntryAsync();
+        merged.State.Should().Be(EMergeQueueEntryState.Merged);
+        merged.HeldSinceUtc.HasValue.Should().BeFalse();
+
+        // The reminder scheduled at the hold finds it no longer held, and does nothing.
+        await h.ReleaseAsync(EMergeQueueStep.HeldReminder);
+        h.Attention.Calls.Should().NotContain(c => c.StartsWith("reminder"));
+    }
+
+    [Fact]
+    public async Task A_dequeued_held_backport_is_released()
+    {
+        var h = await HeldOnRedAsync(await HarnessAsync(mergeBase: BaseSha));
+
+        await h.DequeueAsync("maintainer");
+
+        h.Attention.Calls.Should().Equal(["held #7 behind:", "released #7"]);
+    }
+
+    [Fact]
+    public async Task An_attention_failure_does_not_stop_the_hold()
+    {
+        var h = await HarnessAsync(mergeBase: BaseSha);
+        h.Attention.Failure = new InvalidOperationException("forge down");
+        await HeldOnRedAsync(h);
+
+        (await h.EntryAsync()).State.Should().Be(EMergeQueueEntryState.Held);
+        h.Queue.Comments.Should().ContainSingle().Which.Body.Should().StartWith("The merge queue holds this backport");
+    }
+
+    [Theory]
+    [InlineData("2026-11-09T10:00:00", 2, "2026-11-11T10:00:00")] // Monday → Wednesday
+    [InlineData("2026-11-13T10:00:00", 2, "2026-11-17T10:00:00")] // Friday → Tuesday
+    [InlineData("2026-11-14T10:00:00", 2, "2026-11-17T10:00:00")] // Saturday → Tuesday
+    [InlineData("2026-11-15T10:00:00", 1, "2026-11-16T10:00:00")] // Sunday → Monday
+    public void Working_days_skip_the_weekend(string from, int days, string expected)
+        => MergeQueueEngine.AddWorkingDays(DateTime.Parse(from), days).Should().Be(DateTime.Parse(expected));
+
     // ── M6: what the repository page lists (§0 D55) ──────────────────────────────────────────────────
 
     [Fact]
