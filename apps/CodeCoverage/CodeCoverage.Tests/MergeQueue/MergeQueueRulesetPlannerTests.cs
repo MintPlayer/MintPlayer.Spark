@@ -251,15 +251,85 @@ public class MergeQueueRulesetPlannerTests
         PlanFor([], restricted).CanApply.Should().BeFalse();
     }
 
+    private const string Lines = "refs/heads/release/*-*.x";
+
+    private static string[] ContextsOf(ForgeRulesetDefinition definition)
+        => [.. definition.Rules.Single(r => r.Type == "required_status_checks").Parameters!["required_status_checks"]!.AsArray()
+            .Select(c => c!["context"]!.GetValue<string>())];
+
     [Fact]
-    public void Release_lines_get_ruleset_1_only()
+    public void Release_lines_get_ruleset_1_and_their_own_checks_ruleset()
     {
         var plan = Plan(new ForgeRulesetState(AppId, [], null),
-            new MergeQueueRulesetChoices(0, ["build"], ReleaseLines: ["refs/heads/release/*-*.x"]));
+            new MergeQueueRulesetChoices(0, ["build"], ReleaseLines: [Lines], LineRequiredChecks: ["build", "e2e"]));
 
-        var created = plan.Steps.OfType<CreateRulesetStep>().ToDictionary(s => s.Definition.Name, s => s.Definition.Include);
-        created[RestrictUpdatesName].Should().Equal(["~DEFAULT_BRANCH", "refs/heads/release/*-*.x"]);
-        created[ReviewsAndChecksName].Should().Equal(["~DEFAULT_BRANCH"], "ruleset 2's checks are the default head's");
+        var created = plan.Steps.OfType<CreateRulesetStep>().ToDictionary(s => s.Definition.Name, s => s.Definition);
+        created[RestrictUpdatesName].Include.Should().Equal(["~DEFAULT_BRANCH", Lines]);
+        created[ReviewsAndChecksName].Include.Should().Equal(["~DEFAULT_BRANCH"], "ruleset 2's checks are the default head's");
+
+        var line = created[LineChecksName];
+        line.Include.Should().Equal([Lines]);
+        line.Rules.Select(r => r.Type).Should().Equal(["required_status_checks"], "no pull_request rule: the App's backports need no review");
+        line.BypassActors.Should().BeEmpty("the App must not bypass the lines' checks");
+        ContextsOf(line).Should().Equal(["build", "e2e"]);
+        plan.CanApply.Should().BeTrue();
+    }
+
+    [Fact]
+    public void Without_lines_there_is_no_line_checks_ruleset()
+    {
+        PlanFor([], classic: null).Steps.OfType<CreateRulesetStep>()
+            .Should().NotContain(s => s.Definition.Name == LineChecksName);
+    }
+
+    [Fact]
+    public void A_new_line_checks_ruleset_takes_the_default_branch_checks_when_none_are_chosen()
+    {
+        var plan = Plan(new ForgeRulesetState(AppId, [], null),
+            new MergeQueueRulesetChoices(0, ["build", "test"], ReleaseLines: [Lines]));
+
+        ContextsOf(plan.Steps.OfType<CreateRulesetStep>().Single(s => s.Definition.Name == LineChecksName).Definition)
+            .Should().Equal(["build", "test"]);
+    }
+
+    [Fact]
+    public void An_existing_line_checks_ruleset_keeps_its_checks_when_none_are_chosen()
+    {
+        var created = Plan(new ForgeRulesetState(AppId, [], null),
+                new MergeQueueRulesetChoices(0, ["build"], ReleaseLines: [Lines], LineRequiredChecks: ["e2e"]))
+            .Steps.OfType<CreateRulesetStep>().Select(s => s.Definition).ToList();
+        var stored = created.Select((d, i) => new ForgeExistingRuleset(i + 1, d)).ToList();
+
+        var plan = Plan(new ForgeRulesetState(AppId, stored, null),
+            new MergeQueueRulesetChoices(0, ["build", "test"], ReleaseLines: [Lines]));
+
+        plan.Steps.OfType<UpdateRulesetStep>().Should().NotContain(s => s.Definition.Name == LineChecksName);
+        Defaults(new ForgeRulesetState(AppId, stored, null)).LineRequiredChecks.Should().Equal(["e2e"]);
+    }
+
+    [Fact]
+    public void Changed_line_checks_update_the_line_checks_ruleset()
+    {
+        var created = Plan(new ForgeRulesetState(AppId, [], null),
+                new MergeQueueRulesetChoices(0, ["build"], ReleaseLines: [Lines], LineRequiredChecks: ["e2e"]))
+            .Steps.OfType<CreateRulesetStep>().Select(s => s.Definition).ToList();
+        var stored = created.Select((d, i) => new ForgeExistingRuleset(i + 1, d)).ToList();
+
+        var plan = Plan(new ForgeRulesetState(AppId, stored, null),
+            new MergeQueueRulesetChoices(0, ["build"], ReleaseLines: [Lines], LineRequiredChecks: ["e2e", "build"]));
+
+        var update = plan.Steps.Should().ContainSingle().Which.Should().BeOfType<UpdateRulesetStep>().Which;
+        update.Definition.Name.Should().Be(LineChecksName);
+        ContextsOf(update.Definition).Should().Equal(["build", "e2e"], "the rule lists its checks in ordinal order");
+    }
+
+    [Fact]
+    public void Empty_line_checks_create_no_line_checks_ruleset()
+    {
+        var plan = Plan(new ForgeRulesetState(AppId, [], null),
+            new MergeQueueRulesetChoices(0, ["build"], ReleaseLines: [Lines], LineRequiredChecks: []));
+
+        plan.Steps.OfType<CreateRulesetStep>().Should().NotContain(s => s.Definition.Name == LineChecksName);
     }
 
     [Fact]
@@ -269,9 +339,10 @@ public class MergeQueueRulesetPlannerTests
         var stored = created.Select((d, i) => new ForgeExistingRuleset(i + 1, d)).ToList();
 
         var plan = Plan(new ForgeRulesetState(AppId, stored, null),
-            new MergeQueueRulesetChoices(0, ["build"], ReleaseLines: ["refs/heads/release/*-*.x"]));
+            new MergeQueueRulesetChoices(0, ["build"], ReleaseLines: [Lines]));
 
-        plan.Steps.Should().ContainSingle().Which.Should().BeOfType<UpdateRulesetStep>()
-            .Which.Definition.Include.Should().Equal(["~DEFAULT_BRANCH", "refs/heads/release/*-*.x"]);
+        plan.Steps.OfType<UpdateRulesetStep>().Should().ContainSingle()
+            .Which.Definition.Include.Should().Equal(["~DEFAULT_BRANCH", Lines]);
+        plan.Steps.OfType<CreateRulesetStep>().Should().ContainSingle().Which.Definition.Name.Should().Be(LineChecksName);
     }
 }

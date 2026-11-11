@@ -50,7 +50,15 @@ Evidence below comes from three read-only investigations on 2026-11-11 (raw outp
   through the API right after. The ruleset was verified back to the queue App only (exempt), active, with the same
   targets and rules.
 - **What it covers:** this covers R1 (the red E2E at da8be3a91 is replaced by master's green tree), R3 and R4.
-- **Still open:** R2 (required checks on line PRs) and R5 (the release runs 42983233148 and 42983232601 publish).
+- **R5 done:** release runs 42983233148 (dotnet-11.x) and 42983232601 (angular-22.x) both succeeded and tagged the
+  packages.
+- **R2 decided (owner, 2026-11-11: "B - Yes, you can modify the rulesets if you also update the onboarding code
+  accordingly"):** a separate **ruleset 3, "merge-queue: release-line checks"**, on the lines' glob, with only a
+  strict `required_status_checks` rule and no bypass. Not 26719109 extended: `merge-queue.md` documents that ruleset 2
+  stays on the default branch, and ruleset 2's `pull_request` rule would hold the App's backports for a review. The
+  planner (`MergeQueueRulesets.cs`, `LineChecksName`) and the "Set up rulesets" form (`LineRequiredChecks`, shown
+  only with lines, prefilled from ruleset 3, else ruleset 2) build it, so every onboarded repository gets it, not just
+  Spark. SP2: #610 (head da4e1ee81) reported all 23 of ruleset 2's checks, so a line can require the same set.
 
 **Segment B, no silent losses.** Every `backport:` target ends in an open backport PR (a draft on conflict) or a
 recorded, visible failure (comment on the source PR and a row in the app). The source merge sha is stored on
@@ -184,8 +192,9 @@ Dependencies: R before all; B before C; D before E; C before F. G and H are inde
 
 ## 5. Where it stands and what is next (2026-11-11)
 
-1. **R5:** read the result of the line release runs 42983233148 and 42983232601. On red, read the log first.
-2. **R2:** require the PR checks on the lines (SP2 first).
+1. **R5:** done, both runs green.
+2. **R2:** ruleset 3 in the planner and form (this branch, `feat/release-line-rulesets`); after the deploy, run "Set
+   up rulesets" on Spark, or create ruleset 3 by hand from `merge-queue.md`'s JSON with the 23 checks.
 3. **Owner decisions still open:** Q-A (B recommended), O1 (Blocking/Evicting on the merge-queue lane, not on Spark
    messaging; recommended), Q6b (tag ruleset vs versioning D3), and SP7 (the GitHub sandbox repository).
 4. **The segments to build, re-ordered for Q-L:**

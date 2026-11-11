@@ -5,7 +5,8 @@
     "(#554 f3), shown as a retry prompt once per selected repository (owner 2026-11-07): that repository's rulesets as the",
     "person wants them, prefilled from its own state (MergeQueueRulesetPlanner.Defaults). The prompt's parent is the",
     "repository, so RequiredChecks offers the checks seen on its pull requests (Repository_PullRequestChecks), and \"Add",
-    "new\" names one that has not reported yet."
+    "new\" names one that has not reported yet. LineRequiredChecks (R2, docs/release_lines_recovery_plan.md) are the release",
+    "lines' own required checks (ruleset 3); the action shows the field only for a repository with release lines."
   ],
   "persistentObject": {
     "id": "c5980da3-b622-46cb-b65e-e6fcbbbd48e7",
@@ -49,6 +50,21 @@
         "defaultAttribute": "Name",
         "isArray": true,
         "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "cac3a7e6-a236-44e7-9ae0-52bd8362e230",
+        "name": "LineRequiredChecks",
+        "dataType": "Reference",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 4,
+        "query": "Repository_PullRequestChecks",
+        "referenceType": "CodeCoverage.Entities.ForgeCheck",
+        "canAddNewReference": true,
+        "defaultAttribute": "Name",
+        "isArray": true,
+        "showedOn": "None",
         "rules": []
       }
     ]

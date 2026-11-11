@@ -160,6 +160,10 @@ public partial class MergeQueueRulesetSetup : IMergeQueueRulesetSetup
             form[nameof(MergeQueueRulesetChoices.RequiredApprovals)].Value = r.Defaults.RequiredApprovals;
             form[nameof(MergeQueueRulesetChoices.AdminsMayMergeByPullRequest)].Value = r.Defaults.AdminsMayMergeByPullRequest ?? false;
             form[nameof(MergeQueueRulesetChoices.RequiredChecks)].Value = r.Defaults.RequiredChecks.ToArray();
+            // Ruleset 3 (R2): the lines' checks, from ruleset 3, else the default branch's. Ignored without release lines.
+            var lines = r.Lines ?? (releaseLinesComing ? ReleaseLinePattern.Default : null);
+            form[nameof(MergeQueueRulesetChoices.LineRequiredChecks)].Value = (r.Defaults.LineRequiredChecks ?? r.Defaults.RequiredChecks).ToArray();
+            form[nameof(MergeQueueRulesetChoices.LineRequiredChecks)].ShowedOn = lines is not null ? EShowedOn.PersistentObject : EShowedOn.None;
             manager.Retry.Action(manager.GetTranslatedMessage("rulesets.chooseTitle", repository.FullName), [next], next, form,
                 manager.GetTranslatedMessage("rulesets.chooseMessage"), cancellable: true);
             var chosen = manager.Retry.Result!;
@@ -171,16 +175,24 @@ public partial class MergeQueueRulesetSetup : IMergeQueueRulesetSetup
             var admins = answer?[nameof(MergeQueueRulesetChoices.AdminsMayMergeByPullRequest)].GetValue<bool?>() ?? r.Defaults.AdminsMayMergeByPullRequest;
             var checks = answer is null ? r.Defaults.RequiredChecks
                 : Names(answer[nameof(MergeQueueRulesetChoices.RequiredChecks)].Value);
+            // An answer without the field keeps ruleset 3's own checks (or the default branch's, when it does not exist).
+            var lineChecks = answer?.TryGetAttribute(nameof(MergeQueueRulesetChoices.LineRequiredChecks), out var lineAnswer) == true
+                ? Names(lineAnswer.Value) : r.Defaults.LineRequiredChecks;
             planned.Add(new RulesetPlanned(r.Target, MergeQueueRulesetPlanner.Plan(r.State, r.Defaults with
             {
                 RequiredApprovals = approvals,
                 AdminsMayMergeByPullRequest = admins,
-                RequiredChecks = [.. checks.Select(ForgeCheck.GetId).Where(c => c.Length > 0 && c != CheckGate.QueueCheckName).Distinct(StringComparer.Ordinal)],
-                ReleaseLines = (r.Lines ?? (releaseLinesComing ? ReleaseLinePattern.Default : null)) is { } lines ? [lines.RefGlob] : null,
+                RequiredChecks = CheckIds(checks),
+                ReleaseLines = lines is not null ? [lines.RefGlob] : null,
+                LineRequiredChecks = lineChecks is null ? null : CheckIds(lineChecks),
             })));
         }
         return planned;
     }
+
+    /// <summary>The picked checks' names (a <see cref="ForgeCheck"/> id), never the queue's own check (D62).</summary>
+    private static List<string> CheckIds(IEnumerable<string> picked)
+        => [.. picked.Select(ForgeCheck.GetId).Where(c => c.Length > 0 && c != CheckGate.QueueCheckName).Distinct(StringComparer.Ordinal)];
 
     public string Summary(IReadOnlyList<RulesetPlanned> planned)
         => string.Join("\n\n", planned.Select(p =>
