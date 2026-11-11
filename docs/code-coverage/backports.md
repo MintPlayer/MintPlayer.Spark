@@ -23,6 +23,12 @@ exists, conflicts or failed), the backport pull request and the reason. A retry 
 forge refused before any comment could be posted (a missing App permission, a forge error) still gets its row,
 under the line's name as it was asked for. A comment can be missed; the list is where a lost backport shows up.
 
+**A backport the merge queue holds.** On a queued line, a backport that fails its checks or conflicts holds the line
+until it is fixed ([merge queue, release lines](merge-queue.md)). Its row turns **held**, it gets the `backport: needs
+attention` label, and its source pull request's author (for a fork's or a bot's, the CODEOWNERS of its files) is
+assigned and reminded after 2 working days. The **Held backports** page in the app lists every held backport that
+waits for you.
+
 ## Release branches
 
 Branches matching `releaseBranches` are release lines. They are versioned like the default branch, within the major

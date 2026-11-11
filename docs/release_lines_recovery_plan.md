@@ -122,7 +122,7 @@ why #593, #608 and #620 produced nothing, although the conflict path does open d
 - **Order:** `SourceOrderPositionAsync` puts a new App backport before the first waiting one whose source the forge's
   compare shows to be later (`merge-base(source, other) == source`). With no recorded `SourceSha` (records from before
   B), or a forge error, it goes last. Test: `A_backport_waits_in_the_order_its_source_merged`.
-- **Not done here:** who is asked, reminders and the "blocked by" check are segment F. A hold whose `author-push` came
+- **Not done here:** who is asked, reminders and the "blocked by" check are segment F (done, below). A hold whose `author-push` came
   from a writer step waits for the push's webhook to resume it.
 
 **Segment D, backport branches protected, no approval.**
@@ -161,6 +161,39 @@ current lines take only bot picks, past lines take human PRs (grilling Q1b, Q1c,
 - **What they see:** a comment linking to a CustomQuery of held PRs, a `backport: needs attention` label, and a
   "Line blocked by #N" check on the waiting PRs (Q8, Q12).
 - **Order:** needs C.
+
+**F done (2026-11-11, branch `feat/backport-attention`, on master after G).** `IBackportAttention`
+(`CodeCoverage/PackageVersioning/BackportAttention.cs`) is called by the queue's hold, its end and its reminders, and
+never fails the queue: `MergeQueueEngine.AttentionAsync` logs what it cannot do.
+- **The re-run (Q8):** `checks.retryFlaky` defaults to 1, so a line backport already gets one automatic re-run before it
+  is held. A repository that sets `retryFlaky: 0` still gets one for a line backport: `EvaluateChecks` re-runs once when
+  `HoldsAsync` says the entry would be held.
+- **Who is asked (Q8):**
+  - The backported pull request's author (`ForgePullRequestText.AuthorLogin`), unless that pull request came from a bot
+    (`AuthorIsBot`) or a fork (`HeadIsFork`, new: head and base repository ids differ, or the head repository is gone).
+  - Otherwise, the code owners of its files: the line's own CODEOWNERS (`CodeOwners.Locations`, GitHub's order), over the
+    conflict's paths (`EvictionPaths`) or else the pull request's first 300 files. People are assigned
+    (`IForgeMergeQueue.AddAssigneesAsync`, new); teams are only mentioned.
+  - Neither: the comment says nobody is named, and the held list still shows it to the repository's admins.
+- **Reminders (Q8, "a reminder after 2 working days"):** a `HeldReminder` step 2 working days (Monday–Friday, UTC,
+  `MergeQueueEngine.AddWorkingDays`) after the hold asks the same people again. A second one, 2 working days later,
+  escalates to the code owners (minus the author) and assigns them. Then it stops: two reminders, no nagging. The step is
+  gated on `Held`, so a hold that ended makes it a no-op. Reading of the PRD: "a reminder after 2 working days" asks
+  again; the escalation is the code-owner fallback applied once the author did not act.
+- **What they see (Q12):**
+  - The hold comment gains "@author, this backports your #N, so it is yours to fix." and a link to
+    `{Coverage:BaseUrl}/query/held-backports`.
+  - The `backport: needs attention` label on the held pull request; the title is not touched.
+  - A neutral check "Line blocked by #N" on each waiting pull request's head (at the hold, and when one joins the lane
+    behind a held one). Neutral, so it never blocks a merge; a required-checks ruleset cannot pick it up by accident.
+  - The held list: `Custom.BackportAttempts_Held` (`BackportAttemptActions`), program unit "Held backports" in the
+    Coverage group. The segment B row of the backport (`BackportAttempt`) turns `held`, with `SourceAuthor`. The list shows
+    the held rows in repositories the viewer can see, when the viewer authored the source (by the forge's own answer of
+    who they are, T1), administers the repository, or manages its owner. Streamed by id prefix, no index.
+- **The end of a hold** (resume on a push, a base move, green checks, `/dequeue`, the run's end): the label goes, the
+  row goes back to `opened`, and each blocked check is completed as success "#N no longer holds `<line>`".
+- **Tests:** `CodeOwnersTests`, `BackportAttentionTests`, `MergeQueueEngineTests` (segment F block, with
+  `ScriptedAttention`), `GitHubForgeVersioningTests` (author and fork), `ReadRowFilterTests` (`BackportAttempts_Held`).
 
 **Segment G, trial pick.** `trialPick: warn | refuse | off` per line in `coverage.yml` (`BackportYml.cs`), default
 warn (Q10).

@@ -55,7 +55,15 @@ public partial class GitHubForgeVersioning : IForgeVersioning
             Merged: pull.TryGetProperty("merged", out var merged) && merged.ValueKind == JsonValueKind.True,
             AuthorIsBot: (user.ValueKind == JsonValueKind.Object && Str(user, "type") == "Bot") || login?.EndsWith("[bot]", StringComparison.Ordinal) == true,
             MergeCommitSha: Str(pull, "merge_commit_sha") is { } sha && merged.ValueKind == JsonValueKind.True ? sha : null,
-            Labels: labels);
+            Labels: labels)
+        {
+            AuthorLogin = login,
+            // A fork's head lives in another repository (null when the fork was deleted: not this repository either).
+            HeadIsFork = !(pull.GetProperty("head").TryGetProperty("repo", out var headRepo) && headRepo.ValueKind == JsonValueKind.Object
+                && pull.GetProperty("base").TryGetProperty("repo", out var baseRepo) && baseRepo.ValueKind == JsonValueKind.Object
+                && headRepo.TryGetProperty("id", out var headId) && baseRepo.TryGetProperty("id", out var baseId)
+                && headId.GetInt64() == baseId.GetInt64()),
+        };
     }
 
     public async Task<ForgeIssue?> GetIssueAsync(Repository repository, int number, CancellationToken cancellationToken = default)

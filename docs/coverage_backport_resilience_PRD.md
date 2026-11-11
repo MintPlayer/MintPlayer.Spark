@@ -446,6 +446,17 @@ With §3.1 this scenario cannot arise on a following line: the line is a prefix 
 | Q15 | Batch in-order picks on a diverged line (test the next N together, bisect on red) (§3.7) | Later, only if lines diverge (Q1 rejected or past lines cut) | Bisection costs extra runs when failures are frequent ([Bors](https://forum.bors.tech/t/optimized-bisection/514)) |
 | Q9 | Past lines take **fixes only** by default (`defaultLabels: fixes`, D5), as Angular and ASP.NET Core do | Yes | A feature someone wants on an old line needs an explicit label |
 
+**Q8 and Q12 as built (segment F, 2026-11-11, `docs/release_lines_recovery_plan.md` "F done").** Three points differ
+from the rows above, and the plan's segment F text is the one that holds:
+- **The title prefix is dropped (Q12's trap):** a `⚠️` prefix would reach the line's commit subject unless the queue
+  stripped it, so the held pull request gets only the `backport: needs attention` label.
+- **The waiting PRs get a neutral check, not a label:** "Line blocked by #N" (the plan's name). It is completed as
+  success when the hold ends, so nothing has to be removed by hand.
+- **The board column is replaced by the app's held list** (`/query/held-backports`), which the hold comment links to.
+  It works for user-owned repositories too, where an org board does not exist.
+- **Reminders:** after 2 working days, and then once more to the code owners. The "3 and 7 days" in row 4 of the
+  states table is superseded.
+
 **Q1 as asked in the grilling session (2026-11-10, unanswered).** Q1 is asked first because Q8, Q11, Q13, Q14 and Q15
 matter for the current line only if D16 stays.
 - **A. Fast-forward (reverses D16):** while master's platform majors equal the line's, the App fast-forwards each line

@@ -170,6 +170,17 @@ public class MergeQueueEntry
     /// <summary>The <see cref="FinalSha"/> whose backports were tried (segment G), so a commit is tried and commented on once.</summary>
     public string? TrialPickedSha { get; set; }
 
+    // ── A held backport's attention (release lines recovery plan, segment F) ─────────────────────────
+
+    /// <summary>When the current hold began; null while the entry is not held.</summary>
+    public DateTime? HeldSinceUtc { get; set; }
+
+    /// <summary>The reminders sent for the current hold: the first one asks again, the second asks the code owners (Q8).</summary>
+    public int HeldReminders { get; set; }
+
+    /// <summary>The heads of the pull requests behind this one that got a "Line blocked by #N" check, to clear when it ends.</summary>
+    public List<string> BlockedHeads { get; set; } = [];
+
     /// <summary>
     /// Whether <see cref="FinalSha"/> is the pinned head itself (O20 case 1: it already contains the latest base), so
     /// nothing was published.

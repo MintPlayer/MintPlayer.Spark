@@ -121,6 +121,7 @@ public class ForgeIntegrationConformanceTests
         (nameof(IForgeMergeQueue.PublishQueueCheckAsync), q => q.PublishQueueCheckAsync(SampleRepository, SampleSha, new ForgeQueueCheck(EForgeQueueCheckState.Queued, "t", "s", null), null)),
         (nameof(IForgeMergeQueue.AddLabelAsync), q => q.AddLabelAsync(SampleRepository, 1, "merge-queue")),
         (nameof(IForgeMergeQueue.RemoveLabelAsync), q => q.RemoveLabelAsync(SampleRepository, 1, "merge-queue")),
+        (nameof(IForgeMergeQueue.AddAssigneesAsync), q => q.AddAssigneesAsync(SampleRepository, 1, ["octocat"])),
         (nameof(IForgeMergeQueue.PostCommentAsync), q => q.PostCommentAsync(SampleRepository, 1, "body")),
         (nameof(IForgeMergeQueue.GetClosingIssuesAsync), q => q.GetClosingIssuesAsync(SampleRepository, 1)),
         (nameof(IForgeMergeQueue.CloseIssueAsync), q => q.CloseIssueAsync(SampleRepository, 2, "Closed by #1 (merged by the merge queue).")),

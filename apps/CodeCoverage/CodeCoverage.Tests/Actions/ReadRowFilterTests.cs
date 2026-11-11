@@ -96,7 +96,7 @@ public class ReadRowFilterTests : CoverageRavenTest
     }
 
     /// <summary>Builds a real actions class, handing it the given visibility and session by parameter type.</summary>
-    private static T CreateActions<T>(ISparkVisibility visibility, IAsyncDocumentSession session)
+    private static T CreateActions<T>(ISparkVisibility visibility, IAsyncDocumentSession session, params object[] others)
     {
         var ctor = typeof(T).GetConstructors().OrderByDescending(c => c.GetParameters().Length).First();
         var args = ctor.GetParameters()
@@ -104,6 +104,7 @@ public class ReadRowFilterTests : CoverageRavenTest
             {
                 if (p.ParameterType == typeof(ISparkVisibility)) return visibility;
                 if (p.ParameterType == typeof(IAsyncDocumentSession)) return session;
+                if (others.FirstOrDefault(p.ParameterType.IsInstanceOfType) is { } other) return other;
                 try { return Substitute.For([p.ParameterType], null); }
                 catch { return null; }
             })
@@ -254,6 +255,61 @@ public class ReadRowFilterTests : CoverageRavenTest
         rows.Select(r => r.Source).Should().Equal(11, 10);
         await new Func<Task>(() => actions.Repository_BackportAttempts(ParentArgs("Account", "Accounts/github/1")))
             .Should().ThrowExactlyAsync<SparkQueryParentRequiredException>();
+    }
+
+    [Fact]
+    public async Task BackportAttempts_Held_lists_the_held_ones_the_viewer_authored_administers_or_manages()
+    {
+        using var store = GetDocumentStore();
+        await SeedAsync(store);
+        var publicId = Repository.DocumentId(EForgeProvider.GitHub, PublicRepo);
+        var privateId = Repository.DocumentId(EForgeProvider.GitHub, PrivateRepo);
+        using (var seed = store.OpenAsyncSession())
+        {
+            // Segment F: 20 is the viewer's own, 21 someone else's, 22 not held, 23 in a repository the viewer administers,
+            // 24 in one the viewer cannot see, 25 in one whose owner the viewer manages.
+            foreach (var (repo, source, outcome, author, day) in new[]
+                     {
+                         (PublicRepo, 20, BackportAttempt.Held, "Viewer", 3), (PublicRepo, 21, BackportAttempt.Held, "someone", 4),
+                         (PublicRepo, 22, BackportAttempt.Opened, "viewer", 5), (PrivateRepo, 23, BackportAttempt.Held, (string?)null, 6),
+                         (OthersPrivateRepo, 24, BackportAttempt.Held, "viewer", 7), (OthersPrivateRepo + 1, 25, BackportAttempt.Held, null, 8),
+                     })
+                await seed.StoreAsync(new BackportAttempt
+                {
+                    Repository = Repository.DocumentId(EForgeProvider.GitHub, repo), Source = source, Branch = "release/dotnet-11.x",
+                    Outcome = outcome, SourceAuthor = author, AttemptedAtUtc = new DateTime(2026, 11, day, 12, 0, 0, DateTimeKind.Utc),
+                }, BackportAttempt.DocumentId(EForgeProvider.GitHub, repo, source, "release/dotnet-11.x"));
+            await seed.StoreAsync(new Repository
+            {
+                GitHubId = OthersPrivateRepo + 1, Name = "managed", FullName = "team/managed", OwnerLogin = "team", IsPrivate = true,
+            }, Repository.DocumentId(EForgeProvider.GitHub, OthersPrivateRepo + 1));
+            await seed.SaveChangesAsync();
+        }
+
+        var managedId = Repository.DocumentId(EForgeProvider.GitHub, OthersPrivateRepo + 1);
+        var visibility = Substitute.For<ISparkVisibility>();
+        visibility.GetVisibleRepositoryIdsAsync().Returns([publicId, privateId, managedId]);
+        visibility.GetAdministeredRepositoryIdsAsync().Returns([privateId]);
+        visibility.GetManagedOwnersAsync().Returns([new ForgeOwner(EForgeProvider.GitHub, "team").ToString()]);
+        var access = Substitute.For<IForgeAccessService>();
+        access.Provider.Returns(EForgeProvider.GitHub);
+        access.GetViewerAccountAsync(Arg.Any<CancellationToken>()).Returns(new ForgeViewerAccount("viewer", true, EForgeCredentialState.Ok));
+
+        using var session = store.OpenAsyncSession();
+        var actions = CreateActions<BackportAttemptActions>(visibility, session, new List<IForgeAccessService> { access });
+        var rows = (await actions.BackportAttempts_Held(ParentArgs("Repository", publicId))).ToList();
+
+        rows.Select(r => r.Source).Should().Equal(25, 23, 20);
+    }
+
+    [Fact]
+    public async Task BackportAttempts_Held_is_empty_for_a_viewer_who_sees_no_repository()
+    {
+        using var store = GetDocumentStore();
+        using var session = store.OpenAsyncSession();
+        var actions = CreateActions<BackportAttemptActions>(VisibilityFor(session), session, new List<IForgeAccessService>());
+
+        (await actions.BackportAttempts_Held(ParentArgs("Repository", "Repositories/github/1"))).Should().BeEmpty();
     }
 
     [Fact]

@@ -250,6 +250,13 @@ public interface IForgeMergeQueue
     /// <summary>Removes a label; false when it was not there.</summary>
     Task<bool> RemoveLabelAsync(Repository repository, int number, string label, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Assigns people to the pull request (release lines recovery plan, segment F: who fixes a held backport). The forge
+    /// leaves out a login that cannot be assigned (no access to the repository); nothing is unassigned.
+    /// </summary>
+    Task AddAssigneesAsync(Repository repository, int number, IReadOnlyCollection<string> logins, CancellationToken cancellationToken = default)
+        => throw new NotSupportedException("This forge cannot assign pull requests.");
+
     /// <summary>Posts a new comment (never edits one) and returns its id.</summary>
     Task<long> PostCommentAsync(Repository repository, int number, string body, CancellationToken cancellationToken = default);
 

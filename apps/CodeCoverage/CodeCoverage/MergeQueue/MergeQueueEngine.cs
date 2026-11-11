@@ -55,6 +55,7 @@ public partial class MergeQueueEngine : IMergeQueueEngine
     [Inject] private readonly IEnumerable<IForgeInstallationPermissions> permissionSources;
     [Inject] private readonly IGitWriterSidecar writer;
     [Inject] private readonly PackageVersioning.IBackportTrialPicks trialPicks;
+    [Inject] private readonly PackageVersioning.IBackportAttention attention;
     [Inject] private readonly IMessageOutbox outbox;
     [Inject] private readonly TimeProvider time;
     [Inject] private readonly IOptions<MergeQueueOptions> options;
@@ -176,6 +177,7 @@ public partial class MergeQueueEngine : IMergeQueueEngine
                         await RestartAsync(context, entry, $"{branch} moved to {Short(baseSha)}; rebasing again.", ct);
                     else if (entry.State == EMergeQueueEntryState.Held)
                     {
+                        await LeaveHoldAsync(context, entry, ct);
                         entry.PrepareAttempts = 0;
                         // As ResumeAsync: the hold's reason no longer applies to the new run.
                         entry.EvictionReason = null;
@@ -262,6 +264,7 @@ public partial class MergeQueueEngine : IMergeQueueEngine
             EMergeQueueStep.Merge => () => MergeAsync(context, entry, ct),
             EMergeQueueStep.PollMerge => () => PollMergeAsync(context, entry, ct),
             EMergeQueueStep.Timeout => () => TimeoutAsync(context, entry, ct),
+            EMergeQueueStep.HeldReminder => () => RemindAsync(context, entry, ct),
             _ => () => Task.CompletedTask,
         }, ct);
 
@@ -276,6 +279,7 @@ public partial class MergeQueueEngine : IMergeQueueEngine
         EMergeQueueStep.PollChecks => state == EMergeQueueEntryState.AwaitingChecks,
         EMergeQueueStep.Merge or EMergeQueueStep.PollMerge => state == EMergeQueueEntryState.Merging,
         EMergeQueueStep.Timeout => state is EMergeQueueEntryState.Regenerating or EMergeQueueEntryState.AwaitingChecks,
+        EMergeQueueStep.HeldReminder => state == EMergeQueueEntryState.Held,
         _ => false,
     };
 
@@ -347,6 +351,10 @@ public partial class MergeQueueEngine : IMergeQueueEngine
         await StartNextAsync(context, entry.BaseBranch, ct);
         if (entry.State == EMergeQueueEntryState.Queued && entry.QueueCheckSha is null)
             await PublishCheckAsync(context, entry, ct);
+        // Segment F: behind a held backport, it says so.
+        if (entry.State == EMergeQueueEntryState.Queued && context.Document.LaneFor(entry.BaseBranch).Current is { } current
+            && await session.LoadAsync<MergeQueueEntry>(current, ct) is { State: EMergeQueueEntryState.Held } held)
+            await AttentionAsync(async () => { await attention.BlockedAsync(repository, held, entry, ct); return true; }, held);
     }
 
     /// <summary>Resets the per-pull-request document for a new run, keeping the earlier runs' outcomes.</summary>
@@ -614,13 +622,78 @@ public partial class MergeQueueEngine : IMergeQueueEngine
         entry.EvictionPaths = [.. paths ?? []];
         await AbandonRunAsync(context, entry, ct);
         Transition(entry, EMergeQueueEntryState.Held, $"held ({reason})");
+        entry.HeldSinceUtc = Now;
+        entry.HeldReminders = 0;
         await PublishCheckAsync(context, entry, ct);
+
+        // Segment F: who is asked, the label, the held list's row and the blocked checks behind it.
+        var waiting = new List<MergeQueueEntry>();
+        foreach (var id in context.Document.LaneFor(entry.BaseBranch).Waiting)
+            if (await session.LoadAsync<MergeQueueEntry>(id, ct) is { } behind)
+                waiting.Add(behind);
+        var asked = await AttentionAsync(() => attention.HeldAsync(context.Repository, entry, waiting, ct), entry) ?? string.Empty;
+
         var checks = reason is "checks-failed" or "checks-timeout" ? ", or re-run its checks until they pass," : string.Empty;
         await BestEffortAsync(() => context.Queue.PostCommentAsync(context.Repository, entry.Number,
             $"The merge queue holds this backport: {message}\n\n`{entry.BaseBranch}` takes its backports in the order they merged, so the ones "
             + $"behind this one wait for it. Push a fix to `{entry.HeadBranch}`{checks} and the queue takes it up again by itself. "
-            + "`/dequeue` lets the line go on without it.", ct), "comment");
+            + "`/dequeue` lets the line go on without it." + (asked.Length > 0 ? $"\n\n{asked}" : string.Empty), ct), "comment");
+        await ScheduleAsync(entry, EMergeQueueStep.HeldReminder, ReminderDelay(), ct);
         logger.LogInformation("Merge queue: holding #{Number} in {Repository} on {Line}: {Reason}", entry.Number, context.Repository.FullName, entry.BaseBranch, reason);
+    }
+
+    /// <summary>Q8: a held backport's people are reminded after this many working days, and the code owners after twice that.</summary>
+    internal const int ReminderWorkingDays = 2;
+
+    /// <summary>Until <see cref="ReminderWorkingDays"/> working days (Monday to Friday, UTC) from now.</summary>
+    private TimeSpan ReminderDelay() => AddWorkingDays(Now, ReminderWorkingDays) - Now;
+
+    internal static DateTime AddWorkingDays(DateTime from, int days)
+    {
+        var at = from;
+        while (days > 0)
+        {
+            at = at.AddDays(1);
+            if (at.DayOfWeek is not (DayOfWeek.Saturday or DayOfWeek.Sunday)) days--;
+        }
+        return at;
+    }
+
+    /// <summary>A reminder for a backport still held (segment F): the first asks again, the second asks the code owners.</summary>
+    private async Task RemindAsync(Context context, MergeQueueEntry entry, CancellationToken ct)
+    {
+        entry.HeldReminders++;
+        var reminder = entry.HeldReminders;
+        if (await AttentionAsync(() => attention.ReminderAsync(context.Repository, entry, reminder, ct), entry) is { } text)
+        {
+            entry.Note(Now, $"reminder {reminder.ToString(CultureInfo.InvariantCulture)} for the held backport");
+            await BestEffortAsync(() => context.Queue.PostCommentAsync(context.Repository, entry.Number, text, ct), "reminder comment");
+        }
+        if (reminder < 2)
+            await ScheduleAsync(entry, EMergeQueueStep.HeldReminder, ReminderDelay(), ct);
+    }
+
+    /// <summary>The hold ends (the backport goes on, or leaves the queue): its label and the blocked checks go.</summary>
+    private async Task LeaveHoldAsync(Context context, MergeQueueEntry entry, CancellationToken ct)
+    {
+        if (entry.HeldSinceUtc is null) return;
+        entry.HeldSinceUtc = null;
+        entry.HeldReminders = 0;
+        await AttentionAsync(async () => { await attention.ReleasedAsync(context.Repository, entry, ct); return true; }, entry);
+    }
+
+    /// <summary>Segment F is never a reason for the queue to fail: what it cannot do, it logs.</summary>
+    private async Task<T?> AttentionAsync<T>(Func<Task<T>> action, MergeQueueEntry entry)
+    {
+        try
+        {
+            return await action();
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogWarning(ex, "Merge queue: the held backport's attention failed for {Entry}", entry.Id);
+            return default;
+        }
     }
 
     /// <summary>
@@ -629,6 +702,7 @@ public partial class MergeQueueEngine : IMergeQueueEngine
     /// </summary>
     private async Task ResumeAsync(Context context, MergeQueueEntry entry, string sha, CancellationToken ct)
     {
+        await LeaveHoldAsync(context, entry, ct);
         entry.PinnedHeadSha = sha;
         entry.ExpectedHeadSha = sha;
         Remember(entry, sha);
@@ -655,6 +729,7 @@ public partial class MergeQueueEngine : IMergeQueueEngine
         var state = await context.Queue.GetCheckStateAsync(context.Repository, entry.FinalSha, ct);
         if (CheckGate.Evaluate(state, entry.Config.CheckExclusions, entry.RequiredChecks, entry.ExpectedChecks).Verdict != ECheckVerdict.Passed) return;
 
+        await LeaveHoldAsync(context, entry, ct);
         entry.EvictionReason = null;
         entry.EvictionMessage = null;
         entry.EvictionPaths = [];
@@ -1597,7 +1672,10 @@ public partial class MergeQueueEngine : IMergeQueueEngine
                 await PublishCheckAsync(context, entry, ct);
                 return;
 
-            case ECheckVerdict.Failed when entry.CheckRetries < entry.Config.RetryFlaky:
+            // Segment F (Q8): a backport that would be held gets one automatic re-run before anyone is asked, even under
+            // `retryFlaky: 0`.
+            case ECheckVerdict.Failed when entry.CheckRetries < entry.Config.RetryFlaky
+                || (entry.CheckRetries == 0 && entry.Config.RetryFlaky == 0 && await HoldsAsync(context, entry, ct)):
                 // D9: the re-run waits until nothing else is running. GitHub refuses to re-run a job while its
                 // workflow run is still in progress (403 "The workflow run containing this job is already running",
                 // PR #579, 2026-11-06), which the forge reads as a missing permission and evicted the entry.
@@ -1857,6 +1935,7 @@ public partial class MergeQueueEngine : IMergeQueueEngine
     /// <param name="offer">The pull request may be queued again: its check keeps the "Add to merge queue" button (§0 O30).</param>
     private async Task EndAsync(Context context, MergeQueueEntry entry, EMergeQueueEntryState state, string? message, CancellationToken ct, bool offer = false)
     {
+        await LeaveHoldAsync(context, entry, ct);
         if (message is not null) entry.EvictionMessage = message;
         await AbandonRunAsync(context, entry, ct);
         Transition(entry, state, message ?? state.ToString());

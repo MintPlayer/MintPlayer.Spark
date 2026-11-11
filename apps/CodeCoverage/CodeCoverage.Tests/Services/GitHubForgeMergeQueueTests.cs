@@ -1481,6 +1481,32 @@ public class GitHubForgeMergeQueueTests
         (await queue.PostCommentAsync(Target(), 1, "Queued.")).Should().Be(99);
     }
 
+    [Fact]
+    public async Task Assignees_are_added_at_most_ten_per_call_and_a_refusal_is_an_access_failure()
+    {
+        string? posted = null;
+        var github = new StubGitHub()
+            .On(HttpMethod.Post, $"{Repo}/issues/1/assignees", (_, body) =>
+            {
+                posted = body;
+                return StubHttpMessageHandler.Json(HttpStatusCode.Created, """{"id":1,"number":1,"title":"Backport","state":"open","assignees":[]}""");
+            })
+            .On(HttpMethod.Post, $"{Repo}/issues/2/assignees", HttpStatusCode.Forbidden,
+                """{"message":"Resource not accessible by integration","documentation_url":"https://docs.github.com/rest","status":"403"}""");
+        var queue = Queue(github);
+
+        await queue.AddAssigneesAsync(Target(), 1, [.. Enumerable.Range(1, 12).Select(i => $"user{i}")]);
+        var assignees = System.Text.Json.JsonDocument.Parse(posted!).RootElement.GetProperty("assignees").EnumerateArray().Select(a => a.GetString()).ToList();
+        assignees.Should().Equal([.. Enumerable.Range(1, 10).Select(i => $"user{i}")]);
+
+        await Throws<ForgeAccessDeniedException>(() => queue.AddAssigneesAsync(Target(), 2, ["octocat"]));
+
+        // Nobody to assign: nothing is sent.
+        var calls = github.Calls.Count;
+        await queue.AddAssigneesAsync(Target(), 3, []);
+        github.Calls.Count.Should().Be(calls);
+    }
+
     // ── The writer's credential (O3, T9) ─────────────────────────────────────────────────────────
 
     private static ForgePullRequest Pull(long? headRepositoryId, string? headFullName, bool maintainerCanModify)

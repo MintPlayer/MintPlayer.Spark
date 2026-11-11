@@ -76,7 +76,14 @@ public sealed record ForgePullRequestText(
     bool Merged,
     bool AuthorIsBot,
     string? MergeCommitSha,
-    IReadOnlyList<string> Labels);
+    IReadOnlyList<string> Labels)
+{
+    /// <summary>Who opened it; null when the forge does not say (a deleted account).</summary>
+    public string? AuthorLogin { get; init; }
+
+    /// <summary>Its head is in another repository than its base (a fork, or a deleted one).</summary>
+    public bool HeadIsFork { get; init; }
+}
 
 /// <summary>An issue and its label names.</summary>
 public sealed record ForgeIssue(int Number, IReadOnlyList<string> Labels);
