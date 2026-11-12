@@ -116,16 +116,32 @@ public partial class SetUpFeaturesAction : SparkCustomAction
                 }
             }
 
+            // The older release lines a package still targets (docs/onboarding_line_cuts_PRD.md D2): one question each, since
+            // a multi-target may be compatibility rather than support. There are few, and a prompt needs no picker type.
+            var olderLines = new List<string>();
+            var create = manager.GetTranslatedMessage("onboarding.olderLine.create");
+            var skip = manager.GetTranslatedMessage("onboarding.olderLine.skip");
+            foreach (var line in planned.OfferedLines)
+            {
+                manager.Retry.Action(manager.GetTranslatedMessage("onboarding.olderLine.title", line.Branch), [create, skip], create,
+                    message: manager.GetTranslatedMessage("onboarding.olderLine.message", line.Branch, line.TargetFramework ?? "", string.Join(", ", line.Packages)),
+                    cancellable: true);
+                var answer = manager.Retry.Result!.Option;
+                if (answer == RetryResult.CancelOption) return;
+                if (answer == create) olderLines.Add(line.Branch);
+            }
+            var cuts = planned.Cuts.Concat(planned.OfferedLines.Where(o => olderLines.Contains(o.Branch))).ToList();
+
             // Step 2: the plan, for a confirmation.
             VersioningOnboardingOutcome outcome;
             try
             {
                 var open = manager.GetTranslatedMessage("onboarding.open");
                 manager.Retry.Action(manager.GetTranslatedMessage("onboarding.confirmTitle"), [open], open,
-                    message: Summary(planned, rulesetPlans, byHand), cancellable: true);
+                    message: Summary(planned, rulesetPlans, byHand, cuts), cancellable: true);
                 if (manager.Retry.Result!.Option == RetryResult.CancelOption) return;
 
-                outcome = await onboarding.OnboardAsync(repository, features, cancellationToken);
+                outcome = await onboarding.OnboardAsync(repository, features, olderLines, cancellationToken);
             }
             catch (Exception ex) when (ex is GitWriterUnavailableException or HttpRequestException)
             {
@@ -162,8 +178,10 @@ public partial class SetUpFeaturesAction : SparkCustomAction
     /// The plan as the confirmation's HTML (<see cref="HtmlMessage"/>): a list each for the features, the files, the renames
     /// and the settings switched on at the merge, the notes as lines, then the rulesets or why they are left by hand.
     /// </summary>
-    internal string Summary(OnboardingPlan plan, IReadOnlyList<RulesetPlanned>? rulesetPlans = null, string? rulesetsByHand = null)
+    internal string Summary(OnboardingPlan plan, IReadOnlyList<RulesetPlanned>? rulesetPlans = null, string? rulesetsByHand = null,
+        IReadOnlyList<OnboardingLineCut>? cuts = null)
     {
+        cuts ??= plan.Cuts;
         var html = new List<string>
         {
             HtmlMessage.Section(manager.GetTranslatedMessage("onboarding.summary.features"), plan.Features.Select(f => f.ToString())),
@@ -173,6 +191,11 @@ public partial class SetUpFeaturesAction : SparkCustomAction
         };
         if (plan.Renames.Renames.Count > 0)
             html.Add(HtmlMessage.Section(manager.GetTranslatedMessage("onboarding.summary.renames"), plan.Renames.Renames.Select(r => $"{r.From} → {r.To}")));
+        if (cuts.Count > 0)
+            html.Add(HtmlMessage.Section(manager.GetTranslatedMessage(plan.Files.Count == 0 ? "onboarding.summary.cutsNow" : "onboarding.summary.cutsOnMerge"),
+                cuts.Select(c => c.TargetFramework is null
+                    ? manager.GetTranslatedMessage("onboarding.summary.cutCurrent", c.Branch)
+                    : manager.GetTranslatedMessage("onboarding.summary.cutOlder", c.Branch, c.TargetFramework))));
         if (plan.OnMerge.Count > 0)
             html.Add(HtmlMessage.Section(manager.GetTranslatedMessage("onboarding.summary.onMerge"), plan.OnMerge.Select(o => o.ToString())));
         html.AddRange(plan.Notes.Select(HtmlMessage.Line));

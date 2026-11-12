@@ -78,7 +78,7 @@ public class SetUpFeaturesRulesetsTests : CoverageRavenTest
                 .Returns(Task.FromResult<IReadOnlySet<EOnboardingFeature>>(new HashSet<EOnboardingFeature>()));
             Onboarding.PreviewAsync(Arg.Any<Repository>(), Arg.Any<IReadOnlySet<EOnboardingFeature>>(), Arg.Any<CancellationToken>())
                 .Returns(new OnboardingPreview(new OnboardingPlan([EOnboardingFeature.MergeQueue], [], [], new LineRenamePlan([], []), [], [], "body"), null));
-            Onboarding.OnboardAsync(Arg.Any<Repository>(), Arg.Any<IReadOnlySet<EOnboardingFeature>>(), Arg.Any<CancellationToken>())
+            Onboarding.OnboardAsync(Arg.Any<Repository>(), Arg.Any<IReadOnlySet<EOnboardingFeature>>(), Arg.Any<IReadOnlyCollection<string>>(), Arg.Any<CancellationToken>())
                 .Returns(new VersioningOnboardingOutcome(VersioningOnboardingOutcome.Opened, "Opened #5.", 5));
             Manager.GetPersistentObjectAsync(FeaturesType, Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(_ => Features(false));
             Manager.GetPersistentObjectAsync(RulesetsType, Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(_ => Rulesets(null));
@@ -137,7 +137,7 @@ public class SetUpFeaturesRulesetsTests : CoverageRavenTest
             Arg.Is<string>(m => m.Contains("onboarding.summary.rulesets<ul><li>acme/widget<ul><li>Create ruleset")), true);
         Received.InOrder(() =>
         {
-            f.Onboarding.OnboardAsync(Arg.Any<Repository>(), Arg.Any<IReadOnlySet<EOnboardingFeature>>(), Arg.Any<CancellationToken>());
+            f.Onboarding.OnboardAsync(Arg.Any<Repository>(), Arg.Any<IReadOnlySet<EOnboardingFeature>>(), Arg.Any<IReadOnlyCollection<string>>(), Arg.Any<CancellationToken>());
             f.Queue.ApplyRulesetPlanAsync(Arg.Is<Repository>(r => r.Id == RepositoryId), "master", Arg.Any<MergeQueueRulesetPlan>(), Token, Arg.Any<CancellationToken>());
         });
         f.Lease.Disposed.Should().Be(1, "the token is revoked when the chooser ends");
@@ -148,7 +148,7 @@ public class SetUpFeaturesRulesetsTests : CoverageRavenTest
     {
         var session = await SeedAsync();
         var f = new Fixture();
-        f.Onboarding.OnboardAsync(default!, default!, default)
+        f.Onboarding.OnboardAsync(default!, default!, default!, default)
             .ReturnsForAnyArgs(new VersioningOnboardingOutcome(VersioningOnboardingOutcome.Refused, "No."));
         f.Manager.Retry.Result.Returns(
             new RetryResult { Option = "onboarding.plan", PersistentObject = Features(true) },
@@ -209,6 +209,39 @@ public class SetUpFeaturesRulesetsTests : CoverageRavenTest
             .Definition.Include.Should().Equal(["refs/heads/release/*-*.x"], "ruleset 3 requires the lines' checks (R2)");
     }
 
+    /// <summary>
+    /// docs/onboarding_line_cuts_PRD.md D2, D6: one question per offered older line; the chosen ones go to the onboarding
+    /// and join the confirmation beside the current line.
+    /// </summary>
+    [Fact]
+    public async Task LineCuts_each_offered_older_line_is_asked_and_the_chosen_ones_are_created()
+    {
+        var session = await SeedAsync();
+        var f = new Fixture();
+        f.Onboarding.PreviewAsync(Arg.Any<Repository>(), Arg.Any<IReadOnlySet<EOnboardingFeature>>(), Arg.Any<CancellationToken>())
+            .Returns(new OnboardingPreview(new OnboardingPlan([EOnboardingFeature.ReleaseLines], [], [], new LineRenamePlan([], []), [], [], "body")
+            {
+                Cuts = [new OnboardingLineCut("release/dotnet-11.x", null, ["Acme.Tools"])],
+                OfferedLines = [new OnboardingLineCut("release/dotnet-10.x", "net10.0", ["Acme.Tools"]), new OnboardingLineCut("release/dotnet-9.x", "net9.0", ["Acme.Tools"])],
+            }, null));
+        IReadOnlyCollection<string>? chosen = null;
+        f.Onboarding.OnboardAsync(Arg.Any<Repository>(), Arg.Any<IReadOnlySet<EOnboardingFeature>>(), Arg.Do<IReadOnlyCollection<string>>(c => chosen = c), Arg.Any<CancellationToken>())
+            .Returns(new VersioningOnboardingOutcome(VersioningOnboardingOutcome.Merged, "Applied.", null));
+        f.Manager.Retry.Result.Returns(
+            new RetryResult { Option = "onboarding.plan", PersistentObject = Features(false) },
+            new RetryResult { Option = "onboarding.olderLine.create" },
+            new RetryResult { Option = "onboarding.olderLine.skip" },
+            new RetryResult { Option = "onboarding.open" });
+
+        await f.Action(session).ExecuteAsync(OnRepository());
+
+        f.Manager.Retry.Received(2).Action("onboarding.olderLine.title", Arg.Any<string[]>(), "onboarding.olderLine.create", null, "onboarding.olderLine.message", true);
+        f.Manager.Received(1).GetTranslatedMessage("onboarding.olderLine.message", Arg.Is<object[]>(a => a.SequenceEqual(new object[] { "release/dotnet-9.x", "net9.0", "Acme.Tools" })));
+        chosen.Should().Equal(["release/dotnet-10.x"]);
+        f.Manager.Retry.Received(1).Action("onboarding.confirmTitle", Arg.Any<string[]>(), "onboarding.open", null,
+            Arg.Is<string>(m => m.Contains("onboarding.summary.cutsNow") && m.Contains("onboarding.summary.cutCurrent") && m.Contains("onboarding.summary.cutOlder")), true);
+    }
+
     [Fact]
     public async Task Without_the_merge_queue_there_is_no_popup()
     {
@@ -221,7 +254,7 @@ public class SetUpFeaturesRulesetsTests : CoverageRavenTest
         await f.Action(session).ExecuteAsync(OnRepository());
 
         await f.OAuth.DidNotReceiveWithAnyArgs().AuthorizeAsync(default!, default!, default);
-        await f.Onboarding.ReceivedWithAnyArgs(1).OnboardAsync(default!, default!, default);
+        await f.Onboarding.ReceivedWithAnyArgs(1).OnboardAsync(default!, default!, default!, default);
     }
 
     [Fact]
@@ -239,6 +272,6 @@ public class SetUpFeaturesRulesetsTests : CoverageRavenTest
         await f.OAuth.DidNotReceiveWithAnyArgs().AuthorizeAsync(default!, default!, default);
         f.Manager.Retry.Received(1).Action("onboarding.confirmTitle", Arg.Any<string[]>(), "onboarding.open", null,
             Arg.Is<string>(m => m.Contains("onboarding.summary.rulesetsByHand")), true);
-        await f.Onboarding.ReceivedWithAnyArgs(1).OnboardAsync(default!, default!, default);
+        await f.Onboarding.ReceivedWithAnyArgs(1).OnboardAsync(default!, default!, default!, default);
     }
 }

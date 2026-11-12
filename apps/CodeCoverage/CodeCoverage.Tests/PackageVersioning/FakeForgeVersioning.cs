@@ -56,8 +56,12 @@ internal sealed class FakeForgeVersioning : IForgeVersioning
         return Task.FromResult(ForgeWriteOutcome.Created);
     }
 
+    /// <summary>Branches whose creation the forge refuses with this message (a ruleset that does not admit the App).</summary>
+    public Dictionary<string, string> BranchRefusals { get; } = new(StringComparer.Ordinal);
+
     public Task<ForgeWriteOutcome> CreateBranchAsync(Repository repository, string branch, string sha, CancellationToken cancellationToken = default)
     {
+        if (BranchRefusals.TryGetValue(branch, out var refusal)) throw new ForgeRequestException(refusal, 422);
         if (Branches.Any(b => b.Branch == branch)) return Task.FromResult(ForgeWriteOutcome.Exists);
         Branches.Add((branch, sha));
         return Task.FromResult(ForgeWriteOutcome.Created);

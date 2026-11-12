@@ -270,6 +270,17 @@ The files tools rewrite (the model synchronize's `apps/*/*/App_Data/**`, `SPARK_
 goldens, `SPARK_UPDATE_ROUTE_SNAPSHOT`'s `**/RouteSnapshots/*.txt`) are `eol=lf` in `.gitattributes` and
 `.editorconfig`, so a regeneration never shows a line-ending-only change. A new generated-file location
 belongs in both.
+
+**Regenerate the goldens in the same commit as the change that moves them.** They are checked in
+`MintPlayer.Spark.Tests` (`tests/MintPlayer.Spark.Tests/Layering/`), not in the app's own test project, so a targeted run
+of the app's tests never sees them and only CI goes red (PR #637, 2026-11-12):
+- An edit to any `apps/*/*/App_Data/translations.json` changes `Layering/Golden/<app>-translations.golden.txt`
+  (`SparkTranslationLayersTests`); a change to how actions compose changes `qna-actions`/`layered-actions.golden.txt`
+  (`SparkLayersGoldenTests`). Run
+  `SPARK_UPDATE_GOLDEN=1 dotnet test tests/MintPlayer.Spark.Tests --filter "FullyQualifiedName~SparkTranslationLayersTests|FullyQualifiedName~SparkLayersGoldenTests"`,
+  review the diff, and commit it with the change.
+- A new endpoint changes the route snapshot (`SPARK_UPDATE_ROUTE_SNAPSHOT`) and `CsrfSurfaceTests`.
+
 - **A wrong major is still permanent** on npm and NuGet. If a platform upgrade PR should not
   move a major, set `versioning.packages.<id>.anchor` in `coverage.yml` rather than editing a
   version.

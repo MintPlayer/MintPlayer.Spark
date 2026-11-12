@@ -47,6 +47,12 @@ public class VersioningOnboardingState
     /// <summary>#571 D2: the old line branches renamed once the pull request merges.</summary>
     public List<OnboardingRename> Renames { get; set; } = [];
 
+    /// <summary>docs/onboarding_line_cuts_PRD.md D5: the release lines created from the merge commit, after the renames.</summary>
+    public List<string> Cuts { get; set; } = [];
+
+    /// <summary>D2: the offered older lines the owner chose; a rebuild plans them again.</summary>
+    public List<string> OlderLines { get; set; } = [];
+
     /// <summary>#571 D3: the merge commit the on-merge steps ran for; null while they are pending.</summary>
     public string? MergeHandledAt { get; set; }
 

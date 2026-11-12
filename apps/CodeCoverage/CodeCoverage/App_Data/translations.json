@@ -3745,6 +3745,28 @@
       "fr": "Choisissez au moins une fonctionnalité.",
       "nl": "Kies minstens één functie."
     },
+    "olderLine": {
+      "create": {
+        "en": "Create it",
+        "fr": "La créer",
+        "nl": "Aanmaken"
+      },
+      "message": {
+        "en": "Packages that still target {1}: {2}. If you still support {1}, the bot creates the release line {0}, so fixes can be backported and released there. Skip it if the target is only kept for compatibility.",
+        "fr": "Packages qui ciblent encore {1} : {2}. Si vous supportez encore {1}, le bot crée la ligne de release {0}, afin d'y rétroporter et publier des correctifs. Ignorez-la si la cible n'est gardée que pour la compatibilité.",
+        "nl": "Packages die nog op {1} gericht zijn: {2}. Als je {1} nog ondersteunt, maakt de bot de release-lijn {0} aan, zodat fixes daar gebackport en gereleased kunnen worden. Sla ze over als het target alleen voor compatibiliteit blijft."
+      },
+      "skip": {
+        "en": "Skip",
+        "fr": "Ignorer",
+        "nl": "Overslaan"
+      },
+      "title": {
+        "en": "Create {0}?",
+        "fr": "Créer {0} ?",
+        "nl": "{0} aanmaken?"
+      }
+    },
     "open": {
       "en": "Open the pull request",
       "fr": "Ouvrir la pull request",
@@ -3756,6 +3778,26 @@
       "nl": "Plannen"
     },
     "summary": {
+      "cutCurrent": {
+        "en": "{0} (the current line)",
+        "fr": "{0} (la ligne actuelle)",
+        "nl": "{0} (de huidige lijn)"
+      },
+      "cutOlder": {
+        "en": "{0} (still targets {1})",
+        "fr": "{0} (cible encore {1})",
+        "nl": "{0} (richt zich nog op {1})"
+      },
+      "cutsNow": {
+        "en": "Release lines created now:",
+        "fr": "Lignes de release créées maintenant :",
+        "nl": "Release-lijnen nu aangemaakt:"
+      },
+      "cutsOnMerge": {
+        "en": "Release lines created when it merges:",
+        "fr": "Lignes de release créées à la fusion :",
+        "nl": "Release-lijnen aangemaakt bij het mergen:"
+      },
       "features": {
         "en": "Features:",
         "fr": "Fonctionnalités :",
