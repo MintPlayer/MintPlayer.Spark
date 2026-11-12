@@ -64,7 +64,62 @@ public class OnboardingPlannerTests
         CoverageYml(plan).Should().Contain("versioning:\n  lines: {}");
     }
 
-    private const string PublishWorkflow = "on: push\njobs:\n  pack:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v5\n"
+    private static InMemoryTree MultiTargetRepository(string targets, string? coverageYml = "gate:\n  patchTarget: 80\n")
+    {
+        var tree = new InMemoryTree()
+            .Add("src/Tools/Tools.csproj", $"<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFrameworks>{targets}</TargetFrameworks>\n"
+                + "    <PackageId>Acme.Tools</PackageId>\n    <Version>11.2.0</Version>\n  </PropertyGroup>\n</Project>\n")
+            .Add("src/Other/Other.csproj", "<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>net11.0</TargetFramework>\n"
+                + "    <PackageId>Acme.Other</PackageId>\n    <Version>11.0.0</Version>\n  </PropertyGroup>\n</Project>\n");
+        return coverageYml is null ? tree : tree.Add("coverage.yml", coverageYml);
+    }
+
+    /// <summary>
+    /// docs/onboarding_line_cuts_PRD.md D1, D2 (the Tools onboarding, 2026-11-12): the current line of each anchored major
+    /// with no branch is created; a lower target framework a package still has is only offered, and becomes a cut once chosen.
+    /// </summary>
+    [Fact]
+    public async Task LineCuts_the_current_line_is_created_and_lower_targets_are_offered_until_chosen()
+    {
+        var plan = await OnboardingPlanner.PlanAsync(MultiTargetRepository("netstandard2.0;net9.0;net10.0;net11.0"), Inputs(EOnboardingFeature.ReleaseLines));
+
+        plan.Cuts.Select(c => (c.Branch, c.TargetFramework, string.Join(",", c.Packages))).Should().Equal([("release/dotnet-11.x", (string?)null, "Acme.Other,Acme.Tools")]);
+        plan.OfferedLines.Select(c => (c.Branch, c.TargetFramework)).Should().Equal([("release/dotnet-10.x", "net10.0"), ("release/dotnet-9.x", "net9.0")],
+            "netstandard names no major, and offers sort by branch");
+        plan.Body.Should().Contain("- `release/dotnet-11.x` (the current line): `Acme.Other`, `Acme.Tools`.")
+            .And.Contain("Not created, as chosen").And.Contain("- `release/dotnet-10.x`: still targets net10.0.")
+            .And.Contain("- 1 release line(s) are created from the merge commit");
+
+        var chosen = await OnboardingPlanner.PlanAsync(MultiTargetRepository("netstandard2.0;net9.0;net10.0;net11.0"),
+            Inputs(EOnboardingFeature.ReleaseLines) with { OlderLines = ["release/dotnet-10.x", "release/dotnet-8.x"] });
+        chosen.Cuts.Select(c => c.Branch).Should().Equal(["release/dotnet-11.x", "release/dotnet-10.x"], "a chosen line no package offers is ignored");
+        chosen.Body.Should().Contain("- `release/dotnet-10.x` (still targets net10.0): `Acme.Tools`.").And.Contain("- `release/dotnet-9.x`: still targets net9.0.");
+    }
+
+    [Fact]
+    public async Task LineCuts_a_line_that_exists_or_that_a_rename_produces_is_not_created_and_an_anchored_package_is_left_to_the_run()
+    {
+        var existing = await OnboardingPlanner.PlanAsync(MultiTargetRepository("net6.0;net10.0;net11.0"),
+            Inputs(EOnboardingFeature.ReleaseLines) with { Branches = ["master", "release/dotnet-11.x", "release/6.0"] });
+        existing.Renames.Renames.Select(r => r.To).Should().Equal(["release/dotnet-6.x"]);
+        existing.Cuts.Should().BeEmpty();
+        existing.OfferedLines.Select(c => c.Branch).Should().Equal(["release/dotnet-10.x"], "6.x is what the rename produces");
+
+        var anchored = await OnboardingPlanner.PlanAsync(MultiTargetRepository("net10.0;net11.0", "versioning:\n  lines: {}\n  packages:\n    Acme.Tools:\n      anchor: free\n"),
+            Inputs(EOnboardingFeature.ReleaseLines));
+        anchored.Cuts.Select(c => string.Join(",", c.Packages)).Should().Equal(["Acme.Other"]);
+        anchored.OfferedLines.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task LineCuts_without_release_lines_nothing_is_created()
+    {
+        var plan = await OnboardingPlanner.PlanAsync(MultiTargetRepository("net10.0;net11.0"), Inputs(EOnboardingFeature.Versioning));
+
+        (plan.Cuts.Count, plan.OfferedLines.Count).Should().Be((0, 0));
+    }
+
+    private const string PublishWorkflow ="on: push\njobs:\n  pack:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v5\n"
         + "      - name: Version the packages\n        uses: MintPlayer/MintPlayer.Spark/apps/CodeCoverage/versioning-action@versioning-v1\n"
         + "      - run: dotnet pack\n      - run: dotnet nuget push '*.nupkg' --source https://api.nuget.org/v3/index.json --skip-duplicate\n";
 

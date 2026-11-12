@@ -608,9 +608,19 @@ Tests (`OnboardingPlannerTests`): the Tools shape end to end with a deploy workf
 changing nothing; four filters left alone; the `branches-ignore` and negation notes; CRLF; no lines, no edits; the
 merge-queue key added, and kept as a note for an owner's own list. All 160 onboarding tests pass.
 
-**Next for Tools:** after the deploy, #53 is rebuilt; ruleset 27099667 drops to 0 approvals (Spark's choice); the
-owner may create `release/dotnet-10.x` and `release/dotnet-11.x` from master; then .NET 11 GA on master and
-`/release`.
+**G3-G5 shipped in #636** (347fd05b6, deployed). #53 was rebuilt and merged as bd6559cb8; ruleset 27099667 was saved
+at 0 approvals.
+
+**G6, no person can create a line, and the onboarding did not.** After #53 merged, Tools had only
+`release/dotnet-6.x` and `7.x`: run 43186708348 cut nothing (`ReleaseBranchCuts.ForLinesAsync` cuts only an untagged
+major, and every Tools tag is at 11), and `POST /git/refs` for `release/dotnet-10.x`/`11.x` answered
+`422 Reference update failed` because ruleset 3 requires "Line policy" and only the App bypasses it. Owner: "Shouldn't
+the bot be creating the release lines? why does the user need to do that?". Fixed in the line-cuts PR
+([onboarding_line_cuts_PRD.md](onboarding_line_cuts_PRD.md)): the onboarding creates the current lines, and the lower
+`netX.0` lines the owner chooses, at the merge or, with nothing to change, at once.
+
+**Next for Tools:** after that deploy, run Set up features again on Tools (S2): expect `release/dotnet-11.x` and the
+chosen `release/dotnet-10.x` created at once; then .NET 11 GA on master and `/release`.
 
 ## 4. Spikes
 

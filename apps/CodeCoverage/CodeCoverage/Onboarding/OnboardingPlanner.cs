@@ -29,6 +29,9 @@ public sealed record OnboardingInputs
 
     /// <summary>Whether a package already has a version tag (it then gets no seed).</summary>
     public Func<string, CancellationToken, Task<bool>> IsTagged { get; init; } = (_, _) => Task.FromResult(false);
+
+    /// <summary>D2: the offered older lines (branch names) the owner chose to create; the others are only offered.</summary>
+    public IReadOnlyCollection<string> OlderLines { get; init; } = [];
 }
 
 /// <param name="Features">What is set up: the picked features, and versioning when release lines are.</param>
@@ -42,6 +45,15 @@ public sealed record OnboardingPlan(IReadOnlyList<EOnboardingFeature> Features, 
 {
     /// <summary>The pull request turns on <c>versioning.lines.current: promote</c> (segment T), so ruleset 3 lets the App push promotions.</summary>
     public bool PromotesLines { get; init; }
+
+    /// <summary>
+    /// The release lines the bot creates (docs/onboarding_line_cuts_PRD.md): each current line with no branch (D1), and the
+    /// older lines the owner chose from <see cref="OfferedLines"/> (D2). Created at the merge, or at once with no files (D3).
+    /// </summary>
+    public IReadOnlyList<OnboardingLineCut> Cuts { get; init; } = [];
+
+    /// <summary>D2: the older lines a package still targets, with no branch, for the owner to choose from.</summary>
+    public IReadOnlyList<OnboardingLineCut> OfferedLines { get; init; } = [];
 }
 
 /// <summary>
@@ -101,6 +113,7 @@ public static partial class OnboardingPlanner
         IReadOnlyList<VersioningSeed> seeds = [];
         var renames = new LineRenamePlan([], []);
         var promotes = false;
+        IReadOnlyList<OnboardingLineCut> cuts = [], offered = [];
 
         if (features.Contains(EOnboardingFeature.Versioning))
         {
@@ -113,8 +126,10 @@ public static partial class OnboardingPlanner
         }
         if (features.Contains(EOnboardingFeature.ReleaseLines))
         {
-            (renames, promotes, var triggers) = await ReleaseLinesAsync(overlay, inputs, notes, cancellationToken);
-            sections.Add(("Release lines", ReleaseLinesText(renames, inputs.DefaultBranch, promotes, triggers)));
+            (renames, promotes, var triggers, var current, offered) = await ReleaseLinesAsync(overlay, inputs, notes, cancellationToken);
+            var chosen = inputs.OlderLines.ToHashSet(StringComparer.Ordinal);
+            cuts = [.. current, .. offered.Where(o => chosen.Contains(o.Branch))];
+            sections.Add(("Release lines", ReleaseLinesText(renames, inputs.DefaultBranch, promotes, triggers, cuts, offered.Where(o => !chosen.Contains(o.Branch)).ToList())));
         }
         if (features.Contains(EOnboardingFeature.MergeQueue))
             sections.Add(("Merge queue", await MergeQueueAsync(overlay, inputs.DefaultBranch, features.Contains(EOnboardingFeature.ReleaseLines), notes, cancellationToken)));
@@ -130,7 +145,7 @@ public static partial class OnboardingPlanner
         var ordered = Enum.GetValues<EOnboardingFeature>().Where(features.Contains).ToList();
         var onMerge = ordered.Where(f => f is EOnboardingFeature.DependencyUpdates or EOnboardingFeature.SizeLabels).ToList();
         return new OnboardingPlan(ordered, await overlay.ChangesAsync(cancellationToken), seeds, renames, onMerge, notes,
-            Body(ordered, sections, notes, seeds, renames, onMerge, inputs.DefaultBranch)) { PromotesLines = promotes };
+            Body(ordered, sections, notes, seeds, renames, cuts, onMerge, inputs.DefaultBranch)) { PromotesLines = promotes, Cuts = cuts, OfferedLines = offered };
     }
 
     /// <summary>
@@ -139,7 +154,8 @@ public static partial class OnboardingPlanner
     /// workflow; with none or several the bot cannot tell which one proves a commit, so the lines take backports and a
     /// note says how to switch.
     /// </summary>
-    private static async Task<(LineRenamePlan Renames, bool Promotes, IReadOnlyList<string> Triggers)> ReleaseLinesAsync(OverlayTree overlay, OnboardingInputs inputs, List<string> notes,
+    private static async Task<(LineRenamePlan Renames, bool Promotes, IReadOnlyList<string> Triggers, IReadOnlyList<OnboardingLineCut> Current,
+        IReadOnlyList<OnboardingLineCut> Offered)> ReleaseLinesAsync(OverlayTree overlay, OnboardingInputs inputs, List<string> notes,
         CancellationToken cancellationToken)
     {
         var yml = await overlay.ReadTextAsync(CoverageYml.FileName, Limits.MaxManifestBytes, cancellationToken);
@@ -173,7 +189,15 @@ public static partial class OnboardingPlanner
 
         var graph = await ProjectGraphBuilder.BuildAsync(overlay, cancellationToken: cancellationToken);
         var ecosystems = graph.Packages.Select(p => Ecosystems.Of(graph, p, EmptyPins)).OfType<string>().ToHashSet(StringComparer.Ordinal);
-        return (LineRenames.Plan(inputs.Branches, inputs.DefaultBranch, ecosystems, pattern ?? ReleaseLinePattern.Default), promotes, triggers);
+        var renames = LineRenames.Plan(inputs.Branches, inputs.DefaultBranch, ecosystems, pattern ?? ReleaseLinePattern.Default);
+        if (lines is null) return (renames, promotes, triggers, [], []);
+
+        // docs/onboarding_line_cuts_PRD.md D1, D2: the lines with no branch once the renames ran.
+        var settings = VersioningYml.Parse(await overlay.ReadTextAsync(CoverageYml.FileName, Limits.MaxManifestBytes, cancellationToken)).Config?.ToSettings()
+            ?? new VersioningSettings();
+        var branches = inputs.Branches.Except(renames.Renames.Select(r => r.From), StringComparer.Ordinal).Concat(renames.Renames.Select(r => r.To)).ToList();
+        var (current, offered) = OnboardingLineCuts.Plan(graph, settings, lines, branches);
+        return (renames, promotes, triggers, current, offered);
     }
 
     /// <summary>
@@ -207,7 +231,8 @@ public static partial class OnboardingPlanner
 
     private static readonly IReadOnlyDictionary<string, string> EmptyPins = new Dictionary<string, string>(StringComparer.Ordinal);
 
-    private static string ReleaseLinesText(LineRenamePlan renames, string defaultBranch, bool promotes, IReadOnlyList<string> triggers)
+    private static string ReleaseLinesText(LineRenamePlan renames, string defaultBranch, bool promotes, IReadOnlyList<string> triggers,
+        IReadOnlyList<OnboardingLineCut> cuts, IReadOnlyList<OnboardingLineCut> declined)
     {
         var text = new StringBuilder();
         text.AppendLine(promotes
@@ -227,6 +252,18 @@ public static partial class OnboardingPlanner
             text.AppendLine().AppendLine("Not renamed:");
             foreach (var skip in renames.Skipped)
                 text.AppendLine($"- `{skip.Branch}`: {skip.Reason}.");
+        }
+        if (cuts.Count > 0)
+        {
+            text.AppendLine().AppendLine($"The bot creates these lines from the merge commit, since no person may push a new line (only the App passes its required checks):").AppendLine();
+            foreach (var cut in cuts)
+                text.AppendLine($"- `{cut.Branch}` ({cut.Reason}): {string.Join(", ", cut.Packages.Select(p => $"`{p}`"))}.");
+        }
+        if (declined.Count > 0)
+        {
+            text.AppendLine().AppendLine("Not created, as chosen (run **Set up features** again to create them):");
+            foreach (var line in declined)
+                text.AppendLine($"- `{line.Branch}`: {line.Reason}.");
         }
         return text.ToString();
     }
@@ -279,7 +316,7 @@ public static partial class OnboardingPlanner
     }
 
     private static string Body(IReadOnlyList<EOnboardingFeature> features, List<(string Heading, string Text)> sections, List<string> notes,
-        IReadOnlyList<VersioningSeed> seeds, LineRenamePlan renames, IReadOnlyList<EOnboardingFeature> onMerge, string defaultBranch)
+        IReadOnlyList<VersioningSeed> seeds, LineRenamePlan renames, IReadOnlyList<OnboardingLineCut> cuts, IReadOnlyList<EOnboardingFeature> onMerge, string defaultBranch)
     {
         var body = new StringBuilder();
         body.AppendLine($"This pull request sets up {string.Join(", ", features.Select(Name))} for this repository, as chosen on its CodeCoverage page.").AppendLine();
@@ -300,6 +337,8 @@ public static partial class OnboardingPlanner
             body.AppendLine($"- {seeds.Count} seed tag(s) are pushed at the merge commit, so each package continues from the version it has now.");
         if (renames.Renames.Count > 0)
             body.AppendLine($"- {renames.Renames.Count} line branch(es) are renamed, as listed above.");
+        if (cuts.Count > 0)
+            body.AppendLine($"- {cuts.Count} release line(s) are created from the merge commit, as listed above.");
         if (features.Contains(EOnboardingFeature.ReleaseLines))
             body.AppendLine("- Each release line without the default branch's regenerate workflow gets a pull request that adds it, so backports can regenerate lockfiles with the line's own tools.");
         body.AppendLine().AppendLine($"The bot rebuilds this pull request whenever `{defaultBranch}` moves, so it never goes stale or conflicts. Don't push to its branch: a rebuild replaces your commits. To change what it sets up, run **Set up features** again.");

@@ -99,7 +99,7 @@ public class OnboardingServiceTests : CoverageRavenTest
         var repository = await SeedRepositoryAsync(store);
         var h = Create(store);
 
-        var outcome = await h.Service.OnboardAsync(repository, new HashSet<EOnboardingFeature> { EOnboardingFeature.ReleaseLines, EOnboardingFeature.DependencyUpdates });
+        var outcome = await h.Service.OnboardAsync(repository, new HashSet<EOnboardingFeature> { EOnboardingFeature.ReleaseLines, EOnboardingFeature.DependencyUpdates }, []);
 
         outcome.Outcome.Should().Be(VersioningOnboardingOutcome.Opened, outcome.Note);
         var push = h.Writer.Requests("onboarding").Single();
@@ -116,6 +116,8 @@ public class OnboardingServiceTests : CoverageRavenTest
         state.Features.Should().BeEquivalentTo([EOnboardingFeature.ReleaseLines, EOnboardingFeature.Versioning, EOnboardingFeature.DependencyUpdates]);
         state.OnMerge.Should().Equal([EOnboardingFeature.DependencyUpdates]);
         state.Renames.Select(r => $"{r.From} -> {r.To}").Should().Equal(["release/6.0 -> release/dotnet-6.x"]);
+        state.Cuts.Should().Equal(["release/dotnet-11.x"], "the current line has no branch (docs/onboarding_line_cuts_PRD.md D1)");
+        h.Versioning.Branches.Should().BeEmpty("lines are created at the merge, from the commit that carries their triggers (D3)");
         state.Seeds.Select(s => $"{s.PackageId}@{s.Version}").Should().Equal(["Acme.Tools@11.2.0"]);
         h.Queue.RevokedTokens.Should().HaveCount(1, "the push credential is ended after the push");
     }
@@ -127,7 +129,7 @@ public class OnboardingServiceTests : CoverageRavenTest
         var repository = await SeedRepositoryAsync(store);
         var pulls = new FakeForgeDependencyUpdates();
         var forge = Repository(Head);
-        var opened = await Create(store, forge, pulls).Service.OnboardAsync(repository, new HashSet<EOnboardingFeature> { EOnboardingFeature.MergeQueue });
+        var opened = await Create(store, forge, pulls).Service.OnboardAsync(repository, new HashSet<EOnboardingFeature> { EOnboardingFeature.MergeQueue }, []);
 
         var same = Create(store, forge, pulls);
         (await same.Service.RebuildAsync(repository)).Outcome.Should().Be(VersioningOnboardingOutcome.Nothing);
@@ -155,7 +157,7 @@ public class OnboardingServiceTests : CoverageRavenTest
         (await h.Service.CurrentFeaturesAsync(repository)).Should().BeEquivalentTo([EOnboardingFeature.Versioning]);
 
         // The open pull request's choice counts.
-        var opened = await h.Service.OnboardAsync(repository, new HashSet<EOnboardingFeature> { EOnboardingFeature.MergeQueue });
+        var opened = await h.Service.OnboardAsync(repository, new HashSet<EOnboardingFeature> { EOnboardingFeature.MergeQueue }, []);
         (await Create(store, forge, pulls).Service.CurrentFeaturesAsync(repository))
             .Should().BeEquivalentTo([EOnboardingFeature.Versioning, EOnboardingFeature.MergeQueue]);
 
@@ -172,7 +174,7 @@ public class OnboardingServiceTests : CoverageRavenTest
         var repository = await SeedRepositoryAsync(store);
         var pulls = new FakeForgeDependencyUpdates();
         var forge = Repository(Head);
-        var opened = await Create(store, forge, pulls).Service.OnboardAsync(repository, new HashSet<EOnboardingFeature> { EOnboardingFeature.MergeQueue });
+        var opened = await Create(store, forge, pulls).Service.OnboardAsync(repository, new HashSet<EOnboardingFeature> { EOnboardingFeature.MergeQueue }, []);
         await pulls.ClosePullRequestAsync(repository, opened.PullRequest!.Value);
 
         Repository(NextHead, forge);
@@ -189,7 +191,7 @@ public class OnboardingServiceTests : CoverageRavenTest
         var h = Create(store);
         var repository = (await h.Session.LoadAsync<Repository>(CodeCoverage.Entities.Repository.DocumentId(EForgeProvider.GitHub, RepoId)))!;
         var opened = await h.Service.OnboardAsync(repository, new HashSet<EOnboardingFeature>
-            { EOnboardingFeature.ReleaseLines, EOnboardingFeature.MergeQueue, EOnboardingFeature.SizeLabels, EOnboardingFeature.DependencyUpdates });
+            { EOnboardingFeature.ReleaseLines, EOnboardingFeature.MergeQueue, EOnboardingFeature.SizeLabels, EOnboardingFeature.DependencyUpdates }, []);
         opened.Outcome.Should().Be(VersioningOnboardingOutcome.Opened, opened.Note);
 
         // The merge: what the pull request wrote is on main now.
@@ -202,6 +204,9 @@ public class OnboardingServiceTests : CoverageRavenTest
 
         merged.Outcome.Should().Be(VersioningOnboardingOutcome.Merged, merged.Note);
         h.Queue.Renames.Should().Equal([("release/6.0", "release/dotnet-6.x")]);
+        // docs/onboarding_line_cuts_PRD.md D1, D3: the current line is created from the merge commit.
+        h.Versioning.Branches.Should().Equal([("release/dotnet-11.x", "abcdabcdabcdabcdabcdabcdabcdabcdabcdabcd")]);
+        merged.Note.Should().Contain("created release/dotnet-11.x");
         var line = h.Writer.Requests("onboarding").Last();
         (line.Line, line.BaseBranch, line.ExpectedSha).Should().Be(("dotnet-6.x", "release/dotnet-6.x", "6060606060606060606060606060606060606060"));
         line.Files!.Select(f => (f.Path, f.Content)).Should().Equal([(".github/workflows/regenerate.yml", "name: regenerate\n")]);
@@ -228,12 +233,84 @@ public class OnboardingServiceTests : CoverageRavenTest
         var h = Create(store);
         var repository = (await h.Session.LoadAsync<Repository>(CodeCoverage.Entities.Repository.DocumentId(EForgeProvider.GitHub, RepoId)))!;
 
-        var outcome = await h.Service.OnboardAsync(repository, new HashSet<EOnboardingFeature> { EOnboardingFeature.SizeLabels });
+        var outcome = await h.Service.OnboardAsync(repository, new HashSet<EOnboardingFeature> { EOnboardingFeature.SizeLabels }, []);
 
         outcome.Outcome.Should().Be(VersioningOnboardingOutcome.Merged, outcome.Note);
         h.Pulls.Created.Should().BeEmpty();
         using var read = store.OpenAsyncSession();
         (await read.LoadAsync<Repository>(repository.Id))!.PrSizeLabels.Should().Be(EPrSizeLabelPolicy.Enabled);
+    }
+
+    private const string MultiTarget = "<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFrameworks>net10.0;net11.0</TargetFrameworks>\n"
+        + "    <PackageId>Acme.Tools</PackageId>\n    <Version>11.2.0</Version>\n  </PropertyGroup>\n</Project>\n";
+
+    /// <summary>The onboarding pull request merged: its files are on <c>main</c> at <paramref name="head"/>.</summary>
+    private static void MergeInto(ScriptedDiffService forge, string head, IReadOnlyList<GitWriterFile> files)
+    {
+        var old = forge.Trees["main"];
+        var contents = old.Entries.ToDictionary(e => e.Path, e => forge.Files[$"{old.CommitSha}/{e.Path}"], StringComparer.Ordinal);
+        foreach (var file in files)
+            if (file.Delete) contents.Remove(file.Path);
+            else contents[file.Path] = file.Content!;
+        forge.Trees["main"] = new ForgeTree(head, "tree-" + head[..4], [.. contents.Select(c => new ForgeTreeEntry(c.Key, c.Value.Length))], false);
+        foreach (var (path, content) in contents)
+            forge.Files[$"{head}/{path}"] = content;
+    }
+
+    [Fact]
+    public async Task LineCuts_D2_D3_an_onboarded_repository_gets_its_lines_at_once_and_the_chosen_older_line_too()
+    {
+        using var store = GetDocumentStore();
+        var repository = await SeedRepositoryAsync(store);
+        var forge = Repository(Head);
+        forge.Files[$"{Head}/src/Tools/Tools.csproj"] = MultiTarget;
+        var features = new HashSet<EOnboardingFeature> { EOnboardingFeature.ReleaseLines };
+
+        // The Tools case (2026-11-12): the onboarding merged before the bot created lines.
+        var first = Create(store, forge);
+        var preview = await first.Service.PreviewAsync(repository, features);
+        preview.Plan!.Cuts.Select(c => c.Branch).Should().Equal(["release/dotnet-11.x"]);
+        preview.Plan.OfferedLines.Select(c => (c.Branch, c.TargetFramework)).Should().Equal([("release/dotnet-10.x", "net10.0")]);
+        var opened = await first.Service.OnboardAsync(repository, features, []);
+        opened.Outcome.Should().Be(VersioningOnboardingOutcome.Opened);
+        MergeInto(forge, NextHead, first.Writer.Requests("onboarding").Single().Files!);
+
+        // Set up features again: nothing to change, so the lines are created now, from the head the plan read.
+        var again = Create(store, forge);
+        again.Versioning.PullRequest = new ForgePullRequestText(opened.PullRequest!.Value, OnboardingPlanner.Title, null, OnboardingPlanner.Branch, Head, "main",
+            false, true, true, NextHead, []);
+        var outcome = await again.Service.OnboardAsync(repository, features, ["release/dotnet-10.x"]);
+
+        outcome.Outcome.Should().Be(VersioningOnboardingOutcome.Merged, outcome.Note);
+        again.Writer.Requests("onboarding").Should().BeEmpty();
+        again.Versioning.Branches.Should().Equal([("release/dotnet-11.x", NextHead), ("release/dotnet-10.x", NextHead)]);
+        outcome.Note.Should().Contain("created release/dotnet-11.x").And.Contain("created release/dotnet-10.x");
+    }
+
+    [Fact]
+    public async Task LineCuts_D4_a_refused_line_is_noted_and_one_that_exists_counts_as_done()
+    {
+        using var store = GetDocumentStore();
+        await SeedRepositoryAsync(store);
+        var forge = Repository(Head);
+        forge.Files[$"{Head}/src/Tools/Tools.csproj"] = MultiTarget;
+        var h = Create(store, forge);
+        var repository = (await h.Session.LoadAsync<Repository>(CodeCoverage.Entities.Repository.DocumentId(EForgeProvider.GitHub, RepoId)))!;
+        var opened = await h.Service.OnboardAsync(repository, new HashSet<EOnboardingFeature> { EOnboardingFeature.ReleaseLines }, ["release/dotnet-10.x"]);
+        (await StateAsync(store, repository)).Cuts.Should().Equal(["release/dotnet-11.x", "release/dotnet-10.x"]);
+
+        h.Versioning.PullRequest = new ForgePullRequestText(opened.PullRequest!.Value, OnboardingPlanner.Title, null, OnboardingPlanner.Branch, Head, "main",
+            false, true, true, "abcdabcdabcdabcdabcdabcdabcdabcdabcdabcd", []);
+        // The first versioning run cut 11.x first (S3); a ruleset refuses 10.x.
+        h.Versioning.Branches.Add(("release/dotnet-11.x", NextHead));
+        h.Versioning.BranchRefusals["release/dotnet-10.x"] = "POST repos/acme/tools/git/refs answered 422: Reference update failed";
+
+        var merged = await h.Service.MergedAsync(repository);
+
+        merged.Outcome.Should().Be(VersioningOnboardingOutcome.Merged, merged.Note);
+        merged.Note.Should().Contain("release/dotnet-11.x exists already")
+            .And.Contain("release/dotnet-10.x was not created: POST repos/acme/tools/git/refs answered 422: Reference update failed");
+        (await StateAsync(store, repository)).MergeHandledAt.Should().NotBeNull("a refusal is noted, not retried");
     }
 
     [Fact]
