@@ -59,7 +59,8 @@ public partial class VersioningOnboardingService : IVersioningOnboardingService
     public async Task<bool> PushSeedsAsync(Repository repository, CancellationToken cancellationToken = default)
     {
         var state = await session.LoadAsync<VersioningOnboardingState>(VersioningOnboardingState.ForRepository(repository.Id!), cancellationToken);
-        if (state is not { SeedsPending: true } || repository.DefaultBranch is not { } defaultBranch) return true;
+        // docs/onboarding_merge_backfill_PRD.md D1: a merge with no seeds still backfills, when the onboarding asked for it.
+        if (state is not ({ SeedsPending: true } or { BackfillPending: true }) || repository.DefaultBranch is not { } defaultBranch) return true;
         if (forges.FirstOrDefault(f => f.Provider == repository.Provider) is not { } forge
             || queues.FirstOrDefault(q => q.Provider == repository.Provider) is not { } git)
             return true;
@@ -77,8 +78,15 @@ public partial class VersioningOnboardingService : IVersioningOnboardingService
             return false;
         }
         state.SeedCommit = merge;
-        await NoteAsync(state, new(VersioningOnboardingOutcome.Seeded,
-            Join(backfill.Note, $"Pushed {seeds.Count} seed tag(s) at the merge commit {Short(merge)}.")), cancellationToken);
+        state.BackfilledAt = merge;
+        // The note saves the state too: without it the merge would be handled again on every run.
+        var pushed = seeds.Count > 0 ? $"Pushed {seeds.Count} seed tag(s) at the merge commit {Short(merge)}." : null;
+        await NoteAsync(state, new(VersioningOnboardingOutcome.Seeded, (backfill.Note, pushed) switch
+        {
+            (null, null) => "The history backfill found nothing to tag.",
+            ({ } note, null) => note,
+            var (note, seeded) => Join(note, seeded!),
+        }), cancellationToken);
         return true;
     }
 

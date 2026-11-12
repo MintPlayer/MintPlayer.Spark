@@ -233,6 +233,8 @@ public partial class OnboardingService : IOnboardingService
         state.MoveTags = [.. moveTags ?? []];
         state.Seeds = [.. plan.Seeds.Select(s => new VersioningOnboardingSeed { PackageId = s.PackageId, Version = s.Version })];
         state.SeedCommit = null;
+        state.Backfill = true;
+        state.BackfilledAt = null;
         state.MergeHandledAt = null;
         return await NoteAsync(state, new(VersioningOnboardingOutcome.Opened, $"Opened the onboarding pull request #{pull.Number}.", pull.Number), cancellationToken);
     }

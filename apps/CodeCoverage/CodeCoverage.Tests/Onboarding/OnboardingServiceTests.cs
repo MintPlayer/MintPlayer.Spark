@@ -258,6 +258,59 @@ public class OnboardingServiceTests : CoverageRavenTest
         merged.Note.Should().Contain("moved 1 tag(s) onto their earliest occurrence");
     }
 
+    /// <summary>The Tools #56 case (2026-11-12): an already versioned repository, every package tagged, so no seeds.</summary>
+    [Fact]
+    public async Task MergeBackfill_D1_a_merge_without_seeds_still_backfills_and_moves_the_chosen_tags()
+    {
+        using var store = GetDocumentStore();
+        await SeedRepositoryAsync(store);
+        var h = Create(store);
+        var repository = (await h.Session.LoadAsync<Repository>(CodeCoverage.Entities.Repository.DocumentId(EForgeProvider.GitHub, RepoId)))!;
+        h.Forge.Files[$"main/{CoverageYml.FileName}"] = "versioning: {}\n";
+        h.Pulls.RepositoryTags.Add("Acme.Tools/v11.1.0");
+        h.Writer.Backfill = request => Task.FromResult(new GitWriterBackfillResult(
+            request.PlanOnly ? GitWriterBackfillResult.Planned : GitWriterBackfillResult.Tagged, null, [], ["main"], [], null, 1)
+        {
+            Collisions = [new GitWriterBackfillCollision("Acme.Tools/v11.1.0", "8b1472c000000000000000000000000000000000", "abc1230000000000000000000000000000000000", "main",
+                request.Move?.Contains("Acme.Tools/v11.1.0") == true ? GitWriterBackfillCollision.Moved : "left", null)],
+        });
+        var opened = await h.Service.OnboardAsync(repository, new HashSet<EOnboardingFeature> { EOnboardingFeature.ReleaseLines }, [], default, ["Acme.Tools/v11.1.0"]);
+        opened.Outcome.Should().Be(VersioningOnboardingOutcome.Opened, opened.Note);
+        (await StateAsync(store, repository)).Seeds.Should().BeEmpty("the package is tagged already");
+        h.Versioning.PullRequest = new ForgePullRequestText(opened.PullRequest!.Value, OnboardingPlanner.Title, null, OnboardingPlanner.Branch, Head, "main",
+            false, true, true, "abcdabcdabcdabcdabcdabcdabcdabcdabcdabcd", []);
+
+        var merged = await h.Service.MergedAsync(repository);
+
+        h.Writer.BackfillRequests.Should().ContainSingle(r => !r.PlanOnly, "D1: the merge backfills with no seeds to push")
+            .Which.Move.Should().Equal(["Acme.Tools/v11.1.0"]);
+        h.Writer.TagRequests.Should().BeEmpty();
+        merged.Note.Should().Contain("moved 1 tag(s) onto their earliest occurrence");
+    }
+
+    /// <summary>A state written before #638 asked for no backfill: a deploy must not start one on its next run.</summary>
+    [Fact]
+    public async Task MergeBackfill_D1_a_state_from_before_the_backfill_does_not_start_one()
+    {
+        using var store = GetDocumentStore();
+        await SeedRepositoryAsync(store);
+        var h = Create(store);
+        var repository = (await h.Session.LoadAsync<Repository>(CodeCoverage.Entities.Repository.DocumentId(EForgeProvider.GitHub, RepoId)))!;
+        h.Forge.Files[$"main/{CoverageYml.FileName}"] = "versioning: {}\n";
+        await h.Session.StoreAsync(new VersioningOnboardingState
+        {
+            PullRequestNumber = 7, Features = [EOnboardingFeature.ReleaseLines, EOnboardingFeature.Versioning], BaseSha = Head,
+        }, VersioningOnboardingState.ForRepository(repository.Id!));
+        await h.Session.SaveChangesAsync();
+        h.Versioning.PullRequest = new ForgePullRequestText(7, OnboardingPlanner.Title, null, OnboardingPlanner.Branch, Head, "main",
+            false, true, true, "abcdabcdabcdabcdabcdabcdabcdabcdabcdabcd", []);
+
+        var merged = await h.Service.MergedAsync(repository);
+
+        merged.Outcome.Should().Be(VersioningOnboardingOutcome.Merged, merged.Note);
+        h.Writer.BackfillRequests.Should().BeEmpty("no seeds, no Backfill flag, no tags to move");
+    }
+
     [Fact]
     public async Task Backfill_D7_the_merge_tags_the_history_after_the_line_cuts_and_seeds_only_what_it_did_not_tag()
     {
