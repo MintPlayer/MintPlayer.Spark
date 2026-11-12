@@ -137,7 +137,7 @@ public sealed class PromoteService(JobRunner jobs)
             foreach (var recorded in versions.Where(v => job.Recorded.Contains(v.Name)).ToList())
             {
                 var problems = VersionProblems([recorded], line);
-                if (problems.Count == 0) problems = await AboveProblemsAsync(context, [recorded], [tip, job.Commit], null);
+                if (problems.Count == 0) problems = await AboveProblemsAsync(context, [recorded], [tip, job.Commit], null, line.Major);
                 if (problems.Count == 0) continue;
                 versions.Remove(recorded);
                 unplaced.Add(new PromoteVersionResult(recorded.PackageId, recorded.Version.ToString(), string.Join("; ", problems) + "."));
@@ -197,7 +197,7 @@ public sealed class PromoteService(JobRunner jobs)
     /// versions of one package, or a version not above the tag it follows from <paramref name="parents"/>. Null when all can.
     /// </summary>
     private static async Task<string?> VersionRefusalAsync(JobContext context, PromoteLine line, IReadOnlyList<VersionTag> versions, IReadOnlyList<string> parents)
-        => VersionProblems(versions, line) is { Count: > 0 } early ? Sentence(early) : Sentence(await AboveProblemsAsync(context, versions, parents, null));
+        => VersionProblems(versions, line) is { Count: > 0 } early ? Sentence(early) : Sentence(await AboveProblemsAsync(context, versions, parents, null, line.Major));
 
     private static string? Sentence(IReadOnlyList<string> problems) => problems.Count == 0 ? null : "Not released: " + string.Join("; ", problems) + ".";
 
@@ -219,11 +219,11 @@ public sealed class PromoteService(JobRunner jobs)
     /// Each version must be above the tag it follows (segment T), and keep that tag's major: only that one tag is compared,
     /// never every tag of the package in the repository.
     /// </summary>
-    private static async Task<List<string>> AboveProblemsAsync(JobContext context, IReadOnlyList<VersionTag> versions, IReadOnlyList<string> commits, string? except)
+    private static async Task<List<string>> AboveProblemsAsync(JobContext context, IReadOnlyList<VersionTag> versions, IReadOnlyList<string> commits, string? except, int major)
     {
         var problems = new List<string>();
         foreach (var version in versions)
-            if (FollowProblem(version, await PredecessorAsync(context, version.PackageId, commits, except)) is { } problem)
+            if (FollowProblem(version, await PredecessorAsync(context, version.PackageId, commits, except, major)) is { } problem)
                 problems.Add(problem);
         return problems;
     }
@@ -242,16 +242,19 @@ public sealed class PromoteService(JobRunner jobs)
     /// <summary>
     /// The tag a version follows (segment T): its package's highest tag reachable from any of <paramref name="commits"/>,
     /// <paramref name="except"/> left out. That is the tag the pack reads at a commit (<c>tag --merged HEAD</c>,
-    /// MintPlayer.Versioning.MSBuild); a tag on another branch or of another line plays no part.
+    /// MintPlayer.Versioning.MSBuild); a tag on another branch or of another line plays no part. With
+    /// <paramref name="major"/> (a release line's), only that major's tags count, as the pack on the line reads them
+    /// (#638 D2, D3): an older line reaches the newer major's tags through the default branch's history.
     /// </summary>
-    private static async Task<VersionTag?> PredecessorAsync(JobContext context, string packageId, IReadOnlyList<string> commits, string? except)
+    private static async Task<VersionTag?> PredecessorAsync(JobContext context, string packageId, IReadOnlyList<string> commits, string? except, int? major)
     {
         VersionTag? highest = null;
         foreach (var commit in commits.Distinct(StringComparer.Ordinal))
         {
             var refs = (await context.RequireAsync(["tag", "--merged", commit, "--list", VersionTag.Prefix(packageId) + "*"])).StandardOutput;
             foreach (var name in refs.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
-                if (name != except && VersionTag.TryParse(name, out var tag) && tag.PackageId == packageId && (highest is null || tag.Version.CompareTo(highest.Version) > 0))
+                if (name != except && VersionTag.TryParse(name, out var tag) && tag.PackageId == packageId && (major is null || tag.Version.Major == major)
+                    && (highest is null || tag.Version.CompareTo(highest.Version) > 0))
                     highest = tag;
         }
         return highest;
@@ -313,8 +316,11 @@ public sealed class PromoteService(JobRunner jobs)
         {
             var currentLine = lines.MaxBy(l => l.Major)!;
             placed = job.Promotes && job.Tag.Version.Major == currentLine.Major;
-            var predecessor = await PredecessorAsync(context, job.Tag.PackageId, placed ? [commit, "refs/heads/" + currentLine.Branch] : [commit], name);
             var own = lines.FirstOrDefault(l => l.Major == job.Tag.Version.Major);
+            // A tag of a line's major follows that major's tags only (#638 D3); one of no line's major is compared with
+            // every tag, so a new major without its line is still refused.
+            var predecessor = await PredecessorAsync(context, job.Tag.PackageId, placed ? [commit, "refs/heads/" + currentLine.Branch] : [commit], name,
+                own?.Major);
             branch = placed ? currentLine.Branch : own?.Branch;
             refusal = predecessor is null
                 ? own is null ? $"{name} follows no tag of {job.Tag.PackageId}, and no release line has its major {job.Tag.Version.Major}" : null

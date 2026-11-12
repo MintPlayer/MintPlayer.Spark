@@ -93,6 +93,47 @@ public class OnboardingWriterJobTests : WriterTestBase
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
 
+    [Fact]
+    public async Task D15_a_narrowing_job_writes_project_files_and_global_json_on_the_line_s_narrowing_branch()
+    {
+        var (origin, baseSha) = Seeded();
+        origin.SetBranch("release/dotnet-10.x", baseSha);
+        var job = Job(origin, baseSha,
+            new { path = "src/Hsts/Hsts.csproj", content = "<Project><PropertyGroup><TargetFrameworks>net10.0</TargetFrameworks></PropertyGroup></Project>\n" },
+            new { path = "global.json", content = "{ \"sdk\": { \"version\": \"10.0.203\" } }\n" });
+        job["baseBranch"] = "release/dotnet-10.x";
+        job["line"] = "dotnet-10.x";
+        job["narrow"] = true;
+
+        var response = await Writer.Client.PostAsJsonAsync("/jobs/onboarding", job, GitWriterHost.Json);
+        response.EnsureSuccessStatusCode();
+        var answer = (await response.Content.ReadFromJsonAsync<DependencyJobResponse>(GitWriterHost.Json))!;
+
+        answer.Outcome.Should().Be("pushed", answer.Detail);
+        DependencyBranches.NarrowingOf("dotnet-10.x").Should().Be("mintplayer/narrow-dotnet-10.x");
+        origin.Ref("refs/heads/mintplayer/narrow-dotnet-10.x").Should().Be(answer.Sha);
+        origin.Ref("refs/heads/mintplayer/onboarding-dotnet-10.x").Should().BeNull();
+        origin.InBare("rev-parse", $"{answer.Sha}^").Trim().Should().Be(baseSha);
+    }
+
+    [Theory]
+    [InlineData(".github/workflows/regenerate.yml", "dotnet-10.x")]
+    [InlineData("coverage.yml", "dotnet-10.x")]
+    [InlineData("src/Hsts/Hsts.csproj", null)]   // narrowing is a line's only
+    public async Task D15_a_narrowing_job_writes_msbuild_files_and_global_json_only(string path, string? line)
+    {
+        var (origin, baseSha) = Seeded();
+        origin.SetBranch("release/dotnet-10.x", baseSha);
+        var job = Job(origin, baseSha, new { path, content = "x\n" });
+        job["baseBranch"] = "release/dotnet-10.x";
+        job["line"] = line;
+        job["narrow"] = true;
+
+        var response = await Writer.Client.PostAsJsonAsync("/jobs/onboarding", job, GitWriterHost.Json);
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
     [Theory]
     [InlineData(".github/CODEOWNERS", false)]
     [InlineData("coverage.yml", true)]

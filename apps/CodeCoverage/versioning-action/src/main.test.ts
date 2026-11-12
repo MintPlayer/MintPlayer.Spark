@@ -77,6 +77,12 @@ describe('allVersionsOf (#552 D10)', () => {
     const versions = await allVersionsOf(exec, '.', ['Acme.Core', '@acme/util', 'Acme.New'], [release({ version: '1.2.0', tagOutcome: 'planned' })] as any);
     expect(versions).toEqual({ 'Acme.Core': '1.2.0', '@acme/util': '2.1.0' });
   });
+
+  it('on a release line, gives a package the line names a major its last tag of that major (#638 D2)', async () => {
+    const exec: Exec = async () => ({ code: 0, stdout: 'Acme.Core/v10.0.0\nAcme.Core/v11.0.1-rc.1\nAcme.Std/v3.0.0\nAcme.Old/v11.0.0\n', stderr: '' });
+    const versions = await allVersionsOf(exec, '.', ['Acme.Core', 'Acme.Std', 'Acme.Old'], [], { 'Acme.Core': 10, 'Acme.Old': 10 });
+    expect(versions).toEqual({ 'Acme.Core': '10.0.0', 'Acme.Std': '3.0.0' });
+  });
 });
 
 describe('readPlan (#552 D3, D5)', () => {
@@ -112,6 +118,13 @@ describe('buildEnvironment (#568 D10b)', () => {
     expect(buildEnvironment({ dependencyRanges: 'major-bounded' })).toEqual({ MintPlayerVersioningDependencyRanges: 'major-bounded' });
     expect(buildEnvironment({ dependencyRanges: 'minimum' })).toEqual({});
     expect(buildEnvironment({})).toEqual({});
+  });
+
+  it('hands a release line\'s package majors to the pack (#638 D2)', () => {
+    expect(buildEnvironment({}, { 'Acme.Core': 10, '@acme/ng': 21 })).toEqual({ MintPlayerVersioningMajors: '@acme/ng=21;Acme.Core=10' });
+    expect(buildEnvironment({ dependencyRanges: 'major-bounded' }, {}))
+      .toEqual({ MintPlayerVersioningDependencyRanges: 'major-bounded' });
+    expect(buildEnvironment({}, undefined)).toEqual({});
   });
 });
 

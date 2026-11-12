@@ -39,6 +39,34 @@ public sealed record GitWriterTagResult(string Name, string Outcome, string? Det
     public const string AlreadyPresent = "already-present";
 }
 
+/// <summary>
+/// The body of the git writer's <c>POST /jobs/versioning/backfill</c> (#638 D5-D8): every version the default branch's and the
+/// release lines' history declares, tagged at its earliest occurrence on the line of its major.
+/// </summary>
+public sealed record GitWriterBackfillRequest(
+    string Provider, string RepoId, string CloneUrl, SidecarCredential Credential, string DefaultBranch, GitWriterTagger Tagger, VersioningSettings Settings,
+    bool PlanOnly = false, IReadOnlyList<string>? Move = null);
+
+/// <summary>#638 D9: an App-made tag on <paramref name="Current"/> whose version the history declares first at <paramref name="Commit"/>.</summary>
+/// <param name="Outcome"><c>planned</c>, <c>left</c>, <c>moved</c> or <c>conflict</c> (the tag changed since the job read it).</param>
+public sealed record GitWriterBackfillCollision(string Name, string Current, string Commit, string Branch, string Outcome, string? Detail)
+{
+    public const string Moved = "moved";
+}
+
+/// <param name="Outcome"><c>created</c>, <c>already-present</c>, <c>conflict</c>, <c>unreachable</c> or <c>planned</c>.</param>
+public sealed record GitWriterBackfillTag(string Name, string Commit, string Branch, string Outcome, string? Detail);
+
+/// <param name="Outcome"><see cref="Planned"/>, <see cref="Tagged"/>, or a failure.</param>
+public sealed record GitWriterBackfillResult(string Outcome, string? Reason, IReadOnlyList<GitWriterBackfillTag>? Tags, IReadOnlyList<string>? Branches,
+    IReadOnlyList<string>? Notes, string? Detail, long DurationMs)
+{
+    public const string Tagged = "tagged";
+    public const string Planned = "planned";
+
+    public IReadOnlyList<GitWriterBackfillCollision>? Collisions { get; init; }
+}
+
 /// <summary>The writer's answer: always 200 with an outcome, as every job (<c>GitWriterOutcomes</c>).</summary>
 public sealed record GitWriterVersioningResult(
     string Outcome, string? Reason, IReadOnlyList<GitWriterRelease>? Releases, IReadOnlyList<GitWriterPackageNote>? Skipped,
@@ -47,6 +75,9 @@ public sealed record GitWriterVersioningResult(
 {
     public const string Versioned = "versioned";
     public const string PlanRefused = "plan-refused";
+
+    /// <summary>On a release line, the major of each package anchored on its platform (#638 D2).</summary>
+    public IReadOnlyDictionary<string, int>? LineMajors { get; init; }
 
     /// <summary>The writer's reason for a run the plan could not be made for (a missing package, a commit off the branch).</summary>
     public const string Unplannable = "unplannable";
@@ -176,6 +207,9 @@ public sealed record GitWriterBackportTargetResult(string Branch, string Head, s
     /// <summary>First-party packages the change raised above this line's major, dropped by normalization (#570 D11).</summary>
     public IReadOnlyList<GitWriterDependencyRaise>? Raises { get; init; }
 
+    /// <summary>Platform values the change moved off this line's major, which the line kept (#638 D13).</summary>
+    public IReadOnlyList<GitWriterPlatformKept>? Kept { get; init; }
+
     public const string Created = "created";
     public const string Exists = "exists";
     public const string Empty = "empty";
@@ -208,6 +242,10 @@ public sealed record GitWriterBackportTrialTargetResult(string Branch, string Ou
 
 /// <summary>One platform value the change edits on the line's platform; <see cref="Before"/> is empty for an added one.</summary>
 public sealed record GitWriterPlatformChange(string Path, string Marker, string Before, string After);
+
+/// <summary>A platform value the change moved off the line's major (<see cref="Before"/> held it, <see cref="After"/> does
+/// not); the line keeps <see cref="LineValue"/> (#638 D13).</summary>
+public sealed record GitWriterPlatformKept(string Path, string Marker, string Before, string After, string LineValue);
 
 /// <summary>A first-party package the change raised that the line keeps at <see cref="LineValue"/> (#570 D11);
 /// <see cref="Kind"/> is <c>npm</c> or <c>nuget</c>.</summary>

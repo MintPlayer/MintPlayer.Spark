@@ -324,6 +324,26 @@ public class PromoteTests : WriterTestBase
     }
 
     [Fact]
+    public async Task On_an_older_line_a_tag_follows_the_highest_tag_of_its_own_major()
+    {
+        // #638 D3: Tools' 10.x line reaches master's 11.0.1-rc.1, and every 10.x tag "followed" it and was refused.
+        using var origin = new Origin(Server, "hand-older-line");
+        var commit = PackageLine(origin);
+        origin.Checkout("release/dotnet-2.x", "main").Push("release/dotnet-2.x");
+        origin.InBare("tag", "Core/v2.0.1-rc.1", commit);
+        origin.InBare("tag", "Core/v1.3.0", commit);
+
+        var response = await HandTagAsync(HandTag(origin, "Core/v1.3.0", commit, false, 1, 2));
+        response.Tag.Should().Be(PromoteService.HandTagAccepted, response.Detail);
+        response.Branch.Should().Be("release/dotnet-1.x");
+
+        origin.InBare("tag", "Core/v1.1.0", commit);
+        var below = await HandTagAsync(HandTag(origin, "Core/v1.1.0", commit, false, 1, 2));
+        below.Tag.Should().Be(PromoteService.HandTagRefused);
+        below.Detail.Should().Contain("is not above Core/v1.3.0, the tag it follows");
+    }
+
+    [Fact]
     public async Task A_first_tag_needs_a_release_lines_major()
     {
         using var origin = new Origin(Server, "hand-first-tag");

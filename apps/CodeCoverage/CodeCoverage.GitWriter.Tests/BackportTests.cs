@@ -414,6 +414,29 @@ public class BackportTests : WriterTestBase
         origin.Ref("refs/heads/backport/7-1.x").Should().BeNull();
     }
 
+    [Theory]
+    [InlineData("enable", "empty")]     // a pure platform move: nothing left after normalization (#638 S7)
+    [InlineData("disable", "created")]  // a mixed one: the fix applies, the line keeps net10.0
+    public async Task D13_dropping_the_line_framework_keeps_it_and_reports_it(string nullable, string push)
+    {
+        // Tools: main multi-targeted net10.0;net11.0, then dropped net10.0.
+        var origin = PlatformLines();
+        origin.Write("Lib/Lib.csproj", Project("net10.0;net11.0"));
+        origin.Commit("feat: multi-target (#7)");
+        origin.Write("Lib/Lib.csproj", Project("net11.0", nullable));
+        var squash = origin.Commit("feat: drop net10 (#8)");
+        origin.Push("main");
+
+        var response = await Writer.BackportAsync(Request(origin, squash, ["feat"], "1.x"));
+
+        var target = response.Targets.Single();
+        target.Push.Should().Be(push);
+        target.PlatformChanges.Should().BeEmpty();
+        target.Kept.Should().Equal([new PlatformKept("Lib/Lib.csproj", "TargetFramework", "net10.0;net11.0", "net11.0", "net10.0")]);
+        if (push == BackportService.Created)
+            origin.InBare("cat-file", "blob", target.Commit + ":Lib/Lib.csproj").Should().Be(Project("net10.0", "disable"));
+    }
+
     [Fact]
     public async Task A_rebase_merge_takes_the_whole_run_as_one_commit()
     {

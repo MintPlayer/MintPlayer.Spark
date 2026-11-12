@@ -206,6 +206,22 @@ public class VersioningPlanReleaseTests : WriterTestBase
     }
 
     [Fact]
+    public async Task A_run_on_a_line_tells_the_pack_the_major_of_each_package_anchored_on_its_platform()
+    {
+        // #638 D2: the action exports these to the pack as MintPlayerVersioningMajors; the npm package is not on the
+        // dotnet line's platform, so it is left out.
+        using var origin = new Origin(Server, "line-majors");
+        Fixture(origin);
+        var request = DefaultBranchWithLines(origin.Head()) with { OnDefaultBranch = false, BranchMajor = 10, Line = new ReleaseLine("dotnet", 10) };
+
+        var (result, _) = await ReleaseRun.PlanOnlyAsync(Git(origin), request);
+
+        Jobs.VersioningRunService.Response(result, 0).LineMajors.Should().BeEquivalentTo(new Dictionary<string, int> { ["Core"] = 10 });
+        Jobs.VersioningRunService.Response((await ReleaseRun.PlanOnlyAsync(Git(origin), Request(origin.Head()))).Result, 0)
+            .LineMajors.Should().BeNull("off a line there is nothing to tell");
+    }
+
+    [Fact]
     public async Task A_line_that_has_released_is_not_cut_again()
     {
         using var origin = new Origin(Server, "lines-cut-done");

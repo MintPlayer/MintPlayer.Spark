@@ -51,6 +51,38 @@ public class TagVersionTests
     }
 
     [Fact]
+    public void On_a_line_takes_the_highest_tag_of_the_packages_major_only()
+    {
+        // #638 P1: Tools' 10.x line reached master's 11.0.1-rc.1 and packed it over the 10.0.0 the engine had just tagged.
+        var tags = new[] { "Lib/v10.0.0", "Lib/v10.0.1", "Lib/v11.0.1-rc.1", "Lib/v9.4.0" };
+
+        TagVersion.Highest(tags, "Lib/v", 10).Should().Be("10.0.1");
+        TagVersion.Highest(tags, "Lib/v", 8).Should().BeNull();
+        TagVersion.Highest(tags, "Lib/v", null).Should().Be("11.0.1-rc.1");
+    }
+
+    [Theory]
+    [InlineData("Lib=10;Other=21", "Lib", 10)]
+    [InlineData(" Other=21 ; Lib = 10 ", "Lib", 10)]
+    [InlineData("Lib.Core=10", "Lib", null)]
+    [InlineData("Lib=x", "Lib", null)]
+    [InlineData("", "Lib", null)]
+    [InlineData(null, "Lib", null)]
+    public void Reads_a_packages_major_from_the_actions_map(string? map, string id, int? major)
+        => TagVersion.MajorOf(map, id).Should().Be(major);
+
+    [Theory]
+    [InlineData(null, "release/dotnet-10.x", 10)]
+    [InlineData("release/dotnet-10.x", "123/merge", 10)]
+    [InlineData("", "gh-readonly-queue/release/dotnet-10.x/pr-12-0123abcd", 10)]
+    [InlineData(null, "release/angular-22.x", null)]
+    [InlineData(null, "master", null)]
+    [InlineData(null, "release/dotnet-010.x", null)]
+    [InlineData(null, null, null)]
+    public void Without_the_action_a_dotnet_lines_major_comes_from_the_branch(string? baseRef, string? refName, int? major)
+        => TagVersion.BranchMajor(baseRef, refName).Should().Be(major);
+
+    [Fact]
     public void Refuses_a_prefix_that_is_not_a_package_id()
     {
         TagVersion.IsValidPrefix("MintPlayer.Mapper/v").Should().BeTrue();
@@ -117,6 +149,27 @@ public class TagVersionTests
 
             task.Execute().Should().BeTrue();
             task.Version.Should().Be("1.5.0-preview.2");
+
+            // #638 D2/D10: the action's map names Lib's major on the line; a tag of another major is never taken, and
+            // a line with no tag of its major warns MPV006 (an error where the repository opts in).
+            task.Majors = "Lib=1";
+            task.Execute().Should().BeTrue();
+            task.Version.Should().Be("1.5.0-preview.2");
+            task.Majors = "Lib=3";
+            task.Execute().Should().BeTrue();
+            task.Version.Should().Be(TagVersion.Untagged);
+            engine.Warnings.Should().HaveCount(3).And.EndWith("MPV006");
+
+            // Without the action, a dotnet line's branch gives the major, preferred while any tag of it is reachable.
+            task.Majors = null;
+            Run(repo, "tag", "-a", "-m", "newer", "Lib/v3.0.0");
+            task.GitHubRefName = "release/dotnet-1.x";
+            task.Execute().Should().BeTrue();
+            task.Version.Should().Be("1.5.0-preview.2");
+            task.GitHubRefName = "release/dotnet-2.x";
+            task.Execute().Should().BeTrue();
+            task.Version.Should().Be("3.0.0");
+            engine.Warnings.Should().HaveCount(3);
         }
         finally
         {

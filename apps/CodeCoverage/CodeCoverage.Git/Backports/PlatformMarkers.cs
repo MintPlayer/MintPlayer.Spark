@@ -15,12 +15,22 @@ public sealed record PlatformChange(string Path, string Marker, string Before, s
 /// </summary>
 public sealed record DependencyRaise(string Path, string Kind, string Package, string Before, string After, string LineValue);
 
+/// <summary>
+/// A platform value the pull request moved off the release line's major (#638 D13): it held the line's major before
+/// (<c>net10.0;net11.0</c>) and no longer does (<c>net11.0</c>). Normalization kept <paramref name="LineValue"/> on the
+/// line, so the backport carries the rest of the change and the move is reported, never applied.
+/// </summary>
+public sealed record PlatformKept(string Path, string Marker, string Before, string After, string LineValue);
+
 /// <summary>The merge base and the change with their platform values rewritten to the release line's; null where the
 /// input was null (the file is absent on that side).</summary>
 public sealed record MarkerNormalization(string? Base, string? Theirs, IReadOnlyList<PlatformChange> PlatformChanges)
 {
     /// <summary>The first-party raises normalization dropped (#570 D11).</summary>
     public IReadOnlyList<DependencyRaise> Raises { get; init; } = [];
+
+    /// <summary>The values the pull request moved off the line's major, which the line kept (#638 D13).</summary>
+    public IReadOnlyList<PlatformKept> Kept { get; init; } = [];
 }
 
 /// <summary>
@@ -34,8 +44,10 @@ public sealed record MarkerNormalization(string? Base, string? Theirs, IReadOnly
 /// <list type="bullet">
 /// <item>the pull request left the value as it was, or moved it wholly above the line's major: base and change take the
 /// line's value;</item>
-/// <item>the pull request changed it and the line's own major (or a value without one) is involved: left to git and
-/// reported, so a real platform edit (net10.0 → net10.0;net11.0) never vanishes;</item>
+/// <item>the pull request moved it off the line's major (net10.0;net11.0 → net11.0): base and change take the line's
+/// value and it is reported as kept (#638 D13);</item>
+/// <item>the pull request changed it otherwise and the line's own major (or a value without one) is involved: left to
+/// git and reported, so a real platform edit (net10.0 → net10.0;net11.0) never vanishes;</item>
 /// <item>an occurrence the pull request added takes the line's value of the same marker, else of a sibling of its family
 /// (another framework package), when it is wholly above the line; with nothing to take a value from it is reported;</item>
 /// <item>an occurrence the pull request removed: the base takes the line's value, so the removal applies;</item>
@@ -129,6 +141,7 @@ public static class PlatformMarkers
         var theirsEdits = new List<(Occurrence At, string Value)>();
         var changes = new List<PlatformChange>();
         var raises = new List<DependencyRaise>();
+        var kept = new List<PlatformKept>();
 
         foreach (var key in before.Select(o => o.Key).Union(after.Select(o => o.Key)))
         {
@@ -146,6 +159,12 @@ public static class PlatformMarkers
                     theirsEdits.Add((t, l.Value));
                     if (b.Value != t.Value && t.Kind.FirstParty)
                         raises.Add(new(path, IsPackageJson(path) ? "npm" : "nuget", t.Name, b.Value, t.Value, l.Value));
+                }
+                else if (MovedOffLine(b.Kind, b.Value, t.Value, l.Value))
+                {
+                    baseEdits.Add((b, l.Value));
+                    theirsEdits.Add((t, l.Value));
+                    kept.Add(new(path, t.Name, b.Value, t.Value, l.Value));
                 }
                 else
                 {
@@ -166,7 +185,18 @@ public static class PlatformMarkers
             }
         }
 
-        return new(Rewrite(@base, baseEdits), Rewrite(theirs, theirsEdits), changes) { Raises = raises };
+        return new(Rewrite(@base, baseEdits), Rewrite(theirs, theirsEdits), changes) { Raises = raises, Kept = kept };
+    }
+
+    /// <summary>#638 D13: the base held one of the line's majors and the change holds only majors above the line's
+    /// highest (<c>net10.0;net11.0</c> → <c>net11.0</c>), so the pull request moved the value off the line. An edit
+    /// that keeps a line major (<c>net10.0</c> → <c>net10.0;net11.0</c>) is not one: it stays git's.</summary>
+    private static bool MovedOffLine(Kind kind, string before, string after, string lineValue)
+    {
+        var lineMajors = Majors(kind, lineValue);
+        return lineMajors.Count > 0
+            && Majors(kind, before).Intersect(lineMajors).Any()
+            && WhollyAbove(kind, [after], lineValue);
     }
 
     private static List<Occurrence> Read(Kind[] kinds, string? text)

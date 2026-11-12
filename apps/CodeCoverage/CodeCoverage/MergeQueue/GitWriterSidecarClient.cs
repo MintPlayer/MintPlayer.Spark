@@ -130,6 +130,10 @@ public interface IGitWriterSidecar
     Task<PackageVersioning.GitWriterPromoteResult> VersioningPromoteAsync(PackageVersioning.GitWriterPromoteRequest request, CancellationToken cancellationToken = default)
         => throw new NotSupportedException("This git writer has no promote job.");
 
+    /// <summary>#638 D5-D8: tags the versions the history declares at their earliest occurrences.</summary>
+    Task<PackageVersioning.GitWriterBackfillResult> VersioningBackfillAsync(PackageVersioning.GitWriterBackfillRequest request, CancellationToken cancellationToken = default)
+        => throw new NotSupportedException("This git writer has no backfill job.");
+
     /// <summary>Segment P (P5): a person's new version tag, checked against the current lines and deleted.</summary>
     Task<PackageVersioning.GitWriterHandTagResult> VersioningHandTagAsync(PackageVersioning.GitWriterHandTagRequest request, CancellationToken cancellationToken = default)
         => throw new NotSupportedException("This git writer has no hand-tag job.");
@@ -212,6 +216,9 @@ public sealed class GitWriterSidecarClient(HttpClient http, IOptions<MergeQueueO
 
     public Task<PackageVersioning.GitWriterPromoteResult> VersioningPromoteAsync(PackageVersioning.GitWriterPromoteRequest request, CancellationToken cancellationToken = default)
         => SendAsync<PackageVersioning.GitWriterPromoteResult>(HttpMethod.Post, "jobs/versioning/promote", request, cancellationToken);
+
+    public Task<PackageVersioning.GitWriterBackfillResult> VersioningBackfillAsync(PackageVersioning.GitWriterBackfillRequest request, CancellationToken cancellationToken = default)
+        => SendAsync<PackageVersioning.GitWriterBackfillResult>(HttpMethod.Post, "jobs/versioning/backfill", request, cancellationToken);
 
     public Task<PackageVersioning.GitWriterHandTagResult> VersioningHandTagAsync(PackageVersioning.GitWriterHandTagRequest request, CancellationToken cancellationToken = default)
         => SendAsync<PackageVersioning.GitWriterHandTagResult>(HttpMethod.Post, "jobs/versioning/hand-tag", request, cancellationToken);
@@ -432,6 +439,10 @@ public sealed record GitWriterDependencyRequest(string Provider, string RepoId, 
     public string? LastBotSha { get; init; }
 
     public IReadOnlyList<GitWriterFile>? Files { get; init; }
+
+    /// <summary>#638 D15: with <see cref="Line"/>, the line's narrowing commit (project files and global.json) on
+    /// <c>mintplayer/narrow-{line}</c> instead of its workflows.</summary>
+    public bool Narrow { get; init; }
 }
 
 public sealed record GitWriterMigratePatch(string Group, string Patch);

@@ -70,6 +70,10 @@ public partial class VersioningController : ControllerBase
         /// <summary>#552 D1: the tags <c>plan</c> decided and wrote none of.</summary>
         public TagPlan? Plan { get; init; }
 
+        /// <summary>#638 D2: on a release line, the major of each package anchored on its platform, which the action
+        /// exports to the pack as <c>MintPlayerVersioningMajors</c>. Sealed with the plan, so a release keeps it.</summary>
+        public IReadOnlyDictionary<string, int>? LineMajors { get; init; }
+
         /// <summary>
         /// #552 D6: this response, sealed with the app's Data Protection keys for a day. <c>release</c> takes only the seal,
         /// so the client cannot change a version, a tag or a Release text between the plan and its release.
@@ -377,7 +381,7 @@ public partial class VersioningController : ControllerBase
                 new CommitGraph.SidecarCredential(access.Username, access.Password), branch, defaultBranch, branchMajor, Tagger, settings, manifest, runUrl, planOnly),
                 cancellationToken);
             var response = new VersioningRunResponse(result.Outcome, result.Reason, result.Detail, result.Releases ?? [], result.Refused ?? [],
-                result.Skipped?.Count ?? 0, result.Warnings ?? [], null, result.BranchCuts ?? []) { Plan = result.Plan };
+                result.Skipped?.Count ?? 0, result.Warnings ?? [], null, result.BranchCuts ?? []) { Plan = result.Plan, LineMajors = result.LineMajors };
             return (result.Outcome, result.Reason) switch
             {
                 (GitWriterVersioningResult.Versioned, _) => (StatusCodes.Status200OK, response),

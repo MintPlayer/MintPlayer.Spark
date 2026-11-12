@@ -54,6 +54,12 @@ public sealed record OnboardingPlan(IReadOnlyList<EOnboardingFeature> Features, 
 
     /// <summary>D2: the older lines a package still targets, with no branch, for the owner to choose from.</summary>
     public IReadOnlyList<OnboardingLineCut> OfferedLines { get; init; } = [];
+
+    /// <summary>
+    /// #638 D9: the App's own version tags away from their version's earliest occurrence in the history, for the owner to
+    /// move or leave. Filled by the preview, which asks the git writer for a backfill plan.
+    /// </summary>
+    public IReadOnlyList<PackageVersioning.GitWriterBackfillCollision> TagCollisions { get; init; } = [];
 }
 
 /// <summary>
@@ -71,6 +77,12 @@ public static partial class OnboardingPlanner
 
     /// <summary>D9: the title of a line's pull request that adds the default branch's regenerate workflow.</summary>
     public const string LineTitle = "Add the regenerate workflow to this release line";
+
+    /// <summary>#638 D15: the title of the pull request that narrows an older line to its own .NET major.</summary>
+    public const string NarrowTitle = "Narrow this release line to its own .NET major";
+
+    /// <summary>#638 D15: a line's narrowing branch; the git writer names it the same way (<c>DependencyBranches.NarrowingOf</c>).</summary>
+    public static string NarrowBranch(string line) => $"mintplayer/narrow-{line}";
 
     /// <summary>D9: a line's onboarding branch; the git writer names it the same way (<c>DependencyBranches.FeatureOnboardingOf</c>).</summary>
     public static string LineBranch(string line) => $"{Branch}-{line}";
@@ -258,6 +270,11 @@ public static partial class OnboardingPlanner
             text.AppendLine().AppendLine($"The bot creates these lines from the merge commit, since no person may push a new line (only the App passes its required checks):").AppendLine();
             foreach (var cut in cuts)
                 text.AppendLine($"- `{cut.Branch}` ({cut.Reason}): {string.Join(", ", cut.Packages.Select(p => $"`{p}`"))}.");
+            // #638 D15: an older line starts out targeting the higher major too.
+            if (cuts.Any(c => c.TargetFramework is not null))
+                text.AppendLine().AppendLine("An older line is cut from a commit that also targets a higher major. Once it exists, the bot opens a pull request into it "
+                    + "that drops the higher target frameworks, moves `global.json` and the framework packages to the line's major, and lists the "
+                    + "`#if NETxx_OR_GREATER` and framework conditions for you to resolve.");
         }
         if (declined.Count > 0)
         {

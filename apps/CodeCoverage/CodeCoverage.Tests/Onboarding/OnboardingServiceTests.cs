@@ -226,6 +226,74 @@ public class OnboardingServiceTests : CoverageRavenTest
     }
 
     [Fact]
+    public async Task Collisions_D9_the_preview_lists_them_and_the_merge_moves_the_ones_the_owner_chose()
+    {
+        using var store = GetDocumentStore();
+        await SeedRepositoryAsync(store);
+        var h = Create(store);
+        var repository = (await h.Session.LoadAsync<Repository>(CodeCoverage.Entities.Repository.DocumentId(EForgeProvider.GitHub, RepoId)))!;
+        h.Forge.Files[$"main/{CoverageYml.FileName}"] = "versioning: {}\n";
+        h.Writer.Backfill = request => Task.FromResult(new GitWriterBackfillResult(
+            request.PlanOnly ? GitWriterBackfillResult.Planned : GitWriterBackfillResult.Tagged, null, [], ["main"], [], null, 1)
+        {
+            Collisions = [new GitWriterBackfillCollision("Acme.Tools/v11.1.0", "8b1472c000000000000000000000000000000000", "abc1230000000000000000000000000000000000", "main",
+                request.PlanOnly ? "planned" : request.Move?.Contains("Acme.Tools/v11.1.0") == true ? GitWriterBackfillCollision.Moved : "left", null)],
+        });
+        var features = new HashSet<EOnboardingFeature> { EOnboardingFeature.ReleaseLines };
+
+        var preview = await h.Service.PreviewAsync(repository, features);
+
+        preview.Plan!.TagCollisions.Select(c => $"{c.Name}@{c.Outcome}").Should().Equal("Acme.Tools/v11.1.0@planned");
+        h.Writer.BackfillRequests.Should().ContainSingle(r => r.PlanOnly, "the preview writes nothing");
+
+        var opened = await h.Service.OnboardAsync(repository, features, [], default, ["Acme.Tools/v11.1.0"]);
+        (await StateAsync(store, repository)).MoveTags.Should().Equal(["Acme.Tools/v11.1.0"]);
+        h.Versioning.PullRequest = new ForgePullRequestText(opened.PullRequest!.Value, OnboardingPlanner.Title, null, OnboardingPlanner.Branch, Head, "main",
+            false, true, true, "abcdabcdabcdabcdabcdabcdabcdabcdabcdabcd", []);
+
+        var merged = await h.Service.MergedAsync(repository);
+
+        h.Writer.BackfillRequests.Last().Move.Should().Equal(["Acme.Tools/v11.1.0"]);
+        h.Writer.BackfillRequests.Last().PlanOnly.Should().BeFalse();
+        merged.Note.Should().Contain("moved 1 tag(s) onto their earliest occurrence");
+    }
+
+    [Fact]
+    public async Task Backfill_D7_the_merge_tags_the_history_after_the_line_cuts_and_seeds_only_what_it_did_not_tag()
+    {
+        using var store = GetDocumentStore();
+        await SeedRepositoryAsync(store);
+        var h = Create(store);
+        var repository = (await h.Session.LoadAsync<Repository>(CodeCoverage.Entities.Repository.DocumentId(EForgeProvider.GitHub, RepoId)))!;
+        var opened = await h.Service.OnboardAsync(repository, new HashSet<EOnboardingFeature> { EOnboardingFeature.ReleaseLines }, []);
+        opened.Outcome.Should().Be(VersioningOnboardingOutcome.Opened, opened.Note);
+        h.Forge.Files[$"main/{CoverageYml.FileName}"] = "versioning:\n  lines: {}\n";
+        const string merge = "abcdabcdabcdabcdabcdabcdabcdabcdabcdabcd";
+        h.Versioning.PullRequest = new ForgePullRequestText(opened.PullRequest!.Value, OnboardingPlanner.Title, null, OnboardingPlanner.Branch, Head, "main",
+            false, true, true, merge, []);
+        var linesAtBackfill = -1;
+        h.Writer.Backfill = request =>
+        {
+            linesAtBackfill = h.Versioning.Branches.Count;
+            return Task.FromResult(new GitWriterBackfillResult(GitWriterBackfillResult.Tagged, null, [
+                new GitWriterBackfillTag("Acme.Tools/v11.1.0", "1111111111111111111111111111111111111111", "release/dotnet-11.x", GitWriterTagResult.Created, null),
+                new GitWriterBackfillTag("Acme.Tools/v11.2.0", "2222222222222222222222222222222222222222", "release/dotnet-11.x", GitWriterTagResult.Created, null),
+            ], ["main", "release/dotnet-11.x"], [], null, 1));
+        };
+
+        var merged = await h.Service.MergedAsync(repository);
+
+        merged.Outcome.Should().Be(VersioningOnboardingOutcome.Merged, merged.Note);
+        h.Writer.BackfillRequests.Should().ContainSingle();
+        var backfill = h.Writer.BackfillRequests.Single();
+        (backfill.DefaultBranch, backfill.PlanOnly, backfill.Settings.Lines is not null).Should().Be(("main", false, true));
+        linesAtBackfill.Should().Be(1, "D7: settings, renames, cuts, then the backfill, so a version goes on the line of its major");
+        h.Writer.TagRequests.Should().BeEmpty("the backfill tagged the seed's version at its earliest occurrence already");
+        (await StateAsync(store, repository)).SeedCommit.Should().Be(merge, "the seeds are done");
+        merged.Note.Should().Contain("tagged 2 version(s) from the history");
+    }
+
+    [Fact]
     public async Task M10d_a_settings_only_choice_applies_at_once_without_a_pull_request()
     {
         using var store = GetDocumentStore();
@@ -274,17 +342,66 @@ public class OnboardingServiceTests : CoverageRavenTest
         var opened = await first.Service.OnboardAsync(repository, features, []);
         opened.Outcome.Should().Be(VersioningOnboardingOutcome.Opened);
         MergeInto(forge, NextHead, first.Writer.Requests("onboarding").Single().Files!);
+        forge.Files[$"main/{CoverageYml.FileName}"] = forge.Files[$"{NextHead}/{CoverageYml.FileName}"];
 
         // Set up features again: nothing to change, so the lines are created now, from the head the plan read.
         var again = Create(store, forge);
         again.Versioning.PullRequest = new ForgePullRequestText(opened.PullRequest!.Value, OnboardingPlanner.Title, null, OnboardingPlanner.Branch, Head, "main",
             false, true, true, NextHead, []);
+        var linesAtBackfill = new List<int>();
+        again.Writer.Backfill = request =>
+        {
+            linesAtBackfill.Add(again.Versioning.Branches.Count);
+            return Task.FromResult(new GitWriterBackfillResult(GitWriterBackfillResult.Tagged, null, [], ["main"], [], null, 1));
+        };
         var outcome = await again.Service.OnboardAsync(repository, features, ["release/dotnet-10.x"]);
 
         outcome.Outcome.Should().Be(VersioningOnboardingOutcome.Merged, outcome.Note);
         again.Writer.Requests("onboarding").Should().BeEmpty();
         again.Versioning.Branches.Should().Equal([("release/dotnet-11.x", NextHead), ("release/dotnet-10.x", NextHead)]);
+        // #638 D8: re-running Set up features backfills the history, after the cuts.
+        linesAtBackfill.Should().NotBeEmpty().And.EndWith(2);
         outcome.Note.Should().Contain("created release/dotnet-11.x").And.Contain("created release/dotnet-10.x");
+    }
+
+    [Fact]
+    public async Task Narrowing_D15_an_older_line_cut_from_a_multi_target_commit_gets_a_pull_request_that_narrows_it()
+    {
+        // #638 D15: Tools #55, done by the bot: release/dotnet-10.x cut where the project targets net10.0;net11.0.
+        using var store = GetDocumentStore();
+        await SeedRepositoryAsync(store);
+        using (var seed = store.OpenAsyncSession())
+        {
+            await seed.StoreAsync(new PlatformRelease { Platform = "dotnet", Channel = "10.0", Major = 10, LatestSdk = "10.0.203", LatestVersion = "10.0.7" },
+                PlatformRelease.IdFor("dotnet", "10.0"));
+            await seed.SaveChangesAsync();
+        }
+        var forge = Repository(Head);
+        forge.Files[$"{Head}/src/Tools/Tools.csproj"] = MultiTarget;
+        var h = Create(store, forge);
+        var repository = (await h.Session.LoadAsync<Repository>(CodeCoverage.Entities.Repository.DocumentId(EForgeProvider.GitHub, RepoId)))!;
+        var opened = await h.Service.OnboardAsync(repository, new HashSet<EOnboardingFeature> { EOnboardingFeature.ReleaseLines }, ["release/dotnet-10.x"]);
+        h.Versioning.PullRequest = new ForgePullRequestText(opened.PullRequest!.Value, OnboardingPlanner.Title, null, OnboardingPlanner.Branch, Head, "main",
+            false, true, true, NextHead, []);
+        // Both lines as the cut left them, at the merge commit.
+        const string Source = "namespace Acme.Tools;\n#if NET11_0_OR_GREATER\npublic static class Net11 { }\n#endif\n";
+        foreach (var line in new[] { "release/dotnet-11.x", "release/dotnet-10.x" })
+            forge.Trees[line] = new ForgeTree(NextHead, "tree-5711", [new ForgeTreeEntry("src/Tools/Tools.csproj", MultiTarget.Length), new ForgeTreeEntry("src/Tools/Net11.cs", Source.Length)], false);
+        forge.Files[$"{NextHead}/src/Tools/Tools.csproj"] = MultiTarget;
+        forge.Files[$"{NextHead}/src/Tools/Net11.cs"] = Source;
+
+        var merged = await h.Service.MergedAsync(repository);
+
+        var narrowing = h.Writer.Requests("onboarding").Where(r => r.Narrow).Should().ContainSingle().Which;
+        (narrowing.Line, narrowing.BaseBranch, narrowing.ExpectedSha, narrowing.Message).Should().Be(("dotnet-10.x", "release/dotnet-10.x", NextHead, OnboardingPlanner.NarrowTitle));
+        narrowing.Files!.Select(f => (f.Path, f.Content)).Should().Equal([("src/Tools/Tools.csproj", MultiTarget.Replace("net10.0;net11.0", "net10.0"))]);
+        var pull = h.Pulls.Created.Where(p => p.Base == "release/dotnet-10.x").Should().ContainSingle().Which;
+        (pull.Head, pull.Title).Should().Be(("mintplayer/narrow-dotnet-10.x", OnboardingPlanner.NarrowTitle));
+        pull.Body.Should().Contain("- `src/Tools/Tools.csproj`: TargetFrameworks `net10.0;net11.0` → `net10.0`")
+            .And.Contain("- `src/Tools/Net11.cs:2`: `#if NET11_0_OR_GREATER`");
+        h.Pulls.Created.Should().NotContain(p => p.Base == "release/dotnet-11.x", "the current line targets nothing above its major");
+        var number = h.Pulls.PullRequests.Values.Single(p => p.HeadRef == "mintplayer/narrow-dotnet-10.x").Number;
+        merged.Note.Should().Contain($"opened #{number} into release/dotnet-10.x to narrow it to .NET 10");
     }
 
     [Fact]

@@ -260,6 +260,44 @@ public sealed class VersioningRunRequestWire
     public bool PlanOnly { get; set; }
 }
 
+/// <summary>
+/// <c>POST /jobs/versioning/backfill</c> (#638 D5-D8): tag every version the history of the default branch and the release
+/// lines declares at its earliest occurrence, on the line of its major. A tag that already exists is left alone.
+/// </summary>
+public sealed class VersioningBackfillRequestWire
+{
+    public string? Provider { get; set; }
+    public string? RepoId { get; set; }
+    public string? CloneUrl { get; set; }
+    public CredentialWire? Credential { get; set; }
+    public string? DefaultBranch { get; set; }
+    /// <summary>The tagger; the date is the writer's clock.</summary>
+    public IdentityWire? Tagger { get; set; }
+    public VersioningSettingsWire? Settings { get; set; }
+    /// <summary>Decide the tags and write none (the onboarding's preview).</summary>
+    public bool PlanOnly { get; set; }
+    /// <summary>
+    /// #638 D9: the collisions the owner chose to move, by tag name. Each is force-pushed onto its earliest occurrence, leased
+    /// on the tag object the job fetched; a collision not named here is left.
+    /// </summary>
+    public List<string>? Move { get; set; }
+}
+
+/// <param name="Outcome">One of <c>created</c>, <c>already-present</c>, <c>conflict</c>, <c>unreachable</c>, <c>planned</c>.</param>
+public sealed record BackfillTagWire(string Name, string Commit, string Branch, string Outcome, string? Detail);
+
+/// <summary>An App-made tag on <paramref name="Current"/> whose version the history declares first at <paramref name="Commit"/> (D9).</summary>
+/// <param name="Outcome"><c>planned</c>, <c>left</c>, <c>moved</c>, or <c>conflict</c> when the tag changed since the job fetched it.</param>
+public sealed record BackfillCollisionWire(string Name, string Current, string Commit, string Branch, string Outcome, string? Detail);
+
+/// <param name="Outcome"><see cref="JobOutcomes.Planned"/> for a plan, <see cref="JobOutcomes.Tagged"/> once written, or a failure.</param>
+/// <param name="Branches">The branches walked: the default branch and the release lines.</param>
+public sealed record VersioningBackfillResponse(string Outcome, string? Reason, IReadOnlyList<BackfillTagWire> Tags, IReadOnlyList<string> Branches,
+    IReadOnlyList<string> Notes, string? Detail, long DurationMs)
+{
+    public IReadOnlyList<BackfillCollisionWire> Collisions { get; init; } = [];
+}
+
 /// <summary>The <c>versioning:</c> section of <c>coverage.yml</c> as the engine reads it (D13, D17).</summary>
 public sealed class VersioningSettingsWire
 {
@@ -311,6 +349,10 @@ public sealed record VersioningRunResponse(
 {
     /// <summary>The tags a plan-only run decided (#552 D1), for <c>/jobs/tags</c> with its fingerprint to write later.</summary>
     public Versioning.Releases.TagPlan? Plan { get; init; }
+
+    /// <summary>On a release line, the major of each package anchored on its platform (#638 D2), which the action
+    /// exports to the pack. Null off a line.</summary>
+    public IReadOnlyDictionary<string, int>? LineMajors { get; init; }
 }
 
 /// <summary>
@@ -490,6 +532,10 @@ public sealed record BackportTargetResult(
     /// <summary>The first-party packages the change raised above this line's major, which normalization dropped, so the
     /// line keeps its own version (#570 D11); the app diagnoses the upstream release.</summary>
     public IReadOnlyList<DependencyRaise> Raises { get; init; } = [];
+
+    /// <summary>The platform values the change moved off this line's major, which normalization kept at the line's
+    /// value (#638 D13); the app reports them on the backport, or on its "nothing left" close.</summary>
+    public IReadOnlyList<PlatformKept> Kept { get; init; } = [];
 }
 
 /// <param name="Outcome"><see cref="JobOutcomes.Backported"/> when the job ran (each target has its own result), or a failure.</param>

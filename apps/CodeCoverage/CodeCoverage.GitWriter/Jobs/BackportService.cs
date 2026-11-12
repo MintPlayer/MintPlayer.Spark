@@ -84,13 +84,13 @@ public sealed partial class BackportService
         var message = Message(job, commit, picked);
         var author = Author(commit.Raw) ?? job.Committer;
         var results = new List<BackportTargetResult>();
-        var raisesByBranch = new Dictionary<string, IReadOnlyList<DependencyRaise>>(StringComparer.Ordinal);
+        var raisesByBranch = new Dictionary<string, (IReadOnlyList<DependencyRaise> Raises, IReadOnlyList<PlatformKept> Kept)>(StringComparer.Ordinal);
         foreach (var (branch, head, rules, draft, regeneratedPaths) in job.Targets)
         {
             var tip = await TipAsync(context, branch);
-            var (mergeBase, theirs, regenerated, platformChanges, raises, merged) = await PickAsync(context, job.Credential, job.Markers, job.Committer, tip, @base,
+            var (mergeBase, theirs, regenerated, platformChanges, raises, kept, merged) = await PickAsync(context, job.Credential, job.Markers, job.Committer, tip, @base,
                 job.Commit, changed, rules, regeneratedPaths);
-            raisesByBranch[branch] = raises;
+            raisesByBranch[branch] = (raises, kept);
 
             // Each line stands on its own (#570 D6): a conflict here holds back no other line.
             if (merged is MergeOutcome.Evicted evicted)
@@ -139,8 +139,9 @@ public sealed partial class BackportService
                 _ => throw new InvalidOperationException(),
             });
         }
-        // #570 D11: whatever the line's outcome, the first-party raises normalization dropped go with it.
-        var withRaises = results.Select(r => raisesByBranch.TryGetValue(r.Branch, out var dropped) ? r with { Raises = dropped } : r).ToList();
+        // #570 D11: whatever the line's outcome, the first-party raises normalization dropped go with it, and so do the
+        // platform values it kept on the line (#638 D13).
+        var withRaises = results.Select(r => raisesByBranch.TryGetValue(r.Branch, out var dropped) ? r with { Raises = dropped.Raises, Kept = dropped.Kept } : r).ToList();
         return new VersioningBackportResponse(JobOutcomes.Backported, null, mode, @base, withRaises, null, context.ElapsedMilliseconds);
     }, (outcome, reason, detail, ms) => new VersioningBackportResponse(outcome, reason, null, null, [], detail, ms));
 
@@ -190,7 +191,7 @@ public sealed partial class BackportService
     public const string Clean = "clean";
 
     private sealed record Pick(string MergeBase, string Theirs, IReadOnlyList<string> Regenerated, IReadOnlyList<PlatformChange> PlatformChanges,
-        IReadOnlyList<DependencyRaise> Raises, MergeOutcome Merged);
+        IReadOnlyList<DependencyRaise> Raises, IReadOnlyList<PlatformKept> Kept, MergeOutcome Merged);
 
     /// <summary>One line's in-memory merge of the change, shared by the backport and its trial.</summary>
     private async Task<Pick> PickAsync(JobContext context, GitCredential credential, PlatformMarkerOptions? markers, GitIdentity committer, string tip,
@@ -200,14 +201,14 @@ public sealed partial class BackportService
         // so the merge keeps the line's, and the line's own workflow regenerates it before the pull request opens.
         var regenerated = regeneratedPaths is { Count: > 0 } globs ? changed.Where(p => globs.Any(g => g.Matches(p))).ToList() : [];
         var markerPaths = changed.Where(p => !regenerated.Contains(p, StringComparer.Ordinal) && PlatformMarkers.Handles(p, markers)).ToList();
-        var (mergeBase, theirs, platformChanges, raises) = await NormalizeAsync(context, markers, committer, tip, @base, commit, markerPaths, regenerated);
+        var (mergeBase, theirs, platformChanges, raises, kept) = await NormalizeAsync(context, markers, committer, tip, @base, commit, markerPaths, regenerated);
 
         // The merge queue's resolver (PRD §5.3 step 2), stage 2 the line: a conflict the line's rules allow is resolved
         // the way the queue would; any other conflict is reported. With no rules every conflict is reported.
         var resolver = new MergeQueueResolver(git, registry) { Timeout = context.Remaining, ScratchDirectory = context.Scratch, Config = JobContext.WriterConfig };
         var merged = await resolver.MergeAsync(context.GitDirectory, tip, theirs, rules, context.Deadline, credential, mergeBase);
         context.EnsureWithinDisk();
-        return new Pick(mergeBase, theirs, regenerated, platformChanges, raises, merged);
+        return new Pick(mergeBase, theirs, regenerated, platformChanges, raises, kept, merged);
     }
 
     private static async Task<string> TipAsync(JobContext context, string branch)
@@ -293,12 +294,13 @@ public sealed partial class BackportService
     /// as throwaway commits that are never pushed; the originals when nothing needed rewriting. Plus the platform values
     /// the change edits on the line's own platform, which are left to the merge.
     /// </summary>
-    private static async Task<(string Base, string Theirs, IReadOnlyList<PlatformChange> Changes, IReadOnlyList<DependencyRaise> Raises)> NormalizeAsync(
+    private static async Task<(string Base, string Theirs, IReadOnlyList<PlatformChange> Changes, IReadOnlyList<DependencyRaise> Raises, IReadOnlyList<PlatformKept> Kept)> NormalizeAsync(
         JobContext context, PlatformMarkerOptions? markers, GitIdentity committer, string tip, string @base, string theirs, IReadOnlyList<string> paths,
         IReadOnlyList<string> regenerated)
     {
         var changes = new List<PlatformChange>();
         var raises = new List<DependencyRaise>();
+        var kept = new List<PlatformKept>();
         var baseFiles = new List<(string Path, string Mode, string Oid)>();
         var theirsFiles = new List<(string Path, string Mode, string Oid)>();
         foreach (var path in regenerated)
@@ -320,12 +322,13 @@ public sealed partial class BackportService
                 continue;
             changes.AddRange(normalized.PlatformChanges);
             raises.AddRange(normalized.Raises);
+            kept.AddRange(normalized.Kept);
             if (before is not null && normalized.Base != before.Text)
                 baseFiles.Add((path, before.Mode, await HashAsync(context, normalized.Base!)));
             if (after is not null && normalized.Theirs != after.Text)
                 theirsFiles.Add((path, after.Mode, await HashAsync(context, normalized.Theirs!)));
         }
-        return (await RewriteAsync(context, committer, @base, baseFiles), await RewriteAsync(context, committer, theirs, theirsFiles), changes, raises);
+        return (await RewriteAsync(context, committer, @base, baseFiles), await RewriteAsync(context, committer, theirs, theirsFiles), changes, raises, kept);
     }
 
     private static async Task<string> HashAsync(JobContext context, string content)
