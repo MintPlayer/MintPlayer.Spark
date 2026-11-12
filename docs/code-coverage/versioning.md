@@ -44,9 +44,19 @@ Each of these is a rule that checks before it edits, so **Set up features** can 
 was onboarded before. It then opens a pull request with only what is still missing (for example a checkout added
 since), listed per rule under "Changes", or answers that there is nothing to change.
 
-Review and merge it. At the merge, the app pushes one **seed tag** per package at the merge commit, from the
-version the pull request replaced, so no package restarts at `0.0.0`. If the seeds cannot be pushed, the first
-versioning run waits (`503 seeds`) rather than release an untagged package from scratch.
+Review and merge it. At the merge, the app **tags the history** (#638): the git writer walks the default branch and
+every release line (renamed old lines included, never a feature branch), reads each package's declared version per
+commit, and tags **every version at its earliest occurrence**. A version of major N goes on `release/*-N.x` when that
+line exists, else on the default branch, so each N.x tag is reachable from its line. Tags that exist are left alone.
+A package whose history declares nothing still gets one **seed tag** at the merge commit, from the version the pull
+request replaced, so no package restarts at `0.0.0`. If the tags cannot be pushed, the first versioning run waits
+(`503 seeds`) rather than release an untagged package from scratch.
+
+**Running Set up features again** backfills whatever version is still missing its tag, at once when there is nothing
+else to change. It also lists the **App's own tags** that sit away from their version's earliest occurrence (Tools'
+first line release tagged 14 packages `v10.0.0` at a commit that packs 11.x) and asks once: **Move them** force-pushes
+each one onto its earliest commit, leased on the tag the App read, so a tag that changed meanwhile is left alone.
+**Leave them** changes nothing. A tag a person pushed is never listed, and never moved.
 
 A repository is versioned when its **default branch's** `coverage.yml` has a `versioning:` section, even an empty
 one. A branch cannot change the section for itself.
@@ -116,6 +126,14 @@ version from the tags reachable from HEAD, so every checkout of a job that runs 
   out of pull-request workflows. A
   multi-targeted project gets the same targets in its outer build, the one that packs (`buildMultiTargeting/`), and a
   pack that would still write a placeholder nuspec fails with `MPV004`.
+- **On a release line, the line's major** (#638). On `release/dotnet-10.x`, a package anchored to the platform packs
+  its highest tag **of major 10**, even when a `v11.*` tag of the default branch is reachable from the line. The
+  action passes the map as `MintPlayerVersioningMajors` (`id=major;…`), only for packages whose major follows the
+  line's ecosystem. A free package (a netstandard library) or another ecosystem's keeps its highest tag. A named
+  package with no tag of its major gets warning `MPV006`. The onboarding turns it into an error through
+  `MSBuildWarningsAsErrors` in `Directory.Build.props`, for now. Remove that line to make it a warning again.
+  The onboarding's publish step also fails a release whose pack did not produce a `.nupkg` at every planned version,
+  instead of finishing green with nothing published.
 - **An explicit version wins** (#544 D1). `dotnet pack -p:Version=1.2.3` (or a `Version` passed down from a parent
   build) skips the target entirely: no git call, no MPV001, and the project stays packable. `-p:PackageVersion`
   alone sets `Version` too, so the assembly and the package agree. A `<Version>` in a csproj does **not** win, because
@@ -317,7 +335,10 @@ versioning:
 
 In every repository with `lines:`, promoted or not, the App checks each package tag a person pushes. It compares the
 tag with **the one tag it follows**: the package's highest tag reachable from the tagged commit, the same tag the pack
-reads (`tag --merged HEAD`). Other tags in the repository, on other branches or lines, play no part.
+reads (`tag --merged HEAD`), **of the tag's own major** when a release line has that major (#638). On an older line,
+the default branch's newer tags are reachable too: `Hsts/v10.0.2` on `release/dotnet-10.x` follows the highest
+`Hsts/v10.*`, not `Hsts/v11.0.1-rc.1`. A major with no line of its own is compared with every tag, so it is still
+refused. Other tags in the repository, on other branches or lines, play no part.
 
 - **Valid:** above the tag it follows, with the same major (`Acme.Core/v8.1.2` after `Acme.Core/v8.1.1`). Any higher
   version is accepted, not only the next one, so a skipped patch is fine.
@@ -334,6 +355,33 @@ reads (`tag --merged HEAD`). Other tags in the repository, on other branches or 
 `releases-index.json`; Angular, React, Vue and Node.js from endoflife.date; a framework's preview major from its npm
 `next` dist-tag). Open *Guides → Platform lifecycle* to see which majors are in preview, active, maintenance or end of
 life, and so which lines are worth keeping.
+
+### From multi-targeting to release lines (#638)
+
+A library that targets `net10.0;net11.0` ships one package for both platforms. Release lines ship one package per
+platform major instead, so each target framework moves to its own branch:
+
+- **The default branch** (and its current line, `release/dotnet-11.x`) drops the older target:
+  `<TargetFrameworks>net11.0</TargetFrameworks>`, and its framework packages and `global.json` move to 11.
+- **The older line** (`release/dotnet-10.x`) keeps only `net10.0`. When **Set up features** creates it from a commit
+  that still targets both, the bot opens a pull request into it (branch `mintplayer/narrow-dotnet-10.x`). That pull
+  request drops the higher target frameworks, sets `global.json` to the line's latest SDK and the framework packages
+  to its latest runtime (both from the platform lifecycle page). It lists every `#if NET11_0_OR_GREATER` and every
+  MSBuild `Condition` naming `net11.0`, for you to resolve: on the line they are dead code or wrong. Review it, fix
+  the listed conditionals on its branch, and merge it before the line's first release.
+- **The versions:** the line's packages release as `10.x` from their own tags, which the history backfill placed on the
+  line. The default branch's `11.x` tags do not leak into the line's pack (`MPV006` when a package has no `10.*` tag).
+- **Backports after the split:** a pull request that only drops `net10.0` on the default branch (or moves the SDK or a
+  framework package off 10) changes nothing on the 10.x line. Its backport keeps the line's value and says so ("This line
+  keeps its platform …"). When nothing else is left, the backport reports "nothing left to backport after
+  normalization" instead of opening an empty pull request. A fix that comes with such a move backports cleanly, without
+  the move.
+
+**Keep `<TargetFrameworks>` (plural) with one value.** Switching to the singular `<TargetFramework>` silently changes
+MSBuild logic keyed on `$(TargetFrameworks)`. In Tools, a "pack the analyzer from the first TFM only" condition stopped
+matching. A client build that passed `TargetFramework` to a single-TFM server project raced the solution's own build
+of it. The narrowing pull request keeps the plural element. If you do switch, search the repository for
+`$(TargetFrameworks)` and `TargetFramework=` first.
 
 ## GitHub Releases and pull request titles (D14, D15)
 
@@ -402,7 +450,9 @@ Versioning is GitHub only (D16). On GitLab and Bitbucket repositories the Versio
 |---|---|
 | `MPV001: No tag '<id>/v<version>' is reachable from HEAD` | The package has no tag yet, or the checkout is shallow and has no tags (`fetch-depth: 0`, or let the action fetch before the pack). |
 | `MPV004: <id> would be packed at 0.0.0-PLACEHOLDER` | The project skipped the versioning target (`MintPlayerVersioningSkip`) but is still packable, or it uses `MintPlayer.Versioning.MSBuild` 1.0.0, whose targets a multi-targeted project's outer build never imports. Update the package. |
-| A package restarted at `X.0.0` | It had no seed tag. Push `<id>/v<last published>` on a commit before the release and re-run. |
+| `MPV006: on line N.x, <id> has no tag of major N` | The release line packs each platform-anchored package at the line's major, and this package has no `<id>/vN.*` tag reachable from the line. Run **Set up features** again: it tags every version the history declares. On an older line cut before versioning, check that the tags are on the line's commits and not only on the default branch's. |
+| A package restarted at `X.0.0` | It had no seed tag. Run **Set up features** again to tag the versions its history declares, or push `<id>/v<last published>` on a commit before the release, and re-run. |
+| A release run is green but nothing new is on the feed | The pack produced other versions than the run planned (an older line packing the default branch's newer tags). The publish step's check fails such a run now. Run **Set up features** again, and move the App's misplaced tags when it asks. |
 | The run fails: "a major never goes down" | The computed major is below the last tag's, or the version already exists (D7). Anchor the package `free`, or fix the target framework. |
 | `phase: release` fails with `stale-plan` | A version tag was added, moved or deleted between the plan and the release (#552 D3). Use **"Re-run all jobs"**, which plans again. "Re-run failed jobs" reuses the stale plan. |
 | `phase: release` says the plan was made for another commit | The `plan` input is from another run, or the branch moved. Use "Re-run all jobs". |

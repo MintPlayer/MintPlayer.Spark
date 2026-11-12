@@ -52,6 +52,10 @@ dry-runs the cherry-pick onto every requested line. Each line is handled on its 
   vanishes, and an edit next to one merges.
 - **A change to the line's own platform is never normalized away.** For example, `net11.0` → `net10.0;net11.0` on
   a .NET 10 line. It merges or conflicts as git decides, and the comment names it.
+- **A move off the line's major keeps the line's value** (#638 D13). For example, `net10.0;net11.0` → `net11.0`, or
+  `global.json` from 10.0.x to 11.0.x, on a .NET 10 line. Both sides take the line's value, and the backport pull
+  request lists it under "This line keeps its platform …". A fix that comes with the move backports without it. A
+  change that was only the move reports "nothing left to backport after normalization", never an empty pull request.
 - **Conflicts the merge queue may resolve are resolved.** These are conflicts matching the default branch's
   `mergeQueue.autoResolve` rules (never a line's own copy), with the line's side as the base. The pull request lists
   each one.

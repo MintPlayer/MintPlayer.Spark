@@ -622,6 +622,19 @@ the bot be creating the release lines? why does the user need to do that?". Fixe
 **Next for Tools:** after that deploy, run Set up features again on Tools (S2): expect `release/dotnet-11.x` and the
 chosen `release/dotnet-10.x` created at once; then .NET 11 GA on master and `/release`.
 
+**G7, the first release on the older line published nothing (#638, closes #600).** After the line cuts, Tools' first
+run on `release/dotnet-10.x` tagged `v10.0.0` for 14 packages that were already on nuget.org. The pack then read the
+reachable `v11.*` tags and packed 11.x, and `--skip-duplicate` let the run finish green with nothing published. Four
+causes, each fixed in the #638 PR ([release_line_first_release_PRD.md](release_line_first_release_PRD.md)):
+- the pack took the highest reachable tag of any major (now per package, the line's major, MPV006);
+- the hand-tag rule followed the newer major's tag the same way;
+- versions shipped before the onboarding had no tags (the onboarding now tags every version at its earliest
+  occurrence, and Set up features moves the App's own misplaced tags when the owner agrees);
+- the publish never checked that it packed what it planned (the publish step now fails such a run).
+
+Backports that only move the platform off an older line now keep the line's value (D13). An older line cut from a
+multi-target commit gets a narrowing pull request (D15). Tools' recovery is that PRD's §6.
+
 ## 4. Spikes
 
 | Spike | Question | How | Feeds |
@@ -653,5 +666,5 @@ chosen `release/dotnet-10.x` created at once; then .NET 11 GA on master and `/re
 ## 6. Not in scope here
 
 - Past lines (`dotnet-10.x`, `angular-21.x`): still deferred (`docs/coverage_backport_plan.md` M11).
-- Issue #600 (pack major on older lines) and #599 (onboarding with release lines): separate issues; #600 matters only
-  once a past line is cut.
+- Issue #599 (onboarding with release lines): a separate issue. #600 (pack major on older lines) is fixed by #638
+  (G7 in §2e).

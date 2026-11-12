@@ -218,7 +218,9 @@ mergeQueue:
   - when the line moves.
 
   `/dequeue` (or the check's button) lets the line go on without it. A person's pull request into a line is evicted as
-  before.
+  before. The App's other pull requests into a line are admitted like a person's: the line's regenerate workflows,
+  and the narrowing pull request into an older line cut from a multi-target commit (#638 D15,
+  `mintplayer/narrow-<line>`). The line policy refuses only on the current line, and an older line is never current.
 - **A held backport asks someone to fix it.** Before it holds on red checks, the queue re-runs the failed ones once,
   even with `retryFlaky: 0`. Then:
   - **Who:** the author of the backported pull request is assigned and named in the comment. For a fork's or a bot's

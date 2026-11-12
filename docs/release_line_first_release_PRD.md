@@ -75,9 +75,9 @@ it or warns. The issue has the full evidence tables. This file does not repeat t
 
 ## 5. Milestones (one PR, in the issue's order)
 
-> **Resume here (2026-11-12, after M6).**
-> - Done: M1–M6, each with its red→green record below (S6 answered in M5).
-> - Next: **M7** (docs). After M7, run the
+> **Resume here (2026-11-12, after M7).**
+> - Done: M1–M7, each with its red→green record below (S6 answered in M5).
+> - Next: run the
 >   affected suites once with the Developer licence (`npm run test:affected`), then open the PR, ready and not a draft.
 > - Built so far, for orientation:
 >   - The MSBuild task takes a per-package major map (`MintPlayerVersioningMajors`) with MPV006.
@@ -208,7 +208,10 @@ owner's requested exception to "tests run once, at the end". The full affected s
       after it, and the `OnboardingPlannerTests` assertions were added after the code.
   - **Results:** `LineNarrowingTests` + `OnboardingServiceTests` 16/16, `OnboardingPlannerTests` + `SetUpFeatures*`
     32/32, `OnboardingWriterJobTests` 12/12, goldens 25/25.
-- **M7, docs:** G7 in `release_lines_recovery_plan.md` §2e, and remove #600 from its §6; `versioning.md:47-49`
+- **M7, docs. ✅ Done** (`versioning.md`: history backfill and the Move/Leave prompt, the line's major and MPV006 in
+  "What reaches the artifacts", the hand-tag rule's major filter, the how-to "From multi-targeting to release lines"
+  with the plural-element pitfall, and three troubleshooting rows; `backports.md`: D13; `merge-queue.md`: the App's
+  line PRs are admitted; `release_lines_recovery_plan.md`: G7 and §6). Planned: G7 in `release_lines_recovery_plan.md` §2e, and remove #600 from its §6; `versioning.md:47-49`
   (seeds become the history backfill), `:105` (line's major), `:316-328` (hand-tag rule); `merge-queue.md:220`
   (narrowing PRs); a multi-targeting → lines how-to, including the `$(TargetFrameworks)` → `$(TargetFramework)`
   pitfall Tools hit; and MPV006 in the warnings list.
