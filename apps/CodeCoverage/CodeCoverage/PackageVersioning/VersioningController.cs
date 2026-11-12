@@ -156,7 +156,7 @@ public partial class VersioningController : ControllerBase
         // untagged package from scratch, so it pushes them itself, or waits.
         try
         {
-            if (!await onboarding.PushSeedsAsync(repository, cancellationToken))
+            if (!await onboarding.PushSeedsAsync(repository, afterCuts: false, cancellationToken))
                 return Answer(StatusCodes.Status503ServiceUnavailable, "failed", "seeds", "The onboarding's seed tags could not be pushed yet; the run waits for them.");
         }
         catch (Exception ex) when (ex is GitWriterUnavailableException or HttpRequestException or ForgeRequestException && !cancellationToken.IsCancellationRequested)

@@ -136,7 +136,7 @@ public partial class OnboardingService : IOnboardingService
         CancellationToken cancellationToken = default, IReadOnlyCollection<string>? moveTags = null)
     {
         // A merged onboarding whose seeds are still pending: push them before a new plan replaces them.
-        if (!await versioning.PushSeedsAsync(repository, cancellationToken))
+        if (!await versioning.PushSeedsAsync(repository, afterCuts: false, cancellationToken))
             return new(VersioningOnboardingOutcome.Refused, "The previous onboarding's seed tags could not be pushed yet; try again later.");
 
         var planned = await PlanAsync(repository, features, olderLines, cancellationToken);
@@ -251,7 +251,8 @@ public partial class OnboardingService : IOnboardingService
             || updates.FirstOrDefault(u => u.Provider == repository.Provider) is not { } pulls
             || repository.DefaultBranch is not { } defaultBranch)
         {
-            await versioning.PushSeedsAsync(repository, cancellationToken);
+            // Handled already, or a #153 pull request: no line cuts are pending.
+            await versioning.PushSeedsAsync(repository, afterCuts: true, cancellationToken);
             return new(VersioningOnboardingOutcome.Nothing, "No onboarding pull request waits for its merge.");
         }
         if (await forge.GetPullRequestTextAsync(repository, number, cancellationToken) is not { Merged: true } merged)
@@ -265,7 +266,7 @@ public partial class OnboardingService : IOnboardingService
             done.AddRange(await CutAsync(repository, forge, state.Cuts, mergeCommit, cancellationToken));
         // PushSeedsAsync notes what it did on this same state (the session's one instance).
         var before = state.Note;
-        await versioning.PushSeedsAsync(repository, cancellationToken);
+        await versioning.PushSeedsAsync(repository, afterCuts: true, cancellationToken);
         if (state.Note is { } seeded && seeded != before) done.Add(seeded.TrimEnd('.'));
         if (state.Features.Contains(EOnboardingFeature.ReleaseLines))
             done.AddRange(await LineWorkflowsAsync(repository, git, pulls, defaultBranch, cancellationToken));

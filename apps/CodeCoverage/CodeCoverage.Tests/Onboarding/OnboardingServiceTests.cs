@@ -30,7 +30,7 @@ public class OnboardingServiceTests : CoverageRavenTest
         + "    <PackageId>Acme.Tools</PackageId>\n    <Version>11.2.0</Version>\n  </PropertyGroup>\n</Project>\n";
 
     private sealed record Harness(IOnboardingService Service, FakeGitWriter Writer, FakeForgeDependencyUpdates Pulls, ScriptedDiffService Forge, FakeForgeMergeQueue Queue,
-        FakeForgeVersioning Versioning, RecordingMessageBus Bus, Raven.Client.Documents.Session.IAsyncDocumentSession Session);
+        FakeForgeVersioning Versioning, RecordingMessageBus Bus, Raven.Client.Documents.Session.IAsyncDocumentSession Session, IVersioningOnboardingService Seeds);
 
     private sealed class Offline : HttpMessageHandler
     {
@@ -64,7 +64,9 @@ public class OnboardingServiceTests : CoverageRavenTest
         services.AddHttpClient(Microsoft.Extensions.Options.Options.DefaultName).ConfigurePrimaryHttpMessageHandler(() => new Offline());
         services.AddScoped<IVersioningOnboardingService, VersioningOnboardingService>();
         services.AddScoped<IOnboardingService, OnboardingService>();
-        return new Harness(services.BuildServiceProvider().GetRequiredService<IOnboardingService>(), writer, pulls, forge, queue, versioning, bus, session);
+        var provider = services.BuildServiceProvider();
+        return new Harness(provider.GetRequiredService<IOnboardingService>(), writer, pulls, forge, queue, versioning, bus, session,
+            provider.GetRequiredService<IVersioningOnboardingService>());
     }
 
     /// <summary>A .NET repository with coverage.yml at <paramref name="head"/>.</summary>
@@ -286,6 +288,45 @@ public class OnboardingServiceTests : CoverageRavenTest
             .Which.Move.Should().Equal(["Acme.Tools/v11.1.0"]);
         h.Writer.TagRequests.Should().BeEmpty();
         merged.Note.Should().Contain("moved 1 tag(s) onto their earliest occurrence");
+    }
+
+    /// <summary>
+    /// The first versioning run may beat the merged webhook (#153 D17). It pushes the seeds, but leaves the backfill to the
+    /// merge handler while the onboarding's line cuts are pending, so a version still goes on the line of its major (#638 D7).
+    /// </summary>
+    [Fact]
+    public async Task MergeBackfill_D2_a_run_that_beats_the_webhook_leaves_the_backfill_until_after_the_cuts()
+    {
+        using var store = GetDocumentStore();
+        await SeedRepositoryAsync(store);
+        var h = Create(store);
+        var repository = (await h.Session.LoadAsync<Repository>(CodeCoverage.Entities.Repository.DocumentId(EForgeProvider.GitHub, RepoId)))!;
+        var opened = await h.Service.OnboardAsync(repository, new HashSet<EOnboardingFeature> { EOnboardingFeature.ReleaseLines }, []);
+        opened.Outcome.Should().Be(VersioningOnboardingOutcome.Opened, opened.Note);
+        (await StateAsync(store, repository)).Cuts.Should().NotBeEmpty();
+        h.Forge.Files[$"main/{CoverageYml.FileName}"] = "versioning:\n  lines: {}\n";
+        const string merge = "abcdabcdabcdabcdabcdabcdabcdabcdabcdabcd";
+        h.Versioning.PullRequest = new ForgePullRequestText(opened.PullRequest!.Value, OnboardingPlanner.Title, null, OnboardingPlanner.Branch, Head, "main",
+            false, true, true, merge, []);
+        var linesAtBackfill = new List<int>();
+        h.Writer.Backfill = request =>
+        {
+            linesAtBackfill.Add(h.Versioning.Branches.Count);
+            return Task.FromResult(new GitWriterBackfillResult(GitWriterBackfillResult.Tagged, null, [], ["main"], [], null, 1));
+        };
+
+        // The versioning run's call, before the webhook.
+        (await h.Seeds.PushSeedsAsync(repository)).Should().BeTrue("the run never waits on the webhook");
+
+        h.Writer.BackfillRequests.Should().BeEmpty("D2: the line cuts have not run yet");
+        h.Writer.TagRequests.Should().ContainSingle("the seeds are pushed as before (#153 D17)");
+
+        var merged = await h.Service.MergedAsync(repository);
+
+        merged.Outcome.Should().Be(VersioningOnboardingOutcome.Merged, merged.Note);
+        linesAtBackfill.Should().Equal([1], "the merge handler backfills once, after the cut");
+        h.Writer.TagRequests.Should().ContainSingle("the seeds are not pushed twice");
+        (await StateAsync(store, repository)).BackfilledAt.Should().Be(merge);
     }
 
     /// <summary>A state written before #638 asked for no backfill: a deploy must not start one on its next run.</summary>

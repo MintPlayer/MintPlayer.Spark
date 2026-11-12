@@ -19,8 +19,12 @@ public interface IVersioningOnboardingService
     /// seeds are pending on a merged pull request and could not be pushed: a versioning run must not go ahead without them,
     /// or it would release the untagged packages from scratch. The caller holds <see cref="VersioningRunLocks"/>.
     /// </summary>
-    /// <remarks>#638 D5-D7: the history backfill runs first; a seed whose version it tagged at an earlier commit is not pushed again.</remarks>
-    Task<bool> PushSeedsAsync(Repository repository, CancellationToken cancellationToken = default);
+    /// <remarks>
+    /// #638 D5-D7: the history backfill runs first; a seed whose version it tagged at an earlier commit is not pushed again.
+    /// docs/onboarding_merge_backfill_PRD.md D2: only a caller that ran the onboarding's line cuts (<paramref name="afterCuts"/>,
+    /// the merge handler) backfills while cuts are pending; any other caller pushes the seeds and leaves the backfill to it.
+    /// </remarks>
+    Task<bool> PushSeedsAsync(Repository repository, bool afterCuts = false, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// #638 D5-D8: tags every version the default branch's and the release lines' history declares at its earliest occurrence,
@@ -56,11 +60,15 @@ public partial class VersioningOnboardingService : IVersioningOnboardingService
 
     private DateTime Now => time.GetUtcNow().UtcDateTime;
 
-    public async Task<bool> PushSeedsAsync(Repository repository, CancellationToken cancellationToken = default)
+    public async Task<bool> PushSeedsAsync(Repository repository, bool afterCuts = false, CancellationToken cancellationToken = default)
     {
         var state = await session.LoadAsync<VersioningOnboardingState>(VersioningOnboardingState.ForRepository(repository.Id!), cancellationToken);
+        if (state is null || repository.DefaultBranch is not { } defaultBranch) return true;
         // docs/onboarding_merge_backfill_PRD.md D1: a merge with no seeds still backfills, when the onboarding asked for it.
-        if (state is not ({ SeedsPending: true } or { BackfillPending: true }) || repository.DefaultBranch is not { } defaultBranch) return true;
+        // D2: not before the onboarding's line cuts, which only the merge handler runs (#638 D7).
+        var seedsDue = state.SeedsPending;
+        var backfillDue = state.BackfillPending && (afterCuts || state.MergeHandledAt is not null || state.Cuts.Count == 0);
+        if (!seedsDue && !backfillDue) return true;
         if (forges.FirstOrDefault(f => f.Provider == repository.Provider) is not { } forge
             || queues.FirstOrDefault(q => q.Provider == repository.Provider) is not { } git)
             return true;
@@ -70,20 +78,22 @@ public partial class VersioningOnboardingService : IVersioningOnboardingService
         if (pull is not { Merged: true, MergeCommitSha: { } merge }) return true;
 
         // A backfill that fails leaves the seeds to carry the current versions, as before #638; its note says why.
-        var backfill = await BackfillCoreAsync(repository, git, defaultBranch, state.MoveTags, cancellationToken);
-        var seeds = state.Seeds.Where(s => !backfill.Covered.Contains(VersionTag.Prefix(s.PackageId) + s.Version)).ToList();
+        var backfill = backfillDue
+            ? await BackfillCoreAsync(repository, git, defaultBranch, state.MoveTags, cancellationToken)
+            : (Covered: (IReadOnlySet<string>)new HashSet<string>(), Note: (string?)null);
+        var seeds = seedsDue ? state.Seeds.Where(s => !backfill.Covered.Contains(VersionTag.Prefix(s.PackageId) + s.Version)).ToList() : [];
         if (seeds.Count > 0 && await TagAsync(repository, git, defaultBranch, merge, seeds, cancellationToken) is { } refusal)
         {
             await NoteAsync(state, new(VersioningOnboardingOutcome.Refused, Join(backfill.Note, refusal)), cancellationToken);
             return false;
         }
-        state.SeedCommit = merge;
-        state.BackfilledAt = merge;
+        if (seedsDue) state.SeedCommit = merge;
+        if (backfillDue) state.BackfilledAt = merge;
         // The note saves the state too: without it the merge would be handled again on every run.
         var pushed = seeds.Count > 0 ? $"Pushed {seeds.Count} seed tag(s) at the merge commit {Short(merge)}." : null;
         await NoteAsync(state, new(VersioningOnboardingOutcome.Seeded, (backfill.Note, pushed) switch
         {
-            (null, null) => "The history backfill found nothing to tag.",
+            (null, null) => backfillDue ? "The history backfill found nothing to tag." : "No seed tags to push.",
             ({ } note, null) => note,
             var (note, seeded) => Join(note, seeded!),
         }), cancellationToken);
