@@ -56,7 +56,9 @@ request replaced, so no package restarts at `0.0.0`. If the tags cannot be pushe
 else to change. It also lists the **App's own tags** that sit away from their version's earliest occurrence (Tools'
 first line release tagged 14 packages `v10.0.0` at a commit that packs 11.x) and asks once: **Move them** force-pushes
 each one onto its earliest commit, leased on the tag the App read, so a tag that changed meanwhile is left alone.
-**Leave them** changes nothing. A tag a person pushed is never listed, and never moved.
+**Leave them** changes nothing. A tag a person pushed is never listed, and never moved. When the re-run opens a pull
+request, the answer waits for its merge, and the merge backfills and moves even when every package is tagged already
+and there is no seed to push (`docs/onboarding_merge_backfill_PRD.md` D1; Tools #56).
 
 A repository is versioned when its **default branch's** `coverage.yml` has a `versioning:` section, even an empty
 one. A branch cannot change the section for itself.

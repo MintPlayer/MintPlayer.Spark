@@ -159,10 +159,13 @@ public partial class OnboardingService : IOnboardingService
             // the plan read, whose workflows run on the lines already).
             var applied = await ApplyAsync(repository, git, plan.OnMerge, plan.Renames.Renames.Select(r => new OnboardingRename { From = r.From, To = r.To }), cancellationToken);
             applied.AddRange(await CutAsync(repository, forge, plan.Cuts.Select(c => c.Branch), tree.Commit, cancellationToken));
-            // #638 D15: an older line cut from a commit that targets a higher .NET gets a pull request narrowing it.
-            applied.AddRange(await NarrowAsync(repository, git, pulls, plan.Cuts.Select(c => c.Branch), defaultBranch, cancellationToken));
+            // docs/onboarding_merge_backfill_PRD.md D3: the merge's steps in the merge's order (MergedAsync).
             // #638 D8: re-running Set up features backfills the versions the history declares and no tag carries yet, after the cuts (D7).
             if (await versioning.BackfillAsync(repository, moveTags ?? [], cancellationToken) is { } backfilled) applied.Add(backfilled.TrimEnd('.'));
+            if (plan.Features.Contains(EOnboardingFeature.ReleaseLines))
+                applied.AddRange(await LineWorkflowsAsync(repository, git, pulls, defaultBranch, cancellationToken));
+            // #638 D15: an older line cut from a commit that targets a higher .NET gets a pull request narrowing it.
+            applied.AddRange(await NarrowAsync(repository, git, pulls, plan.Cuts.Select(c => c.Branch), defaultBranch, cancellationToken));
             return await NoteAsync(state, new(applied.Count > 0 ? VersioningOnboardingOutcome.Merged : VersioningOnboardingOutcome.Nothing,
                 (applied.Count > 0 ? "Applied without a pull request: " + string.Join("; ", applied) + ". " : "")
                 + "Nothing to change in the repository: " + (plan.Notes.Count == 0 ? "it is set up already." : string.Join(" ", plan.Notes))), cancellationToken);

@@ -458,6 +458,42 @@ public class OnboardingServiceTests : CoverageRavenTest
         outcome.Note.Should().Contain("created release/dotnet-11.x").And.Contain("created release/dotnet-10.x");
     }
 
+    /// <summary>docs/onboarding_merge_backfill_PRD.md D3: a re-run with nothing to change runs the merge's steps, in its order.</summary>
+    [Fact]
+    public async Task MergeBackfill_D3_a_rerun_without_a_pull_request_adds_the_line_workflows_after_the_backfill()
+    {
+        using var store = GetDocumentStore();
+        var repository = await SeedRepositoryAsync(store);
+        var forge = Repository(Head);
+        var features = new HashSet<EOnboardingFeature> { EOnboardingFeature.ReleaseLines };
+        var first = Create(store, forge);
+        var opened = await first.Service.OnboardAsync(repository, features, []);
+        opened.Outcome.Should().Be(VersioningOnboardingOutcome.Opened, opened.Note);
+        MergeInto(forge, NextHead, first.Writer.Requests("onboarding").Single().Files!);
+        // The default branch names a regenerate workflow that the old line lacks.
+        forge.Files[$"main/{CoverageYml.FileName}"] = forge.Files[$"{NextHead}/{CoverageYml.FileName}"]
+            + "mergeQueue:\n  enabled: true\n  postRebaseActionName: regenerate.yml\n";
+        forge.Files["main/.github/workflows/regenerate.yml"] = "name: regenerate\n";
+
+        var again = Create(store, forge);
+        again.Versioning.PullRequest = new ForgePullRequestText(opened.PullRequest!.Value, OnboardingPlanner.Title, null, OnboardingPlanner.Branch, Head, "main",
+            false, true, true, NextHead, []);
+        var workflowPullsAtBackfill = new List<int>();
+        again.Writer.Backfill = request =>
+        {
+            if (!request.PlanOnly) workflowPullsAtBackfill.Add(again.Pulls.Created.Count);
+            return Task.FromResult(new GitWriterBackfillResult(GitWriterBackfillResult.Tagged, null, [], ["main"], [], null, 1));
+        };
+
+        var outcome = await again.Service.OnboardAsync(repository, features, []);
+
+        outcome.Outcome.Should().Be(VersioningOnboardingOutcome.Merged, outcome.Note);
+        var pull = again.Pulls.Created.Should().ContainSingle("D3: the line gets its regenerate workflow without waiting for a merge").Which;
+        (pull.Head, pull.Base, pull.Title).Should().Be((OnboardingPlanner.LineBranch("dotnet-6.x"), "release/dotnet-6.x", OnboardingPlanner.LineTitle));
+        again.Writer.Requests("onboarding").Single().Files!.Select(f => f.Path).Should().Equal([".github/workflows/regenerate.yml"]);
+        workflowPullsAtBackfill.Should().NotBeEmpty().And.AllSatisfy(n => n.Should().Be(0), "the backfill comes before the line workflows, as on the merge");
+    }
+
     [Fact]
     public async Task Narrowing_D15_an_older_line_cut_from_a_multi_target_commit_gets_a_pull_request_that_narrows_it()
     {

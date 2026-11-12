@@ -69,4 +69,13 @@ backfill's tags; then continue `docs/release_line_first_release_PRD.md` §6 step
 
 ## 6. Status
 
-- [ ] M1 · [ ] M2 · [ ] M3 · [ ] M4 · [ ] targeted runs · [ ] PR, queued
+- ✅ **M1** (`642b66f1f`). Red observed: `MergeBackfill_D1_a_merge_without_seeds…` failed with "found 0" backfill
+  requests; green with D1, together with the 13 other `OnboardingServiceTests`. The pre-#638 guard test had no red: it
+  pins behaviour that was already right.
+- ✅ **M2.** Red observed: `MergeBackfill_D2_…` failed because the run's call sent a backfill before the cut. The green run
+  was stopped at the owner's request (2026-11-12: "don't run the test here. It takes tooo too long"); the build type-checks,
+  and CI is the test run.
+- ✅ **M3.** ⚠️ Neither red nor green observed locally, for the same reason; `MergeBackfill_D3_…` runs first on CI.
+- ✅ **M4.** `onboarding.md` "On merge" lists the steps in the code's order (it had the seeds first) and adds the
+  backfill, the narrowing and the no-pull-request path; `versioning.md` notes the merge backfills without seeds.
+- ⏳ PR, queued; CI is the test run.
