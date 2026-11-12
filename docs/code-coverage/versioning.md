@@ -60,6 +60,11 @@ each one onto its earliest commit, leased on the tag the App read, so a tag that
 request, the answer waits for its merge, and the merge backfills and moves even when every package is tagged already
 and there is no seed to push (`docs/onboarding_merge_backfill_PRD.md` D1; Tools #56).
 
+**A tag the forge refuses** is reported, not retried: the note lists it as `rejected` with the forge's own reason (the
+push's summary and the forge's `remote:` lines about that tag). The other tags of the same push, and the moves, still
+land. Run Set up features again once the cause is fixed; it pushes only what is still missing
+(`docs/onboarding_backfill_partial_push_PRD.md`; Tools #56 lost 45 tags and all 29 moves to one partly refused push).
+
 A repository is versioned when its **default branch's** `coverage.yml` has a `versioning:` section, even an empty
 one. A branch cannot change the section for itself.
 
