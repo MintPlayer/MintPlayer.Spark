@@ -32,7 +32,7 @@ public sealed record GitWriterTagsResult(string Outcome, string? Reason, IReadOn
     public const string Tagged = "tagged";
 }
 
-/// <param name="Outcome"><c>created</c>, <c>already-present</c>, <c>conflict</c> or <c>unreachable</c>.</param>
+/// <param name="Outcome"><c>created</c>, <c>already-present</c>, <c>conflict</c>, <c>unreachable</c> or <c>rejected</c>.</param>
 public sealed record GitWriterTagResult(string Name, string Outcome, string? Detail)
 {
     public const string Created = "created";
@@ -54,7 +54,7 @@ public sealed record GitWriterBackfillCollision(string Name, string Current, str
     public const string Moved = "moved";
 }
 
-/// <param name="Outcome"><c>created</c>, <c>already-present</c>, <c>conflict</c>, <c>unreachable</c> or <c>planned</c>.</param>
+/// <param name="Outcome"><c>created</c>, <c>already-present</c>, <c>conflict</c>, <c>unreachable</c>, <c>rejected</c> or <c>planned</c>.</param>
 public sealed record GitWriterBackfillTag(string Name, string Commit, string Branch, string Outcome, string? Detail);
 
 /// <param name="Outcome"><see cref="Planned"/>, <see cref="Tagged"/>, or a failure.</param>

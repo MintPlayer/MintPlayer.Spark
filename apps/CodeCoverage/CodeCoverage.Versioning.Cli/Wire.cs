@@ -84,6 +84,7 @@ internal sealed record LocalRunResponse(
 		TagOutcome.Conflict => "conflict",
 		TagOutcome.Unreachable => "unreachable",
 		TagOutcome.Planned => "planned",
+		TagOutcome.Rejected => "rejected",
 		_ => throw new ArgumentOutOfRangeException(nameof(outcome)),
 	};
 }

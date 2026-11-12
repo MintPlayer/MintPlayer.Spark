@@ -193,6 +193,23 @@ internal sealed class Origin : IDisposable
         return this;
     }
 
+    /// <summary>
+    /// Makes the served repository refuse these refs, one by one, the way GitHub refused part of one tag push on Tools
+    /// (docs/onboarding_backfill_partial_push_PRD.md): an <c>update</c> hook runs per ref, so the other refs of the same
+    /// push still land, where a <c>pre-receive</c> hook would refuse the whole push.
+    /// </summary>
+    public Origin Refuse(params string[] refs)
+    {
+        var path = Path.Combine(Bare, "hooks", "update");
+        var cases = string.Concat(refs.Select(r => $"  '{r}') echo \"{RefusedMessage}: $1\" >&2; exit 1 ;;\n"));
+        File.WriteAllBytes(path, new UTF8Encoding(false).GetBytes($"#!/bin/sh\ncase \"$1\" in\n{cases}esac\nexit 0\n"));
+        if (!OperatingSystem.IsWindows())
+            File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        return this;
+    }
+
+    public const string RefusedMessage = "refused by the fixture's policy";
+
     public void Dispose() => work.Dispose();
 }
 

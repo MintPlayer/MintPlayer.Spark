@@ -49,7 +49,7 @@ export interface Release {
   reasons: string[];
   apiHash?: string;
   taggedByHand: boolean;
-  tagOutcome?: 'created' | 'already-present' | 'conflict' | 'unreachable' | 'planned';
+  tagOutcome?: 'created' | 'already-present' | 'conflict' | 'unreachable' | 'rejected' | 'planned';
   /** The GitHub Release for the tag (PRD D15); absent when the tag is not in place. */
   release?: { name: string; body: string; prerelease: boolean };
 }

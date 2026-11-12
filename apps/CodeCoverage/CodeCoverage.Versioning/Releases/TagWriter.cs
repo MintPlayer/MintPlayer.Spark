@@ -26,6 +26,12 @@ public enum TagOutcome
 
 	/// <summary>A plan-only run (#552 D1): the tag is decided but not written; the release half writes it later.</summary>
 	Planned,
+
+	/// <summary>
+	/// The remote refused the tag (a hook, a rule); <see cref="TagWriteResult.Detail"/> holds its own summary. The other
+	/// tags of the push keep their outcomes (docs/onboarding_backfill_partial_push_PRD.md D1).
+	/// </summary>
+	Rejected,
 }
 
 public sealed record TagWriteResult(VersionTag Tag, TagOutcome Outcome, string? Detail = null);
@@ -87,6 +93,17 @@ public sealed class TagWriter(ITagGit git, string remote, IReadOnlyList<string> 
 		return tags.Select(t => results[t.Tag.Name]).ToList();
 	}
 
+	/// <summary>
+	/// The remote's <c>remote:</c> lines about <paramref name="tag"/>, where a forge says why it refused a ref (the porcelain
+	/// summary alone is often just "hook declined"), at most three, joined after a space; empty when there are none.
+	/// </summary>
+	internal static string Remote(string error, string tag)
+	{
+		var lines = error.Split('\n').Select(l => l.Trim()).Where(l => l.StartsWith("remote:", StringComparison.Ordinal) && l.Contains(tag, StringComparison.Ordinal))
+			.Select(l => l["remote:".Length..].Trim()).Where(l => l.Length > 0).Take(3).Select(l => l.Length > 300 ? l[..300] + "…" : l).ToList();
+		return lines.Count == 0 ? "" : " (" + string.Join("; ", lines) + ")";
+	}
+
 	/// <summary>The commits the remote's tags point at (peeled), for the tags of this run only.</summary>
 	private async Task<Dictionary<string, string>> RemoteTagsAsync(IEnumerable<TagToWrite> tags, CancellationToken cancellationToken)
 	{
@@ -146,24 +163,25 @@ public sealed class TagWriter(ITagGit git, string remote, IReadOnlyList<string> 
 	{
 		string[] arguments = ["push", "--porcelain", "--no-verify", "--no-recurse-submodules", "--", remote, .. tags.Select(t => $"refs/tags/{t.Tag.Name}:refs/tags/{t.Tag.Name}")];
 		var result = await git.RunAsync(arguments, null, authenticated: true, null, cancellationToken);
-		var rejected = new HashSet<string>(StringComparer.Ordinal);
+		// Porcelain: "<flag>\t<from>:<to>\t<summary>"; '!' is a refused ref, with the remote's reason in the summary.
+		var rejected = new Dictionary<string, string>(StringComparer.Ordinal);
 		var pushed = new HashSet<string>(StringComparer.Ordinal);
 		foreach (var line in result.Text.Split('\n'))
 		{
-			var parts = line.Split('\t');
+			var parts = line.TrimEnd('\r').Split('\t');
 			if (parts.Length < 2) continue;
 			var colon = parts[1].IndexOf(':');
 			if (colon < 0) continue;
 			var name = parts[1][(colon + 1)..];
 			if (!name.StartsWith("refs/tags/", StringComparison.Ordinal)) continue;
 			name = name["refs/tags/".Length..];
-			if (parts[0].StartsWith('!')) rejected.Add(name);
+			if (parts[0].StartsWith('!')) rejected[name] = parts.Length > 2 ? parts[2].Trim() : "";
 			else pushed.Add(name);
 		}
 		if (result.ExitCode != 0 && rejected.Count == 0) result.EnsureSuccess("push");
 
 		var results = new List<TagWriteResult>();
-		var raced = tags.Where(t => rejected.Contains(t.Tag.Name)).ToList();
+		var raced = tags.Where(t => rejected.ContainsKey(t.Tag.Name)).ToList();
 		var now = raced.Count > 0 ? await RemoteTagsAsync(raced, cancellationToken) : [];
 		foreach (var tag in tags)
 		{
@@ -172,6 +190,9 @@ public sealed class TagWriter(ITagGit git, string remote, IReadOnlyList<string> 
 				results.Add(commit == tag.Commit
 					? new TagWriteResult(tag.Tag, TagOutcome.AlreadyPresent)
 					: new TagWriteResult(tag.Tag, TagOutcome.Conflict, $"{tag.Tag.Name} already points at {commit}."));
+			// D1: refused and not there: the remote's own words, so the owner reads why (Tools #56 lost them).
+			else if (rejected.TryGetValue(tag.Tag.Name, out var summary))
+				results.Add(new TagWriteResult(tag.Tag, TagOutcome.Rejected, $"the remote refused {tag.Tag.Name}: {summary}{Remote(result.Error, tag.Tag.Name)}"));
 			else throw new GitException($"git push did not report {tag.Tag.Name}: {result.Error.Trim()}");
 		}
 		return results;
