@@ -133,6 +133,111 @@ public class OnboardingPlannerTests
         plan.Files.Where(f => f.Path == "coverage.yml").Should().BeEmpty();
     }
 
+    // The Tools onboarding (2026-11-12): its publish workflow ran on master only, and its pull-request workflow only for
+    // pull requests into master, so with lines on nothing would ever have published.
+    private const string MasterPublishWorkflow = "name: publish-release\n\non:\n  push:\n    branches:\n      - 'master'\n      # - 'release/**'\n\n"
+        + "jobs:\n  pack:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v5\n"
+        + "      - name: Version the packages\n        id: versioning\n        uses: MintPlayer/MintPlayer.Spark/apps/CodeCoverage/versioning-action@versioning-v1\n"
+        + "      - run: dotnet pack\n      - run: dotnet nuget push '*.nupkg' --source https://api.nuget.org/v3/index.json --skip-duplicate\n";
+
+    private const string MasterPullRequestWorkflow = "name: pull-request\n\non:\n  pull_request:\n    branches: [ master ]\n\njobs:\n  build:\n    runs-on: ubuntu-latest\n    steps:\n      - run: dotnet test\n";
+
+    private const string MasterDeployWorkflow = "on:\n  push:\n    branches: [master]\njobs:\n  deploy:\n    runs-on: ubuntu-latest\n    steps:\n      - run: ./deploy.sh\n";
+
+    private static string Planned(OnboardingPlan plan, string path) => plan.Files.Single(f => f.Path == path).Content!;
+
+    [Fact]
+    public async Task Release_lines_add_the_lines_to_the_publish_push_and_the_pull_request_filters_but_not_to_a_deploy()
+    {
+        var tree = DotnetRepository()
+            .Add(".github/workflows/publish-release.yml", MasterPublishWorkflow)
+            .Add(".github/workflows/pull-request.yml", MasterPullRequestWorkflow)
+            .Add(".github/workflows/deploy.yml", MasterDeployWorkflow);
+
+        var plan = await OnboardingPlanner.PlanAsync(tree, Inputs(EOnboardingFeature.ReleaseLines));
+
+        Planned(plan, ".github/workflows/publish-release.yml").Should().Contain("    branches:\n      - 'master'\n      - 'release/*-*.x'\n      # - 'release/**'\n");
+        Planned(plan, ".github/workflows/pull-request.yml").Should().Contain("    branches: [ master, 'release/*-*.x' ]\n");
+        plan.Files.Should().NotContain(f => f.Path == ".github/workflows/deploy.yml");
+        plan.Body.Should().Contain("These workflows now run on the lines too").And.Contain("`.github/workflows/publish-release.yml`, `.github/workflows/pull-request.yml`");
+
+        foreach (var file in plan.Files)
+            tree.Add(file.Path, file.Content!);
+        var again = await OnboardingPlanner.PlanAsync(tree, Inputs(EOnboardingFeature.ReleaseLines) with { IsTagged = (_, _) => Task.FromResult(true) });
+        again.Files.Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData("on:\n  push:\n    branches: ['master', 'release/**']\n")]
+    [InlineData("on:\n  push:\n    tags: ['v*']\n")]
+    [InlineData("on: [push, pull_request]\n")]
+    [InlineData("on:\n  pull_request:\n    branches: [develop]\n  push:\n    branches: ['**']\n")]
+    public async Task A_filter_that_already_runs_on_the_lines_or_does_not_name_the_default_branch_is_left_alone(string on)
+    {
+        var workflow = on + MasterPublishWorkflow[MasterPublishWorkflow.IndexOf("jobs:", StringComparison.Ordinal)..];
+        var tree = DotnetRepository().Add(".github/workflows/publish-release.yml", workflow);
+
+        var plan = await OnboardingPlanner.PlanAsync(tree, Inputs(EOnboardingFeature.ReleaseLines));
+
+        plan.Files.Should().NotContain(f => f.Path == ".github/workflows/publish-release.yml" && !f.Content!.Contains(on, StringComparison.Ordinal));
+        plan.Body.Should().NotContain("These workflows now run on the lines too");
+    }
+
+    [Theory]
+    [InlineData("on:\n  pull_request:\n    branches-ignore: ['release/**']\n", "ignores the release lines in its `pull_request` trigger")]
+    [InlineData("on:\n  pull_request:\n    branches: [master, '!master-old']\n", "has a negated branch in its `pull_request` trigger")]
+    public async Task A_filter_the_bot_cannot_extend_gets_a_note(string on, string note)
+    {
+        var tree = DotnetRepository().Add(".github/workflows/ci.yml", on + "jobs:\n  build:\n    runs-on: ubuntu-latest\n    steps:\n      - run: dotnet test\n");
+
+        var plan = await OnboardingPlanner.PlanAsync(tree, Inputs(EOnboardingFeature.ReleaseLines));
+
+        plan.Files.Should().NotContain(f => f.Path == ".github/workflows/ci.yml");
+        plan.Notes.Should().Contain(n => n.StartsWith("`.github/workflows/ci.yml` ", StringComparison.Ordinal) && n.Contains(note, StringComparison.Ordinal)
+            && n.Contains("`release/*-*.x`", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_block_list_with_crlf_line_endings_keeps_them()
+    {
+        var tree = DotnetRepository().Add(".github/workflows/pull-request.yml",
+            "on:\r\n  pull_request:\r\n    branches:\r\n    - master\r\njobs:\r\n  build:\r\n    runs-on: ubuntu-latest\r\n    steps:\r\n    - run: dotnet test");
+
+        var plan = await OnboardingPlanner.PlanAsync(tree, Inputs(EOnboardingFeature.ReleaseLines));
+
+        Planned(plan, ".github/workflows/pull-request.yml").Should().Contain("    branches:\r\n    - master\r\n    - 'release/*-*.x'\r\njobs:");
+    }
+
+    [Fact]
+    public async Task Without_release_lines_no_trigger_changes()
+    {
+        var tree = DotnetRepository("versioning: { mode: server }\n").Add(".github/workflows/pull-request.yml", MasterPullRequestWorkflow);
+
+        var plan = await OnboardingPlanner.PlanAsync(tree, Inputs(EOnboardingFeature.ReleaseLines));
+
+        plan.Files.Should().NotContain(f => f.Path == ".github/workflows/pull-request.yml");
+    }
+
+    [Fact]
+    public async Task A_merge_queue_section_without_branches_gets_the_lines()
+    {
+        var plan = await OnboardingPlanner.PlanAsync(DotnetRepository("mergeQueue:\n  enabled: true\n"), Inputs(EOnboardingFeature.ReleaseLines, EOnboardingFeature.MergeQueue));
+
+        CoverageYml(plan).Should().StartWith("mergeQueue:\n  branches: [master, supported-lines]\n  enabled: true\n");
+        plan.Notes.Should().NotContain(n => n.Contains("supported-lines", StringComparison.Ordinal));
+        plan.Body.Should().Contain("it now queues the supported release lines too");
+    }
+
+    [Fact]
+    public async Task A_merge_queue_section_with_its_own_branches_is_left_to_the_owner()
+    {
+        var plan = await OnboardingPlanner.PlanAsync(DotnetRepository("mergeQueue:\n  enabled: true\n  branches: [master, develop]\n"),
+            Inputs(EOnboardingFeature.ReleaseLines, EOnboardingFeature.MergeQueue));
+
+        CoverageYml(plan).Should().Contain("  branches: [master, develop]\n");
+        plan.Notes.Should().Contain(n => n.Contains("add `supported-lines` to `mergeQueue.branches`", StringComparison.Ordinal));
+    }
+
     [Fact]
     public async Task Coverage_alone_writes_nothing_and_asks_for_the_upload_step()
     {

@@ -310,6 +310,16 @@ public class MergeQueueRulesetPlannerTests
             .Should().Equal([LinePolicyCheckName, "build", "test"]);
     }
 
+    // The Tools onboarding (2026-11-12): a repository with no protection got 1, so its solo maintainer could never merge.
+    [Fact]
+    public void The_approvals_start_from_ruleset_2_then_classic_protection_then_none()
+    {
+        Defaults(new ForgeRulesetState(AppId, [], null)).RequiredApprovals.Should().Be(0);
+        Defaults(new ForgeRulesetState(AppId, [], NgBootstrapClassic("build"))).RequiredApprovals.Should().Be(1);
+        Defaults(new ForgeRulesetState(AppId, [new ForgeExistingRuleset(2, Ruleset2(2, ["build"]))], NgBootstrapClassic("build")))
+            .RequiredApprovals.Should().Be(2);
+    }
+
     [Fact]
     public void An_existing_line_checks_ruleset_keeps_its_checks_when_none_are_chosen()
     {

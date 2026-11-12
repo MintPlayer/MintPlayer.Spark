@@ -739,6 +739,8 @@ Notes on the two rulesets:
   Pair that with the `RepositoryRules` approval floor (§2.4), which adds no approval of the queue's own. The default
   `ExternalAuthors` floor also works: the maintainer's own pull requests pass it, and outside authors and bots (such
   as Dependabot) need the maintainer's approval. `Always` would refuse every pull request of the maintainer's own.
+  The setup form starts from ruleset 2's count, else classic protection's, else **0** (it was 1 until the Tools
+  onboarding, 2026-11-12, whose ruleset 2 its solo maintainer could never merge through).
 - **Required checks.** Require the job that runs `--spark-verify-model` and `--spark-verify-security`: it is what proves
   the regenerate step did its job (T4, O19). The queue waits for every check anyway (O12); requiring it makes GitHub
   enforce it too, and a required check can never be excluded. **Never require the "Merge queue" check itself**: it is

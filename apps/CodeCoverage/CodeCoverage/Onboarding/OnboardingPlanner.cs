@@ -113,8 +113,8 @@ public static partial class OnboardingPlanner
         }
         if (features.Contains(EOnboardingFeature.ReleaseLines))
         {
-            (renames, promotes) = await ReleaseLinesAsync(overlay, inputs, notes, cancellationToken);
-            sections.Add(("Release lines", ReleaseLinesText(renames, inputs.DefaultBranch, promotes)));
+            (renames, promotes, var triggers) = await ReleaseLinesAsync(overlay, inputs, notes, cancellationToken);
+            sections.Add(("Release lines", ReleaseLinesText(renames, inputs.DefaultBranch, promotes, triggers)));
         }
         if (features.Contains(EOnboardingFeature.MergeQueue))
             sections.Add(("Merge queue", await MergeQueueAsync(overlay, inputs.DefaultBranch, features.Contains(EOnboardingFeature.ReleaseLines), notes, cancellationToken)));
@@ -139,12 +139,13 @@ public static partial class OnboardingPlanner
     /// workflow; with none or several the bot cannot tell which one proves a commit, so the lines take backports and a
     /// note says how to switch.
     /// </summary>
-    private static async Task<(LineRenamePlan Renames, bool Promotes)> ReleaseLinesAsync(OverlayTree overlay, OnboardingInputs inputs, List<string> notes,
+    private static async Task<(LineRenamePlan Renames, bool Promotes, IReadOnlyList<string> Triggers)> ReleaseLinesAsync(OverlayTree overlay, OnboardingInputs inputs, List<string> notes,
         CancellationToken cancellationToken)
     {
         var yml = await overlay.ReadTextAsync(CoverageYml.FileName, Limits.MaxManifestBytes, cancellationToken);
         var config = VersioningYml.Parse(yml).Config;
         var pattern = config?.EffectiveLines;
+        var lines = pattern;
         var promotes = config?.Lines?.PromotesCurrent == true;
         if (pattern is null)
         {
@@ -153,6 +154,7 @@ public static partial class OnboardingPlanner
             if (CoverageYmlSections.AddKey(yml ?? string.Empty, "versioning", "lines", key) is { } edited)
             {
                 overlay.Write(CoverageYml.FileName, edited);
+                lines = ReleaseLinePattern.Default;
                 promotes = workflows.Count == 1;
                 if (!promotes)
                     notes.Add(workflows.Count == 0
@@ -167,19 +169,52 @@ public static partial class OnboardingPlanner
         else if (!promotes && await VersioningOnboarding.VersioningWorkflowsAsync(overlay, cancellationToken) is [var only])
             notes.Add($"coverage.yml has `versioning.lines` already, so the bot left it alone and the current lines take backports: set it to `{{ current: promote, trigger: manual, workflow: {only} }}` to release them with `/release` instead.");
 
+        IReadOnlyList<string> triggers = lines is null ? [] : await TriggersAsync(overlay, lines, inputs.DefaultBranch, notes, cancellationToken);
+
         var graph = await ProjectGraphBuilder.BuildAsync(overlay, cancellationToken: cancellationToken);
         var ecosystems = graph.Packages.Select(p => Ecosystems.Of(graph, p, EmptyPins)).OfType<string>().ToHashSet(StringComparer.Ordinal);
-        return (LineRenames.Plan(inputs.Branches, inputs.DefaultBranch, ecosystems, pattern ?? ReleaseLinePattern.Default), promotes);
+        return (LineRenames.Plan(inputs.Branches, inputs.DefaultBranch, ecosystems, pattern ?? ReleaseLinePattern.Default), promotes, triggers);
     }
+
+    /// <summary>
+    /// The Tools onboarding's gap (2026-11-12): lines publish, so the versioning workflows' <c>push</c> filters and every
+    /// <c>pull_request</c> filter that names the default branch take the lines too (<see cref="ReleaseLineTriggers"/>).
+    /// The workflows it edited, sorted.
+    /// </summary>
+    private static async Task<IReadOnlyList<string>> TriggersAsync(OverlayTree overlay, ReleaseLinePattern lines, string defaultBranch, List<string> notes,
+        CancellationToken cancellationToken)
+    {
+        var versioning = (await VersioningOnboarding.VersioningWorkflowsAsync(overlay, cancellationToken)).ToHashSet(StringComparer.Ordinal);
+        var edited = new List<string>();
+        foreach (var path in overlay.Entries.Keys.Where(IsWorkflow).Order(StringComparer.Ordinal).ToList())
+        {
+            if (await overlay.ReadTextAsync(path, Limits.MaxManifestBytes, cancellationToken) is not { } text) continue;
+            var push = versioning.Contains(path[WorkflowsFolder.Length..]);
+            if (ReleaseLineTriggers.Add(path, text, lines, defaultBranch, push, notes) is { } changed)
+            {
+                overlay.Write(path, changed);
+                edited.Add(path);
+            }
+        }
+        return edited;
+    }
+
+    private const string WorkflowsFolder = ".github/workflows/";
+
+    private static bool IsWorkflow(string path)
+        => path.StartsWith(WorkflowsFolder, StringComparison.Ordinal) && path.IndexOf('/', WorkflowsFolder.Length) < 0
+            && (path.EndsWith(".yml", StringComparison.Ordinal) || path.EndsWith(".yaml", StringComparison.Ordinal));
 
     private static readonly IReadOnlyDictionary<string, string> EmptyPins = new Dictionary<string, string>(StringComparer.Ordinal);
 
-    private static string ReleaseLinesText(LineRenamePlan renames, string defaultBranch, bool promotes)
+    private static string ReleaseLinesText(LineRenamePlan renames, string defaultBranch, bool promotes, IReadOnlyList<string> triggers)
     {
         var text = new StringBuilder();
         text.AppendLine(promotes
             ? $"`versioning.lines` turns release lines on. From then on, packages release only from their line (`release/<ecosystem>-<major>.x`), never from `{defaultBranch}`. The current line of each platform moves when a maintainer comments `/release`, to the newest `{defaultBranch}` commit whose workflow passed; older lines take backport pull requests. See the [backports guide]({Guides}/backports/setup)."
             : $"`versioning.lines` turns release lines on. From then on, packages release only from their line (`release/<ecosystem>-<major>.x`), never from `{defaultBranch}`, and changes reach a line by backport pull request. See the [backports guide]({Guides}/backports/setup).");
+        if (triggers.Count > 0)
+            text.AppendLine().AppendLine($"These workflows now run on the lines too, so the lines publish and their pull requests get checked: {string.Join(", ", triggers.Select(t => $"`{t}`"))}.");
         if (renames.Renames.Count > 0)
         {
             text.AppendLine().AppendLine("These branches are renamed when this pull request merges. GitHub moves their open pull requests along, but `git fetch` does not follow the old names: switch your clones to the new branches. The renames:").AppendLine();
@@ -210,7 +245,17 @@ public static partial class OnboardingPlanner
                 : $"`mergeQueue:` is enabled for `{defaultBranch}`. Label a pull request `merge-queue`, or comment `/queue`. See the [merge queue guide]({Guides}/merge-queue/setup).";
         }
         if (lines && yml?.Contains("supported-lines", StringComparison.Ordinal) != true)
+        {
+            // The Tools onboarding's gap (2026-11-12): a section without `branches` queues the default branch only, so it
+            // gets the key; one with its own list is the owner's, and only a note asks for the lines.
+            var branches = $"branches: [{FlowScalar(defaultBranch)}, supported-lines]";
+            if (CoverageYmlSections.AddKey(yml!, "mergeQueue", "branches", branches) is { } edited && edited != yml)
+            {
+                overlay.Write(CoverageYml.FileName, edited);
+                return $"coverage.yml has a `mergeQueue:` section already; it now queues the supported release lines too (`{branches}`), so backports merge through the queue.";
+            }
             notes.Add("coverage.yml has a `mergeQueue:` section already, so the bot left it alone: add `supported-lines` to `mergeQueue.branches` so backports reach the lines through the queue.");
+        }
         return "coverage.yml has a `mergeQueue:` section already; the bot left it as it is.";
     }
 

@@ -200,8 +200,14 @@ public static class MergeQueueRulesetPlanner
 
     /// <summary>
     /// The starting answers for one repository: ruleset 2's own settings when it exists, else classic protection's, else
-    /// no required checks and one approval. Never the queue's own check (D62). (From the abandoned e3.)
+    /// no required checks and no approval. Never the queue's own check (D62). (From the abandoned e3.)
     /// </summary>
+    /// <remarks>
+    /// No approval when nothing says otherwise (the Tools onboarding, 2026-11-12): with 1, a solo maintainer can never
+    /// merge, since GitHub never counts the author's own approval (merge-queue.md §3), and Tools' ruleset 27099667 was
+    /// created that way. The queue's approval floor still asks an approval of authors without write. A team that wants
+    /// GitHub to require reviews raises it in the form.
+    /// </remarks>
     /// <remarks>
     /// No guess from the default branch's head (#554, 2026-11-07): it carried the checks of jobs that run on a push
     /// alone (a deploy), which never report on a pull request, so ruleset 26719109 required checks no pull request could
@@ -214,7 +220,7 @@ public static class MergeQueueRulesetPlanner
         var ruleset2 = state.Rulesets.FirstOrDefault(r => r.Definition.Name == ReviewsAndChecksName)?.Definition;
 
         var approvals = ruleset2?.Rules.FirstOrDefault(r => r.Type == "pull_request")?.Parameters?["required_approving_review_count"] is JsonValue count
-            && count.TryGetValue<int>(out var n) ? n : state.Classic?.RequiredApprovals ?? 1;
+            && count.TryGetValue<int>(out var n) ? n : state.Classic?.RequiredApprovals ?? 0;
         var ruleset2Checks = (ruleset2?.Rules.FirstOrDefault(r => r.Type == "required_status_checks")?.Parameters?["required_status_checks"] as JsonArray ?? [])
             .OfType<JsonObject>().Select(c => c["context"] is JsonValue v && v.TryGetValue<string>(out var s) ? s : null).OfType<string>().ToList();
         IEnumerable<string> checks = ruleset2Checks.Count > 0 ? ruleset2Checks
