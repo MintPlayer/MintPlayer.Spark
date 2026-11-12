@@ -9,7 +9,12 @@ the git writer refuses every narrowing that touches a workflow. M7-M13 fix it in
 owner on 2026-11-12: D10-D17 decided. M7-M13 **implemented** as PR #650 (`fix/issue649-narrowing-workflows`, closes
 #649), not merged yet. Its first CI run failed only "build + verify" (`--spark-verify-security`, run 43302397158): the
 new `New/SetUpFeatures` right was missing from `securityPosture.txt` and out of order in `security.json`; fixed with
-`--spark-synchronize-security` (M11). S8 answered in code (§3), S11 partly (the checkout order); the rest of S11, S7, S9
+`--spark-synchronize-security` (M11). The second run (43304478261) failed "build + verify" and two CodeCoverage upload
+tests with "The server exited with 150": the CodeCoverage binary asked for runtime `11.0.0`, while the runner had only
+`11.0.0-rc.2.26504.105` (global.json's SDK). Run 1 built `CodeCoverage:build` itself; run 2 took it from the
+`[remote cache]` (log line 1112). An entry built with a GA SDK (this machine resolves `dotnet --version` = `11.0.100`,
+runtime `11.0.0`, and holds the cache write token) had the same hash, because no cache input named the SDK. Fixed in
+`nx.json`: `sharedGlobals` now holds `global.json` and `{ "runtime": "dotnet --version" }`. S8 answered in code (§3), S11 partly (the checkout order); the rest of S11, S7, S9
 and S10 come after the deploy.
 Owner request, 2026-11-12, after re-onboarding MintPlayer/MintPlayer.AspNetCore.SpaServices (PR #108): "SDK +
 dependencies bijwerken" ended "Failed", and `release/dotnet-10.x` was not created.
