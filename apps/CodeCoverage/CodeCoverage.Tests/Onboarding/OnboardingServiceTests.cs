@@ -515,16 +515,23 @@ public class OnboardingServiceTests : CoverageRavenTest
             false, true, true, NextHead, []);
         // Both lines as the cut left them, at the merge commit.
         const string Source = "namespace Acme.Tools;\n#if NET11_0_OR_GREATER\npublic static class Net11 { }\n#endif\n";
+        // The workflows pin the higher SDK too (SpaServices PR #110: narrowed global.json, rc left in setup-dotnet).
+        const string Workflow = "      - uses: actions/setup-dotnet@v6\n        with:\n          dotnet-version: 11.0.100\n";
         foreach (var line in new[] { "release/dotnet-11.x", "release/dotnet-10.x" })
-            forge.Trees[line] = new ForgeTree(NextHead, "tree-5711", [new ForgeTreeEntry("src/Tools/Tools.csproj", MultiTarget.Length), new ForgeTreeEntry("src/Tools/Net11.cs", Source.Length)], false);
+            forge.Trees[line] = new ForgeTree(NextHead, "tree-5711", [new ForgeTreeEntry("src/Tools/Tools.csproj", MultiTarget.Length), new ForgeTreeEntry("src/Tools/Net11.cs", Source.Length),
+                new ForgeTreeEntry(".github/workflows/build.yml", Workflow.Length)], false);
         forge.Files[$"{NextHead}/src/Tools/Tools.csproj"] = MultiTarget;
         forge.Files[$"{NextHead}/src/Tools/Net11.cs"] = Source;
+        forge.Files[$"{NextHead}/.github/workflows/build.yml"] = Workflow;
 
         var merged = await h.Service.MergedAsync(repository);
 
         var narrowing = h.Writer.Requests("onboarding").Where(r => r.Narrow).Should().ContainSingle().Which;
         (narrowing.Line, narrowing.BaseBranch, narrowing.ExpectedSha, narrowing.Message).Should().Be(("dotnet-10.x", "release/dotnet-10.x", NextHead, OnboardingPlanner.NarrowTitle));
-        narrowing.Files!.Select(f => (f.Path, f.Content)).Should().Equal([("src/Tools/Tools.csproj", MultiTarget.Replace("net10.0;net11.0", "net10.0"))]);
+        narrowing.Files!.Select(f => (f.Path, f.Content)).Should().Equal([
+            ("src/Tools/Tools.csproj", MultiTarget.Replace("net10.0;net11.0", "net10.0")),
+            (".github/workflows/build.yml", Workflow.Replace("11.0.100", "10.0.203")),
+        ]);
         var pull = h.Pulls.Created.Where(p => p.Base == "release/dotnet-10.x").Should().ContainSingle().Which;
         (pull.Head, pull.Title).Should().Be(("mintplayer/narrow-dotnet-10.x", OnboardingPlanner.NarrowTitle));
         pull.Body.Should().Contain("- `src/Tools/Tools.csproj`: TargetFrameworks `net10.0;net11.0` → `net10.0`")

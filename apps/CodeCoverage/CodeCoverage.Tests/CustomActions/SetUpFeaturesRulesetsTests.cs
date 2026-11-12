@@ -77,7 +77,8 @@ public class SetUpFeaturesRulesetsTests : CoverageRavenTest
             Onboarding.CurrentFeaturesAsync(Arg.Any<Repository>(), Arg.Any<CancellationToken>())
                 .Returns(Task.FromResult<IReadOnlySet<EOnboardingFeature>>(new HashSet<EOnboardingFeature>()));
             Onboarding.PreviewAsync(Arg.Any<Repository>(), Arg.Any<IReadOnlySet<EOnboardingFeature>>(), Arg.Any<CancellationToken>())
-                .Returns(new OnboardingPreview(new OnboardingPlan([EOnboardingFeature.MergeQueue], [], [], new LineRenamePlan([], []), [], [], "body"), null));
+                .Returns(new OnboardingPreview(new OnboardingPlan([EOnboardingFeature.MergeQueue], [new GitWriterFile("coverage.yml", "merge-queue: {}\n")], [],
+                    new LineRenamePlan([], []), [], [], "body"), null));
             Onboarding.OnboardAsync(Arg.Any<Repository>(), Arg.Any<IReadOnlySet<EOnboardingFeature>>(), Arg.Any<IReadOnlyCollection<string>>(), Arg.Any<CancellationToken>(), Arg.Any<IReadOnlyCollection<string>?>())
                 .Returns(new VersioningOnboardingOutcome(VersioningOnboardingOutcome.Opened, "Opened #5.", 5));
             Manager.GetPersistentObjectAsync(FeaturesType, Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(_ => Features(false));
@@ -141,6 +142,33 @@ public class SetUpFeaturesRulesetsTests : CoverageRavenTest
             f.Queue.ApplyRulesetPlanAsync(Arg.Is<Repository>(r => r.Id == RepositoryId), "master", Arg.Any<MergeQueueRulesetPlan>(), Token, Arg.Any<CancellationToken>());
         });
         f.Lease.Disposed.Should().Be(1, "the token is revoked when the chooser ends");
+    }
+
+    [Fact]
+    public async Task With_no_files_to_change_the_rulesets_apply_before_the_onboarding_cuts_the_lines()
+    {
+        // SpaServices, 2026-11-12: with nothing to commit, OnboardAsync cuts release/dotnet-10.x at once. Ruleset 3 gained
+        // the App's bypass only after it, so the cut answered 422 and a second run was needed.
+        var session = await SeedAsync();
+        var f = new Fixture();
+        f.Onboarding.PreviewAsync(Arg.Any<Repository>(), Arg.Any<IReadOnlySet<EOnboardingFeature>>(), Arg.Any<CancellationToken>())
+            .Returns(new OnboardingPreview(new OnboardingPlan([EOnboardingFeature.MergeQueue, EOnboardingFeature.ReleaseLines], [], [], new LineRenamePlan([], []), [], [], "body"), null));
+        f.Onboarding.OnboardAsync(default!, default!, default!, default)
+            .ReturnsForAnyArgs(new VersioningOnboardingOutcome(VersioningOnboardingOutcome.Merged, "Applied without a pull request."));
+        f.Manager.Retry.Result.Returns(
+            new RetryResult { Option = "onboarding.plan", PersistentObject = Features(true) },
+            new RetryResult { Option = "onboarding.plan", PersistentObject = Rulesets(1) },
+            new RetryResult { Option = "onboarding.open" });
+
+        await f.Action(session).ExecuteAsync(OnRepository());
+
+        Received.InOrder(() =>
+        {
+            f.Queue.ApplyRulesetPlanAsync(Arg.Is<Repository>(r => r.Id == RepositoryId), "master", Arg.Any<MergeQueueRulesetPlan>(), Token, Arg.Any<CancellationToken>());
+            f.Onboarding.OnboardAsync(Arg.Any<Repository>(), Arg.Any<IReadOnlySet<EOnboardingFeature>>(), Arg.Any<IReadOnlyCollection<string>>(), Arg.Any<CancellationToken>(), Arg.Any<IReadOnlyCollection<string>?>());
+        });
+        await f.Queue.ReceivedWithAnyArgs(1).ApplyRulesetPlanAsync(default!, default!, default!, default!, default);
+        f.Lease.Disposed.Should().Be(1);
     }
 
     [Fact]

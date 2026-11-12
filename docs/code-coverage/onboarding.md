@@ -32,7 +32,8 @@ since it cuts only a major no package is tagged at yet. Until 2026-11-12 the App
 that promotes its lines, so the cut failed the same way elsewhere (SpaServices' `release/dotnet-10.x`); ruleset 3 now
 always exempts the App ([lockfile_notice_and_line_cut_PRD.md](../lockfile_notice_and_line_cut_PRD.md) D2). A refused
 cut is noted in the outcome and not retried: re-run **Set up features**, which re-applies the rulesets and cuts the
-missing line at once.
+missing line at once. With no files to change, the rulesets are applied **before** that cut (they follow the pull request
+otherwise); until 2026-11-12 they came after it, so SpaServices needed a second run (D5 of that PRD).
 
 ## The pull request
 
@@ -72,6 +73,9 @@ The merged webhook on `mintplayer/onboarding` reaches `IOnboardingService.Merged
    `mintplayer/onboarding-<line>` and a pull request into the line is opened. Check it builds with the line's SDKs.
 
 6. Each older .NET line cut here from a commit that targets a higher major gets a narrowing pull request (#638 D15).
+   It narrows the TFMs, the framework packages, `global.json` (`sdk.version` and Arcade's `tools.dotnet`) and every
+   `setup-dotnet` `dotnet-version` pin in `.github/workflows/` (an exact pin takes the line's latest SDK, a wildcard
+   such as `11.0.x` becomes `10.0.x`). A block list of SDKs is left for a person and listed in the pull request.
 
 The merge is handled once: `MergeHandledAt` holds the merge commit (`SeedCommit` and `BackfilledAt` for step 4).
 
