@@ -1,6 +1,8 @@
 # First release on an older release line — PRD and plan (#638, closes #600)
 
-Status: **planned and grilled (§7), nothing built** (2026-11-12). One pull request. Issue: #638. Its Problem 1 is issue #600 (open
+Status (2026-11-12): **M1–M4 built and committed** on `fix/issue638-older-line-first-release` (M1 `d0e475de9`, M2
+`baec5eb9a`, M3 `d6060bc26`, M4 `c3b16dc88`). Nothing is pushed and no PR is open yet. **M5–M7 are open**; see
+"Resume here" at the top of §5. One pull request. Issue: #638. Its Problem 1 is issue #600 (open
 since 2026-11-07, deferred in [release_lines_recovery_plan.md](release_lines_recovery_plan.md) §6 "until a past line
 is cut"). Tools has now cut one, so this plan closes #600 as well.
 
@@ -61,7 +63,7 @@ it or warns. The issue has the full evidence tables. This file does not repeat t
 
 | Spike | Question | How | Feeds | Result |
 |---|---|---|---|---|
-| S1 | How does `MintPlayerVersioningMajor` reach the RoslynCodeTaskFactory task? | Red test first: a `RealPackTests` case with `X/v11.0.1-rc.1` on the base, `X/v10.0.0` at HEAD and the major set to 10, expecting `10.0.0`. | D1, D2 | — |
+| S1 | How does `MintPlayerVersioningMajor` reach the RoslynCodeTaskFactory task? | Red test first: a `RealPackTests` case with `X/v11.0.1-rc.1` on the base, `X/v10.0.0` at HEAD and the major set to 10, expecting `10.0.0`. | D1, D2 | **Answered in M2:** MSBuild reads the environment variable `MintPlayerVersioningMajors` (`id=major;…`, the per-package map of D1) as a property, which the `.targets` passes to the task's `Majors`. `RealPackTests.On_a_line_the_pack_takes_the_highest_tag_of_the_packages_major` proves it with a real pack, and with `-p:MSBuildWarningsAsErrors=MPV006` the pack exits non-zero. |
 | S2 | Which ref names appear on PR and merge-queue runs into a line (`GITHUB_REF_NAME`, `GITHUB_BASE_REF`, `gh-readonly-queue/…`)? | Read a Spark run into `release/dotnet-11.x` (logs only, no new run). | D2 | **Answered (GitHub's documented variables):** `push` → `GITHUB_REF_NAME` is the branch. `pull_request` → `GITHUB_REF_NAME` is `<n>/merge` and `GITHUB_BASE_REF` is the target branch. `merge_group` → `GITHUB_REF_NAME` is `gh-readonly-queue/<base>/pr-<n>-<sha>` and `GITHUB_BASE_REF` is empty. The fallback reads `GITHUB_BASE_REF` first, then the `gh-readonly-queue/<base>/` prefix, then `GITHUB_REF_NAME`. |
 | S3 | How expensive is the backfill walk? Can it limit itself to commits that touch version-bearing files (`*.csproj`, `*.props`, `package.json`) and build the project graph only there? | Time a `git log --format=%H -- <paths>` plus one `ProjectGraphBuilder` per hit on Spark's and Tools' histories (read-only clones). | D5, D6 | **Cheap (measured 2026-11-12, Spark master):** 342 commits, 184 of them touching `*.csproj`/`*.props`/`package.json`, listed in 0.23 s. The walk builds the graph only at those commits. |
 | S4 | How many tags does D5 create on Spark, and does `tag --merged HEAD --list <id>/v*` per package stay fast? | Count the distinct (package, version) pairs from S3. Time the resolver on a scratch clone with those tags (local only, never pushed). | D5, Q11 trap | **Acceptable (measured):** about 1,716 distinct (project file, version) pairs, mostly `10.0.0-preview.N`/`11.0.0-preview.N`, so Spark goes from 368 to about 2,100 tags. `git tag --merged HEAD --list 'MintPlayer.Spark/v*'` takes 0.15 s today, and a plain `--merged` takes 0.16 s, so the per-package cost hardly depends on the count. |
@@ -72,6 +74,29 @@ it or warns. The issue has the full evidence tables. This file does not repeat t
 | S9 | Where does "the latest SDK of major N" come from? | `dependency-action/src/platform/feeds.ts` already reads the SDK release feeds. Check whether the App (C#) has the same source. | D15 | **The App has it:** the platform-lifecycle cron reads `releases-index.json` and stores `LatestSdk` per channel (`CodeCoverage/PlatformLifecycle/PlatformLifecycleSources.cs:49`, `PlatformLifecycleCronJob.cs:212`). |
 
 ## 5. Milestones (one PR, in the issue's order)
+
+> **Resume here (2026-11-12, after M4).**
+> - Done: M1–M4, each with its red→green record below.
+> - Next: **M5** (D13). Read `PlatformMarkers` and `PlatformMarkersTests` in `CodeCoverage.Git/Backports` first; that
+>   reading answers S6. Then **M6** (D15, the narrowing PR; S8 and S9 are answered), then **M7** (docs). After M7, run the
+>   affected suites once with the Developer licence (`npm run test:affected`), then open the PR, ready and not a draft.
+> - Built so far, for orientation:
+>   - The MSBuild task takes a per-package major map (`MintPlayerVersioningMajors`) with MPV006.
+>   - The planner fills `ReleasePlan.LineMajors`, carried over every wire to the action.
+>   - The engine has `HistoryBackfill`, which plans tags and reports collisions, and `TagMover`, the only forced
+>     push, leased on the tag object.
+>   - The git writer has `POST /jobs/versioning/backfill` (`planOnly`, `move`).
+>   - In the App:
+>     - `VersioningOnboardingService.BackfillAsync`/`CollisionsAsync`.
+>     - `PushSeedsAsync` = backfill + only the seeds it did not cover.
+>     - `MergedAsync` pushes the seeds after the cuts.
+>     - The no-files path backfills after its cuts.
+>     - `OnboardAsync(…, moveTags)` saves the choice in `VersioningOnboardingState.MoveTags`.
+>     - The Set up features prompt is `onboarding.moveTags.*`.
+> - Open honesty items:
+>   - Some tests had only a compile-failure red, or none (marked ⚠️ in M3 and M4).
+>   - Not yet exercised against a real forge: the backfill on Tools (§6) and the tag move past Tools' rulesets (S5 says
+>     only branch rulesets exist there).
 
 **Test-driven (owner, 2026-11-12: "Prefer test-driven development - write a red test, make it green").** Every
 milestone opens with the failing test that reproduces its defect. Run it alone (`--filter` on the one test or class)
