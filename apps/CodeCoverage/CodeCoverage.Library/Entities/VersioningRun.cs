@@ -120,7 +120,7 @@ public sealed class VersioningRunRelease
     public List<string> Reasons { get; set; } = [];
     public bool TaggedByHand { get; set; }
 
-    /// <summary><c>created</c>, <c>already-present</c>, <c>conflict</c> or <c>unreachable</c>; null for a tag a human placed.</summary>
+    /// <summary><c>created</c>, <c>already-present</c>, <c>conflict</c>, <c>unreachable</c> or <c>rejected</c>; null for a tag a human placed.</summary>
     public string? TagOutcome { get; set; }
 
     /// <summary>The GitHub Release to create for the tag (D15); null when the tag is not in place.</summary>
