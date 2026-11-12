@@ -19,9 +19,10 @@ Tools #56 merged at 15:08 UTC. The merge handler ran the history backfill with t
 So GitHub refused part of one non-atomic push. `TagWriter` turned the refusal into an exception, the job aborted
 before the moves (`VersioningRunService.cs:127`), and the App's note never said which tags or why.
 
-**Ruled out:** the token's missing `workflows: write`. The accepted tags sit on commits that change workflow files too
-(ae97c2c), and every commit is on the default branch's history, so the push brings no new commits. Also ruled out: tag
-rulesets (Tools has none, and org rulesets need GitHub Team) and releases holding the names (none of the 45 has one).
+**Wrongly ruled out at first:** the token's missing `workflows: write`. The argument was that accepted tags sit on
+commits that change workflow files too (ae97c2c) and that the push brings no new commits. The deployed fix disproved
+it (§6). Rightly ruled out: tag rulesets (Tools has none, and org rulesets need GitHub Team) and releases holding the
+names (none of the 45 has one).
 
 **Why the tests missed it:** the App's tests fake the git writer (`FakeGitWriter` scripts every outcome), and the writer's
 real-git tests push to a remote that accepts everything. No test had a remote that refuses some refs, and no test ran
@@ -68,4 +69,23 @@ note, which now names GitHub's reason for any tag it refuses.
   `JobRunner.DeleteTree`. `rejected` also reaches the local-mode CLI (`Wire.cs`) and the action's type union, a
   type-only change that leaves the committed `dist` unchanged.
 - ✅ **M3.** `docs/code-coverage/versioning.md`: a refused tag is reported with the forge's reason, and the rest lands.
-- ⏳ PR. GitHub's actual reason for Tools' 45 tags is still unknown; the next Set up features on Tools shows it.
+- ✅ PR #641, merged and deployed 2026-11-12.
+
+## 6. GitHub's reason, and the token (second PR)
+
+Set up features on Tools after #641's deploy (2026-11-12, 16:09 UTC) reported every refusal with GitHub's words:
+`[remote rejected] (refusing to allow a GitHub App to create or update workflow '.github/workflows/publish-release.yml'
+without 'workflows' permission)` (and `pull-request.yml`), for the new tags and the 29 moves alike.
+
+| Fact | Evidence |
+|---|---|
+| The App holds `workflows: read and write` on both the dev and the production App. | owner, 2026-11-12 |
+| Every App tag push asked for a contents-only token: `GetWriterAccessAsync(repository, null, false, …)`. | `VersioningOnboardingService.cs:159,189`, `VersioningController.cs:313,374`, `ReleaseVersions.cs:133`, `ReleaseRecipients.cs:142` |
+| `workflows: write` is added to the job token only when the caller passes `pushesWorkflowChanges: true`. | `GitHubForgeMergeQueue.cs:1370` |
+
+- **D5. Every App push of tags or of a line asks for `workflows: write`.** A tag can sit on any commit of the history,
+  and a promotion fast-forwards a line onto default-branch commits that may change workflow files; the App cannot know
+  in advance which ones GitHub checks. The six call sites above pass `pushesWorkflowChanges: true`.
+- **M4 (D5):** red: `VersioningControllerTests` (run, seed tags, release) and `ReleaseFlowTests` (promotion, hand tags)
+  expect a workflows token; `OnboardingBackfillEndToEndTests` hands the origin's credential only to a workflows token,
+  as GitHub does. Red observed: 11 failures. Green with D5.

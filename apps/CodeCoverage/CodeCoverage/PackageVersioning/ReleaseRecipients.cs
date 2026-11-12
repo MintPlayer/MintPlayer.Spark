@@ -139,7 +139,7 @@ public partial class ReleaseRecipient : IRecipient<ReleaseMessage>
                 ? $"Nothing was released: `{sha}` has no successful `{workflow}` run among the latest on {defaultBranch}. Name a green commit, or leave the sha out for the newest one."
                 : $"Nothing was released: none of the latest `{workflow}` runs on {defaultBranch} succeeded.";
 
-        var push = await git.GetWriterAccessAsync(repository, null, false, cancellationToken);
+        var push = await git.GetWriterAccessAsync(repository, null, pushesWorkflowChanges: true, cancellationToken);
         if (push.Access is not { } access)
         {
             logger.LogWarning("Release: no writer access for {Repository}: {Reason}", repository.FullName, push.RefusalReason);

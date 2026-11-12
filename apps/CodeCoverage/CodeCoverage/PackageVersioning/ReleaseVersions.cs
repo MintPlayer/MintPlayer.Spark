@@ -130,7 +130,7 @@ public partial class HandTagRecipient : IRecipient<HandTagMessage>
                 .OrderByDescending(l => l.Major).Take(GitWriterHandTagLines).ToList();
             if (lines.Count == 0) return;
 
-            var push = await git.GetWriterAccessAsync(repository, null, false, cancellationToken);
+            var push = await git.GetWriterAccessAsync(repository, null, pushesWorkflowChanges: true, cancellationToken);
             if (push.Access is not { } access)
             {
                 logger.LogWarning("Hand tag {Tag}: no writer access for {Repository}: {Reason}", message.Tag, repository.FullName, push.RefusalReason);

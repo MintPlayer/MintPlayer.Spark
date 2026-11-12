@@ -310,7 +310,7 @@ public partial class VersioningController : ControllerBase
         Repository repository, IForgeMergeQueue forge, string branch, TagPlan plan, VersioningRunResponse planned, CancellationToken cancellationToken)
     {
         if (plan.Tags.Count == 0) return (StatusCodes.Status200OK, Released(planned, []));
-        var push = await forge.GetWriterAccessAsync(repository, null, false, cancellationToken);
+        var push = await forge.GetWriterAccessAsync(repository, null, pushesWorkflowChanges: true, cancellationToken);
         if (push.Access is not { } access)
             return (StatusCodes.Status503ServiceUnavailable, Refusal("failed", "auth", push.RefusalReason));
         try
@@ -371,7 +371,7 @@ public partial class VersioningController : ControllerBase
         Repository repository, IForgeMergeQueue forge, string branch, string defaultBranch, int? branchMajor, VersioningSettings settings,
         ReleaseManifest manifest, string? runUrl, bool planOnly, CancellationToken cancellationToken)
     {
-        var push = await forge.GetWriterAccessAsync(repository, null, false, cancellationToken);
+        var push = await forge.GetWriterAccessAsync(repository, null, pushesWorkflowChanges: true, cancellationToken);
         if (push.Access is not { } access)
             return (StatusCodes.Status503ServiceUnavailable, Refusal("failed", "auth", push.RefusalReason));
         try
