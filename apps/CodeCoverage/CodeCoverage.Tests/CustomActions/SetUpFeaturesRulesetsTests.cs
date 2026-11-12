@@ -97,7 +97,9 @@ public class SetUpFeaturesRulesetsTests : CoverageRavenTest
     {
         Id = null, Name = "SetUpFeatures", ObjectTypeId = FeaturesType,
         Attributes = [.. Enum.GetValues<EOnboardingFeature>().Select(f => new PersistentObjectAttribute
-            { Name = f.ToString(), Value = f == EOnboardingFeature.MergeQueue ? mergeQueue : f == EOnboardingFeature.Coverage })],
+            { Name = f.ToString(), Value = f == EOnboardingFeature.MergeQueue ? mergeQueue : f == EOnboardingFeature.Coverage }),
+            // #649: the model's hidden attribute the action fills (SetUpFeatures.json).
+            new PersistentObjectAttribute { Name = CodeCoverage.Actions.SetUpFeaturesActions.DotnetRepository, Value = false }],
     };
 
     private static PersistentObject Rulesets(int? approvals) => new()

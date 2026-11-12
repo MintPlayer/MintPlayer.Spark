@@ -40,6 +40,10 @@ public interface IVersioningOnboardingService
 /// <param name="Outcome"><see cref="Opened"/>, <see cref="Seeded"/>, <see cref="Nothing"/> or <see cref="Refused"/>.</param>
 public sealed record VersioningOnboardingOutcome(string Outcome, string Note, int? PullRequest = null)
 {
+    /// <summary>#649 D9: a step of an applied onboarding failed (a line's pull request the writer refused, …); the note leads
+    /// with it and the toast is a warning, not a success.</summary>
+    public bool HasFailures { get; init; }
+
     public const string Opened = "opened";
     public const string Seeded = "seeded";
     /// <summary>#571 M10d: the onboarding pull request's merge was handled.</summary>

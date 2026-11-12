@@ -82,6 +82,9 @@ public static partial class OnboardingPlanner
     /// <summary>#638 D15: the title of the pull request that narrows an older line to its own .NET major.</summary>
     public const string NarrowTitle = "Narrow this release line to its own .NET major";
 
+    /// <summary>#649 D16: the title of a line's pull request that only switches its setup-dotnet steps to global.json.</summary>
+    public const string SdkLineTitle = "Read the .NET SDK from global.json on this release line";
+
     /// <summary>#638 D15: a line's narrowing branch; the git writer names it the same way (<c>DependencyBranches.NarrowingOf</c>).</summary>
     public static string NarrowBranch(string line) => $"mintplayer/narrow-{line}";
 
@@ -154,6 +157,8 @@ public static partial class OnboardingPlanner
                 + "The bot does not write it for you, because where it goes depends on how your workflows build and test."));
         if (features.Contains(EOnboardingFeature.SizeLabels))
             sections.Add(("PR size labels", "Switched on for this repository when this pull request merges: every pull request gets one label, `size/XS` to `size/XXL`."));
+        if (features.Contains(EOnboardingFeature.SdkFromGlobalJson))
+            sections.Add(("SDK from global.json", await SdkFromGlobalJsonAsync(overlay, notes, cancellationToken)));
 
         var ordered = Enum.GetValues<EOnboardingFeature>().Where(features.Contains).ToList();
         var onMerge = ordered.Where(f => f is EOnboardingFeature.DependencyUpdates or EOnboardingFeature.SizeLabels).ToList();
@@ -333,6 +338,27 @@ public static partial class OnboardingPlanner
         return plan.Body;
     }
 
+    /// <summary>#649 D11-D15: the default branch's setup-dotnet steps read global.json (<see cref="GlobalJsonSdk"/>).</summary>
+    private static async Task<string> SdkFromGlobalJsonAsync(OverlayTree overlay, List<string> notes, CancellationToken cancellationToken)
+    {
+        var files = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var path in overlay.Entries.Keys.Where(p => IsWorkflow(p) || p == GlobalJsonSdk.GlobalJsonPath).ToList())
+            if (await overlay.ReadTextAsync(path, Limits.MaxManifestBytes, cancellationToken) is { } content)
+                files[path] = content;
+        var conversion = GlobalJsonSdk.Plan(files);
+        foreach (var file in conversion.Files)
+            overlay.Apply(file);
+        notes.AddRange(conversion.Notes);
+        if (conversion.Changes.Count == 0)
+            return "No workflow step pins a `dotnet-version` the bot can switch to `global.json`.";
+        var text = new StringBuilder();
+        text.AppendLine("The workflows' `actions/setup-dotnet` steps install the SDK `global.json` names instead of a pinned `dotnet-version`, so `global.json` is the one place the SDK is set. "
+            + "The dependency updater then moves only `global.json`, and each .NET release line gets a pull request that does the same on the line:").AppendLine();
+        foreach (var change in conversion.Changes)
+            text.AppendLine($"- {change}");
+        return text.ToString();
+    }
+
     private static string Body(IReadOnlyList<EOnboardingFeature> features, List<(string Heading, string Text)> sections, List<string> notes,
         IReadOnlyList<VersioningSeed> seeds, LineRenamePlan renames, IReadOnlyList<OnboardingLineCut> cuts, IReadOnlyList<EOnboardingFeature> onMerge, string defaultBranch)
     {
@@ -371,6 +397,7 @@ public static partial class OnboardingPlanner
         EOnboardingFeature.ReleaseLines => "release lines",
         EOnboardingFeature.SizeLabels => "PR size labels",
         EOnboardingFeature.Versioning => "package versioning",
+        EOnboardingFeature.SdkFromGlobalJson => "the SDK from global.json",
         _ => feature.ToString(),
     };
 

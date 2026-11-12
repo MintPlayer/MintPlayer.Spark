@@ -22,7 +22,9 @@
       "{workspaceRoot}/nx.json",
       "{workspaceRoot}/Directory.Build.props",
       "{workspaceRoot}/Directory.Build.targets",
-      "{workspaceRoot}/tests/Shared/**/*"
+      "{workspaceRoot}/tests/Shared/**/*",
+      "{workspaceRoot}/global.json",
+      { "runtime": "dotnet --version" }
     ]
   },
   "targetDefaults": {
