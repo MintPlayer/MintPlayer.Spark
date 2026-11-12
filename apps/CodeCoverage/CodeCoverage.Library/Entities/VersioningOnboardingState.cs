@@ -59,8 +59,19 @@ public class VersioningOnboardingState
     /// <summary>#571 D3: the merge commit the on-merge steps ran for; null while they are pending.</summary>
     public string? MergeHandledAt { get; set; }
 
+    /// <summary>docs/onboarding_merge_backfill_PRD.md D1: the merge backfills the history, seeds or not. Set when an onboarding
+    /// pull request opens; false on a state written before, so a deploy starts no backfill nobody asked for.</summary>
+    public bool Backfill { get; set; }
+
+    /// <summary>D1: the merge commit the history backfill ran for; null while it is pending.</summary>
+    public string? BackfilledAt { get; set; }
+
     /// <summary>Seeds remain to be pushed.</summary>
     public bool SeedsPending => SeedCommit is null && Seeds.Count > 0 && PullRequestNumber is not null;
+
+    /// <summary>D1: the history backfill remains to run. The owner's Move answer asks for it too, so a state written before
+    /// <see cref="Backfill"/> existed (Tools #56) is honoured.</summary>
+    public bool BackfillPending => BackfilledAt is null && PullRequestNumber is not null && (Backfill || MoveTags.Count > 0);
 
     /// <summary><c>Repositories/github/1</c> becomes <c>VersioningOnboardingStates/github/1</c>.</summary>
     public static string ForRepository(string repositoryId)

@@ -49,22 +49,30 @@ older lines you chose, `OlderLines`, which a rebuild plans again) and the on-mer
 
 The merged webhook on `mintplayer/onboarding` reaches `IOnboardingService.MergedAsync` under the versioning run lock. In order:
 
-1. The seed tags are pushed (`IVersioningOnboardingService.PushSeedsAsync`). A versioning run on the merge commit that
-   gets there first pushes them itself; the other finds nothing pending.
-2. Dependency updates and size labels are switched on.
-3. Each planned rename runs through GitHub's `POST /repos/{o}/{r}/branches/{branch}/rename` with the App's token
+1. Dependency updates and size labels are switched on.
+2. Each planned rename runs through GitHub's `POST /repos/{o}/{r}/branches/{branch}/rename` with the App's token
    (Contents: write; a line is never the default branch). GitHub moves the open pull requests to the new name, and
    the REST API still answers for the old one, but `git fetch` does not: a clone tracking the old name must switch
    to the new one (`git fetch origin` then `git switch <new name>`). A refusal is noted on the state, not retried.
    Verified live on 2026-11-06 (#571 S7).
-4. Each planned release line is created from the merge commit with the App's token (`POST /git/refs`), so it carries
+3. Each planned release line is created from the merge commit with the App's token (`POST /git/refs`), so it carries
    the onboarding's own line triggers. A line that exists already (the first versioning run cut it) counts as done; a
    refusal is noted on the state, not retried.
+4. The history backfill runs, with the tags the owner chose to **Move** (#638), then the seed tags are pushed
+   (`IVersioningOnboardingService.PushSeedsAsync`). The backfill runs whether or not the plan has seeds: a repository
+   whose packages are all tagged has none (`docs/onboarding_merge_backfill_PRD.md` D1). A versioning run on the merge
+   commit that gets there first pushes the seeds itself, but leaves the backfill to this step while line cuts are
+   pending (D2), so a version goes on the line of its major.
 5. For each supported line missing a workflow that the default branch's `mergeQueue` names (`postRebaseActionName`
    and each `autoResolve` rule's `action`), the file is copied from the default branch onto
    `mintplayer/onboarding-<line>` and a pull request into the line is opened. Check it builds with the line's SDKs.
 
-The merge is handled once: `MergeHandledAt` holds the merge commit.
+6. Each older .NET line cut here from a commit that targets a higher major gets a narrowing pull request (#638 D15).
+
+The merge is handled once: `MergeHandledAt` holds the merge commit (`SeedCommit` and `BackfilledAt` for step 4).
+
+When Set up features has nothing to change in the repository, no pull request opens and steps 1-6 run at once, in the
+same order (D3).
 
 ## Left to you
 

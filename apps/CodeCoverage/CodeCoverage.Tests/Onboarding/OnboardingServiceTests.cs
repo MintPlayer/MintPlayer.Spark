@@ -30,7 +30,7 @@ public class OnboardingServiceTests : CoverageRavenTest
         + "    <PackageId>Acme.Tools</PackageId>\n    <Version>11.2.0</Version>\n  </PropertyGroup>\n</Project>\n";
 
     private sealed record Harness(IOnboardingService Service, FakeGitWriter Writer, FakeForgeDependencyUpdates Pulls, ScriptedDiffService Forge, FakeForgeMergeQueue Queue,
-        FakeForgeVersioning Versioning, RecordingMessageBus Bus, Raven.Client.Documents.Session.IAsyncDocumentSession Session);
+        FakeForgeVersioning Versioning, RecordingMessageBus Bus, Raven.Client.Documents.Session.IAsyncDocumentSession Session, IVersioningOnboardingService Seeds);
 
     private sealed class Offline : HttpMessageHandler
     {
@@ -64,7 +64,9 @@ public class OnboardingServiceTests : CoverageRavenTest
         services.AddHttpClient(Microsoft.Extensions.Options.Options.DefaultName).ConfigurePrimaryHttpMessageHandler(() => new Offline());
         services.AddScoped<IVersioningOnboardingService, VersioningOnboardingService>();
         services.AddScoped<IOnboardingService, OnboardingService>();
-        return new Harness(services.BuildServiceProvider().GetRequiredService<IOnboardingService>(), writer, pulls, forge, queue, versioning, bus, session);
+        var provider = services.BuildServiceProvider();
+        return new Harness(provider.GetRequiredService<IOnboardingService>(), writer, pulls, forge, queue, versioning, bus, session,
+            provider.GetRequiredService<IVersioningOnboardingService>());
     }
 
     /// <summary>A .NET repository with coverage.yml at <paramref name="head"/>.</summary>
@@ -258,6 +260,98 @@ public class OnboardingServiceTests : CoverageRavenTest
         merged.Note.Should().Contain("moved 1 tag(s) onto their earliest occurrence");
     }
 
+    /// <summary>The Tools #56 case (2026-11-12): an already versioned repository, every package tagged, so no seeds.</summary>
+    [Fact]
+    public async Task MergeBackfill_D1_a_merge_without_seeds_still_backfills_and_moves_the_chosen_tags()
+    {
+        using var store = GetDocumentStore();
+        await SeedRepositoryAsync(store);
+        var h = Create(store);
+        var repository = (await h.Session.LoadAsync<Repository>(CodeCoverage.Entities.Repository.DocumentId(EForgeProvider.GitHub, RepoId)))!;
+        h.Forge.Files[$"main/{CoverageYml.FileName}"] = "versioning: {}\n";
+        h.Pulls.RepositoryTags.Add("Acme.Tools/v11.1.0");
+        h.Writer.Backfill = request => Task.FromResult(new GitWriterBackfillResult(
+            request.PlanOnly ? GitWriterBackfillResult.Planned : GitWriterBackfillResult.Tagged, null, [], ["main"], [], null, 1)
+        {
+            Collisions = [new GitWriterBackfillCollision("Acme.Tools/v11.1.0", "8b1472c000000000000000000000000000000000", "abc1230000000000000000000000000000000000", "main",
+                request.Move?.Contains("Acme.Tools/v11.1.0") == true ? GitWriterBackfillCollision.Moved : "left", null)],
+        });
+        var opened = await h.Service.OnboardAsync(repository, new HashSet<EOnboardingFeature> { EOnboardingFeature.ReleaseLines }, [], default, ["Acme.Tools/v11.1.0"]);
+        opened.Outcome.Should().Be(VersioningOnboardingOutcome.Opened, opened.Note);
+        (await StateAsync(store, repository)).Seeds.Should().BeEmpty("the package is tagged already");
+        h.Versioning.PullRequest = new ForgePullRequestText(opened.PullRequest!.Value, OnboardingPlanner.Title, null, OnboardingPlanner.Branch, Head, "main",
+            false, true, true, "abcdabcdabcdabcdabcdabcdabcdabcdabcdabcd", []);
+
+        var merged = await h.Service.MergedAsync(repository);
+
+        h.Writer.BackfillRequests.Should().ContainSingle(r => !r.PlanOnly, "D1: the merge backfills with no seeds to push")
+            .Which.Move.Should().Equal(["Acme.Tools/v11.1.0"]);
+        h.Writer.TagRequests.Should().BeEmpty();
+        merged.Note.Should().Contain("moved 1 tag(s) onto their earliest occurrence");
+    }
+
+    /// <summary>
+    /// The first versioning run may beat the merged webhook (#153 D17). It pushes the seeds, but leaves the backfill to the
+    /// merge handler while the onboarding's line cuts are pending, so a version still goes on the line of its major (#638 D7).
+    /// </summary>
+    [Fact]
+    public async Task MergeBackfill_D2_a_run_that_beats_the_webhook_leaves_the_backfill_until_after_the_cuts()
+    {
+        using var store = GetDocumentStore();
+        await SeedRepositoryAsync(store);
+        var h = Create(store);
+        var repository = (await h.Session.LoadAsync<Repository>(CodeCoverage.Entities.Repository.DocumentId(EForgeProvider.GitHub, RepoId)))!;
+        var opened = await h.Service.OnboardAsync(repository, new HashSet<EOnboardingFeature> { EOnboardingFeature.ReleaseLines }, []);
+        opened.Outcome.Should().Be(VersioningOnboardingOutcome.Opened, opened.Note);
+        (await StateAsync(store, repository)).Cuts.Should().NotBeEmpty();
+        h.Forge.Files[$"main/{CoverageYml.FileName}"] = "versioning:\n  lines: {}\n";
+        const string merge = "abcdabcdabcdabcdabcdabcdabcdabcdabcdabcd";
+        h.Versioning.PullRequest = new ForgePullRequestText(opened.PullRequest!.Value, OnboardingPlanner.Title, null, OnboardingPlanner.Branch, Head, "main",
+            false, true, true, merge, []);
+        var linesAtBackfill = new List<int>();
+        h.Writer.Backfill = request =>
+        {
+            linesAtBackfill.Add(h.Versioning.Branches.Count);
+            return Task.FromResult(new GitWriterBackfillResult(GitWriterBackfillResult.Tagged, null, [], ["main"], [], null, 1));
+        };
+
+        // The versioning run's call, before the webhook.
+        (await h.Seeds.PushSeedsAsync(repository)).Should().BeTrue("the run never waits on the webhook");
+
+        h.Writer.BackfillRequests.Should().BeEmpty("D2: the line cuts have not run yet");
+        h.Writer.TagRequests.Should().ContainSingle("the seeds are pushed as before (#153 D17)");
+
+        var merged = await h.Service.MergedAsync(repository);
+
+        merged.Outcome.Should().Be(VersioningOnboardingOutcome.Merged, merged.Note);
+        linesAtBackfill.Should().Equal([1], "the merge handler backfills once, after the cut");
+        h.Writer.TagRequests.Should().ContainSingle("the seeds are not pushed twice");
+        (await StateAsync(store, repository)).BackfilledAt.Should().Be(merge);
+    }
+
+    /// <summary>A state written before #638 asked for no backfill: a deploy must not start one on its next run.</summary>
+    [Fact]
+    public async Task MergeBackfill_D1_a_state_from_before_the_backfill_does_not_start_one()
+    {
+        using var store = GetDocumentStore();
+        await SeedRepositoryAsync(store);
+        var h = Create(store);
+        var repository = (await h.Session.LoadAsync<Repository>(CodeCoverage.Entities.Repository.DocumentId(EForgeProvider.GitHub, RepoId)))!;
+        h.Forge.Files[$"main/{CoverageYml.FileName}"] = "versioning: {}\n";
+        await h.Session.StoreAsync(new VersioningOnboardingState
+        {
+            PullRequestNumber = 7, Features = [EOnboardingFeature.ReleaseLines, EOnboardingFeature.Versioning], BaseSha = Head,
+        }, VersioningOnboardingState.ForRepository(repository.Id!));
+        await h.Session.SaveChangesAsync();
+        h.Versioning.PullRequest = new ForgePullRequestText(7, OnboardingPlanner.Title, null, OnboardingPlanner.Branch, Head, "main",
+            false, true, true, "abcdabcdabcdabcdabcdabcdabcdabcdabcdabcd", []);
+
+        var merged = await h.Service.MergedAsync(repository);
+
+        merged.Outcome.Should().Be(VersioningOnboardingOutcome.Merged, merged.Note);
+        h.Writer.BackfillRequests.Should().BeEmpty("no seeds, no Backfill flag, no tags to move");
+    }
+
     [Fact]
     public async Task Backfill_D7_the_merge_tags_the_history_after_the_line_cuts_and_seeds_only_what_it_did_not_tag()
     {
@@ -362,6 +456,42 @@ public class OnboardingServiceTests : CoverageRavenTest
         // #638 D8: re-running Set up features backfills the history, after the cuts.
         linesAtBackfill.Should().NotBeEmpty().And.EndWith(2);
         outcome.Note.Should().Contain("created release/dotnet-11.x").And.Contain("created release/dotnet-10.x");
+    }
+
+    /// <summary>docs/onboarding_merge_backfill_PRD.md D3: a re-run with nothing to change runs the merge's steps, in its order.</summary>
+    [Fact]
+    public async Task MergeBackfill_D3_a_rerun_without_a_pull_request_adds_the_line_workflows_after_the_backfill()
+    {
+        using var store = GetDocumentStore();
+        var repository = await SeedRepositoryAsync(store);
+        var forge = Repository(Head);
+        var features = new HashSet<EOnboardingFeature> { EOnboardingFeature.ReleaseLines };
+        var first = Create(store, forge);
+        var opened = await first.Service.OnboardAsync(repository, features, []);
+        opened.Outcome.Should().Be(VersioningOnboardingOutcome.Opened, opened.Note);
+        MergeInto(forge, NextHead, first.Writer.Requests("onboarding").Single().Files!);
+        // The default branch names a regenerate workflow that the old line lacks.
+        forge.Files[$"main/{CoverageYml.FileName}"] = forge.Files[$"{NextHead}/{CoverageYml.FileName}"]
+            + "mergeQueue:\n  enabled: true\n  postRebaseActionName: regenerate.yml\n";
+        forge.Files["main/.github/workflows/regenerate.yml"] = "name: regenerate\n";
+
+        var again = Create(store, forge);
+        again.Versioning.PullRequest = new ForgePullRequestText(opened.PullRequest!.Value, OnboardingPlanner.Title, null, OnboardingPlanner.Branch, Head, "main",
+            false, true, true, NextHead, []);
+        var workflowPullsAtBackfill = new List<int>();
+        again.Writer.Backfill = request =>
+        {
+            if (!request.PlanOnly) workflowPullsAtBackfill.Add(again.Pulls.Created.Count);
+            return Task.FromResult(new GitWriterBackfillResult(GitWriterBackfillResult.Tagged, null, [], ["main"], [], null, 1));
+        };
+
+        var outcome = await again.Service.OnboardAsync(repository, features, []);
+
+        outcome.Outcome.Should().Be(VersioningOnboardingOutcome.Merged, outcome.Note);
+        var pull = again.Pulls.Created.Should().ContainSingle("D3: the line gets its regenerate workflow without waiting for a merge").Which;
+        (pull.Head, pull.Base, pull.Title).Should().Be((OnboardingPlanner.LineBranch("dotnet-6.x"), "release/dotnet-6.x", OnboardingPlanner.LineTitle));
+        again.Writer.Requests("onboarding").Single().Files!.Select(f => f.Path).Should().Equal([".github/workflows/regenerate.yml"]);
+        workflowPullsAtBackfill.Should().NotBeEmpty().And.AllSatisfy(n => n.Should().Be(0), "the backfill comes before the line workflows, as on the merge");
     }
 
     [Fact]

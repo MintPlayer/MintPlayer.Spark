@@ -136,7 +136,7 @@ public partial class OnboardingService : IOnboardingService
         CancellationToken cancellationToken = default, IReadOnlyCollection<string>? moveTags = null)
     {
         // A merged onboarding whose seeds are still pending: push them before a new plan replaces them.
-        if (!await versioning.PushSeedsAsync(repository, cancellationToken))
+        if (!await versioning.PushSeedsAsync(repository, afterCuts: false, cancellationToken))
             return new(VersioningOnboardingOutcome.Refused, "The previous onboarding's seed tags could not be pushed yet; try again later.");
 
         var planned = await PlanAsync(repository, features, olderLines, cancellationToken);
@@ -159,10 +159,13 @@ public partial class OnboardingService : IOnboardingService
             // the plan read, whose workflows run on the lines already).
             var applied = await ApplyAsync(repository, git, plan.OnMerge, plan.Renames.Renames.Select(r => new OnboardingRename { From = r.From, To = r.To }), cancellationToken);
             applied.AddRange(await CutAsync(repository, forge, plan.Cuts.Select(c => c.Branch), tree.Commit, cancellationToken));
-            // #638 D15: an older line cut from a commit that targets a higher .NET gets a pull request narrowing it.
-            applied.AddRange(await NarrowAsync(repository, git, pulls, plan.Cuts.Select(c => c.Branch), defaultBranch, cancellationToken));
+            // docs/onboarding_merge_backfill_PRD.md D3: the merge's steps in the merge's order (MergedAsync).
             // #638 D8: re-running Set up features backfills the versions the history declares and no tag carries yet, after the cuts (D7).
             if (await versioning.BackfillAsync(repository, moveTags ?? [], cancellationToken) is { } backfilled) applied.Add(backfilled.TrimEnd('.'));
+            if (plan.Features.Contains(EOnboardingFeature.ReleaseLines))
+                applied.AddRange(await LineWorkflowsAsync(repository, git, pulls, defaultBranch, cancellationToken));
+            // #638 D15: an older line cut from a commit that targets a higher .NET gets a pull request narrowing it.
+            applied.AddRange(await NarrowAsync(repository, git, pulls, plan.Cuts.Select(c => c.Branch), defaultBranch, cancellationToken));
             return await NoteAsync(state, new(applied.Count > 0 ? VersioningOnboardingOutcome.Merged : VersioningOnboardingOutcome.Nothing,
                 (applied.Count > 0 ? "Applied without a pull request: " + string.Join("; ", applied) + ". " : "")
                 + "Nothing to change in the repository: " + (plan.Notes.Count == 0 ? "it is set up already." : string.Join(" ", plan.Notes))), cancellationToken);
@@ -233,6 +236,8 @@ public partial class OnboardingService : IOnboardingService
         state.MoveTags = [.. moveTags ?? []];
         state.Seeds = [.. plan.Seeds.Select(s => new VersioningOnboardingSeed { PackageId = s.PackageId, Version = s.Version })];
         state.SeedCommit = null;
+        state.Backfill = true;
+        state.BackfilledAt = null;
         state.MergeHandledAt = null;
         return await NoteAsync(state, new(VersioningOnboardingOutcome.Opened, $"Opened the onboarding pull request #{pull.Number}.", pull.Number), cancellationToken);
     }
@@ -249,7 +254,8 @@ public partial class OnboardingService : IOnboardingService
             || updates.FirstOrDefault(u => u.Provider == repository.Provider) is not { } pulls
             || repository.DefaultBranch is not { } defaultBranch)
         {
-            await versioning.PushSeedsAsync(repository, cancellationToken);
+            // Handled already, or a #153 pull request: no line cuts are pending.
+            await versioning.PushSeedsAsync(repository, afterCuts: true, cancellationToken);
             return new(VersioningOnboardingOutcome.Nothing, "No onboarding pull request waits for its merge.");
         }
         if (await forge.GetPullRequestTextAsync(repository, number, cancellationToken) is not { Merged: true } merged)
@@ -263,7 +269,7 @@ public partial class OnboardingService : IOnboardingService
             done.AddRange(await CutAsync(repository, forge, state.Cuts, mergeCommit, cancellationToken));
         // PushSeedsAsync notes what it did on this same state (the session's one instance).
         var before = state.Note;
-        await versioning.PushSeedsAsync(repository, cancellationToken);
+        await versioning.PushSeedsAsync(repository, afterCuts: true, cancellationToken);
         if (state.Note is { } seeded && seeded != before) done.Add(seeded.TrimEnd('.'));
         if (state.Features.Contains(EOnboardingFeature.ReleaseLines))
             done.AddRange(await LineWorkflowsAsync(repository, git, pulls, defaultBranch, cancellationToken));
