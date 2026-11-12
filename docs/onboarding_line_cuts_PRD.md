@@ -1,6 +1,7 @@
 # Onboarding creates the release lines — PRD and plan
 
-Status: **in progress** (branch `feat/onboarding-creates-release-lines`, one pull request). Owner request, 2026-11-12:
+Status: **merged and deployed** as #637 (835a40b67). Its first real cut on a repository that takes backports failed
+(SpaServices, 2026-11-12: S2 below), fixed by PR #645 (`docs/lockfile_notice_and_line_cut_PRD.md` D2). Owner request, 2026-11-12:
 "Shouldn't the bot be creating the release lines? why does the user need to do that?", then "Yes, implement both in
 one PR".
 
@@ -46,7 +47,7 @@ Evidence:
 |---|---|---|---|
 | S1 | Can a retry prompt offer a computed, tickable list? Is one needed? | Code reading: `SetUpRulesets.json:41-70` (Reference, `isArray`, query `Repository_PullRequestChecks`), `ForgeCheckActions.cs:95-118` (rows computed from `Repository.KnownChecks`, parent = the repository), `MergeQueueRulesetSetup.cs:158-182` (prefill a `string[]`, read back with `Names`). ng-spark renders a multi-select only for a Reference array (`po-form/src/spark-po-form.component.html:87`). | Yes, the rulesets form's pattern, but it needs rows a query can read with only the parent id (S1b). **Not used:** one yes/no retry prompt per offered line does the same with no new type, query, rows or security rights, and offered lines are few (one per lower `netX.0`). `SetUpFeaturesAction`, test `LineCuts_each_offered_older_line_is_asked_and_the_chosen_ones_are_created`. |
 | S1b | Where would the picker's rows live? | Options: recompute in the query (a tree read per keystroke), or store the offered lines where the query finds them. | Moot after S1. The chosen lines are stored as `VersioningOnboardingState.OlderLines`, so a rebuild plans them again. |
-| S2 | Does the App's exempt bypass on ruleset 3 admit a branch **creation** that the required "Line policy" check refuses for a person? | First real use: Tools after the deploy (re-run Set up features, D3's no-files path). SparkTest's ruleset 27049210 is the fallback sandbox. | Pending (after deploy). |
+| S2 | Does the App's exempt bypass on ruleset 3 admit a branch **creation** that the required "Line policy" check refuses for a person? | First real use: Tools after the deploy (re-run Set up features, D3's no-files path). SparkTest's ruleset 27049210 is the fallback sandbox. | **Answered in reverse (2026-11-12):** D4 assumed the bypass, but the planner gave it only to promoting repositories. SpaServices (backports) had ruleset 3 with no bypass and its `release/dotnet-10.x` cut answered 422. Fixed in [lockfile_notice_and_line_cut_PRD.md](lockfile_notice_and_line_cut_PRD.md) D2: ruleset 3 always exempts the App. Whether the bypass admits the creation is still to be seen on SpaServices (that PRD's S3). |
 | S3 | Does the onboarding's cut race the first versioning run's `ForLinesAsync` cut? | Code reading. | **Harmless:** both call `CreateBranchAsync`; the second gets `Exists` (`ReleaseBranchCutRecipient.cs:54-55`). |
 | S4 | Is a newly created older line (10.x) "supported", so backports go there? | `SupportedLines.Evaluate` (`CodeCoverage/PackageVersioning/SupportedLines.cs:35-69`). | An older line is supported while its platform release is not `eol` (.NET 10 is LTS). `backport.lines: retire` still removes it. |
 | S5 | npm: does an Angular package record older supported majors the way a multi-target does? | Read `Ecosystems.Of` and the npm anchor. | Out of scope for D2: only .NET target frameworks are offered. An npm line is created by D1 only. |
@@ -62,5 +63,5 @@ Evidence:
 - **M4** ✅ Tests: `OnboardingPlannerTests.LineCuts_*`, `OnboardingServiceTests.LineCuts_*` plus the merge test,
   `SetUpFeaturesRulesetsTests.LineCuts_*`. Docs: `docs/code-coverage/onboarding.md`, this file,
   `docs/release_lines_recovery_plan.md` §2e.
-- **After deploy:** re-run Set up features on Tools: expect `release/dotnet-11.x` and the offered `release/dotnet-10.x`
-  created at once (S2).
+- **After deploy** ✅ Tools has `release/dotnet-10.x` and `release/dotnet-11.x` (branch list checked 2026-11-12). Tools
+  promotes, so the App was exempt there. A repository that takes backports failed the cut until PR #645 (S2).

@@ -111,7 +111,7 @@ public partial class SetUpFeaturesAction : SparkCustomAction
                     if (refused.Count > 0)
                         byHand = refused[0].Message;
                     else if ((rulesetPlans = await rulesets.ChooseAsync(read, cancellationToken,
-                        releaseLinesComing: features.Contains(EOnboardingFeature.ReleaseLines), promotesLinesComing: planned.PromotesLines)) is null)
+                        releaseLinesComing: features.Contains(EOnboardingFeature.ReleaseLines))) is null)
                         return;
                 }
             }
