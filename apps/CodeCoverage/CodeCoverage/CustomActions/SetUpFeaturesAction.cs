@@ -23,7 +23,8 @@ namespace CodeCoverage.CustomActions;
 /// answers repeat it harmlessly.
 /// With the merge queue picked, the rulesets are a step of the chooser (#554 f4, owner 2026-11-06: "apply at
 /// confirmation"): the GitHub popup and the rulesets form follow the checkbox form, the rulesets' plan joins the
-/// confirmation, and they are applied right after the onboarding pull request opens, with the admin's one-shot token
+/// confirmation, and they are applied right after the onboarding pull request opens (with no files to change, before the
+/// onboarding applies, so its line cuts have ruleset 3's bypass), with the admin's one-shot token
 /// (<see cref="IMergeQueueRulesetSetup"/>). When they cannot be (not GitHub, no OAuth app, a refused read), the
 /// confirmation says they are left to set by hand and the pull request still opens.
 /// </summary>
@@ -158,6 +159,12 @@ public partial class SetUpFeaturesAction : SparkCustomAction
                     message: Summary(planned, rulesetPlans, byHand, cuts), cancellable: true);
                 if (manager.Retry.Result!.Option == RetryResult.CancelOption) return;
 
+                // With no files to change, OnboardAsync cuts the lines at once with the App's token, which needs ruleset 3's
+                // bypass first (docs/lockfile_notice_and_line_cut_PRD.md D5; SpaServices' cut answered 422 without it). The
+                // workflows the checks come from are on the default branch already, so nothing waits for a merge.
+                if (planned.Files.Count == 0)
+                    await ApplyRulesetsAsync(rulesetPlans, lease, cancellationToken);
+
                 outcome = await onboarding.OnboardAsync(repository, features, olderLines, cancellationToken, moveTags);
             }
             catch (Exception ex) when (ex is GitWriterUnavailableException or HttpRequestException)
@@ -166,13 +173,10 @@ public partial class SetUpFeaturesAction : SparkCustomAction
             }
             Report(outcome, args);
 
-            // The rulesets follow only an onboarding that went through: a refused one leaves no workflow to report the
-            // checks ruleset 2 requires.
-            if (rulesetPlans is not null && lease is not null && outcome.Outcome is not VersioningOnboardingOutcome.Refused)
-            {
-                var (applied, failed) = await rulesets.ApplyAsync(rulesetPlans, lease.AccessToken, cancellationToken);
-                rulesets.Notify(applied, failed);
-            }
+            // With a pull request, the rulesets follow only an onboarding that went through: a refused one leaves no
+            // workflow to report the checks ruleset 2 requires.
+            if (planned.Files.Count > 0 && outcome.Outcome is not VersioningOnboardingOutcome.Refused)
+                await ApplyRulesetsAsync(rulesetPlans, lease, cancellationToken);
         }
         finally
         {
@@ -181,7 +185,15 @@ public partial class SetUpFeaturesAction : SparkCustomAction
         }
     }
 
-    private static string Short(string sha) => sha.Length > 7 ? sha[..7] : sha;
+    private async Task ApplyRulesetsAsync(IReadOnlyList<RulesetPlanned>? rulesetPlans, ISparkOneShotOAuthLease? lease, CancellationToken cancellationToken)
+    {
+        if (rulesetPlans is null || lease is null)
+            return;
+        var (applied, failed) = await rulesets.ApplyAsync(rulesetPlans, lease.AccessToken, cancellationToken);
+        rulesets.Notify(applied, failed);
+    }
+
+    private static string Short(string sha) =>sha.Length > 7 ? sha[..7] : sha;
 
     private static bool IsChecked(PersistentObject? form, EOnboardingFeature feature)
         => form?[feature.ToString()].GetValue<bool>() == true;

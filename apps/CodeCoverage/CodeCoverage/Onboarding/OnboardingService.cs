@@ -403,7 +403,7 @@ public partial class OnboardingService : IOnboardingService
                 if (await ForgeRepositoryTree.OpenAsync(integration, repository, branch, cancellationToken) is not { } tree)
                     continue;
                 var files = new Dictionary<string, string>(StringComparer.Ordinal);
-                foreach (var path in tree.Entries.Keys.Where(p => LineNarrowing.IsMsBuild(p) || LineNarrowing.IsGlobalJson(p)))
+                foreach (var path in tree.Entries.Keys.Where(p => LineNarrowing.IsMsBuild(p) || LineNarrowing.IsGlobalJson(p) || LineNarrowing.IsWorkflow(p)))
                     if (await ReadTextAsync(tree, path, cancellationToken) is { } text) files[path] = text;
                 var above = files.Where(f => LineNarrowing.IsMsBuild(f.Key) && LineNarrowing.TargetsAbove(line.Major, f.Value))
                     .Select(f => f.Key.LastIndexOf('/') is var slash and >= 0 ? f.Key[..(slash + 1)] : "").ToList();
