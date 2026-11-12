@@ -15,6 +15,9 @@ namespace CodeCoverage.PackageVersioning;
 ///   enqueue: true                # default (D12): hand each backport pull request to the merge queue, when it queues the line
 ///   defaultLabels: all           # D5: all (default) | fixes: older lines only for fixes, the current line always (D16) | off
 ///   fixLabels: [bug]             # what marks a fix under `fixes`, beside a fix: or fix(…): title
+///   trialPick: warn              # segment G (Q10): warn (default): comment the lines the backport would conflict on | refuse: the queue does not merge | off
+///   trialPicks:                  # Q10: the same, per line
+///     dotnet-11.x: refuse
 ///   lines:                       # D4: override the lifecycle data per line
 ///     dotnet-8.x: keep           # keep past end of life | retire: no longer supported
 ///   markers:                     # D8
@@ -29,6 +32,8 @@ public static class BackportYml
     public const string All = "all";
     public const string Fixes = "fixes";
     public const string Off = "off";
+    public const string Warn = "warn";
+    public const string Refuse = "refuse";
 
     private static readonly IDeserializer Deserializer = new DeserializerBuilder()
         .WithNamingConvention(CamelCaseNamingConvention.Instance)
@@ -76,6 +81,25 @@ public static class BackportYml
             errors.Add($"backport.defaultLabels '{defaultLabels}' is not one of: {All}, {Fixes}, {Off}.");
             defaultLabels = Off;
         }
+        // Segment G. A misspelt mode warns: it never refuses a merge the owner did not ask to refuse.
+        var trialPick = file.TrialPick?.Trim() ?? Warn;
+        if (trialPick is not (Warn or Refuse or Off))
+        {
+            errors.Add($"backport.trialPick '{trialPick}' is not one of: {Warn}, {Refuse}, {Off}.");
+            trialPick = Warn;
+        }
+        var trialPicks = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var (key, value) in file.TrialPicks ?? [])
+        {
+            var name = key?.Trim() ?? "";
+            var mode = value?.Trim() ?? "";
+            if (ReleaseLine.TryParse(name) is null)
+                errors.Add($"backport.trialPicks '{name}' is not a line name such as `dotnet-10.x`.");
+            else if (mode is not (Warn or Refuse or Off))
+                errors.Add($"backport.trialPicks.{name} '{mode}' is not one of: {Warn}, {Refuse}, {Off}.");
+            else
+                trialPicks[name] = mode;
+        }
         var fixLabels = file.FixLabels is null ? BackportSection.Default.FixLabels
             : [.. file.FixLabels.Select(l => l?.Trim() ?? "").Where(l => l.Length is > 0 and <= 50).Distinct(StringComparer.OrdinalIgnoreCase)];
 
@@ -94,13 +118,15 @@ public static class BackportYml
         }
 
         if (errors.Count > 0)
-            return new(BackportSection.Default with { OnConflict = onConflict, Enqueue = enqueue, DefaultLabels = defaultLabels, FixLabels = fixLabels }, errors);
+            return new(BackportSection.Default with { OnConflict = onConflict, Enqueue = enqueue, DefaultLabels = defaultLabels, FixLabels = fixLabels, TrialPick = trialPick }, errors);
         return new(new BackportSection(onConflict,
             new PlatformMarkerOptions([.. disable.Distinct(StringComparer.OrdinalIgnoreCase)], [.. packages.Distinct(StringComparer.OrdinalIgnoreCase)]), enqueue)
         {
             Lines = lines,
             DefaultLabels = defaultLabels,
             FixLabels = fixLabels,
+            TrialPick = trialPick,
+            TrialPicks = trialPicks,
         }, []);
     }
 
@@ -115,6 +141,8 @@ public static class BackportYml
         public bool? Enqueue { get; set; }
         public string? DefaultLabels { get; set; }
         public List<string?>? FixLabels { get; set; }
+        public string? TrialPick { get; set; }
+        public Dictionary<string, string?>? TrialPicks { get; set; }
         public Dictionary<string, string?>? Lines { get; set; }
         public FileMarkers? Markers { get; set; }
     }
@@ -139,6 +167,16 @@ public sealed record BackportSection(string OnConflict, PlatformMarkerOptions Ma
 
     /// <summary><c>backport.fixLabels</c>: the labels that mark a pull request as a fix under <c>defaultLabels: fixes</c>, beside a <c>fix:</c> title.</summary>
     public IReadOnlyList<string> FixLabels { get; init; } = ["bug"];
+
+    /// <summary><c>backport.trialPick</c> (segment G): <see cref="BackportYml.Warn"/>, <see cref="BackportYml.Refuse"/> or
+    /// <see cref="BackportYml.Off"/>; what the merge queue does when a labelled line's backport would conflict.</summary>
+    public string TrialPick { get; init; } = BackportYml.Warn;
+
+    /// <summary><c>backport.trialPicks</c> (Q10, "configurable per line"): a line's own mode, by the line's name.</summary>
+    public IReadOnlyDictionary<string, string> TrialPicks { get; init; } = new Dictionary<string, string>(StringComparer.Ordinal);
+
+    /// <summary>The trial pick mode of the line named <paramref name="line"/>: its own, else <see cref="TrialPick"/>.</summary>
+    public string TrialPickFor(string line) => TrialPicks.TryGetValue(line, out var mode) ? mode : TrialPick;
 
     public static readonly BackportSection Default = new(BackportYml.Comment, new PlatformMarkerOptions([], []));
 }

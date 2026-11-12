@@ -56,6 +56,9 @@ public interface IForgeVersioning
     /// <summary>Comments on an issue or pull request.</summary>
     Task CommentAsync(Repository repository, int number, string body, CancellationToken cancellationToken = default);
 
+    /// <summary>Comments on a commit (segment P: a refused hand tag has no issue or pull request to answer on).</summary>
+    Task CommentOnCommitAsync(Repository repository, string sha, string body, CancellationToken cancellationToken = default);
+
     /// <summary>Fires <c>workflow_dispatch</c> on a workflow file of the repository at a branch (trigger B, D3).</summary>
     Task DispatchWorkflowAsync(Repository repository, string workflowFile, string branch, CancellationToken cancellationToken = default);
 }
@@ -73,7 +76,14 @@ public sealed record ForgePullRequestText(
     bool Merged,
     bool AuthorIsBot,
     string? MergeCommitSha,
-    IReadOnlyList<string> Labels);
+    IReadOnlyList<string> Labels)
+{
+    /// <summary>Who opened it; null when the forge does not say (a deleted account).</summary>
+    public string? AuthorLogin { get; init; }
+
+    /// <summary>Its head is in another repository than its base (a fork, or a deleted one).</summary>
+    public bool HeadIsFork { get; init; }
+}
 
 /// <summary>An issue and its label names.</summary>
 public sealed record ForgeIssue(int Number, IReadOnlyList<string> Labels);

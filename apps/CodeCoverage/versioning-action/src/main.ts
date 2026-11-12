@@ -9,9 +9,9 @@ import {
 import { realExec, type Exec } from './exec';
 import { checkBranchName, fetchTags, prepareHistory, showOnDefaultBranch, taggedVersions } from './git';
 import { discoverPackages, PLACEHOLDER, writeVersions, type Stamp } from './npm';
-import { distTag, highest } from './semver';
+import { distTag, highest, parse } from './semver';
 import { createReleases, cutReleaseBranches } from './releases';
-import { planOnServer, releaseOnServer, runOnServer } from './server';
+import { planOnServer, releaseOnServer, runOnServer, verifyTagsOnServer } from './server';
 
 export interface Inputs {
   /** #552 D4: all (plan and tag in one step), plan (decide, write nothing) or release (write the plan's tags). */
@@ -79,8 +79,17 @@ export interface Outputs {
  * #568 D10b: what coverage.yml's versioning section tells the pack. MSBuild reads an environment variable as a
  * property, so `dependencyRanges: major-bounded` reaches MintPlayer.Versioning.MSBuild's range target this way.
  */
-export function buildEnvironment(section: Record<string, unknown>): Record<string, string> {
-  return section.dependencyRanges === 'major-bounded' ? { MintPlayerVersioningDependencyRanges: 'major-bounded' } : {};
+export function buildEnvironment(section: Record<string, unknown>, lineMajors?: Record<string, number> | null): Record<string, string> {
+  const environment: Record<string, string> = section.dependencyRanges === 'major-bounded' ? { MintPlayerVersioningDependencyRanges: 'major-bounded' } : {};
+  // #638 D2: on a release line, each package anchored on the line's platform packs its highest tag of the line's major.
+  const majors = Object.entries(lineMajors ?? {}).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+  if (majors.length > 0) environment.MintPlayerVersioningMajors = majors.map(([id, major]) => `${id}=${major}`).join(';');
+  return environment;
+}
+
+/** The last tag of a package, of its line's major when the line names one (#638 D2). */
+function lastTagged(versions: string[], major: number | undefined): string | undefined {
+  return highest(major === undefined ? versions : versions.filter((v) => parse(v)?.major === major))?.text;
 }
 
 export interface Dependencies {
@@ -199,8 +208,10 @@ export async function version(inputs: Inputs, deps: Dependencies): Promise<Outpu
     repo: cwd, manifest: manifestFile, config, branch, defaultBranch, out: path.join(work, 'result.json'), planOnly,
   });
 
+  await verifyHandTags(inputs, deps, section, collected.manifest.commit as string, response);
+
   const packages = (collected.manifest.packages as { id: string }[]).map((p) => p.id);
-  const environment = buildEnvironment(section);
+  const environment = buildEnvironment(section, response.lineMajors);
   if (!planOnly) return { ...await finish(inputs, deps, mode, response, packages), environment };
 
   for (const warning of response.warnings ?? []) deps.warn(warning);
@@ -209,11 +220,11 @@ export async function version(inputs: Inputs, deps: Dependencies): Promise<Outpu
   for (const r of response.releases) deps.log(`${r.id} ${r.version}${r.taggedByHand ? ' (tagged by hand)' : ''} (planned): ${r.reasons.join('; ')}`);
   // #552 D10: the stamps need no new tag (a release at its planned version, any other package at its last tag), so the
   // plan writes them, and whatever builds between the plan and the tests (a demo, a docs site) reads the right version.
-  const distTags = await writeNpm(deps.exec, cwd, response.releases, deps.log, deps.warn);
+  const distTags = await writeNpm(deps.exec, cwd, response.releases, deps.log, deps.warn, response.lineMajors);
   const plan: PlanOutput = { commit: collected.manifest.commit, branch, mode, response, packages, environment };
   return {
     ...released(response.releases), outcome: 'planned', mode, distTags, environment,
-    allVersions: await allVersionsOf(deps.exec, cwd, packages, response.releases), plan: JSON.stringify(plan),
+    allVersions: await allVersionsOf(deps.exec, cwd, packages, response.releases, response.lineMajors), plan: JSON.stringify(plan),
   };
 }
 
@@ -221,14 +232,33 @@ export async function version(inputs: Inputs, deps: Dependencies): Promise<Outpu
  * #552 D10: every package's version, released or not: a release's own, else the last tag reachable from HEAD, which is
  * what MintPlayer.Versioning.MSBuild and the npm stamps give an unreleased package. A package with neither has none.
  */
-export async function allVersionsOf(exec: Exec, cwd: string, packages: string[], releases: Release[]): Promise<Record<string, string>> {
+export async function allVersionsOf(exec: Exec, cwd: string, packages: string[], releases: Release[],
+  lineMajors?: Record<string, number> | null): Promise<Record<string, string>> {
   const reachable = await taggedVersions(exec, cwd, 'HEAD');
   const versions: Record<string, string> = {};
   for (const id of new Set([...packages, ...releases.map((r) => r.id)])) {
-    const version = releases.find((r) => r.id === id)?.version ?? highest(reachable.get(id) ?? [])?.text;
+    const version = releases.find((r) => r.id === id)?.version ?? lastTagged(reachable.get(id) ?? [], lineMajors?.[id]);
     if (version) versions[id] = version;
   }
   return versions;
+}
+
+/**
+ * Segment P (P5): with `versioning.lines.current: promote`, a version tagged by hand on the commit releases only when
+ * the app placed that tag there, at a `/release`. Anything else, an unreachable app included, fails the step before a
+ * tag is written or a package is packed.
+ */
+export async function verifyHandTags(inputs: Inputs, deps: Dependencies, section: Record<string, unknown>, commit: string, response: RunResponse): Promise<void> {
+  const lines = section.lines as Record<string, unknown> | undefined;
+  if (lines?.current !== 'promote') return;
+  const tags = response.releases.filter((r) => r.taggedByHand).map((r) => r.tag);
+  if (tags.length === 0) return;
+  const answer = await verifyTagsOnServer({ url: inputs.url, idToken: deps.idToken, fetch: deps.fetch }, commit, tags);
+  if (answer.kind === 'failed')
+    throw new Error(`The hand tags ${tags.join(', ')} could not be checked with ${inputs.url} (${answer.reason}); nothing is released.`);
+  if (answer.refused.length > 0)
+    throw new Error(`${answer.refused.join(', ')} ${answer.refused.length === 1 ? 'was' : 'were'} not placed by \`/release\`: a version tag on a promoted line `
+      + 'is placed by the app. Delete the tag, then ask for the version with `/release <package>@<version>`.');
 }
 
 /** A 4xx keeps the app's own outcome only when it names a failure. */
@@ -288,6 +318,8 @@ async function release(inputs: Inputs, deps: Dependencies, branch: string, defau
     writeFileSync(planFile, JSON.stringify(plan.response));
     response = await pushTags(engineOptions(inputs, deps), { repo: cwd, plan: planFile, branch, out: path.join(work, 'result.json') });
   }
+  // A release answer may leave out the line's majors; the plan made them, and the release writes no other version.
+  response = { ...response, lineMajors: response.lineMajors ?? plan.response.lineMajors };
   return { ...await finish(inputs, deps, mode, response, plan.packages ?? []), environment: plan.environment ?? {} };
 }
 
@@ -305,7 +337,7 @@ async function finish(inputs: Inputs, deps: Dependencies, mode: 'server' | 'loca
   for (const r of releases) deps.log(`${r.id} ${r.version}${r.taggedByHand ? ' (tagged by hand)' : ''}: ${r.reasons.join('; ')}`);
   // The server pushed the tags to the remote; the pack step's build reads them from this checkout (D9).
   if (mode === 'server') await fetchTags(deps.exec, cwd);
-  const distTags = await writeNpm(deps.exec, cwd, releases, deps.log, deps.warn);
+  const distTags = await writeNpm(deps.exec, cwd, releases, deps.log, deps.warn, response.lineMajors);
 
   // PRD D15: the server creates its Releases itself, behind the app's release-on-tag policy. The local host cannot read
   // that policy, so the `releases` input stands in for it, default on like the policy's own default.
@@ -321,7 +353,7 @@ async function finish(inputs: Inputs, deps: Dependencies, mode: 'server' | 'loca
     else await cutReleaseBranches({ apiUrl: inputs.apiUrl, repository: inputs.repository, token: inputs.githubToken, fetch: deps.fetch, sleep: deps.sleep,
       log: deps.log, warn: deps.warn }, cuts);
   }
-  return { ...released(releases), outcome: 'versioned', mode, distTags, allVersions: await allVersionsOf(deps.exec, cwd, packages, releases) };
+  return { ...released(releases), outcome: 'versioned', mode, distTags, allVersions: await allVersionsOf(deps.exec, cwd, packages, releases, response.lineMajors) };
 }
 
 /**
@@ -329,7 +361,8 @@ async function finish(inputs: Inputs, deps: Dependencies, mode: 'server' | 'loca
  * D3, D9): a release at its new version under its dist-tag, any other package at its last reachable tag, which the
  * publisher skips as already published. The .NET side reads the same tags in MintPlayer.Versioning.MSBuild.
  */
-async function writeNpm(exec: Exec, cwd: string, released: Release[], log: (m: string) => void, warn: (m: string) => void): Promise<Record<string, string>> {
+async function writeNpm(exec: Exec, cwd: string, released: Release[], log: (m: string) => void, warn: (m: string) => void,
+  lineMajors?: Record<string, number> | null): Promise<Record<string, string>> {
   const npm = released.filter((r) => r.kind === 'npm');
   const packages = await discoverPackages(exec, cwd);
   if (npm.length === 0 && ![...packages.values()].some((p) => !p.private)) return {};
@@ -340,9 +373,14 @@ async function writeNpm(exec: Exec, cwd: string, released: Release[], log: (m: s
   const stamps = new Map<string, Stamp>(npm.map((r) => [r.id, { version: r.version, distTag: distTags[r.id] }]));
   for (const pkg of packages.values()) {
     if (pkg.private || stamps.has(pkg.name)) continue;
-    const last = highest(reachable.get(pkg.name) ?? [])?.text;
+    const major = lineMajors?.[pkg.name];
+    const last = lastTagged(reachable.get(pkg.name) ?? [], major);
     if (last) stamps.set(pkg.name, { version: last, distTag: null });
-    else if (pkg.version === PLACEHOLDER) {
+    else if (major !== undefined && (reachable.get(pkg.name) ?? []).length > 0) {
+      // #638 D2: only a newer major's tag is reachable on this line; publishing it here would publish the wrong line.
+      stamps.set(pkg.name, 'withhold');
+      warn(`${pkg.name} has no ${major}.x tag reachable on this release line: it is marked private, so it is not published. Tag the line's last release of it.`);
+    } else if (pkg.version === PLACEHOLDER) {
       stamps.set(pkg.name, 'withhold');
       warn(`${pkg.name} has no tag reachable from HEAD: it stays at ${PLACEHOLDER} and is marked private, so it is not published.`);
     }

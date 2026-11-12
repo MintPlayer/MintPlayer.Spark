@@ -61,6 +61,15 @@
           "alias": "forge-accounts",
           "objectId": "github",
           "order": 2
+        },
+        {
+          "id": "91ab08c8-7e30-4521-b962-488a59b6fbc4",
+          "name": "programUnits.heldBackports",
+          "icon": "bi-pause-circle",
+          "type": "query",
+          "queryId": "86c1238e-410e-42ad-8658-eb01cef8a67c",
+          "alias": "held-backports",
+          "order": 3
         }
       ]
     },

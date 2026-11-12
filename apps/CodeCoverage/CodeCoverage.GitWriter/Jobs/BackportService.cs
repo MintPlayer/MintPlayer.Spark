@@ -24,6 +24,14 @@ public sealed record BackportRegeneratedJob(
 public sealed record BackportTarget(string Branch, string Head, IReadOnlyList<AutoResolveRule> Rules, bool Draft = false,
     IReadOnlyList<PathGlob>? RegeneratedPaths = null);
 
+/// <summary>A validated <c>POST /jobs/versioning/backport/trial</c> (segment G): <c>Base..Commit</c> tried on each target,
+/// with <see cref="Commit"/> fetched through <see cref="HeadRef"/>.</summary>
+public sealed record BackportTrialJob(string Repo, Uri CloneUrl, GitCredential Credential, string HeadRef, string Base, string Commit,
+    IReadOnlyList<BackportTrialTarget> Targets, PlatformMarkerOptions? Markers = null);
+
+/// <summary>A line a trial pick tries, merged as its backport would be.</summary>
+public sealed record BackportTrialTarget(string Branch, IReadOnlyList<AutoResolveRule> Rules, IReadOnlyList<PathGlob>? RegeneratedPaths = null);
+
 /// <summary>
 /// A backport (#153 M10, PRD D10): the merged pull request's change applied to each release branch as one new commit,
 /// pushed to a new <c>backport/…</c> branch for the app to open a pull request from. Spike S8 showed the merge queue's
@@ -76,22 +84,13 @@ public sealed partial class BackportService
         var message = Message(job, commit, picked);
         var author = Author(commit.Raw) ?? job.Committer;
         var results = new List<BackportTargetResult>();
-        var raisesByBranch = new Dictionary<string, IReadOnlyList<DependencyRaise>>(StringComparer.Ordinal);
+        var raisesByBranch = new Dictionary<string, (IReadOnlyList<DependencyRaise> Raises, IReadOnlyList<PlatformKept> Kept)>(StringComparer.Ordinal);
         foreach (var (branch, head, rules, draft, regeneratedPaths) in job.Targets)
         {
-            var tip = WriterService.Oid(await context.RequireAsync(["rev-parse", "--verify", "refs/heads/" + branch + "^{commit}"]), "rev-parse");
-            // D9 (M6): a regenerated path the change touches is never merged. The change's copy is reset to its parent's,
-            // so the merge keeps the line's, and the line's own workflow regenerates it before the pull request opens.
-            var regenerated = regeneratedPaths is { Count: > 0 } globs ? changed.Where(p => globs.Any(g => g.Matches(p))).ToList() : [];
-            var markerPaths = changed.Where(p => !regenerated.Contains(p, StringComparer.Ordinal) && PlatformMarkers.Handles(p, job.Markers)).ToList();
-            var (mergeBase, theirs, platformChanges, raises) = await NormalizeAsync(context, job, tip, @base, job.Commit, markerPaths, regenerated);
-            raisesByBranch[branch] = raises;
-
-            // The merge queue's resolver (PRD §5.3 step 2), stage 2 the line: a conflict the line's rules allow is resolved
-            // the way the queue would; any other conflict is reported. With no rules every conflict is reported.
-            var resolver = new MergeQueueResolver(git, registry) { Timeout = context.Remaining, ScratchDirectory = context.Scratch, Config = JobContext.WriterConfig };
-            var merged = await resolver.MergeAsync(context.GitDirectory, tip, theirs, rules, context.Deadline, job.Credential, mergeBase);
-            context.EnsureWithinDisk();
+            var tip = await TipAsync(context, branch);
+            var (mergeBase, theirs, regenerated, platformChanges, raises, kept, merged) = await PickAsync(context, job.Credential, job.Markers, job.Committer, tip, @base,
+                job.Commit, changed, rules, regeneratedPaths);
+            raisesByBranch[branch] = (raises, kept);
 
             // Each line stands on its own (#570 D6): a conflict here holds back no other line.
             if (merged is MergeOutcome.Evicted evicted)
@@ -123,8 +122,7 @@ public sealed partial class BackportService
                 MergeOutcome.Resolved resolved => (resolved.Tree, [.. resolved.Resolutions.Select(r => new ResolutionWire(r.Path, r.Strategy, r.Regenerate, r.Rule))]),
                 _ => throw new InvalidOperationException("Unknown merge outcome."),
             };
-            var tipTree = WriterService.Oid(await context.RequireAsync(["rev-parse", "--verify", tip + "^{tree}"]), "rev-parse");
-            if (tipTree == tree)
+            if (await TreeAsync(context, tip) == tree)
             {
                 results.Add(new BackportTargetResult(branch, head, null, Empty, [], platformChanges, resolutions, Regenerate: []));
                 continue;
@@ -141,12 +139,84 @@ public sealed partial class BackportService
                 _ => throw new InvalidOperationException(),
             });
         }
-        // #570 D11: whatever the line's outcome, the first-party raises normalization dropped go with it.
-        var withRaises = results.Select(r => raisesByBranch.TryGetValue(r.Branch, out var dropped) ? r with { Raises = dropped } : r).ToList();
+        // #570 D11: whatever the line's outcome, the first-party raises normalization dropped go with it, and so do the
+        // platform values it kept on the line (#638 D13).
+        var withRaises = results.Select(r => raisesByBranch.TryGetValue(r.Branch, out var dropped) ? r with { Raises = dropped.Raises, Kept = dropped.Kept } : r).ToList();
         return new VersioningBackportResponse(JobOutcomes.Backported, null, mode, @base, withRaises, null, context.ElapsedMilliseconds);
     }, (outcome, reason, detail, ms) => new VersioningBackportResponse(outcome, reason, null, null, [], detail, ms));
 
-    /// <summary>The paths the change touches that can hold platform markers (#570 S2).</summary>
+    /// <summary>The identity of the throwaway commits a trial pick writes; they never leave the job.</summary>
+    private static readonly GitIdentity TrialIdentity = new("CodeCoverage trial pick", "trial-pick@coverage.invalid");
+
+    /// <summary>
+    /// Segment G: the backport a merge would start, tried before the merge and pushed nowhere. The change is
+    /// <c>Base..Commit</c>, the queued commit against the default branch it was tested on, fetched through
+    /// <see cref="BackportTrialJob.HeadRef"/> since it is not on the default branch yet. Each line is merged the way the
+    /// backport merges it (platform markers normalized, the line's auto-resolve rules, its regenerated paths kept), so a line
+    /// the trial calls clean is one the backport opens a pull request for.
+    /// </summary>
+    public Task<BackportTrialResponse> TrialAsync(BackportTrialJob job) => jobs.RunAsync("versioning-backport-trial", job.Repo, async context =>
+    {
+        const string head = "refs/heads/coverage-trial-head";
+        await context.RequireAsync(["init", "--bare", "--quiet", "--template=", context.GitDirectory], inRepository: false);
+        await context.RequireAsync(["fetch", "--quiet", "--no-tags", "--no-write-fetch-head", job.CloneUrl.AbsoluteUri, $"+{job.HeadRef}:{head}",
+            .. job.Targets.Select(t => $"+refs/heads/{t.Branch}:refs/heads/{t.Branch}")], job.Credential);
+        context.EnsureWithinDisk();
+
+        var fetched = await TipAsync(context, "coverage-trial-head");
+        if (!string.Equals(fetched, job.Commit, StringComparison.OrdinalIgnoreCase))
+            return new BackportTrialResponse(JobOutcomes.HeadMismatch, null, [], $"{job.HeadRef} is at {fetched}, not {job.Commit}.", context.ElapsedMilliseconds);
+        if ((await context.GitAsync(["merge-base", "--is-ancestor", job.Base, job.Commit], null)).ExitCode != 0)
+            throw new JobAbortedException(JobReasons.Unplannable, $"The base {job.Base} is not an ancestor of {job.Commit}.");
+
+        var changed = await ChangedPathsAsync(context, job.Base, job.Commit);
+        var results = new List<BackportTrialTargetResult>();
+        foreach (var (branch, rules, regeneratedPaths) in job.Targets)
+        {
+            var tip = await TipAsync(context, branch);
+            var pick = await PickAsync(context, job.Credential, job.Markers, TrialIdentity, tip, job.Base, job.Commit, changed, rules, regeneratedPaths);
+            results.Add(pick.Merged switch
+            {
+                MergeOutcome.Evicted evicted => new BackportTrialTargetResult(branch, Conflicted, evicted.Paths,
+                    evicted.Reason == EvictionReason.ConflictOutsideAllowList ? null : evicted.Detail),
+                MergeOutcome.Clean clean => new BackportTrialTargetResult(branch, await TreeAsync(context, tip) == clean.Tree ? Empty : Clean, []),
+                MergeOutcome.Resolved resolved => new BackportTrialTargetResult(branch, await TreeAsync(context, tip) == resolved.Tree ? Empty : Clean, []),
+                _ => throw new InvalidOperationException("Unknown merge outcome."),
+            });
+        }
+        return new BackportTrialResponse(JobOutcomes.Tried, null, results, null, context.ElapsedMilliseconds);
+    }, (outcome, reason, detail, ms) => new BackportTrialResponse(outcome, reason, [], detail, ms));
+
+    /// <summary>A trial target the change applies to, cleanly or through the line's rules.</summary>
+    public const string Clean = "clean";
+
+    private sealed record Pick(string MergeBase, string Theirs, IReadOnlyList<string> Regenerated, IReadOnlyList<PlatformChange> PlatformChanges,
+        IReadOnlyList<DependencyRaise> Raises, IReadOnlyList<PlatformKept> Kept, MergeOutcome Merged);
+
+    /// <summary>One line's in-memory merge of the change, shared by the backport and its trial.</summary>
+    private async Task<Pick> PickAsync(JobContext context, GitCredential credential, PlatformMarkerOptions? markers, GitIdentity committer, string tip,
+        string @base, string commit, IReadOnlyList<string> changed, IReadOnlyList<AutoResolveRule> rules, IReadOnlyList<PathGlob>? regeneratedPaths)
+    {
+        // D9 (M6): a regenerated path the change touches is never merged. The change's copy is reset to its parent's,
+        // so the merge keeps the line's, and the line's own workflow regenerates it before the pull request opens.
+        var regenerated = regeneratedPaths is { Count: > 0 } globs ? changed.Where(p => globs.Any(g => g.Matches(p))).ToList() : [];
+        var markerPaths = changed.Where(p => !regenerated.Contains(p, StringComparer.Ordinal) && PlatformMarkers.Handles(p, markers)).ToList();
+        var (mergeBase, theirs, platformChanges, raises, kept) = await NormalizeAsync(context, markers, committer, tip, @base, commit, markerPaths, regenerated);
+
+        // The merge queue's resolver (PRD §5.3 step 2), stage 2 the line: a conflict the line's rules allow is resolved
+        // the way the queue would; any other conflict is reported. With no rules every conflict is reported.
+        var resolver = new MergeQueueResolver(git, registry) { Timeout = context.Remaining, ScratchDirectory = context.Scratch, Config = JobContext.WriterConfig };
+        var merged = await resolver.MergeAsync(context.GitDirectory, tip, theirs, rules, context.Deadline, credential, mergeBase);
+        context.EnsureWithinDisk();
+        return new Pick(mergeBase, theirs, regenerated, platformChanges, raises, kept, merged);
+    }
+
+    private static async Task<string> TipAsync(JobContext context, string branch)
+        => WriterService.Oid(await context.RequireAsync(["rev-parse", "--verify", "refs/heads/" + branch + "^{commit}"]), "rev-parse");
+
+    private static async Task<string> TreeAsync(JobContext context, string commit)
+        => WriterService.Oid(await context.RequireAsync(["rev-parse", "--verify", commit + "^{tree}"]), "rev-parse");
+
     /// <summary>
     /// #570 M6 (D9): the line's regenerate patch folded into the backport commit. Validated before anything is fetched
     /// (T4, the merge queue's publish rules), applied to the commit's tree without a worktree, checked to change nothing
@@ -224,11 +294,13 @@ public sealed partial class BackportService
     /// as throwaway commits that are never pushed; the originals when nothing needed rewriting. Plus the platform values
     /// the change edits on the line's own platform, which are left to the merge.
     /// </summary>
-    private static async Task<(string Base, string Theirs, IReadOnlyList<PlatformChange> Changes, IReadOnlyList<DependencyRaise> Raises)> NormalizeAsync(
-        JobContext context, BackportJob job, string tip, string @base, string theirs, IReadOnlyList<string> paths, IReadOnlyList<string> regenerated)
+    private static async Task<(string Base, string Theirs, IReadOnlyList<PlatformChange> Changes, IReadOnlyList<DependencyRaise> Raises, IReadOnlyList<PlatformKept> Kept)> NormalizeAsync(
+        JobContext context, PlatformMarkerOptions? markers, GitIdentity committer, string tip, string @base, string theirs, IReadOnlyList<string> paths,
+        IReadOnlyList<string> regenerated)
     {
         var changes = new List<PlatformChange>();
         var raises = new List<DependencyRaise>();
+        var kept = new List<PlatformKept>();
         var baseFiles = new List<(string Path, string Mode, string Oid)>();
         var theirsFiles = new List<(string Path, string Mode, string Oid)>();
         foreach (var path in regenerated)
@@ -246,16 +318,17 @@ public sealed partial class BackportService
             var after = await BlobAsync(context, theirs, path);
             if (ours is { Text: null } || before is { Text: null } || after is { Text: null })
                 continue;   // not UTF-8 text: left to the plain merge
-            if (PlatformMarkers.Normalize(path, ours?.Text, before?.Text, after?.Text, job.Markers) is not { } normalized)
+            if (PlatformMarkers.Normalize(path, ours?.Text, before?.Text, after?.Text, markers) is not { } normalized)
                 continue;
             changes.AddRange(normalized.PlatformChanges);
             raises.AddRange(normalized.Raises);
+            kept.AddRange(normalized.Kept);
             if (before is not null && normalized.Base != before.Text)
                 baseFiles.Add((path, before.Mode, await HashAsync(context, normalized.Base!)));
             if (after is not null && normalized.Theirs != after.Text)
                 theirsFiles.Add((path, after.Mode, await HashAsync(context, normalized.Theirs!)));
         }
-        return (await RewriteAsync(context, job, @base, baseFiles), await RewriteAsync(context, job, theirs, theirsFiles), changes, raises);
+        return (await RewriteAsync(context, committer, @base, baseFiles), await RewriteAsync(context, committer, theirs, theirsFiles), changes, raises, kept);
     }
 
     private static async Task<string> HashAsync(JobContext context, string content)
@@ -282,7 +355,7 @@ public sealed partial class BackportService
 
     /// <summary>A throwaway commit of <paramref name="commit"/>'s tree with <paramref name="files"/> set; mode <c>0</c>
     /// removes the path.</summary>
-    private static async Task<string> RewriteAsync(JobContext context, BackportJob job, string commit, List<(string Path, string Mode, string Oid)> files)
+    private static async Task<string> RewriteAsync(JobContext context, GitIdentity committer, string commit, List<(string Path, string Mode, string Oid)> files)
     {
         if (files.Count == 0)
             return commit;
@@ -293,7 +366,7 @@ public sealed partial class BackportService
             info.Append(mode).Append(' ').Append(oid).Append('\t').Append(path).Append('\0');
         await context.RequireAsync(["update-index", "-z", "--index-info"], input: info.ToString(), index: index);
         var tree = WriterService.Oid(await context.RequireAsync(["write-tree"], index: index), "write-tree");
-        return WriterService.Oid(await context.RequireAsync(["commit-tree", tree, "-m", "normalized platform markers"], author: job.Committer, committer: job.Committer),
+        return WriterService.Oid(await context.RequireAsync(["commit-tree", tree, "-m", "normalized platform markers"], author: committer, committer: committer),
             "commit-tree");
     }
 

@@ -260,4 +260,10 @@
 	  local build, and builds as 0.0.0-PLACEHOLDER, not packed, in the master build that publishes.
 	-->
 	<Import Project="$(MSBuildThisFileDirectory)apps\CodeCoverage\CodeCoverage.Versioning.MSBuild\build\MintPlayer.Versioning.MSBuild.targets" />
+
+	<!-- #638 D10: on a release line, a package with no tag of the line's major (MPV006) fails the pack rather than
+	     dropping out of it. Opted in while release lines settle (owner, 2026-11-12). -->
+	<PropertyGroup>
+		<MSBuildWarningsAsErrors>$(MSBuildWarningsAsErrors);MPV006</MSBuildWarningsAsErrors>
+	</PropertyGroup>
 </Project>

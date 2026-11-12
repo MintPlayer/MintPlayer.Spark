@@ -260,6 +260,44 @@ public sealed class VersioningRunRequestWire
     public bool PlanOnly { get; set; }
 }
 
+/// <summary>
+/// <c>POST /jobs/versioning/backfill</c> (#638 D5-D8): tag every version the history of the default branch and the release
+/// lines declares at its earliest occurrence, on the line of its major. A tag that already exists is left alone.
+/// </summary>
+public sealed class VersioningBackfillRequestWire
+{
+    public string? Provider { get; set; }
+    public string? RepoId { get; set; }
+    public string? CloneUrl { get; set; }
+    public CredentialWire? Credential { get; set; }
+    public string? DefaultBranch { get; set; }
+    /// <summary>The tagger; the date is the writer's clock.</summary>
+    public IdentityWire? Tagger { get; set; }
+    public VersioningSettingsWire? Settings { get; set; }
+    /// <summary>Decide the tags and write none (the onboarding's preview).</summary>
+    public bool PlanOnly { get; set; }
+    /// <summary>
+    /// #638 D9: the collisions the owner chose to move, by tag name. Each is force-pushed onto its earliest occurrence, leased
+    /// on the tag object the job fetched; a collision not named here is left.
+    /// </summary>
+    public List<string>? Move { get; set; }
+}
+
+/// <param name="Outcome">One of <c>created</c>, <c>already-present</c>, <c>conflict</c>, <c>unreachable</c>, <c>planned</c>.</param>
+public sealed record BackfillTagWire(string Name, string Commit, string Branch, string Outcome, string? Detail);
+
+/// <summary>An App-made tag on <paramref name="Current"/> whose version the history declares first at <paramref name="Commit"/> (D9).</summary>
+/// <param name="Outcome"><c>planned</c>, <c>left</c>, <c>moved</c>, or <c>conflict</c> when the tag changed since the job fetched it.</param>
+public sealed record BackfillCollisionWire(string Name, string Current, string Commit, string Branch, string Outcome, string? Detail);
+
+/// <param name="Outcome"><see cref="JobOutcomes.Planned"/> for a plan, <see cref="JobOutcomes.Tagged"/> once written, or a failure.</param>
+/// <param name="Branches">The branches walked: the default branch and the release lines.</param>
+public sealed record VersioningBackfillResponse(string Outcome, string? Reason, IReadOnlyList<BackfillTagWire> Tags, IReadOnlyList<string> Branches,
+    IReadOnlyList<string> Notes, string? Detail, long DurationMs)
+{
+    public IReadOnlyList<BackfillCollisionWire> Collisions { get; init; } = [];
+}
+
 /// <summary>The <c>versioning:</c> section of <c>coverage.yml</c> as the engine reads it (D13, D17).</summary>
 public sealed class VersioningSettingsWire
 {
@@ -311,6 +349,10 @@ public sealed record VersioningRunResponse(
 {
     /// <summary>The tags a plan-only run decided (#552 D1), for <c>/jobs/tags</c> with its fingerprint to write later.</summary>
     public Versioning.Releases.TagPlan? Plan { get; init; }
+
+    /// <summary>On a release line, the major of each package anchored on its platform (#638 D2), which the action
+    /// exports to the pack. Null off a line.</summary>
+    public IReadOnlyDictionary<string, int>? LineMajors { get; init; }
 }
 
 /// <summary>
@@ -384,6 +426,41 @@ public sealed class VersioningBackportRequestWire
     public BackportMarkersWire? Markers { get; set; }
 }
 
+/// <summary>
+/// <c>POST /jobs/versioning/backport/trial</c> (segment G): the backport a merge into the default branch would start, tried
+/// before the merge, with nothing pushed. The change is <see cref="Base"/>..<see cref="Commit"/>, the commit the merge queue
+/// is about to merge, which is not on the default branch yet and is fetched through <see cref="HeadRef"/>.
+/// </summary>
+public sealed class VersioningBackportTrialRequestWire
+{
+    public string? Provider { get; set; }
+    public string? RepoId { get; set; }
+    public string? CloneUrl { get; set; }
+    public CredentialWire? Credential { get; set; }
+    /// <summary><c>refs/pull/N/head</c>, which must be at <see cref="Commit"/>.</summary>
+    public string? HeadRef { get; set; }
+    /// <summary>The default branch's commit the change was tested on; an ancestor of <see cref="Commit"/>.</summary>
+    public string? Base { get; set; }
+    public string? Commit { get; set; }
+    public List<BackportTrialTargetWire>? Targets { get; set; }
+    public BackportMarkersWire? Markers { get; set; }
+}
+
+/// <summary>A line to try: the backport's own <see cref="BackportTargetWire"/> without the branch it would push to.</summary>
+public sealed class BackportTrialTargetWire
+{
+    public string? Branch { get; set; }
+    public List<AutoResolveWire>? AutoResolve { get; set; }
+    public List<string>? RegeneratedPaths { get; set; }
+}
+
+/// <param name="Outcome"><c>clean</c> (it applies, through the line's rules if need be), <c>empty</c> (the line already holds
+/// it) or <c>conflicted</c>.</param>
+public sealed record BackportTrialTargetResult(string Branch, string Outcome, IReadOnlyList<string> Conflicts, string? Detail = null);
+
+/// <param name="Outcome"><see cref="JobOutcomes.Tried"/>; <see cref="JobOutcomes.HeadMismatch"/> when the head moved; or a failure.</param>
+public sealed record BackportTrialResponse(string Outcome, string? Reason, IReadOnlyList<BackportTrialTargetResult> Targets, string? Detail, long DurationMs);
+
 public sealed class BackportMarkersWire
 {
     /// <summary>Built-in marker kinds to leave to the plain merge (<see cref="PlatformMarkerOptions.KindNames"/>).</summary>
@@ -455,6 +532,10 @@ public sealed record BackportTargetResult(
     /// <summary>The first-party packages the change raised above this line's major, which normalization dropped, so the
     /// line keeps its own version (#570 D11); the app diagnoses the upstream release.</summary>
     public IReadOnlyList<DependencyRaise> Raises { get; init; } = [];
+
+    /// <summary>The platform values the change moved off this line's major, which normalization kept at the line's
+    /// value (#638 D13); the app reports them on the backport, or on its "nothing left" close.</summary>
+    public IReadOnlyList<PlatformKept> Kept { get; init; } = [];
 }
 
 /// <param name="Outcome"><see cref="JobOutcomes.Backported"/> when the job ran (each target has its own result), or a failure.</param>
@@ -462,6 +543,92 @@ public sealed record BackportTargetResult(
 /// <param name="Base">The commit the change was taken against: the first parent, or for a rebase the commit before the run.</param>
 public sealed record VersioningBackportResponse(
     string Outcome, string? Reason, string? Mode, string? Base, IReadOnlyList<BackportTargetResult> Targets, string? Detail, long DurationMs);
+
+/// <summary>
+/// <c>POST /jobs/versioning/promote</c> (segment P): move release lines to a green default-branch commit, each with one
+/// merge commit whose tree is <see cref="Commit"/>'s. The commit message is built here, so a request never carries one.
+/// </summary>
+public sealed class VersioningPromoteRequestWire
+{
+    public string? Provider { get; set; }
+    public string? RepoId { get; set; }
+    public string? CloneUrl { get; set; }
+    public CredentialWire? Credential { get; set; }
+    /// <summary>The default branch, which must hold <see cref="Commit"/>.</summary>
+    public string? DefaultBranch { get; set; }
+    public string? Commit { get; set; }
+    public IdentityWire? Committer { get; set; }
+    public List<PromoteLineWire>? Lines { get; set; }
+    /// <summary>For the change detection of a line with <see cref="PromoteLineWire.OnlyIfChanged"/>, and the ecosystem of a version's package.</summary>
+    public VersioningSettingsWire? Settings { get; set; }
+    /// <summary>The versions to release (P5), each tagged on the promotion commit of the line that releases its package.</summary>
+    public List<PromoteVersionWire>? Versions { get; set; }
+}
+
+public sealed class PromoteLineWire
+{
+    public string? Branch { get; set; }
+    /// <summary>The line's ecosystem, as the engine names it (<c>dotnet</c>, <c>angular</c>).</summary>
+    public string? Ecosystem { get; set; }
+    /// <summary>The line's major: a version placed on it must have it (P5).</summary>
+    public int Major { get; set; }
+    /// <summary>Move the line only when its ecosystem changed since its last promotion (P4).</summary>
+    public bool OnlyIfChanged { get; set; }
+}
+
+public sealed class PromoteVersionWire
+{
+    public string? PackageId { get; set; }
+    public string? Version { get; set; }
+    /// <summary>True for a version recorded earlier (a hand tag): when it no longer fits it is reported, not a refusal.</summary>
+    public bool Recorded { get; set; }
+}
+
+/// <param name="Outcome"><c>promoted</c>, <c>contained</c>, <c>unchanged</c>, <c>line-only</c>, <c>version-refused</c>, <c>moved</c> or <c>rejected</c>.</param>
+/// <param name="Commit">The promotion commit when promoted; otherwise the line's tip.</param>
+/// <param name="Paths">For <c>line-only</c>: the paths the default branch does not hold (at most 50).</param>
+/// <param name="Commits">For <c>line-only</c>: the line's commits that touched them, <c>sha subject</c>, newest first.</param>
+/// <param name="Tags">For <c>promoted</c>: the version tags pushed with the line (P5).</param>
+public sealed record PromoteLineResult(string Branch, string Outcome, string Commit, IReadOnlyList<string> Paths, IReadOnlyList<string> Commits, string? Detail = null)
+{
+    public IReadOnlyList<string> Tags { get; init; } = [];
+}
+
+/// <summary>A version no promoted line took (P5): its package is unknown, or no line in the request releases it.</summary>
+public sealed record PromoteVersionResult(string PackageId, string Version, string Detail);
+
+/// <param name="Outcome"><see cref="JobOutcomes.Promoted"/> when the job ran (each line has its own result), or a failure.</param>
+/// <summary><c>POST /jobs/versioning/hand-tag</c> (segment P, P5): a person's new tag, checked and deleted.</summary>
+public sealed class HandTagRequestWire
+{
+    public string? Provider { get; set; }
+    public string? RepoId { get; set; }
+    public string? CloneUrl { get; set; }
+    public CredentialWire? Credential { get; set; }
+    /// <summary>The tag's name, a version tag <c>&lt;PackageId&gt;/v&lt;version&gt;</c>.</summary>
+    public string? Tag { get; set; }
+    /// <summary>What the webhook said the tag points at; the deletion is leased on it.</summary>
+    public string? TagObject { get; set; }
+    /// <summary>Every release line, current and past (<see cref="PromoteLineWire.OnlyIfChanged"/> is ignored; segment T).</summary>
+    public List<PromoteLineWire>? Lines { get; set; }
+    /// <summary><c>versioning.lines.current: promote</c>: a tag of a current line's major is recorded for its next promotion.</summary>
+    public bool Promotes { get; set; }
+    public VersioningSettingsWire? Settings { get; set; }
+}
+
+/// <param name="Outcome"><see cref="JobOutcomes.Planned"/> when the job ran, or a failure.</param>
+/// <param name="Tag"><c>recorded</c> (deleted, for the next promotion), <c>accepted</c> (left in place), <c>refused</c>
+/// (deleted), <c>not-a-package</c> (left alone) or <c>moved</c> (left alone).</param>
+/// <param name="Branch">The line the tag belongs to: the current line for <c>recorded</c>, the line of its major otherwise.</param>
+/// <param name="Commit">The commit the tag pointed at, for the comment on a refused one.</param>
+/// <param name="Detail">For <c>refused</c>: why; for a failure: what failed.</param>
+public sealed record HandTagResponse(string Outcome, string? Reason, string? Tag, string? Branch, string? Commit, string? Detail, long DurationMs);
+
+/// <param name="Unplaced">The versions that belong to no line of the request; nothing was refused for them.</param>
+public sealed record VersioningPromoteResponse(string Outcome, string? Reason, IReadOnlyList<PromoteLineResult> Lines, string? Detail, long DurationMs)
+{
+    public IReadOnlyList<PromoteVersionResult> Unplaced { get; init; } = [];
+}
 
 /// <summary>The body of a 400 (§0 D57): the first field that broke its rule, and the rule. Never the value.</summary>
 public sealed record RefusedResponse(string Outcome, string Field, string Detail);
@@ -511,6 +678,10 @@ public static class JobOutcomes
     public const string PlanRefused = "plan-refused";
     /// <summary>Backport: every target applied; each has its own push result.</summary>
     public const string Backported = "backported";
+    /// <summary>Promote (segment P): the job ran; each line has its own result.</summary>
+    public const string Promoted = "promoted";
+    /// <summary>Backport trial (segment G): every target was tried and nothing pushed; each has its own result.</summary>
+    public const string Tried = "tried";
     /// <summary>Backport regeneration (#570 M6): the workflow's patch is in the backport commit.</summary>
     public const string Regenerated = "regenerated";
     /// <summary>Backport: a target conflicts (see its paths), so no target was pushed (D10).</summary>

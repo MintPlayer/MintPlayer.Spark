@@ -173,8 +173,14 @@ internal sealed class MergeQueueHarness
     /// <summary>The saga's clock; a test that moves time sets a <see cref="CommitGraph.MutableTime"/>.</summary>
     public TimeProvider Time { get; set; } = TimeProvider.System;
 
+    /// <summary>Segment G's trial picks: no conflict unless a test scripts one.</summary>
+    public ScriptedTrialPicks TrialPicks { get; } = new();
+
+    /// <summary>Segment F's attention: records the holds, the reminders and the releases.</summary>
+    public ScriptedAttention Attention { get; } = new();
+
     private MergeQueueEngine Engine(Raven.Client.Documents.Session.IAsyncDocumentSession session)
-        => new(session, Forge, [Queue], Permissions, WriterOverride ?? Writer, Outbox, Time,
+        => new(session, Forge, [Queue], Permissions, WriterOverride ?? Writer, TrialPicks, Attention, Outbox, Time,
             Options.Create(new MergeQueueOptions { GitWriterUrl = "http://writer" }),
             new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Coverage:BaseUrl"] = "https://coverage.example" }).Build(),
             NullLogger<MergeQueueEngine>.Instance, new WorkflowHook(NullLogger<WorkflowHook>.Instance));
@@ -250,5 +256,52 @@ internal sealed class MergeQueueHarness
     {
         using var session = store.OpenAsyncSession();
         return await session.LoadAsync<Entities.MergeQueue>(Entities.MergeQueue.DocumentId(RepositoryId));
+    }
+}
+
+/// <summary>Segment G's trial picks for the engine's tests: answers <see cref="Verdict"/> (or throws <see cref="Failure"/>) and records each call.</summary>
+internal sealed class ScriptedTrialPicks : CodeCoverage.PackageVersioning.IBackportTrialPicks
+{
+    public CodeCoverage.PackageVersioning.BackportTrialVerdict? Verdict { get; set; }
+    public Exception? Failure { get; set; }
+    public List<(int Number, string BaseSha, string Commit)> Calls { get; } = [];
+
+    public Task<CodeCoverage.PackageVersioning.BackportTrialVerdict?> RunAsync(Entities.Repository repository, int number, string baseSha, string commit, CancellationToken cancellationToken = default)
+    {
+        Calls.Add((number, baseSha, commit));
+        return Failure is { } failure ? Task.FromException<CodeCoverage.PackageVersioning.BackportTrialVerdict?>(failure) : Task.FromResult(Verdict);
+    }
+}
+
+/// <summary>Segment F's attention for the engine's tests: records what the queue told it, answers <see cref="Asked"/> and <see cref="Reminder"/>.</summary>
+internal sealed class ScriptedAttention : CodeCoverage.PackageVersioning.IBackportAttention
+{
+    public string Asked { get; set; } = string.Empty;
+    public Func<int, string?> Reminder { get; set; } = n => $"reminder {n}";
+    public Exception? Failure { get; set; }
+    public List<string> Calls { get; } = [];
+
+    public Task<string> HeldAsync(Entities.Repository repository, MergeQueueEntry held, IReadOnlyList<MergeQueueEntry> waiting, CancellationToken cancellationToken = default)
+    {
+        Calls.Add($"held #{held.Number} behind:{string.Join(",", waiting.Select(w => w.Number))}");
+        return Failure is { } failure ? Task.FromException<string>(failure) : Task.FromResult(Asked);
+    }
+
+    public Task BlockedAsync(Entities.Repository repository, MergeQueueEntry held, MergeQueueEntry waiting, CancellationToken cancellationToken = default)
+    {
+        Calls.Add($"blocked #{waiting.Number} by #{held.Number}");
+        return Task.CompletedTask;
+    }
+
+    public Task<string?> ReminderAsync(Entities.Repository repository, MergeQueueEntry held, int reminder, CancellationToken cancellationToken = default)
+    {
+        Calls.Add($"reminder {reminder} #{held.Number}");
+        return Task.FromResult(Reminder(reminder));
+    }
+
+    public Task ReleasedAsync(Entities.Repository repository, MergeQueueEntry entry, CancellationToken cancellationToken = default)
+    {
+        Calls.Add($"released #{entry.Number}");
+        return Task.CompletedTask;
     }
 }

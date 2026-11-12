@@ -40,6 +40,7 @@ GET /api/uploads/status | authorize(policy=;roles=;schemes=ApiToken,GitHubOidc) 
 POST /api/versioning/plan | antiforgery=not-required | authorize(policy=;roles=;schemes=GitHubOidc) | authorize(policy=MintPlayer.Spark.SparkAuthorize;roles=;schemes=) | rate-limit=policy:uploads | request-size-limit=2097152
 POST /api/versioning/release | antiforgery=not-required | authorize(policy=;roles=;schemes=GitHubOidc) | authorize(policy=MintPlayer.Spark.SparkAuthorize;roles=;schemes=) | rate-limit=policy:uploads | request-size-limit=2097152
 POST /api/versioning/run | antiforgery=not-required | authorize(policy=;roles=;schemes=GitHubOidc) | authorize(policy=MintPlayer.Spark.SparkAuthorize;roles=;schemes=) | rate-limit=policy:uploads | request-size-limit=2097152
+POST /api/versioning/tags/verify | antiforgery=not-required | authorize(policy=;roles=;schemes=GitHubOidc) | authorize(policy=MintPlayer.Spark.SparkAuthorize;roles=;schemes=) | rate-limit=policy:uploads | request-size-limit=65536
 GET /badge/{provider}/{owner}/{name}.svg | allow-anonymous | rate-limit=policy:badges | response-cache(duration=300;location=Any;no-store=False;profile=;vary-by-header=)
 GET /connect/authorize
 POST /connect/authorize | antiforgery=not-required

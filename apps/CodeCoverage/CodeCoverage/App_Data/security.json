@@ -65,6 +65,18 @@
       "isDenied": false
     },
     {
+      "key": "c0e5a9e1-0000-4000-8000-0000000000ae",
+      "resource": "QueryRead/BackportAttempt",
+      "groupId": "00000000-0000-0000-0000-000000000000",
+      "isDenied": false
+    },
+    {
+      "key": "c0e5a9e1-0000-4000-8000-0000000000af",
+      "resource": "QueryRead/BackportAttempt",
+      "groupId": "00000000-0000-0000-0000-000000000001",
+      "isDenied": false
+    },
+    {
       "key": "c0e5a9e1-0000-4000-8000-000000000004",
       "resource": "QueryRead/Build",
       "groupId": "00000000-0000-0000-0000-000000000000",

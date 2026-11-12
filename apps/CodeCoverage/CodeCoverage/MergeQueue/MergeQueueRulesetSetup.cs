@@ -44,7 +44,7 @@ public interface IMergeQueueRulesetSetup
     /// assumes the default pattern where coverage.yml has none yet, because the onboarding pull request adds it.
     /// </summary>
     Task<IReadOnlyList<RulesetPlanned>?> ChooseAsync(IReadOnlyList<RulesetRead> read, CancellationToken cancellationToken,
-        bool releaseLinesComing = false);
+        bool releaseLinesComing = false, bool promotesLinesComing = false);
 
     /// <summary>Each repository's name and its plan, one "- " line per step or blocker. Plain text, for a notification.</summary>
     string Summary(IReadOnlyList<RulesetPlanned> planned);
@@ -131,8 +131,10 @@ public partial class MergeQueueRulesetSetup : IMergeQueueRulesetSetup
                 // The lines ruleset 1 covers (PRD §8.2), from the App's read of coverage.yml: a file that does not parse
                 // gives no lines, as it does for the merge queue (MergeQueueYml).
                 var yml = await integrations.For(repository).GetFileContentAsync(repository, branch, CoverageYml.FileName, cancellationToken);
-                var lines = yml is null ? null : VersioningYml.Parse(yml) is { Config: { } config, Errors.Count: 0 } ? config.EffectiveLines : null;
-                read.Add(new RulesetRead(target, state, MergeQueueRulesetPlanner.Defaults(state), lines));
+                var versioning = yml is null ? null : VersioningYml.Parse(yml) is { Config: { } config, Errors.Count: 0 } ? config : null;
+                // Segment P: a repository that promotes its lines lets the App push the promotion past ruleset 3.
+                read.Add(new RulesetRead(target, state, MergeQueueRulesetPlanner.Defaults(state) with { PromotesLines = versioning?.Lines?.PromotesCurrent == true },
+                    versioning?.EffectiveLines));
             }
             catch (Exception ex) when (ex is ForgeAccessDeniedException or ForgeRequestException or HttpRequestException)
             {
@@ -143,7 +145,7 @@ public partial class MergeQueueRulesetSetup : IMergeQueueRulesetSetup
     }
 
     public async Task<IReadOnlyList<RulesetPlanned>?> ChooseAsync(IReadOnlyList<RulesetRead> read, CancellationToken cancellationToken,
-        bool releaseLinesComing = false)
+        bool releaseLinesComing = false, bool promotesLinesComing = false)
     {
         // One prompt per repository (owner 2026-11-07, #554): its required checks are its own, picked from the checks seen
         // on its pull requests, so a shared form could not ask them. The prompts are consecutive retry steps; each pass
@@ -160,6 +162,10 @@ public partial class MergeQueueRulesetSetup : IMergeQueueRulesetSetup
             form[nameof(MergeQueueRulesetChoices.RequiredApprovals)].Value = r.Defaults.RequiredApprovals;
             form[nameof(MergeQueueRulesetChoices.AdminsMayMergeByPullRequest)].Value = r.Defaults.AdminsMayMergeByPullRequest ?? false;
             form[nameof(MergeQueueRulesetChoices.RequiredChecks)].Value = r.Defaults.RequiredChecks.ToArray();
+            // Ruleset 3 (R2): the lines' checks, from ruleset 3, else the default branch's. Ignored without release lines.
+            var lines = r.Lines ?? (releaseLinesComing ? ReleaseLinePattern.Default : null);
+            form[nameof(MergeQueueRulesetChoices.LineRequiredChecks)].Value = (r.Defaults.LineRequiredChecks ?? r.Defaults.RequiredChecks).ToArray();
+            form[nameof(MergeQueueRulesetChoices.LineRequiredChecks)].ShowedOn = lines is not null ? EShowedOn.PersistentObject : EShowedOn.None;
             manager.Retry.Action(manager.GetTranslatedMessage("rulesets.chooseTitle", repository.FullName), [next], next, form,
                 manager.GetTranslatedMessage("rulesets.chooseMessage"), cancellable: true);
             var chosen = manager.Retry.Result!;
@@ -171,16 +177,26 @@ public partial class MergeQueueRulesetSetup : IMergeQueueRulesetSetup
             var admins = answer?[nameof(MergeQueueRulesetChoices.AdminsMayMergeByPullRequest)].GetValue<bool?>() ?? r.Defaults.AdminsMayMergeByPullRequest;
             var checks = answer is null ? r.Defaults.RequiredChecks
                 : Names(answer[nameof(MergeQueueRulesetChoices.RequiredChecks)].Value);
+            // An answer without the field keeps ruleset 3's own checks (or the default branch's, when it does not exist).
+            var lineChecks = answer?.TryGetAttribute(nameof(MergeQueueRulesetChoices.LineRequiredChecks), out var lineAnswer) == true
+                ? Names(lineAnswer.Value) : r.Defaults.LineRequiredChecks;
             planned.Add(new RulesetPlanned(r.Target, MergeQueueRulesetPlanner.Plan(r.State, r.Defaults with
             {
                 RequiredApprovals = approvals,
                 AdminsMayMergeByPullRequest = admins,
-                RequiredChecks = [.. checks.Select(ForgeCheck.GetId).Where(c => c.Length > 0 && c != CheckGate.QueueCheckName).Distinct(StringComparer.Ordinal)],
-                ReleaseLines = (r.Lines ?? (releaseLinesComing ? ReleaseLinePattern.Default : null)) is { } lines ? [lines.RefGlob] : null,
+                RequiredChecks = CheckIds(checks),
+                ReleaseLines = lines is not null ? [lines.RefGlob] : null,
+                LineRequiredChecks = lineChecks is null ? null : CheckIds(lineChecks),
+                // Segment T: an onboarding pull request that turns on `current: promote` gets the bypass before it merges.
+                PromotesLines = r.Defaults.PromotesLines || promotesLinesComing,
             })));
         }
         return planned;
     }
+
+    /// <summary>The picked checks' names (a <see cref="ForgeCheck"/> id), never the queue's own check (D62).</summary>
+    private static List<string> CheckIds(IEnumerable<string> picked)
+        => [.. picked.Select(ForgeCheck.GetId).Where(c => c.Length > 0 && c != CheckGate.QueueCheckName).Distinct(StringComparer.Ordinal)];
 
     public string Summary(IReadOnlyList<RulesetPlanned> planned)
         => string.Join("\n\n", planned.Select(p =>

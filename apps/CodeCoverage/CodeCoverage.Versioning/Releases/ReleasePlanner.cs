@@ -110,6 +110,13 @@ public sealed record PackageNote(string Id, string Reason);
 public sealed record ReleasePlan(IReadOnlyList<PlannedRelease> Releases, IReadOnlyList<PackageNote> Skipped, IReadOnlyList<PackageNote> Refused)
 {
 	public PlannedRelease? Of(string id) => Releases.FirstOrDefault(r => r.Id == id);
+
+	/// <summary>
+	/// #638 D2: on a release line, the major of every package the line versions at its own major (an anchored package of
+	/// the line's ecosystem), released or not. The pack reads only that major's tags for them, so a newer major's tags
+	/// reachable from an older line are not taken. Free packages and other ecosystems' are absent. Empty off a line.
+	/// </summary>
+	public IReadOnlyDictionary<string, int> LineMajors { get; init; } = new Dictionary<string, int>();
 }
 
 /// <summary>
@@ -167,6 +174,7 @@ public static class ReleasePlanner
 		var graph = context.Graph;
 		var released = new Dictionary<string, PlannedRelease>(StringComparer.Ordinal);
 		var skipped = new List<PackageNote>();
+		var lineMajors = new Dictionary<string, int>(StringComparer.Ordinal);
 		var refused = new List<PackageNote>();
 		var byHand = context.Tags.On(context.Head).ToDictionary(t => t.Tag.PackageId, StringComparer.Ordinal);
 		var newestMajors = new Dictionary<string, int?>(StringComparer.Ordinal);
@@ -206,6 +214,7 @@ public static class ReleasePlanner
 			}
 
 			var lineMajor = anchor.Major ?? branchMajor ?? history.LastOrDefault()?.Version.Major ?? 1;
+			if (context.Settings.Lines is not null && branchMajor is not null) lineMajors[id] = lineMajor;
 			var lastOnLine = history.LastOrDefault(t => t.Version.Major == lineMajor);
 			var reasons = new List<string>();
 
@@ -266,7 +275,7 @@ public static class ReleasePlanner
 					break;
 			}
 		}
-		return new ReleasePlan(order.Where(p => released.ContainsKey(p.Id!)).Select(p => released[p.Id!]).ToList(), skipped, refused);
+		return new ReleasePlan(order.Where(p => released.ContainsKey(p.Id!)).Select(p => released[p.Id!]).ToList(), skipped, refused) { LineMajors = lineMajors };
 	}
 
 	/// <summary>

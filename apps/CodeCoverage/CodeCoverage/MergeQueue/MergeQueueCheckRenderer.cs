@@ -42,10 +42,12 @@ public static class MergeQueueCheckRenderer
             EMergeQueueEntryState.Evicted => (EForgeQueueCheckState.Failure, Why("Evicted", entry.EvictionReason)),
             EMergeQueueEntryState.Dequeued => (EForgeQueueCheckState.Neutral, "Dequeued"),
             EMergeQueueEntryState.Refused => (EForgeQueueCheckState.Neutral, Why("Refused", entry.EvictionReason)),
+            // Red like an eviction: somebody has to act. The line waits for it, so it keeps "Remove from queue".
+            EMergeQueueEntryState.Held => (EForgeQueueCheckState.Failure, Why("Held", entry.EvictionReason)),
             _ => (EForgeQueueCheckState.Neutral, entry.State.ToString()),
         };
         offer &= buttons && entry.State is EMergeQueueEntryState.Evicted or EMergeQueueEntryState.Dequeued or EMergeQueueEntryState.Refused;
-        var dequeue = buttons && entry.State == EMergeQueueEntryState.Queued;
+        var dequeue = buttons && entry.State is EMergeQueueEntryState.Queued or EMergeQueueEntryState.Held;
 
         var summary = new StringBuilder();
         if (entry.EvictionMessage is { Length: > 0 } message)

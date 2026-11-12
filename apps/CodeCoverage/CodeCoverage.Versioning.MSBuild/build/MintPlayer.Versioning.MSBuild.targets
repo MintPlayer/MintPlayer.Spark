@@ -8,6 +8,12 @@
 	  package not released yet) packs at 0.0.0-untagged in a pull-request, merge-queue or local build, and is not packed
 	  in any other CI build.
 
+	  On a release line (#638 D2), the versioning action exports MintPlayerVersioningMajors=id=major;… for the packages
+	  anchored on the line's platform: each of those takes its highest tag of that major only, and one with no tag of it
+	  warns MPV006 and is not packed where packages are published. Opt in to an error with
+	  <MSBuildWarningsAsErrors>$(MSBuildWarningsAsErrors);MPV006</MSBuildWarningsAsErrors>. Without the action, a
+	  release/dotnet-N.x branch (GITHUB_BASE_REF, else GITHUB_REF_NAME) prefers each package's highest N.x tag.
+
 	  Knobs:
 	    MintPlayerVersioningSkip=true        leave this project's version alone
 	    MintPlayerVersioningTagPrefix=X/v    read X's tags instead of $(PackageId)'s
@@ -39,7 +45,8 @@
 		     down from a parent build) means the caller owns the version, so the task reads no tags and the project stays
 		     packable. Only the task can tell: an assignment in a target overrides a global property. -->
 		<ResolveTagVersion TagPrefix="$(MintPlayerVersioningTagPrefix)" WorkingDirectory="$(MSBuildProjectDirectory)"
-		                   GitHubActions="$(GITHUB_ACTIONS)" GitHubEventName="$(GITHUB_EVENT_NAME)">
+		                   GitHubActions="$(GITHUB_ACTIONS)" GitHubEventName="$(GITHUB_EVENT_NAME)"
+		                   Majors="$(MintPlayerVersioningMajors)" GitHubRefName="$(GITHUB_REF_NAME)" GitHubBaseRef="$(GITHUB_BASE_REF)">
 			<Output TaskParameter="Version" PropertyName="MintPlayerVersion" />
 			<Output TaskParameter="ExplicitVersion" PropertyName="_MintPlayerVersioningExplicit" />
 			<Output TaskParameter="ExplicitPackageVersionOnly" PropertyName="_MintPlayerVersioningPackageOnly" />

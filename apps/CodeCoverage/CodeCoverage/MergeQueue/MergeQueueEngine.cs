@@ -54,6 +54,8 @@ public partial class MergeQueueEngine : IMergeQueueEngine
     [Inject] private readonly IEnumerable<IForgeMergeQueue> forgeQueues;
     [Inject] private readonly IEnumerable<IForgeInstallationPermissions> permissionSources;
     [Inject] private readonly IGitWriterSidecar writer;
+    [Inject] private readonly PackageVersioning.IBackportTrialPicks trialPicks;
+    [Inject] private readonly PackageVersioning.IBackportAttention attention;
     [Inject] private readonly IMessageOutbox outbox;
     [Inject] private readonly TimeProvider time;
     [Inject] private readonly IOptions<MergeQueueOptions> options;
@@ -138,6 +140,12 @@ public partial class MergeQueueEngine : IMergeQueueEngine
                     await GuardedAsync(context, pushed, EMergeQueueStep.Publish, () => PublishAsync(context, pushed, ct), ct);
                     break;
                 }
+                // Segment C: on a release line the App's backports keep their place; a push is the fix the line waits for.
+                if (await HoldsAsync(context, pushed, ct))
+                {
+                    await ResumeAsync(context, pushed, sha, ct);
+                    break;
+                }
                 // T3. No PRD id in what people read (§0 D72): the eviction message goes on the check run and in a comment.
                 await EvictAsync(context, pushed, "author-push",
                     $"The pull request's branch moved to `{sha}`, a commit the queue did not write. The queue merges only the commit that was queued: queue it again to merge the new one.", ct: ct);
@@ -164,8 +172,19 @@ public partial class MergeQueueEngine : IMergeQueueEngine
                 {
                     if (entry.BaseBranch != branch || entry.BaseSha is null || string.Equals(entry.BaseSha, baseSha, StringComparison.OrdinalIgnoreCase)) continue;
                     // O20 / §5.1: a base that moves while the run waits sends it back to prepare; it is not the PR's fault.
+                    // A held backport tries again too: what it was checked against, or conflicted with, is gone.
                     if (entry.State is EMergeQueueEntryState.Regenerating or EMergeQueueEntryState.AwaitingChecks)
                         await RestartAsync(context, entry, $"{branch} moved to {Short(baseSha)}; rebasing again.", ct);
+                    else if (entry.State == EMergeQueueEntryState.Held)
+                    {
+                        await LeaveHoldAsync(context, entry, ct);
+                        entry.PrepareAttempts = 0;
+                        // As ResumeAsync: the hold's reason no longer applies to the new run.
+                        entry.EvictionReason = null;
+                        entry.EvictionMessage = null;
+                        entry.EvictionPaths = [];
+                        await RestartAsync(context, entry, $"{branch} moved to {Short(baseSha)}; trying the held backport again.", ct);
+                    }
                 }
                 break;
 
@@ -177,8 +196,13 @@ public partial class MergeQueueEngine : IMergeQueueEngine
 
             case EMergeQueueSignal.ChecksChanged when signal.Sha is { } checkedSha:
                 foreach (var entry in await LoadCurrentEntriesAsync(context, ct))
-                    if (entry.State == EMergeQueueEntryState.AwaitingChecks && string.Equals(entry.FinalSha, checkedSha, StringComparison.OrdinalIgnoreCase))
+                {
+                    if (!string.Equals(entry.FinalSha, checkedSha, StringComparison.OrdinalIgnoreCase)) continue;
+                    if (entry.State == EMergeQueueEntryState.AwaitingChecks)
                         await GuardedAsync(context, entry, EMergeQueueStep.PollChecks, () => EvaluateChecksAsync(context, entry, fromPoll: false, ct), ct);
+                    else if (entry.State == EMergeQueueEntryState.Held)
+                        await ResumeOnGreenAsync(context, entry, ct);
+                }
                 break;
 
             case EMergeQueueSignal.Reviewed when signal.Number is { } number:
@@ -240,6 +264,7 @@ public partial class MergeQueueEngine : IMergeQueueEngine
             EMergeQueueStep.Merge => () => MergeAsync(context, entry, ct),
             EMergeQueueStep.PollMerge => () => PollMergeAsync(context, entry, ct),
             EMergeQueueStep.Timeout => () => TimeoutAsync(context, entry, ct),
+            EMergeQueueStep.HeldReminder => () => RemindAsync(context, entry, ct),
             _ => () => Task.CompletedTask,
         }, ct);
 
@@ -254,6 +279,7 @@ public partial class MergeQueueEngine : IMergeQueueEngine
         EMergeQueueStep.PollChecks => state == EMergeQueueEntryState.AwaitingChecks,
         EMergeQueueStep.Merge or EMergeQueueStep.PollMerge => state == EMergeQueueEntryState.Merging,
         EMergeQueueStep.Timeout => state is EMergeQueueEntryState.Regenerating or EMergeQueueEntryState.AwaitingChecks,
+        EMergeQueueStep.HeldReminder => state == EMergeQueueEntryState.Held,
         _ => false,
     };
 
@@ -314,13 +340,21 @@ public partial class MergeQueueEngine : IMergeQueueEngine
         }
 
         Transition(entry, EMergeQueueEntryState.Queued, $"queued by @{actor} ({source.ToString().ToLowerInvariant()})");
-        context.Document.LaneFor(entry.BaseBranch).Waiting.Add(entry.Id!);
+        var waiting = context.Document.LaneFor(entry.BaseBranch).Waiting;
+        if (await SourceOrderPositionAsync(context, entry, waiting, ct) is { } before)
+            waiting.Insert(before, entry.Id!);
+        else
+            waiting.Add(entry.Id!);
         // Its turn first: on an idle lane it starts at once, and its first check run is the one in progress. A pull request
         // that waits gets its "Queued" check, with "Remove from queue" (§0 O32), from the line's refresh, or here when it is
         // further back than the refresh reaches.
         await StartNextAsync(context, entry.BaseBranch, ct);
         if (entry.State == EMergeQueueEntryState.Queued && entry.QueueCheckSha is null)
             await PublishCheckAsync(context, entry, ct);
+        // Segment F: behind a held backport, it says so.
+        if (entry.State == EMergeQueueEntryState.Queued && context.Document.LaneFor(entry.BaseBranch).Current is { } current
+            && await session.LoadAsync<MergeQueueEntry>(current, ct) is { State: EMergeQueueEntryState.Held } held)
+            await AttentionAsync(async () => { await attention.BlockedAsync(repository, held, entry, ct); return true; }, held);
     }
 
     /// <summary>Resets the per-pull-request document for a new run, keeping the earlier runs' outcomes.</summary>
@@ -447,7 +481,12 @@ public partial class MergeQueueEngine : IMergeQueueEngine
         if (rules.RequiredChecks.Contains(CheckGate.QueueCheckName, StringComparer.Ordinal))
             return new("self-required", $"`{pull.BaseRef}` requires the \"{CheckGate.QueueCheckName}\" check, which is the queue's own: it is still in progress while the queue merges, "
                 + "so GitHub would refuse every merge the queue asks for. Remove it from the branch's required checks (ruleset or branch protection).");
-        foreach (var ruleset in rules.Rulesets.Where(r => r.RuleTypes.Any(t => t is "pull_request" or "required_status_checks")))
+        // Segment E: on a release line, a checks-only ruleset may exempt the App (ruleset 3 with `current: promote`, so the
+        // App can push promotions). Nothing merges unchecked: the queue waits for the required checks itself (below), and
+        // there is no review rule for GitHub to waive.
+        var onLine = MergeQueueBranches.IsLine(entry.Config.LinePattern, pull.BaseRef);
+        foreach (var ruleset in rules.Rulesets.Where(r => r.RuleTypes.Any(t => t is "pull_request" or "required_status_checks")
+            && !(onLine && r.Bypass == EForgeRulesetBypass.Exempt && !r.RuleTypes.Contains("pull_request", StringComparer.Ordinal))))
         {
             if (ruleset.Bypass != EForgeRulesetBypass.Never)
                 return new("bypass", ruleset.Bypass == EForgeRulesetBypass.Unknown
@@ -502,6 +541,13 @@ public partial class MergeQueueEngine : IMergeQueueEngine
         if (floor == EMergeQueueApprovalFloor.ExternalAuthors && await IsAppsOwnBackportAsync(context, entry, ct))
             return null;
 
+        // Segment D (Q13, owner: "backporting features into previous/current versions should be effortless"): under any floor,
+        // a backport the App opened needs no approval while ruleset 4 keeps everyone but the App and the admins off its
+        // branch, so its content is the App's pick or an admin's resolution. Read live from the branch's rules each time: a
+        // ruleset removed or loosened later brings the approval back. A writer's request for changes (above) still vetoes.
+        if (await IsAppsOwnBackportAsync(context, entry, ct) && await BackportBranchProtectedAsync(context, entry, ct))
+            return null;
+
         // Dependency-updates PRD R27 (S18-D3): the updater's own rolling pull request counts as approved when its pinned head
         // is the commit the bot pushed and validated itself and no human commit is on the branch. The App is never a
         // collaborator, so the floor could otherwise never pass without a person. A replayed human commit makes the head a
@@ -546,6 +592,189 @@ public partial class MergeQueueEngine : IMergeQueueEngine
     private async Task<bool> IsAppsOwnBackportAsync(Context context, MergeQueueEntry entry, CancellationToken ct)
         => !entry.IsFork && context.Repository.Id is { } repositoryId
            && await session.LoadAsync<BackportPullRequest>(BackportPullRequest.DocumentId(repositoryId, entry.Number), ct) is not null;
+
+    /// <summary>
+    /// A ruleset on the pull request's <c>backport/*</c> head restricts its creation, updates and deletion, and the App is
+    /// exempt from it: only the App and whoever else that ruleset lets through can have written the branch. Ruleset 4 of
+    /// "Set up rulesets" is that ruleset; any ruleset with the same rules counts.
+    /// </summary>
+    private async Task<bool> BackportBranchProtectedAsync(Context context, MergeQueueEntry entry, CancellationToken ct)
+    {
+        if (entry.HeadBranch is not { } head || !head.StartsWith("backport/", StringComparison.Ordinal)) return false;
+        var rules = await context.Queue.GetBranchRulesAsync(context.Repository, head, ct);
+        return rules.Rulesets.Any(r => r.Bypass == EForgeRulesetBypass.Exempt
+            && MergeQueueRulesetPlanner.BackportBranchRules.All(type => r.RuleTypes.Contains(type, StringComparer.Ordinal)));
+    }
+
+    // ═══ Held backports on release lines (release lines recovery plan, segment C) ════════════════════
+
+    /// <summary>
+    /// A backport the App opened onto a release line is held rather than evicted: its line takes backports in the default
+    /// branch's order, and evicting one would let the next one merge without it. Every other pull request, a person's
+    /// pull request into a line included, is evicted as before.
+    /// </summary>
+    private async Task<bool> HoldsAsync(Context context, MergeQueueEntry entry, CancellationToken ct)
+        => MergeQueueBranches.IsLine(entry.Config.LinePattern, entry.BaseBranch) && await IsAppsOwnBackportAsync(context, entry, ct);
+
+    /// <summary>
+    /// Keeps the entry as its lane's current one, so nothing behind it starts, and tells the pull request what it waits for.
+    /// The label stays; the regenerate run is abandoned as on an eviction. The queue branch stays until the run ends.
+    /// </summary>
+    private async Task HoldAsync(Context context, MergeQueueEntry entry, string reason, string message, IReadOnlyList<string>? paths, CancellationToken ct)
+    {
+        entry.EvictionReason = reason;
+        entry.EvictionMessage = message;
+        entry.EvictionPaths = [.. paths ?? []];
+        await AbandonRunAsync(context, entry, ct);
+        Transition(entry, EMergeQueueEntryState.Held, $"held ({reason})");
+        entry.HeldSinceUtc = Now;
+        entry.HeldReminders = 0;
+        await PublishCheckAsync(context, entry, ct);
+
+        // Segment F: who is asked, the label, the held list's row and the blocked checks behind it.
+        var waiting = new List<MergeQueueEntry>();
+        foreach (var id in context.Document.LaneFor(entry.BaseBranch).Waiting)
+            if (await session.LoadAsync<MergeQueueEntry>(id, ct) is { } behind)
+                waiting.Add(behind);
+        var asked = await AttentionAsync(() => attention.HeldAsync(context.Repository, entry, waiting, ct), entry) ?? string.Empty;
+
+        var checks = reason is "checks-failed" or "checks-timeout" ? ", or re-run its checks until they pass," : string.Empty;
+        await BestEffortAsync(() => context.Queue.PostCommentAsync(context.Repository, entry.Number,
+            $"The merge queue holds this backport: {message}\n\n`{entry.BaseBranch}` takes its backports in the order they merged, so the ones "
+            + $"behind this one wait for it. Push a fix to `{entry.HeadBranch}`{checks} and the queue takes it up again by itself. "
+            + "`/dequeue` lets the line go on without it." + (asked.Length > 0 ? $"\n\n{asked}" : string.Empty), ct), "comment");
+        await ScheduleAsync(entry, EMergeQueueStep.HeldReminder, ReminderDelay(), ct);
+        logger.LogInformation("Merge queue: holding #{Number} in {Repository} on {Line}: {Reason}", entry.Number, context.Repository.FullName, entry.BaseBranch, reason);
+    }
+
+    /// <summary>Q8: a held backport's people are reminded after this many working days, and the code owners after twice that.</summary>
+    internal const int ReminderWorkingDays = 2;
+
+    /// <summary>Until <see cref="ReminderWorkingDays"/> working days (Monday to Friday, UTC) from now.</summary>
+    private TimeSpan ReminderDelay() => AddWorkingDays(Now, ReminderWorkingDays) - Now;
+
+    internal static DateTime AddWorkingDays(DateTime from, int days)
+    {
+        var at = from;
+        while (days > 0)
+        {
+            at = at.AddDays(1);
+            if (at.DayOfWeek is not (DayOfWeek.Saturday or DayOfWeek.Sunday)) days--;
+        }
+        return at;
+    }
+
+    /// <summary>A reminder for a backport still held (segment F): the first asks again, the second asks the code owners.</summary>
+    private async Task RemindAsync(Context context, MergeQueueEntry entry, CancellationToken ct)
+    {
+        entry.HeldReminders++;
+        var reminder = entry.HeldReminders;
+        if (await AttentionAsync(() => attention.ReminderAsync(context.Repository, entry, reminder, ct), entry) is { } text)
+        {
+            entry.Note(Now, $"reminder {reminder.ToString(CultureInfo.InvariantCulture)} for the held backport");
+            await BestEffortAsync(() => context.Queue.PostCommentAsync(context.Repository, entry.Number, text, ct), "reminder comment");
+        }
+        if (reminder < 2)
+            await ScheduleAsync(entry, EMergeQueueStep.HeldReminder, ReminderDelay(), ct);
+    }
+
+    /// <summary>The hold ends (the backport goes on, or leaves the queue): its label and the blocked checks go.</summary>
+    private async Task LeaveHoldAsync(Context context, MergeQueueEntry entry, CancellationToken ct)
+    {
+        if (entry.HeldSinceUtc is null) return;
+        entry.HeldSinceUtc = null;
+        entry.HeldReminders = 0;
+        await AttentionAsync(async () => { await attention.ReleasedAsync(context.Repository, entry, ct); return true; }, entry);
+    }
+
+    /// <summary>Segment F is never a reason for the queue to fail: what it cannot do, it logs.</summary>
+    private async Task<T?> AttentionAsync<T>(Func<Task<T>> action, MergeQueueEntry entry)
+    {
+        try
+        {
+            return await action();
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogWarning(ex, "Merge queue: the held backport's attention failed for {Entry}", entry.Id);
+            return default;
+        }
+    }
+
+    /// <summary>
+    /// A push to a held (or running) backport: the run starts again on the new head, from prepare. A backport still waiting
+    /// for its turn only takes the new head.
+    /// </summary>
+    private async Task ResumeAsync(Context context, MergeQueueEntry entry, string sha, CancellationToken ct)
+    {
+        await LeaveHoldAsync(context, entry, ct);
+        entry.PinnedHeadSha = sha;
+        entry.ExpectedHeadSha = sha;
+        Remember(entry, sha);
+        entry.EvictionReason = null;
+        entry.EvictionMessage = null;
+        entry.EvictionPaths = [];
+        if (entry.State == EMergeQueueEntryState.Queued)
+        {
+            entry.Note(Now, $"the branch moved to {Short(sha)}; the queue takes that head when its turn comes");
+            await PublishCheckAsync(context, entry, ct);
+            return;
+        }
+        entry.PrepareAttempts = 0;
+        await RestartAsync(context, entry, $"the branch moved to {Short(sha)}; starting again on that head", ct);
+    }
+
+    /// <summary>
+    /// Checks on a backport held for red or late checks changed. Once every counted check passes (a person re-ran them), the
+    /// run goes on to the merge; anything else leaves it held.
+    /// </summary>
+    private async Task ResumeOnGreenAsync(Context context, MergeQueueEntry entry, CancellationToken ct)
+    {
+        if (entry.EvictionReason is not ("checks-failed" or "checks-timeout") || entry.FinalSha is null) return;
+        var state = await context.Queue.GetCheckStateAsync(context.Repository, entry.FinalSha, ct);
+        if (CheckGate.Evaluate(state, entry.Config.CheckExclusions, entry.RequiredChecks, entry.ExpectedChecks).Verdict != ECheckVerdict.Passed) return;
+
+        await LeaveHoldAsync(context, entry, ct);
+        entry.EvictionReason = null;
+        entry.EvictionMessage = null;
+        entry.EvictionPaths = [];
+        Transition(entry, EMergeQueueEntryState.AwaitingChecks, $"checks on {Short(entry.FinalSha)} passed; the held backport goes on");
+        await GuardedAsync(context, entry, EMergeQueueStep.PollChecks, () => EvaluateChecksAsync(context, entry, fromPoll: false, ct), ct);
+    }
+
+    /// <summary>
+    /// Where a backport the App opened goes in its line's waiting list: before the first waiting backport whose source
+    /// merged later on the default branch, so the line takes them in that order. Null: at the end, as every other pull
+    /// request (no recorded source commit, or the forge cannot compare them).
+    /// </summary>
+    private async Task<int?> SourceOrderPositionAsync(Context context, MergeQueueEntry entry, List<string> waiting, CancellationToken ct)
+    {
+        if (waiting.Count == 0 || !await HoldsAsync(context, entry, ct)) return null;
+        var repositoryId = context.Repository.Id!;
+        if (await session.LoadAsync<BackportPullRequest>(BackportPullRequest.DocumentId(repositoryId, entry.Number), ct) is not { SourceSha: { } source })
+            return null;
+
+        for (var i = 0; i < waiting.Count; i++)
+        {
+            if (await session.LoadAsync<MergeQueueEntry>(waiting[i], ct) is not { IsFork: false } other) continue;
+            if (await session.LoadAsync<BackportPullRequest>(BackportPullRequest.DocumentId(repositoryId, other.Number), ct) is not { SourceSha: { } otherSource }
+                || string.Equals(source, otherSource, StringComparison.OrdinalIgnoreCase))
+                continue;
+            try
+            {
+                // The merge base of the two sources is this one's source: it is an ancestor of the other's, so it merged first.
+                if (await context.Forge.CompareAsync(context.Repository, source, otherSource, ct) is { MergeBaseSha: { } mergeBase }
+                    && string.Equals(mergeBase, source, StringComparison.OrdinalIgnoreCase))
+                    return i;
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                logger.LogWarning(ex, "Merge queue: could not order #{Number} in {Repository} by its source; it goes last", entry.Number, context.Repository.FullName);
+                return null;
+            }
+        }
+        return null;
+    }
 
     /// <summary>
     /// A review on a pull request that is not in the queue. When it is a backport the App opened, the queue takes that
@@ -898,7 +1127,7 @@ public partial class MergeQueueEngine : IMergeQueueEngine
                 _ => $"Rebasing onto `{entry.BaseBranch}` conflicts in files the queue may not resolve ({reason}). Rebase it onto `{entry.BaseBranch}` by hand.",
             }
             + (detail is { Length: > 0 } text ? $"\n\n{text}" : string.Empty),
-            paths, ct: ct);
+            paths, ct: ct, holdable: true);
 
     /// <summary>O25: a fork's change under <c>.github/**</c> that needs the regenerate workflow. Never bypassed.</summary>
     internal const string ForkTouchesWorkflows = "fork-touches-workflows";
@@ -1388,11 +1617,48 @@ public partial class MergeQueueEngine : IMergeQueueEngine
 
     private async Task EnterAwaitingChecksAsync(Context context, MergeQueueEntry entry, string why, CancellationToken ct)
     {
+        if (await TrialPickRefusedAsync(context, entry, ct)) return;
         Transition(entry, EMergeQueueEntryState.AwaitingChecks, why);
         await ScheduleAsync(entry, EMergeQueueStep.PollChecks, ChecksPollInterval, ct);
         await ScheduleAsync(entry, EMergeQueueStep.Timeout, TimeSpan.FromMinutes(entry.Config.ChecksTimeoutMinutes), ct);
         await PublishCheckAsync(context, entry, ct);
         await EvaluateChecksAsync(context, entry, fromPoll: false, ct);
+    }
+
+    /// <summary>
+    /// Segment G (owner, 2026-11-11: "In the queue, pre-merge"): once the commit to merge into the default branch is known,
+    /// its backports onto the labelled lines are tried, so a conflict is said while the checks run rather than after the
+    /// merge. <c>warn</c> comments and goes on; <c>refuse</c> evicts. Each commit is tried once. A trial that cannot run
+    /// lets the merge go on: the backport after it reports what the trial would have.
+    /// </summary>
+    private async Task<bool> TrialPickRefusedAsync(Context context, MergeQueueEntry entry, CancellationToken ct)
+    {
+        if (entry.FinalSha is not { } commit || entry.BaseSha is not { } baseSha
+            || !string.Equals(entry.BaseBranch, context.Repository.DefaultBranch, StringComparison.Ordinal)
+            || string.Equals(entry.TrialPickedSha, commit, StringComparison.OrdinalIgnoreCase))
+            return false;
+        entry.TrialPickedSha = commit;
+
+        PackageVersioning.BackportTrialVerdict? verdict;
+        try
+        {
+            verdict = await trialPicks.RunAsync(context.Repository, entry.Number, baseSha, commit, ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogWarning(ex, "Merge queue: the trial pick of #{Number} in {Repository} could not run", entry.Number, context.Repository.FullName);
+            return false;
+        }
+        if (verdict is null) return false;
+
+        if (verdict.Refuse)
+        {
+            await EvictAsync(context, entry, "trial-pick", verdict.Message, verdict.Paths, ct: ct);
+            return true;
+        }
+        entry.Note(Now, $"trial pick: the backport would conflict on {verdict.Paths.Count} path(s)");
+        await BestEffortAsync(() => context.Queue.PostCommentAsync(context.Repository, entry.Number, verdict.Message, ct), "trial-pick comment");
+        return false;
     }
 
     private async Task EvaluateChecksAsync(Context context, MergeQueueEntry entry, bool fromPoll, CancellationToken ct)
@@ -1411,7 +1677,10 @@ public partial class MergeQueueEngine : IMergeQueueEngine
                 await PublishCheckAsync(context, entry, ct);
                 return;
 
-            case ECheckVerdict.Failed when entry.CheckRetries < entry.Config.RetryFlaky:
+            // Segment F (Q8): a backport that would be held gets one automatic re-run before anyone is asked, even under
+            // `retryFlaky: 0`.
+            case ECheckVerdict.Failed when entry.CheckRetries < entry.Config.RetryFlaky
+                || (entry.CheckRetries == 0 && entry.Config.RetryFlaky == 0 && await HoldsAsync(context, entry, ct)):
                 // D9: the re-run waits until nothing else is running. GitHub refuses to re-run a job while its
                 // workflow run is still in progress (403 "The workflow run containing this job is already running",
                 // PR #579, 2026-11-06), which the forge reads as a missing permission and evicted the entry.
@@ -1435,7 +1704,7 @@ public partial class MergeQueueEngine : IMergeQueueEngine
 
             case ECheckVerdict.Failed:
                 await EvictAsync(context, entry, "checks-failed",
-                    $"Checks failed on `{Short(entry.FinalSha)}`: {string.Join(", ", gate.Failed.Select(f => $"`{f}`"))}.", ct: ct);
+                    $"Checks failed on `{Short(entry.FinalSha)}`: {string.Join(", ", gate.Failed.Select(f => $"`{f}`"))}.", ct: ct, holdable: true);
                 return;
 
             default:
@@ -1457,7 +1726,7 @@ public partial class MergeQueueEngine : IMergeQueueEngine
         var generation = entry.Generation;
         await EvaluateChecksAsync(context, entry, fromPoll: false, ct);
         if (entry.State == EMergeQueueEntryState.AwaitingChecks && entry.Generation == generation)
-            await EvictAsync(context, entry, "checks-timeout", $"Checks on `{Short(entry.FinalSha)}` did not finish within {entry.Config.ChecksTimeoutMinutes} minutes (`checks.timeout`).", ct: ct);
+            await EvictAsync(context, entry, "checks-timeout", $"Checks on `{Short(entry.FinalSha)}` did not finish within {entry.Config.ChecksTimeoutMinutes} minutes (`checks.timeout`).", ct: ct, holdable: true);
     }
 
     // ═══ Step 5: merge (O9, D13, D17, O18) ══════════════════════════════════════════════════════════
@@ -1644,8 +1913,15 @@ public partial class MergeQueueEngine : IMergeQueueEngine
     // ═══ Ending a run ═══════════════════════════════════════════════════════════════════════════════
 
     /// <summary>Ends the run with a reason the check run and a comment carry; the label goes, the next entry starts.</summary>
-    private async Task EvictAsync(Context context, MergeQueueEntry entry, string reason, string message, IReadOnlyList<string>? paths = null, bool permissions = false, CancellationToken ct = default)
+    /// <param name="holdable">A failure the pull request's own branch can fix (red checks, a conflict, a push the queue did
+    /// not write): on a release line, the App's backport is held instead (segment C).</param>
+    private async Task EvictAsync(Context context, MergeQueueEntry entry, string reason, string message, IReadOnlyList<string>? paths = null, bool permissions = false, CancellationToken ct = default, bool holdable = false)
     {
+        if ((holdable || reason == "author-push") && await HoldsAsync(context, entry, ct))
+        {
+            await HoldAsync(context, entry, reason, message, paths, ct);
+            return;
+        }
         entry.EvictionReason = reason;
         entry.EvictionPaths = [.. paths ?? []];
         if (permissions) entry.PermissionsUrl = await PermissionsUrlAsync(context, ct);
@@ -1664,6 +1940,7 @@ public partial class MergeQueueEngine : IMergeQueueEngine
     /// <param name="offer">The pull request may be queued again: its check keeps the "Add to merge queue" button (§0 O30).</param>
     private async Task EndAsync(Context context, MergeQueueEntry entry, EMergeQueueEntryState state, string? message, CancellationToken ct, bool offer = false)
     {
+        await LeaveHoldAsync(context, entry, ct);
         if (message is not null) entry.EvictionMessage = message;
         await AbandonRunAsync(context, entry, ct);
         Transition(entry, state, message ?? state.ToString());

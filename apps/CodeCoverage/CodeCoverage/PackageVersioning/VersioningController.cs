@@ -70,6 +70,10 @@ public partial class VersioningController : ControllerBase
         /// <summary>#552 D1: the tags <c>plan</c> decided and wrote none of.</summary>
         public TagPlan? Plan { get; init; }
 
+        /// <summary>#638 D2: on a release line, the major of each package anchored on its platform, which the action
+        /// exports to the pack as <c>MintPlayerVersioningMajors</c>. Sealed with the plan, so a release keeps it.</summary>
+        public IReadOnlyDictionary<string, int>? LineMajors { get; init; }
+
         /// <summary>
         /// #552 D6: this response, sealed with the app's Data Protection keys for a day. <c>release</c> takes only the seal,
         /// so the client cannot change a version, a tag or a Release text between the plan and its release.
@@ -152,7 +156,7 @@ public partial class VersioningController : ControllerBase
         // untagged package from scratch, so it pushes them itself, or waits.
         try
         {
-            if (!await onboarding.PushSeedsAsync(repository, cancellationToken))
+            if (!await onboarding.PushSeedsAsync(repository, afterCuts: false, cancellationToken))
                 return Answer(StatusCodes.Status503ServiceUnavailable, "failed", "seeds", "The onboarding's seed tags could not be pushed yet; the run waits for them.");
         }
         catch (Exception ex) when (ex is GitWriterUnavailableException or HttpRequestException or ForgeRequestException && !cancellationToken.IsCancellationRequested)
@@ -214,6 +218,43 @@ public partial class VersioningController : ControllerBase
         var record = NewRecord(repository, repoId, runId, runAttempt, branch, sealedPlan.Commit);
         var (status, response) = await ReleaseOnWriterAsync(repository, forge, branch, plan, sealedPlan.Response, cancellationToken);
         return await FinishAsync(record, repository, branch, status, response, cancellationToken);
+    }
+
+    /// <summary>The body of <c>tags/verify</c>: the hand tags the engine found on the run's commit (segment P, P5).</summary>
+    public sealed record VersioningTagsVerifyRequest(string? Commit, IReadOnlyList<string>? Tags);
+
+    /// <param name="Refused">The tags the App did not place on this commit; the versioning step fails on any.</param>
+    public sealed record VersioningTagsVerifyResponse(IReadOnlyList<string> Refused);
+
+    public const int MaxVerifiedTags = 100;
+
+    /// <summary>
+    /// Segment P (P5, Q6b = C): with <c>versioning.lines.current: promote</c>, a version tag on a released commit must be
+    /// one the App placed there (a recorded <see cref="ReleaseVersion"/> with that <see cref="ReleaseVersion.PlacedCommit"/>).
+    /// The token pins the repository and the commit, so a run can ask only about its own commit; the answer names the
+    /// tags that are not, and changes nothing.
+    /// </summary>
+    [RequireAntiforgeryToken(false)]
+    [HttpPost("tags/verify")]
+    [RequestSizeLimit(64 * 1024)]
+    public async Task<IActionResult> VerifyTags([FromBody] VersioningTagsVerifyRequest? request, CancellationToken cancellationToken)
+    {
+        if (request is not { Commit: { Length: 40 } commit, Tags: { Count: > 0 and <= MaxVerifiedTags } tags }
+            || !commit.All(char.IsAsciiHexDigitLower) || tags.Any(t => !Versioning.Versions.VersionTag.TryParse(t, out _)))
+            return Answer(StatusCodes.Status400BadRequest, "refused", "request", $"The body names a commit and 1 to {MaxVerifiedTags} version tags.");
+        if (!long.TryParse(User.FindFirst(Oidc.RepositoryIdClaim)?.Value, NumberStyles.None, CultureInfo.InvariantCulture, out var repoId))
+            return Forbidden("The token names no repository.");
+        if (!string.Equals(User.FindFirst(Oidc.CommitClaim)?.Value, commit, StringComparison.Ordinal))
+            return Forbidden("The commit is not the commit the workflow run is for.");
+        var repository = await session.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, repoId), cancellationToken);
+        if (repository is null)
+            return Forbidden("The repository is not known to CodeCoverage: install the GitHub App on it.");
+
+        var ids = tags.Distinct(StringComparer.Ordinal).ToDictionary(t => t, t => ReleaseVersion.DocumentId(repository.Id!, t), StringComparer.Ordinal);
+        var records = await session.LoadAsync<ReleaseVersion>(ids.Values, cancellationToken);
+        var refused = ids.Where(p => records.GetValueOrDefault(p.Value) is not { } r || r.Tag != p.Key || r.PlacedCommit != commit)
+            .Select(p => p.Key).Order(StringComparer.Ordinal).ToList();
+        return Ok(new VersioningTagsVerifyResponse(refused));
     }
 
     private VersioningRun NewRecord(Repository repository, long repoId, long runId, int runAttempt, string branch, string commit) => new()
@@ -340,7 +381,7 @@ public partial class VersioningController : ControllerBase
                 new CommitGraph.SidecarCredential(access.Username, access.Password), branch, defaultBranch, branchMajor, Tagger, settings, manifest, runUrl, planOnly),
                 cancellationToken);
             var response = new VersioningRunResponse(result.Outcome, result.Reason, result.Detail, result.Releases ?? [], result.Refused ?? [],
-                result.Skipped?.Count ?? 0, result.Warnings ?? [], null, result.BranchCuts ?? []) { Plan = result.Plan };
+                result.Skipped?.Count ?? 0, result.Warnings ?? [], null, result.BranchCuts ?? []) { Plan = result.Plan, LineMajors = result.LineMajors };
             return (result.Outcome, result.Reason) switch
             {
                 (GitWriterVersioningResult.Versioned, _) => (StatusCodes.Status200OK, response),

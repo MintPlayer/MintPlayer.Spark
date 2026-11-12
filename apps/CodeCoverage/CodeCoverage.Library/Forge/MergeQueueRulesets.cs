@@ -55,15 +55,28 @@ public sealed record ForgeRulesetApplied(string Description, string? Url);
 /// <param name="RequiredChecks">Ruleset 2's required checks, as confirmed. Never the queue's own check.</param>
 /// <param name="AdminsMayMergeByPullRequest">The Repository admin role as ruleset 1's <c>pull_request</c> bypass (O21 B); null keeps what ruleset 1 has, off when it does not exist.</param>
 /// <param name="ReleaseLines">
-/// The release lines' ref globs (<c>refs/heads/release/*-*.x</c>), which ruleset 1 targets beside the default branch.
-/// Ruleset 2 stays on the default branch: its checks are the default head's (PRD M10e, §8.2 "the lines get the same
-/// restriction", owner 2026-11-06: "The release branches should probably be protected too").
+/// The release lines' ref globs (<c>refs/heads/release/*-*.x</c>), which ruleset 1 targets beside the default branch
+/// (PRD M10e, §8.2 "the lines get the same restriction", owner 2026-11-06: "The release branches should probably be
+/// protected too"), and the lines' own checks ruleset targets. Ruleset 2 stays on the default branch.
+/// </param>
+/// <param name="LineRequiredChecks">
+/// The release lines' required checks (ruleset 3), chosen apart from the default branch's: a line runs the workflows of
+/// its own tree, so an older line may never report a check master added later (docs/release_lines_recovery_plan.md R2,
+/// owner 2026-11-11). Null keeps ruleset 3's own checks, or takes <paramref name="RequiredChecks"/> when it does not
+/// exist; empty creates no ruleset 3 and leaves an existing one as it is.
+/// </param>
+/// <param name="PromotesLines">
+/// <c>versioning.lines.current: promote</c> (segment P, Q-A = B): the App is <c>exempt</c> on ruleset 3, because a
+/// promotion is a direct push of a commit whose checks have not run on the line yet (its tree passed the default branch's
+/// workflow, and the line's own release run still tests it before anything is tagged). Off: the App is removed from it.
 /// </param>
 public sealed record MergeQueueRulesetChoices(
     int RequiredApprovals,
     IReadOnlyList<string> RequiredChecks,
     bool? AdminsMayMergeByPullRequest = null,
-    IReadOnlyList<string>? ReleaseLines = null);
+    IReadOnlyList<string>? ReleaseLines = null,
+    IReadOnlyList<string>? LineRequiredChecks = null,
+    bool PromotesLines = false);
 
 /// <summary>One change the plan makes, in the order it must be made.</summary>
 public abstract record MergeQueueRulesetStep;
@@ -100,6 +113,18 @@ public sealed record MergeQueueRulesetPlan(IReadOnlyList<MergeQueueRulesetStep> 
 /// plan does not manage (GitHub's <c>allowed_merge_methods</c>, a check's <c>integration_id</c>) are kept as they are.
 /// </para>
 /// <para>
+/// <b>Ruleset 3</b> ("merge-queue: release-line checks") holds only <c>required_status_checks</c>, on the release lines,
+/// with checks chosen apart from ruleset 2's (R2, owner 2026-11-11). No <c>pull_request</c> rule: only the App updates a
+/// line (ruleset 1), through the queue, whose approval floor applies. It exists only when the repository has release
+/// lines; its other rules and people bypass actors are kept, as on ruleset 2.
+/// </para>
+/// <para>
+/// <b>Ruleset 4</b> ("merge-queue: backport branches", also only with release lines) restricts <c>creation</c>,
+/// <c>update</c> and <c>deletion</c> of <c>refs/heads/backport/*</c>, with the App <c>exempt</c> and the Repository admin
+/// role <c>always</c> (segment D, Q13). The queue reads it back through the branch's rules before it lets the App's
+/// backport merge without an approval (<c>MergeQueueEngine.BackportBranchProtectedAsync</c>).
+/// </para>
+/// <para>
 /// <b>Classic protection is moved, then deleted</b> (owner, 2026-11-06): the steps run ruleset 1, ruleset 2, then the
 /// deletion, so the branch is never open in between.
 /// </para>
@@ -108,6 +133,20 @@ public static class MergeQueueRulesetPlanner
 {
     public const string RestrictUpdatesName = "merge-queue: restrict updates";
     public const string ReviewsAndChecksName = "merge-queue: reviews and checks";
+    public const string LineChecksName = "merge-queue: release-line checks";
+    public const string BackportBranchesName = "merge-queue: backport branches";
+
+    /// <summary>
+    /// The App's own check on release lines (segment E, Q1b): a current line takes only the App's backports. Ruleset 3
+    /// always requires it, bound to the App (<c>integration_id</c>), so nobody else can report it green.
+    /// </summary>
+    public const string LinePolicyCheckName = "Line policy";
+
+    /// <summary>The branches the App's backports are pushed to (<c>backport/&lt;pr&gt;-&lt;line&gt;</c>).</summary>
+    public const string BackportBranchesPattern = "refs/heads/backport/*";
+
+    /// <summary>What ruleset 4 restricts: a backport branch's content is the App's pick or an admin's resolution (Q13).</summary>
+    public static readonly IReadOnlyList<string> BackportBranchRules = ["creation", "update", "deletion"];
 
     /// <summary>GitHub's id of the Repository admin role as a bypass actor (merge-queue.md §3).</summary>
     public const long RepositoryAdminRoleId = 5;
@@ -125,13 +164,17 @@ public static class MergeQueueRulesetPlanner
             return new MergeQueueRulesetPlan(steps,
                 ["This repository's plan has no rulesets (a private repository on GitHub Free). Make it public or upgrade the plan first."]);
         List<string> include = [DefaultBranch];
-        List<string> restricted = [DefaultBranch, .. (choices.ReleaseLines ?? []).Where(l => l != DefaultBranch).Distinct(StringComparer.Ordinal)];
+        List<string> lines = [.. (choices.ReleaseLines ?? []).Where(l => l != DefaultBranch).Distinct(StringComparer.Ordinal)];
+        List<string> restricted = [DefaultBranch, .. lines];
 
         if (choices.RequiredApprovals is < 0 or > 10)
             blockers.Add($"The approval count must be between 0 and 10, not {choices.RequiredApprovals}.");
-        var checks = choices.RequiredChecks.Where(c => !string.IsNullOrWhiteSpace(c)).Distinct(StringComparer.Ordinal).ToList();
-        if (checks.Contains(CheckGate.QueueCheckName, StringComparer.Ordinal))
-            blockers.Add($"\"{CheckGate.QueueCheckName}\" cannot be a required check: it is still running while the queue merges, so every merge would be refused (D62).");
+        var checks = Checks(choices.RequiredChecks, blockers);
+        var existing3 = Single(state, LineChecksName, blockers);
+        var lineChecks = lines.Count == 0 ? []
+            : Checks(choices.LineRequiredChecks ?? (existing3 is null ? choices.RequiredChecks : RequiredCheckNames(existing3.Definition)), blockers);
+        // Segment E: the line policy is always required on the lines, whatever else the admin picks.
+        lineChecks.RemoveAll(c => c == LinePolicyCheckName);
         if (state.Classic?.HasPushRestrictions == true)
             blockers.Add("Classic protection limits pushes to named people, teams or Apps. Rulesets have no such setting, so remove the restriction by hand first.");
 
@@ -142,6 +185,12 @@ public static class MergeQueueRulesetPlanner
         var desired2 = ReviewsAndChecks(state, choices.RequiredApprovals, checks, include, existing2);
         AddStep(steps, existing1, desired1);
         AddStep(steps, existing2, desired2);
+        if (lines.Count > 0)
+        {
+            AddStep(steps, existing3, LineChecks(state, lineChecks, lines, existing3, choices.PromotesLines));
+            var existing4 = Single(state, BackportBranchesName, blockers);
+            AddStep(steps, existing4, BackportBranches(state, existing4));
+        }
 
         if (state.Classic is { } classic)
             steps.Add(new DeleteClassicProtectionStep(ClassicNotes(classic, choices.RequiredApprovals, checks)));
@@ -151,8 +200,14 @@ public static class MergeQueueRulesetPlanner
 
     /// <summary>
     /// The starting answers for one repository: ruleset 2's own settings when it exists, else classic protection's, else
-    /// no required checks and one approval. Never the queue's own check (D62). (From the abandoned e3.)
+    /// no required checks and no approval. Never the queue's own check (D62). (From the abandoned e3.)
     /// </summary>
+    /// <remarks>
+    /// No approval when nothing says otherwise (the Tools onboarding, 2026-11-12): with 1, a solo maintainer can never
+    /// merge, since GitHub never counts the author's own approval (merge-queue.md §3), and Tools' ruleset 27099667 was
+    /// created that way. The queue's approval floor still asks an approval of authors without write. A team that wants
+    /// GitHub to require reviews raises it in the form.
+    /// </remarks>
     /// <remarks>
     /// No guess from the default branch's head (#554, 2026-11-07): it carried the checks of jobs that run on a push
     /// alone (a deploy), which never report on a pull request, so ruleset 26719109 required checks no pull request could
@@ -165,14 +220,31 @@ public static class MergeQueueRulesetPlanner
         var ruleset2 = state.Rulesets.FirstOrDefault(r => r.Definition.Name == ReviewsAndChecksName)?.Definition;
 
         var approvals = ruleset2?.Rules.FirstOrDefault(r => r.Type == "pull_request")?.Parameters?["required_approving_review_count"] is JsonValue count
-            && count.TryGetValue<int>(out var n) ? n : state.Classic?.RequiredApprovals ?? 1;
+            && count.TryGetValue<int>(out var n) ? n : state.Classic?.RequiredApprovals ?? 0;
         var ruleset2Checks = (ruleset2?.Rules.FirstOrDefault(r => r.Type == "required_status_checks")?.Parameters?["required_status_checks"] as JsonArray ?? [])
             .OfType<JsonObject>().Select(c => c["context"] is JsonValue v && v.TryGetValue<string>(out var s) ? s : null).OfType<string>().ToList();
         IEnumerable<string> checks = ruleset2Checks.Count > 0 ? ruleset2Checks
             : state.Classic?.RequiredChecks ?? [];
-        return new MergeQueueRulesetChoices(approvals,
-            [.. checks.Where(c => !string.IsNullOrWhiteSpace(c) && c != CheckGate.QueueCheckName).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)],
-            ruleset1?.BypassActors.Any(IsAdminByPullRequest) ?? false);
+        // Ruleset 3's own checks; without it, null, so the form starts from ruleset 2's (a current line runs master's tree).
+        var ruleset3 = state.Rulesets.FirstOrDefault(r => r.Definition.Name == LineChecksName)?.Definition;
+        return new MergeQueueRulesetChoices(approvals, Clean(checks),
+            ruleset1?.BypassActors.Any(IsAdminByPullRequest) ?? false,
+            LineRequiredChecks: ruleset3 is null ? null : Clean(RequiredCheckNames(ruleset3)));
+    }
+
+    /// <summary>The checks the form offers: never the queue's own (D62), nor the line policy, which the plan always adds.</summary>
+    private static List<string> Clean(IEnumerable<string> checks)
+        => [.. checks.Where(c => !string.IsNullOrWhiteSpace(c) && c is not (CheckGate.QueueCheckName or LinePolicyCheckName))
+            .Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)];
+
+    /// <summary>The non-blank, distinct checks; the queue's own check is a blocker (D62), named once however many lists hold it.</summary>
+    private static List<string> Checks(IEnumerable<string> chosen, List<string> blockers)
+    {
+        var checks = chosen.Where(c => !string.IsNullOrWhiteSpace(c)).Distinct(StringComparer.Ordinal).ToList();
+        var blocker = $"\"{CheckGate.QueueCheckName}\" cannot be a required check: it is still running while the queue merges, so every merge would be refused (D62).";
+        if (checks.Contains(CheckGate.QueueCheckName, StringComparer.Ordinal) && !blockers.Contains(blocker))
+            blockers.Add(blocker);
+        return checks;
     }
 
     /// <summary>The plan as the confirmation shows it, one line per step or blocker. (From the abandoned e3.)</summary>
@@ -251,18 +323,7 @@ public static class MergeQueueRulesetPlanner
         rules.Add(new("pull_request", pullRequest));
 
         if (checks.Count > 0)
-        {
-            var statusChecks = Clone(kept.FirstOrDefault(r => r.Type == "required_status_checks")?.Parameters);
-            var byContext = (statusChecks["required_status_checks"] as JsonArray ?? [])
-                .OfType<JsonObject>()
-                .Where(c => c["context"] is JsonValue)
-                .GroupBy(c => c["context"]!.GetValue<string>(), StringComparer.Ordinal)
-                .ToDictionary(g => g.Key, g => g.First(), StringComparer.Ordinal);
-            statusChecks["strict_required_status_checks_policy"] = true;
-            statusChecks["required_status_checks"] = new JsonArray([.. checks.Order(StringComparer.Ordinal)
-                .Select(c => (JsonNode)(byContext.TryGetValue(c, out var known) ? known.DeepClone() : new JsonObject { ["context"] = c }))]);
-            rules.Add(new("required_status_checks", statusChecks));
-        }
+            rules.Add(StatusChecks(kept, checks));
 
         if (classic?.RequiredLinearHistory == true && kept.All(r => r.Type != "required_linear_history"))
             rules.Add(new("required_linear_history"));
@@ -274,6 +335,61 @@ public static class MergeQueueRulesetPlanner
             .Where(a => !(a.ActorType == "Integration" && a.ActorId == state.AppId))
             .ToList();
         return new ForgeRulesetDefinition(ReviewsAndChecksName, "branch", "active", include, [], rules, actors);
+    }
+
+    /// <summary>
+    /// Ruleset 3: the lines' required checks and nothing the plan does not manage removed; the App exempt only when the
+    /// repository promotes its lines (<see cref="MergeQueueRulesetChoices.PromotesLines"/>).
+    /// </summary>
+    private static ForgeRulesetDefinition LineChecks(ForgeRulesetState state, List<string> checks, List<string> lines,
+        ForgeExistingRuleset? existing, bool promotes)
+    {
+        var kept = existing?.Definition.Rules ?? [];
+        var statusChecks = StatusChecks(kept, [.. checks, LinePolicyCheckName]);
+        // Bound to this App, replacing whatever the check was bound to: another App's green must not pass it.
+        foreach (var check in ((JsonArray)statusChecks.Parameters!["required_status_checks"]!).OfType<JsonObject>())
+            if (check["context"] is JsonValue v && v.TryGetValue<string>(out var name) && name == LinePolicyCheckName)
+                check["integration_id"] = state.AppId;
+        List<ForgeRulesetRule> rules = [statusChecks, .. kept.Where(r => r.Type != "required_status_checks")];
+        var actors = (existing?.Definition.BypassActors ?? [])
+            .Where(a => !(a.ActorType == "Integration" && a.ActorId == state.AppId))
+            .ToList();
+        if (promotes) actors.Insert(0, new(state.AppId, "Integration", "exempt"));
+        return new ForgeRulesetDefinition(LineChecksName, "branch", "active", lines, [], rules, actors);
+    }
+
+    /// <summary>
+    /// Ruleset 4 (segment D, Q13): only the App and repository admins create, update or delete a <c>backport/*</c> branch,
+    /// so the App's backports need no approval in the queue. Other Apps already exempt are kept, as on ruleset 1; its other
+    /// rules are kept, its other people bypass actors are not (they could push what then merges unreviewed).
+    /// </summary>
+    private static ForgeRulesetDefinition BackportBranches(ForgeRulesetState state, ForgeExistingRuleset? existing)
+    {
+        var kept = existing?.Definition.Rules ?? [];
+        List<ForgeRulesetRule> rules = [.. BackportBranchRules.Select(type => new ForgeRulesetRule(type)), .. kept.Where(r => !BackportBranchRules.Contains(r.Type))];
+        List<ForgeRulesetActor> actors = [new(state.AppId, "Integration", "exempt")];
+        actors.AddRange((existing?.Definition.BypassActors ?? [])
+            .Where(a => a is { ActorType: "Integration", BypassMode: "exempt" } && a.ActorId != state.AppId));
+        actors.Add(new(RepositoryAdminRoleId, "RepositoryRole", "always"));
+        return new ForgeRulesetDefinition(BackportBranchesName, "branch", "active", [BackportBranchesPattern], [], rules, actors);
+    }
+
+    /// <summary>
+    /// A <c>required_status_checks</c> rule with these checks, strict, keeping what the forge holds for a check already
+    /// required (its <c>integration_id</c>) and the rule's other parameters.
+    /// </summary>
+    private static ForgeRulesetRule StatusChecks(IReadOnlyList<ForgeRulesetRule> kept, List<string> checks)
+    {
+        var statusChecks = Clone(kept.FirstOrDefault(r => r.Type == "required_status_checks")?.Parameters);
+        var byContext = (statusChecks["required_status_checks"] as JsonArray ?? [])
+            .OfType<JsonObject>()
+            .Where(c => c["context"] is JsonValue)
+            .GroupBy(c => c["context"]!.GetValue<string>(), StringComparer.Ordinal)
+            .ToDictionary(g => g.Key, g => g.First(), StringComparer.Ordinal);
+        statusChecks["strict_required_status_checks_policy"] = true;
+        statusChecks["required_status_checks"] = new JsonArray([.. checks.Order(StringComparer.Ordinal)
+            .Select(c => (JsonNode)(byContext.TryGetValue(c, out var known) ? known.DeepClone() : new JsonObject { ["context"] = c }))]);
+        return new("required_status_checks", statusChecks);
     }
 
     private static void AddStep(List<MergeQueueRulesetStep> steps, ForgeExistingRuleset? existing, ForgeRulesetDefinition desired)

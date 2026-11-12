@@ -6,6 +6,7 @@ using CodeCoverage.GitWriter.Jobs.Dependencies;
 using CodeCoverage.Versioning.Graph;
 using CodeCoverage.Versioning.Releases;
 using CodeCoverage.Versioning.Validation;
+using CodeCoverage.Versioning.Versions;
 using Microsoft.Extensions.Options;
 using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.SourceGenerators.Attributes;
@@ -315,6 +316,204 @@ internal sealed partial class GitWriterVersioningBackportEndpoint : IPostEndpoin
         }
         var distinct = targets.Select(t => t.Branch).Concat(targets.Select(t => t.Head)).Distinct(StringComparer.Ordinal).Count() == targets.Count * 2;
         return distinct ? targets : null;
+    }
+}
+
+/// <summary><c>POST /jobs/versioning/backport/trial</c>: the backport a merge would start, tried with nothing pushed (segment G).</summary>
+internal sealed partial class GitWriterVersioningBackportTrialEndpoint : IPostEndpoint<VersioningBackportTrialRequestWire>
+{
+    public static readonly string TargetsRule = $"1 to {GitWriterVersioningBackportEndpoint.MaxTargets} targets with distinct branches, "
+        + $"each autoResolve list valid ({WireValidation.AutoResolveEntriesRule}) and each regeneratedPaths list too ({WireValidation.RegeneratedPathsRule})";
+
+    public static string Path => "/jobs/versioning/backport/trial";
+
+    [Inject] private readonly BackportService backports;
+    [Inject] private readonly IOptions<GitWriterOptions> options;
+
+    protected override async ValueTask<VersioningBackportTrialRequestWire?> BindRequestAsync(HttpContext context)
+        => await Body.ReadAsync<VersioningBackportTrialRequestWire>(context.Request.Body, context.Request.ContentLength, Body.SmallBytes, context.RequestAborted);
+
+    protected override ValueTask<IResult> OnBindFailedAsync(HttpContext context, EndpointBindingException? failure) => new(Refusal.Body(Body.SmallBytes));
+
+    public override async Task<IResult> HandleAsync(VersioningBackportTrialRequestWire request, CancellationToken cancellationToken)
+    {
+        var refusal = new Refusal();
+        if (!refusal.Check(WireValidation.IsRepo(request.Provider, request.RepoId), "repoId", WireValidation.RepoRule)
+            || refusal.Check(WireValidation.RemoteUrl(request.CloneUrl, options.Value.AllowInsecureHttp), "cloneUrl", WireValidation.RemoteUrlRule) is not { } cloneUrl
+            || refusal.Check(WireValidation.Credential(request.Credential), "credential", WireValidation.CredentialRule) is not { } credential
+            || refusal.Check(WireValidation.HeadRef(request.HeadRef), "headRef", WireValidation.HeadRefRule) is not { } headRef
+            || refusal.Check(WireValidation.ObjectId(request.Base), "base", WireValidation.ShaRule) is not { } @base
+            || refusal.Check(WireValidation.ObjectId(request.Commit), "commit", WireValidation.ShaRule) is not { } commit
+            || refusal.Check(Targets(request.Targets), "targets", TargetsRule) is not { } targets
+            || refusal.Check(GitWriterVersioningBackportEndpoint.Markers(request.Markers), "markers", GitWriterVersioningBackportEndpoint.MarkersRule) is not { } markers)
+            return refusal.Result();
+
+        return Results.Json(await backports.TrialAsync(new BackportTrialJob($"{request.Provider}/{request.RepoId}", cloneUrl, credential, headRef, @base, commit,
+            targets, markers)), GitWriterHost.Json);
+    }
+
+    internal static List<BackportTrialTarget>? Targets(List<BackportTrialTargetWire>? wires)
+    {
+        if (wires is not { Count: > 0 and <= GitWriterVersioningBackportEndpoint.MaxTargets }) return null;
+        var targets = new List<BackportTrialTarget>();
+        foreach (var wire in wires)
+        {
+            if (WireValidation.Branch(wire.Branch) is not { } branch) return null;
+            if (WireValidation.Rules(wire.AutoResolve) is not { } rules) return null;
+            if (WireValidation.Globs(wire.RegeneratedPaths) is not { } globs) return null;
+            targets.Add(new BackportTrialTarget(branch, rules, globs));
+        }
+        return targets.Select(t => t.Branch).Distinct(StringComparer.Ordinal).Count() == targets.Count ? targets : null;
+    }
+}
+
+/// <summary><c>POST /jobs/versioning/hand-tag</c>: a person's new version tag, checked against the tag it follows (segment P, P5; segment T).</summary>
+internal sealed partial class GitWriterVersioningHandTagEndpoint : IPostEndpoint<HandTagRequestWire>
+{
+    public const string TagRule = "a version tag <id>/v<version>";
+
+    /// <summary>Every line of the repository, past ones included (segment T), so more than a promotion's.</summary>
+    public const int MaxLines = 50;
+    public static readonly string LinesRule = $"1 to {MaxLines} lines with distinct branches, each with an ecosystem of lower-case letters and digits and a major from 0 to {GitWriterVersioningPromoteEndpoint.MaxMajor}";
+
+    public static string Path => "/jobs/versioning/hand-tag";
+
+    [Inject] private readonly PromoteService promotions;
+    [Inject] private readonly IOptions<GitWriterOptions> options;
+
+    protected override async ValueTask<HandTagRequestWire?> BindRequestAsync(HttpContext context)
+        => await Body.ReadAsync<HandTagRequestWire>(context.Request.Body, context.Request.ContentLength, Body.SmallBytes, context.RequestAborted);
+
+    protected override ValueTask<IResult> OnBindFailedAsync(HttpContext context, EndpointBindingException? failure) => new(Refusal.Body(Body.SmallBytes));
+
+    public override async Task<IResult> HandleAsync(HandTagRequestWire request, CancellationToken cancellationToken)
+    {
+        var refusal = new Refusal();
+        if (!refusal.Check(WireValidation.IsRepo(request.Provider, request.RepoId), "repoId", WireValidation.RepoRule)
+            || refusal.Check(WireValidation.RemoteUrl(request.CloneUrl, options.Value.AllowInsecureHttp), "cloneUrl", WireValidation.RemoteUrlRule) is not { } cloneUrl
+            || refusal.Check(WireValidation.Credential(request.Credential), "credential", WireValidation.CredentialRule) is not { } credential
+            || refusal.Check(VersionTag.TryParse(request.Tag, out var parsed) && parsed.Name == request.Tag ? parsed : null, "tag", TagRule) is not { } tag
+            || refusal.Check(WireValidation.ObjectId(request.TagObject), "tagObject", WireValidation.ShaRule) is not { } tagObject
+            || refusal.Check(GitWriterVersioningPromoteEndpoint.Lines(request.Lines, "", MaxLines), "lines", LinesRule) is not { } lines
+            || refusal.Check(GitWriterVersioningRunEndpoint.Settings(request.Settings), "settings", GitWriterVersioningRunEndpoint.SettingsRule) is not { } settings)
+            return refusal.Result();
+
+        return Results.Json(await promotions.CheckHandTagAsync(new HandTagJob($"{request.Provider}/{request.RepoId}", cloneUrl, credential, tag, tagObject, lines, request.Promotes, settings)),
+            GitWriterHost.Json);
+    }
+}
+
+/// <summary><c>POST /jobs/versioning/backfill</c>: tag the versions a repository declared before onboarding (#638 D5-D8).</summary>
+internal sealed partial class GitWriterVersioningBackfillEndpoint : IPostEndpoint<VersioningBackfillRequestWire>
+{
+    public static string Path => "/jobs/versioning/backfill";
+
+    [Inject] private readonly VersioningRunService runs;
+    [Inject] private readonly IOptions<GitWriterOptions> options;
+
+    protected override async ValueTask<VersioningBackfillRequestWire?> BindRequestAsync(HttpContext context)
+        => await Body.ReadAsync<VersioningBackfillRequestWire>(context.Request.Body, context.Request.ContentLength, Body.SmallBytes, context.RequestAborted);
+
+    protected override ValueTask<IResult> OnBindFailedAsync(HttpContext context, EndpointBindingException? failure) => new(Refusal.Body(Body.SmallBytes));
+
+    public override async Task<IResult> HandleAsync(VersioningBackfillRequestWire request, CancellationToken cancellationToken)
+    {
+        var refusal = new Refusal();
+        if (!refusal.Check(WireValidation.IsRepo(request.Provider, request.RepoId), "repoId", WireValidation.RepoRule)
+            || refusal.Check(WireValidation.RemoteUrl(request.CloneUrl, options.Value.AllowInsecureHttp), "cloneUrl", WireValidation.RemoteUrlRule) is not { } cloneUrl
+            || refusal.Check(WireValidation.Credential(request.Credential), "credential", WireValidation.CredentialRule) is not { } credential
+            || refusal.Check(WireValidation.Branch(request.DefaultBranch), "defaultBranch", MergeQueueWireRules.BranchRule) is not { } defaultBranch
+            || refusal.Check(request.Tagger is { } t && MergeQueueWireRules.IsIdentity(t.Name, t.Email) ? new GitIdentity(t.Name!, t.Email!) : null,
+                "tagger", MergeQueueWireRules.IdentityRule) is not { } tagger
+            || refusal.Check(GitWriterVersioningRunEndpoint.Settings(request.Settings), "settings", GitWriterVersioningRunEndpoint.SettingsRule) is not { } settings
+            || refusal.Check(Move(request.Move), "move", MoveRule) is not { } move)
+            return refusal.Result();
+
+        return Results.Json(await runs.BackfillAsync(new VersioningBackfillJob($"{request.Provider}/{request.RepoId}", cloneUrl, credential, defaultBranch, tagger, settings,
+            request.PlanOnly, move)), GitWriterHost.Json);
+    }
+
+    public static readonly string MoveRule = $"null, or at most {Limits.MaxPackagesPerRun} distinct version tags <id>/v<version>";
+
+    private static HashSet<string>? Move(List<string>? names)
+    {
+        if (names is null) return [];
+        if (names.Count > Limits.MaxPackagesPerRun || names.Any(n => n is null || !VersionTag.TryParse(n, out var tag) || tag.Name != n)) return null;
+        var set = names.ToHashSet(StringComparer.Ordinal);
+        return set.Count == names.Count ? set : null;
+    }
+}
+
+/// <summary><c>POST /jobs/versioning/promote</c>: move release lines to a green default-branch commit (segment P).</summary>
+internal sealed partial class GitWriterVersioningPromoteEndpoint : IPostEndpoint<VersioningPromoteRequestWire>
+{
+    public const int MaxLines = 10;
+    public const int MaxEcosystemLength = 32;
+    public const int MaxMajor = 9999;
+    public static readonly string LinesRule = $"1 to {MaxLines} lines with distinct branches, none the default branch, each with an ecosystem of lower-case letters and digits and a major from 0 to {MaxMajor}";
+
+    public static string Path => "/jobs/versioning/promote";
+
+    [Inject] private readonly PromoteService promotions;
+    [Inject] private readonly IOptions<GitWriterOptions> options;
+
+    protected override async ValueTask<VersioningPromoteRequestWire?> BindRequestAsync(HttpContext context)
+        => await Body.ReadAsync<VersioningPromoteRequestWire>(context.Request.Body, context.Request.ContentLength, Body.SmallBytes, context.RequestAborted);
+
+    protected override ValueTask<IResult> OnBindFailedAsync(HttpContext context, EndpointBindingException? failure) => new(Refusal.Body(Body.SmallBytes));
+
+    public override async Task<IResult> HandleAsync(VersioningPromoteRequestWire request, CancellationToken cancellationToken)
+    {
+        var refusal = new Refusal();
+        if (!refusal.Check(WireValidation.IsRepo(request.Provider, request.RepoId), "repoId", WireValidation.RepoRule)
+            || refusal.Check(WireValidation.RemoteUrl(request.CloneUrl, options.Value.AllowInsecureHttp), "cloneUrl", WireValidation.RemoteUrlRule) is not { } cloneUrl
+            || refusal.Check(WireValidation.Credential(request.Credential), "credential", WireValidation.CredentialRule) is not { } credential
+            || refusal.Check(WireValidation.Branch(request.DefaultBranch), "defaultBranch", MergeQueueWireRules.BranchRule) is not { } defaultBranch
+            || refusal.Check(WireValidation.ObjectId(request.Commit), "commit", WireValidation.ShaRule) is not { } commit
+            || refusal.Check(request.Committer is { } c && MergeQueueWireRules.IsIdentity(c.Name, c.Email) ? new GitIdentity(c.Name!, c.Email!) : null,
+                "committer", MergeQueueWireRules.IdentityRule) is not { } committer
+            || refusal.Check(Lines(request.Lines, defaultBranch), "lines", LinesRule) is not { } lines
+            || refusal.Check(GitWriterVersioningRunEndpoint.Settings(request.Settings), "settings", GitWriterVersioningRunEndpoint.SettingsRule) is not { } settings
+            || refusal.Check(Versions(request.Versions), "versions", VersionsRule) is not { } versions)
+            return refusal.Result();
+
+        return Results.Json(await promotions.RunAsync(new PromoteJob($"{request.Provider}/{request.RepoId}", cloneUrl, credential, defaultBranch, commit, committer,
+            lines, settings, versions,
+            request.Versions?.Where(v => v.Recorded).Select(v => v.PackageId + VersionTag.Separator + v.Version).ToHashSet(StringComparer.Ordinal) ?? [])),
+            GitWriterHost.Json);
+    }
+
+    public const int MaxVersions = 20;
+    public static readonly string VersionsRule = $"at most {MaxVersions} distinct package ids with a version each, as tags <id>/v<version>";
+
+    /// <summary>The requested versions as tags; null for more than <see cref="MaxVersions"/>, a malformed one or a package twice.</summary>
+    internal static List<VersionTag>? Versions(List<PromoteVersionWire>? wires)
+    {
+        if (wires is null) return [];
+        if (wires.Count > MaxVersions) return null;
+        var tags = new List<VersionTag>();
+        foreach (var wire in wires)
+        {
+            if (wire.PackageId is null || wire.Version is null || !VersionTag.TryParse(wire.PackageId + VersionTag.Separator + wire.Version, out var tag)
+                || tag.PackageId != wire.PackageId || tag.Version.ToString() != wire.Version)
+                return null;
+            tags.Add(tag);
+        }
+        return tags.Select(t => t.PackageId).Distinct(StringComparer.Ordinal).Count() == tags.Count ? tags : null;
+    }
+
+    internal static List<PromoteLine>? Lines(List<PromoteLineWire>? wires, string defaultBranch, int maxLines = MaxLines)
+    {
+        if (wires is null || wires.Count == 0 || wires.Count > maxLines) return null;
+        var lines = new List<PromoteLine>();
+        foreach (var wire in wires)
+        {
+            if (WireValidation.Branch(wire.Branch) is not { } branch || branch == defaultBranch) return null;
+            if (wire.Ecosystem is not { Length: > 0 and <= MaxEcosystemLength } ecosystem || !ecosystem.All(ch => char.IsAsciiLetterLower(ch) || char.IsAsciiDigit(ch))) return null;
+            if (wire.Major is < 0 or > MaxMajor) return null;
+            lines.Add(new PromoteLine(branch, ecosystem, wire.Major, wire.OnlyIfChanged));
+        }
+        return lines.Select(l => l.Branch).Distinct(StringComparer.Ordinal).Count() == lines.Count ? lines : null;
     }
 }
 

@@ -18,6 +18,8 @@ export interface RunResponse {
   plan?: TagPlan | null;
   /** #552 D6: the server's seal over its plan; the server's release takes only this. */
   seal?: string | null;
+  /** #638 D2: on a release line, the major of each package anchored on its platform. */
+  lineMajors?: Record<string, number> | null;
 }
 
 /** The tags a plan decided (`ReleaseRun.TagPlan`), and the tag history it decided them on (#552 D3). */

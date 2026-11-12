@@ -99,6 +99,37 @@ public class RealPackTests(RealPackTests.Repo repo) : IClassFixture<RealPackTest
         }
     }
 
+    // #638 P1, S1: on Tools' release/dotnet-10.x, master's v11 tags were reachable and the pack stamped 11.0.1-rc.1 over
+    // the 10.0.0 the engine had tagged. The action's MintPlayerVersioningMajors (an environment variable, read as a
+    // property) restricts each mapped package to its line's major; MPV006 warns when that major has no tag.
+    [Fact]
+    public void On_a_line_the_pack_takes_the_highest_tag_of_the_packages_major()
+    {
+        repo.Tag("A/v10.0.0", "A/v11.0.1-rc.1", "B/v10.0.0", "B/v11.0.1-rc.1");
+        try
+        {
+            repo.Pack("S.sln", Push).ShouldPack("A.11.0.1-rc.1.nupkg", "B.11.0.1-rc.1.nupkg");
+
+            var line = repo.PackWith("S.sln", Push, environment: new() { ["MintPlayerVersioningMajors"] = "A=10;B=10" });
+            line.ShouldPack("A.10.0.0.nupkg", "B.10.0.0.nupkg");
+            line.Nuspec("A.10.0.0.nupkg").Should().Contain("<dependency id=\"B\" version=\"10.0.0\"");
+
+            repo.PackWith("S.sln", Push, environment: new() { ["GITHUB_REF_NAME"] = "release/dotnet-10.x" })
+                .ShouldPack("A.10.0.0.nupkg", "B.10.0.0.nupkg");
+
+            var missing = repo.PackWith("S.sln", Push, environment: new() { ["MintPlayerVersioningMajors"] = "A=9;B=10" });
+            missing.ShouldPack("B.10.0.0.nupkg");
+            missing.Output.Should().Contain("MPV006");
+
+            repo.PackWith("S.sln", Push, ["-p:MSBuildWarningsAsErrors=MPV006"], new() { ["MintPlayerVersioningMajors"] = "A=9;B=10" })
+                .ExitCode.Should().NotBe(0);
+        }
+        finally
+        {
+            repo.Untag("A/v10.0.0", "A/v11.0.1-rc.1", "B/v10.0.0", "B/v11.0.1-rc.1");
+        }
+    }
+
     public sealed record PackResult(int ExitCode, string Output, string Folder)
     {
         public IReadOnlyList<string> Packages => Directory.Exists(Folder)
@@ -155,10 +186,12 @@ public class RealPackTests(RealPackTests.Repo repo) : IClassFixture<RealPackTest
             if (restore.ExitCode != 0) throw new InvalidOperationException("restore failed:\n" + restore.Output);
         }
 
-        public PackResult Pack(string target, string? eventName, params string[] arguments)
+        public PackResult Pack(string target, string? eventName, params string[] arguments) => PackWith(target, eventName, arguments, null);
+
+        public PackResult PackWith(string target, string? eventName, string[]? arguments = null, Dictionary<string, string>? environment = null)
         {
             var folder = Path.Combine(work.FullName, "out" + Interlocked.Increment(ref packs));
-            var (exitCode, output) = Dotnet(["pack", target, "--no-restore", "-o", folder, .. arguments], eventName);
+            var (exitCode, output) = Dotnet(["pack", target, "--no-restore", "-o", folder, .. arguments ?? []], eventName, environment);
             return new PackResult(exitCode, output, folder);
         }
 
@@ -199,8 +232,11 @@ public class RealPackTests(RealPackTests.Repo repo) : IClassFixture<RealPackTest
             if (exitCode != 0) throw new InvalidOperationException($"git {string.Join(' ', arguments)} failed:\n{output}");
         }
 
-        private (int ExitCode, string Output) Dotnet(string[] arguments, string? eventName) => Run("dotnet", arguments, start =>
+        private (int ExitCode, string Output) Dotnet(string[] arguments, string? eventName, Dictionary<string, string>? environment = null) => Run("dotnet", arguments, start =>
         {
+            // A CI run of these tests on a line must not hand the pack its own branch (#638 D2's fallback reads it).
+            foreach (var name in new[] { "GITHUB_REF_NAME", "GITHUB_BASE_REF", "MintPlayerVersioningMajors" }) start.Environment.Remove(name);
+            foreach (var (name, value) in environment ?? []) start.Environment[name] = value;
             // The build must not see the test host's MSBuild (`dotnet test` sets MSBuild* variables) or its CI event: each
             // case states the event it simulates, and null is a local build.
             foreach (var name in start.Environment.Keys.Where(k => k.StartsWith("MSBuild", StringComparison.OrdinalIgnoreCase)).ToList())

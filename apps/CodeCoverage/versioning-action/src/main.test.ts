@@ -1,5 +1,5 @@
 import type { Exec } from './exec';
-import { allVersionsOf, buildEnvironment, failureOf, readInputs, readPlan, version, versioningSection, type Dependencies } from './main';
+import { allVersionsOf, buildEnvironment, failureOf, readInputs, readPlan, verifyHandTags, version, versioningSection, type Dependencies } from './main';
 
 const release = (over: object = {}) => ({
   id: 'Acme.Core', kind: 'nuget', version: '1.2.0', tag: 'Acme.Core/v1.2.0', reasons: ['api changed'], taggedByHand: false, tagOutcome: 'created', ...over,
@@ -22,6 +22,41 @@ describe('failureOf', () => {
   });
 });
 
+describe('verifyHandTags (segment P, P5)', () => {
+  const commit = 'a'.repeat(40);
+  const promote = { lines: { current: 'promote', workflow: 'release.yml' } };
+  const handTagged = { outcome: 'versioned', releases: [release({ taggedByHand: true }), release({ id: 'Acme.Web', tag: 'Acme.Web/v1.0.0' })] as any, refused: [], skipped: 0, warnings: [] };
+  const deps = (answer: () => Promise<Response>, asked: unknown[] = []): Dependencies => ({
+    exec: (async () => ({ code: 0, stdout: '', stderr: '' })) as unknown as Exec, engineProject: 'x', idToken: async () => 'token',
+    fetch: (async (_url: string, init: RequestInit) => { asked.push(JSON.parse(init.body as string)); return answer(); }) as unknown as typeof fetch,
+    log: () => {}, warn: () => {},
+  });
+  const inputs = { ...readInputs({}), url: 'https://coverage.example.invalid' };
+
+  it('asks about the hand tags only, and passes when the app placed them', async () => {
+    const asked: unknown[] = [];
+    await verifyHandTags(inputs, deps(async () => new Response(JSON.stringify({ refused: [] }), { status: 200 }), asked), promote, commit, handTagged);
+    expect(asked).toEqual([{ commit, tags: ['Acme.Core/v1.2.0'] }]);
+  });
+
+  it('fails on a tag the app did not place, and on an app that cannot answer', async () => {
+    await expect(verifyHandTags(inputs, deps(async () => new Response(JSON.stringify({ refused: ['Acme.Core/v1.2.0'] }), { status: 200 })), promote, commit, handTagged))
+      .rejects.toThrow(/Acme.Core\/v1.2.0 was not placed by `\/release`/);
+    await expect(verifyHandTags(inputs, deps(async () => new Response('down', { status: 503 })), promote, commit, handTagged))
+      .rejects.toThrow(/could not be checked/);
+    await expect(verifyHandTags(inputs, deps(async () => { throw new Error('ECONNREFUSED'); }), promote, commit, handTagged))
+      .rejects.toThrow(/ECONNREFUSED/);
+  });
+
+  it('asks nothing without current: promote or without hand tags', async () => {
+    const asked: unknown[] = [];
+    const never = deps(async () => { throw new Error('asked'); }, asked);
+    await verifyHandTags(inputs, never, { lines: { current: 'backport' } }, commit, handTagged);
+    await verifyHandTags(inputs, never, promote, commit, { ...handTagged, releases: [release()] as any });
+    expect(asked).toEqual([]);
+  });
+});
+
 describe('failureOf a plan (#552 D1)', () => {
   const plan = { commit: 'c', fingerprint: 'f', tags: [{ name: 'Acme.Core/v1.2.0' }] };
 
@@ -41,6 +76,12 @@ describe('allVersionsOf (#552 D10)', () => {
     };
     const versions = await allVersionsOf(exec, '.', ['Acme.Core', '@acme/util', 'Acme.New'], [release({ version: '1.2.0', tagOutcome: 'planned' })] as any);
     expect(versions).toEqual({ 'Acme.Core': '1.2.0', '@acme/util': '2.1.0' });
+  });
+
+  it('on a release line, gives a package the line names a major its last tag of that major (#638 D2)', async () => {
+    const exec: Exec = async () => ({ code: 0, stdout: 'Acme.Core/v10.0.0\nAcme.Core/v11.0.1-rc.1\nAcme.Std/v3.0.0\nAcme.Old/v11.0.0\n', stderr: '' });
+    const versions = await allVersionsOf(exec, '.', ['Acme.Core', 'Acme.Std', 'Acme.Old'], [], { 'Acme.Core': 10, 'Acme.Old': 10 });
+    expect(versions).toEqual({ 'Acme.Core': '10.0.0', 'Acme.Std': '3.0.0' });
   });
 });
 
@@ -77,6 +118,13 @@ describe('buildEnvironment (#568 D10b)', () => {
     expect(buildEnvironment({ dependencyRanges: 'major-bounded' })).toEqual({ MintPlayerVersioningDependencyRanges: 'major-bounded' });
     expect(buildEnvironment({ dependencyRanges: 'minimum' })).toEqual({});
     expect(buildEnvironment({})).toEqual({});
+  });
+
+  it('hands a release line\'s package majors to the pack (#638 D2)', () => {
+    expect(buildEnvironment({}, { 'Acme.Core': 10, '@acme/ng': 21 })).toEqual({ MintPlayerVersioningMajors: '@acme/ng=21;Acme.Core=10' });
+    expect(buildEnvironment({ dependencyRanges: 'major-bounded' }, {}))
+      .toEqual({ MintPlayerVersioningDependencyRanges: 'major-bounded' });
+    expect(buildEnvironment({}, undefined)).toEqual({});
   });
 });
 

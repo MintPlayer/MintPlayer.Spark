@@ -632,6 +632,33 @@ public class GitHubEventsRecipientTests : CoverageRavenTest
     private static IEnumerable<BackportRequested> Backports(RecordingMessageBus bus)
         => bus.Of<ForgeWebhookMessage<BackportRequested>>().Select(m => m.Event);
 
+    private static string TagPushJson(string reference, bool created = true, bool deleted = false, bool bot = false)
+    {
+        var json = PushJson(after: HeadSha, before: new string('0', 40))
+            .Replace("\"ref\": \"refs/heads/master\"", $"\"ref\": \"{reference}\"", StringComparison.Ordinal)
+            .Replace("\"created\": false, \"deleted\": false", $"\"created\": {(created ? "true" : "false")}, \"deleted\": {(deleted ? "true" : "false")}", StringComparison.Ordinal);
+        return bot ? json.Replace("\"type\": \"Organization\"", "\"type\": \"Bot\"", StringComparison.Ordinal) : json;
+    }
+
+    /// <summary>Segment P (M6): a version tag a person creates is raised for the hand-tag check; a deleted tag, a bot's
+    /// tag and a branch push are not.</summary>
+    [Fact]
+    public async Task A_tag_a_person_creates_is_raised_and_a_deleted_or_bot_tag_is_not()
+    {
+        using var store = GetDocumentStore();
+        using var session = store.OpenAsyncSession();
+        await SeedRepositoryAsync(session, EDeleteBranchPolicy.Inherit);
+        var recipient = CreateRecipient(session, out var bus);
+
+        await recipient.HandleAsync(Message("push", TagPushJson("refs/tags/Acme.Core/v11.5.0")));
+        await recipient.HandleAsync(Message("push", TagPushJson("refs/tags/Acme.Core/v11.6.0", created: false, deleted: true)));
+        await recipient.HandleAsync(Message("push", TagPushJson("refs/tags/Acme.Core/v11.7.0", bot: true)));
+        await recipient.HandleAsync(Message("push", PushJson(after: HeadSha, before: PreviousTip)));
+
+        bus.Of<ForgeWebhookMessage<TagPushed>>().Select(m => m.Event).Should().Equal(
+            new TagPushed(Repository.DocumentId(EForgeProvider.GitHub, RepoId), "Acme.Core/v11.5.0", HeadSha, "acme"));
+    }
+
     /// <summary>
     /// #153 D10: the backport labels a pull request carried as it merged ask for those lines, as the merger (who may be the
     /// queue's bot: the label was applied by someone, and the merge needed write access). The merge is still raised.

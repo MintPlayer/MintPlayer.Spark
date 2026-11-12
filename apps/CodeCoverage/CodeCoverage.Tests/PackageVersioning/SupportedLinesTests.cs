@@ -33,6 +33,25 @@ public class SupportedLinesTests
         => SupportedLines.Evaluate(Pattern, Branches, Releases, overrides ?? new Dictionary<string, string>()).ToDictionary(l => l.Line.ToString());
 
     [Fact]
+    public void A_promoted_current_line_takes_no_backports_even_when_kept_while_the_past_lines_still_do()
+    {
+        // Segment P, P0: the current lines' changes arrive by /release, so a backport would only block the next promotion.
+        var lines = SupportedLines.Evaluate(Pattern, Branches, Releases, new Dictionary<string, string> { ["dotnet-10.x"] = "keep" }, promotesCurrent: true)
+            .ToDictionary(l => l.Line.ToString());
+
+        (lines["dotnet-10.x"].Supported, lines["dotnet-10.x"].Current, lines["dotnet-10.x"].Reason).Should().Be((false, true, SupportedLines.PromotedReason));
+        (lines["angular-22.x"].Supported, lines["angular-22.x"].Current).Should().Be((false, true));
+        lines["dotnet-8.x"].Supported.Should().BeTrue("a past line still takes backports");
+    }
+
+    [Theory]
+    [InlineData("versioning:\n  lines:\n    current: promote\n    workflow: release.yml\n", true)]
+    [InlineData("versioning:\n  lines:\n    current: backport\n", false)]
+    [InlineData(null, false)]
+    public void Promotion_is_read_from_the_lines_current_mode(string? yml, bool promotes)
+        => SupportedLines.PromotesCurrent(yml).Should().Be(promotes);
+
+    [Fact]
     public void An_older_line_whose_major_the_lifecycle_data_lacks_is_not_supported_unless_kept()
     {
         var line = SupportedLines.Evaluate(Pattern, ["release/dotnet-7.x", "release/dotnet-10.x"], Releases, new Dictionary<string, string>())

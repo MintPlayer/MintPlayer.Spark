@@ -34,6 +34,9 @@ lines**, which includes it). It plans from the default branch and opens one pull
   (a built-in version when nuget.org cannot be read);
 - replaces hand-edited versions with `0.0.0-PLACEHOLDER`;
 - adds the action step, and `permissions: contents: write` and `id-token: write`, to the publish workflow;
+- adds the "Decide whether this run publishes" step behind it, and its `if:` to every step from the first pack or
+  publish to the last, so the default branch packs only what it released (without it, a default branch with release
+  lines and a package with no tag yet fails its pack with MPV005; a step with its own `if:` is noted instead);
 - gives the checkout of every job that runs `dotnet` `fetch-depth: 0`;
 - adds a `versioning:` section to `coverage.yml`.
 
@@ -41,9 +44,21 @@ Each of these is a rule that checks before it edits, so **Set up features** can 
 was onboarded before. It then opens a pull request with only what is still missing (for example a checkout added
 since), listed per rule under "Changes", or answers that there is nothing to change.
 
-Review and merge it. At the merge, the app pushes one **seed tag** per package at the merge commit, from the
-version the pull request replaced, so no package restarts at `0.0.0`. If the seeds cannot be pushed, the first
-versioning run waits (`503 seeds`) rather than release an untagged package from scratch.
+Review and merge it. At the merge, the app **tags the history** (#638): the git writer walks the default branch and
+every release line (renamed old lines included, never a feature branch), reads each package's declared version per
+commit, and tags **every version at its earliest occurrence**. A version of major N goes on `release/*-N.x` when that
+line exists, else on the default branch, so each N.x tag is reachable from its line. Tags that exist are left alone.
+A package whose history declares nothing still gets one **seed tag** at the merge commit, from the version the pull
+request replaced, so no package restarts at `0.0.0`. If the tags cannot be pushed, the first versioning run waits
+(`503 seeds`) rather than release an untagged package from scratch.
+
+**Running Set up features again** backfills whatever version is still missing its tag, at once when there is nothing
+else to change. It also lists the **App's own tags** that sit away from their version's earliest occurrence (Tools'
+first line release tagged 14 packages `v10.0.0` at a commit that packs 11.x) and asks once: **Move them** force-pushes
+each one onto its earliest commit, leased on the tag the App read, so a tag that changed meanwhile is left alone.
+**Leave them** changes nothing. A tag a person pushed is never listed, and never moved. When the re-run opens a pull
+request, the answer waits for its merge, and the merge backfills and moves even when every package is tagged already
+and there is no seed to push (`docs/onboarding_merge_backfill_PRD.md` D1; Tools #56).
 
 A repository is versioned when its **default branch's** `coverage.yml` has a `versioning:` section, even an empty
 one. A branch cannot change the section for itself.
@@ -71,11 +86,26 @@ steps:
   - run: dotnet test -c Release --no-build
   - id: versioning
     uses: MintPlayer/MintPlayer.Spark/apps/CodeCoverage/versioning-action@versioning-v1
+  # With release lines on, the default branch tags nothing: a package with no tag yet would fail its
+  # pack (MPV005). The release lines pack and publish; the default branch only when it released.
+  - id: publishes
+    env:
+      RELEASED: ${{ steps.versioning.outputs.released }}
+      DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+    run: |
+      if [ "$GITHUB_REF_NAME" = "$DEFAULT_BRANCH" ] && { [ -z "$RELEASED" ] || [ "$RELEASED" = "[]" ]; }; then
+        echo "value=false" >> "$GITHUB_OUTPUT"
+      else
+        echo "value=true" >> "$GITHUB_OUTPUT"
+      fi
   # No --no-build: the versions are decided after the tests, so pack builds again to stamp them into the
   # assemblies (--no-build also skips restore, which leaves the nuspec's dependency versions stale).
-  - run: dotnet pack -c Release -o nupkgs
-  - run: dotnet nuget push 'nupkgs/*.nupkg' --source https://api.nuget.org/v3/index.json --api-key "${{ secrets.NUGET_API_KEY }}" --skip-duplicate
-  - uses: MintPlayer/github-actions/publish-npm-packages@b08fbddf0b285a8633ac138b89d79ceb8cc8c888
+  - if: steps.publishes.outputs.value == 'true'
+    run: dotnet pack -c Release -o nupkgs
+  - if: steps.publishes.outputs.value == 'true'
+    run: dotnet nuget push 'nupkgs/*.nupkg' --source https://api.nuget.org/v3/index.json --api-key "${{ secrets.NUGET_API_KEY }}" --skip-duplicate
+  - if: steps.publishes.outputs.value == 'true'
+    uses: MintPlayer/github-actions/publish-npm-packages@b08fbddf0b285a8633ac138b89d79ceb8cc8c888
     with:
       folder: dist/libs
       registries: |
@@ -98,6 +128,14 @@ version from the tags reachable from HEAD, so every checkout of a job that runs 
   out of pull-request workflows. A
   multi-targeted project gets the same targets in its outer build, the one that packs (`buildMultiTargeting/`), and a
   pack that would still write a placeholder nuspec fails with `MPV004`.
+- **On a release line, the line's major** (#638). On `release/dotnet-10.x`, a package anchored to the platform packs
+  its highest tag **of major 10**, even when a `v11.*` tag of the default branch is reachable from the line. The
+  action passes the map as `MintPlayerVersioningMajors` (`id=major;…`), only for packages whose major follows the
+  line's ecosystem. A free package (a netstandard library) or another ecosystem's keeps its highest tag. A named
+  package with no tag of its major gets warning `MPV006`. The onboarding turns it into an error through
+  `MSBuildWarningsAsErrors` in `Directory.Build.props`, for now. Remove that line to make it a warning again.
+  The onboarding's publish step also fails a release whose pack did not produce a `.nupkg` at every planned version,
+  instead of finishing green with nothing published.
 - **An explicit version wins** (#544 D1). `dotnet pack -p:Version=1.2.3` (or a `Version` passed down from a parent
   build) skips the target entirely: no git call, no MPV001, and the project stays packable. `-p:PackageVersion`
   alone sets `Version` too, so the assembly and the package agree. A `<Version>` in a csproj does **not** win, because
@@ -256,10 +294,96 @@ everything above still applies unchanged.
 - **Workflows.** Run the versioning workflow on `release/**` pushes and pull requests too (MintPlayer.Spark's
   `dotnet-build-master.yml` and `pull-request.yml` do), and protect `release/**` with a ruleset ([backports.md](backports.md)).
 
+### Promoted lines: `/release` (segment P)
+
+With `current: promote`, the **current** line of each ecosystem (the highest major among its line branches) no longer
+takes cherry-picked backports. A maintainer moves it to a green default-branch commit with a pull request or issue
+comment instead; older lines keep taking backports.
+
+```yaml
+versioning:
+  lines:
+    current: promote                    # backport (the default) cherry-picks onto every line
+    trigger: manual                     # the only trigger for now: a /release comment
+    workflow: dotnet-build-master.yml   # its successful run on the default branch marks a commit green
+```
+
+- **`/release`** promotes every current line whose ecosystem changed since the line's last promotion, to the newest
+  default-branch commit whose `workflow` run succeeded. `/release <sha>` takes that green commit instead;
+  `/release dotnet-11.x` (or the branch name) and `/release all` promote the named lines, or all of them, changed or
+  not. The App answers with a comment that lists each line and any newer commit left out.
+- **Who may.** The commenter needs the repository's release role (maintain by default; *Release role* on the
+  repository or the account).
+- **The commit.** A promotion is a merge commit (the green commit's tree, parents the line's tip and the green commit)
+  that the App pushes with a lease. Ruleset 3 gives the App an `exempt` bypass for it (merge-queue.md). The line's own
+  run then tests the commit and publishes.
+- **Line-only changes refuse.** A line that holds a change the default branch does not (a hotfix made on the line)
+  is not promoted; the comment names the paths and the commits. Bring the change to the default branch first.
+- **Versions.** `/release Acme.Core@11.4.0` releases that exact version: the App places a `Acme.Core/v11.4.0` tag on
+  the promotion commit in the same push. The version must be unpublished (nuget.org and npm are asked), carry the
+  line's major, and lie above the tag it follows: the package's highest tag reachable from the line's tip or the green
+  commit (the promotion's two parents). Otherwise the line is not promoted.
+- **Tags pushed by hand for the current line.** A valid package tag (`<id>/v<version>`) of the current line's major
+  is removed at once, recorded, and placed on the next promotion of its line. Left in place, it would become reachable
+  from the line at that promotion and move every later version. The App comments on the tagged commit and names the
+  pusher. A recorded version that no longer fits by the time of the promotion (the line released past it) is reported
+  in the comment and forgotten. Tags of older lines follow the rules below and stay where they are.
+- **The release run checks.** With `current: promote`, the versioning step of a line's run asks
+  `POST /api/versioning/tags/verify` about every hand tag on the commit, and fails on one the App did not place there,
+  or when the server cannot be reached. The check sees tags, not who copied an annotation onto one: a ruleset that
+  lets only the App and `github-actions` create `*/v*` tags closes that gap, and is left to the repository owner.
+
+### Tags pushed by hand on release lines (segment T)
+
+In every repository with `lines:`, promoted or not, the App checks each package tag a person pushes. It compares the
+tag with **the one tag it follows**: the package's highest tag reachable from the tagged commit, the same tag the pack
+reads (`tag --merged HEAD`), **of the tag's own major** when a release line has that major (#638). On an older line,
+the default branch's newer tags are reachable too: `Hsts/v10.0.2` on `release/dotnet-10.x` follows the highest
+`Hsts/v10.*`, not `Hsts/v11.0.1-rc.1`. A major with no line of its own is compared with every tag, so it is still
+refused. Other tags in the repository, on other branches or lines, play no part.
+
+- **Valid:** above the tag it follows, with the same major (`Acme.Core/v8.1.2` after `Acme.Core/v8.1.1`). Any higher
+  version is accepted, not only the next one, so a skipped patch is fine.
+- **Without a tag to follow** (a package's first tag), the major must be one of a release line of its ecosystem:
+  `v8.1.2` needs `release/dotnet-8.x`.
+- **Invalid tags are deleted**, with a commit comment that names the pusher and the reason: a lower or equal version
+  (`v8.1.0` after `v8.1.1`), or another major (`v7.0.4` after `v8.1.1`, or `v9.0.0` on the dotnet-8 line). A new
+  major starts with its release line, never with a hand tag. Nothing builds on a refused tag.
+- **Valid tags stay** on their commit and are recorded as placed there (no comment), so a promoted repository's
+  older-line run passes `tags/verify`. The current line's tags in a promoted repository are the exception above.
+- A tag whose id is no package at its commit (`schemas/v3`) is left alone.
+
 **Platform lifecycle page.** The app collects each platform's support phases nightly (.NET from
 `releases-index.json`; Angular, React, Vue and Node.js from endoflife.date; a framework's preview major from its npm
 `next` dist-tag). Open *Guides → Platform lifecycle* to see which majors are in preview, active, maintenance or end of
 life, and so which lines are worth keeping.
+
+### From multi-targeting to release lines (#638)
+
+A library that targets `net10.0;net11.0` ships one package for both platforms. Release lines ship one package per
+platform major instead, so each target framework moves to its own branch:
+
+- **The default branch** (and its current line, `release/dotnet-11.x`) drops the older target:
+  `<TargetFrameworks>net11.0</TargetFrameworks>`, and its framework packages and `global.json` move to 11.
+- **The older line** (`release/dotnet-10.x`) keeps only `net10.0`. When **Set up features** creates it from a commit
+  that still targets both, the bot opens a pull request into it (branch `mintplayer/narrow-dotnet-10.x`). That pull
+  request drops the higher target frameworks, sets `global.json` to the line's latest SDK and the framework packages
+  to its latest runtime (both from the platform lifecycle page). It lists every `#if NET11_0_OR_GREATER` and every
+  MSBuild `Condition` naming `net11.0`, for you to resolve: on the line they are dead code or wrong. Review it, fix
+  the listed conditionals on its branch, and merge it before the line's first release.
+- **The versions:** the line's packages release as `10.x` from their own tags, which the history backfill placed on the
+  line. The default branch's `11.x` tags do not leak into the line's pack (`MPV006` when a package has no `10.*` tag).
+- **Backports after the split:** a pull request that only drops `net10.0` on the default branch (or moves the SDK or a
+  framework package off 10) changes nothing on the 10.x line. Its backport keeps the line's value and says so ("This line
+  keeps its platform …"). When nothing else is left, the backport reports "nothing left to backport after
+  normalization" instead of opening an empty pull request. A fix that comes with such a move backports cleanly, without
+  the move.
+
+**Keep `<TargetFrameworks>` (plural) with one value.** Switching to the singular `<TargetFramework>` silently changes
+MSBuild logic keyed on `$(TargetFrameworks)`. In Tools, a "pack the analyzer from the first TFM only" condition stopped
+matching. A client build that passed `TargetFramework` to a single-TFM server project raced the solution's own build
+of it. The narrowing pull request keeps the plural element. If you do switch, search the repository for
+`$(TargetFrameworks)` and `TargetFramework=` first.
 
 ## GitHub Releases and pull request titles (D14, D15)
 
@@ -328,14 +452,16 @@ Versioning is GitHub only (D16). On GitLab and Bitbucket repositories the Versio
 |---|---|
 | `MPV001: No tag '<id>/v<version>' is reachable from HEAD` | The package has no tag yet, or the checkout is shallow and has no tags (`fetch-depth: 0`, or let the action fetch before the pack). |
 | `MPV004: <id> would be packed at 0.0.0-PLACEHOLDER` | The project skipped the versioning target (`MintPlayerVersioningSkip`) but is still packable, or it uses `MintPlayer.Versioning.MSBuild` 1.0.0, whose targets a multi-targeted project's outer build never imports. Update the package. |
-| A package restarted at `X.0.0` | It had no seed tag. Push `<id>/v<last published>` on a commit before the release and re-run. |
+| `MPV006: on line N.x, <id> has no tag of major N` | The release line packs each platform-anchored package at the line's major, and this package has no `<id>/vN.*` tag reachable from the line. Run **Set up features** again: it tags every version the history declares. On an older line cut before versioning, check that the tags are on the line's commits and not only on the default branch's. |
+| A package restarted at `X.0.0` | It had no seed tag. Run **Set up features** again to tag the versions its history declares, or push `<id>/v<last published>` on a commit before the release, and re-run. |
+| A release run is green but nothing new is on the feed | The pack produced other versions than the run planned (an older line packing the default branch's newer tags). The publish step's check fails such a run now. Run **Set up features** again, and move the App's misplaced tags when it asks. |
 | The run fails: "a major never goes down" | The computed major is below the last tag's, or the version already exists (D7). Anchor the package `free`, or fix the target framework. |
 | `phase: release` fails with `stale-plan` | A version tag was added, moved or deleted between the plan and the release (#552 D3). Use **"Re-run all jobs"**, which plans again. "Re-run failed jobs" reuses the stale plan. |
 | `phase: release` says the plan was made for another commit | The `plan` input is from another run, or the branch moved. Use "Re-run all jobs". |
 | The run answers `503 seeds` | The onboarding's seed tags could not be pushed yet. The run waits instead of releasing untagged packages. |
 | Nothing is released after a merge | No input of any package changed: only ignored files did, or only files outside the project directories. |
 | The run failed or was cancelled after the Version step | The tags exist but some packages were not pushed. **Re-run it** (the commit graph's re-run button, or GitHub's "Re-run failed jobs"). The re-run finds its own tags, releases the same versions and pushes what is missing. A tag whose package never ships is harmless: the next release of that package gets the next version. |
-| `MPV005: <id> has no version tag on this push build` | A single project was packed on its own on a push build, and it has no tag. Pass `-p:Version`, tag it, pack the solution instead, or set `IsPackable=false` on a project that is never released. |
+| `MPV005: <id> has no version tag on this push build` | A single project was packed on its own on a push build, and it has no tag. On the default branch of a repository with release lines this is the onboarding's "Decide whether this run publishes" step missing: the default branch tags nothing there, so a package that declared no version (no seed tag) has none until a line releases it. Add the step and its `if:` as in the example above. Otherwise pass `-p:Version`, tag it, pack the solution instead, or set `IsPackable=false` on a project that is never released. |
 | `-p:Version` is ignored | `MintPlayer.Versioning.MSBuild` older than the #544 release. Update the package. |
 | Restore warns `NU1603: <Q> depends on <P> (>= X) but <P> X was not found` | A run was cancelled or failed partway through its push, and a later release of P skipped the dangling version X. Re-run the failed run **before** the next one, so that it publishes P X. |
 | Restore fails with **403** from `nuget.pkg.github.com` for `MintPlayer.Versioning.MSBuild` | The repository restores from GitHub Packages without a mapping (see "GitHub Packages as a restore source" above). Merge the onboarding's `nuget.config`, or map the id to nuget.org yourself. |

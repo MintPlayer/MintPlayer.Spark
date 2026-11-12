@@ -142,6 +142,28 @@ public class BackportRecipientTests : CoverageRavenTest
     }
 
     [Fact]
+    public async Task A_promoted_current_line_takes_no_backport_while_a_past_line_still_does()
+    {
+        using var store = GetDocumentStore();
+        integration.GetFileContentAsync(Arg.Any<Repository>(), "main", CoverageYml.FileName, Arg.Any<CancellationToken>())
+            .Returns("versioning:\n  lines:\n    current: promote\n    trigger: manual\n    workflow: release.yml\n");
+        foreach (var major in new[] { "10", "11" })
+            git.GetBranchHeadAsync(Arg.Any<Repository>(), $"release/dotnet-{major}.x", Arg.Any<CancellationToken>()).Returns(new string(major[1], 40));
+        git.ListBranchesAsync(Arg.Any<Repository>(), Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(["release/dotnet-10.x", "release/dotnet-11.x"]);
+        GitWriterBackportRequest? sent = null;
+        writer.VersioningBackportAsync(Arg.Do<GitWriterBackportRequest>(r => sent = r), Arg.Any<CancellationToken>())
+            .Returns(new GitWriterBackportResult(GitWriterBackportResult.Backported, null, "squash", null,
+                [Target(GitWriterBackportTargetResult.Exists) with { Branch = "release/dotnet-10.x" }], null, 1));
+
+        await HandleAsync(store, "maintainer", EBackportSource.Comment, "dotnet-11.x");
+        forge.Comments.Single().Body.Should().Contain("`release/dotnet-11.x` is a current line, promoted with `/release`");
+        await writer.DidNotReceiveWithAnyArgs().VersioningBackportAsync(default!, default);
+
+        await HandleAsync(store, "maintainer", EBackportSource.Comment, "dotnet-10.x", "dotnet-11.x");
+        sent!.Targets.Select(t => t.Branch).Should().Equal("release/dotnet-10.x");
+    }
+
+    [Fact]
     public async Task A_conflict_names_the_files_and_the_cherry_pick_and_a_failure_its_reason()
     {
         using var store = GetDocumentStore();
@@ -153,11 +175,17 @@ public class BackportRecipientTests : CoverageRavenTest
         forge.Comments.Single().Body.Should().Contain("- `release/8.x`: conflicts; nothing was pushed (see below).")
             .And.Contain("`src/Guard.cs`").And.Contain($"git cherry-pick -x {Merge}\n");
         forge.OpenedPullRequests.Should().BeEmpty();
+        var conflicted = await AttemptAsync(store, "release/8.x");
+        conflicted.Outcome.Should().Be(BackportAttempt.Conflicted);
+        conflicted.Detail.Should().Be("src/Guard.cs");
+        conflicted.SourceSha.Should().Be(Merge);
 
         WriterAnswers(new GitWriterBackportResult("failed", "clone-failed", null, null, null, "remote hung up", 1));
         await HandleAsync(store, "maintainer", EBackportSource.Label, "8.x");
 
         forge.Comments[1].Body.Should().Be("The backport failed (clone-failed). remote hung up");
+        // A retry overwrites the record: the latest outcome holds.
+        (await AttemptAsync(store, "release/8.x")).Should().BeEquivalentTo(new { Outcome = BackportAttempt.Failed, Detail = "The backport failed (clone-failed). remote hung up" });
     }
 
     [Fact]
@@ -181,6 +209,9 @@ public class BackportRecipientTests : CoverageRavenTest
             + "- `release/7.x`: already holds this change.\n"
             + "- `release/6.x`: the push was rejected. protected branch");
         forge.OpenedPullRequests.Should().BeEmpty();
+        (await AttemptAsync(store, "release/8.x")).Outcome.Should().Be(BackportAttempt.BranchExists);
+        (await AttemptAsync(store, "release/7.x")).Outcome.Should().Be(BackportAttempt.AlreadyOnLine);
+        (await AttemptAsync(store, "release/6.x")).Should().BeEquivalentTo(new { Outcome = BackportAttempt.Failed, Detail = "the push was rejected. protected branch" });
     }
 
     [Fact]
@@ -195,6 +226,29 @@ public class BackportRecipientTests : CoverageRavenTest
         forge.Comments.Single().Body.Should().Be("Backports:\n\n- `release/8.x`: already holds this change.\n\n"
             + "`release/8.x` keeps `@acme/ui` at `^8.4.0`: the change raised it from `^9.1.0` to `^9.2.0` on `main`, above this line's major, "
             + "so the line probably needs what `9.2.0` brought, released on its own major (8).");
+    }
+
+    [Fact]
+    public async Task D13_a_platform_only_move_has_nothing_left_and_a_mixed_one_says_what_the_line_kept()
+    {
+        // #638 D13: Tools' master went net10.0;net11.0 → net11.0; release/dotnet-10.x keeps net10.0.
+        using var store = GetDocumentStore();
+        git.GetBranchHeadAsync(Arg.Any<Repository>(), "release/7.x", Arg.Any<CancellationToken>()).Returns(new string('7', 40));
+        GitWriterPlatformKept tfm = new("Lib/Lib.csproj", "TargetFramework", "net10.0;net11.0", "net11.0", "net10.0");
+        WriterAnswers(new GitWriterBackportResult(GitWriterBackportResult.Backported, null, "squash", null,
+        [
+            Target(GitWriterBackportTargetResult.Created) with { Kept = [tfm] },
+            Target(GitWriterBackportTargetResult.Empty) with { Branch = "release/7.x", Head = "backport/7-7.x", Kept = [tfm] },
+        ], null, 1));
+
+        await HandleAsync(store, "maintainer", EBackportSource.Label, "8.x", "7.x");
+
+        forge.OpenedPullRequests.Should().ContainSingle().Which.Body.Should().Contain(
+            "This line keeps its platform where the change moves it off the line's major:\n"
+            + "- `Lib/Lib.csproj`: TargetFramework stays `net10.0` (the change went from `net10.0;net11.0` to `net11.0`)\n");
+        forge.Comments.Single().Body.Should().Contain(
+            "- `release/7.x`: nothing left to backport after normalization: the change only moves the platform off this line's major.");
+        (await AttemptAsync(store, "release/7.x")).Should().BeEquivalentTo(new { Outcome = BackportAttempt.AlreadyOnLine, Detail = "nothing left after normalization" });
     }
 
     [Fact]
@@ -214,7 +268,15 @@ public class BackportRecipientTests : CoverageRavenTest
         await writer.Received(1).VersioningBackportAsync(
             Arg.Is<GitWriterBackportRequest>(r => r.Subjects.SequenceEqual(new[] { "fix: guard", "(no subject)", new string('x', 256) })),
             Arg.Any<CancellationToken>());
-        forge.Comments.Should().BeEmpty("a backport with no targets to report says nothing");
+        // Segment B: a line the writer does not report is a lost backport, so it is said and recorded.
+        forge.Comments.Single().Body.Should().Contain("- `release/8.x`: the git writer did not report this line; add the label again to retry.");
+        (await AttemptAsync(store, "release/8.x")).Outcome.Should().Be(BackportAttempt.Failed);
+    }
+
+    private static async Task<BackportAttempt> AttemptAsync(IDocumentStore store, string branch, string? line = null)
+    {
+        using var check = store.OpenAsyncSession();
+        return (await check.LoadAsync<BackportAttempt>(BackportAttempt.DocumentId(EForgeProvider.GitHub, 0, 7, line ?? branch)))!;
     }
 
     public static TheoryData<Exception> ForgeFailures => new()
@@ -233,6 +295,10 @@ public class BackportRecipientTests : CoverageRavenTest
         await HandleAsync(store, "maintainer", EBackportSource.Comment, "8.x");
 
         forge.Comments.Should().BeEmpty();
+        // Segment B: no comment could be posted, so the repository page shows it, under the line's name as asked.
+        var attempt = await AttemptAsync(store, "8.x");
+        attempt.Outcome.Should().Be(BackportAttempt.Failed);
+        attempt.Detail.Should().StartWith(thrown is ForgeAccessDeniedException ? "the App is missing the pull_requests=write permission" : "the forge answered an error");
     }
 
     [Fact]
@@ -335,6 +401,7 @@ public class BackportRecipientTests : CoverageRavenTest
         forge.DraftHeads.Should().Equal("backport/7-8.x");
         forge.OpenedPullRequests.Single().Body.Should().Contain("**It conflicts**").And.EndWith("- `src/Guard.cs`\n\n" + Marker7);
         forge.Comments.Single().Body.Should().Contain("a draft with 1 conflicting file to resolve").And.NotContain("conflicts on:");
+        (await AttemptAsync(store, "release/8.x")).Should().BeEquivalentTo(new { Outcome = BackportAttempt.Drafted, PullRequest = (int?)1000, Detail = "src/Guard.cs" });
     }
 
     [Theory]   // T1: a /backport comment (with or without --draft) by anyone below write runs nothing
@@ -406,10 +473,11 @@ public class BackportRecipientTests : CoverageRavenTest
             Arg.Is<GitWriterBackportRequest>(r => r.Targets.Single().RegeneratedPaths!.SequenceEqual(new[] { "**/packages.lock.json" })), Arg.Any<CancellationToken>());
         forge.OpenedPullRequests.Should().BeEmpty();
         await regenerations.Received(1).BeginAsync(Arg.Any<Repository>(), Arg.Is<BackportRegeneration>(r =>
-            r.Head == "backport/7-8.x" && r.Branch == "release/8.x" && r.Number == 7 && r.Sha == new string('d', 40)
+            r.Head == "backport/7-8.x" && r.Branch == "release/8.x" && r.Number == 7 && r.Sha == new string('d', 40) && r.SourceSha == Merge
             && r.Workflows.SequenceEqual(new[] { "lock.yml", "regenerate.yml" })
             && r.Paths.Count == 2 && r.Title == "[8.x] fix: guard" && r.Body.StartsWith("Backport of #7 to `release/8.x`.")), Arg.Any<CancellationToken>());
         forge.Comments.Single().Body.Should().Contain("- `release/8.x`: `backport/7-8.x` is pushed; its pull request opens once `lock.yml`, `regenerate.yml` regenerated 2 files on the line");
+        (await AttemptAsync(store, "release/8.x")).Should().BeEquivalentTo(new { Outcome = BackportAttempt.Regenerating, PullRequest = (int?)null });
     }
 
     [Fact]
@@ -484,7 +552,8 @@ public class BackportRecipientTests : CoverageRavenTest
         // The approval floor and a writer's approval know it as the App's own backport.
         using var check = store.OpenAsyncSession();
         var record = await check.LoadAsync<BackportPullRequest>(BackportPullRequest.DocumentId(RepositoryId, 1000));
-        (record.Number, record.Source, record.Branch).Should().Be((1000, 7, "release/8.x"));
+        (record.Number, record.Source, record.Branch, record.SourceSha).Should().Be((1000, 7, "release/8.x", Merge));
+        (await AttemptAsync(store, "release/8.x")).Should().BeEquivalentTo(new { Outcome = BackportAttempt.Opened, PullRequest = (int?)1000 });
     }
 
     [Theory]

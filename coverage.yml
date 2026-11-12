@@ -73,8 +73,12 @@ versioning:
   packages:
     "@mintplayer/ng-spark": { prerelease: upstream }
     MintPlayer.Versioning.MSBuild: { prerelease: upstream }
-  # Release lines (#568 D15): packages release only from release/{ecosystem}-{major}.x, never from master. A change
-  # ships once its pull request is backported onto a line (D16: the current line is always labelled). Lines today:
+  # Release lines (#568 D15): packages release only from release/{ecosystem}-{major}.x, never from master. Lines today:
   # release/dotnet-11.x and release/angular-22.x. The past lines (dotnet-10.x, angular-21.x) are cut only when a fix
   # must ship there, because their cut points predate tag versioning (#568 M11, owner 2026-11-06).
-  lines: {}
+  # Segment P (docs/release_lines_recovery_plan.md §2b): the current lines take no backports; a maintainer's `/release`
+  # comment moves them to the newest master commit whose dotnet-build-master.yml run succeeded. Past lines keep backports.
+  lines:
+    current: promote
+    trigger: manual
+    workflow: dotnet-build-master.yml

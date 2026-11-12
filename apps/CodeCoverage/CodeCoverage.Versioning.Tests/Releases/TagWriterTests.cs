@@ -69,6 +69,28 @@ public class TagWriterTests
         => new(VersionTag.For(id, PackageVersion.Parse(version)), commit, new TagAnnotation(Hash, null));
 
     [Fact]
+    public async Task D9_a_move_is_leased_on_the_tag_object_it_read_so_a_changed_tag_is_left_alone()
+    {
+        using var repository = new Repository();
+        (await repository.Writer().WriteAsync([Tag("Core", "10.0.0", repository.Second), Tag("Mapper", "10.0.0", repository.Second)]))
+            .Should().OnlyContain(r => r.Outcome == TagOutcome.Created);
+        var seen = (await new GitCli(repository.Remote).RunAsync(["rev-parse", "refs/tags/Core/v10.0.0"])).Text.Trim();
+        var mover = new TagMover(new CliTagGit(repository.Git, token: null), "origin", Bot);
+        var core = VersionTag.For("Core", PackageVersion.Parse("10.0.0"));
+        var mapper = VersionTag.For("Mapper", PackageVersion.Parse("10.0.0"));
+
+        // Mapper's lease names an object the remote's tag is not (a person re-tagged it since it was read).
+        var results = await mover.MoveAsync([
+            new TagMove(core, repository.First, seen, new TagAnnotation(null, null)),
+            new TagMove(mapper, repository.First, repository.Second, new TagAnnotation(null, null)),
+        ]);
+
+        results.Select(r => (r.Tag.Name, r.Moved)).Should().Equal([("Core/v10.0.0", true), ("Mapper/v10.0.0", false)]);
+        (await repository.RemoteTagCommitAsync("Core/v10.0.0")).Should().Be(repository.First);
+        (await repository.RemoteTagCommitAsync("Mapper/v10.0.0")).Should().Be(repository.Second, "a failed lease leaves the tag where it was");
+    }
+
+    [Fact]
     public async Task Pushes_annotated_tags_and_a_rerun_writes_nothing()
     {
         using var repository = new Repository();

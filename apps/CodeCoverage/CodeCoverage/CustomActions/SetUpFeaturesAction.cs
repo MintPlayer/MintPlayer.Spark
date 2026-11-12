@@ -70,6 +70,25 @@ public partial class SetUpFeaturesAction : SparkCustomAction
             return;
         }
 
+        // Step 1: the plan. It only reads, and it comes before the rulesets step because ruleset 3 depends on it: a pull
+        // request that turns on `current: promote` needs the App's bypass there (segment T).
+        OnboardingPlan planned;
+        try
+        {
+            var preview = await onboarding.PreviewAsync(repository, features, cancellationToken);
+            if (preview.Plan is null)
+            {
+                Report(new(VersioningOnboardingOutcome.Refused, preview.Refusal!), args);
+                return;
+            }
+            planned = preview.Plan;
+        }
+        catch (Exception ex) when (ex is GitWriterUnavailableException or HttpRequestException)
+        {
+            Report(new(VersioningOnboardingOutcome.Refused, manager.GetTranslatedMessage("onboarding.unavailable")), args);
+            return;
+        }
+
         // The rulesets step (#554 f4): with the merge queue picked, the popup and the rulesets form come here, and the
         // rulesets are applied at the confirmation with the admin's one-shot token, not at the merge.
         string? byHand = null;
@@ -92,27 +111,54 @@ public partial class SetUpFeaturesAction : SparkCustomAction
                     if (refused.Count > 0)
                         byHand = refused[0].Message;
                     else if ((rulesetPlans = await rulesets.ChooseAsync(read, cancellationToken,
-                        releaseLinesComing: features.Contains(EOnboardingFeature.ReleaseLines))) is null)
+                        releaseLinesComing: features.Contains(EOnboardingFeature.ReleaseLines), promotesLinesComing: planned.PromotesLines)) is null)
                         return;
                 }
             }
 
-            // Step 1: the plan, for a confirmation.
+            // The older release lines a package still targets (docs/onboarding_line_cuts_PRD.md D2): one question each, since
+            // a multi-target may be compatibility rather than support. There are few, and a prompt needs no picker type.
+            var olderLines = new List<string>();
+            var create = manager.GetTranslatedMessage("onboarding.olderLine.create");
+            var skip = manager.GetTranslatedMessage("onboarding.olderLine.skip");
+            foreach (var line in planned.OfferedLines)
+            {
+                manager.Retry.Action(manager.GetTranslatedMessage("onboarding.olderLine.title", line.Branch), [create, skip], create,
+                    message: manager.GetTranslatedMessage("onboarding.olderLine.message", line.Branch, line.TargetFramework ?? "", string.Join(", ", line.Packages)),
+                    cancellable: true);
+                var answer = manager.Retry.Result!.Option;
+                if (answer == RetryResult.CancelOption) return;
+                if (answer == create) olderLines.Add(line.Branch);
+            }
+            var cuts = planned.Cuts.Concat(planned.OfferedLines.Where(o => olderLines.Contains(o.Branch))).ToList();
+
+            // #638 D9: the App's own tags that the history places at an earlier commit (Tools released its 10.0.0s again on the
+            // line). One question for all of them; Move is the default. Tags a person pushed are never listed.
+            var moveTags = new List<string>();
+            if (planned.TagCollisions.Count > 0)
+            {
+                var move = manager.GetTranslatedMessage("onboarding.moveTags.move");
+                var leave = manager.GetTranslatedMessage("onboarding.moveTags.leave");
+                var listed = string.Join("; ", planned.TagCollisions.Take(20).Select(c => manager.GetTranslatedMessage("onboarding.moveTags.item",
+                    c.Name, Short(c.Current), Short(c.Commit), c.Branch)))
+                    + (planned.TagCollisions.Count > 20 ? $"; … (+{planned.TagCollisions.Count - 20})" : "");
+                manager.Retry.Action(manager.GetTranslatedMessage("onboarding.moveTags.title", planned.TagCollisions.Count), [move, leave], move,
+                    message: manager.GetTranslatedMessage("onboarding.moveTags.message", listed), cancellable: true);
+                var answer = manager.Retry.Result!.Option;
+                if (answer == RetryResult.CancelOption) return;
+                if (answer == move) moveTags.AddRange(planned.TagCollisions.Select(c => c.Name));
+            }
+
+            // Step 2: the plan, for a confirmation.
             VersioningOnboardingOutcome outcome;
             try
             {
-                var preview = await onboarding.PreviewAsync(repository, features, cancellationToken);
-                if (preview.Plan is not { } planned)
-                {
-                    Report(new(VersioningOnboardingOutcome.Refused, preview.Refusal!), args);
-                    return;
-                }
                 var open = manager.GetTranslatedMessage("onboarding.open");
                 manager.Retry.Action(manager.GetTranslatedMessage("onboarding.confirmTitle"), [open], open,
-                    message: Summary(planned, rulesetPlans, byHand), cancellable: true);
+                    message: Summary(planned, rulesetPlans, byHand, cuts), cancellable: true);
                 if (manager.Retry.Result!.Option == RetryResult.CancelOption) return;
 
-                outcome = await onboarding.OnboardAsync(repository, features, cancellationToken);
+                outcome = await onboarding.OnboardAsync(repository, features, olderLines, cancellationToken, moveTags);
             }
             catch (Exception ex) when (ex is GitWriterUnavailableException or HttpRequestException)
             {
@@ -135,6 +181,8 @@ public partial class SetUpFeaturesAction : SparkCustomAction
         }
     }
 
+    private static string Short(string sha) => sha.Length > 7 ? sha[..7] : sha;
+
     private static bool IsChecked(PersistentObject? form, EOnboardingFeature feature)
         => form?[feature.ToString()].GetValue<bool>() == true;
 
@@ -149,8 +197,10 @@ public partial class SetUpFeaturesAction : SparkCustomAction
     /// The plan as the confirmation's HTML (<see cref="HtmlMessage"/>): a list each for the features, the files, the renames
     /// and the settings switched on at the merge, the notes as lines, then the rulesets or why they are left by hand.
     /// </summary>
-    internal string Summary(OnboardingPlan plan, IReadOnlyList<RulesetPlanned>? rulesetPlans = null, string? rulesetsByHand = null)
+    internal string Summary(OnboardingPlan plan, IReadOnlyList<RulesetPlanned>? rulesetPlans = null, string? rulesetsByHand = null,
+        IReadOnlyList<OnboardingLineCut>? cuts = null)
     {
+        cuts ??= plan.Cuts;
         var html = new List<string>
         {
             HtmlMessage.Section(manager.GetTranslatedMessage("onboarding.summary.features"), plan.Features.Select(f => f.ToString())),
@@ -160,6 +210,11 @@ public partial class SetUpFeaturesAction : SparkCustomAction
         };
         if (plan.Renames.Renames.Count > 0)
             html.Add(HtmlMessage.Section(manager.GetTranslatedMessage("onboarding.summary.renames"), plan.Renames.Renames.Select(r => $"{r.From} → {r.To}")));
+        if (cuts.Count > 0)
+            html.Add(HtmlMessage.Section(manager.GetTranslatedMessage(plan.Files.Count == 0 ? "onboarding.summary.cutsNow" : "onboarding.summary.cutsOnMerge"),
+                cuts.Select(c => c.TargetFramework is null
+                    ? manager.GetTranslatedMessage("onboarding.summary.cutCurrent", c.Branch)
+                    : manager.GetTranslatedMessage("onboarding.summary.cutOlder", c.Branch, c.TargetFramework))));
         if (plan.OnMerge.Count > 0)
             html.Add(HtmlMessage.Section(manager.GetTranslatedMessage("onboarding.summary.onMerge"), plan.OnMerge.Select(o => o.ToString())));
         html.AddRange(plan.Notes.Select(HtmlMessage.Line));

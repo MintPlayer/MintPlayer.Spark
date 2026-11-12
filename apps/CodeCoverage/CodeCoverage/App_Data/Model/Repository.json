@@ -512,11 +512,25 @@
         "inQueryType": false,
         "showedOn": "PersistentObject",
         "rules": []
+      },
+      {
+        "id": "06e2d4e4-97ca-49d1-9e2c-c7484d516310",
+        "name": "ReleaseRole",
+        "dataType": "string",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 38,
+        "isArray": false,
+        "lookupReferenceType": "ReleaseRolePolicy",
+        "inQueryType": false,
+        "showedOn": "PersistentObject",
+        "rules": []
       }
     ],
     "queries": [
       "repository-commits",
-      "repository-versioning-runs"
+      "repository-versioning-runs",
+      "repository-backport-attempts"
     ]
   },
   "queries": [

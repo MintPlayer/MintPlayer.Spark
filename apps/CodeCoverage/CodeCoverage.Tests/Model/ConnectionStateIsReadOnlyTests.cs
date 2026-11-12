@@ -116,7 +116,7 @@ public class ConnectionStateIsReadOnlyTests
             ["AutoCutReleaseBranches", "DeleteBranchOnPrClose", "DependencyBisectBudget", "DependencyCooldown", "DependencyOnboardingMergeQueue", "DependencyRules", "DependencyScheduleFrequency",
              "DependencyScheduleHour", "DependencyScheduleWeekday", "DependencyTimeZone", "DependencyUpdates",
              "MergeQueueApprovalFloor", "MergeQueueBypassRole", "MergeQueueCheckExclusions",
-             "PrSizeIgnoreRules", "PrSizeLabels", "PrSizeLabelScale", "PrTitleCorrection", "ReleaseOnTag"],
+             "PrSizeIgnoreRules", "PrSizeLabels", "PrSizeLabelScale", "PrTitleCorrection", "ReleaseOnTag", "ReleaseRole"],
             "an account carries nothing else a person may set — identity is part of its document id "
             + "and connection state belongs to the reconcile sweep");
     }

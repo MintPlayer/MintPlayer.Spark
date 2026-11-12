@@ -221,6 +221,10 @@ public sealed partial class WriterService
     public Task<DependencyJobResponse> OnboardingAsync(DependencyJob job, DependencyCommit commit, IReadOnlyList<(string Path, string? Content)> files)
         => FilesOnBranchAsync("onboarding", DependencyBranches.FeatureOnboardingOf(job.Line), job, commit, files);
 
+    /// <summary>#638 D15: a line's narrowing commit, force-pushed to <see cref="DependencyBranches.NarrowingOf"/>.</summary>
+    public Task<DependencyJobResponse> NarrowingAsync(DependencyJob job, DependencyCommit commit, IReadOnlyList<(string Path, string? Content)> files)
+        => FilesOnBranchAsync("narrowing", DependencyBranches.NarrowingOf(job.Line!), job, commit, files);
+
     /// <summary>R14: the work ref is removed after every run, while it is still at <paramref name="expectedSha"/>.</summary>
     public Task<DependencyJobResponse> DependencyDeleteWorkRefAsync(string repo, Uri cloneUrl, GitCredential credential, string? expectedSha, string? line = null)
         => jobs.RunAsync("dependencies-delete", repo, async context =>
@@ -356,4 +360,7 @@ public static class DependencyBranches
     /// <summary>#571 D9: the pull request that adds the default branch's regenerate workflow to a line,
     /// <c>mintplayer/onboarding-dotnet-6.x</c>; the default branch's onboarding for null.</summary>
     public static string FeatureOnboardingOf(string? line) => line is null ? FeatureOnboarding : $"{FeatureOnboarding}-{line}";
+
+    /// <summary>#638 D15: the branch of a line's narrowing pull request.</summary>
+    public static string NarrowingOf(string line) => $"mintplayer/narrow-{line}";
 }

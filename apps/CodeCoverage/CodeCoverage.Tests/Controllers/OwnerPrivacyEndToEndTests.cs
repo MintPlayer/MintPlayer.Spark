@@ -64,7 +64,7 @@ public class OwnerPrivacyEndToEndTests(OwnerPrivacyHostFixture host) : IClassFix
         "DependencyUpdates", "DependencyScheduleFrequency", "DependencyScheduleWeekday", "DependencyScheduleHour",
         "DependencyTimeZone", "DependencyCooldown", "DependencyBisectBudget", "DependencyRules", "DependencyOnboardingMergeQueue",
         "PrSizeLabels", "PrSizeLabelScale", "PrSizeIgnoreRules", "PrSizeLabelsUnavailable",
-        "PrTitleCorrection", "ReleaseOnTag", "AutoCutReleaseBranches",
+        "PrTitleCorrection", "ReleaseOnTag", "AutoCutReleaseBranches", "ReleaseRole",
     ];
 
     /// <summary>What a visitor of a repository they may see may read: its identity, coverage and connection.</summary>
@@ -82,7 +82,7 @@ public class OwnerPrivacyEndToEndTests(OwnerPrivacyHostFixture host) : IClassFix
         "DependencyUpdates", "DependencySchedulePolicy", "DependencyScheduleFrequency", "DependencyScheduleWeekday",
         "DependencyScheduleHour", "DependencyCooldown", "DependencyBisectBudget", "DependencyOnboardingMergeQueue", "MergeQueueInCoverageYml",
         "PrSizeLabels", "PrSizeIgnoreRules", "PrSizeLabelState", "PrSizeLabelsEffective",
-        "PrTitleCorrection", "ReleaseOnTag", "AutoCutReleaseBranches",
+        "PrTitleCorrection", "ReleaseOnTag", "AutoCutReleaseBranches", "ReleaseRole",
     ];
 
     /// <summary>Callers who manage nothing of acme: a visitor and a signed-in stranger.</summary>

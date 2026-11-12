@@ -105,6 +105,17 @@ public sealed class ReleaseLinePattern
 	public string Format(ReleaseLine line)
 		=> Text.Replace(EcosystemPlaceholder, line.Ecosystem, StringComparison.Ordinal).Replace(MajorPlaceholder, line.Major.ToString(CultureInfo.InvariantCulture), StringComparison.Ordinal);
 
+	/// <summary>
+	/// Segment P (P0): the current line of each ecosystem among <paramref name="branches"/>, the one with the highest major.
+	/// Branches that are no line are ignored; the result is ordered by ecosystem.
+	/// </summary>
+	public IReadOnlyList<ReleaseLine> CurrentLines(IEnumerable<string> branches)
+		=> branches.Select(b => TryMatch(b, out var line) ? line : null).OfType<ReleaseLine>()
+			.GroupBy(l => l.Ecosystem, StringComparer.Ordinal)
+			.Select(g => g.MaxBy(l => l.Major)!)
+			.OrderBy(l => l.Ecosystem, StringComparer.Ordinal)
+			.ToList();
+
 	private static int Count(string text, string placeholder)
 	{
 		var count = 0;

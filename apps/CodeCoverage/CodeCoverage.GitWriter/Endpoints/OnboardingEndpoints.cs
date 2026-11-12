@@ -36,10 +36,39 @@ internal sealed partial class GitWriterOnboardingEndpoint : IPostEndpoint<Versio
     {
         var refusal = new Refusal();
         if (DependencyFields.Job(refusal, request, options.Value.AllowInsecureHttp) is not { } job
-            || DependencyFields.Commit(refusal, request) is not { } commit
-            || refusal.Check(job.Line is null ? Files(request.Files) : LineFiles(request.Files), "files", job.Line is null ? FilesRule : LineFilesRule) is not { } files)
+            || DependencyFields.Commit(refusal, request) is not { } commit)
+            return refusal.Result();
+        if (request.Narrow)
+        {
+            if (refusal.Check(job.Line is null ? null : NarrowFiles(request.Files), "files", NarrowFilesRule) is not { } narrowed)
+                return refusal.Result();
+            return Results.Json(await writer.NarrowingAsync(job, commit, narrowed), GitWriterHost.Json);
+        }
+        if (refusal.Check(job.Line is null ? Files(request.Files) : LineFiles(request.Files), "files", job.Line is null ? FilesRule : LineFilesRule) is not { } files)
             return refusal.Result();
         return Results.Json(await writer.OnboardingAsync(job, commit, files), GitWriterHost.Json);
+    }
+
+    /// <summary>#638 D15: a line's narrowing only rewrites project files and global.json.</summary>
+    public const string NarrowFilesRule = "for a line's narrowing: 1 to 256 distinct MSBuild files (.csproj, .fsproj, .vbproj, .props, .targets) or global.json of at most 256 KiB, no deletions";
+
+    private static readonly string[] MsBuildExtensions = [".csproj", ".fsproj", ".vbproj", ".props", ".targets"];
+
+    internal static List<(string Path, string? Content)>? NarrowFiles(List<DependencyFileWire>? wires)
+    {
+        if (wires is not { Count: > 0 and <= GitWriterVersioningOnboardingEndpoint.MaxFiles }) return null;
+        var list = new List<(string Path, string? Content)>();
+        foreach (var wire in wires)
+        {
+            if (wire is not { Delete: false, Path: { } path, Content: { Length: <= GitWriterVersioningOnboardingEndpoint.MaxFileBytes } content }
+                || list.Any(f => f.Path.Equals(path, StringComparison.OrdinalIgnoreCase))
+                || !PatchValidator.IsSafePath(path)
+                || !(path == "global.json" || path.EndsWith("/global.json", StringComparison.Ordinal)
+                    || MsBuildExtensions.Any(e => path.EndsWith(e, StringComparison.OrdinalIgnoreCase))))
+                return null;
+            list.Add((path, content));
+        }
+        return list;
     }
 
     internal static List<(string Path, string? Content)>? LineFiles(List<DependencyFileWire>? wires)

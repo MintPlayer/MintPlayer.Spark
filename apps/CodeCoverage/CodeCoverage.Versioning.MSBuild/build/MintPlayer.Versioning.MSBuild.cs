@@ -40,6 +40,18 @@ namespace MintPlayer.Versioning.MSBuild
 		/// <summary><c>$(GITHUB_EVENT_NAME)</c>: the event that started the workflow run.</summary>
 		public string GitHubEventName { get; set; }
 
+		/// <summary>
+		/// <c>$(MintPlayerVersioningMajors)</c>: <c>id=major;…</c>, exported by the versioning action on a release line for
+		/// each package anchored on the line's platform (#638 D2). A mapped package takes its highest tag of that major only.
+		/// </summary>
+		public string Majors { get; set; }
+
+		/// <summary><c>$(GITHUB_REF_NAME)</c>: the branch (or <c>N/merge</c>, or a merge-queue branch) being built.</summary>
+		public string GitHubRefName { get; set; }
+
+		/// <summary><c>$(GITHUB_BASE_REF)</c>: a pull request's target branch.</summary>
+		public string GitHubBaseRef { get; set; }
+
 		[Output]
 		public string Version { get; set; }
 
@@ -103,7 +115,32 @@ namespace MintPlayer.Versioning.MSBuild
 				return true;
 			}
 
-			var version = TagVersion.Highest(output.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries), TagPrefix);
+			var tags = output.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+			var highest = TagVersion.Highest(tags, TagPrefix);
+			var version = highest;
+			var id = TagPrefix.Substring(0, TagPrefix.Length - 2);
+			var major = TagVersion.MajorOf(Majors, id);
+			if (major != null)
+			{
+				// #638 D2: on a release line, the action names the major of each package anchored on the line's platform.
+				// A newer major's tag is reachable there (master's history), and packing it would publish nothing.
+				version = TagVersion.Highest(tags, TagPrefix, major);
+				if (version == null && highest != null)
+				{
+					if (TagVersion.PacksUntagged(GitHubActions, GitHubEventName)) Version = TagVersion.Untagged;
+					Log.LogWarning(null, "MPV006", null, null, 0, 0, 0, 0,
+						"No tag '{0}{1}.<minor>.<patch>' is reachable from HEAD on this release line (the highest is {2}), so the version is {3}. Tag the line's last release of {4} (the onboarding backfills it).",
+						TagPrefix, major, highest, Version, id);
+					return true;
+				}
+			}
+			else if (string.IsNullOrWhiteSpace(Majors))
+			{
+				// Without the action (a pull request into a line, a local pack on it), a dotnet line's branch names the
+				// major; a package with no tag of it (a netstandard package anchored freely) keeps its highest tag.
+				var branch = TagVersion.BranchMajor(GitHubBaseRef, GitHubRefName);
+				if (branch != null) version = TagVersion.Highest(tags, TagPrefix, branch) ?? highest;
+			}
 			if (version == null)
 			{
 				// A repository's onboarding pull request, or a package not released yet, has no tag. Its pull-request and
@@ -189,7 +226,11 @@ namespace MintPlayer.Versioning.MSBuild
 		/// The highest version among the tag names that start with <paramref name="prefix"/>. Names whose version is not
 		/// one of ours (a human's <c>v1.2</c>, build metadata, another label) are ignored, as the engine ignores them.
 		/// </summary>
-		public static string Highest(IEnumerable<string> tags, string prefix)
+		public static string Highest(IEnumerable<string> tags, string prefix) => Highest(tags, prefix, null);
+
+		/// <summary>As <see cref="Highest(IEnumerable{string}, string)"/>, among the versions of <paramref name="major"/> only
+		/// when it is given.</summary>
+		public static string Highest(IEnumerable<string> tags, string prefix, int? major)
 		{
 			string best = null;
 			long[] bestKey = null;
@@ -200,6 +241,7 @@ namespace MintPlayer.Versioning.MSBuild
 				var version = tag.Substring(prefix.Length);
 				var key = Key(version);
 				if (key == null) continue;
+				if (major != null && key[0] != major.Value) continue;
 				if (bestKey == null || Compare(key, bestKey) > 0)
 				{
 					best = version;
@@ -207,6 +249,44 @@ namespace MintPlayer.Versioning.MSBuild
 				}
 			}
 			return best;
+		}
+
+		private static readonly Regex Number = new Regex(@"^(0|[1-9][0-9]{0,8})\z", RegexOptions.CultureInvariant);
+
+		private static readonly Regex DotnetLine = new Regex(@"^release/dotnet-(0|[1-9][0-9]{0,8})\.x\z", RegexOptions.CultureInvariant);
+
+		private const string QueuePrefix = "gh-readonly-queue/";
+
+		/// <summary>The major the action's <c>id=major;…</c> map gives <paramref name="id"/>, or null.</summary>
+		public static int? MajorOf(string map, string id)
+		{
+			if (string.IsNullOrEmpty(map)) return null;
+			foreach (var entry in map.Split(';'))
+			{
+				var equals = entry.IndexOf('=');
+				if (equals < 0 || !string.Equals(entry.Substring(0, equals).Trim(), id, StringComparison.Ordinal)) continue;
+				var value = entry.Substring(equals + 1).Trim();
+				return Number.IsMatch(value) ? int.Parse(value, NumberStyles.None, CultureInfo.InvariantCulture) : (int?)null;
+			}
+			return null;
+		}
+
+		/// <summary>
+		/// The major of the default-pattern dotnet line being built: a pull request's base, else a merge-queue branch's
+		/// base (<c>gh-readonly-queue/&lt;base&gt;/pr-N-sha</c>), else the branch itself. Null anywhere else.
+		/// </summary>
+		public static int? BranchMajor(string baseRef, string refName)
+		{
+			var branch = !string.IsNullOrEmpty(baseRef) ? baseRef : refName;
+			if (string.IsNullOrEmpty(branch)) return null;
+			if (branch.StartsWith(QueuePrefix, StringComparison.Ordinal))
+			{
+				var end = branch.LastIndexOf("/pr-", StringComparison.Ordinal);
+				if (end <= QueuePrefix.Length) return null;
+				branch = branch.Substring(QueuePrefix.Length, end - QueuePrefix.Length);
+			}
+			var match = DotnetLine.Match(branch);
+			return match.Success ? int.Parse(match.Groups[1].Value, NumberStyles.None, CultureInfo.InvariantCulture) : (int?)null;
 		}
 
 		/// <summary>Orders two versions of our grammar; a version outside it sorts below every valid one.</summary>

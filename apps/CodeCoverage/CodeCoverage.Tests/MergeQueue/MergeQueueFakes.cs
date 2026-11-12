@@ -59,8 +59,11 @@ internal sealed class FakeForgeMergeQueue : IForgeMergeQueue
         return Task.FromResult(Roles.TryGetValue(login, out var role) ? role : EForgeRepositoryRole.None);
     }
 
+    /// <summary>Rules of one branch, ahead of <see cref="Rules"/> (a <c>backport/*</c> head's own ruleset).</summary>
+    public Dictionary<string, ForgeBranchRules> BranchRules { get; } = new(StringComparer.Ordinal);
+
     public Task<ForgeBranchRules> GetBranchRulesAsync(Repository repository, string branch, CancellationToken cancellationToken = default)
-        => Task.FromResult(Rules);
+        => Task.FromResult(BranchRules.TryGetValue(branch, out var rules) ? rules : Rules);
 
     public Task<string?> GetBranchHeadAsync(Repository repository, string branch, CancellationToken cancellationToken = default)
         => Task.FromResult(BranchHeads.TryGetValue(branch, out var sha) ? sha : null);
@@ -354,6 +357,19 @@ internal sealed class FakeGitWriter : IGitWriterSidecar
         return Tags?.Invoke(request) ?? Task.FromResult(new CodeCoverage.PackageVersioning.GitWriterTagsResult(
             CodeCoverage.PackageVersioning.GitWriterTagsResult.Tagged, null,
             [.. request.Tags.Select(t => new CodeCoverage.PackageVersioning.GitWriterTagResult(t.Name, CodeCoverage.PackageVersioning.GitWriterTagResult.Created, null))], null, 1));
+    }
+
+    /// <summary>The history backfill (#638 D5-D8); unset, nothing is left to tag.</summary>
+    public Func<CodeCoverage.PackageVersioning.GitWriterBackfillRequest, Task<CodeCoverage.PackageVersioning.GitWriterBackfillResult>>? Backfill { get; set; }
+    public ConcurrentQueue<CodeCoverage.PackageVersioning.GitWriterBackfillRequest> BackfillRequests { get; } = new();
+
+    public Task<CodeCoverage.PackageVersioning.GitWriterBackfillResult> VersioningBackfillAsync(
+        CodeCoverage.PackageVersioning.GitWriterBackfillRequest request, CancellationToken cancellationToken = default)
+    {
+        BackfillRequests.Enqueue(request);
+        return Backfill?.Invoke(request) ?? Task.FromResult(new CodeCoverage.PackageVersioning.GitWriterBackfillResult(
+            request.PlanOnly ? CodeCoverage.PackageVersioning.GitWriterBackfillResult.Planned : CodeCoverage.PackageVersioning.GitWriterBackfillResult.Tagged,
+            null, [], [request.DefaultBranch], [], null, 1));
     }
 
     public Task<GitWriterPrepareResult> PrepareAsync(GitWriterPrepareRequest request, CancellationToken cancellationToken = default)

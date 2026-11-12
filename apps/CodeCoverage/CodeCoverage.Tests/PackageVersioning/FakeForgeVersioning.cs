@@ -24,8 +24,13 @@ internal sealed class FakeForgeVersioning : IForgeVersioning
     /// <summary>More pull requests by number, beside <see cref="PullRequest"/> (#570 M8c: a backport and its source).</summary>
     public Dictionary<int, ForgePullRequestText> OtherPullRequests { get; } = [];
 
+    /// <summary>When set, reading a pull request throws this (a forge that is down).</summary>
+    public Exception? ReadFailure { get; set; }
+
     public Task<ForgePullRequestText?> GetPullRequestTextAsync(Repository repository, int number, CancellationToken cancellationToken = default)
-        => Task.FromResult(PullRequest?.Number == number ? PullRequest : OtherPullRequests.GetValueOrDefault(number));
+        => ReadFailure is { } failure
+            ? Task.FromException<ForgePullRequestText?>(failure)
+            : Task.FromResult(PullRequest?.Number == number ? PullRequest : OtherPullRequests.GetValueOrDefault(number));
 
     public Task<ForgeIssue?> GetIssueAsync(Repository repository, int number, CancellationToken cancellationToken = default)
         => Task.FromResult(Issues.TryGetValue(number, out var labels) ? new ForgeIssue(number, labels) : null);
@@ -51,8 +56,12 @@ internal sealed class FakeForgeVersioning : IForgeVersioning
         return Task.FromResult(ForgeWriteOutcome.Created);
     }
 
+    /// <summary>Branches whose creation the forge refuses with this message (a ruleset that does not admit the App).</summary>
+    public Dictionary<string, string> BranchRefusals { get; } = new(StringComparer.Ordinal);
+
     public Task<ForgeWriteOutcome> CreateBranchAsync(Repository repository, string branch, string sha, CancellationToken cancellationToken = default)
     {
+        if (BranchRefusals.TryGetValue(branch, out var refusal)) throw new ForgeRequestException(refusal, 422);
         if (Branches.Any(b => b.Branch == branch)) return Task.FromResult(ForgeWriteOutcome.Exists);
         Branches.Add((branch, sha));
         return Task.FromResult(ForgeWriteOutcome.Created);
@@ -80,6 +89,14 @@ internal sealed class FakeForgeVersioning : IForgeVersioning
     public Task CommentAsync(Repository repository, int number, string body, CancellationToken cancellationToken = default)
     {
         Comments.Add((number, body));
+        return Task.CompletedTask;
+    }
+
+    public List<(string Sha, string Body)> CommitComments { get; } = [];
+
+    public Task CommentOnCommitAsync(Repository repository, string sha, string body, CancellationToken cancellationToken = default)
+    {
+        CommitComments.Add((sha, body));
         return Task.CompletedTask;
     }
 

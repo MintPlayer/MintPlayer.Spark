@@ -126,10 +126,13 @@ public static partial class VersioningOnboarding
     [
         new("Hand-written versions become the placeholder", PlaceholderVersionsAsync),
         new($"`{PackageId}` is referenced", c => c.NuGet.Count == 0 ? Task.CompletedTask : ReferenceAsync(c.Files, c.NuGet, c.PackageVersion)),
+        new("A release line that cannot pack its own major fails the build (MPV006)", c => c.NuGet.Count == 0 ? Task.CompletedTask : Mpv006ErrorAsync(c.Files, c.NuGet)),
         new("MinVer leaves the build", c => c.NuGet.Count == 0 ? Task.CompletedTask : RemoveMinVerAsync(c.Files, c.Tree, c.NuGet, c.Notes)),
         new($"`nuget.config` maps `{PackageId}` to nuget.org", c => c.NuGet.Count == 0 ? Task.CompletedTask : NuGetConfigAsync(c.Files, c.Tree, c.Owner, c.Notes)),
         new("The versioning step runs before the first pack or publish", c => WorkflowsAsync(c, (path, text, notes) => VersioningStep(path, text, c.ActionSha, notes))),
         new("Pack builds again and the NuGet push skips published versions", c => WorkflowsAsync(c, PackAndPush)),
+        new("The pack is checked to carry the released versions", c => c.NuGet.Count == 0 ? Task.CompletedTask : WorkflowsAsync(c, PackedVersions)),
+        new("The default branch packs and publishes only what it released", c => WorkflowsAsync(c, PublishGate)),
         new("Publishing jobs may push the tags", c => WorkflowsAsync(c, PublishPermissions)),
         new("A newer push cancels the older publish run", c => WorkflowsAsync(c, Concurrency)),
         new("Checkouts of .NET jobs fetch the history and its tags", c => c.NuGet.Count == 0 ? Task.CompletedTask : WorkflowsAsync(c, FullHistory)),
@@ -174,6 +177,20 @@ public static partial class VersioningOnboarding
                 && PublishingJobs(root, jobs).Any(j => VersioningStepIndex((YamlSequenceNode)Child(j.Job, "steps")!) is not null))
                 return true;
         return false;
+    }
+
+    /// <summary>
+    /// The file names of the push-triggered workflows that run the versioning step in front of a publish, sorted (segment T:
+    /// the workflow whose green run on the default branch a promotion waits for, <c>versioning.lines.workflow</c>).
+    /// </summary>
+    internal static async Task<IReadOnlyList<string>> VersioningWorkflowsAsync(IRepositoryTree tree, CancellationToken cancellationToken = default)
+    {
+        var found = new List<string>();
+        foreach (var path in tree.Entries.Keys.Where(IsWorkflow).Order(StringComparer.Ordinal))
+            if (await tree.ReadTextAsync(path, Limits.MaxManifestBytes, cancellationToken) is { } text && Parse(path, text, null) is var (root, jobs)
+                && PublishingJobs(root, jobs).Any(j => Child(j.Job, "steps") is YamlSequenceNode steps && VersioningStepIndex(steps) is not null))
+                found.Add(path[".github/workflows/".Length..]);
+        return found;
     }
 
     private static VersioningSeed? Seed(ProjectNode package, List<string> notes)
@@ -245,6 +262,23 @@ public static partial class VersioningOnboarding
         }
     }
 
+    internal const string Mpv006Error = "<MSBuildWarningsAsErrors>$(MSBuildWarningsAsErrors);MPV006</MSBuildWarningsAsErrors>";
+
+    /// <summary>
+    /// #638 D10 (owner: "enable this flag at first, and disable it when everything stabilized"): MPV006, a release line's
+    /// package with no tag of the line's major, fails the pack instead of leaving the package out. A repository that
+    /// mentions MPV006 already keeps its own choice.
+    /// </summary>
+    private static async Task Mpv006ErrorAsync(Files files, List<ProjectNode> nuget)
+    {
+        foreach (var root in nuget.Select(p => p.BuildProps.FirstOrDefault() ?? "Directory.Build.props").Distinct(StringComparer.Ordinal))
+        {
+            var text = await files.ReadAsync(root);
+            if (text is null) files.Write(root, $"<Project>\n  <PropertyGroup>\n    {Mpv006Error}\n  </PropertyGroup>\n</Project>\n");
+            else if (!text.Contains("MPV006", StringComparison.Ordinal)) files.Write(root, AddGroup(text, "PropertyGroup", Mpv006Error));
+        }
+    }
+
     /// <summary>
     /// The highest stable version in nuget.org's flat-container index (<see cref="PackageIndexUrl"/>), or null. A prerelease is
     /// never taken, and an unlisted version still counts: the index does not mark it, and unlisting is no reason to skip a fix.
@@ -263,7 +297,10 @@ public static partial class VersioningOnboarding
     }
 
     /// <summary>Inserts an <c>ItemGroup</c> holding <paramref name="item"/> before <c>&lt;/Project&gt;</c>, in the file's own indentation.</summary>
-    internal static string AddItem(string text, string item)
+    internal static string AddItem(string text, string item) => AddGroup(text, "ItemGroup", item);
+
+    /// <summary>Inserts a <paramref name="group"/> holding <paramref name="item"/> before <c>&lt;/Project&gt;</c>, in the file's own indentation.</summary>
+    internal static string AddGroup(string text, string group, string item)
     {
         var end = text.LastIndexOf("</Project>", StringComparison.Ordinal);
         if (end < 0) return text;
@@ -271,7 +308,7 @@ public static partial class VersioningOnboarding
         var indent = Indentation().Match(text) is { Success: true } m ? m.Groups[1].Value : "  ";
         var before = text[..end].TrimEnd(' ', '\t');
         if (!before.EndsWith('\n')) before += eol;
-        return $"{before}{eol}{indent}<ItemGroup>{eol}{indent}{indent}{item}{eol}{indent}</ItemGroup>{eol}{text[end..]}";
+        return $"{before}{eol}{indent}<{group}>{eol}{indent}{indent}{item}{eol}{indent}</{group}>{eol}{text[end..]}";
     }
 
     /// <summary>
@@ -584,6 +621,157 @@ public static partial class VersioningOnboarding
         return edits.Count == 0 ? null : Apply(lines, edits);
     }
 
+    /// <summary>#638 D11: the id of the step after the pack that checks every released NuGet package was packed at its version.</summary>
+    internal const string PackedVersionsId = "packed-versions";
+
+    /// <summary>
+    /// #638 P3/D11: each publishing job's <c>dotnet pack</c> is followed by a step that fails when a released NuGet package
+    /// (the versioning step's <c>versions</c>, less the npm ids of its <c>dist-tags</c>) has no <c>&lt;id&gt;.&lt;version&gt;.nupkg</c>.
+    /// The NuGet push keeps <c>--skip-duplicate</c> for re-runs, so without it a pack at another version (a newer major's tag
+    /// reachable on an older line, MintPlayer.AspNetCore.Tools run 43198625715) turned every push into "already exists" and
+    /// the run into a green one that published nothing. The expected file name comes from the plan; nothing is parsed out
+    /// of a file name. Null when every job has the step, or none packs.
+    /// </summary>
+    internal static string? PackedVersions(string path, string text, List<string> notes)
+    {
+        if (Parse(path, text, null) is not var (root, jobs)) return null;
+        var lines = text.Split('\n');
+        var edits = new List<LineEdit>();
+        foreach (var (key, job) in PublishingJobs(root, jobs))
+        {
+            var steps = (YamlSequenceNode)Child(job, "steps")!;
+            if (steps.Children.Any(s => Scalar(s, "id") == PackedVersionsId)) continue;
+            var pack = Enumerable.Range(0, steps.Children.Count)
+                .FirstOrDefault(i => Scalar(steps.Children[i], "run")?.Contains("dotnet pack", StringComparison.Ordinal) == true, -1);
+            if (pack < 0 || VersioningStepIndex(steps) is not { } versioning || versioning > pack) continue;
+            if (Scalar(steps.Children[versioning], "id") is not { } versioningId)
+            {
+                notes.Add($"`{path}` job `{key.Value}`: the versioning step has no `id`, so the onboarding cannot check that the pack carries the released versions; give it `id: versioning`.");
+                continue;
+            }
+
+            var packLine = Line(steps.Children[pack].Start) - 1;
+            var dashColumn = lines[packLine].IndexOf('-');
+            // The step runs while its lines are indented past its dash (a run block may hold blank lines); the comments
+            // and blank lines before the next step stay with that step.
+            var end = packLine + 1;
+            for (var l = packLine + 1; l < lines.Length; l++)
+            {
+                var content = lines[l].TrimEnd('\r');
+                if (content.Trim().Length == 0) continue;
+                if (content.Length - content.TrimStart().Length <= dashColumn) break;
+                end = l + 1;
+            }
+
+            var dash = new string(' ', dashColumn);
+            var keyIndent = new string(' ', (int)steps.Children[pack].Start.Column - 1);
+            var step = new List<string>();
+            if (end < lines.Length && lines[end].Trim().Length == 0) step.Add("");
+            step.AddRange([
+                $"{dash}- name: Check the packages carry the released versions",
+                $"{keyIndent}id: {PackedVersionsId}",
+                $"{keyIndent}shell: bash",
+                $"{keyIndent}env:",
+                $"{keyIndent}  VERSIONS: ${{{{ steps.{versioningId}.outputs.versions }}}}",
+                $"{keyIndent}  DIST_TAGS: ${{{{ steps.{versioningId}.outputs.dist-tags }}}}",
+                $"{keyIndent}run: |",
+                $"{keyIndent}  # --skip-duplicate turns a pack at another version into \"already exists\" and a green run that published",
+                $"{keyIndent}  # nothing (#638): every released NuGet package must have been packed at the version it was released as.",
+                $"{keyIndent}  versions=\"${{VERSIONS:-}}\"; [ -n \"$versions\" ] || versions='{{}}'",
+                $"{keyIndent}  npm=\"${{DIST_TAGS:-}}\"; [ -n \"$npm\" ] || npm='{{}}'",
+                $"{keyIndent}  status=0",
+                $"{keyIndent}  while IFS=$'\\t' read -r id version; do",
+                $"{keyIndent}    version=\"${{version%$'\\r'}}\"; [ -n \"$id\" ] || continue",
+                $"{keyIndent}    if [ -z \"$(find . -iname \"$id.$version.nupkg\" -not -path '*/node_modules/*' -print -quit)\" ]; then",
+                $"{keyIndent}      echo \"::error::$id was released as $version, but no $id.$version.nupkg was packed.\"",
+                $"{keyIndent}      status=1",
+                $"{keyIndent}    fi",
+                $"{keyIndent}  done < <(jq -r --argjson npm \"$npm\" 'to_entries[] | select(.key as $k | $npm | has($k) | not) | \"\\(.key)\\t\\(.value)\"' <<< \"$versions\")",
+                $"{keyIndent}  exit $status",
+            ]);
+            edits.Add(new LineEdit(end, null, step));
+        }
+        return edits.Count == 0 ? null : Apply(lines, edits);
+    }
+
+    /// <summary>The id of the step that decides whether a run publishes (Spark's own dotnet-build-master.yml has the same step).</summary>
+    internal const string GateId = "publishes";
+
+    /// <summary>
+    /// The SparkTest trial's gap G1 (docs/release_lines_recovery_plan.md §2d): with release lines on, the default branch
+    /// tags nothing, so a package with no tag yet (no seed: it declared no version) packs at the placeholder and
+    /// <c>dotnet pack</c> of the project fails with MPV005, which keeps the default branch red and leaves <c>/release</c>
+    /// no green commit to promote. Each publishing job gets the step Spark's own workflow has: on the default branch, a run
+    /// that released nothing packs and publishes nothing. Every step from the first pack or publish to the last one gets
+    /// its <c>if:</c>, so a check between them (the packages' versions) is skipped with them. A step with its own
+    /// <c>if:</c>, or that starts with a block scalar, is left to the merger. Null when every job has it.
+    /// </summary>
+    internal static string? PublishGate(string path, string text, List<string> notes)
+    {
+        if (Parse(path, text, null) is not var (root, jobs)) return null;
+        var lines = text.Split('\n');
+        var edits = new List<LineEdit>();
+        foreach (var (key, job) in PublishingJobs(root, jobs))
+        {
+            var steps = (YamlSequenceNode)Child(job, "steps")!;
+            var first = PublishStep(job)!.Value;
+            if (VersioningStepIndex(steps) is not { } versioning || versioning > first) continue;
+            if (Scalar(steps.Children[versioning], "id") is not { } versioningId)
+            {
+                notes.Add($"`{path}` job `{key.Value}`: the versioning step has no `id`, so the onboarding cannot keep the default branch from packing what it did not release; give it `id: versioning`.");
+                continue;
+            }
+            var last = Enumerable.Range(first, steps.Children.Count - first).Last(i => Publishes(steps.Children[i]));
+            var keyIndent = new string(' ', (int)steps.Children[first].Start.Column - 1);
+
+            if (!steps.Children.Any(s => Scalar(s, "id") == GateId))
+            {
+                var stepLine = Line(steps.Children[first].Start) - 1;
+                var at = stepLine;
+                while (at > 0 && lines[at - 1].TrimStart().StartsWith('#')) at--;
+                var dash = new string(' ', lines[stepLine].IndexOf('-'));
+                var step = new List<string>
+                {
+                    $"{dash}# With release lines on, the default branch tags nothing: a package with no tag yet would fail its",
+                    $"{dash}# pack (MPV005). The release lines pack and publish; the default branch only when it released.",
+                    $"{dash}- name: Decide whether this run publishes",
+                    $"{keyIndent}id: {GateId}",
+                    $"{keyIndent}env:",
+                    $"{keyIndent}  RELEASED: ${{{{ steps.{versioningId}.outputs.released }}}}",
+                    $"{keyIndent}  DEFAULT_BRANCH: ${{{{ github.event.repository.default_branch }}}}",
+                    $"{keyIndent}run: |",
+                    $"{keyIndent}  if [ \"$GITHUB_REF_NAME\" = \"$DEFAULT_BRANCH\" ] && {{ [ -z \"$RELEASED\" ] || [ \"$RELEASED\" = \"[]\" ]; }}; then",
+                    $"{keyIndent}    echo \"The default branch released nothing (release lines on, or no change): no pack, no publish.\"",
+                    $"{keyIndent}    echo \"value=false\" >> \"$GITHUB_OUTPUT\"",
+                    $"{keyIndent}  else",
+                    $"{keyIndent}    echo \"value=true\" >> \"$GITHUB_OUTPUT\"",
+                    $"{keyIndent}  fi",
+                };
+                if (at > 0 && lines[at - 1].Trim().Length == 0) step.Add("");
+                edits.Add(new LineEdit(at, null, step));
+            }
+
+            for (var i = first; i <= last; i++)
+            {
+                var condition = Scalar(steps.Children[i], "if");
+                if (condition?.Contains($"steps.{GateId}.outputs.value", StringComparison.Ordinal) == true) continue;
+                var startLine = Line(steps.Children[i].Start) - 1;
+                var name = Scalar(steps.Children[i], "name") ?? $"step {i + 1}";
+                if (condition is not null || BlockScalarStart().IsMatch(lines[startLine]))
+                {
+                    notes.Add($"`{path}` job `{key.Value}` step `{name}`: add `steps.{GateId}.outputs.value == 'true'` to its `if:` by hand, so the default branch packs only what it released.");
+                    continue;
+                }
+                edits.Add(new LineEdit(startLine + 1, null, [$"{keyIndent}if: steps.{GateId}.outputs.value == 'true'"]));
+            }
+        }
+        return edits.Count == 0 ? null : Apply(lines, edits);
+    }
+
+    /// <summary>A line that opens a block scalar (<c>run: |</c>, <c>&gt;-</c>), after which no key can be inserted.</summary>
+    [GeneratedRegex(@"[|>][+-]?\s*$")]
+    private static partial Regex BlockScalarStart();
+
     /// <summary>Each publishing job's token gets <c>contents: write</c> and <c>id-token: write</c>; null when it has them.</summary>
     internal static string? PublishPermissions(string path, string text, List<string> notes)
     {
@@ -789,18 +977,18 @@ public static partial class VersioningOnboarding
     {
         if (Child(job, "steps") is not YamlSequenceNode steps) return null;
         for (var i = 0; i < steps.Children.Count; i++)
-        {
-            if (Scalar(steps.Children[i], "run") is { } run && (run.Contains("dotnet pack", StringComparison.Ordinal)
-                || run.Contains("dotnet nuget push", StringComparison.Ordinal) || RawNpmPublish().IsMatch(run)))
-                return i;
-            // JS-DevTools/npm-publish (mintplayer-ng-video-player) publishes only versions the registry lacks (`strategy: all`)
-            // and takes its dist-tag from publishConfig.tag, so it works unchanged behind the versioning step.
-            if (Scalar(steps.Children[i], "uses") is { } uses && (uses.StartsWith("MintPlayer/github-actions/publish-npm-packages", StringComparison.OrdinalIgnoreCase)
-                || uses.StartsWith("JS-DevTools/npm-publish@", StringComparison.OrdinalIgnoreCase)))
-                return i;
-        }
+            if (Publishes(steps.Children[i])) return i;
         return null;
     }
+
+    /// <summary>Whether the step packs or publishes a package.</summary>
+    private static bool Publishes(YamlNode step)
+        => (Scalar(step, "run") is { } run && (run.Contains("dotnet pack", StringComparison.Ordinal)
+                || run.Contains("dotnet nuget push", StringComparison.Ordinal) || RawNpmPublish().IsMatch(run)))
+            // JS-DevTools/npm-publish (mintplayer-ng-video-player) publishes only versions the registry lacks (`strategy: all`)
+            // and takes its dist-tag from publishConfig.tag, so it works unchanged behind the versioning step.
+            || (Scalar(step, "uses") is { } uses && (uses.StartsWith("MintPlayer/github-actions/publish-npm-packages", StringComparison.OrdinalIgnoreCase)
+                || uses.StartsWith("JS-DevTools/npm-publish@", StringComparison.OrdinalIgnoreCase)));
 
     private static bool OnPush(YamlNode? on) => on switch
     {

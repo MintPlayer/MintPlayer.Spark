@@ -17,7 +17,8 @@ wrong until synchronize runs again on the rebased branch ([`../model-hash.md`](.
 GitHub's own merge queue evicts on any conflict. This one takes the base side of the wholly generated files, has the
 repository's regenerate workflow rewrite them on a queue branch, publishes **one** squashed commit to the pull request,
 waits for every check, and merges. Any other conflict, a failed check, or a push it did not make evicts the pull
-request, with the reason on its check run.
+request, with the reason on its check run. The exception is the App's own backports into a release line, which are
+held in their place instead ([§2.2, release lines](#22-coverageyml--mergequeue)).
 
 ```
 enqueue: label · /queue · panel button (O8) · "Add to merge queue" on the check (O30)
@@ -207,6 +208,29 @@ mergeQueue:
   line tip, not the default branch, so each line needs the workflow file under the same name.
 - **Backport pull requests into a queued line are enqueued automatically.** The exceptions are drafts and backports
   whose regenerated files are stale. Set `backport: { enqueue: false }` to turn this off.
+- **A line takes the App's backports in the order their sources merged, and holds one that fails.** A backport the
+  App opened waits before any waiting backport whose source merged later on the default branch. When its checks fail
+  or time out, it conflicts, or someone pushes to it, it is **held**, not evicted. It stays the line's current entry,
+  so the backports behind it wait. Its check turns red with `Held: <reason>`, and a comment says what it waits for.
+  It resumes by itself:
+  - on a push to its branch, from the rebase;
+  - when its checks pass after a re-run;
+  - when the line moves.
+
+  `/dequeue` (or the check's button) lets the line go on without it. A person's pull request into a line is evicted as
+  before. The App's other pull requests into a line are admitted like a person's: the line's regenerate workflows,
+  and the narrowing pull request into an older line cut from a multi-target commit (#638 D15,
+  `mintplayer/narrow-<line>`). The line policy refuses only on the current line, and an older line is never current.
+- **A held backport asks someone to fix it.** Before it holds on red checks, the queue re-runs the failed ones once,
+  even with `retryFlaky: 0`. Then:
+  - **Who:** the author of the backported pull request is assigned and named in the comment. For a fork's or a bot's
+    pull request, the CODEOWNERS of its files on the line are asked instead (people are assigned, teams mentioned).
+  - **What shows:** the `backport: needs attention` label, and a neutral **Line blocked by #N** check on every pull
+    request waiting behind it. The check never blocks a merge; it turns green when the hold ends.
+  - **Reminders:** after 2 working days the same people are reminded, and 2 working days later the code owners. Then
+    the queue stops reminding.
+  - **The list:** the app's **Held backports** page (`/query/held-backports`, linked from the comment) lists the held
+    backports you authored, and those in repositories you administer or whose account you manage.
 
 A repository with lockfiles and its own workflow per tool might add:
 
@@ -470,6 +494,9 @@ does not (D47). **A writer's request for changes vetoes** under both floors, app
 latest review is "changes requested", the queue refuses (`approval`) at enqueue, and evicts (`approval-withdrawn`)
 right before the merge (D61).
 
+**The App's backports skip the floor** under any value while ruleset 4 protects their `backport/*` branch (§3,
+resilience PRD Q13): only the App and admins can write it, so there is no outside content to approve.
+
 **Bypass role (O22, D64).** "Merge queue bypass role" names the lowest GitHub repository role whose holders bypass the
 queue's own rules when they queue a pull request. It is the enqueuer's role, read from GitHub at enqueue, when a prepare
 decides the dispatch, and right before the merge, like O9's role.
@@ -580,6 +607,33 @@ Requirements and limits:
   `versioning.lines` pattern). Ruleset 2 stays on the default branch only. The lines are read from coverage.yml; when the
   chooser picks Release lines and coverage.yml has none yet, the default pattern is used. Set by hand, add the glob to
   ruleset 1's target next to the default branch.
+- With release lines, **ruleset 3** ("merge-queue: release-line checks") requires the lines' own checks on the same
+  glob: the form's "Required checks on release lines", prefilled from ruleset 3, else from ruleset 2's checks. It has
+  no pull_request rule, so the App's backport pull requests need no review, and no bypass for the App, so a line moves
+  only through a green pull request. Before it, line pull requests merged with no required check at all (#610 and the
+  lines' red E2E, `docs/release_lines_recovery_plan.md` A-4, R2). Ruleset 3 always requires the App's own **"Line
+  policy"** check as well, bound to the App (`integration_id`), whatever checks are picked (segment E, resilience PRD
+  Q1b): on a **current** line, the newest of its ecosystem, it fails every pull request but the App's own
+  backports, so a fix goes to the default branch first; on a **past** line it passes, since those take version-specific
+  fixes from people. A platform upgrade that cuts a new line changes which line is current without a ruleset edit.
+  Ruleset 3 therefore exists whenever there are lines, even with no other checks picked. The form never lists the line
+  policy among the checks to pick.
+- With `versioning.lines.current: promote` (versioning.md, "Promoted lines"), ruleset 3 does give the App an
+  `exempt` bypass: a promotion is a merge commit the App pushes straight onto the line after `/release`, and a check
+  cannot pass on a commit before it is pushed. The commit is already green on the default branch, and the line's own
+  run tests it again before it publishes. The bypass covers every line the glob matches, but the App pushes only
+  promotions: backports onto older lines still go through pull requests and their checks. Re-run "Set up rulesets"
+  after switching coverage.yml to `promote`. The queue accepts this one bypass: on a release line, a ruleset with no
+  `pull_request` rule may exempt the App, since the queue waits for its required checks itself before it merges. Any
+  other bypass of a review or check ruleset still refuses the pull request (`bypass`). Before segment E it refused this
+  one too, so a promote repository could not queue a backport onto a past line.
+- With release lines, **ruleset 4** ("merge-queue: backport branches") restricts creating, updating and deleting
+  `refs/heads/backport/*`. Only the App (exempt) and repository admins (always) pass it, so a backport pull request
+  holds the App's pick or an admin's conflict resolution, never a writer's own content. While the branch's rules
+  show all three restrictions with the App exempt (read live from `GET /rules/branches/{branch}` on every enqueue),
+  the App's backports need **no approval under any approval floor** (`docs/coverage_backport_resilience_PRD.md` Q13).
+  Without it, or with one of the restrictions removed, the floor applies to them again, and a writer's approval queues
+  them as before. Other rules and other exempt Apps on an existing ruleset 4 are kept; a person's bypass is removed.
 - Without the OAuth app configured (hosting.md §4, `GitHub:{Env}:RulesetsOAuth:*`), set up the rulesets as below.
 
 **Ruleset 1** (`ruleset-1.json`; `<APP_ID>` is the App's numeric id):
@@ -632,10 +686,47 @@ role. Picking "Repository admin" in the UI's bypass list writes the same entry.
 
 ![Ruleset 2's Require status checks to pass rule on GitHub, with Require branches to be up to date before merging ticked and the repository's CI check required, not the Merge queue check](https://github.com/user-attachments/assets/8d8fbe19-6195-4325-9131-3698d0b1773c)
 
+**Ruleset 3** (`ruleset-3.json`; only with release lines, the line policy plus one entry per check the lines require):
+
+```json
+{
+  "name": "merge-queue: release-line checks",
+  "target": "branch",
+  "enforcement": "active",
+  "conditions": { "ref_name": { "include": ["refs/heads/release/*-*.x"], "exclude": [] } },
+  "rules": [
+    { "type": "required_status_checks", "parameters": {
+        "strict_required_status_checks_policy": true,
+        "required_status_checks": [
+          { "context": "Line policy", "integration_id": <APP_ID> },
+          { "context": "<CHECK_NAME>" }] } }
+  ],
+  "bypass_actors": []
+}
+```
+
+**Ruleset 4** (`ruleset-4.json`; only with release lines):
+
+```json
+{
+  "name": "merge-queue: backport branches",
+  "target": "branch",
+  "enforcement": "active",
+  "conditions": { "ref_name": { "include": ["refs/heads/backport/*"], "exclude": [] } },
+  "rules": [{ "type": "creation" }, { "type": "update" }, { "type": "deletion" }],
+  "bypass_actors": [
+    { "actor_id": <APP_ID>, "actor_type": "Integration", "bypass_mode": "exempt" },
+    { "actor_id": 5, "actor_type": "RepositoryRole", "bypass_mode": "always" }
+  ]
+}
+```
+
 ```bash
 gh api apps/<app-slug> --jq .id                                       # <APP_ID>
 gh api --method POST repos/<owner>/<repo>/rulesets --input ruleset-1.json
 gh api --method POST repos/<owner>/<repo>/rulesets --input ruleset-2.json
+gh api --method POST repos/<owner>/<repo>/rulesets --input ruleset-3.json   # with release lines
+gh api --method POST repos/<owner>/<repo>/rulesets --input ruleset-4.json   # with release lines
 gh api repos/<owner>/<repo>/rules/branches/<branch>                   # what now applies to the branch
 ```
 
@@ -650,6 +741,8 @@ Notes on the two rulesets:
   Pair that with the `RepositoryRules` approval floor (§2.4), which adds no approval of the queue's own. The default
   `ExternalAuthors` floor also works: the maintainer's own pull requests pass it, and outside authors and bots (such
   as Dependabot) need the maintainer's approval. `Always` would refuse every pull request of the maintainer's own.
+  The setup form starts from ruleset 2's count, else classic protection's, else **0** (it was 1 until the Tools
+  onboarding, 2026-11-12, whose ruleset 2 its solo maintainer could never merge through).
 - **Required checks.** Require the job that runs `--spark-verify-model` and `--spark-verify-security`: it is what proves
   the regenerate step did its job (T4, O19). The queue waits for every check anyway (O12); requiring it makes GitHub
   enforce it too, and a required check can never be excluded. **Never require the "Merge queue" check itself**: it is
@@ -928,6 +1021,7 @@ kebab-cased by the writer.
 | `writer-unavailable` | This server has no git writer (`MergeQueue:GitWriterUrl` unset); only case 1 can merge. | Operator: §7. |
 | `writer-refused` | The git writer refused the queue's own request: the field and the rule it broke are shown (D57). The parser and the enqueue checks hold everything to the same rules, so this points at a defect. | Report it with the message. |
 | `checks-failed` | A counted check failed, after `retryFlaky` re-runs of the failed check runs. A commit status cannot be re-run. | Fix and queue again, or exclude a check that must not gate (§2.4). |
+| `trial-pick` | Before checks: the backport onto a labelled line under `backport.trialPick: refuse` would conflict ([backports.md](backports.md)). The comment names the lines and files. | Remove that line's `backport: <line>` label, or change the pull request so it applies there, and queue again. |
 | `checks-timeout` | A counted check was still pending after `checks.timeout`, even after a last look. | Raise the timeout, or exclude a check that never finishes. |
 | `role-revoked` | The person who queued it lost `write` before the merge (O9). | Someone with `write` queues it again. |
 | `approval-withdrawn` | Right before the merge, the approval floor no longer held: an approval was dismissed or withdrawn, or a writer requested changes (D61). | Get the approval back; queue again. |

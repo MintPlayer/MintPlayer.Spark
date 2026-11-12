@@ -615,4 +615,76 @@ public class VersioningControllerTests : CoverageRavenTest
         ((VersioningController.VersioningRunResponse)((ObjectResult)again).Value!).Releases.Single().Release.Should().NotBeNull(
             "a re-run that finds its tags still creates the Releases it missed");
     }
+
+    // Segment P (P5): tags/verify passes only a hand tag the App placed on exactly this commit.
+    private static async Task SeedVersionsAsync(IDocumentStore store, params (string Tag, string? PlacedCommit)[] versions)
+    {
+        using var seed = store.OpenAsyncSession();
+        var repositoryId = Repository.DocumentId(EForgeProvider.GitHub, RepoId);
+        foreach (var (tag, placed) in versions)
+        {
+            CodeCoverage.Versioning.Versions.VersionTag.TryParse(tag, out var parsed).Should().BeTrue();
+            var id = ReleaseVersion.DocumentId(repositoryId, tag);
+            await seed.StoreAsync(new ReleaseVersion
+            {
+                Id = id, Repository = repositoryId, PackageId = parsed.PackageId, Version = parsed.Version.ToString(), Tag = tag, Actor = "octo",
+                Source = ReleaseVersion.FromComment, RecordedUtc = DateTime.UtcNow, PlacedCommit = placed,
+            }, id);
+        }
+        await seed.SaveChangesAsync();
+    }
+
+    private static IReadOnlyList<string>? Refused(IActionResult result)
+        => (((ObjectResult)result).Value as VersioningController.VersioningTagsVerifyResponse)?.Refused;
+
+    [Fact]
+    public async Task Verify_refuses_a_tag_nobody_recorded_one_only_recorded_and_one_placed_on_another_commit()
+    {
+        using var store = GetDocumentStore();
+        await SeedRepositoryAsync(store);
+        await SeedVersionsAsync(store, ("Acme.Core/v11.4.0", Sha), ("Acme.Pending/v11.1.0", null), ("@acme/ng/v22.1.0", new string('e', 40)));
+
+        var result = await Create(store, Token()).Controller.VerifyTags(new VersioningController.VersioningTagsVerifyRequest(Sha,
+            ["Acme.Core/v11.4.0", "Acme.Pending/v11.1.0", "@acme/ng/v22.1.0", "Acme.Stranger/v11.0.0"]), default);
+
+        Status(result).Should().Be(StatusCodes.Status200OK);
+        Refused(result).Should().Equal("@acme/ng/v22.1.0", "Acme.Pending/v11.1.0", "Acme.Stranger/v11.0.0");
+    }
+
+    [Fact]
+    public async Task Verify_asks_only_about_the_commit_the_token_is_for()
+    {
+        using var store = GetDocumentStore();
+        await SeedRepositoryAsync(store);
+        await SeedVersionsAsync(store, ("Acme.Core/v11.4.0", new string('e', 40)));
+
+        var result = await Create(store, Token()).Controller.VerifyTags(
+            new VersioningController.VersioningTagsVerifyRequest(new string('e', 40), ["Acme.Core/v11.4.0"]), default);
+
+        Status(result).Should().Be(StatusCodes.Status403Forbidden);
+    }
+
+    [Theory]
+    [InlineData(null, "Acme.Core/v11.4.0")]
+    [InlineData("1530153015301530153015301530153015301530", "not a tag")]
+    [InlineData("ABCDEF1530153015301530153015301530153015", "Acme.Core/v11.4.0")]
+    public async Task Verify_refuses_a_malformed_body(string? commit, string tag)
+    {
+        using var store = GetDocumentStore();
+        await SeedRepositoryAsync(store);
+
+        var result = await Create(store, Token()).Controller.VerifyTags(new VersioningController.VersioningTagsVerifyRequest(commit, [tag]), default);
+
+        Status(result).Should().Be(StatusCodes.Status400BadRequest);
+    }
+
+    [Fact]
+    public async Task Verify_for_an_unknown_repository_is_forbidden()
+    {
+        using var store = GetDocumentStore();
+
+        var result = await Create(store, Token()).Controller.VerifyTags(new VersioningController.VersioningTagsVerifyRequest(Sha, ["Acme.Core/v11.4.0"]), default);
+
+        Status(result).Should().Be(StatusCodes.Status403Forbidden);
+    }
 }

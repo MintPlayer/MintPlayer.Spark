@@ -91,7 +91,7 @@ public class SetUpRulesetsActionTests : CoverageRavenTest
     /// <summary>Keeps the session the action reads with.</summary>
     private sealed record IAsyncDocumentSessionHolder(Raven.Client.Documents.Session.IAsyncDocumentSession Session);
 
-    private static PersistentObject Form(int? approvals, bool? admins, object? checks = null) => new()
+    private static PersistentObject Form(int? approvals, bool? admins, object? checks = null, object? lineChecks = null) => new()
     {
         Id = null, Name = "SetUpRulesets", ObjectTypeId = FormType,
         Attributes =
@@ -99,6 +99,7 @@ public class SetUpRulesetsActionTests : CoverageRavenTest
             new PersistentObjectAttribute { Name = nameof(MergeQueueRulesetChoices.RequiredApprovals), Value = approvals },
             new PersistentObjectAttribute { Name = nameof(MergeQueueRulesetChoices.AdminsMayMergeByPullRequest), Value = admins },
             new PersistentObjectAttribute { Name = nameof(MergeQueueRulesetChoices.RequiredChecks), Value = checks },
+            new PersistentObjectAttribute { Name = nameof(MergeQueueRulesetChoices.LineRequiredChecks), Value = lineChecks },
         ],
     };
 
@@ -116,23 +117,30 @@ public class SetUpRulesetsActionTests : CoverageRavenTest
         return new IAsyncDocumentSessionHolder(h.Store.OpenAsyncSession());
     }
 
-    /// <summary>The release lines of coverage.yml get ruleset 1 too, and only ruleset 1 (#554, PRD §8.2; owner 2026-11-06).</summary>
+    /// <summary>
+    /// The release lines of coverage.yml get ruleset 1 too (#554, PRD §8.2; owner 2026-11-06), and ruleset 3 with their own
+    /// checks (R2, docs/release_lines_recovery_plan.md); ruleset 2 stays on the default branch.
+    /// </summary>
     [Fact]
-    public async Task The_release_lines_in_coverage_yml_get_ruleset_1()
+    public async Task The_release_lines_in_coverage_yml_get_ruleset_1_and_ruleset_3()
     {
         var holder = await SeedAsync();
         var f = new Fixture();
         f.Forge.GetFileContentAsync(Arg.Is<Repository>(r => r.Id == RepositoryId), "master", "coverage.yml", Arg.Any<CancellationToken>())
             .Returns("versioning:\n  lines: {}\n");
         f.Manager.Retry.Result.Returns(
-            new RetryResult { Option = "onboarding.plan", PersistentObject = Form(0, false) },
+            new RetryResult { Option = "onboarding.plan", PersistentObject = Form(0, false, Wire("build"), Wire("build", "e2e")) },
             new RetryResult { Option = "rulesets.apply" });
 
         await f.Action(holder).ExecuteAsync(Selected(RepositoryId));
 
-        var created = f.Applied!.Steps.OfType<CreateRulesetStep>().ToDictionary(s => s.Definition.Name, s => s.Definition.Include);
-        created[MergeQueueRulesetPlanner.RestrictUpdatesName].Should().Equal(["~DEFAULT_BRANCH", "refs/heads/release/*-*.x"]);
-        created[MergeQueueRulesetPlanner.ReviewsAndChecksName].Should().Equal(["~DEFAULT_BRANCH"]);
+        var created = f.Applied!.Steps.OfType<CreateRulesetStep>().ToDictionary(s => s.Definition.Name, s => s.Definition);
+        created[MergeQueueRulesetPlanner.RestrictUpdatesName].Include.Should().Equal(["~DEFAULT_BRANCH", "refs/heads/release/*-*.x"]);
+        created[MergeQueueRulesetPlanner.ReviewsAndChecksName].Include.Should().Equal(["~DEFAULT_BRANCH"]);
+        var line = created[MergeQueueRulesetPlanner.LineChecksName];
+        line.Include.Should().Equal(["refs/heads/release/*-*.x"]);
+        line.Rules.Single().Parameters!["required_status_checks"]!.AsArray().Select(c => c!["context"]!.GetValue<string>())
+            .Should().Equal([MergeQueueRulesetPlanner.LinePolicyCheckName, "build", "e2e"], "the lines' own answer, not ruleset 2's, and the line policy");
     }
 
     [Fact]
@@ -205,6 +213,24 @@ public class SetUpRulesetsActionTests : CoverageRavenTest
         planned!.Select(p => p.Target.Repository.FullName).Should().Equal("acme/one", "acme/two");
         Checks(planned[0]).Should().Contain("\"build\"").And.NotContain("lint");
         Checks(planned[1]).Should().Contain("\"lint\"").And.Contain("\"test\"").And.NotContain("build");
+    }
+
+    [Theory]
+    [InlineData(false, 0)]
+    [InlineData(true, 1)]
+    public async Task An_onboarding_that_turns_on_promotion_gives_the_App_the_line_checks_bypass_before_it_merges(bool promotesComing, int bypasses)
+    {
+        // Segment T6: the default branch's coverage.yml does not promote yet; the onboarding pull request will.
+        var f = new Fixture();
+        var repository = new Repository { Id = "Repositories/github/1", FullName = "acme/one", OwnerLogin = "acme", Name = "one", DefaultBranch = "master" };
+        var state = new ForgeRulesetState(77, [], null);
+        f.Manager.Retry.Result.Returns(new RetryResult { Option = "onboarding.plan", PersistentObject = Form(0, false, Wire("build"), Wire("build")) });
+
+        var planned = await f.Setup().ChooseAsync([new RulesetRead(new RulesetTarget(repository, f.Queue, "master"), state, MergeQueueRulesetPlanner.Defaults(state))],
+            CancellationToken.None, releaseLinesComing: true, promotesLinesComing: promotesComing);
+
+        planned!.Single().Plan.Steps.OfType<CreateRulesetStep>().Single(s => s.Definition.Name == MergeQueueRulesetPlanner.LineChecksName)
+            .Definition.BypassActors.Should().HaveCount(bypasses);
     }
 
     [Fact]

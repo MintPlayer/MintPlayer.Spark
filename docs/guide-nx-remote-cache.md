@@ -26,8 +26,12 @@ The workflows in `.github/workflows/` set:
 ```yaml
 env:
   NX_SELF_HOSTED_REMOTE_CACHE_SERVER: ${{ secrets.NX_CACHE_SERVER }}
-  NX_SELF_HOSTED_REMOTE_CACHE_ACCESS_TOKEN: ${{ (github.event_name == 'push' && github.ref_name == github.event.repository.default_branch) && secrets.NX_CACHE_RW_TOKEN || '' }}
+  NX_SELF_HOSTED_REMOTE_CACHE_ACCESS_TOKEN: ${{ ((github.event_name == 'push' && github.ref_name == github.event.repository.default_branch) || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && !startsWith(github.head_ref, 'mintplayer/dependencies'))) && secrets.NX_CACHE_RW_TOKEN || '' }}
 ```
+
+That is `pull-request.yml` and `test.yml` (segment H of `docs/release_lines_recovery_plan.md`, resilience PRD Q16 = B,
+owner 2026-11-11: "PR runs write - as long as it's not from a fork"). `dotnet-build-master.yml` and the deploy workflows
+still write on master pushes only.
 
 `NX_CACHE_SERVER` and `NX_CACHE_RW_TOKEN` are **organization-level secrets** visible to every repository in the
 MintPlayer org. `NX_CACHE_RO_TOKEN` is retired: the server ignores it.
@@ -35,7 +39,9 @@ MintPlayer org. `NX_CACHE_RO_TOKEN` is retired: the server ignores it.
 | Trigger | Token | Effect |
 | --- | --- | --- |
 | Push to `master` | `NX_CACHE_RW_TOKEN` | read + write |
-| Any other push or a PR from a branch in this repo | none | read; writes discarded |
+| PR from a branch in this repo, except `mintplayer/dependencies*` | `NX_CACHE_RW_TOKEN` | read + write |
+| PR from the dependency-update App's `mintplayer/dependencies*` branches | none | read; writes discarded |
+| Any other push (a release line, a feature branch) | none | read; writes discarded. A line's release build skips the cache altogether |
 | PR from a fork | none (GitHub passes no secrets) | read; writes discarded. Before 2026-11-10 forks could not read at all, because they could not get the read token |
 
 ## Security: cache poisoning consideration
@@ -44,13 +50,18 @@ Whoever can write can plant an artifact under the cache key a later build comput
 of rebuilding: Nx's [CREEP, CVE-2025-36852](https://nx.dev/blog/cve-2025-36852-critical-cache-poisoning-vulnerability-creep)
 ("first to cache wins").
 
-**The expression above is not the boundary.** A `pull_request` run uses the workflow file of the pull request itself,
-so a pull request from a branch in this repository can edit the expression, and `secrets: inherit` hands it every
-secret, `NX_CACHE_RW_TOKEN` included. What GitHub itself enforces is only that **fork** pull requests get no secrets.
-The real trust boundary is therefore **push access to a branch of this repository**: the maintainer, and the Apps that
-push branches here (the dependency updater's pull requests install new package versions, whose install scripts run in
-that job). To move the boundary to GitHub, put `NX_CACHE_RW_TOKEN` in an environment that allows only `master` and give
-the writing jobs `environment:`; a pull request run is then refused the environment.
+**Members who can push a branch here can poison test results.** Since segment H, same-repository pull request runs
+hold the write token by design, and a `pull_request` run uses the workflow file of the pull request itself, so even
+the dependency exclusion only binds code that cannot edit that file. What GitHub enforces is only that **fork** pull
+requests get no secrets. The trust boundary is **push access to a branch of this repository**: the maintainer, and the
+Apps that push branches here.
+- **The dependency-update App's branches are excluded on purpose.** A compromised package in a dependency bump runs its
+  install script inside the job, but it cannot change the workflow file that decided, from the head branch, whether
+  the token is there. The prefix is the whole rule: if that App's branch naming changes, change the expression with it.
+- **What a poisoned entry can do:** fake a green test (a replayed `test` target), never ship. A release line's
+  `build:release` and Angular build run with `--skip-nx-cache`, and `dotnet pack` rebuilds from source anyway.
+- **To move the boundary to GitHub,** put `NX_CACHE_RW_TOKEN` in an environment that allows only `master` and give the
+  writing jobs `environment:`. A pull request run is then refused the environment, which undoes Q16's PR writes.
 
 ### Current threat model for this repo
 
@@ -62,12 +73,11 @@ the writing jobs `environment:`; a pull request run is then refused the environm
 
 If additional members are granted write access to this repo, reconsider one or more of:
 
-1. **Keep RW restricted to master pushes only** (already in place — don't loosen).
+1. **Restrict RW to master pushes again** (the rule before segment H), or use the environment above.
 2. **Require all master pushes to go through PR review** (branch protection).
-3. **Disable remote-cache reads for release-publishing steps** — e.g. add `--skip-nx-cache` to the `dotnet pack` / `npm publish` build steps in `dotnet-build-master.yml` so the bits being shipped are always rebuilt from source on the runner.
+3. ~~Disable remote-cache reads for release-publishing steps~~ — done in segment H: a release line's builds in
+   `dotnet-build-master.yml` run with `--skip-nx-cache`.
 4. **Use a separate cache namespace for release builds** so day-to-day CI cache hits can't influence what gets published.
-
-Option 3 is the cheapest mitigation if you ever need it — it costs ~1 build of cache rebuild on every release but guarantees the published artifact wasn't sourced from a cached entry written by a less-trusted run.
 
 ## Local use
 
