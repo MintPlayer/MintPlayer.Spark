@@ -595,6 +595,15 @@ never report on a backport.
 note. Now a section without `branches` gets `branches: [<default>, supported-lines]`; one with its own list keeps the
 note.
 
+**G5, one required approval a solo maintainer can never give.** The rulesets form started at 1 when the repository
+had neither ruleset 2 nor classic protection, so Tools' ruleset 27099667 required an approval nobody but its author
+could give (GitHub never counts the author's own). `MergeQueueRulesetPlanner.Defaults` now starts at 0 there;
+ruleset 2's and classic protection's counts still win. The owner also proposed moving the field into the feature form,
+enabled by the Merge queue checkbox through a refresh (2026-11-12). Not taken: the rulesets form already appears only
+with Merge queue, and it is the one that can prefill the repository's current count (the feature form comes before
+the GitHub popup). `RefreshInvoker` also runs `OnRefresh` only for a type with a CLR class, which `SetUpFeatures`
+(a virtual type) has not. Test: `The_approvals_start_from_ruleset_2_then_classic_protection_then_none`.
+
 Tests (`OnboardingPlannerTests`): the Tools shape end to end with a deploy workflow left alone and planning again
 changing nothing; four filters left alone; the `branches-ignore` and negation notes; CRLF; no lines, no edits; the
 merge-queue key added, and kept as a note for an owner's own list. All 160 onboarding tests pass.
