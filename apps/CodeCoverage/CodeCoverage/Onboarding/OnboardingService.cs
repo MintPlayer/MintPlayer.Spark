@@ -159,6 +159,8 @@ public partial class OnboardingService : IOnboardingService
             // the plan read, whose workflows run on the lines already).
             var applied = await ApplyAsync(repository, git, plan.OnMerge, plan.Renames.Renames.Select(r => new OnboardingRename { From = r.From, To = r.To }), cancellationToken);
             applied.AddRange(await CutAsync(repository, forge, plan.Cuts.Select(c => c.Branch), tree.Commit, cancellationToken));
+            // #638 D15: an older line cut from a commit that targets a higher .NET gets a pull request narrowing it.
+            applied.AddRange(await NarrowAsync(repository, git, pulls, plan.Cuts.Select(c => c.Branch), defaultBranch, cancellationToken));
             // #638 D8: re-running Set up features backfills the versions the history declares and no tag carries yet, after the cuts (D7).
             if (await versioning.BackfillAsync(repository, moveTags ?? [], cancellationToken) is { } backfilled) applied.Add(backfilled.TrimEnd('.'));
             return await NoteAsync(state, new(applied.Count > 0 ? VersioningOnboardingOutcome.Merged : VersioningOnboardingOutcome.Nothing,
@@ -265,6 +267,9 @@ public partial class OnboardingService : IOnboardingService
         if (state.Note is { } seeded && seeded != before) done.Add(seeded.TrimEnd('.'));
         if (state.Features.Contains(EOnboardingFeature.ReleaseLines))
             done.AddRange(await LineWorkflowsAsync(repository, git, pulls, defaultBranch, cancellationToken));
+        // #638 D15: an older line cut from a commit that targets a higher .NET gets a pull request narrowing it.
+        if (mergeCommit is { Length: > 0 })
+            done.AddRange(await NarrowAsync(repository, git, pulls, state.Cuts, defaultBranch, cancellationToken));
 
         state.MergeHandledAt = mergeCommit;
         return await NoteAsync(state, new(VersioningOnboardingOutcome.Merged,
@@ -354,35 +359,116 @@ public partial class OnboardingService : IOnboardingService
                 if (await integration.GetFileContentAsync(repository, line.Branch, path, cancellationToken) is null)
                     missing.Add(new GitWriterFile(path, content));
             if (missing.Count == 0) continue;
-            notes.Add(await LineWorkflowPullRequestAsync(repository, git, pulls, line, missing, cancellationToken));
+            if (await git.GetBranchHeadAsync(repository, line.Branch, cancellationToken) is not { } head)
+            {
+                notes.Add($"{line.Branch} could not be read");
+                continue;
+            }
+            notes.Add(await LinePullRequestAsync(repository, git, pulls, line.Branch, line.Line.ToString(), head, missing, narrow: false, cancellationToken));
         }
         return notes;
     }
 
     private static string WorkflowPath(string workflow) => $".github/workflows/{workflow}";
 
-    private async Task<string> LineWorkflowPullRequestAsync(Repository repository, IForgeMergeQueue git, IForgeDependencyUpdates pulls, LineSupport line,
-        IReadOnlyList<GitWriterFile> files, CancellationToken cancellationToken)
+    /// <summary>The C# sources read for a narrowing's conditionals, at most; a larger repository gets a note.</summary>
+    internal const int MaxNarrowingSources = 500;
+
+    private const long MaxNarrowingFileBytes = 256 * 1024;
+
+    /// <summary>
+    /// #638 D15: a pull request into each .NET line cut now whose projects target a higher major than the line's (Tools #55,
+    /// done by hand), narrowing it with <see cref="LineNarrowing"/>. Read through the forge like the onboarding plan: the
+    /// project files and global.json, then the C# sources under a project that targets higher, for its conditionals.
+    /// </summary>
+    private async Task<IReadOnlyList<string>> NarrowAsync(Repository repository, IForgeMergeQueue git, IForgeDependencyUpdates pulls, IEnumerable<string> lines,
+        string defaultBranch, CancellationToken cancellationToken)
     {
-        if (await git.GetBranchHeadAsync(repository, line.Branch, cancellationToken) is not { } head)
-            return $"{line.Branch} could not be read";
-        var push = await git.GetWriterAccessAsync(repository, null, pushesWorkflowChanges: true, cancellationToken);
+        var integration = integrations.For(repository);
+        var pattern = VersioningYml.Parse(await integration.GetFileContentAsync(repository, defaultBranch, CoverageYml.FileName, cancellationToken)).Config?.EffectiveLines
+            ?? CodeCoverage.Versioning.Releases.ReleaseLinePattern.Default;
+        var notes = new List<string>();
+        foreach (var branch in lines)
+        {
+            if (!pattern.TryMatch(branch, out var line) || line is not { Ecosystem: CodeCoverage.Versioning.Releases.Ecosystems.Dotnet })
+                continue;
+            try
+            {
+                if (await ForgeRepositoryTree.OpenAsync(integration, repository, branch, cancellationToken) is not { } tree)
+                    continue;
+                var files = new Dictionary<string, string>(StringComparer.Ordinal);
+                foreach (var path in tree.Entries.Keys.Where(p => LineNarrowing.IsMsBuild(p) || LineNarrowing.IsGlobalJson(p)))
+                    if (await ReadTextAsync(tree, path, cancellationToken) is { } text) files[path] = text;
+                var above = files.Where(f => LineNarrowing.IsMsBuild(f.Key) && LineNarrowing.TargetsAbove(line.Major, f.Value))
+                    .Select(f => f.Key.LastIndexOf('/') is var slash and >= 0 ? f.Key[..(slash + 1)] : "").ToList();
+                if (above.Count == 0)
+                    continue;
+                var sources = tree.Entries.Keys.Where(p => LineNarrowing.IsSource(p) && above.Any(dir => p.StartsWith(dir, StringComparison.Ordinal)))
+                    .Order(StringComparer.Ordinal).ToList();
+                foreach (var path in sources.Take(MaxNarrowingSources))
+                    if (await ReadTextAsync(tree, path, cancellationToken) is { } text) files[path] = text;
+
+                var release = await session.LoadAsync<PlatformRelease>(PlatformRelease.IdFor(line.Ecosystem, $"{line.Major}.0"), cancellationToken);
+                var narrowing = LineNarrowing.Plan(line.Major, files, release?.LatestSdk, release?.LatestVersion);
+                if (sources.Count > MaxNarrowingSources)
+                    narrowing = narrowing with { Notes = [.. narrowing.Notes, $"{sources.Count - MaxNarrowingSources} C# files were not searched for conditionals; search them for `NET{line.Major + 1}`."] };
+                if (narrowing.Files.Count == 0)
+                {
+                    // Nothing to rewrite, only conditionals or notes: there is no commit to open a pull request with.
+                    if (!narrowing.IsEmpty)
+                        notes.Add($"{branch} targets above .NET {line.Major} in ways the bot cannot rewrite; see its conditionals by hand");
+                    continue;
+                }
+                var note = await LinePullRequestAsync(repository, git, pulls, branch, line.ToString(), tree.Commit, narrowing.Files, narrow: true, cancellationToken,
+                    narrowing.Body(branch));
+                notes.Add(note.StartsWith("opened #", StringComparison.Ordinal) ? $"{note} to narrow it to .NET {line.Major}" : note);
+            }
+            catch (GraphException ex)
+            {
+                notes.Add($"{branch} was not narrowed: {ex.Message}");
+            }
+        }
+        return notes;
+    }
+
+    private static async Task<string?> ReadTextAsync(ForgeRepositoryTree tree, string path, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await tree.ReadAsync(path, MaxNarrowingFileBytes, cancellationToken) is { } bytes ? System.Text.Encoding.UTF8.GetString(bytes) : null;
+        }
+        catch (GraphException)
+        {
+            return null;   // over the size limit: not a file a narrowing rewrites
+        }
+    }
+
+    /// <summary>
+    /// A bot pull request into a line: D9's regenerate workflows, or with <paramref name="narrow"/> #638 D15's narrowing,
+    /// committed on <paramref name="head"/> by the git writer and opened (or found, on a retry) on the forge.
+    /// </summary>
+    private async Task<string> LinePullRequestAsync(Repository repository, IForgeMergeQueue git, IForgeDependencyUpdates pulls, string lineBranch, string line,
+        string head, IReadOnlyList<GitWriterFile> files, bool narrow, CancellationToken cancellationToken, string? narrowBody = null)
+    {
+        var what = narrow ? "narrowing" : "workflow";
+        var push = await git.GetWriterAccessAsync(repository, null, pushesWorkflowChanges: !narrow, cancellationToken);
         if (push.Access is not { } access)
-            return $"no workflow pull request into {line.Branch}: {push.RefusalReason}";
+            return $"no {what} pull request into {lineBranch}: {push.RefusalReason}";
         var identity = new GitWriterIdentity(VersioningController.Tagger.Name, VersioningController.Tagger.Email, time.GetUtcNow());
         GitWriterDependencyResult pushed;
         try
         {
             pushed = await writer.OnboardingAsync(new GitWriterDependencyRequest(
                 repository.Provider.ToCanonicalString(), repository.GitHubId.ToString(CultureInfo.InvariantCulture), access.CloneUrl,
-                new CommitGraph.SidecarCredential(access.Username, access.Password), line.Branch, head)
+                new CommitGraph.SidecarCredential(access.Username, access.Password), lineBranch, head)
             {
-                Line = line.Line.ToString(), Author = identity, Committer = identity, Message = OnboardingPlanner.LineTitle, Files = files,
+                Line = line, Author = identity, Committer = identity, Message = narrow ? OnboardingPlanner.NarrowTitle : OnboardingPlanner.LineTitle, Files = files,
+                Narrow = narrow,
             }, cancellationToken);
         }
         catch (GitWriterRefusedException ex)
         {
-            return $"no workflow pull request into {line.Branch}: {ex.Message}";
+            return $"no {what} pull request into {lineBranch}: {ex.Message}";
         }
         finally
         {
@@ -391,25 +477,26 @@ public partial class OnboardingService : IOnboardingService
         if (pushed.Outcome != GitWriterOutcomes.Pushed)
         {
             if (pushed.Outcome is GitWriterOutcomes.Busy or GitWriterOutcomes.Failed)
-                throw new GitWriterUnavailableException($"The git writer answered {line.Branch}'s onboarding with {pushed.Outcome}: {pushed.Detail}");
-            return $"no workflow pull request into {line.Branch} ({pushed.Outcome}): {pushed.Detail}";
+                throw new GitWriterUnavailableException($"The git writer answered {lineBranch}'s {what} with {pushed.Outcome}: {pushed.Detail}");
+            return $"no {what} pull request into {lineBranch} ({pushed.Outcome}): {pushed.Detail}";
         }
 
-        var branch = OnboardingPlanner.LineBranch(line.Line.ToString());
-        var pull = await pulls.FindPullRequestAsync(repository, branch, line.Branch, cancellationToken);
+        var branch = narrow ? OnboardingPlanner.NarrowBranch(line) : OnboardingPlanner.LineBranch(line);
+        var title = narrow ? OnboardingPlanner.NarrowTitle : OnboardingPlanner.LineTitle;
+        var pull = await pulls.FindPullRequestAsync(repository, branch, lineBranch, cancellationToken);
         if (pull is null)
         {
             try
             {
-                pull = await pulls.CreatePullRequestAsync(repository, branch, line.Branch, OnboardingPlanner.LineTitle,
-                    OnboardingPlanner.LineBody(line.Branch, files.Select(f => f.Path)), draft: false, cancellationToken);
+                pull = await pulls.CreatePullRequestAsync(repository, branch, lineBranch, title,
+                    narrowBody ?? OnboardingPlanner.LineBody(lineBranch, files.Select(f => f.Path)), draft: false, cancellationToken);
             }
             catch (ForgeRequestException ex) when (ex.StatusCode == 422)
             {
-                pull = await pulls.FindPullRequestAsync(repository, branch, line.Branch, cancellationToken) ?? throw ex;
+                pull = await pulls.FindPullRequestAsync(repository, branch, lineBranch, cancellationToken) ?? throw ex;
             }
         }
-        return $"opened #{pull.Number} into {line.Branch}";
+        return $"opened #{pull.Number} into {lineBranch}";
     }
 
     private sealed record Planned(OnboardingPlan? Plan, ForgeRepositoryTree? Tree, IForgeMergeQueue? Git, IForgeDependencyUpdates? Pulls, string? Refusal)

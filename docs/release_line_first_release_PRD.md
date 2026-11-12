@@ -75,9 +75,9 @@ it or warns. The issue has the full evidence tables. This file does not repeat t
 
 ## 5. Milestones (one PR, in the issue's order)
 
-> **Resume here (2026-11-12, after M5).**
-> - Done: M1–M5, each with its red→green record below (S6 answered in M5).
-> - Next: **M6** (D15, the narrowing PR; S8 and S9 are answered), then **M7** (docs). After M7, run the
+> **Resume here (2026-11-12, after M6).**
+> - Done: M1–M6, each with its red→green record below (S6 answered in M5).
+> - Next: **M7** (docs). After M7, run the
 >   affected suites once with the Developer licence (`npm run test:affected`), then open the PR, ready and not a draft.
 > - Built so far, for orientation:
 >   - The MSBuild task takes a per-package major map (`MintPlayerVersioningMajors`) with MPV006.
@@ -182,9 +182,32 @@ owner's requested exception to "tests run once, at the end". The full affected s
   ⚠️ `BackportTests.D13_…` (GitWriter, real git, pure move → `empty`, mixed → `created` with `net10.0` kept) was
   written after the code and passed on its first run. Results: PlatformMarkersTests 28/28, BackportRecipientTests
   41/41, the GitWriter platform backport tests 4/4.
-- **M6, narrowing PR (D15).** Red: `OnboardingServiceTests` with an older line cut from a `net10.0;net11.0` commit,
-  which opens a PR into the line with TFMs, `global.json` and framework packages narrowed and the conditionals listed.
-  `OnboardingPlannerTests` checks the confirmation and the PR body text.
+- **M6, narrowing PR (D15). ✅ Done.** `Onboarding/LineNarrowing.cs` is a pure engine over the line's files.
+  - **Engine rules:**
+    - TFMs above the line are dropped, and a project left with none gets `net{N}.0`. The element stays
+      `<TargetFrameworks>`: switching to the singular is the pitfall Tools hit.
+    - `global.json` gets the line's `LatestSdk`, or a note for a person when it isn't known.
+    - Framework packages above the line get its `LatestVersion` (runtime), or `N.0.0` when it isn't known. Both come from
+      `PlatformRelease` `dotnet/N.0` (S9).
+    - Listed for a person: MSBuild `Condition`s and `#if`/`#elif NETxx…` directives naming a higher major.
+  - **`OnboardingService.NarrowAsync`:**
+    - Runs for every .NET line cut in that call: at the merge, and on the no-files path.
+    - Reads through `ForgeRepositoryTree`: the MSBuild files and `global.json`, then the C# sources under a project that
+      targets higher, at most 500 (the rest gets a note).
+    - Commits through the git writer's onboarding job with the new `Narrow` flag. Its files rule: MSBuild/`global.json`
+      only, a line required; branch `mintplayer/narrow-{line}`.
+    - Opens the pull request with `LineNarrowing.Body`.
+  - `LineWorkflowPullRequestAsync` became the shared `LinePullRequestAsync`.
+  - The plan's release-lines section and the older-line prompt (`onboarding.olderLine.message`, en/fr/nl, golden
+    regenerated) say the narrowing PR follows.
+  - **Red → green:**
+    - Behavioural red, against an empty stub: `LineNarrowingTests` (3 of 4 red; the fourth, "nothing higher → empty",
+      passes against the stub by construction). `OnboardingServiceTests.Narrowing_D15_…` failed on "no narrowing
+      request".
+    - ⚠️ No red at all: the git writer's `OnboardingWriterJobTests.D15_…` (3) were written before the code but first run
+      after it, and the `OnboardingPlannerTests` assertions were added after the code.
+  - **Results:** `LineNarrowingTests` + `OnboardingServiceTests` 16/16, `OnboardingPlannerTests` + `SetUpFeatures*`
+    32/32, `OnboardingWriterJobTests` 12/12, goldens 25/25.
 - **M7, docs:** G7 in `release_lines_recovery_plan.md` §2e, and remove #600 from its §6; `versioning.md:47-49`
   (seeds become the history backfill), `:105` (line's major), `:316-328` (hand-tag rule); `merge-queue.md:220`
   (narrowing PRs); a multi-targeting → lines how-to, including the `$(TargetFrameworks)` → `$(TargetFramework)`

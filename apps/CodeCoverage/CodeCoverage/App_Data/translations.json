@@ -3779,9 +3779,9 @@
         "nl": "Aanmaken"
       },
       "message": {
-        "en": "Packages that still target {1}: {2}. If you still support {1}, the bot creates the release line {0}, so fixes can be backported and released there. Skip it if the target is only kept for compatibility.",
-        "fr": "Packages qui ciblent encore {1} : {2}. Si vous supportez encore {1}, le bot crée la ligne de release {0}, afin d'y rétroporter et publier des correctifs. Ignorez-la si la cible n'est gardée que pour la compatibilité.",
-        "nl": "Packages die nog op {1} gericht zijn: {2}. Als je {1} nog ondersteunt, maakt de bot de release-lijn {0} aan, zodat fixes daar gebackport en gereleased kunnen worden. Sla ze over als het target alleen voor compatibiliteit blijft."
+        "en": "Packages that still target {1}: {2}. If you still support {1}, the bot creates the release line {0}, so fixes can be backported and released there. The line is cut from a commit that also targets a higher major, so the bot then opens a pull request into it that narrows it to {1}. Skip it if the target is only kept for compatibility.",
+        "fr": "Packages qui ciblent encore {1} : {2}. Si vous supportez encore {1}, le bot crée la ligne de release {0}, afin d'y rétroporter et publier des correctifs. La ligne part d'un commit qui cible aussi une version majeure plus récente : le bot ouvre ensuite une pull request qui la restreint à {1}. Ignorez-la si la cible n'est gardée que pour la compatibilité.",
+        "nl": "Packages die nog op {1} gericht zijn: {2}. Als je {1} nog ondersteunt, maakt de bot de release-lijn {0} aan, zodat fixes daar gebackport en gereleased kunnen worden. De lijn vertrekt van een commit die ook een hogere major target, dus de bot opent daarna een pull request die ze tot {1} beperkt. Sla ze over als het target alleen voor compatibiliteit blijft."
       },
       "skip": {
         "en": "Skip",

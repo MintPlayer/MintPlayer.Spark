@@ -365,6 +365,46 @@ public class OnboardingServiceTests : CoverageRavenTest
     }
 
     [Fact]
+    public async Task Narrowing_D15_an_older_line_cut_from_a_multi_target_commit_gets_a_pull_request_that_narrows_it()
+    {
+        // #638 D15: Tools #55, done by the bot: release/dotnet-10.x cut where the project targets net10.0;net11.0.
+        using var store = GetDocumentStore();
+        await SeedRepositoryAsync(store);
+        using (var seed = store.OpenAsyncSession())
+        {
+            await seed.StoreAsync(new PlatformRelease { Platform = "dotnet", Channel = "10.0", Major = 10, LatestSdk = "10.0.203", LatestVersion = "10.0.7" },
+                PlatformRelease.IdFor("dotnet", "10.0"));
+            await seed.SaveChangesAsync();
+        }
+        var forge = Repository(Head);
+        forge.Files[$"{Head}/src/Tools/Tools.csproj"] = MultiTarget;
+        var h = Create(store, forge);
+        var repository = (await h.Session.LoadAsync<Repository>(CodeCoverage.Entities.Repository.DocumentId(EForgeProvider.GitHub, RepoId)))!;
+        var opened = await h.Service.OnboardAsync(repository, new HashSet<EOnboardingFeature> { EOnboardingFeature.ReleaseLines }, ["release/dotnet-10.x"]);
+        h.Versioning.PullRequest = new ForgePullRequestText(opened.PullRequest!.Value, OnboardingPlanner.Title, null, OnboardingPlanner.Branch, Head, "main",
+            false, true, true, NextHead, []);
+        // Both lines as the cut left them, at the merge commit.
+        const string Source = "namespace Acme.Tools;\n#if NET11_0_OR_GREATER\npublic static class Net11 { }\n#endif\n";
+        foreach (var line in new[] { "release/dotnet-11.x", "release/dotnet-10.x" })
+            forge.Trees[line] = new ForgeTree(NextHead, "tree-5711", [new ForgeTreeEntry("src/Tools/Tools.csproj", MultiTarget.Length), new ForgeTreeEntry("src/Tools/Net11.cs", Source.Length)], false);
+        forge.Files[$"{NextHead}/src/Tools/Tools.csproj"] = MultiTarget;
+        forge.Files[$"{NextHead}/src/Tools/Net11.cs"] = Source;
+
+        var merged = await h.Service.MergedAsync(repository);
+
+        var narrowing = h.Writer.Requests("onboarding").Where(r => r.Narrow).Should().ContainSingle().Which;
+        (narrowing.Line, narrowing.BaseBranch, narrowing.ExpectedSha, narrowing.Message).Should().Be(("dotnet-10.x", "release/dotnet-10.x", NextHead, OnboardingPlanner.NarrowTitle));
+        narrowing.Files!.Select(f => (f.Path, f.Content)).Should().Equal([("src/Tools/Tools.csproj", MultiTarget.Replace("net10.0;net11.0", "net10.0"))]);
+        var pull = h.Pulls.Created.Where(p => p.Base == "release/dotnet-10.x").Should().ContainSingle().Which;
+        (pull.Head, pull.Title).Should().Be(("mintplayer/narrow-dotnet-10.x", OnboardingPlanner.NarrowTitle));
+        pull.Body.Should().Contain("- `src/Tools/Tools.csproj`: TargetFrameworks `net10.0;net11.0` → `net10.0`")
+            .And.Contain("- `src/Tools/Net11.cs:2`: `#if NET11_0_OR_GREATER`");
+        h.Pulls.Created.Should().NotContain(p => p.Base == "release/dotnet-11.x", "the current line targets nothing above its major");
+        var number = h.Pulls.PullRequests.Values.Single(p => p.HeadRef == "mintplayer/narrow-dotnet-10.x").Number;
+        merged.Note.Should().Contain($"opened #{number} into release/dotnet-10.x to narrow it to .NET 10");
+    }
+
+    [Fact]
     public async Task LineCuts_D4_a_refused_line_is_noted_and_one_that_exists_counts_as_done()
     {
         using var store = GetDocumentStore();

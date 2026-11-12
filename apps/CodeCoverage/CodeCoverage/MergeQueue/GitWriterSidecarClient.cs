@@ -439,6 +439,10 @@ public sealed record GitWriterDependencyRequest(string Provider, string RepoId, 
     public string? LastBotSha { get; init; }
 
     public IReadOnlyList<GitWriterFile>? Files { get; init; }
+
+    /// <summary>#638 D15: with <see cref="Line"/>, the line's narrowing commit (project files and global.json) on
+    /// <c>mintplayer/narrow-{line}</c> instead of its workflows.</summary>
+    public bool Narrow { get; init; }
 }
 
 public sealed record GitWriterMigratePatch(string Group, string Patch);

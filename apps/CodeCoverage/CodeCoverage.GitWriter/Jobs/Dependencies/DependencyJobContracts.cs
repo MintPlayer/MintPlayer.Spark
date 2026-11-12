@@ -130,6 +130,9 @@ public sealed class DependencyFilesWire : DependencyCommitJobWire
 public sealed class VersioningOnboardingWire : DependencyCommitJobWire
 {
     public List<DependencyFileWire>? Files { get; set; }
+
+    /// <summary>#638 D15: a line's narrowing commit (project files and global.json) instead of its workflows.</summary>
+    public bool Narrow { get; set; }
 }
 
 /// <summary><c>DELETE /jobs/dependencies/work-ref</c>: removes the work ref after a run (R14), only while it is at

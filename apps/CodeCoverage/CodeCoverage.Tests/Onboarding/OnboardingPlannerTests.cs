@@ -94,6 +94,11 @@ public class OnboardingPlannerTests
             Inputs(EOnboardingFeature.ReleaseLines) with { OlderLines = ["release/dotnet-10.x", "release/dotnet-8.x"] });
         chosen.Cuts.Select(c => c.Branch).Should().Equal(["release/dotnet-11.x", "release/dotnet-10.x"], "a chosen line no package offers is ignored");
         chosen.Body.Should().Contain("- `release/dotnet-10.x` (still targets net10.0): `Acme.Tools`.").And.Contain("- `release/dotnet-9.x`: still targets net9.0.");
+
+        // #638 D15: only a chosen older line is narrowed afterwards, and the plan says so.
+        const string Narrowing = "the bot opens a pull request into it that drops the higher target frameworks";
+        plan.Body.Should().NotContain(Narrowing);
+        chosen.Body.Should().Contain(Narrowing).And.Contain("`#if NETxx_OR_GREATER`");
     }
 
     [Fact]
