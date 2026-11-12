@@ -56,6 +56,7 @@ Signed-in users | grant | Edit/Repository | c0e5a9e1-0000-4000-8000-00000000006c
 Signed-in users | grant | EnableDependencyUpdates/DependencyOnboardingRow | c0e5a9e1-0000-4000-8000-0000000000a1 | app
 Signed-in users | grant | Manage/RepoSettings | c0e5a9e1-0000-4000-8000-000000000032 | app
 Signed-in users | grant | New/ForgeCheck | c0e5a9e1-0000-4000-8000-0000000000ad | app
+Signed-in users | grant | New/SetUpFeatures | c0e5a9e1-0000-4000-8000-0000000000b0 | app
 Signed-in users | grant | Query/DependencyOnboardingRow | c0e5a9e1-0000-4000-8000-0000000000a3 | app
 Signed-in users | grant | Query/MyAccountRow | c0e5a9e1-0000-4000-8000-000000000051 | app
 Signed-in users | grant | QueryRead/Account | c0e5a9e1-0000-4000-8000-000000000011 | app

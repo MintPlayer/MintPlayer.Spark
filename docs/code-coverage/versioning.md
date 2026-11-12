@@ -371,9 +371,11 @@ platform major instead, so each target framework moves to its own branch:
 - **The default branch** (and its current line, `release/dotnet-11.x`) drops the older target:
   `<TargetFrameworks>net11.0</TargetFrameworks>`, and its framework packages and `global.json` move to 11.
 - **The older line** (`release/dotnet-10.x`) keeps only `net10.0`. When **Set up features** creates it from a commit
-  that still targets both, the bot opens a pull request into it (branch `mintplayer/narrow-dotnet-10.x`). That pull
-  request drops the higher target frameworks, sets `global.json` to the line's latest SDK and the framework packages
-  to its latest runtime (both from the platform lifecycle page). It lists every `#if NET11_0_OR_GREATER` and every
+  that still targets both, or finds it still targeting both on a later run (#649), the bot opens a pull request into
+  it (branch `mintplayer/narrow-dotnet-10.x`). That pull request drops the higher target frameworks, sets `global.json`
+  (`sdk.version`, `tools.dotnet`) and the workflows' `setup-dotnet` pins to the line's latest SDK, and the framework
+  packages to its latest runtime (both from the platform lifecycle page). With **SDK from global.json** the workflows
+  read `global.json` instead of a pin ([onboarding.md](onboarding.md#on-merge), step 6). It lists every `#if NET11_0_OR_GREATER` and every
   MSBuild `Condition` naming `net11.0`, for you to resolve: on the line they are dead code or wrong. Review it, fix
   the listed conditionals on its branch, and merge it before the line's first release.
 - **The versions:** the line's packages release as `10.x` from their own tags, which the history backfill placed on the

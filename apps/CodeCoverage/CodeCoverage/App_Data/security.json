@@ -311,12 +311,6 @@
       "isDenied": false
     },
     {
-      "key": "c0e5a9e1-0000-4000-8000-0000000000b0",
-      "resource": "New/SetUpFeatures",
-      "groupId": "00000000-0000-0000-0000-000000000001",
-      "isDenied": false
-    },
-    {
       "key": "c0e5a9e1-0000-4000-8000-0000000000ac",
       "resource": "SetUpRulesets/Repository",
       "groupId": "00000000-0000-0000-0000-000000000001",
@@ -356,6 +350,12 @@
       "key": "c0e5a9e1-0000-4000-8000-000000000092",
       "resource": "QueryRead/RepositoryGraphState",
       "groupId": "c0e5ad00-0000-4000-8000-000000000001",
+      "isDenied": false
+    },
+    {
+      "key": "c0e5a9e1-0000-4000-8000-0000000000b0",
+      "resource": "New/SetUpFeatures",
+      "groupId": "00000000-0000-0000-0000-000000000001",
       "isDenied": false
     },
     {
