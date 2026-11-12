@@ -190,4 +190,55 @@ public class RefreshInvokerTests
 
         actions.Invocations.Should().Be(2, "both calls must reach the hook, not just the first");
     }
+
+    /// <summary>#649: a JSON-only virtual type's actions class — a plain class, as for the virtual load and write hooks.</summary>
+    public class Issue649VirtualRefreshFormActions
+    {
+        public static string? SawAttributeName { get; private set; }
+
+        public Task OnRefreshAsync(SparkRefreshArgs args)
+        {
+            SawAttributeName = args.Attribute?.Name;
+            args.PersistentObject["PoliceReport"].IsReadOnly = true;
+            return Task.CompletedTask;
+        }
+    }
+
+    /// <summary>The right name with the wrong shape: must fail loudly, not refresh nothing.</summary>
+    public class Issue649MisshapenRefreshFormActions
+    {
+        public void OnRefreshAsync(PersistentObject persistentObject) { }
+    }
+
+    private static EntityTypeDefinition Virtual(string name) => new() { Id = Guid.NewGuid(), Name = name, ClrType = "" };
+
+    [Fact]
+    public async Task Issue649_a_virtual_type_refreshes_through_its_actions_class_by_name()
+    {
+        var invoker = Invoker(new ServiceCollection().AddSingleton(Substitute.For<IEntityMapper>()).BuildServiceProvider());
+        var po = Object();
+
+        await invoker.InvokeVirtualAsync(Virtual("Issue649VirtualRefreshForm"), po, "Status", isNew: true, CancellationToken.None);
+
+        Issue649VirtualRefreshFormActions.SawAttributeName.Should().Be("Status");
+        po["PoliceReport"].IsReadOnly.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Issue649_a_virtual_type_without_an_actions_class_refreshes_nothing()
+    {
+        var invoker = Invoker(new ServiceCollection().AddSingleton(Substitute.For<IEntityMapper>()).BuildServiceProvider());
+
+        await invoker.Invoking(i => i.InvokeVirtualAsync(Virtual("Issue649NoSuchForm"), Object(), "Status", isNew: true, CancellationToken.None))
+            .Should().NotThrowAsync();
+    }
+
+    [Fact]
+    public async Task Issue649_a_misshapen_virtual_refresh_hook_throws()
+    {
+        var invoker = Invoker(new ServiceCollection().AddSingleton(Substitute.For<IEntityMapper>()).BuildServiceProvider());
+
+        await invoker.Invoking(i => i.InvokeVirtualAsync(Virtual("Issue649MisshapenRefreshForm"), Object(), "Status", isNew: true, CancellationToken.None))
+            .Should().ThrowAsync<InvalidOperationException>().WithMessage("*Expected: 'public Task OnRefreshAsync(SparkRefreshArgs args)'*");
+    }
 }

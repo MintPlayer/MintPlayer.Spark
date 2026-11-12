@@ -3,7 +3,9 @@
   "_comment": [
     "HAND-AUTHORED and NOT generated. A virtual type: no clrType, no documents. The \"Set up features\" action's form",
     "(#571 M10c, coverage_backport_PRD D3), shown as a retry prompt: one checkbox per EOnboardingFeature. The action reads",
-    "the answers back from Retry.Result.PersistentObject, plans them, and shows the plan for a confirmation."
+    "the answers back from Retry.Result.PersistentObject, plans them, and shows the plan for a confirmation.",
+    "#649 D12: SdkFromGlobalJson shows on a .NET repository (DotnetRepository, set by the action, never drawn) and is enabled",
+    "only with DependencyUpdates or ReleaseLines ticked: SetUpFeaturesActions.OnRefreshAsync, triggered by those two."
   ],
   "persistentObject": {
     "id": "88a980ce-1c12-4622-b04f-00e3979a0fb4",
@@ -32,6 +34,7 @@
         "order": 2,
         "isArray": false,
         "showedOn": "PersistentObject",
+        "triggersRefresh": "Auto",
         "rules": []
       },
       {
@@ -65,6 +68,7 @@
         "order": 5,
         "isArray": false,
         "showedOn": "PersistentObject",
+        "triggersRefresh": "Auto",
         "rules": []
       },
       {
@@ -76,6 +80,28 @@
         "order": 6,
         "isArray": false,
         "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "5f0c6a2e-8d3b-4f61-9a7e-2c4b1d9e7f30",
+        "name": "SdkFromGlobalJson",
+        "dataType": "boolean",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 7,
+        "isArray": false,
+        "showedOn": "None",
+        "rules": []
+      },
+      {
+        "id": "a3e1b7d4-62c9-4e08-b5f2-7d9c0e1a4b86",
+        "name": "DotnetRepository",
+        "dataType": "boolean",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 8,
+        "isArray": false,
+        "showedOn": "None",
         "rules": []
       }
     ]

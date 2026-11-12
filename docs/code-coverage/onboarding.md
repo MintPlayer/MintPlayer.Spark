@@ -20,6 +20,7 @@ The git writer must be configured on the server.
 | Package versioning | What [versioning.md § Onboarding](versioning.md#onboarding) lists. | One seed tag per package at the merge commit. |
 | Release lines | `versioning.lines` and the table of old line branches to rename (D2). With exactly one push workflow running the versioning step, the current lines are promoted with `/release` and wait for that workflow (`current: promote`, segment T6; [versioning.md](versioning.md#promoted-lines-release-segment-p)). Either way ruleset 3 gives the App its bypass at once, so it can create the lines at the merge. With none or several, `lines: {}` (backports) and a note saying how to switch. An existing `versioning.lines` is left as it is; when it takes backports but exactly one workflow could prove a commit, a note says how to switch (gap G2). With lines, the versioning workflows' `push` filter and every `pull_request` filter that names the default branch also take `'release/*-*.x'`, so the lines publish and their pull requests get checked; a trigger without a filter, any other workflow's `push`, and filters that `branches-ignore` the lines or negate a branch (a note) are left alone (gap G3). Picking it includes package versioning. The bot also creates the release lines that have no branch: the current line of each package's platform, and, for each lower `netX.0` a package still targets, an older line once you choose **Create it** for it ([onboarding_line_cuts_PRD.md](../onboarding_line_cuts_PRD.md)). A package with its own `versioning.packages.<id>.anchor` is left to the versioning run. See [backports.md](backports.md). | The renames, the release lines created from the merge commit, and a regenerate-workflow pull request into each supported line (D9). |
 | Size labels | Nothing. | `PrSizeLabels` set to Enabled. |
+| SDK from global.json | Opt-in, shown only for a .NET repository and enabled only with dependency updates or release lines. Every `actions/setup-dotnet` step's `dotnet-version` pin in `.github/workflows/*.yml` becomes `global-json-file: global.json`, so `global.json` is the one place the SDK version lives and the SDK updater moves only that. A block list loses the entry on `global.json`'s major and keeps the lower ones, as runtime installs for multi-target tests. Skipped with a note: no `sdk.version` in the root `global.json` (the bot never creates one), a step before its job's `actions/checkout`, a matrix expression or flow list. | The same conversion on each supported .NET line, in the line's narrowing pull request (step 6). |
 
 A choice that changes no file (size labels alone, or features already set up) opens no pull request: its settings,
 renames and release lines apply at once, the lines from the default branch's head. Running **Set up features** again on
@@ -72,15 +73,26 @@ The merged webhook on `mintplayer/onboarding` reaches `IOnboardingService.Merged
    and each `autoResolve` rule's `action`), the file is copied from the default branch onto
    `mintplayer/onboarding-<line>` and a pull request into the line is opened. Check it builds with the line's SDKs.
 
-6. Each older .NET line cut here from a commit that targets a higher major gets a narrowing pull request (#638 D15).
-   It narrows the TFMs, the framework packages, `global.json` (`sdk.version` and Arcade's `tools.dotnet`) and every
-   `setup-dotnet` `dotnet-version` pin in `.github/workflows/` (an exact pin takes the line's latest SDK, a wildcard
-   such as `11.0.x` becomes `10.0.x`). A block list of SDKs is left for a person and listed in the pull request.
+6. Each supported .NET line that targets a higher major than its own gets a narrowing pull request (#638 D15) on
+   `mintplayer/narrow-<line>`: the lines cut here **and** the ones that exist already, so re-running **Set up features**
+   narrows a line an earlier run cut (#649 D10). It narrows the TFMs, the framework packages, `global.json`
+   (`sdk.version` and Arcade's `tools.dotnet`) and every `setup-dotnet` `dotnet-version` pin in `.github/workflows/`
+   (an exact pin takes the line's latest SDK, a wildcard such as `11.0.x` becomes `10.0.x`). A block list of SDKs is
+   left for a person and listed in the pull request. With **SDK from global.json**, the line's pins are converted first
+   and the same pull request carries them; a line that needs no narrowing gets that pull request for the conversion
+   alone ("Read the .NET SDK from global.json on this release line").
+   The git writer accepts MSBuild files, `global.json` and top-level workflow files on that branch, and the push token
+   asks for **Workflows: write** when a workflow changes. A rerun with the same files on the same line head keeps the
+   branch's commit, so an open pull request's checks do not restart.
 
 The merge is handled once: `MergeHandledAt` holds the merge commit (`SeedCommit` and `BackfilledAt` for step 4).
 
 When Set up features has nothing to change in the repository, no pull request opens and steps 1-6 run at once, in the
 same order (D3).
+
+**A step that fails is reported first.** A line pull request that could not be opened (no token, the git writer refused,
+the push was not made) is logged as a warning, leads the outcome as "Not done: …", and turns the toast into a warning.
+Until #649 such a refusal sat in the middle of an "Applied without a pull request" sentence and the toast stayed green.
 
 ## Left to you
 

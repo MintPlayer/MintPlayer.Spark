@@ -203,6 +203,11 @@ public sealed partial class WriterService
             await OpenDependenciesAsync(context, job);
             var baseTree = await RevParseAsync(context, $"{job.ExpectedSha}^{{tree}}");
             var tree = await WriteFilesAsync(context, job, baseTree, files);
+            // #649 D10 (S8): a rerun plans the same files on the same head, and a line's commit is dated now, so it would
+            // rebuild a new commit every time and force-push it, restarting the pull request's checks. The branch that holds
+            // the same tree on the same parent is answered as it is.
+            if (await ExistingSameAsync(context, job, branch, tree) is { } existing)
+                return new DependencyJobResponse(JobOutcomes.Pushed, null, existing, null, [.. files.Select(f => f.Path)], null, context.ElapsedMilliseconds);
             var built = await CommitTreeOnAsync(context, tree, job.ExpectedSha, commit);
             return await PushBotRefAsync(context, job, built, branch, null) switch
             {
@@ -322,6 +327,24 @@ public sealed partial class WriterService
         }
         await context.RequireAsync(["update-index", "-z", "--index-info"], input: info.ToString(), index: index);
         return Oid(await context.RequireAsync(["write-tree", "--missing-ok"], index: index), "write-tree");
+    }
+
+    private const string ExistingTracking = "refs/mintplayer/existing";
+
+    /// <summary>The tip of <paramref name="branch"/> when it is one commit on <c>expected_sha</c> holding <paramref name="tree"/>; else null
+    /// (no such branch, another parent, another tree, or more than one commit).</summary>
+    private static async Task<string?> ExistingSameAsync(JobContext context, DependencyJob job, string branch, string tree)
+    {
+        var fetched = await context.GitAsync(["fetch", "--quiet", "--no-tags", "--no-write-fetch-head", "--filter=blob:none", "origin", $"+refs/heads/{branch}:{ExistingTracking}"], job.Credential);
+        if (!fetched.Succeeded)
+            return null;
+        var tip = await RevParseAsync(context, ExistingTracking);
+        var parent = await context.GitAsync(["rev-parse", "--verify", "--quiet", "--end-of-options", $"{tip}^1"], job.Credential);
+        var second = await context.GitAsync(["rev-parse", "--verify", "--quiet", "--end-of-options", $"{tip}^2"], job.Credential);
+        return parent.Succeeded && !second.Succeeded
+            && string.Equals(parent.StandardOutput.Trim(), job.ExpectedSha, StringComparison.OrdinalIgnoreCase)
+            && await RevParseAsync(context, $"{tip}^{{tree}}") == tree
+            ? tip : null;
     }
 
     private static async Task<string> CommitTreeOnAsync(JobContext context, string tree, string parent, DependencyCommit commit)

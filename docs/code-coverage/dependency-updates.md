@@ -208,7 +208,10 @@ Node.js `@types/node`. Only a package on the SDK's current major is one (`System
 the platform*. A platform kept beside the previous one (`strategy: add`, `keepPrevious`, `lockPackageMajor`) has no
 companions, since its packages must keep building for the older target.
 
-**Which SDK locations move.** .NET: TFMs and `global.json`'s SDK. Every SDK: Dockerfile `FROM`,
+**Which SDK locations move.** .NET: TFMs and `global.json`'s SDK. A `setup-dotnet` step with
+`global-json-file: global.json` reads the SDK from there, so only `global.json` moves; **SDK from global.json** in
+[Set up features](onboarding.md#the-features) converts the pins to that form, and leaves the choice to each repository.
+Every SDK: Dockerfile `FROM`,
 workflow `container:`/`image:`/`uses: docker://`, `setup-*` inputs, matrix entries on the old channel, `.tool-versions`.
 PHP: `config.platform.php`, `.php-version`. Ruby (channels are minors, `3.3` → `3.4`): `.ruby-version`, an exact Gemfile
 `ruby`. Rust (channels are `1.x`): the `rust-toolchain(.toml)` channel and CI `toolchain:` inputs; `preview` writes the

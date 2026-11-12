@@ -3597,6 +3597,13 @@
             "nl": "Dependency-updates"
           }
         },
+        "DotnetRepository": {
+          "label": {
+            "en": ".NET repository",
+            "fr": "Dépôt .NET",
+            "nl": ".NET-repository"
+          }
+        },
         "MergeQueue": {
           "description": {
             "en": "Merge approved pull requests one after the other, each tested on the latest default branch.",
@@ -3619,6 +3626,18 @@
             "en": "Release lines",
             "fr": "Lignes de release",
             "nl": "Releaselijnen"
+          }
+        },
+        "SdkFromGlobalJson": {
+          "description": {
+            "en": "Let the workflows' setup-dotnet steps install the SDK global.json names instead of a pinned dotnet-version, here and on the .NET release lines; needs dependency updates or release lines.",
+            "fr": "Faire installer par les étapes setup-dotnet des workflows le SDK indiqué dans global.json au lieu d'un dotnet-version figé, ici et sur les lignes de release .NET ; nécessite les mises à jour des dépendances ou les lignes de release.",
+            "nl": "De setup-dotnet-stappen van de workflows de SDK uit global.json laten installeren in plaats van een vaste dotnet-version, hier en op de .NET-releaselijnen; vereist afhankelijkheidsupdates of releaselijnen."
+          },
+          "label": {
+            "en": "SDK from global.json",
+            "fr": "SDK depuis global.json",
+            "nl": "SDK uit global.json"
           }
         },
         "SizeLabels": {
@@ -3735,11 +3754,6 @@
       "fr": "La pull request de configuration",
       "nl": "De onboarding-pull request"
     },
-    "notManaged": {
-      "en": "You don't manage this repository.",
-      "fr": "Vous ne gérez pas ce dépôt.",
-      "nl": "Je beheert deze repository niet."
-    },
     "moveTags": {
       "item": {
         "en": "{0} is at {1}, the history declares it first at {2} on {3}",
@@ -3766,6 +3780,11 @@
         "fr": "Déplacer {0} tag(s) de version ?",
         "nl": "{0} versietag(s) verplaatsen?"
       }
+    },
+    "notManaged": {
+      "en": "You don't manage this repository.",
+      "fr": "Vous ne gérez pas ce dépôt.",
+      "nl": "Je beheert deze repository niet."
     },
     "nothingPicked": {
       "en": "Pick at least one feature.",

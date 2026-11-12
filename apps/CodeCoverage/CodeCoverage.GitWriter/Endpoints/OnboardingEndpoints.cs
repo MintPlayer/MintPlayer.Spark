@@ -1,3 +1,4 @@
+using CodeCoverage.Git;
 using CodeCoverage.GitWriter.Jobs;
 using CodeCoverage.GitWriter.Jobs.Dependencies;
 using Microsoft.Extensions.Options;
@@ -49,10 +50,10 @@ internal sealed partial class GitWriterOnboardingEndpoint : IPostEndpoint<Versio
         return Results.Json(await writer.OnboardingAsync(job, commit, files), GitWriterHost.Json);
     }
 
-    /// <summary>#638 D15: a line's narrowing only rewrites project files and global.json.</summary>
-    public const string NarrowFilesRule = "for a line's narrowing: 1 to 256 distinct MSBuild files (.csproj, .fsproj, .vbproj, .props, .targets) or global.json of at most 256 KiB, no deletions";
-
-    private static readonly string[] MsBuildExtensions = [".csproj", ".fsproj", ".vbproj", ".props", ".targets"];
+    /// <summary>#638 D15: a line's narrowing rewrites project files, global.json and the workflows' SDK pins; #649 D7: the
+    /// same predicate as the app's <c>LineNarrowing</c> (<see cref="LinePaths.IsNarrowable"/>).</summary>
+    public const string NarrowFilesRule = "for a line's narrowing: 1 to 256 distinct MSBuild files (.csproj, .fsproj, .vbproj, .props, .targets), "
+        + "global.json or .github/workflows/*.yml or *.yaml files of at most 256 KiB, no deletions";
 
     internal static List<(string Path, string? Content)>? NarrowFiles(List<DependencyFileWire>? wires)
     {
@@ -62,9 +63,9 @@ internal sealed partial class GitWriterOnboardingEndpoint : IPostEndpoint<Versio
         {
             if (wire is not { Delete: false, Path: { } path, Content: { Length: <= GitWriterVersioningOnboardingEndpoint.MaxFileBytes } content }
                 || list.Any(f => f.Path.Equals(path, StringComparison.OrdinalIgnoreCase))
-                || !PatchValidator.IsSafePath(path)
-                || !(path == "global.json" || path.EndsWith("/global.json", StringComparison.Ordinal)
-                    || MsBuildExtensions.Any(e => path.EndsWith(e, StringComparison.OrdinalIgnoreCase))))
+                // #649: IsSafePath refuses every .github/ path; IsNarrowable admits exactly the top-level workflows there.
+                || !PatchValidator.IsWritablePath(path)
+                || !LinePaths.IsNarrowable(path))
                 return null;
             list.Add((path, content));
         }

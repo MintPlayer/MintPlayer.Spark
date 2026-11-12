@@ -40,6 +40,19 @@ public interface IRefreshInvoker
         CancellationToken cancellationToken);
 
     /// <summary>
+    /// The same hook on a JSON-only virtual type (#649): <c>{Name}Actions</c> is resolved by the model type's name,
+    /// like the virtual load and write hooks, and its <c>public Task OnRefreshAsync(SparkRefreshArgs args)</c> is
+    /// duck-typed. A no-op when there is no actions class or no such method; a method of that name with another shape
+    /// throws, so a typo surfaces instead of a refresh that silently does nothing.
+    /// </summary>
+    Task InvokeVirtualAsync(
+        EntityTypeDefinition entityType,
+        PersistentObject persistentObject,
+        string? triggeredBy,
+        bool isNew,
+        CancellationToken cancellationToken);
+
+    /// <summary>
     /// Whether the entity's actions class overrides the refresh hook. Lets callers skip the whole
     /// path — and lets the model-verify gate report a declared trigger nothing implements.
     /// </summary>
@@ -124,13 +137,51 @@ internal partial class RefreshInvoker : IRefreshInvoker
         if (method is null)
             return;
 
+        await InvokeHookAsync(actionsResolver.ResolveForType(entityType), method, persistentObject, triggeredBy, isNew, cancellationToken);
+    }
+
+    public async Task InvokeVirtualAsync(
+        EntityTypeDefinition entityType,
+        PersistentObject persistentObject,
+        string? triggeredBy,
+        bool isNew,
+        CancellationToken cancellationToken)
+    {
+        if (actionsResolver.ResolveByEntityName(entityType.Name) is not { } actions)
+            return;
+
+        var method = ReflectionCache.GetOrAdd<(string Op, Type Actions), MethodInfo?>(
+            ("RefreshInvoker.VirtualOnRefreshAsync", actions.GetType()),
+            static k =>
+            {
+                var found = k.Actions.GetMethod("OnRefreshAsync", [typeof(SparkRefreshArgs)]);
+                if (found is not null && found.ReturnType == typeof(Task))
+                    return found;
+                if (k.Actions.GetMethods().Any(m => m.Name == "OnRefreshAsync"))
+                    throw new InvalidOperationException(
+                        $"'{k.Actions.FullName}' has an OnRefreshAsync that doesn't match the refresh contract. Expected: 'public Task OnRefreshAsync(SparkRefreshArgs args)'.");
+                return null;
+            });
+        if (method is null)
+            return;
+
+        await InvokeHookAsync(actions, method, persistentObject, triggeredBy, isNew, cancellationToken);
+    }
+
+    private static async Task InvokeHookAsync(
+        object actions,
+        MethodInfo method,
+        PersistentObject persistentObject,
+        string? triggeredBy,
+        bool isNew,
+        CancellationToken cancellationToken)
+    {
         var attribute = triggeredBy is null
             ? null
             : persistentObject.Attributes.FirstOrDefault(
                 a => string.Equals(a.Name, triggeredBy, StringComparison.Ordinal));
 
         var args = new SparkRefreshArgs(persistentObject, attribute, isNew, cancellationToken);
-        var actions = actionsResolver.ResolveForType(entityType);
 
         // The hook returns Task, never Task<T>, so this cast is total. A null would mean the method
         // was resolved from something that is not the hook — worth failing loudly rather than

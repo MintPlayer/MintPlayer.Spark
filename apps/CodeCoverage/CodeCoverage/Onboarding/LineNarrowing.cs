@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
+using CodeCoverage.Git;
 using CodeCoverage.MergeQueue;
 
 namespace CodeCoverage.Onboarding;
@@ -24,8 +25,6 @@ public sealed record LineNarrowing(int Major, IReadOnlyList<GitWriterFile> Files
     private const RegexOptions Options = RegexOptions.CultureInvariant | RegexOptions.ExplicitCapture;
     private const int MaxListed = 50;
 
-    private static readonly string[] MsBuildExtensions = [".csproj", ".fsproj", ".vbproj", ".props", ".targets"];
-
     private static readonly Regex Tfms = new(@"<(?<name>TargetFrameworks?)>(?<value>[^<]*)</\k<name>>", Options);
     private static readonly Regex TfmMajor = new(@"^\s*net(?:coreapp)?(?<major>\d{1,4})\.", Options | RegexOptions.IgnoreCase);
     private static readonly Regex FrameworkPackage = new(
@@ -42,13 +41,12 @@ public sealed record LineNarrowing(int Major, IReadOnlyList<GitWriterFile> Files
 
     public bool IsEmpty => Files.Count == 0 && Conditionals.Count == 0 && Notes.Count == 0;
 
-    public static bool IsMsBuild(string path) => MsBuildExtensions.Any(e => path.EndsWith(e, StringComparison.OrdinalIgnoreCase));
+    // #649 D7: one predicate with the git writer's check (LinePaths, CodeCoverage.Git).
+    public static bool IsMsBuild(string path) => LinePaths.IsMsBuild(path);
 
-    public static bool IsGlobalJson(string path) => path == "global.json" || path.EndsWith("/global.json", StringComparison.Ordinal);
+    public static bool IsGlobalJson(string path) => LinePaths.IsGlobalJson(path);
 
-    public static bool IsWorkflow(string path)
-        => path.StartsWith(".github/workflows/", StringComparison.Ordinal)
-           && (path.EndsWith(".yml", StringComparison.OrdinalIgnoreCase) || path.EndsWith(".yaml", StringComparison.OrdinalIgnoreCase));
+    public static bool IsWorkflow(string path) => LinePaths.IsWorkflow(path);
 
     public static bool IsSource(string path) =>path.EndsWith(".cs", StringComparison.OrdinalIgnoreCase);
 
