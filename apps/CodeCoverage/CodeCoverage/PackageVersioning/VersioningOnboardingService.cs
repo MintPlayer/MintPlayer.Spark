@@ -155,8 +155,10 @@ public partial class VersioningOnboardingService : IVersioningOnboardingService
         }
         if (parsed is not { Config: { } config, Errors.Count: 0 }) return (null, null);
 
-        // A plan reads only, but the job fetches with the same credential as a write.
-        var push = await git.GetWriterAccessAsync(repository, null, false, cancellationToken);
+        // A plan reads only, but the job fetches with the same credential as a write. Every App tag push asks for
+        // `workflows: write`: GitHub refuses a tag on a commit whose workflow files differ without it (Tools, 2026-11-12:
+        // "refusing to allow a GitHub App to create or update workflow … without `workflows` permission").
+        var push = await git.GetWriterAccessAsync(repository, null, pushesWorkflowChanges: true, cancellationToken);
         if (push.Access is not { } access)
             return (null, $"The history was not backfilled: the App could not push tags ({push.RefusalReason}).");
         GitWriterBackfillResult result;
@@ -186,7 +188,7 @@ public partial class VersioningOnboardingService : IVersioningOnboardingService
     private async Task<string?> TagAsync(Repository repository, IForgeMergeQueue git, string defaultBranch, string commit, IReadOnlyList<VersioningOnboardingSeed> seeds,
         CancellationToken cancellationToken)
     {
-        var push = await git.GetWriterAccessAsync(repository, null, false, cancellationToken);
+        var push = await git.GetWriterAccessAsync(repository, null, pushesWorkflowChanges: true, cancellationToken);
         if (push.Access is not { } access)
             return $"The App could not push the seed tags: {push.RefusalReason}";
         try

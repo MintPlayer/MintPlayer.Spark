@@ -111,6 +111,8 @@ public class VersioningControllerTests : CoverageRavenTest
         request.BranchMajor.HasValue.Should().BeFalse();
         request.Manifest.Commit.Should().Be(Sha);
         h.Queue.RevokedTokens.Should().HaveCount(1);
+        // A tag may sit on a commit whose workflow files differ, which GitHub refuses an App token without `workflows: write`.
+        h.Queue.WriterAccesses.Select(a => a.Workflows).Should().Equal([true]);
         var check = h.Forge.Statuses.Single();
         check.Name.Should().Be(VersioningController.CheckName);
         check.Verdict.Outcome.Should().Be(EForgeOutcome.Success);
@@ -148,6 +150,7 @@ public class VersioningControllerTests : CoverageRavenTest
         tags.Branches.Should().Equal("main");
         tags.Tags.Should().Equal(new GitWriterTag("Acme.Widget/v1.1.0", merge));
         h.Writer.VersioningRuns.Should().HaveCount(1);
+        h.Queue.WriterAccesses.Select(a => a.Workflows).Should().Equal([true, true]);
         using var read = store.OpenAsyncSession();
         (await read.LoadAsync<VersioningOnboardingState>(VersioningOnboardingState.ForRepository(repositoryId)))!.SeedCommit.Should().Be(merge);
 
@@ -372,6 +375,7 @@ public class VersioningControllerTests : CoverageRavenTest
         var result = await released.Controller.Release(new VersioningController.VersioningReleaseRequest(seal), default);
 
         Status(result).Should().Be(StatusCodes.Status200OK);
+        released.Queue.WriterAccesses.Select(a => a.Workflows).Should().Equal([true]);
         var tags = writer.TagRequests.Single();
         tags.Tags.Should().Equal(new GitWriterTag("Acme.Widget/v1.2.0", Sha, null));
         tags.Fingerprint.Should().Be(Fingerprint);
@@ -487,7 +491,7 @@ public class VersioningControllerTests : CoverageRavenTest
         switch (answer)
         {
             case "no-access":
-                queue.WriterAccess = _ => new ForgePushAccess(null, "The App is not installed.");
+                queue.WriterAccess = (_, _) => new ForgePushAccess(null, "The App is not installed.");
                 break;
             case "refused-request" when release:
                 writer.Tags = _ => throw new GitWriterRefusedException("tags", "tags", "valid tag names");

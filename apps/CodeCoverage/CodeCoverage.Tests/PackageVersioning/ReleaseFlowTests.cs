@@ -47,7 +47,7 @@ public class ReleaseFlowTests : CoverageRavenTest
             .Returns(["release/dotnet-11.x", "release/angular-22.x"]);
         git.ListWorkflowRunsAsync(Arg.Any<Repository>(), "release.yml", "main", Arg.Any<CancellationToken>())
             .Returns([new ForgeWorkflowRun(9, "completed", "success", Green, "main", "https://example.invalid/runs/9")]);
-        git.GetWriterAccessAsync(Arg.Any<Repository>(), null, false, Arg.Any<CancellationToken>())
+        git.GetWriterAccessAsync(Arg.Any<Repository>(), null, true, Arg.Any<CancellationToken>()) // tags and line moves carry workflow history
             .Returns(new ForgePushAccess(new ForgeWriterAccess("https://example.invalid/acme/widgets.git", "https://example.invalid/acme/widgets.git", "x", "y"), null));
         http.CreateClient(Arg.Any<string>()).Returns(_ => new HttpClient(new Registry(this)));
         writer.VersioningPromoteAsync(Arg.Do<GitWriterPromoteRequest>(r => promoteRequest = r), Arg.Any<CancellationToken>())

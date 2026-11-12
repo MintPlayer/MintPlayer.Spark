@@ -126,7 +126,12 @@ public sealed class OnboardingBackfillEndToEndTests : CoverageRavenTest, IAsyncL
         };
         var queue = new FakeForgeMergeQueue
         {
-            WriterAccess = _ => new ForgePushAccess(new ForgeWriterAccess(origin.Url.AbsoluteUri, origin.Url.AbsoluteUri, "x-access-token", Token), null),
+            // GitHub refuses an App's tag on a commit whose workflow files differ, unless the token holds `workflows: write`
+            // (Tools, 2026-11-12: "refusing to allow a GitHub App to create or update workflow … without `workflows`
+            // permission"). The local server cannot tell tokens apart, so only a workflows token gets its credential.
+            WriterAccess = (_, workflows) => workflows
+                ? new ForgePushAccess(new ForgeWriterAccess(origin.Url.AbsoluteUri, origin.Url.AbsoluteUri, "x-access-token", Token), null)
+                : ForgePushAccess.Refused("a contents-only token cannot push tags onto history that changes workflow files"),
         };
         using var session = store.OpenAsyncSession();
         var services = new ServiceCollection();
