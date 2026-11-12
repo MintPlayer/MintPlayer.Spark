@@ -532,6 +532,10 @@ public sealed record BackportTargetResult(
     /// <summary>The first-party packages the change raised above this line's major, which normalization dropped, so the
     /// line keeps its own version (#570 D11); the app diagnoses the upstream release.</summary>
     public IReadOnlyList<DependencyRaise> Raises { get; init; } = [];
+
+    /// <summary>The platform values the change moved off this line's major, which normalization kept at the line's
+    /// value (#638 D13); the app reports them on the backport, or on its "nothing left" close.</summary>
+    public IReadOnlyList<PlatformKept> Kept { get; init; } = [];
 }
 
 /// <param name="Outcome"><see cref="JobOutcomes.Backported"/> when the job ran (each target has its own result), or a failure.</param>

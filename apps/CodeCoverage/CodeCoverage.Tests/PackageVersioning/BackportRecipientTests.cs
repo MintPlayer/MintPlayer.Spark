@@ -229,6 +229,29 @@ public class BackportRecipientTests : CoverageRavenTest
     }
 
     [Fact]
+    public async Task D13_a_platform_only_move_has_nothing_left_and_a_mixed_one_says_what_the_line_kept()
+    {
+        // #638 D13: Tools' master went net10.0;net11.0 → net11.0; release/dotnet-10.x keeps net10.0.
+        using var store = GetDocumentStore();
+        git.GetBranchHeadAsync(Arg.Any<Repository>(), "release/7.x", Arg.Any<CancellationToken>()).Returns(new string('7', 40));
+        GitWriterPlatformKept tfm = new("Lib/Lib.csproj", "TargetFramework", "net10.0;net11.0", "net11.0", "net10.0");
+        WriterAnswers(new GitWriterBackportResult(GitWriterBackportResult.Backported, null, "squash", null,
+        [
+            Target(GitWriterBackportTargetResult.Created) with { Kept = [tfm] },
+            Target(GitWriterBackportTargetResult.Empty) with { Branch = "release/7.x", Head = "backport/7-7.x", Kept = [tfm] },
+        ], null, 1));
+
+        await HandleAsync(store, "maintainer", EBackportSource.Label, "8.x", "7.x");
+
+        forge.OpenedPullRequests.Should().ContainSingle().Which.Body.Should().Contain(
+            "This line keeps its platform where the change moves it off the line's major:\n"
+            + "- `Lib/Lib.csproj`: TargetFramework stays `net10.0` (the change went from `net10.0;net11.0` to `net11.0`)\n");
+        forge.Comments.Single().Body.Should().Contain(
+            "- `release/7.x`: nothing left to backport after normalization: the change only moves the platform off this line's major.");
+        (await AttemptAsync(store, "release/7.x")).Should().BeEquivalentTo(new { Outcome = BackportAttempt.AlreadyOnLine, Detail = "nothing left after normalization" });
+    }
+
+    [Fact]
     public async Task The_commit_subjects_sent_are_one_line_each_and_bounded()
     {
         using var store = GetDocumentStore();

@@ -207,6 +207,9 @@ public sealed record GitWriterBackportTargetResult(string Branch, string Head, s
     /// <summary>First-party packages the change raised above this line's major, dropped by normalization (#570 D11).</summary>
     public IReadOnlyList<GitWriterDependencyRaise>? Raises { get; init; }
 
+    /// <summary>Platform values the change moved off this line's major, which the line kept (#638 D13).</summary>
+    public IReadOnlyList<GitWriterPlatformKept>? Kept { get; init; }
+
     public const string Created = "created";
     public const string Exists = "exists";
     public const string Empty = "empty";
@@ -239,6 +242,10 @@ public sealed record GitWriterBackportTrialTargetResult(string Branch, string Ou
 
 /// <summary>One platform value the change edits on the line's platform; <see cref="Before"/> is empty for an added one.</summary>
 public sealed record GitWriterPlatformChange(string Path, string Marker, string Before, string After);
+
+/// <summary>A platform value the change moved off the line's major (<see cref="Before"/> held it, <see cref="After"/> does
+/// not); the line keeps <see cref="LineValue"/> (#638 D13).</summary>
+public sealed record GitWriterPlatformKept(string Path, string Marker, string Before, string After, string LineValue);
 
 /// <summary>A first-party package the change raised that the line keeps at <see cref="LineValue"/> (#570 D11);
 /// <see cref="Kind"/> is <c>npm</c> or <c>nuget</c>.</summary>

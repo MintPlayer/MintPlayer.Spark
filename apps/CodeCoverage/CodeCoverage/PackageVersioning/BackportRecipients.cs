@@ -288,6 +288,11 @@ public partial class BackportRecipient : IRecipient<BackportMessage>
                     await Attempt(target.Branch, BackportAttempt.BranchExists, detail: target.Head);
                     lines.Add($"- `{target.Branch}`: `{target.Head}` exists already; nothing was pushed.");
                     break;
+                case GitWriterBackportTargetResult.Empty when target.Kept is { Count: > 0 }:
+                    // #638 D13: what normalization left of the change is nothing; never an empty pull request.
+                    await Attempt(target.Branch, BackportAttempt.AlreadyOnLine, detail: "nothing left after normalization");
+                    lines.Add($"- `{target.Branch}`: nothing left to backport after normalization: the change only moves the platform off this line's major.");
+                    break;
                 case GitWriterBackportTargetResult.Empty:
                     await Attempt(target.Branch, BackportAttempt.AlreadyOnLine);
                     lines.Add($"- `{target.Branch}`: already holds this change.");
@@ -425,15 +430,25 @@ public partial class BackportRecipient : IRecipient<BackportMessage>
     /// normalized away, so the reader knows why a marker line conflicts or changed.</summary>
     internal static string PlatformNote(GitWriterBackportTargetResult target)
     {
-        if (target.PlatformChanges is not { Count: > 0 } changes)
-            return "";
-        var builder = new StringBuilder("\n\nThe change edits this line's platform:\n");
-        foreach (var change in changes.Take(20))
+        var builder = new StringBuilder();
+        if (target.PlatformChanges is { Count: > 0 } changes)
         {
-            if (change.Before.Length == 0)
-                builder.Append(CultureInfo.InvariantCulture, $"- `{change.Path}`: adds {change.Marker} `{change.After}`\n");
-            else
-                builder.Append(CultureInfo.InvariantCulture, $"- `{change.Path}`: {change.Marker} `{change.Before}` → `{change.After}`\n");
+            builder.Append("\n\nThe change edits this line's platform:\n");
+            foreach (var change in changes.Take(20))
+            {
+                if (change.Before.Length == 0)
+                    builder.Append(CultureInfo.InvariantCulture, $"- `{change.Path}`: adds {change.Marker} `{change.After}`\n");
+                else
+                    builder.Append(CultureInfo.InvariantCulture, $"- `{change.Path}`: {change.Marker} `{change.Before}` → `{change.After}`\n");
+            }
+        }
+        // #638 D13: a value the change moved off the line's major stayed the line's; say so, since the diff won't show it.
+        if (target.Kept is { Count: > 0 } kept)
+        {
+            builder.Append("\n\nThis line keeps its platform where the change moves it off the line's major:\n");
+            foreach (var value in kept.Take(20))
+                builder.Append(CultureInfo.InvariantCulture,
+                    $"- `{value.Path}`: {value.Marker} stays `{value.LineValue}` (the change went from `{value.Before}` to `{value.After}`)\n");
         }
         return builder.ToString();
     }

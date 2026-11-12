@@ -91,6 +91,40 @@ public class PlatformMarkersTests
         normalization.PlatformChanges.Should().Equal([new PlatformChange(Csproj, "TargetFramework", "net11.0", "net10.0;net11.0")]);
     }
 
+    // --- #638 D13: a change that drops the line's own major ---
+
+    [Fact]
+    public void D13_dropping_the_line_framework_keeps_it_on_the_line_and_is_reported()
+    {
+        // Tools: master went net10.0;net11.0 → net11.0. On release/dotnet-10.x the line keeps net10.0.
+        var (conflicts, merged, normalization) = NormalizedMerge(Csproj, Line, Project("net10.0;net11.0"), Project("net11.0"));
+
+        conflicts.Should().Be(0);
+        merged.Should().Be(Line, "a platform-only move leaves nothing to apply on the line");
+        normalization.PlatformChanges.Should().BeEmpty();
+        normalization.Kept.Should().Equal([new PlatformKept(Csproj, "TargetFramework", "net10.0;net11.0", "net11.0", "net10.0")]);
+    }
+
+    [Fact]
+    public void D13_a_mixed_pull_request_backports_its_fix_and_keeps_the_line_framework()
+    {
+        var (conflicts, merged, normalization) = NormalizedMerge(Csproj, Line,
+            Project("net10.0;net11.0", framework: "10.0.11"), Project("net11.0", nullable: "disable", framework: "11.0.0"));
+
+        conflicts.Should().Be(0);
+        merged.Should().Be(Project("net10.0", nullable: "disable", framework: "10.0.11"));
+        normalization.Kept.Select(k => k.Marker).Should().Equal(["TargetFramework", "Microsoft.Extensions.Hosting"]);
+    }
+
+    [Fact]
+    public void D13_an_edit_that_keeps_the_line_major_is_still_left_to_git()
+    {
+        var normalization = PlatformMarkers.Normalize(Csproj, Line, Project("net10.0"), Project("net10.0;net11.0"))!;
+
+        normalization.PlatformChanges.Should().Equal([new PlatformChange(Csproj, "TargetFramework", "net10.0", "net10.0;net11.0")]);
+        normalization.Kept.Should().BeEmpty();
+    }
+
     // --- per occurrence (S1's sharpened rule) ---
 
     [Fact]

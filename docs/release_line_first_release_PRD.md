@@ -75,10 +75,9 @@ it or warns. The issue has the full evidence tables. This file does not repeat t
 
 ## 5. Milestones (one PR, in the issue's order)
 
-> **Resume here (2026-11-12, after M4).**
-> - Done: M1–M4, each with its red→green record below.
-> - Next: **M5** (D13). Read `PlatformMarkers` and `PlatformMarkersTests` in `CodeCoverage.Git/Backports` first; that
->   reading answers S6. Then **M6** (D15, the narrowing PR; S8 and S9 are answered), then **M7** (docs). After M7, run the
+> **Resume here (2026-11-12, after M5).**
+> - Done: M1–M5, each with its red→green record below (S6 answered in M5).
+> - Next: **M6** (D15, the narrowing PR; S8 and S9 are answered), then **M7** (docs). After M7, run the
 >   affected suites once with the Developer licence (`npm run test:affected`), then open the PR, ready and not a draft.
 > - Built so far, for orientation:
 >   - The MSBuild task takes a per-package major map (`MintPlayerVersioningMajors`) with MPV006.
@@ -169,9 +168,20 @@ owner's requested exception to "tests run once, at the end". The full affected s
   `OnboardingServiceTests.Collisions_D9_…`. ⚠️ These App tests were written after the code and passed on their first run,
   so they had no behavioural red. New translations `onboarding.moveTags.*`, with the codecoverage translations golden
   regenerated in the same commit. 139/139 in the touched App classes.
-- **M5, backport normalization (D13).** Red: `PlatformMarkersTests` with `net10.0;net11.0` → `net11.0` on a 10.x
-  line, where the line keeps `net10.0` and it is reported, and a mixed PR (a fix plus the TFM drop) that merges the
-  fix only. Then a backport test where a pure platform move closes as "nothing left to backport" (S7).
+- **M5, backport normalization (D13). ✅ Done.** S6 answered by reading `PlatformMarkers.cs`: a value change that drops
+  the line's major fell to the "left to git and reported" branch, so it conflicted; `Directory.Packages.props` is
+  already covered (`.props` is MSBuild, and `PackageVersion` items match the framework-packages pattern). New rule
+  `MovedOffLine`: the base holds one of the line's majors and the change holds only majors above it, so base and change
+  take the line's value and the move goes to a new `MarkerNormalization.Kept` list (`PlatformKept`). It travels through
+  `BackportTargetResult.Kept` to the App, which lists it in the backport PR body ("This line keeps its platform …") and,
+  on an `empty` target with kept values, comments "nothing left to backport after normalization" (attempt
+  `AlreadyOnLine`, detail "nothing left after normalization") instead of "already holds this change".
+  Red → green: `PlatformMarkersTests.D13_dropping_…` and `D13_a_mixed_…` failed on a real conflict (behavioural red,
+  `Kept` added empty first), and `D13_an_edit_that_keeps_the_line_major_…` guards the unchanged case (green from the
+  start, by design). `BackportRecipientTests.D13_…` failed on the missing PR-body note (behavioural red).
+  ⚠️ `BackportTests.D13_…` (GitWriter, real git, pure move → `empty`, mixed → `created` with `net10.0` kept) was
+  written after the code and passed on its first run. Results: PlatformMarkersTests 28/28, BackportRecipientTests
+  41/41, the GitWriter platform backport tests 4/4.
 - **M6, narrowing PR (D15).** Red: `OnboardingServiceTests` with an older line cut from a `net10.0;net11.0` commit,
   which opens a PR into the line with TFMs, `global.json` and framework packages narrowed and the conditionals listed.
   `OnboardingPlannerTests` checks the confirmation and the PR body text.
