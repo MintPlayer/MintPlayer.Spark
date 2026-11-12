@@ -1,6 +1,7 @@
 # Onboarding creates the release lines — PRD and plan
 
-Status: **in progress** (branch `feat/onboarding-creates-release-lines`, one pull request). Owner request, 2026-11-12:
+Status: **merged and deployed** as #637 (835a40b67). Its first real cut on a repository that takes backports failed
+(SpaServices, 2026-11-12: S2 below), fixed by PR #645 (`docs/lockfile_notice_and_line_cut_PRD.md` D2). Owner request, 2026-11-12:
 "Shouldn't the bot be creating the release lines? why does the user need to do that?", then "Yes, implement both in
 one PR".
 
@@ -62,5 +63,5 @@ Evidence:
 - **M4** ✅ Tests: `OnboardingPlannerTests.LineCuts_*`, `OnboardingServiceTests.LineCuts_*` plus the merge test,
   `SetUpFeaturesRulesetsTests.LineCuts_*`. Docs: `docs/code-coverage/onboarding.md`, this file,
   `docs/release_lines_recovery_plan.md` §2e.
-- **After deploy:** re-run Set up features on Tools: expect `release/dotnet-11.x` and the offered `release/dotnet-10.x`
-  created at once (S2).
+- **After deploy** ✅ Tools has `release/dotnet-10.x` and `release/dotnet-11.x` (branch list checked 2026-11-12). Tools
+  promotes, so the App was exempt there. A repository that takes backports failed the cut until PR #645 (S2).

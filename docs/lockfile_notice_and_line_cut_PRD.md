@@ -1,6 +1,8 @@
 # Lockfile notices and release-line cuts: PRD and plan
 
-Status: **in progress** (branch `fix/onboarding-lockfile-deprecated-and-line-cut`, one pull request for #643 and #644).
+Status: **implemented, in review**: PR #645 (branch `fix/onboarding-lockfile-deprecated-and-line-cut`) closes #643
+and #644. M1-M4 are done. Left after the merge and deploy: S3 and S4 (§3), then the steps under "After deploy" (§4).
+S1, S2 and S5 are open and outside this PR.
 Owner request, 2026-11-12, after re-onboarding MintPlayer/MintPlayer.AspNetCore.SpaServices (PR #108): "SDK +
 dependencies bijwerken" ended "Failed", and `release/dotnet-10.x` was not created.
 
