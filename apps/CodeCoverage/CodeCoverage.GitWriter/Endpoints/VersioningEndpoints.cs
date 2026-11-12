@@ -425,11 +425,22 @@ internal sealed partial class GitWriterVersioningBackfillEndpoint : IPostEndpoin
             || refusal.Check(WireValidation.Branch(request.DefaultBranch), "defaultBranch", MergeQueueWireRules.BranchRule) is not { } defaultBranch
             || refusal.Check(request.Tagger is { } t && MergeQueueWireRules.IsIdentity(t.Name, t.Email) ? new GitIdentity(t.Name!, t.Email!) : null,
                 "tagger", MergeQueueWireRules.IdentityRule) is not { } tagger
-            || refusal.Check(GitWriterVersioningRunEndpoint.Settings(request.Settings), "settings", GitWriterVersioningRunEndpoint.SettingsRule) is not { } settings)
+            || refusal.Check(GitWriterVersioningRunEndpoint.Settings(request.Settings), "settings", GitWriterVersioningRunEndpoint.SettingsRule) is not { } settings
+            || refusal.Check(Move(request.Move), "move", MoveRule) is not { } move)
             return refusal.Result();
 
         return Results.Json(await runs.BackfillAsync(new VersioningBackfillJob($"{request.Provider}/{request.RepoId}", cloneUrl, credential, defaultBranch, tagger, settings,
-            request.PlanOnly)), GitWriterHost.Json);
+            request.PlanOnly, move)), GitWriterHost.Json);
+    }
+
+    public static readonly string MoveRule = $"null, or at most {Limits.MaxPackagesPerRun} distinct version tags <id>/v<version>";
+
+    private static HashSet<string>? Move(List<string>? names)
+    {
+        if (names is null) return [];
+        if (names.Count > Limits.MaxPackagesPerRun || names.Any(n => n is null || !VersionTag.TryParse(n, out var tag) || tag.Name != n)) return null;
+        var set = names.ToHashSet(StringComparer.Ordinal);
+        return set.Count == names.Count ? set : null;
     }
 }
 

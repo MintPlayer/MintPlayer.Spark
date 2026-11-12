@@ -127,6 +127,23 @@ owner's requested exception to "tests run once, at the end". The full affected s
   #638. 129/129 in the onboarding, controller and sidecar classes.
 - **M4, collision moves (D9).** Red: the Tools shape, an App-made `Hsts/v10.0.0` at a later commit than history's
   declaration. Set up features offers Move, Move force-pushes it, Leave keeps it, and a person's tag is never offered.
+  ✅ Engine: `HistoryBackfill.PlanAsync(…, appTagger)` reports `Collisions`, meaning annotated tags whose tagger name
+  **and** email are the App's and whose commit is not the planned earliest occurrence. A lightweight tag or another
+  tagger's tag is a person's. Red: `HistoryBackfillTests.An_app_made_tag_away_from_its_earliest_occurrence_is_a_collision_and_a_persons_tag_never_is`,
+  "contains 0 item(s) instead of 1". Writer: new `TagMover`, the only place a version tag is force-pushed. Each move is
+  `--force-with-lease=refs/tags/X:<tag object read>` with a refspec **without `+`**, because a `+` overrides the lease.
+  That claim was verified by mutation: with `+`, `TagWriterTests.D9_a_move_is_leased_on_the_tag_object_it_read_…` goes
+  red ("found (Mapper/v10.0.0, True)"). Without `+`, the lease does replace an existing tag. Real git, GitWriter test
+  `VersioningBackfillTests.An_app_made_tag_away_from_its_earliest_occurrence_moves_only_when_the_owner_asks` (red: "0
+  item(s) instead of 1"): planned → `left` without a choice → `moved` with `move: [name]`, tagger still the App's, and no
+  collision afterwards. App: the onboarding preview asks for a plan-only backfill and lists `TagCollisions`. Set up
+  features asks **one** question for all of them (Move them is the default, Leave them), not one per tag: Tools has 14.
+  The choice is passed as `OnboardAsync(…, moveTags)` and kept on `VersioningOnboardingState.MoveTags`, so the merge's
+  backfill (or the no-files path) moves exactly those tags. A collision's name counts as covered, so its seed is not
+  pushed into a conflict. Tests: `SetUpFeaturesRulesetsTests.Collisions_D9_…` (Move/Leave) and
+  `OnboardingServiceTests.Collisions_D9_…`. ⚠️ These App tests were written after the code and passed on their first run,
+  so they had no behavioural red. New translations `onboarding.moveTags.*`, with the codecoverage translations golden
+  regenerated in the same commit. 139/139 in the touched App classes.
 - **M5, backport normalization (D13).** Red: `PlatformMarkersTests` with `net10.0;net11.0` → `net11.0` on a 10.x
   line, where the line keeps `net10.0` and it is reported, and a mixed PR (a fix plus the TFM drop) that merges the
   fix only. Then a backport test where a pure platform move closes as "nothing left to backport" (S7).

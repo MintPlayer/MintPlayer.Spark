@@ -226,6 +226,39 @@ public class OnboardingServiceTests : CoverageRavenTest
     }
 
     [Fact]
+    public async Task Collisions_D9_the_preview_lists_them_and_the_merge_moves_the_ones_the_owner_chose()
+    {
+        using var store = GetDocumentStore();
+        await SeedRepositoryAsync(store);
+        var h = Create(store);
+        var repository = (await h.Session.LoadAsync<Repository>(CodeCoverage.Entities.Repository.DocumentId(EForgeProvider.GitHub, RepoId)))!;
+        h.Forge.Files[$"main/{CoverageYml.FileName}"] = "versioning: {}\n";
+        h.Writer.Backfill = request => Task.FromResult(new GitWriterBackfillResult(
+            request.PlanOnly ? GitWriterBackfillResult.Planned : GitWriterBackfillResult.Tagged, null, [], ["main"], [], null, 1)
+        {
+            Collisions = [new GitWriterBackfillCollision("Acme.Tools/v11.1.0", "8b1472c000000000000000000000000000000000", "abc1230000000000000000000000000000000000", "main",
+                request.PlanOnly ? "planned" : request.Move?.Contains("Acme.Tools/v11.1.0") == true ? GitWriterBackfillCollision.Moved : "left", null)],
+        });
+        var features = new HashSet<EOnboardingFeature> { EOnboardingFeature.ReleaseLines };
+
+        var preview = await h.Service.PreviewAsync(repository, features);
+
+        preview.Plan!.TagCollisions.Select(c => $"{c.Name}@{c.Outcome}").Should().Equal("Acme.Tools/v11.1.0@planned");
+        h.Writer.BackfillRequests.Should().ContainSingle(r => r.PlanOnly, "the preview writes nothing");
+
+        var opened = await h.Service.OnboardAsync(repository, features, [], default, ["Acme.Tools/v11.1.0"]);
+        (await StateAsync(store, repository)).MoveTags.Should().Equal(["Acme.Tools/v11.1.0"]);
+        h.Versioning.PullRequest = new ForgePullRequestText(opened.PullRequest!.Value, OnboardingPlanner.Title, null, OnboardingPlanner.Branch, Head, "main",
+            false, true, true, "abcdabcdabcdabcdabcdabcdabcdabcdabcdabcd", []);
+
+        var merged = await h.Service.MergedAsync(repository);
+
+        h.Writer.BackfillRequests.Last().Move.Should().Equal(["Acme.Tools/v11.1.0"]);
+        h.Writer.BackfillRequests.Last().PlanOnly.Should().BeFalse();
+        merged.Note.Should().Contain("moved 1 tag(s) onto their earliest occurrence");
+    }
+
+    [Fact]
     public async Task Backfill_D7_the_merge_tags_the_history_after_the_line_cuts_and_seeds_only_what_it_did_not_tag()
     {
         using var store = GetDocumentStore();

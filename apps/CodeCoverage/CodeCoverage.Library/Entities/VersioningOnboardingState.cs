@@ -53,6 +53,9 @@ public class VersioningOnboardingState
     /// <summary>D2: the offered older lines the owner chose; a rebuild plans them again.</summary>
     public List<string> OlderLines { get; set; } = [];
 
+    /// <summary>#638 D9: the App-made tags the owner chose to move onto their earliest occurrence, by name, at the backfill.</summary>
+    public List<string> MoveTags { get; set; } = [];
+
     /// <summary>#571 D3: the merge commit the on-merge steps ran for; null while they are pending.</summary>
     public string? MergeHandledAt { get; set; }
 

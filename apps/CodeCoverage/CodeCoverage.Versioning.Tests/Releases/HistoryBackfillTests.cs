@@ -71,6 +71,41 @@ public class HistoryBackfillTests
         }
     }
 
+    [Fact]
+    public async Task An_app_made_tag_away_from_its_earliest_occurrence_is_a_collision_and_a_persons_tag_never_is()
+    {
+        var work = Directory.CreateTempSubdirectory("versioning-backfill-");
+        try
+        {
+            var root = work.FullName;
+            Directory.CreateDirectory(Path.Combine(root, "Hsts"));
+            Directory.CreateDirectory(Path.Combine(root, "Cors"));
+            Run(root, "init", "-q", "-b", "main");
+            await File.WriteAllTextAsync(Path.Combine(root, "Cors/Cors.csproj"), Project("10.0.0"));
+            var c1 = await CommitAsync(root, "Hsts/Hsts.csproj", Project("10.0.0"), "10.0.0");
+            var c2 = await CommitAsync(root, "Hsts/Hsts.csproj", Project("0.0.0-PLACEHOLDER", "net11.0"), "net11.0");
+            // The Tools shape (#638): the first run on the line tagged 10.0.0 again, at a commit that packs 11.x.
+            Run(root, "tag", "-a", "-m", "released", "Hsts/v10.0.0", c2);
+            // A person's tag (lightweight here; Run tags as "t", the App's identity in this test) is never offered.
+            Run(root, "tag", "Cors/v10.0.0", c2);
+
+            var git = new GitCli(Path.Combine(root, ".git"));
+            var plan = await HistoryBackfill.PlanAsync(git, "main", new VersioningConfig().ToSettings(), new Tagger("t", "t@t"));
+
+            plan.Tags.Should().BeEmpty("both names exist already");
+            plan.Collisions.Select(c => $"{c.Tag.Name}@{c.Current}->{c.Commit}@{c.Branch}").Should().Equal($"Hsts/v10.0.0@{c2}->{c1}@main");
+            var tagObject = (await git.RunAsync(["rev-parse", "refs/tags/Hsts/v10.0.0"])).Text.Trim();
+            plan.Collisions[0].TagObject.Should().Be(tagObject, "the move leases on the tag object it saw");
+
+            (await HistoryBackfill.PlanAsync(git, "main", new VersioningConfig().ToSettings())).Collisions.Should().BeEmpty("without the App's tagger nothing is the App's");
+        }
+        finally
+        {
+            foreach (var file in work.EnumerateFiles("*", SearchOption.AllDirectories)) file.Attributes = FileAttributes.Normal;
+            work.Delete(recursive: true);
+        }
+    }
+
     private static async Task<string> CommitAsync(string root, string path, string content, string message)
     {
         await File.WriteAllTextAsync(Path.Combine(root, path), content);

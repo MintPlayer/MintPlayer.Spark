@@ -276,15 +276,27 @@ public sealed class VersioningBackfillRequestWire
     public VersioningSettingsWire? Settings { get; set; }
     /// <summary>Decide the tags and write none (the onboarding's preview).</summary>
     public bool PlanOnly { get; set; }
+    /// <summary>
+    /// #638 D9: the collisions the owner chose to move, by tag name. Each is force-pushed onto its earliest occurrence, leased
+    /// on the tag object the job fetched; a collision not named here is left.
+    /// </summary>
+    public List<string>? Move { get; set; }
 }
 
 /// <param name="Outcome">One of <c>created</c>, <c>already-present</c>, <c>conflict</c>, <c>unreachable</c>, <c>planned</c>.</param>
 public sealed record BackfillTagWire(string Name, string Commit, string Branch, string Outcome, string? Detail);
 
+/// <summary>An App-made tag on <paramref name="Current"/> whose version the history declares first at <paramref name="Commit"/> (D9).</summary>
+/// <param name="Outcome"><c>planned</c>, <c>left</c>, <c>moved</c>, or <c>conflict</c> when the tag changed since the job fetched it.</param>
+public sealed record BackfillCollisionWire(string Name, string Current, string Commit, string Branch, string Outcome, string? Detail);
+
 /// <param name="Outcome"><see cref="JobOutcomes.Planned"/> for a plan, <see cref="JobOutcomes.Tagged"/> once written, or a failure.</param>
 /// <param name="Branches">The branches walked: the default branch and the release lines.</param>
 public sealed record VersioningBackfillResponse(string Outcome, string? Reason, IReadOnlyList<BackfillTagWire> Tags, IReadOnlyList<string> Branches,
-    IReadOnlyList<string> Notes, string? Detail, long DurationMs);
+    IReadOnlyList<string> Notes, string? Detail, long DurationMs)
+{
+    public IReadOnlyList<BackfillCollisionWire> Collisions { get; init; } = [];
+}
 
 /// <summary>The <c>versioning:</c> section of <c>coverage.yml</c> as the engine reads it (D13, D17).</summary>
 public sealed class VersioningSettingsWire

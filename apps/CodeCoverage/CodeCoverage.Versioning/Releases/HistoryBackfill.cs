@@ -7,9 +7,19 @@ namespace CodeCoverage.Versioning.Releases;
 /// <summary>A version tag the history backfill places: on <see cref="Commit"/>, its earliest occurrence on <see cref="Branch"/>.</summary>
 public sealed record BackfillTag(VersionTag Tag, string Commit, string Branch);
 
+/// <summary>
+/// #638 D9: a tag the App made (annotated, with the App's tagger) on <see cref="Current"/>, while the history declares its
+/// version first at <see cref="Commit"/> on <see cref="Branch"/>. Moving it leases on <see cref="TagObject"/>.
+/// </summary>
+public sealed record BackfillCollision(VersionTag Tag, string TagObject, string Current, string Commit, string Branch);
+
 /// <param name="Tags">The tags to write, ordered by name.</param>
 /// <param name="Branches">The branches walked: the default branch and the release lines.</param>
-public sealed record BackfillPlan(IReadOnlyList<BackfillTag> Tags, IReadOnlyList<string> Branches, IReadOnlyList<string> Notes);
+/// <param name="Collisions">The App's own tags away from their version's earliest occurrence, ordered by name (D9).</param>
+public sealed record BackfillPlan(IReadOnlyList<BackfillTag> Tags, IReadOnlyList<string> Branches, IReadOnlyList<string> Notes)
+{
+	public IReadOnlyList<BackfillCollision> Collisions { get; init; } = [];
+}
 
 /// <summary>
 /// #638 D5-D7: git tags are the versions' only record (D4), so a repository that declared its versions by hand before
@@ -32,7 +42,9 @@ public static class HistoryBackfill
 	private static readonly string[] ProjectFiles = ["*.csproj", "*.fsproj", "*.vbproj", "*.props", "*.targets", "package.json", "*/package.json"];
 
 	/// <summary>Plans the tags missing from <paramref name="git"/>'s history; reads only, writes nothing.</summary>
-	public static async Task<BackfillPlan> PlanAsync(GitCli git, string defaultBranch, VersioningSettings settings, CancellationToken cancellationToken = default)
+	/// <param name="appTagger">The App's tagger: an annotated tag it made away from its earliest occurrence is a collision (D9).</param>
+	public static async Task<BackfillPlan> PlanAsync(GitCli git, string defaultBranch, VersioningSettings settings, Tagger? appTagger = null,
+		CancellationToken cancellationToken = default)
 	{
 		var notes = new List<string>();
 		var lines = new Dictionary<string, ReleaseLine>(StringComparer.Ordinal);
@@ -41,7 +53,7 @@ public static class HistoryBackfill
 			if (branch != defaultBranch && settings.Lines is { } pattern && pattern.TryMatch(branch, out var line)) lines[branch] = line!;
 		List<string> branches = [defaultBranch, .. lines.Keys.Order(StringComparer.Ordinal)];
 
-		var existing = await TagNamesAsync(git, cancellationToken);
+		var existing = await TagsAsync(git, cancellationToken);
 		var declared = new Dictionary<string, IReadOnlyList<Declaration>>(StringComparer.Ordinal);
 		// Per (tag name), the earliest commit on each branch that declares it.
 		var earliest = new Dictionary<string, Dictionary<string, string>>(StringComparer.Ordinal);
@@ -70,21 +82,32 @@ public static class HistoryBackfill
 		}
 
 		var tags = new List<BackfillTag>();
+		var collisions = new List<BackfillCollision>();
 		foreach (var (name, (tag, ecosystem)) in found.OrderBy(f => f.Key, StringComparer.Ordinal))
 		{
-			if (existing.Contains(name)) continue;
 			var byBranch = earliest[name];
 			// D7: the line of the version's major first, whose history holds the default branch's up to its cut; then the
 			// default branch; then any line, which only a version no line of its major declared reaches.
 			var own = lines.Where(l => l.Value.Ecosystem == ecosystem && l.Value.Major == tag.Version.Major && byBranch.ContainsKey(l.Key))
 				.Select(l => l.Key).Order(StringComparer.Ordinal).FirstOrDefault();
 			var branch = own ?? (byBranch.ContainsKey(defaultBranch) ? defaultBranch : branches.First(byBranch.ContainsKey));
+			if (existing.TryGetValue(name, out var present))
+			{
+				// D9: only the App's own tags are ever offered for a move; a lightweight tag or another tagger's is a person's.
+				if (appTagger is not null && present.Commit != byBranch[branch] && present.Tagger == appTagger.Name && present.Email == appTagger.Email)
+					collisions.Add(new BackfillCollision(tag, present.Object, present.Commit, byBranch[branch], branch));
+				continue;
+			}
 			if (own is null && branch != defaultBranch && notes.Count < MaxNotes)
 				notes.Add($"{name} is declared only on {branch}, not on a line of its major, so it is tagged there.");
 			tags.Add(new BackfillTag(tag, byBranch[branch], branch));
 		}
-		return new BackfillPlan(tags, branches, notes);
+		return new BackfillPlan(tags, branches, notes) { Collisions = collisions };
 	}
+
+	/// <param name="Object">The ref's value: the tag object of an annotated tag, the commit of a lightweight one.</param>
+	/// <param name="Tagger">The annotated tag's tagger name; null for a lightweight tag.</param>
+	private sealed record ExistingTag(string Object, string Commit, string? Tagger, string? Email);
 
 	private sealed record Declaration(VersionTag Tag, string? Ecosystem);
 
@@ -109,8 +132,19 @@ public static class HistoryBackfill
 		return declarations;
 	}
 
-	private static async Task<HashSet<string>> TagNamesAsync(GitCli git, CancellationToken cancellationToken)
-		=> (await git.RunAsync(["for-each-ref", "--format=%(refname:strip=2)", "refs/tags"], cancellationToken: cancellationToken))
-			.EnsureSuccess("for-each-ref").Text.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-			.ToHashSet(StringComparer.Ordinal);
+	private static async Task<Dictionary<string, ExistingTag>> TagsAsync(GitCli git, CancellationToken cancellationToken)
+	{
+		var tags = new Dictionary<string, ExistingTag>(StringComparer.Ordinal);
+		var listing = (await git.RunAsync(["for-each-ref",
+			"--format=%(refname:strip=2)%00%(objectname)%00%(objecttype)%00%(taggername)%00%(taggeremail)%00%(*objectname)", "refs/tags"],
+			cancellationToken: cancellationToken)).EnsureSuccess("for-each-ref").Text;
+		foreach (var line in listing.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+		{
+			if (line.TrimEnd('\r').Split('\0') is not [var name, var value, var type, var tagger, var email, var peeled]) continue;
+			tags[name] = type == "tag"
+				? new ExistingTag(value, peeled, tagger, email.Trim().TrimStart('<').TrimEnd('>'))
+				: new ExistingTag(value, value, null, null);
+		}
+		return tags;
+	}
 }

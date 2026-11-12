@@ -45,7 +45,14 @@ public sealed record GitWriterTagResult(string Name, string Outcome, string? Det
 /// </summary>
 public sealed record GitWriterBackfillRequest(
     string Provider, string RepoId, string CloneUrl, SidecarCredential Credential, string DefaultBranch, GitWriterTagger Tagger, VersioningSettings Settings,
-    bool PlanOnly = false);
+    bool PlanOnly = false, IReadOnlyList<string>? Move = null);
+
+/// <summary>#638 D9: an App-made tag on <paramref name="Current"/> whose version the history declares first at <paramref name="Commit"/>.</summary>
+/// <param name="Outcome"><c>planned</c>, <c>left</c>, <c>moved</c> or <c>conflict</c> (the tag changed since the job read it).</param>
+public sealed record GitWriterBackfillCollision(string Name, string Current, string Commit, string Branch, string Outcome, string? Detail)
+{
+    public const string Moved = "moved";
+}
 
 /// <param name="Outcome"><c>created</c>, <c>already-present</c>, <c>conflict</c>, <c>unreachable</c> or <c>planned</c>.</param>
 public sealed record GitWriterBackfillTag(string Name, string Commit, string Branch, string Outcome, string? Detail);
@@ -56,6 +63,8 @@ public sealed record GitWriterBackfillResult(string Outcome, string? Reason, IRe
 {
     public const string Tagged = "tagged";
     public const string Planned = "planned";
+
+    public IReadOnlyList<GitWriterBackfillCollision>? Collisions { get; init; }
 }
 
 /// <summary>The writer's answer: always 200 with an outcome, as every job (<c>GitWriterOutcomes</c>).</summary>

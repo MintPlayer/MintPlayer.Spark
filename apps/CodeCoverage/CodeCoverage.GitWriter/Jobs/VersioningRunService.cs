@@ -20,7 +20,8 @@ public sealed record VersioningPlanJob(
 
 /// <summary>A validated <c>POST /jobs/versioning/backfill</c> (#638 D5-D8).</summary>
 public sealed record VersioningBackfillJob(
-    string Repo, Uri CloneUrl, GitCredential Credential, string DefaultBranch, GitIdentity Tagger, VersioningSettings Settings, bool PlanOnly);
+    string Repo, Uri CloneUrl, GitCredential Credential, string DefaultBranch, GitIdentity Tagger, VersioningSettings Settings, bool PlanOnly,
+    IReadOnlySet<string> Move);
 
 /// <summary>A validated <c>POST /jobs/versioning/ecosystems</c> (#570 M8b).</summary>
 public sealed record VersioningEcosystemsJob(
@@ -99,7 +100,8 @@ public sealed class VersioningRunService(JobRunner jobs)
         BackfillPlan plan;
         try
         {
-            plan = await HistoryBackfill.PlanAsync(new GitCli(context.GitDirectory), job.DefaultBranch, job.Settings, context.Deadline);
+            plan = await HistoryBackfill.PlanAsync(new GitCli(context.GitDirectory), job.DefaultBranch, job.Settings,
+                new Tagger(job.Tagger.Name, job.Tagger.Email), context.Deadline);
         }
         catch (VersioningException e)
         {
@@ -119,11 +121,25 @@ public sealed class VersioningRunService(JobRunner jobs)
                 foreach (var result in await writer.WriteAsync([.. batch.Select(t => new TagToWrite(t.Tag, t.Commit, new TagAnnotation(null, null)))], context.Deadline))
                     outcomes[result.Tag.Name] = result;
         }
+
+        // D9: only the collisions the owner chose, each leased on the tag object this job fetched.
+        var moves = new Dictionary<string, TagMoveResult>(StringComparer.Ordinal);
+        var chosen = plan.Collisions.Where(c => job.Move.Contains(c.Tag.Name)).ToList();
+        if (!job.PlanOnly && chosen.Count > 0)
+        {
+            var mover = new TagMover(new TagService.JobTagGit(context, job.Credential), job.CloneUrl.AbsoluteUri, new Tagger(job.Tagger.Name, job.Tagger.Email));
+            foreach (var result in await mover.MoveAsync([.. chosen.Select(c => new TagMove(c.Tag, c.Commit, c.TagObject, new TagAnnotation(null, null)))], context.Deadline))
+                moves[result.Tag.Name] = result;
+        }
+
         var tags = plan.Tags.Select(t => outcomes.TryGetValue(t.Tag.Name, out var r)
             ? new BackfillTagWire(t.Tag.Name, t.Commit, t.Branch, TagService.Wire(r.Outcome), r.Detail)
             : new BackfillTagWire(t.Tag.Name, t.Commit, t.Branch, TagService.Wire(TagOutcome.Planned), null)).ToList();
+        var collisions = plan.Collisions.Select(c => new BackfillCollisionWire(c.Tag.Name, c.Current, c.Commit, c.Branch,
+            job.PlanOnly ? "planned" : moves.TryGetValue(c.Tag.Name, out var m) ? (m.Moved ? "moved" : "conflict") : "left",
+            moves.TryGetValue(c.Tag.Name, out var d) ? d.Detail : null)).ToList();
         return new VersioningBackfillResponse(job.PlanOnly ? JobOutcomes.Planned : JobOutcomes.Tagged, null, tags, plan.Branches, plan.Notes, null,
-            context.ElapsedMilliseconds);
+            context.ElapsedMilliseconds) { Collisions = collisions };
     }, (outcome, reason, detail, ms) => new VersioningBackfillResponse(outcome, reason, [], [], [], detail, ms));
 
     /// <summary>The plan alone (D3 trigger B): the branch and the tags fetched as for a run, nothing written.</summary>

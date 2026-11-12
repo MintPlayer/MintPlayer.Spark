@@ -25,9 +25,12 @@ public interface IVersioningOnboardingService
     /// <summary>
     /// #638 D5-D8: tags every version the default branch's and the release lines' history declares at its earliest occurrence,
     /// when the default branch's <c>coverage.yml</c> has a versioning section. What was done, or why not; null when there was
-    /// nothing to tag.
+    /// nothing to tag. <paramref name="move"/>: the collisions (D9) the owner chose to move, by tag name.
     /// </summary>
-    Task<string?> BackfillAsync(Repository repository, CancellationToken cancellationToken = default);
+    Task<string?> BackfillAsync(Repository repository, IReadOnlyCollection<string> move, CancellationToken cancellationToken = default);
+
+    /// <summary>#638 D9: the App-made tags away from their version's earliest occurrence, from a backfill plan that writes nothing.</summary>
+    Task<IReadOnlyList<GitWriterBackfillCollision>> CollisionsAsync(Repository repository, CancellationToken cancellationToken = default);
 }
 
 /// <param name="Outcome"><see cref="Opened"/>, <see cref="Seeded"/>, <see cref="Nothing"/> or <see cref="Refused"/>.</param>
@@ -66,7 +69,7 @@ public partial class VersioningOnboardingService : IVersioningOnboardingService
         if (pull is not { Merged: true, MergeCommitSha: { } merge }) return true;
 
         // A backfill that fails leaves the seeds to carry the current versions, as before #638; its note says why.
-        var backfill = await BackfillCoreAsync(repository, git, defaultBranch, cancellationToken);
+        var backfill = await BackfillCoreAsync(repository, git, defaultBranch, state.MoveTags, cancellationToken);
         var seeds = state.Seeds.Where(s => !backfill.Covered.Contains(VersionTag.Prefix(s.PackageId) + s.Version)).ToList();
         if (seeds.Count > 0 && await TagAsync(repository, git, defaultBranch, merge, seeds, cancellationToken) is { } refusal)
         {
@@ -79,15 +82,48 @@ public partial class VersioningOnboardingService : IVersioningOnboardingService
         return true;
     }
 
-    public async Task<string?> BackfillAsync(Repository repository, CancellationToken cancellationToken = default)
+    public async Task<string?> BackfillAsync(Repository repository, IReadOnlyCollection<string> move, CancellationToken cancellationToken = default)
     {
         if (repository.DefaultBranch is not { } defaultBranch || queues.FirstOrDefault(q => q.Provider == repository.Provider) is not { } git) return null;
-        return (await BackfillCoreAsync(repository, git, defaultBranch, cancellationToken)).Note;
+        return (await BackfillCoreAsync(repository, git, defaultBranch, move, cancellationToken)).Note;
     }
 
-    /// <summary>The backfill; <c>Covered</c> holds the tags in place afterwards (created or already there).</summary>
+    public async Task<IReadOnlyList<GitWriterBackfillCollision>> CollisionsAsync(Repository repository, CancellationToken cancellationToken = default)
+    {
+        if (repository.DefaultBranch is not { } defaultBranch || queues.FirstOrDefault(q => q.Provider == repository.Provider) is not { } git) return [];
+        var (result, _) = await RunBackfillAsync(repository, git, defaultBranch, planOnly: true, [], cancellationToken);
+        return result is { Outcome: GitWriterBackfillResult.Planned } ? result.Collisions ?? [] : [];
+    }
+
+    /// <summary>The backfill; <c>Covered</c> holds the tags in place afterwards (created, already there, or a collision's).</summary>
     private async Task<(IReadOnlySet<string> Covered, string? Note)> BackfillCoreAsync(Repository repository, IForgeMergeQueue git, string defaultBranch,
-        CancellationToken cancellationToken)
+        IReadOnlyCollection<string> move, CancellationToken cancellationToken)
+    {
+        var (result, refusal) = await RunBackfillAsync(repository, git, defaultBranch, planOnly: false, move, cancellationToken);
+        if (result is null) return (new HashSet<string>(), refusal);
+        if (result.Outcome != GitWriterBackfillResult.Tagged)
+            return (new HashSet<string>(), $"The history was not backfilled ({result.Reason}): {result.Detail}");
+
+        var tags = result.Tags ?? [];
+        var collisions = result.Collisions ?? [];
+        var covered = tags.Where(t => t.Outcome is GitWriterTagResult.Created or GitWriterTagResult.AlreadyPresent).Select(t => t.Name)
+            .Concat(collisions.Select(c => c.Name)).ToHashSet(StringComparer.Ordinal);
+        var created = tags.Count(t => t.Outcome == GitWriterTagResult.Created);
+        var failed = tags.Where(t => t.Outcome is not (GitWriterTagResult.Created or GitWriterTagResult.AlreadyPresent)).ToList();
+        var moved = collisions.Count(c => c.Outcome == GitWriterBackfillCollision.Moved);
+        var unmoved = collisions.Where(c => move.Contains(c.Name) && c.Outcome != GitWriterBackfillCollision.Moved).ToList();
+        var parts = new List<string>();
+        if (created > 0) parts.Add($"tagged {created} version(s) from the history");
+        if (moved > 0) parts.Add($"moved {moved} tag(s) onto their earliest occurrence");
+        if (failed.Count > 0) parts.Add("not tagged: " + string.Join("; ", failed.Take(10).Select(t => $"{t.Name} ({t.Outcome}{(t.Detail is { } d ? $": {d}" : null)})")));
+        if (unmoved.Count > 0) parts.Add("not moved: " + string.Join("; ", unmoved.Take(10).Select(c => $"{c.Name} ({c.Outcome}{(c.Detail is { } d ? $": {d}" : null)})")));
+        parts.AddRange(result.Notes ?? []);
+        return (covered, parts.Count == 0 ? null : "History backfill: " + string.Join("; ", parts) + ".");
+    }
+
+    /// <summary>One backfill job; a null result comes with why it did not run (no versioning section is neither).</summary>
+    private async Task<(GitWriterBackfillResult? Result, string? Refusal)> RunBackfillAsync(Repository repository, IForgeMergeQueue git, string defaultBranch,
+        bool planOnly, IReadOnlyCollection<string> move, CancellationToken cancellationToken)
     {
         // D17 of #153: the section is read from the default branch, as a versioning run reads it.
         VersioningYmlResult parsed;
@@ -97,23 +133,25 @@ public partial class VersioningOnboardingService : IVersioningOnboardingService
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            return (new HashSet<string>(), $"The history was not backfilled: {Feedback.CoverageYml.FileName} could not be read ({ex.Message}).");
+            return (null, $"The history was not backfilled: {Feedback.CoverageYml.FileName} could not be read ({ex.Message}).");
         }
-        if (parsed is not { Config: { } config, Errors.Count: 0 }) return (new HashSet<string>(), null);
+        if (parsed is not { Config: { } config, Errors.Count: 0 }) return (null, null);
 
+        // A plan reads only, but the job fetches with the same credential as a write.
         var push = await git.GetWriterAccessAsync(repository, null, false, cancellationToken);
         if (push.Access is not { } access)
-            return (new HashSet<string>(), $"The history was not backfilled: the App could not push tags ({push.RefusalReason}).");
+            return (null, $"The history was not backfilled: the App could not push tags ({push.RefusalReason}).");
         GitWriterBackfillResult result;
         try
         {
             result = await writer.VersioningBackfillAsync(new GitWriterBackfillRequest(
                 repository.Provider.ToCanonicalString(), repository.GitHubId.ToString(CultureInfo.InvariantCulture), access.CloneUrl,
-                new CommitGraph.SidecarCredential(access.Username, access.Password), defaultBranch, VersioningController.Tagger, config.ToSettings()), cancellationToken);
+                new CommitGraph.SidecarCredential(access.Username, access.Password), defaultBranch, VersioningController.Tagger, config.ToSettings(),
+                planOnly, [.. move]), cancellationToken);
         }
         catch (GitWriterRefusedException ex)
         {
-            return (new HashSet<string>(), $"The history was not backfilled: {ex.Message}");
+            return (null, $"The history was not backfilled: {ex.Message}");
         }
         finally
         {
@@ -121,18 +159,7 @@ public partial class VersioningOnboardingService : IVersioningOnboardingService
         }
         if (result.Outcome is GitWriterOutcomes.Busy or GitWriterOutcomes.Failed)
             throw new GitWriterUnavailableException($"The git writer answered the history backfill with {result.Outcome}: {result.Detail}");
-        if (result.Outcome != GitWriterBackfillResult.Tagged)
-            return (new HashSet<string>(), $"The history was not backfilled ({result.Reason}): {result.Detail}");
-
-        var tags = result.Tags ?? [];
-        var covered = tags.Where(t => t.Outcome is GitWriterTagResult.Created or GitWriterTagResult.AlreadyPresent).Select(t => t.Name).ToHashSet(StringComparer.Ordinal);
-        var created = tags.Count(t => t.Outcome == GitWriterTagResult.Created);
-        var failed = tags.Where(t => t.Outcome is not (GitWriterTagResult.Created or GitWriterTagResult.AlreadyPresent)).ToList();
-        var parts = new List<string>();
-        if (created > 0) parts.Add($"tagged {created} version(s) from the history");
-        if (failed.Count > 0) parts.Add("not tagged: " + string.Join("; ", failed.Take(10).Select(t => $"{t.Name} ({t.Outcome}{(t.Detail is { } d ? $": {d}" : null)})")));
-        parts.AddRange(result.Notes ?? []);
-        return (covered, parts.Count == 0 ? null : "History backfill: " + string.Join("; ", parts) + ".");
+        return (result, null);
     }
 
     private static string Join(string? first, string second) => first is null ? second : first + " " + second;

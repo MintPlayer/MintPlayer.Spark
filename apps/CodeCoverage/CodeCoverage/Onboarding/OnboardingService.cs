@@ -41,10 +41,11 @@ public interface IOnboardingService
     /// <summary>
     /// Plans <paramref name="features"/> on the default branch's head, pushes the commit and opens (or updates) the pull request.
     /// <paramref name="olderLines"/>: the offered older release lines (<see cref="OnboardingPlan.OfferedLines"/>) the owner
-    /// chose to create (docs/onboarding_line_cuts_PRD.md D2).
+    /// chose to create (docs/onboarding_line_cuts_PRD.md D2). <paramref name="moveTags"/>: the collisions
+    /// (<see cref="OnboardingPlan.TagCollisions"/>) the owner chose to move, at the history backfill (#638 D9).
     /// </summary>
     Task<VersioningOnboardingOutcome> OnboardAsync(Repository repository, IReadOnlySet<EOnboardingFeature> features, IReadOnlyCollection<string> olderLines,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default, IReadOnlyCollection<string>? moveTags = null);
 
     /// <summary>The default branch moved: rebuilds the open onboarding pull request on its new head, with the features it was opened for.</summary>
     Task<VersioningOnboardingOutcome> RebuildAsync(Repository repository, CancellationToken cancellationToken = default);
@@ -111,7 +112,9 @@ public partial class OnboardingService : IOnboardingService
     public async Task<OnboardingPreview> PreviewAsync(Repository repository, IReadOnlySet<EOnboardingFeature> features, CancellationToken cancellationToken = default)
     {
         var planned = await PlanAsync(repository, features, [], cancellationToken);
-        return new OnboardingPreview(planned.Plan, planned.Refusal);
+        if (planned.Plan is not { } plan) return new OnboardingPreview(null, planned.Refusal);
+        // #638 D9: the App's tags the history places elsewhere, for the owner to move or leave; only a versioned repository has any.
+        return new OnboardingPreview(plan with { TagCollisions = await versioning.CollisionsAsync(repository, cancellationToken) }, null);
     }
 
     public async Task<VersioningOnboardingOutcome> RebuildAsync(Repository repository, CancellationToken cancellationToken = default)
@@ -126,11 +129,11 @@ public partial class OnboardingService : IOnboardingService
             return new(VersioningOnboardingOutcome.Nothing, $"The onboarding pull request #{number} is no longer open.");
         if (string.Equals(await git.GetBranchHeadAsync(repository, defaultBranch, cancellationToken), state.BaseSha, StringComparison.OrdinalIgnoreCase))
             return new(VersioningOnboardingOutcome.Nothing, $"The onboarding pull request #{number} is on {defaultBranch}'s head already.");
-        return await OnboardAsync(repository, state.Features.ToHashSet(), state.OlderLines, cancellationToken);
+        return await OnboardAsync(repository, state.Features.ToHashSet(), state.OlderLines, cancellationToken, state.MoveTags);
     }
 
     public async Task<VersioningOnboardingOutcome> OnboardAsync(Repository repository, IReadOnlySet<EOnboardingFeature> features, IReadOnlyCollection<string> olderLines,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default, IReadOnlyCollection<string>? moveTags = null)
     {
         // A merged onboarding whose seeds are still pending: push them before a new plan replaces them.
         if (!await versioning.PushSeedsAsync(repository, cancellationToken))
@@ -157,7 +160,7 @@ public partial class OnboardingService : IOnboardingService
             var applied = await ApplyAsync(repository, git, plan.OnMerge, plan.Renames.Renames.Select(r => new OnboardingRename { From = r.From, To = r.To }), cancellationToken);
             applied.AddRange(await CutAsync(repository, forge, plan.Cuts.Select(c => c.Branch), tree.Commit, cancellationToken));
             // #638 D8: re-running Set up features backfills the versions the history declares and no tag carries yet, after the cuts (D7).
-            if (await versioning.BackfillAsync(repository, cancellationToken) is { } backfilled) applied.Add(backfilled.TrimEnd('.'));
+            if (await versioning.BackfillAsync(repository, moveTags ?? [], cancellationToken) is { } backfilled) applied.Add(backfilled.TrimEnd('.'));
             return await NoteAsync(state, new(applied.Count > 0 ? VersioningOnboardingOutcome.Merged : VersioningOnboardingOutcome.Nothing,
                 (applied.Count > 0 ? "Applied without a pull request: " + string.Join("; ", applied) + ". " : "")
                 + "Nothing to change in the repository: " + (plan.Notes.Count == 0 ? "it is set up already." : string.Join(" ", plan.Notes))), cancellationToken);
@@ -225,6 +228,7 @@ public partial class OnboardingService : IOnboardingService
         state.Renames = [.. plan.Renames.Renames.Select(r => new OnboardingRename { From = r.From, To = r.To })];
         state.Cuts = [.. plan.Cuts.Select(c => c.Branch)];
         state.OlderLines = [.. olderLines];
+        state.MoveTags = [.. moveTags ?? []];
         state.Seeds = [.. plan.Seeds.Select(s => new VersioningOnboardingSeed { PackageId = s.PackageId, Version = s.Version })];
         state.SeedCommit = null;
         state.MergeHandledAt = null;

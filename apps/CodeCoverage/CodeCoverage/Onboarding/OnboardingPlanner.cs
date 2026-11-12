@@ -54,6 +54,12 @@ public sealed record OnboardingPlan(IReadOnlyList<EOnboardingFeature> Features, 
 
     /// <summary>D2: the older lines a package still targets, with no branch, for the owner to choose from.</summary>
     public IReadOnlyList<OnboardingLineCut> OfferedLines { get; init; } = [];
+
+    /// <summary>
+    /// #638 D9: the App's own version tags away from their version's earliest occurrence in the history, for the owner to
+    /// move or leave. Filled by the preview, which asks the git writer for a backfill plan.
+    /// </summary>
+    public IReadOnlyList<PackageVersioning.GitWriterBackfillCollision> TagCollisions { get; init; } = [];
 }
 
 /// <summary>

@@ -132,6 +132,23 @@ public partial class SetUpFeaturesAction : SparkCustomAction
             }
             var cuts = planned.Cuts.Concat(planned.OfferedLines.Where(o => olderLines.Contains(o.Branch))).ToList();
 
+            // #638 D9: the App's own tags that the history places at an earlier commit (Tools released its 10.0.0s again on the
+            // line). One question for all of them; Move is the default. Tags a person pushed are never listed.
+            var moveTags = new List<string>();
+            if (planned.TagCollisions.Count > 0)
+            {
+                var move = manager.GetTranslatedMessage("onboarding.moveTags.move");
+                var leave = manager.GetTranslatedMessage("onboarding.moveTags.leave");
+                var listed = string.Join("; ", planned.TagCollisions.Take(20).Select(c => manager.GetTranslatedMessage("onboarding.moveTags.item",
+                    c.Name, Short(c.Current), Short(c.Commit), c.Branch)))
+                    + (planned.TagCollisions.Count > 20 ? $"; … (+{planned.TagCollisions.Count - 20})" : "");
+                manager.Retry.Action(manager.GetTranslatedMessage("onboarding.moveTags.title", planned.TagCollisions.Count), [move, leave], move,
+                    message: manager.GetTranslatedMessage("onboarding.moveTags.message", listed), cancellable: true);
+                var answer = manager.Retry.Result!.Option;
+                if (answer == RetryResult.CancelOption) return;
+                if (answer == move) moveTags.AddRange(planned.TagCollisions.Select(c => c.Name));
+            }
+
             // Step 2: the plan, for a confirmation.
             VersioningOnboardingOutcome outcome;
             try
@@ -141,7 +158,7 @@ public partial class SetUpFeaturesAction : SparkCustomAction
                     message: Summary(planned, rulesetPlans, byHand, cuts), cancellable: true);
                 if (manager.Retry.Result!.Option == RetryResult.CancelOption) return;
 
-                outcome = await onboarding.OnboardAsync(repository, features, olderLines, cancellationToken);
+                outcome = await onboarding.OnboardAsync(repository, features, olderLines, cancellationToken, moveTags);
             }
             catch (Exception ex) when (ex is GitWriterUnavailableException or HttpRequestException)
             {
@@ -163,6 +180,8 @@ public partial class SetUpFeaturesAction : SparkCustomAction
                 await lease.DisposeAsync();
         }
     }
+
+    private static string Short(string sha) => sha.Length > 7 ? sha[..7] : sha;
 
     private static bool IsChecked(PersistentObject? form, EOnboardingFeature feature)
         => form?[feature.ToString()].GetValue<bool>() == true;
