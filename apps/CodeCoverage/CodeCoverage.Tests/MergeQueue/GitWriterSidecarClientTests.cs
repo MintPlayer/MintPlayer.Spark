@@ -93,6 +93,7 @@ public class GitWriterSidecarClientTests
         { "POST /jobs/versioning/backport", w => w.VersioningBackportAsync(new GitWriterBackportRequest("github", "910040", "https://github.com/acme/widget.git", Credential, "master", "abc", 7, "Fix", [], null!, [])) },
         { "POST /jobs/versioning/backport/trial", w => w.VersioningBackportTrialAsync(new GitWriterBackportTrialRequest("github", "910040", "https://github.com/acme/widget.git", Credential, "refs/pull/7/head", "abc", "def", [])) },
         { "POST /jobs/versioning/backport/regenerated", w => w.VersioningBackportRegeneratedAsync(new GitWriterBackportRegeneratedRequest("github", "910040", "https://github.com/acme/widget.git", Credential, "backport/7-8.x", "abc", "", [], null!)) },
+        { "POST /jobs/versioning/backfill", w => w.VersioningBackfillAsync(new GitWriterBackfillRequest("github", "910040", "https://github.com/acme/widget.git", Credential, "master", null!, null!)) },
         { "POST /jobs/versioning/plan", w => w.VersioningPlanAsync(new GitWriterVersioningPlanRequest("github", "910040", "https://github.com/acme/widget.git", Credential, "master", "master", "abc", null, null!)) },
         { "POST /jobs/versioning/ecosystems", w => w.VersioningEcosystemsAsync(new GitWriterEcosystemsRequest("github", "910040", "https://github.com/acme/widget.git", Credential, "master", "refs/pull/7/head", "abc", null!)) },
     };

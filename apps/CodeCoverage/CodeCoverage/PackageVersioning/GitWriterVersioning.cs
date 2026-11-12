@@ -39,6 +39,25 @@ public sealed record GitWriterTagResult(string Name, string Outcome, string? Det
     public const string AlreadyPresent = "already-present";
 }
 
+/// <summary>
+/// The body of the git writer's <c>POST /jobs/versioning/backfill</c> (#638 D5-D8): every version the default branch's and the
+/// release lines' history declares, tagged at its earliest occurrence on the line of its major.
+/// </summary>
+public sealed record GitWriterBackfillRequest(
+    string Provider, string RepoId, string CloneUrl, SidecarCredential Credential, string DefaultBranch, GitWriterTagger Tagger, VersioningSettings Settings,
+    bool PlanOnly = false);
+
+/// <param name="Outcome"><c>created</c>, <c>already-present</c>, <c>conflict</c>, <c>unreachable</c> or <c>planned</c>.</param>
+public sealed record GitWriterBackfillTag(string Name, string Commit, string Branch, string Outcome, string? Detail);
+
+/// <param name="Outcome"><see cref="Planned"/>, <see cref="Tagged"/>, or a failure.</param>
+public sealed record GitWriterBackfillResult(string Outcome, string? Reason, IReadOnlyList<GitWriterBackfillTag>? Tags, IReadOnlyList<string>? Branches,
+    IReadOnlyList<string>? Notes, string? Detail, long DurationMs)
+{
+    public const string Tagged = "tagged";
+    public const string Planned = "planned";
+}
+
 /// <summary>The writer's answer: always 200 with an outcome, as every job (<c>GitWriterOutcomes</c>).</summary>
 public sealed record GitWriterVersioningResult(
     string Outcome, string? Reason, IReadOnlyList<GitWriterRelease>? Releases, IReadOnlyList<GitWriterPackageNote>? Skipped,

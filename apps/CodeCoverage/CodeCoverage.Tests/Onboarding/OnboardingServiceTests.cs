@@ -226,6 +226,41 @@ public class OnboardingServiceTests : CoverageRavenTest
     }
 
     [Fact]
+    public async Task Backfill_D7_the_merge_tags_the_history_after_the_line_cuts_and_seeds_only_what_it_did_not_tag()
+    {
+        using var store = GetDocumentStore();
+        await SeedRepositoryAsync(store);
+        var h = Create(store);
+        var repository = (await h.Session.LoadAsync<Repository>(CodeCoverage.Entities.Repository.DocumentId(EForgeProvider.GitHub, RepoId)))!;
+        var opened = await h.Service.OnboardAsync(repository, new HashSet<EOnboardingFeature> { EOnboardingFeature.ReleaseLines }, []);
+        opened.Outcome.Should().Be(VersioningOnboardingOutcome.Opened, opened.Note);
+        h.Forge.Files[$"main/{CoverageYml.FileName}"] = "versioning:\n  lines: {}\n";
+        const string merge = "abcdabcdabcdabcdabcdabcdabcdabcdabcdabcd";
+        h.Versioning.PullRequest = new ForgePullRequestText(opened.PullRequest!.Value, OnboardingPlanner.Title, null, OnboardingPlanner.Branch, Head, "main",
+            false, true, true, merge, []);
+        var linesAtBackfill = -1;
+        h.Writer.Backfill = request =>
+        {
+            linesAtBackfill = h.Versioning.Branches.Count;
+            return Task.FromResult(new GitWriterBackfillResult(GitWriterBackfillResult.Tagged, null, [
+                new GitWriterBackfillTag("Acme.Tools/v11.1.0", "1111111111111111111111111111111111111111", "release/dotnet-11.x", GitWriterTagResult.Created, null),
+                new GitWriterBackfillTag("Acme.Tools/v11.2.0", "2222222222222222222222222222222222222222", "release/dotnet-11.x", GitWriterTagResult.Created, null),
+            ], ["main", "release/dotnet-11.x"], [], null, 1));
+        };
+
+        var merged = await h.Service.MergedAsync(repository);
+
+        merged.Outcome.Should().Be(VersioningOnboardingOutcome.Merged, merged.Note);
+        h.Writer.BackfillRequests.Should().ContainSingle();
+        var backfill = h.Writer.BackfillRequests.Single();
+        (backfill.DefaultBranch, backfill.PlanOnly, backfill.Settings.Lines is not null).Should().Be(("main", false, true));
+        linesAtBackfill.Should().Be(1, "D7: settings, renames, cuts, then the backfill, so a version goes on the line of its major");
+        h.Writer.TagRequests.Should().BeEmpty("the backfill tagged the seed's version at its earliest occurrence already");
+        (await StateAsync(store, repository)).SeedCommit.Should().Be(merge, "the seeds are done");
+        merged.Note.Should().Contain("tagged 2 version(s) from the history");
+    }
+
+    [Fact]
     public async Task M10d_a_settings_only_choice_applies_at_once_without_a_pull_request()
     {
         using var store = GetDocumentStore();
@@ -274,16 +309,25 @@ public class OnboardingServiceTests : CoverageRavenTest
         var opened = await first.Service.OnboardAsync(repository, features, []);
         opened.Outcome.Should().Be(VersioningOnboardingOutcome.Opened);
         MergeInto(forge, NextHead, first.Writer.Requests("onboarding").Single().Files!);
+        forge.Files[$"main/{CoverageYml.FileName}"] = forge.Files[$"{NextHead}/{CoverageYml.FileName}"];
 
         // Set up features again: nothing to change, so the lines are created now, from the head the plan read.
         var again = Create(store, forge);
         again.Versioning.PullRequest = new ForgePullRequestText(opened.PullRequest!.Value, OnboardingPlanner.Title, null, OnboardingPlanner.Branch, Head, "main",
             false, true, true, NextHead, []);
+        var linesAtBackfill = new List<int>();
+        again.Writer.Backfill = request =>
+        {
+            linesAtBackfill.Add(again.Versioning.Branches.Count);
+            return Task.FromResult(new GitWriterBackfillResult(GitWriterBackfillResult.Tagged, null, [], ["main"], [], null, 1));
+        };
         var outcome = await again.Service.OnboardAsync(repository, features, ["release/dotnet-10.x"]);
 
         outcome.Outcome.Should().Be(VersioningOnboardingOutcome.Merged, outcome.Note);
         again.Writer.Requests("onboarding").Should().BeEmpty();
         again.Versioning.Branches.Should().Equal([("release/dotnet-11.x", NextHead), ("release/dotnet-10.x", NextHead)]);
+        // #638 D8: re-running Set up features backfills the history, after the cuts.
+        linesAtBackfill.Should().NotBeEmpty().And.EndWith(2);
         outcome.Note.Should().Contain("created release/dotnet-11.x").And.Contain("created release/dotnet-10.x");
     }
 

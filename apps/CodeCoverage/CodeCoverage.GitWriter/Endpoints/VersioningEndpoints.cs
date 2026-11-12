@@ -403,6 +403,36 @@ internal sealed partial class GitWriterVersioningHandTagEndpoint : IPostEndpoint
     }
 }
 
+/// <summary><c>POST /jobs/versioning/backfill</c>: tag the versions a repository declared before onboarding (#638 D5-D8).</summary>
+internal sealed partial class GitWriterVersioningBackfillEndpoint : IPostEndpoint<VersioningBackfillRequestWire>
+{
+    public static string Path => "/jobs/versioning/backfill";
+
+    [Inject] private readonly VersioningRunService runs;
+    [Inject] private readonly IOptions<GitWriterOptions> options;
+
+    protected override async ValueTask<VersioningBackfillRequestWire?> BindRequestAsync(HttpContext context)
+        => await Body.ReadAsync<VersioningBackfillRequestWire>(context.Request.Body, context.Request.ContentLength, Body.SmallBytes, context.RequestAborted);
+
+    protected override ValueTask<IResult> OnBindFailedAsync(HttpContext context, EndpointBindingException? failure) => new(Refusal.Body(Body.SmallBytes));
+
+    public override async Task<IResult> HandleAsync(VersioningBackfillRequestWire request, CancellationToken cancellationToken)
+    {
+        var refusal = new Refusal();
+        if (!refusal.Check(WireValidation.IsRepo(request.Provider, request.RepoId), "repoId", WireValidation.RepoRule)
+            || refusal.Check(WireValidation.RemoteUrl(request.CloneUrl, options.Value.AllowInsecureHttp), "cloneUrl", WireValidation.RemoteUrlRule) is not { } cloneUrl
+            || refusal.Check(WireValidation.Credential(request.Credential), "credential", WireValidation.CredentialRule) is not { } credential
+            || refusal.Check(WireValidation.Branch(request.DefaultBranch), "defaultBranch", MergeQueueWireRules.BranchRule) is not { } defaultBranch
+            || refusal.Check(request.Tagger is { } t && MergeQueueWireRules.IsIdentity(t.Name, t.Email) ? new GitIdentity(t.Name!, t.Email!) : null,
+                "tagger", MergeQueueWireRules.IdentityRule) is not { } tagger
+            || refusal.Check(GitWriterVersioningRunEndpoint.Settings(request.Settings), "settings", GitWriterVersioningRunEndpoint.SettingsRule) is not { } settings)
+            return refusal.Result();
+
+        return Results.Json(await runs.BackfillAsync(new VersioningBackfillJob($"{request.Provider}/{request.RepoId}", cloneUrl, credential, defaultBranch, tagger, settings,
+            request.PlanOnly)), GitWriterHost.Json);
+    }
+}
+
 /// <summary><c>POST /jobs/versioning/promote</c>: move release lines to a green default-branch commit (segment P).</summary>
 internal sealed partial class GitWriterVersioningPromoteEndpoint : IPostEndpoint<VersioningPromoteRequestWire>
 {

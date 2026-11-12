@@ -107,6 +107,24 @@ owner's requested exception to "tests run once, at the end". The full affected s
   `Hsts 10.0.0` → `10.0.1` → placeholder plus a v11 seed tag; `release/dotnet-10.x` is cut after that. Expect
   `Hsts/v10.0.0` and `v10.0.1` at their earliest commits, both reachable from the line. Also: a 7.x version declared
   only on `release/dotnet-7.x` is tagged there, feature branches are ignored, and re-running plans nothing.
+  ✅ Engine: `HistoryBackfill.PlanAsync` (`CodeCoverage.Versioning/Releases/HistoryBackfill.cs`), test
+  `HistoryBackfillTests.Every_declared_version_is_tagged_at_its_earliest_occurrence_on_the_line_of_its_major`, which covers
+  every case above plus "without lines, only the default branch". It walks `log --first-parent` limited to project files
+  and reads each commit's graph once (at most 5000 commits, else refused). ⚠️ Honest TDD record: this test and the
+  GitWriter test below were red only as compile failures (the types did not exist yet). The implementation was written
+  before a behavioural red run, and both went green on their first run. Writer: `POST /jobs/versioning/backfill`
+  (`GitWriterVersioningBackfillEndpoint`, `VersioningRunService.BackfillAsync`). It lists heads with `ls-remote` and fetches
+  only the default branch and the pattern's lines, with every tag. It writes through `TagWriter` (never forced, M5) in
+  batches of 500, each tag reachable from the walked branches. `planOnly` writes nothing. Test:
+  `VersioningBackfillTests.The_history_is_tagged_at_each_versions_earliest_occurrence_and_a_plan_writes_nothing` (plan →
+  nothing on the origin; write → `Core/v1.0.0`/`v1.1.0` at their commits; re-run → no tags). App:
+  `OnboardingServiceTests.Backfill_D7_the_merge_tags_the_history_after_the_line_cuts_and_seeds_only_what_it_did_not_tag`
+  was red for the right reason: "Expected h.Writer.BackfillRequests to contain a single item, but found 0". `LineCuts_D2_D3_…`
+  (D8, no files → backfill after both cuts) was red with "Expected linesAtBackfill not to be empty". Green: `PushSeedsAsync`
+  runs the backfill first and pushes only the seeds it did not tag. `MergedAsync` calls it after `CutAsync` (D7 order;
+  the early returns still push seeds for a #153 pull request). The no-files path of `OnboardAsync` runs the backfill after
+  the cuts. A failed backfill is noted and leaves the seeds to carry the current versions, which was the behaviour before
+  #638. 129/129 in the onboarding, controller and sidecar classes.
 - **M4, collision moves (D9).** Red: the Tools shape, an App-made `Hsts/v10.0.0` at a later commit than history's
   declaration. Set up features offers Move, Move force-pushes it, Leave keeps it, and a person's tag is never offered.
 - **M5, backport normalization (D13).** Red: `PlatformMarkersTests` with `net10.0;net11.0` → `net11.0` on a 10.x

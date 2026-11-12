@@ -260,6 +260,32 @@ public sealed class VersioningRunRequestWire
     public bool PlanOnly { get; set; }
 }
 
+/// <summary>
+/// <c>POST /jobs/versioning/backfill</c> (#638 D5-D8): tag every version the history of the default branch and the release
+/// lines declares at its earliest occurrence, on the line of its major. A tag that already exists is left alone.
+/// </summary>
+public sealed class VersioningBackfillRequestWire
+{
+    public string? Provider { get; set; }
+    public string? RepoId { get; set; }
+    public string? CloneUrl { get; set; }
+    public CredentialWire? Credential { get; set; }
+    public string? DefaultBranch { get; set; }
+    /// <summary>The tagger; the date is the writer's clock.</summary>
+    public IdentityWire? Tagger { get; set; }
+    public VersioningSettingsWire? Settings { get; set; }
+    /// <summary>Decide the tags and write none (the onboarding's preview).</summary>
+    public bool PlanOnly { get; set; }
+}
+
+/// <param name="Outcome">One of <c>created</c>, <c>already-present</c>, <c>conflict</c>, <c>unreachable</c>, <c>planned</c>.</param>
+public sealed record BackfillTagWire(string Name, string Commit, string Branch, string Outcome, string? Detail);
+
+/// <param name="Outcome"><see cref="JobOutcomes.Planned"/> for a plan, <see cref="JobOutcomes.Tagged"/> once written, or a failure.</param>
+/// <param name="Branches">The branches walked: the default branch and the release lines.</param>
+public sealed record VersioningBackfillResponse(string Outcome, string? Reason, IReadOnlyList<BackfillTagWire> Tags, IReadOnlyList<string> Branches,
+    IReadOnlyList<string> Notes, string? Detail, long DurationMs);
+
 /// <summary>The <c>versioning:</c> section of <c>coverage.yml</c> as the engine reads it (D13, D17).</summary>
 public sealed class VersioningSettingsWire
 {

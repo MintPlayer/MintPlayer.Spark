@@ -19,7 +19,15 @@ public interface IVersioningOnboardingService
     /// seeds are pending on a merged pull request and could not be pushed: a versioning run must not go ahead without them,
     /// or it would release the untagged packages from scratch. The caller holds <see cref="VersioningRunLocks"/>.
     /// </summary>
+    /// <remarks>#638 D5-D7: the history backfill runs first; a seed whose version it tagged at an earlier commit is not pushed again.</remarks>
     Task<bool> PushSeedsAsync(Repository repository, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// #638 D5-D8: tags every version the default branch's and the release lines' history declares at its earliest occurrence,
+    /// when the default branch's <c>coverage.yml</c> has a versioning section. What was done, or why not; null when there was
+    /// nothing to tag.
+    /// </summary>
+    Task<string?> BackfillAsync(Repository repository, CancellationToken cancellationToken = default);
 }
 
 /// <param name="Outcome"><see cref="Opened"/>, <see cref="Seeded"/>, <see cref="Nothing"/> or <see cref="Refused"/>.</param>
@@ -40,6 +48,7 @@ public partial class VersioningOnboardingService : IVersioningOnboardingService
     [Inject] private readonly IEnumerable<IForgeVersioning> forges;
     [Inject] private readonly IEnumerable<IForgeMergeQueue> queues;
     [Inject] private readonly IGitWriterSidecar writer;
+    [Inject] private readonly IForgeIntegrationResolver forgeFiles;
     [Inject] private readonly TimeProvider time;
 
     private DateTime Now => time.GetUtcNow().UtcDateTime;
@@ -56,15 +65,77 @@ public partial class VersioningOnboardingService : IVersioningOnboardingService
         var pull = await forge.GetPullRequestTextAsync(repository, state.PullRequestNumber!.Value, cancellationToken);
         if (pull is not { Merged: true, MergeCommitSha: { } merge }) return true;
 
-        if (await TagAsync(repository, git, defaultBranch, merge, state.Seeds, cancellationToken) is { } refusal)
+        // A backfill that fails leaves the seeds to carry the current versions, as before #638; its note says why.
+        var backfill = await BackfillCoreAsync(repository, git, defaultBranch, cancellationToken);
+        var seeds = state.Seeds.Where(s => !backfill.Covered.Contains(VersionTag.Prefix(s.PackageId) + s.Version)).ToList();
+        if (seeds.Count > 0 && await TagAsync(repository, git, defaultBranch, merge, seeds, cancellationToken) is { } refusal)
         {
-            await NoteAsync(state, new(VersioningOnboardingOutcome.Refused, refusal), cancellationToken);
+            await NoteAsync(state, new(VersioningOnboardingOutcome.Refused, Join(backfill.Note, refusal)), cancellationToken);
             return false;
         }
         state.SeedCommit = merge;
-        await NoteAsync(state, new(VersioningOnboardingOutcome.Seeded, $"Pushed {state.Seeds.Count} seed tag(s) at the merge commit {Short(merge)}."), cancellationToken);
+        await NoteAsync(state, new(VersioningOnboardingOutcome.Seeded,
+            Join(backfill.Note, $"Pushed {seeds.Count} seed tag(s) at the merge commit {Short(merge)}.")), cancellationToken);
         return true;
     }
+
+    public async Task<string?> BackfillAsync(Repository repository, CancellationToken cancellationToken = default)
+    {
+        if (repository.DefaultBranch is not { } defaultBranch || queues.FirstOrDefault(q => q.Provider == repository.Provider) is not { } git) return null;
+        return (await BackfillCoreAsync(repository, git, defaultBranch, cancellationToken)).Note;
+    }
+
+    /// <summary>The backfill; <c>Covered</c> holds the tags in place afterwards (created or already there).</summary>
+    private async Task<(IReadOnlySet<string> Covered, string? Note)> BackfillCoreAsync(Repository repository, IForgeMergeQueue git, string defaultBranch,
+        CancellationToken cancellationToken)
+    {
+        // D17 of #153: the section is read from the default branch, as a versioning run reads it.
+        VersioningYmlResult parsed;
+        try
+        {
+            parsed = VersioningYml.Parse(await forgeFiles.For(repository).GetFileContentAsync(repository, defaultBranch, Feedback.CoverageYml.FileName, cancellationToken));
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            return (new HashSet<string>(), $"The history was not backfilled: {Feedback.CoverageYml.FileName} could not be read ({ex.Message}).");
+        }
+        if (parsed is not { Config: { } config, Errors.Count: 0 }) return (new HashSet<string>(), null);
+
+        var push = await git.GetWriterAccessAsync(repository, null, false, cancellationToken);
+        if (push.Access is not { } access)
+            return (new HashSet<string>(), $"The history was not backfilled: the App could not push tags ({push.RefusalReason}).");
+        GitWriterBackfillResult result;
+        try
+        {
+            result = await writer.VersioningBackfillAsync(new GitWriterBackfillRequest(
+                repository.Provider.ToCanonicalString(), repository.GitHubId.ToString(CultureInfo.InvariantCulture), access.CloneUrl,
+                new CommitGraph.SidecarCredential(access.Username, access.Password), defaultBranch, VersioningController.Tagger, config.ToSettings()), cancellationToken);
+        }
+        catch (GitWriterRefusedException ex)
+        {
+            return (new HashSet<string>(), $"The history was not backfilled: {ex.Message}");
+        }
+        finally
+        {
+            await git.RevokeWriterAccessAsync(repository, access, CancellationToken.None);
+        }
+        if (result.Outcome is GitWriterOutcomes.Busy or GitWriterOutcomes.Failed)
+            throw new GitWriterUnavailableException($"The git writer answered the history backfill with {result.Outcome}: {result.Detail}");
+        if (result.Outcome != GitWriterBackfillResult.Tagged)
+            return (new HashSet<string>(), $"The history was not backfilled ({result.Reason}): {result.Detail}");
+
+        var tags = result.Tags ?? [];
+        var covered = tags.Where(t => t.Outcome is GitWriterTagResult.Created or GitWriterTagResult.AlreadyPresent).Select(t => t.Name).ToHashSet(StringComparer.Ordinal);
+        var created = tags.Count(t => t.Outcome == GitWriterTagResult.Created);
+        var failed = tags.Where(t => t.Outcome is not (GitWriterTagResult.Created or GitWriterTagResult.AlreadyPresent)).ToList();
+        var parts = new List<string>();
+        if (created > 0) parts.Add($"tagged {created} version(s) from the history");
+        if (failed.Count > 0) parts.Add("not tagged: " + string.Join("; ", failed.Take(10).Select(t => $"{t.Name} ({t.Outcome}{(t.Detail is { } d ? $": {d}" : null)})")));
+        parts.AddRange(result.Notes ?? []);
+        return (covered, parts.Count == 0 ? null : "History backfill: " + string.Join("; ", parts) + ".");
+    }
+
+    private static string Join(string? first, string second) => first is null ? second : first + " " + second;
 
     /// <summary>Pushes the seeds at <paramref name="commit"/>; null when every tag is there, else why not.</summary>
     private async Task<string?> TagAsync(Repository repository, IForgeMergeQueue git, string defaultBranch, string commit, IReadOnlyList<VersioningOnboardingSeed> seeds,

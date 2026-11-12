@@ -2,6 +2,7 @@ using CodeCoverage.Git;
 using CodeCoverage.Versioning.Git;
 using CodeCoverage.Versioning.Graph;
 using CodeCoverage.Versioning.Releases;
+using CodeCoverage.Versioning.Versions;
 
 namespace CodeCoverage.GitWriter.Jobs;
 
@@ -16,6 +17,10 @@ public sealed record VersioningPlanJob(
     /// <summary>The release line of <see cref="Branch"/> when lines are on (#568 D1).</summary>
     public ReleaseLine? Line { get; init; }
 }
+
+/// <summary>A validated <c>POST /jobs/versioning/backfill</c> (#638 D5-D8).</summary>
+public sealed record VersioningBackfillJob(
+    string Repo, Uri CloneUrl, GitCredential Credential, string DefaultBranch, GitIdentity Tagger, VersioningSettings Settings, bool PlanOnly);
 
 /// <summary>A validated <c>POST /jobs/versioning/ecosystems</c> (#570 M8b).</summary>
 public sealed record VersioningEcosystemsJob(
@@ -71,6 +76,55 @@ public sealed class VersioningRunService(JobRunner jobs)
         }
         return Response(result, context.ElapsedMilliseconds) with { Plan = plan };
     }, (outcome, reason, detail, ms) => new VersioningRunResponse(outcome, reason, [], [], [], [], detail, ms));
+
+    /// <summary>
+    /// #638 D5-D8: the history backfill. Only the default branch and the branches the line pattern matches are fetched
+    /// (never a feature branch, D6), with every tag, so a version already tagged is not planned again; the tags are written
+    /// in batches of <see cref="Versioning.Graph.Limits.MaxPackagesPerRun"/>, each reachable from the branch it was found on.
+    /// </summary>
+    public Task<VersioningBackfillResponse> BackfillAsync(VersioningBackfillJob job) => jobs.RunAsync("versioning-backfill", job.Repo, async context =>
+    {
+        await context.RequireAsync(["init", "--bare", "--quiet", "--template=", context.GitDirectory], inRepository: false);
+        var listing = await context.RequireAsync(["ls-remote", "--heads", job.CloneUrl.AbsoluteUri], job.Credential);
+        var branches = new List<string> { job.DefaultBranch };
+        foreach (var line in listing.StandardOutput.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var name = line.Split('\t') is [_, var reference] && reference.StartsWith("refs/heads/", StringComparison.Ordinal) ? reference["refs/heads/".Length..] : null;
+            if (name is not null && name != job.DefaultBranch && job.Settings.Lines is { } pattern && pattern.TryMatch(name, out _)) branches.Add(name);
+        }
+        await context.RequireAsync(["fetch", "--quiet", "--no-tags", "--no-write-fetch-head", job.CloneUrl.AbsoluteUri,
+            .. branches.Select(b => $"+refs/heads/{b}:refs/heads/{b}"), "+refs/tags/*:refs/tags/*"], job.Credential);
+        context.EnsureWithinDisk();
+
+        BackfillPlan plan;
+        try
+        {
+            plan = await HistoryBackfill.PlanAsync(new GitCli(context.GitDirectory), job.DefaultBranch, job.Settings, context.Deadline);
+        }
+        catch (VersioningException e)
+        {
+            throw new JobAbortedException(JobReasons.Unplannable, e.Message);
+        }
+        catch (GitException e)
+        {
+            throw new JobAbortedException(JobReasons.Error, e.Message);
+        }
+
+        var outcomes = new Dictionary<string, TagWriteResult>(StringComparer.Ordinal);
+        if (!job.PlanOnly)
+        {
+            var writer = new TagWriter(new TagService.JobTagGit(context, job.Credential), job.CloneUrl.AbsoluteUri, plan.Branches.Select(b => "refs/heads/" + b).ToList(),
+                new Tagger(job.Tagger.Name, job.Tagger.Email));
+            foreach (var batch in plan.Tags.Chunk(Versioning.Graph.Limits.MaxPackagesPerRun))
+                foreach (var result in await writer.WriteAsync([.. batch.Select(t => new TagToWrite(t.Tag, t.Commit, new TagAnnotation(null, null)))], context.Deadline))
+                    outcomes[result.Tag.Name] = result;
+        }
+        var tags = plan.Tags.Select(t => outcomes.TryGetValue(t.Tag.Name, out var r)
+            ? new BackfillTagWire(t.Tag.Name, t.Commit, t.Branch, TagService.Wire(r.Outcome), r.Detail)
+            : new BackfillTagWire(t.Tag.Name, t.Commit, t.Branch, TagService.Wire(TagOutcome.Planned), null)).ToList();
+        return new VersioningBackfillResponse(job.PlanOnly ? JobOutcomes.Planned : JobOutcomes.Tagged, null, tags, plan.Branches, plan.Notes, null,
+            context.ElapsedMilliseconds);
+    }, (outcome, reason, detail, ms) => new VersioningBackfillResponse(outcome, reason, [], [], [], detail, ms));
 
     /// <summary>The plan alone (D3 trigger B): the branch and the tags fetched as for a run, nothing written.</summary>
     public Task<VersioningPlanResponse> PlanAsync(VersioningPlanJob job) => jobs.RunAsync("versioning-plan", job.Repo, async context =>
