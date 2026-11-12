@@ -126,6 +126,7 @@ public static partial class VersioningOnboarding
     [
         new("Hand-written versions become the placeholder", PlaceholderVersionsAsync),
         new($"`{PackageId}` is referenced", c => c.NuGet.Count == 0 ? Task.CompletedTask : ReferenceAsync(c.Files, c.NuGet, c.PackageVersion)),
+        new("A release line that cannot pack its own major fails the build (MPV006)", c => c.NuGet.Count == 0 ? Task.CompletedTask : Mpv006ErrorAsync(c.Files, c.NuGet)),
         new("MinVer leaves the build", c => c.NuGet.Count == 0 ? Task.CompletedTask : RemoveMinVerAsync(c.Files, c.Tree, c.NuGet, c.Notes)),
         new($"`nuget.config` maps `{PackageId}` to nuget.org", c => c.NuGet.Count == 0 ? Task.CompletedTask : NuGetConfigAsync(c.Files, c.Tree, c.Owner, c.Notes)),
         new("The versioning step runs before the first pack or publish", c => WorkflowsAsync(c, (path, text, notes) => VersioningStep(path, text, c.ActionSha, notes))),
@@ -261,6 +262,23 @@ public static partial class VersioningOnboarding
         }
     }
 
+    internal const string Mpv006Error = "<MSBuildWarningsAsErrors>$(MSBuildWarningsAsErrors);MPV006</MSBuildWarningsAsErrors>";
+
+    /// <summary>
+    /// #638 D10 (owner: "enable this flag at first, and disable it when everything stabilized"): MPV006, a release line's
+    /// package with no tag of the line's major, fails the pack instead of leaving the package out. A repository that
+    /// mentions MPV006 already keeps its own choice.
+    /// </summary>
+    private static async Task Mpv006ErrorAsync(Files files, List<ProjectNode> nuget)
+    {
+        foreach (var root in nuget.Select(p => p.BuildProps.FirstOrDefault() ?? "Directory.Build.props").Distinct(StringComparer.Ordinal))
+        {
+            var text = await files.ReadAsync(root);
+            if (text is null) files.Write(root, $"<Project>\n  <PropertyGroup>\n    {Mpv006Error}\n  </PropertyGroup>\n</Project>\n");
+            else if (!text.Contains("MPV006", StringComparison.Ordinal)) files.Write(root, AddGroup(text, "PropertyGroup", Mpv006Error));
+        }
+    }
+
     /// <summary>
     /// The highest stable version in nuget.org's flat-container index (<see cref="PackageIndexUrl"/>), or null. A prerelease is
     /// never taken, and an unlisted version still counts: the index does not mark it, and unlisting is no reason to skip a fix.
@@ -279,7 +297,10 @@ public static partial class VersioningOnboarding
     }
 
     /// <summary>Inserts an <c>ItemGroup</c> holding <paramref name="item"/> before <c>&lt;/Project&gt;</c>, in the file's own indentation.</summary>
-    internal static string AddItem(string text, string item)
+    internal static string AddItem(string text, string item) => AddGroup(text, "ItemGroup", item);
+
+    /// <summary>Inserts a <paramref name="group"/> holding <paramref name="item"/> before <c>&lt;/Project&gt;</c>, in the file's own indentation.</summary>
+    internal static string AddGroup(string text, string group, string item)
     {
         var end = text.LastIndexOf("</Project>", StringComparison.Ordinal);
         if (end < 0) return text;
@@ -287,7 +308,7 @@ public static partial class VersioningOnboarding
         var indent = Indentation().Match(text) is { Success: true } m ? m.Groups[1].Value : "  ";
         var before = text[..end].TrimEnd(' ', '\t');
         if (!before.EndsWith('\n')) before += eol;
-        return $"{before}{eol}{indent}<ItemGroup>{eol}{indent}{indent}{item}{eol}{indent}</ItemGroup>{eol}{text[end..]}";
+        return $"{before}{eol}{indent}<{group}>{eol}{indent}{indent}{item}{eol}{indent}</{group}>{eol}{text[end..]}";
     }
 
     /// <summary>

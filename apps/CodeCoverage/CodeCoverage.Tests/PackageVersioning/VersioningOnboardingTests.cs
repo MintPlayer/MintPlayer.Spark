@@ -166,6 +166,10 @@ public class VersioningOnboardingTests
               <ItemGroup>
                 <PackageReference Include="MintPlayer.Versioning.MSBuild" Version="1.0.1" PrivateAssets="all" />
               </ItemGroup>
+
+              <PropertyGroup>
+                <MSBuildWarningsAsErrors>$(MSBuildWarningsAsErrors);MPV006</MSBuildWarningsAsErrors>
+              </PropertyGroup>
             </Project>
 
             """);
@@ -645,7 +649,10 @@ public class VersioningOnboardingTests
 
         var plan = await VersioningOnboarding.PlanAsync(tree, new HashSet<string> { "MintPlayer.Tools" }, Sha);
 
-        ByPath(plan).Keys.Should().Equal(".github/workflows/publish.yml");
+        ByPath(plan).Keys.Should().Equal(".github/workflows/publish.yml", "Directory.Build.props");
+        ByPath(plan)["Directory.Build.props"].Should().EndWith(
+            "  <PropertyGroup>\n    <MSBuildWarningsAsErrors>$(MSBuildWarningsAsErrors);MPV006</MSBuildWarningsAsErrors>\n  </PropertyGroup>\n</Project>\n",
+            "#638 D10: a repository onboarded before MPV006 gets the opt-in on its next onboarding");
         ByPath(plan)[".github/workflows/publish.yml"].Should().Be(
             "on: push\n"
             + "concurrency:\n  group: ${{ github.workflow }}-${{ github.ref }}\n  cancel-in-progress: true\n\n"
@@ -711,6 +718,9 @@ public class VersioningOnboardingTests
                   <ItemGroup>
                     <PackageReference Include="MintPlayer.Versioning.MSBuild" Version="1.0.1" PrivateAssets="all" />
                   </ItemGroup>
+                  <PropertyGroup>
+                    <MSBuildWarningsAsErrors>$(MSBuildWarningsAsErrors);MPV006</MSBuildWarningsAsErrors>
+                  </PropertyGroup>
                 </Project>
                 """)
             .Add("src/Tools/Tools.csproj", """
@@ -756,7 +766,8 @@ public class VersioningOnboardingTests
         plan.Notes[2].Should().Contain("`.github/workflows/publish.yml` job `pack` had the repository's default token permissions");
         var files = ByPath(plan);
         files.Should().NotContainKey("src/Tools/Tools.csproj");
-        files["Directory.Build.props"].Should().Be("<Project>\n  <ItemGroup>\n    <PackageReference Include=\"MintPlayer.Versioning.MSBuild\" Version=\"1.0.1\" PrivateAssets=\"all\" />\n  </ItemGroup>\n</Project>\n");
+        files["Directory.Build.props"].Should().Be("<Project>\n  <ItemGroup>\n    <PackageReference Include=\"MintPlayer.Versioning.MSBuild\" Version=\"1.0.1\" PrivateAssets=\"all\" />\n  </ItemGroup>\n\n"
+            + "  <PropertyGroup>\n    <MSBuildWarningsAsErrors>$(MSBuildWarningsAsErrors);MPV006</MSBuildWarningsAsErrors>\n  </PropertyGroup>\n</Project>\n");
         files[".github/workflows/publish.yml"].Should().Be(
             "on: push\n"
             + "concurrency:\n  group: ${{ github.workflow }}-${{ github.ref }}\n  cancel-in-progress: true\n\n"

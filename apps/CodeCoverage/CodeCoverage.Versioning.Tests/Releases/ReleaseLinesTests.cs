@@ -124,6 +124,35 @@ public class ReleaseLinesTests
     }
 
     [Fact]
+    public async Task A_line_tells_the_pack_the_major_of_each_anchored_package_of_its_own_ecosystem()
+    {
+        // #638 P1/D2: the pack reads the highest reachable tag, and on Tools' 10.x line that was master's 11.x. The plan
+        // names each package's major on the line, released or not, and only for the line's own ecosystem: a free package
+        // (Text, netstandard) and another ecosystem's (ng-acme on a dotnet line) keep the highest reachable tag.
+        var older = await PlanAsync(Mixed(), "release/dotnet-10.x");
+        older.LineMajors.Should().BeEquivalentTo(new Dictionary<string, int> { ["Core"] = 10 });
+
+        var newest = await PlanAsync(Mixed("net11.0"), "release/dotnet-11.x");
+        newest.LineMajors.Should().BeEquivalentTo(new Dictionary<string, int> { ["Core"] = 11 });
+
+        var angular = await PlanAsync(Mixed(), "release/angular-21.x");
+        angular.LineMajors.Should().BeEquivalentTo(new Dictionary<string, int> { ["@acme/ng-acme"] = 21 });
+
+        var graph = await ProjectGraphBuilder.BuildAsync(Mixed());
+        ReleaseLinePattern.Default.TryMatch("release/dotnet-10.x", out var line);
+        var unchanged = await ReleasePlanner.PlanAsync(new ReleaseContext
+        {
+            Graph = graph, Head = "head", Tags = new TagHistory(Tags), Diff = new FakeDiff([]),
+            Settings = new VersioningSettings { Lines = ReleaseLinePattern.Default },
+            Build = graph.Packages.ToDictionary(p => p.Id!, _ => new PackageBuildFacts { ApiHash = Hash }), Line = line,
+        });
+        unchanged.Releases.Should().BeEmpty();
+        unchanged.LineMajors.Should().BeEquivalentTo(new Dictionary<string, int> { ["Core"] = 10 });
+
+        (await PlanAsync(Mixed(), "main")).LineMajors.Should().BeEmpty();
+    }
+
+    [Fact]
     public async Task The_newest_dotnet_line_also_releases_the_unanchored_dotnet_packages()
     {
         var plan = await PlanAsync(Mixed("net11.0"), "release/dotnet-11.x");

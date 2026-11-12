@@ -48,6 +48,9 @@ public sealed record GitWriterVersioningResult(
     public const string Versioned = "versioned";
     public const string PlanRefused = "plan-refused";
 
+    /// <summary>On a release line, the major of each package anchored on its platform (#638 D2).</summary>
+    public IReadOnlyDictionary<string, int>? LineMajors { get; init; }
+
     /// <summary>The writer's reason for a run the plan could not be made for (a missing package, a commit off the branch).</summary>
     public const string Unplannable = "unplannable";
 }

@@ -311,6 +311,10 @@ public sealed record VersioningRunResponse(
 {
     /// <summary>The tags a plan-only run decided (#552 D1), for <c>/jobs/tags</c> with its fingerprint to write later.</summary>
     public Versioning.Releases.TagPlan? Plan { get; init; }
+
+    /// <summary>On a release line, the major of each package anchored on its platform (#638 D2), which the action
+    /// exports to the pack. Null off a line.</summary>
+    public IReadOnlyDictionary<string, int>? LineMajors { get; init; }
 }
 
 /// <summary>

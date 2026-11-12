@@ -26,6 +26,10 @@ internal sealed record LocalRunResponse(
 	/// <summary>The tags a plan-only run decided (#552 D1); <c>push-tags</c> writes them.</summary>
 	public TagPlan? Plan { get; init; }
 
+	/// <summary>On a release line, the major of each package anchored on its platform (#638 D2); the action exports
+	/// them to the pack as <c>MintPlayerVersioningMajors</c>. Null off a line.</summary>
+	public IReadOnlyDictionary<string, int>? LineMajors { get; init; }
+
 	public const string Versioned = "versioned";
 	public const string PlanRefused = "plan-refused";
 	public const string RefusedOutcome = "refused";
@@ -42,7 +46,10 @@ internal sealed record LocalRunResponse(
 				r.ApiHash, r.TaggedByHand, outcomes.TryGetValue(r.Tag.Name, out var written) ? TagWire(written.Outcome) : null,
 				result.Notes?.GetValueOrDefault(r.Tag.Name) is { } notes ? new LocalReleaseNotes(notes.Name, notes.Body, notes.Prerelease) : null))],
 			[.. result.Plan.Refused.Select(n => new LocalPackageNote(n.Id, n.Reason))],
-			result.Plan.Skipped.Count, result.Warnings, null, result.BranchCuts);
+			result.Plan.Skipped.Count, result.Warnings, null, result.BranchCuts)
+		{
+			LineMajors = result.Plan.LineMajors.Count > 0 ? result.Plan.LineMajors : null,
+		};
 	}
 
 	/// <summary>

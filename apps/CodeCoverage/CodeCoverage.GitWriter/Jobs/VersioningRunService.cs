@@ -148,6 +148,9 @@ public sealed class VersioningRunService(JobRunner jobs)
             result.Plan.Skipped.Select(n => new PackageNoteWire(n.Id, n.Reason)).ToList(),
             result.Plan.Refused.Select(n => new PackageNoteWire(n.Id, n.Reason)).ToList(),
             result.Warnings, null, durationMs,
-            (result.BranchCuts ?? []).Select(c => new BranchCutWire(c.Branch, c.Major, c.Commit, c.Packages, c.PullRequest, c.Ecosystem)).ToList());
+            (result.BranchCuts ?? []).Select(c => new BranchCutWire(c.Branch, c.Major, c.Commit, c.Packages, c.PullRequest, c.Ecosystem)).ToList())
+        {
+            LineMajors = result.Plan.LineMajors.Count > 0 ? result.Plan.LineMajors : null,
+        };
     }
 }
