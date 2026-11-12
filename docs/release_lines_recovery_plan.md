@@ -569,6 +569,40 @@ trigger: manual, workflow: <file> }`. Test: `Existing_lines_that_could_promote_a
 **Left to the owner:** the first `/release` on Spark. It publishes real NuGet and npm packages, which are permanent,
 and nothing in segments B-H needs it. Spark's lines release when a maintainer comments `/release`.
 
+## 2e. The Tools onboarding and the gaps it found (2026-11-12)
+
+The owner chose release lines over multi-targeting for `MintPlayer/MintPlayer.AspNetCore.Tools` (2026-11-12: "I'll
+use the release-lines over multi-targetting. Let's just set it up as intended"). "Set up features" opened onboarding
+PR MintPlayer.AspNetCore.Tools#53 and created rulesets 27099665-27099669. Reading #53 against the repository found
+two gaps, both fixed in one PR (owner: "fix the gaps in a single pull-request here. add the necessary tests").
+
+**G3, the lines would never publish or be checked.** Tools' `publish-release.yml` ran on `push` to `master` only
+(`# - 'release/**'` commented out), and `pull-request.yml` ran for pull requests into `master` only. With lines on,
+the default branch tags nothing, so no package would ever have been released, and ruleset 3's required checks could
+never report on a backport.
+- **Fix:** `ReleaseLineTriggers` (new). When the plan has lines, the `push` filter of each workflow that runs the
+  versioning step, and the `pull_request` filter of every workflow, take the lines' glob (`'release/*-*.x'` for the
+  default pattern) when they name the default branch and no line yet. The edit is text, so comments and layout stay:
+  a flow list gets `, 'release/*-*.x'` before its `]`, a block list a new item under its last one (CRLF kept).
+- Left alone: a trigger without a branch filter (it runs everywhere), a filter without the default branch, and every
+  other workflow's `push` (a deploy on master must not run on a line). A `branches-ignore` that matches the lines,
+  or a negated entry, gets a note instead.
+- YamlDotNet 18.1 gives a flow sequence an `End` equal to its `Start`, so the `]` is found after the last item's
+  `End` (measured with a throwaway test, 2026-11-12: `start=54 end=54`).
+
+**G4, an existing `mergeQueue:` without `branches` queued only the default branch.** Tools' coverage.yml had
+`mergeQueue:\n  enabled: true`, so backports into the lines could not go through the queue. The planner only added a
+note. Now a section without `branches` gets `branches: [<default>, supported-lines]`; one with its own list keeps the
+note.
+
+Tests (`OnboardingPlannerTests`): the Tools shape end to end with a deploy workflow left alone and planning again
+changing nothing; four filters left alone; the `branches-ignore` and negation notes; CRLF; no lines, no edits; the
+merge-queue key added, and kept as a note for an owner's own list. All 160 onboarding tests pass.
+
+**Next for Tools:** after the deploy, #53 is rebuilt; ruleset 27099667 drops to 0 approvals (Spark's choice); the
+owner may create `release/dotnet-10.x` and `release/dotnet-11.x` from master; then .NET 11 GA on master and
+`/release`.
+
 ## 4. Spikes
 
 | Spike | Question | How | Feeds |
