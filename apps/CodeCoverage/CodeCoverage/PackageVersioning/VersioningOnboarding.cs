@@ -130,6 +130,7 @@ public static partial class VersioningOnboarding
         new($"`nuget.config` maps `{PackageId}` to nuget.org", c => c.NuGet.Count == 0 ? Task.CompletedTask : NuGetConfigAsync(c.Files, c.Tree, c.Owner, c.Notes)),
         new("The versioning step runs before the first pack or publish", c => WorkflowsAsync(c, (path, text, notes) => VersioningStep(path, text, c.ActionSha, notes))),
         new("Pack builds again and the NuGet push skips published versions", c => WorkflowsAsync(c, PackAndPush)),
+        new("The pack is checked to carry the released versions", c => c.NuGet.Count == 0 ? Task.CompletedTask : WorkflowsAsync(c, PackedVersions)),
         new("The default branch packs and publishes only what it released", c => WorkflowsAsync(c, PublishGate)),
         new("Publishing jobs may push the tags", c => WorkflowsAsync(c, PublishPermissions)),
         new("A newer push cancels the older publish run", c => WorkflowsAsync(c, Concurrency)),
@@ -595,6 +596,79 @@ public static partial class VersioningOnboarding
                     if (line != lines[l]) edits.Add(new LineEdit(l, line, null));
                 }
             }
+        }
+        return edits.Count == 0 ? null : Apply(lines, edits);
+    }
+
+    /// <summary>#638 D11: the id of the step after the pack that checks every released NuGet package was packed at its version.</summary>
+    internal const string PackedVersionsId = "packed-versions";
+
+    /// <summary>
+    /// #638 P3/D11: each publishing job's <c>dotnet pack</c> is followed by a step that fails when a released NuGet package
+    /// (the versioning step's <c>versions</c>, less the npm ids of its <c>dist-tags</c>) has no <c>&lt;id&gt;.&lt;version&gt;.nupkg</c>.
+    /// The NuGet push keeps <c>--skip-duplicate</c> for re-runs, so without it a pack at another version (a newer major's tag
+    /// reachable on an older line, MintPlayer.AspNetCore.Tools run 43198625715) turned every push into "already exists" and
+    /// the run into a green one that published nothing. The expected file name comes from the plan; nothing is parsed out
+    /// of a file name. Null when every job has the step, or none packs.
+    /// </summary>
+    internal static string? PackedVersions(string path, string text, List<string> notes)
+    {
+        if (Parse(path, text, null) is not var (root, jobs)) return null;
+        var lines = text.Split('\n');
+        var edits = new List<LineEdit>();
+        foreach (var (key, job) in PublishingJobs(root, jobs))
+        {
+            var steps = (YamlSequenceNode)Child(job, "steps")!;
+            if (steps.Children.Any(s => Scalar(s, "id") == PackedVersionsId)) continue;
+            var pack = Enumerable.Range(0, steps.Children.Count)
+                .FirstOrDefault(i => Scalar(steps.Children[i], "run")?.Contains("dotnet pack", StringComparison.Ordinal) == true, -1);
+            if (pack < 0 || VersioningStepIndex(steps) is not { } versioning || versioning > pack) continue;
+            if (Scalar(steps.Children[versioning], "id") is not { } versioningId)
+            {
+                notes.Add($"`{path}` job `{key.Value}`: the versioning step has no `id`, so the onboarding cannot check that the pack carries the released versions; give it `id: versioning`.");
+                continue;
+            }
+
+            var packLine = Line(steps.Children[pack].Start) - 1;
+            var dashColumn = lines[packLine].IndexOf('-');
+            // The step runs while its lines are indented past its dash (a run block may hold blank lines); the comments
+            // and blank lines before the next step stay with that step.
+            var end = packLine + 1;
+            for (var l = packLine + 1; l < lines.Length; l++)
+            {
+                var content = lines[l].TrimEnd('\r');
+                if (content.Trim().Length == 0) continue;
+                if (content.Length - content.TrimStart().Length <= dashColumn) break;
+                end = l + 1;
+            }
+
+            var dash = new string(' ', dashColumn);
+            var keyIndent = new string(' ', (int)steps.Children[pack].Start.Column - 1);
+            var step = new List<string>();
+            if (end < lines.Length && lines[end].Trim().Length == 0) step.Add("");
+            step.AddRange([
+                $"{dash}- name: Check the packages carry the released versions",
+                $"{keyIndent}id: {PackedVersionsId}",
+                $"{keyIndent}shell: bash",
+                $"{keyIndent}env:",
+                $"{keyIndent}  VERSIONS: ${{{{ steps.{versioningId}.outputs.versions }}}}",
+                $"{keyIndent}  DIST_TAGS: ${{{{ steps.{versioningId}.outputs.dist-tags }}}}",
+                $"{keyIndent}run: |",
+                $"{keyIndent}  # --skip-duplicate turns a pack at another version into \"already exists\" and a green run that published",
+                $"{keyIndent}  # nothing (#638): every released NuGet package must have been packed at the version it was released as.",
+                $"{keyIndent}  versions=\"${{VERSIONS:-}}\"; [ -n \"$versions\" ] || versions='{{}}'",
+                $"{keyIndent}  npm=\"${{DIST_TAGS:-}}\"; [ -n \"$npm\" ] || npm='{{}}'",
+                $"{keyIndent}  status=0",
+                $"{keyIndent}  while IFS=$'\\t' read -r id version; do",
+                $"{keyIndent}    version=\"${{version%$'\\r'}}\"; [ -n \"$id\" ] || continue",
+                $"{keyIndent}    if [ -z \"$(find . -iname \"$id.$version.nupkg\" -not -path '*/node_modules/*' -print -quit)\" ]; then",
+                $"{keyIndent}      echo \"::error::$id was released as $version, but no $id.$version.nupkg was packed.\"",
+                $"{keyIndent}      status=1",
+                $"{keyIndent}    fi",
+                $"{keyIndent}  done < <(jq -r --argjson npm \"$npm\" 'to_entries[] | select(.key as $k | $npm | has($k) | not) | \"\\(.key)\\t\\(.value)\"' <<< \"$versions\")",
+                $"{keyIndent}  exit $status",
+            ]);
+            edits.Add(new LineEdit(end, null, step));
         }
         return edits.Count == 0 ? null : Apply(lines, edits);
     }

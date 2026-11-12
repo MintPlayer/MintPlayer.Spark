@@ -40,6 +40,33 @@ public class VersioningOnboardingTests
         $"{dash}    fi",
     });
 
+    /// <summary>#638 D11: the step after the pack that checks every released NuGet package was packed at its version,
+    /// with the gate's <c>if:</c> the publish gate gives it.</summary>
+    private static string Packed(string dash, string? newline = null) => string.Join(newline ?? Nl, new[]
+    {
+        $"{dash}- name: Check the packages carry the released versions",
+        $"{dash}  if: steps.publishes.outputs.value == 'true'",
+        $"{dash}  id: packed-versions",
+        $"{dash}  shell: bash",
+        $"{dash}  env:",
+        $"{dash}    VERSIONS: ${{{{ steps.versioning.outputs.versions }}}}",
+        $"{dash}    DIST_TAGS: ${{{{ steps.versioning.outputs.dist-tags }}}}",
+        $"{dash}  run: |",
+        $"{dash}    # --skip-duplicate turns a pack at another version into \"already exists\" and a green run that published",
+        $"{dash}    # nothing (#638): every released NuGet package must have been packed at the version it was released as.",
+        $"{dash}    versions=\"${{VERSIONS:-}}\"; [ -n \"$versions\" ] || versions='{{}}'",
+        $"{dash}    npm=\"${{DIST_TAGS:-}}\"; [ -n \"$npm\" ] || npm='{{}}'",
+        $"{dash}    status=0",
+        $"{dash}    while IFS=$'\\t' read -r id version; do",
+        $"{dash}      version=\"${{version%$'\\r'}}\"; [ -n \"$id\" ] || continue",
+        $"{dash}      if [ -z \"$(find . -iname \"$id.$version.nupkg\" -not -path '*/node_modules/*' -print -quit)\" ]; then",
+        $"{dash}        echo \"::error::$id was released as $version, but no $id.$version.nupkg was packed.\"",
+        $"{dash}        status=1",
+        $"{dash}      fi",
+        $"{dash}    done < <(jq -r --argjson npm \"$npm\" 'to_entries[] | select(.key as $k | $npm | has($k) | not) | \"\\(.key)\\t\\(.value)\"' <<< \"$versions\")",
+        $"{dash}    exit $status",
+    });
+
     [Fact]
     public async Task A_dotnet_repository_gets_the_package_once_placeholders_and_the_step_before_its_pack()
     {
@@ -214,6 +241,28 @@ public class VersioningOnboardingTests
                 - name: Pack
                   if: steps.publishes.outputs.value == 'true'
                   run: dotnet pack --configuration Release /p:ContinuousIntegrationBuild=true
+
+                - name: Check the packages carry the released versions
+                  if: steps.publishes.outputs.value == 'true'
+                  id: packed-versions
+                  shell: bash
+                  env:
+                    VERSIONS: ${{ steps.versioning.outputs.versions }}
+                    DIST_TAGS: ${{ steps.versioning.outputs.dist-tags }}
+                  run: |
+                    # --skip-duplicate turns a pack at another version into "already exists" and a green run that published
+                    # nothing (#638): every released NuGet package must have been packed at the version it was released as.
+                    versions="${VERSIONS:-}"; [ -n "$versions" ] || versions='{}'
+                    npm="${DIST_TAGS:-}"; [ -n "$npm" ] || npm='{}'
+                    status=0
+                    while IFS=$'\t' read -r id version; do
+                      version="${version%$'\r'}"; [ -n "$id" ] || continue
+                      if [ -z "$(find . -iname "$id.$version.nupkg" -not -path '*/node_modules/*' -print -quit)" ]; then
+                        echo "::error::$id was released as $version, but no $id.$version.nupkg was packed."
+                        status=1
+                      fi
+                    done < <(jq -r --argjson npm "$npm" 'to_entries[] | select(.key as $k | $npm | has($k) | not) | "\(.key)\t\(.value)"' <<< "$versions")
+                    exit $status
 
                 # The --no-build pack once shipped 99.9.9.0 (#187): check the packages before anything is pushed.
                 - name: Assert package versions
@@ -719,6 +768,7 @@ public class VersioningOnboardingTests
             + "      # No --no-build: the versions are decided after the tests, so pack builds again to stamp them into the\n"
             + "      # assemblies (--no-build also skips restore, which leaves the nuspec's dependency versions stale).\n"
             + "      - run: dotnet pack -o nupkgs\n        if: steps.publishes.outputs.value == 'true'\n"
+            + Packed("      ", "\n") + "\n"
             + "      - run: dotnet nuget push 'nupkgs/*.nupkg' --source github --skip-duplicate\n        if: steps.publishes.outputs.value == 'true'\n");
     }
 
@@ -739,6 +789,33 @@ public class VersioningOnboardingTests
 
         notes.Clear();
         VersioningOnboarding.PublishGate("ci.yml", "on: push\njobs:\n  pack:\n    steps:\n      - uses: x/versioning-action@v1\n      - run: dotnet pack\n", notes)
+            .Should().BeNull();
+        notes.Should().ContainSingle().Which.Should().Contain("the versioning step has no `id`");
+    }
+
+    [Fact]
+    public void The_pack_is_followed_by_a_check_that_every_released_nuget_package_was_packed_at_its_version()
+    {
+        // #638 P3/D11: Tools' 10.x line planned 10.0.0, packed 11.0.1-rc.1, and --skip-duplicate turned 15 "already
+        // exists" into a green run. The check after the pack fails when a released package's .nupkg is missing.
+        var notes = new List<string>();
+        var text = "on: push\njobs:\n  pack:\n    steps:\n"
+            + "      - uses: x/versioning-action@v1\n        id: v\n"
+            + "      - name: Pack\n        run: dotnet pack -o nupkgs\n"
+            + "      - name: Push\n        run: dotnet nuget push nupkgs/*.nupkg --skip-duplicate\n";
+
+        var checkedText = VersioningOnboarding.PackedVersions("ci.yml", text, notes);
+
+        notes.Should().BeEmpty();
+        checkedText.Should().Contain("      - name: Pack\n        run: dotnet pack -o nupkgs\n"
+            + "      - name: Check the packages carry the released versions\n        id: packed-versions\n        shell: bash\n        env:\n"
+            + "          VERSIONS: ${{ steps.v.outputs.versions }}\n          DIST_TAGS: ${{ steps.v.outputs.dist-tags }}\n        run: |\n")
+            .And.Contain("find . -iname \"$id.$version.nupkg\"")
+            .And.Contain("::error::")
+            .And.EndWith("      - name: Push\n        run: dotnet nuget push nupkgs/*.nupkg --skip-duplicate\n");
+        VersioningOnboarding.PackedVersions("ci.yml", checkedText!, notes).Should().BeNull();
+
+        VersioningOnboarding.PackedVersions("ci.yml", "on: push\njobs:\n  pack:\n    steps:\n      - uses: x/versioning-action@v1\n      - run: dotnet pack\n", notes)
             .Should().BeNull();
         notes.Should().ContainSingle().Which.Should().Contain("the versioning step has no `id`");
     }
