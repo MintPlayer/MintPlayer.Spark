@@ -270,7 +270,8 @@ public class MergeQueueRulesetPlannerTests
         var line = created[LineChecksName];
         line.Include.Should().Equal([Lines]);
         line.Rules.Select(r => r.Type).Should().Equal(["required_status_checks"], "no pull_request rule: the App's backports need no review");
-        line.BypassActors.Should().BeEmpty("the App must not bypass the lines' checks");
+        line.BypassActors.Should().Equal([new ForgeRulesetActor(AppId, "Integration", "exempt")],
+            "the App creates the lines (a cut answered 422 without it, SpaServices 2026-11-12) and pushes promotions; the queue waits for the checks itself");
         ContextsOf(line).Should().Equal([LinePolicyCheckName, "build", "e2e"]);
         line.Rules.Single().Parameters!["required_status_checks"]!.AsArray().OfType<JsonObject>()
             .Single(c => c["context"]!.GetValue<string>() == LinePolicyCheckName)["integration_id"]!.GetValue<long>()
@@ -279,18 +280,17 @@ public class MergeQueueRulesetPlannerTests
     }
 
     [Fact]
-    public void Promoted_lines_let_the_App_bypass_the_line_checks_ruleset_and_nothing_else_changes()
+    public void An_existing_line_checks_ruleset_without_the_App_gains_its_bypass_and_keeps_its_people()
     {
-        // Segment P, Q-A = B: the promotion commit is pushed by the App; its checks run on the line afterwards (publish-release).
-        var plan = Plan(new ForgeRulesetState(AppId, [], null),
-            new MergeQueueRulesetChoices(0, ["build"], ReleaseLines: [Lines], LineRequiredChecks: ["build"], PromotesLines: true));
+        // SpaServices' ruleset 3 (27139872), created 2026-11-12 with no bypass at all: the next run adds the App.
+        var person = new ForgeRulesetActor(RepositoryAdminRoleId, "RepositoryRole", "always");
+        var existing = new ForgeExistingRuleset(3, new ForgeRulesetDefinition(LineChecksName, "branch", "active", [Lines], [],
+            [new ForgeRulesetRule("required_status_checks", null)], [person]));
+        var plan = Plan(new ForgeRulesetState(AppId, [existing], null),
+            new MergeQueueRulesetChoices(0, ["build"], ReleaseLines: [Lines], LineRequiredChecks: ["build"]));
 
-        var created = plan.Steps.OfType<CreateRulesetStep>().ToDictionary(s => s.Definition.Name, s => s.Definition);
-        created[LineChecksName].BypassActors.Should().Equal([new ForgeRulesetActor(AppId, "Integration", "exempt")]);
-        ContextsOf(created[LineChecksName]).Should().Equal([LinePolicyCheckName, "build"]);
-        created[ReviewsAndChecksName].BypassActors.Should().BeEquivalentTo(
-            Plan(new ForgeRulesetState(AppId, [], null), new MergeQueueRulesetChoices(0, ["build"], ReleaseLines: [Lines], LineRequiredChecks: ["build"]))
-                .Steps.OfType<CreateRulesetStep>().Single(s => s.Definition.Name == ReviewsAndChecksName).Definition.BypassActors);
+        plan.Steps.OfType<UpdateRulesetStep>().Single(s => s.Definition.Name == LineChecksName).Definition.BypassActors
+            .Should().Equal([new ForgeRulesetActor(AppId, "Integration", "exempt"), person]);
     }
 
     [Fact]

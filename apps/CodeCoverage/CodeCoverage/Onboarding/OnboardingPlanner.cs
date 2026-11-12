@@ -43,7 +43,8 @@ public sealed record OnboardingInputs
 public sealed record OnboardingPlan(IReadOnlyList<EOnboardingFeature> Features, IReadOnlyList<GitWriterFile> Files, IReadOnlyList<VersioningSeed> Seeds,
     LineRenamePlan Renames, IReadOnlyList<EOnboardingFeature> OnMerge, IReadOnlyList<string> Notes, string Body)
 {
-    /// <summary>The pull request turns on <c>versioning.lines.current: promote</c> (segment T), so ruleset 3 lets the App push promotions.</summary>
+    /// <summary>The pull request turns on <c>versioning.lines.current: promote</c> (segment T). Ruleset 3 exempts the App
+    /// either way (lockfile_notice_and_line_cut_PRD D2).</summary>
     public bool PromotesLines { get; init; }
 
     /// <summary>

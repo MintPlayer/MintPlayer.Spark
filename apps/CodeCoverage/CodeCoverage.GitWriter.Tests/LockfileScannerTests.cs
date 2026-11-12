@@ -133,6 +133,37 @@ public class LockfileScannerTests : IDisposable
         scan.Reason.Should().Be(DependencyPatchReasons.LockfileSource);
     }
 
+    // ── npm's deprecation notice is text, not a source (docs/code-coverage/lockfile-notice-and-line-cut-PRD.md D1) ──────────
+
+    /// <summary>Real line from SpaServices run 81 (2026-11-12, apply run 43271441753): <c>@mintplayer/ng-swiper</c> 21.9.0, whose
+    /// every version npm marks deprecated, came in as ng-bootstrap 21.x's peer and refused the whole patch.</summary>
+    private const string NgSwiperNotice = "Package no longer supported. Contact Support at https://www.npmjs.com/support for more info.";
+
+    private static string Deprecated(string message)
+        => Express("https://registry.npmjs.org/express/-/express-4.19.2.tgz", $"\"integrity\": \"sha512-new\",\n      \"deprecated\": \"{message}\"");
+
+    [Theory]
+    [InlineData(NgSwiperNotice)]
+    [InlineData("request has been deprecated, see https://github.com/request/request/issues/3142")]
+    [InlineData("Please upgrade, see http://example.com/why or git: history")]
+    public void A_deprecation_notice_with_a_link_is_not_a_source(string message)
+    {
+        var scan = Scan("package-lock.json", NpmLock, Deprecated(message));
+
+        scan.Refused.Should().BeFalse(scan.Detail);
+    }
+
+    [Fact]
+    public void A_source_hidden_on_a_deprecation_line_is_still_refused()
+    {
+        var after = Express("https://registry.npmjs.org/express/-/express-4.19.2.tgz",
+            "\"integrity\": \"sha512-new\",\n      \"deprecated\": \"x\", \"resolved\": \"https://evil.example/express-4.19.2.tgz\"");
+
+        var scan = Scan("package-lock.json", NpmLock, after);
+
+        scan.Reason.Should().Be(DependencyPatchReasons.LockfileSource);
+    }
+
     [Fact]
     public void New_package_names_are_counted_against_the_base()
     {

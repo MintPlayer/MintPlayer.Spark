@@ -44,7 +44,7 @@ public interface IMergeQueueRulesetSetup
     /// assumes the default pattern where coverage.yml has none yet, because the onboarding pull request adds it.
     /// </summary>
     Task<IReadOnlyList<RulesetPlanned>?> ChooseAsync(IReadOnlyList<RulesetRead> read, CancellationToken cancellationToken,
-        bool releaseLinesComing = false, bool promotesLinesComing = false);
+        bool releaseLinesComing = false);
 
     /// <summary>Each repository's name and its plan, one "- " line per step or blocker. Plain text, for a notification.</summary>
     string Summary(IReadOnlyList<RulesetPlanned> planned);
@@ -132,9 +132,7 @@ public partial class MergeQueueRulesetSetup : IMergeQueueRulesetSetup
                 // gives no lines, as it does for the merge queue (MergeQueueYml).
                 var yml = await integrations.For(repository).GetFileContentAsync(repository, branch, CoverageYml.FileName, cancellationToken);
                 var versioning = yml is null ? null : VersioningYml.Parse(yml) is { Config: { } config, Errors.Count: 0 } ? config : null;
-                // Segment P: a repository that promotes its lines lets the App push the promotion past ruleset 3.
-                read.Add(new RulesetRead(target, state, MergeQueueRulesetPlanner.Defaults(state) with { PromotesLines = versioning?.Lines?.PromotesCurrent == true },
-                    versioning?.EffectiveLines));
+                read.Add(new RulesetRead(target, state, MergeQueueRulesetPlanner.Defaults(state), versioning?.EffectiveLines));
             }
             catch (Exception ex) when (ex is ForgeAccessDeniedException or ForgeRequestException or HttpRequestException)
             {
@@ -145,7 +143,7 @@ public partial class MergeQueueRulesetSetup : IMergeQueueRulesetSetup
     }
 
     public async Task<IReadOnlyList<RulesetPlanned>?> ChooseAsync(IReadOnlyList<RulesetRead> read, CancellationToken cancellationToken,
-        bool releaseLinesComing = false, bool promotesLinesComing = false)
+        bool releaseLinesComing = false)
     {
         // One prompt per repository (owner 2026-11-07, #554): its required checks are its own, picked from the checks seen
         // on its pull requests, so a shared form could not ask them. The prompts are consecutive retry steps; each pass
@@ -187,8 +185,6 @@ public partial class MergeQueueRulesetSetup : IMergeQueueRulesetSetup
                 RequiredChecks = CheckIds(checks),
                 ReleaseLines = lines is not null ? [lines.RefGlob] : null,
                 LineRequiredChecks = lineChecks is null ? null : CheckIds(lineChecks),
-                // Segment T: an onboarding pull request that turns on `current: promote` gets the bypass before it merges.
-                PromotesLines = r.Defaults.PromotesLines || promotesLinesComing,
             })));
         }
         return planned;
