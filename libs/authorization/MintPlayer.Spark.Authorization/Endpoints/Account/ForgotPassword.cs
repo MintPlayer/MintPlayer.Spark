@@ -34,8 +34,11 @@ internal sealed partial class ForgotPassword<TUser> : IPostEndpoint<ForgotPasswo
     {
         // D6: unconfirmed addresses too. Microsoft sends only to confirmed ones, which strands every
         // account created before confirmation was enforced; completing the reset confirms the email.
-        if (await userManager.FindByEmailAsync(request.Email) is { } user)
-            await accountMail.SendPasswordResetAsync(httpContextAccessor.HttpContext!, user, request.Email);
+        var user = await userManager.FindByEmailAsync(request.Email);
+
+        // A11: the same token work for an unknown address, and the mail is queued, not awaited, so
+        // neither the answer nor its timing says whether the address has an account.
+        await accountMail.QueuePasswordResetAsync(httpContextAccessor.HttpContext!, user, request.Email);
 
         return TypedResults.Ok();
     }

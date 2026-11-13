@@ -246,6 +246,38 @@ public class OidcTokenSecurityTests(OidcSharedHost host) : OidcTestHost(host), I
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
 
+    /// <summary>
+    /// T-O2 / O15, inverted now that it is fixed (as T-O1 was): an expired code and a code that was never issued
+    /// get the same answer. The expired one used to say "Authorization code has expired.", telling whoever held a
+    /// code that it had once been real. The refresh grant is the model (T-O3).
+    /// </summary>
+    [Fact]
+    public async Task A_never_issued_code_and_an_expired_code_answer_the_same_invalid_grant()
+    {
+        var app = await SeedApplicationAsync(ClientId("webapp"));
+        await SeedUserAsync(Email);
+        var code = await ObtainCodeAsync(app, Email, ["openid"]);
+        using (var session = Store.OpenAsyncSession())
+        {
+            var doc = await session.LoadAsync<OidcToken>(
+                MintPlayer.Spark.IdentityProvider.Services.OidcTokenReference.DocumentId(code));
+            doc.ExpiresAt = DateTime.UtcNow.AddMinutes(-1);
+            await session.SaveChangesAsync();
+        }
+
+        var expired = await RedeemAsync(app, code);
+        var neverIssued = await RedeemAsync(app, MintPlayer.Spark.IdentityProvider.Services.OidcTokenReference.GenerateValue());
+
+        expired.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        neverIssued.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        var expiredBody = await BodyAsync(expired);
+        var neverIssuedBody = await BodyAsync(neverIssued);
+        expiredBody.GetProperty("error").GetString().Should().Be("invalid_grant");
+        neverIssuedBody.GetProperty("error").GetString().Should().Be("invalid_grant");
+        expiredBody.GetProperty("error_description").GetString()
+            .Should().Be(neverIssuedBody.GetProperty("error_description").GetString(), "the answer must not reveal that the code once existed");
+    }
+
     /// <summary>T-M1/T-M2/T-M3 — protocol basics.</summary>
     [Fact]
     public async Task Token_endpoint_rejects_malformed_requests()

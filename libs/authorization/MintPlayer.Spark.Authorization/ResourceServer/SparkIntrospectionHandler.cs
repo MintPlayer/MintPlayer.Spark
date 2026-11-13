@@ -9,8 +9,7 @@ using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.JsonWebTokens;
-using Microsoft.IdentityModel.Protocols;
-using Microsoft.IdentityModel.Protocols.OpenIdConnect;
+using Raven.Client.Documents;
 
 namespace MintPlayer.Spark.Authorization.ResourceServer;
 
@@ -27,8 +26,9 @@ internal sealed class SparkIntrospectionOptions : AuthenticationSchemeOptions
 /// </summary>
 /// <remarks>
 /// <list type="bullet">
-/// <item>The endpoint comes from the issuer's discovery document; the resource server authenticates with its own
-/// client (<c>client_secret_basic</c>).</item>
+/// <item>The endpoint comes from the issuer's discovery document (<see cref="SparkResourceServerDiscovery"/>); the
+/// resource server authenticates with its own client (<c>client_secret_basic</c>). Both requests go through the
+/// <see cref="SparkResourceServerOptions.HttpClientName"/> client.</item>
 /// <item>The answer must be <c>active</c> and its <c>aud</c> must include <see cref="SparkResourceServerOptions.Audience"/>.</item>
 /// <item>Active answers are cached by the token's hash for <see cref="SparkResourceServerOptions.IntrospectionCacheDuration"/>,
 /// never beyond the token's <c>exp</c>. Inactive ones are not cached, so a token cannot be locked out by guessing.</item>
@@ -41,11 +41,11 @@ internal sealed class SparkIntrospectionHandler(
     ILoggerFactory logger,
     UrlEncoder encoder,
     IHttpClientFactory httpClients,
-    IMemoryCache cache)
+    IMemoryCache cache,
+    SparkResourceServerDiscovery discovery,
+    IDocumentStore store)
     : AuthenticationHandler<SparkIntrospectionOptions>(options, logger, encoder)
 {
-    private static readonly Dictionary<string, ConfigurationManager<OpenIdConnectConfiguration>> Discovery = [];
-
     protected override async Task<AuthenticateResult> HandleAuthenticateAsync()
     {
         var token = SparkProofOfPossession.ReadToken(Context);
@@ -71,7 +71,7 @@ internal sealed class SparkIntrospectionHandler(
                 cache.Set(cacheKey, principal, lifetime);
         }
 
-        var possession = await SparkProofOfPossession.ValidateAsync(Context, principal, token, cache);
+        var possession = await SparkProofOfPossession.ValidateAsync(Context, principal, token, store);
         if (possession is not null)
             return AuthenticateResult.Fail(possession);
 
@@ -80,7 +80,7 @@ internal sealed class SparkIntrospectionHandler(
 
     private async Task<(ClaimsPrincipal? Principal, string? Error)> IntrospectAsync(SparkResourceServerOptions rs, string token)
     {
-        var configuration = await DiscoveryFor(rs).GetConfigurationAsync(Context.RequestAborted);
+        var configuration = await discovery.For(rs).GetConfigurationAsync(Context.RequestAborted);
         if (string.IsNullOrEmpty(configuration.IntrospectionEndpoint))
             return (null, "The issuer advertises no introspection endpoint.");
 
@@ -92,7 +92,7 @@ internal sealed class SparkIntrospectionHandler(
         var credentials = $"{Uri.EscapeDataString(rs.IntrospectionClientId!)}:{Uri.EscapeDataString(rs.IntrospectionClientSecret!)}";
         request.Headers.Authorization = new AuthenticationHeaderValue("Basic", Convert.ToBase64String(Encoding.UTF8.GetBytes(credentials)));
 
-        using var response = await httpClients.CreateClient(nameof(SparkIntrospectionHandler)).SendAsync(request, Context.RequestAborted);
+        using var response = await httpClients.CreateClient(SparkResourceServerOptions.HttpClientName).SendAsync(request, Context.RequestAborted);
         if (!response.IsSuccessStatusCode)
         {
             Logger.LogWarning("Introspection at {Endpoint} answered {Status}.", configuration.IntrospectionEndpoint, (int)response.StatusCode);
@@ -134,22 +134,5 @@ internal sealed class SparkIntrospectionHandler(
             return (null, "The token is from another issuer.");
 
         return (new ClaimsPrincipal(new ClaimsIdentity(claims, Scheme.Name, "sub", "role")), null);
-    }
-
-    private static ConfigurationManager<OpenIdConnectConfiguration> DiscoveryFor(SparkResourceServerOptions rs)
-    {
-        lock (Discovery)
-        {
-            var authority = rs.Authority.TrimEnd('/');
-            if (!Discovery.TryGetValue(authority, out var manager))
-            {
-                manager = new ConfigurationManager<OpenIdConnectConfiguration>(
-                    authority + "/.well-known/openid-configuration",
-                    new OpenIdConnectConfigurationRetriever(),
-                    new HttpDocumentRetriever { RequireHttps = rs.RequireHttpsMetadata });
-                Discovery[authority] = manager;
-            }
-            return manager;
-        }
     }
 }

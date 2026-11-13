@@ -1,0 +1,23 @@
+<mjml>
+  <mj-head>
+    <mj-title>Somebody tried to register with your address{{ if app_name }} at {{ app_name }}{{ end }}</mj-title>
+    <mj-attributes>
+      <mj-all font-family="Segoe UI, Helvetica, Arial, sans-serif" />
+      <mj-text font-size="15px" line-height="22px" color="#111827" />
+      <mj-button background-color="#2563eb" color="#ffffff" border-radius="6px" font-size="15px" />
+    </mj-attributes>
+  </mj-head>
+  <mj-body background-color="#f3f4f6">
+    <mj-section background-color="#ffffff" padding="24px 0">
+      <mj-column>
+        <mj-text font-size="20px" font-weight="600">You already have an account</mj-text>
+        <mj-text>Somebody tried to create a new {{ if app_name }}{{ app_name }} account{{ else }}account{{ end }} with this email address. It already belongs to your account{{ if user_name }} (user name <strong>{{ user_name }}</strong>){{ end }}, so no new account was created and nothing about yours changed.</mj-text>
+        <mj-text>If that was you, sign in with your existing account. Forgot your password? Choose a new one with the button below.</mj-text>
+        <mj-button href="{{ link }}">Choose a new password</mj-button>
+        <mj-text font-size="13px" color="#4b5563">If the button does not work, open this link: <a href="{{ link }}">{{ link }}</a></mj-text>
+        <mj-text font-size="13px" color="#4b5563">The link stops working after {{ valid_for_hours }} hours. If it was not you, do nothing: your account and your password stay as they are.</mj-text>
+      </mj-column>
+    </mj-section>
+    <mj-include path="_Footer.mjml" />
+  </mj-body>
+</mjml>

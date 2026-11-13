@@ -2,6 +2,7 @@ using System.Net.Http.Headers;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
+using MintPlayer.Spark.Authorization.Security;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.IdentityModel.JsonWebTokens;
@@ -268,7 +269,7 @@ internal sealed class OidcClientAuthenticator(
             return false;
 
         // Replay: the jti is kept until the assertion would have expired anyway.
-        return await OidcReplayCache.TryUseAsync(store, $"assertion:{app.ClientId}:{jwt.Id}", jwt.ValidTo, ct);
+        return await SparkOneTimeUse.TryUseAsync(store, "idp-client-assertion", $"{app.ClientId}:{jwt.Id}", jwt.ValidTo, ct);
     }
 
     /// <summary><c>tls_client_auth</c> (RFC 8705 §2.1.1): a CA-issued certificate with the registered subject DN.</summary>

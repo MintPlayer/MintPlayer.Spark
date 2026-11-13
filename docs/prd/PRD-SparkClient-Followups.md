@@ -260,7 +260,7 @@ Each phase ships as its own PR against `master`. Each is green in isolation.
 Tracked elsewhere; listed here so they aren't accidentally added to this PRD's scope:
 
 - **H-4 fail-closed host** — `docs/PRD-SecurityAudit.md` §8, test plan. Blocked on the remediation itself, not on `SparkClient` surface.
-- **M-2 token tampering** — blocked on the identity-provider work (`docs/PRD-IdentityProvider.md`), which exposes the tokens that can be tampered with.
+- **M-2 token tampering** — was blocked on the identity-provider work, which exposes the tokens that can be tampered with. That shipped in #499 (`docs/identity_provider_platform_PRD.md`), so M-2 is unblocked.
 - **M-4 / L-4 marker attributes** — `docs/PRD-SecurityAudit.md` §8.
 - **Vidyano.Core full API parity** — the server would need to grow many of those endpoints (action hooks, registered streams, service-provider auth flows) before client-side surface has anything to bind to. Out of scope here; tracked as a future PRD if/when demand surfaces.
 - **Caching / retry / circuit-breaker inside `SparkClient`** — interesting operational hardening; separate concern.

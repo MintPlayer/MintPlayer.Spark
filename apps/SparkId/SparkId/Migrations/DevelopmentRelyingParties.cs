@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.IdentityProvider.Models;
 using MintPlayer.Spark.IdentityProvider.Services;
 using Raven.Client.Documents;
@@ -15,7 +16,8 @@ internal static class DevelopmentRelyingParties
 {
     /// <summary>
     /// Stores the relying party unless a client with that id exists (by client id), so an administrator's edits
-    /// survive. Does not save: the caller's migration commits.
+    /// survive. Does not save: the caller's migration commits. The client id is reserved like any registration's
+    /// (O17), so nothing registered later can take it.
     /// </summary>
     public static async Task EnsureAsync(IAsyncDocumentSession session, string clientId, string displayName, string origin, string secret, CancellationToken ct)
     {
@@ -25,7 +27,19 @@ internal static class DevelopmentRelyingParties
         if (exists)
             return;
 
-        await session.StoreAsync(new OidcApplication
+        try
+        {
+            await StoreAsync(session, clientId, displayName, origin, secret, ct);
+        }
+        catch (SparkValidationException)
+        {
+            // The query above rides an index, which may not have caught up with a client stored a moment ago; the
+            // reservation is what says for certain that the client id is taken, and then the client exists.
+        }
+    }
+
+    private static Task StoreAsync(IAsyncDocumentSession session, string clientId, string displayName, string origin, string secret, CancellationToken ct)
+        => OidcClientIdReservation.StoreNewAsync(session, new OidcApplication
         {
             ClientId = clientId,
             DisplayName = displayName,
@@ -55,5 +69,4 @@ internal static class DevelopmentRelyingParties
             ConsentType = "implicit",
             RequirePkce = true,
         }, ct);
-    }
 }

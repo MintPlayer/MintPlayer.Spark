@@ -37,26 +37,58 @@ internal sealed record CapturedMail(string Kind, string Email, string Content)
     }
 }
 
+/// <remarks>
+/// <c>forgotPassword</c>, <c>resendConfirmationEmail</c> (A11) and <c>register</c> (A13) hand their mail to a background queue,
+/// so after those a test waits with <see cref="WaitForAsync"/>. <see cref="Hold"/> keeps every send
+/// blocked until <see cref="Release"/>, to prove a request does not wait for its mail.
+/// </remarks>
 internal sealed class CapturingEmailSender : IEmailSender<SparkUser>
 {
-    public List<CapturedMail> Sent { get; } = [];
+    private readonly List<CapturedMail> sent = [];
+    private TaskCompletionSource released = Completed();
+
+    /// <summary>A snapshot of the mail sent so far.</summary>
+    public List<CapturedMail> Sent { get { lock (sent) return [.. sent]; } }
+
+    /// <summary>From now on every send blocks until <see cref="Release"/>.</summary>
+    public void Hold() => released = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    public void Release() => released.TrySetResult();
+
+    /// <summary>Waits until <paramref name="count"/> mails have been sent; 10 s is a failure bound, not a delay.</summary>
+    public async Task<List<CapturedMail>> WaitForAsync(int count)
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(10);
+        while (Sent is var now && now.Count < count)
+        {
+            if (DateTime.UtcNow > deadline)
+                throw new TimeoutException($"Expected {count} mail(s) within 10 s, got {now.Count}.");
+            await Task.Delay(20);
+        }
+        return Sent;
+    }
 
     public Task SendConfirmationLinkAsync(SparkUser user, string email, string confirmationLink)
-    {
-        Sent.Add(new("confirm", email, confirmationLink));
-        return Task.CompletedTask;
-    }
+        => AddAsync(new("confirm", email, confirmationLink));
 
     public Task SendPasswordResetLinkAsync(SparkUser user, string email, string resetLink)
-    {
-        Sent.Add(new("reset-link", email, resetLink));
-        return Task.CompletedTask;
-    }
+        => AddAsync(new("reset-link", email, resetLink));
 
     public Task SendPasswordResetCodeAsync(SparkUser user, string email, string resetCode)
+        => AddAsync(new("reset-code", email, resetCode));
+
+    private async Task AddAsync(CapturedMail mail)
     {
-        Sent.Add(new("reset-code", email, resetCode));
-        return Task.CompletedTask;
+        await released.Task;
+        lock (sent)
+            sent.Add(mail);
+    }
+
+    private static TaskCompletionSource Completed()
+    {
+        var done = new TaskCompletionSource();
+        done.SetResult();
+        return done;
     }
 }
 

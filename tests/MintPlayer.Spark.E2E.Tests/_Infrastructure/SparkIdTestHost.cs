@@ -151,7 +151,7 @@ public sealed class SparkIdTestHost : SparkAppTestHost
         }
         api.Scopes.Add(new OidcApiScope { Name = scopeName });
 
-        await session.StoreAsync(new OidcApplication
+        await OidcClientIdReservation.StoreNewAsync(session, new OidcApplication
         {
             ClientId = clientId,
             DisplayName = clientId,
