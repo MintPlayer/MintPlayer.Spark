@@ -30,7 +30,8 @@ the owner merged. Moving branch pointers by hand is not needed and would bypass 
 
 **Status (2026-11-13 ~08:40):** D1 ✅ and D3 ✅ (Spark #652, deployed; #114 green with `LangVersion 14`, no PR into
 11.x) · D2 ✅ (#115 → backport #116) · D5 ✅ (#117, #118 merged) · D7 ✅ (#119 → backport #120; 10.8.1 on nuget.org) ·
-D4 open · D6 ✅ (hint in "Backport targets", Spark #652).
+D4 ⏳ (Spark #654 merged and deployed; its follow-up #655 is PR #656, queued 2026-11-13; then `refresh` on #111) · D6 ✅
+(hint in "Backport targets", Spark #652).
 
 | # | Finding | Evidence | Owner of the fix |
 |---|---|---|---|

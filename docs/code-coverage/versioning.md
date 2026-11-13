@@ -145,6 +145,12 @@ version from the tags reachable from HEAD, so every checkout of a job that runs 
   build) skips the target entirely: no git call, no MPV001, and the project stays packable. `-p:PackageVersion`
   alone sets `Version` too, so the assembly and the package agree. A `<Version>` in a csproj does **not** win, because
   that is where the placeholder lives. `MintPlayerVersioningSkip` still turns versioning off altogether.
+- **This repository's Debug builds skip it** (`Directory.Build.targets`, #655). A tag-derived assembly version is
+  not an Nx cache input. A pull request's build job (all tags) and its test jobs (shallow, no tags) wrote one `build`
+  cache entry with different versions. A replayed `MintPlayer.Spark.RavenDB` that referenced Abstractions 11.0.0.0
+  next to a replayed 0.0.0.0 Abstractions then crashed CodeCoverage at startup (run 43415884018). A repository that
+  caches Debug outputs across checkouts of different depth needs the same opt-out. Packs build Release and still
+  read the tags.
 - **A project packed on its own fails loudly** (#544 D2). On a push build, `dotnet pack path/to/One.csproj` of an
   untagged project is error `MPV005` instead of a silent placeholder. A solution pack still only warns MPV001, so
   untagged projects drop out. A project that is never released sets `IsPackable=false`.

@@ -259,6 +259,15 @@
 	  apps, the tests) is left alone; a packable project no tag names yet packs as 0.0.0-untagged in a pull-request or
 	  local build, and builds as 0.0.0-PLACEHOLDER, not packed, in the master build that publishes.
 	-->
+	<!--
+	  A Debug build does not read the tags (#655 CI): its assembly version would follow git state, which is no Nx input.
+	  A pull request's build job (fetch-depth 0, tags) and its test jobs (fetch-depth 1, no tags) wrote the same `build`
+	  cache entry with different versions; a replayed MintPlayer.Spark.RavenDB referencing Abstractions 11.0.0.0 beside a
+	  replayed 0.0.0.0 Abstractions crashed CodeCoverage at startup (run 43415884018). Packs are Release and keep the tags.
+	-->
+	<PropertyGroup Condition="'$(Configuration)' == 'Debug' And '$(MintPlayerVersioningSkip)' == ''">
+		<MintPlayerVersioningSkip>true</MintPlayerVersioningSkip>
+	</PropertyGroup>
 	<Import Project="$(MSBuildThisFileDirectory)apps\CodeCoverage\CodeCoverage.Versioning.MSBuild\build\MintPlayer.Versioning.MSBuild.targets" />
 
 	<!-- #638 D10: on a release line, a package with no tag of the line's major (MPV006) fails the pack rather than

@@ -125,6 +125,8 @@ public static class DependencyPolicyEngine
         private readonly List<DependencyReportEntry> ignored = [];
         private readonly List<DependencyPlatformReport> platformReports = [];
         private readonly List<DependencyHold> lifted = [];
+        /// <summary>#655: per group, the blockers whose held groups joined it (<see cref="JoinBlockedGroups"/>).</summary>
+        private readonly Dictionary<string, HashSet<string>> joinedBlockers = new(StringComparer.Ordinal);
         private readonly HashSet<(string Group, string DepNames, string Targets)> currentTargets = [];
         private readonly HashSet<(string Eco, string Dep, string Version)> red = input.Fleet.RedVersions
             .Where(r => !string.Equals(r.Repository, input.State.Repository, StringComparison.Ordinal) || input.State.Repository.Length == 0)
@@ -239,6 +241,18 @@ public static class DependencyPolicyEngine
         /// </summary>
         public void JoinBlockedGroups(Dictionary<string, List<LookupRecord>> groups, List<string> order)
         {
+            // #655: a hold on a plan that left out its own blocker, which is a member of the group with something to offer,
+            // says the plan was incomplete, not that the group cannot resolve (SpaServices: the joined group planned
+            // MintPlayer.SourceGenerators 12.2.0 alone, refused on MintPlayer.SourceGenerators.Attributes). It lifts.
+            foreach (var hold in next.Holds.Where(h => h.Kind == EDependencyHoldKind.Blocker && groups.ContainsKey(h.Group)).ToList())
+            {
+                if (!hold.Blockers.Any(b => !hold.DepNames.Contains(b.DepName, StringComparer.Ordinal)
+                        && groups[hold.Group].Any(r => string.Equals(r.DepName, b.DepName, StringComparison.Ordinal) && r.Candidates.Count > 0)))
+                    continue;
+                next.Holds.Remove(hold);
+                lifted.Add(hold);
+            }
+
             var joined = true;
             while (joined)
             {
@@ -253,6 +267,11 @@ public static class DependencyPolicyEngine
                     groups[target].AddRange(groups[hold.Group]);
                     groups.Remove(hold.Group);
                     order.Remove(hold.Group);
+                    if (!joinedBlockers.TryGetValue(target, out var required))
+                        joinedBlockers[target] = required = new HashSet<string>(StringComparer.Ordinal);
+                    required.UnionWith(hold.Blockers.Select(b => b.DepName));
+                    if (joinedBlockers.Remove(hold.Group, out var carried))
+                        required.UnionWith(carried);
                     hold.SlotsHeld = 0;
                     joined = true;
                     break;
@@ -342,6 +361,13 @@ public static class DependencyPolicyEngine
                         ideal.Add(pick);
                 }
                 if (ideal.Count == 0 && tierFailures.Count == 0)
+                    continue;
+                // #655: a group joined on a blocker moves only in a tier where the blocker moves too; without it, the plan is
+                // the one the resolver already refused (a member whose candidates sit in a lower tier, e.g. 12.2.0 a minor
+                // for MintPlayer.SourceGenerators while every MintPlayer.SourceGenerators.Attributes candidate is a major).
+                if (joinedBlockers.TryGetValue(group, out var required)
+                    && required.Any(dep => views.Any(v => v.Views.Count > 0 && string.Equals(v.Record.DepName, dep, StringComparison.Ordinal))
+                        && !best.Any(v => string.Equals(v.Record.DepName, dep, StringComparison.Ordinal))))
                     continue;
 
                 var depNames = DepNames(ideal.Select(v => v.Record.DepName));

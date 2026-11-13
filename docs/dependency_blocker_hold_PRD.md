@@ -51,7 +51,8 @@ Workaround available today (no code): an account rule or `coverage.yml` rule
 ## 4. Milestones (one PR)
 
 - **M0** ✅ Issue #653, branch, this PRD; SP1.
-**Status:** M0-M2 and M4 ✅; M3 (D3) dropped as superseded by D2. Gate green (see Log).
+**Status:** M0-M2 and M4 ✅; M3 (D3) dropped as superseded by D2. Gate green (see Log). Merged as PR #654 and
+deployed; follow-up in §4b.
 
 - **M1** D1: `DependencyBlockerSeen` gets `CurrentTokens` and `Version`; `RecordApplyResult` fills them from the lookup
   and the apply result's blocker; `Lifts` lifts on a changed current, or a current at or past `Version`. Red test first
@@ -66,9 +67,47 @@ Workaround available today (no code): an account rule or `coverage.yml` rule
   and `docs/spaservices_dotnet10_line_PRD.md`.
 - **Gate:** the affected test classes once at the end (`GroupHoldTests`, the engine and PR-body tests), then the PR.
 
+## 4b. #655: the join planned a tier without the blocker (follow-up, 2026-11-13)
+
+Issue: [#655](https://github.com/MintPlayer/MintPlayer.Spark/issues/655). Branch: `fix/issue655-joined-group-tier`.
+PR [#656](https://github.com/MintPlayer/MintPlayer.Spark/pull/656).
+
+**Status (2026-11-13):** D5 and D6 built, tests green; the CI fix (Debug builds skip version tags, see Log) is in the
+same PR, which is queued. **After the deploy:** comment `refresh` (no slash) on SpaServices #111. Expected: both
+packages under "Awaiting approval" at 13.1.0 with `approve MintPlayer.SourceGenerators.Attributes`. Approving it
+moves both together. Open: SP2.
+
+| # | Finding | Evidence |
+|---|---|---|
+| F7 | After the #654 deploy the join happened, but the merged group planned **`MintPlayer.SourceGenerators` 12.2.0 alone** and the restore refused it again (NU1605 in `Demo/Xsrf/XsrfDemo.csproj`: 12.2.0 needs Attributes ≥ 12.2.0). | apply run 43409288822, `result.json` group `MintPlayer.SourceGenerators.Attributes` |
+| F8 | Renovate reads SourceGenerators' current as **12.1.0** (value 10.22.0), so 12.2.0 is a *minor* for it; every Attributes candidate is a *major*. `EvaluateGroup` walks the tiers down: the major tier waits for `approve`, the minor tier holds only SourceGenerators, under the auto-merge threshold. | lookup run 43412333132 (`lookup.json` records), `DependencyPolicyEngine.EvaluateGroup` tier loop |
+| F9 | The new hold is on the merged group, blocked by one of its own members: no other group to join, and D1 never fires because the blocker is held with it. Only the 4-slot retry lifts it, to fail again. | #111 "Held" after the 10:51 run |
+
+| # | Decision | Why / evidence | Status |
+|---|---|---|---|
+| D5 | A group joined on a blocker plans only a tier in which the blocker moves too (`joinedBlockers`, checked in `EvaluateGroup`). The lower tiers are skipped, so the group waits for the approval of the tier that holds both. | F7, F8; test `Issue655_a_group_joined_on_its_blocker_…` on the real lookup's shape | ✅ Built |
+| D6 | A blocker hold whose blocker was **not** in the refused plan but is now a member of the held group, with candidates, lifts in `JoinBlockedGroups`: the plan was incomplete, not unresolvable. Bounded: a refused plan that did include the blocker keeps its hold. | F9; test `Issue655_a_hold_on_a_plan_that_left_out_its_own_blocker_…` | ✅ Built |
+
+Owner (2026-11-13): no change in Dotnet.Tools first: "Updating .net standard packages to the latest major version
+shouldn't really be a problem".
+
 ## 5. Log
 
 - 2026-11-13 — D4 diagnosed (F1-F6), issue #653 filed, branch created, SP1 run (NU1605 capture above).
 - 2026-11-13 — Owner: Q1 = A ("A - Include D2 - Go ahead"). `BlockerHoldTests` (4 tests) written first; **red** on the
   original code: 4/4 failed (source changes set aside with `git diff` / `git checkout`, then reapplied). Green with D1 +
   D2: `CodeCoverage.Tests.Dependencies` namespace 534/534 passed.
+- 2026-11-13 — #654 merged and deployed. SpaServices' first runs after it (10:27, 10:51) joined the groups, then planned
+  SourceGenerators 12.2.0 alone and held the merged group on itself (F7-F9). Issue #655. Two tests on the real lookup's
+  shape, **red** on #654's code (2/2: the plan was `MintPlayer.SourceGenerators@12.2.0`, no hold lifted). Green with D5 +
+  D6: namespace 536/536. (The tests run at the production date: the kit's 2026-10-16 put 13.1.0 in its cooldown.)
+- 2026-11-13 — PR #656's CI was red, and not because of the change. CodeCoverage crashed at startup in "Verify Spark
+  models are in sync" and in two dogfood tests: `FileNotFoundException: MintPlayer.Spark.Abstractions, Version=11.0.0.0`,
+  requested by `MintPlayer.Spark.RavenDB 0.0.0.0` (run 43415884018).
+  - Cause: the tag-derived assembly version is not an Nx input. The test jobs check out shallow without tags (MPV001 for
+    every library in the log, so Abstractions is 0.0.0.0). The build job (fetch-depth 0) has the tags, so its
+    Abstractions is 11.0.0.0. Both write the same Debug `build` entry, and the run replayed a mix of the two.
+  - Fix: Debug builds set `MintPlayerVersioningSkip` (`Directory.Build.targets`), the opt-out the Dockerfiles already
+    use.
+  - Verified locally: before the change, Abstractions built at 11.0.0.0 here (tag `v11.0.0-preview.116`). After it,
+    a Debug build gives 0.0.0.0 with no MPV warning.

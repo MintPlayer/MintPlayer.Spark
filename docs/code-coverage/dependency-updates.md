@@ -250,7 +250,9 @@ Edited comments and comments by bots are ignored. The bot reacts 👍 or 👎.
   update of its own in the same run, the held group **joins the blocker's group** instead: the resolver showed they must
   move together (e.g. `MintPlayer.SourceGenerators` 13.1.0 needs `MintPlayer.SourceGenerators.Attributes` 13.1.0), so
   one group, one `approve <blocker's group>` and one apply move both. They stay together until the blocker's version
-  moves (#653).
+  moves (#653). Such a group never settles for a smaller update in which the blocker does not move: when Renovate
+  calls one member's update a minor and the blocker's a major, the group waits for the `approve` of the major rather
+  than apply the minor alone. A hold taken on a plan that left out its own blocker lifts at once (#655).
 - **CI is red.** The failing checks are re-run once (flaky tests). Then suspects are left out one by one (majors first,
   then versions red elsewhere in the fleet), one CI run each, until the culprit is found; it is held, recorded as red for
   the whole account, and the rest is rebuilt without it. The comment says whether a *build* or a *test* check failed,
