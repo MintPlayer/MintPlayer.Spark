@@ -47,7 +47,7 @@ internal sealed partial class GitWriterDependencyWorkRefEndpoint : IPostEndpoint
             return refusal.Result();
         else
             staged = input;
-        return Results.Json(await writer.DependencyWorkRefAsync(job, commit, request.PlanJson, staged, request.ExpectedWorkSha), GitWriterHost.Json);
+        return Results.Json(await writer.DependencyWorkRefAsync(job, commit, request.PlanJson, staged, request.ExpectedWorkSha, request.PresetSdk), GitWriterHost.Json);
     }
 }
 

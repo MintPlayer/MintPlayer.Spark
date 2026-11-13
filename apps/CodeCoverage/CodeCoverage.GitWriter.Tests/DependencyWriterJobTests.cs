@@ -128,6 +128,38 @@ public class DependencyWriterJobTests : WriterTestBase
     }
 
     [Fact]
+    public async Task Issue658_the_plan_commit_moves_the_root_global_json_to_the_planned_sdk()
+    {
+        const string preview = "{\r\n  \"sdk\": {\r\n    \"version\": \"11.0.100-rc.2.26504.105\"\r\n  }\r\n}\r\n";
+        var origin = Seed();
+        origin.Checkout("main").Write("global.json", preview);
+        var baseSha = origin.Commit("global.json");
+        origin.Push("main");
+        var plan = DependencyContract.Serialize(new DependencyPlan
+        {
+            PlanId = "t-658",
+            ExpectedSha = baseSha,
+            Groups = [new PlanGroup
+            {
+                Group = "platform:dotnet 11.0",
+                Platform = new PlanPlatform { Sdk = "dotnet", FromChannel = "11.0", ToChannel = "11.0", ToVersion = "11.0.0", SdkVersion = "11.0.100" },
+            }],
+        });
+
+        // A repository whose pinned action predates #658: the plan file only, or that action refuses the whole apply.
+        var old = await PostAsync("work-ref", With(Job(origin, baseSha), new() { ["planJson"] = plan }));
+        old.Outcome.Should().Be("pushed", old.Detail);
+        origin.InBare("diff-tree", "-r", "--name-only", "--no-commit-id", baseSha, old.Sha!).Trim().Should().Be(DependencyFiles.PlanPath);
+
+        var answer = await PostAsync("work-ref", With(Job(origin, baseSha), new() { ["planJson"] = plan, ["presetSdk"] = true, ["expectedWorkSha"] = old.Sha }));
+
+        answer.Outcome.Should().Be("pushed", answer.Detail);
+        origin.InBare("diff-tree", "-r", "--name-only", "--no-commit-id", baseSha, answer.Sha!).Trim()
+            .Should().Be($"{DependencyFiles.PlanPath}\n{GlobalJsonPreset.Path}");
+        origin.InBare("cat-file", "blob", $"{answer.Sha}:global.json").Should().Be(preview.Replace("11.0.100-rc.2.26504.105", "11.0.100"));
+    }
+
+    [Fact]
     public async Task R14_the_work_ref_is_deleted_under_its_lease()
     {
         var (origin, baseSha, _) = Seeded();

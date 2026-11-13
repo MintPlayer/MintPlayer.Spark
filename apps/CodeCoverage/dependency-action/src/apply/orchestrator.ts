@@ -19,6 +19,13 @@ export interface OrchestratorOptions {
   log?: (message: string) => void;
   /** Overridable in tests; defaults to "can the executable start". */
   toolAvailable?: (tool: string) => Promise<boolean>;
+  /** #658: the plan commit moved this file to the planned SDK; `original` is its text at expected_sha. */
+  sdkPreset?: SdkPreset;
+}
+
+export interface SdkPreset {
+  file: string;
+  original: string;
 }
 
 class GroupFailure extends Error {
@@ -109,8 +116,12 @@ export async function applyGroup(o: OrchestratorOptions, group: PlanGroup): Prom
   const files = await groupFiles(o, ctx, group, parts);
   const snap = await snapshot(o.root, [...files, ...before]);
   let platform: GroupResult['platform'];
+  // #658: every other group (and a reset) sees the pre-set SDK; the platform group moves the pin itself, as without one.
+  // readDispatch accepted the pre-set only for a plan with exactly one (unscoped) .NET platform group: this one.
+  const preset = group.platform?.sdk === 'dotnet' && group.platform.sdkVersion ? o.sdkPreset : undefined;
   try {
     if (group.platform) {
+      if (preset) await fs.writeFile(path.join(o.root, preset.file), preset.original);
       platform = await applyPlatform(directoryFiles(o.root), group.platform);
       if (platform.edited.length === 0) {
         throw new GroupFailure('failed', `no editable ${group.platform.sdk} location on channel ${group.platform.fromChannel}`);
@@ -152,6 +163,8 @@ export async function applyGroup(o: OrchestratorOptions, group: PlanGroup): Prom
     const same = then === undefined ? false : then === null ? now === null : now !== null && now.equals(then);
     if (!same) changed.push(p);
   }
+  // The pre-set file equals its snapshot again, yet this group is what moves it away from expected_sha.
+  if (preset && platform?.edited.includes(preset.file) && !changed.includes(preset.file)) changed.push(preset.file);
   return { ...base, status: 'applied', files: changed.sort(), blockers: [], message: null, ...(platform ? { platform } : {}) };
 }
 

@@ -337,6 +337,20 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
     /// <summary>The inputs the bot dispatches the lookup with; a workflow declaring fewer predates them (#606 D9).</summary>
     private static readonly string[] LookupInputs = ["expected_sha", "run_id", "platforms"];
 
+    /// <summary>#658: the plan has a .NET platform group with an SDK, and the action the repository's apply workflow pins
+    /// declares <see cref="DependencySdkPreset.Capability"/>.</summary>
+    private async Task<bool> SdkPresetSupportedAsync(Context context, DependencyPlan plan, CancellationToken ct)
+    {
+        if (!plan.Groups.Any(g => g.Platform is { Sdk: "dotnet", SdkVersion.Length: > 0 }))
+            return false;
+        var defaultBranch = context.Repository.DefaultBranch ?? context.Run.DefaultBranch!;
+        var files = await context.Queue.GetWorkflowFilesAsync(context.Repository, defaultBranch, ct);
+        if (DependencySdkPreset.PinnedRef(files.FirstOrDefault(f => f.Path == $".github/workflows/{context.Run.ApplyAction}")?.Content) is not { } pinned)
+            return false;
+        return DependencySdkPreset.Declares(await context.Updates.GetRepositoryFileAsync(context.Repository, DependencyOnboarding.ActionRepository, pinned,
+            DependencySdkPreset.ActionYmlPath, ct));
+    }
+
     private async Task<bool> WorkflowsUsableAsync(Context context, string commit, IReadOnlyList<string> workflows, bool allowSecrets, CancellationToken ct,
         (string Workflow, string[] Inputs)? required = null)
     {
@@ -607,10 +621,13 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
         data.PlanJson = planJson;
         run.PlanId = planId;
 
-        // R14: the plan travels as one commit on the bot's dispatch ref; nothing but the plan file changes.
+        // R14: the plan travels as one commit on the bot's dispatch ref; nothing but the plan file changes, and #658 the root
+        // global.json's SDK when the repository's pinned action reads that (setup-dotnet then installs the planned SDK).
+        var presetSdk = await SdkPresetSupportedAsync(context, plan, ct);
         if (await WriterAsync(context, false, (access, credential) => writer.DependencyWorkRefAsync(Request(context, access, credential) with
             {
                 Author = Identity(run), Committer = Identity(run), Message = $"Dependency plan {planId}", PlanJson = planJson, ExpectedWorkSha = run.WorkRefSha,
+                PresetSdk = presetSdk,
             }, ct), ct) is not { } result)
             return;
         switch (result.Outcome)

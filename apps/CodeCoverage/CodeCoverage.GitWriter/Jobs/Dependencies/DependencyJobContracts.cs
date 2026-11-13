@@ -72,6 +72,10 @@ public sealed class DependencyWorkRefWire : DependencyPatchJobWire
 {
     public string? PlanJson { get; set; }
 
+    /// <summary>#658: the plan commit also moves the root <c>global.json</c> to the plan's SDK (<see cref="GlobalJsonPreset"/>).
+    /// The bot sets it only for a repository whose pinned action declares <c>sdk-preset</c>.</summary>
+    public bool PresetSdk { get; set; }
+
     /// <summary>The lease: the commit the work ref must still be at; null replaces whatever is there (a bot-owned ref a
     /// crashed run may have left).</summary>
     public string? ExpectedWorkSha { get; set; }

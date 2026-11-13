@@ -421,6 +421,21 @@ public class OnboardingPrTests
         plan.Body.Should().Contain("Nothing else needs adding");
     }
 
+    /// <summary>#658 F4: re-running Set up features wrote every template over the repository's own workflow, so a user's edit
+    /// was lost. An existing workflow is left alone; updating it is the "Update the MintPlayer dependency workflows" pull
+    /// request's job, which says so.</summary>
+    [Fact]
+    public void Issue658_an_existing_workflow_is_never_overwritten()
+    {
+        var plan = DependencyOnboarding.Plan(["package.json", "nx.json", ".github/workflows/dependency-apply.yml"], null, null, null, Sha, DependencyOnboarding.ReadTemplate);
+
+        var paths = plan.Files.Select(f => f.Path).ToList();
+        paths.Should().Contain(".github/workflows/dependency-lookup.yml");
+        paths.Should().Contain(".github/workflows/nx-migrate.yml");
+        paths.Should().NotContain(".github/workflows/dependency-apply.yml");
+        plan.Body.Should().NotContain("- `.github/workflows/dependency-apply.yml`");
+    }
+
     [Fact]
     public void An_unresolved_tag_keeps_the_tag()
     {

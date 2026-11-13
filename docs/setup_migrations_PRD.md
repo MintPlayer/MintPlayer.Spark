@@ -49,10 +49,85 @@ Four read-only investigations (2026-11-13). Paths are under `apps/CodeCoverage/`
 | F11 | Nx today: `nx migrate` runs only for a `migrate:` rule in `coverage.yml` on an approved major. The workflow is `nx-migrate.yml` or `angular-migrate.yml`, dispatched per group. It runs install, `nx migrate --from … --include=all`, `--run-migrations`, then relock, deletes `migrations.json`, and the patch joins the dependency PR. The validator **refuses `.github/**` and `coverage.yml`** in a migrate patch, and allows `package.json`, `nx.json` and `project.json`. A repository is treated as an Nx workspace when it has any `nx.json`; no Nx version is tracked. | `DependencyPolicyEngine.cs:454-461`, `DependencyUpdateEngine.cs:810-919`, `dependency-action/src/migrate.ts:75-173`, `MigratePatchValidator.cs:7-16`, `DependencyOnboarding.cs:128` |
 | F12 | Earlier choice: #613 item 4 chose replace-and-warn for outdated workflows because SpaServices and DependencyUpdaterTest were stuck. `coverage_backport_PRD.md:1082` notes that each feature "detects already onboarded differently". | `DependencyUpdateEngine.cs:368-369`, `docs/coverage_backport_PRD.md:1082` |
 
-## 3. Design (proposal)
+## 3. Design (decided)
+
+### 3a. P1: the plan commit names the planned SDK
+
+**Decision D1 (owner, 2026-11-13: "I'll follow your suggestion").** The bot's plan commit also moves the root
+`global.json`'s `sdk.version` to the SDK the plan's .NET platform group moves to. No workflow changes, so no onboarded
+repository has to merge anything first.
+- Why it works: `dependency-apply.yml` checks out the dispatched commit (`ref: ${{ github.sha }}`, the plan commit) and
+  `setup-dotnet` reads `global-json-file: global.json` from it (`dependency-action/templates/dependency-apply.yml:47-58`).
+  The job then installs the SDK the platform group needs.
+- It supersedes the earlier proposal (a `mode: prepare` that outputs both SDKs, and a workflow migration to call it). That
+  needed a setup migration merged in every repository before the bug was fixed anywhere; this fixes every onboarded
+  repository at the next deploy.
+
+**D2. Which plans pre-set, and which pins.** Only when the plan has **exactly one** .NET platform group with an
+`sdkVersion`, **unscoped** (no `locations`/`exclude`), and the root `global.json` has an `sdk.version` **on the group's
+from-channel** that the target is **newer** than (semver precedence). Those are exactly the pins the platform group moves
+itself (`applyPlatform.ts:136-140`, `:199`, `:210`). Every other case writes the plan file only, as before. A
+`global.json` with a BOM, or one whose text does not round-trip byte for byte, is left alone.
+Code: `CodeCoverage.GitWriter/Jobs/Dependencies/GlobalJsonPreset.cs`, called from `WriterService.Dependencies.cs`
+(`DependencyWorkRefAsync`).
+
+**D3. The provenance rule accepts exactly that change.** `PlanCommitRule` (bot side) and `readDispatch` (runner side,
+`dependency-action/src/apply/apply.ts`) accept the plan file plus the root `global.json`, modified (never added),
+regular, and equal to "the old text with `sdk.version` set to the plan's SDK". Any other change to it, any other path, a
+nested `global.json` or a plan without the group is refused as before. Tests: `GlobalJsonPresetTests` (7),
+`apply.test.ts` "#658" (4).
+
+**D4. The action keeps the patch and the per-group results as they were.**
+- Every group except the platform group, every reset and every bisect round sees the pre-set (`resetAll` goes back to
+  `HEAD`). So package groups and the consistency check run on the new SDK, which is the only one installed.
+- The platform group first writes the `expected_sha` text back, then edits as it always did. Its `platform.edited` and
+  `files` therefore name `global.json` as before (`orchestrator.ts`, `applyGroup`).
+- A platform group that does not end applied (refused, failed, bisected out) leaves `global.json` out of the patch:
+  `runApply` writes the `expected_sha` text back before the diff.
+- Test (the "little test" the owner asked for): `apply.test.ts` runs the full `runApply` on a real git repository shaped
+  like SpaServices #111 (`11.0.100-rc.2…` → `11.0.100`, CRLF): applied, `files: ['global.json']`, the patch moves the
+  version. A group that fails leaves `global.json` byte for byte at the preview, and out of the patch.
+
+**D5. No hold when `setup-dotnet` cannot install the planned SDK.** The SDK version comes from the release index
+(`DependencyPolicyEngine.cs:644`, `SdkVersion = target.LatestSdk`), so it exists to install. A failed apply run already
+ends the run with the run's link (`DependencyUpdateEngine.cs:431-434`), and the next run plans again. A hold would add
+state for a case with no known occurrence.
+
+**D8. Only for a repository whose pinned action reads the pre-set.** Repositories run the action at the SHA their
+`dependency-apply.yml` pins (`…/dependency-action@<sha> # dependency-update-v1`). An action from before #658 refuses a
+plan commit with a second path (`apply.ts` `readPlan`, "must change … only"), so a pre-set sent to it would fail the
+whole apply, not just the platform group. The action's `action.yml` therefore declares `# capabilities: sdk-preset`
+(a YAML comment: no effect on the runner). Before the plan commit the bot reads the apply workflow's pinned ref and the
+`action.yml` at that ref (the same `GetRepositoryFileAsync` it uses for R15), and sets `PresetSdk` on the work-ref job
+only when it is declared (`DependencySdkPreset.cs`, `DependencyUpdateEngine.SdkPresetSupportedAsync`).
+- Rollout: the merge moves `dependency-update-v1` (`dependency-action-publish.yml`). The updater then moves each
+  repository's pin like any action digest. Until that pin is merged, the platform group fails as before; from the next
+  run on it applies. On SpaServices #111 that is one extra run.
+- Tests: `DependencySdkPresetTests` (the pin, the declaration, and that this repository's `action.yml` declares it);
+  `DependencyPreviewToReleaseEndToEndTests` (declared → `PresetSdk`, not declared → plan file only);
+  `DependencyWriterJobTests.Issue658_…` (without the flag the commit holds the plan file only).
+
+**Open, not in this PR: `platform:node`.** The template installs no Node at all, so a Node move resolves under the
+runner's default Node. No repository has hit it. It needs its own analysis (`engines`, `.nvmrc`, the action's own node24
+runtime).
+
+### 3b. P2: generated files and user edits
+
+**D6. Re-running Set up features never overwrites an existing dependency workflow** (F4). `DependencyOnboarding.Plan`
+writes a template only where the repository has no such file. That keeps a user's edits. An outdated workflow is the
+`workflow-outdated` pull request's job ("Update the MintPlayer dependency workflows"), which reviews as its own pull
+request and says that it replaces the file. Test: `Issue658_an_existing_workflow_is_never_overwritten`.
+
+**D7. The setup-migration framework is deferred until there is a migration to ship.** The first migration was the reason
+to build it now. D1 fixes P1 with no workflow change, so the framework would ship with an empty registry. Its runner
+(the `mintplayer/setup` pull request, `setup:` in `coverage.yml`, the git writer's allow-list) would go to production
+untested against a real change. The design below stays the plan for the first change to a generated workflow that a
+user's edits must survive. Q1-Q4 move with it.
+
+### 3c. The framework, for the first real migration (not built)
 
 **Version.** `coverage.yml` gets a top-level `setup: <n>` (Q1). Onboarding writes the current number. A repository
-without the key is at 0 (everything onboarded before this change).
+without the key is at 0.
 
 **Migration.** A C# class per step:
 ```csharp
@@ -63,94 +138,77 @@ interface ISetupMigration
     Task ApplyAsync(OverlayTree tree, SetupContext context, List<string> notes);
 }
 ```
-- Each migration is **idempotent**: it detects its own result and does nothing on a file that already has it.
+- Each migration is **idempotent**: it recognises its own result and does nothing on a file that already has it.
 - It **edits the text** at an anchor and leaves the rest of the file alone, the `GlobalJsonSdk`/`ReleaseLineTriggers`
   way (F5). It never re-serialises YAML and never rewrites from the template.
-- An anchor it cannot find gives a note ("To do by hand", F5) and no edit. The version still advances, so the note is
-  the record.
-- A migration that concerns a feature the repository does not use (no `dependency-apply.yml`) does nothing.
+- An anchor it cannot find gives a note ("To do by hand", F5) and no edit. The version still advances.
+- A migration for a feature the repository does not use does nothing.
 
-**The pull request.**
-- Branch `mintplayer/setup`, title "Update the CodeCoverage setup to <n>". One commit holds the migrations and the
-  bumped `setup:`, so merging it is what records the version.
-- Rebuilt from scratch on every new default-branch head, like onboarding (F7). It never conflicts and always applies
-  on top of whatever merged, Nx migrations included.
-- Never auto-merges. The body lists each migration with its title, the files it changed, and its notes.
+**The pull request.** Branch `mintplayer/setup`, "Update the CodeCoverage setup to <n>": one commit with the migrations
+and the bumped `setup:`. It is rebuilt on every default-branch head like onboarding (F7) and never auto-merges.
 
-**Trigger.** The dependency run (F10) compares `setup:` with the registry's highest version and opens or rebuilds the
-PR. The push-to-default-branch rebuild covers an open PR. The `workflow-outdated` full replacement (F12) is retired
-in favour of migrations (Q2).
-
-**Re-running Set up features.** It writes a generated workflow only when the file is missing (F4 → fixed), and stamps
-`setup:` at the current version. It writes no stamp when the PR leaves an existing older file alone; the migrations
-cover that file.
-
-**Migration 1: install the planned toolchain before the apply** (B, refined by F1-F3).
-- A new action mode, `prepare`, reads the plan and outputs the SDKs the platform group moves to (`dotnet-sdks`) and the
-  Node version (`node-version`). It makes no edits.
-- In `dependency-apply.yml`, the existing `setup-dotnet` step keeps `global-json-file: global.json` and gains
-  `dotnet-version: ${{ steps.prepare.outputs.dotnet-sdks }}`. Both SDKs are then installed, and `global.json` picks the
-  right one before and after each edit, reset and bisect (F2). A `setup-node` step follows when `node-version` is set
-  (SP5).
-- The `apply` step is unchanged, and `ApplyResult` and the patch format stay the same.
-- The template gets the same steps, so a new onboarding is already at 1.
+**Trigger.** The dependency run (F10) compares `setup:` with the registry. The `workflow-outdated` full replacement is
+retired in favour of migrations (Q2).
 
 **Nx integration.**
-- Setup migrations stay **bot-driven and in their own PR**. They are not shipped as Nx `migrations.json` entries
-  (rejected: such entries need a published npm package every repository depends on, run only on an approved Nx major,
-  cannot touch `.github/**` (F11), and do nothing for non-Nx and .NET-only repositories).
-- Collisions are structural, not timing:
-  - Nx migrate patches cannot touch `.github/**` or `coverage.yml` (F11), and migrations 1..n touch only those, so the
-    two edit disjoint files.
-  - A later setup migration that edits `nx.json` (for example `sharedGlobals`) does so through an idempotent JSON-path
-    edit. Because the setup PR is rebuilt on each default-branch head, it applies on top of a merged Nx migration.
-- A migration that depends on the Nx version (an `nx affected` flag that changed between majors) reads it from the
-  lockfile through `SetupContext` (SP8).
+- Setup migrations stay **bot-driven, in their own PR**, not Nx `migrations.json` entries. Such entries would need a
+  published npm package every repository depends on. They run only on an approved Nx major, cannot touch `.github/**`
+  (F11), and do nothing for non-Nx and .NET-only repositories.
+- Nx migrate patches cannot touch `.github/**` or `coverage.yml` (F11). Setup migrations touch only those, so the two
+  never edit the same file. A later migration that edits `nx.json` does so as an idempotent JSON-path edit, on a branch
+  rebuilt on top of whatever merged.
 
-## 4. Open questions (owner)
+## 4. Open questions (owner): for the framework (D7)
 
 | # | Question | Recommendation |
 |---|---|---|
-| Q1 | One `setup:` number for the whole repository, or one per feature (`dependencies.setup`, `versioning.setup`, …)? | **One number.** Migrations skip features the repository does not use, and features onboarded later come in at the current template. Per-feature numbers multiply the bookkeeping, and every migration would still need its own detection. Trap: a migration for feature X that ships while X is not onboarded advances the number without touching X. That is harmless only because X is then onboarded from the current template. |
-| Q2 | Retire `workflow-outdated`'s full replacement? | **Yes:** a missing input becomes a migration. Keep the replacement only for a file the bot cannot parse at all, behind a note. |
-| Q3 | Until migration 1 is merged, should a platform group that moves the SDK be held ("needs setup 1") instead of failing in the apply? | **Yes:** a hold whose reason names the open setup PR, lifted when `setup:` ≥ 1. Without it, every run spends an apply that is bound to fail, as on #111. |
-| Q4 | Should the first setup PR on a repository be a draft, like the first dependency PR? | **No:** it changes only the bot's own files and never auto-merges. |
+| Q1 | One `setup:` number for the whole repository, or one per feature? | **One number.** Migrations skip features the repository does not use. |
+| Q2 | Retire `workflow-outdated`'s full replacement? | **Yes,** once the framework exists: a missing input becomes a migration. |
+| Q3 | ~~Hold the platform group until migration 1 is merged?~~ | Obsolete: D1 needs no migration. |
+| Q4 | Should the first setup PR be a draft? | **No:** it changes only the bot's own files and never auto-merges. |
 
 ## 5. Spikes
 
-| # | Question | How | Result |
-|---|---|---|---|
-| SP1 | Does `actions/setup-dotnet@v6` install **both** `global-json-file` and `dotnet-version` when both are given, and is an empty `dotnet-version` (no platform move) accepted? | Read the action's source (`installer`/`setup` entry) at the tag; if unclear, one run in a scratch repository (needs the owner's go-ahead: a CI run). | Open |
-| SP2 | With both a preview and the GA SDK installed, does `global.json` pick the right one before the edit (preview, `rollForward` as written) and after it (GA)? Covers the reset back to the preview. | `dotnet-install` of 11.0.100-preview.N and 11.0.100 into a temp dir in a Linux container; `dotnet --version` under each `global.json`. | Open |
-| SP3 | What do onboarded repositories' `dependency-apply.yml` files look like today: still the template, edited, or older template generations? This sizes the anchor rules for migration 1. | Read the owner's onboarded repositories' workflow files through the GitHub API (read-only). The repository list comes from the owner or from production (needs go-ahead). | Open |
-| SP4 | Where `setup:` goes and how it is read: a new reader beside `CoverageYml`, flow-style files, and a missing `coverage.yml`. | Read `CoverageYmlSections`, `CoverageYml`; red tests on the fixtures. | Open |
-| SP5 | Does a `platform:node` move need the new Node during the apply (npm/pnpm lockfile resolution under `engines`, `.nvmrc`), and does the action's own runtime (node24) conflict with a `setup-node` step? | Read `applyPlatform.ts` (node) and the js adapter; a container run of `npm install --package-lock-only` under two Node versions. | Open |
-| SP6 | Can migration 1 recognise its own result and every earlier template generation? Its anchor is the `actions/setup-dotnet` step before the dependency action; a missing step means a repository without .NET. | Unit tests over the SP3 shapes and the template history (`git log -- dependency-action/templates/dependency-apply.yml`). | Open |
-| SP7 | How does the git writer's path allow-list (F8) take migration paths without opening it to arbitrary files? | Read `IsOnboardingPath` and its tests. | Open |
-| SP8 | Is the Nx version needed by any migration we can foresee, and can `SetupContext` read it from `package-lock.json`/`pnpm-lock.yaml` cheaply? | Read the lockfile parsers the lookup already uses. | Open |
+| # | Question | Result |
+|---|---|---|
+| SP1 | Does `setup-dotnet` install both `global-json-file` and `dotnet-version`? | **Obsolete** (D1 needs one SDK). |
+| SP2 | Does `global.json` pick the right one of two installed SDKs? | **Obsolete** (D1). |
+| SP3 | What do onboarded repositories' `dependency-apply.yml` look like? | Deferred with the framework (D7). |
+| SP4 | Where `setup:` goes and how it is read. | Deferred with the framework (D7). |
+| SP5 | Does a `platform:node` move need the new Node during the apply? | Open, outside this PR (§3a). |
+| SP6 | Can a workflow migration recognise every template generation? | Deferred with the framework (D7). |
+| SP7 | How does the git writer's allow-list take migration paths? | Deferred with the framework (D7). |
+| SP8 | Does a migration need the Nx version? | Deferred with the framework (D7). |
+| SP9 | Does the pre-set survive the real apply: per-group snapshots, a failed group's reset, the patch against `expected_sha`? | **Yes.** `runApply` on real git (`apply.test.ts` "#658"): applied → `files: ['global.json']`, patch `11.0.100-rc.2…` → `11.0.100`. Failed → `global.json` back at the preview and out of the patch. |
+| SP10 | Does the git writer's commit keep the file's bytes (CRLF) and pass its own rule? | **Yes.** `Issue658_the_plan_commit_moves_the_root_global_json_to_the_planned_sdk` (writer job on a served repository, CRLF file). |
 
 ## 6. Milestones (one PR)
 
-- **M0** ✅ Issue #658, branch, this PRD (four investigations, F1-F12).
-- **M1** Spikes SP1, SP2, SP4, SP5, SP7 (SP3 with the owner's go-ahead); the owner answers Q1-Q4.
-- **M2** Action `mode: prepare` (TypeScript): outputs `dotnet-sdks` and `node-version` from the plan. Red tests first
-  (`src/prepare.test.ts`: no platform group, a dotnet move, a node move). Template `dependency-apply.yml` with the new
-  steps. Rebuild `dist` in the main checkout (CLAUDE.md, ncc).
-- **M3** Framework (C#): `ISetupMigration`, the registry (gap-free test), the `setup:` reader and writer, onboarding
-  stamping, and Set up features writing a workflow only when it is missing. Red tests first.
-- **M4** Runner: the dependency run opens or rebuilds `mintplayer/setup`, the default-branch rebuild covers it, the PR
-  body lists titles, files and notes, and the git writer allow-list is widened. Q3's hold if the owner agrees.
-- **M5** Migration 1, with tests on the template's generations and on user-edited shapes (SP3, SP6): extra steps, a
-  renamed step, comments, a matrix, and no .NET.
-- **M6** Retire `workflow-outdated`'s full replacement (Q2).
-- **M7** Docs: `docs/code-coverage/setup-migrations.md` (how a repository is migrated, how to write a migration),
-  `onboarding.md` (re-run behaviour), `dependency-updates.md` (the prepare step, the hold).
-- **Gate:** the affected test classes once at the end, then the PR. After the deploy, SpaServices gets "Update the
-  CodeCoverage setup to 1". Once it is merged, `platform:dotnet 11.0` applies on #111.
+- **M0** ✅ Issue #658, branch, PRD (four investigations, F1-F12).
+- **M1** ✅ Design settled with the owner: D1 replaces the `prepare` + migration design (§3a).
+- **M2** ✅ Bot: `GlobalJsonPreset` and the plan commit (`WriterService.Dependencies.cs`); `PlanCommitRule` accepts exactly
+  the pre-set. Tests: `GlobalJsonPresetTests`, `DependencyWriterJobTests.Issue658_…`, `PlanCommitRuleTests` unchanged and green.
+- **M3** ✅ Action: `readDispatch` accepts the pre-set; the platform group edits from the `expected_sha` text; a platform
+  group that is not applied leaves `global.json` out of the patch. Tests in `apply.test.ts`. `dist` rebuilt in the main
+  checkout.
+- **M4** ✅ Set up features keeps an existing workflow (D6).
+- **M4b** ✅ Capability gate (D8): `# capabilities: sdk-preset` in `action.yml`, `DependencySdkPreset`, `PresetSdk` on
+  the work-ref job.
+- **M5** ✅ Docs: `docs/code-coverage/dependency-updates.md` (what the plan commit holds).
+- **Gate:** the affected test classes once at the end, then the PR. After the deploy, the next run on SpaServices #111
+  installs 11.0.100 and applies `platform:dotnet 11.0`.
+- **Later (D7):** the setup-migration framework (§3c) with its first real migration.
 
 ## 7. Log
 
 - 2026-11-13: P1 diagnosed on SpaServices #111 after the #656 deploy (the platform group was refused: SDK 11.0.100 not
   installed). Owner chose the migration system with B as its first migration and asked for Nx integration. Four
-  read-only investigations: F1-F12. B refined from "split edit/resolve" (breaks per-group apply, F1) to
-  "prepare + both SDKs" (F2). F2 and F4 re-checked by hand. Issue #658, branch, this PRD.
+  read-only investigations: F1-F12. F2 and F4 re-checked by hand. Issue #658, branch, this PRD.
+- 2026-11-13: Owner asked why the bot cannot set the new SDK first; then followed the recommendation to put the SDK move
+  in the plan commit (D1). The `prepare` + both-SDKs design (old §3 "Migration 1") is superseded. With no first
+  migration left, the framework is deferred (D7). D6 fixes the Set-up-features overwrite on its own.
+- 2026-11-13: M2-M4 implemented. GitWriter tests 57/57 (`GlobalJsonPresetTests`, `PlanCommitRuleTests`,
+  `DependencyWriterJobTests`); action tests 23/23 (`apply.test.ts`, `orchestrator.test.ts`); `tsc --noEmit` clean.
+- 2026-11-13: Found before committing: repositories pin the action by SHA, and the pinned (pre-#658) action refuses a
+  plan commit with a second path, which would have failed every apply with a .NET platform group. Added D8, the
+  capability gate.
