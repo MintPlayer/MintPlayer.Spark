@@ -138,6 +138,11 @@ public class DependencyBlockerSeen
 
     /// <summary>The version tokens the lookup offered for it (and its current value) when the hold was taken.</summary>
     public List<string> SeenVersions { get; set; } = [];
+
+    /// <summary>#653 D1: its current value, version and locked version in every package file when the hold was taken. A
+    /// change lifts the hold, even to a version it had already offered. Empty on a hold written before #653, which then
+    /// lifts only as before.</summary>
+    public List<string> CurrentTokens { get; set; } = [];
 }
 
 /// <summary>
