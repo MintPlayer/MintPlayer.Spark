@@ -76,12 +76,26 @@ public static class DependencyPolicyEngine
     }
 
     /// <summary>D-C1 plus configuration: a configured group, else the first candidate <c>groupName</c>, else the record's,
-    /// else the dependency name (one dependency across many package files moves together, §5.1 #8).</summary>
+    /// else the dependency name (one dependency across many package files moves together, §5.1 #8).
+    /// The bot's runtime is a group of its own (<c>MintPlayer/MintPlayer.Spark dependency-update-v1</c>): its pin shares the
+    /// dependency name with the repository's other actions from that repository (<c>versioning-v1</c>), which do cool down,
+    /// and one of them in its cooldown held the runtime back with it (SpaServices #111, 2026-11-13).</summary>
     public static string GroupOf(DependencyPolicyConfig config, LookupRecord record)
         => config.ConfiguredGroup(record.Ecosystem, record.DepName)
+            ?? (IsBotRuntime(record) ? $"{record.DepName} {record.CurrentValue}" : null)
             ?? record.Candidates.Select(c => c.GroupName).FirstOrDefault(g => !string.IsNullOrWhiteSpace(g))
             ?? (string.IsNullOrWhiteSpace(record.GroupName) ? null : record.GroupName)
             ?? record.DepName;
+
+    /// <summary>
+    /// The bot's own action pin (<c>dependency-action@sha # dependency-update-v1</c>) is the bot's runtime, so it never waits out
+    /// the cooldown: a repository would otherwise run the previous action for days after every release. Own-release detection
+    /// cannot catch it, because the producing account (the MintPlayer organization) is not the consuming one (P2).
+    /// </summary>
+    private static bool IsBotRuntime(LookupRecord record)
+        => (record.Ecosystem == "github-actions" || record.Manager == "github-actions")
+            && string.Equals(record.DepName, Lifecycle.DependencyOnboarding.ActionRepository, StringComparison.Ordinal)
+            && string.Equals(record.CurrentValue, Lifecycle.DependencyOnboarding.ActionTag, StringComparison.Ordinal);
 
     /// <summary>The token that identifies a candidate: the digest of a digest update (a new digest of the same tag is a new
     /// release), else its version, else its value. A token, never parsed.</summary>
@@ -434,6 +448,12 @@ public static class DependencyPolicyEngine
                 if (picks.Count < ideal.Count)
                 {
                     failures.AddRange(cooling);
+                    // SpaServices #111: what the cooling members hold back is listed too, or it vanishes from the pull request.
+                    var coolingPicks = ideal.Where(v => v.InCooldown && !picks.Any(p => ReferenceEquals(p.Record, v.Record))).ToList();
+                    var waitsFor = string.Join(", ", DepNames(coolingPicks.Select(v => v.Record.DepName)));
+                    var until = coolingPicks.Max(v => v.Until);
+                    failures.AddRange(picks.Select(v => Entry(group, v, EDependencyReportReason.Cooldown,
+                        $"moves with its group, which waits for {waitsFor} (released less than {Days(config.Cooldown)} ago)") with { Until = until }));
                     continue;
                 }
 
@@ -759,15 +779,6 @@ public static class DependencyPolicyEngine
             };
         }
 
-        /// <summary>
-        /// The bot's own action pin (<c>dependency-action@sha # dependency-update-v1</c>) is the bot's runtime, so it never waits out
-        /// the cooldown: a repository would otherwise run the previous action for days after every release. Own-release detection
-        /// cannot catch it, because the producing account (the MintPlayer organization) is not the consuming one (P2).
-        /// </summary>
-        private static bool IsBotRuntime(LookupRecord record)
-            => (record.Ecosystem == "github-actions" || record.Manager == "github-actions")
-                && string.Equals(record.DepName, Lifecycle.DependencyOnboarding.ActionRepository, StringComparison.Ordinal)
-                && string.Equals(record.CurrentValue, Lifecycle.DependencyOnboarding.ActionTag, StringComparison.Ordinal);
 
         private (bool InCooldown, DateTimeOffset Until) Cooldown(string eco, string dep, string token, string? releaseTimestamp, bool securityFix, bool ownRelease = false)
         {
