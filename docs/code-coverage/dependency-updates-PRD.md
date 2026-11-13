@@ -1296,9 +1296,15 @@ taken while building them (assistant, within R1–R19, D-S*, D-C*, D-V*, D-P*):
 - **D-L13. The schedule (Q8)** is checked by a cron every 10 minutes; a slot is due from the repository's spread minute (a
   hash of its id) to the end of the slot hour, deduplicated per repository and local day. The file's `schedule` parts and
   opt-out are read from the run document, written at each run's start, so a changed file takes effect from the next run.
-- **D-L14. Onboarding (R16).** The migrate templates are added only where the tree has `angular.json` / `nx.json`. The action is
+- **D-L14. Onboarding (R16).** The migrate templates are added only where the tree has `angular.json` / `nx.json`. ~~The action is
   pinned to the commit the bot resolved for `dependency-update-v1`, the tag kept as a comment; an unresolvable tag keeps the
-  tag. `dependabot.yml` loses `updates:` (every ecosystem: R12) and what only served them (`multi-ecosystem-groups`,
+  tag.~~ **Superseded (owner, 2026-11-13):** the workflows call the action at the moving tag (`…/dependency-action@dependency-update-v1`,
+  `…/versioning-action@versioning-v1`), which every release of the action force-moves. Evidence: the apply runs from the
+  default branch, so a commit pin made every action fix wait for a merged pin-bump pull request. Dotnet.Tools #208 carried
+  pin 7c6e7f33 (#664, the SDK install) while master's 5c99269 ran, and every NuGet group of run 43483039627 failed with
+  NETSDK1045. Re-onboarding ("Functies instellen") moves an existing `@<sha> # <tag>` pin back to `@<tag>` and changes
+  nothing else in that workflow (`ActionTagReference`, `OnboardingPlannerTests.Re_onboarding_moves_the_actions_pinned_to_a_commit_back_to_their_tags_and_nothing_else`).
+  The bot's own pin group (`IsBotRuntime`) stays for repositories not yet re-onboarded. `dependabot.yml` loses `updates:` (every ecosystem: R12) and what only served them (`multi-ecosystem-groups`,
   `registries`); with nothing else left it is deleted. Dependabot `ignore:` translates to `rules: ignore`, to an `autoMerge`
   threshold for update-type ignores (majors → `minor`, minors and majors → `patch`, so they wait for `approve`), and to a
   comment for version ranges (R1: rules take no ranges). Before pushing, the App's declaration and the installation's

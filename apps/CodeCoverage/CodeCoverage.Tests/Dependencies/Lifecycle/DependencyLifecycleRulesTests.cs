@@ -297,19 +297,19 @@ public class DependencyWorkflowGuardTests
     /// <summary>#613 item 4: a custom <c>lookupWorkflow</c> has no template, so the bot offers no pull request for it.</summary>
     [Fact]
     public void A_workflow_without_a_template_gets_no_refresh()
-        => DependencyOnboarding.RefreshFiles(["my-lookup.yml"], null, DependencyOnboarding.ReadTemplate).Should().BeNull();
+        => DependencyOnboarding.RefreshFiles(["my-lookup.yml"], DependencyOnboarding.ReadTemplate).Should().BeNull();
 
     [Fact]
     public void The_refresh_pull_request_says_why_and_who_approves_it()
     {
-        var files = DependencyOnboarding.RefreshFiles(["dependency-lookup.yml"], "0123456789abcdef0123456789abcdef01234567", DependencyOnboarding.ReadTemplate)!;
+        var files = DependencyOnboarding.RefreshFiles(["dependency-lookup.yml"], DependencyOnboarding.ReadTemplate)!;
 
-        var body = DependencyOnboarding.RefreshBody(files, "`dependency-lookup.yml` declares no `platforms` input", "0123456789abcdef0123456789abcdef01234567");
+        var body = DependencyOnboarding.RefreshBody(files, "`dependency-lookup.yml` declares no `platforms` input");
 
         body.Should().StartWith(DependencyPullRequestBody.Marker)
             .And.Contain("declares no `platforms` input")
             .And.Contain("`.github/workflows/dependency-lookup.yml`")
-            .And.Contain("`0123456789ab`")
+            .And.Contain("calls the action at `dependency-update-v1`")
             .And.EndWith(DependencyOnboarding.ApprovalNote);
     }
 }
@@ -396,13 +396,13 @@ public class OnboardingPrTests
     }
 
     [Fact]
-    public void The_templates_call_the_action_pinned_by_the_resolved_sha_with_the_tag_as_a_comment()
+    public void The_templates_call_the_action_at_its_moving_tag()
     {
-        var plan = DependencyOnboarding.Plan(["package.json"], null, null, null, Sha, DependencyOnboarding.ReadTemplate);
+        // Owner, 2026-11-13 (supersedes D-L14's commit pin): a release reaches every repository by moving the tag.
+        var plan = DependencyOnboarding.Plan(["package.json"], null, null, null, DependencyOnboarding.ReadTemplate);
 
-        plan.Pinned.Should().BeTrue();
         var lookup = plan.Files.Single(f => f.Path == ".github/workflows/dependency-lookup.yml").Content!;
-        lookup.Should().Contain($"dependency-action@{Sha} # dependency-update-v1").And.NotContain("@dependency-update-v1\n");
+        lookup.Should().Contain("dependency-action@dependency-update-v1\n").And.NotContain(Sha);
         plan.Files.Should().NotContain(f => f.Path.EndsWith("migrate.yml"), "no angular.json or nx.json in the tree");
         plan.Files.Single(f => f.Path == "coverage.yml").Content.Should().StartWith("# MintPlayer dependency updates");
         CodeCoverage.Dependencies.DependenciesYml.Parse(plan.Files.Single(f => f.Path == "coverage.yml").Content).Section.Present.Should().BeFalse("the section is all commented");
@@ -412,9 +412,10 @@ public class OnboardingPrTests
     [Fact]
     public void The_onboarding_body_names_the_action_and_says_what_each_workflow_does()
     {
-        var plan = DependencyOnboarding.Plan(["package.json", "angular.json"], null, null, null, Sha, DependencyOnboarding.ReadTemplate);
+        var plan = DependencyOnboarding.Plan(["package.json", "angular.json"], null, null, null, DependencyOnboarding.ReadTemplate);
 
-        plan.Body.Should().Contain($"`MintPlayer/MintPlayer.Spark/apps/CodeCoverage/dependency-action`, pinned to `{Sha}`");
+        plan.Body.Should().Contain("`MintPlayer/MintPlayer.Spark/apps/CodeCoverage/dependency-action` at `dependency-update-v1`, a tag every release of the action moves")
+            .And.NotContain(Sha);
         plan.Body.Should().Contain("- `.github/workflows/dependency-lookup.yml`: the lookup.");
         plan.Body.Should().Contain("- `.github/workflows/dependency-apply.yml`: the apply.");
         plan.Body.Should().Contain("- `.github/workflows/angular-migrate.yml`: runs the `ng update` migrations");
@@ -427,7 +428,7 @@ public class OnboardingPrTests
     [Fact]
     public void Issue658_an_existing_workflow_is_never_overwritten()
     {
-        var plan = DependencyOnboarding.Plan(["package.json", "nx.json", ".github/workflows/dependency-apply.yml"], null, null, null, Sha, DependencyOnboarding.ReadTemplate);
+        var plan = DependencyOnboarding.Plan(["package.json", "nx.json", ".github/workflows/dependency-apply.yml"], null, null, null, DependencyOnboarding.ReadTemplate);
 
         var paths = plan.Files.Select(f => f.Path).ToList();
         paths.Should().Contain(".github/workflows/dependency-lookup.yml");
@@ -437,11 +438,10 @@ public class OnboardingPrTests
     }
 
     [Fact]
-    public void An_unresolved_tag_keeps_the_tag()
+    public void The_migrate_templates_follow_the_tree_and_call_the_tag()
     {
-        var plan = DependencyOnboarding.Plan(["nx.json", "apps/web/angular.json"], "mergeQueue:\n  enabled: true", null, null, null, DependencyOnboarding.ReadTemplate);
+        var plan = DependencyOnboarding.Plan(["nx.json", "apps/web/angular.json"], "mergeQueue:\n  enabled: true", null, null, DependencyOnboarding.ReadTemplate);
 
-        plan.Pinned.Should().BeFalse();
         plan.Files.Should().Contain(f => f.Path == ".github/workflows/nx-migrate.yml");
         plan.Files.Should().Contain(f => f.Path == ".github/workflows/angular-migrate.yml");
         plan.Files.Single(f => f.Path == ".github/workflows/dependency-apply.yml").Content.Should().Contain(DependencyOnboarding.ActionReference);

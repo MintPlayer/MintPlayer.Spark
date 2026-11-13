@@ -620,30 +620,12 @@ public partial class OnboardingService : IOnboardingService
             Features = features,
             DefaultBranch = defaultBranch,
             Branches = features.Contains(EOnboardingFeature.ReleaseLines) ? await git.ListBranchesAsync(repository, "", cancellationToken) : [],
-            DependencyActionSha = features.Contains(EOnboardingFeature.DependencyUpdates)
-                ? await TagCommitAsync(pulls, repository, DependencyOnboarding.ActionRepository, DependencyOnboarding.ActionTag, cancellationToken) : null,
-            VersioningActionSha = wantsVersioning
-                ? await TagCommitAsync(pulls, repository, VersioningOnboarding.ActionRepository, VersioningOnboarding.ActionTag, cancellationToken) : null,
             VersioningPackageVersion = wantsVersioning ? await LatestPackageVersionAsync(cancellationToken) : null,
             Owner = repository.OwnerLogin,
             IsTagged = (package, ct) => pulls.HasTagWithPrefixAsync(repository, VersionTag.Prefix(package), ct),
             OlderLines = olderLines,
         }, cancellationToken);
         return new Planned(plan, tree, git, pulls, null);
-    }
-
-    /// <summary>The commit an action's tag resolves to; null keeps the tag in the workflow.</summary>
-    private async Task<string?> TagCommitAsync(IForgeDependencyUpdates pulls, Repository repository, string ownerRepo, string tag, CancellationToken cancellationToken)
-    {
-        try
-        {
-            return await pulls.ResolveTagCommitAsync(repository, ownerRepo, tag, cancellationToken);
-        }
-        catch (Exception ex) when (ex is ForgeRequestException or ForgeAccessDeniedException or HttpRequestException && ForgeRateLimitedException.Find(ex) is null)
-        {
-            logger.LogWarning(ex, "Onboarding: could not resolve {Repository}@{Tag}; the workflow keeps the tag", ownerRepo, tag);
-            return null;
-        }
     }
 
     /// <summary>The latest stable <see cref="VersioningOnboarding.PackageId"/> on nuget.org; null (the constant) when it cannot be read.</summary>

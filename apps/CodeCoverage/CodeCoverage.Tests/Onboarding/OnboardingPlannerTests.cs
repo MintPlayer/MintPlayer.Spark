@@ -1,3 +1,4 @@
+using CodeCoverage.Dependencies.Lifecycle;
 using CodeCoverage.Onboarding;
 using CodeCoverage.PackageVersioning;
 using CodeCoverage.Versioning.Graph;
@@ -182,6 +183,29 @@ public class OnboardingPlannerTests
         var second = await OnboardingPlanner.PlanAsync(tree, Inputs(Enum.GetValues<EOnboardingFeature>()) with { IsTagged = (_, _) => Task.FromResult(true) });
 
         second.Files.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Re_onboarding_moves_the_actions_pinned_to_a_commit_back_to_their_tags_and_nothing_else()
+    {
+        // Owner, 2026-11-13: workflows call the bot's actions at the moving tag; "re-onboard the repositories should fix it".
+        const string sha = "5c992693d01ba9e70eb355df3f2c4979057b4108";
+        var apply = DependencyOnboarding.ReadTemplate("dependency-apply.yml")
+            .Replace("dependency-action@dependency-update-v1", $"dependency-action@{sha} # dependency-update-v1", StringComparison.Ordinal)
+            .Replace("persist-credentials: false", "persist-credentials: false # the owner's edit", StringComparison.Ordinal);
+        var lookup = DependencyOnboarding.ReadTemplate("dependency-lookup.yml");
+        var publish = PublishWorkflow.Replace("versioning-action@versioning-v1", $"versioning-action@{sha} # versioning-v1", StringComparison.Ordinal);
+        var tree = DotnetRepository("gate:\n  patchTarget: 80\nversioning:\n  mode: server\ndependencies: {}\n")
+            .Add(".github/workflows/dependency-apply.yml", apply)
+            .Add(".github/workflows/dependency-lookup.yml", lookup)
+            .Add(".github/workflows/publish.yml", publish);
+
+        var plan = await OnboardingPlanner.PlanAsync(tree, Inputs(EOnboardingFeature.DependencyUpdates, EOnboardingFeature.Versioning) with { IsTagged = (_, _) => Task.FromResult(true) });
+
+        Planned(plan, ".github/workflows/dependency-apply.yml").Should().Be(apply.Replace($"@{sha} # dependency-update-v1", "@dependency-update-v1", StringComparison.Ordinal),
+            "only the pin moves: the owner's edits stay");
+        Planned(plan, ".github/workflows/publish.yml").Should().Contain("versioning-action@versioning-v1\n").And.NotContain(sha);
+        plan.Files.Should().NotContain(f => f.Path == ".github/workflows/dependency-lookup.yml", "it calls the tag already");
     }
 
     [Fact]

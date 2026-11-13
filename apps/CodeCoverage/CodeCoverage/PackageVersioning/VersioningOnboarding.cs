@@ -69,15 +69,14 @@ public static partial class VersioningOnboarding
 
     /// <param name="tree">The default branch's head.</param>
     /// <param name="taggedIds">Packages that already have a version tag: they keep it and get no seed.</param>
-    /// <param name="actionSha">The commit <see cref="ActionTag"/> resolves to, pinned in the step; null keeps the tag.</param>
     /// <param name="packageVersion">The <see cref="PackageId"/> version to reference (<see cref="LatestStable"/>); null takes <see cref="PackageVersion"/>.</param>
     /// <param name="owner">The repository's owner, which <c>${{ github.repository_owner }}</c> in a workflow resolves to.</param>
-    public static Task<VersioningOnboardingPlan> PlanAsync(IRepositoryTree tree, IReadOnlySet<string> taggedIds, string? actionSha,
+    public static Task<VersioningOnboardingPlan> PlanAsync(IRepositoryTree tree, IReadOnlySet<string> taggedIds,
         string? packageVersion = null, string? owner = null, CancellationToken cancellationToken = default)
-        => PlanAsync(tree, (id, _) => Task.FromResult(taggedIds.Contains(id)), actionSha, packageVersion, owner, cancellationToken);
+        => PlanAsync(tree, (id, _) => Task.FromResult(taggedIds.Contains(id)), packageVersion, owner, cancellationToken);
 
     /// <param name="isTagged">Whether a package already has a version tag, asked once per package the graph finds.</param>
-    public static async Task<VersioningOnboardingPlan> PlanAsync(IRepositoryTree tree, Func<string, CancellationToken, Task<bool>> isTagged, string? actionSha,
+    public static async Task<VersioningOnboardingPlan> PlanAsync(IRepositoryTree tree, Func<string, CancellationToken, Task<bool>> isTagged,
         string? packageVersion = null, string? owner = null, CancellationToken cancellationToken = default)
     {
         var notes = new List<string>();
@@ -94,7 +93,7 @@ public static partial class VersioningOnboarding
             if (!taggedIds.Contains(package.Id!) && Seed(package, notes) is { } seed) seeds.Add(seed);
 
         var context = new Context(tree, new Files(tree, cancellationToken), notes, packages, [.. packages.Where(p => p.Kind == PackageKind.NuGet)],
-            actionSha, packageVersion ?? PackageVersion, owner);
+            packageVersion ?? PackageVersion, owner);
         var applied = new List<(string Rule, List<string> Paths)>();
         foreach (var rule in Rules)
         {
@@ -107,12 +106,12 @@ public static partial class VersioningOnboarding
         if (packages.Count > 0 && !await HasVersioningStepAsync(context))
             notes.Add("No push-triggered workflow packs or publishes a package: add the versioning step before your publish steps by hand (see the action's README).");
 
-        return new VersioningOnboardingPlan(context.Files.Changed(), seeds, notes, Body(packages, seeds, taggedIds, applied, notes, actionSha));
+        return new VersioningOnboardingPlan(context.Files.Changed(), seeds, notes, Body(packages, seeds, taggedIds, applied, notes));
     }
 
     /// <summary>What the rules share: the default branch's tree, its files as the rules before left them, and the notes.</summary>
     private sealed record Context(IRepositoryTree Tree, Files Files, List<string> Notes, List<ProjectNode> Packages, List<ProjectNode> NuGet,
-        string? ActionSha, string PackageVersion, string? Owner);
+        string PackageVersion, string? Owner);
 
     /// <summary>
     /// One thing the onboarding sets up. A rule reads the repository as the rules before it left it and edits only what is not
@@ -129,7 +128,10 @@ public static partial class VersioningOnboarding
         new("A release line that cannot pack its own major fails the build (MPV006)", c => c.NuGet.Count == 0 ? Task.CompletedTask : Mpv006ErrorAsync(c.Files, c.NuGet)),
         new("MinVer leaves the build", c => c.NuGet.Count == 0 ? Task.CompletedTask : RemoveMinVerAsync(c.Files, c.Tree, c.NuGet, c.Notes)),
         new($"`nuget.config` maps `{PackageId}` to nuget.org", c => c.NuGet.Count == 0 ? Task.CompletedTask : NuGetConfigAsync(c.Files, c.Tree, c.Owner, c.Notes)),
-        new("The versioning step runs before the first pack or publish", c => WorkflowsAsync(c, (path, text, notes) => VersioningStep(path, text, c.ActionSha, notes))),
+        new("The versioning step runs before the first pack or publish", c => WorkflowsAsync(c, VersioningStep)),
+        // Owner, 2026-11-13 (CodeCoverage.Onboarding.ActionTagReference): a step pinned to a commit moves back to the tag.
+        new($"The versioning step calls the action at `{ActionTag}`", c => WorkflowsAsync(c, (_, text, _) =>
+            global::CodeCoverage.Onboarding.ActionTagReference.AtTag(text, ActionPath, ActionTag) is var moved && moved != text ? moved : null)),
         new("Pack builds again and the NuGet push skips published versions", c => WorkflowsAsync(c, PackAndPush)),
         new("The pack is checked to carry the released versions", c => c.NuGet.Count == 0 ? Task.CompletedTask : WorkflowsAsync(c, PackedVersions)),
         new("The default branch packs and publishes only what it released", c => WorkflowsAsync(c, PublishGate)),
@@ -531,7 +533,7 @@ public static partial class VersioningOnboarding
     /// The versioning step in front of each push-triggered job's first pack or publish step, in a job that has none yet; null
     /// when every job has it. Tests that run after the tags are pushed are reported on every run, for as long as they do.
     /// </summary>
-    internal static string? VersioningStep(string path, string text, string? actionSha, List<string> notes)
+    internal static string? VersioningStep(string path, string text, List<string> notes)
     {
         if (Parse(path, text, notes) is not var (root, jobs)) return null;
         if (!OnPush(Child(root, "on")))
@@ -562,7 +564,7 @@ public static partial class VersioningOnboarding
             {
                 $"{new string(' ', lines[stepLine].IndexOf('-'))}- name: {StepName}",
                 $"{keyIndent}id: versioning",
-                $"{keyIndent}uses: {ActionPath}@{actionSha ?? ActionTag}{(actionSha is null ? "" : $" # {ActionTag}")}",
+                $"{keyIndent}uses: {ActionPath}@{ActionTag}",
             };
             if (at > 0 && lines[at - 1].Trim().Length == 0) step.Add("");
             edits.Add(new LineEdit(at, null, step));
@@ -1006,7 +1008,7 @@ public static partial class VersioningOnboarding
     private static int Line(YamlDotNet.Core.Mark mark) => (int)mark.Line;
 
     private static string Body(List<ProjectNode> packages, List<VersioningSeed> seeds, IReadOnlySet<string> taggedIds,
-        List<(string Rule, List<string> Paths)> applied, List<string> notes, string? actionSha)
+        List<(string Rule, List<string> Paths)> applied, List<string> notes)
     {
         // Every package tagged: an onboarded repository, pressed again for what the onboarding learned since.
         var update = packages.Count > 0 && packages.All(p => taggedIds.Contains(p.Id!));
@@ -1019,7 +1021,7 @@ public static partial class VersioningOnboarding
                 .Append("default branch, the versioning step decides which packages changed, tags each release `<package id>/v<version>`, and ")
                 .Append("writes the npm versions. NuGet packages read their version from the tags through `").Append(PackageId).Append("`. ")
                 .Append("Every package is packed and published on every run: an unchanged one keeps the version it already published, which the push skips.\n\n");
-        body.Append("The step calls `").Append(ActionPath).Append('`').Append(actionSha is null ? $" at `{ActionTag}`" : $", pinned to `{actionSha}` (`{ActionTag}`)").Append(".\n\n");
+        body.Append("The step calls `").Append(ActionPath).Append($"` at `{ActionTag}`, a tag every release of the action moves.\n\n");
 
         body.Append("## Packages\n\n| Package | Seed tag |\n|---|---|\n");
         foreach (var package in packages)

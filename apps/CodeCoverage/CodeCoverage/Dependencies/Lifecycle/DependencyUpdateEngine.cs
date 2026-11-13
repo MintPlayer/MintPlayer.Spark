@@ -1600,22 +1600,13 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
             await session.SaveChangesAsync(ct);
         }
 
-        string? actionSha = null;
-        try
-        {
-            actionSha = await context.Updates.ResolveTagCommitAsync(repository, DependencyOnboarding.ActionRepository, DependencyOnboarding.ActionTag, ct);
-        }
-        catch (Exception ex) when (ex is ForgeRequestException or ForgeAccessDeniedException or HttpRequestException && ForgeRateLimitedException.Find(ex) is null)
-        {
-            logger.LogWarning(ex, "Dependency updates: could not resolve {Tag}; the onboarding templates keep the tag", DependencyOnboarding.ActionTag);
-        }
         IReadOnlyList<GitWriterFile> files;
         string title, body;
         if (refresh is { } r)
         {
-            if (DependencyOnboarding.RefreshFiles(r.Workflows, actionSha, DependencyOnboarding.ReadTemplate) is not { } refreshed)
+            if (DependencyOnboarding.RefreshFiles(r.Workflows, DependencyOnboarding.ReadTemplate) is not { } refreshed)
                 return;
-            (files, title, body) = (refreshed, DependencyOnboarding.RefreshTitle, DependencyOnboarding.RefreshBody(refreshed, r.Reason, actionSha));
+            (files, title, body) = (refreshed, DependencyOnboarding.RefreshTitle, DependencyOnboarding.RefreshBody(refreshed, r.Reason));
         }
         else
         {
@@ -1632,7 +1623,7 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
                 }
             }
             var addMergeQueue = Repository.ResolveDependencyOnboardingMergeQueue(repository, context.Account);
-            var plan = DependencyOnboarding.Plan([.. tree?.Entries.Select(e => e.Path) ?? []], coverageYml, dependabotPath, dependabotYml, actionSha, DependencyOnboarding.ReadTemplate,
+            var plan = DependencyOnboarding.Plan([.. tree?.Entries.Select(e => e.Path) ?? []], coverageYml, dependabotPath, dependabotYml, DependencyOnboarding.ReadTemplate,
                 addMergeQueue: addMergeQueue,
                 githubMergeQueue: (addMergeQueue || run.FileMergeQueue == "enabled") && await GitHubMergeQueueAsync(context, defaultBranch, ct));
             (files, title, body) = (plan.Files, DependencyOnboarding.Title, plan.Body);

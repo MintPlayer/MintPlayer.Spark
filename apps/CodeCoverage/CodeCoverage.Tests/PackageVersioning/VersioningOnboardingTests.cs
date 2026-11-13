@@ -10,7 +10,6 @@ namespace CodeCoverage.Tests.PackageVersioning;
 /// </summary>
 public class VersioningOnboardingTests
 {
-    private const string Sha = "0123456789abcdef0123456789abcdef01234567";
     private static readonly HashSet<string> None = [];
 
     private static Dictionary<string, string?> ByPath(VersioningOnboardingPlan plan) => plan.Files.ToDictionary(f => f.Path, f => f.Content);
@@ -146,7 +145,7 @@ public class VersioningOnboardingTests
 
                 """);
 
-        var plan = await VersioningOnboarding.PlanAsync(tree, None, Sha);
+        var plan = await VersioningOnboarding.PlanAsync(tree, None);
 
         plan.Seeds.Should().BeEquivalentTo([
             new VersioningSeed("MintPlayer.Assertions", PackageKind.NuGet, "1.0.1-rc.4"),
@@ -223,7 +222,7 @@ public class VersioningOnboardingTests
 
                 - name: Version the packages
                   id: versioning
-                  uses: MintPlayer/MintPlayer.Spark/apps/CodeCoverage/versioning-action@{{{Sha}}} # versioning-v1
+                  uses: MintPlayer/MintPlayer.Spark/apps/CodeCoverage/versioning-action@versioning-v1
 
                 # With release lines on, the default branch tags nothing: a package with no tag yet would fail its
                 # pack (MPV005). The release lines pack and publish; the default branch only when it released.
@@ -364,7 +363,7 @@ public class VersioningOnboardingTests
 
                 """);
 
-        var plan = await VersioningOnboarding.PlanAsync(tree, None, Sha);
+        var plan = await VersioningOnboarding.PlanAsync(tree, None);
 
         plan.Seeds.Should().BeEquivalentTo([
             new VersioningSeed("@mintplayer/ng-bootstrap", PackageKind.Npm, "22.4.1"),
@@ -411,7 +410,7 @@ public class VersioningOnboardingTests
                       path: dist
                   - name: Version the packages
                     id: versioning
-                    uses: MintPlayer/MintPlayer.Spark/apps/CodeCoverage/versioning-action@{{{Sha}}} # versioning-v1
+                    uses: MintPlayer/MintPlayer.Spark/apps/CodeCoverage/versioning-action@versioning-v1
             {{{Gate("      ")}}}
                   - name: Publish
                     if: steps.publishes.outputs.value == 'true'
@@ -428,7 +427,7 @@ public class VersioningOnboardingTests
                   - uses: actions/checkout@v5
                   - name: Version the packages
                     id: versioning
-                    uses: MintPlayer/MintPlayer.Spark/apps/CodeCoverage/versioning-action@{{{Sha}}} # versioning-v1
+                    uses: MintPlayer/MintPlayer.Spark/apps/CodeCoverage/versioning-action@versioning-v1
             {{{Gate("      ")}}}
                   - name: Publish snippets
                     if: steps.publishes.outputs.value == 'true'
@@ -470,7 +469,7 @@ public class VersioningOnboardingTests
 
                 """);
 
-        var plan = await VersioningOnboarding.PlanAsync(tree, None, Sha);
+        var plan = await VersioningOnboarding.PlanAsync(tree, None);
 
         plan.Notes.Should().BeEmpty();
         ByPath(plan)[".github/workflows/publish-master.yml"].Should().Contain($$$"""
@@ -482,7 +481,7 @@ public class VersioningOnboardingTests
 
                 - name: Version the packages
                   id: versioning
-                  uses: MintPlayer/MintPlayer.Spark/apps/CodeCoverage/versioning-action@{{{Sha}}} # versioning-v1
+                  uses: MintPlayer/MintPlayer.Spark/apps/CodeCoverage/versioning-action@versioning-v1
 
             {{{Gate("    ")}}}
 
@@ -536,7 +535,7 @@ public class VersioningOnboardingTests
 
                 """);
 
-        var plan = await VersioningOnboarding.PlanAsync(tree, None, Sha);
+        var plan = await VersioningOnboarding.PlanAsync(tree, None);
 
         ByPath(plan)[".github/workflows/pull-request.yml"].Should().Be("""
             on: pull_request
@@ -617,7 +616,7 @@ public class VersioningOnboardingTests
     private static Task<VersioningOnboardingPlan> AfterMergeAsync(InMemoryTree tree, VersioningOnboardingPlan plan)
     {
         foreach (var file in plan.Files) tree.Add(file.Path, file.Content!);
-        return VersioningOnboarding.PlanAsync(tree, (_, _) => Task.FromResult(true), Sha);
+        return VersioningOnboarding.PlanAsync(tree, (_, _) => Task.FromResult(true));
     }
 
     [Theory]
@@ -626,7 +625,7 @@ public class VersioningOnboardingTests
     {
         // Every rule checks before it edits, so "Set up versioning" can be pressed again on an onboarded repository.
         var tree = Shape(shape);
-        var plan = await VersioningOnboarding.PlanAsync(tree, None, Sha);
+        var plan = await VersioningOnboarding.PlanAsync(tree, None);
         plan.Files.Should().NotBeEmpty();
 
         var again = await AfterMergeAsync(tree, plan);
@@ -647,7 +646,7 @@ public class VersioningOnboardingTests
                 + "      - name: Version the packages\n        uses: MintPlayer/MintPlayer.Spark/apps/CodeCoverage/versioning-action@versioning-v1\n"
                 + "      - run: dotnet pack --no-build\n      - run: dotnet nuget push '*.nupkg' --source https://api.nuget.org/v3/index.json --skip-duplicate\n");
 
-        var plan = await VersioningOnboarding.PlanAsync(tree, new HashSet<string> { "MintPlayer.Tools" }, Sha);
+        var plan = await VersioningOnboarding.PlanAsync(tree, new HashSet<string> { "MintPlayer.Tools" });
 
         ByPath(plan).Keys.Should().Equal(".github/workflows/publish.yml", "Directory.Build.props");
         ByPath(plan)["Directory.Build.props"].Should().EndWith(
@@ -683,7 +682,7 @@ public class VersioningOnboardingTests
                 + "    <PackageId>MintPlayer.Tools</PackageId>\n    <Version>11.2.0</Version>\n  </PropertyGroup>\n</Project>\n")
             .Add("Directory.Build.props", "<Project>\n</Project>\n");
 
-        var files = ByPath(await VersioningOnboarding.PlanAsync(tree, None, Sha));
+        var files = ByPath(await VersioningOnboarding.PlanAsync(tree, None));
 
         files["src/Tools/Tools.csproj"].Should().Be("﻿<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>net11.0</TargetFramework>\n"
             + "    <PackageId>MintPlayer.Tools</PackageId>\n    <Version>0.0.0-PLACEHOLDER</Version>\n  </PropertyGroup>\n</Project>\n");
@@ -701,7 +700,7 @@ public class VersioningOnboardingTests
                 + "    <PackageId>Acme.Sdk</PackageId>\n    <Version>11.0.0</Version>\n  </PropertyGroup>\n</Project>\n")
             .Add("Sdks/Acme.Sdk/Sdk/Acme.props", sdkProps);
 
-        var plan = await VersioningOnboarding.PlanAsync(tree, None, Sha);
+        var plan = await VersioningOnboarding.PlanAsync(tree, None);
         var files = ByPath(plan);
 
         files.Should().NotContainKey("Sdks/Acme.Sdk/Sdk/Acme.props");
@@ -734,7 +733,7 @@ public class VersioningOnboardingTests
                 """)
             .Add("coverage.yml", "versioning:\n  mode: server\n");
 
-        var plan = await VersioningOnboarding.PlanAsync(tree, new HashSet<string> { "MintPlayer.Tools" }, Sha);
+        var plan = await VersioningOnboarding.PlanAsync(tree, new HashSet<string> { "MintPlayer.Tools" });
 
         plan.Files.Should().BeEmpty();
         plan.Seeds.Should().BeEmpty();
@@ -757,7 +756,7 @@ public class VersioningOnboardingTests
             .Add(".github/workflows/manual.yml", "on: workflow_dispatch\njobs:\n  pack:\n    runs-on: ubuntu-latest\n    steps:\n      - run: dotnet pack\n")
             .Add(".github/workflows/publish.yml", "on: push\njobs:\n  pack:\n    runs-on: ubuntu-latest\n    steps:\n      - run: dotnet pack -o nupkgs\n      - run: dotnet nuget push 'nupkgs/*.nupkg' --source github\n");
 
-        var plan = await VersioningOnboarding.PlanAsync(tree, None, null);
+        var plan = await VersioningOnboarding.PlanAsync(tree, None);
 
         plan.Seeds.Should().BeEmpty();
         plan.Notes.Should().HaveCount(3);
@@ -843,7 +842,7 @@ public class VersioningOnboardingTests
                 + "  pack:\n    needs: [build]\n    runs-on: ubuntu-latest\n    permissions:\n      contents: write\n      id-token: write\n"
                 + "    steps:\n      - run: dotnet pack\n      - run: dotnet test --no-build\n");
 
-        var plan = await VersioningOnboarding.PlanAsync(tree, None, null);
+        var plan = await VersioningOnboarding.PlanAsync(tree, None);
 
         plan.Notes.Should().HaveCount(2);
         plan.Notes[0].Should().Contain("job `pack` runs tests after it packs");
@@ -864,7 +863,7 @@ public class VersioningOnboardingTests
     [Fact]
     public async Task A_github_packages_restore_gets_a_nuget_config_mapping_the_package_to_nuget_org()
     {
-        var plan = await VersioningOnboarding.PlanAsync(GitHubPackagesRepository(Feed), None, Sha);
+        var plan = await VersioningOnboarding.PlanAsync(GitHubPackagesRepository(Feed), None);
 
         plan.Notes.Should().ContainSingle().Which.Should().StartWith("No push-triggered");
         var files = ByPath(plan);
@@ -906,7 +905,7 @@ public class VersioningOnboardingTests
 
             """);
 
-        var plan = await VersioningOnboarding.PlanAsync(tree, None, Sha);
+        var plan = await VersioningOnboarding.PlanAsync(tree, None);
 
         ByPath(plan)["NuGet.Config"].Should().Be("""
             <?xml version="1.0" encoding="utf-8"?>
@@ -981,7 +980,7 @@ public class VersioningOnboardingTests
             </configuration>
             """);
 
-        var plan = await VersioningOnboarding.PlanAsync(tree, None, Sha, owner: "MintPlayer");
+        var plan = await VersioningOnboarding.PlanAsync(tree, None,owner: "MintPlayer");
 
         ByPath(plan)["nuget.config"].Should().Be($"""
             <?xml version="1.0" encoding="utf-8"?>
@@ -1006,7 +1005,7 @@ public class VersioningOnboardingTests
     [Fact]
     public async Task A_source_url_from_an_expression_is_left_to_the_merger()
     {
-        var plan = await VersioningOnboarding.PlanAsync(GitHubPackagesRepository("https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json"), None, Sha);
+        var plan = await VersioningOnboarding.PlanAsync(GitHubPackagesRepository("https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json"), None);
 
         plan.Notes.Where(n => !n.StartsWith("No push-triggered", StringComparison.Ordinal)).Should().ContainSingle().Which.Should().Contain("sets setup-dotnet's `source-url` from an expression");
         ByPath(plan).Should().NotContainKey("nuget.config");
@@ -1018,7 +1017,7 @@ public class VersioningOnboardingTests
         var tree = new InMemoryTree()
             .Add("src/Tools/Tools.csproj", "<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <PackageId>MintPlayer.Tools</PackageId>\n    <Version>1.2.3</Version>\n  </PropertyGroup>\n</Project>\n");
 
-        var plan = await VersioningOnboarding.PlanAsync(tree, None, Sha, "1.4.0");
+        var plan = await VersioningOnboarding.PlanAsync(tree, None,"1.4.0");
 
         ByPath(plan)["Directory.Build.props"].Should().Contain("<PackageReference Include=\"MintPlayer.Versioning.MSBuild\" Version=\"1.4.0\" PrivateAssets=\"all\" />");
     }
