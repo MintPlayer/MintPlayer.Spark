@@ -137,6 +137,50 @@ public class LineNarrowingTests
         narrowing.Notes.Should().Equal(["`global.json` pins SDK `11.0.100`; the latest .NET 10 SDK is not known yet, so set it by hand."]);
     }
 
+    /// <summary>#651 D1: SpaServices #114 kept <c>&lt;LangVersion&gt;15&lt;/LangVersion&gt;</c> on release/dotnet-10.x, and the .NET 10
+    /// compiler refused it (CS1617, run 43382800307). C# 15 is .NET 11's, so the line takes C# 14.</summary>
+    [Fact]
+    public void Issue651_D1_a_language_version_above_the_line_takes_the_lines_csharp_version()
+    {
+        static string WithLang(string tfm, string lang) => $"""
+            <Project Sdk="Microsoft.NET.Sdk">
+              <PropertyGroup>
+                <TargetFrameworks>{tfm}</TargetFrameworks>
+                <LangVersion>{lang}</LangVersion>
+              </PropertyGroup>
+            </Project>
+            """;
+
+        static string Props(string lang) => $"""
+            <Project>
+              <PropertyGroup>
+                <LangVersion>{lang}</LangVersion>
+              </PropertyGroup>
+            </Project>
+            """;
+
+        var narrowing = LineNarrowing.Plan(10, new Dictionary<string, string>
+        {
+            [Csproj] = WithLang("net10.0;net11.0", "15"),
+            ["Directory.Build.props"] = Props("15.0"),
+            ["src/Latest/Latest.csproj"] = WithLang("net10.0", "latest"),
+            ["src/Old/Old.csproj"] = WithLang("net10.0", "13"),
+        }, latestSdk: "10.0.404", latestRuntime: "10.0.7");
+
+        narrowing.Files.Should().BeEquivalentTo([
+            new GitWriterFile(Csproj, WithLang("net10.0", "14")),
+            new GitWriterFile("Directory.Build.props", Props("14")),
+        ]);
+        narrowing.Changes.Should().Equal([
+            "`Directory.Build.props`: LangVersion `15.0` → `14`",
+            $"`{Csproj}`: TargetFrameworks `net10.0;net11.0` → `net10.0`",
+            $"`{Csproj}`: LangVersion `15` → `14`",
+        ]);
+        // A file whose only problem is the language version still needs the pull request.
+        LineNarrowing.TargetsAbove(10, Props("15")).Should().BeTrue();
+        LineNarrowing.TargetsAbove(10, Props("preview")).Should().BeFalse();
+    }
+
     [Fact]
     public void D15_the_body_lists_the_changes_and_the_conditionals_to_resolve()
     {

@@ -407,7 +407,8 @@ public partial class OnboardingService : IOnboardingService
     /// already has nothing above its major and is skipped. #649 D16: with <paramref name="sdkFromGlobalJson"/>, the same pull
     /// request switches the line's setup-dotnet steps to global.json (<see cref="GlobalJsonSdk"/>), on a line that needs no
     /// narrowing too. Read through the forge like the onboarding plan: the project files, global.json and the workflows, then
-    /// the C# sources under a project that targets higher, for its conditionals.
+    /// the C# sources under a project that targets higher, for its conditionals. #651 D3: never into the current line, which
+    /// takes only the App's backports (Line policy); the note says how it gets the conversion.
     /// </summary>
     private async Task<LineSteps> NarrowAsync(Repository repository, IForgeMergeQueue git, IForgeDependencyUpdates pulls, IEnumerable<string> cuts,
         string defaultBranch, bool sdkFromGlobalJson, CancellationToken cancellationToken)
@@ -423,10 +424,16 @@ public partial class OnboardingService : IOnboardingService
                 if (supported.Supported && !lines.Contains(supported.Branch, StringComparer.Ordinal))
                     lines.Add(supported.Branch);
 
+        // #651 D3: the current line of each ecosystem, judged as the Line policy check judges it, takes only the App's
+        // backports, so a pull request of its own here would be refused (SpaServices #113).
+        var current = pattern.CurrentLines([.. await git.ListBranchesAsync(repository, SupportedLines.BranchPrefix(pattern), cancellationToken), .. lines]);
+
         var steps = new LineSteps();
         foreach (var branch in lines)
         {
             if (!pattern.TryMatch(branch, out var line) || line is not { Ecosystem: CodeCoverage.Versioning.Releases.Ecosystems.Dotnet })
+                continue;
+            if (current.Contains(line) && !sdkFromGlobalJson)
                 continue;
             try
             {
@@ -438,6 +445,14 @@ public partial class OnboardingService : IOnboardingService
 
                 // D16: the conversion first, so the narrowing below moves only global.json for the steps that now read it.
                 var conversion = sdkFromGlobalJson ? GlobalJsonSdk.Plan(files) : null;
+                if (current.Contains(line))
+                {
+                    // The current line targets the default branch's major, so it never needs narrowing; the conversion it
+                    // would get arrives with the backport of the pull request that converted the default branch.
+                    if (conversion is { Files.Count: > 0 })
+                        steps.Done.Add($"{branch} is the current line and takes this by backport: comment `/backport {line}` on the pull request that changed `{defaultBranch}`");
+                    continue;
+                }
                 foreach (var file in conversion?.Files ?? [])
                     files[file.Path] = file.Content!;
 
