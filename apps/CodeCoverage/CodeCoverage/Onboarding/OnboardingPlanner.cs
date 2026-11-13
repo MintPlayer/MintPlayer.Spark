@@ -18,12 +18,6 @@ public sealed record OnboardingInputs
     /// <summary>The repository's branches, for the line renames (D2).</summary>
     public IReadOnlyList<string> Branches { get; init; } = [];
 
-    /// <summary>The commit the dependency action's tag resolves to; null keeps the tag in the workflows.</summary>
-    public string? DependencyActionSha { get; init; }
-
-    /// <summary>The commit the versioning action's tag resolves to; null keeps the tag in the step.</summary>
-    public string? VersioningActionSha { get; init; }
-
     public string? VersioningPackageVersion { get; init; }
     public string? Owner { get; init; }
 
@@ -133,7 +127,7 @@ public static partial class OnboardingPlanner
 
         if (features.Contains(EOnboardingFeature.Versioning))
         {
-            var versioning = await VersioningOnboarding.PlanAsync(overlay, inputs.IsTagged, inputs.VersioningActionSha, inputs.VersioningPackageVersion, inputs.Owner,
+            var versioning = await VersioningOnboarding.PlanAsync(overlay, inputs.IsTagged, inputs.VersioningPackageVersion, inputs.Owner,
                 cancellationToken);
             foreach (var file in versioning.Files)
                 overlay.Apply(file);
@@ -331,8 +325,12 @@ public static partial class OnboardingPlanner
                 break;
             }
         }
-        var plan = DependencyOnboarding.Plan([.. overlay.Entries.Keys], yml, dependabotPath, dependabotYml, inputs.DependencyActionSha, DependencyOnboarding.ReadTemplate,
-            addMergeQueue: false);
+        // Owner, 2026-11-13: re-onboarding moves an existing workflow's commit pin back to the moving tag.
+        var existing = new Dictionary<string, string?>(StringComparer.Ordinal);
+        foreach (var (path, _) in DependencyOnboarding.Templates([.. overlay.Entries.Keys]))
+            existing[path] = await overlay.ReadTextAsync(path, Limits.MaxManifestBytes, cancellationToken);
+        var plan = DependencyOnboarding.Plan([.. overlay.Entries.Keys], yml, dependabotPath, dependabotYml, DependencyOnboarding.ReadTemplate,
+            addMergeQueue: false, readExisting: path => existing.GetValueOrDefault(path));
         foreach (var file in plan.Files)
             overlay.Apply(file);
         return plan.Body;

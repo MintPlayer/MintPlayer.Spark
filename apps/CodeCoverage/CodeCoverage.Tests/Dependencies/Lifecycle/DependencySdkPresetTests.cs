@@ -10,7 +10,8 @@ public class DependencySdkPresetTests
     public void The_pinned_ref_is_read_from_the_apply_workflow()
     {
         var template = DependencyOnboarding.ReadTemplate("dependency-apply.yml");
-        var pinned = DependencyOnboarding.Pin(template, new string('a', 40));
+        // A repository not re-onboarded yet still pins a commit (D-L14, superseded 2026-11-13).
+        var pinned = template.Replace(DependencyOnboarding.ActionReference, $"{DependencyOnboarding.ActionPath}@{new string('a', 40)} # {DependencyOnboarding.ActionTag}", StringComparison.Ordinal);
 
         DependencySdkPreset.PinnedRef(template).Should().Be(DependencyOnboarding.ActionTag);
         DependencySdkPreset.PinnedRef(pinned).Should().Be(new string('a', 40));

@@ -740,7 +740,7 @@ public class DependencySagaTests : CoverageRavenTest
         var lookup = files.Should().ContainSingle("only the outdated workflow is replaced").Which;
         lookup.Path.Should().Be(".github/workflows/dependency-lookup.yml");
         DependencyWorkflowGuard.MissingInputs(lookup.Content, ["expected_sha", "run_id", "platforms"]).Should().BeEmpty();
-        lookup.Content.Should().Contain($"dependency-action@{ActionSha} # dependency-update-v1");
+        lookup.Content.Should().Contain("dependency-action@dependency-update-v1\n").And.NotContain(ActionSha, "the workflows call the moving tag (owner, 2026-11-13)");
         var pull = h.Updates.Created.Should().ContainSingle().Which;
         pull.Head.Should().Be(DependencyUpdateRun.OnboardingBranch);
         pull.Title.Should().Be(DependencyOnboarding.RefreshTitle);
@@ -780,7 +780,7 @@ public class DependencySagaTests : CoverageRavenTest
     }
 
     [Fact]
-    public async Task R16_onboarding_opens_a_pull_request_with_pinned_templates_and_drops_dependabot_version_updates()
+    public async Task R16_onboarding_opens_a_pull_request_with_the_templates_at_the_tag_and_drops_dependabot_version_updates()
     {
         var h = Onboardable(await HarnessAsync());
 
@@ -789,7 +789,7 @@ public class DependencySagaTests : CoverageRavenTest
         var files = h.Writer.Requests("files").Should().ContainSingle().Which.Files!;
         files.Select(f => f.Path).Should().BeEquivalentTo([".github/workflows/dependency-lookup.yml", ".github/workflows/dependency-apply.yml",
             ".github/workflows/nx-migrate.yml", "coverage.yml", ".github/dependabot.yml"]);
-        files.Single(f => f.Path.EndsWith("dependency-lookup.yml")).Content.Should().Contain($"dependency-action@{ActionSha} # dependency-update-v1");
+        files.Single(f => f.Path.EndsWith("dependency-lookup.yml")).Content.Should().Contain("dependency-action@dependency-update-v1\n").And.NotContain(ActionSha);
         files.Single(f => f.Path == "coverage.yml").Content.Should().Contain("mergeQueue:").And.Contain("# dependencies:");
         files.Single(f => f.Path == ".github/dependabot.yml").Delete.Should().BeTrue("every version-update entry is gone and nothing else remains");
         var pull = h.Updates.Created.Should().ContainSingle().Which;

@@ -68,8 +68,10 @@ A slot whose rebuilt tree equals the pushed one pushes nothing and starts no CI.
 3. **The onboarding pull request.** Right after the switch goes on, the bot opens `mintplayer/dependencies-onboarding`
    (a daily pass retries anything that did not go through, a syncing repository included). It adds:
    - `.github/workflows/dependency-lookup.yml` and `dependency-apply.yml`, thin callers of the GitHub Action
-     **`MintPlayer/MintPlayer.Spark/apps/CodeCoverage/dependency-action`**, pinned to a commit with the release line
-     kept as a comment (`…/dependency-action@<sha> # dependency-update-v1`). The bot dispatches the lookup on the
+     **`MintPlayer/MintPlayer.Spark/apps/CodeCoverage/dependency-action`** at its release tag
+     (`…/dependency-action@dependency-update-v1`). Every release of the action moves that tag, so a fix reaches your next
+     run without a pull request. A workflow from before 2026-11-13 pins a commit (`@<sha> # dependency-update-v1`):
+     onboarding again (*Functies instellen*) moves only that line back to the tag. The bot dispatches the lookup on the
      default branch (Renovate in lookup-only mode) and the apply on its plan (edit, pin and relock with scripts off);
    - `angular-migrate.yml` / `nx-migrate.yml` when the repository has `angular.json` / `nx.json`: they run the
      `ng update` / `nx migrate` migrations of a group you approved, and such a pull request never auto-merges;
@@ -243,7 +245,8 @@ Edited comments and comments by bots are ignored. The bot reacts 👍 or 👎.
 - **A release is very new.** It waits out the cooldown (the release time from the registry; for a record without one,
   the time the bot first saw it). The account's own releases (published by one of its repositories, matched to a release
   or push event of that repository) skip the cooldown and propagate to the account's consumers in graph order. So does
-  the bot's own action pin (`dependency-update-v1`), whichever account consumes it (§2). That pin moves in a group of
+  the bot's own action pin (`dependency-update-v1`) in a workflow still pinned to a commit, whichever account consumes it
+  (§2). That pin moves in a group of
   its own, so another `MintPlayer/MintPlayer.Spark` action in its cooldown never holds it back. In any other group, a
   member in its cooldown holds back the rest of the group; they are listed under *Available, not applied* with the member
   they wait for.
