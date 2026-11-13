@@ -51,7 +51,8 @@ Workaround available today (no code): an account rule or `coverage.yml` rule
 ## 4. Milestones (one PR)
 
 - **M0** ✅ Issue #653, branch, this PRD; SP1.
-**Status:** M0-M2 and M4 ✅; M3 (D3) dropped as superseded by D2. Gate green (see Log).
+**Status:** M0-M2 and M4 ✅; M3 (D3) dropped as superseded by D2. Gate green (see Log). Merged as PR #654 and
+deployed; follow-up in §4b.
 
 - **M1** D1: `DependencyBlockerSeen` gets `CurrentTokens` and `Version`; `RecordApplyResult` fills them from the lookup
   and the apply result's blocker; `Lifts` lifts on a changed current, or a current at or past `Version`. Red test first
@@ -69,6 +70,12 @@ Workaround available today (no code): an account rule or `coverage.yml` rule
 ## 4b. #655: the join planned a tier without the blocker (follow-up, 2026-11-13)
 
 Issue: [#655](https://github.com/MintPlayer/MintPlayer.Spark/issues/655). Branch: `fix/issue655-joined-group-tier`.
+PR [#656](https://github.com/MintPlayer/MintPlayer.Spark/pull/656).
+
+**Status (2026-11-13):** D5 and D6 built, tests green; the CI fix (Debug builds skip version tags, see Log) is in the
+same PR, which is queued. **After the deploy:** comment `refresh` (no slash) on SpaServices #111. Expected: both
+packages under "Awaiting approval" at 13.1.0 with `approve MintPlayer.SourceGenerators.Attributes`. Approving it
+moves both together. Open: SP2.
 
 | # | Finding | Evidence |
 |---|---|---|
