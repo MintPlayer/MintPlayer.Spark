@@ -245,7 +245,12 @@ Edited comments and comments by bots are ignored. The bot reacts 👍 or 👎.
 - **A vulnerability is announced.** A Dependabot alert starts an out-of-slot security run with only the fix and the
   groups that may auto-merge anyway. A major fix still waits for `approve`.
 - **The resolver refuses a group** (e.g. Angular N+1 before the Nx plugin supports it). The group is reset and held,
-  naming the blockers; the hold lifts when a newer version of a blocker appears, and after four slots in any case.
+  naming the blockers; the hold lifts when a newer version of a blocker appears, when the blocker's current version
+  moves (for example after you approved its own group), and after four slots in any case. When the blocker has an
+  update of its own in the same run, the held group **joins the blocker's group** instead: the resolver showed they must
+  move together (e.g. `MintPlayer.SourceGenerators` 13.1.0 needs `MintPlayer.SourceGenerators.Attributes` 13.1.0), so
+  one group, one `approve <blocker's group>` and one apply move both. They stay together until the blocker's version
+  moves (#653).
 - **CI is red.** The failing checks are re-run once (flaky tests). Then suspects are left out one by one (majors first,
   then versions red elsewhere in the fleet), one CI run each, until the culprit is found; it is held, recorded as red for
   the whole account, and the rest is rebuilt without it. The comment says whether a *build* or a *test* check failed,

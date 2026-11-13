@@ -45,7 +45,7 @@ public static class DependencyHolds
                 Reason = blocker
                     ? $"the resolver refused it: blocked by {string.Join(", ", attributed)} (R2)"
                     : $"the apply run {(group.Status == EApplyGroupStatus.Unresolvable ? "could not resolve" : "failed on")} it{(group.Message is { Length: > 0 } m ? $": {Shorten(m)}" : string.Empty)} (R2)",
-                Blockers = blocker ? [.. attributed.Select(dep => new DependencyBlockerSeen { DepName = dep, SeenVersions = Seen(lookup, dep) })] : [],
+                Blockers = blocker ? [.. attributed.Select(dep => new DependencyBlockerSeen { DepName = dep, SeenVersions = Seen(lookup, dep), CurrentTokens = Current(lookup, dep) })] : [],
                 Fingerprint = blocker ? null : fingerprint,
                 CreatedAtUtc = now.UtcDateTime,
                 PlanId = plan.PlanId,
@@ -141,11 +141,13 @@ public static class DependencyHolds
         return approval;
     }
 
-    /// <summary>Whether <paramref name="hold"/> lifts against this lookup (R2, Q11).</summary>
+    /// <summary>Whether <paramref name="hold"/> lifts against this lookup (R2, Q11). #653 D1: a blocker hold also lifts when
+    /// the blocker's current version moved, even to a version the lookup had already offered (an approval of its own group).</summary>
     public static bool Lifts(DependencyHold hold, LookupDocument lookup, string fingerprint) => hold.Kind switch
     {
         EDependencyHoldKind.Blocker => hold.SlotsHeld >= RetrySlots
-            || hold.Blockers.Any(b => Seen(lookup, b.DepName).Any(v => !b.SeenVersions.Contains(v, StringComparer.Ordinal))),
+            || hold.Blockers.Any(b => Seen(lookup, b.DepName).Any(v => !b.SeenVersions.Contains(v, StringComparer.Ordinal))
+                || (b.CurrentTokens.Count > 0 && !Current(lookup, b.DepName).SequenceEqual(b.CurrentTokens, StringComparer.Ordinal))),
         EDependencyHoldKind.Unattributed => hold.SlotsHeld >= RetrySlots || hold.Fingerprint != fingerprint,
         EDependencyHoldKind.Human => hold.DepNames.SelectMany(d => Seen(lookup, d)).Any(v => !hold.SeenVersions.Contains(v, StringComparer.Ordinal)),
         _ => false,
@@ -156,6 +158,12 @@ public static class DependencyHolds
         => [.. lookup.Records.Where(r => string.Equals(r.DepName, depName, StringComparison.Ordinal))
             .SelectMany(r => new[] { r.CurrentValue, r.CurrentVersion, r.LockedVersion }.Concat(r.Candidates.Select(c => (string?)DependencyPolicyEngine.Token(c))))
             .Concat(lookup.Platforms.Where(p => $"platform:{p.Sdk}" == depName).SelectMany(p => p.Current.Channels.Concat(p.Candidates.Select(c => c.Channel))).Select(c => (string?)c))
+            .OfType<string>().Where(v => v.Length > 0).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)];
+
+    /// <summary>#653 D1: a dependency's current value, version and locked version across its package files, sorted.</summary>
+    public static List<string> Current(LookupDocument lookup, string depName)
+        => [.. lookup.Records.Where(r => string.Equals(r.DepName, depName, StringComparison.Ordinal))
+            .SelectMany(r => new[] { r.CurrentValue, r.CurrentVersion, r.LockedVersion })
             .OfType<string>().Where(v => v.Length > 0).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)];
 
     /// <summary>R2's "any change": a hash over every record's identity, current value and candidate tokens, and every
@@ -176,7 +184,7 @@ public static class DependencyHolds
         Group = hold.Group,
         DepNames = [.. hold.DepNames],
         Reason = hold.Reason,
-        Blockers = [.. hold.Blockers.Select(b => new DependencyBlockerSeen { DepName = b.DepName, SeenVersions = [.. b.SeenVersions] })],
+        Blockers = [.. hold.Blockers.Select(b => new DependencyBlockerSeen { DepName = b.DepName, SeenVersions = [.. b.SeenVersions], CurrentTokens = [.. b.CurrentTokens] })],
         Fingerprint = hold.Fingerprint,
         SeenVersions = [.. hold.SeenVersions],
         HeldValue = hold.HeldValue,

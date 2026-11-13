@@ -28,17 +28,17 @@ Workaround available today (no code): an account rule or `coverage.yml` rule
 |---|---|---|---|
 | SP1 | What exactly does NuGet report for F3, and what does our parser make of it? | Scratch clone at `0f31c1e`, only `MintPlayer.SourceGenerators` → 13.1.0 in `MintPlayer.AspNetCore.SpaServices.Xsrf.csproj`, `dotnet restore`; read `obj/project.assets.json` `logs[]`. | **Done (2026-11-13).** One log: `code NU1605`, `level Error`, `libraryId MintPlayer.SourceGenerators.Attributes`, message "Warning As Error: Detected package downgrade: MintPlayer.SourceGenerators.Attributes from 13.1.0 to 10.20.1 …". `parseNuGetAssets` gives `depName` = Attributes, `version` = **13.1.0** (`nugetVersionFromMessage`, the "from X" token = the version the planned package needs). So the blocker already carries the version that would unblock it; `DependencyBlockerSeen` drops it. |
 | SP2 | Do any other repositories in the fleet hold a group on a blocker that is itself a planned/awaiting dependency? | Read production `DependencyUpdateStates` (holds with `Kind = Blocker`) against each repository's last report. Read-only; needs the owner's go-ahead (production read). | Open. Sizes the value of D2 (the merge), not needed for D1. |
-| SP3 | Production holds were written without the new field (D1). What happens to them at deploy? | Read `Lifts` after the change: an empty "seen current" list compared to a non-empty one counts as a change. | Expected: each standing blocker hold lifts **once** after the deploy, and its group is retried. Harmless: a still-real block is held again by the next apply (R2). To confirm in the red-green test M1. |
-| SP4 | Does a merged group (D2) keep a standing approval valid? | Read `Approved`/`Outcome` (gap E): an approval binds the group name, its dep set and target majors. | Expected: a merge changes the dep set, so an approval of the blocker's group expires and is asked again with both packages listed. Acceptable (the change is what needs approving). Confirm in M3's test. |
+| SP3 | Production holds were written without the new field (D1). What happens to them at deploy? | Read `Lifts` after the change. | **Decided otherwise:** an empty `CurrentTokens` means "not recorded", so the hold does **not** lift for it. SpaServices' standing hold then joins Attributes' group on the first run after the deploy (D2), with no wasted apply. Test `Issue653_D2_a_hold_written_before_653_…`. |
+| SP4 | Does a merged group (D2) keep a standing approval valid? | Read `Approved`/`Outcome` (gap E): an approval binds the group name, its dep set and target majors. | **Answered:** the merged group keeps the blocker's name, so the `approve` comment shown is the blocker's group's; the approval binds both packages and plans both (`Issue653_D2_a_held_group_joins_…`). An approval given to the blocker's group **before** the join expires (its dep set changed) and is asked again with both listed, which is the change that needs approving. |
 
 ## 3. Decisions
 
 | # | Decision | Why / evidence | Status |
 |---|---|---|---|
-| D1 | A blocker hold also lifts when its blocker's **current** version changes, or (when the resolver gave one) reaches the version the blocker reported. Record per blocker: the current tokens at hold time and the reported version. | F5; SP1 shows the version is available. | Proposed |
-| D2 | When a blocker hold's blocker is a dependency **with its own group in the same evaluation**, the held group's members join the blocker's group (learned grouping), and the hold on the old group is dropped. The merged group follows the normal rules (here: a major → awaiting `approve MintPlayer.SourceGenerators.Attributes`, which then covers both). | F1-F3: the resolver proved the two must move together. Without D2, D1 still needs a human to approve the blocker first, then a second run for the held group. | **Owner decision (Q1)** |
-| D3 | The Held row names the unblocking step when the blocker waits for an approval: "…; waits for `approve <group>`". | F6. Cheap, and covers the cases D2 does not merge. | Proposed |
-| D4 | No change to the dependency-action (TypeScript) parser: it already reports the right package and version (SP1). | SP1 | Proposed |
+| D1 | A blocker hold also lifts when its blocker's **current** version changes (current value, version and locked version across its package files, recorded per blocker as `CurrentTokens` when the hold is taken). The reported version is not stored: a moved current covers it. A hold written before #653 has no `CurrentTokens` and lifts only as before (no lift at deploy; refines SP3). | F5; test `Issue653_D1_…` and `…_a_hold_written_before_653_…` | ✅ Built |
+| D2 | When a blocker hold's blocker has **its own group in the same evaluation**, the held group's members join the blocker's group (`DependencyPolicyEngine.JoinBlockedGroups`). The merged group keeps the **blocker's** group name and follows the normal rules (here: a major → `approve MintPlayer.SourceGenerators.Attributes` covers both). The hold **stays** in the state, because it is what keeps the two together, and its retry clock is reset on every join so the group never splits after 4 slots. It lifts by D1 once the merged group is applied (the blocker's current moves). | F1-F3; owner Q1 = A (2026-11-13: "A - Include D2"). Tests `Issue653_D2_…` (three). | ✅ Built |
+| D3 | ~~The Held row names the unblocking step when the blocker waits for an approval.~~ **Dropped:** with D2, a blocker that has an update of its own always takes the held group in, so no Held row can point at an awaiting blocker. A blocker with no update keeps today's text, which is right ("held until a newer version of it appears"). | D2 | Superseded by D2 |
+| D4 | No change to the dependency-action (TypeScript) parser: it already reports the right package and version (SP1). | SP1 | ✅ |
 
 ### Q1 (owner): learned grouping (D2), or only lift + hint (D1 + D3)?
 
@@ -51,6 +51,8 @@ Workaround available today (no code): an account rule or `coverage.yml` rule
 ## 4. Milestones (one PR)
 
 - **M0** ✅ Issue #653, branch, this PRD; SP1.
+**Status:** M0-M2 and M4 ✅; M3 (D3) dropped as superseded by D2. Gate green (see Log).
+
 - **M1** D1: `DependencyBlockerSeen` gets `CurrentTokens` and `Version`; `RecordApplyResult` fills them from the lookup
   and the apply result's blocker; `Lifts` lifts on a changed current, or a current at or past `Version`. Red test first
   (`GroupHoldTests`): the SpaServices shape (hold on SourceGenerators, Attributes current moves 10.20.1 → 13.1.0, which
@@ -67,3 +69,6 @@ Workaround available today (no code): an account rule or `coverage.yml` rule
 ## 5. Log
 
 - 2026-11-13 — D4 diagnosed (F1-F6), issue #653 filed, branch created, SP1 run (NU1605 capture above).
+- 2026-11-13 — Owner: Q1 = A ("A - Include D2 - Go ahead"). `BlockerHoldTests` (4 tests) written first; **red** on the
+  original code: 4/4 failed (source changes set aside with `git diff` / `git checkout`, then reapplied). Green with D1 +
+  D2: `CodeCoverage.Tests.Dependencies` namespace 534/534 passed.

@@ -67,6 +67,7 @@ public static class DependencyPolicyEngine
             }
             members.Add(record);
         }
+        context.JoinBlockedGroups(groups, order);
 
         foreach (var group in order)
             context.EvaluateGroup(group, groups[group]);
@@ -227,6 +228,36 @@ public static class DependencyPolicyEngine
             if (input.IsScheduledSlot)
                 next.Slots++;
             next.LastEvaluatedAtUtc = now.UtcDateTime;
+        }
+
+        /// <summary>
+        /// #653 D2: a group held on a blocker that has its own group in this run joins that group. The resolver showed the
+        /// two must move together (SpaServices: <c>MintPlayer.SourceGenerators</c> 13.1.0 needs
+        /// <c>MintPlayer.SourceGenerators.Attributes</c> 13.1.0), so they are planned, approved and applied as one. The hold
+        /// stays, and is what keeps them together, until the blocker's current version moves (D1); its retry clock is reset
+        /// so the group does not split again after <see cref="DependencyHolds.RetrySlots"/> slots.
+        /// </summary>
+        public void JoinBlockedGroups(Dictionary<string, List<LookupRecord>> groups, List<string> order)
+        {
+            var joined = true;
+            while (joined)
+            {
+                joined = false;
+                foreach (var hold in next.Holds.Where(h => h.Kind == EDependencyHoldKind.Blocker && groups.ContainsKey(h.Group)))
+                {
+                    var target = hold.Blockers
+                        .Select(b => order.FirstOrDefault(g => g != hold.Group && groups[g].Any(r => string.Equals(r.DepName, b.DepName, StringComparison.Ordinal))))
+                        .FirstOrDefault(g => g is not null);
+                    if (target is null)
+                        continue;
+                    groups[target].AddRange(groups[hold.Group]);
+                    groups.Remove(hold.Group);
+                    order.Remove(hold.Group);
+                    hold.SlotsHeld = 0;
+                    joined = true;
+                    break;
+                }
+            }
         }
 
         public void RecordFirstSeen()
