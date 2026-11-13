@@ -195,8 +195,9 @@ retired in favour of migrations (Q2).
 - **M4b** ✅ Capability gate (D8): `# capabilities: sdk-preset` in `action.yml`, `DependencySdkPreset`, `PresetSdk` on
   the work-ref job.
 - **M5** ✅ Docs: `docs/code-coverage/dependency-updates.md` (what the plan commit holds).
-- **Gate:** the affected test classes once at the end, then the PR. After the deploy, the next run on SpaServices #111
-  installs 11.0.100 and applies `platform:dotnet 11.0`.
+- **Gate** ✅ The affected test classes once at the end (log below), then the PR. After the merge and deploy, the
+  `dependency-update-v1` tag moves and SpaServices gets a pin update for the action. Once that pin is merged, the next
+  run installs 11.0.100 and applies `platform:dotnet 11.0` on #111 (D8).
 - **Later (D7):** the setup-migration framework (§3c) with its first real migration.
 
 ## 7. Log
@@ -212,3 +213,7 @@ retired in favour of migrations (Q2).
 - 2026-11-13: Found before committing: repositories pin the action by SHA, and the pinned (pre-#658) action refuses a
   plan commit with a second path, which would have failed every apply with a .NET platform group. Added D8, the
   capability gate.
+- 2026-11-13: Gate: GitWriter.Tests 57/57 (with the `PresetSdk` flag), CodeCoverage.Tests 122/122
+  (`DependencyLifecycleRulesTests`, `LineNarrowingTests`, `OnboardingServiceTests`, `OnboardingPlannerTests`,
+  `DependencySagaTests`, `DependencyOnboardingTests`, `DependencySdkPresetTests`, `DependencyPreviewToReleaseEndToEndTests`),
+  action 23/23. Committed as `6b5a78066`; PR opened.
