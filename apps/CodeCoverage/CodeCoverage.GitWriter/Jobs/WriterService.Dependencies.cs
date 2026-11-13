@@ -30,7 +30,7 @@ public sealed partial class WriterService
     private const string RollingTracking = "refs/mq/rolling";
 
     /// <summary>R14: the work ref = <c>expected_sha</c> + the plan commit, or + the validated apply patch (a migrate run's base).</summary>
-    public Task<DependencyJobResponse> DependencyWorkRefAsync(DependencyJob job, DependencyCommit commit, string? planJson, DependencyPatchInput? staged, string? expectedWorkSha)
+    public Task<DependencyJobResponse> DependencyWorkRefAsync(DependencyJob job, DependencyCommit commit, string? planJson, DependencyPatchInput? staged, string? expectedWorkSha, bool presetSdk = false)
         => jobs.RunAsync("dependencies-work-ref", job.Repo, async context =>
         {
             DependencyJobResponse Answer(string outcome, string? reason = null, string? sha = null, IReadOnlyList<string>? paths = null, string? detail = null)
@@ -41,7 +41,11 @@ public sealed partial class WriterService
             string tree;
             if (planJson is not null)
             {
-                tree = await WriteFilesAsync(context, job, baseTree, [(DependencyFiles.PlanPath, planJson)]);
+                List<(string, string?)> files = [(DependencyFiles.PlanPath, planJson)];
+                // #658: setup-dotnet installs the SDK the dispatched commit's global.json names, so it names the planned one.
+                if (presetSdk && await GlobalJsonPresetAsync(context, job, planJson) is { } preset)
+                    files.Add((GlobalJsonPreset.Path, preset));
+                tree = await WriteFilesAsync(context, job, baseTree, files);
             }
             else
             {
@@ -310,6 +314,20 @@ public sealed partial class WriterService
     }
 
     /// <summary><paramref name="tree"/> with each file written (text) or removed (null content).</summary>
+    /// <summary>#658: the root <c>global.json</c> with the plan's SDK (<see cref="GlobalJsonPreset"/>), or null to leave it. A file
+    /// that would not survive the text round trip byte for byte (a BOM, invalid UTF-8) is left alone.</summary>
+    private static async Task<string?> GlobalJsonPresetAsync(JobContext context, DependencyJob job, string planJson)
+    {
+        var objectName = $"{job.ExpectedSha}:{GlobalJsonPreset.Path}";
+        var size = await context.GitAsync(["cat-file", "-s", objectName], job.Credential);
+        if (!size.Succeeded || !long.TryParse(size.StandardOutput.Trim(), out var bytes) || bytes > CodeCoverage.Git.MergeQueue.Resolution.ResolutionLimits.MaxParsedBytes)
+            return null;
+        var text = (await context.RequireAsync(["cat-file", "blob", objectName], job.Credential)).StandardOutput;
+        if (text.StartsWith('﻿') || Encoding.UTF8.GetByteCount(text) != bytes)
+            return null;
+        return GlobalJsonPreset.Preset(text, planJson);
+    }
+
     private static async Task<string> WriteFilesAsync(JobContext context, DependencyJob job, string tree, IReadOnlyList<(string Path, string? Content)> files)
     {
         var index = Path.Combine(context.Scratch, $"files-{Guid.NewGuid():N}.index");

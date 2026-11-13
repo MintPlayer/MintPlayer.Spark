@@ -23,7 +23,11 @@ skipped, and a report with uploads missing is a hold of its own.
    Renovate in lookup-only mode (pinned by digest, read-only token, no push) and uploads `lookup.json`: every dependency,
    its current value and the versions available.
 2. **Plan.** The bot applies your policy (thresholds, holds, cooldown, account rules, fleet holds, approvals) and commits
-   the plan as one file, `.mintplayer/dependency-plan.json`, on the bot-only ref `mintplayer/dependencies-work`.
+   the plan as one file, `.mintplayer/dependency-plan.json`, on the bot-only ref `mintplayer/dependencies-work`. When
+   the plan moves the .NET SDK, the same commit also sets the root `global.json`'s `sdk.version` to the new SDK, so the
+   apply workflow's `setup-dotnet` installs it. The pin the workflow uses must be from #658 or later; with an older pin
+   the commit holds the plan only. The patch carries that move only when the platform group is applied
+   (`docs/setup_migrations_PRD.md` D1-D8).
 3. **Apply.** It dispatches `dependency-apply.yml` on that ref. The workflow edits the manifests, pins and relocks with
    scripts off, never builds, and uploads `dependency.patch` and `result.json`. A group the resolver refuses is reset and
    held; the others still ship.

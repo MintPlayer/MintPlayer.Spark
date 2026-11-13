@@ -1,4 +1,5 @@
 using System.Text.Json;
+using CodeCoverage.Dependencies.Lifecycle;
 using CodeCoverage.Dependencies.Policy;
 using CodeCoverage.Entities;
 using CodeCoverage.Git.Dependencies;
@@ -62,11 +63,18 @@ public class DependencyPreviewToReleaseEndToEndTests : SparkTestDriver
         Ecosystem = "nuget", Manager = "nuget", Datasource = "nuget", PackageFile = "src/Web/Web.csproj", LockFiles = [],
     };
 
-    [Fact]
-    public async Task The_release_of_the_rc_channel_is_planned_as_a_patch_with_its_companions_riding()
+    /// <param name="declared">#658: the action the apply workflow runs (the template's tag here) declares <c>sdk-preset</c>, so the
+    /// plan commit also moves global.json to 11.0.100 and setup-dotnet installs it (SpaServices #111). Without it, an action
+    /// from before #658 would refuse that plan commit, so the bot asks for the plan file only.</param>
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task The_release_of_the_rc_channel_is_planned_as_a_patch_with_its_companions_riding(bool declared)
     {
         var harness = new DependencyHarness(Store);
         harness.SetYml(DependencyHarness.Yml);
+        harness.Updates.Files[$"{DependencyOnboarding.ActionRepository}@{DependencyOnboarding.ActionTag}:{DependencySdkPreset.ActionYmlPath}"] =
+            declared ? "# capabilities: sdk-preset\nname: 'MintPlayer Dependency Update'\n" : "name: 'MintPlayer Dependency Update'\n";
         await harness.SeedAsync();
         await harness.StoreAsync(Released, Released.Id!);
 
@@ -84,7 +92,9 @@ public class DependencyPreviewToReleaseEndToEndTests : SparkTestDriver
         dispatched.Inputs["platforms"].Should().Be(table);
         (row.GetProperty("latestSdk").GetString(), row.GetProperty("preview").GetBoolean()).Should().Be(("11.0.100", false));
 
-        var plan = DependencyContract.Deserialize<DependencyPlan>(harness.Writer.Requests("work-ref").Should().ContainSingle().Which.PlanJson!)!;
+        var planCommit = harness.Writer.Requests("work-ref").Should().ContainSingle().Which;
+        planCommit.PresetSdk.Should().Be(declared);
+        var plan = DependencyContract.Deserialize<DependencyPlan>(planCommit.PlanJson!)!;
         var group = plan.Groups.Should().ContainSingle().Which;
         group.Group.Should().Be("platform:dotnet 11.0");
         group.Platform!.FromChannel.Should().Be("11.0");

@@ -150,8 +150,11 @@ public static class DependencyOnboarding
         string? actionSha, Func<string, string> readTemplate, bool addMergeQueue = false, bool githubMergeQueue = false)
     {
         var files = new List<GitWriterFile>();
+        // #658 F4: a workflow the repository already has is its owner's; the workflow-outdated pull request updates it, on its own.
+        var existing = treePaths.ToHashSet(StringComparer.Ordinal);
         foreach (var (path, resource) in Templates(treePaths))
-            files.Add(new GitWriterFile(path, Pin(readTemplate(resource), actionSha)));
+            if (!existing.Contains(path))
+                files.Add(new GitWriterFile(path, Pin(readTemplate(resource), actionSha)));
 
         var yml = coverageYml ?? string.Empty;
         var text = yml;

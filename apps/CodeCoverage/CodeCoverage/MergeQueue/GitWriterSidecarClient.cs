@@ -432,6 +432,9 @@ public sealed record GitWriterDependencyRequest(string Provider, string RepoId, 
     /// <summary>Work ref: the plan file's content for the plan commit (R14).</summary>
     public string? PlanJson { get; init; }
 
+    /// <summary>Work ref, #658: the plan commit also moves the root global.json to the plan's SDK (the pinned action reads it).</summary>
+    public bool PresetSdk { get; init; }
+
     public string? ExpectedWorkSha { get; init; }
 
     public IReadOnlyList<GitWriterMigratePatch>? Migrations { get; init; }
