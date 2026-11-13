@@ -243,7 +243,10 @@ Edited comments and comments by bots are ignored. The bot reacts 👍 or 👎.
 - **A release is very new.** It waits out the cooldown (the release time from the registry; for a record without one,
   the time the bot first saw it). The account's own releases (published by one of its repositories, matched to a release
   or push event of that repository) skip the cooldown and propagate to the account's consumers in graph order. So does
-  the bot's own action pin (`dependency-update-v1`), whichever account consumes it (§2).
+  the bot's own action pin (`dependency-update-v1`), whichever account consumes it (§2). That pin moves in a group of
+  its own, so another `MintPlayer/MintPlayer.Spark` action in its cooldown never holds it back. In any other group, a
+  member in its cooldown holds back the rest of the group; they are listed under *Available, not applied* with the member
+  they wait for.
 - **The onboarding started the run.** Onboarding an already-set-up repository runs at once; that run, like `refresh`,
   never auto-merges. The next scheduled slot (or *Run the scheduled slot now* on the Repository page) may.
 - **A vulnerability is announced.** A Dependabot alert starts an out-of-slot security run with only the fix and the

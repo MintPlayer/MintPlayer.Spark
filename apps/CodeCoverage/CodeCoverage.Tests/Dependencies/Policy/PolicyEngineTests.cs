@@ -95,6 +95,50 @@ public class PolicyEngineTests
         outcome.Available.Should().ContainSingle().Which.DepName.Should().Be("acme/some-action");
     }
 
+    /// <summary>A pin as SpaServices' lookup 204431316-98-1 reported it (2026-11-13): a github-digest update of the tag, with
+    /// no version and no releaseTimestamp.</summary>
+    private static LookupRecord DigestPin(string tag, string workflow, string action, string currentDigest, string digest) => new()
+    {
+        Ecosystem = "github-actions", Manager = "github-actions", Datasource = "github-digest", PackageFile = workflow, LockFiles = [],
+        DepName = "MintPlayer/MintPlayer.Spark", PackageName = "MintPlayer/MintPlayer.Spark", DepType = "action",
+        CurrentValue = tag, CurrentVersion = tag, CurrentDigest = currentDigest,
+        ReplaceString = $"MintPlayer/MintPlayer.Spark/apps/CodeCoverage/{action}@{currentDigest} # {tag}",
+        Candidates =
+        [
+            new LookupCandidate
+            {
+                Value = tag, UpdateType = EUpdateType.Digest, Digest = digest,
+                BranchName = "renovate/mintplayer-mintplayer.spark-digest", Missing = ["version", "releaseTimestamp"],
+            },
+        ],
+    };
+
+    /// <summary>
+    /// SpaServices #111 (2026-11-13): the bot's action pin (469e002, #658) shares its dependency name with the versioning
+    /// action's pin, so both were one group. The versioning pin was in its cooldown, so the group waited, and the bot's
+    /// runtime, which never cools down (P2), was held back with it, without a line in the pull request. The bot's runtime
+    /// is a group of its own.
+    /// </summary>
+    [Fact]
+    public void The_bots_own_action_pin_is_not_held_back_by_another_action_of_the_same_repository()
+    {
+        var outcome = Evaluate(Lookup(
+            DigestPin("versioning-v1", ".github/workflows/build-master.yml", "versioning-action",
+                "a0f9e20f3d7f91814d00c598c64b4a39cd1f1c45", "fb5d5bf951880c3732168b84b83b8725a53591a7"),
+            DigestPin("dependency-update-v1", ".github/workflows/dependency-apply.yml", "dependency-action",
+                "dce3c6725470c8c7cc4129efe86c9e9138c47354", "469e0022f14bef5071b1465731257b8602558628"),
+            DigestPin("dependency-update-v1", ".github/workflows/dependency-lookup.yml", "dependency-action",
+                "dce3c6725470c8c7cc4129efe86c9e9138c47354", "469e0022f14bef5071b1465731257b8602558628")));
+
+        var group = outcome.Groups.Should().ContainSingle().Which;
+        group.Items.Select(i => i.Record.PackageFile).Should()
+            .Equal(".github/workflows/dependency-apply.yml", ".github/workflows/dependency-lookup.yml");
+        group.Items.Select(i => i.Candidate.Digest).Distinct().Should().Equal("469e0022f14bef5071b1465731257b8602558628");
+        var cooling = outcome.Available.Should().ContainSingle().Which;
+        (cooling.Current, cooling.Target, cooling.Reason).Should()
+            .Be(("versioning-v1", "fb5d5bf951880c3732168b84b83b8725a53591a7", EDependencyReportReason.Cooldown));
+    }
+
     [Fact]
     public void Without_a_releaseTimestamp_the_cooldown_counts_from_the_first_time_the_bot_saw_it()
     {
@@ -137,6 +181,22 @@ public class PolicyEngineTests
 
         outcome.Groups.Should().BeEmpty("D-C1: related packages always move together");
         outcome.Available.Should().ContainSingle(e => e.DepName == "nx" && e.Group == "nx monorepo");
+    }
+
+    /// <summary>SpaServices #111 (2026-11-13): a member a cooling one holds back was left out of every list of the pull
+    /// request. It is listed as available, waiting for its group, until the cooling member's release is old enough.</summary>
+    [Fact]
+    public void A_member_held_back_by_its_groups_cooldown_is_listed_with_the_member_it_waits_for()
+    {
+        var released = Now.AddHours(-1);
+        var outcome = Evaluate(Lookup(
+            Record("@nx/js", "22.7.12", Candidate(EUpdateType.Patch, "22.7.13", group: "nx monorepo")),
+            Record("nx", "22.7.12", Candidate(EUpdateType.Patch, "22.7.13", released.ToString("O"), group: "nx monorepo"))));
+
+        var waiting = outcome.Available.Should().ContainSingle(e => e.DepName == "@nx/js").Which;
+        (waiting.Group, waiting.Target, waiting.Reason, waiting.Until).Should()
+            .Be(("nx monorepo", "22.7.13", EDependencyReportReason.Cooldown, released.AddDays(3)));
+        waiting.Detail.Should().Contain("nx");
     }
 
     [Fact]
