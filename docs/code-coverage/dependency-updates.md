@@ -285,6 +285,12 @@ Edited comments and comments by bots are ignored. The bot reacts 👍 or 👎.
 - **`packageManager` moves** (`"packageManager": "npm@10.9.2"`). Only the field changes: no package manager runs and no
   lockfile changes, because none records it. A value with an integrity hash (`pnpm@9.1.0+sha512.…`) is not updated:
   the bot cannot compute the new hash.
+- **The repository has no `global.json`.** The apply workflow's `setup-dotnet` step reads `global.json`, so without one
+  it is skipped and the runner's own SDK remains. When the plan has .NET work and no installed SDK has the major the
+  repository needs (its highest `TargetFramework`, or the SDK the plan's platform group moves to), the apply installs that
+  SDK itself with Microsoft's `dotnet-install` script, the latest of the channel or the platform group's exact version,
+  and runs `dotnet` from there. A repository is never asked to add a `global.json` for this. If the install fails, the
+  groups fail with the SDK's own error, as before.
 - **A platform SDK moves** (`net10.0` → `net11.0`, Node 22 → 24). Every location moves together (TFM, `global.json`,
   Dockerfile `FROM`, `setup-*`, companions); a computed TFM is reported, never guessed. Which channel is offered is the
   SDK's `track` (§4). A platform major never auto-merges.

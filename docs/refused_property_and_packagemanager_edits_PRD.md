@@ -72,7 +72,9 @@ The records, from the real lookup of run 204431316-104-1 (GitHub run 43467453083
 And the files on SpaServices master:
 
 - csproj line 82: `<PackageReference Include="MintPlayer.FolderHasher.Targets" Version="$(FolderHasherTargetsVersion)" … />`;
-  the value lives in `Directory.Build.props:6`: `<FolderHasherTargetsVersion>11.0.0-rc.1</FolderHasherTargetsVersion>`.
+  the value lives in the same csproj, line 6: `<FolderHasherTargetsVersion>11.0.0-rc.1</FolderHasherTargetsVersion>`.
+  (Corrected after merge: this PRD first said `Directory.Build.props:6`, an investigator's misreading. The diff of
+  SpaServices #126, made by this PR's code, edits the csproj's line 6. D1 covers both shapes, so the code was right.)
 - `Demo/Xsrf/ClientApp/package.json:24`: `"packageManager": "npm@10.9.2"`.
 
 So the lookup is right both times; the **apply edit** looks for the wrong shape:
@@ -114,7 +116,7 @@ So the lookup is right both times; the **apply edit** looks for the wrong shape:
 ## 4. Milestones (one PR)
 
 - **M1** Action, red then green (`dependency-action/src/apply/adapters/edit.test.ts`):
-  property in an ancestor `Directory.Build.props` (the SpaServices shape), property in the csproj itself,
+  property in an ancestor `Directory.Build.props`, property in the csproj itself (the real SpaServices shape, §1d),
   two definitions refused, no definition refused, `files()` lists the props file; `packageManager` for npm (the
   SpaServices line), for pnpm, a `+sha` suffix refused, and the orchestrator applying a `packageManager` item without
   running a tool. Rebuild `dist` in the main checkout.
@@ -156,8 +158,8 @@ So the lookup is right both times; the **apply edit** looks for the wrong shape:
 
 ## 6. Status and what is left
 
-- **This PR:** M1-M3 done, sweep green. Next: commit, PR, queue (owner's go).
-- **After deploy (owner):** "SDK + afhankelijkheden bijwerken" on SpaServices; expect `MintPlayer.FolderHasher.Targets`
-  (`Directory.Build.props:6`) and `npm` (`Demo/Xsrf/ClientApp/package.json:24`) applied instead of under "Not applied".
+- **Done:** merged as #663 and deployed (2026-11-13). SpaServices pin bump #125 merged; the next apply run applied
+  both updates in SpaServices #126 (`MintPlayer.FolderHasher.Targets` via the csproj's line 6, and `npm` via
+  `Demo/Xsrf/ClientApp/package.json:24`).
 - **Open, outside this PR:** S10 (production read, owner's go), S11 (throwaway run on SparkTest, owner), SpaServices
   §4 step 7 (owner), SpaServices issue #109 (owner closes).
