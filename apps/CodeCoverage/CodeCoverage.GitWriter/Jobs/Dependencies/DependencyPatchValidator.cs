@@ -67,6 +67,20 @@ public static class DependencyPatchValidator
             if (!target.TryGetValue(path, out var list))
                 target[path] = list = [];
             list.Add(entry);
+
+            // D3 (docs/refused_property_and_packagemanager_edits_PRD.md): a NuGet reference whose version is `$(Prop)` moves
+            // the property, which an existing Directory.* file above the project may define. Still SubstitutionCheck only:
+            // the changed line must name the shared variable and differ by the planned swap alone.
+            if (entry.Datasource != "nuget" || entry.SharedVariableName is not { Length: > 0 } || target != manifests)
+                continue;
+            foreach (var propertyFile in DependencyFiles.PropertyFilesOf(path))
+            {
+                if (await baseTree.ModeAsync(propertyFile, cancellationToken) != "100644")
+                    continue;
+                if (!manifests.TryGetValue(propertyFile, out var properties))
+                    manifests[propertyFile] = properties = [];
+                properties.Add(entry);
+            }
         }
 
         // #613 item 2: the files the lookup reported a platform location in, for the plan's platform groups.

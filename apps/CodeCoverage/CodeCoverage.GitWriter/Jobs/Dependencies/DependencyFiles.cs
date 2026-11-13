@@ -109,6 +109,29 @@ public static class DependencyFiles
     public static bool IsSubstitutionOnly(string path)
         => FileName(path).ToLowerInvariant() is "directory.build.props" or "directory.build.targets";
 
+    /// <summary>
+    /// docs/refused_property_and_packagemanager_edits_PRD.md D3: the files that can define an MSBuild property the project
+    /// <paramref name="packageFile"/> reads, besides itself: <c>Directory.Build.props</c>/<c>.targets</c> and
+    /// <c>Directory.Packages.props</c> in its directory and every ancestor (SpaServices' <c>$(FolderHasherTargetsVersion)</c>
+    /// lives in the root <c>Directory.Build.props</c>). The action's <c>propertyFiles</c> names the same set.
+    /// </summary>
+    public static IEnumerable<string> PropertyFilesOf(string packageFile)
+    {
+        var directory = Directory(packageFile);
+        while (true)
+        {
+            foreach (var name in (string[])["Directory.Build.props", "Directory.Build.targets", "Directory.Packages.props"])
+            {
+                var path = directory.Length == 0 ? name : $"{directory}/{name}";
+                if (path != packageFile)
+                    yield return path;
+            }
+            if (directory.Length == 0)
+                yield break;
+            directory = Directory(directory);
+        }
+    }
+
     /// <summary>The bot's own files: the plan path and everything under <c>.mintplayer/</c> (R14).</summary>
     public static bool IsPlanPath(string path) => path.StartsWith(".mintplayer/", StringComparison.OrdinalIgnoreCase);
 

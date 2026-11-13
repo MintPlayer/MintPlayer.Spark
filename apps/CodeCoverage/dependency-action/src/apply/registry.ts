@@ -1,6 +1,6 @@
 import type { PlanItem } from '../contracts/types';
 import type { Adapter } from './adapter';
-import { npmAdapter, pnpmAdapter, yarnAdapter } from './adapters/js';
+import { npmAdapter, packageManagerAdapter, pnpmAdapter, yarnAdapter } from './adapters/js';
 import { gradleAdapter, mavenAdapter } from './adapters/jvm';
 import { cargoAdapter, composerAdapter, goAdapter } from './adapters/native';
 import { nugetAdapter } from './adapters/nuget';
@@ -10,11 +10,13 @@ import { replaceStringAdapter, versionFileAdapter } from './adapters/replaceStri
 
 /**
  * First match wins (D-S12d: datasource + lockFiles + manifest file name). The order puts the more
- * specific matcher first (pnpm/yarn before npm, pip-compile before pip).
+ * specific matcher first (a packageManager pin before every npm-datasource adapter, pnpm/yarn before npm, pip-compile
+ * before pip).
  */
 export const ADAPTERS: readonly Adapter[] = [
   replaceStringAdapter,
   versionFileAdapter,
+  packageManagerAdapter,
   pnpmAdapter,
   yarnAdapter,
   npmAdapter,

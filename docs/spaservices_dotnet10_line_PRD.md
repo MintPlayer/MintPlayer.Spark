@@ -30,8 +30,9 @@ the owner merged. Moving branch pointers by hand is not needed and would bypass 
 
 **Status (2026-11-13 ~08:40):** D1 ✅ and D3 ✅ (Spark #652, deployed; #114 green with `LangVersion 14`, no PR into
 11.x) · D2 ✅ (#115 → backport #116) · D5 ✅ (#117, #118 merged) · D7 ✅ (#119 → backport #120; 10.8.1 on nuget.org) ·
-D4 ⏳ (Spark #654 merged and deployed; its follow-up #655 is PR #656, queued 2026-11-13; then `refresh` on #111) · D6 ✅
-(hint in "Backport targets", Spark #652).
+D4 ✅ (Spark #654 + #656 deployed; SpaServices #111 merged 2026-11-13 16:30, then #121-#123) · D6 ✅
+(hint in "Backport targets", Spark #652). Remaining (2026-11-13 evening): step 7 (owner) and S10/S11 of the parent
+PRD; see `docs/refused_property_and_packagemanager_edits_PRD.md` §1c.
 
 | # | Finding | Evidence | Owner of the fix |
 |---|---|---|---|
@@ -53,19 +54,21 @@ D4 ⏳ (Spark #654 merged and deployed; its follow-up #655 is PR #656, queued 20
 ## 4. Plan
 
 1. ✅ #112 merged; narrowing PR #114 opened by the merge (step 6 of `onboarding.md`).
-2. ⏳ **Owner:** open the SpaServices PR into master: `MintPlayer.SourceGenerators` + `.Attributes` → ≥ 12 in
-   `Demo/Prerendering/Demo.Data` and `Demo.Web` (D2). Keep both `backport:` labels; queue it.
-3. ⏳ **Claude, Spark PR (new issue):** D1 (LangVersion narrowing) + D3 (no conversion-only PR into the current line).
+2. ✅ **Owner:** open the SpaServices PR into master: `MintPlayer.SourceGenerators` + `.Attributes` → ≥ 12 in
+   `Demo/Prerendering/Demo.Data` and `Demo.Web` (D2). Keep both `backport:` labels; queue it. (#115 → backport #116.)
+3. ✅ **Claude, Spark PR (new issue):** D1 (LangVersion narrowing) + D3 (no conversion-only PR into the current line).
+   (Spark #652, deployed.)
    Red test first, update `docs/code-coverage/onboarding.md` step 6 and `versioning.md`, record evidence in
    `docs/lockfile_notice_and_line_cut_PRD.md`.
-4. After 2's backport is on `release/dotnet-10.x` and 3 is deployed: rerun **Set up features** on SpaServices →
+4. ✅ After 2's backport is on `release/dotnet-10.x` and 3 is deployed: rerun **Set up features** on SpaServices →
    `mintplayer/narrow-dotnet-10.x` rebuilt on the new line head (also fixes the shared `<ItemGroup>` overlap) → #114
-   green → queue.
-5. Close #113; backport #108 and #112 to `release/dotnet-11.x` (D5).
-6. The line's versioning run tags `10.x.y`, packages publish. Earlier `plan-refused` runs on 10.x (2026-11-12 19:23,
-   20:06, 20:25, `build-master.yml@refs/heads/release/dotnet-10.x`) should stop.
-7. One real fix on master with `backport: release/dotnet-10.x` → publishes the next 10.x (D17 step 4).
-8. Then S7, S9, S10 and the rest of S11 from the parent PRD; D4.
+   green → queue. (#114 merged.)
+5. ✅ Close #113; backport #108 and #112 to `release/dotnet-11.x` (D5). (#117, #118.)
+6. ✅ The line's versioning run tags `10.x.y`, packages publish. Earlier `plan-refused` runs on 10.x (2026-11-12 19:23,
+   20:06, 20:25, `build-master.yml@refs/heads/release/dotnet-10.x`) should stop. (10.8.1.)
+7. ⏳ **Owner:** one real fix on master with `backport: release/dotnet-10.x` → publishes the next 10.x (D17 step 4).
+8. S7 ✅ and S9 ✅ (answered 2026-11-13); S10 ⏳ (production read, owner's go) and the rest of S11 ⏳ (a throwaway run on
+   PieterjanDeClippel/SparkTest, owner); D4 ✅. Evidence: `docs/refused_property_and_packagemanager_edits_PRD.md` §1c.
 
 ## 5. Log
 
