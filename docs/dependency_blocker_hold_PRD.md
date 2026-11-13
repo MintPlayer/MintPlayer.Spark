@@ -1,0 +1,69 @@
+# #653: a blocker hold that waits for its blocker (PRD + plan)
+
+Issue: [#653](https://github.com/MintPlayer/MintPlayer.Spark/issues/653). Branch: `fix/issue653-blocker-hold-lift`.
+Found as D4 of `docs/spaservices_dotnet10_line_PRD.md` (2026-11-13). Area: CodeCoverage dependency updater (production).
+
+## 1. Problem
+
+On MintPlayer.AspNetCore.SpaServices the updater holds `MintPlayer.SourceGenerators` with "the resolver refused it:
+blocked by MintPlayer.SourceGenerators.Attributes (R2)". The SpaServices dependency PR #111 lists it under "Held" for
+12.1.1, 12.2.0 and 13.1.0, while `MintPlayer.SourceGenerators.Attributes` 10.20.1 → 13.1.0 sits under "Awaiting
+approval" in its **own** group.
+
+| # | Finding | Evidence |
+|---|---|---|
+| F1 | The two packages must move together: `MintPlayer.SourceGenerators` 13.1.0 depends on `MintPlayer.SourceGenerators.Attributes` ≥ 13.1.0. | nuget.org nuspec `mintplayer.sourcegenerators/13.1.0`, `<dependency id="MintPlayer.SourceGenerators.Attributes" version="13.1.0" …>` |
+| F2 | They land in separate groups: `GroupOf` takes a configured group, else Renovate's candidate `groupName`, else the record's, else the package name. There is no rule and no Renovate monorepo preset for them. | `DependencyPolicyEngine.cs:79-83` |
+| F3 | The `MintPlayer.SourceGenerators` group was applied alone and the restore failed. The attribution to Attributes is **correct**. | apply run 42571592349 (2026-11-09 06:12): "group MintPlayer.SourceGenerators: unresolvable"; SP1 below |
+| F4 | Both at 13.1.0 restore cleanly. | local `dotnet restore` of a scratch clone, on SpaServices master today and at `0f31c1e` (master on 2026-11-09): exit 0, no NU errors |
+| F5 | **The hold does not lift when the blocker moves.** `Lifts` (Blocker kind) needs a token in `Seen(lookup, blocker)` that was not there when the hold was taken. `Seen` unions current value, current version, locked version **and** candidates. After `approve MintPlayer.SourceGenerators.Attributes`, Attributes' current becomes 13.1.0, which was already in the set as a candidate, so nothing is new. Only `SlotsHeld >= RetrySlots` (4 scheduled slots ≈ 4 weeks on a weekly schedule) lifts it. | `DependencyHolds.cs:145-159` |
+| F6 | The Held row says what blocks, not what unblocks: the blocker's own group is under "Awaiting approval" in the same body, unlinked. | `DependencyPullRequestBody.cs:72-77`, held entry text from `groupHold.Reason` (`DependencyPolicyEngine.cs:325`) |
+
+Workaround available today (no code): an account rule or `coverage.yml` rule
+`match: ["MintPlayer.SourceGenerators*"]`, `group: MintPlayer.SourceGenerators` (`DependencyPolicyConfig.ConfiguredGroup`).
+
+## 2. Spikes
+
+| # | Question | How | Result |
+|---|---|---|---|
+| SP1 | What exactly does NuGet report for F3, and what does our parser make of it? | Scratch clone at `0f31c1e`, only `MintPlayer.SourceGenerators` → 13.1.0 in `MintPlayer.AspNetCore.SpaServices.Xsrf.csproj`, `dotnet restore`; read `obj/project.assets.json` `logs[]`. | **Done (2026-11-13).** One log: `code NU1605`, `level Error`, `libraryId MintPlayer.SourceGenerators.Attributes`, message "Warning As Error: Detected package downgrade: MintPlayer.SourceGenerators.Attributes from 13.1.0 to 10.20.1 …". `parseNuGetAssets` gives `depName` = Attributes, `version` = **13.1.0** (`nugetVersionFromMessage`, the "from X" token = the version the planned package needs). So the blocker already carries the version that would unblock it; `DependencyBlockerSeen` drops it. |
+| SP2 | Do any other repositories in the fleet hold a group on a blocker that is itself a planned/awaiting dependency? | Read production `DependencyUpdateStates` (holds with `Kind = Blocker`) against each repository's last report. Read-only; needs the owner's go-ahead (production read). | Open. Sizes the value of D2 (the merge), not needed for D1. |
+| SP3 | Production holds were written without the new field (D1). What happens to them at deploy? | Read `Lifts` after the change: an empty "seen current" list compared to a non-empty one counts as a change. | Expected: each standing blocker hold lifts **once** after the deploy, and its group is retried. Harmless: a still-real block is held again by the next apply (R2). To confirm in the red-green test M1. |
+| SP4 | Does a merged group (D2) keep a standing approval valid? | Read `Approved`/`Outcome` (gap E): an approval binds the group name, its dep set and target majors. | Expected: a merge changes the dep set, so an approval of the blocker's group expires and is asked again with both packages listed. Acceptable (the change is what needs approving). Confirm in M3's test. |
+
+## 3. Decisions
+
+| # | Decision | Why / evidence | Status |
+|---|---|---|---|
+| D1 | A blocker hold also lifts when its blocker's **current** version changes, or (when the resolver gave one) reaches the version the blocker reported. Record per blocker: the current tokens at hold time and the reported version. | F5; SP1 shows the version is available. | Proposed |
+| D2 | When a blocker hold's blocker is a dependency **with its own group in the same evaluation**, the held group's members join the blocker's group (learned grouping), and the hold on the old group is dropped. The merged group follows the normal rules (here: a major → awaiting `approve MintPlayer.SourceGenerators.Attributes`, which then covers both). | F1-F3: the resolver proved the two must move together. Without D2, D1 still needs a human to approve the blocker first, then a second run for the held group. | **Owner decision (Q1)** |
+| D3 | The Held row names the unblocking step when the blocker waits for an approval: "…; waits for `approve <group>`". | F6. Cheap, and covers the cases D2 does not merge. | Proposed |
+| D4 | No change to the dependency-action (TypeScript) parser: it already reports the right package and version (SP1). | SP1 | Proposed |
+
+### Q1 (owner): learned grouping (D2), or only lift + hint (D1 + D3)?
+
+- **A. D1 + D2 + D3 (recommended):** one `approve` updates both, in one pull request. Trap: a mis-attributed blocker
+  (a parser error) would merge unrelated packages. That is bounded, because a merge needs the blocker to have its own
+  candidate in the same run, and a failed merged group is held again.
+- **B. D1 + D3 only:** smaller. A person approves Attributes, the next run lifts the hold (D1), and the run after that
+  applies SourceGenerators. That takes two runs and two pull request updates for one logical update.
+
+## 4. Milestones (one PR)
+
+- **M0** ✅ Issue #653, branch, this PRD; SP1.
+- **M1** D1: `DependencyBlockerSeen` gets `CurrentTokens` and `Version`; `RecordApplyResult` fills them from the lookup
+  and the apply result's blocker; `Lifts` lifts on a changed current, or a current at or past `Version`. Red test first
+  (`GroupHoldTests`): the SpaServices shape (hold on SourceGenerators, Attributes current moves 10.20.1 → 13.1.0, which
+  was already a candidate) lifts; an unchanged current does not.
+- **M2** D3: Held-row hint. Red test: the Held detail names `approve MintPlayer.SourceGenerators.Attributes` when that
+  group is awaiting approval.
+- **M3** D2 (only if Q1 = A): learned grouping in `Evaluate`. Red test: the two records plan as one group that awaits
+  one approval; after the approval both are planned.
+- **M4** Docs: `docs/code-coverage/` dependency-updates page (R2 holds: when they lift; learned grouping); this PRD's
+  results. Also carries the unrelated doc updates waiting on master: S7 in `docs/lockfile_notice_and_line_cut_PRD.md`
+  and `docs/spaservices_dotnet10_line_PRD.md`.
+- **Gate:** the affected test classes once at the end (`GroupHoldTests`, the engine and PR-body tests), then the PR.
+
+## 5. Log
+
+- 2026-11-13 — D4 diagnosed (F1-F6), issue #653 filed, branch created, SP1 run (NU1605 capture above).
