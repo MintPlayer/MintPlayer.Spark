@@ -5,6 +5,7 @@ import { CONTRACT_VERSION } from '../contracts/types';
 import { assertValid } from '../contracts/validate';
 import type { Exec } from '../util/exec';
 import { PLAN_PATH, diffBinary, git, revParse, sha256 } from '../util/git';
+import { ensureDotnetSdk, type EnsureDotnetSdkOptions } from './dotnetSdk';
 import { applyPlan, type OrchestratorOptions, type SdkPreset } from './orchestrator';
 import { GLOBAL_JSON, presetRefusal } from './sdkPreset';
 
@@ -16,6 +17,8 @@ export interface ApplyOptions {
   feedSecrets: boolean;
   log?: (message: string) => void;
   orchestrator?: Partial<OrchestratorOptions>;
+  /** Where an SDK the repository needs is installed when it has no global.json (`ensureDotnetSdk`). */
+  dotnetSdk?: Pick<EnsureDotnetSdkOptions, 'installDir' | 'platform'>;
 }
 
 /**
@@ -52,9 +55,10 @@ export async function readPlan(exec: Exec, repoDir: string, expectedSha: string)
  */
 export async function runApply(o: ApplyOptions): Promise<{ result: ApplyResult; resultFile: string; patchFile: string }> {
   const { plan, sdkPreset } = await readDispatch(o.exec, o.repoDir, o.expectedSha);
+  const exec = await ensureDotnetSdk(plan, { root: o.repoDir, exec: o.exec, log: o.log, ...o.dotnetSdk });
   const { groups, consistency } = await applyPlan(plan, {
     root: o.repoDir,
-    exec: o.exec,
+    exec,
     feedSecrets: o.feedSecrets || plan.options?.feedSecrets === true,
     consistencyCheck: true,
     log: o.log,
