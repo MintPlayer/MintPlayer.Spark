@@ -41,7 +41,12 @@ public static partial class BackportTargets
             _ => $"{applying.Count} lines apply: {string.Join(", ", applying)}",
         };
         var summary = ecosystems.Count == 0
-            ? "This pull request changes no package, so no release line needs it."
+            ? "This pull request changes no package, so no release line needs it by default."
+                // #651 D6: SpaServices #115 needed the 10.x line to restore, and a label of another name backported nothing.
+                + (lines.Any(l => l.Supported)
+                    ? " If a line needs it anyway, for instance to build, add its label before the merge, or comment its command after: "
+                        + string.Join("; ", lines.Where(l => l.Supported).Select(l => $"`{Label(l)}` or `/backport {l.Line}`")) + "."
+                    : "")
             : $"This pull request changes {string.Join(" and ", ecosystems)} packages. A line applies when it is supported and its ecosystem is changed. "
                 + "Merging backports it to each line labelled `backport: <line>`; remove a label to leave a line out.";
 

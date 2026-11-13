@@ -75,12 +75,15 @@ The merged webhook on `mintplayer/onboarding` reaches `IOnboardingService.Merged
 
 6. Each supported .NET line that targets a higher major than its own gets a narrowing pull request (#638 D15) on
    `mintplayer/narrow-<line>`: the lines cut here **and** the ones that exist already, so re-running **Set up features**
-   narrows a line an earlier run cut (#649 D10). It narrows the TFMs, the framework packages, `global.json`
+   narrows a line an earlier run cut (#649 D10). It narrows the TFMs, the framework packages, a numeric `LangVersion`
+   above the line's C# (.NET 10 takes C# 14; `latest` and `preview` stay, #651 D1), `global.json`
    (`sdk.version` and Arcade's `tools.dotnet`) and every `setup-dotnet` `dotnet-version` pin in `.github/workflows/`
    (an exact pin takes the line's latest SDK, a wildcard such as `11.0.x` becomes `10.0.x`). A block list of SDKs is
    left for a person and listed in the pull request. With **SDK from global.json**, the line's pins are converted first
-   and the same pull request carries them; a line that needs no narrowing gets that pull request for the conversion
-   alone ("Read the .NET SDK from global.json on this release line").
+   and the same pull request carries them; a past line that needs no narrowing gets that pull request for the conversion
+   alone ("Read the .NET SDK from global.json on this release line"). The **current** line gets no pull request: its
+   Line policy check takes only the App's backports (#651 D3). The note says to comment `/backport <line>` on the pull
+   request that converted the default branch; the bot's own pull requests get no backport labels.
    The git writer accepts MSBuild files, `global.json` and top-level workflow files on that branch, and the push token
    asks for **Workflows: write** when a workflow changes. A rerun with the same files on the same line head keeps the
    branch's commit, so an open pull request's checks do not restart.

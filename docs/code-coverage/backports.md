@@ -108,7 +108,10 @@ backport:
   when it opens, for each supported line whose ecosystem it changes (the same changed-files test as a release). Remove
   the labels of the lines it should not reach; merging backports it to the rest. `fixes` labels the older lines only
   for a `fix:` title or a `fixLabels` label, and the newest line always; `off` labels nothing. Every pull request
-  also gets an informational **Backport targets** check listing the lines and which apply. A pull request a bot opened
+  also gets an informational **Backport targets** check listing the lines and which apply. A pull request that changes
+  no package gets no label, yet a line may still need it, for instance a demo's package update the line needs to
+  restore; the check then names each supported line's exact label and command (`backport: dotnet-10.x`,
+  `/backport dotnet-10.x`), since a label of any other name backports nothing (#651 D6). A pull request a bot opened
   gets no labels: the dependency updater gives each supported line a run of its own
   ([dependency-updates.md](dependency-updates.md) §4, `dependencies.lines`).
 - **`trialPick`** (default `warn`): when the merge queue is about to merge a pull request into the default branch, it

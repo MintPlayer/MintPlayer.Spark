@@ -622,6 +622,27 @@ public class OnboardingServiceTests : CoverageRavenTest
         merged.Note.Should().Contain("into release/dotnet-10.x to read the SDK from global.json");
     }
 
+    /// <summary>#651 D3: SpaServices #113, a conversion-only pull request into release/dotnet-11.x, the current line, which its
+    /// own Line policy check refused. The current line takes the change by backport; only the past line gets a pull request.</summary>
+    [Fact]
+    public async Task Issue651_D3_the_current_line_gets_no_line_pull_request()
+    {
+        using var store = GetDocumentStore();
+        var forge = Repository(Head);
+        var (h, repository) = await OnboardedAsync(store, forge, [EOnboardingFeature.ReleaseLines, EOnboardingFeature.SdkFromGlobalJson], ["release/dotnet-10.x"]);
+        // Both lines at one commit (Line() keys the files by it), each with a pinned setup-dotnet step to convert.
+        foreach (var branch in new[] { "release/dotnet-11.x", "release/dotnet-10.x" })
+            Line(forge, h, branch, ("src/Tools/Tools.csproj", Csproj.Replace("net11.0", "net10.0")), ("global.json", LineGlobalJson),
+            (".github/workflows/build.yml", LineWorkflow));
+
+        var merged = await h.Service.MergedAsync(repository);
+
+        h.Writer.Requests("onboarding").Where(r => r.Narrow).Select(r => r.BaseBranch).Should().Equal(["release/dotnet-10.x"]);
+        h.Pulls.Created.Should().NotContain(p => p.Base == "release/dotnet-11.x", "Line policy refuses anything but the App's backports there");
+        merged.Note.Should().Contain("release/dotnet-11.x is the current line and takes this by backport: comment `/backport dotnet-11.x` on the pull request that changed `main`");
+        merged.HasFailures.Should().BeFalse();
+    }
+
     /// <summary>#649 D9: a refused line pull request leads the note and marks the outcome, instead of trailing what was applied.</summary>
     [Fact]
     public async Task Issue649_D9_a_refused_line_pull_request_is_reported_first()

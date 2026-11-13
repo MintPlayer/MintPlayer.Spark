@@ -372,7 +372,8 @@ platform major instead, so each target framework moves to its own branch:
   `<TargetFrameworks>net11.0</TargetFrameworks>`, and its framework packages and `global.json` move to 11.
 - **The older line** (`release/dotnet-10.x`) keeps only `net10.0`. When **Set up features** creates it from a commit
   that still targets both, or finds it still targeting both on a later run (#649), the bot opens a pull request into
-  it (branch `mintplayer/narrow-dotnet-10.x`). That pull request drops the higher target frameworks, sets `global.json`
+  it (branch `mintplayer/narrow-dotnet-10.x`). That pull request drops the higher target frameworks, lowers a numeric
+  `LangVersion` to the line's C# (C# 15 is .NET 11's; the .NET 10 compiler refuses it with CS1617, #651), sets `global.json`
   (`sdk.version`, `tools.dotnet`) and the workflows' `setup-dotnet` pins to the line's latest SDK, and the framework
   packages to its latest runtime (both from the platform lifecycle page). With **SDK from global.json** the workflows
   read `global.json` instead of a pin ([onboarding.md](onboarding.md#on-merge), step 6). It lists every `#if NET11_0_OR_GREATER` and every
