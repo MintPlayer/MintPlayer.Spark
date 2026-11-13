@@ -278,6 +278,13 @@ Edited comments and comments by bots are ignored. The bot reacts 👍 or 👎.
 - **A major needs code migrations** (`migrate:`). After `approve`, the migrate workflow runs `ng update --migrate-only` /
   `nx migrate --run-migrations` with no secrets. A migration that does not complete drops its group. A pull request with
   migrations never auto-merges and says so.
+- **A version lives in an MSBuild property.** `Version="$(FolderHasherTargetsVersion)"` moves the property's one
+  definition, in the project or a `Directory.Build.props`/`.targets`/`Directory.Packages.props` at or above it (as a
+  Maven property moves its `<…version>`). Two definitions, or none holding the current version, refuse the edit rather
+  than guess which one MSBuild uses. The git writer accepts that file only for the line naming the property.
+- **`packageManager` moves** (`"packageManager": "npm@10.9.2"`). Only the field changes: no package manager runs and no
+  lockfile changes, because none records it. A value with an integrity hash (`pnpm@9.1.0+sha512.…`) is not updated:
+  the bot cannot compute the new hash.
 - **A platform SDK moves** (`net10.0` → `net11.0`, Node 22 → 24). Every location moves together (TFM, `global.json`,
   Dockerfile `FROM`, `setup-*`, companions); a computed TFM is reported, never guessed. Which channel is offered is the
   SDK's `track` (§4). A platform major never auto-merges.
