@@ -467,7 +467,12 @@ export async function scanLocations(files: RepoFiles, sdks: readonly Sdk[] = SDK
         if (/\.(cs|fs|vb)proj$/.test(name) || name === 'Directory.Build.props') {
           wanted.push((d) => scanTfm(file, d), (d) => scanPackageVersion(file, d));
         }
-        if (name === 'global.json') wanted.push((d) => scanJsonKey('dotnet', file, d, 'version', 'global.json', /"sdk"\s*:/));
+        if (name === 'global.json') {
+          wanted.push((d) => scanJsonKey('dotnet', file, d, 'version', 'global.json', /"sdk"\s*:/));
+          // An Arcade-style `tools.dotnet` is the SDK the build scripts install: it moves with `sdk.version` (SpaServices
+          // #121). Its `runtimes` entries ("dotnet/x64") never match the key.
+          wanted.push((d) => scanJsonKey('dotnet', file, d, 'dotnet', 'global.json', /"tools"\s*:/));
+        }
       }
       if (sdk === 'node' && name === 'package.json') {
         wanted.push((d) => scanEngines(file, d), (d) => scanTypesNode(file, d));

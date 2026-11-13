@@ -375,6 +375,14 @@ replaced before it ran.
   the apply are the same action), so it is never planned one; were it handed one, its `applyPlatform` with
   `fromChannel == toChannel` still moves `global.json` and the exact `setup-dotnet` pins to `sdkVersion`, and leaves
   `dotnet-quality` alone.
+- **S11 (2026-11-13): Arcade's `tools.dotnet` is a `global.json` SDK pin.** SpaServices #121 moved `sdk.version` from
+  `11.0.100-rc.1.26425.128` to `11.0.100` and left `"tools": { "dotnet": "11.0.100-rc.1.26425.128" }` (line 7), the SDK
+  Arcade-style build scripts install. `scanLocations` read only the `sdk` object. It now also reads `tools.dotnet`, as a
+  `global.json` location that moves with `sdk.version`; the `runtimes` entries (`"dotnet/x64"`) never match the key. The
+  line narrowing already moved both (onboarding.md, versioning.md). The git writer's line rule needs no change: it admits
+  a substitution of any reported location's value (`PlatformSubstitution`). Red → green:
+  `previewToGa.test.ts` "moves an Arcade tools.dotnet SDK with sdk.version, and leaves the runtimes", on SpaServices'
+  own `global.json`.
 
 ### 12.3 Milestones (one pull request)
 
