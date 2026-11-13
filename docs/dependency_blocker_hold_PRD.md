@@ -94,3 +94,13 @@ shouldn't really be a problem".
   SourceGenerators 12.2.0 alone and held the merged group on itself (F7-F9). Issue #655. Two tests on the real lookup's
   shape, **red** on #654's code (2/2: the plan was `MintPlayer.SourceGenerators@12.2.0`, no hold lifted). Green with D5 +
   D6: namespace 536/536. (The tests run at the production date: the kit's 2026-10-16 put 13.1.0 in its cooldown.)
+- 2026-11-13 — PR #656's CI was red, and not because of the change. CodeCoverage crashed at startup in "Verify Spark
+  models are in sync" and in two dogfood tests: `FileNotFoundException: MintPlayer.Spark.Abstractions, Version=11.0.0.0`,
+  requested by `MintPlayer.Spark.RavenDB 0.0.0.0` (run 43415884018).
+  - Cause: the tag-derived assembly version is not an Nx input. The test jobs check out shallow without tags (MPV001 for
+    every library in the log, so Abstractions is 0.0.0.0). The build job (fetch-depth 0) has the tags, so its
+    Abstractions is 11.0.0.0. Both write the same Debug `build` entry, and the run replayed a mix of the two.
+  - Fix: Debug builds set `MintPlayerVersioningSkip` (`Directory.Build.targets`), the opt-out the Dockerfiles already
+    use.
+  - Verified locally: before the change, Abstractions built at 11.0.0.0 here (tag `v11.0.0-preview.116`). After it,
+    a Debug build gives 0.0.0.0 with no MPV warning.
