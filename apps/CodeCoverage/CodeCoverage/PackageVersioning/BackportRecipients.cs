@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text;
+using CodeCoverage.Commands;
 using CodeCoverage.Entities;
 using CodeCoverage.Feedback;
 using CodeCoverage.Forge;
@@ -24,6 +25,8 @@ public sealed record BackportMessage
     public required EBackportSource Source { get; init; }
     /// <summary><c>/backport &lt;line&gt; --draft</c> (#570 D7): a conflicting line gets a draft, whatever <c>onConflict</c> says.</summary>
     public bool Draft { get; init; }
+    /// <summary>The <c>/backport</c> comment (#660): the command lifecycle reacts on it.</summary>
+    public long? CommentId { get; init; }
 }
 
 public partial class BackportEventsRecipient : IRecipient<ForgeWebhookMessage<BackportRequested>>
@@ -36,6 +39,7 @@ public partial class BackportEventsRecipient : IRecipient<ForgeWebhookMessage<Ba
         return messageBus.BroadcastAsync(new BackportMessage
         {
             RepositoryId = evt.RepositoryId, Number = evt.Number, Lines = evt.Lines, ActorLogin = evt.ActorLogin, Source = evt.Source, Draft = evt.Draft,
+            CommentId = evt.CommentId,
         }, cancellationToken);
     }
 }
@@ -66,35 +70,67 @@ public partial class BackportRecipient : IRecipient<BackportMessage>
     [Inject] private readonly IBackportRegenerationEngine regenerations;
     [Inject] private readonly IMessageOutbox outbox;
     [Inject] private readonly TimeProvider time;
+    [Inject] private readonly ICommandLifecycle commands;
     [Inject] private readonly ILogger<BackportRecipient> logger;
 
     public async Task HandleAsync(BackportMessage message, CancellationToken cancellationToken = default)
     {
         var repository = await session.LoadAsync<Repository>(message.RepositoryId, cancellationToken);
-        if (repository is null || repository.Connection == RepositoryConnection.Disconnected || repository.Archived) return;
-        if (forges.FirstOrDefault(f => f.Provider == repository.Provider) is not { } forge) return;
-        if (queues.FirstOrDefault(q => q.Provider == repository.Provider) is not { } git) return;
-        if (repository.DefaultBranch is not { } defaultBranch) return;
+        if (repository is null) return;
+        // #660: a /backport comment is a command (👀 now, its outcome below); a label or a merge is not, but every request
+        // gets a log, and each line's BackportAttempt points at it (G11).
+        var invocation = await commands.BeginAsync(repository, message.Number, message.CommentId, $"/backport {string.Join(' ', message.Lines)}",
+            message.ActorLogin, cancellationToken);
+        await using var log = commands.OpenLog(invocation,
+            $"backports/{repository.Provider.ToCanonicalString()}/{repository.GitHubId.ToString(CultureInfo.InvariantCulture)}/{message.Number}/{time.GetUtcNow().UtcTicks}",
+            repository.Id);
+        logId = log.Id;
+        if (repository.Connection == RepositoryConnection.Disconnected || repository.Archived
+            || forges.FirstOrDefault(f => f.Provider == repository.Provider) is not { } forge
+            || queues.FirstOrDefault(q => q.Provider == repository.Provider) is not { } git
+            || repository.DefaultBranch is not { } defaultBranch)
+        {
+            await commands.FinishAsync(invocation, ECommandOutcome.Refused, "This repository takes no backports from here: it is disconnected, archived or has no default branch.",
+                cancellationToken);
+            return;
+        }
 
         try
         {
-            if (await RefusalAsync(repository, forge, git, defaultBranch, message, cancellationToken) is { } refusal)
-            {
-                await forge.CommentAsync(repository, message.Number, refusal, cancellationToken);
-                return;
-            }
+            log.Logger.LogInformation("Backport of #{Number} to {Lines} asked by @{Actor} ({Source})", message.Number, string.Join(", ", message.Lines), message.ActorLogin,
+                message.Source);
+            var answer = await RefusalAsync(repository, forge, git, defaultBranch, message, cancellationToken);
+            if (answer is not null)
+                await forge.CommentAsync(repository, message.Number, answer.Text, cancellationToken);
+            await commands.FinishAsync(invocation, answer?.Outcome ?? ECommandOutcome.NoChange, answer?.Text ?? "There was nothing to backport.", cancellationToken);
         }
         catch (ForgeAccessDeniedException ex)
         {
             logger.LogWarning(ex, "Backport: missing permission {Permission} on {Repository}", ex.RequiredPermission, repository.FullName);
             await FailedAsync(repository, message, $"the App is missing the {ex.RequiredPermission} permission", cancellationToken);
+            await commands.FinishAsync(invocation, ECommandOutcome.Failed, $"The backport could not run: the App is missing the {ex.RequiredPermission} permission.",
+                cancellationToken);
         }
         catch (ForgeRequestException ex) when (ForgeRateLimitedException.Find(ex) is null)
         {
             logger.LogWarning(ex, "Backport of #{Number} in {Repository} failed", message.Number, repository.FullName);
             await FailedAsync(repository, message, $"the forge answered an error: {ex.Message}", cancellationToken);
+            await commands.FinishAsync(invocation, ECommandOutcome.Failed, $"The backport could not run: the forge answered an error: {ex.Message}", cancellationToken);
         }
     }
+
+    /// <summary>The log this request writes to; every <see cref="BackportAttempt"/> it records points at it (#660 G11).</summary>
+    private string? logId;
+
+    /// <summary>
+    /// How a backport ended (#660): 🎉 when a line got a pull request (a draft to resolve included), 👍 when every line held
+    /// the change already, 👎 when the run failed or no line could take it.
+    /// </summary>
+    internal static ECommandOutcome OutcomeOf(GitWriterBackportResult? result)
+        => result is null || result.Outcome != GitWriterBackportResult.Backported ? ECommandOutcome.Failed
+            : (result.Targets ?? []).Any(t => t.Push is GitWriterBackportTargetResult.Created or GitWriterBackportTargetResult.Drafted) ? ECommandOutcome.Done
+            : (result.Targets ?? []).All(t => t.Push is GitWriterBackportTargetResult.Exists or GitWriterBackportTargetResult.Empty) ? ECommandOutcome.NoChange
+            : ECommandOutcome.Refused;
 
     /// <summary>
     /// Segment B: a backport the forge failed is recorded for every line asked for (under the name it was asked by, since
@@ -107,7 +143,7 @@ public partial class BackportRecipient : IRecipient<BackportMessage>
             using var fresh = session.Advanced.DocumentStore.OpenAsyncSession();
             foreach (var line in message.Lines.Distinct(StringComparer.Ordinal))
                 await BackportAttempts.RecordAsync(fresh, repository, message.Number, null, line, BackportAttempt.Failed, null, detail, time.GetUtcNow().UtcDateTime,
-                    cancellationToken);
+                    cancellationToken, logId);
             await fresh.SaveChangesAsync(cancellationToken);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
@@ -117,7 +153,7 @@ public partial class BackportRecipient : IRecipient<BackportMessage>
     }
 
     /// <summary>Runs the backport; returns the comment to post, or null when there is nothing to say.</summary>
-    private async Task<string?> RefusalAsync(Repository repository, IForgeVersioning forge, IForgeMergeQueue git, string defaultBranch, BackportMessage message,
+    private async Task<CommandAnswer?> RefusalAsync(Repository repository, IForgeVersioning forge, IForgeMergeQueue git, string defaultBranch, BackportMessage message,
         CancellationToken cancellationToken)
     {
         if (message.Source != EBackportSource.Merge
@@ -128,7 +164,7 @@ public partial class BackportRecipient : IRecipient<BackportMessage>
         if (!pull.Merged || pull.MergeCommitSha is not { } commit)
             return message.Source == EBackportSource.Comment
                 ? $"This pull request has not merged. Add the label `backport: {message.Lines[0]}` and the backport runs when it merges."
-                : null;
+                : (CommandAnswer?)null;
 
         var yml = await integrations.For(repository).GetFileContentAsync(repository, defaultBranch, CoverageYml.FileName, cancellationToken);
         var parsed = VersioningYml.Parse(yml);
@@ -164,7 +200,7 @@ public partial class BackportRecipient : IRecipient<BackportMessage>
             var promoted = targets.Where(t => current.Contains(t.Branch)).Select(t => t.Branch).ToList();
             targets.RemoveAll(t => current.Contains(t.Branch));
             if (promoted.Count > 0 && targets.Count == 0)
-                return message.Source == EBackportSource.Merge ? null
+                return message.Source == EBackportSource.Merge ? (CommandAnswer?)null
                     : $"Nothing was backported: {string.Join(", ", promoted.Select(p => $"`{p}`"))} {(promoted.Count == 1 ? "is a current line" : "are current lines")}, "
                         + "promoted with `/release` instead of backported. The change reaches it with the next release.";
         }
@@ -174,11 +210,12 @@ public partial class BackportRecipient : IRecipient<BackportMessage>
             .Select(c => BackportSubject(c.Message)).Take(250).ToList();
         var result = await RunAsync(repository, git, pull.BaseRef, commit, pull.Number, pull.Title, subjects, targets, backport.Section.Markers, cancellationToken);
         var report = await ReportAsync(repository, forge, pull, commit, [.. targets.Select(t => t.Branch)], result, queue, backport.Section, cancellationToken);
+        var outcome = OutcomeOf(result);
         if (backport.Errors.Count == 0)
-            return report;
+            return report is null ? null : new CommandAnswer(report, outcome);
         var errors = $"The `backport:` section of {CoverageYml.FileName} on {defaultBranch} has errors, so its defaults were used:\n"
             + string.Join('\n', backport.Errors.Take(10).Select(e => $"- {e}"));
-        return report is null ? errors : report + "\n\n" + errors;
+        return new CommandAnswer(report is null ? errors : report + "\n\n" + errors, outcome);
     }
 
     /// <summary>Segment P (P0): the branches of the current lines when they are promoted rather than backported to; empty otherwise.</summary>
@@ -227,7 +264,7 @@ public partial class BackportRecipient : IRecipient<BackportMessage>
         var now = time.GetUtcNow().UtcDateTime;
         // Segment B: every line asked for ends in a record, whatever the comment says.
         Task Attempt(string branch, string outcome, int? opened = null, string? detail = null)
-            => BackportAttempts.RecordAsync(session, repository, pull.Number, commit, branch, outcome, opened, detail, now, cancellationToken);
+            => BackportAttempts.RecordAsync(session, repository, pull.Number, commit, branch, outcome, opened, detail, now, cancellationToken, logId);
 
         if (result is null || result.Outcome != GitWriterBackportResult.Backported)
         {

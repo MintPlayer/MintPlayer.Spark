@@ -32,7 +32,6 @@ internal sealed class FakeForgeDependencyUpdates : IForgeDependencyUpdates
     public Dictionary<int, ForgeBotPullRequest> PullRequests { get; } = [];
     public List<(string Head, string Base, string Title, string Body, bool Draft)> Created { get; } = [];
     public List<(int Number, string Title, string Body)> Updated { get; } = [];
-    public List<(long CommentId, EForgeReaction Reaction)> Reactions { get; } = [];
     public List<(string Sha, ForgeQueueCheck Check, long? ExistingId)> Checks { get; } = [];
 
     /// <summary><c>owner/repo@tag</c> → commit.</summary>
@@ -113,12 +112,6 @@ internal sealed class FakeForgeDependencyUpdates : IForgeDependencyUpdates
         var fault = Faults[index].Fault;
         Faults.RemoveAt(index);
         throw fault;
-    }
-
-    public Task AddCommentReactionAsync(Repository repository, long commentId, EForgeReaction reaction, CancellationToken cancellationToken = default)
-    {
-        Reactions.Add((commentId, reaction));
-        return Task.CompletedTask;
     }
 
     public Task<long> PublishCheckAsync(Repository repository, string sha, ForgeQueueCheck check, long? existingId, CancellationToken cancellationToken = default)
@@ -232,10 +225,13 @@ internal sealed class DependencyHarness
         await session.SaveChangesAsync();
     }
 
+    /// <summary>#660: the reactions the command lifecycle puts on the command comments.</summary>
+    public Commands.FakeCommentReactions Reactions { get; } = new();
+
     private DependencyUpdateEngine Engine(Raven.Client.Documents.Session.IAsyncDocumentSession session)
         => new(session, Forge, [Queue], [Updates], Permissions, Writer, Outbox, Time,
             Options.Create(new MergeQueueOptions { GitWriterUrl = "http://writer" }), new DependencyStateStore(session),
-            new WorkflowHook(NullLogger<WorkflowHook>.Instance), NullLogger<DependencyUpdateEngine>.Instance);
+            new WorkflowHook(NullLogger<WorkflowHook>.Instance), Commands.CommandTestKit.Lifecycle(Store, Reactions, Time), NullLogger<DependencyUpdateEngine>.Instance);
 
     public async Task SignalAsync(DependencyUpdateSignalMessage signal)
     {

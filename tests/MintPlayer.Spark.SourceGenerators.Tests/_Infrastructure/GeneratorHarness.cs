@@ -337,9 +337,10 @@ internal static class GeneratorHarness
     public static MetadataReference CompileToMetadataReference(
         string assemblyName,
         IEnumerable<string> sources,
-        IEnumerable<Type>? referenceTypes = null)
+        IEnumerable<Type>? referenceTypes = null,
+        IEnumerable<MetadataReference>? additionalReferences = null)
     {
-        var compilation = BuildCompilation(sources, referenceTypes ?? Array.Empty<Type>())
+        var compilation = BuildCompilation(sources, referenceTypes ?? Array.Empty<Type>(), additionalReferences: additionalReferences)
             .WithAssemblyName(assemblyName);
 
         using var stream = new MemoryStream();

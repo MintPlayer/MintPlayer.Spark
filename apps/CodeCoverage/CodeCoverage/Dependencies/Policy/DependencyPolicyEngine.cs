@@ -426,7 +426,7 @@ public static class DependencyPolicyEngine
                     if (!Approved(group, depNames, targets))
                     {
                         failures.AddRange(ideal.Select(v => Entry(group, v, EDependencyReportReason.AwaitingApproval,
-                            $"{level.ToString().ToLowerInvariant()} update over the threshold ({threshold.ToString().ToLowerInvariant()}): comment 'approve {group}'") with { Until = v.InCooldown ? v.Until : null }));
+                            $"{level.ToString().ToLowerInvariant()} update over the threshold ({threshold.ToString().ToLowerInvariant()}): comment '/approve {group}'") with { Until = v.InCooldown ? v.Until : null }));
                         continue;
                     }
                     approved = true;
@@ -645,7 +645,7 @@ public static class DependencyPolicyEngine
                         var names = missing.Count <= 5 ? string.Join(", ", missing) : $"{string.Join(", ", missing.Take(5))} and {missing.Count - 5} more";
                         var waitsFor = toRelease ? $"their {major} release" : $"{major}.x";
                         Report(Entry(target, level, EDependencyReportReason.Pending,
-                            $"waiting on {names} to release {waitsFor}: comment 'approve {group} --force' to move without them"));
+                            $"waiting on {names} to release {waitsFor}: comment '/approve {group} --force' to move without them"));
                         return false;
                     }
                 }
@@ -662,7 +662,7 @@ public static class DependencyPolicyEngine
                 {
                     if (!Approved(group, [eco], targets))
                     {
-                        Report(Entry(target, level, EDependencyReportReason.AwaitingApproval, $"platform {level.ToString().ToLowerInvariant()} {current} → {token}: comment 'approve {group}'"));
+                        Report(Entry(target, level, EDependencyReportReason.AwaitingApproval, $"platform {level.ToString().ToLowerInvariant()} {current} → {token}: comment '/approve {group}'"));
                         return false;
                     }
                     approved = true;
@@ -682,7 +682,7 @@ public static class DependencyPolicyEngine
                     {
                         var files = string.Join(", ", unedited.Select(l => l.File).Distinct(StringComparer.Ordinal).Take(3));
                         Report(Entry(target, level, EDependencyReportReason.AwaitingApproval,
-                            $"{unedited.Count} location(s) on {current} the bot cannot edit ({files}; see \"Not moved\"): comment 'approve {group}', "
+                            $"{unedited.Count} location(s) on {current} the bot cannot edit ({files}; see \"Not moved\"): comment '/approve {group}', "
                             + $"or list them under platforms.{platform.Sdk}.exclude to leave them on purpose"));
                         return false;
                     }

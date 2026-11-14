@@ -1,0 +1,74 @@
+{
+  "$schema": "../../../../schemas/translations.schema.json",
+  "queries": {
+    "Logs": {
+      "label": {
+        "en": "Logs",
+        "fr": "Journaux",
+        "nl": "Logboeken"
+      }
+    }
+  },
+  "model": {
+    "Log": {
+      "label": {
+        "en": "Log",
+        "fr": "Journal",
+        "nl": "Logboek"
+      },
+      "attributes": {
+        "RelatedPersistentObjectId": {
+          "label": {
+            "en": "Belongs to",
+            "fr": "Appartient à",
+            "nl": "Hoort bij"
+          }
+        },
+        "Entries": {
+          "label": {
+            "en": "Entries",
+            "fr": "Entrées",
+            "nl": "Regels"
+          }
+        }
+      }
+    },
+    "LogEntry": {
+      "label": {
+        "en": "Entry",
+        "fr": "Entrée",
+        "nl": "Regel"
+      },
+      "attributes": {
+        "At": {
+          "label": {
+            "en": "At",
+            "fr": "À",
+            "nl": "Op"
+          }
+        },
+        "Level": {
+          "label": {
+            "en": "Level",
+            "fr": "Niveau",
+            "nl": "Niveau"
+          }
+        },
+        "Text": {
+          "label": {
+            "en": "Message",
+            "fr": "Message",
+            "nl": "Bericht"
+          }
+        },
+        "Exception": {
+          "label": {
+            "en": "Exception",
+            "fr": "Exception",
+            "nl": "Uitzondering"
+          }
+        }
+      }
+    }
+  }
+}

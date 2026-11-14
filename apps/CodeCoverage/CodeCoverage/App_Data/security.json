@@ -89,6 +89,18 @@
       "isDenied": false
     },
     {
+      "key": "c0e5a9e1-0000-4000-8000-0000000000b1",
+      "resource": "QueryRead/CommandInvocation",
+      "groupId": "00000000-0000-0000-0000-000000000000",
+      "isDenied": false
+    },
+    {
+      "key": "c0e5a9e1-0000-4000-8000-0000000000b2",
+      "resource": "QueryRead/CommandInvocation",
+      "groupId": "00000000-0000-0000-0000-000000000001",
+      "isDenied": false
+    },
+    {
       "key": "c0e5a9e1-0000-4000-8000-000000000003",
       "resource": "QueryRead/Commit",
       "groupId": "00000000-0000-0000-0000-000000000000",
@@ -224,6 +236,24 @@
       "key": "c0e5a9e1-0000-4000-8000-000000000091",
       "resource": "Read/HostMetrics",
       "groupId": "dashboards:administrators",
+      "isDenied": false
+    },
+    {
+      "key": "c0e5a9e1-0000-4000-8000-0000000000b3",
+      "resource": "Read/Log",
+      "groupId": "00000000-0000-0000-0000-000000000000",
+      "isDenied": false
+    },
+    {
+      "key": "c0e5a9e1-0000-4000-8000-0000000000b4",
+      "resource": "Read/Log",
+      "groupId": "00000000-0000-0000-0000-000000000001",
+      "isDenied": false
+    },
+    {
+      "key": "c0e5a9e1-0000-4000-8000-0000000000b5",
+      "resource": "ListAll/Log",
+      "groupId": "c0e5ad00-0000-4000-8000-000000000001",
       "isDenied": false
     },
     {

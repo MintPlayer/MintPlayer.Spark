@@ -1,3 +1,4 @@
+using CodeCoverage.Commands;
 using CodeCoverage.Dependencies.Policy;
 using CodeCoverage.Entities;
 using CodeCoverage.Feedback;
@@ -62,17 +63,33 @@ public partial class DependencyUpdateEventsRecipient :
 {
     [Inject] private readonly IAsyncDocumentSession session;
     [Inject] private readonly IMessageBus messageBus;
+    [Inject] private readonly ICommandLifecycle commands;
 
+    /// <remarks>
+    /// #660: the run's engine handles a command on its own pull request. A command on another pull request of a repository
+    /// that uses the updater is answered here with 👎; in a repository that does not, it is somebody else's (other bots read
+    /// <c>/approve</c> and <c>/hold</c> too), and is left alone.
+    /// </remarks>
     public async Task HandleAsync(ForgeWebhookMessage<DependencyCommandIssued> message, CancellationToken cancellationToken = default)
     {
         var evt = message.Event;
-        foreach (var run in await RunsAsync(evt.RepositoryId, cancellationToken))
+        var runs = await RunsAsync(evt.RepositoryId, cancellationToken);
+        var handled = false;
+        foreach (var run in runs)
             if (run.PullRequestNumber == evt.Number)
+            {
+                handled = true;
                 await SignalAsync(new DependencyUpdateSignalMessage
                 {
                     RepositoryId = evt.RepositoryId, Line = run.Line, Kind = EDependencySignal.Command, Number = evt.Number, CommentId = evt.CommentId,
                     Command = evt.Command, Argument = evt.Argument, Actor = evt.ActorLogin,
                 }, cancellationToken);
+            }
+        if (handled || runs.Count == 0 || await session.LoadAsync<Repository>(evt.RepositoryId, cancellationToken) is not { } repository) return;
+        var invocation = await commands.BeginAsync(repository, evt.Number, evt.CommentId, DependencyUpdateEngine.CommandText(evt.Command, evt.Argument), evt.ActorLogin,
+            cancellationToken);
+        await commands.FinishAsync(invocation, ECommandOutcome.Refused,
+            $"#{evt.Number} is not a dependency update pull request; `/{evt.Command.ToString().ToLowerInvariant()}` works on the one the bot opened.", cancellationToken);
     }
 
     public async Task HandleAsync(ForgeWebhookMessage<CiRunCompleted> message, CancellationToken cancellationToken = default)

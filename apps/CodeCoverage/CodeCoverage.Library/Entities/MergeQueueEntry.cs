@@ -255,6 +255,14 @@ public class MergeQueueEntry
 
     public DateTime? FinishedAtUtc { get; set; }
 
+    // ── Command and log (#660) ───────────────────────────────────────────────────────────────────────
+
+    /// <summary>The <c>/queue</c> comment's <see cref="CommandInvocation"/> that started this run; the run's end reacts on it (G3).</summary>
+    public string? CommandInvocation { get; set; }
+
+    /// <summary>This run's log (G11): every step and signal of the run appends to it, whatever queued it.</summary>
+    public string? LogId { get; set; }
+
     /// <summary>The run's steps, oldest first, capped at <see cref="MaxHistory"/>.</summary>
     public List<MergeQueueEntryEvent> History { get; set; } = [];
 

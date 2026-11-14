@@ -51,6 +51,7 @@ COPY ["libs/mail/MintPlayer.Spark.MailManager/MintPlayer.Spark.MailManager.cspro
 COPY ["libs/mail/MintPlayer.Spark.MailManager.Abstractions/MintPlayer.Spark.MailManager.Abstractions.csproj", "libs/mail/MintPlayer.Spark.MailManager.Abstractions/"]
 COPY ["libs/mcp/MintPlayer.Spark.Mcp/MintPlayer.Spark.Mcp.csproj", "libs/mcp/MintPlayer.Spark.Mcp/"]
 COPY ["libs/identity_provider/MintPlayer.Spark.IdentityProvider/MintPlayer.Spark.IdentityProvider.csproj", "libs/identity_provider/MintPlayer.Spark.IdentityProvider/"]
+COPY ["libs/logging/MintPlayer.Spark.Logging/MintPlayer.Spark.Logging.csproj", "libs/logging/MintPlayer.Spark.Logging/"]
 COPY ["libs/migrations/MintPlayer.Spark.Migrations/MintPlayer.Spark.Migrations.csproj", "libs/migrations/MintPlayer.Spark.Migrations/"]
 COPY ["libs/webhooks/MintPlayer.Spark.Webhooks.GitHub/MintPlayer.Spark.Webhooks.GitHub.csproj", "libs/webhooks/MintPlayer.Spark.Webhooks.GitHub/"]
 COPY ["libs/webhooks/MintPlayer.Spark.Webhooks.GitHub.DevTunnel/MintPlayer.Spark.Webhooks.GitHub.DevTunnel.csproj", "libs/webhooks/MintPlayer.Spark.Webhooks.GitHub.DevTunnel/"]

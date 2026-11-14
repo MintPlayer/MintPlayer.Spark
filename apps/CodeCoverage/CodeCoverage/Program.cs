@@ -21,6 +21,7 @@ using MintPlayer.Spark.Webhooks.GitHub.DevTunnel.Extensions;
 using MintPlayer.Spark.Authorization.Identity;
 using MintPlayer.Spark.IdentityProvider.Extensions;
 using MintPlayer.Spark.MailManager;
+using MintPlayer.Spark.Logging;
 using MintPlayer.Spark.Mcp;
 using MintPlayer.Spark.Messaging;
 using MintPlayer.Spark.Webhooks.GitHub.Extensions;
@@ -333,6 +334,8 @@ builder.Services.AddSpark(builder.Configuration, spark =>
             .ObjectId(CodeCoverage.CommitGraph.HostMetricsActions.ObjectId)));
     // #530: Home's accounts grid is the "home" board (App_Data/boards.json); a signed-in user may rearrange it.
     spark.AddBoards();
+    // #660: each bot command's log (and the merge queue's and backports'), readable by whoever may read its record.
+    spark.AddLogs();
 
     // ⚠ The four calls above are source-generated over THIS assembly only, so they do not see
     // anything in CodeCoverage.GithubIntegration. Its own entry point has to be called explicitly,

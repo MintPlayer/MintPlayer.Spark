@@ -158,7 +158,7 @@
             <p class="mb-0">
               Dependabot <strong>alerts</strong> stay on: they are what starts a security run. A vulnerable package skips
               the schedule and the cooldown, and the fix goes into the rolling pull request, with only the groups that
-              may auto-merge anyway; a fix that is a major still waits for <code>approve</code>.
+              may auto-merge anyway; a fix that is a major still waits for <code>/approve</code>.
             </p>
           }
           @case ('coverage-yml') {
@@ -199,8 +199,10 @@
           }
           @case ('commands') {
             <p>
-              Anyone with write access comments on the rolling pull request, one command per comment. Edited comments and
-              comments by bots are ignored; the bot reacts 👍 or 👎.
+              Anyone with write access comments on the rolling pull request, one command per comment. Every command
+              starts with <code>/</code>; edited comments and comments by bots are ignored. The bot reacts 👀 when it
+              reads the comment, 🚀 while a run the command started is going, then 🎉 done, 👍 nothing changed or 👎
+              refused or failed.
             </p>
             <bs-table [responsive]="true" data-testid="du-setup-commands">
               <thead>
@@ -219,14 +221,14 @@
               <dt>Approvals</dt>
               <dd>
                 An update over its threshold stays out of the pull request until a writer comments
-                <code>approve &lt;group&gt;</code>. The approval is bound to the exact dependency set, the target major
+                <code>/approve &lt;group&gt;</code>. The approval is bound to the exact dependency set, the target major
                 and the <code>coverage.yml</code> it was given under: a newer major, a changed group or another
                 <code>coverage.yml</code> expires it. It is checked again at apply time, so an approver who lost write
                 access loses the approval.
               </dd>
               <dt>Holds</dt>
               <dd>
-                A group is held by a <code>hold</code> comment or a rule's <code>hold:</code>, until removed; by a
+                A group is held by a <code>/hold</code> comment or a rule's <code>hold:</code>, until removed; by a
                 manifest value you pushed on the rolling branch, so the next slot does not undo it; and by the bot
                 itself, when CI went red on it or the resolver refused it. The pull request lists every hold and why.
               </dd>
@@ -265,7 +267,7 @@
             <p class="mb-0">
               <strong>Code migrations.</strong> <code>migrate:</code> maps a dependency to a workflow, such as the
               <code>angular-migrate.yml</code> and <code>nx-migrate.yml</code> templates the onboarding adds. It runs only
-              after an <code>approve</code> of a major, with no secrets (<code>ng update --migrate-only</code>,
+              after an <code>/approve</code> of a major, with no secrets (<code>ng update --migrate-only</code>,
               <code>nx migrate --run-migrations</code>). A migration that does not complete drops its group, and a pull
               request with migrations never auto-merges and says so.
             </p>

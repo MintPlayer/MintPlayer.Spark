@@ -319,6 +319,12 @@ public enum EForgeCapability
     /// settings are hidden for a forge without it.
     /// </summary>
     Versioning,
+
+    /// <summary>
+    /// The App's own reactions on a comment that holds a bot command (#660 G4). Its members live on
+    /// <see cref="IForgeCommentReactions"/>. GitHub only: only GitHub raises comment commands.
+    /// </summary>
+    CommentReactions,
 }
 
 /// <summary>How a git process reaches one repository (<see cref="IForgeIntegration.GetGitAccessAsync"/>).</summary>

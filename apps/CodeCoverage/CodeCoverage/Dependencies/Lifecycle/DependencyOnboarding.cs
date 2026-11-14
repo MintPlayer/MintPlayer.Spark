@@ -69,8 +69,8 @@ public static class DependencyOnboarding
     {
         "dependency-lookup.yml" => "the lookup. The bot dispatches it on the default branch; it runs Renovate in lookup-only mode and uploads what is available.",
         "dependency-apply.yml" => "the apply. The bot dispatches it on its plan; it edits the manifests and relocks with scripts off, and uploads the patch the bot validates and pushes.",
-        "angular-migrate.yml" => "runs the `ng update` migrations of an Angular update you approved with `approve <group>`; such a pull request never auto-merges.",
-        "nx-migrate.yml" => "runs the `nx migrate` migrations of an Nx update you approved with `approve <group>`; such a pull request never auto-merges.",
+        "angular-migrate.yml" => "runs the `ng update` migrations of an Angular update you approved with `/approve <group>`; such a pull request never auto-merges.",
+        "nx-migrate.yml" => "runs the `nx migrate` migrations of an Nx update you approved with `/approve <group>`; such a pull request never auto-merges.",
         _ => null,
     };
 
@@ -84,7 +84,7 @@ public static class DependencyOnboarding
         #   cooldown: 3d                     # third-party releases wait this long; may only lengthen the account's
         #   autoMerge:                       # the largest update merged through the merge queue without an approval
         #     default: minor
-        #     "@angular/*": never            # never: every update waits for `approve <group>`
+        #     "@angular/*": never            # never: every update waits for `/approve <group>`
         #     maxCoverageDrop: 0.5           # percentage points
         #   rules:
         #     - match: ["some-package"]
@@ -270,9 +270,9 @@ public static class DependencyOnboarding
         if (types.Count == 0 && !hasVersions)
             yield return $"{RulePrefix}- {{ match: [{quoted}], ignore: true }}";
         else if (types.Count > 0 && !hasVersions && types.All(x => x == "version-update:semver-major"))
-            yield return $"{AutoMergePrefix}{quoted}: minor   # majors wait for `approve`";
+            yield return $"{AutoMergePrefix}{quoted}: minor   # majors wait for `/approve`";
         else if (types.Count > 0 && !hasVersions && types.All(x => x is "version-update:semver-major" or "version-update:semver-minor"))
-            yield return $"{AutoMergePrefix}{quoted}: patch   # minors and majors wait for `approve`";
+            yield return $"{AutoMergePrefix}{quoted}: patch   # minors and majors wait for `/approve`";
         else
             yield return $"# {name}: Dependabot ignored some versions; rules take no version ranges, so hold it (hold: true) or approve by hand";
     }

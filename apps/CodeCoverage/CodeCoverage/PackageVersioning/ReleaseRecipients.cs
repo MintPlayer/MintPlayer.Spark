@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text;
+using CodeCoverage.Commands;
 using CodeCoverage.Entities;
 using CodeCoverage.Feedback;
 using CodeCoverage.Forge;
@@ -21,6 +22,8 @@ public sealed record ReleaseMessage
     public required int Number { get; init; }
     public required ReleaseCommentRequest Request { get; init; }
     public required string ActorLogin { get; init; }
+    /// <summary>The <c>/release</c> comment (#660): the command lifecycle reacts on it.</summary>
+    public long? CommentId { get; init; }
 }
 
 public partial class ReleaseEventsRecipient : IRecipient<ForgeWebhookMessage<ReleaseRequested>>
@@ -32,7 +35,7 @@ public partial class ReleaseEventsRecipient : IRecipient<ForgeWebhookMessage<Rel
         var evt = message.Event;
         return messageBus.BroadcastAsync(new ReleaseMessage
         {
-            RepositoryId = evt.RepositoryId, Number = evt.Number, Request = evt.Request, ActorLogin = evt.ActorLogin,
+            RepositoryId = evt.RepositoryId, Number = evt.Number, Request = evt.Request, ActorLogin = evt.ActorLogin, CommentId = evt.CommentId,
         }, cancellationToken);
     }
 }
@@ -61,33 +64,72 @@ public partial class ReleaseRecipient : IRecipient<ReleaseMessage>
     [Inject] private readonly IGitWriterSidecar writer;
     [Inject] private readonly IHttpClientFactory httpClients;
     [Inject] private readonly TimeProvider time;
+    [Inject] private readonly ICommandLifecycle commands;
     [Inject] private readonly ILogger<ReleaseRecipient> logger;
 
     public async Task HandleAsync(ReleaseMessage message, CancellationToken cancellationToken = default)
     {
         var repository = await session.LoadAsync<Repository>(message.RepositoryId, cancellationToken);
-        if (repository is null || repository.Connection == RepositoryConnection.Disconnected || repository.Archived) return;
-        if (forges.FirstOrDefault(f => f.Provider == repository.Provider) is not { } forge) return;
-        if (queues.FirstOrDefault(q => q.Provider == repository.Provider) is not { } git) return;
-        if (repository.DefaultBranch is not { } defaultBranch) return;
+        if (repository is null) return;
+        // #660 G4: 👀 at the start of the command's own handler; every exit below finishes it.
+        var invocation = await commands.BeginAsync(repository, message.Number, message.CommentId, "/release", message.ActorLogin, cancellationToken);
+        await using var log = commands.OpenLog(invocation);
+        if (repository.Connection == RepositoryConnection.Disconnected || repository.Archived
+            || forges.FirstOrDefault(f => f.Provider == repository.Provider) is not { } forge
+            || queues.FirstOrDefault(q => q.Provider == repository.Provider) is not { } git
+            || repository.DefaultBranch is not { } defaultBranch)
+        {
+            await commands.FinishAsync(invocation, ECommandOutcome.Refused, "This repository cannot be released from here: it is disconnected, archived or has no default branch.",
+                cancellationToken);
+            return;
+        }
 
         try
         {
-            if (await RunAsync(repository, git, defaultBranch, message, cancellationToken) is { } answer)
-                await forge.CommentAsync(repository, message.Number, answer, cancellationToken);
+            var answer = await RunAsync(repository, git, defaultBranch, message, cancellationToken);
+            await forge.CommentAsync(repository, message.Number, answer.Text, cancellationToken);
+            await commands.FinishAsync(invocation, answer.Outcome, answer.Text, cancellationToken);
         }
         catch (ForgeAccessDeniedException ex)
         {
             logger.LogWarning(ex, "Release: missing permission {Permission} on {Repository}", ex.RequiredPermission, repository.FullName);
+            await FailedAsync(repository, forge, message, invocation, $"the App is missing the {ex.RequiredPermission} permission", cancellationToken);
         }
         catch (ForgeRequestException ex) when (ForgeRateLimitedException.Find(ex) is null)
         {
             logger.LogWarning(ex, "Release on #{Number} in {Repository} failed", message.Number, repository.FullName);
+            await FailedAsync(repository, forge, message, invocation, $"the forge answered an error: {ex.Message}", cancellationToken);
         }
     }
 
+    /// <summary>
+    /// R6: a forge failure used to be only logged, so the commenter saw nothing. It is answered now, best effort: the forge
+    /// that just failed may fail the reply too, and the reaction still says so.
+    /// </summary>
+    private async Task FailedAsync(Repository repository, IForgeVersioning forge, ReleaseMessage message, string? invocation, string detail,
+        CancellationToken cancellationToken)
+    {
+        var text = $"The release could not run: {detail}. Comment `/release` again to retry.";
+        try
+        {
+            await forge.CommentAsync(repository, message.Number, text, cancellationToken);
+        }
+        catch (Exception ex) when (ex is ForgeAccessDeniedException or ForgeRequestException)
+        {
+            logger.LogWarning(ex, "Release: could not answer #{Number} in {Repository}", message.Number, repository.FullName);
+        }
+        await commands.FinishAsync(invocation, ECommandOutcome.Failed, text, cancellationToken);
+    }
+
+    /// <summary>How a promotion ended: 🎉 when a line moved, 👍 when every line held it already, else 👎.</summary>
+    internal static ECommandOutcome OutcomeOf(GitWriterPromoteResult result)
+        => result.Outcome != GitWriterPromoteResult.Promoted ? ECommandOutcome.Failed
+            : (result.Lines ?? []).Any(l => l.Outcome == GitWriterPromoteLineResult.Promoted) ? ECommandOutcome.Done
+            : (result.Lines ?? []).All(l => l.Outcome is GitWriterPromoteLineResult.Contained or GitWriterPromoteLineResult.Unchanged) ? ECommandOutcome.NoChange
+            : ECommandOutcome.Refused;
+
     /// <summary>Runs the promotion; returns the comment to post.</summary>
-    private async Task<string?> RunAsync(Repository repository, IForgeMergeQueue git, string defaultBranch, ReleaseMessage message, CancellationToken cancellationToken)
+    private async Task<CommandAnswer> RunAsync(Repository repository, IForgeMergeQueue git, string defaultBranch, ReleaseMessage message, CancellationToken cancellationToken)
     {
         var account = repository.Account is null ? null : await session.LoadAsync<Account>(repository.Account, cancellationToken);
         var releaseRole = Repository.ResolveReleaseRole(repository, account);
@@ -119,7 +161,8 @@ public partial class ReleaseRecipient : IRecipient<ReleaseMessage>
             switch (await PublishedVersions.ExistsAsync(httpClients.CreateClient(), tag.PackageId, tag.Version.ToString(), cancellationToken))
             {
                 case true: return $"Nothing was released: {tag.PackageId} {tag.Version} is published already.";
-                case null: return "Nothing was released: the package registries could not be asked whether the versions are published already; comment `/release` again to retry.";
+                case null: return new CommandAnswer("Nothing was released: the package registries could not be asked whether the versions are published already; comment `/release` again to retry.",
+                    ECommandOutcome.Failed);
             }
             versions.Add(tag);
         }
@@ -143,7 +186,8 @@ public partial class ReleaseRecipient : IRecipient<ReleaseMessage>
         if (push.Access is not { } access)
         {
             logger.LogWarning("Release: no writer access for {Repository}: {Reason}", repository.FullName, push.RefusalReason);
-            return "The release could not run (the App has no push access to the repository right now); comment `/release` again to retry.";
+            return new CommandAnswer("The release could not run (the App has no push access to the repository right now); comment `/release` again to retry.",
+                ECommandOutcome.Failed);
         }
         GitWriterPromoteResult result;
         try
@@ -158,7 +202,7 @@ public partial class ReleaseRecipient : IRecipient<ReleaseMessage>
         catch (Exception ex) when (ex is GitWriterRefusedException or HttpRequestException or TaskCanceledException && !cancellationToken.IsCancellationRequested)
         {
             logger.LogWarning(ex, "Release: the git writer failed for {Repository}", repository.FullName);
-            return "The release could not run (the git writer was unavailable); comment `/release` again to retry.";
+            return new CommandAnswer("The release could not run (the git writer was unavailable); comment `/release` again to retry.", ECommandOutcome.Failed);
         }
         finally
         {
@@ -181,7 +225,7 @@ public partial class ReleaseRecipient : IRecipient<ReleaseMessage>
             if (recorded.GetValueOrDefault(stale.PackageId + VersionTag.Separator + stale.Version) is { } record)
                 session.Delete(record);
         await session.SaveChangesAsync(cancellationToken);
-        return Report(repository, defaultBranch, workflow, green, runs, result);
+        return new CommandAnswer(Report(repository, defaultBranch, workflow, green, runs, result), OutcomeOf(result));
     }
 
     /// <summary>The lines to promote, or null when the request names one that is no current line.</summary>

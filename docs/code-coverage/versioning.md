@@ -324,7 +324,9 @@ versioning:
 - **`/release`** promotes every current line whose ecosystem changed since the line's last promotion, to the newest
   default-branch commit whose `workflow` run succeeded. `/release <sha>` takes that green commit instead;
   `/release dotnet-11.x` (or the branch name) and `/release all` promote the named lines, or all of them, changed or
-  not. The App answers with a comment that lists each line and any newer commit left out.
+  not. The App answers with a comment that lists each line and any newer commit left out, and reacts on the `/release`
+  comment: 👀 when it reads it, then 🎉 when a line was promoted, 👍 when no line had anything to promote, 👎 on a
+  refusal or a failure (#660).
 - **Who may.** The commenter needs the repository's release role (maintain by default; *Release role* on the
   repository or the account).
 - **The commit.** A promotion is a merge commit (the green commit's tree, parents the line's tip and the green commit)

@@ -195,6 +195,33 @@ are read once at startup.
 
 ---
 
+## Overriding a library's actions class
+
+A library can ship an actions class for its own type, such as `MintPlayer.Spark.Logging`'s `LogActions`. Spark finds
+an actions class by its name, `{Type}Actions`, so a second class with that name in your application would make the
+lookup ambiguous. To take it over, **derive from the library's class** under the same name:
+
+```csharp
+public partial class LogActions : MintPlayer.Spark.Logging.LogActions
+{
+    public override async Task<IReadOnlyCollection<string>?> GetProtectedAttributesAsync(string action, Log entity) => …;
+}
+```
+
+The application's source generator sees the derivation and records it as
+`[assembly: SparkActionsOverride(typeof(Log), typeof(App.LogActions))]`, and the resolver then picks your class. It
+picks the most derived one only when every other class with that name is one of its bases, so two unrelated classes
+with one name still throw at startup. Calling `base` keeps the library's protections; not calling it drops them.
+
+| | |
+|---|---|
+| SPARK061 | (error) another referenced project already overrides the same library class with a class that is not one of your class's bases |
+| SPARK062 | (warning) a class with a referenced library's actions class name that does not derive from it, which drops the library's protections and makes resolution ambiguous |
+
+A host that does not run the generator records nothing and keeps the ambiguity error.
+
+---
+
 ## Writing a library that ships layers
 
 1. **Put the files in the library's own `App_Data`**, at the path that names their kind:

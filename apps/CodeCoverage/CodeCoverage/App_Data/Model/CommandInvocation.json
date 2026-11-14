@@ -1,0 +1,154 @@
+{
+  "$schema": "../../../../../schemas/model.schema.json",
+  "persistentObject": {
+    "id": "e9bfabce-5213-4531-bf62-48f8ab03e769",
+    "name": "CommandInvocation",
+    "clrType": "CodeCoverage.Entities.CommandInvocation",
+    "breadcrumb": "{Repository}",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "e9622b75-08fd-44ca-b7b1-fe5c999d8574",
+        "name": "Actor",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 5,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "43c433f8-a733-411b-8a04-4aa209657db2",
+        "name": "Command",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 4,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "c03824b2-7c84-4825-81d4-aea6d90f3e46",
+        "name": "CommentId",
+        "dataType": "number",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 3,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "2152d707-5699-4966-99b2-b412e3702689",
+        "name": "ExpiresAtUtc",
+        "dataType": "datetime",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 11,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "ffd3d410-1155-40b3-9deb-059b11ee9fd2",
+        "name": "FinishedAtUtc",
+        "dataType": "datetime",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 7,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "04ad59b3-3b7d-40bf-974e-ed2cfe8ecdae",
+        "name": "LogId",
+        "dataType": "Reference",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 10,
+        "referenceType": "MintPlayer.Spark.Logging.Models.Log",
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "5c91eb3b-1944-4d98-bf4e-90dbac5839c3",
+        "name": "Message",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 9,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "1e593d6f-6dfd-432c-ba2f-939e8218702f",
+        "name": "Number",
+        "dataType": "number",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "41ae08e9-fe01-4e61-8474-8a67bdc67a1c",
+        "name": "Outcome",
+        "dataType": "string",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 8,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "e8ca07b1-7bde-4bd4-a0c1-d7e92a6acf79",
+        "name": "ReceivedAtUtc",
+        "dataType": "datetime",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 6,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "2be04aaf-452a-45e0-b7a6-bf6dcb6aa798",
+        "name": "Repository",
+        "dataType": "Reference",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 1,
+        "query": "GetRepositories",
+        "referenceType": "CodeCoverage.Entities.Repository",
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      }
+    ],
+    "queries": []
+  },
+  "queries": [
+    {
+      "id": "59524a28-874c-461c-81a7-8eb78f582a2b",
+      "name": "GetCommandInvocations",
+      "source": "Custom.Repository_CommandInvocations",
+      "alias": "repository-command-invocations",
+      "sortColumns": [
+        {
+          "property": "ReceivedAtUtc",
+          "direction": "desc"
+        }
+      ],
+      "renderMode": "Pagination",
+      "entityType": "CommandInvocation"
+    }
+  ]
+}

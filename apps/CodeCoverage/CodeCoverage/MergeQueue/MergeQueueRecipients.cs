@@ -62,6 +62,7 @@ public partial class MergeQueueEventsRecipient :
             Actor = evt.ActorLogin,
             Source = evt.Source,
             Label = evt.Label,
+            CommentId = evt.CommentId,
         }, cancellationToken);
     }
 

@@ -30,6 +30,14 @@ public class ActionsRegistrationProducer : Producer
         writer.WriteLine(Header);
         writer.WriteLine();
 
+        // #660 G17: a class that specialises a same-named actions class (typically a library's) is recorded, so the
+        // run-time resolver takes it instead of refusing the two as ambiguous.
+        var overrides = actionsList.Where(a => a.OverridesBaseActions).ToList();
+        foreach (var actionsClass in overrides)
+            writer.WriteLine($"[assembly: global::MintPlayer.Spark.Abstractions.SparkActionsOverride(typeof({actionsClass.EntityTypeName}), typeof({actionsClass.ActionsTypeName}))]");
+        if (overrides.Count > 0)
+            writer.WriteLine();
+
         using (writer.OpenBlock($"namespace {RootNamespace}"))
         {
             using (writer.OpenBlock("internal static class SparkActionsBuilderExtensions"))

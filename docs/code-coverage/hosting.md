@@ -213,6 +213,7 @@ Keys the CodeCoverage assemblies read themselves. Environment-variable form repl
 | `MergeQueue:*` | `GitWriterUrl` unset (compose sets it), `JobRequestTimeoutSeconds` 240, `CommitterName` `CodeCoverage merge queue`, `CommitterEmail` `merge-queue@noreply.coverage.mintplayer.com`, `AuthorEmailFormat` `{login}@users.noreply.github.com`, `PatchArtifactName` `merge-queue-patch`, `MaxPatchBytes` 8 MiB (`MergeQueue/GitWriterSidecarClient.cs`, `MergeQueueOptions`) | No | the merge queue | The writer's URL (unset turns the git steps off) and the bound on one job request (the writer's 180 s job timeout plus its 30 s slot wait and a margin); the committer of every commit the queue writes; the rebased commit's author email; the regenerate artifact's name and size cap (keep it equal to `GitWriter:MaxPatchBytes`). Only `GitWriterUrl` is mapped in compose. Details: [merge-queue.md](merge-queue.md) §7.3. |
 | `GitWriter:*` *(writer)* | `Root` `/data/jobs`, `MinFreeBytes` 2 GiB, `MaxJobBytes` 1 GiB, `JobTimeoutSeconds` 180, `MaxConcurrentJobs` 1, `SlotWaitSeconds` 30, `MaxPatchBytes` 8 MiB, `HooksPath` `/opt/git-hooks-empty` (`CodeCoverage.GitWriter/appsettings.json`, `GitWriterOptions.cs`, `Dockerfile`) | No | `coverage-git-writer` | The writer's job caps (S8) and limits. A request that waits `SlotWaitSeconds` for a slot is answered `busy`. |
 | `Coverage:Retention:ReportAttachmentDays` | `7` (`appsettings.json`; `DefaultRetentionDays = 7` in `Ingestion/ReapReportAttachmentsCronJob.cs`) | No | the reaper cron job | Days an uploaded raw report attachment is kept after parsing. Not mapped in compose. |
+| `Coverage:Retention:CommandInvocationDays` | `90` (`CommandLifecycle.DefaultRetentionDays`) | No | `CommandLifecycle` | Days a finished bot command (`CommandInvocations/…`) is kept, through RavenDB's expiration; one still in progress never expires ([command-reactions-PRD](command-reactions-PRD.md) G5). Not mapped in compose. |
 | `GitHub:WebhookSecret` | `""` (`appsettings.json`) | Yes | `Program.cs` → Spark GitHub webhooks | Webhook signature secret. |
 | `GitHub:SmeeChannelUrl` | `""` (`appsettings.json`) | Development only | `Program.cs` | A smee.io channel relayed into the local webhook processor. |
 | `GitHub:{Env}:ClientId` | unset | **Yes — `Program.cs` throws a named error** (except for `--spark-*` build commands) | sign-in, user-token refresh | OAuth client id. |
@@ -436,7 +437,9 @@ merge queue). **Workflows: write** is needed for the onboarding pull request (it
 workflows) and for Actions `uses:` bumps (R15); the per-job token asks for it only for those pushes. **Actions:
 write** dispatches the lookup, apply, relock and migrate runs and reads their artifacts. **Pull requests: write**
 opens and updates the rolling pull request. **Checks: write** publishes the `Dependency updates` check run.
-**Issues: write** posts the bot's comments and reacts to `approve`, `hold`, `unhold`, `bisect` and `refresh`.
+**Issues: write** posts the bot's comments and reacts to `/approve`, `/hold`, `/unhold`, `/bisect` and `/refresh`.
+The other commands (`/queue`, `/dequeue`, `/backport`, `/release`) get their reactions through the same permission
+([command-reactions-PRD](command-reactions-PRD.md)); a refused reaction is logged and never stops the command.
 **Dependabot alerts: read** delivers the `dependabot_alert` event. Before it opens an onboarding pull request, the bot
 reads the App's declaration and the installation's acceptance of this set (`EMergeQueueAppNeed.DependencyUpdates`); a
 gap blocks onboarding with the reason, shown on the repository's dependency panel and the account's fleet view, and
