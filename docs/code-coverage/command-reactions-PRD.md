@@ -160,7 +160,12 @@ command hints the bot writes are in:
   an old comment then answers with the uniform 404. That ambiguity is accepted, because it is what keeps private
   repositories from leaking.
 - **G6. A new library, `MintPlayer.Spark.Logging`** (`libs/logging/`, a new NuGet package that gets its first version
-  from the versioning engine). It references Abstractions only, never RavenDB.
+  from the versioning engine). It never references RavenDB.
+  - *Refined in M1:* it references Spark **core**, not Abstractions only. Its `LogActions` derives from
+    `DefaultPersistentObjectActions<Log>` and asks core's `ISparkReadAccess` (S3), and both live in core. Storage still
+    goes only through `ISparkStore`/`ISparkSession`, and the tests run the same suite on RavenDB and InMemory
+    (`tests/MintPlayer.Spark.Tests/Logging/LogScopeTests.cs`).
+  - Log ids are `Logs/{key}` (`LogIds.ForKey`), or `Logs/{guid}` for `CreateScope()`.
 - **G7. Scoped capture through the built-in logging scope.** `ILogger.BeginScope` plus a provider that implements
   `ISupportExternalScope`, under `[ProviderAlias("Document")]`.
   - Only entries inside a log scope are written.
@@ -198,22 +203,34 @@ command hints the bot writes are in:
 - **G12. `Exception` is its own field.** Handlers must pass exceptions as `LogX(ex, "…")`. An exception's text formatted
   into the message is visible to every reader, so M4 reviews the handlers for this.
 - **G13.** `Log` stays fully decoupled from application code. It ships with a `Log.json` persistent-object model and
-  default rights. The consumer declares `IQueryable<Log> Logs` on its context for now; generating that property from a
-  per-feature attribute comes later.
+  default rights. ~~The consumer declares `IQueryable<Log> Logs` on its context for now; generating that property from a
+  per-feature attribute comes later.~~
+  - *Superseded in M1:* the consumer declares nothing. A library model cannot use a `Database.X` query source (the
+    reason is in the Settings library's `SettingActions`), so `Log.json`'s `Logs` query uses `Custom.Logs`, which
+    `LogActions.Logs()` serves. `spark.AddLogs()` is the whole opt-in, plus the rights.
 - **G14. Finer control is the app's own `LogActions`.** An app overrides `GetRowFilterAsync` and
   `GetProtectedAttributesAsync` in its own `LogActions` class, using normal Spark extension points.
 - **G15. The shipped default inherits from the related object.**
   - The shipped `LogActions` makes a log with a `RelatedPersistentObjectId` readable (detail load) only if the caller
     may read that object, through Spark's own read path: type right, row filter, `DisableActions`.
   - A log without one follows the `Log` type right alone.
-  - Listing logs (Query) follows the type right only.
+  - ~~Listing logs (Query) follows the type right only.~~
+  - *Superseded in M1:* **list rows pass the same gate as a detail load.** In Spark a `Read` grant implies `Query`
+    (`libs/spark/MintPlayer.Spark/AGENTS.md:25-29`). So the `Read/Log` grant that G16 gives everyone would have
+    listed every log of every record to anyone. Found red by `LogAccessTests`, where ann, holding `Read/Log` only, got
+    200 from `Custom.Logs`. `LogActions.IsAllowedAsync` now gates `"Query"` like `"Read"`, which the list calls per row.
+    Green: `The_list_holds_only_the_logs_the_caller_may_open`.
   - A missing or expired related object means the log can't be read (fail closed).
 - **G16. Secure by default.** The shipped `security.json` grants **nobody** `Read/Log` or `Query/Log`.
   - CodeCoverage opts in: `Read/Log` for everyone (so detail loads inherit from the command record, `MergeQueueEntry` or
     `BackportAttempt`), and `Query/Log` for its admin group only.
   - CodeCoverage's `LogActions` protects `Entries.Exception` for callers without write access to the related object's
     repository.
-  - A startup warning or SPARK diagnostic flags `Query/Log` granted to an everyone group.
+  - ~~A startup warning or SPARK diagnostic flags `Query/Log` granted to an everyone group.~~
+  - *Superseded in M1:* there is no such warning. `Read/Log`, which CodeCoverage grants everyone, already implies
+    `Query/Log` (G15 note), so the warning would fire on the intended setup or be trivially sidestepped. What it guarded
+    against, everyone listing every log, cannot happen now that list rows pass the read gate. "Admins only" for the
+    list is CodeCoverage's own `LogActions` refusing `Query` rows to non-admins (G14), and M6 tests it.
 - **G17. An app takes over a library's actions class through the source generator.**
   - **The problem.** `ActionsResolver.FindActionsType` (`libs/spark/MintPlayer.Spark/Services/ActionsResolver.cs:121-156`)
     throws when two non-abstract classes share an actions name. So the library's `LogActions` (G15) and an app's
@@ -254,18 +271,55 @@ command hints the bot writes are in:
   - The `X-Accepted-GitHub-Permissions` header on both calls.
   - That an issue (not pull request) comment, for `/release`, uses the same endpoint.
 
-  Record the measured answers here.
+  **Measured 2026-11-14** with the owner's own `gh` token on the owner's comment 6878064747 on PR #666 (an 👀 added,
+  then deleted). The App's installation token was not used: both Apps already hold `issues: write` and
+  `pull_requests: write` (`gh api orgs/MintPlayer/installations`), which is what the reactions endpoints require.
+  - First POST of 👀 → **201** with a new reaction id. A second POST of the same content → **200 with the same id**,
+    so adding is idempotent and a replayed delivery cannot stack reactions.
+  - `DELETE …/issues/comments/{c}/reactions/{id}` → **204**; the same DELETE again → **404**. The reaction service
+    treats 404 on delete as success.
+  - Pull-request conversation comments are issue comments, so `issues/comments/{id}/reactions` serves `/release` on an
+    issue and every pull-request command alike.
 - **S2. The logging scope.**
   - Check that an `ISupportExternalScope` provider sees the `CreateScope` state from an `ILogger` resolved elsewhere in
     the same async flow, including inside a Spark messaging handler.
   - Decide what a fire-and-forget task started inside a scope does after `Dispose`: drop late entries, or write them in a
     second save.
   - Measure the cost of the append path (load, add, save with expected version) on RavenDB and InMemory.
+
+  **Result (M1, 2026-11-14), proven by `LogScopeTests` on both stores, 35/35 green:**
+  - **Flow capture works.** An `ILogger<T>` resolved on its own, after an `await`, lands in the scope's log
+    (`What_any_logger_in_the_flow_logs_inside_a_scope_is_saved_in_one_log`). The messaging-handler case is covered
+    when M3 opens the lifecycle's scope inside one.
+  - **Late entries are dropped** (decided): a closed scope's state refuses new entries, so a fire-and-forget task
+    neither writes a second save nor files its entries under the outer log
+    (`A_task_still_logging_after_its_scope_closed_is_dropped_not_filed_under_the_outer_log`).
+  - ⚠️ **Found: `DisposeAsync` must not be `async`.** It pops the `BeginScope` handle, and an AsyncLocal change made
+    inside an async method is undone when that method returns. The closed inner scope therefore stayed current for
+    the caller, and the outer scope's next entries were dropped. Red: `An_entry_goes_to_the_innermost_scope_only`
+    (outer log held `["Outer before"]` only). Green: the pop happens synchronously before the save's own async method
+    starts (`LoggerScopeProvider.cs`, `LoggerScope.DisposeAsync`). The same rule binds callers, so `guide-logging.md`
+    says to open and close a scope in one method.
+  - **Append cost:** five writers closing on one key at once all land, through the expected-version retry
+    (`Scopes_with_one_key_closing_together_all_land`). The whole class runs in under a second per store, so no
+    separate measurement was made. The command lifecycle appends a handful of times per command.
 - **S3. Inheriting access, and the attribute hook on AsDetail rows.**
   - Confirm that the shipped `LogActions` can ask Spark's read path "may this caller read object X?" for an arbitrary
     `RelatedPersistentObjectId`, and how the type is resolved from the id.
   - Confirm that `GetProtectedAttributesAsync` returning `Entries.Exception` empties it on the detail read path.
   - Check that a signed-out click on a log link lands on sign-in and returns to the page.
+
+  **Result (M1):**
+  - **Core had no public "may the caller read X?".** The pieces were internal (`IRowSecurity.AreAllowedAsync`,
+    `ISparkTypeResolver`). M1 adds the public `ISparkReadAccess.MayReadAsync(id)`
+    (`libs/spark/MintPlayer.Spark/Services/SparkReadAccess.cs`). It resolves the type from the **stored collection** of
+    the id: a side-session load, so the caller's session never tracks an untyped document. It then answers with the
+    `Read` type right plus the row rules, which is what a detail load applies. An id of no model type, or of nothing,
+    is `false`. Proven by `LogAccessTests` against the Organizations package's row rule on a note: the owner gets 200,
+    an outsider 404, anonymous 401, and a missing record 404.
+  - **Dotted names into AsDetail rows are supported** by `GetProtectedAttributesAsync` (`RowSecurity.RedactAttribute`).
+    M6 proves `Entries.Exception` end to end.
+  - The signed-out click is checked in M6, with the views.
 
 ## 6. Milestones (TDD: red test first, per memory `feedback_tdd_red_green`)
 
