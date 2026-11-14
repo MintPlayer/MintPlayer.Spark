@@ -48,6 +48,15 @@ public sealed record DependencyRunReport
         ExpiredApprovals = [.. outcome.ExpiredApprovals.Select(a => a.Group)],
     };
 
+    /// <summary>
+    /// The locations a platform group's apply did not edit (<c>platform.reported</c>, e.g. a stage on an older channel), with
+    /// the SDK taken from the group name (<c>platform:&lt;sdk&gt; &lt;channel&gt;</c>).
+    /// </summary>
+    public static IEnumerable<DependencyPlatformReport> ApplyPlatformReports(ApplyResult result)
+        => result.Groups
+            .Where(g => g.Platform is not null && g.Group.StartsWith("platform:", StringComparison.Ordinal))
+            .SelectMany(g => g.Platform!.Reported.Select(r => new DependencyPlatformReport(g.Group["platform:".Length..].Split(' ')[0], r.File, r.Value, r.Reason)));
+
     /// <summary>What <see cref="DependencyHolds.Approve"/> reads (R6, gap E): the awaiting-approval half, and the held half for
     /// a <c>--force</c> of a pending SDK move (#606 D3).</summary>
     public DependencyPolicyOutcome AsOutcome(DependencyUpdateState state) => new() { AwaitingApproval = AwaitingApproval, Held = Held, NextState = state };

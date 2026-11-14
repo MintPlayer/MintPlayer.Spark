@@ -810,6 +810,8 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
             Failures = [.. report.Failures, .. result.Groups.Where(g => g.Status != EApplyGroupStatus.Applied).Select(g => new DependencyReportFailure(g.Group,
                 g.Status == EApplyGroupStatus.Unresolvable ? "the resolver refused it" : "the apply failed", g.Blockers.FirstOrDefault()?.Message ?? g.Message,
                 (g.Message ?? string.Empty).Contains("no adapter", StringComparison.OrdinalIgnoreCase) || g.Blockers.Any(b => b.Code == "no-adapter")))],
+            // platform-locations-PRD R3: what the apply left on an older channel joins the policy's computed-location reports.
+            PlatformReports = [.. report.PlatformReports, .. DependencyRunReport.ApplyPlatformReports(result)],
             NeedsHumanDetail = verdict.Verdict == GitWriterDependencyOutcomes.NeedsHuman
                 ? $"The lockfiles bring in {verdict.NewPackages.Count} new packages, more than the bot merges without a person (gap B)." : null,
         };

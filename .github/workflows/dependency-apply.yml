@@ -34,6 +34,9 @@ run-name: 'dependency apply (${{ inputs.run_id }})'
 
 permissions:
   contents: read
+  # nuget.config maps MintPlayer.* to GitHub Packages, which needs credentials even for public packages; without them
+  # every NuGet group failed NU1301 (platform-locations-PRD S2, cause 3). The job token reads packages and nothing else.
+  packages: read
 
 concurrency:
   group: dependency-apply
@@ -62,10 +65,14 @@ jobs:
 
       - id: apply
         uses: MintPlayer/MintPlayer.Spark/apps/CodeCoverage/dependency-action@dependency-update-v1
+        # The same feed credentials CI restores with (test.yml); no Gradle here, so D-S14b allows them.
+        env:
+          GH_PKG_USER: ${{ github.actor }}
+          GH_PKG_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           mode: apply
           expected-sha: ${{ inputs.expected_sha }}
-          feed-secrets: 'false'
+          feed-secrets: 'true'
 
       - uses: actions/upload-artifact@v7
         if: success()

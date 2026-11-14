@@ -435,3 +435,9 @@ replaced before it ran.
   `platforms` input → plan. **Red before M3** (engine at `04f191aee`): "Expected plan.Groups to contain a single item,
   but found 2: Microsoft.AspNetCore.OpenApi, platform:dotnet 11.0", the RC package in a group of its own beside the SDK
   move.
+
+## 13. Locations a move left behind (2026-11-14)
+
+Older Dockerfile stages, `template.json` framework choices, TFMs set through an MSBuild property, `action.yml`
+`runs.using`, NodeSource lines and Dockerfile `ARG` defaults are moved, followed or reported per
+[platform-locations-PRD.md](platform-locations-PRD.md) (decisions P1-P11, milestones M1-M7).

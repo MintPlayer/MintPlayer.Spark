@@ -128,7 +128,9 @@ describe('runApply', () => {
     gitSync(check.dir, 'apply', '--check', 'p.patch');
   });
 
-  it('includes a new untracked lockfile in the patch', async () => {
+  // platform-locations-PRD S2: the writer refuses any added file (DependencyPatchValidator, AddedOrDeleted) and the patch
+  // with it, so a group that creates one (here a first go.sum) fails alone instead of sinking every other group.
+  it('fails a group that creates a new lockfile, and leaves it out of the patch', async () => {
     const { dir, sha } = dispatchRef({ 'go.mod': 'module x\n\ngo 1.22\n\nrequire example.com/m v1.0.0\n' }, () => [
       { group: 'm', items: [item({ depName: 'example.com/m', datasource: 'go', manager: 'gomod', packageFile: 'go.mod', currentValue: 'v1.0.0', newValue: 'v1.1.0' })] },
     ]);
@@ -142,7 +144,7 @@ describe('runApply', () => {
       return realExec(cmd, args, o);
     };
     const { result, patchFile } = await runApply({ exec, repoDir: dir, outDir: out, expectedSha: sha, feedSecrets: false, orchestrator: { consistencyCheck: false } });
-    expect(result.groups[0]).toMatchObject({ status: 'applied', files: ['go.mod', 'go.sum'] });
-    expect(fs.readFileSync(patchFile, 'utf8')).toContain('new file mode');
+    expect(result.groups[0]).toMatchObject({ status: 'failed', files: [], message: 'go: created go.sum; a dependency pull request adds and deletes no files' });
+    expect(fs.existsSync(patchFile) ? fs.readFileSync(patchFile, 'utf8') : '').not.toContain('new file mode');
   });
 });

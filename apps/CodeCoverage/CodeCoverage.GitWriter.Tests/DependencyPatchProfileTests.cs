@@ -409,6 +409,38 @@ public class DependencyPatchProfileTests : IDisposable
         verdict.AppliedGroups.Should().Equal("express");
     }
 
+    /// <summary>
+    /// platform-locations-PRD S2 (MintPlayer.AI run 102): the relock of a claimed group rewrites the shared lockfile, and a
+    /// lockfile-only entry the apply did not claim (its group failed) was counted as applied because "its lockfile changed",
+    /// so the whole patch was refused as group-mismatch. A changed lockfile cannot say which lockfile-only entry moved it.
+    /// </summary>
+    [Fact]
+    public async Task An_unclaimed_lockfile_only_entry_does_not_apply_through_another_group_s_lockfile_change()
+    {
+        const string lockfile = "{\n  \"packages\": {\n    \"node_modules/express\": {\n      \"version\": \"4.18.2\"\n    }\n  }\n}\n";
+        var before = repo.Commit(("package.json", PackageJson), ("package-lock.json", lockfile));
+        var after = repo.Change(before, ("package.json", Bumped(PackageJson, ("^4.18.2", "^4.19.2"))),
+            ("package-lock.json", lockfile.Replace("4.18.2", "4.19.2", StringComparison.Ordinal)));
+        var vite = Entry("zod", "package.json", "3.22.4", "3.22.4", "npm", "vite");
+
+        var verdict = await Validate(before, repo.Diff(before, after), new DependencyPatchRequest([Express, vite]) { ClaimedAppliedGroups = ["express"] });
+
+        verdict.Outcome.Should().Be(DependencyPatchOutcome.Accepted, verdict.Detail);
+        verdict.AppliedGroups.Should().Equal("express");
+    }
+
+    [Fact]
+    public async Task A_lockfile_only_change_nothing_claims_is_still_refused()
+    {
+        const string lockfile = "{\n  \"packages\": {\n    \"node_modules/express\": {\n      \"version\": \"4.18.2\"\n    }\n  }\n}\n";
+        var before = repo.Commit(("package.json", PackageJson), ("package-lock.json", lockfile));
+        var after = repo.Change(before, ("package-lock.json", lockfile.Replace("4.18.2", "4.19.2", StringComparison.Ordinal)));
+
+        var verdict = await Validate(before, repo.Diff(before, after), new DependencyPatchRequest([Express with { NewValue = "^4.18.2" }]) { ClaimedAppliedGroups = [] });
+
+        verdict.Reason.Should().Be(DependencyPatchReasons.UnownedLockfile);
+    }
+
     [Fact]
     public async Task A_lockfile_change_no_applied_entry_owns_is_refused()
     {

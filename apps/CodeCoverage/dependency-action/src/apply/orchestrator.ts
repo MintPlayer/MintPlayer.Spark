@@ -2,7 +2,7 @@ import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
 import type { ApplyResult, Blocker, ConsistencyCheck, GroupResult, Plan, PlanGroup, PlanItem } from '../contracts/types';
 import { EditRefused } from '../core/lineEdit';
-import { applyPlatform } from '../platform/applyPlatform';
+import { applyPlatform, type PlatformApplyOptions } from '../platform/applyPlatform';
 import { scanLocations } from '../platform/locations';
 import { hasTool, type Exec } from '../util/exec';
 import { git, restore, snapshot, statusPaths, type Snapshot } from '../util/git';
@@ -21,6 +21,8 @@ export interface OrchestratorOptions {
   toolAvailable?: (tool: string) => Promise<boolean>;
   /** #658: the plan commit moved this file to the planned SDK; `original` is its text at expected_sha. */
   sdkPreset?: SdkPreset;
+  /** platform-locations-PRD P7: the registry check for a Docker tag a platform move writes; absent = no check (tests). */
+  tagExists?: PlatformApplyOptions['tagExists'];
 }
 
 export interface SdkPreset {
@@ -122,7 +124,7 @@ export async function applyGroup(o: OrchestratorOptions, group: PlanGroup): Prom
   try {
     if (group.platform) {
       if (preset) await fs.writeFile(path.join(o.root, preset.file), preset.original);
-      platform = await applyPlatform(directoryFiles(o.root), group.platform);
+      platform = await applyPlatform(directoryFiles(o.root), group.platform, { tagExists: o.tagExists });
       if (platform.edited.length === 0) {
         throw new GroupFailure('failed', `no editable ${group.platform.sdk} location on channel ${group.platform.fromChannel}`);
       }
@@ -165,6 +167,22 @@ export async function applyGroup(o: OrchestratorOptions, group: PlanGroup): Prom
   }
   // The pre-set file equals its snapshot again, yet this group is what moves it away from expected_sha.
   if (preset && platform?.edited.includes(preset.file) && !changed.includes(preset.file)) changed.push(preset.file);
+  // platform-locations-PRD S2: the writer refuses a patch that adds or deletes a file (DependencyPatchValidator), and it
+  // refuses the patch whole. A group that does either fails here, alone, and the other groups still ship.
+  const created: string[] = [];
+  const deleted: string[] = [];
+  for (const p of changed) {
+    const exists = await fs.stat(path.join(o.root, p)).then(() => true, () => false);
+    const known = await tracked(o, p);
+    if (exists && !known) created.push(p);
+    else if (!exists && known) deleted.push(p);
+  }
+  if (created.length > 0 || deleted.length > 0) {
+    await resetTo(o, snap, before);
+    const who = parts.map(([a]) => a.id).join(', ') || `platform ${group.platform?.sdk}`;
+    const what = [created.length ? `created ${created.join(', ')}` : '', deleted.length ? `deleted ${deleted.join(', ')}` : ''].filter(Boolean).join(' and ');
+    return { ...base, status: 'failed', files: [], blockers: [], message: tail(`${who}: ${what}; a dependency pull request adds and deletes no files`) };
+  }
   return { ...base, status: 'applied', files: changed.sort(), blockers: [], message: null, ...(platform ? { platform } : {}) };
 }
 

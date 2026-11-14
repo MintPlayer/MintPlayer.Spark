@@ -173,8 +173,11 @@ public static partial class DependenciesYml
             if (track == EDependencyTrack.Lts && !LtsSdks.Contains(sdk, StringComparer.Ordinal))
                 errors.Add($"{key}.track: {sdk}'s release feed names no LTS releases; use stable or preview (lts is for {string.Join(", ", LtsSdks)}).");
             IReadOnlyList<string>? companions = platform?.Companions is null ? null : Strings(platform.Companions, $"{key}.companions", errors);
+            var lagging = platform?.Lagging?.Trim() ?? DependencyPlatformSettings.LaggingAuto;
+            if (lagging is not (DependencyPlatformSettings.LaggingAuto or "follow" or "report"))
+                errors.Add($"{key}.lagging '{lagging}' is not auto, follow or report.");
             section.Platforms[sdk] = new DependencyPlatformSettings(strategy, Math.Clamp(keepPrevious, 0, 5), platform?.LockPackageMajor ?? false, locations, exclude,
-                track, companions);
+                track, companions, lagging);
         }
 
         section.LockFileMaintenance = file.LockFileMaintenance ?? false;
@@ -439,6 +442,7 @@ public static partial class DependenciesYml
         public object? Exclude { get; set; }
         public string? Track { get; set; }
         public object? Companions { get; set; }
+        public string? Lagging { get; set; }
     }
 }
 
@@ -483,9 +487,14 @@ public sealed record DependencyMigrateRule(IReadOnlyList<string> Match, string O
 /// <param name="Track">D8: which channels are offered; <see cref="EDependencyTrack.Inherit"/> defers to the account rules, then stable.</param>
 /// <param name="Companions">D2: package globs that move with the SDK's major; null keeps the built-in list
 /// (<see cref="Policy.DependencyCompanions"/>), an empty list turns companions off.</param>
+/// <param name="Lagging">platform-locations-PRD P6: what a channel move does with a location on an older channel.
+/// <c>auto</c> moves Docker stages, setup-action pins and version files and reports TFMs and matrix entries; <c>follow</c>
+/// moves every older location but TFMs and matrix entries (which the strategy owns); <c>report</c> moves none.</param>
 public sealed record DependencyPlatformSettings(string Strategy, int KeepPrevious, bool LockPackageMajor, IReadOnlyList<string> Locations, IReadOnlyList<string> Exclude,
-    EDependencyTrack Track = EDependencyTrack.Inherit, IReadOnlyList<string>? Companions = null)
+    EDependencyTrack Track = EDependencyTrack.Inherit, IReadOnlyList<string>? Companions = null, string Lagging = DependencyPlatformSettings.LaggingAuto)
 {
+    public const string LaggingAuto = "auto";
+
     public static DependencyPlatformSettings Default { get; } = new("replace", 0, false, [], []);
 }
 

@@ -225,6 +225,32 @@ dated beta toolchain (`beta-2026-11-08`). **Ranges are reported, never edited:**
 `required_ruby_version`, Cargo's `rust-version`, `requires-python`; so are a computed TFM, an MSBuild condition that tests
 the old TFM, and a floating `stable`/`nightly` Rust toolchain.
 
+**Locations nothing else names** ([platform-locations-PRD](platform-locations-PRD.md)). A move also edits:
+- a TFM set through an MSBuild property (`<TargetFramework>$(LibTfm)</TargetFramework>` with `LibTfm` defined once in a
+  `.props`/`.targets`): the definition is edited;
+- a template's `.template.config/template.json` framework choice, only when a TFM under that template moves in the same
+  pull request (`strategy: add` reports it, to add the new choice by hand);
+- a JavaScript action's `runs.using: nodeNN`, to the highest runtime GitHub offers at or below the target (today node20
+  and node24: a move to Node 26 writes `node24` and says so). An `action.yml` under `.github/` is reported;
+- NodeSource `setup_NN.x` lines and a Dockerfile `ARG` default that a `FROM` tag reads.
+
+A new Docker tag is checked against its registry (an anonymous `HEAD`) before it is written; a tag that does not exist
+or cannot be checked is reported, and the rest of the move goes ahead. The pull request lists every location that did
+not move, and why, under **Not moved**.
+
+**Older channels.** `platforms.<sdk>.lagging` decides what happens to a location on an older channel than the one the
+repository moves from (a Dockerfile stage still on Node 20 in a Node 22 repository):
+
+| `lagging` | An older location |
+|---|---|
+| `auto` (default) | follows for Docker, `setup-*` inputs, version files and `.tool-versions`; a TFM or matrix entry is reported |
+| `follow` | always follows |
+| `report` | never moves; it is listed under **Not moved** |
+
+A location on the repository's own channel that the bot cannot edit (a computed one) holds the move for `approve`: it
+would otherwise stay behind unseen. `platforms.<sdk>.exclude` leaves it behind on purpose. The top-level `exclude` also
+applies to platforms: an excluded path neither moves nor counts towards the repository's channel.
+
 ## 5. Approvals and commands
 
 Writers (write access or above) comment on the rolling pull request, one command per comment:

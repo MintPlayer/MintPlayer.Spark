@@ -108,7 +108,13 @@ export type PlatformLocationKind =
   | 'rust-version'
   | 'matrix'
   // #617 D31: a setup-dotnet `dotnet-quality:` input, removed once the plan's target is GA.
-  | 'dotnet-quality';
+  | 'dotnet-quality'
+  // platform-locations-PRD R4/P9: the token of a .props/.targets property definition that carries a computed TFM's major.
+  | 'tfm-property'
+  // platform-locations-PRD R2/P8: a `netN.N` token of a template.json framework choice symbol.
+  | 'template-framework'
+  // platform-locations-PRD R8/P10: an action.yml `runs.using: nodeNN`.
+  | 'action-runtime';
 
 export interface PlatformLocation {
   file: string;
@@ -181,6 +187,10 @@ export interface PlatformPlan {
   lockPackageMajor?: boolean;
   locations?: string[];
   exclude?: string[];
+  /** platform-locations-PRD P6: absent = auto. */
+  lagging?: 'follow' | 'report';
+  /** platform-locations-PRD P10: the `runs.using` Node runtimes GitHub runs (`node20`, `node24`), from the bot. */
+  actionRuntimes?: string[];
 }
 
 export interface PlanGroup {
@@ -261,7 +271,7 @@ export const KEYS = {
     'depName', 'packageName', 'ecosystem', 'datasource', 'manager', 'depType', 'packageFile', 'lockFiles', 'currentValue', 'newValue',
     'newVersion', 'currentDigest', 'newDigest', 'replaceString', 'sharedVariableName', 'updateType',
   ],
-  platformPlan: ['sdk', 'fromChannel', 'toChannel', 'toVersion', 'sdkVersion', 'strategy', 'keepPrevious', 'lockPackageMajor', 'locations', 'exclude'],
+  platformPlan: ['sdk', 'fromChannel', 'toChannel', 'toVersion', 'sdkVersion', 'strategy', 'keepPrevious', 'lockPackageMajor', 'locations', 'exclude', 'lagging', 'actionRuntimes'],
   result: ['contractVersion', 'kind', 'planId', 'expectedSha', 'groups', 'consistency', 'patch'],
   groupResult: ['group', 'status', 'items', 'files', 'blockers', 'message', 'platform'],
   migrate: ['contractVersion', 'kind', 'tool', 'baseSha', 'packages', 'completed', 'steps', 'extraBumps', 'patch'],

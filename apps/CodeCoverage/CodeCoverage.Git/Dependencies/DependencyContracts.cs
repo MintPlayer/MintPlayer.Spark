@@ -360,6 +360,21 @@ public sealed record PlanPlatform
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public List<string>? Exclude { get; init; }
+
+    /// <summary>
+    /// platform-locations-PRD P6: <c>follow</c> or <c>report</c>; null is <c>auto</c>. Written only when set, so a plan for the
+    /// default stays readable by an action that predates the key (the plan's keys are a closed list, types.ts).
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Lagging { get; init; }
+
+    /// <summary>
+    /// platform-locations-PRD P10: the Node runtimes GitHub runs for an action's <c>runs.using</c> (<c>node20</c>,
+    /// <c>node24</c>), on a node move only. The apply moves <c>runs.using</c> to the highest one not above the target, and
+    /// the writer admits no other runtime token.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public List<string>? ActionRuntimes { get; init; }
 }
 
 public enum EApplyGroupStatus

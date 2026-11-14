@@ -245,9 +245,13 @@ public sealed partial class GitHubWorkflowValidator : IContentValidator
                 var flowMatrix = here.Flow && IsMatrixPath(path) && bsc.Style == asc.Style && !asc.IsBlock && rules.PlatformChange?.Invoke(bsc.Value, asc.Value) == true;
                 if (here.ViaAlias || here.Anchored || here.Flow && !flowMatrix)
                     throw new Refused(ContentVerdict.Invalid("a changed value in flow style, under an anchor or reached through an alias", asc.Line, asc.Column));
-                if (bsc.Style != asc.Style || asc.IsBlock)
+                // platform-locations-PRD R7: a literal block (`dotnet-version: |`) of a setup step lists one version per line;
+                // only line-for-line platform swaps change it. Any other block scalar (a run: script) stays refused.
+                var versionList = asc.IsBlock && bsc.Style == asc.Style && asc.Style == YamlDotNet.Core.ScalarStyle.Literal
+                                  && IsPlannedVersionList(path, bsc.Value, asc.Value, afterRoot, rules);
+                if (bsc.Style != asc.Style || asc.IsBlock && !versionList)
                     throw new Refused(ContentVerdict.Invalid("a changed value whose scalar style changed or is a block scalar", asc.Line, asc.Column));
-                if (!IsPlanned(path, bsc.Value, asc.Value, afterRoot, rules))
+                if (!versionList && !IsPlanned(path, bsc.Value, asc.Value, afterRoot, rules))
                     throw new Refused(ContentVerdict.Invalid("a change other than a planned uses: or setup-action version value", asc.Line, asc.Column));
                 changes.Add(new WorkflowChange(string.Join('.', path).Replace(".[", "[", StringComparison.Ordinal), bsc.Value, asc.Value, asc.Line));
                 return;
@@ -309,15 +313,49 @@ public sealed partial class GitHubWorkflowValidator : IContentValidator
                    && RemoteUses().Match(old) is { Success: true } o && RemoteUses().Match(@new) is { Success: true } n
                    && o.Groups["action"].Value == n.Groups["action"].Value;
         }
-        if (WithStepPath(path) is { } stepPath && NodeAt(afterRoot, stepPath) is YamlMapping step
-            && step["uses"] is { } usesNode && YamlDocument.Resolve(usesNode) is YamlScalar uses
-            && RemoteUses().Match(uses.Value) is { Success: true } action
-            && SetupActionVersionKeys.TryGetValue(action.Groups["action"].Value, out var keys) && keys.Contains(path[^1]))
+        if (IsSetupVersionInput(path, afterRoot))
         {
             return VersionValue().IsMatch(old) && VersionValue().IsMatch(@new)
                    && (rules.PlannedWith.Contains((path[^1], old, @new)) || rules.PlatformChange?.Invoke(old, @new) == true);
         }
+        // platform-locations-PRD P10: an action's runtime, `nodeNN` to `nodeNN`, as the platform move explains it.
+        if (path is ["runs", "using"])
+            return NodeRuntime().IsMatch(old) && NodeRuntime().IsMatch(@new) && rules.PlatformChange?.Invoke(old, @new) == true;
         return (IsMatrixPath(path) || IsImagePath(path)) && rules.PlatformChange?.Invoke(old, @new) == true;
+    }
+
+    [GeneratedRegex(@"\Anode[0-9]{1,3}\z", RegexOptions.CultureInvariant)]
+    private static partial Regex NodeRuntime();
+
+    /// <summary>A <c>with:</c> input of a setup step whose key is one of its action's version inputs.</summary>
+    private static bool IsSetupVersionInput(List<string> path, YamlMapping afterRoot)
+        => WithStepPath(path) is { } stepPath && NodeAt(afterRoot, stepPath) is YamlMapping step
+           && step["uses"] is { } usesNode && YamlDocument.Resolve(usesNode) is YamlScalar uses
+           && RemoteUses().Match(uses.Value) is { Success: true } action
+           && SetupActionVersionKeys.TryGetValue(action.Groups["action"].Value, out var keys) && keys.Contains(path[^1]);
+
+    /// <summary>
+    /// platform-locations-PRD R7: a literal block of a setup step's version input, one version per line. Same line count,
+    /// every line either unchanged or a version token swapped by a platform move, at least one swapped. Nothing is added,
+    /// removed or reordered, and no line can carry anything but one version token.
+    /// </summary>
+    private static bool IsPlannedVersionList(List<string> path, string old, string @new, YamlMapping afterRoot, WorkflowChangeRules rules)
+    {
+        if (rules.PlatformChange is null || !IsSetupVersionInput(path, afterRoot))
+            return false;
+        var (before, after) = (old.Split('\n'), @new.Split('\n'));
+        if (before.Length != after.Length)
+            return false;
+        var swapped = 0;
+        for (var i = 0; i < before.Length; i++)
+        {
+            if (before[i] == after[i])
+                continue;
+            if (!VersionValue().IsMatch(before[i]) || !VersionValue().IsMatch(after[i]) || !rules.PlatformChange(before[i], after[i]))
+                return false;
+            swapped++;
+        }
+        return swapped > 0;
     }
 
     /// <summary>A scalar under <c>jobs.&lt;job&gt;.strategy.matrix</c>, where a setup step's <c>${{ matrix.x }}</c> reads its

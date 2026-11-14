@@ -29,6 +29,13 @@ public static class DependencyPolicyEngine
 {
     private static readonly IReadOnlyList<EUpdateLevel> LevelsDescending = [EUpdateLevel.Major, EUpdateLevel.Minor, EUpdateLevel.Patch];
 
+    /// <summary>
+    /// platform-locations-PRD P10/S6: the <c>runs.using</c> Node runtimes GitHub runs for a JavaScript action. GitHub
+    /// publishes no feed of them (the list lives in the runner's source and the metadata-syntax docs), so it is this table,
+    /// sent with every node move: updating it is a bot deploy, never an action release. node16 is gone from the runners.
+    /// </summary>
+    public static readonly IReadOnlyList<string> GitHubActionRuntimes = ["node20", "node24"];
+
     public static DependencyPolicyOutcome Evaluate(DependencyPolicyInput input)
     {
         var context = new Context(input);
@@ -523,10 +530,34 @@ public static class DependencyPolicyEngine
         private static string PlatformToken(PlatformCandidate candidate, string? current)
             => candidate.Channel == current ? candidate.LatestSdk ?? candidate.LatestVersion ?? candidate.Channel : candidate.Channel;
 
+        /// <summary>
+        /// Whether a platform location is in the move's scope: <c>locations</c> (when set) and <c>exclude</c> path globs, the
+        /// same rule as the action's <c>inScope</c> (dependency-action/src/platform/applyPlatform.ts:27-31).
+        /// </summary>
+        internal static bool InPlatformScope(string file, DependencyPlatformSettings settings)
+        {
+            static bool Matches(string glob, string path)
+            {
+                var source = string.Join(".*", glob.Split("**").Select(part => string.Join("[^/]*", part.Split('*').Select(System.Text.RegularExpressions.Regex.Escape))));
+                return System.Text.RegularExpressions.Regex.IsMatch(path, $"^{source}$", System.Text.RegularExpressions.RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1));
+            }
+            if (settings.Locations.Count > 0 && !settings.Locations.Any(g => Matches(g, file))) return false;
+            return !settings.Exclude.Any(g => Matches(g, file));
+        }
+
         private static bool IsPreviewToken(string? version) => version?.Contains('-', StringComparison.Ordinal) == true;
 
         private void EvaluatePlatformMove(PlatformRecord platform)
         {
+            // platform-locations-PRD S2: dependencies.exclude leaves a path's platform alone as well as its package files (Spark's
+            // test fixtures were its only rust/go/php/python locations). An excluded location neither moves nor sets the
+            // repository's channel ("every channel found in an editable location").
+            var kept = platform.Locations.Where(l => !config.IsExcludedPath(l.File)).ToList();
+            if (kept.Count != platform.Locations.Count)
+            {
+                var channels = kept.Where(l => !l.Computed && l.Channel is not null).Select(l => l.Channel!).ToHashSet(StringComparer.Ordinal);
+                platform = platform with { Locations = kept, Current = platform.Current with { Channels = [.. platform.Current.Channels.Where(channels.Contains)] } };
+            }
             var eco = PlatformEcosystem(platform);
             foreach (var location in platform.Locations.Where(l => l.Computed))
                 platformReports.Add(new DependencyPlatformReport(platform.Sdk, location.File, location.Value, location.Reason ?? "a computed value is reported, never edited (R8)"));
@@ -637,6 +668,27 @@ public static class DependencyPolicyEngine
                     approved = true;
                 }
 
+                // platform-locations-PRD P11: a location on the channel being moved that the bot cannot edit (a computed value)
+                // would stay behind. The move then waits for a writer, who sees the "Not moved" list first; listing the file
+                // under exclude says it stays on purpose. Older channels and ranges are information only.
+                var settings = config.File.Platform(platform.Sdk);
+                // A digest-pinned image is "computed" for the platform but planned as a docker record of its own (locations.ts:220,
+                // 242), so it does not stay behind.
+                var unedited = platform.Locations.Where(l => l.Computed && l.Channel == current && InPlatformScope(l.File, settings)
+                    && l.Reason?.StartsWith("digest-pinned", StringComparison.Ordinal) != true).ToList();
+                if (unedited.Count > 0 && !approved)
+                {
+                    if (!Approved(group, [eco], targets))
+                    {
+                        var files = string.Join(", ", unedited.Select(l => l.File).Distinct(StringComparer.Ordinal).Take(3));
+                        Report(Entry(target, level, EDependencyReportReason.AwaitingApproval,
+                            $"{unedited.Count} location(s) on {current} the bot cannot edit ({files}; see \"Not moved\"): comment 'approve {group}', "
+                            + $"or list them under platforms.{platform.Sdk}.exclude to leave them on purpose"));
+                        return false;
+                    }
+                    approved = true;
+                }
+
                 var (inCooldown, until) = Cooldown(eco, eco, token, target.ReleaseTimestamp, securityFix: false);
                 if (inCooldown)
                 {
@@ -644,7 +696,6 @@ public static class DependencyPolicyEngine
                     return false;
                 }
 
-                var settings = config.File.Platform(platform.Sdk);
                 var planGroup = new DependencyPlannedGroup
                 {
                     Group = group,
@@ -666,7 +717,10 @@ public static class DependencyPolicyEngine
                         KeepPrevious = settings.KeepPrevious,
                         LockPackageMajor = settings.LockPackageMajor,
                         Locations = settings.Locations.Count == 0 ? null : [.. settings.Locations],
-                        Exclude = settings.Exclude.Count == 0 ? null : [.. settings.Exclude],
+                        // S2: the apply scans the tree itself, so it gets dependencies.exclude too.
+                        Exclude = settings.Exclude.Concat(config.File.Exclude).Distinct(StringComparer.Ordinal).ToList() is { Count: > 0 } exclude ? exclude : null,
+                        Lagging = settings.Lagging == DependencyPlatformSettings.LaggingAuto ? null : settings.Lagging,
+                        ActionRuntimes = platform.Sdk == "node" ? [.. GitHubActionRuntimes] : null,
                     },
                 };
                 if (!Add(planGroup, [Entry(target, level, EDependencyReportReason.NotInSecurityRun, "left for the next scheduled slot (R10)")]))
