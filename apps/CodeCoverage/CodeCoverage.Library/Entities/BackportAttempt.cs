@@ -77,4 +77,7 @@ public class BackportAttempt
     public string? Detail { get; set; }
 
     public DateTime AttemptedAtUtc { get; set; }
+
+    /// <summary>The log of the request that made this attempt: the <c>/backport</c> command's, or the label's or merge's own.</summary>
+    public string? LogId { get; set; }
 }

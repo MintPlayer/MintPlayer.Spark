@@ -5,7 +5,10 @@ How the app carries a merged change onto older release lines. Versioning itself 
 The in-app guide for users is `/backports/setup` (Guides in the sidebar).
 
 **Who may ask.** A `/backport` comment, or a `backport:` label added to a merged pull request, needs **write access**
-to the repository. Anything less gets a comment saying so, and nothing runs. Labels already on a pull request when it
+to the repository. Anything less gets a comment saying so, and nothing runs. A `/backport` comment gets 👀 when the
+bot reads it, then 🎉 when a line got its pull request, 👍 when every line already had the change, or 👎 on a refusal,
+a conflict or a failure (#660). Every backport, label- and merge-triggered ones included, keeps a log; the
+repository page links it from the backport attempt and from the command. Labels already on a pull request when it
 merges are backported on the merger's behalf: the merge itself needed write access. A `backport/<pr>-<line>` branch
 you push yourself opens its pull request only when you have write access. With release lines, "Set up rulesets" adds
 a ruleset on `backport/*` that only the App and repository admins pass (merge-queue.md §3, ruleset 4): resolving a

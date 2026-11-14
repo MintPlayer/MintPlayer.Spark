@@ -1,0 +1,49 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<TargetFramework>net11.0</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+		<OutputType>Library</OutputType>
+		<!-- Names this library's App_Data layers (composition D16). Permanent: it is part of the right keys and
+		     the model ids the library ships. -->
+		<SparkLibraryAlias>logging</SparkLibraryAlias>
+
+		<!-- NuGet Package Metadata -->
+		<PackageId>MintPlayer.Spark.Logging</PackageId>
+		<Version>0.0.0-PLACEHOLDER</Version>
+		<Authors>MintPlayer</Authors>
+		<Company>MintPlayer</Company>
+		<Description>Stored logs for MintPlayer.Spark: an ILogger provider that writes what is logged inside a log scope to one Log document per scope, through Spark's storage abstraction, readable as a persistent object with access inherited from the record it belongs to.</Description>
+		<PackageTags>logging;ilogger;audit;spark</PackageTags>
+		<PackageLicenseExpression>MIT</PackageLicenseExpression>
+		<PackageProjectUrl>https://github.com/MintPlayer/MintPlayer.Spark</PackageProjectUrl>
+		<RepositoryUrl>https://github.com/MintPlayer/MintPlayer.Spark.git</RepositoryUrl>
+		<RepositoryType>git</RepositoryType>
+		<PackageReadmeFile>README.md</PackageReadmeFile>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<None Include="README.md" Pack="true" PackagePath="\" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<PackageReference Include="MintPlayer.SourceGenerators" Version="13.0.0">
+			<PrivateAssets>all</PrivateAssets>
+			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+		</PackageReference>
+		<PackageReference Include="MintPlayer.SourceGenerators.Attributes" Version="13.0.0" GeneratePathProperty="true" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<!-- Storage-agnostic (#620/#551): core and its ISparkStore, never a provider. -->
+		<ProjectReference Include="..\..\spark\MintPlayer.Spark\MintPlayer.Spark.csproj" />
+		<!-- Spark's generators (the library layers, attribute descriptions) and analyzers (SPARK045). Analyzer ProjectReferences are not transitive. -->
+		<ProjectReference Include="..\..\source_generators\MintPlayer.Spark.SourceGenerators\MintPlayer.Spark.SourceGenerators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<InternalsVisibleTo Include="MintPlayer.Spark.Tests" />
+	</ItemGroup>
+
+</Project>

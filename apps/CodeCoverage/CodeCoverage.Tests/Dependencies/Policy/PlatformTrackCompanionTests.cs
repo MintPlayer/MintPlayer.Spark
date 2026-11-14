@@ -137,7 +137,7 @@ public class PlatformTrackCompanionTests
         pending.Groups.Should().NotContain(g => g.Group.StartsWith("platform:", StringComparison.Ordinal));
         var held = pending.Held.Should().ContainSingle(e => e.Reason == EDependencyReportReason.Pending).Which;
         held.Group.Should().Be("platform:node 26");
-        held.Detail.Should().Be("waiting on @types/node to release 26.x: comment 'approve platform:node 26 --force' to move without them");
+        held.Detail.Should().Be("waiting on @types/node to release 26.x: comment '/approve platform:node 26 --force' to move without them");
         DependencyHolds.Approve(pending.NextState, pending, "platform:node 26", "b", "alice", 1, Later).Should().BeNull("only --force approves a pending move");
 
         DependencyHolds.Approve(pending.NextState, pending, "platform:node 26", "b", "alice", 1, Later, force: true)!.Force.Should().BeTrue();

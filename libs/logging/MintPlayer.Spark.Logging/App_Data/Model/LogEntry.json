@@ -1,0 +1,64 @@
+{
+  "$schema": "../../../../../schemas/model.schema.json",
+  "_comment": [
+    "LogEntry, one row of a Log's Entries (#660 G9). Exception is its own attribute so an application can hide it",
+    "through GetProtectedAttributesAsync with \"Entries.Exception\" (G12).",
+    "",
+    "HAND-AUTHORED. Ids are UUIDv5 of 'logging:LogEntry[...]', written by 'npm run stamp:library-model-ids'."
+  ],
+  "persistentObject": {
+    "id": "21b5fa4a-0e61-56e1-abfa-bd81635a03fb",
+    "name": "LogEntry",
+    "clrType": "MintPlayer.Spark.Logging.Models.LogEntry",
+    "breadcrumb": "{Text}",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "423f026d-8d52-5f0b-b64a-b61cda134dfe",
+        "name": "At",
+        "dataType": "datetime",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 1,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "0eb7e5b4-073a-5fc7-85b4-ad56bf5c77e6",
+        "name": "Level",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "9b4b1e2d-f66f-5bf5-9d2c-8e7cb17c14a7",
+        "name": "Text",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 3,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "fb9cfb6f-a395-53a6-b493-11c0942fa7ed",
+        "name": "Exception",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 4,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      }
+    ],
+    "queries": []
+  }
+}

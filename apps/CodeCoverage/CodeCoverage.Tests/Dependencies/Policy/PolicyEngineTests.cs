@@ -34,7 +34,7 @@ public class PolicyEngineTests
         Planned(outcome).Should().Equal(["express: express@4.22.0"]);
         var waiting = outcome.AwaitingApproval.Should().ContainSingle().Which;
         waiting.Target.Should().Be("5.1.0");
-        waiting.Detail.Should().Contain("approve express");
+        waiting.Detail.Should().Contain("/approve express");
     }
 
     [Fact]

@@ -50,11 +50,13 @@ public class DependencyUpdateRecipientsTests : CoverageRavenTest
         => (new RepositoryManifest { Repository = repositoryId, OwnerKey = new ForgeOwner(EForgeProvider.GitHub, "acme").ToString(), Produces = produces ?? [], Consumes = consumes ?? [] },
             RepositoryManifest.ForRepository(repositoryId));
 
-    private static async Task<RecordingBus> EventsAsync(IDocumentStore store, Func<DependencyUpdateEventsRecipient, Task> act)
+    private Tests.Commands.FakeCommentReactions Reactions { get; } = new();
+
+    private async Task<RecordingBus> EventsAsync(IDocumentStore store, Func<DependencyUpdateEventsRecipient, Task> act)
     {
         var bus = new RecordingBus();
         using var session = store.OpenAsyncSession();
-        await act(new DependencyUpdateEventsRecipient(session, bus));
+        await act(new DependencyUpdateEventsRecipient(session, bus, Tests.Commands.CommandTestKit.Lifecycle(store, Reactions)));
         return bus;
     }
 
@@ -106,6 +108,35 @@ public class DependencyUpdateRecipientsTests : CoverageRavenTest
         signal.Command.Should().Be(EDependencyCommand.Hold);
         signal.Argument.Should().Be("until friday");
         signal.Actor.Should().Be("octo");
+        Reactions.Added.Should().BeEmpty("the run's engine reacts, not the recipient");
+    }
+
+    [Fact]
+    public async Task A_command_on_another_pull_request_of_a_repository_that_uses_the_updater_gets_thumbs_down()
+    {
+        using var store = GetDocumentStore();
+        var (main, mainId) = Run(configure: r => r.PullRequestNumber = 12);
+        await SeedAsync(store, (main, mainId), Repo(RepositoryId, 7001));
+
+        var bus = await EventsAsync(store, r => r.HandleAsync(Webhook(new DependencyCommandIssued(RepositoryId, 40, 98, EDependencyCommand.Approve, "nx", "octo"))));
+
+        bus.Signals.Should().BeEmpty();
+        Reactions.On(98).Should().Equal([EForgeReaction.ThumbsDown], "#660: the bot says it read the command and why it did nothing");
+        var repository = new Repository { Provider = EForgeProvider.GitHub, GitHubId = 7001 };
+        var record = await Tests.Commands.CommandTestKit.InvocationAsync(store, repository, 98);
+        record!.Outcome.Should().Be(ECommandOutcome.Refused);
+        record.Message.Should().Contain("#40 is not a dependency update pull request");
+    }
+
+    [Fact]
+    public async Task A_command_in_a_repository_without_dependency_runs_is_left_to_other_bots()
+    {
+        using var store = GetDocumentStore();
+        await SeedAsync(store, Repo(RepositoryId, 7001));
+
+        await EventsAsync(store, r => r.HandleAsync(Webhook(new DependencyCommandIssued(RepositoryId, 40, 98, EDependencyCommand.Hold, "nx", "octo"))));
+
+        Reactions.Added.Should().BeEmpty("other bots read /hold too");
     }
 
     [Fact]

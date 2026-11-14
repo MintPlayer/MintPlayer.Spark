@@ -1050,6 +1050,11 @@
             "en": "Why it failed or conflicts."
           }
         },
+        "LogId": {
+          "description": {
+            "en": "The log of the request that made this attempt: the /backport command's, or the label's or merge's own."
+          }
+        },
         "Outcome": {
           "description": {
             "en": "What became of it: opened, draft, regenerating, conflicts, failed, …"
@@ -1539,6 +1544,45 @@
             "en": "Uploaded",
             "fr": "Envoyé",
             "nl": "Geüpload"
+          }
+        }
+      }
+    },
+    "CommandInvocation": {
+      "attributes": {
+        "Actor": {
+          "description": {
+            "en": "The commenter's forge login (the signed webhook's sender)."
+          }
+        },
+        "Command": {
+          "description": {
+            "en": "The command as the bot understood it, such as /approve Angular."
+          }
+        },
+        "LogId": {
+          "description": {
+            "en": "The command's log: its own (a /backport's attempts point at it too), or the merge-queue run's for /queue."
+          }
+        },
+        "Message": {
+          "description": {
+            "en": "The sentence the user can act on: what happened, or why nothing did."
+          }
+        },
+        "Number": {
+          "description": {
+            "en": "The pull request or issue the comment is on."
+          }
+        },
+        "Outcome": {
+          "description": {
+            "en": "Where the command stands: received, started, done, nothing changed, refused or failed."
+          }
+        },
+        "Repository": {
+          "description": {
+            "en": "The repository the command was written in."
           }
         }
       }

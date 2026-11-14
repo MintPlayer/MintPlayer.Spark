@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text;
 using System.Text.Json;
+using CodeCoverage.Commands;
 using CodeCoverage.CommitGraph;
 using CodeCoverage.Dependencies.Policy;
 using CodeCoverage.Entities;
@@ -54,7 +55,11 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
     [Inject] private readonly IOptions<MergeQueueOptions> options;
     [Inject] private readonly IDependencyStateStore stateStore;
     [Inject] private readonly IWorkflowHook hook;
+    [Inject] private readonly ICommandLifecycle commands;
     [Inject] private readonly ILogger<DependencyUpdateEngine> logger;
+
+    /// <summary>The command outcomes this handler decided (#660), told once its save went through.</summary>
+    private readonly List<Func<CancellationToken, Task>> afterSave = [];
 
     public const int MaxTransientRetries = 6;
     public const int MaxRestarts = 3;
@@ -129,7 +134,7 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
                 break;
         }
 
-        await session.SaveChangesAsync(ct);
+        await SaveAsync(ct);
     }
 
     // ═══ Steps ═══════════════════════════════════════════════════════════════════════════════════════
@@ -174,7 +179,7 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
             _ => () => Task.CompletedTask,
         }, ct);
 
-        await session.SaveChangesAsync(ct);
+        await SaveAsync(ct);
     }
 
     private static bool Expects(EDependencyStep step, EDependencyRunState state) => step switch
@@ -219,6 +224,7 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
         run.Run++;
         run.Trigger = trigger;
         run.PendingTrigger = null;
+        run.CommandInvocation = null;
         // R10's fixes ride with the security run they triggered; any other run plans from the schedule.
         if (trigger != EDependencyRunTrigger.Security)
             run.SecurityFixes = [];
@@ -1039,6 +1045,9 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
             bisecting ? "Bisecting: don't merge" : "Waiting for CI",
             bisecting ? $"Testing without {string.Join(", ", run.Bisect!.Excluded)} (step {run.Bisect.Spent} of {run.Bisect.Budget})." : $"{report.Groups.Count} group(s) applied; waiting for this commit's checks.", ct);
         await ScheduleCleanupAsync(context, ct);
+        // #660 G3: a /refresh is done once its updates are on the pull request; CI's verdict is the pull request's, not the command's.
+        if (!bisecting)
+            FinishCommand(run, ECommandOutcome.Done, $"{report.Groups.Count} group(s) applied in {Short(run.RollingSha)}.", refreshOnly: true);
 
         if (run.PendingTrigger is { } next)
         {
@@ -1335,6 +1344,7 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
             + $"{KindSentence(bisect)}It is held, and the rest is rebuilt without it.", ct);
         await PublishOwnCheckAsync(context, run.RollingSha!, EForgeQueueCheckState.Failure, $"{culprit} broke CI", $"Held: {culprit}. The pull request is rebuilt without it.", ct);
         run.PendingTrigger = EDependencyRunTrigger.Refresh;
+        FinishCommand(run, ECommandOutcome.Done, $"`{culprit}` broke CI; it is held and the rest is rebuilt without it.");
         await EndAsync(context, "bisected", $"the culprit is {culprit}", ct);
     }
 
@@ -1342,7 +1352,7 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
     {
         var ranked = string.Join("\n", bisect.Suspects.Select((s, i) => $"{i + 1}. `{s}`{(bisect.Excluded.Contains(s) ? " (left out in a red test: not alone to blame)" : string.Empty)}"));
         await CommentAsync(context, $"❌ CI failed on this pull request ({string.Join(", ", bisect.FailingChecks.Select(c => $"`{c}`"))}){(bisect.FailingRunUrl is { } url ? $": {url}" : ".")} "
-            + $"{KindSentence(bisect)}No culprit was found: {why}. The groups, most suspect first:\n\n{ranked}\n\nComment `hold <group>` to take one out, or `bisect` to try again.", ct);
+            + $"{KindSentence(bisect)}No culprit was found: {why}. The groups, most suspect first:\n\n{ranked}\n\nComment `/hold <group>` to take one out, or `/bisect` to try again.", ct);
         await PublishOwnCheckAsync(context, context.Run.RollingSha!, EForgeQueueCheckState.Failure, "CI failed", $"No culprit found: {why}.", ct);
         await EndAsync(context, "red", why, ct);
     }
@@ -1421,16 +1431,37 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
 
     // ═══ Commands (§7.5, R6, gap E) ═══════════════════════════════════════════════════════════════
 
+    /// <summary>
+    /// A comment command (§7.5, R6), through the command lifecycle (#660 G4): 👀 here, then 🎉 for an approval or a hold
+    /// recorded, 🚀 for a refresh or a bisection that started (their end reacts again, G3), 👍 for a refresh a going run
+    /// absorbs, 👎 for a refusal.
+    /// </summary>
     private async Task CommandAsync(Context context, int number, long? commentId, EDependencyCommand command, string? argument, string actor, CancellationToken ct)
     {
+        if (number != context.Run.PullRequestNumber) return;
+        var invocation = await commands.BeginAsync(context.Repository, number, commentId, CommandText(command, argument), actor, ct);
+        await using var log = commands.OpenLog(invocation);
+        // Before anything the command itself ends: a bisection with no suspect ends in the same handler, and its 👎 must
+        // come after the 🚀, not be overwritten by it.
+        var first = afterSave.Count;
+        var answer = await RunCommandAsync(context, invocation, commentId, command, argument, actor, ct);
+        afterSave.Insert(first, token => answer.Outcome == ECommandOutcome.Started
+            ? commands.StartedAsync(invocation, answer.Text, dependencyRun: context.Run.Run.ToString(CultureInfo.InvariantCulture), cancellationToken: token)
+            : commands.FinishAsync(invocation, answer.Outcome, answer.Text, token));
+    }
+
+    internal static string CommandText(EDependencyCommand command, string? argument)
+        => argument is null ? $"/{Word(command)}" : $"/{Word(command)} {argument}";
+
+    private async Task<CommandAnswer> RunCommandAsync(Context context, string? invocation, long? commentId, EDependencyCommand command, string? argument, string actor,
+        CancellationToken ct)
+    {
         var (repository, run) = (context.Repository, context.Run);
-        if (number != run.PullRequestNumber) return;
         // A writer, read from the forge per command (§7.5); anyone else gets 👎 and nothing happens.
         if (await context.Queue.GetActorRoleAsync(repository, actor, ct) < EForgeRepositoryRole.Write)
         {
-            await ReactAsync(context, commentId, EForgeReaction.ThumbsDown, ct);
             run.Note(Now, $"@{actor}'s {Word(command)} was refused: no write access");
-            return;
+            return $"`/{Word(command)}` needs write access to the repository; @{actor} does not have it.";
         }
         var data = await session.LoadAsync<DependencyUpdateRunData>(DependencyUpdateRunData.ForRepository(repository.Id!, run.Line), ct);
         var report = data?.ReportJson is { } json ? JsonSerializer.Deserialize<DependencyRunReport>(json, JsonSerializerOptions.Web)! : new DependencyRunReport();
@@ -1444,52 +1475,63 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
                 var group = force ? approved[..^" --force".Length].TrimEnd() : approved;
                 if (DependencyHolds.Approve(state, report.AsOutcome(state), group, run.ConfigBlob, actor, commentId, time.GetUtcNow(), force) is null)
                 {
-                    await ReactAsync(context, commentId, EForgeReaction.ThumbsDown, ct);
-                    await CommentAsync(context, report.Held.Any(e => e.Group == group && e.Reason == EDependencyReportReason.Pending)
-                        ? $"`{group}` is waiting on its companion packages; comment `approve {group} --force` to move without them."
-                        : $"Nothing named `{group}` waits for approval (an update above an enforced account rule cannot be approved).", ct);
-                    return;
+                    var refusal = report.Held.Any(e => e.Group == group && e.Reason == EDependencyReportReason.Pending)
+                        ? $"`{group}` is waiting on its companion packages; comment `/approve {group} --force` to move without them."
+                        : $"Nothing named `{group}` waits for approval (an update above an enforced account rule cannot be approved).";
+                    await CommentAsync(context, refusal, ct);
+                    return refusal;
                 }
                 run.Note(Now, force ? $"@{actor} approved {group} (--force)" : $"@{actor} approved {group}");
-                break;
+                // G2: the approval is the command's effect; the refresh it starts is a side effect.
+                await TriggerAsync(context, EDependencyRunTrigger.Refresh, null, ct);
+                return new CommandAnswer(force ? $"Approved `{group}` (--force); a refresh applies it." : $"Approved `{group}`; a refresh applies it.", ECommandOutcome.Done);
             case EDependencyCommand.Hold when argument is { } target:
                 var isGroup = report.Groups.Any(g => g.Group == target) || report.AwaitingApproval.Concat(report.Held).Concat(report.Available).Any(e => e.Group == target);
                 DependencyHolds.AddCommandHold(state, target, isGroup, actor, time.GetUtcNow());
                 run.Note(Now, $"@{actor} held {target}");
-                break;
+                await TriggerAsync(context, EDependencyRunTrigger.Refresh, null, ct);
+                return new CommandAnswer($"Held `{target}`; a refresh takes it out.", ECommandOutcome.Done);
             case EDependencyCommand.Unhold when argument is { } target:
                 if (!DependencyHolds.RemoveCommandHold(state, target))
                 {
-                    await ReactAsync(context, commentId, EForgeReaction.ThumbsDown, ct);
-                    await CommentAsync(context, $"There is no comment or human hold on `{target}` (the bot's own holds lift by themselves).", ct);
-                    return;
+                    var refusal = $"There is no comment or human hold on `{target}` (the bot's own holds lift by themselves).";
+                    await CommentAsync(context, refusal, ct);
+                    return refusal;
                 }
                 run.Note(Now, $"@{actor} unheld {target}");
-                break;
+                await TriggerAsync(context, EDependencyRunTrigger.Refresh, null, ct);
+                return new CommandAnswer($"Lifted the hold on `{target}`; a refresh applies it.", ECommandOutcome.Done);
             case EDependencyCommand.Bisect:
-                await ReactAsync(context, commentId, EForgeReaction.ThumbsUp, ct);
                 if (run.State.IsBusy() || run.RollingSha is not { } sha)
                 {
-                    await CommentAsync(context, "A run is going; `bisect` applies to a finished, red pull request.", ct);
-                    return;
+                    const string busy = "A run is going; `/bisect` applies to a finished, red pull request.";
+                    await CommentAsync(context, busy, ct);
+                    return busy;
                 }
                 var observed = await context.Queue.GetCheckStateAsync(repository, sha, ct);
                 var gate = CheckGate.Evaluate(observed with { CheckRuns = [.. observed.CheckRuns.Where(r => r.Name != IForgeDependencyUpdates.DependencyCheckName)] }, [], [], []);
                 if (gate.Verdict != ECheckVerdict.Failed)
                 {
-                    await CommentAsync(context, "The checks of this pull request are not red; there is nothing to bisect.", ct);
-                    return;
+                    const string green = "The checks of this pull request are not red; there is nothing to bisect.";
+                    await CommentAsync(context, green, ct);
+                    return green;
                 }
                 run.Bisect = null;
+                // G3: the bisection's culprit (🎉) or its end without one (👎) reacts again, on this comment.
+                run.CommandInvocation = invocation;
                 await OnRedAsync(context, observed, gate, forceBisect: true, ct);
-                return;
+                return new CommandAnswer($"Bisecting the failing checks ({string.Join(", ", gate.Failed)}).", ECommandOutcome.Started);
             case EDependencyCommand.Refresh:
-                break;
+                var before = run.Run;
+                await TriggerAsync(context, EDependencyRunTrigger.Refresh, null, ct);
+                if (run.Run == before)
+                    // G3: a run is going; the refresh waits for it, and only the comment that started that run reacts again.
+                    return new CommandAnswer($"Run {run.Run} is going ({run.State}); a refresh follows it.", ECommandOutcome.NoChange);
+                run.CommandInvocation = invocation;
+                return new CommandAnswer($"Run {run.Run} started.", ECommandOutcome.Started);
             default:
-                return;
+                return "This command takes an argument.";
         }
-        await ReactAsync(context, commentId, EForgeReaction.ThumbsUp, ct);
-        await TriggerAsync(context, EDependencyRunTrigger.Refresh, null, ct);
     }
 
     private async Task PullRequestEndedAsync(Context context, int number, bool wasMerged, CancellationToken ct)
@@ -1839,6 +1881,9 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
         run.OutcomeMessage = message;
         run.FinishedAtUtc = Now;
         Transition(run, EDependencyRunState.Idle, $"run {run.Run} ended: {outcome} ({message})");
+        // #660 G3: a /refresh or /bisect still going ends with its run: 👍 when there was nothing to update, else 👎 (a
+        // published refresh and a found culprit were told already, so this reaches only the ones still started).
+        FinishCommand(run, outcome is "nothing-planned" or "nothing-applied" ? ECommandOutcome.NoChange : ECommandOutcome.Failed, $"The run ended: {message}");
         if (run.PendingTrigger is { } next)
         {
             BeginRun(context, next);
@@ -1989,10 +2034,27 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
         await BestEffortAsync(async () => await context.Queue.PostCommentAsync(context.Repository, number, body, ct), "comment on the pull request");
     }
 
-    private async Task ReactAsync(Context context, long? commentId, EForgeReaction reaction, CancellationToken ct)
+    /// <summary>
+    /// The end of what a <c>/refresh</c> or <c>/bisect</c> started (#660 G3), told after the save. Only while that command is
+    /// still started and the run is the one it started; <paramref name="refreshOnly"/> keeps a bisection's publish from
+    /// ending its <c>/bisect</c>.
+    /// </summary>
+    private void FinishCommand(DependencyUpdateRun run, ECommandOutcome outcome, string message, bool refreshOnly = false)
     {
-        if (commentId is not { } id) return;
-        await BestEffortAsync(() => context.Updates.AddCommentReactionAsync(context.Repository, id, reaction, ct), "react to a command");
+        if (run.CommandInvocation is not { } invocation) return;
+        var runId = run.Run.ToString(CultureInfo.InvariantCulture);
+        afterSave.Add(token => commands.FinishStartedAsync(invocation,
+            r => r.DependencyRun == runId && (!refreshOnly || r.Command.StartsWith("/refresh", StringComparison.Ordinal)), outcome, message, token));
+    }
+
+    /// <summary>Saves, then tells the commands what became of them: never before the state they report is stored.</summary>
+    private async Task SaveAsync(CancellationToken ct)
+    {
+        await session.SaveChangesAsync(ct);
+        var told = afterSave.ToList();
+        afterSave.Clear();
+        foreach (var tell in told)
+            await tell(ct);
     }
 
     private async Task PublishOwnCheckAsync(Context context, string sha, EForgeQueueCheckState state, string title, string summary, CancellationToken ct)

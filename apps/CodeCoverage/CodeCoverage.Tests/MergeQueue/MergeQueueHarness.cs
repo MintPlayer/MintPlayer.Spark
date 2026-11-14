@@ -179,10 +179,17 @@ internal sealed class MergeQueueHarness
     /// <summary>Segment F's attention: records the holds, the reminders and the releases.</summary>
     public ScriptedAttention Attention { get; } = new();
 
+    /// <summary>#660: the reactions the command lifecycle puts on <c>/queue</c> and <c>/dequeue</c> comments.</summary>
+    public Commands.FakeCommentReactions Reactions { get; } = new();
+
+    /// <summary>The run logs and command lines the engine opened and wrote.</summary>
+    public Commands.RecordingLoggerScopes<CodeCoverage.Commands.CommandLifecycle> Logs { get; } = new();
+
     private MergeQueueEngine Engine(Raven.Client.Documents.Session.IAsyncDocumentSession session)
         => new(session, Forge, [Queue], Permissions, WriterOverride ?? Writer, TrialPicks, Attention, Outbox, Time,
             Options.Create(new MergeQueueOptions { GitWriterUrl = "http://writer" }),
             new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Coverage:BaseUrl"] = "https://coverage.example" }).Build(),
+            Commands.CommandTestKit.Lifecycle(store, Reactions, Time, Logs),
             NullLogger<MergeQueueEngine>.Instance, new WorkflowHook(NullLogger<WorkflowHook>.Instance));
 
     public async Task SignalAsync(MergeQueueSignalMessage signal)
@@ -198,18 +205,20 @@ internal sealed class MergeQueueHarness
         await Engine(session).HandleStepAsync(step);
     }
 
-    public Task EnqueueAsync(string actor = "maintainer", EMergeQueueCommandSource source = EMergeQueueCommandSource.Label, string? label = "merge-queue", int number = Number)
+    public Task EnqueueAsync(string actor = "maintainer", EMergeQueueCommandSource source = EMergeQueueCommandSource.Label, string? label = "merge-queue", int number = Number,
+        long? commentId = null)
         => SignalAsync(new MergeQueueSignalMessage
         {
             RepositoryId = RepositoryId, Kind = EMergeQueueSignal.Command, Number = number,
             Command = EMergeQueueCommand.Enqueue, Actor = actor, Source = source, Label = source == EMergeQueueCommandSource.Label ? label : null,
+            CommentId = commentId,
         });
 
-    public Task DequeueAsync(string actor, int number = Number, EMergeQueueCommandSource source = EMergeQueueCommandSource.Comment)
+    public Task DequeueAsync(string actor, int number = Number, EMergeQueueCommandSource source = EMergeQueueCommandSource.Comment, long? commentId = null)
         => SignalAsync(new MergeQueueSignalMessage
         {
             RepositoryId = RepositoryId, Kind = EMergeQueueSignal.Command, Number = number,
-            Command = EMergeQueueCommand.Dequeue, Actor = actor, Source = source,
+            Command = EMergeQueueCommand.Dequeue, Actor = actor, Source = source, CommentId = commentId,
         });
 
     public Task SignalAsync(EMergeQueueSignal kind, int? number = null, string? sha = null, string? branch = null, long? runId = null)

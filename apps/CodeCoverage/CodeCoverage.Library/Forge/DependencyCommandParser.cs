@@ -1,7 +1,8 @@
 namespace CodeCoverage.Forge;
 
 /// <summary>
-/// The dependency updater's comment commands (§7.5, R6): the first word of a comment's first line, case-insensitively, and
+/// The dependency updater's comment commands (§7.5, R6): the first word of a comment's first line, case-insensitively, with
+/// its leading <c>/</c> (#660 G1: <c>/approve</c>, <c>/hold</c>, <c>/unhold</c>, <c>/bisect</c>, <c>/refresh</c>), and
 /// the rest of that line as the argument. A normaliser raises <see cref="DependencyCommandIssued"/> only for what this
 /// accepts; anything else is an ordinary comment.
 /// </summary>
@@ -18,13 +19,14 @@ public static class DependencyCommandParser
         var parts = line.Split((char[])[' ', '\t'], 2, StringSplitOptions.RemoveEmptyEntries);
         if (parts.Length == 0)
             return null;
+        // #660 G1: only the slash forms. A comment opening with a bare "Hold on…" or "Refresh my memory…" is a comment.
         EDependencyCommand? command = parts[0].ToLowerInvariant() switch
         {
-            "approve" => EDependencyCommand.Approve,
-            "hold" => EDependencyCommand.Hold,
-            "unhold" => EDependencyCommand.Unhold,
-            "bisect" => EDependencyCommand.Bisect,
-            "refresh" => EDependencyCommand.Refresh,
+            "/approve" => EDependencyCommand.Approve,
+            "/hold" => EDependencyCommand.Hold,
+            "/unhold" => EDependencyCommand.Unhold,
+            "/bisect" => EDependencyCommand.Bisect,
+            "/refresh" => EDependencyCommand.Refresh,
             _ => null,
         };
         if (command is not { } found)

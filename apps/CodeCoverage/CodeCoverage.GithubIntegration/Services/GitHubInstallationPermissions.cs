@@ -231,7 +231,8 @@ public partial class GitHubInstallationPermissions : IForgeInstallationPermissio
     // Workflows: only a push that touches a workflow file takes workflows write (§0 D59), so the engine warns about it
     // instead of refusing, and the installation notice (AllNeeds) leaves it out. CloseIssues: closing the issues a merged
     // pull request links takes issues write (§0 D106); it runs after the merge and never holds one up, so the engine only
-    // warns, but every merge takes it, so the notice asks for it.
+    // warns, but every merge takes it, so the notice asks for it. The reactions on /queue and /dequeue comments (#660) take
+    // the same issues write; they are best effort too, so they need nothing in Core.
     private static readonly (EMergeQueueAppNeed Need, (string Name, string Level)[] Permissions, string[] Events)[] NeedTables =
     [
         (EMergeQueueAppNeed.Core,

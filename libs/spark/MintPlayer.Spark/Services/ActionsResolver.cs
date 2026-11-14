@@ -1,4 +1,5 @@
 using MintPlayer.SourceGenerators.Attributes;
+using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Reflection;
 using MintPlayer.Spark.Actions;
 using System.Reflection;
@@ -150,17 +151,59 @@ internal partial class ActionsResolver : IActionsResolver
 
                 if (matches.Count > 1)
                 {
+                    // #660 G17: an app (or a downstream library) that specialises a library's actions class under
+                    // the same name is recorded by the generator as [assembly: SparkActionsOverride]. It wins only
+                    // when every other match is one of its own base classes.
+                    if (ChooseOverride(matches, ReadOverrides()) is { } chosen)
+                        return chosen;
+
                     throw new InvalidOperationException(
                         $"'{typeName}' is declared by more than one loaded assembly, so the actions " +
                         $"class for this entity is ambiguous: " +
                         string.Join(", ", matches.Select(t => $"'{t.FullName}' ({t.Assembly.GetName().Name})")) +
                         ". Resolution used to pick whichever assembly loaded first and cache it for the " +
                         "process lifetime, which could silently substitute one type's actions class for " +
-                        "another's. Rename all but one, or register the intended one explicitly as " +
-                        $"'IPersistentObjectActions<>' so it is chosen by contract rather than by name.");
+                        "another's. Rename all but one, register the intended one explicitly as " +
+                        $"'IPersistentObjectActions<>' so it is chosen by contract rather than by name, or, to " +
+                        "specialise a library's actions class, derive from it in a project that runs the Spark " +
+                        "source generator (it records the override as [assembly: SparkActionsOverride]).");
                 }
 
                 return matches.Count == 1 ? matches[0] : null;
             });
+    }
+
+    /// <summary>
+    /// The match a <see cref="SparkActionsOverrideAttribute"/> names and every other match is a base class of; null
+    /// when there is no such match (the caller refuses the ambiguity). A chain (library → downstream library → app,
+    /// each recorded) resolves to its most-derived class; two siblings that both specialise one library class do not.
+    /// </summary>
+    internal static Type? ChooseOverride(IReadOnlyList<Type> matches, IEnumerable<SparkActionsOverrideAttribute> overrides)
+    {
+        var candidates = overrides
+            .Select(o => o.ActionsType)
+            .Where(matches.Contains)
+            .Distinct()
+            .Where(candidate => matches.All(m => m == candidate || m.IsAssignableFrom(candidate)))
+            .ToList();
+        return candidates.Count == 1 ? candidates[0] : null;
+    }
+
+    private static IEnumerable<SparkActionsOverrideAttribute> ReadOverrides()
+    {
+        foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+        {
+            SparkActionsOverrideAttribute[] attributes;
+            try
+            {
+                attributes = [.. assembly.GetCustomAttributes<SparkActionsOverrideAttribute>()];
+            }
+            catch (Exception ex) when (ex is ReflectionTypeLoadException or FileNotFoundException or TypeLoadException)
+            {
+                continue;
+            }
+            foreach (var attribute in attributes)
+                yield return attribute;
+        }
     }
 }

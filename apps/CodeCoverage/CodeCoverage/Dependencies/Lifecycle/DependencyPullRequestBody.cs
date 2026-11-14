@@ -66,7 +66,7 @@ public static class DependencyPullRequestBody
             body.AppendLine("## Awaiting approval").AppendLine();
             body.AppendLine("Over the auto-merge threshold (`dependencies.autoMerge` in coverage.yml). A writer comments the line in the last column to take the group into this pull request.").AppendLine();
             body.AppendLine("| Group | Dependency | From | To | Comment |").AppendLine("|---|---|---|---|---|");
-            Rows(body, report.AwaitingApproval.Select(entry => $"| {Cell(entry.Group)} | {Code(entry.DepName)} | {Cell(entry.Current)} | {Cell(entry.Target)} | {Code("approve " + entry.Group)} |"));
+            Rows(body, report.AwaitingApproval.Select(entry => $"| {Cell(entry.Group)} | {Code(entry.DepName)} | {Cell(entry.Current)} | {Cell(entry.Target)} | {Code("/approve " + entry.Group)} |"));
         }
 
         if (report.Held.Count > 0)
@@ -128,7 +128,8 @@ public static class DependencyPullRequestBody
         }
 
         body.AppendLine("<details><summary>Commands</summary>").AppendLine();
-        body.AppendLine("Writers comment one per comment: `approve <group>`, `hold <group|package>`, `unhold <group|package>`, `bisect`, `refresh`. Commands never override the account's enforced rules.");
+        body.AppendLine("Writers comment one per comment: `/approve <group>`, `/hold <group|package>`, `/unhold <group|package>`, `/bisect`, `/refresh`. "
+            + "The bot reacts on the comment: 👀 on it, 🚀 started, 🎉 done, 👍 nothing to change, 👎 refused or failed. Commands never override the account's enforced rules.");
         body.AppendLine().AppendLine("</details>");
 
         var text = body.ToString();

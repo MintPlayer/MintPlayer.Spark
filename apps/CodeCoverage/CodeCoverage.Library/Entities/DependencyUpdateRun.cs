@@ -57,6 +57,12 @@ public class DependencyUpdateRun
 
     public string? OutcomeMessage { get; set; }
 
+    /// <summary>
+    /// The <c>/refresh</c> that started this run, or the <c>/bisect</c> that started its bisection (#660 G3): the run's
+    /// publish or end, or the bisection's culprit, reacts on that comment. Cleared by the next run.
+    /// </summary>
+    public string? CommandInvocation { get; set; }
+
     // ── The run ─────────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>

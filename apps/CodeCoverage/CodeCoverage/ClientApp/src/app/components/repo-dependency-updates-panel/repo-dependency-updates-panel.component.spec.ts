@@ -15,7 +15,7 @@ const view: DependencyRepoView = {
     schedule: 'Mondays at 06:00 UTC', pullRequest: { number: 41, url: 'https://github.com/acme/widget/pull/41', draft: true },
     onboarding: 'Done', onboardingNote: null,
     holds: [{ kind: 'Human', group: null, depNames: ['chalk'], reason: 'chalk held at 4.1.1 (set by @octocat)', by: 'octocat', createdAtUtc: '2026-10-12T06:30:00Z' }],
-    awaitingApproval: [{ group: '@angular/*', depName: '@angular/core', current: '21.2.0', target: '22.0.1', command: 'approve @angular/*' }],
+    awaitingApproval: [{ group: '@angular/*', depName: '@angular/core', current: '21.2.0', target: '22.0.1', command: '/approve @angular/*' }],
     plannedGroups: 1, pins: ['lodash 4.17.21 (package.json)'], coverageNote: null,
   },
   planned: [{ group: 'lodash', level: 'patch', autoMerge: false, items: [{ depName: 'lodash', packageFile: 'package.json', from: '4.17.20', to: '4.17.21' }] }],
@@ -54,7 +54,7 @@ describe('RepoDependencyUpdatesPanelComponent', () => {
     expect(q('[data-testid="du-summary"]')?.textContent).toContain('draft');
     expect(q('[data-testid="du-next"]')?.textContent).toContain('Mondays at 06:00 UTC');
     expect(q('[data-testid="du-holds"]')?.textContent).toContain('chalk held at 4.1.1');
-    expect(q('[data-testid="du-awaiting"]')?.textContent).toContain('approve @angular/*');
+    expect(q('[data-testid="du-awaiting"]')?.textContent).toContain('/approve @angular/*');
     expect(q('[data-testid="du-pins"]')?.textContent).toContain('lodash 4.17.21');
     expect(q('[data-testid="du-planned"]')?.textContent).toContain('4.17.21');
     expect(q('[data-testid="du-history"]')?.textContent).toContain('pushed mintplayer/dependencies');

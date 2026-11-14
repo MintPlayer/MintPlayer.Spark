@@ -248,7 +248,7 @@ repository moves from (a Dockerfile stage still on Node 20 in a Node 22 reposito
 | `follow` | always follows |
 | `report` | never moves; it is listed under **Not moved** |
 
-A location on the repository's own channel that the bot cannot edit (a computed one) holds the move for `approve`: it
+A location on the repository's own channel that the bot cannot edit (a computed one) holds the move for `/approve`: it
 would otherwise stay behind unseen. `platforms.<sdk>.exclude` leaves it behind on purpose. The top-level `exclude` also
 applies to platforms: an excluded path neither moves nor counts towards the repository's channel.
 
@@ -258,14 +258,30 @@ Writers (write access or above) comment on the rolling pull request, one command
 
 | Command | Does |
 |---|---|
-| `approve <group>` | Takes an over-threshold group (a major) into the pull request. Bound to the exact dependency set, the target major and the `coverage.yml` it was given under: a newer major, a changed group or another `coverage.yml` expires it. Checked again at apply time: an approver who lost write access loses the approval. |
-| `approve platform:<sdk> <channel> --force` | Takes a *pending* SDK move (a companion has no release at the target major yet, §6) anyway: those companions stay at their major and a person fixes the build on the branch. |
-| `hold <group or package>` | Holds it until `unhold`. |
-| `unhold <group or package>` | Lifts a comment or human hold (the bot's own holds lift by themselves). |
-| `bisect` | Bisects a red pull request now (budget 4 when the setting is off). |
-| `refresh` | Rebuilds now. A run a comment started never auto-merges; the next scheduled one may. |
+| `/approve <group>` | Takes an over-threshold group (a major) into the pull request. Bound to the exact dependency set, the target major and the `coverage.yml` it was given under: a newer major, a changed group or another `coverage.yml` expires it. Checked again at apply time: an approver who lost write access loses the approval. |
+| `/approve platform:<sdk> <channel> --force` | Takes a *pending* SDK move (a companion has no release at the target major yet, §6) anyway: those companions stay at their major and a person fixes the build on the branch. |
+| `/hold <group or package>` | Holds it until `/unhold`. |
+| `/unhold <group or package>` | Lifts a comment or human hold (the bot's own holds lift by themselves). |
+| `/bisect` | Bisects a red pull request now (budget 4 when the setting is off). |
+| `/refresh` | Rebuilds now. A run a comment started never auto-merges; the next scheduled one may. |
 
-Edited comments and comments by bots are ignored. The bot reacts 👍 or 👎.
+Every command starts with `/`; a comment that starts with a bare word (`approve angular`) is an ordinary comment.
+Edited comments and comments by bots are ignored.
+
+The bot reacts on the comment, keeping one reaction that it replaces as the command moves on
+([command-reactions-PRD](command-reactions-PRD.md)):
+
+| Reaction | Means |
+|---|---|
+| 👀 | Seen; the bot is on it. |
+| 🚀 | A `/refresh` or `/bisect` started a run; the reaction changes when that run ends. |
+| 🎉 | Done: the approval, hold or lift is recorded, or the run applied a change. |
+| 👍 | Nothing changed: the run rebuilt an identical tree, or a run was already going. |
+| 👎 | Refused (no write access, unknown group, not a dependency pull request of a repository that uses the updater) or failed. |
+
+A command on a pull request that no dependency run owns is left alone in a repository that does not use the updater,
+because other bots read `/approve` and `/hold` too. The repository page lists each command with its outcome and a link
+to its log.
 
 ## 6. What happens when…
 
@@ -277,18 +293,18 @@ Edited comments and comments by bots are ignored. The bot reacts 👍 or 👎.
   its own, so another `MintPlayer/MintPlayer.Spark` action in its cooldown never holds it back. In any other group, a
   member in its cooldown holds back the rest of the group; they are listed under *Available, not applied* with the member
   they wait for.
-- **The onboarding started the run.** Onboarding an already-set-up repository runs at once; that run, like `refresh`,
+- **The onboarding started the run.** Onboarding an already-set-up repository runs at once; that run, like `/refresh`,
   never auto-merges. The next scheduled slot (or *Run the scheduled slot now* on the Repository page) may.
 - **A vulnerability is announced.** A Dependabot alert starts an out-of-slot security run with only the fix and the
-  groups that may auto-merge anyway. A major fix still waits for `approve`.
+  groups that may auto-merge anyway. A major fix still waits for `/approve`.
 - **The resolver refuses a group** (e.g. Angular N+1 before the Nx plugin supports it). The group is reset and held,
   naming the blockers; the hold lifts when a newer version of a blocker appears, when the blocker's current version
   moves (for example after you approved its own group), and after four slots in any case. When the blocker has an
   update of its own in the same run, the held group **joins the blocker's group** instead: the resolver showed they must
   move together (e.g. `MintPlayer.SourceGenerators` 13.1.0 needs `MintPlayer.SourceGenerators.Attributes` 13.1.0), so
-  one group, one `approve <blocker's group>` and one apply move both. They stay together until the blocker's version
+  one group, one `/approve <blocker's group>` and one apply move both. They stay together until the blocker's version
   moves (#653). Such a group never settles for a smaller update in which the blocker does not move: when Renovate
-  calls one member's update a minor and the blocker's a major, the group waits for the `approve` of the major rather
+  calls one member's update a minor and the blocker's a major, the group waits for the `/approve` of the major rather
   than apply the minor alone. A hold taken on a plan that left out its own blocker lifts at once (#655).
 - **CI is red.** The failing checks are re-run once (flaky tests). Then suspects are left out one by one (majors first,
   then versions red elsewhere in the fleet), one CI run each, until the culprit is found; it is held, recorded as red for
@@ -305,7 +321,7 @@ Edited comments and comments by bots are ignored. The bot reacts 👍 or 👎.
     set, and stops for a person if it conflicts again.
   - Any other conflict, or a branch rewritten by hand: the branch is kept as it is and the bot comments; close the pull
     request to let it start over.
-- **A major needs code migrations** (`migrate:`). After `approve`, the migrate workflow runs `ng update --migrate-only` /
+- **A major needs code migrations** (`migrate:`). After `/approve`, the migrate workflow runs `ng update --migrate-only` /
   `nx migrate --run-migrations` with no secrets. A migration that does not complete drops its group. A pull request with
   migrations never auto-merges and says so.
 - **A version lives in an MSBuild property.** `Version="$(FolderHasherTargetsVersion)"` moves the property's one
@@ -326,7 +342,7 @@ Edited comments and comments by bots are ignored. The bot reacts 👍 or 👎.
   SDK's `track` (§4). A platform major never auto-merges.
   - **A companion has no release at the target major yet.** The move is *pending*, not offered for approval: the pull
     request and the account's platform readiness say "dotnet 11.0 waiting on <package>". It is judged again at every
-    lookup; `approve … --force` (§5) takes it anyway.
+    lookup; `/approve … --force` (§5) takes it anyway.
   - **The repository publishes packages and has no `versioning.lines`.** The pull request warns that the previous
     platform's consumers stop receiving releases with this move, and points at `versioning.lines` or `strategy: add`.
 - **The platform channels.** The bot collects every SDK's channels once a day (Microsoft's release index for .NET,
@@ -346,7 +362,7 @@ Edited comments and comments by bots are ignored. The bot reacts 👍 or 👎.
   (which repository is on which version, and what the bot does with it there), and **platform readiness**: "Angular 23:
   3 of 5 ready", with the blockers. *Ready* means the lookup offers the next major there and only an approval, the
   cooldown or an account rule stands in the way; *blocked* means the resolver refused it, or it went red in the fleet;
-  *not offered yet* means no lookup has offered it. The move itself is an `approve` or a rule change.
+  *not offered yet* means no lookup has offered it. The move itself is an `/approve` or a rule change.
 - Every row is filtered like the account's repository list: a private repository you cannot see appears nowhere.
 - The **dependency graph** card reads the lookup's packages where a lookup ran (every ecosystem it reports, with
   versions), and the manifest scanners elsewhere.
@@ -386,6 +402,6 @@ The last run's outcome is on the repository panel; the full story is in *Recent 
 | `lookup-failed`, `apply-failed` | The workflow run failed. | Open the run from the history. |
 | `patch-rejected` | The apply patch changed something the plan did not allow. | Read the reason in the comment; it is a bug or an attack, never ignored. |
 | `replay-conflict`, `rolling-rewritten` | The rolling branch needs a person ("frozen"). | Resolve on the branch, or close the pull request. |
-| `red` | CI failed and no culprit was found within the budget. | `hold` the suspect, or `bisect`. |
+| `red` | CI failed and no culprit was found within the budget. | `/hold` the suspect, or `/bisect`. |
 | `nothing-planned` | Everything is current, held, cooling down or waiting for approval. | See the pull request body. |
 | onboarding blocked | A permission or event is missing. | Accept it on GitHub (the notice links there). |

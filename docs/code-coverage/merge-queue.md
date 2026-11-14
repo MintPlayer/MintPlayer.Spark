@@ -845,6 +845,10 @@ the check gate) do not run.
   its own label removal.
 - A second `/queue`, or the label re-applied, while queued changes nothing. A refused label is removed again and the
   check run says why; a refused comment, panel button or check button gets a comment.
+- **A comment gets reactions (#660).** 👀 when the bot reads it. A `/queue` that takes its place in line gets 🚀, then 🎉
+  when the pull request merges or 👎 when the queue refuses or evicts it; a `/dequeue` gets 🎉 and leaves the `/queue`'s 🚀
+  as it was. A second `/queue`, or a `/dequeue` with nothing queued, gets 👍. The command's record on the repository
+  page links the queue run's log; a label or a check button gets a log as well, without reactions.
 - **The coverage comment links the queue's check (O32, D89).** In a repository whose default branch turns the queue on,
   CodeCoverage's coverage comment on a pull request into a queue branch ends with "**Merge queue:** manage this pull
   request on its check →", a link to the pull request's latest "Merge queue" check

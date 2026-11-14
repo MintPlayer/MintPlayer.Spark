@@ -163,7 +163,7 @@ public static class DependencyFleetView
             run?.PullRequestNumber is { } number ? new DependencyPullRequestLink(number, PullRequestUrl(repository, number), run.PullRequestIsDraft) : null,
             run?.Onboarding.ToString(), run?.OnboardingNote,
             [.. (state?.Holds ?? []).Select(h => new DependencyHoldView(h.Kind.ToString(), h.Group.Length == 0 ? null : h.Group, [.. h.DepNames], h.Reason, h.By, h.CreatedAtUtc))],
-            [.. (report?.AwaitingApproval ?? []).Select(e => new DependencyAwaitingView(e.Group, e.DepName, e.Current, e.Target, $"approve {e.Group}"))],
+            [.. (report?.AwaitingApproval ?? []).Select(e => new DependencyAwaitingView(e.Group, e.DepName, e.Current, e.Target, $"/approve {e.Group}"))],
             report?.Groups.Count ?? 0, [.. run?.Pins ?? []], run?.CoverageNote)
         {
             OnboardingPullRequest = run?.OnboardingPullRequestNumber is { } onboarding ? new DependencyPullRequestLink(onboarding, PullRequestUrl(repository, onboarding), false) : null,

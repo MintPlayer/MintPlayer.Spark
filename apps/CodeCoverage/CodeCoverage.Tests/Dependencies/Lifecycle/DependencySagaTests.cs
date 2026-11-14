@@ -455,7 +455,9 @@ public class DependencySagaTests : CoverageRavenTest
 
         await h.CommandAsync(EDependencyCommand.Approve, "nx", actor: "visitor");
 
-        h.Updates.Reactions.Should().Equal([(900L, EForgeReaction.ThumbsDown)]);
+        // #660: 👀, then 👎 in its place.
+        h.Reactions.On(900).Should().Equal([EForgeReaction.ThumbsDown]);
+        h.Reactions.Added.Select(a => a.Reaction).Should().Equal([EForgeReaction.Eyes, EForgeReaction.ThumbsDown]);
         (await h.StateAsync()).Approvals.Should().BeEmpty();
     }
 
@@ -472,7 +474,8 @@ public class DependencySagaTests : CoverageRavenTest
         approval.Group.Should().Be("nx");
         approval.ApprovedBy.Should().Be("maintainer");
         approval.TargetMajors.Should().Equal(["nx@23"]);
-        h.Updates.Reactions.Should().Equal([(900L, EForgeReaction.ThumbsUp)]);
+        // #660 G2: the approval is the command's effect (🎉); the refresh it starts is a side effect.
+        h.Reactions.On(900).Should().Equal([EForgeReaction.Hooray]);
         var run = await h.RunAsync();
         run.Run.Should().Be(before + 1);
         run.Trigger.Should().Be(EDependencyRunTrigger.Refresh);
@@ -486,7 +489,7 @@ public class DependencySagaTests : CoverageRavenTest
 
         await h.CommandAsync(EDependencyCommand.Approve, "chalk");
 
-        h.Updates.Reactions.Should().Equal([(900L, EForgeReaction.ThumbsDown)]);
+        h.Reactions.On(900).Should().Equal([EForgeReaction.ThumbsDown]);
         (await h.StateAsync()).Approvals.Should().BeEmpty();
     }
 
@@ -503,7 +506,9 @@ public class DependencySagaTests : CoverageRavenTest
         (await h.StateAsync()).Holds.Should().NotContain(x => x.Id == "command:chalk");
 
         await h.CommandAsync(EDependencyCommand.Unhold, "nothing-held", commentId: 903);
-        h.Updates.Reactions.Should().Equal([(901L, EForgeReaction.ThumbsUp), (902L, EForgeReaction.ThumbsUp), (903L, EForgeReaction.ThumbsDown)]);
+        h.Reactions.On(901).Should().Equal([EForgeReaction.Hooray]);
+        h.Reactions.On(902).Should().Equal([EForgeReaction.Hooray]);
+        h.Reactions.On(903).Should().Equal([EForgeReaction.ThumbsDown]);
     }
 
     [Fact]
@@ -517,7 +522,7 @@ public class DependencySagaTests : CoverageRavenTest
             RepositoryId = RepositoryId, Kind = EDependencySignal.Command, Number = 1, CommentId = 77, Command = EDependencyCommand.Refresh, Actor = "maintainer",
         });
 
-        h.Updates.Reactions.Should().BeEmpty();
+        h.Reactions.Added.Should().BeEmpty();
         h.Queue.RoleQueries.Should().NotContain("maintainer");
     }
 

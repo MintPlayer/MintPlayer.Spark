@@ -75,6 +75,7 @@ public class ForgeIntegrationConformanceTests
         [EForgeCapability.SetupRedirect] = typeof(IForgeSetupRedirect),
         [EForgeCapability.PullRequestLabels] = typeof(IForgeLabels),
         [EForgeCapability.Versioning] = typeof(IForgeVersioning),
+        [EForgeCapability.CommentReactions] = typeof(IForgeCommentReactions),
     };
 
     /// <summary>

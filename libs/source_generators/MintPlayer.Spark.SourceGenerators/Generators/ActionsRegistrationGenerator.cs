@@ -42,7 +42,8 @@ public class ActionsRegistrationGenerator : IncrementalGenerator
                                 return new ActionsClassInfo
                                 {
                                     ActionsTypeName = classSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
-                                    EntityTypeName = entityType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)
+                                    EntityTypeName = entityType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
+                                    OverridesBaseActions = HasSameNamedActionsAncestor(classSymbol),
                                 };
                             }
                         }
@@ -76,5 +77,20 @@ public class ActionsRegistrationGenerator : IncrementalGenerator
             });
 
         context.ProduceCode(sourceProvider);
+    }
+
+    /// <summary>
+    /// #660 G17: whether a base class carries the same simple name and is a concrete class, i.e. one the run-time
+    /// resolver also finds by name. The generic <c>DefaultPersistentObjectActions&lt;T&gt;</c> never matches (its
+    /// metadata name differs from any <c>{Entity}Actions</c>).
+    /// </summary>
+    internal static bool HasSameNamedActionsAncestor(INamedTypeSymbol classSymbol)
+    {
+        for (var ancestor = classSymbol.BaseType; ancestor is not null; ancestor = ancestor.BaseType)
+        {
+            if (!ancestor.IsAbstract && ancestor.MetadataName == classSymbol.MetadataName)
+                return true;
+        }
+        return false;
     }
 }

@@ -56,7 +56,7 @@ public class GitHubEventsCommandTests : CoverageRavenTest
         var bus = await DeliverAsync(store, "issue_comment", Comment("/backport 8.x, 9.x\nthanks"));
 
         Backports(bus).Should().ContainSingle().Which
-            .Should().BeEquivalentTo(new BackportRequested(RepositoryId, 7, ["8.x", "9.x"], "maintainer", EBackportSource.Comment));
+            .Should().BeEquivalentTo(new BackportRequested(RepositoryId, 7, ["8.x", "9.x"], "maintainer", EBackportSource.Comment, CommentId: 555));
     }
 
     [Fact]
@@ -69,7 +69,7 @@ public class GitHubEventsCommandTests : CoverageRavenTest
         var bus = await DeliverAsync(store, "issue_comment", Comment("/backport 8.x --draft"));
 
         Backports(bus).Should().ContainSingle().Which
-            .Should().BeEquivalentTo(new BackportRequested(RepositoryId, 7, ["8.x"], "maintainer", EBackportSource.Comment, Draft: true));
+            .Should().BeEquivalentTo(new BackportRequested(RepositoryId, 7, ["8.x"], "maintainer", EBackportSource.Comment, Draft: true, CommentId: 555));
     }
 
     [Fact]
@@ -78,12 +78,14 @@ public class GitHubEventsCommandTests : CoverageRavenTest
         using var store = GetDocumentStore();
         await SeedAsync(store, busy: false);
 
-        var bus = await DeliverAsync(store, "issue_comment", Comment("hold `@angular/*`"));
-        var noId = await DeliverAsync(store, "issue_comment", Comment("approve", id: null));
+        var bus = await DeliverAsync(store, "issue_comment", Comment("/hold `@angular/*`"));
+        var noId = await DeliverAsync(store, "issue_comment", Comment("/approve angular", id: null));
+        var bare = await DeliverAsync(store, "issue_comment", Comment("hold `@angular/*`"));
 
         bus.Of<ForgeWebhookMessage<DependencyCommandIssued>>().Should().ContainSingle().Which.Event
             .Should().Be(new DependencyCommandIssued(RepositoryId, 7, 555, EDependencyCommand.Hold, "@angular/*", "maintainer"));
         noId.Messages.Should().BeEmpty("a comment without an id cannot be answered");
+        bare.Of<ForgeWebhookMessage<DependencyCommandIssued>>().Should().BeEmpty("#660 G1: only the slash form is a command");
     }
 
     [Fact]
