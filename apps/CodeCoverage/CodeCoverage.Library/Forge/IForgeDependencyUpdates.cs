@@ -49,9 +49,6 @@ public interface IForgeDependencyUpdates
     /// <summary>Closes the pull request without merging (R24's offboarding). Closing one that is already closed is no error.</summary>
     Task ClosePullRequestAsync(Repository repository, int number, CancellationToken cancellationToken = default);
 
-    /// <summary>Puts a reaction on a pull request comment (👍 a command taken, 👎 one refused, §7.5).</summary>
-    Task AddCommentReactionAsync(Repository repository, long commentId, EForgeReaction reaction, CancellationToken cancellationToken = default);
-
     /// <summary>
     /// Creates or updates the updater's own check run (<see cref="DependencyCheckName"/>) on <paramref name="sha"/>; it stays
     /// in progress while a bisection runs (old §7.4). Returns its id for the next update.
@@ -90,10 +87,3 @@ public sealed record ForgeArtifactFiles(EForgeArtifactOutcome Outcome, IReadOnly
 
 /// <summary>A pull request as the updater reads it: enough to upsert its own and to tell whether it may be enqueued.</summary>
 public sealed record ForgeBotPullRequest(int Number, string HeadRef, string HeadSha, string BaseRef, bool IsOpen, bool IsMerged, bool IsDraft, string? HtmlUrl);
-
-public enum EForgeReaction
-{
-    ThumbsUp,
-    ThumbsDown,
-    Eyes,
-}

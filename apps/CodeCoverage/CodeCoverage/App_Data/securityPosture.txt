@@ -6,22 +6,27 @@
 authorization | MintPlayer.Spark.Authorization | c6fc3af07823
 dashboards | MintPlayer.Spark.Dashboards | 4684f577b028
 identity-provider | MintPlayer.Spark.IdentityProvider | a47cb40caae8 | switched off
+logging | MintPlayer.Spark.Logging | 07ea1af27978
 
 ## Reachable without signing in (expanded)
 Browse/Coverage
 Query/Account
 Query/BackportAttempt
 Query/Build
+Query/CommandInvocation
 Query/Commit
 Query/Home
+Query/Log
 Query/PlatformRelease
 Query/Repository
 Query/VersioningRun
 Read/Account
 Read/BackportAttempt
 Read/Build
+Read/CommandInvocation
 Read/Commit
 Read/Home
+Read/Log
 Read/PlatformRelease
 Read/Repository
 Read/VersioningRun
@@ -32,6 +37,7 @@ Anonymous visitors | grant | QueryRead/Account | c0e5a9e1-0000-4000-8000-0000000
 Anonymous visitors | deny | QueryRead/Account/OwnerKey | c0e5a9e1-0000-4000-8000-000000000081 | app
 Anonymous visitors | grant | QueryRead/BackportAttempt | c0e5a9e1-0000-4000-8000-0000000000ae | app
 Anonymous visitors | grant | QueryRead/Build | c0e5a9e1-0000-4000-8000-000000000004 | app
+Anonymous visitors | grant | QueryRead/CommandInvocation | c0e5a9e1-0000-4000-8000-0000000000b1 | app
 Anonymous visitors | grant | QueryRead/Commit | c0e5a9e1-0000-4000-8000-000000000003 | app
 Anonymous visitors | deny | QueryRead/Home/AccountCount | c0e5a9e1-0000-4000-8000-000000000088 | app
 Anonymous visitors | deny | QueryRead/Home/RepoCount | c0e5a9e1-0000-4000-8000-000000000089 | app
@@ -41,8 +47,10 @@ Anonymous visitors | deny | QueryRead/Repository/OwnerKey | c0e5a9e1-0000-4000-8
 Anonymous visitors | deny | QueryRead/Repository/PreviousFullNames | c0e5a9e1-0000-4000-8000-000000000085 | app
 Anonymous visitors | grant | QueryRead/VersioningRun | c0e5a9e1-0000-4000-8000-0000000000a7 | app
 Anonymous visitors | grant | Read/Home | c0e5a9e1-0000-4000-8000-000000000041 | app
+Anonymous visitors | grant | Read/Log | c0e5a9e1-0000-4000-8000-0000000000b3 | app
 
 ## Rights
+Administrators | grant | ListAll/Log | c0e5a9e1-0000-4000-8000-0000000000b5 | app
 Administrators | grant | QueryRead/RepositoryGraphState | c0e5a9e1-0000-4000-8000-000000000092 | app
 Administrators | grant | ReadSettings/Account | c0e5a9e1-0000-4000-8000-000000000096 | app
 Administrators | grant | ReadSettings/Repository | c0e5a9e1-0000-4000-8000-000000000097 | app
@@ -63,6 +71,7 @@ Signed-in users | grant | QueryRead/Account | c0e5a9e1-0000-4000-8000-0000000000
 Signed-in users | deny | QueryRead/Account/OwnerKey | c0e5a9e1-0000-4000-8000-000000000082 | app
 Signed-in users | grant | QueryRead/BackportAttempt | c0e5a9e1-0000-4000-8000-0000000000af | app
 Signed-in users | grant | QueryRead/Build | c0e5a9e1-0000-4000-8000-000000000014 | app
+Signed-in users | grant | QueryRead/CommandInvocation | c0e5a9e1-0000-4000-8000-0000000000b2 | app
 Signed-in users | grant | QueryRead/Commit | c0e5a9e1-0000-4000-8000-000000000013 | app
 Signed-in users | grant | QueryRead/ForgeCheck | c0e5a9e1-0000-4000-8000-000000000093 | app
 Signed-in users | grant | QueryRead/GitHubProject | c0e5a9e1-0000-4000-8000-000000000062 | app
@@ -81,6 +90,7 @@ Signed-in users | grant | Read/DependencyOnboardingScope | c0e5a9e1-0000-4000-80
 Signed-in users | grant | Read/ForgeAccounts | c0e5a9e1-0000-4000-8000-000000000053 | app
 Signed-in users | deny | Read/ForgeAccounts/Provider | c0e5a9e1-0000-4000-8000-000000000087 | app
 Signed-in users | grant | Read/Home | c0e5a9e1-0000-4000-8000-000000000042 | app
+Signed-in users | grant | Read/Log | c0e5a9e1-0000-4000-8000-0000000000b4 | app
 Signed-in users | grant | Read/LookupReferences | c0e5a9e1-0000-4000-8000-000000000068 | app
 Signed-in users | grant | Resync/Home | c0e5a9e1-0000-4000-8000-000000000052 | app
 Signed-in users | grant | Revoke/ApiToken | c0e5a9e1-0000-4000-8000-00000000006a | app

@@ -530,7 +530,8 @@
     "queries": [
       "repository-commits",
       "repository-versioning-runs",
-      "repository-backport-attempts"
+      "repository-backport-attempts",
+      "repository-command-invocations"
     ]
   },
   "queries": [

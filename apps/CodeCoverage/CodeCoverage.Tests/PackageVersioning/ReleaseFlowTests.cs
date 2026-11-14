@@ -91,7 +91,7 @@ public class ReleaseFlowTests : CoverageRavenTest
     private async Task ReleaseAsync(IDocumentStore store, string actor, params ReleaseVersionRequest[] versions)
     {
         using var session = store.OpenAsyncSession();
-        await new ReleaseRecipient(session, new SingleForgeResolver(integration), [forge], [git], writer, http, TimeProvider.System, NullLogger<ReleaseRecipient>.Instance)
+        await new ReleaseRecipient(session, new SingleForgeResolver(integration), [forge], [git], writer, http, TimeProvider.System, Tests.Commands.CommandTestKit.Lifecycle(store, new Tests.Commands.FakeCommentReactions()), NullLogger<ReleaseRecipient>.Instance)
             .HandleAsync(new ReleaseMessage { RepositoryId = RepositoryId, Number = 5, Request = new ReleaseCommentRequest([], false, null, versions), ActorLogin = actor });
     }
 

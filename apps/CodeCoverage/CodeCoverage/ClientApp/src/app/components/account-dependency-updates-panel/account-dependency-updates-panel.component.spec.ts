@@ -24,7 +24,7 @@ const fleet: DependencyFleet = {
     repo('app', {
       health: 'red', outcome: 'bisected', outcomeMessage: 'the culprit is @angular/*',
       holds: [{ kind: 'Unattributed', group: '@angular/*', depNames: ['@angular/core'], reason: 'CI went red with it; found by bisect', by: null, createdAtUtc: '2026-10-12T07:00:00Z' }],
-      awaitingApproval: [{ group: 'typescript', depName: 'typescript', current: '5.9.2', target: '6.0.3', command: 'approve typescript' }],
+      awaitingApproval: [{ group: 'typescript', depName: 'typescript', current: '5.9.2', target: '6.0.3', command: '/approve typescript' }],
     }),
     repo('tool', { health: 'blocked', onboarding: 'Blocked', onboardingNote: 'The installation has not accepted Workflows: write yet.' }),
   ],
@@ -81,7 +81,7 @@ describe('AccountDependencyUpdatesPanelComponent', () => {
     expect(rows[0].querySelector('a[href="https://github.com/acme/lib/pull/41"]')).not.toBeNull();
     expect(rows[1].textContent).toContain('CI red');
     expect(rows[1].textContent).toContain('the culprit is @angular/*');
-    expect(rows[1].textContent).toContain('approve typescript');
+    expect(rows[1].textContent).toContain('/approve typescript');
     expect(rows[1].textContent).toContain('found by bisect');
     expect(rows[2].textContent).toContain('onboarding blocked');
     expect(rows[2].querySelector('[data-testid="du-why"]')?.textContent).toContain('Workflows: write');

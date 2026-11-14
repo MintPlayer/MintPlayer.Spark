@@ -98,6 +98,8 @@ public sealed record MergeQueueSignalMessage
     public string? Actor { get; init; }
     public EMergeQueueCommandSource? Source { get; init; }
     public string? Label { get; init; }
+    /// <summary>The comment that held a <c>/queue</c> or <c>/dequeue</c> (#660): the command lifecycle reacts on it.</summary>
+    public long? CommentId { get; init; }
 }
 
 public enum EMergeQueueSignal

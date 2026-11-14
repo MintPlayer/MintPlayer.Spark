@@ -36,6 +36,7 @@ on:
       - 'libs/messaging/MintPlayer.Spark.Messaging.Abstractions/**'
       - 'libs/mail/MintPlayer.Spark.MailManager/**'
       - 'libs/mail/MintPlayer.Spark.MailManager.Abstractions/**'
+      - 'libs/logging/MintPlayer.Spark.Logging/**'
       - 'libs/migrations/MintPlayer.Spark.Migrations/**'
       - 'libs/webhooks/MintPlayer.Spark.Webhooks.GitHub/**'
       - 'libs/webhooks/MintPlayer.Spark.Webhooks.GitHub.DevTunnel/**'

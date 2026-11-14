@@ -1,17 +1,18 @@
 {
   "version": 2,
-  "modelHash": "caeb04e0827dddeea57a6a4616d87b448dfe2eaa802b957ad75819b7cf0ba79e",
-  "contextRoots": "f5e11ae225e10aa0b440d48d16f11d21dc8317c48ac2ef650a8e6f48315cb726",
-  "modelFiles": "2948b21ace8b37ebf9c13ffd278355a1d8d82678c3660f925e0c43fc038cb9d2",
+  "modelHash": "ebb8428bb06cf3b0ef2d856b2fcbd6ae18a34b67e22a015178219454cba8806c",
+  "contextRoots": "cf2f11a97d73a0f56cd762c9fa7b10a130d14fb7f4a36f12f8ac286f3dfb1359",
+  "modelFiles": "1a2cd96b266dc6c38704d6b8dd282234cf5707582f10e0e6a159f406d0387099",
   "files": {
     "Account.json": "170748ecafb1901f48ddd23aa0007dc9d0a42af849a9d79bc0ab8ef026280aba",
     "ApiToken.json": "335fbf2468044559073c832ed0da7b73e1a8b4447f95d3e66df1c16815933619",
-    "BackportAttempt.json": "b0fd1a4966794cb42a148b764cea286e62f8505e835264f66a6338ad17597918",
+    "BackportAttempt.json": "04718227a0eecd8653e9aae9e9a2b99a6889365133ebe1776085dc3a2b85c4d4",
     "Build.json": "2de3121daa20212be48c118e0a9dd9d611b13a02872e101c4cfe9f42ab5ba7bf",
     "BuildFeedback.json": "06e16db3c14ee213a3f838cf3bd70fc87883f9271ceecd767179b58faed03f25",
     "BuildSession.json": "8df719d4a5ca795af9b9d36da4576d46864369ae640d8a4247350abc3e782b81",
     "ClientClaim.json": "94bb0ad62af0b10712bbf1f88d98534addafb037ea693b691b2ca893fb8f437d",
     "ClientSecret.json": "a6fa599f79e5819c7e231c99e036645618d9686a291613b1275cfc3ff1a4ad33",
+    "CommandInvocation.json": "5859ade0cae13d0b71e5eb987b4962a53dd6a3852008cf68562e2c915a562c79",
     "Commit.json": "dd05e6dc4b3c3b7778f9fca7ef8c4ae01567095ffb0d9fdfc729738a0988ae80",
     "CoverageSummary.json": "ae8fc0e1669186618f6ec8ef7114b7fd6ea91c94b61e50db1e0221f84950c699",
     "DatabaseStatistics.json": "c6855f53fc792722fd52f5d537268698211f5936953a3e36254252adf55f6d84",
@@ -26,6 +27,8 @@
     "GitHubProject.json": "a42b4aadba21f1ef06e21834d7bbc3f75e76d21d97b93389f7896f24d603d6a5",
     "Home.json": "70bf0a1daa7fe4bab1cedc56c425db8655581eb574d51e47d2b58b9707cc8ef3",
     "HostMetrics.json": "86c52e73e41f7d80ae581c69c1b8cb5984ac099534d922bb3f2c522683ef12fb",
+    "Log.json": "f1481044f90aaa0317263b8dfa14bea4af0482279a7cbee526c3b73988983699",
+    "LogEntry.json": "1994c6064bbdae9c0ad6b0fa30b0aa5bc9109cd849c3f67902ed3cb7df8ca4d2",
     "ManagedLabel.json": "c8d85f8396fbbad5c19e264d18db2e6a6f99b8107687efa805a5e65612026561",
     "MyAccountRow.json": "57e03d0c983b0b1583d289dc3400e2840f2b1ad6d20b92e91e2016c9dfc0959c",
     "OidcApiScope.json": "2a1e2a01feaa390b07bbb761fdfedb6f07fee8646586b8c14851cbf0c98b16fc",
@@ -61,10 +64,11 @@
   "entities": {
     "Account": "7ddc8956e06a7451f8e3345c32891943028f8985bd173e316a9b42dddb685c55",
     "ApiToken": "34f76c0b7b480ca65fd4b5dcc5b46e2a56be7ca262596e135777b9d122d6d8f2",
-    "BackportAttempt": "eb59e1818e32a42971ab11f2108a39bcf383d9b6ae32a524646381780ebbcb99",
+    "BackportAttempt": "8b02c97d28af1fc1fbd11850cc3d26f22d16db391aabb8a38b209339cca1aec5",
     "Build": "4195bfb0bf93eb7e47caab30858ab5bcb789ef0b50c9d28b05f417cb36f7b8db",
     "BuildFeedback": "59f01473865ad49f03e1cd8d7ba6ccc433157514414b3ce870ca49e1bac0756f",
     "BuildSession": "331f94fcbb33868490f68db75f008e1d03f78ee72906766a563c06505c169039",
+    "CommandInvocation": "411f589b5cfbdf1e9cf507b8e05c447cc8d3c9a9ca81a89aa6234ca53b0806a1",
     "Commit": "be894a23663b5218676191a6c80c538b031965a713ce95cb6fd4b300dc1e25fd",
     "CoverageSummary": "20e85da978ef2b1fb7ac6fc00690a8d0241d365228242a2baf979fe62309c3e7",
     "DependencyRule": "92c2a490f5dcb6b42e13fdfea338112b0ca90c075490a436d5226ce90b1bb084",
@@ -91,6 +95,7 @@
     "authorization": "MintPlayer.Spark.Authorization",
     "dashboards": "MintPlayer.Spark.Dashboards",
     "identity-provider": "MintPlayer.Spark.IdentityProvider",
+    "logging": "MintPlayer.Spark.Logging",
     "spark": "MintPlayer.Spark"
   },
   "layers": {
@@ -102,6 +107,12 @@
     },
     "Model/DatabaseStatistics.json": {
       "dashboards": "c6855f53fc792722fd52f5d537268698211f5936953a3e36254252adf55f6d84"
+    },
+    "Model/Log.json": {
+      "logging": "f1481044f90aaa0317263b8dfa14bea4af0482279a7cbee526c3b73988983699"
+    },
+    "Model/LogEntry.json": {
+      "logging": "1994c6064bbdae9c0ad6b0fa30b0aa5bc9109cd849c3f67902ed3cb7df8ca4d2"
     },
     "Model/OidcApiScope.json": {
       "identity-provider": "2a1e2a01feaa390b07bbb761fdfedb6f07fee8646586b8c14851cbf0c98b16fc"

@@ -13,13 +13,13 @@ namespace CodeCoverage.Tests.Dependencies.Lifecycle;
 public class DependencyCommandParserTests
 {
     [Theory]
-    [InlineData("approve angular", EDependencyCommand.Approve, "angular")]
-    [InlineData("  Approve `@angular/*`\nthanks", EDependencyCommand.Approve, "@angular/*")]
-    [InlineData("hold lodash", EDependencyCommand.Hold, "lodash")]
-    [InlineData("unhold lodash", EDependencyCommand.Unhold, "lodash")]
-    [InlineData("bisect", EDependencyCommand.Bisect, null)]
-    [InlineData("refresh\r\n", EDependencyCommand.Refresh, null)]
-    [InlineData("approve platform:dotnet 11.0 --force", EDependencyCommand.Approve, "platform:dotnet 11.0 --force")] // #606 D3: the engine reads the flag
+    [InlineData("/approve angular", EDependencyCommand.Approve, "angular")]
+    [InlineData("  /Approve `@angular/*`\nthanks", EDependencyCommand.Approve, "@angular/*")]
+    [InlineData("/hold lodash", EDependencyCommand.Hold, "lodash")]
+    [InlineData("/unhold lodash", EDependencyCommand.Unhold, "lodash")]
+    [InlineData("/bisect", EDependencyCommand.Bisect, null)]
+    [InlineData("/refresh\r\n", EDependencyCommand.Refresh, null)]
+    [InlineData("/approve platform:dotnet 11.0 --force", EDependencyCommand.Approve, "platform:dotnet 11.0 --force")] // #606 D3: the engine reads the flag
     public void A_command_is_the_first_word_of_the_first_line(string body, EDependencyCommand command, string? argument)
     {
         var parsed = DependencyCommandParser.Parse(body);
@@ -31,16 +31,21 @@ public class DependencyCommandParserTests
     [Theory]
     [InlineData("")]
     [InlineData("I approve of this")]
-    [InlineData("approve")]
-    [InlineData("hold")]
-    [InlineData("refresh please")]
+    [InlineData("/approve")]
+    [InlineData("/hold")]
+    [InlineData("/refresh please")]
     [InlineData("/queue")]
+    // #660 G1: the bare words are ordinary comments now.
+    [InlineData("approve angular")]
+    [InlineData("Hold on, this breaks the build")]
+    [InlineData("refresh")]
+    [InlineData("bisect")]
     public void Anything_else_is_an_ordinary_comment(string body)
         => DependencyCommandParser.Parse(body).Should().BeNull();
 
     [Fact]
     public void An_overlong_argument_is_not_a_command()
-        => DependencyCommandParser.Parse("approve " + new string('a', DependencyCommandParser.MaxArgumentLength + 1)).Should().BeNull();
+        => DependencyCommandParser.Parse("/approve " + new string('a', DependencyCommandParser.MaxArgumentLength + 1)).Should().BeNull();
 }
 
 /// <summary>Q8: the slot, in the account's time zone, spread within the hour, one key per repository and slot.</summary>
@@ -472,7 +477,7 @@ public class DependencyPullRequestBodyTests
         var body = DependencyPullRequestBody.Render(new DependencyUpdateRun(), report, null);
 
         body.Should().StartWith(DependencyPullRequestBody.Marker);
-        body.Should().Contain("`approve angular`");
+        body.Should().Contain("`/approve angular`");
         body.Should().Contain("held by @\u200bsomeone (comment)", "a mention in a reason never pings");
         body.Should().Contain("| chalk | `chalk` | `package.json` | 4.1.0 | 4.1.2 | patch |");
     }

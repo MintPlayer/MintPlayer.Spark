@@ -77,7 +77,7 @@ public class PlatformInChannelMoveTests
 
         outcome.Groups.Should().NotContain(g => g.Group == "platform:dotnet 11.0");
         var pending = outcome.Held.Concat(outcome.Available).Should().ContainSingle(e => e.Reason == EDependencyReportReason.Pending).Which;
-        pending.Detail.Should().Contain("Microsoft.AspNetCore.OpenApi").And.Contain("approve platform:dotnet 11.0 --force");
+        pending.Detail.Should().Contain("Microsoft.AspNetCore.OpenApi").And.Contain("/approve platform:dotnet 11.0 --force");
     }
 
     [Fact]

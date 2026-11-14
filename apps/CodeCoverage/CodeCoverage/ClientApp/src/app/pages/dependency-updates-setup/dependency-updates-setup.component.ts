@@ -106,7 +106,7 @@ export default class DependencyUpdatesSetupComponent {
 
   /** The comment commands (dependency-updates.md §5). */
   protected readonly commands = [
-    { command: 'approve <group>', does: 'Takes an over-threshold group, such as a major, into the pull request.' },
+    { command: '/approve <group>', does: 'Takes an over-threshold group, such as a major, into the pull request.' },
     { command: 'hold <group or package>', does: 'Holds it until unhold.' },
     { command: 'unhold <group or package>', does: 'Lifts a comment or human hold. The bot\'s own holds lift by themselves.' },
     { command: 'bisect', does: 'Bisects a red pull request now (a budget of 4 when the setting is off).' },

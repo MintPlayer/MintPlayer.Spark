@@ -378,3 +378,44 @@ command hints the bot writes are in:
   - The translations golden if `translations.json` changes.
 - **Gate.** Run `npm run test:affected` once at the end, then push, open the pull request (`closes #660`) and mark it
   ready.
+
+## 7. Implementation: where it differs from §6, and why
+
+Each item supersedes the §6 text it names.
+
+- **D1. Admins list logs through `ListAll/Log`, not `Query/Log`** (supersedes M6 "`Query/Log` for admins").
+  - In Spark a `Read` grant also opens the list: `Read/Log` for everyone would have let everyone list every log.
+  - So CodeCoverage's `LogActions` (`apps/CodeCoverage/CodeCoverage/Actions/LogActions.cs`) refuses `Query` and
+    disables it in `OnDisableActionsAsync` unless the caller holds the custom right `ListAll/Log`. That is the
+    pattern `AccountActions` uses with `ReadSettings`. `security.json` grants it to Administrators only.
+  - Evidence: `LogAccessEndToEndTests` (the list is refused to a visitor, a stranger and the repository's owner; an
+    administrator gets it), and the `Log` rows in `App_Data/securityPosture.txt`.
+- **D2. A merge-queue run's log relates to the repository, not to the `MergeQueueEntry`.**
+  - `ISparkReadAccess.MayReadAsync` resolves the related id's type from its stored collection. A `MergeQueueEntry`
+    is not a persistent object, so a log related to it could be read by nobody (fail closed, G14).
+  - `MergeQueueEngine.EnqueueAsync` and `OpenRunLog` pass `repository.Id`. A `/queue` command's record points at
+    that log (G7).
+  - Evidence: `MergeQueueCommandReactionTests` (a label's run log is `Logs/merge-queue/github/…` related to the
+    repository id).
+- **D3. `BackportAttempt.LogId` is a plain string, not a reference.**
+  - `BackportAttempt` lives in `CodeCoverage.Library`, which may not reference `MintPlayer.Spark.Logging` (SPARKLIB001:
+    a library's entities reference only library types). The log is reached from the command's record, whose `LogId` is
+    a `[Reference(typeof(Log))]`.
+- **D4. "Write access" for a log's exception means: may manage the related record's repository**
+  (`ISparkVisibility.CanManageRepositoryAsync`).
+  - A command's log resolves through the command to its repository. A run or backport log is related to the
+    repository directly. Anything else hides `Entries.Exception` (fail closed).
+  - Evidence: `LogAccessEndToEndTests` (a member reads the log without the exception, the owner reads it with it).
+- **D5. No "hide the link once the log expired" logic** (supersedes M6's "which hide themselves").
+  - A command's log never expires before its record: every finishing step writes its line to the record's log with
+    the record's own expiry (`CommandLifecycle.StepAsync`, `expiresAtUtc: own ? expires : Now.AddDays(RetentionDays)`),
+    the linked merge-queue run log included.
+  - The only other link is the string in D3, which shows no link.
+- **D6. Bare-word commands are ordinary comments (G1).**
+  - `/approve x` is a command and `approve x` is not. Every hint the bot writes uses the slash form:
+    `DependencyPolicyEngine`, `DependencyFleetView`, `DependencyPullRequestBody` and the setup page.
+  - Evidence: `DependencyLifecycleRulesTests` (bare-word negatives) and `GitHubEventsCommandTests`.
+- **D7. A dependency command on a pull request that no run owns.**
+  - It gets 👎 only in a repository that uses the updater. Elsewhere the bot leaves it alone, because other bots read
+    `/approve` and `/hold` too.
+  - Evidence: `DependencyUpdateRecipientsTests` (both cases).

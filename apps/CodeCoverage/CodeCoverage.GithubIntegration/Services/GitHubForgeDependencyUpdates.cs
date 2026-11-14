@@ -192,17 +192,6 @@ public partial class GitHubForgeDependencyUpdates : IForgeDependencyUpdates
             Str(Child(pull, "base"), "ref") ?? string.Empty, Str(pull, "state") == "open", Flag(pull, "merged") || Str(pull, "merged_at") is not null,
             Flag(pull, "draft"), Str(pull, "html_url"));
 
-    public async Task AddCommentReactionAsync(Repository repository, long commentId, EForgeReaction reaction, CancellationToken cancellationToken = default)
-    {
-        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(commentId);
-        using var reply = await SendAsync(repository, HttpMethod.Post, $"{RepoPath(repository)}/issues/comments/{commentId.ToString(CultureInfo.InvariantCulture)}/reactions",
-            new Dictionary<string, object?>
-            {
-                ["content"] = reaction switch { EForgeReaction.ThumbsUp => "+1", EForgeReaction.ThumbsDown => "-1", _ => "eyes" },
-            }, cancellationToken);
-        EnsureSuccess(reply, "issues=write");
-    }
-
     // ── The check run ───────────────────────────────────────────────────────────────────────────
 
     public async Task<long> PublishCheckAsync(Repository repository, string sha, ForgeQueueCheck check, long? existingId, CancellationToken cancellationToken = default)
