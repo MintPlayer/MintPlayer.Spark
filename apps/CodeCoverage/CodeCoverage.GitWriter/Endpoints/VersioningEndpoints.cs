@@ -84,15 +84,15 @@ internal sealed partial class GitWriterVersioningRunEndpoint : IPostEndpoint<Ver
         if (groups.Select(g => g.Name).Distinct(StringComparer.Ordinal).Count() != groups.Count) return null;
         if (!anchors.All(a => Identifiers.IsPackageId(a.Key) && a.Value is { Length: > 0 and <= MaxAnchorLength } && !a.Value.Any(char.IsControl))) return null;
         var pins = wire.PrereleasePins ?? [];
+        // A pin's value is checked by its JSON converter: only a label, stable or upstream deserializes.
         if (pins.Count > Limits.MaxPackagesPerRun || !pins.Keys.All(Identifiers.IsPackageId)) return null;
-        if (wire.Prerelease is { } label && !Enum.IsDefined(label) || pins.Values.Any(p => p is { } pin && !Enum.IsDefined(pin))) return null;
         ReleaseLinePattern? lines = null;
         if (wire.Lines is { } linesWire && (lines = ReleaseLinePattern.TryParse(linesWire.Text, out _)) is null) return null;
         var linePins = wire.LinePins ?? [];
         if (linePins.Count > Limits.MaxPackagesPerRun || !linePins.All(p => Identifiers.IsPackageId(p.Key) && Ecosystems.IsName(p.Value))) return null;
         var linePrerelease = wire.LinePrerelease ?? [];
         if (linePrerelease.Count > VersioningConfig.MaxLinePrerelease
-            || !linePrerelease.All(p => ReleaseLine.TryParse(p.Key)?.ToString() == p.Key && (p.Value is not { } label || Enum.IsDefined(label)))) return null;
+            || !linePrerelease.All(p => ReleaseLine.TryParse(p.Key)?.ToString() == p.Key)) return null;
         return new VersioningSettings
         {
             Ignore = ignore,
@@ -100,10 +100,10 @@ internal sealed partial class GitWriterVersioningRunEndpoint : IPostEndpoint<Ver
             Anchors = new Dictionary<string, string>(anchors, StringComparer.Ordinal),
             ReleaseBranches = releaseBranches,
             Prerelease = wire.Prerelease,
-            PrereleasePins = new Dictionary<string, Versioning.Versions.PrereleaseLabel?>(pins, StringComparer.Ordinal),
+            PrereleasePins = new Dictionary<string, Versioning.Versions.PrereleasePin>(pins, StringComparer.Ordinal),
             Lines = lines,
             LinePins = new Dictionary<string, string>(linePins, StringComparer.Ordinal),
-            LinePrerelease = new Dictionary<string, Versioning.Versions.PrereleaseLabel?>(linePrerelease, StringComparer.Ordinal),
+            LinePrerelease = new Dictionary<string, Versioning.Versions.PrereleasePin>(linePrerelease, StringComparer.Ordinal),
         };
     }
 

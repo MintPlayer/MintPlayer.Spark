@@ -246,7 +246,7 @@ versioning:
   dispatch: publish.yml              # bot dispatch (D3); default none
   releaseBranches: ["release/*.x"]   # release lines (D10); default release/*.x, at most 16
   ignore: ["**/*.md"]                # changed files that release nothing (D4); this list REPLACES the default
-  prerelease: preview                # D8: alpha | beta | next | preview | rc | upstream; default upstream
+  prerelease: preview                # D8: alpha | beta | next | preview | rc | stable | upstream; default upstream
   dependencyRanges: minimum          # #568 D10b: minimum (>= x, the default) | major-bounded ([x, nextMajor))
   groups:                            # lockstep groups (D13)
     - name: mapper
@@ -261,7 +261,9 @@ versioning:
 ```
 
 - **`prerelease`** sets the label outright; upstream prereleases never override it. `upstream` (the default) mirrors
-  the least mature upstream label, the SDK included. A per-package pin wins over the repository's.
+  the least mature upstream label, the SDK included. `stable` releases without a label whatever upstream says: use it
+  for a package whose dependency never ships a stable (MintPlayer.GraphQL on Octokit.GraphQL `0.4.0-beta`); NuGet then
+  warns NU5104. A per-package pin wins over the repository's.
 
 - **`dependencyRanges`**: a `ProjectReference` packs as a NuGet dependency on the referenced package's version. With
   `minimum` (the default) that's `>= x`, where x is the referenced package's highest tag reachable from the commit. On

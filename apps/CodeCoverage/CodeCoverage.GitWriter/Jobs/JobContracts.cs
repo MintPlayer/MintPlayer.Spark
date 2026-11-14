@@ -306,16 +306,16 @@ public sealed class VersioningSettingsWire
     public Dictionary<string, string>? Anchors { get; set; }
     /// <summary><c>versioning.releaseBranches</c> (D10), which names a branch a major move cuts (D12).</summary>
     public List<string>? ReleaseBranches { get; set; }
-    /// <summary><c>versioning.prerelease</c> (D8); a label outside the enum fails the request's deserialization.</summary>
-    public Versioning.Versions.PrereleaseLabel? Prerelease { get; set; }
-    /// <summary><c>versioning.packages.&lt;id&gt;.prerelease</c>: a label, or null for <c>upstream</c>.</summary>
-    public Dictionary<string, Versioning.Versions.PrereleaseLabel?>? PrereleasePins { get; set; }
+    /// <summary><c>versioning.prerelease</c> (D8); text other than a label, <c>stable</c> or <c>upstream</c> fails the request's deserialization.</summary>
+    public Versioning.Versions.PrereleasePin Prerelease { get; set; }
+    /// <summary><c>versioning.packages.&lt;id&gt;.prerelease</c>: a label, <c>stable</c> or <c>upstream</c>.</summary>
+    public Dictionary<string, Versioning.Versions.PrereleasePin>? PrereleasePins { get; set; }
     /// <summary><c>versioning.lines</c> (#568 D15), as <see cref="Versioning.Releases.ReleaseLinePattern"/> serializes; null keeps them off.</summary>
     public ReleaseLinesWire? Lines { get; set; }
     /// <summary><c>versioning.packages.&lt;id&gt;.line</c> (#568 D19).</summary>
     public Dictionary<string, string>? LinePins { get; set; }
-    /// <summary><c>versioning.lines.prerelease</c> (#568 D14): a label per line, or null for <c>upstream</c>.</summary>
-    public Dictionary<string, Versioning.Versions.PrereleaseLabel?>? LinePrerelease { get; set; }
+    /// <summary><c>versioning.lines.prerelease</c> (#568 D14): a label, <c>stable</c> or <c>upstream</c> per line.</summary>
+    public Dictionary<string, Versioning.Versions.PrereleasePin>? LinePrerelease { get; set; }
 }
 
 public sealed class ReleaseLinesWire
