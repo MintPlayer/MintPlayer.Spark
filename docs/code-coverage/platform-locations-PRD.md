@@ -1,8 +1,8 @@
 # Platform moves that leave nothing behind: PRD and plan
 
-Status: **implemented 2026-11-14 (M1-M7, progress in §8.1), on `fix/versioning-stable-pin` with the stable pin.**
-Grilled 2026-11-13 (decisions P1-P11 in §10). Left: S4's golden fixture, and the after-deploy steps (Dotnet.Tools issue
-for its GraphQL `prerelease: stable` pin, onboarding Dotnet.Templates).
+Status: **implemented 2026-11-14 (M1-M7 and the S4 golden, progress in §8.1), on `fix/versioning-stable-pin` with the
+stable pin.** Grilled 2026-11-13 (decisions P1-P11 in §10). Left, after deploy: the Dotnet.Tools issue for its GraphQL
+`prerelease: stable` pin, and onboarding Dotnet.Templates.
 
 Scope: the CodeCoverage dependency bot's **platform groups** (`platform:dotnet <channel>`, `platform:node <major>`), which
 move a repository from one .NET or Node release to the next (#606 SDK updater, #617 preview to release). Paths are relative
@@ -270,7 +270,7 @@ same-line substitution rule already fits.
   43493439334 on 2026-11-13 received `"channel":"10.0"`. They have not run since because the schedule is weekly on Monday
   (dependency-updates.md:138); 2026-11-09 was the onboarding Monday. Left for the spike: find the fixing commit for the
   record. Decide whether a lookup that fails on server input should be retried, not left until the next week.
-- **S4. The Templates chain end to end.** Copy the repository's `eng/Versions.props`, `*.csproj.in`,
+- **S4. The Templates chain end to end. Answered 2026-11-14 (§8.1): the golden found two defects, both fixed.** Copy the repository's `eng/Versions.props`, `*.csproj.in`,
   `MintPlayer.Dotnet.Templates.csproj`, `template.json` and Dockerfile into
   `dependency-action/test/fixtures/platform/dotnet-templates/`. Run `scanLocations` on it, and write the expected locations
   of §6 as the golden for M3-M5.
@@ -512,6 +512,23 @@ include the remaining work in this same pull-request?"
     `DependencyPatchProfileTests.An_unclaimed_lockfile_only_entry_does_not_apply_through_another_group_s_lockfile_change`
     (red: "applies [express, vite] but result.json claims [express]") and
     `A_lockfile_only_change_nothing_claims_is_still_refused` (red: group-mismatch), then green; 77/77.
+- **S4 golden (2026-11-14):** `dependency-action/test/fixtures/platform/dotnet-templates/before/` holds
+  MintPlayer.Dotnet.Templates' platform-bearing files, unchanged, at `6f039d1f` (`SOURCE.md`). `platform.test.ts`
+  "S4 golden" asserts the scan (10 locations, the property read by all four `*.csproj.in`) and the net10.0 → net11.0
+  move: `publish-master.yml`, the package project, the Dockerfile's two 9.0 stages, `eng/Versions.props` and
+  `template.json` change; nothing is reported; `node:22-alpine` stays. The M4 and M5 tests were synthetic, and the
+  real files showed two defects they could not:
+  - **`Label` taken for a condition.** `propertyDefinitions` marked a definition conditioned on *any* attribute, and
+    Versions.props opens `<PropertyGroup Label="Version settings">`. The whole chain stayed computed ("is conditioned in
+    …/eng/Versions.props"). Only a `Condition` attribute counts now.
+  - **The template's projects live outside its folder.** The `*.csproj.in` sit in `src/MintPlayer.Dotnet.Templates/`,
+    next to `content/`; `GenerateContent.targets` writes them into `content/` at pack time. P8's root (the folder
+    holding `.template.config`) never contained a moved project, so `template.json` would only have been reported. The
+    root is now the folder of the nearest template package project (`<PackageType>Template</PackageType>`), the package
+    project excepted, because it packs and is not generated. Without a template package, the root is still the
+    template's own folder (the M5 tests are unchanged and green).
+  - Red: "is conditioned" for all four readers, then `edited` without `template.json`. Green: 86/86 platform, 434/434
+    action, tsc clean.
 
 ## 9. Questions for the owner (answered 2026-11-13, see §10 P6-P11)
 

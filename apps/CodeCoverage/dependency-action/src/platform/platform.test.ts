@@ -581,6 +581,55 @@ describe('M5: template.json follows the TFM (platform-locations-PRD R2, P8)', ()
   });
 });
 
+describe('S4 golden: MintPlayer.Dotnet.Templates (platform-locations-PRD §6)', () => {
+  const pkg = 'src/MintPlayer.Dotnet.Templates';
+  const template = `${pkg}/content/WebApplication/.template.config/template.json`;
+  const dockerfile = `${pkg}/content/WebApplication/Web/Dockerfile`;
+
+  function copy() {
+    const root = tempDir();
+    copyTree(fixture('platform/dotnet-templates/before'), root);
+    return root;
+  }
+
+  it('finds every location the next .NET move must change', async () => {
+    const found = await scanLocations(directoryFiles(copy()), ['dotnet']);
+    expect(found.map((f) => `${f.file}:${f.line + 1} ${f.kind}=${f.value} ${f.channel}${f.computed ? ' (computed)' : ''}`).sort()).toEqual([
+      '.github/workflows/publish-master.yml:27 setup-action=9.0.101 9.0',
+      `${pkg}/MintPlayer.Dotnet.Templates.csproj:10 package-version=10.0.0 10.0`,
+      `${pkg}/MintPlayer.Dotnet.Templates.csproj:4 tfm=net10.0 10.0`,
+      `${template}:44 template-framework=net10.0 10.0`,
+      `${template}:45 template-framework=net10.0 10.0`,
+      `${template}:48 template-framework=net10.0 10.0`,
+      `${template}:49 template-framework=net10.0 10.0`,
+      `${dockerfile}:10 docker=9.0 9.0`,
+      `${dockerfile}:26 docker=9.0 9.0`,
+      `${pkg}/eng/Versions.props:3 tfm-property=10 10.0`,
+    ]);
+    // The four project templates resolve to the one property (S4: `Label` on its PropertyGroup is not a condition).
+    expect(found.find((f) => f.kind === 'tfm-property')!.readers).toHaveLength(4);
+  });
+
+  it('net10.0 -> net11.0 moves the chain, the package, template.json and the older stages, as §6 expects', async () => {
+    const root = copy();
+    const result = await applyPlatform(directoryFiles(root), { sdk: 'dotnet', fromChannel: '10.0', toChannel: '11.0', toVersion: '11.0.0', sdkVersion: '11.0.100' }, { tagExists: async () => true });
+    const read = (f: string) => fs.readFileSync(path.join(root, f), 'utf8');
+    expect(result.edited.sort()).toEqual([
+      '.github/workflows/publish-master.yml',
+      `${pkg}/MintPlayer.Dotnet.Templates.csproj`,
+      dockerfile,
+      template,
+      `${pkg}/eng/Versions.props`,
+    ].sort());
+    expect(result.reported).toEqual([]);
+    expect(read(`${pkg}/eng/Versions.props`)).toContain('<AspNetCoreMajorVersion>11</AspNetCoreMajorVersion>');
+    expect(read(template).match(/net1\d\.0/g)).toEqual(['net11.0', 'net11.0', 'net11.0', 'net11.0']);
+    expect(read(dockerfile)).toContain('FROM mcr.microsoft.com/dotnet/sdk:11.0 AS dotnet-build');
+    expect(read(dockerfile)).toContain('FROM mcr.microsoft.com/dotnet/aspnet:11.0 AS final');
+    expect(read(dockerfile)).toContain('FROM node:22-alpine AS node-build');
+  });
+});
+
 describe('M6: Node runtimes (platform-locations-PRD R8, P10)', () => {
   const runtimes = ['node20', 'node24'];
   const node24 = { sdk: 'node' as const, fromChannel: '22', toChannel: '24', toVersion: '24.11.1', actionRuntimes: runtimes };

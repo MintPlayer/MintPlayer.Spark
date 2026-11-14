@@ -657,16 +657,18 @@ interface PropertyDefinition {
   /** Where the value starts on the line. */
   start: number;
   value: string;
-  /** A Condition (or any attribute) on the element or its PropertyGroup: its value depends on evaluation. */
+  /** A Condition on the element or its PropertyGroup: its value depends on evaluation. A `Label` does not (S4). */
   conditioned: boolean;
 }
 
 /** Collects the property definitions of one file; plain text, no import evaluation (as #663's `propertyFiles`). */
 function propertyDefinitions(file: string, doc: TextDoc, into: Map<string, PropertyDefinition[]>): void {
+  // platform-locations-PRD S4: Dotnet.Templates' `<PropertyGroup Label="Version settings">` was taken for a condition.
+  const conditionAttr = /(^|\s)Condition\s*=/;
   let group: { conditioned: boolean } | null = null;
   doc.lines.forEach((l, i) => {
     const open = l.text.match(/<PropertyGroup\b([^>]*?)(\/)?>/);
-    if (open && !open[2]) group = { conditioned: /\S/.test(open[1]) };
+    if (open && !open[2]) group = { conditioned: conditionAttr.test(open[1]) };
     const current: { conditioned: boolean } | null = group;
     if (/<\/PropertyGroup>/.test(l.text)) group = null;
     if (current === null) return;
@@ -681,7 +683,7 @@ function propertyDefinitions(file: string, doc: TextDoc, into: Map<string, Prope
         line: i,
         start: m.index + whole.length - name.length - 3 - value.length,
         value,
-        conditioned: current.conditioned || /\S/.test(attrs),
+        conditioned: current.conditioned || conditionAttr.test(attrs),
       };
       into.set(name, [...(into.get(name) ?? []), definition]);
     }

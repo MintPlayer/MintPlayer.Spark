@@ -1,0 +1,54 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<TargetFramework>net10.0</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+
+		<PackageType>Template</PackageType>
+		<PackageId>MintPlayer.Dotnet.Templates</PackageId>
+		<PackageVersion>10.0.0</PackageVersion>
+		<Title>.NET Templates</Title>
+		<Authors>Pieterjan De Clippel</Authors>
+		<Company>MintPlayer</Company>
+		<Description>ASP.NET Core with Angular template featuring SSR, Identity providers (IdentityServer/OpenIdDict), Bootstrap, translations, 2FA, external logins, ElasticSearch, Docker, and more</Description>
+		<PackageTags>Templates;IdentityServer;OpenIdDict;Single-sign-on;Server-side rendering;SEO;Angular;Bootstrap;Docker;ElasticSearch;2FA</PackageTags>
+		<RepositoryType>Git</RepositoryType>
+		<RepositoryUrl>https://github.com/MintPlayer/MintPlayer.Dotnet.Templates</RepositoryUrl>
+
+		<IncludeContentInPack>true</IncludeContentInPack>
+		<IncludeBuildOutput>false</IncludeBuildOutput>
+		<ContentTargetFolders>content</ContentTargetFolders>
+		<EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+		<NoDefaultExcludes>true</NoDefaultExcludes>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<!-- Don't compile files, but include them as content -->
+		<Content Include="content\**\*;content\**\.browserlistrc;content\**\.editorconfig;content\**\.gitignore" Exclude="content\**\node_modules\**\*;content\**\bin\**\*;content\**\obj\**\*" />
+
+		<!-- Don't pack the node_modules -->
+		<None Remove="content\**\node_modules\**\*;content\**\bin\**\*;content\**\obj\**\*" />
+	</ItemGroup>
+
+	<PropertyGroup>
+		<!-- Extract the version number from the target framework (e.g., net10.0 -> 10.0) -->
+		<DefaultNetCoreTargetFrameworkVersion>$(DefaultNetCoreTargetFramework.TrimStart('net'))</DefaultNetCoreTargetFrameworkVersion>
+	</PropertyGroup>
+
+	<PropertyGroup>
+		<!-- Lists the versions of dependencies not built in this repo. -->
+		<GeneratedContentProperties>
+			DefaultNetCoreTargetFramework=$(DefaultNetCoreTargetFramework);
+			DefaultNetCoreTargetFrameworkVersion=$(DefaultNetCoreTargetFrameworkVersion);
+		</GeneratedContentProperties>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<GeneratedContent Include="MintPlayer.Dotnet.WebApplication.Web.csproj.in" OutputPath="content/WebApplication/Web/MintPlayer.Dotnet.WebApplication.Web.csproj" />
+		<GeneratedContent Include="MintPlayer.Dotnet.WebApplication.Data.csproj.in" OutputPath="content/WebApplication/Data/MintPlayer.Dotnet.WebApplication.Data.csproj" />
+		<GeneratedContent Include="MintPlayer.Dotnet.WebApplication.Dtos.csproj.in" OutputPath="content/WebApplication/Dtos/MintPlayer.Dotnet.WebApplication.Dtos.csproj" />
+		<GeneratedContent Include="MintPlayer.Dotnet.WebApplication.Tests.csproj.in" OutputPath="content/WebApplication/Tests/MintPlayer.Dotnet.WebApplication.Tests.csproj" />
+	</ItemGroup>
+
+</Project>

@@ -257,6 +257,22 @@ function olderTfmChannel(f: Found, plan: PlatformPlan): string | null {
   return compareChannels(highest, plan.fromChannel) < 0 ? highest : null;
 }
 
+/** The folder of a repository file, with its trailing slash ('' at the root). */
+function dirOf(file: string): string {
+  const at = file.lastIndexOf('/');
+  return at < 0 ? '' : file.slice(0, at + 1);
+}
+
+/** The project files that pack templates (`<PackageType>Template</PackageType>`). */
+async function templatePackages(files: RepoFiles): Promise<string[]> {
+  const out: string[] = [];
+  for (const file of await files.list()) {
+    if (!file.endsWith('.csproj')) continue;
+    if (/<PackageType>\s*Template\s*<\/PackageType>/.test(await files.read(file))) out.push(file);
+  }
+  return out;
+}
+
 export async function applyPlatform(files: RepoFiles, plan: PlatformPlan, options: PlatformApplyOptions = {}): Promise<PlatformApplyResult> {
   const found = (await scanLocations(files, [plan.sdk])).filter((f) => inScope(f.file, plan));
   const byFile = new Map<string, Replacement[]>();
@@ -321,14 +337,19 @@ export async function applyPlatform(files: RepoFiles, plan: PlatformPlan, option
       if (f.kind === 'tfm-property') for (const reader of f.readers ?? []) movedProjects.add(reader);
     }
   }
-  // P8: a template's framework moves only with the TFM of its own projects (the files under the folder holding
-  // `.template.config`), or `--Framework` would name a framework the generated projects don't target.
+  // P8: a template's framework moves only with the TFM of its own projects, or `--Framework` would name a framework the
+  // generated projects don't target. Its projects are those under its template package's folder (S4: Dotnet.Templates
+  // keeps its `*.csproj.in` next to `content/` and generates them into it at pack time), the package project itself
+  // excepted; without a template package, those under the folder holding `.template.config`.
+  const packages = templates.length ? await templatePackages(files) : [];
   for (const f of templates) {
     const { replacement, report } = replacementFor(f, plan);
     if (report) reported.push({ file: f.file, value: f.value, reason: report });
     if (!replacement?.length) continue;
-    const root = f.file.slice(0, f.file.length - '.template.config/template.json'.length);
-    if (![...movedProjects].some((p) => p.startsWith(root))) {
+    const own = f.file.slice(0, f.file.length - '.template.config/template.json'.length);
+    const pkg = packages.filter((p) => own.startsWith(dirOf(p))).sort((a, b) => b.length - a.length)[0];
+    const root = pkg === undefined ? own : dirOf(pkg);
+    if (![...movedProjects].some((p) => p !== pkg && p.startsWith(root))) {
       reported.push({ file: f.file, value: f.value, reason: 'a template framework moves only with a TFM this move changes, and none changes' });
       continue;
     }

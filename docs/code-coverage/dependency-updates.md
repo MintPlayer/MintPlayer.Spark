@@ -228,8 +228,9 @@ the old TFM, and a floating `stable`/`nightly` Rust toolchain.
 **Locations nothing else names** ([platform-locations-PRD](platform-locations-PRD.md)). A move also edits:
 - a TFM set through an MSBuild property (`<TargetFramework>$(LibTfm)</TargetFramework>` with `LibTfm` defined once in a
   `.props`/`.targets`): the definition is edited;
-- a template's `.template.config/template.json` framework choice, only when a TFM under that template moves in the same
-  pull request (`strategy: add` reports it, to add the new choice by hand);
+- a template's `.template.config/template.json` framework choice, only when the TFM of the template's own projects moves
+  in the same pull request: those under its template package's folder (`<PackageType>Template</PackageType>`), or under
+  the template's folder without one (`strategy: add` reports it, to add the new choice by hand);
 - a JavaScript action's `runs.using: nodeNN`, to the highest runtime GitHub offers at or below the target (today node20
   and node24: a move to Node 26 writes `node24` and says so). An `action.yml` under `.github/` is reported;
 - NodeSource `setup_NN.x` lines and a Dockerfile `ARG` default that a `FROM` tag reads.

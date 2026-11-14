@@ -1,6 +1,7 @@
 # A dependency that never went stable blocks a whole release (MintPlayer.GraphQL)
 
-Status: investigated 2026-11-14; owner chose **A** (G2). Implementation: §6.
+Status: investigated 2026-11-14; owner chose **A** (G2). M1-M3 implemented on `fix/versioning-stable-pin` (one pull
+request with `platform-locations-PRD.md`); M4 follows the deploy.
 
 ## 1. What happened
 

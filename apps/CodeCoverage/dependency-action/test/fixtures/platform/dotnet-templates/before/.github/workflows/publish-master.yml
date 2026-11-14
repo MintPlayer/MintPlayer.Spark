@@ -1,0 +1,77 @@
+name: publish-master
+
+on:
+  push:
+    branches: [ master ]
+
+jobs:
+  build:
+
+    name: publish-master
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        path: repository
+    
+    - name: Setup node
+      uses: actions/setup-node@v4
+      with:
+        node-version: 20
+    
+    - name: Setup .NET Core
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: 9.0.101
+        # Authenticates packages to push to GPR
+        source-url: https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json
+      env:
+        NUGET_AUTH_TOKEN: '%NUGET_AUTH_TOKEN%'
+    
+    - name: Install dependencies
+      run: dotnet restore
+      working-directory: repository
+      env:
+        NUGET_AUTH_TOKEN: ${{ github.token }}
+      
+    - name: Build
+      run: dotnet build --configuration Release --no-restore
+      working-directory: repository
+      
+    - name: Install templates
+      run: |
+        dotnet new uninstall MintPlayer.Dotnet.Templates || true
+        dotnet new install ./repository/src/MintPlayer.Dotnet.Templates/content/WebApplication
+
+    - name: Create folder for test projects
+      run: mkdir tmp && mkdir tmp/TestProject
+
+    - name: Create project from template
+      run: |
+        dotnet new sln
+        dotnet new mintplayer-web --skipRestore
+        dotnet sln TestProject.sln add Web/TestProject.Web.csproj
+        dotnet build
+      working-directory: tmp/TestProject
+      env:
+        NUGET_AUTH_TOKEN: ${{ github.token }}
+
+    - name: Test
+      run: dotnet test --no-restore --verbosity normal
+      working-directory: repository
+      
+    - name: Pack
+      run: dotnet pack --no-build --configuration Release
+      working-directory: repository
+      
+    - name: PushNuget
+      run: dotnet nuget push **/*.nupkg --source https://api.nuget.org/v3/index.json --api-key ${{ secrets.PUBLISH_TO_NUGET_ORG }} --skip-duplicate
+      working-directory: repository
+      
+    - name: PushGithub
+      run: dotnet nuget push "**/*.nupkg" --no-symbols --skip-duplicate
+      working-directory: repository
+      env:
+        NUGET_AUTH_TOKEN: ${{ github.token }}
