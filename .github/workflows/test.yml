@@ -137,6 +137,19 @@ jobs:
       if: always()
       run: echo "${{ matrix.name }}" > coverage-artifact-root.txt
 
+    # The coverage job downloads every artifact into ONE tree (merge-multiple), and a report folder's name is not unique
+    # across jobs: VSTest names it `_<machine>_<second>`, and the hosted runners share a machine name. On PR #666 Spark
+    # shards 1 and 4 both held `_runnervmccnms_2026-11-13_11_46_08`; the shorter file landed on the longer without
+    # truncation, and its leftover tail (`OidcReques<line number=`) failed the path check. A suffix keeps every glob
+    # (`coverage/**/`, `fleet-host-*`) matching.
+    - name: Make the report folders unique to this job
+      if: always()
+      run: |
+        for dir in tests/*/coverage/*/ apps/*/*/coverage/*/; do
+          [ -d "$dir" ] && mv "${dir%/}" "${dir%/}--${{ matrix.artifact }}"
+        done
+        true
+
     # The same globs the coverage upload reads, plus the shards' trx files (per-class timings for
     # tools/test-shard.mjs --timings). Paths stay relative to the workspace root, so the coverage job can
     # download every artifact into one checkout and see the layout a single job used to produce.
