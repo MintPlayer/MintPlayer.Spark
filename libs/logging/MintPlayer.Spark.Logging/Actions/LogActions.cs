@@ -33,6 +33,9 @@ public partial class LogActions : DefaultPersistentObjectActions<Log>
             || entity.RelatedPersistentObjectId is not { Length: > 0 } related
             || await readAccess.MayReadAsync(related);
 
-    /// <summary>Every log: the list behind <c>Custom.Logs</c>, newest first by the query's sort.</summary>
+    /// <summary>
+    /// Every log: the list behind <c>Custom.Logs</c>. It declares no sort: a log's id is a key, not a time, and a log has
+    /// no attribute that orders it (<c>--spark-verify-model</c> refuses a sort column off the query surface).
+    /// </summary>
     public IQueryable<Log> Logs() => session.Query<Log>();
 }

@@ -58,7 +58,7 @@ export default class DependencyUpdatesSetupComponent {
     { name: 'Contents', access: 'Read and write', use: 'Read coverage.yml and the manifests on the default branch; push the rolling branch and the plan ref.' },
     { name: 'Pull requests', access: 'Read and write', use: 'Open and update the onboarding pull request and the rolling pull request.' },
     { name: 'Checks', access: 'Read and write', use: 'Read the rolling pull request\'s checks: green, red, and which ones failed.' },
-    { name: 'Issues', access: 'Read and write', use: 'Receive the approve, hold, unhold, bisect and refresh comments, and react to them.' },
+    { name: 'Issues', access: 'Read and write', use: 'Receive the /approve, /hold, /unhold, /bisect and /refresh comments, and react to them.' },
     { name: 'Actions', access: 'Read and write', use: 'Dispatch the lookup, apply and migrate workflows, read their runs and download their artifacts; re-run failed checks.' },
     { name: 'Workflows', access: 'Read and write', use: 'Add the workflow templates in the onboarding pull request; update uses: refs and setup-* versions.' },
     { name: 'Metadata', access: 'Read-only', use: 'Read the repository and who has write access to it.' },
@@ -107,10 +107,10 @@ export default class DependencyUpdatesSetupComponent {
   /** The comment commands (dependency-updates.md §5). */
   protected readonly commands = [
     { command: '/approve <group>', does: 'Takes an over-threshold group, such as a major, into the pull request.' },
-    { command: 'hold <group or package>', does: 'Holds it until unhold.' },
-    { command: 'unhold <group or package>', does: 'Lifts a comment or human hold. The bot\'s own holds lift by themselves.' },
-    { command: 'bisect', does: 'Bisects a red pull request now (a budget of 4 when the setting is off).' },
-    { command: 'refresh', does: 'Rebuilds now. A run a comment started never auto-merges; the next scheduled one may.' },
+    { command: '/hold <group or package>', does: 'Holds it until /unhold.' },
+    { command: '/unhold <group or package>', does: 'Lifts a comment or human hold. The bot\'s own holds lift by themselves.' },
+    { command: '/bisect', does: 'Bisects a red pull request now (a budget of 4 when the setting is off).' },
+    { command: '/refresh', does: 'Rebuilds now. A run a comment started never auto-merges; the next scheduled one may.' },
   ];
 
   /** The last run's outcomes (dependency-updates.md §9). */
@@ -121,7 +121,7 @@ export default class DependencyUpdatesSetupComponent {
     { outcome: 'lookup-failed, apply-failed', meaning: 'The workflow run failed.', action: 'Open the run from the history.' },
     { outcome: 'patch-rejected', meaning: 'The apply patch changed something the plan did not allow.', action: 'Read the reason in the comment; it is a bug or an attack, never ignored.' },
     { outcome: 'replay-conflict, rolling-rewritten', meaning: 'The rolling branch needs a person ("frozen").', action: 'Resolve on the branch, or close the pull request.' },
-    { outcome: 'red', meaning: 'CI failed and no culprit was found within the budget.', action: 'hold the suspect, or bisect.' },
+    { outcome: 'red', meaning: 'CI failed and no culprit was found within the budget.', action: '/hold the suspect, or /bisect.' },
     { outcome: 'nothing-planned', meaning: 'Everything is current, held, cooling down or waiting for an approval.', action: 'See the pull request body.' },
     { outcome: 'onboarding blocked', meaning: 'A permission or event is missing.', action: 'Accept it on GitHub; the notice links there.' },
   ];

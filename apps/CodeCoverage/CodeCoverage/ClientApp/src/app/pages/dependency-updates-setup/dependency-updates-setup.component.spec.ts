@@ -132,7 +132,7 @@ describe('DependencyUpdatesSetupComponent', () => {
     await open('/dependency-updates/setup');
 
     expect(rows('du-setup-commands').map(([command]) => command.split(' ')[0]))
-      .toEqual(['approve', 'hold', 'unhold', 'bisect', 'refresh']);
+      .toEqual(['/approve', '/hold', '/unhold', '/bisect', '/refresh']);
     expect(q('[data-testid="du-setup-residual-risk"]')?.textContent).toContain('with your CI\'s secrets');
   });
 });

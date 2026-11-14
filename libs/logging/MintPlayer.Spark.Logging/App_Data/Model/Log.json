@@ -47,12 +47,6 @@
       "name": "Logs",
       "source": "Custom.Logs",
       "alias": "logs",
-      "sortColumns": [
-        {
-          "property": "Id",
-          "direction": "desc"
-        }
-      ],
       "renderMode": "Pagination",
       "entityType": "Log"
     }
