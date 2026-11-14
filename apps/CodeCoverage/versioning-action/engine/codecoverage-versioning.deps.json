@@ -1,0 +1,39 @@
+{
+  "runtimeTarget": {
+    "name": ".NETCoreApp,Version=v8.0",
+    "signature": ""
+  },
+  "compilationOptions": {},
+  "targets": {
+    ".NETCoreApp,Version=v8.0": {
+      "codecoverage-versioning/1.0.0": {
+        "dependencies": {
+          "CodeCoverage.Versioning": "1.0.0"
+        },
+        "runtime": {
+          "codecoverage-versioning.dll": {}
+        }
+      },
+      "CodeCoverage.Versioning/1.0.0": {
+        "runtime": {
+          "CodeCoverage.Versioning.dll": {
+            "assemblyVersion": "1.0.0.0",
+            "fileVersion": "1.0.0.0"
+          }
+        }
+      }
+    }
+  },
+  "libraries": {
+    "codecoverage-versioning/1.0.0": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    },
+    "CodeCoverage.Versioning/1.0.0": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    }
+  }
+}
