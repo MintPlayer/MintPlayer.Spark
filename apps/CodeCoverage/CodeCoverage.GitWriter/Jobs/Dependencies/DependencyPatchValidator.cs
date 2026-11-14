@@ -35,7 +35,10 @@ public static class DependencyPatchValidator
         CancellationToken cancellationToken = default)
     {
         var files = new List<PatchFile>();
-        var shape = PatchValidator.Parse(patch.Span, PathPolicy, request.MaxBytes, files);
+        // P9 (platform-locations-PRD): a *.props/*.targets the lookup reported a tfm-property in passes the path rule; its
+        // lines are then held to PlatformSubstitution's property-line rule like any other reported location.
+        var propertyFiles = request.Platforms.SelectMany(p => p.Locations).Where(IsPropertyLocation).Select(l => l.File).ToHashSet(StringComparer.Ordinal);
+        var shape = PatchValidator.Parse(patch.Span, path => PathPolicy(path, propertyFiles), request.MaxBytes, files);
         if (!shape.Accepted)
             return DependencyPatchVerdict.From(shape);
 
@@ -91,7 +94,7 @@ public static class DependencyPatchValidator
             {
                 var path = location.File;
                 if (!PatchValidator.IsWritablePath(path) || DependencyFiles.IsPlanPath(path) || DependencyFiles.IsCoverageConfig(path)
-                    || DependencyFiles.IsDenied(path) && !DependencyFiles.IsSubstitutionOnly(path)
+                    || DependencyFiles.IsDenied(path) && !DependencyFiles.IsSubstitutionOnly(path) && !IsPropertyLocation(location)
                     || PatchValidator.IsUnderGitHub(path) && !DependencyFiles.IsWorkflowFile(path)
                     || DependencyFiles.LockfileNames.Contains(DependencyFiles.FileName(path)))
                     continue;
@@ -144,7 +147,11 @@ public static class DependencyPatchValidator
         }
 
         // Lockfile-only entries apply when a lockfile of theirs changed; every changed lockfile needs an applied owner.
-        foreach (var entry in request.Plan.Where(e => e.IsLockfileOnly && manifests.ContainsKey(e.PackageFile)))
+        // platform-locations-PRD S2: a changed lockfile cannot say WHICH lockfile-only entry moved it (another group's relock
+        // rewrites it too), so with claims a lockfile-only entry applies only when its group is claimed. An unclaimed change
+        // still needs an owner below, so nothing passes that did not before.
+        var claimedGroups = request.ClaimedAppliedGroups?.ToHashSet(StringComparer.Ordinal);
+        foreach (var entry in request.Plan.Where(e => e.IsLockfileOnly && manifests.ContainsKey(e.PackageFile) && claimedGroups?.Contains(e.GroupName) != false))
         {
             if (lockfiles.Any(l => DependencyFiles.IsLockfileOf(entry.Datasource, entry.PackageFile, l.Path)))
                 used.Add(entry);
@@ -193,18 +200,24 @@ public static class DependencyPatchValidator
 
     /// <summary>The path rule of every dependency profile: git's safe shape, the plan path and <c>coverage.yml</c>
     /// refused, <c>.github/</c> open only to workflow files, the deny-list.</summary>
-    private static PatchVerdict? PathPolicy(string path)
+    private static PatchVerdict? PathPolicy(string path, IReadOnlySet<string> propertyFiles)
     {
         if (DependencyFiles.IsPlanPath(path))
             return PatchVerdict.Reject(DependencyPatchReasons.PlanPath, "The bot's plan file (R14) is never part of a patch.", path);
         if (!PatchValidator.IsWritablePath(path) || PatchValidator.IsUnderGitHub(path) && !DependencyFiles.IsWorkflowFile(path))
             return PatchVerdict.Reject(PatchReasons.UnsafePath, null, path);
         // #613 item 3: Directory.Build.props/.targets pass here and are held to strict substitutions below; an added one is
-        // refused there with every other added file.
-        if (DependencyFiles.IsCoverageConfig(path) || DependencyFiles.IsDenied(path) && !DependencyFiles.IsSubstitutionOnly(path))
+        // refused there with every other added file. P9: so does a *.props/*.targets holding a reported tfm-property.
+        if (DependencyFiles.IsCoverageConfig(path) || DependencyFiles.IsDenied(path) && !DependencyFiles.IsSubstitutionOnly(path) && !propertyFiles.Contains(path))
             return PatchVerdict.Reject(DependencyPatchReasons.DeniedPath, "The deny-list wins over every allow rule.", path);
         return null;
     }
+
+    /// <summary>P9: a reported <c>tfm-property</c> in a <c>*.props</c>/<c>*.targets</c> (never <c>nuget.config</c>, a script,
+    /// or anything else the deny-list names).</summary>
+    private static bool IsPropertyLocation(DependencyPlatformLocation location)
+        => location.Kind == PlatformSubstitution.TfmProperty
+           && (location.File.EndsWith(".props", StringComparison.OrdinalIgnoreCase) || location.File.EndsWith(".targets", StringComparison.OrdinalIgnoreCase));
 
     /// <summary>A manifest, or a file holding a reported platform location: every changed line is a planned
     /// <see cref="SubstitutionCheck"/> swap or a <see cref="PlatformSubstitution"/> of a reported location (#613 item 2).</summary>

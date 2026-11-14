@@ -1,0 +1,58 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>${DefaultNetCoreTargetFramework}</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>MintPlayer.Dotnet.WebApplication.Data</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Dtos\MintPlayer.Dotnet.WebApplication.Dtos.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="${DefaultNetCoreTargetFrameworkVersion}.0" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Tools" Version="${DefaultNetCoreTargetFrameworkVersion}.0">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <!--#if (UseSqlServer) -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="${DefaultNetCoreTargetFrameworkVersion}.0" />
+  </ItemGroup>
+  <!--#endif -->
+
+  <!--#if (UsePostgreSQL) -->
+  <ItemGroup>
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="${DefaultNetCoreTargetFrameworkVersion}.0" />
+  </ItemGroup>
+  <!--#endif -->
+
+  <!--#if (UseSQLite) -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="${DefaultNetCoreTargetFrameworkVersion}.0" />
+  </ItemGroup>
+  <!--#endif -->
+
+  <!--#if (UseAnyIdentityProvider) -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="${DefaultNetCoreTargetFrameworkVersion}.0" />
+  </ItemGroup>
+  <!--#endif -->
+
+  <!--#if (UseOpenIdDict) -->
+  <ItemGroup>
+    <PackageReference Include="OpenIddict.EntityFrameworkCore" Version="6.0.0" />
+  </ItemGroup>
+  <!--#endif -->
+
+  <!--#if (UseElasticSearch) -->
+  <ItemGroup>
+    <PackageReference Include="Elastic.Clients.Elasticsearch" Version="8.16.0" />
+  </ItemGroup>
+  <!--#endif -->
+
+</Project>

@@ -117,6 +117,16 @@ public static class DependencyHolds
     /// <remarks>The caller checks the commenter's role (write or above, <c>created</c> comments only) before, and again at
     /// apply time (N6).</remarks>
     /// <remarks>#606 D3: <paramref name="force"/> also approves a platform group that is pending on its companions.</remarks>
+    /// <summary>
+    /// What an approval binds a report entry to: its target major, except for a platform move inside its channel
+    /// (<c>platform:dotnet 10.0</c> to <c>10.0.105</c>), which the policy binds to the exact version (#617), so a later patch
+    /// asks again. Before platform-locations-PRD P11 no in-channel move waited for approval, and this mismatch went unseen.
+    /// </summary>
+    internal static string ApprovalTarget(DependencyReportEntry entry)
+        => entry.Group.StartsWith("platform:", StringComparison.Ordinal) && entry.Group[(entry.Group.LastIndexOf(' ') + 1)..] != entry.Target
+            ? entry.Target!
+            : UpdateTypeFloor.TargetMajor(entry.Target!);
+
     public static DependencyApproval? Approve(DependencyUpdateState state, DependencyPolicyOutcome outcome, string group, string configBlob,
         string by, long? commentId, DateTimeOffset now, bool force = false)
     {
@@ -129,7 +139,7 @@ public static class DependencyHolds
         {
             Group = group,
             DepNames = [.. entries.Select(e => e.DepName).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)],
-            TargetMajors = [.. entries.Select(e => $"{e.DepName}@{UpdateTypeFloor.TargetMajor(e.Target!)}").Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)],
+            TargetMajors = [.. entries.Select(e => $"{e.DepName}@{ApprovalTarget(e)}").Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)],
             ConfigBlob = configBlob,
             ApprovedBy = by,
             ApprovedAtUtc = now.UtcDateTime,

@@ -71,7 +71,9 @@
         "keepPrevious": { "type": "integer", "minimum": 0, "maximum": 5 },
         "lockPackageMajor": { "type": "boolean", "description": "Also move the repo's own <Version> major to the platform major (explicit opt-in, R8)." },
         "locations": { "type": "array", "items": { "type": "string" }, "description": "Override: only these files." },
-        "exclude": { "type": "array", "items": { "type": "string" } }
+        "exclude": { "type": "array", "items": { "type": "string" } },
+        "lagging": { "enum": ["follow", "report"], "description": "platform-locations-PRD P6: what a channel move does with an older-channel location; absent = auto (Docker stages, setup-action pins and version files follow; TFMs and matrix entries are reported)." },
+        "actionRuntimes": { "type": "array", "items": { "type": "string", "pattern": "^node[0-9]{1,3}$" }, "description": "platform-locations-PRD P10: the Node runtimes GitHub runs for an action's runs.using (the bot's table); a node move takes runs.using to the highest one not above the target. Absent: runs.using is reported, never moved." }
       }
     }
   }

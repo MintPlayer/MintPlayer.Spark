@@ -100,6 +100,38 @@ public class ReleaseLabelTests
     }
 
     [Fact]
+    public async Task A_package_pinned_stable_goes_stable_over_a_beta_dependency()
+    {
+        // Dotnet.Tools run 43509498988 (docs/code-coverage/versioning-beta-upstream-PRD.md): MintPlayer.GraphQL depends on
+        // Octokit.GraphQL 0.4.0-beta, which never shipped a stable, and its open line was 11.0.0-rc.1. Upstream gave
+        // "11.0.0-beta.1 is not above 11.0.0-rc.1"; the stable pin (G2) closes the line as 11.0.0.
+        var settings = Settings(VersioningConfig.UpstreamPrerelease, new() { ["Core"] = new VersioningPackageConfig { Prerelease = "stable" } });
+
+        var plan = await Plan("net11.0", [Tag("Core", "11.0.0-rc.1")], settings);
+
+        plan.Refused.Should().BeEmpty();
+        plan.Of("Core")!.Version.ToString().Should().Be("11.0.0");
+    }
+
+    [Fact]
+    public async Task The_repository_pin_stable_releases_stable_over_a_beta_dependency()
+    {
+        var plan = await Plan("net11.0", [Tag("Core", "11.0.0")], Settings("stable"));
+
+        plan.Of("Core")!.Version.ToString().Should().Be("11.0.1");
+    }
+
+    [Fact]
+    public async Task A_package_set_to_upstream_is_exempt_from_a_stable_repository_pin()
+    {
+        var settings = Settings("stable", new() { ["Core"] = new VersioningPackageConfig { Prerelease = "upstream" } });
+
+        var plan = await Plan("net11.0", [], settings);
+
+        plan.Of("Core")!.Version.ToString().Should().Be("11.0.0-beta.1");
+    }
+
+    [Fact]
     public async Task A_prerelease_sdk_of_the_targeted_major_labels_the_release()
     {
         var plan = await Plan("net11.0", [], sdk: "11.0.100-rc.2.26504.105", resolvedBeta: "1.0.0");

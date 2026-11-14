@@ -70,7 +70,11 @@ export function notEditedReason(f: Found): string | null {
       return f.sdk === 'dotnet' && /^\d+\.\d+\.\d+/.test(f.value)
         ? `mcr tag '${f.value}' is pinned to a full version; it is updated as a docker record`
         : null;
+    case 'action-runtime':
+      return f.file.startsWith('.github/') ? 'under .github/, which the bot\'s pull requests never change' : null;
     case 'tfm':
+    case 'tfm-property':
+    case 'template-framework':
     case 'global.json':
     case 'package-version':
     case 'maven-release':
@@ -110,7 +114,7 @@ export function inChannelMoveChanges(found: readonly Found[], plan: PlatformPlan
   return found.some((f) => {
     if (f.computed || (f.channel !== null && f.channel !== plan.fromChannel)) return false;
     if (f.kind === 'dotnet-quality') return removesQuality(f, plan);
-    if (f.kind === 'tfm' || f.kind === 'package-version' || f.channel === null) return false;
+    if (f.kind === 'tfm' || f.kind === 'tfm-property' || f.kind === 'template-framework' || f.kind === 'action-runtime' || f.kind === 'package-version' || f.channel === null) return false;
     const { replacement } = replacementFor(f, plan);
     return replacement?.length === 1 && replacement[0].text !== f.value && isNewerVersion(replacement[0].text, f.value);
   });
@@ -132,6 +136,35 @@ function replacementFor(f: Found, plan: PlatformPlan): { replacement?: Replaceme
         reps.push({ line: f.line, start: f.closeStart!, end: f.closeEnd!, text: 'TargetFrameworks' });
       }
       return { replacement: reps };
+    }
+    case 'tfm-property': {
+      // R4/P9: the defining token of a computed TFM: a bare major (`10`) or a channel (`10.0`).
+      if (f.channel !== plan.fromChannel || plan.fromChannel === plan.toChannel) return {};
+      if ((plan.strategy ?? 'replace') === 'add') return { report: 'strategy add: a property holds one TFM; add the new one by hand' };
+      const [toMajor, toMinor] = plan.toChannel.split('.');
+      if (/^\d+$/.test(f.value)) {
+        if (toMinor !== plan.fromChannel.split('.')[1]) return { report: `the minor of ${plan.toChannel} is defined in another property` };
+        return { replacement: [{ line: f.line, start: f.start, end: f.end, text: toMajor }] };
+      }
+      return { replacement: [{ line: f.line, start: f.start, end: f.end, text: plan.toChannel }] };
+    }
+    case 'template-framework': {
+      // P8: replace by default; under `add` the template keeps offering the old choice, and the new one is added by hand.
+      if (f.channel !== plan.fromChannel || plan.fromChannel === plan.toChannel) return {};
+      if ((plan.strategy ?? 'replace') === 'add' && (f.templateKey === 'choice' || f.templateKey === 'description')) {
+        return { report: `strategy add: add the net${plan.toChannel} choice by hand` };
+      }
+      return { replacement: [{ line: f.line, start: f.start, end: f.end, text: `net${plan.toChannel}` }] };
+    }
+    case 'action-runtime': {
+      // P10: the highest runtime GitHub runs that is not above the target; what it lacks is said, never guessed.
+      if (!plan.actionRuntimes?.length) return { report: 'the plan names no Node runtimes GitHub runs (actionRuntimes)' };
+      const target = Number(plan.toChannel);
+      const best = plan.actionRuntimes.map((r) => Number(r.replace(/^node/, ''))).filter((n) => n <= target).sort((a, b) => b - a)[0];
+      if (best === undefined) return { report: `GitHub runs no Node runtime at or below ${plan.toChannel} for actions` };
+      const report = best < target ? `GitHub runs node${best} at most for actions; node${target} is not offered yet` : undefined;
+      if (best <= Number(f.channel)) return report && Number(f.channel) < target ? { report } : {};
+      return { replacement: [{ line: f.line, start: f.start, end: f.end, text: `node${best}` }], report };
     }
     case 'global.json': {
       if (f.channel !== plan.fromChannel) return {};
@@ -188,15 +221,92 @@ function replacementFor(f: Found, plan: PlatformPlan): { replacement?: Replaceme
  * reported, never guessed (R8). Each file is rewritten from fresh scan positions, right to left, so
  * the bytes around every token are untouched.
  */
-export async function applyPlatform(files: RepoFiles, plan: PlatformPlan): Promise<PlatformApplyResult> {
+export interface PlatformApplyOptions {
+  /**
+   * P7: whether `image:tag` exists in its registry; null when the registry could not say. Absent: no check (unit tests,
+   * and callers that never write a Docker tag).
+   */
+  tagExists?: (image: string, tag: string) => Promise<boolean | null>;
+}
+
+/** P6 `auto`: the older-channel kinds that follow a channel move. TFMs and matrix entries are often deliberate. */
+const FOLLOWS_WHEN_AUTO: ReadonlySet<string> = new Set(['docker', 'setup-action', 'version-file', 'tool-versions', 'action-runtime']);
+
+/**
+ * P6: whether a location on an older channel follows a channel move under `lagging: auto`. A TFM, a matrix entry and one
+ * SDK of a multi-line setup list are deliberate side-by-side versions; the rest is a stage or pin that lags by accident.
+ * The fold (foldPlatform.ts) splits Renovate's candidates by the same rule.
+ */
+export function followsWhenAuto(f: Found): boolean {
+  return !f.listed && FOLLOWS_WHEN_AUTO.has(f.kind);
+}
+
+/** P6: whether an older-channel location of this kind moves with a channel move, under the plan's `lagging`. */
+function followsLagging(f: Found, plan: PlatformPlan): boolean {
+  if (plan.lagging === 'report' || f.kind === 'tfm' || f.kind === 'tfm-property' || f.kind === 'template-framework' || f.kind === 'matrix') return false;
+  return plan.lagging === 'follow' || followsWhenAuto(f);
+}
+
+const olderReason = (channel: string, plan: PlatformPlan) => `on ${channel}, older than the repository's ${plan.fromChannel}`;
+
+/** A TFM (list) whose modern tokens are all on channels older than the plan's: reported, never moved (P6). */
+function olderTfmChannel(f: Found, plan: PlatformPlan): string | null {
+  const channels = f.value.split(';').map((t) => tfmChannel(t.trim())).filter((c): c is string => c !== null);
+  if (channels.length === 0 || channels.includes(plan.fromChannel)) return null;
+  const highest = channels.sort((a, b) => compareChannels(b, a))[0];
+  return compareChannels(highest, plan.fromChannel) < 0 ? highest : null;
+}
+
+/** The folder of a repository file, with its trailing slash ('' at the root). */
+function dirOf(file: string): string {
+  const at = file.lastIndexOf('/');
+  return at < 0 ? '' : file.slice(0, at + 1);
+}
+
+/** The project files that pack templates (`<PackageType>Template</PackageType>`). */
+async function templatePackages(files: RepoFiles): Promise<string[]> {
+  const out: string[] = [];
+  for (const file of await files.list()) {
+    if (!file.endsWith('.csproj')) continue;
+    if (/<PackageType>\s*Template\s*<\/PackageType>/.test(await files.read(file))) out.push(file);
+  }
+  return out;
+}
+
+export async function applyPlatform(files: RepoFiles, plan: PlatformPlan, options: PlatformApplyOptions = {}): Promise<PlatformApplyResult> {
   const found = (await scanLocations(files, [plan.sdk])).filter((f) => inScope(f.file, plan));
   const byFile = new Map<string, Replacement[]>();
   const removals = new Map<string, number[]>();
   const reported: PlatformApplyResult['reported'] = [];
   const inChannel = plan.fromChannel === plan.toChannel;
+  const tagChecks = new Map<string, Promise<boolean | null>>();
+  const templates: Found[] = [];
+  const movedProjects = new Set<string>();
+  const checkTag = (image: string, tag: string) => {
+    const key = `${image}:${tag}`;
+    if (!tagChecks.has(key)) tagChecks.set(key, options.tagExists!(image, tag));
+    return tagChecks.get(key)!;
+  };
   for (const f of found) {
-    // Locations on other channels are not ours (e.g. a net48 test project, an older Docker stage).
-    if (f.kind !== 'tfm' && f.channel !== null && f.channel !== plan.fromChannel) continue;
+    let target = plan;
+    if (f.kind === 'tfm' && !f.computed) {
+      const older = olderTfmChannel(f, plan);
+      if (older !== null) {
+        reported.push({ file: f.file, value: f.value, reason: olderReason(older, plan) });
+        continue;
+      }
+    } else if (f.kind !== 'tfm' && f.channel !== null && f.channel !== plan.fromChannel) {
+      // A newer channel than the repository's is not this move's (the plan's from-channel is the highest found).
+      if (compareChannels(f.channel, plan.fromChannel) > 0) continue;
+      // P6: an older location follows a channel move when `lagging` says so, and is listed otherwise. A move inside the
+      // channel (a patch, rc -> GA) never takes an older location across a major.
+      if (notEditedReason(f) !== null) continue;
+      if (inChannel || !followsLagging(f, plan)) {
+        reported.push({ file: f.file, value: f.value, reason: olderReason(f.channel, plan) });
+        continue;
+      }
+      target = { ...plan, fromChannel: f.channel };
+    }
     if (f.kind === 'dotnet-quality') {
       // #617 D31: a computed quality (the step's only input, an expression) is reported only when it would go.
       if (f.value.toLowerCase() === 'ga' || !targetsRelease(plan)) continue;
@@ -204,11 +314,46 @@ export async function applyPlatform(files: RepoFiles, plan: PlatformPlan): Promi
       else reported.push({ file: f.file, value: f.value, reason: notEditedReason(f) ?? 'not removed' });
       continue;
     }
-    const { replacement, report } = replacementFor(f, plan);
+    if (f.kind === 'template-framework') {
+      templates.push(f);
+      continue;
+    }
+    const { replacement, report } = replacementFor(f, target);
     if (report) reported.push({ file: f.file, value: f.value, reason: report });
     // #617 D29: an in-channel move only ever moves a pin forward; a TFM or a floating pin it rewrites to itself stays.
     const changing = replacement?.filter((r) => r.text !== f.value && !(inChannel && replacement.length === 1 && !isNewerVersion(r.text, f.value)));
-    if (changing?.length) byFile.set(f.file, [...(byFile.get(f.file) ?? []), ...changing]);
+    // P7: a Docker tag is written only when its registry has it; a missing (or unverifiable) tag is listed instead.
+    if (changing?.length && f.kind === 'docker' && f.image && options.tagExists) {
+      const tag = changing[0].text + (f.tagSuffix ?? '');
+      const exists = await checkTag(f.image, tag);
+      if (exists !== true) {
+        reported.push({ file: f.file, value: f.value, reason: exists === false ? `${f.image}:${tag} does not exist in its registry` : `could not check that ${f.image}:${tag} exists` });
+        continue;
+      }
+    }
+    if (changing?.length) {
+      byFile.set(f.file, [...(byFile.get(f.file) ?? []), ...changing]);
+      if (f.kind === 'tfm') movedProjects.add(f.file);
+      if (f.kind === 'tfm-property') for (const reader of f.readers ?? []) movedProjects.add(reader);
+    }
+  }
+  // P8: a template's framework moves only with the TFM of its own projects, or `--Framework` would name a framework the
+  // generated projects don't target. Its projects are those under its template package's folder (S4: Dotnet.Templates
+  // keeps its `*.csproj.in` next to `content/` and generates them into it at pack time), the package project itself
+  // excepted; without a template package, those under the folder holding `.template.config`.
+  const packages = templates.length ? await templatePackages(files) : [];
+  for (const f of templates) {
+    const { replacement, report } = replacementFor(f, plan);
+    if (report) reported.push({ file: f.file, value: f.value, reason: report });
+    if (!replacement?.length) continue;
+    const own = f.file.slice(0, f.file.length - '.template.config/template.json'.length);
+    const pkg = packages.filter((p) => own.startsWith(dirOf(p))).sort((a, b) => b.length - a.length)[0];
+    const root = pkg === undefined ? own : dirOf(pkg);
+    if (![...movedProjects].some((p) => p !== pkg && p.startsWith(root))) {
+      reported.push({ file: f.file, value: f.value, reason: 'a template framework moves only with a TFM this move changes, and none changes' });
+      continue;
+    }
+    byFile.set(f.file, [...(byFile.get(f.file) ?? []), ...replacement]);
   }
   const edited: string[] = [];
   for (const file of new Set([...byFile.keys(), ...removals.keys()])) {

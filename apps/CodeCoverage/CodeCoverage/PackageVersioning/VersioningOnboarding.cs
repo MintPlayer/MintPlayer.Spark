@@ -58,7 +58,7 @@ public static partial class VersioningOnboarding
           mode: server                       # server | local: local runs the engine on the runner, without the app
         #   releaseBranches: ["release/*.x"]
         #   ignore: ["**/*.md"]              # changed files that never release a package
-        #   prerelease: upstream             # alpha | beta | next | preview | rc pins the label; upstream mirrors dependencies and the SDK
+        #   prerelease: upstream             # alpha | beta | next | preview | rc pins the label; stable never labels; upstream mirrors dependencies and the SDK
         #   groups:                         # packages that always share one version
         #     - name: core
         #       packages: [Acme.Core, Acme.Core.*]

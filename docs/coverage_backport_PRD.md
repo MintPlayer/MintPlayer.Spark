@@ -462,7 +462,10 @@ cascade: 66 of 72 conflicted only because #461 was missing). Script: a throwaway
 - **Per-line prerelease (M4, D14).** `versioning.lines.prerelease: { dotnet-10.x: upstream }`, keyed by the line as
   `ReleaseLine.ToString()` writes it (independent of the branch pattern). Order: package pin, then the line's label,
   then `versioning.prerelease`, then upstream (`ReleasePlanner.ReleaseLabel`). The values are the existing labels;
-  `upstream` is how a line goes stable, so no new `stable` keyword. The writer re-validates the keys and labels.
+  `upstream` is how a line goes stable, so no new `stable` keyword. ~~no new `stable` keyword~~ **Superseded
+  2026-11-14** for a package whose upstream never goes stable: `stable` is now a value at every level
+  ([versioning-beta-upstream-PRD](code-coverage/versioning-beta-upstream-PRD.md) G2). `upstream` still makes a line
+  stable when its upstreams are. The writer re-validates the keys and labels.
   Evidence: `ReleaseLinesTests.A_line_goes_stable_on_its_own_while_the_global_label_stays`,
   `A_package_pin_wins_over_its_lines_label`, `A_line_label_must_name_a_line_and_a_label`; the wire round-trip in
   `VersioningSettingsTests.Release_lines_survive_the_wire_from_the_app`.

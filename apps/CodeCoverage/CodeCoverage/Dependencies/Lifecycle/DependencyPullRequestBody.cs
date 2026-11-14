@@ -96,6 +96,15 @@ public static class DependencyPullRequestBody
             body.AppendLine();
         }
 
+        if (report.PlatformReports.Count > 0)
+        {
+            // platform-locations-PRD R3: every location a platform move leaves as it was, so a partial move is never silent.
+            body.AppendLine("## Not moved").AppendLine();
+            body.AppendLine("Platform locations this pull request leaves as they are. Move them by hand where they should follow.").AppendLine();
+            body.AppendLine("| Platform | File | Value | Why |").AppendLine("|---|---|---|---|");
+            Rows(body, report.PlatformReports.Select(r => $"| {Cell(r.Sdk)} | {Code(r.File)} | {Code(r.Value)} | {Cell(r.Reason)} |"));
+        }
+
         if (run.CoverageNote is { Length: > 0 } coverage)
             body.AppendLine("## Coverage").AppendLine().AppendLine(coverage).AppendLine();
 

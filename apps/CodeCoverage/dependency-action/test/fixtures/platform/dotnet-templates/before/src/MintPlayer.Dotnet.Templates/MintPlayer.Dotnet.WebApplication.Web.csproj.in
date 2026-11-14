@@ -1,0 +1,138 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>${DefaultNetCoreTargetFramework}</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>MintPlayer.Dotnet.WebApplication.Web</RootNamespace>
+    <SpaRoot>ClientApp\</SpaRoot>
+    <SpaProxyServerUrl>https://localhost:7000</SpaProxyServerUrl>
+    <SpaProxyLaunchCommand>npm start</SpaProxyLaunchCommand>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Data\MintPlayer.Dotnet.WebApplication.Data.csproj" />
+    <ProjectReference Include="..\Dtos\MintPlayer.Dotnet.WebApplication.Dtos.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Core packages -->
+    <PackageReference Include="Microsoft.AspNetCore.SpaProxy" Version="${DefaultNetCoreTargetFrameworkVersion}.0" />
+    <PackageReference Include="MintPlayer.AspNetCore.SpaServices.Routing" Version="${DefaultNetCoreTargetFrameworkVersion}.0" />
+    <PackageReference Include="MintPlayer.AspNetCore.NoSniff" Version="${DefaultNetCoreTargetFrameworkVersion}.0" />
+  </ItemGroup>
+
+  <!--#if (UseSsr) -->
+  <ItemGroup>
+    <PackageReference Include="MintPlayer.AspNetCore.SpaServices.Prerendering" Version="${DefaultNetCoreTargetFrameworkVersion}.0" />
+  </ItemGroup>
+  <!--#endif -->
+
+  <!--#if (UseWebMarkupMin) -->
+  <ItemGroup>
+    <PackageReference Include="WebMarkupMin.AspNetCore8" Version="2.18.1" />
+  </ItemGroup>
+  <!--#endif -->
+
+  <!--#if (EnableXsrf) -->
+  <ItemGroup>
+    <PackageReference Include="MintPlayer.AspNetCore.SpaServices.Xsrf" Version="${DefaultNetCoreTargetFrameworkVersion}.0" />
+  </ItemGroup>
+  <!--#endif -->
+
+  <!--#if (EnableOpenSearch) -->
+  <ItemGroup>
+    <PackageReference Include="MintPlayer.AspNetCore.OpenSearch" Version="${DefaultNetCoreTargetFrameworkVersion}.0" />
+  </ItemGroup>
+  <!--#endif -->
+
+  <!--#if (UseIdentityServer) -->
+  <ItemGroup>
+    <PackageReference Include="Duende.IdentityServer.AspNetIdentity" Version="7.0.0" />
+  </ItemGroup>
+  <!--#endif -->
+
+  <!--#if (UseOpenIdDict) -->
+  <ItemGroup>
+    <PackageReference Include="OpenIddict.AspNetCore" Version="6.0.0" />
+    <PackageReference Include="OpenIddict.EntityFrameworkCore" Version="6.0.0" />
+  </ItemGroup>
+  <!--#endif -->
+
+  <!--#if (UseAnyIdentityProvider) -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="${DefaultNetCoreTargetFrameworkVersion}.0" />
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="${DefaultNetCoreTargetFrameworkVersion}.0" />
+  </ItemGroup>
+  <!--#endif -->
+
+  <!--#if (ExternalLoginMicrosoft) -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.MicrosoftAccount" Version="${DefaultNetCoreTargetFrameworkVersion}.0" />
+  </ItemGroup>
+  <!--#endif -->
+
+  <!--#if (ExternalLoginGoogle) -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.Google" Version="${DefaultNetCoreTargetFrameworkVersion}.0" />
+  </ItemGroup>
+  <!--#endif -->
+
+  <!--#if (ExternalLoginFacebook) -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.Facebook" Version="${DefaultNetCoreTargetFrameworkVersion}.0" />
+  </ItemGroup>
+  <!--#endif -->
+
+  <!--#if (ExternalLoginX) -->
+  <ItemGroup>
+    <PackageReference Include="AspNet.Security.OAuth.Twitter" Version="${DefaultNetCoreTargetFrameworkVersion}.0" />
+  </ItemGroup>
+  <!--#endif -->
+
+  <!--#if (ExternalLoginLinkedIn) -->
+  <ItemGroup>
+    <PackageReference Include="AspNet.Security.OAuth.LinkedIn" Version="${DefaultNetCoreTargetFrameworkVersion}.0" />
+  </ItemGroup>
+  <!--#endif -->
+
+  <!--#if (UseElasticSearch) -->
+  <ItemGroup>
+    <PackageReference Include="Elastic.Clients.Elasticsearch" Version="8.16.0" />
+  </ItemGroup>
+  <!--#endif -->
+
+  <ItemGroup>
+    <!-- Don't publish the SPA source files, but do show them in the project files list -->
+    <Content Remove="$(SpaRoot)**" />
+    <None Remove="$(SpaRoot)**" />
+    <None Include="$(SpaRoot)**" Exclude="$(SpaRoot)node_modules\**" />
+  </ItemGroup>
+
+  <Target Name="DebugEnsureNodeEnv" BeforeTargets="Build" Condition=" '$(Configuration)' == 'Debug' And !Exists('$(SpaRoot)node_modules') ">
+    <!-- Ensure Node.js is installed -->
+    <Exec Command="node --version" ContinueOnError="true">
+      <Output TaskParameter="ExitCode" PropertyName="ErrorCode" />
+    </Exec>
+    <Error Condition="'$(ErrorCode)' != '0'" Text="Node.js is required to build and run this project. To continue, please install Node.js from https://nodejs.org/, and then restart your command prompt or IDE." />
+    <Message Importance="high" Text="Restoring dependencies using 'npm'. This may take several minutes..." />
+    <Exec WorkingDirectory="$(SpaRoot)" Command="npm install" />
+  </Target>
+
+  <Target Name="PublishRunWebpack" AfterTargets="ComputeFilesToPublish">
+    <!-- As part of publishing, ensure the JS resources are freshly built in production mode -->
+    <Exec WorkingDirectory="$(SpaRoot)" Command="npm install" />
+    <Exec WorkingDirectory="$(SpaRoot)" Command="npm run build -- --configuration production" />
+
+    <!-- Include the newly-built files in the publish output -->
+    <ItemGroup>
+      <DistFiles Include="$(SpaRoot)dist\**" />
+      <ResolvedFileToPublish Include="@(DistFiles->'%(FullPath)')" Exclude="@(ResolvedFileToPublish)">
+        <RelativePath>%(DistFiles.Identity)</RelativePath>
+        <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+        <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
+      </ResolvedFileToPublish>
+    </ItemGroup>
+  </Target>
+
+</Project>

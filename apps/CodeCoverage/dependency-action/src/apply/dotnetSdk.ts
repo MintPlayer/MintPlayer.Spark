@@ -30,7 +30,7 @@ export async function requiredDotnetSdk(plan: Plan, root: string): Promise<Dotne
   if (!nuget && platforms.length === 0) return null;
   if (await exists(path.join(root, GLOBAL_JSON))) return null;
   let major = 0;
-  for (const f of await scanLocations(directoryFiles(root), ['dotnet'])) if (f.kind === 'tfm') major = Math.max(major, majorOf(f.channel));
+  for (const f of await scanLocations(directoryFiles(root), ['dotnet'])) if (f.kind === 'tfm' || f.kind === 'tfm-property') major = Math.max(major, majorOf(f.channel));
   let version: string | null = null;
   for (const p of platforms) {
     const target = Math.max(majorOf(p!.sdkVersion), majorOf(p!.toChannel));

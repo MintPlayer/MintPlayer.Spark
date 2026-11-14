@@ -56,6 +56,14 @@ mergeQueue:
     - path: "tests/MintPlayer.Spark.Tests/Layering/Golden/*.golden.txt"
       strategy: take-base
 
+# Dependency updates: the test fixtures are sample repositories the dependency action and its tests read, not this
+# repository's dependencies. Updating them broke their tests and ran their package managers in the apply (yarn wrote a
+# .pnp.cjs, which sank run 47); docs/code-coverage/platform-locations-PRD.md S2. The exclude also covers their platforms.
+dependencies:
+  exclude:
+    - "**/fixtures/**"
+    - "**/Fixtures/**"
+
 # Package versions (#153, docs/coverage_package_versioning_PRD.md D2): the versioning action in
 # dotnet-build-master.yml runs the engine on the runner, never against coverage.mintplayer.com, because that
 # workflow is what deploys the app. Read from the DEFAULT branch only, like mergeQueue:.

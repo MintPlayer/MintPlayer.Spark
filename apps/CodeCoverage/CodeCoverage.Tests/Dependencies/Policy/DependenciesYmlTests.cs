@@ -39,6 +39,7 @@ public class DependenciesYmlTests
           platforms:
             dotnet: { strategy: add, keepPrevious: 1, lockPackageMajor: true, locations: ["Directory.Build.props"], exclude: ["legacy/**"] }
             node: {}
+            python: { lagging: report }
           lockFileMaintenance: true
           registries: ["npm.pkg.github.com", "NUGET.example.com:8443"]
           lines: security
@@ -102,7 +103,9 @@ public class DependenciesYmlTests
         dotnet.Exclude.Should().Equal(["legacy/**"]);
         s.Platform("node").Strategy.Should().Be("replace", "R8's default");
         s.Platform("node").LockPackageMajor.Should().BeFalse("R8: an explicit opt-in");
-        s.Platform("python").Should().Be(DependencyPlatformSettings.Default);
+        s.Platform("node").Lagging.Should().Be(DependencyPlatformSettings.LaggingAuto, "platform-locations-PRD P6's default");
+        s.Platform("python").Lagging.Should().Be("report");
+        s.Platform("java").Should().Be(DependencyPlatformSettings.Default);
         s.LockFileMaintenance.Should().BeTrue();
         s.Registries.Should().Equal(["npm.pkg.github.com", "nuget.example.com:8443"]);
         s.Lines.Should().Be(EDependencyLineUpdates.Security);
@@ -142,6 +145,7 @@ public class DependenciesYmlTests
     [InlineData("platforms: { dotnet: { strategy: merge } }", "strategy")]
     [InlineData("platforms: { node: { keepPrevious: 9 } }", "keepPrevious")]
     [InlineData("platforms: { node: { locations: [\"../x\"] } }", "../x")]
+    [InlineData("platforms: { node: { lagging: always } }", "lagging")] // platform-locations-PRD P6
     [InlineData("registries: [\"https://evil.example.com/\"]", "registries")]
     [InlineData("exclude: [\"/abs/**\"]", "exclude")]
     [InlineData("cooldown: forever", "cooldown")]

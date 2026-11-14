@@ -277,6 +277,14 @@ their code in our container. So:
   - The same run showed the generator packages as "not on the public registry": they ship their assembly under
     `analyzers/dotnet/cs/`, not `lib/<tfm>/`. The registry hash now falls back to that entry for a single-TFM package
     (`ReleaseLabelTests`, the analyzer-nupkg case).
+- **Amended 2026-11-14: a `stable` pin.** "Removing the pin is how a project goes stable" fails when a runtime
+  dependency never ships a stable. MintPlayer.Dotnet.Tools run 43509498988: MintPlayer.GraphQL resolves Octokit.GraphQL
+  `0.4.0-beta` (no stable on nuget.org, ever), computed `11.0.0-beta.1` below its open `11.0.0-rc.1`, and the refusal
+  held back the GA of all 40 packages. `prerelease: stable` (repository, package or line) releases without a label
+  whatever upstream says; `upstream` keeps mirroring. Owner chose this over a registry heuristic and over pinning `rc`.
+  Evidence and options: [versioning-beta-upstream-PRD](code-coverage/versioning-beta-upstream-PRD.md);
+  `ReleaseLabelTests.A_package_pinned_stable_goes_stable_over_a_beta_dependency` (+2) and
+  `VersioningSettingsTests.Stable_pins_survive_the_wire_from_the_app`, red→green.
 
 ### D9 — How the version reaches the artifacts (Q4)
 

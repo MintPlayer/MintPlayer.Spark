@@ -6,6 +6,7 @@ import { githubActionYmlFetcher } from './lookup/interfaceDiff';
 import { runLookup } from './lookup/lookup';
 import { runMigrate, type MigratePackage } from './migrate/migrate';
 import { parsePlatformTable } from './platform/feeds';
+import { registryTagExists } from './platform/registry';
 import { realExec, type Exec } from './util/exec';
 
 export interface Inputs {
@@ -87,6 +88,7 @@ export async function runMode(inputs: Inputs, exec: Exec = realExec, log: (m: st
         expectedSha: requireSha('expected-sha', inputs.expectedSha),
         feedSecrets: inputs.feedSecrets,
         log,
+        orchestrator: { tagExists: registryTagExists() },
       });
       for (const g of result.groups) log(`group ${g.group}: ${g.status}${g.message ? ` (${g.message.split('\n')[0]})` : ''}`);
       log(`consistency: ${result.consistency.status}; patch ${result.patch.bytes} bytes -> ${resultFile}`);

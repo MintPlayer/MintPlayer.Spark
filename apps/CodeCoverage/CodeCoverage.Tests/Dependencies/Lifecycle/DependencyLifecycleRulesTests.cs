@@ -2,6 +2,7 @@ using CodeCoverage.Dependencies.Lifecycle;
 using CodeCoverage.Dependencies.Policy;
 using CodeCoverage.Entities;
 using CodeCoverage.Forge;
+using CodeCoverage.Git.Dependencies;
 using CodeCoverage.LookupReferences;
 using CodeCoverage.Tests.Dependencies.Policy;
 using Xunit;
@@ -492,6 +493,45 @@ public class DependencyPullRequestBodyTests
 
         body.Split('\n').Count(l => l.Contains("`acme/some-action`")).Should().Be(1);
         body.Split('\n').Count(l => l.Contains("`@angular/core`")).Should().Be(1);
+    }
+
+    /// <summary>
+    /// platform-locations-PRD S1/R3: the policy's computed-location reports and the apply's skipped older-channel locations
+    /// were stored but rendered nowhere, so a partial platform move looked complete (Dotnet.Templates, 2026-11-13).
+    /// </summary>
+    [Fact]
+    public void Platform_locations_that_were_not_moved_are_listed_with_their_reason()
+    {
+        var report = new DependencyRunReport
+        {
+            PlatformReports =
+            [
+                new DependencyPlatformReport("dotnet", "src/Templates/Web.csproj.in", "${DefaultNetCoreTargetFramework}", "a computed value is reported, never edited (R8)"),
+                new DependencyPlatformReport("dotnet", "Dockerfile", "mcr.microsoft.com/dotnet/sdk:9.0", "on 9.0, older than the repository's 10.0"),
+                new DependencyPlatformReport("dotnet", "Dockerfile", "mcr.microsoft.com/dotnet/sdk:9.0", "on 9.0, older than the repository's 10.0"),
+            ],
+        };
+
+        var body = DependencyPullRequestBody.Render(new DependencyUpdateRun(), report, null);
+
+        body.Should().Contain("## Not moved");
+        body.Should().Contain("| dotnet | `src/Templates/Web.csproj.in` | `${DefaultNetCoreTargetFramework}` | a computed value is reported, never edited (R8) |");
+        body.Split('\n').Count(l => l.Contains("`mcr.microsoft.com/dotnet/sdk:9.0`")).Should().Be(1, "the policy and the apply can report the same location");
+    }
+
+    [Fact]
+    public void The_apply_s_skipped_platform_locations_are_reported_under_their_sdk()
+    {
+        var result = new ApplyResult
+        {
+            Groups =
+            [
+                new ApplyGroupResult { Group = "platform:node 24", Platform = new ApplyPlatformResult { Reported = [new ApplyPlatformReported { File = "Dockerfile", Value = "node:20-alpine", Reason = "on 20, older than the repository's 22" }] } },
+                new ApplyGroupResult { Group = "chalk" },
+            ],
+        };
+
+        DependencyRunReport.ApplyPlatformReports(result).Should().Equal(new DependencyPlatformReport("node", "Dockerfile", "node:20-alpine", "on 20, older than the repository's 22"));
     }
 
     [Fact]

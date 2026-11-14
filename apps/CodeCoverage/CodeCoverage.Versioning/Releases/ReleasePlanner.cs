@@ -26,11 +26,11 @@ public sealed record VersioningSettings
 	/// <summary><c>versioning.releaseBranches</c> (D10): the first pattern with one <c>*</c> names a cut branch (D12).</summary>
 	public IReadOnlyList<string> ReleaseBranches { get; init; } = Releases.ReleaseBranches.Default;
 
-	/// <summary><c>versioning.prerelease</c> (D8): the label every package releases with; null mirrors upstream.</summary>
-	public PrereleaseLabel? Prerelease { get; init; }
+	/// <summary><c>versioning.prerelease</c> (D8): the label every package releases with, stable, or upstream (the default).</summary>
+	public PrereleasePin Prerelease { get; init; }
 
-	/// <summary><c>versioning.packages.&lt;id&gt;.prerelease</c>: a label, or null for <c>upstream</c>; wins over <see cref="Prerelease"/>.</summary>
-	public IReadOnlyDictionary<string, PrereleaseLabel?> PrereleasePins { get; init; } = new Dictionary<string, PrereleaseLabel?>();
+	/// <summary><c>versioning.packages.&lt;id&gt;.prerelease</c>: present wins over <see cref="Prerelease"/>, <c>upstream</c> included.</summary>
+	public IReadOnlyDictionary<string, PrereleasePin> PrereleasePins { get; init; } = new Dictionary<string, PrereleasePin>();
 
 	/// <summary><c>versioning.lines</c> (#568 D15): packages release only from these lines; null releases from the default branch (D18).</summary>
 	public ReleaseLinePattern? Lines { get; init; }
@@ -39,10 +39,10 @@ public sealed record VersioningSettings
 	public IReadOnlyDictionary<string, string> LinePins { get; init; } = new Dictionary<string, string>();
 
 	/// <summary>
-	/// <c>versioning.lines.prerelease</c> (#568 D14), keyed by <see cref="ReleaseLine.ToString"/>: a label, or null for
-	/// <c>upstream</c>; on its line it wins over <see cref="Prerelease"/>, and a package pin wins over it.
+	/// <c>versioning.lines.prerelease</c> (#568 D14), keyed by <see cref="ReleaseLine.ToString"/>: a label, stable or
+	/// upstream; on its line it wins over <see cref="Prerelease"/>, and a package pin wins over it.
 	/// </summary>
-	public IReadOnlyDictionary<string, PrereleaseLabel?> LinePrerelease { get; init; } = new Dictionary<string, PrereleaseLabel?>();
+	public IReadOnlyDictionary<string, PrereleasePin> LinePrerelease { get; init; } = new Dictionary<string, PrereleasePin>();
 }
 
 /// <summary>What the build knows about one packed package (D5): what static parsing cannot read.</summary>
@@ -405,7 +405,8 @@ public static class ReleasePlanner
 	/// <summary>
 	/// The label of the release (D8): a pin from <c>versioning.packages.&lt;id&gt;.prerelease</c> or
 	/// <c>versioning.prerelease</c> when there is one, which upstream never overrides; else <see cref="UpstreamLabel"/>.
-	/// On a release line, <c>versioning.lines.prerelease</c> for that line comes between the two (#568 D14).
+	/// On a release line, <c>versioning.lines.prerelease</c> for that line comes between the two (#568 D14). A
+	/// <c>stable</c> pin releases without a label whatever upstream says (versioning-beta-upstream-PRD G2).
 	/// </summary>
 	private static PrereleaseLabel? ReleaseLabel(ReleaseContext context, ProjectNode project, MajorAnchor anchor, PackageBuildFacts? facts,
 		Dictionary<string, PlannedRelease> released)
@@ -413,9 +414,8 @@ public static class ReleasePlanner
 		var settings = context.Settings;
 		var pinned = settings.PrereleasePins.TryGetValue(project.Id!, out var pin)
 			|| context.Line is { } line && settings.LinePrerelease.TryGetValue(line.ToString(), out pin);
-		return pinned
-			? pin ?? UpstreamLabel(context, project, anchor, facts, released)
-			: settings.Prerelease ?? UpstreamLabel(context, project, anchor, facts, released);
+		var effective = pinned ? pin : settings.Prerelease;
+		return effective.IsStable ? null : effective.Label ?? UpstreamLabel(context, project, anchor, facts, released);
 	}
 
 	/// <summary>

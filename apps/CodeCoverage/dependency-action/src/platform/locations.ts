@@ -21,6 +21,16 @@ export interface Found extends PlatformLocation {
   elementEnd?: number;
   closeStart?: number;
   closeEnd?: number;
+  /** For docker: the image the tag belongs to (`mcr.microsoft.com/dotnet/sdk`), for the registry check (P7). */
+  image?: string;
+  /** For a docker ARG default: what the FROM appends to it (`-alpine` in `node:${NODE_VERSION}-alpine`), for the P7 check. */
+  tagSuffix?: string;
+  /** A line of a multi-line setup input (`dotnet-version: |`): one of several versions installed side by side (R7). */
+  listed?: boolean;
+  /** For tfm-property: the project files whose TFM resolves to this token (R4), so a template knows its projects moved (P8). */
+  readers?: string[];
+  /** For template-framework: the template.json key the token is under (`choice`, `description`, `replaces`, `defaultValue`). */
+  templateKey?: string;
 }
 
 const DOCKER_IMAGES: Record<Sdk, RegExp> = {
@@ -100,7 +110,8 @@ function scanTfm(file: string, doc: TextDoc): Found[] {
       const [, element, attrs = '', value] = m;
       const valueStart = m.index + 1 + element.length + attrs.length + 1;
       const conditioned = /\bCondition\s*=/.test(attrs);
-      const computed = conditioned || /\$\(/.test(value);
+      // `${X}`: a `*.csproj.in` placeholder that Arcade's GenerateFileFromTemplate fills from an MSBuild property.
+      const computed = conditioned || /\$[({]/.test(value);
       const channels = value
         .split(';')
         .map((t) => tfmChannel(t))
@@ -170,13 +181,75 @@ function scanPackageVersion(file: string, doc: TextDoc): Found[] {
       if (/<\/(PackageReference|PackageVersion|GlobalPackageReference)>/.test(l.text)) inReference = false;
       return;
     }
-    const m = l.text.match(/<(Version|VersionPrefix)>([^<]+)<\/(Version|VersionPrefix)>/);
+    // platform-locations-PRD R5: `<PackageVersion>` with no attributes is the package's own version too; the CPM
+    // `<PackageVersion Include=… Version=…/>` is a dependency (skipped above).
+    const m = l.text.match(/<(Version|VersionPrefix|PackageVersion)>([^<]+)<\/(Version|VersionPrefix|PackageVersion)>/);
     if (!m || m.index === undefined) return;
     const value = m[2];
     const start = m.index + m[1].length + 2;
     const major = value.match(/^(\d+)\./);
     out.push(loc('dotnet', file, 'package-version', i, start, value, { channel: major ? `${major[1]}.0` : null }));
   });
+  return out;
+}
+
+/** The brace depth change of one JSON line, ignoring braces inside strings. */
+function braceDelta(text: string): number {
+  let delta = 0;
+  let inString = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inString) {
+      if (c === '\\') i++;
+      else if (c === '"') inString = false;
+    } else if (c === '"') inString = true;
+    else if (c === '{') delta++;
+    else if (c === '}') delta--;
+  }
+  return delta;
+}
+
+/**
+ * platform-locations-PRD R2/P8 (§5.3): in a `.template.config/template.json`, a `symbols` entry whose `datatype` is `choice`
+ * and which offers a `netN.N` choice is the template's framework parameter. Every `netN.N` token under its `choice`,
+ * `description`, `replaces` and `defaultValue` keys is one `template-framework` location. Other symbols, and other text,
+ * are left alone.
+ */
+function scanTemplateJson(file: string, doc: TextDoc): Found[] {
+  const out: Found[] = [];
+  const blocks: Array<[number, number]> = [];
+  let depth = 0;
+  let symbolsDepth: number | null = null;
+  let open: number | null = null;
+  doc.lines.forEach((l, i) => {
+    const before = depth;
+    depth += braceDelta(l.text);
+    if (symbolsDepth === null) {
+      if (/"symbols"\s*:\s*\{/.test(l.text)) symbolsDepth = before + 1;
+      return;
+    }
+    if (open === null && before === symbolsDepth && /^\s*"[^"]*"\s*:\s*\{/.test(l.text)) {
+      if (depth === symbolsDepth) blocks.push([i, i]);
+      else open = i;
+    } else if (open !== null && depth === symbolsDepth) {
+      blocks.push([open, i]);
+      open = null;
+    }
+    if (depth < symbolsDepth) symbolsDepth = Number.NaN;
+  });
+  for (const [from, to] of blocks) {
+    const lines = doc.lines.slice(from, to + 1);
+    const text = lines.map((l) => l.text).join('\n');
+    if (!/"datatype"\s*:\s*"choice"/.test(text) || !/"choice"\s*:\s*"net\d+\.\d+"/.test(text)) continue;
+    lines.forEach((l, k) => {
+      for (const m of l.text.matchAll(/"(choice|description|replaces|defaultValue)"\s*:\s*"((?:[^"\\]|\\.)*)"/g)) {
+        const valueStart = m.index! + m[0].length - 1 - m[2].length;
+        for (const t of m[2].matchAll(/(?<![\w.])net\d+\.\d+(?![\w.])/g)) {
+          out.push(loc('dotnet', file, 'template-framework', from + k, valueStart + t.index!, t[0], { channel: tfmChannel(t[0]), templateKey: m[1] }));
+        }
+      }
+    });
+  }
   return out;
 }
 
@@ -207,19 +280,68 @@ function scanJsonKey(sdk: Sdk, file: string, doc: TextDoc, key: string, kind: Pl
 
 function scanDocker(sdk: Sdk, file: string, doc: TextDoc): Found[] {
   const out: Found[] = [];
+  // platform-locations-PRD R8 (§5.7): `ARG NODE_VERSION=22` read by `FROM node:${NODE_VERSION}`: the default is the location.
+  const args = new Map<string, Array<{ line: number; start: number; value: string | null }>>();
+  const resolved = new Map<string, Found>();
   doc.lines.forEach((l, i) => {
+    const arg = l.text.match(/^(\s*ARG\s+)([A-Za-z_]\w*)(?:(=)([^\s"'$]+))?\s*$/i);
+    if (arg) {
+      const at = arg[1].length + arg[2].length + 1;
+      args.set(arg[2], [...(args.get(arg[2]) ?? []), { line: i, start: at, value: arg[3] ? arg[4] : null }]);
+      return;
+    }
+    // R8: NodeSource's `setup_22.x` installs Node 22 into another image (a RUN line or its continuation).
+    if (sdk === 'node') {
+      for (const s of l.text.matchAll(/deb\.nodesource\.com\/setup_(\d+)\.x\b/g)) {
+        const start = s.index! + s[0].length - s[1].length - 2;
+        out.push(loc('node', file, 'docker', i, start, s[1], { channel: s[1] }));
+      }
+    }
     const m = l.text.match(/^(\s*FROM\s+(?:--platform=\S+\s+)?)([^\s:@]+):([^\s@]+)(@sha256:[0-9a-f]{64})?/i);
     if (!m) return;
     if (!DOCKER_IMAGES[sdk].test(m[2])) return;
     const start = m[1].length + m[2].length + 1;
     const digest = !!m[4];
     const computed = digest || /\$/.test(m[3]);
+    const ref = !digest ? m[3].match(/^\$\{?([A-Za-z_]\w*)\}?(.*)$/) : null;
+    const defs = ref && !/\$/.test(ref[2]) ? args.get(ref[1]) ?? [] : [];
+    const def = defs.length === 1 ? defs[0] : null;
+    if (ref && def?.value && channelOf(sdk, def.value) !== null) {
+      // One location per ARG, however many stages read it; the registry check looks at the first stage's tag.
+      const key = `${def.line}`;
+      if (!resolved.has(key)) {
+        const found = loc(sdk, file, 'docker', def.line, def.start, def.value, { image: m[2], tagSuffix: ref[2] });
+        resolved.set(key, found);
+        out.push(found);
+      }
+      return;
+    }
     out.push(
       loc(sdk, file, 'docker', i, start, m[3], {
         computed,
+        image: m[2],
         reason: digest ? 'digest-pinned image (the bot plans image digests as docker records)' : computed ? 'computed tag (ARG)' : null,
       }),
     );
+  });
+  return out.sort((a, b) => a.line - b.line || a.start - b.start);
+}
+
+/**
+ * platform-locations-PRD R8/P10: `runs.using: node20` in an action's metadata. One under `.github/` is found but never
+ * written (the bot's patches change no file there but workflows), so {@link notEditedReason} reports it.
+ */
+function scanActionRuntime(file: string, doc: TextDoc): Found[] {
+  const out: Found[] = [];
+  let inRuns = false;
+  doc.lines.forEach((l, i) => {
+    if (/^runs\s*:/.test(l.text)) {
+      inRuns = true;
+      return;
+    }
+    if (/^\S/.test(l.text)) inRuns = false;
+    const m = inRuns ? l.text.match(/^(\s+using\s*:\s*(['"]?))(node(\d+))\2\s*(#.*)?$/) : null;
+    if (m) out.push(loc('node', file, 'action-runtime', i, m[1].length, m[3], { channel: m[4] }));
   });
   return out;
 }
@@ -239,6 +361,7 @@ function scanWorkflowImage(sdk: Sdk, file: string, doc: TextDoc): Found[] {
     out.push(
       loc(sdk, file, 'docker', i, m[1].length + m[4].length + 1, m[5], {
         computed,
+        image: m[4],
         reason: digest ? 'digest-pinned image (the bot plans image digests as docker records)' : computed ? 'expression' : null,
       }),
     );
@@ -322,7 +445,21 @@ function scanSetupAction(sdk: Sdk, file: string, doc: TextDoc): Found[] {
         if (!km) continue;
         const raw = km[3];
         const start = km[1].length + km[2].length;
-        const computed = raw === '' || raw === '|' || raw === '>' || /\$\{\{/.test(raw);
+        // platform-locations-PRD R7: a literal block (`|`, `|-`) lists one version per line, each its own location.
+        if (/^\|[-+]?$/.test(raw.trim()) && !km[2]) {
+          const entries: Found[] = [];
+          for (let k = j + 1; k < lines.length; k++) {
+            const e = lines[k].text.match(/^(\s*)(['"]?)([^\s'"#]+)\2\s*(#.*)?$/);
+            if (!e || e[1].length <= indent) break;
+            const computed = /\$\{\{/.test(e[3]);
+            entries.push(loc(sdk, file, 'setup-action', k, e[1].length + e[2].length, e[3], { computed, listed: true, reason: computed ? 'expression' : null }));
+          }
+          if (entries.length > 0) {
+            step.push(...entries);
+            continue;
+          }
+        }
+        const computed = raw === '' || /^[|>][-+]?$/.test(raw.trim()) || /\$\{\{/.test(raw);
         step.push(loc(sdk, file, 'setup-action', j, start, raw, { computed, reason: computed ? 'expression or multi-line value' : null }));
       }
       const qm = sdk === 'dotnet' ? t.match(/^(\s*dotnet-quality:\s*)(['"]?)([^'"#\s]*)\2(\s*(#.*)?)$/) : null;
@@ -458,6 +595,7 @@ function scanRustVersion(file: string, doc: TextDoc): Found[] {
 
 export async function scanLocations(files: RepoFiles, sdks: readonly Sdk[] = SDKS): Promise<Found[]> {
   const out: Found[] = [];
+  const definitions = new Map<string, PropertyDefinition[]>();
   const all = await files.list();
   for (const file of all) {
     const name = basename(file);
@@ -467,6 +605,15 @@ export async function scanLocations(files: RepoFiles, sdks: readonly Sdk[] = SDK
         if (/\.(cs|fs|vb)proj$/.test(name) || name === 'Directory.Build.props') {
           wanted.push((d) => scanTfm(file, d), (d) => scanPackageVersion(file, d));
         }
+        // R4: a project template (`*.csproj.in`) names its TFM through a property; the chain below resolves it.
+        if (/\.(cs|fs|vb)proj\.in$/.test(name)) wanted.push((d) => scanTfm(file, d));
+        if (/\.(props|targets)$/.test(name)) {
+          wanted.push((d) => {
+            propertyDefinitions(file, d, definitions);
+            return [];
+          });
+        }
+        if (name === 'template.json' && /(^|\/)\.template\.config\/template\.json$/.test(file)) wanted.push((d) => scanTemplateJson(file, d));
         if (name === 'global.json') {
           wanted.push((d) => scanJsonKey('dotnet', file, d, 'version', 'global.json', /"sdk"\s*:/));
           // An Arcade-style `tools.dotnet` is the SDK the build scripts install: it moves with `sdk.version` (SpaServices
@@ -474,6 +621,7 @@ export async function scanLocations(files: RepoFiles, sdks: readonly Sdk[] = SDK
           wanted.push((d) => scanJsonKey('dotnet', file, d, 'dotnet', 'global.json', /"tools"\s*:/));
         }
       }
+      if (sdk === 'node' && (name === 'action.yml' || name === 'action.yaml')) wanted.push((d) => scanActionRuntime(file, d));
       if (sdk === 'node' && name === 'package.json') {
         wanted.push((d) => scanEngines(file, d), (d) => scanTypesNode(file, d));
       }
@@ -499,7 +647,132 @@ export async function scanLocations(files: RepoFiles, sdks: readonly Sdk[] = SDK
     }
     for (const scan of wanted) out.push(...scan(doc));
   }
+  return sdks.includes('dotnet') ? resolveTfmChains(out, definitions) : out;
+}
+
+/** One single-line property definition in a `*.props`/`*.targets` PropertyGroup: `<Name>value</Name>`. */
+interface PropertyDefinition {
+  file: string;
+  line: number;
+  /** Where the value starts on the line. */
+  start: number;
+  value: string;
+  /** A Condition on the element or its PropertyGroup: its value depends on evaluation. A `Label` does not (S4). */
+  conditioned: boolean;
+}
+
+/** Collects the property definitions of one file; plain text, no import evaluation (as #663's `propertyFiles`). */
+function propertyDefinitions(file: string, doc: TextDoc, into: Map<string, PropertyDefinition[]>): void {
+  // platform-locations-PRD S4: Dotnet.Templates' `<PropertyGroup Label="Version settings">` was taken for a condition.
+  const conditionAttr = /(^|\s)Condition\s*=/;
+  let group: { conditioned: boolean } | null = null;
+  doc.lines.forEach((l, i) => {
+    const open = l.text.match(/<PropertyGroup\b([^>]*?)(\/)?>/);
+    if (open && !open[2]) group = { conditioned: conditionAttr.test(open[1]) };
+    const current: { conditioned: boolean } | null = group;
+    if (/<\/PropertyGroup>/.test(l.text)) group = null;
+    if (current === null) return;
+    // One element per line, opened and closed on it; the open tag may share the line with <PropertyGroup>.
+    const re = /<([A-Za-z_][\w.-]*)(\s[^>]*)?>([^<]*)<\/\1>/g;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(l.text)) !== null) {
+      const [whole, name, attrs = '', value] = m;
+      if (name === 'PropertyGroup') continue;
+      const definition = {
+        file,
+        line: i,
+        start: m.index + whole.length - name.length - 3 - value.length,
+        value,
+        conditioned: current.conditioned || conditionAttr.test(attrs),
+      };
+      into.set(name, [...(into.get(name) ?? []), definition]);
+    }
+  });
+}
+
+/** A piece of an evaluated property: literal text from one definition, at its offset in that definition's value. */
+interface Segment {
+  text: string;
+  definition: PropertyDefinition;
+  offset: number;
+}
+
+const MAX_CHAIN = 8;
+
+/** `$(Name)` expanded through single, unconditioned definitions; a string is why it cannot be. */
+function expand(name: string, definitions: Map<string, PropertyDefinition[]>, seen: readonly string[] = []): Segment[] | string {
+  if (seen.includes(name)) return `$(${name}) is a cycle (${[...seen, name].join(' -> ')})`;
+  if (seen.length >= MAX_CHAIN) return `the chain to $(${name}) is longer than ${MAX_CHAIN}`;
+  const defs = definitions.get(name) ?? [];
+  if (defs.length === 0) return `$(${name}) is not defined in a .props or .targets file`;
+  if (defs.length > 1) return `$(${name}) is defined ${defs.length} times (${[...new Set(defs.map((d) => d.file))].join(', ')})`;
+  const [definition] = defs;
+  if (definition.conditioned) return `$(${name}) is conditioned in ${definition.file}`;
+  const out: Segment[] = [];
+  const re = /\$\(([A-Za-z_][\w.-]*)\)/g;
+  let at = 0;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(definition.value)) !== null) {
+    if (m.index > at) out.push({ text: definition.value.slice(at, m.index), definition, offset: at });
+    const inner = expand(m[1], definitions, [...seen, name]);
+    if (typeof inner === 'string') return inner;
+    out.push(...inner);
+    at = m.index + m[0].length;
+  }
+  if (at < definition.value.length) out.push({ text: definition.value.slice(at), definition, offset: at });
+  if (out.some((s) => /\$[({]/.test(s.text))) return `$(${name}) uses an expression the bot does not evaluate`;
   return out;
+}
+
+/**
+ * platform-locations-PRD R4 (§5.4): a TFM that is exactly `$(X)` or `${X}` is followed to X's single, unconditioned
+ * definition in the repository's `*.props`/`*.targets`, recursively. The token that carries the major (`10` in
+ * `<AspNetCoreMajorVersion>10</AspNetCoreMajorVersion>`, or `10.0` in `<NetCurrent>net10.0</NetCurrent>`) becomes one
+ * `tfm-property` location, however many projects read it, and the TFMs it resolves leave the list. A chain that does not
+ * resolve plainly keeps its TFM computed (reported), with the reason in it.
+ */
+function resolveTfmChains(found: Found[], definitions: Map<string, PropertyDefinition[]>): Found[] {
+  const out: Found[] = [];
+  const properties = new Map<string, Found>();
+  for (const f of found) {
+    const ref = f.kind === 'tfm' && f.computed && !/^conditioned/.test(f.reason ?? '') ? f.value.match(/^\$[({]([A-Za-z_][\w.-]*)[)}]$/) : null;
+    if (!ref) {
+      out.push(f);
+      continue;
+    }
+    const segments = expand(ref[1], definitions);
+    const why = typeof segments === 'string' ? segments : carrier(segments);
+    if (typeof why === 'string') {
+      out.push({ ...f, reason: `computed TFM (${f.value}): ${why}` });
+      continue;
+    }
+    const key = `${why.file}:${why.line}:${why.start}`;
+    if (!properties.has(key)) properties.set(key, { ...why, readers: [] });
+    properties.get(key)!.readers!.push(f.file);
+  }
+  return [...out, ...properties.values()];
+}
+
+/** The location of the token carrying an evaluated TFM's major, or why there is no single one. */
+function carrier(segments: Segment[]): Found | string {
+  const text = segments.map((s) => s.text).join('');
+  const tfm = text.match(/^net(\d+)\.(\d+)$/);
+  if (!tfm) return `evaluates to '${text}', not a netN.N TFM`;
+  const [, major, minor] = tfm;
+  const from = 3;
+  let pos = 0;
+  for (const s of segments) {
+    const end = pos + s.text.length;
+    if (pos <= from && end >= from + major.length) {
+      const local = from - pos;
+      const withMinor = s.text.slice(local).startsWith(`${major}.${minor}`);
+      const value = withMinor ? `${major}.${minor}` : major;
+      const d = s.definition;
+      return loc('dotnet', d.file, 'tfm-property', d.line, d.start + s.offset + local, value, { channel: `${major}.${minor}`, computed: false, reason: null });
+    }
+    pos = end;
+  }
+  return `the major of '${text}' is spread over several properties`;
 }
 
 /** The public projection of a Found (what goes into a platform record). */
