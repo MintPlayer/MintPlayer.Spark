@@ -166,6 +166,14 @@ public static class DependencyPolicyEngine
         private readonly Dictionary<string, List<LookupRecord>> companions = new(StringComparer.Ordinal);
         private readonly Dictionary<LookupRecord, string> companionOf = new(ReferenceEqualityComparer.Instance);
         private readonly HashSet<LookupRecord> riding = new(ReferenceEqualityComparer.Instance);
+        /// <summary>follower-cooldown-PRD H1: per SDK, the companions on an older major in a project that targets only the SDK's
+        /// channel. They move to the channel's major, with the platform group or in one of their own.</summary>
+        private readonly Dictionary<string, List<LookupRecord>> lagging = new(StringComparer.Ordinal);
+
+        /// <summary>The channel of a .NET TFM token (<c>net11.0</c>, <c>net11.0-windows</c> → <c>11.0</c>); null for
+        /// <c>netstandard2.0</c> and .NET Framework (<c>net481</c>).</summary>
+        private static string? TfmChannel(string tfm)
+            => System.Text.RegularExpressions.Regex.Match(tfm, @"^net(\d+\.\d+)(-|$)", System.Text.RegularExpressions.RegexOptions.IgnoreCase, TimeSpan.FromSeconds(1)) is { Success: true } m ? m.Groups[1].Value : null;
 
         private static long? MajorOf(LookupRecord record) => UpdateTypeFloor.LeadingNumber(record.CurrentVersion ?? record.CurrentValue);
 
@@ -196,19 +204,32 @@ public static class DependencyPolicyEngine
                 // can't be told and stays a companion.
                 var standardOnly = platform.Locations.Where(l => l.Kind == "tfm").GroupBy(l => l.File, StringComparer.Ordinal)
                     .Where(g => g.All(l => l.Channel is null)).Select(g => g.Key).ToHashSet(StringComparer.Ordinal);
+                // follower-cooldown-PRD H1: a project that targets only the platform's channel (every token of every tfm, none
+                // computed), and a tool manifest, which runs on the SDK.
+                var channel = platform.Current.Channels[0];
+                var onChannel = platform.Locations.Where(l => l.Kind == "tfm").GroupBy(l => l.File, StringComparer.Ordinal)
+                    .Where(g => g.All(l => !l.Computed && l.Value.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                        .All(t => TfmChannel(t) == channel))).Select(g => g.Key).ToHashSet(StringComparer.Ordinal);
+                bool TargetsOnlyTheChannel(string file) => onChannel.Contains(file) || sdk == "dotnet" && file.EndsWith("dotnet-tools.json", StringComparison.Ordinal);
                 var list = new List<LookupRecord>();
+                var behind = new List<LookupRecord>();
                 foreach (var record in records.Where(r => r.Ecosystem == ecosystem && !companionOf.ContainsKey(r) && !standardOnly.Contains(r.PackageFile)))
                 {
                     // follower-cooldown-PRD G2: an upstream package of the account rides like a Microsoft one.
                     if (!globs.Any(g => DependencyGlob.Matches(g, record.DepName)) && !config.IsAccountPackage(record.Ecosystem, record.DepName))
                         continue;
-                    if (MajorOf(record) != major)
+                    if (MajorOf(record) == major)
+                        list.Add(record);
+                    else if (MajorOf(record) < major && TargetsOnlyTheChannel(record.PackageFile) && record.Candidates.Any(c => MajorOf(c) == major))
+                        behind.Add(record);
+                    else
                         continue;
-                    list.Add(record);
                     companionOf[record] = sdk;
                 }
                 if (list.Count > 0)
                     companions[sdk] = list;
+                if (behind.Count > 0)
+                    lagging[sdk] = behind;
             }
         }
 
@@ -230,7 +251,7 @@ public static class DependencyPolicyEngine
         /// <summary>The companions of an SDK whose next major is not riding: each is listed as moving with the platform.</summary>
         private void ReportStranded(string sdk)
         {
-            foreach (var record in companions.GetValueOrDefault(sdk) ?? [])
+            foreach (var record in (companions.GetValueOrDefault(sdk) ?? []).Concat(lagging.GetValueOrDefault(sdk) ?? []))
             {
                 if (riding.Contains(record))
                     continue;
@@ -593,8 +614,44 @@ public static class DependencyPolicyEngine
         public void EvaluatePlatform(PlatformRecord platform)
         {
             EvaluatePlatformMove(platform);
+            AlignLagging(platform);
             ReportStranded(platform.Sdk);
         }
+
+        /// <summary>
+        /// follower-cooldown-PRD H1: the platform packages of a project that targets only the SDK's channel, still on an older
+        /// major, take the channel's major. With no platform move planned to ride in (the channel is released, or the move
+        /// waits), they are a group of their own under the platform's name, at the platform's in-channel level (a patch).
+        /// </summary>
+        private void AlignLagging(PlatformRecord platform)
+        {
+            if (planned.Any(g => g.Platform?.Sdk == platform.Sdk) || lagging.GetValueOrDefault(platform.Sdk) is not { } behind)
+                return;
+            var current = platform.Current.Channels[0];
+            var picks = LaggingRiders(behind, UpdateTypeFloor.LeadingNumber(current), platform.Current.Preview);
+            if (picks.Count == 0)
+                return;
+            var group = $"platform:{platform.Sdk} {current}";
+            var eco = picks[0].Record.Ecosystem;
+            var groupPlan = new DependencyPlannedGroup
+            {
+                Group = group,
+                Level = EUpdateLevel.Patch,
+                AutoMerge = (int)EUpdateLevel.Patch <= (int)config.Threshold(eco, picks[0].Record.DepName),
+                DepNames = [.. picks.Select(v => v.Record.DepName).Distinct(StringComparer.Ordinal)],
+                Items = [.. picks.Select(v => new DependencyPlannedItem(v.Record, v.Candidate, v.Level))],
+                TargetMajors = Targets(picks.Select(v => (v.Record.DepName, Token(v.Candidate)))),
+            };
+            if (Add(groupPlan, picks.Select(v => Entry(group, v, EDependencyReportReason.NotInSecurityRun, "left for the next scheduled slot (R10)"))))
+                riding.UnionWith(picks.Select(v => v.Record));
+        }
+
+        /// <summary>H1: each lagging record's release on <paramref name="major"/> that may move now (no problem, not cooling
+        /// down; a prerelease only towards a preview channel). A record without one stays behind and is listed.</summary>
+        private List<View> LaggingRiders(IEnumerable<LookupRecord> behind, long? major, bool preview)
+            => [.. behind.Select(r => Candidates(r).FirstOrDefault(v => v.Problem is null && !v.InCooldown && MajorOf(v.Candidate) == major
+                    && (preview || !IsPreviewToken(Token(v.Candidate)))))
+                .OfType<View>()];
 
         /// <summary>#606 D8: whether a channel is on the SDK's track (lts: an LTS release; stable: no preview; preview: any).</summary>
         private static bool OnTrack(PlatformCandidate candidate, EDependencyTrack track) => track switch
@@ -725,14 +782,18 @@ public static class DependencyPolicyEngine
                             riders.Add(pick);
                     }
                     missing = [.. missing.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)];
-                    if (missing.Count > 0 && !Approved(group, [eco], targets, force: true))
-                    {
-                        var names = missing.Count <= 5 ? string.Join(", ", missing) : $"{string.Join(", ", missing.Take(5))} and {missing.Count - 5} more";
-                        var waitsFor = toRelease ? $"their {major} release" : $"{major}.x";
-                        Report(Entry(target, level, EDependencyReportReason.Pending,
-                            $"waiting on {names} to release {waitsFor}: comment '/approve {group} --force' to move without them"));
-                        return false;
-                    }
+                }
+                // follower-cooldown-PRD H1: the older-major packages of the channel's projects ride to the target major. One
+                // without a release there stays behind (listed), and never holds the move: it is behind already.
+                if (lagging.GetValueOrDefault(platform.Sdk) is { } behind && toMajor is { } toM)
+                    riders.AddRange(LaggingRiders(behind, toM, target.Preview));
+                if (missing.Count > 0 && !Approved(group, [eco], targets, force: true))
+                {
+                    var names = missing.Count <= 5 ? string.Join(", ", missing) : $"{string.Join(", ", missing.Take(5))} and {missing.Count - 5} more";
+                    var waitsFor = toRelease ? $"their {toMajor} release" : $"{toMajor}.x";
+                    Report(Entry(target, level, EDependencyReportReason.Pending,
+                        $"waiting on {names} to release {waitsFor}: comment '/approve {group} --force' to move without them"));
+                    return false;
                 }
 
                 var ceiling = config.Ceiling(eco, eco);

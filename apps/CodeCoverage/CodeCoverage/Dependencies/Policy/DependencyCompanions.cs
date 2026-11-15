@@ -24,6 +24,9 @@ public static class DependencyCompanions
                 "Microsoft.EntityFrameworkCore*",
                 "Microsoft.NET.*",
                 "System.*",
+                // follower-cooldown-PRD H1: EF Core's tool, released with it (Dotnet.Tools #215: dotnet-ef 8.0.3 in a net11.0
+                // web app's tool manifest).
+                "dotnet-ef",
             ]),
             ["node"] = ("npm", ["@types/node"]),
         };

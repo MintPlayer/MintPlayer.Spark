@@ -144,6 +144,79 @@ public class PlatformInChannelMoveTests
         outcome.Groups.Single(g => g.Group == "platform:dotnet 11.0").Items.Should().BeEmpty();
     }
 
+    /// <summary>
+    /// follower-cooldown-PRD H1 (owner, 2026-11-15, Dotnet.Tools #215 review: "Why not 11.x.x"): a project that targets only
+    /// the platform's channel (<c>net11.0</c>) takes the channel's major of its platform packages. A 10.0.5 reference there
+    /// rides to 11.0.0 in the platform group, not to 10.0.15 with 11.0.0 awaiting approval.
+    /// </summary>
+    [Fact]
+    public void A_net11_projects_older_platform_package_rides_to_the_channels_major()
+    {
+        var di = OnNet11(Nuget("Microsoft.Extensions.DependencyInjection", "10.0.5", Candidate(EUpdateType.Patch, "10.0.15"), Candidate(EUpdateType.Major, "11.0.0")));
+
+        var outcome = Evaluate(With(OnTheRc().WithTfm(Web, "net11.0"), di), now: Later);
+
+        Planned(outcome).Should().Equal("platform:dotnet 11.0: Microsoft.Extensions.DependencyInjection@11.0.0");
+        outcome.AwaitingApproval.Should().BeEmpty();
+    }
+
+    /// <summary>H1 (owner, #215: "Why not 11.0.0?" on <c>dotnet-ef</c> 8.0.3 → 8.0.34): a tool manifest runs on the SDK, so its
+    /// platform tool takes the SDK channel's major.</summary>
+    [Fact]
+    public void A_tool_manifests_platform_tool_rides_to_the_channels_major()
+    {
+        var ef = Nuget("dotnet-ef", "8.0.3", Candidate(EUpdateType.Patch, "8.0.34"), Candidate(EUpdateType.Major, "11.0.0")) with { PackageFile = "src/Web/.config/dotnet-tools.json" };
+
+        var outcome = Evaluate(With(OnTheRc().WithTfm(Web, "net11.0"), ef), now: Later);
+
+        Planned(outcome).Should().Equal("platform:dotnet 11.0: dotnet-ef@11.0.0");
+        outcome.AwaitingApproval.Should().BeEmpty();
+    }
+
+    /// <summary>H1: with no platform move to ride (the channel is already released), the alignment is a group of its own.</summary>
+    [Fact]
+    public void On_a_released_channel_an_older_platform_package_still_aligns()
+    {
+        var platform = Dotnet("11.0", "11.0.100", preview: false).WithTfm(Web, "net11.0");
+        var di = OnNet11(Nuget("Microsoft.Extensions.DependencyInjection", "10.0.5", Candidate(EUpdateType.Patch, "10.0.15"), Candidate(EUpdateType.Major, "11.0.0")));
+
+        var outcome = Evaluate(With(platform, di), now: Later);
+
+        Planned(outcome).Should().Equal("platform:dotnet 11.0: Microsoft.Extensions.DependencyInjection@11.0.0");
+        outcome.AwaitingApproval.Should().BeEmpty();
+    }
+
+    /// <summary>H1 boundary: a project that also targets an older channel keeps building for it (#606 D2), so its platform
+    /// packages keep their major; the next one waits for approval as before.</summary>
+    [Fact]
+    public void A_multi_target_projects_older_platform_package_keeps_its_major()
+    {
+        var di = OnNet11(Nuget("Microsoft.Extensions.DependencyInjection", "10.0.5", Candidate(EUpdateType.Patch, "10.0.15"), Candidate(EUpdateType.Major, "11.0.0")));
+
+        var outcome = Evaluate(With(OnTheRc().WithTfm(Web, "net10.0;net11.0"), di), now: Later);
+
+        Planned(outcome).Should().Contain("Microsoft.Extensions.DependencyInjection: Microsoft.Extensions.DependencyInjection@10.0.15");
+        outcome.Groups.Single(g => g.Group == "platform:dotnet 11.0").Items.Should().BeEmpty();
+        outcome.AwaitingApproval.Should().ContainSingle(e => e.DepName == "Microsoft.Extensions.DependencyInjection" && e.Target == "11.0.0");
+    }
+
+    /// <summary>H1 boundary: a <c>System.*</c> package that is no platform package (no release on the channel's major) is
+    /// left to its own group.</summary>
+    [Fact]
+    public void A_package_with_no_release_on_the_channels_major_is_not_aligned()
+    {
+        var cli = OnNet11(Nuget("System.CommandLine", "2.0.5", Candidate(EUpdateType.Patch, "2.0.15"), Candidate(EUpdateType.Major, "3.0.0")));
+
+        var outcome = Evaluate(With(OnTheRc().WithTfm(Web, "net11.0"), cli), now: Later);
+
+        Planned(outcome).Should().Contain("System.CommandLine: System.CommandLine@2.0.15");
+        outcome.Groups.Single(g => g.Group == "platform:dotnet 11.0").Items.Should().BeEmpty();
+    }
+
+    private const string Web = "src/Web/Web.csproj";
+
+    private static LookupRecord OnNet11(LookupRecord record) => record with { PackageFile = Web };
+
     /// <summary>The account publishes Endpoints and SpaServices from other repositories (the producer graph).</summary>
     private static DependencyPolicyConfig Upstream(string? yml = null) => DependencyPolicyConfig.Resolve(Config(yml).File, null, null,
         [DependencyPolicyConfig.AccountPackageKey("nuget", "MintPlayer.AspNetCore.Endpoints"), DependencyPolicyConfig.AccountPackageKey("nuget", "MintPlayer.AspNetCore.SpaServices")]);
@@ -199,4 +272,13 @@ public class PlatformInChannelMoveTests
 
         outcome.Groups.Single().TargetMajors.Should().NotContain("platform:dotnet@11");
     }
+}
+
+internal static class PlatformRecordTfm
+{
+    /// <summary>The platform with a project's <c>tfm</c> location added (the lookup's scan of a csproj).</summary>
+    public static PlatformRecord WithTfm(this PlatformRecord platform, string file, string value) => platform with
+    {
+        Locations = [.. platform.Locations, new PlatformLocation { File = file, Kind = "tfm", Value = value, Channel = "11.0" }],
+    };
 }

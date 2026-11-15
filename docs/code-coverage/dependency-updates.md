@@ -234,8 +234,9 @@ patch between two releases carries none. setup-dotnet's `dotnet-quality: preview
 release (its default is GA); as a step's only input it is reported instead.
 
 **Companions.** The packages that belong to an SDK move with its major, in the platform group: for .NET
-`Microsoft.AspNetCore.*`, `Microsoft.Extensions.*`, `Microsoft.EntityFrameworkCore*`, `Microsoft.NET.*` and `System.*`, for
-Node.js `@types/node`. Only a package on the SDK's current major is one (`System.IO.Abstractions` 22.x is not).
+`Microsoft.AspNetCore.*`, `Microsoft.Extensions.*`, `Microsoft.EntityFrameworkCore*`, `Microsoft.NET.*`, `System.*` and
+`dotnet-ef`, for Node.js `@types/node`. Only a package on the SDK's current major is one (`System.IO.Abstractions` 22.x is
+not), with one exception below.
 `companions:` replaces the list; `[]` turns it off. Until the SDK moves, a companion's next major is listed as *moves with
 the platform*. A platform kept beside the previous one (`strategy: add`, `keepPrevious`, `lockPackageMajor`) has no
 companions, since its packages must keep building for the older target.
@@ -247,6 +248,13 @@ companions, since its packages must keep building for the older target.
 - **A .NET Standard project has no platform to move.** In a project whose every `<TargetFramework(s)>` is .NET Standard
   or .NET Framework (Spark's source generators), the references are ordinary packages: they neither ride with nor hold
   the move. A reference in `Directory.Packages.props` can't be traced to a project and is still a companion.
+- **A project on the SDK's channel takes the channel's major** ([follower-cooldown-PRD](follower-cooldown-PRD.md) H1). In
+  a project whose every `<TargetFramework(s)>` is the SDK's channel (`net11.0` only), a companion still on an older major
+  (`Microsoft.Extensions.DependencyInjection` 10.0.5) moves to the channel's major (11.0.0) without an approval: with the
+  platform group when one is planned, else in a `platform:dotnet 11.0` group of its own. The same goes for a
+  `dotnet-tools.json` tool (`dotnet-ef` 8.0.3 → 11.0.0), which runs on the SDK. A project that also targets an older
+  channel (`net10.0;net11.0`) keeps building for it, so its packages keep their major and the next one waits for approval.
+  A package with no release on the channel's major (`System.CommandLine` 2.x) is an ordinary package.
 
 **Pins that follow a dependency** ([dependency-companion-pins-PRD](dependency-companion-pins-PRD.md)). Some versions
 are no dependency Renovate can look up: your own image built from a base image (`ghcr.io/you/web-chromium:1.63.0` from
