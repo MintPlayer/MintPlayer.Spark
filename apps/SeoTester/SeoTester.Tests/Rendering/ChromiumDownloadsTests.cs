@@ -11,7 +11,7 @@ namespace SeoTester.Tests.Rendering;
 /// <summary>
 /// <see cref="ChromiumDownloads"/>, the router's "would Chromium save this navigation?" (<c>docs/seo_analyzer_PRD.md</c> §12,
 /// "Downloads never reach Chromium"). Every case is a response measured in headless Chromium (Playwright 1.63's build,
-/// 2026-10-15): one iframe per response, its download event the verdict. The predicate must agree with all of them, and
+/// 2026-10-15; re-measured with 1.64.1's, 2026-11-15): one iframe per response, its download event the verdict. The predicate must agree with all of them, and
 /// Chromium must still save exactly the ones it saved then (the media types aside: which of those it decodes is the build's).
 /// </summary>
 [Collection(BrowserCollection.Name)]
@@ -89,7 +89,9 @@ public sealed class ChromiumDownloadsTests
         Render("image/png", Png), Render("image/png", Binary), Render("image/jpeg", Png), Render("image/gif", Png), Render("image/webp", Png), Render("image/avif", Png),
         Render("image/bmp", Png), Render("image/x-icon", Png), Render("image/pjpeg", Png), Render("image/jpg", Png), Render("image/apng", Png),
         Render("image/vnd.microsoft.icon", Png), Render("image/x-xbitmap", Png), Render("image/x-png", Png),
-        Save("image/tiff", Png), Save("image/heic", Png), Save("image/x-unknown", Png), Save("image/jxl", Png), Save("image/x-ms-bmp", Png),
+        // JPEG XL: saved by Playwright 1.63's build, rendered since 1.64.1's (PR #669, run 43716928081).
+        Render("image/jxl", Png),
+        Save("image/tiff", Png), Save("image/heic", Png), Save("image/x-unknown", Png), Save("image/x-ms-bmp", Png),
 
         // Media: the containers the build decodes.
         Render("audio/mpeg", Binary), Render("audio/ogg", Binary), Render("audio/wav", Binary), Render("audio/webm", Binary), Render("audio/flac", Binary),

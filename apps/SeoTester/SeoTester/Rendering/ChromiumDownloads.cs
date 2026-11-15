@@ -7,7 +7,7 @@ namespace SeoTester.Rendering;
 /// Whether Chromium would save a navigation's response as a download instead of rendering it
 /// (<c>docs/seo_analyzer_PRD.md</c> §12, "Downloads never reach Chromium"). <see cref="BrowserRouter"/> aborts such a
 /// navigation, because Chromium writes what it is about to save to a temp file of its own before the download is refused
-/// (owner decision 2026-10-15). Mirrors headless Chromium as measured with Playwright 1.63's build: one iframe per response,
+/// (owner decision 2026-10-15). Mirrors headless Chromium as measured with Playwright 1.64.1's build (which renders JPEG XL; 1.63's saved it): one iframe per response,
 /// its download event the verdict, every measured response kept as a case in <c>ChromiumDownloadsTests</c>.
 /// </summary>
 internal static class ChromiumDownloads
@@ -34,7 +34,7 @@ internal static class ChromiumDownloads
         "application/xml", "application/xhtml+xml", "application/rss+xml", "application/atom+xml", "image/svg+xml",
         "application/json", "application/javascript", "application/x-javascript", "application/ecmascript", "application/x-ecmascript",
         "image/png", "image/x-png", "image/apng", "image/jpeg", "image/pjpeg", "image/jpg", "image/gif", "image/webp", "image/avif",
-        "image/bmp", "image/x-icon", "image/vnd.microsoft.icon", "image/x-xbitmap",
+        "image/jxl", "image/bmp", "image/x-icon", "image/vnd.microsoft.icon", "image/x-xbitmap",
         "audio/mpeg", "audio/mp3", "audio/x-mp3", "audio/mp4", "audio/x-m4a", "audio/aac", "audio/ogg", "audio/wav", "audio/x-wav",
         "audio/webm", "audio/flac", "video/mp4", "video/x-m4v", "video/webm", "video/ogg", "video/x-matroska",
         "application/ogg", "application/x-mpegurl", "application/vnd.apple.mpegurl",
