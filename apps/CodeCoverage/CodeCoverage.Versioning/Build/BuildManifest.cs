@@ -4,6 +4,7 @@ using CodeCoverage.Versioning.Git;
 using CodeCoverage.Versioning.Graph;
 using CodeCoverage.Versioning.Releases;
 using CodeCoverage.Versioning.Validation;
+using CodeCoverage.Versioning.Versions;
 
 namespace CodeCoverage.Versioning.Build;
 
@@ -135,7 +136,9 @@ public static class BuildManifest
 			var slash = library.Name.IndexOf('/');
 			if (slash <= 0) continue;
 			var (id, version) = (library.Name[..slash], library.Name[(slash + 1)..]);
-			if (Identifiers.IsPackageId(id) && version.Length is > 0 and <= ReleaseManifest.MaxVersionLength) resolved[id] = version;
+			if (Identifiers.IsPackageId(id) && version.Length is > 0 and <= ReleaseManifest.MaxVersionLength
+				&& (!resolved.TryGetValue(id, out var kept) || LessMature(version, kept)))
+				resolved[id] = version;
 		}
 		if (resolved.Count > ReleaseManifest.MaxResolvedVersions)
 		{
@@ -144,6 +147,21 @@ public static class BuildManifest
 			return resolved.Where(r => direct.Contains(r.Key)).Take(ReleaseManifest.MaxResolvedVersions).ToDictionary(r => r.Key, r => r.Value, StringComparer.Ordinal);
 		}
 		return resolved;
+	}
+
+	/// <summary>
+	/// prerelease-dependencies-PRD D5: <c>libraries</c> is shared by every target framework, so a package resolved per TFM
+	/// (<c>13.0.4</c> under net10.0, <c>13.0.4-beta1</c> under net11.0) appears once per version. The least mature one is
+	/// kept (D8: a release never claims more stability than its upstream); a version that isn't semver yields to any that
+	/// is; on a tie the first stays.
+	/// </summary>
+	private static bool LessMature(string candidate, string kept)
+	{
+		if (!SemVer.TryParse(candidate, out var next)) return false;
+		if (!SemVer.TryParse(kept, out var current)) return true;
+		return Maturity(next) < Maturity(current);
+
+		static int Maturity(SemVer version) => version.Prerelease is { } pre ? (int)Labels.Mirror(pre) : int.MaxValue;
 	}
 
 	private static ManifestPackage NpmPackage(BuildManifestRequest request, ProjectNode node, List<string> notes)

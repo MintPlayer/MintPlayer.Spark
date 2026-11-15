@@ -49,7 +49,7 @@ describe('runLookup (Renovate injected, everything else real)', () => {
     const { dir, sha } = gitRepo({ '.nvmrc': '20\n' });
     const { document } = await runLookup({
       exec: realExec, repoDir: dir, outDir: tempDir(), workDir: tempDir(), expectedSha: sha,
-      platforms: { sdks: {}, unstable: [] },
+      platforms: { sdks: {}, unstable: [], stable: [] },
       fetchActionYml: ymlFetcher,
       renovate: async () => ({ report: JSON.parse(readFixture('renovate/npm/report.json')), seconds: 1, log: '' }),
     });

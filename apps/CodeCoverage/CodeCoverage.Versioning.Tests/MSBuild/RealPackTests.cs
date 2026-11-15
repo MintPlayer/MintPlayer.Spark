@@ -25,6 +25,30 @@ public class RealPackTests(RealPackTests.Repo repo) : IClassFixture<RealPackTest
         }
     }
 
+    // prerelease-dependencies-PRD B8 (SP5): the stable pin releases 11.0.0 over Octokit.GraphQL 0.4.0-beta, and NuGet
+    // warns NU5104 about a stable package depending on a prerelease. The warning doesn't stop the pack; only a repository
+    // that treats warnings as errors fails, and it then has to NoWarn NU5104 itself.
+    [Fact]
+    public void B8_a_stable_package_over_a_prerelease_packs_with_a_warning()
+    {
+        var result = repo.Pack("P/P.csproj", Push, "-p:Version=1.0.0");
+
+        result.ExitCode.Should().Be(0, result.Output);
+        result.Output.Should().Contain("warning NU5104");
+        result.ShouldPack("P.1.0.0.nupkg");
+        result.Nuspec("P.1.0.0.nupkg").Should().Contain("<dependency id=\"Newtonsoft.Json\" version=\"13.0.4-beta1\"");
+    }
+
+    [Fact]
+    public void B8_treat_warnings_as_errors_turns_nu5104_into_a_failed_pack()
+    {
+        var result = repo.Pack("P/P.csproj", Push, "-p:Version=1.0.0", "-p:TreatWarningsAsErrors=true");
+
+        result.ExitCode.Should().NotBe(0);
+        result.Output.Should().Contain("error NU5104");
+        result.Packages.Should().BeEmpty();
+    }
+
     [Fact]
     public void A_package_version_alone_sets_the_assembly_version_too()
     {
@@ -176,14 +200,19 @@ public class RealPackTests(RealPackTests.Repo repo) : IClassFixture<RealPackTest
             Write("B/B.csproj", Library("B", $"<TargetFramework>{tfm}</TargetFramework>"));
             Write("A/A.csproj", Library("A", $"<TargetFramework>{tfm}</TargetFramework>", "<ItemGroup><ProjectReference Include=\"..\\B\\B.csproj\" /></ItemGroup>"));
             Write("M/M.csproj", Library("M", $"<TargetFrameworks>netstandard2.0;{tfm}</TargetFrameworks>"));
-            foreach (var project in new[] { "A", "B", "M" }) Write($"{project}/C.cs", "public class C { }");
+            // P (outside the solution): a stable package over a prerelease one, prerelease-dependencies-PRD B8.
+            Write("P/P.csproj", Library("P", $"<TargetFramework>{tfm}</TargetFramework>", "<ItemGroup><PackageReference Include=\"Newtonsoft.Json\" Version=\"13.0.4-beta1\" /></ItemGroup>"));
+            foreach (var project in new[] { "A", "B", "M", "P" }) Write($"{project}/C.cs", "public class C { }");
             Write("S.sln", Solution());
 
             Git("init", "-q", "-b", "main");
             Git("add", "-A");
             Git("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "init");
-            var restore = Dotnet(["restore", "S.sln"], eventName: null);
-            if (restore.ExitCode != 0) throw new InvalidOperationException("restore failed:\n" + restore.Output);
+            foreach (var target in new[] { "S.sln", "P/P.csproj" })
+            {
+                var restore = Dotnet(["restore", target], eventName: null);
+                if (restore.ExitCode != 0) throw new InvalidOperationException("restore failed:\n" + restore.Output);
+            }
         }
 
         public PackResult Pack(string target, string? eventName, params string[] arguments) => PackWith(target, eventName, arguments, null);

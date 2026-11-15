@@ -410,6 +410,97 @@ function scanMatrix(sdk: Sdk, file: string, doc: TextDoc): Found[] {
 }
 
 /**
+ * prerelease-dependencies-PRD H6/H7: the reason of a setup-* input whose expression the scan can't resolve. The move would
+ * leave that workflow behind, so the bot holds it like P11 (`PlatformLocation.UnresolvedExpression`, same text).
+ */
+export const UNRESOLVED_EXPRESSION = 'unresolved expression';
+
+/** H7: an input with an empty or missing default: the caller passes the version (or the action reads global.json). */
+const CALLER_INPUT = 'an input the caller sets';
+
+interface ValueAt {
+  line: number;
+  start: number;
+  raw: string;
+}
+
+/** The nearest line above `i` indented less than `indent`, as a mapping key (`env:`, `inputs:`), or null. */
+function parentKey(lines: TextDoc['lines'], i: number, indent: number): string | null {
+  for (let j = i - 1; j >= 0; j--) {
+    const t = lines[j].text;
+    if (/^\s*$/.test(t) || /^\s*#/.test(t)) continue;
+    if (t.match(/^(\s*)/)![1].length >= indent) continue;
+    return t.match(/^\s*(?:-\s+)?([\w-]+):\s*(#.*)?$/)?.[1] ?? null;
+  }
+  return null;
+}
+
+/** A scalar after `key:` on a line: its span inside optional quotes, or null for an empty, block or expression value. */
+function scalarAt(line: number, text: string, prefix: number): ValueAt | null {
+  const m = text.slice(prefix).match(/^(['"]?)([^'"#]*?)\1\s*(#.*)?$/);
+  if (!m || m[2].trim() === '' || /^[|>]/.test(m[2]) || /\$\{\{/.test(m[2])) return null;
+  return { line, start: prefix + m[1].length, raw: m[2] };
+}
+
+/**
+ * H7: what a setup-* input's expression reads, in the same file. `matrix.x` moves through its entries (scanMatrix); `env.X`
+ * through every `X:` of an `env:` mapping; `inputs.x` through the input's `default:` (an `action.yml`'s `inputs:` or
+ * `on.workflow_call.inputs`), and an empty or missing default is the caller's. Anything else is unresolved.
+ */
+function resolveExpression(doc: TextDoc, raw: string): { reason: string; values: ValueAt[] } {
+  const unresolved = { reason: UNRESOLVED_EXPRESSION, values: [] };
+  const m = raw.trim().match(/^\$\{\{\s*(matrix|env|inputs)\.([\w-]+)\s*\}\}$/);
+  if (!m) return unresolved;
+  const [, scope, name] = m;
+  if (scope === 'matrix') return { reason: `resolved through matrix.${name}`, values: [] };
+  const lines = doc.lines;
+  const key = new RegExp(`^(\\s*)${name.replace(/[-]/g, '\\-')}:(\\s*)`);
+  const values: ValueAt[] = [];
+  let caller = false;
+  for (let i = 0; i < lines.length; i++) {
+    const km = lines[i].text.match(key);
+    if (!km || parentKey(lines, i, km[1].length) !== (scope === 'env' ? 'env' : 'inputs')) continue;
+    if (scope === 'env') {
+      const value = scalarAt(i, lines[i].text, km[0].length);
+      if (value === null) return unresolved; // an env value that is itself an expression, or a block
+      values.push(value);
+      continue;
+    }
+    // inputs: the `default:` among the input's children.
+    let dflt: ValueAt | null | undefined;
+    for (let j = i + 1; j < lines.length; j++) {
+      const t = lines[j].text;
+      if (/^\s*$/.test(t) || /^\s*#/.test(t)) continue;
+      if (t.match(/^(\s*)/)![1].length <= km[1].length) break;
+      const dm = t.match(/^(\s*default:\s*)/);
+      if (dm) {
+        dflt = scalarAt(j, t, dm[1].length);
+        if (dflt === null && /\$\{\{/.test(t)) return unresolved;
+        break;
+      }
+    }
+    if (dflt) values.push(dflt);
+    else caller = true;
+  }
+  if (values.length > 0) return { reason: `resolved through ${scope}.${name}`, values };
+  return caller ? { reason: CALLER_INPUT, values: [] } : unresolved;
+}
+
+/** H7: the env values and input defaults a setup-* step reads, each a `workflow-value` location that moves with the rest. */
+function scanWorkflowValues(sdk: Sdk, file: string, doc: TextDoc): Found[] {
+  const seen = new Set<string>();
+  const out: Found[] = [];
+  for (const f of scanSetupAction(sdk, file, doc).filter((x) => x.kind === 'setup-action' && /\$\{\{/.test(x.value))) {
+    for (const v of resolveExpression(doc, f.value).values) {
+      if (seen.has(`${v.line}:${v.start}`)) continue;
+      seen.add(`${v.line}:${v.start}`);
+      out.push(loc(sdk, file, 'workflow-value', v.line, v.start, v.raw));
+    }
+  }
+  return out;
+}
+
+/**
  * `with:` keys of a setup-* step, found line-by-line: a `uses: actions/setup-x@` line, then the
  * following lines indented deeper than the step's `- `, up to the next step.
  */
@@ -441,7 +532,10 @@ function scanSetupAction(sdk: Sdk, file: string, doc: TextDoc): Found[] {
       if (indent <= stepIndent) break;
       if (/^\s*[A-Za-z0-9_-]+:/.test(t)) keyIndents.push(indent);
       for (const key of keys) {
-        const km = t.match(new RegExp(`^(\\s*${key}:\\s*)(['"]?)([^'"#\\n]*?)\\2(\\s*(#.*)?)$`));
+        // prerelease-dependencies-PRD H6: an expression with quotes inside (`${{ format('{0}.x', env.MAJOR) }}`) is still the
+        // step's value; it was not found at all, so the move left that workflow behind without a word.
+        const km = t.match(new RegExp(`^(\\s*${key}:\\s*)(['"]?)([^'"#\\n]*?)\\2(\\s*(#.*)?)$`))
+          ?? t.match(new RegExp(`^(\\s*${key}:\\s*)()(\\$\\{\\{.*\\}\\})(\\s*(#.*)?)$`));
         if (!km) continue;
         const raw = km[3];
         const start = km[1].length + km[2].length;
@@ -452,7 +546,7 @@ function scanSetupAction(sdk: Sdk, file: string, doc: TextDoc): Found[] {
             const e = lines[k].text.match(/^(\s*)(['"]?)([^\s'"#]+)\2\s*(#.*)?$/);
             if (!e || e[1].length <= indent) break;
             const computed = /\$\{\{/.test(e[3]);
-            entries.push(loc(sdk, file, 'setup-action', k, e[1].length + e[2].length, e[3], { computed, listed: true, reason: computed ? 'expression' : null }));
+            entries.push(loc(sdk, file, 'setup-action', k, e[1].length + e[2].length, e[3], { computed, listed: true, reason: computed ? resolveExpression(doc, e[3]).reason : null }));
           }
           if (entries.length > 0) {
             step.push(...entries);
@@ -460,7 +554,8 @@ function scanSetupAction(sdk: Sdk, file: string, doc: TextDoc): Found[] {
           }
         }
         const computed = raw === '' || /^[|>][-+]?$/.test(raw.trim()) || /\$\{\{/.test(raw);
-        step.push(loc(sdk, file, 'setup-action', j, start, raw, { computed, reason: computed ? 'expression or multi-line value' : null }));
+        const reason = !computed ? null : /\$\{\{/.test(raw) ? resolveExpression(doc, raw).reason : 'expression or multi-line value';
+        step.push(loc(sdk, file, 'setup-action', j, start, raw, { computed, reason }));
       }
       const qm = sdk === 'dotnet' ? t.match(/^(\s*dotnet-quality:\s*)(['"]?)([^'"#\s]*)\2(\s*(#.*)?)$/) : null;
       if (qm) quality = { line: j, start: qm[1].length + qm[2].length, raw: qm[3], indent };
@@ -636,7 +731,7 @@ export async function scanLocations(files: RepoFiles, sdks: readonly Sdk[] = SDK
       if (VERSION_FILES[sdk].includes(name)) wanted.push((d) => scanVersionFile(sdk, file, d));
       if (name === '.tool-versions') wanted.push((d) => scanToolVersions(sdk, file, d));
       if (isDockerfile(file)) wanted.push((d) => scanDocker(sdk, file, d));
-      if (isWorkflowFile(file)) wanted.push((d) => scanSetupAction(sdk, file, d), (d) => scanWorkflowImage(sdk, file, d), (d) => scanMatrix(sdk, file, d));
+      if (isWorkflowFile(file)) wanted.push((d) => scanSetupAction(sdk, file, d), (d) => scanWorkflowImage(sdk, file, d), (d) => scanMatrix(sdk, file, d), (d) => scanWorkflowValues(sdk, file, d));
     }
     if (wanted.length === 0) continue;
     let doc: TextDoc;

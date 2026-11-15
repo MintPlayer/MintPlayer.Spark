@@ -137,8 +137,30 @@ public class DependencyAutoMergeGateTests
         => new(name, level, autoMerge, false, false, null, platform, [new DependencyReportItem(name, "package.json", "npm", "npm", "1.0.0", "1.1.0", "1.1.0", null)]);
 
     private static DependencyEnqueueInput Input(DependencyRunReport report, bool queue = true, bool draft = false, bool human = false, bool migrations = false,
-        IReadOnlyList<string>? workflows = null, ECoverageGate coverage = ECoverageGate.Passed)
-        => new(queue, report, draft, human, migrations, workflows ?? [], coverage);
+        IReadOnlyList<string>? workflows = null, ECoverageGate coverage = ECoverageGate.Passed, IReadOnlySet<string>? majorOptIns = null)
+        => new(queue, report, draft, human, migrations, workflows ?? [], coverage, majorOptIns ?? new HashSet<string>());
+
+    /// <summary>prerelease-dependencies-PRD H3: R7's second enforcement honours <c>platforms.&lt;sdk&gt;.autoMerge: major</c>, for that SDK only.</summary>
+    [Fact]
+    public void An_opted_in_platform_major_enqueues_and_another_sdks_does_not()
+    {
+        var dotnet = Report(Group("platform:dotnet 12.0", EUpdateLevel.Major, platform: true));
+
+        DependencyAutoMergeGate.Refusal(Input(dotnet, majorOptIns: new HashSet<string> { "dotnet" })).Should().BeNull();
+        DependencyAutoMergeGate.Refusal(Input(dotnet, majorOptIns: new HashSet<string> { "node" })).Should().Contain("platform major");
+    }
+
+    /// <summary>H3: the opt-in lifts R7 only; every other gate still stops the pull request.</summary>
+    [Fact]
+    public void An_opted_in_platform_major_still_meets_the_other_gates()
+    {
+        var dotnet = Report(Group("platform:dotnet 12.0", EUpdateLevel.Major, platform: true));
+        var optIn = new HashSet<string> { "dotnet" };
+
+        DependencyAutoMergeGate.Refusal(Input(dotnet, queue: false, majorOptIns: optIn)).Should().Contain("merge queue");
+        DependencyAutoMergeGate.Refusal(Input(dotnet, coverage: ECoverageGate.Dropped, majorOptIns: optIn)).Should().Contain("Coverage dropped");
+        DependencyAutoMergeGate.Refusal(Input(dotnet, migrations: true, majorOptIns: optIn)).Should().Contain("migrations");
+    }
 
     [Fact]
     public void Green_within_every_threshold_enqueues()
@@ -480,6 +502,35 @@ public class DependencyPullRequestBodyTests
         body.Should().Contain("`/approve angular`");
         body.Should().Contain("held by @\u200bsomeone (comment)", "a mention in a reason never pings");
         body.Should().Contain("| chalk | `chalk` | `package.json` | 4.1.0 | 4.1.2 | patch |");
+    }
+
+    /// <summary>
+    /// prerelease-dependencies-PRD D1/C8: "Awaiting approval" said "over the auto-merge threshold" for every row, while a
+    /// platform major (R7) and a P11 hold wait for other reasons (Dotnet.Tools PR #210 waited on P11 and said nothing).
+    /// Each row now carries its own reason, without repeating the command the last column already gives.
+    /// </summary>
+    [Fact]
+    public void Awaiting_approval_says_why_each_group_waits()
+    {
+        static DependencyReportEntry Waiting(string group, string detail) => new(group, "dotnet-sdk", "dotnet", "global.json", "11.0.100-rc.1", "11.0.100",
+            EUpdateLevel.Patch, EDependencyReportReason.AwaitingApproval, detail);
+        var report = new DependencyRunReport
+        {
+            AwaitingApproval =
+            [
+                Awaiting("angular", "@angular/core") with { Detail = "major update over the threshold (minor): comment '/approve angular'" },
+                Waiting("platform:dotnet 12.0", "platform major 11.0 → 12.0: comment '/approve platform:dotnet 12.0'"),
+                Waiting("platform:dotnet 11.0", "2 location(s) the bot cannot edit would stay behind (a.csproj; see \"Not moved\"): comment '/approve platform:dotnet 11.0', or list them under platforms.dotnet.exclude to leave them on purpose"),
+            ],
+        };
+
+        var body = DependencyPullRequestBody.Render(new DependencyUpdateRun(), report, null);
+
+        body.Should().NotContain("Over the auto-merge threshold (`dependencies.autoMerge` in coverage.yml).", "the header no longer claims one reason for every row");
+        body.Should().Contain("| Group | Dependency | From | To | Reason | Comment |");
+        body.Should().Contain("| major update over the threshold (minor) | `/approve angular` |");
+        body.Should().Contain("| platform major 11.0 → 12.0 | `/approve platform:dotnet 12.0` |");
+        body.Should().Contain("| 2 location(s) the bot cannot edit would stay behind (a.csproj; see \"Not moved\"); or list them under platforms.dotnet.exclude to leave them on purpose | `/approve platform:dotnet 11.0` |");
     }
 
     /// <summary>P2 (production re-test 2026-10-17): one action pin in two workflow files was listed twice, word for word.</summary>

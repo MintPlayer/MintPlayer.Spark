@@ -68,6 +68,14 @@ describe('the platform table (#606 D9, test/fixtures/platform-feeds/platform-tab
     expect(table.sdks.node!.find((x) => x.channel === '26')).toMatchObject({ latestVersion: '26.12.0', preview: false });
     expect(table.sdks.java!.find((x) => x.channel === '25')?.lts).toBe(true);
     expect(table.unstable).toEqual([]);
+    expect(table.stable).toEqual([]);
+  });
+
+  // prerelease-dependencies-PRD H5: the bot's `track: stable` globs; a server that predates them sends none.
+  it('reads the stable globs, and none when the bot sends none', () => {
+    expect(parsePlatformTable('{"sdks":{},"unstable":[],"stable":["Octokit.GraphQL"]}').stable).toEqual(['Octokit.GraphQL']);
+    expect(parsePlatformTable('{"sdks":{},"unstable":[]}').stable).toEqual([]);
+    expect(() => parsePlatformTable('{"sdks":{},"unstable":[],"stable":[1]}')).toThrow(/stable must be an array of package globs/);
   });
 
   it.each([
@@ -189,6 +197,73 @@ describe('location scanning on file trees', () => {
   });
 });
 
+/**
+ * prerelease-dependencies-PRD H6/H7 (C12-C14): "all workflows must move together" (owner, 2026-11-15). A setup-* input
+ * given as an expression used to be a computed location with no channel, which P11 skipped, so the move edited the
+ * literal pins and left that workflow on the old SDK.
+ */
+describe('every workflow moves together (H6/H7)', () => {
+  const dotnet = { sdk: 'dotnet' as const, fromChannel: '10.0', toChannel: '11.0', toVersion: '11.0.0', sdkVersion: '11.0.100' };
+  const step = (value: string) => `      - uses: actions/setup-dotnet@v5\n        with:\n          dotnet-version: ${value}\n`;
+  const scan = async (files: Record<string, string>) => {
+    const root = tempDir();
+    writeTree(root, files);
+    return scanLocations(directoryFiles(root), ['dotnet']);
+  };
+  const rows = (found: Awaited<ReturnType<typeof scanLocations>>) => found.map((f) => `${f.line + 1}:${f.kind}=${f.value} ${f.channel ?? '-'} ${f.computed ? `(${f.reason})` : ''}`.trimEnd());
+
+  it('C12: a workflow-level env value is a location that moves, quotes kept', async () => {
+    const ci = `env:\n  DOTNET: '10.0.x'\njobs:\n  a:\n    steps:\n${step('${{ env.DOTNET }}')}`;
+    expect(rows(await scan({ '.github/workflows/ci.yml': ci }))).toEqual([
+      '8:setup-action=${{ env.DOTNET }} - (resolved through env.DOTNET)',
+      '2:workflow-value=10.0.x 10.0',
+    ]);
+    const { read } = await applyOn({ '.github/workflows/ci.yml': ci }, dotnet);
+    expect(read('.github/workflows/ci.yml')).toBe(ci.replace("'10.0.x'", "'11.0.x'"));
+  });
+
+  it('C12: a job-level env SDK version takes the plan\'s SDK version', async () => {
+    const ci = `jobs:\n  a:\n    env:\n      DOTNET_SDK: 10.0.100 # pinned\n    steps:\n${step('${{ env.DOTNET_SDK }}')}`;
+    const { read } = await applyOn({ '.github/workflows/ci.yml': ci }, dotnet);
+    expect(read('.github/workflows/ci.yml')).toBe(ci.replace('10.0.100 # pinned', '11.0.100 # pinned'));
+  });
+
+  it('C13: a composite action input\'s literal default moves; an empty default is the caller\'s', async () => {
+    const action = (dflt: string) => `name: build\ninputs:\n  dotnet-version:\n    description: the SDK\n    default: ${dflt}\nruns:\n  using: composite\n  steps:\n${step('${{ inputs.dotnet-version }}')}`;
+    expect(rows(await scan({ '.github/actions/build/action.yml': action("'10.0.x'") }))).toEqual([
+      '11:setup-action=${{ inputs.dotnet-version }} - (resolved through inputs.dotnet-version)',
+      '5:workflow-value=10.0.x 10.0',
+    ]);
+    const { read } = await applyOn({ '.github/actions/build/action.yml': action("'10.0.x'") }, dotnet);
+    expect(read('.github/actions/build/action.yml')).toBe(action("'11.0.x'"));
+    expect(rows(await scan({ '.github/actions/build/action.yml': action("''") }))).toEqual([
+      '11:setup-action=${{ inputs.dotnet-version }} - (an input the caller sets)',
+    ]);
+  });
+
+  it('C13: a reusable workflow\'s workflow_call input default moves', async () => {
+    const ci = `on:\n  workflow_call:\n    inputs:\n      sdk:\n        type: string\n        default: "10.0.100"\njobs:\n  a:\n    steps:\n${step('${{ inputs.sdk }}')}`;
+    const { read } = await applyOn({ '.github/workflows/build.yml': ci }, dotnet);
+    expect(read('.github/workflows/build.yml')).toBe(ci.replace('"10.0.100"', '"11.0.100"'));
+  });
+
+  it.each([
+    ['${{ vars.DOTNET }}', ''],
+    ['${{ env.DOTNET }}', 'env:\n  DOTNET: ${{ vars.DOTNET }}\n'],
+    ['${{ env.MISSING }}', ''],
+    ["${{ format('{0}.x', env.MAJOR) }}", ''],
+  ])('C14: %s (with %j) is an unresolved expression, which holds the move', async (value, head) => {
+    const found = await scan({ '.github/workflows/ci.yml': `${head}jobs:\n  a:\n    steps:\n${step(value)}` });
+    expect(found.filter((f) => f.kind === 'setup-action').map((f) => f.reason)).toEqual(['unresolved expression']);
+    expect(found.some((f) => f.kind === 'workflow-value')).toBe(false);
+  });
+
+  it('an env key of the same name outside an env: mapping is not read', async () => {
+    const found = await scan({ '.github/workflows/ci.yml': `jobs:\n  a:\n    with:\n      DOTNET: 10.0.x\n    steps:\n${step('${{ env.DOTNET }}')}` });
+    expect(rows(found)).toEqual(['8:setup-action=${{ env.DOTNET }} - (unresolved expression)']);
+  });
+});
+
 async function applyOn(files: Record<string, string>, plan: Parameters<typeof applyPlatform>[1], options?: Parameters<typeof applyPlatform>[2]) {
   const root = tempDir();
   writeTree(root, files);
@@ -226,6 +301,20 @@ describe('applyPlatform', () => {
     expect(nextTfmList('net10.0;net48', dotnet)).toBe('net11.0;net48');
     const { read } = await applyOn({ 'A.csproj': '<Project>\r\n  <PropertyGroup>\r\n    <TargetFramework>net10.0</TargetFramework>\r\n  </PropertyGroup>\r\n</Project>\r\n' }, { ...dotnet, strategy: 'add' });
     expect(read('A.csproj')).toBe('<Project>\r\n  <PropertyGroup>\r\n    <TargetFrameworks>net11.0;net10.0</TargetFrameworks>\r\n  </PropertyGroup>\r\n</Project>\r\n');
+  });
+
+  // prerelease-dependencies-PRD C7 (SP4): replace over several modern targets swaps only the from-channel token. A list's
+  // channel is its highest token, so Tools' net10.0;net11.0 is "on 11.0" and an 11 → 12 move keeps net10.0.
+  it('strategy replace on a multi-modern-target list swaps only the current channel and drops duplicates (C7)', async () => {
+    const dotnet12 = { ...dotnet, fromChannel: '11.0', toChannel: '12.0', toVersion: '12.0.0', sdkVersion: '12.0.100' };
+    expect(nextTfmList('net10.0;net11.0', dotnet12)).toBe('net10.0;net12.0');
+    expect(nextTfmList('net11.0;net12.0', dotnet12)).toBe('net12.0');
+    expect(nextTfmList('net11.0;netstandard2.0;net48', dotnet12)).toBe('net12.0;netstandard2.0;net48');
+    const { read } = await applyOn(
+      { 'Directory.Build.props': '<Project>\n  <PropertyGroup>\n    <TargetFrameworks>net10.0;net11.0</TargetFrameworks>\n  </PropertyGroup>\n</Project>\n' },
+      dotnet12,
+    );
+    expect(read('Directory.Build.props')).toContain('<TargetFrameworks>net10.0;net12.0</TargetFrameworks>');
   });
 
   it('a computed or conditioned TFM is reported, never edited (R8)', async () => {

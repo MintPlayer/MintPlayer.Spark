@@ -19,10 +19,13 @@ export function parsePlatformTable(raw: string): PlatformTable {
   } catch {
     throw new Error('input platforms must be the JSON channel table {"sdks":{...},"unstable":[...]}');
   }
-  const { sdks, unstable } = (parsed ?? {}) as Record<string, unknown>;
+  const { sdks, unstable, stable = [] } = (parsed ?? {}) as Record<string, unknown>;
   if (typeof sdks !== 'object' || sdks === null || Array.isArray(sdks)) throw new Error('input platforms.sdks must be an object of channel lists');
   if (!Array.isArray(unstable) || unstable.some((g) => typeof g !== 'string')) throw new Error('input platforms.unstable must be an array of package globs');
-  const table: PlatformTable = { sdks: {}, unstable: unstable as string[] };
+  // prerelease-dependencies-PRD H5: absent while the bot that dispatches this predates it (the action's moving tag and the
+  // server deploy separately).
+  if (!Array.isArray(stable) || stable.some((g) => typeof g !== 'string')) throw new Error('input platforms.stable must be an array of package globs');
+  const table: PlatformTable = { sdks: {}, unstable: unstable as string[], stable: stable as string[] };
   for (const [sdk, list] of Object.entries(sdks)) {
     if (!(SDKS as readonly string[]).includes(sdk)) continue; // an SDK this action has no adapter for yet
     if (!Array.isArray(list)) throw new Error(`input platforms.sdks.${sdk} must be an array`);

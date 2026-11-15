@@ -32,6 +32,7 @@ export const DEPENDENCIES_YML = `dependencies:
   platforms:
     dotnet: { track: stable, strategy: replace, keepPrevious: 0, lockPackageMajor: false, locations: [], exclude: [] }
     node: { track: lts, companions: ["@types/node"] }   # companions: packages that move with the SDK's major
+    # autoMerge: major           # opt in: this SDK's majors auto-merge like any update (§6); the only value
   lockFileMaintenance: false     # transitive-only refreshes, off by default
   registries: ["npm.pkg.github.com"]   # lockfile hosts allowed besides the public registries
   lines: patch                   # release lines: patch (default) | all | security | off`;

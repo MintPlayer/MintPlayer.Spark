@@ -118,6 +118,25 @@ public class ReleaseFlowTests : CoverageRavenTest
         await git.Received(1).RevokeWriterAccessAsync(Arg.Any<Repository>(), Arg.Any<ForgeWriterAccess>(), Arg.Any<CancellationToken>());
     }
 
+    // A line promotes every package of the repository at once (Dotnet.Tools has 40): one load per tag would pass the
+    // session's 30-request cap after the writer pushed the tags, as the versioning run's RecordAsync did (run 43711348322).
+    [Fact]
+    public async Task A_release_that_places_many_tags_records_every_one()
+    {
+        using var store = GetDocumentStore();
+        await SeedAsync(store);
+        var tags = Enumerable.Range(0, 40).Select(i => $"Acme.Package{i}/v11.0.0").ToList();
+        writer.VersioningPromoteAsync(Arg.Any<GitWriterPromoteRequest>(), Arg.Any<CancellationToken>())
+            .Returns(new GitWriterPromoteResult(GitWriterPromoteResult.Promoted, null,
+                [new("release/dotnet-11.x", GitWriterPromoteLineResult.Promoted, Promoted, [], [], Tags: tags)], null, 10, []));
+
+        await ReleaseAsync(store, "maintainer");
+
+        using var check = store.OpenAsyncSession();
+        var placed = await check.LoadAsync<ReleaseVersion>(tags.Select(t => ReleaseVersion.DocumentId(RepositoryId, t)));
+        placed.Values.Should().AllSatisfy(r => r!.PlacedCommit.Should().Be(Promoted));
+    }
+
     [Fact]
     public async Task A_commenter_below_the_release_role_is_told_so_and_nothing_runs()
     {

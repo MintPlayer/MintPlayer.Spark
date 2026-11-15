@@ -221,7 +221,9 @@ public sealed record DependencyEnqueueInput(
     bool NeedsHuman,
     bool HasMigrations,
     IReadOnlyList<string> WorkflowsNotOnPullRequest,
-    ECoverageGate Coverage);
+    ECoverageGate Coverage,
+    // prerelease-dependencies-PRD H3: the SDKs whose platforms.<sdk>.autoMerge: major lifts R7.
+    IReadOnlySet<string> PlatformMajorOptIns);
 
 public static class DependencyAutoMergeGate
 {
@@ -236,8 +238,8 @@ public static class DependencyAutoMergeGate
             return "Nothing is applied.";
         if (input.Report.Groups.FirstOrDefault(g => !g.AutoMerge) is { } over)
             return $"`{over.Group}` is above its auto-merge threshold{(over.Approved ? " (approved by a comment)" : string.Empty)}.";
-        if (input.Report.Groups.FirstOrDefault(g => g.Platform && g.Level == EUpdateLevel.Major) is { } platform)
-            return $"`{platform.Group}` moves a platform major, which never auto-merges.";
+        if (input.Report.Groups.FirstOrDefault(g => g.Platform && g.Level == EUpdateLevel.Major && !input.PlatformMajorOptIns.Contains(PlatformSdk(g.Group))) is { } platform)
+            return $"`{platform.Group}` moves a platform major, which auto-merges only with `dependencies.platforms.{PlatformSdk(platform.Group)}.autoMerge: major`.";
         if (input.HasMigrations)
             return "It contains code migrations, which never auto-merge.";
         if (input.NeedsHuman)
@@ -253,6 +255,10 @@ public static class DependencyAutoMergeGate
             _ => null,
         };
     }
+
+    /// <summary>The SDK of a platform group (<c>platform:dotnet 12.0</c> → <c>dotnet</c>).</summary>
+    private static string PlatformSdk(string group)
+        => group.StartsWith("platform:", StringComparison.Ordinal) ? group["platform:".Length..].Split(' ')[0] : group;
 }
 
 /// <summary>What kind of failure a red head shows, as far as the failing checks' names tell.</summary>

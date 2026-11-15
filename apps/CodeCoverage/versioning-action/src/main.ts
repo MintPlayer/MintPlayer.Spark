@@ -335,8 +335,10 @@ async function finish(inputs: Inputs, deps: Dependencies, mode: 'server' | 'loca
 
   const releases = response.releases;
   for (const r of releases) deps.log(`${r.id} ${r.version}${r.taggedByHand ? ' (tagged by hand)' : ''}: ${r.reasons.join('; ')}`);
-  // The server pushed the tags to the remote; the pack step's build reads them from this checkout (D9).
-  if (mode === 'server') await fetchTags(deps.exec, cwd);
+  // The server pushed the tags to the remote; the pack step's build reads them from this checkout (D9). In local mode
+  // too: a server that pushed them and then failed leaves the local engine answering already-present without creating
+  // them here, and the pack read the previous tags (Tools run 43711348322: tags at 12:01:07, the app's 500 at 12:01:09).
+  await fetchTags(deps.exec, cwd);
   const distTags = await writeNpm(deps.exec, cwd, releases, deps.log, deps.warn, response.lineMajors);
 
   // PRD D15: the server creates its Releases itself, behind the app's release-on-tag policy. The local host cannot read

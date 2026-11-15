@@ -157,6 +157,7 @@ dependencies:
   platforms:
     dotnet: { track: stable, strategy: replace, keepPrevious: 0, lockPackageMajor: false, locations: [], exclude: [] }
     node: { track: lts, companions: ["@types/node"] }   # companions: packages that move with the SDK's major
+    # autoMerge: major           # opt in: this SDK's majors auto-merge like any update (§6); the only value
   lockFileMaintenance: false     # transitive-only refreshes, off by default
   registries: ["npm.pkg.github.com"]   # lockfile hosts allowed besides the public registries
   lines: patch                   # release lines: patch (default) | all | security | off
@@ -194,8 +195,26 @@ group of a library family (`@angular/*`, `nx` + `@nx/*`, …) moves together.
 | `preview` | the newest major, previews included (.NET `preview`/`go-live`, Node release candidates, Python alphas, PHP RCs, Ruby previews, Rust `beta`) |
 
 A package rule takes `track: stable | preview` (`lts` is refused there). An account rule on the ecosystem
-`platform:<sdk>` sets the default track; an enforced one is the widest track the file may choose. A track decides what
-is offered: a repository already on a newer phase is never moved back.
+`platform:<sdk>` sets the default track; an enforced one is the widest track the file may choose. Its `match` may name
+the SDK (`dotnet`) or the ecosystem (`platform:dotnet`): either one sets the track and caps the update level. A track
+decides what is offered: a repository already on a newer phase is never moved back.
+
+**Packages on a prerelease** ([prerelease-dependencies-PRD](prerelease-dependencies-PRD.md) H1). A package's track is
+decided in this order: the first `coverage.yml` rule that names it with a `track`, then a non-enforced account rule. Without
+either, a package whose current version is a prerelease follows prereleases, and any other package follows stables. This
+applies only in the SemVer ecosystems (NuGet, npm, Cargo, Composer); a Docker tag such as `22-alpine` is not a
+prerelease. A companion of an SDK on the `preview` track follows previews too. An enforced account rule's track still
+narrows the result. Example: `Octokit.GraphQL` has never shipped a stable, so a repository on `0.3.0-beta` is offered
+`0.4.0-beta`. In a 0.x package a minor is breaking, so that move is a major and waits for `/approve`. To stay on stables:
+
+```yaml
+  rules:
+    - match: ["Octokit.GraphQL"]
+      track: stable              # opt out: prereleases are never offered
+```
+
+A prerelease the track skips is listed under *Available, not applied* ("a prerelease; a coverage.yml rule sets track:
+stable"), with the rule that would change it.
 
 **Moves inside a channel** (#617). The same table offers the channel a repository is already on when a pin is behind
 it: the RC SDK once the release is out (`11.0.100-rc.2…` → `11.0.100`), or a GA patch (`10.0.402` → `10.0.403`). It is
@@ -248,9 +267,22 @@ repository moves from (a Dockerfile stage still on Node 20 in a Node 22 reposito
 | `follow` | always follows |
 | `report` | never moves; it is listed under **Not moved** |
 
-A location on the repository's own channel that the bot cannot edit (a computed one) holds the move for `/approve`: it
-would otherwise stay behind unseen. `platforms.<sdk>.exclude` leaves it behind on purpose. The top-level `exclude` also
-applies to platforms: an excluded path neither moves nor counts towards the repository's channel.
+**Every workflow moves together.** A `setup-*` input that reads `${{ env.X }}` or `${{ inputs.x }}` moves the value it
+reads: an `env:` entry, or an input's literal `default:` in the same file. The pull request lists it as a
+`workflow-value` location. An input with an empty default is the caller's to set, so a composite action's
+`dotnet-version: ${{ inputs.dotnet-version }}` with no default is left alone. A `matrix.x` value moves through the
+matrix. Any other expression (`vars.X`, `format(…)`, a step output) can't be resolved; it holds the move like a
+computed location.
+
+A location on the repository's own channel that the bot cannot edit (a computed one, or an unresolved expression)
+holds the move for `/approve`: it would otherwise stay behind unseen. A move inside a channel (`11.0.100-rc.2` →
+`11.0.100`) is not held by a computed TFM, because the TFM is already correct for it. `platforms.<sdk>.exclude` leaves a
+location behind on purpose. The top-level `exclude` also applies to platforms: an excluded path neither moves nor counts
+towards the repository's channel.
+
+Workflows that run only on `push`, `schedule` or `workflow_dispatch` are edited too, but no pull request run tests
+them. The repository needs a `pull_request` workflow that covers what they build, if the move should be checked before
+the merge.
 
 ## 5. Approvals and commands
 
@@ -264,6 +296,15 @@ Writers (write access or above) comment on the rolling pull request, one command
 | `/unhold <group or package>` | Lifts a comment or human hold (the bot's own holds lift by themselves). |
 | `/bisect` | Bisects a red pull request now (budget 4 when the setting is off). |
 | `/refresh` | Rebuilds now. A run a comment started never auto-merges; the next scheduled one may. |
+
+The pull request's **Awaiting approval** table says why each group waits (its *Reason* column) and gives the comment that
+takes it (*Comment*):
+
+| Reason | Means |
+|---|---|
+| `major` / `minor` | Above the threshold (§4) |
+| `platform major 11.0 → 12.0` | An SDK major. Without `platforms.<sdk>.autoMerge: major` it always waits (§6) |
+| `N location(s) the bot cannot edit would stay behind` | A computed location or an unresolved expression on the current channel (§4) |
 
 Every command starts with `/`; a comment that starts with a bare word (`approve angular`) is an ordinary comment.
 Edited comments and comments by bots are ignored.
@@ -339,7 +380,17 @@ to its log.
   groups fail with the SDK's own error, as before.
 - **A platform SDK moves** (`net10.0` → `net11.0`, Node 22 → 24). Every location moves together (TFM, `global.json`,
   Dockerfile `FROM`, `setup-*`, companions); a computed TFM is reported, never guessed. Which channel is offered is the
-  SDK's `track` (§4). A platform major never auto-merges.
+  SDK's `track` (§4). A platform major waits for `/approve platform:<sdk> <channel>` and never auto-merges, unless the
+  repository opts in.
+  - **`platforms.<sdk>.autoMerge: major`** (one SDK at a time) plans that SDK's majors without an approval and lets them
+    auto-merge. It lifts nothing else. The move still needs:
+    - no enforced account rule capping `platform:<sdk>` below major (the account rule wins);
+    - its companions released at the target major, its locations movable (no P11 hold), and the cooldown passed;
+    - the merge queue enabled, and the pull request past onboarding;
+    - every group in the pull request auto-mergeable (one approved group keeps the whole pull request for a person);
+    - no code migrations, no lockfile left for a person, and no edited workflow without a `pull_request` run;
+    - coverage within `maxCoverageDrop`;
+    - a scheduled run (a run started by a comment never auto-merges).
   - **A companion has no release at the target major yet.** The move is *pending*, not offered for approval: the pull
     request and the account's platform readiness say "dotnet 11.0 waiting on <package>". It is judged again at every
     lookup; `/approve … --force` (§5) takes it anyway.

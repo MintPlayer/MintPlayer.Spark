@@ -15,6 +15,33 @@ describe('Renovate invocation', () => {
     expect(c).toMatchObject({ separateMultipleMajor: true, separateMinorPatch: true, separateMultipleMinor: true });
   });
 
+  // prerelease-dependencies-PRD H1/H5 (SP1: Renovate 44.125.2 filter.ts:166-193 drops 0.3.0-beta → 0.4.0-beta by default).
+  it('looks up prereleases for a package already on one, in the SemVer datasources only, with track: stable last', () => {
+    const c = renovateConfig(['vitest'], ['Octokit.GraphQL']);
+    expect(c.packageRules).toEqual([
+      { matchPackageNames: ['vitest'], ignoreUnstable: false },
+      { matchDatasources: ['nuget', 'npm', 'crate', 'packagist'], matchCurrentVersion: '/^[\\[(v^~=]*\\d+(\\.\\d+)*-[0-9A-Za-z]/', ignoreUnstable: false },
+      { matchPackageNames: ['Octokit.GraphQL'], ignoreUnstable: true },
+    ]);
+  });
+
+  it('keeps the prerelease-current rule when no glob is given', () => {
+    expect(renovateConfig().packageRules).toEqual([
+      { matchDatasources: ['nuget', 'npm', 'crate', 'packagist'], matchCurrentVersion: '/^[\\[(v^~=]*\\d+(\\.\\d+)*-[0-9A-Za-z]/', ignoreUnstable: false },
+    ]);
+  });
+
+  it.each([
+    ['0.3.0-beta', true],
+    ['[0.4.0-beta]', true],
+    ['^1.0.0-rc.1', true],
+    ['1.2.0', false],
+    ['1.0.0 - 2.0.0', false],
+  ])('the prerelease pattern on %j is %s (the engine keeps the same pattern, DependencyPolicyConfig.PrereleasePattern)', (version, expected) => {
+    const rule = (renovateConfig().packageRules as { matchCurrentVersion: string }[])[0];
+    expect(new RegExp(rule.matchCurrentVersion.slice(1, -1)).test(version)).toBe(expected);
+  });
+
   it('runs lookup only, writes a file report, and passes secrets by NAME', () => {
     const args = dockerArgs({ repoDir: '/repo', outDir: '/out', configFile: '/cfg.json', image: RENOVATE_IMAGE, githubTokenEnv: 'INPUT_GITHUB-TOKEN', hostRulesEnv: 'INPUT_HOST-RULES' });
     expect(args).toEqual(expect.arrayContaining(['--platform=local', '--dry-run=lookup', '--binary-source=install', '--report-type=file', '--report-path=/out/report.json', RENOVATE_IMAGE]));

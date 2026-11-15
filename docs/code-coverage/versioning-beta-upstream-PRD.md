@@ -93,5 +93,5 @@ the only way in and refuses anything but a label, `stable` or `upstream` (`An_un
 - [x] M3 (no schema enumerates the values; template comment, D8 amendment, versioning.md done): schema/docs: coverage.yml schema (if it enumerates the values), the onboarding template comment
       (`# prerelease: upstream …`), `docs/coverage_package_versioning_PRD.md` D8 (second amendment, link here), the
       versioning guide.
-- [ ] M4: issue on MintPlayer.Dotnet.Tools: set `versioning.packages.MintPlayer.GraphQL: { prerelease: stable }` after
+- [~] M4 (issue filed: MintPlayer.Dotnet.Tools#211, 2026-11-15; follow-up in `prerelease-dependencies-PRD.md` M0): issue on MintPlayer.Dotnet.Tools: set `versioning.packages.MintPlayer.GraphQL: { prerelease: stable }` after
       the deploy, then re-run publish-release on master.

@@ -250,7 +250,8 @@ public static class ReleasePlanner
 				apiChanged,
 				ReleaseLabel(context, project, anchor, facts, released),
 				onDefaultBranch,
-				branchMajor));
+				branchMajor,
+				id));
 
 			switch (decision)
 			{

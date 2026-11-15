@@ -359,6 +359,11 @@ public static class DependencyPolicyEngine
         public void EvaluateGroup(string group, List<LookupRecord> members)
         {
             var views = members.Select(m => (Record: m, Views: Candidates(m))).ToList();
+            // prerelease-dependencies-PRD D3: the newest prerelease the track drops is listed even when a stable release
+            // beside it is planned, with the setting that would follow it.
+            foreach (var (_, candidates) in views)
+                if (candidates.FirstOrDefault(v => v.Problem == EDependencyReportReason.PreviewNotFollowed) is { } skipped)
+                    Report(Entry(group, skipped, EDependencyReportReason.PreviewNotFollowed, skipped.Detail!));
             var levels = views.SelectMany(v => v.Views).Select(v => v.Level).Distinct().OrderDescending().ToList();
             var groupHold = next.Holds.FirstOrDefault(h => h.Group == group);
             var failures = new List<DependencyReportEntry>();
@@ -545,6 +550,10 @@ public static class DependencyPolicyEngine
             return !settings.Exclude.Any(g => Matches(g, file));
         }
 
+        /// <summary>prerelease-dependencies-PRD H2: location kinds whose value names only a channel (<c>net11.0</c>, a
+        /// template's framework choice), never a version inside it, so a move inside the channel leaves them as they are.</summary>
+        private static readonly HashSet<string> ChannelOnlyKinds = new(StringComparer.Ordinal) { "tfm", "tfm-property", "template-framework" };
+
         private static bool IsPreviewToken(string? version) => version?.Contains('-', StringComparison.Ordinal) == true;
 
         private void EvaluatePlatformMove(PlatformRecord platform)
@@ -674,7 +683,13 @@ public static class DependencyPolicyEngine
                 var settings = config.File.Platform(platform.Sdk);
                 // A digest-pinned image is "computed" for the platform but planned as a docker record of its own (locations.ts:220,
                 // 242), so it does not stay behind.
-                var unedited = platform.Locations.Where(l => l.Computed && l.Channel == current && InPlatformScope(l.File, settings)
+                // prerelease-dependencies-PRD H2: a move inside the channel (an RC to its release, a patch) changes no TFM, so a
+                // computed TFM on that channel is already right and stays as it is (Dotnet.Tools PR #210 waited on two
+                // conditioned net11.0 for 11.0.100-rc.1 → 11.0.100). H6/H7: every workflow moves together, so a setup-* input
+                // whose expression the scan can't resolve holds the move as well, whatever channel it hides.
+                var unedited = platform.Locations.Where(l => l.Computed && InPlatformScope(l.File, settings)
+                    && (l.Channel == current && !(target.Channel == current && ChannelOnlyKinds.Contains(l.Kind))
+                        || l.Channel is null && l.Reason == PlatformLocation.UnresolvedExpression)
                     && l.Reason?.StartsWith("digest-pinned", StringComparison.Ordinal) != true).ToList();
                 if (unedited.Count > 0 && !approved)
                 {
@@ -682,7 +697,7 @@ public static class DependencyPolicyEngine
                     {
                         var files = string.Join(", ", unedited.Select(l => l.File).Distinct(StringComparer.Ordinal).Take(3));
                         Report(Entry(target, level, EDependencyReportReason.AwaitingApproval,
-                            $"{unedited.Count} location(s) on {current} the bot cannot edit ({files}; see \"Not moved\"): comment '/approve {group}', "
+                            $"{unedited.Count} location(s) the bot cannot edit would stay behind ({files}; see \"Not moved\"): comment '/approve {group}', "
                             + $"or list them under platforms.{platform.Sdk}.exclude to leave them on purpose"));
                         return false;
                     }
@@ -700,8 +715,9 @@ public static class DependencyPolicyEngine
                 {
                     Group = group,
                     Level = level,
-                    // R7: a platform major never auto-merges, whatever the file says.
-                    AutoMerge = (int)level <= (int)threshold && level != EUpdateLevel.Major && !approved,
+                    // R7: a platform major never auto-merges, unless the repository opted in with platforms.<sdk>.autoMerge: major
+                    // (prerelease-dependencies-PRD H3, amends D-P18/R7). The enqueue gate checks the opt-in a second time.
+                    AutoMerge = (int)level <= (int)threshold && (level != EUpdateLevel.Major || settings.AutoMergeMajor) && !approved,
                     Approved = approved,
                     DepNames = [eco],
                     TargetMajors = targets,
@@ -799,6 +815,11 @@ public static class DependencyPolicyEngine
                     (view.Problem, view.Detail) = (EDependencyReportReason.Held, depHold.Reason);
                 else if (LineCeiling(view.Level, securityFix) is { } ceiling)
                     (view.Problem, view.Detail) = (EDependencyReportReason.AboveLineCeiling, ceiling);
+                // prerelease-dependencies-PRD D2/H1: a prerelease only on the package's preview track. Renovate's lookup is
+                // wider (H5 rule order, a companion glob), and an enforced account rule narrows the track only here.
+                else if (DependencyPolicyConfig.IsPrerelease(record.Ecosystem, candidate.Version)
+                    && config.PackageTrackOf(record.Ecosystem, record.DepName, record.CurrentVersion ?? record.CurrentValue) is { Track: EDependencyTrack.Stable } track)
+                    (view.Problem, view.Detail) = (EDependencyReportReason.PreviewNotFollowed, $"a prerelease; {track.Why}");
 
                 var (inCooldown, until) = Cooldown(record.Ecosystem, record.DepName, Token(candidate), candidate.ReleaseTimestamp,
                     securityFix, IsBotRuntime(record)
