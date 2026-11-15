@@ -211,7 +211,12 @@ public partial class ReleaseRecipient : IRecipient<ReleaseMessage>
 
         // What the line's versioning step asks about: each tag pushed, recorded as placed on its promotion commit.
         var now = time.GetUtcNow().UtcDateTime;
-        foreach (var line in (result.Lines ?? []).Where(l => l.Outcome == GitWriterPromoteLineResult.Promoted))
+        var promoted = (result.Lines ?? []).Where(l => l.Outcome == GitWriterPromoteLineResult.Promoted).ToList();
+        // One request for every tag's record: a line promotes every package at once, far past the session's request cap.
+        // The loads below then come from the session, which also remembers the ids it did not find.
+        await session.LoadAsync<ReleaseVersion>(promoted.SelectMany(l => l.Tags ?? []).Distinct(StringComparer.Ordinal)
+            .Select(name => ReleaseVersion.DocumentId(repository.Id!, name)), cancellationToken);
+        foreach (var line in promoted)
             foreach (var name in line.Tags ?? [])
             {
                 if (!VersionTag.TryParse(name, out var tag)) continue;
