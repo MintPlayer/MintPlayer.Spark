@@ -23,6 +23,12 @@ export const DEPENDENCIES_YML = `dependencies:
       group: vitest              # move together
       allowMajor: true           # plan majors without an approval (they still never auto-merge)
       hold: "waiting for the Nx plugin"   # or true; held until removed
+      lockstep: true             # the group moves only to a version every member has
+  follow:                        # pins that are not dependencies, written with a dependency's new version
+    - dependency: mcr.microsoft.com/playwright
+      path: apps/web/docker-compose.yml   # a glob
+      match: 'web-chromium:(?<version>[0-9.]+)'
+      version: '^v(?<version>[0-9.]+)-noble$'   # optional, over the dependency's new value
   exclude: ["samples/**"]        # package files left alone
   lookupAction: dependency-lookup.yml
   applyAction: dependency-apply.yml
