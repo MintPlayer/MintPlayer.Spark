@@ -11,7 +11,7 @@
 	<ItemGroup>
 		<!-- Pinned to the version MintPlayer.Spark.Authorization pins, rather than the floating
 		     10.0.* it carried out-of-tree: in-repo the two must not disagree. -->
-		<PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="11.0.0-rc.1.26425.128" />
+		<PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="11.0.0" />
 		<PackageReference Include="MintPlayer.AspNetCore.Endpoints" Version="11.4.1-rc.0" />
 		<PackageReference Include="MintPlayer.AspNetCore.SpaServices" Version="11.0.0-rc.3" />
 		<PackageReference Include="MintPlayer.SourceGenerators" Version="13.0.0">
@@ -23,7 +23,7 @@
 		<!-- The dependency-update contract (docs/code-coverage/dependency-updates-PRD.md §13.11.2): every document a runner
 		     returns is validated against its schema before it is deserialized, and every plan the bot writes before it is
 		     committed. The version MintPlayer.Spark.Tests already uses. -->
-		<PackageReference Include="JsonSchema.Net" Version="9.4.0" />
+		<PackageReference Include="JsonSchema.Net" Version="9.5.0" />
 	</ItemGroup>
 
 	<ItemGroup>
@@ -81,7 +81,7 @@
 	-->
 	<ItemGroup Condition="'$(Configuration)' == 'Debug'">
 		<ProjectReference Include="..\CodeCoverage.GitWriter\CodeCoverage.GitWriter.csproj" />
-		<PackageReference Include="Microsoft.AspNetCore.TestHost" Version="11.0.0-rc.1.26425.128" />
+		<PackageReference Include="Microsoft.AspNetCore.TestHost" Version="11.0.0" />
 	</ItemGroup>
 
 <ItemGroup>
