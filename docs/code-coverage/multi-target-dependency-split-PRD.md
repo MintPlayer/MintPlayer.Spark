@@ -49,10 +49,11 @@ handler adds the new TFM with its own `ItemGroup`, and drops a TFM that is no lo
 - Q6 Real layouts: Tools, Spark, SpaServices multi-target projects and how they reference platform packages today.
   *(answered §4.2)*
 - *Q1–Q5 answered by the owner on 2026-11-15: decisions M4–M7 in §8.*
-- Q7 (open) Once a repository is on CPM (through M7's action), does the updater split per TFM in `Directory.Packages.props`
+- *Q7 and Q8 answered on 2026-11-15: M8–M11.*
+- Q7 Once a repository is on CPM (through M7's action), does the updater split per TFM in `Directory.Packages.props`
   (conditioned `PackageVersion`), or report and leave it? Proposed: support it, since the action produces exactly that
   layout. S7 decides it.
-- Q8 (open) The CPM action's details: which repositories (multi-select on the repository query), what it moves (every
+- Q8 The CPM action's details: which repositories (multi-select on the repository query), what it moves (every
   `PackageReference Version` into `PackageVersion`, `VersionOverride` where projects disagree), the branch and pull request
   names, and the reverse direction (inline the versions, delete `Directory.Packages.props`). See S8.
 
@@ -158,6 +159,7 @@ handler adds the new TFM with its own `ItemGroup`, and drops a TFM that is no lo
 | S7 | CPM + per-TFM: does NuGet accept conditioned `PackageVersion` in `Directory.Packages.props` (and two `PackageVersion` items for one package under different conditions)? What does Renovate report for them? | the S2 solution with CPM on; the S1 fixture with a `Directory.Packages.props` | **done** (§5.1) |
 | S8 | CPM conversion action: how existing custom actions open a pull request across selected repositories (the onboarding pull request, the "Set up rulesets" multi-select), and how the conversion edits are made and validated (git writer, or the repository's own workflow like the dependency apply) | read `DependencyOnboarding`, the onboarding chooser and a multi-select custom action | **done** (§5.1) |
 | S6 | How do companion ranges (companion-version-maps), H1 and upstream companions (follower-cooldown G2) key on a per-TFM record? Expected: the `ItemGroup`'s TFM replaces "the lowest TFM" as the key channel | read `FindCompanions` `:211-260` and `RangeOf` | **done** (§5.1) |
+| S9 | Can the bot and the action detect that a repository uses CPM and that a project multi-targets, and where does detection stop? (owner, 2026-11-15) | read the existing detectors in the versioning reader, the onboarding and `locations.ts` | **done** (§5.1) |
 
 ### 5.1 Spike results
 
@@ -232,6 +234,31 @@ handler adds the new TFM with its own `ItemGroup`, and drops a TFM that is no lo
     pull request. The reverse direction inlines the versions and deletes `Directory.Packages.props`.
   - Open for the plan: whether the `files` rule admits deleting a file and editing csproj files (`OnboardingFilesRule` today
     admits the onboarding's own paths).
+- **S9 detection (2026-11-15, by reading).** Both are detectable with code that already exists; the gaps are listed and
+  each one is reported, never guessed.
+  - **CPM, bot side.** `VersioningOnboarding.ReferenceAsync` already reads `Directory.Packages.props` through the
+    repository tree (`CodeCoverage/PackageVersioning/VersioningOnboarding.cs:252`, `Files` over `IRepositoryTree` at
+    `:1054-1067`) and matches `<ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>`
+    (`CentralManagement()`, `:1097`). The versioning reader finds the nearest `Directory.Packages.props` per project and
+    reads its `PackageVersion` items (`CodeCoverage.Versioning/Graph/DotnetProjectReader.cs:52-57`). So the CPM action can
+    decide the direction per repository from the default branch's tree, with no lookup run.
+  - **CPM, action side.** Renovate reports `Directory.Packages.props` as a package file with its `PackageVersion` items,
+    and a versionless `PackageReference` with a `skipReason` (S1 fixture). The git writer already treats the props file
+    as a nuget file and as the CPM lockfile owner (`CodeCoverage.GitWriter/Jobs/Dependencies/DependencyFiles.cs:28, 70-72`).
+  - **CPM gaps.** The switch can also be set in `Directory.Build.props` or a csproj, turned off per project
+    (`ManagePackageVersionsCentrally=false`), or set through a property that isn't literally `true`. Rule for P1/P8: CPM
+    is on for a project when the effective value of `ManagePackageVersionsCentrally` along its chain (csproj, then
+    `Directory.Build.props` ancestors, then `Directory.Packages.props`) is literally `true`; any other non-empty value is
+    reported as *cannot tell* and the project is left alone. A project that opts out is ordinary.
+  - **Multi-targeting.** `scanTfm` (`dependency-action/src/platform/locations.ts:104-129`) already reads
+    `<TargetFramework>`/`<TargetFrameworks>` in every `*.cs|fs|vbproj` and `Directory.Build.props` (`:700`), and the
+    property chain (`tfm-property`, `:826-866`) resolves TFMs named through a property in a `.props`/`.targets` file. The
+    versioning reader splits the same value per project (`DotnetProjectReader.cs:68-69`). A project multi-targets when the
+    resolved value holds more than one TFM.
+  - **Multi-target gaps.** A conditioned or still-unresolved `$(…)` TFM is marked `computed` (`locations.ts:112-124`):
+    such a project is not split and lands under *Not moved* (D-f). TFMs that come only from an SDK or a package import
+    are invisible to both readers; those projects are treated as what the readable files say, and the writer's
+    "same XML, regrouped" check (S4) still bounds every edit.
 
 ## 6. Design (draft, pending owner answers in §3 and spikes)
 
@@ -288,8 +315,9 @@ is CI on the pull request.
     (to CPM / from CPM).
   - The bot computes the files from the default branch and opens one pull request per repository through the writer's
     `files` job. The writer's files rule gets a profile for it.
-  - Red: conversion unit tests (versions agree / disagree → `VersionOverride`, conditions kept, reverse direction), a
-    writer rule test, and an action test with two selected repositories.
+  - Red: conversion unit tests (versions agree; versions disagree → the highest for all, listed in the pull request body,
+    M9; per-TFM references → conditioned `PackageVersion`, M11; the reverse inlines versions with `VersionOverride` winning
+    and deletes a versions-only file, M10), a writer rule test, and an action test with two selected repositories.
 - **P8 Docs.** `dependency-updates.md` (multi-target projects, TFM drop at EOL, *Not moved* for unmapped conditions), a CPM
   action page in the guide, the setup page if a key changes, sdk-updates-PRD D2/D13 marked amended, the PRD status.
 - Gate: CI on the pull request, then patch coverage via the codecoverage MCP. After deploy: re-run Tools; FolderHasher,
@@ -309,4 +337,12 @@ is CI on the pull request.
 | M4 | **Automatic split.** Every multi-target project's unconditioned platform reference becomes one conditioned `ItemGroup` per channel TFM on its next run, with no coverage.yml key. It also fixes #216 (D-c: the package's whole move is one group). Answers Q4/Q5 | owner, 2026-11-15 (AskUserQuestion: "Automatic") |
 | M5 | **Scope: all .NET companions** (`Microsoft.Extensions.*`, `System.*`, AspNetCore, EF Core, … the companion list): each TFM takes its own channel's major, Extensions included although 11.x still runs on net10.0 | owner, 2026-11-15 ("All .NET companions") |
 | M6 | **A TFM leaves at end of life.** The bot drops a TFM (and its `ItemGroup`s) once its channel is EOL in the platform lifecycle data; `keepPrevious` stays a minimum count. Answers Q3; changes `nextTfmList`, which has no EOL check today | owner, 2026-11-15 ("End of life") |
+| M8 | **Q7: the updater splits per TFM in CPM repositories too.** Conditioned `PackageVersion` items per channel TFM in `Directory.Packages.props`, planned and validated like `PackageReference`s (P6). Evidence: S1, S7 | owner, 2026-11-15 ("Yes, same as csproj") |
+| M9 | **Q8a: converting to CPM moves every project to the highest version.** One `PackageVersion` per package (per TFM where split), at the highest version any project referenced, with no `VersionOverride`. The conversion pull request may therefore change resolved versions, and its body lists each one that moves | owner, 2026-11-15 ("Highest for all") |
+| M10 | **Q8b: converting from CPM.** Every version, a `VersionOverride` winning, is inlined into its `PackageReference`. `Directory.Packages.props` is deleted when only `ManagePackageVersionsCentrally` and `PackageVersion` items remain; otherwise only those are removed and the rest stays | owner, 2026-11-15 ("Delete it if only versions") |
+| M11 | **Q8c: per-TFM references converted to CPM become conditioned `PackageVersion` items** (the S7 layout). The csproj keeps one versionless `PackageReference` | owner, 2026-11-15 ("Conditioned PackageVersion") |
+| M12 | **D-b confirmed: no approval per TFM.** In a split project each TFM's `ItemGroup` takes its own channel's major automatically; the older TFM's group only takes its own channel's patches. Amends #606 D2 for split projects | owner, 2026-11-15 ("No approval per TFM") |
+| M13 | **A multi-target project always adds the new channel.** On a platform move (`net10.0;net11.0` → `net10.0;net11.0;net12.0`), the new TFM gets its own `ItemGroup`, and a TFM leaves only at end of life (M6). `strategy: replace` keeps its meaning for single-TFM projects | owner, 2026-11-15 ("Add net12.0, drop EOL") |
+| M14 | **The CPM conversion doesn't wait for the dependency pull request.** It opens regardless, and the dependency run, rebuilt from the default branch every run, adopts the new layout after the merge | owner, 2026-11-15 ("Convert anyway; next run rebases") |
+| M15 | **Detection of CPM and multi-targeting reuses the existing readers** (S9): CPM is on where the effective `ManagePackageVersionsCentrally` is literally `true`, multi-targeting where the resolved TFM list holds more than one TFM. Anything conditioned, computed or not literally `true` is reported as *cannot tell* and left alone, never guessed | S9, file:line evidence in §5.1 |
 | M7 | **CPM is a separate custom action, in this pull request.** No automatic CPM in the updater. A new custom action switches one or more selected repositories between non-CPM and CPM (both directions) and opens a pull request with the conversion. It is separate from the dependency/TFM updater. | owner, 2026-11-15: "I wouldn't do it automatically, but just provide a new CustomAction that lets the user switch between non-CPVM and CPVM on a (one or more selected) repository - it also creates the pull-request with the changes for from/to CPVM. Include in this pull-request - seperate action from the dependency/tfm updater" |
