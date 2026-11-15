@@ -247,6 +247,8 @@ public static class DependencyPatchValidator
         List<(DependencyPlatformMove, DependencyPlatformLocation)> platform, List<(DependencyPlanEntry Entry, DependencyFollowRule Rule)> follow,
         IBaseTree baseTree, HashSet<DependencyPlanEntry> used, HashSet<string> platformApplied, CancellationToken cancellationToken)
     {
+        if (entries.Any(e => e.Layout is { Count: > 0 }))
+            return await DependencyLayoutCheck.ValidateAsync(file, entries, platform, baseTree, used, platformApplied, cancellationToken);
         (int From, int To)? sdks = null;
         if (DependencyFiles.FileName(file.Path) == "global.json")
         {

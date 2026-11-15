@@ -59,7 +59,21 @@ public interface IOnboardingService
     /// rename or line the forge refuses is noted, not retried.
     /// </summary>
     Task<VersioningOnboardingOutcome> MergedAsync(Repository repository, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// multi-target-dependency-split-PRD P7 (M7): converts the default branch to or from central package management
+    /// (<see cref="CentralPackageConversion"/>) and opens (or updates) the pull request from
+    /// <c>mintplayer/central-package-management</c>. <see cref="CentralPackageResult.Opened"/> is false with the reason when
+    /// the repository is already that way, the bot cannot tell (M15), or the forge or the git writer refuses.
+    /// </summary>
+    Task<CentralPackageResult> ConvertCentralPackagesAsync(Repository repository, ECentralPackageDirection direction, CancellationToken cancellationToken = default);
 }
+
+/// <summary>What <see cref="IOnboardingService.ConvertCentralPackagesAsync"/> did for one repository.</summary>
+/// <param name="Opened">A pull request is open with the conversion.</param>
+/// <param name="Note">The pull request (<c>opened #12</c>), or why there is none.</param>
+/// <param name="PullRequestUrl">The pull request's page, when there is one.</param>
+public sealed record CentralPackageResult(bool Opened, string Note, string? PullRequestUrl = null);
 
 /// <param name="Plan">Null when nothing could be planned; <paramref name="Refusal"/> says why.</param>
 public sealed record OnboardingPreview(OnboardingPlan? Plan, string? Refusal);
@@ -540,31 +554,47 @@ public partial class OnboardingService : IOnboardingService
     private async Task<(bool Opened, string Note)> LinePullRequestAsync(Repository repository, IForgeMergeQueue git, IForgeDependencyUpdates pulls, string lineBranch, string line,
         string head, IReadOnlyList<GitWriterFile> files, bool narrow, CancellationToken cancellationToken, string? narrowBody = null, string? narrowTitle = null)
     {
-        var what = narrow ? "narrowing" : "workflow";
+        var title = narrow ? narrowTitle ?? OnboardingPlanner.NarrowTitle : OnboardingPlanner.LineTitle;
+        var (opened, note, _) = await BotPullRequestAsync(repository, git, pulls, new BotPullRequest(
+            narrow ? "narrowing" : "workflow", lineBranch, head, narrow ? OnboardingPlanner.NarrowBranch(line) : OnboardingPlanner.LineBranch(line), title,
+            narrowBody ?? OnboardingPlanner.LineBody(lineBranch, files.Select(f => f.Path)), files, request => request with { Line = line, Narrow = narrow }), cancellationToken);
+        return (opened, note);
+    }
+
+    /// <summary>
+    /// One bot pull request: <see cref="Files"/> committed on <see cref="Head"/> by the git writer's <c>/jobs/onboarding</c>
+    /// (shaped by <see cref="Shape"/>: a line, a narrowing, the central package conversion), pushed to <see cref="Branch"/>
+    /// and opened into <see cref="BaseBranch"/> (or found, on a retry).
+    /// </summary>
+    private sealed record BotPullRequest(string What, string BaseBranch, string Head, string Branch, string Title, string Body, IReadOnlyList<GitWriterFile> Files,
+        Func<GitWriterDependencyRequest, GitWriterDependencyRequest> Shape);
+
+    private async Task<(bool Opened, string Note, string? Url)> BotPullRequestAsync(Repository repository, IForgeMergeQueue git, IForgeDependencyUpdates pulls, BotPullRequest bot,
+        CancellationToken cancellationToken)
+    {
         // #649 D8: a commit that changes a workflow needs the token's workflows: write, the narrowing's too since #648.
-        var push = await git.GetWriterAccessAsync(repository, null, pushesWorkflowChanges: files.Any(f => LinePaths.IsWorkflow(f.Path)), cancellationToken);
+        var push = await git.GetWriterAccessAsync(repository, null, pushesWorkflowChanges: bot.Files.Any(f => LinePaths.IsWorkflow(f.Path)), cancellationToken);
         if (push.Access is not { } access)
         {
-            logger.LogWarning("Onboarding: no {What} pull request into {Repository} {Line}: {Reason}", what, repository.FullName, lineBranch, push.RefusalReason);
-            return (false, $"no {what} pull request into {lineBranch}: {push.RefusalReason?.TrimEnd('.')}");
+            logger.LogWarning("Onboarding: no {What} pull request into {Repository} {Branch}: {Reason}", bot.What, repository.FullName, bot.BaseBranch, push.RefusalReason);
+            return (false, $"no {bot.What} pull request into {bot.BaseBranch}: {push.RefusalReason?.TrimEnd('.')}", null);
         }
         var identity = new GitWriterIdentity(VersioningController.Tagger.Name, VersioningController.Tagger.Email, time.GetUtcNow());
         GitWriterDependencyResult pushed;
         try
         {
-            pushed = await writer.OnboardingAsync(new GitWriterDependencyRequest(
+            pushed = await writer.OnboardingAsync(bot.Shape(new GitWriterDependencyRequest(
                 repository.Provider.ToCanonicalString(), repository.GitHubId.ToString(CultureInfo.InvariantCulture), access.CloneUrl,
-                new CommitGraph.SidecarCredential(access.Username, access.Password), lineBranch, head)
+                new CommitGraph.SidecarCredential(access.Username, access.Password), bot.BaseBranch, bot.Head)
             {
-                Line = line, Author = identity, Committer = identity, Message = narrow ? narrowTitle ?? OnboardingPlanner.NarrowTitle : OnboardingPlanner.LineTitle, Files = files,
-                Narrow = narrow,
-            }, cancellationToken);
+                Author = identity, Committer = identity, Message = bot.Title, Files = bot.Files,
+            }), cancellationToken);
         }
         catch (GitWriterRefusedException ex)
         {
             // #649 D9: #648's refusal reached nobody but a sentence on the state; it is logged now.
-            logger.LogWarning(ex, "Onboarding: the git writer refused {Repository} {Line}'s {What}", repository.FullName, lineBranch, what);
-            return (false, $"no {what} pull request into {lineBranch}: {ex.Message.TrimEnd('.')}");
+            logger.LogWarning(ex, "Onboarding: the git writer refused {Repository} {Branch}'s {What}", repository.FullName, bot.BaseBranch, bot.What);
+            return (false, $"no {bot.What} pull request into {bot.BaseBranch}: {ex.Message.TrimEnd('.')}", null);
         }
         finally
         {
@@ -573,27 +603,64 @@ public partial class OnboardingService : IOnboardingService
         if (pushed.Outcome != GitWriterOutcomes.Pushed)
         {
             if (pushed.Outcome is GitWriterOutcomes.Busy or GitWriterOutcomes.Failed)
-                throw new GitWriterUnavailableException($"The git writer answered {lineBranch}'s {what} with {pushed.Outcome}: {pushed.Detail}");
-            logger.LogWarning("Onboarding: {Repository} {Line}'s {What} was not pushed ({Outcome}): {Detail}", repository.FullName, lineBranch, what, pushed.Outcome, pushed.Detail);
-            return (false, $"no {what} pull request into {lineBranch} ({pushed.Outcome}): {pushed.Detail?.TrimEnd('.')}");
+                throw new GitWriterUnavailableException($"The git writer answered {bot.BaseBranch}'s {bot.What} with {pushed.Outcome}: {pushed.Detail}");
+            logger.LogWarning("Onboarding: {Repository} {Branch}'s {What} was not pushed ({Outcome}): {Detail}", repository.FullName, bot.BaseBranch, bot.What, pushed.Outcome, pushed.Detail);
+            return (false, $"no {bot.What} pull request into {bot.BaseBranch} ({pushed.Outcome}): {pushed.Detail?.TrimEnd('.')}", null);
         }
 
-        var branch = narrow ? OnboardingPlanner.NarrowBranch(line) : OnboardingPlanner.LineBranch(line);
-        var title = narrow ? narrowTitle ?? OnboardingPlanner.NarrowTitle : OnboardingPlanner.LineTitle;
-        var pull = await pulls.FindPullRequestAsync(repository, branch, lineBranch, cancellationToken);
+        var pull = await pulls.FindPullRequestAsync(repository, bot.Branch, bot.BaseBranch, cancellationToken);
         if (pull is null)
         {
             try
             {
-                pull = await pulls.CreatePullRequestAsync(repository, branch, lineBranch, title,
-                    narrowBody ?? OnboardingPlanner.LineBody(lineBranch, files.Select(f => f.Path)), draft: false, cancellationToken);
+                pull = await pulls.CreatePullRequestAsync(repository, bot.Branch, bot.BaseBranch, bot.Title, bot.Body, draft: false, cancellationToken);
             }
             catch (ForgeRequestException ex) when (ex.StatusCode == 422)
             {
-                pull = await pulls.FindPullRequestAsync(repository, branch, lineBranch, cancellationToken) ?? throw ex;
+                pull = await pulls.FindPullRequestAsync(repository, bot.Branch, bot.BaseBranch, cancellationToken) ?? throw ex;
             }
         }
-        return (true, $"opened #{pull.Number} into {lineBranch}");
+        return (true, $"opened #{pull.Number} into {bot.BaseBranch}", pull.HtmlUrl);
+    }
+
+    /// <summary>The MSBuild files a central package conversion reads, and at most how many.</summary>
+    internal const int MaxCentralPackageFiles = 256;
+
+    public async Task<CentralPackageResult> ConvertCentralPackagesAsync(Repository repository, ECentralPackageDirection direction, CancellationToken cancellationToken = default)
+    {
+        if (RefusalBeforePlanning(repository) is { } refusal)
+            return new(false, refusal);
+        var defaultBranch = repository.DefaultBranch!;
+        var git = queues.First(q => q.Provider == repository.Provider);
+        var pulls = updates.First(u => u.Provider == repository.Provider);
+        try
+        {
+            if (await ForgeRepositoryTree.OpenAsync(integrations.For(repository), repository, defaultBranch, cancellationToken) is not { } tree)
+                return new(false, $"{defaultBranch} could not be read from the forge.");
+            var paths = tree.Entries.Keys.Where(LinePaths.IsMsBuild).Order(StringComparer.Ordinal).ToList();
+            if (paths.Count > MaxCentralPackageFiles)
+                return new(false, $"The repository has {paths.Count} MSBuild files; the conversion reads at most {MaxCentralPackageFiles}.");
+            var files = new Dictionary<string, string>(StringComparer.Ordinal);
+            foreach (var path in paths)
+            {
+                if (await ReadTextAsync(tree, path, cancellationToken) is not { } text)
+                    return new(false, $"`{path}` is over {MaxNarrowingFileBytes / 1024} KiB, so the bot does not rewrite it.");
+                files[path] = text;
+            }
+            var conversion = CentralPackageConversion.Plan(files, direction);
+            if (conversion.Refusals.Count > 0)
+                return new(false, string.Join(" ", conversion.Refusals));
+            if (conversion.IsEmpty)
+                return new(false, "There is nothing to convert.");
+            var (opened, note, url) = await BotPullRequestAsync(repository, git, pulls, new BotPullRequest("central package management", defaultBranch, tree.Commit,
+                CentralPackageConversion.Branch, conversion.Title, conversion.Body(), conversion.Files, request => request with { Central = true }), cancellationToken);
+            return new(opened, note, url);
+        }
+        catch (GraphException ex)
+        {
+            logger.LogWarning(ex, "Onboarding: {Repository} was not converted to or from central package management", repository.FullName);
+            return new(false, ex.Message);
+        }
     }
 
     private sealed record Planned(OnboardingPlan? Plan, ForgeRepositoryTree? Tree, IForgeMergeQueue? Git, IForgeDependencyUpdates? Pulls, string? Refusal)

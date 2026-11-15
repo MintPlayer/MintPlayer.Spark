@@ -122,6 +122,8 @@ public partial class RepositoryActions : DefaultPersistentObjectActions<Reposito
             && context.Query?.Name is not ("Account_Repositories" or "GetRepositories"))
         {
             target.DisableActions("SetUpRulesets");
+            // multi-target-dependency-split-PRD P7: the central package management conversion, likewise.
+            target.DisableActions("ConvertCentralPackages");
         }
 
         return Task.CompletedTask;

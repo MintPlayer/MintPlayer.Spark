@@ -186,18 +186,19 @@ public class PlatformInChannelMoveTests
         outcome.AwaitingApproval.Should().BeEmpty();
     }
 
-    /// <summary>H1 boundary: a project that also targets an older channel keeps building for it (#606 D2), so its platform
-    /// packages keep their major; the next one waits for approval as before.</summary>
+    /// <summary>multi-target-dependency-split-PRD D-b (supersedes the H1 boundary "a multi-target project's older platform
+    /// package keeps its major"): the project keeps building for net10.0 with 10.0.15 and takes 11.0.0 for net11.0, as one
+    /// split item in the platform group, so nothing waits for approval.</summary>
     [Fact]
-    public void A_multi_target_projects_older_platform_package_keeps_its_major()
+    public void A_multi_target_projects_platform_package_splits_per_TFM()
     {
         var di = OnNet11(Nuget("Microsoft.Extensions.DependencyInjection", "10.0.5", Candidate(EUpdateType.Patch, "10.0.15"), Candidate(EUpdateType.Major, "11.0.0")));
 
         var outcome = Evaluate(With(OnTheRc().WithTfm(Web, "net10.0;net11.0"), di), now: Later);
 
-        Planned(outcome).Should().Contain("Microsoft.Extensions.DependencyInjection: Microsoft.Extensions.DependencyInjection@10.0.15");
-        outcome.Groups.Single(g => g.Group == "platform:dotnet 11.0").Items.Should().BeEmpty();
-        outcome.AwaitingApproval.Should().ContainSingle(e => e.DepName == "Microsoft.Extensions.DependencyInjection" && e.Target == "11.0.0");
+        var item = outcome.Groups.Single(g => g.Group == "platform:dotnet 11.0").Items.Single();
+        string.Join(", ", item.Layout!.Select(l => $"{l.TargetFramework}={l.Version}")).Should().Be("net10.0=10.0.15, net11.0=11.0.0");
+        outcome.AwaitingApproval.Should().BeEmpty();
     }
 
     /// <summary>H1 boundary: a <c>System.*</c> package that is no platform package (no release on the channel's major) is

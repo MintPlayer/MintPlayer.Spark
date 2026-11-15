@@ -86,13 +86,16 @@ public class CompanionVersionMapTests
         Planned(outcome).Should().ContainSingle(p => p.EndsWith("Microsoft.CodeAnalysis.CSharp@5.12.0", StringComparison.Ordinal));
     }
 
+    /// <summary>multi-target-dependency-split-PRD S6 (supersedes "a multi-target project takes its lowest channel's range"):
+    /// each TFM takes the range keyed by its own channel, so net10.0 keeps 5.0.0 and net11.0 moves to 5.12.0, as one split item
+    /// in the platform group. A ranged package's majors are its own (Roslyn 5.x on .NET 11), not the channel's.</summary>
     [Fact]
-    public void A_multi_target_project_takes_its_lowest_channels_range()
+    public void A_multi_target_project_takes_each_channels_range()
     {
         var outcome = Run(Dotnet("11.0", "11.0.100", "net10.0;net11.0"), Roslyn("5.0.0", "5.12.0"), "{ \"10.0\": \"<=5.0\", \"11.0\": \"<=5.12\" }");
 
-        Planned(outcome).Should().NotContain(p => p.Contains("Microsoft.CodeAnalysis.CSharp"));
-        outcome.Available.Should().Contain(e => e.Reason == EDependencyReportReason.AboveCompanionRange && e.Detail.Contains("10.0"));
+        var item = outcome.Groups.Single(g => g.Group == "platform:dotnet 11.0").Items.Single();
+        string.Join(", ", item.Layout!.Select(l => $"{l.TargetFramework}={l.Version}")).Should().Be("net10.0=5.0.0, net11.0=5.12.0");
     }
 
     [Fact]

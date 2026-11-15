@@ -111,6 +111,16 @@ describe('the platform table (#606 D9, test/fixtures/platform-feeds/platform-tab
     expect(rec.candidates[0].preview).toBe(true);
     expect(buildPlatformRecord('dotnet', [loc], null, NOW)).toMatchObject({ source: 'none', candidates: [] });
   });
+
+  // multi-target-dependency-split-PRD M6: the candidates hold only newer channels, so the bot learns a current channel's
+  // end of life here. 6.0 is EOL (true), 10.0 is not (2028-11-14).
+  it('names the current channels that are end of life, and leaves the field out when none is', () => {
+    const feed = parsePlatformTable(raw).sdks.dotnet!;
+    const tfm = (value: string, channel: string) => ({ sdk: 'dotnet' as const, file: 'a.csproj', kind: 'tfm' as const, value, channel, computed: false, reason: null, line: 0, start: 0, end: 7 });
+    expect(buildPlatformRecord('dotnet', [tfm('net10.0', '10.0'), tfm('net6.0', '6.0')], feed, NOW).current)
+      .toEqual({ channels: ['10.0', '6.0'], preview: false, endOfLife: ['6.0'] });
+    expect('endOfLife' in buildPlatformRecord('dotnet', [tfm('net10.0', '10.0')], feed, NOW).current).toBe(false);
+  });
 });
 
 describe('location scanning on file trees', () => {

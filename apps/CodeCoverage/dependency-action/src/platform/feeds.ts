@@ -90,12 +90,15 @@ export function buildPlatformRecord(sdk: Sdk, found: Found[], feed: PlatformCand
   const same = highest ? (feed ?? []).find((c) => c.channel === highest) : undefined;
   const inChannel = same && inChannelMoveChanges(found, { sdk, fromChannel: highest, toChannel: highest, toVersion: same.latestVersion, sdkVersion: same.latestSdk ?? null });
   const candidates = inChannel ? [...newer, same] : newer;
+  // multi-target-dependency-split-PRD M6: a multi-target project drops a TFM once its channel is end of life, and the
+  // candidates above hold only newer channels, so the current ones that are past it are named here.
+  const endOfLife = channels.filter((ch) => (feed ?? []).some((c) => c.channel === ch && isEol(c.eol, now)));
   return {
     contractVersion: CONTRACT_VERSION,
     kind: 'platform',
     sdk,
     source: feed === null ? 'none' : sdk === 'dotnet' ? 'releases-index' : 'endoflife.date',
-    current: { channels, preview },
+    current: endOfLife.length > 0 ? { channels, preview, endOfLife } : { channels, preview },
     locations: found.map(toLocation),
     candidates,
   };

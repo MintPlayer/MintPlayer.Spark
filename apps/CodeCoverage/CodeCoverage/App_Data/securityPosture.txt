@@ -57,6 +57,7 @@ Administrators | grant | ReadSettings/Repository | c0e5a9e1-0000-4000-8000-00000
 Administrators (dashboards:administrators) | grant | Read/DatabaseStatistics | dashboards:administrators | dashboards
 Administrators (dashboards:administrators) | grant | Read/HostMetrics | c0e5a9e1-0000-4000-8000-000000000091 | app
 Signed-in users | grant | Browse/Coverage | c0e5a9e1-0000-4000-8000-000000000022 | app
+Signed-in users | grant | ConvertCentralPackages/Repository | c0e5a9e1-0000-4000-8000-0000000000b6 | app
 Signed-in users | grant | DeleteData/Repository | c0e5a9e1-0000-4000-8000-000000000061 | app
 Signed-in users | grant | Edit/Account | c0e5a9e1-0000-4000-8000-00000000006b | app
 Signed-in users | grant | Edit/GitHubProject | c0e5a9e1-0000-4000-8000-000000000063 | app

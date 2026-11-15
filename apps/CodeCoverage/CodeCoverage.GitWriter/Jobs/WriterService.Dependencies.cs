@@ -237,6 +237,11 @@ public sealed partial class WriterService
     public Task<DependencyJobResponse> NarrowingAsync(DependencyJob job, DependencyCommit commit, IReadOnlyList<(string Path, string? Content)> files)
         => FilesOnBranchAsync("narrowing", DependencyBranches.NarrowingOf(job.Line!), job, commit, files);
 
+    /// <summary>multi-target-dependency-split-PRD P7: the central package management conversion commit, force-pushed to
+    /// <see cref="DependencyBranches.CentralPackageManagement"/>.</summary>
+    public Task<DependencyJobResponse> CentralPackagesAsync(DependencyJob job, DependencyCommit commit, IReadOnlyList<(string Path, string? Content)> files)
+        => FilesOnBranchAsync("central-packages", DependencyBranches.CentralPackageManagement, job, commit, files);
+
     /// <summary>R14: the work ref is removed after every run, while it is still at <paramref name="expectedSha"/>.</summary>
     public Task<DependencyJobResponse> DependencyDeleteWorkRefAsync(string repo, Uri cloneUrl, GitCredential credential, string? expectedSha, string? line = null)
         => jobs.RunAsync("dependencies-delete", repo, async context =>
@@ -408,4 +413,7 @@ public static class DependencyBranches
 
     /// <summary>#638 D15: the branch of a line's narrowing pull request.</summary>
     public static string NarrowingOf(string line) => $"mintplayer/narrow-{line}";
+
+    /// <summary>multi-target-dependency-split-PRD P7: the branch of the central package management conversion's pull request.</summary>
+    public const string CentralPackageManagement = "mintplayer/central-package-management";
 }

@@ -39,6 +39,12 @@ internal sealed partial class GitWriterOnboardingEndpoint : IPostEndpoint<Versio
         if (DependencyFields.Job(refusal, request, options.Value.AllowInsecureHttp) is not { } job
             || DependencyFields.Commit(refusal, request) is not { } commit)
             return refusal.Result();
+        if (request.Central)
+        {
+            if (refusal.Check(job.Line is null && !request.Narrow ? CentralFiles(request.Files) : null, "files", CentralFilesRule) is not { } central)
+                return refusal.Result();
+            return Results.Json(await writer.CentralPackagesAsync(job, commit, central), GitWriterHost.Json);
+        }
         if (request.Narrow)
         {
             if (refusal.Check(job.Line is null ? null : NarrowFiles(request.Files), "files", NarrowFilesRule) is not { } narrowed)
@@ -66,6 +72,36 @@ internal sealed partial class GitWriterOnboardingEndpoint : IPostEndpoint<Versio
                 // #649: IsSafePath refuses every .github/ path; IsNarrowable admits exactly the top-level workflows there.
                 || !PatchValidator.IsWritablePath(path)
                 || !LinePaths.IsNarrowable(path))
+                return null;
+            list.Add((path, content));
+        }
+        return list;
+    }
+
+    /// <summary>multi-target-dependency-split-PRD P7 (M7, M10): the central package management conversion rewrites MSBuild
+    /// files on the default branch, and adds or deletes only <c>Directory.Packages.props</c>.</summary>
+    public const string CentralFilesRule = "for the central package management conversion, on the default branch only: 1 to 256 distinct MSBuild files "
+        + "(.csproj, .fsproj, .vbproj, .props, .targets) of at most 256 KiB; only Directory.Packages.props may be deleted";
+
+    internal static List<(string Path, string? Content)>? CentralFiles(List<DependencyFileWire>? wires)
+    {
+        if (wires is not { Count: > 0 and <= GitWriterVersioningOnboardingEndpoint.MaxFiles }) return null;
+        var list = new List<(string Path, string? Content)>();
+        foreach (var wire in wires)
+        {
+            if (wire?.Path is not { } path
+                || list.Any(f => f.Path.Equals(path, StringComparison.OrdinalIgnoreCase))
+                || !PatchValidator.IsWritablePath(path)
+                || !LinePaths.IsMsBuild(path))
+                return null;
+            if (wire.Delete)
+            {
+                if (wire.Content is not null || !string.Equals(System.IO.Path.GetFileName(path), "Directory.Packages.props", StringComparison.OrdinalIgnoreCase))
+                    return null;
+                list.Add((path, null));
+                continue;
+            }
+            if (wire.Content is not { Length: <= GitWriterVersioningOnboardingEndpoint.MaxFileBytes } content)
                 return null;
             list.Add((path, content));
         }
