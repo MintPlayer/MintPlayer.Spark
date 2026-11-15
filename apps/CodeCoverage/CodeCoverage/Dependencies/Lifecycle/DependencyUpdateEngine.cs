@@ -267,6 +267,7 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
         var parsed = DependenciesYml.Parse(yml);
         foreach (var error in parsed.Errors.Take(5))
             run.Note(Now, $"coverage.yml: {error}");
+        run.ConfigProblems = [.. parsed.Errors.Take(20)];
         run.FileMergeQueue = DependencyFileMergeQueue.State(yml, defaultBranch);
         run.FileFrequency = parsed.Section.Schedule?.Frequency;
         run.FileWeekday = parsed.Section.Schedule?.Weekday;
@@ -541,8 +542,15 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
         if (context.Account?.Id is not null)
             await ConfirmOwnReleasesAsync(context, lookup, fleet, ct);
 
+        // companion-version-maps-PRD §6.4: what each SDK band ships, for the bundled companions; one request for all bands.
+        var components = lookup.Platforms.Any(p => p.Sdk == "dotnet")
+            ? (await session.Advanced.LoadStartingWithAsync<PlatformLifecycle.SdkBandComponents>(PlatformLifecycle.SdkBandComponents.Prefix, pageSize: 256, token: ct))
+                .Where(b => !b.TagMissing).Select(b => new SdkComponentVersions(b.Band, b.Msbuild, b.Roslyn, b.Nuget)).ToList()
+            : [];
+
         var outcome = DependencyPolicyEngine.Evaluate(new DependencyPolicyInput
         {
+            SdkComponents = components,
             Lookup = lookup,
             Config = config,
             State = state,

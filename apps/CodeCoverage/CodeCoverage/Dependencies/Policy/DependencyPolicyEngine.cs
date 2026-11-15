@@ -3,6 +3,7 @@ using CodeCoverage.Entities;
 using CodeCoverage.Git.Dependencies;
 using CodeCoverage.Git.MergeQueue.Resolution.Manifests;
 using CodeCoverage.LookupReferences;
+using CodeCoverage.Versioning.Versions;
 
 namespace CodeCoverage.Dependencies.Policy;
 
@@ -65,6 +66,7 @@ public static class DependencyPolicyEngine
         context.FindCompanions(considered, input.Lookup.Platforms);
         foreach (var platform in input.Lookup.Platforms)
             context.EvaluatePlatform(platform);
+        context.ApplyCompanionRanges();
 
         var groups = new Dictionary<string, List<LookupRecord>>(StringComparer.Ordinal);
         var order = new List<string>();
@@ -166,6 +168,28 @@ public static class DependencyPolicyEngine
         private readonly Dictionary<string, List<LookupRecord>> companions = new(StringComparer.Ordinal);
         private readonly Dictionary<LookupRecord, string> companionOf = new(ReferenceEqualityComparer.Instance);
         private readonly HashSet<LookupRecord> riding = new(ReferenceEqualityComparer.Instance);
+        /// <summary>follower-cooldown-PRD H1: per SDK, the companions on an older major in a project that targets only the SDK's
+        /// channel. They move to the channel's major, with the platform group or in one of their own.</summary>
+        private readonly Dictionary<string, List<LookupRecord>> lagging = new(StringComparer.Ordinal);
+
+        /// <summary>companion-version-maps-PRD §6.2: a record whose first matching companion entry carries a range
+        /// (<c>versions</c> or <c>bundled</c>), with the key channel of its project and its range for the repository's SDK.</summary>
+        private sealed record Ranged(string Sdk, DependencyCompanionEntry Entry, string? Channel, string? RepositorySdk, CompanionRange? Current);
+
+        private sealed record CompanionRange(NpmRange Range, string Label);
+
+        private readonly Dictionary<LookupRecord, Ranged> ranged = new(ReferenceEqualityComparer.Instance);
+
+        /// <summary>§6.3: the ranged records below their range, which align like H1.</summary>
+        private readonly Dictionary<string, List<LookupRecord>> rangedBehind = new(StringComparer.Ordinal);
+
+        /// <summary>§6.3: the ranged records that do not ride, with only the candidates inside their range.</summary>
+        private readonly Dictionary<LookupRecord, LookupRecord?> rangedView = new(ReferenceEqualityComparer.Instance);
+
+        /// <summary>The channel of a .NET TFM token (<c>net11.0</c>, <c>net11.0-windows</c> → <c>11.0</c>); null for
+        /// <c>netstandard2.0</c> and .NET Framework (<c>net481</c>).</summary>
+        private static string? TfmChannel(string tfm)
+            => System.Text.RegularExpressions.Regex.Match(tfm, @"^net(\d+\.\d+)(-|$)", System.Text.RegularExpressions.RegexOptions.IgnoreCase, TimeSpan.FromSeconds(1)) is { Success: true } m ? m.Groups[1].Value : null;
 
         private static long? MajorOf(LookupRecord record) => UpdateTypeFloor.LeadingNumber(record.CurrentVersion ?? record.CurrentValue);
 
@@ -188,27 +212,138 @@ public static class DependencyPolicyEngine
                     continue;
                 if (UpdateTypeFloor.LeadingNumber(platform.Current.Channels.FirstOrDefault()) is not { } major)
                     continue;
-                var globs = config.Companions(sdk);
-                if (globs.Count == 0)
+                if (config.Companions(sdk).Count == 0)
                     continue;
                 // follower-cooldown-PRD FS4/S2: a project whose every tfm names no channel (netstandard2.0, net48) has no
                 // platform to move, so its references are ordinary packages. A file without a tfm (Directory.Packages.props)
                 // can't be told and stays a companion.
                 var standardOnly = platform.Locations.Where(l => l.Kind == "tfm").GroupBy(l => l.File, StringComparer.Ordinal)
                     .Where(g => g.All(l => l.Channel is null)).Select(g => g.Key).ToHashSet(StringComparer.Ordinal);
+                // follower-cooldown-PRD H1: a project that targets only the platform's channel (every token of every tfm, none
+                // computed), and a tool manifest, which runs on the SDK.
+                var channel = platform.Current.Channels[0];
+                var onChannel = platform.Locations.Where(l => l.Kind == "tfm").GroupBy(l => l.File, StringComparer.Ordinal)
+                    .Where(g => g.All(l => !l.Computed && l.Value.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                        .All(t => TfmChannel(t) == channel))).Select(g => g.Key).ToHashSet(StringComparer.Ordinal);
+                bool TargetsOnlyTheChannel(string file) => onChannel.Contains(file) || sdk == "dotnet" && file.EndsWith("dotnet-tools.json", StringComparison.Ordinal);
+                // companion-version-maps-PRD §6.2: a project's key channel is its lowest (it must load there too); a file
+                // with no TFM (Directory.Packages.props, a tool manifest) takes the repository's.
+                var lowest = platform.Locations.Where(l => l.Kind == "tfm" && !l.Computed)
+                    .SelectMany(l => l.Value.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Select(t => (l.File, Channel: TfmChannel(t))))
+                    .Where(t => t.Channel is not null).GroupBy(t => t.File, StringComparer.Ordinal)
+                    .ToDictionary(g => g.Key, g => g.Select(t => t.Channel!).MinBy(ChannelOrder)!, StringComparer.Ordinal);
+                var repositorySdk = RepositorySdk(platform);
                 var list = new List<LookupRecord>();
-                foreach (var record in records.Where(r => r.Ecosystem == ecosystem && !companionOf.ContainsKey(r) && !standardOnly.Contains(r.PackageFile)))
+                var behind = new List<LookupRecord>();
+                var below = new List<LookupRecord>();
+                foreach (var record in records.Where(r => r.Ecosystem == ecosystem && !companionOf.ContainsKey(r) && !ranged.ContainsKey(r) && !standardOnly.Contains(r.PackageFile)))
                 {
                     // follower-cooldown-PRD G2: an upstream package of the account rides like a Microsoft one.
-                    if (!globs.Any(g => DependencyGlob.Matches(g, record.DepName)) && !config.IsAccountPackage(record.Ecosystem, record.DepName))
+                    // companion-version-maps-PRD §6.1: the first matching entry decides; a versions/bundled entry gives a range.
+                    var entry = config.CompanionEntry(sdk, record.DepName);
+                    if (entry is { IsChannelRule: false })
+                    {
+                        var keyChannel = lowest.GetValueOrDefault(record.PackageFile) ?? channel;
+                        var one = new Ranged(sdk, entry, keyChannel, repositorySdk, RangeOf(entry, repositorySdk, keyChannel));
+                        ranged[record] = one;
+                        if (one.Current is { } range && !Admits(range, record.CurrentVersion ?? record.CurrentValue)
+                            && record.Candidates.Any(c => Admits(range, c.Version) && Compare(c.Version, record.CurrentVersion ?? record.CurrentValue) > 0))
+                            below.Add(record);
                         continue;
-                    if (MajorOf(record) != major)
+                    }
+                    if (entry is null && !config.IsAccountPackage(record.Ecosystem, record.DepName))
                         continue;
-                    list.Add(record);
+                    if (MajorOf(record) == major)
+                        list.Add(record);
+                    else if (MajorOf(record) < major && TargetsOnlyTheChannel(record.PackageFile) && record.Candidates.Any(c => MajorOf(c) == major))
+                        behind.Add(record);
+                    else
+                        continue;
                     companionOf[record] = sdk;
                 }
                 if (list.Count > 0)
                     companions[sdk] = list;
+                if (behind.Count > 0)
+                    lagging[sdk] = behind;
+                if (below.Count > 0)
+                    rangedBehind[sdk] = below;
+            }
+        }
+
+        /// <summary>companion-version-maps-PRD S4: the repository's SDK version: <c>global.json</c>'s, else the lowest exact
+        /// <c>setup-dotnet</c> version, else the newest SDK of the repository's channel (what a floating <c>11.0.x</c> installs).</summary>
+        private static string? RepositorySdk(PlatformRecord platform)
+        {
+            static bool Exact(string value) => SemVer.TryParse(value, out _);
+            var exact = platform.Locations.Where(l => !l.Computed && Exact(l.Value));
+            return exact.FirstOrDefault(l => l.Kind == "global.json")?.Value
+                ?? exact.Where(l => l.Kind == "setup-action").Select(l => l.Value).MinBy(v => SemVer.TryParse(v, out var s) ? s : null)
+                ?? platform.Candidates.FirstOrDefault(c => c.Channel == platform.Current.Channels.FirstOrDefault())?.LatestSdk;
+        }
+
+        /// <summary>The SDK feature band of an SDK version: <c>11.0.100-rc.2</c>, <c>11.0.105</c> → <c>11.0.1xx</c>.</summary>
+        private static string? Band(string? sdk)
+            => SemVer.TryParse(sdk, out var v) && v.Patch >= 100 ? $"{v.Major}.{v.Minor}.{v.Patch / 100}xx" : null;
+
+        private static (int, int) ChannelOrder(string channel)
+        {
+            var parts = channel.Split('.');
+            return (int.TryParse(parts[0], CultureInfo.InvariantCulture, out var major) ? major : 0,
+                parts.Length > 1 && int.TryParse(parts[1], CultureInfo.InvariantCulture, out var minor) ? minor : 0);
+        }
+
+        /// <summary>§6.2: the range an entry gives a record on <paramref name="sdk"/>, keyed by its band first, then by the
+        /// record's channel; for a <c>bundled</c> entry, <c>&lt;=major.minor</c> of the component that SDK ships (§6.4).</summary>
+        private CompanionRange? RangeOf(DependencyCompanionEntry entry, string? sdk, string? channel)
+        {
+            if (entry.Bundled is { } component)
+            {
+                var shipped = Band(sdk) is { } sdkBand && input.SdkComponents.FirstOrDefault(c => c.Band == sdkBand) is { } found
+                    ? component switch
+                    {
+                        EDependencyBundledComponent.Msbuild => found.Msbuild,
+                        EDependencyBundledComponent.Roslyn => found.Roslyn,
+                        _ => found.Nuget,
+                    }
+                    : null;
+                if (!SemVer.TryParse(shipped, out var version) || !NpmRange.TryParse($"<={version.Major}.{version.Minor}", out var ceiling))
+                    return null;
+                return new CompanionRange(ceiling, $"<={version.Major}.{version.Minor}, the {component.ToString().ToLowerInvariant()} SDK {sdk} ships");
+            }
+            if (entry.Versions is not { } map)
+                return null;
+            var key = Band(sdk) is { } band && map.ContainsKey(band) ? band : channel is not null && map.ContainsKey(channel) ? channel : null;
+            return key is not null && NpmRange.TryParse(map[key], out var range) ? new CompanionRange(range, $"{map[key]} for {key}") : null;
+        }
+
+        private static bool Admits(CompanionRange range, string? version) => version is not null && range.Range.Admits(version);
+
+        private static int Compare(string? a, string? b)
+            => SemVer.TryParse(a, out var x) && SemVer.TryParse(b, out var y) ? x.CompareTo(y) : 0;
+
+        /// <summary>§6.3: the highest release of a ranged record inside <paramref name="range"/> that may move now.</summary>
+        private View? RangeRider(LookupRecord record, CompanionRange range, bool skipCooldown)
+            => Candidates(record).Where(v => v.Problem is null && (skipCooldown || !v.InCooldown) && Admits(range, Token(v.Candidate)))
+                .OrderByDescending(v => SemVer.TryParse(Token(v.Candidate), out var s) ? s : null).FirstOrDefault();
+
+        /// <summary>
+        /// companion-version-maps-PRD §6.3: a ranged record that does not ride keeps only its candidates inside its range for
+        /// the package groups; the highest one above it is listed as available. A record with no range is left alone.
+        /// </summary>
+        public void ApplyCompanionRanges()
+        {
+            foreach (var (record, one) in ranged)
+            {
+                if (riding.Contains(record) || one.Current is not { } range)
+                    continue;
+                var within = record.Candidates.Where(c => Admits(range, c.Version)).ToList();
+                var above = record.Candidates.Where(c => !Admits(range, c.Version) && Compare(c.Version, record.CurrentVersion ?? record.CurrentValue) > 0)
+                    .MaxBy(c => SemVer.TryParse(c.Version, out var s) ? s : null);
+                if (above is not null)
+                    Report(new DependencyReportEntry($"platform:{one.Sdk}", record.Ecosystem, record.DepName, record.PackageFile, record.CurrentValue,
+                        Token(above), null, EDependencyReportReason.AboveCompanionRange,
+                        $"above {range.Label} (platforms.{one.Sdk}.companions; companion-version-maps)"));
+                rangedView[record] = within.Count == 0 ? null : record with { Candidates = within };
             }
         }
 
@@ -220,6 +355,8 @@ public static class DependencyPolicyEngine
         {
             if (riding.Contains(record))
                 return null;
+            if (rangedView.TryGetValue(record, out var view))
+                return view;
             if (!companionOf.ContainsKey(record))
                 return record;
             var major = MajorOf(record);
@@ -230,7 +367,7 @@ public static class DependencyPolicyEngine
         /// <summary>The companions of an SDK whose next major is not riding: each is listed as moving with the platform.</summary>
         private void ReportStranded(string sdk)
         {
-            foreach (var record in companions.GetValueOrDefault(sdk) ?? [])
+            foreach (var record in (companions.GetValueOrDefault(sdk) ?? []).Concat(lagging.GetValueOrDefault(sdk) ?? []))
             {
                 if (riding.Contains(record))
                     continue;
@@ -359,7 +496,7 @@ public static class DependencyPolicyEngine
             var list = entry.Reason switch
             {
                 EDependencyReportReason.Cooldown or EDependencyReportReason.PreviewNotFollowed or EDependencyReportReason.NotInSecurityRun
-                    or EDependencyReportReason.MovesWithPlatform or EDependencyReportReason.Lockstep => available,
+                    or EDependencyReportReason.MovesWithPlatform or EDependencyReportReason.Lockstep or EDependencyReportReason.AboveCompanionRange => available,
                 EDependencyReportReason.AwaitingApproval => awaiting,
                 EDependencyReportReason.Ignored or EDependencyReportReason.Excluded or EDependencyReportReason.Skipped => ignored,
                 _ => held,
@@ -593,8 +730,46 @@ public static class DependencyPolicyEngine
         public void EvaluatePlatform(PlatformRecord platform)
         {
             EvaluatePlatformMove(platform);
+            AlignLagging(platform);
             ReportStranded(platform.Sdk);
         }
+
+        /// <summary>
+        /// follower-cooldown-PRD H1: the platform packages of a project that targets only the SDK's channel, still on an older
+        /// major, take the channel's major. With no platform move planned to ride in (the channel is released, or the move
+        /// waits), they are a group of their own under the platform's name, at the platform's in-channel level (a patch).
+        /// </summary>
+        private void AlignLagging(PlatformRecord platform)
+        {
+            if (planned.Any(g => g.Platform?.Sdk == platform.Sdk) || platform.Current.Channels.Count == 0)
+                return;
+            var current = platform.Current.Channels[0];
+            var picks = LaggingRiders(lagging.GetValueOrDefault(platform.Sdk) ?? [], UpdateTypeFloor.LeadingNumber(current), platform.Current.Preview);
+            // companion-version-maps-PRD §6.3: a record below its range aligns the same way, to the highest release inside it.
+            picks.AddRange((rangedBehind.GetValueOrDefault(platform.Sdk) ?? []).Select(r => RangeRider(r, ranged[r].Current!, skipCooldown: false)).OfType<View>());
+            if (picks.Count == 0)
+                return;
+            var group = $"platform:{platform.Sdk} {current}";
+            var eco = picks[0].Record.Ecosystem;
+            var groupPlan = new DependencyPlannedGroup
+            {
+                Group = group,
+                Level = EUpdateLevel.Patch,
+                AutoMerge = (int)EUpdateLevel.Patch <= (int)config.Threshold(eco, picks[0].Record.DepName),
+                DepNames = [.. picks.Select(v => v.Record.DepName).Distinct(StringComparer.Ordinal)],
+                Items = [.. picks.Select(v => new DependencyPlannedItem(v.Record, v.Candidate, v.Level))],
+                TargetMajors = Targets(picks.Select(v => (v.Record.DepName, Token(v.Candidate)))),
+            };
+            if (Add(groupPlan, picks.Select(v => Entry(group, v, EDependencyReportReason.NotInSecurityRun, "left for the next scheduled slot (R10)"))))
+                riding.UnionWith(picks.Select(v => v.Record));
+        }
+
+        /// <summary>H1: each lagging record's release on <paramref name="major"/> that may move now (no problem, not cooling
+        /// down; a prerelease only towards a preview channel). A record without one stays behind and is listed.</summary>
+        private List<View> LaggingRiders(IEnumerable<LookupRecord> behind, long? major, bool preview)
+            => [.. behind.Select(r => Candidates(r).FirstOrDefault(v => v.Problem is null && !v.InCooldown && MajorOf(v.Candidate) == major
+                    && (preview || !IsPreviewToken(Token(v.Candidate)))))
+                .OfType<View>()];
 
         /// <summary>#606 D8: whether a channel is on the SDK's track (lts: an LTS release; stable: no preview; preview: any).</summary>
         private static bool OnTrack(PlatformCandidate candidate, EDependencyTrack track) => track switch
@@ -725,14 +900,28 @@ public static class DependencyPolicyEngine
                             riders.Add(pick);
                     }
                     missing = [.. missing.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)];
-                    if (missing.Count > 0 && !Approved(group, [eco], targets, force: true))
-                    {
-                        var names = missing.Count <= 5 ? string.Join(", ", missing) : $"{string.Join(", ", missing.Take(5))} and {missing.Count - 5} more";
-                        var waitsFor = toRelease ? $"their {major} release" : $"{major}.x";
-                        Report(Entry(target, level, EDependencyReportReason.Pending,
-                            $"waiting on {names} to release {waitsFor}: comment '/approve {group} --force' to move without them"));
-                        return false;
-                    }
+                }
+                // follower-cooldown-PRD H1: the older-major packages of the channel's projects ride to the target major. One
+                // without a release there stays behind (listed), and never holds the move: it is behind already.
+                if (lagging.GetValueOrDefault(platform.Sdk) is { } behind && toMajor is { } toM)
+                    riders.AddRange(LaggingRiders(behind, toM, target.Preview));
+                // companion-version-maps-PRD §6.3: a ranged record rides to the highest release inside its range for the target
+                // SDK (a project on the channel being moved takes the target channel's key). It never holds the move.
+                foreach (var (record, one) in ranged.Where(p => p.Value.Sdk == platform.Sdk))
+                {
+                    var keyChannel = one.Channel == current ? target.Channel : one.Channel;
+                    if (RangeOf(one.Entry, target.LatestSdk ?? one.RepositorySdk, keyChannel) is { } range
+                        && !(Admits(range, record.CurrentVersion ?? record.CurrentValue) && one.Current is { } now && range.Range.Text == now.Range.Text)
+                        && RangeRider(record, range, skipCooldown: true) is { } rider)
+                        riders.Add(rider);
+                }
+                if (missing.Count > 0 && !Approved(group, [eco], targets, force: true))
+                {
+                    var names = missing.Count <= 5 ? string.Join(", ", missing) : $"{string.Join(", ", missing.Take(5))} and {missing.Count - 5} more";
+                    var waitsFor = toRelease ? $"their {toMajor} release" : $"{toMajor}.x";
+                    Report(Entry(target, level, EDependencyReportReason.Pending,
+                        $"waiting on {names} to release {waitsFor}: comment '/approve {group} --force' to move without them"));
+                    return false;
                 }
 
                 var ceiling = config.Ceiling(eco, eco);

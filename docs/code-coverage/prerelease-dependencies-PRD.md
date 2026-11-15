@@ -1,7 +1,6 @@
 # Prerelease dependencies, stable packages and platform approvals (MintPlayer.Dotnet.Tools)
 
-Status: **investigated 2026-11-15; owner decided Q1-Q3 the same day (§6, decision log); M0 issue filed**. No Spark
-code is implemented yet; next is M1 (spikes). This PRD is also the
+Status: **merged** in PR #671 (2026-11-15; M1-M9). Owner decided Q1-Q3 on 2026-11-15 (§6, decision log). This PRD is also the
 plan (§8-§10). It continues `versioning-beta-upstream-PRD.md` (whose M4 is still open) and refines decisions in
 `platform-locations-PRD.md` (P11) and `dependency-updates-PRD.md` (D-P18, #606 D8). Where this text proposes changing
 one of those decisions, it says so and waits for the owner.

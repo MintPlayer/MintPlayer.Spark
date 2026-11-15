@@ -1,6 +1,6 @@
 # Pins that follow a dependency: versions the bot can't see (SeoTester's Playwright)
 
-Status: **M0-M8 done, PR #672** (2026-11-15). After deploy: the next Playwright release should arrive as one green group. Branch `feat/dependency-companion-pins`.
+Status: **merged** in PR #672 (2026-11-15; M0-M8). Left: the next Playwright release should arrive as one green group. Branch `feat/dependency-companion-pins`.
 
 ## 1. The problem (owner, 2026-11-15)
 

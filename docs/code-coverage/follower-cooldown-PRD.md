@@ -1,6 +1,7 @@
 # A follower waits on its leader's clock, not its own (and: upstream repositories first, mixed .NET Standard repos)
 
-Status: **investigating** (2026-11-15). Branch `fix/follower-cooldown` (from master 15088b6e5, #672 merged + deployed).
+Status: **merged** in PR #674 (2026-11-15, branch `fix/follower-cooldown`); H1 (a project on the SDK's channel takes the
+channel's major) followed in PR #676, together with [companion-version-maps-PRD](companion-version-maps-PRD.md).
 Predecessor: [dependency-companion-pins-PRD](dependency-companion-pins-PRD.md) (`follow:`, lockstep).
 
 ## 1. The problem (observed 2026-11-15)
@@ -239,3 +240,4 @@ of a timestamp-less leader is.
 | E1 | The follower's own first-seen clock held #673's playwright group 3 days. | PR #673 body; `DependencyPolicyEngine.cs:316,934` |
 | E2 | A follower candidate carries the leader's token as `version`, so it shares the leader's first-seen clock. | S1 |
 | E3 | GitHub Packages is read with the job's token (`packages: read`), never bypassed with a nuget.org fallback. | S4 (a)-(c); `dependency-apply.yml:39,70-71` |
+| H1 | **A project that targets only the SDK's channel takes the channel's major of its companions** (supersedes platform-locations-PRD P4). In a file whose every `tfm` token is the channel (none computed), and in a `dotnet-tools.json`, a companion on an older major with a release on the channel's major moves there without approval: riding in the planned platform group, else in a `platform:<sdk> <channel>` group of its own at patch level. It never holds the move. Multi-target projects (`net10.0;net11.0`) keep #606 D2. `dotnet-ef` joins the built-in companions. | Owner, 2026-11-15, Dotnet.Tools #215 review ("Why not 11.0.0?" on `dotnet-ef` 8.0.3 → 8.0.34; "Why not 11.x.x ?" on `DemoWebApp.csproj` and `FolderHasher.Tests.csproj`, both `net11.0` with 10.0.5 → 10.0.15) and "Our tests should reflect these expectations". Red → green: `PlatformInChannelMoveTests` 3 failed / 14 passed → 17/17; policy tests 304/304. `DependencyPolicyEngine.cs` `FindCompanions`, `AlignLagging`, `LaggingRiders` |

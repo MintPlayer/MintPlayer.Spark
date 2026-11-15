@@ -93,6 +93,10 @@ public class DependencyUpdateRun
     /// <summary>The file opted out (<c>dependencies.enabled: false</c>) when last read.</summary>
     public bool FileDisabled { get; set; }
 
+    /// <summary>companion-version-maps-PRD §6.5: the default branch's <c>coverage.yml</c> problems when last read (at most
+    /// 20), which the pull request lists; an erroneous section falls back to its defaults.</summary>
+    public List<string> ConfigProblems { get; set; } = [];
+
     /// <summary>
     /// #568 D13, on the default branch's run: the supported release lines (<c>dotnet-10.x</c>, …) when the file was last read,
     /// each of which the scheduler gives a run of its own in the same slot. Empty without <c>versioning.lines</c>, or with

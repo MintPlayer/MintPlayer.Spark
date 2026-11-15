@@ -96,6 +96,8 @@ public static class DependencyOnboarding
         #       onMajor: nx-migrate.yml
         #   platforms:                       # SDK moves (TFMs, global.json, setup-* inputs, Dockerfile FROM, …), per SDK
         #     dotnet: { strategy: replace }  # track: lts | stable | preview (the account's, else stable); strategy: add keeps the old TFM too
+        #     # dotnet companions may pin a range per channel or SDK band, and `builtin` keeps the built-in list:
+        #     # dotnet: { companions: [{ match: "Microsoft.CodeAnalysis*", versions: { "11.0.1xx": "5.12.x" } }, builtin] }
         #     node: { companions: ["@types/node"] }   # packages that move with the SDK's major; [] turns them off
         """);
 

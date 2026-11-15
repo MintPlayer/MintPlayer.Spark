@@ -43,3 +43,17 @@ What these captures say, and the tests rely on:
   2026-11-08). Node's newest release candidate is `v26.4.0-rc.0`, below its released 26: no node preview.
 - php.net writes `"enabled": false` on the withdrawn 8.2/8.3 entries and no `enabled` at all on the published ones.
 - endoflife.date flags LTS releases for nodejs and eclipse-temurin only.
+
+## companion-version-maps-PRD S1 (captured 2026-11-15)
+
+The .NET VMR's component sources at an SDK's release tag, for `v10.0.100`, `v10.0.300` and `v11.0.100`:
+
+| File | URL |
+|---|---|
+| `vmr-v<sdk>-msbuild-Versions.props` | https://raw.githubusercontent.com/dotnet/dotnet/v&lt;sdk&gt;/src/msbuild/eng/Versions.props |
+| `vmr-v<sdk>-roslyn-Versions.props` | https://raw.githubusercontent.com/dotnet/dotnet/v&lt;sdk&gt;/src/roslyn/eng/Versions.props |
+| `vmr-v<sdk>-nuget-config.props` | https://raw.githubusercontent.com/dotnet/dotnet/v&lt;sdk&gt;/src/nuget-client/build/config.props |
+
+What they say: MSBuild `VersionPrefix` 18.0.2 / 18.6.3 / 18.12.2; Roslyn Major/Minor/PatchVersion 5.0.0 / 5.6.0 /
+5.12.0; NuGet Major/Minor/PatchNuGetVersion 7.0.0 / 7.6.0 / 8.0.0. The VMR's `src/sdk/eng/Version.Details.xml` is stale
+(10.0.300 names MSBuild 18.0.11), so it is not used.

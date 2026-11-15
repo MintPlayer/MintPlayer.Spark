@@ -41,6 +41,16 @@ public static class DependencyPullRequestBody
         if (run.MigratedGroups.Count > 0)
             body.AppendLine($"> 🛠️ **Contains code migrations** ({Words(run.MigratedGroups)}). It never auto-merges: review the changed source.").AppendLine();
 
+        // companion-version-maps-PRD §6.5: a section with an error falls back to its defaults, so the problems come first.
+        if (run.ConfigProblems.Count > 0)
+        {
+            body.AppendLine("## Configuration problems").AppendLine();
+            body.AppendLine($"{Code("coverage.yml")} on the default branch has problems; a section with one runs on its defaults until it is fixed.").AppendLine();
+            foreach (var problem in run.ConfigProblems.Take(MaxRows))
+                body.AppendLine($"- {Cell(problem)}");
+            body.AppendLine();
+        }
+
         body.AppendLine("## Applied").AppendLine();
         if (report.Groups.Count == 0)
             body.AppendLine("Nothing this time.").AppendLine();
