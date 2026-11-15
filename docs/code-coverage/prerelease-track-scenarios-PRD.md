@@ -71,6 +71,33 @@ Left as they are, by decision (§6): an rc of the **next** major on an older cha
 an `11.0.0-rc` on channel 10) is above the channel's major and is no companion; it follows its track as an ordinary
 package. An enforced stable account rule over a companion on an rc keeps it from moving to a newer rc, and reports why.
 
+### 3.5 The owner's expectations, one test each
+
+Owner, 2026-11-15: "packages matching specific globs follow the SDK version, preview-sdk allow preview packages, stable
+sdk only allows stable packages, unless they're on an exclusion list in the coverage.yml file". `PlatformExpectationTests`:
+
+| # | Expectation or documented exception | Result |
+|---|---|---|
+| E1 | major move (approved): companions ride to the new major; an ordinary package stays in its own group | ✔ |
+| E2 | `net11.0`-only project: an older-major companion takes the channel's major | ✔ |
+| E3 | project on an older channel than the SDK's: keeps its major (patch planned, major awaits approval) | ✔ |
+| E4 | `netstandard2.0` project: ordinary packages | ✔ |
+| E5 | **SDK on its RC, `net11.0` project, Hosting 10.0.5: takes `11.0.0-rc.2`** | ✘ before D8 (got 10.0.15) |
+| E5b | same, with `track: stable` on Hosting: 10.0.15 | ✔ |
+| E5c | same SDK, `net10.0` project: 10.0.15 | ✔ |
+| E6 | preview SDK, ordinary stable package: stables only, preview listed | ✔ |
+| E7 | `platforms.dotnet.track: preview`: companions get previews | ✔ |
+| E8 | released SDK, stable companion: stable patch, preview listed | ✔ |
+| E9 | released SDK: a next-major preview is not offered | ✔ |
+| E10 | exception: a package already on a next-major prerelease follows its prereleases as an ordinary package | ✔ |
+| E11 | `ignore` in coverage.yml: not moved | ✔ |
+| E12 | `track: stable` on an rc: takes the release | ✔ |
+| E13 | enforced stable account rule beats the file's `track: preview` | ✔ |
+| E14 | a non-enforced account `track: preview` is an explicit choice | ✔ |
+| E15 | `hold: true` in coverage.yml: not moved | ✔ |
+
+The non-platform track rules are `PackagePrereleaseTrackTests` A1–A5 (beta package, preview rule, enforced stable).
+
 ### 3.4 Documentation contradictions found
 
 - "H1" names two decisions: prerelease-dependencies-PRD H1 (the default track) and follower-cooldown-PRD H1 (channel
@@ -114,4 +141,5 @@ apply side is unchanged by this work; the defect was only ever in what the plan 
 | D4 | A `Directory.Packages.props` targets only the channel when every project with a `tfm` under its folder does (and at least one does). It then aligns like a project; otherwise P6 splits it. | T5 red → green; T6 |
 | D5 | A bot hold (R2 blocker or unattributed) on a platform group binds to the **items it refused**, not only the group's name. A plan with other items lifts it; the same items stay held, so an unchanged lookup does not loop. A hold from before D5 has no items and lifts once; the next refusal records them. The alignment group under the platform's name honours the same hold, and waits while the move is held. | S4, S5; T12–T15; E2E red → green; S6 mutation |
 | D6 | An rc of a major above the channel's (`12.0.0-preview` on channel 11) stays an ordinary package on its track. | Unchanged behaviour; #606 D2 ("moves with the platform" applies to the next major only with the SDK's move) |
+| D8 | **On an SDK the repository is on a preview of, a companion's prerelease on the channel's major is offered** (the platform's own phase), unless a rule chose `track: stable`. Only companions count (projects on the channel only, or companions on the channel's major), so a `net10.0` project and ordinary packages stay on stables. Before, the track screen dropped the rc before the lagging riders saw it, so `LaggingRiders`' `preview` flag never applied to a package on a stable. | Owner, 2026-11-15 ("preview-sdk allow preview packages"); E5 red (10.0.15) → green; E5b, E5c boundaries; dependency tests 728/728 |
 | D7 | No apply-side (TypeScript) change or test. | §5; the refusal message in PR #218 shows the apply resolving exactly what was planned |

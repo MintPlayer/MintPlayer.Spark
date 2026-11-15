@@ -170,6 +170,8 @@ public static class DependencyPolicyEngine
         // #606 D2: each SDK's companion records (on the SDK's current major), and the ones riding in its planned group.
         private readonly Dictionary<string, List<LookupRecord>> companions = new(StringComparer.Ordinal);
         private readonly Dictionary<LookupRecord, string> companionOf = new(ReferenceEqualityComparer.Instance);
+        /// <summary>prerelease-track-scenarios-PRD D8: the channel's major of each SDK the repository is on a preview of.</summary>
+        private readonly Dictionary<string, long> previewMajor = new(StringComparer.Ordinal);
         private readonly HashSet<LookupRecord> riding = new(ReferenceEqualityComparer.Instance);
         /// <summary>follower-cooldown-PRD H1: per SDK, the companions on an older major in a project that targets only the SDK's
         /// channel. They move to the channel's major, with the platform group or in one of their own.</summary>
@@ -505,6 +507,8 @@ public static class DependencyPolicyEngine
                         continue;
                     companionOf[record] = sdk;
                 }
+                if (platform.Current.Preview)
+                    previewMajor[sdk] = major;
                 if (list.Count > 0)
                     companions[sdk] = list;
                 if (behind.Count > 0)
@@ -1392,8 +1396,12 @@ public static class DependencyPolicyEngine
                     (view.Problem, view.Detail) = (EDependencyReportReason.AboveLineCeiling, ceiling);
                 // prerelease-dependencies-PRD D2/H1: a prerelease only on the package's preview track. Renovate's lookup is
                 // wider (H5 rule order, a companion glob), and an enforced account rule narrows the track only here.
+                // prerelease-track-scenarios-PRD D8: on an SDK the repository is on a preview of, a companion's prerelease on the
+                // channel's major is the platform's own phase, so it is offered unless a rule chose track: stable.
                 else if (DependencyPolicyConfig.IsPrerelease(record.Ecosystem, candidate.Version)
-                    && config.PackageTrackOf(record.Ecosystem, record.DepName, record.CurrentVersion ?? record.CurrentValue) is { Track: EDependencyTrack.Stable } track)
+                    && config.PackageTrackOf(record.Ecosystem, record.DepName, record.CurrentVersion ?? record.CurrentValue) is { Track: EDependencyTrack.Stable } track
+                    && !(track is { Explicit: false } && companionOf.TryGetValue(record, out var companionSdk)
+                        && previewMajor.TryGetValue(companionSdk, out var channelMajor) && MajorOf(candidate) == channelMajor))
                     (view.Problem, view.Detail) = (EDependencyReportReason.PreviewNotFollowed, $"a prerelease; {track.Why}");
 
                 var (inCooldown, until) = Cooldown(record.Ecosystem, record.DepName, Token(candidate), candidate.ReleaseTimestamp,

@@ -241,7 +241,10 @@ stable"), with the rule that would change it.
 For a companion of the SDK (`Microsoft.Extensions.*` on .NET), the prerelease default stops once its major has a release
 on the channel: `11.0.0-rc.1` in a `net11.0` project moves to `11.0.0`, not to `11.1.0-preview.1`. This holds on the
 channel's release move, in a released channel's own `platform:dotnet 11.0` group, and per TFM in a multi-target project.
-A package whose prerelease has no release yet keeps following prereleases. To keep a companion on previews anyway, say
+A package whose prerelease has no release yet keeps following prereleases. The other way round, while the repository is
+on the SDK's preview (`global.json` on `11.0.100-rc.2`), a companion in a project on that channel takes the channel's
+prerelease (`Microsoft.Extensions.Hosting` 10.0.5 → `11.0.0-rc.2`); `track: stable` on it keeps it on stables, and a
+project on the previous channel or an ordinary package is never pulled onto a preview. To keep a companion on previews anyway, say
 so with a rule; only a rule's `track: preview` (in `coverage.yml` or the account's) does that:
 
 ```yaml
