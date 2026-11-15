@@ -162,8 +162,20 @@ dependencies:
     - match: "@angular/core"
       onMajor: angular-migrate.yml
   platforms:
-    dotnet: { track: stable, strategy: replace, keepPrevious: 0, lockPackageMajor: false, locations: [], exclude: [] }
-    node: { track: lts, companions: ["@types/node"] }   # companions: packages that move with the SDK's major
+    dotnet:
+      track: stable
+      strategy: replace
+      keepPrevious: 0
+      lockPackageMajor: false
+      locations: []
+      exclude: []
+      companions:                # packages tied to the SDK, first match wins; leave it out for the built-in list
+        - match: "Microsoft.CodeAnalysis*"            # a source generator that must load on SDK 10.0.1xx
+          versions: { "10.0": "<=5.0", "11.0.1xx": "5.12.x" }   # channel or SDK band → version range
+        - match: "Microsoft.Build*"
+          bundled: msbuild       # at or below what the repository's SDK ships (msbuild | roslyn | nuget)
+        - builtin                # the built-in list (Microsoft.AspNetCore.*, Microsoft.Extensions.*, …); [] turns them off
+    node: { track: lts, companions: ["@types/node"] }   # a plain glob: the package takes the SDK's major
     # autoMerge: major           # opt in: this SDK's majors auto-merge like any update (§6); the only value
   lockFileMaintenance: false     # transitive-only refreshes, off by default
   registries: ["npm.pkg.github.com"]   # lockfile hosts allowed besides the public registries
@@ -237,7 +249,28 @@ release (its default is GA); as a step's only input it is reported instead.
 `Microsoft.AspNetCore.*`, `Microsoft.Extensions.*`, `Microsoft.EntityFrameworkCore*`, `Microsoft.NET.*`, `System.*` and
 `dotnet-ef`, for Node.js `@types/node`. Only a package on the SDK's current major is one (`System.IO.Abstractions` 22.x is
 not), with one exception below.
-`companions:` replaces the list; `[]` turns it off. Until the SDK moves, a companion's next major is listed as *moves with
+`companions:` replaces the list, and the first entry that matches a package decides
+([companion-version-maps-PRD](companion-version-maps-PRD.md)). A plain list no longer implies the built-ins: write
+`builtin` where they belong, and `[]` turns companions off. Globs match case-insensitively, so put a narrow entry before a
+wide one. An entry takes one of three forms:
+
+| Entry | The package |
+|---|---|
+| `"Microsoft.AspNetCore.*"` (a glob) | takes the SDK channel's major, as described here |
+| `{ match, versions: { "10.0": "<=5.0", "11.0.1xx": "5.12.x" } }` | stays inside the range of the repository's SDK band, else of the project's channel (the lowest `<TargetFramework>`, else the repository's channel). Bands are .NET only |
+| `{ match, bundled: msbuild \| roslyn \| nuget }` | stays at or below the major.minor that the repository's SDK band ships (.NET only) |
+
+The built-in list starts with `Microsoft.Build*` (msbuild), `Microsoft.CodeAnalysis*` and
+`Microsoft.Net.Compilers.Toolset` (roslyn) and `NuGet.*` (nuget): a source generator or MSBuild task must load in the
+SDK that builds it. A ranged package takes the highest update inside its range; one above it is listed under *Available,
+not applied* ("above the companion range"), and one below it moves up without an approval. On a move to a new channel or
+band, the range is computed for the target SDK and the package rides with the move to the highest release it admits; a
+ranged package never holds the move. The repository's SDK is `global.json`'s, else the lowest exact `setup-dotnet`
+version, else the channel's latest. The coverage server reads what each band ships from the
+[dotnet/dotnet](https://github.com/dotnet/dotnet) release tags once a day (.NET 10 and later).
+
+A mistake in `coverage.yml` doesn't stop the run: the section falls back to the defaults, and the dependency pull request
+lists each problem first, under *Configuration problems*. Until the SDK moves, a companion's next major is listed as *moves with
 the platform*. A platform kept beside the previous one (`strategy: add`, `keepPrevious`, `lockPackageMajor`) has no
 companions, since its packages must keep building for the older target.
 

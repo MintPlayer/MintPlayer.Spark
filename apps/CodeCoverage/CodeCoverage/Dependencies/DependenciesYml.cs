@@ -53,8 +53,11 @@ namespace CodeCoverage.Dependencies;
 ///       onMajor: angular-migrate.yml
 ///   platforms:                        # R8
 ///     dotnet: { track: stable, strategy: replace, keepPrevious: 0, lockPackageMajor: false, locations: [], exclude: [],
-///               companions: ["Microsoft.AspNetCore.*"],    # #606: track lts|stable|preview; companions move with the major
 ///               autoMerge: major }        # prerelease-dependencies-PRD H3: the SDK's majors auto-merge (R7 lifted)
+///     # #606 D2, companion-version-maps-PRD §6.1: packages tied to the SDK, first match wins. A glob takes the channel's
+///     # major; versions: maps a channel (11.0) or SDK band (11.0.1xx) to a range; bundled: msbuild|roslyn|nuget stays at
+///     # or below what the SDK ships; builtin is the built-in list at its place; [] turns companions off.
+///     #   companions: [{ match: "Microsoft.CodeAnalysis*", versions: { "10.0": "<=5.0", "11.0.1xx": "5.12.x" } }, builtin]
 ///   lockFileMaintenance: false        # D-S12e, off by default
 ///   registries: ["npm.pkg.github.com"]   # gap B: extra lockfile hosts besides the public registries
 /// </code>

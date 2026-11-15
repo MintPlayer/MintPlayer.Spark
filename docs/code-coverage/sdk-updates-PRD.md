@@ -76,6 +76,10 @@ override (D5). One setting; it replaces today's implicit "follow a preview only 
 
 ### 3.3 Companion packages (D2)
 
+> **Amended (2026-11-15, [companion-version-maps-PRD](companion-version-maps-PRD.md), PR #676):** a companion entry is now
+> a glob (this section's channel rule), `builtin`, a `{ match, versions }` range per channel or SDK band, or a
+> `{ match, bundled }` ceiling from what the SDK band ships. First match wins, and a list no longer implies the built-ins.
+
 An explicit per-SDK companion list in the account lookups, overridable per repository. dotnet default:
 `Microsoft.AspNetCore.*`, `Microsoft.Extensions.*`, `Microsoft.EntityFrameworkCore*`, `Microsoft.NET.*`, `System.*`;
 node: `@types/node`. S2 split them in two (§5): AspNetCore and EF Core 11.x need `net11.0`; Extensions and System.* 11.x

@@ -1,6 +1,6 @@
 # Companion version maps: which package version belongs to which SDK — PRD and plan
 
-Status: **M1–M3 done, M4 next** (2026-11-15). Branch `fix/align-platform-packages-to-tfm`, PR #676 (one pull request with
+Status: **M1–M5 done, CI gate next** (2026-11-15). Branch `fix/align-platform-packages-to-tfm`, PR #676 (one pull request with
 [follower-cooldown-PRD](follower-cooldown-PRD.md) H1, owner: "Single pull-request").
 
 ## 1. The problem
@@ -230,6 +230,19 @@ pull request body under *Configuration problems*, not only on the run timeline (
     red step was observed for M3.
   - No test covers the planner's load itself. It is one request, read through the engine input that
     `CompanionVersionMapTests` covers.
+- **M4 done** (2026-11-15). `DependencyUpdateRun.ConfigProblems` keeps the default branch's parse errors (at most 20,
+  `DependencyUpdateEngine.StartAsync`), and `DependencyPullRequestBody` lists them first under *Configuration problems*.
+  Before, an error reached only the run's timeline while its section silently ran on the defaults. Test
+  `CompanionVersionMapTests` (the body lists the problems): 16/16 green with the range tests.
+- **M5 done** (2026-11-15).
+  - The action needs no change. It receives the unstable globs from the bot (`DependencyPolicyConfig.UnstableGlobs`, now
+    `Companions(sdk).Select(e => e.Match)`; `DependencyUpdateEngine.cs:334`), and `dependency-action/src` reads no
+    companion list of its own (grep: only `follow` pins).
+  - The setup page snippet and `dependency-updates.md` §4 show the three entry forms (they must stay byte-equal:
+    `dependency-updates-setup.snippets.spec.ts`). The guide's *Companions* paragraph describes first match, `builtin`,
+    ranges, `bundled`, the listing above a range and *Configuration problems*.
+  - The onboarding sample and the `DependenciesYml` doc comment name the new forms. sdk-updates-PRD §3.3 (D2) is marked
+    amended.
 
 ## 8. Decision log
 
