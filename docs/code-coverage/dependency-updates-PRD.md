@@ -951,6 +951,28 @@ The public registries are unset, so an accidental fetch fails instead of passing
 
 Also: protect `mintplayer/*` refs with a ruleset (App only); pin `@dependency-update-v1` by SHA in the templates; require an explicit top-level `permissions:` in custom workflows.
 
+**Gap A, which entry a line names (2026-11-15).** Before, a swap was credited to every planned entry whose name occurred
+*anywhere* in the line or the 3 lines above (`Contains`). Two groups with the same `current → new` swap then shared each
+other's lines.
+
+Evidence: MintPlayer.AspNetCore.SpaServices runs 119–123. The bot planned `MintPlayer.SourceGenerators` and
+`MintPlayer.SourceGenerators.Attributes` as separate groups in the Demo projects, both 13.1.0 → 13.1.2. The generator's
+group was unresolvable: NU1605, because 13.1.2 needs Attributes ≥ 13.1.2, which is the other group. The attributes' group
+applied. The attributes line contains the generator's name as a prefix, and the generator's own `<PackageReference>` sits
+right above it. So the writer derived both groups from the patch and refused it every time, with `group-mismatch` ("The patch
+applies [@mintplayer/ng-bootstrap, MintPlayer.SourceGenerators, MintPlayer.SourceGenerators.Attributes, platform:dotnet 11.0]
+but result.json claims […]"). No pull request was opened, so the refusal was visible only in the run's history.
+
+The rule now (`SubstitutionCheck.Names`):
+- A name anchors a line only at a name boundary: no letter, digit, `.`, `_` or `-` on either side of it. Matching stays
+  case-insensitive.
+- The lines above are consulted only when the changed line itself names none of the candidates. That covers a child
+  `<Version>` or a Maven `<version>` under its `<artifactId>`, still covered by the `maven/textedit-inline.diff` spike.
+
+Red → green: `DependencyPatchProfileTests.A_line_naming_a_longer_package_does_not_apply_the_shorter_one` and
+`A_name_anchors_a_line_only_at_a_name_boundary`. Before the fix, 4 of the new cases failed; after it, the writer's 210
+dependency tests pass.
+
 **R17 (owner, 2026-10-15): lookup records are trusted, with two generic guards.**
 
 Why trust them at all: lookup is a different trust level from apply. It runs only Renovate, pinned by digest, on the default-branch checkout, and installs no fresh packages.
