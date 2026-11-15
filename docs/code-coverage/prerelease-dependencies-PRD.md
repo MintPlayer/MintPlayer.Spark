@@ -140,6 +140,14 @@ where a claim is inferred, the text says so.
 | D7 | (H6) A `setup-*` input given as `${{ env.X }}`, `${{ inputs.x }}` or `${{ vars.X }}` is a computed location with no channel (`locations.ts:462-463`). P11 skips it (`l.Channel == current`), so the move edits the literal pins and leaves that workflow on the old SDK. | Resolve `env.X` and an input's literal `default:` in the same file into a `workflow-value` location that moves with the rest. A value the bot can't resolve (`vars.*`, other expressions) holds the move like P11. |
 | D8 | (M6) An account rule on `platform:<sdk>` matched its glob against `<sdk>` for the track (`PlatformTrack`) but against `platform:<sdk>` for the ceiling, threshold and inclusion (`DependencyPolicyEngine.cs` `config.Ceiling(eco, eco)`). So `{ecosystem: platform:dotnet, match: dotnet, maxUpdate: minor, enforced}` set the track and never capped a major. Red: `C10_an_enforced_account_rule_still_wins_over_the_opt_in("dotnet")` planned the 12.0 move. | `AccountMatches` tries both spellings for a `platform:` ecosystem, so either match answers both questions; no existing rule loses a match. |
 
+### 4.1 Defects found by Tools' first GA release (run 43711348322)
+
+| # | Defect | Fix |
+|---|---|---|
+| D9 | The versioning action fetched the tags after tagging only in server mode (`main.ts:339`). The app pushed the tags and then failed. The local fallback found them on the remote (`already-present`) and created none in the checkout, so `dotnet pack` read the previous rc tags. The check step then refused every package, and nothing was published. | `finish()` fetches the tags in both modes. Red → green: `main.test.ts` "fetches the tags after a local fallback…" (expected false to be true). c4b6c1412. |
+| D10 | `UpstreamReleases.RecordAsync` loaded one `PackageReleaseRecord` per released package. For 40 packages, the session hit RavenDB's 30-request cap after the tags were pushed, and the app answered 500, which triggered D9. | One batched `LoadAsync<T>(ids)`. Red → green: `UpstreamReleasesTests.A_run_that_releases_many_packages_records_them_in_one_request` (production exception; `NumberOfRequests == 1`). 469571934. |
+| D11 | `/release` (`ReleaseRecipient`) recorded each promoted tag with its own load. A line promotes every package at once, so Tools would hit the same cap after the writer pushed. | One batched load of the promoted tags' records before the loop. Red → green: `ReleaseFlowTests.A_release_that_places_many_tags_records_every_one` (production exception). 85d653bbd. |
+
 ## 5. Scenarios
 
 Each row gets its own test. "Exp." is the proposed behaviour; where it depends on an owner question, the question is
@@ -459,8 +467,21 @@ edit `coverage.yml` there.
   - The versioning guide: the `stable` pin for "a stable library over a preview package".
   - Fix the `UnstableGlobs` doc comment.
   - Supersede-mark P11/D-P18 text where Q2/Q3 change it.
-- [ ] **M10 Gate.** Push, open the PR, mark it ready, watch the checks. The full suite runs on CI, not locally.
+- [x] **M10 Gate.** Push, open the PR, mark it ready, watch the checks. The full suite runs on CI, not locally.
   Afterwards, ask for coverage through the codecoverage MCP.
+
+  Evidence: PR #671, commits 9424b367c + 8790e99ae. The first run failed only on the setup page's snippet spec (the
+  `autoMerge: major` line missing from `dependency-updates-setup.snippets.ts`), fixed in 8790e99ae. After that, 25 checks
+  passed and 5 were skipped. Patch coverage was 98.6%; the uncovered lines are `DependencyPolicyConfig.cs:142` and
+  `locations.ts:435`.
+- [x] **M11 The Tools release (M0's follow-through).** Tools #212 (the `prerelease: stable` pin, closes #211) merged.
+  Its publish-release run 43711348322 tagged the 40 GA versions but packed the rc ones (D9-D11). Fixed in #671 with
+  c4b6c1412, 469571934 and 85d653bbd, each red → green. Attempt 2 of the same run published the GA packages: 41 pushes,
+  e.g. `MintPlayer.GraphQL.11.0.0`, `MintPlayer.SourceGenerators.Tools.13.0.1`. That attempt succeeded before the
+  deploy, because its checkout fetched the tags the first attempt had pushed. #671 was queued on the owner's word
+  (2026-11-15).
+- [ ] **After deploy.** The next Tools dependency pull request moves the SDK `11.0.100-rc.1` → `11.0.100` (H2). Verify it,
+  then close Tools#211 if #212 didn't.
 
 ## 9. Test plan summary
 
@@ -495,6 +516,9 @@ edit `coverage.yml` there.
 | E2 | PR #210's in-channel move waited for P11, not the threshold; the body shows no reason. | `DependencyPolicyEngine.cs:594,671-690`; `DependencyPullRequestBody.cs:64-69`; PR #210 body (Not moved: 2 conditioned TFMs) |
 | E3 | 40-package GA blocked by GraphQL's beta label; the last `publish-release` is still run 43509498988. | `gh run list` on Tools master, 2026-11-15 |
 | E4 | PR #210 closed by the owner's account, not the bot. | `issues/210/events`, 18:40:57Z |
+| E5 | The app wrote the tags and then answered 500. `MintPlayer.GraphQL/v11.0.0` has tagger "CodeCoverage versioning" (the app's tagger; the local CLI tags as github-actions[bot]) and date 12:01:07Z. The action logged "unavailable (the app answered 500)" at 12:01:09Z. | `gh api …/git/tags/<sha>`; job 132803371304 log, line 3507 |
+| E6 | The 500 was the session cap. Production log: `InvalidOperationException: The maximum number of requests (30) allowed for this session has been reached`, at `UpstreamReleases.RecordAsync` (`UpstreamReleases.cs:75`) ← `VersioningController.FinishAsync:278`. | `docker compose logs coverage-app`, 12:00:30-12:01:30Z |
+| E7 | Rule: past 30 requests a session batch-loads (`LoadAsync<T>(ids)`) or eager-loads. | owner, 2026-11-15 |
 | H1 | Q1 → A: a package whose current version is a prerelease follows newer prereleases on the default track; a `track: stable` rule opts out. Amends #606 D8 for packages. | owner, 2026-11-15 |
 | H2 | Q2 → A: a computed location whose value already names the target channel holds nothing; P11 still holds what would stay behind. Refines P11 (`platform-locations-PRD.md:564`). | owner, 2026-11-15 |
 | H3 | Q3 → B: an explicit per-repository opt-in auto-merges a platform major; the default and the enforced account ceiling are unchanged. Amends D-P18/R7. | owner, 2026-11-15 (against the recommendation to keep D-P18) |
