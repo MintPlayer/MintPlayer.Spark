@@ -36,6 +36,9 @@ public sealed class PlatformLifecycleOptions
     /// <c>/dist-tags</c> was missing and npm answered 404 for every package, so no preview major was ever collected.)</summary>
     public string NpmDistTagsUrl { get; set; } = "https://registry.npmjs.org/-/package/";
 
+    /// <summary>companion-version-maps-PRD S1: the .NET VMR's raw files; <c>&lt;tag&gt;/&lt;path&gt;</c> is appended.</summary>
+    public string VmrRawUrl { get; set; } = "https://raw.githubusercontent.com/dotnet/dotnet/";
+
     /// <summary>
     /// The platforms to collect besides .NET, by the name the rows carry. Configuration adds platforms to these. The
     /// preview feeds were picked in #606 S6 (2026-11-09); endoflife.date lists released channels only.
@@ -132,9 +135,53 @@ public partial class PlatformLifecycleCronJob : ISparkCronJob
             if (byId.GetValueOrDefault(row.Id!) is { } existing) Copy(row, existing);
             else await session.StoreAsync(row, row.Id, cancellationToken);
         }
-        if (rows.Count == 0 && removed == 0) return;
+        var bands = await CollectSdkComponentsAsync(http, settings, rows.Where(r => r.Platform == PlatformLifecycleSources.Dotnet && r.Phase != "eol"), now, cancellationToken);
+        if (rows.Count == 0 && removed == 0 && bands == 0) return;
         await session.SaveChangesAsync(cancellationToken);
-        logger.LogInformation("Platform lifecycle: {Count} platform channels collected, {Removed} stale ones removed", rows.Count, removed);
+        logger.LogInformation("Platform lifecycle: {Count} platform channels collected, {Removed} stale ones removed, {Bands} SDK bands read", rows.Count, removed, bands);
+    }
+
+    /// <summary>
+    /// companion-version-maps-PRD §6.4: the MSBuild, Roslyn and NuGet versions of every band of every supported .NET channel,
+    /// read from the VMR at the band's tag. Only a band whose tag changed (new, or a preview's release) is read: three
+    /// requests each. A tag that answers 404 is recorded as missing; any other failure leaves the band for tomorrow.
+    /// </summary>
+    private async Task<int> CollectSdkComponentsAsync(HttpClient http, PlatformLifecycleOptions settings, IEnumerable<PlatformRelease> channels,
+        DateTime now, CancellationToken cancellationToken)
+    {
+        var wanted = channels.SelectMany(c => SdkComponentSources.Bands(c.LatestSdk)).ToList();
+        if (wanted.Count == 0) return 0;
+        var stored = (await session.Advanced.LoadStartingWithAsync<SdkBandComponents>(SdkBandComponents.Prefix, pageSize: 256, token: cancellationToken))
+            .ToDictionary(b => b.Band, StringComparer.Ordinal);
+        var read = 0;
+        foreach (var (band, tag) in wanted)
+        {
+            if (stored.GetValueOrDefault(band) is { } known && known.Tag == tag) continue;
+            var missing = false;
+            async Task<string?> File(string path) => await FetchAsync(http, $"{settings.VmrRawUrl}{tag}/{path}", cancellationToken, status => missing |= status == 404);
+            var (msbuild, roslyn, nuget) = (await File(SdkComponentSources.MsbuildPath), await File(SdkComponentSources.RoslynPath), await File(SdkComponentSources.NugetPath));
+            if (!missing && (msbuild is null || roslyn is null || nuget is null)) continue;
+            var document = stored.GetValueOrDefault(band) ?? new SdkBandComponents { Id = SdkBandComponents.IdFor(band), Band = band };
+            document.Tag = tag;
+            document.TagMissing = missing;
+            document.Msbuild = missing ? null : Parse(SdkComponentSources.ReadMsbuild, msbuild!, tag);
+            document.Roslyn = missing ? null : Parse(SdkComponentSources.ReadRoslyn, roslyn!, tag);
+            document.Nuget = missing ? null : Parse(SdkComponentSources.ReadNuget, nuget!, tag);
+            document.CollectedAtUtc = now;
+            if (!stored.ContainsKey(band)) await session.StoreAsync(document, document.Id, cancellationToken);
+            read++;
+        }
+        return read;
+    }
+
+    private string? Parse(Func<string, string?> read, string text, string tag)
+    {
+        try { return read(text); }
+        catch (System.Xml.XmlException ex)
+        {
+            logger.LogWarning(ex, "Platform lifecycle: a VMR file at {Tag} is no XML; its version is left empty", tag);
+            return null;
+        }
     }
 
     private async Task AddFrameworkPreviewAsync(HttpClient http, PlatformLifecycleOptions settings, string platform, string npmPackage,
@@ -181,11 +228,12 @@ public partial class PlatformLifecycleCronJob : ISparkCronJob
         }
     }
 
-    private async Task<string?> FetchAsync(HttpClient http, string url, CancellationToken cancellationToken)
+    private async Task<string?> FetchAsync(HttpClient http, string url, CancellationToken cancellationToken, Action<int>? status = null)
     {
         try
         {
             using var response = await http.GetAsync(url, cancellationToken);
+            status?.Invoke((int)response.StatusCode);
             if (response.IsSuccessStatusCode) return await response.Content.ReadAsStringAsync(cancellationToken);
             logger.LogWarning("Platform lifecycle: {Url} answered {Status}; skipped", url, (int)response.StatusCode);
         }

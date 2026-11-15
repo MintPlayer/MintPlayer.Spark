@@ -298,7 +298,7 @@ public static class DependencyPolicyEngine
         {
             if (entry.Bundled is { } component)
             {
-                var shipped = input.SdkComponents.FirstOrDefault(c => c.Sdk == sdk) is { } found
+                var shipped = Band(sdk) is { } sdkBand && input.SdkComponents.FirstOrDefault(c => c.Band == sdkBand) is { } found
                     ? component switch
                     {
                         EDependencyBundledComponent.Msbuild => found.Msbuild,

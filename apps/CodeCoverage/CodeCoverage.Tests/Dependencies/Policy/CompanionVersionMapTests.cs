@@ -117,7 +117,7 @@ public class CompanionVersionMapTests
     {
         var msbuild = Nuget("Microsoft.Build", "18.4.0", Candidate(EUpdateType.Minor, "18.14.0"));
 
-        var outcome = Run(Dotnet("11.0", "11.0.100", "net11.0"), msbuild, null, new SdkComponentVersions("11.0.100", "18.12.2", "5.12.0", "8.0.0"));
+        var outcome = Run(Dotnet("11.0", "11.0.100", "net11.0"), msbuild, null, new SdkComponentVersions("11.0.1xx", "18.12.2", "5.12.0", "8.0.0"));
 
         Planned(outcome).Should().NotContain(p => p.Contains("Microsoft.Build"));
         outcome.Available.Should().ContainSingle(e => e.DepName == "Microsoft.Build" && e.Reason == EDependencyReportReason.AboveCompanionRange)
@@ -142,7 +142,7 @@ public class CompanionVersionMapTests
         var msbuild = Nuget("Microsoft.Build", "18.0.2", Candidate(EUpdateType.Minor, "18.6.3"));
 
         var outcome = Run(Dotnet("10.0", "10.0.100", "net10.0", Row("10.0", "10.0.5", "10.0.300")), msbuild, null,
-            new SdkComponentVersions("10.0.100", "18.0.2", "5.0.0", "7.0.0"), new SdkComponentVersions("10.0.300", "18.6.3", "5.6.0", "7.6.0"));
+            new SdkComponentVersions("10.0.1xx", "18.0.2", "5.0.0", "7.0.0"), new SdkComponentVersions("10.0.3xx", "18.6.3", "5.6.0", "7.6.0"));
 
         Planned(outcome).Should().Equal("platform:dotnet 10.0: Microsoft.Build@18.6.3");
     }
@@ -153,7 +153,7 @@ public class CompanionVersionMapTests
         var msbuild = Nuget("Microsoft.Build", "18.0.2", Candidate(EUpdateType.Minor, "18.14.0"));
 
         var outcome = Run(Dotnet("10.0", "10.0.100", "net10.0", Row("10.0", "10.0.5", "10.0.300")), msbuild, null,
-            new SdkComponentVersions("10.0.100", "18.0.2", "5.0.0", "7.0.0"), new SdkComponentVersions("10.0.300", "18.6.3", "5.6.0", "7.6.0"));
+            new SdkComponentVersions("10.0.1xx", "18.0.2", "5.0.0", "7.0.0"), new SdkComponentVersions("10.0.3xx", "18.6.3", "5.6.0", "7.6.0"));
 
         Planned(outcome).Should().Equal("platform:dotnet 10.0: ");
         outcome.Held.Concat(outcome.Available).Should().NotContain(e => e.Reason == EDependencyReportReason.Pending);

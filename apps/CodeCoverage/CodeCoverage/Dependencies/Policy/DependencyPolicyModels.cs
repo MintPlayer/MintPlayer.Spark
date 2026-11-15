@@ -108,9 +108,9 @@ public enum EDependencyReportReason
     AboveCompanionRange,
 }
 
-/// <summary>companion-version-maps-PRD §6.4: the MSBuild, Roslyn and NuGet versions one SDK release ships (S1: the VMR tag's
-/// component sources); null where the tag could not be read.</summary>
-public sealed record SdkComponentVersions(string Sdk, string? Msbuild, string? Roslyn, string? Nuget);
+/// <summary>companion-version-maps-PRD §6.4: the MSBuild, Roslyn and NuGet versions an SDK feature band (<c>11.0.1xx</c>)
+/// ships (S1: the VMR tag's component sources); null where the tag could not be read.</summary>
+public sealed record SdkComponentVersions(string Band, string? Msbuild, string? Roslyn, string? Nuget);
 
 /// <summary>One line of the pull request body's available / held / awaiting-approval / ignored tables.</summary>
 public sealed record DependencyReportEntry(

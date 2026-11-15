@@ -1,6 +1,6 @@
 # Companion version maps: which package version belongs to which SDK — PRD and plan
 
-Status: **M1–M2 done, M3 next** (2026-11-15). Branch `fix/align-platform-packages-to-tfm`, PR #676 (one pull request with
+Status: **M1–M3 done, M4 next** (2026-11-15). Branch `fix/align-platform-packages-to-tfm`, PR #676 (one pull request with
 [follower-cooldown-PRD](follower-cooldown-PRD.md) H1, owner: "Single pull-request").
 
 ## 1. The problem
@@ -207,6 +207,29 @@ pull request body under *Configuration problems*, not only on the run timeline (
     update bucket, so a range that cuts inside a bucket can find nothing to take. That case is listed, never guessed.
   - Red: `CompanionVersionMapTests` 6 of 10 failed (ceiling, multi-target, below-floor alignment, bundled, move
     recomputes, never holds) → green 15/15 (with S3). Policy + yml + onboarding + preview/fleet classes: 370/370.
+- **M3 done** (2026-11-15).
+  - **Decision V9: one document per band, not per SDK release** (`SdkBandComponents/dotnet/<band>`,
+    `PlatformLifecycle/SdkBandComponents.cs`). This amends §6.4.
+    - Evidence: a band's patch releases keep the components' major.minor, and the ranges use nothing finer (`<=18.12`).
+    - A channel's own `releases.json` is 1.15 MB for 10.0 (`PlatformLifecycleSources.cs:21-22`), too heavy to read daily.
+      The bands therefore come from the index's `latest-sdk`.
+      - A released SDK (`10.0.403`) covers bands 1xx–4xx, each read at its `v<channel>.<b>00` tag.
+      - A preview SDK covers only its own band, at its own tag. The band is read again when the band's tag changes (the
+        preview's release).
+      - Channels before 10 have no VMR tags (S1).
+  - The cron reads three files per new band. A 404 is recorded as `TagMissing` and is not asked again for that tag. Any
+    other failure leaves the band for tomorrow.
+  - The planner loads every band in one `LoadStartingWithAsync` (`DependencyUpdateEngine.PlanAsync`), and only when the
+    lookup has a dotnet platform. `SdkComponentVersions` is keyed by band (`RangeOf` takes `Band(sdk)`).
+  - Tests (`PlatformLifecycleTests`):
+    - parsers on the real VMR files (fixtures + SOURCE.md);
+    - `Bands` per SDK shape, including an id-injection attempt;
+    - a run with 200/404/503 answers;
+    - a second run asks only the 503 band (3 requests).
+  - These tests were written after the code and passed on their first run (67/67 with `CompanionVersionMapTests`). No
+    red step was observed for M3.
+  - No test covers the planner's load itself. It is one request, read through the engine input that
+    `CompanionVersionMapTests` covers.
 
 ## 8. Decision log
 
