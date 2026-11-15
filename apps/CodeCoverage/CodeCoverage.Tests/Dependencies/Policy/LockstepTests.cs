@@ -102,6 +102,31 @@ public class LockstepTests
         Moves(outcome).Should().Equal((Image, "v1.65.1-noble"), (Package, "1.65.1"));
     }
 
+    [Fact]
+    public void When_the_members_first_offers_differ_the_highest_shared_version_wins()
+    {
+        // Lookup order puts 1.64.1 first for the image and 1.65.1 first for the package; both have both.
+        var outcome = Evaluate(Lookup(Docker("1.63.0", "1.64.1", "1.65.1"), NuGet("1.63.0", "1.65.1", "1.64.1")), Config(OptedIn));
+
+        Moves(outcome).Should().Equal((Image, "v1.65.1-noble"), (Package, "1.65.1"));
+    }
+
+    [Fact]
+    public void A_tag_without_a_version_cannot_be_lockstepped_and_waits()
+    {
+        var image = Record(Image, "jammy", [Candidate(EUpdateType.Minor, "noble", value: "noble")]) with
+        {
+            Ecosystem = "docker", Manager = "dockerfile", Datasource = "docker", PackageFile = "apps/SeoTester/chromium/Dockerfile", LockFiles = [],
+            DepType = null, CurrentVersion = null,
+        };
+
+        var outcome = Evaluate(Lookup(image, NuGet("1.64.1")), Config(OptedIn));
+
+        outcome.Groups.Should().BeEmpty();
+        outcome.Available.Should().Contain(e => e.Group == "playwright" && e.Reason == EDependencyReportReason.Lockstep
+                                                && e.Detail == "lockstep: no member's version reads as x.y.z");
+    }
+
     [Theory]
     [InlineData("v1.64.1-noble", "1.64.1")]
     [InlineData("11.0.0-rc.2-noble", "11.0.0-rc.2")]

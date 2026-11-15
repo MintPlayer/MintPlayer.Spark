@@ -162,6 +162,35 @@ public class DependencyFollowPatchTests : IDisposable
     }
 
     [Fact]
+    public async Task A_rule_cannot_open_a_workflow_file()
+    {
+        const string workflow = ".github/workflows/seotester.yml";
+        const string text = "jobs:\n  e2e:\n    container: ghcr.io/mintplayer/seotester-chromium:1.63.0\n";
+        var rule = new DependencyFollowRule(Leader, ".github/workflows/*.yml", "seotester-chromium:(?<version>[0-9.]+)", null);
+        var before = Base((workflow, text));
+        var after = MovedAll(before, (workflow, Moved(text, "1.63.0", "1.64.1")));
+
+        var verdict = await Validate(before, after, [ComposeRule, InstallRule, rule], LeaderEntry(), Follower(ComposePath), Follower(DockerfilePath), Follower(workflow));
+
+        verdict.Outcome.Should().Be(DependencyPatchOutcome.Rejected);
+        verdict.Paths.Should().Equal(workflow);
+    }
+
+    [Fact]
+    public async Task On_a_line_with_two_matches_only_the_one_at_the_current_version_moves()
+    {
+        const string notes = "apps/SeoTester/NOTES.md";
+        const string text = "Playwright 1.62.0 was flaky; Playwright 1.63.0 is current.\n";
+        var rule = new DependencyFollowRule(Leader, notes, "Playwright (?<version>[0-9.]+)", null);
+        var before = Base((notes, text));
+        var after = MovedAll(before, (notes, Moved(text, "Playwright 1.63.0", "Playwright 1.64.1")));
+
+        var verdict = await Validate(before, after, [ComposeRule, InstallRule, rule], LeaderEntry(), Follower(ComposePath), Follower(DockerfilePath), Follower(notes));
+
+        verdict.Outcome.Should().Be(DependencyPatchOutcome.Accepted, verdict.Detail);
+    }
+
+    [Fact]
     public async Task A_group_whose_follower_did_not_move_is_partial()
     {
         var before = Base();
@@ -225,6 +254,7 @@ public class DependencyFollowPatchTests : IDisposable
     [InlineData(Leader, ComposePath, "(?<version>1)(?<version>2)")]
     [InlineData(Leader, ComposePath, "x(?<version>[")]
     [InlineData(Leader, "a\nb", "x(?<version>1)")]
+    [InlineData(Leader, "   ", "x(?<version>1)")]
     public void The_wire_refuses_a_rule_the_parser_would_have_refused(string dependency, string path, string match)
         => DependencyFields.Follow([new FollowRuleWire { Dependency = dependency, Path = path, Match = match }]).Should().BeNull();
 

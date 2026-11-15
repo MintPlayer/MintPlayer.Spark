@@ -3,7 +3,7 @@ import * as path from 'node:path';
 import type { LookupDocument, LookupRecord } from '../contracts/types';
 import { copyTree, fixture, readJsonFixture, tempDir } from '../testing/helpers';
 import { directoryFiles } from '../util/repoFiles';
-import { followerRecords, followerVersion, type FollowRule } from './follow';
+import { compareVersions, followerRecords, followerVersion, type FollowRule } from './follow';
 import { mapReport, type RenovateReport } from './mapReport';
 
 /**
@@ -41,7 +41,25 @@ describe('followerVersion (S7)', () => {
   });
 });
 
+describe('compareVersions', () => {
+  it.each([
+    ['1.65.0', '1.65.0-beta.2', 1],
+    ['1.65.0-beta.2', '1.65.0', -1],
+    ['1.65.0-beta.10', '1.65.0-beta.2', 1],
+    ['1.65.0-beta.2', '1.65.0-beta.2', 0],
+    ['1.64.1', '1.65', -1],
+  ])('%s against %s is %d: numbers first, a prerelease below its release', (a, b, expected) => {
+    expect(compareVersions(a, b)).toBe(expected);
+  });
+});
+
 describe('followerRecords (F2)', () => {
+  it('rates a follower move by its own version: a leader patch is a follower patch', async () => {
+    const patched = leaders().map((r) => ({ ...r, candidates: r.candidates.slice(0, 1).map((c) => ({ ...c, value: 'v1.63.1-noble' })) }));
+    const { followers } = await follow([compose], patched);
+    expect(followers[0].candidates.map((c) => [c.value, c.updateType])).toEqual([['1.63.1', 'patch']]);
+  });
+
   it('turns the own image tag into a record of its leader, with the leader candidates as follower versions', async () => {
     const { followers, problems } = await follow([compose]);
 

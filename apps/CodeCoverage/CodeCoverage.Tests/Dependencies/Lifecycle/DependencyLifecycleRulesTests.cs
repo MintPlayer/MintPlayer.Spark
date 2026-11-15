@@ -626,6 +626,14 @@ public class DependencyPullRequestBodyTests
         body.Should().NotContain("`mcr.microsoft.com/playwright`: the tag's format changes");
     }
 
+    /// <summary>D2 compares only values that hold a version; a digest or a named tag is no format change to report.</summary>
+    [Theory]
+    [InlineData("latest", "1.2.3")]
+    [InlineData("1.2.3", "sha256:abcdef")]
+    [InlineData("jammy", "noble")]
+    public void A_value_without_a_version_is_no_format_change(string from, string to)
+        => DependencyPullRequestBody.FormatChanges(from, to).Should().BeFalse();
+
     /// <summary>companion-pins-PRD G4: a follow rule that moved nothing (the lookup's <c>follow[i]</c> problem) is a "Not
     /// moved" line, so a pin that silently stopped following shows in every run's body.</summary>
     [Fact]

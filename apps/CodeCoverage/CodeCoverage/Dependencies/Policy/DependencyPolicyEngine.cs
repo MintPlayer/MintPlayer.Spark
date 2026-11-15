@@ -499,8 +499,6 @@ public static class DependencyPolicyEngine
                         continue;
                     }
                     picks = aligned;
-                    if (picks.Count == 0)
-                        break;
                 }
 
                 failures.AddRange(cooling);

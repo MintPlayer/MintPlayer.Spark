@@ -1,6 +1,6 @@
 # Pins that follow a dependency: versions the bot can't see (SeoTester's Playwright)
 
-Status: **M0-M7 done, M8 (pull request) open** (2026-11-15). Branch `feat/dependency-companion-pins`.
+Status: **M0-M8 done, PR #672** (2026-11-15). After deploy: the next Playwright release should arrive as one green group. Branch `feat/dependency-companion-pins`.
 
 ## 1. The problem (owner, 2026-11-15)
 
@@ -161,7 +161,19 @@ value unless it sets `version:`; S7.)
   release must arrive as one green group (to observe after deploy).
 - [x] **M7 Docs:** `dependency-updates.md` §4, "Pins that follow a dependency" (`follow:`, lockstep, customManagers, the
   `ARG` advice).
-- [ ] **M8 Gate:** PR, CI green, coverage via the MCP.
+- [x] **M8 Gate:** PR, CI green, coverage via the MCP. PR #672:
+  - The first run was red on two goldens my change moved: the setup page's snippet must equal `dependency-updates.md` §4
+    byte for byte, and `SelectorReplayTests` expected the image to move. In the captured lookup, NuGet's
+    Microsoft.Playwright has no update, so the playwright group now waits (Lockstep), as intended.
+  - The fix (ef1f8bc6a) made every check green. Patch coverage was 95.9% (303/316). The 13 uncovered lines got tests:
+    - `compareVersions` prerelease order, and a patch-level follower;
+    - a whitespace glob on the wire;
+    - a `.github` follower;
+    - a line with two matches;
+    - two shared versions, and a tag without a version;
+    - D2 on values without a version.
+  - The lockstep `picks.Count == 0` branch could never run, so it was removed (I7).
+  - Status: every check green, then patch coverage re-read through the MCP after the last push.
 
 ### 7.1 Spike results (2026-11-15)
 
@@ -274,6 +286,8 @@ value unless it sets `version:`; S7.)
 | I4 | Lockstep compares members by their first `x.y.z[-pre]` with `SemanticVersion` (made public); a member without candidates counts at its current version, so such records are kept aside by group instead of dropped. | `LockstepTests` (red 3/6 → green) |
 | I5 | D1 collapses one (dependency, from, to) across files and lists every group's first row before any second row, under the existing 60-row cap. D2 notes a change in the text around the version; prerelease → release is not a format change. | `DependencyPullRequestBodyTests` |
 | I6 | Only `follow[i]` lookup problems reach the body ("Not moved"); the server still ignores the other problem sources, as before. | `A_follow_rule_that_moved_nothing_is_listed_under_not_moved` |
+| I7 | Removed the lockstep `picks.Count == 0` branch: `Lockstepped` returns either the picks it was given or the members not yet at the common version, which is chosen so that at least one member isn't at it; the list is never empty. | patch coverage on PR #672, `DependencyPolicyEngine.cs:503` |
+| I8 | Spark's replay golden changes on purpose: the captured lookup has no NuGet Playwright update, so the image waits (Lockstep) instead of moving alone. | `SelectorReplayTests.A_week_later_…` |
 
 ### 9.1 Files changed
 
