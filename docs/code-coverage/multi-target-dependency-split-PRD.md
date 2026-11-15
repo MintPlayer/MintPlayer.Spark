@@ -1,6 +1,7 @@
 # Multi-target libraries: one dependency tree per target framework — PRD and plan
 
-Status: **investigating** (2026-11-15). No branch yet; branch from master after #676 (merged + deployed, run 43743477315).
+Status: **owner decided M4–M7 (2026-11-15); next: spikes S1–S8, then plan.** Branch `feat/multi-target-dependency-split`
+(from master after #676, merged + deployed in run 43743477315).
 Predecessors: [follower-cooldown-PRD](follower-cooldown-PRD.md) H1, [companion-version-maps-PRD](companion-version-maps-PRD.md),
 [sdk-updates-PRD](sdk-updates-PRD.md) D2/D13 (strategy add, keepPrevious, lockPackageMajor),
 [platform-locations-PRD](platform-locations-PRD.md).
@@ -46,6 +47,14 @@ handler adds the new TFM with its own `ItemGroup`, and drops a TFM that is no lo
   net4x targets (no platform major)?
 - Q5 Does this replace the immediate NU1605 fix (one package, one group), or ship with it?
 - Q6 Real layouts: Tools, Spark, SpaServices multi-target projects and how they reference platform packages today.
+  *(answered §4.2)*
+- *Q1–Q5 answered by the owner on 2026-11-15: decisions M4–M7 in §8.*
+- Q7 (open) Once a repository is on CPM (through M7's action), does the updater split per TFM in `Directory.Packages.props`
+  (conditioned `PackageVersion`), or report and leave it? Proposed: support it, since the action produces exactly that
+  layout. S7 decides it.
+- Q8 (open) The CPM action's details: which repositories (multi-select on the repository query), what it moves (every
+  `PackageReference Version` into `PackageVersion`, `VersionOverride` where projects disagree), the branch and pull request
+  names, and the reverse direction (inline the versions, delete `Directory.Packages.props`). See S8.
 
 ## 4. Findings
 
@@ -146,6 +155,8 @@ handler adds the new TFM with its own `ItemGroup`, and drops a TFM that is no lo
 | S3 | Which condition forms do we read and which one do we write? Candidates: `'$(TargetFramework)' == 'net11.0'`, `$([MSBuild]::IsTargetFrameworkCompatible(...))`, `!=`, `StartsWith`. The parser must refuse anything it can't map to a TFM set (report, never guess) | grep the three repos + nuget.org samples; extend `scanTfmConditions` (`locations.ts:147`) | open |
 | S4 | How does the git writer admit a structural edit? Today it admits one-token swaps only (`PlatformSubstitution.cs:14-25`). Option: the plan carries the exact block to insert/remove (TFM, packages, versions), and the writer re-renders it and compares byte for byte | read `PlatformSubstitution` and the writer's validation; prototype one rule | open |
 | S5 | "No longer supported": which data decides that a TFM leaves? Today the action drops beyond `max(keepPrevious,1)` with no EOL check (`applyPlatform.ts:30-44`). Candidates: EOL from `PlatformReleases/dotnet/<ch>` (bot side, already loaded for the channel table), `keepPrevious`, or both | read the channel table the lookup receives (`DependencyPlatformTable.JsonAsync`) | open |
+| S7 | CPM + per-TFM: does NuGet accept conditioned `PackageVersion` in `Directory.Packages.props` (and two `PackageVersion` items for one package under different conditions)? What does Renovate report for them? | the S2 solution with CPM on; the S1 fixture with a `Directory.Packages.props` | open |
+| S8 | CPM conversion action: how existing custom actions open a pull request across selected repositories (the onboarding pull request, the "Set up rulesets" multi-select), and how the conversion edits are made and validated (git writer, or the repository's own workflow like the dependency apply) | read `DependencyOnboarding`, the onboarding chooser and a multi-select custom action | open |
 | S6 | How do companion ranges (companion-version-maps), H1 and upstream companions (follower-cooldown G2) key on a per-TFM record? Expected: the `ItemGroup`'s TFM replaces "the lowest TFM" as the key channel | read `FindCompanions` `:211-260` and `RangeOf` | open |
 
 ## 6. Design (draft, pending owner answers in §3 and spikes)
@@ -178,3 +189,7 @@ handler adds the new TFM with its own `ItemGroup`, and drops a TFM that is no lo
 | M1 | The investigation found no existing per-TFM support anywhere on the path (record, plan item, apply edit, writer validation); every layer needs a change (§4.1, §4.3) | investigation, 2026-11-15 |
 | M2 | Microsoft.Extensions.* 11.0.0 supports net10.0 (nuspec groups), library-style AspNetCore/EF Core 11.x does not (sdk-updates-PRD S2): for Extensions the split is a policy choice, for AspNetCore/EF Core a necessity | nuspec on api.nuget.org; sdk-updates-PRD §5 S2 |
 | M3 | Don't fix #216 by ordering platform groups first: `dependency-updates-PRD.md:1204` documents "platform groups last, because they move the TFM under everything else" | documented decision |
+| M4 | **Automatic split.** Every multi-target project's unconditioned platform reference becomes one conditioned `ItemGroup` per channel TFM on its next run, with no coverage.yml key. It also fixes #216 (D-c: the package's whole move is one group). Answers Q4/Q5 | owner, 2026-11-15 (AskUserQuestion: "Automatic") |
+| M5 | **Scope: all .NET companions** (`Microsoft.Extensions.*`, `System.*`, AspNetCore, EF Core, … the companion list): each TFM takes its own channel's major, Extensions included although 11.x still runs on net10.0 | owner, 2026-11-15 ("All .NET companions") |
+| M6 | **A TFM leaves at end of life.** The bot drops a TFM (and its `ItemGroup`s) once its channel is EOL in the platform lifecycle data; `keepPrevious` stays a minimum count. Answers Q3; changes `nextTfmList`, which has no EOL check today | owner, 2026-11-15 ("End of life") |
+| M7 | **CPM is a separate custom action, in this pull request.** No automatic CPM in the updater. A new custom action switches one or more selected repositories between non-CPM and CPM (both directions) and opens a pull request with the conversion. It is separate from the dependency/TFM updater. | owner, 2026-11-15: "I wouldn't do it automatically, but just provide a new CustomAction that lets the user switch between non-CPVM and CPVM on a (one or more selected) repository - it also creates the pull-request with the changes for from/to CPVM. Include in this pull-request - seperate action from the dependency/tfm updater" |
