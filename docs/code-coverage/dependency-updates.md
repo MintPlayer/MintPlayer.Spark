@@ -90,7 +90,8 @@ A slot whose rebuilt tree equals the pushed one pushes nothing and starts no CI.
    starts a run. A renamed workflow (`lookupAction`) has no template: update it by hand.
 
 **The workflows are all you add.** There is no other action to install and no secret to create (the lookup's optional
-`host-rules` secret is for private feeds only). The bot dispatches the workflows by file name: keep them on the default
+`host-rules` secret is for private feeds only; GitHub Packages is read with the job's own token, which the template's
+`packages: read` allows). A dependency a feed refuses is listed under **Not looked up** in the pull request. The bot dispatches the workflows by file name: keep them on the default
 branch, or set `dependencies.lookupAction` / `applyAction` in `coverage.yml` when you rename them. To add them without
 the onboarding pull request, copy them from
 [`apps/CodeCoverage/dependency-action/templates/`](https://github.com/MintPlayer/MintPlayer.Spark/tree/master/apps/CodeCoverage/dependency-action/templates).
@@ -239,6 +240,14 @@ Node.js `@types/node`. Only a package on the SDK's current major is one (`System
 the platform*. A platform kept beside the previous one (`strategy: add`, `keepPrevious`, `lockPackageMajor`) has no
 companions, since its packages must keep building for the older target.
 
+- **Your own upstream packages are companions too** ([follower-cooldown-PRD](follower-cooldown-PRD.md) G2). A package
+  another repository of your account publishes (the dependency graph's producers), on the SDK's current major, rides
+  with the move. The move waits for its release, so the upstream repository moves first and its consumers follow: Spark's
+  move to .NET 11.0 waits until SpaServices ships 11.0.0 (or `--force`). `companions: []` turns these off as well.
+- **A .NET Standard project has no platform to move.** In a project whose every `<TargetFramework(s)>` is .NET Standard
+  or .NET Framework (Spark's source generators), the references are ordinary packages: they neither ride with nor hold
+  the move. A reference in `Directory.Packages.props` can't be traced to a project and is still a companion.
+
 **Pins that follow a dependency** ([dependency-companion-pins-PRD](dependency-companion-pins-PRD.md)). Some versions
 are no dependency Renovate can look up: your own image built from a base image (`ghcr.io/you/web-chromium:1.63.0` from
 `mcr.microsoft.com/playwright:v1.63.0-noble`), an `npm install playwright-core@1.63.0` in a Dockerfile, or a comment
@@ -250,7 +259,8 @@ that names the version. A `follow:` entry writes such a pin with its dependency'
 - The follower's version is the first `x.y[.z]` in the dependency's new value, with a prerelease only when it starts with
   a prerelease word: `v1.64.1-noble` → `1.64.1`, `11.0.0-rc.2-noble` → `11.0.0-rc.2`. `version:` overrides it with a
   pattern whose `version` group picks the part to use.
-- A follower that is behind its dependency catches up in the same move.
+- A follower that is behind its dependency catches up in the same move, without a cooldown of its own.
+- A follower waits on its dependency's clock: when the dependency's release is out of cooldown, so is the follower's.
 - A rule that matched nothing, or whose dependency the lookup did not report, is listed under **Not moved**.
 - The writer re-runs the rule on every changed line, so a `follow:` edit passes only where the rule matches. The deny-list
   still wins: `.github/`, `coverage.yml`, `.mintplayer/` and build scripts can't be followers.

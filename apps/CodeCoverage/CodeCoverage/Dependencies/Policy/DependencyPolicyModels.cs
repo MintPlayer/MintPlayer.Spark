@@ -217,6 +217,9 @@ public sealed record DependencyPolicyOutcome
     /// <summary>companion-pins-PRD G4: why a coverage.yml <c>follow</c> rule moved nothing, as the lookup said it.</summary>
     public IReadOnlyList<string> NotFollowed { get; init; } = [];
 
+    /// <summary>follower-cooldown-PRD G4: the dependencies a feed refused to the lookup, so their updates are unknown.</summary>
+    public IReadOnlyList<string> NotLookedUp { get; init; } = [];
+
     /// <summary>The state to store: first-seen times added, lifted holds removed, slot counters advanced, stale approvals
     /// dropped.</summary>
     public required DependencyUpdateState NextState { get; init; }

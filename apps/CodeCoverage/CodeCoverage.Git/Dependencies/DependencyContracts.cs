@@ -110,6 +110,10 @@ public sealed record LookupEngine
 
 public sealed record LookupProblem
 {
+    /// <summary>follower-cooldown-PRD FU1: the source of a dependency Renovate could not look up (a feed refused it), the
+    /// action's <c>LOOKUP_WARNING</c> (<c>mapReport.ts</c>).</summary>
+    public const string LookupWarning = "renovate-lookup";
+
     public string Source { get; init; } = string.Empty;
     public string Message { get; init; } = string.Empty;
 }

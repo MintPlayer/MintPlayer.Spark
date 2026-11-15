@@ -69,17 +69,19 @@ function record(rule: FollowRule, leaders: readonly LookupRecord[], packageFile:
   const leader = leaders[0];
   const candidates = new Map<string, Candidate>();
   // The leader's current value too: a follower that lags its leader (a half-applied move) catches up.
-  const offered: Array<{ value: string; from: Candidate | null }> = [
-    ...leaders.map((l) => ({ value: l.currentValue ?? '', from: null })),
-    ...leaders.flatMap((l) => l.candidates.filter((c) => c.value !== null && c.updateType !== 'digest').map((c) => ({ value: c.value!, from: c }))),
+  // follower-cooldown E2: `version` is the leader's token (the engine's `Token`: version first), so the follower shares
+  // the leader's first-seen clock and own-release check; `value` is what is written into the follower's file.
+  const offered: Array<{ value: string; token: string; from: Candidate | null }> = [
+    ...leaders.map((l) => ({ value: l.currentValue ?? '', token: l.currentVersion ?? l.currentValue ?? '', from: null })),
+    ...leaders.flatMap((l) => l.candidates.filter((c) => c.value !== null && c.updateType !== 'digest').map((c) => ({ value: c.value!, token: c.version ?? c.value!, from: c }))),
   ];
-  for (const { value, from } of offered) {
+  for (const { value, token, from } of offered) {
     const version = followerVersion(rule, value);
     if (version === null || candidates.has(version) || compareVersions(version, current) <= 0) continue;
     candidates.set(version, {
-      version,
+      version: token,
       value: version,
-      updateType: updateTypeOf(current, version) ?? from?.updateType ?? null,
+      updateType: updateTypeOf(current, version),
       releaseTimestamp: from?.releaseTimestamp ?? null,
       digest: null,
       isBreaking: from?.isBreaking ?? false,
@@ -107,7 +109,7 @@ function record(rule: FollowRule, leaders: readonly LookupRecord[], packageFile:
     sharedVariableName: null,
     groupName: leader.groupName,
     skipReason: null,
-    hold: list.some((c) => c.updateType === null),
+    hold: false,
     candidates: list,
   };
 }

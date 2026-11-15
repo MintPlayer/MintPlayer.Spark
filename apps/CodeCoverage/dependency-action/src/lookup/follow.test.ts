@@ -83,6 +83,19 @@ describe('followerRecords (F2)', () => {
     expect(followers[0].candidates.map((c) => [c.value, c.updateType])).toEqual([['1.64.1', 'minor'], ['1.65.1', 'minor']]);
   });
 
+  it('gives a follower candidate its leader candidate\'s token as version, so both share one first-seen clock (follower-cooldown E2)', async () => {
+    const { followers } = await follow([compose]);
+    // Renovate's MCR candidate: version v1.64.1, value v1.64.1-noble (S1); the engine's token is the version.
+    expect(followers[0].candidates.map((c) => [c.version, c.value])).toEqual([['v1.64.1', '1.64.1'], ['v1.65.1', '1.65.1']]);
+    expect(followers[0].hold).toBe(false);
+  });
+
+  it('gives a catch-up candidate the leader\'s current token as version (follower-cooldown FC2)', async () => {
+    const moved = leaders().map((r) => ({ ...r, currentValue: 'v1.64.1-noble', currentVersion: 'v1.64.1', candidates: r.candidates.filter((c) => c.value === 'v1.65.1-noble') }));
+    const { followers } = await follow([compose], moved);
+    expect(followers[0].candidates.map((c) => [c.version, c.value])).toEqual([['v1.64.1', '1.64.1'], ['v1.65.1', '1.65.1']]);
+  });
+
   it('finds every occurrence, each its own record, so the group plans all of them', async () => {
     const root = sample();
     fs.appendFileSync(path.join(root, 'docker-compose.yml'), '  again:\n    image: ghcr.io/mintplayer/seotester-chromium:1.63.0\n');

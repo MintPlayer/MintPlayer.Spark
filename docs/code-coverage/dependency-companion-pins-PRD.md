@@ -140,6 +140,9 @@ value unless it sets `version:`; S7.)
     two lines above says "Playwright" (fixture lines 154-156); that's F1 by accident. Since F3, a `follow` record passes
     only through its rule (`Without_its_rule_a_follow_record_is_refused_even_on_a_line_naming_the_dependency`).
   - Grouping: a follower takes its leader's `depName`, so the name-keyed group holds both (`FollowGroupingTests`).
+    **Superseded in part (2026-11-15, [follower-cooldown-PRD](follower-cooldown-PRD.md) E1/E2):** the follower
+    candidate's `version` was the follower text, so it got a first-seen clock of its own and held #673's group 3 days;
+    it is now the leader's token, and a catch-up skips the cooldown.
   - Body: the server never read `lookup.problems`; `follow[i]` problems now reach "Not moved"
     (`DependencyPolicyOutcome.NotFollowed`, `A_follow_rule_that_moved_nothing_is_listed_under_not_moved`).
 - [x] **M3 Lockstep groups** (E): the planner picks the highest version every member has; otherwise the group waits with

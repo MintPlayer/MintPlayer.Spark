@@ -191,10 +191,16 @@ public static class DependencyPolicyEngine
                 var globs = config.Companions(sdk);
                 if (globs.Count == 0)
                     continue;
+                // follower-cooldown-PRD FS4/S2: a project whose every tfm names no channel (netstandard2.0, net48) has no
+                // platform to move, so its references are ordinary packages. A file without a tfm (Directory.Packages.props)
+                // can't be told and stays a companion.
+                var standardOnly = platform.Locations.Where(l => l.Kind == "tfm").GroupBy(l => l.File, StringComparer.Ordinal)
+                    .Where(g => g.All(l => l.Channel is null)).Select(g => g.Key).ToHashSet(StringComparer.Ordinal);
                 var list = new List<LookupRecord>();
-                foreach (var record in records.Where(r => r.Ecosystem == ecosystem && !companionOf.ContainsKey(r)))
+                foreach (var record in records.Where(r => r.Ecosystem == ecosystem && !companionOf.ContainsKey(r) && !standardOnly.Contains(r.PackageFile)))
                 {
-                    if (!globs.Any(g => DependencyGlob.Matches(g, record.DepName)))
+                    // follower-cooldown-PRD G2: an upstream package of the account rides like a Microsoft one.
+                    if (!globs.Any(g => DependencyGlob.Matches(g, record.DepName)) && !config.IsAccountPackage(record.Ecosystem, record.DepName))
                         continue;
                     if (MajorOf(record) != major)
                         continue;
@@ -839,6 +845,7 @@ public static class DependencyPolicyEngine
                 PlatformReports = platformReports,
                 // companion-pins-PRD G4: a follow rule the lookup could not apply ("follow[i]") is a "not moved" line.
                 NotFollowed = [.. input.Lookup.Problems.Where(p => p.Source.StartsWith("follow[", StringComparison.Ordinal)).Select(p => p.Message).Distinct(StringComparer.Ordinal)],
+                NotLookedUp = [.. input.Lookup.Problems.Where(p => p.Source == LookupProblem.LookupWarning).Select(p => p.Message).Distinct(StringComparer.Ordinal)],
                 NextState = next,
                 LiftedHolds = lifted,
                 ExpiredApprovals = expired,
@@ -894,7 +901,7 @@ public static class DependencyPolicyEngine
                     (view.Problem, view.Detail) = (EDependencyReportReason.PreviewNotFollowed, $"a prerelease; {track.Why}");
 
                 var (inCooldown, until) = Cooldown(record.Ecosystem, record.DepName, Token(candidate), candidate.ReleaseTimestamp,
-                    securityFix, IsBotRuntime(record)
+                    securityFix, IsBotRuntime(record) || CatchesUp(record, candidate)
                         || own.Contains((record.Ecosystem, record.DepName, candidate.Version ?? string.Empty)) && !config.RepoCodeManagers.Contains(record.Manager));
                 view.InCooldown = inCooldown;
                 view.Until = until;
@@ -926,6 +933,19 @@ public static class DependencyPolicyEngine
             };
         }
 
+
+        /// <summary>
+        /// follower-cooldown-PRD FC2: a follower moving to the release its leader already runs only catches up (the
+        /// half-applied move of #669); the leader took that release, so there is nothing new to wait for. The follower's
+        /// candidate carries the leader's token (follow.ts, E2).
+        /// </summary>
+        private bool CatchesUp(LookupRecord record, LookupCandidate candidate)
+            => record.Manager == FollowManager && candidate.Version is { } token
+                && input.Lookup.Records.Any(r => r.Manager != FollowManager && r.Ecosystem == record.Ecosystem && r.DepName == record.DepName
+                    && (r.CurrentVersion ?? r.CurrentValue) == token);
+
+        /// <summary>The lookup's manager for a <c>follow:</c> pin (follow.ts; the writer's <c>DependencyPatchValidator.FollowManager</c>).</summary>
+        private const string FollowManager = "follow";
 
         private (bool InCooldown, DateTimeOffset Until) Cooldown(string eco, string dep, string token, string? releaseTimestamp, bool securityFix, bool ownRelease = false)
         {

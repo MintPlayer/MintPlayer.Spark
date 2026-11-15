@@ -523,7 +523,7 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
         var data = await DataAsync(context, ct);
         var lookup = DependencyContract.Deserialize<LookupDocument>(data.LookupJson!)!;
         var section = DependenciesYml.Parse(await context.Forge.GetFileContentAsync(repository, ConfigRef(context), CoverageYml.FileName, ct)).Section;
-        var config = DependencyPolicyConfig.Resolve(section, repository, context.Account);
+        var config = DependencyPolicyConfig.Resolve(section, repository, context.Account, await AccountPackagesAsync(repository, ct));
         var state = await stateStore.LoadAsync(repository.Id!, ct);
         var fleet = context.Account?.Id is { } accountId ? await stateStore.LoadFleetAsync(accountId, ct) : new DependencyFleetState();
 
@@ -698,6 +698,22 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
         if (parts.Length < 2 || parts.Any(p => p.Length == 0 || p is "." or ".."))
             return (null, null);
         return ($"{parts[0]}/{parts[1]}", parts.Length > 2 ? string.Join('/', parts[2..]) : null);
+    }
+
+    /// <summary>
+    /// follower-cooldown-PRD G2: the packages the owner's other repositories publish, the upstream side of the dependency
+    /// graph (<see cref="DependencyGraph"/>). Two requests: the owner's repositories, then their manifests in one batch.
+    /// </summary>
+    private async Task<IReadOnlyList<string>> AccountPackagesAsync(Repository repository, CancellationToken ct)
+    {
+        var others = await Raven.Client.Documents.LinqExtensions.ToListAsync(session.Query<Repository, Indexes.Repositories_Overview>()
+            .Where(r => r.OwnerKey == repository.OwnerKey)
+            .Take(1024), ct);
+        var ids = others.Where(r => r.Id is not null && r.Id != repository.Id).Select(r => RepositoryManifest.ForRepository(r.Id!)).ToList();
+        if (ids.Count == 0) return [];
+        var manifests = await session.LoadAsync<RepositoryManifest>(ids, ct);
+        return [.. manifests.Values.OfType<RepositoryManifest>().SelectMany(m => m.Produces)
+            .Select(p => DependencyPolicyConfig.AccountPackageKey(p.Ecosystem, p.Name)).Distinct(StringComparer.OrdinalIgnoreCase)];
     }
 
     private async Task ConfirmOwnReleasesAsync(Context context, LookupDocument lookup, DependencyFleetState fleet, CancellationToken ct)

@@ -205,6 +205,8 @@ internal sealed class DependencyHarness
 
     public async Task SeedAsync(bool enabled = true, int bisectBudget = 0)
     {
+        // follower-cooldown-PRD G2: the plan reads the packages the owner's other repositories publish through this index.
+        await new global::CodeCoverage.Indexes.Repositories_Overview().ExecuteAsync(Store);
         using var session = Store.OpenAsyncSession();
         await session.StoreAsync(new Account
         {
