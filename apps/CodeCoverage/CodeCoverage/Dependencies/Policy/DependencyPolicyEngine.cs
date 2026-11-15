@@ -154,6 +154,9 @@ public static class DependencyPolicyEngine
         private readonly List<DependencyReportEntry> ignored = [];
         private readonly List<DependencyPlatformReport> platformReports = [];
         private readonly List<DependencyHold> lifted = [];
+        /// <summary>prerelease-track-scenarios-PRD D5: platform groups held in this evaluation; the alignment under the same
+        /// name waits with them.</summary>
+        private readonly HashSet<string> heldPlatformGroups = new(StringComparer.Ordinal);
         /// <summary>#655: per group, the blockers whose held groups joined it (<see cref="JoinBlockedGroups"/>).</summary>
         private readonly Dictionary<string, HashSet<string>> joinedBlockers = new(StringComparer.Ordinal);
         private readonly HashSet<(string Group, string DepNames, string Targets)> currentTargets = [];
@@ -167,6 +170,8 @@ public static class DependencyPolicyEngine
         // #606 D2: each SDK's companion records (on the SDK's current major), and the ones riding in its planned group.
         private readonly Dictionary<string, List<LookupRecord>> companions = new(StringComparer.Ordinal);
         private readonly Dictionary<LookupRecord, string> companionOf = new(ReferenceEqualityComparer.Instance);
+        /// <summary>prerelease-track-scenarios-PRD D8: the channel's major of each SDK the repository is on a preview of.</summary>
+        private readonly Dictionary<string, long> previewMajor = new(StringComparer.Ordinal);
         private readonly HashSet<LookupRecord> riding = new(ReferenceEqualityComparer.Instance);
         /// <summary>follower-cooldown-PRD H1: per SDK, the companions on an older major in a project that targets only the SDK's
         /// channel. They move to the channel's major, with the platform group or in one of their own.</summary>
@@ -317,6 +322,7 @@ public static class DependencyPolicyEngine
         private DependencyPlannedItem? SplitItem(Split split, IReadOnlyList<string> tfms, string? moveTo, bool previewTarget, List<string> missing)
         {
             var views = split.Records.SelectMany(Candidates).Where(v => v.Problem is null).ToList();
+            var explicitPreview = split.Records.Any(ExplicitPreview);
             var layout = new List<(string Tfm, string? Version, View? Pick)>();
             foreach (var tfm in tfms)
             {
@@ -340,10 +346,15 @@ public static class DependencyPolicyEngine
                 // (Tools #217, NU1605 on Microsoft.CodeAnalysis.CSharp.Workspaces 5.12.0 vs 5.9.0).
                 var mustMove = current is null || (range is not null ? !Admits(range, current) : UpdateTypeFloor.LeadingNumber(current) != major);
                 var moving = channel == moveTo && mustMove;
-                var fits = views.Where(v => (range is not null || MajorOf(v.Candidate) == major) && (range is null || Admits(range, Token(v.Candidate)))
-                        && (!IsPreviewToken(Token(v.Candidate)) || moving && previewTarget || IsPreviewToken(current))
+                var newer = views.Where(v => (range is not null || MajorOf(v.Candidate) == major) && (range is null || Admits(range, Token(v.Candidate)))
                         && (current is null || Compare(Token(v.Candidate), current) > 0))
                     .OrderByDescending(v => SemVer.TryParse(Token(v.Candidate), out var s) ? s : null).ToList();
+                // A prerelease is offered on a move to a preview channel, or by a rule's track: preview. A TFM on a prerelease
+                // follows prereleases only until a release on its major exists (prerelease-track-scenarios-PRD D3, the owner's
+                // rule: "if a release within the channel is available ... it should pick that one").
+                var preview = moving && previewTarget || explicitPreview
+                    || IsPreviewToken(current) && !newer.Any(v => !IsPreviewToken(Token(v.Candidate)));
+                var fits = newer.Where(v => preview || !IsPreviewToken(Token(v.Candidate))).ToList();
                 var pick = fits.FirstOrDefault(v => moving || !v.InCooldown);
                 if (fits.FirstOrDefault() is { InCooldown: true } cooling && cooling != pick && !moving)
                     Report(Entry($"platform:{split.Sdk}", cooling, EDependencyReportReason.Cooldown, $"released less than {Days(config.Cooldown)} ago") with { Until = cooling.Until });
@@ -441,7 +452,19 @@ public static class DependencyPolicyEngine
                 var onChannel = platform.Locations.Where(l => l.Kind == "tfm").GroupBy(l => l.File, StringComparer.Ordinal)
                     .Where(g => g.All(l => !l.Computed && l.Value.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
                         .All(t => TfmChannel(t) == channel))).Select(g => g.Key).ToHashSet(StringComparer.Ordinal);
-                bool TargetsOnlyTheChannel(string file) => onChannel.Contains(file) || sdk == "dotnet" && file.EndsWith("dotnet-tools.json", StringComparison.Ordinal);
+                // prerelease-track-scenarios-PRD D4: a Directory.Packages.props sets the version for every project under its
+                // folder, so it targets only the channel when each of them does (and at least one is known).
+                var tfmFiles = platform.Locations.Where(l => l.Kind == "tfm").Select(l => l.File).Distinct(StringComparer.Ordinal).ToList();
+                bool TargetsOnlyTheChannel(string file)
+                {
+                    if (onChannel.Contains(file) || sdk == "dotnet" && file.EndsWith("dotnet-tools.json", StringComparison.Ordinal))
+                        return true;
+                    if (!string.Equals(System.IO.Path.GetFileName(file), "Directory.Packages.props", StringComparison.OrdinalIgnoreCase))
+                        return false;
+                    var folder = DirectoryOf(file);
+                    var under = tfmFiles.Where(f => folder.Length == 0 || f.StartsWith(folder + "/", StringComparison.Ordinal)).ToList();
+                    return under.Count > 0 && under.All(onChannel.Contains);
+                }
                 // companion-version-maps-PRD §6.2: a project's key channel is its lowest (it must load there too); a file
                 // with no TFM (Directory.Packages.props, a tool manifest) takes the repository's.
                 var lowest = platform.Locations.Where(l => l.Kind == "tfm" && !l.Computed)
@@ -470,9 +493,10 @@ public static class DependencyPolicyEngine
                     }
                     if (entry is null && !config.IsAccountPackage(record.Ecosystem, record.DepName))
                         continue;
-                    // H1 (Tools #218): on a released channel, a prerelease of its major (11.0.0-rc.1 on net11.0) is behind the
-                    // release like an older major, and rides to it with them, or a sibling's 11.0.0 needs it and restore refuses.
-                    var preReleaseBehind = MajorOf(record) == major && !platform.Current.Preview
+                    // follower-cooldown-PRD H2 (Tools #218): on a released channel, a prerelease of its major (11.0.0-rc.1 on
+                    // net11.0) is behind the release like an older major, and rides to it with them, or a sibling's 11.0.0 needs
+                    // it and restore refuses. prerelease-track-scenarios-PRD D2: not when a rule chose track: preview for it.
+                    var preReleaseBehind = MajorOf(record) == major && !platform.Current.Preview && !ExplicitPreview(record)
                         && IsPreviewToken(record.CurrentVersion ?? record.CurrentValue) && TargetsOnlyTheChannel(record.PackageFile)
                         && record.Candidates.Any(c => MajorOf(c) == major && !IsPreviewToken(c.Version));
                     if (MajorOf(record) == major && !preReleaseBehind)
@@ -483,6 +507,8 @@ public static class DependencyPolicyEngine
                         continue;
                     companionOf[record] = sdk;
                 }
+                if (platform.Current.Preview)
+                    previewMajor[sdk] = major;
                 if (list.Count > 0)
                     companions[sdk] = list;
                 if (behind.Count > 0)
@@ -978,6 +1004,21 @@ public static class DependencyPolicyEngine
                 return;
             var group = $"platform:{platform.Sdk} {current}";
             List<DependencyPlannedItem> items = [.. picks.Select(v => new DependencyPlannedItem(v.Record, v.Candidate, v.Level)), .. splitItems];
+            // prerelease-track-scenarios-PRD D5: the group carries the platform's name, so a hold on it (the move's, held above,
+            // or this group's own refusal) holds it too, judged against these items like the move's.
+            if (heldPlatformGroups.Contains(group))
+                return;
+            if (next.Holds.FirstOrDefault(h => h.Group == group) is { } hold)
+            {
+                if (DependencyHolds.StandsFor(hold, items.Select(i => i.ToPlanItem())))
+                {
+                    foreach (var pick in picks)
+                        Report(Entry(group, pick, EDependencyReportReason.Held, hold.Reason));
+                    return;
+                }
+                next.Holds.Remove(hold);
+                lifted.Add(hold);
+            }
             var eco = items[0].Record.Ecosystem;
             var groupPlan = new DependencyPlannedGroup
             {
@@ -996,8 +1037,13 @@ public static class DependencyPolicyEngine
         /// down; a prerelease only towards a preview channel). A record without one stays behind and is listed.</summary>
         private List<View> LaggingRiders(IEnumerable<LookupRecord> behind, long? major, bool preview)
             => [.. behind.Select(r => Candidates(r).FirstOrDefault(v => v.Problem is null && !v.InCooldown && MajorOf(v.Candidate) == major
-                    && (preview || !IsPreviewToken(Token(v.Candidate)))))
+                    && (preview || ExplicitPreview(r) || !IsPreviewToken(Token(v.Candidate)))))
                 .OfType<View>()];
+
+        /// <summary>prerelease-track-scenarios-PRD D1/D2: a coverage.yml or account rule put the package on track: preview. Only
+        /// such a choice keeps a package on prereleases where the platform's own logic would take a release on the major.</summary>
+        private bool ExplicitPreview(LookupRecord record)
+            => config.PackageTrackOf(record.Ecosystem, record.DepName, record.CurrentVersion ?? record.CurrentValue) is { Track: EDependencyTrack.Preview, Explicit: true };
 
         /// <summary>#606 D8: whether a channel is on the SDK's track (lts: an LTS release; stable: no preview; preview: any).</summary>
         private static bool OnTrack(PlatformCandidate candidate, EDependencyTrack track) => track switch
@@ -1086,10 +1132,15 @@ public static class DependencyPolicyEngine
                     Report(Entry(target, level, EDependencyReportReason.Ignored, why));
                     return false;
                 }
-                var hold = config.FileHold(eco, eco) ?? next.Holds.FirstOrDefault(h => h.Group == group || (h.Group.Length == 0 && h.DepNames.Contains(eco)))?.Reason;
+                // prerelease-track-scenarios-PRD D5: the bot's own hold (R2) is judged against the items planned below; a
+                // writer's hold or the file's holds the group as it is.
+                var stateHold = next.Holds.FirstOrDefault(h => h.Group == group || (h.Group.Length == 0 && h.DepNames.Contains(eco)));
+                var botHold = stateHold is { Kind: EDependencyHoldKind.Blocker or EDependencyHoldKind.Unattributed } ? stateHold : null;
+                var hold = config.FileHold(eco, eco) ?? (botHold is null ? stateHold?.Reason : null);
                 if (hold is not null)
                 {
                     Report(Entry(target, level, EDependencyReportReason.Held, hold));
+                    heldPlatformGroups.Add(group);
                     return false;
                 }
                 if (red.Contains((eco, eco, token)))
@@ -1116,8 +1167,9 @@ public static class DependencyPolicyEngine
                 {
                     foreach (var record in family)
                     {
+                        // prerelease-track-scenarios-PRD D2: a companion a rule put on track: preview keeps its prereleases.
                         var pick = Candidates(record).FirstOrDefault(v => v.Problem is null && MajorOf(v.Candidate) == major
-                            && (!toRelease || !IsPreviewToken(Token(v.Candidate))));
+                            && (!toRelease || ExplicitPreview(record) || !IsPreviewToken(Token(v.Candidate))));
                         if (pick is null)
                         {
                             // #617 D33: a companion already on the release has nothing to ride with.
@@ -1160,6 +1212,18 @@ public static class DependencyPolicyEngine
                         .Select(p => new PlanTargetFrameworks { File = p.Key, Value = string.Join(';', p.Value) })];
                     splitItems = SplitItems(platform.Sdk, nextLists, target.Channel, target.Preview, missing);
                     missing = [.. missing.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)];
+                }
+                if (botHold is not null)
+                {
+                    var planned = riders.Select(v => new DependencyPlannedItem(v.Record, v.Candidate, v.Level)).Concat(splitItems).Select(i => i.ToPlanItem());
+                    if (DependencyHolds.StandsFor(botHold, planned))
+                    {
+                        Report(Entry(target, level, EDependencyReportReason.Held, botHold.Reason));
+                        heldPlatformGroups.Add(group);
+                        return false;
+                    }
+                    next.Holds.Remove(botHold);
+                    lifted.Add(botHold);
                 }
                 if (missing.Count > 0 && !Approved(group, [eco], targets, force: true))
                 {
@@ -1332,8 +1396,12 @@ public static class DependencyPolicyEngine
                     (view.Problem, view.Detail) = (EDependencyReportReason.AboveLineCeiling, ceiling);
                 // prerelease-dependencies-PRD D2/H1: a prerelease only on the package's preview track. Renovate's lookup is
                 // wider (H5 rule order, a companion glob), and an enforced account rule narrows the track only here.
+                // prerelease-track-scenarios-PRD D8: on an SDK the repository is on a preview of, a companion's prerelease on the
+                // channel's major is the platform's own phase, so it is offered unless a rule chose track: stable.
                 else if (DependencyPolicyConfig.IsPrerelease(record.Ecosystem, candidate.Version)
-                    && config.PackageTrackOf(record.Ecosystem, record.DepName, record.CurrentVersion ?? record.CurrentValue) is { Track: EDependencyTrack.Stable } track)
+                    && config.PackageTrackOf(record.Ecosystem, record.DepName, record.CurrentVersion ?? record.CurrentValue) is { Track: EDependencyTrack.Stable } track
+                    && !(track is { Explicit: false } && companionOf.TryGetValue(record, out var companionSdk)
+                        && previewMajor.TryGetValue(companionSdk, out var channelMajor) && MajorOf(candidate) == channelMajor))
                     (view.Problem, view.Detail) = (EDependencyReportReason.PreviewNotFollowed, $"a prerelease; {track.Why}");
 
                 var (inCooldown, until) = Cooldown(record.Ecosystem, record.DepName, Token(candidate), candidate.ReleaseTimestamp,

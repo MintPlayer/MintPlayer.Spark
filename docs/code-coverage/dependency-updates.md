@@ -30,7 +30,9 @@ skipped, and a report with uploads missing is a hold of its own.
    (`docs/setup_migrations_PRD.md` D1-D8).
 3. **Apply.** It dispatches `dependency-apply.yml` on that ref. The workflow edits the manifests, pins and relocks with
    scripts off, never builds, and uploads `dependency.patch` and `result.json`. A group the resolver refuses is reset and
-   held; the others still ship.
+   held; the others still ship. The hold lifts when the lookup offers something new, after four scheduled slots, or, for
+   a platform group, as soon as the bot plans that group with other items than the ones refused (a fixed bot no longer
+   waits for the lookup to change).
 4. **Validate and push.** The bot's git writer checks the patch against the plan line by line (only planned files, only
    the planned version tokens, lockfiles from known registries, no added files, no scripts) and builds the rolling branch
    from the default branch. Commits people pushed on the rolling branch are replayed on top.
@@ -235,6 +237,22 @@ narrows the result. Example: `Octokit.GraphQL` has never shipped a stable, so a 
 A prerelease the track skips is listed under *Available, not applied* ("a prerelease; a coverage.yml rule sets track:
 stable"), with the rule that would change it.
 
+**A platform package on a prerelease takes the release** ([prerelease-track-scenarios-PRD](prerelease-track-scenarios-PRD.md)).
+For a companion of the SDK (`Microsoft.Extensions.*` on .NET), the prerelease default stops once its major has a release
+on the channel: `11.0.0-rc.1` in a `net11.0` project moves to `11.0.0`, not to `11.1.0-preview.1`. This holds on the
+channel's release move, in a released channel's own `platform:dotnet 11.0` group, and per TFM in a multi-target project.
+A package whose prerelease has no release yet keeps following prereleases. The other way round, while the repository is
+on the SDK's preview (`global.json` on `11.0.100-rc.2`), a companion in a project on that channel takes the channel's
+prerelease (`Microsoft.Extensions.Hosting` 10.0.5 → `11.0.0-rc.2`); `track: stable` on it keeps it on stables, and a
+project on the previous channel or an ordinary package is never pulled onto a preview. To keep a companion on previews anyway, say
+so with a rule; only a rule's `track: preview` (in `coverage.yml` or the account's) does that:
+
+```yaml
+  rules:
+    - match: ["Microsoft.Extensions.DependencyInjection"]
+      track: preview             # stays on prereleases even when 11.0.0 is out
+```
+
 **Moves inside a channel** (#617). The same table offers the channel a repository is already on when a pin is behind
 it: the RC SDK once the release is out (`11.0.100-rc.2…` → `11.0.100`), or a GA patch (`10.0.402` → `10.0.403`). It is
 the `platform:<sdk> <channel>` group, a **patch** under the account's rules, and it moves `global.json` and every
@@ -280,12 +298,15 @@ companions, since its packages must keep building for the older target.
   move to .NET 11.0 waits until SpaServices ships 11.0.0 (or `--force`). `companions: []` turns these off as well.
 - **A .NET Standard project has no platform to move.** In a project whose every `<TargetFramework(s)>` is .NET Standard
   or .NET Framework (Spark's source generators), the references are ordinary packages: they neither ride with nor hold
-  the move. A reference in `Directory.Packages.props` can't be traced to a project and is still a companion.
+  the move. A reference in `Directory.Packages.props` sets the version for every project under its folder, so it counts
+  as that set of projects: on the SDK's channel only when each of them is.
 - **A project on the SDK's channel takes the channel's major** ([follower-cooldown-PRD](follower-cooldown-PRD.md) H1). In
   a project whose every `<TargetFramework(s)>` is the SDK's channel (`net11.0` only), a companion still on an older major
   (`Microsoft.Extensions.DependencyInjection` 10.0.5) moves to the channel's major (11.0.0) without an approval: with the
   platform group when one is planned, else in a `platform:dotnet 11.0` group of its own. The same goes for a
-  `dotnet-tools.json` tool (`dotnet-ef` 8.0.3 → 11.0.0), which runs on the SDK. A project that also targets an older
+  `dotnet-tools.json` tool (`dotnet-ef` 8.0.3 → 11.0.0), which runs on the SDK, and for a `Directory.Packages.props`
+  whose every project under its folder targets the channel only. A prerelease of the channel's major (`11.0.0-rc.1`)
+  moves to its release the same way (H2), unless a rule sets `track: preview` on it. A project that also targets an older
   channel (`net10.0;net11.0`) keeps building for it, so its packages keep their major and the next one waits for approval.
   A package with no release on the channel's major (`System.CommandLine` 2.x) is an ordinary package.
 
