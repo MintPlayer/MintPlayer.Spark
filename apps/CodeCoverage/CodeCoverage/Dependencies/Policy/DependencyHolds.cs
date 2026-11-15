@@ -47,6 +47,7 @@ public static class DependencyHolds
                     : $"the apply run {(group.Status == EApplyGroupStatus.Unresolvable ? "could not resolve" : "failed on")} it{(group.Message is { Length: > 0 } m ? $": {Shorten(m)}" : string.Empty)} (R2)",
                 Blockers = blocker ? [.. attributed.Select(dep => new DependencyBlockerSeen { DepName = dep, SeenVersions = Seen(lookup, dep), CurrentTokens = Current(lookup, dep) })] : [],
                 Fingerprint = blocker ? null : fingerprint,
+                Refused = planned.Platform is not null || planned.Group.StartsWith("platform:", StringComparison.Ordinal) ? PlannedItems(planned.Items) : [],
                 CreatedAtUtc = now.UtcDateTime,
                 PlanId = plan.PlanId,
             };
@@ -163,6 +164,21 @@ public static class DependencyHolds
         _ => false,
     };
 
+    /// <summary>prerelease-track-scenarios-PRD D5: a platform group's items as a hold records them, sorted.</summary>
+    public static List<string> PlannedItems(IEnumerable<PlanItem> items)
+        => [.. items.Select(i => $"{i.DepName}|{i.PackageFile}|{i.NewValue}{(i.Layout is { Count: > 0 } l ? "|" + string.Join(",", l.Select(t => $"{t.TargetFramework}={t.Version}")) : string.Empty)}")
+            .Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)];
+
+    /// <summary>
+    /// prerelease-track-scenarios-PRD D5: whether a bot hold on a platform group still stands for the group as planned now.
+    /// The hold names what the resolver refused; a plan with other items (a fixed engine planned the blocker along, Tools
+    /// #218 after #679) is a new plan, so the hold lifts. A hold taken before it recorded its items lifts once for the same
+    /// reason: the next apply records them.
+    /// </summary>
+    public static bool StandsFor(DependencyHold hold, IEnumerable<PlanItem> planned)
+        => hold.Kind is not (EDependencyHoldKind.Blocker or EDependencyHoldKind.Unattributed)
+            || hold.Refused.Count > 0 && hold.Refused.SequenceEqual(PlannedItems(planned), StringComparer.Ordinal);
+
     /// <summary>Every version token the lookup shows for a dependency: its current value and version, and each candidate's.</summary>
     public static List<string> Seen(LookupDocument lookup, string depName)
         => [.. lookup.Records.Where(r => string.Equals(r.DepName, depName, StringComparison.Ordinal))
@@ -196,6 +212,7 @@ public static class DependencyHolds
         Reason = hold.Reason,
         Blockers = [.. hold.Blockers.Select(b => new DependencyBlockerSeen { DepName = b.DepName, SeenVersions = [.. b.SeenVersions], CurrentTokens = [.. b.CurrentTokens] })],
         Fingerprint = hold.Fingerprint,
+        Refused = [.. hold.Refused],
         SeenVersions = [.. hold.SeenVersions],
         HeldValue = hold.HeldValue,
         ProposedVersion = hold.ProposedVersion,

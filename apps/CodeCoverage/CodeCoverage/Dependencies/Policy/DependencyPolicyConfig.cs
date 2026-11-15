@@ -148,26 +148,35 @@ public sealed class DependencyPolicyConfig
     /// prerelease-dependencies-PRD H1: preview when the current version is a prerelease (in a SemVer ecosystem, H5) or the
     /// package is a companion of an SDK on the preview track, stable otherwise. Never wider than an enforced rule's track.
     /// <c>lts</c> has no meaning for a package and reads as stable.
+    /// <para><c>Explicit</c> (prerelease-track-scenarios-PRD D1): a coverage.yml or account rule set the track, rather than the
+    /// package's current version or its SDK. Only an explicit preview track keeps a package on prereleases when a release on
+    /// the channel's major exists (the owner's rule otherwise takes the release).</para>
     /// </summary>
-    public (EDependencyTrack Track, string Why) PackageTrackOf(string ecosystem, string depName, string? currentVersion)
+    public (EDependencyTrack Track, string Why, bool Explicit) PackageTrackOf(string ecosystem, string depName, string? currentVersion)
     {
         EDependencyTrack chosen;
         string why;
+        var isExplicit = true;
         var file = FileRules(ecosystem, depName).Select(r => r.Track).FirstOrDefault(t => t != EDependencyTrack.Inherit);
         if (file != EDependencyTrack.Inherit)
             (chosen, why) = (file, $"a coverage.yml rule sets track: {Name(file)}");
         else if (TrackOf(Defaults(ecosystem, depName)) is { } account)
             (chosen, why) = (account, $"an account rule sets track: {Name(account)} (a coverage.yml rule with track: preview overrides it)");
-        else if (IsPrerelease(ecosystem, currentVersion))
-            (chosen, why) = (EDependencyTrack.Preview, $"{depName} is on a prerelease and follows prereleases");
-        else if (DependenciesYml.PlatformSdks.Any(sdk => PlatformTrack(sdk) == EDependencyTrack.Preview && CompanionEntry(sdk, depName) is not null))
-            (chosen, why) = (EDependencyTrack.Preview, $"{depName} is a companion of an SDK on the preview track");
         else
-            (chosen, why) = (EDependencyTrack.Stable, $"{depName} follows stable releases (a coverage.yml rule `match: {depName}` with `track: preview` follows prereleases)");
+            (chosen, why, isExplicit) = Inferred();
 
         if (TrackOf(Enforced(ecosystem, depName)) is { } ceiling && ceiling < chosen)
-            (chosen, why) = (ceiling, $"an enforced account rule sets track: {Name(ceiling)}");
-        return (chosen == EDependencyTrack.Preview ? EDependencyTrack.Preview : EDependencyTrack.Stable, why);
+            (chosen, why, isExplicit) = (ceiling, $"an enforced account rule sets track: {Name(ceiling)}", true);
+        return (chosen == EDependencyTrack.Preview ? EDependencyTrack.Preview : EDependencyTrack.Stable, why, isExplicit);
+
+        (EDependencyTrack, string, bool) Inferred()
+        {
+            if (IsPrerelease(ecosystem, currentVersion))
+                return (EDependencyTrack.Preview, $"{depName} is on a prerelease and follows prereleases", false);
+            if (DependenciesYml.PlatformSdks.Any(sdk => PlatformTrack(sdk) == EDependencyTrack.Preview && CompanionEntry(sdk, depName) is not null))
+                return (EDependencyTrack.Preview, $"{depName} is a companion of an SDK on the preview track", false);
+            return (EDependencyTrack.Stable, $"{depName} follows stable releases (a coverage.yml rule `match: {depName}` with `track: preview` follows prereleases)", false);
+        }
 
         static string Name(EDependencyTrack track) => track.ToString().ToLowerInvariant();
     }

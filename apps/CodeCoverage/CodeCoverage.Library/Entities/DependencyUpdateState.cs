@@ -99,6 +99,11 @@ public class DependencyHold
     /// <summary>Shown in the pull request body.</summary>
     public string Reason { get; set; } = string.Empty;
 
+    /// <summary>prerelease-track-scenarios-PRD D5: a bot hold on a platform group (the move, or the alignment under the
+    /// platform's name): the items the apply refused
+    /// (<c>dep|file|newValue[|layout]</c>, sorted). The hold lifts when the group is planned with other items.</summary>
+    public List<string> Refused { get; set; } = [];
+
     /// <summary><see cref="EDependencyHoldKind.Blocker"/>: each blocker and the version tokens the lookup offered for it
     /// when the hold was taken.</summary>
     public List<DependencyBlockerSeen> Blockers { get; set; } = [];

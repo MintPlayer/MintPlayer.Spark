@@ -144,4 +144,54 @@ public class DependencyPreviewToReleaseEndToEndTests : SparkTestDriver
         var plan = DependencyContract.Deserialize<DependencyPlan>(harness.Writer.Requests("work-ref").Single().PlanJson!)!;
         plan.Groups.Should().ContainSingle().Which.Items.Select(i => $"{i.DepName}@{i.NewVersion}").Should().Equal("Acme.Endpoints@11.4.1");
     }
+
+    /// <summary>
+    /// prerelease-track-scenarios-PRD D5 (Tools #218, 2026-11-15): the apply refused the platform group with NU1605 on
+    /// <c>Microsoft.Extensions.DependencyInjection</c>, so R2 held it on that blocker. A fixed engine now plans the blocker
+    /// in the group, but the lookup did not change, so the hold stood and the fix never reached the pull request. The
+    /// hold binds to the items it refused: this plan is another, so it lifts, the group is planned with both packages at
+    /// 11.0.0, and the hold the next refusal takes records its items.
+    /// </summary>
+    [Fact]
+    public async Task A_platform_hold_from_before_a_fix_lifts_when_the_group_is_planned_with_its_blocker()
+    {
+        var harness = new DependencyHarness(Store);
+        harness.SetYml(DependencyHarness.Yml);
+        await harness.SeedAsync();
+        await harness.StoreAsync(Released, Released.Id!);
+        await harness.StoreAsync(new DependencyUpdateState
+        {
+            Repository = DependencyHarness.RepositoryId,
+            Holds =
+            [
+                new DependencyHold
+                {
+                    Id = "blocker:platform:dotnet 11.0", Kind = EDependencyHoldKind.Blocker, Group = "platform:dotnet 11.0", DepNames = ["platform:dotnet"],
+                    Reason = "the resolver refused it: blocked by Microsoft.Extensions.DependencyInjection (R2)",
+                    Blockers = [new DependencyBlockerSeen { DepName = "Microsoft.Extensions.DependencyInjection", SeenVersions = [RcPackage, "11.0.0"], CurrentTokens = [RcPackage] }],
+                    CreatedAtUtc = new DateTime(2026, 11, 15, 20, 0, 0, DateTimeKind.Utc),
+                },
+            ],
+        }, DependencyUpdateState.ForRepository(DependencyHarness.RepositoryId));
+
+        string table;
+        using (var session = Store.OpenAsyncSession())
+            table = await DependencyPlatformTable.JsonAsync(session, [], [], CancellationToken.None);
+        using var parsed = JsonDocument.Parse(table);
+        var row = parsed.RootElement.GetProperty("sdks").GetProperty("dotnet").EnumerateArray().Single();
+        LookupRecord Package(string name, string current, string next, EUpdateType type) => DependencyTestKit.Record(name, current,
+            DependencyTestKit.Candidate(type, next)) with
+        { Ecosystem = "nuget", Manager = "nuget", Datasource = "nuget", PackageFile = "src/Web/Web.csproj", LockFiles = [] };
+
+        await harness.RunToApplyAsync(DependencyHarness.Lookup(
+            Package("Microsoft.Extensions.Hosting", "10.0.5", "11.0.0", EUpdateType.Major),
+            Package("Microsoft.Extensions.DependencyInjection", RcPackage, "11.0.0", EUpdateType.Patch)) with { Platforms = [OnTheRc(row)] });
+
+        var plan = DependencyContract.Deserialize<DependencyPlan>(harness.Writer.Requests("work-ref").Single().PlanJson!)!;
+        var group = plan.Groups.Should().ContainSingle().Which;
+        group.Group.Should().Be("platform:dotnet 11.0");
+        group.Items.Select(i => $"{i.DepName}@{i.NewVersion}").Order(StringComparer.Ordinal)
+            .Should().Equal("Microsoft.Extensions.DependencyInjection@11.0.0", "Microsoft.Extensions.Hosting@11.0.0");
+        (await harness.StateAsync()).Holds.Should().NotContain(h => h.Group == "platform:dotnet 11.0" && h.Refused.Count == 0);
+    }
 }
