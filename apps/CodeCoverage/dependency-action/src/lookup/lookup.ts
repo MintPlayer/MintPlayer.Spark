@@ -68,7 +68,7 @@ export async function runLookup(o: LookupOptions): Promise<{ document: LookupDoc
   }
   const run = o.renovate
     ? await o.renovate()
-    : await runRenovate({ exec: o.exec, repoDir: o.repoDir, workDir: o.workDir, githubTokenEnv: o.githubTokenEnv, hostRulesEnv: o.hostRulesEnv, unstable: o.platforms.unstable });
+    : await runRenovate({ exec: o.exec, repoDir: o.repoDir, workDir: o.workDir, githubTokenEnv: o.githubTokenEnv, hostRulesEnv: o.hostRulesEnv, unstable: o.platforms.unstable, stable: o.platforms.stable });
   const problems = reportProblems(run.report);
   const { platforms, found } = await scanPlatforms(o.repoDir, o.platforms, problems, o.now?.() ?? new Date());
   // R31: the platform record owns its locations; their channel moves are never offered separately.

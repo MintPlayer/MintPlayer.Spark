@@ -227,6 +227,13 @@ public sealed record PlatformCurrent
 
 public sealed record PlatformLocation
 {
+    /// <summary>
+    /// prerelease-dependencies-PRD H6/H7: the <see cref="Reason"/> of a <c>setup-*</c> input whose expression the scan can't
+    /// resolve (<c>${{ vars.X }}</c>, a function). The move would leave that workflow behind, so it holds the move like P11.
+    /// The action writes the same text (<c>UNRESOLVED_EXPRESSION</c> in <c>locations.ts</c>).
+    /// </summary>
+    public const string UnresolvedExpression = "unresolved expression";
+
     public string File { get; init; } = string.Empty;
 
     /// <summary><c>tfm</c>, <c>global.json</c>, <c>docker</c>, <c>setup-action</c>, ... (the schema's closed list).</summary>

@@ -325,12 +325,12 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
         // D14: dispatched on the branch it updates, so the run builds its head; a head that moved in between is WrongCommit.
         // #606 D9: with the bot's channel table, which the lookup requires.
         var token = RunToken(context);
-        var unstable = DependencyPolicyConfig.Resolve(parsed.Section, repository, context.Account).UnstableGlobs();
+        var tracks = DependencyPolicyConfig.Resolve(parsed.Section, repository, context.Account);
         var request = new WorkflowHookRequest(run.LookupAction, target, new Dictionary<string, string>
         {
             ["expected_sha"] = head,
             ["run_id"] = token,
-            ["platforms"] = await DependencyPlatformTable.JsonAsync(session, unstable, ct),
+            ["platforms"] = await DependencyPlatformTable.JsonAsync(session, tracks.UnstableGlobs(), tracks.StableGlobs(), ct),
         }, LookupTimeout, "lookup");
         await DispatchAsync(context, request, "lookup", head, $"dependency-lookup-{token}", null, EDependencyRunState.Looking, ct);
     }
@@ -1405,7 +1405,8 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
         var refusal = run.Trigger == EDependencyRunTrigger.Refresh
             ? "A run a comment started does not auto-merge; the next scheduled run may."
             : DependencyAutoMergeGate.Refusal(new DependencyEnqueueInput(queueEnabled, report, draft, run.PatchVerdict == GitWriterDependencyOutcomes.NeedsHuman,
-                run.MigratedGroups.Count > 0, notOnPullRequest, coverage));
+                run.MigratedGroups.Count > 0, notOnPullRequest, coverage,
+                section.Platforms.Where(p => p.Value.AutoMergeMajor).Select(p => p.Key).ToHashSet(StringComparer.Ordinal)));
 
         await PublishOwnCheckAsync(context, run.RollingSha!, EForgeQueueCheckState.Success, "CI is green", refusal ?? "Handed to the merge queue.", ct);
         if (refusal is null && run.PullRequestNumber is { } pr)

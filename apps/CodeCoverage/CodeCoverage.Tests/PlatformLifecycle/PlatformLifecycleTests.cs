@@ -202,12 +202,13 @@ public class PlatformLifecycleTests : CoverageRavenTest
         await RunAsync(store, Sources(bodies).Handler, options);
 
         using var session = store.OpenAsyncSession();
-        var table = await CodeCoverage.Dependencies.Policy.DependencyPlatformTable.JsonAsync(session, ["@types/node"], CancellationToken.None);
+        var table = await CodeCoverage.Dependencies.Policy.DependencyPlatformTable.JsonAsync(session, ["@types/node"], ["Octokit.GraphQL"], CancellationToken.None);
 
         table.Length.Should().BeLessThan(32_768, "half the input's 65,535 cap, so the channels can double before it matters");
         using var document = System.Text.Json.JsonDocument.Parse(table);
         var sdks = document.RootElement.GetProperty("sdks");
         sdks.EnumerateObject().Select(p => p.Name).Should().Equal("dotnet", "go", "java", "node", "php", "python", "ruby", "rust");
+        document.RootElement.GetProperty("stable").EnumerateArray().Select(g => g.GetString()).Should().Equal("Octokit.GraphQL");
         var rust = sdks.GetProperty("rust").EnumerateArray().Single(c => c.GetProperty("channel").GetString() == "1.100");
         (rust.GetProperty("preview").GetBoolean(), rust.GetProperty("latestSdk").GetString()).Should().Be((true, "beta-2026-11-08"));
         var dotnet = sdks.GetProperty("dotnet").EnumerateArray().Single(c => c.GetProperty("channel").GetString() == "10.0");

@@ -83,6 +83,8 @@ export const SDKS: readonly Sdk[] = ['dotnet', 'node', 'python', 'java', 'go', '
 export interface PlatformTable {
   sdks: Partial<Record<Sdk, PlatformCandidate[]>>;
   unstable: string[];
+  /** prerelease-dependencies-PRD H5: the `track: stable` globs, looked up stable-only even on a prerelease. */
+  stable: string[];
 }
 
 export type PlatformLocationKind =
@@ -114,7 +116,9 @@ export type PlatformLocationKind =
   // platform-locations-PRD R2/P8: a `netN.N` token of a template.json framework choice symbol.
   | 'template-framework'
   // platform-locations-PRD R8/P10: an action.yml `runs.using: nodeNN`.
-  | 'action-runtime';
+  | 'action-runtime'
+  // prerelease-dependencies-PRD H7: an `env:` value or an input's `default:` a setup-* step reads (`${{ env.X }}`, `${{ inputs.x }}`).
+  | 'workflow-value';
 
 export interface PlatformLocation {
   file: string;

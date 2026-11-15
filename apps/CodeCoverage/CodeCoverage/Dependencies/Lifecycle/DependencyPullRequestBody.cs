@@ -64,9 +64,9 @@ public static class DependencyPullRequestBody
         if (report.AwaitingApproval.Count > 0)
         {
             body.AppendLine("## Awaiting approval").AppendLine();
-            body.AppendLine("Over the auto-merge threshold (`dependencies.autoMerge` in coverage.yml). A writer comments the line in the last column to take the group into this pull request.").AppendLine();
-            body.AppendLine("| Group | Dependency | From | To | Comment |").AppendLine("|---|---|---|---|---|");
-            Rows(body, report.AwaitingApproval.Select(entry => $"| {Cell(entry.Group)} | {Code(entry.DepName)} | {Cell(entry.Current)} | {Cell(entry.Target)} | {Code("/approve " + entry.Group)} |"));
+            body.AppendLine("A writer comments the line in the last column to take the group into this pull request.").AppendLine();
+            body.AppendLine("| Group | Dependency | From | To | Reason | Comment |").AppendLine("|---|---|---|---|---|---|");
+            Rows(body, report.AwaitingApproval.Select(entry => $"| {Cell(entry.Group)} | {Code(entry.DepName)} | {Cell(entry.Current)} | {Cell(entry.Target)} | {Cell(ApprovalReason(entry))} | {Code("/approve " + entry.Group)} |"));
         }
 
         if (report.Held.Count > 0)
@@ -166,6 +166,16 @@ public static class DependencyPullRequestBody
         if (total > MaxRows)
             body.AppendLine().AppendLine($"… and {total - MaxRows} more.");
         body.AppendLine();
+    }
+
+    /// <summary>
+    /// prerelease-dependencies-PRD D1: why a group waits (the threshold, a platform major, P11), as the policy wrote it, without
+    /// the "comment '/approve …'" the last column already gives.
+    /// </summary>
+    private static string? ApprovalReason(DependencyReportEntry entry)
+    {
+        var command = $": comment '/approve {entry.Group}'";
+        return entry.Detail?.Replace(command + ", ", "; ", StringComparison.Ordinal).Replace(command, string.Empty, StringComparison.Ordinal);
     }
 
     private static string Words(IEnumerable<string> groups) => string.Join(", ", groups.Select(g => $"`{g}`"));

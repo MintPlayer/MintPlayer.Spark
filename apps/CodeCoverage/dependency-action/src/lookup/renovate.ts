@@ -15,7 +15,17 @@ export const RENOVATE_IMAGE =
  * packages carry one groupName. D-S12b: the separate* options so holds and cooldown have fallback
  * candidates (without them Renovate reports one candidate per bucket).
  */
-export function renovateConfig(unstable: readonly string[] = []): Record<string, unknown> {
+/**
+ * prerelease-dependencies-PRD H5: a SemVer prerelease (or an exact range around one, `[0.4.0-beta]`). Renovate tests it
+ * against `lockedVersion ?? currentVersion ?? currentValue` (44.125.2 `lib/util/package-rules/current-version.ts:30-35`).
+ * The engine screens candidates with the same pattern (`DependencyPolicyConfig.PrereleasePattern`).
+ */
+export const PRERELEASE_PATTERN = '^[\\[(v^~=]*\\d+(\\.\\d+)*-[0-9A-Za-z]';
+
+/** H5: the datasources whose versions are SemVer, where `-` after the core always marks a prerelease (not docker's `20-alpine`). */
+export const SEMVER_DATASOURCES = ['nuget', 'npm', 'crate', 'packagist'];
+
+export function renovateConfig(unstable: readonly string[] = [], stable: readonly string[] = []): Record<string, unknown> {
   return {
     extends: ['group:monorepos', 'group:recommended'],
     separateMajorMinor: true,
@@ -26,9 +36,17 @@ export function renovateConfig(unstable: readonly string[] = []): Record<string,
     onboarding: false,
     requireConfig: 'optional',
     dependencyDashboard: false,
-    // #606 D8: a package on the preview track (a `track: preview` rule, or a companion of an SDK on it) is offered
-    // prereleases; everything else keeps Renovate's default of stable releases only.
-    ...(unstable.length > 0 ? { packageRules: [{ matchPackageNames: [...unstable], ignoreUnstable: false }] } : {}),
+    // Later rules win (Renovate merges packageRules in order).
+    // #606 D8: a package on the preview track (a `track: preview` rule, or a companion of an SDK on it) is offered prereleases.
+    // prerelease-dependencies-PRD H1: so is a package already on a prerelease; Renovate's default keeps only the same
+    // major.minor.patch (filter.ts:189-192), which silently dropped Octokit.GraphQL 0.3.0-beta → 0.4.0-beta (SP1).
+    // H5: a `track: stable` rule (the file's, or an enforced account rule) opts out, so it comes last. Everything else keeps
+    // Renovate's default of stable releases only: "unstable for everything" would displace stable candidates (SP2).
+    packageRules: [
+      ...(unstable.length > 0 ? [{ matchPackageNames: [...unstable], ignoreUnstable: false }] : []),
+      { matchDatasources: [...SEMVER_DATASOURCES], matchCurrentVersion: `/${PRERELEASE_PATTERN}/`, ignoreUnstable: false },
+      ...(stable.length > 0 ? [{ matchPackageNames: [...stable], ignoreUnstable: true }] : []),
+    ],
   };
 }
 
@@ -49,6 +67,8 @@ export interface RenovateOptions {
   image?: string;
   /** #606 D8: package globs offered prereleases. */
   unstable?: readonly string[];
+  /** prerelease-dependencies-PRD H5: package globs looked up stable-only, even when already on a prerelease. */
+  stable?: readonly string[];
 }
 
 /**
@@ -96,7 +116,7 @@ export async function runRenovate(o: RenovateOptions): Promise<RenovateRun> {
   await fs.mkdir(outDir, { recursive: true });
   await fs.chmod(outDir, 0o777).catch(() => undefined);
   const configFile = path.join(o.workDir, 'renovate.json');
-  await fs.writeFile(configFile, JSON.stringify(renovateConfig(o.unstable ?? []), null, 2));
+  await fs.writeFile(configFile, JSON.stringify(renovateConfig(o.unstable ?? [], o.stable ?? []), null, 2));
   const image = o.image ?? RENOVATE_IMAGE;
   const env: Record<string, string | undefined> = {};
   if (o.githubTokenEnv) env.RENOVATE_GITHUB_COM_TOKEN = process.env[o.githubTokenEnv];

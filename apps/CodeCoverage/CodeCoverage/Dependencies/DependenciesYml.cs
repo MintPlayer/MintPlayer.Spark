@@ -46,7 +46,8 @@ namespace CodeCoverage.Dependencies;
 ///       onMajor: angular-migrate.yml
 ///   platforms:                        # R8
 ///     dotnet: { track: stable, strategy: replace, keepPrevious: 0, lockPackageMajor: false, locations: [], exclude: [],
-///               companions: ["Microsoft.AspNetCore.*"] }   # #606: track lts|stable|preview; companions move with the major
+///               companions: ["Microsoft.AspNetCore.*"],    # #606: track lts|stable|preview; companions move with the major
+///               autoMerge: major }        # prerelease-dependencies-PRD H3: the SDK's majors auto-merge (R7 lifted)
 ///   lockFileMaintenance: false        # D-S12e, off by default
 ///   registries: ["npm.pkg.github.com"]   # gap B: extra lockfile hosts besides the public registries
 /// </code>
@@ -176,8 +177,12 @@ public static partial class DependenciesYml
             var lagging = platform?.Lagging?.Trim() ?? DependencyPlatformSettings.LaggingAuto;
             if (lagging is not (DependencyPlatformSettings.LaggingAuto or "follow" or "report"))
                 errors.Add($"{key}.lagging '{lagging}' is not auto, follow or report.");
+            // prerelease-dependencies-PRD H3: the one opt-in that lifts R7 for this SDK; `major` is its only value.
+            var platformAutoMerge = platform?.AutoMerge?.Trim();
+            if (platformAutoMerge is not (null or "major"))
+                errors.Add($"{key}.autoMerge '{platformAutoMerge}' is not major (its only value: the SDK's majors then auto-merge like any update).");
             section.Platforms[sdk] = new DependencyPlatformSettings(strategy, Math.Clamp(keepPrevious, 0, 5), platform?.LockPackageMajor ?? false, locations, exclude,
-                track, companions, lagging);
+                track, companions, lagging, AutoMergeMajor: platformAutoMerge == "major");
         }
 
         section.LockFileMaintenance = file.LockFileMaintenance ?? false;
@@ -443,6 +448,7 @@ public static partial class DependenciesYml
         public string? Track { get; set; }
         public object? Companions { get; set; }
         public string? Lagging { get; set; }
+        public string? AutoMerge { get; set; }
     }
 }
 
@@ -491,7 +497,8 @@ public sealed record DependencyMigrateRule(IReadOnlyList<string> Match, string O
 /// <c>auto</c> moves Docker stages, setup-action pins and version files and reports TFMs and matrix entries; <c>follow</c>
 /// moves every older location but TFMs and matrix entries (which the strategy owns); <c>report</c> moves none.</param>
 public sealed record DependencyPlatformSettings(string Strategy, int KeepPrevious, bool LockPackageMajor, IReadOnlyList<string> Locations, IReadOnlyList<string> Exclude,
-    EDependencyTrack Track = EDependencyTrack.Inherit, IReadOnlyList<string>? Companions = null, string Lagging = DependencyPlatformSettings.LaggingAuto)
+    EDependencyTrack Track = EDependencyTrack.Inherit, IReadOnlyList<string>? Companions = null, string Lagging = DependencyPlatformSettings.LaggingAuto,
+    bool AutoMergeMajor = false)
 {
     public const string LaggingAuto = "auto";
 

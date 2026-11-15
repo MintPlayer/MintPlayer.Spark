@@ -88,6 +88,7 @@ export function notEditedReason(f: Found): string | null {
     case 'gemfile-ruby':
     case 'rust-toolchain':
     case 'matrix':
+    case 'workflow-value':
     case 'dotnet-quality':
       return null;
     default:
@@ -190,6 +191,8 @@ function replacementFor(f: Found, plan: PlatformPlan): { replacement?: Replaceme
     case 'gemfile-ruby':
     case 'rust-toolchain':
     // #606 M6: a matrix entry on the from-channel moves like any other pin; the matrix's older entries stay.
+    // prerelease-dependencies-PRD H7: an env value or input default a setup-* step reads moves like the step's own pin.
+    case 'workflow-value':
     case 'matrix': {
       if (f.channel !== plan.fromChannel) return {};
       // #606 D11: Rust's preview is the beta channel. A pinned toolchain moves to the dated beta the
@@ -200,7 +203,7 @@ function replacementFor(f: Found, plan: PlatformPlan): { replacement?: Replaceme
       }
       // dotnet: a full SDK version (feature band >= 100, e.g. setup-dotnet `10.0.100`) takes the SDK
       // version of the plan, not the runtime version (S19: 10.0.100 -> 11.0.100-rc.1.26425.128).
-      const sdkLike = sdk === 'dotnet' && f.kind === 'setup-action' && /^\d+\.\d+\.(\d{3,})/.test(f.value);
+      const sdkLike = sdk === 'dotnet' && (f.kind === 'setup-action' || f.kind === 'workflow-value') && /^\d+\.\d+\.(\d{3,})/.test(f.value);
       if (sdkLike) {
         if (!plan.sdkVersion) return { report: `'${f.value}' is an SDK version and the plan has no sdkVersion` };
         return { replacement: [{ line: f.line, start: f.start, end: f.end, text: plan.sdkVersion }] };
@@ -230,7 +233,7 @@ export interface PlatformApplyOptions {
 }
 
 /** P6 `auto`: the older-channel kinds that follow a channel move. TFMs and matrix entries are often deliberate. */
-const FOLLOWS_WHEN_AUTO: ReadonlySet<string> = new Set(['docker', 'setup-action', 'version-file', 'tool-versions', 'action-runtime']);
+const FOLLOWS_WHEN_AUTO: ReadonlySet<string> = new Set(['docker', 'setup-action', 'workflow-value', 'version-file', 'tool-versions', 'action-runtime']);
 
 /**
  * P6: whether a location on an older channel follows a channel move under `lagging: auto`. A TFM, a matrix entry and one

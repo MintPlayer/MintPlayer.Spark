@@ -263,7 +263,15 @@ versioning:
 - **`prerelease`** sets the label outright; upstream prereleases never override it. `upstream` (the default) mirrors
   the least mature upstream label, the SDK included. `stable` releases without a label whatever upstream says: use it
   for a package whose dependency never ships a stable (MintPlayer.GraphQL on Octokit.GraphQL `0.4.0-beta`); NuGet then
-  warns NU5104. A per-package pin wins over the repository's.
+  warns NU5104. The warning doesn't stop the pack; a repository with `TreatWarningsAsErrors` adds `NU5104` to `NoWarn`
+  for that project. A per-package pin wins over the repository's.
+  - **A stable library over a preview package.** Without the pin, a beta dependency on an open `rc` line refuses the
+    release ("11.0.0-beta.1 is not above 11.0.0-rc.1"). The refusal names the key to set:
+    `versioning.packages.<id>.prerelease: stable`, or the line's own label to stay on it. Only declared dependencies
+    count: a project that references the pinned package goes stable with it, and a prerelease that is only transitive
+    doesn't label a release.
+  - **A package restored per target framework** (`net10.0` → `13.0.4`, `net11.0` → `13.0.4-beta1`) mirrors the least
+    mature of its versions.
 
 - **`dependencyRanges`**: a `ProjectReference` packs as a NuGet dependency on the referenced package's version. With
   `minimum` (the default) that's `>= x`, where x is the referenced package's highest tag reachable from the commit. On

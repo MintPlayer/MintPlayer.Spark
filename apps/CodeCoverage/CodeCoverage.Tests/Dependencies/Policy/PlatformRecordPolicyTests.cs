@@ -172,7 +172,8 @@ public class PlatformRecordPolicyTests
     [Fact]
     public void A_same_channel_location_the_bot_cannot_edit_holds_the_move_for_approval()
     {
-        var stuck = new PlatformLocation { File = "eng/Versions.props", Kind = "tfm", Value = "$(Tfm)", Channel = "10.0", Computed = true, Reason = "a property" };
+        // prerelease-dependencies-PRD H2: a version pin, since a TFM never changes inside its channel.
+        var stuck = new PlatformLocation { File = "eng/Versions.props", Kind = "docker", Value = "mcr.microsoft.com/dotnet/sdk:$(SdkTag)", Channel = "10.0", Computed = true, Reason = "a property" };
         var editable = new PlatformLocation { File = "global.json", Kind = "global.json", Value = "10.0.100", Channel = "10.0", Computed = false };
         var patch = new PlatformCandidate { Channel = "10.0", LatestVersion = "10.0.5", LatestSdk = "10.0.105", ReleaseTimestamp = "2026-10-01" };
         var record = new PlatformRecord { Sdk = "dotnet", Source = "releases-index", Current = new PlatformCurrent { Channels = ["10.0"] }, Locations = [stuck, editable], Candidates = [patch] };

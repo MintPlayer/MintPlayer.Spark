@@ -80,7 +80,7 @@ public class DependencyPreviewToReleaseEndToEndTests : SparkTestDriver
 
         string table;
         using (var session = Store.OpenAsyncSession())
-            table = await DependencyPlatformTable.JsonAsync(session, [], CancellationToken.None);
+            table = await DependencyPlatformTable.JsonAsync(session, [], [], CancellationToken.None);
         using var parsed = JsonDocument.Parse(table);
         var row = parsed.RootElement.GetProperty("sdks").GetProperty("dotnet").EnumerateArray().Single();
 
