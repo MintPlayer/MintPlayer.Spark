@@ -150,19 +150,50 @@ handler adds the new TFM with its own `ItemGroup`, and drops a TFM that is no lo
 
 | # | Question | How | Status |
 |---|---|---|---|
-| S1 | What does Renovate 44.125.2 report for (a) a `PackageReference` in a conditioned `ItemGroup`, (b) the same package twice in one csproj under two conditions, on the same and on different versions? Does it give `fileReplacePosition`? | run the pinned image on a fixture repo (a lib `net10.0;net11.0` with both layouts) and capture a real `report.json` + SOURCE.md | open |
-| S2 | MSBuild/NuGet with per-TFM `ItemGroup`s: restore, pack (one nuspec dependency group per TFM?), and a `net11.0` consumer referencing 10.0.x directly while the lib's net11.0 asset needs 11.0.0 (NU1605 per TFM graph?) | a throwaway solution in the scratchpad, SDK 11.0.100, `dotnet restore`/`pack`, read the nuspec and `project.assets.json` | open |
+| S1 | What does Renovate 44.125.2 report for (a) a `PackageReference` in a conditioned `ItemGroup`, (b) the same package twice in one csproj under two conditions, on the same and on different versions? Does it give `fileReplacePosition`? | run the pinned image on a fixture repo (a lib `net10.0;net11.0` with both layouts) and capture a real `report.json` + SOURCE.md | **done** (§5.1) |
+| S2 | MSBuild/NuGet with per-TFM `ItemGroup`s: restore, pack (one nuspec dependency group per TFM?), and a `net11.0` consumer referencing 10.0.x directly while the lib's net11.0 asset needs 11.0.0 (NU1605 per TFM graph?) | a throwaway solution in the scratchpad, SDK 11.0.100, `dotnet restore`/`pack`, read the nuspec and `project.assets.json` | **done** (see below) |
 | S3 | Which condition forms do we read and which one do we write? Candidates: `'$(TargetFramework)' == 'net11.0'`, `$([MSBuild]::IsTargetFrameworkCompatible(...))`, `!=`, `StartsWith`. The parser must refuse anything it can't map to a TFM set (report, never guess) | grep the three repos + nuget.org samples; extend `scanTfmConditions` (`locations.ts:147`) | open |
 | S4 | How does the git writer admit a structural edit? Today it admits one-token swaps only (`PlatformSubstitution.cs:14-25`). Option: the plan carries the exact block to insert/remove (TFM, packages, versions), and the writer re-renders it and compares byte for byte | read `PlatformSubstitution` and the writer's validation; prototype one rule | open |
 | S5 | "No longer supported": which data decides that a TFM leaves? Today the action drops beyond `max(keepPrevious,1)` with no EOL check (`applyPlatform.ts:30-44`). Candidates: EOL from `PlatformReleases/dotnet/<ch>` (bot side, already loaded for the channel table), `keepPrevious`, or both | read the channel table the lookup receives (`DependencyPlatformTable.JsonAsync`) | open |
-| S7 | CPM + per-TFM: does NuGet accept conditioned `PackageVersion` in `Directory.Packages.props` (and two `PackageVersion` items for one package under different conditions)? What does Renovate report for them? | the S2 solution with CPM on; the S1 fixture with a `Directory.Packages.props` | open |
+| S7 | CPM + per-TFM: does NuGet accept conditioned `PackageVersion` in `Directory.Packages.props` (and two `PackageVersion` items for one package under different conditions)? What does Renovate report for them? | the S2 solution with CPM on; the S1 fixture with a `Directory.Packages.props` | **done** (§5.1) |
 | S8 | CPM conversion action: how existing custom actions open a pull request across selected repositories (the onboarding pull request, the "Set up rulesets" multi-select), and how the conversion edits are made and validated (git writer, or the repository's own workflow like the dependency apply) | read `DependencyOnboarding`, the onboarding chooser and a multi-select custom action | open |
 | S6 | How do companion ranges (companion-version-maps), H1 and upstream companions (follower-cooldown G2) key on a per-TFM record? Expected: the `ItemGroup`'s TFM replaces "the lowest TFM" as the key channel | read `FindCompanions` `:211-260` and `RangeOf` | open |
 
+### 5.1 Spike results
+
+- **S2 (2026-11-15, SDK 11.0.100).**
+  - Setup: a lib `net10.0;net11.0` with `<ItemGroup Condition="'$(TargetFramework)' == 'net10.0'">` FileSystemGlobbing
+    10.0.5 and a `net11.0` group with 11.0.0.
+  - `dotnet pack` writes one nuspec dependency group per TFM: `<group targetFramework="net10.0">` → 10.0.5 and
+    `net11.0` → 11.0.0. **Verified.**
+  - A `net11.0` app with a `ProjectReference` to the lib and a direct FileSystemGlobbing 10.0.5 fails restore:
+    `error NU1605: … downgrade … from 11.0.0 to 10.0.5 … App -> Spike.Lib -> … (>= 11.0.0)`. NU1605 is per TFM graph.
+    **Verified.**
+  - Consequence: a split lib's in-repository consumers on the new channel must move in the **same** group as the split
+    (their H1 alignment). Otherwise the next group's restore fails exactly as #216 did. D-c therefore covers the package's
+    consumers in the repository, not only the lib.
+- **S1 (2026-11-15, the pinned Renovate 44.125.2 image).** Real capture in
+  `dependency-action/test/fixtures/renovate/nuget-conditions/` (input, report.json, SOURCE.md).
+  - **One dep per `PackageReference`, and the `Condition` is ignored.** FileSystemGlobbing twice (10.0.5, 11.0.0), and
+    DependencyInjection twice on the same 10.0.5, as two identical deps.
+  - **No position and no replaceString.** `fileReplacePosition` and `replaceString` are absent for every nuget dep.
+  - **Not in document order.** Split.csproj came back as Options, DI, DI, FSG 11.0.0, FSG 10.0.5, the reverse of the file.
+    So D-a can't match by order. The action must read the csproj itself and join Renovate's candidates by
+    `(file, depName, currentValue)`. Identical duplicates get identical candidates, so the join is lossless.
+  - Updates are not filtered per TFM: the net11.0 group's 10.0.5 DI is offered `major:11.0.0`, the same as the net10.0 one.
+    The bot decides per TFM.
+  - CPM: both conditioned `PackageVersion` items are reported (10.0.5 → patch 10.0.15 / major 11.0.0; 11.0.0 → none). The
+    versionless `PackageReference` comes back with a `skipReason`.
+- **S7 NuGet side (2026-11-15, SDK 11.0.100).** A CPM project `net10.0;net11.0` with Hosting as two conditioned
+  `PackageVersion` items restores. `project.assets.json` resolves `net10.0` → Hosting 10.0.5 and `net11.0` → 11.0.0.
+  **Verified.** The only message was NU1507 (two package sources without source mapping, from this machine's
+  configuration). Combined with S1, the updater can support CPM repositories, which answers Q7 as "support".
+
 ## 6. Design (draft, pending owner answers in §3 and spikes)
 
-- **D-a Per-TFM records.** The lookup step annotates every NuGet record with the TFM set of its enclosing `ItemGroup`
-  condition (`null` = unconditioned) from its own scan of the file, matched in document order when a depName repeats.
+- **D-a Per-TFM records.** The lookup step reads each csproj / `Directory.Packages.props` itself and emits one record per
+  occurrence, with the TFM set of its enclosing `ItemGroup` condition (`null` = unconditioned). Renovate's candidates join
+  by `(file, depName, currentValue)`. Not by order, which S1 showed is reversed.
   `LookupRecord` and `PlanItem` gain `TargetFrameworks` (or `ConditionTfm`).
 - **D-b A platform package in a multi-target project moves per TFM, in the platform group.** Each TFM's `ItemGroup` takes
   that TFM channel's major, as H1 does for single-TFM projects: no approval, because the older TFM keeps its own major.
