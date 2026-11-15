@@ -31,12 +31,12 @@
 		</PackageReference>
 		<PackageReference Include="MintPlayer.SourceGenerators.Attributes" Version="13.0.0" GeneratePathProperty="true" />
 		<PackageReference Include="MintPlayer.AspNetCore.Endpoints" Version="11.4.1-rc.0" />
-		<PackageReference Include="RavenDB.Client" Version="7.2.6" />
-		<PackageReference Include="MailKit" Version="4.18.1" />
+		<PackageReference Include="RavenDB.Client" Version="7.2.7" />
+		<PackageReference Include="MailKit" Version="4.18.2" />
 		<PackageReference Include="Mjml.Net" Version="4.15.0" />
 		<!-- Scriban.Signed, not Scriban: the same library strong-named. WireMock.Net (used by the test
 		     project) depends on Scriban.Signed, and both packages side by side are CS0433 on every type. -->
-		<PackageReference Include="Scriban.Signed" Version="7.5.0" />
+		<PackageReference Include="Scriban.Signed" Version="7.6.1" />
 	</ItemGroup>
 
 	<ItemGroup>

@@ -18,7 +18,7 @@
 			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
 		</PackageReference>
 		<PackageReference Include="MintPlayer.Assertions" Version="11.0.0-rc.6" />
-		<PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.10.1" />
+		<PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.11.1" />
 		<PackageReference Include="xunit" Version="2.9.3" />
 		<PackageReference Include="xunit.runner.visualstudio" Version="4.0.1">
 			<PrivateAssets>all</PrivateAssets>
@@ -35,7 +35,7 @@
 	<ItemGroup>
 		<!-- MintPlayer.Versioning.MSBuild's task ships as source (RoslynCodeTaskFactory); compiled here for its parity tests. -->
 		<Compile Include="..\CodeCoverage.Versioning.MSBuild\build\MintPlayer.Versioning.MSBuild.cs" Link="MSBuild\MintPlayer.Versioning.MSBuild.cs" />
-		<PackageReference Include="Microsoft.Build.Utilities.Core" Version="18.10.1" />
+		<PackageReference Include="Microsoft.Build.Utilities.Core" Version="18.11.0" />
 		<!-- And shipped as files for the real-pack tests (#544 R8), which import the targets the way a consumer does. -->
 		<None Include="..\CodeCoverage.Versioning.MSBuild\build\MintPlayer.Versioning.MSBuild.*" Link="RealPack\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
 	</ItemGroup>

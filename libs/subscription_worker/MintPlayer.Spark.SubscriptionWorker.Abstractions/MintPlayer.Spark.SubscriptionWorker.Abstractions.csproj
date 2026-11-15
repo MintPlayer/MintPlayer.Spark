@@ -24,7 +24,7 @@
 			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
 		</PackageReference>
 		<PackageReference Include="MintPlayer.SourceGenerators.Attributes" Version="13.0.0" GeneratePathProperty="true" />
-		<PackageReference Include="RavenDB.Client" Version="7.2.6" />
+		<PackageReference Include="RavenDB.Client" Version="7.2.7" />
 	</ItemGroup>
 
 </Project>

@@ -4,7 +4,7 @@ services:
     # Pinned (not 7.1-latest): floating tags have previously advanced to builds
     # that reject unsecured access on a 0.0.0.0 bind, breaking deploys on a
     # plain `docker compose pull`.
-    image: docker.io/ravendb/ravendb:7.1.10-ubuntu.22.04-x64
+    image: docker.io/ravendb/ravendb:7.2.3-ubuntu.22.04-x64
     environment:
       - RAVEN_Setup_Mode=None
       # SECURED (SeoTester PRD D55/D56): HTTPS with client certificates, nothing unsecured. Every client presents a
@@ -67,7 +67,7 @@ services:
   # The endpoint is a cluster-admin one, so this is the one container that gets the operator certificate (the
   # apps never do). The server's name is checked against the private CA (--cacert).
   coverage-raven-license:
-    image: curlimages/curl:8.11.1
+    image: curlimages/curl:8.12.1
     depends_on:
       coverage-raven:
         condition: service_healthy
