@@ -1,6 +1,6 @@
 # Multi-target libraries: one dependency tree per target framework — PRD and plan
 
-Status: **P1–P8 done (2026-11-15); next: the pull request's CI, then re-run Tools after deploy.** Branch `feat/multi-target-dependency-split`
+Status: **P1–P8 done (2026-11-15); pull request #677; next: its CI, then re-run Tools #216 after deploy.** Branch `feat/multi-target-dependency-split`
 (from master after #676, merged + deployed in run 43743477315).
 Predecessors: [follower-cooldown-PRD](follower-cooldown-PRD.md) H1, [companion-version-maps-PRD](companion-version-maps-PRD.md),
 [sdk-updates-PRD](sdk-updates-PRD.md) D2/D13 (strategy add, keepPrevious, lockPackageMajor),
