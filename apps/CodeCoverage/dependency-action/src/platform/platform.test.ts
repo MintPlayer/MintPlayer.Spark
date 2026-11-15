@@ -372,6 +372,17 @@ describe('applyPlatform', () => {
     };
     const older = "on 9.0, older than the repository's 10.0";
 
+    it("never lists a project's own <Version> as a platform location left behind", async () => {
+      // Dotnet.Tools #214, 2026-11-15: every `<Version>0.0.0-PLACEHOLDER</Version>` (tag-versioned packages) was listed
+      // under "Not moved" as "on 0.0, older than the repository's 11.0". A package's own version is no platform pin.
+      const own = { 'P.csproj': '<Project><PropertyGroup><TargetFramework>net10.0</TargetFramework><Version>0.0.0-PLACEHOLDER</Version></PropertyGroup></Project>\n' };
+      for (const plan of [dotnet, { ...dotnet, lockPackageMajor: true }, { ...dotnet, toChannel: '10.0' }]) {
+        const { result, read } = await applyOn(own, plan);
+        expect(result.reported).toEqual([]);
+        expect(read('P.csproj')).toContain('<Version>0.0.0-PLACEHOLDER</Version>');
+      }
+    });
+
     it('auto: an older Docker stage and setup pin follow the move; an older TFM is reported', async () => {
       const { result, read } = await applyOn(files, dotnet);
       expect(read('Dockerfile')).toBe('FROM mcr.microsoft.com/dotnet/sdk:11.0 AS build\nFROM mcr.microsoft.com/dotnet/aspnet:11.0\n');

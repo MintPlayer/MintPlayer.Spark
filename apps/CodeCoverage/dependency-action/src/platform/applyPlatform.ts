@@ -293,6 +293,9 @@ export async function applyPlatform(files: RepoFiles, plan: PlatformPlan, option
     } else if (f.kind !== 'tfm' && f.channel !== null && f.channel !== plan.fromChannel) {
       // A newer channel than the repository's is not this move's (the plan's from-channel is the highest found).
       if (compareChannels(f.channel, plan.fromChannel) > 0) continue;
+      // A project's own <Version> is no platform pin: it moves only under lockPackageMajor, from the from-channel. An older
+      // one (a tag-versioned `0.0.0-PLACEHOLDER`, Dotnet.Tools #214) was listed under "Not moved" for every package.
+      if (f.kind === 'package-version') continue;
       // P6: an older location follows a channel move when `lagging` says so, and is listed otherwise. A move inside the
       // channel (a patch, rc -> GA) never takes an older location across a major.
       if (notEditedReason(f) !== null) continue;
