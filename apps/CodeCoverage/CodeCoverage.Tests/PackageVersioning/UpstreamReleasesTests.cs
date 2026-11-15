@@ -128,6 +128,30 @@ public class UpstreamReleasesTests : CoverageRavenTest
             + "- #50: not backported to a 21.x line yet\n- #51: not backported to a 21.x line yet");
     }
 
+    // Dotnet.Tools run 43711348322: 40 packages released at once, one load each, and the app's session hit RavenDB's
+    // 30-request cap after the tags were pushed: the run answered 500.
+    [Fact]
+    public async Task A_run_that_releases_many_packages_records_them_in_one_request()
+    {
+        using var store = GetDocumentStore();
+        var releases = Enumerable.Range(0, 40).Select(i => new VersioningRunRelease
+        {
+            Id = $"Acme.Package{i}", Kind = "nuget", Version = "11.0.0", Tag = $"Acme.Package{i}/v11.0.0", TagOutcome = i % 2 == 0 ? "created" : "already-present",
+        }).Append(Release("22.36.0", "- x (#5)")).Append(Release("22.36.0", "- x (#5)")).ToList();
+        using (var session = store.OpenAsyncSession())
+        {
+            await UpstreamReleases.RecordAsync(session, Upstream, releases, default);
+            session.Advanced.NumberOfRequests.Should().Be(1);
+            await session.SaveChangesAsync();
+        }
+
+        using var check = store.OpenAsyncSession();
+        var record = await check.LoadAsync<PackageReleaseRecord>(PackageReleaseRecord.DocumentId("nuget", "Acme.Package39"));
+        record.Releases.Should().ContainSingle().Which.Version.Should().Be("11.0.0");
+        var npm = await check.LoadAsync<PackageReleaseRecord>(PackageReleaseRecord.DocumentId("npm", "@mintplayer/ng-bootstrap"));
+        npm.Releases.Should().ContainSingle("a release listed twice is recorded once");
+    }
+
     [Fact]
     public async Task A_record_keeps_only_the_newest_releases()
     {

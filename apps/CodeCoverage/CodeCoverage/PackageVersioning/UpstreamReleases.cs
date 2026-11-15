@@ -67,16 +67,23 @@ public static partial class UpstreamReleases
     public static async Task RecordAsync(IAsyncDocumentSession session, string repositoryId, IEnumerable<VersioningRunRelease> releases,
         CancellationToken cancellationToken)
     {
-        foreach (var release in releases)
+        var recorded = releases.Where(r => r.TagOutcome is ("created" or "already-present") && r.Id.Length > 0 && r.Version.Length > 0 && r.Kind is ("npm" or "nuget"))
+            .ToList();
+        if (recorded.Count == 0) return;
+        // One request for every record: a run releases up to Limits.MaxPackagesPerRun packages, far past the session's
+        // request cap (Dotnet.Tools run 43711348322: 40 loads, the cap of 30, a 500 after the tags were pushed).
+        var records = new Dictionary<string, PackageReleaseRecord>(
+            await session.LoadAsync<PackageReleaseRecord>(recorded.Select(r => PackageReleaseRecord.DocumentId(r.Kind, r.Id)).Distinct(StringComparer.OrdinalIgnoreCase), cancellationToken),
+            StringComparer.OrdinalIgnoreCase);
+        foreach (var release in recorded)
         {
-            if (release.TagOutcome is not ("created" or "already-present") || release.Id.Length == 0 || release.Version.Length == 0) continue;
-            if (release.Kind is not ("npm" or "nuget")) continue;
             var id = PackageReleaseRecord.DocumentId(release.Kind, release.Id);
-            var record = await session.LoadAsync<PackageReleaseRecord>(id, cancellationToken);
+            var record = records.GetValueOrDefault(id);
             if (record is null)
             {
                 record = new PackageReleaseRecord { Id = id, Repository = repositoryId, Kind = release.Kind, Package = release.Id };
                 await session.StoreAsync(record, id, cancellationToken);
+                records[id] = record;
             }
             else if (!string.Equals(record.Repository, repositoryId, StringComparison.OrdinalIgnoreCase))
             {
