@@ -334,7 +334,12 @@ public static class DependencyPolicyEngine
                 var major = follows
                     ? Math.Max(UpdateTypeFloor.LeadingNumber(channel) ?? 0, UpdateTypeFloor.LeadingNumber(current) ?? 0)
                     : UpdateTypeFloor.LeadingNumber(current) ?? 0;
-                var moving = channel == moveTo;
+                // A TFM rides past the cooldown only when it has to move: no version yet (a new TFM), or one outside its channel's
+                // range or major. One that already fits waits like any project's record does, or a single-target project on the
+                // same package keeps the old version for the cooldown while this TFM moves, and restore refuses the downgrade
+                // (Tools #217, NU1605 on Microsoft.CodeAnalysis.CSharp.Workspaces 5.12.0 vs 5.9.0).
+                var mustMove = current is null || (range is not null ? !Admits(range, current) : UpdateTypeFloor.LeadingNumber(current) != major);
+                var moving = channel == moveTo && mustMove;
                 var fits = views.Where(v => (range is not null || MajorOf(v.Candidate) == major) && (range is null || Admits(range, Token(v.Candidate)))
                         && (!IsPreviewToken(Token(v.Candidate)) || moving && previewTarget || IsPreviewToken(current))
                         && (current is null || Compare(Token(v.Candidate), current) > 0))

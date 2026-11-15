@@ -1,6 +1,6 @@
 # Multi-target libraries: one dependency tree per target framework — PRD and plan
 
-Status: **P1–P8 done (2026-11-15); pull request #677; next: its CI, then re-run Tools #216 after deploy.** Branch `feat/multi-target-dependency-split`
+Status: **P1–P8 done (2026-11-15), merged in #677. Fix M22 (a TFM keeps the cooldown when it need not move) after Tools #217; then re-run Tools.** Branch `feat/multi-target-dependency-split`
 (from master after #676, merged + deployed in run 43743477315).
 Predecessors: [follower-cooldown-PRD](follower-cooldown-PRD.md) H1, [companion-version-maps-PRD](companion-version-maps-PRD.md),
 [sdk-updates-PRD](sdk-updates-PRD.md) D2/D13 (strategy add, keepPrevious, lockPackageMajor),
@@ -389,6 +389,8 @@ is CI on the pull request.
   directions; cancel).
 - **P8 done (2026-11-15).** `dependency-updates.md` (multi-target projects), `onboarding.md` (the conversion action),
   sdk-updates-PRD D2/D13 marked amended, this PRD.
+- **Fix after #677 (2026-11-15).** Tools #217 refused its platform group with NU1605: a TFM already inside its range skipped
+  the cooldown that kept a single-target project on the old version. A TFM now skips the cooldown only when it must move (M22).
 
 ## 8. Decision log
 
@@ -414,4 +416,5 @@ is CI on the pull request.
 | M19 | **The platform record names the end-of-life current channels** (`current.endOfLife`). Candidates hold only channels at or above the highest current one, so without it the bot could not know net8.0 is EOL (M6) | `platform-record.schema.json`; `platform.test.ts` "names the current channels that are end of life" |
 | M20 | **The CPM conversion reuses the writer's `/jobs/onboarding`** with a `central` flag, as the narrowing reuses it with `narrow` (S8). One commit of whole files on the default branch's head; the rule admits MSBuild files only and deletes only `Directory.Packages.props` | `OnboardingWriterJobTests.P7_*` |
 | M21 | **The conversion refuses rather than guesses (M15):** a condition other than the canonical one, a condition on the item, an `Update` item, a version in a child element, a `VersionOverride` going to CPM, a `GlobalPackageReference`, more than one `Directory.Packages.props`, versions that disagree and are not all SemVer. Any refusal leaves the repository untouched and the reason is the action's note | `CentralPackageConversionTests` |
+| M22 | **A TFM skips the cooldown only when it must move** (no version yet, or one outside its channel's range or major). After #677, Tools #217's in-channel `platform:dotnet 11.0` group moved the multi-target TestHarness's net11.0 `Microsoft.CodeAnalysis.CSharp.Workspaces` to 5.12.0, released less than 3 days earlier. The single-target `MintPlayer.SourceGenerators.Tests` correctly kept 5.9.0 for the cooldown, and restore refused the downgrade (NU1605). Before the fix, `SplitItem` skipped the cooldown for every TFM on the move's channel. A TFM that already fits now waits like any record, matching `RangeRider` | Tools #217 body (2026-11-15); red→green `CompanionVersionMapTests.A_TFM_already_in_its_range_keeps_the_cooldown` (348/348 policy tests) |
 | M7 | **CPM is a separate custom action, in this pull request.** No automatic CPM in the updater. A new custom action switches one or more selected repositories between non-CPM and CPM (both directions) and opens a pull request with the conversion. It is separate from the dependency/TFM updater. | owner, 2026-11-15: "I wouldn't do it automatically, but just provide a new CustomAction that lets the user switch between non-CPVM and CPVM on a (one or more selected) repository - it also creates the pull-request with the changes for from/to CPVM. Include in this pull-request - seperate action from the dependency/tfm updater" |

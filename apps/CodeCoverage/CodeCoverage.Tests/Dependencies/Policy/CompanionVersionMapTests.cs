@@ -98,6 +98,36 @@ public class CompanionVersionMapTests
         string.Join(", ", item.Layout!.Select(l => $"{l.TargetFramework}={l.Version}")).Should().Be("net10.0=5.0.0, net11.0=5.12.0");
     }
 
+    /// <summary>Tools #217 (2026-11-15): the in-channel group <c>platform:dotnet 11.0</c> moved the multi-target TestHarness's
+    /// net11.0 Roslyn to 5.12.0, released a day earlier, while the single-target Tests project kept 5.9.0 for the cooldown, and
+    /// restore refused the downgrade (NU1605). A TFM whose version already fits its range has nothing it must ride to, so its
+    /// cooldown holds like any project's: the split plans nothing, and 5.12.0 waits in the cooldown for both.</summary>
+    [Fact]
+    public void A_TFM_already_in_its_range_keeps_the_cooldown()
+    {
+        const string harness = "src/TestHarness/TestHarness.csproj";
+        var platform = Dotnet("11.0", "11.0.100", "net11.0", Row("11.0", "11.0.1", "11.0.101")) with
+        {
+            Current = new PlatformCurrent { Channels = ["11.0", "10.0"] },
+            Locations =
+            [
+                new PlatformLocation { File = "global.json", Kind = "global.json", Value = "11.0.100", Channel = "11.0" },
+                new PlatformLocation { File = Web, Kind = "tfm", Value = "net11.0", Channel = "11.0" },
+                new PlatformLocation { File = harness, Kind = "tfm", Value = "net10.0;net11.0", Channel = "11.0" },
+            ],
+        };
+        var fresh = Candidate(EUpdateType.Minor, "5.12.0", released: "2026-11-30T00:00:00.000Z");
+        var tests = Nuget("Microsoft.CodeAnalysis.CSharp", "5.9.0", fresh);
+        var testHarness = tests with { PackageFile = harness };
+        var yml = "dependencies:\n  platforms:\n    dotnet:\n      companions:\n        - match: \"Microsoft.CodeAnalysis*\"\n"
+            + "          versions: { \"10.0\": \"<=5.12\", \"11.0\": \"<=5.12\" }\n        - builtin\n";
+
+        var outcome = Evaluate(Lookup([tests, testHarness]) with { Platforms = [platform] }, Config(yml), now: Later);
+
+        Planned(outcome).Should().NotContain(p => p.Contains("5.12.0"));
+        outcome.Available.Should().Contain(e => e.DepName == "Microsoft.CodeAnalysis.CSharp" && e.Reason == EDependencyReportReason.Cooldown);
+    }
+
     [Fact]
     public void A_record_below_the_range_aligns_in_the_platform_group()
     {
