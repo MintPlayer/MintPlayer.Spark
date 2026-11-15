@@ -470,9 +470,14 @@ public static class DependencyPolicyEngine
                     }
                     if (entry is null && !config.IsAccountPackage(record.Ecosystem, record.DepName))
                         continue;
-                    if (MajorOf(record) == major)
+                    // H1 (Tools #218): on a released channel, a prerelease of its major (11.0.0-rc.1 on net11.0) is behind the
+                    // release like an older major, and rides to it with them, or a sibling's 11.0.0 needs it and restore refuses.
+                    var preReleaseBehind = MajorOf(record) == major && !platform.Current.Preview
+                        && IsPreviewToken(record.CurrentVersion ?? record.CurrentValue) && TargetsOnlyTheChannel(record.PackageFile)
+                        && record.Candidates.Any(c => MajorOf(c) == major && !IsPreviewToken(c.Version));
+                    if (MajorOf(record) == major && !preReleaseBehind)
                         list.Add(record);
-                    else if (MajorOf(record) < major && TargetsOnlyTheChannel(record.PackageFile) && record.Candidates.Any(c => MajorOf(c) == major))
+                    else if ((preReleaseBehind || MajorOf(record) < major) && TargetsOnlyTheChannel(record.PackageFile) && record.Candidates.Any(c => MajorOf(c) == major))
                         behind.Add(record);
                     else
                         continue;

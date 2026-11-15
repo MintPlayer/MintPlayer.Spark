@@ -186,6 +186,23 @@ public class PlatformInChannelMoveTests
         outcome.AwaitingApproval.Should().BeEmpty();
     }
 
+    /// <summary>H1 (Tools #218, 2026-11-15): CliCommandDebugging (<c>net11.0</c> only) had Hosting 10.0.5 and DependencyInjection
+    /// 11.0.0-rc.1. Hosting rode to 11.0.0 in the platform group; the rc, on the channel's major but no release, was neither
+    /// "on the major" nor "behind" it, so it stayed, and restore refused the downgrade (Hosting 11.0.0 needs DI ≥ 11.0.0, NU1605).
+    /// On a released channel, a prerelease of the channel's major is behind the release and rides to it beside them.</summary>
+    [Fact]
+    public void On_a_released_channel_a_prerelease_of_its_major_rides_to_the_release()
+    {
+        var platform = Dotnet("11.0", "11.0.100", preview: false, Row("11.0", "11.0.1", "11.0.101")).WithTfm(Web, "net11.0");
+        var hosting = OnNet11(Nuget("Microsoft.Extensions.Hosting", "10.0.5", Candidate(EUpdateType.Patch, "10.0.15"), Candidate(EUpdateType.Major, "11.0.0")));
+        var di = OnNet11(Nuget("Microsoft.Extensions.DependencyInjection", "11.0.0-rc.1.26425.128", Candidate(EUpdateType.Patch, "11.0.0")));
+
+        var outcome = Evaluate(With(platform, hosting, di), now: Later);
+
+        outcome.Groups.Should().ContainSingle();
+        Planned(outcome).Should().Equal("platform:dotnet 11.0: Microsoft.Extensions.Hosting@11.0.0, Microsoft.Extensions.DependencyInjection@11.0.0");
+    }
+
     /// <summary>multi-target-dependency-split-PRD D-b (supersedes the H1 boundary "a multi-target project's older platform
     /// package keeps its major"): the project keeps building for net10.0 with 10.0.15 and takes 11.0.0 for net11.0, as one
     /// split item in the platform group, so nothing waits for approval.</summary>
