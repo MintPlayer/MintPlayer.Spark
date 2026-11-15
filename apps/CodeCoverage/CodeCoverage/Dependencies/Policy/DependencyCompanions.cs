@@ -19,6 +19,13 @@ public static class DependencyCompanions
         new Dictionary<string, (string, IReadOnlyList<DependencyCompanionEntry>)>(StringComparer.Ordinal)
         {
             ["dotnet"] = ("nuget", [
+                // §4.2 / S1: MSBuild, Roslyn and NuGet carry their own majors; each SDK band ships one minor of each (VMR tag
+                // v11.0.100: MSBuild 18.12.2, Roslyn 5.12.0, NuGet 8.0.0). A package above the SDK's own needs a newer SDK.
+                // First, because globs match case-insensitively and first match wins: Microsoft.NET.* would take the Toolset.
+                new("Microsoft.Build*", Bundled: EDependencyBundledComponent.Msbuild),
+                new("Microsoft.CodeAnalysis*", Bundled: EDependencyBundledComponent.Roslyn),
+                new("Microsoft.Net.Compilers.Toolset", Bundled: EDependencyBundledComponent.Roslyn),
+                new("NuGet.*", Bundled: EDependencyBundledComponent.Nuget),
                 new("Microsoft.AspNetCore.*"),
                 new("Microsoft.Extensions.*"),
                 new("Microsoft.EntityFrameworkCore*"),
@@ -29,12 +36,6 @@ public static class DependencyCompanions
                 new("dotnet-ef"),
                 // companion-version-maps-PRD §4.2: the NativeAOT compiler ships per runtime, on the channel's major.
                 new("Microsoft.DotNet.ILCompiler"),
-                // §4.2 / S1: MSBuild, Roslyn and NuGet carry their own majors; each SDK band ships one minor of each (VMR tag
-                // v11.0.100: MSBuild 18.12.2, Roslyn 5.12.0, NuGet 8.0.0). A package above the SDK's own needs a newer SDK.
-                new("Microsoft.Build*", Bundled: EDependencyBundledComponent.Msbuild),
-                new("Microsoft.CodeAnalysis*", Bundled: EDependencyBundledComponent.Roslyn),
-                new("Microsoft.Net.Compilers.Toolset", Bundled: EDependencyBundledComponent.Roslyn),
-                new("NuGet.*", Bundled: EDependencyBundledComponent.Nuget),
             ]),
             ["node"] = ("npm", [new("@types/node")]),
         };

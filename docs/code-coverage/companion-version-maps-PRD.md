@@ -1,6 +1,6 @@
 # Companion version maps: which package version belongs to which SDK — PRD and plan
 
-Status: **M1 done, M2 next** (2026-11-15). Branch `fix/align-platform-packages-to-tfm`, PR #676 (one pull request with
+Status: **M1–M2 done, M3 next** (2026-11-15). Branch `fix/align-platform-packages-to-tfm`, PR #676 (one pull request with
 [follower-cooldown-PRD](follower-cooldown-PRD.md) H1, owner: "Single pull-request").
 
 ## 1. The problem
@@ -99,7 +99,7 @@ From `dotnet/sdk` `eng/Version.Details.xml` at release tags (band research), fir
 |---|---|---|
 | S1 | Where does a bot read what an SDK release bundles? | **Done.** The VMR `dotnet/dotnet` tag `v<sdk>` exists from 10.0.100 (`v10.0.100`, `v10.0.300`, `v11.0.100`: 200; `v8.0.201`, `v9.0.300`: 404). Its `src/sdk/eng/Version.Details.xml` is **stale** (10.0.300 says MSBuild 18.0.11), but each component's own source is right: `src/msbuild/eng/Versions.props` `VersionPrefix` (18.0.2 / 18.6.3 / 18.12.2), `src/roslyn/eng/Versions.props` Major/Minor/Patch (5.0.0 / 5.6.0 / 5.12.0), `src/nuget-client/build/config.props` Major/Minor/PatchNuGetVersion (7.0.0 / 7.6.0 / 8.0.0). The releases JSON exposes none of these. |
 | S2 | Pre-10 SDKs? | **Done.** 8.0 and 9.0 are EOL (4.2); no built-in table. A repository on them gets no bundled ceiling, and the pull request says why. |
-| S3 | Does `NpmRange` admit NuGet versions (`18.12.0-1.26473.115`, four-part)? | M1, unit tests first. |
+| S3 | Does `NpmRange` admit NuGet versions (`18.12.0-1.26473.115`, four-part)? | **Done** (`CompanionVersionMapTests.S3_npm_ranges_over_nuget_versions`). `<=18.12` admits 18.12.2 and refuses 18.13.0. A prerelease build (`18.12.0-1.26473.115`) is refused, by npm's rule that only a range naming that prerelease line admits it. That is wanted: a stable repository never takes a daily build. A four-part version (`4.0.0.1`) is no SemVer, so no range admits it, and it is listed as above the range. |
 | S4 | Which SDK version is "the repository's"? | `global.json`'s `sdk.version` when present (the build honours it; `rollForward` only goes up, so it is the conservative floor); else the lowest exact `setup-dotnet` version; else the newest SDK of the repository's channel in the platform table (what a floating `11.0.x` installs). |
 
 ## 6. Design
@@ -188,6 +188,25 @@ pull request body under *Configuration problems*, not only on the run timeline (
   (`DependencyPolicyConfig.CompanionEntry`, `FindCompanions`), so the bundled built-ins change no plan yet. Red:
   `CompanionEntriesYmlTests` did not compile (types absent) → green 15/15; with `DependenciesYmlTests`,
   `DependencyOnboardingTests` and all policy tests 339/339.
+- **M2 done** (2026-11-15). `DependencyPolicyEngine`:
+  - `FindCompanions` records each ranged record (`Ranged`: entry, key channel, repository SDK, current range).
+    - The key channel is the lowest of the project's TFMs, else the repository's.
+    - The repository SDK (S4, `RepositorySdk`) is `global.json`'s version, else the lowest exact setup-action version, else the
+      channel row's `LatestSdk`.
+  - `RangeOf` tries the band key (`Band`: `11.0.105` → `11.0.1xx`) before the channel key. For `bundled`, the range is
+    `<=major.minor` of `DependencyPolicyInput.SdkComponents` (filled in M3; an SDK absent there gives no range, and the
+    record stays ordinary).
+  - `ApplyCompanionRanges` (after the platforms) keeps only the in-range candidates for the package groups and lists the
+    highest one above as `AboveCompanionRange` under Available.
+  - A record below its range aligns with H1's `AlignLagging`.
+  - On a move, `PlanMove` recomputes the range for `target.LatestSdk` and the target channel, and the record rides to the
+    highest release inside it (`RangeRider`). The record never joins `missing`.
+  - Finding: globs match case-insensitively, so `Microsoft.NET.*` would take `Microsoft.Net.Compilers.Toolset` first. The
+    bundled built-ins now come first (test `The_compiler_toolset_is_a_roslyn_companion_not_a_channel_rule`).
+  - Limit: "the highest release inside the range" is chosen among the lookup's candidates. Renovate reports the newest per
+    update bucket, so a range that cuts inside a bucket can find nothing to take. That case is listed, never guessed.
+  - Red: `CompanionVersionMapTests` 6 of 10 failed (ceiling, multi-target, below-floor alignment, bundled, move
+    recomputes, never holds) → green 15/15 (with S3). Policy + yml + onboarding + preview/fleet classes: 370/370.
 
 ## 8. Decision log
 

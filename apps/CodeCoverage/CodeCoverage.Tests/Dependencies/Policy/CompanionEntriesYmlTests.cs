@@ -70,6 +70,11 @@ public class CompanionEntriesYmlTests
         DependencyCompanions.BuiltIn("node").Should().Equal(new DependencyCompanionEntry("@types/node"));
     }
 
+    /// <summary>Globs match case-insensitively and the first match wins, so <c>Microsoft.NET.*</c> must not come first.</summary>
+    [Fact]
+    public void The_compiler_toolset_is_a_roslyn_companion_not_a_channel_rule()
+        => new DependencyPolicyConfig().CompanionEntry("dotnet", "Microsoft.Net.Compilers.Toolset")!.Bundled.Should().Be(EDependencyBundledComponent.Roslyn);
+
     [Theory]
     [InlineData("dotnet", "{ match: x, versions: { \"11\": \"5.x\" } }", "'11' is not a channel")]
     [InlineData("dotnet", "{ match: x, versions: { \"11.0.1x\": \"5.x\" } }", "'11.0.1x' is not a channel")]

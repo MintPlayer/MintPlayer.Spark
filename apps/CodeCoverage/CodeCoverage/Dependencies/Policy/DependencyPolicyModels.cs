@@ -40,6 +40,10 @@ public sealed record DependencyPolicyInput
 
     public IReadOnlyCollection<DependencySecurityFix> SecurityFixes { get; init; } = [];
 
+    /// <summary>companion-version-maps-PRD §6.4: what each SDK release bundles, for the <c>bundled</c> companions. An SDK
+    /// absent here gives those companions no range.</summary>
+    public IReadOnlyCollection<SdkComponentVersions> SdkComponents { get; init; } = [];
+
     /// <summary>
     /// #568 D13: a release line's run, with what <c>dependencies.lines</c> lets it take; null on the default branch. A line
     /// never takes a major; a security fix may go up to a minor.
@@ -99,7 +103,14 @@ public enum EDependencyReportReason
 
     /// <summary>companion-pins-PRD M3: a lockstep group waiting until every member has the version.</summary>
     Lockstep,
+
+    /// <summary>companion-version-maps-PRD §6.3: above the range a companion entry gives the repository's SDK.</summary>
+    AboveCompanionRange,
 }
+
+/// <summary>companion-version-maps-PRD §6.4: the MSBuild, Roslyn and NuGet versions one SDK release ships (S1: the VMR tag's
+/// component sources); null where the tag could not be read.</summary>
+public sealed record SdkComponentVersions(string Sdk, string? Msbuild, string? Roslyn, string? Nuget);
 
 /// <summary>One line of the pull request body's available / held / awaiting-approval / ignored tables.</summary>
 public sealed record DependencyReportEntry(
