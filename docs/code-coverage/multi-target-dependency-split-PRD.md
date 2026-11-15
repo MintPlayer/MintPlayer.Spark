@@ -1,6 +1,6 @@
 # Multi-target libraries: one dependency tree per target framework — PRD and plan
 
-Status: **owner decided M4–M7 (2026-11-15); next: spikes S1–S8, then plan.** Branch `feat/multi-target-dependency-split`
+Status: **spikes S1–S8 done, plan P1–P8 written (2026-11-15); next: P1.** Branch `feat/multi-target-dependency-split`
 (from master after #676, merged + deployed in run 43743477315).
 Predecessors: [follower-cooldown-PRD](follower-cooldown-PRD.md) H1, [companion-version-maps-PRD](companion-version-maps-PRD.md),
 [sdk-updates-PRD](sdk-updates-PRD.md) D2/D13 (strategy add, keepPrevious, lockPackageMajor),
@@ -152,12 +152,12 @@ handler adds the new TFM with its own `ItemGroup`, and drops a TFM that is no lo
 |---|---|---|---|
 | S1 | What does Renovate 44.125.2 report for (a) a `PackageReference` in a conditioned `ItemGroup`, (b) the same package twice in one csproj under two conditions, on the same and on different versions? Does it give `fileReplacePosition`? | run the pinned image on a fixture repo (a lib `net10.0;net11.0` with both layouts) and capture a real `report.json` + SOURCE.md | **done** (§5.1) |
 | S2 | MSBuild/NuGet with per-TFM `ItemGroup`s: restore, pack (one nuspec dependency group per TFM?), and a `net11.0` consumer referencing 10.0.x directly while the lib's net11.0 asset needs 11.0.0 (NU1605 per TFM graph?) | a throwaway solution in the scratchpad, SDK 11.0.100, `dotnet restore`/`pack`, read the nuspec and `project.assets.json` | **done** (see below) |
-| S3 | Which condition forms do we read and which one do we write? Candidates: `'$(TargetFramework)' == 'net11.0'`, `$([MSBuild]::IsTargetFrameworkCompatible(...))`, `!=`, `StartsWith`. The parser must refuse anything it can't map to a TFM set (report, never guess) | grep the three repos + nuget.org samples; extend `scanTfmConditions` (`locations.ts:147`) | open |
-| S4 | How does the git writer admit a structural edit? Today it admits one-token swaps only (`PlatformSubstitution.cs:14-25`). Option: the plan carries the exact block to insert/remove (TFM, packages, versions), and the writer re-renders it and compares byte for byte | read `PlatformSubstitution` and the writer's validation; prototype one rule | open |
-| S5 | "No longer supported": which data decides that a TFM leaves? Today the action drops beyond `max(keepPrevious,1)` with no EOL check (`applyPlatform.ts:30-44`). Candidates: EOL from `PlatformReleases/dotnet/<ch>` (bot side, already loaded for the channel table), `keepPrevious`, or both | read the channel table the lookup receives (`DependencyPlatformTable.JsonAsync`) | open |
+| S3 | Which condition forms do we read and which one do we write? Candidates: `'$(TargetFramework)' == 'net11.0'`, `$([MSBuild]::IsTargetFrameworkCompatible(...))`, `!=`, `StartsWith`. The parser must refuse anything it can't map to a TFM set (report, never guess) | grep the three repos + nuget.org samples; extend `scanTfmConditions` (`locations.ts:147`) | **done** (§5.1) |
+| S4 | How does the git writer admit a structural edit? Today it admits one-token swaps only (`PlatformSubstitution.cs:14-25`). Option: the plan carries the exact block to insert/remove (TFM, packages, versions), and the writer re-renders it and compares byte for byte | read `PlatformSubstitution` and the writer's validation; prototype one rule | **done** (§5.1) |
+| S5 | "No longer supported": which data decides that a TFM leaves? Today the action drops beyond `max(keepPrevious,1)` with no EOL check (`applyPlatform.ts:30-44`). Candidates: EOL from `PlatformReleases/dotnet/<ch>` (bot side, already loaded for the channel table), `keepPrevious`, or both | read the channel table the lookup receives (`DependencyPlatformTable.JsonAsync`) | **done** (§5.1) |
 | S7 | CPM + per-TFM: does NuGet accept conditioned `PackageVersion` in `Directory.Packages.props` (and two `PackageVersion` items for one package under different conditions)? What does Renovate report for them? | the S2 solution with CPM on; the S1 fixture with a `Directory.Packages.props` | **done** (§5.1) |
-| S8 | CPM conversion action: how existing custom actions open a pull request across selected repositories (the onboarding pull request, the "Set up rulesets" multi-select), and how the conversion edits are made and validated (git writer, or the repository's own workflow like the dependency apply) | read `DependencyOnboarding`, the onboarding chooser and a multi-select custom action | open |
-| S6 | How do companion ranges (companion-version-maps), H1 and upstream companions (follower-cooldown G2) key on a per-TFM record? Expected: the `ItemGroup`'s TFM replaces "the lowest TFM" as the key channel | read `FindCompanions` `:211-260` and `RangeOf` | open |
+| S8 | CPM conversion action: how existing custom actions open a pull request across selected repositories (the onboarding pull request, the "Set up rulesets" multi-select), and how the conversion edits are made and validated (git writer, or the repository's own workflow like the dependency apply) | read `DependencyOnboarding`, the onboarding chooser and a multi-select custom action | **done** (§5.1) |
+| S6 | How do companion ranges (companion-version-maps), H1 and upstream companions (follower-cooldown G2) key on a per-TFM record? Expected: the `ItemGroup`'s TFM replaces "the lowest TFM" as the key channel | read `FindCompanions` `:211-260` and `RangeOf` | **done** (§5.1) |
 
 ### 5.1 Spike results
 
@@ -188,6 +188,50 @@ handler adds the new TFM with its own `ItemGroup`, and drops a TFM that is no lo
   `PackageVersion` items restores. `project.assets.json` resolves `net10.0` → Hosting 10.0.5 and `net11.0` → 11.0.0.
   **Verified.** The only message was NU1507 (two package sources without source mapping, from this machine's
   configuration). Combined with S1, the updater can support CPM repositories, which answers Q7 as "support".
+- **S3 condition forms (decided by reading, 2026-11-15).**
+  - The three repositories have no conditioned `ItemGroup` (§4.2), so there is no existing form to preserve.
+  - **Read:** `'$(TargetFramework)' == 'X'` and `!=` (any quoting/spacing; `scanTfmConditions`, `locations.ts:138-165`
+    already parses both), and `$([MSBuild]::IsTargetFrameworkCompatible('$(TargetFramework)', 'X'))`. The latter maps to
+    the project's TFMs at or above X; it is in the S1 fixture.
+  - **Write:** only `'$(TargetFramework)' == 'netX.Y'`.
+  - Any other condition (an `Or`, a property other than `TargetFramework`, `StartsWith`) is unmapped: listed under
+    *Not moved*, and its references stay ordinary (D-f).
+- **S4 writer validation (2026-11-15).**
+  - `DependencyPatchValidator` refuses any block whose removed and added line counts differ, as
+    `NotASubstitution` (`CodeCoverage.GitWriter/Jobs/Dependencies/DependencyPatchValidator.cs:262-264`). Every changed line
+    must then be explained by `SubstitutionCheck`, `PlatformSubstitution` or a follow rule (`:271-297`). So a split can't
+    pass today.
+  - Proposed rule **"split = same XML, regrouped"**: for a project file whose plan entry is a split, the writer parses
+    both versions.
+    1. With every `PackageReference`/`PackageVersion` of the planned packages removed, and every `ItemGroup` that then
+       holds nothing removed, the two documents must be identical (element by element, attributes and text).
+    2. The after-document's planned references must equal the plan's `(TFM, package, version)` set exactly, each under
+       the canonical condition (S3).
+
+    Nothing else can come or go, and indentation is the action's choice. This replaces the line rule for those files only.
+- **S5 EOL data (2026-11-15).**
+  - The lookup's channel table already carries `eol` per channel (`dependency-action/src/platform/feeds.ts:48-69`), and
+    newer EOL channels are filtered out of the candidates (`:88`).
+  - The bot holds the same data (`PlatformReleases/dotnet/<ch>`).
+  - Proposal: **the bot** decides the target TFM list of each multi-target project (add the target channel, drop EOL
+    channels, keep at least `keepPrevious`). It sends that list in the plan's platform move, so the writer can check it.
+    Today `nextTfmList` (`applyPlatform.ts:30-44`) decides this in the action, without EOL.
+- **S6 companion keys (2026-11-15).**
+  - Ranged records key on the project's lowest TFM channel (`DependencyPolicyEngine.cs:229-234`); H1 requires every TFM to
+    be the channel (`:222-228`).
+  - With per-TFM records, a conditioned record's key channel is **its own `ItemGroup` TFM**. An unconditioned record in a
+    multi-target project is the split's input: after the split there are only per-TFM records.
+  - Companion ranges (companion-version-maps) then apply per TFM unchanged. H1 becomes the single-TFM case of D-b.
+- **S8 CPM action mechanics (2026-11-15).**
+  - Multi-select custom actions already exist: `SetUpRulesetsAction` (`CodeCoverage/CustomActions/SetUpRulesetsAction.cs:51`)
+    and `EnableDependencyUpdatesAction` (`:45`) read `args.SelectedItems`.
+  - The onboarding pull request writes whole files through the git writer's `files` job
+    (`CodeCoverage.GitWriter/Endpoints/DependencyEndpoints.cs:140-145`, `DependencyFields.OnboardingFilesRule`).
+  - The CPM conversion can work the same way. The bot computes the new `Directory.Packages.props` and the edited csproj
+    files from the default branch's tree, and one `files` job per repository opens a `mintplayer/central-package-management`
+    pull request. The reverse direction inlines the versions and deletes `Directory.Packages.props`.
+  - Open for the plan: whether the `files` rule admits deleting a file and editing csproj files (`OnboardingFilesRule` today
+    admits the onboarding's own paths).
 
 ## 6. Design (draft, pending owner answers in §3 and spikes)
 
@@ -209,9 +253,51 @@ handler adds the new TFM with its own `ItemGroup`, and drops a TFM that is no lo
   only the blocks the plan names (S4).
 - **D-f Reporting.** Any condition the parser can't map is listed under *Not moved*, and its references stay ordinary.
 
-## 7. Plan
+## 7. Plan (one pull request, branch `feat/multi-target-dependency-split`)
 
-*(after the owner's answers and S1–S6; milestones M1… with red tests first. One pull request.)*
+Each milestone starts with a red test and records its evidence in §7.1. Tests run per class while working; the full gate
+is CI on the pull request.
+
+- **P1 Lookup: per-occurrence NuGet records (D-a, S1, S3).** In the action, a csproj / `Directory.Packages.props` scanner
+  emits each `PackageReference`/`PackageVersion` with its condition's TFM set (or unmapped). Renovate's candidates join by
+  `(file, depName, currentValue)`. `LookupRecord` gains `targetFrameworks` (string list or null) and `conditionUnmapped`;
+  the bot's `DependencyContracts` too. Red: `mapReport` test on the `nuget-conditions` fixture.
+- **P2 Bot: per-TFM planning (D-b, D-c, S6).**
+  - In a multi-target project, every companion record is planned per channel TFM, at that channel's major.
+  - An unconditioned one becomes a split item with one version per TFM.
+  - In-repository consumers on the new channel join the same group (S2), and the package's patch for other TFMs rides
+    too. The #216 split then can't happen.
+  - Key channel = the record's TFM.
+  - Red: a Tools #216 replica in the policy tests (FolderHasher + Targets, Mapping + Pagination.Tests): one group, no
+    downgrade window.
+- **P3 Bot: the TFM list (D-d, S5, M6).** The bot computes each project's target TFMs (add the move's channel, drop EOL
+  channels, keep `keepPrevious`) and sends them in the plan's platform move. Red: EOL net8.0 dropped; `keepPrevious`
+  keeps a non-EOL one.
+- **P4 Action: apply the split and the TFM list (D-c, D-d).** The nuget adapter rewrites a project as: canonical
+  per-TFM `ItemGroup`s, the old unconditioned reference removed, `ItemGroup`s of dropped TFMs removed (and the TFM from
+  `<TargetFrameworks>`), new TFM groups added. `nextTfmList` takes the bot's list. Red: vitest on fixture csproj files
+  (before → after golden).
+- **P5 Writer: "same XML, regrouped" (D-e, S4).** `DependencyPatchValidator` admits a split file by the semantic rule. Red:
+  `CodeCoverage.GitWriter.Tests` with an admitted split, a smuggled extra element refused, a wrong version refused, a
+  non-canonical condition refused.
+- **P6 CPM support in the updater (Q7, S1, S7).** Conditioned `PackageVersion` items are planned per TFM like
+  `PackageReference`s. The split of an unconditioned `PackageVersion` happens in `Directory.Packages.props`. Red: policy +
+  apply tests on the `Cpm/` fixture.
+- **P7 CPM conversion custom action (M7, S8).**
+  - `ConvertCentralPackageManagementAction` runs on the repository query with a multi-select, one direction per run
+    (to CPM / from CPM).
+  - The bot computes the files from the default branch and opens one pull request per repository through the writer's
+    `files` job. The writer's files rule gets a profile for it.
+  - Red: conversion unit tests (versions agree / disagree → `VersionOverride`, conditions kept, reverse direction), a
+    writer rule test, and an action test with two selected repositories.
+- **P8 Docs.** `dependency-updates.md` (multi-target projects, TFM drop at EOL, *Not moved* for unmapped conditions), a CPM
+  action page in the guide, the setup page if a key changes, sdk-updates-PRD D2/D13 marked amended, the PRD status.
+- Gate: CI on the pull request, then patch coverage via the codecoverage MCP. After deploy: re-run Tools; FolderHasher,
+  Mapping and the two Abstractions projects should split, and the five refused groups apply.
+
+### 7.1 Progress
+
+*(per milestone: evidence, red → green)*
 
 ## 8. Decision log
 
