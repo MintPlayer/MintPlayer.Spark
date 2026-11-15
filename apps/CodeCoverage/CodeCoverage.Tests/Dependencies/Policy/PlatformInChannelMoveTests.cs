@@ -80,6 +80,74 @@ public class PlatformInChannelMoveTests
         pending.Detail.Should().Contain("Microsoft.AspNetCore.OpenApi").And.Contain("/approve platform:dotnet 11.0 --force");
     }
 
+    /// <summary>
+    /// follower-cooldown-PRD FS4/G3 (S2): a project that targets only .NET Standard (Spark's source generators) has no
+    /// platform to move; its <c>tfm</c> location carries no channel. Its references are ordinary packages: they neither ride
+    /// with nor hold the platform move. A file with no <c>tfm</c> location (Directory.Packages.props) can't be told and
+    /// stays a companion.
+    /// </summary>
+    [Fact]
+    public void A_dotnet_standard_projects_reference_neither_rides_nor_holds_the_platform_move()
+    {
+        const string generator = "libs/Generators/Generators.csproj";
+        var platform = OnTheRc() with
+        {
+            Locations = [.. OnTheRc().Locations, new PlatformLocation { File = generator, Kind = "tfm", Value = "netstandard2.0", Channel = null }],
+        };
+        var json = Nuget("System.Text.Json", "11.0.0-rc.2.26504.105", Candidate(EUpdateType.Patch, "11.0.0-rc.3.26522.148")) with { PackageFile = generator };
+
+        var outcome = Evaluate(With(platform, json), now: Later);
+
+        outcome.Groups.Should().Contain(g => g.Group == "platform:dotnet 11.0");
+        outcome.Groups.Single(g => g.Group == "platform:dotnet 11.0").Items.Should().BeEmpty();
+        outcome.Held.Concat(outcome.Available).Should().NotContain(e => e.Reason == EDependencyReportReason.Pending);
+    }
+
+    /// <summary>
+    /// follower-cooldown-PRD G2 (owner, 2026-11-15: "MintPlayer.Dotnet.Tools is the first one that will need to be
+    /// updated. The other repos will follow suit"): a package another repository of the account publishes, on the
+    /// platform's major, rides with the move like a Microsoft one (S3: Spark's <c>MintPlayer.AspNetCore.Endpoints</c>).
+    /// </summary>
+    [Fact]
+    public void An_upstream_package_of_the_account_rides_to_its_release()
+    {
+        var endpoints = Nuget("MintPlayer.AspNetCore.Endpoints", "11.4.1-rc.0", Candidate(EUpdateType.Patch, "11.4.1"));
+
+        var outcome = Evaluate(With(OnTheRc(), endpoints), Upstream(), now: Later);
+
+        Planned(outcome).Should().Equal("platform:dotnet 11.0: MintPlayer.AspNetCore.Endpoints@11.4.1");
+    }
+
+    /// <summary>
+    /// follower-cooldown-PRD G2: the downstream repository waits for its upstream's release (S3: SpaServices has only
+    /// rc.6 on 2026-11-15), as it waits for a Microsoft companion's; a writer can still force the move.
+    /// </summary>
+    [Fact]
+    public void An_upstream_package_without_its_release_holds_the_move_until_forced()
+    {
+        var spa = Nuget("MintPlayer.AspNetCore.SpaServices", "11.0.0-rc.3", Candidate(EUpdateType.Patch, "11.0.0-rc.6"));
+
+        var outcome = Evaluate(With(OnTheRc(), spa), Upstream(), now: Later);
+
+        outcome.Groups.Should().NotContain(g => g.Group == "platform:dotnet 11.0");
+        outcome.Held.Concat(outcome.Available).Should().ContainSingle(e => e.Reason == EDependencyReportReason.Pending)
+            .Which.Detail.Should().Contain("MintPlayer.AspNetCore.SpaServices");
+    }
+
+    [Fact]
+    public void Companions_off_leaves_the_upstream_packages_alone_too()
+    {
+        var endpoints = Nuget("MintPlayer.AspNetCore.Endpoints", "11.4.1-rc.0", Candidate(EUpdateType.Patch, "11.4.1"));
+
+        var outcome = Evaluate(With(OnTheRc(), endpoints), Upstream("dependencies:\n  platforms:\n    dotnet: { companions: [] }\n"), now: Later);
+
+        outcome.Groups.Single(g => g.Group == "platform:dotnet 11.0").Items.Should().BeEmpty();
+    }
+
+    /// <summary>The account publishes Endpoints and SpaServices from other repositories (the producer graph).</summary>
+    private static DependencyPolicyConfig Upstream(string? yml = null) => DependencyPolicyConfig.Resolve(Config(yml).File, null, null,
+        [DependencyPolicyConfig.AccountPackageKey("nuget", "MintPlayer.AspNetCore.Endpoints"), DependencyPolicyConfig.AccountPackageKey("nuget", "MintPlayer.AspNetCore.SpaServices")]);
+
     [Fact]
     public void A_patch_between_two_releases_carries_no_companions()
     {

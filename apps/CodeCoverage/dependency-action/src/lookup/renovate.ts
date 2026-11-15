@@ -75,7 +75,7 @@ export interface RenovateOptions {
  * `docker run` arguments. Secrets travel as `-e NAME` (value inherited from this process's env),
  * never as `-e NAME=value`, so they never appear in a command line or a log.
  */
-export function dockerArgs(o: { repoDir: string; outDir: string; configFile: string; image: string; user?: string; githubTokenEnv?: string; hostRulesEnv?: string }): string[] {
+export function dockerArgs(o: { repoDir: string; outDir: string; configFile: string; image: string; user?: string; githubTokenEnv?: string; hostRules?: boolean }): string[] {
   const args = [
     'run', '--rm',
     ...(o.user ? ['--user', o.user] : []),
@@ -88,7 +88,7 @@ export function dockerArgs(o: { repoDir: string; outDir: string; configFile: str
     '-e', 'GIT_CONFIG_COUNT=1', '-e', 'GIT_CONFIG_KEY_0=safe.directory', '-e', 'GIT_CONFIG_VALUE_0=*',
   ];
   if (o.githubTokenEnv) args.push('-e', `RENOVATE_GITHUB_COM_TOKEN`);
-  if (o.hostRulesEnv) args.push('-e', 'RENOVATE_HOST_RULES');
+  if (o.hostRules) args.push('-e', 'RENOVATE_HOST_RULES');
   args.push(
     o.image,
     '--platform=local',
@@ -111,6 +111,31 @@ export function containerUser(getuid: (() => number) | null = process.getuid ?? 
   return getuid ? `${getuid()}:0` : undefined;
 }
 
+/** The GitHub Packages NuGet feed (`nuget.pkg.github.com/<owner>`), the one a `nuget.config` maps an account's own packages to. */
+const GITHUB_PACKAGES = 'nuget.pkg.github.com';
+
+/**
+ * follower-cooldown-PRD E3: the RENOVATE_HOST_RULES value. The job token reads GitHub Packages (the lookup template grants
+ * `packages: read`, as Spark's CI restores from it), so a `nuget.config` that maps the account's packages there no longer
+ * hides their updates behind a 401 (S4 a). The user's own rules come first and win: when one names that host, nothing
+ * is added. Rules that aren't a JSON array are passed on as they are, for Renovate to refuse.
+ */
+export function hostRules(token: string | undefined, user: string | undefined, actor: string): string | undefined {
+  if (!token) return user;
+  let rules: unknown[] = [];
+  if (user) {
+    try {
+      const parsed: unknown = JSON.parse(user);
+      if (!Array.isArray(parsed)) return user;
+      rules = parsed;
+    } catch {
+      return user;
+    }
+  }
+  if (rules.some((r) => JSON.stringify(r).includes(GITHUB_PACKAGES))) return user;
+  return JSON.stringify([...rules, { matchHost: GITHUB_PACKAGES, username: actor, password: token }]);
+}
+
 export async function runRenovate(o: RenovateOptions): Promise<RenovateRun> {
   const outDir = path.join(o.workDir, 'renovate-out');
   await fs.mkdir(outDir, { recursive: true });
@@ -119,10 +144,12 @@ export async function runRenovate(o: RenovateOptions): Promise<RenovateRun> {
   await fs.writeFile(configFile, JSON.stringify(renovateConfig(o.unstable ?? [], o.stable ?? []), null, 2));
   const image = o.image ?? RENOVATE_IMAGE;
   const env: Record<string, string | undefined> = {};
-  if (o.githubTokenEnv) env.RENOVATE_GITHUB_COM_TOKEN = process.env[o.githubTokenEnv];
-  if (o.hostRulesEnv) env.RENOVATE_HOST_RULES = process.env[o.hostRulesEnv];
+  const token = o.githubTokenEnv ? process.env[o.githubTokenEnv] : undefined;
+  if (o.githubTokenEnv) env.RENOVATE_GITHUB_COM_TOKEN = token;
+  const rules = hostRules(token, o.hostRulesEnv ? process.env[o.hostRulesEnv] : undefined, process.env.GITHUB_ACTOR || 'x-access-token');
+  if (rules !== undefined) env.RENOVATE_HOST_RULES = rules;
   const started = Date.now();
-  const result = await o.exec('docker', dockerArgs({ repoDir: o.repoDir, outDir, configFile, image, user: containerUser(), githubTokenEnv: o.githubTokenEnv, hostRulesEnv: o.hostRulesEnv }), {
+  const result = await o.exec('docker', dockerArgs({ repoDir: o.repoDir, outDir, configFile, image, user: containerUser(), githubTokenEnv: o.githubTokenEnv, hostRules: rules !== undefined }), {
     cwd: o.repoDir,
     env,
     timeoutMs: 30 * 60_000,

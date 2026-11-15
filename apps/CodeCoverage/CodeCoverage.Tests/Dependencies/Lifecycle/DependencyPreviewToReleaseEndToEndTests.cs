@@ -2,6 +2,7 @@ using System.Text.Json;
 using CodeCoverage.Dependencies.Lifecycle;
 using CodeCoverage.Dependencies.Policy;
 using CodeCoverage.Entities;
+using CodeCoverage.Forge;
 using CodeCoverage.Git.Dependencies;
 using CodeCoverage.Tests.Dependencies.Policy;
 using MintPlayer.Spark.Testing;
@@ -103,5 +104,44 @@ public class DependencyPreviewToReleaseEndToEndTests : SparkTestDriver
         group.Platform.SdkVersion.Should().Be("11.0.100");
         // D33: the RC companion rides to its release in the SDK's group, not in a group of its own.
         group.Items.Select(i => $"{i.DepName}@{i.NewVersion}").Should().Equal("Microsoft.AspNetCore.OpenApi@11.0.0");
+    }
+
+    /// <summary>
+    /// follower-cooldown-PRD G2/M4: another repository of the owner publishes <c>Acme.Endpoints</c> (its manifest, the
+    /// producer graph); the widget's reference to it, on the platform's major, rides to its release with the SDK. The
+    /// widget's own manifest publishes <c>Acme.Widget</c>, which stays an ordinary package here.
+    /// </summary>
+    [Fact]
+    public async Task An_upstream_package_of_the_owner_rides_with_the_platform_move()
+    {
+        var harness = new DependencyHarness(Store);
+        harness.SetYml(DependencyHarness.Yml);
+        await harness.SeedAsync();
+        await harness.StoreAsync(Released, Released.Id!);
+        var upstreamId = Repository.DocumentId(EForgeProvider.GitHub, 9101);
+        await harness.StoreAsync(new Repository
+        {
+            GitHubId = 9101, Name = "tools", FullName = "acme/tools", OwnerLogin = "acme", DefaultBranch = "master",
+            Account = DependencyHarness.AccountId, Provider = EForgeProvider.GitHub,
+        }, upstreamId);
+        await harness.StoreAsync(new RepositoryManifest
+        {
+            Repository = upstreamId, OwnerKey = new ForgeOwner(EForgeProvider.GitHub, "acme").ToString(), Produces = [new ManifestPackage { Ecosystem = "NuGet", Name = "Acme.Endpoints" }],
+        }, RepositoryManifest.ForRepository(upstreamId));
+        WaitForIndexing(Store);
+
+        string table;
+        using (var session = Store.OpenAsyncSession())
+            table = await DependencyPlatformTable.JsonAsync(session, [], [], CancellationToken.None);
+        using var parsed = JsonDocument.Parse(table);
+        var row = parsed.RootElement.GetProperty("sdks").GetProperty("dotnet").EnumerateArray().Single();
+        LookupRecord Package(string name, string current, string next) => DependencyTestKit.Record(name, current,
+            DependencyTestKit.Candidate(EUpdateType.Patch, next)) with
+        { Ecosystem = "nuget", Manager = "nuget", Datasource = "nuget", PackageFile = "src/Web/Web.csproj", LockFiles = [] };
+
+        await harness.RunToApplyAsync(DependencyHarness.Lookup(Package("Acme.Endpoints", "11.4.1-rc.0", "11.4.1")) with { Platforms = [OnTheRc(row)] });
+
+        var plan = DependencyContract.Deserialize<DependencyPlan>(harness.Writer.Requests("work-ref").Single().PlanJson!)!;
+        plan.Groups.Should().ContainSingle().Which.Items.Select(i => $"{i.DepName}@{i.NewVersion}").Should().Equal("Acme.Endpoints@11.4.1");
     }
 }

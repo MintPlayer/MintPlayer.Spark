@@ -143,8 +143,8 @@
               </li>
             </ul>
             <p data-testid="du-setup-workflows-only">
-              <strong>The workflows are all you add</strong>: no other action, and no secret unless a private feed needs
-              one. Keep their file names, or name them in <code>dependencies.lookupAction</code> /
+              <strong>The workflows are all you add</strong>: no other action, and no secret unless a private feed other
+              than GitHub Packages needs one. Keep their file names, or name them in <code>dependencies.lookupAction</code> /
               <code>applyAction</code>. To add them by hand, copy them from
               <a href="https://github.com/MintPlayer/MintPlayer.Spark/tree/master/apps/CodeCoverage/dependency-action/templates" target="_blank" rel="noopener">the action's templates</a>.
               The rolling pull request keeps the action's pin current without the cooldown, because the action is the
@@ -276,7 +276,8 @@
             <ul>
               <li><strong>No repository code runs on the server.</strong> The server runs <code>git</code> only, without hooks, filters or merge drivers.</li>
               <li>
-                <strong>The workflows are read-only.</strong> The templates have <code>contents: read</code>, no
+                <strong>The workflows are read-only.</strong> The templates have <code>contents: read</code> (the lookup
+                also <code>packages: read</code>, to read GitHub Packages with the job's token), no
                 <code>id-token</code> and <code>persist-credentials: false</code>. The bot refuses to dispatch a workflow,
                 yours included, with write permissions, <code>id-token</code>, no top-level <code>permissions:</code> or a
                 <code>pull_request_target</code> trigger, or a migrate workflow that reads secrets. The dispatched file

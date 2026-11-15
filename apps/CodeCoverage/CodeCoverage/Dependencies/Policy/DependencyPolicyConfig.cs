@@ -39,12 +39,25 @@ public sealed class DependencyPolicyConfig
     /// <summary>The cooldown in force: the settings' value, or the file's when that is longer.</summary>
     public TimeSpan Cooldown => File.MinimumCooldown is { } file && file > SettingsCooldown ? file : SettingsCooldown;
 
+    /// <summary>
+    /// follower-cooldown-PRD G2: the packages other repositories of the account publish (<see cref="RepositoryManifest.Produces"/>),
+    /// as <see cref="AccountPackageKey"/>s. On the platform's major they are companions: the upstream repository moves first,
+    /// and its consumers ride along once it released (owner, 2026-11-15).
+    /// </summary>
+    public IReadOnlySet<string> AccountPackages { get; init; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>The key of a published package: its manifest ecosystem (<c>nuget</c>, <c>npm</c>, the lookup's too) and its id.</summary>
+    public static string AccountPackageKey(string ecosystem, string name) => $"{ecosystem.ToLowerInvariant()}:{name}";
+
+    public bool IsAccountPackage(string ecosystem, string name) => AccountPackages.Contains(AccountPackageKey(ecosystem, name));
+
     /// <summary>The configuration of one repository: its default branch's file plus its owner's settings and rules.</summary>
-    public static DependencyPolicyConfig Resolve(DependenciesSection file, Repository? repository, Account? account) => new()
+    public static DependencyPolicyConfig Resolve(DependenciesSection file, Repository? repository, Account? account, IEnumerable<string>? accountPackages = null) => new()
     {
         File = file,
         AccountRules = [.. (account?.DependencyRules ?? []).Where(r => !string.IsNullOrWhiteSpace(r.Match))],
         SettingsCooldown = Repository.ResolveDependencyCooldown(repository, account).Cooldown,
+        AccountPackages = new HashSet<string>(accountPackages ?? [], StringComparer.OrdinalIgnoreCase),
     };
 
     /// <summary>The effective schedule: the settings' slot with the file's <c>schedule</c> parts on top.</summary>

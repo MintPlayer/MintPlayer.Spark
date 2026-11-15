@@ -30,6 +30,8 @@ export interface RenovateDep {
   groupName?: string;
   skipReason?: string;
   updates?: RenovateUpdate[];
+  /** follower-cooldown-PRD S4: "Failed to look up nuget package X: no-result" when a feed refused the lookup. */
+  warnings?: Array<{ topic?: string; message?: string }>;
 }
 
 export interface RenovatePackageFile {
@@ -184,6 +186,9 @@ export function mapReport(report: RenovateReport): LookupRecord[] {
   return records;
 }
 
+/** The problem source of a dependency Renovate could not look up (the server's `LookupProblem.LookupWarning`). */
+export const LOOKUP_WARNING = 'renovate-lookup';
+
 export function reportProblems(report: RenovateReport): Array<{ source: string; message: string }> {
   const out: Array<{ source: string; message: string }> = [];
   const add = (p: RenovateProblem) => {
@@ -193,5 +198,13 @@ export function reportProblems(report: RenovateReport): Array<{ source: string; 
   };
   for (const p of report.problems ?? []) add(p);
   for (const repo of Object.values(report.repositories ?? {})) for (const p of repo.problems ?? []) add(p);
+  // follower-cooldown-PRD FU1/G4: a dependency whose feed refused the lookup (a 401 on a private feed) has no updates, and
+  // Renovate says so only in the dependency's own warnings. Source LOOKUP_WARNING: the body lists them as not looked up.
+  for (const repo of Object.values(report.repositories ?? {}))
+    for (const files of Object.values(repo.packageFiles ?? {}))
+      for (const file of files)
+        for (const dep of file.deps ?? [])
+          for (const w of dep.warnings ?? [])
+            if (w.message && !out.some((o) => o.source === LOOKUP_WARNING && o.message === w.message)) out.push({ source: LOOKUP_WARNING, message: w.message });
   return out;
 }

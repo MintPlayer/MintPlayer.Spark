@@ -24,6 +24,9 @@ public sealed record DependencyRunReport
 
     /// <summary>companion-pins-PRD G4: the follow rules that moved nothing, each as the lookup's message.</summary>
     public List<string> NotFollowed { get; init; } = [];
+
+    /// <summary>follower-cooldown-PRD G4: the dependencies a feed refused to the lookup, as Renovate said it.</summary>
+    public List<string> NotLookedUp { get; init; } = [];
     public List<string> LiftedHolds { get; init; } = [];
     public List<string> ExpiredApprovals { get; init; } = [];
 
@@ -48,6 +51,7 @@ public sealed record DependencyRunReport
         Ignored = [.. outcome.Ignored],
         PlatformReports = [.. outcome.PlatformReports],
         NotFollowed = [.. outcome.NotFollowed],
+        NotLookedUp = [.. outcome.NotLookedUp],
         LiftedHolds = [.. outcome.LiftedHolds.Select(h => h.Reason)],
         ExpiredApprovals = [.. outcome.ExpiredApprovals.Select(a => a.Group)],
     };

@@ -657,6 +657,26 @@ public class DependencyPullRequestBodyTests
         body.Should().NotContain("node is not in the table");
     }
 
+    /// <summary>follower-cooldown-PRD FU1/G4: a dependency the feed refused (S4: a 401 on GitHub Packages) has no updates,
+    /// and the body says so instead of staying silent, once per package, with how to give the lookup access.</summary>
+    [Fact]
+    public void A_dependency_the_lookup_could_not_read_is_listed_under_not_looked_up()
+    {
+        const string failed = "Failed to look up nuget package MintPlayer.AspNetCore.Endpoints: no-result";
+        var lookup = DependencyTestKit.Lookup() with
+        {
+            Problems = [new LookupProblem { Source = LookupProblem.LookupWarning, Message = failed }, new LookupProblem { Source = LookupProblem.LookupWarning, Message = failed }],
+        };
+        var outcome = DependencyTestKit.Evaluate(lookup);
+
+        var body = DependencyPullRequestBody.Render(new DependencyUpdateRun(), DependencyRunReport.From(outcome, []), null);
+
+        outcome.NotLookedUp.Should().Equal(failed);
+        body.Should().Contain("## Not looked up");
+        body.Should().Contain($"- {failed}");
+        body.Should().Contain("packages: read");
+    }
+
     [Fact]
     public void The_apply_s_skipped_platform_locations_are_reported_under_their_sdk()
     {

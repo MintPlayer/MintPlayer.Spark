@@ -133,6 +133,17 @@ public static class DependencyPullRequestBody
             body.AppendLine();
         }
 
+        if (report.NotLookedUp.Count > 0)
+        {
+            // follower-cooldown-PRD G4 (S4): a feed that refused the lookup hides every update it holds; say so, never stay silent.
+            body.AppendLine("## Not looked up").AppendLine();
+            body.AppendLine("A feed refused the lookup, so these dependencies' updates are unknown. For GitHub Packages, give the lookup workflow "
+                + "`permissions: packages: read` (the current template has it); for another private feed, pass a `host-rules` secret.").AppendLine();
+            foreach (var message in report.NotLookedUp.Take(MaxRows))
+                body.AppendLine($"- {Cell(message)}");
+            body.AppendLine();
+        }
+
         if (run.CoverageNote is { Length: > 0 } coverage)
             body.AppendLine("## Coverage").AppendLine().AppendLine(coverage).AppendLine();
 

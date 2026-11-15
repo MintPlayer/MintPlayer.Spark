@@ -86,6 +86,24 @@ public class LockstepTests
         Moves(outcome).Should().Equal((Image, "v1.64.1-noble"), (Package, "1.64.1"));
     }
 
+    /// <summary>
+    /// follower-cooldown-PRD FC6: a <c>version:</c> pattern may write a follower as <c>1.64</c>. Lockstep reads the
+    /// follower's version from its candidate's token, the leader's (E2), so the follower agrees with the others.
+    /// </summary>
+    [Fact]
+    public void A_follower_written_without_a_patch_still_agrees_with_its_leader()
+    {
+        var follower = Record(Image, "1.63", Candidate(EUpdateType.Minor, "v1.64.1", value: "1.64")) with
+        {
+            Ecosystem = "docker", Manager = "follow", Datasource = "docker", PackageFile = "apps/SeoTester/docker-compose.yml", LockFiles = [],
+            DepType = null,
+        };
+
+        var outcome = Evaluate(Lookup(Docker("1.63.0", "1.65.1", "1.64.1"), NuGet("1.63.0", "1.64.1"), follower), Config(Followed));
+
+        Moves(outcome).Should().Equal((Image, "v1.64.1-noble"), (Package, "1.64.1"), (Image, "1.64"));
+    }
+
     [Fact]
     public void A_member_already_at_the_common_version_lets_the_others_catch_up()
     {
