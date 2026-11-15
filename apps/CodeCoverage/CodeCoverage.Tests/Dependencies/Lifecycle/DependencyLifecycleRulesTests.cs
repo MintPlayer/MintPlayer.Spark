@@ -575,6 +575,88 @@ public class DependencyPullRequestBodyTests
         body.Split('\n').Count(l => l.Contains("`mcr.microsoft.com/dotnet/sdk:9.0`")).Should().Be(1, "the policy and the apply can report the same location");
     }
 
+    private static DependencyReportGroup AppliedGroup(string group, params DependencyReportItem[] items)
+        => new(group, EUpdateLevel.Minor, true, false, false, null, false, [.. items]);
+
+    private static DependencyReportItem AppliedItem(string dep, string file, string from, string to)
+        => new(dep, file, "nuget", "nuget", from, to, to, null);
+
+    /// <summary>companion-pins-PRD D1: #669's Applied table stopped at 60 rows and the Playwright group, the one that broke the
+    /// build, was among the hidden ones. One dependency moving the same way in many files is one row, and every group gets a
+    /// row before any group gets a second.</summary>
+    [Fact]
+    public void The_applied_table_names_every_group_and_collapses_one_move_across_files()
+    {
+        var report = new DependencyRunReport
+        {
+            Groups =
+            [
+                AppliedGroup("Spark", [.. Enumerable.Range(0, 37).Select(i => AppliedItem("MintPlayer.Spark", $"p{i}/p{i}.csproj", "11.0.0-rc.1", "11.0.0"))]),
+                AppliedGroup("many", [.. Enumerable.Range(0, 70).Select(i => AppliedItem($"Dep{i}", "a.csproj", "1.0.0", "1.1.0"))]),
+                AppliedGroup("playwright", AppliedItem("Microsoft.Playwright", "SeoTester.csproj", "1.63.0", "1.64.1")),
+            ],
+        };
+
+        var body = DependencyPullRequestBody.Render(new DependencyUpdateRun(), report, null);
+
+        body.Should().Contain("| Spark | `MintPlayer.Spark` | 37 files | 11.0.0-rc.1 | 11.0.0 | minor |");
+        body.Should().Contain("| playwright | `Microsoft.Playwright` | `SeoTester.csproj` | 1.63.0 | 1.64.1 | minor |");
+        body.Should().Contain("… and 12 more.");
+    }
+
+    /// <summary>companion-pins-PRD D2: <c>boky/postfix</c> <c>v4.3.0</c> → <c>4.4.0</c> passed in #669 as a plain minor; a value
+    /// whose text around the version changes is named, so a person checks the new tag is the image they mean.</summary>
+    [Fact]
+    public void A_tag_whose_format_changes_is_named()
+    {
+        var report = new DependencyRunReport
+        {
+            Groups =
+            [
+                AppliedGroup("boky/postfix", new DependencyReportItem("boky/postfix", "docker-compose.yml", "docker", "docker-compose", "v4.3.0", "4.4.0", "4.4.0", null)),
+                AppliedGroup("dotnet", AppliedItem("MintPlayer.Spark", "a.csproj", "11.0.0-rc.1", "11.0.0")),
+                AppliedGroup("playwright", new DependencyReportItem("mcr.microsoft.com/playwright", "Dockerfile", "docker", "dockerfile", "v1.63.0-noble", "v1.64.1-noble", "1.64.1", null)),
+            ],
+        };
+
+        var body = DependencyPullRequestBody.Render(new DependencyUpdateRun(), report, null);
+
+        body.Should().Contain("`boky/postfix`: the tag's format changes (`v4.3.0` → `4.4.0`)");
+        body.Should().NotContain("`MintPlayer.Spark`: the tag's format changes");
+        body.Should().NotContain("`mcr.microsoft.com/playwright`: the tag's format changes");
+    }
+
+    /// <summary>D2 compares only values that hold a version; a digest or a named tag is no format change to report.</summary>
+    [Theory]
+    [InlineData("latest", "1.2.3")]
+    [InlineData("1.2.3", "sha256:abcdef")]
+    [InlineData("jammy", "noble")]
+    public void A_value_without_a_version_is_no_format_change(string from, string to)
+        => DependencyPullRequestBody.FormatChanges(from, to).Should().BeFalse();
+
+    /// <summary>companion-pins-PRD G4: a follow rule that moved nothing (the lookup's <c>follow[i]</c> problem) is a "Not
+    /// moved" line, so a pin that silently stopped following shows in every run's body.</summary>
+    [Fact]
+    public void A_follow_rule_that_moved_nothing_is_listed_under_not_moved()
+    {
+        var lookup = DependencyTestKit.Lookup() with
+        {
+            Problems =
+            [
+                new LookupProblem { Source = "follow[0]", Message = "mcr.microsoft.com/playwright in apps/SeoTester/docker-compose.yml: the pattern matched nothing; this pin is not moved" },
+                new LookupProblem { Source = "platform:node", Message = "node is not in the table" },
+            ],
+        };
+        var outcome = DependencyTestKit.Evaluate(lookup);
+
+        var body = DependencyPullRequestBody.Render(new DependencyUpdateRun(), DependencyRunReport.From(outcome, []), null);
+
+        outcome.NotFollowed.Should().ContainSingle();
+        body.Should().Contain("## Not moved");
+        body.Should().Contain("- mcr.microsoft.com/playwright in apps/SeoTester/docker-compose.yml: the pattern matched nothing; this pin is not moved");
+        body.Should().NotContain("node is not in the table");
+    }
+
     [Fact]
     public void The_apply_s_skipped_platform_locations_are_reported_under_their_sdk()
     {

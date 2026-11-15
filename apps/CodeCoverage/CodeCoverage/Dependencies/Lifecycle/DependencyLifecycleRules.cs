@@ -21,6 +21,9 @@ public sealed record DependencyRunReport
     public List<DependencyReportEntry> Available { get; init; } = [];
     public List<DependencyReportEntry> Ignored { get; init; } = [];
     public List<DependencyPlatformReport> PlatformReports { get; init; } = [];
+
+    /// <summary>companion-pins-PRD G4: the follow rules that moved nothing, each as the lookup's message.</summary>
+    public List<string> NotFollowed { get; init; } = [];
     public List<string> LiftedHolds { get; init; } = [];
     public List<string> ExpiredApprovals { get; init; } = [];
 
@@ -44,6 +47,7 @@ public sealed record DependencyRunReport
         Available = [.. outcome.Available],
         Ignored = [.. outcome.Ignored],
         PlatformReports = [.. outcome.PlatformReports],
+        NotFollowed = [.. outcome.NotFollowed],
         LiftedHolds = [.. outcome.LiftedHolds.Select(h => h.Reason)],
         ExpiredApprovals = [.. outcome.ExpiredApprovals.Select(a => a.Group)],
     };

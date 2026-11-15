@@ -238,6 +238,28 @@ public class PlatformLifecycleTests : CoverageRavenTest
         PlatformLifecycleStartup.NeedsCollection([]).Should().BeFalse("an empty table fails no lookup, and a test host makes no outbound request");
     }
 
+    /// <summary>dependency-companion-pins-PRD F2: coverage.yml's follow rules travel in the table, in the shape the action's
+    /// <c>parsePlatformTable</c> reads (<c>platform.test.ts</c>), and none is <c>[]</c>.</summary>
+    [Fact]
+    public void The_table_carries_the_follow_rules_the_lookup_turns_into_records()
+    {
+        var rules = new[]
+        {
+            new CodeCoverage.Git.Dependencies.DependencyFollowRule("mcr.microsoft.com/playwright", "apps/SeoTester/docker-compose.yml", "seotester-chromium:(?<version>[0-9.]+)", null),
+            new CodeCoverage.Git.Dependencies.DependencyFollowRule("mcr.microsoft.com/playwright", "apps/SeoTester/chromium/Dockerfile", "playwright-core@(?<version>[0-9.]+)", "^v(?<version>[0-9.]+)-noble$"),
+        };
+
+        using var document = System.Text.Json.JsonDocument.Parse(CodeCoverage.Dependencies.Policy.DependencyPlatformTable.Json([], [], [], rules));
+        using var none = System.Text.Json.JsonDocument.Parse(CodeCoverage.Dependencies.Policy.DependencyPlatformTable.Json([], []));
+
+        var follow = document.RootElement.GetProperty("follow").EnumerateArray().ToList();
+        follow.Select(f => (f.GetProperty("dependency").GetString(), f.GetProperty("path").GetString(), f.GetProperty("match").GetString()))
+            .Should().Equal(rules.Select(r => ((string?)r.Dependency, (string?)r.Path, (string?)r.Match)));
+        follow[0].GetProperty("version").ValueKind.Should().Be(System.Text.Json.JsonValueKind.Null);
+        follow[1].GetProperty("version").GetString().Should().Be("^v(?<version>[0-9.]+)-noble$");
+        none.RootElement.GetProperty("follow").GetArrayLength().Should().Be(0);
+    }
+
     /// <summary>#613 item 1: one collection replaces the old per-major rows, so the startup run heals the table.</summary>
     [Fact]
     public async Task A_collection_deletes_the_rows_in_the_old_shape()

@@ -12,7 +12,9 @@ import { OK, rel2abs, tokenOnNamedLine, editFile, tokenRegExp, type Adapter, typ
  */
 
 const DATASOURCES = new Set(['docker', 'github-tags', 'github-releases', 'github-digest', 'github-runners']);
-const MANAGERS = new Set(['maven-wrapper', 'gradle-wrapper', 'dockerfile', 'docker-compose', 'github-actions', 'kubernetes', 'helm-values']);
+// dependency-companion-pins-PRD F2/F4: a `follow:` pin and a Renovate `customManagers` regex are text wherever they are,
+// whatever their leader's datasource (a NuGet version in a Dockerfile is not the NuGet adapter's).
+const MANAGERS = new Set(['maven-wrapper', 'gradle-wrapper', 'dockerfile', 'docker-compose', 'github-actions', 'kubernetes', 'helm-values', 'follow', 'regex']);
 
 export type DigestResolver = (item: PlanItem) => Promise<string | null>;
 

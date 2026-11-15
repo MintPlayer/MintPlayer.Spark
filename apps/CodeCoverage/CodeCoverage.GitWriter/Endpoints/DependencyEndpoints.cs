@@ -203,11 +203,16 @@ internal static partial class DependencyFields
     public const int MaxPlatformLocationsBytes = 1024 * 1024;
     public const string PlatformLocationsRule = "at most 1000 locations, each an sdk and kind of at most 32 characters, a path of at most 512 and a value of at most 200";
 
-    public const string PlanRule = "plan.schema.json as JSON text of at most 4 MiB, with the request's expectedSha";
+    /// <summary>companion-pins-PRD F3: coverage.yml's follow rules; 100 × (256 + 512 + 2 × 1024) characters stays under 512 KiB.</summary>
+    public const int MaxFollowRules = 100;
+    public const int MaxFollowBytes = 512 * 1024;
+    public const string FollowRule = "at most 100 rules, each a dependency of at most 256 characters, a path glob of at most 512, and a match (and optional version) of at most 1024 with exactly one (?<version>...) group";
+
+    public const string PlanRule ="plan.schema.json as JSON text of at most 4 MiB, with the request's expectedSha";
     public const string OnboardingFilesRule = "1 to 16 distinct files, each a path of the onboarding set and either content (at most 256 KiB) or delete";
 
     /// <summary>A body with <paramref name="patches"/> patches at the writer's cap, plus the plan and the rest.</summary>
-    public static long BodyBytes(GitWriterOptions options, int patches) => Body.PatchBytes(options.MaxPatchBytes) * patches + MaxPlanBytes + 4L * MaxActionBytes + MaxPlatformLocationsBytes;
+    public static long BodyBytes(GitWriterOptions options, int patches) => Body.PatchBytes(options.MaxPatchBytes) * patches + MaxPlanBytes + 4L * MaxActionBytes + MaxPlatformLocationsBytes + MaxFollowBytes;
 
     /// <summary>The repository, the credential, the default branch and <c>expected_sha</c>.</summary>
     public static DependencyJob? Job(Refusal refusal, DependencyJobWire request, bool allowInsecureHttp)
@@ -245,9 +250,45 @@ internal static partial class DependencyFields
             || !refusal.Check(request.TargetActions is null || request.TargetActions.Count <= MaxTargetActions
                 && request.TargetActions.All(a => a.Key.Length is > 0 and <= 512 && a.Value.Length <= MaxActionBytes), "targetActions", $"at most {MaxTargetActions} action.yml texts of at most 1 MiB")
             || !refusal.Check(request.AllowedHosts is null || request.AllowedHosts.Count <= MaxHosts && request.AllowedHosts.All(h => Host().IsMatch(h)), "allowedHosts", $"at most {MaxHosts} host names")
-            || refusal.Check(PlatformLocations(request.PlatformLocations), "platformLocations", PlatformLocationsRule) is not { } locations)
+            || refusal.Check(PlatformLocations(request.PlatformLocations), "platformLocations", PlatformLocationsRule) is not { } locations
+            || refusal.Check(Follow(request.Follow), "follow", FollowRule) is not { } follow)
             return null;
-        return new DependencyPatchInput(plan, patch, request.ClaimedGroups, request.TargetActions, request.AllowedHosts ?? []) { PlatformLocations = locations };
+        return new DependencyPatchInput(plan, patch, request.ClaimedGroups, request.TargetActions, request.AllowedHosts ?? []) { PlatformLocations = locations, Follow = follow };
+    }
+
+    /// <summary>The follow rules, or null when one is malformed: the server parsed them from coverage.yml, and the writer
+    /// holds them to the same pattern rules (<see cref="DependencyFollowRule.Problem"/>) before running one.</summary>
+    public static IReadOnlyList<DependencyFollowRule>? Follow(List<FollowRuleWire>? wire)
+    {
+        if (wire is null)
+            return [];
+        if (wire.Count > MaxFollowRules)
+            return null;
+        var rules = new List<DependencyFollowRule>(wire.Count);
+        foreach (var r in wire)
+        {
+            if (r.Dependency is not { Length: > 0 and <= 256 } dependency || r.Path is not { Length: > 0 and <= 512 } path || r.Match is not { Length: > 0 and <= 1024 } match
+                || r.Version is { Length: > 1024 } || new[] { dependency, path, match, r.Version ?? "" }.Any(s => s.Any(char.IsControl))
+                || !IsGlob(path) || DependencyFollowRule.Problem(match) is not null || r.Version is { Length: > 0 } version && DependencyFollowRule.Problem(version) is not null)
+                return null;
+            rules.Add(new DependencyFollowRule(dependency, path, match, r.Version is { Length: > 0 } ? r.Version : null));
+        }
+        return rules;
+    }
+
+    private static bool IsGlob(string glob)
+    {
+        if (glob.StartsWith('/') || glob.Split('/').Any(s => s == ".."))
+            return false;
+        try
+        {
+            _ = new PathGlob(glob);
+            return true;
+        }
+        catch (ArgumentException)
+        {
+            return false;
+        }
     }
 
     /// <summary>The platform locations, or null when one is malformed. The validator re-checks every path against the patch

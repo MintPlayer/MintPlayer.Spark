@@ -96,6 +96,9 @@ public enum EDependencyReportReason
 
     /// <summary>#606 D2: a companion's next major, which moves only with its SDK's platform group.</summary>
     MovesWithPlatform,
+
+    /// <summary>companion-pins-PRD M3: a lockstep group waiting until every member has the version.</summary>
+    Lockstep,
 }
 
 /// <summary>One line of the pull request body's available / held / awaiting-approval / ignored tables.</summary>
@@ -210,6 +213,9 @@ public sealed record DependencyPolicyOutcome
     public IReadOnlyList<DependencyReportEntry> Ignored { get; init; } = [];
 
     public IReadOnlyList<DependencyPlatformReport> PlatformReports { get; init; } = [];
+
+    /// <summary>companion-pins-PRD G4: why a coverage.yml <c>follow</c> rule moved nothing, as the lookup said it.</summary>
+    public IReadOnlyList<string> NotFollowed { get; init; } = [];
 
     /// <summary>The state to store: first-seen times added, lifted holds removed, slot counters advanced, stale approvals
     /// dropped.</summary>

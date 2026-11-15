@@ -89,6 +89,11 @@ public sealed class DependencyPolicyConfig
         => FileRules(ecosystem, depName).Select(r => r.Group).FirstOrDefault(g => g is not null)
             ?? Enforced(ecosystem, depName).Concat(Defaults(ecosystem, depName)).Select(r => r.Group).FirstOrDefault(g => !string.IsNullOrWhiteSpace(g))?.Trim();
 
+    /// <summary>companion-pins-PRD M3 (H2): the dependency's group moves in lockstep, implied by a <c>follow:</c> naming it,
+    /// opted into by a file rule's <c>lockstep: true</c>.</summary>
+    public bool Lockstep(string ecosystem, string depName)
+        => File.Follow.Any(f => string.Equals(f.Dependency, depName, StringComparison.Ordinal)) || FileRules(ecosystem, depName).Any(r => r.Lockstep);
+
     /// <summary>The largest update planned and auto-merged without an approval, ceiling applied.</summary>
     public EDependencyThreshold Threshold(string ecosystem, string depName) => Min(RawThreshold(ecosystem, depName), Ceiling(ecosystem, depName));
 

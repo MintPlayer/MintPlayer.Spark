@@ -1,6 +1,6 @@
 import type { PlatformPlan } from '../contracts/types';
 import { parseText, serializeText } from '../core/lineEdit';
-import type { RepoFiles } from '../util/repoFiles';
+import { globToRegExp, type RepoFiles } from '../util/repoFiles';
 import { compareChannels, isNewerVersion, isPreviewVersion, rewriteTfm, rewriteVersionValue, tfmChannel } from './channels';
 import { scanLocations, type Found } from './locations';
 
@@ -14,14 +14,6 @@ interface Replacement {
   start: number;
   end: number;
   text: string;
-}
-
-function globToRegExp(glob: string): RegExp {
-  const src = glob
-    .split('**')
-    .map((part) => part.split('*').map((s) => s.replace(/[.+?^${}()|[\]\\]/g, '\\$&')).join('[^/]*'))
-    .join('.*');
-  return new RegExp(`^${src}$`);
 }
 
 function inScope(file: string, plan: PlatformPlan): boolean {

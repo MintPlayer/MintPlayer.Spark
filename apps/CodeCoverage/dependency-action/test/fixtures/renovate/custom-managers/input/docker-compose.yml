@@ -1,0 +1,3 @@
+services:
+  chromium:
+    image: ghcr.io/mintplayer/seotester-chromium:1.63.0

@@ -1,4 +1,4 @@
-import type { PlatformCandidate, PlatformRecord, PlatformTable, Sdk } from '../contracts/types';
+import type { FollowRule, PlatformCandidate, PlatformRecord, PlatformTable, Sdk } from '../contracts/types';
 import { CONTRACT_VERSION, SDKS } from '../contracts/types';
 import { compareChannels, isPreviewVersion, sortChannelsDesc } from './channels';
 import { inChannelMoveChanges } from './applyPlatform';
@@ -19,19 +19,30 @@ export function parsePlatformTable(raw: string): PlatformTable {
   } catch {
     throw new Error('input platforms must be the JSON channel table {"sdks":{...},"unstable":[...]}');
   }
-  const { sdks, unstable, stable = [] } = (parsed ?? {}) as Record<string, unknown>;
+  const { sdks, unstable, stable = [], follow = [] } = (parsed ?? {}) as Record<string, unknown>;
   if (typeof sdks !== 'object' || sdks === null || Array.isArray(sdks)) throw new Error('input platforms.sdks must be an object of channel lists');
   if (!Array.isArray(unstable) || unstable.some((g) => typeof g !== 'string')) throw new Error('input platforms.unstable must be an array of package globs');
   // prerelease-dependencies-PRD H5: absent while the bot that dispatches this predates it (the action's moving tag and the
   // server deploy separately).
   if (!Array.isArray(stable) || stable.some((g) => typeof g !== 'string')) throw new Error('input platforms.stable must be an array of package globs');
-  const table: PlatformTable = { sdks: {}, unstable: unstable as string[], stable: stable as string[] };
+  // dependency-companion-pins-PRD F2: absent while the bot that dispatches this predates it.
+  if (!Array.isArray(follow)) throw new Error('input platforms.follow must be an array of follow rules');
+  const table: PlatformTable = { sdks: {}, unstable: unstable as string[], stable: stable as string[], follow: follow.map((r, i) => followRule(r, `platforms.follow[${i}]`)) };
   for (const [sdk, list] of Object.entries(sdks)) {
     if (!(SDKS as readonly string[]).includes(sdk)) continue; // an SDK this action has no adapter for yet
     if (!Array.isArray(list)) throw new Error(`input platforms.sdks.${sdk} must be an array`);
     table.sdks[sdk as Sdk] = list.map((c, i) => candidate(c, `platforms.sdks.${sdk}[${i}]`));
   }
   return table;
+}
+
+function followRule(value: unknown, at: string): FollowRule {
+  const r = (value ?? {}) as Record<string, unknown>;
+  for (const key of ['dependency', 'path', 'match']) {
+    if (typeof r[key] !== 'string' || r[key] === '') throw new Error(`input ${at}.${key} must be a non-empty string`);
+  }
+  if (r.version !== undefined && r.version !== null && typeof r.version !== 'string') throw new Error(`input ${at}.version must be a string`);
+  return { dependency: r.dependency as string, path: r.path as string, match: r.match as string, version: (r.version as string | null | undefined) ?? null };
 }
 
 function candidate(value: unknown, at: string): PlatformCandidate {

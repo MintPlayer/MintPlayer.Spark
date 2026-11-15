@@ -1,6 +1,7 @@
 using System.Globalization;
 using CodeCoverage.Entities;
 using CodeCoverage.Git.Dependencies;
+using CodeCoverage.Git.MergeQueue.Resolution.Manifests;
 using CodeCoverage.LookupReferences;
 
 namespace CodeCoverage.Dependencies.Policy;
@@ -46,7 +47,12 @@ public static class DependencyPolicyEngine
         foreach (var record in input.Lookup.Records)
         {
             if (record.Candidates.Count == 0)
+            {
+                // companion-pins-PRD M3: a member with no update still holds a lockstep group at its current version (H2:
+                // lockstep is the group's, implied when a follow names any member).
+                context.AddIdle(GroupOf(input.Config, record), record);
                 continue;
+            }
             if (context.Screen(record) is { } screened)
             {
                 context.Report(screened);
@@ -347,7 +353,7 @@ public static class DependencyPolicyEngine
             var list = entry.Reason switch
             {
                 EDependencyReportReason.Cooldown or EDependencyReportReason.PreviewNotFollowed or EDependencyReportReason.NotInSecurityRun
-                    or EDependencyReportReason.MovesWithPlatform => available,
+                    or EDependencyReportReason.MovesWithPlatform or EDependencyReportReason.Lockstep => available,
                 EDependencyReportReason.AwaitingApproval => awaiting,
                 EDependencyReportReason.Ignored or EDependencyReportReason.Excluded or EDependencyReportReason.Skipped => ignored,
                 _ => held,
@@ -356,9 +362,22 @@ public static class DependencyPolicyEngine
                 list.Add(entry);
         }
 
+        private readonly Dictionary<string, List<LookupRecord>> idle = new(StringComparer.Ordinal);
+
+        /// <summary>companion-pins-PRD M3: a dependency without an update, which joins its group with nothing to offer when the
+        /// group is lockstep.</summary>
+        public void AddIdle(string group, LookupRecord record)
+        {
+            if (!idle.TryGetValue(group, out var records))
+                idle[group] = records = [];
+            records.Add(record);
+        }
+
         public void EvaluateGroup(string group, List<LookupRecord> members)
         {
-            var views = members.Select(m => (Record: m, Views: Candidates(m))).ToList();
+            var idleMembers = idle.GetValueOrDefault(group) ?? [];
+            var lockstep = members.Concat(idleMembers).Any(m => config.Lockstep(m.Ecosystem, m.DepName));
+            var views = (lockstep ? members.Concat(idleMembers) : members).Select(m => (Record: m, Views: Candidates(m))).ToList();
             // prerelease-dependencies-PRD D3: the newest prerelease the track drops is listed even when a stable release
             // beside it is planned, with the setting that would follow it.
             foreach (var (_, candidates) in views)
@@ -469,6 +488,19 @@ public static class DependencyPolicyEngine
                     continue;
                 }
 
+                // companion-pins-PRD M3: a lockstep group moves only to a version every member has (S6, #669's half-move).
+                if (lockstep)
+                {
+                    var (aligned, missing) = Lockstepped(tier, views, picks);
+                    if (aligned is null)
+                    {
+                        failures.AddRange(cooling);
+                        failures.AddRange(picks.Select(v => Entry(group, v, EDependencyReportReason.Lockstep, missing!)));
+                        continue;
+                    }
+                    picks = aligned;
+                }
+
                 failures.AddRange(cooling);
                 Plan(group, picks, threshold, approved);
                 break;
@@ -476,6 +508,44 @@ public static class DependencyPolicyEngine
 
             foreach (var failure in failures)
                 Report(failure);
+        }
+
+        /// <summary>
+        /// companion-pins-PRD M3: the picks moved to one version every member has, or null with why. A member's versions are
+        /// its current one and the candidates it may take in this tier (no problem, out of cooldown), each read as its first
+        /// <c>x.y.z[-pre]</c> (<c>v1.64.1-noble</c> and <c>1.64.1</c> are the same release, S7). The highest version all
+        /// members share that moves at least one wins; a member already at it gets no pick.
+        /// </summary>
+        private static (List<View>? Picks, string? Missing) Lockstepped(EUpdateLevel tier, List<(LookupRecord Record, List<View> Views)> views, List<View> picks)
+        {
+            var members = views.Select(m =>
+            {
+                var current = DependencyFollowRule.DefaultVersion(m.Record.CurrentVersion ?? m.Record.CurrentValue ?? string.Empty);
+                var options = m.Views.Where(v => v.Level <= tier && v.Problem is null && !v.InCooldown)
+                    .Select(v => (Version: DependencyFollowRule.DefaultVersion(Token(v.Candidate)), View: v))
+                    .Where(o => o.Version is not null)
+                    .ToList();
+                return (m.Record, Current: current, Options: options);
+            }).ToList();
+            string? VersionOf(View view) => DependencyFollowRule.DefaultVersion(Token(view.Candidate));
+            bool Has((LookupRecord Record, string? Current, List<(string? Version, View View)> Options) member, string version)
+                => member.Current == version || member.Options.Any(o => o.Version == version);
+
+            var wanted = picks.Select(VersionOf).ToList();
+            if (wanted.All(v => v is not null) && wanted.Distinct(StringComparer.Ordinal).Count() == 1 && members.All(m => Has(m, wanted[0]!)))
+                return (picks, null);
+
+            var common = members.SelectMany(m => m.Options.Select(o => o.Version!)).Distinct(StringComparer.Ordinal)
+                .Where(v => members.All(m => Has(m, v)) && members.Any(m => m.Current != v))
+                .OrderDescending(Comparer<string>.Create((a, b) => SemanticVersion.Compare(a, b) ?? string.CompareOrdinal(a, b)))
+                .FirstOrDefault();
+            if (common is not null)
+                return ([.. members.Where(m => m.Current != common).Select(m => m.Options.First(o => o.Version == common).View)], null);
+
+            if (wanted.Where(v => v is not null).OrderDescending(Comparer<string?>.Create((a, b) => SemanticVersion.Compare(a!, b!) ?? string.CompareOrdinal(a, b))).FirstOrDefault() is not { } target)
+                return (null, "lockstep: no member's version reads as x.y.z");
+            var lacking = members.First(m => !Has(m, target));
+            return (null, $"lockstep: {lacking.Record.DepName} has no {target} yet");
         }
 
         private void Plan(string group, List<View> picks, EDependencyThreshold threshold, bool approved)
@@ -767,6 +837,8 @@ public static class DependencyPolicyEngine
                 AwaitingApproval = awaiting,
                 Ignored = ignored,
                 PlatformReports = platformReports,
+                // companion-pins-PRD G4: a follow rule the lookup could not apply ("follow[i]") is a "not moved" line.
+                NotFollowed = [.. input.Lookup.Problems.Where(p => p.Source.StartsWith("follow[", StringComparison.Ordinal)).Select(p => p.Message).Distinct(StringComparer.Ordinal)],
                 NextState = next,
                 LiftedHolds = lifted,
                 ExpiredApprovals = expired,

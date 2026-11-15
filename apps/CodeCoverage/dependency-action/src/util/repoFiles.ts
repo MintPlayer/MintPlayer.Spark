@@ -78,6 +78,15 @@ export function isWorkflowFile(rel: string): boolean {
   return /^\.github\/workflows\/[^/]+\.ya?ml$/.test(rel) || /(^|\/)action\.ya?ml$/.test(rel);
 }
 
+/** A repo-relative path glob: `*` within a segment, `**` across segments. */
+export function globToRegExp(glob: string): RegExp {
+  const src = glob
+    .split('**')
+    .map((part) => part.split('*').map((s) => s.replace(/[.+?^${}()|[\]\\]/g, '\\$&')).join('[^/]*'))
+    .join('.*');
+  return new RegExp(`^${src}$`);
+}
+
 export function isDockerfile(rel: string): boolean {
   const b = basename(rel);
   return /^Dockerfile(\..+)?$/.test(b) || /\.Dockerfile$/i.test(b) || /^Containerfile$/.test(b);

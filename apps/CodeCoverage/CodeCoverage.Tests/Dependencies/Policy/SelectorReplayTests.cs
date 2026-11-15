@@ -84,8 +84,10 @@ public class SelectorReplayTests
             "Microsoft.AspNetCore.Authentication.OpenIdConnect", "Microsoft.AspNetCore.Mvc.Testing", "Microsoft.AspNetCore.TestHost",
             "Octokit.Webhooks.AspNetCore", "QRCoder", "cytoscape", "dotnet-sdk", "jsdom", "vitest",
             "Microsoft.CodeAnalysis", "Microsoft.NET.Test.Sdk", "boky/postfix", "curlimages/curl", "docker.io/ravendb/ravendb",
-            "mcr.microsoft.com/playwright",
         ]);
+        // The playwright group (coverage.yml) is lockstep: NuGet's Microsoft.Playwright has no update in this lookup (1.63.0),
+        // so the image waits instead of moving alone, the half-move of #669 (dependency-companion-pins-PRD M3).
+        outcome.Available.Should().Contain(e => e.DepName == "mcr.microsoft.com/playwright" && e.Reason == EDependencyReportReason.Lockstep);
         outcome.Groups.Single(g => g.Group == "@vitest/coverage-v8").Items.Select(i => i.ToPlanItem().NewValue)
             .Should().BeEquivalentTo(["^5.0.3", "5.0.5"], because: "the action's range keeps its value (lockfile-only), the root pin moves");
         outcome.Groups.Single(g => g.Group == "Microsoft.AspNetCore.Mvc.Testing").Items.Should().HaveCount(9);

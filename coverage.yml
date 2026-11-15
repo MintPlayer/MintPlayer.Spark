@@ -63,6 +63,26 @@ dependencies:
   exclude:
     - "**/fixtures/**"
     - "**/Fixtures/**"
+  # SeoTester's client (Microsoft.Playwright) and its Chromium server (the Playwright image) must be on the same release:
+  # ConnectAsync refuses another minor, and #669 moved the image without the package. One group; the follow rules below
+  # make it lockstep, so it moves only to a version NuGet has too (docs/code-coverage/dependency-companion-pins-PRD.md).
+  rules:
+    - match: ["Microsoft.Playwright", "mcr.microsoft.com/playwright"]
+      group: playwright
+  # Pins that are not dependencies of their own: the image's npm client, our image's tag, and the comments naming the version.
+  follow:
+    - dependency: mcr.microsoft.com/playwright
+      path: apps/SeoTester/chromium/Dockerfile
+      match: 'playwright-core@(?<version>[0-9.]+)'
+    - dependency: mcr.microsoft.com/playwright
+      path: apps/SeoTester/chromium/Dockerfile
+      match: 'SeoTester references \((?<version>[0-9.]+)\)'
+    - dependency: mcr.microsoft.com/playwright
+      path: apps/SeoTester/docker-compose.yml
+      match: 'seotester-chromium:(?<version>[0-9.]+)'
+    - dependency: mcr.microsoft.com/playwright
+      path: apps/SeoTester/docker-compose.yml
+      match: 'Playwright (?<version>[0-9.]+)''s image'
 
 # Package versions (#153, docs/coverage_package_versioning_PRD.md D2): the versioning action in
 # dotnet-build-master.yml runs the engine on the runner, never against coverage.mintplayer.com, because that

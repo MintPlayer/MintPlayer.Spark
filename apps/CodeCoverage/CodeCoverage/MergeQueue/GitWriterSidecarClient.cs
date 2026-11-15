@@ -429,6 +429,10 @@ public sealed record GitWriterDependencyRequest(string Provider, string RepoId, 
     /// <summary>#613 item 2: the lookup's non-computed platform locations, which a platform group's SDK move may edit.</summary>
     public IReadOnlyList<GitWriterPlatformLocation>? PlatformLocations { get; init; }
 
+    /// <summary>companion-pins-PRD F3: coverage.yml's follow rules (the writer's <c>FollowRuleWire</c>: dependency, path, match,
+    /// version), which alone admit a follow record's edit.</summary>
+    public IReadOnlyList<CodeCoverage.Git.Dependencies.DependencyFollowRule>? Follow { get; init; }
+
     /// <summary>Work ref: the plan file's content for the plan commit (R14).</summary>
     public string? PlanJson { get; init; }
 
