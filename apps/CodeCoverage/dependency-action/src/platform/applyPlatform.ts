@@ -119,7 +119,10 @@ function replacementFor(f: Found, plan: PlatformPlan): { replacement?: Replaceme
   const sdk = plan.sdk;
   switch (f.kind) {
     case 'tfm': {
-      const next = nextTfmList(f.value, plan);
+      // multi-target-dependency-split-PRD M6/M13: the bot's list for a multi-target project (new channel added, end-of-life
+      // ones dropped) is written as it is.
+      const given = plan.targetFrameworks?.find((t) => t.file === f.file)?.value;
+      const next = given ?? nextTfmList(f.value, plan);
       if (next === null) return {};
       const reps: Replacement[] = [{ line: f.line, start: f.start, end: f.end, text: next }];
       const plural = next.includes(';');
@@ -285,7 +288,7 @@ export async function applyPlatform(files: RepoFiles, plan: PlatformPlan, option
   for (const f of found) {
     let target = plan;
     if (f.kind === 'tfm' && !f.computed) {
-      const older = olderTfmChannel(f, plan);
+      const older = plan.targetFrameworks?.some((t) => t.file === f.file) ? null : olderTfmChannel(f, plan);
       if (older !== null) {
         reported.push({ file: f.file, value: f.value, reason: olderReason(older, plan) });
         continue;
@@ -319,7 +322,8 @@ export async function applyPlatform(files: RepoFiles, plan: PlatformPlan, option
     const { replacement, report } = replacementFor(f, target);
     if (report) reported.push({ file: f.file, value: f.value, reason: report });
     // #617 D29: an in-channel move only ever moves a pin forward; a TFM or a floating pin it rewrites to itself stays.
-    const changing = replacement?.filter((r) => r.text !== f.value && !(inChannel && replacement.length === 1 && !isNewerVersion(r.text, f.value)));
+    const given = f.kind === 'tfm' && plan.targetFrameworks?.some((t) => t.file === f.file);
+    const changing = replacement?.filter((r) => r.text !== f.value && (given || !(inChannel && replacement.length === 1 && !isNewerVersion(r.text, f.value))));
     // P7: a Docker tag is written only when its registry has it; a missing (or unverifiable) tag is listed instead.
     if (changing?.length && f.kind === 'docker' && f.image && options.tagExists) {
       const tag = changing[0].text + (f.tagSuffix ?? '');

@@ -53,6 +53,10 @@ export interface LookupRecord {
   skipReason: string | null;
   hold: boolean;
   candidates: Candidate[];
+  /** multi-target-dependency-split-PRD D-a: the MSBuild Condition over this occurrence; absent when unconditioned. */
+  condition?: string;
+  /** D-a: the project TFMs the condition selects; absent with a condition = unmapped (D-f). */
+  targetFrameworks?: string[];
 }
 
 export type InterfaceBlockerKind = 'removed-input-used' | 'new-required-input' | 'missing-output-read' | 'runtime-changed';
@@ -191,6 +195,13 @@ export interface PlanItem {
   replaceString?: string | null;
   sharedVariableName?: string | null;
   updateType: string;
+  /** multi-target-dependency-split-PRD D-c/D-d: one canonical conditioned ItemGroup per entry replaces every occurrence. */
+  layout?: TfmVersion[];
+}
+
+export interface TfmVersion {
+  targetFramework: string;
+  version: string;
 }
 
 export interface PlatformPlan {
@@ -208,6 +219,8 @@ export interface PlatformPlan {
   lagging?: 'follow' | 'report';
   /** platform-locations-PRD P10: the `runs.using` Node runtimes GitHub runs (`node20`, `node24`), from the bot. */
   actionRuntimes?: string[];
+  /** multi-target-dependency-split-PRD M6/M13: the bot's TFM list per multi-target project, written as it is. */
+  targetFrameworks?: Array<{ file: string; value: string }>;
 }
 
 export interface PlanGroup {
@@ -279,6 +292,7 @@ export const KEYS = {
   record: [
     'ecosystem', 'manager', 'datasource', 'packageFile', 'lockFiles', 'depName', 'packageName', 'depType', 'currentValue',
     'currentVersion', 'lockedVersion', 'currentDigest', 'replaceString', 'sharedVariableName', 'groupName', 'skipReason', 'hold', 'candidates',
+    'condition', 'targetFrameworks',
   ],
   candidate: ['version', 'value', 'updateType', 'releaseTimestamp', 'digest', 'isBreaking', 'isLockfileUpdate', 'groupName', 'branchName', 'missing'],
   interfaceDiff: ['action', 'from', 'to', 'packageFiles', 'runtime', 'addedInputs', 'removedInputs', 'newRequiredInputs', 'removedOutputs', 'blockers', 'verdict'],
@@ -286,9 +300,9 @@ export const KEYS = {
   plan: ['contractVersion', 'kind', 'planId', 'expectedSha', 'options', 'groups'],
   planItem: [
     'depName', 'packageName', 'ecosystem', 'datasource', 'manager', 'depType', 'packageFile', 'lockFiles', 'currentValue', 'newValue',
-    'newVersion', 'currentDigest', 'newDigest', 'replaceString', 'sharedVariableName', 'updateType',
+    'newVersion', 'currentDigest', 'newDigest', 'replaceString', 'sharedVariableName', 'updateType', 'layout',
   ],
-  platformPlan: ['sdk', 'fromChannel', 'toChannel', 'toVersion', 'sdkVersion', 'strategy', 'keepPrevious', 'lockPackageMajor', 'locations', 'exclude', 'lagging', 'actionRuntimes'],
+  platformPlan: ['sdk', 'fromChannel', 'toChannel', 'toVersion', 'sdkVersion', 'strategy', 'keepPrevious', 'lockPackageMajor', 'locations', 'exclude', 'lagging', 'actionRuntimes', 'targetFrameworks'],
   result: ['contractVersion', 'kind', 'planId', 'expectedSha', 'groups', 'consistency', 'patch'],
   groupResult: ['group', 'status', 'items', 'files', 'blockers', 'message', 'platform'],
   migrate: ['contractVersion', 'kind', 'tool', 'baseSha', 'packages', 'completed', 'steps', 'extraBumps', 'patch'],

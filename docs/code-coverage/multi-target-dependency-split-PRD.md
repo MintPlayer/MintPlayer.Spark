@@ -323,9 +323,44 @@ is CI on the pull request.
 - Gate: CI on the pull request, then patch coverage via the codecoverage MCP. After deploy: re-run Tools; FolderHasher,
   Mapping and the two Abstractions projects should split, and the five refused groups apply.
 
+### 7.0 Implementation shape (2026-11-15, decided while starting P1)
+
+- **Lookup record:** optional `targetFrameworks: string[]` and `condition: string` on a NuGet record whose
+  `PackageReference`/`PackageVersion` sits under a condition (its own or its `ItemGroup`'s). `condition` set and
+  `targetFrameworks` absent = unmapped (D-f). Absent on everything else, so the existing goldens stay byte-equal.
+  `annotateConditions` (new, `lookup/nugetConditions.ts`) joins Renovate's deps to the file's occurrences by
+  `(depName, currentValue)` in document order (S1).
+- **Plan item:** optional `layout: [{ targetFramework, version }]`. Present = the action rewrites every occurrence of the
+  package in that file into one canonical `ItemGroup` per entry (split, add, drop and patches are all the same edit).
+  `currentValue` is the record's, `newValue`/`newVersion` the highest layout version. One item per `(file, package)`.
+- **Platform plan:** optional `targetFrameworks: [{ file, value }]`, the bot's TFM list per multi-target project (M6, M13).
+  The action writes exactly that value instead of `nextTfmList`.
+- **Which projects split:** a project file whose non-computed TFM list holds two or more channels, and a
+  `Directory.Packages.props` whose consumer projects (every project file under its folder) together hold two or more. Which
+  packages: the companion list's entries and the account's packages (M5), in the SDK's ecosystem.
+- **Per TFM version:** a channel TFM takes the highest candidate on its channel's major (inside the companion range when its
+  entry has one, keyed by that TFM's channel, S6), never below what it has. A TFM without a channel (`netstandard2.0`)
+  takes the lowest channel's version. Nothing moves backwards.
+- **Group:** the split items ride in the SDK's planned platform group, or in the H1 group (`platform:dotnet <current>`)
+  when none is planned. They never reach the package groups (`ForGrouping` returns null for them).
+- **Not reported as computed:** a canonical `ItemGroup` condition (`'$(TargetFramework)' == 'netX.Y'`) in a
+  multi-target project is the bot's own layout, so `scanTfmConditions` no longer lists it (it would hold every move, P11).
+
 ### 7.1 Progress
 
 *(per milestone: evidence, red → green)*
+
+- **P1 done (2026-11-15).** `core/msbuildItems.ts` (item scan, `conditionTfms`), `lookup/nugetConditions.ts`
+  (`annotateConditions`, called in `runLookup` after `mapReport`). Contract: `record.condition`/`targetFrameworks`,
+  `planItem.layout`, `platform.targetFrameworks` (schemas + `types.ts`). Tests: `nugetConditions.test.ts` on the S1 capture
+  (5 Split records get their TFM despite Renovate's reversed order; the CPM `PackageVersion`s map over the project under
+  them; the versionless reference gets no field) and the S3 forms (5 mapped, 4 unmapped).
+- **P4 done (2026-11-15).** `apply/adapters/nugetLayout.ts` (`applyLayout`), wired in the nuget adapter's `edit`; `verify`
+  checks each lock TFM against its layout version. `applyPlatform` writes `targetFrameworks[file]` as given (also inside
+  the channel, so an EOL drop needs no move). `scanTfmConditions` skips a canonical ItemGroup in a multi-target project.
+  Tests: `nugetLayout.test.ts` (split golden with CRLF, emptied group removed, add net12 + drop net10 in place, two packages
+  share the groups and children survive, CPM `PackageVersion`, 3 refusals, verify per TFM, TFM list, canonical skip).
+  The new-TFM groups go after the package's last group (first try put net12 before net11, red → green).
 
 ## 8. Decision log
 

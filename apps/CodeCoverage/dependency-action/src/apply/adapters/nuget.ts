@@ -5,6 +5,7 @@ import { EditRefused, blockFrom, escapeRegExp, findLines, replaceUniqueToken, ty
 import { basename, directoryFiles } from '../../util/repoFiles';
 import { OK, dirOf, exists, notPinned, outcome, readDoc, rel2abs, writeDoc, type Adapter, type AdapterContext, type StepOutcome } from '../adapter';
 import { parseNuGetAssets, parseNuGetText } from '../blockers';
+import { applyLayout } from './nugetLayout';
 
 /**
  * NuGet: PackageReference in a project, Central Package Management (Directory.Packages.props),
@@ -153,6 +154,8 @@ export const nugetAdapter: Adapter = {
     const kind = kindOf(item.packageFile);
     if (kind === 'tools') editDotnetTools(doc, item.packageFile, item);
     else if (kind === 'global.json') editGlobalJsonSdk(doc, item.packageFile, item);
+    // multi-target-dependency-split-PRD D-c: the package's whole per-TFM layout, one canonical ItemGroup per TFM.
+    else if (item.layout?.length) applyLayout(doc, item.packageFile, item);
     else if (item.sharedVariableName && msBuildHits(doc, item).length === 0) return editProperty(ctx, item, item.sharedVariableName);
     else editMsBuild(doc, item.packageFile, item);
     await writeDoc(ctx, item.packageFile, doc);
@@ -172,10 +175,12 @@ export const nugetAdapter: Adapter = {
     for (const i of items) {
       for (const lock of await lockFilesFor(ctx, i.packageFile)) {
         const json = JSON.parse(await fs.readFile(rel2abs(ctx, lock), 'utf8')) as { dependencies?: Record<string, Record<string, { type?: string; resolved?: string }>> };
-        for (const tfm of Object.values(json.dependencies ?? {})) {
+        for (const [moniker, tfm] of Object.entries(json.dependencies ?? {})) {
           const entry = Object.entries(tfm).find(([k]) => k.toLowerCase() === i.depName.toLowerCase())?.[1];
-          if (entry && (entry.type === 'Direct' || entry.type === 'CentralTransitive') && entry.resolved !== i.newVersion) {
-            misses.push(`${i.depName} resolved ${entry.resolved} (planned ${i.newVersion}) in ${lock}`);
+          // D-c: a layout pins one version per TFM (the lock's key, `net10.0` or `net10.0/win-x64`).
+          const planned = i.layout?.find((l) => l.targetFramework.toLowerCase() === moniker.split('/')[0].toLowerCase())?.version ?? i.newVersion;
+          if (entry && (entry.type === 'Direct' || entry.type === 'CentralTransitive') && entry.resolved !== planned) {
+            misses.push(`${i.depName} resolved ${entry.resolved} (planned ${planned}) in ${lock}`);
           }
         }
       }

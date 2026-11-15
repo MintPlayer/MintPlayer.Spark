@@ -1,6 +1,7 @@
 import type { PlatformLocation, PlatformLocationKind, Sdk } from '../contracts/types';
 import { SDKS } from '../contracts/types';
 import { parseText, type TextDoc } from '../core/lineEdit';
+import { canonicalCondition, channelsOf, ownTfms } from '../core/msbuildItems';
 import { basename, isDockerfile, isWorkflowFile, type RepoFiles } from '../util/repoFiles';
 import { channelOf, sortChannelsDesc, tfmChannel } from './channels';
 
@@ -103,6 +104,9 @@ function loc(sdk: Sdk, file: string, kind: PlatformLocationKind, line: number, s
 
 function scanTfm(file: string, doc: TextDoc): Found[] {
   const out: Found[] = [];
+  // multi-target-dependency-split-PRD §7.0: a multi-target project's canonical per-TFM ItemGroups are the bot's own layout.
+  const own = ownTfms(doc.lines.map((l) => l.text).join('\n'));
+  const multiTarget = own !== null && channelsOf(own).length >= 2;
   doc.lines.forEach((l, i) => {
     const re = /<(TargetFrameworks?)(\s[^>]*)?>([^<]*)<\/(TargetFrameworks?)>/g;
     let m: RegExpExecArray | null;
@@ -130,7 +134,7 @@ function scanTfm(file: string, doc: TextDoc): Found[] {
         }),
       );
     }
-    out.push(...scanTfmConditions(file, l.text, i));
+    out.push(...scanTfmConditions(file, l.text, i, multiTarget));
   });
   return out;
 }
@@ -144,13 +148,16 @@ const TFM_EQUALITY = /\$\(TargetFramework\)['"]?\s*[!=]=|[!=]=\s*['"]?\$\(Target
  * reported for review, never edited. `IsTargetFrameworkCompatible(...)` conditions survive a move and are left alone, as
  * are the conditions on a TargetFramework element itself, which {@link scanTfm} already reports.
  */
-function scanTfmConditions(file: string, text: string, line: number): Found[] {
+function scanTfmConditions(file: string, text: string, line: number, multiTarget = false): Found[] {
   const out: Found[] = [];
   const re = /<(\w+)\b[^>]*?\bCondition\s*=\s*(["'])(.*?)\2/g;
   let m: RegExpExecArray | null;
   while ((m = re.exec(text)) !== null) {
     const [whole, element, , condition] = m;
     if (/^TargetFrameworks?$/.test(element) || !TFM_EQUALITY.test(condition)) continue;
+    // multi-target-dependency-split-PRD §7.0: the canonical ItemGroup of a multi-target project moves with D-d (a TFM is
+    // added beside it and leaves only at end of life), so it never goes dead under a move.
+    if (multiTarget && element === 'ItemGroup' && condition === canonicalCondition(condition.match(/'(net[^']+)'\s*$/)?.[1] ?? '')) continue;
     const [channel] = sortChannelsDesc([...condition.matchAll(/'(net\d+\.\d+)'/g)].map((t) => tfmChannel(t[1])).filter((c): c is string => c !== null));
     if (channel === undefined) continue;
     const start = m.index + whole.length - 1 - condition.length;
