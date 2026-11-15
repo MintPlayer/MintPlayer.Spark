@@ -147,6 +147,21 @@ public class CompanionVersionMapTests
         Planned(outcome).Should().Equal("platform:dotnet 10.0: Microsoft.Build@18.6.3");
     }
 
+    /// <summary>§6.5 (F-C: until now a coverage.yml error reached the run's timeline only, and the whole section silently fell
+    /// back to its defaults): the pull request lists the file's problems.</summary>
+    [Fact]
+    public void The_pull_request_lists_the_configuration_problems()
+    {
+        var problem = CodeCoverage.Dependencies.DependenciesYml.Parse("dependencies:\n  platforms:\n    dotnet:\n      companions: [{ match: x, versions: { \"11\": \"5.x\" } }]\n").Errors.Single();
+        var run = new CodeCoverage.Entities.DependencyUpdateRun { ConfigProblems = [problem] };
+
+        var body = CodeCoverage.Dependencies.Lifecycle.DependencyPullRequestBody.Render(run, new CodeCoverage.Dependencies.Lifecycle.DependencyRunReport(), null);
+
+        body.Should().Contain("## Configuration problems").And.Contain("'11' is not a channel");
+        CodeCoverage.Dependencies.Lifecycle.DependencyPullRequestBody.Render(new CodeCoverage.Entities.DependencyUpdateRun(), new CodeCoverage.Dependencies.Lifecycle.DependencyRunReport(), null)
+            .Should().NotContain("Configuration problems");
+    }
+
     [Fact]
     public void A_companion_with_no_release_in_the_new_range_never_holds_the_move()
     {

@@ -267,6 +267,7 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
         var parsed = DependenciesYml.Parse(yml);
         foreach (var error in parsed.Errors.Take(5))
             run.Note(Now, $"coverage.yml: {error}");
+        run.ConfigProblems = [.. parsed.Errors.Take(20)];
         run.FileMergeQueue = DependencyFileMergeQueue.State(yml, defaultBranch);
         run.FileFrequency = parsed.Section.Schedule?.Frequency;
         run.FileWeekday = parsed.Section.Schedule?.Weekday;
