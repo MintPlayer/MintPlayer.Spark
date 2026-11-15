@@ -261,9 +261,9 @@ Production renders in a container of its own, reached only by SeoTester (D3, D6)
 `apps/SeoTester/docker-compose.yml` ([deploy.md](deploy.md) §1). Its image was tested without Docker in M10 (spike S3:
 the same server script run with Microsoft.Playwright's own node).
 
-- **Image:** `apps/SeoTester/chromium/Dockerfile`: `mcr.microsoft.com/playwright:v1.63.0-noble` plus
-  `playwright-core@1.63.0`, running `node server.mjs` as `pwuser` on port 3000. The version must equal the app's
-  `Microsoft.Playwright` (1.63.0): `ConnectAsync` needs the same major.minor on both sides; bump both together.
+- **Image:** `apps/SeoTester/chromium/Dockerfile`: `mcr.microsoft.com/playwright:v1.64.1-noble` plus
+  `playwright-core@1.64.1`, running `node server.mjs` as `pwuser` on port 3000. The version must equal the app's
+  `Microsoft.Playwright` (1.64.1): `ConnectAsync` needs the same major.minor on both sides; bump both together.
 - **Server:** `server.mjs` launches one headless Chromium with the flags fixed on the server side (`launchServer`), so a
   client cannot loosen them: `--host-resolver-rules=MAP * ~NOTFOUND`, `--webrtc-ip-handling-policy=disable_non_proxied_udp`,
   `--force-webrtc-ip-handling-policy`, `--disable-background-networking`, `--disable-component-update`,
@@ -271,7 +271,7 @@ the same server script run with Microsoft.Playwright's own node).
   `http://127.0.0.1:9` with bypass `<-loopback>` (a proxy that does not exist: whatever SeoTester does not fulfil is
   refused). A test keeps the script's flags equal to the app's `ChromiumBrowser.HardeningArgs`. Do **not** use a plain
   `playwright run-server`: it ignores client launch arguments (spike S3 measured what then escapes).
-- **Compose:** service `seo-chromium` (image `ghcr.io/mintplayer/seotester-chromium:1.63.0`, built by
+- **Compose:** service `seo-chromium` (image `ghcr.io/mintplayer/seotester-chromium:1.64.1`, built by
   `seotester-deploy.yml`) on the network `seo-browser` only, which SeoTester also joins and which is `internal: true`
   (no egress: every request is fulfilled by SeoTester); `init: true`; `shm_size: 512m`, `mem_limit: 1g` (S3 measured
   ~160–210 MB of Chromium processes on small pages on Windows; the Debian numbers are measured at the deploy, PRD

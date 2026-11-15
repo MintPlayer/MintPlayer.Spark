@@ -74,7 +74,7 @@ provider.
 | Service | Image | Networks | Notes |
 |---|---|---|---|
 | `seotester-app` | `ghcr.io/mintplayer/seotester:master` (pull-only, built by `seotester-deploy.yml`) | `web`, `seo-raven`, `seo-mail`, `seo-browser`, `seo-fetch` | `mem_limit 1g`; `GET /health` healthcheck, start period 300 s; volume `dataprotection-keys`; Traefik labels for `seotester.mintplayer.com` |
-| `seo-chromium` | `ghcr.io/mintplayer/seotester-chromium:1.63.0` (= Microsoft.Playwright's version) | `seo-browser` **only** | `shm_size 512m`, `mem_limit 1g`, `pids_limit 512`, `init`, no capabilities, no port published; TCP healthcheck on 3000 |
+| `seo-chromium` | `ghcr.io/mintplayer/seotester-chromium:1.64.1` (= Microsoft.Playwright's version) | `seo-browser` **only** | `shm_size 512m`, `mem_limit 1g`, `pids_limit 512`, `init`, no capabilities, no port published; TCP healthcheck on 3000 |
 | `seo-fetcher` | `ghcr.io/mintplayer/seotester-fetcher:master` (built by the same deploy) | `seo-fetch`, `seo-egress` **only** | PRD D54: the SSRF-safe clients, TLS probes and DNS behind an internal API; `read_only` (tmpfs `/tmp`), no capabilities, `mem_limit 512m`, `pids_limit 256`, no port, no volume; `GET /health` healthcheck; key `SEO_FETCHER_KEY` |
 
 - **Database:** CodeCoverage's RavenDB server (`coverage-raven`, Community licence), database **`SeoTester`**, created
