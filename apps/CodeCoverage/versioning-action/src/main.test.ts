@@ -1,3 +1,6 @@
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import type { Exec } from './exec';
 import { allVersionsOf, buildEnvironment, failureOf, readInputs, readPlan, verifyHandTags, version, versioningSection, type Dependencies } from './main';
 
@@ -141,6 +144,36 @@ describe('version', () => {
       for (const phase of ['plan', 'release'])
         await expect(version({ ...inputs, phase }, deps(exec))).resolves.toMatchObject({ outcome: 'skipped' });
     }
+  });
+
+  // Tools run 43711348322: the app pushed every tag (12:01:07) and then answered 500 (12:01:09). The local engine found
+  // them on the remote, answered already-present and created none here, so the pack read the previous tags.
+  it('fetches the tags after a local fallback, which the app may have written before it failed', async () => {
+    const dir = mkdtempSync(path.join(os.tmpdir(), 'versioning-test-'));
+    const event = path.join(dir, 'event.json');
+    writeFileSync(event, JSON.stringify({ repository: { default_branch: 'main' } }));
+    const calls: string[][] = [];
+    const exec: Exec = async (command, args) => {
+      calls.push([command, ...args]);
+      const out = args[args.indexOf('--out') + 1];
+      if (command === 'dotnet' && args.includes('manifest'))
+        writeFileSync(out, JSON.stringify({ manifest: { commit: 'a'.repeat(40), packages: [{ id: 'Acme.Core' }] }, notes: [] }));
+      else if (command === 'dotnet' && args.includes('run'))
+        writeFileSync(out, JSON.stringify({ outcome: 'versioned', releases: [release({ tagOutcome: 'already-present' })], refused: [], skipped: 0, warnings: [] }));
+      const stdout = args[0] === 'rev-parse' ? 'false\n' : args[0] === 'show' ? 'versioning:\n  mode: server\n' : '';
+      return { code: 0, stdout, stderr: '' };
+    };
+    const inputs = { ...readInputs({ RUNNER_TEMP: dir, GITHUB_WORKSPACE: dir, GITHUB_EVENT_PATH: event, INPUT_RELEASES: 'false' }), eventName: 'push', ref: 'refs/heads/main' };
+    const warnings: string[] = [];
+    const fetch500 = (async () => new Response('', { status: 500 })) as unknown as typeof fetch;
+
+    await expect(version(inputs, { ...deps(exec), fetch: fetch500, warn: (m) => warnings.push(m) })).resolves.toMatchObject({ mode: 'local', released: ['Acme.Core'] });
+
+    expect(warnings.join('\n')).toContain('unavailable');
+    const engineRun = calls.findIndex((c) => c[0] === 'dotnet' && c.includes('run') && c.includes('--manifest'));
+    const fetchedAfter = calls.slice(engineRun + 1).some((c) => c[0] === 'git' && c[1] === 'fetch' && c.includes('--tags'));
+    expect(engineRun).toBeGreaterThan(-1);
+    expect(fetchedAfter).toBe(true);
   });
 
   it('refuses an unknown phase', async () => {

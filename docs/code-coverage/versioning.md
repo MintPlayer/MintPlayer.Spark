@@ -119,7 +119,9 @@ steps:
 
 The action's inputs and outputs (`released`, `versions`, `dist-tags`) are listed in
 [its README](../../apps/CodeCoverage/versioning-action/README.md). It does nothing on pull requests and tag builds,
-and it fetches the tags and the history it needs. A .NET build that runs before it, or in a pull request, still reads its
+and it fetches the tags and the history it needs. After tagging it fetches the tags again, in local mode too: an app
+that pushed the tags and then answered 5xx leaves the local engine finding them already on the remote, and without the
+fetch the pack read the previous versions (Dotnet.Tools run 43711348322). A .NET build that runs before it, or in a pull request, still reads its
 version from the tags reachable from HEAD, so every checkout of a job that runs `dotnet` needs `fetch-depth: 0`
 (`fetch-tags: true` is not enough: a depth-1 clone reaches no tag). The onboarding pull request adds it (Dotnet.Tools#203).
 
