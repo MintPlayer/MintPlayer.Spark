@@ -1,7 +1,7 @@
 # Platform moves that leave nothing behind: PRD and plan
 
-Status: **implemented 2026-11-14 (M1-M7 and the S4 golden, progress in §8.1), on `fix/versioning-stable-pin` with the
-stable pin.** Grilled 2026-11-13 (decisions P1-P11 in §10). Left, after deploy: the Dotnet.Tools issue for its GraphQL
+Status: **merged** in PR #666 (2026-11-14; M1-M7 and the S4 golden, progress in §8.1, with the stable pin). P4 is
+superseded by [follower-cooldown-PRD](follower-cooldown-PRD.md) H1. Grilled 2026-11-13 (decisions P1-P11 in §10). Left, after deploy: the Dotnet.Tools issue for its GraphQL
 `prerelease: stable` pin, and onboarding Dotnet.Templates.
 
 Scope: the CodeCoverage dependency bot's **platform groups** (`platform:dotnet <channel>`, `platform:node <major>`), which

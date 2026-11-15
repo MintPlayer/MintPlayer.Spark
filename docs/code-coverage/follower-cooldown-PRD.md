@@ -1,6 +1,7 @@
 # A follower waits on its leader's clock, not its own (and: upstream repositories first, mixed .NET Standard repos)
 
-Status: **investigating** (2026-11-15). Branch `fix/follower-cooldown` (from master 15088b6e5, #672 merged + deployed).
+Status: **merged** in PR #674 (2026-11-15, branch `fix/follower-cooldown`); H1 (a project on the SDK's channel takes the
+channel's major) followed in PR #676, together with [companion-version-maps-PRD](companion-version-maps-PRD.md).
 Predecessor: [dependency-companion-pins-PRD](dependency-companion-pins-PRD.md) (`follow:`, lockstep).
 
 ## 1. The problem (observed 2026-11-15)

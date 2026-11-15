@@ -381,7 +381,9 @@ refused. Other tags in the repository, on other branches or lines, play no part.
 **Platform lifecycle page.** The app collects each platform's support phases nightly (.NET from
 `releases-index.json`; Angular, React, Vue and Node.js from endoflife.date; a framework's preview major from its npm
 `next` dist-tag). Open *Guides → Platform lifecycle* to see which majors are in preview, active, maintenance or end of
-life, and so which lines are worth keeping.
+life, and so which lines are worth keeping. For .NET 10 and later it also records the MSBuild, Roslyn and NuGet versions
+each SDK band ships (from the dotnet/dotnet release tags), which a `bundled` dependency companion is capped at
+([dependency-updates.md](dependency-updates.md), *Companions*).
 
 ### From multi-targeting to release lines (#638)
 
