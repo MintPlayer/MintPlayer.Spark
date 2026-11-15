@@ -186,6 +186,211 @@ public static class DependencyPolicyEngine
         /// <summary>§6.3: the ranged records that do not ride, with only the candidates inside their range.</summary>
         private readonly Dictionary<LookupRecord, LookupRecord?> rangedView = new(ReferenceEqualityComparer.Instance);
 
+        /// <summary>
+        /// multi-target-dependency-split-PRD §7.0: one platform package of one MSBuild file in a project that targets two or more
+        /// channels, with every occurrence the lookup found (one per conditioned ItemGroup, or the one unconditioned). It
+        /// moves per TFM, in the platform group, as one item with a layout, and never in a package group.
+        /// </summary>
+        private sealed record Split(string Sdk, string File, string DepName, List<LookupRecord> Records, DependencyCompanionEntry? Entry, string? RepositorySdk);
+
+        private readonly Dictionary<string, List<Split>> splits = new(StringComparer.Ordinal);
+        private readonly HashSet<LookupRecord> splitting = new(ReferenceEqualityComparer.Instance);
+
+        /// <summary>Per SDK, the non-computed TFM list of each file that holds one (a project, a Directory.Build.props).</summary>
+        private readonly Dictionary<string, Dictionary<string, List<string>>> tfmLists = new(StringComparer.Ordinal);
+
+        private static readonly System.Text.RegularExpressions.Regex CanonicalCondition = new(@"^'\$\(TargetFramework\)' == '([A-Za-z0-9.+-]+)'$",
+            System.Text.RegularExpressions.RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1));
+
+        private static List<string> TfmTokens(string value) => [.. value.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)];
+
+        private static string DirectoryOf(string path) => path.LastIndexOf('/') is var i and >= 0 ? path[..i] : string.Empty;
+
+        /// <summary>
+        /// §7.0: the TFMs a package file builds for, from <paramref name="lists"/> (holder file → TFM list): a project's own
+        /// list, else the nearest Directory.Build.props's; a Directory.Packages.props builds for every list under its folder.
+        /// The holder is the file whose list it is (null for a Directory.Packages.props, or when none is known).
+        /// </summary>
+        private static (string? Holder, List<string> Tfms) FileTfms(IReadOnlyDictionary<string, List<string>> lists, string file)
+        {
+            if (string.Equals(System.IO.Path.GetFileName(file), "Directory.Packages.props", StringComparison.OrdinalIgnoreCase))
+            {
+                var folder = DirectoryOf(file);
+                var under = lists.Where(p => folder.Length == 0 || p.Key.StartsWith(folder + "/", StringComparison.Ordinal)).SelectMany(p => p.Value)
+                    .Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(t => TfmChannel(t) is { } c ? ChannelOrder(c) : (-1, 0)).ThenBy(t => t, StringComparer.OrdinalIgnoreCase).ToList();
+                return (null, under);
+            }
+            if (lists.TryGetValue(file, out var own))
+                return (file, own);
+            for (var dir = DirectoryOf(file); ; dir = DirectoryOf(dir))
+            {
+                var props = dir.Length == 0 ? "Directory.Build.props" : $"{dir}/Directory.Build.props";
+                if (lists.TryGetValue(props, out var inherited))
+                    return (props, inherited);
+                if (dir.Length == 0)
+                    return (null, []);
+            }
+        }
+
+        private static bool IsMultiTarget(IEnumerable<string> tfms) => tfms.Select(TfmChannel).OfType<string>().Distinct(StringComparer.Ordinal).Count() >= 2;
+
+        /// <summary>
+        /// §7.0: collects the platform packages of multi-target files. A (file, package) with an occurrence under a condition the
+        /// lookup could not map, or under any other than the canonical <c>'$(TargetFramework)' == 'X'</c>, is not split (D-f):
+        /// it stays an ordinary package and the reason is listed.
+        /// </summary>
+        private void CollectSplits(PlatformRecord platform, string ecosystem, IReadOnlyList<LookupRecord> records)
+        {
+            var sdk = platform.Sdk;
+            var computed = platform.Locations.Where(l => l.Kind == "tfm" && l.Computed).Select(l => l.File).ToHashSet(StringComparer.Ordinal);
+            var lists = platform.Locations.Where(l => l.Kind == "tfm" && !l.Computed && !computed.Contains(l.File)).GroupBy(l => l.File, StringComparer.Ordinal)
+                .ToDictionary(g => g.Key, g => g.SelectMany(l => TfmTokens(l.Value)).Distinct(StringComparer.OrdinalIgnoreCase).ToList(), StringComparer.Ordinal);
+            tfmLists[sdk] = lists;
+            var repositorySdk = RepositorySdk(platform);
+            var found = new List<Split>();
+            foreach (var key in records.Where(r => r.Ecosystem == ecosystem && !splitting.Contains(r))
+                .GroupBy(r => (r.PackageFile, Dep: r.DepName.ToLowerInvariant())))
+            {
+                var first = key.First();
+                var entry = config.CompanionEntry(sdk, first.DepName);
+                if (entry is null && !config.IsAccountPackage(first.Ecosystem, first.DepName))
+                    continue;
+                if (!IsMultiTarget(FileTfms(lists, first.PackageFile).Tfms))
+                    continue;
+                if (key.FirstOrDefault(r => r.Condition is { } c && (r.TargetFrameworks is not [_] || !CanonicalCondition.IsMatch(c))) is { } odd)
+                {
+                    Report(new DependencyReportEntry($"platform:{sdk}", odd.Ecosystem, odd.DepName, odd.PackageFile, odd.CurrentValue, null, null,
+                        EDependencyReportReason.NeedsHuman,
+                        $"under a condition the bot does not split ({odd.Condition}): moved as one package for every TFM (multi-target-dependency-split D-f)"));
+                    continue;
+                }
+                found.Add(new Split(sdk, first.PackageFile, first.DepName, [.. key], entry, repositorySdk));
+                splitting.UnionWith(key);
+            }
+            if (found.Count > 0)
+                splits[sdk] = found;
+        }
+
+        /// <summary>
+        /// P3 (M6, M13): a multi-target list's next value: the move's channel added (beside the newest channel's TFMs, with
+        /// their platform suffix), then the end-of-life channels dropped, oldest first, while more than
+        /// <paramref name="keepPrevious"/> older channels remain. A TFM without a channel always stays.
+        /// </summary>
+        private static List<string> NextTfms(IReadOnlyList<string> tfms, string? addChannel, IReadOnlyCollection<string> endOfLife, int keepPrevious)
+        {
+            var list = tfms.ToList();
+            var channels = list.Select(TfmChannel).OfType<string>().Distinct(StringComparer.Ordinal).ToList();
+            if (channels.Count == 0)
+                return list;
+            var newest = channels.MaxBy(ChannelOrder)!;
+            if (addChannel is not null && !channels.Contains(addChannel))
+            {
+                var at = list.FindLastIndex(t => TfmChannel(t) == newest) + 1;
+                var added = list.Where(t => TfmChannel(t) == newest).Select(t => $"net{addChannel}{t[(t.IndexOf('-') is var dash and >= 0 ? dash : t.Length)..]}").Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+                list.InsertRange(at, added);
+                newest = addChannel;
+            }
+            var older = list.Select(TfmChannel).OfType<string>().Distinct(StringComparer.Ordinal).Where(c => c != newest).OrderBy(ChannelOrder).ToList();
+            var remaining = older.Count;
+            foreach (var channel in older.Where(endOfLife.Contains))
+            {
+                if (remaining <= keepPrevious)
+                    break;
+                list.RemoveAll(t => TfmChannel(t) == channel);
+                remaining--;
+            }
+            return list;
+        }
+
+        /// <summary>The occurrence a TFM has today: the record conditioned on it, else the unconditioned one, else none (a new TFM).</summary>
+        private static LookupRecord? OccurrenceFor(Split split, string tfm)
+            => split.Records.FirstOrDefault(r => r.TargetFrameworks?.Contains(tfm, StringComparer.OrdinalIgnoreCase) == true)
+                ?? split.Records.FirstOrDefault(r => r.Condition is null);
+
+        /// <summary>
+        /// §7.0: the plan item of a split for the file's next TFM list, or null when nothing changes. Each channel TFM takes the
+        /// highest release on its channel's major (or on the major it already has, when that is higher), inside the companion
+        /// range keyed by that channel, never below what it has; a TFM without a channel takes the lowest channel's version.
+        /// A new TFM without a release on its major is <paramref name="missing"/>. When every TFM ends on one version and the
+        /// file has one unconditioned occurrence, the item is an ordinary one (no layout).
+        /// </summary>
+        private DependencyPlannedItem? SplitItem(Split split, IReadOnlyList<string> tfms, string? moveTo, bool previewTarget, List<string> missing)
+        {
+            var views = split.Records.SelectMany(Candidates).Where(v => v.Problem is null).ToList();
+            var layout = new List<(string Tfm, string? Version, View? Pick)>();
+            foreach (var tfm in tfms)
+            {
+                if (TfmChannel(tfm) is not { } channel)
+                {
+                    layout.Add((tfm, null, null));
+                    continue;
+                }
+                var current = OccurrenceFor(split, tfm) is { } occurrence ? occurrence.CurrentVersion ?? occurrence.CurrentValue : null;
+                // A package that follows the platform's major (a channel rule, an account package) takes the channel's major;
+                // a ranged one (versions map, bundled) has its own majors (Roslyn 5.x on .NET 11), so its range decides, and
+                // without a key for this channel it stays on its major.
+                var follows = split.Entry is null or { IsChannelRule: true };
+                var range = follows ? null : RangeOf(split.Entry!, split.RepositorySdk, channel);
+                var major = follows
+                    ? Math.Max(UpdateTypeFloor.LeadingNumber(channel) ?? 0, UpdateTypeFloor.LeadingNumber(current) ?? 0)
+                    : UpdateTypeFloor.LeadingNumber(current) ?? 0;
+                var moving = channel == moveTo;
+                var fits = views.Where(v => (range is not null || MajorOf(v.Candidate) == major) && (range is null || Admits(range, Token(v.Candidate)))
+                        && (!IsPreviewToken(Token(v.Candidate)) || moving && previewTarget || IsPreviewToken(current))
+                        && (current is null || Compare(Token(v.Candidate), current) > 0))
+                    .OrderByDescending(v => SemVer.TryParse(Token(v.Candidate), out var s) ? s : null).ToList();
+                var pick = fits.FirstOrDefault(v => moving || !v.InCooldown);
+                if (fits.FirstOrDefault() is { InCooldown: true } cooling && cooling != pick && !moving)
+                    Report(Entry($"platform:{split.Sdk}", cooling, EDependencyReportReason.Cooldown, $"released less than {Days(config.Cooldown)} ago") with { Until = cooling.Until });
+                if (pick is null && current is null)
+                {
+                    missing.Add(split.DepName);
+                    return null;
+                }
+                layout.Add((tfm, pick is null ? current : Token(pick.Candidate), pick));
+            }
+            if (!layout.Any(l => l.Version is not null))
+                return null;
+            var lowest = layout.Where(l => l.Version is not null).MinBy(l => ChannelOrder(TfmChannel(l.Tfm)!));
+            layout = [.. layout.Select(l => l.Version is null ? (l.Tfm, lowest.Version, lowest.Pick) : l)];
+
+            var unconditioned = split.Records.Where(r => r.Condition is null).ToList();
+            var sameStructure = unconditioned.Count == 1 && split.Records.Count == 1
+                || unconditioned.Count == 0 && split.Records.SelectMany(r => r.TargetFrameworks!).ToHashSet(StringComparer.OrdinalIgnoreCase)
+                    .SetEquals(tfms);
+            var oneVersion = layout.Select(l => l.Version).Distinct(StringComparer.Ordinal).Count() == 1;
+            var unchanged = layout.All(l => (OccurrenceFor(split, l.Tfm) is { } r ? r.CurrentVersion ?? r.CurrentValue : null) == l.Version);
+            if (unchanged && (sameStructure && (unconditioned.Count == 0 || oneVersion)))
+                return null;
+
+            var best = layout.Where(l => l.Pick is not null).Select(l => l.Pick!).MaxBy(v => SemVer.TryParse(Token(v.Candidate), out var s) ? s : null);
+            var top = layout.Select(l => l.Version!).MaxBy(v => SemVer.TryParse(v, out var s) ? s : null)!;
+            var primary = unconditioned.FirstOrDefault() ?? split.Records[0];
+            var candidate = best is not null && Token(best.Candidate) == top
+                ? best.Candidate
+                : new LookupCandidate { Version = top, Value = top, UpdateType = EUpdateType.Patch };
+            var level = layout.Where(l => l.Pick is not null).Select(l => l.Pick!.Level).DefaultIfEmpty(EUpdateLevel.Patch).Max();
+            var record = primary with { LockFiles = [.. split.Records.SelectMany(r => r.LockFiles).Distinct(StringComparer.Ordinal)] };
+            if (oneVersion && unconditioned.Count == 1 && split.Records.Count == 1)
+                return new DependencyPlannedItem(record, candidate, level);
+            return new DependencyPlannedItem(record, candidate, level)
+            {
+                Layout = [.. layout.Select(l => new PlanTfmVersion { TargetFramework = l.Tfm, Version = l.Version! })],
+            };
+        }
+
+        /// <summary>The split items of an SDK for its files' next TFM lists (<paramref name="next"/>: holder → list).</summary>
+        private List<DependencyPlannedItem> SplitItems(string sdk, IReadOnlyDictionary<string, List<string>> next, string? moveTo, bool previewTarget, List<string> missing)
+        {
+            var items = new List<DependencyPlannedItem>();
+            foreach (var split in splits.GetValueOrDefault(sdk) ?? [])
+            {
+                if (SplitItem(split, FileTfms(next, split.File).Tfms, moveTo, previewTarget, missing) is { } item)
+                    items.Add(item);
+            }
+            return items;
+        }
+
         /// <summary>The channel of a .NET TFM token (<c>net11.0</c>, <c>net11.0-windows</c> → <c>11.0</c>); null for
         /// <c>netstandard2.0</c> and .NET Framework (<c>net481</c>).</summary>
         private static string? TfmChannel(string tfm)
@@ -208,7 +413,13 @@ public static class DependencyPolicyEngine
             {
                 var sdk = platform.Sdk;
                 var settings = config.File.Platform(sdk);
-                if (DependencyCompanions.Ecosystem(sdk) is not { } ecosystem || settings.Strategy != "replace" || settings.KeepPrevious > 0 || settings.LockPackageMajor)
+                if (DependencyCompanions.Ecosystem(sdk) is not { } ecosystem || settings.LockPackageMajor)
+                    continue;
+                // multi-target-dependency-split-PRD §7.0: a multi-target project's platform packages move per TFM, whatever the
+                // strategy (M13: such a project always adds the new channel). lockPackageMajor still keeps every package's major.
+                if (sdk == "dotnet")
+                    CollectSplits(platform, ecosystem, records);
+                if (settings.Strategy != "replace" || settings.KeepPrevious > 0)
                     continue;
                 if (UpdateTypeFloor.LeadingNumber(platform.Current.Channels.FirstOrDefault()) is not { } major)
                     continue;
@@ -236,7 +447,8 @@ public static class DependencyPolicyEngine
                 var list = new List<LookupRecord>();
                 var behind = new List<LookupRecord>();
                 var below = new List<LookupRecord>();
-                foreach (var record in records.Where(r => r.Ecosystem == ecosystem && !companionOf.ContainsKey(r) && !ranged.ContainsKey(r) && !standardOnly.Contains(r.PackageFile)))
+                foreach (var record in records.Where(r => r.Ecosystem == ecosystem && !companionOf.ContainsKey(r) && !ranged.ContainsKey(r) && !splitting.Contains(r)
+                    && !standardOnly.Contains(r.PackageFile)))
                 {
                     // follower-cooldown-PRD G2: an upstream package of the account rides like a Microsoft one.
                     // companion-version-maps-PRD §6.1: the first matching entry decides; a versions/bundled entry gives a range.
@@ -353,7 +565,9 @@ public static class DependencyPolicyEngine
         /// </summary>
         public LookupRecord? ForGrouping(LookupRecord record)
         {
-            if (riding.Contains(record))
+            // multi-target-dependency-split-PRD §7.0: a split package moves only in the platform group, so no package group
+            // can move one of its TFMs while the platform group moves another (Tools #216, NU1605).
+            if (riding.Contains(record) || splitting.Contains(record))
                 return null;
             if (rangedView.TryGetValue(record, out var view))
                 return view;
@@ -747,18 +961,22 @@ public static class DependencyPolicyEngine
             var picks = LaggingRiders(lagging.GetValueOrDefault(platform.Sdk) ?? [], UpdateTypeFloor.LeadingNumber(current), platform.Current.Preview);
             // companion-version-maps-PRD §6.3: a record below its range aligns the same way, to the highest release inside it.
             picks.AddRange((rangedBehind.GetValueOrDefault(platform.Sdk) ?? []).Select(r => RangeRider(r, ranged[r].Current!, skipCooldown: false)).OfType<View>());
-            if (picks.Count == 0)
+            // multi-target-dependency-split-PRD §7.0: a multi-target project's packages move per TFM here too (M12: each TFM
+            // to its own channel's major, no approval), on the TFMs the project has.
+            var splitItems = SplitItems(platform.Sdk, tfmLists.GetValueOrDefault(platform.Sdk) ?? new Dictionary<string, List<string>>(), null, platform.Current.Preview, []);
+            if (picks.Count == 0 && splitItems.Count == 0)
                 return;
             var group = $"platform:{platform.Sdk} {current}";
-            var eco = picks[0].Record.Ecosystem;
+            List<DependencyPlannedItem> items = [.. picks.Select(v => new DependencyPlannedItem(v.Record, v.Candidate, v.Level)), .. splitItems];
+            var eco = items[0].Record.Ecosystem;
             var groupPlan = new DependencyPlannedGroup
             {
                 Group = group,
                 Level = EUpdateLevel.Patch,
-                AutoMerge = (int)EUpdateLevel.Patch <= (int)config.Threshold(eco, picks[0].Record.DepName),
-                DepNames = [.. picks.Select(v => v.Record.DepName).Distinct(StringComparer.Ordinal)],
-                Items = [.. picks.Select(v => new DependencyPlannedItem(v.Record, v.Candidate, v.Level))],
-                TargetMajors = Targets(picks.Select(v => (v.Record.DepName, Token(v.Candidate)))),
+                AutoMerge = (int)EUpdateLevel.Patch <= (int)config.Threshold(eco, items[0].Record.DepName),
+                DepNames = [.. items.Select(i => i.Record.DepName).Distinct(StringComparer.Ordinal)],
+                Items = items,
+                TargetMajors = Targets(items.Select(i => (i.Record.DepName, Token(i.Candidate)))),
             };
             if (Add(groupPlan, picks.Select(v => Entry(group, v, EDependencyReportReason.NotInSecurityRun, "left for the next scheduled slot (R10)"))))
                 riding.UnionWith(picks.Select(v => v.Record));
@@ -915,6 +1133,24 @@ public static class DependencyPolicyEngine
                         && RangeRider(record, range, skipCooldown: true) is { } rider)
                         riders.Add(rider);
                 }
+                // multi-target-dependency-split-PRD P3 (M6, M13): each multi-target project's next TFM list (a major move adds
+                // the target channel; an end-of-life channel leaves, keepPrevious kept), and its platform packages per TFM on
+                // it. A new TFM needs the package's release on its major, like a companion (#606 D3).
+                var platformSettings = config.File.Platform(platform.Sdk);
+                List<PlanTargetFrameworks> tfmPlan = [];
+                var splitItems = new List<DependencyPlannedItem>();
+                if (tfmLists.TryGetValue(platform.Sdk, out var lists))
+                {
+                    var endOfLife = platform.Current.EndOfLife ?? [];
+                    var nextLists = lists.ToDictionary(p => p.Key, p => IsMultiTarget(p.Value) && InPlatformScope(p.Key, platformSettings)
+                        ? NextTfms(p.Value, inChannel ? null : target.Channel, endOfLife, platformSettings.KeepPrevious)
+                        : p.Value, StringComparer.Ordinal);
+                    tfmPlan = [.. nextLists.Where(p => IsMultiTarget(lists[p.Key]) && InPlatformScope(p.Key, platformSettings) && (!inChannel || !p.Value.SequenceEqual(lists[p.Key])))
+                        .OrderBy(p => p.Key, StringComparer.Ordinal)
+                        .Select(p => new PlanTargetFrameworks { File = p.Key, Value = string.Join(';', p.Value) })];
+                    splitItems = SplitItems(platform.Sdk, nextLists, target.Channel, target.Preview, missing);
+                    missing = [.. missing.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)];
+                }
                 if (missing.Count > 0 && !Approved(group, [eco], targets, force: true))
                 {
                     var names = missing.Count <= 5 ? string.Join(", ", missing) : $"{string.Join(", ", missing.Take(5))} and {missing.Count - 5} more";
@@ -986,7 +1222,7 @@ public static class DependencyPolicyEngine
                     Approved = approved,
                     DepNames = [eco],
                     TargetMajors = targets,
-                    Items = [.. riders.Select(v => new DependencyPlannedItem(v.Record, v.Candidate, v.Level))],
+                    Items = [.. riders.Select(v => new DependencyPlannedItem(v.Record, v.Candidate, v.Level)), .. splitItems],
                     Platform = new PlanPlatform
                     {
                         Sdk = platform.Sdk,
@@ -1002,6 +1238,7 @@ public static class DependencyPolicyEngine
                         Exclude = settings.Exclude.Concat(config.File.Exclude).Distinct(StringComparer.Ordinal).ToList() is { Count: > 0 } exclude ? exclude : null,
                         Lagging = settings.Lagging == DependencyPlatformSettings.LaggingAuto ? null : settings.Lagging,
                         ActionRuntimes = platform.Sdk == "node" ? [.. GitHubActionRuntimes] : null,
+                        TargetFrameworks = tfmPlan.Count == 0 ? null : tfmPlan,
                     },
                 };
                 if (!Add(planGroup, [Entry(target, level, EDependencyReportReason.NotInSecurityRun, "left for the next scheduled slot (R10)")]))

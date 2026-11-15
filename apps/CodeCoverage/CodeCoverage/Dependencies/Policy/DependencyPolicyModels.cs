@@ -131,6 +131,10 @@ public sealed record DependencyReportEntry(
 /// <summary>One planned update, with the record and candidate it came from.</summary>
 public sealed record DependencyPlannedItem(LookupRecord Record, LookupCandidate Candidate, EUpdateLevel Level)
 {
+    /// <summary>multi-target-dependency-split-PRD D-c: the package's version per TFM in a multi-target project; the
+    /// <see cref="Candidate"/> is then its highest one.</summary>
+    public IReadOnlyList<PlanTfmVersion>? Layout { get; init; }
+
     /// <summary>The contract item (plan.schema.json). Every token comes from the record: <c>newValue</c> is the candidate's
     /// value (the current one for a digest or lockfile-only update), and a digest is planned only where one is pinned today
     /// (npm's <c>newDigest</c> is an integrity hash, not a pin).</summary>
@@ -158,6 +162,7 @@ public sealed record DependencyPlannedItem(LookupRecord Record, LookupCandidate 
             UpdateType = label == Level && Candidate.UpdateType is { } original
                 ? System.Text.Json.JsonNamingPolicy.CamelCase.ConvertName(original.ToString())
                 : Level.ToString().ToLowerInvariant(),
+            Layout = Layout is null ? null : [.. Layout],
         };
     }
 }

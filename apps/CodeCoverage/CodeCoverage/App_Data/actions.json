@@ -50,5 +50,11 @@
     "showedOn": "query",
     "selectionRule": ">0",
     "refreshOnCompleted": false
+  },
+  "ConvertCentralPackages": {
+    "icon": "BoxSeam",
+    "showedOn": "query",
+    "selectionRule": ">0",
+    "refreshOnCompleted": false
   }
 }

@@ -416,6 +416,20 @@ to its log.
 
 ## 6. What happens when…
 
+- **A project targets several .NET channels** (`<TargetFrameworks>net10.0;net11.0</TargetFrameworks>`). Its .NET
+  packages (the companion list and the account's own packages) move per TFM: each gets an `ItemGroup` under
+  `'$(TargetFramework)' == 'netX.Y'` with the highest release on its own channel's major (a versions-map companion: inside
+  that channel's range), never lower than what it has; `netstandard2.0` takes the lowest channel's version. The first run
+  splits an unconditioned reference that way. The whole move of such a package is one item in the platform group, so a
+  patch and a major of the same package never land in different groups (MintPlayer.Dotnet.Tools #216, NU1605). A
+  `Directory.Packages.props` splits its `PackageVersion` over the TFMs of the projects under its folder.
+  - On a platform move the new channel's TFM is **added** (`net10.0;net11.0;net12.0`), with its own groups; an older TFM
+    leaves only once its channel is end of life, and `keepPrevious` older channels always stay.
+  - A package under any other condition (`'$(Configuration)' == 'Debug'`, a condition on the item itself) is **not
+    moved per TFM**: it is listed with the reason, and moves as one package as before.
+  - To switch a repository to or from central package management, use **Convert central package management**
+    ([onboarding.md](onboarding.md#central-package-management)); the updater never converts on its own.
+
 - **A release is very new.** It waits out the cooldown (the release time from the registry; for a record without one,
   the time the bot first saw it). The account's own releases (published by one of its repositories, matched to a release
   or push event of that repository) skip the cooldown and propagate to the account's consumers in graph order. So does

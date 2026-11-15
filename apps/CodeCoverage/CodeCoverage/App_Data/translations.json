@@ -1,6 +1,13 @@
 {
   "$schema": "../../../../schemas/translations.schema.json",
   "actions": {
+    "ConvertCentralPackages": {
+      "label": {
+        "en": "Convert central package management",
+        "fr": "Convertir la gestion centralisée des paquets",
+        "nl": "Centraal pakketbeheer omzetten"
+      }
+    },
     "DeleteData": {
       "label": {
         "en": "Delete data",
@@ -128,6 +135,48 @@
       "en": "Welcome to Coverage",
       "fr": "Bienvenue sur Coverage",
       "nl": "Welkom bij Coverage"
+    }
+  },
+  "centralPackages": {
+    "chooseMessage": {
+      "en": "Each selected .NET repository gets a pull request that moves its package versions into Directory.Packages.props, or back into each PackageReference. Nothing changes until it is merged.",
+      "fr": "Chaque dépôt .NET sélectionné reçoit une pull request qui déplace les versions de ses paquets dans Directory.Packages.props, ou les remet dans chaque PackageReference. Rien ne change avant la fusion.",
+      "nl": "Elke geselecteerde .NET-repository krijgt een pull request die de pakketversies naar Directory.Packages.props verplaatst, of terug naar elke PackageReference. Er verandert niets tot die gemerged is."
+    },
+    "chooseTitle": {
+      "en": "Convert central package management",
+      "fr": "Convertir la gestion centralisée des paquets",
+      "nl": "Centraal pakketbeheer omzetten"
+    },
+    "from": {
+      "en": "Stop using it",
+      "fr": "Ne plus l'utiliser",
+      "nl": "Niet meer gebruiken"
+    },
+    "notOpened": {
+      "en": "{0} was not converted: {1}",
+      "fr": "{0} n'a pas été converti : {1}",
+      "nl": "{0} is niet omgezet: {1}"
+    },
+    "opened": {
+      "en": "Central package management pull request for {0}: {1}",
+      "fr": "Pull request de gestion centralisée des paquets pour {0} : {1}",
+      "nl": "Pull request voor centraal pakketbeheer voor {0}: {1}"
+    },
+    "reason.notFound": {
+      "en": "The repository was not found.",
+      "fr": "Le dépôt est introuvable.",
+      "nl": "De repository is niet gevonden."
+    },
+    "reason.notManaged": {
+      "en": "You cannot manage this repository's settings.",
+      "fr": "Vous ne pouvez pas gérer les paramètres de ce dépôt.",
+      "nl": "Je kunt de instellingen van deze repository niet beheren."
+    },
+    "to": {
+      "en": "Use it",
+      "fr": "L'utiliser",
+      "nl": "Gebruiken"
     }
   },
   "dependencyOnboarding": {

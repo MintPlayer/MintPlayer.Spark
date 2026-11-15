@@ -17,7 +17,8 @@
       "required": ["channels", "preview"],
       "properties": {
         "channels": { "type": "array", "items": { "type": "string" }, "description": "Every channel found in an editable location, highest first." },
-        "preview": { "type": "boolean", "description": "true when a location already uses a preview (R7: previews are followed only then)." }
+        "preview": { "type": "boolean", "description": "true when a location already uses a preview (R7: previews are followed only then)." },
+        "endOfLife": { "type": "array", "items": { "type": "string" }, "description": "multi-target-dependency-split-PRD M6: the channels in channels that the feed says are end of life (a multi-target project drops them). Absent when none is." }
       }
     },
     "locations": {

@@ -106,6 +106,25 @@ Until #649 such a refusal sat in the middle of an "Applied without a pull reques
   says they are left to set by hand. Ruleset 1 covers the release lines too, so their updates go through the queue.
 - Anything under "To do by hand" in the pull request: a file the bot could not edit safely.
 
+## Central package management
+
+**Convert central package management** on a repository list (select one or more repositories) asks one direction for the
+run, then opens one pull request per repository you manage, from `mintplayer/central-package-management` into the default
+branch:
+
+- **Use it**: every `PackageReference` loses its `Version`, and a new root `Directory.Packages.props` turns on
+  `ManagePackageVersionsCentrally` with one `PackageVersion` per package, at the **highest** version any project used.
+  The pull request lists every reference whose version moves. Per-TFM references become `PackageVersion` items under
+  `'$(TargetFramework)' == 'netX.Y'`, and the project keeps one versionless reference.
+- **Stop using it**: each reference gets its version back (a `VersionOverride` wins, a per-TFM version splits the
+  reference per TFM), and `Directory.Packages.props` is deleted when it held only versions; otherwise only the versions
+  and the central-management properties leave it.
+
+The bot leaves a repository alone, and says why, when it cannot tell what the result would be: an item under another
+condition, an `Update` item, a version in a child element, more than one `Directory.Packages.props`, a
+`GlobalPackageReference`, or versions that disagree and are not plain versions. Nothing changes until you merge the pull
+request; the next dependency run adopts the new layout.
+
 ## App permissions
 
 Contents: write and Pull requests: write; **Workflows: write** for the workflow files (the onboarding branch and the

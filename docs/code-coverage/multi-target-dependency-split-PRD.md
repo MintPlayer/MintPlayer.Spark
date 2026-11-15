@@ -1,6 +1,6 @@
 # Multi-target libraries: one dependency tree per target framework — PRD and plan
 
-Status: **spikes S1–S8 done, plan P1–P8 written (2026-11-15); next: P1.** Branch `feat/multi-target-dependency-split`
+Status: **P1–P8 done (2026-11-15); next: the pull request's CI, then re-run Tools after deploy.** Branch `feat/multi-target-dependency-split`
 (from master after #676, merged + deployed in run 43743477315).
 Predecessors: [follower-cooldown-PRD](follower-cooldown-PRD.md) H1, [companion-version-maps-PRD](companion-version-maps-PRD.md),
 [sdk-updates-PRD](sdk-updates-PRD.md) D2/D13 (strategy add, keepPrevious, lockPackageMajor),
@@ -361,6 +361,34 @@ is CI on the pull request.
   Tests: `nugetLayout.test.ts` (split golden with CRLF, emptied group removed, add net12 + drop net10 in place, two packages
   share the groups and children survive, CPM `PackageVersion`, 3 refusals, verify per TFM, TFM list, canonical skip).
   The new-TFM groups go after the package's last group (first try put net12 before net11, red → green).
+- **P2, P3 done (2026-11-15).** `DependencyPolicyEngine`: `CollectSplits` (in `FindCompanions`, before the strategy gate,
+  so `strategy: add` and `keepPrevious` projects split too), `SplitItem`/`SplitItems`, `NextTfms`; split items ride in
+  `PlanMove`'s group or `AlignLagging`'s, and `ForGrouping` drops split records. `PlanPlatform.TargetFrameworks` carries the
+  next list of each multi-target file. Tests: `MultiTargetSplitTests` (the Tools #216 replica: one `platform:dotnet 11.0`
+  group, FolderHasher `net10.0=10.0.15, net11.0=11.0.0`; already split; nothing new; `netstandard2.0`; unmapped condition
+  reported; move adds net12; EOL drop vs `keepPrevious` 0/2; a missing new-TFM release is Pending). Two older tests changed
+  meaning, both superseded by D-b/S6 and renamed: `CompanionVersionMapTests.A_multi_target_project_takes_each_channels_range`
+  (was "lowest channel's range") and `PlatformInChannelMoveTests.A_multi_target_projects_platform_package_splits_per_TFM`
+  (was "older platform package keeps its major"). The first went red because a ranged companion (Roslyn 5.x) was held to
+  the channel's major (11); a ranged entry now takes its range only (red → green, M18).
+- **P5 done (2026-11-15).** `DependencyLayoutCheck` (writer): a file with a layout entry is checked as XML, "same XML,
+  regrouped". Tests: `DependencyLayoutPatchTests` (split admitted; smuggled element, wrong version, two non-canonical
+  conditions, changed attribute and a planned TFM missing from the patch refused; the planned TFM list admitted with the
+  split, another list refused). Writer suites: 119 green.
+- **P6 done (2026-11-15).** The bot side is `FileTfms`: a `Directory.Packages.props` builds for the union of the TFM lists
+  under its folder. Test: `MultiTargetSplitTests.P6_a_central_PackageVersion_splits_over_the_TFMs_under_its_folder`. The
+  action side was P1/P4 (`nugetLayout.test.ts`, CPM `PackageVersion`).
+- **P7 done (2026-11-15).** `CentralPackageConversion` (pure planner, `Onboarding/`), `IOnboardingService.ConvertCentralPackagesAsync`
+  (reads the default branch's MSBuild files, at most 256, opens the pull request through the shared `BotPullRequestAsync`,
+  which `LinePullRequestAsync` now uses too), `ConvertCentralPackagesAction` (query action, `>0`, one direction per run),
+  writer `/jobs/onboarding` with `central: true` (`CentralFilesRule`: MSBuild files on the default branch, deleting only
+  `Directory.Packages.props`; branch `mintplayer/central-package-management`). Tests: `CentralPackageConversionTests`
+  (detection; to: versions moved, M9 highest + listed, M11 conditioned, CRLF kept, refusals; from: M10 inline with
+  `VersionOverride` winning and delete, keep a file with more, split over conditioned versions, missing version refused;
+  round trip is the identity), `OnboardingWriterJobTests.P7_*`, `ConvertCentralPackagesActionTests` (two repositories, both
+  directions; cancel).
+- **P8 done (2026-11-15).** `dependency-updates.md` (multi-target projects), `onboarding.md` (the conversion action),
+  sdk-updates-PRD D2/D13 marked amended, this PRD.
 
 ## 8. Decision log
 
@@ -380,4 +408,10 @@ is CI on the pull request.
 | M13 | **A multi-target project always adds the new channel.** On a platform move (`net10.0;net11.0` → `net10.0;net11.0;net12.0`), the new TFM gets its own `ItemGroup`, and a TFM leaves only at end of life (M6). `strategy: replace` keeps its meaning for single-TFM projects | owner, 2026-11-15 ("Add net12.0, drop EOL") |
 | M14 | **The CPM conversion doesn't wait for the dependency pull request.** It opens regardless, and the dependency run, rebuilt from the default branch every run, adopts the new layout after the merge | owner, 2026-11-15 ("Convert anyway; next run rebases") |
 | M15 | **Detection of CPM and multi-targeting reuses the existing readers** (S9): CPM is on where the effective `ManagePackageVersionsCentrally` is literally `true`, multi-targeting where the resolved TFM list holds more than one TFM. Anything conditioned, computed or not literally `true` is reported as *cannot tell* and left alone, never guessed | S9, file:line evidence in §5.1 |
+| M16 | **Ranged companions split per TFM by their own channel's key (S6).** A versions-map entry keys each TFM by that TFM's channel; a bundled entry gives every TFM the same range, so it ends as an ordinary item | S6; `CompanionVersionMapTests.A_multi_target_project_takes_each_channels_range` |
+| M17 | **An item with a `Condition` of its own is refused by the action, not split.** The bot cannot tell an own condition from its `ItemGroup`'s, so `applyLayout` refuses it and the run reports it; the writer refuses any own condition on a layout package (`DependencyLayoutCheck`) | limitation found in P4/P5; `nugetLayout.test.ts`, `DependencyLayoutPatchTests` |
+| M18 | **A ranged companion's majors are its own.** In a split, a package that follows the platform (a channel rule, an account package) takes the channel's major; a versions-map or bundled one only its range, else its current major (Roslyn 5.x stays 5.x on .NET 11) | red → green on `A_multi_target_project_takes_each_channels_range` (nothing was planned: 5.12.0 was filtered by major 11) |
+| M19 | **The platform record names the end-of-life current channels** (`current.endOfLife`). Candidates hold only channels at or above the highest current one, so without it the bot could not know net8.0 is EOL (M6) | `platform-record.schema.json`; `platform.test.ts` "names the current channels that are end of life" |
+| M20 | **The CPM conversion reuses the writer's `/jobs/onboarding`** with a `central` flag, as the narrowing reuses it with `narrow` (S8). One commit of whole files on the default branch's head; the rule admits MSBuild files only and deletes only `Directory.Packages.props` | `OnboardingWriterJobTests.P7_*` |
+| M21 | **The conversion refuses rather than guesses (M15):** a condition other than the canonical one, a condition on the item, an `Update` item, a version in a child element, a `VersionOverride` going to CPM, a `GlobalPackageReference`, more than one `Directory.Packages.props`, versions that disagree and are not all SemVer. Any refusal leaves the repository untouched and the reason is the action's note | `CentralPackageConversionTests` |
 | M7 | **CPM is a separate custom action, in this pull request.** No automatic CPM in the updater. A new custom action switches one or more selected repositories between non-CPM and CPM (both directions) and opens a pull request with the conversion. It is separate from the dependency/TFM updater. | owner, 2026-11-15: "I wouldn't do it automatically, but just provide a new CustomAction that lets the user switch between non-CPVM and CPVM on a (one or more selected) repository - it also creates the pull-request with the changes for from/to CPVM. Include in this pull-request - seperate action from the dependency/tfm updater" |

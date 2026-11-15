@@ -143,6 +143,14 @@ public sealed record LookupRecord
     public bool Hold { get; init; }
 
     public List<LookupCandidate> Candidates { get; init; } = [];
+
+    /// <summary>multi-target-dependency-split-PRD D-a: the MSBuild condition over this occurrence; null when unconditioned.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Condition { get; init; }
+
+    /// <summary>D-a: the project TFMs the condition selects. Null with a <see cref="Condition"/>: unmapped (D-f).</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public List<string>? TargetFrameworks { get; init; }
 }
 
 /// <summary>One update Renovate offers for a record.</summary>
@@ -227,6 +235,11 @@ public sealed record PlatformCurrent
 
     /// <summary>A location already uses a preview: previews are followed only then (R7).</summary>
     public bool Preview { get; init; }
+
+    /// <summary>multi-target-dependency-split-PRD M6: the channels of <see cref="Channels"/> the feed says are end of life;
+    /// a multi-target project drops their TFMs. Absent when none is.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public List<string>? EndOfLife { get; init; }
 }
 
 public sealed record PlatformLocation
@@ -341,6 +354,25 @@ public sealed record PlanItem
     public string? SharedVariableName { get; init; }
 
     public string UpdateType { get; init; } = string.Empty;
+
+    /// <summary>multi-target-dependency-split-PRD D-c/D-d: the package's version per TFM. The runner rewrites every
+    /// occurrence of the package in <see cref="PackageFile"/> into one canonical <c>ItemGroup</c> per entry.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public List<PlanTfmVersion>? Layout { get; init; }
+}
+
+/// <summary>One entry of a <see cref="PlanItem.Layout"/>.</summary>
+public sealed record PlanTfmVersion
+{
+    public string TargetFramework { get; init; } = string.Empty;
+    public string Version { get; init; } = string.Empty;
+}
+
+/// <summary>One entry of <see cref="PlanPlatform.TargetFrameworks"/>: a multi-target project's new TFM list.</summary>
+public sealed record PlanTargetFrameworks
+{
+    public string File { get; init; } = string.Empty;
+    public string Value { get; init; } = string.Empty;
 }
 
 /// <summary>A platform group's instruction to the runner's SDK adapter (R7, R8).</summary>
@@ -386,6 +418,11 @@ public sealed record PlanPlatform
     /// </summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public List<string>? ActionRuntimes { get; init; }
+
+    /// <summary>multi-target-dependency-split-PRD M6/M13: the bot's TFM list per multi-target project (the new channel
+    /// added, end-of-life channels dropped). The runner writes it as it is, and the writer admits no other list.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public List<PlanTargetFrameworks>? TargetFrameworks { get; init; }
 }
 
 public enum EApplyGroupStatus

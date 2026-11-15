@@ -149,6 +149,10 @@ public sealed class VersioningOnboardingWire : DependencyCommitJobWire
 
     /// <summary>#638 D15: a line's narrowing commit (project files and global.json) instead of its workflows.</summary>
     public bool Narrow { get; set; }
+
+    /// <summary>multi-target-dependency-split-PRD P7 (M7): the central package management conversion commit on the default
+    /// branch instead of the onboarding's.</summary>
+    public bool Central { get; set; }
 }
 
 /// <summary><c>DELETE /jobs/dependencies/work-ref</c>: removes the work ref after a run (R14), only while it is at

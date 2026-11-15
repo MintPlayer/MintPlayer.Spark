@@ -1,0 +1,41 @@
+{
+  "contractVersion": 1,
+  "kind": "plan",
+  "planId": "multi-target-split-tools-216",
+  "expectedSha": "4b1e0f2a9c3d5e6f708192a3b4c5d6e7f8091a2b",
+  "groups": [
+    {
+      "group": "platform:dotnet 11.0",
+      "items": [
+        {
+          "depName": "Microsoft.Extensions.FileSystemGlobbing",
+          "packageName": null,
+          "ecosystem": "nuget",
+          "datasource": "nuget",
+          "manager": "nuget",
+          "depType": "nuget",
+          "packageFile": "FolderHasher/FolderHasher.csproj",
+          "lockFiles": [],
+          "currentValue": "10.0.5",
+          "newValue": "11.0.0",
+          "newVersion": "11.0.0",
+          "currentDigest": null,
+          "newDigest": null,
+          "replaceString": null,
+          "sharedVariableName": null,
+          "updateType": "major",
+          "layout": [
+            {
+              "targetFramework": "net10.0"
+            }
+          ]
+        }
+      ],
+      "platform": {
+        "sdk": "dotnet",
+        "fromChannel": "10.0",
+        "toChannel": "11.0"
+      }
+    }
+  ]
+}

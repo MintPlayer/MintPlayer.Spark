@@ -161,7 +161,8 @@ export interface PlatformRecord {
   kind: 'platform';
   sdk: Sdk;
   source: 'releases-index' | 'endoflife.date' | 'none';
-  current: { channels: string[]; preview: boolean };
+  /** `endOfLife`: multi-target-dependency-split-PRD M6, the current channels the feed says are end of life (absent when none). */
+  current: { channels: string[]; preview: boolean; endOfLife?: string[] };
   locations: PlatformLocation[];
   candidates: PlatformCandidate[];
 }

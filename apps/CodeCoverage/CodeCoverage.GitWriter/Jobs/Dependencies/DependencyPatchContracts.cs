@@ -32,8 +32,12 @@ public sealed record DependencyPlanEntry(string DepName, string PackageFile, str
     /// <summary>Renovate's manager, informational only.</summary>
     public string? Manager { get; init; }
 
+    /// <summary>multi-target-dependency-split-PRD D-c: the package's version per TFM; the file is then checked as XML
+    /// ("same XML, regrouped", S4), not line by line.</summary>
+    public IReadOnlyList<PlanTfmVersion>? Layout { get; init; }
+
     /// <summary>A lockfile-only update: the manifest keeps its value.</summary>
-    public bool IsLockfileOnly => CurrentValue == NewValue && CurrentDigest == NewDigest;
+    public bool IsLockfileOnly => CurrentValue == NewValue && CurrentDigest == NewDigest && Layout is null;
 
     /// <summary>The validators' view of one item of the contract plan (<see cref="DependencyPlan"/>, D-V8 resolved).</summary>
     public static DependencyPlanEntry From(PlanItem item, string group) => new(item.DepName, item.PackageFile, item.CurrentValue, item.NewValue, group, item.Datasource)
@@ -43,6 +47,7 @@ public sealed record DependencyPlanEntry(string DepName, string PackageFile, str
         NewDigest = item.NewDigest,
         SharedVariableName = item.SharedVariableName,
         Manager = item.Manager,
+        Layout = item.Layout is { Count: > 0 } layout ? [.. layout] : null,
     };
 
     /// <summary>Every item of every group of <paramref name="plan"/>, in plan order. A platform group's items are its
