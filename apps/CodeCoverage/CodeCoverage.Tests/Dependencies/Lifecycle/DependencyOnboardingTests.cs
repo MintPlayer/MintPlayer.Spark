@@ -260,7 +260,7 @@ public class DependencyOnboardingTests : CoverageRavenTest
         parsed.Errors.Should().BeEmpty();
         parsed.Section.Platform("dotnet").Should().BeEquivalentTo(CodeCoverage.Dependencies.DependencyPlatformSettings.Default);
         parsed.Section.Platform("node").Track.Should().Be(EDependencyTrack.Inherit);
-        parsed.Section.Platform("node").Companions.Should().Equal("@types/node");
+        parsed.Section.Platform("node").Companions.Should().Equal(new CodeCoverage.Dependencies.DependencyCompanionEntry("@types/node"));
     }
 
     // ── R24: offboarding ─────────────────────────────────────────────────────────────────────────

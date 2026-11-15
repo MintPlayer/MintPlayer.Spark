@@ -196,8 +196,7 @@ public static class DependencyPolicyEngine
                     continue;
                 if (UpdateTypeFloor.LeadingNumber(platform.Current.Channels.FirstOrDefault()) is not { } major)
                     continue;
-                var globs = config.Companions(sdk);
-                if (globs.Count == 0)
+                if (config.Companions(sdk).Count == 0)
                     continue;
                 // follower-cooldown-PRD FS4/S2: a project whose every tfm names no channel (netstandard2.0, net48) has no
                 // platform to move, so its references are ordinary packages. A file without a tfm (Directory.Packages.props)
@@ -216,7 +215,9 @@ public static class DependencyPolicyEngine
                 foreach (var record in records.Where(r => r.Ecosystem == ecosystem && !companionOf.ContainsKey(r) && !standardOnly.Contains(r.PackageFile)))
                 {
                     // follower-cooldown-PRD G2: an upstream package of the account rides like a Microsoft one.
-                    if (!globs.Any(g => DependencyGlob.Matches(g, record.DepName)) && !config.IsAccountPackage(record.Ecosystem, record.DepName))
+                    // companion-version-maps-PRD §6.1: the first matching entry decides; a versions/bundled entry is no channel rule.
+                    var entry = config.CompanionEntry(sdk, record.DepName);
+                    if (entry is { IsChannelRule: false } || entry is null && !config.IsAccountPackage(record.Ecosystem, record.DepName))
                         continue;
                     if (MajorOf(record) == major)
                         list.Add(record);

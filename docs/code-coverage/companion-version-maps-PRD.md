@@ -1,6 +1,6 @@
 # Companion version maps: which package version belongs to which SDK — PRD and plan
 
-Status: **designed, M1 next** (2026-11-15). Branch `fix/align-platform-packages-to-tfm`, PR #676 (one pull request with
+Status: **M1 done, M2 next** (2026-11-15). Branch `fix/align-platform-packages-to-tfm`, PR #676 (one pull request with
 [follower-cooldown-PRD](follower-cooldown-PRD.md) H1, owner: "Single pull-request").
 
 ## 1. The problem
@@ -179,6 +179,15 @@ pull request body under *Configuration problems*, not only on the run timeline (
 ### 7.1 Progress
 
 *(per milestone: evidence, red → green)*
+
+- **M1 done** (2026-11-15). `DependencyCompanionEntry` + `EDependencyBundledComponent` (`DependenciesYml.cs`), parsed by
+  `CompanionEntries`/`CompanionEntry` (glob, `builtin` expanded in place, `{ match, versions | bundled }`; keys channel
+  `^\d+\.\d+$` or band `^\d+\.\d+\.\dxx$`, band and `bundled` dotnet-only; ranges through `NpmRange.TryParse`). Built-ins
+  (`DependencyCompanions.cs`) gain `Microsoft.DotNet.ILCompiler` and bundled `Microsoft.Build*`, `Microsoft.CodeAnalysis*`,
+  `Microsoft.Net.Compilers.Toolset`, `NuGet.*`. Until M2 the engine treats only a channel-rule first match as a companion
+  (`DependencyPolicyConfig.CompanionEntry`, `FindCompanions`), so the bundled built-ins change no plan yet. Red:
+  `CompanionEntriesYmlTests` did not compile (types absent) → green 15/15; with `DependenciesYmlTests`,
+  `DependencyOnboardingTests` and all policy tests 339/339.
 
 ## 8. Decision log
 

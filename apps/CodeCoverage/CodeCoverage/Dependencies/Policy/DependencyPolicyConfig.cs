@@ -160,7 +160,7 @@ public sealed class DependencyPolicyConfig
             (chosen, why) = (account, $"an account rule sets track: {Name(account)} (a coverage.yml rule with track: preview overrides it)");
         else if (IsPrerelease(ecosystem, currentVersion))
             (chosen, why) = (EDependencyTrack.Preview, $"{depName} is on a prerelease and follows prereleases");
-        else if (DependenciesYml.PlatformSdks.Any(sdk => PlatformTrack(sdk) == EDependencyTrack.Preview && Companions(sdk).Any(glob => DependencyGlob.Matches(glob, depName))))
+        else if (DependenciesYml.PlatformSdks.Any(sdk => PlatformTrack(sdk) == EDependencyTrack.Preview && CompanionEntry(sdk, depName) is not null))
             (chosen, why) = (EDependencyTrack.Preview, $"{depName} is a companion of an SDK on the preview track");
         else
             (chosen, why) = (EDependencyTrack.Stable, $"{depName} follows stable releases (a coverage.yml rule `match: {depName}` with `track: preview` follows prereleases)");
@@ -184,9 +184,13 @@ public sealed class DependencyPolicyConfig
     public static bool IsPrerelease(string ecosystem, string? version)
         => version is not null && SemVerEcosystems.Contains(ecosystem) && System.Text.RegularExpressions.Regex.IsMatch(version.Trim(), PrereleasePattern);
 
-    /// <summary>The companion globs of an SDK: the file's <c>platforms.&lt;sdk&gt;.companions</c>, else the built-in list (#606 D2).</summary>
-    public IReadOnlyList<string> Companions(string sdk)
+    /// <summary>The companion entries of an SDK: the file's <c>platforms.&lt;sdk&gt;.companions</c>, else the built-in list (#606 D2).</summary>
+    public IReadOnlyList<DependencyCompanionEntry> Companions(string sdk)
         => File.Platforms.TryGetValue(sdk, out var settings) && settings.Companions is { } own ? own : DependencyCompanions.BuiltIn(sdk);
+
+    /// <summary>companion-version-maps-PRD §6.1: the first companion entry of <paramref name="sdk"/> that matches the package.</summary>
+    public DependencyCompanionEntry? CompanionEntry(string sdk, string depName)
+        => Companions(sdk).FirstOrDefault(e => DependencyGlob.Matches(e.Match, depName));
 
     /// <summary>
     /// The package globs Renovate must look up with prereleases (#606 D8): the file's and the account's preview-track rules
@@ -200,7 +204,7 @@ public sealed class DependencyPolicyConfig
     {
         return File.Rules.Where(r => r.Track == EDependencyTrack.Preview && OnPackages(r.Ecosystem)).SelectMany(r => r.Match)
             .Concat(AccountRules.Where(r => !r.Enforced && r.Track == EDependencyTrack.Preview && OnPackages(r.Ecosystem)).Select(r => r.Match.Trim()))
-            .Concat(DependenciesYml.PlatformSdks.Where(sdk => PlatformTrack(sdk) == EDependencyTrack.Preview).SelectMany(Companions))
+            .Concat(DependenciesYml.PlatformSdks.Where(sdk => PlatformTrack(sdk) == EDependencyTrack.Preview).SelectMany(sdk => Companions(sdk).Select(e => e.Match)))
             .Distinct(StringComparer.Ordinal).ToList();
     }
 
