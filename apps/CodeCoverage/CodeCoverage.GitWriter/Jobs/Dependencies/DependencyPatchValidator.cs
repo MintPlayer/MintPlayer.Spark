@@ -1,5 +1,8 @@
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
+using CodeCoverage.Git;
+using CodeCoverage.Git.Dependencies;
 using CodeCoverage.Git.MergeQueue.Resolution;
 
 namespace CodeCoverage.GitWriter.Jobs.Dependencies;
@@ -55,9 +58,27 @@ public static class DependencyPatchValidator
         // The allow-list: planned package files that a code-defined pattern admits and the base holds as regular files.
         var manifests = new Dictionary<string, List<DependencyPlanEntry>>(StringComparer.Ordinal);
         var workflows = new Dictionary<string, List<DependencyPlanEntry>>(StringComparer.Ordinal);
+        var followers = new Dictionary<string, List<(DependencyPlanEntry Entry, DependencyFollowRule Rule)>>(StringComparer.Ordinal);
+        var globs = request.Follow.ToDictionary(r => r, r => new PathGlob(r.Path));
         foreach (var entry in request.Plan)
         {
             var path = entry.PackageFile;
+            // companion-pins-PRD F3: a follow record is admitted only by a rule of its dependency whose glob names the file,
+            // never by the manifest allow-list (a line naming the dependency would let SubstitutionCheck through).
+            if (entry.Manager == FollowManager)
+            {
+                if (!PatchValidator.IsWritablePath(path) || DependencyFiles.IsPlanPath(path) || DependencyFiles.IsCoverageConfig(path) || DependencyFiles.IsDenied(path)
+                    || PatchValidator.IsUnderGitHub(path) || DependencyFiles.LockfileNames.Contains(DependencyFiles.FileName(path))
+                    || await baseTree.ModeAsync(path, cancellationToken) != "100644")
+                    continue;
+                foreach (var rule in request.Follow.Where(r => r.Dependency == entry.DepName && globs[r].Matches(path)))
+                {
+                    if (!followers.TryGetValue(path, out var rules))
+                        followers[path] = rules = [];
+                    rules.Add((entry, rule));
+                }
+                continue;
+            }
             // #613 item 3: Directory.Build.props/.targets hold NuGet references too; edited only by SubstitutionCheck.
             var substitutionOnly = DependencyFiles.IsSubstitutionOnly(path) && entry.Datasource == "nuget";
             if (!PatchValidator.IsWritablePath(path) || DependencyFiles.IsPlanPath(path) || DependencyFiles.IsCoverageConfig(path)
@@ -128,9 +149,10 @@ public static class DependencyPatchValidator
                 continue;
             }
             var manifestEntries = manifests.GetValueOrDefault(path);
-            if (manifestEntries is not null || platformHere.Count > 0)
+            var followHere = followers.GetValueOrDefault(path) ?? [];
+            if (manifestEntries is not null || platformHere.Count > 0 || followHere.Count > 0)
             {
-                if (await ManifestAsync(file, manifestEntries ?? [], platformHere, baseTree, used, platformApplied, cancellationToken) is { } refused)
+                if (await ManifestAsync(file, manifestEntries ?? [], platformHere, followHere, baseTree, used, platformApplied, cancellationToken) is { } refused)
                     return refused;
                 continue;
             }
@@ -222,8 +244,8 @@ public static class DependencyPatchValidator
     /// <summary>A manifest, or a file holding a reported platform location: every changed line is a planned
     /// <see cref="SubstitutionCheck"/> swap or a <see cref="PlatformSubstitution"/> of a reported location (#613 item 2).</summary>
     private static async Task<DependencyPatchVerdict?> ManifestAsync(PatchFile file, List<DependencyPlanEntry> entries,
-        List<(DependencyPlatformMove, DependencyPlatformLocation)> platform, IBaseTree baseTree, HashSet<DependencyPlanEntry> used,
-        HashSet<string> platformApplied, CancellationToken cancellationToken)
+        List<(DependencyPlatformMove, DependencyPlatformLocation)> platform, List<(DependencyPlanEntry Entry, DependencyFollowRule Rule)> follow,
+        IBaseTree baseTree, HashSet<DependencyPlanEntry> used, HashSet<string> platformApplied, CancellationToken cancellationToken)
     {
         (int From, int To)? sdks = null;
         if (DependencyFiles.FileName(file.Path) == "global.json")
@@ -256,10 +278,55 @@ public static class DependencyPatchValidator
                         platformApplied.Add(group);
                         continue;
                     }
+                    IReadOnlyList<DependencyPlanEntry>? followed;
+                    try
+                    {
+                        followed = FollowSubstitution(block.Removed[k], block.Added[k], follow);
+                    }
+                    catch (RegexMatchTimeoutException)
+                    {
+                        return DependencyPatchVerdict.Reject(DependencyPatchReasons.UnplannedChange,
+                            $"Line {line}: a follow rule's pattern ran out of time ({DependencyFollowRule.MatchTimeout.TotalMilliseconds} ms) on it.", file.Path);
+                    }
+                    if (followed is not null)
+                    {
+                        used.UnionWith(followed);
+                        continue;
+                    }
                     return DependencyPatchVerdict.Reject(DependencyPatchReasons.UnplannedChange,
                         $"Line {line}: the change is not a planned current → new swap on a line naming the dependency, nor a planned platform move of a reported location.", file.Path);
                 }
             }
+        }
+        return null;
+    }
+
+    /// <summary>The manager the lookup gives a follower record (dependency-action <c>lookup/follow.ts</c>).</summary>
+    public const string FollowManager = "follow";
+
+    /// <summary>
+    /// companion-pins-PRD F3: the follow entries that explain <paramref name="old"/> → <paramref name="new"/>, or null. A rule's
+    /// matches in the old line whose version is an entry's current value, each swapped to that entry's new value, must give the
+    /// new line exactly; every entry that took part is applied (two pins on one line are two records). Throws
+    /// <see cref="RegexMatchTimeoutException"/>.
+    /// </summary>
+    private static IReadOnlyList<DependencyPlanEntry>? FollowSubstitution(string old, string @new, List<(DependencyPlanEntry Entry, DependencyFollowRule Rule)> follow)
+    {
+        foreach (var rule in follow.Select(f => f.Rule).Distinct())
+        {
+            var entries = follow.Where(f => f.Rule == rule).Select(f => f.Entry).ToList();
+            var groups = rule.Find(old);
+            var swapped = new System.Text.StringBuilder(old);
+            var took = new List<DependencyPlanEntry>();
+            foreach (var group in groups.OrderByDescending(g => g.Index))
+            {
+                if (entries.FirstOrDefault(e => e.CurrentValue == group.Value && e.NewValue != e.CurrentValue) is not { } entry)
+                    continue;
+                swapped.Remove(group.Index, group.Length).Insert(group.Index, entry.NewValue);
+                took.AddRange(entries.Where(e => e.CurrentValue == entry.CurrentValue && e.NewValue == entry.NewValue));
+            }
+            if (took.Count > 0 && swapped.ToString() == @new)
+                return [.. took.Distinct()];
         }
         return null;
     }

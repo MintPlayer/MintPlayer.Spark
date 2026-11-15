@@ -148,6 +148,12 @@ dependencies:
       group: vitest              # move together
       allowMajor: true           # plan majors without an approval (they still never auto-merge)
       hold: "waiting for the Nx plugin"   # or true; held until removed
+      lockstep: true             # the group moves only to a version every member has
+  follow:                        # pins that are not dependencies, written with a dependency's new version
+    - dependency: mcr.microsoft.com/playwright
+      path: apps/web/docker-compose.yml   # a glob
+      match: 'web-chromium:(?<version>[0-9.]+)'
+      version: '^v(?<version>[0-9.]+)-noble$'   # optional, over the dependency's new value
   exclude: ["samples/**"]        # package files left alone
   lookupAction: dependency-lookup.yml
   applyAction: dependency-apply.yml
@@ -232,6 +238,39 @@ Node.js `@types/node`. Only a package on the SDK's current major is one (`System
 `companions:` replaces the list; `[]` turns it off. Until the SDK moves, a companion's next major is listed as *moves with
 the platform*. A platform kept beside the previous one (`strategy: add`, `keepPrevious`, `lockPackageMajor`) has no
 companions, since its packages must keep building for the older target.
+
+**Pins that follow a dependency** ([dependency-companion-pins-PRD](dependency-companion-pins-PRD.md)). Some versions
+are no dependency Renovate can look up: your own image built from a base image (`ghcr.io/you/web-chromium:1.63.0` from
+`mcr.microsoft.com/playwright:v1.63.0-noble`), an `npm install playwright-core@1.63.0` in a Dockerfile, or a comment
+that names the version. A `follow:` entry writes such a pin with its dependency's new version, in the dependency's group:
+
+- `match` is a regular expression with exactly one `(?<version>…)` group; that group is what's replaced. Keep to named
+  groups, character classes, quantifiers and anchors: the server checks the pattern with .NET, the lookup runs it with
+  JavaScript, and a pattern either side refuses is an error in the pull request. Each match runs with a 250 ms limit.
+- The follower's version is the first `x.y[.z]` in the dependency's new value, with a prerelease only when it starts with
+  a prerelease word: `v1.64.1-noble` → `1.64.1`, `11.0.0-rc.2-noble` → `11.0.0-rc.2`. `version:` overrides it with a
+  pattern whose `version` group picks the part to use.
+- A follower that is behind its dependency catches up in the same move.
+- A rule that matched nothing, or whose dependency the lookup did not report, is listed under **Not moved**.
+- The writer re-runs the rule on every changed line, so a `follow:` edit passes only where the rule matches. The deny-list
+  still wins: `.github/`, `coverage.yml`, `.mintplayer/` and build scripts can't be followers.
+
+A group a `follow:` names moves **in lockstep**: only to a version every member has, counting a member without an update at
+its current version. This is for registries that don't publish the same releases. Playwright's image has every release
+and its NuGet package lags by weeks and skips patches, so without lockstep the image moved to 1.65.1 while the package
+stayed on 1.64.1, and the client refused the server. While a member lacks the version, the group waits under
+*Available, not applied* ("lockstep: Microsoft.Playwright has no 1.65.1 yet"). Any other group opts in with a rule's
+`lockstep: true`. Put the members in one group with a rule (`match: [Microsoft.Playwright,
+mcr.microsoft.com/playwright]`, `group: playwright`).
+
+Renovate's own `customManagers` in `renovate.json` work too: their dependencies join the dependency's group by name and
+are written the same way. The writer holds them to the usual rules, though: the file must be a manifest of the datasource
+(a Dockerfile or compose file for Docker) and the changed line must name the dependency. Use `follow:` for anything else.
+A `FROM` that takes its tag from an `ARG` can't be written either way; pin the tag on the `FROM` line itself.
+
+In the pull request body, the *Applied* table has one row per dependency and move ("37 files" when it's in many), and
+every group's first row comes before any group's second, so no group falls past the row limit. A move whose tag changes
+format besides the version (`v4.3.0` → `4.4.0`) is named under the table: check the new tag is the one you mean.
 
 **Which SDK locations move.** .NET: TFMs and `global.json`'s SDK. A `setup-dotnet` step with
 `global-json-file: global.json` reads the SDK from there, so only `global.json` moves; **SDK from global.json** in

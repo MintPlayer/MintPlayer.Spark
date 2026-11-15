@@ -10,6 +10,7 @@ import { revParse } from '../util/git';
 import { directoryFiles, isWorkflowFile } from '../util/repoFiles';
 import { findUsages, interfaceDiffsFor, type ActionUsage, type ActionYmlFetcher } from './interfaceDiff';
 import { foldPlatformLocations } from './foldPlatform';
+import { followerRecords } from './follow';
 import { mapReport, reportProblems } from './mapReport';
 import { RENOVATE_IMAGE, runRenovate, type RenovateRun } from './renovate';
 
@@ -72,7 +73,9 @@ export async function runLookup(o: LookupOptions): Promise<{ document: LookupDoc
   const problems = reportProblems(run.report);
   const { platforms, found } = await scanPlatforms(o.repoDir, o.platforms, problems, o.now?.() ?? new Date());
   // R31: the platform record owns its locations; their channel moves are never offered separately.
-  const { records } = foldPlatformLocations(mapReport(run.report), found, platforms, o.platforms);
+  const { records: folded } = foldPlatformLocations(mapReport(run.report), found, platforms, o.platforms);
+  // dependency-companion-pins-PRD F2: the coverage.yml follow pins, as records of their leaders.
+  const records = [...folded, ...(await followerRecords(directoryFiles(o.repoDir), o.platforms.follow ?? [], folded, problems))];
   const interfaceDiffs = await interfaceDiffsFor(records, await workflowUsages(o.repoDir), o.fetchActionYml);
   const document: LookupDocument = {
     contractVersion: CONTRACT_VERSION,

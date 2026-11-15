@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.RegularExpressions;
 using CodeCoverage.Git;
+using CodeCoverage.Git.Dependencies;
 using CodeCoverage.LookupReferences;
 using YamlDotNet.Serialization;
 using YamlDotNet.Serialization.NamingConventions;
@@ -38,6 +39,12 @@ namespace CodeCoverage.Dependencies;
 ///       group: vitest
 ///       ignore: false
 ///       hold: "waiting for the Nx plugin"   # true or a reason: listed as held until removed
+///       lockstep: true                # the group moves only to a version every member has (companion-pins-PRD E)
+///   follow:                           # companion-pins-PRD A: pins written with a dependency's new version, in its group
+///     - dependency: mcr.microsoft.com/playwright
+///       path: apps/SeoTester/docker-compose.yml   # a path glob
+///       match: 'seotester-chromium:(?&lt;version&gt;[0-9.]+)'   # exactly one version group: the text replaced
+///       version: '^v(?&lt;version&gt;[0-9.]+)-noble$'          # optional; default: the leader's first x.y.z[-pre]
 ///   exclude: ["samples/**"]           # package files skipped
 ///   lookupAction: dependency-lookup.yml
 ///   applyAction: dependency-apply.yml
@@ -57,6 +64,9 @@ public static partial class DependenciesYml
     public const string Source = "coverage.yml";
     public const string DefaultLookupAction = "dependency-lookup.yml";
     public const string DefaultApplyAction = "dependency-apply.yml";
+
+    /// <summary>companion-pins-PRD F3: the writer's cap on <c>follow</c> rules per request (<c>DependencyFields.MaxFollowRules</c>).</summary>
+    public const int MaxFollowRules = 100;
 
     /// <summary>The SDKs a platform adapter exists for (R7, #606 D10).</summary>
     public static IReadOnlyList<string> PlatformSdks { get; } = ["dotnet", "node", "python", "java", "go", "php", "ruby", "rust"];
@@ -129,7 +139,28 @@ public static partial class DependenciesYml
             var track = Track(rule.Track, $"{key}.track", errors);
             if (track == EDependencyTrack.Lts) errors.Add($"{key}.track: a package has no LTS releases; use stable or preview (lts is for platforms).");
             section.Rules.Add(new DependencyFileRule(match, Ecosystem(rule.Ecosystem, $"{key}.ecosystem", errors), rule.AllowMajor,
-                string.IsNullOrEmpty(group) ? null : group, rule.Ignore ?? false, hold, track));
+                string.IsNullOrEmpty(group) ? null : group, rule.Ignore ?? false, hold, track, rule.Lockstep ?? false));
+        }
+
+        foreach (var (entry, index) in (file.Follow ?? []).Select((r, i) => (r, i)))
+        {
+            var key = $"dependencies.follow[{index}]";
+            var dependency = entry?.Dependency?.Trim();
+            var path = entry?.Path?.Trim();
+            var match = entry?.Match;
+            var version = entry?.Version;
+            var before = errors.Count;
+            // The writer's caps (DependencyFields.Follow): a rule it would refuse would fail every apply of the repository.
+            if (index == MaxFollowRules) errors.Add($"dependencies.follow holds more than {MaxFollowRules} rules.");
+            if (string.IsNullOrEmpty(dependency)) errors.Add($"{key}.dependency must name the dependency the pin follows.");
+            else if (dependency.Length > 256) errors.Add($"{key}.dependency is longer than 256 characters.");
+            if (string.IsNullOrEmpty(path) || path.Length > 512 || !IsPathGlob(path)) errors.Add($"{key}.path '{path}' is not a repository-relative path glob of at most 512 characters.");
+            if (match?.Length > 1024 || version?.Length > 1024) errors.Add($"{key}: a pattern is longer than 1024 characters.");
+            if (string.IsNullOrEmpty(match)) errors.Add($"{key}.match must name a pattern with one (?<version>...) group.");
+            else if (DependencyFollowRule.Problem(match) is { } problem) errors.Add($"{key}.match {problem}");
+            if (!string.IsNullOrEmpty(version) && DependencyFollowRule.Problem(version) is { } versionProblem) errors.Add($"{key}.version {versionProblem}");
+            if (errors.Count == before)
+                section.Follow.Add(new DependencyFollowRule(dependency!, path!, match!, string.IsNullOrEmpty(version) ? null : version));
         }
 
         foreach (var path in Strings(file.Exclude, "dependencies.exclude", errors))
@@ -404,6 +435,7 @@ public static partial class DependenciesYml
         public Dictionary<string, string?>? AutoMerge { get; set; }
         public object? Ignore { get; set; }
         public List<FileRule?>? Rules { get; set; }
+        public List<FileFollow?>? Follow { get; set; }
         public object? Exclude { get; set; }
         public string? LookupAction { get; set; }
         public string? ApplyAction { get; set; }
@@ -430,6 +462,15 @@ public static partial class DependenciesYml
         public bool? Ignore { get; set; }
         public string? Hold { get; set; }
         public string? Track { get; set; }
+        public bool? Lockstep { get; set; }
+    }
+
+    private sealed class FileFollow
+    {
+        public string? Dependency { get; set; }
+        public string? Path { get; set; }
+        public string? Match { get; set; }
+        public string? Version { get; set; }
     }
 
     private sealed class FileMigrate
@@ -484,7 +525,7 @@ public sealed record DependencyThresholdGlob(string Glob, EDependencyThreshold T
 /// <param name="Hold">A reason when the rule holds the matching dependencies; null otherwise.</param>
 /// <param name="Track">#606 D8: <c>stable</c> or <c>preview</c> (<see cref="EDependencyTrack.Inherit"/> when the rule sets none).</param>
 public sealed record DependencyFileRule(IReadOnlyList<string> Match, string? Ecosystem, bool? AllowMajor, string? Group, bool Ignore, string? Hold,
-    EDependencyTrack Track = EDependencyTrack.Inherit);
+    EDependencyTrack Track = EDependencyTrack.Inherit, bool Lockstep = false);
 
 /// <summary>A <c>migrate</c> entry (R9): the workflow dispatched after an approved major of a matching dependency.</summary>
 public sealed record DependencyMigrateRule(IReadOnlyList<string> Match, string OnMajor);
@@ -529,6 +570,8 @@ public sealed class DependenciesSection
     public double MaxCoverageDrop { get; set; }
 
     public List<DependencyFileRule> Rules { get; set; } = [];
+
+    public List<DependencyFollowRule> Follow { get; set; } = [];
 
     /// <summary>Package-file path globs the updater skips.</summary>
     public List<string> Exclude { get; set; } = [];

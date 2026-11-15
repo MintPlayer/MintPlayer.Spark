@@ -78,6 +78,21 @@ describe('the platform table (#606 D9, test/fixtures/platform-feeds/platform-tab
     expect(() => parsePlatformTable('{"sdks":{},"unstable":[],"stable":[1]}')).toThrow(/stable must be an array of package globs/);
   });
 
+  // dependency-companion-pins-PRD F2: the coverage.yml follow rules; a server that predates them sends none.
+  it('reads the follow rules, and none when the bot sends none', () => {
+    const rule = { dependency: 'mcr.microsoft.com/playwright', path: 'docker-compose.yml', match: 'x:(?<version>[0-9.]+)', version: null };
+    expect(parsePlatformTable(JSON.stringify({ sdks: {}, unstable: [], follow: [rule] })).follow).toEqual([rule]);
+    expect(parsePlatformTable('{"sdks":{},"unstable":[]}').follow).toEqual([]);
+  });
+
+  it.each([
+    ['not an array', '{}'],
+    ['an entry without a pattern', '[{"dependency":"x","path":"Dockerfile"}]'],
+    ['an entry with a numeric path', '[{"dependency":"x","path":1,"match":"(?<version>1)"}]'],
+  ])('refuses follow rules that are %s', (_name, follow) => {
+    expect(() => parsePlatformTable(`{"sdks":{},"unstable":[],"follow":${follow}}`)).toThrow(/platforms\.follow/);
+  });
+
   it.each([
     ['', /dependency-lookup workflow/],
     ['nope', /JSON channel table/],

@@ -5,8 +5,8 @@ namespace CodeCoverage.Git.MergeQueue.Resolution.Manifests;
 
 /// <summary>A NuGet/SemVer 2 version: 2 to 4 numeric parts (padded to 4), an optional prerelease, build metadata ignored.
 /// Floating versions, ranges and variables do not parse. Numeric prerelease identifiers compare as numbers and rank below
-/// alphanumeric ones; a release outranks its prereleases.</summary>
-internal sealed partial record SemanticVersion(long[] Numbers, string[] Prerelease) : IComparable<SemanticVersion>
+/// alphanumeric ones; a release outranks its prereleases. Public for the dependency planner's lockstep (companion-pins-PRD M3).</summary>
+public sealed partial record SemanticVersion(long[] Numbers, string[] Prerelease) : IComparable<SemanticVersion>
 {
     public static SemanticVersion? Parse(string text)
     {

@@ -330,7 +330,7 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
         {
             ["expected_sha"] = head,
             ["run_id"] = token,
-            ["platforms"] = await DependencyPlatformTable.JsonAsync(session, tracks.UnstableGlobs(), tracks.StableGlobs(), ct),
+            ["platforms"] = await DependencyPlatformTable.JsonAsync(session, tracks.UnstableGlobs(), tracks.StableGlobs(), ct, parsed.Section.Follow),
         }, LookupTimeout, "lookup");
         await DispatchAsync(context, request, "lookup", head, $"dependency-lookup-{token}", null, EDependencyRunState.Looking, ct);
     }
@@ -787,6 +787,7 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
             {
                 Plan = data.PlanJson, Patch = Convert.ToBase64String(patch), ClaimedGroups = claimed, TargetActions = data.TargetActions, AllowedHosts = section.Registries,
                 PlatformLocations = PlatformLocations(lookup, plan),
+                Follow = section.Follow,
             }, ct), ct) is not { } verdict)
             return;
         if (verdict.Outcome is GitWriterOutcomes.Busy or GitWriterOutcomes.Failed)
@@ -845,6 +846,7 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
                 Author = Identity(run), Committer = Identity(run), Message = $"Dependency plan {run.PlanId}, applied", Plan = data.PlanJson, Patch = data.Patch,
                 ClaimedGroups = claimed, TargetActions = data.TargetActions, AllowedHosts = section.Registries, ExpectedWorkSha = run.WorkRefSha,
                 PlatformLocations = PlatformLocations(lookup, plan),
+                Follow = section.Follow,
             }, ct), ct) is not { } staged)
             return;
         if (staged.Outcome != GitWriterOutcomes.Pushed || staged.Sha is null)
@@ -967,6 +969,7 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
                 Author = Identity(run), Committer = Identity(run), Message = CommitMessage(report),
                 Plan = data.PlanJson, Patch = data.Patch, ClaimedGroups = claimed, TargetActions = data.TargetActions, AllowedHosts = section.Registries,
                 PlatformLocations = PlatformLocations(lookup, DependencyContract.Deserialize<DependencyPlan>(data.PlanJson!)!),
+                Follow = section.Follow,
                 Migrations = [.. data.Migrations.Select(m => new GitWriterMigratePatch(m.Group, m.Patch))],
                 ExpectedRollingSha = rollingHead, LastBotSha = rollingHead is null ? null : run.RollingBotSha, ExpectedWorkSha = run.WorkRefSha,
             }, ct), ct) is not { } result)

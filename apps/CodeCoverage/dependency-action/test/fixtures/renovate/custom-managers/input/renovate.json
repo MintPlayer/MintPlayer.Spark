@@ -1,0 +1,20 @@
+{
+  "customManagers": [
+    {
+      "customType": "regex",
+      "managerFilePatterns": ["/(^|/)chromium/Dockerfile$/"],
+      "matchStrings": ["playwright-core@(?<currentValue>[0-9.]+)"],
+      "depNameTemplate": "mcr.microsoft.com/playwright",
+      "datasourceTemplate": "docker",
+      "extractVersionTemplate": "^v(?<version>[0-9.]+)-noble$"
+    },
+    {
+      "customType": "regex",
+      "managerFilePatterns": ["/(^|/)docker-compose\\.yml$/"],
+      "matchStrings": ["seotester-chromium:(?<currentValue>[0-9.]+)"],
+      "depNameTemplate": "mcr.microsoft.com/playwright",
+      "datasourceTemplate": "docker",
+      "extractVersionTemplate": "^v(?<version>[0-9.]+)-noble$"
+    }
+  ]
+}

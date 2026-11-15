@@ -17,6 +17,9 @@ public sealed record DependencyPatchInput(DependencyPlan Plan, byte[] Patch, IRe
 {
     /// <summary>#613 item 2: the lookup's non-computed platform locations.</summary>
     public IReadOnlyList<DependencyPlatformLocation> PlatformLocations { get; init; } = [];
+
+    /// <summary>companion-pins-PRD F3: coverage.yml's follow rules.</summary>
+    public IReadOnlyList<DependencyFollowRule> Follow { get; init; } = [];
 }
 
 /// <summary>
@@ -270,6 +273,7 @@ public sealed partial class WriterService
         {
             ClaimedAppliedGroups = input.Claimed,
             TargetActions = input.TargetActions,
+            Follow = input.Follow,
             MaxBytes = options.Value.MaxPatchBytes,
             Lockfiles = new LockfileScanOptions([.. LockfileScanOptions.PublicRegistries, .. input.AllowedHosts], LockfileScanOptions.Default.MaxNewPackages),
         };

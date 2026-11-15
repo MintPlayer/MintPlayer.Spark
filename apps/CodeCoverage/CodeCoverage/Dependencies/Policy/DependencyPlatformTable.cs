@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.Json;
 using CodeCoverage.Entities;
+using CodeCoverage.Git.Dependencies;
 using Raven.Client.Documents.Session;
 
 namespace CodeCoverage.Dependencies.Policy;
@@ -19,10 +20,12 @@ namespace CodeCoverage.Dependencies.Policy;
 public static partial class DependencyPlatformTable
 {
     /// <summary>The table from every collected channel (a few dozen documents, read by id prefix: no index to wait for).</summary>
-    public static async Task<string> JsonAsync(IAsyncDocumentSession session, IReadOnlyList<string> unstable, IReadOnlyList<string> stable, CancellationToken ct)
-        => Json(await session.Advanced.LoadStartingWithAsync<PlatformRelease>(PlatformRelease.Prefix, pageSize: 1024, token: ct), unstable, stable);
+    public static async Task<string> JsonAsync(IAsyncDocumentSession session, IReadOnlyList<string> unstable, IReadOnlyList<string> stable, CancellationToken ct,
+        IReadOnlyList<DependencyFollowRule>? follow = null)
+        => Json(await session.Advanced.LoadStartingWithAsync<PlatformRelease>(PlatformRelease.Prefix, pageSize: 1024, token: ct), unstable, stable, follow);
 
-    public static string Json(IEnumerable<PlatformRelease> releases, IReadOnlyList<string> unstable, IReadOnlyList<string>? stable = null)
+    public static string Json(IEnumerable<PlatformRelease> releases, IReadOnlyList<string> unstable, IReadOnlyList<string>? stable = null,
+        IReadOnlyList<DependencyFollowRule>? follow = null)
     {
         var sdks = new SortedDictionary<string, List<Dictionary<string, object?>>>(StringComparer.Ordinal);
         foreach (var release in releases)
@@ -52,6 +55,14 @@ public static partial class DependencyPlatformTable
             ["unstable"] = unstable,
             // prerelease-dependencies-PRD H5: looked up stable-only even when already on a prerelease (`track: stable`).
             ["stable"] = stable ?? [],
+            // dependency-companion-pins-PRD F2: coverage.yml's follow rules; the lookup emits a record per match.
+            ["follow"] = (follow ?? []).Select(r => new Dictionary<string, string?>
+            {
+                ["dependency"] = r.Dependency,
+                ["path"] = r.Path,
+                ["match"] = r.Match,
+                ["version"] = r.Version,
+            }).ToList(),
         });
     }
 

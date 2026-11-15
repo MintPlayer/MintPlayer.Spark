@@ -86,6 +86,10 @@ public sealed record DependencyPatchRequest(IReadOnlyList<DependencyPlanEntry> P
     /// adapter's edits are admitted only on these, as <see cref="PlatformSubstitution"/> substitutions.</summary>
     public IReadOnlyList<DependencyPlatformMove> Platforms { get; init; } = [];
 
+    /// <summary>dependency-companion-pins-PRD F3: coverage.yml's <c>follow</c> rules, from the default branch. A <c>follow</c>
+    /// entry's edit is admitted only through one: same dependency, its path glob, and the line the rule re-matches.</summary>
+    public IReadOnlyList<DependencyFollowRule> Follow { get; init; } = [];
+
     /// <summary>The request for the contract <paramref name="plan"/>; with <paramref name="result"/>, its <c>applied</c>
     /// groups become the claim the patch must equal (§13.11.3 #4, D-V5). <paramref name="locations"/> are the lookup's
     /// non-computed platform locations; a platform group's move admits the ones of its SDK.</summary>

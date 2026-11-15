@@ -85,6 +85,19 @@ export interface PlatformTable {
   unstable: string[];
   /** prerelease-dependencies-PRD H5: the `track: stable` globs, looked up stable-only even on a prerelease. */
   stable: string[];
+  /** dependency-companion-pins-PRD F2: coverage.yml's `follow:` rules; the lookup emits a record per match. */
+  follow?: FollowRule[];
+}
+
+/** A coverage.yml `follow:` rule (dependency-companion-pins-PRD §4 A), validated by the server. */
+export interface FollowRule {
+  dependency: string;
+  /** A repository-relative path glob. */
+  path: string;
+  /** The text replaced; its `version` group is the follower's current value. */
+  match: string;
+  /** Optional, over the leader's new value; absent, the first `x.y[.z]` with a prerelease word (S7). */
+  version?: string | null;
 }
 
 export type PlatformLocationKind =

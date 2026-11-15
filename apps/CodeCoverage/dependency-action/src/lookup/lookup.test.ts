@@ -56,4 +56,24 @@ describe('runLookup (Renovate injected, everything else real)', () => {
     expect(document.platforms).toEqual([expect.objectContaining({ sdk: 'node', source: 'none', candidates: [] })]);
     expect(document.problems).toEqual(expect.arrayContaining([expect.objectContaining({ source: 'platform:node' })]));
   });
+
+  it('adds a record per follow match and a problem per pin it cannot follow (companion-pins-PRD F2)', async () => {
+    const { dir, sha } = gitRepo({}, fixture('renovate/custom-managers/input'));
+    const report = readJsonFixture<RenovateReport>('renovate/custom-managers/report.json');
+    const { document, file } = await runLookup({
+      exec: realExec, repoDir: dir, outDir: tempDir(), workDir: tempDir(), expectedSha: sha, fetchActionYml: ymlFetcher,
+      platforms: {
+        sdks: {}, unstable: [], stable: [],
+        follow: [
+          { dependency: 'mcr.microsoft.com/playwright', path: 'docker-compose.yml', match: 'seotester-chromium:(?<version>[0-9.]+)' },
+          { dependency: 'Microsoft.Playwright', path: '**/*.csproj', match: 'Playwright" Version="(?<version>[0-9.]+)' },
+        ],
+      },
+      renovate: async () => ({ report, seconds: 1, log: '' }),
+    });
+    expect(isValid('lookup', JSON.parse(fs.readFileSync(file, 'utf8'))).errors).toBe('');
+    const followers = document.records.filter((r) => r.manager === 'follow');
+    expect(followers.map((r) => [r.packageFile, r.currentValue, r.candidates.map((c) => c.value)])).toEqual([['docker-compose.yml', '1.63.0', ['1.64.1', '1.65.1']]]);
+    expect(document.problems).toEqual(expect.arrayContaining([expect.objectContaining({ source: 'follow[1]' })]));
+  });
 });

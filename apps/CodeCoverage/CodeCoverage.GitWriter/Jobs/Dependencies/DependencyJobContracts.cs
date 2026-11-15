@@ -52,6 +52,18 @@ public class DependencyPatchJobWire : DependencyCommitJobWire
 
     /// <summary>#613 item 2: the lookup's non-computed platform locations, which a platform group's SDK move may edit.</summary>
     public List<PlatformLocationWire>? PlatformLocations { get; set; }
+
+    /// <summary>companion-pins-PRD F3: coverage.yml's <c>follow</c> rules, re-parsed from the default branch by the bot.</summary>
+    public List<FollowRuleWire>? Follow { get; set; }
+}
+
+/// <summary>One coverage.yml <c>follow</c> rule (<see cref="CodeCoverage.Git.Dependencies.DependencyFollowRule"/>).</summary>
+public sealed class FollowRuleWire
+{
+    public string? Dependency { get; set; }
+    public string? Path { get; set; }
+    public string? Match { get; set; }
+    public string? Version { get; set; }
 }
 
 /// <summary>One platform location the lookup reported (platform-record.schema.json).</summary>
