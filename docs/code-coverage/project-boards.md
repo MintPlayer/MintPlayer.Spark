@@ -65,8 +65,12 @@ column no longer exists.
   account's list (`CodeCoverage.GithubIntegration/Services/GitHubProjectVisibility.cs`).
 - Logs: `Rule {EventType} on board #N ({Name}): {Outcome}` at Information. Messages go through the
   `coverage-project-automation` queue.
-- Boards owned by a personal account: the App's permission is the organization Projects permission, and card moves on a
-  user-owned board are not verified (`IInstallationProjects.cs`).
+- **Boards owned by a personal account are not supported.** GitHub Apps have no account-level Projects permission, so an
+  installation token can neither read nor move a user-owned Projects V2 board; only a classic PAT with the `project`
+  scope can. The repository events the rules react to do arrive for user-account installations (PRD §3, "Automation
+  triggers are unaffected"), and only the `projects_v2` board events are organization-only (PRD F2), but with no board
+  to see there is nothing to move. This matches spike S1, where the user-account installation listed zero boards
+  (`IInstallationProjects.cs`).
 
 ## Who sees what
 

@@ -37,6 +37,11 @@
               <li><strong>Checks</strong>, for rules on <em>Check run completed</em>.</li>
             </ul>
             <p>The App listens to the <em>Issues</em>, <em>Pull request</em>, <em>Pull request review</em>, <em>Issue comment</em> and <em>Check run</em> events.</p>
+            <bs-alert [color]="'warning'" class="d-block mb-3" data-testid="pb-setup-org-only">
+              <strong>Only boards owned by an organization can be automated.</strong> GitHub gives Apps no access to a board
+              owned by a personal account, so such a board never appears in CodeCoverage. Move the board to an organization,
+              or create it there.
+            </bs-alert>
             <bs-alert [color]="'info'" class="d-block mb-0" data-testid="pb-setup-accept">
               When the App asks for a new permission, <strong>an owner of the organization has to accept it</strong> on GitHub,
               under the organization's installed GitHub Apps. Until then GitHub sends no events for it, and nothing moves.
@@ -157,7 +162,7 @@
               <li>Is the issue or pull request on the board? With <strong>Add To Board</strong> off, a card that is not on it is skipped.</li>
               <li>Is the board still listed? A board the App can no longer reach, deleted or with the App's access removed, drops off the account's list.</li>
               <li>Does the rule point at a column that still exists? Choose <strong>Sync columns</strong> after changing the columns.</li>
-              <li>Is the board owned by an organization? The App's permission covers organization boards; a board owned by a personal account may not be listed.</li>
+              <li>Is the board owned by an organization? A board owned by a personal account is out of the App's reach.</li>
             </ul>
           }
         }

@@ -64,6 +64,7 @@ describe('ProjectBoardsSetupComponent', () => {
 
     expect(text('pb-setup-permissions')).toContain('Organization projects');
     expect(text('pb-setup-accept')).toContain('an owner of the organization has to accept it');
+    expect(text('pb-setup-org-only')).toContain('Only boards owned by an organization can be automated');
     expect(text('pb-setup-status')).toContain('Status');
   });
 
