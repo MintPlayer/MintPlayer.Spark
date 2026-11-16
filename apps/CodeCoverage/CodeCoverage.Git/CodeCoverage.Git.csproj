@@ -23,8 +23,8 @@
 	<ItemGroup>
 		<!-- [Register] for the merge queue's conflict resolvers and content validators (docs/coverage_merge_queue_PRD.md §10.3).
 		     The attributes assembly holds attributes only; the generator runs at build time and ships nothing. -->
-		<PackageReference Include="MintPlayer.SourceGenerators.Attributes" Version="13.0.0" />
-		<PackageReference Include="MintPlayer.SourceGenerators" Version="13.0.0">
+		<PackageReference Include="MintPlayer.SourceGenerators.Attributes" Version="13.1.2" />
+		<PackageReference Include="MintPlayer.SourceGenerators" Version="13.1.2">
 			<PrivateAssets>all</PrivateAssets>
 			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
 		</PackageReference>
