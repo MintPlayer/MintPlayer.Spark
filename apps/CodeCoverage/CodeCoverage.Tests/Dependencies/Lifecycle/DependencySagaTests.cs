@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json.Nodes;
 using CodeCoverage.Dependencies.Lifecycle;
+using CodeCoverage.Dependencies.Policy;
 using CodeCoverage.Entities;
 using CodeCoverage.Forge;
 using CodeCoverage.Git.Dependencies;
@@ -493,6 +494,36 @@ public class DependencySagaTests : CoverageRavenTest
         (await h.StateAsync()).Approvals.Should().BeEmpty();
     }
 
+    [Theory]
+    [InlineData(EDependencyCommand.Approve, "`/approve <group>`")]
+    [InlineData(EDependencyCommand.Unhold, "`/unhold <group or package>`")]
+    [InlineData(EDependencyCommand.Refresh, "`/refresh`")]
+    public async Task Issue683_a_writers_malformed_command_is_answered_with_its_usage_and_changes_nothing(EDependencyCommand command, string usage)
+    {
+        var h = await HarnessAsync();
+        await PublishAsync(h, ChalkAndNxMajor());
+        var before = (await h.RunAsync()).Run;
+
+        await h.CommandAsync(command, null, malformed: true);
+
+        h.Reactions.On(900).Should().Equal([EForgeReaction.ThumbsDown]);
+        h.Queue.Comments.Should().ContainSingle(c => c.Body.Contains(usage), "the writer learns how to write it");
+        (await h.RunAsync()).Run.Should().Be(before);
+        (await h.StateAsync()).Approvals.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Issue683_a_non_writers_malformed_command_gets_no_usage()
+    {
+        var h = await HarnessAsync();
+        await PublishAsync(h, ChalkAndNxMajor());
+
+        await h.CommandAsync(EDependencyCommand.Unhold, null, actor: "visitor", malformed: true);
+
+        h.Reactions.On(900).Should().Equal([EForgeReaction.ThumbsDown]);
+        h.Queue.Comments.Should().NotContain(c => c.Body.Contains("/unhold <"));
+    }
+
     [Fact]
     public async Task R6_hold_and_unhold_by_a_writer()
     {
@@ -715,6 +746,259 @@ public class DependencySagaTests : CoverageRavenTest
         h.Queue.Comments.Should().Contain(c => c.Body.Contains("Bisect: `lodash` broke CI"));
         var after = await h.RunAsync();
         after.Trigger.Should().Be(EDependencyRunTrigger.Refresh, "everything but the culprit is rebuilt");
+    }
+
+    // ── #683: a cancelled check is no verdict ─────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Spark #682, run 43831965961: a push on top cancelled the bot's commit's jobs (<c>cancel-in-progress</c>), and the
+    /// aggregator and coverage upload then failed because jobs were missing. Nothing about the code failed.
+    /// </summary>
+    private static ForgeCheckState Cancelled(string sha) => new(sha,
+        [
+            new ForgeCheckRun(45, "tests / Spark.Tests 1/4", "completed", "cancelled", 11, "github-actions", null),
+            new ForgeCheckRun(46, "pull-request", "completed", "failure", 11, "github-actions", null),
+        ],
+        [], [new ForgeCheckSuite(11, "completed", "cancelled", "github-actions", 2)]);
+
+    private static void PullRequestHeadAt(DependencyHarness h, string sha)
+    {
+        var pull = h.Updates.PullRequests.Values.Should().ContainSingle().Which;
+        h.Updates.PullRequests[pull.Number] = pull with { HeadSha = sha };
+    }
+
+    [Fact]
+    public async Task Issue683_a_cancelled_check_reruns_once_and_never_starts_a_bisect_or_holds()
+    {
+        var h = await HarnessAsync(bisectBudget: 4);
+        await PublishAsync(h, ChalkAndLodash());
+        var full = h.Writer.RollingSha;
+        PullRequestHeadAt(h, full);
+        h.Queue.CheckStates[full] = Cancelled(full);
+
+        await h.ReleaseAsync(EDependencyStep.PollChecks);
+
+        h.Queue.RerunCalls.Should().ContainSingle().Which.Should().BeEquivalentTo([45L, 46L]);
+        (await h.RunAsync()).Bisect.Should().BeNull("a cancelled check says nothing about the updates");
+
+        // The forge still shows the cancelled runs right after the re-run: that is not a second cancellation.
+        await h.ReleaseAsync(EDependencyStep.PollChecks);
+        h.Queue.RerunCalls.Should().ContainSingle();
+
+        // Cancelled again: reported without blame. /bisect stays the explicit way in.
+        h.Time.Now = h.Time.Now.AddMinutes(3);
+        await h.ReleaseAsync(EDependencyStep.PollChecks);
+
+        h.Queue.RerunCalls.Should().ContainSingle("one re-run per commit");
+        (await h.RunAsync()).Bisect.Should().BeNull();
+        (await h.StateAsync()).Holds.Should().BeEmpty();
+        ((await h.FleetAsync())?.RedVersions ?? []).Should().BeEmpty();
+        h.Queue.Comments.Should().NotContain(c => c.Body.Contains("broke CI") || c.Body.Contains("CI failed"));
+        h.Updates.Checks[^1].Check.Title.Should().Contain("cancelled");
+    }
+
+    [Fact]
+    public async Task Issue683_a_commit_a_newer_push_superseded_is_not_rerun_and_not_judged()
+    {
+        var h = await HarnessAsync(bisectBudget: 4);
+        await PublishAsync(h, ChalkAndLodash());
+        var full = h.Writer.RollingSha;
+        const string human = "d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5";
+        PullRequestHeadAt(h, human);
+        h.Queue.CheckStates[full] = Cancelled(full);
+
+        await h.ReleaseAsync(EDependencyStep.PollChecks);
+
+        h.Queue.Reruns.Should().BeEmpty("re-running the old commit would cancel the newer head's run in the same concurrency group");
+        (await h.RunAsync()).Bisect.Should().BeNull();
+        (await h.StateAsync()).Holds.Should().BeEmpty();
+        h.Updates.Checks[^1].Check.Summary.Should().Contain("d5d5d5d5d5d5").And.Contain("/refresh");
+    }
+
+    [Fact]
+    public async Task Issue683_a_cancelled_check_on_a_bisect_step_names_no_culprit()
+    {
+        // The #682 sequence one step later: the commit without the top suspect is cancelled, not green or red.
+        var h = await HarnessAsync(bisectBudget: 4);
+        await PublishAsync(h, ChalkAndLodash());
+        h.Queue.CheckStates[h.Writer.RollingSha] = Red(h.Writer.RollingSha);
+        await h.ReleaseAsync(EDependencyStep.PollChecks);
+        h.Time.Now = h.Time.Now.AddMinutes(3);
+        h.Writer.RollingSha = "c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4";
+        await h.ReleaseAsync(EDependencyStep.PollChecks);
+        await h.WriteApplyArtifactAsync();
+        await h.ReleaseAsync(EDependencyStep.PollRun);
+        var before = (await h.RunAsync()).Bisect!;
+        before.Excluded.Should().Equal(["lodash"]);
+
+        PullRequestHeadAt(h, h.Writer.RollingSha);
+        h.Queue.CheckStates[h.Writer.RollingSha] = Cancelled(h.Writer.RollingSha);
+        await h.ReleaseAsync(EDependencyStep.PollChecks);
+
+        var after = (await h.RunAsync()).Bisect;
+        after.Should().NotBeNull("a culprit would have ended the bisect and rebuilt without it");
+        after!.Culprit.Should().BeNull();
+        after.Excluded.Should().Equal(["lodash"], "a cancelled step neither convicts nor clears");
+        after.Spent.Should().Be(before.Spent);
+        (await h.StateAsync()).Holds.Should().BeEmpty();
+    }
+
+    // ── #683 H2–H7: a bot hold is evidence, and belongs to the pull request it was gathered on ──────────
+
+    private const string OtherRepositoryId = "Repositories/github/2";
+
+    /// <summary>The N6 sequence: red, re-run, red again, green without lodash. lodash is convicted on the rolling pull request.</summary>
+    private async Task<(DependencyHarness H, int PullRequest)> ConvictLodashAsync()
+    {
+        var h = await HarnessAsync(bisectBudget: 4);
+        await PublishAsync(h, ChalkAndLodash());
+        var number = h.Updates.LastPull.Number;
+        h.Queue.CheckStates[h.Writer.RollingSha] = Red(h.Writer.RollingSha);
+        await h.ReleaseAsync(EDependencyStep.PollChecks);
+        h.Time.Now = h.Time.Now.AddMinutes(3);
+        h.Writer.RollingSha = "c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4";
+        await h.ReleaseAsync(EDependencyStep.PollChecks);
+        await h.WriteApplyArtifactAsync();
+        await h.ReleaseAsync(EDependencyStep.PollRun);
+        h.Queue.CheckStates[h.Writer.RollingSha] = Green(h.Writer.RollingSha);
+        await h.ReleaseAsync(EDependencyStep.PollChecks);
+        (await h.StateAsync()).Holds.Should().ContainSingle(x => x.Id == "red:lodash");
+        return (h, number);
+    }
+
+    /// <summary>Adds a writer's comment hold and another repository's red verdict on lodash, which no close or unhold here touches.</summary>
+    private static async Task SeedForeignEvidenceAsync(DependencyHarness h, DateTime atUtc)
+    {
+        using var session = h.Store.OpenAsyncSession();
+        var states = new DependencyStateStore(session);
+        var state = await states.LoadAsync(RepositoryId);
+        DependencyHolds.AddCommandHold(state, "express", isGroup: false, "maintainer", h.Time.GetUtcNow());
+        var fleet = await states.LoadFleetAsync(DependencyHarness.AccountId);
+        fleet.RedVersions.Add(new DependencyFleetRed { Ecosystem = "npm", DepName = "lodash", Version = "4.17.21", Repository = OtherRepositoryId, AtUtc = atUtc });
+        await session.SaveChangesAsync();
+    }
+
+    [Fact]
+    public async Task Issue683_H2_a_red_verdict_records_the_pull_request_it_was_gathered_on()
+    {
+        var (h, number) = await ConvictLodashAsync();
+
+        var hold = (await h.StateAsync()).Holds.Single(x => x.Id == "red:lodash");
+        hold.PullRequestNumber.Should().Be(number);
+        (await h.FleetAsync())!.RedVersions.Should().ContainSingle(r => r.DepName == "lodash").Which.PullRequestNumber.Should().Be(number);
+    }
+
+    [Fact]
+    public async Task Issue683_H3_closing_the_rolling_pull_request_withdraws_its_red_verdicts_and_nothing_else()
+    {
+        var (h, number) = await ConvictLodashAsync();
+        await SeedForeignEvidenceAsync(h, h.Time.GetUtcNow().UtcDateTime);
+
+        await h.SignalAsync(new DependencyUpdateSignalMessage { RepositoryId = RepositoryId, Kind = EDependencySignal.Closed, Number = number });
+
+        (await h.StateAsync()).Holds.Select(x => x.Id).Should().Equal(["command:express"], "a writer's hold is not evidence of this pull request");
+        (await h.FleetAsync())!.RedVersions.Should().ContainSingle("another repository's verdict is its own evidence")
+            .Which.Repository.Should().Be(OtherRepositoryId);
+    }
+
+    [Fact]
+    public async Task Issue683_H3_a_merge_is_not_a_close_and_keeps_the_red_verdict()
+    {
+        var (h, number) = await ConvictLodashAsync();
+
+        await h.SignalAsync(new DependencyUpdateSignalMessage { RepositoryId = RepositoryId, Kind = EDependencySignal.Merged, Number = number });
+
+        (await h.StateAsync()).Holds.Should().ContainSingle(x => x.Id == "red:lodash");
+    }
+
+    [Fact]
+    public async Task Issue683_H4_unhold_lifts_a_red_hold_and_withdraws_this_repositorys_fleet_entries()
+    {
+        var (h, _) = await ConvictLodashAsync();
+        await SeedForeignEvidenceAsync(h, h.Time.GetUtcNow().UtcDateTime);
+
+        await h.CommandAsync(EDependencyCommand.Unhold, "lodash");
+
+        (await h.StateAsync()).Holds.Select(x => x.Id).Should().Equal(["command:express"]);
+        (await h.FleetAsync())!.RedVersions.Should().ContainSingle().Which.Repository.Should().Be(OtherRepositoryId);
+        h.Queue.Comments.Should().NotContain(c => c.Body.Contains("lift by themselves"));
+        (await h.RunAsync()).Trigger.Should().Be(EDependencyRunTrigger.Refresh);
+    }
+
+    [Fact]
+    public async Task Issue683_H4_unhold_on_nothing_held_is_refused()
+    {
+        var (h, _) = await ConvictLodashAsync();
+
+        await h.CommandAsync(EDependencyCommand.Unhold, "chalk");
+
+        h.Queue.Comments.Should().Contain(c => c.Body == "There is no hold on `chalk`.");
+        (await h.StateAsync()).Holds.Should().ContainSingle(x => x.Id == "red:lodash");
+    }
+
+    [Fact]
+    public async Task Issue683_H5_a_reopened_rolling_pull_request_is_closed_again_with_a_comment()
+    {
+        var (h, number) = await ConvictLodashAsync();
+        await h.SignalAsync(new DependencyUpdateSignalMessage { RepositoryId = RepositoryId, Kind = EDependencySignal.Closed, Number = number });
+
+        await h.SignalAsync(new DependencyUpdateSignalMessage { RepositoryId = RepositoryId, Kind = EDependencySignal.Reopened, Number = number });
+
+        h.Updates.Closed.Should().Equal([number]);
+        h.Queue.Comments.Should().Contain(c => c.Number == number && c.Body.Contains("closed again") && c.Body.Contains("/refresh"));
+        (await h.RunAsync()).PullRequestNumber.HasValue.Should().BeFalse("the bot does not adopt it");
+        (await h.StateAsync()).Holds.Should().NotContain(x => x.Id == "red:lodash", "what the close withdrew stays withdrawn");
+    }
+
+    [Fact]
+    public async Task Issue683_H5_the_tracked_pull_request_is_never_closed_on_a_reopen_signal()
+    {
+        var (h, number) = await ConvictLodashAsync();
+
+        await h.SignalAsync(new DependencyUpdateSignalMessage { RepositoryId = RepositoryId, Kind = EDependencySignal.Reopened, Number = number });
+
+        h.Updates.Closed.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Issue683_H6_a_merge_prunes_this_repositorys_red_entries_for_the_versions_it_applied()
+    {
+        var h = await HarnessAsync();
+        using (var session = h.Store.OpenAsyncSession())
+        {
+            var fleet = await new DependencyStateStore(session).LoadFleetAsync(DependencyHarness.AccountId);
+            fleet.RedVersions.Add(new DependencyFleetRed { Ecosystem = "npm", DepName = "chalk", Version = "4.1.2", Repository = RepositoryId, AtUtc = h.Time.GetUtcNow().UtcDateTime });
+            // Another repository's verdict on another version: it does not keep 4.1.2 out here, and this merge does not prune it.
+            fleet.RedVersions.Add(new DependencyFleetRed { Ecosystem = "npm", DepName = "chalk", Version = "4.1.1", Repository = OtherRepositoryId, AtUtc = h.Time.GetUtcNow().UtcDateTime });
+            await session.SaveChangesAsync();
+        }
+        await PublishAsync(h, ChalkAndLodash());
+
+        await h.SignalAsync(new DependencyUpdateSignalMessage { RepositoryId = RepositoryId, Kind = EDependencySignal.Merged, Number = h.Updates.LastPull.Number });
+
+        (await h.FleetAsync())!.RedVersions.Should().ContainSingle("chalk 4.1.2 works here now; the other repository's verdict stays")
+            .Which.Repository.Should().Be(OtherRepositoryId);
+    }
+
+    [Fact]
+    public async Task Issue683_H7_a_fleet_red_entry_expires_after_14_days()
+    {
+        var h = await HarnessAsync();
+        await SeedForeignEvidenceAsync(h, h.Time.GetUtcNow().UtcDateTime.AddDays(-15));
+
+        await PublishAsync(h, ChalkAndLodash());
+
+        (await h.FleetAsync())!.RedVersions.Should().BeEmpty();
+        h.Writer.Requests("work-ref").Where(r => r.PlanJson is not null).Select(r => DependencyContract.Deserialize<DependencyPlan>(r.PlanJson!)!)
+            .Last().Groups.Select(g => g.Group).Should().Contain("lodash", "an expired verdict no longer holds the version out");
+    }
+
+    [Fact]
+    public void Issue683_H7_a_fleet_red_entry_lives_exactly_14_days()
+    {
+        var now = new DateTime(2026, 11, 16, 12, 0, 0, DateTimeKind.Utc);
+        DependencyFleetState.IsLive(new DependencyFleetRed { AtUtc = now.AddDays(-14).AddSeconds(1) }, now).Should().BeTrue();
+        DependencyFleetState.IsLive(new DependencyFleetRed { AtUtc = now.AddDays(-14) }, now).Should().BeFalse();
     }
 
     // ── #613 item 4: an outdated lookup workflow is refreshed by a pull request ───────────────────

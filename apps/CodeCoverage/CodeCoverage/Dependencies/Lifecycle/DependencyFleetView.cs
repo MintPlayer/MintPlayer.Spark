@@ -227,7 +227,7 @@ public static class DependencyFleetView
     private static (IReadOnlyList<DependencyPackageRow> Rows, bool Truncated) Packages(DependencyFleetInput input, IReadOnlyList<Repository> repositories)
     {
         var visible = repositories.Select(r => r.Id!).ToHashSet(StringComparer.Ordinal);
-        var red = (input.Fleet?.RedVersions ?? []).Where(r => visible.Contains(r.Repository)).ToList();
+        var red = (input.Fleet?.RedVersions ?? []).Where(r => visible.Contains(r.Repository) && DependencyFleetState.IsLive(r, input.Now.UtcDateTime)).ToList();
         var uses = new Dictionary<(string Ecosystem, string Name), List<DependencyPackageUse>>(KeyComparer.Instance);
         foreach (var repository in repositories)
         {

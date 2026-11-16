@@ -89,6 +89,18 @@ public class GitHubEventsCommandTests : CoverageRavenTest
     }
 
     [Fact]
+    public async Task Issue683_a_malformed_dependency_command_is_raised_as_malformed_so_a_writer_gets_its_usage()
+    {
+        using var store = GetDocumentStore();
+        await SeedAsync(store, busy: false);
+
+        var bus = await DeliverAsync(store, "issue_comment", Comment("/unhold"));
+
+        bus.Of<ForgeWebhookMessage<DependencyCommandIssued>>().Should().ContainSingle().Which.Event
+            .Should().Be(new DependencyCommandIssued(RepositoryId, 7, 555, EDependencyCommand.Unhold, null, "maintainer", Malformed: true));
+    }
+
+    [Fact]
     public async Task A_command_in_an_unknown_repository_is_dropped()
     {
         using var store = GetDocumentStore();

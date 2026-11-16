@@ -147,7 +147,7 @@ public class GroupHoldTests : CoverageRavenTest
             (await SlotAsync(store, Npm(Candidate(EUpdateType.Major, $"18.{slot}.0")), clock)).Groups.Should().NotContain(g => g.Group == "chalk");
         }
 
-        await MutateAsync(store, state => DependencyHolds.RemoveCommandHold(state, "chalk").Should().BeTrue());
+        await MutateAsync(store, state => DependencyHolds.RemoveHold(state, "chalk").Should().NotBeEmpty());
         (await SlotAsync(store, Npm(), clock)).Groups.Should().Contain(g => g.Group == "chalk");
     }
 

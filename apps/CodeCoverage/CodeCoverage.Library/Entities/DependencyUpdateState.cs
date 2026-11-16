@@ -134,6 +134,13 @@ public class DependencyHold
 
     /// <summary>The plan whose apply produced a blocker hold.</summary>
     public string? PlanId { get; set; }
+
+    /// <summary>#683 H2: the rolling pull request whose CI produced a <c>red:</c> hold. Closing that pull request
+    /// without merging withdraws the hold (H3); null on a hold that no pull request's CI produced.</summary>
+    public int? PullRequestNumber { get; set; }
+
+    /// <summary>#683 H2: the failing run that convicted the group.</summary>
+    public string? RunUrl { get; set; }
 }
 
 public class DependencyBlockerSeen
@@ -205,6 +212,16 @@ public class DependencyFleetState
     /// of the 30-minute propagation debounce.</summary>
     public List<DependencyProducerEvent> ProducerEvents { get; set; } = [];
 
+    /// <summary>#683 H7 (owner, 2026-11-16): a red verdict blocks the fleet for 14 days, then expires, so a stale verdict
+    /// cannot keep a version out of every repository for ever.</summary>
+    public static readonly TimeSpan RedLifetime = TimeSpan.FromDays(14);
+
+    /// <summary>#683 H7: whether <paramref name="red"/> still blocks at <paramref name="nowUtc"/>.</summary>
+    public static bool IsLive(DependencyFleetRed red, DateTime nowUtc) => red.AtUtc > nowUtc - RedLifetime;
+
+    /// <summary>#683 H7: drops the expired red entries; the number dropped.</summary>
+    public int PruneExpiredRed(DateTime nowUtc) => RedVersions.RemoveAll(r => !IsLive(r, nowUtc));
+
     public static string ForAccount(string accountId)
     {
         const string prefix = "Accounts/";
@@ -224,6 +241,10 @@ public class DependencyFleetRed
     public string Repository { get; set; } = string.Empty;
 
     public string? RunUrl { get; set; }
+
+    /// <summary>#683 H2: the rolling pull request whose CI convicted it. Closing that pull request without merging, or
+    /// <c>/unhold</c> on its group, withdraws the entry (H3, H4).</summary>
+    public int? PullRequestNumber { get; set; }
 
     public DateTime AtUtc { get; set; }
 }

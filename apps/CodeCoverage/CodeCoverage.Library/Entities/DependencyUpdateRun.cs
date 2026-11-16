@@ -205,6 +205,14 @@ public class DependencyUpdateRun
 
     public DependencyBisect? Bisect { get; set; }
 
+    /// <summary>
+    /// #683: the commit whose cancelled checks were re-run, once per commit, because a cancelled check is no verdict on the
+    /// updates; and when, so the forge's lag in showing the re-run is not read as a second cancellation.
+    /// </summary>
+    public string? CancelledRerunSha { get; set; }
+
+    public DateTime? CancelledRerunAtUtc { get; set; }
+
     /// <summary>The coverage gate's answer on the last green head (R11), for the body.</summary>
     public string? CoverageNote { get; set; }
 

@@ -87,7 +87,7 @@ public static class DependencyHolds
     }
 
     /// <summary>§7.5 <c>hold &lt;group|package&gt;</c>: a group name holds that group, anything else the dependency.
-    /// It lifts only on <see cref="RemoveCommandHold"/>.</summary>
+    /// It lifts only on <see cref="RemoveHold"/>.</summary>
     public static DependencyHold AddCommandHold(DependencyUpdateState state, string target, bool isGroup, string by, DateTimeOffset now)
     {
         var hold = new DependencyHold
@@ -105,10 +105,27 @@ public static class DependencyHolds
         return hold;
     }
 
-    /// <summary>§7.5 <c>unhold</c>: removes a command hold and a human hold on the target; never a bot hold (R2's clock is
-    /// the bot's, and an enforced rule is never a hold).</summary>
-    public static bool RemoveCommandHold(DependencyUpdateState state, string target)
-        => state.Holds.RemoveAll(h => h.Id == $"command:{target}" || h.Id == $"human:{target}") > 0;
+    /// <summary>The prefixes of the holds <c>unhold</c> lifts: the comment and human holds, and since #683 H4 the bot's own
+    /// (a writer overrides the bot's evidence). An enforced rule is never a hold.</summary>
+    private static readonly string[] UnholdPrefixes = ["command:", "human:", "red:", "blocker:", "apply:", "migrate:"];
+
+    /// <summary>§7.5 <c>unhold</c>: removes every hold on the target (<see cref="UnholdPrefixes"/>); the holds removed.</summary>
+    public static IReadOnlyList<DependencyHold> RemoveHold(DependencyUpdateState state, string target)
+    {
+        var ids = UnholdPrefixes.Select(p => p + target).ToHashSet(StringComparer.Ordinal);
+        var lifted = state.Holds.Where(h => ids.Contains(h.Id)).ToList();
+        state.Holds.RemoveAll(lifted.Contains);
+        return lifted;
+    }
+
+    /// <summary>#683 H3: closing rolling pull request <paramref name="pullRequestNumber"/> without merging withdraws the red
+    /// verdicts taken on it; the holds removed. Human, comment, blocker, apply and migrate holds stay (owner, Q1).</summary>
+    public static IReadOnlyList<DependencyHold> WithdrawRedVerdicts(DependencyUpdateState state, int pullRequestNumber)
+    {
+        var withdrawn = state.Holds.Where(h => h.Id.StartsWith("red:", StringComparison.Ordinal) && h.PullRequestNumber == pullRequestNumber).ToList();
+        state.Holds.RemoveAll(withdrawn.Contains);
+        return withdrawn;
+    }
 
     /// <summary>
     /// R6 <c>approve &lt;group&gt;</c>, bound per gap E to what the pull request body showed as awaiting approval: the group,
