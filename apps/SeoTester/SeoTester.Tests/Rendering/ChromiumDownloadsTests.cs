@@ -13,6 +13,7 @@ namespace SeoTester.Tests.Rendering;
 /// "Downloads never reach Chromium"). Every case is a response measured in headless Chromium (Playwright 1.63's build,
 /// 2026-10-15): one iframe per response, its download event the verdict. The predicate must agree with all of them, and
 /// Chromium must still save exactly the ones it saved then (the media types aside: which of those it decodes is the build's).
+/// One verdict moved since: Playwright 1.64's build decodes JPEG XL, so <c>image/jxl</c> renders (PR #682, CI job 133151229940).
 /// </summary>
 [Collection(BrowserCollection.Name)]
 public sealed class ChromiumDownloadsTests
@@ -88,8 +89,8 @@ public sealed class ChromiumDownloadsTests
         // Images: the formats Chromium decodes.
         Render("image/png", Png), Render("image/png", Binary), Render("image/jpeg", Png), Render("image/gif", Png), Render("image/webp", Png), Render("image/avif", Png),
         Render("image/bmp", Png), Render("image/x-icon", Png), Render("image/pjpeg", Png), Render("image/jpg", Png), Render("image/apng", Png),
-        Render("image/vnd.microsoft.icon", Png), Render("image/x-xbitmap", Png), Render("image/x-png", Png),
-        Save("image/tiff", Png), Save("image/heic", Png), Save("image/x-unknown", Png), Save("image/jxl", Png), Save("image/x-ms-bmp", Png),
+        Render("image/vnd.microsoft.icon", Png), Render("image/x-xbitmap", Png), Render("image/x-png", Png), Render("image/jxl", Png),
+        Save("image/tiff", Png), Save("image/heic", Png), Save("image/x-unknown", Png), Save("image/x-ms-bmp", Png),
 
         // Media: the containers the build decodes.
         Render("audio/mpeg", Binary), Render("audio/ogg", Binary), Render("audio/wav", Binary), Render("audio/webm", Binary), Render("audio/flac", Binary),
