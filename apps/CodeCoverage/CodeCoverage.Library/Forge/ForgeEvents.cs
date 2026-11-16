@@ -324,7 +324,8 @@ public sealed record DependencyCommandIssued(
     long CommentId,
     EDependencyCommand Command,
     string? Argument,
-    string ActorLogin) : IForgeEvent;
+    string ActorLogin,
+    bool Malformed = false) : IForgeEvent;
 
 public enum EDependencyCommand
 {

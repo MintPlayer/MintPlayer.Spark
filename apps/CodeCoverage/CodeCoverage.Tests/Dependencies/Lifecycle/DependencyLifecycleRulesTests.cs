@@ -26,15 +26,14 @@ public class DependencyCommandParserTests
         parsed.Should().NotBeNull();
         parsed!.Value.Command.Should().Be(command);
         parsed.Value.Argument.Should().Be(argument);
+        parsed.Value.Malformed.Should().BeFalse();
     }
 
     [Theory]
     [InlineData("")]
     [InlineData("I approve of this")]
-    [InlineData("/approve")]
-    [InlineData("/hold")]
-    [InlineData("/refresh please")]
     [InlineData("/queue")]
+    [InlineData("/unhlod lodash")] // an unknown slash word may be another bot's command: never answered
     // #660 G1: the bare words are ordinary comments now.
     [InlineData("approve angular")]
     [InlineData("Hold on, this breaks the build")]
@@ -43,9 +42,30 @@ public class DependencyCommandParserTests
     public void Anything_else_is_an_ordinary_comment(string body)
         => DependencyCommandParser.Parse(body).Should().BeNull();
 
+    /// <summary>#683: a known command with the wrong arguments is malformed, and a writer gets its usage back.</summary>
+    [Theory]
+    [InlineData("/approve", EDependencyCommand.Approve)]
+    [InlineData("/hold", EDependencyCommand.Hold)]
+    [InlineData("/unhold  ", EDependencyCommand.Unhold)]
+    [InlineData("/unhold ``", EDependencyCommand.Unhold)]
+    [InlineData("/refresh please", EDependencyCommand.Refresh)]
+    [InlineData("/bisect lodash", EDependencyCommand.Bisect)]
+    public void A_known_command_with_the_wrong_arguments_is_malformed(string body, EDependencyCommand command)
+    {
+        var parsed = DependencyCommandParser.Parse(body);
+        parsed.Should().NotBeNull();
+        parsed!.Value.Command.Should().Be(command);
+        parsed.Value.Argument.Should().BeNull();
+        parsed.Value.Malformed.Should().BeTrue();
+    }
+
     [Fact]
-    public void An_overlong_argument_is_not_a_command()
-        => DependencyCommandParser.Parse("/approve " + new string('a', DependencyCommandParser.MaxArgumentLength + 1)).Should().BeNull();
+    public void An_overlong_argument_is_malformed()
+        => DependencyCommandParser.Parse("/approve " + new string('a', DependencyCommandParser.MaxArgumentLength + 1))!.Value.Malformed.Should().BeTrue();
+
+    [Fact]
+    public void Every_command_has_a_usage_line()
+        => Enum.GetValues<EDependencyCommand>().Select(DependencyCommandParser.Usage).Should().AllSatisfy(u => u.Should().StartWith("/"));
 }
 
 /// <summary>Q8: the slot, in the account's time zone, spread within the hour, one key per repository and slot.</summary>

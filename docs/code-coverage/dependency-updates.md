@@ -417,7 +417,7 @@ takes it (*Comment*):
 | `platform major 11.0 → 12.0` | An SDK major. Without `platforms.<sdk>.autoMerge: major` it always waits (§6) |
 | `N location(s) the bot cannot edit would stay behind` | A computed location or an unresolved expression on the current channel (§4) |
 
-Every command starts with `/`; a comment that starts with a bare word (`approve angular`) is an ordinary comment.
+Every command starts with `/`; a comment that starts with a bare word (`approve angular`) is an ordinary comment. A writer who gets a command's arguments wrong (`/unhold` without a target, `/refresh now`) gets 👎 and a comment with its usage; nothing changes. An unknown word (`/unhlod`) stays an ordinary comment, since other bots read `/` commands too.
 Edited comments and comments by bots are ignored.
 
 The bot reacts on the comment, keeping one reaction that it replaces as the command moves on

@@ -250,11 +250,11 @@ internal sealed class DependencyHarness
     /// <summary>#568 D13: the release line the harness drives (its triggers, commands and reads); null for the default branch's run.</summary>
     public string? Line { get; set; }
 
-    public Task CommandAsync(EDependencyCommand command, string? argument, string actor = "maintainer", long commentId = 900)
+    public Task CommandAsync(EDependencyCommand command, string? argument, string actor = "maintainer", long commentId = 900, bool malformed = false)
         => SignalAsync(new DependencyUpdateSignalMessage
         {
             RepositoryId = RepositoryId, Line = Line, Kind = EDependencySignal.Command, Number = Updates.LastPull.Number, CommentId = commentId,
-            Command = command, Argument = argument, Actor = actor,
+            Command = command, Argument = argument, Actor = actor, Malformed = malformed,
         });
 
     public async Task StepAsync(DependencyUpdateStepMessage step)

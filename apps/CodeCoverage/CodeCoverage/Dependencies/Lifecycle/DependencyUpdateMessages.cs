@@ -84,6 +84,9 @@ public sealed record DependencyUpdateSignalMessage
     public string? Argument { get; init; }
     public string? Actor { get; init; }
 
+    /// <summary>#683: a known command with the wrong arguments; a writer gets its usage back.</summary>
+    public bool Malformed { get; init; }
+
     /// <summary>
     /// A person is waiting on this signal (a repository's own switch, "Run the scheduled slot now"): it was broadcast
     /// expedited, and the run it starts schedules its first step expedited too (D-O15). A message cannot read its own

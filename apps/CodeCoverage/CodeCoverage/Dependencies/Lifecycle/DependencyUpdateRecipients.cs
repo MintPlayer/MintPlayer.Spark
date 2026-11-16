@@ -83,7 +83,7 @@ public partial class DependencyUpdateEventsRecipient :
                 await SignalAsync(new DependencyUpdateSignalMessage
                 {
                     RepositoryId = evt.RepositoryId, Line = run.Line, Kind = EDependencySignal.Command, Number = evt.Number, CommentId = evt.CommentId,
-                    Command = evt.Command, Argument = evt.Argument, Actor = evt.ActorLogin,
+                    Command = evt.Command, Argument = evt.Argument, Actor = evt.ActorLogin, Malformed = evt.Malformed,
                 }, cancellationToken);
             }
         if (handled || runs.Count == 0 || await session.LoadAsync<Repository>(evt.RepositoryId, cancellationToken) is not { } repository) return;

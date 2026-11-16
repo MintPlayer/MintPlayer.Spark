@@ -122,7 +122,7 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
                 break;
 
             case EDependencySignal.Command when signal.Number is { } number && signal.Command is { } command && !string.IsNullOrEmpty(signal.Actor):
-                await CommandAsync(context, number, signal.CommentId, command, signal.Argument, signal.Actor, ct);
+                await CommandAsync(context, number, signal.CommentId, command, signal.Argument, signal.Actor, signal.Malformed, ct);
                 break;
 
             case EDependencySignal.Merged when signal.Number is { } merged:
@@ -1548,7 +1548,8 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
     /// recorded, 🚀 for a refresh or a bisection that started (their end reacts again, G3), 👍 for a refresh a going run
     /// absorbs, 👎 for a refusal.
     /// </summary>
-    private async Task CommandAsync(Context context, int number, long? commentId, EDependencyCommand command, string? argument, string actor, CancellationToken ct)
+    private async Task CommandAsync(Context context, int number, long? commentId, EDependencyCommand command, string? argument, string actor, bool malformed,
+        CancellationToken ct)
     {
         if (number != context.Run.PullRequestNumber) return;
         var invocation = await commands.BeginAsync(context.Repository, number, commentId, CommandText(command, argument), actor, ct);
@@ -1556,7 +1557,7 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
         // Before anything the command itself ends: a bisection with no suspect ends in the same handler, and its 👎 must
         // come after the 🚀, not be overwritten by it.
         var first = afterSave.Count;
-        var answer = await RunCommandAsync(context, invocation, commentId, command, argument, actor, ct);
+        var answer = await RunCommandAsync(context, invocation, commentId, command, argument, actor, malformed, ct);
         afterSave.Insert(first, token => answer.Outcome == ECommandOutcome.Started
             ? commands.StartedAsync(invocation, answer.Text, dependencyRun: context.Run.Run.ToString(CultureInfo.InvariantCulture), cancellationToken: token)
             : commands.FinishAsync(invocation, answer.Outcome, answer.Text, token));
@@ -1566,7 +1567,7 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
         => argument is null ? $"/{Word(command)}" : $"/{Word(command)} {argument}";
 
     private async Task<CommandAnswer> RunCommandAsync(Context context, string? invocation, long? commentId, EDependencyCommand command, string? argument, string actor,
-        CancellationToken ct)
+        bool malformed, CancellationToken ct)
     {
         var (repository, run) = (context.Repository, context.Run);
         // A writer, read from the forge per command (§7.5); anyone else gets 👎 and nothing happens.
@@ -1574,6 +1575,14 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
         {
             run.Note(Now, $"@{actor}'s {Word(command)} was refused: no write access");
             return $"`/{Word(command)}` needs write access to the repository; @{actor} does not have it.";
+        }
+        // #683: a writer's command with the wrong arguments is answered with how to write it, and does nothing.
+        if (malformed)
+        {
+            var usage = $"Usage: `{DependencyCommandParser.Usage(command)}` as the first line of a new comment.";
+            run.Note(Now, $"@{actor}'s {Word(command)} was malformed");
+            await CommentAsync(context, usage, ct);
+            return usage;
         }
         var data = await session.LoadAsync<DependencyUpdateRunData>(DependencyUpdateRunData.ForRepository(repository.Id!, run.Line), ct);
         var report = data?.ReportJson is { } json ? JsonSerializer.Deserialize<DependencyRunReport>(json, JsonSerializerOptions.Web)! : new DependencyRunReport();

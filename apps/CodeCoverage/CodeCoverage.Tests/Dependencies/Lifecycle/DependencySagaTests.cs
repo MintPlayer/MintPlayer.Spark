@@ -494,6 +494,36 @@ public class DependencySagaTests : CoverageRavenTest
         (await h.StateAsync()).Approvals.Should().BeEmpty();
     }
 
+    [Theory]
+    [InlineData(EDependencyCommand.Approve, "`/approve <group>`")]
+    [InlineData(EDependencyCommand.Unhold, "`/unhold <group or package>`")]
+    [InlineData(EDependencyCommand.Refresh, "`/refresh`")]
+    public async Task Issue683_a_writers_malformed_command_is_answered_with_its_usage_and_changes_nothing(EDependencyCommand command, string usage)
+    {
+        var h = await HarnessAsync();
+        await PublishAsync(h, ChalkAndNxMajor());
+        var before = (await h.RunAsync()).Run;
+
+        await h.CommandAsync(command, null, malformed: true);
+
+        h.Reactions.On(900).Should().Equal([EForgeReaction.ThumbsDown]);
+        h.Queue.Comments.Should().ContainSingle(c => c.Body.Contains(usage), "the writer learns how to write it");
+        (await h.RunAsync()).Run.Should().Be(before);
+        (await h.StateAsync()).Approvals.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Issue683_a_non_writers_malformed_command_gets_no_usage()
+    {
+        var h = await HarnessAsync();
+        await PublishAsync(h, ChalkAndNxMajor());
+
+        await h.CommandAsync(EDependencyCommand.Unhold, null, actor: "visitor", malformed: true);
+
+        h.Reactions.On(900).Should().Equal([EForgeReaction.ThumbsDown]);
+        h.Queue.Comments.Should().NotContain(c => c.Body.Contains("/unhold <"));
+    }
+
     [Fact]
     public async Task R6_hold_and_unhold_by_a_writer()
     {
