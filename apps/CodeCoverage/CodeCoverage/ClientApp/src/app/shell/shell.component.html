@@ -1,32 +1,25 @@
 <spark-shell [title]="'app.title' | t" breakpoint="md">
   <!--
-    Replaces the slot's default (<spark-language-selector/>), so the library's language
+    The language selector sits in the sidebar, under the title and above the menu, which leaves the topbar to the
+    account controls. Replacing the topbar slot below drops the slot's default (<spark-language-selector/>), so the
     selector is placed here explicitly — omitting it would silently drop it.
-    The sign-in control is a plain link to /sign-in, which renders one button per provider
-    the server reports. It is app-owned only because this topbar slot is; there is nothing
-    forge-specific left in it.
   -->
-  <div *sparkShellTopbarEnd class="d-flex align-items-center gap-2">
-    <spark-language-selector />
-    <!--
-      The library bar, not a hand-written copy of it. It renders Account + logout when signed in,
-      and the sign-in link otherwise. The account page shows who is signed in and offers passkeys
-      from the SERVER's capabilities plus browser support, which this app could not do from a
-      routerLink. Its sign-in target resolves to loginUrl, which app.config.ts sets to
-      '/sign-in', so the destination is unchanged.
+  <spark-language-selector *sparkShellSidebarTop />
 
-      The passkey page is deliberately not a programUnits.json entry: the sidebar is two units, and
-      a credential page is account plumbing rather than a program unit.
-    -->
-    <!--
-      How to connect an AI agent to /mcp, for everyone (public repositories need no sign-in). A topbar link rather than
-      a programUnits.json entry: a url unit always opens in a new tab, and this is a page of the app.
-    -->
-    <a class="btn btn-sm topbar-btn text-nowrap" routerLink="/connect-agent" [title]="'mcpUi.title' | t" data-connect-agent-link>
-      <i class="bi bi-robot"></i><span class="d-none d-sm-inline"> {{ 'mcpUi.navLink' | t }}</span>
-    </a>
-    <spark-auth-bar />
-  </div>
+  <!--
+    The library bar, not a hand-written copy of it. It renders Account + logout when signed in,
+    and the sign-in link otherwise. The account page shows who is signed in and offers passkeys
+    from the SERVER's capabilities plus browser support, which this app could not do from a
+    routerLink. Its sign-in target resolves to loginUrl, which app.config.ts sets to
+    '/sign-in', so the destination is unchanged.
+
+    The passkey page is deliberately not a programUnits.json entry: the sidebar is two units, and
+    a credential page is account plumbing rather than a program unit.
+
+    Connecting an AI agent (/connect-agent) is the Guides group's "Connect an AI agent" unit, a router link in the same
+    tab; the topbar no longer repeats it.
+  -->
+  <spark-auth-bar *sparkShellTopbarEnd />
 
   <ng-container *sparkShellMainHeader>
     @if (loginError(); as error) {

@@ -31,7 +31,7 @@
     "getting started with the Set up features chooser (/onboarding/setup, first, at order 0 so no other unit moved),",
     "setting up coverage uploads (/coverage/setup, which was the repository page's setup panel), the merge queue's GitHub",
     "setup (/merge-queue/setup), the dependency updater's setup (/dependency-updates/setup), PR size labels",
-    "(/pr-size-labels/setup), backports to release lines (/backports/setup), project board automation (/project-boards/setup, #625) and connecting an AI agent to /mcp (/connect-agent, also the topbar's button). A url unit",
+    "(/pr-size-labels/setup), backports to release lines (/backports/setup), project board automation (/project-boards/setup, #625) and connecting an AI agent to /mcp (/connect-agent; the topbar no longer repeats it). A url unit",
     "has no target to grant, so the group is shown to everyone. The merge queue unit kept its id when it moved here from",
     "the Coverage group, and every unit kept its id when the coverage guide took the first place."
   ],

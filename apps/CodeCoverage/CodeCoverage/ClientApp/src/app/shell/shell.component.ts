@@ -4,6 +4,7 @@ import { BsAlertComponent } from '@mintplayer/ng-bootstrap/alert';
 import { Color } from '@mintplayer/ng-bootstrap';
 import {
   SparkLanguageSelectorComponent, SparkShellComponent, SparkShellTopbarEndDirective, SparkShellMainHeaderDirective,
+  SparkShellSidebarTopDirective,
 } from '@mintplayer/ng-spark/shell';
 import { TranslateKeyPipe } from '@mintplayer/ng-spark/pipes';
 import { SparkAuthBarComponent } from '@mintplayer/ng-spark/auth/auth-bar';
@@ -28,7 +29,8 @@ import { SparkAuthBarComponent } from '@mintplayer/ng-spark/auth/auth-bar';
   selector: 'app-shell',
   imports: [
     RouterModule,
-    SparkShellComponent, SparkShellTopbarEndDirective, SparkShellMainHeaderDirective, SparkLanguageSelectorComponent,
+    SparkShellComponent, SparkShellTopbarEndDirective, SparkShellMainHeaderDirective, SparkShellSidebarTopDirective,
+    SparkLanguageSelectorComponent,
     BsAlertComponent,
     TranslateKeyPipe,
     SparkAuthBarComponent,

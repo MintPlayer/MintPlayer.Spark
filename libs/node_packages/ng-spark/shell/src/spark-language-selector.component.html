@@ -1,12 +1,16 @@
 @if (choices().length > 1) {
   <details #menu>
-    <summary [attr.aria-label]="lang.t('language', 'Language')">{{ lang.language().toUpperCase() }}</summary>
+    <summary [attr.aria-label]="lang.t('language', 'Language')">
+      <!-- The current language under its own name; a phone-width topbar falls back to the code (see the stylesheet). -->
+      <span class="spark-lang-name" [attr.lang]="lang.language()">{{ current()?.native ?? (current()?.name | resolveTranslation) }}</span>
+      <span class="spark-lang-code" aria-hidden="true">{{ lang.language().toUpperCase() }}</span>
+    </summary>
     <ul>
       @for (choice of choices(); track choice.code) {
         <li>
           <a [routerLink]="linkTo(choice.code)" [attr.hreflang]="choice.code" [attr.lang]="choice.code"
              [attr.aria-current]="choice.code === lang.language() ? 'true' : null" (click)="menu.open = false">
-            {{ choice.name | resolveTranslation }}
+            {{ choice.native ?? (choice.name | resolveTranslation) }}
           </a>
         </li>
       }

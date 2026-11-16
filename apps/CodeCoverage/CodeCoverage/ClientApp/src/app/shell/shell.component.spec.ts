@@ -5,7 +5,8 @@ import { provideRouter } from '@angular/router';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { describe, expect, it } from 'vitest';
 import {
-  SparkLanguageSelectorComponent, SparkShellComponent, SparkShellMainHeaderDirective, SparkShellTopbarEndDirective,
+  SparkLanguageSelectorComponent, SparkShellComponent, SparkShellMainHeaderDirective, SparkShellSidebarTopDirective,
+  SparkShellTopbarEndDirective,
 } from '@mintplayer/ng-spark/shell';
 import { SparkLanguageService } from '@mintplayer/ng-spark/services';
 import { SparkAuthBarComponent } from '@mintplayer/ng-spark/auth/auth-bar';
@@ -34,6 +35,15 @@ class StubMainHeader {
   constructor() { inject(ViewContainerRef).createEmbeddedView(inject(TemplateRef)); }
 }
 
+// Marks where the template went, so a test can tell the sidebar slot from the topbar one.
+@Directive({ selector: '[sparkShellSidebarTop]' })
+class StubSidebarTop {
+  constructor() {
+    const view = inject(ViewContainerRef).createEmbeddedView(inject(TemplateRef));
+    (view.rootNodes[0] as HTMLElement).setAttribute('data-slot', 'sidebar-top');
+  }
+}
+
 @Component({ selector: 'spark-language-selector', template: '' })
 class StubLanguageSelector {}
 
@@ -53,9 +63,9 @@ describe('ShellComponent', () => {
     TestBed.overrideComponent(ShellComponent, {
       remove: {
         imports: [SparkShellComponent, SparkShellTopbarEndDirective, SparkShellMainHeaderDirective,
-          SparkLanguageSelectorComponent, SparkAuthBarComponent],
+          SparkShellSidebarTopDirective, SparkLanguageSelectorComponent, SparkAuthBarComponent],
       },
-      add: { imports: [StubSparkShell, StubTopbarEnd, StubMainHeader, StubLanguageSelector, StubAuthBar] },
+      add: { imports: [StubSparkShell, StubTopbarEnd, StubMainHeader, StubSidebarTop, StubLanguageSelector, StubAuthBar] },
     });
     const fixture = TestBed.createComponent(ShellComponent);
     await settle(fixture);
@@ -74,11 +84,14 @@ describe('ShellComponent', () => {
     expect(el(fixture).querySelector('router-outlet')).not.toBeNull();
   });
 
-  // Replacing the topbar slot drops Spark's own selector, so the shell must place it again.
-  it("keeps Spark's language selector in the replaced topbar slot", async () => {
+  // Replacing the topbar slot drops Spark's own selector, so the shell must place it again: in the sidebar, under the
+  // title. The topbar keeps the account controls only; the AI-agent link is the Guides unit, not a topbar button.
+  it("places Spark's language selector in the sidebar, and leaves the topbar to the account controls", async () => {
     const { fixture } = await setup();
 
-    expect(el(fixture).querySelector('spark-language-selector')).not.toBeNull();
+    expect(el(fixture).querySelectorAll('spark-language-selector').length).toBe(1);
+    expect(el(fixture).querySelector('spark-language-selector')!.getAttribute('data-slot')).toBe('sidebar-top');
+    expect(el(fixture).querySelector('[data-connect-agent-link]')).toBeNull();
   });
 
   it('shows a login error in the main header, and clears it when the alert is dismissed', async () => {

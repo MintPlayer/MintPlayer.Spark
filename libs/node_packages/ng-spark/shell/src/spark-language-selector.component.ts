@@ -10,7 +10,8 @@ import { ResolveTranslationPipe } from '@mintplayer/ng-spark/pipes';
  * `?lang=<code>`. Following one switches the language without a reload (SparkLanguageService reads the `lang` of every
  * navigation), and because the choices are real links, a crawler reaches every language of every page. Renders nothing
  * when the app declares one language (or none), so hosts can include it unconditionally: `<spark-shell>`'s topbar does
- * exactly that as its trailing default.
+ * exactly that as its trailing default. It also fits the sidebar's `*sparkShellSidebarTop` slot, where it fills the
+ * width and its list opens downwards from the left.
  */
 @Component({
   selector: 'spark-language-selector',
@@ -24,8 +25,15 @@ export class SparkLanguageSelectorComponent {
   protected readonly lang = inject(SparkLanguageService);
   private readonly router = inject(Router);
 
+  /**
+   * Each language under its own name (its endonym: "Nederlands", "Français"), whatever the page's language, because a
+   * visitor looks for the language they read. That is the language's name translated into itself; a name with no
+   * translation into its own language falls back to the name in the page's language.
+   */
   protected readonly choices = computed(() =>
-    Object.entries(this.lang.languages()).map(([code, name]) => ({ code, name })));
+    Object.entries(this.lang.languages()).map(([code, name]) => ({ code, name, native: name?.[code] ?? null })));
+
+  protected readonly current = computed(() => this.choices().find(c => c.code === this.lang.language()) ?? null);
 
   // The page the links point at: the router's URL after each navigation. The shell sits outside the router outlet, so a
   // relative routerLink would resolve against the root, not against the page.
