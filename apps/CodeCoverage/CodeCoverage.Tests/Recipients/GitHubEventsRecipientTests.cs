@@ -375,6 +375,26 @@ public class GitHubEventsRecipientTests : CoverageRavenTest
         opens[0].AuthorIsBot.Should().BeFalse();
     }
 
+    /// <summary>#683 H5: a reopen is normalised with its head branch, so the dependency updater can close a rolling one again.</summary>
+    [Theory]
+    [InlineData("reopened", true)]
+    [InlineData("opened", false)]
+    [InlineData("synchronize", false)]
+    public async Task Issue683_only_a_reopen_raises_PullRequestReopened_with_its_head_branch(string action, bool raised)
+    {
+        using var store = GetDocumentStore();
+        using var session = store.OpenAsyncSession();
+
+        await CreateRecipient(session, out var bus)
+            .HandleAsync(Message("pull_request", PullRequestJson(HeadSha, BaseSha, action)));
+
+        var reopened = bus.Messages.OfType<ForgeWebhookMessage<PullRequestReopened>>().ToList();
+        if (raised)
+            reopened.Should().ContainSingle().Which.Event.Should().Be(new PullRequestReopened(reopened[0].Event.RepositoryId, 42, "feature/thing"));
+        else
+            reopened.Should().BeEmpty();
+    }
+
     /// <summary>
     /// `synchronize` is served by the finalize path, which edits the same
     /// comment with real numbers — a pending comment there would replace a good

@@ -57,6 +57,7 @@ public partial class DependencyUpdateEventsRecipient :
     IRecipient<ForgeWebhookMessage<CommitChecksChanged>>,
     IRecipient<ForgeWebhookMessage<PullRequestMerged>>,
     IRecipient<ForgeWebhookMessage<PullRequestClosed>>,
+    IRecipient<ForgeWebhookMessage<PullRequestReopened>>,
     IRecipient<ForgeWebhookMessage<DependencyAlertRaised>>,
     IRecipient<ForgeWebhookMessage<ReleasePublished>>,
     IRecipient<ForgeWebhookMessage<BranchCommitPushed>>
@@ -122,6 +123,15 @@ public partial class DependencyUpdateEventsRecipient :
         foreach (var run in await RunsAsync(evt.RepositoryId, cancellationToken))
             if (run.PullRequestNumber == evt.Number || run.OnboardingPullRequestNumber == evt.Number)
                 await SignalAsync(new DependencyUpdateSignalMessage { RepositoryId = evt.RepositoryId, Line = run.Line, Kind = EDependencySignal.Closed, Number = evt.Number }, cancellationToken);
+    }
+
+    /// <summary>#683 H5: a reopened pull request from a run's rolling branch that the run no longer tracks.</summary>
+    public async Task HandleAsync(ForgeWebhookMessage<PullRequestReopened> message, CancellationToken cancellationToken = default)
+    {
+        var evt = message.Event;
+        foreach (var run in await RunsAsync(evt.RepositoryId, cancellationToken))
+            if (run.RollingBranchName == evt.HeadRef && run.PullRequestNumber != evt.Number)
+                await SignalAsync(new DependencyUpdateSignalMessage { RepositoryId = evt.RepositoryId, Line = run.Line, Kind = EDependencySignal.Reopened, Number = evt.Number }, cancellationToken);
     }
 
     /// <summary>

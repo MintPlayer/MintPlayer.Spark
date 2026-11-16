@@ -191,6 +191,24 @@ public class DependencyUpdateRecipientsTests : CoverageRavenTest
     }
 
     [Fact]
+    public async Task Issue683_H5_a_reopened_pull_request_from_a_rolling_branch_the_run_no_longer_tracks_signals_that_run()
+    {
+        using var store = GetDocumentStore();
+        var (main, mainId) = Run();
+        var (line, lineId) = Run(Line, r => r.PullRequestNumber = 22);
+        await SeedAsync(store, (main, mainId), (line, lineId));
+
+        var orphan = await EventsAsync(store, r => r.HandleAsync(Webhook(new PullRequestReopened(RepositoryId, 21, main.RollingBranchName))));
+        var tracked = await EventsAsync(store, r => r.HandleAsync(Webhook(new PullRequestReopened(RepositoryId, 22, line.RollingBranchName))));
+        var human = await EventsAsync(store, r => r.HandleAsync(Webhook(new PullRequestReopened(RepositoryId, 23, "feature/x"))));
+
+        var o = orphan.Signals.Should().ContainSingle().Which.Signal;
+        (o.Kind, o.Line, o.Number).Should().Be((EDependencySignal.Reopened, (string?)null, (int?)21));
+        tracked.Sent.Should().BeEmpty("the run still tracks it");
+        human.Sent.Should().BeEmpty("not a rolling branch");
+    }
+
+    [Fact]
     public async Task An_event_for_a_repository_id_outside_the_collection_loads_nothing_and_signals_nothing()
     {
         using var store = GetDocumentStore();

@@ -85,6 +85,7 @@ for a port, not as a specification.
 | **`RepositoryConnectionChanged`** | ✅ `repository` `deleted`; `installation_repositories` `removed`; `installation` `deleted`/`suspend`/`unsuspend` | `System Hook` `project_destroy`; token revoked or 401 on access | app uninstalled; `repo:deleted` |
 | **`MergeQueueCommandIssued`** | ✅ `pull_request` `labeled`/`unlabeled`; `issue_comment` `created` starting `/queue` or `/dequeue`. The actor is `sender`, never the text (T1); a bot sender raises nothing | `Merge Request Hook` label changes; `Note Hook` on a merge request | `pullrequest:comment_created` (no labels) |
 | **`PullRequestClosed`** | ✅ `pull_request` — `closed` **with `merged: false`** | `Merge Request Hook` — action `close` | `pullrequest:rejected` |
+| **`PullRequestReopened`** (#683 H5) | ✅ `pull_request` — `reopened`, with the head branch | `Merge Request Hook` — action `reopen` (not raised yet) | not raised yet |
 | **`CiRunCompleted`** | ✅ `workflow_run` — `completed` (the App's own dispatched runs included) | `Pipeline Hook` — finished status | `repo:commit_status_updated` from Pipelines |
 | **`CommitChecksChanged`** | ✅ `check_run`, `check_suite` `completed`, `status`; the App's own check runs dropped | `Pipeline Hook`, `Job Hook` | `repo:commit_status_created`/`_updated` |
 | **`PullRequestReviewed`** | ✅ `pull_request_review` — `submitted`, `dismissed` | `Merge Request Hook` — `approved`, `unapproved` | `pullrequest:approved`, `pullrequest:unapproved` |

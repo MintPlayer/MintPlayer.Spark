@@ -265,6 +265,10 @@ public enum EMergeQueueCommand
 /// <remarks>The merged close is <see cref="PullRequestMerged"/>; the two are never raised for the same close.</remarks>
 public sealed record PullRequestClosed(string RepositoryId, int Number) : IForgeEvent;
 
+/// <summary>A closed pull request was reopened (#683 H5).</summary>
+/// <param name="HeadRef">Its head branch, by which the dependency updater recognises a rolling pull request it no longer tracks.</param>
+public sealed record PullRequestReopened(string RepositoryId, int Number, string HeadRef) : IForgeEvent;
+
 /// <summary>A CI run (a GitHub Actions workflow run, a GitLab pipeline) finished.</summary>
 /// <param name="HeadSha">The commit the run built, which the queue compares with the commit it asked for (D14).</param>
 /// <param name="Conclusion">The forge's word; the queue re-reads the run before acting on it.</param>

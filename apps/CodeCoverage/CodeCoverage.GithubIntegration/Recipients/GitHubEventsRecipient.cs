@@ -505,6 +505,10 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
         if (evt.Action is "opened" or "reopened")
             await messageBus.BroadcastAsync(new ForgeWebhookMessage<PullRequestDescribed>(
                 EForgeProvider.GitHub, new PullRequestDescribed(repository.Id!, (int)evt.Number)), ct);
+
+        if (evt.Action == "reopened")
+            await messageBus.BroadcastAsync(new ForgeWebhookMessage<PullRequestReopened>(
+                EForgeProvider.GitHub, new PullRequestReopened(repository.Id!, (int)evt.Number, pr.Head.Ref)), ct);
     }
 
     // ── The merge queue (PRD M5) ─────────────────────────────────────────────────────────────────────

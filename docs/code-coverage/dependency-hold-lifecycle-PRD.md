@@ -1,7 +1,7 @@
 # Dependency updates: hold lifecycle (cancelled runs, close, reopen, merge, `/unhold`)
 
-Issue: #683. Branch: `fix/issue683-cancelled-checks-no-verdict`, one pull request (#684). Status: **draft, awaiting the owner's
-answers in §5.** D-O29 (a cancelled check is no verdict) is implemented. Everything else here is proposed.
+Issue: #683. Branch: `fix/issue683-cancelled-checks-no-verdict`, one pull request (#684). Status: **decided** (owner, 2026-11-16;
+§5). H1–H7 are implemented (D-O29–D-O35 in `dependency-updates-PRD.md`); the live spikes (M7) are not run yet. The H2–H7 tests were written alongside the code, so none of them was seen red first.
 
 ## 1. Why
 
@@ -73,19 +73,19 @@ human's manifest value, `/approve`, `coverage.yml`) are never undone by the bot.
 | H2 | **Every bot verdict records where it came from.** `DependencyHold` gets `PullRequestNumber` and `RunUrl`. `DependencyFleetRed` gets `PullRequestNumber`; it already has `Repository`, `RunUrl`, `AtUtc`. | Without the link, close and `/unhold` cannot find what to withdraw. |
 | H3 | **Closing the rolling pull request without merging withdraws its bisect verdicts**: the `red:` holds taken on it and the fleet red entries this repository recorded from it. It keeps the human and command holds and the approvals. It also keeps `blocker:`, `apply:` and `migrate:` holds, because those come from the lookup or apply, not from that pull request's CI, and they lift by fingerprint. | §3. The owner's expectation on #682. |
 | H4 | **`/unhold <group>` also lifts a bot hold on that group** (`red:`, `blocker:`, `apply:`, `migrate:`). For a `red:` hold, it also withdraws this repository's fleet red entries for that group's items. It answers 🎉 and refreshes, as for a command hold. The refusal text goes. | The writer overrides the bot's evidence. One verb for "let this group in again"; see Q2 for a separate verb instead. |
-| H5 | **Reopening the rolling pull request adopts it again.** `pull_request.reopened` is normalised and handled: `run.PullRequestNumber` is set back when the head branch is the rolling branch and no other rolling pull request is open, then a Refresh trigger rebuilds it, replaying human commits as always. What H3 withdrew stays withdrawn. | Today a reopened pull request is orphaned and a second one would be attempted. |
+| H5 | **A reopened rolling pull request is closed again by the bot**, with a comment that the bot opens its own rolling pull request at its next run (`/refresh` to open it now). `pull_request.reopened` is normalised and handled for pull requests whose head is the rolling branch and that the run no longer tracks. What H3 withdrew stays withdrawn. | Owner (Q3): adopting a reopened one could leave several rolling pull requests open. Today it is orphaned and the next run tries to open a second one from the same branch. |
 | H6 | **A merge prunes the fleet**: entries this repository recorded for a dependency at a version that the merged plan applied are removed, because the version works here now. That implements the PRD's "haven't merged it". | §2 |
-| H7 | **Fleet red entries expire** after N days (Q4), so a stale verdict cannot block the fleet forever. | §2 |
+| H7 | **Fleet red entries expire after 14 days**, so a stale verdict cannot block the fleet forever. | §2; owner (Q4) |
 
-## 5. Open questions for the owner
+## 5. Owner's answers (2026-11-16)
 
-| # | Question | Recommendation |
+| # | Question | Answer |
 |---|---|---|
-| Q1 | Does closing the rolling PR withdraw only `red:` holds and fleet entries (H3)? Or all bot holds, so that close means a clean slate? | `red:` only. The others are not that pull request's evidence, and they already lift on their own. |
-| Q2 | Should H4 extend `/unhold`, or add a new verb (`/retry <group>`, `/clear <group>`) and keep `/unhold` for human holds? | Extend `/unhold`: one verb, nothing new to learn. |
-| Q3 | Reopen (H5): adopt and refresh, or close it again with a comment that the bot opens its own? | Adopt and refresh. |
-| Q4 | Fleet red expiry (H7): how many days, or none? | 14 days. A real breakage is found again by the next red bisect. |
-| Q5 | The stale #682 records in production: removed by hand in the database after the deploy (owner approved), or by `/unhold platform:dotnet 11.0` on the new rolling PR once H4 ships? | `/unhold` once H4 ships. It exercises the feature, and it needs no database edit. |
+| Q1 | Does closing the rolling PR withdraw only `red:` holds and fleet entries (H3)? Or all bot holds, so that close means a clean slate? | **Only its `red:` verdicts** and the fleet entries recorded from them. |
+| Q2 | Should H4 extend `/unhold`, or add a new verb (`/retry`, `/clear`)? | **Extend `/unhold`.** |
+| Q3 | Reopen (H5): adopt and refresh, or close it again? | **Close it again**, "otherwise we may have several open rolling PRs". |
+| Q4 | Fleet red expiry (H7)? | **14 days**, plus merge pruning. |
+| Q5 | The stale #682 records in production? | They predate H2's provenance, so closing #682 cannot withdraw them. **`/unhold platform:dotnet 11.0`** on the next rolling pull request once #684 is deployed (it follows from Q2); no database edit. |
 
 ## 6. Spikes (live, `PieterjanDeClippel/DependencyUpdaterTest`, local app)
 
@@ -103,7 +103,7 @@ decision rows, with red → green test names.
 | S0 | A deterministic red: a CI step that fails when a chosen package is at a chosen version (e.g. `grep` the lockfile in `ci.yml`). Add `concurrency: cancel-in-progress` to `ci.yml` too. | How we make a group convict on demand, and reproduce the #682 cancellation. |
 | S1 | Push on top of the bot's commit while its CI runs; also `gh run cancel` the bot's run by hand. | H1 live: no bisect, the superseded note, one re-run, the second-cancel report. |
 | S2 | Let S0 convict a group, then close the rolling PR. | H3: the `red:` hold and the fleet entries are gone, and the next run includes the group again (and convicts it again, since S0 still breaks). |
-| S3 | Reopen the closed PR. Also reopen it after the bot has already opened a new one. | Does GitHub send `reopened`, and with which head sha? Does GitHub allow reopening while another PR is open from the branch? Does the branch survive a close? Then H5 live. |
+| S3 | Reopen the closed PR, both before and after the bot has opened a new one. | Does GitHub send `reopened`, and with which head sha? Does GitHub refuse the reopen while another PR is open from the branch? Then H5 live: the bot closes it again with its comment. |
 | S4 | `/unhold <group>` on a `red:` hold. | H4: hold and fleet entries withdrawn, 🎉, refresh. |
 | S5 | Merge a plan that holds a version another repository marked red. | H6: the pruning. This needs a second test repository on the dev App, or a seeded fleet entry from a fake repository id. |
 
@@ -112,13 +112,13 @@ decision rows, with red → green test names.
 | M | What | Tests |
 |---|---|---|
 | M1 ✅ | H1 / D-O29 | `DependencySagaTests.Issue683_*` (3) |
-| M2 | H2: the provenance fields, written by `CulpritAsync` | the saga test asserts the PR number on the hold and on the fleet entry |
-| M3 | H3: close withdraws | saga: convict → close → no hold, no fleet entry, human/command holds kept; merge is not close |
-| M4 | H4 (per Q2): `/unhold` on bot holds; help text, `dependency-updates.md`, `hosting.md`, `forge-webhooks.md`, setup page and its spec | saga `R6_*`; parser `InlineData` if Q2 picks a new verb |
-| M5 | H5: normalise `reopened` (GitHub), recipient, engine adopt + refresh | `GitHubEventsRecipient` test, recipient test, saga reopen test; reopen with another PR open is refused |
-| M6 | H6 + H7: merge prunes, expiry | `DependencyStateStore` / policy tests |
+| M2 ✅ | H2: the provenance fields, written by `CulpritAsync` | the saga test asserts the PR number on the hold and on the fleet entry |
+| M3 ✅ | H3: close withdraws | saga: convict → close → no hold, no fleet entry, human/command holds kept; merge is not close |
+| M4 ✅ | H4: `/unhold` on bot holds; help text, `dependency-updates.md`, PRD line 1220, setup page and its spec | saga `R6_*` |
+| M5 ✅ | H5: normalise `reopened` (GitHub), recipient, engine closes it again with a comment | `GitHubEventsRecipient` test, recipient test, saga reopen test |
+| M6 ✅ | H6 + H7: merge prunes, expiry | saga `Issue683_H6_*`, `Issue683_H7_*` (2) |
 | M7 | Spikes S0–S5 on the dev App; the results go into §8 | live |
-| M8 | Docs: decision rows in `dependency-updates-PRD.md` (D-O30+), the user guide's commands and holds sections | |
+| M8 ✅ | Docs: decision rows in `dependency-updates-PRD.md` (D-O30+), the user guide's commands and holds sections | |
 
 ## 8. Spike results
 

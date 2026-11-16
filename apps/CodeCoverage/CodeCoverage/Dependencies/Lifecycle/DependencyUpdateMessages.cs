@@ -121,6 +121,10 @@ public enum EDependencySignal
     /// owner's code and stay.
     /// </summary>
     Offboard,
+
+    /// <summary>#683 H5: a rolling pull request the run no longer tracks was reopened
+    /// (<see cref="DependencyUpdateSignalMessage.Number"/>); the bot closes it again (owner, Q3).</summary>
+    Reopened,
 }
 
 /// <summary>

@@ -404,7 +404,7 @@ Writers (write access or above) comment on the rolling pull request, one command
 | `/approve <group>` | Takes an over-threshold group (a major) into the pull request. Bound to the exact dependency set, the target major and the `coverage.yml` it was given under: a newer major, a changed group or another `coverage.yml` expires it. Checked again at apply time: an approver who lost write access loses the approval. |
 | `/approve platform:<sdk> <channel> --force` | Takes a *pending* SDK move (a companion has no release at the target major yet, §6) anyway: those companions stay at their major and a person fixes the build on the branch. |
 | `/hold <group or package>` | Holds it until `/unhold`. |
-| `/unhold <group or package>` | Lifts a comment or human hold (the bot's own holds lift by themselves). |
+| `/unhold <group or package>` | Lifts every hold on it: a comment or human hold, and the bot's own (`red:` from a bisect, `blocker:`, `apply:`, `migrate:`). Lifting a `red:` hold also withdraws the red verdict it gave the account's other repositories. |
 | `/bisect` | Bisects a red pull request now (budget 4 when the setting is off). |
 | `/refresh` | Rebuilds now. A run a comment started never auto-merges; the next scheduled one may. |
 
@@ -476,6 +476,16 @@ to its log.
   then versions red elsewhere in the fleet), one CI run each, until the culprit is found; it is held, recorded as red for
   the whole account, and the rest is rebuilt without it. The comment says whether a *build* or a *test* check failed,
   read from the failing checks' names; logs are not read.
+  - A red verdict stands for 14 days in the other repositories, and goes earlier when this repository merges that
+    version, when you close the pull request it was found on, or on `/unhold <group>` (#683).
+- **CI is cancelled** (a newer push, `cancel-in-progress`, or by hand). A cancelled check is no verdict: nothing is
+  bisected, held or marked red. When a newer push superseded the bot's commit the bot leaves it alone; otherwise it
+  re-runs the cancelled checks once, and reports a second cancellation without blaming any group (#683).
+- **You close the rolling pull request without merging.** The bisect verdicts taken on it go with it: its `red:` holds and
+  the fleet entries they recorded. Your own holds, approvals and the bot's resolver holds stay. The bot opens a new rolling
+  pull request at its next run.
+- **You reopen a closed rolling pull request.** The bot closes it again with a comment, so there is never more than one
+  rolling pull request; it opens its own at its next run.
 - **You push a commit on the rolling branch.**
   - A manifest value you set wins, and becomes a hold, so the next slot does not undo it.
   - A code fix (any file that is not a dependency file) keeps the versions it was written against: those groups stay
