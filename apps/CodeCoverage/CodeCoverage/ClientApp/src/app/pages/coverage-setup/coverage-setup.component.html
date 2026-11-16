@@ -78,13 +78,15 @@
           @case ('private') {
             <p class="mb-0" data-testid="cov-setup-private">
               A public repository uploads without a secret: GitHub vouches for the workflow run through OIDC. A private
-              repository needs an upload token. Create one on the account's page, store it as a repository secret, and
+              repository needs an upload token. Create one on the account's page (open it from
+              <a routerLink="/po/forge-accounts/github" data-testid="cov-setup-accounts-link">your GitHub accounts</a>), store it as a repository secret, and
               replace the <code>use-oidc: true</code> line with <code ngNonBindable>token: ${{ secrets.&lt;NAME&gt; }}</code>.
             </p>
           }
           @case ('results') {
             <p class="mb-0">
-              After the first upload, the repository's page shows its coverage, the trend over time and a badge to put in
+              After the first upload, the repository's page (under its account, in
+              <a routerLink="/po/forge-accounts/github">your GitHub accounts</a>) shows its coverage, the trend over time and a badge to put in
               your README, and pull requests get coverage feedback from the uploads of their commits.
             </p>
           }

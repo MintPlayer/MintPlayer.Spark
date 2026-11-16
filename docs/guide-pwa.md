@@ -117,6 +117,15 @@ It calls `provideServiceWorker('ngsw-worker.js', { enabled: !isDevMode(), regist
   visible; a navigation in a hidden tab stays an in-app navigation.
 - Disabled worker (development builds, unsupported browsers) or server rendering: no-op.
 
+> **"A link click reloaded the whole page, and after a refresh the same link is an in-app navigation."**
+> That is this policy, not a broken link. After a deploy, an open tab (or one you return to, or a fresh tab
+> the old worker still serves) learns that a new version is ready; the next click is then a document load
+> into the new version, and every click after it is a router navigation again. It happens once per deploy
+> per tab, so an app that deploys often shows it often. To confirm, look for `spark-sw-reloaded-for` in the
+> tab's `sessionStorage`: it holds the `ngsw.json` hash the load was made for. Development builds have no
+> service worker, so it never happens under `dotnet run`. Kept on purpose (owner, 2026-11-16): a prompt or a
+> silent in-place swap was considered and declined.
+
 `SparkServiceWorkerUpdates` exposes `updateReady`, `currentVersion` and `latestVersion` signals;
 `latestVersion()?.appData?.['build']` is the ng-spark version of the new build, e.g. for a footer.
 

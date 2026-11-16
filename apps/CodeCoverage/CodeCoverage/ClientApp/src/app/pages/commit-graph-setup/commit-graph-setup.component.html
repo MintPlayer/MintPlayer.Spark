@@ -1,0 +1,129 @@
+<div class="cg-setup py-3" data-commit-graph-setup>
+  <h1 class="h3 mb-3"><spark-icon name="diagram-3"></spark-icon> Commit graph</h1>
+  <p class="lead">
+    Every repository page shows its history as a commit graph, every branch and tag in one view, with the coverage of
+    each commit on its node. You see at a glance where coverage went up, where it fell, and which commit did it.
+  </p>
+  <p>There is nothing to switch on: the graph appears the first time you open a repository.</p>
+
+  <nav aria-label="Steps" class="mb-4">
+    <ol class="mb-0" data-testid="cg-setup-steps">
+      @for (step of steps; track step.id) {
+        <li>
+          <a [routerLink]="[]" [fragment]="step.id" (click)="jumpTo(step.id)">{{ step.title }}</a>
+        </li>
+      }
+    </ol>
+  </nav>
+
+  @for (step of steps; track step.id; let n = $index) {
+    <bs-card class="mb-4" [attr.id]="step.id" [attr.data-step]="step.id">
+      <bs-card-header>
+        <h2 class="h5 mb-0"><bs-badge class="me-2" [color]="'primary'">{{ n + 1 }}</bs-badge>{{ step.title }}</h2>
+      </bs-card-header>
+      <bs-card-body>
+        @switch (step.id) {
+          @case ('where') {
+            <p class="mb-0" data-testid="cg-setup-where">
+              Open a repository from its account, in <a routerLink="/po/forge-accounts/github" data-testid="cg-setup-accounts-link">your
+              GitHub accounts</a>. The <strong>Commit graph</strong> panel is on the repository's page, beside its badge and
+              coverage trend. The first time anyone opens it, the graph says it is <em>syncing</em> while CodeCoverage copies
+              the history; open it again a little later.
+            </p>
+          }
+          @case ('reading') {
+            <p>
+              Commits are listed newest first, and a commit is never shown above one of its children, even when clocks
+              disagree. Each branch keeps its own lane, and the default branch stays in one lane all the way down. A row
+              shows the commit's coverage, its change against the parent, its branches and tags, the author, the date and
+              the short SHA. Click a row to open the commit's page.
+            </p>
+            <bs-table [responsive]="true" data-testid="cg-setup-nodes">
+              <thead>
+                <tr><th>Node</th><th>Meaning</th></tr>
+              </thead>
+              <tbody>
+                @for (row of nodes; track row.node) {
+                  <tr><td class="text-nowrap">{{ row.node }}</td><td>{{ row.meaning }}</td></tr>
+                }
+              </tbody>
+            </bs-table>
+            <p class="mb-0">
+              At most 12 lanes are drawn (4 on a phone); a marker shows when there are more.
+            </p>
+          }
+          @case ('tools') {
+            <ul class="mb-0" data-testid="cg-setup-tools">
+              <li><strong>One branch:</strong> the branch selector narrows the graph to a branch and its ancestry.</li>
+              <li><strong>Hover</strong> a commit to highlight its branch's path.</li>
+              <li><strong>First parent</strong> follows only the first parent of each merge: the history as the branch itself saw it.</li>
+              <li><strong>Search</strong> by message or author. The results are a flat list, one row per hit, without lanes.</li>
+              <li><strong>Sparkline:</strong> the coverage along the selected branch, or the default branch.</li>
+              <li><strong>Coverage drops</strong> lists the commits whose coverage fell by more than a threshold, each with <em>show in graph</em>.</li>
+              <li><strong>Keyboard:</strong> up and down move between commits, Enter opens one.</li>
+            </ul>
+          }
+          @case ('releases') {
+            <p class="mb-0" data-testid="cg-setup-releases">
+              With <a routerLink="/versioning/setup">package versioning</a>, a commit that was released carries a mark with
+              the status of the run that released it: <em>released</em>, <em>release running</em>, <em>release failed</em>
+              or <em>release cancelled</em>. The mark links to the run. If your GitHub account can write to the repository,
+              a failed or cancelled run also offers <strong>re-run</strong>, which re-runs its failed and cancelled jobs.
+            </p>
+          }
+          @case ('current') {
+            <ul class="mb-0" data-testid="cg-setup-current">
+              <li><strong>A push</strong> refreshes the graph within moments, for a repository that has the GitHub App installed.</li>
+              <li><strong>Opening the page</strong> refreshes a graph that has not been refreshed for a while; you see the rows it has meanwhile.</li>
+              <li><strong>Every hour</strong> the graphs are refreshed as a safety net, which is also how a public repository without the App, which sends no pushes, stays current.</li>
+              <li>A graph nobody opened for <strong>60 days</strong> is cleared to save space; the next visit copies it again and shows <em>syncing</em> first.</li>
+            </ul>
+          }
+          @case ('unavailable') {
+            <p>A graph is held to these limits:</p>
+            <bs-table [responsive]="true" data-testid="cg-setup-limits">
+              <thead>
+                <tr><th>Repository</th><th>Size</th><th>Branches and tags</th><th>Copy time</th></tr>
+              </thead>
+              <tbody>
+                @for (row of limits; track row.kind) {
+                  <tr><td>{{ row.kind }}</td><td class="text-nowrap">{{ row.size }}</td><td class="text-nowrap">{{ row.refs }}</td><td class="text-nowrap">{{ row.time }}</td></tr>
+                }
+              </tbody>
+            </bs-table>
+            <p>When the history cannot be copied, the panel says <em>unavailable</em>, with one of these reasons:</p>
+            <bs-table [responsive]="true" data-testid="cg-setup-reasons">
+              <thead>
+                <tr><th>Reason</th><th>Meaning</th></tr>
+              </thead>
+              <tbody>
+                @for (row of reasons; track row.reason) {
+                  <tr><td><code>{{ row.reason }}</code></td><td>{{ row.meaning }}</td></tr>
+                }
+              </tbody>
+            </bs-table>
+            <p class="mb-0">
+              After a refusal, CodeCoverage waits an hour before it tries again. Installing the GitHub App on a public
+              repository raises its limits to the first row.
+            </p>
+          }
+          @case ('privacy') {
+            <p>
+              The graph of a private repository is shown only to people who can see that repository in CodeCoverage. Author
+              e-mail addresses never reach your browser: a row shows the author's avatar, or their initials.
+            </p>
+            <bs-alert [color]="'info'" class="d-block mb-0" data-testid="cg-setup-deletion">
+              The copy of a repository's history is <strong>deleted when the access goes</strong>: when the repository is
+              disconnected, its data is deleted, or the GitHub App loses access to it.
+            </bs-alert>
+          }
+        }
+      </bs-card-body>
+    </bs-card>
+  }
+
+  <p class="small text-body-secondary mb-0">
+    The full reference is
+    <a href="https://github.com/MintPlayer/MintPlayer.Spark/blob/master/docs/code-coverage/commit-graph.md" target="_blank" rel="noopener">the commit graph guide</a>.
+  </p>
+</div>

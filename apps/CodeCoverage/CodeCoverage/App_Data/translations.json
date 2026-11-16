@@ -4012,6 +4012,11 @@
       "fr": "Rétroportages",
       "nl": "Backports"
     },
+    "commitGraphSetup": {
+      "en": "Commit graph",
+      "fr": "Graphe des commits",
+      "nl": "Commitgrafiek"
+    },
     "connectAgent": {
       "en": "Connect an AI agent",
       "fr": "Connecter un agent IA",
@@ -4093,6 +4098,11 @@
       "en": "Project boards",
       "fr": "Tableaux de projet",
       "nl": "Projectborden"
+    },
+    "versioningSetup": {
+      "en": "Package versioning",
+      "fr": "Versionnage des paquets",
+      "nl": "Pakketversiebeheer"
     }
   },
   "queries": {

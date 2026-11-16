@@ -69,6 +69,12 @@ const RELOADED_FOR_KEY = 'spark-sw-reloaded-for';
  *
  * Nothing happens when the service worker is disabled (development builds, unsupported browsers)
  * or on the server.
+ *
+ * **Symptom this produces, by design:** after a deploy, one link click per tab reloads the whole
+ * page, while the same link after a refresh is an in-app navigation. That is `onNavigationStart`
+ * below, not a broken `routerLink`; `sessionStorage['spark-sw-reloaded-for']` confirms it. Kept on
+ * purpose (owner, 2026-11-16, over a reload prompt or a silent swap); docs/guide-pwa.md has the
+ * full explanation.
  */
 @Injectable({ providedIn: 'root' })
 export class SparkServiceWorkerUpdates {
