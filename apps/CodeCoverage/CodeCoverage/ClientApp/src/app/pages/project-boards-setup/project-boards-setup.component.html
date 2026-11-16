@@ -1,0 +1,178 @@
+<div class="pb-setup py-3" data-project-boards-setup>
+  <h1 class="h3 mb-3"><spark-icon name="kanban"></spark-icon> Project boards</h1>
+  <p class="lead">
+    CodeCoverage keeps your GitHub Projects boards up to date. When an issue or pull request changes, it moves the card to
+    the column you chose for that event, so nobody has to drag cards by hand.
+  </p>
+  <p>
+    You write the rules per board: <em>when a pull request is merged, move it to Done</em>. A rule applies to the issues and
+    pull requests of every repository of the account that owns the board.
+  </p>
+
+  <nav aria-label="Steps" class="mb-4">
+    <ol class="mb-0" data-testid="pb-setup-steps">
+      @for (step of steps; track step.id) {
+        <li>
+          <a [routerLink]="[]" [fragment]="step.id" (click)="jumpTo(step.id)">{{ step.title }}</a>
+        </li>
+      }
+    </ol>
+  </nav>
+
+  @for (step of steps; track step.id; let n = $index) {
+    <bs-card class="mb-4" [attr.id]="step.id" [attr.data-step]="step.id">
+      <bs-card-header>
+        <h2 class="h5 mb-0"><bs-badge class="me-2" [color]="'primary'">{{ n + 1 }}</bs-badge>{{ step.title }}</h2>
+      </bs-card-header>
+      <bs-card-body>
+        @switch (step.id) {
+          @case ('install') {
+            <p>
+              Install the CodeCoverage GitHub App on the organization that owns the board; <a routerLink="/">Home</a> links it
+              once you are signed in. Moving cards needs these App permissions:
+            </p>
+            <ul data-testid="pb-setup-permissions">
+              <li><strong>Organization projects</strong>: read and write, to read the board and move its cards.</li>
+              <li><strong>Issues</strong> and <strong>Pull requests</strong>, to know which issues a pull request closes.</li>
+              <li><strong>Checks</strong>, for rules on <em>Check run completed</em>.</li>
+            </ul>
+            <p>The App listens to the <em>Issues</em>, <em>Pull request</em>, <em>Pull request review</em>, <em>Issue comment</em> and <em>Check run</em> events.</p>
+            <bs-alert [color]="'warning'" class="d-block mb-3" data-testid="pb-setup-org-only">
+              <strong>Only boards owned by an organization can be automated.</strong> GitHub gives Apps no access to a board
+              owned by a personal account, so such a board never appears in CodeCoverage. Move the board to an organization,
+              or create it there.
+            </bs-alert>
+            <bs-alert [color]="'info'" class="d-block mb-0" data-testid="pb-setup-accept">
+              When the App asks for a new permission, <strong>an owner of the organization has to accept it</strong> on GitHub,
+              under the organization's installed GitHub Apps. Until then GitHub sends no events for it, and nothing moves.
+            </bs-alert>
+          }
+          @case ('board') {
+            <p data-testid="pb-setup-status">
+              The columns are the options of the board's <strong>Status</strong> field: the single-select field GitHub Projects
+              creates with every board, which its board layout shows as columns. Keep it named <code>Status</code> (in any case).
+              A board without it has no columns to move cards between.
+            </p>
+            <p class="mb-0">
+              Create the columns you want, such as <em>Todo</em>, <em>In progress</em>, <em>In review</em> and <em>Done</em>,
+              before you write rules: a rule can only point at a column that already exists.
+            </p>
+          }
+          @case ('find') {
+            <p data-testid="pb-setup-find">
+              Open the account's page from <a routerLink="/po/forge-accounts/github" data-testid="pb-setup-accounts-link">your
+              GitHub accounts</a>, and its <strong>Project boards</strong> tab. It lists the boards the App can see. Nobody
+              adds a board by hand: CodeCoverage finds the boards itself, up to 100 per account, every night.
+            </p>
+            <p class="mb-0">
+              A board you just created shows up after the next nightly run, or sooner with <strong>Resync</strong> on
+              <a routerLink="/">Home</a>. You see the boards of every account you can see, and you edit those of the accounts
+              you manage. A board the App can no longer reach drops off the list.
+            </p>
+          }
+          @case ('enable') {
+            <p>Open the board and choose <strong>Edit</strong>:</p>
+            <ol data-testid="pb-setup-enable">
+              <li>Switch on <strong>Automation Enabled</strong> and save. Switched off, the board is listed but no event does anything.</li>
+              <li>Choose <strong>Sync columns</strong>. It reads the Status field's options from GitHub; <strong>Columns</strong> then lists them, and <strong>Columns Synced</strong> says when.</li>
+            </ol>
+            <p class="mb-0">The columns are also read again every night.</p>
+          }
+          @case ('rules') {
+            <p>
+              The rules are the board's <strong>Events</strong> list. Add a row for each event that should move a card. A
+              rule has these fields:
+            </p>
+            <bs-table [responsive]="true" data-testid="pb-setup-rule-fields">
+              <thead>
+                <tr><th>Field</th><th>Meaning</th></tr>
+              </thead>
+              <tbody>
+                @for (row of ruleFields; track row.field) {
+                  <tr><td class="text-nowrap">{{ row.field }}</td><td>{{ row.meaning }}</td></tr>
+                }
+              </tbody>
+            </bs-table>
+            <p class="mb-2">A common set for a board with <em>Todo</em>, <em>In progress</em>, <em>In review</em> and <em>Done</em>:</p>
+            <ul class="mb-0" data-testid="pb-setup-example">
+              <li><em>Issue opened</em> → Todo</li>
+              <li><em>Pull request opened</em> → In progress, with <strong>Move Linked Issues</strong></li>
+              <li><em>PR ready for review</em> → In review</li>
+              <li><em>PR converted to draft</em> → In progress</li>
+              <li><em>Pull request merged</em> → Done, with <strong>Move Linked Issues</strong></li>
+              <li><em>Issue closed</em> → Done</li>
+              <li><em>Issue reopened</em> → Todo</li>
+            </ul>
+          }
+          @case ('events') {
+            <p>The Event dropdown offers these, grouped by what they move:</p>
+            <bs-table [responsive]="true" data-testid="pb-setup-events">
+              <thead>
+                <tr><th>Group</th><th>Events</th><th>Moves</th></tr>
+              </thead>
+              <tbody>
+                @for (group of eventGroups; track group.name) {
+                  <tr>
+                    <td class="text-nowrap">{{ group.name }}</td>
+                    <td>{{ group.events.join(', ') }}</td>
+                    <td>{{ group.moves }}</td>
+                  </tr>
+                }
+              </tbody>
+            </bs-table>
+            <ul class="mb-0" data-testid="pb-setup-event-notes">
+              <li>
+                <strong>The issues a pull request closes</strong> are the ones GitHub links to it: those named with a closing
+                keyword in its description, such as <code>Closes #12</code>, or linked under <em>Development</em> in its
+                sidebar. They move only when the rule has <strong>Move Linked Issues</strong>.
+              </li>
+              <li>
+                <em>Pull request merged</em> and <em>Pull request closed without merging</em> are told apart, and so are an
+                approving review and one that requests changes, so each can go to its own column.
+              </li>
+              <li>
+                <em>Check run completed</em> fires for every check, red or green. GitHub does not link a check run to a pull
+                request from a fork, so those cards do not move on it.
+              </li>
+              <li>
+                The check runs and comments CodeCoverage writes itself never trigger a rule, so posting its own coverage
+                feedback does not move a card.
+              </li>
+            </ul>
+          }
+          @case ('columns') {
+            <p data-testid="pb-setup-columns">
+              <strong>GitHub sends no event when you rename, add or delete a column.</strong> CodeCoverage notices at the next
+              nightly run; choose <strong>Sync columns</strong> on the board to pick it up at once.
+            </p>
+            <p class="mb-0">
+              A rule whose column was deleted stops moving cards and records the error, and <strong>Sync columns</strong>
+              names the rules it affects. Point them at another column, or delete them.
+            </p>
+          }
+          @case ('troubleshoot') {
+            <p>Each rule records how it last went:</p>
+            <ul data-testid="pb-setup-rule-status">
+              <li><strong>Last Fired</strong>: when it last ran without an error.</li>
+              <li><strong>Error</strong> and <strong>Failed At</strong>: why and when it last failed. They clear when it next succeeds.</li>
+            </ul>
+            <p>If a card does not move and the rule shows nothing:</p>
+            <ul class="mb-0" data-testid="pb-setup-checklist">
+              <li>Is <strong>Automation Enabled</strong> on for the board, and <strong>Enabled</strong> on for the rule?</li>
+              <li>Has an organization owner accepted the App's permissions? GitHub sends nothing until they have.</li>
+              <li>Is the issue or pull request on the board? With <strong>Add To Board</strong> off, a card that is not on it is skipped.</li>
+              <li>Is the board still listed? A board the App can no longer reach, deleted or with the App's access removed, drops off the account's list.</li>
+              <li>Does the rule point at a column that still exists? Choose <strong>Sync columns</strong> after changing the columns.</li>
+              <li>Is the board owned by an organization? A board owned by a personal account is out of the App's reach.</li>
+            </ul>
+          }
+        }
+      </bs-card-body>
+    </bs-card>
+  }
+
+  <p class="small text-body-secondary mb-0">
+    The full reference is
+    <a href="https://github.com/MintPlayer/MintPlayer.Spark/blob/master/docs/code-coverage/project-boards.md" target="_blank" rel="noopener">the project boards guide</a>.
+  </p>
+</div>

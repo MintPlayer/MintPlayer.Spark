@@ -125,10 +125,22 @@ main {
 // full-height sidebar column.
 nav.spark-sidebar {
   min-height: 100%;
+  // A column, so the footer slot can take the space left under the menu and sit at the bottom.
+  display: flex;
+  flex-direction: column;
   background: var(--spark-shell-sidebar-bg, var(--bs-tertiary-bg));
   color: var(--spark-shell-sidebar-color, var(--bs-body-color));
   // The page border captured on :host — the rule below makes --bs-border-color transparent in here.
   border-inline-end: var(--bs-border-width) solid var(--spark-shell-border-color);
+}
+
+.spark-sidebar-top {
+  padding: 0.5rem 0.25rem;
+}
+
+.spark-sidebar-footer {
+  margin-top: auto;
+  padding: 0.5rem 0.25rem 0;
 }
 
 // Slot content (SidebarTop/Footer, and a *sparkShellTab body) is instantiated from the HOST's

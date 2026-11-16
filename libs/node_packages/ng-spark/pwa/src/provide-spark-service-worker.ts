@@ -15,7 +15,7 @@ export interface SparkServiceWorkerOptions {
 }
 
 /**
- * Registers Angular's service worker with Spark's update policy (#464, Q1b); see
+ * Registers Angular's service worker with Spark's update policy (#464, Q1b, revised by Q1c); see
  * {@link SparkServiceWorkerUpdates} for what happens when a new version is deployed, and
  * {@link SparkNotificationClicks} for a push notification clicked while the application is open.
  *

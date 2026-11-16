@@ -1,8 +1,40 @@
-// The topbar holds the theme toggle, an organization switcher, the bell and the account buttons in 375 px: the summary
-// shows the code only, and the list opens over the page.
+// The summary names the current language in that language. The topbar holds the theme toggle, an organization
+// switcher, the bell and the account buttons in 375 px, so at phone width a topbar selector shows the code instead.
+// The list opens over the page.
 :host {
   display: inline-block;
   position: relative;
+}
+
+.spark-lang-code {
+  display: none;
+}
+
+@media (max-width: 575.98px) {
+  :host-context(.spark-topbar) {
+    .spark-lang-name { display: none; }
+    .spark-lang-code { display: inline; }
+  }
+}
+
+// In the sidebar (the *sparkShellSidebarTop slot) it fills the width, and the list opens from the left edge rather
+// than leftwards out of the sidebar.
+:host-context(.spark-sidebar) {
+  display: block;
+
+  summary {
+    display: flex;
+    align-items: center;
+
+    &::after {
+      margin-left: auto;
+    }
+  }
+
+  ul {
+    left: 0;
+    right: 0;
+  }
 }
 
 details {

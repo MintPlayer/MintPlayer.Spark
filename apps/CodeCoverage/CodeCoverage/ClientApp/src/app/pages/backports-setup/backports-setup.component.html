@@ -40,7 +40,7 @@
             </p>
             <p class="mb-0" data-testid="bp-setup-supported">
               A line is <strong>supported</strong> while its platform major has not reached end of life (the
-              <strong>Platform lifecycle</strong> page under Guides lists the dates), and the newest line of each ecosystem always
+              <a routerLink="/query/platform-lifecycle" data-testid="bp-setup-lifecycle-link"><strong>Platform lifecycle</strong></a> page under Guides lists the dates), and the newest line of each ecosystem always
               is. Supported lines get the backport labels a pull request is given when it opens.
               <code>lines:</code> in the <a [routerLink]="[]" fragment="configure" (click)="jumpTo('configure')">backport
               section</a> keeps or retires a line.

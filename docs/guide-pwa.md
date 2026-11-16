@@ -5,8 +5,8 @@ Angular's service worker (`@angular/service-worker`), wired through `@mintplayer
 This guide covers how to add that to a new app, why each piece is there, and how to switch the
 service worker off again in production.
 
-Background and decisions: `docs/pwa_external_login_PRD.md` (#464, #490), sections D3, D8, D10, Q1
-and Q1b.
+Background and decisions: `docs/pwa_external_login_PRD.md` (#464, #490), sections D3, D8, D10, Q1,
+Q1b and Q1c.
 
 ## Adding PWA support to a new Spark app
 
@@ -102,20 +102,24 @@ It calls `provideServiceWorker('ngsw-worker.js', { enabled: !isDevMode(), regist
 'registerWhenStable:30000' })` (each option can be overridden) and starts Spark's update policy,
 `SparkServiceWorkerUpdates`:
 
-- **A new version is ready (`VERSION_READY`):** nothing happens immediately. The **next** router
-  navigation is aborted and becomes a full page load of its target (`location.assign`, with the
-  `<base href>` applied), so the user arrives where they were going, in the new version. A
-  back/forward navigation reloads instead, because the address bar already shows the target. The
-  version a load was made for is remembered in `sessionStorage`, so if the reloaded page still
-  reports that same version as ready, it does not reload again.
+- **A new version is ready (`VERSION_READY`): no page load.** The open tab keeps running the
+  version it started with, which the worker keeps serving it (every app prefetches all its
+  scripts, so each version is cached whole), and the new version runs from the next full page
+  load: a refresh, a new tab, or restarting the installed app. Navigation stays in-app. The
+  `updateReady` signal turns true, for an app that wants to tell the user.
 - **Unrecoverable state (`unrecoverable`):** the running version's files are gone from the cache
   and the server, so the page reloads at once.
 - **Checks:** `checkForUpdate()` once the application is stable, every 6 hours, and when the tab
   becomes visible again (at most once a minute).
 - **A hidden tab never reloads.** Spark has no unsaved-changes tracking to consult, so a reload
   nobody sees could discard an open edit. An `unrecoverable` in a hidden tab waits until the tab is
-  visible; a navigation in a hidden tab stays an in-app navigation.
+  visible.
 - Disabled worker (development builds, unsupported browsers) or server rendering: no-op.
+
+> **History (Q1c, 2026-11-16):** until then a ready version turned the next router navigation into a full
+> page load, so after every deploy one link click per tab reloaded the whole page. That reload is gone. If a
+> link click still reloads the page, it is not this policy: look for an `href` without `routerLink`, or an
+> `unrecoverable` event.
 
 `SparkServiceWorkerUpdates` exposes `updateReady`, `currentVersion` and `latestVersion` signals;
 `latestVersion()?.appData?.['build']` is the ng-spark version of the new build, e.g. for a footer.

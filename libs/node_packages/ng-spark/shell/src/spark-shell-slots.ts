@@ -132,7 +132,7 @@ export interface SparkSidebarTab {
   readonly content: TemplateRef<unknown>;
 }
 
-/** Sidebar, at the very bottom. No default. */
+/** Sidebar, at the very bottom: pinned to the sidebar's bottom edge however short the menu is. No default. */
 @Directive({ selector: '[sparkShellSidebarFooter]' })
 export class SparkShellSidebarFooterDirective {
   readonly templateRef = inject<TemplateRef<unknown>>(TemplateRef);

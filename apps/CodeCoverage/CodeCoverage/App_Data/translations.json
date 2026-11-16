@@ -578,11 +578,6 @@
       "fr": "Interrogez votre agent de code IA (Claude Code, Codex, Gemini, Copilot…) sur votre couverture : quels fichiers ont le plus de lignes non couvertes, quelles lignes d'une pull request aucun test n'exécute, quels commits ont fait baisser la couverture. Il écrit ensuite les tests dans votre copie locale. L'agent se connecte en votre nom et ne voit que les dépôts que vous pouvez voir ; il ne peut rien modifier dans CodeCoverage. Les dépôts publics fonctionnent sans connexion.",
       "nl": "Vraag je AI-codeeragent (Claude Code, Codex, Gemini, Copilot…) naar je coverage: welke bestanden de meeste niet-gedekte regels hebben, welke regels van een pull request geen enkele test uitvoert, welke commits de coverage verlaagden. Daarna schrijft hij de tests in je checkout. De agent meldt zich aan als jou en ziet alleen de repositories die jij kunt zien; hij kan niets wijzigen in CodeCoverage. Publieke repositories werken zonder aanmelden."
     },
-    "navLink": {
-      "en": "AI agents",
-      "fr": "Agents IA",
-      "nl": "AI-agents"
-    },
     "other": {
       "oauth": {
         "en": "Any MCP client that supports Streamable HTTP and OAuth sign-in works with this address:",
@@ -4017,6 +4012,11 @@
       "fr": "Rétroportages",
       "nl": "Backports"
     },
+    "commitGraphSetup": {
+      "en": "Commit graph",
+      "fr": "Graphe des commits",
+      "nl": "Commitgrafiek"
+    },
     "connectAgent": {
       "en": "Connect an AI agent",
       "fr": "Connecter un agent IA",
@@ -4093,6 +4093,16 @@
       "en": "PR size labels",
       "fr": "Étiquettes de taille de PR",
       "nl": "PR-groottelabels"
+    },
+    "projectBoardsSetup": {
+      "en": "Project boards",
+      "fr": "Tableaux de projet",
+      "nl": "Projectborden"
+    },
+    "versioningSetup": {
+      "en": "Package versioning",
+      "fr": "Versionnage des paquets",
+      "nl": "Pakketversiebeheer"
     }
   },
   "queries": {

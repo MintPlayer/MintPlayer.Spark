@@ -483,13 +483,20 @@ DemoApp RP registration in HR (for M6/M7):
     - a kill-switch section in `guide-pwa.md` (ship `safety-worker.js` as `ngsw-worker.js`)
 - **Q1b — decided: one `provideSparkServiceWorker()` in a new entry point `@mintplayer/ng-spark/pwa`.**
   - It wraps `provideServiceWorker('ngsw-worker.js', { enabled: !isDevMode(), registrationStrategy: 'registerWhenStable:30000' })` plus the update policy:
-    - `VERSION_READY` → the next router navigation becomes a full page load of its target
+    - ~~`VERSION_READY` → the next router navigation becomes a full page load of its target~~ **superseded by Q1c (2026-11-16): `VERSION_READY` loads no page**
     - `unrecoverable` → immediate reload
     - `checkForUpdate()` when stable, every 6 h, and on `visibilitychange` → visible
   - **No hidden-tab reload:** ng-spark has no unsaved-changes guard (no `canDeactivate`/dirty tracking) to consult, so it is not safe.
   - `@angular/service-worker` becomes an **optional** peer of `ng-spark`, imported only by `/pwa`.
   - **Replaces legacy MintPlayer's `app.component.ts:88-100`,** which used the removed `available`/`activated` API and reloaded immediately (losing open edits).
   - **Legacy's `"version": 701` (`ngsw-config.json:4`) is not carried over.** Update detection uses the content hashes in the generated `ngsw.json`, so it is unnecessary. A human-readable build goes in `appData.build`, set to the ng-spark package version, never a commit sha (S4), and the footer can show it via `VersionReadyEvent.latestVersion.appData`.
+- **Q1c — decided (owner, 2026-11-16, PR #687): a downloaded version never reloads the page.** Supersedes Q1b's `VERSION_READY` rule.
+  - **Why:** the reload-on-next-navigation made one link click per deploy per tab a full page load, while the same link after a refresh was an in-app navigation. CodeCoverage deploys often, so users saw "links that reload the page" often. The owner first chose to keep and document it (same day), then asked for it to go: "Can we have the page not reload after the service-worker downloaded a new version after all?"
+  - **Now:** `VERSION_READY` only sets `updateReady`, `currentVersion` and `latestVersion`. The open tab keeps running its version; the new version runs from the next full page load (refresh, new tab, app restart). `unrecoverable` still reloads at once (a hidden tab waits until visible), because that tab can no longer be served.
+  - **Why it is safe:** every app's `ngsw-config.json` puts all `/*.js` and `/*.css` in the `prefetch` `app` group (e.g. `apps/CodeCoverage/CodeCoverage/ClientApp/ngsw-config.json:9-21`), so each version is cached whole, and Angular's worker keeps serving a client the version it started on until that client reloads. An old tab never asks the server for a chunk the deploy removed; if the cache was evicted anyway, the worker reports `unrecoverable`, which reloads.
+  - **Trade-off accepted:** a tab left open for days keeps the old client against the new server. Spark's API is the same server for both, so the risk is a client that misses a new field, not a broken page. An app that wants to say "a new version is available" reads `updateReady()`; none does today.
+  - **Removed:** the `NavigationStart` hook, `SparkPageLoader.assign`, and the `sessionStorage['spark-sw-reloaded-for']` loop guard (only the navigation reload needed it).
+  - Code: `libs/node_packages/ng-spark/pwa/src/spark-service-worker-updates.ts`; tests: `spark-service-worker-updates.spec.ts` ("records the update and never loads a page, on navigations nor on becoming visible").
 - **Q6 — decided: `ng-spark-auth` merges into `ng-spark` in this PR, keeping its granularity.**
   - All 15 entry points (account, auth-bar, confirm-email, core, forgot-password, guards, interceptors, login, models, pipes, register, reset-password, routes, sign-in, two-factor) move to nested secondary entry points `@mintplayer/ng-spark/auth/<name>`.
   - `libs/node_packages/ng-spark-auth` is deleted, and CI stops publishing it.
@@ -568,7 +575,7 @@ live under `ng-spark/auth/...`.
 4. **M4 Providers:** `AddSparkExternalProviders(configuration)`, the `AddSparkGitHub` rename, X on OAuth 2.0, default icons for all six (D5, D6). Migrate CodeCoverage to it.
 5. **M5 PWA:**
    - root dependency
-   - `@mintplayer/ng-spark/pwa` with `provideSparkServiceWorker()` and its update policy (Q1b), with vitest coverage for: next navigation becomes a full load after `VERSION_READY`, `unrecoverable` reloads, the check schedule
+   - `@mintplayer/ng-spark/pwa` with `provideSparkServiceWorker()` and its update policy (Q1b), with vitest coverage for: next navigation becomes a full load after `VERSION_READY` (superseded by Q1c, PR #687: `VERSION_READY` loads no page), `unrecoverable` reloads, the check schedule
    - `appData.build` = ng-spark package version (no commit sha: S4)
    - per-app generator + manifest + icons + `ngsw-config.json`
    - host no-cache helper
