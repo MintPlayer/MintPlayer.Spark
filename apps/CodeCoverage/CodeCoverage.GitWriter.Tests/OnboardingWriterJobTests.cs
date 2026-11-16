@@ -116,11 +116,62 @@ public class OnboardingWriterJobTests : WriterTestBase
         origin.InBare("rev-parse", $"{answer.Sha}^").Trim().Should().Be(baseSha);
     }
 
+    /// <summary>#649: #648 taught the narrowing the workflows' setup-dotnet pins, and this endpoint refused every such narrowing.</summary>
+    [Fact]
+    public async Task Issue649_a_narrowing_job_writes_a_workflow_beside_global_json()
+    {
+        var (origin, baseSha) = Seeded();
+        origin.SetBranch("release/dotnet-10.x", baseSha);
+        var job = Job(origin, baseSha,
+            new { path = "global.json", content = "{ \"sdk\": { \"version\": \"10.0.203\" }, \"tools\": { \"dotnet\": \"10.0.203\" } }\n" },
+            new { path = ".github/workflows/pull-request.yml", content = "jobs:\n  build:\n    steps:\n    - uses: actions/setup-dotnet@v6\n      with:\n        dotnet-version: 10.0.203\n" });
+        job["baseBranch"] = "release/dotnet-10.x";
+        job["line"] = "dotnet-10.x";
+        job["narrow"] = true;
+
+        var response = await Writer.Client.PostAsJsonAsync("/jobs/onboarding", job, GitWriterHost.Json);
+        response.EnsureSuccessStatusCode();
+        var answer = (await response.Content.ReadFromJsonAsync<DependencyJobResponse>(GitWriterHost.Json))!;
+
+        answer.Outcome.Should().Be("pushed", answer.Detail);
+        origin.InBare("diff-tree", "-r", "--name-status", "--no-commit-id", baseSha, answer.Sha!).ReplaceLineEndings("\n").Trim().Should().Be(
+            "A\t.github/workflows/pull-request.yml\nA\tglobal.json");
+    }
+
+    /// <summary>#649 D10 (S8): a rerun of Set up features plans the same narrowing on the same line head, dated now; the
+    /// branch keeps its commit instead of a force-push that restarts the pull request's checks.</summary>
+    [Fact]
+    public async Task Issue649_a_rerun_with_the_same_files_on_the_same_head_keeps_the_branch_s_commit()
+    {
+        var (origin, baseSha) = Seeded();
+        origin.SetBranch("release/dotnet-10.x", baseSha);
+        Dictionary<string, object?> Narrowing(DateTimeOffset date)
+        {
+            var job = Job(origin, baseSha, new { path = "global.json", content = "{ \"sdk\": { \"version\": \"10.0.203\" } }\n" });
+            job["baseBranch"] = "release/dotnet-10.x";
+            job["line"] = "dotnet-10.x";
+            job["narrow"] = true;
+            job["author"] = job["committer"] = new { name = "CodeCoverage", email = "bot@example.invalid", date };
+            return job;
+        }
+
+        var first = (await (await Writer.Client.PostAsJsonAsync("/jobs/onboarding", Narrowing(CommitterDate), GitWriterHost.Json))
+            .Content.ReadFromJsonAsync<DependencyJobResponse>(GitWriterHost.Json))!;
+        var second = (await (await Writer.Client.PostAsJsonAsync("/jobs/onboarding", Narrowing(CommitterDate.AddDays(1)), GitWriterHost.Json))
+            .Content.ReadFromJsonAsync<DependencyJobResponse>(GitWriterHost.Json))!;
+
+        first.Outcome.Should().Be("pushed", first.Detail);
+        second.Outcome.Should().Be("pushed", second.Detail);
+        second.Sha.Should().Be(first.Sha);
+        origin.Ref("refs/heads/mintplayer/narrow-dotnet-10.x").Should().Be(first.Sha);
+    }
+
     [Theory]
-    [InlineData(".github/workflows/regenerate.yml", "dotnet-10.x")]
+    [InlineData(".github/workflows/nested/regenerate.yml", "dotnet-10.x")]   // GitHub runs no workflow from a subdirectory
+    [InlineData(".github/workflows/README.md", "dotnet-10.x")]
     [InlineData("coverage.yml", "dotnet-10.x")]
     [InlineData("src/Hsts/Hsts.csproj", null)]   // narrowing is a line's only
-    public async Task D15_a_narrowing_job_writes_msbuild_files_and_global_json_only(string path, string? line)
+    public async Task D15_a_narrowing_job_writes_msbuild_files_global_json_and_workflows_only(string path, string? line)
     {
         var (origin, baseSha) = Seeded();
         origin.SetBranch("release/dotnet-10.x", baseSha);
@@ -148,5 +199,56 @@ public class OnboardingWriterJobTests : WriterTestBase
 
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
         origin.Ref($"refs/heads/{DependencyBranches.FeatureOnboarding}").Should().BeNull();
+    }
+
+    /// <summary>multi-target-dependency-split-PRD P7 (M10): the conversion from central package management rewrites the projects
+    /// and deletes Directory.Packages.props, in one commit on its own branch.</summary>
+    [Fact]
+    public async Task P7_a_central_job_rewrites_projects_and_deletes_Directory_Packages_props()
+    {
+        var origin = Seed();
+        origin.Checkout("main")
+            .Write("Directory.Packages.props", "<Project><PropertyGroup><ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally></PropertyGroup></Project>\n")
+            .Write("src/Web/Web.csproj", "<Project><ItemGroup><PackageReference Include=\"A\" /></ItemGroup></Project>\n");
+        var baseSha = origin.Commit("central");
+        origin.Push("main");
+        var job = Job(origin, baseSha,
+            new { path = "src/Web/Web.csproj", content = "<Project><ItemGroup><PackageReference Include=\"A\" Version=\"1.0.0\" /></ItemGroup></Project>\n" },
+            new { path = "Directory.Packages.props", delete = true });
+        job["central"] = true;
+
+        var response = await Writer.Client.PostAsJsonAsync("/jobs/onboarding", job, GitWriterHost.Json);
+        response.EnsureSuccessStatusCode();
+        var answer = (await response.Content.ReadFromJsonAsync<DependencyJobResponse>(GitWriterHost.Json))!;
+
+        answer.Outcome.Should().Be("pushed", answer.Detail);
+        origin.Ref($"refs/heads/{DependencyBranches.CentralPackageManagement}").Should().Be(answer.Sha);
+        origin.Ref($"refs/heads/{DependencyBranches.FeatureOnboarding}").Should().BeNull();
+        origin.InBare("diff-tree", "-r", "--name-status", "--no-commit-id", baseSha, answer.Sha!).ReplaceLineEndings("\n").Trim().Should().Be(
+            "D\tDirectory.Packages.props\nM\tsrc/Web/Web.csproj");
+    }
+
+    [Theory]
+    [InlineData("coverage.yml", false, null)]
+    [InlineData(".github/workflows/build.yml", false, null)]
+    [InlineData("src/Web/Web.csproj", true, null)]   // only Directory.Packages.props may be deleted
+    [InlineData("Directory.Packages.props", false, "dotnet-10.x")]   // the default branch only
+    public async Task P7_a_central_job_writes_msbuild_files_only_and_deletes_only_Directory_Packages_props(string path, bool delete, string? line)
+    {
+        var (origin, baseSha) = Seeded();
+        origin.SetBranch("release/dotnet-10.x", baseSha);
+        object file = delete ? new { path, delete = true } : new { path, content = "<Project />\n" };
+        var job = Job(origin, baseSha, file);
+        job["central"] = true;
+        if (line is not null)
+        {
+            job["baseBranch"] = "release/dotnet-10.x";
+            job["line"] = line;
+        }
+
+        var response = await Writer.Client.PostAsJsonAsync("/jobs/onboarding", job, GitWriterHost.Json);
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        origin.Ref($"refs/heads/{DependencyBranches.CentralPackageManagement}").Should().BeNull();
     }
 }

@@ -3,8 +3,9 @@ import * as path from 'node:path';
 import type { Blocker, PlanItem } from '../../contracts/types';
 import { EditRefused, blockFrom, escapeRegExp, findLines, replaceUniqueToken, type TextDoc } from '../../core/lineEdit';
 import { basename, directoryFiles } from '../../util/repoFiles';
-import { OK, dirOf, notPinned, outcome, readDoc, rel2abs, writeDoc, type Adapter, type AdapterContext, type StepOutcome } from '../adapter';
+import { OK, dirOf, exists, notPinned, outcome, readDoc, rel2abs, writeDoc, type Adapter, type AdapterContext, type StepOutcome } from '../adapter';
 import { parseNuGetAssets, parseNuGetText } from '../blockers';
+import { applyLayout } from './nugetLayout';
 
 /**
  * NuGet: PackageReference in a project, Central Package Management (Directory.Packages.props),
@@ -27,6 +28,8 @@ function kindOf(packageFile: string): Kind | null {
   return null;
 }
 
+const msBuildKind = (packageFile: string) => kindOf(packageFile) === 'project' || kindOf(packageFile) === 'props';
+
 /**
  * The version token of one package in an MSBuild file. Anchors are the `Include=`/`Update=` lines of
  * PackageReference/PackageVersion/GlobalPackageReference; the token is an attribute on the anchor
@@ -34,10 +37,20 @@ function kindOf(packageFile: string): Kind | null {
  * `Serilog` with a child element). All anchors together must yield exactly one token.
  */
 export function editMsBuild(doc: TextDoc, file: string, item: PlanItem): void {
+  const hits = msBuildHits(doc, item);
+  if (hits.length !== 1) {
+    throw new EditRefused(file, hits.length === 0 ? `no ${item.depName} version ${item.currentValue}` : `ambiguous ${item.depName} version ${item.currentValue}`, hits.length);
+  }
+  replaceUniqueToken(doc, { find: hits[0].find, to: item.newValue, range: hits[0].range }, file);
+}
+
+type Hit = { range: [number, number]; find: RegExp };
+
+function msBuildHits(doc: TextDoc, item: PlanItem): Hit[] {
   const id = escapeRegExp(item.depName);
   const cur = escapeRegExp(item.currentValue);
   const anchors = findLines(doc, new RegExp(`<(PackageReference|PackageVersion|GlobalPackageReference)\\b[^>]*\\b(Include|Update)\\s*=\\s*"${id}"`, 'i'));
-  const hits: Array<{ range: [number, number]; find: RegExp }> = [];
+  const hits: Hit[] = [];
   for (const a of anchors) {
     const attr = new RegExp(`\\b(Version|VersionOverride)\\s*=\\s*"(?<v>${cur})"`);
     if (attr.test(doc.lines[a].text)) {
@@ -48,10 +61,43 @@ export function editMsBuild(doc: TextDoc, file: string, item: PlanItem): void {
     const child = new RegExp(`<(Version|VersionOverride)>(?<v>${cur})</(Version|VersionOverride)>`);
     for (let i = block[0]; i < block[1]; i++) if (child.test(doc.lines[i].text)) hits.push({ range: [i, i + 1], find: child });
   }
-  if (hits.length !== 1) {
-    throw new EditRefused(file, hits.length === 0 ? `no ${item.depName} version ${item.currentValue}` : `ambiguous ${item.depName} version ${item.currentValue}`, hits.length);
+  return hits;
+}
+
+/** The MSBuild files that can define a property a project reads: its own, and every Directory.* file MSBuild may import from its directory up to the root. */
+const PROPERTY_FILES = ['Directory.Build.props', 'Directory.Build.targets', 'Directory.Packages.props'];
+
+/** D2: the project file and the existing Directory.* files at or above its directory, nearest first. */
+export async function propertyFiles(ctx: AdapterContext, packageFile: string): Promise<string[]> {
+  const out = [packageFile];
+  for (let dir = dirOf(packageFile); ; dir = dirOf(dir)) {
+    for (const name of PROPERTY_FILES) {
+      const f = dir === '.' ? name : `${dir}/${name}`;
+      if (f !== packageFile && (await exists(ctx, f))) out.push(f);
+    }
+    if (dir === '.') return out;
   }
-  replaceUniqueToken(doc, { find: hits[0].find, to: item.newValue, range: hits[0].range }, file);
+}
+
+/**
+ * D1 (docs/refused_property_and_packagemanager_edits_PRD.md): a reference whose version is `$(Prop)` (Renovate's
+ * sharedVariableName, SpaServices' `$(FolderHasherTargetsVersion)`) moves the property's one definition among the project
+ * and its Directory.* files. The action evaluates no imports, so two definitions refuse instead of guessing which wins.
+ */
+async function editProperty(ctx: AdapterContext, item: PlanItem, prop: string): Promise<void> {
+  const find = new RegExp(`<${escapeRegExp(prop)}(\\s[^>]*)?>(?<v>${escapeRegExp(item.currentValue)})</${escapeRegExp(prop)}>`);
+  const hits: Array<{ file: string; doc: TextDoc; line: number }> = [];
+  for (const file of await propertyFiles(ctx, item.packageFile)) {
+    const doc = await readDoc(ctx, file);
+    for (const line of findLines(doc, find)) hits.push({ file, doc, line });
+  }
+  if (hits.length !== 1) {
+    const what = hits.length === 0 ? 'no' : 'ambiguous';
+    throw new EditRefused(item.packageFile, `${what} ${item.depName} version ${item.currentValue} (nor one definition of $(${prop}))`, hits.length);
+  }
+  const [hit] = hits;
+  replaceUniqueToken(hit.doc, { find, to: item.newValue, range: [hit.line, hit.line + 1] }, hit.file);
+  await writeDoc(ctx, hit.file, hit.doc);
 }
 
 export function editDotnetTools(doc: TextDoc, file: string, item: PlanItem): void {
@@ -100,13 +146,17 @@ export const nugetAdapter: Adapter = {
   id: 'nuget',
   matches: (item) => item.datasource === 'nuget' && kindOf(item.packageFile) !== null,
   async files(ctx, item) {
-    return [item.packageFile, ...item.lockFiles, ...(await lockFilesFor(ctx, item.packageFile))];
+    const props = item.sharedVariableName && msBuildKind(item.packageFile) ? await propertyFiles(ctx, item.packageFile) : [item.packageFile];
+    return [...props, ...item.lockFiles, ...(await lockFilesFor(ctx, item.packageFile))];
   },
   async edit(ctx, item) {
     const doc = await readDoc(ctx, item.packageFile);
     const kind = kindOf(item.packageFile);
     if (kind === 'tools') editDotnetTools(doc, item.packageFile, item);
     else if (kind === 'global.json') editGlobalJsonSdk(doc, item.packageFile, item);
+    // multi-target-dependency-split-PRD D-c: the package's whole per-TFM layout, one canonical ItemGroup per TFM.
+    else if (item.layout?.length) applyLayout(doc, item.packageFile, item);
+    else if (item.sharedVariableName && msBuildHits(doc, item).length === 0) return editProperty(ctx, item, item.sharedVariableName);
     else editMsBuild(doc, item.packageFile, item);
     await writeDoc(ctx, item.packageFile, doc);
   },
@@ -125,10 +175,12 @@ export const nugetAdapter: Adapter = {
     for (const i of items) {
       for (const lock of await lockFilesFor(ctx, i.packageFile)) {
         const json = JSON.parse(await fs.readFile(rel2abs(ctx, lock), 'utf8')) as { dependencies?: Record<string, Record<string, { type?: string; resolved?: string }>> };
-        for (const tfm of Object.values(json.dependencies ?? {})) {
+        for (const [moniker, tfm] of Object.entries(json.dependencies ?? {})) {
           const entry = Object.entries(tfm).find(([k]) => k.toLowerCase() === i.depName.toLowerCase())?.[1];
-          if (entry && (entry.type === 'Direct' || entry.type === 'CentralTransitive') && entry.resolved !== i.newVersion) {
-            misses.push(`${i.depName} resolved ${entry.resolved} (planned ${i.newVersion}) in ${lock}`);
+          // D-c: a layout pins one version per TFM (the lock's key, `net10.0` or `net10.0/win-x64`).
+          const planned = i.layout?.find((l) => l.targetFramework.toLowerCase() === moniker.split('/')[0].toLowerCase())?.version ?? i.newVersion;
+          if (entry && (entry.type === 'Direct' || entry.type === 'CentralTransitive') && entry.resolved !== planned) {
+            misses.push(`${i.depName} resolved ${entry.resolved} (planned ${planned}) in ${lock}`);
           }
         }
       }

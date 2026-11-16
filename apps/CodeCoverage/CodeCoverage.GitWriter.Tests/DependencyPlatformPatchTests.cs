@@ -202,4 +202,190 @@ public class DependencyPlatformPatchTests : IDisposable
         verdict.Outcome.Should().Be(DependencyPatchOutcome.Rejected);
         verdict.Reason.Should().Be(Jobs.PatchReasons.InvalidContent);
     }
+
+    // ═══ platform-locations-PRD M3/M2: a multi-line setup input, an older Docker stage ═════════════════
+
+    [Fact]
+    public async Task One_line_of_a_multi_line_setup_input_moves()
+    {
+        const string workflow = "name: ci\non: push\njobs:\n  build:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/setup-dotnet@v4\n        with:\n"
+                                + "          dotnet-version: |\n            10.0.x\n            11.0.100-rc.1.26425.128\n      - run: |\n          echo 11.0.100-rc.1.26425.128\n";
+        var before = repo.Commit((".github/workflows/_build.yml", workflow));
+        var move = Dotnet11 with { FromChannel = "11.0" };
+        var request = Request(move, Location(".github/workflows/_build.yml", "setup-action", "11.0.100-rc.1.26425.128"));
+
+        var setup = repo.Change(before, (".github/workflows/_build.yml", workflow.Replace("            11.0.100-rc.1.26425.128\n", "            11.0.100\n", StringComparison.Ordinal)));
+        var script = repo.Change(before, (".github/workflows/_build.yml", workflow.Replace("echo 11.0.100-rc.1.26425.128", "echo 11.0.100", StringComparison.Ordinal)));
+
+        var accepted = await Validate(before, setup, request);
+        accepted.Outcome.Should().Be(DependencyPatchOutcome.Accepted, $"{accepted.Reason}: {accepted.Detail}");
+        (await Validate(before, script, request)).Reason.Should().Be(Jobs.PatchReasons.InvalidContent, "a run: block is no setup input");
+    }
+
+    [Fact]
+    public async Task An_older_Docker_stage_follows_the_move()
+    {
+        const string dockerfile = "FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build\nFROM mcr.microsoft.com/dotnet/aspnet:9.0\n";
+        var before = repo.Commit(("content/Web/Dockerfile", dockerfile));
+        var after = repo.Change(before, ("content/Web/Dockerfile", dockerfile.Replace(":9.0", ":11.0", StringComparison.Ordinal)));
+
+        var verdict = await Validate(before, after, Request(Dotnet11, Location("content/Web/Dockerfile", "docker", "9.0")));
+
+        verdict.Outcome.Should().Be(DependencyPatchOutcome.Accepted, verdict.Detail);
+    }
+
+    // ═══ platform-locations-PRD M4 / P9: the defining line of a computed TFM in a *.props ════════════════
+
+    private const string VersionsProps = "<Project>\n  <PropertyGroup>\n    <AspNetCoreMajorVersion>10</AspNetCoreMajorVersion>\n    <AspNetCoreMinorVersion>0</AspNetCoreMinorVersion>\n"
+                                         + "    <DefaultNetCoreTargetFramework>net$(AspNetCoreMajorVersion).$(AspNetCoreMinorVersion)</DefaultNetCoreTargetFramework>\n"
+                                         + "    <LangVersion>10</LangVersion>\n  </PropertyGroup>\n</Project>\n";
+
+    private Task<DependencyPatchVerdict> ValidateVersionsProps(string after, string kind = "tfm-property", string value = "10")
+    {
+        var before = repo.Commit(("eng/Versions.props", VersionsProps));
+        var changed = repo.Change(before, ("eng/Versions.props", after));
+        return Validate(before, changed, Request(Dotnet11, Location("eng/Versions.props", kind, value)));
+    }
+
+    [Fact]
+    public async Task The_reported_property_s_bare_major_moves_in_a_props_file()
+    {
+        var verdict = await ValidateVersionsProps(VersionsProps.Replace("<AspNetCoreMajorVersion>10<", "<AspNetCoreMajorVersion>11<", StringComparison.Ordinal));
+
+        verdict.Outcome.Should().Be(DependencyPatchOutcome.Accepted, verdict.Detail);
+        verdict.AppliedGroups.Should().Equal(Group);
+    }
+
+    [Fact]
+    public async Task A_property_holding_the_channel_moves_its_channel()
+    {
+        const string props = "<Project>\n  <PropertyGroup>\n    <NetCurrent>net10.0</NetCurrent>\n  </PropertyGroup>\n</Project>\n";
+        var before = repo.Commit(("eng/Common.props", props));
+        var after = repo.Change(before, ("eng/Common.props", props.Replace("net10.0", "net11.0", StringComparison.Ordinal)));
+
+        var verdict = await Validate(before, after, Request(Dotnet11, Location("eng/Common.props", "tfm-property", "10.0")));
+
+        verdict.Outcome.Should().Be(DependencyPatchOutcome.Accepted, verdict.Detail);
+    }
+
+    [Theory]
+    [InlineData("<AspNetCoreMajorVersion>10<", "<AspNetCoreMajorVersion>12<", "not the target's major")]
+    [InlineData("<AspNetCoreMinorVersion>0<", "<AspNetCoreMinorVersion>1<", "another property")]
+    [InlineData("<AspNetCoreMajorVersion>10</AspNetCoreMajorVersion>", "<AspNetCoreMajorVersion Condition=\"true\">11</AspNetCoreMajorVersion>", "a condition added")]
+    [InlineData("<AspNetCoreMajorVersion>10</AspNetCoreMajorVersion>", "<AspNetCoreMajorVersion>11</AspNetCoreMajorVersion><Import Project=\"x.targets\" />", "an import beside it")]
+    [InlineData("<DefaultNetCoreTargetFramework>net$(AspNetCoreMajorVersion)", "<DefaultNetCoreTargetFramework>net11", "the expression")]
+    public async Task Anything_but_the_one_token_in_a_props_file_is_refused(string from, string to, string because)
+    {
+        var verdict = await ValidateVersionsProps(VersionsProps.Replace(from, to, StringComparison.Ordinal));
+
+        verdict.Outcome.Should().Be(DependencyPatchOutcome.Rejected, because);
+        verdict.Reason.Should().Be(DependencyPatchReasons.UnplannedChange, because);
+    }
+
+    [Fact]
+    public async Task A_plain_property_of_the_same_value_is_the_accepted_residue()
+    {
+        // P9's check is the line's shape and the old/new values, not the property's name (the location carries none):
+        // <LangVersion>10</LangVersion> -> 11 passes too. One numeric token, no structure; recorded in the PRD's review.
+        var verdict = await ValidateVersionsProps(VersionsProps.Replace("<LangVersion>10<", "<LangVersion>11<", StringComparison.Ordinal));
+
+        verdict.Outcome.Should().Be(DependencyPatchOutcome.Accepted);
+    }
+
+    [Fact]
+    public async Task Only_a_tfm_property_location_opens_a_props_file()
+    {
+        var verdict = await ValidateVersionsProps(VersionsProps.Replace("<AspNetCoreMajorVersion>10<", "<AspNetCoreMajorVersion>11<", StringComparison.Ordinal),
+            kind: "tfm", value: "10");
+
+        verdict.Reason.Should().Be(DependencyPatchReasons.DeniedPath);
+    }
+
+    // ═══ platform-locations-PRD M6 / P10: an action's runs.using ═══════════════════════════════════════
+
+    private static readonly PlanPlatform Node26 = new() { Sdk = "node", FromChannel = "24", ToChannel = "26", ToVersion = "26.0.0", ActionRuntimes = ["node20", "node24"] };
+
+    private async Task<DependencyPatchVerdict> ValidateAction(string to, PlanPlatform move)
+    {
+        const string action = "name: Delay\nruns:\n  using: 'node20'\n  main: dist/index.js\n";
+        var before = repo.Commit(("delay/action.yml", action));
+        var changed = repo.Change(before, ("delay/action.yml", action.Replace("node20", to, StringComparison.Ordinal)));
+        return await Validate(before, changed, new DependencyPatchRequest([])
+        {
+            Platforms = [new DependencyPlatformMove("platform:node 26", move, [new DependencyPlatformLocation("node", "delay/action.yml", "action-runtime", "node20")])],
+            ClaimedAppliedGroups = ["platform:node 26"],
+        });
+    }
+
+    [Fact]
+    public async Task An_action_runtime_moves_to_a_runtime_GitHub_runs_below_the_target()
+    {
+        // node24, not node26: the token does not name the target, and is admitted because the plan lists it.
+        var verdict = await ValidateAction("node24", Node26);
+
+        verdict.Outcome.Should().Be(DependencyPatchOutcome.Accepted, verdict.Detail);
+    }
+
+    [Theory]
+    [InlineData("node26", "the target, which GitHub does not run (not in actionRuntimes)")]
+    [InlineData("node24\n  pre: x.js", "anything beside the token")]
+    public async Task An_action_runtime_outside_the_plan_s_list_is_refused(string to, string because)
+    {
+        var verdict = await ValidateAction(to, Node26);
+
+        verdict.Outcome.Should().Be(DependencyPatchOutcome.Rejected, because);
+    }
+
+    [Fact]
+    public async Task Without_the_runtime_list_an_action_runtime_is_refused()
+    {
+        var verdict = await ValidateAction("node24", Node26 with { ActionRuntimes = null });
+
+        verdict.Outcome.Should().Be(DependencyPatchOutcome.Rejected);
+    }
+
+    // ═══ platform-locations-PRD M5 / P8: a template.json framework choice ════════════════════════════
+
+    private const string TemplatePath = "content/Web/.template.config/template.json";
+
+    private const string TemplateJson = """
+        {
+          "symbols": {
+            "Framework": {
+              "datatype": "choice",
+              "choices": [
+                { "choice": "net10.0", "description": "Target net10.0" }
+              ],
+              "replaces": "net10.0",
+              "defaultValue": "net10.0"
+            }
+          }
+        }
+
+        """;
+
+    private async Task<DependencyPatchVerdict> ValidateTemplate(string after)
+    {
+        var before = repo.Commit((TemplatePath, TemplateJson));
+        var changed = repo.Change(before, (TemplatePath, after));
+        return await Validate(before, changed, Request(Dotnet11, Location(TemplatePath, "template-framework", "net10.0")));
+    }
+
+    [Fact]
+    public async Task The_template_framework_tokens_move()
+    {
+        var verdict = await ValidateTemplate(TemplateJson.Replace("net10.0", "net11.0", StringComparison.Ordinal));
+
+        verdict.Outcome.Should().Be(DependencyPatchOutcome.Accepted, verdict.Detail);
+    }
+
+    [Fact]
+    public async Task A_second_choice_added_to_the_template_is_refused()
+    {
+        // strategy add is reported, never written: an added choice is JSON structure the line rule refuses.
+        var verdict = await ValidateTemplate(TemplateJson.Replace("""{ "choice": "net10.0", "description": "Target net10.0" }""",
+            """{ "choice": "net11.0", "description": "Target net11.0" }, { "choice": "net10.0", "description": "Target net10.0" }""", StringComparison.Ordinal));
+
+        verdict.Outcome.Should().Be(DependencyPatchOutcome.Rejected);
+    }
 }

@@ -172,6 +172,8 @@ current lines take only bot picks, past lines take human PRs (grilling Q1b, Q1c,
   to another App is rebound. Tests: `Empty_line_checks_still_require_the_line_policy`,
   `The_form_never_offers_the_line_policy_and_a_second_run_changes_nothing`,
   `A_line_policy_bound_to_another_App_is_bound_to_this_one`, updated contexts in 5 existing tests.
+- *(Superseded 2026-11-12: ruleset 3 now exempts the App in every repository, promoting or not;
+  `docs/lockfile_notice_and_line_cut_PRD.md` D2.)*
 - **Defect fixed (owner: "y", 2026-11-11):** with `current: promote`, ruleset 3 exempts the App on every line. The
   queue refused any ruleset with checks or reviews that the App bypasses (`MergeQueueEngine.cs`, `bypass`), so every
   App backport onto a past line in a promote repository would have been refused. Spark has no past lines yet, so it

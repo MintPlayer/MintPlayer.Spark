@@ -26,7 +26,8 @@ export async function showOnDefaultBranch(exec: Exec, cwd: string, defaultBranch
 
 /**
  * Fetches the tags the run just wrote (the server pushes them to the remote, PRD D3), so the pack step's build reads
- * them through MintPlayer.Versioning.MSBuild (D9).
+ * them through MintPlayer.Versioning.MSBuild (D9). Also after a local fallback: the server may have pushed them before
+ * it failed, and the local engine then creates none in the checkout.
  */
 export async function fetchTags(exec: Exec, cwd: string): Promise<void> {
   await execOk(exec, 'git', ['fetch', '--no-recurse-submodules', '--tags', '--force', 'origin'], { cwd });

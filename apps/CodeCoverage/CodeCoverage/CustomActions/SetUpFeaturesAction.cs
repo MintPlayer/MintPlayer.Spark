@@ -1,3 +1,4 @@
+using CodeCoverage.Actions;
 using CodeCoverage.Dependencies.Onboarding;
 using CodeCoverage.Entities;
 using CodeCoverage.MergeQueue;
@@ -23,7 +24,8 @@ namespace CodeCoverage.CustomActions;
 /// answers repeat it harmlessly.
 /// With the merge queue picked, the rulesets are a step of the chooser (#554 f4, owner 2026-11-06: "apply at
 /// confirmation"): the GitHub popup and the rulesets form follow the checkbox form, the rulesets' plan joins the
-/// confirmation, and they are applied right after the onboarding pull request opens, with the admin's one-shot token
+/// confirmation, and they are applied right after the onboarding pull request opens (with no files to change, before the
+/// onboarding applies, so its line cuts have ruleset 3's bypass), with the admin's one-shot token
 /// (<see cref="IMergeQueueRulesetSetup"/>). When they cannot be (not GitHub, no OAuth app, a refused read), the
 /// confirmation says they are left to set by hand and the pull request still opens.
 /// </summary>
@@ -51,11 +53,18 @@ public partial class SetUpFeaturesAction : SparkCustomAction
         var form = await manager.GetPersistentObjectAsync(Guid.Parse(PersistentObjectIds.Default.SetUpFeatures));
         foreach (var feature in Enum.GetValues<EOnboardingFeature>())
             form[feature.ToString()].Value = current.Contains(feature);
+        // #649 D12: "SDK from global.json" only for a .NET repository, enabled with dependency updates or release lines.
+        var dotnet = await IsDotnetAsync(repository, cancellationToken);
+        form[SetUpFeaturesActions.DotnetRepository].Value = dotnet;
+        SetUpFeaturesActions.Shape(form);
         var plan = manager.GetTranslatedMessage("onboarding.plan");
         manager.Retry.Action(manager.GetTranslatedMessage("onboarding.chooseTitle"), [plan], plan, form, manager.GetTranslatedMessage("onboarding.chooseMessage"), cancellable: true);
         var chosen = manager.Retry.Result!;
         if (chosen.Option == RetryResult.CancelOption) return;
         var features = Enum.GetValues<EOnboardingFeature>().Where(f => IsChecked(chosen.PersistentObject, f)).ToHashSet();
+        // The form's state is the client's word: the conversion needs a .NET repository and a feature that moves its SDK.
+        if (!dotnet || !(features.Contains(EOnboardingFeature.DependencyUpdates) || features.Contains(EOnboardingFeature.ReleaseLines)))
+            features.Remove(EOnboardingFeature.SdkFromGlobalJson);
         if (features.Count == 0)
         {
             Report(new(VersioningOnboardingOutcome.Refused, manager.GetTranslatedMessage("onboarding.nothingPicked")), args);
@@ -111,7 +120,7 @@ public partial class SetUpFeaturesAction : SparkCustomAction
                     if (refused.Count > 0)
                         byHand = refused[0].Message;
                     else if ((rulesetPlans = await rulesets.ChooseAsync(read, cancellationToken,
-                        releaseLinesComing: features.Contains(EOnboardingFeature.ReleaseLines), promotesLinesComing: planned.PromotesLines)) is null)
+                        releaseLinesComing: features.Contains(EOnboardingFeature.ReleaseLines))) is null)
                         return;
                 }
             }
@@ -158,6 +167,12 @@ public partial class SetUpFeaturesAction : SparkCustomAction
                     message: Summary(planned, rulesetPlans, byHand, cuts), cancellable: true);
                 if (manager.Retry.Result!.Option == RetryResult.CancelOption) return;
 
+                // With no files to change, OnboardAsync cuts the lines at once with the App's token, which needs ruleset 3's
+                // bypass first (docs/lockfile_notice_and_line_cut_PRD.md D5; SpaServices' cut answered 422 without it). The
+                // workflows the checks come from are on the default branch already, so nothing waits for a merge.
+                if (planned.Files.Count == 0)
+                    await ApplyRulesetsAsync(rulesetPlans, lease, cancellationToken);
+
                 outcome = await onboarding.OnboardAsync(repository, features, olderLines, cancellationToken, moveTags);
             }
             catch (Exception ex) when (ex is GitWriterUnavailableException or HttpRequestException)
@@ -166,13 +181,10 @@ public partial class SetUpFeaturesAction : SparkCustomAction
             }
             Report(outcome, args);
 
-            // The rulesets follow only an onboarding that went through: a refused one leaves no workflow to report the
-            // checks ruleset 2 requires.
-            if (rulesetPlans is not null && lease is not null && outcome.Outcome is not VersioningOnboardingOutcome.Refused)
-            {
-                var (applied, failed) = await rulesets.ApplyAsync(rulesetPlans, lease.AccessToken, cancellationToken);
-                rulesets.Notify(applied, failed);
-            }
+            // With a pull request, the rulesets follow only an onboarding that went through: a refused one leaves no
+            // workflow to report the checks ruleset 2 requires.
+            if (planned.Files.Count > 0 && outcome.Outcome is not VersioningOnboardingOutcome.Refused)
+                await ApplyRulesetsAsync(rulesetPlans, lease, cancellationToken);
         }
         finally
         {
@@ -181,7 +193,29 @@ public partial class SetUpFeaturesAction : SparkCustomAction
         }
     }
 
-    private static string Short(string sha) => sha.Length > 7 ? sha[..7] : sha;
+    private async Task ApplyRulesetsAsync(IReadOnlyList<RulesetPlanned>? rulesetPlans, ISparkOneShotOAuthLease? lease, CancellationToken cancellationToken)
+    {
+        if (rulesetPlans is null || lease is null)
+            return;
+        var (applied, failed) = await rulesets.ApplyAsync(rulesetPlans, lease.AccessToken, cancellationToken);
+        rulesets.Notify(applied, failed);
+    }
+
+    private static string Short(string sha) =>sha.Length > 7 ? sha[..7] : sha;
+
+    /// <summary>
+    /// #649 Q3/Q4 ("Use the existing mechanism"): the repository's manifest names a NuGet package or the lookup saw a .NET SDK.
+    /// Without a manifest yet (never scanned) the checkbox is offered, since the plan only converts what it finds.
+    /// </summary>
+    private async Task<bool> IsDotnetAsync(Repository repository, CancellationToken cancellationToken)
+    {
+        var manifest = await session.LoadAsync<RepositoryManifest>(RepositoryManifest.ForRepository(repository.Id!), cancellationToken);
+        return manifest is null
+            || manifest.Produces.Any(p => p.Ecosystem == Dependencies.ManifestEcosystems.NuGet)
+            || manifest.Consumes.Any(c => c.Ecosystem == Dependencies.ManifestEcosystems.NuGet)
+            || manifest.LookupConsumes.Any(c => c.Ecosystem == Dependencies.ManifestEcosystems.NuGet)
+            || manifest.LookupPlatforms.Any(p => p.Sdk == "dotnet");
+    }
 
     private static bool IsChecked(PersistentObject? form, EOnboardingFeature feature)
         => form?[feature.ToString()].GetValue<bool>() == true;
@@ -189,7 +223,9 @@ public partial class SetUpFeaturesAction : SparkCustomAction
     private void Report(VersioningOnboardingOutcome outcome, CustomActionArgs args)
     {
         args.SetResult(outcome);
-        manager.Client.Notify(outcome.Note, outcome.Outcome is VersioningOnboardingOutcome.Opened or VersioningOnboardingOutcome.Seeded or VersioningOnboardingOutcome.Nothing
+        // #649 D9: a merged onboarding with a failed step (SpaServices' refused narrowing) is a warning, not a success.
+        manager.Client.Notify(outcome.Note, !outcome.HasFailures
+            && outcome.Outcome is VersioningOnboardingOutcome.Opened or VersioningOnboardingOutcome.Seeded or VersioningOnboardingOutcome.Nothing or VersioningOnboardingOutcome.Merged
             ? NotificationKind.Success : NotificationKind.Warning);
     }
 

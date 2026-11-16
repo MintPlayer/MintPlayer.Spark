@@ -47,7 +47,7 @@ public class ReleaseFlowTests : CoverageRavenTest
             .Returns(["release/dotnet-11.x", "release/angular-22.x"]);
         git.ListWorkflowRunsAsync(Arg.Any<Repository>(), "release.yml", "main", Arg.Any<CancellationToken>())
             .Returns([new ForgeWorkflowRun(9, "completed", "success", Green, "main", "https://example.invalid/runs/9")]);
-        git.GetWriterAccessAsync(Arg.Any<Repository>(), null, false, Arg.Any<CancellationToken>())
+        git.GetWriterAccessAsync(Arg.Any<Repository>(), null, true, Arg.Any<CancellationToken>()) // tags and line moves carry workflow history
             .Returns(new ForgePushAccess(new ForgeWriterAccess("https://example.invalid/acme/widgets.git", "https://example.invalid/acme/widgets.git", "x", "y"), null));
         http.CreateClient(Arg.Any<string>()).Returns(_ => new HttpClient(new Registry(this)));
         writer.VersioningPromoteAsync(Arg.Do<GitWriterPromoteRequest>(r => promoteRequest = r), Arg.Any<CancellationToken>())
@@ -91,7 +91,7 @@ public class ReleaseFlowTests : CoverageRavenTest
     private async Task ReleaseAsync(IDocumentStore store, string actor, params ReleaseVersionRequest[] versions)
     {
         using var session = store.OpenAsyncSession();
-        await new ReleaseRecipient(session, new SingleForgeResolver(integration), [forge], [git], writer, http, TimeProvider.System, NullLogger<ReleaseRecipient>.Instance)
+        await new ReleaseRecipient(session, new SingleForgeResolver(integration), [forge], [git], writer, http, TimeProvider.System, Tests.Commands.CommandTestKit.Lifecycle(store, new Tests.Commands.FakeCommentReactions()), NullLogger<ReleaseRecipient>.Instance)
             .HandleAsync(new ReleaseMessage { RepositoryId = RepositoryId, Number = 5, Request = new ReleaseCommentRequest([], false, null, versions), ActorLogin = actor });
     }
 
@@ -116,6 +116,25 @@ public class ReleaseFlowTests : CoverageRavenTest
         (await check.LoadAsync<ReleaseVersion>(ReleaseVersion.DocumentId(RepositoryId, "Acme.Stale/v11.0.0"))).Should().BeNull("a record that no longer fits is reported once and forgotten");
         forge.Comments.Single().Body.Should().Contain("with `Acme.Core/v11.4.0`").And.Contain("`Acme.Stale@11.0.0` was not placed");
         await git.Received(1).RevokeWriterAccessAsync(Arg.Any<Repository>(), Arg.Any<ForgeWriterAccess>(), Arg.Any<CancellationToken>());
+    }
+
+    // A line promotes every package of the repository at once (Dotnet.Tools has 40): one load per tag would pass the
+    // session's 30-request cap after the writer pushed the tags, as the versioning run's RecordAsync did (run 43711348322).
+    [Fact]
+    public async Task A_release_that_places_many_tags_records_every_one()
+    {
+        using var store = GetDocumentStore();
+        await SeedAsync(store);
+        var tags = Enumerable.Range(0, 40).Select(i => $"Acme.Package{i}/v11.0.0").ToList();
+        writer.VersioningPromoteAsync(Arg.Any<GitWriterPromoteRequest>(), Arg.Any<CancellationToken>())
+            .Returns(new GitWriterPromoteResult(GitWriterPromoteResult.Promoted, null,
+                [new("release/dotnet-11.x", GitWriterPromoteLineResult.Promoted, Promoted, [], [], Tags: tags)], null, 10, []));
+
+        await ReleaseAsync(store, "maintainer");
+
+        using var check = store.OpenAsyncSession();
+        var placed = await check.LoadAsync<ReleaseVersion>(tags.Select(t => ReleaseVersion.DocumentId(RepositoryId, t)));
+        placed.Values.Should().AllSatisfy(r => r!.PlacedCommit.Should().Be(Promoted));
     }
 
     [Fact]

@@ -202,12 +202,13 @@ public class PlatformLifecycleTests : CoverageRavenTest
         await RunAsync(store, Sources(bodies).Handler, options);
 
         using var session = store.OpenAsyncSession();
-        var table = await CodeCoverage.Dependencies.Policy.DependencyPlatformTable.JsonAsync(session, ["@types/node"], CancellationToken.None);
+        var table = await CodeCoverage.Dependencies.Policy.DependencyPlatformTable.JsonAsync(session, ["@types/node"], ["Octokit.GraphQL"], CancellationToken.None);
 
         table.Length.Should().BeLessThan(32_768, "half the input's 65,535 cap, so the channels can double before it matters");
         using var document = System.Text.Json.JsonDocument.Parse(table);
         var sdks = document.RootElement.GetProperty("sdks");
         sdks.EnumerateObject().Select(p => p.Name).Should().Equal("dotnet", "go", "java", "node", "php", "python", "ruby", "rust");
+        document.RootElement.GetProperty("stable").EnumerateArray().Select(g => g.GetString()).Should().Equal("Octokit.GraphQL");
         var rust = sdks.GetProperty("rust").EnumerateArray().Single(c => c.GetProperty("channel").GetString() == "1.100");
         (rust.GetProperty("preview").GetBoolean(), rust.GetProperty("latestSdk").GetString()).Should().Be((true, "beta-2026-11-08"));
         var dotnet = sdks.GetProperty("dotnet").EnumerateArray().Single(c => c.GetProperty("channel").GetString() == "10.0");
@@ -235,6 +236,28 @@ public class PlatformLifecycleTests : CoverageRavenTest
         PlatformLifecycleStartup.NeedsCollection([old, current]).Should().BeTrue("a row in the old shape is recollected at startup");
         PlatformLifecycleStartup.NeedsCollection([current]).Should().BeFalse();
         PlatformLifecycleStartup.NeedsCollection([]).Should().BeFalse("an empty table fails no lookup, and a test host makes no outbound request");
+    }
+
+    /// <summary>dependency-companion-pins-PRD F2: coverage.yml's follow rules travel in the table, in the shape the action's
+    /// <c>parsePlatformTable</c> reads (<c>platform.test.ts</c>), and none is <c>[]</c>.</summary>
+    [Fact]
+    public void The_table_carries_the_follow_rules_the_lookup_turns_into_records()
+    {
+        var rules = new[]
+        {
+            new CodeCoverage.Git.Dependencies.DependencyFollowRule("mcr.microsoft.com/playwright", "apps/SeoTester/docker-compose.yml", "seotester-chromium:(?<version>[0-9.]+)", null),
+            new CodeCoverage.Git.Dependencies.DependencyFollowRule("mcr.microsoft.com/playwright", "apps/SeoTester/chromium/Dockerfile", "playwright-core@(?<version>[0-9.]+)", "^v(?<version>[0-9.]+)-noble$"),
+        };
+
+        using var document = System.Text.Json.JsonDocument.Parse(CodeCoverage.Dependencies.Policy.DependencyPlatformTable.Json([], [], [], rules));
+        using var none = System.Text.Json.JsonDocument.Parse(CodeCoverage.Dependencies.Policy.DependencyPlatformTable.Json([], []));
+
+        var follow = document.RootElement.GetProperty("follow").EnumerateArray().ToList();
+        follow.Select(f => (f.GetProperty("dependency").GetString(), f.GetProperty("path").GetString(), f.GetProperty("match").GetString()))
+            .Should().Equal(rules.Select(r => ((string?)r.Dependency, (string?)r.Path, (string?)r.Match)));
+        follow[0].GetProperty("version").ValueKind.Should().Be(System.Text.Json.JsonValueKind.Null);
+        follow[1].GetProperty("version").GetString().Should().Be("^v(?<version>[0-9.]+)-noble$");
+        none.RootElement.GetProperty("follow").GetArrayLength().Should().Be(0);
     }
 
     /// <summary>#613 item 1: one collection replaces the old per-major rows, so the startup run heals the table.</summary>
@@ -373,5 +396,104 @@ public class PlatformLifecycleTests : CoverageRavenTest
         using var session = store.OpenAsyncSession();
         (await session.Advanced.LoadStartingWithAsync<PlatformRelease>("PlatformReleases/dotnet/")).Should().BeEmpty();
         (await session.LoadAsync<PlatformRelease>("PlatformReleases/angular/22")).Phase.Should().Be("active");
+    }
+
+    // ═══ companion-version-maps-PRD M3 (§6.4, S1): what each SDK band bundles ═══════════════════════════════
+
+    [Theory]
+    [InlineData("10.0.100", "18.0.2", "5.0.0", "7.0.0")]
+    [InlineData("10.0.300", "18.6.3", "5.6.0", "7.6.0")]
+    [InlineData("11.0.100", "18.12.2", "5.12.0", "8.0.0")]
+    public void The_vmr_component_sources_name_the_bundled_versions(string sdk, string msbuild, string roslyn, string nuget)
+    {
+        SdkComponentSources.ReadMsbuild(Fixture.Read($"PlatformLifecycle/vmr-v{sdk}-msbuild-Versions.props")).Should().Be(msbuild);
+        SdkComponentSources.ReadRoslyn(Fixture.Read($"PlatformLifecycle/vmr-v{sdk}-roslyn-Versions.props")).Should().Be(roslyn);
+        SdkComponentSources.ReadNuget(Fixture.Read($"PlatformLifecycle/vmr-v{sdk}-nuget-config.props")).Should().Be(nuget);
+    }
+
+    [Theory]
+    [InlineData("10.0.403", "10.0.1xx=v10.0.100,10.0.2xx=v10.0.200,10.0.3xx=v10.0.300,10.0.4xx=v10.0.400")]
+    [InlineData("11.0.100-rc.3.26522.148", "11.0.1xx=v11.0.100-rc.3.26522.148")]
+    [InlineData("11.0.105", "11.0.1xx=v11.0.100")]
+    [InlineData("9.0.320", "")]
+    [InlineData("10.0.403/../x", "")]
+    [InlineData(null, "")]
+    public void A_channels_newest_sdk_names_its_bands_and_their_tags(string? latestSdk, string expected)
+        => string.Join(',', SdkComponentSources.Bands(latestSdk).Select(b => $"{b.Band}={b.Tag}")).Should().Be(expected);
+
+    private const string Vmr = "https://vmr.example/";
+
+    /// <summary>The fixture index's .NET 10.0 (SDK 10.0.403: four bands) and 11.0 (an RC); the VMR answers 10.0.100, 10.0.300 and
+    /// the RC from the real files, 404 for v10.0.200 and 503 for v10.0.400.</summary>
+    private static (StubHttpMessageHandler Handler, List<string> Asked) Vmr404And503()
+    {
+        var asked = new List<string>();
+        var files = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            [SdkComponentSources.MsbuildPath] = "msbuild-Versions.props",
+            [SdkComponentSources.RoslynPath] = "roslyn-Versions.props",
+            [SdkComponentSources.NugetPath] = "nuget-config.props",
+        };
+        var handler = new StubHttpMessageHandler((request, _) =>
+        {
+            var url = request.RequestUri!.ToString();
+            asked.Add(url);
+            if (url == "https://dotnet.example/index.json")
+                return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(Fixture.Read("PlatformLifecycle/dotnet-releases-index.json")) };
+            if (!url.StartsWith(Vmr, StringComparison.Ordinal))
+                return new HttpResponseMessage(HttpStatusCode.ServiceUnavailable);
+            var rest = url[Vmr.Length..];
+            var tag = rest[..rest.IndexOf('/', StringComparison.Ordinal)];
+            var path = rest[(tag.Length + 1)..];
+            var fixture = tag switch
+            {
+                "v10.0.100" or "v10.0.300" => tag,
+                "v11.0.100-rc.3.26522.148" => "v11.0.100",
+                _ => null,
+            };
+            return tag == "v10.0.200" ? new HttpResponseMessage(HttpStatusCode.NotFound)
+                : fixture is null ? new HttpResponseMessage(HttpStatusCode.ServiceUnavailable)
+                : new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(Fixture.Read($"PlatformLifecycle/vmr-{fixture}-{files[path]}")) };
+        });
+        return (handler, asked);
+    }
+
+    private static readonly PlatformLifecycleOptions DotnetOnly = new()
+    {
+        DotnetIndexUrl = "https://dotnet.example/index.json",
+        VmrRawUrl = Vmr,
+        Platforms = new(StringComparer.Ordinal),
+    };
+
+    [Fact]
+    public async Task A_run_stores_what_each_band_bundles()
+    {
+        using var store = GetDocumentStore();
+        var (handler, _) = Vmr404And503();
+
+        await RunAsync(store, handler, DotnetOnly);
+
+        using var session = store.OpenAsyncSession();
+        var bands = (await session.Advanced.LoadStartingWithAsync<SdkBandComponents>(SdkBandComponents.Prefix)).ToDictionary(b => b.Band);
+        bands.Keys.Order(StringComparer.Ordinal).Should().Equal("10.0.1xx", "10.0.2xx", "10.0.3xx", "11.0.1xx");
+        (bands["10.0.1xx"].Msbuild, bands["10.0.1xx"].Roslyn, bands["10.0.1xx"].Nuget).Should().Be(("18.0.2", "5.0.0", "7.0.0"));
+        (bands["10.0.3xx"].Msbuild, bands["10.0.3xx"].Roslyn, bands["10.0.3xx"].Nuget).Should().Be(("18.6.3", "5.6.0", "7.6.0"));
+        bands["10.0.2xx"].TagMissing.Should().BeTrue();
+        bands["10.0.2xx"].Msbuild.Should().BeNull();
+        bands["11.0.1xx"].Tag.Should().Be("v11.0.100-rc.3.26522.148");
+        bands["11.0.1xx"].Msbuild.Should().Be("18.12.2");
+    }
+
+    [Fact]
+    public async Task A_second_run_reads_only_the_bands_it_could_not_read()
+    {
+        using var store = GetDocumentStore();
+        await RunAsync(store, Vmr404And503().Handler, DotnetOnly);
+        var (handler, asked) = Vmr404And503();
+
+        await RunAsync(store, handler, DotnetOnly);
+
+        asked.Where(u => u.StartsWith(Vmr, StringComparison.Ordinal)).Should().OnlyContain(u => u.StartsWith($"{Vmr}v10.0.400/", StringComparison.Ordinal))
+            .And.HaveCount(3);
     }
 }

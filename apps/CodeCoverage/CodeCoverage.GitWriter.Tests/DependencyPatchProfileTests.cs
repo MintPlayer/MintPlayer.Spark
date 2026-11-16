@@ -316,6 +316,54 @@ public class DependencyPatchProfileTests : IDisposable
         verdict.Reason.Should().Be(DependencyPatchReasons.GroupMismatch);
     }
 
+    /// <summary>
+    /// SpaServices run 123 (2026-11-15): MintPlayer.SourceGenerators and MintPlayer.SourceGenerators.Attributes, two groups
+    /// with the same 13.1.0 → 13.1.2 swap; the generator's group was unresolvable (NU1605), the attributes' applied. The
+    /// attributes line contains the generator's name as a prefix, so it was credited to both groups and every run was
+    /// refused as group-mismatch. A name counts only where it is not part of a longer name, and the lines above count only
+    /// when the changed line names none of the candidates (here the generator's own reference sits right above).
+    /// </summary>
+    [Fact]
+    public async Task A_line_naming_a_longer_package_does_not_apply_the_shorter_one()
+    {
+        const string csproj = """
+            <Project Sdk="Microsoft.NET.Sdk">
+              <ItemGroup>
+                <PackageReference Include="MintPlayer.SourceGenerators" Version="13.1.0" PrivateAssets="all" />
+                <PackageReference Include="MintPlayer.SourceGenerators.Attributes" Version="13.1.0" />
+              </ItemGroup>
+            </Project>
+
+            """;
+        var before = repo.Commit(("Demo/Demo.csproj", csproj));
+        var after = repo.Change(before, ("Demo/Demo.csproj", csproj.Replace(
+            "\"MintPlayer.SourceGenerators.Attributes\" Version=\"13.1.0\"", "\"MintPlayer.SourceGenerators.Attributes\" Version=\"13.1.2\"", StringComparison.Ordinal)));
+        var generator = Entry("MintPlayer.SourceGenerators", "Demo/Demo.csproj", "13.1.0", "13.1.2", "nuget");
+        var attributes = Entry("MintPlayer.SourceGenerators.Attributes", "Demo/Demo.csproj", "13.1.0", "13.1.2", "nuget");
+
+        var verdict = await Validate(before, repo.Diff(before, after),
+            new DependencyPatchRequest([generator, attributes]) { ClaimedAppliedGroups = ["MintPlayer.SourceGenerators.Attributes"] });
+
+        verdict.Outcome.Should().Be(DependencyPatchOutcome.Accepted, verdict.Detail);
+        verdict.AppliedGroups.Should().Equal("MintPlayer.SourceGenerators.Attributes");
+    }
+
+    [Theory]
+    [InlineData("<PackageReference Include=\"MintPlayer.SourceGenerators.Attributes\" Version=\"13.1.0\" />", false)]
+    [InlineData("<PackageReference Include=\"MintPlayer.SourceGeneratorsX\" Version=\"13.1.0\" />", false)]
+    [InlineData("<PackageReference Include=\"My-MintPlayer.SourceGenerators\" Version=\"13.1.0\" />", false)]
+    [InlineData("<PackageReference Include=\"MintPlayer.SourceGenerators\" Version=\"13.1.0\" />", true)]
+    [InlineData("<PackageReference Include=\"mintplayer.sourcegenerators\" Version=\"13.1.0\" />", true)]
+    [InlineData("\"MintPlayer.SourceGenerators\": \"13.1.0\",", true)]
+    public void A_name_anchors_a_line_only_at_a_name_boundary(string line, bool named)
+    {
+        var entry = Entry("MintPlayer.SourceGenerators", "App.csproj", "13.1.0", "13.1.2", "nuget");
+
+        var explained = SubstitutionCheck.Explain(line, line.Replace("13.1.0", "13.1.2", StringComparison.Ordinal), [], [entry]);
+
+        (explained is not null).Should().Be(named);
+    }
+
     [Fact]
     public async Task A_group_applied_in_part_is_refused()
     {
@@ -407,6 +455,38 @@ public class DependencyPatchProfileTests : IDisposable
 
         verdict.Outcome.Should().Be(DependencyPatchOutcome.Accepted);
         verdict.AppliedGroups.Should().Equal("express");
+    }
+
+    /// <summary>
+    /// platform-locations-PRD S2 (MintPlayer.AI run 102): the relock of a claimed group rewrites the shared lockfile, and a
+    /// lockfile-only entry the apply did not claim (its group failed) was counted as applied because "its lockfile changed",
+    /// so the whole patch was refused as group-mismatch. A changed lockfile cannot say which lockfile-only entry moved it.
+    /// </summary>
+    [Fact]
+    public async Task An_unclaimed_lockfile_only_entry_does_not_apply_through_another_group_s_lockfile_change()
+    {
+        const string lockfile = "{\n  \"packages\": {\n    \"node_modules/express\": {\n      \"version\": \"4.18.2\"\n    }\n  }\n}\n";
+        var before = repo.Commit(("package.json", PackageJson), ("package-lock.json", lockfile));
+        var after = repo.Change(before, ("package.json", Bumped(PackageJson, ("^4.18.2", "^4.19.2"))),
+            ("package-lock.json", lockfile.Replace("4.18.2", "4.19.2", StringComparison.Ordinal)));
+        var vite = Entry("zod", "package.json", "3.22.4", "3.22.4", "npm", "vite");
+
+        var verdict = await Validate(before, repo.Diff(before, after), new DependencyPatchRequest([Express, vite]) { ClaimedAppliedGroups = ["express"] });
+
+        verdict.Outcome.Should().Be(DependencyPatchOutcome.Accepted, verdict.Detail);
+        verdict.AppliedGroups.Should().Equal("express");
+    }
+
+    [Fact]
+    public async Task A_lockfile_only_change_nothing_claims_is_still_refused()
+    {
+        const string lockfile = "{\n  \"packages\": {\n    \"node_modules/express\": {\n      \"version\": \"4.18.2\"\n    }\n  }\n}\n";
+        var before = repo.Commit(("package.json", PackageJson), ("package-lock.json", lockfile));
+        var after = repo.Change(before, ("package-lock.json", lockfile.Replace("4.18.2", "4.19.2", StringComparison.Ordinal)));
+
+        var verdict = await Validate(before, repo.Diff(before, after), new DependencyPatchRequest([Express with { NewValue = "^4.18.2" }]) { ClaimedAppliedGroups = [] });
+
+        verdict.Reason.Should().Be(DependencyPatchReasons.UnownedLockfile);
     }
 
     [Fact]

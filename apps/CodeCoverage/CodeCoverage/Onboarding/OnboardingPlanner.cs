@@ -18,12 +18,6 @@ public sealed record OnboardingInputs
     /// <summary>The repository's branches, for the line renames (D2).</summary>
     public IReadOnlyList<string> Branches { get; init; } = [];
 
-    /// <summary>The commit the dependency action's tag resolves to; null keeps the tag in the workflows.</summary>
-    public string? DependencyActionSha { get; init; }
-
-    /// <summary>The commit the versioning action's tag resolves to; null keeps the tag in the step.</summary>
-    public string? VersioningActionSha { get; init; }
-
     public string? VersioningPackageVersion { get; init; }
     public string? Owner { get; init; }
 
@@ -43,7 +37,8 @@ public sealed record OnboardingInputs
 public sealed record OnboardingPlan(IReadOnlyList<EOnboardingFeature> Features, IReadOnlyList<GitWriterFile> Files, IReadOnlyList<VersioningSeed> Seeds,
     LineRenamePlan Renames, IReadOnlyList<EOnboardingFeature> OnMerge, IReadOnlyList<string> Notes, string Body)
 {
-    /// <summary>The pull request turns on <c>versioning.lines.current: promote</c> (segment T), so ruleset 3 lets the App push promotions.</summary>
+    /// <summary>The pull request turns on <c>versioning.lines.current: promote</c> (segment T). Ruleset 3 exempts the App
+    /// either way (lockfile_notice_and_line_cut_PRD D2).</summary>
     public bool PromotesLines { get; init; }
 
     /// <summary>
@@ -80,6 +75,9 @@ public static partial class OnboardingPlanner
 
     /// <summary>#638 D15: the title of the pull request that narrows an older line to its own .NET major.</summary>
     public const string NarrowTitle = "Narrow this release line to its own .NET major";
+
+    /// <summary>#649 D16: the title of a line's pull request that only switches its setup-dotnet steps to global.json.</summary>
+    public const string SdkLineTitle = "Read the .NET SDK from global.json on this release line";
 
     /// <summary>#638 D15: a line's narrowing branch; the git writer names it the same way (<c>DependencyBranches.NarrowingOf</c>).</summary>
     public static string NarrowBranch(string line) => $"mintplayer/narrow-{line}";
@@ -129,7 +127,7 @@ public static partial class OnboardingPlanner
 
         if (features.Contains(EOnboardingFeature.Versioning))
         {
-            var versioning = await VersioningOnboarding.PlanAsync(overlay, inputs.IsTagged, inputs.VersioningActionSha, inputs.VersioningPackageVersion, inputs.Owner,
+            var versioning = await VersioningOnboarding.PlanAsync(overlay, inputs.IsTagged, inputs.VersioningPackageVersion, inputs.Owner,
                 cancellationToken);
             foreach (var file in versioning.Files)
                 overlay.Apply(file);
@@ -153,6 +151,8 @@ public static partial class OnboardingPlanner
                 + "The bot does not write it for you, because where it goes depends on how your workflows build and test."));
         if (features.Contains(EOnboardingFeature.SizeLabels))
             sections.Add(("PR size labels", "Switched on for this repository when this pull request merges: every pull request gets one label, `size/XS` to `size/XXL`."));
+        if (features.Contains(EOnboardingFeature.SdkFromGlobalJson))
+            sections.Add(("SDK from global.json", await SdkFromGlobalJsonAsync(overlay, notes, cancellationToken)));
 
         var ordered = Enum.GetValues<EOnboardingFeature>().Where(features.Contains).ToList();
         var onMerge = ordered.Where(f => f is EOnboardingFeature.DependencyUpdates or EOnboardingFeature.SizeLabels).ToList();
@@ -325,11 +325,36 @@ public static partial class OnboardingPlanner
                 break;
             }
         }
-        var plan = DependencyOnboarding.Plan([.. overlay.Entries.Keys], yml, dependabotPath, dependabotYml, inputs.DependencyActionSha, DependencyOnboarding.ReadTemplate,
-            addMergeQueue: false);
+        // Owner, 2026-11-13: re-onboarding moves an existing workflow's commit pin back to the moving tag.
+        var existing = new Dictionary<string, string?>(StringComparer.Ordinal);
+        foreach (var (path, _) in DependencyOnboarding.Templates([.. overlay.Entries.Keys]))
+            existing[path] = await overlay.ReadTextAsync(path, Limits.MaxManifestBytes, cancellationToken);
+        var plan = DependencyOnboarding.Plan([.. overlay.Entries.Keys], yml, dependabotPath, dependabotYml, DependencyOnboarding.ReadTemplate,
+            addMergeQueue: false, readExisting: path => existing.GetValueOrDefault(path));
         foreach (var file in plan.Files)
             overlay.Apply(file);
         return plan.Body;
+    }
+
+    /// <summary>#649 D11-D15: the default branch's setup-dotnet steps read global.json (<see cref="GlobalJsonSdk"/>).</summary>
+    private static async Task<string> SdkFromGlobalJsonAsync(OverlayTree overlay, List<string> notes, CancellationToken cancellationToken)
+    {
+        var files = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var path in overlay.Entries.Keys.Where(p => IsWorkflow(p) || p == GlobalJsonSdk.GlobalJsonPath).ToList())
+            if (await overlay.ReadTextAsync(path, Limits.MaxManifestBytes, cancellationToken) is { } content)
+                files[path] = content;
+        var conversion = GlobalJsonSdk.Plan(files);
+        foreach (var file in conversion.Files)
+            overlay.Apply(file);
+        notes.AddRange(conversion.Notes);
+        if (conversion.Changes.Count == 0)
+            return "No workflow step pins a `dotnet-version` the bot can switch to `global.json`.";
+        var text = new StringBuilder();
+        text.AppendLine("The workflows' `actions/setup-dotnet` steps install the SDK `global.json` names instead of a pinned `dotnet-version`, so `global.json` is the one place the SDK is set. "
+            + "The dependency updater then moves only `global.json`, and each .NET release line gets a pull request that does the same on the line:").AppendLine();
+        foreach (var change in conversion.Changes)
+            text.AppendLine($"- {change}");
+        return text.ToString();
     }
 
     private static string Body(IReadOnlyList<EOnboardingFeature> features, List<(string Heading, string Text)> sections, List<string> notes,
@@ -370,6 +395,7 @@ public static partial class OnboardingPlanner
         EOnboardingFeature.ReleaseLines => "release lines",
         EOnboardingFeature.SizeLabels => "PR size labels",
         EOnboardingFeature.Versioning => "package versioning",
+        EOnboardingFeature.SdkFromGlobalJson => "the SDK from global.json",
         _ => feature.ToString(),
     };
 

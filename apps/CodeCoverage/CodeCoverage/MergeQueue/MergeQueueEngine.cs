@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.RegularExpressions;
+using CodeCoverage.Commands;
 using CodeCoverage.CommitGraph;
 using CodeCoverage.Entities;
 using CodeCoverage.Feedback;
@@ -9,6 +10,7 @@ using CodeCoverage.LookupReferences;
 using CodeCoverage.WorkflowHooks;
 using Microsoft.Extensions.Options;
 using MintPlayer.SourceGenerators.Attributes;
+using MintPlayer.Spark.Logging;
 using MintPlayer.Spark.Messaging;
 using MintPlayer.Spark.Messaging.Abstractions;
 using Raven.Client.Documents.Session;
@@ -60,7 +62,14 @@ public partial class MergeQueueEngine : IMergeQueueEngine
     [Inject] private readonly TimeProvider time;
     [Inject] private readonly IOptions<MergeQueueOptions> options;
     [Inject] private readonly IConfiguration configuration;
+    [Inject] private readonly ICommandLifecycle commands;
     [Inject] private readonly ILogger<MergeQueueEngine> logger;
+
+    /// <summary>
+    /// The command endings this handler decided (#660 G3), told only once its save went through: a save that loses to a
+    /// concurrent write reruns the handler, and must not have reacted 🎉 on a merge it then never recorded.
+    /// </summary>
+    private readonly List<Func<CancellationToken, Task>> afterSave = [];
     /// <summary>Dispatch, correlation, waiting, provenance, the fork guard, artifacts and writer tokens (dependency-updates PRD N1).</summary>
     [Inject] private readonly IWorkflowHook hook;
 
@@ -91,12 +100,23 @@ public partial class MergeQueueEngine : IMergeQueueEngine
         if (signal.Kind == EMergeQueueSignal.Command)
         {
             if (signal.Number is not { } number || string.IsNullOrEmpty(signal.Actor) || signal.Command is not { } command) return;
-            if (await LoadContextAsync(signal.RepositoryId, create: command == EMergeQueueCommand.Enqueue, ct) is not { } commandContext) return;
+            // #660: a /queue or /dequeue comment is a command (👀 now). Its log is the run's (G7), so none is opened here.
+            var invocation = signal.CommentId is not null && await session.LoadAsync<Repository>(signal.RepositoryId, ct) is { } commented
+                ? await commands.BeginAsync(commented, number, signal.CommentId, command == EMergeQueueCommand.Enqueue ? "/queue" : "/dequeue", signal.Actor, ct)
+                : null;
+            if (await LoadContextAsync(signal.RepositoryId, create: command == EMergeQueueCommand.Enqueue, ct) is not { } commandContext)
+            {
+                await (command == EMergeQueueCommand.Enqueue
+                    ? commands.FinishAsync(invocation, ECommandOutcome.Refused, "This repository's forge has no merge queue support.", ct)
+                    : commands.FinishAsync(invocation, ECommandOutcome.NoChange, "The merge queue holds nothing in this repository.", ct));
+                return;
+            }
+            var source = signal.Source ?? EMergeQueueCommandSource.Comment;
             if (command == EMergeQueueCommand.Enqueue)
-                await EnqueueAsync(commandContext, number, signal.Actor, signal.Source ?? EMergeQueueCommandSource.Comment, signal.Label, ct);
+                await EnqueueAsync(commandContext, number, signal.Actor, source, signal.Label, ct, invocation);
             else
-                await DequeueAsync(commandContext, number, signal.Actor, signal.Source ?? EMergeQueueCommandSource.Comment, signal.Label, ct);
-            await session.SaveChangesAsync(ct);
+                await DequeueAsync(commandContext, number, signal.Actor, source, signal.Label, ct, invocation);
+            await SaveAsync(ct);
             return;
         }
 
@@ -107,7 +127,7 @@ public partial class MergeQueueEngine : IMergeQueueEngine
             if (signal.Number is { } offered && await LoadContextAsync(signal.RepositoryId, create: false, ct, orUnsaved: true) is { } offerContext)
             {
                 await OfferAsync(offerContext, offered, besides: null, ct);
-                await session.SaveChangesAsync(ct);
+                await SaveAsync(ct);
             }
             return;
         }
@@ -119,12 +139,14 @@ public partial class MergeQueueEngine : IMergeQueueEngine
             if (await LoadContextAsync(signal.RepositoryId, create: false, ct, orUnsaved: true) is { } approvalContext)
             {
                 await QueueApprovedBackportAsync(approvalContext, approvedNumber, ct);
-                await session.SaveChangesAsync(ct);
+                await SaveAsync(ct);
             }
             return;
         }
 
         if (await LoadContextAsync(signal.RepositoryId, create: false, ct) is not { } context) return;
+        // #660 G11: a signal about one pull request writes to its run's log (the session hands the switch the same entry).
+        await using var runLog = signal.Number is { } signalled ? OpenRunLog(await LoadActiveAsync(signal.RepositoryId, signalled, ct)) : null;
 
         switch (signal.Kind)
         {
@@ -211,7 +233,7 @@ public partial class MergeQueueEngine : IMergeQueueEngine
                 break;
         }
 
-        await session.SaveChangesAsync(ct);
+        await SaveAsync(ct);
     }
 
     // ═══ Steps ═══════════════════════════════════════════════════════════════════════════════════════
@@ -229,19 +251,19 @@ public partial class MergeQueueEngine : IMergeQueueEngine
         if (step.Step == EMergeQueueStep.Cleanup)
         {
             await CleanupAsync(context, entry, step, ct);
-            await session.SaveChangesAsync(ct);
+            await SaveAsync(ct);
             return;
         }
         if (step.Step == EMergeQueueStep.CancelRun)
         {
             await CancelRunAsync(context, entry, step, ct);
-            await session.SaveChangesAsync(ct);
+            await SaveAsync(ct);
             return;
         }
         if (step.Step == EMergeQueueStep.CloseIssues)
         {
             await CloseLinkedIssuesAsync(context, entry, step, ct);
-            await session.SaveChangesAsync(ct);
+            await SaveAsync(ct);
             return;
         }
 
@@ -252,6 +274,8 @@ public partial class MergeQueueEngine : IMergeQueueEngine
                 step.Step, entry.Id, step.Run, step.Generation, entry.Run, entry.Generation, entry.State);
             return;
         }
+        // #660 G11: what this step does goes into the run's log.
+        await using var runLog = OpenRunLog(entry);
 
         await GuardedAsync(context, entry, step.Step, step.Step switch
         {
@@ -268,7 +292,7 @@ public partial class MergeQueueEngine : IMergeQueueEngine
             _ => () => Task.CompletedTask,
         }, ct);
 
-        await session.SaveChangesAsync(ct);
+        await SaveAsync(ct);
     }
 
     private static bool Expects(EMergeQueueStep step, EMergeQueueEntryState state) => step switch
@@ -285,7 +309,10 @@ public partial class MergeQueueEngine : IMergeQueueEngine
 
     // ═══ Enqueue and dequeue (O8, O9, O11, D8, D16, O18, T1, T2) ═══════════════════════════════════
 
-    private async Task EnqueueAsync(Context context, int number, string actor, EMergeQueueCommandSource source, string? label, CancellationToken ct)
+    /// <param name="invocation">The <c>/queue</c> comment's command (#660), when a comment asked: it gets 🚀 when the run
+    /// starts and the run's end reacts on it (G3).</param>
+    private async Task EnqueueAsync(Context context, int number, string actor, EMergeQueueCommandSource source, string? label, CancellationToken ct,
+        string? invocation = null)
     {
         var repository = context.Repository;
         var id = MergeQueueEntry.DocumentId(repository.Id!, number);
@@ -295,6 +322,12 @@ public partial class MergeQueueEngine : IMergeQueueEngine
         if (entry is not null && !entry.State.IsTerminal())
         {
             logger.LogDebug("Merge queue: #{Number} in {Repository} is already queued (run {Run})", number, repository.FullName, entry.Run);
+            if (invocation is null) return;
+            // The same comment again (a redelivery after the run was saved): the run it started is still going.
+            var run = entry.Run.ToString(CultureInfo.InvariantCulture);
+            afterSave.Add(token => invocation == entry.CommandInvocation
+                ? commands.StartedAsync(invocation, $"Queued as run {run}.", mergeQueueRun: run, cancellationToken: token)
+                : commands.FinishAsync(invocation, ECommandOutcome.NoChange, $"#{number} is in the queue already (run {run}).", token));
             return;
         }
 
@@ -324,21 +357,35 @@ public partial class MergeQueueEngine : IMergeQueueEngine
         }
         BeginRun(entry, pull, actor, source);
         entry.Config = parsed.Section?.Snapshot($"{defaultBranch}", repository, context.Account) ?? new MergeQueueConfigSnapshot();
+        // #660 G11: every run has a log, whatever queued it; a /queue command's record points at it (G7).
+        entry.CommandInvocation = invocation;
+        var logKey = RunLogKey(repository, entry);
+        entry.LogId = LogIds.ForKey(logKey);
+        // Related to the repository, not the entry: a merge-queue entry is no persistent object, so only the repository's
+        // own gate can open the log (G15, ISparkReadAccess).
+        await using var runLog = commands.OpenLog(null, logKey, repository.Id);
+        logger.LogInformation("Merge queue: @{Actor} queued #{Number} in {Repository} ({Source}), run {Run}", actor, number, repository.FullName, source, entry.Run);
+        var runId = entry.Run.ToString(CultureInfo.InvariantCulture);
+        var runLogId = entry.LogId;
+        afterSave.Add(token => commands.LinkLogAsync(invocation, runLogId, token));
 
         try
         {
             if (await RefusalAsync(context, entry, pull, parsed, actor, ct) is { } refusal)
             {
                 await RefuseAsync(context, entry, refusal.Code, refusal.Message, source, label, ct, permissionsUrl: refusal.PermissionsUrl);
+                afterSave.Add(token => commands.FinishAsync(invocation, ECommandOutcome.Refused, refusal.Message, token));
                 return;
             }
         }
         catch (ForgeAccessDeniedException ex)
         {
             await RefuseAsync(context, entry, "permission", $"The forge refused a call the queue needs: {ex.Message}", source, label, ct, permissions: true);
+            afterSave.Add(token => commands.FinishAsync(invocation, ECommandOutcome.Failed, $"The forge refused a call the queue needs: {ex.Message}", token));
             return;
         }
 
+        afterSave.Add(token => commands.StartedAsync(invocation, $"Queued as run {runId}.", mergeQueueRun: runId, cancellationToken: token));
         Transition(entry, EMergeQueueEntryState.Queued, $"queued by @{actor} ({source.ToString().ToLowerInvariant()})");
         var waiting = context.Document.LaneFor(entry.BaseBranch).Waiting;
         if (await SourceOrderPositionAsync(context, entry, waiting, ct) is { } before)
@@ -372,6 +419,8 @@ public partial class MergeQueueEngine : IMergeQueueEngine
 
         entry.Run++;
         entry.Generation++;
+        entry.CommandInvocation = null;
+        entry.LogId = null;
         entry.BaseBranch = pull.BaseRef;
         entry.PinnedHeadSha = pull.HeadSha;
         entry.ExpectedHeadSha = pull.HeadSha;
@@ -925,10 +974,17 @@ public partial class MergeQueueEngine : IMergeQueueEngine
     private static bool OffersAfterRefusal(string code)
         => code is not ("configuration" or "disabled" or "closed" or "draft" or "branch");
 
-    private async Task DequeueAsync(Context context, int number, string actor, EMergeQueueCommandSource source, string? label, CancellationToken ct)
+    /// <param name="invocation">The <c>/dequeue</c> comment's command (#660): 🎉 when it removed the run (G2).</param>
+    private async Task DequeueAsync(Context context, int number, string actor, EMergeQueueCommandSource source, string? label, CancellationToken ct,
+        string? invocation = null)
     {
-        if (await LoadActiveAsync(context.Repository.Id!, number, ct) is not { } entry) return;
+        if (await LoadActiveAsync(context.Repository.Id!, number, ct) is not { } entry)
+        {
+            afterSave.Add(token => commands.FinishAsync(invocation, ECommandOutcome.NoChange, $"#{number} is not in the queue.", token));
+            return;
+        }
         if (source == EMergeQueueCommandSource.Label && !string.Equals(label, entry.Config.Label, StringComparison.Ordinal)) return;
+        await using var runLog = OpenRunLog(entry);
 
         // The author may always withdraw; anyone else needs the role that could have queued it (T2).
         var mayDequeue = string.Equals(actor, entry.AuthorLogin, StringComparison.OrdinalIgnoreCase)
@@ -936,10 +992,14 @@ public partial class MergeQueueEngine : IMergeQueueEngine
         if (!mayDequeue)
         {
             entry.Note(Now, $"@{actor} asked to dequeue without write access; ignored");
+            logger.LogInformation("Merge queue: @{Actor} asked to dequeue #{Number} without write access; ignored", actor, number);
+            afterSave.Add(token => commands.FinishAsync(invocation, ECommandOutcome.Refused,
+                $"Only the author or someone with write access may remove #{number} from the queue; @{actor} is neither.", token));
             return;
         }
 
         await EndAsync(context, entry, EMergeQueueEntryState.Dequeued, $"Removed from the queue by @{actor}.", ct, offer: true);
+        afterSave.Add(token => commands.FinishAsync(invocation, ECommandOutcome.Done, $"Removed #{number} from the queue.", token));
     }
 
     // ═══ The offer: "Add to merge queue" on the check of a pull request the queue does not hold (§0 O30) ══
@@ -1944,6 +2004,7 @@ public partial class MergeQueueEngine : IMergeQueueEngine
         if (message is not null) entry.EvictionMessage = message;
         await AbandonRunAsync(context, entry, ct);
         Transition(entry, state, message ?? state.ToString());
+        FinishCommand(entry, state, message);
         entry.FinishedAtUtc = Now;
         context.Document.Record(Outcome(entry));
 
@@ -2305,6 +2366,48 @@ public partial class MergeQueueEngine : IMergeQueueEngine
         entry.Polls = 0;
         entry.StateChangedAtUtc = Now;
         entry.Note(Now, why);
+        // #660 G11: into the run's log too, which keeps the whole run where the history keeps its last steps.
+        logger.LogInformation("Merge queue: #{Number} run {Run} is {State}: {Why}", entry.Number, entry.Run, state, why);
+    }
+
+    // ═══ Command outcomes and run logs (#660) ═══════════════════════════════════════════════════════
+
+    /// <summary>The key of a run's log: one per pull request and run, so a later run never appends to an earlier one's.</summary>
+    internal static string RunLogKey(Repository repository, MergeQueueEntry entry)
+        => $"merge-queue/{repository.Provider.ToCanonicalString()}/{repository.GitHubId.ToString(CultureInfo.InvariantCulture)}/"
+            + $"{entry.Number.ToString(CultureInfo.InvariantCulture)}/{entry.Run.ToString(CultureInfo.InvariantCulture)}";
+
+    /// <summary>A scope on the run's log, for a handler that works on <paramref name="entry"/>; null for a run without one.</summary>
+    private ILoggerScope? OpenRunLog(MergeQueueEntry? entry)
+        => entry?.LogId is { } logId && logId.StartsWith(LogIds.Prefix, StringComparison.Ordinal)
+            ? commands.OpenLog(null, logId[LogIds.Prefix.Length..], entry.Repository)
+            : null;
+
+    /// <summary>Saves, then tells the commands what became of them (G3): never before the state they report is stored.</summary>
+    private async Task SaveAsync(CancellationToken ct)
+    {
+        await session.SaveChangesAsync(ct);
+        var told = afterSave.ToList();
+        afterSave.Clear();
+        foreach (var tell in told)
+            await tell(ct);
+    }
+
+    /// <summary>
+    /// The end of a run reaches the <c>/queue</c> comment that started it (G3): 🎉 merged, 👎 evicted; a run that was
+    /// dequeued or closed ends the record with no new reaction. Only that run's: a later run never ends an older command.
+    /// </summary>
+    private void FinishCommand(MergeQueueEntry entry, EMergeQueueEntryState state, string? message)
+    {
+        if (entry.CommandInvocation is not { } invocation) return;
+        var run = entry.Run.ToString(CultureInfo.InvariantCulture);
+        var text = message ?? (state == EMergeQueueEntryState.Merged ? $"Merged{(entry.MergeCommitSha is { } sha ? $" as {sha}" : "")}." : state.ToString());
+        afterSave.Add(token => state switch
+        {
+            EMergeQueueEntryState.Merged => commands.FinishStartedAsync(invocation, r => r.MergeQueueRun == run, ECommandOutcome.Done, text, token),
+            EMergeQueueEntryState.Dequeued => commands.FinishStartedAsync(invocation, r => r.MergeQueueRun == run, ECommandOutcome.NoChange, text, token, react: false),
+            _ => commands.FinishStartedAsync(invocation, r => r.MergeQueueRun == run, ECommandOutcome.Failed, text, token),
+        });
     }
 
     /// <summary>

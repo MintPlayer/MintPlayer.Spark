@@ -1,6 +1,7 @@
 import type { PlatformLocation, PlatformLocationKind, Sdk } from '../contracts/types';
 import { SDKS } from '../contracts/types';
 import { parseText, type TextDoc } from '../core/lineEdit';
+import { canonicalCondition, channelsOf, ownTfms } from '../core/msbuildItems';
 import { basename, isDockerfile, isWorkflowFile, type RepoFiles } from '../util/repoFiles';
 import { channelOf, sortChannelsDesc, tfmChannel } from './channels';
 
@@ -21,6 +22,16 @@ export interface Found extends PlatformLocation {
   elementEnd?: number;
   closeStart?: number;
   closeEnd?: number;
+  /** For docker: the image the tag belongs to (`mcr.microsoft.com/dotnet/sdk`), for the registry check (P7). */
+  image?: string;
+  /** For a docker ARG default: what the FROM appends to it (`-alpine` in `node:${NODE_VERSION}-alpine`), for the P7 check. */
+  tagSuffix?: string;
+  /** A line of a multi-line setup input (`dotnet-version: |`): one of several versions installed side by side (R7). */
+  listed?: boolean;
+  /** For tfm-property: the project files whose TFM resolves to this token (R4), so a template knows its projects moved (P8). */
+  readers?: string[];
+  /** For template-framework: the template.json key the token is under (`choice`, `description`, `replaces`, `defaultValue`). */
+  templateKey?: string;
 }
 
 const DOCKER_IMAGES: Record<Sdk, RegExp> = {
@@ -93,6 +104,9 @@ function loc(sdk: Sdk, file: string, kind: PlatformLocationKind, line: number, s
 
 function scanTfm(file: string, doc: TextDoc): Found[] {
   const out: Found[] = [];
+  // multi-target-dependency-split-PRD §7.0: a multi-target project's canonical per-TFM ItemGroups are the bot's own layout.
+  const own = ownTfms(doc.lines.map((l) => l.text).join('\n'));
+  const multiTarget = own !== null && channelsOf(own).length >= 2;
   doc.lines.forEach((l, i) => {
     const re = /<(TargetFrameworks?)(\s[^>]*)?>([^<]*)<\/(TargetFrameworks?)>/g;
     let m: RegExpExecArray | null;
@@ -100,7 +114,8 @@ function scanTfm(file: string, doc: TextDoc): Found[] {
       const [, element, attrs = '', value] = m;
       const valueStart = m.index + 1 + element.length + attrs.length + 1;
       const conditioned = /\bCondition\s*=/.test(attrs);
-      const computed = conditioned || /\$\(/.test(value);
+      // `${X}`: a `*.csproj.in` placeholder that Arcade's GenerateFileFromTemplate fills from an MSBuild property.
+      const computed = conditioned || /\$[({]/.test(value);
       const channels = value
         .split(';')
         .map((t) => tfmChannel(t))
@@ -119,7 +134,7 @@ function scanTfm(file: string, doc: TextDoc): Found[] {
         }),
       );
     }
-    out.push(...scanTfmConditions(file, l.text, i));
+    out.push(...scanTfmConditions(file, l.text, i, multiTarget));
   });
   return out;
 }
@@ -133,13 +148,16 @@ const TFM_EQUALITY = /\$\(TargetFramework\)['"]?\s*[!=]=|[!=]=\s*['"]?\$\(Target
  * reported for review, never edited. `IsTargetFrameworkCompatible(...)` conditions survive a move and are left alone, as
  * are the conditions on a TargetFramework element itself, which {@link scanTfm} already reports.
  */
-function scanTfmConditions(file: string, text: string, line: number): Found[] {
+function scanTfmConditions(file: string, text: string, line: number, multiTarget = false): Found[] {
   const out: Found[] = [];
   const re = /<(\w+)\b[^>]*?\bCondition\s*=\s*(["'])(.*?)\2/g;
   let m: RegExpExecArray | null;
   while ((m = re.exec(text)) !== null) {
     const [whole, element, , condition] = m;
     if (/^TargetFrameworks?$/.test(element) || !TFM_EQUALITY.test(condition)) continue;
+    // multi-target-dependency-split-PRD §7.0: the canonical ItemGroup of a multi-target project moves with D-d (a TFM is
+    // added beside it and leaves only at end of life), so it never goes dead under a move.
+    if (multiTarget && element === 'ItemGroup' && condition === canonicalCondition(condition.match(/'(net[^']+)'\s*$/)?.[1] ?? '')) continue;
     const [channel] = sortChannelsDesc([...condition.matchAll(/'(net\d+\.\d+)'/g)].map((t) => tfmChannel(t[1])).filter((c): c is string => c !== null));
     if (channel === undefined) continue;
     const start = m.index + whole.length - 1 - condition.length;
@@ -170,13 +188,75 @@ function scanPackageVersion(file: string, doc: TextDoc): Found[] {
       if (/<\/(PackageReference|PackageVersion|GlobalPackageReference)>/.test(l.text)) inReference = false;
       return;
     }
-    const m = l.text.match(/<(Version|VersionPrefix)>([^<]+)<\/(Version|VersionPrefix)>/);
+    // platform-locations-PRD R5: `<PackageVersion>` with no attributes is the package's own version too; the CPM
+    // `<PackageVersion Include=… Version=…/>` is a dependency (skipped above).
+    const m = l.text.match(/<(Version|VersionPrefix|PackageVersion)>([^<]+)<\/(Version|VersionPrefix|PackageVersion)>/);
     if (!m || m.index === undefined) return;
     const value = m[2];
     const start = m.index + m[1].length + 2;
     const major = value.match(/^(\d+)\./);
     out.push(loc('dotnet', file, 'package-version', i, start, value, { channel: major ? `${major[1]}.0` : null }));
   });
+  return out;
+}
+
+/** The brace depth change of one JSON line, ignoring braces inside strings. */
+function braceDelta(text: string): number {
+  let delta = 0;
+  let inString = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inString) {
+      if (c === '\\') i++;
+      else if (c === '"') inString = false;
+    } else if (c === '"') inString = true;
+    else if (c === '{') delta++;
+    else if (c === '}') delta--;
+  }
+  return delta;
+}
+
+/**
+ * platform-locations-PRD R2/P8 (§5.3): in a `.template.config/template.json`, a `symbols` entry whose `datatype` is `choice`
+ * and which offers a `netN.N` choice is the template's framework parameter. Every `netN.N` token under its `choice`,
+ * `description`, `replaces` and `defaultValue` keys is one `template-framework` location. Other symbols, and other text,
+ * are left alone.
+ */
+function scanTemplateJson(file: string, doc: TextDoc): Found[] {
+  const out: Found[] = [];
+  const blocks: Array<[number, number]> = [];
+  let depth = 0;
+  let symbolsDepth: number | null = null;
+  let open: number | null = null;
+  doc.lines.forEach((l, i) => {
+    const before = depth;
+    depth += braceDelta(l.text);
+    if (symbolsDepth === null) {
+      if (/"symbols"\s*:\s*\{/.test(l.text)) symbolsDepth = before + 1;
+      return;
+    }
+    if (open === null && before === symbolsDepth && /^\s*"[^"]*"\s*:\s*\{/.test(l.text)) {
+      if (depth === symbolsDepth) blocks.push([i, i]);
+      else open = i;
+    } else if (open !== null && depth === symbolsDepth) {
+      blocks.push([open, i]);
+      open = null;
+    }
+    if (depth < symbolsDepth) symbolsDepth = Number.NaN;
+  });
+  for (const [from, to] of blocks) {
+    const lines = doc.lines.slice(from, to + 1);
+    const text = lines.map((l) => l.text).join('\n');
+    if (!/"datatype"\s*:\s*"choice"/.test(text) || !/"choice"\s*:\s*"net\d+\.\d+"/.test(text)) continue;
+    lines.forEach((l, k) => {
+      for (const m of l.text.matchAll(/"(choice|description|replaces|defaultValue)"\s*:\s*"((?:[^"\\]|\\.)*)"/g)) {
+        const valueStart = m.index! + m[0].length - 1 - m[2].length;
+        for (const t of m[2].matchAll(/(?<![\w.])net\d+\.\d+(?![\w.])/g)) {
+          out.push(loc('dotnet', file, 'template-framework', from + k, valueStart + t.index!, t[0], { channel: tfmChannel(t[0]), templateKey: m[1] }));
+        }
+      }
+    });
+  }
   return out;
 }
 
@@ -207,19 +287,68 @@ function scanJsonKey(sdk: Sdk, file: string, doc: TextDoc, key: string, kind: Pl
 
 function scanDocker(sdk: Sdk, file: string, doc: TextDoc): Found[] {
   const out: Found[] = [];
+  // platform-locations-PRD R8 (§5.7): `ARG NODE_VERSION=22` read by `FROM node:${NODE_VERSION}`: the default is the location.
+  const args = new Map<string, Array<{ line: number; start: number; value: string | null }>>();
+  const resolved = new Map<string, Found>();
   doc.lines.forEach((l, i) => {
+    const arg = l.text.match(/^(\s*ARG\s+)([A-Za-z_]\w*)(?:(=)([^\s"'$]+))?\s*$/i);
+    if (arg) {
+      const at = arg[1].length + arg[2].length + 1;
+      args.set(arg[2], [...(args.get(arg[2]) ?? []), { line: i, start: at, value: arg[3] ? arg[4] : null }]);
+      return;
+    }
+    // R8: NodeSource's `setup_22.x` installs Node 22 into another image (a RUN line or its continuation).
+    if (sdk === 'node') {
+      for (const s of l.text.matchAll(/deb\.nodesource\.com\/setup_(\d+)\.x\b/g)) {
+        const start = s.index! + s[0].length - s[1].length - 2;
+        out.push(loc('node', file, 'docker', i, start, s[1], { channel: s[1] }));
+      }
+    }
     const m = l.text.match(/^(\s*FROM\s+(?:--platform=\S+\s+)?)([^\s:@]+):([^\s@]+)(@sha256:[0-9a-f]{64})?/i);
     if (!m) return;
     if (!DOCKER_IMAGES[sdk].test(m[2])) return;
     const start = m[1].length + m[2].length + 1;
     const digest = !!m[4];
     const computed = digest || /\$/.test(m[3]);
+    const ref = !digest ? m[3].match(/^\$\{?([A-Za-z_]\w*)\}?(.*)$/) : null;
+    const defs = ref && !/\$/.test(ref[2]) ? args.get(ref[1]) ?? [] : [];
+    const def = defs.length === 1 ? defs[0] : null;
+    if (ref && def?.value && channelOf(sdk, def.value) !== null) {
+      // One location per ARG, however many stages read it; the registry check looks at the first stage's tag.
+      const key = `${def.line}`;
+      if (!resolved.has(key)) {
+        const found = loc(sdk, file, 'docker', def.line, def.start, def.value, { image: m[2], tagSuffix: ref[2] });
+        resolved.set(key, found);
+        out.push(found);
+      }
+      return;
+    }
     out.push(
       loc(sdk, file, 'docker', i, start, m[3], {
         computed,
+        image: m[2],
         reason: digest ? 'digest-pinned image (the bot plans image digests as docker records)' : computed ? 'computed tag (ARG)' : null,
       }),
     );
+  });
+  return out.sort((a, b) => a.line - b.line || a.start - b.start);
+}
+
+/**
+ * platform-locations-PRD R8/P10: `runs.using: node20` in an action's metadata. One under `.github/` is found but never
+ * written (the bot's patches change no file there but workflows), so {@link notEditedReason} reports it.
+ */
+function scanActionRuntime(file: string, doc: TextDoc): Found[] {
+  const out: Found[] = [];
+  let inRuns = false;
+  doc.lines.forEach((l, i) => {
+    if (/^runs\s*:/.test(l.text)) {
+      inRuns = true;
+      return;
+    }
+    if (/^\S/.test(l.text)) inRuns = false;
+    const m = inRuns ? l.text.match(/^(\s+using\s*:\s*(['"]?))(node(\d+))\2\s*(#.*)?$/) : null;
+    if (m) out.push(loc('node', file, 'action-runtime', i, m[1].length, m[3], { channel: m[4] }));
   });
   return out;
 }
@@ -239,6 +368,7 @@ function scanWorkflowImage(sdk: Sdk, file: string, doc: TextDoc): Found[] {
     out.push(
       loc(sdk, file, 'docker', i, m[1].length + m[4].length + 1, m[5], {
         computed,
+        image: m[4],
         reason: digest ? 'digest-pinned image (the bot plans image digests as docker records)' : computed ? 'expression' : null,
       }),
     );
@@ -287,6 +417,97 @@ function scanMatrix(sdk: Sdk, file: string, doc: TextDoc): Found[] {
 }
 
 /**
+ * prerelease-dependencies-PRD H6/H7: the reason of a setup-* input whose expression the scan can't resolve. The move would
+ * leave that workflow behind, so the bot holds it like P11 (`PlatformLocation.UnresolvedExpression`, same text).
+ */
+export const UNRESOLVED_EXPRESSION = 'unresolved expression';
+
+/** H7: an input with an empty or missing default: the caller passes the version (or the action reads global.json). */
+const CALLER_INPUT = 'an input the caller sets';
+
+interface ValueAt {
+  line: number;
+  start: number;
+  raw: string;
+}
+
+/** The nearest line above `i` indented less than `indent`, as a mapping key (`env:`, `inputs:`), or null. */
+function parentKey(lines: TextDoc['lines'], i: number, indent: number): string | null {
+  for (let j = i - 1; j >= 0; j--) {
+    const t = lines[j].text;
+    if (/^\s*$/.test(t) || /^\s*#/.test(t)) continue;
+    if (t.match(/^(\s*)/)![1].length >= indent) continue;
+    return t.match(/^\s*(?:-\s+)?([\w-]+):\s*(#.*)?$/)?.[1] ?? null;
+  }
+  return null;
+}
+
+/** A scalar after `key:` on a line: its span inside optional quotes, or null for an empty, block or expression value. */
+function scalarAt(line: number, text: string, prefix: number): ValueAt | null {
+  const m = text.slice(prefix).match(/^(['"]?)([^'"#]*?)\1\s*(#.*)?$/);
+  if (!m || m[2].trim() === '' || /^[|>]/.test(m[2]) || /\$\{\{/.test(m[2])) return null;
+  return { line, start: prefix + m[1].length, raw: m[2] };
+}
+
+/**
+ * H7: what a setup-* input's expression reads, in the same file. `matrix.x` moves through its entries (scanMatrix); `env.X`
+ * through every `X:` of an `env:` mapping; `inputs.x` through the input's `default:` (an `action.yml`'s `inputs:` or
+ * `on.workflow_call.inputs`), and an empty or missing default is the caller's. Anything else is unresolved.
+ */
+function resolveExpression(doc: TextDoc, raw: string): { reason: string; values: ValueAt[] } {
+  const unresolved = { reason: UNRESOLVED_EXPRESSION, values: [] };
+  const m = raw.trim().match(/^\$\{\{\s*(matrix|env|inputs)\.([\w-]+)\s*\}\}$/);
+  if (!m) return unresolved;
+  const [, scope, name] = m;
+  if (scope === 'matrix') return { reason: `resolved through matrix.${name}`, values: [] };
+  const lines = doc.lines;
+  const key = new RegExp(`^(\\s*)${name.replace(/[-]/g, '\\-')}:(\\s*)`);
+  const values: ValueAt[] = [];
+  let caller = false;
+  for (let i = 0; i < lines.length; i++) {
+    const km = lines[i].text.match(key);
+    if (!km || parentKey(lines, i, km[1].length) !== (scope === 'env' ? 'env' : 'inputs')) continue;
+    if (scope === 'env') {
+      const value = scalarAt(i, lines[i].text, km[0].length);
+      if (value === null) return unresolved; // an env value that is itself an expression, or a block
+      values.push(value);
+      continue;
+    }
+    // inputs: the `default:` among the input's children.
+    let dflt: ValueAt | null | undefined;
+    for (let j = i + 1; j < lines.length; j++) {
+      const t = lines[j].text;
+      if (/^\s*$/.test(t) || /^\s*#/.test(t)) continue;
+      if (t.match(/^(\s*)/)![1].length <= km[1].length) break;
+      const dm = t.match(/^(\s*default:\s*)/);
+      if (dm) {
+        dflt = scalarAt(j, t, dm[1].length);
+        if (dflt === null && /\$\{\{/.test(t)) return unresolved;
+        break;
+      }
+    }
+    if (dflt) values.push(dflt);
+    else caller = true;
+  }
+  if (values.length > 0) return { reason: `resolved through ${scope}.${name}`, values };
+  return caller ? { reason: CALLER_INPUT, values: [] } : unresolved;
+}
+
+/** H7: the env values and input defaults a setup-* step reads, each a `workflow-value` location that moves with the rest. */
+function scanWorkflowValues(sdk: Sdk, file: string, doc: TextDoc): Found[] {
+  const seen = new Set<string>();
+  const out: Found[] = [];
+  for (const f of scanSetupAction(sdk, file, doc).filter((x) => x.kind === 'setup-action' && /\$\{\{/.test(x.value))) {
+    for (const v of resolveExpression(doc, f.value).values) {
+      if (seen.has(`${v.line}:${v.start}`)) continue;
+      seen.add(`${v.line}:${v.start}`);
+      out.push(loc(sdk, file, 'workflow-value', v.line, v.start, v.raw));
+    }
+  }
+  return out;
+}
+
+/**
  * `with:` keys of a setup-* step, found line-by-line: a `uses: actions/setup-x@` line, then the
  * following lines indented deeper than the step's `- `, up to the next step.
  */
@@ -318,12 +539,30 @@ function scanSetupAction(sdk: Sdk, file: string, doc: TextDoc): Found[] {
       if (indent <= stepIndent) break;
       if (/^\s*[A-Za-z0-9_-]+:/.test(t)) keyIndents.push(indent);
       for (const key of keys) {
-        const km = t.match(new RegExp(`^(\\s*${key}:\\s*)(['"]?)([^'"#\\n]*?)\\2(\\s*(#.*)?)$`));
+        // prerelease-dependencies-PRD H6: an expression with quotes inside (`${{ format('{0}.x', env.MAJOR) }}`) is still the
+        // step's value; it was not found at all, so the move left that workflow behind without a word.
+        const km = t.match(new RegExp(`^(\\s*${key}:\\s*)(['"]?)([^'"#\\n]*?)\\2(\\s*(#.*)?)$`))
+          ?? t.match(new RegExp(`^(\\s*${key}:\\s*)()(\\$\\{\\{.*\\}\\})(\\s*(#.*)?)$`));
         if (!km) continue;
         const raw = km[3];
         const start = km[1].length + km[2].length;
-        const computed = raw === '' || raw === '|' || raw === '>' || /\$\{\{/.test(raw);
-        step.push(loc(sdk, file, 'setup-action', j, start, raw, { computed, reason: computed ? 'expression or multi-line value' : null }));
+        // platform-locations-PRD R7: a literal block (`|`, `|-`) lists one version per line, each its own location.
+        if (/^\|[-+]?$/.test(raw.trim()) && !km[2]) {
+          const entries: Found[] = [];
+          for (let k = j + 1; k < lines.length; k++) {
+            const e = lines[k].text.match(/^(\s*)(['"]?)([^\s'"#]+)\2\s*(#.*)?$/);
+            if (!e || e[1].length <= indent) break;
+            const computed = /\$\{\{/.test(e[3]);
+            entries.push(loc(sdk, file, 'setup-action', k, e[1].length + e[2].length, e[3], { computed, listed: true, reason: computed ? resolveExpression(doc, e[3]).reason : null }));
+          }
+          if (entries.length > 0) {
+            step.push(...entries);
+            continue;
+          }
+        }
+        const computed = raw === '' || /^[|>][-+]?$/.test(raw.trim()) || /\$\{\{/.test(raw);
+        const reason = !computed ? null : /\$\{\{/.test(raw) ? resolveExpression(doc, raw).reason : 'expression or multi-line value';
+        step.push(loc(sdk, file, 'setup-action', j, start, raw, { computed, reason }));
       }
       const qm = sdk === 'dotnet' ? t.match(/^(\s*dotnet-quality:\s*)(['"]?)([^'"#\s]*)\2(\s*(#.*)?)$/) : null;
       if (qm) quality = { line: j, start: qm[1].length + qm[2].length, raw: qm[3], indent };
@@ -458,6 +697,7 @@ function scanRustVersion(file: string, doc: TextDoc): Found[] {
 
 export async function scanLocations(files: RepoFiles, sdks: readonly Sdk[] = SDKS): Promise<Found[]> {
   const out: Found[] = [];
+  const definitions = new Map<string, PropertyDefinition[]>();
   const all = await files.list();
   for (const file of all) {
     const name = basename(file);
@@ -467,8 +707,23 @@ export async function scanLocations(files: RepoFiles, sdks: readonly Sdk[] = SDK
         if (/\.(cs|fs|vb)proj$/.test(name) || name === 'Directory.Build.props') {
           wanted.push((d) => scanTfm(file, d), (d) => scanPackageVersion(file, d));
         }
-        if (name === 'global.json') wanted.push((d) => scanJsonKey('dotnet', file, d, 'version', 'global.json', /"sdk"\s*:/));
+        // R4: a project template (`*.csproj.in`) names its TFM through a property; the chain below resolves it.
+        if (/\.(cs|fs|vb)proj\.in$/.test(name)) wanted.push((d) => scanTfm(file, d));
+        if (/\.(props|targets)$/.test(name)) {
+          wanted.push((d) => {
+            propertyDefinitions(file, d, definitions);
+            return [];
+          });
+        }
+        if (name === 'template.json' && /(^|\/)\.template\.config\/template\.json$/.test(file)) wanted.push((d) => scanTemplateJson(file, d));
+        if (name === 'global.json') {
+          wanted.push((d) => scanJsonKey('dotnet', file, d, 'version', 'global.json', /"sdk"\s*:/));
+          // An Arcade-style `tools.dotnet` is the SDK the build scripts install: it moves with `sdk.version` (SpaServices
+          // #121). Its `runtimes` entries ("dotnet/x64") never match the key.
+          wanted.push((d) => scanJsonKey('dotnet', file, d, 'dotnet', 'global.json', /"tools"\s*:/));
+        }
       }
+      if (sdk === 'node' && (name === 'action.yml' || name === 'action.yaml')) wanted.push((d) => scanActionRuntime(file, d));
       if (sdk === 'node' && name === 'package.json') {
         wanted.push((d) => scanEngines(file, d), (d) => scanTypesNode(file, d));
       }
@@ -483,7 +738,7 @@ export async function scanLocations(files: RepoFiles, sdks: readonly Sdk[] = SDK
       if (VERSION_FILES[sdk].includes(name)) wanted.push((d) => scanVersionFile(sdk, file, d));
       if (name === '.tool-versions') wanted.push((d) => scanToolVersions(sdk, file, d));
       if (isDockerfile(file)) wanted.push((d) => scanDocker(sdk, file, d));
-      if (isWorkflowFile(file)) wanted.push((d) => scanSetupAction(sdk, file, d), (d) => scanWorkflowImage(sdk, file, d), (d) => scanMatrix(sdk, file, d));
+      if (isWorkflowFile(file)) wanted.push((d) => scanSetupAction(sdk, file, d), (d) => scanWorkflowImage(sdk, file, d), (d) => scanMatrix(sdk, file, d), (d) => scanWorkflowValues(sdk, file, d));
     }
     if (wanted.length === 0) continue;
     let doc: TextDoc;
@@ -494,7 +749,132 @@ export async function scanLocations(files: RepoFiles, sdks: readonly Sdk[] = SDK
     }
     for (const scan of wanted) out.push(...scan(doc));
   }
+  return sdks.includes('dotnet') ? resolveTfmChains(out, definitions) : out;
+}
+
+/** One single-line property definition in a `*.props`/`*.targets` PropertyGroup: `<Name>value</Name>`. */
+interface PropertyDefinition {
+  file: string;
+  line: number;
+  /** Where the value starts on the line. */
+  start: number;
+  value: string;
+  /** A Condition on the element or its PropertyGroup: its value depends on evaluation. A `Label` does not (S4). */
+  conditioned: boolean;
+}
+
+/** Collects the property definitions of one file; plain text, no import evaluation (as #663's `propertyFiles`). */
+function propertyDefinitions(file: string, doc: TextDoc, into: Map<string, PropertyDefinition[]>): void {
+  // platform-locations-PRD S4: Dotnet.Templates' `<PropertyGroup Label="Version settings">` was taken for a condition.
+  const conditionAttr = /(^|\s)Condition\s*=/;
+  let group: { conditioned: boolean } | null = null;
+  doc.lines.forEach((l, i) => {
+    const open = l.text.match(/<PropertyGroup\b([^>]*?)(\/)?>/);
+    if (open && !open[2]) group = { conditioned: conditionAttr.test(open[1]) };
+    const current: { conditioned: boolean } | null = group;
+    if (/<\/PropertyGroup>/.test(l.text)) group = null;
+    if (current === null) return;
+    // One element per line, opened and closed on it; the open tag may share the line with <PropertyGroup>.
+    const re = /<([A-Za-z_][\w.-]*)(\s[^>]*)?>([^<]*)<\/\1>/g;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(l.text)) !== null) {
+      const [whole, name, attrs = '', value] = m;
+      if (name === 'PropertyGroup') continue;
+      const definition = {
+        file,
+        line: i,
+        start: m.index + whole.length - name.length - 3 - value.length,
+        value,
+        conditioned: current.conditioned || conditionAttr.test(attrs),
+      };
+      into.set(name, [...(into.get(name) ?? []), definition]);
+    }
+  });
+}
+
+/** A piece of an evaluated property: literal text from one definition, at its offset in that definition's value. */
+interface Segment {
+  text: string;
+  definition: PropertyDefinition;
+  offset: number;
+}
+
+const MAX_CHAIN = 8;
+
+/** `$(Name)` expanded through single, unconditioned definitions; a string is why it cannot be. */
+function expand(name: string, definitions: Map<string, PropertyDefinition[]>, seen: readonly string[] = []): Segment[] | string {
+  if (seen.includes(name)) return `$(${name}) is a cycle (${[...seen, name].join(' -> ')})`;
+  if (seen.length >= MAX_CHAIN) return `the chain to $(${name}) is longer than ${MAX_CHAIN}`;
+  const defs = definitions.get(name) ?? [];
+  if (defs.length === 0) return `$(${name}) is not defined in a .props or .targets file`;
+  if (defs.length > 1) return `$(${name}) is defined ${defs.length} times (${[...new Set(defs.map((d) => d.file))].join(', ')})`;
+  const [definition] = defs;
+  if (definition.conditioned) return `$(${name}) is conditioned in ${definition.file}`;
+  const out: Segment[] = [];
+  const re = /\$\(([A-Za-z_][\w.-]*)\)/g;
+  let at = 0;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(definition.value)) !== null) {
+    if (m.index > at) out.push({ text: definition.value.slice(at, m.index), definition, offset: at });
+    const inner = expand(m[1], definitions, [...seen, name]);
+    if (typeof inner === 'string') return inner;
+    out.push(...inner);
+    at = m.index + m[0].length;
+  }
+  if (at < definition.value.length) out.push({ text: definition.value.slice(at), definition, offset: at });
+  if (out.some((s) => /\$[({]/.test(s.text))) return `$(${name}) uses an expression the bot does not evaluate`;
   return out;
+}
+
+/**
+ * platform-locations-PRD R4 (§5.4): a TFM that is exactly `$(X)` or `${X}` is followed to X's single, unconditioned
+ * definition in the repository's `*.props`/`*.targets`, recursively. The token that carries the major (`10` in
+ * `<AspNetCoreMajorVersion>10</AspNetCoreMajorVersion>`, or `10.0` in `<NetCurrent>net10.0</NetCurrent>`) becomes one
+ * `tfm-property` location, however many projects read it, and the TFMs it resolves leave the list. A chain that does not
+ * resolve plainly keeps its TFM computed (reported), with the reason in it.
+ */
+function resolveTfmChains(found: Found[], definitions: Map<string, PropertyDefinition[]>): Found[] {
+  const out: Found[] = [];
+  const properties = new Map<string, Found>();
+  for (const f of found) {
+    const ref = f.kind === 'tfm' && f.computed && !/^conditioned/.test(f.reason ?? '') ? f.value.match(/^\$[({]([A-Za-z_][\w.-]*)[)}]$/) : null;
+    if (!ref) {
+      out.push(f);
+      continue;
+    }
+    const segments = expand(ref[1], definitions);
+    const why = typeof segments === 'string' ? segments : carrier(segments);
+    if (typeof why === 'string') {
+      out.push({ ...f, reason: `computed TFM (${f.value}): ${why}` });
+      continue;
+    }
+    const key = `${why.file}:${why.line}:${why.start}`;
+    if (!properties.has(key)) properties.set(key, { ...why, readers: [] });
+    properties.get(key)!.readers!.push(f.file);
+  }
+  return [...out, ...properties.values()];
+}
+
+/** The location of the token carrying an evaluated TFM's major, or why there is no single one. */
+function carrier(segments: Segment[]): Found | string {
+  const text = segments.map((s) => s.text).join('');
+  const tfm = text.match(/^net(\d+)\.(\d+)$/);
+  if (!tfm) return `evaluates to '${text}', not a netN.N TFM`;
+  const [, major, minor] = tfm;
+  const from = 3;
+  let pos = 0;
+  for (const s of segments) {
+    const end = pos + s.text.length;
+    if (pos <= from && end >= from + major.length) {
+      const local = from - pos;
+      const withMinor = s.text.slice(local).startsWith(`${major}.${minor}`);
+      const value = withMinor ? `${major}.${minor}` : major;
+      const d = s.definition;
+      return loc('dotnet', d.file, 'tfm-property', d.line, d.start + s.offset + local, value, { channel: `${major}.${minor}`, computed: false, reason: null });
+    }
+    pos = end;
+  }
+  return `the major of '${text}' is spread over several properties`;
 }
 
 /** The public projection of a Found (what goes into a platform record). */

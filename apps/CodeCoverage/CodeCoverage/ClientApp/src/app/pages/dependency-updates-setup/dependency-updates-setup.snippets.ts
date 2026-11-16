@@ -23,6 +23,12 @@ export const DEPENDENCIES_YML = `dependencies:
       group: vitest              # move together
       allowMajor: true           # plan majors without an approval (they still never auto-merge)
       hold: "waiting for the Nx plugin"   # or true; held until removed
+      lockstep: true             # the group moves only to a version every member has
+  follow:                        # pins that are not dependencies, written with a dependency's new version
+    - dependency: mcr.microsoft.com/playwright
+      path: apps/web/docker-compose.yml   # a glob
+      match: 'web-chromium:(?<version>[0-9.]+)'
+      version: '^v(?<version>[0-9.]+)-noble$'   # optional, over the dependency's new value
   exclude: ["samples/**"]        # package files left alone
   lookupAction: dependency-lookup.yml
   applyAction: dependency-apply.yml
@@ -30,8 +36,21 @@ export const DEPENDENCIES_YML = `dependencies:
     - match: "@angular/core"
       onMajor: angular-migrate.yml
   platforms:
-    dotnet: { track: stable, strategy: replace, keepPrevious: 0, lockPackageMajor: false, locations: [], exclude: [] }
-    node: { track: lts, companions: ["@types/node"] }   # companions: packages that move with the SDK's major
+    dotnet:
+      track: stable
+      strategy: replace
+      keepPrevious: 0
+      lockPackageMajor: false
+      locations: []
+      exclude: []
+      companions:                # packages tied to the SDK, first match wins; leave it out for the built-in list
+        - match: "Microsoft.CodeAnalysis*"            # a source generator that must load on SDK 10.0.1xx
+          versions: { "10.0": "<=5.0", "11.0.1xx": "5.12.x" }   # channel or SDK band → version range
+        - match: "Microsoft.Build*"
+          bundled: msbuild       # at or below what the repository's SDK ships (msbuild | roslyn | nuget)
+        - builtin                # the built-in list (Microsoft.AspNetCore.*, Microsoft.Extensions.*, …); [] turns them off
+    node: { track: lts, companions: ["@types/node"] }   # a plain glob: the package takes the SDK's major
+    # autoMerge: major           # opt in: this SDK's majors auto-merge like any update (§6); the only value
   lockFileMaintenance: false     # transitive-only refreshes, off by default
   registries: ["npm.pkg.github.com"]   # lockfile hosts allowed besides the public registries
   lines: patch                   # release lines: patch (default) | all | security | off`;

@@ -40,6 +40,10 @@ public sealed record DependencyPolicyInput
 
     public IReadOnlyCollection<DependencySecurityFix> SecurityFixes { get; init; } = [];
 
+    /// <summary>companion-version-maps-PRD §6.4: what each SDK release bundles, for the <c>bundled</c> companions. An SDK
+    /// absent here gives those companions no range.</summary>
+    public IReadOnlyCollection<SdkComponentVersions> SdkComponents { get; init; } = [];
+
     /// <summary>
     /// #568 D13: a release line's run, with what <c>dependencies.lines</c> lets it take; null on the default branch. A line
     /// never takes a major; a security fix may go up to a minor.
@@ -96,7 +100,17 @@ public enum EDependencyReportReason
 
     /// <summary>#606 D2: a companion's next major, which moves only with its SDK's platform group.</summary>
     MovesWithPlatform,
+
+    /// <summary>companion-pins-PRD M3: a lockstep group waiting until every member has the version.</summary>
+    Lockstep,
+
+    /// <summary>companion-version-maps-PRD §6.3: above the range a companion entry gives the repository's SDK.</summary>
+    AboveCompanionRange,
 }
+
+/// <summary>companion-version-maps-PRD §6.4: the MSBuild, Roslyn and NuGet versions an SDK feature band (<c>11.0.1xx</c>)
+/// ships (S1: the VMR tag's component sources); null where the tag could not be read.</summary>
+public sealed record SdkComponentVersions(string Band, string? Msbuild, string? Roslyn, string? Nuget);
 
 /// <summary>One line of the pull request body's available / held / awaiting-approval / ignored tables.</summary>
 public sealed record DependencyReportEntry(
@@ -117,6 +131,10 @@ public sealed record DependencyReportEntry(
 /// <summary>One planned update, with the record and candidate it came from.</summary>
 public sealed record DependencyPlannedItem(LookupRecord Record, LookupCandidate Candidate, EUpdateLevel Level)
 {
+    /// <summary>multi-target-dependency-split-PRD D-c: the package's version per TFM in a multi-target project; the
+    /// <see cref="Candidate"/> is then its highest one.</summary>
+    public IReadOnlyList<PlanTfmVersion>? Layout { get; init; }
+
     /// <summary>The contract item (plan.schema.json). Every token comes from the record: <c>newValue</c> is the candidate's
     /// value (the current one for a digest or lockfile-only update), and a digest is planned only where one is pinned today
     /// (npm's <c>newDigest</c> is an integrity hash, not a pin).</summary>
@@ -144,6 +162,7 @@ public sealed record DependencyPlannedItem(LookupRecord Record, LookupCandidate 
             UpdateType = label == Level && Candidate.UpdateType is { } original
                 ? System.Text.Json.JsonNamingPolicy.CamelCase.ConvertName(original.ToString())
                 : Level.ToString().ToLowerInvariant(),
+            Layout = Layout is null ? null : [.. Layout],
         };
     }
 }
@@ -210,6 +229,12 @@ public sealed record DependencyPolicyOutcome
     public IReadOnlyList<DependencyReportEntry> Ignored { get; init; } = [];
 
     public IReadOnlyList<DependencyPlatformReport> PlatformReports { get; init; } = [];
+
+    /// <summary>companion-pins-PRD G4: why a coverage.yml <c>follow</c> rule moved nothing, as the lookup said it.</summary>
+    public IReadOnlyList<string> NotFollowed { get; init; } = [];
+
+    /// <summary>follower-cooldown-PRD G4: the dependencies a feed refused to the lookup, so their updates are unknown.</summary>
+    public IReadOnlyList<string> NotLookedUp { get; init; } = [];
 
     /// <summary>The state to store: first-seen times added, lifted holds removed, slot counters advanced, stale approvals
     /// dropped.</summary>

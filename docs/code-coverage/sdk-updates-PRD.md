@@ -76,6 +76,10 @@ override (D5). One setting; it replaces today's implicit "follow a preview only 
 
 ### 3.3 Companion packages (D2)
 
+> **Amended (2026-11-15, [companion-version-maps-PRD](companion-version-maps-PRD.md), PR #676):** a companion entry is now
+> a glob (this section's channel rule), `builtin`, a `{ match, versions }` range per channel or SDK band, or a
+> `{ match, bundled }` ceiling from what the SDK band ships. First match wins, and a list no longer implies the built-ins.
+
 An explicit per-SDK companion list in the account lookups, overridable per repository. dotnet default:
 `Microsoft.AspNetCore.*`, `Microsoft.Extensions.*`, `Microsoft.EntityFrameworkCore*`, `Microsoft.NET.*`, `System.*`;
 node: `@types/node`. S2 split them in two (§5): AspNetCore and EF Core 11.x need `net11.0`; Extensions and System.* 11.x
@@ -222,18 +226,18 @@ PR #609 (#251) was squash-merged as `b690be479` before its guides were updated. 
 | # | Decision | Rejected | Evidence | By |
 |---|---|---|---|---|
 | D1 | An SDK move is a platform group of the rolling dependency PR | a separate SDK PR (two sagas conflicting on the same `.csproj`s); a split-on-demand hybrid | §1; red-CI bisect holds a group, PRD #419 §7.4 | owner |
-| D2 | Companion packages: an explicit per-SDK list, overridable per repository, moving with the TFM | a major-equals-platform heuristic (false positives, Spark's own packages); list + heuristic; no coupling (each group fails alone) | `Microsoft.AspNetCore.*` 11.x ships `net11.0` only | owner ("usually if a new sdk is released, new packages will follow suit") |
+| D2 | Companion packages: an explicit per-SDK list, overridable per repository, moving with the TFM | a major-equals-platform heuristic (false positives, Spark's own packages); list + heuristic; no coupling (each group fails alone) | `Microsoft.AspNetCore.*` 11.x ships `net11.0` only | owner ("usually if a new sdk is released, new packages will follow suit"). **Amended 2026-11-15** ([follower-cooldown-PRD](follower-cooldown-PRD.md) G2/G3): the packages another repository of the account publishes (the producer graph, not a heuristic; the repository's own are left out) are companions too, so upstream moves first (owner: "MintPlayer.Dotnet.Tools is the first one that will need to be updated"); a .NET Standard-only project's references are not. **Amended 2026-11-15** ([multi-target-dependency-split-PRD](multi-target-dependency-split-PRD.md) M4, M12): in a project that targets several channels the companions move per TFM, each TFM on its own channel's major, with no approval per TFM |
 | D3 | Pending until ready, with `approve … --force` | pending only (an abandoned package blocks forever); offer + warn (red CI costs money); fixed cooldown | .NET is forward-compatible, so mostly companions block | owner |
 | D4 | `replace` by default; a producer without release lines is warned in the PR body | always `replace` silently; inferred `add` (doubles the matrix, contradicts major = TFM) | `versioning.md:248` auto-cut | owner |
 | D5 | Track settings: account default + per-repository override; the account default ships `stable` | per repository only; never | — | owner |
 | D6 | Microsoft's `releases-index.json` for .NET, endoflife.date for every other SDK, stored daily in `PlatformRelease` | endoflife.date for .NET too | 2026-11-09 fetch, §3.6 | owner |
 | D7 | Milestone order: companions + readiness first | feed first; PRD order (PHP first) | .NET 11 GA 2026-11-09 | owner |
-| D8 | One `track: lts\|stable\|preview` per SDK (default `stable`), governing the SDK and its companions; `stable\|preview` per package rule; `lts` refused without an LTS flag; replaces the implicit prerelease rule, no shim | a `previews` boolean; one track per ecosystem for all packages; two unlinked settings | `feeds.ts:38,59`; PRD #419 :203-204 | owner ("no backward compat, packages are still in preview") |
+| D8 | *(Amended by prerelease-dependencies-PRD H1, 2026-11-15: without a rule, a package already on a prerelease follows prereleases; `track: stable` opts out.)* One `track: lts\|stable\|preview` per SDK (default `stable`), governing the SDK and its companions; `stable\|preview` per package rule; `lts` refused without an LTS flag; replaces the implicit prerelease rule, no shim | a `previews` boolean; one track per ecosystem for all packages; two unlinked settings | `feeds.ts:38,59`; PRD #419 :203-204 | owner ("no backward compat, packages are still in preview") |
 | D9 | The channel table is a required lookup input; no fallback fetch; outdated actions refused with a message | fallback for one release; permanent fallback | — | owner ("we'll migrate all my repos today") |
 | D10 | SDKs: add PHP, Ruby and Rust | PHP only; none (a separate PR) | — | owner |
 | D11 | Rust: channel `1.x`, MSRV widened only, `preview` = `beta`, `lts` refused, editions out of scope | editions as the platform major (code migration per crate); toolchain only | — | owner |
 | D12 | Embedded reference targets must be `[ValueObject]`; documentation narrowed, `ReferenceTargetValidation` unchanged | skip collection-less targets in code | #609 save check; no app affected (checked 2026-11-09) | owner |
-| D13 | `Microsoft.Extensions.*` and `System.*` stay dotnet companions although their 11.x still targets `net10.0` | narrowing the list to the net11-only families | S2 (§5): they build under `net10.0`; ASP.NET Core 11 depends on Extensions 11, and a `net10.0` library taking Extensions 11 alone pushes it onto its consumers early | implementation, 2026-11-09 (owner may revisit) |
+| D13 | `Microsoft.Extensions.*` and `System.*` stay dotnet companions although their 11.x still targets `net10.0` | narrowing the list to the net11-only families | S2 (§5): they build under `net10.0`; ASP.NET Core 11 depends on Extensions 11, and a `net10.0` library taking Extensions 11 alone pushes it onto its consumers early | implementation, 2026-11-09 (owner may revisit). **Amended 2026-11-15** ([multi-target-dependency-split-PRD](multi-target-dependency-split-PRD.md) M5): kept as companions, and in a multi-target project the `net10.0` TFM keeps Extensions 10.x while `net11.0` takes 11.x, which answers the "pushes it onto its consumers early" concern |
 | D14 | Readiness reads only the companions' releases, not each dependency's declared support | npm `engines` / Packagist `require.php` per dependency | S3 (§5): not in Renovate's output; a registry call per dependency per run | implementation, 2026-11-09 |
 | D15 | No .NET GA date; a candidate's date is its latest release's | the channel's `releases.json` | 1.15 MB for 10.0 (2026-11-09) for one date; the cooldown needs the latest release anyway | implementation, 2026-11-09 |
 | D16 | Ranges and minimums are reported, never edited (supersedes "widen only" in the first draft of §3.7 and §7) | widening per ecosystem's range grammar | a range edit needs four grammars; the PR's report names the file, and D11 already forbids raising the MSRV | implementation, 2026-11-09 |
@@ -375,6 +379,14 @@ replaced before it ran.
   the apply are the same action), so it is never planned one; were it handed one, its `applyPlatform` with
   `fromChannel == toChannel` still moves `global.json` and the exact `setup-dotnet` pins to `sdkVersion`, and leaves
   `dotnet-quality` alone.
+- **S11 (2026-11-13): Arcade's `tools.dotnet` is a `global.json` SDK pin.** SpaServices #121 moved `sdk.version` from
+  `11.0.100-rc.1.26425.128` to `11.0.100` and left `"tools": { "dotnet": "11.0.100-rc.1.26425.128" }` (line 7), the SDK
+  Arcade-style build scripts install. `scanLocations` read only the `sdk` object. It now also reads `tools.dotnet`, as a
+  `global.json` location that moves with `sdk.version`; the `runtimes` entries (`"dotnet/x64"`) never match the key. The
+  line narrowing already moved both (onboarding.md, versioning.md). The git writer's line rule needs no change: it admits
+  a substitution of any reported location's value (`PlatformSubstitution`). Red → green:
+  `previewToGa.test.ts` "moves an Arcade tools.dotnet SDK with sdk.version, and leaves the runtimes", on SpaServices'
+  own `global.json`.
 
 ### 12.3 Milestones (one pull request)
 
@@ -427,3 +439,9 @@ replaced before it ran.
   `platforms` input → plan. **Red before M3** (engine at `04f191aee`): "Expected plan.Groups to contain a single item,
   but found 2: Microsoft.AspNetCore.OpenApi, platform:dotnet 11.0", the RC package in a group of its own beside the SDK
   move.
+
+## 13. Locations a move left behind (2026-11-14)
+
+Older Dockerfile stages, `template.json` framework choices, TFMs set through an MSBuild property, `action.yml`
+`runs.using`, NodeSource lines and Dockerfile `ARG` defaults are moved, followed or reported per
+[platform-locations-PRD.md](platform-locations-PRD.md) (decisions P1-P11, milestones M1-M7).

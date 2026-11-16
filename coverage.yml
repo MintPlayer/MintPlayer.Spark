@@ -56,6 +56,34 @@ mergeQueue:
     - path: "tests/MintPlayer.Spark.Tests/Layering/Golden/*.golden.txt"
       strategy: take-base
 
+# Dependency updates: the test fixtures are sample repositories the dependency action and its tests read, not this
+# repository's dependencies. Updating them broke their tests and ran their package managers in the apply (yarn wrote a
+# .pnp.cjs, which sank run 47); docs/code-coverage/platform-locations-PRD.md S2. The exclude also covers their platforms.
+dependencies:
+  exclude:
+    - "**/fixtures/**"
+    - "**/Fixtures/**"
+  # SeoTester's client (Microsoft.Playwright) and its Chromium server (the Playwright image) must be on the same release:
+  # ConnectAsync refuses another minor, and #669 moved the image without the package. One group; the follow rules below
+  # make it lockstep, so it moves only to a version NuGet has too (docs/code-coverage/dependency-companion-pins-PRD.md).
+  rules:
+    - match: ["Microsoft.Playwright", "mcr.microsoft.com/playwright"]
+      group: playwright
+  # Pins that are not dependencies of their own: the image's npm client, our image's tag, and the comments naming the version.
+  follow:
+    - dependency: mcr.microsoft.com/playwright
+      path: apps/SeoTester/chromium/Dockerfile
+      match: 'playwright-core@(?<version>[0-9.]+)'
+    - dependency: mcr.microsoft.com/playwright
+      path: apps/SeoTester/chromium/Dockerfile
+      match: 'SeoTester references \((?<version>[0-9.]+)\)'
+    - dependency: mcr.microsoft.com/playwright
+      path: apps/SeoTester/docker-compose.yml
+      match: 'seotester-chromium:(?<version>[0-9.]+)'
+    - dependency: mcr.microsoft.com/playwright
+      path: apps/SeoTester/docker-compose.yml
+      match: 'Playwright (?<version>[0-9.]+)''s image'
+
 # Package versions (#153, docs/coverage_package_versioning_PRD.md D2): the versioning action in
 # dotnet-build-master.yml runs the engine on the runner, never against coverage.mintplayer.com, because that
 # workflow is what deploys the app. Read from the DEFAULT branch only, like mergeQueue:.
@@ -66,13 +94,16 @@ versioning:
   ignore:
     - "**/fixtures/**"
     - "**/Fixtures/**"
-  # Spark is in preview, so every package releases as -preview.N whatever it ships against (an Octokit.GraphQL beta,
-  # an Endpoints rc). Remove this line when Spark goes stable. The two exemptions are already stable: ng-spark is a
-  # 22.x Angular package, and the onboarding PRs reference MintPlayer.Versioning.MSBuild 1.0.0.
-  prerelease: preview
+  # Spark is stable on .NET 11 (PR #682, 2026-11-16): no global label, so every package takes its label from what it
+  # ships against (upstream) and releases 11.0.0 once that is stable. The exceptions ship against Octokit.GraphQL
+  # 0.4.0-beta, which has no stable release: upstream would label them beta, and 11.0.0-beta.N sorts below their
+  # 11.0.0-preview.125, which the engine refuses (VersionCalculator, prerelease-dependencies-PRD D4). They stay on
+  # their preview line until Octokit.GraphQL ships a stable.
   packages:
     "@mintplayer/ng-spark": { prerelease: upstream }
     MintPlayer.Versioning.MSBuild: { prerelease: upstream }
+    MintPlayer.Spark.Webhooks.GitHub: { prerelease: preview }
+    MintPlayer.Spark.Webhooks.GitHub.DevTunnel: { prerelease: preview }
   # Release lines (#568 D15): packages release only from release/{ecosystem}-{major}.x, never from master. Lines today:
   # release/dotnet-11.x and release/angular-22.x. The past lines (dotnet-10.x, angular-21.x) are cut only when a fix
   # must ship there, because their cut points predate tag versioning (#568 M11, owner 2026-11-06).

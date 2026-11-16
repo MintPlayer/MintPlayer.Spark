@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
+using CodeCoverage.Git;
 using CodeCoverage.MergeQueue;
 
 namespace CodeCoverage.Onboarding;
@@ -8,7 +9,9 @@ namespace CodeCoverage.Onboarding;
 /// <summary>
 /// #638 D15: the pull request that narrows an older .NET line cut from a commit that also targets a higher major (Tools #55,
 /// done by hand). The TFMs above the line are dropped (a project left with none takes <c>net{major}.0</c>), global.json
-/// takes the line's latest SDK, and framework packages above the line take its latest runtime. The element stays
+/// (<c>sdk.version</c> and Arcade's <c>tools.dotnet</c>) and the workflows' <c>setup-dotnet</c> <c>dotnet-version</c> pins take the
+/// line's latest SDK (a wildcard such as <c>11.0.x</c> keeps its shape), framework packages above the line take its latest
+/// runtime, and a numeric <c>LangVersion</c> above the line's C# takes the line's (#651 D1). The element stays
 /// <c>&lt;TargetFrameworks&gt;</c>: switching to the singular changes what MSBuild logic keyed on
 /// <c>$(TargetFrameworks)</c> sees, which Tools hit. What cannot be rewritten safely (an MSBuild condition or a
 /// <c>#if NETxx_OR_GREATER</c> naming a higher major) is listed for a person.
@@ -22,15 +25,17 @@ public sealed record LineNarrowing(int Major, IReadOnlyList<GitWriterFile> Files
     private const RegexOptions Options = RegexOptions.CultureInvariant | RegexOptions.ExplicitCapture;
     private const int MaxListed = 50;
 
-    private static readonly string[] MsBuildExtensions = [".csproj", ".fsproj", ".vbproj", ".props", ".targets"];
-
     private static readonly Regex Tfms = new(@"<(?<name>TargetFrameworks?)>(?<value>[^<]*)</\k<name>>", Options);
     private static readonly Regex TfmMajor = new(@"^\s*net(?:coreapp)?(?<major>\d{1,4})\.", Options | RegexOptions.IgnoreCase);
+    // #651 D1: a numeric C# version; latest, preview and default follow the compiler and are left alone.
+    private static readonly Regex LangVersion = new(@"<LangVersion>\s*(?<value>(?<number>\d{1,3})(?:\.0)?)\s*</LangVersion>", Options | RegexOptions.IgnoreCase);
     private static readonly Regex FrameworkPackage = new(
         @"<(?:PackageReference|PackageVersion)\b[^>]*?\bInclude=""(?<name>Microsoft\.(?:AspNetCore|Extensions|EntityFrameworkCore)\b[^""]*)""[^>]*?\bVersion=""(?<value>[^""]*)""",
         Options | RegexOptions.IgnoreCase);
     private static readonly Regex Sdk = new(@"""sdk""\s*:\s*\{[^{}]*?""version""\s*:\s*""(?<value>[^""]*)""", Options);
-    private static readonly Regex Condition = new(@"\bCondition\s*=\s*""(?<value>[^""]*)""", Options);
+    private static readonly Regex ToolsDotnet = new(@"""tools""\s*:\s*\{[^{}]*?""dotnet""\s*:\s*""(?<value>[^""]*)""", Options);
+    private static readonly Regex DotnetVersion = new(@"^[ \t]*dotnet-version[ \t]*:[ \t]*(?<quote>['""]?)(?<value>[^'""\s#]+)\k<quote>", Options | RegexOptions.Multiline);
+    private static readonly Regex Condition =new(@"\bCondition\s*=\s*""(?<value>[^""]*)""", Options);
     private static readonly Regex ConditionTfm = new(@"\bnet(?:coreapp)?(?<major>\d{1,4})\.\d", Options | RegexOptions.IgnoreCase);
     private static readonly Regex Directive = new(@"^[ \t]*#[ \t]*(?:if|elif)\b[^\r\n]*", Options | RegexOptions.Multiline);
     private static readonly Regex DirectiveTfm = new(@"\bNET(?:COREAPP)?(?<major>\d{1,4})_\d+(?:_OR_GREATER)?\b", Options);
@@ -38,16 +43,26 @@ public sealed record LineNarrowing(int Major, IReadOnlyList<GitWriterFile> Files
 
     public bool IsEmpty => Files.Count == 0 && Conditionals.Count == 0 && Notes.Count == 0;
 
-    public static bool IsMsBuild(string path) => MsBuildExtensions.Any(e => path.EndsWith(e, StringComparison.OrdinalIgnoreCase));
+    // #649 D7: one predicate with the git writer's check (LinePaths, CodeCoverage.Git).
+    public static bool IsMsBuild(string path) => LinePaths.IsMsBuild(path);
 
-    public static bool IsGlobalJson(string path) => path == "global.json" || path.EndsWith("/global.json", StringComparison.Ordinal);
+    public static bool IsGlobalJson(string path) => LinePaths.IsGlobalJson(path);
 
-    public static bool IsSource(string path) => path.EndsWith(".cs", StringComparison.OrdinalIgnoreCase);
+    public static bool IsWorkflow(string path) => LinePaths.IsWorkflow(path);
 
-    /// <summary>Whether an MSBuild file targets a framework above <paramref name="major"/>, so the sources under it are worth
-    /// reading for conditionals.</summary>
+    public static bool IsSource(string path) =>path.EndsWith(".cs", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Whether an MSBuild file targets a framework above <paramref name="major"/>, or a C# version the line's compiler
+    /// does not know (#651 D1), so the line needs the pull request and the sources under it are worth reading for conditionals.</summary>
     public static bool TargetsAbove(int major, string msbuild)
-        => Tfms.Matches(msbuild).Any(m => Majors(m.Groups["value"].Value).Any(x => x > major));
+        => Tfms.Matches(msbuild).Any(m => Majors(m.Groups["value"].Value).Any(x => x > major))
+           || LangVersion.Matches(msbuild).Any(m => LangAbove(major, m));
+
+    /// <summary>The C# version a .NET major ships with: .NET 5 brought C# 9, and each major since adds one (.NET 10 → 14).</summary>
+    public static int CSharpVersion(int major) => major + 4;
+
+    private static bool LangAbove(int major, Match match)
+        => int.Parse(match.Groups["number"].Value, CultureInfo.InvariantCulture) > CSharpVersion(major);
 
     /// <summary>The narrowing of <paramref name="files"/> (path → text: MSBuild files, global.json and C# sources) to
     /// <paramref name="major"/>. <paramref name="latestSdk"/> and <paramref name="latestRuntime"/> are the line's newest
@@ -75,6 +90,16 @@ public sealed record LineNarrowing(int Major, IReadOnlyList<GitWriterFile> Files
                 edits.Add((value.Index, value.Length, narrowed));
                 changes.Add($"`{path}`: {match.Groups["name"].Value} `{value.Value}` → `{narrowed}`");
             }
+            // #651 D1: C# 15 on a .NET 10 line is CS1617 (SpaServices #114).
+            foreach (Match match in LangVersion.Matches(text))
+            {
+                if (!LangAbove(major, match))
+                    continue;
+                var value = match.Groups["value"];
+                var lang = CSharpVersion(major).ToString(CultureInfo.InvariantCulture);
+                edits.Add((value.Index, value.Length, lang));
+                changes.Add($"`{path}`: LangVersion `{value.Value}` → `{lang}`");
+            }
             foreach (Match match in FrameworkPackage.Matches(text))
             {
                 var value = match.Groups["value"];
@@ -92,20 +117,60 @@ public sealed record LineNarrowing(int Major, IReadOnlyList<GitWriterFile> Files
                 written.Add(new GitWriterFile(path, Rewrite(text, edits)));
         }
 
+        var knownSdk = latestSdk is { } s && s.StartsWith(prefix, StringComparison.Ordinal) ? s : null;
         foreach (var (path, text) in files.Where(f => IsGlobalJson(f.Key)).OrderBy(f => f.Key, StringComparer.Ordinal))
         {
-            if (Sdk.Match(text) is not { Success: true } match || FirstMajor(match.Groups["value"].Value) is not { } m || m <= major)
-                continue;
-            var value = match.Groups["value"];
-            if (latestSdk is { } sdk && sdk.StartsWith(prefix, StringComparison.Ordinal))
+            // Arcade's layout pins the SDK twice: `sdk.version` and `tools.dotnet` (SpaServices PR #110).
+            var edits = new List<(int Start, int Length, string Value)>();
+            foreach (var (pin, label) in new[] { (Sdk, "SDK"), (ToolsDotnet, "tools.dotnet") })
             {
-                written.Add(new GitWriterFile(path, Rewrite(text, [(value.Index, value.Length, sdk)])));
-                changes.Add($"`{path}`: SDK `{value.Value}` → `{sdk}`");
+                if (pin.Match(text) is not { Success: true } match || FirstMajor(match.Groups["value"].Value) is not { } m || m <= major)
+                    continue;
+                var value = match.Groups["value"];
+                if (knownSdk is null)
+                {
+                    notes.Add($"`{path}` pins {label} `{value.Value}`; the latest .NET {major} SDK is not known yet, so set it by hand.");
+                    continue;
+                }
+                edits.Add((value.Index, value.Length, knownSdk));
+                changes.Add($"`{path}`: {label} `{value.Value}` → `{knownSdk}`");
             }
-            else
+            if (edits.Count > 0)
+                written.Add(new GitWriterFile(path, Rewrite(text, edits)));
+        }
+
+        // The workflows' setup-dotnet pins: global.json alone is not enough when a step installs a pinned SDK, since the
+        // narrowed global.json then asks for an SDK the runner does not have (SpaServices PR #110, exit 155).
+        foreach (var (path, text) in files.Where(f => IsWorkflow(f.Key)).OrderBy(f => f.Key, StringComparer.Ordinal))
+        {
+            var edits = new List<(int Start, int Length, string Value)>();
+            foreach (Match match in DotnetVersion.Matches(text))
             {
-                notes.Add($"`{path}` pins SDK `{value.Value}`; the latest .NET {major} SDK is not known yet, so set it by hand.");
+                var value = match.Groups["value"];
+                var line = LineOf(text, match.Index);
+                if (value.Value.StartsWith('|') || value.Value.StartsWith('>'))
+                {
+                    if (BlockAbove(text, match, major))
+                        notes.Add($"`{path}:{line}` lists SDKs above .NET {major} under `dotnet-version`; narrow the list by hand.");
+                    continue;
+                }
+                if (FirstMajor(value.Value) is not { } m || m <= major)
+                    continue;
+                string narrowed;
+                if (value.Value.Contains('x', StringComparison.OrdinalIgnoreCase) || value.Value.Contains('*', StringComparison.Ordinal))
+                    narrowed = FirstNumber.Replace(value.Value, major.ToString(CultureInfo.InvariantCulture), 1);
+                else if (knownSdk is not null)
+                    narrowed = knownSdk;
+                else
+                {
+                    notes.Add($"`{path}:{line}` pins dotnet-version `{value.Value}`; the latest .NET {major} SDK is not known yet, so set it by hand.");
+                    continue;
+                }
+                edits.Add((value.Index, value.Length, narrowed));
+                changes.Add($"`{path}:{line}`: dotnet-version `{value.Value}` → `{narrowed}`");
             }
+            if (edits.Count > 0)
+                written.Add(new GitWriterFile(path, Rewrite(text, edits)));
         }
 
         foreach (var (path, text) in files.Where(f => IsSource(f.Key)).OrderBy(f => f.Key, StringComparer.Ordinal))
@@ -151,6 +216,31 @@ public sealed record LineNarrowing(int Major, IReadOnlyList<GitWriterFile> Files
 
     private static int? FirstMajor(string value)
         => FirstNumber.Match(value) is { Success: true } m && int.TryParse(m.Value, NumberStyles.None, CultureInfo.InvariantCulture, out var major) ? major : null;
+
+    /// <summary>Whether a block scalar (<c>dotnet-version: |</c>) lists a version above <paramref name="major"/>: the lines
+    /// after the key that are indented deeper than it.</summary>
+    private static bool BlockAbove(string text, Match key, int major)
+    {
+        var lineStart = text.LastIndexOf('\n', key.Index) + 1;
+        var indent = 0;
+        while (lineStart + indent < text.Length && text[lineStart + indent] is ' ' or '\t') indent++;
+        var next = text.IndexOf('\n', key.Index);
+        while (next >= 0 && next + 1 < text.Length)
+        {
+            var end = text.IndexOf('\n', next + 1);
+            var line = end < 0 ? text[(next + 1)..] : text[(next + 1)..end];
+            var trimmed = line.TrimStart(' ', '\t');
+            if (trimmed.Length > 0)
+            {
+                if (line.Length - trimmed.Length <= indent)
+                    break;
+                if (FirstMajor(trimmed) is { } m && m > major)
+                    return true;
+            }
+            next = end;
+        }
+        return false;
+    }
 
     private static int LineOf(string text, int index)
     {

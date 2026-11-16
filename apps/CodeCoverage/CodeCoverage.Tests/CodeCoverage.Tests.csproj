@@ -28,13 +28,13 @@
 			<PrivateAssets>all</PrivateAssets>
 			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
 		</PackageReference>
-		<PackageReference Include="MintPlayer.Assertions" Version="11.0.0-rc.6" />
-		<PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="11.0.0-rc.1.26425.128" />
-		<PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.10.1" />
+		<PackageReference Include="MintPlayer.Assertions" Version="11.0.0" />
+		<PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="11.0.0" />
+		<PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.11.1" />
 		<PackageReference Include="NSubstitute" Version="6.2.0" />
 		<!-- Embedded RavenDB for tests that must exercise the real client
 		     session (request budget, attachments, streaming). -->
-		<PackageReference Include="RavenDB.TestDriver" Version="7.2.6" />
+		<PackageReference Include="RavenDB.TestDriver" Version="7.2.7" />
 		<PackageReference Include="xunit" Version="2.9.3" />
 		<PackageReference Include="xunit.runner.visualstudio" Version="4.0.1">
 			<PrivateAssets>all</PrivateAssets>
@@ -48,6 +48,14 @@
 		<ProjectReference Include="..\..\..\libs\testing\MintPlayer.Spark.Testing\MintPlayer.Spark.Testing.csproj" />
 		<ProjectReference Include="..\CodeCoverage\CodeCoverage.csproj" />
 		<ProjectReference Include="..\..\..\libs\source_generators\MintPlayer.Spark.SourceGenerators\MintPlayer.Spark.SourceGenerators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+	</ItemGroup>
+
+	<ItemGroup Condition="'$(Configuration)' == 'Debug'">
+		<!-- End-to-end tests of the app with its real git writer (docs/onboarding_backfill_partial_push_PRD.md M2): the
+		     writer's own local smart-HTTP git server and repository fixtures, linked, not copied. The app references the
+		     writer only in Debug (CodeCoverage.csproj), so these do too. -->
+		<Compile Include="..\CodeCoverage.GitWriter.Tests\_Infrastructure\GitHttpServer.cs" Link="_GitWriterFixtures\GitHttpServer.cs" />
+		<Compile Include="..\CodeCoverage.GitWriter.Tests\_Infrastructure\Fixture.cs" Link="_GitWriterFixtures\Fixture.cs" />
 	</ItemGroup>
 
 	<ItemGroup>

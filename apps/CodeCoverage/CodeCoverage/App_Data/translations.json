@@ -1,6 +1,13 @@
 {
   "$schema": "../../../../schemas/translations.schema.json",
   "actions": {
+    "ConvertCentralPackages": {
+      "label": {
+        "en": "Convert central package management",
+        "fr": "Convertir la gestion centralisée des paquets",
+        "nl": "Centraal pakketbeheer omzetten"
+      }
+    },
     "DeleteData": {
       "label": {
         "en": "Delete data",
@@ -128,6 +135,48 @@
       "en": "Welcome to Coverage",
       "fr": "Bienvenue sur Coverage",
       "nl": "Welkom bij Coverage"
+    }
+  },
+  "centralPackages": {
+    "chooseMessage": {
+      "en": "Each selected .NET repository gets a pull request that moves its package versions into Directory.Packages.props, or back into each PackageReference. Nothing changes until it is merged.",
+      "fr": "Chaque dépôt .NET sélectionné reçoit une pull request qui déplace les versions de ses paquets dans Directory.Packages.props, ou les remet dans chaque PackageReference. Rien ne change avant la fusion.",
+      "nl": "Elke geselecteerde .NET-repository krijgt een pull request die de pakketversies naar Directory.Packages.props verplaatst, of terug naar elke PackageReference. Er verandert niets tot die gemerged is."
+    },
+    "chooseTitle": {
+      "en": "Convert central package management",
+      "fr": "Convertir la gestion centralisée des paquets",
+      "nl": "Centraal pakketbeheer omzetten"
+    },
+    "from": {
+      "en": "Stop using it",
+      "fr": "Ne plus l'utiliser",
+      "nl": "Niet meer gebruiken"
+    },
+    "notOpened": {
+      "en": "{0} was not converted: {1}",
+      "fr": "{0} n'a pas été converti : {1}",
+      "nl": "{0} is niet omgezet: {1}"
+    },
+    "opened": {
+      "en": "Central package management pull request for {0}: {1}",
+      "fr": "Pull request de gestion centralisée des paquets pour {0} : {1}",
+      "nl": "Pull request voor centraal pakketbeheer voor {0}: {1}"
+    },
+    "reason.notFound": {
+      "en": "The repository was not found.",
+      "fr": "Le dépôt est introuvable.",
+      "nl": "De repository is niet gevonden."
+    },
+    "reason.notManaged": {
+      "en": "You cannot manage this repository's settings.",
+      "fr": "Vous ne pouvez pas gérer les paramètres de ce dépôt.",
+      "nl": "Je kunt de instellingen van deze repository niet beheren."
+    },
+    "to": {
+      "en": "Use it",
+      "fr": "L'utiliser",
+      "nl": "Gebruiken"
     }
   },
   "dependencyOnboarding": {
@@ -1050,6 +1099,11 @@
             "en": "Why it failed or conflicts."
           }
         },
+        "LogId": {
+          "description": {
+            "en": "The log of the request that made this attempt: the /backport command's, or the label's or merge's own."
+          }
+        },
         "Outcome": {
           "description": {
             "en": "What became of it: opened, draft, regenerating, conflicts, failed, …"
@@ -1539,6 +1593,45 @@
             "en": "Uploaded",
             "fr": "Envoyé",
             "nl": "Geüpload"
+          }
+        }
+      }
+    },
+    "CommandInvocation": {
+      "attributes": {
+        "Actor": {
+          "description": {
+            "en": "The commenter's forge login (the signed webhook's sender)."
+          }
+        },
+        "Command": {
+          "description": {
+            "en": "The command as the bot understood it, such as /approve Angular."
+          }
+        },
+        "LogId": {
+          "description": {
+            "en": "The command's log: its own (a /backport's attempts point at it too), or the merge-queue run's for /queue."
+          }
+        },
+        "Message": {
+          "description": {
+            "en": "The sentence the user can act on: what happened, or why nothing did."
+          }
+        },
+        "Number": {
+          "description": {
+            "en": "The pull request or issue the comment is on."
+          }
+        },
+        "Outcome": {
+          "description": {
+            "en": "Where the command stands: received, started, done, nothing changed, refused or failed."
+          }
+        },
+        "Repository": {
+          "description": {
+            "en": "The repository the command was written in."
           }
         }
       }
@@ -3597,6 +3690,13 @@
             "nl": "Dependency-updates"
           }
         },
+        "DotnetRepository": {
+          "label": {
+            "en": ".NET repository",
+            "fr": "Dépôt .NET",
+            "nl": ".NET-repository"
+          }
+        },
         "MergeQueue": {
           "description": {
             "en": "Merge approved pull requests one after the other, each tested on the latest default branch.",
@@ -3619,6 +3719,18 @@
             "en": "Release lines",
             "fr": "Lignes de release",
             "nl": "Releaselijnen"
+          }
+        },
+        "SdkFromGlobalJson": {
+          "description": {
+            "en": "Let the workflows' setup-dotnet steps install the SDK global.json names instead of a pinned dotnet-version, here and on the .NET release lines; needs dependency updates or release lines.",
+            "fr": "Faire installer par les étapes setup-dotnet des workflows le SDK indiqué dans global.json au lieu d'un dotnet-version figé, ici et sur les lignes de release .NET ; nécessite les mises à jour des dépendances ou les lignes de release.",
+            "nl": "De setup-dotnet-stappen van de workflows de SDK uit global.json laten installeren in plaats van een vaste dotnet-version, hier en op de .NET-releaselijnen; vereist afhankelijkheidsupdates of releaselijnen."
+          },
+          "label": {
+            "en": "SDK from global.json",
+            "fr": "SDK depuis global.json",
+            "nl": "SDK uit global.json"
           }
         },
         "SizeLabels": {
@@ -3735,11 +3847,6 @@
       "fr": "La pull request de configuration",
       "nl": "De onboarding-pull request"
     },
-    "notManaged": {
-      "en": "You don't manage this repository.",
-      "fr": "Vous ne gérez pas ce dépôt.",
-      "nl": "Je beheert deze repository niet."
-    },
     "moveTags": {
       "item": {
         "en": "{0} is at {1}, the history declares it first at {2} on {3}",
@@ -3766,6 +3873,11 @@
         "fr": "Déplacer {0} tag(s) de version ?",
         "nl": "{0} versietag(s) verplaatsen?"
       }
+    },
+    "notManaged": {
+      "en": "You don't manage this repository.",
+      "fr": "Vous ne gérez pas ce dépôt.",
+      "nl": "Je beheert deze repository niet."
     },
     "nothingPicked": {
       "en": "Pick at least one feature.",

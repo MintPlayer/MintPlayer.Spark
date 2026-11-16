@@ -187,7 +187,11 @@ internal sealed partial class RefreshPersistentObject : IPostEndpoint<RefreshPer
     {
         var clrType = typeResolver.Resolve(entityType.ClrType);
         if (clrType is null)
+        {
+            // #649: a JSON-only virtual type (a custom action's form) refreshes through its actions class by name.
+            await refreshInvoker.InvokeVirtualAsync(entityType, obj, triggeredBy, isNew, httpContext.RequestAborted);
             return;
+        }
 
         await refreshInvoker.InvokeAsync(clrType, obj, triggeredBy, isNew, httpContext.RequestAborted);
     }

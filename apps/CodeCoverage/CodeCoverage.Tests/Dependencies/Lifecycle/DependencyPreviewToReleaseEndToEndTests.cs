@@ -1,6 +1,8 @@
 using System.Text.Json;
+using CodeCoverage.Dependencies.Lifecycle;
 using CodeCoverage.Dependencies.Policy;
 using CodeCoverage.Entities;
+using CodeCoverage.Forge;
 using CodeCoverage.Git.Dependencies;
 using CodeCoverage.Tests.Dependencies.Policy;
 using MintPlayer.Spark.Testing;
@@ -62,17 +64,24 @@ public class DependencyPreviewToReleaseEndToEndTests : SparkTestDriver
         Ecosystem = "nuget", Manager = "nuget", Datasource = "nuget", PackageFile = "src/Web/Web.csproj", LockFiles = [],
     };
 
-    [Fact]
-    public async Task The_release_of_the_rc_channel_is_planned_as_a_patch_with_its_companions_riding()
+    /// <param name="declared">#658: the action the apply workflow runs (the template's tag here) declares <c>sdk-preset</c>, so the
+    /// plan commit also moves global.json to 11.0.100 and setup-dotnet installs it (SpaServices #111). Without it, an action
+    /// from before #658 would refuse that plan commit, so the bot asks for the plan file only.</param>
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task The_release_of_the_rc_channel_is_planned_as_a_patch_with_its_companions_riding(bool declared)
     {
         var harness = new DependencyHarness(Store);
         harness.SetYml(DependencyHarness.Yml);
+        harness.Updates.Files[$"{DependencyOnboarding.ActionRepository}@{DependencyOnboarding.ActionTag}:{DependencySdkPreset.ActionYmlPath}"] =
+            declared ? "# capabilities: sdk-preset\nname: 'MintPlayer Dependency Update'\n" : "name: 'MintPlayer Dependency Update'\n";
         await harness.SeedAsync();
         await harness.StoreAsync(Released, Released.Id!);
 
         string table;
         using (var session = Store.OpenAsyncSession())
-            table = await DependencyPlatformTable.JsonAsync(session, [], CancellationToken.None);
+            table = await DependencyPlatformTable.JsonAsync(session, [], [], CancellationToken.None);
         using var parsed = JsonDocument.Parse(table);
         var row = parsed.RootElement.GetProperty("sdks").GetProperty("dotnet").EnumerateArray().Single();
 
@@ -84,7 +93,9 @@ public class DependencyPreviewToReleaseEndToEndTests : SparkTestDriver
         dispatched.Inputs["platforms"].Should().Be(table);
         (row.GetProperty("latestSdk").GetString(), row.GetProperty("preview").GetBoolean()).Should().Be(("11.0.100", false));
 
-        var plan = DependencyContract.Deserialize<DependencyPlan>(harness.Writer.Requests("work-ref").Should().ContainSingle().Which.PlanJson!)!;
+        var planCommit = harness.Writer.Requests("work-ref").Should().ContainSingle().Which;
+        planCommit.PresetSdk.Should().Be(declared);
+        var plan = DependencyContract.Deserialize<DependencyPlan>(planCommit.PlanJson!)!;
         var group = plan.Groups.Should().ContainSingle().Which;
         group.Group.Should().Be("platform:dotnet 11.0");
         group.Platform!.FromChannel.Should().Be("11.0");
@@ -93,5 +104,94 @@ public class DependencyPreviewToReleaseEndToEndTests : SparkTestDriver
         group.Platform.SdkVersion.Should().Be("11.0.100");
         // D33: the RC companion rides to its release in the SDK's group, not in a group of its own.
         group.Items.Select(i => $"{i.DepName}@{i.NewVersion}").Should().Equal("Microsoft.AspNetCore.OpenApi@11.0.0");
+    }
+
+    /// <summary>
+    /// follower-cooldown-PRD G2/M4: another repository of the owner publishes <c>Acme.Endpoints</c> (its manifest, the
+    /// producer graph); the widget's reference to it, on the platform's major, rides to its release with the SDK. The
+    /// widget's own manifest publishes <c>Acme.Widget</c>, which stays an ordinary package here.
+    /// </summary>
+    [Fact]
+    public async Task An_upstream_package_of_the_owner_rides_with_the_platform_move()
+    {
+        var harness = new DependencyHarness(Store);
+        harness.SetYml(DependencyHarness.Yml);
+        await harness.SeedAsync();
+        await harness.StoreAsync(Released, Released.Id!);
+        var upstreamId = Repository.DocumentId(EForgeProvider.GitHub, 9101);
+        await harness.StoreAsync(new Repository
+        {
+            GitHubId = 9101, Name = "tools", FullName = "acme/tools", OwnerLogin = "acme", DefaultBranch = "master",
+            Account = DependencyHarness.AccountId, Provider = EForgeProvider.GitHub,
+        }, upstreamId);
+        await harness.StoreAsync(new RepositoryManifest
+        {
+            Repository = upstreamId, OwnerKey = new ForgeOwner(EForgeProvider.GitHub, "acme").ToString(), Produces = [new ManifestPackage { Ecosystem = "NuGet", Name = "Acme.Endpoints" }],
+        }, RepositoryManifest.ForRepository(upstreamId));
+        WaitForIndexing(Store);
+
+        string table;
+        using (var session = Store.OpenAsyncSession())
+            table = await DependencyPlatformTable.JsonAsync(session, [], [], CancellationToken.None);
+        using var parsed = JsonDocument.Parse(table);
+        var row = parsed.RootElement.GetProperty("sdks").GetProperty("dotnet").EnumerateArray().Single();
+        LookupRecord Package(string name, string current, string next) => DependencyTestKit.Record(name, current,
+            DependencyTestKit.Candidate(EUpdateType.Patch, next)) with
+        { Ecosystem = "nuget", Manager = "nuget", Datasource = "nuget", PackageFile = "src/Web/Web.csproj", LockFiles = [] };
+
+        await harness.RunToApplyAsync(DependencyHarness.Lookup(Package("Acme.Endpoints", "11.4.1-rc.0", "11.4.1")) with { Platforms = [OnTheRc(row)] });
+
+        var plan = DependencyContract.Deserialize<DependencyPlan>(harness.Writer.Requests("work-ref").Single().PlanJson!)!;
+        plan.Groups.Should().ContainSingle().Which.Items.Select(i => $"{i.DepName}@{i.NewVersion}").Should().Equal("Acme.Endpoints@11.4.1");
+    }
+
+    /// <summary>
+    /// prerelease-track-scenarios-PRD D5 (Tools #218, 2026-11-15): the apply refused the platform group with NU1605 on
+    /// <c>Microsoft.Extensions.DependencyInjection</c>, so R2 held it on that blocker. A fixed engine now plans the blocker
+    /// in the group, but the lookup did not change, so the hold stood and the fix never reached the pull request. The
+    /// hold binds to the items it refused: this plan is another, so it lifts, the group is planned with both packages at
+    /// 11.0.0, and the hold the next refusal takes records its items.
+    /// </summary>
+    [Fact]
+    public async Task A_platform_hold_from_before_a_fix_lifts_when_the_group_is_planned_with_its_blocker()
+    {
+        var harness = new DependencyHarness(Store);
+        harness.SetYml(DependencyHarness.Yml);
+        await harness.SeedAsync();
+        await harness.StoreAsync(Released, Released.Id!);
+        await harness.StoreAsync(new DependencyUpdateState
+        {
+            Repository = DependencyHarness.RepositoryId,
+            Holds =
+            [
+                new DependencyHold
+                {
+                    Id = "blocker:platform:dotnet 11.0", Kind = EDependencyHoldKind.Blocker, Group = "platform:dotnet 11.0", DepNames = ["platform:dotnet"],
+                    Reason = "the resolver refused it: blocked by Microsoft.Extensions.DependencyInjection (R2)",
+                    Blockers = [new DependencyBlockerSeen { DepName = "Microsoft.Extensions.DependencyInjection", SeenVersions = [RcPackage, "11.0.0"], CurrentTokens = [RcPackage] }],
+                    CreatedAtUtc = new DateTime(2026, 11, 15, 20, 0, 0, DateTimeKind.Utc),
+                },
+            ],
+        }, DependencyUpdateState.ForRepository(DependencyHarness.RepositoryId));
+
+        string table;
+        using (var session = Store.OpenAsyncSession())
+            table = await DependencyPlatformTable.JsonAsync(session, [], [], CancellationToken.None);
+        using var parsed = JsonDocument.Parse(table);
+        var row = parsed.RootElement.GetProperty("sdks").GetProperty("dotnet").EnumerateArray().Single();
+        LookupRecord Package(string name, string current, string next, EUpdateType type) => DependencyTestKit.Record(name, current,
+            DependencyTestKit.Candidate(type, next)) with
+        { Ecosystem = "nuget", Manager = "nuget", Datasource = "nuget", PackageFile = "src/Web/Web.csproj", LockFiles = [] };
+
+        await harness.RunToApplyAsync(DependencyHarness.Lookup(
+            Package("Microsoft.Extensions.Hosting", "10.0.5", "11.0.0", EUpdateType.Major),
+            Package("Microsoft.Extensions.DependencyInjection", RcPackage, "11.0.0", EUpdateType.Patch)) with { Platforms = [OnTheRc(row)] });
+
+        var plan = DependencyContract.Deserialize<DependencyPlan>(harness.Writer.Requests("work-ref").Single().PlanJson!)!;
+        var group = plan.Groups.Should().ContainSingle().Which;
+        group.Group.Should().Be("platform:dotnet 11.0");
+        group.Items.Select(i => $"{i.DepName}@{i.NewVersion}").Order(StringComparer.Ordinal)
+            .Should().Equal("Microsoft.Extensions.DependencyInjection@11.0.0", "Microsoft.Extensions.Hosting@11.0.0");
+        (await harness.StateAsync()).Holds.Should().NotContain(h => h.Group == "platform:dotnet 11.0" && h.Refused.Count == 0);
     }
 }

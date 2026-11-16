@@ -240,6 +240,8 @@ public sealed record RepositoryConnectionChanged(
 /// </param>
 /// <param name="Label">The label added or removed, for <see cref="EMergeQueueCommandSource.Label"/>: the queue compares it
 /// with the configured one, which the normaliser does not know.</param>
+/// <param name="CommentId">The comment that held the command, for <see cref="Entities.EMergeQueueCommandSource.Comment"/>: the
+/// command lifecycle reacts on it (#660).</param>
 /// <remarks>
 /// A normaliser drops commands a bot sent, the App's own label removals included: the queue only ever acts for a
 /// person (§0 D46).
@@ -250,7 +252,8 @@ public sealed record MergeQueueCommandIssued(
     EMergeQueueCommand Command,
     string ActorLogin,
     Entities.EMergeQueueCommandSource Source,
-    string? Label = null) : IForgeEvent;
+    string? Label = null,
+    long? CommentId = null) : IForgeEvent;
 
 public enum EMergeQueueCommand
 {
@@ -261,6 +264,10 @@ public enum EMergeQueueCommand
 /// <summary>A pull request was closed without being merged.</summary>
 /// <remarks>The merged close is <see cref="PullRequestMerged"/>; the two are never raised for the same close.</remarks>
 public sealed record PullRequestClosed(string RepositoryId, int Number) : IForgeEvent;
+
+/// <summary>A closed pull request was reopened (#683 H5).</summary>
+/// <param name="HeadRef">Its head branch, by which the dependency updater recognises a rolling pull request it no longer tracks.</param>
+public sealed record PullRequestReopened(string RepositoryId, int Number, string HeadRef) : IForgeEvent;
 
 /// <summary>A CI run (a GitHub Actions workflow run, a GitLab pipeline) finished.</summary>
 /// <param name="HeadSha">The commit the run built, which the queue compares with the commit it asked for (D14).</param>
@@ -317,7 +324,8 @@ public sealed record DependencyCommandIssued(
     long CommentId,
     EDependencyCommand Command,
     string? Argument,
-    string ActorLogin) : IForgeEvent;
+    string ActorLogin,
+    bool Malformed = false) : IForgeEvent;
 
 public enum EDependencyCommand
 {
@@ -354,8 +362,9 @@ public sealed record DependencyAlertRaised(string RepositoryId, string Ecosystem
 /// what a bot or the App itself did, and raises nothing when it cannot name the actor.</param>
 /// <param name="Draft">The comment said <c>--draft</c> (#570 D7): a conflicting line gets a draft pull request with the
 /// conflict markers, whatever <c>backport.onConflict</c> says.</param>
+/// <param name="CommentId">The <c>/backport</c> comment, for <see cref="EBackportSource.Comment"/> (#660).</param>
 public sealed record BackportRequested(string RepositoryId, int Number, IReadOnlyList<string> Lines, string ActorLogin, EBackportSource Source,
-    bool Draft = false) : IForgeEvent;
+    bool Draft = false, long? CommentId = null) : IForgeEvent;
 
 /// <summary>
 /// A person asked for release lines to be promoted (segment P): a <c>/release</c> comment on an issue or a pull request.
@@ -363,7 +372,8 @@ public sealed record BackportRequested(string RepositoryId, int Number, IReadOnl
 /// <param name="Number">The issue or pull request the comment is on; the answer is posted there.</param>
 /// <param name="ActorLogin">The signed webhook's sender, never text from the comment. Whether that person may release is
 /// read from the forge per request (P3).</param>
-public sealed record ReleaseRequested(string RepositoryId, int Number, ReleaseCommentRequest Request, string ActorLogin) : IForgeEvent;
+/// <param name="CommentId">The <c>/release</c> comment (#660).</param>
+public sealed record ReleaseRequested(string RepositoryId, int Number, ReleaseCommentRequest Request, string ActorLogin, long? CommentId = null) : IForgeEvent;
 
 /// <summary>
 /// A person pushed a new tag (segment P, P5): in a repository whose current lines are promoted, a version tag is

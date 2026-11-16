@@ -94,7 +94,7 @@ public class ApprovalPolicyTests
         held.Groups.Should().BeEmpty();
         held.ExpiredApprovals.Should().BeEmpty("the group still offers exactly what was approved");
 
-        DependencyHolds.RemoveCommandHold(held.NextState, "express");
+        DependencyHolds.RemoveHold(held.NextState, "express");
         Evaluate(lookup, state: held.NextState, configBlob: Blob).Groups.Should().ContainSingle().Which.Approved.Should().BeTrue();
     }
 

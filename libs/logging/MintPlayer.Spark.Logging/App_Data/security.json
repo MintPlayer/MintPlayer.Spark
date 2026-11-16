@@ -1,0 +1,11 @@
+{
+  "$schema": "../../../../schemas/security.schema.json",
+  "_comment": [
+    "The logging package's rights (#660 G16): none. Logs can hold anything a handler logged, so nobody reads them until",
+    "the application grants it in its own security.json, for example:",
+    "  { \"resource\": \"Read/Log\", \"groupId\": \"<everyone>\" }",
+    "Read implies Query, so this opens the Logs list too. LogActions gates every log, in the list and on its page alike,",
+    "by its related record: a caller sees exactly the logs of the records they may read."
+  ],
+  "rights": []
+}

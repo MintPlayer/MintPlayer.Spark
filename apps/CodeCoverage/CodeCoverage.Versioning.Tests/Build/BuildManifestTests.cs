@@ -122,6 +122,39 @@ public class BuildManifestTests : IDisposable
         result.Manifest.Packages!.Single().ResolvedVersions.Should().BeEquivalentTo(new Dictionary<string, string> { ["Newtonsoft.Json"] = "13.0.3" });
     }
 
+    // prerelease-dependencies-PRD B4/D5: `libraries` is shared by every target framework. The fixture is a real restore of
+    // net10.0 → Newtonsoft.Json 13.0.4 and net11.0 → 13.0.4-beta1 (local paths dropped); NuGet lists the beta first, so
+    // "the last one wins" reported the stable. The least mature version over all TFMs wins.
+    [Fact]
+    public async Task B4_a_package_resolved_differently_per_target_framework_reports_the_least_mature()
+    {
+        var assets = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Fixtures", "MultiTfm", "project.assets.json"));
+        var commit = BuiltDotnetPackage(assets);
+
+        var result = await CollectAsync(commit, registry: null);
+
+        result.Manifest.Packages!.Single().ResolvedVersions.Should().BeEquivalentTo(new Dictionary<string, string> { ["Newtonsoft.Json"] = "13.0.4-beta1" });
+    }
+
+    [Theory]
+    [InlineData("1.0.0", "2.0.0-beta.1", "2.0.0-beta.1")]
+    [InlineData("2.0.0-beta.1", "1.0.0", "2.0.0-beta.1")]
+    [InlineData("2.0.0-rc.1", "2.0.0-beta.3", "2.0.0-beta.3")]
+    [InlineData("2.0.0-alpha.1", "2.0.0-rc.1", "2.0.0-alpha.1")]
+    [InlineData("1.0.0", "2.0.0", "1.0.0")]
+    [InlineData("not-semver", "1.0.0", "1.0.0")]
+    public async Task B4_the_least_mature_wins_whatever_the_order(string first, string second, string expected)
+    {
+        var commit = BuiltDotnetPackage($$"""
+            { "libraries": {
+                "Upstream/{{first}}": { "type": "package" },
+                "Upstream/{{second}}": { "type": "package" }
+            } }
+            """);
+
+        (await CollectAsync(commit, registry: null)).Manifest.Packages!.Single().ResolvedVersions!["Upstream"].Should().Be(expected);
+    }
+
     [Fact]
     public async Task Restore_output_without_libraries_resolves_nothing()
     {

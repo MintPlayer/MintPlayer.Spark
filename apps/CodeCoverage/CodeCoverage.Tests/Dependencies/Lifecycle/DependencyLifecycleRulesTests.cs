@@ -2,6 +2,7 @@ using CodeCoverage.Dependencies.Lifecycle;
 using CodeCoverage.Dependencies.Policy;
 using CodeCoverage.Entities;
 using CodeCoverage.Forge;
+using CodeCoverage.Git.Dependencies;
 using CodeCoverage.LookupReferences;
 using CodeCoverage.Tests.Dependencies.Policy;
 using Xunit;
@@ -12,34 +13,59 @@ namespace CodeCoverage.Tests.Dependencies.Lifecycle;
 public class DependencyCommandParserTests
 {
     [Theory]
-    [InlineData("approve angular", EDependencyCommand.Approve, "angular")]
-    [InlineData("  Approve `@angular/*`\nthanks", EDependencyCommand.Approve, "@angular/*")]
-    [InlineData("hold lodash", EDependencyCommand.Hold, "lodash")]
-    [InlineData("unhold lodash", EDependencyCommand.Unhold, "lodash")]
-    [InlineData("bisect", EDependencyCommand.Bisect, null)]
-    [InlineData("refresh\r\n", EDependencyCommand.Refresh, null)]
-    [InlineData("approve platform:dotnet 11.0 --force", EDependencyCommand.Approve, "platform:dotnet 11.0 --force")] // #606 D3: the engine reads the flag
+    [InlineData("/approve angular", EDependencyCommand.Approve, "angular")]
+    [InlineData("  /Approve `@angular/*`\nthanks", EDependencyCommand.Approve, "@angular/*")]
+    [InlineData("/hold lodash", EDependencyCommand.Hold, "lodash")]
+    [InlineData("/unhold lodash", EDependencyCommand.Unhold, "lodash")]
+    [InlineData("/bisect", EDependencyCommand.Bisect, null)]
+    [InlineData("/refresh\r\n", EDependencyCommand.Refresh, null)]
+    [InlineData("/approve platform:dotnet 11.0 --force", EDependencyCommand.Approve, "platform:dotnet 11.0 --force")] // #606 D3: the engine reads the flag
     public void A_command_is_the_first_word_of_the_first_line(string body, EDependencyCommand command, string? argument)
     {
         var parsed = DependencyCommandParser.Parse(body);
         parsed.Should().NotBeNull();
         parsed!.Value.Command.Should().Be(command);
         parsed.Value.Argument.Should().Be(argument);
+        parsed.Value.Malformed.Should().BeFalse();
     }
 
     [Theory]
     [InlineData("")]
     [InlineData("I approve of this")]
-    [InlineData("approve")]
-    [InlineData("hold")]
-    [InlineData("refresh please")]
     [InlineData("/queue")]
+    [InlineData("/unhlod lodash")] // an unknown slash word may be another bot's command: never answered
+    // #660 G1: the bare words are ordinary comments now.
+    [InlineData("approve angular")]
+    [InlineData("Hold on, this breaks the build")]
+    [InlineData("refresh")]
+    [InlineData("bisect")]
     public void Anything_else_is_an_ordinary_comment(string body)
         => DependencyCommandParser.Parse(body).Should().BeNull();
 
+    /// <summary>#683: a known command with the wrong arguments is malformed, and a writer gets its usage back.</summary>
+    [Theory]
+    [InlineData("/approve", EDependencyCommand.Approve)]
+    [InlineData("/hold", EDependencyCommand.Hold)]
+    [InlineData("/unhold  ", EDependencyCommand.Unhold)]
+    [InlineData("/unhold ``", EDependencyCommand.Unhold)]
+    [InlineData("/refresh please", EDependencyCommand.Refresh)]
+    [InlineData("/bisect lodash", EDependencyCommand.Bisect)]
+    public void A_known_command_with_the_wrong_arguments_is_malformed(string body, EDependencyCommand command)
+    {
+        var parsed = DependencyCommandParser.Parse(body);
+        parsed.Should().NotBeNull();
+        parsed!.Value.Command.Should().Be(command);
+        parsed.Value.Argument.Should().BeNull();
+        parsed.Value.Malformed.Should().BeTrue();
+    }
+
     [Fact]
-    public void An_overlong_argument_is_not_a_command()
-        => DependencyCommandParser.Parse("approve " + new string('a', DependencyCommandParser.MaxArgumentLength + 1)).Should().BeNull();
+    public void An_overlong_argument_is_malformed()
+        => DependencyCommandParser.Parse("/approve " + new string('a', DependencyCommandParser.MaxArgumentLength + 1))!.Value.Malformed.Should().BeTrue();
+
+    [Fact]
+    public void Every_command_has_a_usage_line()
+        => Enum.GetValues<EDependencyCommand>().Select(DependencyCommandParser.Usage).Should().AllSatisfy(u => u.Should().StartWith("/"));
 }
 
 /// <summary>Q8: the slot, in the account's time zone, spread within the hour, one key per repository and slot.</summary>
@@ -131,8 +157,30 @@ public class DependencyAutoMergeGateTests
         => new(name, level, autoMerge, false, false, null, platform, [new DependencyReportItem(name, "package.json", "npm", "npm", "1.0.0", "1.1.0", "1.1.0", null)]);
 
     private static DependencyEnqueueInput Input(DependencyRunReport report, bool queue = true, bool draft = false, bool human = false, bool migrations = false,
-        IReadOnlyList<string>? workflows = null, ECoverageGate coverage = ECoverageGate.Passed)
-        => new(queue, report, draft, human, migrations, workflows ?? [], coverage);
+        IReadOnlyList<string>? workflows = null, ECoverageGate coverage = ECoverageGate.Passed, IReadOnlySet<string>? majorOptIns = null)
+        => new(queue, report, draft, human, migrations, workflows ?? [], coverage, majorOptIns ?? new HashSet<string>());
+
+    /// <summary>prerelease-dependencies-PRD H3: R7's second enforcement honours <c>platforms.&lt;sdk&gt;.autoMerge: major</c>, for that SDK only.</summary>
+    [Fact]
+    public void An_opted_in_platform_major_enqueues_and_another_sdks_does_not()
+    {
+        var dotnet = Report(Group("platform:dotnet 12.0", EUpdateLevel.Major, platform: true));
+
+        DependencyAutoMergeGate.Refusal(Input(dotnet, majorOptIns: new HashSet<string> { "dotnet" })).Should().BeNull();
+        DependencyAutoMergeGate.Refusal(Input(dotnet, majorOptIns: new HashSet<string> { "node" })).Should().Contain("platform major");
+    }
+
+    /// <summary>H3: the opt-in lifts R7 only; every other gate still stops the pull request.</summary>
+    [Fact]
+    public void An_opted_in_platform_major_still_meets_the_other_gates()
+    {
+        var dotnet = Report(Group("platform:dotnet 12.0", EUpdateLevel.Major, platform: true));
+        var optIn = new HashSet<string> { "dotnet" };
+
+        DependencyAutoMergeGate.Refusal(Input(dotnet, queue: false, majorOptIns: optIn)).Should().Contain("merge queue");
+        DependencyAutoMergeGate.Refusal(Input(dotnet, coverage: ECoverageGate.Dropped, majorOptIns: optIn)).Should().Contain("Coverage dropped");
+        DependencyAutoMergeGate.Refusal(Input(dotnet, migrations: true, majorOptIns: optIn)).Should().Contain("migrations");
+    }
 
     [Fact]
     public void Green_within_every_threshold_enqueues()
@@ -297,19 +345,19 @@ public class DependencyWorkflowGuardTests
     /// <summary>#613 item 4: a custom <c>lookupWorkflow</c> has no template, so the bot offers no pull request for it.</summary>
     [Fact]
     public void A_workflow_without_a_template_gets_no_refresh()
-        => DependencyOnboarding.RefreshFiles(["my-lookup.yml"], null, DependencyOnboarding.ReadTemplate).Should().BeNull();
+        => DependencyOnboarding.RefreshFiles(["my-lookup.yml"], DependencyOnboarding.ReadTemplate).Should().BeNull();
 
     [Fact]
     public void The_refresh_pull_request_says_why_and_who_approves_it()
     {
-        var files = DependencyOnboarding.RefreshFiles(["dependency-lookup.yml"], "0123456789abcdef0123456789abcdef01234567", DependencyOnboarding.ReadTemplate)!;
+        var files = DependencyOnboarding.RefreshFiles(["dependency-lookup.yml"], DependencyOnboarding.ReadTemplate)!;
 
-        var body = DependencyOnboarding.RefreshBody(files, "`dependency-lookup.yml` declares no `platforms` input", "0123456789abcdef0123456789abcdef01234567");
+        var body = DependencyOnboarding.RefreshBody(files, "`dependency-lookup.yml` declares no `platforms` input");
 
         body.Should().StartWith(DependencyPullRequestBody.Marker)
             .And.Contain("declares no `platforms` input")
             .And.Contain("`.github/workflows/dependency-lookup.yml`")
-            .And.Contain("`0123456789ab`")
+            .And.Contain("calls the action at `dependency-update-v1`")
             .And.EndWith(DependencyOnboarding.ApprovalNote);
     }
 }
@@ -396,13 +444,13 @@ public class OnboardingPrTests
     }
 
     [Fact]
-    public void The_templates_call_the_action_pinned_by_the_resolved_sha_with_the_tag_as_a_comment()
+    public void The_templates_call_the_action_at_its_moving_tag()
     {
-        var plan = DependencyOnboarding.Plan(["package.json"], null, null, null, Sha, DependencyOnboarding.ReadTemplate);
+        // Owner, 2026-11-13 (supersedes D-L14's commit pin): a release reaches every repository by moving the tag.
+        var plan = DependencyOnboarding.Plan(["package.json"], null, null, null, DependencyOnboarding.ReadTemplate);
 
-        plan.Pinned.Should().BeTrue();
         var lookup = plan.Files.Single(f => f.Path == ".github/workflows/dependency-lookup.yml").Content!;
-        lookup.Should().Contain($"dependency-action@{Sha} # dependency-update-v1").And.NotContain("@dependency-update-v1\n");
+        lookup.Should().Contain("dependency-action@dependency-update-v1\n").And.NotContain(Sha);
         plan.Files.Should().NotContain(f => f.Path.EndsWith("migrate.yml"), "no angular.json or nx.json in the tree");
         plan.Files.Single(f => f.Path == "coverage.yml").Content.Should().StartWith("# MintPlayer dependency updates");
         CodeCoverage.Dependencies.DependenciesYml.Parse(plan.Files.Single(f => f.Path == "coverage.yml").Content).Section.Present.Should().BeFalse("the section is all commented");
@@ -412,21 +460,36 @@ public class OnboardingPrTests
     [Fact]
     public void The_onboarding_body_names_the_action_and_says_what_each_workflow_does()
     {
-        var plan = DependencyOnboarding.Plan(["package.json", "angular.json"], null, null, null, Sha, DependencyOnboarding.ReadTemplate);
+        var plan = DependencyOnboarding.Plan(["package.json", "angular.json"], null, null, null, DependencyOnboarding.ReadTemplate);
 
-        plan.Body.Should().Contain($"`MintPlayer/MintPlayer.Spark/apps/CodeCoverage/dependency-action`, pinned to `{Sha}`");
+        plan.Body.Should().Contain("`MintPlayer/MintPlayer.Spark/apps/CodeCoverage/dependency-action` at `dependency-update-v1`, a tag every release of the action moves")
+            .And.NotContain(Sha);
         plan.Body.Should().Contain("- `.github/workflows/dependency-lookup.yml`: the lookup.");
         plan.Body.Should().Contain("- `.github/workflows/dependency-apply.yml`: the apply.");
         plan.Body.Should().Contain("- `.github/workflows/angular-migrate.yml`: runs the `ng update` migrations");
         plan.Body.Should().Contain("Nothing else needs adding");
     }
 
+    /// <summary>#658 F4: re-running Set up features wrote every template over the repository's own workflow, so a user's edit
+    /// was lost. An existing workflow is left alone; updating it is the "Update the MintPlayer dependency workflows" pull
+    /// request's job, which says so.</summary>
     [Fact]
-    public void An_unresolved_tag_keeps_the_tag()
+    public void Issue658_an_existing_workflow_is_never_overwritten()
     {
-        var plan = DependencyOnboarding.Plan(["nx.json", "apps/web/angular.json"], "mergeQueue:\n  enabled: true", null, null, null, DependencyOnboarding.ReadTemplate);
+        var plan = DependencyOnboarding.Plan(["package.json", "nx.json", ".github/workflows/dependency-apply.yml"], null, null, null, DependencyOnboarding.ReadTemplate);
 
-        plan.Pinned.Should().BeFalse();
+        var paths = plan.Files.Select(f => f.Path).ToList();
+        paths.Should().Contain(".github/workflows/dependency-lookup.yml");
+        paths.Should().Contain(".github/workflows/nx-migrate.yml");
+        paths.Should().NotContain(".github/workflows/dependency-apply.yml");
+        plan.Body.Should().NotContain("- `.github/workflows/dependency-apply.yml`");
+    }
+
+    [Fact]
+    public void The_migrate_templates_follow_the_tree_and_call_the_tag()
+    {
+        var plan = DependencyOnboarding.Plan(["nx.json", "apps/web/angular.json"], "mergeQueue:\n  enabled: true", null, null, DependencyOnboarding.ReadTemplate);
+
         plan.Files.Should().Contain(f => f.Path == ".github/workflows/nx-migrate.yml");
         plan.Files.Should().Contain(f => f.Path == ".github/workflows/angular-migrate.yml");
         plan.Files.Single(f => f.Path == ".github/workflows/dependency-apply.yml").Content.Should().Contain(DependencyOnboarding.ActionReference);
@@ -456,9 +519,38 @@ public class DependencyPullRequestBodyTests
         var body = DependencyPullRequestBody.Render(new DependencyUpdateRun(), report, null);
 
         body.Should().StartWith(DependencyPullRequestBody.Marker);
-        body.Should().Contain("`approve angular`");
+        body.Should().Contain("`/approve angular`");
         body.Should().Contain("held by @\u200bsomeone (comment)", "a mention in a reason never pings");
         body.Should().Contain("| chalk | `chalk` | `package.json` | 4.1.0 | 4.1.2 | patch |");
+    }
+
+    /// <summary>
+    /// prerelease-dependencies-PRD D1/C8: "Awaiting approval" said "over the auto-merge threshold" for every row, while a
+    /// platform major (R7) and a P11 hold wait for other reasons (Dotnet.Tools PR #210 waited on P11 and said nothing).
+    /// Each row now carries its own reason, without repeating the command the last column already gives.
+    /// </summary>
+    [Fact]
+    public void Awaiting_approval_says_why_each_group_waits()
+    {
+        static DependencyReportEntry Waiting(string group, string detail) => new(group, "dotnet-sdk", "dotnet", "global.json", "11.0.100-rc.1", "11.0.100",
+            EUpdateLevel.Patch, EDependencyReportReason.AwaitingApproval, detail);
+        var report = new DependencyRunReport
+        {
+            AwaitingApproval =
+            [
+                Awaiting("angular", "@angular/core") with { Detail = "major update over the threshold (minor): comment '/approve angular'" },
+                Waiting("platform:dotnet 12.0", "platform major 11.0 → 12.0: comment '/approve platform:dotnet 12.0'"),
+                Waiting("platform:dotnet 11.0", "2 location(s) the bot cannot edit would stay behind (a.csproj; see \"Not moved\"): comment '/approve platform:dotnet 11.0', or list them under platforms.dotnet.exclude to leave them on purpose"),
+            ],
+        };
+
+        var body = DependencyPullRequestBody.Render(new DependencyUpdateRun(), report, null);
+
+        body.Should().NotContain("Over the auto-merge threshold (`dependencies.autoMerge` in coverage.yml).", "the header no longer claims one reason for every row");
+        body.Should().Contain("| Group | Dependency | From | To | Reason | Comment |");
+        body.Should().Contain("| major update over the threshold (minor) | `/approve angular` |");
+        body.Should().Contain("| platform major 11.0 → 12.0 | `/approve platform:dotnet 12.0` |");
+        body.Should().Contain("| 2 location(s) the bot cannot edit would stay behind (a.csproj; see \"Not moved\"); or list them under platforms.dotnet.exclude to leave them on purpose | `/approve platform:dotnet 11.0` |");
     }
 
     /// <summary>P2 (production re-test 2026-10-17): one action pin in two workflow files was listed twice, word for word.</summary>
@@ -477,6 +569,147 @@ public class DependencyPullRequestBodyTests
 
         body.Split('\n').Count(l => l.Contains("`acme/some-action`")).Should().Be(1);
         body.Split('\n').Count(l => l.Contains("`@angular/core`")).Should().Be(1);
+    }
+
+    /// <summary>
+    /// platform-locations-PRD S1/R3: the policy's computed-location reports and the apply's skipped older-channel locations
+    /// were stored but rendered nowhere, so a partial platform move looked complete (Dotnet.Templates, 2026-11-13).
+    /// </summary>
+    [Fact]
+    public void Platform_locations_that_were_not_moved_are_listed_with_their_reason()
+    {
+        var report = new DependencyRunReport
+        {
+            PlatformReports =
+            [
+                new DependencyPlatformReport("dotnet", "src/Templates/Web.csproj.in", "${DefaultNetCoreTargetFramework}", "a computed value is reported, never edited (R8)"),
+                new DependencyPlatformReport("dotnet", "Dockerfile", "mcr.microsoft.com/dotnet/sdk:9.0", "on 9.0, older than the repository's 10.0"),
+                new DependencyPlatformReport("dotnet", "Dockerfile", "mcr.microsoft.com/dotnet/sdk:9.0", "on 9.0, older than the repository's 10.0"),
+            ],
+        };
+
+        var body = DependencyPullRequestBody.Render(new DependencyUpdateRun(), report, null);
+
+        body.Should().Contain("## Not moved");
+        body.Should().Contain("| dotnet | `src/Templates/Web.csproj.in` | `${DefaultNetCoreTargetFramework}` | a computed value is reported, never edited (R8) |");
+        body.Split('\n').Count(l => l.Contains("`mcr.microsoft.com/dotnet/sdk:9.0`")).Should().Be(1, "the policy and the apply can report the same location");
+    }
+
+    private static DependencyReportGroup AppliedGroup(string group, params DependencyReportItem[] items)
+        => new(group, EUpdateLevel.Minor, true, false, false, null, false, [.. items]);
+
+    private static DependencyReportItem AppliedItem(string dep, string file, string from, string to)
+        => new(dep, file, "nuget", "nuget", from, to, to, null);
+
+    /// <summary>companion-pins-PRD D1: #669's Applied table stopped at 60 rows and the Playwright group, the one that broke the
+    /// build, was among the hidden ones. One dependency moving the same way in many files is one row, and every group gets a
+    /// row before any group gets a second.</summary>
+    [Fact]
+    public void The_applied_table_names_every_group_and_collapses_one_move_across_files()
+    {
+        var report = new DependencyRunReport
+        {
+            Groups =
+            [
+                AppliedGroup("Spark", [.. Enumerable.Range(0, 37).Select(i => AppliedItem("MintPlayer.Spark", $"p{i}/p{i}.csproj", "11.0.0-rc.1", "11.0.0"))]),
+                AppliedGroup("many", [.. Enumerable.Range(0, 70).Select(i => AppliedItem($"Dep{i}", "a.csproj", "1.0.0", "1.1.0"))]),
+                AppliedGroup("playwright", AppliedItem("Microsoft.Playwright", "SeoTester.csproj", "1.63.0", "1.64.1")),
+            ],
+        };
+
+        var body = DependencyPullRequestBody.Render(new DependencyUpdateRun(), report, null);
+
+        body.Should().Contain("| Spark | `MintPlayer.Spark` | 37 files | 11.0.0-rc.1 | 11.0.0 | minor |");
+        body.Should().Contain("| playwright | `Microsoft.Playwright` | `SeoTester.csproj` | 1.63.0 | 1.64.1 | minor |");
+        body.Should().Contain("… and 12 more.");
+    }
+
+    /// <summary>companion-pins-PRD D2: <c>boky/postfix</c> <c>v4.3.0</c> → <c>4.4.0</c> passed in #669 as a plain minor; a value
+    /// whose text around the version changes is named, so a person checks the new tag is the image they mean.</summary>
+    [Fact]
+    public void A_tag_whose_format_changes_is_named()
+    {
+        var report = new DependencyRunReport
+        {
+            Groups =
+            [
+                AppliedGroup("boky/postfix", new DependencyReportItem("boky/postfix", "docker-compose.yml", "docker", "docker-compose", "v4.3.0", "4.4.0", "4.4.0", null)),
+                AppliedGroup("dotnet", AppliedItem("MintPlayer.Spark", "a.csproj", "11.0.0-rc.1", "11.0.0")),
+                AppliedGroup("playwright", new DependencyReportItem("mcr.microsoft.com/playwright", "Dockerfile", "docker", "dockerfile", "v1.63.0-noble", "v1.64.1-noble", "1.64.1", null)),
+            ],
+        };
+
+        var body = DependencyPullRequestBody.Render(new DependencyUpdateRun(), report, null);
+
+        body.Should().Contain("`boky/postfix`: the tag's format changes (`v4.3.0` → `4.4.0`)");
+        body.Should().NotContain("`MintPlayer.Spark`: the tag's format changes");
+        body.Should().NotContain("`mcr.microsoft.com/playwright`: the tag's format changes");
+    }
+
+    /// <summary>D2 compares only values that hold a version; a digest or a named tag is no format change to report.</summary>
+    [Theory]
+    [InlineData("latest", "1.2.3")]
+    [InlineData("1.2.3", "sha256:abcdef")]
+    [InlineData("jammy", "noble")]
+    public void A_value_without_a_version_is_no_format_change(string from, string to)
+        => DependencyPullRequestBody.FormatChanges(from, to).Should().BeFalse();
+
+    /// <summary>companion-pins-PRD G4: a follow rule that moved nothing (the lookup's <c>follow[i]</c> problem) is a "Not
+    /// moved" line, so a pin that silently stopped following shows in every run's body.</summary>
+    [Fact]
+    public void A_follow_rule_that_moved_nothing_is_listed_under_not_moved()
+    {
+        var lookup = DependencyTestKit.Lookup() with
+        {
+            Problems =
+            [
+                new LookupProblem { Source = "follow[0]", Message = "mcr.microsoft.com/playwright in apps/SeoTester/docker-compose.yml: the pattern matched nothing; this pin is not moved" },
+                new LookupProblem { Source = "platform:node", Message = "node is not in the table" },
+            ],
+        };
+        var outcome = DependencyTestKit.Evaluate(lookup);
+
+        var body = DependencyPullRequestBody.Render(new DependencyUpdateRun(), DependencyRunReport.From(outcome, []), null);
+
+        outcome.NotFollowed.Should().ContainSingle();
+        body.Should().Contain("## Not moved");
+        body.Should().Contain("- mcr.microsoft.com/playwright in apps/SeoTester/docker-compose.yml: the pattern matched nothing; this pin is not moved");
+        body.Should().NotContain("node is not in the table");
+    }
+
+    /// <summary>follower-cooldown-PRD FU1/G4: a dependency the feed refused (S4: a 401 on GitHub Packages) has no updates,
+    /// and the body says so instead of staying silent, once per package, with how to give the lookup access.</summary>
+    [Fact]
+    public void A_dependency_the_lookup_could_not_read_is_listed_under_not_looked_up()
+    {
+        const string failed = "Failed to look up nuget package MintPlayer.AspNetCore.Endpoints: no-result";
+        var lookup = DependencyTestKit.Lookup() with
+        {
+            Problems = [new LookupProblem { Source = LookupProblem.LookupWarning, Message = failed }, new LookupProblem { Source = LookupProblem.LookupWarning, Message = failed }],
+        };
+        var outcome = DependencyTestKit.Evaluate(lookup);
+
+        var body = DependencyPullRequestBody.Render(new DependencyUpdateRun(), DependencyRunReport.From(outcome, []), null);
+
+        outcome.NotLookedUp.Should().Equal(failed);
+        body.Should().Contain("## Not looked up");
+        body.Should().Contain($"- {failed}");
+        body.Should().Contain("packages: read");
+    }
+
+    [Fact]
+    public void The_apply_s_skipped_platform_locations_are_reported_under_their_sdk()
+    {
+        var result = new ApplyResult
+        {
+            Groups =
+            [
+                new ApplyGroupResult { Group = "platform:node 24", Platform = new ApplyPlatformResult { Reported = [new ApplyPlatformReported { File = "Dockerfile", Value = "node:20-alpine", Reason = "on 20, older than the repository's 22" }] } },
+                new ApplyGroupResult { Group = "chalk" },
+            ],
+        };
+
+        DependencyRunReport.ApplyPlatformReports(result).Should().Equal(new DependencyPlatformReport("node", "Dockerfile", "node:20-alpine", "on 20, older than the repository's 22"));
     }
 
     [Fact]

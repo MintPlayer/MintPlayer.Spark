@@ -36,8 +36,10 @@ describe.each(TEMPLATES)('%s', (file) => {
     expect(Object.keys(wf.on)).toEqual(['workflow_dispatch']);
   });
 
-  it('has exactly `permissions: contents: read` at the top, and no job widens it', () => {
-    expect(wf.permissions).toEqual({ contents: 'read' });
+  it('has exactly read permissions at the top, and no job widens it', () => {
+    // follower-cooldown-PRD E3: the lookup also reads GitHub Packages with the job token (S4: a nuget.config mapping the
+    // account's packages there hid every update behind a 401).
+    expect(wf.permissions).toEqual(file === 'dependency-lookup.yml' ? { contents: 'read', packages: 'read' } : { contents: 'read' });
     for (const job of Object.values(wf.jobs)) expect(job.permissions).toBeUndefined();
   });
 

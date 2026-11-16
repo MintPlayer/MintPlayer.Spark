@@ -60,6 +60,11 @@ each one onto its earliest commit, leased on the tag the App read, so a tag that
 request, the answer waits for its merge, and the merge backfills and moves even when every package is tagged already
 and there is no seed to push (`docs/onboarding_merge_backfill_PRD.md` D1; Tools #56).
 
+**A tag the forge refuses** is reported, not retried: the note lists it as `rejected` with the forge's own reason (the
+push's summary and the forge's `remote:` lines about that tag). The other tags of the same push, and the moves, still
+land. Run Set up features again once the cause is fixed; it pushes only what is still missing
+(`docs/onboarding_backfill_partial_push_PRD.md`; Tools #56 lost 45 tags and all 29 moves to one partly refused push).
+
 A repository is versioned when its **default branch's** `coverage.yml` has a `versioning:` section, even an empty
 one. A branch cannot change the section for itself.
 
@@ -114,7 +119,9 @@ steps:
 
 The action's inputs and outputs (`released`, `versions`, `dist-tags`) are listed in
 [its README](../../apps/CodeCoverage/versioning-action/README.md). It does nothing on pull requests and tag builds,
-and it fetches the tags and the history it needs. A .NET build that runs before it, or in a pull request, still reads its
+and it fetches the tags and the history it needs. After tagging it fetches the tags again, in local mode too: an app
+that pushed the tags and then answered 5xx leaves the local engine finding them already on the remote, and without the
+fetch the pack read the previous versions (Dotnet.Tools run 43711348322). A .NET build that runs before it, or in a pull request, still reads its
 version from the tags reachable from HEAD, so every checkout of a job that runs `dotnet` needs `fetch-depth: 0`
 (`fetch-tags: true` is not enough: a depth-1 clone reaches no tag). The onboarding pull request adds it (Dotnet.Tools#203).
 
@@ -140,6 +147,12 @@ version from the tags reachable from HEAD, so every checkout of a job that runs 
   build) skips the target entirely: no git call, no MPV001, and the project stays packable. `-p:PackageVersion`
   alone sets `Version` too, so the assembly and the package agree. A `<Version>` in a csproj does **not** win, because
   that is where the placeholder lives. `MintPlayerVersioningSkip` still turns versioning off altogether.
+- **This repository's Debug builds skip it** (`Directory.Build.targets`, #655). A tag-derived assembly version is
+  not an Nx cache input. A pull request's build job (all tags) and its test jobs (shallow, no tags) wrote one `build`
+  cache entry with different versions. A replayed `MintPlayer.Spark.RavenDB` that referenced Abstractions 11.0.0.0
+  next to a replayed 0.0.0.0 Abstractions then crashed CodeCoverage at startup (run 43415884018). A repository that
+  caches Debug outputs across checkouts of different depth needs the same opt-out. Packs build Release and still
+  read the tags.
 - **A project packed on its own fails loudly** (#544 D2). On a push build, `dotnet pack path/to/One.csproj` of an
   untagged project is error `MPV005` instead of a silent placeholder. A solution pack still only warns MPV001, so
   untagged projects drop out. A project that is never released sets `IsPackable=false`.
@@ -235,7 +248,7 @@ versioning:
   dispatch: publish.yml              # bot dispatch (D3); default none
   releaseBranches: ["release/*.x"]   # release lines (D10); default release/*.x, at most 16
   ignore: ["**/*.md"]                # changed files that release nothing (D4); this list REPLACES the default
-  prerelease: preview                # D8: alpha | beta | next | preview | rc | upstream; default upstream
+  prerelease: preview                # D8: alpha | beta | next | preview | rc | stable | upstream; default upstream
   dependencyRanges: minimum          # #568 D10b: minimum (>= x, the default) | major-bounded ([x, nextMajor))
   groups:                            # lockstep groups (D13)
     - name: mapper
@@ -250,7 +263,17 @@ versioning:
 ```
 
 - **`prerelease`** sets the label outright; upstream prereleases never override it. `upstream` (the default) mirrors
-  the least mature upstream label, the SDK included. A per-package pin wins over the repository's.
+  the least mature upstream label, the SDK included. `stable` releases without a label whatever upstream says: use it
+  for a package whose dependency never ships a stable (MintPlayer.GraphQL on Octokit.GraphQL `0.4.0-beta`); NuGet then
+  warns NU5104. The warning doesn't stop the pack; a repository with `TreatWarningsAsErrors` adds `NU5104` to `NoWarn`
+  for that project. A per-package pin wins over the repository's.
+  - **A stable library over a preview package.** Without the pin, a beta dependency on an open `rc` line refuses the
+    release ("11.0.0-beta.1 is not above 11.0.0-rc.1"). The refusal names the key to set:
+    `versioning.packages.<id>.prerelease: stable`, or the line's own label to stay on it. Only declared dependencies
+    count: a project that references the pinned package goes stable with it, and a prerelease that is only transitive
+    doesn't label a release.
+  - **A package restored per target framework** (`net10.0` → `13.0.4`, `net11.0` → `13.0.4-beta1`) mirrors the least
+    mature of its versions.
 
 - **`dependencyRanges`**: a `ProjectReference` packs as a NuGet dependency on the referenced package's version. With
   `minimum` (the default) that's `>= x`, where x is the referenced package's highest tag reachable from the commit. On
@@ -311,7 +334,9 @@ versioning:
 - **`/release`** promotes every current line whose ecosystem changed since the line's last promotion, to the newest
   default-branch commit whose `workflow` run succeeded. `/release <sha>` takes that green commit instead;
   `/release dotnet-11.x` (or the branch name) and `/release all` promote the named lines, or all of them, changed or
-  not. The App answers with a comment that lists each line and any newer commit left out.
+  not. The App answers with a comment that lists each line and any newer commit left out, and reacts on the `/release`
+  comment: 👀 when it reads it, then 🎉 when a line was promoted, 👍 when no line had anything to promote, 👎 on a
+  refusal or a failure (#660).
 - **Who may.** The commenter needs the repository's release role (maintain by default; *Release role* on the
   repository or the account).
 - **The commit.** A promotion is a merge commit (the green commit's tree, parents the line's tip and the green commit)
@@ -356,7 +381,9 @@ refused. Other tags in the repository, on other branches or lines, play no part.
 **Platform lifecycle page.** The app collects each platform's support phases nightly (.NET from
 `releases-index.json`; Angular, React, Vue and Node.js from endoflife.date; a framework's preview major from its npm
 `next` dist-tag). Open *Guides → Platform lifecycle* to see which majors are in preview, active, maintenance or end of
-life, and so which lines are worth keeping.
+life, and so which lines are worth keeping. For .NET 10 and later it also records the MSBuild, Roslyn and NuGet versions
+each SDK band ships (from the dotnet/dotnet release tags), which a `bundled` dependency companion is capped at
+([dependency-updates.md](dependency-updates.md), *Companions*).
 
 ### From multi-targeting to release lines (#638)
 
@@ -366,9 +393,12 @@ platform major instead, so each target framework moves to its own branch:
 - **The default branch** (and its current line, `release/dotnet-11.x`) drops the older target:
   `<TargetFrameworks>net11.0</TargetFrameworks>`, and its framework packages and `global.json` move to 11.
 - **The older line** (`release/dotnet-10.x`) keeps only `net10.0`. When **Set up features** creates it from a commit
-  that still targets both, the bot opens a pull request into it (branch `mintplayer/narrow-dotnet-10.x`). That pull
-  request drops the higher target frameworks, sets `global.json` to the line's latest SDK and the framework packages
-  to its latest runtime (both from the platform lifecycle page). It lists every `#if NET11_0_OR_GREATER` and every
+  that still targets both, or finds it still targeting both on a later run (#649), the bot opens a pull request into
+  it (branch `mintplayer/narrow-dotnet-10.x`). That pull request drops the higher target frameworks, lowers a numeric
+  `LangVersion` to the line's C# (C# 15 is .NET 11's; the .NET 10 compiler refuses it with CS1617, #651), sets `global.json`
+  (`sdk.version`, `tools.dotnet`) and the workflows' `setup-dotnet` pins to the line's latest SDK, and the framework
+  packages to its latest runtime (both from the platform lifecycle page). With **SDK from global.json** the workflows
+  read `global.json` instead of a pin ([onboarding.md](onboarding.md#on-merge), step 6). It lists every `#if NET11_0_OR_GREATER` and every
   MSBuild `Condition` naming `net11.0`, for you to resolve: on the line they are dead code or wrong. Review it, fix
   the listed conditionals on its branch, and merge it before the line's first release.
 - **The versions:** the line's packages release as `10.x` from their own tags, which the history backfill placed on the

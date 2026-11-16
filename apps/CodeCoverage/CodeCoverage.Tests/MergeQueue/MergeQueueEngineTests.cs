@@ -2696,7 +2696,7 @@ public class MergeQueueEngineTests : CoverageRavenTest
         h.Queue.Runs[9001] = new ForgeWorkflowRun(9001, "completed", "success", Prepared, "mq/master/pr-7", null);
         h.Queue.Artifacts[9001] = new ForgeArtifactDownload(EForgeArtifactOutcome.Ok, "patch.diff", [], null);
         var minted = 0;
-        h.Queue.WriterAccess = _ => ++minted == 4
+        h.Queue.WriterAccess = (_, _) => ++minted == 4
             ? throw new ForgeAccessDeniedException("GitHub refused a token: Resource not accessible by integration", "contents=write")
             : null;
 

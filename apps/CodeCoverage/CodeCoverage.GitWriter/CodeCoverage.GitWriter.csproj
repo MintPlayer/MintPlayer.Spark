@@ -23,9 +23,9 @@
 	</PropertyGroup>
 
 	<ItemGroup>
-		<PackageReference Include="MintPlayer.AspNetCore.Endpoints" Version="11.4.1-rc.0" />
-		<PackageReference Include="MintPlayer.SourceGenerators.Attributes" Version="13.0.0" />
-		<PackageReference Include="MintPlayer.SourceGenerators" Version="13.0.0">
+		<PackageReference Include="MintPlayer.AspNetCore.Endpoints" Version="11.4.1" />
+		<PackageReference Include="MintPlayer.SourceGenerators.Attributes" Version="13.1.2" />
+		<PackageReference Include="MintPlayer.SourceGenerators" Version="13.1.2">
 			<PrivateAssets>all</PrivateAssets>
 			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
 		</PackageReference>
@@ -40,6 +40,8 @@
 
 	<ItemGroup>
 		<InternalsVisibleTo Include="CodeCoverage.GitWriter.Tests" />
+		<!-- The app's end-to-end tests compile the writer tests' git fixtures, which clean up through JobRunner.DeleteTree. -->
+		<InternalsVisibleTo Include="CodeCoverage.Tests" />
 	</ItemGroup>
 
 </Project>

@@ -100,6 +100,38 @@ public class ReleaseLabelTests
     }
 
     [Fact]
+    public async Task A_package_pinned_stable_goes_stable_over_a_beta_dependency()
+    {
+        // Dotnet.Tools run 43509498988 (docs/code-coverage/versioning-beta-upstream-PRD.md): MintPlayer.GraphQL depends on
+        // Octokit.GraphQL 0.4.0-beta, which never shipped a stable, and its open line was 11.0.0-rc.1. Upstream gave
+        // "11.0.0-beta.1 is not above 11.0.0-rc.1"; the stable pin (G2) closes the line as 11.0.0.
+        var settings = Settings(VersioningConfig.UpstreamPrerelease, new() { ["Core"] = new VersioningPackageConfig { Prerelease = "stable" } });
+
+        var plan = await Plan("net11.0", [Tag("Core", "11.0.0-rc.1")], settings);
+
+        plan.Refused.Should().BeEmpty();
+        plan.Of("Core")!.Version.ToString().Should().Be("11.0.0");
+    }
+
+    [Fact]
+    public async Task The_repository_pin_stable_releases_stable_over_a_beta_dependency()
+    {
+        var plan = await Plan("net11.0", [Tag("Core", "11.0.0")], Settings("stable"));
+
+        plan.Of("Core")!.Version.ToString().Should().Be("11.0.1");
+    }
+
+    [Fact]
+    public async Task A_package_set_to_upstream_is_exempt_from_a_stable_repository_pin()
+    {
+        var settings = Settings("stable", new() { ["Core"] = new VersioningPackageConfig { Prerelease = "upstream" } });
+
+        var plan = await Plan("net11.0", [], settings);
+
+        plan.Of("Core")!.Version.ToString().Should().Be("11.0.0-beta.1");
+    }
+
+    [Fact]
     public async Task A_prerelease_sdk_of_the_targeted_major_labels_the_release()
     {
         var plan = await Plan("net11.0", [], sdk: "11.0.100-rc.2.26504.105", resolvedBeta: "1.0.0");
@@ -123,6 +155,126 @@ public class ReleaseLabelTests
         var plan = await Plan("netstandard2.0", [Tag("Core", "3.0.0")], sdk: "11.0.100-rc.2.26504.105", resolvedBeta: "1.0.0");
 
         plan.Of("Core")!.Version.ToString().Should().Be("3.0.1");
+    }
+
+    // ── prerelease-dependencies-PRD §5.2: a stable library over a preview package ──
+
+    private const string Ga = "11.0.100";
+
+    /// <summary>
+    /// A Tools-shaped repository (run 43509498988): GraphQL references Octokit.GraphQL 0.4.0-beta, Api references GraphQL in
+    /// the repository, and Util has only stable dependencies. Each project declares its own dependencies and resolves them.
+    /// </summary>
+    private static async Task<ReleasePlan> PlanTools(IEnumerable<TaggedVersion> tags, VersioningSettings settings, string? sdk = Ga)
+    {
+        static string Csproj(string items) => $"""<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>net11.0</TargetFramework></PropertyGroup><ItemGroup>{items}</ItemGroup></Project>""";
+        var tree = new InMemoryTree()
+            .Add("src/GraphQL/GraphQL.csproj", Csproj("""<PackageReference Include="Octokit.GraphQL" Version="0.4.0-beta" />"""))
+            .Add("src/GraphQL/A.cs", "")
+            .Add("src/Api/Api.csproj", Csproj("""<ProjectReference Include="../GraphQL/GraphQL.csproj" />"""))
+            .Add("src/Api/A.cs", "")
+            .Add("src/Util/Util.csproj", Csproj("""<PackageReference Include="Newtonsoft.Json" Version="13.0.4" />"""))
+            .Add("src/Util/A.cs", "");
+        return await ReleasePlanner.PlanAsync(new ReleaseContext
+        {
+            Graph = await ProjectGraphBuilder.BuildAsync(tree),
+            Head = "head",
+            Tags = new TagHistory(tags),
+            Diff = new FakeDiff("src/GraphQL/A.cs", "src/Api/A.cs", "src/Util/A.cs"),
+            Settings = settings,
+            Build = new Dictionary<string, PackageBuildFacts>
+            {
+                ["GraphQL"] = new() { ApiHash = Hash, ResolvedVersions = new Dictionary<string, string> { ["Octokit.GraphQL"] = "0.4.0-beta" } },
+                // Api ships against GraphQL, so restore resolves the beta transitively.
+                ["Api"] = new() { ApiHash = Hash, ResolvedVersions = new Dictionary<string, string> { ["Octokit.GraphQL"] = "0.4.0-beta" } },
+                ["Util"] = new() { ApiHash = Hash, ResolvedVersions = new Dictionary<string, string> { ["Newtonsoft.Json"] = "13.0.4" } },
+            },
+            Sdk = sdk,
+        });
+    }
+
+    private static VersioningSettings GraphQLPinnedStable()
+        => Settings(VersioningConfig.UpstreamPrerelease, new() { ["GraphQL"] = new VersioningPackageConfig { Prerelease = "stable" } });
+
+    [Fact]
+    public async Task B2_without_a_pin_the_refusal_names_the_pin()
+    {
+        var plan = await Plan("net11.0", [Tag("Core", "11.0.0-rc.1")], sdk: Ga);
+
+        var reason = plan.Refused.Should().ContainSingle().Which.Reason;
+        reason.Should().Contain("11.0.0-beta.1 is not above 11.0.0-rc.1");
+        reason.Should().Contain("versioning.packages.Core.prerelease: stable");
+        reason.Should().Contain("(or rc to stay on the line)");
+    }
+
+    [Fact]
+    public async Task B3_an_in_repo_dependent_of_a_stable_pinned_package_goes_stable()
+    {
+        var plan = await PlanTools([], GraphQLPinnedStable());
+
+        plan.Refused.Should().BeEmpty();
+        plan.Of("GraphQL")!.Version.ToString().Should().Be("11.0.0");
+        plan.Of("Api")!.Version.ToString().Should().Be("11.0.0", "its beta comes from GraphQL, which ships stable");
+    }
+
+    [Fact]
+    public async Task B5_the_sdk_going_ga_mid_line_closes_the_rc_line()
+    {
+        var plan = await Plan("net11.0", [Tag("Core", "11.0.0-rc.1")], sdk: Ga, resolvedBeta: "1.0.0");
+
+        plan.Refused.Should().BeEmpty();
+        plan.Of("Core")!.Version.ToString().Should().Be("11.0.0");
+    }
+
+    [Fact]
+    public async Task B6_a_stable_pin_goes_above_every_rc_of_the_line()
+    {
+        var settings = Settings(VersioningConfig.UpstreamPrerelease, new() { ["Core"] = new VersioningPackageConfig { Prerelease = "stable" } });
+
+        var plan = await Plan("net11.0", [Tag("Core", "11.0.0-rc.1"), Tag("Core", "11.0.0-rc.2"), Tag("Core", "11.0.0-rc.3")], settings, sdk: Ga);
+
+        plan.Refused.Should().BeEmpty();
+        plan.Of("Core")!.Version.ToString().Should().Be("11.0.0");
+    }
+
+    [Fact]
+    public async Task B7_a_prerelease_that_is_only_transitive_does_not_label_the_release()
+    {
+        // Today's documented behaviour (ReleasePlanner.ReleaseLabel): only the declared dependencies count.
+        var tree = new InMemoryTree()
+            .Add("src/Core/Core.csproj", """<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>net11.0</TargetFramework></PropertyGroup><ItemGroup><PackageReference Include="Stable.Dep" Version="1.0.0" /></ItemGroup></Project>""")
+            .Add("src/Core/Guard.cs", "");
+        var plan = await ReleasePlanner.PlanAsync(new ReleaseContext
+        {
+            Graph = await ProjectGraphBuilder.BuildAsync(tree),
+            Head = "head",
+            Tags = new TagHistory([Tag("Core", "11.0.0")]),
+            Diff = new FakeDiff("src/Core/Guard.cs"),
+            Settings = new VersioningSettings(),
+            Build = new Dictionary<string, PackageBuildFacts>
+            {
+                ["Core"] = new() { ApiHash = Hash, ResolvedVersions = new Dictionary<string, string> { ["Stable.Dep"] = "1.0.0", ["Transitive.Beta"] = "2.0.0-beta.1" } },
+            },
+            Sdk = Ga,
+        });
+
+        plan.Of("Core")!.Version.ToString().Should().Be("11.0.1");
+    }
+
+    [Fact]
+    public async Task B9_the_tools_fix_end_to_end_every_package_tags_ga()
+    {
+        // Before the pin: GraphQL is refused ("11.0.0-beta.1 is not above 11.0.0-rc.1") and the run fails, which blocked all
+        // of Tools' packages. Api declares only GraphQL, so the beta doesn't label it (B7).
+        IEnumerable<TaggedVersion> rcLine = [Tag("GraphQL", "11.0.0-rc.1"), Tag("Api", "11.0.0-rc.1"), Tag("Util", "11.0.0-rc.1")];
+        var before = await PlanTools(rcLine, new VersioningSettings());
+        before.Refused.Should().ContainSingle().Which.Id.Should().Be("GraphQL");
+
+        var plan = await PlanTools(rcLine, GraphQLPinnedStable());
+
+        plan.Refused.Should().BeEmpty();
+        foreach (var id in new[] { "GraphQL", "Api", "Util" })
+            plan.Of(id)!.Version.ToString().Should().Be("11.0.0", id);
     }
 
     [Theory]

@@ -8,6 +8,7 @@ namespace CodeCoverage.Versioning.Versions;
 /// <param name="Upstream">The least mature prerelease label among the anchor and the runtime dependencies (D8).</param>
 /// <param name="OnDefaultBranch">The commit is released from the default branch rather than a release branch.</param>
 /// <param name="BranchMajor">The major a release branch is for (<c>release/10.x</c> → 10), or null on the default branch.</param>
+/// <param name="PackageId">The package's id, for the <c>coverage.yml</c> key a refusal names.</param>
 public sealed record VersionRequest(
 	MajorAnchor Anchor,
 	PackageVersion? LastTag,
@@ -15,7 +16,8 @@ public sealed record VersionRequest(
 	bool ApiChanged,
 	PrereleaseLabel? Upstream,
 	bool OnDefaultBranch = true,
-	int? BranchMajor = null);
+	int? BranchMajor = null,
+	string? PackageId = null);
 
 public abstract record VersionDecision
 {
@@ -71,7 +73,10 @@ public static class VersionCalculator
 		}
 
 		if (highest is not null && next <= highest)
-			return new VersionDecision.Refuse($"{next} is not above {highest}, which already exists (upstream is less mature than the open prerelease line).");
+			// prerelease-dependencies-PRD D4: name the fix. A dependency that never ships a stable (Octokit.GraphQL) needs the pin.
+			return new VersionDecision.Refuse(request.Upstream is not null
+				? $"{next} is not above {highest}, which already exists (upstream is less mature than the open prerelease line). Pin the label in coverage.yml: versioning.packages.{request.PackageId ?? "<id>"}.prerelease: stable (or {highest.Label?.ToString().ToLowerInvariant() ?? "a label"} to stay on the line)."
+				: $"{next} is not above {highest}, which already exists.");
 		if (request.Existing.Contains(next))
 			return new VersionDecision.Refuse($"{next} already exists.");
 		return new VersionDecision.Release(next);

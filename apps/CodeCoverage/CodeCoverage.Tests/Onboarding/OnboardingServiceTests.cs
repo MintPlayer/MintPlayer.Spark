@@ -515,16 +515,24 @@ public class OnboardingServiceTests : CoverageRavenTest
             false, true, true, NextHead, []);
         // Both lines as the cut left them, at the merge commit.
         const string Source = "namespace Acme.Tools;\n#if NET11_0_OR_GREATER\npublic static class Net11 { }\n#endif\n";
+        // The workflows pin the higher SDK too (SpaServices PR #110: narrowed global.json, rc left in setup-dotnet).
+        const string Workflow = "      - uses: actions/setup-dotnet@v6\n        with:\n          dotnet-version: 11.0.100\n";
         foreach (var line in new[] { "release/dotnet-11.x", "release/dotnet-10.x" })
-            forge.Trees[line] = new ForgeTree(NextHead, "tree-5711", [new ForgeTreeEntry("src/Tools/Tools.csproj", MultiTarget.Length), new ForgeTreeEntry("src/Tools/Net11.cs", Source.Length)], false);
+            forge.Trees[line] = new ForgeTree(NextHead, "tree-5711", [new ForgeTreeEntry("src/Tools/Tools.csproj", MultiTarget.Length), new ForgeTreeEntry("src/Tools/Net11.cs", Source.Length),
+                new ForgeTreeEntry(".github/workflows/build.yml", Workflow.Length)], false);
         forge.Files[$"{NextHead}/src/Tools/Tools.csproj"] = MultiTarget;
         forge.Files[$"{NextHead}/src/Tools/Net11.cs"] = Source;
+        forge.Files[$"{NextHead}/.github/workflows/build.yml"] = Workflow;
 
         var merged = await h.Service.MergedAsync(repository);
 
         var narrowing = h.Writer.Requests("onboarding").Where(r => r.Narrow).Should().ContainSingle().Which;
         (narrowing.Line, narrowing.BaseBranch, narrowing.ExpectedSha, narrowing.Message).Should().Be(("dotnet-10.x", "release/dotnet-10.x", NextHead, OnboardingPlanner.NarrowTitle));
-        narrowing.Files!.Select(f => (f.Path, f.Content)).Should().Equal([("src/Tools/Tools.csproj", MultiTarget.Replace("net10.0;net11.0", "net10.0"))]);
+        // In path order (#649: the narrowing's files and the conversion's are merged and sorted).
+        narrowing.Files!.Select(f => (f.Path, f.Content)).Should().Equal([
+            (".github/workflows/build.yml", Workflow.Replace("11.0.100", "10.0.203")),
+            ("src/Tools/Tools.csproj", MultiTarget.Replace("net10.0;net11.0", "net10.0")),
+        ]);
         var pull = h.Pulls.Created.Where(p => p.Base == "release/dotnet-10.x").Should().ContainSingle().Which;
         (pull.Head, pull.Title).Should().Be(("mintplayer/narrow-dotnet-10.x", OnboardingPlanner.NarrowTitle));
         pull.Body.Should().Contain("- `src/Tools/Tools.csproj`: TargetFrameworks `net10.0;net11.0` → `net10.0`")
@@ -532,6 +540,125 @@ public class OnboardingServiceTests : CoverageRavenTest
         h.Pulls.Created.Should().NotContain(p => p.Base == "release/dotnet-11.x", "the current line targets nothing above its major");
         var number = h.Pulls.PullRequests.Values.Single(p => p.HeadRef == "mintplayer/narrow-dotnet-10.x").Number;
         merged.Note.Should().Contain($"opened #{number} into release/dotnet-10.x to narrow it to .NET 10");
+        // #649 D8: the narrowing rewrites a workflow, so its push token asks for workflows: write.
+        h.Queue.WriterAccesses[^1].Workflows.Should().BeTrue();
+    }
+
+    private const string LineGlobalJson = "{ \"sdk\": { \"version\": \"10.0.203\", \"rollForward\": \"latestFeature\" } }\n";
+
+    private const string LineWorkflow = "jobs:\n  build:\n    steps:\n    - uses: actions/checkout@v7\n    - uses: actions/setup-dotnet@v6\n      with:\n"
+        + "        dotnet-version: 10.0.203\n";
+
+    /// <summary>Seeds .NET 10's lifecycle row and onboards with <paramref name="features"/>; the onboarding pull request merged at <see cref="NextHead"/>.</summary>
+    private static async Task<(Harness H, Repository Repository)> OnboardedAsync(IDocumentStore store, ScriptedDiffService forge, HashSet<EOnboardingFeature> features, string[] cuts)
+    {
+        await SeedRepositoryAsync(store);
+        using (var seed = store.OpenAsyncSession())
+        {
+            await seed.StoreAsync(new PlatformRelease { Platform = "dotnet", Channel = "10.0", Major = 10, Phase = "active", LatestSdk = "10.0.203", LatestVersion = "10.0.7" },
+                PlatformRelease.IdFor("dotnet", "10.0"));
+            await seed.SaveChangesAsync();
+        }
+        var h = Create(store, forge);
+        var repository = (await h.Session.LoadAsync<Repository>(CodeCoverage.Entities.Repository.DocumentId(EForgeProvider.GitHub, RepoId)))!;
+        var opened = await h.Service.OnboardAsync(repository, features, cuts);
+        opened.Outcome.Should().Be(VersioningOnboardingOutcome.Opened, opened.Note);
+        MergeInto(forge, NextHead, h.Writer.Requests("onboarding").Single().Files!);
+        forge.Files[$"main/{CoverageYml.FileName}"] = forge.Files[$"{NextHead}/{CoverageYml.FileName}"];
+        h.Versioning.PullRequest = new ForgePullRequestText(opened.PullRequest!.Value, OnboardingPlanner.Title, null, OnboardingPlanner.Branch, Head, "main",
+            false, true, true, NextHead, []);
+        return (h, repository);
+    }
+
+    /// <summary>A .NET 10 line at <see cref="NextHead"/> with <paramref name="files"/>.</summary>
+    private static void Line(ScriptedDiffService forge, Harness h, string branch, params (string Path, string Content)[] files)
+    {
+        forge.Trees[branch] = new ForgeTree(NextHead, "tree-5711", [.. files.Select(f => new ForgeTreeEntry(f.Path, f.Content.Length))], false);
+        foreach (var (path, content) in files)
+            forge.Files[$"{NextHead}/{path}"] = content;
+        h.Queue.BranchHeads[branch] = NextHead;
+    }
+
+    /// <summary>#649 D10: SpaServices' release/dotnet-10.x was cut by an earlier run; this merge's cuts do not name it, and it is narrowed anyway.</summary>
+    [Fact]
+    public async Task Issue649_D10_a_supported_line_that_is_not_a_cut_is_narrowed()
+    {
+        using var store = GetDocumentStore();
+        var forge = Repository(Head);
+        forge.Files[$"{Head}/src/Tools/Tools.csproj"] = MultiTarget;
+        var (h, repository) = await OnboardedAsync(store, forge, [EOnboardingFeature.ReleaseLines], []);
+        (await StateAsync(store, repository)).Cuts.Should().NotContain("release/dotnet-10.x");
+        Line(forge, h, "release/dotnet-11.x", ("src/Tools/Tools.csproj", MultiTarget));
+        Line(forge, h, "release/dotnet-10.x", ("src/Tools/Tools.csproj", MultiTarget));
+
+        var merged = await h.Service.MergedAsync(repository);
+
+        var narrowing = h.Writer.Requests("onboarding").Where(r => r.Narrow).Should().ContainSingle().Which;
+        (narrowing.BaseBranch, narrowing.Message).Should().Be(("release/dotnet-10.x", OnboardingPlanner.NarrowTitle));
+        merged.Note.Should().Contain("into release/dotnet-10.x to narrow it to .NET 10");
+        merged.HasFailures.Should().BeFalse();
+    }
+
+    /// <summary>#649 D11/D16: with "SDK from global.json", a line that needs no narrowing gets a pull request switching its setup-dotnet steps.</summary>
+    [Fact]
+    public async Task Issue649_D16_sdk_from_global_json_opens_a_line_pull_request_that_converts_the_pins()
+    {
+        using var store = GetDocumentStore();
+        var forge = Repository(Head);
+        var (h, repository) = await OnboardedAsync(store, forge, [EOnboardingFeature.ReleaseLines, EOnboardingFeature.SdkFromGlobalJson], ["release/dotnet-10.x"]);
+        Line(forge, h, "release/dotnet-10.x", ("src/Tools/Tools.csproj", Csproj.Replace("net11.0", "net10.0")), ("global.json", LineGlobalJson),
+            (".github/workflows/build.yml", LineWorkflow));
+
+        var merged = await h.Service.MergedAsync(repository);
+
+        var request = h.Writer.Requests("onboarding").Where(r => r.Narrow).Should().ContainSingle().Which;
+        (request.BaseBranch, request.Message).Should().Be(("release/dotnet-10.x", OnboardingPlanner.SdkLineTitle));
+        request.Files!.Select(f => (f.Path, f.Content)).Should().Equal([
+            (".github/workflows/build.yml", LineWorkflow.Replace("dotnet-version: 10.0.203", "global-json-file: global.json")),
+        ]);
+        h.Queue.WriterAccesses[^1].Workflows.Should().BeTrue();
+        var pull = h.Pulls.Created.Where(p => p.Base == "release/dotnet-10.x").Should().ContainSingle().Which;
+        (pull.Head, pull.Title).Should().Be(("mintplayer/narrow-dotnet-10.x", OnboardingPlanner.SdkLineTitle));
+        merged.Note.Should().Contain("into release/dotnet-10.x to read the SDK from global.json");
+    }
+
+    /// <summary>#651 D3: SpaServices #113, a conversion-only pull request into release/dotnet-11.x, the current line, which its
+    /// own Line policy check refused. The current line takes the change by backport; only the past line gets a pull request.</summary>
+    [Fact]
+    public async Task Issue651_D3_the_current_line_gets_no_line_pull_request()
+    {
+        using var store = GetDocumentStore();
+        var forge = Repository(Head);
+        var (h, repository) = await OnboardedAsync(store, forge, [EOnboardingFeature.ReleaseLines, EOnboardingFeature.SdkFromGlobalJson], ["release/dotnet-10.x"]);
+        // Both lines at one commit (Line() keys the files by it), each with a pinned setup-dotnet step to convert.
+        foreach (var branch in new[] { "release/dotnet-11.x", "release/dotnet-10.x" })
+            Line(forge, h, branch, ("src/Tools/Tools.csproj", Csproj.Replace("net11.0", "net10.0")), ("global.json", LineGlobalJson),
+            (".github/workflows/build.yml", LineWorkflow));
+
+        var merged = await h.Service.MergedAsync(repository);
+
+        h.Writer.Requests("onboarding").Where(r => r.Narrow).Select(r => r.BaseBranch).Should().Equal(["release/dotnet-10.x"]);
+        h.Pulls.Created.Should().NotContain(p => p.Base == "release/dotnet-11.x", "Line policy refuses anything but the App's backports there");
+        merged.Note.Should().Contain("release/dotnet-11.x is the current line and takes this by backport: comment `/backport dotnet-11.x` on the pull request that changed `main`");
+        merged.HasFailures.Should().BeFalse();
+    }
+
+    /// <summary>#649 D9: a refused line pull request leads the note and marks the outcome, instead of trailing what was applied.</summary>
+    [Fact]
+    public async Task Issue649_D9_a_refused_line_pull_request_is_reported_first()
+    {
+        using var store = GetDocumentStore();
+        var forge = Repository(Head);
+        var (h, repository) = await OnboardedAsync(store, forge, [EOnboardingFeature.ReleaseLines, EOnboardingFeature.SdkFromGlobalJson], ["release/dotnet-10.x"]);
+        Line(forge, h, "release/dotnet-10.x", ("src/Tools/Tools.csproj", Csproj.Replace("net11.0", "net10.0")), ("global.json", LineGlobalJson),
+            (".github/workflows/build.yml", LineWorkflow));
+        h.Queue.WriterAccess = (_, workflows) => workflows ? new ForgePushAccess(null, "the installation has not accepted workflows: write.") : null;
+
+        var merged = await h.Service.MergedAsync(repository);
+
+        merged.HasFailures.Should().BeTrue();
+        merged.Note.Should().StartWith("Not done: no narrowing pull request into release/dotnet-10.x: the installation has not accepted workflows: write");
+        h.Pulls.Created.Should().NotContain(p => p.Base == "release/dotnet-10.x");
     }
 
     [Fact]

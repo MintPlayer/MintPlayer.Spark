@@ -45,8 +45,9 @@ public static class DependencyHolds
                 Reason = blocker
                     ? $"the resolver refused it: blocked by {string.Join(", ", attributed)} (R2)"
                     : $"the apply run {(group.Status == EApplyGroupStatus.Unresolvable ? "could not resolve" : "failed on")} it{(group.Message is { Length: > 0 } m ? $": {Shorten(m)}" : string.Empty)} (R2)",
-                Blockers = blocker ? [.. attributed.Select(dep => new DependencyBlockerSeen { DepName = dep, SeenVersions = Seen(lookup, dep) })] : [],
+                Blockers = blocker ? [.. attributed.Select(dep => new DependencyBlockerSeen { DepName = dep, SeenVersions = Seen(lookup, dep), CurrentTokens = Current(lookup, dep) })] : [],
                 Fingerprint = blocker ? null : fingerprint,
+                Refused = planned.Platform is not null || planned.Group.StartsWith("platform:", StringComparison.Ordinal) ? PlannedItems(planned.Items) : [],
                 CreatedAtUtc = now.UtcDateTime,
                 PlanId = plan.PlanId,
             };
@@ -86,7 +87,7 @@ public static class DependencyHolds
     }
 
     /// <summary>§7.5 <c>hold &lt;group|package&gt;</c>: a group name holds that group, anything else the dependency.
-    /// It lifts only on <see cref="RemoveCommandHold"/>.</summary>
+    /// It lifts only on <see cref="RemoveHold"/>.</summary>
     public static DependencyHold AddCommandHold(DependencyUpdateState state, string target, bool isGroup, string by, DateTimeOffset now)
     {
         var hold = new DependencyHold
@@ -104,10 +105,27 @@ public static class DependencyHolds
         return hold;
     }
 
-    /// <summary>§7.5 <c>unhold</c>: removes a command hold and a human hold on the target; never a bot hold (R2's clock is
-    /// the bot's, and an enforced rule is never a hold).</summary>
-    public static bool RemoveCommandHold(DependencyUpdateState state, string target)
-        => state.Holds.RemoveAll(h => h.Id == $"command:{target}" || h.Id == $"human:{target}") > 0;
+    /// <summary>The prefixes of the holds <c>unhold</c> lifts: the comment and human holds, and since #683 H4 the bot's own
+    /// (a writer overrides the bot's evidence). An enforced rule is never a hold.</summary>
+    private static readonly string[] UnholdPrefixes = ["command:", "human:", "red:", "blocker:", "apply:", "migrate:"];
+
+    /// <summary>§7.5 <c>unhold</c>: removes every hold on the target (<see cref="UnholdPrefixes"/>); the holds removed.</summary>
+    public static IReadOnlyList<DependencyHold> RemoveHold(DependencyUpdateState state, string target)
+    {
+        var ids = UnholdPrefixes.Select(p => p + target).ToHashSet(StringComparer.Ordinal);
+        var lifted = state.Holds.Where(h => ids.Contains(h.Id)).ToList();
+        state.Holds.RemoveAll(lifted.Contains);
+        return lifted;
+    }
+
+    /// <summary>#683 H3: closing rolling pull request <paramref name="pullRequestNumber"/> without merging withdraws the red
+    /// verdicts taken on it; the holds removed. Human, comment, blocker, apply and migrate holds stay (owner, Q1).</summary>
+    public static IReadOnlyList<DependencyHold> WithdrawRedVerdicts(DependencyUpdateState state, int pullRequestNumber)
+    {
+        var withdrawn = state.Holds.Where(h => h.Id.StartsWith("red:", StringComparison.Ordinal) && h.PullRequestNumber == pullRequestNumber).ToList();
+        state.Holds.RemoveAll(withdrawn.Contains);
+        return withdrawn;
+    }
 
     /// <summary>
     /// R6 <c>approve &lt;group&gt;</c>, bound per gap E to what the pull request body showed as awaiting approval: the group,
@@ -117,6 +135,16 @@ public static class DependencyHolds
     /// <remarks>The caller checks the commenter's role (write or above, <c>created</c> comments only) before, and again at
     /// apply time (N6).</remarks>
     /// <remarks>#606 D3: <paramref name="force"/> also approves a platform group that is pending on its companions.</remarks>
+    /// <summary>
+    /// What an approval binds a report entry to: its target major, except for a platform move inside its channel
+    /// (<c>platform:dotnet 10.0</c> to <c>10.0.105</c>), which the policy binds to the exact version (#617), so a later patch
+    /// asks again. Before platform-locations-PRD P11 no in-channel move waited for approval, and this mismatch went unseen.
+    /// </summary>
+    internal static string ApprovalTarget(DependencyReportEntry entry)
+        => entry.Group.StartsWith("platform:", StringComparison.Ordinal) && entry.Group[(entry.Group.LastIndexOf(' ') + 1)..] != entry.Target
+            ? entry.Target!
+            : UpdateTypeFloor.TargetMajor(entry.Target!);
+
     public static DependencyApproval? Approve(DependencyUpdateState state, DependencyPolicyOutcome outcome, string group, string configBlob,
         string by, long? commentId, DateTimeOffset now, bool force = false)
     {
@@ -129,7 +157,7 @@ public static class DependencyHolds
         {
             Group = group,
             DepNames = [.. entries.Select(e => e.DepName).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)],
-            TargetMajors = [.. entries.Select(e => $"{e.DepName}@{UpdateTypeFloor.TargetMajor(e.Target!)}").Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)],
+            TargetMajors = [.. entries.Select(e => $"{e.DepName}@{ApprovalTarget(e)}").Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)],
             ConfigBlob = configBlob,
             ApprovedBy = by,
             ApprovedAtUtc = now.UtcDateTime,
@@ -141,21 +169,44 @@ public static class DependencyHolds
         return approval;
     }
 
-    /// <summary>Whether <paramref name="hold"/> lifts against this lookup (R2, Q11).</summary>
+    /// <summary>Whether <paramref name="hold"/> lifts against this lookup (R2, Q11). #653 D1: a blocker hold also lifts when
+    /// the blocker's current version moved, even to a version the lookup had already offered (an approval of its own group).</summary>
     public static bool Lifts(DependencyHold hold, LookupDocument lookup, string fingerprint) => hold.Kind switch
     {
         EDependencyHoldKind.Blocker => hold.SlotsHeld >= RetrySlots
-            || hold.Blockers.Any(b => Seen(lookup, b.DepName).Any(v => !b.SeenVersions.Contains(v, StringComparer.Ordinal))),
+            || hold.Blockers.Any(b => Seen(lookup, b.DepName).Any(v => !b.SeenVersions.Contains(v, StringComparer.Ordinal))
+                || (b.CurrentTokens.Count > 0 && !Current(lookup, b.DepName).SequenceEqual(b.CurrentTokens, StringComparer.Ordinal))),
         EDependencyHoldKind.Unattributed => hold.SlotsHeld >= RetrySlots || hold.Fingerprint != fingerprint,
         EDependencyHoldKind.Human => hold.DepNames.SelectMany(d => Seen(lookup, d)).Any(v => !hold.SeenVersions.Contains(v, StringComparer.Ordinal)),
         _ => false,
     };
+
+    /// <summary>prerelease-track-scenarios-PRD D5: a platform group's items as a hold records them, sorted.</summary>
+    public static List<string> PlannedItems(IEnumerable<PlanItem> items)
+        => [.. items.Select(i => $"{i.DepName}|{i.PackageFile}|{i.NewValue}{(i.Layout is { Count: > 0 } l ? "|" + string.Join(",", l.Select(t => $"{t.TargetFramework}={t.Version}")) : string.Empty)}")
+            .Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)];
+
+    /// <summary>
+    /// prerelease-track-scenarios-PRD D5: whether a bot hold on a platform group still stands for the group as planned now.
+    /// The hold names what the resolver refused; a plan with other items (a fixed engine planned the blocker along, Tools
+    /// #218 after #679) is a new plan, so the hold lifts. A hold taken before it recorded its items lifts once for the same
+    /// reason: the next apply records them.
+    /// </summary>
+    public static bool StandsFor(DependencyHold hold, IEnumerable<PlanItem> planned)
+        => hold.Kind is not (EDependencyHoldKind.Blocker or EDependencyHoldKind.Unattributed)
+            || hold.Refused.Count > 0 && hold.Refused.SequenceEqual(PlannedItems(planned), StringComparer.Ordinal);
 
     /// <summary>Every version token the lookup shows for a dependency: its current value and version, and each candidate's.</summary>
     public static List<string> Seen(LookupDocument lookup, string depName)
         => [.. lookup.Records.Where(r => string.Equals(r.DepName, depName, StringComparison.Ordinal))
             .SelectMany(r => new[] { r.CurrentValue, r.CurrentVersion, r.LockedVersion }.Concat(r.Candidates.Select(c => (string?)DependencyPolicyEngine.Token(c))))
             .Concat(lookup.Platforms.Where(p => $"platform:{p.Sdk}" == depName).SelectMany(p => p.Current.Channels.Concat(p.Candidates.Select(c => c.Channel))).Select(c => (string?)c))
+            .OfType<string>().Where(v => v.Length > 0).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)];
+
+    /// <summary>#653 D1: a dependency's current value, version and locked version across its package files, sorted.</summary>
+    public static List<string> Current(LookupDocument lookup, string depName)
+        => [.. lookup.Records.Where(r => string.Equals(r.DepName, depName, StringComparison.Ordinal))
+            .SelectMany(r => new[] { r.CurrentValue, r.CurrentVersion, r.LockedVersion })
             .OfType<string>().Where(v => v.Length > 0).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)];
 
     /// <summary>R2's "any change": a hash over every record's identity, current value and candidate tokens, and every
@@ -176,8 +227,9 @@ public static class DependencyHolds
         Group = hold.Group,
         DepNames = [.. hold.DepNames],
         Reason = hold.Reason,
-        Blockers = [.. hold.Blockers.Select(b => new DependencyBlockerSeen { DepName = b.DepName, SeenVersions = [.. b.SeenVersions] })],
+        Blockers = [.. hold.Blockers.Select(b => new DependencyBlockerSeen { DepName = b.DepName, SeenVersions = [.. b.SeenVersions], CurrentTokens = [.. b.CurrentTokens] })],
         Fingerprint = hold.Fingerprint,
+        Refused = [.. hold.Refused],
         SeenVersions = [.. hold.SeenVersions],
         HeldValue = hold.HeldValue,
         ProposedVersion = hold.ProposedVersion,

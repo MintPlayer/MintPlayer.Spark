@@ -1,0 +1,12 @@
+<Project>
+  <PropertyGroup Label="Version settings">
+    <AspNetCoreMajorVersion>10</AspNetCoreMajorVersion>
+    <AspNetCoreMinorVersion>0</AspNetCoreMinorVersion>
+    <AspNetCoreMajorMinorVersion>$(AspNetCoreMajorVersion).$(AspNetCoreMinorVersion)</AspNetCoreMajorMinorVersion>
+    <DefaultNetCoreTargetFramework>net$(AspNetCoreMajorMinorVersion)</DefaultNetCoreTargetFramework>
+  </PropertyGroup>
+  <PropertyGroup Label="Package versions">
+    <!-- Packages from dotnet/arcade -->
+    <MicrosoftDotNetBuildTasksTemplatingVersion>11.0.0-beta.25605.110</MicrosoftDotNetBuildTasksTemplatingVersion>
+  </PropertyGroup>
+</Project>

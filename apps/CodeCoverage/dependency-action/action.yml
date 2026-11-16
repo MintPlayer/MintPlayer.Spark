@@ -1,3 +1,7 @@
+# What this version of the action accepts, read by the bot at the SHA a repository pins (CodeCoverage
+# DependencySdkPreset): `sdk-preset` = a plan commit that also moves the root global.json's sdk.version
+# to the plan's SDK (#658). Append to the list; never remove an entry.
+# capabilities: sdk-preset
 name: 'MintPlayer Dependency Update'
 description: 'Runner side of the MintPlayer CodeCoverage dependency-update bot: Renovate lookup, pinned apply with scripts off, and Angular/Nx migrations. Never pushes.'
 author: 'MintPlayer'

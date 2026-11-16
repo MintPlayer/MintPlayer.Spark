@@ -33,7 +33,7 @@ namespace CodeCoverage.Versioning.Releases;
 ///       packages: [MintPlayer.Mapper, MintPlayer.Mapper.*]
 ///   packages:
 ///     MintPlayer.SourceGenerators: { anchor: free }   # D7: free, or a framework package id
-///     "@mintplayer/ng-spark": { prerelease: upstream } # D8: a label, or upstream to take the label from what it ships against
+///     "@mintplayer/ng-spark": { prerelease: upstream } # D8: a label, stable, or upstream to take the label from what it ships against
 ///     Acme.Generators: { line: dotnet }  # #568 D19: the ecosystem whose newest line releases an unanchored package
 /// </code>
 /// </remarks>
@@ -54,7 +54,10 @@ public sealed class VersioningConfig
 	public List<string>? ReleaseBranches { get; set; }
 	public List<string>? Ignore { get; set; }
 
-	/// <summary>A label every package releases with (D8), whatever it ships against; <c>upstream</c> or absent mirrors upstream.</summary>
+	/// <summary>
+	/// A label every package releases with (D8), whatever it ships against; <c>stable</c> releases without a label
+	/// (versioning-beta-upstream-PRD G2); <c>upstream</c> or absent mirrors upstream.
+	/// </summary>
 	public string? Prerelease { get; set; }
 
 	public List<VersioningGroupConfig>? Groups { get; set; }
@@ -86,7 +89,7 @@ public sealed class VersioningConfig
 		if (Dispatch is not null && !IsWorkflowFile(Dispatch))
 			errors.Add("versioning.dispatch must be a workflow file name under .github/workflows, such as publish.yml.");
 		if (!IsPrerelease(Prerelease))
-			errors.Add($"versioning.prerelease must be one of alpha, beta, next, preview, rc or {UpstreamPrerelease}.");
+			errors.Add($"versioning.prerelease must be one of {PinValues}.");
 		if (DependencyRanges is not (null or MinimumRanges or MajorBoundedRanges))
 			errors.Add($"versioning.dependencyRanges must be '{MinimumRanges}' or '{MajorBoundedRanges}'.");
 
@@ -133,7 +136,7 @@ public sealed class VersioningConfig
 				else if (settings?.Anchor is { } anchor && anchor != "free" && !Identifiers.IsPackageId(anchor))
 					errors.Add($"versioning.packages.{id}.anchor must be 'free' or the id of the package whose major it follows.");
 				else if (!IsPrerelease(settings?.Prerelease))
-					errors.Add($"versioning.packages.{id}.prerelease must be one of alpha, beta, next, preview, rc or {UpstreamPrerelease}.");
+					errors.Add($"versioning.packages.{id}.prerelease must be one of {PinValues}.");
 				else if (settings?.Line is { } line && !Ecosystems.IsName(line))
 					errors.Add($"versioning.packages.{id}.line must be an ecosystem name such as dotnet or angular (lower-case letters and digits).");
 			}
@@ -148,7 +151,7 @@ public sealed class VersioningConfig
 				if (ReleaseLine.TryParse(key) is null)
 					errors.Add($"versioning.lines.prerelease: '{Shown(key)}' is not a line such as dotnet-11.x.");
 				else if (!IsPrerelease(setting) || setting is null)
-					errors.Add($"versioning.lines.prerelease.{key} must be one of alpha, beta, next, preview, rc or {UpstreamPrerelease}.");
+					errors.Add($"versioning.lines.prerelease.{key} must be one of {PinValues}.");
 		}
 		if (Lines?.Current is { } current && current is not (VersioningLinesConfig.Promote or VersioningLinesConfig.Backport))
 			errors.Add($"versioning.lines.current must be '{VersioningLinesConfig.Promote}' or '{VersioningLinesConfig.Backport}'.");
@@ -197,10 +200,11 @@ public sealed class VersioningConfig
 	/// <summary>The line pattern when release lines are on (#568 D15), else null. Only for a section <see cref="Validate"/> accepted.</summary>
 	public ReleaseLinePattern? EffectiveLines => Lines is null ? null : ReleaseLinePattern.Parse(Lines.Pattern ?? ReleaseLinePattern.DefaultText);
 
-	private static PrereleaseLabel? Pin(string? setting) => setting is null or UpstreamPrerelease ? null : Labels.Parse(setting);
+	private static PrereleasePin Pin(string? setting) => PrereleasePin.TryParse(setting, out var pin) ? pin : PrereleasePin.Upstream;
 
-	private static bool IsPrerelease(string? setting)
-		=> setting is null or UpstreamPrerelease or "alpha" or "beta" or "next" or "preview" or "rc";
+	private static bool IsPrerelease(string? setting) => setting is null || PrereleasePin.TryParse(setting, out _);
+
+	private const string PinValues = "alpha, beta, next, preview, rc, stable or upstream";
 
 	private static bool IsWorkflowFile(string name)
 		=> name.Length is > 0 and <= 255 && (name.EndsWith(".yml", StringComparison.Ordinal) || name.EndsWith(".yaml", StringComparison.Ordinal))

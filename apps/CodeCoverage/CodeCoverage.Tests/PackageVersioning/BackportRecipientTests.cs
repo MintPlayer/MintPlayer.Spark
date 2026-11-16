@@ -29,6 +29,7 @@ public class BackportRecipientTests : CoverageRavenTest
     private readonly IGitWriterSidecar writer = Substitute.For<IGitWriterSidecar>();
     private readonly IBackportRegenerationEngine regenerations = Substitute.For<IBackportRegenerationEngine>();
     private readonly FakeOutbox outbox = new();
+    private Tests.Commands.FakeCommentReactions Reactions { get; } = new();
 
     public BackportRecipientTests()
     {
@@ -56,7 +57,7 @@ public class BackportRecipientTests : CoverageRavenTest
             await seed.SaveChangesAsync();
         }
         using var session = store.OpenAsyncSession();
-        await new BackportRecipient(session, new SingleForgeResolver(integration), [forge], [git], writer, regenerations, outbox, TimeProvider.System, NullLogger<BackportRecipient>.Instance)
+        await new BackportRecipient(session, new SingleForgeResolver(integration), [forge], [git], writer, regenerations, outbox, TimeProvider.System, Tests.Commands.CommandTestKit.Lifecycle(store, Reactions), NullLogger<BackportRecipient>.Instance)
             .HandleAsync(new BackportMessage { RepositoryId = RepositoryId, Number = 7, Lines = lines, ActorLogin = actor, Source = source, Draft = draft });
     }
 

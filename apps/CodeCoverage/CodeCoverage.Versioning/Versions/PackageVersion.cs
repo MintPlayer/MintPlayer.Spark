@@ -136,6 +136,61 @@ public static class Labels
 	}
 }
 
+/// <summary>
+/// A <c>prerelease</c> setting in <c>coverage.yml</c> (D8): mirror upstream (the default), release with a fixed label, or
+/// release stable whatever upstream says. Stable exists for a package whose dependency never ships a stable, such as
+/// Octokit.GraphQL (docs/code-coverage/versioning-beta-upstream-PRD.md, G2). On the wire it is its text.
+/// </summary>
+[JsonConverter(typeof(PrereleasePinJsonConverter))]
+public readonly record struct PrereleasePin
+{
+	public const string UpstreamText = "upstream";
+	public const string StableText = "stable";
+
+	private PrereleasePin(PrereleaseLabel? label, bool isStable) => (Label, IsStable) = (label, isStable);
+
+	/// <summary>The fixed label, or null for upstream and stable.</summary>
+	public PrereleaseLabel? Label { get; }
+
+	public bool IsStable { get; }
+
+	public static PrereleasePin Upstream => default;
+	public static PrereleasePin Stable => new(null, true);
+	public static PrereleasePin Of(PrereleaseLabel label) => new(label, false);
+
+	/// <summary><c>upstream</c>, <c>stable</c> or a label of <see cref="Labels"/>; exact text, so <c>Stable</c> is refused.</summary>
+	public static bool TryParse(string? text, out PrereleasePin pin)
+	{
+		pin = text switch
+		{
+			UpstreamText => Upstream,
+			StableText => Stable,
+			"alpha" or "beta" or "next" or "preview" or "rc" => Of(Labels.Parse(text)),
+			_ => default,
+		};
+		return text is UpstreamText or StableText or "alpha" or "beta" or "next" or "preview" or "rc";
+	}
+
+	public override string ToString() => IsStable ? StableText : Label is { } label ? Labels.Format(label) : UpstreamText;
+}
+
+/// <summary>A pin on the wire is its text; anything else is refused. A JSON null reads as upstream.</summary>
+public sealed class PrereleasePinJsonConverter : JsonConverter<PrereleasePin>
+{
+	public override bool HandleNull => true;
+
+	public override PrereleasePin Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+	{
+		if (reader.TokenType == JsonTokenType.Null) return PrereleasePin.Upstream;
+		if (reader.TokenType != JsonTokenType.String || !PrereleasePin.TryParse(reader.GetString(), out var pin))
+			throw new JsonException("A prerelease pin must be one of alpha, beta, next, preview, rc, stable or upstream.");
+		return pin;
+	}
+
+	public override void Write(Utf8JsonWriter writer, PrereleasePin value, JsonSerializerOptions options)
+		=> writer.WriteStringValue(value.ToString());
+}
+
 /// <summary>A label on the wire is its text (<c>"preview"</c>); anything else, a number included, is refused.</summary>
 public sealed class LabelJsonConverter : JsonConverter<PrereleaseLabel>
 {

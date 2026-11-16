@@ -23,10 +23,16 @@ skipped, and a report with uploads missing is a hold of its own.
    Renovate in lookup-only mode (pinned by digest, read-only token, no push) and uploads `lookup.json`: every dependency,
    its current value and the versions available.
 2. **Plan.** The bot applies your policy (thresholds, holds, cooldown, account rules, fleet holds, approvals) and commits
-   the plan as one file, `.mintplayer/dependency-plan.json`, on the bot-only ref `mintplayer/dependencies-work`.
+   the plan as one file, `.mintplayer/dependency-plan.json`, on the bot-only ref `mintplayer/dependencies-work`. When
+   the plan moves the .NET SDK, the same commit also sets the root `global.json`'s `sdk.version` to the new SDK, so the
+   apply workflow's `setup-dotnet` installs it. The pin the workflow uses must be from #658 or later; with an older pin
+   the commit holds the plan only. The patch carries that move only when the platform group is applied
+   (`docs/setup_migrations_PRD.md` D1-D8).
 3. **Apply.** It dispatches `dependency-apply.yml` on that ref. The workflow edits the manifests, pins and relocks with
    scripts off, never builds, and uploads `dependency.patch` and `result.json`. A group the resolver refuses is reset and
-   held; the others still ship.
+   held; the others still ship. The hold lifts when the lookup offers something new, after four scheduled slots, or, for
+   a platform group, as soon as the bot plans that group with other items than the ones refused (a fixed bot no longer
+   waits for the lookup to change).
 4. **Validate and push.** The bot's git writer checks the patch against the plan line by line (only planned files, only
    the planned version tokens, lockfiles from known registries, no added files, no scripts) and builds the rolling branch
    from the default branch. Commits people pushed on the rolling branch are replayed on top.
@@ -64,8 +70,10 @@ A slot whose rebuilt tree equals the pushed one pushes nothing and starts no CI.
 3. **The onboarding pull request.** Right after the switch goes on, the bot opens `mintplayer/dependencies-onboarding`
    (a daily pass retries anything that did not go through, a syncing repository included). It adds:
    - `.github/workflows/dependency-lookup.yml` and `dependency-apply.yml`, thin callers of the GitHub Action
-     **`MintPlayer/MintPlayer.Spark/apps/CodeCoverage/dependency-action`**, pinned to a commit with the release line
-     kept as a comment (`…/dependency-action@<sha> # dependency-update-v1`). The bot dispatches the lookup on the
+     **`MintPlayer/MintPlayer.Spark/apps/CodeCoverage/dependency-action`** at its release tag
+     (`…/dependency-action@dependency-update-v1`). Every release of the action moves that tag, so a fix reaches your next
+     run without a pull request. A workflow from before 2026-11-13 pins a commit (`@<sha> # dependency-update-v1`):
+     onboarding again (*Functies instellen*) moves only that line back to the tag. The bot dispatches the lookup on the
      default branch (Renovate in lookup-only mode) and the apply on its plan (edit, pin and relock with scripts off);
    - `angular-migrate.yml` / `nx-migrate.yml` when the repository has `angular.json` / `nx.json`: they run the
      `ng update` / `nx migrate` migrations of a group you approved, and such a pull request never auto-merges;
@@ -84,7 +92,8 @@ A slot whose rebuilt tree equals the pushed one pushes nothing and starts no CI.
    starts a run. A renamed workflow (`lookupAction`) has no template: update it by hand.
 
 **The workflows are all you add.** There is no other action to install and no secret to create (the lookup's optional
-`host-rules` secret is for private feeds only). The bot dispatches the workflows by file name: keep them on the default
+`host-rules` secret is for private feeds only; GitHub Packages is read with the job's own token, which the template's
+`packages: read` allows). A dependency a feed refuses is listed under **Not looked up** in the pull request. The bot dispatches the workflows by file name: keep them on the default
 branch, or set `dependencies.lookupAction` / `applyAction` in `coverage.yml` when you rename them. To add them without
 the onboarding pull request, copy them from
 [`apps/CodeCoverage/dependency-action/templates/`](https://github.com/MintPlayer/MintPlayer.Spark/tree/master/apps/CodeCoverage/dependency-action/templates).
@@ -142,6 +151,12 @@ dependencies:
       group: vitest              # move together
       allowMajor: true           # plan majors without an approval (they still never auto-merge)
       hold: "waiting for the Nx plugin"   # or true; held until removed
+      lockstep: true             # the group moves only to a version every member has
+  follow:                        # pins that are not dependencies, written with a dependency's new version
+    - dependency: mcr.microsoft.com/playwright
+      path: apps/web/docker-compose.yml   # a glob
+      match: 'web-chromium:(?<version>[0-9.]+)'
+      version: '^v(?<version>[0-9.]+)-noble$'   # optional, over the dependency's new value
   exclude: ["samples/**"]        # package files left alone
   lookupAction: dependency-lookup.yml
   applyAction: dependency-apply.yml
@@ -149,8 +164,21 @@ dependencies:
     - match: "@angular/core"
       onMajor: angular-migrate.yml
   platforms:
-    dotnet: { track: stable, strategy: replace, keepPrevious: 0, lockPackageMajor: false, locations: [], exclude: [] }
-    node: { track: lts, companions: ["@types/node"] }   # companions: packages that move with the SDK's major
+    dotnet:
+      track: stable
+      strategy: replace
+      keepPrevious: 0
+      lockPackageMajor: false
+      locations: []
+      exclude: []
+      companions:                # packages tied to the SDK, first match wins; leave it out for the built-in list
+        - match: "Microsoft.CodeAnalysis*"            # a source generator that must load on SDK 10.0.1xx
+          versions: { "10.0": "<=5.0", "11.0.1xx": "5.12.x" }   # channel or SDK band → version range
+        - match: "Microsoft.Build*"
+          bundled: msbuild       # at or below what the repository's SDK ships (msbuild | roslyn | nuget)
+        - builtin                # the built-in list (Microsoft.AspNetCore.*, Microsoft.Extensions.*, …); [] turns them off
+    node: { track: lts, companions: ["@types/node"] }   # a plain glob: the package takes the SDK's major
+    # autoMerge: major           # opt in: this SDK's majors auto-merge like any update (§6); the only value
   lockFileMaintenance: false     # transitive-only refreshes, off by default
   registries: ["npm.pkg.github.com"]   # lockfile hosts allowed besides the public registries
   lines: patch                   # release lines: patch (default) | all | security | off
@@ -188,8 +216,42 @@ group of a library family (`@angular/*`, `nx` + `@nx/*`, …) moves together.
 | `preview` | the newest major, previews included (.NET `preview`/`go-live`, Node release candidates, Python alphas, PHP RCs, Ruby previews, Rust `beta`) |
 
 A package rule takes `track: stable | preview` (`lts` is refused there). An account rule on the ecosystem
-`platform:<sdk>` sets the default track; an enforced one is the widest track the file may choose. A track decides what
-is offered: a repository already on a newer phase is never moved back.
+`platform:<sdk>` sets the default track; an enforced one is the widest track the file may choose. Its `match` may name
+the SDK (`dotnet`) or the ecosystem (`platform:dotnet`): either one sets the track and caps the update level. A track
+decides what is offered: a repository already on a newer phase is never moved back.
+
+**Packages on a prerelease** ([prerelease-dependencies-PRD](prerelease-dependencies-PRD.md) H1). A package's track is
+decided in this order: the first `coverage.yml` rule that names it with a `track`, then a non-enforced account rule. Without
+either, a package whose current version is a prerelease follows prereleases, and any other package follows stables. This
+applies only in the SemVer ecosystems (NuGet, npm, Cargo, Composer); a Docker tag such as `22-alpine` is not a
+prerelease. A companion of an SDK on the `preview` track follows previews too. An enforced account rule's track still
+narrows the result. Example: `Octokit.GraphQL` has never shipped a stable, so a repository on `0.3.0-beta` is offered
+`0.4.0-beta`. In a 0.x package a minor is breaking, so that move is a major and waits for `/approve`. To stay on stables:
+
+```yaml
+  rules:
+    - match: ["Octokit.GraphQL"]
+      track: stable              # opt out: prereleases are never offered
+```
+
+A prerelease the track skips is listed under *Available, not applied* ("a prerelease; a coverage.yml rule sets track:
+stable"), with the rule that would change it.
+
+**A platform package on a prerelease takes the release** ([prerelease-track-scenarios-PRD](prerelease-track-scenarios-PRD.md)).
+For a companion of the SDK (`Microsoft.Extensions.*` on .NET), the prerelease default stops once its major has a release
+on the channel: `11.0.0-rc.1` in a `net11.0` project moves to `11.0.0`, not to `11.1.0-preview.1`. This holds on the
+channel's release move, in a released channel's own `platform:dotnet 11.0` group, and per TFM in a multi-target project.
+A package whose prerelease has no release yet keeps following prereleases. The other way round, while the repository is
+on the SDK's preview (`global.json` on `11.0.100-rc.2`), a companion in a project on that channel takes the channel's
+prerelease (`Microsoft.Extensions.Hosting` 10.0.5 → `11.0.0-rc.2`); `track: stable` on it keeps it on stables, and a
+project on the previous channel or an ordinary package is never pulled onto a preview. To keep a companion on previews anyway, say
+so with a rule; only a rule's `track: preview` (in `coverage.yml` or the account's) does that:
+
+```yaml
+  rules:
+    - match: ["Microsoft.Extensions.DependencyInjection"]
+      track: preview             # stays on prereleases even when 11.0.0 is out
+```
 
 **Moves inside a channel** (#617). The same table offers the channel a repository is already on when a pin is behind
 it: the RC SDK once the release is out (`11.0.100-rc.2…` → `11.0.100`), or a GA patch (`10.0.402` → `10.0.403`). It is
@@ -202,13 +264,90 @@ patch between two releases carries none. setup-dotnet's `dotnet-quality: preview
 release (its default is GA); as a step's only input it is reported instead.
 
 **Companions.** The packages that belong to an SDK move with its major, in the platform group: for .NET
-`Microsoft.AspNetCore.*`, `Microsoft.Extensions.*`, `Microsoft.EntityFrameworkCore*`, `Microsoft.NET.*` and `System.*`, for
-Node.js `@types/node`. Only a package on the SDK's current major is one (`System.IO.Abstractions` 22.x is not).
-`companions:` replaces the list; `[]` turns it off. Until the SDK moves, a companion's next major is listed as *moves with
+`Microsoft.AspNetCore.*`, `Microsoft.Extensions.*`, `Microsoft.EntityFrameworkCore*`, `Microsoft.NET.*`, `System.*` and
+`dotnet-ef`, for Node.js `@types/node`. Only a package on the SDK's current major is one (`System.IO.Abstractions` 22.x is
+not), with one exception below.
+`companions:` replaces the list, and the first entry that matches a package decides
+([companion-version-maps-PRD](companion-version-maps-PRD.md)). A plain list no longer implies the built-ins: write
+`builtin` where they belong, and `[]` turns companions off. Globs match case-insensitively, so put a narrow entry before a
+wide one. An entry takes one of three forms:
+
+| Entry | The package |
+|---|---|
+| `"Microsoft.AspNetCore.*"` (a glob) | takes the SDK channel's major, as described here |
+| `{ match, versions: { "10.0": "<=5.0", "11.0.1xx": "5.12.x" } }` | stays inside the range of the repository's SDK band, else of the project's channel (the lowest `<TargetFramework>`, else the repository's channel). Bands are .NET only |
+| `{ match, bundled: msbuild \| roslyn \| nuget }` | stays at or below the major.minor that the repository's SDK band ships (.NET only) |
+
+The built-in list starts with `Microsoft.Build*` (msbuild), `Microsoft.CodeAnalysis*` and
+`Microsoft.Net.Compilers.Toolset` (roslyn) and `NuGet.*` (nuget): a source generator or MSBuild task must load in the
+SDK that builds it. A ranged package takes the highest update inside its range; one above it is listed under *Available,
+not applied* ("above the companion range"), and one below it moves up without an approval. On a move to a new channel or
+band, the range is computed for the target SDK and the package rides with the move to the highest release it admits; a
+ranged package never holds the move. The repository's SDK is `global.json`'s, else the lowest exact `setup-dotnet`
+version, else the channel's latest. The coverage server reads what each band ships from the
+[dotnet/dotnet](https://github.com/dotnet/dotnet) release tags once a day (.NET 10 and later).
+
+A mistake in `coverage.yml` doesn't stop the run: the section falls back to the defaults, and the dependency pull request
+lists each problem first, under *Configuration problems*. Until the SDK moves, a companion's next major is listed as *moves with
 the platform*. A platform kept beside the previous one (`strategy: add`, `keepPrevious`, `lockPackageMajor`) has no
 companions, since its packages must keep building for the older target.
 
-**Which SDK locations move.** .NET: TFMs and `global.json`'s SDK. Every SDK: Dockerfile `FROM`,
+- **Your own upstream packages are companions too** ([follower-cooldown-PRD](follower-cooldown-PRD.md) G2). A package
+  another repository of your account publishes (the dependency graph's producers), on the SDK's current major, rides
+  with the move. The move waits for its release, so the upstream repository moves first and its consumers follow: Spark's
+  move to .NET 11.0 waits until SpaServices ships 11.0.0 (or `--force`). `companions: []` turns these off as well.
+- **A .NET Standard project has no platform to move.** In a project whose every `<TargetFramework(s)>` is .NET Standard
+  or .NET Framework (Spark's source generators), the references are ordinary packages: they neither ride with nor hold
+  the move. A reference in `Directory.Packages.props` sets the version for every project under its folder, so it counts
+  as that set of projects: on the SDK's channel only when each of them is.
+- **A project on the SDK's channel takes the channel's major** ([follower-cooldown-PRD](follower-cooldown-PRD.md) H1). In
+  a project whose every `<TargetFramework(s)>` is the SDK's channel (`net11.0` only), a companion still on an older major
+  (`Microsoft.Extensions.DependencyInjection` 10.0.5) moves to the channel's major (11.0.0) without an approval: with the
+  platform group when one is planned, else in a `platform:dotnet 11.0` group of its own. The same goes for a
+  `dotnet-tools.json` tool (`dotnet-ef` 8.0.3 → 11.0.0), which runs on the SDK, and for a `Directory.Packages.props`
+  whose every project under its folder targets the channel only. A prerelease of the channel's major (`11.0.0-rc.1`)
+  moves to its release the same way (H2), unless a rule sets `track: preview` on it. A project that also targets an older
+  channel (`net10.0;net11.0`) keeps building for it, so its packages keep their major and the next one waits for approval.
+  A package with no release on the channel's major (`System.CommandLine` 2.x) is an ordinary package.
+
+**Pins that follow a dependency** ([dependency-companion-pins-PRD](dependency-companion-pins-PRD.md)). Some versions
+are no dependency Renovate can look up: your own image built from a base image (`ghcr.io/you/web-chromium:1.63.0` from
+`mcr.microsoft.com/playwright:v1.63.0-noble`), an `npm install playwright-core@1.63.0` in a Dockerfile, or a comment
+that names the version. A `follow:` entry writes such a pin with its dependency's new version, in the dependency's group:
+
+- `match` is a regular expression with exactly one `(?<version>…)` group; that group is what's replaced. Keep to named
+  groups, character classes, quantifiers and anchors: the server checks the pattern with .NET, the lookup runs it with
+  JavaScript, and a pattern either side refuses is an error in the pull request. Each match runs with a 250 ms limit.
+- The follower's version is the first `x.y[.z]` in the dependency's new value, with a prerelease only when it starts with
+  a prerelease word: `v1.64.1-noble` → `1.64.1`, `11.0.0-rc.2-noble` → `11.0.0-rc.2`. `version:` overrides it with a
+  pattern whose `version` group picks the part to use.
+- A follower that is behind its dependency catches up in the same move, without a cooldown of its own.
+- A follower waits on its dependency's clock: when the dependency's release is out of cooldown, so is the follower's.
+- A rule that matched nothing, or whose dependency the lookup did not report, is listed under **Not moved**.
+- The writer re-runs the rule on every changed line, so a `follow:` edit passes only where the rule matches. The deny-list
+  still wins: `.github/`, `coverage.yml`, `.mintplayer/` and build scripts can't be followers.
+
+A group a `follow:` names moves **in lockstep**: only to a version every member has, counting a member without an update at
+its current version. This is for registries that don't publish the same releases. Playwright's image has every release
+and its NuGet package lags by weeks and skips patches, so without lockstep the image moved to 1.65.1 while the package
+stayed on 1.64.1, and the client refused the server. While a member lacks the version, the group waits under
+*Available, not applied* ("lockstep: Microsoft.Playwright has no 1.65.1 yet"). Any other group opts in with a rule's
+`lockstep: true`. Put the members in one group with a rule (`match: [Microsoft.Playwright,
+mcr.microsoft.com/playwright]`, `group: playwright`).
+
+Renovate's own `customManagers` in `renovate.json` work too: their dependencies join the dependency's group by name and
+are written the same way. The writer holds them to the usual rules, though: the file must be a manifest of the datasource
+(a Dockerfile or compose file for Docker) and the changed line must name the dependency. Use `follow:` for anything else.
+A `FROM` that takes its tag from an `ARG` can't be written either way; pin the tag on the `FROM` line itself.
+
+In the pull request body, the *Applied* table has one row per dependency and move ("37 files" when it's in many), and
+every group's first row comes before any group's second, so no group falls past the row limit. A move whose tag changes
+format besides the version (`v4.3.0` → `4.4.0`) is named under the table: check the new tag is the one you mean.
+
+**Which SDK locations move.** .NET: TFMs and `global.json`'s SDK. A `setup-dotnet` step with
+`global-json-file: global.json` reads the SDK from there, so only `global.json` moves; **SDK from global.json** in
+[Set up features](onboarding.md#the-features) converts the pins to that form, and leaves the choice to each repository.
+Every SDK: Dockerfile `FROM`,
 workflow `container:`/`image:`/`uses: docker://`, `setup-*` inputs, matrix entries on the old channel, `.tool-versions`.
 PHP: `config.platform.php`, `.php-version`. Ruby (channels are minors, `3.3` → `3.4`): `.ruby-version`, an exact Gemfile
 `ruby`. Rust (channels are `1.x`): the `rust-toolchain(.toml)` channel and CI `toolchain:` inputs; `preview` writes the
@@ -216,37 +355,137 @@ dated beta toolchain (`beta-2026-11-08`). **Ranges are reported, never edited:**
 `required_ruby_version`, Cargo's `rust-version`, `requires-python`; so are a computed TFM, an MSBuild condition that tests
 the old TFM, and a floating `stable`/`nightly` Rust toolchain.
 
+**Locations nothing else names** ([platform-locations-PRD](platform-locations-PRD.md)). A move also edits:
+- a TFM set through an MSBuild property (`<TargetFramework>$(LibTfm)</TargetFramework>` with `LibTfm` defined once in a
+  `.props`/`.targets`): the definition is edited;
+- a template's `.template.config/template.json` framework choice, only when the TFM of the template's own projects moves
+  in the same pull request: those under its template package's folder (`<PackageType>Template</PackageType>`), or under
+  the template's folder without one (`strategy: add` reports it, to add the new choice by hand);
+- a JavaScript action's `runs.using: nodeNN`, to the highest runtime GitHub offers at or below the target (today node20
+  and node24: a move to Node 26 writes `node24` and says so). An `action.yml` under `.github/` is reported;
+- NodeSource `setup_NN.x` lines and a Dockerfile `ARG` default that a `FROM` tag reads.
+
+A new Docker tag is checked against its registry (an anonymous `HEAD`) before it is written; a tag that does not exist
+or cannot be checked is reported, and the rest of the move goes ahead. The pull request lists every location that did
+not move, and why, under **Not moved**.
+
+**Older channels.** `platforms.<sdk>.lagging` decides what happens to a location on an older channel than the one the
+repository moves from (a Dockerfile stage still on Node 20 in a Node 22 repository):
+
+| `lagging` | An older location |
+|---|---|
+| `auto` (default) | follows for Docker, `setup-*` inputs, version files and `.tool-versions`; a TFM or matrix entry is reported |
+| `follow` | always follows |
+| `report` | never moves; it is listed under **Not moved** |
+
+**Every workflow moves together.** A `setup-*` input that reads `${{ env.X }}` or `${{ inputs.x }}` moves the value it
+reads: an `env:` entry, or an input's literal `default:` in the same file. The pull request lists it as a
+`workflow-value` location. An input with an empty default is the caller's to set, so a composite action's
+`dotnet-version: ${{ inputs.dotnet-version }}` with no default is left alone. A `matrix.x` value moves through the
+matrix. Any other expression (`vars.X`, `format(…)`, a step output) can't be resolved; it holds the move like a
+computed location.
+
+A location on the repository's own channel that the bot cannot edit (a computed one, or an unresolved expression)
+holds the move for `/approve`: it would otherwise stay behind unseen. A move inside a channel (`11.0.100-rc.2` →
+`11.0.100`) is not held by a computed TFM, because the TFM is already correct for it. `platforms.<sdk>.exclude` leaves a
+location behind on purpose. The top-level `exclude` also applies to platforms: an excluded path neither moves nor counts
+towards the repository's channel.
+
+Workflows that run only on `push`, `schedule` or `workflow_dispatch` are edited too, but no pull request run tests
+them. The repository needs a `pull_request` workflow that covers what they build, if the move should be checked before
+the merge.
+
 ## 5. Approvals and commands
 
 Writers (write access or above) comment on the rolling pull request, one command per comment:
 
 | Command | Does |
 |---|---|
-| `approve <group>` | Takes an over-threshold group (a major) into the pull request. Bound to the exact dependency set, the target major and the `coverage.yml` it was given under: a newer major, a changed group or another `coverage.yml` expires it. Checked again at apply time: an approver who lost write access loses the approval. |
-| `approve platform:<sdk> <channel> --force` | Takes a *pending* SDK move (a companion has no release at the target major yet, §6) anyway: those companions stay at their major and a person fixes the build on the branch. |
-| `hold <group or package>` | Holds it until `unhold`. |
-| `unhold <group or package>` | Lifts a comment or human hold (the bot's own holds lift by themselves). |
-| `bisect` | Bisects a red pull request now (budget 4 when the setting is off). |
-| `refresh` | Rebuilds now. A run a comment started never auto-merges; the next scheduled one may. |
+| `/approve <group>` | Takes an over-threshold group (a major) into the pull request. Bound to the exact dependency set, the target major and the `coverage.yml` it was given under: a newer major, a changed group or another `coverage.yml` expires it. Checked again at apply time: an approver who lost write access loses the approval. |
+| `/approve platform:<sdk> <channel> --force` | Takes a *pending* SDK move (a companion has no release at the target major yet, §6) anyway: those companions stay at their major and a person fixes the build on the branch. |
+| `/hold <group or package>` | Holds it until `/unhold`. |
+| `/unhold <group or package>` | Lifts every hold on it: a comment or human hold, and the bot's own (`red:` from a bisect, `blocker:`, `apply:`, `migrate:`). Lifting a `red:` hold also withdraws the red verdict it gave the account's other repositories. |
+| `/bisect` | Bisects a red pull request now (budget 4 when the setting is off). |
+| `/refresh` | Rebuilds now. A run a comment started never auto-merges; the next scheduled one may. |
 
-Edited comments and comments by bots are ignored. The bot reacts 👍 or 👎.
+The pull request's **Awaiting approval** table says why each group waits (its *Reason* column) and gives the comment that
+takes it (*Comment*):
+
+| Reason | Means |
+|---|---|
+| `major` / `minor` | Above the threshold (§4) |
+| `platform major 11.0 → 12.0` | An SDK major. Without `platforms.<sdk>.autoMerge: major` it always waits (§6) |
+| `N location(s) the bot cannot edit would stay behind` | A computed location or an unresolved expression on the current channel (§4) |
+
+Every command starts with `/`; a comment that starts with a bare word (`approve angular`) is an ordinary comment. A writer who gets a command's arguments wrong (`/unhold` without a target, `/refresh now`) gets 👎 and a comment with its usage; nothing changes. An unknown word (`/unhlod`) stays an ordinary comment, since other bots read `/` commands too.
+Edited comments and comments by bots are ignored.
+
+The bot reacts on the comment, keeping one reaction that it replaces as the command moves on
+([command-reactions-PRD](command-reactions-PRD.md)):
+
+| Reaction | Means |
+|---|---|
+| 👀 | Seen; the bot is on it. |
+| 🚀 | A `/refresh` or `/bisect` started a run; the reaction changes when that run ends. |
+| 🎉 | Done: the approval, hold or lift is recorded, or the run applied a change. |
+| 👍 | Nothing changed: the run rebuilt an identical tree, or a run was already going. |
+| 👎 | Refused (no write access, unknown group, not a dependency pull request of a repository that uses the updater) or failed. |
+
+A command on a pull request that no dependency run owns is left alone in a repository that does not use the updater,
+because other bots read `/approve` and `/hold` too. The repository page lists each command with its outcome and a link
+to its log.
 
 ## 6. What happens when…
+
+- **A project targets several .NET channels** (`<TargetFrameworks>net10.0;net11.0</TargetFrameworks>`). Its .NET
+  packages (the companion list and the account's own packages) move per TFM: each gets an `ItemGroup` under
+  `'$(TargetFramework)' == 'netX.Y'` with the highest release on its own channel's major (a versions-map companion: inside
+  that channel's range), never lower than what it has; `netstandard2.0` takes the lowest channel's version. The first run
+  splits an unconditioned reference that way. The whole move of such a package is one item in the platform group, so a
+  patch and a major of the same package never land in different groups (MintPlayer.Dotnet.Tools #216, NU1605). A
+  `Directory.Packages.props` splits its `PackageVersion` over the TFMs of the projects under its folder.
+  - On a platform move the new channel's TFM is **added** (`net10.0;net11.0;net12.0`), with its own groups; an older TFM
+    leaves only once its channel is end of life, and `keepPrevious` older channels always stay.
+  - A package under any other condition (`'$(Configuration)' == 'Debug'`, a condition on the item itself) is **not
+    moved per TFM**: it is listed with the reason, and moves as one package as before.
+  - To switch a repository to or from central package management, use **Convert central package management**
+    ([onboarding.md](onboarding.md#central-package-management)); the updater never converts on its own.
 
 - **A release is very new.** It waits out the cooldown (the release time from the registry; for a record without one,
   the time the bot first saw it). The account's own releases (published by one of its repositories, matched to a release
   or push event of that repository) skip the cooldown and propagate to the account's consumers in graph order. So does
-  the bot's own action pin (`dependency-update-v1`), whichever account consumes it (§2).
-- **The onboarding started the run.** Onboarding an already-set-up repository runs at once; that run, like `refresh`,
+  the bot's own action pin (`dependency-update-v1`) in a workflow still pinned to a commit, whichever account consumes it
+  (§2). That pin moves in a group of
+  its own, so another `MintPlayer/MintPlayer.Spark` action in its cooldown never holds it back. In any other group, a
+  member in its cooldown holds back the rest of the group; they are listed under *Available, not applied* with the member
+  they wait for.
+- **The onboarding started the run.** Onboarding an already-set-up repository runs at once; that run, like `/refresh`,
   never auto-merges. The next scheduled slot (or *Run the scheduled slot now* on the Repository page) may.
 - **A vulnerability is announced.** A Dependabot alert starts an out-of-slot security run with only the fix and the
-  groups that may auto-merge anyway. A major fix still waits for `approve`.
+  groups that may auto-merge anyway. A major fix still waits for `/approve`.
 - **The resolver refuses a group** (e.g. Angular N+1 before the Nx plugin supports it). The group is reset and held,
-  naming the blockers; the hold lifts when a newer version of a blocker appears, and after four slots in any case.
+  naming the blockers; the hold lifts when a newer version of a blocker appears, when the blocker's current version
+  moves (for example after you approved its own group), and after four slots in any case. When the blocker has an
+  update of its own in the same run, the held group **joins the blocker's group** instead: the resolver showed they must
+  move together (e.g. `MintPlayer.SourceGenerators` 13.1.0 needs `MintPlayer.SourceGenerators.Attributes` 13.1.0), so
+  one group, one `/approve <blocker's group>` and one apply move both. They stay together until the blocker's version
+  moves (#653). Such a group never settles for a smaller update in which the blocker does not move: when Renovate
+  calls one member's update a minor and the blocker's a major, the group waits for the `/approve` of the major rather
+  than apply the minor alone. A hold taken on a plan that left out its own blocker lifts at once (#655).
 - **CI is red.** The failing checks are re-run once (flaky tests). Then suspects are left out one by one (majors first,
   then versions red elsewhere in the fleet), one CI run each, until the culprit is found; it is held, recorded as red for
   the whole account, and the rest is rebuilt without it. The comment says whether a *build* or a *test* check failed,
   read from the failing checks' names; logs are not read.
+  - A red verdict stands for 14 days in the other repositories, and goes earlier when this repository merges that
+    version, when you close the pull request it was found on, or on `/unhold <group>` (#683).
+- **CI is cancelled** (a newer push, `cancel-in-progress`, or by hand). A cancelled check is no verdict: nothing is
+  bisected, held or marked red. When a newer push superseded the bot's commit the bot leaves it alone; otherwise it
+  re-runs the cancelled checks once, and reports a second cancellation without blaming any group (#683).
+- **You close the rolling pull request without merging.** The bisect verdicts taken on it go with it: its `red:` holds and
+  the fleet entries they recorded. Your own holds, approvals and the bot's resolver holds stay. The bot opens a new rolling
+  pull request at its next run.
+- **You reopen a closed rolling pull request.** The bot closes it again with a comment, so there is never more than one
+  rolling pull request; it opens its own at its next run.
 - **You push a commit on the rolling branch.**
   - A manifest value you set wins, and becomes a hold, so the next slot does not undo it.
   - A code fix (any file that is not a dependency file) keeps the versions it was written against: those groups stay
@@ -258,15 +497,38 @@ Edited comments and comments by bots are ignored. The bot reacts 👍 or 👎.
     set, and stops for a person if it conflicts again.
   - Any other conflict, or a branch rewritten by hand: the branch is kept as it is and the bot comments; close the pull
     request to let it start over.
-- **A major needs code migrations** (`migrate:`). After `approve`, the migrate workflow runs `ng update --migrate-only` /
+- **A major needs code migrations** (`migrate:`). After `/approve`, the migrate workflow runs `ng update --migrate-only` /
   `nx migrate --run-migrations` with no secrets. A migration that does not complete drops its group. A pull request with
   migrations never auto-merges and says so.
+- **A version lives in an MSBuild property.** `Version="$(FolderHasherTargetsVersion)"` moves the property's one
+  definition, in the project or a `Directory.Build.props`/`.targets`/`Directory.Packages.props` at or above it (as a
+  Maven property moves its `<…version>`). Two definitions, or none holding the current version, refuse the edit rather
+  than guess which one MSBuild uses. The git writer accepts that file only for the line naming the property.
+- **`packageManager` moves** (`"packageManager": "npm@10.9.2"`). Only the field changes: no package manager runs and no
+  lockfile changes, because none records it. A value with an integrity hash (`pnpm@9.1.0+sha512.…`) is not updated:
+  the bot cannot compute the new hash.
+- **The repository has no `global.json`.** The apply workflow's `setup-dotnet` step reads `global.json`, so without one
+  it is skipped and the runner's own SDK remains. When the plan has .NET work and no installed SDK has the major the
+  repository needs (its highest `TargetFramework`, or the SDK the plan's platform group moves to), the apply installs that
+  SDK itself with Microsoft's `dotnet-install` script, the latest of the channel or the platform group's exact version,
+  and runs `dotnet` from there. A repository is never asked to add a `global.json` for this. If the install fails, the
+  groups fail with the SDK's own error, as before.
 - **A platform SDK moves** (`net10.0` → `net11.0`, Node 22 → 24). Every location moves together (TFM, `global.json`,
   Dockerfile `FROM`, `setup-*`, companions); a computed TFM is reported, never guessed. Which channel is offered is the
-  SDK's `track` (§4). A platform major never auto-merges.
+  SDK's `track` (§4). A platform major waits for `/approve platform:<sdk> <channel>` and never auto-merges, unless the
+  repository opts in.
+  - **`platforms.<sdk>.autoMerge: major`** (one SDK at a time) plans that SDK's majors without an approval and lets them
+    auto-merge. It lifts nothing else. The move still needs:
+    - no enforced account rule capping `platform:<sdk>` below major (the account rule wins);
+    - its companions released at the target major, its locations movable (no P11 hold), and the cooldown passed;
+    - the merge queue enabled, and the pull request past onboarding;
+    - every group in the pull request auto-mergeable (one approved group keeps the whole pull request for a person);
+    - no code migrations, no lockfile left for a person, and no edited workflow without a `pull_request` run;
+    - coverage within `maxCoverageDrop`;
+    - a scheduled run (a run started by a comment never auto-merges).
   - **A companion has no release at the target major yet.** The move is *pending*, not offered for approval: the pull
     request and the account's platform readiness say "dotnet 11.0 waiting on <package>". It is judged again at every
-    lookup; `approve … --force` (§5) takes it anyway.
+    lookup; `/approve … --force` (§5) takes it anyway.
   - **The repository publishes packages and has no `versioning.lines`.** The pull request warns that the previous
     platform's consumers stop receiving releases with this move, and points at `versioning.lines` or `strategy: add`.
 - **The platform channels.** The bot collects every SDK's channels once a day (Microsoft's release index for .NET,
@@ -286,7 +548,7 @@ Edited comments and comments by bots are ignored. The bot reacts 👍 or 👎.
   (which repository is on which version, and what the bot does with it there), and **platform readiness**: "Angular 23:
   3 of 5 ready", with the blockers. *Ready* means the lookup offers the next major there and only an approval, the
   cooldown or an account rule stands in the way; *blocked* means the resolver refused it, or it went red in the fleet;
-  *not offered yet* means no lookup has offered it. The move itself is an `approve` or a rule change.
+  *not offered yet* means no lookup has offered it. The move itself is an `/approve` or a rule change.
 - Every row is filtered like the account's repository list: a private repository you cannot see appears nowhere.
 - The **dependency graph** card reads the lookup's packages where a lookup ran (every ecosystem it reports, with
   versions), and the manifest scanners elsewhere.
@@ -326,6 +588,6 @@ The last run's outcome is on the repository panel; the full story is in *Recent 
 | `lookup-failed`, `apply-failed` | The workflow run failed. | Open the run from the history. |
 | `patch-rejected` | The apply patch changed something the plan did not allow. | Read the reason in the comment; it is a bug or an attack, never ignored. |
 | `replay-conflict`, `rolling-rewritten` | The rolling branch needs a person ("frozen"). | Resolve on the branch, or close the pull request. |
-| `red` | CI failed and no culprit was found within the budget. | `hold` the suspect, or `bisect`. |
+| `red` | CI failed and no culprit was found within the budget. | `/hold` the suspect, or `/bisect`. |
 | `nothing-planned` | Everything is current, held, cooling down or waiting for approval. | See the pull request body. |
 | onboarding blocked | A permission or event is missing. | Accept it on GitHub (the notice links there). |

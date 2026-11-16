@@ -71,8 +71,9 @@ describe('R31 (S18-D1): the platform record owns its locations', () => {
     const byKey = new Map(doc.records.map((r) => [key(r), r]));
     const values = (k: string) => byKey.get(k)?.candidates.map((c) => c.value);
 
-    // A location the platform adapter does not scan (a workflow `container:` image) keeps every candidate.
-    expect(values('.github/workflows/ci.yml node 18.19.0')).toEqual(['18.20.8', '26.12.0']);
+    // platform-locations-PRD P6: a workflow `container:` image on 18, below node's current 20, follows a channel move
+    // (docker, lagging auto): its 26 candidate is the platform group's, its own channel's patch stays Renovate's.
+    expect(values('.github/workflows/ci.yml node 18.19.0')).toEqual(['18.20.8']);
     // Locations the adapter only reports keep theirs too: a full-version mcr tag, a digest-pinned image.
     expect(values('Dockerfile mcr.microsoft.com/dotnet/sdk 8.0.100')).toEqual(['8.0.426', '10.0.402']);
     expect(values('Dockerfile python 3.11-slim')).toEqual(['3.15-slim', '3.11-slim']);
@@ -98,13 +99,16 @@ describe('R31 (S18-D1): the platform record owns its locations', () => {
     }
   });
 
-  it('a platform location below the platform\'s current channel stays its own record (the plan never moves it)', async () => {
+  it('platform-locations-PRD P6: a following location below the current channel keeps only its own channel\'s candidates', async () => {
     const { dir, sha } = gitRepo({
       '.nvmrc': '22\n',
       '.github/workflows/ci.yml': 'jobs:\n  b:\n    steps:\n      - uses: actions/setup-node@v4\n        with:\n          node-version: 20\n',
     });
     const record = (packageFile: string, currentValue: string, manager: string, datasource: string) => ({
-      [manager]: [{ packageFile, deps: [{ depName: 'node', datasource, currentValue, updates: [{ newVersion: '24.22.0', newValue: '24', updateType: 'major', releaseTimestamp: '2026-10-15T01:57:24.000Z' }] }] }],
+      [manager]: [{ packageFile, deps: [{ depName: 'node', datasource, currentValue, updates: [
+        { newVersion: '20.20.2', newValue: '20.20.2', updateType: 'minor', releaseTimestamp: '2026-10-15T01:57:24.000Z' },
+        { newVersion: '24.22.0', newValue: '24', updateType: 'major', releaseTimestamp: '2026-10-15T01:57:24.000Z' },
+      ] }] }],
     });
     const report: RenovateReport = {
       repositories: { local: { packageFiles: { ...record('.github/workflows/ci.yml', '20', 'github-actions', 'github-releases'), ...record('.nvmrc', '22', 'nvm', 'node-version') } } },
@@ -114,6 +118,9 @@ describe('R31 (S18-D1): the platform record owns its locations', () => {
       renovate: async () => ({ report, seconds: 1, log: '' }), now: () => new Date('2026-10-16T08:00:00Z'),
     });
     expect(document.platforms[0].current.channels).toEqual(['22', '20']);
+    // The setup-node stage on 20 follows a channel move (lagging auto): its 24 candidate is the platform group's now,
+    // its in-channel patch stays Renovate's. .nvmrc is on the current channel the table has, so it folds away whole.
     expect(document.records.map(key)).toEqual(['.github/workflows/ci.yml node 20']);
+    expect(document.records[0].candidates.map((c) => c.version)).toEqual(['20.20.2']);
   });
 });

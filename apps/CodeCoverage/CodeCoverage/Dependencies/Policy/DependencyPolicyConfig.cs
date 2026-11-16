@@ -39,12 +39,25 @@ public sealed class DependencyPolicyConfig
     /// <summary>The cooldown in force: the settings' value, or the file's when that is longer.</summary>
     public TimeSpan Cooldown => File.MinimumCooldown is { } file && file > SettingsCooldown ? file : SettingsCooldown;
 
+    /// <summary>
+    /// follower-cooldown-PRD G2: the packages other repositories of the account publish (<see cref="RepositoryManifest.Produces"/>),
+    /// as <see cref="AccountPackageKey"/>s. On the platform's major they are companions: the upstream repository moves first,
+    /// and its consumers ride along once it released (owner, 2026-11-15).
+    /// </summary>
+    public IReadOnlySet<string> AccountPackages { get; init; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>The key of a published package: its manifest ecosystem (<c>nuget</c>, <c>npm</c>, the lookup's too) and its id.</summary>
+    public static string AccountPackageKey(string ecosystem, string name) => $"{ecosystem.ToLowerInvariant()}:{name}";
+
+    public bool IsAccountPackage(string ecosystem, string name) => AccountPackages.Contains(AccountPackageKey(ecosystem, name));
+
     /// <summary>The configuration of one repository: its default branch's file plus its owner's settings and rules.</summary>
-    public static DependencyPolicyConfig Resolve(DependenciesSection file, Repository? repository, Account? account) => new()
+    public static DependencyPolicyConfig Resolve(DependenciesSection file, Repository? repository, Account? account, IEnumerable<string>? accountPackages = null) => new()
     {
         File = file,
         AccountRules = [.. (account?.DependencyRules ?? []).Where(r => !string.IsNullOrWhiteSpace(r.Match))],
         SettingsCooldown = Repository.ResolveDependencyCooldown(repository, account).Cooldown,
+        AccountPackages = new HashSet<string>(accountPackages ?? [], StringComparer.OrdinalIgnoreCase),
     };
 
     /// <summary>The effective schedule: the settings' slot with the file's <c>schedule</c> parts on top.</summary>
@@ -89,6 +102,11 @@ public sealed class DependencyPolicyConfig
         => FileRules(ecosystem, depName).Select(r => r.Group).FirstOrDefault(g => g is not null)
             ?? Enforced(ecosystem, depName).Concat(Defaults(ecosystem, depName)).Select(r => r.Group).FirstOrDefault(g => !string.IsNullOrWhiteSpace(g))?.Trim();
 
+    /// <summary>companion-pins-PRD M3 (H2): the dependency's group moves in lockstep, implied by a <c>follow:</c> naming it,
+    /// opted into by a file rule's <c>lockstep: true</c>.</summary>
+    public bool Lockstep(string ecosystem, string depName)
+        => File.Follow.Any(f => string.Equals(f.Dependency, depName, StringComparison.Ordinal)) || FileRules(ecosystem, depName).Any(r => r.Lockstep);
+
     /// <summary>The largest update planned and auto-merged without an approval, ceiling applied.</summary>
     public EDependencyThreshold Threshold(string ecosystem, string depName) => Min(RawThreshold(ecosystem, depName), Ceiling(ecosystem, depName));
 
@@ -120,36 +138,102 @@ public sealed class DependencyPolicyConfig
         return track == EDependencyTrack.Lts && !DependenciesYml.LtsSdks.Contains(sdk) ? EDependencyTrack.Stable : track;
     }
 
+    /// <summary>The track a package is offered from; see <see cref="PackageTrackOf"/>.</summary>
+    public EDependencyTrack PackageTrack(string ecosystem, string depName, string? currentVersion = null)
+        => PackageTrackOf(ecosystem, depName, currentVersion).Track;
+
     /// <summary>
-    /// The track a package is offered from (#606 D8): the file's first rule naming it with a track, else a non-enforced
-    /// account rule's, else stable; never wider than an enforced rule's. <c>lts</c> has no meaning for a package and reads as stable.
+    /// The track a package is offered from, and the setting that decides it (for the report line of a prerelease it is not
+    /// offered). #606 D8: the file's first rule naming it with a track, else a non-enforced account rule's. Without either,
+    /// prerelease-dependencies-PRD H1: preview when the current version is a prerelease (in a SemVer ecosystem, H5) or the
+    /// package is a companion of an SDK on the preview track, stable otherwise. Never wider than an enforced rule's track.
+    /// <c>lts</c> has no meaning for a package and reads as stable.
+    /// <para><c>Explicit</c> (prerelease-track-scenarios-PRD D1): a coverage.yml or account rule set the track, rather than the
+    /// package's current version or its SDK. Only an explicit preview track keeps a package on prereleases when a release on
+    /// the channel's major exists (the owner's rule otherwise takes the release).</para>
     /// </summary>
-    public EDependencyTrack PackageTrack(string ecosystem, string depName)
+    public (EDependencyTrack Track, string Why, bool Explicit) PackageTrackOf(string ecosystem, string depName, string? currentVersion)
     {
-        var chosen = FileRules(ecosystem, depName).Select(r => r.Track).FirstOrDefault(t => t != EDependencyTrack.Inherit) is var file && file != EDependencyTrack.Inherit
-            ? file
-            : TrackOf(Defaults(ecosystem, depName)) ?? EDependencyTrack.Stable;
-        var track = MinTrack(chosen, TrackOf(Enforced(ecosystem, depName)));
-        return track == EDependencyTrack.Preview ? EDependencyTrack.Preview : EDependencyTrack.Stable;
+        EDependencyTrack chosen;
+        string why;
+        var isExplicit = true;
+        var file = FileRules(ecosystem, depName).Select(r => r.Track).FirstOrDefault(t => t != EDependencyTrack.Inherit);
+        if (file != EDependencyTrack.Inherit)
+            (chosen, why) = (file, $"a coverage.yml rule sets track: {Name(file)}");
+        else if (TrackOf(Defaults(ecosystem, depName)) is { } account)
+            (chosen, why) = (account, $"an account rule sets track: {Name(account)} (a coverage.yml rule with track: preview overrides it)");
+        else
+            (chosen, why, isExplicit) = Inferred();
+
+        if (TrackOf(Enforced(ecosystem, depName)) is { } ceiling && ceiling < chosen)
+            (chosen, why, isExplicit) = (ceiling, $"an enforced account rule sets track: {Name(ceiling)}", true);
+        return (chosen == EDependencyTrack.Preview ? EDependencyTrack.Preview : EDependencyTrack.Stable, why, isExplicit);
+
+        (EDependencyTrack, string, bool) Inferred()
+        {
+            if (IsPrerelease(ecosystem, currentVersion))
+                return (EDependencyTrack.Preview, $"{depName} is on a prerelease and follows prereleases", false);
+            if (DependenciesYml.PlatformSdks.Any(sdk => PlatformTrack(sdk) == EDependencyTrack.Preview && CompanionEntry(sdk, depName) is not null))
+                return (EDependencyTrack.Preview, $"{depName} is a companion of an SDK on the preview track", false);
+            return (EDependencyTrack.Stable, $"{depName} follows stable releases (a coverage.yml rule `match: {depName}` with `track: preview` follows prereleases)", false);
+        }
+
+        static string Name(EDependencyTrack track) => track.ToString().ToLowerInvariant();
     }
 
-    /// <summary>The companion globs of an SDK: the file's <c>platforms.&lt;sdk&gt;.companions</c>, else the built-in list (#606 D2).</summary>
-    public IReadOnlyList<string> Companions(string sdk)
+    /// <summary>prerelease-dependencies-PRD H5: the ecosystems whose versions are SemVer, where a <c>-</c> after the core always
+    /// marks a prerelease. A Docker tag (<c>20-alpine</c>), a Maven qualifier (<c>33.0.0-jre</c>) or a Go pseudo-version uses it
+    /// for other things.</summary>
+    public static readonly IReadOnlySet<string> SemVerEcosystems = new HashSet<string>(StringComparer.Ordinal) { "nuget", "npm", "cargo", "composer" };
+
+    /// <summary>The Renovate rule that matches the same versions (<c>renovate.ts</c>, H5) keeps this pattern.</summary>
+    internal const string PrereleasePattern = @"^[\[(v^~=]*\d+(\.\d+)*-[0-9A-Za-z]";
+
+    /// <summary>H1/H5: a SemVer version (or an exact range around one, <c>[0.4.0-beta]</c>) that is a prerelease.</summary>
+    public static bool IsPrerelease(string ecosystem, string? version)
+        => version is not null && SemVerEcosystems.Contains(ecosystem) && System.Text.RegularExpressions.Regex.IsMatch(version.Trim(), PrereleasePattern);
+
+    /// <summary>The companion entries of an SDK: the file's <c>platforms.&lt;sdk&gt;.companions</c>, else the built-in list (#606 D2).</summary>
+    public IReadOnlyList<DependencyCompanionEntry> Companions(string sdk)
         => File.Platforms.TryGetValue(sdk, out var settings) && settings.Companions is { } own ? own : DependencyCompanions.BuiltIn(sdk);
+
+    /// <summary>companion-version-maps-PRD §6.1: the first companion entry of <paramref name="sdk"/> that matches the package.</summary>
+    public DependencyCompanionEntry? CompanionEntry(string sdk, string depName)
+        => Companions(sdk).FirstOrDefault(e => DependencyGlob.Matches(e.Match, depName));
 
     /// <summary>
     /// The package globs Renovate must look up with prereleases (#606 D8): the file's and the account's preview-track rules
-    /// on packages, and the companions of every SDK on the preview track. A superset is harmless: the engine still screens
-    /// each candidate against <see cref="PackageTrack"/>, and an enforced rule narrows it there.
+    /// on packages, and the companions of every SDK on the preview track. Renovate also looks up every package already on a
+    /// prerelease with prereleases (H1), and then <see cref="StableGlobs"/> without them (H5, rule order in <c>renovate.ts</c>).
+    /// The engine screens each candidate against <see cref="PackageTrackOf"/> (prerelease-dependencies-PRD D2), so an
+    /// enforced rule narrows what this list widens. Renovate keeps one release per version bucket, so a glob here can displace
+    /// a stable candidate: the list must stay as narrow as the tracks (SP2), never "everything".
     /// </summary>
     public IReadOnlyList<string> UnstableGlobs()
     {
-        static bool OnPackages(string? ecosystem) => ecosystem is null || !ecosystem.Trim().StartsWith("platform:", StringComparison.Ordinal);
         return File.Rules.Where(r => r.Track == EDependencyTrack.Preview && OnPackages(r.Ecosystem)).SelectMany(r => r.Match)
             .Concat(AccountRules.Where(r => !r.Enforced && r.Track == EDependencyTrack.Preview && OnPackages(r.Ecosystem)).Select(r => r.Match.Trim()))
-            .Concat(DependenciesYml.PlatformSdks.Where(sdk => PlatformTrack(sdk) == EDependencyTrack.Preview).SelectMany(Companions))
+            .Concat(DependenciesYml.PlatformSdks.Where(sdk => PlatformTrack(sdk) == EDependencyTrack.Preview).SelectMany(sdk => Companions(sdk).Select(e => e.Match)))
             .Distinct(StringComparer.Ordinal).ToList();
     }
+
+    /// <summary>
+    /// prerelease-dependencies-PRD H1/H5: the package globs Renovate looks up stable-only even when they are on a prerelease:
+    /// the file's <c>track: stable</c> rules and every enforced account rule's stable track. A non-enforced account rule is a
+    /// default a file rule replaces, so it is left to the engine's screen.
+    /// </summary>
+    public IReadOnlyList<string> StableGlobs()
+        => File.Rules.Where(r => r.Track is EDependencyTrack.Stable or EDependencyTrack.Lts && OnPackages(r.Ecosystem)).SelectMany(r => r.Match)
+            .Concat(AccountRules.Where(r => r.Enforced && r.Track is EDependencyTrack.Stable or EDependencyTrack.Lts && OnPackages(r.Ecosystem)).Select(r => r.Match.Trim()))
+            .Distinct(StringComparer.Ordinal).ToList();
+
+    /// <summary>prerelease-dependencies-PRD H3: the repository opted in to auto-merging this platform's majors
+    /// (<c>platforms.&lt;sdk&gt;.autoMerge: major</c>; <paramref name="ecosystem"/> is <c>platform:&lt;sdk&gt;</c>).</summary>
+    public bool PlatformAutoMergesMajor(string ecosystem)
+        => ecosystem.StartsWith("platform:", StringComparison.Ordinal)
+            && File.Platforms.TryGetValue(ecosystem["platform:".Length..], out var settings) && settings.AutoMergeMajor;
+
+    private static bool OnPackages(string? ecosystem) => ecosystem is null || !ecosystem.Trim().StartsWith("platform:", StringComparison.Ordinal);
 
     private static EDependencyTrack? TrackOf(IEnumerable<DependencyRule> rules)
         => rules.OrderByDescending(r => DependencyGlob.Specificity(r.Match)).Select(r => r.Track).FirstOrDefault(t => t != EDependencyTrack.Inherit) is var t && t != EDependencyTrack.Inherit ? t : null;
@@ -164,6 +248,10 @@ public sealed class DependencyPolicyConfig
 
     private EDependencyThreshold RawThreshold(string ecosystem, string depName)
     {
+        // prerelease-dependencies-PRD H3: `platforms.<sdk>.autoMerge: major` is the platform's threshold, whatever the globs
+        // say; the enforced ceiling still applies on top (Threshold, Inclusion).
+        if (PlatformAutoMergesMajor(ecosystem))
+            return EDependencyThreshold.Major;
         if (MostSpecific(File.AutoMerge, depName) is { } fileGlob)
             return fileGlob.Threshold;
         if (FileRule(ecosystem, depName) is null && Defaults(ecosystem, depName).OrderByDescending(r => DependencyGlob.Specificity(r.Match)).FirstOrDefault() is { } fallback)
@@ -190,8 +278,20 @@ public sealed class DependencyPolicyConfig
     /// <summary>The file names the dependency in an <c>autoMerge</c> glob.</summary>
     private bool FileNames(string ecosystem, string depName) => MostSpecific(File.AutoMerge, depName) is not null;
 
+    // prerelease-dependencies-PRD D8: a platform's record is asked about as `platform:<sdk>` (ceiling, threshold) and as `<sdk>`
+    // (track); a rule's match may name either, and then answers both questions.
     private IEnumerable<DependencyRule> AccountMatches(string ecosystem, string depName)
-        => AccountRules.Where(r => (string.IsNullOrWhiteSpace(r.Ecosystem) || r.Ecosystem.Trim() == ecosystem) && DependencyGlob.Matches(r.Match.Trim(), depName));
+        => AccountRules.Where(r => (string.IsNullOrWhiteSpace(r.Ecosystem) || r.Ecosystem.Trim() == ecosystem)
+            && PlatformAliases(ecosystem, depName).Any(name => DependencyGlob.Matches(r.Match.Trim(), name)));
+
+    private static IEnumerable<string> PlatformAliases(string ecosystem, string depName)
+    {
+        yield return depName;
+        if (!ecosystem.StartsWith("platform:", StringComparison.Ordinal)) yield break;
+        var sdk = ecosystem["platform:".Length..];
+        if (depName == ecosystem) yield return sdk;
+        else if (depName == sdk) yield return ecosystem;
+    }
 
     private IEnumerable<DependencyRule> Enforced(string ecosystem, string depName) => AccountMatches(ecosystem, depName).Where(r => r.Enforced);
 

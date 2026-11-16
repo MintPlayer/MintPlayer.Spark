@@ -3,6 +3,7 @@ using CodeCoverage.Dependencies.Lifecycle;
 using CodeCoverage.Entities;
 using CodeCoverage.Feedback;
 using CodeCoverage.Forge;
+using CodeCoverage.Git;
 using CodeCoverage.LookupReferences;
 using CodeCoverage.MergeQueue;
 using CodeCoverage.PackageVersioning;
@@ -58,7 +59,21 @@ public interface IOnboardingService
     /// rename or line the forge refuses is noted, not retried.
     /// </summary>
     Task<VersioningOnboardingOutcome> MergedAsync(Repository repository, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// multi-target-dependency-split-PRD P7 (M7): converts the default branch to or from central package management
+    /// (<see cref="CentralPackageConversion"/>) and opens (or updates) the pull request from
+    /// <c>mintplayer/central-package-management</c>. <see cref="CentralPackageResult.Opened"/> is false with the reason when
+    /// the repository is already that way, the bot cannot tell (M15), or the forge or the git writer refuses.
+    /// </summary>
+    Task<CentralPackageResult> ConvertCentralPackagesAsync(Repository repository, ECentralPackageDirection direction, CancellationToken cancellationToken = default);
 }
+
+/// <summary>What <see cref="IOnboardingService.ConvertCentralPackagesAsync"/> did for one repository.</summary>
+/// <param name="Opened">A pull request is open with the conversion.</param>
+/// <param name="Note">The pull request (<c>opened #12</c>), or why there is none.</param>
+/// <param name="PullRequestUrl">The pull request's page, when there is one.</param>
+public sealed record CentralPackageResult(bool Opened, string Note, string? PullRequestUrl = null);
 
 /// <param name="Plan">Null when nothing could be planned; <paramref name="Refusal"/> says why.</param>
 public sealed record OnboardingPreview(OnboardingPlan? Plan, string? Refusal);
@@ -162,13 +177,17 @@ public partial class OnboardingService : IOnboardingService
             // docs/onboarding_merge_backfill_PRD.md D3: the merge's steps in the merge's order (MergedAsync).
             // #638 D8: re-running Set up features backfills the versions the history declares and no tag carries yet, after the cuts (D7).
             if (await versioning.BackfillAsync(repository, moveTags ?? [], cancellationToken) is { } backfilled) applied.Add(backfilled.TrimEnd('.'));
+            var failed = new List<string>();
             if (plan.Features.Contains(EOnboardingFeature.ReleaseLines))
-                applied.AddRange(await LineWorkflowsAsync(repository, git, pulls, defaultBranch, cancellationToken));
-            // #638 D15: an older line cut from a commit that targets a higher .NET gets a pull request narrowing it.
-            applied.AddRange(await NarrowAsync(repository, git, pulls, plan.Cuts.Select(c => c.Branch), defaultBranch, cancellationToken));
-            return await NoteAsync(state, new(applied.Count > 0 ? VersioningOnboardingOutcome.Merged : VersioningOnboardingOutcome.Nothing,
-                (applied.Count > 0 ? "Applied without a pull request: " + string.Join("; ", applied) + ". " : "")
-                + "Nothing to change in the repository: " + (plan.Notes.Count == 0 ? "it is set up already." : string.Join(" ", plan.Notes))), cancellationToken);
+                Collect(await LineWorkflowsAsync(repository, git, pulls, defaultBranch, cancellationToken), applied, failed);
+            // #638 D15: an older line cut from a commit that targets a higher .NET gets a pull request narrowing it; #649 D10:
+            // every supported .NET line, so a rerun narrows a line an earlier run cut.
+            Collect(await NarrowAsync(repository, git, pulls, plan.Cuts.Select(c => c.Branch), defaultBranch,
+                plan.Features.Contains(EOnboardingFeature.SdkFromGlobalJson), cancellationToken), applied, failed);
+            return await NoteAsync(state, new(applied.Count + failed.Count > 0 ? VersioningOnboardingOutcome.Merged : VersioningOnboardingOutcome.Nothing,
+                NotDone(failed)
+                + (applied.Count > 0 ? "Applied without a pull request: " + string.Join("; ", applied) + ". " : "")
+                + "Nothing to change in the repository: " + (plan.Notes.Count == 0 ? "it is set up already." : string.Join(" ", plan.Notes))) { HasFailures = failed.Count > 0 }, cancellationToken);
         }
 
         // The same base and date rebuild the same commit, so a retry's force-push is a no-op.
@@ -271,16 +290,28 @@ public partial class OnboardingService : IOnboardingService
         var before = state.Note;
         await versioning.PushSeedsAsync(repository, afterCuts: true, cancellationToken);
         if (state.Note is { } seeded && seeded != before) done.Add(seeded.TrimEnd('.'));
+        var failed = new List<string>();
         if (state.Features.Contains(EOnboardingFeature.ReleaseLines))
-            done.AddRange(await LineWorkflowsAsync(repository, git, pulls, defaultBranch, cancellationToken));
+            Collect(await LineWorkflowsAsync(repository, git, pulls, defaultBranch, cancellationToken), done, failed);
         // #638 D15: an older line cut from a commit that targets a higher .NET gets a pull request narrowing it.
         if (mergeCommit is { Length: > 0 })
-            done.AddRange(await NarrowAsync(repository, git, pulls, state.Cuts, defaultBranch, cancellationToken));
+            Collect(await NarrowAsync(repository, git, pulls, state.Cuts, defaultBranch, state.Features.Contains(EOnboardingFeature.SdkFromGlobalJson), cancellationToken),
+                done, failed);
 
         state.MergeHandledAt = mergeCommit;
         return await NoteAsync(state, new(VersioningOnboardingOutcome.Merged,
-            $"The onboarding pull request #{number} merged" + (done.Count == 0 ? "." : ": " + string.Join("; ", done) + "."), number), cancellationToken);
+            NotDone(failed) + $"The onboarding pull request #{number} merged" + (done.Count == 0 ? "." : ": " + string.Join("; ", done) + "."), number)
+        { HasFailures = failed.Count > 0 }, cancellationToken);
     }
+
+    private static void Collect(LineSteps steps, List<string> done, List<string> failed)
+    {
+        done.AddRange(steps.Done);
+        failed.AddRange(steps.Failed);
+    }
+
+    /// <summary>#649 D9: the failures first, so a refusal is not the tail of a sentence about what was applied (S6).</summary>
+    private static string NotDone(IReadOnlyList<string> failed) => failed.Count == 0 ? "" : "Not done: " + string.Join("; ", failed) + ". ";
 
     /// <summary>Switches <paramref name="onMerge"/> on and renames the line branches (D2); what was done, or why not, per item.</summary>
     private async Task<List<string>> ApplyAsync(Repository repository, IForgeMergeQueue git, IEnumerable<EOnboardingFeature> onMerge,
@@ -340,22 +371,22 @@ public partial class OnboardingService : IOnboardingService
     /// D9: a pull request into each supported line that lacks one of the regenerate workflows the default branch's
     /// <c>mergeQueue</c> names, copied from the default branch, so a backport regenerates with the line's own tools.
     /// </summary>
-    private async Task<IReadOnlyList<string>> LineWorkflowsAsync(Repository repository, IForgeMergeQueue git, IForgeDependencyUpdates pulls, string defaultBranch,
+    private async Task<LineSteps> LineWorkflowsAsync(Repository repository, IForgeMergeQueue git, IForgeDependencyUpdates pulls, string defaultBranch,
         CancellationToken cancellationToken)
     {
+        var notes = new LineSteps();
         var integration = integrations.For(repository);
         var yml = await integration.GetFileContentAsync(repository, defaultBranch, CoverageYml.FileName, cancellationToken);
         if (VersioningYml.Parse(yml).Config is not { EffectiveLines: { } pattern }
             || MergeQueueYml.Parse(yml, defaultBranch).Section?.Workflows() is not { Count: > 0 } workflows)
-            return [];
+            return notes;
 
         var defaults = new List<(string Path, string Content)>();
         foreach (var workflow in workflows)
             if (await integration.GetFileContentAsync(repository, defaultBranch, WorkflowPath(workflow), cancellationToken) is { } content)
                 defaults.Add((WorkflowPath(workflow), content));
-        if (defaults.Count == 0) return [];
+        if (defaults.Count == 0) return notes;
 
-        var notes = new List<string>();
         foreach (var line in await SupportedLines.ReadAsync(session, git, repository, pattern, BackportYml.Parse(yml).Section.Lines, cancellationToken,
             SupportedLines.PromotesCurrent(yml)))
         {
@@ -367,10 +398,11 @@ public partial class OnboardingService : IOnboardingService
             if (missing.Count == 0) continue;
             if (await git.GetBranchHeadAsync(repository, line.Branch, cancellationToken) is not { } head)
             {
-                notes.Add($"{line.Branch} could not be read");
+                notes.Failed.Add($"{line.Branch} could not be read");
                 continue;
             }
-            notes.Add(await LinePullRequestAsync(repository, git, pulls, line.Branch, line.Line.ToString(), head, missing, narrow: false, cancellationToken));
+            var (opened, note) = await LinePullRequestAsync(repository, git, pulls, line.Branch, line.Line.ToString(), head, missing, narrow: false, cancellationToken);
+            (opened ? notes.Done : notes.Failed).Add(note);
         }
         return notes;
     }
@@ -383,58 +415,124 @@ public partial class OnboardingService : IOnboardingService
     private const long MaxNarrowingFileBytes = 256 * 1024;
 
     /// <summary>
-    /// #638 D15: a pull request into each .NET line cut now whose projects target a higher major than the line's (Tools #55,
-    /// done by hand), narrowing it with <see cref="LineNarrowing"/>. Read through the forge like the onboarding plan: the
-    /// project files and global.json, then the C# sources under a project that targets higher, for its conditionals.
+    /// #638 D15: a pull request into each .NET line whose projects target a higher major than the line's (Tools #55, done by
+    /// hand), narrowing it with <see cref="LineNarrowing"/>. #649 D10: the lines cut now and every supported .NET line that
+    /// exists, so a rerun of Set up features narrows a line an earlier run cut (SpaServices' release/dotnet-10.x); one narrowed
+    /// already has nothing above its major and is skipped. #649 D16: with <paramref name="sdkFromGlobalJson"/>, the same pull
+    /// request switches the line's setup-dotnet steps to global.json (<see cref="GlobalJsonSdk"/>), on a line that needs no
+    /// narrowing too. Read through the forge like the onboarding plan: the project files, global.json and the workflows, then
+    /// the C# sources under a project that targets higher, for its conditionals. #651 D3: never into the current line, which
+    /// takes only the App's backports (Line policy); the note says how it gets the conversion.
     /// </summary>
-    private async Task<IReadOnlyList<string>> NarrowAsync(Repository repository, IForgeMergeQueue git, IForgeDependencyUpdates pulls, IEnumerable<string> lines,
-        string defaultBranch, CancellationToken cancellationToken)
+    private async Task<LineSteps> NarrowAsync(Repository repository, IForgeMergeQueue git, IForgeDependencyUpdates pulls, IEnumerable<string> cuts,
+        string defaultBranch, bool sdkFromGlobalJson, CancellationToken cancellationToken)
     {
         var integration = integrations.For(repository);
-        var pattern = VersioningYml.Parse(await integration.GetFileContentAsync(repository, defaultBranch, CoverageYml.FileName, cancellationToken)).Config?.EffectiveLines
-            ?? CodeCoverage.Versioning.Releases.ReleaseLinePattern.Default;
-        var notes = new List<string>();
+        var yml = await integration.GetFileContentAsync(repository, defaultBranch, CoverageYml.FileName, cancellationToken);
+        var effective = VersioningYml.Parse(yml).Config?.EffectiveLines;
+        var pattern = effective ?? CodeCoverage.Versioning.Releases.ReleaseLinePattern.Default;
+        var lines = cuts.ToList();
+        if (effective is not null)
+            foreach (var supported in await SupportedLines.ReadAsync(session, git, repository, effective, BackportYml.Parse(yml).Section.Lines, cancellationToken,
+                SupportedLines.PromotesCurrent(yml)))
+                if (supported.Supported && !lines.Contains(supported.Branch, StringComparer.Ordinal))
+                    lines.Add(supported.Branch);
+
+        // #651 D3: the current line of each ecosystem, judged as the Line policy check judges it, takes only the App's
+        // backports, so a pull request of its own here would be refused (SpaServices #113).
+        var current = pattern.CurrentLines([.. await git.ListBranchesAsync(repository, SupportedLines.BranchPrefix(pattern), cancellationToken), .. lines]);
+
+        var steps = new LineSteps();
         foreach (var branch in lines)
         {
             if (!pattern.TryMatch(branch, out var line) || line is not { Ecosystem: CodeCoverage.Versioning.Releases.Ecosystems.Dotnet })
+                continue;
+            if (current.Contains(line) && !sdkFromGlobalJson)
                 continue;
             try
             {
                 if (await ForgeRepositoryTree.OpenAsync(integration, repository, branch, cancellationToken) is not { } tree)
                     continue;
                 var files = new Dictionary<string, string>(StringComparer.Ordinal);
-                foreach (var path in tree.Entries.Keys.Where(p => LineNarrowing.IsMsBuild(p) || LineNarrowing.IsGlobalJson(p)))
+                foreach (var path in tree.Entries.Keys.Where(LinePaths.IsNarrowable))
                     if (await ReadTextAsync(tree, path, cancellationToken) is { } text) files[path] = text;
+
+                // D16: the conversion first, so the narrowing below moves only global.json for the steps that now read it.
+                var conversion = sdkFromGlobalJson ? GlobalJsonSdk.Plan(files) : null;
+                if (current.Contains(line))
+                {
+                    // The current line targets the default branch's major, so it never needs narrowing; the conversion it
+                    // would get arrives with the backport of the pull request that converted the default branch.
+                    if (conversion is { Files.Count: > 0 })
+                        steps.Done.Add($"{branch} is the current line and takes this by backport: comment `/backport {line}` on the pull request that changed `{defaultBranch}`");
+                    continue;
+                }
+                foreach (var file in conversion?.Files ?? [])
+                    files[file.Path] = file.Content!;
+
                 var above = files.Where(f => LineNarrowing.IsMsBuild(f.Key) && LineNarrowing.TargetsAbove(line.Major, f.Value))
                     .Select(f => f.Key.LastIndexOf('/') is var slash and >= 0 ? f.Key[..(slash + 1)] : "").ToList();
-                if (above.Count == 0)
+                if (above.Count == 0 && conversion is not { Files.Count: > 0 })
                     continue;
-                var sources = tree.Entries.Keys.Where(p => LineNarrowing.IsSource(p) && above.Any(dir => p.StartsWith(dir, StringComparison.Ordinal)))
+                var sources = tree.Entries.Keys.Where(p => above.Count > 0 && LineNarrowing.IsSource(p) && above.Any(dir => p.StartsWith(dir, StringComparison.Ordinal)))
                     .Order(StringComparer.Ordinal).ToList();
                 foreach (var path in sources.Take(MaxNarrowingSources))
                     if (await ReadTextAsync(tree, path, cancellationToken) is { } text) files[path] = text;
 
                 var release = await session.LoadAsync<PlatformRelease>(PlatformRelease.IdFor(line.Ecosystem, $"{line.Major}.0"), cancellationToken);
-                var narrowing = LineNarrowing.Plan(line.Major, files, release?.LatestSdk, release?.LatestVersion);
+                var narrowing = above.Count > 0
+                    ? LineNarrowing.Plan(line.Major, files, release?.LatestSdk, release?.LatestVersion)
+                    : new LineNarrowing(line.Major, [], [], [], []);
                 if (sources.Count > MaxNarrowingSources)
                     narrowing = narrowing with { Notes = [.. narrowing.Notes, $"{sources.Count - MaxNarrowingSources} C# files were not searched for conditionals; search them for `NET{line.Major + 1}`."] };
-                if (narrowing.Files.Count == 0)
+                var written = narrowing.Files
+                    .Concat((conversion?.Files ?? []).Where(c => !narrowing.Files.Any(n => n.Path == c.Path)).Select(c => new GitWriterFile(c.Path, files[c.Path])))
+                    .OrderBy(f => f.Path, StringComparer.Ordinal).ToList();
+                if (written.Count == 0)
                 {
                     // Nothing to rewrite, only conditionals or notes: there is no commit to open a pull request with.
                     if (!narrowing.IsEmpty)
-                        notes.Add($"{branch} targets above .NET {line.Major} in ways the bot cannot rewrite; see its conditionals by hand");
+                        steps.Failed.Add($"{branch} targets above .NET {line.Major} in ways the bot cannot rewrite; see its conditionals by hand");
                     continue;
                 }
-                var note = await LinePullRequestAsync(repository, git, pulls, branch, line.ToString(), tree.Commit, narrowing.Files, narrow: true, cancellationToken,
-                    narrowing.Body(branch));
-                notes.Add(note.StartsWith("opened #", StringComparison.Ordinal) ? $"{note} to narrow it to .NET {line.Major}" : note);
+                var narrows = narrowing.Files.Count > 0;
+                var (opened, note) = await LinePullRequestAsync(repository, git, pulls, branch, line.ToString(), tree.Commit, written, narrow: true, cancellationToken,
+                    LineBody(branch, narrows ? narrowing : null, conversion), narrows ? OnboardingPlanner.NarrowTitle : OnboardingPlanner.SdkLineTitle);
+                if (opened)
+                    steps.Done.Add(narrows ? $"{note} to narrow it to .NET {line.Major}" : $"{note} to read the SDK from global.json");
+                else
+                    steps.Failed.Add(note);
             }
             catch (GraphException ex)
             {
-                notes.Add($"{branch} was not narrowed: {ex.Message}");
+                logger.LogWarning(ex, "Onboarding: {Repository} {Line} was not narrowed", repository.FullName, branch);
+                steps.Failed.Add($"{branch} was not narrowed: {ex.Message.TrimEnd('.')}");
             }
         }
-        return notes;
+        return steps;
+    }
+
+    /// <summary>A line pull request's body: the narrowing's, then the conversion's.</summary>
+    private static string LineBody(string branch, LineNarrowing? narrowing, GlobalJsonSdk? conversion)
+    {
+        var body = new System.Text.StringBuilder(narrowing?.Body(branch) ?? "");
+        if (conversion is { Changes.Count: > 0 })
+        {
+            body.Append(narrowing is null ? "" : "\n")
+                .Append($"The workflows' `actions/setup-dotnet` steps on `{branch}` now install the SDK `global.json` names, as chosen with **SDK from global.json**, so the line's SDK is set in one place:\n\n");
+            foreach (var change in conversion.Changes)
+                body.Append($"- {change}\n");
+        }
+        foreach (var note in conversion?.Notes ?? [])
+            body.Append($"- [ ] {note}\n");
+        return body.ToString();
+    }
+
+    /// <summary>#649 D9: what a step did and what it could not do, kept apart so the note leads with the failures.</summary>
+    private sealed class LineSteps
+    {
+        public List<string> Done { get; } = [];
+        public List<string> Failed { get; } = [];
     }
 
     private static async Task<string?> ReadTextAsync(ForgeRepositoryTree tree, string path, CancellationToken cancellationToken)
@@ -453,28 +551,50 @@ public partial class OnboardingService : IOnboardingService
     /// A bot pull request into a line: D9's regenerate workflows, or with <paramref name="narrow"/> #638 D15's narrowing,
     /// committed on <paramref name="head"/> by the git writer and opened (or found, on a retry) on the forge.
     /// </summary>
-    private async Task<string> LinePullRequestAsync(Repository repository, IForgeMergeQueue git, IForgeDependencyUpdates pulls, string lineBranch, string line,
-        string head, IReadOnlyList<GitWriterFile> files, bool narrow, CancellationToken cancellationToken, string? narrowBody = null)
+    private async Task<(bool Opened, string Note)> LinePullRequestAsync(Repository repository, IForgeMergeQueue git, IForgeDependencyUpdates pulls, string lineBranch, string line,
+        string head, IReadOnlyList<GitWriterFile> files, bool narrow, CancellationToken cancellationToken, string? narrowBody = null, string? narrowTitle = null)
     {
-        var what = narrow ? "narrowing" : "workflow";
-        var push = await git.GetWriterAccessAsync(repository, null, pushesWorkflowChanges: !narrow, cancellationToken);
+        var title = narrow ? narrowTitle ?? OnboardingPlanner.NarrowTitle : OnboardingPlanner.LineTitle;
+        var (opened, note, _) = await BotPullRequestAsync(repository, git, pulls, new BotPullRequest(
+            narrow ? "narrowing" : "workflow", lineBranch, head, narrow ? OnboardingPlanner.NarrowBranch(line) : OnboardingPlanner.LineBranch(line), title,
+            narrowBody ?? OnboardingPlanner.LineBody(lineBranch, files.Select(f => f.Path)), files, request => request with { Line = line, Narrow = narrow }), cancellationToken);
+        return (opened, note);
+    }
+
+    /// <summary>
+    /// One bot pull request: <see cref="Files"/> committed on <see cref="Head"/> by the git writer's <c>/jobs/onboarding</c>
+    /// (shaped by <see cref="Shape"/>: a line, a narrowing, the central package conversion), pushed to <see cref="Branch"/>
+    /// and opened into <see cref="BaseBranch"/> (or found, on a retry).
+    /// </summary>
+    private sealed record BotPullRequest(string What, string BaseBranch, string Head, string Branch, string Title, string Body, IReadOnlyList<GitWriterFile> Files,
+        Func<GitWriterDependencyRequest, GitWriterDependencyRequest> Shape);
+
+    private async Task<(bool Opened, string Note, string? Url)> BotPullRequestAsync(Repository repository, IForgeMergeQueue git, IForgeDependencyUpdates pulls, BotPullRequest bot,
+        CancellationToken cancellationToken)
+    {
+        // #649 D8: a commit that changes a workflow needs the token's workflows: write, the narrowing's too since #648.
+        var push = await git.GetWriterAccessAsync(repository, null, pushesWorkflowChanges: bot.Files.Any(f => LinePaths.IsWorkflow(f.Path)), cancellationToken);
         if (push.Access is not { } access)
-            return $"no {what} pull request into {lineBranch}: {push.RefusalReason}";
+        {
+            logger.LogWarning("Onboarding: no {What} pull request into {Repository} {Branch}: {Reason}", bot.What, repository.FullName, bot.BaseBranch, push.RefusalReason);
+            return (false, $"no {bot.What} pull request into {bot.BaseBranch}: {push.RefusalReason?.TrimEnd('.')}", null);
+        }
         var identity = new GitWriterIdentity(VersioningController.Tagger.Name, VersioningController.Tagger.Email, time.GetUtcNow());
         GitWriterDependencyResult pushed;
         try
         {
-            pushed = await writer.OnboardingAsync(new GitWriterDependencyRequest(
+            pushed = await writer.OnboardingAsync(bot.Shape(new GitWriterDependencyRequest(
                 repository.Provider.ToCanonicalString(), repository.GitHubId.ToString(CultureInfo.InvariantCulture), access.CloneUrl,
-                new CommitGraph.SidecarCredential(access.Username, access.Password), lineBranch, head)
+                new CommitGraph.SidecarCredential(access.Username, access.Password), bot.BaseBranch, bot.Head)
             {
-                Line = line, Author = identity, Committer = identity, Message = narrow ? OnboardingPlanner.NarrowTitle : OnboardingPlanner.LineTitle, Files = files,
-                Narrow = narrow,
-            }, cancellationToken);
+                Author = identity, Committer = identity, Message = bot.Title, Files = bot.Files,
+            }), cancellationToken);
         }
         catch (GitWriterRefusedException ex)
         {
-            return $"no {what} pull request into {lineBranch}: {ex.Message}";
+            // #649 D9: #648's refusal reached nobody but a sentence on the state; it is logged now.
+            logger.LogWarning(ex, "Onboarding: the git writer refused {Repository} {Branch}'s {What}", repository.FullName, bot.BaseBranch, bot.What);
+            return (false, $"no {bot.What} pull request into {bot.BaseBranch}: {ex.Message.TrimEnd('.')}", null);
         }
         finally
         {
@@ -483,26 +603,64 @@ public partial class OnboardingService : IOnboardingService
         if (pushed.Outcome != GitWriterOutcomes.Pushed)
         {
             if (pushed.Outcome is GitWriterOutcomes.Busy or GitWriterOutcomes.Failed)
-                throw new GitWriterUnavailableException($"The git writer answered {lineBranch}'s {what} with {pushed.Outcome}: {pushed.Detail}");
-            return $"no {what} pull request into {lineBranch} ({pushed.Outcome}): {pushed.Detail}";
+                throw new GitWriterUnavailableException($"The git writer answered {bot.BaseBranch}'s {bot.What} with {pushed.Outcome}: {pushed.Detail}");
+            logger.LogWarning("Onboarding: {Repository} {Branch}'s {What} was not pushed ({Outcome}): {Detail}", repository.FullName, bot.BaseBranch, bot.What, pushed.Outcome, pushed.Detail);
+            return (false, $"no {bot.What} pull request into {bot.BaseBranch} ({pushed.Outcome}): {pushed.Detail?.TrimEnd('.')}", null);
         }
 
-        var branch = narrow ? OnboardingPlanner.NarrowBranch(line) : OnboardingPlanner.LineBranch(line);
-        var title = narrow ? OnboardingPlanner.NarrowTitle : OnboardingPlanner.LineTitle;
-        var pull = await pulls.FindPullRequestAsync(repository, branch, lineBranch, cancellationToken);
+        var pull = await pulls.FindPullRequestAsync(repository, bot.Branch, bot.BaseBranch, cancellationToken);
         if (pull is null)
         {
             try
             {
-                pull = await pulls.CreatePullRequestAsync(repository, branch, lineBranch, title,
-                    narrowBody ?? OnboardingPlanner.LineBody(lineBranch, files.Select(f => f.Path)), draft: false, cancellationToken);
+                pull = await pulls.CreatePullRequestAsync(repository, bot.Branch, bot.BaseBranch, bot.Title, bot.Body, draft: false, cancellationToken);
             }
             catch (ForgeRequestException ex) when (ex.StatusCode == 422)
             {
-                pull = await pulls.FindPullRequestAsync(repository, branch, lineBranch, cancellationToken) ?? throw ex;
+                pull = await pulls.FindPullRequestAsync(repository, bot.Branch, bot.BaseBranch, cancellationToken) ?? throw ex;
             }
         }
-        return $"opened #{pull.Number} into {lineBranch}";
+        return (true, $"opened #{pull.Number} into {bot.BaseBranch}", pull.HtmlUrl);
+    }
+
+    /// <summary>The MSBuild files a central package conversion reads, and at most how many.</summary>
+    internal const int MaxCentralPackageFiles = 256;
+
+    public async Task<CentralPackageResult> ConvertCentralPackagesAsync(Repository repository, ECentralPackageDirection direction, CancellationToken cancellationToken = default)
+    {
+        if (RefusalBeforePlanning(repository) is { } refusal)
+            return new(false, refusal);
+        var defaultBranch = repository.DefaultBranch!;
+        var git = queues.First(q => q.Provider == repository.Provider);
+        var pulls = updates.First(u => u.Provider == repository.Provider);
+        try
+        {
+            if (await ForgeRepositoryTree.OpenAsync(integrations.For(repository), repository, defaultBranch, cancellationToken) is not { } tree)
+                return new(false, $"{defaultBranch} could not be read from the forge.");
+            var paths = tree.Entries.Keys.Where(LinePaths.IsMsBuild).Order(StringComparer.Ordinal).ToList();
+            if (paths.Count > MaxCentralPackageFiles)
+                return new(false, $"The repository has {paths.Count} MSBuild files; the conversion reads at most {MaxCentralPackageFiles}.");
+            var files = new Dictionary<string, string>(StringComparer.Ordinal);
+            foreach (var path in paths)
+            {
+                if (await ReadTextAsync(tree, path, cancellationToken) is not { } text)
+                    return new(false, $"`{path}` is over {MaxNarrowingFileBytes / 1024} KiB, so the bot does not rewrite it.");
+                files[path] = text;
+            }
+            var conversion = CentralPackageConversion.Plan(files, direction);
+            if (conversion.Refusals.Count > 0)
+                return new(false, string.Join(" ", conversion.Refusals));
+            if (conversion.IsEmpty)
+                return new(false, "There is nothing to convert.");
+            var (opened, note, url) = await BotPullRequestAsync(repository, git, pulls, new BotPullRequest("central package management", defaultBranch, tree.Commit,
+                CentralPackageConversion.Branch, conversion.Title, conversion.Body(), conversion.Files, request => request with { Central = true }), cancellationToken);
+            return new(opened, note, url);
+        }
+        catch (GraphException ex)
+        {
+            logger.LogWarning(ex, "Onboarding: {Repository} was not converted to or from central package management", repository.FullName);
+            return new(false, ex.Message);
+        }
     }
 
     private sealed record Planned(OnboardingPlan? Plan, ForgeRepositoryTree? Tree, IForgeMergeQueue? Git, IForgeDependencyUpdates? Pulls, string? Refusal)
@@ -529,30 +687,12 @@ public partial class OnboardingService : IOnboardingService
             Features = features,
             DefaultBranch = defaultBranch,
             Branches = features.Contains(EOnboardingFeature.ReleaseLines) ? await git.ListBranchesAsync(repository, "", cancellationToken) : [],
-            DependencyActionSha = features.Contains(EOnboardingFeature.DependencyUpdates)
-                ? await TagCommitAsync(pulls, repository, DependencyOnboarding.ActionRepository, DependencyOnboarding.ActionTag, cancellationToken) : null,
-            VersioningActionSha = wantsVersioning
-                ? await TagCommitAsync(pulls, repository, VersioningOnboarding.ActionRepository, VersioningOnboarding.ActionTag, cancellationToken) : null,
             VersioningPackageVersion = wantsVersioning ? await LatestPackageVersionAsync(cancellationToken) : null,
             Owner = repository.OwnerLogin,
             IsTagged = (package, ct) => pulls.HasTagWithPrefixAsync(repository, VersionTag.Prefix(package), ct),
             OlderLines = olderLines,
         }, cancellationToken);
         return new Planned(plan, tree, git, pulls, null);
-    }
-
-    /// <summary>The commit an action's tag resolves to; null keeps the tag in the workflow.</summary>
-    private async Task<string?> TagCommitAsync(IForgeDependencyUpdates pulls, Repository repository, string ownerRepo, string tag, CancellationToken cancellationToken)
-    {
-        try
-        {
-            return await pulls.ResolveTagCommitAsync(repository, ownerRepo, tag, cancellationToken);
-        }
-        catch (Exception ex) when (ex is ForgeRequestException or ForgeAccessDeniedException or HttpRequestException && ForgeRateLimitedException.Find(ex) is null)
-        {
-            logger.LogWarning(ex, "Onboarding: could not resolve {Repository}@{Tag}; the workflow keeps the tag", ownerRepo, tag);
-            return null;
-        }
     }
 
     /// <summary>The latest stable <see cref="VersioningOnboarding.PackageId"/> on nuget.org; null (the constant) when it cannot be read.</summary>

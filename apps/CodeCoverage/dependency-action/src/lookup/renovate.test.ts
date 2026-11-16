@@ -1,7 +1,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { fakeExec, readFixture, tempDir } from '../testing/helpers';
-import { containerUser, dockerArgs, RENOVATE_IMAGE, renovateConfig, runRenovate } from './renovate';
+import { containerUser, dockerArgs, hostRules, RENOVATE_IMAGE, renovateConfig, runRenovate } from './renovate';
 
 describe('Renovate invocation', () => {
   it('pins the S12 image by digest (R13)', () => {
@@ -15,8 +15,35 @@ describe('Renovate invocation', () => {
     expect(c).toMatchObject({ separateMultipleMajor: true, separateMinorPatch: true, separateMultipleMinor: true });
   });
 
+  // prerelease-dependencies-PRD H1/H5 (SP1: Renovate 44.125.2 filter.ts:166-193 drops 0.3.0-beta → 0.4.0-beta by default).
+  it('looks up prereleases for a package already on one, in the SemVer datasources only, with track: stable last', () => {
+    const c = renovateConfig(['vitest'], ['Octokit.GraphQL']);
+    expect(c.packageRules).toEqual([
+      { matchPackageNames: ['vitest'], ignoreUnstable: false },
+      { matchDatasources: ['nuget', 'npm', 'crate', 'packagist'], matchCurrentVersion: '/^[\\[(v^~=]*\\d+(\\.\\d+)*-[0-9A-Za-z]/', ignoreUnstable: false },
+      { matchPackageNames: ['Octokit.GraphQL'], ignoreUnstable: true },
+    ]);
+  });
+
+  it('keeps the prerelease-current rule when no glob is given', () => {
+    expect(renovateConfig().packageRules).toEqual([
+      { matchDatasources: ['nuget', 'npm', 'crate', 'packagist'], matchCurrentVersion: '/^[\\[(v^~=]*\\d+(\\.\\d+)*-[0-9A-Za-z]/', ignoreUnstable: false },
+    ]);
+  });
+
+  it.each([
+    ['0.3.0-beta', true],
+    ['[0.4.0-beta]', true],
+    ['^1.0.0-rc.1', true],
+    ['1.2.0', false],
+    ['1.0.0 - 2.0.0', false],
+  ])('the prerelease pattern on %j is %s (the engine keeps the same pattern, DependencyPolicyConfig.PrereleasePattern)', (version, expected) => {
+    const rule = (renovateConfig().packageRules as { matchCurrentVersion: string }[])[0];
+    expect(new RegExp(rule.matchCurrentVersion.slice(1, -1)).test(version)).toBe(expected);
+  });
+
   it('runs lookup only, writes a file report, and passes secrets by NAME', () => {
-    const args = dockerArgs({ repoDir: '/repo', outDir: '/out', configFile: '/cfg.json', image: RENOVATE_IMAGE, githubTokenEnv: 'INPUT_GITHUB-TOKEN', hostRulesEnv: 'INPUT_HOST-RULES' });
+    const args = dockerArgs({ repoDir: '/repo', outDir: '/out', configFile: '/cfg.json', image: RENOVATE_IMAGE, githubTokenEnv: 'INPUT_GITHUB-TOKEN', hostRules: true });
     expect(args).toEqual(expect.arrayContaining(['--platform=local', '--dry-run=lookup', '--binary-source=install', '--report-type=file', '--report-path=/out/report.json', RENOVATE_IMAGE]));
     expect(args).toContain('RENOVATE_GITHUB_COM_TOKEN');
     expect(args).toContain('RENOVATE_HOST_RULES');
@@ -24,6 +51,47 @@ describe('Renovate invocation', () => {
     // Never `-e NAME=value` for a secret.
     expect(args.filter((a) => /^RENOVATE_(GITHUB_COM_TOKEN|HOST_RULES)=/.test(a))).toEqual([]);
     expect(args.indexOf(RENOVATE_IMAGE)).toBeLessThan(args.indexOf('--platform=local'));
+  });
+
+  describe('hostRules (follower-cooldown-PRD E3: GitHub Packages read with the job token)', () => {
+    const github = { matchHost: 'nuget.pkg.github.com', username: 'octo', password: 'tok' };
+
+    it('adds a GitHub Packages rule from the job token, so a nuget.config mapping to it is readable (S4 a: 401 without)', () => {
+      expect(JSON.parse(hostRules('tok', undefined, 'octo')!)).toEqual([github]);
+    });
+
+    it('appends it to the user rules', () => {
+      const user = [{ matchHost: 'pkgs.dev.azure.com', password: 'x' }];
+      expect(JSON.parse(hostRules('tok', JSON.stringify(user), 'octo')!)).toEqual([...user, github]);
+    });
+
+    it('leaves the user rules alone when one already names GitHub Packages', () => {
+      const user = JSON.stringify([{ matchHost: 'https://nuget.pkg.github.com/acme', password: 'pat' }]);
+      expect(hostRules('tok', user, 'octo')).toBe(user);
+    });
+
+    it('passes rules it cannot read on unchanged, for Renovate to refuse loudly', () => {
+      expect(hostRules('tok', 'not json', 'octo')).toBe('not json');
+    });
+
+    it('is the user rules, or nothing, without a token', () => {
+      expect(hostRules(undefined, '[]', 'octo')).toBe('[]');
+      expect(hostRules(undefined, undefined, 'octo')).toBeUndefined();
+    });
+
+    it('hands the rules to the container by name only', async () => {
+      const work = tempDir();
+      const report = readFixture('renovate/npm/report.json');
+      const ok = fakeExec((_cmd, args) => {
+        const out = args[args.indexOf('-v', args.indexOf('-v') + 1) + 1].split(':/out')[0];
+        fs.writeFileSync(path.join(out, 'report.json'), report);
+        return { code: 0 };
+      });
+      process.env.TEST_TOKEN_NAME = 'secret-value';
+      await runRenovate({ exec: ok.exec, repoDir: work, workDir: work, githubTokenEnv: 'TEST_TOKEN_NAME' });
+      expect(ok.calls[0].args).toContain('RENOVATE_HOST_RULES');
+      expect(ok.calls[0].args.join(' ')).not.toContain('secret-value');
+    });
   });
 
   it('runs the container as the caller uid with group 0, so a 0700 checkout stays readable', () => {

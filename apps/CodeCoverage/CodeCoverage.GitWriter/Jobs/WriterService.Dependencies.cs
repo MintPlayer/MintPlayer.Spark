@@ -17,6 +17,9 @@ public sealed record DependencyPatchInput(DependencyPlan Plan, byte[] Patch, IRe
 {
     /// <summary>#613 item 2: the lookup's non-computed platform locations.</summary>
     public IReadOnlyList<DependencyPlatformLocation> PlatformLocations { get; init; } = [];
+
+    /// <summary>companion-pins-PRD F3: coverage.yml's follow rules.</summary>
+    public IReadOnlyList<DependencyFollowRule> Follow { get; init; } = [];
 }
 
 /// <summary>
@@ -30,7 +33,7 @@ public sealed partial class WriterService
     private const string RollingTracking = "refs/mq/rolling";
 
     /// <summary>R14: the work ref = <c>expected_sha</c> + the plan commit, or + the validated apply patch (a migrate run's base).</summary>
-    public Task<DependencyJobResponse> DependencyWorkRefAsync(DependencyJob job, DependencyCommit commit, string? planJson, DependencyPatchInput? staged, string? expectedWorkSha)
+    public Task<DependencyJobResponse> DependencyWorkRefAsync(DependencyJob job, DependencyCommit commit, string? planJson, DependencyPatchInput? staged, string? expectedWorkSha, bool presetSdk = false)
         => jobs.RunAsync("dependencies-work-ref", job.Repo, async context =>
         {
             DependencyJobResponse Answer(string outcome, string? reason = null, string? sha = null, IReadOnlyList<string>? paths = null, string? detail = null)
@@ -41,7 +44,11 @@ public sealed partial class WriterService
             string tree;
             if (planJson is not null)
             {
-                tree = await WriteFilesAsync(context, job, baseTree, [(DependencyFiles.PlanPath, planJson)]);
+                List<(string, string?)> files = [(DependencyFiles.PlanPath, planJson)];
+                // #658: setup-dotnet installs the SDK the dispatched commit's global.json names, so it names the planned one.
+                if (presetSdk && await GlobalJsonPresetAsync(context, job, planJson) is { } preset)
+                    files.Add((GlobalJsonPreset.Path, preset));
+                tree = await WriteFilesAsync(context, job, baseTree, files);
             }
             else
             {
@@ -203,6 +210,11 @@ public sealed partial class WriterService
             await OpenDependenciesAsync(context, job);
             var baseTree = await RevParseAsync(context, $"{job.ExpectedSha}^{{tree}}");
             var tree = await WriteFilesAsync(context, job, baseTree, files);
+            // #649 D10 (S8): a rerun plans the same files on the same head, and a line's commit is dated now, so it would
+            // rebuild a new commit every time and force-push it, restarting the pull request's checks. The branch that holds
+            // the same tree on the same parent is answered as it is.
+            if (await ExistingSameAsync(context, job, branch, tree) is { } existing)
+                return new DependencyJobResponse(JobOutcomes.Pushed, null, existing, null, [.. files.Select(f => f.Path)], null, context.ElapsedMilliseconds);
             var built = await CommitTreeOnAsync(context, tree, job.ExpectedSha, commit);
             return await PushBotRefAsync(context, job, built, branch, null) switch
             {
@@ -224,6 +236,11 @@ public sealed partial class WriterService
     /// <summary>#638 D15: a line's narrowing commit, force-pushed to <see cref="DependencyBranches.NarrowingOf"/>.</summary>
     public Task<DependencyJobResponse> NarrowingAsync(DependencyJob job, DependencyCommit commit, IReadOnlyList<(string Path, string? Content)> files)
         => FilesOnBranchAsync("narrowing", DependencyBranches.NarrowingOf(job.Line!), job, commit, files);
+
+    /// <summary>multi-target-dependency-split-PRD P7: the central package management conversion commit, force-pushed to
+    /// <see cref="DependencyBranches.CentralPackageManagement"/>.</summary>
+    public Task<DependencyJobResponse> CentralPackagesAsync(DependencyJob job, DependencyCommit commit, IReadOnlyList<(string Path, string? Content)> files)
+        => FilesOnBranchAsync("central-packages", DependencyBranches.CentralPackageManagement, job, commit, files);
 
     /// <summary>R14: the work ref is removed after every run, while it is still at <paramref name="expectedSha"/>.</summary>
     public Task<DependencyJobResponse> DependencyDeleteWorkRefAsync(string repo, Uri cloneUrl, GitCredential credential, string? expectedSha, string? line = null)
@@ -261,6 +278,7 @@ public sealed partial class WriterService
         {
             ClaimedAppliedGroups = input.Claimed,
             TargetActions = input.TargetActions,
+            Follow = input.Follow,
             MaxBytes = options.Value.MaxPatchBytes,
             Lockfiles = new LockfileScanOptions([.. LockfileScanOptions.PublicRegistries, .. input.AllowedHosts], LockfileScanOptions.Default.MaxNewPackages),
         };
@@ -305,6 +323,20 @@ public sealed partial class WriterService
     }
 
     /// <summary><paramref name="tree"/> with each file written (text) or removed (null content).</summary>
+    /// <summary>#658: the root <c>global.json</c> with the plan's SDK (<see cref="GlobalJsonPreset"/>), or null to leave it. A file
+    /// that would not survive the text round trip byte for byte (a BOM, invalid UTF-8) is left alone.</summary>
+    private static async Task<string?> GlobalJsonPresetAsync(JobContext context, DependencyJob job, string planJson)
+    {
+        var objectName = $"{job.ExpectedSha}:{GlobalJsonPreset.Path}";
+        var size = await context.GitAsync(["cat-file", "-s", objectName], job.Credential);
+        if (!size.Succeeded || !long.TryParse(size.StandardOutput.Trim(), out var bytes) || bytes > CodeCoverage.Git.MergeQueue.Resolution.ResolutionLimits.MaxParsedBytes)
+            return null;
+        var text = (await context.RequireAsync(["cat-file", "blob", objectName], job.Credential)).StandardOutput;
+        if (text.StartsWith('﻿') || Encoding.UTF8.GetByteCount(text) != bytes)
+            return null;
+        return GlobalJsonPreset.Preset(text, planJson);
+    }
+
     private static async Task<string> WriteFilesAsync(JobContext context, DependencyJob job, string tree, IReadOnlyList<(string Path, string? Content)> files)
     {
         var index = Path.Combine(context.Scratch, $"files-{Guid.NewGuid():N}.index");
@@ -322,6 +354,24 @@ public sealed partial class WriterService
         }
         await context.RequireAsync(["update-index", "-z", "--index-info"], input: info.ToString(), index: index);
         return Oid(await context.RequireAsync(["write-tree", "--missing-ok"], index: index), "write-tree");
+    }
+
+    private const string ExistingTracking = "refs/mintplayer/existing";
+
+    /// <summary>The tip of <paramref name="branch"/> when it is one commit on <c>expected_sha</c> holding <paramref name="tree"/>; else null
+    /// (no such branch, another parent, another tree, or more than one commit).</summary>
+    private static async Task<string?> ExistingSameAsync(JobContext context, DependencyJob job, string branch, string tree)
+    {
+        var fetched = await context.GitAsync(["fetch", "--quiet", "--no-tags", "--no-write-fetch-head", "--filter=blob:none", "origin", $"+refs/heads/{branch}:{ExistingTracking}"], job.Credential);
+        if (!fetched.Succeeded)
+            return null;
+        var tip = await RevParseAsync(context, ExistingTracking);
+        var parent = await context.GitAsync(["rev-parse", "--verify", "--quiet", "--end-of-options", $"{tip}^1"], job.Credential);
+        var second = await context.GitAsync(["rev-parse", "--verify", "--quiet", "--end-of-options", $"{tip}^2"], job.Credential);
+        return parent.Succeeded && !second.Succeeded
+            && string.Equals(parent.StandardOutput.Trim(), job.ExpectedSha, StringComparison.OrdinalIgnoreCase)
+            && await RevParseAsync(context, $"{tip}^{{tree}}") == tree
+            ? tip : null;
     }
 
     private static async Task<string> CommitTreeOnAsync(JobContext context, string tree, string parent, DependencyCommit commit)
@@ -363,4 +413,7 @@ public static class DependencyBranches
 
     /// <summary>#638 D15: the branch of a line's narrowing pull request.</summary>
     public static string NarrowingOf(string line) => $"mintplayer/narrow-{line}";
+
+    /// <summary>multi-target-dependency-split-PRD P7: the branch of the central package management conversion's pull request.</summary>
+    public const string CentralPackageManagement = "mintplayer/central-package-management";
 }

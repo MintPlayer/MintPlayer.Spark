@@ -1,5 +1,8 @@
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
+using CodeCoverage.Git;
+using CodeCoverage.Git.Dependencies;
 using CodeCoverage.Git.MergeQueue.Resolution;
 
 namespace CodeCoverage.GitWriter.Jobs.Dependencies;
@@ -35,7 +38,10 @@ public static class DependencyPatchValidator
         CancellationToken cancellationToken = default)
     {
         var files = new List<PatchFile>();
-        var shape = PatchValidator.Parse(patch.Span, PathPolicy, request.MaxBytes, files);
+        // P9 (platform-locations-PRD): a *.props/*.targets the lookup reported a tfm-property in passes the path rule; its
+        // lines are then held to PlatformSubstitution's property-line rule like any other reported location.
+        var propertyFiles = request.Platforms.SelectMany(p => p.Locations).Where(IsPropertyLocation).Select(l => l.File).ToHashSet(StringComparer.Ordinal);
+        var shape = PatchValidator.Parse(patch.Span, path => PathPolicy(path, propertyFiles), request.MaxBytes, files);
         if (!shape.Accepted)
             return DependencyPatchVerdict.From(shape);
 
@@ -52,9 +58,27 @@ public static class DependencyPatchValidator
         // The allow-list: planned package files that a code-defined pattern admits and the base holds as regular files.
         var manifests = new Dictionary<string, List<DependencyPlanEntry>>(StringComparer.Ordinal);
         var workflows = new Dictionary<string, List<DependencyPlanEntry>>(StringComparer.Ordinal);
+        var followers = new Dictionary<string, List<(DependencyPlanEntry Entry, DependencyFollowRule Rule)>>(StringComparer.Ordinal);
+        var globs = request.Follow.ToDictionary(r => r, r => new PathGlob(r.Path));
         foreach (var entry in request.Plan)
         {
             var path = entry.PackageFile;
+            // companion-pins-PRD F3: a follow record is admitted only by a rule of its dependency whose glob names the file,
+            // never by the manifest allow-list (a line naming the dependency would let SubstitutionCheck through).
+            if (entry.Manager == FollowManager)
+            {
+                if (!PatchValidator.IsWritablePath(path) || DependencyFiles.IsPlanPath(path) || DependencyFiles.IsCoverageConfig(path) || DependencyFiles.IsDenied(path)
+                    || PatchValidator.IsUnderGitHub(path) || DependencyFiles.LockfileNames.Contains(DependencyFiles.FileName(path))
+                    || await baseTree.ModeAsync(path, cancellationToken) != "100644")
+                    continue;
+                foreach (var rule in request.Follow.Where(r => r.Dependency == entry.DepName && globs[r].Matches(path)))
+                {
+                    if (!followers.TryGetValue(path, out var rules))
+                        followers[path] = rules = [];
+                    rules.Add((entry, rule));
+                }
+                continue;
+            }
             // #613 item 3: Directory.Build.props/.targets hold NuGet references too; edited only by SubstitutionCheck.
             var substitutionOnly = DependencyFiles.IsSubstitutionOnly(path) && entry.Datasource == "nuget";
             if (!PatchValidator.IsWritablePath(path) || DependencyFiles.IsPlanPath(path) || DependencyFiles.IsCoverageConfig(path)
@@ -67,6 +91,20 @@ public static class DependencyPatchValidator
             if (!target.TryGetValue(path, out var list))
                 target[path] = list = [];
             list.Add(entry);
+
+            // D3 (docs/refused_property_and_packagemanager_edits_PRD.md): a NuGet reference whose version is `$(Prop)` moves
+            // the property, which an existing Directory.* file above the project may define. Still SubstitutionCheck only:
+            // the changed line must name the shared variable and differ by the planned swap alone.
+            if (entry.Datasource != "nuget" || entry.SharedVariableName is not { Length: > 0 } || target != manifests)
+                continue;
+            foreach (var propertyFile in DependencyFiles.PropertyFilesOf(path))
+            {
+                if (await baseTree.ModeAsync(propertyFile, cancellationToken) != "100644")
+                    continue;
+                if (!manifests.TryGetValue(propertyFile, out var properties))
+                    manifests[propertyFile] = properties = [];
+                properties.Add(entry);
+            }
         }
 
         // #613 item 2: the files the lookup reported a platform location in, for the plan's platform groups.
@@ -77,7 +115,7 @@ public static class DependencyPatchValidator
             {
                 var path = location.File;
                 if (!PatchValidator.IsWritablePath(path) || DependencyFiles.IsPlanPath(path) || DependencyFiles.IsCoverageConfig(path)
-                    || DependencyFiles.IsDenied(path) && !DependencyFiles.IsSubstitutionOnly(path)
+                    || DependencyFiles.IsDenied(path) && !DependencyFiles.IsSubstitutionOnly(path) && !IsPropertyLocation(location)
                     || PatchValidator.IsUnderGitHub(path) && !DependencyFiles.IsWorkflowFile(path)
                     || DependencyFiles.LockfileNames.Contains(DependencyFiles.FileName(path)))
                     continue;
@@ -111,9 +149,10 @@ public static class DependencyPatchValidator
                 continue;
             }
             var manifestEntries = manifests.GetValueOrDefault(path);
-            if (manifestEntries is not null || platformHere.Count > 0)
+            var followHere = followers.GetValueOrDefault(path) ?? [];
+            if (manifestEntries is not null || platformHere.Count > 0 || followHere.Count > 0)
             {
-                if (await ManifestAsync(file, manifestEntries ?? [], platformHere, baseTree, used, platformApplied, cancellationToken) is { } refused)
+                if (await ManifestAsync(file, manifestEntries ?? [], platformHere, followHere, baseTree, used, platformApplied, cancellationToken) is { } refused)
                     return refused;
                 continue;
             }
@@ -130,7 +169,11 @@ public static class DependencyPatchValidator
         }
 
         // Lockfile-only entries apply when a lockfile of theirs changed; every changed lockfile needs an applied owner.
-        foreach (var entry in request.Plan.Where(e => e.IsLockfileOnly && manifests.ContainsKey(e.PackageFile)))
+        // platform-locations-PRD S2: a changed lockfile cannot say WHICH lockfile-only entry moved it (another group's relock
+        // rewrites it too), so with claims a lockfile-only entry applies only when its group is claimed. An unclaimed change
+        // still needs an owner below, so nothing passes that did not before.
+        var claimedGroups = request.ClaimedAppliedGroups?.ToHashSet(StringComparer.Ordinal);
+        foreach (var entry in request.Plan.Where(e => e.IsLockfileOnly && manifests.ContainsKey(e.PackageFile) && claimedGroups?.Contains(e.GroupName) != false))
         {
             if (lockfiles.Any(l => DependencyFiles.IsLockfileOf(entry.Datasource, entry.PackageFile, l.Path)))
                 used.Add(entry);
@@ -179,25 +222,33 @@ public static class DependencyPatchValidator
 
     /// <summary>The path rule of every dependency profile: git's safe shape, the plan path and <c>coverage.yml</c>
     /// refused, <c>.github/</c> open only to workflow files, the deny-list.</summary>
-    private static PatchVerdict? PathPolicy(string path)
+    private static PatchVerdict? PathPolicy(string path, IReadOnlySet<string> propertyFiles)
     {
         if (DependencyFiles.IsPlanPath(path))
             return PatchVerdict.Reject(DependencyPatchReasons.PlanPath, "The bot's plan file (R14) is never part of a patch.", path);
         if (!PatchValidator.IsWritablePath(path) || PatchValidator.IsUnderGitHub(path) && !DependencyFiles.IsWorkflowFile(path))
             return PatchVerdict.Reject(PatchReasons.UnsafePath, null, path);
         // #613 item 3: Directory.Build.props/.targets pass here and are held to strict substitutions below; an added one is
-        // refused there with every other added file.
-        if (DependencyFiles.IsCoverageConfig(path) || DependencyFiles.IsDenied(path) && !DependencyFiles.IsSubstitutionOnly(path))
+        // refused there with every other added file. P9: so does a *.props/*.targets holding a reported tfm-property.
+        if (DependencyFiles.IsCoverageConfig(path) || DependencyFiles.IsDenied(path) && !DependencyFiles.IsSubstitutionOnly(path) && !propertyFiles.Contains(path))
             return PatchVerdict.Reject(DependencyPatchReasons.DeniedPath, "The deny-list wins over every allow rule.", path);
         return null;
     }
 
+    /// <summary>P9: a reported <c>tfm-property</c> in a <c>*.props</c>/<c>*.targets</c> (never <c>nuget.config</c>, a script,
+    /// or anything else the deny-list names).</summary>
+    private static bool IsPropertyLocation(DependencyPlatformLocation location)
+        => location.Kind == PlatformSubstitution.TfmProperty
+           && (location.File.EndsWith(".props", StringComparison.OrdinalIgnoreCase) || location.File.EndsWith(".targets", StringComparison.OrdinalIgnoreCase));
+
     /// <summary>A manifest, or a file holding a reported platform location: every changed line is a planned
     /// <see cref="SubstitutionCheck"/> swap or a <see cref="PlatformSubstitution"/> of a reported location (#613 item 2).</summary>
     private static async Task<DependencyPatchVerdict?> ManifestAsync(PatchFile file, List<DependencyPlanEntry> entries,
-        List<(DependencyPlatformMove, DependencyPlatformLocation)> platform, IBaseTree baseTree, HashSet<DependencyPlanEntry> used,
-        HashSet<string> platformApplied, CancellationToken cancellationToken)
+        List<(DependencyPlatformMove, DependencyPlatformLocation)> platform, List<(DependencyPlanEntry Entry, DependencyFollowRule Rule)> follow,
+        IBaseTree baseTree, HashSet<DependencyPlanEntry> used, HashSet<string> platformApplied, CancellationToken cancellationToken)
     {
+        if (entries.Any(e => e.Layout is { Count: > 0 }))
+            return await DependencyLayoutCheck.ValidateAsync(file, entries, platform, baseTree, used, platformApplied, cancellationToken);
         (int From, int To)? sdks = null;
         if (DependencyFiles.FileName(file.Path) == "global.json")
         {
@@ -229,10 +280,55 @@ public static class DependencyPatchValidator
                         platformApplied.Add(group);
                         continue;
                     }
+                    IReadOnlyList<DependencyPlanEntry>? followed;
+                    try
+                    {
+                        followed = FollowSubstitution(block.Removed[k], block.Added[k], follow);
+                    }
+                    catch (RegexMatchTimeoutException)
+                    {
+                        return DependencyPatchVerdict.Reject(DependencyPatchReasons.UnplannedChange,
+                            $"Line {line}: a follow rule's pattern ran out of time ({DependencyFollowRule.MatchTimeout.TotalMilliseconds} ms) on it.", file.Path);
+                    }
+                    if (followed is not null)
+                    {
+                        used.UnionWith(followed);
+                        continue;
+                    }
                     return DependencyPatchVerdict.Reject(DependencyPatchReasons.UnplannedChange,
                         $"Line {line}: the change is not a planned current → new swap on a line naming the dependency, nor a planned platform move of a reported location.", file.Path);
                 }
             }
+        }
+        return null;
+    }
+
+    /// <summary>The manager the lookup gives a follower record (dependency-action <c>lookup/follow.ts</c>).</summary>
+    public const string FollowManager = "follow";
+
+    /// <summary>
+    /// companion-pins-PRD F3: the follow entries that explain <paramref name="old"/> → <paramref name="new"/>, or null. A rule's
+    /// matches in the old line whose version is an entry's current value, each swapped to that entry's new value, must give the
+    /// new line exactly; every entry that took part is applied (two pins on one line are two records). Throws
+    /// <see cref="RegexMatchTimeoutException"/>.
+    /// </summary>
+    private static IReadOnlyList<DependencyPlanEntry>? FollowSubstitution(string old, string @new, List<(DependencyPlanEntry Entry, DependencyFollowRule Rule)> follow)
+    {
+        foreach (var rule in follow.Select(f => f.Rule).Distinct())
+        {
+            var entries = follow.Where(f => f.Rule == rule).Select(f => f.Entry).ToList();
+            var groups = rule.Find(old);
+            var swapped = new System.Text.StringBuilder(old);
+            var took = new List<DependencyPlanEntry>();
+            foreach (var group in groups.OrderByDescending(g => g.Index))
+            {
+                if (entries.FirstOrDefault(e => e.CurrentValue == group.Value && e.NewValue != e.CurrentValue) is not { } entry)
+                    continue;
+                swapped.Remove(group.Index, group.Length).Insert(group.Index, entry.NewValue);
+                took.AddRange(entries.Where(e => e.CurrentValue == entry.CurrentValue && e.NewValue == entry.NewValue));
+            }
+            if (took.Count > 0 && swapped.ToString() == @new)
+                return [.. took.Distinct()];
         }
         return null;
     }

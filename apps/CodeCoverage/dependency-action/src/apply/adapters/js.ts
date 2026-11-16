@@ -1,6 +1,6 @@
 import { promises as fs } from 'node:fs';
 import type { Blocker, PlanItem } from '../../contracts/types';
-import { escapeRegExp, replaceUniqueToken } from '../../core/lineEdit';
+import { EditRefused, escapeRegExp, replaceUniqueToken } from '../../core/lineEdit';
 import { combined } from '../../util/exec';
 import { OK, dirOf, exists, jsonBlock, notPinned, outcome, readDoc, rel2abs, writeDoc, type Adapter, type AdapterContext, type StepOutcome } from '../adapter';
 import { parseNpm, parsePnpmNdjson, parseYarnJson } from '../blockers';
@@ -24,6 +24,29 @@ export async function editPackageJson(ctx: AdapterContext, item: PlanItem): Prom
   replaceUniqueToken(doc, { find, to: item.newValue, range }, item.packageFile);
   await writeDoc(ctx, item.packageFile, doc);
 }
+
+/**
+ * D4/D5 (docs/refused_property_and_packagemanager_edits_PRD.md): `"packageManager": "npm@10.9.2"` is corepack's pin of
+ * the package manager, not a dependency. No lockfile records it, so the edit is the whole apply: running npm on it would
+ * add `npm` to package-lock.json (pin) and look for `node_modules/npm` (verify). A `+<hash>` suffix is refused: the new
+ * integrity hash is not ours to compute.
+ */
+export const packageManagerAdapter: Adapter = {
+  id: 'package-manager',
+  matches: (item) => item.datasource === 'npm' && item.depType === 'packageManager',
+  files: async (_ctx, item) => [item.packageFile],
+  async edit(ctx, item) {
+    const doc = await readDoc(ctx, item.packageFile);
+    const field = /^\s*"packageManager"\s*:\s*"([^"]*)"/;
+    const hashed = doc.lines.find((l) => field.test(l.text) && field.exec(l.text)![1].includes('+'));
+    if (hashed) throw new EditRefused(item.packageFile, `packageManager "${field.exec(hashed.text)![1]}" carries an integrity hash the update cannot recompute`, 1);
+    const find = new RegExp(`^\\s*"packageManager"\\s*:\\s*"${escapeRegExp(item.depName)}@(?<v>${escapeRegExp(item.currentValue)})"`);
+    replaceUniqueToken(doc, { find, to: item.newValue }, item.packageFile);
+    await writeDoc(ctx, item.packageFile, doc);
+  },
+  parseBlockers: () => [],
+  tools: () => [],
+};
 
 function lockOf(item: PlanItem, names: string[]): string | null {
   return item.lockFiles.find((l) => names.some((n) => l === n || l.endsWith(`/${n}`))) ?? null;

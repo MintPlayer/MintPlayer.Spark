@@ -24,7 +24,8 @@ public class OnboardingFeatureDetectionTests
 
         var features = OnboardingFeatureDetection.Detect(Repo(uploaded: true), new Account { DependencyUpdates = true, PrSizeLabels = true }, yml);
 
-        features.Should().BeEquivalentTo(Enum.GetValues<EOnboardingFeature>());
+        // #649 D12: "SDK from global.json" is a conversion, not a setting the repository keeps, and starts unchecked.
+        features.Should().BeEquivalentTo(Enum.GetValues<EOnboardingFeature>().Where(f => f != EOnboardingFeature.SdkFromGlobalJson));
     }
 
     [Fact]

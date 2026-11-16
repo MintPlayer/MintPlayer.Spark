@@ -1,0 +1,584 @@
+{
+  "$schema": "http://json.schemastore.org/template",
+  "author": "MintPlayer",
+  "classifications": ["Web", "Angular", "ASP.NET Core", "Server-side rendering"],
+  "identity": "MintPlayer.Dotnet.Templates.CSharp",
+  "groupIdentity": "MintPlayer.Dotnet",
+  "shortName": "mintplayer-web",
+  "name": "ASP.NET Core with Angular",
+  "description": "ASP.NET Core application with Angular featuring SSR, Identity, Bootstrap, translations, and more",
+  "sourceName": "MintPlayer.Dotnet.WebApplication",
+  "defaultName": "WebApplication1",
+  "preferNameDirectory": true,
+  "primaryOutputs": [
+    { "path": "Web/MintPlayer.Dotnet.WebApplication.Web.csproj" },
+    { "path": "Data/MintPlayer.Dotnet.WebApplication.Data.csproj" },
+    { "path": "Dtos/MintPlayer.Dotnet.WebApplication.Dtos.csproj" }
+  ],
+  "tags": {
+    "language": "C#",
+    "type": "project"
+  },
+  "forms": {
+    "lowerCase": {
+      "identifier": "lowerCase"
+    },
+    "append:DbContext": {
+      "identifier": "replace",
+      "pattern": "$",
+      "replacement": "DbContext"
+    },
+    "append:Options": {
+      "identifier": "replace",
+      "pattern": "$",
+      "replacement": "Options"
+    }
+  },
+  "symbols": {
+    "Framework": {
+      "type": "parameter",
+      "description": "The target framework for the project.",
+      "datatype": "choice",
+      "choices": [
+        {
+          "choice": "net10.0",
+          "description": "Target net10.0"
+        }
+      ],
+      "replaces": "net10.0",
+      "defaultValue": "net10.0"
+    },
+
+    "dbContextName": {
+      "type": "derived",
+      "valueSource": "name",
+      "valueTransform": "append:DbContext",
+      "replaces": "AppDbContext"
+    },
+
+    "optionsName": {
+      "type": "derived",
+      "valueSource": "name",
+      "valueTransform": "append:Options",
+      "replaces": "AppOptions"
+    },
+
+    "iisHttpPort": {
+      "type": "parameter",
+      "datatype": "integer",
+      "description": "Port number to use for the IIS Express HTTP endpoint in launchSettings.json."
+    },
+    "iisHttpPortGenerated": {
+      "type": "generated",
+      "generator": "port",
+      "parameters": {
+        "low": 5000,
+        "high": 5300
+      }
+    },
+    "iisHttpPortReplacer": {
+      "type": "generated",
+      "generator": "coalesce",
+      "parameters": {
+        "sourceVariableName": "iisHttpPort",
+        "fallbackVariableName": "iisHttpPortGenerated"
+      },
+      "replaces": "5000"
+    },
+
+    "iisHttpsPort": {
+      "type": "parameter",
+      "datatype": "integer",
+      "description": "Port number to use for the IIS Express HTTPS endpoint in launchSettings.json."
+    },
+    "iisHttpsPortGenerated": {
+      "type": "generated",
+      "generator": "port",
+      "parameters": {
+        "low": 7000,
+        "high": 7300
+      }
+    },
+    "iisHttpsPortReplacer": {
+      "type": "generated",
+      "generator": "coalesce",
+      "parameters": {
+        "sourceVariableName": "iisHttpsPort",
+        "fallbackVariableName": "iisHttpsPortGenerated"
+      },
+      "replaces": "7000"
+    },
+
+    "EnableHttps": {
+      "type": "parameter",
+      "datatype": "bool",
+      "defaultValue": "true",
+      "displayName": "Enable HTTPS",
+      "description": "Redirects all HTTP requests to HTTPS"
+    },
+
+    "EnableHsts": {
+      "type": "parameter",
+      "datatype": "bool",
+      "defaultValue": "true",
+      "displayName": "Enable HSTS",
+      "description": "Adds HTTP Strict Transport Security header to responses"
+    },
+
+    "UiFramework": {
+      "type": "parameter",
+      "datatype": "choice",
+      "defaultValue": "None",
+      "displayName": "UI Framework",
+      "description": "The UI framework to use for the Angular app",
+      "choices": [
+        {
+          "choice": "None",
+          "description": "No UI framework"
+        },
+        {
+          "choice": "MintPlayerNgBootstrap",
+          "displayName": "@mintplayer/ng-bootstrap",
+          "description": "MintPlayer's ng-bootstrap implementation"
+        },
+        {
+          "choice": "NgBootstrap",
+          "displayName": "@ng-bootstrap/ng-bootstrap",
+          "description": "Official ng-bootstrap library"
+        }
+      ]
+    },
+    "UseMintPlayerNgBootstrap": {
+      "type": "computed",
+      "value": "(UiFramework == \"MintPlayerNgBootstrap\")"
+    },
+    "UseNgBootstrap": {
+      "type": "computed",
+      "value": "(UiFramework == \"NgBootstrap\")"
+    },
+    "UseAnyBootstrap": {
+      "type": "computed",
+      "value": "(UiFramework != \"None\")"
+    },
+
+    "IdentityProvider": {
+      "type": "parameter",
+      "datatype": "choice",
+      "defaultValue": "None",
+      "displayName": "Identity Provider",
+      "description": "The identity provider to use for authentication",
+      "choices": [
+        {
+          "choice": "None",
+          "description": "No identity provider"
+        },
+        {
+          "choice": "IdentityServer",
+          "description": "Duende IdentityServer"
+        },
+        {
+          "choice": "OpenIdDict",
+          "description": "OpenIdDict"
+        }
+      ]
+    },
+    "UseIdentityServer": {
+      "type": "computed",
+      "value": "(IdentityProvider == \"IdentityServer\")"
+    },
+    "UseOpenIdDict": {
+      "type": "computed",
+      "value": "(IdentityProvider == \"OpenIdDict\")"
+    },
+    "UseAnyIdentityProvider": {
+      "type": "computed",
+      "value": "(IdentityProvider != \"None\")"
+    },
+
+    "ServerSideRendering": {
+      "type": "parameter",
+      "datatype": "choice",
+      "defaultValue": "None",
+      "displayName": "Server-side Rendering",
+      "description": "Server-side rendering implementation",
+      "choices": [
+        {
+          "choice": "None",
+          "description": "No SSR"
+        },
+        {
+          "choice": "OnSupplyData",
+          "description": "OnSupplyData pattern for SSR"
+        }
+      ]
+    },
+    "UseSsr": {
+      "type": "computed",
+      "value": "(ServerSideRendering != \"None\")"
+    },
+
+    "HtmlMinification": {
+      "type": "parameter",
+      "datatype": "choice",
+      "defaultValue": "None",
+      "displayName": "HTML Minification",
+      "description": "HTML/CSS/JS minification library",
+      "choices": [
+        {
+          "choice": "None",
+          "description": "No minification"
+        },
+        {
+          "choice": "WebMarkupMin",
+          "description": "WebMarkupMin library"
+        }
+      ]
+    },
+    "UseWebMarkupMin": {
+      "type": "computed",
+      "value": "(HtmlMinification == \"WebMarkupMin\")"
+    },
+
+    "Translations": {
+      "type": "parameter",
+      "datatype": "choice",
+      "defaultValue": "None",
+      "displayName": "Translations",
+      "description": "Translation/i18n library for Angular",
+      "choices": [
+        {
+          "choice": "None",
+          "description": "No translations"
+        },
+        {
+          "choice": "NgxTranslate",
+          "displayName": "@ngx-translate",
+          "description": "ngx-translate library"
+        }
+      ]
+    },
+    "UseNgxTranslate": {
+      "type": "computed",
+      "value": "(Translations == \"NgxTranslate\")"
+    },
+
+    "EnablePwa": {
+      "type": "parameter",
+      "datatype": "bool",
+      "defaultValue": "false",
+      "displayName": "PWA Support",
+      "description": "Enable Progressive Web App support"
+    },
+
+    "EnableXsrf": {
+      "type": "parameter",
+      "datatype": "bool",
+      "defaultValue": "true",
+      "displayName": "XSRF Protection",
+      "description": "Enable XSRF/CSRF protection"
+    },
+
+    "EnableTwoFactor": {
+      "type": "parameter",
+      "datatype": "bool",
+      "defaultValue": "false",
+      "displayName": "Two-Factor Authentication",
+      "description": "Enable 2FA with authenticator apps"
+    },
+
+    "EnableExternalLogins": {
+      "type": "parameter",
+      "datatype": "bool",
+      "defaultValue": "false",
+      "displayName": "External Logins",
+      "description": "Enable external login providers"
+    },
+
+    "ExternalLoginMicrosoft": {
+      "type": "parameter",
+      "datatype": "bool",
+      "defaultValue": "false",
+      "displayName": "Microsoft Login",
+      "description": "Enable Microsoft Account login"
+    },
+
+    "ExternalLoginGoogle": {
+      "type": "parameter",
+      "datatype": "bool",
+      "defaultValue": "false",
+      "displayName": "Google Login",
+      "description": "Enable Google login"
+    },
+
+    "ExternalLoginFacebook": {
+      "type": "parameter",
+      "datatype": "bool",
+      "defaultValue": "false",
+      "displayName": "Facebook Login",
+      "description": "Enable Facebook login"
+    },
+
+    "ExternalLoginX": {
+      "type": "parameter",
+      "datatype": "bool",
+      "defaultValue": "false",
+      "displayName": "X (Twitter) Login",
+      "description": "Enable X (Twitter) login"
+    },
+
+    "ExternalLoginLinkedIn": {
+      "type": "parameter",
+      "datatype": "bool",
+      "defaultValue": "false",
+      "displayName": "LinkedIn Login",
+      "description": "Enable LinkedIn login"
+    },
+
+    "UseAnyExternalLogin": {
+      "type": "computed",
+      "value": "(EnableExternalLogins && (ExternalLoginMicrosoft || ExternalLoginGoogle || ExternalLoginFacebook || ExternalLoginX || ExternalLoginLinkedIn))"
+    },
+
+    "EnableEmailConfirmation": {
+      "type": "parameter",
+      "datatype": "bool",
+      "defaultValue": "false",
+      "displayName": "Email Confirmation",
+      "description": "Enable email confirmation for registration"
+    },
+
+    "EnableConcurrencyHandling": {
+      "type": "parameter",
+      "datatype": "bool",
+      "defaultValue": "false",
+      "displayName": "Concurrency Handling",
+      "description": "Enable optimistic concurrency handling"
+    },
+
+    "SearchProvider": {
+      "type": "parameter",
+      "datatype": "choice",
+      "defaultValue": "None",
+      "displayName": "Search Provider",
+      "description": "Search engine integration",
+      "choices": [
+        {
+          "choice": "None",
+          "description": "No search provider"
+        },
+        {
+          "choice": "ElasticSearch",
+          "description": "ElasticSearch with NEST"
+        }
+      ]
+    },
+    "UseElasticSearch": {
+      "type": "computed",
+      "value": "(SearchProvider == \"ElasticSearch\")"
+    },
+
+    "EnableDocker": {
+      "type": "parameter",
+      "datatype": "bool",
+      "defaultValue": "false",
+      "displayName": "Docker Support",
+      "description": "Add Dockerfile and docker-compose"
+    },
+
+    "EnableOpenSearch": {
+      "type": "parameter",
+      "datatype": "bool",
+      "defaultValue": "false",
+      "displayName": "OpenSearch",
+      "description": "Enable OpenSearch descriptor for browser search"
+    },
+
+    "DatabaseProvider": {
+      "type": "parameter",
+      "datatype": "choice",
+      "defaultValue": "SqlServer",
+      "displayName": "Database Provider",
+      "description": "The database provider to use",
+      "choices": [
+        {
+          "choice": "SqlServer",
+          "description": "Microsoft SQL Server"
+        },
+        {
+          "choice": "PostgreSQL",
+          "description": "PostgreSQL"
+        },
+        {
+          "choice": "SQLite",
+          "description": "SQLite"
+        }
+      ]
+    },
+    "UseSqlServer": {
+      "type": "computed",
+      "value": "(DatabaseProvider == \"SqlServer\")"
+    },
+    "UsePostgreSQL": {
+      "type": "computed",
+      "value": "(DatabaseProvider == \"PostgreSQL\")"
+    },
+    "UseSQLite": {
+      "type": "computed",
+      "value": "(DatabaseProvider == \"SQLite\")"
+    },
+
+    "EnableUnitTests": {
+      "type": "parameter",
+      "datatype": "bool",
+      "defaultValue": "false",
+      "displayName": "Unit Tests",
+      "description": "Include unit test project scaffolding"
+    },
+
+    "skipRestore": {
+      "type": "parameter",
+      "datatype": "bool",
+      "description": "If specified, skips the automatic restore of the project on create.",
+      "defaultValue": "false"
+    }
+  },
+  "sources": [
+    {
+      "source": "./",
+      "target": "./",
+      "exclude": [
+        ".template.config/**"
+      ],
+      "modifiers": [
+        {
+          "condition": "(IdentityProvider == \"None\")",
+          "exclude": [
+            "Web/Server/Controllers/Api/V1/AccountController.cs",
+            "Web/Server/Controllers/Web/AuthController.cs",
+            "Web/Server/ViewModels/**",
+            "Web/Server/Views/**",
+            "Web/ClientApp/src/app/pages/account/**",
+            "Data/Entities/User.cs",
+            "Data/Services/AccountService.cs",
+            "Data/Services/Interfaces/IAccountService.cs",
+            "Dtos/Dtos/User.cs",
+            "Dtos/Dtos/LoginRequest.cs",
+            "Dtos/Dtos/LoginResponse.cs",
+            "Dtos/Dtos/RegisterRequest.cs",
+            "Dtos/Dtos/TwoFactorRequest.cs",
+            "Dtos/Dtos/ExternalLoginRequest.cs"
+          ]
+        },
+        {
+          "condition": "(!EnableTwoFactor)",
+          "exclude": [
+            "Web/ClientApp/src/app/pages/account/two-factor/**",
+            "Dtos/Dtos/TwoFactorRequest.cs",
+            "Dtos/Dtos/TwoFactorSetupResponse.cs",
+            "Dtos/Dtos/TwoFactorVerifyRequest.cs"
+          ]
+        },
+        {
+          "condition": "(!EnableExternalLogins)",
+          "exclude": [
+            "Web/ClientApp/src/app/pages/account/external-login/**",
+            "Dtos/Dtos/ExternalLoginRequest.cs",
+            "Dtos/Dtos/ExternalLoginInfo.cs"
+          ]
+        },
+        {
+          "condition": "(!EnableEmailConfirmation)",
+          "exclude": [
+            "Web/ClientApp/src/app/pages/account/confirm-email/**",
+            "Dtos/Dtos/ConfirmEmailRequest.cs",
+            "Dtos/Dtos/ResendConfirmationRequest.cs"
+          ]
+        },
+        {
+          "condition": "(ServerSideRendering == \"None\")",
+          "exclude": [
+            "Web/Services/SpaPrerenderingService.cs",
+            "Web/ClientApp/src/main.server.ts",
+            "Web/ClientApp/src/app/app.config.server.ts",
+            "Web/ClientApp/tsconfig.server.json",
+            "Web/ClientApp/server.ts"
+          ]
+        },
+        {
+          "condition": "(!EnablePwa)",
+          "exclude": [
+            "Web/ClientApp/ngsw-config.json",
+            "Web/ClientApp/src/manifest.webmanifest"
+          ]
+        },
+        {
+          "condition": "(Translations == \"None\")",
+          "exclude": [
+            "Web/ClientApp/src/assets/i18n/**",
+            "Web/ClientApp/src/app/translate-loaders/**"
+          ]
+        },
+        {
+          "condition": "(SearchProvider == \"None\")",
+          "exclude": [
+            "Web/Server/Controllers/Api/V1/SearchController.cs",
+            "Web/Services/SearchService.cs",
+            "Data/Services/SearchService.cs",
+            "Data/Services/Interfaces/ISearchService.cs",
+            "Dtos/Dtos/SearchRequest.cs",
+            "Dtos/Dtos/SearchResult.cs"
+          ]
+        },
+        {
+          "condition": "(!EnableDocker)",
+          "exclude": [
+            "Web/Dockerfile",
+            "Web/.dockerignore",
+            "docker-compose.yml",
+            "docker-compose.override.yml"
+          ]
+        },
+        {
+          "condition": "(!EnableOpenSearch)",
+          "exclude": [
+            "Web/Server/Controllers/Web/OpenSearchController.cs",
+            "Web/Services/OpenSearchService.cs"
+          ]
+        },
+        {
+          "condition": "(!EnableXsrf)",
+          "exclude": [
+            "Web/Extensions/XsrfExtensions.cs",
+            "Web/ClientApp/src/app/interceptors/xsrf.interceptor.ts"
+          ]
+        },
+        {
+          "condition": "(!EnableConcurrencyHandling)",
+          "exclude": [
+            "Web/ClientApp/src/app/interceptors/concurrency.interceptor.ts",
+            "Dtos/Dtos/ConcurrencyError.cs"
+          ]
+        },
+        {
+          "condition": "(!EnableUnitTests)",
+          "exclude": [
+            "Tests/**"
+          ]
+        }
+      ]
+    }
+  ],
+  "postActions": [
+    {
+      "condition": "(!skipRestore)",
+      "description": "Restore NuGet packages required by this project.",
+      "manualInstructions": [
+        {
+          "text": "Run 'dotnet restore'"
+        }
+      ],
+      "actionId": "210D431B-A78B-4D2F-B762-4ED3E3EA9025",
+      "continueOnError": true
+    }
+  ]
+}

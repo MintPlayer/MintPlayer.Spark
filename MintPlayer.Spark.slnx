@@ -144,6 +144,9 @@
   <Folder Name="/libs/notifications/">
     <Project Path="libs/notifications/MintPlayer.Spark.Notifications/MintPlayer.Spark.Notifications.csproj" />
   </Folder>
+  <Folder Name="/libs/logging/">
+    <Project Path="libs/logging/MintPlayer.Spark.Logging/MintPlayer.Spark.Logging.csproj" />
+  </Folder>
   <Folder Name="/libs/organizations/">
     <Project Path="libs/organizations/MintPlayer.Spark.Organizations/MintPlayer.Spark.Organizations.csproj" />
   </Folder>

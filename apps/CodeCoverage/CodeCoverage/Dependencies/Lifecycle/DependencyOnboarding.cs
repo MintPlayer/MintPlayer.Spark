@@ -9,11 +9,11 @@ namespace CodeCoverage.Dependencies.Lifecycle;
 /// <param name="TranslatedRules">Dependabot's removed <c>ignore:</c> entries as suggested <c>coverage.yml</c> lines.</param>
 /// <param name="RemovedEcosystems">The <c>updates:</c> entries taken out of <c>dependabot.yml</c>.</param>
 public sealed record DependencyOnboardingPlan(IReadOnlyList<GitWriterFile> Files, IReadOnlyList<string> TranslatedRules, IReadOnlyList<string> RemovedEcosystems,
-    IReadOnlyList<string> Registries, bool Pinned, string Body);
+    IReadOnlyList<string> Registries, string Body);
 
 /// <summary>
 /// R16: the onboarding pull request switches the repository over. It adds thin callers of the versioned action (the shipped
-/// templates, the action's <c>@dependency-update-v1</c> pinned to the commit the bot resolved), a commented <c>dependencies:</c>
+/// templates, at the moving tag <c>@dependency-update-v1</c>: owner, 2026-11-13, superseding D-L14's commit pin), a commented <c>dependencies:</c>
 /// section in <c>coverage.yml</c>, and removes <c>dependabot.yml</c>'s version-update entries, whose <c>ignore:</c> rules it
 /// translates into the body. Dependabot alerts and security updates are repository settings and stay as they are.
 /// </summary>
@@ -22,6 +22,10 @@ public static class DependencyOnboarding
     public const string ActionReference = "MintPlayer/MintPlayer.Spark/apps/CodeCoverage/dependency-action@dependency-update-v1";
     public const string ActionRepository = "MintPlayer/MintPlayer.Spark";
     public const string ActionTag = "dependency-update-v1";
+    public const string ActionPath = "MintPlayer/MintPlayer.Spark/apps/CodeCoverage/dependency-action";
+
+    /// <summary>What the onboarding and refresh pull requests say about the action reference.</summary>
+    public const string ActionNote = $"The workflows call the GitHub Action `{ActionPath}` at `{ActionTag}`, a tag every release of the action moves: a fix to the action reaches the next run without a pull request.";
 
     public const string Title = "Set up MintPlayer dependency updates";
 
@@ -30,27 +34,26 @@ public static class DependencyOnboarding
 
     /// <summary>
     /// #613 item 4: the files of the refresh pull request: each outdated workflow the bot owns a template for, replaced by the
-    /// current template pinned like onboarding's. Null when none of <paramref name="workflows"/> has a template (a custom
+    /// current template. Null when none of <paramref name="workflows"/> has a template (a custom
     /// <c>lookupWorkflow</c> name is the owner's to update).
     /// </summary>
-    public static IReadOnlyList<GitWriterFile>? RefreshFiles(IReadOnlyCollection<string> workflows, string? actionSha, Func<string, string> readTemplate)
+    public static IReadOnlyList<GitWriterFile>? RefreshFiles(IReadOnlyCollection<string> workflows, Func<string, string> readTemplate)
     {
         var files = Templates([])
             .Where(t => workflows.Contains(Path.GetFileName(t.Path), StringComparer.Ordinal))
-            .Select(t => new GitWriterFile(t.Path, Pin(readTemplate(t.Resource), actionSha)))
+            .Select(t => new GitWriterFile(t.Path, readTemplate(t.Resource)))
             .ToList();
         return files.Count == 0 ? null : files;
     }
 
     /// <summary>#613 item 4: the refresh pull request's body.</summary>
-    public static string RefreshBody(IReadOnlyList<GitWriterFile> files, string reason, string? actionSha)
+    public static string RefreshBody(IReadOnlyList<GitWriterFile> files, string reason)
     {
         var body = new StringBuilder();
         body.Append(DependencyPullRequestBody.Marker).Append('\n');
         body.Append("The dependency updater could not run: ").Append(reason).Append("\n\n");
         body.Append("This pull request replaces ").Append(string.Join(" and ", files.Select(f => $"`{f.Path}`")))
-            .Append(" with the current template")
-            .Append(actionSha is { Length: 40 } ? $", with the action pinned to `{actionSha[..12]}` ({ActionTag})" : string.Empty)
+            .Append($" with the current template, which calls the action at `{ActionTag}`")
             .Append(". Changes you made to the file are replaced too: put them back before merging if you still need them.\n\n");
         body.Append("Merging it starts a dependency run, as the onboarding pull request did.\n\n");
         body.Append(ApprovalNote);
@@ -66,8 +69,8 @@ public static class DependencyOnboarding
     {
         "dependency-lookup.yml" => "the lookup. The bot dispatches it on the default branch; it runs Renovate in lookup-only mode and uploads what is available.",
         "dependency-apply.yml" => "the apply. The bot dispatches it on its plan; it edits the manifests and relocks with scripts off, and uploads the patch the bot validates and pushes.",
-        "angular-migrate.yml" => "runs the `ng update` migrations of an Angular update you approved with `approve <group>`; such a pull request never auto-merges.",
-        "nx-migrate.yml" => "runs the `nx migrate` migrations of an Nx update you approved with `approve <group>`; such a pull request never auto-merges.",
+        "angular-migrate.yml" => "runs the `ng update` migrations of an Angular update you approved with `/approve <group>`; such a pull request never auto-merges.",
+        "nx-migrate.yml" => "runs the `nx migrate` migrations of an Nx update you approved with `/approve <group>`; such a pull request never auto-merges.",
         _ => null,
     };
 
@@ -81,7 +84,7 @@ public static class DependencyOnboarding
         #   cooldown: 3d                     # third-party releases wait this long; may only lengthen the account's
         #   autoMerge:                       # the largest update merged through the merge queue without an approval
         #     default: minor
-        #     "@angular/*": never            # never: every update waits for `approve <group>`
+        #     "@angular/*": never            # never: every update waits for `/approve <group>`
         #     maxCoverageDrop: 0.5           # percentage points
         #   rules:
         #     - match: ["some-package"]
@@ -93,6 +96,8 @@ public static class DependencyOnboarding
         #       onMajor: nx-migrate.yml
         #   platforms:                       # SDK moves (TFMs, global.json, setup-* inputs, Dockerfile FROM, …), per SDK
         #     dotnet: { strategy: replace }  # track: lts | stable | preview (the account's, else stable); strategy: add keeps the old TFM too
+        #     # dotnet companions may pin a range per channel or SDK band, and `builtin` keeps the built-in list:
+        #     # dotnet: { companions: [{ match: "Microsoft.CodeAnalysis*", versions: { "11.0.1xx": "5.12.x" } }, builtin] }
         #     node: { companions: ["@types/node"] }   # packages that move with the SDK's major; [] turns them off
         """);
 
@@ -139,19 +144,27 @@ public static class DependencyOnboarding
         return Lf(reader.ReadToEnd());
     }
 
-    /// <summary>The template with the action pinned to <paramref name="actionSha"/> (the tag kept as a comment), or unchanged
-    /// when the bot could not resolve the tag.</summary>
-    public static string Pin(string template, string? actionSha)
-        => actionSha is { Length: 40 }
-            ? template.Replace(ActionReference, $"{ActionReference[..ActionReference.LastIndexOf('@')]}@{actionSha} # {ActionTag}", StringComparison.Ordinal)
-            : template;
+    /// <summary>
+    /// Owner, 2026-11-13: <paramref name="workflow"/> with the action pinned to a commit moved back to <see cref="ActionTag"/>
+    /// (<see cref="global::CodeCoverage.Onboarding.ActionTagReference"/>); unchanged otherwise.
+    /// </summary>
+    public static string AtTag(string workflow) => global::CodeCoverage.Onboarding.ActionTagReference.AtTag(workflow, ActionPath, ActionTag);
 
+    /// <param name="readExisting">The text of a workflow the repository has, or null. Only its commit pin is moved to the tag
+    /// (#658 F4: the rest of an existing workflow is its owner's).</param>
     public static DependencyOnboardingPlan Plan(IReadOnlyCollection<string> treePaths, string? coverageYml, string? dependabotPath, string? dependabotYml,
-        string? actionSha, Func<string, string> readTemplate, bool addMergeQueue = false, bool githubMergeQueue = false)
+        Func<string, string> readTemplate, bool addMergeQueue = false, bool githubMergeQueue = false, Func<string, string?>? readExisting = null)
     {
         var files = new List<GitWriterFile>();
+        // #658 F4: a workflow the repository already has is its owner's; the workflow-outdated pull request updates it, on its own.
+        var existing = treePaths.ToHashSet(StringComparer.Ordinal);
         foreach (var (path, resource) in Templates(treePaths))
-            files.Add(new GitWriterFile(path, Pin(readTemplate(resource), actionSha)));
+        {
+            if (!existing.Contains(path))
+                files.Add(new GitWriterFile(path, readTemplate(resource)));
+            else if (readExisting?.Invoke(path) is { } current && AtTag(current) is var moved && moved != current)
+                files.Add(new GitWriterFile(path, moved));
+        }
 
         var yml = coverageYml ?? string.Empty;
         var text = yml;
@@ -168,8 +181,8 @@ public static class DependencyOnboarding
         if (dependabotPath is not null && removed.Count > 0)
             files.Add(new GitWriterFile(dependabotPath, newDependabot, Delete: newDependabot is null));
 
-        return new DependencyOnboardingPlan(files, rules, removed, registries, actionSha is { Length: 40 },
-            Body(files, rules, removed, registries, actionSha, dependabotPath, addMergeQueue && !HasTopLevelKey(yml, "mergeQueue"), githubMergeQueue));
+        return new DependencyOnboardingPlan(files, rules, removed, registries,
+            Body(files, rules, removed, registries, dependabotPath, addMergeQueue && !HasTopLevelKey(yml, "mergeQueue"), githubMergeQueue));
     }
 
     /// <summary>
@@ -259,9 +272,9 @@ public static class DependencyOnboarding
         if (types.Count == 0 && !hasVersions)
             yield return $"{RulePrefix}- {{ match: [{quoted}], ignore: true }}";
         else if (types.Count > 0 && !hasVersions && types.All(x => x == "version-update:semver-major"))
-            yield return $"{AutoMergePrefix}{quoted}: minor   # majors wait for `approve`";
+            yield return $"{AutoMergePrefix}{quoted}: minor   # majors wait for `/approve`";
         else if (types.Count > 0 && !hasVersions && types.All(x => x is "version-update:semver-major" or "version-update:semver-minor"))
-            yield return $"{AutoMergePrefix}{quoted}: patch   # minors and majors wait for `approve`";
+            yield return $"{AutoMergePrefix}{quoted}: patch   # minors and majors wait for `/approve`";
         else
             yield return $"# {name}: Dependabot ignored some versions; rules take no version ranges, so hold it (hold: true) or approve by hand";
     }
@@ -291,7 +304,7 @@ public static class DependencyOnboarding
         => node.Children.TryGetValue(new YamlScalarNode(key), out var value) && value is YamlScalarNode scalar ? scalar.Value : null;
 
     private static string Body(IReadOnlyList<GitWriterFile> files, IReadOnlyList<string> rules, IReadOnlyList<string> removed, IReadOnlyList<string> registries,
-        string? actionSha, string? dependabotPath, bool mergeQueueAdded = false, bool githubMergeQueue = false)
+        string? dependabotPath, bool mergeQueueAdded = false, bool githubMergeQueue = false)
     {
         var body = new StringBuilder();
         body.AppendLine(DependencyPullRequestBody.Marker);
@@ -304,10 +317,7 @@ public static class DependencyOnboarding
             body.AppendLine("`coverage.yml` gets `mergeQueue: { enabled: true }`: dependency pull requests within your thresholds merge through the merge queue, and your own pull requests can use it too. See the [merge queue guide](https://coverage.mintplayer.com/merge-queue/setup). Remove the section to keep merging by hand.").AppendLine();
         if (githubMergeQueue)
             body.AppendLine(GitHubMergeQueueNote).AppendLine();
-        var action = ActionReference[..ActionReference.LastIndexOf('@')];
-        body.AppendLine(actionSha is { Length: 40 }
-            ? $"The workflows call the GitHub Action `{action}`, pinned to `{actionSha}` (`{ActionTag}`). The rolling pull request keeps that pin current, without the cooldown other updates wait for: it is the bot's own runtime."
-            : $"The workflows call the GitHub Action `{action}` at `{ActionTag}`; pin it to a commit if your policy requires it.");
+        body.AppendLine(ActionNote);
         body.AppendLine();
         body.AppendLine("Nothing else needs adding: the bot dispatches these workflows by file name (`dependencies.lookupAction` / `applyAction` in coverage.yml, when you rename them), so keep them on the default branch.");
         body.AppendLine();

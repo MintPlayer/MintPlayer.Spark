@@ -1,4 +1,4 @@
-import type { PlatformCandidate, PlatformRecord, PlatformTable, Sdk } from '../contracts/types';
+import type { FollowRule, PlatformCandidate, PlatformRecord, PlatformTable, Sdk } from '../contracts/types';
 import { CONTRACT_VERSION, SDKS } from '../contracts/types';
 import { compareChannels, isPreviewVersion, sortChannelsDesc } from './channels';
 import { inChannelMoveChanges } from './applyPlatform';
@@ -19,16 +19,30 @@ export function parsePlatformTable(raw: string): PlatformTable {
   } catch {
     throw new Error('input platforms must be the JSON channel table {"sdks":{...},"unstable":[...]}');
   }
-  const { sdks, unstable } = (parsed ?? {}) as Record<string, unknown>;
+  const { sdks, unstable, stable = [], follow = [] } = (parsed ?? {}) as Record<string, unknown>;
   if (typeof sdks !== 'object' || sdks === null || Array.isArray(sdks)) throw new Error('input platforms.sdks must be an object of channel lists');
   if (!Array.isArray(unstable) || unstable.some((g) => typeof g !== 'string')) throw new Error('input platforms.unstable must be an array of package globs');
-  const table: PlatformTable = { sdks: {}, unstable: unstable as string[] };
+  // prerelease-dependencies-PRD H5: absent while the bot that dispatches this predates it (the action's moving tag and the
+  // server deploy separately).
+  if (!Array.isArray(stable) || stable.some((g) => typeof g !== 'string')) throw new Error('input platforms.stable must be an array of package globs');
+  // dependency-companion-pins-PRD F2: absent while the bot that dispatches this predates it.
+  if (!Array.isArray(follow)) throw new Error('input platforms.follow must be an array of follow rules');
+  const table: PlatformTable = { sdks: {}, unstable: unstable as string[], stable: stable as string[], follow: follow.map((r, i) => followRule(r, `platforms.follow[${i}]`)) };
   for (const [sdk, list] of Object.entries(sdks)) {
     if (!(SDKS as readonly string[]).includes(sdk)) continue; // an SDK this action has no adapter for yet
     if (!Array.isArray(list)) throw new Error(`input platforms.sdks.${sdk} must be an array`);
     table.sdks[sdk as Sdk] = list.map((c, i) => candidate(c, `platforms.sdks.${sdk}[${i}]`));
   }
   return table;
+}
+
+function followRule(value: unknown, at: string): FollowRule {
+  const r = (value ?? {}) as Record<string, unknown>;
+  for (const key of ['dependency', 'path', 'match']) {
+    if (typeof r[key] !== 'string' || r[key] === '') throw new Error(`input ${at}.${key} must be a non-empty string`);
+  }
+  if (r.version !== undefined && r.version !== null && typeof r.version !== 'string') throw new Error(`input ${at}.version must be a string`);
+  return { dependency: r.dependency as string, path: r.path as string, match: r.match as string, version: (r.version as string | null | undefined) ?? null };
 }
 
 function candidate(value: unknown, at: string): PlatformCandidate {
@@ -76,12 +90,15 @@ export function buildPlatformRecord(sdk: Sdk, found: Found[], feed: PlatformCand
   const same = highest ? (feed ?? []).find((c) => c.channel === highest) : undefined;
   const inChannel = same && inChannelMoveChanges(found, { sdk, fromChannel: highest, toChannel: highest, toVersion: same.latestVersion, sdkVersion: same.latestSdk ?? null });
   const candidates = inChannel ? [...newer, same] : newer;
+  // multi-target-dependency-split-PRD M6: a multi-target project drops a TFM once its channel is end of life, and the
+  // candidates above hold only newer channels, so the current ones that are past it are named here.
+  const endOfLife = channels.filter((ch) => (feed ?? []).some((c) => c.channel === ch && isEol(c.eol, now)));
   return {
     contractVersion: CONTRACT_VERSION,
     kind: 'platform',
     sdk,
     source: feed === null ? 'none' : sdk === 'dotnet' ? 'releases-index' : 'endoflife.date',
-    current: { channels, preview },
+    current: endOfLife.length > 0 ? { channels, preview, endOfLife } : { channels, preview },
     locations: found.map(toLocation),
     candidates,
   };

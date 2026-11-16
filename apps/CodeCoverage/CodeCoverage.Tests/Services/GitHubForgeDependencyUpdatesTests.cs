@@ -202,25 +202,6 @@ public class GitHubForgeDependencyUpdatesTests
         (await act.Should().ThrowAsync<ForgeAccessDeniedException>()).Which.RequiredPermission.Should().Be("pull_requests=write");
     }
 
-    [Theory]
-    [InlineData(EForgeReaction.ThumbsUp, "+1")]
-    [InlineData(EForgeReaction.ThumbsDown, "-1")]
-    public async Task A_command_gets_its_reaction(EForgeReaction reaction, string content)
-    {
-        string? posted = null;
-        // docs: POST /repos/{owner}/{repo}/issues/comments/{comment_id}/reactions
-        var github = new StubGitHub().On(HttpMethod.Post, $"{Repo}/issues/comments/900/reactions", (_, body) =>
-        {
-            posted = body;
-            return StubHttpMessageHandler.Json(HttpStatusCode.Created, $$$"""{"id":1,"content":"{{{content}}}","user":{"login":"x","id":1}}""");
-        });
-
-        await Updates(github).AddCommentReactionAsync(Target(), 900, reaction);
-
-        using var request = JsonDocument.Parse(posted!);
-        request.RootElement.GetProperty("content").GetString().Should().Be(content);
-    }
-
     // ── The check run ────────────────────────────────────────────────────────────────────────────
 
     [Fact]

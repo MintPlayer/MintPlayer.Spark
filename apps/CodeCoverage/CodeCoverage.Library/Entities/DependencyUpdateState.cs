@@ -99,6 +99,11 @@ public class DependencyHold
     /// <summary>Shown in the pull request body.</summary>
     public string Reason { get; set; } = string.Empty;
 
+    /// <summary>prerelease-track-scenarios-PRD D5: a bot hold on a platform group (the move, or the alignment under the
+    /// platform's name): the items the apply refused
+    /// (<c>dep|file|newValue[|layout]</c>, sorted). The hold lifts when the group is planned with other items.</summary>
+    public List<string> Refused { get; set; } = [];
+
     /// <summary><see cref="EDependencyHoldKind.Blocker"/>: each blocker and the version tokens the lookup offered for it
     /// when the hold was taken.</summary>
     public List<DependencyBlockerSeen> Blockers { get; set; } = [];
@@ -129,6 +134,13 @@ public class DependencyHold
 
     /// <summary>The plan whose apply produced a blocker hold.</summary>
     public string? PlanId { get; set; }
+
+    /// <summary>#683 H2: the rolling pull request whose CI produced a <c>red:</c> hold. Closing that pull request
+    /// without merging withdraws the hold (H3); null on a hold that no pull request's CI produced.</summary>
+    public int? PullRequestNumber { get; set; }
+
+    /// <summary>#683 H2: the failing run that convicted the group.</summary>
+    public string? RunUrl { get; set; }
 }
 
 public class DependencyBlockerSeen
@@ -138,6 +150,11 @@ public class DependencyBlockerSeen
 
     /// <summary>The version tokens the lookup offered for it (and its current value) when the hold was taken.</summary>
     public List<string> SeenVersions { get; set; } = [];
+
+    /// <summary>#653 D1: its current value, version and locked version in every package file when the hold was taken. A
+    /// change lifts the hold, even to a version it had already offered. Empty on a hold written before #653, which then
+    /// lifts only as before.</summary>
+    public List<string> CurrentTokens { get; set; } = [];
 }
 
 /// <summary>
@@ -195,6 +212,16 @@ public class DependencyFleetState
     /// of the 30-minute propagation debounce.</summary>
     public List<DependencyProducerEvent> ProducerEvents { get; set; } = [];
 
+    /// <summary>#683 H7 (owner, 2026-11-16): a red verdict blocks the fleet for 14 days, then expires, so a stale verdict
+    /// cannot keep a version out of every repository for ever.</summary>
+    public static readonly TimeSpan RedLifetime = TimeSpan.FromDays(14);
+
+    /// <summary>#683 H7: whether <paramref name="red"/> still blocks at <paramref name="nowUtc"/>.</summary>
+    public static bool IsLive(DependencyFleetRed red, DateTime nowUtc) => red.AtUtc > nowUtc - RedLifetime;
+
+    /// <summary>#683 H7: drops the expired red entries; the number dropped.</summary>
+    public int PruneExpiredRed(DateTime nowUtc) => RedVersions.RemoveAll(r => !IsLive(r, nowUtc));
+
     public static string ForAccount(string accountId)
     {
         const string prefix = "Accounts/";
@@ -214,6 +241,10 @@ public class DependencyFleetRed
     public string Repository { get; set; } = string.Empty;
 
     public string? RunUrl { get; set; }
+
+    /// <summary>#683 H2: the rolling pull request whose CI convicted it. Closing that pull request without merging, or
+    /// <c>/unhold</c> on its group, withdraws the entry (H3, H4).</summary>
+    public int? PullRequestNumber { get; set; }
 
     public DateTime AtUtc { get; set; }
 }

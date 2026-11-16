@@ -7,13 +7,14 @@ namespace CodeCoverage.PackageVersioning;
 internal static class BackportAttempts
 {
     public static async Task RecordAsync(IAsyncDocumentSession session, Repository repository, int source, string? sourceSha, string branch, string outcome,
-        int? pullRequest, string? detail, DateTime nowUtc, CancellationToken cancellationToken)
+        int? pullRequest, string? detail, DateTime nowUtc, CancellationToken cancellationToken, string? logId = null)
     {
         var id = BackportAttempt.DocumentId(repository.Provider, repository.GitHubId, source, branch);
         await session.StoreAsync(new BackportAttempt
         {
             Id = id, Repository = repository.Id!, Source = source, SourceSha = sourceSha, Branch = branch, Outcome = outcome, PullRequest = pullRequest,
             Detail = detail is { Length: > BackportAttempt.MaxDetail } ? detail[..BackportAttempt.MaxDetail] : detail, AttemptedAtUtc = nowUtc,
+            LogId = logId,
         }, id, cancellationToken);
     }
 }

@@ -429,8 +429,15 @@ public sealed record GitWriterDependencyRequest(string Provider, string RepoId, 
     /// <summary>#613 item 2: the lookup's non-computed platform locations, which a platform group's SDK move may edit.</summary>
     public IReadOnlyList<GitWriterPlatformLocation>? PlatformLocations { get; init; }
 
+    /// <summary>companion-pins-PRD F3: coverage.yml's follow rules (the writer's <c>FollowRuleWire</c>: dependency, path, match,
+    /// version), which alone admit a follow record's edit.</summary>
+    public IReadOnlyList<CodeCoverage.Git.Dependencies.DependencyFollowRule>? Follow { get; init; }
+
     /// <summary>Work ref: the plan file's content for the plan commit (R14).</summary>
     public string? PlanJson { get; init; }
+
+    /// <summary>Work ref, #658: the plan commit also moves the root global.json to the plan's SDK (the pinned action reads it).</summary>
+    public bool PresetSdk { get; init; }
 
     public string? ExpectedWorkSha { get; init; }
 
@@ -443,6 +450,10 @@ public sealed record GitWriterDependencyRequest(string Provider, string RepoId, 
     /// <summary>#638 D15: with <see cref="Line"/>, the line's narrowing commit (project files and global.json) on
     /// <c>mintplayer/narrow-{line}</c> instead of its workflows.</summary>
     public bool Narrow { get; init; }
+
+    /// <summary>multi-target-dependency-split-PRD P7 (M7): the central package management conversion commit (MSBuild files,
+    /// adding or deleting only <c>Directory.Packages.props</c>) on <c>mintplayer/central-package-management</c>.</summary>
+    public bool Central { get; init; }
 }
 
 public sealed record GitWriterMigratePatch(string Group, string Patch);

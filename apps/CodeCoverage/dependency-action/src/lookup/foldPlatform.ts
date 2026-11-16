@@ -1,7 +1,7 @@
 import type { LookupRecord, PlatformRecord, PlatformTable, Sdk } from '../contracts/types';
 import { SDKS as ALL_SDKS } from '../contracts/types';
-import { notEditedReason } from '../platform/applyPlatform';
-import { channelOf } from '../platform/channels';
+import { followsWhenAuto, notEditedReason } from '../platform/applyPlatform';
+import { channelOf, compareChannels } from '../platform/channels';
 import { platformOfImage, type Found } from '../platform/locations';
 
 const SDKS = new Set<Sdk>(ALL_SDKS);
@@ -56,8 +56,9 @@ export interface FoldResult {
  * Kept whole, because the platform plan would not move it:
  *  - a location the scanner does not recognise;
  *  - a location the adapter only reports (computed, digest-pinned, a full-version mcr tag);
- *  - a location on a lower channel than the platform's current one (the plan's fromChannel is the
- *    highest, so the bot never moves it).
+ *  - a location on a lower channel that does not follow a channel move (a TFM, a matrix entry, one SDK of a
+ *    multi-line setup list: P6, `followsWhenAuto`).
+ * A lower-channel location that does follow keeps only its own channel's candidates.
  */
 export function foldPlatformLocations(records: readonly LookupRecord[], found: readonly Found[], platforms: readonly PlatformRecord[], table?: PlatformTable): FoldResult {
   const fromChannel = new Map(platforms.map((p) => [p.sdk, p.current.channels[0]] as const));
@@ -67,11 +68,20 @@ export function foldPlatformLocations(records: readonly LookupRecord[], found: r
   for (const record of records) {
     const sdk = sdkOf(record);
     const location = sdk ? locationOf(record, sdk, found) : null;
-    if (!sdk || !location || notEditedReason(location) !== null || location.channel === null || location.channel !== fromChannel.get(sdk)) {
+    const current = sdk ? fromChannel.get(sdk) : undefined;
+    if (!sdk || !location || notEditedReason(location) !== null || location.channel === null || current === undefined) {
       out.push(record);
       continue;
     }
-    const candidates = tabled(sdk, location.channel)
+    // platform-locations-PRD P6: a location on a lower channel that follows a channel move (lagging `auto`) loses its
+    // candidates to other channels, which are the platform group's move now; its own channel's patches stay Renovate's.
+    // The lookup does not see `lagging`, so this is the `auto` split; under `report` the stage is listed as not moved.
+    const lagging = location.channel !== current;
+    if (lagging && (compareChannels(location.channel, current) > 0 || !followsWhenAuto(location))) {
+      out.push(record);
+      continue;
+    }
+    const candidates = !lagging && tabled(sdk, location.channel)
       ? []
       : record.candidates.filter((c) => {
           const v = c.version ?? c.value;

@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text;
 using System.Text.Json;
+using CodeCoverage.Commands;
 using CodeCoverage.CommitGraph;
 using CodeCoverage.Dependencies.Policy;
 using CodeCoverage.Entities;
@@ -54,7 +55,11 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
     [Inject] private readonly IOptions<MergeQueueOptions> options;
     [Inject] private readonly IDependencyStateStore stateStore;
     [Inject] private readonly IWorkflowHook hook;
+    [Inject] private readonly ICommandLifecycle commands;
     [Inject] private readonly ILogger<DependencyUpdateEngine> logger;
+
+    /// <summary>The command outcomes this handler decided (#660), told once its save went through.</summary>
+    private readonly List<Func<CancellationToken, Task>> afterSave = [];
 
     public const int MaxTransientRetries = 6;
     public const int MaxRestarts = 3;
@@ -117,7 +122,7 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
                 break;
 
             case EDependencySignal.Command when signal.Number is { } number && signal.Command is { } command && !string.IsNullOrEmpty(signal.Actor):
-                await CommandAsync(context, number, signal.CommentId, command, signal.Argument, signal.Actor, ct);
+                await CommandAsync(context, number, signal.CommentId, command, signal.Argument, signal.Actor, signal.Malformed, ct);
                 break;
 
             case EDependencySignal.Merged when signal.Number is { } merged:
@@ -127,9 +132,13 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
             case EDependencySignal.Closed when signal.Number is { } closed:
                 await PullRequestEndedAsync(context, closed, wasMerged: false, ct);
                 break;
+
+            case EDependencySignal.Reopened when signal.Number is { } reopened:
+                await PullRequestReopenedAsync(context, reopened, ct);
+                break;
         }
 
-        await session.SaveChangesAsync(ct);
+        await SaveAsync(ct);
     }
 
     // ═══ Steps ═══════════════════════════════════════════════════════════════════════════════════════
@@ -174,7 +183,7 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
             _ => () => Task.CompletedTask,
         }, ct);
 
-        await session.SaveChangesAsync(ct);
+        await SaveAsync(ct);
     }
 
     private static bool Expects(EDependencyStep step, EDependencyRunState state) => step switch
@@ -219,6 +228,7 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
         run.Run++;
         run.Trigger = trigger;
         run.PendingTrigger = null;
+        run.CommandInvocation = null;
         // R10's fixes ride with the security run they triggered; any other run plans from the schedule.
         if (trigger != EDependencyRunTrigger.Security)
             run.SecurityFixes = [];
@@ -261,6 +271,7 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
         var parsed = DependenciesYml.Parse(yml);
         foreach (var error in parsed.Errors.Take(5))
             run.Note(Now, $"coverage.yml: {error}");
+        run.ConfigProblems = [.. parsed.Errors.Take(20)];
         run.FileMergeQueue = DependencyFileMergeQueue.State(yml, defaultBranch);
         run.FileFrequency = parsed.Section.Schedule?.Frequency;
         run.FileWeekday = parsed.Section.Schedule?.Weekday;
@@ -319,12 +330,12 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
         // D14: dispatched on the branch it updates, so the run builds its head; a head that moved in between is WrongCommit.
         // #606 D9: with the bot's channel table, which the lookup requires.
         var token = RunToken(context);
-        var unstable = DependencyPolicyConfig.Resolve(parsed.Section, repository, context.Account).UnstableGlobs();
+        var tracks = DependencyPolicyConfig.Resolve(parsed.Section, repository, context.Account);
         var request = new WorkflowHookRequest(run.LookupAction, target, new Dictionary<string, string>
         {
             ["expected_sha"] = head,
             ["run_id"] = token,
-            ["platforms"] = await DependencyPlatformTable.JsonAsync(session, unstable, ct),
+            ["platforms"] = await DependencyPlatformTable.JsonAsync(session, tracks.UnstableGlobs(), tracks.StableGlobs(), ct, parsed.Section.Follow),
         }, LookupTimeout, "lookup");
         await DispatchAsync(context, request, "lookup", head, $"dependency-lookup-{token}", null, EDependencyRunState.Looking, ct);
     }
@@ -336,6 +347,20 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
     /// </summary>
     /// <summary>The inputs the bot dispatches the lookup with; a workflow declaring fewer predates them (#606 D9).</summary>
     private static readonly string[] LookupInputs = ["expected_sha", "run_id", "platforms"];
+
+    /// <summary>#658: the plan has a .NET platform group with an SDK, and the action the repository's apply workflow pins
+    /// declares <see cref="DependencySdkPreset.Capability"/>.</summary>
+    private async Task<bool> SdkPresetSupportedAsync(Context context, DependencyPlan plan, CancellationToken ct)
+    {
+        if (!plan.Groups.Any(g => g.Platform is { Sdk: "dotnet", SdkVersion.Length: > 0 }))
+            return false;
+        var defaultBranch = context.Repository.DefaultBranch ?? context.Run.DefaultBranch!;
+        var files = await context.Queue.GetWorkflowFilesAsync(context.Repository, defaultBranch, ct);
+        if (DependencySdkPreset.PinnedRef(files.FirstOrDefault(f => f.Path == $".github/workflows/{context.Run.ApplyAction}")?.Content) is not { } pinned)
+            return false;
+        return DependencySdkPreset.Declares(await context.Updates.GetRepositoryFileAsync(context.Repository, DependencyOnboarding.ActionRepository, pinned,
+            DependencySdkPreset.ActionYmlPath, ct));
+    }
 
     private async Task<bool> WorkflowsUsableAsync(Context context, string commit, IReadOnlyList<string> workflows, bool allowSecrets, CancellationToken ct,
         (string Workflow, string[] Inputs)? required = null)
@@ -503,9 +528,9 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
         var data = await DataAsync(context, ct);
         var lookup = DependencyContract.Deserialize<LookupDocument>(data.LookupJson!)!;
         var section = DependenciesYml.Parse(await context.Forge.GetFileContentAsync(repository, ConfigRef(context), CoverageYml.FileName, ct)).Section;
-        var config = DependencyPolicyConfig.Resolve(section, repository, context.Account);
+        var config = DependencyPolicyConfig.Resolve(section, repository, context.Account, await AccountPackagesAsync(repository, ct));
         var state = await stateStore.LoadAsync(repository.Id!, ct);
-        var fleet = context.Account?.Id is { } accountId ? await stateStore.LoadFleetAsync(accountId, ct) : new DependencyFleetState();
+        var fleet = await FleetAsync(context, ct);
 
         // Gap E: an approval counts only while its approver still has write access, read now, at apply time.
         foreach (var approval in state.Approvals.ToList())
@@ -521,8 +546,15 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
         if (context.Account?.Id is not null)
             await ConfirmOwnReleasesAsync(context, lookup, fleet, ct);
 
+        // companion-version-maps-PRD §6.4: what each SDK band ships, for the bundled companions; one request for all bands.
+        var components = lookup.Platforms.Any(p => p.Sdk == "dotnet")
+            ? (await session.Advanced.LoadStartingWithAsync<PlatformLifecycle.SdkBandComponents>(PlatformLifecycle.SdkBandComponents.Prefix, pageSize: 256, token: ct))
+                .Where(b => !b.TagMissing).Select(b => new SdkComponentVersions(b.Band, b.Msbuild, b.Roslyn, b.Nuget)).ToList()
+            : [];
+
         var outcome = DependencyPolicyEngine.Evaluate(new DependencyPolicyInput
         {
+            SdkComponents = components,
             Lookup = lookup,
             Config = config,
             State = state,
@@ -607,10 +639,13 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
         data.PlanJson = planJson;
         run.PlanId = planId;
 
-        // R14: the plan travels as one commit on the bot's dispatch ref; nothing but the plan file changes.
+        // R14: the plan travels as one commit on the bot's dispatch ref; nothing but the plan file changes, and #658 the root
+        // global.json's SDK when the repository's pinned action reads that (setup-dotnet then installs the planned SDK).
+        var presetSdk = await SdkPresetSupportedAsync(context, plan, ct);
         if (await WriterAsync(context, false, (access, credential) => writer.DependencyWorkRefAsync(Request(context, access, credential) with
             {
                 Author = Identity(run), Committer = Identity(run), Message = $"Dependency plan {planId}", PlanJson = planJson, ExpectedWorkSha = run.WorkRefSha,
+                PresetSdk = presetSdk,
             }, ct), ct) is not { } result)
             return;
         switch (result.Outcome)
@@ -675,6 +710,22 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
         if (parts.Length < 2 || parts.Any(p => p.Length == 0 || p is "." or ".."))
             return (null, null);
         return ($"{parts[0]}/{parts[1]}", parts.Length > 2 ? string.Join('/', parts[2..]) : null);
+    }
+
+    /// <summary>
+    /// follower-cooldown-PRD G2: the packages the owner's other repositories publish, the upstream side of the dependency
+    /// graph (<see cref="DependencyGraph"/>). Two requests: the owner's repositories, then their manifests in one batch.
+    /// </summary>
+    private async Task<IReadOnlyList<string>> AccountPackagesAsync(Repository repository, CancellationToken ct)
+    {
+        var others = await Raven.Client.Documents.LinqExtensions.ToListAsync(session.Query<Repository, Indexes.Repositories_Overview>()
+            .Where(r => r.OwnerKey == repository.OwnerKey)
+            .Take(1024), ct);
+        var ids = others.Where(r => r.Id is not null && r.Id != repository.Id).Select(r => RepositoryManifest.ForRepository(r.Id!)).ToList();
+        if (ids.Count == 0) return [];
+        var manifests = await session.LoadAsync<RepositoryManifest>(ids, ct);
+        return [.. manifests.Values.OfType<RepositoryManifest>().SelectMany(m => m.Produces)
+            .Select(p => DependencyPolicyConfig.AccountPackageKey(p.Ecosystem, p.Name)).Distinct(StringComparer.OrdinalIgnoreCase)];
     }
 
     private async Task ConfirmOwnReleasesAsync(Context context, LookupDocument lookup, DependencyFleetState fleet, CancellationToken ct)
@@ -764,6 +815,7 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
             {
                 Plan = data.PlanJson, Patch = Convert.ToBase64String(patch), ClaimedGroups = claimed, TargetActions = data.TargetActions, AllowedHosts = section.Registries,
                 PlatformLocations = PlatformLocations(lookup, plan),
+                Follow = section.Follow,
             }, ct), ct) is not { } verdict)
             return;
         if (verdict.Outcome is GitWriterOutcomes.Busy or GitWriterOutcomes.Failed)
@@ -793,6 +845,8 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
             Failures = [.. report.Failures, .. result.Groups.Where(g => g.Status != EApplyGroupStatus.Applied).Select(g => new DependencyReportFailure(g.Group,
                 g.Status == EApplyGroupStatus.Unresolvable ? "the resolver refused it" : "the apply failed", g.Blockers.FirstOrDefault()?.Message ?? g.Message,
                 (g.Message ?? string.Empty).Contains("no adapter", StringComparison.OrdinalIgnoreCase) || g.Blockers.Any(b => b.Code == "no-adapter")))],
+            // platform-locations-PRD R3: what the apply left on an older channel joins the policy's computed-location reports.
+            PlatformReports = [.. report.PlatformReports, .. DependencyRunReport.ApplyPlatformReports(result)],
             NeedsHumanDetail = verdict.Verdict == GitWriterDependencyOutcomes.NeedsHuman
                 ? $"The lockfiles bring in {verdict.NewPackages.Count} new packages, more than the bot merges without a person (gap B)." : null,
         };
@@ -820,6 +874,7 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
                 Author = Identity(run), Committer = Identity(run), Message = $"Dependency plan {run.PlanId}, applied", Plan = data.PlanJson, Patch = data.Patch,
                 ClaimedGroups = claimed, TargetActions = data.TargetActions, AllowedHosts = section.Registries, ExpectedWorkSha = run.WorkRefSha,
                 PlatformLocations = PlatformLocations(lookup, plan),
+                Follow = section.Follow,
             }, ct), ct) is not { } staged)
             return;
         if (staged.Outcome != GitWriterOutcomes.Pushed || staged.Sha is null)
@@ -874,7 +929,7 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
         var lookupless = DependenciesYml.Parse(await context.Forge.GetFileContentAsync(repository, ConfigRef(context), CoverageYml.FileName, ct)).Section;
         var config = DependencyPolicyConfig.Resolve(lookupless, repository, context.Account);
         var state = await stateStore.LoadAsync(repository.Id!, ct);
-        var fleet = context.Account?.Id is { } accountId ? await stateStore.LoadFleetAsync(accountId, ct) : new DependencyFleetState();
+        var fleet = await FleetAsync(context, ct);
         var notes = DependencyMigrationNotes.Check(read.Document, config, state, fleet);
         data.Migrations.Add(new DependencyMigrationRecord
         {
@@ -942,6 +997,7 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
                 Author = Identity(run), Committer = Identity(run), Message = CommitMessage(report),
                 Plan = data.PlanJson, Patch = data.Patch, ClaimedGroups = claimed, TargetActions = data.TargetActions, AllowedHosts = section.Registries,
                 PlatformLocations = PlatformLocations(lookup, DependencyContract.Deserialize<DependencyPlan>(data.PlanJson!)!),
+                Follow = section.Follow,
                 Migrations = [.. data.Migrations.Select(m => new GitWriterMigratePatch(m.Group, m.Patch))],
                 ExpectedRollingSha = rollingHead, LastBotSha = rollingHead is null ? null : run.RollingBotSha, ExpectedWorkSha = run.WorkRefSha,
             }, ct), ct) is not { } result)
@@ -1020,6 +1076,9 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
             bisecting ? "Bisecting: don't merge" : "Waiting for CI",
             bisecting ? $"Testing without {string.Join(", ", run.Bisect!.Excluded)} (step {run.Bisect.Spent} of {run.Bisect.Budget})." : $"{report.Groups.Count} group(s) applied; waiting for this commit's checks.", ct);
         await ScheduleCleanupAsync(context, ct);
+        // #660 G3: a /refresh is done once its updates are on the pull request; CI's verdict is the pull request's, not the command's.
+        if (!bisecting)
+            FinishCommand(run, ECommandOutcome.Done, $"{report.Groups.Count} group(s) applied in {Short(run.RollingSha)}.", refreshOnly: true);
 
         if (run.PendingTrigger is { } next)
         {
@@ -1222,10 +1281,64 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
             }
             return;
         }
-        if (gate.Verdict == ECheckVerdict.Failed)
+        if (gate.Verdict == ECheckVerdict.Failed && CancelledRuns(state, gate) is { Count: > 0 } cancelled)
+            await OnCancelledAsync(context, state, gate, cancelled, fromPoll, ct);
+        else if (gate.Verdict == ECheckVerdict.Failed)
             await OnRedAsync(context, state, gate, forceBisect: false, ct);
         else
             await OnGreenAsync(context, ct);
+    }
+
+    /// <summary>The counted check runs that concluded <c>cancelled</c>.</summary>
+    private static List<ForgeCheckRun> CancelledRuns(ForgeCheckState state, CheckGateResult gate)
+        => [.. state.CheckRuns.Where(r => r.Status == "completed" && r.Conclusion == "cancelled" && gate.Failed.Contains(r.Name))];
+
+    /// <summary>
+    /// #683: a cancelled check is no verdict on the updates. The merge queue's gate rightly fails it, but here it would assign
+    /// blame. A person or a concurrency group cancelled it, often because a newer push landed on the rolling branch, and every
+    /// failure next to it (an aggregator, a coverage upload) may only follow from the missing jobs. Spark #682 held
+    /// <c>platform:dotnet 11.0</c> and marked .NET 11 GA red for the fleet that way, on a commit that builds clean. So nothing
+    /// is bisected, held or marked red on it. A superseded commit is left alone: re-running it would cancel the newer head's
+    /// run. Otherwise its failed checks are re-run once, and a second cancellation is reported without blame.
+    /// </summary>
+    private async Task OnCancelledAsync(Context context, ForgeCheckState state, CheckGateResult gate, List<ForgeCheckRun> cancelled,
+        bool fromPoll, CancellationToken ct)
+    {
+        var (repository, run) = (context.Repository, context.Run);
+        var sha = run.RollingSha!;
+        var names = string.Join(", ", cancelled.Select(r => r.Name).Distinct(StringComparer.Ordinal));
+        var head = run.PullRequestNumber is { } number ? (await context.Updates.GetPullRequestAsync(repository, number, ct))?.HeadSha : null;
+        if (head is not null && !string.Equals(head, sha, StringComparison.OrdinalIgnoreCase))
+        {
+            run.Note(Now, $"CI on {Short(sha)} was cancelled ({names}) and {Short(head)} superseded it: no verdict");
+            await PublishOwnCheckAsync(context, sha, EForgeQueueCheckState.Neutral, "CI cancelled: no verdict",
+                $"CI on {Short(sha)} was cancelled ({names}) after {Short(head)} was pushed on top, so it says nothing about the updates. "
+                + "The next rebuild tests the branch with that commit replayed; comment `/refresh` to rebuild now.", ct);
+            return;
+        }
+
+        if (!string.Equals(run.CancelledRerunSha, sha, StringComparison.OrdinalIgnoreCase))
+        {
+            var failedRuns = state.CheckRuns.Where(r => gate.Failed.Contains(r.Name)).ToList();
+            await BestEffortAsync(async () => await context.Queue.RerunChecksAsync(repository, [.. failedRuns], ct), "re-run the cancelled checks");
+            run.CancelledRerunSha = sha;
+            run.CancelledRerunAtUtc = Now;
+            run.Note(Now, $"CI on {Short(sha)} was cancelled ({names}): re-running it once, no verdict");
+            await ScheduleAsync(run, EDependencyStep.PollChecks, ChecksPollInterval, ct);
+            return;
+        }
+
+        // The forge still lists the cancelled runs for a moment after the re-run.
+        if (run.CancelledRerunAtUtc is { } at && Now - at < RerunSettle)
+        {
+            if (fromPoll) await ScheduleAsync(run, EDependencyStep.PollChecks, ChecksPollInterval, ct);
+            return;
+        }
+
+        run.Note(Now, $"CI on {Short(sha)} was cancelled again ({names}): no verdict");
+        await PublishOwnCheckAsync(context, sha, EForgeQueueCheckState.Failure, "CI cancelled: no verdict",
+            $"CI on {Short(sha)} was cancelled twice ({names}), so nothing is known about the updates and nothing is held. "
+            + "Re-run CI to continue, or comment `/bisect` to bisect this result anyway.", ct);
     }
 
     private async Task OnRedAsync(Context context, ForgeCheckState state, CheckGateResult gate, bool forceBisect, CancellationToken ct)
@@ -1238,7 +1351,7 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
 
         if (bisect is null)
         {
-            var fleet = context.Account?.Id is { } accountId ? await stateStore.LoadFleetAsync(accountId, ct) : new DependencyFleetState();
+            var fleet = await FleetAsync(context, ct);
             var budget = Repository.ResolveDependencyBisectBudget(repository, context.Account).Runs;
             bisect = run.Bisect = new DependencyBisect
             {
@@ -1299,14 +1412,20 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
             DepNames = [.. items.Select(i => i.DepName).Distinct(StringComparer.Ordinal)],
             Reason = $"CI went red with it{(bisect.FailingRunUrl is { } url ? $" ({url})" : string.Empty)}; found by bisect",
             Fingerprint = DependencyHolds.Fingerprint(lookup), CreatedAtUtc = Now, PlanId = run.PlanId,
+            // #683 H2: the evidence's provenance, so closing this pull request or /unhold can withdraw it (H3, H4).
+            PullRequestNumber = run.PullRequestNumber, RunUrl = bisect.FailingRunUrl,
         });
-        if (context.Account?.Id is { } accountId && items.Count > 0)
+        if (context.Account?.Id is not null && items.Count > 0)
         {
-            var fleet = await stateStore.LoadFleetAsync(accountId, ct);
+            var fleet = await FleetAsync(context, ct);
             foreach (var item in items)
             {
                 fleet.RedVersions.RemoveAll(r => r.Ecosystem == item.Ecosystem && r.DepName == item.DepName && r.Version == item.Version && r.Repository == repository.Id);
-                fleet.RedVersions.Add(new DependencyFleetRed { Ecosystem = item.Ecosystem, DepName = item.DepName, Version = item.Version, Repository = repository.Id!, RunUrl = bisect.FailingRunUrl, AtUtc = Now });
+                fleet.RedVersions.Add(new DependencyFleetRed
+                {
+                    Ecosystem = item.Ecosystem, DepName = item.DepName, Version = item.Version, Repository = repository.Id!,
+                    RunUrl = bisect.FailingRunUrl, PullRequestNumber = run.PullRequestNumber, AtUtc = Now,
+                });
             }
             if (fleet.RedVersions.Count > DependencyFleetState.MaxEntries)
                 fleet.RedVersions = [.. fleet.RedVersions.OrderByDescending(r => r.AtUtc).Take(DependencyFleetState.MaxEntries)];
@@ -1316,14 +1435,35 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
             + $"{KindSentence(bisect)}It is held, and the rest is rebuilt without it.", ct);
         await PublishOwnCheckAsync(context, run.RollingSha!, EForgeQueueCheckState.Failure, $"{culprit} broke CI", $"Held: {culprit}. The pull request is rebuilt without it.", ct);
         run.PendingTrigger = EDependencyRunTrigger.Refresh;
+        FinishCommand(run, ECommandOutcome.Done, $"`{culprit}` broke CI; it is held and the rest is rebuilt without it.");
         await EndAsync(context, "bisected", $"the culprit is {culprit}", ct);
+    }
+
+    /// <summary>The account's fleet state with its expired red entries dropped (#683 H7); an empty one without an account.</summary>
+    private async Task<DependencyFleetState> FleetAsync(Context context, CancellationToken ct)
+    {
+        if (context.Account?.Id is not { } accountId)
+            return new DependencyFleetState();
+        var fleet = await stateStore.LoadFleetAsync(accountId, ct);
+        fleet.PruneExpiredRed(Now);
+        return fleet;
+    }
+
+    /// <summary>#683 H3/H4/H6: withdraws this repository's fleet red entries that <paramref name="match"/>; the number withdrawn.
+    /// Another repository's entries are its own evidence and stay.</summary>
+    private async Task<int> WithdrawFleetRedAsync(Context context, Func<DependencyFleetRed, bool> match, CancellationToken ct)
+    {
+        if (context.Account?.Id is null)
+            return 0;
+        var fleet = await FleetAsync(context, ct);
+        return fleet.RedVersions.RemoveAll(r => r.Repository == context.Repository.Id && match(r));
     }
 
     private async Task RedReportAsync(Context context, DependencyBisect bisect, string why, CancellationToken ct)
     {
         var ranked = string.Join("\n", bisect.Suspects.Select((s, i) => $"{i + 1}. `{s}`{(bisect.Excluded.Contains(s) ? " (left out in a red test: not alone to blame)" : string.Empty)}"));
         await CommentAsync(context, $"❌ CI failed on this pull request ({string.Join(", ", bisect.FailingChecks.Select(c => $"`{c}`"))}){(bisect.FailingRunUrl is { } url ? $": {url}" : ".")} "
-            + $"{KindSentence(bisect)}No culprit was found: {why}. The groups, most suspect first:\n\n{ranked}\n\nComment `hold <group>` to take one out, or `bisect` to try again.", ct);
+            + $"{KindSentence(bisect)}No culprit was found: {why}. The groups, most suspect first:\n\n{ranked}\n\nComment `/hold <group>` to take one out, or `/bisect` to try again.", ct);
         await PublishOwnCheckAsync(context, context.Run.RollingSha!, EForgeQueueCheckState.Failure, "CI failed", $"No culprit found: {why}.", ct);
         await EndAsync(context, "red", why, ct);
     }
@@ -1376,7 +1516,8 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
         var refusal = run.Trigger == EDependencyRunTrigger.Refresh
             ? "A run a comment started does not auto-merge; the next scheduled run may."
             : DependencyAutoMergeGate.Refusal(new DependencyEnqueueInput(queueEnabled, report, draft, run.PatchVerdict == GitWriterDependencyOutcomes.NeedsHuman,
-                run.MigratedGroups.Count > 0, notOnPullRequest, coverage));
+                run.MigratedGroups.Count > 0, notOnPullRequest, coverage,
+                section.Platforms.Where(p => p.Value.AutoMergeMajor).Select(p => p.Key).ToHashSet(StringComparer.Ordinal)));
 
         await PublishOwnCheckAsync(context, run.RollingSha!, EForgeQueueCheckState.Success, "CI is green", refusal ?? "Handed to the merge queue.", ct);
         if (refusal is null && run.PullRequestNumber is { } pr)
@@ -1402,16 +1543,46 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
 
     // ═══ Commands (§7.5, R6, gap E) ═══════════════════════════════════════════════════════════════
 
-    private async Task CommandAsync(Context context, int number, long? commentId, EDependencyCommand command, string? argument, string actor, CancellationToken ct)
+    /// <summary>
+    /// A comment command (§7.5, R6), through the command lifecycle (#660 G4): 👀 here, then 🎉 for an approval or a hold
+    /// recorded, 🚀 for a refresh or a bisection that started (their end reacts again, G3), 👍 for a refresh a going run
+    /// absorbs, 👎 for a refusal.
+    /// </summary>
+    private async Task CommandAsync(Context context, int number, long? commentId, EDependencyCommand command, string? argument, string actor, bool malformed,
+        CancellationToken ct)
+    {
+        if (number != context.Run.PullRequestNumber) return;
+        var invocation = await commands.BeginAsync(context.Repository, number, commentId, CommandText(command, argument), actor, ct);
+        await using var log = commands.OpenLog(invocation);
+        // Before anything the command itself ends: a bisection with no suspect ends in the same handler, and its 👎 must
+        // come after the 🚀, not be overwritten by it.
+        var first = afterSave.Count;
+        var answer = await RunCommandAsync(context, invocation, commentId, command, argument, actor, malformed, ct);
+        afterSave.Insert(first, token => answer.Outcome == ECommandOutcome.Started
+            ? commands.StartedAsync(invocation, answer.Text, dependencyRun: context.Run.Run.ToString(CultureInfo.InvariantCulture), cancellationToken: token)
+            : commands.FinishAsync(invocation, answer.Outcome, answer.Text, token));
+    }
+
+    internal static string CommandText(EDependencyCommand command, string? argument)
+        => argument is null ? $"/{Word(command)}" : $"/{Word(command)} {argument}";
+
+    private async Task<CommandAnswer> RunCommandAsync(Context context, string? invocation, long? commentId, EDependencyCommand command, string? argument, string actor,
+        bool malformed, CancellationToken ct)
     {
         var (repository, run) = (context.Repository, context.Run);
-        if (number != run.PullRequestNumber) return;
         // A writer, read from the forge per command (§7.5); anyone else gets 👎 and nothing happens.
         if (await context.Queue.GetActorRoleAsync(repository, actor, ct) < EForgeRepositoryRole.Write)
         {
-            await ReactAsync(context, commentId, EForgeReaction.ThumbsDown, ct);
             run.Note(Now, $"@{actor}'s {Word(command)} was refused: no write access");
-            return;
+            return $"`/{Word(command)}` needs write access to the repository; @{actor} does not have it.";
+        }
+        // #683: a writer's command with the wrong arguments is answered with how to write it, and does nothing.
+        if (malformed)
+        {
+            var usage = $"Usage: `{DependencyCommandParser.Usage(command)}` as the first line of a new comment.";
+            run.Note(Now, $"@{actor}'s {Word(command)} was malformed");
+            await CommentAsync(context, usage, ct);
+            return usage;
         }
         var data = await session.LoadAsync<DependencyUpdateRunData>(DependencyUpdateRunData.ForRepository(repository.Id!, run.Line), ct);
         var report = data?.ReportJson is { } json ? JsonSerializer.Deserialize<DependencyRunReport>(json, JsonSerializerOptions.Web)! : new DependencyRunReport();
@@ -1425,52 +1596,67 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
                 var group = force ? approved[..^" --force".Length].TrimEnd() : approved;
                 if (DependencyHolds.Approve(state, report.AsOutcome(state), group, run.ConfigBlob, actor, commentId, time.GetUtcNow(), force) is null)
                 {
-                    await ReactAsync(context, commentId, EForgeReaction.ThumbsDown, ct);
-                    await CommentAsync(context, report.Held.Any(e => e.Group == group && e.Reason == EDependencyReportReason.Pending)
-                        ? $"`{group}` is waiting on its companion packages; comment `approve {group} --force` to move without them."
-                        : $"Nothing named `{group}` waits for approval (an update above an enforced account rule cannot be approved).", ct);
-                    return;
+                    var refusal = report.Held.Any(e => e.Group == group && e.Reason == EDependencyReportReason.Pending)
+                        ? $"`{group}` is waiting on its companion packages; comment `/approve {group} --force` to move without them."
+                        : $"Nothing named `{group}` waits for approval (an update above an enforced account rule cannot be approved).";
+                    await CommentAsync(context, refusal, ct);
+                    return refusal;
                 }
                 run.Note(Now, force ? $"@{actor} approved {group} (--force)" : $"@{actor} approved {group}");
-                break;
+                // G2: the approval is the command's effect; the refresh it starts is a side effect.
+                await TriggerAsync(context, EDependencyRunTrigger.Refresh, null, ct);
+                return new CommandAnswer(force ? $"Approved `{group}` (--force); a refresh applies it." : $"Approved `{group}`; a refresh applies it.", ECommandOutcome.Done);
             case EDependencyCommand.Hold when argument is { } target:
                 var isGroup = report.Groups.Any(g => g.Group == target) || report.AwaitingApproval.Concat(report.Held).Concat(report.Available).Any(e => e.Group == target);
                 DependencyHolds.AddCommandHold(state, target, isGroup, actor, time.GetUtcNow());
                 run.Note(Now, $"@{actor} held {target}");
-                break;
+                await TriggerAsync(context, EDependencyRunTrigger.Refresh, null, ct);
+                return new CommandAnswer($"Held `{target}`; a refresh takes it out.", ECommandOutcome.Done);
             case EDependencyCommand.Unhold when argument is { } target:
-                if (!DependencyHolds.RemoveCommandHold(state, target))
+                // #683 H4: a writer overrides the bot's evidence too; a red verdict takes its fleet entries with it.
+                var lifted = DependencyHolds.RemoveHold(state, target);
+                if (lifted.Count == 0)
                 {
-                    await ReactAsync(context, commentId, EForgeReaction.ThumbsDown, ct);
-                    await CommentAsync(context, $"There is no comment or human hold on `{target}` (the bot's own holds lift by themselves).", ct);
-                    return;
+                    var refusal = $"There is no hold on `{target}`.";
+                    await CommentAsync(context, refusal, ct);
+                    return refusal;
                 }
-                run.Note(Now, $"@{actor} unheld {target}");
-                break;
+                var redDeps = lifted.Where(h => h.Id.StartsWith("red:", StringComparison.Ordinal)).SelectMany(h => h.DepNames).ToHashSet(StringComparer.Ordinal);
+                var withdrawn = redDeps.Count == 0 ? 0 : await WithdrawFleetRedAsync(context, r => redDeps.Contains(r.DepName), ct);
+                run.Note(Now, $"@{actor} unheld {target} ({string.Join(", ", lifted.Select(h => h.Id))}{(withdrawn > 0 ? $"; {withdrawn} fleet red entries withdrawn" : string.Empty)})");
+                await TriggerAsync(context, EDependencyRunTrigger.Refresh, null, ct);
+                return new CommandAnswer($"Lifted the hold on `{target}`{(withdrawn > 0 ? " and withdrew its red verdict from the other repositories" : string.Empty)}; a refresh applies it.", ECommandOutcome.Done);
             case EDependencyCommand.Bisect:
-                await ReactAsync(context, commentId, EForgeReaction.ThumbsUp, ct);
                 if (run.State.IsBusy() || run.RollingSha is not { } sha)
                 {
-                    await CommentAsync(context, "A run is going; `bisect` applies to a finished, red pull request.", ct);
-                    return;
+                    const string busy = "A run is going; `/bisect` applies to a finished, red pull request.";
+                    await CommentAsync(context, busy, ct);
+                    return busy;
                 }
                 var observed = await context.Queue.GetCheckStateAsync(repository, sha, ct);
                 var gate = CheckGate.Evaluate(observed with { CheckRuns = [.. observed.CheckRuns.Where(r => r.Name != IForgeDependencyUpdates.DependencyCheckName)] }, [], [], []);
                 if (gate.Verdict != ECheckVerdict.Failed)
                 {
-                    await CommentAsync(context, "The checks of this pull request are not red; there is nothing to bisect.", ct);
-                    return;
+                    const string green = "The checks of this pull request are not red; there is nothing to bisect.";
+                    await CommentAsync(context, green, ct);
+                    return green;
                 }
                 run.Bisect = null;
+                // G3: the bisection's culprit (🎉) or its end without one (👎) reacts again, on this comment.
+                run.CommandInvocation = invocation;
                 await OnRedAsync(context, observed, gate, forceBisect: true, ct);
-                return;
+                return new CommandAnswer($"Bisecting the failing checks ({string.Join(", ", gate.Failed)}).", ECommandOutcome.Started);
             case EDependencyCommand.Refresh:
-                break;
+                var before = run.Run;
+                await TriggerAsync(context, EDependencyRunTrigger.Refresh, null, ct);
+                if (run.Run == before)
+                    // G3: a run is going; the refresh waits for it, and only the comment that started that run reacts again.
+                    return new CommandAnswer($"Run {run.Run} is going ({run.State}); a refresh follows it.", ECommandOutcome.NoChange);
+                run.CommandInvocation = invocation;
+                return new CommandAnswer($"Run {run.Run} started.", ECommandOutcome.Started);
             default:
-                return;
+                return "This command takes an argument.";
         }
-        await ReactAsync(context, commentId, EForgeReaction.ThumbsUp, ct);
-        await TriggerAsync(context, EDependencyRunTrigger.Refresh, null, ct);
     }
 
     private async Task PullRequestEndedAsync(Context context, int number, bool wasMerged, CancellationToken ct)
@@ -1487,6 +1673,23 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
         }
         if (number != run.PullRequestNumber) return;
         run.Note(Now, wasMerged ? $"#{number} merged" : $"#{number} closed");
+        if (wasMerged)
+        {
+            // #683 H6: the versions the merged plan applied work here now; this repository's red entries for them go.
+            var applied = Report(await DataAsync(context, ct)).Groups.SelectMany(g => g.Items)
+                .Select(i => (i.Ecosystem, i.DepName, i.NewVersion)).ToHashSet();
+            if (applied.Count > 0 && await WithdrawFleetRedAsync(context, r => applied.Contains((r.Ecosystem, r.DepName, r.Version)), ct) is > 0 and var pruned)
+                run.Note(Now, $"{pruned} fleet red entries pruned: merged here");
+        }
+        else
+        {
+            // #683 H3 (owner, Q1): a close rejects the pull request, and the red verdicts taken on it go with it.
+            var state = await stateStore.LoadAsync(context.Repository.Id!, ct);
+            var withdrawn = DependencyHolds.WithdrawRedVerdicts(state, number);
+            var fleetWithdrawn = await WithdrawFleetRedAsync(context, r => r.PullRequestNumber == number, ct);
+            if (withdrawn.Count > 0 || fleetWithdrawn > 0)
+                run.Note(Now, $"#{number} closed: withdrew {string.Join(", ", withdrawn.Select(h => h.Id))}{(fleetWithdrawn > 0 ? $" and {fleetWithdrawn} fleet red entries" : string.Empty)}");
+        }
         run.PullRequestNumber = null;
         run.RollingSha = null;
         run.RollingBotSha = null;
@@ -1500,6 +1703,21 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
             data.RollingPlanJson = null;
         if (run.State is EDependencyRunState.AwaitingChecks or EDependencyRunState.Bisecting)
             await EndAsync(context, wasMerged ? "merged" : "closed", wasMerged ? "The pull request was merged." : "The pull request was closed.", ct);
+    }
+
+    /// <summary>
+    /// #683 H5 (owner, Q3): a reopened rolling pull request the run no longer tracks is closed again, with a comment. Adopting
+    /// it could leave two rolling pull requests open; what its close withdrew (H3) stays withdrawn.
+    /// </summary>
+    private async Task PullRequestReopenedAsync(Context context, int number, CancellationToken ct)
+    {
+        var (repository, run) = (context.Repository, context.Run);
+        if (number == run.PullRequestNumber || number == run.OnboardingPullRequestNumber) return;
+        await BestEffortAsync(async () => await context.Queue.PostCommentAsync(repository, number,
+            "This rolling pull request was closed, so the bot no longer updates it, and it is closed again. The bot opens a new one at its next run; "
+            + $"comment `/refresh` on {(run.PullRequestNumber is { } open ? $"#{open}" : "it")} to start that run now.", ct), "comment on the reopened pull request");
+        await context.Updates.ClosePullRequestAsync(repository, number, ct);
+        run.Note(Now, $"#{number} reopened: closed again");
     }
 
     // ═══ Onboarding (R16) ═══════════════════════════════════════════════════════════════════════════
@@ -1583,22 +1801,13 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
             await session.SaveChangesAsync(ct);
         }
 
-        string? actionSha = null;
-        try
-        {
-            actionSha = await context.Updates.ResolveTagCommitAsync(repository, DependencyOnboarding.ActionRepository, DependencyOnboarding.ActionTag, ct);
-        }
-        catch (Exception ex) when (ex is ForgeRequestException or ForgeAccessDeniedException or HttpRequestException && ForgeRateLimitedException.Find(ex) is null)
-        {
-            logger.LogWarning(ex, "Dependency updates: could not resolve {Tag}; the onboarding templates keep the tag", DependencyOnboarding.ActionTag);
-        }
         IReadOnlyList<GitWriterFile> files;
         string title, body;
         if (refresh is { } r)
         {
-            if (DependencyOnboarding.RefreshFiles(r.Workflows, actionSha, DependencyOnboarding.ReadTemplate) is not { } refreshed)
+            if (DependencyOnboarding.RefreshFiles(r.Workflows, DependencyOnboarding.ReadTemplate) is not { } refreshed)
                 return;
-            (files, title, body) = (refreshed, DependencyOnboarding.RefreshTitle, DependencyOnboarding.RefreshBody(refreshed, r.Reason, actionSha));
+            (files, title, body) = (refreshed, DependencyOnboarding.RefreshTitle, DependencyOnboarding.RefreshBody(refreshed, r.Reason));
         }
         else
         {
@@ -1615,7 +1824,7 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
                 }
             }
             var addMergeQueue = Repository.ResolveDependencyOnboardingMergeQueue(repository, context.Account);
-            var plan = DependencyOnboarding.Plan([.. tree?.Entries.Select(e => e.Path) ?? []], coverageYml, dependabotPath, dependabotYml, actionSha, DependencyOnboarding.ReadTemplate,
+            var plan = DependencyOnboarding.Plan([.. tree?.Entries.Select(e => e.Path) ?? []], coverageYml, dependabotPath, dependabotYml, DependencyOnboarding.ReadTemplate,
                 addMergeQueue: addMergeQueue,
                 githubMergeQueue: (addMergeQueue || run.FileMergeQueue == "enabled") && await GitHubMergeQueueAsync(context, defaultBranch, ct));
             (files, title, body) = (plan.Files, DependencyOnboarding.Title, plan.Body);
@@ -1829,6 +2038,9 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
         run.OutcomeMessage = message;
         run.FinishedAtUtc = Now;
         Transition(run, EDependencyRunState.Idle, $"run {run.Run} ended: {outcome} ({message})");
+        // #660 G3: a /refresh or /bisect still going ends with its run: 👍 when there was nothing to update, else 👎 (a
+        // published refresh and a found culprit were told already, so this reaches only the ones still started).
+        FinishCommand(run, outcome is "nothing-planned" or "nothing-applied" ? ECommandOutcome.NoChange : ECommandOutcome.Failed, $"The run ended: {message}");
         if (run.PendingTrigger is { } next)
         {
             BeginRun(context, next);
@@ -1979,10 +2191,27 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
         await BestEffortAsync(async () => await context.Queue.PostCommentAsync(context.Repository, number, body, ct), "comment on the pull request");
     }
 
-    private async Task ReactAsync(Context context, long? commentId, EForgeReaction reaction, CancellationToken ct)
+    /// <summary>
+    /// The end of what a <c>/refresh</c> or <c>/bisect</c> started (#660 G3), told after the save. Only while that command is
+    /// still started and the run is the one it started; <paramref name="refreshOnly"/> keeps a bisection's publish from
+    /// ending its <c>/bisect</c>.
+    /// </summary>
+    private void FinishCommand(DependencyUpdateRun run, ECommandOutcome outcome, string message, bool refreshOnly = false)
     {
-        if (commentId is not { } id) return;
-        await BestEffortAsync(() => context.Updates.AddCommentReactionAsync(context.Repository, id, reaction, ct), "react to a command");
+        if (run.CommandInvocation is not { } invocation) return;
+        var runId = run.Run.ToString(CultureInfo.InvariantCulture);
+        afterSave.Add(token => commands.FinishStartedAsync(invocation,
+            r => r.DependencyRun == runId && (!refreshOnly || r.Command.StartsWith("/refresh", StringComparison.Ordinal)), outcome, message, token));
+    }
+
+    /// <summary>Saves, then tells the commands what became of them: never before the state they report is stored.</summary>
+    private async Task SaveAsync(CancellationToken ct)
+    {
+        await session.SaveChangesAsync(ct);
+        var told = afterSave.ToList();
+        afterSave.Clear();
+        foreach (var tell in told)
+            await tell(ct);
     }
 
     private async Task PublishOwnCheckAsync(Context context, string sha, EForgeQueueCheckState state, string title, string summary, CancellationToken ct)

@@ -215,22 +215,21 @@ public class SetUpRulesetsActionTests : CoverageRavenTest
         Checks(planned[1]).Should().Contain("\"lint\"").And.Contain("\"test\"").And.NotContain("build");
     }
 
-    [Theory]
-    [InlineData(false, 0)]
-    [InlineData(true, 1)]
-    public async Task An_onboarding_that_turns_on_promotion_gives_the_App_the_line_checks_bypass_before_it_merges(bool promotesComing, int bypasses)
+    [Fact]
+    public async Task An_onboarding_that_turns_on_release_lines_gives_the_App_the_line_checks_bypass_before_it_merges()
     {
-        // Segment T6: the default branch's coverage.yml does not promote yet; the onboarding pull request will.
+        // The merge cuts the lines with the App's token (onboarding_line_cuts_PRD D4); without the bypass SpaServices'
+        // release/dotnet-10.x cut answered 422 (2026-11-12). Promoting or not makes no difference any more.
         var f = new Fixture();
         var repository = new Repository { Id = "Repositories/github/1", FullName = "acme/one", OwnerLogin = "acme", Name = "one", DefaultBranch = "master" };
         var state = new ForgeRulesetState(77, [], null);
         f.Manager.Retry.Result.Returns(new RetryResult { Option = "onboarding.plan", PersistentObject = Form(0, false, Wire("build"), Wire("build")) });
 
         var planned = await f.Setup().ChooseAsync([new RulesetRead(new RulesetTarget(repository, f.Queue, "master"), state, MergeQueueRulesetPlanner.Defaults(state))],
-            CancellationToken.None, releaseLinesComing: true, promotesLinesComing: promotesComing);
+            CancellationToken.None, releaseLinesComing: true);
 
         planned!.Single().Plan.Steps.OfType<CreateRulesetStep>().Single(s => s.Definition.Name == MergeQueueRulesetPlanner.LineChecksName)
-            .Definition.BypassActors.Should().HaveCount(bypasses);
+            .Definition.BypassActors.Should().Equal([new ForgeRulesetActor(77, "Integration", "exempt")]);
     }
 
     [Fact]

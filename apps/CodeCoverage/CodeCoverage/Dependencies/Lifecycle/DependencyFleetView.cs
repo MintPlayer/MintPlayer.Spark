@@ -163,7 +163,7 @@ public static class DependencyFleetView
             run?.PullRequestNumber is { } number ? new DependencyPullRequestLink(number, PullRequestUrl(repository, number), run.PullRequestIsDraft) : null,
             run?.Onboarding.ToString(), run?.OnboardingNote,
             [.. (state?.Holds ?? []).Select(h => new DependencyHoldView(h.Kind.ToString(), h.Group.Length == 0 ? null : h.Group, [.. h.DepNames], h.Reason, h.By, h.CreatedAtUtc))],
-            [.. (report?.AwaitingApproval ?? []).Select(e => new DependencyAwaitingView(e.Group, e.DepName, e.Current, e.Target, $"approve {e.Group}"))],
+            [.. (report?.AwaitingApproval ?? []).Select(e => new DependencyAwaitingView(e.Group, e.DepName, e.Current, e.Target, $"/approve {e.Group}"))],
             report?.Groups.Count ?? 0, [.. run?.Pins ?? []], run?.CoverageNote)
         {
             OnboardingPullRequest = run?.OnboardingPullRequestNumber is { } onboarding ? new DependencyPullRequestLink(onboarding, PullRequestUrl(repository, onboarding), false) : null,
@@ -227,7 +227,7 @@ public static class DependencyFleetView
     private static (IReadOnlyList<DependencyPackageRow> Rows, bool Truncated) Packages(DependencyFleetInput input, IReadOnlyList<Repository> repositories)
     {
         var visible = repositories.Select(r => r.Id!).ToHashSet(StringComparer.Ordinal);
-        var red = (input.Fleet?.RedVersions ?? []).Where(r => visible.Contains(r.Repository)).ToList();
+        var red = (input.Fleet?.RedVersions ?? []).Where(r => visible.Contains(r.Repository) && DependencyFleetState.IsLive(r, input.Now.UtcDateTime)).ToList();
         var uses = new Dictionary<(string Ecosystem, string Name), List<DependencyPackageUse>>(KeyComparer.Instance);
         foreach (var repository in repositories)
         {

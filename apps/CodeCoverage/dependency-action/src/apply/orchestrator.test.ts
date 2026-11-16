@@ -97,6 +97,29 @@ describe('group-by-group apply with exact reset (R2, D-S13a, D-C2)', () => {
     expect(r.consistency).toEqual({ status: 'passed', checks: [{ adapter: 'fake', directory: '.', ok: true, message: null }], bisected: [] });
   });
 
+  it('a group whose tool creates a file fails alone, so it cannot sink the patch (platform-locations-PRD S2)', async () => {
+    // Spark run 47: `yarn install` in a fixture wrote a new executable `.pnp.cjs`; the writer refuses any added file, so
+    // the whole patch went, 38 applied groups with it.
+    const { dir, sha } = repo();
+    const a = fakeAdapter();
+    const relock = a.relock!;
+    a.relock = async (ctx, items) => {
+      if (items.some((i) => i.depName === 'b')) fs.writeFileSync(path.join(ctx.root, '.pnp.cjs'), 'generated\n');
+      return relock.call(a, ctx, items);
+    };
+    const r = await applyPlan(
+      plan(sha, [
+        { group: 'g-a', items: [fakeItem('a', '1.0.0', '1.1.0')] },
+        { group: 'g-b', items: [fakeItem('b', '1.0.0', '1.1.0')] },
+      ]),
+      options(dir, a),
+    );
+    expect(r.groups.map((g) => g.status)).toEqual(['applied', 'failed']);
+    expect(r.groups[1].message).toBe('fake: created .pnp.cjs; a dependency pull request adds and deletes no files');
+    expect(fs.existsSync(path.join(dir, '.pnp.cjs'))).toBe(false);
+    expect(fs.readFileSync(path.join(dir, 'deps.txt'), 'utf8')).toBe('a 1.1.0\nb 1.0.0\nc 1.0.0\n');
+  });
+
   it('runs edit -> pin -> relock -> verify in that order', async () => {
     const { dir } = repo();
     const a = fakeAdapter();

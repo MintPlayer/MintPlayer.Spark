@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.Json;
 using CodeCoverage.Entities;
+using CodeCoverage.Git.Dependencies;
 using Raven.Client.Documents.Session;
 
 namespace CodeCoverage.Dependencies.Policy;
@@ -11,7 +12,7 @@ namespace CodeCoverage.Dependencies.Policy;
 /// of the SDKs the updater moves; end-of-life channels are left out (a lookup never offers one).
 /// </summary>
 /// <remarks>
-/// The shape is <c>{"sdks":{"&lt;sdk&gt;":[candidate…]},"unstable":[glob…]}</c>, validated by the action's
+/// The shape is <c>{"sdks":{"&lt;sdk&gt;":[candidate…]},"unstable":[glob…],"stable":[glob…]}</c>, validated by the action's
 /// <c>parsePlatformTable</c>. A candidate's <c>latestSdk</c> is .NET's SDK (global.json pins an SDK, not a runtime) or a
 /// Rust beta's dated toolchain (<c>beta-2026-11-08</c>, D11), which the plan writes to rust-toolchain.toml.
 /// <c>lts</c> is null for an SDK without LTS releases, so a <c>track: lts</c> there falls back to stable (D8).
@@ -19,10 +20,12 @@ namespace CodeCoverage.Dependencies.Policy;
 public static partial class DependencyPlatformTable
 {
     /// <summary>The table from every collected channel (a few dozen documents, read by id prefix: no index to wait for).</summary>
-    public static async Task<string> JsonAsync(IAsyncDocumentSession session, IReadOnlyList<string> unstable, CancellationToken ct)
-        => Json(await session.Advanced.LoadStartingWithAsync<PlatformRelease>(PlatformRelease.Prefix, pageSize: 1024, token: ct), unstable);
+    public static async Task<string> JsonAsync(IAsyncDocumentSession session, IReadOnlyList<string> unstable, IReadOnlyList<string> stable, CancellationToken ct,
+        IReadOnlyList<DependencyFollowRule>? follow = null)
+        => Json(await session.Advanced.LoadStartingWithAsync<PlatformRelease>(PlatformRelease.Prefix, pageSize: 1024, token: ct), unstable, stable, follow);
 
-    public static string Json(IEnumerable<PlatformRelease> releases, IReadOnlyList<string> unstable)
+    public static string Json(IEnumerable<PlatformRelease> releases, IReadOnlyList<string> unstable, IReadOnlyList<string>? stable = null,
+        IReadOnlyList<DependencyFollowRule>? follow = null)
     {
         var sdks = new SortedDictionary<string, List<Dictionary<string, object?>>>(StringComparer.Ordinal);
         foreach (var release in releases)
@@ -50,6 +53,16 @@ public static partial class DependencyPlatformTable
         {
             ["sdks"] = sdks,
             ["unstable"] = unstable,
+            // prerelease-dependencies-PRD H5: looked up stable-only even when already on a prerelease (`track: stable`).
+            ["stable"] = stable ?? [],
+            // dependency-companion-pins-PRD F2: coverage.yml's follow rules; the lookup emits a record per match.
+            ["follow"] = (follow ?? []).Select(r => new Dictionary<string, string?>
+            {
+                ["dependency"] = r.Dependency,
+                ["path"] = r.Path,
+                ["match"] = r.Match,
+                ["version"] = r.Version,
+            }).ToList(),
         });
     }
 

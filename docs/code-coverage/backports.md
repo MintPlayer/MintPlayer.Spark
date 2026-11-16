@@ -5,7 +5,10 @@ How the app carries a merged change onto older release lines. Versioning itself 
 The in-app guide for users is `/backports/setup` (Guides in the sidebar).
 
 **Who may ask.** A `/backport` comment, or a `backport:` label added to a merged pull request, needs **write access**
-to the repository. Anything less gets a comment saying so, and nothing runs. Labels already on a pull request when it
+to the repository. Anything less gets a comment saying so, and nothing runs. A `/backport` comment gets 👀 when the
+bot reads it, then 🎉 when a line got its pull request, 👍 when every line already had the change, or 👎 on a refusal,
+a conflict or a failure (#660). Every backport, label- and merge-triggered ones included, keeps a log; the
+repository page links it from the backport attempt and from the command. Labels already on a pull request when it
 merges are backported on the merger's behalf: the merge itself needed write access. A `backport/<pr>-<line>` branch
 you push yourself opens its pull request only when you have write access. With release lines, "Set up rulesets" adds
 a ruleset on `backport/*` that only the App and repository admins pass (merge-queue.md §3, ruleset 4): resolving a
@@ -108,7 +111,10 @@ backport:
   when it opens, for each supported line whose ecosystem it changes (the same changed-files test as a release). Remove
   the labels of the lines it should not reach; merging backports it to the rest. `fixes` labels the older lines only
   for a `fix:` title or a `fixLabels` label, and the newest line always; `off` labels nothing. Every pull request
-  also gets an informational **Backport targets** check listing the lines and which apply. A pull request a bot opened
+  also gets an informational **Backport targets** check listing the lines and which apply. A pull request that changes
+  no package gets no label, yet a line may still need it, for instance a demo's package update the line needs to
+  restore; the check then names each supported line's exact label and command (`backport: dotnet-10.x`,
+  `/backport dotnet-10.x`), since a label of any other name backports nothing (#651 D6). A pull request a bot opened
   gets no labels: the dependency updater gives each supported line a run of its own
   ([dependency-updates.md](dependency-updates.md) §4, `dependencies.lines`).
 - **`trialPick`** (default `warn`): when the merge queue is about to merge a pull request into the default branch, it

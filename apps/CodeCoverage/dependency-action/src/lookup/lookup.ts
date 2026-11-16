@@ -10,7 +10,9 @@ import { revParse } from '../util/git';
 import { directoryFiles, isWorkflowFile } from '../util/repoFiles';
 import { findUsages, interfaceDiffsFor, type ActionUsage, type ActionYmlFetcher } from './interfaceDiff';
 import { foldPlatformLocations } from './foldPlatform';
+import { followerRecords } from './follow';
 import { mapReport, reportProblems } from './mapReport';
+import { annotateConditions } from './nugetConditions';
 import { RENOVATE_IMAGE, runRenovate, type RenovateRun } from './renovate';
 
 export interface LookupOptions {
@@ -68,11 +70,16 @@ export async function runLookup(o: LookupOptions): Promise<{ document: LookupDoc
   }
   const run = o.renovate
     ? await o.renovate()
-    : await runRenovate({ exec: o.exec, repoDir: o.repoDir, workDir: o.workDir, githubTokenEnv: o.githubTokenEnv, hostRulesEnv: o.hostRulesEnv, unstable: o.platforms.unstable });
+    : await runRenovate({ exec: o.exec, repoDir: o.repoDir, workDir: o.workDir, githubTokenEnv: o.githubTokenEnv, hostRulesEnv: o.hostRulesEnv, unstable: o.platforms.unstable, stable: o.platforms.stable });
   const problems = reportProblems(run.report);
   const { platforms, found } = await scanPlatforms(o.repoDir, o.platforms, problems, o.now?.() ?? new Date());
   // R31: the platform record owns its locations; their channel moves are never offered separately.
-  const { records } = foldPlatformLocations(mapReport(run.report), found, platforms, o.platforms);
+  const mapped = mapReport(run.report);
+  // multi-target-dependency-split-PRD D-a: the TFMs a conditioned PackageReference/PackageVersion applies to.
+  await annotateConditions(mapped, directoryFiles(o.repoDir));
+  const { records: folded } = foldPlatformLocations(mapped, found, platforms, o.platforms);
+  // dependency-companion-pins-PRD F2: the coverage.yml follow pins, as records of their leaders.
+  const records = [...folded, ...(await followerRecords(directoryFiles(o.repoDir), o.platforms.follow ?? [], folded, problems))];
   const interfaceDiffs = await interfaceDiffsFor(records, await workflowUsages(o.repoDir), o.fetchActionYml);
   const document: LookupDocument = {
     contractVersion: CONTRACT_VERSION,

@@ -27,12 +27,35 @@ describe.skipIf(!runnable)('Renovate lookup (pinned image)', () => {
     const out = tempDir();
     const { document } = await runLookup({
       exec: realExec, repoDir: dir, outDir: out, workDir: tempDir(), expectedSha: sha,
-      platforms: { sdks: {}, unstable: [] }, fetchActionYml: async () => null,
+      platforms: { sdks: {}, unstable: [], stable: [] }, fetchActionYml: async () => null,
       githubTokenEnv: process.env.GITHUB_TOKEN ? 'GITHUB_TOKEN' : undefined,
     });
     expect(isValid('lookup', document).errors).toBe('');
     expect(document.records.some((r) => r.depName === 'left-pad')).toBe(true);
     const sentinels = fs.readdirSync(dir, { recursive: true }).map(String).filter((f) => path.basename(f).startsWith('SENTINEL'));
     expect(sentinels).toEqual([]);
+  });
+
+  /**
+   * prerelease-dependencies-PRD A1/H1/H5 on nuget.org: Octokit.GraphQL has only ever shipped betas (0.1.0-beta … 0.4.0-beta).
+   * SP1: Renovate's default drops 0.3.0-beta → 0.4.0-beta (the minor differs); the prerelease-current rule offers it, and a
+   * `track: stable` glob takes it away again.
+   */
+  it.each([
+    [[] as string[], true],
+    [['Octokit.GraphQL'], false],
+  ])('offers the next beta of a package already on a beta (stable globs %j: %s)', async (stable, offered) => {
+    const { dir, sha } = gitRepo({
+      'Lib/Lib.csproj': '<Project Sdk="Microsoft.NET.Sdk">\n  <PropertyGroup><TargetFramework>net10.0</TargetFramework></PropertyGroup>\n'
+        + '  <ItemGroup><PackageReference Include="Octokit.GraphQL" Version="0.3.0-beta" /></ItemGroup>\n</Project>\n',
+    });
+    const { document } = await runLookup({
+      exec: realExec, repoDir: dir, outDir: tempDir(), workDir: tempDir(), expectedSha: sha,
+      platforms: { sdks: {}, unstable: [], stable }, fetchActionYml: async () => null,
+      githubTokenEnv: process.env.GITHUB_TOKEN ? 'GITHUB_TOKEN' : undefined,
+    });
+    const octokit = document.records.find((r) => r.depName === 'Octokit.GraphQL');
+    expect(octokit?.currentValue).toBe('0.3.0-beta');
+    expect(octokit!.candidates.some((c) => c.version === '0.4.0-beta')).toBe(offered);
   });
 });

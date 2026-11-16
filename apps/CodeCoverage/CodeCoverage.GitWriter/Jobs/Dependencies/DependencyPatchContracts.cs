@@ -32,8 +32,12 @@ public sealed record DependencyPlanEntry(string DepName, string PackageFile, str
     /// <summary>Renovate's manager, informational only.</summary>
     public string? Manager { get; init; }
 
+    /// <summary>multi-target-dependency-split-PRD D-c: the package's version per TFM; the file is then checked as XML
+    /// ("same XML, regrouped", S4), not line by line.</summary>
+    public IReadOnlyList<PlanTfmVersion>? Layout { get; init; }
+
     /// <summary>A lockfile-only update: the manifest keeps its value.</summary>
-    public bool IsLockfileOnly => CurrentValue == NewValue && CurrentDigest == NewDigest;
+    public bool IsLockfileOnly => CurrentValue == NewValue && CurrentDigest == NewDigest && Layout is null;
 
     /// <summary>The validators' view of one item of the contract plan (<see cref="DependencyPlan"/>, D-V8 resolved).</summary>
     public static DependencyPlanEntry From(PlanItem item, string group) => new(item.DepName, item.PackageFile, item.CurrentValue, item.NewValue, group, item.Datasource)
@@ -43,6 +47,7 @@ public sealed record DependencyPlanEntry(string DepName, string PackageFile, str
         NewDigest = item.NewDigest,
         SharedVariableName = item.SharedVariableName,
         Manager = item.Manager,
+        Layout = item.Layout is { Count: > 0 } layout ? [.. layout] : null,
     };
 
     /// <summary>Every item of every group of <paramref name="plan"/>, in plan order. A platform group's items are its
@@ -85,6 +90,10 @@ public sealed record DependencyPatchRequest(IReadOnlyList<DependencyPlanEntry> P
     /// <summary>#613 item 2: the plan's platform groups, each with the locations the lookup reported for its SDK. The SDK
     /// adapter's edits are admitted only on these, as <see cref="PlatformSubstitution"/> substitutions.</summary>
     public IReadOnlyList<DependencyPlatformMove> Platforms { get; init; } = [];
+
+    /// <summary>dependency-companion-pins-PRD F3: coverage.yml's <c>follow</c> rules, from the default branch. A <c>follow</c>
+    /// entry's edit is admitted only through one: same dependency, its path glob, and the line the rule re-matches.</summary>
+    public IReadOnlyList<DependencyFollowRule> Follow { get; init; } = [];
 
     /// <summary>The request for the contract <paramref name="plan"/>; with <paramref name="result"/>, its <c>applied</c>
     /// groups become the claim the patch must equal (§13.11.3 #4, D-V5). <paramref name="locations"/> are the lookup's

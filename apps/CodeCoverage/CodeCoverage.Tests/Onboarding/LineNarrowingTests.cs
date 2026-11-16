@@ -52,6 +52,66 @@ public class LineNarrowingTests
         ]);
     }
 
+    /// <summary>SpaServices' pull-request.yml step on release/dotnet-10.x as the cut left it (PR #110, 2026-11-12): global.json
+    /// narrowed to 10.0.404 while this still installed the 11 rc, so `dotnet restore` found no SDK (exit 155).</summary>
+    private static string SetupDotnet(string version)
+        => "    - name: Setup .NET Core\n      uses: actions/setup-dotnet@v6\n      with:\n        dotnet-version: " + version + "\n";
+
+    /// <summary>SpaServices' global.json (Arcade's layout): <c>tools.dotnet</c> pins the SDK a second time.</summary>
+    private static string ArcadeGlobalJson(string sdk, string tools)
+        => "{\n\t\"sdk\": {\n\t\t\"version\": \"" + sdk + "\",\n\t\t\"rollForward\": \"latestFeature\"\n\t},\n\t\"tools\": {\n\t\t\"dotnet\": \"" + tools
+           + "\",\n\t\t\"runtimes\": {\n\t\t\t\"dotnet/x64\": [\n\t\t\t\t\"$(MicrosoftNETCoreAppInternalPackageVersion)\"\n\t\t\t]\n\t\t}\n\t}\n}\n";
+
+    private const string Rc = "11.0.100-rc.1.26425.128";
+
+    [Fact]
+    public void D15_the_workflows_sdk_pins_and_the_tools_sdk_follow_the_line()
+    {
+        var narrowing = LineNarrowing.Plan(10, new Dictionary<string, string>
+        {
+            [Csproj] = Project("net10.0;net11.0", framework: "10.0.7"),
+            ["global.json"] = ArcadeGlobalJson(Rc, Rc),
+            [".github/workflows/pull-request.yml"] = SetupDotnet(Rc) + "\n" + SetupDotnet(Rc),
+            [".github/workflows/build-any.yml"] = SetupDotnet("'11.0.x'"),
+            [".github/workflows/legacy.yml"] = SetupDotnet("8.0.x"),
+            [".github/workflows/dependency-apply.yml"] = "      - uses: actions/setup-dotnet@v6\n        with:\n          global-json-file: global.json\n",
+        }, latestSdk: "10.0.404", latestRuntime: "10.0.7");
+
+        narrowing.Files.Should().BeEquivalentTo([
+            new GitWriterFile(Csproj, Project("net10.0", framework: "10.0.7")),
+            new GitWriterFile("global.json", ArcadeGlobalJson("10.0.404", "10.0.404")),
+            new GitWriterFile(".github/workflows/build-any.yml", SetupDotnet("'10.0.x'")),
+            new GitWriterFile(".github/workflows/pull-request.yml", SetupDotnet("10.0.404") + "\n" + SetupDotnet("10.0.404")),
+        ]);
+        narrowing.Changes.Should().Equal([
+            $"`{Csproj}`: TargetFrameworks `net10.0;net11.0` → `net10.0`",
+            $"`global.json`: SDK `{Rc}` → `10.0.404`",
+            $"`global.json`: tools.dotnet `{Rc}` → `10.0.404`",
+            "`.github/workflows/build-any.yml:4`: dotnet-version `11.0.x` → `10.0.x`",
+            $"`.github/workflows/pull-request.yml:4`: dotnet-version `{Rc}` → `10.0.404`",
+            $"`.github/workflows/pull-request.yml:9`: dotnet-version `{Rc}` → `10.0.404`",
+        ]);
+    }
+
+    [Fact]
+    public void D15_a_workflow_pin_without_a_known_sdk_or_in_a_list_is_left_for_a_person()
+    {
+        var narrowing = LineNarrowing.Plan(10, new Dictionary<string, string>
+        {
+            [".github/workflows/pull-request.yml"] = SetupDotnet(Rc),
+            [".github/workflows/matrix.yml"] = "      - uses: actions/setup-dotnet@v6\n        with:\n          dotnet-version: |\n            8.0.x\n            11.0.x\n",
+            ["global.json"] = ArcadeGlobalJson(Rc, Rc),
+        }, latestSdk: null, latestRuntime: null);
+
+        narrowing.Files.Should().BeEmpty();
+        narrowing.Notes.Should().Equal([
+            $"`global.json` pins SDK `{Rc}`; the latest .NET 10 SDK is not known yet, so set it by hand.",
+            $"`global.json` pins tools.dotnet `{Rc}`; the latest .NET 10 SDK is not known yet, so set it by hand.",
+            "`.github/workflows/matrix.yml:3` lists SDKs above .NET 10 under `dotnet-version`; narrow the list by hand.",
+            $"`.github/workflows/pull-request.yml:4` pins dotnet-version `{Rc}`; the latest .NET 10 SDK is not known yet, so set it by hand.",
+        ]);
+    }
+
     [Fact]
     public void D15_a_line_that_targets_nothing_higher_needs_no_pull_request()
     {
@@ -75,6 +135,50 @@ public class LineNarrowingTests
 
         narrowing.Files.Should().BeEquivalentTo([new GitWriterFile(Csproj, Project("net10.0", framework: "10.0.0"))]);
         narrowing.Notes.Should().Equal(["`global.json` pins SDK `11.0.100`; the latest .NET 10 SDK is not known yet, so set it by hand."]);
+    }
+
+    /// <summary>#651 D1: SpaServices #114 kept <c>&lt;LangVersion&gt;15&lt;/LangVersion&gt;</c> on release/dotnet-10.x, and the .NET 10
+    /// compiler refused it (CS1617, run 43382800307). C# 15 is .NET 11's, so the line takes C# 14.</summary>
+    [Fact]
+    public void Issue651_D1_a_language_version_above_the_line_takes_the_lines_csharp_version()
+    {
+        static string WithLang(string tfm, string lang) => $"""
+            <Project Sdk="Microsoft.NET.Sdk">
+              <PropertyGroup>
+                <TargetFrameworks>{tfm}</TargetFrameworks>
+                <LangVersion>{lang}</LangVersion>
+              </PropertyGroup>
+            </Project>
+            """;
+
+        static string Props(string lang) => $"""
+            <Project>
+              <PropertyGroup>
+                <LangVersion>{lang}</LangVersion>
+              </PropertyGroup>
+            </Project>
+            """;
+
+        var narrowing = LineNarrowing.Plan(10, new Dictionary<string, string>
+        {
+            [Csproj] = WithLang("net10.0;net11.0", "15"),
+            ["Directory.Build.props"] = Props("15.0"),
+            ["src/Latest/Latest.csproj"] = WithLang("net10.0", "latest"),
+            ["src/Old/Old.csproj"] = WithLang("net10.0", "13"),
+        }, latestSdk: "10.0.404", latestRuntime: "10.0.7");
+
+        narrowing.Files.Should().BeEquivalentTo([
+            new GitWriterFile(Csproj, WithLang("net10.0", "14")),
+            new GitWriterFile("Directory.Build.props", Props("14")),
+        ]);
+        narrowing.Changes.Should().Equal([
+            "`Directory.Build.props`: LangVersion `15.0` → `14`",
+            $"`{Csproj}`: TargetFrameworks `net10.0;net11.0` → `net10.0`",
+            $"`{Csproj}`: LangVersion `15` → `14`",
+        ]);
+        // A file whose only problem is the language version still needs the pull request.
+        LineNarrowing.TargetsAbove(10, Props("15")).Should().BeTrue();
+        LineNarrowing.TargetsAbove(10, Props("preview")).Should().BeFalse();
     }
 
     [Fact]

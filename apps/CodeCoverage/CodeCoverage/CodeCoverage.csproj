@@ -11,19 +11,19 @@
 	<ItemGroup>
 		<!-- Pinned to the version MintPlayer.Spark.Authorization pins, rather than the floating
 		     10.0.* it carried out-of-tree: in-repo the two must not disagree. -->
-		<PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="11.0.0-rc.1.26425.128" />
-		<PackageReference Include="MintPlayer.AspNetCore.Endpoints" Version="11.4.1-rc.0" />
-		<PackageReference Include="MintPlayer.AspNetCore.SpaServices" Version="11.0.0-rc.3" />
-		<PackageReference Include="MintPlayer.SourceGenerators" Version="13.0.0">
+		<PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="11.0.0" />
+		<PackageReference Include="MintPlayer.AspNetCore.Endpoints" Version="11.4.1" />
+		<PackageReference Include="MintPlayer.AspNetCore.SpaServices" Version="11.0.0" />
+		<PackageReference Include="MintPlayer.SourceGenerators" Version="13.1.2">
 			<PrivateAssets>all</PrivateAssets>
 			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
 		</PackageReference>
-		<PackageReference Include="MintPlayer.SourceGenerators.Attributes" Version="13.0.0" GeneratePathProperty="true" />
+		<PackageReference Include="MintPlayer.SourceGenerators.Attributes" Version="13.1.2" GeneratePathProperty="true" />
 		<PackageReference Include="YamlDotNet" Version="18.1.0" />
 		<!-- The dependency-update contract (docs/code-coverage/dependency-updates-PRD.md §13.11.2): every document a runner
 		     returns is validated against its schema before it is deserialized, and every plan the bot writes before it is
 		     committed. The version MintPlayer.Spark.Tests already uses. -->
-		<PackageReference Include="JsonSchema.Net" Version="9.4.0" />
+		<PackageReference Include="JsonSchema.Net" Version="9.5.0" />
 	</ItemGroup>
 
 	<ItemGroup>
@@ -59,6 +59,8 @@
 		<ProjectReference Include="..\..\..\libs\cron\MintPlayer.Spark.Cron\MintPlayer.Spark.Cron.csproj" />
 		<ProjectReference Include="..\..\..\libs\dashboards\MintPlayer.Spark.Dashboards\MintPlayer.Spark.Dashboards.csproj" />
 		<ProjectReference Include="..\..\..\libs\boards\MintPlayer.Spark.Boards\MintPlayer.Spark.Boards.csproj" />
+		<!-- #660: the command logs (spark.AddLogs()). -->
+		<ProjectReference Include="..\..\..\libs\logging\MintPlayer.Spark.Logging\MintPlayer.Spark.Logging.csproj" />
 		<ProjectReference Include="..\..\..\libs\messaging\MintPlayer.Spark.Messaging\MintPlayer.Spark.Messaging.csproj" />
 		<ProjectReference Include="..\..\..\libs\mail\MintPlayer.Spark.MailManager\MintPlayer.Spark.MailManager.csproj" />
 		<!-- The MCP server for AI agents (plan M6) and its embedded authorization server (ForMcp().AgentsOnly(), PRD D24). -->
@@ -79,7 +81,7 @@
 	-->
 	<ItemGroup Condition="'$(Configuration)' == 'Debug'">
 		<ProjectReference Include="..\CodeCoverage.GitWriter\CodeCoverage.GitWriter.csproj" />
-		<PackageReference Include="Microsoft.AspNetCore.TestHost" Version="11.0.0-rc.1.26425.128" />
+		<PackageReference Include="Microsoft.AspNetCore.TestHost" Version="11.0.0" />
 	</ItemGroup>
 
 <ItemGroup>

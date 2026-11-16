@@ -121,6 +121,23 @@ describe('#617 applying the in-channel plan (D29, D31)', () => {
     expect((await applyPlatform(files, behind)).edited).toEqual([]);
   });
 
+  // SpaServices #121 (2026-11-13): an Arcade-style `tools.dotnet` (the SDK the build scripts install) stayed on the RC
+  // while `sdk.version` moved. It is a global.json SDK pin like `sdk.version`, and moves with it.
+  it('moves an Arcade tools.dotnet SDK with sdk.version, and leaves the runtimes', async () => {
+    const spaServices = (sdk: string) =>
+      `{\n\t"sdk": {\n\t\t"version": "${sdk}",\n\t\t"rollForward": "latestFeature"\n\t},\n\t"tools": {\n\t\t"dotnet": "${sdk}",\n` +
+      '\t\t"runtimes": {\n\t\t\t"dotnet/x64": [\n\t\t\t\t"$(MicrosoftNETCoreAppInternalPackageVersion)"\n\t\t\t],\n' +
+      '\t\t\t"dotnet/x86": [\n\t\t\t\t"$(MicrosoftNETCoreAppInternalPackageVersion)"\n\t\t\t]\n\t\t}\n\t}\n}\n';
+    const root = tempDir();
+    writeTree(root, { 'global.json': spaServices('11.0.100-rc.1.26425.128') });
+    const files = directoryFiles(root);
+    const found = (await scanLocations(files, ['dotnet'])).map((f) => `${f.kind}:${f.line + 1}:${f.value}:${f.channel}`);
+    expect(found).toEqual(['global.json:3:11.0.100-rc.1.26425.128:11.0', 'global.json:7:11.0.100-rc.1.26425.128:11.0']);
+    const result = await applyPlatform(files, plan);
+    expect(result.edited).toEqual(['global.json']);
+    expect(fs.readFileSync(path.join(root, 'global.json'), 'utf8')).toBe(spaServices('11.0.100'));
+  });
+
   it('a move to another preview keeps the quality', async () => {
     const root = tempDir();
     copyTree(fixture('renovate/dotnet-preview-to-ga/input'), root);

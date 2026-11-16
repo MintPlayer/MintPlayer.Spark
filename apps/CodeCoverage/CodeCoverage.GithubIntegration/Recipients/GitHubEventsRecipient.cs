@@ -505,6 +505,10 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
         if (evt.Action is "opened" or "reopened")
             await messageBus.BroadcastAsync(new ForgeWebhookMessage<PullRequestDescribed>(
                 EForgeProvider.GitHub, new PullRequestDescribed(repository.Id!, (int)evt.Number)), ct);
+
+        if (evt.Action == "reopened")
+            await messageBus.BroadcastAsync(new ForgeWebhookMessage<PullRequestReopened>(
+                EForgeProvider.GitHub, new PullRequestReopened(repository.Id!, (int)evt.Number, pr.Head.Ref)), ct);
     }
 
     // ── The merge queue (PRD M5) ─────────────────────────────────────────────────────────────────────
@@ -591,7 +595,7 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
         {
             if (IsOurApp(comment) || HumanSender(root) is not { } releaser || IsBotAuthor(comment)) return;
             if (await LoadKnownRepositoryIdAsync(root, ct) is not { } releaseRepositoryId) return;
-            await RaiseAsync(new ReleaseRequested(releaseRepositoryId, (int)number, release, releaser), ct);
+            await RaiseAsync(new ReleaseRequested(releaseRepositoryId, (int)number, release, releaser, Number(comment, "id")), ct);
             return;
         }
         if (Child(issue, "pull_request") is null) return;
@@ -613,16 +617,18 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
 
         if (backport is not null)
         {
-            await RaiseAsync(new BackportRequested(repositoryId, (int)number, backport.Lines, actor, EBackportSource.Comment, backport.Draft), ct);
+            await RaiseAsync(new BackportRequested(repositoryId, (int)number, backport.Lines, actor, EBackportSource.Comment, backport.Draft,
+                Number(comment, "id")), ct);
             return;
         }
         if (dependencyCommand is { } dependency)
         {
             if (Number(comment, "id") is not { } commentId) return;
-            await RaiseAsync(new DependencyCommandIssued(repositoryId, (int)number, commentId, dependency.Command, dependency.Argument, actor), ct);
+            await RaiseAsync(new DependencyCommandIssued(repositoryId, (int)number, commentId, dependency.Command, dependency.Argument, actor, dependency.Malformed), ct);
             return;
         }
-        await RaiseAsync(new MergeQueueCommandIssued(repositoryId, (int)number, command!.Value, actor, EMergeQueueCommandSource.Comment), ct);
+        await RaiseAsync(new MergeQueueCommandIssued(repositoryId, (int)number, command!.Value, actor, EMergeQueueCommandSource.Comment,
+            CommentId: Number(comment, "id")), ct);
     }
 
     private static bool IsBotAuthor(JsonElement comment)

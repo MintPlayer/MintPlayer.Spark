@@ -79,6 +79,19 @@ public class BackportTargetsTests
         check.Text.Should().Contain("backport.defaultLabels 'some'");
     }
 
+    /// <summary>#651 D6: SpaServices #115 changed only demo projects, which the 10.x line needed to restore; its author labelled
+    /// it `release/dotnet-10.x`, which the backport does not read. The check names the exact label and command per supported line.</summary>
+    [Fact]
+    public void Issue651_D6_when_nothing_applies_the_check_says_how_to_backport_anyway()
+    {
+        var check = BackportTargets.Check(Lines, [], [], []);
+
+        check.Summary.Should().Be("This pull request changes no package, so no release line needs it by default. "
+            + "If a line needs it anyway, for instance to build, add its label before the merge, or comment its command after: "
+            + "`backport: angular-22.x` or `/backport angular-22.x`; `backport: angular-21.x` or `/backport angular-21.x`; "
+            + "`backport: dotnet-11.x` or `/backport dotnet-11.x`; `backport: dotnet-10.x` or `/backport dotnet-10.x`.");
+    }
+
     [Fact]
     public void The_check_of_a_repository_without_any_line_says_none_exists_yet()
     {

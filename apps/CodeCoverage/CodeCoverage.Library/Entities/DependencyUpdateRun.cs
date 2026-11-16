@@ -57,6 +57,12 @@ public class DependencyUpdateRun
 
     public string? OutcomeMessage { get; set; }
 
+    /// <summary>
+    /// The <c>/refresh</c> that started this run, or the <c>/bisect</c> that started its bisection (#660 G3): the run's
+    /// publish or end, or the bisection's culprit, reacts on that comment. Cleared by the next run.
+    /// </summary>
+    public string? CommandInvocation { get; set; }
+
     // ── The run ─────────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>
@@ -86,6 +92,10 @@ public class DependencyUpdateRun
 
     /// <summary>The file opted out (<c>dependencies.enabled: false</c>) when last read.</summary>
     public bool FileDisabled { get; set; }
+
+    /// <summary>companion-version-maps-PRD §6.5: the default branch's <c>coverage.yml</c> problems when last read (at most
+    /// 20), which the pull request lists; an erroneous section falls back to its defaults.</summary>
+    public List<string> ConfigProblems { get; set; } = [];
 
     /// <summary>
     /// #568 D13, on the default branch's run: the supported release lines (<c>dotnet-10.x</c>, …) when the file was last read,
@@ -194,6 +204,14 @@ public class DependencyUpdateRun
     // ── Red CI (old §7.4, N6) ─────────────────────────────────────────────────────────────────────
 
     public DependencyBisect? Bisect { get; set; }
+
+    /// <summary>
+    /// #683: the commit whose cancelled checks were re-run, once per commit, because a cancelled check is no verdict on the
+    /// updates; and when, so the forge's lag in showing the re-run is not read as a second cancellation.
+    /// </summary>
+    public string? CancelledRerunSha { get; set; }
+
+    public DateTime? CancelledRerunAtUtc { get; set; }
 
     /// <summary>The coverage gate's answer on the last green head (R11), for the body.</summary>
     public string? CoverageNote { get; set; }

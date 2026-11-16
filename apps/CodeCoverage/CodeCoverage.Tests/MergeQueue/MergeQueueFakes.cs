@@ -31,7 +31,7 @@ internal sealed class FakeForgeMergeQueue : IForgeMergeQueue
     public bool RerunResult { get; set; } = true;
 
     /// <summary>When set and it answers, its access is handed out instead of a minted one (e.g. a refusal).</summary>
-    public Func<ForgePullRequest?, ForgePushAccess?>? WriterAccess { get; set; }
+    public Func<ForgePullRequest?, bool, ForgePushAccess?>? WriterAccess { get; set; }
 
     /// <summary>Every writer credential minted (T9): the pull request it pushes (null: the queue branch only), whether it
     /// carries the workflow permission, and its token, in order.</summary>
@@ -302,7 +302,7 @@ internal sealed class FakeForgeMergeQueue : IForgeMergeQueue
 
     public Task<ForgePushAccess> GetWriterAccessAsync(Repository repository, ForgePullRequest? pullRequest, bool pushesWorkflowChanges, CancellationToken cancellationToken = default)
     {
-        if (WriterAccess?.Invoke(pullRequest) is { } scripted)
+        if (WriterAccess?.Invoke(pullRequest, pushesWorkflowChanges) is { } scripted)
             return Task.FromResult(scripted);
         var token = $"job-token-{WriterAccesses.Count + 1}";
         WriterAccesses.Add((pullRequest?.Number, pushesWorkflowChanges, token));

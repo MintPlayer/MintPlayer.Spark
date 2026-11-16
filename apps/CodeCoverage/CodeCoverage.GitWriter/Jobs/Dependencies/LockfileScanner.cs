@@ -13,7 +13,8 @@ public sealed record LockfileScan(string? Reason, string? Detail, IReadOnlyList<
 /// a machine the attacker may own, so the bot reads the ADDED lockfile lines itself, ecosystem-neutrally:
 /// <list type="bullet">
 /// <item>no <c>git+</c>, <c>git:</c>, <c>github:</c>, <c>file:</c>, <c>link:</c>, <c>http:</c> or <c>ssh:</c> source;</item>
-/// <item>every URL is <c>https</c>, without credentials, on an allowed host or one the base lockfile already names;</item>
+/// <item>every URL is <c>https</c>, without credentials, on an allowed host or one the base lockfile already names; a line
+/// that is only npm's <c>deprecated</c> message is text, not a source, and is not checked (lockfile-notice-and-line-cut PRD D1);</item>
 /// <item>where the format records integrity, every changed entry has it (npm <c>resolved</c> → <c>integrity</c>, NuGet
 /// <c>resolved</c> → <c>contentHash</c>, Cargo/poetry/uv <c>version</c> → <c>checksum</c>/<c>hash</c>, a go.sum
 /// <c>h1:</c> on every line, pnpm's <c>resolution: {integrity</c>);</item>
@@ -23,12 +24,15 @@ public sealed record LockfileScan(string? Reason, string? Detail, IReadOnlyList<
 public static partial class LockfileScanner
 {
     /// <summary>Per file name: the package-name pattern (group <c>n</c>), and an integrity rule.</summary>
-    private sealed record Format(Regex Names, Regex? EntryMarker = null, Regex? Integrity = null, Regex? EveryLine = null, Regex? SameLineTrigger = null, Regex? SameLine = null);
+    /// <param name="Notice">A line that is only free text the package manager never fetches from (npm's <c>deprecated</c>
+    /// message): its links are not sources, so the source checks skip it. The pattern spans the whole line, so nothing else
+    /// can ride on it.</param>
+    private sealed record Format(Regex Names, Regex? EntryMarker = null, Regex? Integrity = null, Regex? EveryLine = null, Regex? SameLineTrigger = null, Regex? SameLine = null, Regex? Notice = null);
 
     private static readonly Dictionary<string, Format> Formats = new(StringComparer.Ordinal)
     {
-        ["package-lock.json"] = new(NpmNames(), JsonKey("resolved"), JsonKey("integrity")),
-        ["npm-shrinkwrap.json"] = new(NpmNames(), JsonKey("resolved"), JsonKey("integrity")),
+        ["package-lock.json"] = new(NpmNames(), JsonKey("resolved"), JsonKey("integrity"), Notice: NpmDeprecated()),
+        ["npm-shrinkwrap.json"] = new(NpmNames(), JsonKey("resolved"), JsonKey("integrity"), Notice: NpmDeprecated()),
         ["yarn.lock"] = new(YarnNames(), YarnResolved(), YarnIntegrity()),
         ["pnpm-lock.yaml"] = new(PnpmNames(), SameLineTrigger: PnpmResolution(), SameLine: PnpmIntegrity()),
         ["bun.lock"] = new(BunNames()),
@@ -46,6 +50,10 @@ public static partial class LockfileScanner
 
     [GeneratedRegex(@"""(?:[^""]*/)?node_modules/(?<n>(?:@[^/""]+/)?[^/""]+)""\s*:", RegexOptions.CultureInvariant)]
     private static partial Regex NpmNames();
+
+    /// <summary>One whole line holding only npm's <c>"deprecated": "&lt;message&gt;"</c>, the message a single JSON string.</summary>
+    [GeneratedRegex(@"\A\s*""deprecated""\s*:\s*""(?:[^""\\]|\\.)*""\s*,?\z", RegexOptions.CultureInvariant)]
+    private static partial Regex NpmDeprecated();
 
     [GeneratedRegex(@"^""?(?<n>@?[^@\s""]+)@", RegexOptions.CultureInvariant | RegexOptions.Multiline)]
     private static partial Regex YarnNames();
@@ -132,6 +140,8 @@ public static partial class LockfileScanner
                 if (line.Kind != '+')
                     continue;
                 var text = line.Text.TrimEnd('\r');
+                if (format.Notice?.IsMatch(text) == true)
+                    continue;
                 if (ForbiddenSource().Match(text) is { Success: true } forbidden)
                     return new(DependencyPatchReasons.LockfileSource, $"Line {lineNumber} adds a '{forbidden.Value}' source, which is not a registry.", []);
                 foreach (Match url in HttpsUrl().Matches(text))

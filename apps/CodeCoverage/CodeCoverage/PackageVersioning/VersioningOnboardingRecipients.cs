@@ -37,6 +37,7 @@ public partial class VersioningSeedsRecipient : IRecipient<VersioningSeedsMessag
     [Inject] private readonly Raven.Client.Documents.Session.IAsyncDocumentSession session;
     [Inject] private readonly Onboarding.IOnboardingService onboarding;
     [Inject] private readonly VersioningRunLocks locks;
+    [Inject] private readonly ILogger<VersioningSeedsRecipient> logger;
 
     public async Task HandleAsync(VersioningSeedsMessage message, CancellationToken cancellationToken = default)
     {
@@ -45,6 +46,11 @@ public partial class VersioningSeedsRecipient : IRecipient<VersioningSeedsMessag
         using var held = await locks.TryEnterAsync(repository.Id!, cancellationToken)
             ?? throw new GitWriterUnavailableException("A versioning run of this repository is still going.");
         // #571 M10d: the seeds, then the chooser's settings, renames and line workflows (only the seeds for a #153 pull request).
-        await onboarding.MergedAsync(repository, cancellationToken);
+        // #649 D9: nobody watches a merge's outcome, so it is logged; a failed step as a warning.
+        var outcome = await onboarding.MergedAsync(repository, cancellationToken);
+        if (outcome.HasFailures)
+            logger.LogWarning("Onboarding merge of {Repository}: {Note}", repository.FullName, outcome.Note);
+        else
+            logger.LogInformation("Onboarding merge of {Repository} ({Outcome}): {Note}", repository.FullName, outcome.Outcome, outcome.Note);
     }
 }

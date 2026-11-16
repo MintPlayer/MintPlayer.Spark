@@ -21,6 +21,12 @@ public sealed record DependencyRunReport
     public List<DependencyReportEntry> Available { get; init; } = [];
     public List<DependencyReportEntry> Ignored { get; init; } = [];
     public List<DependencyPlatformReport> PlatformReports { get; init; } = [];
+
+    /// <summary>companion-pins-PRD G4: the follow rules that moved nothing, each as the lookup's message.</summary>
+    public List<string> NotFollowed { get; init; } = [];
+
+    /// <summary>follower-cooldown-PRD G4: the dependencies a feed refused to the lookup, as Renovate said it.</summary>
+    public List<string> NotLookedUp { get; init; } = [];
     public List<string> LiftedHolds { get; init; } = [];
     public List<string> ExpiredApprovals { get; init; } = [];
 
@@ -44,9 +50,20 @@ public sealed record DependencyRunReport
         Available = [.. outcome.Available],
         Ignored = [.. outcome.Ignored],
         PlatformReports = [.. outcome.PlatformReports],
+        NotFollowed = [.. outcome.NotFollowed],
+        NotLookedUp = [.. outcome.NotLookedUp],
         LiftedHolds = [.. outcome.LiftedHolds.Select(h => h.Reason)],
         ExpiredApprovals = [.. outcome.ExpiredApprovals.Select(a => a.Group)],
     };
+
+    /// <summary>
+    /// The locations a platform group's apply did not edit (<c>platform.reported</c>, e.g. a stage on an older channel), with
+    /// the SDK taken from the group name (<c>platform:&lt;sdk&gt; &lt;channel&gt;</c>).
+    /// </summary>
+    public static IEnumerable<DependencyPlatformReport> ApplyPlatformReports(ApplyResult result)
+        => result.Groups
+            .Where(g => g.Platform is not null && g.Group.StartsWith("platform:", StringComparison.Ordinal))
+            .SelectMany(g => g.Platform!.Reported.Select(r => new DependencyPlatformReport(g.Group["platform:".Length..].Split(' ')[0], r.File, r.Value, r.Reason)));
 
     /// <summary>What <see cref="DependencyHolds.Approve"/> reads (R6, gap E): the awaiting-approval half, and the held half for
     /// a <c>--force</c> of a pending SDK move (#606 D3).</summary>
@@ -212,7 +229,9 @@ public sealed record DependencyEnqueueInput(
     bool NeedsHuman,
     bool HasMigrations,
     IReadOnlyList<string> WorkflowsNotOnPullRequest,
-    ECoverageGate Coverage);
+    ECoverageGate Coverage,
+    // prerelease-dependencies-PRD H3: the SDKs whose platforms.<sdk>.autoMerge: major lifts R7.
+    IReadOnlySet<string> PlatformMajorOptIns);
 
 public static class DependencyAutoMergeGate
 {
@@ -227,8 +246,8 @@ public static class DependencyAutoMergeGate
             return "Nothing is applied.";
         if (input.Report.Groups.FirstOrDefault(g => !g.AutoMerge) is { } over)
             return $"`{over.Group}` is above its auto-merge threshold{(over.Approved ? " (approved by a comment)" : string.Empty)}.";
-        if (input.Report.Groups.FirstOrDefault(g => g.Platform && g.Level == EUpdateLevel.Major) is { } platform)
-            return $"`{platform.Group}` moves a platform major, which never auto-merges.";
+        if (input.Report.Groups.FirstOrDefault(g => g.Platform && g.Level == EUpdateLevel.Major && !input.PlatformMajorOptIns.Contains(PlatformSdk(g.Group))) is { } platform)
+            return $"`{platform.Group}` moves a platform major, which auto-merges only with `dependencies.platforms.{PlatformSdk(platform.Group)}.autoMerge: major`.";
         if (input.HasMigrations)
             return "It contains code migrations, which never auto-merge.";
         if (input.NeedsHuman)
@@ -244,6 +263,10 @@ public static class DependencyAutoMergeGate
             _ => null,
         };
     }
+
+    /// <summary>The SDK of a platform group (<c>platform:dotnet 12.0</c> → <c>dotnet</c>).</summary>
+    private static string PlatformSdk(string group)
+        => group.StartsWith("platform:", StringComparison.Ordinal) ? group["platform:".Length..].Split(' ')[0] : group;
 }
 
 /// <summary>What kind of failure a red head shows, as far as the failing checks' names tell.</summary>

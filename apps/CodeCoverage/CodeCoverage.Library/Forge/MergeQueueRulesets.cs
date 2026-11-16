@@ -65,18 +65,12 @@ public sealed record ForgeRulesetApplied(string Description, string? Url);
 /// owner 2026-11-11). Null keeps ruleset 3's own checks, or takes <paramref name="RequiredChecks"/> when it does not
 /// exist; empty creates no ruleset 3 and leaves an existing one as it is.
 /// </param>
-/// <param name="PromotesLines">
-/// <c>versioning.lines.current: promote</c> (segment P, Q-A = B): the App is <c>exempt</c> on ruleset 3, because a
-/// promotion is a direct push of a commit whose checks have not run on the line yet (its tree passed the default branch's
-/// workflow, and the line's own release run still tests it before anything is tagged). Off: the App is removed from it.
-/// </param>
 public sealed record MergeQueueRulesetChoices(
     int RequiredApprovals,
     IReadOnlyList<string> RequiredChecks,
     bool? AdminsMayMergeByPullRequest = null,
     IReadOnlyList<string>? ReleaseLines = null,
-    IReadOnlyList<string>? LineRequiredChecks = null,
-    bool PromotesLines = false);
+    IReadOnlyList<string>? LineRequiredChecks = null);
 
 /// <summary>One change the plan makes, in the order it must be made.</summary>
 public abstract record MergeQueueRulesetStep;
@@ -187,7 +181,7 @@ public static class MergeQueueRulesetPlanner
         AddStep(steps, existing2, desired2);
         if (lines.Count > 0)
         {
-            AddStep(steps, existing3, LineChecks(state, lineChecks, lines, existing3, choices.PromotesLines));
+            AddStep(steps, existing3, LineChecks(state, lineChecks, lines, existing3));
             var existing4 = Single(state, BackportBranchesName, blockers);
             AddStep(steps, existing4, BackportBranches(state, existing4));
         }
@@ -338,11 +332,13 @@ public static class MergeQueueRulesetPlanner
     }
 
     /// <summary>
-    /// Ruleset 3: the lines' required checks and nothing the plan does not manage removed; the App exempt only when the
-    /// repository promotes its lines (<see cref="MergeQueueRulesetChoices.PromotesLines"/>).
+    /// Ruleset 3: the lines' required checks and nothing the plan does not manage removed, with the App <c>exempt</c>
+    /// (lockfile-notice-and-line-cut PRD D2, owner 2026-11-12). The App creates the lines (a creation must pass the
+    /// required checks, which a commit never carries for a branch that does not exist yet: SpaServices' cut answered 422)
+    /// and pushes promotions; its other line changes go through the queue, which waits for these checks itself.
     /// </summary>
     private static ForgeRulesetDefinition LineChecks(ForgeRulesetState state, List<string> checks, List<string> lines,
-        ForgeExistingRuleset? existing, bool promotes)
+        ForgeExistingRuleset? existing)
     {
         var kept = existing?.Definition.Rules ?? [];
         var statusChecks = StatusChecks(kept, [.. checks, LinePolicyCheckName]);
@@ -354,7 +350,7 @@ public static class MergeQueueRulesetPlanner
         var actors = (existing?.Definition.BypassActors ?? [])
             .Where(a => !(a.ActorType == "Integration" && a.ActorId == state.AppId))
             .ToList();
-        if (promotes) actors.Insert(0, new(state.AppId, "Integration", "exempt"));
+        actors.Insert(0, new(state.AppId, "Integration", "exempt"));
         return new ForgeRulesetDefinition(LineChecksName, "branch", "active", lines, [], rules, actors);
     }
 

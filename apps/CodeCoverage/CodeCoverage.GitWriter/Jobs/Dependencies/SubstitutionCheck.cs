@@ -35,15 +35,18 @@ public static class SubstitutionCheck
         if (!Search(old, @new, 0, MaxSwapsPerLine, swaps, used))
             return null;
         // Each swap the line used must belong to an entry the line (or the lines just above it) names; every such entry
-        // is explained, so two records sharing one Maven property or catalog version both count as applied.
-        var context = new List<string>(linesAbove.TakeLast(AnchorLinesAbove)) { old, @new };
+        // is explained, so two records sharing one Maven property or catalog version both count as applied. The lines above
+        // are asked only when the changed line names none of them (a child <Version>, a Maven <version>): a line naming its
+        // own package is that package's line, whatever the reference above it names (SpaServices run 123, 2026-11-15).
+        string[] line = [old, @new];
+        var above = linesAbove.TakeLast(AnchorLinesAbove).ToList();
         var explained = new List<DependencyPlanEntry>();
         foreach (var swap in used)
         {
-            var named = swaps.Where(s => s.From == swap.From && s.To == swap.To)
-                .Select(s => s.Entry)
-                .Where(e => Anchors(e).Any(a => context.Any(l => l.Contains(a, StringComparison.OrdinalIgnoreCase))))
-                .ToList();
+            var candidates = swaps.Where(s => s.From == swap.From && s.To == swap.To).Select(s => s.Entry).ToList();
+            var named = candidates.Where(e => Anchors(e).Any(a => line.Any(l => Names(l, a)))).ToList();
+            if (named.Count == 0)
+                named = [.. candidates.Where(e => Anchors(e).Any(a => above.Any(l => Names(l, a))))];
             if (named.Count == 0)
                 return null;
             explained.AddRange(named);
@@ -103,6 +106,25 @@ public static class SubstitutionCheck
         if (char.IsAsciiLetterOrDigit(last) && index + length < text.Length && IsVersionChar(text[index + length]))
             return false;
         return true;
+    }
+
+    private static bool IsNameChar(char c) => char.IsAsciiLetterOrDigit(c) || c is '.' or '_' or '-';
+
+    /// <summary>Whether <paramref name="line"/> holds <paramref name="anchor"/> as a whole name, not as part of a longer one:
+    /// <c>MintPlayer.SourceGenerators</c> does not name <c>MintPlayer.SourceGenerators.Attributes</c> (SpaServices run 123,
+    /// 2026-11-15, two groups with the same swap, refused as group-mismatch on every run). Case-insensitive, as before.</summary>
+    public static bool Names(string line, string anchor)
+    {
+        for (var i = line.IndexOf(anchor, StringComparison.OrdinalIgnoreCase); i >= 0; i = line.IndexOf(anchor, i + 1, StringComparison.OrdinalIgnoreCase))
+        {
+            var end = i + anchor.Length;
+            if (IsNameChar(anchor[0]) && i > 0 && IsNameChar(line[i - 1]))
+                continue;
+            if (IsNameChar(anchor[^1]) && end < line.Length && IsNameChar(line[end]))
+                continue;
+            return true;
+        }
+        return false;
     }
 
     /// <summary>The names a line holding the entry's value would carry: the dependency and package names, their last

@@ -609,8 +609,8 @@ Requirements and limits:
   ruleset 1's target next to the default branch.
 - With release lines, **ruleset 3** ("merge-queue: release-line checks") requires the lines' own checks on the same
   glob: the form's "Required checks on release lines", prefilled from ruleset 3, else from ruleset 2's checks. It has
-  no pull_request rule, so the App's backport pull requests need no review, and no bypass for the App, so a line moves
-  only through a green pull request. Before it, line pull requests merged with no required check at all (#610 and the
+  no pull_request rule, so the App's backport pull requests need no review. A person's change reaches a line only
+  through a green pull request. Before it, line pull requests merged with no required check at all (#610 and the
   lines' red E2E, `docs/release_lines_recovery_plan.md` A-4, R2). Ruleset 3 always requires the App's own **"Line
   policy"** check as well, bound to the App (`integration_id`), whatever checks are picked (segment E, resilience PRD
   Q1b): on a **current** line, the newest of its ecosystem, it fails every pull request but the App's own
@@ -618,12 +618,15 @@ Requirements and limits:
   fixes from people. A platform upgrade that cuts a new line changes which line is current without a ruleset edit.
   Ruleset 3 therefore exists whenever there are lines, even with no other checks picked. The form never lists the line
   policy among the checks to pick.
-- With `versioning.lines.current: promote` (versioning.md, "Promoted lines"), ruleset 3 does give the App an
-  `exempt` bypass: a promotion is a merge commit the App pushes straight onto the line after `/release`, and a check
-  cannot pass on a commit before it is pushed. The commit is already green on the default branch, and the line's own
-  run tests it again before it publishes. The bypass covers every line the glob matches, but the App pushes only
-  promotions: backports onto older lines still go through pull requests and their checks. Re-run "Set up rulesets"
-  after switching coverage.yml to `promote`. The queue accepts this one bypass: on a release line, a ruleset with no
+- Ruleset 3 **always** gives the App an `exempt` bypass (owner, 2026-11-12; `docs/lockfile_notice_and_line_cut_PRD.md`
+  D2). Until then only `versioning.lines.current: promote` did, and the onboarding's line cut answered
+  `422 Reference update failed` on a repository that takes backports (SpaServices, `release/dotnet-10.x`): a branch
+  creation must pass the required checks, and a commit never carries "Line policy" for a branch that does not exist
+  yet. The App uses the bypass for exactly two things: creating a line, and pushing a promotion (a merge commit pushed
+  straight onto the line after `/release`, already green on the default branch and tested again by the line's own run
+  before it publishes). Backports still go through pull requests, and the queue waits for their checks itself. A
+  repository set up before this change gets the bypass from its next "Set up rulesets" or "Set up features" run. The
+  queue accepts this one bypass: on a release line, a ruleset with no
   `pull_request` rule may exempt the App, since the queue waits for its required checks itself before it merges. Any
   other bypass of a review or check ruleset still refuses the pull request (`bypass`). Before segment E it refused this
   one too, so a promote repository could not queue a backport onto a past line.
@@ -842,6 +845,10 @@ the check gate) do not run.
   its own label removal.
 - A second `/queue`, or the label re-applied, while queued changes nothing. A refused label is removed again and the
   check run says why; a refused comment, panel button or check button gets a comment.
+- **A comment gets reactions (#660).** 👀 when the bot reads it. A `/queue` that takes its place in line gets 🚀, then 🎉
+  when the pull request merges or 👎 when the queue refuses or evicts it; a `/dequeue` gets 🎉 and leaves the `/queue`'s 🚀
+  as it was. A second `/queue`, or a `/dequeue` with nothing queued, gets 👍. The command's record on the repository
+  page links the queue run's log; a label or a check button gets a log as well, without reactions.
 - **The coverage comment links the queue's check (O32, D89).** In a repository whose default branch turns the queue on,
   CodeCoverage's coverage comment on a pull request into a queue branch ends with "**Merge queue:** manage this pull
   request on its check →", a link to the pull request's latest "Merge queue" check

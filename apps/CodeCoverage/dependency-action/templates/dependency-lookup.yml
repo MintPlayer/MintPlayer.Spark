@@ -7,13 +7,15 @@ name: dependency-lookup
 # It only runs Renovate (pinned by digest inside the action) in lookup mode: Renovate reads manifests and
 # asks registries; S12 showed it executes no repository code for any manager. It never commits or pushes.
 #
-# SECURITY (T5): `contents: read`, no `id-token`, `persist-credentials: false`, the action pinned to the
-# `dependency-update-v1` release line. The bot checks this file's blob against the default branch before it
-# dispatches. Do not add `pull_request_target`, write permissions or an environment.
+# SECURITY (T5): `contents: read` and `packages: read`, no `id-token`, `persist-credentials: false`, the action
+# pinned to the `dependency-update-v1` release line. The bot checks this file's blob against the default branch
+# before it dispatches. Do not add `pull_request_target`, write permissions or an environment.
 #
-# Private feeds: lookup is the one phase where feed credentials are allowed (no repository code runs). Put a
-# Renovate `hostRules` JSON array in a repository secret and pass it as `host-rules` below, e.g.
-#   [{"matchHost":"nuget.pkg.github.com","username":"x","password":"<token>"}]
+# Private feeds: lookup is the one phase where feed credentials are allowed (no repository code runs). GitHub
+# Packages (nuget.pkg.github.com) is read with this job's token (`packages: read`), so a nuget.config that maps the
+# account's own packages there needs nothing more. For any other feed, put a Renovate `hostRules` JSON array in a
+# repository secret and pass it as `host-rules` below, e.g.
+#   [{"matchHost":"pkgs.dev.azure.com","username":"x","password":"<token>"}]
 
 on:
   workflow_dispatch:
@@ -32,6 +34,7 @@ run-name: 'dependency lookup (${{ inputs.run_id }})'
 
 permissions:
   contents: read
+  packages: read
 
 concurrency:
   group: dependency-lookup

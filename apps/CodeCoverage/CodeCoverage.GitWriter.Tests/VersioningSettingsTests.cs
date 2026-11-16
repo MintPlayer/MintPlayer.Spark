@@ -51,9 +51,29 @@ public class VersioningSettingsTests
 
         var settings = GitWriterVersioningRunEndpoint.Settings(System.Text.Json.JsonSerializer.Deserialize<VersioningSettingsWire>(json, GitWriterHost.Json));
 
-        settings!.Prerelease.Should().Be(Versioning.Versions.PrereleaseLabel.Preview);
-        settings.PrereleasePins["@mintplayer/ng-spark"].HasValue.Should().BeFalse();
-        settings.PrereleasePins["Acme"].Should().Be(Versioning.Versions.PrereleaseLabel.Rc);
+        settings!.Prerelease.Should().Be(Versioning.Versions.PrereleasePin.Of(Versioning.Versions.PrereleaseLabel.Preview));
+        settings.PrereleasePins["@mintplayer/ng-spark"].Should().Be(Versioning.Versions.PrereleasePin.Upstream);
+        settings.PrereleasePins["Acme"].Should().Be(Versioning.Versions.PrereleasePin.Of(Versioning.Versions.PrereleaseLabel.Rc));
+    }
+
+    [Fact]
+    public void Stable_pins_survive_the_wire_from_the_app()
+    {
+        // versioning-beta-upstream-PRD G2: "stable" at every level, and distinct from "upstream" (both carry no label).
+        var sent = new Versioning.Releases.VersioningConfig
+        {
+            Prerelease = "stable",
+            Packages = new() { ["MintPlayer.GraphQL"] = new() { Prerelease = "stable" }, ["Acme"] = new() { Prerelease = "upstream" } },
+            Lines = new() { Prerelease = new() { ["dotnet-10.x"] = "stable" } },
+        }.ToSettings();
+        var json = System.Text.Json.JsonSerializer.Serialize(sent, System.Text.Json.JsonSerializerOptions.Web);
+
+        var settings = GitWriterVersioningRunEndpoint.Settings(System.Text.Json.JsonSerializer.Deserialize<VersioningSettingsWire>(json, GitWriterHost.Json));
+
+        settings!.Prerelease.Should().Be(Versioning.Versions.PrereleasePin.Stable);
+        settings.PrereleasePins["MintPlayer.GraphQL"].Should().Be(Versioning.Versions.PrereleasePin.Stable);
+        settings.PrereleasePins["Acme"].Should().Be(Versioning.Versions.PrereleasePin.Upstream);
+        settings.LinePrerelease["dotnet-10.x"].Should().Be(Versioning.Versions.PrereleasePin.Stable);
     }
 
     [Fact]
@@ -71,8 +91,8 @@ public class VersioningSettingsTests
 
         settings!.Lines!.Text.Should().Be("support/{ecosystem}/{major}");
         settings.LinePins["Acme.Generators"].Should().Be("dotnet");
-        settings.LinePrerelease["dotnet-11.x"].HasValue.Should().BeFalse();
-        settings.LinePrerelease["angular-23.x"].Should().Be(Versioning.Versions.PrereleaseLabel.Next);
+        settings.LinePrerelease["dotnet-11.x"].Should().Be(Versioning.Versions.PrereleasePin.Upstream);
+        settings.LinePrerelease["angular-23.x"].Should().Be(Versioning.Versions.PrereleasePin.Of(Versioning.Versions.PrereleaseLabel.Next));
         GitWriterVersioningRunEndpoint.LineOf(settings, "support/dotnet/10", "main", out var line).Should().BeTrue();
         line.Should().Be(new Versioning.Releases.ReleaseLine("dotnet", 10));
         GitWriterVersioningRunEndpoint.LineOf(settings, "main", "main", out line).Should().BeTrue();
@@ -106,8 +126,8 @@ public class VersioningSettingsTests
         new VersioningSettingsWire { Lines = new ReleaseLinesWire { Text = "release/{major}.x" } },
         new VersioningSettingsWire { Lines = new ReleaseLinesWire() },
         new VersioningSettingsWire { LinePins = new() { ["Acme"] = "Dot Net" } },
-        new VersioningSettingsWire { LinePrerelease = new() { ["release/dotnet-11.x"] = null } },
-        new VersioningSettingsWire { LinePrerelease = new() { ["dotnet-011.x"] = null } },
+        new VersioningSettingsWire { LinePrerelease = new() { ["release/dotnet-11.x"] = Versioning.Versions.PrereleasePin.Upstream } },
+        new VersioningSettingsWire { LinePrerelease = new() { ["dotnet-011.x"] = Versioning.Versions.PrereleasePin.Upstream } },
     };
 
     [Theory]

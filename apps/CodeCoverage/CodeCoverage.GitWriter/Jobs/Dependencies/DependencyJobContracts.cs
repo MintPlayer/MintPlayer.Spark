@@ -52,6 +52,18 @@ public class DependencyPatchJobWire : DependencyCommitJobWire
 
     /// <summary>#613 item 2: the lookup's non-computed platform locations, which a platform group's SDK move may edit.</summary>
     public List<PlatformLocationWire>? PlatformLocations { get; set; }
+
+    /// <summary>companion-pins-PRD F3: coverage.yml's <c>follow</c> rules, re-parsed from the default branch by the bot.</summary>
+    public List<FollowRuleWire>? Follow { get; set; }
+}
+
+/// <summary>One coverage.yml <c>follow</c> rule (<see cref="CodeCoverage.Git.Dependencies.DependencyFollowRule"/>).</summary>
+public sealed class FollowRuleWire
+{
+    public string? Dependency { get; set; }
+    public string? Path { get; set; }
+    public string? Match { get; set; }
+    public string? Version { get; set; }
 }
 
 /// <summary>One platform location the lookup reported (platform-record.schema.json).</summary>
@@ -71,6 +83,10 @@ public sealed class PlatformLocationWire
 public sealed class DependencyWorkRefWire : DependencyPatchJobWire
 {
     public string? PlanJson { get; set; }
+
+    /// <summary>#658: the plan commit also moves the root <c>global.json</c> to the plan's SDK (<see cref="GlobalJsonPreset"/>).
+    /// The bot sets it only for a repository whose pinned action declares <c>sdk-preset</c>.</summary>
+    public bool PresetSdk { get; set; }
 
     /// <summary>The lease: the commit the work ref must still be at; null replaces whatever is there (a bot-owned ref a
     /// crashed run may have left).</summary>
@@ -133,6 +149,10 @@ public sealed class VersioningOnboardingWire : DependencyCommitJobWire
 
     /// <summary>#638 D15: a line's narrowing commit (project files and global.json) instead of its workflows.</summary>
     public bool Narrow { get; set; }
+
+    /// <summary>multi-target-dependency-split-PRD P7 (M7): the central package management conversion commit on the default
+    /// branch instead of the onboarding's.</summary>
+    public bool Central { get; set; }
 }
 
 /// <summary><c>DELETE /jobs/dependencies/work-ref</c>: removes the work ref after a run (R14), only while it is at

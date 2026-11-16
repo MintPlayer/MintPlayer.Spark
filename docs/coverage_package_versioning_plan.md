@@ -6,6 +6,13 @@ MintPlayer repositories (PRD D17).
 
 ## Status
 
+**2026-11-13: done, issue #153 closed.** PR #537 (M1-M15) merged 2026-10-24, then #538 (prerelease label), #541
+(multi-targeting pack), #542/#543 (onboarding MSBuild version, untagged builds) and #545 (#544 D1: an explicit global
+`-p:Version`/`-p:PackageVersion` wins, `MintPlayer.Versioning.MSBuild.targets:44-60`, `RealPackTests`). Onboardings:
+SpaServices, AspNetCore.Tools, Dotnet.Tools #202 and ng-bootstrap #445 merged 2026-10-25. The older-line first release
+(#638) shipped from AspNetCore.Tools `release/dotnet-10.x` (run 43263052114). Verified in
+`docs/refused_property_and_packagemanager_edits_PRD.md` §1a-b. The history below is kept as it was.
+
 2026-10-24: grilled (Q1–Q14 → D1–D17). Spikes S1–S4, S7, S8 run; S5 and S6 answered from GitHub's documented
 behaviour and confirmed in the M16 live test (both need a real workflow run on GitHub). M1–M15 committed; M16 (the test sweep and the live test) next. M13 also fixed
 the `VersioningControllerTests` harness, which had lacked an `IMessageBus` since M8 and failed every test in the class.

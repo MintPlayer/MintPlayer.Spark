@@ -1,6 +1,8 @@
+using System.Text.RegularExpressions;
 using CodeCoverage.Dependencies;
 using CodeCoverage.Dependencies.Policy;
 using CodeCoverage.Entities;
+using CodeCoverage.Git.Dependencies;
 using CodeCoverage.LookupReferences;
 using Xunit;
 
@@ -39,6 +41,7 @@ public class DependenciesYmlTests
           platforms:
             dotnet: { strategy: add, keepPrevious: 1, lockPackageMajor: true, locations: ["Directory.Build.props"], exclude: ["legacy/**"] }
             node: {}
+            python: { lagging: report }
           lockFileMaintenance: true
           registries: ["npm.pkg.github.com", "NUGET.example.com:8443"]
           lines: security
@@ -102,7 +105,9 @@ public class DependenciesYmlTests
         dotnet.Exclude.Should().Equal(["legacy/**"]);
         s.Platform("node").Strategy.Should().Be("replace", "R8's default");
         s.Platform("node").LockPackageMajor.Should().BeFalse("R8: an explicit opt-in");
-        s.Platform("python").Should().Be(DependencyPlatformSettings.Default);
+        s.Platform("node").Lagging.Should().Be(DependencyPlatformSettings.LaggingAuto, "platform-locations-PRD P6's default");
+        s.Platform("python").Lagging.Should().Be("report");
+        s.Platform("java").Should().Be(DependencyPlatformSettings.Default);
         s.LockFileMaintenance.Should().BeTrue();
         s.Registries.Should().Equal(["npm.pkg.github.com", "nuget.example.com:8443"]);
         s.Lines.Should().Be(EDependencyLineUpdates.Security);
@@ -142,6 +147,7 @@ public class DependenciesYmlTests
     [InlineData("platforms: { dotnet: { strategy: merge } }", "strategy")]
     [InlineData("platforms: { node: { keepPrevious: 9 } }", "keepPrevious")]
     [InlineData("platforms: { node: { locations: [\"../x\"] } }", "../x")]
+    [InlineData("platforms: { node: { lagging: always } }", "lagging")] // platform-locations-PRD P6
     [InlineData("registries: [\"https://evil.example.com/\"]", "registries")]
     [InlineData("exclude: [\"/abs/**\"]", "exclude")]
     [InlineData("cooldown: forever", "cooldown")]
@@ -305,5 +311,139 @@ public class DependenciesYmlTests
         config.IgnoredBy("npm", "debug").Should().BeNull("the file's own rule names it, so the default ignore is replaced");
         config.IgnoredBy("npm", "rimraf").Should().Contain("account rule", "an enforced ignore cannot be undone");
         config.Threshold("npm", "uuid").Should().Be(EDependencyThreshold.Patch, "a default account rule applies where the file is silent");
+    }
+
+    /// <summary>dependency-companion-pins-PRD §4 A, the SeoTester example: pins that follow a dependency's new version.</summary>
+    private const string Follow = """
+        dependencies:
+          rules:
+            - match: ["Microsoft.Playwright", "mcr.microsoft.com/playwright"]
+              group: playwright
+              lockstep: true
+          follow:
+            - dependency: mcr.microsoft.com/playwright
+              path: apps/SeoTester/chromium/Dockerfile
+              match: 'playwright-core@(?<version>[0-9.]+)'
+            - dependency: mcr.microsoft.com/playwright
+              path: "apps/*/docker-compose.yml"
+              match: 'seotester-chromium:(?<version>[0-9.]+)'
+              version: '^v(?<version>[0-9.]+)-noble$'
+        """;
+
+    /// <summary>companion-pins-PRD M6: Spark's own follow rules each find their pin in today's SeoTester files, at the version
+    /// SeoTester.csproj pins, so an edit that breaks a pattern fails here rather than as a "not moved" line in a later run.</summary>
+    [Fact]
+    public void Sparks_own_follow_rules_find_every_seotester_pin_at_the_package_version()
+    {
+        var root = DependencyTestKit.RepositoryRoot();
+        var parsed = DependenciesYml.Parse(File.ReadAllText(Path.Combine(root, "coverage.yml")));
+        var csproj = File.ReadAllText(Path.Combine(root, "apps", "SeoTester", "SeoTester", "SeoTester.csproj"));
+        var package = Regex.Match(csproj, "\"Microsoft.Playwright\" Version=\"(?<v>[0-9.]+)\"").Groups["v"].Value;
+
+        parsed.Errors.Should().BeEmpty();
+        parsed.Section.Follow.Should().NotBeEmpty();
+        foreach (var rule in parsed.Section.Follow)
+        {
+            var found = rule.Find(File.ReadAllText(Path.Combine(root, rule.Path)));
+            found.Select(g => g.Value).Should().Equal([package], $"{rule.Match} in {rule.Path}");
+        }
+    }
+
+    [Fact]
+    public void Follow_entries_and_lockstep_parse()
+    {
+        var parsed = DependenciesYml.Parse(Follow);
+
+        parsed.Errors.Should().BeEmpty();
+        parsed.Section.Rules.Single().Lockstep.Should().BeTrue();
+        var follow = parsed.Section.Follow;
+        follow.Should().HaveCount(2);
+        follow[0].Dependency.Should().Be("mcr.microsoft.com/playwright");
+        follow[0].Path.Should().Be("apps/SeoTester/chromium/Dockerfile");
+        follow[0].Match.Should().Be("playwright-core@(?<version>[0-9.]+)");
+        follow[0].Version.Should().BeNull("without version: the follower takes the first x.y.z of the leader's new value (S7)");
+        follow[1].Version.Should().Be("^v(?<version>[0-9.]+)-noble$");
+    }
+
+    [Fact]
+    public void A_rule_without_lockstep_is_not_lockstep()
+        => DependenciesYml.Parse(Full).Section.Rules.Should().OnlyContain(r => !r.Lockstep);
+
+    [Theory]
+    [InlineData("match: 'playwright-core@([0-9.]+)'", "dependencies.follow[0].match must have exactly one (?<version>...) group")]
+    [InlineData("match: '(?<version>[0-9.]+)@(?<version>[0-9.]+)'", "dependencies.follow[0].match must have exactly one (?<version>...) group")]
+    [InlineData("match: 'playwright-core@(?<version>[0-9.]+'", "dependencies.follow[0].match is not a regular expression")]
+    [InlineData("match: ''", "dependencies.follow[0].match must name")]
+    [InlineData("match: 'x(?<version>1)'\n      version: '^v[0-9.]+$'", "dependencies.follow[0].version must have exactly one (?<version>...) group")]
+    public void A_follow_match_needs_one_version_group_and_must_compile(string matchLines, string error)
+    {
+        var parsed = DependenciesYml.Parse($"""
+            dependencies:
+              follow:
+                - dependency: mcr.microsoft.com/playwright
+                  path: Dockerfile
+                  {matchLines}
+            """);
+
+        parsed.Errors.Should().ContainSingle().Which.Should().StartWith(error);
+        parsed.Section.Follow.Should().BeEmpty("a broken section falls back to the defaults (§4.3)");
+    }
+
+    [Theory]
+    [InlineData("/etc/passwd")]
+    [InlineData("../other/Dockerfile")]
+    [InlineData("")]
+    public void A_follow_path_is_a_repository_relative_glob(string path)
+    {
+        var parsed = DependenciesYml.Parse($"""
+            dependencies:
+              follow:
+                - dependency: x
+                  path: "{path}"
+                  match: 'x@(?<version>[0-9.]+)'
+            """);
+
+        parsed.Errors.Should().ContainSingle().Which.Should().StartWith("dependencies.follow[0].path");
+    }
+
+    [Fact]
+    public void A_follow_entry_names_its_dependency()
+        => DependenciesYml.Parse("""
+            dependencies:
+              follow:
+                - path: Dockerfile
+                  match: 'x@(?<version>[0-9.]+)'
+            """).Errors.Should().ContainSingle().Which.Should().StartWith("dependencies.follow[0].dependency must name");
+
+    [Fact]
+    public void A_follow_pattern_that_backtracks_catastrophically_times_out_instead_of_hanging_the_planner()
+    {
+        var follow = DependenciesYml.Parse("""
+            dependencies:
+              follow:
+                - dependency: x
+                  path: Dockerfile
+                  match: '^(a|aa)+(?<version>b)$'
+            """).Section.Follow.Single();
+
+        // (a|aa)+ splits n a's in Fibonacci(n) ways before giving up; the engine cannot make the alternation atomic.
+        var act = () => follow.Find(new string('a', 60) + "c");
+
+        act.Should().Throw<RegexMatchTimeoutException>("a repository's pattern runs on the server, bounded (§8)");
+    }
+
+    [Theory]
+    [InlineData(null, "v1.64.1-noble", "1.64.1")]
+    [InlineData(null, "1.65.0-beta.2", "1.65.0-beta.2")]
+    [InlineData(null, "22.11.0-alpine3.20", "22.11.0")]
+    [InlineData(null, "11.0.0-rc.2-noble", "11.0.0-rc.2")]
+    [InlineData(null, "noble", null)]
+    [InlineData("^v(?<version>[0-9.]+)-noble$", "v1.64.1-noble", "1.64.1")]
+    [InlineData("^v(?<version>[0-9.]+)-noble$", "1.64.1", null)]
+    public void A_follower_takes_its_version_from_the_leaders_new_value(string? version, string leader, string? expected)
+    {
+        var rule = new DependencyFollowRule("x", "Dockerfile", "x@(?<version>[0-9.]+)", version);
+
+        rule.FollowerVersion(leader).Should().Be(expected, "S7: the first x.y.z[-pre], or the version: group");
     }
 }

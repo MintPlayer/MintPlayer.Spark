@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.RegularExpressions;
 using CodeCoverage.Git;
+using CodeCoverage.Git.Dependencies;
 using CodeCoverage.LookupReferences;
 using YamlDotNet.Serialization;
 using YamlDotNet.Serialization.NamingConventions;
@@ -38,6 +39,12 @@ namespace CodeCoverage.Dependencies;
 ///       group: vitest
 ///       ignore: false
 ///       hold: "waiting for the Nx plugin"   # true or a reason: listed as held until removed
+///       lockstep: true                # the group moves only to a version every member has (companion-pins-PRD E)
+///   follow:                           # companion-pins-PRD A: pins written with a dependency's new version, in its group
+///     - dependency: mcr.microsoft.com/playwright
+///       path: apps/SeoTester/docker-compose.yml   # a path glob
+///       match: 'seotester-chromium:(?&lt;version&gt;[0-9.]+)'   # exactly one version group: the text replaced
+///       version: '^v(?&lt;version&gt;[0-9.]+)-noble$'          # optional; default: the leader's first x.y.z[-pre]
 ///   exclude: ["samples/**"]           # package files skipped
 ///   lookupAction: dependency-lookup.yml
 ///   applyAction: dependency-apply.yml
@@ -46,7 +53,11 @@ namespace CodeCoverage.Dependencies;
 ///       onMajor: angular-migrate.yml
 ///   platforms:                        # R8
 ///     dotnet: { track: stable, strategy: replace, keepPrevious: 0, lockPackageMajor: false, locations: [], exclude: [],
-///               companions: ["Microsoft.AspNetCore.*"] }   # #606: track lts|stable|preview; companions move with the major
+///               autoMerge: major }        # prerelease-dependencies-PRD H3: the SDK's majors auto-merge (R7 lifted)
+///     # #606 D2, companion-version-maps-PRD §6.1: packages tied to the SDK, first match wins. A glob takes the channel's
+///     # major; versions: maps a channel (11.0) or SDK band (11.0.1xx) to a range; bundled: msbuild|roslyn|nuget stays at
+///     # or below what the SDK ships; builtin is the built-in list at its place; [] turns companions off.
+///     #   companions: [{ match: "Microsoft.CodeAnalysis*", versions: { "10.0": "<=5.0", "11.0.1xx": "5.12.x" } }, builtin]
 ///   lockFileMaintenance: false        # D-S12e, off by default
 ///   registries: ["npm.pkg.github.com"]   # gap B: extra lockfile hosts besides the public registries
 /// </code>
@@ -56,6 +67,9 @@ public static partial class DependenciesYml
     public const string Source = "coverage.yml";
     public const string DefaultLookupAction = "dependency-lookup.yml";
     public const string DefaultApplyAction = "dependency-apply.yml";
+
+    /// <summary>companion-pins-PRD F3: the writer's cap on <c>follow</c> rules per request (<c>DependencyFields.MaxFollowRules</c>).</summary>
+    public const int MaxFollowRules = 100;
 
     /// <summary>The SDKs a platform adapter exists for (R7, #606 D10).</summary>
     public static IReadOnlyList<string> PlatformSdks { get; } = ["dotnet", "node", "python", "java", "go", "php", "ruby", "rust"];
@@ -128,7 +142,28 @@ public static partial class DependenciesYml
             var track = Track(rule.Track, $"{key}.track", errors);
             if (track == EDependencyTrack.Lts) errors.Add($"{key}.track: a package has no LTS releases; use stable or preview (lts is for platforms).");
             section.Rules.Add(new DependencyFileRule(match, Ecosystem(rule.Ecosystem, $"{key}.ecosystem", errors), rule.AllowMajor,
-                string.IsNullOrEmpty(group) ? null : group, rule.Ignore ?? false, hold, track));
+                string.IsNullOrEmpty(group) ? null : group, rule.Ignore ?? false, hold, track, rule.Lockstep ?? false));
+        }
+
+        foreach (var (entry, index) in (file.Follow ?? []).Select((r, i) => (r, i)))
+        {
+            var key = $"dependencies.follow[{index}]";
+            var dependency = entry?.Dependency?.Trim();
+            var path = entry?.Path?.Trim();
+            var match = entry?.Match;
+            var version = entry?.Version;
+            var before = errors.Count;
+            // The writer's caps (DependencyFields.Follow): a rule it would refuse would fail every apply of the repository.
+            if (index == MaxFollowRules) errors.Add($"dependencies.follow holds more than {MaxFollowRules} rules.");
+            if (string.IsNullOrEmpty(dependency)) errors.Add($"{key}.dependency must name the dependency the pin follows.");
+            else if (dependency.Length > 256) errors.Add($"{key}.dependency is longer than 256 characters.");
+            if (string.IsNullOrEmpty(path) || path.Length > 512 || !IsPathGlob(path)) errors.Add($"{key}.path '{path}' is not a repository-relative path glob of at most 512 characters.");
+            if (match?.Length > 1024 || version?.Length > 1024) errors.Add($"{key}: a pattern is longer than 1024 characters.");
+            if (string.IsNullOrEmpty(match)) errors.Add($"{key}.match must name a pattern with one (?<version>...) group.");
+            else if (DependencyFollowRule.Problem(match) is { } problem) errors.Add($"{key}.match {problem}");
+            if (!string.IsNullOrEmpty(version) && DependencyFollowRule.Problem(version) is { } versionProblem) errors.Add($"{key}.version {versionProblem}");
+            if (errors.Count == before)
+                section.Follow.Add(new DependencyFollowRule(dependency!, path!, match!, string.IsNullOrEmpty(version) ? null : version));
         }
 
         foreach (var path in Strings(file.Exclude, "dependencies.exclude", errors))
@@ -172,9 +207,16 @@ public static partial class DependenciesYml
             var track = Track(platform?.Track, $"{key}.track", errors);
             if (track == EDependencyTrack.Lts && !LtsSdks.Contains(sdk, StringComparer.Ordinal))
                 errors.Add($"{key}.track: {sdk}'s release feed names no LTS releases; use stable or preview (lts is for {string.Join(", ", LtsSdks)}).");
-            IReadOnlyList<string>? companions = platform?.Companions is null ? null : Strings(platform.Companions, $"{key}.companions", errors);
+            var companions = platform?.Companions is null ? null : CompanionEntries(sdk, platform.Companions, $"{key}.companions", errors);
+            var lagging = platform?.Lagging?.Trim() ?? DependencyPlatformSettings.LaggingAuto;
+            if (lagging is not (DependencyPlatformSettings.LaggingAuto or "follow" or "report"))
+                errors.Add($"{key}.lagging '{lagging}' is not auto, follow or report.");
+            // prerelease-dependencies-PRD H3: the one opt-in that lifts R7 for this SDK; `major` is its only value.
+            var platformAutoMerge = platform?.AutoMerge?.Trim();
+            if (platformAutoMerge is not (null or "major"))
+                errors.Add($"{key}.autoMerge '{platformAutoMerge}' is not major (its only value: the SDK's majors then auto-merge like any update).");
             section.Platforms[sdk] = new DependencyPlatformSettings(strategy, Math.Clamp(keepPrevious, 0, 5), platform?.LockPackageMajor ?? false, locations, exclude,
-                track, companions);
+                track, companions, lagging, AutoMergeMajor: platformAutoMerge == "major");
         }
 
         section.LockFileMaintenance = file.LockFileMaintenance ?? false;
@@ -308,6 +350,99 @@ public static partial class DependenciesYml
         return fallback;
     }
 
+    /// <summary>
+    /// companion-version-maps-PRD §6.1: the <c>companions</c> list. A string is a glob (channel rule) or <c>builtin</c>, which
+    /// expands to the built-in entries at its place; a mapping is <c>{ match, versions | bundled }</c>.
+    /// </summary>
+    private static List<DependencyCompanionEntry> CompanionEntries(string sdk, object value, string key, List<string> errors)
+    {
+        var result = new List<DependencyCompanionEntry>();
+        var items = value as IEnumerable<object?> ?? (value is string ? [value] : null);
+        if (items is null || value is IDictionary<object, object>)
+        {
+            errors.Add($"{key} must be a list of globs, builtin, or {{ match, versions | bundled }} entries.");
+            return result;
+        }
+        foreach (var (item, index) in items.Select((v, i) => (v, i)))
+        {
+            var at = $"{key}[{index}]";
+            switch (item)
+            {
+                case string text when text.Trim() == DependencyCompanionEntry.BuiltIn:
+                    result.AddRange(Policy.DependencyCompanions.BuiltIn(sdk));
+                    break;
+                case string text when text.Trim().Length > 0:
+                    result.Add(new DependencyCompanionEntry(text.Trim()));
+                    break;
+                case IDictionary<object, object> map when CompanionEntry(sdk, map, at, errors) is { } entry:
+                    result.Add(entry);
+                    break;
+                case IDictionary<object, object>:
+                    break;
+                default:
+                    errors.Add($"{at} is empty or not a glob, builtin, or {{ match, versions | bundled }} entry.");
+                    break;
+            }
+        }
+        return [.. result.Distinct()];
+    }
+
+    private static DependencyCompanionEntry? CompanionEntry(string sdk, IDictionary<object, object> map, string key, List<string> errors)
+    {
+        var before = errors.Count;
+        foreach (var name in map.Keys.Select(k => k?.ToString()).Where(k => k is not ("match" or "versions" or "bundled")))
+            errors.Add($"{key}: '{name}' is not a companion key (match, versions, bundled).");
+        var match = (map.TryGetValue("match", out var m) ? m as string : null)?.Trim();
+        if (string.IsNullOrEmpty(match)) errors.Add($"{key}.match must name a package glob.");
+
+        Dictionary<string, string>? versions = null;
+        if (map.TryGetValue("versions", out var v))
+        {
+            if (v is not IDictionary<object, object> table) errors.Add($"{key}.versions must map a channel or SDK band to a version range.");
+            else if (table.Count == 0) errors.Add($"{key}.versions is empty.");
+            else
+            {
+                versions = new Dictionary<string, string>(StringComparer.Ordinal);
+                foreach (var (rawKey, rawRange) in table)
+                {
+                    var channel = rawKey?.ToString()?.Trim() ?? string.Empty;
+                    var range = rawRange?.ToString()?.Trim() ?? string.Empty;
+                    if (!(sdk == "dotnet" ? DotnetChannelOrBand() : PlatformChannel()).IsMatch(channel))
+                        errors.Add(sdk == "dotnet"
+                            ? $"{key}.versions: '{channel}' is not a channel (11.0) or an SDK band (11.0.1xx)."
+                            : $"{key}.versions: '{channel}' is not a channel ({sdk} has no SDK band).");
+                    else if (!CodeCoverage.Versioning.Versions.NpmRange.TryParse(range, out _))
+                        errors.Add($"{key}.versions['{channel}']: '{range}' is not a version range (5.12.x, <=18.6, ^4.14, 4.8 - 4.14).");
+                    else
+                        versions[channel] = range;
+                }
+            }
+        }
+
+        EDependencyBundledComponent? bundled = null;
+        if (map.TryGetValue("bundled", out var b))
+        {
+            var name = b?.ToString()?.Trim().ToLowerInvariant();
+            if (sdk != "dotnet") errors.Add($"{key}.bundled is for dotnet only: other SDKs publish no bundled component versions.");
+            else if (name is "msbuild") bundled = EDependencyBundledComponent.Msbuild;
+            else if (name is "roslyn") bundled = EDependencyBundledComponent.Roslyn;
+            else if (name is "nuget") bundled = EDependencyBundledComponent.Nuget;
+            else errors.Add($"{key}.bundled '{name}' is not msbuild, roslyn or nuget.");
+        }
+        if (map.ContainsKey("versions") && map.ContainsKey("bundled"))
+            errors.Add($"{key} takes either versions or bundled, not both.");
+
+        return errors.Count == before ? new DependencyCompanionEntry(match!, versions, bundled) : null;
+    }
+
+    /// <summary>A .NET channel (<c>11.0</c>) or SDK feature band (<c>11.0.1xx</c>).</summary>
+    [System.Text.RegularExpressions.GeneratedRegex(@"^\d+\.\d+(\.\dxx)?$")]
+    private static partial System.Text.RegularExpressions.Regex DotnetChannelOrBand();
+
+    /// <summary>Another SDK's channel: a major, optionally with its minor (<c>22</c>, <c>3.12</c>).</summary>
+    [System.Text.RegularExpressions.GeneratedRegex(@"^\d+(\.\d+)?$")]
+    private static partial System.Text.RegularExpressions.Regex PlatformChannel();
+
     /// <summary>A scalar or a list of scalars, trimmed; empty entries are errors.</summary>
     private static List<string> Strings(object? value, string key, List<string> errors)
     {
@@ -396,6 +531,7 @@ public static partial class DependenciesYml
         public Dictionary<string, string?>? AutoMerge { get; set; }
         public object? Ignore { get; set; }
         public List<FileRule?>? Rules { get; set; }
+        public List<FileFollow?>? Follow { get; set; }
         public object? Exclude { get; set; }
         public string? LookupAction { get; set; }
         public string? ApplyAction { get; set; }
@@ -422,6 +558,15 @@ public static partial class DependenciesYml
         public bool? Ignore { get; set; }
         public string? Hold { get; set; }
         public string? Track { get; set; }
+        public bool? Lockstep { get; set; }
+    }
+
+    private sealed class FileFollow
+    {
+        public string? Dependency { get; set; }
+        public string? Path { get; set; }
+        public string? Match { get; set; }
+        public string? Version { get; set; }
     }
 
     private sealed class FileMigrate
@@ -439,6 +584,8 @@ public static partial class DependenciesYml
         public object? Exclude { get; set; }
         public string? Track { get; set; }
         public object? Companions { get; set; }
+        public string? Lagging { get; set; }
+        public string? AutoMerge { get; set; }
     }
 }
 
@@ -474,19 +621,47 @@ public sealed record DependencyThresholdGlob(string Glob, EDependencyThreshold T
 /// <param name="Hold">A reason when the rule holds the matching dependencies; null otherwise.</param>
 /// <param name="Track">#606 D8: <c>stable</c> or <c>preview</c> (<see cref="EDependencyTrack.Inherit"/> when the rule sets none).</param>
 public sealed record DependencyFileRule(IReadOnlyList<string> Match, string? Ecosystem, bool? AllowMajor, string? Group, bool Ignore, string? Hold,
-    EDependencyTrack Track = EDependencyTrack.Inherit);
+    EDependencyTrack Track = EDependencyTrack.Inherit, bool Lockstep = false);
 
 /// <summary>A <c>migrate</c> entry (R9): the workflow dispatched after an approved major of a matching dependency.</summary>
 public sealed record DependencyMigrateRule(IReadOnlyList<string> Match, string OnMajor);
 
 /// <summary><c>platforms.&lt;sdk&gt;</c> (R8, #606).</summary>
 /// <param name="Track">D8: which channels are offered; <see cref="EDependencyTrack.Inherit"/> defers to the account rules, then stable.</param>
-/// <param name="Companions">D2: package globs that move with the SDK's major; null keeps the built-in list
-/// (<see cref="Policy.DependencyCompanions"/>), an empty list turns companions off.</param>
+/// <param name="Companions">D2, companion-version-maps-PRD §6.1: the packages tied to the SDK, first match wins; null keeps
+/// the built-in list (<see cref="Policy.DependencyCompanions"/>), an empty list turns companions off.</param>
+/// <param name="Lagging">platform-locations-PRD P6: what a channel move does with a location on an older channel.
+/// <c>auto</c> moves Docker stages, setup-action pins and version files and reports TFMs and matrix entries; <c>follow</c>
+/// moves every older location but TFMs and matrix entries (which the strategy owns); <c>report</c> moves none.</param>
 public sealed record DependencyPlatformSettings(string Strategy, int KeepPrevious, bool LockPackageMajor, IReadOnlyList<string> Locations, IReadOnlyList<string> Exclude,
-    EDependencyTrack Track = EDependencyTrack.Inherit, IReadOnlyList<string>? Companions = null)
+    EDependencyTrack Track = EDependencyTrack.Inherit, IReadOnlyList<DependencyCompanionEntry>? Companions = null, string Lagging = DependencyPlatformSettings.LaggingAuto,
+    bool AutoMergeMajor = false)
 {
+    public const string LaggingAuto = "auto";
+
     public static DependencyPlatformSettings Default { get; } = new("replace", 0, false, [], []);
+}
+
+/// <summary>The SDK component a <c>bundled</c> companion follows (companion-version-maps-PRD §6.4).</summary>
+public enum EDependencyBundledComponent
+{
+    Msbuild,
+    Roslyn,
+    Nuget,
+}
+
+/// <summary>
+/// companion-version-maps-PRD §6.1: one <c>companions</c> entry. With neither <paramref name="Versions"/> nor
+/// <paramref name="Bundled"/> it is the channel rule (package major = channel major).
+/// </summary>
+/// <param name="Versions">A channel (<c>11.0</c>) or SDK band (<c>11.0.1xx</c>) to an npm-style range.</param>
+/// <param name="Bundled">The range is <c>&lt;= major.minor.x</c> of what the repository's SDK ships.</param>
+public sealed record DependencyCompanionEntry(string Match, IReadOnlyDictionary<string, string>? Versions = null, EDependencyBundledComponent? Bundled = null)
+{
+    /// <summary>The list entry that stands for the built-in entries.</summary>
+    public const string BuiltIn = "builtin";
+
+    public bool IsChannelRule => Versions is null && Bundled is null;
 }
 
 /// <summary>The validated file half of the dependency updater's configuration.</summary>
@@ -513,6 +688,8 @@ public sealed class DependenciesSection
     public double MaxCoverageDrop { get; set; }
 
     public List<DependencyFileRule> Rules { get; set; } = [];
+
+    public List<DependencyFollowRule> Follow { get; set; } = [];
 
     /// <summary>Package-file path globs the updater skips.</summary>
     public List<string> Exclude { get; set; } = [];

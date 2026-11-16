@@ -3,7 +3,7 @@ import * as path from 'node:path';
 import type { LookupDocument } from '../contracts/types';
 import { isValid } from '../contracts/validate';
 import { CONTRACTS, FIXTURES, readJsonFixture } from '../testing/helpers';
-import { ecosystemOf, mapReport, reportProblems, type RenovateReport } from './mapReport';
+import { ecosystemOf, LOOKUP_WARNING, mapReport, reportProblems, type RenovateReport } from './mapReport';
 
 const SAMPLES = fs.readdirSync(path.join(FIXTURES, 'renovate'));
 const report = (s: string) => readJsonFixture<RenovateReport>(`renovate/${s}/report.json`);
@@ -88,6 +88,12 @@ describe('mapReport on the real S12 reports', () => {
     expect(recs.find((x) => x.depName === deps[0].depName)!.candidates[0].groupName).toBe('update-level');
     expect(recs.find((x) => x.depName === deps[0].depName)!.groupName).toBe('dep-level');
     expect(recs.find((x) => x.depName === deps[1].depName)!.candidates[0].groupName).toBe('only-dep');
+  });
+
+  it('surfaces a dependency the feed refused, from the real S4 report (Spark nuget.config, 401 on GitHub Packages)', () => {
+    // follower-cooldown-PRD S4 (a): renovate 44.125.2 --dry-run=lookup on Endpoints mapped to nuget.pkg.github.com.
+    const problems = reportProblems(readJsonFixture<RenovateReport>('renovate/private-feed/report.json'));
+    expect(problems).toEqual([{ source: LOOKUP_WARNING, message: 'Failed to look up nuget package MintPlayer.AspNetCore.Endpoints: no-result' }]);
   });
 
   it('surfaces Renovate problems (level >= 40) once each', () => {

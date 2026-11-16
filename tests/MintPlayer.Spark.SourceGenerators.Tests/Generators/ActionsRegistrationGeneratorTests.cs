@@ -95,6 +95,70 @@ public class ActionsRegistrationGeneratorTests
         generated.Should().Contain("AddSparkActions<global::TestApp.Actions.PersonActions, global::TestApp.Actions.Person>");
     }
 
+    /// <summary>A compiled "library" shipping <c>WidgetActions</c> for <c>Widget</c>, the shape of MintPlayer.Spark.Logging's LogActions.</summary>
+    internal static Microsoft.CodeAnalysis.MetadataReference WidgetLibrary() => GeneratorHarness.CompileToMetadataReference(
+        "WidgetLibrary",
+        ["""
+        using MintPlayer.Spark.Abstractions;
+        using MintPlayer.Spark.Actions;
+
+        namespace WidgetLibrary;
+
+        public class Widget { }
+
+        public partial class WidgetActions : DefaultPersistentObjectActions<Widget>
+        {
+            public WidgetActions() : base(null!) { }
+        }
+        """],
+        referenceTypes: LibraryReferences);
+
+    /// <summary>What compiling an actions class binds to: its base ctor's optional <c>IHttpContextAccessor</c> included.</summary>
+    internal static readonly Type[] LibraryReferences =
+        [typeof(PersistentObject), typeof(DefaultPersistentObjectActions<>), typeof(Microsoft.AspNetCore.Http.IHttpContextAccessor)];
+
+    [Fact]
+    public void An_app_class_specialising_a_library_actions_class_of_the_same_name_is_recorded_as_its_override()
+    {
+        // #660 G17: the resolver finds both WidgetActions by name; the attribute tells it the app's one wins.
+        var source = """
+            namespace TestApp.Actions;
+
+            public partial class WidgetActions : WidgetLibrary.WidgetActions { }
+            """;
+
+        var result = GeneratorHarness.Run(
+            GeneratorName,
+            [source],
+            referenceTypes: [.. LibraryReferences, typeof(Microsoft.Extensions.DependencyInjection.IServiceCollection)],
+            rootNamespace: "TestApp",
+            additionalReferences: [WidgetLibrary()]);
+
+        var generated = result.GeneratedSources.Should().ContainSingle().Which.Source;
+        generated.Should().Contain("[assembly: global::MintPlayer.Spark.Abstractions.SparkActionsOverride(typeof(global::WidgetLibrary.Widget), typeof(global::TestApp.Actions.WidgetActions))]");
+        result.FinalCompilationDiagnostics.Where(d => d.Severity == Microsoft.CodeAnalysis.DiagnosticSeverity.Error)
+            .Should().BeEmpty("the emitted attribute must compile");
+    }
+
+    [Fact]
+    public void A_differently_named_subclass_is_not_recorded_as_an_override()
+    {
+        var source = """
+            namespace TestApp.Actions;
+
+            public partial class SpecialWidgetActions : WidgetLibrary.WidgetActions { }
+            """;
+
+        var result = GeneratorHarness.Run(
+            GeneratorName,
+            [source],
+            referenceTypes: [typeof(PersistentObject), typeof(DefaultPersistentObjectActions<>)],
+            rootNamespace: "TestApp",
+            additionalReferences: [WidgetLibrary()]);
+
+        result.GeneratedSources.Should().ContainSingle().Which.Source.Should().NotContain("SparkActionsOverride");
+    }
+
     [Fact]
     public void Abstract_actions_class_is_skipped()
     {

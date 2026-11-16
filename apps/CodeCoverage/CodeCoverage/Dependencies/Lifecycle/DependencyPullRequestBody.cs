@@ -1,6 +1,7 @@
 using System.Text;
 using CodeCoverage.Dependencies.Policy;
 using CodeCoverage.Entities;
+using CodeCoverage.Git.Dependencies;
 
 namespace CodeCoverage.Dependencies.Lifecycle;
 
@@ -40,15 +41,43 @@ public static class DependencyPullRequestBody
         if (run.MigratedGroups.Count > 0)
             body.AppendLine($"> 🛠️ **Contains code migrations** ({Words(run.MigratedGroups)}). It never auto-merges: review the changed source.").AppendLine();
 
+        // companion-version-maps-PRD §6.5: a section with an error falls back to its defaults, so the problems come first.
+        if (run.ConfigProblems.Count > 0)
+        {
+            body.AppendLine("## Configuration problems").AppendLine();
+            body.AppendLine($"{Code("coverage.yml")} on the default branch has problems; a section with one runs on its defaults until it is fixed.").AppendLine();
+            foreach (var problem in run.ConfigProblems.Take(MaxRows))
+                body.AppendLine($"- {Cell(problem)}");
+            body.AppendLine();
+        }
+
         body.AppendLine("## Applied").AppendLine();
         if (report.Groups.Count == 0)
             body.AppendLine("Nothing this time.").AppendLine();
         else
         {
             body.AppendLine("| Group | Dependency | File | From | To | Update |").AppendLine("|---|---|---|---|---|---|");
-            foreach (var row in report.Groups.SelectMany(g => g.Items.Select(i => (g, i))).Take(MaxRows))
-                body.AppendLine($"| {Cell(row.g.Group)} | {Code(row.i.DepName)} | {Code(row.i.PackageFile)} | {Cell(row.i.From)} | {Cell(row.i.To)} | {Level(row.g)} |");
-            More(body, report.Groups.Sum(g => g.Items.Count));
+            // companion-pins-PRD D1: one dependency moving the same way in many files is one row, and every group gets its first
+            // row before any group gets a second, so the cap never hides a group (#669 hid the one that broke the build).
+            var rows = report.Groups.SelectMany(g => g.Items
+                    .GroupBy(i => (i.DepName, i.From, i.To))
+                    .Select((same, index) => (Group: g, Item: same.First(), Files: same.Select(i => i.PackageFile).Distinct(StringComparer.Ordinal).Count(), Index: index)))
+                .Select((row, order) => (row.Group, row.Item, row.Files, row.Index, Order: order))
+                .ToList();
+            foreach (var row in rows.OrderBy(r => r.Index == 0 ? 0 : 1).ThenBy(r => r.Order).Take(MaxRows).OrderBy(r => r.Order))
+                body.AppendLine($"| {Cell(row.Group.Group)} | {Code(row.Item.DepName)} | {(row.Files == 1 ? Code(row.Item.PackageFile) : $"{row.Files} files")} | {Cell(row.Item.From)} | {Cell(row.Item.To)} | {Level(row.Group)} |");
+            More(body, rows.Count);
+
+            // companion-pins-PRD D2: a value whose text around the version changes (boky/postfix v4.3.0 → 4.4.0 in #669) is named.
+            var reformatted = rows.Where(r => FormatChanges(r.Item.From, r.Item.To))
+                .Select(r => $"- {Code(r.Item.DepName)}: the tag's format changes ({Code(r.Item.From)} → {Code(r.Item.To)}); check the new tag is the one you mean.")
+                .Distinct(StringComparer.Ordinal).ToList();
+            if (reformatted.Count > 0)
+            {
+                foreach (var line in reformatted.Take(MaxRows))
+                    body.AppendLine(line);
+                body.AppendLine();
+            }
         }
 
         if (report.Pins.Count > 0)
@@ -64,9 +93,9 @@ public static class DependencyPullRequestBody
         if (report.AwaitingApproval.Count > 0)
         {
             body.AppendLine("## Awaiting approval").AppendLine();
-            body.AppendLine("Over the auto-merge threshold (`dependencies.autoMerge` in coverage.yml). A writer comments the line in the last column to take the group into this pull request.").AppendLine();
-            body.AppendLine("| Group | Dependency | From | To | Comment |").AppendLine("|---|---|---|---|---|");
-            Rows(body, report.AwaitingApproval.Select(entry => $"| {Cell(entry.Group)} | {Code(entry.DepName)} | {Cell(entry.Current)} | {Cell(entry.Target)} | {Code("approve " + entry.Group)} |"));
+            body.AppendLine("A writer comments the line in the last column to take the group into this pull request.").AppendLine();
+            body.AppendLine("| Group | Dependency | From | To | Reason | Comment |").AppendLine("|---|---|---|---|---|---|");
+            Rows(body, report.AwaitingApproval.Select(entry => $"| {Cell(entry.Group)} | {Code(entry.DepName)} | {Cell(entry.Current)} | {Cell(entry.Target)} | {Cell(ApprovalReason(entry))} | {Code("/approve " + entry.Group)} |"));
         }
 
         if (report.Held.Count > 0)
@@ -96,6 +125,35 @@ public static class DependencyPullRequestBody
             body.AppendLine();
         }
 
+        if (report.PlatformReports.Count > 0 || report.NotFollowed.Count > 0)
+            body.AppendLine("## Not moved").AppendLine();
+        if (report.PlatformReports.Count > 0)
+        {
+            // platform-locations-PRD R3: every location a platform move leaves as it was, so a partial move is never silent.
+            body.AppendLine("Platform locations this pull request leaves as they are. Move them by hand where they should follow.").AppendLine();
+            body.AppendLine("| Platform | File | Value | Why |").AppendLine("|---|---|---|---|");
+            Rows(body, report.PlatformReports.Select(r => $"| {Cell(r.Sdk)} | {Code(r.File)} | {Code(r.Value)} | {Cell(r.Reason)} |"));
+        }
+        if (report.NotFollowed.Count > 0)
+        {
+            // companion-pins-PRD G4: a coverage.yml follow rule that moved nothing is said, never skipped in silence.
+            body.AppendLine("`follow:` rules in coverage.yml that moved nothing this time:").AppendLine();
+            foreach (var message in report.NotFollowed.Take(MaxRows))
+                body.AppendLine($"- {Cell(message)}");
+            body.AppendLine();
+        }
+
+        if (report.NotLookedUp.Count > 0)
+        {
+            // follower-cooldown-PRD G4 (S4): a feed that refused the lookup hides every update it holds; say so, never stay silent.
+            body.AppendLine("## Not looked up").AppendLine();
+            body.AppendLine("A feed refused the lookup, so these dependencies' updates are unknown. For GitHub Packages, give the lookup workflow "
+                + "`permissions: packages: read` (the current template has it); for another private feed, pass a `host-rules` secret.").AppendLine();
+            foreach (var message in report.NotLookedUp.Take(MaxRows))
+                body.AppendLine($"- {Cell(message)}");
+            body.AppendLine();
+        }
+
         if (run.CoverageNote is { Length: > 0 } coverage)
             body.AppendLine("## Coverage").AppendLine().AppendLine(coverage).AppendLine();
 
@@ -119,7 +177,8 @@ public static class DependencyPullRequestBody
         }
 
         body.AppendLine("<details><summary>Commands</summary>").AppendLine();
-        body.AppendLine("Writers comment one per comment: `approve <group>`, `hold <group|package>`, `unhold <group|package>`, `bisect`, `refresh`. Commands never override the account's enforced rules.");
+        body.AppendLine("Writers comment one per comment: `/approve <group>`, `/hold <group|package>`, `/unhold <group|package>`, `/bisect`, `/refresh`. "
+            + "The bot reacts on the comment: 👀 on it, 🚀 started, 🎉 done, 👍 nothing to change, 👎 refused or failed. Commands never override the account's enforced rules.");
         body.AppendLine().AppendLine("</details>");
 
         var text = body.ToString();
@@ -139,6 +198,16 @@ public static class DependencyPullRequestBody
                 + "consumers on the previous platform stop receiving releases. Add `versioning.lines` to keep a line for them, "
                 + $"or `dependencies.platforms.{g.Sdk}.strategy: add` to target both.");
 
+    /// <summary>companion-pins-PRD D2: the text before or after the version (a <c>v</c> prefix, a <c>-noble</c> variant) differs
+    /// between <paramref name="from"/> and <paramref name="to"/>. A prerelease moving to its release is no format change.</summary>
+    internal static bool FormatChanges(string from, string to)
+    {
+        if (DependencyFollowRule.DefaultVersion(from) is not { } a || DependencyFollowRule.DefaultVersion(to) is not { } b)
+            return false;
+        var (fromAt, toAt) = (from.IndexOf(a, StringComparison.Ordinal), to.IndexOf(b, StringComparison.Ordinal));
+        return from[..fromAt] != to[..toAt] || from[(fromAt + a.Length)..] != to[(toAt + b.Length)..];
+    }
+
     private static string Level(DependencyReportGroup group)
         => group.Level.ToString().ToLowerInvariant() + (group.Approved ? " (approved)" : string.Empty) + (group.Security ? " 🔒" : string.Empty);
 
@@ -156,6 +225,16 @@ public static class DependencyPullRequestBody
         if (total > MaxRows)
             body.AppendLine().AppendLine($"… and {total - MaxRows} more.");
         body.AppendLine();
+    }
+
+    /// <summary>
+    /// prerelease-dependencies-PRD D1: why a group waits (the threshold, a platform major, P11), as the policy wrote it, without
+    /// the "comment '/approve …'" the last column already gives.
+    /// </summary>
+    private static string? ApprovalReason(DependencyReportEntry entry)
+    {
+        var command = $": comment '/approve {entry.Group}'";
+        return entry.Detail?.Replace(command + ", ", "; ", StringComparison.Ordinal).Replace(command, string.Empty, StringComparison.Ordinal);
     }
 
     private static string Words(IEnumerable<string> groups) => string.Join(", ", groups.Select(g => $"`{g}`"));

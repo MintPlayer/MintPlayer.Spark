@@ -68,6 +68,29 @@ describe('the platform table (#606 D9, test/fixtures/platform-feeds/platform-tab
     expect(table.sdks.node!.find((x) => x.channel === '26')).toMatchObject({ latestVersion: '26.12.0', preview: false });
     expect(table.sdks.java!.find((x) => x.channel === '25')?.lts).toBe(true);
     expect(table.unstable).toEqual([]);
+    expect(table.stable).toEqual([]);
+  });
+
+  // prerelease-dependencies-PRD H5: the bot's `track: stable` globs; a server that predates them sends none.
+  it('reads the stable globs, and none when the bot sends none', () => {
+    expect(parsePlatformTable('{"sdks":{},"unstable":[],"stable":["Octokit.GraphQL"]}').stable).toEqual(['Octokit.GraphQL']);
+    expect(parsePlatformTable('{"sdks":{},"unstable":[]}').stable).toEqual([]);
+    expect(() => parsePlatformTable('{"sdks":{},"unstable":[],"stable":[1]}')).toThrow(/stable must be an array of package globs/);
+  });
+
+  // dependency-companion-pins-PRD F2: the coverage.yml follow rules; a server that predates them sends none.
+  it('reads the follow rules, and none when the bot sends none', () => {
+    const rule = { dependency: 'mcr.microsoft.com/playwright', path: 'docker-compose.yml', match: 'x:(?<version>[0-9.]+)', version: null };
+    expect(parsePlatformTable(JSON.stringify({ sdks: {}, unstable: [], follow: [rule] })).follow).toEqual([rule]);
+    expect(parsePlatformTable('{"sdks":{},"unstable":[]}').follow).toEqual([]);
+  });
+
+  it.each([
+    ['not an array', '{}'],
+    ['an entry without a pattern', '[{"dependency":"x","path":"Dockerfile"}]'],
+    ['an entry with a numeric path', '[{"dependency":"x","path":1,"match":"(?<version>1)"}]'],
+  ])('refuses follow rules that are %s', (_name, follow) => {
+    expect(() => parsePlatformTable(`{"sdks":{},"unstable":[],"follow":${follow}}`)).toThrow(/platforms\.follow/);
   });
 
   it.each([
@@ -87,6 +110,16 @@ describe('the platform table (#606 D9, test/fixtures/platform-feeds/platform-tab
     expect(rec.candidates.map((c) => c.channel)).toEqual(['11.0']);
     expect(rec.candidates[0].preview).toBe(true);
     expect(buildPlatformRecord('dotnet', [loc], null, NOW)).toMatchObject({ source: 'none', candidates: [] });
+  });
+
+  // multi-target-dependency-split-PRD M6: the candidates hold only newer channels, so the bot learns a current channel's
+  // end of life here. 6.0 is EOL (true), 10.0 is not (2028-11-14).
+  it('names the current channels that are end of life, and leaves the field out when none is', () => {
+    const feed = parsePlatformTable(raw).sdks.dotnet!;
+    const tfm = (value: string, channel: string) => ({ sdk: 'dotnet' as const, file: 'a.csproj', kind: 'tfm' as const, value, channel, computed: false, reason: null, line: 0, start: 0, end: 7 });
+    expect(buildPlatformRecord('dotnet', [tfm('net10.0', '10.0'), tfm('net6.0', '6.0')], feed, NOW).current)
+      .toEqual({ channels: ['10.0', '6.0'], preview: false, endOfLife: ['6.0'] });
+    expect('endOfLife' in buildPlatformRecord('dotnet', [tfm('net10.0', '10.0')], feed, NOW).current).toBe(false);
   });
 });
 
@@ -189,10 +222,77 @@ describe('location scanning on file trees', () => {
   });
 });
 
-async function applyOn(files: Record<string, string>, plan: Parameters<typeof applyPlatform>[1]) {
+/**
+ * prerelease-dependencies-PRD H6/H7 (C12-C14): "all workflows must move together" (owner, 2026-11-15). A setup-* input
+ * given as an expression used to be a computed location with no channel, which P11 skipped, so the move edited the
+ * literal pins and left that workflow on the old SDK.
+ */
+describe('every workflow moves together (H6/H7)', () => {
+  const dotnet = { sdk: 'dotnet' as const, fromChannel: '10.0', toChannel: '11.0', toVersion: '11.0.0', sdkVersion: '11.0.100' };
+  const step = (value: string) => `      - uses: actions/setup-dotnet@v5\n        with:\n          dotnet-version: ${value}\n`;
+  const scan = async (files: Record<string, string>) => {
+    const root = tempDir();
+    writeTree(root, files);
+    return scanLocations(directoryFiles(root), ['dotnet']);
+  };
+  const rows = (found: Awaited<ReturnType<typeof scanLocations>>) => found.map((f) => `${f.line + 1}:${f.kind}=${f.value} ${f.channel ?? '-'} ${f.computed ? `(${f.reason})` : ''}`.trimEnd());
+
+  it('C12: a workflow-level env value is a location that moves, quotes kept', async () => {
+    const ci = `env:\n  DOTNET: '10.0.x'\njobs:\n  a:\n    steps:\n${step('${{ env.DOTNET }}')}`;
+    expect(rows(await scan({ '.github/workflows/ci.yml': ci }))).toEqual([
+      '8:setup-action=${{ env.DOTNET }} - (resolved through env.DOTNET)',
+      '2:workflow-value=10.0.x 10.0',
+    ]);
+    const { read } = await applyOn({ '.github/workflows/ci.yml': ci }, dotnet);
+    expect(read('.github/workflows/ci.yml')).toBe(ci.replace("'10.0.x'", "'11.0.x'"));
+  });
+
+  it('C12: a job-level env SDK version takes the plan\'s SDK version', async () => {
+    const ci = `jobs:\n  a:\n    env:\n      DOTNET_SDK: 10.0.100 # pinned\n    steps:\n${step('${{ env.DOTNET_SDK }}')}`;
+    const { read } = await applyOn({ '.github/workflows/ci.yml': ci }, dotnet);
+    expect(read('.github/workflows/ci.yml')).toBe(ci.replace('10.0.100 # pinned', '11.0.100 # pinned'));
+  });
+
+  it('C13: a composite action input\'s literal default moves; an empty default is the caller\'s', async () => {
+    const action = (dflt: string) => `name: build\ninputs:\n  dotnet-version:\n    description: the SDK\n    default: ${dflt}\nruns:\n  using: composite\n  steps:\n${step('${{ inputs.dotnet-version }}')}`;
+    expect(rows(await scan({ '.github/actions/build/action.yml': action("'10.0.x'") }))).toEqual([
+      '11:setup-action=${{ inputs.dotnet-version }} - (resolved through inputs.dotnet-version)',
+      '5:workflow-value=10.0.x 10.0',
+    ]);
+    const { read } = await applyOn({ '.github/actions/build/action.yml': action("'10.0.x'") }, dotnet);
+    expect(read('.github/actions/build/action.yml')).toBe(action("'11.0.x'"));
+    expect(rows(await scan({ '.github/actions/build/action.yml': action("''") }))).toEqual([
+      '11:setup-action=${{ inputs.dotnet-version }} - (an input the caller sets)',
+    ]);
+  });
+
+  it('C13: a reusable workflow\'s workflow_call input default moves', async () => {
+    const ci = `on:\n  workflow_call:\n    inputs:\n      sdk:\n        type: string\n        default: "10.0.100"\njobs:\n  a:\n    steps:\n${step('${{ inputs.sdk }}')}`;
+    const { read } = await applyOn({ '.github/workflows/build.yml': ci }, dotnet);
+    expect(read('.github/workflows/build.yml')).toBe(ci.replace('"10.0.100"', '"11.0.100"'));
+  });
+
+  it.each([
+    ['${{ vars.DOTNET }}', ''],
+    ['${{ env.DOTNET }}', 'env:\n  DOTNET: ${{ vars.DOTNET }}\n'],
+    ['${{ env.MISSING }}', ''],
+    ["${{ format('{0}.x', env.MAJOR) }}", ''],
+  ])('C14: %s (with %j) is an unresolved expression, which holds the move', async (value, head) => {
+    const found = await scan({ '.github/workflows/ci.yml': `${head}jobs:\n  a:\n    steps:\n${step(value)}` });
+    expect(found.filter((f) => f.kind === 'setup-action').map((f) => f.reason)).toEqual(['unresolved expression']);
+    expect(found.some((f) => f.kind === 'workflow-value')).toBe(false);
+  });
+
+  it('an env key of the same name outside an env: mapping is not read', async () => {
+    const found = await scan({ '.github/workflows/ci.yml': `jobs:\n  a:\n    with:\n      DOTNET: 10.0.x\n    steps:\n${step('${{ env.DOTNET }}')}` });
+    expect(rows(found)).toEqual(['8:setup-action=${{ env.DOTNET }} - (unresolved expression)']);
+  });
+});
+
+async function applyOn(files: Record<string, string>, plan: Parameters<typeof applyPlatform>[1], options?: Parameters<typeof applyPlatform>[2]) {
   const root = tempDir();
   writeTree(root, files);
-  const result = await applyPlatform(directoryFiles(root), plan);
+  const result = await applyPlatform(directoryFiles(root), plan, options);
   const read = (f: string) => fs.readFileSync(path.join(root, f), 'utf8');
   return { result, read };
 }
@@ -228,6 +328,20 @@ describe('applyPlatform', () => {
     expect(read('A.csproj')).toBe('<Project>\r\n  <PropertyGroup>\r\n    <TargetFrameworks>net11.0;net10.0</TargetFrameworks>\r\n  </PropertyGroup>\r\n</Project>\r\n');
   });
 
+  // prerelease-dependencies-PRD C7 (SP4): replace over several modern targets swaps only the from-channel token. A list's
+  // channel is its highest token, so Tools' net10.0;net11.0 is "on 11.0" and an 11 → 12 move keeps net10.0.
+  it('strategy replace on a multi-modern-target list swaps only the current channel and drops duplicates (C7)', async () => {
+    const dotnet12 = { ...dotnet, fromChannel: '11.0', toChannel: '12.0', toVersion: '12.0.0', sdkVersion: '12.0.100' };
+    expect(nextTfmList('net10.0;net11.0', dotnet12)).toBe('net10.0;net12.0');
+    expect(nextTfmList('net11.0;net12.0', dotnet12)).toBe('net12.0');
+    expect(nextTfmList('net11.0;netstandard2.0;net48', dotnet12)).toBe('net12.0;netstandard2.0;net48');
+    const { read } = await applyOn(
+      { 'Directory.Build.props': '<Project>\n  <PropertyGroup>\n    <TargetFrameworks>net10.0;net11.0</TargetFrameworks>\n  </PropertyGroup>\n</Project>\n' },
+      dotnet12,
+    );
+    expect(read('Directory.Build.props')).toContain('<TargetFrameworks>net10.0;net12.0</TargetFrameworks>');
+  });
+
   it('a computed or conditioned TFM is reported, never edited (R8)', async () => {
     const files = {
       'C.csproj': '<Project><PropertyGroup><TargetFramework>$(NetCurrent)</TargetFramework></PropertyGroup></Project>\n',
@@ -256,6 +370,61 @@ describe('applyPlatform', () => {
     const files = { 'Directory.Build.props': '<Project><PropertyGroup>\n<TargetFramework>net10.0</TargetFramework>\n<Version>10.0.0-preview.84</Version>\n</PropertyGroup></Project>\n' };
     expect((await applyOn(files, dotnet)).read('Directory.Build.props')).toContain('<Version>10.0.0-preview.84</Version>');
     expect((await applyOn(files, { ...dotnet, lockPackageMajor: true })).read('Directory.Build.props')).toContain('<Version>11.0.0-preview.84</Version>');
+  });
+
+  describe('older channels (platform-locations-PRD P6, P7)', () => {
+    // Dotnet.Templates, 2026-11-13: a sdk:9.0 build stage under a net10.0 repository stayed behind, unseen.
+    const files = {
+      'A.csproj': '<Project><PropertyGroup><TargetFramework>net10.0</TargetFramework></PropertyGroup></Project>\n',
+      'old/Old.csproj': '<Project><PropertyGroup><TargetFramework>net9.0</TargetFramework></PropertyGroup></Project>\n',
+      Dockerfile: 'FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build\nFROM mcr.microsoft.com/dotnet/aspnet:10.0\n',
+      '.github/workflows/ci.yml': 'jobs:\n  b:\n    steps:\n      - uses: actions/setup-dotnet@v5\n        with:\n          dotnet-version: 9.0.x\n',
+    };
+    const older = "on 9.0, older than the repository's 10.0";
+
+    it("never lists a project's own <Version> as a platform location left behind", async () => {
+      // Dotnet.Tools #214, 2026-11-15: every `<Version>0.0.0-PLACEHOLDER</Version>` (tag-versioned packages) was listed
+      // under "Not moved" as "on 0.0, older than the repository's 11.0". A package's own version is no platform pin.
+      const own = { 'P.csproj': '<Project><PropertyGroup><TargetFramework>net10.0</TargetFramework><Version>0.0.0-PLACEHOLDER</Version></PropertyGroup></Project>\n' };
+      for (const plan of [dotnet, { ...dotnet, lockPackageMajor: true }, { ...dotnet, toChannel: '10.0' }]) {
+        const { result, read } = await applyOn(own, plan);
+        expect(result.reported).toEqual([]);
+        expect(read('P.csproj')).toContain('<Version>0.0.0-PLACEHOLDER</Version>');
+      }
+    });
+
+    it('auto: an older Docker stage and setup pin follow the move; an older TFM is reported', async () => {
+      const { result, read } = await applyOn(files, dotnet);
+      expect(read('Dockerfile')).toBe('FROM mcr.microsoft.com/dotnet/sdk:11.0 AS build\nFROM mcr.microsoft.com/dotnet/aspnet:11.0\n');
+      expect(read('.github/workflows/ci.yml')).toContain('dotnet-version: 11.0.x');
+      expect(read('old/Old.csproj')).toBe(files['old/Old.csproj']);
+      expect(result.reported).toContainEqual({ file: 'old/Old.csproj', value: 'net9.0', reason: older });
+    });
+
+    it('report: nothing older moves, and each is listed', async () => {
+      const { result, read } = await applyOn(files, { ...dotnet, lagging: 'report' });
+      expect(read('Dockerfile')).toBe('FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build\nFROM mcr.microsoft.com/dotnet/aspnet:11.0\n');
+      expect(result.reported).toContainEqual({ file: 'Dockerfile', value: '9.0', reason: older });
+      expect(result.reported).toContainEqual({ file: '.github/workflows/ci.yml', value: '9.0.x', reason: older });
+    });
+
+    it('a move inside the channel leaves older locations, listed', async () => {
+      const { result, read } = await applyOn(files, { ...dotnet, toChannel: '10.0', toVersion: '10.0.5', sdkVersion: '10.0.105' });
+      expect(read('Dockerfile')).toContain('sdk:9.0 AS build');
+      expect(result.reported).toContainEqual({ file: 'Dockerfile', value: '9.0', reason: older });
+    });
+
+    it('P7: a Docker tag the registry does not have is reported, not written', async () => {
+      const seen: string[] = [];
+      const tagExists = async (image: string, tag: string) => {
+        seen.push(`${image}:${tag}`);
+        return tag !== '11.0' || image.endsWith('/aspnet');
+      };
+      const { result, read } = await applyOn(files, dotnet, { tagExists });
+      expect(seen).toEqual(['mcr.microsoft.com/dotnet/sdk:11.0', 'mcr.microsoft.com/dotnet/aspnet:11.0']);
+      expect(read('Dockerfile')).toBe('FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build\nFROM mcr.microsoft.com/dotnet/aspnet:11.0\n');
+      expect(result.reported).toContainEqual({ file: 'Dockerfile', value: '9.0', reason: 'mcr.microsoft.com/dotnet/sdk:11.0 does not exist in its registry' });
+    });
   });
 
   it('honours locations / exclude overrides', async () => {
@@ -410,3 +579,290 @@ function diffPairsLoose(diff: string, file: string): LinePair[] {
 }
 
 void diffPairs;
+
+describe('M4: computed TFMs followed to their definition (platform-locations-PRD R4, P9)', () => {
+  // MintPlayer.Dotnet.Templates, read 2026-11-13: *.csproj.in -> GeneratedContentProperties -> eng/Versions.props.
+  const versionsProps = '<Project>\n  <PropertyGroup>\n    <AspNetCoreMajorVersion>10</AspNetCoreMajorVersion>\n    <AspNetCoreMinorVersion>0</AspNetCoreMinorVersion>\n'
+    + '    <AspNetCoreMajorMinorVersion>$(AspNetCoreMajorVersion).$(AspNetCoreMinorVersion)</AspNetCoreMajorMinorVersion>\n'
+    + '    <DefaultNetCoreTargetFramework>net$(AspNetCoreMajorMinorVersion)</DefaultNetCoreTargetFramework>\n  </PropertyGroup>\n</Project>\n';
+  const templates = {
+    'eng/Versions.props': versionsProps,
+    'src/Templates/content/Web/Web.csproj.in': '<Project Sdk="Microsoft.NET.Sdk.Web">\n  <PropertyGroup>\n    <TargetFramework>${DefaultNetCoreTargetFramework}</TargetFramework>\n  </PropertyGroup>\n</Project>\n',
+    'src/Lib/Lib.csproj': '<Project>\n  <PropertyGroup>\n    <TargetFramework>$(DefaultNetCoreTargetFramework)</TargetFramework>\n  </PropertyGroup>\n</Project>\n',
+  };
+  const dotnet11 = { sdk: 'dotnet' as const, fromChannel: '10.0', toChannel: '11.0', toVersion: '11.0.0', sdkVersion: '11.0.100' };
+
+  async function scan(files: Record<string, string>) {
+    const root = tempDir();
+    writeTree(root, files);
+    return (await scanLocations(directoryFiles(root), ['dotnet'])).filter((f) => f.kind === 'tfm' || f.kind === 'tfm-property');
+  }
+
+  it('the Templates chain resolves to the one token that carries the major, once for every project that reads it', async () => {
+    const found = await scan(templates);
+    expect(found.map((f) => `${f.file}:${f.line + 1} ${f.kind}=${f.value} ${f.channel}${f.computed ? ' (computed)' : ''}`)).toEqual([
+      'eng/Versions.props:3 tfm-property=10 10.0',
+    ]);
+    const f = found[0];
+    expect(versionsProps.split('\n')[f.line].slice(f.start, f.end)).toBe('10');
+  });
+
+  it('the move edits the defining line only', async () => {
+    const { result, read } = await applyOn(templates, dotnet11);
+    expect(result).toEqual({ edited: ['eng/Versions.props'], reported: [] });
+    expect(read('eng/Versions.props')).toBe(versionsProps.replace('<AspNetCoreMajorVersion>10<', '<AspNetCoreMajorVersion>11<'));
+    expect(read('src/Lib/Lib.csproj')).toBe(templates['src/Lib/Lib.csproj']);
+  });
+
+  it('a property holding the whole TFM moves its channel', async () => {
+    const files = {
+      'Directory.Build.props': '<Project>\n  <PropertyGroup>\n    <NetCurrent>net10.0</NetCurrent>\n  </PropertyGroup>\n</Project>\n',
+      'src/App/App.csproj': '<Project>\n  <PropertyGroup>\n    <TargetFramework>$(NetCurrent)</TargetFramework>\n  </PropertyGroup>\n</Project>\n',
+    };
+    expect((await scan(files)).map((f) => `${f.kind}=${f.value} ${f.channel}`)).toEqual(['tfm-property=10.0 10.0']);
+    const { read } = await applyOn(files, dotnet11);
+    expect(read('Directory.Build.props')).toContain('<NetCurrent>net11.0</NetCurrent>');
+  });
+
+  it.each([
+    ['defined twice', { 'a.props': '<Project><PropertyGroup>\n<NetCurrent>net10.0</NetCurrent>\n</PropertyGroup></Project>\n', 'b.targets': '<Project><PropertyGroup>\n<NetCurrent>net9.0</NetCurrent>\n</PropertyGroup></Project>\n' }, '$(NetCurrent) is defined 2 times'],
+    ['conditioned group', { 'a.props': '<Project><PropertyGroup Condition="\'$(X)\' == \'1\'">\n<NetCurrent>net10.0</NetCurrent>\n</PropertyGroup></Project>\n' }, '$(NetCurrent) is conditioned'],
+    ['conditioned element', { 'a.props': '<Project><PropertyGroup>\n<NetCurrent Condition="\'$(X)\' == \'\'">net10.0</NetCurrent>\n</PropertyGroup></Project>\n' }, '$(NetCurrent) is conditioned'],
+    ['undefined', {}, '$(NetCurrent) is not defined in a .props or .targets file'],
+    ['not a TFM', { 'a.props': '<Project><PropertyGroup>\n<NetCurrent>netstandard2.0</NetCurrent>\n</PropertyGroup></Project>\n' }, "evaluates to 'netstandard2.0'"],
+  ])('a chain that does not resolve plainly (%s) stays a reported computed TFM, and says why', async (_, props, why) => {
+    const files = { ...props, 'src/App/App.csproj': '<Project>\n  <PropertyGroup>\n    <TargetFramework>$(NetCurrent)</TargetFramework>\n  </PropertyGroup>\n</Project>\n' };
+    const found = await scan(files);
+    expect(found.filter((f) => f.kind === 'tfm-property')).toEqual([]);
+    const tfm = found.find((f) => f.file === 'src/App/App.csproj')!;
+    expect(tfm.computed).toBe(true);
+    expect(tfm.reason).toContain(why);
+  });
+
+  it('a cycle is refused, not followed forever', async () => {
+    const files = {
+      'a.props': '<Project><PropertyGroup>\n<A>$(B)</A>\n<B>$(A)</B>\n</PropertyGroup></Project>\n',
+      'src/App/App.csproj': '<Project><PropertyGroup><TargetFramework>$(A)</TargetFramework></PropertyGroup></Project>\n',
+    };
+    expect((await scan(files)).find((f) => f.file === 'src/App/App.csproj')!.reason).toContain('cycle');
+  });
+
+  it('strategy add cannot multi-target a property: it is reported', async () => {
+    const { result, read } = await applyOn(templates, { ...dotnet11, strategy: 'add' });
+    expect(read('eng/Versions.props')).toBe(versionsProps);
+    expect(result.reported).toContainEqual(expect.objectContaining({ file: 'eng/Versions.props', value: '10' }));
+  });
+});
+
+describe('M5: template.json follows the TFM (platform-locations-PRD R2, P8)', () => {
+  const templateJson = '{\n  "symbols": {\n    "Framework": {\n      "type": "parameter",\n      "description": "The target framework for the project.",\n'
+    + '      "datatype": "choice",\n      "choices": [\n        {\n          "choice": "net10.0",\n          "description": "Target net10.0"\n        }\n      ],\n'
+    + '      "replaces": "net10.0",\n      "defaultValue": "net10.0"\n    },\n    "Name": { "type": "parameter", "description": "net10.0 is not a framework symbol here" }\n  }\n}\n';
+  const project = '<Project>\n  <PropertyGroup>\n    <TargetFramework>net10.0</TargetFramework>\n  </PropertyGroup>\n</Project>\n';
+  const dotnet11 = { sdk: 'dotnet' as const, fromChannel: '10.0', toChannel: '11.0', toVersion: '11.0.0', sdkVersion: '11.0.100' };
+  const path = 'content/Web/.template.config/template.json';
+
+  it('the framework choice, its description, replaces and defaultValue are locations; other text is not', async () => {
+    const root = tempDir();
+    writeTree(root, { [path]: templateJson });
+    const found = (await scanLocations(directoryFiles(root), ['dotnet'])).filter((f) => f.kind === 'template-framework');
+    expect(found.map((f) => `${f.line + 1}:${f.value}=${f.channel}`)).toEqual(['9:net10.0=10.0', '10:net10.0=10.0', '13:net10.0=10.0', '14:net10.0=10.0']);
+    for (const f of found) expect(templateJson.split('\n')[f.line].slice(f.start, f.end)).toBe('net10.0');
+  });
+
+  it('moves with the template\'s project TFM', async () => {
+    const { result, read } = await applyOn({ [path]: templateJson, 'content/Web/Web.csproj': project }, dotnet11);
+    expect(result.edited).toEqual(['content/Web/.template.config/template.json', 'content/Web/Web.csproj']);
+    expect(read(path)).toBe(templateJson.replace(/"(choice|replaces|defaultValue)": "net10\.0"/g, '"$1": "net11.0"').replace('Target net10.0', 'Target net11.0'));
+  });
+
+  it('without a TFM moving in the same pull request it is reported, never moved alone', async () => {
+    const { result, read } = await applyOn({ [path]: templateJson }, dotnet11);
+    expect(read(path)).toBe(templateJson);
+    expect(result.reported).toContainEqual({ file: path, value: 'net10.0', reason: 'a template framework moves only with a TFM this move changes, and none changes' });
+  });
+
+  it('moves when its project template\'s TFM moves through a property (the Dotnet.Templates shape)', async () => {
+    const files = {
+      [path]: templateJson,
+      'eng/Versions.props': '<Project>\n  <PropertyGroup>\n    <Major>10</Major>\n    <Tfm>net$(Major).0</Tfm>\n  </PropertyGroup>\n</Project>\n',
+      'content/Web/Web.csproj.in': '<Project>\n  <PropertyGroup>\n    <TargetFramework>${Tfm}</TargetFramework>\n  </PropertyGroup>\n</Project>\n',
+    };
+    const { result } = await applyOn(files, dotnet11);
+    expect(result.edited).toEqual(['content/Web/.template.config/template.json', 'eng/Versions.props']);
+    // A property read only by projects outside the template does not move it.
+    const { ['content/Web/Web.csproj.in']: project, ...rest } = files;
+    const elsewhere = { ...rest, 'src/Lib/Lib.csproj': project };
+    expect((await applyOn(elsewhere, dotnet11)).result.edited).toEqual(['eng/Versions.props']);
+  });
+
+  it('strategy add moves replaces and defaultValue, and reports the choice to add by hand', async () => {
+    const { result, read } = await applyOn({ [path]: templateJson, 'content/Web/Web.csproj': project }, { ...dotnet11, strategy: 'add' });
+    expect(read(path)).toBe(templateJson.replace(/"(replaces|defaultValue)": "net10\.0"/g, '"$1": "net11.0"'));
+    expect(result.reported.filter((r) => r.file === path)).toEqual([
+      { file: path, value: 'net10.0', reason: 'strategy add: add the net11.0 choice by hand' },
+      { file: path, value: 'net10.0', reason: 'strategy add: add the net11.0 choice by hand' },
+    ]);
+  });
+});
+
+describe('S4 golden: MintPlayer.Dotnet.Templates (platform-locations-PRD §6)', () => {
+  const pkg = 'src/MintPlayer.Dotnet.Templates';
+  const template = `${pkg}/content/WebApplication/.template.config/template.json`;
+  const dockerfile = `${pkg}/content/WebApplication/Web/Dockerfile`;
+
+  function copy() {
+    const root = tempDir();
+    copyTree(fixture('platform/dotnet-templates/before'), root);
+    return root;
+  }
+
+  it('finds every location the next .NET move must change', async () => {
+    const found = await scanLocations(directoryFiles(copy()), ['dotnet']);
+    expect(found.map((f) => `${f.file}:${f.line + 1} ${f.kind}=${f.value} ${f.channel}${f.computed ? ' (computed)' : ''}`).sort()).toEqual([
+      '.github/workflows/publish-master.yml:27 setup-action=9.0.101 9.0',
+      `${pkg}/MintPlayer.Dotnet.Templates.csproj:10 package-version=10.0.0 10.0`,
+      `${pkg}/MintPlayer.Dotnet.Templates.csproj:4 tfm=net10.0 10.0`,
+      `${template}:44 template-framework=net10.0 10.0`,
+      `${template}:45 template-framework=net10.0 10.0`,
+      `${template}:48 template-framework=net10.0 10.0`,
+      `${template}:49 template-framework=net10.0 10.0`,
+      `${dockerfile}:10 docker=9.0 9.0`,
+      `${dockerfile}:26 docker=9.0 9.0`,
+      `${pkg}/eng/Versions.props:3 tfm-property=10 10.0`,
+    ]);
+    // The four project templates resolve to the one property (S4: `Label` on its PropertyGroup is not a condition).
+    expect(found.find((f) => f.kind === 'tfm-property')!.readers).toHaveLength(4);
+  });
+
+  it('net10.0 -> net11.0 moves the chain, the package, template.json and the older stages, as §6 expects', async () => {
+    const root = copy();
+    const result = await applyPlatform(directoryFiles(root), { sdk: 'dotnet', fromChannel: '10.0', toChannel: '11.0', toVersion: '11.0.0', sdkVersion: '11.0.100' }, { tagExists: async () => true });
+    const read = (f: string) => fs.readFileSync(path.join(root, f), 'utf8');
+    expect(result.edited.sort()).toEqual([
+      '.github/workflows/publish-master.yml',
+      `${pkg}/MintPlayer.Dotnet.Templates.csproj`,
+      dockerfile,
+      template,
+      `${pkg}/eng/Versions.props`,
+    ].sort());
+    expect(result.reported).toEqual([]);
+    expect(read(`${pkg}/eng/Versions.props`)).toContain('<AspNetCoreMajorVersion>11</AspNetCoreMajorVersion>');
+    expect(read(template).match(/net1\d\.0/g)).toEqual(['net11.0', 'net11.0', 'net11.0', 'net11.0']);
+    expect(read(dockerfile)).toContain('FROM mcr.microsoft.com/dotnet/sdk:11.0 AS dotnet-build');
+    expect(read(dockerfile)).toContain('FROM mcr.microsoft.com/dotnet/aspnet:11.0 AS final');
+    expect(read(dockerfile)).toContain('FROM node:22-alpine AS node-build');
+  });
+});
+
+describe('M6: Node runtimes (platform-locations-PRD R8, P10)', () => {
+  const runtimes = ['node20', 'node24'];
+  const node24 = { sdk: 'node' as const, fromChannel: '22', toChannel: '24', toVersion: '24.11.1', actionRuntimes: runtimes };
+  const node26 = { sdk: 'node' as const, fromChannel: '24', toChannel: '26', toVersion: '26.0.0', actionRuntimes: runtimes };
+  const action = (using: string) => `name: Cherry pick\nruns:\n  using: '${using}'\n  main: dist/index.js\n`;
+
+  async function scan(files: Record<string, string>) {
+    const root = tempDir();
+    writeTree(root, files);
+    return scanLocations(directoryFiles(root), ['node']);
+  }
+
+  it('runs.using is an action-runtime location; one under .github/ is reported, since the bot never writes there', async () => {
+    const found = await scan({ 'cherry-pick/action.yml': action('node16'), '.github/actions/x/action.yaml': action('node20') });
+    expect(found.map((f) => `${f.file}:${f.line + 1} ${f.kind}=${f.value} ${f.channel}`)).toEqual([
+      '.github/actions/x/action.yaml:3 action-runtime=node20 20',
+      'cherry-pick/action.yml:3 action-runtime=node16 16',
+    ]);
+    expect(notEditedReason(found[0])).toBe('under .github/, which the bot\'s pull requests never change');
+  });
+
+  it('moves to the highest runtime GitHub runs that is not above the target, older actions included', async () => {
+    const { result, read } = await applyOn({ 'cherry-pick/action.yml': action('node16'), 'delay/action.yml': action('node20'), '.nvmrc': '22\n' }, node24);
+    expect(read('cherry-pick/action.yml')).toBe(action('node24'));
+    expect(read('delay/action.yml')).toBe(action('node24'));
+    expect(result.reported).toEqual([]);
+  });
+
+  it('a target GitHub does not run yet leaves the highest it runs, and says so', async () => {
+    const { result, read } = await applyOn({ 'a/action.yml': action('node20'), '.nvmrc': '24\n' }, node26);
+    expect(read('a/action.yml')).toBe(action('node24'));
+    expect(result.reported).toContainEqual({ file: 'a/action.yml', value: 'node20', reason: 'GitHub runs node24 at most for actions; node26 is not offered yet' });
+  });
+
+  it('without the runtime table it is reported, never guessed', async () => {
+    const { result, read } = await applyOn({ 'a/action.yml': action('node22'), '.nvmrc': '22\n' }, { ...node24, actionRuntimes: undefined });
+    expect(read('a/action.yml')).toBe(action('node22'));
+    expect(result.reported).toContainEqual({ file: 'a/action.yml', value: 'node22', reason: 'the plan names no Node runtimes GitHub runs (actionRuntimes)' });
+  });
+
+  it('a NodeSource setup script in a Dockerfile RUN moves', async () => {
+    const dockerfile = 'FROM mcr.microsoft.com/dotnet/sdk:10.0\nRUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \\\n    && apt-get install -y nodejs\n';
+    const found = (await scan({ Dockerfile: dockerfile })).filter((f) => f.sdk === 'node');
+    expect(found.map((f) => `${f.line + 1} ${f.kind}=${f.value} ${f.channel}`)).toEqual(['2 docker=22 22']);
+    const { read } = await applyOn({ Dockerfile: dockerfile }, node24);
+    expect(read('Dockerfile')).toBe(dockerfile.replace('setup_22.x', 'setup_24.x'));
+  });
+
+  it('an ARG default that feeds a FROM tag is the location, and the FROM is no longer computed', async () => {
+    const dockerfile = 'ARG NODE_VERSION=22\nFROM node:${NODE_VERSION}-alpine AS build\nFROM node:${NODE_VERSION}-alpine\n';
+    const found = await scan({ Dockerfile: dockerfile });
+    expect(found.map((f) => `${f.line + 1} ${f.kind}=${f.value} ${f.channel}${f.computed ? ' (computed)' : ''}`)).toEqual(['1 docker=22 22']);
+    const checked: string[] = [];
+    const { read } = await applyOn({ Dockerfile: dockerfile }, node24, { tagExists: async (image, tag) => { checked.push(`${image}:${tag}`); return true; } });
+    expect(read('Dockerfile')).toBe(dockerfile.replace('NODE_VERSION=22', 'NODE_VERSION=24'));
+    expect(checked).toEqual(['node:24-alpine']);
+  });
+
+  it('an ARG defined twice, or without a default, keeps the FROM computed', async () => {
+    const twice = await scan({ Dockerfile: 'ARG NODE_VERSION=22\nARG NODE_VERSION=20\nFROM node:${NODE_VERSION}\n' });
+    expect(twice.map((f) => `${f.kind}=${f.value} ${f.computed}`)).toEqual(['docker=${NODE_VERSION} true']);
+    const bare = await scan({ Dockerfile: 'ARG NODE_VERSION\nFROM node:$NODE_VERSION\n' });
+    expect(bare.map((f) => `${f.kind}=${f.value} ${f.computed}`)).toEqual(['docker=$NODE_VERSION true']);
+  });
+});
+
+describe('M3: multi-line setup inputs (platform-locations-PRD R7) and the package\'s own <PackageVersion> (R5)', () => {
+  // DotnetDesktop.Tools' _build.yml: two SDKs installed side by side, one deliberate (10.0.x), one stale (rc.1).
+  const twoSdks = 'jobs:\n  b:\n    steps:\n      - uses: actions/setup-dotnet@v5\n        with:\n          dotnet-version: |\n            10.0.x\n            11.0.100-rc.1.26425.128\n      - run: dotnet build\n';
+
+  it('each line of a `dotnet-version: |` block is its own setup-action location, with its own channel', async () => {
+    const root = tempDir();
+    writeTree(root, { '.github/workflows/_build.yml': twoSdks });
+    const found = (await scanLocations(directoryFiles(root), ['dotnet'])).filter((f) => f.kind === 'setup-action');
+    expect(found.map((f) => `${f.line + 1}:${f.value}=${f.channel}${f.computed ? ' (computed)' : ''}`)).toEqual([
+      '7:10.0.x=10.0',
+      '8:11.0.100-rc.1.26425.128=11.0',
+    ]);
+    const doc = twoSdks.split('\n');
+    for (const f of found) expect(doc[f.line].slice(f.start, f.end)).toBe(f.value);
+  });
+
+  it('an in-channel move edits its own line of the block; the older listed SDK stays and is reported', async () => {
+    const { result, read } = await applyOn({ '.github/workflows/_build.yml': twoSdks },
+      { sdk: 'dotnet', fromChannel: '11.0', toChannel: '11.0', toVersion: '11.0.0', sdkVersion: '11.0.100' });
+    expect(read('.github/workflows/_build.yml')).toBe(twoSdks.replace('11.0.100-rc.1.26425.128', '11.0.100'));
+    expect(result.reported).toContainEqual(expect.objectContaining({ file: '.github/workflows/_build.yml', value: '10.0.x' }));
+  });
+
+  it('under lagging auto an older SDK of a list does not follow a channel move (it is deliberate, like a matrix entry)', async () => {
+    const block = twoSdks.replace('11.0.100-rc.1.26425.128', '11.0.x');
+    const { result, read } = await applyOn({ '.github/workflows/_build.yml': block }, { sdk: 'dotnet', fromChannel: '11.0', toChannel: '12.0', toVersion: '12.0.0', sdkVersion: '12.0.100' });
+    expect(read('.github/workflows/_build.yml')).toBe(block.replace('11.0.x', '12.0.x'));
+    expect(result.reported).toContainEqual({ file: '.github/workflows/_build.yml', value: '10.0.x', reason: "on 10.0, older than the repository's 11.0" });
+  });
+
+  it('a plain <PackageVersion> is the package\'s own version; a CPM <PackageVersion Include> stays a dependency', async () => {
+    const files = {
+      'src/T/T.csproj': '<Project>\n  <PropertyGroup>\n    <TargetFramework>net10.0</TargetFramework>\n    <PackageVersion>10.0.0</PackageVersion>\n  </PropertyGroup>\n</Project>\n',
+      'Directory.Packages.props': '<Project>\n  <ItemGroup>\n    <PackageVersion Include="Serilog" Version="10.1.0" />\n  </ItemGroup>\n</Project>\n',
+    };
+    const root = tempDir();
+    writeTree(root, files);
+    const own = (await scanLocations(directoryFiles(root), ['dotnet'])).filter((f) => f.kind === 'package-version');
+    expect(own.map((f) => `${f.file}=${f.value}`)).toEqual(['src/T/T.csproj=10.0.0']);
+
+    const { read } = await applyOn(files, { sdk: 'dotnet', fromChannel: '10.0', toChannel: '11.0', toVersion: '11.0.0', sdkVersion: '11.0.100', lockPackageMajor: true });
+    expect(read('src/T/T.csproj')).toContain('<PackageVersion>11.0.0</PackageVersion>');
+    expect(read('Directory.Packages.props')).toBe(files['Directory.Packages.props']);
+  });
+});

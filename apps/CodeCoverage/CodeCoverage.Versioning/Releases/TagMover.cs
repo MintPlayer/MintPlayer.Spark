@@ -53,9 +53,12 @@ public sealed class TagMover(ITagGit git, string remote, Tagger tagger)
 		{
 			if (!reported.TryGetValue(move.Tag.Name, out var outcome))
 				throw new GitException($"git push did not report {move.Tag.Name}: {result.Error.Trim()}");
-			results.Add(outcome.Rejected
-				? new TagMoveResult(move.Tag, false, $"{move.Tag.Name} changed since it was read ({outcome.Summary.Trim()}); it was left alone.")
-				: new TagMoveResult(move.Tag, true));
+			// D3 (docs/onboarding_backfill_partial_push_PRD.md): only a failed lease means the tag changed since it was read.
+			results.Add(!outcome.Rejected ? new TagMoveResult(move.Tag, true)
+				: outcome.Summary.Contains("stale info", StringComparison.Ordinal)
+					? new TagMoveResult(move.Tag, false, $"{move.Tag.Name} changed since it was read ({outcome.Summary.Trim()}); it was left alone.")
+					: new TagMoveResult(move.Tag, false,
+						$"the remote refused to move {move.Tag.Name}: {outcome.Summary.Trim()}{TagWriter.Remote(result.Error, move.Tag.Name)}; it was left alone."));
 		}
 		return results;
 	}

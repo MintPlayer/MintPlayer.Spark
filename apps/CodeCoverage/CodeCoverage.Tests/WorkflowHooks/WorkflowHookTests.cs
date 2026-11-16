@@ -345,7 +345,7 @@ public class WorkflowHookTests : CoverageRavenTest
     public async Task A_writer_job_the_forge_gives_no_token_never_runs()
     {
         var h = await HarnessAsync();
-        h.Queue.WriterAccess = _ => ForgePushAccess.Refused("The App is not installed on the fork.");
+        h.Queue.WriterAccess = (_, _) => ForgePushAccess.Refused("The App is not installed on the fork.");
         var ran = false;
 
         var answer = await new WorkflowHook(Microsoft.Extensions.Logging.Abstractions.NullLogger<WorkflowHook>.Instance)
