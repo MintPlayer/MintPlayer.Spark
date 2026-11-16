@@ -25,7 +25,7 @@
 	</ItemGroup>
 
 	<ItemGroup>
-		<PackageReference Include="MintPlayer.AspNetCore.OpenSearch" Version="11.0.1-rc.1" />
+		<PackageReference Include="MintPlayer.AspNetCore.OpenSearch" Version="11.0.1" />
 	</ItemGroup>
 
 	<ItemGroup>

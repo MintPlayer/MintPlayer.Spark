@@ -21,7 +21,7 @@
 # The apps dial it as mail-relay:587 (each app's MAIL_HOST default).
 services:
   mail-relay:
-    image: boky/postfix:v4.3.0
+    image: boky/postfix:4.4.0
     # A fixed name rather than mail-relay-mail-relay-1; the deploys look the container up by its compose labels.
     container_name: mail-relay
     environment:

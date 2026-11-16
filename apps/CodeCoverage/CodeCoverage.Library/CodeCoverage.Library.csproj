@@ -10,7 +10,7 @@
 
 	<ItemGroup>
 		<!-- pyproject.toml for the repository dependency graph (Dependencies/ManifestParsers). -->
-		<PackageReference Include="Tomlyn" Version="2.10.1" />
+		<PackageReference Include="Tomlyn" Version="2.11.1" />
 	</ItemGroup>
 
 	<ItemGroup>
