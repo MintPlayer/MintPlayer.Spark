@@ -1,115 +1,117 @@
 # Plan: Spark templates, `dnx create-spark-app`, terminal UI framework
 
-**PRD:** [templates_dnx_terminal_PRD.md](templates_dnx_terminal_PRD.md)
-**Status:** NOT STARTED. Spikes come first. Each spike has a time box, a question, an exit criterion,
-and a place to record its answer (with evidence: numbers, file:line, commands run).
+**PRD:** [templates_dnx_terminal_PRD.md](templates_dnx_terminal_PRD.md). Decisions D1–D19 were locked with the
+owner on 2026-11-16.
 
-Order: **S1 → S2 → M1–M3 (templates)**, then **S3 → M4–M5 (`dnx` tool)**. The framework track
-(**S4 → S5 → S6**) is independent and runs in parallel or after; it lives outside this repo (PRD D6).
+**Status:** NOT STARTED. Each spike has a time box, questions, an exit criterion and an answer slot. Record each
+answer with evidence: numbers, file:line, commands run.
+
+**Order in this repo:** S1 → S2 → S6 → M1–M4 (templates and the core option), then S3 → M5–M6 (tools and release).
+The framework track (S4, S5) runs in MintPlayer.Dotnet.Tools under Tools #18 (D6). This repo only files and
+updates issues there.
+
+All of this repo's work goes in **one PR** (owner rule), including the `MintPlayer.Spark` change for D13.
 
 ---
 
-## Spikes
+## Spikes (this repo)
 
-### S1: Template skeleton from DemoApp (1 day)
-**Question:** can `dotnet new spark-app` produce a host, Library and Tests solution that builds and runs
-against **published** Spark 11.x packages? Is `App_Data` better as a snapshot or as a post-action?
-- Scaffold with `dotnet new templatepack`. Copy DemoApp and replace its ProjectReferences with
-  PackageReferences. Add a plain Angular CLI ClientApp on `@mintplayer/ng-spark` ^22.
-- Measure: time to instantiate, time to the first `dotnet run`, and time for the synchronize post-action.
-  Check whether a pre-generated `App_Data` passes `--spark-verify-model` against the released packages.
-- Check visibility in VS 2026 "Create a new project", Rider and C# Dev Kit.
-- **Exit:** a generated app serves its Angular shell, plus a decision between snapshot and post-action
-  backed by the timings.
+### S1: Template skeleton and IDE behaviour (1 day)
+- Run `dotnet new templatepack`. Build a `spark-app` with two features (one with a prerequisite, one RavenDB-only),
+  the store and auth choices, and a plain CLI ClientApp.
+- **VS 2026:**
+  - Does `ide.host.json` hide and label symbols?
+  - Does `isEnabled` gray out a choice? The owner saw it ignored around 2023.
+  - Does a run-script post-action run?
+- **CLI:** can a template **refuse** a symbol combination with a message, not just ignore it? Try constraints, a
+  computed symbol, and an error post-action.
+- **Rider and C# Dev Kit:** does the template show, and which symbols?
+- **Exit:**
+  - a behaviour table per host
+  - D16's final form: `isEnabled`, or refusal at Create
+  - D13's post-action viability
 - **Answer:** _(pending)_
 
-### S2: Released versions inside template content (½ day)
-**Question:** how do `PackageReference Version="…"` and the `ng-spark` range inside the template get the
-versions released alongside the template pack, without hand edits (#153)?
-- Option A: a pack-time MSBuild target substitutes tokens from `MintPlayer.Versioning.MSBuild`'s resolved
-  versions of the sibling packages.
-- Option B: the template references a floating `11.*` range.
-- Option C: CPM `Directory.Packages.props` generated at pack time.
-- Check how the release line packs packages in one run, and whether a sibling's version is known at the
-  template's pack time.
-- **Exit:** the chosen option, proven by a local pack showing real versions in `content/`.
+### S2: Versions in template content and a same-commit feed (½ day)
+- How do the template's `PackageReference`s and the ng-spark range get the versions released in the same run?
+  Options:
+  - a pack-time token substitution from `MintPlayer.Versioning.MSBuild`
+  - a generated `Directory.Packages.props`
+  - a floating `11.*` range
+- How does the CI matrix pack every package from the current commit into a local feed, and point the generated
+  apps at it?
+- **Exit:** a local pack whose `content/` shows the real versions, plus a recipe for the local feed.
 - **Answer:** _(pending)_
 
-### S3: `dnx` tool mechanics (½ day)
-**Question:** should the tool drive the template engine in process or shell out to `dotnet new`? How does
-`dnx` feel on the first run?
-- Build a throwaway `PackAsTool` package and run it with `dnx --add-source <local>` on a cold cache. Time it
-  and note the confirmation prompt (and `-y`).
-- Try `Microsoft.TemplateEngine.Edge` to instantiate the S1 template from the tool's own embedded pack.
-  Compare with `dotnet new install` followed by `dotnet new spark-app`.
-- Check whether the release pipeline (versioning, pack, publish `--skip-duplicate`) handles a tool package.
-  This is the repo's first.
-- **Exit:** a decision between in-process and shelling out, the first-run timing, and the pipeline changes
-  needed.
+### S6: Manifest generator and matrix cost (1 day)
+- Draft the `features.json` schema and a generator for symbols, computed prerequisites, `ide.host.json` and `#if`
+  regions, covering three real features.
+- Prototype the graph test (`requires` equals ProjectReferences) and the coverage test (every packable `libs/*` is
+  listed or excluded).
+- Time about 32 instantiations (minimal, all-on, each feature alone) with a shared restore and parallel builds.
+- **Exit:** the schema, timings, and whether the matrix fits one PR job or needs to be a subset on PRs and the full
+  matrix on master.
 - **Answer:** _(pending)_
 
-### S4: Terminal backend bake-off (2–3 days, outside this repo)
-**Question:** which renderer should the framework sit on?
-- Build the same screen in **Terminal.Gui v2**, **XenoAtom.Terminal.UI** and **RazorConsole**. The screen
-  has:
-  - a text box, password, checkbox list (scrolling) and radio list
-  - a button clicked with the mouse
-  - tabs, a table with selectable rows, a date picker and a draggable dialog
-  - a spinner and progress bar
-- Score each on: Windows Terminal, conhost and a Linux terminal; mouse; resize; wide characters; NativeAOT
-  publish; a headless test of the screen; how well it fits DI and Generic Host; licence (confirm XenoAtom's);
-  maintainer count.
-- Confirm the PRD's **[K]** claims (Terminal.Gui TabView, DatePicker and movable windows; AOT).
-- **Exit:** a scored matrix and a recommendation.
+### S3: Tool packages and `dnx` (½ day)
+- Pack `MintPlayer.Spark.Cli` and `create-spark-app` from one shared commands library. Run both with
+  `dnx --add-source <local>` on a cold cache. Record the time and the confirmation prompt, with and without `-y`.
+- Compare the in-process template engine (`Microsoft.TemplateEngine.Edge`) with running `dotnet new install` and
+  then `dotnet new spark-app`.
+- Check that the versioning engine, pack and publish handle tool packages; these are the repo's first.
+- **Exit:** the instantiation approach, timings, and the pipeline changes needed.
 - **Answer:** _(pending)_
 
-### S5: Component model (2 days, after S4)
-**Question:** Razor components or C# reactive builders over the chosen backend?
-- Prototype `TerminalHostBuilder.Create(args)` with DI, `IStringLocalizer` and one screen in each style.
-  Judge how readable the screen is, how state and events work, and how hot reload behaves.
-- **Exit:** the chosen style and a sketch of the public API.
-- **Answer:** _(pending)_
-
-### S6: Command/interactive duality (1 day, after S4)
-**Question:** can one `ICliCommand` (CliGenerator) run headless with flags and prompt for missing options on
-a TTY?
-- Prompt only for the options that are not set. Honour `--no-interactive`, `CI=true` and a redirected stdin.
-  Check the exit codes.
-- Design localized command, option and description text as an extension to the CliGenerator.
-- **Exit:** a working sample, plus an issue filed in MintPlayer.Dotnet.Tools for the generator changes.
-- **Answer:** _(pending)_
+## Spikes (MintPlayer.Dotnet.Tools, via Tools #18)
+- **S4: RazorConsole fit (2 days).** Find out whether overlays, a modal, absolute positioning for a draggable
+  window, scroll containers and mouse drag can be done without forking the renderer. Also test conhost, Windows
+  Terminal and Linux, and a headless test with `RazorConsole.Testing`.
+- **S5: Command bridge (2 days).** Pair an `ICliCommand` with a Razor form. It runs headless with flags, opens the
+  form on a TTY for missing values, and fails on `--no-interactive`, `CI=true` or a redirected stdin. Also design
+  localized command and option text in CliGenerator.
 
 ---
 
 ## Milestones (this repo)
 
-### M1: `MintPlayer.Spark.Templates` package
+### M1: `MintPlayer.Spark.Templates` and the manifest
 - Create `libs/templates/MintPlayer.Spark.Templates/`. Model the csproj on
-  `libs/sitemap/MintPlayer.Spark.SitemapXml/MintPlayer.Spark.SitemapXml.csproj`:
-  `0.0.0-PLACEHOLDER`, README, MIT, net11.0, `PackageType=Template`.
-- Add `spark-app` with choices `store`, `auth` and `client` (pending Q1–Q3), using S2's version mechanism.
-- Avoid folder names caught by `.gitignore` (`coverage`, `Releases`) and check `git status`.
+  `libs/sitemap/MintPlayer.Spark.SitemapXml/MintPlayer.Spark.SitemapXml.csproj` (`0.0.0-PLACEHOLDER`, README, MIT,
+  net11.0) and add `PackageType=Template`.
+- Add `features.json` covering every feature lib, with the generator from S6. Add the graph and coverage tests.
+- Add the `spark-app` choices from PRD §4.1 and the prerequisite and constraint behaviour from S1 (D16).
+- Avoid folder names that `.gitignore` swallows (`coverage`, `Releases`), and check `git status` lists every new
+  file.
 
-### M2: Item templates
-- Add `spark-entity`, `spark-actions`, `spark-custom-action`, `spark-lookup` and `spark-index` (PRD §4.1).
+### M2: `SynchronizeOnStartupIfMissing` (core, D13)
+- Add a new option in `MintPlayer.Spark`. In Development it runs the model and security synchronizers when
+  `App_Data` files are missing, and never overwrites. Write the test red first.
+- If the option adds an endpoint or route, update `CsrfSurfaceTests` and the route snapshot. It shouldn't, but
+  check.
 
-### M3: Template tests and CI
-- Add TemplateVerifier snapshot tests in a `*.Tests` project, which gets `NoSystemProxy` automatically.
-- Add one CI step that instantiates `spark-app`, builds it and runs `--spark-verify-model`. Fit it into an
-  existing job, because the run is capped at 20 concurrent jobs (repo CLAUDE.md).
-- Decide whether DemoApp is generated from the template or whether CI guards the drift (PRD §4.2.5).
+### M3: Item templates
+- Add `spark-entity`, `spark-actions`, `spark-custom-action`, `spark-lookup` and `spark-index`.
 
-### M4: The `dnx` tool package
-- Use the package ID from Q4, with `PackAsTool` and `ToolCommandName`.
-- Commands defined with `MintPlayer.CliGenerator`: `new` (the default) and `add <item>`.
-- Every prompt has a flag equivalent (PRD D4). Prompts are v1-simple (PRD §6.3).
-- After generation it runs `npm install` and the synchronize steps, and optionally probes RavenDB.
+### M4: Template tests and CI
+- Add TemplateVerifier snapshots in a `*.Tests` project.
+- Add the matrix from S6 against a same-commit local feed (S2), inside an existing job (20-job cap).
+- Add the PR checklist line from PRD §4.6.
 
-### M5: Release wiring
-- Make the versioning, pack and publish pipeline handle the template and tool packages, using S3's findings.
-- Document `dnx …` and `dotnet new install …` in the guides (`docs/`) and the README.
+### M5: `MintPlayer.Spark.Cli` and `create-spark-app`
+- Create the shared `MintPlayer.Spark.Cli.Commands` library with CliGenerator commands `new` and `add <item>`, and
+  two thin `PackAsTool` hosts.
+- Prompts use Spectre.Console (D19), with a flag for every prompt (D4).
+- Add the RavenDB probe with an InMemory fallback, the OIDC authority check, `npm install`, and the eager
+  synchronize.
 
-## Outside this repo (file issues, do not edit from here)
-- MintPlayer.Dotnet.Tools: framework PRD seeded from S4–S6 (Tools #18). CliGenerator: localization and
-  missing-value prompting hooks.
-- MintPlayer.Dotnet.Templates: archive or point to `MintPlayer.Spark.Templates` (Q6).
+### M6: Release wiring and docs
+- Make the pipeline handle the template and tool packages (S3).
+- Publish `create-spark-app` in the first release, to claim the unprefixed name.
+- Document `dotnet new install MintPlayer.Spark.Templates`, `dnx create-spark-app` and `spark add` in the guides
+  and README. State the Angular-major note for template minors (PRD §4.7).
+
+## Outside this repo (issues only)
+- Tools #18: framework scope, D5–D7, S4–S5 (updated 2026-11-16).
+- Templates #6: README pointer, NuGet deprecation, bot off, archive, transfer to MintPlayer-Archive.
+- Spark #689: three packages silently skipped by the versioning engine. This is a separate defect and not part of
+  this PR.
