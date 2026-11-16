@@ -1,4 +1,4 @@
-import { DOCUMENT, Location, isPlatformBrowser } from '@angular/common';
+import { DOCUMENT, isPlatformBrowser } from '@angular/common';
 import {
   ApplicationRef,
   DestroyRef,
@@ -8,7 +8,6 @@ import {
   inject,
   signal,
 } from '@angular/core';
-import { NavigationStart, Router } from '@angular/router';
 import { SwUpdate, VersionReadyEvent } from '@angular/service-worker';
 import { Subscription, filter, first } from 'rxjs';
 
@@ -18,21 +17,17 @@ export interface SparkAppVersion {
   appData?: Record<string, unknown>;
 }
 
-/** The two page loads the update policy performs. Replaceable for tests. */
+/** The one page load the update policy performs, on `unrecoverable`. Replaceable for tests. */
 export interface SparkPageLoader {
-  assign(url: string): void;
   reload(): void;
 }
 
-/** How the update policy loads a page: `window.location` by default. */
+/** How the update policy reloads the page: `window.location` by default. */
 export const SPARK_SW_PAGE_LOADER = new InjectionToken<SparkPageLoader>('SPARK_SW_PAGE_LOADER', {
   providedIn: 'root',
   factory: () => {
     const location = inject(DOCUMENT).defaultView?.location;
-    return {
-      assign: (url: string) => location?.assign(url),
-      reload: () => location?.reload(),
-    };
+    return { reload: () => location?.reload() };
   },
 });
 
@@ -48,39 +43,29 @@ export const SPARK_SW_SCHEDULE = new InjectionToken<SparkServiceWorkerSchedule>(
 });
 
 /**
- * Remembers, per tab, the version a full load was made for. If the page that load produced still
- * reports the same version as ready (another tab keeps the old version alive, or the worker did not
- * hand this client the new one), the policy does not reload again: one attempt per version.
- */
-const RELOADED_FOR_KEY = 'spark-sw-reloaded-for';
-
-/**
- * The update policy of `withServiceWorker()` (#464, Q1b).
+ * The update policy of `withServiceWorker()` (#464, Q1b; revised 2026-11-16, Q1c).
  *
- * - `VERSION_READY`: the **next** router navigation becomes a full page load of its target, so the
- *   user lands on the page they asked for, in the new version, without losing anything on the page
- *   they are leaving (the navigation was leaving it anyway).
+ * - `VERSION_READY`: **no page load.** The new version is downloaded and recorded (`updateReady`,
+ *   `latestVersion`); the open tab keeps running the version it started with, which the worker keeps
+ *   serving it, and the new version runs from the next full page load (a refresh, a new tab, or an
+ *   app restart). An app that wants to tell the user can read `updateReady()`.
  * - `unrecoverable`: the running version can no longer be served, so the page reloads at once.
  * - Checks: once the application is stable, every 6 h, and when the tab becomes visible again
  *   (at most once a minute).
  * - **A hidden tab never reloads.** Spark has no unsaved-changes tracking to consult, so a reload
  *   nobody is looking at could throw away an open edit. An `unrecoverable` in a hidden tab waits
- *   until the tab is visible; a navigation in a hidden tab stays a normal in-app navigation.
+ *   until the tab is visible.
+ *
+ * Until 2026-11-16 a ready version turned the next router navigation into a full page load. That
+ * made one link click per deploy per tab reload the whole page, which the owner asked to remove
+ * (docs/pwa_external_login_PRD.md §6, Q1c).
  *
  * Nothing happens when the service worker is disabled (development builds, unsupported browsers)
  * or on the server.
- *
- * **Symptom this produces, by design:** after a deploy, one link click per tab reloads the whole
- * page, while the same link after a refresh is an in-app navigation. That is `onNavigationStart`
- * below, not a broken `routerLink`; `sessionStorage['spark-sw-reloaded-for']` confirms it. Kept on
- * purpose (owner, 2026-11-16, over a reload prompt or a silent swap); docs/guide-pwa.md has the
- * full explanation.
  */
 @Injectable({ providedIn: 'root' })
 export class SparkServiceWorkerUpdates {
   private readonly swUpdate = inject(SwUpdate);
-  private readonly router = inject(Router, { optional: true });
-  private readonly location = inject(Location, { optional: true });
   private readonly appRef = inject(ApplicationRef);
   private readonly document = inject(DOCUMENT);
   private readonly platformId = inject(PLATFORM_ID);
@@ -92,15 +77,15 @@ export class SparkServiceWorkerUpdates {
   private readonly _currentVersion = signal<SparkAppVersion | null>(null);
   private readonly _latestVersion = signal<SparkAppVersion | null>(null);
 
-  /** True once a new version is downloaded and the next navigation will load it. */
+  /** True once a new version is downloaded; the next full page load runs it. */
   readonly updateReady = this._updateReady.asReadonly();
   /** The running version, known once an update was reported. */
   readonly currentVersion = this._currentVersion.asReadonly();
-  /** The version the next navigation loads (`appData.build` is the ng-spark version). */
+  /** The version the next full page load runs (`appData.build` is the ng-spark version). */
   readonly latestVersion = this._latestVersion.asReadonly();
 
   private started = false;
-  private leaving = false;
+  private reloading = false;
   private reloadWhenVisible = false;
   private lastCheck = 0;
 
@@ -121,14 +106,6 @@ export class SparkServiceWorkerUpdates {
     );
 
     subscriptions.add(this.swUpdate.unrecoverable.subscribe(() => this.onUnrecoverable()));
-
-    if (this.router) {
-      subscriptions.add(
-        this.router.events
-          .pipe(filter((event): event is NavigationStart => event instanceof NavigationStart))
-          .subscribe((event) => this.onNavigationStart(event)),
-      );
-    }
 
     // The first check waits for stability, so it never competes with the initial render.
     subscriptions.add(
@@ -153,15 +130,8 @@ export class SparkServiceWorkerUpdates {
   }
 
   private onVersionReady(event: VersionReadyEvent): void {
-    const latest = toVersion(event.latestVersion);
     this._currentVersion.set(toVersion(event.currentVersion));
-    this._latestVersion.set(latest);
-
-    if (this.readReloadedFor() === latest.hash) {
-      // This page is the full load made for that version and it is still not the one served.
-      // Reloading again would loop; the next deploy, or the next fresh tab, picks it up.
-      return;
-    }
+    this._latestVersion.set(toVersion(event.latestVersion));
     this._updateReady.set(true);
   }
 
@@ -173,25 +143,6 @@ export class SparkServiceWorkerUpdates {
     this.reload();
   }
 
-  private onNavigationStart(event: NavigationStart): void {
-    if (!this._updateReady() || this.leaving || this.isHidden()) return;
-
-    this.leaving = true;
-    this.writeReloadedFor(this._latestVersion()?.hash);
-    this.router?.currentNavigation()?.abort();
-
-    if (event.navigationTrigger === 'popstate') {
-      // Back/forward: the address bar already shows the target, and assign() would add a
-      // duplicate history entry.
-      this.pageLoader.reload();
-      return;
-    }
-
-    // event.url is relative to the router's base; prepareExternalUrl adds the <base href>.
-    const target = this.location ? this.location.prepareExternalUrl(event.url) : event.url;
-    this.pageLoader.assign(target);
-  }
-
   private check(): void {
     this.lastCheck = Date.now();
     this.swUpdate.checkForUpdate().catch(() => {
@@ -200,30 +151,13 @@ export class SparkServiceWorkerUpdates {
   }
 
   private reload(): void {
-    if (this.leaving) return;
-    this.leaving = true;
+    if (this.reloading) return;
+    this.reloading = true;
     this.pageLoader.reload();
   }
 
   private isHidden(): boolean {
     return this.document.visibilityState === 'hidden';
-  }
-
-  private readReloadedFor(): string | null {
-    try {
-      return this.document.defaultView?.sessionStorage.getItem(RELOADED_FOR_KEY) ?? null;
-    } catch {
-      return null;
-    }
-  }
-
-  private writeReloadedFor(hash: string | undefined): void {
-    if (!hash) return;
-    try {
-      this.document.defaultView?.sessionStorage.setItem(RELOADED_FOR_KEY, hash);
-    } catch {
-      // Storage blocked: the guard is best effort; one reload per navigation is still bounded.
-    }
   }
 }
 

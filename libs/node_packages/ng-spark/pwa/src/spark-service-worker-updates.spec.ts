@@ -1,4 +1,3 @@
-import { Location } from '@angular/common';
 import { ApplicationRef, PLATFORM_ID } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { NavigationStart, Router } from '@angular/router';
@@ -28,7 +27,7 @@ describe('SparkServiceWorkerUpdates', () => {
   let routerEvents: Subject<unknown>;
   let swUpdate: { isEnabled: boolean; versionUpdates: Subject<VersionEvent>; unrecoverable: Subject<UnrecoverableStateEvent>; checkForUpdate: ReturnType<typeof vi.fn> };
   let abort: ReturnType<typeof vi.fn>;
-  let loader: { assign: ReturnType<typeof vi.fn>; reload: ReturnType<typeof vi.fn> };
+  let loader: { reload: ReturnType<typeof vi.fn> };
   let visibility: DocumentVisibilityState;
 
   function setVisibility(state: DocumentVisibilityState, dispatch = true): void {
@@ -45,9 +44,8 @@ describe('SparkServiceWorkerUpdates', () => {
     TestBed.configureTestingModule({
       providers: [
         { provide: SwUpdate, useValue: swUpdate },
+        // A router is present, as in every app: the policy must leave its navigations alone.
         { provide: Router, useValue: { events: routerEvents, currentNavigation: () => ({ abort }) } },
-        // The app is served under /app/: the target of the full load must carry the base href.
-        { provide: Location, useValue: { prepareExternalUrl: (url: string) => `/app${url}` } },
         { provide: SPARK_SW_PAGE_LOADER, useValue: loader },
         { provide: SPARK_SW_SCHEDULE, useValue: { checkIntervalMs: 6 * HOUR, visibleCheckThrottleMs: 60_000 } },
         ...(options.platform ? [{ provide: PLATFORM_ID, useValue: options.platform }] : []),
@@ -67,10 +65,9 @@ describe('SparkServiceWorkerUpdates', () => {
     routerEvents = new Subject();
     swUpdate = { isEnabled: true, versionUpdates, unrecoverable, checkForUpdate: vi.fn().mockResolvedValue(false) };
     abort = vi.fn();
-    loader = { assign: vi.fn(), reload: vi.fn() };
+    loader = { reload: vi.fn() };
     visibility = 'visible';
     Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => visibility });
-    sessionStorage.clear();
   });
 
   afterEach(() => {
@@ -80,58 +77,19 @@ describe('SparkServiceWorkerUpdates', () => {
   });
 
   describe('VERSION_READY', () => {
-    it('turns the next navigation into a full load of its target, under the base href', async () => {
+    // Q1c (owner, 2026-11-16): a downloaded version never reloads the page; the next full load runs it.
+    it('records the update and never loads a page, on navigations nor on becoming visible', async () => {
       const updates = await start();
 
       versionUpdates.next(versionReady());
-      expect(updates.updateReady()).toBe(true);
-      expect(loader.assign).not.toHaveBeenCalled();
-
       navigate('/po/car/123?tab=2');
-
-      expect(abort).toHaveBeenCalledTimes(1);
-      expect(loader.assign).toHaveBeenCalledWith('/app/po/car/123?tab=2');
-      expect(loader.reload).not.toHaveBeenCalled();
-    });
-
-    it('loads only once, however many navigations follow', async () => {
-      await start();
-      versionUpdates.next(versionReady());
-
-      navigate('/a');
-      navigate('/b');
-
-      expect(loader.assign).toHaveBeenCalledTimes(1);
-    });
-
-    it('reloads instead of assigning on back/forward, which already changed the address', async () => {
-      await start();
-      versionUpdates.next(versionReady());
-
       navigate('/previous', 'popstate');
+      setVisibility('hidden');
+      setVisibility('visible');
 
-      expect(loader.reload).toHaveBeenCalledTimes(1);
-      expect(loader.assign).not.toHaveBeenCalled();
-    });
-
-    it('does not reload a second time for the version a full load was already made for', async () => {
-      sessionStorage.setItem('spark-sw-reloaded-for', 'new');
-      const updates = await start();
-
-      versionUpdates.next(versionReady('new'));
-      navigate('/a');
-
-      expect(updates.updateReady()).toBe(false);
-      expect(loader.assign).not.toHaveBeenCalled();
-    });
-
-    it('records the version it loads for, so the page it produces does not loop', async () => {
-      await start();
-      versionUpdates.next(versionReady('v2'));
-
-      navigate('/a');
-
-      expect(sessionStorage.getItem('spark-sw-reloaded-for')).toBe('v2');
+      expect(updates.updateReady()).toBe(true);
+      expect(abort).not.toHaveBeenCalled();
+      expect(loader.reload).not.toHaveBeenCalled();
     });
 
     it('exposes the versions and their appData', async () => {
@@ -148,22 +106,10 @@ describe('SparkServiceWorkerUpdates', () => {
 
       versionUpdates.next({ type: 'VERSION_DETECTED', version: { hash: 'v2' } });
       versionUpdates.next({ type: 'NO_NEW_VERSION_DETECTED', version: { hash: 'old' } });
-      navigate('/a');
 
       expect(updates.updateReady()).toBe(false);
-      expect(loader.assign).not.toHaveBeenCalled();
+      expect(updates.latestVersion()).toBeNull();
     });
-  });
-
-  it('leaves navigations alone while no update is ready', async () => {
-    await start();
-
-    navigate('/a');
-    navigate('/b', 'popstate');
-
-    expect(abort).not.toHaveBeenCalled();
-    expect(loader.assign).not.toHaveBeenCalled();
-    expect(loader.reload).not.toHaveBeenCalled();
   });
 
   describe('unrecoverable', () => {
@@ -171,6 +117,15 @@ describe('SparkServiceWorkerUpdates', () => {
       await start();
 
       unrecoverable.next({ type: 'UNRECOVERABLE_STATE', reason: 'gone' });
+
+      expect(loader.reload).toHaveBeenCalledTimes(1);
+    });
+
+    it('reloads only once, however often it is reported', async () => {
+      await start();
+
+      unrecoverable.next({ type: 'UNRECOVERABLE_STATE', reason: 'gone' });
+      unrecoverable.next({ type: 'UNRECOVERABLE_STATE', reason: 'gone again' });
 
       expect(loader.reload).toHaveBeenCalledTimes(1);
     });
@@ -184,32 +139,6 @@ describe('SparkServiceWorkerUpdates', () => {
 
       setVisibility('visible');
       expect(loader.reload).toHaveBeenCalledTimes(1);
-    });
-  });
-
-  describe('hidden tab', () => {
-    it('never turns a navigation into a full load', async () => {
-      await start();
-      versionUpdates.next(versionReady());
-      setVisibility('hidden');
-
-      navigate('/a');
-
-      expect(abort).not.toHaveBeenCalled();
-      expect(loader.assign).not.toHaveBeenCalled();
-      expect(loader.reload).not.toHaveBeenCalled();
-    });
-
-    it('still loads on the first navigation after it becomes visible again', async () => {
-      await start();
-      versionUpdates.next(versionReady());
-      setVisibility('hidden');
-      navigate('/a');
-
-      setVisibility('visible');
-      navigate('/b');
-
-      expect(loader.assign).toHaveBeenCalledWith('/app/b');
     });
   });
 
@@ -281,25 +210,24 @@ describe('SparkServiceWorkerUpdates', () => {
 
       versionUpdates.next(versionReady());
       unrecoverable.next({ type: 'UNRECOVERABLE_STATE', reason: 'gone' });
-      navigate('/a');
       vi.advanceTimersByTime(12 * HOUR);
       setVisibility('hidden');
       setVisibility('visible');
 
       expect(updates.updateReady()).toBe(false);
       expect(swUpdate.checkForUpdate).not.toHaveBeenCalled();
-      expect(loader.assign).not.toHaveBeenCalled();
       expect(loader.reload).not.toHaveBeenCalled();
     });
 
     it('does nothing on the server', async () => {
-      await start({ platform: 'server' });
+      const updates = await start({ platform: 'server' });
 
       versionUpdates.next(versionReady());
-      navigate('/a');
+      unrecoverable.next({ type: 'UNRECOVERABLE_STATE', reason: 'gone' });
 
+      expect(updates.updateReady()).toBe(false);
       expect(swUpdate.checkForUpdate).not.toHaveBeenCalled();
-      expect(loader.assign).not.toHaveBeenCalled();
+      expect(loader.reload).not.toHaveBeenCalled();
     });
   });
 });
