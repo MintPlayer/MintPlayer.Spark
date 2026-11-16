@@ -717,6 +717,101 @@ public class DependencySagaTests : CoverageRavenTest
         after.Trigger.Should().Be(EDependencyRunTrigger.Refresh, "everything but the culprit is rebuilt");
     }
 
+    // ── #683: a cancelled check is no verdict ─────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Spark #682, run 43831965961: a push on top cancelled the bot's commit's jobs (<c>cancel-in-progress</c>), and the
+    /// aggregator and coverage upload then failed because jobs were missing. Nothing about the code failed.
+    /// </summary>
+    private static ForgeCheckState Cancelled(string sha) => new(sha,
+        [
+            new ForgeCheckRun(45, "tests / Spark.Tests 1/4", "completed", "cancelled", 11, "github-actions", null),
+            new ForgeCheckRun(46, "pull-request", "completed", "failure", 11, "github-actions", null),
+        ],
+        [], [new ForgeCheckSuite(11, "completed", "cancelled", "github-actions", 2)]);
+
+    private static void PullRequestHeadAt(DependencyHarness h, string sha)
+    {
+        var pull = h.Updates.PullRequests.Values.Should().ContainSingle().Which;
+        h.Updates.PullRequests[pull.Number] = pull with { HeadSha = sha };
+    }
+
+    [Fact]
+    public async Task Issue683_a_cancelled_check_reruns_once_and_never_starts_a_bisect_or_holds()
+    {
+        var h = await HarnessAsync(bisectBudget: 4);
+        await PublishAsync(h, ChalkAndLodash());
+        var full = h.Writer.RollingSha;
+        PullRequestHeadAt(h, full);
+        h.Queue.CheckStates[full] = Cancelled(full);
+
+        await h.ReleaseAsync(EDependencyStep.PollChecks);
+
+        h.Queue.RerunCalls.Should().ContainSingle().Which.Should().BeEquivalentTo([45L, 46L]);
+        (await h.RunAsync()).Bisect.Should().BeNull("a cancelled check says nothing about the updates");
+
+        // The forge still shows the cancelled runs right after the re-run: that is not a second cancellation.
+        await h.ReleaseAsync(EDependencyStep.PollChecks);
+        h.Queue.RerunCalls.Should().ContainSingle();
+
+        // Cancelled again: reported without blame. /bisect stays the explicit way in.
+        h.Time.Now = h.Time.Now.AddMinutes(3);
+        await h.ReleaseAsync(EDependencyStep.PollChecks);
+
+        h.Queue.RerunCalls.Should().ContainSingle("one re-run per commit");
+        (await h.RunAsync()).Bisect.Should().BeNull();
+        (await h.StateAsync()).Holds.Should().BeEmpty();
+        ((await h.FleetAsync())?.RedVersions ?? []).Should().BeEmpty();
+        h.Queue.Comments.Should().NotContain(c => c.Body.Contains("broke CI") || c.Body.Contains("CI failed"));
+        h.Updates.Checks[^1].Check.Title.Should().Contain("cancelled");
+    }
+
+    [Fact]
+    public async Task Issue683_a_commit_a_newer_push_superseded_is_not_rerun_and_not_judged()
+    {
+        var h = await HarnessAsync(bisectBudget: 4);
+        await PublishAsync(h, ChalkAndLodash());
+        var full = h.Writer.RollingSha;
+        const string human = "d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5";
+        PullRequestHeadAt(h, human);
+        h.Queue.CheckStates[full] = Cancelled(full);
+
+        await h.ReleaseAsync(EDependencyStep.PollChecks);
+
+        h.Queue.Reruns.Should().BeEmpty("re-running the old commit would cancel the newer head's run in the same concurrency group");
+        (await h.RunAsync()).Bisect.Should().BeNull();
+        (await h.StateAsync()).Holds.Should().BeEmpty();
+        h.Updates.Checks[^1].Check.Summary.Should().Contain("d5d5d5d5d5d5").And.Contain("/refresh");
+    }
+
+    [Fact]
+    public async Task Issue683_a_cancelled_check_on_a_bisect_step_names_no_culprit()
+    {
+        // The #682 sequence one step later: the commit without the top suspect is cancelled, not green or red.
+        var h = await HarnessAsync(bisectBudget: 4);
+        await PublishAsync(h, ChalkAndLodash());
+        h.Queue.CheckStates[h.Writer.RollingSha] = Red(h.Writer.RollingSha);
+        await h.ReleaseAsync(EDependencyStep.PollChecks);
+        h.Time.Now = h.Time.Now.AddMinutes(3);
+        h.Writer.RollingSha = "c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4";
+        await h.ReleaseAsync(EDependencyStep.PollChecks);
+        await h.WriteApplyArtifactAsync();
+        await h.ReleaseAsync(EDependencyStep.PollRun);
+        var before = (await h.RunAsync()).Bisect!;
+        before.Excluded.Should().Equal(["lodash"]);
+
+        PullRequestHeadAt(h, h.Writer.RollingSha);
+        h.Queue.CheckStates[h.Writer.RollingSha] = Cancelled(h.Writer.RollingSha);
+        await h.ReleaseAsync(EDependencyStep.PollChecks);
+
+        var after = (await h.RunAsync()).Bisect;
+        after.Should().NotBeNull("a culprit would have ended the bisect and rebuilt without it");
+        after!.Culprit.Should().BeNull();
+        after.Excluded.Should().Equal(["lodash"], "a cancelled step neither convicts nor clears");
+        after.Spent.Should().Be(before.Spent);
+        (await h.StateAsync()).Holds.Should().BeEmpty();
+    }
+
     // ── #613 item 4: an outdated lookup workflow is refreshed by a pull request ───────────────────
 
     /// <summary>The lookup template as onboarded before #606: no <c>platforms</c> input (SpaServices, 2026-11-09).</summary>

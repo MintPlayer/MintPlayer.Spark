@@ -1277,10 +1277,64 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
             }
             return;
         }
-        if (gate.Verdict == ECheckVerdict.Failed)
+        if (gate.Verdict == ECheckVerdict.Failed && CancelledRuns(state, gate) is { Count: > 0 } cancelled)
+            await OnCancelledAsync(context, state, gate, cancelled, fromPoll, ct);
+        else if (gate.Verdict == ECheckVerdict.Failed)
             await OnRedAsync(context, state, gate, forceBisect: false, ct);
         else
             await OnGreenAsync(context, ct);
+    }
+
+    /// <summary>The counted check runs that concluded <c>cancelled</c>.</summary>
+    private static List<ForgeCheckRun> CancelledRuns(ForgeCheckState state, CheckGateResult gate)
+        => [.. state.CheckRuns.Where(r => r.Status == "completed" && r.Conclusion == "cancelled" && gate.Failed.Contains(r.Name))];
+
+    /// <summary>
+    /// #683: a cancelled check is no verdict on the updates. The merge queue's gate rightly fails it, but here it would assign
+    /// blame. A person or a concurrency group cancelled it, often because a newer push landed on the rolling branch, and every
+    /// failure next to it (an aggregator, a coverage upload) may only follow from the missing jobs. Spark #682 held
+    /// <c>platform:dotnet 11.0</c> and marked .NET 11 GA red for the fleet that way, on a commit that builds clean. So nothing
+    /// is bisected, held or marked red on it. A superseded commit is left alone: re-running it would cancel the newer head's
+    /// run. Otherwise its failed checks are re-run once, and a second cancellation is reported without blame.
+    /// </summary>
+    private async Task OnCancelledAsync(Context context, ForgeCheckState state, CheckGateResult gate, List<ForgeCheckRun> cancelled,
+        bool fromPoll, CancellationToken ct)
+    {
+        var (repository, run) = (context.Repository, context.Run);
+        var sha = run.RollingSha!;
+        var names = string.Join(", ", cancelled.Select(r => r.Name).Distinct(StringComparer.Ordinal));
+        var head = run.PullRequestNumber is { } number ? (await context.Updates.GetPullRequestAsync(repository, number, ct))?.HeadSha : null;
+        if (head is not null && !string.Equals(head, sha, StringComparison.OrdinalIgnoreCase))
+        {
+            run.Note(Now, $"CI on {Short(sha)} was cancelled ({names}) and {Short(head)} superseded it: no verdict");
+            await PublishOwnCheckAsync(context, sha, EForgeQueueCheckState.Neutral, "CI cancelled: no verdict",
+                $"CI on {Short(sha)} was cancelled ({names}) after {Short(head)} was pushed on top, so it says nothing about the updates. "
+                + "The next rebuild tests the branch with that commit replayed; comment `/refresh` to rebuild now.", ct);
+            return;
+        }
+
+        if (!string.Equals(run.CancelledRerunSha, sha, StringComparison.OrdinalIgnoreCase))
+        {
+            var failedRuns = state.CheckRuns.Where(r => gate.Failed.Contains(r.Name)).ToList();
+            await BestEffortAsync(async () => await context.Queue.RerunChecksAsync(repository, [.. failedRuns], ct), "re-run the cancelled checks");
+            run.CancelledRerunSha = sha;
+            run.CancelledRerunAtUtc = Now;
+            run.Note(Now, $"CI on {Short(sha)} was cancelled ({names}): re-running it once, no verdict");
+            await ScheduleAsync(run, EDependencyStep.PollChecks, ChecksPollInterval, ct);
+            return;
+        }
+
+        // The forge still lists the cancelled runs for a moment after the re-run.
+        if (run.CancelledRerunAtUtc is { } at && Now - at < RerunSettle)
+        {
+            if (fromPoll) await ScheduleAsync(run, EDependencyStep.PollChecks, ChecksPollInterval, ct);
+            return;
+        }
+
+        run.Note(Now, $"CI on {Short(sha)} was cancelled again ({names}): no verdict");
+        await PublishOwnCheckAsync(context, sha, EForgeQueueCheckState.Failure, "CI cancelled: no verdict",
+            $"CI on {Short(sha)} was cancelled twice ({names}), so nothing is known about the updates and nothing is held. "
+            + "Re-run CI to continue, or comment `/bisect` to bisect this result anyway.", ct);
     }
 
     private async Task OnRedAsync(Context context, ForgeCheckState state, CheckGateResult gate, bool forceBisect, CancellationToken ct)
