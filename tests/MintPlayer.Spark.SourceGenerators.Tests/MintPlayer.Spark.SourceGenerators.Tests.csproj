@@ -9,7 +9,7 @@
 
   <ItemGroup>
     <!-- Roslyn host at the same version the generator was compiled against (5.3.0). -->
-    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="5.9.0" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="5.12.0" />
 
     <!--
     Workspaces, at the same version, for two reasons — and the second one is not optional.
@@ -23,21 +23,21 @@
        docs/issue_210_PRD.md) and was misread at the time as "a CodeFixProvider needs its own
        assembly"; it needs its base type resolvable wherever something reflects over it.
     -->
-    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="5.9.0" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="5.12.0" />
 
     <PackageReference Include="coverlet.collector" Version="10.1.0">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
-    <PackageReference Include="MintPlayer.Assertions" Version="11.0.0-rc.6" />
-    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.10.1" />
+    <PackageReference Include="MintPlayer.Assertions" Version="11.0.0" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.11.1" />
     <PackageReference Include="Verify.Xunit" Version="31.12.5" />
     <!--
     Only for incremental-step tests (RunGeneratorTwice / RunKeystroke), per docs/default_index_PRD.md §7 SP2: two runs
     on one driver are the only way to see a pipeline model compared by reference. The local GeneratorHarness stays
     the entry point for everything else; the package's harness is used under an alias.
     -->
-    <PackageReference Include="MintPlayer.SourceGenerators.TestHarness" Version="11.0.0-rc.1" />
+    <PackageReference Include="MintPlayer.SourceGenerators.TestHarness" Version="11.0.0" />
     <PackageReference Include="xunit" Version="2.9.3" />
 
     <!--
@@ -50,7 +50,7 @@
     compile assets through puts a second ModuleInitializerAttribute in scope and every use becomes
     ambiguous with the one in System.Runtime (CS0433).
     -->
-    <PackageReference Include="MintPlayer.SourceGenerators.Tools" Version="13.0.0" ExcludeAssets="all" GeneratePathProperty="true" />
+    <PackageReference Include="MintPlayer.SourceGenerators.Tools" Version="13.0.1" ExcludeAssets="all" GeneratePathProperty="true" />
     <PackageReference Include="xunit.runner.visualstudio" Version="4.0.1">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>

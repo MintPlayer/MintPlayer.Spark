@@ -231,7 +231,9 @@ Angular upgrade itself.
 The major version **must equal the major .NET version the package targets**.
 
 - `net10.0` → `10.x.x`
-- `net11.0` → `11.x.x` (current — the solution targets `net11.0`, packages are `11.0.0-preview.*`)
+- `net11.0` → `11.x.x` (current — the solution targets `net11.0` on the GA SDK 11.0.100; since PR #682 the packages
+  release stable from `11.0.0`, except the two `Webhooks.GitHub*` packages, pinned to `preview` in `coverage.yml`
+  while `Octokit.GraphQL` has no stable release)
 
 Same rule as above: an API break inside a .NET generation is a minor bump, never a
 major one.
