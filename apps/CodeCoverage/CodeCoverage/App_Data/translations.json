@@ -4093,6 +4093,11 @@
       "en": "PR size labels",
       "fr": "Étiquettes de taille de PR",
       "nl": "PR-groottelabels"
+    },
+    "projectBoardsSetup": {
+      "en": "Project boards",
+      "fr": "Tableaux de projet",
+      "nl": "Projectborden"
     }
   },
   "queries": {

@@ -64,6 +64,9 @@ export const routes: Routes = [
       // Backports to release lines (docs/code-coverage/backports.md); static, open to anonymous visitors.
       { path: 'backports/setup', loadComponent: () => import('./pages/backports-setup/backports-setup.component') },
       { path: 'onboarding/setup', loadComponent: () => import('./pages/onboarding-setup/onboarding-setup.component') },
+      // Project board automation (#625): the GitHub Projects boards whose cards move on issue and PR events. Static, open
+      // to anonymous visitors, in the Guides group too.
+      { path: 'project-boards/setup', loadComponent: () => import('./pages/project-boards-setup/project-boards-setup.component') },
       // The dependency updater's onboarding page (dependency-updates PRD R20, R36): the GitHub App's Setup URL. Signed-in
       // only, and through the GUARD, which keeps the setup redirect's query (installation_id, setup_action) through the
       // sign-in. ⚠️ Never rely on the API's 401 bounce instead: the auth interceptor strips the query.
