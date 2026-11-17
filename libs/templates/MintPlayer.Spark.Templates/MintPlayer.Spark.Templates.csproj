@@ -91,11 +91,24 @@
 		     RemoveProperties: global properties flow into these calls, so `dotnet pack -p:Version=X` of the template
 		     pinned every package at X (found in M1: the preview-only Webhooks.GitHub was pinned 11.0.0, which does not
 		     exist, and restore failed with NU1102). -->
-		<MSBuild Projects="@(SparkTemplatePackage)" Targets="MintPlayerVersioning;_GetProjectVersion"
+		<MSBuild Condition="'$(SparkTemplateFeedVersion)' == ''"
+		         Projects="@(SparkTemplatePackage)" Targets="MintPlayerVersioning;_GetProjectVersion"
 		         Properties="Configuration=$(Configuration)" RemoveProperties="Version;PackageVersion;VersionPrefix;VersionSuffix"
 		         BuildInParallel="$(BuildInParallel)">
 			<Output TaskParameter="TargetOutputs" ItemName="_SparkTemplateResolved" />
 		</MSBuild>
+		<!-- The same-commit feed (D12, plan M4): -p:SparkTemplateFeedVersion=<v> -p:SparkTemplateFeedDirectory=<dir> packs
+		     every package the template pins at <v> into <dir>, and pins <v>. The template CI matrix restores the generated
+		     apps from that feed alone, so it tests this commit's packages, never nuget.org's. -->
+		<Error Condition="'$(SparkTemplateFeedVersion)' != '' And '$(SparkTemplateFeedDirectory)' == ''"
+		       Text="SparkTemplateFeedVersion needs SparkTemplateFeedDirectory: the folder the pinned packages are packed into." />
+		<MSBuild Condition="'$(SparkTemplateFeedVersion)' != ''"
+		         Projects="@(SparkTemplatePackage)" Targets="Pack"
+		         Properties="Configuration=$(Configuration);Version=$(SparkTemplateFeedVersion);PackageOutputPath=$([System.IO.Path]::GetFullPath('$(SparkTemplateFeedDirectory)'))"
+		         BuildInParallel="$(BuildInParallel)" />
+		<ItemGroup Condition="'$(SparkTemplateFeedVersion)' != ''">
+			<_SparkTemplateResolved Include="@(SparkTemplatePackage)" ProjectVersion="$(SparkTemplateFeedVersion)" />
+		</ItemGroup>
 		<Error Condition="'@(_SparkTemplateResolved->Count())' != '@(SparkTemplatePackage->Count())'"
 		       Text="SparkTemplatePackageVersions resolved @(_SparkTemplateResolved->Count()) of @(SparkTemplatePackage->Count()) Spark package versions." />
 		<!-- A package at the placeholder is never published (it has no tag, or this is a Debug build), so a template
@@ -105,6 +118,12 @@
 		         Text="The template pins %(_SparkTemplateResolved.Filename) at 0.0.0-PLACEHOLDER: a Debug pack reads no tags. Pack in Release, or pass -p:Version." />
 		<Error Code="SPARKTPL001" Condition="'$(Configuration)' != 'Debug' And '%(_SparkTemplateResolved.ProjectVersion)' == '0.0.0-PLACEHOLDER'"
 		       Text="The template pins %(_SparkTemplateResolved.Filename) at 0.0.0-PLACEHOLDER: it has no %(_SparkTemplateResolved.Filename)/v&lt;version&gt; tag, so it is never published. Release it first, or take it out of the template." />
+		<!-- 0.0.0-untagged is what a pull-request or local Release build gives a package with no tag reachable from HEAD.
+		     It is never published either: a pack on master pinned it for the eight #689 libraries, and restore took an
+		     old preview instead (NU1603), whose generator predates #551 (plan M3). Pack on the release line, or use the
+		     same-commit feed. -->
+		<Error Code="SPARKTPL001" Condition="'$(Configuration)' != 'Debug' And '%(_SparkTemplateResolved.ProjectVersion)' == '0.0.0-untagged'"
+		       Text="The template pins %(_SparkTemplateResolved.Filename) at 0.0.0-untagged: no %(_SparkTemplateResolved.Filename)/v&lt;version&gt; tag is reachable from HEAD, so that version is never published. Pack the template on the release line, or pass -p:SparkTemplateFeedVersion and -p:SparkTemplateFeedDirectory for a same-commit feed." />
 
 		<!-- Each line is metadata, not an item spec: MSBuild trims item specs, which would lose the indentation. -->
 		<ItemGroup>

@@ -31,3 +31,44 @@ the solution themselves, in the format their own settings choose (`.sln` or `.sl
 | `--messaging`, `--mail`, `--cron`, `--history`, `--soft-delete`, `--mcp` | | off | RavenDB. `--mail` turns on messaging. |
 
 A RavenDB-only option has no effect with `--store InMemory`.
+
+## Item templates
+
+Run each one in the project directory it belongs to. It writes one file into that project's conventional folder, in
+the namespace `<RootNamespace>.<Folder>` (`--namespace` overrides the root).
+
+| Template | Run it in | Writes |
+|---|---|---|
+| `dotnet new spark-entity -n Invoice` | `MyApp.Library` | `Entities/Invoice.cs` |
+| `dotnet new spark-lookup -n InvoiceStatus` | `MyApp.Library` | `LookupReferences/InvoiceStatus.cs` |
+| `dotnet new spark-actions -n Invoice` | `MyApp` | `Actions/InvoiceActions.cs` |
+| `dotnet new spark-custom-action -n Approve --entity Invoice` | `MyApp` | `CustomActions/ApproveAction.cs` |
+| `dotnet new spark-index -n Invoice` | `MyApp` (RavenDB) | `Indexes/Invoices_Overview.cs` |
+
+An item edits no JSON file. The doc comment of the file it writes lists what else is needed (the context property,
+the `actions.json` entry, the `security.json` right, `--spark-synchronize-model`), with your names filled in.
+
+## Testing the template
+
+The template is tested locally, not in CI. Run this from the repository root before you merge a change to the
+template, `features.json`, or a library the template references:
+
+```
+node tools/template-matrix.mjs
+```
+
+It packs every package the template pins from the current commit into a local feed, then generates every variant
+(minimal, defaults, OIDC, all features on, and each feature alone). Each variant is restored from that feed only and
+built, then run with `--spark-synchronize-model` and `--spark-verify-model`. The defaults variant also gets every item
+template. Each distinct Angular client is built once, against one shared `node_modules`. It takes about 11 minutes,
+and needs no RavenDB server.
+
+| Option | Effect |
+|---|---|
+| `--only Defaults,AllOn` | Only these variants (names are printed in the summary). |
+| `--no-client` | Skip the Angular builds. |
+| `--ng-spark <tgz>` | Build the clients against an `npm pack` of the local `@mintplayer/ng-spark` instead of the released one. |
+| `--parallel <n>` | Variants built at once (default 4). |
+| `--out <dir>` | Where the variants and logs go (default: `spark-template-matrix` in the temp folder). |
+
+A failing step names its log in `<out>/logs/`.

@@ -206,11 +206,13 @@ and `--spark-verify-model` refuses it.
 
 ### 4.6 Drift and CI (D12)
 - **DemoApp stays as it is:** the guides' example, on ProjectReferences and an Nx ClientApp.
-- **The template is guarded by a CI matrix** in an existing job, because of the 20-job cap. The matrix covers
-  minimal, all-on, and each feature alone with its prerequisites (about 32 instantiations). Each one builds .NET
-  and the ClientApp and runs `--spark-verify-model`.
+- ~~**The template is guarded by a CI matrix** in an existing job, because of the 20-job cap.~~ **Superseded
+  (owner, 2026-11-17): the matrix runs locally only, never in CI**, as `node tools/template-matrix.mjs`, which the
+  templates README documents. M4 measured a full run at about 12–14 min against a ~5 min PR run. The matrix covers
+  minimal, defaults, OIDC, all-on, and each feature alone with its prerequisites (32 variants). Each one builds .NET,
+  synchronizes and runs `--spark-verify-model`; each distinct ClientApp is built once. The defaults variant also
+  gets every item template.
 - **It runs against packages packed from the same commit**, on a local feed, never nuget.org.
-- **Whether it fits a PR job** is S6's question.
 - **PR checklist line:** "Touched DemoApp's or a feature's wiring? Check the manifest."
 
 ### 4.7 Versions inside the template (S2)
@@ -280,7 +282,7 @@ template as a minor version. The release notes must say so.
 | D9 | Store: RavenDB default, InMemory choice | InMemory default; RavenDB only | the first run fails without a server, so the README and the tool's probe must say so | owner, grill Q5 |
 | D10 | Auth: `none \| authorization \| oidc` | without oidc; core only | the oidc placeholder must be filled in before external login works | owner, grill Q6; §3.1 |
 | D11 | Archive MintPlayer.Dotnet.Templates and move it to MintPlayer-Archive | keep alive; leave alone | `mintplayer-web` users stay on net10; NuGet deprecation message | owner, grill Q14; Templates #6 |
-| D12 | DemoApp unchanged; CI matrix guards the template against same-commit packages | DemoApp generated from template; template generated from DemoApp | catches broken, not different | CLAUDE.md DemoApp role |
+| D12 | DemoApp unchanged; a matrix guards the template against same-commit packages (local only, never CI: owner 2026-11-17, §4.6) | DemoApp generated from template; template generated from DemoApp | catches broken, not different | CLAUDE.md DemoApp role |
 | D13 | `App_Data`: the app synchronizes on its first Development run if missing; the post-action and the tool also run it eagerly | post-action only; tool only | a core change; it must never overwrite | owner, grill Q13 |
 | D14 | Client: plain Angular CLI, included by default, `--no-client` | Nx; opt-in | a second ClientApp copy can drift, so CI builds it | owner, grill Q7 |
 | D15 | Feature choices generated from a `features.json` manifest, guarded by graph and coverage tests | hand-written JSON; self-describing packages | generator complexity; matrix size (S6) | owner, grill Q11 |

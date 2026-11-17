@@ -7,7 +7,7 @@ owner on 2026-11-16.
 creates cleanly from the CLI and from VS 2026 (flat layout under either "same directory" choice; VS's own solution
 format). M2 done (2026-11-17): a generated app writes its model on the first Development run and starts. This was
 checked on InMemory without sign-in and on RavenDB with local accounts, and three startup refusals in the template
-were fixed along the way. M3 done (2026-11-17): the five item templates build, synchronize and verify in a generated RavenDB app. Next: M4–M6, S3; pack the template only on the release line (M3 finding). The eight #689 libraries ship on the next `/release`. Each spike has a time box, questions, an exit criterion and an answer slot. Record each
+were fixed along the way. M3 done (2026-11-17): the five item templates build, synchronize and verify in a generated RavenDB app. M4 done (2026-11-17): `node tools/template-matrix.mjs`, local only (owner), 32 variants green in 629 s. Next: M5, M6, S3; pack the template only on the release line (M3 finding). The eight #689 libraries ship on the next `/release`. Each spike has a time box, questions, an exit criterion and an answer slot. Record each
 answer with evidence: numbers, file:line, commands run.
 
 **Order in this repo:** S1 → S2 → S6 → M1–M4 (templates and the core option), then S3 → M5–M6 (tools and release).
@@ -404,9 +404,48 @@ All of this repo's work goes in **one PR** (owner rule), including the `MintPlay
     M4 matrix pins a same-commit feed (S2), so it does not hit this.
 
 ### M4: Template tests and CI
-- Add TemplateVerifier snapshots in a `*.Tests` project.
-- Add the matrix from S6 against a same-commit local feed (S2), inside an existing job (20-job cap).
+- ~~Add TemplateVerifier snapshots in a `*.Tests` project.~~ Dropped: the matrix builds, synchronizes and verifies
+  what a snapshot would only diff, and the owner keeps template testing out of CI (below).
+- ~~Add the matrix from S6 against a same-commit local feed (S2), inside an existing job (20-job cap).~~
+  **Decision (owner, 2026-11-17): "Only test the templates locally. Clearly add the command to the readme."** The
+  matrix is `node tools/template-matrix.mjs`, documented in `libs/templates/MintPlayer.Spark.Templates/README.md`
+  ("Testing the template"); no workflow runs it. The owner was shown: full ~12–14 min vs a ~5 min PR run, smoke
+  subset ~5–6 min.
 - Add the PR checklist line from PRD §4.6.
+- **Progress (2026-11-17):**
+  - **Same-commit feed knob.** S2's recipe (`-p:Version=<v>` pins every package at `<v>`) stopped working in M1,
+    when `RemoveProperties="Version;…"` was added so a stray `-p:Version` could not pin unreleased versions. Now
+    `-p:SparkTemplateFeedVersion=<v> -p:SparkTemplateFeedDirectory=<dir>` packs every package the template pins at
+    `<v>` into `<dir>` and pins `<v>`. Measured: 47 packages in 74–109 s.
+  - **SPARKTPL001 also refuses `0.0.0-untagged`** in a non-Debug pack. Red: a plain Release pack on this branch
+    now fails ("pins MintPlayer.Spark.InMemory at 0.0.0-untagged"), where in M3 it silently pinned that version and
+    restore fell back to a pre-#551 preview.
+  - **`tools/template-matrix.mjs`:**
+    - Variants come from `features.json`: MinimalInMemory, MinimalRaven, Defaults, Oidc, AllOn and `Only<Feature>`
+      for each feature, 32 in all.
+    - Per variant: `dotnet new`, restore from the feed (package source mapping sends `MintPlayer.Spark*` to the feed
+      only), build without the client, `--spark-synchronize-model`, `--spark-verify-model`. Neither flag touches the
+      database, so CI needs no RavenDB.
+    - `Defaults` also gets the five item templates, wired as their doc comments say.
+    - Clients: one shared `node_modules` (the ClientApp's package.json is the same in every variant), and one
+      `ng build` per distinct set of `#if`-bearing sources.
+    - The version is unique per run, because NuGet's global packages folder caches by id and version.
+  - **Slice measured on this machine (4 variants, parallel 4):**
+    - Feed pack: 74 s.
+    - Per variant: new + restore + build + synchronize + verify, 30–55 s.
+    - Items step: 10 s.
+    - Shared `npm install`: 165 s.
+    - `ng build`: 13–21 s per distinct client (3 of 4 variants).
+    - Extrapolated full matrix: ~12–14 min.
+  - **Found by the slice:** AllOn's client failed the template's 1.5 MB initial budget (1.61 MB raw, 352 kB
+    transferred). The routes are already lazy; the weight is the feature providers and renderers, which register at
+    bootstrap. The budget is now 2 MB, the value the feature-rich apps use (QnA, Fleet, CodeCoverage, SeoTester,
+    MintPlayer); DemoApp, HR and SparkId keep 1.5 MB.
+  - **Full run (2026-11-17, this machine, parallel 4): all 32 variants pass, 179 steps, 629 s.** Feed pack 55 s,
+    shared `npm install` 131 s, 15 distinct clients at 11–21 s each. The extrapolated 12–14 min was high.
+  - The PR checklist line is in a new `.github/pull_request_template.md` (the repository had none). It names the
+    matrix command, because CI no longer catches a broken template.
+  - **M4 done.**
 
 ### M5: `MintPlayer.Spark.Cli` and `create-spark-app`
 - Create the shared `MintPlayer.Spark.Cli.Commands` library with CliGenerator commands `new` and `add <item>`, and
