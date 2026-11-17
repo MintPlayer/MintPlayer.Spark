@@ -7,7 +7,7 @@ owner on 2026-11-16.
 creates cleanly from the CLI and from VS 2026 (flat layout under either "same directory" choice; VS's own solution
 format). M2 done (2026-11-17): a generated app writes its model on the first Development run and starts. This was
 checked on InMemory without sign-in and on RavenDB with local accounts, and three startup refusals in the template
-were fixed along the way. Next: M3–M6, S3. The eight #689 libraries ship on the next `/release`. Each spike has a time box, questions, an exit criterion and an answer slot. Record each
+were fixed along the way. M3 done (2026-11-17): the five item templates build, synchronize and verify in a generated RavenDB app. Next: M4–M6, S3; pack the template only on the release line (M3 finding). The eight #689 libraries ship on the next `/release`. Each spike has a time box, questions, an exit criterion and an answer slot. Record each
 answer with evidence: numbers, file:line, commands run.
 
 **Order in this repo:** S1 → S2 → S6 → M1–M4 (templates and the core option), then S3 → M5–M6 (tools and release).
@@ -350,6 +350,58 @@ All of this repo's work goes in **one PR** (owner rule), including the `MintPlay
 
 ### M3: Item templates
 - Add `spark-entity`, `spark-actions`, `spark-custom-action`, `spark-lookup` and `spark-index`.
+- **Spike (2026-11-17), measured with a throwaway item template on SDK 11.0.100:**
+  - The "add JSON property" post-action (`695A3659-…`) does not fit. Source:
+    `dotnet/sdk` `src/Cli/Microsoft.TemplateEngine.Cli/PostActionProcessors/AddJsonPropertyPostActionProcessor.cs`.
+    - It searches from the output directory, recursively, and climbs one parent level by default. From an
+      app's subfolder, a recursive search also matches `bin/` copies.
+    - It rewrites the whole file through `JsonNode` with `WriteIndented`, which drops comments and reflows
+      formatting.
+    - It can only add a property, never append to an array, so it cannot add a `security.json` right.
+    - The template app ships no `actions.json`, so it would have to create one (`allowFileCreation`) in the
+      output directory.
+    - In the spike it reported "Post action failed." with no reason, even at `-v diag`.
+  - Manual-instruction text is printed **without** symbol substitution (`Sample/TheEntity` came out
+    verbatim).
+  - `msbuild:RootNamespace` binds work from a subfolder: the evaluator walks up to the project. They need a
+    restored project, though. Unrestored, the bind fails with a warning, and a `defaultValue` on the bind
+    symbol is used instead (measured: `FallbackNs`).
+- **Decisions:**
+  - Items create code files only. A JSON edit an item needs (an `actions.json` entry, a `security.json`
+    right, a context property) is spelled out in the generated file's own doc comment. That text is
+    substituted, so it names the real action, type and folder. `spark add` (M5) makes those edits itself.
+  - Run an item **from the project directory**. Each item writes into its conventional folder (`Entities/`,
+    `Actions/`, `CustomActions/`, `LookupReferences/`, `Indexes/`), as DemoApp lays them out. Its namespace is
+    `<RootNamespace>.<Folder>`. `--namespace` overrides the root; an unrestored project gets `UnrestoredProject`,
+    which is visible in the file.
+  - The template app gets `<Using Include="SparkApp.Library.Entities" />`, so app-side items need no entity
+    namespace parameter.
+- **Built (2026-11-17):** the five items are in `content/Spark{Entity,Actions,CustomAction,Lookup,Index}`.
+  - `sourceName` is `SparkItem`. The namespace is the token `SparkNs`, which is a `coalesce` of `--namespace` over
+    the `msbuild:RootNamespace` bind. `spark-entity` and `spark-index` take `--plural`, which defaults to a
+    `join` of the name and `s` (token `SparkPluralName`). `spark-custom-action` takes a required `--entity`
+    (token `SparkEntity`).
+  - `spark-actions` is a `partial` class with an `[Inject] ILogger<T>` field and `IBeforeSave<T>`; the generator
+    writes the constructor, including the base's `IEntityMapper`. `spark-custom-action` injects
+    `IDatabaseAccess` and works on the selected rows or the parent.
+  - Verified with a scratch run: generate a RavenDB app, run each item from its project directory, wire the
+    entity and lookup as the doc comments say, then build, `--spark-synchronize-model` and verify. **Result:
+    all five generate with the right folder and namespace (`Items.Library.Entities`, `Items.Actions`, …); the
+    build has no warning; synchronize writes `Invoice.json` with the lookup attribute; `--spark-verify-model`
+    exits 0 ("in sync").** Template tests 20/20.
+  - Two fixes came from that run:
+    - The first index sample had an `Id`-only view. The synchronizer merges the sole viewed index's view into
+      the entity as its grid shape (the `[DefaultIndex]` election). Name and Status then went detail-only, and
+      verify refused (exit 3): "none of that type's 2 attribute(s) is shown on a query", and "sorts by 'Name',
+      which is showedOn 'PersistentObject'". The sample now claims `[DefaultIndex]` and projects `Name`.
+    - `[Search]` on the view's `Name` raised SPARK006 until the Map filled `NameSearch`.
+  - Still open for M3: nothing. The `spark add` JSON edits are M5.
+  - **Found, for M6:** the pack stamps the highest tag *reachable from HEAD* into `Directory.Packages.props`. On
+    a master-based branch that is the previews (`MintPlayer.Spark.SourceGenerators 11.0.0-preview.110`, which
+    predates #551 and emits `IRavenQueryable` index roots that the current `SparkContext` rejects with CS0266),
+    and `0.0.0-untagged` for the #689 libraries (NU1603). The stable `11.0.0` tags exist only on
+    `release/dotnet-11.x`. The template must therefore be packed on the release line, never from master. The
+    M4 matrix pins a same-commit feed (S2), so it does not hit this.
 
 ### M4: Template tests and CI
 - Add TemplateVerifier snapshots in a `*.Tests` project.

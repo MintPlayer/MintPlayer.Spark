@@ -195,6 +195,15 @@ the model is written before `Build()`, where the startup check reads it.
 `spark-entity`, `spark-actions` (`[Inject]` readonly fields), `spark-custom-action`, `spark-lookup` and
 `spark-index` (RavenDB only).
 
+**As built (M3):** an item writes one code file into its conventional folder of the project it is run in
+(`Entities/`, `LookupReferences/` in the library; `Actions/`, `CustomActions/`, `Indexes/` in the app), with the
+namespace `<RootNamespace>.<Folder>`. It edits no JSON. The template engine's JSON post-action can't append to an
+array, drops comments, and failed silently in the spike (plan M3). So the generated file's doc comment spells out
+the context property, `actions.json` entry and `security.json` right it needs, with the real names substituted, and
+`spark add` (M5) will make those edits. The index item claims `[DefaultIndex]`, and its view is the entity's grid
+shape, so it projects `Name` and fills `Name`'s search companion. An `Id`-only view leaves the grid with no columns,
+and `--spark-verify-model` refuses it.
+
 ### 4.6 Drift and CI (D12)
 - **DemoApp stays as it is:** the guides' example, on ProjectReferences and an Nx ClientApp.
 - **The template is guarded by a CI matrix** in an existing job, because of the 20-job cap. The matrix covers

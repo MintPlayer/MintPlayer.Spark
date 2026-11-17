@@ -15,6 +15,11 @@
 <!--#endif -->
 	</PropertyGroup>
 
+	<ItemGroup>
+		<!-- The entities are in scope everywhere, so actions, custom actions and indexes need no using for them. -->
+		<Using Include="SparkApp.Library.Entities" />
+	</ItemGroup>
+
 	<!-- Versions are in ../Directory.Packages.props (central package management). -->
 	<ItemGroup>
 		<PackageReference Include="MintPlayer.Spark" />
