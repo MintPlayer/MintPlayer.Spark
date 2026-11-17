@@ -3,7 +3,9 @@
 **PRD:** [templates_dnx_terminal_PRD.md](templates_dnx_terminal_PRD.md). Decisions D1–D19 were locked with the
 owner on 2026-11-16.
 
-**Status:** S1 and S2 done; M1 in progress (2026-11-17). Each spike has a time box, questions, an exit criterion and an answer slot. Record each
+**Status:** S1 and S2 done; M1 in progress (2026-11-17). The `spark-app` first cut builds in four variants and
+creates cleanly from the CLI and from VS 2026 (flat layout under either "same directory" choice; VS's own solution
+format). Next: S6, then the rest of M1, M2–M6, S3. Each spike has a time box, questions, an exit criterion and an answer slot. Record each
 answer with evidence: numbers, file:line, commands run.
 
 **Order in this repo:** S1 → S2 → S6 → M1–M4 (templates and the core option), then S3 → M5–M6 (tools and release).
