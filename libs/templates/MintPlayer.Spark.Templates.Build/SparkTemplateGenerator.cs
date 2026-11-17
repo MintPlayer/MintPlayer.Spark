@@ -171,7 +171,7 @@ public static class SparkTemplateGenerator
 
             if (feature.HasParameter && (string.IsNullOrWhiteSpace(feature.Flag) || string.IsNullOrWhiteSpace(feature.DisplayName) || string.IsNullOrWhiteSpace(feature.Description)))
                 errors.Add($"{feature.Id}: a feature with a generated parameter needs flag, displayName and description.");
-            if (feature.HasParameter && DotnetNewOptions.Contains(feature.Flag))
+            if (feature.HasParameter && feature.Flag is { } flag && DotnetNewOptions.Contains(flag))
                 errors.Add($"{feature.Id}: --{feature.Flag} is an option of dotnet new itself, which takes it before the template sees it; pick another flag.");
             var owned = feature.HasParameter ? new[] { feature.Id, feature.Condition } : [feature.Condition];
             foreach (var name in owned.Where(handSymbols.ContainsKey))

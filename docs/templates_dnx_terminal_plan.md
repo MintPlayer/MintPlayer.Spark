@@ -5,7 +5,9 @@ owner on 2026-11-16.
 
 **Status:** S1, S2 and S6 (shape) done; M1 done, with all 16 libraries asked for: 7 joined once #689 made them packable (2026-11-17). The `spark-app` first cut builds in four variants and
 creates cleanly from the CLI and from VS 2026 (flat layout under either "same directory" choice; VS's own solution
-format). Next: M2–M6, S3. Six features wait for their packages to be published (M1, #689). Each spike has a time box, questions, an exit criterion and an answer slot. Record each
+format). M2 done (2026-11-17): a generated app writes its model on the first Development run and starts. This was
+checked on InMemory without sign-in and on RavenDB with local accounts, and three startup refusals in the template
+were fixed along the way. Next: M3–M6, S3. The eight #689 libraries ship on the next `/release`. Each spike has a time box, questions, an exit criterion and an answer slot. Record each
 answer with evidence: numbers, file:line, commands run.
 
 **Order in this repo:** S1 → S2 → S6 → M1–M4 (templates and the core option), then S3 → M5–M6 (tools and release).
@@ -318,6 +320,33 @@ All of this repo's work goes in **one PR** (owner rule), including the `MintPlay
   `App_Data` files are missing, and never overwrites. Write the test red first.
 - If the option adds an endpoint or route, update `CsrfSurfaceTests` and the route snapshot. It shouldn't, but
   check.
+- **Done (2026-11-17).** `spark.SynchronizeModelIfMissing()` sets `SparkOptions.SynchronizeModelIfMissing`.
+  `SynchronizeSparkModelsIfRequested` (both overloads) runs the regular synchronize when no flag was passed, the
+  environment is Development, and `App_Data/Model` holds no `*.json`. It returns false, so the host goes on to
+  start. The design and what "missing" means are in PRD §4.4.
+  - Red → green: `SynchronizeModelIfMissingTests`. The first-run test was red (1 failed, 3 passed) and is
+    green after the change (4/4).
+  - No endpoint and no route: `CsrfSurfaceTests` and the route snapshot are unaffected.
+  - The template's `Program.cs` calls `spark.SynchronizeModelIfMissing()` after `UseContext`.
+  - Release order: the template needs a `MintPlayer.Spark` that has the option. Both ship in the same
+    `/release`, and the template pins Spark from its tags.
+  - **Found by the first start: no variant without sign-in could ever start.** `security.json` shipped only
+    with `HasAuth`, and core Spark refuses startup without it (`SecurityConfigurationException`, "Spark
+    requires a security configuration file"). This hit every InMemory variant and RavenDB with `--auth none`.
+    The file now always ships. Without sign-in, Person's right goes to `@anonymous`, as in DemoApp, because
+    nobody is ever authenticated there.
+  - **The second start found the next refusal, in every variant.** A right granted to a well-known group
+    (`@anonymous` or `@authenticated`) needs the type to declare its row policy
+    (`RowPolicyDeclarationValidator`, run by `VerifyRowPolicyDeclarations` in `SparkMiddleware.cs`). The template
+    had no `PersonActions`. It now ships `SparkApp/Actions/PersonActions.cs`, which implements
+    `ISparkOwnsRowSecurity` with a rationale per sign-in mode and says to scope the rows before storing anything
+    personal. This is DemoApp's pattern (`AddressActions`).
+  - **The third refusal, in the sign-in variants only:** the template maps registration
+    (`LocalCredentials = Full`), and startup refuses that without a mail transport
+    (`LocalCredentialEndpointFilter.GuardAgainstRegistrationWithoutMail`). In `features.json`, Authorization now
+    `alsoRequires` Mail, which brings Messaging. In Development, Mail writes confirmation links to `.eml` files.
+    The alternatives were rejected. `SignInOnly` leaves a new app with no way to create its first account.
+    `AllowUnconfirmedRegistration` would switch off a guard that exists for production.
 
 ### M3: Item templates
 - Add `spark-entity`, `spark-actions`, `spark-custom-action`, `spark-lookup` and `spark-index`.

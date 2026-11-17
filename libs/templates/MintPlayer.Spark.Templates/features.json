@@ -20,9 +20,10 @@
       "project": "authorization/MintPlayer.Spark.Authorization/MintPlayer.Spark.Authorization.csproj",
       "store": "RavenDB",
       "requires": [ "Migrations" ],
+      "alsoRequires": [ "Mail" ],
       "registration": "AddAuthentication",
       "client": [ "withAuth" ],
-      "$comment": "Chosen through the hand-written AuthMode choice (none/authorization/oidc), so the generator emits no parameter for it; a feature that requires it still switches it on. It requires Migrations: the package ships migrations (M_202610041800, M_202610051200) that only the app's AddMigrations() runs."
+      "$comment": "Chosen through the hand-written AuthMode choice (none/authorization/oidc), so the generator emits no parameter for it; a feature that requires it still switches it on. It requires Migrations: the package ships migrations (M_202610041800, M_202610051200) that only the app's AddMigrations() runs. alsoRequires Mail: the template maps registration (LocalCredentials = Full), and startup refuses that without a mail transport (LocalCredentialEndpointFilter.GuardAgainstRegistrationWithoutMail); in Development Mail writes the confirmation links to .eml files."
     },
     {
       "id": "Migrations",

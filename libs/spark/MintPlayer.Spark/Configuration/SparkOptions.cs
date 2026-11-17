@@ -23,6 +23,18 @@ public class SparkOptions
     /// every run — or the model file churns.
     /// </remarks>
     public Func<Type, PropertyInfo, ModelAttributeSeed> ModelAttribute { get; set; } = ModelAttributeConventions.AuditMembersHidden;
+
+    /// <summary>
+    /// Writes the model on a Development start whose <c>App_Data/Model</c> holds no model file, so an app
+    /// generated from the template runs on its first F5 (templates PRD D13). Set it with
+    /// <c>spark.SynchronizeModelIfMissing()</c>.
+    /// </summary>
+    /// <remarks>
+    /// Honoured by <c>SynchronizeSparkModelsIfRequested</c>, which already runs before <c>Build()</c>. It never
+    /// overwrites: one model file in the directory and it does nothing. It never runs outside Development, where
+    /// a missing model must stay a startup failure (<c>ModelHashVerifier</c>).
+    /// </remarks>
+    public bool SynchronizeModelIfMissing { get; set; }
 }
 
 public class BreadcrumbOptions

@@ -52,7 +52,11 @@
   },
 
   "rights": [
+//#if (HasAuth)
     { "key": "people", "resource": "QueryReadEditNewDelete/Person", "groupId": "@authenticated" }
+//#else
+    { "key": "people", "resource": "QueryReadEditNewDelete/Person", "groupId": "@anonymous" }
+//#endif
 //#if (UseModeration)
     ,
     { "key": "people-vote", "resource": "Vote/Person", "groupId": "00000000-0000-4000-8000-000000000011" },

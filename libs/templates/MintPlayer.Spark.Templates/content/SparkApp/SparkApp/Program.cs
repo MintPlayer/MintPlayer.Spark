@@ -89,6 +89,9 @@ builder.Services.AddSpark(builder.Configuration, spark =>
     spark.UseInMemory();
 #endif
     spark.UseContext<SparkAppContext>();
+    // The template ships no App_Data/Model: the first Development run writes it. It never overwrites a model
+    // file and never runs outside Development. Commit what it writes; afterwards run --spark-synchronize-model.
+    spark.SynchronizeModelIfMissing();
 #if (UseMigrations)
 
     // Runs every migration (yours under Migrations/, and those the referenced packages ship) once, at startup.
@@ -230,6 +233,7 @@ builder.Services.AddSpaStaticFilesImproved(configuration =>
 #endif
 
 // Build steps, not run modes: each writes or checks a file under App_Data and returns before Build().
+// Without a flag, the first call also writes the missing model (SynchronizeModelIfMissing above).
 //   --spark-synchronize-model     App_Data/Model/*.json from the entity classes
 //   --spark-init-security         a starting App_Data/security.json (never overwrites)
 //   --spark-verify-security       fails when the rights reachable without signing in have changed

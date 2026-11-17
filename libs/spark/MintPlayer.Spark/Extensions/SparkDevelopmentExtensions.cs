@@ -93,7 +93,10 @@ public static class SparkDevelopmentExtensions
 
         var verifyOnly = args.Contains(VerifyFlag);
         if (!verifyOnly && !args.Contains(SynchronizeFlag))
+        {
+            SynchronizeIfMissing(builder, builder.Services.LastOrDefault(d => d.ServiceType == typeof(SparkContext))?.ImplementationType);
             return false;
+        }
 
         if (!TryResolveRegisteredContextType(builder.Services, out var contextType))
             return true;
@@ -122,7 +125,10 @@ public static class SparkDevelopmentExtensions
 
         var verifyOnly = args.Contains(VerifyFlag);
         if (!verifyOnly && !args.Contains(SynchronizeFlag))
+        {
+            SynchronizeIfMissing(builder, typeof(TContext));
             return false;
+        }
 
         if (verifyOnly)
             Verify(builder, typeof(TContext));
@@ -1485,6 +1491,34 @@ public static class SparkDevelopmentExtensions
             Console.Error.WriteLine(problem);
             Environment.ExitCode = ExitDrift;
         }
+    }
+
+    /// <summary>
+    /// <see cref="SparkOptions.SynchronizeModelIfMissing"/> (templates PRD D13): on a Development start whose
+    /// model directory holds no model file, writes the model before the host builds, so the startup check finds
+    /// one. Anything else leaves the files alone.
+    /// </summary>
+    /// <remarks>
+    /// "Missing" means no <c>*.json</c> anywhere under <c>App_Data/Model</c>. A missing hash file next to model
+    /// files does not count: those files may be reviewed edits, and a synchronize rewrites them from the C#. The
+    /// startup check already warns about that case in Development.
+    /// <para>
+    /// No registered context means nothing to write from; the host starts and the startup check reports it, as
+    /// it would without the option.
+    /// </para>
+    /// </remarks>
+    private static void SynchronizeIfMissing(WebApplicationBuilder builder, Type? contextType)
+    {
+        var options = builder.Services.LastOrDefault(d => d.ServiceType == typeof(SparkOptions))?.ImplementationInstance as SparkOptions;
+        if (options?.SynchronizeModelIfMissing != true || !builder.Environment.IsDevelopment() || contextType is null)
+            return;
+
+        var modelPath = SparkAppData.Path(builder.Environment.ContentRootPath, "Model");
+        if (Directory.Exists(modelPath) && Directory.EnumerateFiles(modelPath, "*.json", SearchOption.AllDirectories).Any())
+            return;
+
+        Console.WriteLine($"Spark: {SparkAppData.Relative("Model")} holds no model file; writing it on this first Development run.");
+        Synchronize(builder, contextType);
     }
 
     private static void Synchronize(WebApplicationBuilder builder, Type contextType)

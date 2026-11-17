@@ -175,6 +175,22 @@ A snapshot is impossible across about 30 feature combinations. So `App_Data` is 
 2. **The template's run-script post-action** runs the synchronize eagerly where the host allows it.
 3. **The `dnx` tool** runs it eagerly too, along with `npm install`.
 
+**As built (M2, 2026-11-17):** the option is `spark.SynchronizeModelIfMissing()`, a flag on `SparkOptions`. The
+existing `builder.SynchronizeSparkModelsIfRequested(args)` call honours it, so an app needs no new call site and
+the model is written before `Build()`, where the startup check reads it.
+- **What "missing" means:** no `*.json` anywhere under `App_Data/Model`. A missing `modelHashes.json` beside
+  model files does not count. Those files may hold reviewed edits, and a synchronize rewrites them from the C#.
+  The startup check already warns about that case in Development.
+- **Only the model.** The template ships `security.json`. `--spark-init-security` would only write a starter
+  that grants nothing, and `securityPosture.txt` is a CI baseline the running app never reads. The menu
+  (`programUnits.json`) is hand-written, not generated.
+- **Why a first run rather than a template-time snapshot:** the files depend on the feature combination, and
+  the framework's own synchronizer is the only thing that writes them correctly. Template engines in general
+  ship empty stubs and let the framework fill them, and this follows the same pattern.
+- **Evidence:** `SynchronizeModelIfMissingTests` (red → green). The first test was red before the
+  implementation; the other three pin the guards: an existing model is untouched, Production writes nothing,
+  and without the option nothing is written.
+
 ### 4.5 Item templates
 `spark-entity`, `spark-actions` (`[Inject]` readonly fields), `spark-custom-action`, `spark-lookup` and
 `spark-index` (RavenDB only).
