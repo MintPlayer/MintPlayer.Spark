@@ -1,0 +1,5 @@
+<Solution>
+  <File Path="Directory.Packages.props" />
+  <Project Path="SparkApp.Library/SparkApp.Library.csproj" />
+  <Project Path="SparkApp/SparkApp.csproj" />
+</Solution>

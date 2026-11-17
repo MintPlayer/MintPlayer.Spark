@@ -1,0 +1,170 @@
+{
+  "$schema": "http://json.schemastore.org/template",
+  "author": "MintPlayer",
+  "classifications": [ "Web", "Spark", "Angular", "RavenDB" ],
+  "identity": "MintPlayer.Spark.Templates.SparkApp",
+  "groupIdentity": "MintPlayer.Spark.Templates.SparkApp",
+  "name": "Spark application",
+  "description": "A Spark host with an entity library and an Angular client, with a choice per framework feature.",
+  "shortName": "spark-app",
+  "sourceName": "SparkApp",
+  "preferNameDirectory": true,
+  "tags": { "language": "C#", "type": "solution" },
+  "primaryOutputs": [
+    { "path": "SparkApp/SparkApp.csproj" },
+    { "path": "SparkApp.Library/SparkApp.Library.csproj" }
+  ],
+  "guids": [ "a587cfbf-0605-4d67-9334-2e85c234c343" ],
+  "symbols": {
+    "Store": {
+      "type": "parameter",
+      "datatype": "choice",
+      "displayName": "Store",
+      "description": "Where the data lives. Most features need RavenDB.",
+      "defaultValue": "RavenDB",
+      "choices": [
+        { "choice": "RavenDB", "displayName": "RavenDB", "description": "A RavenDB server (Spark:RavenDb in appsettings.json)." },
+        { "choice": "InMemory", "displayName": "In memory", "description": "No database: data resets on every restart. Core features only." }
+      ]
+    },
+    "IsRaven": { "type": "computed", "value": "(Store == \"RavenDB\")" },
+    "IsInMemory": { "type": "computed", "value": "(Store == \"InMemory\")" },
+
+    "AuthMode": {
+      "type": "parameter",
+      "datatype": "choice",
+      "displayName": "Sign-in",
+      "description": "Accounts and group-based access control (MintPlayer.Spark.Authorization). Needs RavenDB.",
+      "defaultValue": "none",
+      "isEnabled": "Store == \"RavenDB\"",
+      "choices": [
+        { "choice": "none", "displayName": "None", "description": "No accounts: every visitor is anonymous." },
+        { "choice": "authorization", "displayName": "Local accounts", "description": "Password accounts and security.json groups." },
+        { "choice": "oidc", "displayName": "Local accounts + OpenID Connect", "description": "Also sign in with an external OpenID Connect provider." }
+      ]
+    },
+    "OidcAuthority": {
+      "type": "parameter",
+      "datatype": "string",
+      "displayName": "OpenID Connect authority",
+      "description": "The provider's issuer URL, e.g. https://id.example.com. Can be filled in later in appsettings.json.",
+      "isEnabled": "AuthMode == \"oidc\"",
+      "isRequired": "AuthMode == \"oidc\"",
+      "defaultValue": "",
+      "replaces": "OIDC_AUTHORITY_PLACEHOLDER"
+    },
+    "HasAuth": { "type": "computed", "value": "(IsRaven && (AuthMode == \"authorization\" || AuthMode == \"oidc\"))" },
+    "HasOidc": { "type": "computed", "value": "(IsRaven && AuthMode == \"oidc\")" },
+
+    "NoClient": {
+      "type": "parameter",
+      "datatype": "bool",
+      "displayName": "No Angular client",
+      "description": "Generate the API host only, without the ClientApp folder.",
+      "defaultValue": "false"
+    },
+    "HasClient": { "type": "computed", "value": "(!(NoClient && true))" },
+
+    "Controllers": {
+      "type": "parameter", "datatype": "bool", "defaultValue": "false",
+      "displayName": "MVC controllers",
+      "description": "Mount ASP.NET Core controllers through Spark's pipeline (MintPlayer.Spark.Controllers)."
+    },
+    "Logging": {
+      "type": "parameter", "datatype": "bool", "defaultValue": "false",
+      "displayName": "Stored logs",
+      "description": "Keep the application's logs and browse them in the app (MintPlayer.Spark.Logging)."
+    },
+
+    "Migrations": {
+      "type": "parameter", "datatype": "bool", "defaultValue": "true",
+      "displayName": "Migrations",
+      "description": "Run-once database migrations at startup (MintPlayer.Spark.Migrations). Needs RavenDB.",
+      "isEnabled": "Store == \"RavenDB\""
+    },
+    "Messaging": {
+      "type": "parameter", "datatype": "bool", "defaultValue": "false",
+      "displayName": "Messaging",
+      "description": "A durable message bus (MintPlayer.Spark.Messaging). Needs RavenDB; mail turns it on.",
+      "isEnabled": "Store == \"RavenDB\""
+    },
+    "Mail": {
+      "type": "parameter", "datatype": "bool", "defaultValue": "false",
+      "displayName": "Outgoing mail",
+      "description": "Templated mail through Messaging (MintPlayer.Spark.MailManager); in Development it writes .eml files. Needs RavenDB.",
+      "isEnabled": "Store == \"RavenDB\""
+    },
+    "Cron": {
+      "type": "parameter", "datatype": "bool", "defaultValue": "false",
+      "displayName": "Cron jobs",
+      "description": "Scheduled background jobs (MintPlayer.Spark.Cron). Needs RavenDB.",
+      "isEnabled": "Store == \"RavenDB\""
+    },
+    "History": {
+      "type": "parameter", "datatype": "bool", "defaultValue": "false",
+      "displayName": "History",
+      "description": "Revisions, audit stamping and revert (MintPlayer.Spark.History). Needs RavenDB.",
+      "isEnabled": "Store == \"RavenDB\""
+    },
+    "SoftDelete": {
+      "type": "parameter", "datatype": "bool", "defaultValue": "false",
+      "displayName": "Soft delete",
+      "description": "Deleting marks a record deleted; restore and purge later (MintPlayer.Spark.SoftDelete). Needs RavenDB.",
+      "isEnabled": "Store == \"RavenDB\""
+    },
+    "Mcp": {
+      "type": "parameter", "datatype": "bool", "defaultValue": "false",
+      "displayName": "MCP server",
+      "description": "Let AI agents read and propose changes through the Model Context Protocol (MintPlayer.Spark.Mcp). Needs RavenDB.",
+      "isEnabled": "Store == \"RavenDB\""
+    },
+
+    "UseControllers": { "type": "computed", "value": "(Controllers && true)" },
+    "UseLogging": { "type": "computed", "value": "(Logging && true)" },
+    "UseMigrations": { "type": "computed", "value": "(IsRaven && Migrations && true)" },
+    "UseMail": { "type": "computed", "value": "(IsRaven && Mail && true)" },
+    "UseMessaging": { "type": "computed", "value": "(IsRaven && ((Messaging && true) || (Mail && true)))" },
+    "UseCron": { "type": "computed", "value": "(IsRaven && Cron && true)" },
+    "UseHistory": { "type": "computed", "value": "(IsRaven && History && true)" },
+    "UseSoftDelete": { "type": "computed", "value": "(IsRaven && SoftDelete && true)" },
+    "UseMcp": { "type": "computed", "value": "(IsRaven && Mcp && true)" },
+
+    "skipRestore": {
+      "type": "parameter", "datatype": "bool", "defaultValue": "false",
+      "displayName": "Skip restore",
+      "description": "Do not restore NuGet packages after creating the project."
+    },
+
+    "HttpsPort": {
+      "type": "generated",
+      "generator": "port",
+      "parameters": { "low": 44300, "high": 44399 },
+      "replaces": "5007"
+    },
+    "HttpPort": {
+      "type": "generated",
+      "generator": "port",
+      "replaces": "5008"
+    }
+  },
+  "sources": [
+    {
+      "modifiers": [
+        { "condition": "(!HasClient)", "exclude": [ "SparkApp/ClientApp/**" ] },
+        { "condition": "(!UseControllers)", "exclude": [ "SparkApp/Controllers/**" ] },
+        { "condition": "(!UseMigrations)", "exclude": [ "SparkApp/Migrations/**" ] },
+        { "condition": "(!UseCron)", "exclude": [ "SparkApp/Jobs/**" ] }
+      ]
+    }
+  ],
+  "postActions": [
+    {
+      "id": "restore",
+      "condition": "(!skipRestore)",
+      "description": "Restore NuGet packages required by this project.",
+      "manualInstructions": [ { "text": "Run 'dotnet restore'" } ],
+      "actionId": "210D431B-A78B-4D2F-B762-4ED3E3EA9025",
+      "continueOnError": true
+    }
+  ]
+}

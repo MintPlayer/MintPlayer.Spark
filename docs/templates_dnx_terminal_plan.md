@@ -3,7 +3,7 @@
 **PRD:** [templates_dnx_terminal_PRD.md](templates_dnx_terminal_PRD.md). Decisions D1–D19 were locked with the
 owner on 2026-11-16.
 
-**Status:** NOT STARTED. Each spike has a time box, questions, an exit criterion and an answer slot. Record each
+**Status:** S1 and S2 done; M1 in progress (2026-11-17). Each spike has a time box, questions, an exit criterion and an answer slot. Record each
 answer with evidence: numbers, file:line, commands run.
 
 **Order in this repo:** S1 → S2 → S6 → M1–M4 (templates and the core option), then S3 → M5–M6 (tools and release).
@@ -55,9 +55,13 @@ All of this repo's work goes in **one PR** (owner rule), including the `MintPlay
       "None") next to ours. This looks like a clash with VS's built-in auth option, inferred and not verified. The
       symbol was renamed to `AuthMode`; retest pending. **The manifest generator must avoid VS's reserved symbol
       names** (`auth`, `Framework`, `langVersion`, …), each to be confirmed.
-    - ❌→fix: **blank solution** (test 3). The template had no `primaryOutputs`, and VS adds only the listed projects
-      to the solution. `spark-app` must list every project (host, Library, Tests) in `primaryOutputs`. Retest
-      pending, along with auto-include and labels.
+    - ✅ after the fix: **blank solution** (test 3). The template had no `primaryOutputs`, and VS adds only the listed
+      projects to the solution. `spark-app` must list every project (host, Library, Tests) in `primaryOutputs`.
+      Retest (Project21): the project was in the solution, and `Messaging.cs` was generated because Notifications
+      pulled it in. The authority was blank (`''`), which confirms VS doesn't enforce `isRequired`.
+    - The second Authentication dropdown was not reported after the rename to `AuthMode`. The clash is taken as
+      fixed, so the generator must avoid symbol ids that VS treats as its own.
+  - **S1 DONE.**
 
 ### S2: Versions in template content and a same-commit feed (½ day)
 - How do the template's `PackageReference`s and the ng-spark range get the versions released in the same run?
@@ -68,7 +72,39 @@ All of this repo's work goes in **one PR** (owner rule), including the `MintPlay
 - How does the CI matrix pack every package from the current commit into a local feed, and point the generated
   apps at it?
 - **Exit:** a local pack whose `content/` shows the real versions, plus a recipe for the local feed.
-- **Answer:** _(pending)_
+- **Answer (2026-11-17): a generated `Directory.Packages.props`, written at pack time from the repo's own versioning.**
+  - **No version is written in content/.** The template's projects use central package management, and
+    `content/SparkApp/Directory.Packages.props` is not in source. The `SparkTemplatePackageVersions` target in
+    `libs/templates/MintPlayer.Spark.Templates/MintPlayer.Spark.Templates.csproj` calls
+    `MintPlayerVersioning;_GetProjectVersion` on each `SparkTemplatePackage` project. That is the same pair NuGet
+    uses to stamp ProjectReference dependency versions (`_GetProjectVersion`,
+    `sdk/11.0.100/NuGet.Build.Tasks.Pack.targets:355`). The target writes one `PackageVersion` per package into
+    `obj/<cfg>/template-generated/` and packs that file as `content/SparkApp/Directory.Packages.props`.
+  - **ng-spark** gets `^<version>` from `libs/node_packages/ng-spark/package.json` (the last released version, stale
+    by design). It replaces `NG_SPARK_VERSION` in a packed copy of `ClientApp/package.json`. Measured: `^22.44.0`.
+  - **Measured:** `dotnet pack … -c Release -p:Version=11.0.0` pinned all 17 Spark packages at 11.0.0. The
+    template then generated and built four variants (InMemory without a client; the RavenDB defaults; everything
+    on with oidc; InMemory with RavenDB-only flags, which were dropped). The builds ran against nuget.org with exit
+    0, warnings NU1507 (this machine's several sources) and ASP0014 only.
+  - **Same-commit feed recipe (M4):** `dotnet pack MintPlayer.Spark.slnx -c Release -p:Version=<v> -o feed`. The
+    explicit version flows into every project (#544 D1), so the template pins `<v>` for every Spark package. Then
+    `dotnet new install feed/MintPlayer.Spark.Templates.<v>.nupkg` and a `nuget.config` with `feed` ahead of
+    nuget.org. The ng-spark half still resolves from npm; a client build in the matrix needs `npm pack` of the
+    local ng-spark (M4).
+  - **Guards:**
+    - **SPARKTPL001** errors when a pinned package resolves to `0.0.0-PLACEHOLDER` (never tagged, so never
+      published). A Debug pack, which reads no tags, only gets a warning.
+    - The step runs only when the template itself is packable. On master no package is tagged, so the template is
+      not packed, and its RavenDB, InMemory and Logging pins (tagged only on the release line) cannot fail the
+      build. Simulated as a solution pack on master: exit 0, no package.
+  - ⚠️ **Found:** `MintPlayer.Spark.Minification` and `MintPlayer.Spark.SitemapXml` have **no tag at all**
+    (`git tag -l`), so they were never released. They are left out of the template until they ship. Recorded on
+    #689.
+  - **Two content fixes found by building:**
+    - `spark.AddActions()` exists only when the app has Actions classes (it is generated), so the template doesn't
+      call it.
+    - With `--no-client`, NodeServices (through MintPlayer.Spark) ran `npm install` in a missing `ClientApp\`. The
+      host now sets `EnableSpaBuilder=false`.
 
 ### S6: Manifest generator and matrix cost (1 day)
 - Draft the `features.json` schema and a generator for symbols, computed prerequisites, `ide.host.json` and `#if`
@@ -109,6 +145,26 @@ All of this repo's work goes in **one PR** (owner rule), including the `MintPlay
 - Add the `spark-app` choices from PRD §4.1 and the prerequisite and constraint behaviour from S1 (D16).
 - Avoid folder names that `.gitignore` swallows (`coverage`, `Releases`), and check `git status` lists every new
   file.
+- **Progress (2026-11-17):** the package is created and in the slnx. `.nxignore` excludes
+  `libs/templates/*/content/`, because `@nx/dotnet` would otherwise infer the template's csproj files as workspace
+  projects.
+  - **`spark-app` (hand-written for now; the S6 generator replaces the symbol block):**
+    - Choices: store (RavenDB default, InMemory); `--auth none|authorization|oidc` with `--oidc-authority`;
+      `--no-client`.
+    - Any store: `--controllers`, `--logging`.
+    - RavenDB only: `--migrations` (default on, with a sample seed migration), `--messaging`, `--mail` (pulls in
+      messaging), `--cron` (with a sample job), `--history`, `--soft-delete`, `--mcp`.
+    - Every condition goes through a computed `Use*`/`Has*` symbol (S1). RavenDB-only features use
+      `isEnabled: Store == "RavenDB"`, and their computed symbol also ANDs `IsRaven`, so the CLI drops them as well.
+    - `dotnetcli.host.json` gives kebab-case flags.
+  - **For S6:** every RavenDB-only feature already declares it with `[SparkRequiresStore(..., Provider = RavenDb)]`
+    on its registration method, 21 sites including Authorization. The manifest generator can read the store
+    requirement from there instead of restating it.
+  - **Open:**
+    - `features.json` and its generator (S6)
+    - the client wiring of the remaining ng-spark entry points
+    - a Tests project in `primaryOutputs`
+    - an `App_Data` first run (M2)
 
 ### M2: `SynchronizeOnStartupIfMissing` (core, D13)
 - Add a new option in `MintPlayer.Spark`. In Development it runs the model and security synchronizers when

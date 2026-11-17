@@ -1,0 +1,21 @@
+{
+  "$schema": "http://json.schemastore.org/ide.host",
+  "order": 0,
+  "icon": "",
+  "symbolInfo": [
+    { "id": "Store", "isVisible": true },
+    { "id": "AuthMode", "isVisible": true },
+    { "id": "OidcAuthority", "isVisible": true },
+    { "id": "NoClient", "isVisible": true },
+    { "id": "Migrations", "isVisible": true },
+    { "id": "Messaging", "isVisible": true },
+    { "id": "Mail", "isVisible": true },
+    { "id": "Cron", "isVisible": true },
+    { "id": "History", "isVisible": true },
+    { "id": "SoftDelete", "isVisible": true },
+    { "id": "Mcp", "isVisible": true },
+    { "id": "Controllers", "isVisible": true },
+    { "id": "Logging", "isVisible": true },
+    { "id": "skipRestore", "isVisible": false }
+  ]
+}

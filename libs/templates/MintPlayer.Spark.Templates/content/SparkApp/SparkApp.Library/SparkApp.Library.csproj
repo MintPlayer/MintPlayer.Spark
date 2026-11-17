@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<!--
+	  The entity library: plain classes and their attributes, with no ASP.NET Core and no database client
+	  (SPARKLIB001 fails the build if either creeps in). The host references it; so can a test project or a client.
+	-->
+	<PropertyGroup>
+		<TargetFramework>net11.0</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+		<IsPackable>false</IsPackable>
+		<SparkEntityLibrary>true</SparkEntityLibrary>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<PackageReference Include="MintPlayer.Spark.Attributes" />
+		<PackageReference Include="MintPlayer.Spark.Model" />
+		<!-- Harvests the /// summaries below into the model's descriptions (the UI's tooltips). -->
+		<PackageReference Include="MintPlayer.Spark.SourceGenerators" PrivateAssets="all"
+		                  IncludeAssets="runtime; build; native; contentfiles; analyzers; buildtransitive" />
+		<PackageReference Include="MintPlayer.Spark.LibraryGenerators" PrivateAssets="all"
+		                  IncludeAssets="runtime; build; native; contentfiles; analyzers; buildtransitive" />
+	</ItemGroup>
+
+</Project>
