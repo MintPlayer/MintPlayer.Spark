@@ -86,6 +86,7 @@
     <Project Path="libs/sitemap/MintPlayer.Spark.SitemapXml/MintPlayer.Spark.SitemapXml.csproj" />
   </Folder>
   <Folder Name="/libs/templates/">
+    <Project Path="libs/templates/MintPlayer.Spark.Templates.Build/MintPlayer.Spark.Templates.Build.csproj" />
     <Project Path="libs/templates/MintPlayer.Spark.Templates/MintPlayer.Spark.Templates.csproj" />
   </Folder>
   <Folder Name="/libs/search/">
@@ -199,6 +200,7 @@
     <Project Path="tests/MintPlayer.Spark.Client.Tests/MintPlayer.Spark.Client.Tests.csproj" />
     <Project Path="tests/MintPlayer.Spark.E2E.Tests/MintPlayer.Spark.E2E.Tests.csproj" />
     <Project Path="tests/MintPlayer.Spark.Gs1.Tests/MintPlayer.Spark.Gs1.Tests.csproj" />
+    <Project Path="tests/MintPlayer.Spark.Templates.Tests/MintPlayer.Spark.Templates.Tests.csproj" />
     <Project Path="tests/MintPlayer.Spark.SourceGenerators.Tests/MintPlayer.Spark.SourceGenerators.Tests.csproj" />
     <Project Path="tests/MintPlayer.Spark.Tests/MintPlayer.Spark.Tests.csproj" />
   </Folder>

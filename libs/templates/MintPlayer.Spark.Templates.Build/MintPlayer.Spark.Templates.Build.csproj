@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<!--
+	  The pack-time generator of MintPlayer.Spark.Templates (plan S6): it reads features.json and writes the feature
+	  parts of the spark-app template into the template project's obj/, from where they are packed. Nothing it writes
+	  is checked in. MintPlayer.Spark.Templates runs it through TaskHostFactory, so the task assembly is loaded in a
+	  separate process and never locks this project's output.
+	-->
+	<PropertyGroup>
+		<TargetFramework>net11.0</TargetFramework>
+		<Nullable>enable</Nullable>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<IsPackable>false</IsPackable>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<PackageReference Include="Microsoft.Build.Utilities.Core" Version="18.12.2" PrivateAssets="all" ExcludeAssets="runtime" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<InternalsVisibleTo Include="MintPlayer.Spark.Templates.Tests" />
+	</ItemGroup>
+
+</Project>

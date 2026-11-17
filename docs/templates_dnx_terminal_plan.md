@@ -3,9 +3,9 @@
 **PRD:** [templates_dnx_terminal_PRD.md](templates_dnx_terminal_PRD.md). Decisions D1–D19 were locked with the
 owner on 2026-11-16.
 
-**Status:** S1 and S2 done; M1 in progress (2026-11-17). The `spark-app` first cut builds in four variants and
+**Status:** S1, S2 and S6 (shape) done; M1 in progress (2026-11-17). The `spark-app` first cut builds in four variants and
 creates cleanly from the CLI and from VS 2026 (flat layout under either "same directory" choice; VS's own solution
-format). Next: S6, then the rest of M1, M2–M6, S3. Each spike has a time box, questions, an exit criterion and an answer slot. Record each
+format). Next: the rest of M1 (the 16 pending features), M2–M6, S3. Each spike has a time box, questions, an exit criterion and an answer slot. Record each
 answer with evidence: numbers, file:line, commands run.
 
 **Order in this repo:** S1 → S2 → S6 → M1–M4 (templates and the core option), then S3 → M5–M6 (tools and release).
@@ -134,7 +134,44 @@ All of this repo's work goes in **one PR** (owner rule), including the `MintPlay
 - Time about 32 instantiations (minimal, all-on, each feature alone) with a shared restore and parallel builds.
 - **Exit:** the schema, timings, and whether the matrix fits one PR job or needs to be a subset on PRs and the full
   matrix on master.
-- **Answer:** _(pending)_
+- **Answer (2026-11-17, partly):**
+  - **Shape (owner):** generate the data, guard the code; pack time only, no generated file in git.
+    - `libs/templates/MintPlayer.Spark.Templates/features.json`: `core` (always pinned), `features` and `excluded`
+      (with a reason: `dependency`, `not-an-app-feature`, `unreleased`, `pending`). Per feature: `id`, `flag`,
+      `project` (relative to `libs/`; its file name is the package id), `displayName`, `description`, `default`,
+      `store`, `needsClient`, `requires`, `registration`, `client`, `appsettings`. A feature with `symbol` is chosen
+      by a hand-written symbol (Authorization: `HasAuth`, from the AuthMode choice), so no parameter is generated.
+    - `libs/templates/MintPlayer.Spark.Templates.Build`: the `GenerateSparkTemplate` task (run through
+      `TaskHostFactory`, so nothing locks its dll) writes `template.json`, `ide.host.json`, `dotnetcli.host.json`
+      and the host csproj into `obj/template-generated/` and returns the projects to pin. The csproj carries one
+      marker line, `<!-- spark-features: PackageReferences -->`. The generator refuses a manifest with a cycle, a
+      prerequisite bound to a store or the client its dependent isn't, or a symbol the hand-written template.json
+      already defines (error SPARKTPL002).
+    - `Use{X}` = X's constraints && (X chosen || any transitive dependent chosen under its own constraints), e.g.
+      `UseMessaging = (IsRaven && ((Messaging && true) || (IsRaven && (Mail && true))))`.
+    - `tests/MintPlayer.Spark.Templates.Tests` (17 tests): coverage (every packable csproj under `libs/` is listed),
+      graph (`requires` equals the features among the project's direct ProjectReferences), the generator, and the
+      content guard (registration call, ng-spark providers and appsettings section inside their condition's block;
+      every `#if` names a defined symbol).
+  - **Found by the graph test:** Authorization references Migrations. Its package ships two migrations
+    (`M_202610041800`, `M_202610051200`) that only the app's `AddMigrations()` runs, so `--auth` with
+    `--migrations false` silently skipped them. Authorization now requires Migrations, and `UseMigrations` includes
+    `HasAuth`.
+  - **Not yet covered:** `needsClient` is generated but no feature uses it, so it is unverified in VS and the CLI.
+    The 16 `pending` libraries become features in the M1 remainder.
+  - **Matrix timing (measured 2026-11-17, this machine, packages from nuget.org's 11.0.0, restore cache warm):**
+    `dotnet new` then `dotnet build` per variant. Minimal (`--no-client`): 11 s. With the client: 135–177 s each
+    (RavenDefault 177, InMemoryIgnored 153, Everything 136, AuthNoMigrations 135). The build runs `npm install` in
+    each ClientApp (286 MB `node_modules`), and that is nearly all of it.
+    - **About 32 variants that way would take over an hour, so not in a PR job.**
+    - **Proposal for M4 (an estimate, not measured):**
+      - Run `npm ci` once into a shared folder and link it into each variant. Build every variant's .NET side
+        (~11–15 s each, about 8 min serial, ~3 min at `--parallel=4`).
+      - Run `ng build` once per distinct client. Only `HasAuth`, `UseSoftDelete` and `UseHistory` change the client
+        today, which gives 8 combinations at most.
+      - Measure this in M4 before choosing between a PR subset and the full matrix on master.
+  - **Checked end to end:** packed, installed and built five variants, all exit 0. The CLI help lists the generated
+    flags. `--auth authorization --migrations false` now references Migrations and ships the sample migration.
 
 ### S3: Tool packages and `dnx` (½ day)
 - Pack `MintPlayer.Spark.Cli` and `create-spark-app` from one shared commands library. Run both with

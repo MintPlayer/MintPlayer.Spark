@@ -1,0 +1,157 @@
+{
+  "$comment": "The spark-app template's feature manifest (docs/templates_dnx_terminal_PRD.md §4.2, D15). The pack step (MintPlayer.Spark.Templates.Build) generates from it the feature symbols in template.json, ide.host.json and dotnetcli.host.json, the host csproj's PackageReferences and the pinned-package list; nothing it generates is checked in. Program.cs, appsettings.json and the ClientApp stay hand-written, and MintPlayer.Spark.Templates.Tests checks them against this file. Every packable project under libs/ is in core, features or excluded (the coverage test); each feature's requires equals the features among its project's ProjectReferences (the graph test).",
+
+  "core": [
+    { "project": "spark/MintPlayer.Spark/MintPlayer.Spark.csproj" },
+    { "project": "spark/MintPlayer.Spark.InMemory/MintPlayer.Spark.InMemory.csproj" },
+    { "project": "spark/MintPlayer.Spark.RavenDB/MintPlayer.Spark.RavenDB.csproj" },
+    { "project": "attributes/MintPlayer.Spark.Attributes/MintPlayer.Spark.Attributes.csproj" },
+    { "project": "model/MintPlayer.Spark.Model/MintPlayer.Spark.Model.csproj" },
+    { "project": "source_generators/MintPlayer.Spark.SourceGenerators/MintPlayer.Spark.SourceGenerators.csproj" },
+    { "project": "source_generators/MintPlayer.Spark.LibraryGenerators/MintPlayer.Spark.LibraryGenerators.csproj" }
+  ],
+
+  "features": [
+    {
+      "id": "Authorization",
+      "symbol": "HasAuth",
+      "project": "authorization/MintPlayer.Spark.Authorization/MintPlayer.Spark.Authorization.csproj",
+      "store": "RavenDB",
+      "requires": [ "Migrations" ],
+      "registration": "AddAuthentication",
+      "client": [ "withAuth" ],
+      "$comment": "Chosen through the hand-written AuthMode choice (none/authorization/oidc), so the generator emits no parameter for it. It requires Migrations: the package ships migrations (M_202610041800, M_202610051200) that only the app's AddMigrations() runs."
+    },
+    {
+      "id": "Migrations",
+      "flag": "migrations",
+      "project": "migrations/MintPlayer.Spark.Migrations/MintPlayer.Spark.Migrations.csproj",
+      "displayName": "Migrations",
+      "description": "Run-once database migrations at startup, with a sample seed migration.",
+      "default": true,
+      "store": "RavenDB",
+      "registration": "AddMigrations"
+    },
+    {
+      "id": "Messaging",
+      "flag": "messaging",
+      "project": "messaging/MintPlayer.Spark.Messaging/MintPlayer.Spark.Messaging.csproj",
+      "displayName": "Messaging",
+      "description": "A durable message bus.",
+      "store": "RavenDB",
+      "registration": "AddMessaging"
+    },
+    {
+      "id": "Mail",
+      "flag": "mail",
+      "project": "mail/MintPlayer.Spark.MailManager/MintPlayer.Spark.MailManager.csproj",
+      "displayName": "Outgoing mail",
+      "description": "Templated mail; in Development it writes .eml files.",
+      "store": "RavenDB",
+      "requires": [ "Messaging" ],
+      "registration": "AddMailManager",
+      "appsettings": "Spark:Mail"
+    },
+    {
+      "id": "Cron",
+      "flag": "cron",
+      "project": "cron/MintPlayer.Spark.Cron/MintPlayer.Spark.Cron.csproj",
+      "displayName": "Cron jobs",
+      "description": "Scheduled background jobs, with a sample job.",
+      "store": "RavenDB",
+      "registration": "AddCronJobs"
+    },
+    {
+      "id": "History",
+      "flag": "history",
+      "project": "history/MintPlayer.Spark.History/MintPlayer.Spark.History.csproj",
+      "displayName": "History",
+      "description": "Revisions, audit stamping and revert.",
+      "store": "RavenDB",
+      "registration": "AddHistory",
+      "client": [ "withHistory" ]
+    },
+    {
+      "id": "SoftDelete",
+      "flag": "soft-delete",
+      "project": "soft_delete/MintPlayer.Spark.SoftDelete/MintPlayer.Spark.SoftDelete.csproj",
+      "displayName": "Soft delete",
+      "description": "Deleting marks a record deleted; restore and purge later.",
+      "store": "RavenDB",
+      "registration": "AddSoftDelete",
+      "client": [ "withSoftDelete" ]
+    },
+    {
+      "id": "Mcp",
+      "flag": "mcp",
+      "project": "mcp/MintPlayer.Spark.Mcp/MintPlayer.Spark.Mcp.csproj",
+      "displayName": "MCP server",
+      "description": "Let AI agents read and propose changes through the Model Context Protocol.",
+      "store": "RavenDB",
+      "registration": "AddMcp"
+    },
+    {
+      "id": "Controllers",
+      "flag": "controllers",
+      "project": "controllers/MintPlayer.Spark.Controllers/MintPlayer.Spark.Controllers.csproj",
+      "displayName": "MVC controllers",
+      "description": "Mount ASP.NET Core controllers through Spark's pipeline.",
+      "registration": "AddControllers"
+    },
+    {
+      "id": "Logging",
+      "flag": "logging",
+      "project": "logging/MintPlayer.Spark.Logging/MintPlayer.Spark.Logging.csproj",
+      "displayName": "Stored logs",
+      "description": "Keep the application's logs and browse them in the app.",
+      "registration": "AddLogs"
+    }
+  ],
+
+  "excluded": [
+    { "project": "spark/MintPlayer.Spark.Abstractions/MintPlayer.Spark.Abstractions.csproj", "reason": "dependency" },
+    { "project": "spark/MintPlayer.Spark.SafeHttp/MintPlayer.Spark.SafeHttp.csproj", "reason": "dependency" },
+    { "project": "authorization/MintPlayer.Spark.Authorization.Abstractions/MintPlayer.Spark.Authorization.Abstractions.csproj", "reason": "dependency" },
+    { "project": "contributions/MintPlayer.Spark.Contributions.Abstractions/MintPlayer.Spark.Contributions.Abstractions.csproj", "reason": "dependency" },
+    { "project": "history/MintPlayer.Spark.History.Abstractions/MintPlayer.Spark.History.Abstractions.csproj", "reason": "dependency" },
+    { "project": "mail/MintPlayer.Spark.MailManager.Abstractions/MintPlayer.Spark.MailManager.Abstractions.csproj", "reason": "dependency" },
+    { "project": "messaging/MintPlayer.Spark.Messaging.Abstractions/MintPlayer.Spark.Messaging.Abstractions.csproj", "reason": "dependency" },
+    { "project": "moderation/MintPlayer.Spark.Moderation.Abstractions/MintPlayer.Spark.Moderation.Abstractions.csproj", "reason": "dependency" },
+    { "project": "replication/MintPlayer.Spark.Replication.Abstractions/MintPlayer.Spark.Replication.Abstractions.csproj", "reason": "dependency" },
+    { "project": "soft_delete/MintPlayer.Spark.SoftDelete.Abstractions/MintPlayer.Spark.SoftDelete.Abstractions.csproj", "reason": "dependency" },
+    { "project": "subscription_worker/MintPlayer.Spark.SubscriptionWorker.Abstractions/MintPlayer.Spark.SubscriptionWorker.Abstractions.csproj", "reason": "dependency" },
+    { "project": "subscription_worker/MintPlayer.Spark.SubscriptionWorker/MintPlayer.Spark.SubscriptionWorker.csproj", "reason": "dependency" },
+    { "project": "all_features/MintPlayer.Spark.AllFeatures/MintPlayer.Spark.AllFeatures.csproj", "reason": "not-an-app-feature" },
+    { "project": "all_features/MintPlayer.Spark.AllFeatures.SourceGenerators/MintPlayer.Spark.AllFeatures.SourceGenerators.csproj", "reason": "not-an-app-feature" },
+    { "project": "client/MintPlayer.Spark.Client/MintPlayer.Spark.Client.csproj", "reason": "not-an-app-feature" },
+    { "project": "client/MintPlayer.Spark.Client.Authorization/MintPlayer.Spark.Client.Authorization.csproj", "reason": "not-an-app-feature" },
+    { "project": "testing/MintPlayer.Spark.Testing/MintPlayer.Spark.Testing.csproj", "reason": "not-an-app-feature" },
+    { "project": "socket_extensions/MintPlayer.Dotnet.SocketExtensions/MintPlayer.Dotnet.SocketExtensions.csproj", "reason": "not-an-app-feature" },
+    { "project": "templates/MintPlayer.Spark.Templates/MintPlayer.Spark.Templates.csproj", "reason": "not-an-app-feature" },
+    { "project": "minification/MintPlayer.Spark.Minification/MintPlayer.Spark.Minification.csproj", "reason": "unreleased" },
+    { "project": "sitemap/MintPlayer.Spark.SitemapXml/MintPlayer.Spark.SitemapXml.csproj", "reason": "unreleased" },
+    { "project": "boards/MintPlayer.Spark.Boards/MintPlayer.Spark.Boards.csproj", "reason": "pending" },
+    { "project": "contributions/MintPlayer.Spark.Contributions/MintPlayer.Spark.Contributions.csproj", "reason": "pending" },
+    { "project": "dashboards/MintPlayer.Spark.Dashboards/MintPlayer.Spark.Dashboards.csproj", "reason": "pending" },
+    { "project": "gs1/MintPlayer.Spark.Gs1/MintPlayer.Spark.Gs1.csproj", "reason": "pending" },
+    { "project": "identity_provider/MintPlayer.Spark.IdentityProvider/MintPlayer.Spark.IdentityProvider.csproj", "reason": "pending" },
+    { "project": "moderation/MintPlayer.Spark.Moderation/MintPlayer.Spark.Moderation.csproj", "reason": "pending" },
+    { "project": "notifications/MintPlayer.Spark.Notifications/MintPlayer.Spark.Notifications.csproj", "reason": "pending" },
+    { "project": "organizations/MintPlayer.Spark.Organizations/MintPlayer.Spark.Organizations.csproj", "reason": "pending" },
+    { "project": "replication/MintPlayer.Spark.Replication/MintPlayer.Spark.Replication.csproj", "reason": "pending" },
+    { "project": "search/MintPlayer.Spark.Search/MintPlayer.Spark.Search.csproj", "reason": "pending" },
+    { "project": "search/MintPlayer.Spark.Search.OpenSearch/MintPlayer.Spark.Search.OpenSearch.csproj", "reason": "pending" },
+    { "project": "search/MintPlayer.Spark.OpenSearchDescription/MintPlayer.Spark.OpenSearchDescription.csproj", "reason": "pending" },
+    { "project": "settings/MintPlayer.Spark.Settings/MintPlayer.Spark.Settings.csproj", "reason": "pending" },
+    { "project": "webhooks/MintPlayer.Spark.Webhooks.GitHub/MintPlayer.Spark.Webhooks.GitHub.csproj", "reason": "pending" },
+    { "project": "webhooks/MintPlayer.Spark.Webhooks.GitHub.DevTunnel/MintPlayer.Spark.Webhooks.GitHub.DevTunnel.csproj", "reason": "pending" },
+    { "project": "webpush/MintPlayer.Spark.WebPush/MintPlayer.Spark.WebPush.csproj", "reason": "pending" }
+  ],
+
+  "$reasons": {
+    "dependency": "Not chosen on its own: it comes in through a core package or a feature.",
+    "not-an-app-feature": "Not something a generated app turns on (tooling, client SDKs, test helpers, the template itself).",
+    "unreleased": "Never tagged, so never published (#689); the template cannot pin it.",
+    "pending": "A feature the template does not offer yet (plan M1 remainder)."
+  }
+}

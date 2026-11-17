@@ -5,15 +5,6 @@
     "AuthMode": { "longName": "auth" },
     "OidcAuthority": { "longName": "oidc-authority" },
     "NoClient": { "longName": "no-client", "shortName": "" },
-    "Controllers": { "longName": "controllers", "shortName": "" },
-    "Logging": { "longName": "logging", "shortName": "" },
-    "Migrations": { "longName": "migrations", "shortName": "" },
-    "Messaging": { "longName": "messaging", "shortName": "" },
-    "Mail": { "longName": "mail", "shortName": "" },
-    "Cron": { "longName": "cron", "shortName": "" },
-    "History": { "longName": "history", "shortName": "" },
-    "SoftDelete": { "longName": "soft-delete", "shortName": "" },
-    "Mcp": { "longName": "mcp", "shortName": "" },
     "skipRestore": { "longName": "no-restore", "shortName": "" }
   }
 }

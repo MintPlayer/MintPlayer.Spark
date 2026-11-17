@@ -143,8 +143,14 @@ was not re-fetched; a spike must confirm it before anything depends on it.
 - ng-spark entry points
 - localizable label and description
 
-A pack-time step generates from it the `template.json` symbols, the computed prerequisite symbols, `ide.host.json`
-and the `#if` regions in `Program.cs`, `appsettings.json` and the ClientApp.
+A pack-time step generates from it the `template.json` symbols, the computed prerequisite symbols, `ide.host.json`,
+`dotnetcli.host.json`, the host csproj's PackageReferences and the list of pinned packages. It writes only into
+`obj/`: no generated file is checked in (owner, S6, 2026-11-17).
+
+~~and the `#if` regions in `Program.cs`, `appsettings.json` and the ClientApp~~ (superseded, owner, S6, 2026-11-17):
+those stay hand-written, and tests check them against the manifest. Each feature's registration call, ng-spark
+providers and appsettings section must sit inside a block of its condition, and every condition must name a defined
+symbol. Generating them would mean multi-line C# and TypeScript fragments in JSON strings.
 
 Two tests guard it:
 - **Graph test:** each feature's `requires` equals its csproj ProjectReference graph.

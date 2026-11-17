@@ -26,36 +26,7 @@
 <!--#if (HasClient) -->
 		<PackageReference Include="MintPlayer.AspNetCore.SpaServices" />
 <!--#endif -->
-<!--#if (UseControllers) -->
-		<PackageReference Include="MintPlayer.Spark.Controllers" />
-<!--#endif -->
-<!--#if (HasAuth) -->
-		<PackageReference Include="MintPlayer.Spark.Authorization" />
-<!--#endif -->
-<!--#if (UseMigrations) -->
-		<PackageReference Include="MintPlayer.Spark.Migrations" />
-<!--#endif -->
-<!--#if (UseMessaging) -->
-		<PackageReference Include="MintPlayer.Spark.Messaging" />
-<!--#endif -->
-<!--#if (UseMail) -->
-		<PackageReference Include="MintPlayer.Spark.MailManager" />
-<!--#endif -->
-<!--#if (UseCron) -->
-		<PackageReference Include="MintPlayer.Spark.Cron" />
-<!--#endif -->
-<!--#if (UseHistory) -->
-		<PackageReference Include="MintPlayer.Spark.History" />
-<!--#endif -->
-<!--#if (UseSoftDelete) -->
-		<PackageReference Include="MintPlayer.Spark.SoftDelete" />
-<!--#endif -->
-<!--#if (UseMcp) -->
-		<PackageReference Include="MintPlayer.Spark.Mcp" />
-<!--#endif -->
-<!--#if (UseLogging) -->
-		<PackageReference Include="MintPlayer.Spark.Logging" />
-<!--#endif -->
+		<!-- spark-features: PackageReferences -->
 		<!-- The Spark analyzers and generators (PersistentObjectNames, the security analyzer, the generated
 		     AddMigrations/AddCronJobs). Private: they must not flow into anything that references the host. -->
 		<PackageReference Include="MintPlayer.Spark.SourceGenerators" PrivateAssets="all"

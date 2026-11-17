@@ -45,29 +45,18 @@
 	</ItemGroup>
 
 	<!--
-	  The Spark packages a generated app may reference. Each one's version is read at pack time; the item's own
-	  identity is the project, its PackageId is the file name (true for every Spark package). Adding a feature to the
-	  template means adding its project here and to the manifest; FeatureManifestTests checks both agree.
+	  The feature parts of the template come from features.json (plan S6): the GenerateSparkTemplate task completes
+	  template.json, ide.host.json, dotnetcli.host.json and the host csproj into obj/ at pack time, and returns the Spark
+	  projects whose versions the template pins. Nothing it writes is checked in. TaskHostFactory runs the task in its
+	  own process, so the task assembly is never locked by a long-lived MSBuild node.
 	-->
 	<ItemGroup>
-		<SparkTemplatePackage Include="..\..\spark\MintPlayer.Spark\MintPlayer.Spark.csproj" />
-		<SparkTemplatePackage Include="..\..\spark\MintPlayer.Spark.InMemory\MintPlayer.Spark.InMemory.csproj" />
-		<SparkTemplatePackage Include="..\..\spark\MintPlayer.Spark.RavenDB\MintPlayer.Spark.RavenDB.csproj" />
-		<SparkTemplatePackage Include="..\..\attributes\MintPlayer.Spark.Attributes\MintPlayer.Spark.Attributes.csproj" />
-		<SparkTemplatePackage Include="..\..\model\MintPlayer.Spark.Model\MintPlayer.Spark.Model.csproj" />
-		<SparkTemplatePackage Include="..\..\source_generators\MintPlayer.Spark.SourceGenerators\MintPlayer.Spark.SourceGenerators.csproj" />
-		<SparkTemplatePackage Include="..\..\source_generators\MintPlayer.Spark.LibraryGenerators\MintPlayer.Spark.LibraryGenerators.csproj" />
-		<SparkTemplatePackage Include="..\..\controllers\MintPlayer.Spark.Controllers\MintPlayer.Spark.Controllers.csproj" />
-		<SparkTemplatePackage Include="..\..\authorization\MintPlayer.Spark.Authorization\MintPlayer.Spark.Authorization.csproj" />
-		<SparkTemplatePackage Include="..\..\migrations\MintPlayer.Spark.Migrations\MintPlayer.Spark.Migrations.csproj" />
-		<SparkTemplatePackage Include="..\..\messaging\MintPlayer.Spark.Messaging\MintPlayer.Spark.Messaging.csproj" />
-		<SparkTemplatePackage Include="..\..\mail\MintPlayer.Spark.MailManager\MintPlayer.Spark.MailManager.csproj" />
-		<SparkTemplatePackage Include="..\..\cron\MintPlayer.Spark.Cron\MintPlayer.Spark.Cron.csproj" />
-		<SparkTemplatePackage Include="..\..\history\MintPlayer.Spark.History\MintPlayer.Spark.History.csproj" />
-		<SparkTemplatePackage Include="..\..\soft_delete\MintPlayer.Spark.SoftDelete\MintPlayer.Spark.SoftDelete.csproj" />
-		<SparkTemplatePackage Include="..\..\logging\MintPlayer.Spark.Logging\MintPlayer.Spark.Logging.csproj" />
-		<SparkTemplatePackage Include="..\..\mcp\MintPlayer.Spark.Mcp\MintPlayer.Spark.Mcp.csproj" />
+		<None Include="features.json" />
+		<ProjectReference Include="..\MintPlayer.Spark.Templates.Build\MintPlayer.Spark.Templates.Build.csproj"
+		                  ReferenceOutputAssembly="false" Private="false" SkipGetTargetFrameworkProperties="true" />
 	</ItemGroup>
+	<UsingTask TaskName="MintPlayer.Spark.Templates.Build.GenerateSparkTemplate" TaskFactory="TaskHostFactory"
+	           AssemblyFile="$(MSBuildThisFileDirectory)..\MintPlayer.Spark.Templates.Build\bin\$(Configuration)\net11.0\MintPlayer.Spark.Templates.Build.dll" />
 
 	<!-- Third-party packages the generated app references. Bumped by hand (or by the dependency bot) like any other. -->
 	<ItemGroup>
@@ -86,6 +75,17 @@
 		<PropertyGroup>
 			<_SparkTemplateGenerated>$(IntermediateOutputPath)template-generated\</_SparkTemplateGenerated>
 		</PropertyGroup>
+		<GenerateSparkTemplate ManifestFile="$(MSBuildThisFileDirectory)features.json"
+		                       LibsDirectory="$(MSBuildThisFileDirectory)..\..\"
+		                       TemplateDirectory="$(MSBuildThisFileDirectory)content\SparkApp\"
+		                       OutputDirectory="$(_SparkTemplateGenerated)SparkApp\">
+			<Output TaskParameter="GeneratedFiles" ItemName="_SparkTemplateGeneratedFile" />
+			<Output TaskParameter="Packages" ItemName="SparkTemplatePackage" />
+		</GenerateSparkTemplate>
+		<ItemGroup>
+			<Content Remove="@(_SparkTemplateGeneratedFile->'content\SparkApp\%(RelativePath)')" />
+			<Content Include="@(_SparkTemplateGeneratedFile)" PackagePath="content\SparkApp\%(_SparkTemplateGeneratedFile.RelativePath)" />
+		</ItemGroup>
 		<!-- MintPlayerVersioning first: _GetProjectVersion only reads PackageVersion, which the versioning target sets.
 		     Debug skips the tags (Directory.Build.targets), so a Debug pack pins 0.0.0-PLACEHOLDER: use Release. -->
 		<MSBuild Projects="@(SparkTemplatePackage)" Targets="MintPlayerVersioning;_GetProjectVersion"
