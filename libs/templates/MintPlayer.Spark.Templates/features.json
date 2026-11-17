@@ -207,6 +207,78 @@
       "project": "gs1/MintPlayer.Spark.Gs1/MintPlayer.Spark.Gs1.csproj",
       "displayName": "GS1 barcodes",
       "description": "Parse GS1 barcodes and compute check digits and SSCCs."
+    },
+    {
+      "id": "Boards",
+      "flag": "boards",
+      "project": "boards/MintPlayer.Spark.Boards/MintPlayer.Spark.Boards.csproj",
+      "displayName": "Boards",
+      "description": "Boards of tiles each signed-in user rearranges; a sample board at /board, declared in App_Data/boards.json.",
+      "store": "RavenDB",
+      "registration": "AddBoards",
+      "client": [ "withBoards" ]
+    },
+    {
+      "id": "Notifications",
+      "flag": "notifications",
+      "project": "notifications/MintPlayer.Spark.Notifications/MintPlayer.Spark.Notifications.csproj",
+      "displayName": "Notifications",
+      "description": "In-app, mail and Web Push notifications, with a bell in the top bar.",
+      "store": "RavenDB",
+      "requires": [ "Authorization", "Messaging", "WebPush" ],
+      "registration": "AddNotifications",
+      "client": [ "withNotifications" ]
+    },
+    {
+      "id": "Organizations",
+      "flag": "organizations",
+      "project": "organizations/MintPlayer.Spark.Organizations/MintPlayer.Spark.Organizations.csproj",
+      "displayName": "Organizations",
+      "description": "Users work together in organizations, with invitations and an organization switcher.",
+      "store": "RavenDB",
+      "requires": [ "Authorization" ],
+      "registration": "AddOrganizations",
+      "$comment": "No provideSpark feature: the client adds withOrganizationRoutes() to sparkAuthRoutes and the switcher to the shell."
+    },
+    {
+      "id": "Search",
+      "flag": "site-search",
+      "project": "search/MintPlayer.Spark.Search/MintPlayer.Spark.Search.csproj",
+      "displayName": "Site search",
+      "description": "Search across the types whose model JSON says \"search\": { \"enabled\": true }, with a results page at /search.",
+      "store": "RavenDB",
+      "registration": "AddSearch",
+      "client": [ "withSearch" ]
+    },
+    {
+      "id": "OpenSearch",
+      "flag": "opensearch",
+      "project": "search/MintPlayer.Spark.Search.OpenSearch/MintPlayer.Spark.Search.OpenSearch.csproj",
+      "displayName": "OpenSearch engine",
+      "description": "Answer site search from an OpenSearch engine when Search:OpenSearch:Uri is set; RavenDB stays the fallback.",
+      "store": "RavenDB",
+      "requires": [ "Search" ],
+      "appsettings": "Search",
+      "$comment": "Registered inside the AddSearch options (UseOpenSearch), so no spark.X registration."
+    },
+    {
+      "id": "OpenSearchDescription",
+      "flag": "opensearch-description",
+      "project": "search/MintPlayer.Spark.OpenSearchDescription/MintPlayer.Spark.OpenSearchDescription.csproj",
+      "displayName": "Browser search engine",
+      "description": "Let browsers add the app as a search engine (/opensearch.xml).",
+      "store": "RavenDB",
+      "requires": [ "Search" ],
+      "registration": "AddOpenSearchDescription",
+      "client": [ "withOpenSearchDescription" ]
+    },
+    {
+      "id": "Sitemap",
+      "flag": "sitemap",
+      "project": "sitemap/MintPlayer.Spark.SitemapXml/MintPlayer.Spark.SitemapXml.csproj",
+      "displayName": "sitemap.xml",
+      "description": "/sitemap.xml lists the objects of the types whose model JSON says \"seo\": { \"indexable\": true }.",
+      "registration": "AddSitemap"
     }
   ],
 
@@ -230,19 +302,13 @@
     { "project": "testing/MintPlayer.Spark.Testing/MintPlayer.Spark.Testing.csproj", "reason": "not-an-app-feature" },
     { "project": "socket_extensions/MintPlayer.Dotnet.SocketExtensions/MintPlayer.Dotnet.SocketExtensions.csproj", "reason": "not-an-app-feature" },
     { "project": "templates/MintPlayer.Spark.Templates/MintPlayer.Spark.Templates.csproj", "reason": "not-an-app-feature" },
-    { "project": "minification/MintPlayer.Spark.Minification/MintPlayer.Spark.Minification.csproj", "reason": "unreleased" },
-    { "project": "sitemap/MintPlayer.Spark.SitemapXml/MintPlayer.Spark.SitemapXml.csproj", "reason": "unreleased" },
-    { "project": "search/MintPlayer.Spark.Search/MintPlayer.Spark.Search.csproj", "reason": "unreleased" },
-    { "project": "search/MintPlayer.Spark.Search.OpenSearch/MintPlayer.Spark.Search.OpenSearch.csproj", "reason": "unreleased" },
-    { "project": "search/MintPlayer.Spark.OpenSearchDescription/MintPlayer.Spark.OpenSearchDescription.csproj", "reason": "unreleased" },
-    { "project": "boards/MintPlayer.Spark.Boards/MintPlayer.Spark.Boards.csproj", "reason": "unreleased" },
-    { "project": "notifications/MintPlayer.Spark.Notifications/MintPlayer.Spark.Notifications.csproj", "reason": "unreleased" },
-    { "project": "organizations/MintPlayer.Spark.Organizations/MintPlayer.Spark.Organizations.csproj", "reason": "unreleased" }
+    { "project": "minification/MintPlayer.Spark.Minification/MintPlayer.Spark.Minification.csproj", "reason": "needs-prerendering" }
   ],
 
   "$reasons": {
     "dependency": "Not chosen on its own: it comes in through a core package or a feature.",
     "not-an-app-feature": "Not something a generated app turns on (tooling, client SDKs, test helpers, the template itself).",
-    "unreleased": "Never tagged, so never published (#689); the template cannot pin it. Search, Search.OpenSearch, OpenSearchDescription (never tagged), Boards, Notifications and Organizations (tagged preview only, never pushed to nuget.org) join as features once published: the owner asked for all six (M1)."
+    "unreleased": "Not on nuget.org, so the template cannot pin it (SPARKTPL001 refuses the placeholder). Unused since #689's eight Web-SDK libraries became packable.",
+    "needs-prerendering": "Refuses startup without UseSparkPrerendering(), and the template generates no server-rendered app."
   }
 }

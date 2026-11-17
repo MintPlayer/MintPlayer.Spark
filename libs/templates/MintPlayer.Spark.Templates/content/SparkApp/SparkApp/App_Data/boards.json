@@ -1,0 +1,12 @@
+{
+  "_comment": "The boards this app ships (MintPlayer.Spark.Boards). Each signed-in user rearranges their own copy; a tile a caller may not read is left out. A query target is the query's alias (people for GetPeople).",
+  "boards": [
+    {
+      "id": "home",
+      "tiles": [
+        { "id": "people", "kind": "query", "target": { "query": "people" }, "defaultSize": { "colSpan": 2, "rowSpan": 2 } },
+        { "id": "people-count", "kind": "count", "target": { "query": "people" } }
+      ]
+    }
+  ]
+}

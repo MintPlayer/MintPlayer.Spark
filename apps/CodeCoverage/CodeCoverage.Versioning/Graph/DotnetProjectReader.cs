@@ -100,12 +100,18 @@ public sealed partial class DotnetProjectReader(IRepositoryTree tree, List<strin
 				&& RepoPath.Resolve(directory, StripThisFileDirectory(importPath)) is { } resolvedImport && tree.IsFile(resolvedImport))
 				inputs.Add(resolvedImport);
 
+		var publishable = IsPackable(project, Property("IsPackable"), Property("IsTestProject"), dependencies);
+		// A declared PackageId says the author means to ship it; the Web SDK's IsPackable=false default then skips it
+		// with no trace (Spark #689: eight libraries went unreleased that way). Say so in the run's check.
+		if (!publishable && Property("IsPackable") is null && Property("PackageId") is { } declaredId && IsWebSdk(project))
+			warnings.Add($"{path}: declares PackageId '{declaredId}' on Microsoft.NET.Sdk.Web, whose IsPackable defaults to false, so it is never versioned or packed. Set <IsPackable>true</IsPackable> to release it, or false to say it is not a package.");
+
 		return new ProjectNode
 		{
 			Path = path,
 			Kind = PackageKind.NuGet,
 			Id = id,
-			Publishable = IsPackable(project, Property("IsPackable"), Property("IsTestProject"), dependencies),
+			Publishable = publishable,
 			TargetFrameworks = tfms,
 			AssemblyName = Property("AssemblyName") is { } assemblyName ? (assemblyName.Contains("$(") ? null : assemblyName) : name,
 			ProjectReferences = references,
@@ -126,9 +132,11 @@ public sealed partial class DotnetProjectReader(IRepositoryTree tree, List<strin
 		if (bool.TryParse(isTestProject, out var test) && test) return false;
 		if (dependencies.Any(d => d.Name.Equals("Microsoft.NET.Test.Sdk", StringComparison.OrdinalIgnoreCase))) return false;
 		// The Web SDK defaults IsPackable to false; a web app is deployed, not packed.
-		var sdk = project.Root?.Attribute("Sdk")?.Value ?? "";
-		return !sdk.StartsWith("Microsoft.NET.Sdk.Web", StringComparison.OrdinalIgnoreCase);
+		return !IsWebSdk(project);
 	}
+
+	private static bool IsWebSdk(XDocument project)
+		=> (project.Root?.Attribute("Sdk")?.Value ?? "").StartsWith("Microsoft.NET.Sdk.Web", StringComparison.OrdinalIgnoreCase);
 
 	/// <summary>
 	/// A linked item outside the project (<c>..\Shared\*.cs</c>) as an input: cut at the first wildcard or property, and

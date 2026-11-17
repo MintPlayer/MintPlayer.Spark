@@ -52,6 +52,20 @@ public class ProjectGraphTests
     }
 
     [Fact]
+    public async Task A_web_sdk_project_that_names_a_package_but_never_packs_is_reported()
+    {
+        // Spark #689: eight libraries on Microsoft.NET.Sdk.Web declared a PackageId but no IsPackable, so the Web SDK's
+        // default left them unversioned and unpacked, and the run said nothing.
+        var graph = await Build(new InMemoryTree()
+            .Add("b/Boards.csproj", Csproj("<PropertyGroup><TargetFramework>net10.0</TargetFramework><PackageId>Acme.Boards</PackageId></PropertyGroup>", "Microsoft.NET.Sdk.Web"))
+            .Add("w/Web.csproj", Csproj("<PropertyGroup><TargetFramework>net10.0</TargetFramework></PropertyGroup>", "Microsoft.NET.Sdk.Web")));
+
+        graph.Packages.Should().BeEmpty();
+        graph.Warnings.Should().ContainSingle()
+            .Which.Should().Contain("b/Boards.csproj").And.Contain("Acme.Boards").And.Contain("IsPackable");
+    }
+
+    [Fact]
     public async Task A_linked_compile_item_outside_the_project_is_an_input()
     {
         var graph = await Build(new InMemoryTree()

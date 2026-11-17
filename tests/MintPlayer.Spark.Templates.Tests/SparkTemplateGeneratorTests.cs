@@ -145,6 +145,16 @@ public class SparkTemplateGeneratorTests
         act.Should().Throw<InvalidOperationException>().Where(e => e.Message.Contains("already defines 'Store'"));
     }
 
+    [Fact]
+    public void A_flag_dotnet_new_already_owns_is_refused()
+    {
+        // `dotnet new spark-app --search` ran `dotnet new search` (the legacy --search) instead of the template.
+        var manifest = new FeatureManifest { Features = [Feature("Search")] };
+
+        Action act = () => SparkTemplateGenerator.Generate(manifest, TemplateRepository.HandWritten());
+        act.Should().Throw<InvalidOperationException>().Where(e => e.Message.Contains("--search") && e.Message.Contains("dotnet new"));
+    }
+
     private static JsonObject Symbols(FeatureManifest manifest)
         => TemplateRepository.Symbols(SparkTemplateGenerator.Generate(manifest, TemplateRepository.HandWritten()).TemplateJson);
 

@@ -42,6 +42,12 @@
 //#if (UseSettings)
     "settings:administrators": [ "Administrators" ],
 //#endif
+//#if (UseNotifications)
+    "notifications:users": [ "Signed-in users" ],
+//#endif
+//#if (UseOrganizations)
+    "organizations:users": [ "Signed-in users" ],
+//#endif
     "_comment": "The slots of the features this app was generated with."
   },
 

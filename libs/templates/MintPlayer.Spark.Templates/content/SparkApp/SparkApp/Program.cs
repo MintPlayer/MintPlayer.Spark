@@ -54,6 +54,27 @@ using MintPlayer.Spark.Webhooks.GitHub.Extensions;
 #if (UseGitHubDevTunnel)
 using MintPlayer.Spark.Webhooks.GitHub.DevTunnel.Extensions;
 #endif
+#if (UseBoards)
+using MintPlayer.Spark.Boards;
+#endif
+#if (UseNotifications)
+using MintPlayer.Spark.Notifications;
+#endif
+#if (UseOrganizations)
+using MintPlayer.Spark.Organizations;
+#endif
+#if (UseSearch)
+using MintPlayer.Spark.Search;
+#endif
+#if (UseOpenSearch)
+using MintPlayer.Spark.Search.OpenSearch;
+#endif
+#if (UseOpenSearchDescription)
+using MintPlayer.Spark.OpenSearchDescription;
+#endif
+#if (UseSitemap)
+using MintPlayer.Spark.SitemapXml;
+#endif
 using SparkApp;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -158,6 +179,40 @@ builder.Services.AddSpark(builder.Configuration, spark =>
             options.AddSmeeDevTunnel(smee);
 #endif
     });
+#endif
+#if (UseBoards)
+    // The boards in App_Data/boards.json; each signed-in user rearranges their own copy.
+    spark.AddBoards();
+#endif
+#if (UseNotifications)
+    // In-app, mail and Web Push notifications to signed-in users (notifications:users). Web Push stays off until
+    // Spark:Notifications:WebPush has VAPID keys: keep the private key in user secrets, never in appsettings.json.
+    spark.AddNotifications();
+#endif
+#if (UseOrganizations)
+    // Every user gets a personal organization; IOrganizationOwned types are visible to their organization's members.
+    spark.AddOrganizations();
+#endif
+#if (UseSearch)
+    // Site search at /spark/search over the types whose model JSON says "search": { "enabled": true }.
+#if (UseOpenSearch)
+    // With Search:OpenSearch:Uri set, an OpenSearch engine answers; the generated RavenDB index is the fallback.
+    spark.AddSearch(search =>
+    {
+        if (builder.Configuration["Search:OpenSearch:Uri"] is { Length: > 0 } engine)
+            search.UseOpenSearch(o => o.Uri = new Uri(engine));
+    });
+#else
+    spark.AddSearch();
+#endif
+#endif
+#if (UseOpenSearchDescription)
+    // Browsers can add the app as a search engine: /opensearch.xml.
+    spark.AddOpenSearchDescription(o => o.ShortName = "SparkApp");
+#endif
+#if (UseSitemap)
+    // /sitemap.xml lists the objects of the types whose model JSON says "seo": { "indexable": true }.
+    spark.AddSitemap();
 #endif
 #if (UseControllers)
 

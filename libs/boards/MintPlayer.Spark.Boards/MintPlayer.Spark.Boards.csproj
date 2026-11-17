@@ -5,6 +5,8 @@
 		<ImplicitUsings>enable</ImplicitUsings>
 		<Nullable>enable</Nullable>
 		<OutputType>Library</OutputType>
+		<!-- The Web SDK defaults IsPackable to false; without this the library is never versioned or packed (#689). -->
+		<IsPackable>true</IsPackable>
 		<!-- Names this library's App_Data layer (its translations.json). Permanent: the client's text keys
 		     are boards.spa.*. -->
 		<SparkLibraryAlias>boards</SparkLibraryAlias>

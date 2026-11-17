@@ -27,6 +27,17 @@ import { withModeration, sparkModerationRenderers } from '@mintplayer/ng-spark/m
 //#if (UseContributions)
 import { withContributions, sparkContributionRenderers } from '@mintplayer/ng-spark/contributions';
 //#endif
+//#if (UseBoards)
+import { withBoards } from '@mintplayer/ng-spark/boards';
+//#endif
+//#if (UseNotifications)
+import { withNotifications } from '@mintplayer/ng-spark/notifications';
+//#endif
+//#if (UseOpenSearchDescription)
+import { withOpenSearchDescription, withSearch } from '@mintplayer/ng-spark/search';
+//#elseif (UseSearch)
+import { withSearch } from '@mintplayer/ng-spark/search';
+//#endif
 
 import { routes } from './app.routes';
 
@@ -62,6 +73,18 @@ export const appConfig: ApplicationConfig = {
 //#endif
 //#if (UseContributions)
       withContributions(),
+//#endif
+//#if (UseBoards)
+      withBoards(),
+//#endif
+//#if (UseNotifications)
+      withNotifications(),
+//#endif
+//#if (UseSearch)
+      withSearch(),
+//#endif
+//#if (UseOpenSearchDescription)
+      withOpenSearchDescription({ title: 'SparkApp' }),
 //#endif
 //#if (UseModeration || UseContributions)
       withAttributeRenderers([

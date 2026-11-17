@@ -99,8 +99,8 @@
 		<Error Condition="'@(_SparkTemplateResolved->Count())' != '@(SparkTemplatePackage->Count())'"
 		       Text="SparkTemplatePackageVersions resolved @(_SparkTemplateResolved->Count()) of @(SparkTemplatePackage->Count()) Spark package versions." />
 		<!-- A package at the placeholder is never published (it has no tag, or this is a Debug build), so a template
-		     pinning it would generate an app that cannot restore. MintPlayer.Spark.Minification and .SitemapXml were left
-		     out of the template for that reason: neither has ever been tagged (2026-11-17). -->
+		     pinning it would generate an app that cannot restore. It caught #689: eight Web-SDK libraries had never been
+		     released (IsPackable defaulted to false), and the template left them out until they were made packable. -->
 		<Warning Code="SPARKTPL001" Condition="'$(Configuration)' == 'Debug' And '%(_SparkTemplateResolved.ProjectVersion)' == '0.0.0-PLACEHOLDER'"
 		         Text="The template pins %(_SparkTemplateResolved.Filename) at 0.0.0-PLACEHOLDER: a Debug pack reads no tags. Pack in Release, or pass -p:Version." />
 		<Error Code="SPARKTPL001" Condition="'$(Configuration)' != 'Debug' And '%(_SparkTemplateResolved.ProjectVersion)' == '0.0.0-PLACEHOLDER'"
@@ -122,14 +122,25 @@
 		<WriteLinesToFile File="$(_SparkTemplateGenerated)Directory.Packages.props" Lines="@(_SparkTemplatePropsLine->'%(Text)')"
 		                  Overwrite="true" WriteOnlyWhenDifferent="true" />
 
-		<!-- The Angular client's ng-spark range: libs/node_packages/ng-spark/package.json keeps the last released version
-		     (CLAUDE.md, "Versions come from tags"), so the range is ^<that>. -->
+		<!-- The Angular client's ng-spark range is ^<the highest stable @mintplayer/ng-spark/v tag reachable from HEAD>,
+		     the version released with this commit (CLAUDE.md, "Versions come from tags"). Not package.json's version: that
+		     is stale by design, and was 22.44.0, which lacks the ./search entry point (#689 integration, 2026-11-17).
+		     git's version sort (descending) puts the highest first; the regex skips prereleases. A clone without tags (shallow) falls back
+		     to package.json with SPARKTPL002. -->
+		<Exec Command="git tag --merged HEAD --list &quot;@mintplayer/ng-spark/v*&quot; --sort=-v:refname" WorkingDirectory="$(MSBuildThisFileDirectory)"
+		      ConsoleToMSBuild="true" StandardOutputImportance="low" IgnoreExitCode="true">
+			<Output TaskParameter="ConsoleOutput" ItemName="_NgSparkTag" />
+		</Exec>
 		<PropertyGroup>
-			<_NgSparkPackageJson>$([System.IO.File]::ReadAllText('$(MSBuildThisFileDirectory)..\..\node_packages\ng-spark\package.json'))</_NgSparkPackageJson>
-			<NgSparkTemplateVersion>$([System.Text.RegularExpressions.Regex]::Match($(_NgSparkPackageJson), '"version"\s*:\s*"([^"]+)"').Groups[1].Value)</NgSparkTemplateVersion>
+			<_NgSparkTags>@(_NgSparkTag)</_NgSparkTags>
+			<NgSparkTemplateVersion>$([System.Text.RegularExpressions.Regex]::Match($(_NgSparkTags), 'ng-spark/v(\d+\.\d+\.\d+)(?:;|\z)').Groups[1].Value)</NgSparkTemplateVersion>
+			<_NgSparkPackageJson Condition="'$(NgSparkTemplateVersion)' == ''">$([System.IO.File]::ReadAllText('$(MSBuildThisFileDirectory)..\..\node_packages\ng-spark\package.json'))</_NgSparkPackageJson>
+			<NgSparkTemplateVersion Condition="'$(NgSparkTemplateVersion)' == ''">$([System.Text.RegularExpressions.Regex]::Match($(_NgSparkPackageJson), '"version"\s*:\s*"([^"]+)"').Groups[1].Value)</NgSparkTemplateVersion>
 			<_ClientPackageJson>$([System.IO.File]::ReadAllText('$(MSBuildThisFileDirectory)content\SparkApp\SparkApp\ClientApp\package.json'))</_ClientPackageJson>
 		</PropertyGroup>
-		<Error Condition="'$(NgSparkTemplateVersion)' == ''" Text="Could not read the version of libs/node_packages/ng-spark/package.json." />
+		<Warning Code="SPARKTPL002" Condition="'$(_NgSparkPackageJson)' != ''"
+		         Text="No stable @mintplayer/ng-spark/v tag is reachable from HEAD (a shallow clone?), so the template pins ng-spark ^$(NgSparkTemplateVersion) from package.json, which can be older than the release." />
+		<Error Condition="'$(NgSparkTemplateVersion)' == ''" Text="Could not read the version of @mintplayer/ng-spark." />
 		<WriteLinesToFile File="$(_SparkTemplateGenerated)package.json" Lines="$(_ClientPackageJson.Replace('NG_SPARK_VERSION', '$(NgSparkTemplateVersion)'))"
 		                  Overwrite="true" WriteOnlyWhenDifferent="true" />
 

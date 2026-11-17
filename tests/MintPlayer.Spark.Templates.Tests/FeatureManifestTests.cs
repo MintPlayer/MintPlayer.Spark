@@ -3,7 +3,7 @@ namespace MintPlayer.Spark.Templates.Tests;
 /// <summary>The manifest against the repository (docs/templates_dnx_terminal_PRD.md §4.2: the graph and coverage tests).</summary>
 public class FeatureManifestTests
 {
-    private static readonly string[] Reasons = ["dependency", "not-an-app-feature", "unreleased", "pending"];
+    private static readonly string[] Reasons = ["dependency", "not-an-app-feature", "unreleased", "needs-prerendering"];
 
     [Fact]
     public void Every_packable_library_is_in_the_manifest()

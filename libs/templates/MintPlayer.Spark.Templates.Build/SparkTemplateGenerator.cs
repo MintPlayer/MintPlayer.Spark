@@ -143,6 +143,17 @@ public static class SparkTemplateGenerator
         return string.Join(newline, lines);
     }
 
+    /// <summary>
+    /// The long options of <c>dotnet new</c> itself, legacy forms included. A template flag with one of these names is
+    /// read by the CLI first: <c>--search</c> ran <c>dotnet new search</c> instead of the template (#689 integration).
+    /// </summary>
+    private static readonly HashSet<string> DotnetNewOptions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "add-source", "columns", "columns-all", "diagnostics", "dry-run", "force", "help", "install", "interactive",
+        "language", "list", "name", "no-update-check", "nuget-source", "output", "package", "project", "search", "tag",
+        "type", "uninstall", "update-apply", "update-check", "verbosity",
+    };
+
     /// <summary>Refuses a manifest the template engine would turn into a wrong or ambiguous template.</summary>
     public static void Validate(FeatureManifest manifest, JsonObject handSymbols)
     {
@@ -160,6 +171,8 @@ public static class SparkTemplateGenerator
 
             if (feature.HasParameter && (string.IsNullOrWhiteSpace(feature.Flag) || string.IsNullOrWhiteSpace(feature.DisplayName) || string.IsNullOrWhiteSpace(feature.Description)))
                 errors.Add($"{feature.Id}: a feature with a generated parameter needs flag, displayName and description.");
+            if (feature.HasParameter && DotnetNewOptions.Contains(feature.Flag))
+                errors.Add($"{feature.Id}: --{feature.Flag} is an option of dotnet new itself, which takes it before the template sees it; pick another flag.");
             var owned = feature.HasParameter ? new[] { feature.Id, feature.Condition } : [feature.Condition];
             foreach (var name in owned.Where(handSymbols.ContainsKey))
                 errors.Add($"{feature.Id}: the hand-written template.json already defines '{name}', which the generator owns.");

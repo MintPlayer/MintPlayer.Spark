@@ -3,7 +3,7 @@
 **PRD:** [templates_dnx_terminal_PRD.md](templates_dnx_terminal_PRD.md). Decisions D1–D19 were locked with the
 owner on 2026-11-16.
 
-**Status:** S1, S2 and S6 (shape) done; M1 done except the 6 unpublished features (2026-11-17). The `spark-app` first cut builds in four variants and
+**Status:** S1, S2 and S6 (shape) done; M1 done, with all 16 libraries asked for: 7 joined once #689 made them packable (2026-11-17). The `spark-app` first cut builds in four variants and
 creates cleanly from the CLI and from VS 2026 (flat layout under either "same directory" choice; VS's own solution
 format). Next: M2–M6, S3. Six features wait for their packages to be published (M1, #689). Each spike has a time box, questions, an exit criterion and an answer slot. Record each
 answer with evidence: numbers, file:line, commands run.
@@ -265,10 +265,53 @@ All of this repo's work goes in **one PR** (owner rule), including the `MintPlay
       - The 9 ng-spark entry points used exist in the pinned 22.44.0 (`npm view … exports`).
     - **Not verified:** that these variants *start*. Starting needs the model JSON (M2 synchronizes it on the
       first run), so the security grants on Person are checked at startup only after M2.
+  - **#689 fixed, and the 6 joined (2026-11-17, owner: "make the necessary changes to let the missing packages be
+    published too").**
+    - **Cause of #689:** eight libraries are on `Microsoft.NET.Sdk.Web` with a `PackageId` but no `IsPackable`:
+      Boards, Notifications, Organizations, Search, Search.OpenSearch, OpenSearchDescription, Minification,
+      SitemapXml. The Web SDK defaults `IsPackable` to false, and the engine follows it
+      (`DotnetProjectReader.IsPackable`), so they never entered the graph. That is why the 11.0.0 release named
+      none of them. Every released Web-SDK library sets `IsPackable` explicitly (Authorization, Messaging, …).
+      - **Fix:** `<IsPackable>true</IsPackable>` in the eight. Packed locally in Release, all eight hold only `lib/`
+        and the README (no appsettings or launchSettings).
+      - **The silence:** the reader now warns when a Web-SDK project declares a `PackageId` and leaves
+        `IsPackable` to the default. The warning goes to the graph's warnings, which the run's check shows. Red→green:
+        `ProjectGraphTests.A_web_sdk_project_that_names_a_package_but_never_packs_is_reported`. Over the repository it
+        flags exactly the eight.
+    - **7 features added:** Boards, Notifications, Organizations, Search (`--site-search`), OpenSearch,
+      OpenSearchDescription and Sitemap.
+      - Minification stays out, with a new reason, `needs-prerendering`: it refuses startup without
+        `UseSparkPrerendering()`, and the template is not server-rendered.
+      - `unreleased` is now unused; `pending` is gone from the test's reason list.
+    - **`--search` is `dotnet new`'s own legacy option.** `dotnet new spark-app --search` ran `dotnet new search`,
+      a NuGet template search. The generator now refuses a flag that `dotnet new` owns. Red→green:
+      `A_flag_dotnet_new_already_owns_is_refused`.
+    - **The ng-spark floor comes from tags.** `package.json` said 22.44.0, which has no `./search` entry point
+      (checked with `npm view … exports`; 22.49.0 and 22.53.0 have it). The template now pins
+      ^<highest stable `@mintplayer/ng-spark/v*` tag reachable from HEAD> (^22.49.0 on this branch). It falls back to
+      `package.json` with SPARKTPL002 only in a clone without tags.
+    - **Wiring:**
+      - Notifications and Organizations bind their `:users` slot to "Signed-in users", as SeoTester does.
+      - `App_Data/boards.json` ships a `home` board with two tiles, the `people` query and a count of it. The client
+        shows it at `/board`.
+      - The shell's top bar gets the notification bell and the organization switcher.
+      - `/search` is the results page; `withOrganizationRoutes()` serves the invitation page.
+      - With OpenSearch, `AddSearch` uses the engine when `Search:OpenSearch:Uri` is set.
+    - **Verified:**
+      - 20 template tests pass.
+      - Three variants generated and built, all exit 0, restored from nuget.org plus a local feed of the eight
+        (Release packs, so the versions the template pins):
+        - NewServer (all seven, no client): 11 s.
+        - SearchAlone: 5 s.
+        - NewClient (all seven, `--auth authorization`, with the client): 124 s.
+      - Their appsettings.json, security.json and boards.json parse.
+    - **Pins on this branch are not the release's.** This branch predates 11.0.0, so HEAD reaches no
+      `MintPlayer.Spark.RavenDB` tag and the pin is 0.0.0-untagged (NU1603 locally). Boards and its siblings pin their
+      preview tags. On the release line the engine tags the eight first (each csproj changed here), then the pack
+      reads them.
   - **Open:**
     - a Tests project in `primaryOutputs`
     - an `App_Data` first run (M2)
-    - the 6 unreleased features, once published
 
 ### M2: `SynchronizeOnStartupIfMissing` (core, D13)
 - Add a new option in `MintPlayer.Spark`. In Development it runs the model and security synchronizers when
