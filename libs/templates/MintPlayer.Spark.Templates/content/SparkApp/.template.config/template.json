@@ -11,8 +11,10 @@
   "preferNameDirectory": true,
   "tags": { "language": "C#", "type": "solution" },
   "primaryOutputs": [
-    { "path": "SparkApp/SparkApp.csproj" },
-    { "path": "SparkApp.Library/SparkApp.Library.csproj" }
+    { "path": "SparkApp/SparkApp.csproj", "condition": "(!VsNested)" },
+    { "path": "SparkApp.Library/SparkApp.Library.csproj", "condition": "(!VsNested)" },
+    { "path": "../SparkApp/SparkApp.csproj", "condition": "(VsNested)" },
+    { "path": "../SparkApp.Library/SparkApp.Library.csproj", "condition": "(VsNested)" }
   ],
   "guids": [ "a587cfbf-0605-4d67-9334-2e85c234c343" ],
   "symbols": {
@@ -131,6 +133,8 @@
 
     "HostIdentifier": { "type": "bind", "binding": "HostIdentifier" },
     "IsCli": { "type": "computed", "value": "(HostIdentifier == \"dotnetcli\" || HostIdentifier == \"dotnetcli-preview\")" },
+    "CreateSolutionDirectory": { "type": "bind", "binding": "context:CreateSolutionDirectory", "defaultValue": "false" },
+    "VsNested": { "type": "computed", "value": "(!IsCli && (CreateSolutionDirectory == \"true\" || CreateSolutionDirectory == \"True\"))" },
 
     "skipRestore": {
       "type": "parameter", "datatype": "bool", "defaultValue": "false",
@@ -152,8 +156,23 @@
   },
   "sources": [
     {
+      "condition": "(!VsNested)",
+      "source": "./",
+      "target": "./",
       "modifiers": [
         { "condition": "(!IsCli)", "exclude": [ "SparkApp.slnx" ] },
+        { "condition": "(!HasClient)", "exclude": [ "SparkApp/ClientApp/**" ] },
+        { "condition": "(!UseControllers)", "exclude": [ "SparkApp/Controllers/**" ] },
+        { "condition": "(!UseMigrations)", "exclude": [ "SparkApp/Migrations/**" ] },
+        { "condition": "(!UseCron)", "exclude": [ "SparkApp/Jobs/**" ] }
+      ]
+    },
+    {
+      "condition": "(VsNested)",
+      "source": "./",
+      "target": "../",
+      "modifiers": [
+        { "exclude": [ "SparkApp.slnx" ] },
         { "condition": "(!HasClient)", "exclude": [ "SparkApp/ClientApp/**" ] },
         { "condition": "(!UseControllers)", "exclude": [ "SparkApp/Controllers/**" ] },
         { "condition": "(!UseMigrations)", "exclude": [ "SparkApp/Migrations/**" ] },

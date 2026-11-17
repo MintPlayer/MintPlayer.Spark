@@ -67,7 +67,18 @@ All of this repo's work goes in **one PR** (owner rule), including the `MintPlay
       `SparkApp.slnx` only when `HostIdentifier` (a `bind` symbol) is `dotnetcli` or `dotnetcli-preview`. The
       `dotnet new` CLI creates no solution, so it needs ours (`.slnx` is also what `dotnet new sln` makes from .NET
       10). VS, Rider and C# Dev Kit each write their own solution in the format the user chose. Verified on the CLI:
-      `CliCheck.slnx` was emitted with both projects. VS retest with the owner's `.sln` setting: pending.
+      `CliCheck.slnx` was emitted with both projects. VS retest with the owner's `.sln` setting: `C:\Repos\Project24`
+      got a `.sln` and no `.slnx`.
+    - **Flat layout under either VS checkbox (owner, 2026-11-17).** VS always generates into a fresh folder (maintainer,
+      dotnet/templating#5022). With "Place solution and project in the same directory" unchecked, VS puts its `.sln`
+      in `<Location>\<Solution>\` and runs the template in `<Location>\<Solution>\<Name>\`, so everything sat one level
+      below the `.sln` (`C:\Repos\Project24`). `preferNameDirectory` is not the cause: it applies only when no output
+      folder is given, and VS always gives one. **Decision:** bind `context:CreateSolutionDirectory`. When VS reports
+      it as `True`, a second `sources` entry writes with `"target": "../"` and the `primaryOutputs` move to `../`.
+      Measured with a diagnostic file (removed again): VS 2026 binds `HostIdentifier = vs`, `IsExclusive = True`,
+      `SolutionName` = the name, and `CreateSolutionDirectory` = `False` checked (`C:\Repos\Project25`) / `True`
+      unchecked (`C:\Repos\Project26`). Both came out flat: `.sln`, `.gitignore`, `Directory.Packages.props` and both
+      project folders side by side, and the `.sln` points at both projects. The CLI layout is unchanged.
   - **S1 DONE.**
 
 ### S2: Versions in template content and a same-commit feed (½ day)
