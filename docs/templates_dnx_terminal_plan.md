@@ -43,7 +43,11 @@ All of this repo's work goes in **one PR** (owner rule), including the `MintPlay
   - ⚠️ **A disabled parameter is null, not false.** An exclude condition of `(!Notifications)` did NOT exclude the
     file. The S6 generator must route every condition through a computed symbol (`X && true`), which treats null as
     false.
-  - **Visual Studio half:** _(pending, owner testing VS 2026)_
+  - **Visual Studio half (owner, latest VS 2026, 2026-11-17):**
+    - ✅ **`isEnabled` works.** Switching Store to RavenDB makes the Notifications checkbox appear, and switching away
+      makes it disappear. VS **hides** a disabled option rather than graying it out. This supersedes the owner's
+      ~2023 observation that `isEnabled` did not work.
+    - Still to report: auto-include (test 3), `isRequired` (4), `isVisible: false` (5), labels and tooltips.
 
 ### S2: Versions in template content and a same-commit feed (½ day)
 - How do the template's `PackageReference`s and the ng-spark range get the versions released in the same run?

@@ -91,8 +91,9 @@ was not re-fetched; a spike must confirm it before anything depends on it.
   Snapshot tests use `Microsoft.TemplateEngine.Authoring.TemplateVerifier` [V].
 - **`ide.host.json`** (`.template.config/`) controls which symbols Visual Studio shows (`symbolInfo`, `isVisible`)
   [V, [schema](https://www.schemastore.org/ide.host.json)].
-- **`isEnabled` conditions between symbols did not work in Visual Studio when the owner used them, around 2023**
-  (owner's evidence). Whether VS 2026 honours them is unknown (S1).
+- **`isEnabled` conditions between symbols work in the latest VS 2026.** A disabled option is hidden (S1,
+  2026-11-17). ~~They did not work around 2023 (owner)~~ is superseded. On the CLI they drop the value silently, and
+  a disabled parameter's value is null, not false.
 - **Post-actions** for run script, restore and add-to-solution exist [K]. Whether Visual Studio runs a run-script
   post-action is [K] (S1).
 - **`dnx`:**
@@ -252,7 +253,7 @@ template as a minor version. The release notes must say so.
 | D13 | `App_Data`: the app synchronizes on its first Development run if missing; the post-action and the tool also run it eagerly | post-action only; tool only | a core change; it must never overwrite | owner, grill Q13 |
 | D14 | Client: plain Angular CLI, included by default, `--no-client` | Nx; opt-in | a second ClientApp copy can drift, so CI builds it | owner, grill Q7 |
 | D15 | Feature choices generated from a `features.json` manifest, guarded by graph and coverage tests | hand-written JSON; self-describing packages | generator complexity; matrix size (S6) | owner, grill Q11 |
-| D16 | Prerequisites auto-included; hard constraints use `isEnabled` in VS and refusal on the CLI | auto-only; disable-only | VS may still ignore `isEnabled` (owner, around 2023), which falls back to refusing at Create | owner, grill Q12 |
+| D16 | Prerequisites auto-included. Hard constraints use `isEnabled` in VS: ✅ it works in VS 2026 and **hides** the option (S1, 2026-11-17, superseding the owner's ~2023 observation). On the CLI, `isEnabled` silently drops the value, so refusal there comes from the `dnx` tool's validation or the `#error` fallback | auto-only; disable-only | a CLI user's disabled flag is ignored without a message, unless the fallback is in place | owner, grill Q12; S1 |
 | D17 | Tool `MintPlayer.Spark.Cli`, command `spark` | `.Create`; `create-spark-app` only | the ID promises a general CLI | owner, grill Q8 |
 | D18 | `create-spark-app` alias via a shared commands assembly, run in process | runtime `dnx` forward; name reservation only | two tool IDs in the repo's first tool release | owner, grill Q9 |
 | D19 | v1 prompts use Spectre.Console | RazorConsole now | a later swap of the prompt layer | RazorConsole lacks a multi-select [V] |
