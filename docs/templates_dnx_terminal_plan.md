@@ -7,7 +7,7 @@ owner on 2026-11-16.
 creates cleanly from the CLI and from VS 2026 (flat layout under either "same directory" choice; VS's own solution
 format). M2 done (2026-11-17): a generated app writes its model on the first Development run and starts. This was
 checked on InMemory without sign-in and on RavenDB with local accounts, and three startup refusals in the template
-were fixed along the way. M3 done (2026-11-17): the five item templates build, synchronize and verify in a generated RavenDB app. M4 done (2026-11-17): `node tools/template-matrix.mjs`, local only (owner), 32 variants green in 629 s. Next: M5, M6, S3; pack the template only on the release line (M3 finding). The eight #689 libraries ship on the next `/release`. Each spike has a time box, questions, an exit criterion and an answer slot. Record each
+were fixed along the way. M3 done (2026-11-17): the five item templates build, synchronize and verify in a generated RavenDB app. M4 done (2026-11-17): `node tools/template-matrix.mjs`, local only (owner), 32 variants green in 629 s. S3 and M5 done (2026-11-17): `spark` and `create-spark-app` run through `dnx` from a local feed, `new` and every `add` item verified end to end. Next: M6; pack the template only on the release line (M3 finding). The eight #689 libraries ship on the next `/release`. Each spike has a time box, questions, an exit criterion and an answer slot. Record each
 answer with evidence: numbers, file:line, commands run.
 
 **Order in this repo:** S1 → S2 → S6 → M1–M4 (templates and the core option), then S3 → M5–M6 (tools and release).
@@ -182,7 +182,33 @@ All of this repo's work goes in **one PR** (owner rule), including the `MintPlay
   then `dotnet new spark-app`.
 - Check that the versioning engine, pack and publish handle tool packages; these are the repo's first.
 - **Exit:** the instantiation approach, timings, and the pipeline changes needed.
-- **Answer:** _(pending)_
+- **Answer (2026-11-17):**
+  - **Instantiation: shell out to `dotnet new`, not the in-process engine.** The template already works through the
+    CLI (M1–M4), and the CLI path is what users and the matrix run, so the tool adds no second code path. The tool reads
+    the installed version from `dotnet new uninstall` (lists packages with a `Version:` line; ~0.7 s) and, when it
+    differs from its own, runs `dotnet new install MintPlayer.Spark.Templates::<own version> --force` (`--force`
+    because reinstalling the same package otherwise exits 106). A development build (version `0.0.0-…`) uses whatever
+    is installed, or a nupkg passed as the hidden `--template`. `Microsoft.TemplateEngine.Edge` was not adopted: it
+    would add a second instantiation path and pin the tool to an engine version the SDK does not.
+  - **dnx works on a local feed:** `dotnet tool exec <id>@<v> --configfile <nuget.config> -- <args>` (the smoke used
+    a config whose packageSourceMapping sends `MintPlayer.Spark*` and `create-spark-app` to the feed). No
+    confirmation prompt appeared with redirected stdin. Measured on this machine (scratchpad smoke, cold tool cache,
+    template hive isolated through `DOTNET_CLI_HOME`):
+
+    | Step | Time |
+    |---|---|
+    | Pack template + every pinned package into the feed | 98.5 s |
+    | Pack `MintPlayer.Spark.Cli` / `create-spark-app` | 10.4 s / 7.9 s |
+    | `dnx create-spark-app Mini --store InMemory --features none --no-client --yes` (tool fetch, template install, generate, restore, synchronize) | 24.3 s |
+    | `dnx MintPlayer.Spark.Cli -- new Shop --yes --skip-npm` (RavenDB, defaults, synchronize) | 21.4 s |
+    | `spark add entity` / `actions` / `custom-action` (no sync) | 1.9 s / 2.0 s / 1.9 s |
+    | `spark add index` (with synchronize) | 12.6 s |
+    | `--spark-verify-model` on the result | 7.8 s, in sync |
+  - **Pipeline:** no change. Tool packages are ordinary nupkgs; the versioning engine takes their major from
+    `net11.0` and their label from their dependencies (all stable), so both start at `11.0.0` on the release line,
+    and the publish pushes them like any other. Both csprojs carry `0.0.0-PLACEHOLDER` and `SparkApplication=false`
+    (Directory.Build.targets treats every Exe as a Spark host and demanded the SourceGenerators reference, SPARK001).
+    What M6 must still do is pack the template on the release line (M3 finding), with the tools beside it.
 
 ## Spikes (MintPlayer.Dotnet.Tools, via Tools #18)
 - **S4: RazorConsole fit (2 days).** Find out whether overlays, a modal, absolute positioning for a draggable
@@ -453,6 +479,38 @@ All of this repo's work goes in **one PR** (owner rule), including the `MintPlay
 - Prompts use Spectre.Console (D19), with a flag for every prompt (D4).
 - Add the RavenDB probe with an InMemory fallback, the OIDC authority check, `npm install`, and the eager
   synchronize.
+- **Built (2026-11-17):**
+  - `libs/cli/MintPlayer.Spark.Cli.Commands` (not packable): `SparkCli.RunAsync` is the whole entry; the hosts
+    `libs/cli/MintPlayer.Spark.Cli` (command `spark`) and `libs/cli/create-spark-app` (prepends `new`, D18) are one
+    line each. The library compiles `FeatureManifest.cs` and embeds `features.json`, so the picker and the
+    validation read the manifest the template is generated from (D15); `FeatureManifest.Parse` was added for that.
+  - `spark new [name]`: `-o`, `--store`, `--auth`, `--oidc-authority`, `--features a,b|none`, `--no-client`,
+    `-y/--yes`, `--no-interactive`, `--skip-npm`, `--skip-sync`, hidden `--template`. It prompts (Spectre.Console,
+    D19) only for what is missing, and never with `--yes`, piped stdin or `CI` set (D4). `NewRequest.Validate` refuses
+    an unknown flag, a RavenDB feature (or a prerequisite of one) on InMemory, sign-in on InMemory, a client feature
+    with `--no-client`, OIDC without an authority; it names the prerequisites it adds. The template call switches
+    every enabled feature on or off explicitly, so the app never depends on the template's defaults matching the
+    tool's. Then: RavenDB probe (offers InMemory minus the RavenDB features, on a terminal, when sign-in is off), OIDC
+    discovery check (warns), template install (S3), `dotnet new spark-app`, `npm install`, synchronize (skipped when
+    RavenDB is down: the app synchronizes on its first start, M2).
+  - `spark add entity|actions|custom-action|lookup|index <name>`: one subcommand per item. It finds the app from the
+    app, its library or the solution directory (`SparkProject.Locate`), runs the item in the project it belongs in,
+    then makes the doc comment's edits as text (`JsonText`, `ContextEditor`: comments and layout survive, the file's
+    line ending is kept): the context root, the security right (`Administrators` unless `--group`; a well-known group
+    prints the row-filter advice), the actions.json entry. Every edit is computed before anything is written. The
+    model-changing items end with `--spark-synchronize-model`.
+  - Tests: `tests/MintPlayer.Spark.Cli.Tests`, 38 (red first): JSON text edits, the context edit, the locator, the
+    group resolution and right, the installed-version parse, the request validation and template arguments.
+- **Two fixes the smoke found (S3):**
+  - `spark add entity Invoice` failed with "Required argument missing": CliGenerator 13.1.1 names an option after
+    its alias without the dashes, and System.CommandLine 2.0 matches an option's name as a token, so `entity` was read
+    as `--entity Invoice` (`add foo bar` parsed). Fixed by one subcommand per item (each shows only its options);
+    filed as MintPlayer.Dotnet.Tools #220.
+  - The RavenDB probe said "not answering" while curl got 200: `localhost` resolves to ::1 first, something
+    swallows ::1:8080 on this machine, and HttpClient waits out its timeout instead of falling back (measured:
+    2039 ms timeout via localhost, 200 in 13 ms via 127.0.0.1). The probe now asks both at once.
+  - **M5 done.** Not covered by a test: the prompts themselves (Spectre needs a terminal) and the InMemory offer;
+    the headless paths ran in the S3 smoke.
 
 ### M6: Release wiring and docs
 - Make the pipeline handle the template and tool packages (S3).

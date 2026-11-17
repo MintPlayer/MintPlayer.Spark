@@ -20,9 +20,12 @@ public sealed class FeatureManifest
         AllowTrailingCommas = true,
     };
 
-    public static FeatureManifest Load(string path)
-        => JsonSerializer.Deserialize<FeatureManifest>(File.ReadAllText(path), Options)
-           ?? throw new InvalidOperationException($"{path} is empty.");
+    public static FeatureManifest Load(string path) => Parse(File.ReadAllText(path), path);
+
+    /// <summary>Reads a manifest's text; the <c>spark</c> tool reads the copy it embeds.</summary>
+    public static FeatureManifest Parse(string json, string source = "features.json")
+        => JsonSerializer.Deserialize<FeatureManifest>(json, Options)
+           ?? throw new InvalidOperationException($"{source} is empty.");
 }
 
 public class ManifestProject

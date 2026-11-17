@@ -303,6 +303,8 @@
     { "project": "testing/MintPlayer.Spark.Testing/MintPlayer.Spark.Testing.csproj", "reason": "not-an-app-feature" },
     { "project": "socket_extensions/MintPlayer.Dotnet.SocketExtensions/MintPlayer.Dotnet.SocketExtensions.csproj", "reason": "not-an-app-feature" },
     { "project": "templates/MintPlayer.Spark.Templates/MintPlayer.Spark.Templates.csproj", "reason": "not-an-app-feature" },
+    { "project": "cli/MintPlayer.Spark.Cli/MintPlayer.Spark.Cli.csproj", "reason": "not-an-app-feature" },
+    { "project": "cli/create-spark-app/create-spark-app.csproj", "reason": "not-an-app-feature" },
     { "project": "minification/MintPlayer.Spark.Minification/MintPlayer.Spark.Minification.csproj", "reason": "needs-prerendering" }
   ],
 

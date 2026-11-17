@@ -264,6 +264,11 @@ template as a minor version. The release notes must say so.
 - **Tool-only extras:** a RavenDB connectivity probe that offers InMemory when no server is found, an OIDC authority
   check, `npm install`, and the eager synchronize.
 - All IDs were free on nuget.org on 2026-11-16 [V].
+- **As built (M5, 2026-11-17):** `spark new [name]` and `spark add <entity|actions|custom-action|lookup|index>
+  <name>`, one subcommand per item. The tool shells out to `dotnet new` and keeps the installed template at its own
+  version (`dotnet new install …::<version> --force`, S3). `add` makes the edits the item templates' doc comments list
+  (context root, security right, actions.json entry) as text edits that keep comments and layout, then synchronizes.
+  Plan M5 and S3 hold the details and timings.
 
 ---
 
