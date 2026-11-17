@@ -13,7 +13,7 @@ public class SparkTemplateGeneratorTests
     public void Every_generated_feature_gets_a_parameter_and_a_condition()
     {
         var symbols = TemplateRepository.Symbols(Generated.TemplateJson);
-        var missing = Manifest.Features.Where(f => !f.IsHandWritten)
+        var missing = Manifest.Features.Where(f => f.HasParameter)
             .Where(f => symbols[f.Id]?["type"]?.GetValue<string>() != "parameter"
                         || symbols[f.Condition]?["type"]?.GetValue<string>() != "computed")
             .Select(f => f.Id)
@@ -25,12 +25,43 @@ public class SparkTemplateGeneratorTests
     [Fact]
     public void A_prerequisite_is_switched_on_by_its_dependents()
     {
-        var symbols = TemplateRepository.Symbols(Generated.TemplateJson);
+        var manifest = new FeatureManifest
+        {
+            Features =
+            [
+                Feature("Bus", store: "RavenDB"),
+                Feature("Mail", requires: ["Bus"], store: "RavenDB"),
+            ],
+        };
 
-        symbols["UseMessaging"]!["value"]!.GetValue<string>()
-            .Should().Be("(IsRaven && ((Messaging && true) || (IsRaven && (Mail && true))))");
-        symbols["UseMigrations"]!["value"]!.GetValue<string>()
-            .Should().Be("(IsRaven && ((Migrations && true) || HasAuth))");
+        Symbols(manifest)["UseBus"]!["value"]!.GetValue<string>()
+            .Should().Be("(IsRaven && ((Bus && true) || (IsRaven && (Mail && true))))");
+    }
+
+    [Fact]
+    public void A_runtime_requirement_switches_on_like_a_reference()
+        => TemplateRepository.Symbols(Generated.TemplateJson)["UseMessaging"]!["value"]!.GetValue<string>()
+            .Should().Contain("(IsRaven && (Replication && true))", "Replication alsoRequires Messaging");
+
+    [Fact]
+    public void A_feature_chosen_by_a_hand_written_parameter_gets_only_its_condition()
+    {
+        var manifest = new FeatureManifest
+        {
+            Features =
+            [
+                Feature("Mig"),
+                Feature("Auth", requires: ["Mig"], symbol: "HasAuth", selectedWhen: "AuthMode == \"oidc\""),
+                Feature("Dash", requires: ["Auth"]),
+            ],
+        };
+
+        var symbols = Symbols(manifest);
+        symbols.ContainsKey("Auth").Should().BeFalse("AuthMode chooses it");
+        symbols["HasAuth"]!["value"]!.GetValue<string>()
+            .Should().Be("(((AuthMode == \"oidc\") || ((Dash && true))))");
+        symbols["UseMig"]!["value"]!.GetValue<string>()
+            .Should().Be("(((Mig && true) || ((AuthMode == \"oidc\")) || ((Dash && true))))");
     }
 
     [Fact]
@@ -55,7 +86,7 @@ public class SparkTemplateGeneratorTests
         var ide = JsonNode.Parse(Generated.IdeHostJson)!["symbolInfo"]!.AsArray()
             .Select(s => s!["id"]!.GetValue<string>()).ToList();
 
-        var missing = Manifest.Features.Where(f => !f.IsHandWritten)
+        var missing = Manifest.Features.Where(f => f.HasParameter)
             .Where(f => cli[f.Id]?["longName"]?.GetValue<string>() != f.Flag || !ide.Contains(f.Id))
             .Select(f => f.Id)
             .ToList();
@@ -114,7 +145,10 @@ public class SparkTemplateGeneratorTests
         act.Should().Throw<InvalidOperationException>().Where(e => e.Message.Contains("already defines 'Store'"));
     }
 
-    private static Feature Feature(string id, string[]? requires = null, string? store = null) => new()
+    private static JsonObject Symbols(FeatureManifest manifest)
+        => TemplateRepository.Symbols(SparkTemplateGenerator.Generate(manifest, TemplateRepository.HandWritten()).TemplateJson);
+
+    private static Feature Feature(string id, string[]? requires = null, string? store = null, string? symbol = null, string? selectedWhen = null) => new()
     {
         Id = id,
         Flag = id.ToLowerInvariant(),
@@ -123,5 +157,7 @@ public class SparkTemplateGeneratorTests
         Project = $"x/{id}/{id}.csproj",
         Requires = [.. requires ?? []],
         Store = store,
+        Symbol = symbol,
+        SelectedWhen = selectedWhen,
     };
 }

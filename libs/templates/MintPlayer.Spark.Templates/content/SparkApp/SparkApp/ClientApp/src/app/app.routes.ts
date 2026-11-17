@@ -4,6 +4,9 @@ import { oidcProvider, sparkAuthRoutes, withAccount, withExternalLogin, withLoca
 //#elseif (HasAuth)
 import { sparkAuthRoutes, withAccount, withLocalLogin, withRegistration } from '@mintplayer/ng-spark/auth/routes';
 //#endif
+//#if (UseIdentityProvider)
+import { withConnectedApplications, withDeveloperRoutes, withIdentityProvider, withManagementRoutes } from '@mintplayer/ng-spark/identity-provider';
+//#endif
 import { sparkRoutes } from '@mintplayer/ng-spark/routes';
 import { ShellComponent } from './shell/shell.component';
 
@@ -19,12 +22,18 @@ export const routes: Routes = [
         withLocalLogin(),
         withRegistration(),
         withAccount(),
+//#if (UseIdentityProvider)
+        withIdentityProvider(withConnectedApplications(), withDeveloperRoutes(), withManagementRoutes()),
+//#endif
       ),
 //#elseif (HasAuth)
       ...sparkAuthRoutes(
         withLocalLogin(),
         withRegistration(),
         withAccount(),
+//#if (UseIdentityProvider)
+        withIdentityProvider(withConnectedApplications(), withDeveloperRoutes(), withManagementRoutes()),
+//#endif
       ),
 //#endif
       { path: '', redirectTo: 'home', pathMatch: 'full' },

@@ -15,12 +15,14 @@
     {
       "id": "Authorization",
       "symbol": "HasAuth",
+      "selectedWhen": "AuthMode == \"authorization\" || AuthMode == \"oidc\"",
+      "displayName": "Sign-in and authorization",
       "project": "authorization/MintPlayer.Spark.Authorization/MintPlayer.Spark.Authorization.csproj",
       "store": "RavenDB",
       "requires": [ "Migrations" ],
       "registration": "AddAuthentication",
       "client": [ "withAuth" ],
-      "$comment": "Chosen through the hand-written AuthMode choice (none/authorization/oidc), so the generator emits no parameter for it. It requires Migrations: the package ships migrations (M_202610041800, M_202610051200) that only the app's AddMigrations() runs."
+      "$comment": "Chosen through the hand-written AuthMode choice (none/authorization/oidc), so the generator emits no parameter for it; a feature that requires it still switches it on. It requires Migrations: the package ships migrations (M_202610041800, M_202610051200) that only the app's AddMigrations() runs."
     },
     {
       "id": "Migrations",
@@ -105,6 +107,106 @@
       "displayName": "Stored logs",
       "description": "Keep the application's logs and browse them in the app.",
       "registration": "AddLogs"
+    },
+    {
+      "id": "WebPush",
+      "flag": "web-push",
+      "project": "webpush/MintPlayer.Spark.WebPush/MintPlayer.Spark.WebPush.csproj",
+      "displayName": "Web push",
+      "description": "VAPID keys and Web Push delivery; Notifications uses it for browser push."
+    },
+    {
+      "id": "Contributions",
+      "flag": "contributions",
+      "project": "contributions/MintPlayer.Spark.Contributions/MintPlayer.Spark.Contributions.csproj",
+      "displayName": "Contributions",
+      "description": "Users propose changes to fields marked [Contribution]; owners accept or revert them.",
+      "store": "RavenDB",
+      "registration": "AddContributions",
+      "client": [ "withContributions" ]
+    },
+    {
+      "id": "Dashboards",
+      "flag": "dashboards",
+      "project": "dashboards/MintPlayer.Spark.Dashboards/MintPlayer.Spark.Dashboards.csproj",
+      "displayName": "Dashboards",
+      "description": "Live dashboards, starting with the database statistics one.",
+      "store": "RavenDB",
+      "requires": [ "Authorization" ],
+      "registration": "AddDashboards",
+      "client": [ "withDashboards" ]
+    },
+    {
+      "id": "IdentityProvider",
+      "flag": "identity-provider",
+      "project": "identity_provider/MintPlayer.Spark.IdentityProvider/MintPlayer.Spark.IdentityProvider.csproj",
+      "displayName": "Identity provider",
+      "description": "Make this app an OpenID Connect provider that other apps sign in against.",
+      "store": "RavenDB",
+      "requires": [ "Authorization", "Migrations" ],
+      "registration": "AddIdentityProvider"
+    },
+    {
+      "id": "Moderation",
+      "flag": "moderation",
+      "project": "moderation/MintPlayer.Spark.Moderation/MintPlayer.Spark.Moderation.csproj",
+      "displayName": "Moderation",
+      "description": "Reputation, votes, flags and review queues; the sample Person becomes moderatable.",
+      "store": "RavenDB",
+      "requires": [ "Authorization", "Cron", "Messaging" ],
+      "registration": "AddModeration",
+      "client": [ "withModeration" ]
+    },
+    {
+      "id": "Replication",
+      "flag": "replication",
+      "project": "replication/MintPlayer.Spark.Replication/MintPlayer.Spark.Replication.csproj",
+      "displayName": "Replication",
+      "description": "Receive read-only copies of other Spark modules' collections through RavenDB ETL.",
+      "store": "RavenDB",
+      "alsoRequires": [ "Messaging" ],
+      "registration": "AddReplication",
+      "appsettings": "Spark:Replication",
+      "$comment": "alsoRequires Messaging: its startup registration resolves IMessageBus, while the project references only Messaging.Abstractions."
+    },
+    {
+      "id": "Settings",
+      "flag": "settings",
+      "project": "settings/MintPlayer.Spark.Settings/MintPlayer.Spark.Settings.csproj",
+      "displayName": "Runtime settings",
+      "description": "Settings administrators change at runtime, declared in AppSettings.cs.",
+      "store": "RavenDB",
+      "requires": [ "Authorization" ],
+      "registration": "AddSettings"
+    },
+    {
+      "id": "GitHubWebhooks",
+      "flag": "github-webhooks",
+      "project": "webhooks/MintPlayer.Spark.Webhooks.GitHub/MintPlayer.Spark.Webhooks.GitHub.csproj",
+      "displayName": "GitHub webhooks",
+      "description": "Receive a GitHub App's webhooks as messages, with a sample push handler.",
+      "store": "RavenDB",
+      "alsoRequires": [ "Messaging" ],
+      "registration": "AddGithubWebhooks",
+      "appsettings": "GitHub",
+      "$comment": "alsoRequires Messaging: deliveries reach recipients through the message bus; the project references only Messaging.Abstractions."
+    },
+    {
+      "id": "GitHubDevTunnel",
+      "flag": "github-dev-tunnel",
+      "project": "webhooks/MintPlayer.Spark.Webhooks.GitHub.DevTunnel/MintPlayer.Spark.Webhooks.GitHub.DevTunnel.csproj",
+      "displayName": "GitHub webhooks dev tunnel",
+      "description": "Receive the webhooks through a smee.io channel when GitHub:SmeeChannelUrl is set.",
+      "store": "RavenDB",
+      "requires": [ "GitHubWebhooks" ],
+      "$comment": "Registered inside the AddGithubWebhooks options (AddSmeeDevTunnel), so no spark.X registration."
+    },
+    {
+      "id": "Gs1",
+      "flag": "gs1",
+      "project": "gs1/MintPlayer.Spark.Gs1/MintPlayer.Spark.Gs1.csproj",
+      "displayName": "GS1 barcodes",
+      "description": "Parse GS1 barcodes and compute check digits and SSCCs."
     }
   ],
 
@@ -130,28 +232,17 @@
     { "project": "templates/MintPlayer.Spark.Templates/MintPlayer.Spark.Templates.csproj", "reason": "not-an-app-feature" },
     { "project": "minification/MintPlayer.Spark.Minification/MintPlayer.Spark.Minification.csproj", "reason": "unreleased" },
     { "project": "sitemap/MintPlayer.Spark.SitemapXml/MintPlayer.Spark.SitemapXml.csproj", "reason": "unreleased" },
-    { "project": "boards/MintPlayer.Spark.Boards/MintPlayer.Spark.Boards.csproj", "reason": "pending" },
-    { "project": "contributions/MintPlayer.Spark.Contributions/MintPlayer.Spark.Contributions.csproj", "reason": "pending" },
-    { "project": "dashboards/MintPlayer.Spark.Dashboards/MintPlayer.Spark.Dashboards.csproj", "reason": "pending" },
-    { "project": "gs1/MintPlayer.Spark.Gs1/MintPlayer.Spark.Gs1.csproj", "reason": "pending" },
-    { "project": "identity_provider/MintPlayer.Spark.IdentityProvider/MintPlayer.Spark.IdentityProvider.csproj", "reason": "pending" },
-    { "project": "moderation/MintPlayer.Spark.Moderation/MintPlayer.Spark.Moderation.csproj", "reason": "pending" },
-    { "project": "notifications/MintPlayer.Spark.Notifications/MintPlayer.Spark.Notifications.csproj", "reason": "pending" },
-    { "project": "organizations/MintPlayer.Spark.Organizations/MintPlayer.Spark.Organizations.csproj", "reason": "pending" },
-    { "project": "replication/MintPlayer.Spark.Replication/MintPlayer.Spark.Replication.csproj", "reason": "pending" },
-    { "project": "search/MintPlayer.Spark.Search/MintPlayer.Spark.Search.csproj", "reason": "pending" },
-    { "project": "search/MintPlayer.Spark.Search.OpenSearch/MintPlayer.Spark.Search.OpenSearch.csproj", "reason": "pending" },
-    { "project": "search/MintPlayer.Spark.OpenSearchDescription/MintPlayer.Spark.OpenSearchDescription.csproj", "reason": "pending" },
-    { "project": "settings/MintPlayer.Spark.Settings/MintPlayer.Spark.Settings.csproj", "reason": "pending" },
-    { "project": "webhooks/MintPlayer.Spark.Webhooks.GitHub/MintPlayer.Spark.Webhooks.GitHub.csproj", "reason": "pending" },
-    { "project": "webhooks/MintPlayer.Spark.Webhooks.GitHub.DevTunnel/MintPlayer.Spark.Webhooks.GitHub.DevTunnel.csproj", "reason": "pending" },
-    { "project": "webpush/MintPlayer.Spark.WebPush/MintPlayer.Spark.WebPush.csproj", "reason": "pending" }
+    { "project": "search/MintPlayer.Spark.Search/MintPlayer.Spark.Search.csproj", "reason": "unreleased" },
+    { "project": "search/MintPlayer.Spark.Search.OpenSearch/MintPlayer.Spark.Search.OpenSearch.csproj", "reason": "unreleased" },
+    { "project": "search/MintPlayer.Spark.OpenSearchDescription/MintPlayer.Spark.OpenSearchDescription.csproj", "reason": "unreleased" },
+    { "project": "boards/MintPlayer.Spark.Boards/MintPlayer.Spark.Boards.csproj", "reason": "unreleased" },
+    { "project": "notifications/MintPlayer.Spark.Notifications/MintPlayer.Spark.Notifications.csproj", "reason": "unreleased" },
+    { "project": "organizations/MintPlayer.Spark.Organizations/MintPlayer.Spark.Organizations.csproj", "reason": "unreleased" }
   ],
 
   "$reasons": {
     "dependency": "Not chosen on its own: it comes in through a core package or a feature.",
     "not-an-app-feature": "Not something a generated app turns on (tooling, client SDKs, test helpers, the template itself).",
-    "unreleased": "Never tagged, so never published (#689); the template cannot pin it.",
-    "pending": "A feature the template does not offer yet (plan M1 remainder)."
+    "unreleased": "Never tagged, so never published (#689); the template cannot pin it. Search, Search.OpenSearch, OpenSearchDescription (never tagged), Boards, Notifications and Organizations (tagged preview only, never pushed to nuget.org) join as features once published: the owner asked for all six (M1)."
   }
 }

@@ -14,6 +14,19 @@ import { withSoftDelete } from '@mintplayer/ng-spark/soft-delete';
 //#if (UseHistory)
 import { withHistory } from '@mintplayer/ng-spark/history';
 //#endif
+//#if (UseDashboards)
+import { withScoreRenderers } from '@mintplayer/ng-spark/score-renderers';
+import { withDashboards, sparkDashboardRenderers } from '@mintplayer/ng-spark/dashboards';
+//#endif
+//#if (UseModeration || UseContributions)
+import { withAttributeRenderers } from '@mintplayer/ng-spark/renderers';
+//#endif
+//#if (UseModeration)
+import { withModeration, sparkModerationRenderers } from '@mintplayer/ng-spark/moderation';
+//#endif
+//#if (UseContributions)
+import { withContributions, sparkContributionRenderers } from '@mintplayer/ng-spark/contributions';
+//#endif
 
 import { routes } from './app.routes';
 
@@ -39,6 +52,26 @@ export const appConfig: ApplicationConfig = {
 //#endif
 //#if (UseHistory)
       withHistory(),
+//#endif
+//#if (UseDashboards)
+      withDashboards(),
+      withScoreRenderers([...sparkDashboardRenderers]),
+//#endif
+//#if (UseModeration)
+      withModeration(),
+//#endif
+//#if (UseContributions)
+      withContributions(),
+//#endif
+//#if (UseModeration || UseContributions)
+      withAttributeRenderers([
+//#if (UseModeration)
+        ...sparkModerationRenderers,
+//#endif
+//#if (UseContributions)
+        ...sparkContributionRenderers,
+//#endif
+      ]),
 //#endif
     ),
   ]

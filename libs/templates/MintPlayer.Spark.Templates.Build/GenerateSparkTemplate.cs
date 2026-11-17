@@ -29,7 +29,10 @@ public sealed class GenerateSparkTemplate : Task
     /// <summary>The generated files; <c>RelativePath</c> is the path under the template root.</summary>
     [Output] public ITaskItem[] GeneratedFiles { get; private set; } = [];
 
-    /// <summary>The core and feature projects, whose versions the template pins.</summary>
+    /// <summary>
+    /// The projects whose versions the template pins: core, features, and the "dependency" packages a hand-written
+    /// file may reference directly (the Library csproj takes Moderation.Abstractions for the moderatable Person).
+    /// </summary>
     [Output] public ITaskItem[] Packages { get; private set; } = [];
 
     public override bool Execute()
@@ -48,6 +51,7 @@ public sealed class GenerateSparkTemplate : Task
                 Write(HostCsproj, generated.HostCsproj),
             ];
             Packages = manifest.Core.Concat<ManifestProject>(manifest.Features)
+                .Concat(manifest.Excluded.Where(e => e.Reason == "dependency"))
                 .Select(p => (ITaskItem)new TaskItem(Path.GetFullPath(Path.Combine(LibsDirectory, p.Project))))
                 .ToArray();
             return true;

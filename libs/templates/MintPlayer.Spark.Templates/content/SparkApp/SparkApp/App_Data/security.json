@@ -1,0 +1,57 @@
+{
+  "_comment": [
+    "Who may do what. A right is '{action}/{target}' (QueryRead/Person) granted to a group; anything not granted is",
+    "refused. Group names are matched against the caller's group claims; anonymous and authenticated come from sign-in",
+    "state. Libraries grant to SLOTS ('<alias>:<slot>') that 'bindings' maps to your groups, and an unbound slot refuses",
+    "startup. --spark-synchronize-security writes every effective right to securityPosture.txt, with where it came from."
+  ],
+
+  "wellKnown": {
+    "anonymous": "00000000-0000-0000-0000-000000000000",
+    "authenticated": "00000000-0000-0000-0000-000000000001"
+  },
+
+  "groups": {
+    "00000000-0000-0000-0000-000000000000": "Anonymous visitors",
+    "00000000-0000-0000-0000-000000000001": "Signed-in users",
+//#if (UseModeration)
+    "00000000-0000-4000-8000-000000000011": "Voters",
+    "00000000-0000-4000-8000-000000000012": "Flaggers",
+    "00000000-0000-4000-8000-000000000013": "Downvoters",
+    "00000000-0000-4000-8000-000000000014": "Reviewers",
+    "00000000-0000-4000-8000-000000000015": "Moderators",
+//#endif
+    "00000000-0000-4000-8000-000000000010": "Administrators"
+  },
+
+  "bindings": {
+//#if (UseDashboards)
+    "dashboards:administrators": [ "Administrators" ],
+//#endif
+//#if (UseIdentityProvider)
+    "identity-provider:administrators": [ "Administrators" ],
+    "identity-provider:developers": [ "Administrators" ],
+//#endif
+//#if (UseModeration)
+    "moderation:voters": [ "Voters" ],
+    "moderation:flaggers": [ "Flaggers" ],
+    "moderation:downvoters": [ "Downvoters" ],
+    "moderation:reviewers": [ "Reviewers" ],
+    "moderation:moderators": [ "Moderators" ],
+//#endif
+//#if (UseSettings)
+    "settings:administrators": [ "Administrators" ],
+//#endif
+    "_comment": "The slots of the features this app was generated with."
+  },
+
+  "rights": [
+    { "key": "people", "resource": "QueryReadEditNewDelete/Person", "groupId": "@authenticated" }
+//#if (UseModeration)
+    ,
+    { "key": "people-vote", "resource": "Vote/Person", "groupId": "00000000-0000-4000-8000-000000000011" },
+    { "key": "people-flag", "resource": "Flag/Person", "groupId": "00000000-0000-4000-8000-000000000012" },
+    { "key": "people-downvote", "resource": "Downvote/Person", "groupId": "00000000-0000-4000-8000-000000000013" }
+//#endif
+  ]
+}

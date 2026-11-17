@@ -30,6 +30,30 @@ using MintPlayer.Spark.Messaging;
 #if (UseSoftDelete)
 using MintPlayer.Spark.SoftDelete;
 #endif
+#if (UseContributions)
+using MintPlayer.Spark.Contributions;
+#endif
+#if (UseDashboards)
+using MintPlayer.Spark.Dashboards;
+#endif
+#if (UseIdentityProvider)
+using MintPlayer.Spark.IdentityProvider.Extensions;
+#endif
+#if (UseModeration)
+using MintPlayer.Spark.Moderation;
+#endif
+#if (UseReplication)
+using MintPlayer.Spark.Replication;
+#endif
+#if (UseSettings)
+using MintPlayer.Spark.Settings;
+#endif
+#if (UseGitHubWebhooks)
+using MintPlayer.Spark.Webhooks.GitHub.Extensions;
+#endif
+#if (UseGitHubDevTunnel)
+using MintPlayer.Spark.Webhooks.GitHub.DevTunnel.Extensions;
+#endif
 using SparkApp;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -90,6 +114,51 @@ builder.Services.AddSpark(builder.Configuration, spark =>
 #if (UseLogging)
     spark.AddLogs();
 #endif
+#if (UseContributions)
+    // Users propose changes to the properties you mark [Contribution]; the owner accepts or reverts them.
+    spark.AddContributions();
+#endif
+#if (UseDashboards)
+    // Ships the database statistics dashboard; security.json grants it to Administrators (dashboards:administrators).
+    spark.AddDashboards();
+#endif
+#if (UseIdentityProvider)
+    // An OpenID Connect provider, configured from Spark:IdentityProvider. Outside Development, set its Issuer.
+    spark.AddIdentityProvider();
+#endif
+#if (UseModeration)
+    // Reputation, privileges and review queues, tuned in App_Data/moderation.json. security.json binds each
+    // privilege's slot to a group and grants it the actions it earns.
+    spark.AddModeration<SparkUser>();
+#endif
+#if (UseReplication)
+    // Read-only copies of other Spark modules' collections: the [Replicated] classes in the entity library, with
+    // the module's name, URL and peers from Spark:Replication.
+    spark.AddReplication(options => options.AssembliesToScan = [typeof(SparkApp.Library.Entities.Person).Assembly]);
+#endif
+#if (UseSettings)
+    // The settings declared in AppSettings.cs, changed at runtime by Administrators (settings:administrators).
+    spark.AddSettings(typeof(AppSettings));
+#endif
+#if (UseGitHubWebhooks)
+
+    // A GitHub App's webhooks at /api/github/webhooks, handed to the recipients in Webhooks/ (registered by AddRecipients).
+    spark.AddRecipients();
+    spark.AddGithubWebhooks(options =>
+    {
+        options.WebhookSecret = builder.Configuration["GitHub:WebhookSecret"] ?? string.Empty;
+        options.ClientId = builder.Configuration["GitHub:ClientId"];
+        options.PrivateKeyPath = builder.Configuration["GitHub:PrivateKeyPath"];
+        if (long.TryParse(builder.Configuration["GitHub:AppId"], out var appId))
+            options.ProductionAppId = appId;
+#if (UseGitHubDevTunnel)
+
+        // Development: relay a smee.io channel (set as the App's webhook URL) into the endpoint above.
+        if (builder.Environment.IsDevelopment() && builder.Configuration["GitHub:SmeeChannelUrl"] is { Length: > 0 } smee)
+            options.AddSmeeDevTunnel(smee);
+#endif
+    });
+#endif
 #if (UseControllers)
 
     // Controllers are mounted through Spark, so they share its authentication, antiforgery and [SparkAuthorize].
@@ -107,7 +176,7 @@ builder.Services.AddSpaStaticFilesImproved(configuration =>
 
 // Build steps, not run modes: each writes or checks a file under App_Data and returns before Build().
 //   --spark-synchronize-model     App_Data/Model/*.json from the entity classes
-//   --spark-synchronize-security  a starting App_Data/security.json (never overwrites)
+//   --spark-init-security         a starting App_Data/security.json (never overwrites)
 //   --spark-verify-security       fails when the rights reachable without signing in have changed
 if (builder.SynchronizeSparkModelsIfRequested(args))
     return;

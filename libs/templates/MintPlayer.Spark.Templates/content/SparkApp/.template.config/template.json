@@ -55,7 +55,6 @@
       "defaultValue": "",
       "replaces": "OIDC_AUTHORITY_PLACEHOLDER"
     },
-    "HasAuth": { "type": "computed", "value": "(IsRaven && (AuthMode == \"authorization\" || AuthMode == \"oidc\"))" },
     "HasOidc": { "type": "computed", "value": "(IsRaven && AuthMode == \"oidc\")" },
 
     "NoClient": {
@@ -100,7 +99,10 @@
         { "condition": "(!HasClient)", "exclude": [ "SparkApp/ClientApp/**" ] },
         { "condition": "(!UseControllers)", "exclude": [ "SparkApp/Controllers/**" ] },
         { "condition": "(!UseMigrations)", "exclude": [ "SparkApp/Migrations/**" ] },
-        { "condition": "(!UseCron)", "exclude": [ "SparkApp/Jobs/**" ] }
+        { "condition": "(!UseCron)", "exclude": [ "SparkApp/Jobs/**" ] },
+        { "condition": "(!UseSettings)", "exclude": [ "SparkApp/AppSettings.cs" ] },
+        { "condition": "(!UseGitHubWebhooks)", "exclude": [ "SparkApp/Webhooks/**" ] },
+        { "condition": "(!HasAuth)", "exclude": [ "SparkApp/App_Data/security.json" ] }
       ]
     },
     {
@@ -112,7 +114,10 @@
         { "condition": "(!HasClient)", "exclude": [ "SparkApp/ClientApp/**" ] },
         { "condition": "(!UseControllers)", "exclude": [ "SparkApp/Controllers/**" ] },
         { "condition": "(!UseMigrations)", "exclude": [ "SparkApp/Migrations/**" ] },
-        { "condition": "(!UseCron)", "exclude": [ "SparkApp/Jobs/**" ] }
+        { "condition": "(!UseCron)", "exclude": [ "SparkApp/Jobs/**" ] },
+        { "condition": "(!UseSettings)", "exclude": [ "SparkApp/AppSettings.cs" ] },
+        { "condition": "(!UseGitHubWebhooks)", "exclude": [ "SparkApp/Webhooks/**" ] },
+        { "condition": "(!HasAuth)", "exclude": [ "SparkApp/App_Data/security.json" ] }
       ]
     }
   ],

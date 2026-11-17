@@ -3,9 +3,9 @@
 **PRD:** [templates_dnx_terminal_PRD.md](templates_dnx_terminal_PRD.md). Decisions D1–D19 were locked with the
 owner on 2026-11-16.
 
-**Status:** S1, S2 and S6 (shape) done; M1 in progress (2026-11-17). The `spark-app` first cut builds in four variants and
+**Status:** S1, S2 and S6 (shape) done; M1 done except the 6 unpublished features (2026-11-17). The `spark-app` first cut builds in four variants and
 creates cleanly from the CLI and from VS 2026 (flat layout under either "same directory" choice; VS's own solution
-format). Next: the rest of M1 (the 16 pending features), M2–M6, S3. Each spike has a time box, questions, an exit criterion and an answer slot. Record each
+format). Next: M2–M6, S3. Six features wait for their packages to be published (M1, #689). Each spike has a time box, questions, an exit criterion and an answer slot. Record each
 answer with evidence: numbers, file:line, commands run.
 
 **Order in this repo:** S1 → S2 → S6 → M1–M4 (templates and the core option), then S3 → M5–M6 (tools and release).
@@ -137,7 +137,7 @@ All of this repo's work goes in **one PR** (owner rule), including the `MintPlay
 - **Answer (2026-11-17, partly):**
   - **Shape (owner):** generate the data, guard the code; pack time only, no generated file in git.
     - `libs/templates/MintPlayer.Spark.Templates/features.json`: `core` (always pinned), `features` and `excluded`
-      (with a reason: `dependency`, `not-an-app-feature`, `unreleased`, `pending`). Per feature: `id`, `flag`,
+      (with a reason: `dependency`, `not-an-app-feature`, `unreleased`; `pending` was retired with the M1 remainder). Per feature: `id`, `flag`,
       `project` (relative to `libs/`; its file name is the package id), `displayName`, `description`, `default`,
       `store`, `needsClient`, `requires`, `registration`, `client`, `appsettings`. A feature with `symbol` is chosen
       by a hand-written symbol (Authorization: `HasAuth`, from the AuthMode choice), so no parameter is generated.
@@ -217,11 +217,58 @@ All of this repo's work goes in **one PR** (owner rule), including the `MintPlay
   - **For S6:** every RavenDB-only feature already declares it with `[SparkRequiresStore(..., Provider = RavenDb)]`
     on its registration method, 21 sites including Authorization. The manifest generator can read the store
     requirement from there instead of restating it.
+  - **M1 remainder (2026-11-17).** The owner asked for all 16 `pending` libraries: the clear-cut ones plus
+    Replication, GitHub webhooks, OpenSearch and GS1.
+    - **10 became features:** WebPush, Contributions, Dashboards, IdentityProvider, Moderation, Replication,
+      Settings, GitHubWebhooks, GitHubDevTunnel and Gs1.
+    - **6 are `unreleased`:** none of them is on nuget.org, so a generated app could not restore them.
+      - Search, Search.OpenSearch and OpenSearchDescription were never tagged.
+      - Boards, Notifications and Organizations have only preview tags, never pushed. The nuget.org flat
+        container returns no index for them (#689).
+      - Their wiring was written, then taken out again, because every `#if` must name a defined symbol. They
+        join once published.
+    - **Authorization can now be switched on by a dependent.** Dashboards, Settings, IdentityProvider and
+      Moderation reference it.
+      - A feature may have `selectedWhen` (Authorization:
+        `AuthMode == "authorization" || AuthMode == "oidc"`). The generator then emits no parameter, but still
+        generates its condition (`HasAuth`) as selected || dependents.
+      - The hand-written `HasAuth` is gone. Proven by the `SettingsAlone` variant: `--settings` with the default
+        `--auth none` builds with Authorization referenced.
+    - **`alsoRequires`:** some features need another feature at runtime without referencing its package.
+      Replication resolves `IMessageBus`; GitHub webhooks deliver to recipients through the bus. Both reference
+      only Messaging.Abstractions. They `alsoRequire` Messaging. The graph test keeps `requires` exact.
+    - **Pins:** the template now also pins the `dependency` packages. The Library csproj references
+      Moderation.Abstractions for the moderatable sample Person.
+    - **`App_Data/security.json`** now ships when `HasAuth` is on. Before this, the auth variants had none, and a
+      missing file refuses startup.
+      - It declares Administrators and binds every chosen library's slots (an unbound slot refuses startup).
+      - With Moderation it adds its five groups, plus Vote/Flag/Downvote grants on Person, because the startup
+        check refuses a privilege group with no grant (`ModerationStartupCheck.cs:118`).
+      - The loader is strict JSON (`SparkJson.cs:228`). Each conditional binding therefore ends with a comma,
+        and a `_comment` annotation (`IsAnnotation`, `SparkLayers.cs:368`) closes the object.
+    - **Samples:** `AppSettings.cs` (Settings refuses a type with no `SparkSetting`) and
+      `Webhooks/GitHubEventsRecipient.cs`. `appsettings.json` gets `GitHub` and `Spark:Replication` placeholders.
+      The client gets `withDashboards`/`withModeration`/`withContributions` and their renderers, plus the
+      identity-provider routes.
+    - **Fixed: the template's own version leaked into its pins.** The `MSBuild` task passes global properties
+      through, so `dotnet pack -p:Version=11.0.0` pinned every package at 11.0.0. The S6 runs passed only because
+      every package there had an 11.0.0. Here, preview-only Webhooks.GitHub failed restore with NU1102. Fixed with
+      `RemoveProperties`; it now pins `11.0.0-preview.112`.
+    - **Verified:**
+      - 19 template tests pass.
+      - Packed and built four variants, all exit 0:
+        - AllServer (every new feature, `--auth oidc`, no client): 19 s.
+        - SettingsAlone: 6 s.
+        - WebhooksAlone: 6 s.
+        - AllClient (every new feature, `--auth authorization`, with the client): 130 s.
+      - The generated `appsettings.json` and `security.json` parse.
+      - The 9 ng-spark entry points used exist in the pinned 22.44.0 (`npm view … exports`).
+    - **Not verified:** that these variants *start*. Starting needs the model JSON (M2 synchronizes it on the
+      first run), so the security grants on Person are checked at startup only after M2.
   - **Open:**
-    - `features.json` and its generator (S6)
-    - the client wiring of the remaining ng-spark entry points
     - a Tests project in `primaryOutputs`
     - an `App_Data` first run (M2)
+    - the 6 unreleased features, once published
 
 ### M2: `SynchronizeOnStartupIfMissing` (core, D13)
 - Add a new option in `MintPlayer.Spark`. In Development it runs the model and security synchronizers when

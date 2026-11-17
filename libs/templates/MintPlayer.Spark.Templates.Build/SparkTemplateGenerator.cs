@@ -30,21 +30,21 @@ public static class SparkTemplateGenerator
         var symbols = template["symbols"]!.AsObject();
         Validate(manifest, symbols);
 
-        foreach (var feature in manifest.Features.Where(f => !f.IsHandWritten))
+        foreach (var feature in manifest.Features.Where(f => f.HasParameter))
             symbols[feature.Id] = Parameter(manifest, feature);
-        foreach (var feature in manifest.Features.Where(f => !f.IsHandWritten))
+        foreach (var feature in manifest.Features)
             symbols[feature.Condition] = new JsonObject { ["type"] = "computed", ["value"] = UseExpression(manifest, feature) };
 
         var ide = JsonNode.Parse(hand.IdeHostJson)!.AsObject();
         var ideSymbols = ide["symbolInfo"]!.AsArray();
         var firstHidden = ideSymbols.Select((s, i) => (s, i)).FirstOrDefault(x => x.s?["isVisible"]?.GetValue<bool>() == false);
         var insertAt = firstHidden.s is null ? ideSymbols.Count : firstHidden.i;
-        foreach (var feature in manifest.Features.Where(f => !f.IsHandWritten))
+        foreach (var feature in manifest.Features.Where(f => f.HasParameter))
             ideSymbols.Insert(insertAt++, new JsonObject { ["id"] = feature.Id, ["isVisible"] = true });
 
         var cli = JsonNode.Parse(hand.CliHostJson)!.AsObject();
         var cliSymbols = cli["symbolInfo"]!.AsObject();
-        foreach (var feature in manifest.Features.Where(f => !f.IsHandWritten))
+        foreach (var feature in manifest.Features.Where(f => f.HasParameter))
             cliSymbols[feature.Id] = new JsonObject { ["longName"] = feature.Flag, ["shortName"] = "" };
 
         return new TemplateFiles(
@@ -60,8 +60,8 @@ public static class SparkTemplateGenerator
     /// </summary>
     public static string UseExpression(FeatureManifest manifest, Feature feature)
     {
-        var terms = new List<string> { $"({feature.Id} && true)" };
-        terms.AddRange(Dependents(manifest, feature).Select(d => d.IsHandWritten ? d.Symbol! : $"({Guarded(d, $"({d.Id} && true)")})"));
+        var terms = new List<string> { feature.Selected };
+        terms.AddRange(Dependents(manifest, feature).Select(d => $"({Guarded(d, d.Selected)})"));
         return $"({Guarded(feature, terms.Count == 1 ? terms[0] : $"({string.Join(" || ", terms)})")})";
     }
 
@@ -85,11 +85,11 @@ public static class SparkTemplateGenerator
     private static HashSet<string> Closure(FeatureManifest manifest, Feature feature)
     {
         var seen = new HashSet<string>();
-        var stack = new Stack<string>(feature.Requires);
+        var stack = new Stack<string>(feature.AllRequires);
         while (stack.TryPop(out var id))
         {
             if (!seen.Add(id)) continue;
-            foreach (var next in manifest.Features.Single(f => f.Id == id).Requires) stack.Push(next);
+            foreach (var next in manifest.Features.Single(f => f.Id == id).AllRequires) stack.Push(next);
         }
         return seen;
     }
@@ -99,8 +99,8 @@ public static class SparkTemplateGenerator
         var description = new StringBuilder($"{feature.Description!.TrimEnd('.')} ({feature.PackageId}).");
         if (feature.Store is not null) description.Append($" Needs {feature.Store}.");
         if (feature.NeedsClient) description.Append(" Needs the Angular client.");
-        if (feature.Requires.Count > 0)
-            description.Append($" Turns on {string.Join(", ", feature.Requires.Select(id => Name(manifest, id)))}.");
+        if (feature.AllRequires.Any())
+            description.Append($" Turns on {string.Join(", ", feature.AllRequires.Select(id => Name(manifest, id)))}.");
 
         var parameter = new JsonObject
         {
@@ -155,21 +155,14 @@ public static class SparkTemplateGenerator
         {
             if (feature.Store is not (null or "RavenDB" or "InMemory"))
                 errors.Add($"{feature.Id}: store '{feature.Store}' is not RavenDB or InMemory.");
-            foreach (var required in feature.Requires.Where(r => !ids.Contains(r)))
+            foreach (var required in feature.AllRequires.Where(r => !ids.Contains(r)))
                 errors.Add($"{feature.Id} requires '{required}', which is not a feature.");
 
-            if (feature.IsHandWritten)
-            {
-                if (!handSymbols.ContainsKey(feature.Symbol!))
-                    errors.Add($"{feature.Id}: its symbol '{feature.Symbol}' is not in the hand-written template.json.");
-            }
-            else
-            {
-                if (string.IsNullOrWhiteSpace(feature.Flag) || string.IsNullOrWhiteSpace(feature.DisplayName) || string.IsNullOrWhiteSpace(feature.Description))
-                    errors.Add($"{feature.Id}: a generated feature needs flag, displayName and description.");
-                foreach (var name in new[] { feature.Id, feature.Condition }.Where(handSymbols.ContainsKey))
-                    errors.Add($"{feature.Id}: the hand-written template.json already defines '{name}', which the generator owns.");
-            }
+            if (feature.HasParameter && (string.IsNullOrWhiteSpace(feature.Flag) || string.IsNullOrWhiteSpace(feature.DisplayName) || string.IsNullOrWhiteSpace(feature.Description)))
+                errors.Add($"{feature.Id}: a feature with a generated parameter needs flag, displayName and description.");
+            var owned = feature.HasParameter ? new[] { feature.Id, feature.Condition } : [feature.Condition];
+            foreach (var name in owned.Where(handSymbols.ContainsKey))
+                errors.Add($"{feature.Id}: the hand-written template.json already defines '{name}', which the generator owns.");
         }
         if (errors.Count > 0) throw new InvalidOperationException(string.Join(Environment.NewLine, errors));
 
@@ -179,7 +172,7 @@ public static class SparkTemplateGenerator
         {
             if (Closure(manifest, feature).Contains(feature.Id))
                 errors.Add($"{feature.Id} requires itself through its prerequisites.");
-            foreach (var required in feature.Requires.Select(r => manifest.Features.Single(f => f.Id == r)))
+            foreach (var required in feature.AllRequires.Select(r => manifest.Features.Single(f => f.Id == r)))
             {
                 if (required.Store is not null && required.Store != feature.Store)
                     errors.Add($"{feature.Id} requires {required.Id}, which needs {required.Store}; {feature.Id} must declare that store too.");

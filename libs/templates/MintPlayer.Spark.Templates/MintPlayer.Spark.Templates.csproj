@@ -87,9 +87,13 @@
 			<Content Include="@(_SparkTemplateGeneratedFile)" PackagePath="content\SparkApp\%(_SparkTemplateGeneratedFile.RelativePath)" />
 		</ItemGroup>
 		<!-- MintPlayerVersioning first: _GetProjectVersion only reads PackageVersion, which the versioning target sets.
-		     Debug skips the tags (Directory.Build.targets), so a Debug pack pins 0.0.0-PLACEHOLDER: use Release. -->
+		     Debug skips the tags (Directory.Build.targets), so a Debug pack pins 0.0.0-PLACEHOLDER: use Release.
+		     RemoveProperties: global properties flow into these calls, so `dotnet pack -p:Version=X` of the template
+		     pinned every package at X (found in M1: the preview-only Webhooks.GitHub was pinned 11.0.0, which does not
+		     exist, and restore failed with NU1102). -->
 		<MSBuild Projects="@(SparkTemplatePackage)" Targets="MintPlayerVersioning;_GetProjectVersion"
-		         Properties="Configuration=$(Configuration)" BuildInParallel="$(BuildInParallel)">
+		         Properties="Configuration=$(Configuration)" RemoveProperties="Version;PackageVersion;VersionPrefix;VersionSuffix"
+		         BuildInParallel="$(BuildInParallel)">
 			<Output TaskParameter="TargetOutputs" ItemName="_SparkTemplateResolved" />
 		</MSBuild>
 		<Error Condition="'@(_SparkTemplateResolved->Count())' != '@(SparkTemplatePackage->Count())'"
