@@ -47,7 +47,17 @@ All of this repo's work goes in **one PR** (owner rule), including the `MintPlay
     - ✅ **`isEnabled` works.** Switching Store to RavenDB makes the Notifications checkbox appear, and switching away
       makes it disappear. VS **hides** a disabled option rather than graying it out. This supersedes the owner's
       ~2023 observation that `isEnabled` did not work.
-    - Still to report: auto-include (test 3), `isRequired` (4), `isVisible: false` (5), labels and tooltips.
+    - ✅ **`ide.host.json` `isVisible: false` hides an option** (test 5).
+    - ❌ **VS does not enforce a conditional `isRequired`.** The OIDC authority field appears for oidc, but a blank
+      value is accepted (test 4). Required values must therefore have a usable default or placeholder, and the app
+      must report a missing value at startup.
+    - ⚠️ **A symbol named `Auth` appeared twice.** VS showed its own "Authentication type" dropdown (with only
+      "None") next to ours. This looks like a clash with VS's built-in auth option, inferred and not verified. The
+      symbol was renamed to `AuthMode`; retest pending. **The manifest generator must avoid VS's reserved symbol
+      names** (`auth`, `Framework`, `langVersion`, …), each to be confirmed.
+    - ❌→fix: **blank solution** (test 3). The template had no `primaryOutputs`, and VS adds only the listed projects
+      to the solution. `spark-app` must list every project (host, Library, Tests) in `primaryOutputs`. Retest
+      pending, along with auto-include and labels.
 
 ### S2: Versions in template content and a same-commit feed (½ day)
 - How do the template's `PackageReference`s and the ng-spark range get the versions released in the same run?
