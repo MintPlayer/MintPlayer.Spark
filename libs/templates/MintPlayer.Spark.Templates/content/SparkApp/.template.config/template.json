@@ -129,6 +129,9 @@
     "UseSoftDelete": { "type": "computed", "value": "(IsRaven && SoftDelete && true)" },
     "UseMcp": { "type": "computed", "value": "(IsRaven && Mcp && true)" },
 
+    "HostIdentifier": { "type": "bind", "binding": "HostIdentifier" },
+    "IsCli": { "type": "computed", "value": "(HostIdentifier == \"dotnetcli\" || HostIdentifier == \"dotnetcli-preview\")" },
+
     "skipRestore": {
       "type": "parameter", "datatype": "bool", "defaultValue": "false",
       "displayName": "Skip restore",
@@ -150,6 +153,7 @@
   "sources": [
     {
       "modifiers": [
+        { "condition": "(!IsCli)", "exclude": [ "SparkApp.slnx" ] },
         { "condition": "(!HasClient)", "exclude": [ "SparkApp/ClientApp/**" ] },
         { "condition": "(!UseControllers)", "exclude": [ "SparkApp/Controllers/**" ] },
         { "condition": "(!UseMigrations)", "exclude": [ "SparkApp/Migrations/**" ] },

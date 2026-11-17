@@ -61,6 +61,13 @@ All of this repo's work goes in **one PR** (owner rule), including the `MintPlay
       pulled it in. The authority was blank (`''`), which confirms VS doesn't enforce `isRequired`.
     - The second Authentication dropdown was not reported after the rename to `AuthMode`. The clash is taken as
       fixed, so the generator must avoid symbol ids that VS treats as its own.
+    - **The solution file belongs to the host (owner, 2026-11-17, `C:\Repos\Project23`).** VS 2026 writes its own
+      solution around `primaryOutputs`, in the format its "Default solution file format" option names (`.sln` on the
+      owner's machine). The template's `SparkApp.slnx` did not appear in the output. **Decision:** the template ships
+      `SparkApp.slnx` only when `HostIdentifier` (a `bind` symbol) is `dotnetcli` or `dotnetcli-preview`. The
+      `dotnet new` CLI creates no solution, so it needs ours (`.slnx` is also what `dotnet new sln` makes from .NET
+      10). VS, Rider and C# Dev Kit each write their own solution in the format the user chose. Verified on the CLI:
+      `CliCheck.slnx` was emitted with both projects. VS retest with the owner's `.sln` setting: pending.
   - **S1 DONE.**
 
 ### S2: Versions in template content and a same-commit feed (½ day)

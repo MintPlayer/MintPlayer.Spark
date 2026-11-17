@@ -17,6 +17,9 @@ host starts the Angular dev server itself and proxies it. Node.js must be instal
 A Spark host, an entity library and an Angular client. The template pins every Spark package in
 `Directory.Packages.props`, at the versions released with it.
 
+The solution file follows your tools. `dotnet new` writes `MyApp.slnx`. Visual Studio, Rider and C# Dev Kit create
+the solution themselves, in the format their own settings choose (`.sln` or `.slnx`).
+
 | Option | Values | Default | Notes |
 |---|---|---|---|
 | `--store` | `RavenDB`, `InMemory` | `RavenDB` | `--auth` and the options marked RavenDB need it. |
