@@ -30,7 +30,20 @@ All of this repo's work goes in **one PR** (owner rule), including the `MintPlay
   - a behaviour table per host
   - D16's final form: `isEnabled`, or refusal at Create
   - D13's post-action viability
-- **Answer:** _(pending)_
+- **Answer (CLI half, 2026-11-17):** recorded with the test template in `C:\Repos\TemplateTest`, on SDK 11.0.100,
+  using a throwaway hive.
+  - **`isEnabled` works on the CLI, but it drops a disabled value instead of refusing it.** `--Notifications` with
+    Store None generated Notifications off, with exit 0 and no message. D16's "refuse on the CLI" therefore needs
+    something other than `isEnabled`. Options: the `dnx` tool validates first, or a computed `InvalidCombo` emits an
+    `#error`.
+  - **`isRequired` with a condition works.** `--Auth oidc` without `--OidcAuthority` returned "Missing mandatory
+    option(s)", exit 102.
+  - **Computed symbols auto-include prerequisites.** `MessagingEffective = (Messaging || Notifications)` generated
+    `Messaging.cs`.
+  - ⚠️ **A disabled parameter is null, not false.** An exclude condition of `(!Notifications)` did NOT exclude the
+    file. The S6 generator must route every condition through a computed symbol (`X && true`), which treats null as
+    false.
+  - **Visual Studio half:** _(pending, owner testing VS 2026)_
 
 ### S2: Versions in template content and a same-commit feed (½ day)
 - How do the template's `PackageReference`s and the ng-spark range get the versions released in the same run?
