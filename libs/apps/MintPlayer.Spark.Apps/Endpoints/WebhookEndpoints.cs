@@ -90,15 +90,15 @@ internal sealed partial class ListWebhookEndpoints : IGetEndpoint
 {
     public static string Path => "/webhooks/endpoints";
 
+    [QueryParam("ownerKind")] public string? OwnerKind { get; set; }
+    [QueryParam("ownerKey")] public string? OwnerKey { get; set; }
+
     [Inject] private readonly WebhookEndpointManager manager;
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
-    {
-        if (AppsHttp.UserId(httpContext) is not { } userId)
-            return TypedResults.Unauthorized();
-        var query = httpContext.Request.Query;
-        return AppsHttp.ToResult(await manager.ListAsync(query["ownerKind"], query["ownerKey"], userId, httpContext.RequestAborted));
-    }
+        => AppsHttp.UserId(httpContext) is { } userId
+            ? AppsHttp.ToResult(await manager.ListAsync(OwnerKind, OwnerKey, userId, httpContext.RequestAborted))
+            : TypedResults.Unauthorized();
 }
 
 /// <summary><c>POST /spark/apps/webhooks/endpoints</c>: registers a webhook; the answer holds its secret, shown this once.</summary>
@@ -209,15 +209,15 @@ internal sealed partial class ListWebhookDeliveries : IGetEndpoint
 {
     public static string Path => "/webhooks/deliveries";
 
+    [QueryParam("endpointId")] public string? EndpointId { get; set; }
+    [QueryParam("after")] public string? After { get; set; }
+
     [Inject] private readonly WebhookEndpointManager manager;
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
-    {
-        if (AppsHttp.UserId(httpContext) is not { } userId)
-            return TypedResults.Unauthorized();
-        var query = httpContext.Request.Query;
-        return AppsHttp.ToResult(await manager.ListDeliveriesAsync(query["endpointId"], query["after"], 50, userId, httpContext.RequestAborted));
-    }
+        => AppsHttp.UserId(httpContext) is { } userId
+            ? AppsHttp.ToResult(await manager.ListDeliveriesAsync(EndpointId, After, 50, userId, httpContext.RequestAborted))
+            : TypedResults.Unauthorized();
 }
 
 /// <summary><c>POST /spark/apps/webhooks/deliveries/redeliver</c>: sends a logged delivery again with the same <c>webhook-id</c>.</summary>

@@ -14,11 +14,13 @@ internal sealed partial class GetAppInstallPrompt : IGetEndpoint
 
     static bool IEndpointBase.IsEnabled(IServiceProvider services) => SparkAppsFeature.IsOn(services);
 
+    [QueryParam("slug")] public string? Slug { get; set; }
+
     [Inject] private readonly AppInstallationManager manager;
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
         => AppsHttp.UserId(httpContext) is { } userId
-            ? AppsHttp.ToResult(await manager.PromptAsync(httpContext.Request.Query["slug"], userId, httpContext.RequestAborted))
+            ? AppsHttp.ToResult(await manager.PromptAsync(Slug, userId, httpContext.RequestAborted))
             : TypedResults.Unauthorized();
 }
 
@@ -49,15 +51,15 @@ internal sealed partial class ListAppInstallations : IGetEndpoint
 
     static bool IEndpointBase.IsEnabled(IServiceProvider services) => SparkAppsFeature.IsOn(services);
 
+    [QueryParam("targetKind")] public string? TargetKind { get; set; }
+    [QueryParam("targetKey")] public string? TargetKey { get; set; }
+
     [Inject] private readonly AppInstallationManager manager;
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
-    {
-        if (AppsHttp.UserId(httpContext) is not { } userId)
-            return TypedResults.Unauthorized();
-        var query = httpContext.Request.Query;
-        return AppsHttp.ToResult(await manager.ListForTargetAsync(query["targetKind"], query["targetKey"], userId, httpContext.RequestAborted));
-    }
+        => AppsHttp.UserId(httpContext) is { } userId
+            ? AppsHttp.ToResult(await manager.ListForTargetAsync(TargetKind, TargetKey, userId, httpContext.RequestAborted))
+            : TypedResults.Unauthorized();
 }
 
 /// <summary><c>GET /spark/apps/apps/installations?slug=…</c>: an App's installations, to its managers.</summary>
@@ -68,11 +70,13 @@ internal sealed partial class ListSparkAppInstallations : IGetEndpoint
 
     static bool IEndpointBase.IsEnabled(IServiceProvider services) => SparkAppsFeature.IsOn(services);
 
+    [QueryParam("slug")] public string? Slug { get; set; }
+
     [Inject] private readonly AppInstallationManager manager;
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
         => AppsHttp.UserId(httpContext) is { } userId
-            ? AppsHttp.ToResult(await manager.ListForAppAsync(httpContext.Request.Query["slug"], userId, httpContext.RequestAborted))
+            ? AppsHttp.ToResult(await manager.ListForAppAsync(Slug, userId, httpContext.RequestAborted))
             : TypedResults.Unauthorized();
 }
 

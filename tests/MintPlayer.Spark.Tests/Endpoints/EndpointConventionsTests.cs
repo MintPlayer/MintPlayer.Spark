@@ -128,6 +128,8 @@ public class EndpointConventionsTests
         new("SparkProofOfPossession", "resource-server token checks (DPoP, cnf) called from the JwtBearer events and the introspection handler, which are not endpoints"),
         // boards (#530)
         new("BoardResults", "maps a BoardSaveResult to its status (200/404/401/403/409/400), shared by the save and reset endpoints; a pure function of the value passed in, maps no route"),
+        // apps (#691)
+        new("AppsHttp", "the /spark/apps endpoints' shared caller id (the NameIdentifier claim), WebhookResult → 200/400/404/409 mapping and antiforgery metadata; pure functions of the values passed in, maps no route"),
         // mcp (MCP PRD D3, D15): the /mcp endpoint is the SDK's, mapped through MapMcp, not a generator endpoint
         new("McpOrigin", "the Origin rule the /mcp gate middleware applies (D3); a pure function of the request headers and options, maps no route"),
         new("McpProtectedResource", "the RFC 9728 resource URL, challenge and document shared by the gate middleware and the two metadata endpoints; its services arrive as arguments, maps no route"),
@@ -165,6 +167,10 @@ public class EndpointConventionsTests
         new("SparkIdentityProviderExtensions.cs", "Map",
             "not a route: OidcUserEndpoints.Map closes the user-generic /connect endpoints and maps them "
             + "through MapEndpoint<T>()"),
+        new("WebhookReceiverEndpoints.cs", "MapPost",
+            "#691 D36 (docs/apps_webhooks_PRD.md): MintPlayer.Webhooks.Receiver.AspNetCore is a standalone package for any ASP.NET Core app (no "
+            + "Spark, no endpoint generator), MapWebhookReceiver takes the caller's route pattern, and the signature "
+            + "is checked over the raw body bytes before anything is bound, as for MapGitHubWebhooks"),
         new("Program.cs", "MapHealthChecks",
             "owner preference (2026-10-22): an application's /health is ASP.NET Core's health checks, not a "
             + "hand-written endpoint class"),

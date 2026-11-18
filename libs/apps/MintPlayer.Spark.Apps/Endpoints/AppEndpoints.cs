@@ -22,15 +22,15 @@ internal sealed partial class ListSparkApps : IGetEndpoint
 
     static bool IEndpointBase.IsEnabled(IServiceProvider services) => SparkAppsFeature.IsOn(services);
 
+    [QueryParam("ownerKind")] public string? OwnerKind { get; set; }
+    [QueryParam("ownerKey")] public string? OwnerKey { get; set; }
+
     [Inject] private readonly SparkAppManager manager;
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
-    {
-        if (AppsHttp.UserId(httpContext) is not { } userId)
-            return TypedResults.Unauthorized();
-        var query = httpContext.Request.Query;
-        return AppsHttp.ToResult(await manager.ListAsync(query["ownerKind"], query["ownerKey"], userId, httpContext.RequestAborted));
-    }
+        => AppsHttp.UserId(httpContext) is { } userId
+            ? AppsHttp.ToResult(await manager.ListAsync(OwnerKind, OwnerKey, userId, httpContext.RequestAborted))
+            : TypedResults.Unauthorized();
 }
 
 /// <summary><c>GET /spark/apps/apps/app?slug=…</c>: the full App to its managers, the public view of a public App to anyone else.</summary>
@@ -41,11 +41,13 @@ internal sealed partial class GetSparkApp : IGetEndpoint
 
     static bool IEndpointBase.IsEnabled(IServiceProvider services) => SparkAppsFeature.IsOn(services);
 
+    [QueryParam("slug")] public string? Slug { get; set; }
+
     [Inject] private readonly SparkAppManager manager;
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
         => AppsHttp.UserId(httpContext) is { } userId
-            ? AppsHttp.ToResult(await manager.GetAsync(httpContext.Request.Query["slug"], userId, httpContext.RequestAborted))
+            ? AppsHttp.ToResult(await manager.GetAsync(Slug, userId, httpContext.RequestAborted))
             : TypedResults.Unauthorized();
 }
 
