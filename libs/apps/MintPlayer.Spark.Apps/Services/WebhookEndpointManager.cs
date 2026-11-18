@@ -307,7 +307,8 @@ internal sealed partial class WebhookEndpointManager
 
     internal string? ValidateUrl(string? url)
     {
-        if (string.IsNullOrWhiteSpace(url) || !Uri.TryCreate(url.Trim(), UriKind.Absolute, out var uri) || url.Length > 2048)
+        // A path is relative whatever the parse says: on Linux, Uri.TryCreate("/in", UriKind.Absolute) succeeds as file:///in.
+        if (string.IsNullOrWhiteSpace(url) || url.TrimStart() is ['/' or '\\', ..] || !Uri.TryCreate(url.Trim(), UriKind.Absolute, out var uri) || url.Length > 2048)
             return "The URL must be an absolute URL.";
         if (uri.Scheme != Uri.UriSchemeHttps && !(options.Value.AllowInsecureUrls && uri.Scheme == Uri.UriSchemeHttp))
             return "The URL must use https.";
