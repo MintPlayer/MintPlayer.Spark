@@ -1,4 +1,8 @@
+import { HttpClient } from '@angular/common/http';
+import { inject } from '@angular/core';
 import type { CanActivateFn } from '@angular/router';
+import { firstValueFrom } from 'rxjs';
+import { SPARK_APPS_API } from '@mintplayer/ng-spark/apps/core';
 import { sparkAuthGuard } from '@mintplayer/ng-spark/auth/guards';
 import type { SparkAccountOverviewLink, SparkAuthRouteEntry, SparkAuthRoutePaths } from '@mintplayer/ng-spark/auth/models';
 import type { SparkAuthRoutesFeature } from '@mintplayer/ng-spark/auth/routes';
@@ -29,6 +33,15 @@ function entryPath(entry: SparkAuthRouteEntry | undefined, defaultPath: string):
   return typeof entry === 'string' ? entry : entry.path;
 }
 
+/**
+ * Whether the server maps the webhooks API: a site can mount the pages and still leave webhooks switched off (CodeCoverage's
+ * `CodeCoverage:Webhooks:Enabled`), and then every `/spark/apps` route is a 404. The catalog is the one anonymous route, so
+ * the account overview asks it before it offers the link.
+ */
+export function webhooksServed(): Promise<boolean> {
+  return firstValueFrom(inject(HttpClient).get(`${SPARK_APPS_API}/webhooks/catalog`)).then(() => true, () => false);
+}
+
 /** An explicitly supplied component wins over the library's lazy import, as in `sparkAuthRoutes()`. */
 function child(entry: SparkAuthRouteEntry | undefined, path: string, loader: Loader, guard: CanActivateFn[]): Child {
   const component = typeof entry === 'object' && entry.component ? entry.component : undefined;
@@ -56,7 +69,7 @@ export function withSparkApps(options?: SparkAppsRoutesOptions): SparkAuthRoutes
   const webhooks = entryPath(options?.webhooks, 'account/webhooks');
   const paths: SparkAuthRoutePaths = { webhooks: '/' + webhooks };
   const accountLinks: SparkAccountOverviewLink[] = [
-    { key: 'webhooks', path: '/' + webhooks, label: { en: 'Webhooks', fr: 'Webhooks', nl: 'Webhooks' } },
+    { key: 'webhooks', path: '/' + webhooks, label: { en: 'Webhooks', fr: 'Webhooks', nl: 'Webhooks' }, available: webhooksServed },
   ];
   const webhooksPage: Loader = () => import('@mintplayer/ng-spark/apps/webhooks').then(m => m.SparkWebhooksComponent);
   const children: Child[] = [

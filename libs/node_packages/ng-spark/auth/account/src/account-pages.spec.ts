@@ -1,4 +1,4 @@
-import { signal } from '@angular/core';
+import { inject, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
@@ -528,6 +528,28 @@ describe('SparkAccountOverviewComponent', () => {
     const fixture = await render(TestBed.createComponent(SparkAccountOverviewComponent));
     expect(links(fixture)).toEqual(['/account/profile', '/account/personal-data', '/account/applications']);
     expect(text(fixture)).toContain('Connected applications');
+  });
+
+  // #691: CodeCoverage mounts the webhooks page but serves its API only with CodeCoverage:Webhooks:Enabled.
+  it('shows a contributed link behind a server switch only when its probe says the server serves it', async () => {
+    const probed: string[] = [];
+    const link = (key: string, answer: () => Promise<boolean>) => ({
+      key, path: `/account/${key}`, label: { en: key },
+      // inject() throws outside an injection context, so this also proves the probe runs inside one.
+      available: () => { inject(SparkAuthService); probed.push(key); return answer(); },
+    });
+    configure({ capabilities: capabilities('Full') }, [{
+      provide: SPARK_ACCOUNT_OVERVIEW_LINKS,
+      useValue: [
+        link('served', () => Promise.resolve(true)),
+        link('off', () => Promise.resolve(false)),
+        link('failing', () => Promise.reject(new Error('404'))),
+        { key: 'plain', path: '/account/plain', label: { en: 'plain' } },
+      ],
+    }]);
+    const fixture = await render(TestBed.createComponent(SparkAccountOverviewComponent));
+    expect(links(fixture)).toEqual(['/account/profile', '/account/personal-data', '/account/served', '/account/plain']);
+    expect(probed).toEqual(['served', 'off', 'failing']);
   });
 
   // ⚠️ The passkeys *positive* case is not asserted: it also needs passkeysSupported(), which jsdom

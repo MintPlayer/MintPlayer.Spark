@@ -73,6 +73,12 @@ export interface SparkAccountOverviewLink {
   path: string;
   /** The link text per language code; resolved in the app's current language. */
   label: Record<string, string>;
+  /**
+   * Whether the server serves the link's feature, for a page whose endpoints a server switch maps (e.g. webhooks,
+   * off unless the site turns them on). Runs in an injection context, once per overview. The link stays hidden until
+   * it resolves true, and stays hidden when it resolves false or rejects. Leave out when mounting the page is enough.
+   */
+  available?: () => Promise<boolean>;
 }
 
 /**

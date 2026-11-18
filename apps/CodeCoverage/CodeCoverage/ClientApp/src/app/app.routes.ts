@@ -2,6 +2,7 @@ import { Routes } from '@angular/router';
 import { sparkRoutes } from '@mintplayer/ng-spark/routes';
 import { sparkAuthRoutes, withExternalLogin, githubProvider, withAccount, withConnectedAgents } from '@mintplayer/ng-spark/auth/routes';
 import { sparkAuthGuard } from '@mintplayer/ng-spark/auth/guards';
+import { withSparkApps } from '@mintplayer/ng-spark/apps';
 import { ShellComponent } from './shell/shell.component';
 import { accountRedirectGuard, commitRedirectGuard, repositoryRedirectGuard } from './spark/vanity-redirects';
 import { HOME_URL } from './spark/home-route';
@@ -40,10 +41,15 @@ export const routes: Routes = [
       // stamps (ApiToken.CreatedByUserId, DeleteRepositoryDataMessage.RequestedByUserId).
       // withConnectedAgents() (account/agents): the AI agents a user connected to /mcp and their personal access tokens
       // (MCP plan M6). The server maps its endpoints because the app runs the MCP server.
+      // withSparkApps({ apps: false }) (#691 D34): the generic webhooks pages (account/webhooks and a webhook's delivery
+      // log) for the forge accounts a user manages. Direct webhooks only: the server never calls EnableApps(), so no Apps,
+      // installation or consent pages. The server maps /spark/apps only with CodeCoverage:Webhooks:Enabled; the account
+      // overview probes the anonymous catalog and hides the link while it is off.
       ...sparkAuthRoutes(
         withExternalLogin(githubProvider()),
         withAccount({ exclude: ['changePassword', 'twoFactorSetup'] }),
         withConnectedAgents(),
+        withSparkApps({ apps: false }),
       ),
       // The passkey page lived at /passkeys before it moved under the account area. It goes through
       // account/passkeys rather than straight to the generic page (/po/passkeys/me) on purpose: that
