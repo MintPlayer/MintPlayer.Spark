@@ -12,7 +12,11 @@ namespace CodeCoverage.Ingestion;
 /// </summary>
 public static class BuildFinalizer
 {
-    public static async Task Finalize(IAsyncDocumentSession session, IForgeIntegrationResolver forges, Build build, string reason, CancellationToken cancellationToken)
+    /// <param name="webhooks">
+    /// CodeCoverage's webhooks (D34): <c>coverage.build.finalized</c> is queued in this session, so it goes out only if the
+    /// caller's SaveChanges commits the finalize. Nothing is queued while webhooks are off.
+    /// </param>
+    public static async Task Finalize(IAsyncDocumentSession session, IForgeIntegrationResolver forges, Build build, string reason, CancellationToken cancellationToken, Webhooks.CoverageWebhookQueue? webhooks = null)
     {
         if (build.Status == "Finalized")
             return;
@@ -50,6 +54,9 @@ public static class BuildFinalizer
                 // LatestBuildId still points at the newest finalized build for
                 // readers that predate the assembly.
                 commit.LatestBuildId = build.Id;
+
+                if (webhooks is not null)
+                    await webhooks.EnqueueFinalizedAsync(session, build, cancellationToken);
             }
         }
     }

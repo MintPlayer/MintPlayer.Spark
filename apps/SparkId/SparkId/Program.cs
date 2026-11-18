@@ -1,6 +1,7 @@
 using System.Text.RegularExpressions;
 using MintPlayer.AspNetCore.SpaServices.Extensions;
 using MintPlayer.Spark;
+using MintPlayer.Spark.Apps;
 using MintPlayer.Spark.Extensions;
 using MintPlayer.Spark.Authorization.Extensions;
 using MintPlayer.Spark.Authorization.Configuration;
@@ -40,6 +41,9 @@ builder.Services.AddSpark(builder.Configuration, spark =>
     });
 
     spark.AddMessaging();
+    // #691 D32: SparkId hosts the Apps and webhooks pages. A user can register direct webhooks and Apps (OAuth
+    // clients of this provider) and install Apps on their account.
+    spark.AddApps(apps => apps.EnableApps());
     // Registration, developer requests and app invitations send mail. Demo app: every mail is
     // written as an .eml file into Spark:Mail:PickupFolder (appsettings.json) instead of being sent.
     spark.AddMailManager();

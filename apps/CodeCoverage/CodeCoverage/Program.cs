@@ -312,6 +312,8 @@ builder.Services.AddSpark(builder.Configuration, spark =>
         rateLimiter.PathPrefixes = ["/spark", "/connect", "/api/browse"]);
 
     spark.AddMessaging();
+    // #691 dogfood (D34): outbound webhooks to forge accounts, off unless CodeCoverage:Webhooks:Enabled is true.
+    CodeCoverage.Webhooks.CoverageWebhooks.AddCoverageWebhooks(spark, builder.Configuration);
     if (mailConfigured)
         spark.AddMailManager();
     spark.AddCustomActions();

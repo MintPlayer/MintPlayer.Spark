@@ -5,6 +5,7 @@
 ## Layers: libraries that ship rights (alias | assembly | hash)
 authorization | MintPlayer.Spark.Authorization | c6fc3af07823
 identity-provider | MintPlayer.Spark.IdentityProvider | a47cb40caae8
+organizations | MintPlayer.Spark.Organizations | 3f770bc98628
 
 ## Reachable without signing in (expanded)
 (nothing)
@@ -64,6 +65,14 @@ Signed-in users (@authenticated) | grant | Query/PasskeyRow | authorization:pass
 Signed-in users (@authenticated) | grant | Read/Passkeys | authorization:passkeys-read | authorization
 Signed-in users (@authenticated) | grant | RemovePasskey/PasskeyRow | authorization:passkey-rows-remove | authorization
 Signed-in users (@authenticated) | grant | RenamePasskey/PasskeyRow | authorization:passkey-rows-rename | authorization
+Signed-in users (organizations:users) | grant | Delete/OrganizationInvitation | organizations:invitations-delete | organizations
+Signed-in users (organizations:users) | grant | Delete/OrganizationMembership | organizations:memberships-delete | organizations
+Signed-in users (organizations:users) | grant | InviteOrganizationMember/Organization | organizations:invite-action | organizations
+Signed-in users (organizations:users) | grant | LeaveOrganization/Organization | organizations:leave-action | organizations
+Signed-in users (organizations:users) | grant | QueryRead/OrganizationInvitation | organizations:invitations | organizations
+Signed-in users (organizations:users) | grant | QueryReadEdit/OrganizationMembership | organizations:memberships | organizations
+Signed-in users (organizations:users) | grant | QueryReadEditNewDelete/Organization | organizations:organizations | organizations
+Signed-in users (organizations:users) | grant | TransferOrganizationOwnership/OrganizationMembership | organizations:transfer-action | organizations
 
 ## Inert: libraries switched off in "libraries"
 (nothing)

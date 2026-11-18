@@ -36,6 +36,14 @@ export interface SparkAuthRouteEntries {
   externalLogins?: SparkAuthRouteEntry;
   /** Download personal data and delete the account (`withAccount()`). */
   personalData?: SparkAuthRouteEntry;
+  /** The user's and their organizations' webhooks; `<path>/:id` is a webhook's delivery log (`withSparkApps()`). */
+  webhooks?: SparkAuthRouteEntry;
+  /** The Apps the user registered; `<path>/:slug` is an App's settings (`withSparkApps()`). */
+  developerApps?: SparkAuthRouteEntry;
+  /** The Apps installed on the user's account or organizations (`withSparkApps()`). */
+  appInstallations?: SparkAuthRouteEntry;
+  /** The consent page that installs an App; its path holds `:slug` (`withSparkApps()`). */
+  appInstall?: SparkAuthRouteEntry;
   /**
    * The applications the user granted access to, with per-scope withdrawal. Mounted by
    * `withIdentityProvider(withConnectedApplications())` from `@mintplayer/ng-spark/identity-provider`.

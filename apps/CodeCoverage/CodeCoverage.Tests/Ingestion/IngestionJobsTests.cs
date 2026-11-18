@@ -37,6 +37,10 @@ public class IngestionJobsTests : CoverageRavenTest
         return new SingleForgeResolver(forge);
     }
 
+    /// <summary>Webhooks off (the default): no <c>IWebhookPublisher</c> is registered, so the finalize queues nothing.</summary>
+    private static CodeCoverage.Webhooks.CoverageWebhookQueue WebhooksOff
+        => new(Microsoft.Extensions.DependencyInjection.ServiceCollectionContainerBuilderExtensions.BuildServiceProvider(new Microsoft.Extensions.DependencyInjection.ServiceCollection()));
+
     private static async Task SeedBuildAsync(
         IDocumentStore store, string sha, DateTime createdAtUtc, DateTime? lastUploadAtUtc,
         bool withCommit = true, params BuildSession[] sessions)
@@ -67,7 +71,7 @@ public class IngestionJobsTests : CoverageRavenTest
         WaitForIndexing(store);
         var bus = new RecordingMessageBus();
         using var session = store.OpenAsyncSession();
-        await new FinalizeBuildsCronJob(session, Forges(), bus, NullLogger<FinalizeBuildsCronJob>.Instance).RunAsync(default);
+        await new FinalizeBuildsCronJob(session, Forges(), bus, NullLogger<FinalizeBuildsCronJob>.Instance, WebhooksOff).RunAsync(default);
         return bus;
     }
 
@@ -194,7 +198,7 @@ public class IngestionJobsTests : CoverageRavenTest
         var bus = new RecordingMessageBus();
 
         using (var session = store.OpenAsyncSession())
-            await new FinalizeBuildRecipient(session, Forges(), NullLogger<FinalizeBuildRecipient>.Instance, bus)
+            await new FinalizeBuildRecipient(session, Forges(), NullLogger<FinalizeBuildRecipient>.Instance, bus, WebhooksOff)
                 .HandleAsync(new FinalizeBuildMessage { BuildId = BuildId("explicit") });
 
         var build = await LoadBuildAsync(store, "explicit");
@@ -211,7 +215,7 @@ public class IngestionJobsTests : CoverageRavenTest
         var bus = new RecordingMessageBus();
 
         using (var session = store.OpenAsyncSession())
-            await new FinalizeBuildRecipient(session, Forges(), NullLogger<FinalizeBuildRecipient>.Instance, bus)
+            await new FinalizeBuildRecipient(session, Forges(), NullLogger<FinalizeBuildRecipient>.Instance, bus, WebhooksOff)
                 .HandleAsync(new FinalizeBuildMessage { BuildId = BuildId("nocommit") });
 
         bus.Of<PublishFeedbackMessage>().Single().BuildId.Should().Be(BuildId("nocommit"));
@@ -224,7 +228,7 @@ public class IngestionJobsTests : CoverageRavenTest
         var bus = new RecordingMessageBus();
 
         using (var session = store.OpenAsyncSession())
-            await new FinalizeBuildRecipient(session, Forges(), NullLogger<FinalizeBuildRecipient>.Instance, bus)
+            await new FinalizeBuildRecipient(session, Forges(), NullLogger<FinalizeBuildRecipient>.Instance, bus, WebhooksOff)
                 .HandleAsync(new FinalizeBuildMessage { BuildId = BuildId("ghost") });
 
         bus.Messages.Should().BeEmpty();

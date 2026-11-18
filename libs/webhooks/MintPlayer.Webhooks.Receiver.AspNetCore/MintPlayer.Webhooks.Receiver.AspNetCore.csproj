@@ -1,0 +1,46 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<!-- ASP.NET Core has no netstandard build, so the endpoint glue is its own net11.0 package (11.x, D12).
+		     A consumer on an older .NET calls WebhookReceiver.HandleAsync from its own endpoint instead. -->
+		<TargetFramework>net11.0</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+		<IsPackable>true</IsPackable>
+		<RootNamespace>MintPlayer.Webhooks</RootNamespace>
+
+		<!-- NuGet Package Metadata -->
+		<PackageId>MintPlayer.Webhooks.Receiver.AspNetCore</PackageId>
+		<Version>0.0.0-PLACEHOLDER</Version>
+		<Authors>MintPlayer</Authors>
+		<Company>MintPlayer</Company>
+		<Description>ASP.NET Core endpoint for MintPlayer.Webhooks.Receiver: AddWebhookReceiver&lt;TProcessor&gt; + MapWebhookReceiver&lt;TProcessor&gt;(path) verifies Standard Webhooks signatures and dispatches each event to your processor.</Description>
+		<PackageTags>webhooks;standard-webhooks;aspnetcore;receiver</PackageTags>
+		<PackageLicenseExpression>MIT</PackageLicenseExpression>
+		<PackageProjectUrl>https://github.com/MintPlayer/MintPlayer.Spark</PackageProjectUrl>
+		<RepositoryUrl>https://github.com/MintPlayer/MintPlayer.Spark.git</RepositoryUrl>
+		<RepositoryType>git</RepositoryType>
+		<PackageReadmeFile>README.md</PackageReadmeFile>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<None Include="README.md" Pack="true" PackagePath="\" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<FrameworkReference Include="Microsoft.AspNetCore.App" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<PackageReference Include="MintPlayer.SourceGenerators" Version="13.1.2">
+			<PrivateAssets>all</PrivateAssets>
+			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+		</PackageReference>
+		<PackageReference Include="MintPlayer.SourceGenerators.Attributes" Version="13.1.2" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\MintPlayer.Webhooks.Receiver\MintPlayer.Webhooks.Receiver.csproj" />
+	</ItemGroup>
+
+</Project>

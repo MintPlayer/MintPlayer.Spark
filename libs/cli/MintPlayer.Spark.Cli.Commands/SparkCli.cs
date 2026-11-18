@@ -21,7 +21,8 @@ public static class SparkCli
             .AddSingleton<TemplateInstaller>()
             .AddSingleton<ModelSynchronizer>()
             .AddSingleton<AppCreator>()
-            .AddSingleton<ItemAdder>();
+            .AddSingleton<ItemAdder>()
+            .AddSingleton<WebhookGenerator>();
         using var app = builder.Build();
 
         try

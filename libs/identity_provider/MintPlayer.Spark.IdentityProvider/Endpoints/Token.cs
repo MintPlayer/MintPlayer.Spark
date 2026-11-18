@@ -71,6 +71,7 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
     [Inject] private readonly OidcAudit audit;
     [Inject] private readonly Mcp.OidcMcpResources mcpResources;
     [Inject] private readonly OidcSurface surface;
+    [Inject] private readonly IEnumerable<IOidcClientCredentialsContributor> clientCredentialsContributors;
 
     /// <summary>The posted form, kept from <see cref="BindRequestAsync"/>: client authentication reads more of it than the bound record carries.</summary>
     private IFormCollection form = null!;
@@ -739,6 +740,19 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
 
         // Parse and validate requested scopes
         var requestedScopes = (scope ?? "").Split(' ', StringSplitOptions.RemoveEmptyEntries).ToList();
+
+        // #691 D16: another package may own this request (Spark Apps: installation_id=…). Its answer replaces the scope rules.
+        foreach (var contributor in clientCredentialsContributors)
+        {
+            var parameters = form.ToDictionary(f => f.Key, f => f.Value.FirstOrDefault() ?? "", StringComparer.Ordinal);
+            var contribution = await contributor.ContributeAsync(new OidcClientCredentialsRequest(app, client.Method!, parameters, requestedScopes), ct);
+            if (contribution is null)
+                continue;
+            if (contribution.Error is { } error)
+                return Results.Json(new { error, error_description = contribution.ErrorDescription }, statusCode: 400);
+            return await IssueContributedTokenAsync(session, app, client.Certificate, contribution, ct);
+        }
+
         foreach (var s in requestedScopes)
         {
             if (!app.ScopeNames().Contains(s, StringComparer.OrdinalIgnoreCase))
@@ -816,6 +830,56 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
             token_type = possession.TokenType,
             expires_in = app.AccessTokenLifetimeMinutes * 60,
             scope = string.Join(' ', grantedScopeNames),
+        });
+    }
+
+    /// <summary>
+    /// #691 D16: a <c>client_credentials</c> token shaped by a contributor. Its scopes are not provider-defined scopes but
+    /// the contributor's own (an installation's permissions), addressed to its audience. The token record carries the
+    /// contributor's grant id, so revoking that grant ends the token at once (<see cref="OidcGrants.PermitsAsync"/>).
+    /// </summary>
+    private async Task<IResult> IssueContributedTokenAsync(
+        IAsyncDocumentSession session, OidcApplication app, System.Security.Cryptography.X509Certificates.X509Certificate2? certificate,
+        OidcClientCredentialsContribution contribution, CancellationToken ct)
+    {
+        var audience = contribution.Audience ?? app.ClientId;
+        var scopes = contribution.Scopes
+            .Select(name => new OidcScopeDefinition(name, audience, OidcResourceKinds.Api, null, null, [], false, false, false))
+            .ToList();
+        var lifetime = contribution.LifetimeMinutes ?? app.AccessTokenLifetimeMinutes;
+
+        var possession = await proofOfPossession.BindAsync(httpContext, app, certificate, ct);
+        if (!possession.Succeeded)
+            return Results.Json(new { error = possession.Error, error_description = possession.ErrorDescription }, statusCode: 400);
+
+        var issuer = oidcIssuer.Resolve(httpContext.Request);
+        var (accessToken, jti) = tokenGenerator.GenerateAccessToken(null, app, issuer, scopes, lifetime,
+            confirmation: possession.Confirmation, extraClaims: contribution.Claims);
+
+        var now = DateTime.UtcNow;
+        await session.StoreExpiringAsync(new OidcToken
+        {
+            Id = OidcTokenReference.DocumentId(jti),
+            ApplicationId = app.Id!,
+            AuthorizationId = contribution.AuthorizationId,
+            Subject = contribution.Subject ?? $"client:{app.ClientId}",
+            Type = OidcTokenTypes.AccessToken,
+            Scopes = contribution.Scopes.ToList(),
+            Status = "valid",
+            CreatedAt = now,
+            ExpiresAt = now.AddMinutes(lifetime),
+        }, ct);
+        await session.SaveChangesAsync(ct);
+
+        httpContext.Response.Headers.CacheControl = "no-store";
+        httpContext.Response.Headers.Pragma = "no-cache";
+
+        return Results.Json(new
+        {
+            access_token = accessToken,
+            token_type = possession.TokenType,
+            expires_in = lifetime * 60,
+            scope = string.Join(' ', contribution.Scopes),
         });
     }
 

@@ -1,0 +1,22 @@
+{
+  "name": "@mintplayer/webhooks-receiver",
+  "version": "0.0.0-PLACEHOLDER",
+  "description": "Receive Standard Webhooks in Node and edge runtimes: signature verification on WebCrypto and typed dispatch over the events `spark webhooks generate --lang ts` writes.",
+  "keywords": ["webhooks", "standard-webhooks", "hmac", "spark", "mintplayer"],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/MintPlayer/MintPlayer.Spark",
+    "directory": "libs/node_packages/webhooks-receiver"
+  },
+  "license": "Apache-2.0",
+  "type": "module",
+  "sideEffects": false,
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.lib.json && node build-manifest.mjs",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage"
+  }
+}

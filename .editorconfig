@@ -7,3 +7,7 @@ end_of_line = lf
 
 [**/RouteSnapshots/*.txt]
 end_of_line = lf
+
+# `spark webhooks generate` output, rewritten by WebhookReceiverRoundTripTests under SPARK_UPDATE_GOLDEN.
+[{tests/MintPlayer.Spark.Tests/Apps/Generated/*.g.cs,libs/node_packages/webhooks-receiver/src/testing/*.ts}]
+end_of_line = lf

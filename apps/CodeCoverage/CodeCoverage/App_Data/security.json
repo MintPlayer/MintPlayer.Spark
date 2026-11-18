@@ -13,7 +13,8 @@
     "dashboards:administrators": [ "Administrators" ]
   },
   "libraries": {
-    "identity-provider": false
+    "identity-provider": false,
+    "organizations": false
   },
   "rights": [
     {

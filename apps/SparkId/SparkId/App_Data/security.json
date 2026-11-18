@@ -12,7 +12,8 @@
   },
   "bindings": {
     "identity-provider:administrators": [ "Administrators" ],
-    "identity-provider:developers": [ "Developers" ]
+    "identity-provider:developers": [ "Developers" ],
+    "organizations:users": [ "Signed-in users" ]
   },
   "rights": []
 }

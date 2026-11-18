@@ -1,0 +1,39 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<!-- NSec.Cryptography 26.4.0 targets net9.0 only (native libsodium), so this opt-in add-on carries the
+		     v2a scheme instead of the netstandard2.0 core (docs/apps_webhooks_PRD.md D21). A netX.0 target means
+		     it follows the .NET major (11.x). -->
+		<TargetFrameworks>net9.0;net10.0;net11.0</TargetFrameworks>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+		<IsPackable>true</IsPackable>
+		<RootNamespace>MintPlayer.Webhooks</RootNamespace>
+
+		<!-- NuGet Package Metadata -->
+		<PackageId>MintPlayer.Webhooks.Ed25519</PackageId>
+		<Version>0.0.0-PLACEHOLDER</Version>
+		<Authors>MintPlayer</Authors>
+		<Company>MintPlayer</Company>
+		<Description>Standard Webhooks v2a (ed25519 over SHA-256 of endpoint_id.msg_id.timestamp.payload) signing and verification for MintPlayer.Webhooks.Receiver, over NSec/libsodium. whsk_ / whpk_ keys.</Description>
+		<PackageTags>webhooks;standard-webhooks;ed25519;signature</PackageTags>
+		<PackageLicenseExpression>MIT</PackageLicenseExpression>
+		<PackageProjectUrl>https://github.com/MintPlayer/MintPlayer.Spark</PackageProjectUrl>
+		<RepositoryUrl>https://github.com/MintPlayer/MintPlayer.Spark.git</RepositoryUrl>
+		<RepositoryType>git</RepositoryType>
+		<PackageReadmeFile>README.md</PackageReadmeFile>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<None Include="README.md" Pack="true" PackagePath="\" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<PackageReference Include="NSec.Cryptography" Version="26.4.0" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\MintPlayer.Webhooks.Receiver\MintPlayer.Webhooks.Receiver.csproj" />
+	</ItemGroup>
+
+</Project>

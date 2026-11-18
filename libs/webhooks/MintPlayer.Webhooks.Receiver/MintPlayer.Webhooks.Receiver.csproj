@@ -1,0 +1,43 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<!-- netstandard2.0 only: a webhook consumer may run any .NET (8, 10, 11, Framework). Versioned on its own
+		     semver, not the .NET major (CLAUDE.md §Versioning; docs/apps_webhooks_PRD.md D10, D12). Do NOT add a
+		     netX.0 target: a multi-target anchors the package to the .NET major. -->
+		<TargetFramework>netstandard2.0</TargetFramework>
+		<LangVersion>latest</LangVersion>
+		<Nullable>enable</Nullable>
+		<ImplicitUsings>disable</ImplicitUsings>
+		<IsPackable>true</IsPackable>
+		<RootNamespace>MintPlayer.Webhooks</RootNamespace>
+
+		<!-- NuGet Package Metadata -->
+		<PackageId>MintPlayer.Webhooks.Receiver</PackageId>
+		<Version>0.0.0-PLACEHOLDER</Version>
+		<Authors>MintPlayer</Authors>
+		<Company>MintPlayer</Company>
+		<Description>Standard Webhooks (standardwebhooks.com) signing, verification and typed dispatch for any .NET: verify webhook-id / webhook-timestamp / webhook-signature, reject replays, rotate secrets, and route each event to a handler. The receiver for webhooks sent by MintPlayer.Spark.Apps sites, and for any Standard Webhooks producer.</Description>
+		<PackageTags>webhooks;standard-webhooks;hmac;signature;receiver</PackageTags>
+		<PackageLicenseExpression>MIT</PackageLicenseExpression>
+		<PackageProjectUrl>https://github.com/MintPlayer/MintPlayer.Spark</PackageProjectUrl>
+		<RepositoryUrl>https://github.com/MintPlayer/MintPlayer.Spark.git</RepositoryUrl>
+		<RepositoryType>git</RepositoryType>
+		<PackageReadmeFile>README.md</PackageReadmeFile>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<None Include="README.md" Pack="true" PackagePath="\" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<PackageReference Include="System.Text.Json" Version="11.0.0" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<InternalsVisibleTo Include="MintPlayer.Webhooks.Tests" />
+		<InternalsVisibleTo Include="MintPlayer.Webhooks.Receiver.AspNetCore" />
+		<InternalsVisibleTo Include="MintPlayer.Webhooks.Ed25519" />
+		<InternalsVisibleTo Include="MintPlayer.Spark.Apps" />
+	</ItemGroup>
+
+</Project>

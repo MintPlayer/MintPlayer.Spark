@@ -1,0 +1,62 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+	<PropertyGroup>
+		<TargetFramework>net11.0</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+		<OutputType>Library</OutputType>
+		<!-- The Web SDK defaults IsPackable to false; without this the library is never versioned or packed (#689). -->
+		<IsPackable>true</IsPackable>
+		<!-- Names this library's App_Data layers (composition D16): the settings pages' texts (apps.spa.*). Permanent. -->
+		<SparkLibraryAlias>apps</SparkLibraryAlias>
+
+		<!-- NuGet Package Metadata -->
+		<PackageId>MintPlayer.Spark.Apps</PackageId>
+		<Version>0.0.0-PLACEHOLDER</Version>
+		<Authors>MintPlayer</Authors>
+		<Company>MintPlayer</Company>
+		<Description>Apps and outbound webhooks for MintPlayer.Spark: declare events with [WebhookEvent], publish them atomically with the business write, and the site's users and organizations receive them as signed Standard Webhooks, with retries, a delivery log, redelivery and a typed event catalog (OpenAPI 3.1).</Description>
+		<PackageTags>webhooks;standard-webhooks;apps;outbox;ravendb;spark</PackageTags>
+		<PackageLicenseExpression>MIT</PackageLicenseExpression>
+		<PackageProjectUrl>https://github.com/MintPlayer/MintPlayer.Spark</PackageProjectUrl>
+		<RepositoryUrl>https://github.com/MintPlayer/MintPlayer.Spark.git</RepositoryUrl>
+		<RepositoryType>git</RepositoryType>
+		<PackageReadmeFile>README.md</PackageReadmeFile>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<None Include="README.md" Pack="true" PackagePath="\" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<PackageReference Include="MintPlayer.AspNetCore.Endpoints" Version="11.4.1" />
+		<PackageReference Include="MintPlayer.SourceGenerators" Version="13.1.2">
+			<PrivateAssets>all</PrivateAssets>
+			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+		</PackageReference>
+		<PackageReference Include="MintPlayer.SourceGenerators.Attributes" Version="13.1.2" />
+		<PackageReference Include="RavenDB.Client" Version="7.2.7" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\..\spark\MintPlayer.Spark\MintPlayer.Spark.csproj" />
+		<ProjectReference Include="..\..\spark\MintPlayer.Spark.RavenDB\MintPlayer.Spark.RavenDB.csproj" />
+		<!-- The signed-in user (SparkUser) and the security slot. -->
+		<ProjectReference Include="..\..\authorization\MintPlayer.Spark.Authorization\MintPlayer.Spark.Authorization.csproj" />
+		<!-- Organizations as webhook owners (D25). Resolved at run time: without AddOrganizations() only users own webhooks. -->
+		<ProjectReference Include="..\..\organizations\MintPlayer.Spark.Organizations\MintPlayer.Spark.Organizations.csproj" />
+		<!-- Every event and every delivery is a durable outbox message (D14). -->
+		<ProjectReference Include="..\..\messaging\MintPlayer.Spark.Messaging\MintPlayer.Spark.Messaging.csproj" />
+		<!-- Standard Webhooks signing (v1), the secret format and the envelope JSON options. -->
+		<ProjectReference Include="..\..\webhooks\MintPlayer.Webhooks.Receiver\MintPlayer.Webhooks.Receiver.csproj" />
+		<!-- An App is an OidcApplication (D5, D29). Only apps.EnableApps() needs AddIdentityProvider(); direct webhooks don't. -->
+		<ProjectReference Include="..\..\identity_provider\MintPlayer.Spark.IdentityProvider\MintPlayer.Spark.IdentityProvider.csproj" />
+		<!-- Spark's generators (the library layers). Analyzer ProjectReferences are not transitive. -->
+		<ProjectReference Include="..\..\source_generators\MintPlayer.Spark.SourceGenerators\MintPlayer.Spark.SourceGenerators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<InternalsVisibleTo Include="MintPlayer.Spark.Tests" />
+	</ItemGroup>
+
+</Project>

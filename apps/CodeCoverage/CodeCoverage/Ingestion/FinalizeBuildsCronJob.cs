@@ -21,6 +21,7 @@ public partial class FinalizeBuildsCronJob : ISparkCronJob
     [Inject] private readonly IForgeIntegrationResolver forges;
     [Inject] private readonly MintPlayer.Spark.Messaging.Abstractions.IMessageBus messageBus;
     [Inject] private readonly ILogger<FinalizeBuildsCronJob> logger;
+    [Inject] private readonly Webhooks.CoverageWebhookQueue webhooks;
 
     public static string CronSchedule => "* * * * *";
 
@@ -74,7 +75,7 @@ public partial class FinalizeBuildsCronJob : ISparkCronJob
                           + "The parse worker did not complete — retry the upload; re-parsing is safe and merges idempotently.";
                 }
             }
-            await BuildFinalizer.Finalize(session, forges, build, reason, cancellationToken);
+            await BuildFinalizer.Finalize(session, forges, build, reason, cancellationToken, webhooks);
             logger.LogInformation("Finalized build {BuildId} ({Reason})", build.Id, reason);
             finalized.Add(build);
         }

@@ -1,0 +1,628 @@
+{
+  "$schema": "../../../../schemas/translations.schema.json",
+  "apps": {
+    "spa": {
+      "loadFailed": {
+        "en": "This could not be loaded. Try again later.",
+        "fr": "Le chargement a échoué. Réessayez plus tard.",
+        "nl": "Dit kon niet geladen worden. Probeer het later opnieuw."
+      },
+      "failed": {
+        "en": "That did not work. Try again later.",
+        "fr": "Cela n'a pas fonctionné. Réessayez plus tard.",
+        "nl": "Dat is niet gelukt. Probeer het later opnieuw."
+      },
+      "owner": {
+        "en": "Owner",
+        "fr": "Propriétaire",
+        "nl": "Eigenaar"
+      },
+      "edit": {
+        "en": "Edit",
+        "fr": "Modifier",
+        "nl": "Bewerken"
+      },
+      "delete": {
+        "en": "Delete",
+        "fr": "Supprimer",
+        "nl": "Verwijderen"
+      },
+      "save": {
+        "en": "Save",
+        "fr": "Enregistrer",
+        "nl": "Opslaan"
+      },
+      "cancel": {
+        "en": "Cancel",
+        "fr": "Annuler",
+        "nl": "Annuleren"
+      },
+      "webhooks": {
+        "title": {
+          "en": "Webhooks",
+          "fr": "Webhooks",
+          "nl": "Webhooks"
+        },
+        "intro": {
+          "en": "A webhook sends the events you choose to your URL as signed Standard Webhooks, with retries and a delivery log.",
+          "fr": "Un webhook envoie les événements choisis à votre URL sous forme de Standard Webhooks signés, avec des nouvelles tentatives et un journal des livraisons.",
+          "nl": "Een webhook stuurt de gekozen events als ondertekende Standard Webhooks naar je URL, met nieuwe pogingen en een leveringslogboek."
+        },
+        "enabled": {
+          "en": "Active",
+          "fr": "Actif",
+          "nl": "Actief"
+        },
+        "disabled": {
+          "en": "Disabled",
+          "fr": "Désactivé",
+          "nl": "Uitgeschakeld"
+        },
+        "failingSince": {
+          "en": "Failing since {0}",
+          "fr": "En échec depuis {0}",
+          "nl": "Mislukt sinds {0}"
+        },
+        "lastSuccess": {
+          "en": "Last delivered {0}",
+          "fr": "Dernière livraison {0}",
+          "nl": "Laatst geleverd {0}"
+        },
+        "events": {
+          "en": "Events:",
+          "fr": "Événements :",
+          "nl": "Events:"
+        },
+        "deliveries": {
+          "en": "Deliveries",
+          "fr": "Livraisons",
+          "nl": "Leveringen"
+        },
+        "ping": {
+          "en": "Send a ping",
+          "fr": "Envoyer un ping",
+          "nl": "Ping sturen"
+        },
+        "rotate": {
+          "en": "New secret",
+          "fr": "Nouveau secret",
+          "nl": "Nieuw geheim"
+        },
+        "enable": {
+          "en": "Enable again",
+          "fr": "Réactiver",
+          "nl": "Opnieuw inschakelen"
+        },
+        "none": {
+          "en": "No webhooks yet.",
+          "fr": "Aucun webhook pour l'instant.",
+          "nl": "Nog geen webhooks."
+        },
+        "addTitle": {
+          "en": "Add a webhook",
+          "fr": "Ajouter un webhook",
+          "nl": "Webhook toevoegen"
+        },
+        "editTitle": {
+          "en": "Edit the webhook",
+          "fr": "Modifier le webhook",
+          "nl": "Webhook bewerken"
+        },
+        "url": {
+          "en": "URL",
+          "fr": "URL",
+          "nl": "URL"
+        },
+        "description": {
+          "en": "Description",
+          "fr": "Description",
+          "nl": "Omschrijving"
+        },
+        "chooseEvents": {
+          "en": "Events to send",
+          "fr": "Événements à envoyer",
+          "nl": "Te versturen events"
+        },
+        "add": {
+          "en": "Add webhook",
+          "fr": "Ajouter le webhook",
+          "nl": "Webhook toevoegen"
+        },
+        "added": {
+          "en": "The webhook was added. It received a ping.",
+          "fr": "Le webhook a été ajouté. Il a reçu un ping.",
+          "nl": "De webhook is toegevoegd. Hij kreeg een ping."
+        },
+        "saved": {
+          "en": "The webhook was saved.",
+          "fr": "Le webhook a été enregistré.",
+          "nl": "De webhook is opgeslagen."
+        },
+        "secretTitle": {
+          "en": "Signing secret",
+          "fr": "Secret de signature",
+          "nl": "Ondertekeningsgeheim"
+        },
+        "secretMessage": {
+          "en": "Your receiver verifies every delivery with this secret. Copy it now: it is not shown again.",
+          "fr": "Votre récepteur vérifie chaque livraison avec ce secret. Copiez-le maintenant : il ne sera plus affiché.",
+          "nl": "Je ontvanger controleert elke levering met dit geheim. Kopieer het nu: het wordt niet meer getoond."
+        },
+        "rotatedMessage": {
+          "en": "The new secret signs from now on. The old one signs alongside it for one more day, so you can switch your receiver over. Copy it now: it is not shown again.",
+          "fr": "Le nouveau secret signe dès maintenant. L'ancien signe encore à ses côtés pendant un jour, le temps de mettre à jour votre récepteur. Copiez-le maintenant : il ne sera plus affiché.",
+          "nl": "Het nieuwe geheim ondertekent vanaf nu. Het oude ondertekent nog één dag mee, zodat je je ontvanger kunt omzetten. Kopieer het nu: het wordt niet meer getoond."
+        },
+        "rotated": {
+          "en": "The secret was replaced.",
+          "fr": "Le secret a été remplacé.",
+          "nl": "Het geheim is vervangen."
+        },
+        "confirmRotate": {
+          "en": "Make a new secret? The current one stops signing after one day.",
+          "fr": "Créer un nouveau secret ? L'actuel cesse de signer après un jour.",
+          "nl": "Een nieuw geheim maken? Het huidige ondertekent na één dag niet meer."
+        },
+        "pinged": {
+          "en": "A ping is on its way.",
+          "fr": "Un ping est en route.",
+          "nl": "Er is een ping onderweg."
+        },
+        "reenabled": {
+          "en": "The webhook is active again.",
+          "fr": "Le webhook est de nouveau actif.",
+          "nl": "De webhook is weer actief."
+        },
+        "confirmDelete": {
+          "en": "Delete the webhook to {0}?",
+          "fr": "Supprimer le webhook vers {0} ?",
+          "nl": "De webhook naar {0} verwijderen?"
+        },
+        "deleted": {
+          "en": "The webhook was deleted.",
+          "fr": "Le webhook a été supprimé.",
+          "nl": "De webhook is verwijderd."
+        }
+      },
+      "deliveries": {
+        "title": {
+          "en": "Deliveries",
+          "fr": "Livraisons",
+          "nl": "Leveringen"
+        },
+        "back": {
+          "en": "← Webhooks",
+          "fr": "← Webhooks",
+          "nl": "← Webhooks"
+        },
+        "status": {
+          "Pending": {
+            "en": "Pending",
+            "fr": "En attente",
+            "nl": "Bezig"
+          },
+          "Succeeded": {
+            "en": "Delivered",
+            "fr": "Livré",
+            "nl": "Geleverd"
+          },
+          "Failed": {
+            "en": "Failed",
+            "fr": "Échoué",
+            "nl": "Mislukt"
+          }
+        },
+        "redelivery": {
+          "en": "(redelivery)",
+          "fr": "(nouvelle livraison)",
+          "nl": "(opnieuw geleverd)"
+        },
+        "noAttempts": {
+          "en": "Not tried yet.",
+          "fr": "Pas encore tenté.",
+          "nl": "Nog niet geprobeerd."
+        },
+        "redeliver": {
+          "en": "Deliver again",
+          "fr": "Livrer à nouveau",
+          "nl": "Opnieuw leveren"
+        },
+        "redelivered": {
+          "en": "It is being delivered again, with the same webhook-id.",
+          "fr": "La livraison est relancée, avec le même webhook-id.",
+          "nl": "Het wordt opnieuw geleverd, met dezelfde webhook-id."
+        },
+        "none": {
+          "en": "Nothing was delivered yet.",
+          "fr": "Rien n'a encore été livré.",
+          "nl": "Er is nog niets geleverd."
+        },
+        "older": {
+          "en": "Older deliveries",
+          "fr": "Livraisons plus anciennes",
+          "nl": "Oudere leveringen"
+        },
+        "notFound": {
+          "en": "This webhook was not found.",
+          "fr": "Ce webhook est introuvable.",
+          "nl": "Deze webhook werd niet gevonden."
+        }
+      },
+      "apps": {
+        "title": {
+          "en": "Your Apps",
+          "fr": "Vos Apps",
+          "nl": "Je Apps"
+        },
+        "intro": {
+          "en": "An App acts on this site for the people who install it, with the permissions they grant, and receives their events on its webhook.",
+          "fr": "Une App agit sur ce site pour ceux qui l'installent, avec les autorisations qu'ils accordent, et reçoit leurs événements sur son webhook.",
+          "nl": "Een App handelt op deze site voor wie hem installeert, met de rechten die ze toekennen, en ontvangt hun events op zijn webhook."
+        },
+        "public": {
+          "en": "Public",
+          "fr": "Publique",
+          "nl": "Openbaar"
+        },
+        "private": {
+          "en": "Private",
+          "fr": "Privée",
+          "nl": "Privé"
+        },
+        "none": {
+          "en": "No Apps yet.",
+          "fr": "Aucune App pour l'instant.",
+          "nl": "Nog geen Apps."
+        },
+        "new": {
+          "en": "Register an App",
+          "fr": "Enregistrer une App",
+          "nl": "App registreren"
+        },
+        "registerTitle": {
+          "en": "Register an App",
+          "fr": "Enregistrer une App",
+          "nl": "App registreren"
+        },
+        "back": {
+          "en": "← Your Apps",
+          "fr": "← Vos Apps",
+          "nl": "← Je Apps"
+        }
+      },
+      "app": {
+        "name": {
+          "en": "Name",
+          "fr": "Nom",
+          "nl": "Naam"
+        },
+        "slug": {
+          "en": "Slug",
+          "fr": "Identifiant",
+          "nl": "Slug"
+        },
+        "slugHint": {
+          "en": "Lower-case letters, digits and dashes; part of the install link. It cannot change later.",
+          "fr": "Minuscules, chiffres et tirets ; fait partie du lien d'installation. Il ne peut plus changer.",
+          "nl": "Kleine letters, cijfers en streepjes; deel van de installatielink. Kan later niet meer wijzigen."
+        },
+        "description": {
+          "en": "Description",
+          "fr": "Description",
+          "nl": "Omschrijving"
+        },
+        "homepageUrl": {
+          "en": "Homepage",
+          "fr": "Page d'accueil",
+          "nl": "Homepage"
+        },
+        "webhookUrl": {
+          "en": "Webhook URL",
+          "fr": "URL du webhook",
+          "nl": "Webhook-URL"
+        },
+        "webhookUrlHint": {
+          "en": "Receives the events of every installation. Empty: the App receives no events.",
+          "fr": "Reçoit les événements de chaque installation. Vide : l’App ne reçoit aucun événement.",
+          "nl": "Ontvangt de events van elke installatie. Leeg: de App ontvangt geen events."
+        },
+        "setupUrl": {
+          "en": "Setup URL",
+          "fr": "URL de configuration",
+          "nl": "Setup-URL"
+        },
+        "setupUrlHint": {
+          "en": "Where the installer goes after installing, with installation_id.",
+          "fr": "Où l'installateur est envoyé après l'installation, avec installation_id.",
+          "nl": "Waar de installateur na het installeren naartoe gaat, met installation_id."
+        },
+        "public": {
+          "en": "Anyone may install it",
+          "fr": "Tout le monde peut l'installer",
+          "nl": "Iedereen mag hem installeren"
+        },
+        "permissions": {
+          "en": "Permissions",
+          "fr": "Autorisations",
+          "nl": "Rechten"
+        },
+        "access": {
+          "none": {
+            "en": "No access",
+            "fr": "Aucun accès",
+            "nl": "Geen toegang"
+          },
+          "read": {
+            "en": "Read",
+            "fr": "Lecture",
+            "nl": "Lezen"
+          },
+          "write": {
+            "en": "Read and write",
+            "fr": "Lecture et écriture",
+            "nl": "Lezen en schrijven"
+          }
+        },
+        "noPermissions": {
+          "en": "This site offers no permissions.",
+          "fr": "Ce site ne propose aucune autorisation.",
+          "nl": "Deze site biedt geen rechten aan."
+        },
+        "events": {
+          "en": "Events",
+          "fr": "Événements",
+          "nl": "Events"
+        },
+        "needs": {
+          "en": "needs {0}",
+          "fr": "nécessite {0}",
+          "nl": "vereist {0}"
+        },
+        "register": {
+          "en": "Register",
+          "fr": "Enregistrer",
+          "nl": "Registreren"
+        },
+        "clientId": {
+          "en": "Client id",
+          "fr": "Identifiant client",
+          "nl": "Client-id"
+        },
+        "installLink": {
+          "en": "Install link",
+          "fr": "Lien d'installation",
+          "nl": "Installatielink"
+        },
+        "privateHint": {
+          "en": "Private: only its owner may install it.",
+          "fr": "Privée : seul son propriétaire peut l’installer.",
+          "nl": "Privé: alleen de eigenaar mag hem installeren."
+        },
+        "keys": {
+          "en": "Private keys",
+          "fr": "Clés privées",
+          "nl": "Privésleutels"
+        },
+        "keysHint": {
+          "en": "The App signs in with a key (private_key_jwt) and asks for an installation token with installation_id.",
+          "fr": "L'App se connecte avec une clé (private_key_jwt) et demande un jeton d'installation avec installation_id.",
+          "nl": "De App meldt zich aan met een sleutel (private_key_jwt) en vraagt een installatietoken met installation_id."
+        },
+        "noKeys": {
+          "en": "No keys yet: the App cannot sign in.",
+          "fr": "Aucune clé : l'App ne peut pas se connecter.",
+          "nl": "Nog geen sleutels: de App kan zich niet aanmelden."
+        },
+        "generateKey": {
+          "en": "Generate a private key",
+          "fr": "Générer une clé privée",
+          "nl": "Privésleutel genereren"
+        },
+        "keyTitle": {
+          "en": "Private key",
+          "fr": "Clé privée",
+          "nl": "Privésleutel"
+        },
+        "keyMessage": {
+          "en": "Store this key with the App. This site keeps only its public half: copy it now, it is not shown again.",
+          "fr": "Conservez cette clé avec l'App. Ce site ne garde que sa moitié publique : copiez-la maintenant, elle ne sera plus affichée.",
+          "nl": "Bewaar deze sleutel bij de App. Deze site houdt alleen de publieke helft bij: kopieer hem nu, hij wordt niet meer getoond."
+        },
+        "keyGenerated": {
+          "en": "A key was generated.",
+          "fr": "Une clé a été générée.",
+          "nl": "Er is een sleutel gegenereerd."
+        },
+        "confirmDeleteKey": {
+          "en": "Delete key {0}? The App can no longer sign in with it.",
+          "fr": "Supprimer la clé {0} ? L'App ne pourra plus se connecter avec elle.",
+          "nl": "Sleutel {0} verwijderen? De App kan er niet meer mee aanmelden."
+        },
+        "keyDeleted": {
+          "en": "The key was deleted.",
+          "fr": "La clé a été supprimée.",
+          "nl": "De sleutel is verwijderd."
+        },
+        "installations": {
+          "en": "Installed on",
+          "fr": "Installée sur",
+          "nl": "Geïnstalleerd op"
+        },
+        "notInstalled": {
+          "en": "Not installed anywhere yet.",
+          "fr": "Installée nulle part pour l'instant.",
+          "nl": "Nog nergens geïnstalleerd."
+        },
+        "saved": {
+          "en": "The App was saved.",
+          "fr": "L'App a été enregistrée.",
+          "nl": "De App is opgeslagen."
+        },
+        "delete": {
+          "en": "Delete this App",
+          "fr": "Supprimer cette App",
+          "nl": "Deze App verwijderen"
+        },
+        "confirmDelete": {
+          "en": "Delete {0}? Every installation is removed and its tokens stop working.",
+          "fr": "Supprimer {0} ? Toutes les installations sont retirées et leurs jetons cessent de fonctionner.",
+          "nl": "{0} verwijderen? Elke installatie verdwijnt en de tokens werken niet meer."
+        },
+        "deleted": {
+          "en": "The App was deleted.",
+          "fr": "L'App a été supprimée.",
+          "nl": "De App is verwijderd."
+        },
+        "notFound": {
+          "en": "This App was not found, or you do not manage it.",
+          "fr": "Cette App est introuvable, ou vous ne la gérez pas.",
+          "nl": "Deze App werd niet gevonden, of je beheert hem niet."
+        }
+      },
+      "installations": {
+        "title": {
+          "en": "Installed Apps",
+          "fr": "Apps installées",
+          "nl": "Geïnstalleerde Apps"
+        },
+        "intro": {
+          "en": "The Apps installed on your account or organization, what they may do and what they receive.",
+          "fr": "Les Apps installées sur votre compte ou organisation, ce qu’elles peuvent faire et ce qu’elles reçoivent.",
+          "nl": "De Apps die op je account of organisatie geïnstalleerd zijn, wat ze mogen en wat ze ontvangen."
+        },
+        "installedAt": {
+          "en": "Installed {0}",
+          "fr": "Installée le {0}",
+          "nl": "Geïnstalleerd op {0}"
+        },
+        "permissions": {
+          "en": "May:",
+          "fr": "Peut :",
+          "nl": "Mag:"
+        },
+        "events": {
+          "en": "Receives:",
+          "fr": "Reçoit :",
+          "nl": "Ontvangt:"
+        },
+        "asks": {
+          "en": "The App now also asks for: {0}",
+          "fr": "L'App demande désormais aussi : {0}",
+          "nl": "De App vraagt nu ook: {0}"
+        },
+        "accept": {
+          "en": "Grant",
+          "fr": "Accorder",
+          "nl": "Toekennen"
+        },
+        "accepted": {
+          "en": "Granted.",
+          "fr": "Accordé.",
+          "nl": "Toegekend."
+        },
+        "suspended": {
+          "en": "Suspended",
+          "fr": "Suspendue",
+          "nl": "Geschorst"
+        },
+        "pending": {
+          "en": "Asks for more",
+          "fr": "Demande plus",
+          "nl": "Vraagt meer"
+        },
+        "suspend": {
+          "en": "Suspend",
+          "fr": "Suspendre",
+          "nl": "Schorsen"
+        },
+        "unsuspend": {
+          "en": "Resume",
+          "fr": "Reprendre",
+          "nl": "Hervatten"
+        },
+        "suspendedNotice": {
+          "en": "Suspended: its tokens stop working and it receives nothing.",
+          "fr": "Suspendue : ses jetons cessent de fonctionner et elle ne reçoit plus rien.",
+          "nl": "Geschorst: de tokens werken niet meer en hij ontvangt niets."
+        },
+        "unsuspendedNotice": {
+          "en": "Resumed.",
+          "fr": "Reprise.",
+          "nl": "Hervat."
+        },
+        "uninstall": {
+          "en": "Uninstall",
+          "fr": "Désinstaller",
+          "nl": "Verwijderen"
+        },
+        "confirmUninstall": {
+          "en": "Uninstall {0}?",
+          "fr": "Désinstaller {0} ?",
+          "nl": "{0} verwijderen?"
+        },
+        "uninstalled": {
+          "en": "Uninstalled.",
+          "fr": "Désinstallée.",
+          "nl": "Verwijderd."
+        },
+        "none": {
+          "en": "No Apps are installed here.",
+          "fr": "Aucune App n'est installée ici.",
+          "nl": "Hier zijn geen Apps geïnstalleerd."
+        }
+      },
+      "install": {
+        "title": {
+          "en": "Install {0}",
+          "fr": "Installer {0}",
+          "nl": "{0} installeren"
+        },
+        "permissions": {
+          "en": "It may:",
+          "fr": "Elle pourra :",
+          "nl": "Hij mag:"
+        },
+        "noPermissions": {
+          "en": "Nothing on this site.",
+          "fr": "Rien sur ce site.",
+          "nl": "Niets op deze site."
+        },
+        "events": {
+          "en": "It receives:",
+          "fr": "Elle reçoit :",
+          "nl": "Hij ontvangt:"
+        },
+        "noEvents": {
+          "en": "No events.",
+          "fr": "Aucun événement.",
+          "nl": "Geen events."
+        },
+        "target": {
+          "en": "Install on",
+          "fr": "Installer sur",
+          "nl": "Installeren op"
+        },
+        "confirm": {
+          "en": "Install",
+          "fr": "Installer",
+          "nl": "Installeren"
+        },
+        "nowhere": {
+          "en": "There is nowhere left to install it.",
+          "fr": "Il n'y a plus d'endroit où l'installer.",
+          "nl": "Er is geen plek meer om hem te installeren."
+        },
+        "already": {
+          "en": "Already installed on {0}.",
+          "fr": "Déjà installée sur {0}.",
+          "nl": "Al geïnstalleerd op {0}."
+        },
+        "notFound": {
+          "en": "This App was not found, or you may not install it.",
+          "fr": "Cette App est introuvable, ou vous ne pouvez pas l'installer.",
+          "nl": "Deze App werd niet gevonden, of je mag hem niet installeren."
+        }
+      }
+    }
+  }
+}
