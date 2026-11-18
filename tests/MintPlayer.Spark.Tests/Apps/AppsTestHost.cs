@@ -101,6 +101,20 @@ public abstract class AppsTestHost : OrganizationsTestHost
         return (await session.Advanced.LoadStartingWithAsync<WebhookDelivery>(WebhookDelivery.PrefixFor(endpointId), pageSize: 1024)).ToList();
     }
 
+    /// <summary>How often <see cref="IWebhookEndpointDisabledHandler"/> was told about <paramref name="endpointId"/>.</summary>
+    internal int DisabledCount(string endpointId)
+    {
+        lock (Disabled)
+            return Disabled.Count(d => d.EndpointId == endpointId);
+    }
+
+    /// <summary>
+    /// Waits for the disabled handler. The engine tells it last, after the endpoint and the delivery are saved (and, for a
+    /// halt, after the scheduler's completion), so a wait on <c>Enabled</c> or on a settled delivery can still be before it.
+    /// </summary>
+    internal Task UntilDisabledHandlerToldAsync(string endpointId)
+        => Until(() => Task.FromResult(DisabledCount(endpointId) > 0), $"the disabled handler was told about {endpointId}");
+
     internal async Task<WebhookEndpoint> EndpointAsync(string endpointId)
     {
         using var session = Store.OpenAsyncSession();

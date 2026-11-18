@@ -70,10 +70,11 @@ public class WebhookOrderingHaltTests : AppsTestHost
 
         await PublishAsync(new OrderShipped("o-1", 1, null), WebhookOwner.User(ann.Id!));
         await PublishAsync(new OrderShipped("o-2", 1, null), WebhookOwner.User(ann.Id!));
-        await Until(async () => !(await EndpointAsync(endpointId)).Enabled, "the chain halts and disables the endpoint");
+        await UntilDisabledHandlerToldAsync(endpointId);
 
+        (await EndpointAsync(endpointId)).Enabled.Should().BeFalse("the halt disables the endpoint");
         Receiver.Received.Select(r => r.Json.GetProperty("data").GetProperty("orderId").GetString()).Should().Equal(["o-1", "o-1", "o-1"], "o-2 waits behind the halted o-1");
-        Disabled.Should().ContainSingle(d => d.EndpointId == endpointId);
+        DisabledCount(endpointId).Should().Be(1);
 
         Volatile.Write(ref failing, false);
         (await SendAsync("/spark/apps/webhooks/endpoints/enable", new { id = endpointId }, ann.Id)).Status.Should().Be(HttpStatusCode.OK);

@@ -230,7 +230,8 @@ public class WebhookDeliveryTests : AppsTestHost
         var endpoint = await EndpointAsync(endpointId);
         endpoint.Enabled.Should().BeFalse();
         endpoint.DisabledReason.Should().Contain("410");
-        Disabled.Should().ContainSingle(d => d.EndpointId == endpointId);
+        await UntilDisabledHandlerToldAsync(endpointId);
+        DisabledCount(endpointId).Should().Be(1);
 
         await PublishAsync(new OrderShipped("o-2", 1, null), WebhookOwner.User(ann.Id!));
         await Task.Delay(1500);
@@ -349,7 +350,8 @@ public class WebhookDeliveryTests : AppsTestHost
 
         Receiver.Received.Count.Should().Be(1, "the first failure past 5 days disables the endpoint; no retry follows");
         (await EndpointAsync(endpointId)).Enabled.Should().BeFalse();
-        Disabled.Should().ContainSingle(d => d.EndpointId == endpointId);
+        await UntilDisabledHandlerToldAsync(endpointId);
+        DisabledCount(endpointId).Should().Be(1);
 
         Receiver.Respond = null;
         (await SendAsync("/spark/apps/webhooks/endpoints/enable", new { id = endpointId }, ann.Id)).Status.Should().Be(HttpStatusCode.OK);
