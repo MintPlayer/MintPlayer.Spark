@@ -1,0 +1,34 @@
+{
+  "$schema": "http://json.schemastore.org/template",
+  "author": "MintPlayer",
+  "classifications": [ "Web", "Spark" ],
+  "identity": "MintPlayer.Spark.Templates.SparkCustomAction",
+  "name": "Spark custom action",
+  "description": "A custom action on a Spark model type. Run it in the app's project directory; it writes CustomActions/<name>Action.cs. Its doc comment holds the actions.json entry and the security.json right it needs.",
+  "shortName": "spark-custom-action",
+  "sourceName": "SparkItem",
+  "preferNameDirectory": false,
+  "tags": { "language": "C#", "type": "item" },
+  "symbols": {
+    "entity": {
+      "type": "parameter",
+      "datatype": "text",
+      "isRequired": true,
+      "description": "The entity the action works on, e.g. Invoice.",
+      "replaces": "SparkEntity"
+    },
+    "namespace": {
+      "type": "parameter",
+      "datatype": "text",
+      "description": "The project's root namespace. Defaults to the RootNamespace of the project in or above the output directory."
+    },
+    "rootNamespace": { "type": "bind", "binding": "msbuild:RootNamespace", "defaultValue": "UnrestoredProject" },
+    "effectiveNamespace": {
+      "type": "generated",
+      "generator": "coalesce",
+      "parameters": { "sourceVariableName": "namespace", "fallbackVariableName": "rootNamespace" },
+      "replaces": "SparkNs"
+    }
+  },
+  "primaryOutputs": [ { "path": "CustomActions/SparkItemAction.cs" } ]
+}

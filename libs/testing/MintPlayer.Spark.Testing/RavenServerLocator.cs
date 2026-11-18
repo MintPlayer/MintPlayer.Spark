@@ -40,22 +40,28 @@ public static class RavenServerLocator
     /// <summary>Written once a copy has fully completed, so a half-finished copy is never reused.</summary>
     private const string CompletionMarker = ".spark-provisioned";
 
-    private static readonly Lazy<string?> _serverDirectory = new(Provision, isThreadSafe: true);
+    private static readonly Lazy<ServerProvisioning> _provisioning = new(
+        () => Provision(ReadEmbeddedPackageVersion(), NuGetPackageRoot(), Path.Combine(Path.GetTempPath(), "MintPlayer.Spark", "RavenDBServer")),
+        isThreadSafe: true);
 
     /// <summary>
     /// A writable directory holding the RavenDB server binaries, or <see langword="null"/> when it
-    /// could not be provisioned.
+    /// could not be provisioned; <see cref="FailureReason"/> then says why.
     /// </summary>
     /// <remarks>
-    /// <see langword="null"/> leaves RavenDB on its default of <c>AppContext.BaseDirectory</c>.
-    /// Note that this is <em>not</em> a working fallback here — the build no longer copies the
-    /// server into the output directory, so that path is empty and the server will fail to start.
-    /// It is returned rather than thrown so the failure surfaces from RavenDB's own start-up,
-    /// where the message names the missing directory, instead of from a static constructor as a
-    /// <c>TypeInitializationException</c>. If tests fail with the server not found, provisioning
-    /// is what to investigate.
+    /// Returned rather than thrown because the server is configured from a static constructor, where a throw becomes a
+    /// <c>TypeInitializationException</c>. ~~Null "leaves RavenDB on its default".~~ It does not: RavenDB throws
+    /// <c>ArgumentNullException</c> ("Parameter 'ServerDirectory'"), which names no cause (measured 2026-11-18, templates
+    /// plan M6). So the fixtures call <see cref="RequireServerDirectory"/> before their first store, and fail there with
+    /// <see cref="FailureReason"/>.
     /// </remarks>
-    public static string? ServerDirectory => _serverDirectory.Value;
+    public static string? ServerDirectory => _provisioning.Value.Directory;
+
+    /// <summary>Why <see cref="ServerDirectory"/> is <see langword="null"/>, or <see langword="null"/> when it is not.</summary>
+    public static string? FailureReason => _provisioning.Value.Reason;
+
+    /// <summary>The server directory, or an <see cref="InvalidOperationException"/> that says why there is none.</summary>
+    public static string RequireServerDirectory() => _provisioning.Value.RequireDirectory();
 
     /// <summary>
     /// Turns dynamic PGO off for the RavenDB server process this test process is about to start.
@@ -77,31 +83,36 @@ public static class RavenServerLocator
             Environment.SetEnvironmentVariable("DOTNET_TieredPGO", "0");
     }
 
-    private static string? Provision()
+    /// <summary>
+    /// Copies the server of RavenDB.Embedded <paramref name="version"/> from <paramref name="packageRoot"/> into
+    /// <paramref name="tempRoot"/>, once. Each way it can fail names itself in <see cref="ServerProvisioning.Reason"/>.
+    /// </summary>
+    internal static ServerProvisioning Provision(string? version, string packageRoot, string tempRoot)
     {
-        var version = ReadEmbeddedPackageVersion();
         if (string.IsNullOrEmpty(version))
-            return null;
+            return ServerProvisioning.Failed(
+                $"no \"RavenDB.Embedded/<version>\" entry in a *.deps.json under {AppContext.BaseDirectory}, so the server's package version is unknown.");
 
-        var source = Path.Combine(
-            NuGetPackageRoot(), "ravendb.embedded", version, "contentFiles", "any", "any", "RavenDBServer");
+        var source = Path.Combine(packageRoot, "ravendb.embedded", version, "contentFiles", "any", "any", "RavenDBServer");
+        var server = Path.Combine(source, "Raven.Server.dll");
+        if (!File.Exists(server))
+            return ServerProvisioning.Failed(
+                $"{server} does not exist. Is RavenDB.Embedded {version} restored into {packageRoot}? (NUGET_PACKAGES overrides that folder.)");
 
-        if (!File.Exists(Path.Combine(source, "Raven.Server.dll")))
-            return null;
-
-        var target = Path.Combine(Path.GetTempPath(), "MintPlayer.Spark", "RavenDBServer", version);
-
+        var target = Path.Combine(tempRoot, version);
         if (IsProvisioned(target))
-            return target;
+            return new ServerProvisioning(target, null);
 
         try
         {
-            Directory.CreateDirectory(Path.GetDirectoryName(target)!);
-            return ProvisionOnce(source, target, version) ? target : null;
+            Directory.CreateDirectory(tempRoot);
+            return ProvisionOnce(source, target, version)
+                ? new ServerProvisioning(target, null)
+                : ServerProvisioning.Failed($"the copy of {source} into {target} finished without its {CompletionMarker} marker.");
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            return null;
+            return ServerProvisioning.Failed($"copying {source} into {target} failed: {ex.GetType().Name}: {ex.Message}");
         }
     }
 
@@ -317,4 +328,13 @@ public static class RavenServerLocator
         foreach (var file in others)
             yield return file;
     }
+}
+
+/// <summary>The outcome of provisioning the embedded server: its directory, or why there is none.</summary>
+internal sealed record ServerProvisioning(string? Directory, string? Reason)
+{
+    public static ServerProvisioning Failed(string reason) => new(null, reason);
+
+    public string RequireDirectory() => Directory ?? throw new InvalidOperationException(
+        $"The embedded RavenDB server could not be provisioned: {Reason} See MintPlayer.Spark.Testing's RavenServerLocator.");
 }

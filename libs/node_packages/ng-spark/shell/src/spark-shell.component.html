@@ -34,11 +34,16 @@
       <h5 class="p-3 border-bottom">{{ title() }}</h5>
     }
     @if (sidebarTopTpl(); as tpl) {
-      <ng-container *ngTemplateOutlet="tpl" />
+      <div class="spark-sidebar-top">
+        <ng-container *ngTemplateOutlet="tpl" />
+      </div>
     }
     <spark-program-units [reloadToken]="reloadToken()" [extraTabs]="tabs()" />
     @if (sidebarFooterTpl(); as tpl) {
-      <ng-container *ngTemplateOutlet="tpl" />
+      <!-- Pinned to the bottom of the sidebar (margin-top: auto in the flex column), however short the menu is. -->
+      <div class="spark-sidebar-footer">
+        <ng-container *ngTemplateOutlet="tpl" />
+      </div>
     }
   </nav>
 

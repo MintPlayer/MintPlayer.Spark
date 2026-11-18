@@ -1,0 +1,147 @@
+<div class="vs-setup py-3" data-versioning-setup>
+  <h1 class="h3 mb-3"><spark-icon name="tags"></spark-icon> Package versioning</h1>
+  <p class="lead">
+    CodeCoverage versions your NuGet and npm packages for you. Nobody edits a version number: every release is a git tag
+    <code>&lt;PackageId&gt;/v&lt;version&gt;</code>, such as <code>Acme.Mapper/v13.2.0</code>, and the tag is the only
+    record of the version.
+  </p>
+  <p>
+    Your publish workflow runs one step after its tests. That step tags every package that changed, and the pack then
+    reads the tags.
+  </p>
+
+  <nav aria-label="Steps" class="mb-4">
+    <ol class="mb-0" data-testid="vs-setup-steps">
+      @for (step of steps; track step.id) {
+        <li>
+          <a [routerLink]="[]" [fragment]="step.id" (click)="jumpTo(step.id)">{{ step.title }}</a>
+        </li>
+      }
+    </ol>
+  </nav>
+
+  @for (step of steps; track step.id; let n = $index) {
+    <bs-card class="mb-4" [attr.id]="step.id" [attr.data-step]="step.id">
+      <bs-card-header>
+        <h2 class="h5 mb-0"><bs-badge class="me-2" [color]="'primary'">{{ n + 1 }}</bs-badge>{{ step.title }}</h2>
+      </bs-card-header>
+      <bs-card-body>
+        @switch (step.id) {
+          @case ('how') {
+            <ul class="mb-0" data-testid="vs-setup-rules">
+              <li>
+                <strong>Only what changed is released.</strong> A package is released when a file it is built from changed
+                since its last tag. A .NET package whose in-repository dependency is released is released too.
+              </li>
+              <li>
+                <strong>The major follows the platform.</strong> It comes from the highest <code>netX</code> target framework,
+                or from the resolved <code>&#64;angular/core</code>, <code>react</code> or <code>vue</code>.
+                <code>netstandard</code>, <code>net4x</code> and plain node libraries keep the major of their last tag; you
+                raise it by pushing a tag yourself.
+              </li>
+              <li>
+                <strong>Minor or patch comes from the public API.</strong> If the API changed, it is a minor; otherwise a
+                patch. A breaking change is a minor too, because the major belongs to the platform.
+              </li>
+              <li>
+                <strong>Prereleases mirror upstream.</strong> When the platform or a dependency is a prerelease, the package
+                gets the same label with its own counter, such as <code>11.0.0-rc.3</code>.
+              </li>
+            </ul>
+          }
+          @case ('onboard') {
+            <p data-testid="vs-setup-onboard">
+              Open the repository's page (from its account, in
+              <a routerLink="/po/forge-accounts/github" data-testid="vs-setup-accounts-link">your GitHub accounts</a>), run
+              <strong>Set up features</strong> and tick <strong>Package versioning</strong>. It opens one pull request
+              (<a routerLink="/onboarding/setup">how onboarding works</a>) that:
+            </p>
+            <ul>
+              <li>adds <code>MintPlayer.Versioning.MSBuild</code> to <code>Directory.Build.props</code>;</li>
+              <li>replaces hand-edited versions with <code>0.0.0-PLACEHOLDER</code>;</li>
+              <li>adds the versioning step and its permissions to your publish workflow, and <code>fetch-depth: 0</code> to its checkouts;</li>
+              <li>adds a <code>versioning:</code> section to <code>coverage.yml</code>.</li>
+            </ul>
+            <p class="mb-0">
+              Review and merge it. At the merge CodeCoverage <strong>tags the history</strong>: every version your packages
+              declared gets a tag at its earliest commit, so no package restarts at <code>0.0.0</code>. Running
+              <strong>Set up features</strong> again tags whatever is still missing.
+            </p>
+          }
+          @case ('workflow') {
+            <p>
+              The step runs <strong>after the tests</strong> and before the pack: a tag is a promise that the package ships.
+              Then pack and publish <strong>every</strong> package; one this commit did not release packs at the version the
+              feed already has, and the publish skips it.
+            </p>
+            <pre class="bg-body-tertiary p-3 rounded" data-testid="vs-setup-workflow"><code>{{ workflow }}</code></pre>
+            <bs-alert [color]="'warning'" class="d-block mb-0" data-testid="vs-setup-no-release-trigger">
+              A workflow <code>on: release</code> fires once <strong>per GitHub Release</strong>, so a run that releases ten
+              packages starts it ten times. Trigger publishing from the push.
+            </bs-alert>
+          }
+          @case ('configure') {
+            <p>
+              A repository is versioned when its default branch's <code>coverage.yml</code> has a <code>versioning:</code>
+              section, even an empty one. These keys change the defaults:
+            </p>
+            <bs-table [responsive]="true" data-testid="vs-setup-keys">
+              <thead>
+                <tr><th>Key</th><th>Meaning</th></tr>
+              </thead>
+              <tbody>
+                @for (row of keys; track row.key) {
+                  <tr><td class="text-nowrap"><code>{{ row.key }}</code></td><td>{{ row.meaning }}</td></tr>
+                }
+              </tbody>
+            </bs-table>
+            <p class="mb-0">
+              An invalid section refuses the run with an error that names the problem; it never falls back to the defaults,
+              because a published version cannot be taken back. Releasing from release lines, and backporting onto them, is
+              in <a routerLink="/backports/setup" data-testid="vs-setup-backports-link">the backports guide</a>.
+            </p>
+          }
+          @case ('releases') {
+            <ul class="mb-0" data-testid="vs-setup-releases">
+              <li>
+                <strong>One GitHub Release per tag</strong>, titled <code>&lt;PackageId&gt; &lt;version&gt;</code>, with the
+                titles of the pull requests that touched the package as its notes.
+              </li>
+              <li>
+                <strong>Pull request title correction</strong> rewrites a title to <code>&lt;type&gt;: &lt;title&gt; (#issue)</code>,
+                so the notes read well. It never decides a version.
+              </li>
+              <li>
+                Both are switches on the account's and the repository's <strong>Versioning</strong> tab: Release on tag is on
+                by default, title correction off.
+              </li>
+              <li>
+                The <a routerLink="/commit-graph/setup">commit graph</a> marks each released commit with its run's status, and
+                offers <strong>re-run</strong> on a failed one to people who can write to the repository.
+              </li>
+              <li>A green publish run comments the packages and versions it released on the pull request it came from.</li>
+            </ul>
+          }
+          @case ('troubleshoot') {
+            <bs-table [responsive]="true" data-testid="vs-setup-problems">
+              <thead>
+                <tr><th>Symptom</th><th>What to do</th></tr>
+              </thead>
+              <tbody>
+                @for (row of problems; track row.symptom) {
+                  <tr><td>{{ row.symptom }}</td><td>{{ row.fix }}</td></tr>
+                }
+              </tbody>
+            </bs-table>
+            <p class="mb-0">Versioning is GitHub only; on GitLab and Bitbucket repositories its settings are hidden.</p>
+          }
+        }
+      </bs-card-body>
+    </bs-card>
+  }
+
+  <p class="small text-body-secondary mb-0">
+    The full reference is
+    <a href="https://github.com/MintPlayer/MintPlayer.Spark/blob/master/docs/code-coverage/versioning.md" target="_blank" rel="noopener">the package versioning guide</a>.
+  </p>
+</div>

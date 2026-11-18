@@ -1,0 +1,48 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+	<PropertyGroup>
+		<TargetFramework>net11.0</TargetFramework>
+		<Nullable>enable</Nullable>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<IsPackable>false</IsPackable>
+		<UserSecretsId>a587cfbf-0605-4d67-9334-2e85c234c343</UserSecretsId>
+<!--#if (HasClient) -->
+		<!-- The build runs `npm install` here when node_modules is missing, and `npm run build` on publish. -->
+		<SpaRoot>ClientApp\</SpaRoot>
+<!--#else -->
+		<!-- No client: MintPlayer.Spark brings MintPlayer.AspNetCore.NodeServices, whose build would run npm in ClientApp\. -->
+		<EnableSpaBuilder>false</EnableSpaBuilder>
+<!--#endif -->
+	</PropertyGroup>
+
+	<ItemGroup>
+		<!-- The entities are in scope everywhere, so actions, custom actions and indexes need no using for them. -->
+		<Using Include="SparkApp.Library.Entities" />
+	</ItemGroup>
+
+	<!-- Versions are in ../Directory.Packages.props (central package management). -->
+	<ItemGroup>
+		<PackageReference Include="MintPlayer.Spark" />
+<!--#if (IsRaven) -->
+		<PackageReference Include="MintPlayer.Spark.RavenDB" />
+<!--#else -->
+		<PackageReference Include="MintPlayer.Spark.InMemory" />
+<!--#endif -->
+<!--#if (HasClient) -->
+		<PackageReference Include="MintPlayer.AspNetCore.SpaServices" />
+<!--#endif -->
+		<!-- spark-features: PackageReferences -->
+		<!-- The Spark analyzers and generators (PersistentObjectNames, the security analyzer, the generated
+		     AddMigrations/AddCronJobs). Private: they must not flow into anything that references the host. -->
+		<PackageReference Include="MintPlayer.Spark.SourceGenerators" PrivateAssets="all"
+		                  IncludeAssets="runtime; build; native; contentfiles; analyzers; buildtransitive" />
+		<!-- [Inject] on readonly fields: the generator writes the constructor. -->
+		<PackageReference Include="MintPlayer.SourceGenerators" PrivateAssets="all"
+		                  IncludeAssets="runtime; build; native; contentfiles; analyzers; buildtransitive" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\SparkApp.Library\SparkApp.Library.csproj" />
+	</ItemGroup>
+
+</Project>

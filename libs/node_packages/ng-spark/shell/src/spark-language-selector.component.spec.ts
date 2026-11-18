@@ -41,7 +41,20 @@ describe('SparkLanguageSelectorComponent', () => {
     expect(links.map(a => a.getAttribute('hreflang'))).toEqual(['en', 'nl']);
     expect(links.map(a => a.textContent!.trim())).toEqual(['English', 'Dutch']);
     expect(links[0].getAttribute('aria-current')).toBe('true');
-    expect(el.querySelector('summary')!.textContent!.trim()).toBe('EN');
+  });
+
+  // Each language under its own name, whatever the page's language; a name with no translation into its own language
+  // falls back to the page's language. The summary names the current language, with the code for a phone-width topbar.
+  it('names every language in that language', async () => {
+    const el = await render({
+      en: { en: 'English', nl: 'Engels' },
+      nl: { en: 'Dutch', nl: 'Nederlands' },
+      fr: { en: 'French', nl: 'Frans' },
+    });
+
+    expect(Array.from(el.querySelectorAll('a')).map(a => a.textContent!.trim())).toEqual(['English', 'Nederlands', 'French']);
+    expect(el.querySelector('summary .spark-lang-name')!.textContent!.trim()).toBe('English');
+    expect(el.querySelector('summary .spark-lang-code')!.textContent!.trim()).toBe('EN');
   });
 
   it('closes the menu when a language is picked', async () => {

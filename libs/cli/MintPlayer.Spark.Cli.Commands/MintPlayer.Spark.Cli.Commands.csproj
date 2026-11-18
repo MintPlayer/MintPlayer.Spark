@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<!--
+	  The commands of the `spark` tool and its `create-spark-app` alias (docs/templates_dnx_terminal_PRD.md §6, D17-D19).
+	  Both tool hosts reference this library, and a tool package carries its dependencies, so it is never packed itself.
+	  The commands instantiate the MintPlayer.Spark.Templates pack (D3): they never write an app's files themselves,
+	  only the JSON and C# edits an item template spells out in its doc comment.
+	-->
+	<PropertyGroup>
+		<TargetFramework>net11.0</TargetFramework>
+		<Nullable>enable</Nullable>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<IsPackable>false</IsPackable>
+		<RootNamespace>MintPlayer.Spark.Cli</RootNamespace>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<PackageReference Include="MintPlayer.CliGenerator" Version="13.1.1" PrivateAssets="all"
+		                  IncludeAssets="runtime; build; native; contentfiles; analyzers; buildtransitive" />
+		<PackageReference Include="MintPlayer.CliGenerator.Attributes" Version="13.0.2" />
+		<PackageReference Include="MintPlayer.SourceGenerators" Version="13.1.2" PrivateAssets="all"
+		                  IncludeAssets="runtime; build; native; contentfiles; analyzers; buildtransitive" />
+		<PackageReference Include="MintPlayer.SourceGenerators.Attributes" Version="13.1.2" />
+		<PackageReference Include="Microsoft.Extensions.Hosting" Version="11.0.0" />
+		<PackageReference Include="Spectre.Console" Version="0.57.2" />
+	</ItemGroup>
+
+	<!-- One manifest: the feature picker reads the same features.json the template is generated from. -->
+	<ItemGroup>
+		<Compile Include="..\..\templates\MintPlayer.Spark.Templates.Build\FeatureManifest.cs" Link="Templates\FeatureManifest.cs" />
+		<EmbeddedResource Include="..\..\templates\MintPlayer.Spark.Templates\features.json" LogicalName="features.json" Link="Templates\features.json" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<InternalsVisibleTo Include="MintPlayer.Spark.Cli.Tests" />
+	</ItemGroup>
+
+</Project>

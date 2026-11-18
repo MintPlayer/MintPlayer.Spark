@@ -31,7 +31,8 @@
     "getting started with the Set up features chooser (/onboarding/setup, first, at order 0 so no other unit moved),",
     "setting up coverage uploads (/coverage/setup, which was the repository page's setup panel), the merge queue's GitHub",
     "setup (/merge-queue/setup), the dependency updater's setup (/dependency-updates/setup), PR size labels",
-    "(/pr-size-labels/setup), backports to release lines (/backports/setup) and connecting an AI agent to /mcp (/connect-agent, also the topbar's button). A url unit",
+    "(/pr-size-labels/setup), backports to release lines (/backports/setup), project board automation (/project-boards/setup, #625), package versioning",
+    "(/versioning/setup), the repository page's commit graph (/commit-graph/setup) and connecting an AI agent to /mcp (/connect-agent; the topbar no longer repeats it). A url unit",
     "has no target to grant, so the group is shown to everyone. The merge queue unit kept its id when it moved here from",
     "the Coverage group, and every unit kept its id when the coverage guide took the first place."
   ],
@@ -128,12 +129,36 @@
           "order": 5
         },
         {
+          "id": "e38c9769-b657-4cb6-997b-472e07e4115d",
+          "name": "programUnits.projectBoardsSetup",
+          "icon": "bi-kanban",
+          "type": "url",
+          "url": "/project-boards/setup",
+          "order": 6
+        },
+        {
+          "id": "c4f1a8e2-7b39-4d06-a5e8-2f9b13c7d640",
+          "name": "programUnits.versioningSetup",
+          "icon": "bi-tags",
+          "type": "url",
+          "url": "/versioning/setup",
+          "order": 7
+        },
+        {
+          "id": "7d2e9b54-0a61-4c8f-b3d7-e85f4a2c1b96",
+          "name": "programUnits.commitGraphSetup",
+          "icon": "bi-diagram-3",
+          "type": "url",
+          "url": "/commit-graph/setup",
+          "order": 8
+        },
+        {
           "id": "a8025e33-3ea7-4bca-9804-3433240839b2",
           "name": "programUnits.connectAgent",
           "icon": "bi-robot",
           "type": "url",
           "url": "/connect-agent",
-          "order": 6
+          "order": 9
         },
         {
           "id": "6b1f0d42-8c3e-4a75-9e21-d4a7c50b8f13",
@@ -142,7 +167,7 @@
           "type": "query",
           "queryId": "01c3c921-93c8-4d0b-b3d9-82f86a74339b",
           "alias": "platform-lifecycle",
-          "order": 7
+          "order": 10
         }
       ]
     },

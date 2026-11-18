@@ -51,6 +51,8 @@
 
   <ItemGroup>
     <Using Include="Xunit" />
+    <!-- RavenServerProvisioningTests drives RavenServerLocator.Provision with its own paths. -->
+    <InternalsVisibleTo Include="MintPlayer.Spark.Tests" />
   </ItemGroup>
 
   <ItemGroup>

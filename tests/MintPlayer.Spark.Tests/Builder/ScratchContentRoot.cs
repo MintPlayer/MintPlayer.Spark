@@ -22,8 +22,8 @@ internal sealed class ScratchContentRoot : IDisposable
 
     public string ModelPath => System.IO.Path.Combine(Path, "App_Data", "Model");
 
-    public WebApplicationBuilder CreateBuilder() =>
-        WebApplication.CreateBuilder(new WebApplicationOptions { ContentRootPath = Path });
+    public WebApplicationBuilder CreateBuilder(string? environmentName = null) =>
+        WebApplication.CreateBuilder(new WebApplicationOptions { ContentRootPath = Path, EnvironmentName = environmentName });
 
     /// <summary>Runs <c>--spark-synchronize-model</c> for <typeparamref name="TContext"/>.</summary>
     public void Synchronize<TContext>() where TContext : SparkContext

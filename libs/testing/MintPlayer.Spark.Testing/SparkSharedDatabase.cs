@@ -107,6 +107,8 @@ public class SparkSharedDatabase : RavenTestDriver, IAsyncLifetime
         if (RequireLicense)
             LicenseHelper.EnsureAvailable();
 
+        // Before the first store: without a server directory RavenDB throws a bare ArgumentNullException.
+        RavenServerLocator.RequireServerDirectory();
         Store = GetDocumentStore();
 
         var assemblies = IndexAssemblies as Assembly[] ?? IndexAssemblies.ToArray();

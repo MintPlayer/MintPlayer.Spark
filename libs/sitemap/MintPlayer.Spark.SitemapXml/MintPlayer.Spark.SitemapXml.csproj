@@ -5,6 +5,8 @@
 		<ImplicitUsings>enable</ImplicitUsings>
 		<Nullable>enable</Nullable>
 		<OutputType>Library</OutputType>
+		<!-- The Web SDK defaults IsPackable to false; without this the library is never versioned or packed (#689). -->
+		<IsPackable>true</IsPackable>
 
 		<!-- NuGet Package Metadata -->
 		<PackageId>MintPlayer.Spark.SitemapXml</PackageId>

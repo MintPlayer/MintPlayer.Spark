@@ -67,7 +67,7 @@ services:
   # The endpoint is a cluster-admin one, so this is the one container that gets the operator certificate (the
   # apps never do). The server's name is checked against the private CA (--cacert).
   coverage-raven-license:
-    image: curlimages/curl:8.12.1
+    image: curlimages/curl:8.13.0
     depends_on:
       coverage-raven:
         condition: service_healthy
