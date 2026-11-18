@@ -579,6 +579,9 @@ All of this repo's work goes in **one PR** (owner rule), including the `MintPlay
       the flag.
     - After the fix: matrix `Defaults` all green (build 9 s, synchronize 19 s, verify 2 s). `MinimalInMemory`
       green in the run before.
+  - **Full matrix (owner asked, 2026-11-18):** `node tools/template-matrix.mjs`, all 32 variants passed (179 steps,
+    15 distinct client builds). The Tests project is in the slnx of all 31 RavenDB variants, and missing only from
+    `MinimalInMemory`.
   - **The generated test runs:** `dotnet test Defaults.Tests` with `RAVENDB_LICENSE` set to the Developer licence's
     path. It passed twice, and the passing runs provisioned the embedded server in about 2 s.
   - **⚠️ Not located: one failure.** The first run, right after the matrix, failed in 4 s with `Value cannot be
