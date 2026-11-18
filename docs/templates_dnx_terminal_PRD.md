@@ -1,11 +1,14 @@
 # Spark templates, `dnx create-spark-app`, and a terminal UI framework
 
-**Status:** DECIDED, not started.
+**Status:** ~~DECIDED, not started.~~ **Parts A and C built in PR #690 (2026-11-18); Part B lives in Tools #18.**
 - **Investigation:** three parallel surveys on 2026-11-16 covered template packs and `dnx`, the .NET terminal-UI
   landscape, and the earlier MintPlayer CLI work.
 - **Decisions:** taken in a grill session with the owner the same day (§7). Each one records its alternatives and
   the risk accepted.
-- **Next:** spikes S1–S6 in the plan answer the remaining technical unknowns.
+- **Done in this repo:** spikes S1, S2, S3, S6 and milestones M1–M6 (plan). S4 and S5 belong to the terminal
+  framework in MintPlayer.Dotnet.Tools.
+- **Next:** CI green on #690, the owner's merge, then the first `/release`, which must ship the template and both
+  tools at one stable version (plan M6).
 
 **Plan:** [templates_dnx_terminal_plan.md](templates_dnx_terminal_plan.md)
 
@@ -297,7 +300,7 @@ template as a minor version. The release notes must say so.
 | D11 | Archive MintPlayer.Dotnet.Templates and move it to MintPlayer-Archive | keep alive; leave alone | `mintplayer-web` users stay on net10; NuGet deprecation message | owner, grill Q14; Templates #6 |
 | D12 | DemoApp unchanged; a matrix guards the template against same-commit packages (local only, never CI: owner 2026-11-17, §4.6) | DemoApp generated from template; template generated from DemoApp | catches broken, not different | CLAUDE.md DemoApp role |
 | D13 | `App_Data`: the app synchronizes on its first Development run if missing; the post-action and the tool also run it eagerly | post-action only; tool only | a core change; it must never overwrite | owner, grill Q13 |
-| D14 | Client: plain Angular CLI, included by default, `--no-client` | Nx; opt-in | a second ClientApp copy can drift, so CI builds it | owner, grill Q7 |
+| D14 | Client: plain Angular CLI, included by default, `--no-client` | Nx; opt-in | a second ClientApp copy can drift, so ~~CI~~ the local matrix builds it (D12) | owner, grill Q7 |
 | D15 | Feature choices generated from a `features.json` manifest, guarded by graph and coverage tests | hand-written JSON; self-describing packages | generator complexity; matrix size (S6) | owner, grill Q11 |
 | D16 | Prerequisites auto-included. Hard constraints use `isEnabled` in VS: ✅ it works in VS 2026 and **hides** the option (S1, 2026-11-17, superseding the owner's ~2023 observation). On the CLI, `isEnabled` silently drops the value, so refusal there comes from the `dnx` tool's validation or the `#error` fallback | auto-only; disable-only | a CLI user's disabled flag is ignored without a message, unless the fallback is in place | owner, grill Q12; S1 |
 | D17 | Tool `MintPlayer.Spark.Cli`, command `spark` | `.Create`; `create-spark-app` only | the ID promises a general CLI | owner, grill Q8 |
@@ -308,14 +311,14 @@ template as a minor version. The release notes must say so.
 
 ## 8. Remaining unknowns (owned by spikes)
 
-| Unknown | Spike |
-|---|---|
-| Does VS 2026 honour `isEnabled`? Does it run run-script post-actions? Can a template refuse a combination? Do Rider and C# Dev Kit show the template? | S1 |
-| Released versions in template content; a same-commit local feed for CI | S2 |
-| First tool packages in the pipeline (two IDs); `dnx` cold start; in-process template engine vs `dotnet new` | S3 |
-| RazorConsole overlays, absolute positioning, scroll and drag | S4 (Tools) |
-| Command bridge and localized commands | S5 (Tools) |
-| Manifest generator shape; whether about 32 instantiations fit one PR job | S6 |
+| Unknown | Spike | Answer (plan has the evidence) |
+|---|---|---|
+| Does VS 2026 honour `isEnabled`? Does it run run-script post-actions? Can a template refuse a combination? Do Rider and C# Dev Kit show the template? | S1 | ✅ `isEnabled` works in VS 2026 and hides the option; the CLI drops a disabled flag silently, so refusals live in the tool (D16) |
+| Released versions in template content; a same-commit local feed ~~for CI~~ | S2 | ✅ pack-time `Directory.Packages.props` from the tags; `SparkTemplateFeedVersion` packs a same-commit feed |
+| First tool packages in the pipeline (two IDs); `dnx` cold start; in-process template engine vs `dotnet new` | S3 | ✅ no pipeline change; shell out to `dotnet new`; `create-spark-app` 24 s end to end |
+| RazorConsole overlays, absolute positioning, scroll and drag | S4 (Tools) | open, Tools #18 |
+| Command bridge and localized commands | S5 (Tools) | open, Tools #18 |
+| Manifest generator shape; whether about 32 instantiations fit one PR job | S6 | ✅ pack-time generator; the matrix (32 variants, ~11 min) runs locally only (owner, D12) |
 
 ---
 
@@ -329,5 +332,8 @@ template as a minor version. The release notes must say so.
   - Pack then disabled them: `This project cannot be packaged…`, run 43854085870.
   - The run stayed green.
   - `/release` reports nothing after "its release run starts now".
+  - **Fixed in this PR (2ac440c22, 2026-11-17):** eight libraries on `Microsoft.NET.Sdk.Web` had a `PackageId` but no
+    `IsPackable`, and the Web SDK defaults it to false. They are packable now, and the engine warns about such a
+    project. They ship on the next `/release`.
 - **#687's ng-spark changes are not released yet.** Since Segment P, a master merge releases nothing. They ship
   with the next `/release angular-22.x`.

@@ -57,7 +57,7 @@ All of this repo's work goes in **one PR** (owner rule), including the `MintPlay
       must report a missing value at startup.
     - ⚠️ **A symbol named `Auth` appeared twice.** VS showed its own "Authentication type" dropdown (with only
       "None") next to ours. This looks like a clash with VS's built-in auth option, inferred and not verified. The
-      symbol was renamed to `AuthMode`; retest pending. **The manifest generator must avoid VS's reserved symbol
+      symbol was renamed to `AuthMode`; ~~retest pending~~ retested, see below. **The manifest generator must avoid VS's reserved symbol
       names** (`auth`, `Framework`, `langVersion`, …), each to be confirmed.
     - ✅ after the fix: **blank solution** (test 3). The template had no `primaryOutputs`, and VS adds only the listed
       projects to the solution. `spark-app` must list every project (host, Library, Tests) in `primaryOutputs`.
@@ -208,7 +208,8 @@ All of this repo's work goes in **one PR** (owner rule), including the `MintPlay
     `net11.0` and their label from their dependencies (all stable), so both start at `11.0.0` on the release line,
     and the publish pushes them like any other. Both csprojs carry `0.0.0-PLACEHOLDER` and `SparkApplication=false`
     (Directory.Build.targets treats every Exe as a Spark host and demanded the SourceGenerators reference, SPARK001).
-    What M6 must still do is pack the template on the release line (M3 finding), with the tools beside it.
+    What M6 must still do is pack the template on the release line (M3 finding), with the tools beside it. (Done in
+    M6: the release job already packs only on a release line; M6 added the lockstep group.)
 
 ## Spikes (MintPlayer.Dotnet.Tools, via Tools #18)
 - **S4: RazorConsole fit (2 days).** Find out whether overlays, a modal, absolute positioning for a draggable
@@ -339,7 +340,7 @@ All of this repo's work goes in **one PR** (owner rule), including the `MintPlay
       reads them.
   - **Open:**
     - a Tests project in `primaryOutputs`
-    - an `App_Data` first run (M2)
+    - ~~an `App_Data` first run (M2)~~ done in M2
 
 ### M2: `SynchronizeOnStartupIfMissing` (core, D13)
 - Add a new option in `MintPlayer.Spark`. In Development it runs the model and security synchronizers when
@@ -553,5 +554,6 @@ All of this repo's work goes in **one PR** (owner rule), including the `MintPlay
 ## Outside this repo (issues only)
 - Tools #18: framework scope, D5–D7, S4–S5 (updated 2026-11-16).
 - Templates #6: README pointer, NuGet deprecation, bot off, archive, transfer to MintPlayer-Archive.
-- Spark #689: three packages silently skipped by the versioning engine. This is a separate defect and not part of
-  this PR.
+- Spark #689: three packages silently skipped by the versioning engine. ~~This is a separate defect and not part of
+  this PR.~~ Fixed in this PR (2ac440c22): eight Web-SDK libraries lacked `IsPackable` (M1 remainder).
+- MintPlayer.Dotnet.Tools #220: CliGenerator option names lose their dashes (found in M5, worked around here).
