@@ -1,7 +1,7 @@
 # Spark Apps & outbound webhooks — PRD and plan (#691)
 
 Status: **M0 done (2026-11-18)**: spike verdicts are in §5, and the decisions they changed are D10, D12, D14–D20. Nothing is built yet.
-Next: the owner answers the open questions in §7, then M1.
+The owner answered every open question on 2026-11-18 (D21–D24). Next: M1.
 Issue: [#691](https://github.com/MintPlayer/MintPlayer.Spark/issues/691), "Let website developers provide an Apps feature which lets
 their website send webhooks to downstream users".
 Written 2026-11-18 at master `fc95abe38`, after a three-agent investigation and three rounds of grilling with the owner.
@@ -110,6 +110,10 @@ Unless marked otherwise, each decision is the owner's answer in the grilling of 
 | D17 | **`InstallationGroupMembershipProvider`** maps an installation token's scopes and owner to security.json groups, so existing rights apply to Apps | S2: `IGroupMembershipProvider` is called once per request and cached (`SparkGroupMembership.cs:50-81`). Precedent: `AgentStoreGroupMembership.cs:27` |
 | D18 | **Owners are pluggable:** `IWebhookOwnerProvider` resolves an owner (kind + key), whether the current user may manage it, and its display name. Built in: the user, and the Spark `Organization` (when registered). CodeCoverage registers one for its forge `Account` (`OwnerKey`), with an optional repository filter | S8: CodeCoverage does not use Spark Organizations. Its owners are `Account`/`Repository` (`CodeCoverage.Library/Entities/`), and management is `ISparkVisibility.CanManageOwnerAsync`/`CanManageRepositoryAsync` (`SparkVisibility.cs:81-121`). This generalises D9 without changing it for plain sites |
 | D19 | **Catalog schemas come from `JsonSchemaExporter` at runtime, not a source generator.** It runs over the same `JsonSerializerOptions` that serialise the payloads, so schema and wire cannot drift. The webhook wire options use `NumberHandling = Strict` (not the Web defaults). A `TransformSchemaNode` adds a `title` (the CLR type name, so codegen can name nested classes) and the description. `[WebhookEvent]` types are found by an assembly scan in `AddEventsFromAssemblyContaining<T>()` | S1, measured on .NET 11.0.0 (`dotnet run` probe): records, nested records, `DateTimeOffset` (`date-time`), string enums, nullable and lists all export. With Web defaults, `decimal` and `int` export as `["string","number"]` because of `AllowReadingFromString`, hence Strict. Nested types are inlined without a name, hence `title` |
+| D21 | **`v2a` (ed25519) ships in v1 through NSec**, in an opt-in package `MintPlayer.Webhooks.Ed25519` (`net9.0;net10.0;net11.0`, so 11.x under D10). It holds the `v2a` signer, used by the server, and the `v2a` verifier, used by receivers. The `netstandard2.0` receiver core and `MintPlayer.Spark.Apps` do not reference it: a site turns `v2a` on with `apps.UseEd25519Signatures()` (one site key pair, public key published in the catalog, private key protected per D15) | Owner chose NSec (O6, 2026-11-18). `NSec.Cryptography` 26.4.0 (MIT) targets `net9.0` only and depends on the native `libsodium` package (nuspec, 2026-11-18), so it cannot sit in the `netstandard2.0` core. An opt-in package keeps the native dependency away from sites that don't use `v2a` |
+| D22 | **Ordering is the site developer's choice:** `apps.Delivery.Ordering = Unordered` (default) or `PerDestination`, which orders deliveries per App installation and per direct endpoint. The payload cap is 256 KB; above it the event is sent thin (ids plus a fetch URL) | Owner (O1/O3, 2026-11-18): "Unordered, 256 KB cap", plus an opt-in for ordered deliveries per installation. Mechanism: §4.3 step 3a and S9 |
+| D23 | **The delivery log stores the full payload** for 30 days (used by redelivery), with a 2 KB response excerpt. **No App manifest flow in v1** | Owner (O4/O5, 2026-11-18) |
+| D24 | **The `netstandard2.0` generator packages stay on 11.x.** They are not re-seeded at 1.0.0 | Owner (O7, 2026-11-18). No tag pushes |
 | D20 | **The official reference library for interop tests is NuGet `StandardWebhooks.StandardWebhooks`** (1.3.0, author "Standard Webhooks"), not `StandardWebhooks` (1.1.2, Codefactors, third party) | S4: NuGet search, 2026-11-18 |
 
 ## 4. Design
@@ -120,6 +124,7 @@ Unless marked otherwise, each decision is the owner's answer in the grilling of 
 libs/apps/MintPlayer.Spark.Apps                    server: events, catalog, endpoints, apps, installations, delivery
 libs/webhooks/MintPlayer.Webhooks.Receiver         netstandard2.0 (own semver): Standard Webhooks sign+verify, typed dispatch base, HandleAsync(headers, body)
 libs/webhooks/MintPlayer.Webhooks.Receiver.AspNetCore  net11.0: MapWebhookReceiver<TProcessor>(path)
+libs/webhooks/MintPlayer.Webhooks.Ed25519          net9.0;net10.0;net11.0: opt-in v2a signer + verifier over NSec (D21)
 libs/webhooks/MintPlayer.Spark.Webhooks.Receiver   Spark adapter: verify → BroadcastOnce(webhook-id) → IRecipient<T>
 libs/node_packages/webhooks-receiver               @mintplayer/webhooks-receiver (Node/edge: verify + typed dispatch)
 libs/node_packages/ng-spark/apps                   @mintplayer/ng-spark/apps entry point (developer settings, install consent, deliveries)
@@ -163,6 +168,18 @@ drift apart, and interop tests against the official `StandardWebhooks` library p
    - Anything else: throw, so the queue backs off.
 
    Every attempt is recorded on the `WebhookDelivery`.
+3a. **Ordered mode** (D22, `PerDestination`). Messaging has no per-key lane (S3), so ordering is a **chain** rather than a queue
+   feature:
+   - The fan-out gives each `WebhookDelivery` a per-destination sequence number. A `WebhookDestinationCursor` document is updated
+     with optimistic concurrency, so two concurrent fan-outs cannot take the same number.
+   - Only the cursor's **head** delivery is broadcast. When the head reaches a terminal state (success, exhausted or cancelled), the
+     handler broadcasts the next one in the same session (`IMessageOutbox`), so the chain cannot stall between two writes.
+   - On an exhausted head, `OnExhausted = Skip` (the default) moves on. `Halt` keeps the destination paused until the owner redelivers
+     or skips from the deliveries page.
+   - The breaker of D14 is not needed in ordered mode, because there is never more than one in-flight delivery per destination.
+
+   Spike **S9** (run in M3) proves the chain under concurrent publishes and a host crash between the terminal write and the next
+   broadcast.
 4. **Exhaustion and auto-disable.** When all attempts fail, the delivery is marked failed. A destination with nothing but failures for 5
    days (Svix rule, configurable) is disabled, and its owner is told: by mail when the Mail package is present, by notification when
    Notifications is.
@@ -235,6 +252,7 @@ permissions and labels). Every default is registered with `TryAdd`.
 | S5 | **Encrypting secrets at rest.** Is there an existing Spark pattern (IdP signing keys? ASP.NET Data Protection persisted in Raven?) | One mechanism chosen, with key rotation and the multi-instance deployment answered | 0.5 d |
 | S6 | **SafeHttp for webhooks.** Can redirects be turned off per client, and is response-body capping configurable? Can the delivery log get an attempt's timing and status without the body? | Config confirmed, or the smallest SafeHttp change identified | 0.25 d |
 | S7 | **Versioning engine and the non-Angular npm package.** What does the engine do with an npm package that has no `@angular/core`? What change gives D10's independent semver? Also: `MintPlayer.Webhooks.Receiver` for consumers on net8/net10 — multi-target, and what major then (see O2)? | An engine rule plus `coverage.yml` config, proven with a dry run | 0.5 d |
+| S9 | **Ordered chain** (D22, run in M3). Does the head → next chain hold under concurrent publishes to one destination, and does it recover after a crash between the terminal write and the next broadcast? | Tests: 50 concurrent publishes to one destination arrive strictly in sequence; a simulated crash resumes the chain; `Halt` pauses it, and redeliver or skip resumes it | 0.5 d |
 | S8 | **CodeCoverage owners.** CodeCoverage owners are forge owners (GitHub orgs/users), not Spark `Organization`s. How do installations target them? | A mapping chosen (adapter `IWebhookOwnerResolver` or Organizations adoption), with authorization checked against `reference_coverage_authorization_inventory` | 0.5 d |
 
 ## 6. Milestones (one PR, TDD red → green per milestone, full test run once at the end)
@@ -242,7 +260,7 @@ permissions and labels). Every default is registered with `TryAdd`.
 | M | Scope | Done when |
 |---|---|---|
 | M0 | Spikes S1–S8; verdicts written into §5; decisions updated | This file revised; owner reviews the open questions |
-| M1 | `MintPlayer.Webhooks.Receiver` core: Standard Webhooks sign and verify (`v1`, `v2a`, rotation, tolerance), `WebhookProcessor` dispatch base, `MapWebhookReceiver` | Interop tests green against the official libraries |
+| M1 | `MintPlayer.Webhooks.Receiver` (`netstandard2.0`): Standard Webhooks `v1` sign and verify, rotation, tolerance, `WebhookProcessor` dispatch base, `HandleAsync(headers, body)`. `MintPlayer.Webhooks.Receiver.AspNetCore`: `MapWebhookReceiver`. `MintPlayer.Webhooks.Ed25519`: the `v2a` signer and verifier (D21) | Interop tests green against `StandardWebhooks.StandardWebhooks` (D20) for `v1` and `v2a` |
 | M2 | `MintPlayer.Spark.Apps` skeleton: `AddApps`, `[WebhookEvent]`, catalog build (S1), `GET …/webhooks/catalog` (OpenAPI 3.1) | The catalog snapshot test holds 2 sample events |
 | M3 | Direct webhooks and the delivery engine: `WebhookEndpoint`, `IWebhookPublisher` (outbox), fan-out, deliver (SafeHttp), `WebhookDelivery` log, retry and 410/429 rules, auto-disable, redeliver, ping, secret rotation, retention job (Cron) | Tests: success, retry, 410, retry-after, auto-disable, redeliver keeps `webhook-id`, no delivery when the business write rolls back |
 | M4 | Apps: registration on `OidcApplication`, keys (`private_key_jwt`), App webhook, requested permissions and events, public/private flag | An App is created and receives a ping |
@@ -253,7 +271,9 @@ permissions and labels). Every default is registered with `TryAdd`.
 | M9 | CodeCoverage dogfood: events such as `coverage.report.completed` and `coverage.threshold.failed`, owner mapping (S8), behind a setting that is off until enabled in production | CodeCoverage tests green; the setting is off by default |
 | M10 | Docs and release: a site-developer guide and a receiver guide in `docs/`, translations goldens, CSRF/route snapshots, package READMEs. (The D10 rule is already in CLAUDE.md, written in M0, and the engine needs no change) | Owner review |
 
-## 7. Open questions (for the owner after M0)
+## 7. Open questions
+
+All answered by the owner on 2026-11-18: O1/O3 → D22, O2 → D10/D12, O4/O5 → D23, O6 → D21, O7 → D24. They are kept below for the record.
 
 - **O1 Ordering.** Does any event need per-resource ordering, or is "unordered, dedupe on id, carry `occurred_at`" enough (Stripe/Svix)?
   Proposed: unordered.
