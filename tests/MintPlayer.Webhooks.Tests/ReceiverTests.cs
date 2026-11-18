@@ -104,6 +104,49 @@ public class ReceiverTests
         (await Receiver().HandleAsync(headers, body, new RecordingProcessor())).StatusCode.Should().Be(400, "a Standard Webhooks body is {type,timestamp,data}");
     }
 
+    /// <summary>No overrides: every hook keeps its default.</summary>
+    private sealed class DefaultProcessor : WebhookProcessor;
+
+    [Fact]
+    public async Task The_default_hooks_acknowledge_and_the_result_and_context_carry_the_attempt()
+    {
+        var (headers, body) = Signed("report.completed", new ReportCompleted("r1", 1m), id: "msg_d");
+        var result = await Receiver().HandleAsync(headers, body, new DefaultProcessor());
+        result.IsSuccess.Should().BeTrue("an event nobody handles is still acknowledged");
+        result.MessageId.Should().Be("msg_d");
+        result.Failure.Should().Be(WebhookVerificationFailure.None);
+
+        var (pingHeaders, pingBody) = Signed(WebhookProcessor.PingEventType, new { });
+        (await Receiver().HandleAsync(pingHeaders, pingBody, new DefaultProcessor())).StatusCode.Should().Be(204);
+
+        var (badHeaders, badBody) = Signed("report.completed", new { }, secret: WebhookSecret.Generate());
+        var refused = await Receiver().HandleAsync(badHeaders, badBody, new DefaultProcessor());
+        refused.IsSuccess.Should().BeFalse();
+        refused.Failure.Should().NotBe(WebhookVerificationFailure.None);
+
+        var envelope = WebhookEnvelope.TryParse(body)!;
+        var context = new WebhookContext("msg_d", 1_700_000_000, envelope, headers);
+        context.Timestamp.Should().Be(1_700_000_000);
+        context.GetHeader(WebhookHeaders.Id).Should().Be("msg_d");
+    }
+
+    [Fact]
+    public void A_secret_is_24_to_64_bytes_and_required()
+    {
+        Action tooSmall = () => WebhookSecret.Generate(WebhookSecret.MinBytes - 1);
+        Action tooLarge = () => WebhookSecret.Generate(WebhookSecret.MaxBytes + 1);
+        Action blank = () => WebhookSecret.Parse(" ");
+        tooSmall.Should().Throw<ArgumentOutOfRangeException>();
+        tooLarge.Should().Throw<ArgumentOutOfRangeException>();
+        blank.Should().Throw<FormatException>("a secret is required");
+
+        WebhookSecret.TryParse(null, out var none).Should().BeFalse();
+        none.Should().BeNull();
+        var generated = WebhookSecret.Generate(WebhookSecret.MaxBytes);
+        WebhookSecret.TryParse(generated.ToString(), out var parsed).Should().BeTrue();
+        parsed!.GetKey().Should().Equal(generated.GetKey());
+    }
+
     private static async Task<(TestServer Server, HttpClient Client)> HostAsync(long maxBody = 1024 * 1024)
     {
         var builder = WebApplication.CreateBuilder();
