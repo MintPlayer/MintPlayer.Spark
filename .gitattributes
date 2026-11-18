@@ -93,3 +93,6 @@ apps/*/*/App_Data/**/*.json text eol=lf
 apps/*/*/App_Data/**/*.txt text eol=lf
 tests/MintPlayer.Spark.Tests/Layering/Golden/*.txt text eol=lf
 **/RouteSnapshots/*.txt text eol=lf
+# `spark webhooks generate` output, rewritten by WebhookReceiverRoundTripTests under SPARK_UPDATE_GOLDEN (#691).
+tests/MintPlayer.Spark.Tests/Apps/Generated/*.g.cs text eol=lf
+libs/node_packages/webhooks-receiver/src/testing/*.ts text eol=lf
