@@ -60,9 +60,12 @@ public sealed class WebhookPublicKey
 }
 
 /// <summary>Standard Webhooks <c>v2a</c>: ed25519 over SHA-256(<c>endpoint_id.msg_id.timestamp.payload</c>).</summary>
-public sealed class Ed25519WebhookSigner(WebhookSigningKey key) : IWebhookSigner
+public sealed class Ed25519WebhookSigner : IWebhookSigner
 {
     public const string SchemeVersion = "v2a";
+    private readonly WebhookSigningKey key;
+
+    public Ed25519WebhookSigner(WebhookSigningKey key) => this.key = key ?? throw new ArgumentNullException(nameof(key));
 
     public string Version => SchemeVersion;
 
@@ -76,9 +79,18 @@ public sealed class Ed25519WebhookSigner(WebhookSigningKey key) : IWebhookSigner
 }
 
 /// <summary>Accepts a <c>v2a</c> signature by <paramref name="publicKey"/> for this receiver's <paramref name="endpointId"/>.</summary>
-public sealed class Ed25519SignatureVerifier(WebhookPublicKey publicKey, string endpointId) : IWebhookSignatureVerifier
+public sealed class Ed25519SignatureVerifier : IWebhookSignatureVerifier
 {
-    private readonly PublicKey key = publicKey.Import();
+    private readonly PublicKey key;
+    private readonly string endpointId;
+
+    public Ed25519SignatureVerifier(WebhookPublicKey publicKey, string endpointId)
+    {
+        ArgumentNullException.ThrowIfNull(publicKey);
+        ArgumentException.ThrowIfNullOrEmpty(endpointId);
+        key = publicKey.Import();
+        this.endpointId = endpointId;
+    }
 
     public string Version => Ed25519WebhookSigner.SchemeVersion;
 

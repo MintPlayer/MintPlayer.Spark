@@ -35,6 +35,24 @@ The work goes on branch `feat/691-apps-webhooks`, in ONE PR (D13). Commit and pu
   - Packages: xunit 2.9.3, MintPlayer.Assertions 11.0.0 (`.Should()`, with a `because`), coverlet.collector 10.1.0, Microsoft.NET.Test.Sdk 18.12.0.
   - Each test project has a `project.json` for Nx.
 - A new `*.Tests` project lands in CI's "Other suites" automatically.
+- Server tests go in `tests/MintPlayer.Spark.Tests/Apps/` on `OrganizationsTestHost`, which provides:
+  - `ExtraSpark` and `ExtraLibrarySlots`;
+  - `SeedUserAsync` and `SeedOrganizationAsync`;
+  - `SendAsync(url, body, userId)`, which signs a user in through the `X-Og-User` header;
+  - fake outbound HTTP through `services.AddHttpClient(name).ConfigurePrimaryHttpMessageHandler(...)`, as `NotificationTests`
+    does with `FakePushService`.
+- **No RavenDB indexes in a library.** The owner's rule: indexes live in the application. Read data by id or id prefix instead: a
+  per-owner registry document lists the owner's endpoints and installations, loaded in a batch. Anything that truly needs an index
+  becomes a port that the application implements.
+- **Endpoints are written with the MintPlayer.AspNetCore.Endpoints generator:**
+  - `IEndpointGroup` plus `[MemberOf<Group>]`;
+  - `IGetEndpoint` / `IPostEndpoint<TBody>`;
+  - `[Inject]` readonly fields in a `partial` class;
+  - `[assembly: EndpointsMethodName("MapSparkAppsEndpoints")]`.
+
+  Examples: `libs/notifications/.../Endpoints/NotificationEndpoints.cs` and `libs/spark/MintPlayer.Spark/Endpoints/Actions/ListCustomActions.cs`.
+- **Final task (owner, 2026-11-18):** before the PR is finished, re-check every new file for code that the owner's source generators
+  (Endpoints, `[Inject]`, `MintPlayer.SourceGenerators`) could replace, and reduce it.
 Issue: [#691](https://github.com/MintPlayer/MintPlayer.Spark/issues/691), "Let website developers provide an Apps feature which lets
 their website send webhooks to downstream users".
 Written 2026-11-18 at master `fc95abe38`, after a three-agent investigation and three rounds of grilling with the owner.

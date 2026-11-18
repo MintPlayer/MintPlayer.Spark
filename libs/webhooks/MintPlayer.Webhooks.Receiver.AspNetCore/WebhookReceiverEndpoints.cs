@@ -31,8 +31,10 @@ public static class WebhookReceiverServiceCollectionExtensions
     internal static string OptionsName<TProcessor>() => typeof(TProcessor).FullName!;
 }
 
-internal sealed class WebhookReceiverCache(IOptionsMonitor<WebhookReceiverOptions> options)
+internal sealed partial class WebhookReceiverCache
 {
+    [MintPlayer.SourceGenerators.Attributes.Inject] private readonly IOptionsMonitor<WebhookReceiverOptions> options;
+
     private readonly Dictionary<string, (WebhookReceiverOptions Options, WebhookReceiver Receiver)> cache = new();
     private readonly Lock gate = new();
 
