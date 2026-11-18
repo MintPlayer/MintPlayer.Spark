@@ -82,6 +82,11 @@ public static class SparkAppsExtensions
         services.TryAddScoped<IWebhookPublisher>(sp => sp.GetRequiredService<WebhookPublisher>());
         services.TryAddScoped<WebhookEndpointManager>();
         services.TryAddScoped<WebhookOwnerResolver>();
+        if (apps.AppsEnabled)
+        {
+            services.AddSingleton<SparkAppsFeature>();
+            services.TryAddScoped<SparkAppManager>();
+        }
 
         services.TryAddEnumerable(ServiceDescriptor.Scoped<IWebhookOwnerProvider, UserWebhookOwnerProvider>());
         services.TryAddEnumerable(ServiceDescriptor.Scoped<IWebhookOwnerProvider, OrganizationWebhookOwnerProvider>());
@@ -111,6 +116,8 @@ public static class SparkAppsExtensions
     {
         if (services.GetService<IMessageOutbox>() is null)
             throw new InvalidOperationException("Spark Apps needs Messaging: call spark.AddMessaging(). Every event and delivery is a durable message.");
+        if (SparkAppsFeature.IsOn(services) && services.GetService<MintPlayer.Spark.IdentityProvider.Configuration.SparkIdentityProviderOptions>() is null)
+            throw new InvalidOperationException("apps.EnableApps() needs the identity provider: call spark.AddIdentityProvider(). An App is an OAuth client of this site (D5).");
         var options = services.GetRequiredService<IOptions<SparkAppsOptions>>().Value;
         if (options.MaxPayloadBytes < 1024)
             throw new InvalidOperationException("Spark:Apps:MaxPayloadBytes must be at least 1024.");

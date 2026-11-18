@@ -34,15 +34,19 @@ public abstract class AppsTestHost : OrganizationsTestHost
         ExtraSpark = spark =>
         {
             spark.AddMessaging(o => o.FallbackPollInterval = TimeSpan.FromMilliseconds(250));
-            spark.AddApps(apps => apps
-                .AddEvent<OrderShipped>()
-                .AddEvent<InvoicePaid>()
-                .ConfigureOptions(o =>
-                {
-                    o.CatalogTitle = "Shop webhooks";
-                    o.MaxPayloadBytes = 2048;
-                    ConfigureApps(o);
-                }));
+            spark.AddApps(apps =>
+            {
+                apps.AddEvent<OrderShipped>()
+                    .AddEvent<InvoicePaid>()
+                    .ConfigureOptions(o =>
+                    {
+                        o.CatalogTitle = "Shop webhooks";
+                        o.MaxPayloadBytes = 2048;
+                        ConfigureApps(o);
+                    });
+                ConfigureAppsBuilder(apps);
+            });
+            ConfigureSpark(spark);
             spark.Services.AddHttpClient(SparkAppsExtensions.DeliveryHttpClient).ConfigurePrimaryHttpMessageHandler(() => Receiver);
             spark.Services.Configure<SparkMessagingOptions>(m => m.Queues[SparkAppsQueues.Deliveries] = new SparkQueueOptions
             {
@@ -55,6 +59,10 @@ public abstract class AppsTestHost : OrganizationsTestHost
     }
 
     protected virtual void ConfigureApps(SparkAppsOptions options) { }
+
+    protected virtual void ConfigureAppsBuilder(AppsBuilder apps) { }
+
+    protected virtual void ConfigureSpark(MintPlayer.Spark.Abstractions.Builder.ISparkBuilder spark) { }
 
     internal IWebhookPublisher Publisher(IServiceScope scope) => scope.ServiceProvider.GetRequiredService<IWebhookPublisher>();
 

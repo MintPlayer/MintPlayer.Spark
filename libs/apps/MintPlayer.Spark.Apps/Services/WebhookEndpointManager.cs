@@ -134,6 +134,8 @@ internal sealed partial class WebhookEndpointManager
     public Task<WebhookResult<WebhookEndpointView>> UpdateAsync(WebhookEndpointChange change, string userId, CancellationToken cancellationToken)
         => WithEndpointAsync(change.Id, userId, async (session, endpoint) =>
         {
+            if (endpoint.AppSlug is not null)
+                return WebhookResult<WebhookEndpointView>.Invalid(AppOwned(endpoint));
             if (change.Url is not null)
             {
                 if (ValidateUrl(change.Url) is { } urlError)
@@ -159,6 +161,8 @@ internal sealed partial class WebhookEndpointManager
     public Task<WebhookResult<bool>> DeleteAsync(string? id, string userId, CancellationToken cancellationToken)
         => WithEndpointAsync(id, userId, async (session, endpoint) =>
         {
+            if (endpoint.AppSlug is not null)
+                return WebhookResult<bool>.Invalid(AppOwned(endpoint));
             var registry = await session.LoadAsync<WebhookOwnerRegistry>(WebhookOwnerRegistry.IdFor(endpoint.Owner), cancellationToken);
             registry?.EndpointIds.Remove(endpoint.Id!);
             session.Delete(endpoint);
@@ -204,22 +208,34 @@ internal sealed partial class WebhookEndpointManager
         {
             if (!endpoint.Enabled)
                 return WebhookResult<string>.Invalid("The endpoint is disabled; enable it first.");
-            var now = time.GetUtcNow();
-            var messageId = WebhookPublisher.NewMessageId(now);
-            var delivery = new WebhookDelivery
-            {
-                Id = WebhookDelivery.IdFor(endpoint.PublicId, now.UtcDateTime, messageId),
-                MessageId = messageId,
-                EventType = WebhookEventCatalog.PingEvent,
-                EndpointId = endpoint.PublicId,
-                Payload = WebhookPublisher.Envelope(WebhookEventCatalog.PingEvent, now, new JsonObject { ["endpointId"] = endpoint.PublicId }, options.Value.MaxPayloadBytes),
-                CreatedUtc = now.UtcDateTime,
-                ExpiresAtUtc = now.UtcDateTime + options.Value.DeliveryRetention,
-            };
-            await scheduler.ScheduleAsync(session, delivery, bypassChain: true, cancellationToken);
+            var deliveryId = await SchedulePingAsync(session, endpoint, cancellationToken);
             await session.SaveChangesAsync(cancellationToken);
-            return WebhookResult<string>.Ok(delivery.PublicId);
+            return WebhookResult<string>.Ok(deliveryId);
         }, cancellationToken);
+
+    /// <summary>A <c>ping</c> to <paramref name="endpoint"/> in <paramref name="session"/>, outside any ordered chain; returns the delivery id.</summary>
+    internal async Task<string> SchedulePingAsync(Raven.Client.Documents.Session.IAsyncDocumentSession session, WebhookEndpoint endpoint, CancellationToken cancellationToken)
+    {
+        var now = time.GetUtcNow();
+        var messageId = WebhookPublisher.NewMessageId(now);
+        var data = new JsonObject { ["endpointId"] = endpoint.PublicId };
+        if (endpoint.AppSlug is not null)
+            data["app"] = endpoint.AppSlug;
+        var delivery = new WebhookDelivery
+        {
+            Id = WebhookDelivery.IdFor(endpoint.PublicId, now.UtcDateTime, messageId),
+            MessageId = messageId,
+            EventType = WebhookEventCatalog.PingEvent,
+            EndpointId = endpoint.PublicId,
+            Payload = WebhookPublisher.Envelope(WebhookEventCatalog.PingEvent, now, data, options.Value.MaxPayloadBytes),
+            CreatedUtc = now.UtcDateTime,
+            ExpiresAtUtc = now.UtcDateTime + options.Value.DeliveryRetention,
+        };
+        await scheduler.ScheduleAsync(session, delivery, bypassChain: true, cancellationToken);
+        return delivery.PublicId;
+    }
+
+    private static string AppOwned(WebhookEndpoint endpoint) => $"This webhook belongs to the App '{endpoint.AppSlug}'; change it there.";
 
     /// <summary>The endpoint's delivery log, newest first, <paramref name="pageSize"/> at a time after <paramref name="after"/>.</summary>
     public Task<WebhookResult<IReadOnlyList<WebhookDeliveryView>>> ListDeliveriesAsync(string? id, string? after, int pageSize, string userId, CancellationToken cancellationToken)
@@ -288,7 +304,7 @@ internal sealed partial class WebhookEndpointManager
         }
     }
 
-    private string? ValidateUrl(string? url)
+    internal string? ValidateUrl(string? url)
     {
         if (string.IsNullOrWhiteSpace(url) || !Uri.TryCreate(url.Trim(), UriKind.Absolute, out var uri) || url.Length > 2048)
             return "The URL must be an absolute URL.";

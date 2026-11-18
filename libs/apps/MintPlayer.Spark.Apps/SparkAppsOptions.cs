@@ -62,6 +62,12 @@ public sealed class SparkAppsOptions
     /// <summary>The most endpoints one owner may register. Default 20.</summary>
     public int MaxEndpointsPerOwner { get; set; } = 20;
 
+    /// <summary>The most Apps one owner may register. Default 20.</summary>
+    public int MaxAppsPerOwner { get; set; } = 20;
+
+    /// <summary>The most private keys one App may hold at once (for rotation). Default 5.</summary>
+    public int MaxKeysPerApp { get; set; } = 5;
+
     /// <summary>Accept <c>http://</c> endpoint URLs. For development only; the SSRF-safe client still refuses private networks.</summary>
     public bool AllowInsecureUrls { get; set; }
 

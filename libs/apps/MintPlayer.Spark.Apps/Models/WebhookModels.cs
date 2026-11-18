@@ -35,6 +35,12 @@ public sealed class WebhookEndpoint
     public DateTime? LastFailureUtc { get; set; }
     public DateTime? LastSuccessUtc { get; set; }
 
+    /// <summary>
+    /// Set when this is an App's webhook (D29): the App decides its URL and events, it is not in the owner's registry, and
+    /// only installations (M5) and pings send to it.
+    /// </summary>
+    public string? AppSlug { get; set; }
+
     public string PublicId => Id is null ? string.Empty : Id[IdPrefix.Length..];
 
     public WebhookOwner Owner => new(OwnerKind, OwnerKey);
@@ -54,6 +60,9 @@ public sealed class WebhookOwnerRegistry
     public string OwnerKind { get; set; } = string.Empty;
     public string OwnerKey { get; set; } = string.Empty;
     public List<string> EndpointIds { get; set; } = [];
+
+    /// <summary>The Apps this owner registered (D29): <see cref="SparkApp"/> ids.</summary>
+    public List<string> AppIds { get; set; } = [];
 
     public static string IdFor(WebhookOwner owner) => IdPrefix + owner.IdToken;
 }

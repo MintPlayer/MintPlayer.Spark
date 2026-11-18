@@ -47,6 +47,8 @@
 		<ProjectReference Include="..\..\messaging\MintPlayer.Spark.Messaging\MintPlayer.Spark.Messaging.csproj" />
 		<!-- Standard Webhooks signing (v1), the secret format and the envelope JSON options. -->
 		<ProjectReference Include="..\..\webhooks\MintPlayer.Webhooks.Receiver\MintPlayer.Webhooks.Receiver.csproj" />
+		<!-- An App is an OidcApplication (D5, D29). Only apps.EnableApps() needs AddIdentityProvider(); direct webhooks don't. -->
+		<ProjectReference Include="..\..\identity_provider\MintPlayer.Spark.IdentityProvider\MintPlayer.Spark.IdentityProvider.csproj" />
 	</ItemGroup>
 
 	<ItemGroup>

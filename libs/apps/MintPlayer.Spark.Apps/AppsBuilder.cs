@@ -58,6 +58,18 @@ public sealed class AppsBuilder
         return this;
     }
 
+    internal bool AppsEnabled { get; private set; }
+
+    /// <summary>
+    /// Lets users register Apps (D5, D29): an OAuth client of this site's identity provider with its own webhook, which
+    /// other users install. Needs <c>spark.AddIdentityProvider()</c>; direct webhooks work without it.
+    /// </summary>
+    public AppsBuilder EnableApps()
+    {
+        AppsEnabled = true;
+        return this;
+    }
+
     public AppsBuilder ConfigureOptions(Action<SparkAppsOptions> configure)
     {
         Configure.Add(configure);
