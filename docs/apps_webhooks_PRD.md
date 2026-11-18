@@ -1,6 +1,7 @@
 # Spark Apps & outbound webhooks — PRD and plan (#691)
 
-Status: **planned**, nothing built. Spikes S1–S8 run first, and their results are written back into this file.
+Status: **M0 done (2026-11-18)**: spike verdicts are in §5, and the decisions they changed are D10, D12, D14–D20. Nothing is built yet.
+Next: the owner answers the open questions in §7, then M1.
 Issue: [#691](https://github.com/MintPlayer/MintPlayer.Spark/issues/691), "Let website developers provide an Apps feature which lets
 their website send webhooks to downstream users".
 Written 2026-11-18 at master `fc95abe38`, after a three-agent investigation and three rounds of grilling with the owner.
@@ -99,12 +100,17 @@ Unless marked otherwise, each decision is the owner's answer in the grilling of 
 | D7 | **Payloads are full typed snapshots, filtered by permission.** An event goes only to installations whose granted permissions cover it | Owner. Receivers rarely need to call back. Thin events stay possible as a per-event shaping hook (§4.4) |
 | D8 | **Receivers are typed by codegen from the catalog.** The site serves OpenAPI 3.1 `webhooks` plus JSON Schema, and `spark webhooks generate` (MintPlayer.Spark.Cli) emits typed processors. The generic core does verification and dispatch | Owner |
 | D9 | **Owners are users and organizations, and direct hooks exist.** Apps install on a user account, or on an organization when Organizations is registered. Owners can also register plain webhook endpoints without an App | Owner. Organizations stays an optional dependency |
-| D10 | **`@mintplayer/webhooks-receiver` uses independent semver**, starting at `1.0.0`. This is a **deliberate exception** to the CLAUDE.md rule "npm major = Angular major" | Owner, 2026-11-18. The package has no Angular dependency. M10 adds the exception to CLAUDE.md and to the versioning engine (which reads `@angular/core`, so S7) |
+| D10 | **Versioning follows the platform the package depends on.** An npm package without an Angular dependency (`@mintplayer/webhooks-receiver`) uses its own semver from `1.0.0`. A NuGet package that targets only `netstandard` uses its own semver; a `netX.0` target (including a multi-target with one) follows the .NET major. This is a general rule, now in CLAUDE.md §Versioning, not an exception | Owner, 2026-11-18 (corrected the earlier "exception" wording). S7: the engine already does both (`MajorAnchor.cs:25-49`, `ProjectGraph.cs:143`), so no engine change is needed |
 | D11 | **Apps have a public/private flag.** A private App installs only on its owner's account and orgs; a public App installs through its install URL. There is no app directory UI in v1 | Owner |
-| D12 | **Package names:** server `MintPlayer.Spark.Apps`; receivers `MintPlayer.Webhooks.Receiver` (plain .NET, no Spark dependency), `MintPlayer.Spark.Webhooks.Receiver` (Spark durable adapter) and `@mintplayer/webhooks-receiver` (npm). The orphaned `libs/webhooks/MintPlayer.Spark.Webhooks` folder (bin/obj only, nothing tracked) is deleted | Owner. The empty folder was confirmed by the investigation |
+| D12 | **Package names:** server `MintPlayer.Spark.Apps`; receivers `MintPlayer.Webhooks.Receiver` (plain .NET, no Spark dependency), `MintPlayer.Spark.Webhooks.Receiver` (Spark durable adapter) and `@mintplayer/webhooks-receiver` (npm). The orphaned `libs/webhooks/MintPlayer.Spark.Webhooks` folder (bin/obj only, nothing tracked) is deleted. **Added after M0:** `MintPlayer.Webhooks.Receiver` targets **`netstandard2.0` only**, so it has its own semver and runs on net8/net10/net11/.NET Framework. A separate `MintPlayer.Webhooks.Receiver.AspNetCore` (`net11.0`, 11.x) carries `MapWebhookReceiver`. A consumer on an older .NET calls the core's `WebhookReceiver.HandleAsync(headers, body)` from its own endpoint | Owner for the names. The split follows from D10: a multi-target would anchor to 11 (S7), and ASP.NET Core types have no `netstandard` build |
 | D13 | **Everything lands in one pull request**, including the CodeCoverage dogfood, the CLAUDE.md exception and the docs | Global rule 8 |
-| D14 | **Delivery runs on Messaging, one message per (event, destination).** Each destination retries independently, and the event fan-out is itself a message, so `PublishAsync` stays one outbox write | Proposed. It reuses backoff and dead-letter (`SparkQueueOptions`). S3 confirms that one failing endpoint cannot starve the others |
-| D15 | **Signing secrets are stored encrypted, not hashed.** HMAC signing needs the plaintext. App client secrets and keys stay with the IdP, hashed or public-key | Proposed. HMAC cannot be computed from a hash. Mechanism: S5 |
+| D14 | **Delivery runs on Messaging, one message per (event, destination)**, on queue `spark-apps-webhooks`. Settings: `Backoff = [5s, 5m, 30m, 2h, 5h, 10h, 10h]` (the first attempt is immediate, so there is no leading 0), `MaxAttempts = 8`, `HandlerTimeout = 20s`, `MaxConcurrency = 16` (configurable), `ScrubPayloadOnTerminal = true` (the payload lives on `WebhookDelivery`). A **per-destination breaker** in the deliver handler: while a destination has failed within its current backoff window, further deliveries to it park with `RetryAfterException(until)` and make no HTTP call. Parks are not attempts | S3: the delay is `Backoff[AttemptCount-1]` (`MessageProcessor.cs:469-474`). `MaxConcurrency` defaults to 1, and one lane holds one message (`MessageQueueRouter.cs:117-132`), so a single dead endpoint at 15 s per attempt would stall the queue. There is no per-key lane, which is why the breaker exists. Retries poll every 30 s (`MessageRetrySweeper`), so a retry can be up to 30 s late, which is acceptable. A dead letter follows 5 parks per attempt (`MessageProcessor.cs:318-345`) |
+| D15 | **Signing secrets are encrypted at rest with ASP.NET Data Protection**, following Spark's existing `sdp1:` pattern, with purpose `Spark.Apps.WebhookSecret`. App client secrets and keys stay with the IdP, hashed or public-key | S5: Spark core already sets up Data Protection (`libs/spark/MintPlayer.Spark/Services/SparkDataProtection.cs`; keys in RavenDB `DataProtectionKeys/` or a mounted folder, required outside Development). Precedents: `UserStore.Secrets.cs`, `OidcKeyRing.cs`, `SparkMailer.cs`. Multiple instances work over the shared store; keys rotate every 90 days and old keys still decrypt |
+| D16 | **The installation token is a `client_credentials` request with an `installation_id` parameter**, behind a new seam in the IdentityProvider: `IOidcClientCredentialsContributor` (implemented by Apps). The contributor requires `private_key_jwt`, loads the installation (active, belongs to this client), returns the scopes (requested ∩ app scopes ∩ granted permissions), the extra claims (`installation_id`, `org_id`/owner) and a 60 min lifetime, and becomes the token's `AuthorizationId`. A second seam, `IOidcAuthorizationValidator`, lets `PermitsAsync` refuse a suspended or uninstalled installation. Resource servers that must cut a token off before it expires use introspection | S2: `Token.cs:111-120` is a hard-coded grant switch with no hook. Token exchange needs a subject token, and an installation is not one. Scopes are checked at `Token.cs:741-780`; the intersection goes before `LoadScopesAsync` (`:763`). `OidcTokenGenerator.cs:119-127` gets an extra-claims parameter. Introspection consults the grant (`OidcGrants.PermitsAsync`); local JWT validation cannot refuse early. A seam rather than an IdP→Apps reference keeps the packages decoupled |
+| D17 | **`InstallationGroupMembershipProvider`** maps an installation token's scopes and owner to security.json groups, so existing rights apply to Apps | S2: `IGroupMembershipProvider` is called once per request and cached (`SparkGroupMembership.cs:50-81`). Precedent: `AgentStoreGroupMembership.cs:27` |
+| D18 | **Owners are pluggable:** `IWebhookOwnerProvider` resolves an owner (kind + key), whether the current user may manage it, and its display name. Built in: the user, and the Spark `Organization` (when registered). CodeCoverage registers one for its forge `Account` (`OwnerKey`), with an optional repository filter | S8: CodeCoverage does not use Spark Organizations. Its owners are `Account`/`Repository` (`CodeCoverage.Library/Entities/`), and management is `ISparkVisibility.CanManageOwnerAsync`/`CanManageRepositoryAsync` (`SparkVisibility.cs:81-121`). This generalises D9 without changing it for plain sites |
+| D19 | **Catalog schemas come from `JsonSchemaExporter` at runtime, not a source generator.** It runs over the same `JsonSerializerOptions` that serialise the payloads, so schema and wire cannot drift. The webhook wire options use `NumberHandling = Strict` (not the Web defaults). A `TransformSchemaNode` adds a `title` (the CLR type name, so codegen can name nested classes) and the description. `[WebhookEvent]` types are found by an assembly scan in `AddEventsFromAssemblyContaining<T>()` | S1, measured on .NET 11.0.0 (`dotnet run` probe): records, nested records, `DateTimeOffset` (`date-time`), string enums, nullable and lists all export. With Web defaults, `decimal` and `int` export as `["string","number"]` because of `AllowReadingFromString`, hence Strict. Nested types are inlined without a name, hence `title` |
+| D20 | **The official reference library for interop tests is NuGet `StandardWebhooks.StandardWebhooks`** (1.3.0, author "Standard Webhooks"), not `StandardWebhooks` (1.1.2, Codefactors, third party) | S4: NuGet search, 2026-11-18 |
 
 ## 4. Design
 
@@ -112,7 +118,8 @@ Unless marked otherwise, each decision is the owner's answer in the grilling of 
 
 ```
 libs/apps/MintPlayer.Spark.Apps                    server: events, catalog, endpoints, apps, installations, delivery
-libs/webhooks/MintPlayer.Webhooks.Receiver         plain .NET: Standard Webhooks sign+verify, typed dispatch base, MapWebhookReceiver
+libs/webhooks/MintPlayer.Webhooks.Receiver         netstandard2.0 (own semver): Standard Webhooks sign+verify, typed dispatch base, HandleAsync(headers, body)
+libs/webhooks/MintPlayer.Webhooks.Receiver.AspNetCore  net11.0: MapWebhookReceiver<TProcessor>(path)
 libs/webhooks/MintPlayer.Spark.Webhooks.Receiver   Spark adapter: verify → BroadcastOnce(webhook-id) → IRecipient<T>
 libs/node_packages/webhooks-receiver               @mintplayer/webhooks-receiver (Node/edge: verify + typed dispatch)
 libs/node_packages/ng-spark/apps                   @mintplayer/ng-spark/apps entry point (developer settings, install consent, deliveries)
@@ -147,7 +154,9 @@ drift apart, and interop tests against the official `StandardWebhooks` library p
    For each destination it applies `IWebhookPayloadShaper` (default: full snapshot), creates a `WebhookDelivery`, and broadcasts a
    `DeliverWebhook` onto queue `spark-apps-webhooks` with the dedup key `deliveryId`.
 3. **Deliver.** The handler signs the body (`v1` with every active secret during rotation, and `v2a` when enabled) and POSTs through
-   SafeHttp, with no redirects and a timeout of 15 s by default.
+   SafeHttp. The client is configured with `FollowRedirects = false` (a 3xx comes back as-is and counts as a failure), `Timeout = 15s`,
+   `ConnectTimeout = 5s`, and a small `MaxResponseBytes`, because only an excerpt is logged (S6: all four already exist in
+   `SafeHttpOptions.cs:35-69`; SafeHttp needs no change).
    - 2xx: success.
    - 410: disable the destination; `NonRetryableException`.
    - 429/502/504 with `retry-after`: `RetryAfterException`.
@@ -186,7 +195,36 @@ permissions and labels). Every default is registered with `TryAdd`.
 - Private-repo and private-org existence must not leak through install URLs or deliveries (see the existing memory on existence oracles).
 - Every new endpoint updates `CsrfSurfaceTests` and the route snapshot. security.json or model JSON edits run the synchronizers.
 
-## 5. Spikes (run before M1; each ends with a written verdict in this section)
+## 5. Spikes
+
+### Verdicts (M0, 2026-11-18)
+
+- **S1 → D19.** Use `JsonSchemaExporter` at runtime with Strict number handling and a `title` per type. No generator is needed.
+- **S2 → D16, D17.** A `client_credentials` request with `installation_id` goes through an IdP contributor seam; introspection refuses
+  suspended installations early; a group provider maps the token to security.json groups.
+- **S3 → D14.** Messaging fits, but `MaxConcurrency` must be raised and a per-destination breaker added. Retries can be up to 30 s late.
+  The delivery log stays its own entity, because messages expire after 7 days (`SparkMessagingOptions.cs:91`).
+- **S4 → D20, plus a question.** The interop library is `StandardWebhooks.StandardWebhooks`. **.NET 11 has no Ed25519 in the BCL**
+  (reflection over the crypto assembly, runtime 11.0.0). `v2a` would therefore need a third-party library (NSec, which wraps native
+  libsodium, or managed BouncyCastle). See O6.
+- **S5 → D15.** Use ASP.NET Data Protection with the existing `sdp1:` pattern.
+- **S6 → §4.3 step 3.** SafeHttp already has `FollowRedirects = false`, `Timeout`, `ConnectTimeout` and `MaxResponseBytes`. No change is
+  needed.
+- **S7 → D10.** The engine already implements both versioning rules, so no engine change is needed. Side finding: the `netstandard2.0`
+  source generator packages are "free" but tagged `v11.x` from the seed, and a free package keeps its last tag's major
+  (`VersionCalculator.cs:46-47`). Under the new rule they will stay on 11.x and climb on breaking changes. Re-seeding them at `1.0.0`
+  would be a tag push, so it is left to the owner (O7).
+- **S8 → D18.** Installations target CodeCoverage's `Account` through a pluggable owner provider. Candidate events, with where each is
+  raised:
+  - `coverage.build.finalized` (`Ingestion/BuildFinalizer.cs:15-55`)
+  - `coverage.report.ingested` (`Ingestion/UploadIngestor.cs:75`)
+  - `mergequeue.merged` (`MergeQueue/MergeQueueEngine.cs:181`)
+  - `package.released` (`PackageVersioning/UpstreamReleases.cs:84`)
+  - `dependency.gate_failed` (`Dependencies/Lifecycle/DependencyLifecycleRules.cs:207`)
+
+  The payloads must respect `ISparkVisibility`: private-repository existence must not leak (see the existence-oracle memory).
+
+### The spikes as planned
 
 | # | Question | Exit criterion | Timebox |
 |---|---|---|---|
@@ -213,18 +251,22 @@ permissions and labels). Every default is registered with `TryAdd`.
 | M7 | Angular `@mintplayer/ng-spark/apps`: developer settings (Apps, keys, webhook, permissions), direct webhooks, deliveries plus redeliver, install consent, installations list. ng-bootstrap components; generic po/query pages where possible | Pages work in the demo app; zoneless; no full page reloads |
 | M8 | Receivers: `spark webhooks generate --lang cs\|ts`, `MintPlayer.Spark.Webhooks.Receiver` (verify, then `BroadcastOnceAsync(webhook-id)`, then `IRecipient<T>`), `@mintplayer/webhooks-receiver` | E2E: a Spark demo receives a generated, typed event from another Spark demo (`SparkAppTestHost`) |
 | M9 | CodeCoverage dogfood: events such as `coverage.report.completed` and `coverage.threshold.failed`, owner mapping (S8), behind a setting that is off until enabled in production | CodeCoverage tests green; the setting is off by default |
-| M10 | Docs and release: a site-developer guide and a receiver guide in `docs/`, the D10 exception in CLAUDE.md plus the engine config (S7), translations goldens, CSRF/route snapshots, package READMEs | Owner review |
+| M10 | Docs and release: a site-developer guide and a receiver guide in `docs/`, translations goldens, CSRF/route snapshots, package READMEs. (The D10 rule is already in CLAUDE.md, written in M0, and the engine needs no change) | Owner review |
 
 ## 7. Open questions (for the owner after M0)
 
 - **O1 Ordering.** Does any event need per-resource ordering, or is "unordered, dedupe on id, carry `occurred_at`" enough (Stripe/Svix)?
   Proposed: unordered.
-- **O2 .NET receiver target framework.** Downstream consumers may run net8 or net10. The NuGet major is locked to the target framework
-  (CLAUDE.md). Options: target net11 only (major 11), multi-target (which major?), or a second exception like D10. Not yet decided.
+- ~~**O2 .NET receiver target framework.**~~ Resolved by D10 and D12: the core targets `netstandard2.0` (own semver), and the ASP.NET
+  Core glue targets `net11.0`.
 - **O3 Payload cap.** Proposed: 256 KB per delivery. A bigger payload is sent thin automatically (ids plus a fetch URL).
 - **O4 Delivery log content.** Store the full payload for redelivery (30 days), or recompute it from the event? Proposed: store it,
   with a size cap. Response bodies are kept as a 2 KB excerpt.
 - **O5 App manifest flow** (create an App from a JSON manifest, GitHub style). Proposed: out of v1.
+- **O6 `v2a` (ed25519) signatures.** The BCL has none (S4). Options: ship `v1` HMAC only and keep `IWebhookSigner` open for `v2a` later
+  (proposed); or add NSec (native libsodium) or BouncyCastle to the server and to the `netstandard2.0` receiver.
+- **O7 Generator package majors (outside #691).** Re-seed the `netstandard2.0` generator packages at `1.0.0` to match the new rule, or
+  leave them on 11.x? Re-seeding pushes tags.
 
 ## 8. Non-goals (v1)
 

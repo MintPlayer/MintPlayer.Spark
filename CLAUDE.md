@@ -226,6 +226,11 @@ framework version.
 All npm packages in the workspace move their major **together**, in the same PR as the
 Angular upgrade itself.
 
+**A package without an Angular dependency is versioned on its own** (plain semver from `1.0.0`; a
+break in its API is a major). The lockstep above applies only to packages that depend on Angular
+(owner, 2026-11-18, for `@mintplayer/webhooks-receiver`, #691). The engine already treats an npm
+package with no `@angular/core`/`react`/`vue` dependency as free (`ProjectGraph.cs:143`).
+
 ### NuGet packages (`MintPlayer.Spark*`)
 
 The major version **must equal the major .NET version the package targets**.
@@ -237,6 +242,13 @@ The major version **must equal the major .NET version the package targets**.
 
 Same rule as above: an API break inside a .NET generation is a minor bump, never a
 major one.
+
+The rule applies to packages that target **.NET (Core)** (`netX.0`). **A package that targets
+only `netstandard` (or `net4x`) is versioned on its own** (plain semver from `1.0.0`; a break in its
+API is a major) (owner, 2026-11-18, #691). A multi-target such as `netstandard2.0;net11.0` targets
+.NET, so it follows the .NET major. The engine already does both (`MajorAnchor.FromTargetFrameworks`,
+`MajorAnchor.cs:25-49`); a new free package starts at `1.0.0`, but an existing one keeps its last
+tag's major (`VersionCalculator.cs:46-47`).
 
 ### Versions come from tags: never edit them by hand (#153)
 
