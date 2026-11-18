@@ -30,6 +30,32 @@ GET /spark
 POST /spark/actions/execute | antiforgery=required
 POST /spark/actions/list | antiforgery=not-required
 GET /spark/aliases
+GET /spark/apps/apps | authorize(policy=;roles=;schemes=)
+POST /spark/apps/apps | antiforgery=required | authorize(policy=;roles=;schemes=)
+GET /spark/apps/apps/app | authorize(policy=;roles=;schemes=)
+POST /spark/apps/apps/delete | antiforgery=required | authorize(policy=;roles=;schemes=)
+GET /spark/apps/apps/installations | authorize(policy=;roles=;schemes=)
+POST /spark/apps/apps/keys/delete | antiforgery=required | authorize(policy=;roles=;schemes=)
+POST /spark/apps/apps/keys/generate | antiforgery=required | authorize(policy=;roles=;schemes=)
+POST /spark/apps/apps/update | antiforgery=required | authorize(policy=;roles=;schemes=)
+GET /spark/apps/installations | authorize(policy=;roles=;schemes=)
+POST /spark/apps/installations | antiforgery=required | authorize(policy=;roles=;schemes=)
+POST /spark/apps/installations/accept | antiforgery=required | authorize(policy=;roles=;schemes=)
+POST /spark/apps/installations/delete | antiforgery=required | authorize(policy=;roles=;schemes=)
+GET /spark/apps/installations/new | authorize(policy=;roles=;schemes=)
+POST /spark/apps/installations/suspend | antiforgery=required | authorize(policy=;roles=;schemes=)
+POST /spark/apps/installations/unsuspend | antiforgery=required | authorize(policy=;roles=;schemes=)
+GET /spark/apps/webhooks/catalog | allow-anonymous | authorize(policy=;roles=;schemes=)
+GET /spark/apps/webhooks/deliveries | authorize(policy=;roles=;schemes=)
+POST /spark/apps/webhooks/deliveries/redeliver | antiforgery=required | authorize(policy=;roles=;schemes=)
+GET /spark/apps/webhooks/endpoints | authorize(policy=;roles=;schemes=)
+POST /spark/apps/webhooks/endpoints | antiforgery=required | authorize(policy=;roles=;schemes=)
+POST /spark/apps/webhooks/endpoints/delete | antiforgery=required | authorize(policy=;roles=;schemes=)
+POST /spark/apps/webhooks/endpoints/enable | antiforgery=required | authorize(policy=;roles=;schemes=)
+POST /spark/apps/webhooks/endpoints/ping | antiforgery=required | authorize(policy=;roles=;schemes=)
+POST /spark/apps/webhooks/endpoints/rotate-secret | antiforgery=required | authorize(policy=;roles=;schemes=)
+POST /spark/apps/webhooks/endpoints/update | antiforgery=required | authorize(policy=;roles=;schemes=)
+GET /spark/apps/webhooks/owners | authorize(policy=;roles=;schemes=)
 GET /spark/auth/capabilities
 POST /spark/auth/confirm-email | antiforgery=required
 GET /spark/auth/confirm-external-link | allow-anonymous

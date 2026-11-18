@@ -12,6 +12,9 @@ internal sealed class AppPermissionGroups
 
     public AppPermissionGroups(IReadOnlyDictionary<string, List<string>> map) => this.map = map;
 
+    /// <summary>Every mapped permission, for the settings page's choices.</summary>
+    public IEnumerable<string> Permissions => map.Keys;
+
     public IEnumerable<string> For(IReadOnlyCollection<string> scopes)
         => map.Where(entry => SparkAppManager.Covers(scopes, entry.Key)).SelectMany(entry => entry.Value);
 }

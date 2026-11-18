@@ -6,6 +6,7 @@ import {
   withIdentityProvider,
   withManagementRoutes,
 } from '@mintplayer/ng-spark/identity-provider';
+import { withSparkApps } from '@mintplayer/ng-spark/apps';
 import { sparkRoutes } from '@mintplayer/ng-spark/routes';
 import { ShellComponent } from './shell/shell.component';
 
@@ -22,6 +23,8 @@ export const routes: Routes = [
         withRegistration(),
         withAccount({ exclude: ['externalLogins'] }),
         withIdentityProvider(withConnectedApplications(), withDeveloperRoutes(), withManagementRoutes()),
+        // #691: account/webhooks, account/apps, account/installations and apps/:slug/install.
+        withSparkApps(),
       ),
       { path: '', redirectTo: 'home', pathMatch: 'full' },
       { path: 'home', loadComponent: () => import('./pages/home/home.component') },

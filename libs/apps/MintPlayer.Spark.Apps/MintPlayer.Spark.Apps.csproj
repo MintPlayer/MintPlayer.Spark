@@ -7,6 +7,8 @@
 		<OutputType>Library</OutputType>
 		<!-- The Web SDK defaults IsPackable to false; without this the library is never versioned or packed (#689). -->
 		<IsPackable>true</IsPackable>
+		<!-- Names this library's App_Data layers (composition D16): the settings pages' texts (apps.spa.*). Permanent. -->
+		<SparkLibraryAlias>apps</SparkLibraryAlias>
 
 		<!-- NuGet Package Metadata -->
 		<PackageId>MintPlayer.Spark.Apps</PackageId>
@@ -49,6 +51,8 @@
 		<ProjectReference Include="..\..\webhooks\MintPlayer.Webhooks.Receiver\MintPlayer.Webhooks.Receiver.csproj" />
 		<!-- An App is an OidcApplication (D5, D29). Only apps.EnableApps() needs AddIdentityProvider(); direct webhooks don't. -->
 		<ProjectReference Include="..\..\identity_provider\MintPlayer.Spark.IdentityProvider\MintPlayer.Spark.IdentityProvider.csproj" />
+		<!-- Spark's generators (the library layers). Analyzer ProjectReferences are not transitive. -->
+		<ProjectReference Include="..\..\source_generators\MintPlayer.Spark.SourceGenerators\MintPlayer.Spark.SourceGenerators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
 	</ItemGroup>
 
 	<ItemGroup>

@@ -1,8 +1,8 @@
 {
   "version": 2,
-  "modelHash": "738a86d860e040178e8c1bcc27b48213db817128b299a5fc4fa9d5c404fe313e",
+  "modelHash": "7cb6c2ce65ca454b0013e3b69bdac49873c20413586ffe47ff4d48c08e1c9a84",
   "contextRoots": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-  "modelFiles": "e721fe87ced9c8d805b2134897a3d5b9cc24f5c0f496ee36ea83e35c66503ccd",
+  "modelFiles": "e00d39469e4cf8f6861618ba7c7b9b488eb3551ac03024f3ebd2739c61aa6c5a",
   "files": {
     "ClientClaim.json": "94bb0ad62af0b10712bbf1f88d98534addafb037ea693b691b2ca893fb8f437d",
     "ClientSecret.json": "a6fa599f79e5819c7e231c99e036645618d9686a291613b1275cfc3ff1a4ad33",
@@ -20,6 +20,10 @@
     "OidcResource.json": "43d72632cb47e38c35e3db60db0cf07069088f02ca31b864b40c633055d36840",
     "OidcReviewDecision.json": "db313ab9a1716de50e7756acf412ae11535fc9ce6bbf31b5a79607ad03105e83",
     "OidcScopeApproval.json": "6013b35064771788ca07869bff4b3b28209b43f3d75e761b7bd8f9e5cc3e071f",
+    "Organization.json": "34c3fc47300423547d236b50c8d04b4ecacaa1b243cec6534a2802807ba7f935",
+    "OrganizationInvitation.json": "8e40cf9b44347a167f5eada49a9adc613ca2b1e913b7d6d4c2d6340508ced115",
+    "OrganizationInvite.json": "6e65251c03be7fb106c8dc45a0aff242b775dc3023fe01a49fc68d5105f53eaa",
+    "OrganizationMembership.json": "bd3c26cf32d9ca0f8e307e283fe2e37492271c66eacd2dbd589069bc88aff4b8",
     "PasskeyRename.json": "efd6a49e2c20d8420f48f546557fe7605a0553d3f4ce50ec8ae62876ce86714e",
     "PasskeyRow.json": "902d6e7e53ac01ab224b90bdd486b9ba3f4ee27273fe667c907312aac3541b33",
     "Passkeys.json": "738742f13217adeeb4724f72f968923099f7d7210cee1133dfd6707eb55856ce",
@@ -27,11 +31,12 @@
   },
   "entities": {},
   "configFiles": {
-    "actions.json": "79049e88b60c2e61a6fe02095dffdc9077c7f63894ee38a4c87f65c45d426f6c"
+    "actions.json": "2f94b4ea85119c655bbdc19751cdbf5c5ce680c9e9ff140dbeaee303dd75d8f7"
   },
   "libraries": {
     "authorization": "MintPlayer.Spark.Authorization",
     "identity-provider": "MintPlayer.Spark.IdentityProvider",
+    "organizations": "MintPlayer.Spark.Organizations",
     "spark": "MintPlayer.Spark"
   },
   "layers": {
@@ -83,6 +88,18 @@
     "Model/OidcScopeApproval.json": {
       "identity-provider": "6013b35064771788ca07869bff4b3b28209b43f3d75e761b7bd8f9e5cc3e071f"
     },
+    "Model/Organization.json": {
+      "organizations": "34c3fc47300423547d236b50c8d04b4ecacaa1b243cec6534a2802807ba7f935"
+    },
+    "Model/OrganizationInvitation.json": {
+      "organizations": "8e40cf9b44347a167f5eada49a9adc613ca2b1e913b7d6d4c2d6340508ced115"
+    },
+    "Model/OrganizationInvite.json": {
+      "organizations": "6e65251c03be7fb106c8dc45a0aff242b775dc3023fe01a49fc68d5105f53eaa"
+    },
+    "Model/OrganizationMembership.json": {
+      "organizations": "bd3c26cf32d9ca0f8e307e283fe2e37492271c66eacd2dbd589069bc88aff4b8"
+    },
     "Model/PasskeyRename.json": {
       "authorization": "efd6a49e2c20d8420f48f546557fe7605a0553d3f4ce50ec8ae62876ce86714e"
     },
@@ -98,10 +115,12 @@
     "actions.json": {
       "authorization": "fb0d34fa66e732b157e4e222fb9c357e4219cf6d85177473103874e8c1090427",
       "identity-provider": "06f7de305383ac57955571ab5c16d3aed1b802a7c2159b49d23634d241d33b15",
+      "organizations": "254d9fe0f061cf7cbc6fd6de921d9a00cf8e0426052ba5a95e1d7895e70c62f9",
       "spark": "5974b38c8164cafbfb22c012c52fb46dd27264181d772b9f004de1829d1838e6"
     },
     "programUnits.json": {
-      "identity-provider": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      "identity-provider": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "organizations": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
     }
   }
 }

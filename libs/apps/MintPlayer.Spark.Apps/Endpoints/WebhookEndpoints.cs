@@ -49,10 +49,16 @@ internal sealed partial class GetWebhookCatalog : IGetEndpoint
     [Inject] private readonly WebhookEventCatalog catalog;
     [Inject] private readonly WebhookSigners signers;
     [Inject] private readonly IOptions<SparkAppsOptions> options;
+    [Inject] private readonly IServiceProvider services;
 
     public Task<IResult> HandleAsync(HttpContext httpContext)
     {
         var document = catalog.ToOpenApi(options.Value.CatalogTitle, options.Value.CatalogVersion);
+        // The permissions an App may ask for that mean something here: the events' and those mapped to groups (D17).
+        var permissions = catalog.Events.Select(e => e.Permission).OfType<string>()
+            .Concat(services.GetService<AppPermissionGroups>()?.Permissions ?? [])
+            .Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal);
+        document["x-spark-permissions"] = new JsonArray([.. permissions.Select(p => JsonValue.Create(p))]);
         if (signers.PublicKeys.Count > 0)
         {
             var keys = new JsonObject();
