@@ -77,12 +77,9 @@ public static class SparkAppsExtensions
         services.TryAddSingleton(TimeProvider.System);
         services.AddSingleton(new WebhookEventCatalog(apps.Events));
         services.AddSingleton(new WebhookSigners(apps.Signers.ToList()));
-        services.TryAddSingleton<WebhookSecretProtector>();
-        services.TryAddScoped<WebhookScheduler>();
-        services.TryAddScoped<WebhookPublisher>();
-        services.TryAddScoped<IWebhookPublisher>(sp => sp.GetRequiredService<WebhookPublisher>());
-        services.TryAddScoped<WebhookEndpointManager>();
-        services.TryAddScoped<WebhookOwnerResolver>();
+        // [Register]: the secret protector, scheduler, publisher, endpoint manager, owner resolver, the built-in owner
+        // providers (user, organization) and the two recipients (fan-out, delivery). AddApps runs once (AppsMarker).
+        services.AddSparkAppsServices();
         if (apps.AppsEnabled)
         {
             services.AddSingleton<SparkAppsFeature>();
@@ -99,8 +96,6 @@ public static class SparkAppsExtensions
         foreach (var registration in apps.EntityEventRegistrations)
             services.AddSparkInterceptor(registration.InterceptorType);
 
-        services.TryAddEnumerable(ServiceDescriptor.Scoped<IWebhookOwnerProvider, UserWebhookOwnerProvider>());
-        services.TryAddEnumerable(ServiceDescriptor.Scoped<IWebhookOwnerProvider, OrganizationWebhookOwnerProvider>());
         foreach (var provider in apps.OwnerProviders)
             services.TryAddEnumerable(ServiceDescriptor.Scoped(typeof(IWebhookOwnerProvider), provider));
 
@@ -113,8 +108,6 @@ public static class SparkAppsExtensions
             var ordered = appsOptions.Value.Ordering == WebhookOrdering.PerDestination;
             messaging.Queues.TryAdd(SparkAppsQueues.Events, new SparkQueueOptions { MaxConcurrency = ordered ? 1 : 4 });
         });
-        services.TryAddEnumerable(ServiceDescriptor.Scoped<IRecipient<WebhookEventRaised>, WebhookFanOut>());
-        services.TryAddEnumerable(ServiceDescriptor.Scoped<IRecipient<WebhookDeliveryMessage>, WebhookDeliveryHandler>());
 
         // The delivery log expires (D23): WebhookDelivery is IExpiring.
         builder.Registry.RequireDocumentExpiration("Spark.Apps delivery log");

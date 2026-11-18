@@ -243,6 +243,8 @@ MintPlayer.Spark/
 | [Cross-Module mTLS](docs/guide-replication-mtls.md) | Issuing and pinning the client certificates that authenticate one module to another |
 | [Subscription Workers](libs/subscription_worker/MintPlayer.Spark.SubscriptionWorker/README.md) | RavenDB subscription-based background processing with retry handling |
 | [Cron Jobs](libs/cron/MintPlayer.Spark.Cron/README.md) | Cron-scheduled background jobs, UTC schedules, schedule overrides, multi-node compare-exchange locking |
+| [Apps & outbound webhooks](docs/guide-apps-webhooks.md) | Signed Standard Webhooks to your users and organizations: `[WebhookEvent]` and the public catalog, publishing in the write's session (keyed for code that runs twice), entity events, owner kinds, retries, ordering and the delivery log; Apps that users install, with installation tokens and granted permissions ([package README](libs/apps/MintPlayer.Spark.Apps/README.md)) |
+| [Receiving webhooks](docs/guide-webhook-receivers.md) | Typed events from a Spark site's catalog (`spark webhooks generate`), the Spark, ASP.NET Core, .NET and Node receivers, secrets and rotation, answering and deduplicating, and an App's installation token |
 | [GitHub Webhooks](libs/webhooks/MintPlayer.Spark.Webhooks.GitHub/README.md) | React to GitHub events via typed messages, with smee.io and WebSocket dev tunneling |
 | [GitHub Webhooks — Dev Tunnel](libs/webhooks/MintPlayer.Spark.Webhooks.GitHub.DevTunnel/README.md) | Dev-only: receive real webhook deliveries on localhost via smee.io or WebSocket forwarding from production |
 | [Docker Deployment](docs/guide-docker-deployment.md) | Deploy with Docker Compose, RavenDB configuration, Traefik reverse proxy, and the forwarded-headers trust list Spark configures |

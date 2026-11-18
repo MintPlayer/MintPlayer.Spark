@@ -48,6 +48,7 @@ public sealed record WebhookResult<T>(WebhookOutcome Outcome, T? Value = default
 /// (<see cref="IWebhookOwnerProvider"/>); someone else's endpoint answers <see cref="WebhookOutcome.NotFound"/>, the
 /// same as a missing one. Ids from requests are matched against their exact shape before any load.
 /// </summary>
+[Register(Microsoft.Extensions.DependencyInjection.ServiceLifetime.Scoped)]
 internal sealed partial class WebhookEndpointManager
 {
     private static readonly Regex EndpointIdShape = new("^ep_[0-9a-f]{24}$", RegexOptions.CultureInvariant);

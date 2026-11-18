@@ -38,6 +38,7 @@ public sealed class WebhookDeliveryFailedException(string message) : Exception(m
 /// Several failures in a row open the destination's breaker for a short while; an endpoint failing for
 /// <see cref="SparkAppsOptions.AutoDisableAfter"/> is disabled.
 /// </summary>
+[Register(typeof(IRecipient<WebhookDeliveryMessage>), Microsoft.Extensions.DependencyInjection.ServiceLifetime.Scoped)]
 internal sealed partial class WebhookDeliveryHandler : IRecipient<WebhookDeliveryMessage>
 {
     /// <summary>D23: the log keeps a 2 KB response excerpt.</summary>

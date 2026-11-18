@@ -25,6 +25,7 @@ public interface IWebhookOwnerProvider
 }
 
 /// <summary>A user manages their own webhooks.</summary>
+[Register(typeof(IWebhookOwnerProvider), Microsoft.Extensions.DependencyInjection.ServiceLifetime.Scoped)]
 internal sealed class UserWebhookOwnerProvider : IWebhookOwnerProvider
 {
     public string Kind => WebhookOwner.UserKind;
@@ -39,6 +40,7 @@ internal sealed class UserWebhookOwnerProvider : IWebhookOwnerProvider
 /// <summary>
 /// An organization's admins and owners manage its webhooks. Without <c>AddOrganizations()</c> nobody does.
 /// </summary>
+[Register(typeof(IWebhookOwnerProvider), Microsoft.Extensions.DependencyInjection.ServiceLifetime.Scoped)]
 internal sealed partial class OrganizationWebhookOwnerProvider : IWebhookOwnerProvider
 {
     [Inject] private readonly IServiceProvider services;
@@ -75,6 +77,7 @@ internal sealed partial class OrganizationWebhookOwnerProvider : IWebhookOwnerPr
 }
 
 /// <summary>The registered owner providers by kind.</summary>
+[Register(Microsoft.Extensions.DependencyInjection.ServiceLifetime.Scoped)]
 internal sealed partial class WebhookOwnerResolver
 {
     [Inject] private readonly IEnumerable<IWebhookOwnerProvider> providers;

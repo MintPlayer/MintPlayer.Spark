@@ -21,6 +21,22 @@ await webhooks.PublishAsync(new ReportCompleted(report.Id, report.LineRate), Web
 await session.SaveChangesAsync();
 ```
 
+Guide: [docs/guide-apps-webhooks.md](../../../docs/guide-apps-webhooks.md). Receiving them:
+[docs/guide-webhook-receivers.md](../../../docs/guide-webhook-receivers.md).
+
+- **Run twice, send once:** `PublishAsync(data, owner, idempotencyKey, session)` derives the `webhook-id` from the key,
+  for message handlers and cron jobs.
+- **Entity events:** `apps.AddEntityEvents<Car>(EntityEvents.All, "cars:read", car => WebhookOwner.Organization(car.OrganizationId))`
+  raises `car.created/updated/deleted` after each Spark write commits, with the id only.
+- **Owners:** users and organizations are built in; `apps.AddOwnerProvider<T>()` adds a kind (`IWebhookOwnerProvider`).
+- **Apps:** `apps.EnableApps()` (needs `AddIdentityProvider()`) lets developers register Apps that users install on an
+  owner. An App receives that owner's events within the granted permissions, and calls the API with an installation
+  token (`client_credentials` + `installation_id`, `private_key_jwt`). `apps.MapPermission(permission, groups…)` maps a
+  granted permission to Spark groups for that token.
+- **Pages:** `withSparkApps()` from `@mintplayer/ng-spark/apps`, in `sparkAuthRoutes(...)`.
+- Spark.Apps brings the Organizations security layer: without `AddOrganizations()`, set
+  `"libraries": { "organizations": false }` in `security.json`.
+
 ## Endpoints (`/spark/apps`)
 
 | | |
@@ -32,11 +48,15 @@ await session.SaveChangesAsync();
 | `POST webhooks/endpoints/update`, `/delete`, `/rotate-secret`, `/enable`, `/ping` | manage one |
 | `GET webhooks/deliveries?endpointId=&after=` | the delivery log, newest first |
 | `POST webhooks/deliveries/redeliver` | send a delivery again, with the same `webhook-id` |
+| `GET apps?ownerKind=&ownerKey=`, `GET apps/app?slug=`, `POST apps`, `apps/update`, `apps/delete` | an owner's Apps (with `EnableApps()`) |
+| `POST apps/keys/generate`, `apps/keys/delete` | an App's private keys; a new one is shown once |
+| `GET installations/new?slug=`, `POST installations`, `installations/accept`, `/suspend`, `/unsuspend`, `/delete` | install an App and manage the installation |
+| `GET installations?targetKind=&targetKey=`, `GET apps/installations?slug=` | installations by target, and by App |
 
 ## Delivery
 
-- Each delivery is a Messaging message on `spark-apps-webhooks`: 8 attempts over about 32 hours, 16 at once, 20 s per
-  receiver. `410 Gone` disables the endpoint; `429`/`503` with `Retry-After` waits as asked (at most an hour).
+- Each delivery is a Messaging message on `spark-apps-webhooks`: 8 attempts over about 32 hours, 16 at once, 15 s per
+  receiver, no redirects. `410 Gone` disables the endpoint; `429`/`503` with `Retry-After` waits as asked (at most an hour).
 - An endpoint failing for 5 days is disabled; implement `IWebhookEndpointDisabledHandler` to tell its owner.
 - `Spark:Apps:Ordering = PerDestination` keeps one delivery in flight per endpoint; `OnExhausted = Halt` stops the
   chain on a delivery that ran out of attempts until the endpoint is re-enabled.

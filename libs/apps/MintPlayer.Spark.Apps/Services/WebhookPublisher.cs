@@ -40,6 +40,9 @@ public interface IWebhookPublisher
         where TEvent : notnull;
 }
 
+// Stateless, so the interface and the concrete type (the entity events' fixed-id overload) may be separate instances.
+[Register(typeof(IWebhookPublisher), Microsoft.Extensions.DependencyInjection.ServiceLifetime.Scoped)]
+[Register(Microsoft.Extensions.DependencyInjection.ServiceLifetime.Scoped)]
 internal sealed partial class WebhookPublisher : IWebhookPublisher
 {
     [Inject] private readonly WebhookEventCatalog catalog;

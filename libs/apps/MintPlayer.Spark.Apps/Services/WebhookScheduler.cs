@@ -14,6 +14,7 @@ namespace MintPlayer.Spark.Apps.Services;
 /// <see cref="WebhookChain"/> (D22, S9), which keeps one delivery in flight and starts the next when it completes.
 /// Every chain change runs under optimistic concurrency, so two events racing for one chain cannot both start.
 /// </summary>
+[Register(Microsoft.Extensions.DependencyInjection.ServiceLifetime.Scoped)]
 internal sealed partial class WebhookScheduler
 {
     [Inject] private readonly IDocumentStore store;

@@ -8,6 +8,7 @@ namespace MintPlayer.Spark.Apps.Services;
 /// Endpoint secrets at rest (D15): <c>sdp1:</c> + Data Protection, the same scheme as the user store's secrets. The
 /// key ring rotates on its own; a database dump without it holds no usable secret.
 /// </summary>
+[Register(Microsoft.Extensions.DependencyInjection.ServiceLifetime.Singleton)]
 internal sealed partial class WebhookSecretProtector
 {
     private const string Marker = "sdp1:";

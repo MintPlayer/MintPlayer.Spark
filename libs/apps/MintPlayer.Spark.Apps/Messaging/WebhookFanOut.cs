@@ -17,6 +17,7 @@ namespace MintPlayer.Spark.Apps.Messaging;
 /// cover the event (D30). Delivery ids are derived from the event, so a retried fan-out finds the deliveries it already
 /// made and makes none twice.
 /// </summary>
+[Register(typeof(IRecipient<WebhookEventRaised>), Microsoft.Extensions.DependencyInjection.ServiceLifetime.Scoped)]
 internal sealed partial class WebhookFanOut : IRecipient<WebhookEventRaised>
 {
     [Inject] private readonly IDocumentStore store;
