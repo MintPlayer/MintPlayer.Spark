@@ -26,6 +26,19 @@
 	  packages already share $(MintPlayerSparkSourceGeneratorsReferenceValidated). See the mode
 	  documentation in MintPlayer.Spark's spark.targets.
 	-->
+	<!--
+	  SPARK001 is not for test projects. MintPlayer.Spark's buildTransitive check demands the source generators in every
+	  project that reaches it, because a Spark app without them has no generated registrations. A test project on this
+	  package tests an app it references and defines none, so it needs no generators, and the check refused its build:
+	  the spark-app template's SparkApp.Tests failed with SPARK001 (templates plan M6, 2026-11-18). This repository's own
+	  tests never hit it, because they reference this project, and buildTransitive comes only with a package. A test
+	  project that does declare its own SparkContext must still reference MintPlayer.Spark.SourceGenerators itself.
+	  AllFeatures sets the same flag for the same reason (spark-allfeatures.targets).
+	-->
+	<PropertyGroup>
+		<MintPlayerSparkSourceGeneratorsReferenceValidated Condition=" '$(MintPlayerSparkSourceGeneratorsReferenceValidated)' == '' ">true</MintPlayerSparkSourceGeneratorsReferenceValidated>
+	</PropertyGroup>
+
 	<PropertyGroup>
 		<EnableSparkTestingAgentsGuide Condition=" '$(EnableSparkTestingAgentsGuide)' == '' ">true</EnableSparkTestingAgentsGuide>
 		<SparkAgentsGuideMode Condition=" '$(SparkAgentsGuideMode)' == '' ">Copy</SparkAgentsGuideMode>

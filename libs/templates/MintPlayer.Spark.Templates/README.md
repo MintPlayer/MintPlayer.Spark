@@ -18,8 +18,13 @@ build, checks RavenDB and the OIDC authority, and runs `npm install` and the fir
 
 ## `spark-app`
 
-A Spark host, an entity library and an Angular client. The template pins every Spark package in
-`Directory.Packages.props`, at the versions released with it.
+A Spark host, an entity library and an Angular client, plus a test project with RavenDB. The template pins every
+Spark package in `Directory.Packages.props`, at the versions released with it.
+
+`MyApp.Tests` is built on `MintPlayer.Spark.Testing`: `SparkTestDriver` gives each test its own database on an
+embedded RavenDB server, and `SparkEndpointFactory` boots the app in process. The embedded server needs a RavenDB
+licence. Set `RAVENDB_LICENSE` to the licence JSON or to its file's path, or put `raven-license.log` next to the
+solution (it is in `.gitignore`). `--store InMemory` generates no test project.
 
 The solution file follows your tools. `dotnet new` writes `MyApp.slnx`. Visual Studio, Rider and C# Dev Kit create
 the solution themselves, in the format their own settings choose (`.sln` or `.slnx`).

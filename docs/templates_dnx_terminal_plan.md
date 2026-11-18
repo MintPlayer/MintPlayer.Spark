@@ -550,6 +550,48 @@ All of this repo's work goes in **one PR** (owner rule), including the `MintPlay
     - The templates README covers the tool and gained "Versions": the release coupling and the Angular-major note
       (PRD §4.7). Its option table now points to `-h` for the feature switches.
   - **M6 done.**
+- **The `.Tests` project (owner, 2026-11-18).** The post-M6 doc review found that PRD §4.1 promised `.Tests`, and that
+  the template never shipped one. The owner chose to add it, referencing the package that ships `SparkTestDriver`.
+  - **What it is:** `SparkApp.Tests` references the host and `MintPlayer.Spark.Testing`, and holds one sample
+    `PersonTests` (store and load).
+    - It ships with RavenDB only (`!IsRaven` excludes it, in both layouts), because the driver runs an embedded
+      RavenDB.
+    - It is in the slnx through an XML conditional comment. The matrix proved the engine processes those in
+      `.slnx`: MinimalInMemory's slnx has no Tests line, and Defaults' has one.
+    - It is in `primaryOutputs` for both layouts.
+    - `MintPlayer.Spark.Testing` moved from `excluded: not-an-app-feature` to `core`, so the template pins it and
+      references it (the M6 guard).
+    - The template pins `Microsoft.NET.Test.Sdk 18.12.0`, `xunit 2.9.3` (v2, which Testing is built on) and
+      `xunit.runner.visualstudio 4.0.1`, as DemoApp.Tests does.
+    - `raven-license.log` is in the template's `.gitignore`.
+  - **Guards (red → green):**
+    - `Every_template_project_is_in_the_solution_and_the_primary_outputs`
+    - `The_tests_project_references_the_testing_package_and_the_host`
+    - Template tests 23/23.
+  - **Found: SPARK001 refused every test project on the Testing *package*.**
+    - MintPlayer.Spark's `buildTransitive` check demands the source generators in every project that reaches it.
+    - A test project defines no Spark app, so it needs none. The matrix's Defaults build failed with SPARK001 in
+      `Defaults.Tests`.
+    - This repository never saw it, because its tests reference Testing by ProjectReference, and buildTransitive
+      comes only with a package.
+    - Fixed in `spark-testing.targets`, which sets `MintPlayerSparkSourceGeneratorsReferenceValidated`, as
+      AllFeatures' package targets already do. That file's own comment already claimed the two packages shared
+      the flag.
+    - After the fix: matrix `Defaults` all green (build 9 s, synchronize 19 s, verify 2 s). `MinimalInMemory`
+      green in the run before.
+  - **The generated test runs:** `dotnet test Defaults.Tests` with `RAVENDB_LICENSE` set to the Developer licence's
+    path. It passed twice, and the passing runs provisioned the embedded server in about 2 s.
+  - **⚠️ Not located: one failure.** The first run, right after the matrix, failed in 4 s with `Value cannot be
+    null. (Parameter 'ServerDirectory')`.
+    - `RavenServerLocator` returned null, and no copy was attempted: afterwards there was no `7.2.7` folder,
+      staging folder or lock.
+    - All of its inputs were valid when checked: `RavenDB.Embedded/7.2.7` in the deps file, `Raven.Server.dll` in
+      the package (extracted 2026-10-27), and `NUGET_PACKAGES` unset.
+    - The exact command, rerun after deleting the provisioned copy, passed.
+    - The locator has four silent `return null` paths, so the error cannot say which one fired.
+    - `SparkEmbeddedServer.cs:58-59` says null "leaves RavenDB's default in place". It does not: RavenDB throws.
+    - Making the locator report its reason is the next step if it recurs (not done: it changes that documented
+      design).
 
 ## Outside this repo (issues only)
 - Tools #18: framework scope, D5–D7, S4–S5 (updated 2026-11-16).

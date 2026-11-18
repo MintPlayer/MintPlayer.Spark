@@ -81,6 +81,7 @@
 		<ProjectReference Include="..\..\model\MintPlayer.Spark.Model\MintPlayer.Spark.Model.csproj" />
 		<ProjectReference Include="..\..\source_generators\MintPlayer.Spark.SourceGenerators\MintPlayer.Spark.SourceGenerators.csproj" />
 		<ProjectReference Include="..\..\source_generators\MintPlayer.Spark.LibraryGenerators\MintPlayer.Spark.LibraryGenerators.csproj" />
+		<ProjectReference Include="..\..\testing\MintPlayer.Spark.Testing\MintPlayer.Spark.Testing.csproj" />
 		<ProjectReference Include="..\..\authorization\MintPlayer.Spark.Authorization\MintPlayer.Spark.Authorization.csproj" />
 		<ProjectReference Include="..\..\migrations\MintPlayer.Spark.Migrations\MintPlayer.Spark.Migrations.csproj" />
 		<ProjectReference Include="..\..\messaging\MintPlayer.Spark.Messaging\MintPlayer.Spark.Messaging.csproj" />
@@ -126,6 +127,10 @@
 	<ItemGroup>
 		<SparkTemplateExternalPackage Include="MintPlayer.AspNetCore.SpaServices" Version="11.0.0" />
 		<SparkTemplateExternalPackage Include="MintPlayer.SourceGenerators" Version="13.1.2" />
+		<!-- SparkApp.Tests. xunit stays on v2: MintPlayer.Spark.Testing is built on it. -->
+		<SparkTemplateExternalPackage Include="Microsoft.NET.Test.Sdk" Version="18.12.0" />
+		<SparkTemplateExternalPackage Include="xunit" Version="2.9.3" />
+		<SparkTemplateExternalPackage Include="xunit.runner.visualstudio" Version="4.0.1" />
 	</ItemGroup>
 
 	<!-- Only when this package is packed: where the versioning target turned it off (no tag of its own, in a build that

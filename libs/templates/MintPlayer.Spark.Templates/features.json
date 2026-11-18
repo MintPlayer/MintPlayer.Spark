@@ -8,7 +8,8 @@
     { "project": "attributes/MintPlayer.Spark.Attributes/MintPlayer.Spark.Attributes.csproj" },
     { "project": "model/MintPlayer.Spark.Model/MintPlayer.Spark.Model.csproj" },
     { "project": "source_generators/MintPlayer.Spark.SourceGenerators/MintPlayer.Spark.SourceGenerators.csproj" },
-    { "project": "source_generators/MintPlayer.Spark.LibraryGenerators/MintPlayer.Spark.LibraryGenerators.csproj" }
+    { "project": "source_generators/MintPlayer.Spark.LibraryGenerators/MintPlayer.Spark.LibraryGenerators.csproj" },
+    { "project": "testing/MintPlayer.Spark.Testing/MintPlayer.Spark.Testing.csproj", "$comment": "SparkApp.Tests (RavenDB only: SparkTestDriver runs an embedded RavenDB)." }
   ],
 
   "features": [
@@ -300,7 +301,6 @@
     { "project": "all_features/MintPlayer.Spark.AllFeatures.SourceGenerators/MintPlayer.Spark.AllFeatures.SourceGenerators.csproj", "reason": "not-an-app-feature" },
     { "project": "client/MintPlayer.Spark.Client/MintPlayer.Spark.Client.csproj", "reason": "not-an-app-feature" },
     { "project": "client/MintPlayer.Spark.Client.Authorization/MintPlayer.Spark.Client.Authorization.csproj", "reason": "not-an-app-feature" },
-    { "project": "testing/MintPlayer.Spark.Testing/MintPlayer.Spark.Testing.csproj", "reason": "not-an-app-feature" },
     { "project": "socket_extensions/MintPlayer.Dotnet.SocketExtensions/MintPlayer.Dotnet.SocketExtensions.csproj", "reason": "not-an-app-feature" },
     { "project": "templates/MintPlayer.Spark.Templates/MintPlayer.Spark.Templates.csproj", "reason": "not-an-app-feature" },
     { "project": "cli/MintPlayer.Spark.Cli/MintPlayer.Spark.Cli.csproj", "reason": "not-an-app-feature" },

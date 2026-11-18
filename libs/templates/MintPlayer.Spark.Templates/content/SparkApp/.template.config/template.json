@@ -13,8 +13,10 @@
   "primaryOutputs": [
     { "path": "SparkApp/SparkApp.csproj", "condition": "(!VsNested)" },
     { "path": "SparkApp.Library/SparkApp.Library.csproj", "condition": "(!VsNested)" },
+    { "path": "SparkApp.Tests/SparkApp.Tests.csproj", "condition": "(!VsNested && IsRaven)" },
     { "path": "../SparkApp/SparkApp.csproj", "condition": "(VsNested)" },
-    { "path": "../SparkApp.Library/SparkApp.Library.csproj", "condition": "(VsNested)" }
+    { "path": "../SparkApp.Library/SparkApp.Library.csproj", "condition": "(VsNested)" },
+    { "path": "../SparkApp.Tests/SparkApp.Tests.csproj", "condition": "(VsNested && IsRaven)" }
   ],
   "guids": [ "a587cfbf-0605-4d67-9334-2e85c234c343" ],
   "symbols": {
@@ -97,6 +99,7 @@
       "modifiers": [
         { "condition": "(!IsCli)", "exclude": [ "SparkApp.slnx" ] },
         { "condition": "(!HasClient)", "exclude": [ "SparkApp/ClientApp/**" ] },
+        { "condition": "(!IsRaven)", "exclude": [ "SparkApp.Tests/**" ] },
         { "condition": "(!UseControllers)", "exclude": [ "SparkApp/Controllers/**" ] },
         { "condition": "(!UseMigrations)", "exclude": [ "SparkApp/Migrations/**" ] },
         { "condition": "(!UseCron)", "exclude": [ "SparkApp/Jobs/**" ] },
@@ -112,6 +115,7 @@
       "modifiers": [
         { "exclude": [ "SparkApp.slnx" ] },
         { "condition": "(!HasClient)", "exclude": [ "SparkApp/ClientApp/**" ] },
+        { "condition": "(!IsRaven)", "exclude": [ "SparkApp.Tests/**" ] },
         { "condition": "(!UseControllers)", "exclude": [ "SparkApp/Controllers/**" ] },
         { "condition": "(!UseMigrations)", "exclude": [ "SparkApp/Migrations/**" ] },
         { "condition": "(!UseCron)", "exclude": [ "SparkApp/Jobs/**" ] },

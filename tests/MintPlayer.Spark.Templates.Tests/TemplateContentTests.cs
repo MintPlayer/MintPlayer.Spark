@@ -1,5 +1,6 @@
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
+using System.Xml.Linq;
 using MintPlayer.Spark.Templates.Build;
 
 namespace MintPlayer.Spark.Templates.Tests;
@@ -12,6 +13,40 @@ public partial class TemplateContentTests
 {
     private static readonly FeatureManifest Manifest = TemplateRepository.Manifest();
     private static readonly TemplateFiles Generated = SparkTemplateGenerator.Generate(Manifest, TemplateRepository.HandWritten());
+
+    /// <summary>
+    /// Every project the template ships is in the .slnx the CLI gets and in primaryOutputs in both layouts: Visual Studio
+    /// adds only the primary outputs to the solution it writes itself (plan S1, test 3).
+    /// </summary>
+    [Fact]
+    public void Every_template_project_is_in_the_solution_and_the_primary_outputs()
+    {
+        var projects = Directory.EnumerateFiles(TemplateRepository.Template, "*.csproj", SearchOption.AllDirectories)
+            .Select(path => Path.GetRelativePath(TemplateRepository.Template, path).Replace('\\', '/'))
+            .Where(path => !path.Split('/').Any(part => part is "bin" or "obj" or "node_modules"))
+            .ToList();
+        var solution = XDocument.Parse(TemplateRepository.Read("SparkApp.slnx")).Descendants("Project")
+            .Select(p => p.Attribute("Path")!.Value)
+            .ToList();
+        var outputs = JsonNode.Parse(TemplateRepository.Read(".template.config/template.json"))!["primaryOutputs"]!.AsArray()
+            .Select(o => o!["path"]!.GetValue<string>())
+            .ToList();
+
+        projects.Should().Contain("SparkApp.Tests/SparkApp.Tests.csproj");
+        projects.Where(p => !solution.Contains(p)).Should().BeEmpty("the .slnx lists every project");
+        projects.Where(p => !outputs.Contains(p) || !outputs.Contains("../" + p)).Should().BeEmpty("primaryOutputs lists every project in both layouts");
+    }
+
+    /// <summary>The test project is built on MintPlayer.Spark.Testing (SparkTestDriver), which the template pins (core).</summary>
+    [Fact]
+    public void The_tests_project_references_the_testing_package_and_the_host()
+    {
+        var csproj = XDocument.Parse(TemplateRepository.Read("SparkApp.Tests/SparkApp.Tests.csproj"));
+
+        csproj.Descendants("PackageReference").Select(r => r.Attribute("Include")?.Value).Should().Contain("MintPlayer.Spark.Testing");
+        csproj.Descendants("ProjectReference").Select(r => r.Attribute("Include")?.Value).Should().Contain(@"..\SparkApp\SparkApp.csproj");
+        Manifest.Core.Select(p => Path.GetFileNameWithoutExtension(p.Project)).Should().Contain("MintPlayer.Spark.Testing");
+    }
 
     [Fact]
     public void Program_registers_each_feature_under_its_condition()

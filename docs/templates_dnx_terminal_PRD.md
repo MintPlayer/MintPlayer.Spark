@@ -128,6 +128,12 @@ was not re-fetched; a spike must confirm it before anything depends on it.
 ### 4.1 One template, a choice per feature (D8)
 `spark-app` creates a host, a `.Library` and a `.Tests` project, plus a ClientApp. Its choices:
 
+- **The `.Tests` project** was missing until 2026-11-18, and was found in the post-M6 doc review. The owner chose to add it, on
+  `MintPlayer.Spark.Testing` (`SparkTestDriver`).
+- It ships with RavenDB only, because the driver runs an embedded RavenDB server, which needs a licence
+  (`RAVENDB_LICENSE` or `raven-license.log`).
+- Plan M6 has the evidence.
+
 | Choice | Values | Default | Decision |
 |---|---|---|---|
 | `--store` | `RavenDB` \| `InMemory` | `RavenDB` | D9 |
