@@ -73,6 +73,21 @@ public sealed class WebhookOwnerRegistry
     public static string IdFor(WebhookOwner owner) => IdPrefix + owner.IdToken;
 }
 
+/// <summary>
+/// A fixed <c>webhook-id</c> that was published (D34): created only if absent, in the session of the publish, so a publisher
+/// that runs twice for one event queues it once. Delivery ids carry the publish time, so the fan-out alone cannot see
+/// the repeat. Id <c>WebhookEventKeys/{msg id}</c>; expires with the deliveries.
+/// </summary>
+public sealed class WebhookEventKey : MintPlayer.Spark.Abstractions.IExpiring
+{
+    public const string IdPrefix = "WebhookEventKeys/";
+
+    public string? Id { get; set; }
+    public DateTime? ExpiresAtUtc { get; set; }
+
+    public static string IdFor(string messageId) => IdPrefix + messageId;
+}
+
 [System.Text.Json.Serialization.JsonConverter(typeof(System.Text.Json.Serialization.JsonStringEnumConverter<WebhookDeliveryStatus>))]
 public enum WebhookDeliveryStatus
 {

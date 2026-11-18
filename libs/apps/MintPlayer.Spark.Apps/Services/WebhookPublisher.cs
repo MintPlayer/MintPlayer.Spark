@@ -30,6 +30,14 @@ public interface IWebhookPublisher
     /// </summary>
     Task<string?> PublishAsync<TEvent>(TEvent data, WebhookOwner owner, IAsyncDocumentSession session, CancellationToken cancellationToken = default)
         where TEvent : notnull;
+
+    /// <summary>
+    /// <see cref="PublishAsync{TEvent}(TEvent, WebhookOwner, IAsyncDocumentSession, CancellationToken)"/> for a publisher that
+    /// may run twice for one event, e.g. a message handler (at least once). The <c>webhook-id</c> is derived from
+    /// <paramref name="idempotencyKey"/> (with the event type and owner), so a second run delivers nothing twice.
+    /// </summary>
+    Task<string?> PublishAsync<TEvent>(TEvent data, WebhookOwner owner, string idempotencyKey, IAsyncDocumentSession session, CancellationToken cancellationToken = default)
+        where TEvent : notnull;
 }
 
 internal sealed partial class WebhookPublisher : IWebhookPublisher
@@ -42,6 +50,20 @@ internal sealed partial class WebhookPublisher : IWebhookPublisher
     public Task<string?> PublishAsync<TEvent>(TEvent data, WebhookOwner owner, IAsyncDocumentSession session, CancellationToken cancellationToken = default)
         where TEvent : notnull
         => PublishAsync(data, owner, session, messageId: null, cancellationToken);
+
+    public Task<string?> PublishAsync<TEvent>(TEvent data, WebhookOwner owner, string idempotencyKey, IAsyncDocumentSession session, CancellationToken cancellationToken = default)
+        where TEvent : notnull
+    {
+        ArgumentException.ThrowIfNullOrEmpty(idempotencyKey);
+        return PublishAsync(data, owner, session, KeyedMessageId(data.GetType(), owner, idempotencyKey), cancellationToken);
+    }
+
+    /// <summary>A <c>msg_</c> id that is the same for the same (event type, owner, key): no time prefix, so a rerun matches.</summary>
+    internal static string KeyedMessageId(Type eventType, WebhookOwner owner, string key)
+    {
+        var input = Encoding.UTF8.GetBytes($"{eventType.FullName}|{owner.Kind.Length}:{owner.Kind}|{owner.Key.Length}:{owner.Key}|{key}");
+        return "msg_" + Convert.ToHexStringLower(SHA256.HashData(input).AsSpan(0, 16));
+    }
 
     /// <summary>
     /// <paramref name="messageId"/>: a fixed <c>webhook-id</c> for a publisher that may run twice for one event (the
@@ -59,6 +81,16 @@ internal sealed partial class WebhookPublisher : IWebhookPublisher
             return null;
 
         var now = time.GetUtcNow();
+        if (messageId is not null)
+        {
+            // A fixed id was published before: the first run's message stands. Two runs at once both get here; the
+            // create-only store (empty change vector) fails the second SaveChanges, and its retry sees the key.
+            var keyId = WebhookEventKey.IdFor(messageId);
+            if (await session.LoadAsync<WebhookEventKey>(keyId, cancellationToken) is not null)
+                return messageId;
+            await session.StoreAsync(new WebhookEventKey { ExpiresAtUtc = now.UtcDateTime + options.Value.DeliveryRetention }, string.Empty, keyId, cancellationToken);
+        }
+
         var message = new WebhookEventRaised
         {
             MessageId = messageId ?? NewMessageId(now),

@@ -139,6 +139,35 @@ public class WebhookDeliveryTests : AppsTestHost
     }
 
     [Fact]
+    public async Task A_keyed_publish_that_runs_twice_queues_the_event_once()
+    {
+        var ann = await SeedUserAsync("ann");
+        var owner = WebhookOwner.User(ann.Id!);
+        var (endpointId, _) = await CreateEndpointAsync(ann.Id!, owner);
+
+        async Task<string?> Keyed(string orderId, string key)
+        {
+            using var scope = Factory.CreateScope();
+            using var session = Store.OpenAsyncSession();
+            var id = await Publisher(scope).PublishAsync(new OrderShipped(orderId, 1, null), owner, key, session);
+            await session.SaveChangesAsync();
+            return id;
+        }
+
+        var first = await Keyed("o-1", "build-1");
+        await Task.Delay(20); // a later run: the publish time differs, so only the key can match it
+        var rerun = await Keyed("o-1 again", "build-1");
+        var other = await Keyed("o-2", "build-2");
+
+        rerun.Should().Be(first, "the webhook-id derives from the key, not the moment of publishing");
+        other.Should().NotBe(first, "another key is another event");
+        await UntilSettledAsync(endpointId, 2);
+        // The rerun queued nothing; the first run's payload stands.
+        (await DeliveriesAsync(endpointId)).Select(d => d.MessageId).Should().BeEquivalentTo([first, other]);
+        Receiver.Received.Select(r => r.Json.GetProperty("data").GetProperty("orderId").GetString()).Should().BeEquivalentTo(["o-1", "o-2"]);
+    }
+
+    [Fact]
     public async Task An_endpoint_receives_only_the_events_it_subscribed_to()
     {
         var ann = await SeedUserAsync("ann");

@@ -128,7 +128,9 @@ public class RegistrationInventoryTests : CoverageRavenTest
         // The browse API's and the MCP tools' shared repository gate, and the tools' reads (plan M6). Without them every
         // /api/browse request and every codecoverage_* call fails at activation.
         typeof(IRepositoryScope),
-        typeof(global::CodeCoverage.Mcp.ICoverageInsights));
+        typeof(global::CodeCoverage.Mcp.ICoverageInsights),
+        // Both finalize paths take it (#691 D34), webhooks on or off: without it neither the cron nor the recipient activates.
+        typeof(global::CodeCoverage.Webhooks.CoverageWebhookQueue));
 
     /// <summary>
     /// Message handlers. A wire type whose handler is missing is <b>dropped silently</b> — the
@@ -150,7 +152,8 @@ public class RegistrationInventoryTests : CoverageRavenTest
         typeof(IRecipient<global::CodeCoverage.Feedback.PublishFeedbackMessage>),
         typeof(IRecipient<global::CodeCoverage.Feedback.PublishPullRequestCommentMessage>),
         typeof(IRecipient<global::CodeCoverage.Feedback.OpenPullRequestCommentMessage>),
-        typeof(IRecipient<global::CodeCoverage.Dependencies.ScanRepositoryManifestsMessage>));
+        typeof(IRecipient<global::CodeCoverage.Dependencies.ScanRepositoryManifestsMessage>),
+        typeof(IRecipient<global::CodeCoverage.Webhooks.CoverageBuildFinalizedWebhookMessage>));
 
     /// <summary>
     /// The commit graph (#504). A missing deletion recipient is the dangerous one: a disconnect

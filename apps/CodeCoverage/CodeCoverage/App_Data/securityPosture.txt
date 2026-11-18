@@ -7,6 +7,7 @@ authorization | MintPlayer.Spark.Authorization | c6fc3af07823
 dashboards | MintPlayer.Spark.Dashboards | 4684f577b028
 identity-provider | MintPlayer.Spark.IdentityProvider | a47cb40caae8 | switched off
 logging | MintPlayer.Spark.Logging | 07ea1af27978
+organizations | MintPlayer.Spark.Organizations | 3f770bc98628 | switched off
 
 ## Reachable without signing in (expanded)
 Browse/Coverage
@@ -153,3 +154,11 @@ identity-provider:developers | grant | ResendInvitation/OidcApplicationMemberRow
 identity-provider:developers | grant | RevokeSecret/OidcApplicationSecretRow | identity-provider:secrets-revoke-developers | identity-provider
 identity-provider:developers | grant | SwitchToDevelopment/OidcApplication | identity-provider:application-development-developers | identity-provider
 identity-provider:developers | grant | SwitchToLive/OidcApplication | identity-provider:application-live-developers | identity-provider
+organizations:users | grant | Delete/OrganizationInvitation | organizations:invitations-delete | organizations
+organizations:users | grant | Delete/OrganizationMembership | organizations:memberships-delete | organizations
+organizations:users | grant | InviteOrganizationMember/Organization | organizations:invite-action | organizations
+organizations:users | grant | LeaveOrganization/Organization | organizations:leave-action | organizations
+organizations:users | grant | QueryRead/OrganizationInvitation | organizations:invitations | organizations
+organizations:users | grant | QueryReadEdit/OrganizationMembership | organizations:memberships | organizations
+organizations:users | grant | QueryReadEditNewDelete/Organization | organizations:organizations | organizations
+organizations:users | grant | TransferOrganizationOwnership/OrganizationMembership | organizations:transfer-action | organizations

@@ -13,6 +13,7 @@ public partial class FinalizeBuildRecipient : IRecipient<FinalizeBuildMessage>
     [Inject] private readonly IForgeIntegrationResolver forges;
     [Inject] private readonly ILogger<FinalizeBuildRecipient> logger;
     [Inject] private readonly IMessageBus messageBus;
+    [Inject] private readonly Webhooks.CoverageWebhookQueue webhooks;
 
     public async Task HandleAsync(FinalizeBuildMessage message, CancellationToken cancellationToken = default)
     {
@@ -23,7 +24,7 @@ public partial class FinalizeBuildRecipient : IRecipient<FinalizeBuildMessage>
             return;
         }
 
-        await BuildFinalizer.Finalize(session, forges, build, "Explicit", cancellationToken);
+        await BuildFinalizer.Finalize(session, forges, build, "Explicit", cancellationToken, webhooks);
         await session.SaveChangesAsync(cancellationToken);
         // Feedback is published by the assembler once the commit's headline is
         // rebuilt; publishing here would report this build alone.
