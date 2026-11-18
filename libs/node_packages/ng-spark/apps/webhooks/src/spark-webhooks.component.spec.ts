@@ -153,6 +153,49 @@ describe('SparkWebhooksComponent', () => {
     await settle(fixture);
     expect(api.enableEndpoint).toHaveBeenCalledWith('ep_1');
   });
+
+  it('says so when the owners, the catalog or the list cannot be read, and lists nothing without an owner', async () => {
+    const api = service({ owners: vi.fn().mockResolvedValue(failed(500)) });
+    configure(api);
+    const fixture = TestBed.createComponent(SparkWebhooksComponent);
+    await settle(fixture);
+    expect(fixture.componentInstance.error()).toBeTruthy();
+    expect(fixture.componentInstance.loading()).toBe(false);
+    expect(api.endpoints).not.toHaveBeenCalled();
+
+    TestBed.resetTestingModule();
+    const empty = service({ owners: vi.fn().mockResolvedValue(ok([])), endpoints: vi.fn().mockResolvedValue(failed(500)) });
+    configure(empty);
+    const second = TestBed.createComponent(SparkWebhooksComponent);
+    await settle(second);
+    expect(second.componentInstance.endpoints()).toEqual([]);
+    expect(empty.endpoints).not.toHaveBeenCalled();
+
+    await second.componentInstance.choose(user);
+    expect(second.componentInstance.error()).toBeTruthy();
+  });
+
+  it('saves an edit, unticks an event and pings', async () => {
+    const api = service({
+      updateEndpoint: vi.fn().mockResolvedValue(ok(endpoint())),
+      ping: vi.fn().mockResolvedValue(ok('dl_1')),
+    });
+    configure(api);
+    const fixture = TestBed.createComponent(SparkWebhooksComponent);
+    await settle(fixture);
+    const page = fixture.componentInstance;
+
+    page.edit(endpoint({ events: ['note.created', 'note.deleted'] }));
+    page.toggle('note.deleted', false);
+    await page.save();
+    expect(api.updateEndpoint).toHaveBeenCalledWith({ id: 'ep_1', url: 'https://hooks.example/a', description: null, events: ['note.created'] });
+    expect(page.draft()).toEqual({ id: null, url: '', description: '', events: [] });
+    expect(page.notice()).toBe('webhooks.saved|{0}');
+
+    await page.ping(endpoint());
+    expect(api.ping).toHaveBeenCalledWith('ep_1');
+    expect(page.notice()).toBe('webhooks.pinged|{0}');
+  });
 });
 
 describe('SparkWebhookDeliveriesComponent', () => {

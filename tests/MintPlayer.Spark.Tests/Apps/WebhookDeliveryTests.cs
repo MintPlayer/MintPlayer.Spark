@@ -381,6 +381,95 @@ public class WebhookDeliveryTests : AppsTestHost
     }
 
     [Fact]
+    public async Task A_destination_the_safe_client_refuses_fails_at_once_and_counts_against_the_endpoint()
+    {
+        var ann = await SeedUserAsync("ann");
+        Receiver.Respond = (_, _) => throw new MintPlayer.Spark.Http.SafeHttpBlockedException(MintPlayer.Spark.Http.SafeHttpBlockReason.Address);
+        var (endpointId, _) = await CreateEndpointAsync(ann.Id!, WebhookOwner.User(ann.Id!));
+
+        await PublishAsync(new OrderShipped("o-1", 1, null), WebhookOwner.User(ann.Id!));
+        await UntilSettledAsync(endpointId, 1);
+
+        var delivery = (await DeliveriesAsync(endpointId)).Single();
+        delivery.Status.Should().Be(WebhookDeliveryStatus.Failed);
+        delivery.Attempts.Should().ContainSingle("a refused address is not retried").Which.Error.Should().Be("Refused: The target address is not allowed.");
+        (await EndpointAsync(endpointId)).ConsecutiveFailures.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task A_network_error_is_a_failed_attempt_and_an_unreadable_answer_has_no_excerpt()
+    {
+        var ann = await SeedUserAsync("ann");
+        Receiver.Respond = (_, n) => n switch
+        {
+            0 => throw new HttpRequestException("Connection reset."),
+            // A 503 without Retry-After spends an attempt like any failure.
+            1 => new HttpResponseMessage(HttpStatusCode.ServiceUnavailable) { Content = new UnreadableContent() },
+            _ => null,
+        };
+        var (endpointId, _) = await CreateEndpointAsync(ann.Id!, WebhookOwner.User(ann.Id!));
+
+        await PublishAsync(new OrderShipped("o-1", 1, null), WebhookOwner.User(ann.Id!));
+        await UntilSettledAsync(endpointId, 1);
+
+        var delivery = (await DeliveriesAsync(endpointId)).Single();
+        delivery.Status.Should().Be(WebhookDeliveryStatus.Succeeded);
+        delivery.Attempts.Select(a => a.StatusCode).Should().Equal([null, 503, 204]);
+        delivery.Attempts[0].Error.Should().Be("Connection reset.");
+        delivery.Attempts[1].ResponseBody.Should().BeNull("a body that cannot be read is no excerpt, not a failure");
+    }
+
+    [Fact]
+    public async Task A_retry_for_an_endpoint_disabled_meanwhile_is_not_sent()
+    {
+        var ann = await SeedUserAsync("ann");
+        var (endpointId, _) = await CreateEndpointAsync(ann.Id!, WebhookOwner.User(ann.Id!));
+        Receiver.Respond = (_, _) =>
+        {
+            // Disabled between the first attempt and its retry.
+            using var session = Store.OpenSession();
+            session.Load<WebhookEndpoint>(WebhookEndpoint.IdPrefix + endpointId)!.Enabled = false;
+            session.SaveChanges();
+            return new HttpResponseMessage(HttpStatusCode.InternalServerError);
+        };
+
+        await PublishAsync(new OrderShipped("o-1", 1, null), WebhookOwner.User(ann.Id!));
+        await UntilSettledAsync(endpointId, 1);
+
+        Receiver.Received.Should().HaveCount(1, "the retry finds the endpoint disabled");
+        var delivery = (await DeliveriesAsync(endpointId)).Single();
+        delivery.Status.Should().Be(WebhookDeliveryStatus.Failed);
+        delivery.Attempts.Last().Error.Should().Be("The endpoint is disabled.");
+    }
+
+    /// <summary>The headers arrive, then the connection drops while the body is read (the safe client opens the stream early).</summary>
+    private sealed class UnreadableContent : HttpContent
+    {
+        protected override Task SerializeToStreamAsync(Stream stream, System.Net.TransportContext? context) => throw new IOException("The connection dropped.");
+        protected override Task<Stream> CreateContentReadStreamAsync() => Task.FromResult<Stream>(new DroppingStream());
+        protected override bool TryComputeLength(out long length)
+        {
+            length = 0;
+            return false;
+        }
+    }
+
+    private sealed class DroppingStream : Stream
+    {
+        public override bool CanRead => true;
+        public override bool CanSeek => false;
+        public override bool CanWrite => false;
+        public override long Length => throw new NotSupportedException();
+        public override long Position { get => 0; set => throw new NotSupportedException(); }
+        public override int Read(byte[] buffer, int offset, int count) => throw new IOException("The connection dropped.");
+        public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default) => throw new IOException("The connection dropped.");
+        public override void Flush() { }
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+    }
+
+    [Fact]
     public async Task Only_the_owner_manages_a_webhook_and_secrets_are_never_listed()
     {
         var ann = await SeedUserAsync("ann");
