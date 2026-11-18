@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, effect, input, output, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { BsCheckboxComponent } from '@mintplayer/ng-bootstrap/checkbox';
-import { BsFormComponent } from '@mintplayer/ng-bootstrap/form';
+import { BsFormComponent, BsFormControlDirective } from '@mintplayer/ng-bootstrap/form';
 import { BsSelectComponent, BsSelectOption } from '@mintplayer/ng-bootstrap/select';
 import { BsSpinnerComponent } from '@mintplayer/ng-bootstrap/spinner';
 import {
@@ -44,7 +44,7 @@ const EMPTY: SparkAppFields = {
   selector: 'spark-app-form',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [FormsModule, BsCheckboxComponent, BsFormComponent, BsSelectComponent, BsSelectOption, BsSpinnerComponent, SparkAppsTextPipe],
+  imports: [FormsModule, BsCheckboxComponent, BsFormComponent, BsFormControlDirective, BsSelectComponent, BsSelectOption, BsSpinnerComponent, SparkAppsTextPipe],
   template: `
     <bs-form (submitted)="submit()">
       <div class="mb-3">

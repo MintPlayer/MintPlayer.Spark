@@ -61,7 +61,7 @@ const html = (fixture: ComponentFixture<unknown>) => fixture.nativeElement as HT
 describe('SparkWebhooksComponent', () => {
   afterEach(() => vi.restoreAllMocks());
 
-  function service(extra: Record<string, unknown> = {}) {
+  function service<T extends object = object>(extra: T = {} as T) {
     return {
       owners: vi.fn().mockResolvedValue(ok([user, org])),
       catalog: vi.fn().mockResolvedValue(ok({ events: [{ name: 'note.created', summary: 'A note.', permission: null }], permissions: [] })),

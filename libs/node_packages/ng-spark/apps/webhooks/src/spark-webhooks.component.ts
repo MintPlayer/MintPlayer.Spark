@@ -5,7 +5,7 @@ import { BsAlertComponent } from '@mintplayer/ng-bootstrap/alert';
 import { BsBadgeComponent } from '@mintplayer/ng-bootstrap/badge';
 import { BsCardComponent, BsCardHeaderComponent } from '@mintplayer/ng-bootstrap/card';
 import { BsCheckboxComponent } from '@mintplayer/ng-bootstrap/checkbox';
-import { BsFormComponent } from '@mintplayer/ng-bootstrap/form';
+import { BsFormComponent, BsFormControlDirective } from '@mintplayer/ng-bootstrap/form';
 import { BsSpinnerComponent } from '@mintplayer/ng-bootstrap/spinner';
 import { SparkSecretDialogService } from '@mintplayer/ng-spark/client-operations';
 import {
@@ -40,7 +40,7 @@ interface WebhookDraft {
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     FormsModule, RouterLink, BsAlertComponent, BsBadgeComponent, BsCardComponent, BsCardHeaderComponent, BsCheckboxComponent, BsFormComponent,
-    BsSpinnerComponent, SparkAppsOwnerPickerComponent, SparkAppsTextPipe, SparkAppsDatePipe,
+    BsFormControlDirective, BsSpinnerComponent, SparkAppsOwnerPickerComponent, SparkAppsTextPipe, SparkAppsDatePipe,
   ],
   template: `
     <div class="d-flex justify-content-center">
