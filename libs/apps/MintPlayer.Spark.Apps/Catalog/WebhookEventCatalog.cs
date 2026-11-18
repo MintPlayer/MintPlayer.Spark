@@ -118,6 +118,17 @@ public sealed class WebhookEventCatalog
         },
     };
 
+    /// <summary>The class name codegen gives <c>data</c>: the type's name, and <c>ReportCreated</c> for <c>EntityCreated&lt;Report&gt;</c>.</summary>
+    internal static string Title(Type type)
+    {
+        if (!type.IsGenericType)
+            return type.Name;
+        var definition = type.Name[..type.Name.IndexOf('`')];
+        if (definition.StartsWith("Entity", StringComparison.Ordinal))
+            definition = definition["Entity".Length..];
+        return type.GetGenericArguments()[0].Name + definition;
+    }
+
     private static JsonObject ExportSchema(Type type)
     {
         var exporter = new JsonSchemaExporterOptions
@@ -128,7 +139,7 @@ public sealed class WebhookEventCatalog
                 if (node is not JsonObject schema)
                     return node;
                 if (context.Path.IsEmpty)
-                    schema.Insert(0, "title", type.Name);
+                    schema.Insert(0, "title", Title(type));
                 var description = (context.PropertyInfo?.AttributeProvider ?? context.TypeInfo.Type)
                     .GetCustomAttributes(typeof(DescriptionAttribute), inherit: false)
                     .OfType<DescriptionAttribute>().FirstOrDefault()?.Description;

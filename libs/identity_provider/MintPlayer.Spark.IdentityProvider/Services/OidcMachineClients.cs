@@ -35,6 +35,44 @@ public static class OidcMachineClients
     }
 
     /// <summary>
+    /// The grant that keeps a client's contributed tokens alive (#691 D16, <see cref="IOidcClientCredentialsContributor"/>):
+    /// one per <paramref name="subject"/> (e.g. <c>installation:in_…</c>), its id derived from the pair. Created valid in
+    /// <paramref name="session"/>; returns its id, for <see cref="OidcClientCredentialsContribution.AuthorizationId"/>.
+    /// </summary>
+    public static async Task<string> CreateGrantAsync(IAsyncDocumentSession session, string applicationId, string subject, IEnumerable<string> scopes, CancellationToken ct = default)
+    {
+        var grant = new OidcGrant
+        {
+            Id = OidcGrantReference.DocumentId(subject, applicationId),
+            ApplicationId = applicationId,
+            Subject = subject,
+            Status = "valid",
+            GrantedScopes = scopes.ToList(),
+            CreatedAt = DateTime.UtcNow,
+        };
+        await session.StoreAsync(grant, grant.Id, ct);
+        return grant.Id;
+    }
+
+    /// <summary>
+    /// Ends every token issued under the grant so far (<see cref="OidcGrants.PermitsAsync"/> refuses a token older than
+    /// <see cref="OidcGrant.LastRevokedAt"/>); <paramref name="revoke"/> also ends the grant itself, so no token under it
+    /// is honoured again. In <paramref name="session"/>; the caller saves.
+    /// </summary>
+    public static async Task WithdrawGrantAsync(IAsyncDocumentSession session, string grantId, bool revoke, CancellationToken ct = default)
+    {
+        if (await session.LoadAsync<OidcGrant>(grantId, ct) is not { } grant)
+            return;
+        var now = DateTime.UtcNow;
+        grant.LastRevokedAt = now;
+        if (revoke)
+        {
+            grant.Status = "revoked";
+            grant.RevokedAt = now;
+        }
+    }
+
+    /// <summary>
     /// Deletes the client: every token and grant it holds is revoked first (<see cref="OidcDisableCascade"/>), then the
     /// document goes and its client id is released. A missing client is not an error.
     /// </summary>

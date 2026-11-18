@@ -107,6 +107,16 @@ internal class OidcTokenGenerator
     }
 
     /// <summary>
+    /// Claims a <see cref="IOidcClientCredentialsContributor"/> may not set: the token's identity, scopes, binding and
+    /// lifetime, and the group/role claims Spark authorizes on (an installation's authority comes from its grants, #691 D17).
+    /// </summary>
+    internal static readonly HashSet<string> ReservedClaims = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "jti", "client_id", "scope", "sub", "azp", "aud", "iss", "exp", "iat", "nbf", "cnf", "act", "acr", "amr",
+        "auth_time", "nonce", "sid", "group", "groups", "role", "roles",
+    };
+
+    /// <summary>
     /// Generates an access token with scope and audience claims driven by the database.
     /// Client claims (OidcApplication.Claims) are included.
     /// user may be null for client_credentials grant.
@@ -124,7 +134,8 @@ internal class OidcTokenGenerator
         int lifetimeMinutes = 60,
         IReadOnlyDictionary<string, string>? properties = null,
         IReadOnlyDictionary<string, object>? confirmation = null,
-        IReadOnlyDictionary<string, object>? actor = null)
+        IReadOnlyDictionary<string, object>? actor = null,
+        IReadOnlyDictionary<string, string>? extraClaims = null)
     {
         var scopeNames = grantedScopes.Select(s => s.Name).ToList();
         var jti = OidcTokenReference.GenerateValue();
@@ -165,6 +176,14 @@ internal class OidcTokenGenerator
             {
                 claims.Add(new Claim(cc.Type, cc.Value));
             }
+        }
+
+        // #691 D16: a client_credentials contributor's claims (installation_id, the owner). Never the registered ones:
+        // a contributor cannot rename the client, widen the scopes or forge a subject.
+        foreach (var (type, value) in extraClaims ?? new Dictionary<string, string>())
+        {
+            if (!ReservedClaims.Contains(type))
+                claims.Add(new Claim(type, value));
         }
 
         // Determine audience from scope definitions

@@ -68,6 +68,18 @@ public sealed class SparkAppsOptions
     /// <summary>The most private keys one App may hold at once (for rotation). Default 5.</summary>
     public int MaxKeysPerApp { get; set; } = 5;
 
+    /// <summary>The most Apps installed on one owner. Default 100.</summary>
+    public int MaxInstallationsPerOwner { get; set; } = 100;
+
+    /// <summary>
+    /// The audience of installation tokens (D16): set it to your resource server's <c>Audience</c>. Null addresses them
+    /// to the App's own client id.
+    /// </summary>
+    public string? InstallationTokenAudience { get; set; }
+
+    /// <summary>An installation token's lifetime. Default 60 minutes, as GitHub's.</summary>
+    public int InstallationTokenLifetimeMinutes { get; set; } = 60;
+
     /// <summary>Accept <c>http://</c> endpoint URLs. For development only; the SSRF-safe client still refuses private networks.</summary>
     public bool AllowInsecureUrls { get; set; }
 

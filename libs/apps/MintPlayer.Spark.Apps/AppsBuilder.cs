@@ -1,5 +1,6 @@
 using System.Reflection;
 using MintPlayer.Spark.Apps.Catalog;
+using MintPlayer.Spark.Apps.Services;
 using MintPlayer.Webhooks;
 
 namespace MintPlayer.Spark.Apps;
@@ -37,6 +38,31 @@ public sealed class AppsBuilder
         return this;
     }
 
+    internal List<EntityEventRegistration> EntityEventRegistrations { get; } = [];
+
+    /// <summary>
+    /// Lifecycle events for <typeparamref name="T"/> (D6, D31): <c>{name}.created</c>, <c>.updated</c> and <c>.deleted</c>
+    /// when it is written through Spark (a persistent object save or delete), to the owner <paramref name="owner"/> names
+    /// (null: no event for that row). The events are thin, the id only; they go out after the write commits, at least
+    /// once, and never twice to one destination.
+    /// </summary>
+    /// <param name="name">The event prefix; the type name in lower case by default (<c>report</c>).</param>
+    public AppsBuilder AddEntityEvents<T>(EntityEvents events, string? permission, Func<T, WebhookOwner?> owner, string? name = null) where T : class
+    {
+        ArgumentNullException.ThrowIfNull(owner);
+        if ((events & EntityEvents.All) == 0)
+            throw new ArgumentException("Name at least one of Created, Updated, Deleted.", nameof(events));
+        var prefix = name ?? typeof(T).Name.ToLowerInvariant();
+        if (events.HasFlag(EntityEvents.Created))
+            Events.Add(new($"{prefix}.created", typeof(EntityCreated<T>), permission, $"A {typeof(T).Name} was created."));
+        if (events.HasFlag(EntityEvents.Updated))
+            Events.Add(new($"{prefix}.updated", typeof(EntityUpdated<T>), permission, $"A {typeof(T).Name} was changed."));
+        if (events.HasFlag(EntityEvents.Deleted))
+            Events.Add(new($"{prefix}.deleted", typeof(EntityDeleted<T>), permission, $"A {typeof(T).Name} was deleted."));
+        EntityEventRegistrations.Add(new(typeof(T), events, entity => owner((T)entity), typeof(Services.EntityWebhookInterceptor<T>)));
+        return this;
+    }
+
     /// <summary>Another kind of webhook owner (D18), e.g. CodeCoverage's GitHub accounts. Users and organizations are built in.</summary>
     public AppsBuilder AddOwnerProvider<TProvider>() where TProvider : class, IWebhookOwnerProvider
     {
@@ -67,6 +93,22 @@ public sealed class AppsBuilder
     public AppsBuilder EnableApps()
     {
         AppsEnabled = true;
+        return this;
+    }
+
+    internal Dictionary<string, List<string>> PermissionGroups { get; } = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// What an installation token may do on this site (D17): a token holding <paramref name="permission"/> (or the
+    /// <c>write</c> that covers a <c>read</c>) is a member of <paramref name="groups"/> in <c>security.json</c>. A permission
+    /// mapped to nothing grants no rights here; the App still receives its events.
+    /// </summary>
+    public AppsBuilder MapPermission(string permission, params string[] groups)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(permission);
+        if (!PermissionGroups.TryGetValue(permission, out var list))
+            PermissionGroups[permission] = list = [];
+        list.AddRange(groups.Where(g => !string.IsNullOrWhiteSpace(g)));
         return this;
     }
 

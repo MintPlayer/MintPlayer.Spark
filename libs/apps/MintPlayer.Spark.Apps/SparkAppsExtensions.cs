@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 using MintPlayer.Spark.Abstractions.Builder;
+using MintPlayer.Spark.Abstractions.Interceptors;
 using MintPlayer.Spark.Apps.Catalog;
 using MintPlayer.Spark.Apps.Endpoints;
 using MintPlayer.Spark.Apps.Messaging;
@@ -86,7 +87,17 @@ public static class SparkAppsExtensions
         {
             services.AddSingleton<SparkAppsFeature>();
             services.TryAddScoped<SparkAppManager>();
+            services.TryAddScoped<AppInstallationManager>();
+            // D16: installation tokens; D17: their scopes map to security.json groups.
+            services.TryAddEnumerable(ServiceDescriptor.Scoped<MintPlayer.Spark.IdentityProvider.Services.IOidcClientCredentialsContributor, InstallationTokenContributor>());
+            services.AddSingleton(new AppPermissionGroups(apps.PermissionGroups.ToDictionary(e => e.Key, e => e.Value.Distinct(StringComparer.Ordinal).ToList(), StringComparer.Ordinal)));
+            MintPlayer.Spark.Extensions.SparkGroupMembershipCompositionExtensions.AddGroupMembershipProvider<InstallationGroupMembership>(builder);
         }
+
+        // D31: entity lifecycle events, through the durable after-commit interceptors (needs Messaging, as everything here).
+        services.AddSingleton(new EntityEventRegistrations(apps.EntityEventRegistrations));
+        foreach (var registration in apps.EntityEventRegistrations)
+            services.AddSparkInterceptor(registration.InterceptorType);
 
         services.TryAddEnumerable(ServiceDescriptor.Scoped<IWebhookOwnerProvider, UserWebhookOwnerProvider>());
         services.TryAddEnumerable(ServiceDescriptor.Scoped<IWebhookOwnerProvider, OrganizationWebhookOwnerProvider>());

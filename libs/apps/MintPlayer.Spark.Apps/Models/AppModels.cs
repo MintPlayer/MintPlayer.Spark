@@ -40,12 +40,51 @@ public sealed class SparkApp
 
     public List<SparkAppKey> Keys { get; set; } = [];
 
+    /// <summary>Its installations (<see cref="AppInstallation"/> ids), so the App owner lists them without an index.</summary>
+    public List<string> InstallationIds { get; set; } = [];
+
     public DateTime CreatedUtc { get; set; }
     public string CreatedBy { get; set; } = string.Empty;
 
     public WebhookOwner Owner => new(OwnerKind, OwnerKey);
 
     public static string IdFor(string slug) => IdPrefix + slug;
+}
+
+/// <summary>
+/// An App installed on a target (a user or an organization, D30): what the installer granted it. Id
+/// <c>AppInstallations/in_…</c>; the <c>in_…</c> part is the public installation id the App sends with its token request.
+/// One per (App, target): the target's <see cref="WebhookOwnerRegistry.InstallationIds"/> is checked under optimistic
+/// concurrency.
+/// </summary>
+public sealed class AppInstallation
+{
+    public const string IdPrefix = "AppInstallations/";
+
+    public string? Id { get; set; }
+    public string AppSlug { get; set; } = string.Empty;
+    public string TargetKind { get; set; } = string.Empty;
+    public string TargetKey { get; set; } = string.Empty;
+
+    /// <summary>
+    /// What the installer accepted. Never more than the App asks for: when the App asks for more, the installation keeps
+    /// these until the installer accepts again; when it asks for less, these shrink at once.
+    /// </summary>
+    public List<string> Permissions { get; set; } = [];
+
+    /// <summary>Suspended by the installer: no events, no new tokens, and the tokens it holds stop working.</summary>
+    public bool Suspended { get; set; }
+    public DateTime? SuspendedUtc { get; set; }
+
+    /// <summary>The identity provider grant behind its tokens (D16): withdrawn on suspension, revoked on uninstall.</summary>
+    public string GrantId { get; set; } = string.Empty;
+
+    public string InstalledBy { get; set; } = string.Empty;
+    public DateTime InstalledUtc { get; set; }
+
+    public WebhookOwner Target => new(TargetKind, TargetKey);
+
+    public string PublicId => Id is null ? string.Empty : Id[IdPrefix.Length..];
 }
 
 /// <summary>The public half of a key the App signs its client assertions with. The private half was shown once.</summary>

@@ -64,6 +64,12 @@ public sealed class WebhookOwnerRegistry
     /// <summary>The Apps this owner registered (D29): <see cref="SparkApp"/> ids.</summary>
     public List<string> AppIds { get; set; } = [];
 
+    /// <summary>The Apps installed on this owner (D30): <see cref="AppInstallation"/> ids. Events fan out to them too.</summary>
+    public List<string> InstallationIds { get; set; } = [];
+
+    /// <summary>Whether an event of this owner has anywhere to go.</summary>
+    public bool HasDestinations => EndpointIds.Count > 0 || InstallationIds.Count > 0;
+
     public static string IdFor(WebhookOwner owner) => IdPrefix + owner.IdToken;
 }
 

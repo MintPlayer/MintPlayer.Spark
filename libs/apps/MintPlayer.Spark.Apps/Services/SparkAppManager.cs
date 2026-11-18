@@ -194,9 +194,10 @@ internal sealed partial class SparkAppManager
             if (change.HomepageUrl is not null) app.HomepageUrl = NullIfEmpty(change.HomepageUrl);
             if (change.SetupUrl is not null) app.SetupUrl = NullIfEmpty(change.SetupUrl);
             if (change.Public is { } isPublic) app.Public = isPublic;
-            // M5: a permission upgrade waits for each installation to accept it; here only the App's request changes.
+            // D30: asking for more waits for each installer to accept; asking for less narrows every installation now.
             app.Permissions = permissions;
             app.Events = events;
+            await AppInstallationManager.NarrowAsync(session, app, cancellationToken);
 
             var hook = app.WebhookEndpointId is { } ep ? await session.LoadAsync<WebhookEndpoint>(WebhookEndpoint.IdPrefix + ep, cancellationToken) : null;
             string? secret = null;
@@ -229,7 +230,7 @@ internal sealed partial class SparkAppManager
             return WebhookResult<SparkAppCreated>.Ok(new(View(app, hook), secret));
         }, cancellationToken);
 
-    /// <summary>Deletes the App, its webhook (the log expires on its own) and its client, whose tokens are revoked.</summary>
+    /// <summary>Deletes the App, its installations, its webhook (the log expires on its own) and its client, whose tokens are revoked.</summary>
     public async Task<WebhookResult<bool>> DeleteAsync(string? slug, string userId, CancellationToken cancellationToken)
     {
         string? clientId = null;
@@ -237,6 +238,7 @@ internal sealed partial class SparkAppManager
         {
             if (await session.LoadAsync<WebhookOwnerRegistry>(WebhookOwnerRegistry.IdFor(app.Owner), cancellationToken) is { } registry)
                 registry.AppIds.Remove(app.Id!);
+            await AppInstallationManager.RemoveAllAsync(session, app, cancellationToken);
             if (app.WebhookEndpointId is { } ep)
             {
                 session.Delete(WebhookEndpoint.IdPrefix + ep);

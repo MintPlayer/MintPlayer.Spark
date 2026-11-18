@@ -39,8 +39,15 @@ internal sealed partial class WebhookPublisher : IWebhookPublisher
     [Inject] private readonly IOptions<SparkAppsOptions> options;
     [Inject] private readonly TimeProvider time;
 
-    public async Task<string?> PublishAsync<TEvent>(TEvent data, WebhookOwner owner, IAsyncDocumentSession session, CancellationToken cancellationToken = default)
+    public Task<string?> PublishAsync<TEvent>(TEvent data, WebhookOwner owner, IAsyncDocumentSession session, CancellationToken cancellationToken = default)
         where TEvent : notnull
+        => PublishAsync(data, owner, session, messageId: null, cancellationToken);
+
+    /// <summary>
+    /// <paramref name="messageId"/>: a fixed <c>webhook-id</c> for a publisher that may run twice for one event (the
+    /// at-least-once entity events, D31). The fan-out derives delivery ids from it, so a second run delivers nothing twice.
+    /// </summary>
+    internal async Task<string?> PublishAsync(object data, WebhookOwner owner, IAsyncDocumentSession session, string? messageId, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(session);
         var descriptor = catalog.Find(data.GetType())
@@ -48,13 +55,13 @@ internal sealed partial class WebhookPublisher : IWebhookPublisher
 
         // The owner's registry lists its destinations; an owner without one costs a single load and no message.
         var registry = await session.LoadAsync<WebhookOwnerRegistry>(WebhookOwnerRegistry.IdFor(owner), cancellationToken);
-        if (registry is null || registry.EndpointIds.Count == 0)
+        if (registry is not { HasDestinations: true })
             return null;
 
         var now = time.GetUtcNow();
         var message = new WebhookEventRaised
         {
-            MessageId = NewMessageId(now),
+            MessageId = messageId ?? NewMessageId(now),
             EventType = descriptor.Name,
             OwnerKind = owner.Kind,
             OwnerKey = owner.Key,
