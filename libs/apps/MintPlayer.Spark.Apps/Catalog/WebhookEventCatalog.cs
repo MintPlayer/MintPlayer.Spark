@@ -129,6 +129,14 @@ public sealed class WebhookEventCatalog
         return type.GetGenericArguments()[0].Name + definition;
     }
 
+    private static string? NestedTitle(System.Text.Json.Serialization.Metadata.JsonTypeInfo info)
+    {
+        var type = Nullable.GetUnderlyingType(info.Type) ?? info.Type;
+        if (type.IsEnum)
+            return type.Name;
+        return info.Kind == System.Text.Json.Serialization.Metadata.JsonTypeInfoKind.Object && !type.IsGenericType ? type.Name : null;
+    }
+
     private static JsonObject ExportSchema(Type type)
     {
         var exporter = new JsonSchemaExporterOptions
@@ -140,6 +148,9 @@ public sealed class WebhookEventCatalog
                     return node;
                 if (context.Path.IsEmpty)
                     schema.Insert(0, "title", Title(type));
+                else if (NestedTitle(context.TypeInfo) is { } nested && !schema.ContainsKey("title"))
+                    // Nested objects and enums are inlined; the title lets codegen name them after their CLR type (D33).
+                    schema.Insert(0, "title", nested);
                 var description = (context.PropertyInfo?.AttributeProvider ?? context.TypeInfo.Type)
                     .GetCustomAttributes(typeof(DescriptionAttribute), inherit: false)
                     .OfType<DescriptionAttribute>().FirstOrDefault()?.Description;

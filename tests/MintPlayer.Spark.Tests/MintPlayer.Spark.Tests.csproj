@@ -85,6 +85,9 @@
     <ProjectReference Include="..\..\libs\webpush\MintPlayer.Spark.WebPush\MintPlayer.Spark.WebPush.csproj" />
     <ProjectReference Include="..\..\libs\notifications\MintPlayer.Spark.Notifications\MintPlayer.Spark.Notifications.csproj" />
     <ProjectReference Include="..\..\libs\apps\MintPlayer.Spark.Apps\MintPlayer.Spark.Apps.csproj" />
+    <!-- #691 M8: the receiver round trip, and the generated code checked against the CLI's output (golden). -->
+    <ProjectReference Include="..\..\libs\webhooks\MintPlayer.Spark.Webhooks.Receiver\MintPlayer.Spark.Webhooks.Receiver.csproj" />
+    <ProjectReference Include="..\..\libs\cli\MintPlayer.Spark.Cli.Commands\MintPlayer.Spark.Cli.Commands.csproj" />
     <ProjectReference Include="..\..\libs\boards\MintPlayer.Spark.Boards\MintPlayer.Spark.Boards.csproj" />
     <ProjectReference Include="..\..\libs\sitemap\MintPlayer.Spark.SitemapXml\MintPlayer.Spark.SitemapXml.csproj" />
     <ProjectReference Include="..\..\libs\minification\MintPlayer.Spark.Minification\MintPlayer.Spark.Minification.csproj" />

@@ -149,6 +149,9 @@ public abstract class AppsTestHost : OrganizationsTestHost
         /// <summary>The answer to the n-th request (0-based); null: 204.</summary>
         public Func<Request, int, HttpResponseMessage?>? Respond { get; set; }
 
+        /// <summary>When set, answers every request instead of <see cref="Respond"/> (e.g. by forwarding it to a real receiver).</summary>
+        public Func<Request, Task<HttpResponseMessage>>? Forward { get; set; }
+
         private int count;
 
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
@@ -159,6 +162,8 @@ public abstract class AppsTestHost : OrganizationsTestHost
             var recorded = new Request(request.RequestUri!.ToString(), headers, body, DateTime.UtcNow);
             Received.Enqueue(recorded);
             var n = Interlocked.Increment(ref count) - 1;
+            if (Forward is { } forward)
+                return await forward(recorded);
             return Respond?.Invoke(recorded, n) ?? new HttpResponseMessage(HttpStatusCode.NoContent);
         }
     }

@@ -85,7 +85,8 @@ public class WebhookDeliveryTests : AppsTestHost
                     "x-spark-permission": "orders:read"
                   }
                 }
-              }
+              },
+              "x-spark-permissions": [ "orders:read" ]
             }
             """);
         JsonNode.DeepEquals(actual, expected).Should().BeTrue("the catalog holds the two sample events exactly:\n" + actual.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));

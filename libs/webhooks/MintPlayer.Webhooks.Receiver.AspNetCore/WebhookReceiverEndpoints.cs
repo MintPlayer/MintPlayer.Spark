@@ -23,7 +23,17 @@ public static class WebhookReceiverServiceCollectionExtensions
         where TProcessor : WebhookProcessor
     {
         services.TryAddScoped<TProcessor>();
-        services.Configure(OptionsName<TProcessor>(), configure);
+        return services.AddWebhookReceiver(OptionsName<TProcessor>(), configure);
+    }
+
+    /// <summary>
+    /// Named receiver options, for a host that builds its processor itself (see
+    /// <see cref="WebhookReceiverEndpointRouteBuilderExtensions.MapWebhookReceiver(IEndpointRouteBuilder, string, string, Func{IServiceProvider, WebhookProcessor})"/>).
+    /// </summary>
+    public static IServiceCollection AddWebhookReceiver(this IServiceCollection services, string name, Action<WebhookReceiverOptions> configure)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        services.Configure(name, configure);
         services.TryAddSingleton<WebhookReceiverCache>();
         return services;
     }
@@ -62,8 +72,16 @@ public static class WebhookReceiverEndpointRouteBuilderExtensions
     /// </summary>
     public static RouteHandlerBuilder MapWebhookReceiver<TProcessor>(this IEndpointRouteBuilder endpoints, string pattern)
         where TProcessor : WebhookProcessor
+        => endpoints.MapWebhookReceiver(pattern, WebhookReceiverServiceCollectionExtensions.OptionsName<TProcessor>(), services => services.GetRequiredService<TProcessor>());
+
+    /// <summary>
+    /// As <see cref="MapWebhookReceiver{TProcessor}(IEndpointRouteBuilder, string)"/>, with the options registered under
+    /// <paramref name="name"/> and the processor built per request by <paramref name="processor"/> (from the request's services).
+    /// </summary>
+    public static RouteHandlerBuilder MapWebhookReceiver(this IEndpointRouteBuilder endpoints, string pattern, string name, Func<IServiceProvider, WebhookProcessor> processor)
     {
-        var name = WebhookReceiverServiceCollectionExtensions.OptionsName<TProcessor>();
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        ArgumentNullException.ThrowIfNull(processor);
         return endpoints.MapPost(pattern, async (HttpContext http) =>
         {
             var (options, receiver) = http.RequestServices.GetRequiredService<WebhookReceiverCache>().Get(name);
@@ -72,9 +90,8 @@ public static class WebhookReceiverEndpointRouteBuilderExtensions
             if (body is null)
                 return Results.StatusCode(StatusCodes.Status413PayloadTooLarge);
 
-            var processor = http.RequestServices.GetRequiredService<TProcessor>();
             var headers = http.Request.Headers;
-            var result = await receiver.HandleAsync(h => headers.TryGetValue(h, out var v) ? v.ToString() : null, body, processor, http.RequestAborted);
+            var result = await receiver.HandleAsync(h => headers.TryGetValue(h, out var v) ? v.ToString() : null, body, processor(http.RequestServices), http.RequestAborted);
             return Results.StatusCode(result.StatusCode);
         })
         .AllowAnonymous()

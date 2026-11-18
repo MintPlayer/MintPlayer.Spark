@@ -33,7 +33,8 @@ public partial class SparkCommand : ICliCommand
         AnsiConsole.MarkupLine($"spark {Markup.Escape(TemplateInstaller.ToolVersion)}");
         AnsiConsole.MarkupLine("  spark new [[name]]              create an app (prompts for what is not given)");
         AnsiConsole.MarkupLine($"  spark add <item> <name>        add to this app; items: {string.Join(", ", ItemAdder.ItemNames)}");
-        AnsiConsole.MarkupLine("  spark <command> --help         the command's options");
+        AnsiConsole.MarkupLine("  spark webhooks generate         typed receivers from a site's webhook catalog");
+        AnsiConsole.MarkupLine("  spark <command> --help        the command's options");
         return project is null ? 1 : 0;
     }
 }
