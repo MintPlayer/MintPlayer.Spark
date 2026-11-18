@@ -1,0 +1,12 @@
+{
+  "$schema": "http://json.schemastore.org/ide.host",
+  "order": 0,
+  "icon": "",
+  "symbolInfo": [
+    { "id": "Store", "isVisible": true },
+    { "id": "AuthMode", "isVisible": true },
+    { "id": "OidcAuthority", "isVisible": true },
+    { "id": "NoClient", "isVisible": true },
+    { "id": "skipRestore", "isVisible": false }
+  ]
+}

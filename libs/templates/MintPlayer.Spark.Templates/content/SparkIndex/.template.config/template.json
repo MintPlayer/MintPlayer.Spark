@@ -1,0 +1,44 @@
+{
+  "$schema": "http://json.schemastore.org/template",
+  "author": "MintPlayer",
+  "classifications": [ "Web", "Spark", "RavenDB" ],
+  "identity": "MintPlayer.Spark.Templates.SparkIndex",
+  "name": "Spark index",
+  "description": "A RavenDB index over a Spark entity, with the view class describing its rows. RavenDB apps only. -n is the entity's name. Run it in the app's project directory; it writes Indexes/<plural>_Overview.cs.",
+  "shortName": "spark-index",
+  "sourceName": "SparkItem",
+  "preferNameDirectory": false,
+  "tags": { "language": "C#", "type": "item" },
+  "symbols": {
+    "namespace": {
+      "type": "parameter",
+      "datatype": "text",
+      "description": "The project's root namespace. Defaults to the RootNamespace of the project in or above the output directory."
+    },
+    "rootNamespace": { "type": "bind", "binding": "msbuild:RootNamespace", "defaultValue": "UnrestoredProject" },
+    "effectiveNamespace": {
+      "type": "generated",
+      "generator": "coalesce",
+      "parameters": { "sourceVariableName": "namespace", "fallbackVariableName": "rootNamespace" },
+      "replaces": "SparkNs"
+    },
+    "plural": {
+      "type": "parameter",
+      "datatype": "text",
+      "description": "The plural the index is named after (<plural>_Overview). Defaults to the name with an 's'."
+    },
+    "defaultPlural": {
+      "type": "generated",
+      "generator": "join",
+      "parameters": { "symbols": [ { "type": "ref", "value": "name" }, { "type": "const", "value": "s" } ] }
+    },
+    "effectivePlural": {
+      "type": "generated",
+      "generator": "coalesce",
+      "parameters": { "sourceVariableName": "plural", "fallbackVariableName": "defaultPlural" },
+      "replaces": "SparkPluralName",
+      "fileRename": "SparkPluralName"
+    }
+  },
+  "primaryOutputs": [ { "path": "Indexes/SparkPluralName_Overview.cs" } ]
+}

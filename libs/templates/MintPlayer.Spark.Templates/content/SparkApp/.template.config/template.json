@@ -1,0 +1,138 @@
+{
+  "$schema": "http://json.schemastore.org/template",
+  "author": "MintPlayer",
+  "classifications": [ "Web", "Spark", "Angular", "RavenDB" ],
+  "identity": "MintPlayer.Spark.Templates.SparkApp",
+  "groupIdentity": "MintPlayer.Spark.Templates.SparkApp",
+  "name": "Spark application",
+  "description": "A Spark host with an entity library and an Angular client, with a choice per framework feature.",
+  "shortName": "spark-app",
+  "sourceName": "SparkApp",
+  "preferNameDirectory": true,
+  "tags": { "language": "C#", "type": "solution" },
+  "primaryOutputs": [
+    { "path": "SparkApp/SparkApp.csproj", "condition": "(!VsNested)" },
+    { "path": "SparkApp.Library/SparkApp.Library.csproj", "condition": "(!VsNested)" },
+    { "path": "SparkApp.Tests/SparkApp.Tests.csproj", "condition": "(!VsNested && IsRaven)" },
+    { "path": "../SparkApp/SparkApp.csproj", "condition": "(VsNested)" },
+    { "path": "../SparkApp.Library/SparkApp.Library.csproj", "condition": "(VsNested)" },
+    { "path": "../SparkApp.Tests/SparkApp.Tests.csproj", "condition": "(VsNested && IsRaven)" }
+  ],
+  "guids": [ "a587cfbf-0605-4d67-9334-2e85c234c343" ],
+  "symbols": {
+    "Store": {
+      "type": "parameter",
+      "datatype": "choice",
+      "displayName": "Store",
+      "description": "Where the data lives. Most features need RavenDB.",
+      "defaultValue": "RavenDB",
+      "choices": [
+        { "choice": "RavenDB", "displayName": "RavenDB", "description": "A RavenDB server (Spark:RavenDb in appsettings.json)." },
+        { "choice": "InMemory", "displayName": "In memory", "description": "No database: data resets on every restart. Core features only." }
+      ]
+    },
+    "IsRaven": { "type": "computed", "value": "(Store == \"RavenDB\")" },
+    "IsInMemory": { "type": "computed", "value": "(Store == \"InMemory\")" },
+
+    "AuthMode": {
+      "type": "parameter",
+      "datatype": "choice",
+      "displayName": "Sign-in",
+      "description": "Accounts and group-based access control (MintPlayer.Spark.Authorization). Needs RavenDB.",
+      "defaultValue": "none",
+      "isEnabled": "Store == \"RavenDB\"",
+      "choices": [
+        { "choice": "none", "displayName": "None", "description": "No accounts: every visitor is anonymous." },
+        { "choice": "authorization", "displayName": "Local accounts", "description": "Password accounts and security.json groups." },
+        { "choice": "oidc", "displayName": "Local accounts + OpenID Connect", "description": "Also sign in with an external OpenID Connect provider." }
+      ]
+    },
+    "OidcAuthority": {
+      "type": "parameter",
+      "datatype": "string",
+      "displayName": "OpenID Connect authority",
+      "description": "The provider's issuer URL, e.g. https://id.example.com. Can be filled in later in appsettings.json.",
+      "isEnabled": "AuthMode == \"oidc\"",
+      "isRequired": "AuthMode == \"oidc\"",
+      "defaultValue": "",
+      "replaces": "OIDC_AUTHORITY_PLACEHOLDER"
+    },
+    "HasOidc": { "type": "computed", "value": "(IsRaven && AuthMode == \"oidc\")" },
+
+    "NoClient": {
+      "type": "parameter",
+      "datatype": "bool",
+      "displayName": "No Angular client",
+      "description": "Generate the API host only, without the ClientApp folder.",
+      "defaultValue": "false"
+    },
+    "HasClient": { "type": "computed", "value": "(!(NoClient && true))" },
+
+    "HostIdentifier": { "type": "bind", "binding": "HostIdentifier" },
+    "IsCli": { "type": "computed", "value": "(HostIdentifier == \"dotnetcli\" || HostIdentifier == \"dotnetcli-preview\")" },
+    "CreateSolutionDirectory": { "type": "bind", "binding": "context:CreateSolutionDirectory", "defaultValue": "false" },
+    "VsNested": { "type": "computed", "value": "(!IsCli && (CreateSolutionDirectory == \"true\" || CreateSolutionDirectory == \"True\"))" },
+
+    "skipRestore": {
+      "type": "parameter", "datatype": "bool", "defaultValue": "false",
+      "displayName": "Skip restore",
+      "description": "Do not restore NuGet packages after creating the project."
+    },
+
+    "HttpsPort": {
+      "type": "generated",
+      "generator": "port",
+      "parameters": { "low": 44300, "high": 44399 },
+      "replaces": "5007"
+    },
+    "HttpPort": {
+      "type": "generated",
+      "generator": "port",
+      "replaces": "5008"
+    }
+  },
+  "sources": [
+    {
+      "condition": "(!VsNested)",
+      "source": "./",
+      "target": "./",
+      "modifiers": [
+        { "condition": "(!IsCli)", "exclude": [ "SparkApp.slnx" ] },
+        { "condition": "(!HasClient)", "exclude": [ "SparkApp/ClientApp/**" ] },
+        { "condition": "(!IsRaven)", "exclude": [ "SparkApp.Tests/**" ] },
+        { "condition": "(!UseControllers)", "exclude": [ "SparkApp/Controllers/**" ] },
+        { "condition": "(!UseMigrations)", "exclude": [ "SparkApp/Migrations/**" ] },
+        { "condition": "(!UseCron)", "exclude": [ "SparkApp/Jobs/**" ] },
+        { "condition": "(!UseSettings)", "exclude": [ "SparkApp/AppSettings.cs" ] },
+        { "condition": "(!UseGitHubWebhooks)", "exclude": [ "SparkApp/Webhooks/**" ] },
+        { "condition": "(!UseBoards)", "exclude": [ "SparkApp/App_Data/boards.json" ] }
+      ]
+    },
+    {
+      "condition": "(VsNested)",
+      "source": "./",
+      "target": "../",
+      "modifiers": [
+        { "exclude": [ "SparkApp.slnx" ] },
+        { "condition": "(!HasClient)", "exclude": [ "SparkApp/ClientApp/**" ] },
+        { "condition": "(!IsRaven)", "exclude": [ "SparkApp.Tests/**" ] },
+        { "condition": "(!UseControllers)", "exclude": [ "SparkApp/Controllers/**" ] },
+        { "condition": "(!UseMigrations)", "exclude": [ "SparkApp/Migrations/**" ] },
+        { "condition": "(!UseCron)", "exclude": [ "SparkApp/Jobs/**" ] },
+        { "condition": "(!UseSettings)", "exclude": [ "SparkApp/AppSettings.cs" ] },
+        { "condition": "(!UseGitHubWebhooks)", "exclude": [ "SparkApp/Webhooks/**" ] },
+        { "condition": "(!UseBoards)", "exclude": [ "SparkApp/App_Data/boards.json" ] }
+      ]
+    }
+  ],
+  "postActions": [
+    {
+      "id": "restore",
+      "condition": "(!skipRestore)",
+      "description": "Restore NuGet packages required by this project.",
+      "manualInstructions": [ { "text": "Run 'dotnet restore'" } ],
+      "actionId": "210D431B-A78B-4D2F-B762-4ED3E3EA9025",
+      "continueOnError": true
+    }
+  ]
+}

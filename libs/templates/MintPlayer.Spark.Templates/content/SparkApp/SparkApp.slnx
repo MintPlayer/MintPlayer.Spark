@@ -1,0 +1,8 @@
+<Solution>
+  <File Path="Directory.Packages.props" />
+  <Project Path="SparkApp.Library/SparkApp.Library.csproj" />
+<!--#if (IsRaven) -->
+  <Project Path="SparkApp.Tests/SparkApp.Tests.csproj" />
+<!--#endif -->
+  <Project Path="SparkApp/SparkApp.csproj" />
+</Solution>

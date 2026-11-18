@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<!-- The `spark` tool (docs/templates_dnx_terminal_PRD.md §6, D17). The commands are in MintPlayer.Spark.Cli.Commands. -->
+	<PropertyGroup>
+		<OutputType>Exe</OutputType>
+		<TargetFramework>net11.0</TargetFramework>
+		<Nullable>enable</Nullable>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<PackAsTool>true</PackAsTool>
+		<ToolCommandName>spark</ToolCommandName>
+		<!-- A tool, not a Spark host: no Spark build targets (Directory.Build.targets treats every Exe as one). -->
+		<SparkApplication>false</SparkApplication>
+
+		<!-- NuGet Package Metadata -->
+		<PackageId>MintPlayer.Spark.Cli</PackageId>
+		<Version>0.0.0-PLACEHOLDER</Version>
+		<Authors>MintPlayer</Authors>
+		<Company>MintPlayer</Company>
+		<Description>The spark tool: create a MintPlayer.Spark app (spark new, or dnx MintPlayer.Spark.Cli) and add entities, actions, custom actions, lookups and indexes to it (spark add).</Description>
+		<PackageTags>spark;cli;dotnet-tool;templates;ravendb;angular</PackageTags>
+		<PackageLicenseExpression>MIT</PackageLicenseExpression>
+		<PackageProjectUrl>https://github.com/MintPlayer/MintPlayer.Spark</PackageProjectUrl>
+		<RepositoryUrl>https://github.com/MintPlayer/MintPlayer.Spark.git</RepositoryUrl>
+		<RepositoryType>git</RepositoryType>
+		<PackageReadmeFile>README.md</PackageReadmeFile>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<None Include="..\README.md" Pack="true" PackagePath="\" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\MintPlayer.Spark.Cli.Commands\MintPlayer.Spark.Cli.Commands.csproj" />
+	</ItemGroup>
+
+</Project>

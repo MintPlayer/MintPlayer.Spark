@@ -1,0 +1,10 @@
+{
+  "$schema": "http://json.schemastore.org/dotnetcli.host",
+  "symbolInfo": {
+    "Store": { "longName": "store" },
+    "AuthMode": { "longName": "auth" },
+    "OidcAuthority": { "longName": "oidc-authority" },
+    "NoClient": { "longName": "no-client", "shortName": "" },
+    "skipRestore": { "longName": "no-restore", "shortName": "" }
+  }
+}

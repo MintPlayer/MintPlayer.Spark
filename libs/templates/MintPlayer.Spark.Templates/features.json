@@ -1,0 +1,317 @@
+{
+  "$comment": "The spark-app template's feature manifest (docs/templates_dnx_terminal_PRD.md §4.2, D15). The pack step (MintPlayer.Spark.Templates.Build) generates from it the feature symbols in template.json, ide.host.json and dotnetcli.host.json, the host csproj's PackageReferences and the pinned-package list; nothing it generates is checked in. Program.cs, appsettings.json and the ClientApp stay hand-written, and MintPlayer.Spark.Templates.Tests checks them against this file. Every packable project under libs/ is in core, features or excluded (the coverage test); each feature's requires equals the features among its project's ProjectReferences (the graph test).",
+
+  "core": [
+    { "project": "spark/MintPlayer.Spark/MintPlayer.Spark.csproj" },
+    { "project": "spark/MintPlayer.Spark.InMemory/MintPlayer.Spark.InMemory.csproj" },
+    { "project": "spark/MintPlayer.Spark.RavenDB/MintPlayer.Spark.RavenDB.csproj" },
+    { "project": "attributes/MintPlayer.Spark.Attributes/MintPlayer.Spark.Attributes.csproj" },
+    { "project": "model/MintPlayer.Spark.Model/MintPlayer.Spark.Model.csproj" },
+    { "project": "source_generators/MintPlayer.Spark.SourceGenerators/MintPlayer.Spark.SourceGenerators.csproj" },
+    { "project": "source_generators/MintPlayer.Spark.LibraryGenerators/MintPlayer.Spark.LibraryGenerators.csproj" },
+    { "project": "testing/MintPlayer.Spark.Testing/MintPlayer.Spark.Testing.csproj", "$comment": "SparkApp.Tests (RavenDB only: SparkTestDriver runs an embedded RavenDB)." }
+  ],
+
+  "features": [
+    {
+      "id": "Authorization",
+      "symbol": "HasAuth",
+      "selectedWhen": "AuthMode == \"authorization\" || AuthMode == \"oidc\"",
+      "displayName": "Sign-in and authorization",
+      "project": "authorization/MintPlayer.Spark.Authorization/MintPlayer.Spark.Authorization.csproj",
+      "store": "RavenDB",
+      "requires": [ "Migrations" ],
+      "alsoRequires": [ "Mail" ],
+      "registration": "AddAuthentication",
+      "client": [ "withAuth" ],
+      "$comment": "Chosen through the hand-written AuthMode choice (none/authorization/oidc), so the generator emits no parameter for it; a feature that requires it still switches it on. It requires Migrations: the package ships migrations (M_202610041800, M_202610051200) that only the app's AddMigrations() runs. alsoRequires Mail: the template maps registration (LocalCredentials = Full), and startup refuses that without a mail transport (LocalCredentialEndpointFilter.GuardAgainstRegistrationWithoutMail); in Development Mail writes the confirmation links to .eml files."
+    },
+    {
+      "id": "Migrations",
+      "flag": "migrations",
+      "project": "migrations/MintPlayer.Spark.Migrations/MintPlayer.Spark.Migrations.csproj",
+      "displayName": "Migrations",
+      "description": "Run-once database migrations at startup, with a sample seed migration.",
+      "default": true,
+      "store": "RavenDB",
+      "registration": "AddMigrations"
+    },
+    {
+      "id": "Messaging",
+      "flag": "messaging",
+      "project": "messaging/MintPlayer.Spark.Messaging/MintPlayer.Spark.Messaging.csproj",
+      "displayName": "Messaging",
+      "description": "A durable message bus.",
+      "store": "RavenDB",
+      "registration": "AddMessaging"
+    },
+    {
+      "id": "Mail",
+      "flag": "mail",
+      "project": "mail/MintPlayer.Spark.MailManager/MintPlayer.Spark.MailManager.csproj",
+      "displayName": "Outgoing mail",
+      "description": "Templated mail; in Development it writes .eml files.",
+      "store": "RavenDB",
+      "requires": [ "Messaging" ],
+      "registration": "AddMailManager",
+      "appsettings": "Spark:Mail"
+    },
+    {
+      "id": "Cron",
+      "flag": "cron",
+      "project": "cron/MintPlayer.Spark.Cron/MintPlayer.Spark.Cron.csproj",
+      "displayName": "Cron jobs",
+      "description": "Scheduled background jobs, with a sample job.",
+      "store": "RavenDB",
+      "registration": "AddCronJobs"
+    },
+    {
+      "id": "History",
+      "flag": "history",
+      "project": "history/MintPlayer.Spark.History/MintPlayer.Spark.History.csproj",
+      "displayName": "History",
+      "description": "Revisions, audit stamping and revert.",
+      "store": "RavenDB",
+      "registration": "AddHistory",
+      "client": [ "withHistory" ]
+    },
+    {
+      "id": "SoftDelete",
+      "flag": "soft-delete",
+      "project": "soft_delete/MintPlayer.Spark.SoftDelete/MintPlayer.Spark.SoftDelete.csproj",
+      "displayName": "Soft delete",
+      "description": "Deleting marks a record deleted; restore and purge later.",
+      "store": "RavenDB",
+      "registration": "AddSoftDelete",
+      "client": [ "withSoftDelete" ]
+    },
+    {
+      "id": "Mcp",
+      "flag": "mcp",
+      "project": "mcp/MintPlayer.Spark.Mcp/MintPlayer.Spark.Mcp.csproj",
+      "displayName": "MCP server",
+      "description": "Let AI agents read and propose changes through the Model Context Protocol.",
+      "store": "RavenDB",
+      "registration": "AddMcp"
+    },
+    {
+      "id": "Controllers",
+      "flag": "controllers",
+      "project": "controllers/MintPlayer.Spark.Controllers/MintPlayer.Spark.Controllers.csproj",
+      "displayName": "MVC controllers",
+      "description": "Mount ASP.NET Core controllers through Spark's pipeline.",
+      "registration": "AddControllers"
+    },
+    {
+      "id": "Logging",
+      "flag": "logging",
+      "project": "logging/MintPlayer.Spark.Logging/MintPlayer.Spark.Logging.csproj",
+      "displayName": "Stored logs",
+      "description": "Keep the application's logs and browse them in the app.",
+      "registration": "AddLogs"
+    },
+    {
+      "id": "WebPush",
+      "flag": "web-push",
+      "project": "webpush/MintPlayer.Spark.WebPush/MintPlayer.Spark.WebPush.csproj",
+      "displayName": "Web push",
+      "description": "VAPID keys and Web Push delivery; Notifications uses it for browser push."
+    },
+    {
+      "id": "Contributions",
+      "flag": "contributions",
+      "project": "contributions/MintPlayer.Spark.Contributions/MintPlayer.Spark.Contributions.csproj",
+      "displayName": "Contributions",
+      "description": "Users propose changes to fields marked [Contribution]; owners accept or revert them.",
+      "store": "RavenDB",
+      "registration": "AddContributions",
+      "client": [ "withContributions" ]
+    },
+    {
+      "id": "Dashboards",
+      "flag": "dashboards",
+      "project": "dashboards/MintPlayer.Spark.Dashboards/MintPlayer.Spark.Dashboards.csproj",
+      "displayName": "Dashboards",
+      "description": "Live dashboards, starting with the database statistics one.",
+      "store": "RavenDB",
+      "requires": [ "Authorization" ],
+      "registration": "AddDashboards",
+      "client": [ "withDashboards" ]
+    },
+    {
+      "id": "IdentityProvider",
+      "flag": "identity-provider",
+      "project": "identity_provider/MintPlayer.Spark.IdentityProvider/MintPlayer.Spark.IdentityProvider.csproj",
+      "displayName": "Identity provider",
+      "description": "Make this app an OpenID Connect provider that other apps sign in against.",
+      "store": "RavenDB",
+      "requires": [ "Authorization", "Migrations" ],
+      "registration": "AddIdentityProvider"
+    },
+    {
+      "id": "Moderation",
+      "flag": "moderation",
+      "project": "moderation/MintPlayer.Spark.Moderation/MintPlayer.Spark.Moderation.csproj",
+      "displayName": "Moderation",
+      "description": "Reputation, votes, flags and review queues; the sample Person becomes moderatable.",
+      "store": "RavenDB",
+      "requires": [ "Authorization", "Cron", "Messaging" ],
+      "registration": "AddModeration",
+      "client": [ "withModeration" ]
+    },
+    {
+      "id": "Replication",
+      "flag": "replication",
+      "project": "replication/MintPlayer.Spark.Replication/MintPlayer.Spark.Replication.csproj",
+      "displayName": "Replication",
+      "description": "Receive read-only copies of other Spark modules' collections through RavenDB ETL.",
+      "store": "RavenDB",
+      "alsoRequires": [ "Messaging" ],
+      "registration": "AddReplication",
+      "appsettings": "Spark:Replication",
+      "$comment": "alsoRequires Messaging: its startup registration resolves IMessageBus, while the project references only Messaging.Abstractions."
+    },
+    {
+      "id": "Settings",
+      "flag": "settings",
+      "project": "settings/MintPlayer.Spark.Settings/MintPlayer.Spark.Settings.csproj",
+      "displayName": "Runtime settings",
+      "description": "Settings administrators change at runtime, declared in AppSettings.cs.",
+      "store": "RavenDB",
+      "requires": [ "Authorization" ],
+      "registration": "AddSettings"
+    },
+    {
+      "id": "GitHubWebhooks",
+      "flag": "github-webhooks",
+      "project": "webhooks/MintPlayer.Spark.Webhooks.GitHub/MintPlayer.Spark.Webhooks.GitHub.csproj",
+      "displayName": "GitHub webhooks",
+      "description": "Receive a GitHub App's webhooks as messages, with a sample push handler.",
+      "store": "RavenDB",
+      "alsoRequires": [ "Messaging" ],
+      "registration": "AddGithubWebhooks",
+      "appsettings": "GitHub",
+      "$comment": "alsoRequires Messaging: deliveries reach recipients through the message bus; the project references only Messaging.Abstractions."
+    },
+    {
+      "id": "GitHubDevTunnel",
+      "flag": "github-dev-tunnel",
+      "project": "webhooks/MintPlayer.Spark.Webhooks.GitHub.DevTunnel/MintPlayer.Spark.Webhooks.GitHub.DevTunnel.csproj",
+      "displayName": "GitHub webhooks dev tunnel",
+      "description": "Receive the webhooks through a smee.io channel when GitHub:SmeeChannelUrl is set.",
+      "store": "RavenDB",
+      "requires": [ "GitHubWebhooks" ],
+      "$comment": "Registered inside the AddGithubWebhooks options (AddSmeeDevTunnel), so no spark.X registration."
+    },
+    {
+      "id": "Gs1",
+      "flag": "gs1",
+      "project": "gs1/MintPlayer.Spark.Gs1/MintPlayer.Spark.Gs1.csproj",
+      "displayName": "GS1 barcodes",
+      "description": "Parse GS1 barcodes and compute check digits and SSCCs."
+    },
+    {
+      "id": "Boards",
+      "flag": "boards",
+      "project": "boards/MintPlayer.Spark.Boards/MintPlayer.Spark.Boards.csproj",
+      "displayName": "Boards",
+      "description": "Boards of tiles each signed-in user rearranges; a sample board at /board, declared in App_Data/boards.json.",
+      "store": "RavenDB",
+      "registration": "AddBoards",
+      "client": [ "withBoards" ]
+    },
+    {
+      "id": "Notifications",
+      "flag": "notifications",
+      "project": "notifications/MintPlayer.Spark.Notifications/MintPlayer.Spark.Notifications.csproj",
+      "displayName": "Notifications",
+      "description": "In-app, mail and Web Push notifications, with a bell in the top bar.",
+      "store": "RavenDB",
+      "requires": [ "Authorization", "Messaging", "WebPush" ],
+      "registration": "AddNotifications",
+      "client": [ "withNotifications" ]
+    },
+    {
+      "id": "Organizations",
+      "flag": "organizations",
+      "project": "organizations/MintPlayer.Spark.Organizations/MintPlayer.Spark.Organizations.csproj",
+      "displayName": "Organizations",
+      "description": "Users work together in organizations, with invitations and an organization switcher.",
+      "store": "RavenDB",
+      "requires": [ "Authorization" ],
+      "registration": "AddOrganizations",
+      "$comment": "No provideSpark feature: the client adds withOrganizationRoutes() to sparkAuthRoutes and the switcher to the shell."
+    },
+    {
+      "id": "Search",
+      "flag": "site-search",
+      "project": "search/MintPlayer.Spark.Search/MintPlayer.Spark.Search.csproj",
+      "displayName": "Site search",
+      "description": "Search across the types whose model JSON says \"search\": { \"enabled\": true }, with a results page at /search.",
+      "store": "RavenDB",
+      "registration": "AddSearch",
+      "client": [ "withSearch" ]
+    },
+    {
+      "id": "OpenSearch",
+      "flag": "opensearch",
+      "project": "search/MintPlayer.Spark.Search.OpenSearch/MintPlayer.Spark.Search.OpenSearch.csproj",
+      "displayName": "OpenSearch engine",
+      "description": "Answer site search from an OpenSearch engine when Search:OpenSearch:Uri is set; RavenDB stays the fallback.",
+      "store": "RavenDB",
+      "requires": [ "Search" ],
+      "appsettings": "Search",
+      "$comment": "Registered inside the AddSearch options (UseOpenSearch), so no spark.X registration."
+    },
+    {
+      "id": "OpenSearchDescription",
+      "flag": "opensearch-description",
+      "project": "search/MintPlayer.Spark.OpenSearchDescription/MintPlayer.Spark.OpenSearchDescription.csproj",
+      "displayName": "Browser search engine",
+      "description": "Let browsers add the app as a search engine (/opensearch.xml).",
+      "store": "RavenDB",
+      "requires": [ "Search" ],
+      "registration": "AddOpenSearchDescription",
+      "client": [ "withOpenSearchDescription" ]
+    },
+    {
+      "id": "Sitemap",
+      "flag": "sitemap",
+      "project": "sitemap/MintPlayer.Spark.SitemapXml/MintPlayer.Spark.SitemapXml.csproj",
+      "displayName": "sitemap.xml",
+      "description": "/sitemap.xml lists the objects of the types whose model JSON says \"seo\": { \"indexable\": true }.",
+      "registration": "AddSitemap"
+    }
+  ],
+
+  "excluded": [
+    { "project": "spark/MintPlayer.Spark.Abstractions/MintPlayer.Spark.Abstractions.csproj", "reason": "dependency" },
+    { "project": "spark/MintPlayer.Spark.SafeHttp/MintPlayer.Spark.SafeHttp.csproj", "reason": "dependency" },
+    { "project": "authorization/MintPlayer.Spark.Authorization.Abstractions/MintPlayer.Spark.Authorization.Abstractions.csproj", "reason": "dependency" },
+    { "project": "contributions/MintPlayer.Spark.Contributions.Abstractions/MintPlayer.Spark.Contributions.Abstractions.csproj", "reason": "dependency" },
+    { "project": "history/MintPlayer.Spark.History.Abstractions/MintPlayer.Spark.History.Abstractions.csproj", "reason": "dependency" },
+    { "project": "mail/MintPlayer.Spark.MailManager.Abstractions/MintPlayer.Spark.MailManager.Abstractions.csproj", "reason": "dependency" },
+    { "project": "messaging/MintPlayer.Spark.Messaging.Abstractions/MintPlayer.Spark.Messaging.Abstractions.csproj", "reason": "dependency" },
+    { "project": "moderation/MintPlayer.Spark.Moderation.Abstractions/MintPlayer.Spark.Moderation.Abstractions.csproj", "reason": "dependency" },
+    { "project": "replication/MintPlayer.Spark.Replication.Abstractions/MintPlayer.Spark.Replication.Abstractions.csproj", "reason": "dependency" },
+    { "project": "soft_delete/MintPlayer.Spark.SoftDelete.Abstractions/MintPlayer.Spark.SoftDelete.Abstractions.csproj", "reason": "dependency" },
+    { "project": "subscription_worker/MintPlayer.Spark.SubscriptionWorker.Abstractions/MintPlayer.Spark.SubscriptionWorker.Abstractions.csproj", "reason": "dependency" },
+    { "project": "subscription_worker/MintPlayer.Spark.SubscriptionWorker/MintPlayer.Spark.SubscriptionWorker.csproj", "reason": "dependency" },
+    { "project": "all_features/MintPlayer.Spark.AllFeatures/MintPlayer.Spark.AllFeatures.csproj", "reason": "not-an-app-feature" },
+    { "project": "all_features/MintPlayer.Spark.AllFeatures.SourceGenerators/MintPlayer.Spark.AllFeatures.SourceGenerators.csproj", "reason": "not-an-app-feature" },
+    { "project": "client/MintPlayer.Spark.Client/MintPlayer.Spark.Client.csproj", "reason": "not-an-app-feature" },
+    { "project": "client/MintPlayer.Spark.Client.Authorization/MintPlayer.Spark.Client.Authorization.csproj", "reason": "not-an-app-feature" },
+    { "project": "socket_extensions/MintPlayer.Dotnet.SocketExtensions/MintPlayer.Dotnet.SocketExtensions.csproj", "reason": "not-an-app-feature" },
+    { "project": "templates/MintPlayer.Spark.Templates/MintPlayer.Spark.Templates.csproj", "reason": "not-an-app-feature" },
+    { "project": "cli/MintPlayer.Spark.Cli/MintPlayer.Spark.Cli.csproj", "reason": "not-an-app-feature" },
+    { "project": "cli/create-spark-app/create-spark-app.csproj", "reason": "not-an-app-feature" },
+    { "project": "minification/MintPlayer.Spark.Minification/MintPlayer.Spark.Minification.csproj", "reason": "needs-prerendering" }
+  ],
+
+  "$reasons": {
+    "dependency": "Not chosen on its own: it comes in through a core package or a feature.",
+    "not-an-app-feature": "Not something a generated app turns on (tooling, client SDKs, test helpers, the template itself).",
+    "unreleased": "Not on nuget.org, so the template cannot pin it (SPARKTPL001 refuses the placeholder). Unused since #689's eight Web-SDK libraries became packable.",
+    "needs-prerendering": "Refuses startup without UseSparkPrerendering(), and the template generates no server-rendered app."
+  }
+}

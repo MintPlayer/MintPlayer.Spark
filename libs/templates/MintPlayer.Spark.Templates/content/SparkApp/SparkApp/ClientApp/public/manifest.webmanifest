@@ -1,0 +1,8 @@
+{
+  "name": "SparkApp",
+  "short_name": "SparkApp",
+  "display": "standalone",
+  "scope": "./",
+  "start_url": "./",
+  "icons": []
+}

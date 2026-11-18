@@ -31,4 +31,19 @@ public static class SparkBuilderModelAttributeExtensions
         sparkBuilder.Options.ModelAttribute = seed;
         return builder;
     }
+
+    /// <summary>
+    /// Sets <see cref="SparkOptions.SynchronizeModelIfMissing"/>: a Development start with no model file
+    /// writes the model first. Never overwrites, never runs outside Development.
+    /// </summary>
+    public static ISparkBuilder SynchronizeModelIfMissing(this ISparkBuilder builder)
+    {
+        // Same instance as ModelAttributes, for the same reason: the builder-phase command reads it back off
+        // the SparkOptions singleton.
+        if (builder is not SparkBuilder sparkBuilder)
+            throw new InvalidOperationException(
+                $"{nameof(SynchronizeModelIfMissing)} needs the builder AddSpark creates; got {builder.GetType().FullName}.");
+        sparkBuilder.Options.SynchronizeModelIfMissing = true;
+        return builder;
+    }
 }

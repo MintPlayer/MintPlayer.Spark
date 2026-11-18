@@ -55,8 +55,10 @@ public static class SparkEmbeddedServer
             // fallback that never consults server configuration. The deletion side is handled
             // client-side in SparkTestDriver.DisposeAsync, which explains the mechanism.
             // The server is no longer copied into bin/ — it would be a 623 MB build output and
-            // Nx caches bin/Debug. It is provisioned once into a temp directory instead; null
-            // leaves RavenDB's default (AppContext.BaseDirectory) in place. See RavenServerLocator.
+            // Nx caches bin/Debug. It is provisioned once into a temp directory instead. ~~Null
+            // leaves RavenDB's default (AppContext.BaseDirectory) in place.~~ Null makes RavenDB throw
+            // ArgumentNullException, so the fixtures check RavenServerLocator.RequireServerDirectory()
+            // first, which names the reason. See RavenServerLocator.
             ServerDirectory = RavenServerLocator.ServerDirectory,
             Licensing = license is not null
                 ? new ServerOptions.LicensingOptions

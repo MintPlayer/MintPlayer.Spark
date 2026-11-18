@@ -1,0 +1,41 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<!--
+	  `dnx create-spark-app` (Spark #433; docs/templates_dnx_terminal_PRD.md §6, D18): the spark tool's `new`, run in
+	  process. It sits outside the MintPlayer prefix reservation, so it ships in the first tool release to claim the name.
+	-->
+	<PropertyGroup>
+		<OutputType>Exe</OutputType>
+		<TargetFramework>net11.0</TargetFramework>
+		<Nullable>enable</Nullable>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<RootNamespace>CreateSparkApp</RootNamespace>
+		<AssemblyName>create-spark-app</AssemblyName>
+		<PackAsTool>true</PackAsTool>
+		<ToolCommandName>create-spark-app</ToolCommandName>
+		<!-- A tool, not a Spark host: no Spark build targets (Directory.Build.targets treats every Exe as one). -->
+		<SparkApplication>false</SparkApplication>
+
+		<!-- NuGet Package Metadata -->
+		<PackageId>create-spark-app</PackageId>
+		<Version>0.0.0-PLACEHOLDER</Version>
+		<Authors>MintPlayer</Authors>
+		<Company>MintPlayer</Company>
+		<Description>Create a MintPlayer.Spark app: dnx create-spark-app asks for the store, sign-in and features, then generates the app from the MintPlayer.Spark.Templates spark-app template. The same as spark new in MintPlayer.Spark.Cli.</Description>
+		<PackageTags>spark;cli;dotnet-tool;templates;ravendb;angular</PackageTags>
+		<PackageLicenseExpression>MIT</PackageLicenseExpression>
+		<PackageProjectUrl>https://github.com/MintPlayer/MintPlayer.Spark</PackageProjectUrl>
+		<RepositoryUrl>https://github.com/MintPlayer/MintPlayer.Spark.git</RepositoryUrl>
+		<RepositoryType>git</RepositoryType>
+		<PackageReadmeFile>README.md</PackageReadmeFile>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<None Include="..\README.md" Pack="true" PackagePath="\" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\MintPlayer.Spark.Cli.Commands\MintPlayer.Spark.Cli.Commands.csproj" />
+	</ItemGroup>
+
+</Project>

@@ -1,0 +1,27 @@
+{
+  "$schema": "http://json.schemastore.org/template",
+  "author": "MintPlayer",
+  "classifications": [ "Web", "Spark" ],
+  "identity": "MintPlayer.Spark.Templates.SparkActions",
+  "name": "Spark actions class",
+  "description": "The actions class of a Spark model type: its hooks, row rules and services. -n is the entity's name. Run it in the app's project directory; it writes Actions/<name>Actions.cs.",
+  "shortName": "spark-actions",
+  "sourceName": "SparkItem",
+  "preferNameDirectory": false,
+  "tags": { "language": "C#", "type": "item" },
+  "symbols": {
+    "namespace": {
+      "type": "parameter",
+      "datatype": "text",
+      "description": "The project's root namespace. Defaults to the RootNamespace of the project in or above the output directory."
+    },
+    "rootNamespace": { "type": "bind", "binding": "msbuild:RootNamespace", "defaultValue": "UnrestoredProject" },
+    "effectiveNamespace": {
+      "type": "generated",
+      "generator": "coalesce",
+      "parameters": { "sourceVariableName": "namespace", "fallbackVariableName": "rootNamespace" },
+      "replaces": "SparkNs"
+    }
+  },
+  "primaryOutputs": [ { "path": "Actions/SparkItemActions.cs" } ]
+}

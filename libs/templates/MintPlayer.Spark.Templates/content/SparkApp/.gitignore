@@ -1,0 +1,6 @@
+bin/
+obj/
+.vs/
+*.user
+SparkApp/mail-pickup/
+raven-license.log

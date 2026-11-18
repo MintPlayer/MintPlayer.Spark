@@ -39,6 +39,25 @@ licence can still be refused in a Community production. Open-source projects cou
 request a free licence from RavenDB; the current pricing page no longer lists that programme, so
 ask RavenDB directly. Details: [RavenDB pricing](https://ravendb.net/buy).
 
+## Create an app
+
+```sh
+dnx create-spark-app        # asks for the name, store, sign-in, client and features, then generates the app
+```
+
+`create-spark-app` installs the `MintPlayer.Spark.Templates` pack and runs its `spark-app` template. It also runs
+`npm install` and the first model synchronization, so the first `dotnet run` starts a working app. Without the tool:
+
+```sh
+dotnet new install MintPlayer.Spark.Templates
+dotnet new spark-app -n MyApp      # dotnet new spark-app -h lists a switch per feature
+```
+
+Inside an app, `spark add entity|actions|custom-action|lookup|index <name>` (`dotnet tool install -g
+MintPlayer.Spark.Cli`) writes the file and makes the edits it needs: the context property, the `actions.json` entry,
+the `security.json` right, and the model synchronization. Details: [the tools](libs/cli/README.md) and
+[the templates](libs/templates/MintPlayer.Spark.Templates/README.md).
+
 ## Quick Start (AllFeatures)
 
 The fastest way to get started is with `MintPlayer.Spark.AllFeatures`. Reference this single package and three source-generated methods handle all the wiring:
@@ -166,6 +185,8 @@ MintPlayer.Spark/
 
 | Guide | Description |
 |-------|-------------|
+| [Templates](libs/templates/MintPlayer.Spark.Templates/README.md) | `dotnet new spark-app` and its options, the item templates, which versions a template pins, testing the template |
+| [spark and create-spark-app](libs/cli/README.md) | `dnx create-spark-app`, `spark new`, and `spark add` for entities, actions, custom actions, lookups and indexes |
 | [Getting Started](libs/spark/MintPlayer.Spark/README.md) | PersistentObject pattern, SparkContext, entity definitions, model synchronization |
 | [Reference Attributes](docs/guide-reference-attributes.md) | Entity-to-entity links, lookup references, reference selection modals |
 | [AsDetail Attributes](docs/guide-asdetail-attributes.md) | Embedded objects, array/collection AsDetail, inline and modal editing |

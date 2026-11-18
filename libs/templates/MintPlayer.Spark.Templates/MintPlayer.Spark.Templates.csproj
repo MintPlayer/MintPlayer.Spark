@@ -1,0 +1,242 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<!--
+	  `dotnet new` templates for Spark (docs/templates_dnx_terminal_PRD.md, Part A). The package holds no assembly:
+	  only content/, which the template engine reads.
+
+	  Versions (plan S2): the generated app pins every Spark package in a central Directory.Packages.props. That file is
+	  NOT in content/: SparkTemplatePackageVersions writes it at pack time from the version each package resolves to
+	  here, through the repository's own versioning targets (MintPlayerVersioning, Directory.Build.targets). A
+	  release therefore ships a template that pins the versions released with it. A solution-wide pack with an explicit
+	  -p:Version=X flows into every project, so a CI feed packed that way gives templates that pin X (the matrix, M4).
+	-->
+
+	<PropertyGroup>
+		<TargetFramework>net11.0</TargetFramework>
+		<PackageType>Template</PackageType>
+		<IncludeBuildOutput>false</IncludeBuildOutput>
+		<IncludeContentInPack>true</IncludeContentInPack>
+		<ContentTargetFolders>content</ContentTargetFolders>
+		<NoDefaultExcludes>true</NoDefaultExcludes>
+		<EnableDefaultItems>false</EnableDefaultItems>
+		<!-- NU5128: a template package has no lib/ folder by design. -->
+		<NoWarn>$(NoWarn);NU5128</NoWarn>
+
+		<!-- NuGet Package Metadata -->
+		<PackageId>MintPlayer.Spark.Templates</PackageId>
+		<Version>0.0.0-PLACEHOLDER</Version>
+		<Authors>MintPlayer</Authors>
+		<Company>MintPlayer</Company>
+		<Description>dotnet new templates for MintPlayer.Spark: spark-app, a Spark host with an entity library and an Angular client, with a choice per framework feature.</Description>
+		<PackageTags>dotnet-new;templates;spark;angular;ravendb</PackageTags>
+		<PackageLicenseExpression>MIT</PackageLicenseExpression>
+		<PackageProjectUrl>https://github.com/MintPlayer/MintPlayer.Spark</PackageProjectUrl>
+		<RepositoryUrl>https://github.com/MintPlayer/MintPlayer.Spark.git</RepositoryUrl>
+		<RepositoryType>git</RepositoryType>
+		<PackageReadmeFile>README.md</PackageReadmeFile>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<None Include="README.md" Pack="true" PackagePath="\" />
+		<!-- Everything under content/ except build output and Angular/npm state a local test run may leave behind. -->
+		<Content Include="content\**\*"
+		         Exclude="content\**\bin\**;content\**\obj\**;content\**\node_modules\**;content\**\.angular\**;content\**\dist\**"
+		         PackagePath="content\%(RecursiveDir)%(Filename)%(Extension)" />
+	</ItemGroup>
+
+	<!--
+	  The feature parts of the template come from features.json (plan S6): the GenerateSparkTemplate task completes
+	  template.json, ide.host.json, dotnetcli.host.json and the host csproj into obj/ at pack time, and returns the Spark
+	  projects whose versions the template pins. Nothing it writes is checked in. TaskHostFactory runs the task in its
+	  own process, so the task assembly is never locked by a long-lived MSBuild node.
+	-->
+	<ItemGroup>
+		<None Include="features.json" />
+		<ProjectReference Include="..\MintPlayer.Spark.Templates.Build\MintPlayer.Spark.Templates.Build.csproj"
+		                  ReferenceOutputAssembly="false" Private="false" SkipGetTargetFrameworkProperties="true" />
+	</ItemGroup>
+	<UsingTask TaskName="MintPlayer.Spark.Templates.Build.GenerateSparkTemplate" TaskFactory="TaskHostFactory"
+	           AssemblyFile="$(MSBuildThisFileDirectory)..\MintPlayer.Spark.Templates.Build\bin\$(Configuration)\net11.0\MintPlayer.Spark.Templates.Build.dll" />
+
+	<!--
+	  Every package the template pins (features.json: core, features, and the "dependency" exclusions), referenced so the
+	  versioning engine sees the template depend on them. It reads ProjectReferences, not features.json, and re-releases a
+	  .NET dependent whenever a dependency releases (coverage_package_versioning_PRD D4), so each release of a pinned package
+	  also releases a template that pins it (plan M6). No assembly flows in and nothing becomes a nuspec dependency.
+	  FeatureManifestTests keeps this list equal to the manifest.
+	-->
+	<ItemDefinitionGroup>
+		<ProjectReference>
+			<ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+			<Private>false</Private>
+			<PrivateAssets>all</PrivateAssets>
+			<SkipGetTargetFrameworkProperties>true</SkipGetTargetFrameworkProperties>
+		</ProjectReference>
+	</ItemDefinitionGroup>
+	<ItemGroup>
+<ProjectReference Include="..\..\spark\MintPlayer.Spark\MintPlayer.Spark.csproj" />
+		<ProjectReference Include="..\..\spark\MintPlayer.Spark.InMemory\MintPlayer.Spark.InMemory.csproj" />
+		<ProjectReference Include="..\..\spark\MintPlayer.Spark.RavenDB\MintPlayer.Spark.RavenDB.csproj" />
+		<ProjectReference Include="..\..\attributes\MintPlayer.Spark.Attributes\MintPlayer.Spark.Attributes.csproj" />
+		<ProjectReference Include="..\..\model\MintPlayer.Spark.Model\MintPlayer.Spark.Model.csproj" />
+		<ProjectReference Include="..\..\source_generators\MintPlayer.Spark.SourceGenerators\MintPlayer.Spark.SourceGenerators.csproj" />
+		<ProjectReference Include="..\..\source_generators\MintPlayer.Spark.LibraryGenerators\MintPlayer.Spark.LibraryGenerators.csproj" />
+		<ProjectReference Include="..\..\testing\MintPlayer.Spark.Testing\MintPlayer.Spark.Testing.csproj" />
+		<ProjectReference Include="..\..\authorization\MintPlayer.Spark.Authorization\MintPlayer.Spark.Authorization.csproj" />
+		<ProjectReference Include="..\..\migrations\MintPlayer.Spark.Migrations\MintPlayer.Spark.Migrations.csproj" />
+		<ProjectReference Include="..\..\messaging\MintPlayer.Spark.Messaging\MintPlayer.Spark.Messaging.csproj" />
+		<ProjectReference Include="..\..\mail\MintPlayer.Spark.MailManager\MintPlayer.Spark.MailManager.csproj" />
+		<ProjectReference Include="..\..\cron\MintPlayer.Spark.Cron\MintPlayer.Spark.Cron.csproj" />
+		<ProjectReference Include="..\..\history\MintPlayer.Spark.History\MintPlayer.Spark.History.csproj" />
+		<ProjectReference Include="..\..\soft_delete\MintPlayer.Spark.SoftDelete\MintPlayer.Spark.SoftDelete.csproj" />
+		<ProjectReference Include="..\..\mcp\MintPlayer.Spark.Mcp\MintPlayer.Spark.Mcp.csproj" />
+		<ProjectReference Include="..\..\controllers\MintPlayer.Spark.Controllers\MintPlayer.Spark.Controllers.csproj" />
+		<ProjectReference Include="..\..\logging\MintPlayer.Spark.Logging\MintPlayer.Spark.Logging.csproj" />
+		<ProjectReference Include="..\..\webpush\MintPlayer.Spark.WebPush\MintPlayer.Spark.WebPush.csproj" />
+		<ProjectReference Include="..\..\contributions\MintPlayer.Spark.Contributions\MintPlayer.Spark.Contributions.csproj" />
+		<ProjectReference Include="..\..\dashboards\MintPlayer.Spark.Dashboards\MintPlayer.Spark.Dashboards.csproj" />
+		<ProjectReference Include="..\..\identity_provider\MintPlayer.Spark.IdentityProvider\MintPlayer.Spark.IdentityProvider.csproj" />
+		<ProjectReference Include="..\..\moderation\MintPlayer.Spark.Moderation\MintPlayer.Spark.Moderation.csproj" />
+		<ProjectReference Include="..\..\replication\MintPlayer.Spark.Replication\MintPlayer.Spark.Replication.csproj" />
+		<ProjectReference Include="..\..\settings\MintPlayer.Spark.Settings\MintPlayer.Spark.Settings.csproj" />
+		<ProjectReference Include="..\..\webhooks\MintPlayer.Spark.Webhooks.GitHub\MintPlayer.Spark.Webhooks.GitHub.csproj" />
+		<ProjectReference Include="..\..\webhooks\MintPlayer.Spark.Webhooks.GitHub.DevTunnel\MintPlayer.Spark.Webhooks.GitHub.DevTunnel.csproj" />
+		<ProjectReference Include="..\..\gs1\MintPlayer.Spark.Gs1\MintPlayer.Spark.Gs1.csproj" />
+		<ProjectReference Include="..\..\boards\MintPlayer.Spark.Boards\MintPlayer.Spark.Boards.csproj" />
+		<ProjectReference Include="..\..\notifications\MintPlayer.Spark.Notifications\MintPlayer.Spark.Notifications.csproj" />
+		<ProjectReference Include="..\..\organizations\MintPlayer.Spark.Organizations\MintPlayer.Spark.Organizations.csproj" />
+		<ProjectReference Include="..\..\search\MintPlayer.Spark.Search\MintPlayer.Spark.Search.csproj" />
+		<ProjectReference Include="..\..\search\MintPlayer.Spark.Search.OpenSearch\MintPlayer.Spark.Search.OpenSearch.csproj" />
+		<ProjectReference Include="..\..\search\MintPlayer.Spark.OpenSearchDescription\MintPlayer.Spark.OpenSearchDescription.csproj" />
+		<ProjectReference Include="..\..\sitemap\MintPlayer.Spark.SitemapXml\MintPlayer.Spark.SitemapXml.csproj" />
+		<ProjectReference Include="..\..\spark\MintPlayer.Spark.Abstractions\MintPlayer.Spark.Abstractions.csproj" />
+		<ProjectReference Include="..\..\spark\MintPlayer.Spark.SafeHttp\MintPlayer.Spark.SafeHttp.csproj" />
+		<ProjectReference Include="..\..\authorization\MintPlayer.Spark.Authorization.Abstractions\MintPlayer.Spark.Authorization.Abstractions.csproj" />
+		<ProjectReference Include="..\..\contributions\MintPlayer.Spark.Contributions.Abstractions\MintPlayer.Spark.Contributions.Abstractions.csproj" />
+		<ProjectReference Include="..\..\history\MintPlayer.Spark.History.Abstractions\MintPlayer.Spark.History.Abstractions.csproj" />
+		<ProjectReference Include="..\..\mail\MintPlayer.Spark.MailManager.Abstractions\MintPlayer.Spark.MailManager.Abstractions.csproj" />
+		<ProjectReference Include="..\..\messaging\MintPlayer.Spark.Messaging.Abstractions\MintPlayer.Spark.Messaging.Abstractions.csproj" />
+		<ProjectReference Include="..\..\moderation\MintPlayer.Spark.Moderation.Abstractions\MintPlayer.Spark.Moderation.Abstractions.csproj" />
+		<ProjectReference Include="..\..\replication\MintPlayer.Spark.Replication.Abstractions\MintPlayer.Spark.Replication.Abstractions.csproj" />
+		<ProjectReference Include="..\..\soft_delete\MintPlayer.Spark.SoftDelete.Abstractions\MintPlayer.Spark.SoftDelete.Abstractions.csproj" />
+		<ProjectReference Include="..\..\subscription_worker\MintPlayer.Spark.SubscriptionWorker.Abstractions\MintPlayer.Spark.SubscriptionWorker.Abstractions.csproj" />
+		<ProjectReference Include="..\..\subscription_worker\MintPlayer.Spark.SubscriptionWorker\MintPlayer.Spark.SubscriptionWorker.csproj" />
+	</ItemGroup>
+
+	<!-- Third-party packages the generated app references. Bumped by hand (or by the dependency bot) like any other. -->
+	<ItemGroup>
+		<SparkTemplateExternalPackage Include="MintPlayer.AspNetCore.SpaServices" Version="11.0.0" />
+		<SparkTemplateExternalPackage Include="MintPlayer.SourceGenerators" Version="13.1.2" />
+		<!-- SparkApp.Tests. xunit stays on v2: MintPlayer.Spark.Testing is built on it. -->
+		<SparkTemplateExternalPackage Include="Microsoft.NET.Test.Sdk" Version="18.12.0" />
+		<SparkTemplateExternalPackage Include="xunit" Version="2.9.3" />
+		<SparkTemplateExternalPackage Include="xunit.runner.visualstudio" Version="4.0.1" />
+	</ItemGroup>
+
+	<!-- Only when this package is packed: where the versioning target turned it off (no tag of its own, in a build that
+	     publishes), the Spark packages it pins may be unpacked too, and SPARKTPL001 would fail a build that packs nothing.
+	     A dependent target's condition is read when it is about to run, after MintPlayerVersioning set IsPackable. -->
+	<Target Name="SparkTemplatePackageVersions" BeforeTargets="_GetPackageFiles;GenerateNuspec"
+	        DependsOnTargets="MintPlayerVersioning;_SparkTemplatePackageVersions" />
+
+	<Target Name="_SparkTemplatePackageVersions" Condition="'$(IsPackable)' != 'false'">
+		<!-- Set here, not in the body: IntermediateOutputPath is still empty when the project body is evaluated. -->
+		<PropertyGroup>
+			<_SparkTemplateGenerated>$(IntermediateOutputPath)template-generated\</_SparkTemplateGenerated>
+		</PropertyGroup>
+		<GenerateSparkTemplate ManifestFile="$(MSBuildThisFileDirectory)features.json"
+		                       LibsDirectory="$(MSBuildThisFileDirectory)..\..\"
+		                       TemplateDirectory="$(MSBuildThisFileDirectory)content\SparkApp\"
+		                       OutputDirectory="$(_SparkTemplateGenerated)SparkApp\">
+			<Output TaskParameter="GeneratedFiles" ItemName="_SparkTemplateGeneratedFile" />
+			<Output TaskParameter="Packages" ItemName="SparkTemplatePackage" />
+		</GenerateSparkTemplate>
+		<ItemGroup>
+			<Content Remove="@(_SparkTemplateGeneratedFile->'content\SparkApp\%(RelativePath)')" />
+			<Content Include="@(_SparkTemplateGeneratedFile)" PackagePath="content\SparkApp\%(_SparkTemplateGeneratedFile.RelativePath)" />
+		</ItemGroup>
+		<!-- MintPlayerVersioning first: _GetProjectVersion only reads PackageVersion, which the versioning target sets.
+		     Debug skips the tags (Directory.Build.targets), so a Debug pack pins 0.0.0-PLACEHOLDER: use Release.
+		     RemoveProperties: global properties flow into these calls, so `dotnet pack -p:Version=X` of the template
+		     pinned every package at X (found in M1: the preview-only Webhooks.GitHub was pinned 11.0.0, which does not
+		     exist, and restore failed with NU1102). -->
+		<MSBuild Condition="'$(SparkTemplateFeedVersion)' == ''"
+		         Projects="@(SparkTemplatePackage)" Targets="MintPlayerVersioning;_GetProjectVersion"
+		         Properties="Configuration=$(Configuration)" RemoveProperties="Version;PackageVersion;VersionPrefix;VersionSuffix"
+		         BuildInParallel="$(BuildInParallel)">
+			<Output TaskParameter="TargetOutputs" ItemName="_SparkTemplateResolved" />
+		</MSBuild>
+		<!-- The same-commit feed (D12, plan M4): -p:SparkTemplateFeedVersion=<v> -p:SparkTemplateFeedDirectory=<dir> packs
+		     every package the template pins at <v> into <dir>, and pins <v>. The template CI matrix restores the generated
+		     apps from that feed alone, so it tests this commit's packages, never nuget.org's. -->
+		<Error Condition="'$(SparkTemplateFeedVersion)' != '' And '$(SparkTemplateFeedDirectory)' == ''"
+		       Text="SparkTemplateFeedVersion needs SparkTemplateFeedDirectory: the folder the pinned packages are packed into." />
+		<MSBuild Condition="'$(SparkTemplateFeedVersion)' != ''"
+		         Projects="@(SparkTemplatePackage)" Targets="Pack"
+		         Properties="Configuration=$(Configuration);Version=$(SparkTemplateFeedVersion);PackageOutputPath=$([System.IO.Path]::GetFullPath('$(SparkTemplateFeedDirectory)'))"
+		         BuildInParallel="$(BuildInParallel)" />
+		<ItemGroup Condition="'$(SparkTemplateFeedVersion)' != ''">
+			<_SparkTemplateResolved Include="@(SparkTemplatePackage)" ProjectVersion="$(SparkTemplateFeedVersion)" />
+		</ItemGroup>
+		<Error Condition="'@(_SparkTemplateResolved->Count())' != '@(SparkTemplatePackage->Count())'"
+		       Text="SparkTemplatePackageVersions resolved @(_SparkTemplateResolved->Count()) of @(SparkTemplatePackage->Count()) Spark package versions." />
+		<!-- A package at the placeholder is never published (it has no tag, or this is a Debug build), so a template
+		     pinning it would generate an app that cannot restore. It caught #689: eight Web-SDK libraries had never been
+		     released (IsPackable defaulted to false), and the template left them out until they were made packable. -->
+		<Warning Code="SPARKTPL001" Condition="'$(Configuration)' == 'Debug' And '%(_SparkTemplateResolved.ProjectVersion)' == '0.0.0-PLACEHOLDER'"
+		         Text="The template pins %(_SparkTemplateResolved.Filename) at 0.0.0-PLACEHOLDER: a Debug pack reads no tags. Pack in Release, or pass -p:Version." />
+		<Error Code="SPARKTPL001" Condition="'$(Configuration)' != 'Debug' And '%(_SparkTemplateResolved.ProjectVersion)' == '0.0.0-PLACEHOLDER'"
+		       Text="The template pins %(_SparkTemplateResolved.Filename) at 0.0.0-PLACEHOLDER: it has no %(_SparkTemplateResolved.Filename)/v&lt;version&gt; tag, so it is never published. Release it first, or take it out of the template." />
+		<!-- 0.0.0-untagged is what a pull-request or local Release build gives a package with no tag reachable from HEAD.
+		     It is never published either: a pack on master pinned it for the eight #689 libraries, and restore took an
+		     old preview instead (NU1603), whose generator predates #551 (plan M3). Pack on the release line, or use the
+		     same-commit feed. -->
+		<Error Code="SPARKTPL001" Condition="'$(Configuration)' != 'Debug' And '%(_SparkTemplateResolved.ProjectVersion)' == '0.0.0-untagged'"
+		       Text="The template pins %(_SparkTemplateResolved.Filename) at 0.0.0-untagged: no %(_SparkTemplateResolved.Filename)/v&lt;version&gt; tag is reachable from HEAD, so that version is never published. Pack the template on the release line, or pass -p:SparkTemplateFeedVersion and -p:SparkTemplateFeedDirectory for a same-commit feed." />
+
+		<!-- Each line is metadata, not an item spec: MSBuild trims item specs, which would lose the indentation. -->
+		<ItemGroup>
+			<_SparkTemplatePropsLine Include="1" Text="&lt;Project&gt;" />
+			<_SparkTemplatePropsLine Include="2" Text="	&lt;!-- Package versions for the whole solution (central package management). --&gt;" />
+			<_SparkTemplatePropsLine Include="3" Text="	&lt;PropertyGroup&gt;" />
+			<_SparkTemplatePropsLine Include="4" Text="		&lt;ManagePackageVersionsCentrally&gt;true&lt;/ManagePackageVersionsCentrally&gt;" />
+			<_SparkTemplatePropsLine Include="5" Text="	&lt;/PropertyGroup&gt;" />
+			<_SparkTemplatePropsLine Include="6" Text="	&lt;ItemGroup&gt;" />
+			<_SparkTemplatePropsLine Include="@(_SparkTemplateResolved->'%(Filename)')" Text="		&lt;PackageVersion Include=&quot;%(_SparkTemplateResolved.Filename)&quot; Version=&quot;%(_SparkTemplateResolved.ProjectVersion)&quot; /&gt;" />
+			<_SparkTemplatePropsLine Include="@(SparkTemplateExternalPackage)" Text="		&lt;PackageVersion Include=&quot;%(SparkTemplateExternalPackage.Identity)&quot; Version=&quot;%(SparkTemplateExternalPackage.Version)&quot; /&gt;" />
+			<_SparkTemplatePropsLine Include="7" Text="	&lt;/ItemGroup&gt;" />
+			<_SparkTemplatePropsLine Include="8" Text="&lt;/Project&gt;" />
+		</ItemGroup>
+		<WriteLinesToFile File="$(_SparkTemplateGenerated)Directory.Packages.props" Lines="@(_SparkTemplatePropsLine->'%(Text)')"
+		                  Overwrite="true" WriteOnlyWhenDifferent="true" />
+
+		<!-- The Angular client's ng-spark range is ^<the highest stable @mintplayer/ng-spark/v tag reachable from HEAD>,
+		     the version released with this commit (CLAUDE.md, "Versions come from tags"). Not package.json's version: that
+		     is stale by design, and was 22.44.0, which lacks the ./search entry point (#689 integration, 2026-11-17).
+		     git's version sort (descending) puts the highest first; the regex skips prereleases. A clone without tags (shallow) falls back
+		     to package.json with SPARKTPL002. -->
+		<Exec Command="git tag --merged HEAD --list &quot;@mintplayer/ng-spark/v*&quot; --sort=-v:refname" WorkingDirectory="$(MSBuildThisFileDirectory)"
+		      ConsoleToMSBuild="true" StandardOutputImportance="low" IgnoreExitCode="true">
+			<Output TaskParameter="ConsoleOutput" ItemName="_NgSparkTag" />
+		</Exec>
+		<PropertyGroup>
+			<_NgSparkTags>@(_NgSparkTag)</_NgSparkTags>
+			<NgSparkTemplateVersion>$([System.Text.RegularExpressions.Regex]::Match($(_NgSparkTags), 'ng-spark/v(\d+\.\d+\.\d+)(?:;|\z)').Groups[1].Value)</NgSparkTemplateVersion>
+			<_NgSparkPackageJson Condition="'$(NgSparkTemplateVersion)' == ''">$([System.IO.File]::ReadAllText('$(MSBuildThisFileDirectory)..\..\node_packages\ng-spark\package.json'))</_NgSparkPackageJson>
+			<NgSparkTemplateVersion Condition="'$(NgSparkTemplateVersion)' == ''">$([System.Text.RegularExpressions.Regex]::Match($(_NgSparkPackageJson), '"version"\s*:\s*"([^"]+)"').Groups[1].Value)</NgSparkTemplateVersion>
+			<_ClientPackageJson>$([System.IO.File]::ReadAllText('$(MSBuildThisFileDirectory)content\SparkApp\SparkApp\ClientApp\package.json'))</_ClientPackageJson>
+		</PropertyGroup>
+		<Warning Code="SPARKTPL002" Condition="'$(_NgSparkPackageJson)' != ''"
+		         Text="No stable @mintplayer/ng-spark/v tag is reachable from HEAD (a shallow clone?), so the template pins ng-spark ^$(NgSparkTemplateVersion) from package.json, which can be older than the release." />
+		<Error Condition="'$(NgSparkTemplateVersion)' == ''" Text="Could not read the version of @mintplayer/ng-spark." />
+		<WriteLinesToFile File="$(_SparkTemplateGenerated)package.json" Lines="$(_ClientPackageJson.Replace('NG_SPARK_VERSION', '$(NgSparkTemplateVersion)'))"
+		                  Overwrite="true" WriteOnlyWhenDifferent="true" />
+
+		<ItemGroup>
+			<Content Include="$(_SparkTemplateGenerated)Directory.Packages.props" PackagePath="content\SparkApp\Directory.Packages.props" />
+			<Content Remove="content\SparkApp\SparkApp\ClientApp\package.json" />
+			<Content Include="$(_SparkTemplateGenerated)package.json" PackagePath="content\SparkApp\SparkApp\ClientApp\package.json" />
+		</ItemGroup>
+	</Target>
+
+</Project>
