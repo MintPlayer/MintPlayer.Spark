@@ -1,7 +1,40 @@
 # Spark Apps & outbound webhooks — PRD and plan (#691)
 
-Status: **M0 done (2026-11-18)**: spike verdicts are in §5, and the decisions they changed are D10, D12, D14–D20. Nothing is built yet.
-The owner answered every open question on 2026-11-18 (D21–D24). Next: M1.
+Status: **M0 done (2026-11-18)**: spike verdicts are in §5, and the decisions they changed are D10, D12, D14–D20.
+The owner answered every open question on 2026-11-18 (D21–D24).
+
+## 0. RESUME HERE (kept current for context compaction)
+
+**Owner mandate (2026-11-18):** "run all the spikes, and implement all milestones. Include the necessary tests. You can use the
+codecoverage MCP."
+
+The work goes on branch `feat/691-apps-webhooks`, in ONE PR (D13). Commit and push per milestone. Rules that apply:
+- No local test sweeps. Run only the single test class being written (red, then green). CI is the gate.
+- After all checks have run, ask the codecoverage MCP about patch coverage.
+
+| Milestone | State | Commit | Notes |
+|---|---|---|---|
+| M0 spikes S1–S8 | ✅ | 615aebb98, 8c1ca6005 | S9 runs inside M3 |
+| M1 receiver core + AspNetCore + Ed25519 | ✅ | (see git log) | 17 tests in `tests/MintPlayer.Webhooks.Tests`. v1 interop both ways with the official `StandardWebhooks.Webhook` (API: `new Webhook(secret)`, `.Sign(id, DateTimeOffset, payload)` → `"v1,…"`, `.Verify(payload, WebHeaderCollection)`, which throws). The v2a spec vector is reproduced byte for byte |
+| M2 Apps skeleton + catalog | ⏳ next | | |
+| M3 direct webhooks + delivery engine (+S9 ordering) | ⬜ | | |
+| M4 Apps registration | ⬜ | | |
+| M5 installations + tokens | ⬜ | | |
+| M6 entity lifecycle events | ⬜ | | |
+| M7 Angular `@mintplayer/ng-spark/apps` | ⬜ | | |
+| M8 receivers: codegen CLI, Spark receiver, npm | ⬜ | | |
+| M9 CodeCoverage dogfood | ⬜ | | |
+| M10 docs, goldens, snapshots, PR | ⬜ | | |
+
+**Repo conventions** (found 2026-11-18, so they don't need to be found again):
+- Solution file: `MintPlayer.Spark.slnx`. Add each new project under its `/libs/<folder>/` or `/tests/` folder.
+- Package csproj: model it on `libs/notifications/MintPlayer.Spark.Notifications/*.csproj`.
+  - Inline `PackageReference` versions; there is no central package management.
+  - `<Version>0.0.0-PLACEHOLDER</Version>`, `IsPackable`, a README packed into the package, and `<SparkLibraryAlias>` for Spark libraries.
+- Test projects: model them on `tests/MintPlayer.Spark.Gs1.Tests`.
+  - Packages: xunit 2.9.3, MintPlayer.Assertions 11.0.0 (`.Should()`, with a `because`), coverlet.collector 10.1.0, Microsoft.NET.Test.Sdk 18.12.0.
+  - Each test project has a `project.json` for Nx.
+- A new `*.Tests` project lands in CI's "Other suites" automatically.
 Issue: [#691](https://github.com/MintPlayer/MintPlayer.Spark/issues/691), "Let website developers provide an Apps feature which lets
 their website send webhooks to downstream users".
 Written 2026-11-18 at master `fc95abe38`, after a three-agent investigation and three rounds of grilling with the owner.

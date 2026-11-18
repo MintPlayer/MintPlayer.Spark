@@ -197,6 +197,9 @@
   <Folder Name="/libs/webhooks/">
     <Project Path="libs/webhooks/MintPlayer.Spark.Webhooks.GitHub.DevTunnel/MintPlayer.Spark.Webhooks.GitHub.DevTunnel.csproj" />
     <Project Path="libs/webhooks/MintPlayer.Spark.Webhooks.GitHub/MintPlayer.Spark.Webhooks.GitHub.csproj" />
+    <Project Path="libs/webhooks/MintPlayer.Webhooks.Receiver/MintPlayer.Webhooks.Receiver.csproj" />
+    <Project Path="libs/webhooks/MintPlayer.Webhooks.Receiver.AspNetCore/MintPlayer.Webhooks.Receiver.AspNetCore.csproj" />
+    <Project Path="libs/webhooks/MintPlayer.Webhooks.Ed25519/MintPlayer.Webhooks.Ed25519.csproj" />
   </Folder>
   <Folder Name="/tools/">
     <Project Path="tools/SchemaGenerator/MintPlayer.Spark.SchemaGenerator.csproj" />
@@ -209,5 +212,6 @@
     <Project Path="tests/MintPlayer.Spark.Cli.Tests/MintPlayer.Spark.Cli.Tests.csproj" />
     <Project Path="tests/MintPlayer.Spark.SourceGenerators.Tests/MintPlayer.Spark.SourceGenerators.Tests.csproj" />
     <Project Path="tests/MintPlayer.Spark.Tests/MintPlayer.Spark.Tests.csproj" />
+    <Project Path="tests/MintPlayer.Webhooks.Tests/MintPlayer.Webhooks.Tests.csproj" />
   </Folder>
 </Solution>
