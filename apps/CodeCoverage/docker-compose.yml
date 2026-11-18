@@ -242,6 +242,9 @@ services:
       # Disabled | WhenSignedIn | ConfirmByEmail. Left at the Spark default (Disabled)
       # until there is a second forge worth linking to.
       - Spark__Auth__ExternalLoginLinking=${EXTERNAL_LOGIN_LINKING:-Disabled}
+      # Outgoing webhooks (#691 D34, D40): on in production. The app's own default (appsettings) stays off, so a local run
+      # or a test host maps no /spark/apps route unless asked. CODECOVERAGE_WEBHOOKS_ENABLED=false in .env switches it off.
+      - CodeCoverage__Webhooks__Enabled=${CODECOVERAGE_WEBHOOKS_ENABLED:-true}
       # The commit-graph mirror sidecar (#504), reachable only over the internal coverage-git network. Unset turns the
       # graph off ("unavailable"). The rest of CommitGraph:* (budget, quotas, eviction) keeps its in-code placeholders.
       - CommitGraph__SidecarUrl=http://coverage-git:8080

@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, Injector, computed, inject, runInInjectionContext, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { BsCardComponent, BsCardHeaderComponent } from '@mintplayer/ng-bootstrap/card';
 import { SparkAuthService } from '@mintplayer/ng-spark/auth/core';
@@ -96,14 +96,25 @@ export class SparkAccountOverviewComponent {
    */
   protected readonly extraLinks = computed(() => {
     const lang = activeLanguage();
-    return this.accountLinks.map(link => ({
+    const served = this.served();
+    return this.accountLinks.filter(link => !link.available || served.has(link.key)).map(link => ({
       key: link.key,
       path: link.path,
       label: link.label[lang] ?? link.label['en'] ?? Object.values(link.label)[0] ?? link.key,
     }));
   });
 
+  /** The keys of the links whose `available()` resolved true; the same rule as `pages`: hidden until the server says yes. */
+  private readonly served = signal<ReadonlySet<string>>(new Set());
+
   constructor() {
+    const injector = inject(Injector);
+    for (const link of this.accountLinks) {
+      if (!link.available) continue;
+      void runInInjectionContext(injector, link.available)
+        .then(yes => { if (yes) this.served.update(keys => new Set(keys).add(link.key)); })
+        .catch(() => { /* stays hidden */ });
+    }
     void this.auth.capabilities()
       .then(capabilities => this.capabilities.set(capabilities))
       .catch(() => { /* stays null; server-switched pages stay hidden */ });
