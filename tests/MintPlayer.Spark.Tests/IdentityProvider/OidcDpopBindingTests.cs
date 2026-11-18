@@ -1,7 +1,9 @@
 using System.Net;
 using System.Text.Json;
 using Microsoft.IdentityModel.Tokens;
+using MintPlayer.Spark.Authorization.Security;
 using MintPlayer.Spark.IdentityProvider.Models;
+using Raven.Client.Documents.Operations.CompareExchange;
 
 namespace MintPlayer.Spark.Tests.IdentityProvider;
 
@@ -31,11 +33,14 @@ public class OidcDpopBindingTests(OidcSharedHost host) : OidcTestHost(host), ICl
     }
 
     private Task<HttpResponseMessage> TokenAsync(Dictionary<string, string> form, string? proof)
+        => TokenAsync(Client, form, proof);
+
+    private static Task<HttpResponseMessage> TokenAsync(HttpClient client, Dictionary<string, string> form, string? proof)
     {
         var request = new HttpRequestMessage(HttpMethod.Post, "/connect/token") { Content = new FormUrlEncodedContent(form) };
         if (proof is not null)
             request.Headers.TryAddWithoutValidation("DPoP", proof);
-        return Client.SendAsync(request);
+        return client.SendAsync(request);
     }
 
     private static Dictionary<string, string> CodeForm(OidcApplication app, string code) => new()
@@ -104,6 +109,32 @@ public class OidcDpopBindingTests(OidcSharedHost host) : OidcTestHost(host), ICl
         var replay = await TokenAsync(CodeForm(app, second), proof);
         replay.StatusCode.Should().Be(HttpStatusCode.BadRequest, "the provider's jti cache is in RavenDB, so a replay is caught");
         (await BodyAsync(replay)).GetProperty("error").GetString().Should().Be("invalid_dpop_proof");
+    }
+
+    [Fact]
+    public async Task A_proof_spent_at_one_provider_instance_is_refused_by_another_through_the_cluster()
+    {
+        // Parity PRD A12. Two provider hosts on one database, as behind a load balancer. On one node a create-only
+        // document would refuse the replay too, so the case also asserts where the jti is spent: in compare-exchange,
+        // which the cluster's consensus keeps unique across nodes, with @expires so the cluster removes it.
+        using var key = new DpopTestKey();
+        var (app, first) = await CodeAsync();
+        var second = await ObtainCodeAsync(app, UserEmail("dpop-user"), ["openid"]);
+        await using var otherInstance = OidcTestHost.CreateFactory(Store);
+        var proof = key.Proof("POST", TokenUrl);
+
+        (await TokenAsync(CodeForm(app, first), proof)).StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var replay = await TokenAsync(otherInstance.CreateClient(), CodeForm(app, second), proof);
+        replay.StatusCode.Should().Be(HttpStatusCode.BadRequest, "the first instance spent the proof's jti for every instance");
+        (await BodyAsync(replay)).GetProperty("error").GetString().Should().Be("invalid_dpop_proof");
+
+        var jti = PayloadOf(proof).GetProperty("jti").GetString()!;
+        var spent = await Store.Operations.SendAsync(new GetCompareExchangeValueOperation<string>(
+            SparkOneTimeUse.Key("idp-dpop", $"dpop:{key.Thumbprint}:{jti}")));
+        spent.Should().NotBeNull("the jti is spent through compare-exchange, not a node-local create-only document");
+        spent!.Metadata.ContainsKey(Raven.Client.Constants.Documents.Metadata.Expires).Should().BeTrue(
+            "the cluster deletes the item once the proof could no longer be accepted anyway");
     }
 
     [Fact]

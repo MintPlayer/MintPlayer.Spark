@@ -63,11 +63,12 @@ internal sealed class OidcInvitations(
             InvitedAt = DateTime.UtcNow,
         });
 
-        var account = await FindAccountAsync(normalized, ct);
-        if (account?.Id is null || app.ActiveMember(account.Id) is not null)
+        // Not a query: an account registered seconds ago is not in the index yet, and its invitation went unmailed.
+        var accountId = await users.FindIdByEmailAsync(email.Trim());
+        if (accountId is null || app.ActiveMember(accountId) is not null)
             return null;
 
-        if (role != OidcMemberRoles.Tester && !developers.IsActive(await developers.GetAsync(account.Id, ct)))
+        if (role != OidcMemberRoles.Tester && !developers.IsActive(await developers.GetAsync(accountId, ct)))
             return null;
 
         return token;
@@ -103,17 +104,6 @@ internal sealed class OidcInvitations(
         entry.AcceptedAt = DateTime.UtcNow;
         entry.InvitationHash = null;
         return new(true, app.DisplayName, null);
-    }
-
-    /// <summary>The user id of the account behind <paramref name="normalizedEmail"/>, if any.</summary>
-    private async Task<Account?> FindAccountAsync(string normalizedEmail, CancellationToken ct)
-    {
-        using var session = store.OpenAsyncSession();
-        // The collection is RqlIdentifier-validated (OidcUserDocuments); the address is a parameter.
-        return await session.Advanced
-            .AsyncRawQuery<Account>($"from '{users.Collection}' where NormalizedEmail = $email select id() as Id, NormalizedEmail")
-            .AddParameter("email", normalizedEmail)
-            .FirstOrDefaultAsync(ct);
     }
 
     /// <summary>The way ASP.NET Identity normalizes an address (<c>UpperInvariantLookupNormalizer</c>).</summary>

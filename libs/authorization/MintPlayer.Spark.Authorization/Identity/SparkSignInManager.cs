@@ -34,7 +34,7 @@ namespace MintPlayer.Spark.Authorization.Identity;
 /// </para>
 /// </remarks>
 public class SparkSignInManager<TUser> : SignInManager<TUser>
-    where TUser : SparkUser
+    where TUser : SparkUser, new()
 {
     /// <summary>
     /// The <see cref="AuthenticationProperties.Items"/> key holding the UTC instant of the sign-in
@@ -52,6 +52,7 @@ public class SparkSignInManager<TUser> : SignInManager<TUser>
 
     private readonly TimeProvider timeProvider;
     private readonly SparkSignInIdentifiers signInIdentifiers;
+    private readonly SparkUnknownUserPasswordHash<TUser> unknownUserHash;
 
     public SparkSignInManager(
         UserManager<TUser> userManager,
@@ -61,10 +62,12 @@ public class SparkSignInManager<TUser> : SignInManager<TUser>
         ILogger<SignInManager<TUser>> logger,
         IAuthenticationSchemeProvider schemes,
         IUserConfirmation<TUser> confirmation,
+        SparkUnknownUserPasswordHash<TUser> unknownUserHash,
         TimeProvider? timeProvider = null,
         IOptions<SparkAuthenticationOptions>? authenticationOptions = null)
         : base(userManager, contextAccessor, claimsFactory, optionsAccessor, logger, schemes, confirmation)
     {
+        this.unknownUserHash = unknownUserHash;
         this.timeProvider = timeProvider ?? TimeProvider.System;
         signInIdentifiers = authenticationOptions?.Value.SignInIdentifiers
             ?? SparkSignInIdentifiers.Email | SparkSignInIdentifiers.UserName;
@@ -106,15 +109,37 @@ public class SparkSignInManager<TUser> : SignInManager<TUser>
     /// <see cref="FindUserForSignInAsync"/>. Every caller of the string overload —
     /// <c>MapIdentityApi</c>'s <c>/login</c> and the OIDC <c>/connect/login</c> page — therefore
     /// shares one resolver.
+    /// <para>
+    /// An identifier that names nobody still pays for one password verification, against
+    /// <see cref="SparkUnknownUserPasswordHash{TUser}"/>, so it cannot be told from a wrong password
+    /// by timing (O27). Identity's overload returns before any hashing.
+    /// </para>
     /// </remarks>
     public override async Task<SignInResult> PasswordSignInAsync(
         string userName, string password, bool isPersistent, bool lockoutOnFailure)
     {
         var user = await FindUserForSignInAsync(userName);
         if (user is null)
+        {
+            unknownUserHash.Verify(UserManager.PasswordHasher, password);
             return SignInResult.Failed;
+        }
 
         return await PasswordSignInAsync(user, password, isPersistent, lockoutOnFailure);
+    }
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// Identity skips the hashing for an account without a password (external or passkey only). With
+    /// the unknown-identifier path paying for a verification, that shortcut would make exactly those
+    /// accounts the fast answer — so they verify against the dummy hash too. The result is unchanged.
+    /// </remarks>
+    public override async Task<SignInResult> CheckPasswordSignInAsync(TUser user, string password, bool lockoutOnFailure)
+    {
+        if (!await UserManager.HasPasswordAsync(user))
+            unknownUserHash.Verify(UserManager.PasswordHasher, password);
+
+        return await base.CheckPasswordSignInAsync(user, password, lockoutOnFailure);
     }
 
     /// <inheritdoc />

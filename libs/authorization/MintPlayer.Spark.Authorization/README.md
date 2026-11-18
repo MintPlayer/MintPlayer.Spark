@@ -169,8 +169,9 @@ and `{PublicBaseUrl}/reset-password?email=…&code=…` — whose components pos
   (password-reset poisoning). Development falls back to the request origin.
 - **Sending** (#460 M8): add `MintPlayer.Spark.MailManager` (`spark.AddMailManager()`, `Spark:Mail:*`)
   and nothing else. Spark replaces Identity's no-op `IEmailSender<TUser>` with one that queues the
-  shipped MJML templates `SparkAuth/ConfirmEmail`, `SparkAuth/PasswordReset` and
-  `SparkAuth/LinkConfirmation` (English + Dutch; override one with `Templates/Mail/SparkAuth/{Name}[.{culture}].mjml`
+  shipped MJML templates `SparkAuth/ConfirmEmail`, `SparkAuth/PasswordReset`,
+  `SparkAuth/LinkConfirmation` and `SparkAuth/AccountExists` (the notice to an owner whose address
+  somebody tried to register, A13) (English + Dutch; override one with `Templates/Mail/SparkAuth/{Name}[.{culture}].mjml`
   in the app). Each mail is `Sensitive` (encrypted in the queue, scrubbed when done), expires shortly
   before its token and is written in `SparkUser.PreferredCulture` (null → `Spark:Mail:DefaultCulture`).
   An `IEmailSender<TUser>` the app registers itself is kept.

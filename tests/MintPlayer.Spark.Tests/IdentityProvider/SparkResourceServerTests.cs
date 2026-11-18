@@ -1,6 +1,5 @@
 using System.Net;
 using System.Net.Http.Headers;
-using System.Reflection;
 using System.Text.Json;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Builder;
@@ -9,8 +8,6 @@ using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using Microsoft.IdentityModel.Protocols;
-using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 using MintPlayer.Spark.Authorization.Extensions;
 using MintPlayer.Spark.Authorization.ResourceServer;
 using MintPlayer.Spark.IdentityProvider.Models;
@@ -40,11 +37,15 @@ public class SparkResourceServerTests(OidcSharedHost host) : OidcTestHost(host),
 
     /// <summary>
     /// A resource server with <c>GET /api/items</c> (needs <c>{api}.read</c>) and <c>GET /api/items/write</c>
-    /// (needs <c>{api}.write</c>).
+    /// (needs <c>{api}.write</c>). Every instance uses the class's database, as instances of one deployed resource
+    /// server share theirs. <paramref name="httpClient"/> wraps the provider's handler in the resource server's
+    /// named client (introspection and its discovery).
     /// </summary>
-    private async Task<IHost> StartResourceServerAsync(string audience, Action<SparkResourceServerOptions>? configure = null)
+    private async Task<IHost> StartResourceServerAsync(
+        string audience, Action<SparkResourceServerOptions>? configure = null, Func<HttpMessageHandler, HttpMessageHandler>? httpClient = null)
     {
         var idp = IdpHandler;
+        var store = Store;
         var read = ReadScope;
         var write = Api + ".write";
 
@@ -55,6 +56,7 @@ public class SparkResourceServerTests(OidcSharedHost host) : OidcTestHost(host),
                 {
                     services.AddRouting();
                     services.AddAuthorization();
+                    services.AddSingleton(store);
 
                     var spark = new MintPlayer.Spark.SparkBuilder(services, null);
                     services.AddSingleton(spark.Registry);
@@ -63,7 +65,8 @@ public class SparkResourceServerTests(OidcSharedHost host) : OidcTestHost(host),
                     // Discovery and JWKS from the in-process provider. Configure runs before the JwtBearer
                     // post-configuration that builds the ConfigurationManager from this handler.
                     services.Configure<JwtBearerOptions>(SparkJwtBearerExtensions.Scheme, o => o.BackchannelHttpHandler = idp);
-                    services.AddHttpClient(nameof(SparkIntrospectionHandler)).ConfigurePrimaryHttpMessageHandler(() => IdpHandler);
+                    services.AddHttpClient(SparkResourceServerOptions.HttpClientName)
+                        .ConfigurePrimaryHttpMessageHandler(() => httpClient?.Invoke(IdpHandler) ?? IdpHandler);
                 })
                 .Configure(app =>
                 {
@@ -210,6 +213,29 @@ public class SparkResourceServerTests(OidcSharedHost host) : OidcTestHost(host),
             .StatusCode.Should().Be(HttpStatusCode.OK, "a fresh proof from the same key does");
     }
 
+    /// <summary>
+    /// PRD A6: proof ids used to live in each instance's <c>IMemoryCache</c>, so a proof captured in flight could be
+    /// replayed once more against any other instance of the same resource server within its two minutes.
+    /// </summary>
+    [Fact]
+    public async Task A_DPoP_proof_replayed_against_another_instance_is_refused()
+    {
+        using var key = new DpopTestKey();
+        var (_, body) = await IssueAsync(key);
+        var token = body.GetProperty("access_token").GetString()!;
+        using var first = await StartResourceServerAsync(Api);
+        using var second = await StartResourceServerAsync(Api);
+        var proof = key.Proof("GET", ItemsUrl, accessToken: token);
+
+        (await CallAsync(first, "/api/items", "DPoP", token, proof)).StatusCode.Should().Be(HttpStatusCode.OK);
+
+        (await CallAsync(second, "/api/items", "DPoP", token, proof)).StatusCode.Should().Be(HttpStatusCode.Unauthorized,
+            "the instances share one database, so the proof id the first accepted is spent for the second as well");
+
+        (await CallAsync(second, "/api/items", "DPoP", token, key.Proof("GET", ItemsUrl, accessToken: token)))
+            .StatusCode.Should().Be(HttpStatusCode.OK, "a fresh proof is accepted by either instance");
+    }
+
     [Fact]
     public async Task A_DPoP_bound_token_with_a_proof_from_another_key_is_refused()
     {
@@ -252,27 +278,6 @@ public class SparkResourceServerTests(OidcSharedHost host) : OidcTestHost(host),
 
     // ---------- introspection ----------
 
-    /// <summary>
-    /// <see cref="SparkIntrospectionHandler"/> fetches discovery through a process-wide, authority-keyed
-    /// <c>ConfigurationManager</c> built on a plain <c>HttpDocumentRetriever</c> (not the HttpClient factory), so the
-    /// only seam for an in-process issuer is to pre-seed that dictionary. Every OIDC test host uses the same issuer,
-    /// and the endpoints the discovery document names are derived from it, so seeding with this class's handler is
-    /// harmless to any other host.
-    /// </summary>
-    private void PointIntrospectionDiscoveryAtTheProvider()
-    {
-        var field = typeof(SparkIntrospectionHandler).GetField("Discovery", BindingFlags.NonPublic | BindingFlags.Static)
-            ?? throw new InvalidOperationException("SparkIntrospectionHandler.Discovery is gone; update this seam.");
-        var discovery = (Dictionary<string, ConfigurationManager<OpenIdConnectConfiguration>>)field.GetValue(null)!;
-        lock (discovery)
-        {
-            discovery[Issuer] = new ConfigurationManager<OpenIdConnectConfiguration>(
-                Issuer + "/.well-known/openid-configuration",
-                new OpenIdConnectConfigurationRetriever(),
-                new HttpDocumentRetriever(new HttpClient(IdpHandler)) { RequireHttps = true });
-        }
-    }
-
     [Fact]
     public async Task Introspection_accepts_an_active_token_and_refuses_it_once_revoked()
     {
@@ -280,7 +285,6 @@ public class SparkResourceServerTests(OidcSharedHost host) : OidcTestHost(host),
         var token = body.GetProperty("access_token").GetString()!;
         // The resource server's own client: introspection answers a client whose id is the token's audience.
         await SeedApplicationAsync(Api);
-        PointIntrospectionDiscoveryAtTheProvider();
 
         using var rs = await StartResourceServerAsync(Api, o =>
         {
@@ -302,5 +306,39 @@ public class SparkResourceServerTests(OidcSharedHost host) : OidcTestHost(host),
 
         (await CallAsync(rs, "/api/items", "Bearer", token)).StatusCode.Should().Be(HttpStatusCode.Unauthorized,
             "the point of introspection: a revoked token stops working at once, not when it expires");
+    }
+
+    /// <summary>
+    /// PRD A7: discovery used to be fetched by a process-wide <c>ConfigurationManager</c> on a bare
+    /// <c>HttpDocumentRetriever</c>, past the HttpClient factory, so neither a proxy nor a handler configured by the
+    /// application reached it.
+    /// </summary>
+    [Fact]
+    public async Task Introspection_fetches_discovery_through_the_configured_http_client()
+    {
+        var (_, body) = await IssueAsync();
+        var token = body.GetProperty("access_token").GetString()!;
+        await SeedApplicationAsync(Api);
+        var seen = new System.Collections.Concurrent.ConcurrentQueue<string>();
+
+        using var rs = await StartResourceServerAsync(Api, o =>
+        {
+            o.UseIntrospection = true;
+            o.IntrospectionClientId = Api;
+            o.IntrospectionClientSecret = Secret;
+        }, httpClient: inner => new RecordingHandler(inner, seen));
+
+        (await CallAsync(rs, "/api/items", "Bearer", token)).StatusCode.Should().Be(HttpStatusCode.OK);
+
+        seen.Should().Contain("/.well-known/openid-configuration").And.Contain("/connect/introspect");
+    }
+
+    private sealed class RecordingHandler(HttpMessageHandler inner, System.Collections.Concurrent.ConcurrentQueue<string> seen) : DelegatingHandler(inner)
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            seen.Enqueue(request.RequestUri!.AbsolutePath);
+            return base.SendAsync(request, cancellationToken);
+        }
     }
 }

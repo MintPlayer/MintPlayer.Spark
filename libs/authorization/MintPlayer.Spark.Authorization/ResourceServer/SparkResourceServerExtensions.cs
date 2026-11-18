@@ -1,8 +1,8 @@
 using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.IdentityModel.Tokens;
+using Raven.Client.Documents;
 using MintPlayer.Spark.Abstractions.Authentication;
 using MintPlayer.Spark.Abstractions.Builder;
 using MintPlayer.Spark.Authorization.Extensions;
@@ -73,7 +73,8 @@ public static class SparkResourceServerExtensions
 
         if (options.UseIntrospection)
         {
-            services.AddHttpClient();
+            services.AddHttpClient(SparkResourceServerOptions.HttpClientName);
+            services.TryAddSingleton<SparkResourceServerDiscovery>();
             services
                 .AddAuthentication()
                 .AddScheme<SparkIntrospectionOptions, SparkIntrospectionHandler>(scheme, o => o.ResourceServer = options);
@@ -113,8 +114,8 @@ public static class SparkResourceServerExtensions
                         OnTokenValidated = async context =>
                         {
                             var token = SparkProofOfPossession.ReadToken(context.HttpContext)!;
-                            var cache = context.HttpContext.RequestServices.GetRequiredService<IMemoryCache>();
-                            var error = await SparkProofOfPossession.ValidateAsync(context.HttpContext, context.Principal!, token, cache);
+                            var store = context.HttpContext.RequestServices.GetRequiredService<IDocumentStore>();
+                            var error = await SparkProofOfPossession.ValidateAsync(context.HttpContext, context.Principal!, token, store);
                             if (error is not null)
                                 context.Fail(error);
                         },

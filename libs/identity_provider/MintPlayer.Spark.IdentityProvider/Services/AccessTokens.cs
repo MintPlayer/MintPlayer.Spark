@@ -40,6 +40,8 @@ internal static class AccessTokens
         {
             ValidateIssuer = true,
             ValidIssuer = issuer,
+            // Each consumer judges audience itself: introspection, revocation and token exchange answer for
+            // tokens meant for anyone, /connect/userinfo admits only its own (see ResolvedAccessToken.Audiences).
             ValidateAudience = false,
             // Expiry is judged below so callers can distinguish "expired" from "not ours"
             // rather than both surfacing as a validation failure.
@@ -109,8 +111,9 @@ internal sealed record ResolvedAccessToken(
 
     /// <summary>
     /// The audiences the token was minted for. Not validated here — a token is "active"
-    /// regardless of who it was meant for — but surfaced so introspection can report it and a
-    /// resource server can decide for itself.
+    /// regardless of who it was meant for — but surfaced so introspection can report it, a
+    /// resource server can decide for itself, and <c>/connect/userinfo</c> can demand its own
+    /// (<see cref="OidcTokenGenerator.UserInfoAudience"/>).
     /// </summary>
     public IReadOnlyList<string> Audiences => Jwt.Audiences?.ToList() ?? [];
 

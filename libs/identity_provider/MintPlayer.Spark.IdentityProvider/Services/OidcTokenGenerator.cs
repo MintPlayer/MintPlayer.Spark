@@ -106,6 +106,9 @@ internal class OidcTokenGenerator
         return Base64UrlEncoder.Encode(hash, 0, hash.Length / 2);
     }
 
+    /// <summary>The audience an access token must carry to be accepted at <c>/connect/userinfo</c>: the endpoint's URL.</summary>
+    internal static string UserInfoAudience(string issuer) => $"{issuer}/connect/userinfo";
+
     /// <summary>
     /// Generates an access token with scope and audience claims driven by the database.
     /// Client claims (OidcApplication.Claims) are included.
@@ -221,6 +224,14 @@ internal class OidcTokenGenerator
         // Scope-defined audiences win; a client with none falls back to itself.
         foreach (var audience in audiences.Count > 0 ? audiences : [app.ClientId])
             descriptor.Audiences.Add(audience);
+
+        // N2 / parity PRD A1: /connect/userinfo is a resource like any other and admits only a token
+        // addressed to it. An openid token carries that audience beside the others (as Auth0 does with
+        // its /userinfo audience), so a sign-in that also asks for an API's scope still gets its claims.
+        // A request that named resources (RFC 8707) is for those alone: the API it was narrowed to must
+        // not be able to replay it here for the user's profile.
+        if (!resourceNamed && scopeNames.Contains("openid", StringComparer.Ordinal))
+            descriptor.Audiences.Add(UserInfoAudience(issuer));
 
         var handler = new JsonWebTokenHandler();
         return (handler.CreateToken(descriptor), jti);

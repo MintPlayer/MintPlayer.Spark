@@ -75,8 +75,6 @@ public static class OidcTokenTypes
     public const string DeviceCode = "device_code";
     /// <summary>A user's session at the provider (<c>sid</c>), for back- and front-channel logout.</summary>
     public const string Session = "session";
-    /// <summary>A DPoP proof's <c>jti</c>, kept for its lifetime so a replay is refused.</summary>
-    public const string DpopProof = "dpop_jti";
     /// <summary>An initial access token for dynamic client registration (RFC 7591).</summary>
     public const string RegistrationAccessToken = "registration_access_token";
 }

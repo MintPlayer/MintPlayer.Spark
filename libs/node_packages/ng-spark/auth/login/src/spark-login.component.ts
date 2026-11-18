@@ -34,6 +34,13 @@ export class SparkLoginComponent {
   readonly errorMessage = signal('');
 
   /**
+   * Arrived from the register page (`?registered=true`). The server answers a registration the same
+   * whether the address was free or already had an account (A13), so the message is the same too:
+   * the mailbox says which — a confirmation link, or a notice that the account already exists.
+   */
+  readonly registered = this.route.snapshot.queryParamMap.get('registered') === 'true';
+
+  /**
    * The passkey button belongs here as well as on the sign-in landing page.
    *
    * ⚠️ Without it an application using `withLocalLogin()` can *enroll* a passkey and then have no way

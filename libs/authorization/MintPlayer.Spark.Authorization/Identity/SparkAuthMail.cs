@@ -17,6 +17,12 @@ public static class SparkAuthMailTemplates
 
     /// <summary>Confirm linking an external login (<c>link</c>, <c>provider</c>, <c>provider_identity</c>, <c>valid_for</c>, <c>app_name</c>).</summary>
     public const string LinkConfirmation = "SparkAuth/LinkConfirmation";
+
+    /// <summary>
+    /// Somebody registered with an address that already has an account (A13): tells the owner, with a
+    /// password-reset link (<c>link</c>, <c>user_name</c>, <c>valid_for_hours</c>, <c>app_name</c>).
+    /// </summary>
+    public const string AccountExists = "SparkAuth/AccountExists";
 }
 
 /// <summary>
@@ -69,6 +75,18 @@ public sealed class SparkMailEmailSender<TUser>(
         {
             link,
             changed_email = changedEmail,
+            valid_for_hours = ValidForHours,
+        });
+
+    /// <summary>
+    /// A13: somebody registered with <paramref name="email"/>, which is already <paramref name="user"/>'s.
+    /// <paramref name="resetLink"/> is unencoded, like <see cref="SendConfirmationAsync"/>'s.
+    /// </summary>
+    public Task SendAccountExistsAsync(TUser user, string email, string resetLink)
+        => SendAsync(user, email, SparkAuthMailTemplates.AccountExists, new
+        {
+            link = resetLink,
+            user_name = user.UserName,
             valid_for_hours = ValidForHours,
         });
 

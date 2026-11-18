@@ -33,8 +33,19 @@ internal sealed partial class ResetPassword<TUser> : IPostEndpoint<ResetPassword
         var user = await userManager.FindByEmailAsync(request.Email);
 
         // One answer for "no such account" and "bad token", as Microsoft's does.
-        if (user is null || SparkAccount.DecodeCode(request.ResetCode) is not { } code)
-            return SparkAccount.Problem(IdentityResult.Failed(userManager.ErrorDescriber.InvalidToken()));
+        if (SparkAccount.DecodeCode(request.ResetCode) is not { } code)
+            return InvalidToken();
+
+        // A11: and the same cost. A bad token for a real account is rejected by Identity's token
+        // provider (Data Protection unprotect, a thrown and caught CryptographicException); an unknown
+        // address now pays that too, verifying against a user that is no account, which no token can
+        // match. Verify only — ResetPasswordAsync would write the user if a token ever did.
+        if (user is null)
+        {
+            await userManager.VerifyUserTokenAsync(SparkAccountMail<TUser>.Unknown(),
+                userManager.Options.Tokens.PasswordResetTokenProvider, UserManager<TUser>.ResetPasswordTokenPurpose, code);
+            return InvalidToken();
+        }
 
         var result = await userManager.ResetPasswordAsync(user, code, request.NewPassword);
         if (!result.Succeeded)
@@ -51,4 +62,6 @@ internal sealed partial class ResetPassword<TUser> : IPostEndpoint<ResetPassword
 
         return TypedResults.Ok();
     }
+
+    private IResult InvalidToken() => SparkAccount.Problem(IdentityResult.Failed(userManager.ErrorDescriber.InvalidToken()));
 }

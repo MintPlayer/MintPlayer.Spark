@@ -16,15 +16,18 @@ public class OidcResourceServerTests(OidcSharedHost host) : OidcTestHost(host), 
     private const string Secret = "s3cret-value-for-tests";
     private string Email => UserEmail("alice");
 
+    /// <summary>An API scope; the test host defines it inside the API resource "orders", whose audience that is.</summary>
+    private const string Orders = "orders.read";
+
     private static async Task<JsonElement> BodyAsync(HttpResponseMessage r)
         => JsonDocument.Parse(await r.Content.ReadAsStringAsync()).RootElement;
 
     /// <summary>Runs the full flow and returns the issued access token.</summary>
-    private async Task<(OidcApplication App, string AccessToken)> IssueAccessTokenAsync(string[]? scopes = null)
+    private async Task<(OidcApplication App, string AccessToken)> IssueAccessTokenAsync(string[]? scopes = null, string? resource = null)
     {
-        var app = await SeedApplicationAsync(ClientId("webapp"), allowedScopes: ["openid", "profile", "offline_access"]);
+        var app = await SeedApplicationAsync(ClientId("webapp"), allowedScopes: ["openid", "profile", "offline_access", Orders]);
         await SeedUserAsync(Email);
-        var code = await ObtainCodeAsync(app, Email, scopes ?? ["openid", "profile"]);
+        var code = await ObtainCodeAsync(app, Email, scopes ?? ["openid", "profile"], resource: resource);
 
         var body = await BodyAsync(await Client.PostAsync("/connect/token", new FormUrlEncodedContent(
             new Dictionary<string, string>
@@ -162,6 +165,36 @@ public class OidcResourceServerTests(OidcSharedHost host) : OidcTestHost(host), 
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         (await BodyAsync(response)).TryGetProperty("sub", out _).Should().BeTrue();
+    }
+
+    /// <summary>
+    /// N2 / parity PRD A1 — a token the client narrowed to an API (RFC 8707) is that API's alone. The
+    /// endpoint used to skip the audience, so the API could replay it here for the user's profile.
+    /// </summary>
+    [Fact]
+    public async Task UserInfo_rejects_a_token_whose_audience_is_only_another_resource()
+    {
+        var (_, accessToken) = await IssueAccessTokenAsync(["openid", "profile", Orders], resource: "orders");
+        new Microsoft.IdentityModel.JsonWebTokens.JsonWebToken(accessToken).Audiences.Should().Equal("orders");
+
+        var response = await UserInfoAsync(accessToken);
+
+        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized, "the token was minted for the orders API, not for userinfo");
+        (await BodyAsync(response)).GetProperty("error").GetString().Should().Be("invalid_token");
+    }
+
+    /// <summary>
+    /// N2 / parity PRD A1 — the other side: a sign-in that also asks for an API's scope, without naming a
+    /// resource, still reaches userinfo, because an openid token carries the endpoint's audience beside the API's.
+    /// </summary>
+    [Fact]
+    public async Task UserInfo_admits_an_openid_token_that_also_carries_an_api_audience()
+    {
+        var (_, accessToken) = await IssueAccessTokenAsync(["openid", "profile", Orders]);
+        new Microsoft.IdentityModel.JsonWebTokens.JsonWebToken(accessToken).Audiences
+            .Should().Equal("orders", OidcTokenGenerator.UserInfoAudience(Issuer));
+
+        (await UserInfoAsync(accessToken)).StatusCode.Should().Be(HttpStatusCode.OK);
     }
 
     /// <summary>R-U4 / O5 — a revoked token stops yielding claims.</summary>
