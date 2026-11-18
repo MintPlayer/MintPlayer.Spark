@@ -1,3 +1,5 @@
+using MintPlayer.Spark.Templates.Build;
+
 namespace MintPlayer.Spark.Templates.Tests;
 
 /// <summary>The manifest against the repository (docs/templates_dnx_terminal_PRD.md §4.2: the graph and coverage tests).</summary>
@@ -24,6 +26,30 @@ public class FeatureManifestTests
 
         unlisted.Should().BeEmpty("a new library must be a feature in features.json or be excluded with a reason");
     }
+
+    /// <summary>
+    /// The versioning engine reads ProjectReferences, not features.json, and re-releases a .NET dependent whenever a
+    /// dependency releases (coverage_package_versioning_PRD D4). Referencing every pinned package is what re-releases the
+    /// template, so it pins the new version, each time one of them ships (plan M6).
+    /// </summary>
+    [Fact]
+    public void The_template_project_references_exactly_the_packages_it_pins()
+    {
+        var manifest = TemplateRepository.Manifest();
+        var pinned = manifest.Core.Concat<ManifestProject>(manifest.Features)
+            .Concat(manifest.Excluded.Where(e => e.Reason == "dependency"))
+            .Select(p => TemplateRepository.FullPath(p.Project))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var csproj = Path.Combine(TemplateRepository.TemplateProject, "MintPlayer.Spark.Templates.csproj");
+        var referenced = TemplateRepository.ProjectReferences(csproj)
+            .Where(path => !path.EndsWith("MintPlayer.Spark.Templates.Build.csproj", StringComparison.OrdinalIgnoreCase))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        pinned.Except(referenced).Select(Relative).Should().BeEmpty("every pinned package needs a ProjectReference");
+        referenced.Except(pinned).Select(Relative).Should().BeEmpty("a ProjectReference that is not pinned releases the template for nothing");
+    }
+
+    private static string Relative(string path) => Path.GetRelativePath(TemplateRepository.Libs, path).Replace('\\', '/');
 
     [Fact]
     public void Every_manifest_entry_is_an_existing_project()

@@ -12,6 +12,10 @@ dotnet run --project MyApp
 `dotnet run` is the whole command: the first build runs `npm install` in `MyApp/ClientApp`, and in Development the
 host starts the Angular dev server itself and proxies it. Node.js must be installed (not with `--no-client`).
 
+`dnx create-spark-app` does the same with questions instead of switches: it refuses combinations the template cannot
+build, checks RavenDB and the OIDC authority, and runs `npm install` and the first model synchronization
+([the tools](https://github.com/MintPlayer/MintPlayer.Spark/blob/master/libs/cli/README.md)).
+
 ## `spark-app`
 
 A Spark host, an entity library and an Angular client. The template pins every Spark package in
@@ -26,11 +30,20 @@ the solution themselves, in the format their own settings choose (`.sln` or `.sl
 | `--auth` | `none`, `authorization`, `oidc` | `none` | RavenDB. Accounts and security.json groups; `oidc` adds an external provider. |
 | `--oidc-authority` | URL | | Required with `--auth oidc`. |
 | `--no-client` | | off | The API host only. |
-| `--controllers`, `--logging` | | off | Any store. |
 | `--migrations` | | on | RavenDB. Includes a sample seed migration. |
-| `--messaging`, `--mail`, `--cron`, `--history`, `--soft-delete`, `--mcp` | | off | RavenDB. `--mail` turns on messaging. |
+| one switch per feature | | off | `dotnet new spark-app -h` lists them, each with the store it needs. |
 
-A RavenDB-only option has no effect with `--store InMemory`.
+A RavenDB-only option has no effect with `--store InMemory`. A feature switches on the features it needs.
+
+## Versions
+
+The pack releases together with the Spark packages: each release of a package the template pins also releases the
+template, which then pins the new version. `spark` and `create-spark-app` release with it at the same version, and
+install the template at their own version.
+
+The pack's major follows .NET, like every Spark NuGet package (`11.x` targets `net11.0`). The Angular client inside
+it follows `@mintplayer/ng-spark`, so moving the client to a new Angular major is a **minor** release of the
+template. Its release notes say so.
 
 ## Item templates
 

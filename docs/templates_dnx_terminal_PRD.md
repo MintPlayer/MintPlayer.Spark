@@ -222,6 +222,14 @@ from the tag engine.
 The pack is a .NET-major NuGet package (11.x) carrying Angular-major content, so an Angular 23 move changes the
 template as a minor version. The release notes must say so.
 
+**As built (M6, 2026-11-18):**
+- The template references every package it pins (`ReferenceOutputAssembly=false`, `PrivateAssets=all`), so the tag
+  engine re-releases it whenever one of them releases (versioning PRD D4).
+- It releases in lockstep with `spark` and `create-spark-app` (coverage.yml `groups: spark-templates`).
+- It is pinned `prerelease: stable`, because the preview `Webhooks.GitHub` packages would otherwise label it
+  preview.
+- Plan M6 has the evidence.
+
 ---
 
 ## 5. Part B: terminal framework (in MintPlayer.Dotnet.Tools, Tools #18)

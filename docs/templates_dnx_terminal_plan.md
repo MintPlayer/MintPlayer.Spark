@@ -7,7 +7,7 @@ owner on 2026-11-16.
 creates cleanly from the CLI and from VS 2026 (flat layout under either "same directory" choice; VS's own solution
 format). M2 done (2026-11-17): a generated app writes its model on the first Development run and starts. This was
 checked on InMemory without sign-in and on RavenDB with local accounts, and three startup refusals in the template
-were fixed along the way. M3 done (2026-11-17): the five item templates build, synchronize and verify in a generated RavenDB app. M4 done (2026-11-17): `node tools/template-matrix.mjs`, local only (owner), 32 variants green in 629 s. S3 and M5 done (2026-11-17): `spark` and `create-spark-app` run through `dnx` from a local feed, `new` and every `add` item verified end to end. Next: M6; pack the template only on the release line (M3 finding). The eight #689 libraries ship on the next `/release`. Each spike has a time box, questions, an exit criterion and an answer slot. Record each
+were fixed along the way. M3 done (2026-11-17): the five item templates build, synchronize and verify in a generated RavenDB app. M4 done (2026-11-17): `node tools/template-matrix.mjs`, local only (owner), 32 variants green in 629 s. S3 and M5 done (2026-11-17): `spark` and `create-spark-app` run through `dnx` from a local feed, `new` and every `add` item verified end to end. M6 done (2026-11-18): the template references every package it pins, so it re-releases with them, and it releases in lockstep with both tools. The first `/release` proves it. Next: the final test run, then the PR is ready. The eight #689 libraries ship on the next `/release`. Each spike has a time box, questions, an exit criterion and an answer slot. Record each
 answer with evidence: numbers, file:line, commands run.
 
 **Order in this repo:** S1 → S2 → S6 → M1–M4 (templates and the core option), then S3 → M5–M6 (tools and release).
@@ -517,6 +517,38 @@ All of this repo's work goes in **one PR** (owner rule), including the `MintPlay
 - Publish `create-spark-app` in the first release, to claim the unprefixed name.
 - Document `dotnet new install MintPlayer.Spark.Templates`, `dnx create-spark-app` and `spark add` in the guides
   and README. State the Angular-major note for template minors (PRD §4.7).
+- **Built (2026-11-18):**
+  - **Packing needed no change.** The `release` job packs the whole solution (`dotnet-build-master.yml:233`), so the
+    template and both tools are packed and pushed with everything else. It runs only on a release (`:213-224`), which
+    on Spark means a release line. That is also where the M3 finding requires the template to be packed, because
+    there the pins resolve to the tags of the same run. Every released id must be in `nupkgs/` (`:238-256`), which
+    holds `create-spark-app.<v>.nupkg` (S3).
+  - **The template releases whenever a package it pins releases.** The engine reads `ProjectReference`s from the
+    csproj body (`DotnetProjectReader.cs:81`), not `features.json`, and re-releases a .NET dependent whenever a
+    dependency releases (versioning PRD D4). The template now references all 46 pinned projects, each with
+    `ReferenceOutputAssembly=false`, `Private=false`, `PrivateAssets=all` and `SkipGetTargetFrameworkProperties`.
+    Without them a fix to a pinned library shipped, and the published template still pinned the old version.
+    - Guard: `The_template_project_references_exactly_the_packages_it_pins` checks the list in both directions. It was red
+      with all 46 missing, then green (template tests 21/21).
+    - A Release pack (same-commit feed `11.0.0-m6`) succeeded. Its nuspec has an empty `net11.0` dependency group and
+      the package holds no DLL.
+  - **One version for the three (coverage.yml `groups: spark-templates`).** A tool installs
+    `MintPlayer.Spark.Templates::<its own version>` (M5). A tool released without the template would install a
+    version that does not exist. A lockstep group releases every member at the highest version
+    (`ReleasePlanner.cs:143-163`). All three target `net11.0`, so their majors agree.
+  - **The template is pinned `prerelease: stable`.** The upstream label is the least mature in-repo dependency
+    (`ReleasePlanner.cs:437-445`), and the template now references `Webhooks.GitHub(.DevTunnel)`, which stay on
+    `preview`. Without the pin the template would release as `11.x-preview`. A `stable` pin overrides upstream
+    (`:419`).
+  - **Not verified locally:** an engine `run --plan-only` needs a Release build of the whole solution for its
+    manifest, which takes too long for this check. The first `/release` after the merge is the proof. It should
+    release `MintPlayer.Spark.Templates`, `MintPlayer.Spark.Cli` and `create-spark-app` at one stable `11.x`
+    version, which also claims the unprefixed `create-spark-app` id (D18).
+  - **Docs:**
+    - The root README has "Create an app", and both READMEs are in its guide table.
+    - The templates README covers the tool and gained "Versions": the release coupling and the Angular-major note
+      (PRD §4.7). Its option table now points to `-h` for the feature switches.
+  - **M6 done.**
 
 ## Outside this repo (issues only)
 - Tools #18: framework scope, D5–D7, S4–S5 (updated 2026-11-16).

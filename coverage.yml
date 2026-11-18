@@ -99,11 +99,20 @@ versioning:
   # 0.4.0-beta, which has no stable release: upstream would label them beta, and 11.0.0-beta.N sorts below their
   # 11.0.0-preview.125, which the engine refuses (VersionCalculator, prerelease-dependencies-PRD D4). They stay on
   # their preview line until Octokit.GraphQL ships a stable.
+  # The template and its two tools release together, at one version (docs/templates_dnx_terminal_plan.md M6): a tool
+  # installs MintPlayer.Spark.Templates at its own version, so a tool released without the template would install a
+  # version that does not exist. A lockstep group releases every member when one releases (ReleasePlanner, D13).
+  groups:
+    - name: spark-templates
+      packages: [MintPlayer.Spark.Templates, MintPlayer.Spark.Cli, create-spark-app]
   packages:
     "@mintplayer/ng-spark": { prerelease: upstream }
     MintPlayer.Versioning.MSBuild: { prerelease: upstream }
     MintPlayer.Spark.Webhooks.GitHub: { prerelease: preview }
     MintPlayer.Spark.Webhooks.GitHub.DevTunnel: { prerelease: preview }
+    # The template references every package it pins, the two above included (plan M6), so upstream would label it
+    # preview. It is stable: it only pins their preview, as an opt-in feature.
+    MintPlayer.Spark.Templates: { prerelease: stable }
   # Release lines (#568 D15): packages release only from release/{ecosystem}-{major}.x, never from master. Lines today:
   # release/dotnet-11.x and release/angular-22.x. The past lines (dotnet-10.x, angular-21.x) are cut only when a fix
   # must ship there, because their cut points predate tag versioning (#568 M11, owner 2026-11-06).
