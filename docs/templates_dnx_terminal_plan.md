@@ -591,10 +591,18 @@ All of this repo's work goes in **one PR** (owner rule), including the `MintPlay
     - All of its inputs were valid when checked: `RavenDB.Embedded/7.2.7` in the deps file, `Raven.Server.dll` in
       the package (extracted 2026-10-27), and `NUGET_PACKAGES` unset.
     - The exact command, rerun after deleting the provisioned copy, passed.
-    - The locator has four silent `return null` paths, so the error cannot say which one fired.
-    - `SparkEmbeddedServer.cs:58-59` says null "leaves RavenDB's default in place". It does not: RavenDB throws.
-    - Making the locator report its reason is the next step if it recurs (not done: it changes that documented
-      design).
+    - ~~The locator has four silent `return null` paths, so the error cannot say which one fired.~~
+    - ~~`SparkEmbeddedServer.cs:58-59` says null "leaves RavenDB's default in place". It does not: RavenDB throws.~~
+    - ~~Making the locator report its reason is the next step if it recurs (not done: it changes that documented
+      design).~~
+    - **Done (owner, 2026-11-18): the locator now names its reason.** `RavenServerLocator.Provision` returns a
+      `ServerProvisioning` (directory or reason) for each of the four paths. `SparkTestDriver.Store` and
+      `SparkSharedDatabase.InitializeAsync` call `RequireServerDirectory()` before the first store, which throws
+      `InvalidOperationException` with that reason instead of RavenDB's bare `ArgumentNullException`. The server
+      is still configured with null from the static constructor, so the reason surfaces at the fixture.
+      The `SparkEmbeddedServer.cs` comment is corrected. Evidence: `RavenServerProvisioningTests` (5 facts, one per
+      path plus the throw) green with `RavenServerLocatorTests` and `SparkTestDriverLicenseTests`, 12/12. A
+      recurrence now says which path fired.
 
 ## Outside this repo (issues only)
 - Tools #18: framework scope, D5–D7, S4–S5 (updated 2026-11-16).

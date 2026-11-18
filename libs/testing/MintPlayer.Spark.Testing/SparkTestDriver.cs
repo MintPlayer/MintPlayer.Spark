@@ -94,6 +94,8 @@ public abstract class SparkTestDriver : RavenTestDriver, IAsyncLifetime
         {
             if (_store is { } store)
                 return store;
+            // Before the first store: without a server directory RavenDB throws a bare ArgumentNullException.
+            RavenServerLocator.RequireServerDirectory();
             lock (_storeLock)
                 return _store ??= GetDocumentStore(database: "Store");
         }
