@@ -292,7 +292,7 @@ Each spike has a question, a method and a pass bar; results go to §10 with numb
 | Q7 | Uniform daily caps: values | **decided** (§10) |
 | Q8 | Moderators: only the owner at launch? Photo pre-moderation or post? | **decided** (§10) |
 | Q9 | Phone verification (SMS costs money) | **decided: no** (§10) |
-| Q10 | Events: who may create, anonymous browsing (SEO/growth vs privacy), "attendees can like each other" | verified users; signed-in only; opt-in |
+| Q10 | Events: who may create, anonymous browsing (SEO/growth vs privacy), "attendees can like each other" | **decided** (§10) |
 | Q11 | On account deletion, what does the other party see of past messages? | **decided** (§10) |
 | Q12 | Data at rest without Raven encryption: field-level encryption of messages, disk encryption, or accept | **decided: field-level, messages** (§10) |
 | Q18 | Backups: database and key ring, where, how often, restore tested? (raised by Q12) | **decided** (§10) |
@@ -446,6 +446,19 @@ Each spike has a question, a method and a pass bar; results go to §10 with numb
     for one person. A local nudity classifier (no third party) is a Stage 3 idea.
   - Accepted risks: brigading by a patient group (reversible actions, reviewer diversity, the owner audits
     decisions); in the first months nobody has reputation, so Moderator/Admin handle everything.
+- **Q10, events: public event pages, people behind sign-in** (owner, 2026-11-19: "B - and probably only show
+  attendees profile picture + first name").
+  - Anonymous (and search engines, via SSR + sitemap): title, date/time in the viewer's zone, area, category,
+    languages, description, places left. Never the organiser, never attendees. A private place stays an area for
+    everyone until the organiser accepts the attendee. A cancelled or past-and-removed event answers 410 and leaves
+    the sitemap. A public page only appears for organiser accounts ≥ 7 days old (anti-SEO-spam).
+  - Signed in: the organiser and the attendees who opted in to be visible, each shown as **first photo + first name
+    only**. Interpretation (owner to correct): the same for the organiser; the full profile card opens only where it
+    would anyway (same active mode, mutual filters, and both opted in to "attendees can like each other").
+  - Proposed with B and not objected to: any account with a verified email creates events, max. 3 upcoming at a
+    time; "attendees can like each other" is opt-in per event and limited to the active mode and mutual filters;
+    the event chat is for confirmed attendees only, encrypted like DMs (Q12), closed 7 days after the event;
+    the description gets the first-message link/phone check plus a warning in the form.
 - **Q9, phone verification: no** (follows from the owner's "i don't have money to spend for other services",
   2026-11-19; SMS costs per message). Email verification only.
 - **Q16, funding: none at launch.** The only new running cost is the backup Storage Box (Q18, ~€4/month); the app
