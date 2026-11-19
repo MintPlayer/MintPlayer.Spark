@@ -308,3 +308,10 @@ Each spike has a question, a method and a pass bar; results go to §10 with numb
   (owner). Identifiers: `apps/Bothmeet`, ClientApp `@spark-apps/bothmeet`, database `Bothmeet`, certificate
   `bothmeet.crt`, networks `bothmeet-raven` / `bothmeet-mail`, image `ghcr.io/mintplayer/bothmeet`. Follow-up:
   owner registers the domains; trademark search (BOIP/EUIPO) before launch.
+- **Q17, friends vs relationship: two modes, one active per account** (owner, 2026-11-19: "Either looking for
+  friends (male and/or female) OR looking for a relationship (male or female)"). Each mode has its own pool,
+  stack, swipes and matches; the mode is part of every pair id (`Swipes/{mode}/{a}/{b}`, `Matches/{mode}/…`).
+  Friends: genders shown = male, female or both. Relationship: see Q3. A profile is only in the pool of its
+  active mode, so a friends-only user never appears in a dating stack. Proposed, unconfirmed: switching mode is
+  allowed (at most once a day, D3), keeps both modes' matches and chats, and moves the profile to the other pool.
+  Supersedes the "friendship" value of relationship intent in §3.1 (intent now only applies to relationship mode).
