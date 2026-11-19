@@ -143,18 +143,31 @@ The SQL Browser service is stopped, and `sqlcmd` needs `-C` (trust the certifica
 > document.** It writes and reads the JSON with the InMemory/RavenDB settings, through the provider's own
 > parameterised SQL. **EF Core 11 only translates queries.** It sees `Data` as a complex type mapped `ToJson()`,
 > derived from the CLR type, and `QueryExecutor`'s `IQueryable<T>` is rewritten onto it. Members EF cannot map are
-> read by path through `JSON_VALUE`. The single-table-per-collection layout below is unchanged; `Raw` is added as a
-> non-persisted computed alias of `Data`.
+> read by path through `JSON_VALUE`. `Raw` is added as a non-persisted computed alias of `Data`.
+>
+> **Corrected 2026-11-19 (D1a): one `Documents` table, not one table per collection.** The draft's "one table per
+> collection" breaks the contract:
+>
+> - The id space is global, as in RavenDB and InMemory, and ids need not carry their collection's name. Dynamic
+>   lookups are stored as `LookupReferences/{name}` (`LookupReferenceService.cs:135`), but their collection, by
+>   `GetCollectionName`, is `DynamicLookupReferenceDocuments` (`InMemoryConventions.cs`, plural of the type name).
+> - Several contract members carry no type at all: `ExistsAsync(id)`, `Delete(id, expectedVersion)`,
+>   `GetVersionsAsync(ids)` (`ISparkSession.cs:62/:76/:88`).
+> - A load through a base type must return the stored derived type (`InMemorySparkSession.Materialize`, :156).
+>
+> All three need to find a row by id alone. The spike already used this shape (`Docs`, §8.1).
 
-**Proposal D1: hybrid document tables.** The provider creates one table per collection:
+**Proposal D1: hybrid document table.** The provider creates one `Documents` table:
 
 ```sql
-Id         nvarchar(450) NOT NULL PRIMARY KEY  -- "people/1", polymorphic string id as today
-Data       json (2025) | nvarchar(max) CHECK (ISJSON(Data)=1) (2019/2022)
-Collection nvarchar(128) NOT NULL              -- the stored collection CollectionGuard reads
+Id         nvarchar(450) NOT NULL PRIMARY KEY  -- "people/1", "LookupReferences/CarBrand": one global id space
+Collection nvarchar(128) NOT NULL              -- the stored collection CollectionGuard reads; indexed (Collection, Id)
+ClrType    nvarchar(512) NOT NULL              -- the stored type, so a base-type load materialises the derived one
+Data       json (2025) | nvarchar(max) CHECK (ISJSON(Data)=1) (2022)
+Raw        AS CAST(Data AS nvarchar(max)) (2025) | AS Data (2022)   -- non-persisted alias, read by Newtonsoft (§8.1)
 Version    rowversion                          -- ISparkSession version string
 ExpiresAt  datetime2 NULL                      -- Expiration capability
--- promoted, persisted computed columns + indexes for fields that queries filter/sort on
+-- promoted computed columns + filtered indexes (WHERE Collection = '…') for the fields queries filter/sort on
 ```
 
 - **Why not a fully relational EF model?** That model needs a migration for every model change. It maps
@@ -168,6 +181,21 @@ ExpiresAt  datetime2 NULL                      -- Expiration capability
 - **The cost** is query translation. `QueryExecutor` hands the provider an `IQueryable<T>`, and the provider must turn
   it into `JSON_VALUE`/`OPENJSON` SQL, not client evaluation. That is spike S2, and the risk this plan is built
   around.
+
+**Lookup references** need nothing provider-specific:
+
+- **Transient lookups** live in code, so the store never sees them.
+- **Dynamic (database-stored) lookups** are one document per lookup, `LookupReferences/{name}`, with its values
+  embedded as a list. `LookupReferenceService` reads and writes them through the neutral `ISparkStore`
+  (`LookupReferenceService.cs:25/:132-154`). On SQL Server that is one `Documents` row, loaded by id.
+- **An entity that uses a lookup** stores only the value's key as a string. Filtering on it is the plain string
+  equality S2 measured.
+- **Labels** (`TranslatedString`) are resolved after the rows are loaded. `QueryResultProjector` only passes the
+  `LookupReferenceType` through (`:115`), so neither sorting nor search pushes a label into SQL.
+- **A gap on every provider, not only SQL Server:** `AddValueAsync`/`UpdateValueAsync`/`DeleteValueAsync` load,
+  modify and store with no `expectedVersion` (`:136-154`), so two concurrent edits to one lookup lose one of them.
+  The fix is to store with `GetVersion(document)`, plus a conformance case. It goes in this PR (rule: fixes found
+  along the way).
 
 Promoted columns follow `IndexedFields` and the neutral views (S5). They match "indexes only in the application"
 (feedback memory): the app declares what is queryable, and the provider renders that as computed columns.
