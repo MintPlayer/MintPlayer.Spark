@@ -230,10 +230,13 @@ internal sealed class DependencyHarness
     /// <summary>#660: the reactions the command lifecycle puts on the command comments.</summary>
     public Commands.FakeCommentReactions Reactions { get; } = new();
 
+    /// <summary>#691 D41: the webhook events the engine published.</summary>
+    public RecordingWebhooks Webhooks { get; } = new();
+
     private DependencyUpdateEngine Engine(Raven.Client.Documents.Session.IAsyncDocumentSession session)
         => new(session, Forge, [Queue], [Updates], Permissions, Writer, Outbox, Time,
             Options.Create(new MergeQueueOptions { GitWriterUrl = "http://writer" }), new DependencyStateStore(session),
-            new WorkflowHook(NullLogger<WorkflowHook>.Instance), Commands.CommandTestKit.Lifecycle(Store, Reactions, Time), NullLogger<DependencyUpdateEngine>.Instance);
+            new WorkflowHook(NullLogger<WorkflowHook>.Instance), Commands.CommandTestKit.Lifecycle(Store, Reactions, Time), NullLogger<DependencyUpdateEngine>.Instance, Webhooks.Publisher);
 
     public async Task SignalAsync(DependencyUpdateSignalMessage signal)
     {

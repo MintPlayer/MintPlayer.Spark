@@ -57,6 +57,8 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
     [Inject] private readonly IWorkflowHook hook;
     [Inject] private readonly ICommandLifecycle commands;
     [Inject] private readonly ILogger<DependencyUpdateEngine> logger;
+    /// <summary>#691 D41: an opened update pull request and a run's end go to the repository account's webhooks.</summary>
+    [Inject] private readonly Webhooks.CoverageWebhookPublisher webhooks;
 
     /// <summary>The command outcomes this handler decided (#660), told once its save went through.</summary>
     private readonly List<Func<CancellationToken, Task>> afterSave = [];
@@ -82,6 +84,7 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
     private const long MaxArtifactBytes = 8 * 1024 * 1024;
 
     private DateTime Now => time.GetUtcNow().UtcDateTime;
+    private static DateTimeOffset Utc(DateTime utc) => new(DateTime.SpecifyKind(utc, DateTimeKind.Utc));
 
     private sealed record Context(Repository Repository, Account? Account, IForgeIntegration Forge, IForgeMergeQueue Queue, IForgeDependencyUpdates Updates, DependencyUpdateRun Run);
 
@@ -1235,6 +1238,8 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
             pull = await context.Updates.CreatePullRequestAsync(repository, run.RollingBranchName, run.DefaultBranch!, title, body, draft, ct);
             run.FirstPullRequestOpened = true;
             run.Note(Now, $"opened #{pull.Number}{(draft ? " as a draft" : string.Empty)}");
+            await webhooks.PublishAsync(new DependencyPullRequestOpened(DependencyRun.Of(run, repository), pull.Number, title, run.RollingBranchName, draft, Utc(Now)),
+                repository, $"{run.Id}/{run.Run}/opened/{pull.Number}", session, ct);
         }
         else
         {
@@ -2038,6 +2043,8 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
         run.OutcomeMessage = message;
         run.FinishedAtUtc = Now;
         Transition(run, EDependencyRunState.Idle, $"run {run.Run} ended: {outcome} ({message})");
+        await webhooks.PublishAsync(new DependencyRunCompleted(DependencyRun.Of(run, context.Repository), outcome, message, run.PullRequestNumber, Utc(Now)),
+            context.Repository, $"{run.Id}/{run.Run}/completed", session, ct);
         // #660 G3: a /refresh or /bisect still going ends with its run: 👍 when there was nothing to update, else 👎 (a
         // published refresh and a found culprit were told already, so this reaches only the ones still started).
         FinishCommand(run, outcome is "nothing-planned" or "nothing-applied" ? ECommandOutcome.NoChange : ECommandOutcome.Failed, $"The run ended: {message}");

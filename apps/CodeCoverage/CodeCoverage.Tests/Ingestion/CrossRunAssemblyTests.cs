@@ -43,6 +43,7 @@ public class CrossRunAssemblyTests : CoverageRavenTest
             .AddSingleton(store)
             .AddSingleton(session)
             .AddSingleton<ICoverageParserFactory, CoverageParserFactory>()
+            .AddSingleton<CodeCoverage.Webhooks.CoverageWebhookPublisher>()
             .AddSingleton(typeof(ILogger<>), typeof(NullLogger<>))
             .BuildServiceProvider();
         return ActivatorUtilities.CreateInstance<ParseSessionRecipient>(services);

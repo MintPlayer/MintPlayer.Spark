@@ -63,6 +63,7 @@ public class ParseSessionRecipientArmsTests : CoverageRavenTest
             .AddSingleton(store)
             .AddSingleton(session)
             .AddSingleton<ICoverageParserFactory, CoverageParserFactory>()
+            .AddSingleton<CodeCoverage.Webhooks.CoverageWebhookPublisher>()
             .AddSingleton(typeof(ILogger<>), typeof(NullLogger<>))
             .BuildServiceProvider();
         await ActivatorUtilities.CreateInstance<ParseSessionRecipient>(services)

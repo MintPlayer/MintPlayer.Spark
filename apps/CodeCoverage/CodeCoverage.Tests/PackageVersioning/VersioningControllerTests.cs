@@ -32,7 +32,11 @@ public class VersioningControllerTests : CoverageRavenTest
     private static readonly Microsoft.AspNetCore.DataProtection.IDataProtectionProvider Sealer =
         new Microsoft.AspNetCore.DataProtection.EphemeralDataProtectionProvider();
 
-    private sealed record Harness(VersioningController Controller, FakeGitWriter Writer, FakeForgeMergeQueue Queue, ScriptedDiffService Forge, FakeForgeVersioning Versioning);
+    private sealed record Harness(VersioningController Controller, FakeGitWriter Writer, FakeForgeMergeQueue Queue, ScriptedDiffService Forge, FakeForgeVersioning Versioning)
+    {
+        /// <summary>#691 D41: the webhook events the controller published.</summary>
+        public RecordingWebhooks Webhooks { get; init; } = new();
+    }
 
     private static Harness Create(IDocumentStore store, ClaimsPrincipal user, string? yml = Versioned,
         FakeGitWriter? writer = null, VersioningRunLocks? locks = null)
@@ -57,11 +61,13 @@ public class VersioningControllerTests : CoverageRavenTest
         services.AddSingleton<IForgeVersioning>(versioning);
         services.AddSingleton<MintPlayer.Spark.Messaging.Abstractions.IMessageBus>(new Dependencies.Lifecycle.DependencyOnboardingSurfaceTests.RecordingBus());
         services.AddScoped<IVersioningOnboardingService, VersioningOnboardingService>();
+        var webhooks = new RecordingWebhooks();
+        services.AddSingleton(webhooks.Publisher);
         services.AddScoped<VersioningController>();
 
         var controller = services.BuildServiceProvider().GetRequiredService<VersioningController>();
         controller.ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext { User = user } };
-        return new Harness(controller, writer, queue, forge, versioning);
+        return new Harness(controller, writer, queue, forge, versioning) { Webhooks = webhooks };
     }
 
     private static ClaimsPrincipal Token(string gitRef = "refs/heads/main", string sha = Sha, long repositoryId = RepoId, string runId = "77")
@@ -123,6 +129,14 @@ public class VersioningControllerTests : CoverageRavenTest
         run!.Outcome.Should().Be(GitWriterVersioningResult.Versioned);
         run.WorkflowRef.Should().Be("acme/widget/.github/workflows/publish.yml@refs/heads/main");
         run.Releases.Single().Tag.Should().Be("Acme.Widget/1.2.0");
+        // #691 D41: the account's webhooks hear the run's result, keyed by the run.
+        var published = h.Webhooks.All.Should().ContainSingle().Which;
+        published.Key.Should().Be(run.Id);
+        published.Data.Should().BeOfType<VersioningRunResult>().Which.Should().BeEquivalentTo(new
+        {
+            Repository = "acme/widget", Forge = "github", Branch = "main", Commit = Sha, Run = "77.2", Outcome = GitWriterVersioningResult.Versioned,
+            Packages = new[] { new { Id = "Acme.Widget", Kind = "nuget", Version = "1.2.0", Tag = "Acme.Widget/1.2.0" } },
+        });
     }
 
     [Fact]

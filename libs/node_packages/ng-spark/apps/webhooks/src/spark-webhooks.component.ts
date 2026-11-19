@@ -111,7 +111,7 @@ interface WebhookDraft {
                   @for (event of catalog(); track event.name) {
                     <bs-checkbox [type]="'checkbox'" [name]="'event-' + event.name" [checked]="draft.events.includes(event.name)"
                                  (checkedChange)="toggle(event.name, $event === true)">
-                      <code>{{ event.name }}</code> <span class="text-muted">{{ event.summary }}</span>
+                      <code class="pe-2">{{ event.name }}</code> <span class="text-muted">{{ event.summary }}</span>
                     </bs-checkbox>
                   }
                 </fieldset>

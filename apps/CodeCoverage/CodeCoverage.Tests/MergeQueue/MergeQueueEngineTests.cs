@@ -45,6 +45,9 @@ public class MergeQueueEngineTests : CoverageRavenTest
         h.Queue.LastCheck.State.Should().Be(EForgeQueueCheckState.Success);
         h.Queue.RemovedLabels.Should().Contain((Number, "merge-queue"));
         (await h.QueueDocumentAsync())!.IsBusy().Should().BeFalse();
+        // #691 D41: queued, then merged, each once.
+        h.Webhooks.All.Select(p => p.Data.GetType()).Should().Equal(typeof(MergeQueueEntryQueued), typeof(MergeQueueEntryMerged));
+        h.Webhooks.Of<MergeQueueEntryMerged>().Single().Should().BeEquivalentTo(new { PullRequest = new { Number }, MergeCommitSha = MergeCommit });
     }
 
     // ── Segment G: the backports a merge would start, tried before it ────────────────────────────────
@@ -290,6 +293,9 @@ public class MergeQueueEngineTests : CoverageRavenTest
         ended.State.Should().Be(EForgeQueueCheckState.Failure);
         ended.Title.Should().Be("Evicted: conflict-outside-allow-list");
         ended.Actions.Should().Equal([ForgeQueueCheckAction.Enqueue]);
+        // #691 D41: the eviction is a removal, with its reason.
+        h.Webhooks.Of<MergeQueueEntryRemoved>().Should().ContainSingle().Which.Should()
+            .BeEquivalentTo(new { PullRequest = new { Number }, State = "evicted", Reason = "conflict-outside-allow-list" });
 
         (await h.EntryAsync(8)).State.Should().Be(EMergeQueueEntryState.Preparing, "D11: the lane moves on to the next entry");
         (await h.QueueDocumentAsync())!.LaneFor("master").Current.Should().Be(MergeQueueEntry.DocumentId(RepositoryId, 8));

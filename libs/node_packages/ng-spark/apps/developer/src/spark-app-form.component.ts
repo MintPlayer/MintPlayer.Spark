@@ -103,7 +103,7 @@ const EMPTY: SparkAppFields = {
         @for (event of catalog().events; track event.name) {
           <bs-checkbox [type]="'checkbox'" [name]="'app-event-' + event.name" [checked]="fields().events.includes(event.name)"
                        [disabled]="!covered(event.permission)" (checkedChange)="toggle(event.name, $event === true)">
-            <code>{{ event.name }}</code> <span class="text-muted">{{ event.summary }}</span>
+            <code class="pe-2">{{ event.name }}</code> <span class="text-muted">{{ event.summary }}</span>
             @if (!covered(event.permission)) { <small class="text-muted">({{ 'app.needs' | sparkApps: event.permission }})</small> }
           </bs-checkbox>
         }

@@ -153,7 +153,7 @@ public class RegistrationInventoryTests : CoverageRavenTest
         typeof(IRecipient<global::CodeCoverage.Feedback.PublishPullRequestCommentMessage>),
         typeof(IRecipient<global::CodeCoverage.Feedback.OpenPullRequestCommentMessage>),
         typeof(IRecipient<global::CodeCoverage.Dependencies.ScanRepositoryManifestsMessage>),
-        typeof(IRecipient<global::CodeCoverage.Webhooks.CoverageBuildFinalizedWebhookMessage>));
+        typeof(IRecipient<global::CodeCoverage.Webhooks.CoverageBuildCompletedWebhookMessage>));
 
     /// <summary>
     /// The commit graph (#504). A missing deletion recipient is the dangerous one: a disconnect

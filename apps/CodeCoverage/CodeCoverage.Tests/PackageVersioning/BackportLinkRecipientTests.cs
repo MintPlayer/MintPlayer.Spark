@@ -20,6 +20,7 @@ public class BackportLinkRecipientTests : CoverageRavenTest
     private readonly IForgeMergeQueue git = Substitute.For<IForgeMergeQueue>();
     private readonly IForgeLabels labels = Substitute.For<IForgeLabels>();
     private readonly IForgeIntegration integration = Substitute.For<IForgeIntegration>();
+    private readonly RecordingWebhooks webhooks = new();
 
     public BackportLinkRecipientTests()
     {
@@ -39,10 +40,10 @@ public class BackportLinkRecipientTests : CoverageRavenTest
     {
         using (var seed = store.OpenAsyncSession())
         {
-            await seed.StoreAsync(new Repository { FullName = "acme/widgets", Provider = EForgeProvider.GitHub, DefaultBranch = "main" }, RepositoryId);
+            await seed.StoreAsync(new Repository { FullName = "acme/widgets", OwnerLogin = "acme", Name = "widgets", Provider = EForgeProvider.GitHub, DefaultBranch = "main" }, RepositoryId);
             await seed.SaveChangesAsync();
         }
-        return new BackportLinkRecipient(store.OpenAsyncSession(), new SingleForgeResolver(integration), [forge], [git], [labels], TimeProvider.System, NullLogger<BackportLinkRecipient>.Instance);
+        return new BackportLinkRecipient(store.OpenAsyncSession(), new SingleForgeResolver(integration), [forge], [git], [labels], TimeProvider.System, NullLogger<BackportLinkRecipient>.Instance, webhooks.Publisher);
     }
 
     private async Task MergedAsync(IDocumentStore store, ForgePullRequestText backport)
@@ -60,6 +61,13 @@ public class BackportLinkRecipientTests : CoverageRavenTest
 
         await labels.Received(1).AddLabelAsync(Arg.Any<Repository>(), 7, "backported: dotnet-10.x", Arg.Any<CancellationToken>());
         forge.Comments.Should().BeEmpty("the app's own report already linked it");
+        // #691 D41: the account's webhooks hear of it once, keyed by the backport pull request.
+        webhooks.All.Should().ContainSingle().Which.Should().BeEquivalentTo(new
+        {
+            Data = new { Repository = "acme/widgets", Forge = "github", Number = 20, Source = 7, Line },
+            Key = $"{RepositoryId}/20/merged",
+        });
+        webhooks.All[0].Owner.Should().Be(CodeCoverage.Webhooks.CoverageWebhooks.Account("github:acme"));
     }
 
     [Fact]
@@ -150,6 +158,9 @@ public class BackportLinkRecipientTests : CoverageRavenTest
         // Segment B: the repository page lists it with the App's own backports.
         (await check.LoadAsync<BackportAttempt>(BackportAttempt.DocumentId(EForgeProvider.GitHub, 0, 7, Line)))
             .Should().BeEquivalentTo(new { Outcome = BackportAttempt.Opened, PullRequest = (int?)1000, SourceSha = SourceMerge });
+        // #691 D41: and its webhooks hear of the attempt.
+        webhooks.Of<BackportAttempted>().Should().ContainSingle().Which.Should()
+            .BeEquivalentTo(new { Repository = "acme/widgets", Source = 7, SourceSha = SourceMerge, Line, Outcome = BackportAttempt.Opened, PullRequest = (int?)1000 });
     }
 
     [Theory]

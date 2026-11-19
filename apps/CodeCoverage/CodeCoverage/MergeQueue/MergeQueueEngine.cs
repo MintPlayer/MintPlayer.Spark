@@ -72,6 +72,8 @@ public partial class MergeQueueEngine : IMergeQueueEngine
     private readonly List<Func<CancellationToken, Task>> afterSave = [];
     /// <summary>Dispatch, correlation, waiting, provenance, the fork guard, artifacts and writer tokens (dependency-updates PRD N1).</summary>
     [Inject] private readonly IWorkflowHook hook;
+    /// <summary>#691 D41: queued, merged and removed go to the repository account's webhooks, saved with the transition.</summary>
+    [Inject] private readonly Webhooks.CoverageWebhookPublisher webhooks;
 
     /// <summary>Retries of a step after a transient failure; the failure after the last retry evicts (§0 D58).</summary>
     public const int MaxTransientRetries = 6;
@@ -85,6 +87,7 @@ public partial class MergeQueueEngine : IMergeQueueEngine
     internal static readonly TimeSpan HeadModifiedRetryDelay = TimeSpan.FromSeconds(15);
 
     private DateTime Now => time.GetUtcNow().UtcDateTime;
+    private static DateTimeOffset Utc(DateTime utc) => new(DateTime.SpecifyKind(utc, DateTimeKind.Utc));
 
     /// <summary>What every handler works with: the repository, its forge's two seams and its queue document.</summary>
     private sealed record Context(Repository Repository, Account? Account, IForgeIntegration Forge, IForgeMergeQueue Queue, QueueDocument Document);
@@ -387,6 +390,8 @@ public partial class MergeQueueEngine : IMergeQueueEngine
 
         afterSave.Add(token => commands.StartedAsync(invocation, $"Queued as run {runId}.", mergeQueueRun: runId, cancellationToken: token));
         Transition(entry, EMergeQueueEntryState.Queued, $"queued by @{actor} ({source.ToString().ToLowerInvariant()})");
+        await webhooks.PublishAsync(new MergeQueueEntryQueued(MergeQueuePullRequest.Of(entry, context.Repository), Utc(Now)),
+            context.Repository, $"{entry.Id}/{entry.Run}/queued", session, ct);
         var waiting = context.Document.LaneFor(entry.BaseBranch).Waiting;
         if (await SourceOrderPositionAsync(context, entry, waiting, ct) is { } before)
             waiting.Insert(before, entry.Id!);
@@ -2007,6 +2012,12 @@ public partial class MergeQueueEngine : IMergeQueueEngine
         FinishCommand(entry, state, message);
         entry.FinishedAtUtc = Now;
         context.Document.Record(Outcome(entry));
+        // #691 D41. A refused /queue never entered the queue (RefuseAsync), so it raises nothing: the command's reply says it.
+        var pull = MergeQueuePullRequest.Of(entry, context.Repository);
+        object ended = state == EMergeQueueEntryState.Merged
+            ? new MergeQueueEntryMerged(pull, entry.MergeCommitSha, Utc(Now))
+            : new MergeQueueEntryRemoved(pull, state.ToString().ToLowerInvariant(), state == EMergeQueueEntryState.Evicted ? entry.EvictionReason : null, entry.EvictionMessage, Utc(Now));
+        await webhooks.PublishAsync(ended, context.Repository, $"{entry.Id}/{entry.Run}/ended", session, ct);
 
         var lane = context.Document.LaneFor(entry.BaseBranch);
         if (lane.Current == entry.Id) lane.Current = null;

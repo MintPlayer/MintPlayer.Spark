@@ -116,6 +116,7 @@ public partial class BackportRegenerationEngine : IBackportRegenerationEngine
     [Inject] private readonly TimeProvider time;
     [Inject] private readonly IOptions<MergeQueueOptions> options;
     [Inject] private readonly ILogger<BackportRegenerationEngine> logger;
+    [Inject] private readonly Webhooks.CoverageWebhookPublisher webhooks;
 
     public const int MaxTransientRetries = 6;
 
@@ -419,7 +420,7 @@ public partial class BackportRegenerationEngine : IBackportRegenerationEngine
         var body = item.Body + (why is null ? RegeneratedNote(item) : NotRegeneratedNote(item.Paths, why));
         var opened = await context.Forge.OpenPullRequestAsync(context.Repository, item.Head, item.Branch, item.Title, body, cancellationToken: ct);
         await RecordAsync(session, context.Repository.Id!, opened, item.Number, item.SourceSha, item.Branch, Now, ct);
-        await BackportAttempts.RecordAsync(session, context.Repository, item.Number, item.SourceSha, item.Branch,
+        await BackportAttempts.RecordAsync(session, webhooks, context.Repository, item.Number, item.SourceSha, item.Branch,
             why is null ? BackportAttempt.Opened : BackportAttempt.NotRegenerated, opened, why, Now, ct);
         // #570 M7: only a regenerated backport is queued; stale files wait for a person.
         var enqueue = why is null && item.Enqueue;

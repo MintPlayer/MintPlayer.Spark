@@ -1,5 +1,6 @@
 using System.Text;
 using CodeCoverage.Entities;
+using CodeCoverage.Forge;
 using CodeCoverage.Ingestion;
 using CodeCoverage.Ingestion.Parsing;
 using Microsoft.Extensions.DependencyInjection;
@@ -150,11 +151,39 @@ public class ParseSessionRecipientTests : CoverageRavenTest
         buildSession.FilesCount.Should().Be(0);
     }
 
+    /// <summary>#691 D41: a parsed upload is one <c>coverage.report.processed</c> event, keyed by the upload.</summary>
+    [Fact]
+    public async Task A_parsed_upload_raises_coverage_report_processed_for_the_repository_account()
+    {
+        using var store = GetDocumentStore();
+        await SeedBuildWithLcovReport(store, 3);
+        using (var seed = store.OpenAsyncSession())
+        {
+            await seed.StoreAsync(new Repository { FullName = "acme/widgets", OwnerLogin = "acme", Name = "widgets", Provider = EForgeProvider.GitHub }, "Repositories/1");
+            await seed.StoreAsync(new Commit { Repository = "Repositories/1", Sha = "abc", Branch = "main" }, "Commits/1/abc");
+            await seed.SaveChangesAsync();
+        }
+        var webhooks = new RecordingWebhooks();
+
+        using (var session = store.OpenAsyncSession())
+        {
+            await CreateRecipient(store, session, webhooks).HandleAsync(new ParseSessionMessage { BuildId = BuildId, SessionId = SessionId });
+        }
+
+        var published = webhooks.All.Should().ContainSingle().Which;
+        published.Key.Should().Be($"{BuildId}/{SessionId}");
+        published.Owner.Should().Be(CodeCoverage.Webhooks.CoverageWebhooks.Account("github:acme"));
+        published.Data.Should().BeOfType<CodeCoverage.Webhooks.CoverageReportProcessed>().Which.Should().BeEquivalentTo(new
+        {
+            Repository = "acme/widgets", Forge = "github", Sha = "abc", Branch = "main", Session = SessionId, Status = "Parsed", Files = 3,
+        });
+    }
+
     /// <summary>Deterministic fake OID per path: 40 hex chars derived from the path's hash.</summary>
     private static string OidFor(string path)
         => Convert.ToHexStringLower(System.Security.Cryptography.SHA1.HashData(Encoding.UTF8.GetBytes(path)));
 
-    private static ParseSessionRecipient CreateRecipient(IDocumentStore store, Raven.Client.Documents.Session.IAsyncDocumentSession session)
+    private static ParseSessionRecipient CreateRecipient(IDocumentStore store, Raven.Client.Documents.Session.IAsyncDocumentSession session, RecordingWebhooks? webhooks = null)
     {
         // ActivatorUtilities resolves the generated constructor's parameters
         // by type, so this doesn't depend on the [Inject] field order.
@@ -162,9 +191,11 @@ public class ParseSessionRecipientTests : CoverageRavenTest
             .AddSingleton(store)
             .AddSingleton(session)
             .AddSingleton<ICoverageParserFactory, CoverageParserFactory>()
-            .AddSingleton(typeof(ILogger<>), typeof(NullLogger<>))
-            .BuildServiceProvider();
-        return ActivatorUtilities.CreateInstance<ParseSessionRecipient>(services);
+            .AddSingleton(typeof(ILogger<>), typeof(NullLogger<>));
+        // Without a recorder, webhooks are off: the wrapper finds no IWebhookPublisher and publishes nothing.
+        if (webhooks is null) services.AddSingleton<CodeCoverage.Webhooks.CoverageWebhookPublisher>();
+        else services.AddSingleton(webhooks.Publisher);
+        return ActivatorUtilities.CreateInstance<ParseSessionRecipient>(services.BuildServiceProvider());
     }
 
     private static async Task SeedBuildWithLcovReport(IDocumentStore store, int fileCount, bool withOids = false)
