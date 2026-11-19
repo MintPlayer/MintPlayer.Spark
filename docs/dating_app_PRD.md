@@ -309,7 +309,15 @@ Each spike has a question, a method and a pass bar; results go to §10 with numb
   datenight.be, registered 2015), because the name must cover friendships and events as well as dating
   (owner). Identifiers: `apps/Bothmeet`, ClientApp `@spark-apps/bothmeet`, database `Bothmeet`, certificate
   `bothmeet.crt`, networks `bothmeet-raven` / `bothmeet-mail`, image `ghcr.io/mintplayer/bothmeet`. Follow-up:
-  owner registers the domains; trademark search (BOIP/EUIPO) before launch.
+  trademark search (BOIP/EUIPO) before launch.
+  - **Registered 2026-11-19 at Qweb** (owner paid; €19.95/year each, 1-year term renewing yearly, no longer term
+    offered in the order). Holder/admin/tech: the owner personally (not J.D.C TOPO BV). Parked at Qweb, Qweb
+    nameservers (ns1.qweb.net, ns2.qweb.nu, ns3.qweb.co); DNS is managed in the Qweb panel, not Plesk.
+  - **DNS (both zones):** A `@`/`www` → 188.245.190.60, AAAA `@`/`www` → 2a01:4f8:c0c:f87c::1 (the VPS, the same
+    AAAA as coverage.mintplayer.com), TXT `@` `v=spf1 -all` (no mail as @bothmeet.* until the mail setup), TTL 14400.
+    Qweb's default wildcard `*` → 217.18.79.54 (parking) was replaced by `www`. Qweb's default MX
+    (mx.spam-filter.email / fallbackmx.spam-filter.cloud) left as is; revisit with the mail setup (plan 3.2).
+    Verified on ns1.qweb.net at 14:56: the .com records live; .net still pending in Qweb's queue.
 - **Q17, friends vs relationship: two modes, one active per account** (owner, 2026-11-19: "Either looking for
   friends (male and/or female) OR looking for a relationship (male or female)"). Each mode has its own pool,
   stack, swipes and matches; the mode is part of every pair id (`Swipes/{mode}/{a}/{b}`, `Matches/{mode}/…`).
