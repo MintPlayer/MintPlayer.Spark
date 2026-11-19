@@ -295,7 +295,7 @@ Each spike has a question, a method and a pass bar; results go to §10 with numb
 | Q10 | Events: who may create, anonymous browsing (SEO/growth vs privacy), "attendees can like each other" | verified users; signed-in only; opt-in |
 | Q11 | On account deletion, what does the other party see of past messages? | conversation removed for both |
 | Q12 | Data at rest without Raven encryption: field-level encryption of messages, disk encryption, or accept | **decided: field-level, messages** (§10) |
-| Q18 | Backups: database and key ring, where, how often, restore tested? (raised by Q12) | open |
+| Q18 | Backups: database and key ring, where, how often, restore tested? (raised by Q12) | **decided** (§10) |
 | Q13 | Retention of inactive accounts | hide 6 months, delete 24 months |
 | Q14 | Age verification: self-declared birth date only, or more? | self-declared + report "underage" with immediate hide |
 | Q15 | Launch region and UI languages | **region decided: worldwide** (§10); UI languages open |
@@ -381,3 +381,17 @@ Each spike has a question, a method and a pass bar; results go to §10 with numb
     confidential payloads": rotated keys stay in the ring (never deleted by default), and revoking a key makes its
     payloads unreadable, so no key is ever revoked for this app. Spark already stores user-store secrets this way
     (`UserStore.Secrets.cs`).
+- **Q18, backups: RavenDB periodic backup + separate key-ring backup to a Hetzner Storage Box** (owner, 2026-11-19:
+  "Do we really need backups? If so, I think I'd go for A"). Why yes: our own mistakes (a migration, a deletion
+  bug, a delete-by-query on the wrong database) are the likeliest loss and replicas copy them; one VPS, one disk,
+  four apps; compromise; GDPR Art. 32(1)(c) requires the ability to restore availability in a timely manner.
+  - Database `Bothmeet` incl. photo attachments: RavenDB's own periodic backup task, hourly incremental + daily
+    full, **encrypted**, to the Storage Box (S8 confirms backup encryption is available on Community).
+  - Key ring: nightly `restic` copy of the `bothmeet_dataprotection-keys` volume to a **different** repository with
+    a **different** password, so a leaked database backup never comes with the key to its messages.
+  - **Retention 30 days** for both, stated in the privacy policy: a deleted account (§5.6) is gone from the
+    backups within 30 days.
+  - Alert by mail (shared relay) when no new backup arrived for 26 hours; a monthly restore of database + key ring
+    into a scratch database, which proves an encrypted message decrypts. Both are part of the deploy stage.
+  - Not checked yet: whether CodeCoverage/SeoTester/MintPlayer have a RavenDB backup task configured inside the
+    database (cron/systemd showed none). Out of scope for this PR; worth an issue if they have none.

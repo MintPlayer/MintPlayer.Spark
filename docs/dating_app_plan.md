@@ -55,4 +55,5 @@ Update at every step; it is what survives a context compaction.
 | 3.2 | CodeCoverage compose + `raven-cert-renew` know `bothmeet`; MailRelay knows `bothmeet-mail` (or the dedicated server of Q2) | |
 | 3.3 | `.github/workflows/bothmeet-deploy.yml`, image `ghcr.io/mintplayer/bothmeet:master` | |
 | 3.4 | **Owner-run on the VPS** (each step asked first): operator creates database `Bothmeet`, issues `bothmeet.crt` (Admin on `Bothmeet` only) with the CA, installs files `0400` for the app user, DNS + Traefik route | app healthy, `/license/status` unchanged, cert scoped (a query on another database is refused) |
+| 3.4b | Backups (PRD Q18): RavenDB periodic backup task (encrypted, hourly incremental + daily full, 30 days) and nightly `restic` of the key-ring volume to a separate Storage Box repository; 26 h no-backup mail alert; first restore drill (an encrypted message decrypts in the scratch copy). Owner orders the Storage Box | restore drill passes |
 | 3.5 | Full test sweep once, via the PR's CI (memory: no local sweeps), then coverage via the codecoverage MCP | green |
