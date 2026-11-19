@@ -7,7 +7,8 @@ step and run once at the end (global rules 5/6); spikes measure and record numbe
 Status (2026-11-19): PRD and plan drafted; **grill done** (step 0.1): Q1–Q18 all decided, PRD §10. Launch
 blockers recorded there: backups (Q18), the legal check per country (Q14), DPIA/privacy policy/terms (§5.6). Step
 0.2 (S1/S2) done, PRD §10.1: exact-term index + per-viewer cursor; S1's 100 ms bar missed at 1M (p95 140 ms),
-accepted with client prefetch, to be re-measured under the Community licence in S8. Next: S5/S3 (step 0.3). No app
+accepted with client prefetch, to be re-measured under the Community licence in S8. Open for the owner: Q19–Q21
+(PRD §9, from S1/S2). Draft pull request opened 2026-11-19 (docs only so far). Next: S5/S3 (step 0.3). No app
 code yet.
 
 ### Log
@@ -29,6 +30,8 @@ Update at every step; it is what survives a context compaction.
   `DynamicDates` rejected (nightly full re-map), stored `Age` updated for today's birthdays only. Two index-map
   traps recorded (enum as string, `Enumerable.Range` in a dynamic map). Step 1.6 builds on this; S8 re-measures 1M
   under the Community licence.
+- 2026-11-19: PRD §9 synced (Q3–Q5 marked decided; Q19–Q21 added as open from S1/S2). Branch pushed, draft PR
+  opened.
 
 ## Stage 0: decisions and spikes
 

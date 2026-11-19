@@ -1,6 +1,7 @@
 # Dating app on Spark: PRD
 
-Status: draft, 2026-11-19. Execution plan: [dating_app_plan.md](dating_app_plan.md). Name: **Bothmeet**
+Status: draft, 2026-11-19; grill Q1–Q18 decided, spikes S1/S2 done (§10.1), Q19–Q21 open (§9). Execution plan:
+[dating_app_plan.md](dating_app_plan.md). Name: **Bothmeet**
 (bothmeet.com + bothmeet.net; Q1 in §10): "both want to meet", for a date, a friend or an event.
 
 ## 1. Goal
@@ -285,9 +286,9 @@ Each spike has a question, a method and a pass bar; results go to §10 with numb
 |---|---|---|
 | Q1 | Name and domain | **decided: Bothmeet** (§10) |
 | Q2 | Shared `coverage-raven` with a database-scoped cert, or a dedicated RavenDB for Bothmeet? | **decided: shared** (§10) |
-| Q3 | Gender model: which options, "interested in" multi-select, non-binary? | woman / man / non-binary + "more" free text; interested in = multi-select |
-| Q4 | Language filter: hard + mutual by default? Minimum level? | yes; "conversational" |
-| Q5 | DM setting: the three modes of §3.1? Do "open requests" exist at all? | yes, default "matches only" |
+| Q3 | Gender model: which options, "interested in" multi-select, non-binary? | **decided: broad** (§10) |
+| Q4 | Language filter: hard + mutual by default? Minimum level? | **decided: hard, mutual, "conversational"** (§10) |
+| Q5 | DM setting: the three modes of §3.1? Do "open requests" exist at all? | **decided: three values, default "matches only"** (§10) |
 | Q6 | "Who liked you" free: shown with photos, or blurred until I swipe on them myself? | **decided: count only** (§10) |
 | Q7 | Uniform daily caps: values | **decided** (§10) |
 | Q8 | Moderators: only the owner at launch? Photo pre-moderation or post? | **decided** (§10) |
@@ -300,6 +301,9 @@ Each spike has a question, a method and a pass bar; results go to §10 with numb
 | Q14 | Age verification: self-declared birth date only, or more? | **decided** (§10) |
 | Q15 | Launch region and UI languages | **decided: worldwide; 7 UI languages** (§10) |
 | Q16 | Funding a free service (donations? none?) | **decided: none at launch** (§10) |
+| Q19 | Stack order after S2: a random order per viewer that stays stable (cursor paging), instead of least-recently-shown (D4) | **open, owner to confirm**: random per-viewer order from ~8 random keys per profile; likers first (Q6); no score (§10.1) |
+| Q20 | Age in the index: stored `Age` updated on birthdays by a daily job, query-time `BirthDate` range, or CronosCore `DynamicDates` | **open, owner to confirm**: stored `Age` + birthday job (§10.1: hybrid +22 ms p95; `DynamicDates` re-maps 1M profiles nightly) |
+| Q21 | S1 misses 100 ms at 1M (p95 140 ms, dense 178 ms): accept with client prefetch, or keep optimising | **open, owner to confirm**: accept; S8 re-measures under the Community licence |
 
 ## 10. Spike results and grill decisions
 
