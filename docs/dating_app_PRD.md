@@ -320,3 +320,10 @@ Each spike has a question, a method and a pass bar; results go to §10 with numb
   female" gains non-binary, and Relationship is not limited to one gender). The mutual filter applies in both modes:
   I see you only if my set contains your gender and yours contains mine. Pronouns stay an optional free-text field,
   never filtered on. Gender is special-category-adjacent data: shown on the card, never queryable by others (§5.1).
+- **Q4, language filter: hard and mutual, same default in both modes** (owner, 2026-11-19: "A - yes"). Each user
+  lists languages (ISO 639-1) with a level: native, fluent, conversational, basic. A candidate is eligible only if
+  we share at least one language where **both** levels are ≥ the minimum of **each** side (default
+  "conversational", adjustable per user to basic/fluent/native). Default on in Relationship and Friends; a user may
+  switch it off, which widens only their own side (the other side's filter still applies, mutual rule). The default
+  "languages I speak" at onboarding is the UI language at "native", never derived from location (§3.4 item 3).
+  Accepted risks: language-practice seekers must lower their minimum; overstated levels are only caught by reports.
