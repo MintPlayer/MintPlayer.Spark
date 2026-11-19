@@ -298,7 +298,7 @@ Each spike has a question, a method and a pass bar; results go to §10 with numb
 | Q18 | Backups: database and key ring, where, how often, restore tested? (raised by Q12) | **decided** (§10) |
 | Q13 | Retention of inactive accounts | **decided** (§10) |
 | Q14 | Age verification: self-declared birth date only, or more? | **decided** (§10) |
-| Q15 | Launch region and UI languages | **region decided: worldwide** (§10); UI languages open |
+| Q15 | Launch region and UI languages | **decided: worldwide; 7 UI languages** (§10) |
 | Q16 | Funding a free service (donations? none?) | **decided: none at launch** (§10) |
 
 ## 10. Spike results and grill decisions
@@ -459,6 +459,12 @@ Each spike has a question, a method and a pass bar; results go to §10 with numb
     time; "attendees can like each other" is opt-in per event and limited to the active mode and mutual filters;
     the event chat is for confirmed attendees only, encrypted like DMs (Q12), closed 7 days after the event;
     the description gets the first-message link/phone check plus a warning in the form.
+- **Q15 (UI languages): en, nl, fr, de, es, pt, it** (owner, 2026-11-19: "B"). Translated during development
+  (no cost); every screen has a "suggest a better translation" link. The owner can check only nl/fr/en; de/es/pt/it
+  stand until users report. Gender agreement (fr/es/pt/it) is written with neutral forms where the language allows.
+  Legal texts (privacy policy, terms) are binding in English only; the other versions are marked informational
+  until checked. The translations golden test (`SparkTranslationLayersTests`) keeps every key in all seven.
+  Spoken languages (Q4) are the full ISO 639-1 list, independent of this.
 - **Q9, phone verification: no** (follows from the owner's "i don't have money to spend for other services",
   2026-11-19; SMS costs per message). Email verification only.
 - **Q16, funding: none at launch.** The only new running cost is the backup Storage Box (Q18, ~€4/month); the app

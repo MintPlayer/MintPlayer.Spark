@@ -4,7 +4,9 @@ PRD: [dating_app_PRD.md](dating_app_PRD.md). Everything lands in **one PR** from
 (app, framework changes, CodeCoverage/MailRelay compose changes, deploy workflow). Tests are written red-first per
 step and run once at the end (global rules 5/6); spikes measure and record numbers in PRD §10.
 
-Status (2026-11-19): PRD and plan drafted; grill on PRD §9 next. No code yet.
+Status (2026-11-19): PRD and plan drafted; **grill done** (step 0.1): Q1–Q18 all decided, PRD §10. Launch
+blockers recorded there: backups (Q18), the legal check per country (Q14), DPIA/privacy policy/terms (§5.6). Next:
+spikes S1/S2 (step 0.2). No code yet.
 
 ### Log
 
@@ -12,6 +14,12 @@ Update at every step; it is what survives a context compaction.
 
 - 2026-11-19: investigation (PRD §2), VPS layout read (shared `coverage-raven`, per-app network + database-scoped
   client cert, Community licence, nightly `raven-cert-renew`). Branch `feat/dating-app` created.
+- 2026-11-19: grill Q1–Q18 with the owner, one commit per decision. Name Bothmeet; worldwide; Friends/Relationship
+  as exclusive modes; broad gender model; hard mutual language filter; like count only; limits ×3; shared
+  `coverage-raven`; messages encrypted with the Data Protection key ring (key-ring volumes checked on the VPS, no
+  backup of them found); backups to a Storage Box; three-tier moderation; public event pages; 7 UI languages.
+  Step 1.1 now scaffolds 7 languages (Q15); 1.8 encrypts message bodies (Q12); 1.10 adds the Q11 statuses and the
+  Q13 sweep; 2.1 public event pages (Q10).
 
 ## Stage 0: decisions and spikes
 
