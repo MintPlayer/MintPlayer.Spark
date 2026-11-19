@@ -415,3 +415,12 @@ Each spike has a question, a method and a pass bar; results go to §10 with numb
   before deletion; no sign-in → full deletion per Q11. The other party's notification says "removed after a long
   period of inactivity", not "deleted their account". A daily sweep (Spark cron) runs it; tests cover each
   boundary.
+- **Q14, age: self-declared birth date + report-and-hide, plus regional blocking where the law requires more**
+  (owner, 2026-11-19: "agree", to the recommendation A + C). Under 18 at sign-up is refused, and the same browser
+  and email cannot retry with another date. An "underage" report hides the profile **at once**, before review;
+  proof of age is asked only then (proposed: an ID document shown to the moderator through a one-off upload,
+  deleted the moment the report is decided, never kept). Accounts whose underage reports keep proving false lose
+  that report category. **Launch blocker:** a legal check lists the countries where a declared birth date is not
+  enough (e.g. UK Online Safety Act, some US states, Australia); there the app refuses sign-up until a solution
+  exists (country from the sign-up location, §5.2). Third-party facial age estimation is rejected for the launch
+  (cost per check, faces to a third party; "free" and "no trackers").
