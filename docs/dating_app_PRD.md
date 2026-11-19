@@ -294,7 +294,8 @@ Each spike has a question, a method and a pass bar; results go to §10 with numb
 | Q9 | Phone verification (SMS costs money) | no |
 | Q10 | Events: who may create, anonymous browsing (SEO/growth vs privacy), "attendees can like each other" | verified users; signed-in only; opt-in |
 | Q11 | On account deletion, what does the other party see of past messages? | conversation removed for both |
-| Q12 | Data at rest without Raven encryption: field-level encryption of messages, disk encryption, or accept | field-level for messages, decide after S6 |
+| Q12 | Data at rest without Raven encryption: field-level encryption of messages, disk encryption, or accept | **decided: field-level, messages** (§10) |
+| Q18 | Backups: database and key ring, where, how often, restore tested? (raised by Q12) | open |
 | Q13 | Retention of inactive accounts | hide 6 months, delete 24 months |
 | Q14 | Age verification: self-declared birth date only, or more? | self-declared + report "underage" with immediate hide |
 | Q15 | Launch region and UI languages | **region decided: worldwide** (§10); UI languages open |
@@ -359,3 +360,24 @@ Each spike has a question, a method and a pass bar; results go to §10 with numb
   same server as the other apps (isolation by certificate scope only). S8 shrinks to: measure the licence limits
   (`/license/status`) and the other apps' current use, so the moment to move Bothmeet out (export + own server) is
   a number, not a feeling.
+- **Q12, data at rest: the app encrypts message bodies with Spark's Data Protection key ring** (owner,
+  2026-11-19: "Probably A - But you'll need to see if the keyring is already persisted on my vps
+  (PersistKeysToFileSystem)"). Scope: message text and report snapshots only. Email (sign-in lookup) and birth date
+  (age filter) stay plaintext; filters and gender are query fields.
+  - **Persisted: yes** (checked 2026-11-19). Spark calls `PersistKeysToFileSystem` when
+    `Spark:DataProtection:KeysPath` is set (`libs/spark/MintPlayer.Spark/Services/SparkDataProtection.cs`); every
+    production compose mounts a named volume there (`apps/MintPlayer/docker-compose.yml`:38/62,
+    CodeCoverage :204/267, SeoTester :47/82). On the VPS the volumes `code-coverage_`, `seotester_` and
+    `mintplayer_dataprotection-keys` each hold one `key-*.xml`, created 2026-09-29, 2026-10-11 and 2026-10-22, so
+    they survive redeploys. Bothmeet gets its own `bothmeet_dataprotection-keys` volume and its own
+    `ApplicationName`, so no other app's key ring can read its payloads.
+  - **Not encrypted at rest:** no `ProtectKeysWith…` anywhere in `libs`/`apps` (grep, 2026-11-19), so the key XML
+    is plaintext on the volume (directories `drwxr-xr-x`). Root on the VPS reads keys and database alike (accepted:
+    §5.5 protects against RavenDB, backup and certificate leaks, not root).
+  - **⚠️ No backup of the key rings found:** no cron or systemd job on the VPS mentions the volumes or a backup tool
+    (2026-11-19). Today a lost volume only signs people out; with Q12 it makes every stored message unreadable
+    forever. A key-ring backup, stored apart from the database backup, is a launch blocker (Q18).
+  - Microsoft's guidance is that Data Protection is "not primarily intended for indefinite persistence of
+    confidential payloads": rotated keys stay in the ring (never deleted by default), and revoking a key makes its
+    payloads unreadable, so no key is ever revoked for this app. Spark already stores user-store secrets this way
+    (`UserStore.Secrets.cs`).
