@@ -327,3 +327,10 @@ Each spike has a question, a method and a pass bar; results go to §10 with numb
   switch it off, which widens only their own side (the other side's filter still applies, mutual rule). The default
   "languages I speak" at onboarding is the UI language at "native", never derived from location (§3.4 item 3).
   Accepted risks: language-practice seekers must lower their minimum; overstated levels are only caught by reports.
+- **Q5, DM setting: three values** (owner, 2026-11-19: "A", to the option "A with mutual filters for requests").
+  **Matches only** (default); **also message requests**: someone who is mutually eligible (both sides' hard filters,
+  same rule as the stack, same mode) may send one request message, no links or phone numbers, counted against the
+  daily new-conversation cap (Q7); nothing more until the receiver accepts; decline is silent and blocks further
+  requests from that sender; the sender never sees read state; **off**: nobody can start a new conversation, not
+  even a new match (the match shows "not accepting new conversations right now"), existing conversations stay.
+  Enforced server-side on the create-conversation and send-message endpoints, not in the UI only (S6).
