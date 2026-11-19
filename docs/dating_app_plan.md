@@ -27,7 +27,7 @@ Update at every step; it is what survives a context compaction.
 
 | Step | Work | Done when |
 |---|---|---|
-| 1.1 | Scaffold `apps/Klik` (host, Library, Tests, ClientApp `@spark-apps/klik`) from `apps/MintPlayer`: https 5017/http 5018, PWA, `<spark-shell>`, nl/fr/en, auth (email verification required, passkeys, Google, Microsoft). `CLAUDE.md` lists it as production | host + client build without warnings |
+| 1.1 | Scaffold `apps/Bothmeet` (host, Library, Tests, ClientApp `@spark-apps/bothmeet`) from `apps/MintPlayer`: https 5017/http 5018, PWA, `<spark-shell>`, nl/fr/en, auth (email verification required, passkeys, Google, Microsoft). `CLAUDE.md` lists it as production | host + client build without warnings |
 | 1.2 | Domain: `Profile`, `Photo`, `Preferences`, `LanguageSkill`, `Swipe`, `Match`, `Block`, `Settings`; `security.json` (Anonymous: nothing; Signed-in: own rows only); row filters + attribute redaction; one test per row of PRD §5.1 | `--spark-synchronize-model`, `--spark-synchronize-security`, `--spark-verify-security` clean |
 | 1.3 | Location: grid snapping, bucketed distance, rate-limited updates (S3 result) | trilateration test green |
 | 1.4 | Photos: upload, re-encode, attachment storage, authorised serving, SW exclusion (S4 result) | metadata-strip and access tests green |
@@ -51,8 +51,8 @@ Update at every step; it is what survives a context compaction.
 
 | Step | Work | Done when |
 |---|---|---|
-| 3.1 | `apps/Klik/docker-compose.yml`: networks `web`, `klik-raven` (internal), `klik-mail` (internal); `Spark__RavenDb__CertificateFile/KeyFile/ServerCertificateAuthorityFile`, `EnsureDatabaseCreated=false`, Data Protection keys volume | `tools/verify-klik-deploy.test.mjs` green |
-| 3.2 | CodeCoverage compose + `raven-cert-renew` know `klik`; MailRelay knows `klik-mail` (or the dedicated server of Q2) | |
-| 3.3 | `.github/workflows/klik-deploy.yml`, image `ghcr.io/mintplayer/klik:master` | |
-| 3.4 | **Owner-run on the VPS** (each step asked first): operator creates database `Klik`, issues `klik.crt` (Admin on `Klik` only) with the CA, installs files `0400` for the app user, DNS + Traefik route | app healthy, `/license/status` unchanged, cert scoped (a query on another database is refused) |
+| 3.1 | `apps/Bothmeet/docker-compose.yml`: networks `web`, `bothmeet-raven` (internal), `bothmeet-mail` (internal); `Spark__RavenDb__CertificateFile/KeyFile/ServerCertificateAuthorityFile`, `EnsureDatabaseCreated=false`, Data Protection keys volume | `tools/verify-bothmeet-deploy.test.mjs` green |
+| 3.2 | CodeCoverage compose + `raven-cert-renew` know `bothmeet`; MailRelay knows `bothmeet-mail` (or the dedicated server of Q2) | |
+| 3.3 | `.github/workflows/bothmeet-deploy.yml`, image `ghcr.io/mintplayer/bothmeet:master` | |
+| 3.4 | **Owner-run on the VPS** (each step asked first): operator creates database `Bothmeet`, issues `bothmeet.crt` (Admin on `Bothmeet` only) with the CA, installs files `0400` for the app user, DNS + Traefik route | app healthy, `/license/status` unchanged, cert scoped (a query on another database is refused) |
 | 3.5 | Full test sweep once, via the PR's CI (memory: no local sweeps), then coverage via the codecoverage MCP | green |

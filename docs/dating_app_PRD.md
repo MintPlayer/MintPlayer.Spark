@@ -1,11 +1,11 @@
 # Dating app on Spark: PRD
 
-Status: draft, 2026-11-19. Execution plan: [dating_app_plan.md](dating_app_plan.md). Working name **"Klik"**
-(Dutch "it clicked", reads the same in nl/fr/en) until Q1 is answered; every path below uses it as a placeholder.
+Status: draft, 2026-11-19. Execution plan: [dating_app_plan.md](dating_app_plan.md). Name: **Bothmeet**
+(bothmeet.com + bothmeet.net; Q1 in §10): "both want to meet", for a date, a friend or an event.
 
 ## 1. Goal
 
-A free alternative to Tinder, built as a **production** Spark app in `apps/Klik`, installable as a PWA and
+A free alternative to Tinder, built as a **production** Spark app in `apps/Bothmeet`, installable as a PWA and
 deployed on the VPS beside CodeCoverage, SeoTester and MintPlayer. The owner's brief (2026-11-19):
 
 - swipe left/right on profiles; matches;
@@ -20,7 +20,7 @@ deployed on the VPS beside CodeCoverage, SeoTester and MintPlayer. The owner's b
   and more;
 - "anything else you can think of" (§3.4, all marked as proposals).
 
-When it is created, `apps/Klik` is added to the production paragraph of `CLAUDE.md`.
+When it is created, `apps/Bothmeet` is added to the production paragraph of `CLAUDE.md`.
 
 ## 2. Where we start from (investigation, 2026-11-19)
 
@@ -63,7 +63,7 @@ When it is created, `apps/Klik` is added to the production paragraph of `CLAUDE.
   status line: it had to be extended for `mintplayer`).
 - Each app also has its own internal mail network to the shared relay (`coverage-mail`, `seo-mail`,
   `mintplayer-mail`).
-- Taken ports: https 5003, 5005, 5007, 5009, 5011, 5013, 5015. **Klik takes https 5017 / http 5018.**
+- Taken ports: https 5003, 5005, 5007, 5009, 5011, 5013, 5015. **Bothmeet takes https 5017 / http 5018.**
 
 So the owner's note "access to the RavenDB server needs a client certificate" (2026-11-19) is the existing
 pattern: decision D8 below, with the open choice of a dedicated server in Q2.
@@ -168,15 +168,15 @@ importing contacts.
 
 | # | Decision | Why |
 |---|---|---|
-| D1 | `apps/Klik/Klik` (host) + `apps/Klik/Klik.Library` (entities) + `apps/Klik/Klik.Tests`; ClientApp `@spark-apps/klik`, scaffolded like `apps/MintPlayer` | the established production-app layout |
+| D1 | `apps/Bothmeet/Bothmeet` (host) + `apps/Bothmeet/Bothmeet.Library` (entities) + `apps/Bothmeet/Bothmeet.Tests`; ClientApp `@spark-apps/bothmeet`, scaffolded like `apps/MintPlayer` | the established production-app layout |
 | D2 | Own Spark accounts (`AddSparkFull`/Authorization, `SparkUser`), not SparkId | owner, 2026-11-19 |
 | D3 | **Same rules for everyone**: no gender-dependent code path anywhere; uniform limits, e.g. 200 likes/day, 30 new conversations/day, via quotas; nothing for sale | owner, 2026-11-19; numbers are a proposal (Q7) |
 | D4 | Stack order = mutual eligibility, then least-recently-shown, then last active. **No desirability score** is computed or stored | owner, 2026-11-19 |
 | D5 | Profiles are **never** reachable through generic queries for non-admins. The stack, likes, matches and event attendees are custom endpoints that return a `ProfileCard` projection, after the row checks of §5.1 | §5.1 |
 | D6 | Chat = `Conversation` + `Message` documents, `"live": true`, row filter "I am a participant"; push when no tab is open | compose existing blocks (memory "compose from existing blocks") |
 | D7 | Spatial: app index with `CreateSpatialField` on a **snapped** location (§5.2); radius via Raven `WithinRadiusOf` in the custom endpoints | S1 |
-| D8 | Production RavenDB over HTTPS with **Klik's own client certificate, Admin on database `Klik` only**, private CA, own internal network `klik-raven`, added to `raven-cert-renew`. `EnsureDatabaseCreated=false`; the operator creates the database | existing pattern, §2.3; owner's note 2026-11-19. Q2: shared vs dedicated server |
-| D9 | Own mail network `klik-mail` to the shared relay | §2.3 |
+| D8 | Production RavenDB over HTTPS with **Bothmeet's own client certificate, Admin on database `Bothmeet` only**, private CA, own internal network `bothmeet-raven`, added to `raven-cert-renew`. `EnsureDatabaseCreated=false`; the operator creates the database | existing pattern, §2.3; owner's note 2026-11-19. Q2: shared vs dedicated server |
+| D9 | Own mail network `bothmeet-mail` to the shared relay | §2.3 |
 | D10 | Ids are GUIDs (`Profiles/{guid}`), deterministic ids only for pair documents (`Swipes/{a}/{b}`, `Matches/{min}/{max}`); no sequential ids anywhere | no enumeration, idempotent writes (S5) |
 | D11 | Zoneless Angular, ng-bootstrap components, `<spark-icon>` for icons, router navigation only (no full reloads) | repo rules / memory |
 | D12 | One pull request, branch `feat/dating-app`, framework changes included | global rule 8 |
@@ -252,7 +252,7 @@ Each spike has a question, a method and a pass bar; results go to §10 with numb
 | S5 | Two users like each other at the same moment: exactly one `Match` | deterministic id + optimistic concurrency vs compare-exchange; 1000 parallel pairs | 1000 matches, 0 duplicates, 0 lost |
 | S6 | Chat on live updates: latency, per-message row security, unread counts, push when no tab is open, DM setting enforced server-side | two browsers + one closed PWA | < 500 ms delivery; a non-participant gets nothing, not even counts |
 | S7 | Swipe UX in a mobile PWA: pointer-event gestures, prefetch, keyboard, reduced motion | Playwright mobile emulation + a real phone | 60 fps drag, no layout shift, works without gestures |
-| S8 | Production database: shared `coverage-raven` (new db + cert + network) vs a dedicated RavenDB container for Klik (own licence? Community allows how many servers?) | read the licence terms, `/license/status`; dry-run the cert issuance with the CA locally | owner picks (Q2) with the costs in hand |
+| S8 | Production database: shared `coverage-raven` (new db + cert + network) vs a dedicated RavenDB container for Bothmeet (own licence? Community allows how many servers?) | read the licence terms, `/license/status`; dry-run the cert issuance with the CA locally | owner picks (Q2) with the costs in hand |
 | S9 | Photo verification without paid services: moderator compares a pose selfie, or none | design only | owner picks (Stage 3) |
 | S10 | Account deletion leaves **nothing**: documents, attachments, revisions, compare-exchange, indexes' stored fields, notifications, push subscriptions | delete a fully used account, then search the whole database for its id, email and a photo hash | zero hits |
 
@@ -269,12 +269,12 @@ Each spike has a question, a method and a pass bar; results go to §10 with numb
 
 ## 8. Changes outside this app
 
-- `CLAUDE.md`: list `apps/Klik` as production (https 5017).
-- CodeCoverage compose / deploy: the `klik-raven` network on `coverage-raven` (unless Q2 = dedicated server).
-- `apps/CodeCoverage/ops/raven-cert-renew.sh`: renew `klik.crt`.
-- `apps/MailRelay`: a `klik-mail` network.
-- `.github/workflows/klik-deploy.yml` and `tools/verify-klik-deploy.test.mjs` (like MintPlayer's).
-- CI: `Klik.Tests` lands in "Other suites" automatically; keep the run at ≤ 20 jobs.
+- `CLAUDE.md`: list `apps/Bothmeet` as production (https 5017).
+- CodeCoverage compose / deploy: the `bothmeet-raven` network on `coverage-raven` (unless Q2 = dedicated server).
+- `apps/CodeCoverage/ops/raven-cert-renew.sh`: renew `bothmeet.crt`.
+- `apps/MailRelay`: a `bothmeet-mail` network.
+- `.github/workflows/bothmeet-deploy.yml` and `tools/verify-bothmeet-deploy.test.mjs` (like MintPlayer's).
+- CI: `Bothmeet.Tests` lands in "Other suites" automatically; keep the run at ≤ 20 jobs.
 - Possibly Spark: a spatial filter (S1) and an image attribute (S4), only if the spikes say so.
 - DNS for the chosen domain (Q1).
 
@@ -282,8 +282,8 @@ Each spike has a question, a method and a pass bar; results go to §10 with numb
 
 | # | Question | Proposal |
 |---|---|---|
-| Q1 | Name and domain | "Klik" placeholder |
-| Q2 | Shared `coverage-raven` with a database-scoped cert, or a dedicated RavenDB for Klik? | shared (D8), unless S8 shows a dedicated Community server is free and cheap |
+| Q1 | Name and domain | **decided: Bothmeet** (§10) |
+| Q2 | Shared `coverage-raven` with a database-scoped cert, or a dedicated RavenDB for Bothmeet? | shared (D8), unless S8 shows a dedicated Community server is free and cheap |
 | Q3 | Gender model: which options, "interested in" multi-select, non-binary? | woman / man / non-binary + "more" free text; interested in = multi-select |
 | Q4 | Language filter: hard + mutual by default? Minimum level? | yes; "conversational" |
 | Q5 | DM setting: the three modes of §3.1? Do "open requests" exist at all? | yes, default "matches only" |
@@ -301,4 +301,10 @@ Each spike has a question, a method and a pass bar; results go to §10 with numb
 
 ## 10. Spike results and grill decisions
 
-(empty)
+- **Q1, name: Bothmeet** (owner, 2026-11-19). Domains bothmeet.com and bothmeet.net: unregistered at the Verisign
+  registry (RDAP 404, 2026-11-19), confirmed available by the owner at a registrar. Chosen over Datemates
+  (datemates.com parked by GoDaddy; only .net/.be free) and Datenite (only .be free, confusable with
+  datenight.be, registered 2015), because the name must cover friendships and events as well as dating
+  (owner). Identifiers: `apps/Bothmeet`, ClientApp `@spark-apps/bothmeet`, database `Bothmeet`, certificate
+  `bothmeet.crt`, networks `bothmeet-raven` / `bothmeet-mail`, image `ghcr.io/mintplayer/bothmeet`. Follow-up:
+  owner registers the domains; trademark search (BOIP/EUIPO) before launch.
