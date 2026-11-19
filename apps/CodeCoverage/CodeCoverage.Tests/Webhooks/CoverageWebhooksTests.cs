@@ -7,7 +7,9 @@ using CodeCoverage.Webhooks;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Configuration;
 using MintPlayer.Spark.Apps;
+using MintPlayer.Spark.Apps.Catalog;
 using MintPlayer.Spark.Messaging;
 using MintPlayer.Spark.Messaging.Abstractions;
 using NSubstitute;
@@ -189,5 +191,55 @@ public class CoverageWebhooksTests : CoverageRavenTest
         (await Owners(visibility, null).CanManageAsync(AcmeKey, "users/ann", default)).Should().BeFalse("nobody is signed in");
         (await Owners(visibility, "users/ann").CanManageAsync("acme", "users/ann", default)).Should().BeFalse("acme is not a provider:login key");
         await visibility.DidNotReceive().CanManageOwnerAsync("acme");
+    }
+
+    /// <summary>
+    /// #691 D41: the event names and permissions are the receivers' contract, and every payload carries exactly the fields
+    /// its published schema lists (a receiver generates its types from that schema).
+    /// </summary>
+    [Fact]
+    public void With_webhooks_on_the_catalog_lists_the_ten_events_and_each_payload_matches_its_schema()
+    {
+        var configuration = new Microsoft.Extensions.Configuration.ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { [CoverageWebhooks.EnabledSetting] = "true" }).Build();
+        var services = new ServiceCollection();
+        new MintPlayer.Spark.SparkBuilder(services, configuration).AddCoverageWebhooks(configuration);
+        var catalog = services.BuildServiceProvider().GetRequiredService<WebhookEventCatalog>();
+
+        catalog.Events.Select(e => (e.Name, e.Permission)).Should().BeEquivalentTo(new[]
+        {
+            ("coverage.report.processed", "coverage:read"), ("coverage.build.completed", "coverage:read"),
+            ("merge_queue.entry.queued", "merge_queue:read"), ("merge_queue.entry.merged", "merge_queue:read"), ("merge_queue.entry.removed", "merge_queue:read"),
+            ("dependencies.pull_request.opened", "dependencies:read"), ("dependencies.run.completed", "dependencies:read"),
+            ("versioning.run.completed", "versioning:read"), ("backport.attempted", "versioning:read"), ("backport.merged", "versioning:read"),
+        });
+
+        var at = new DateTimeOffset(2026, 11, 19, 10, 0, 0, TimeSpan.Zero);
+        var pull = new CodeCoverage.MergeQueue.MergeQueuePullRequest("acme/widgets", "github", 7, "fix: guard", "main", 1, "ann");
+        var run = new CodeCoverage.Dependencies.DependencyRun("acme/widgets", "github", null, "main", 3, "Schedule");
+        object[] samples =
+        [
+            new CoverageReportProcessed("acme/widgets", "github", Sha, "main", 12, "7.2", "CI", "s1", "test", ["unit"], "Parsed", null, 3,
+                [new CoverageReportFile("lcov.info", true, "LCOV", 3, null, null)], at),
+            new CoverageBuildCompleted("acme/widgets", "github", Sha, "main", 12, "7.2", "CI", "Complete", "Explicit", false,
+                new CoverageNumbers(80, 100, 3, 4, 5), new PatchNumbers(9, 10, "main"), at),
+            new CodeCoverage.MergeQueue.MergeQueueEntryQueued(pull, at),
+            new CodeCoverage.MergeQueue.MergeQueueEntryMerged(pull, Sha, at),
+            new CodeCoverage.MergeQueue.MergeQueueEntryRemoved(pull, "evicted", "checks-failed", "CI failed", at),
+            new CodeCoverage.Dependencies.DependencyPullRequestOpened(run, 8, "Update dependencies", "dependencies/rolling", false, at),
+            new CodeCoverage.Dependencies.DependencyRunCompleted(run, "published", "Published #8", 8, at),
+            new CodeCoverage.PackageVersioning.VersioningRunResult("acme/widgets", "github", "main", Sha, "77.2", "versioned", null,
+                [new CodeCoverage.PackageVersioning.VersioningPackage("Acme.Widget", "nuget", "1.2.0", "Acme.Widget/v1.2.0")], ["Acme.Other"], at),
+            new CodeCoverage.PackageVersioning.BackportAttempted("acme/widgets", "github", 7, Sha, "release/1.x", "opened", 9, null, at),
+            new CodeCoverage.PackageVersioning.BackportMerged("acme/widgets", "github", 9, 7, "release/1.x", at),
+        ];
+        samples.Select(s => catalog.Find(s.GetType())?.Name).Should().OnlyHaveUniqueItems().And.NotContainNulls("every sample is a registered event");
+
+        foreach (var sample in samples)
+        {
+            var schema = catalog.Find(sample.GetType())!.Schema;
+            var payload = System.Text.Json.JsonSerializer.SerializeToNode(sample, sample.GetType(), MintPlayer.Webhooks.WebhookJson.Options)!.AsObject();
+            payload.Select(p => p.Key).Order().Should().Equal(schema["properties"]!.AsObject().Select(p => p.Key).Order(), sample.GetType().Name);
+        }
     }
 }
