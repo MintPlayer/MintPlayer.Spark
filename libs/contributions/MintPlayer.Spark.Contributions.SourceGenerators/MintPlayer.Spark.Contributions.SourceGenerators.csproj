@@ -28,8 +28,8 @@
     need Tools gets embedded in this nupkg next to the generator instead.
     -->
     <ItemGroup>
-      <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="5.9.0" PrivateAssets="all" />
-      <PackageReference Include="Microsoft.CodeAnalysis.Analyzers" Version="5.9.0" PrivateAssets="all" />
+      <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="5.12.0" PrivateAssets="all" />
+      <PackageReference Include="Microsoft.CodeAnalysis.Analyzers" Version="5.12.0" PrivateAssets="all" />
     </ItemGroup>
 
     <!--
@@ -40,7 +40,7 @@
     Workspaces for exactly that reason (same note as LibraryGenerators.csproj).
     -->
     <ItemGroup>
-      <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="5.9.0"
+      <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="5.12.0"
                         PrivateAssets="all" ExcludeAssets="runtime" />
     </ItemGroup>
 </Project>
