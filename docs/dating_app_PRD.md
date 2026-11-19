@@ -290,16 +290,16 @@ Each spike has a question, a method and a pass bar; results go to §10 with numb
 | Q5 | DM setting: the three modes of §3.1? Do "open requests" exist at all? | yes, default "matches only" |
 | Q6 | "Who liked you" free: shown with photos, or blurred until I swipe on them myself? | **decided: count only** (§10) |
 | Q7 | Uniform daily caps: values | **decided** (§10) |
-| Q8 | Moderators: only the owner at launch? Photo pre-moderation or post? | owner only; post-moderation + auto-hide after reports |
-| Q9 | Phone verification (SMS costs money) | no |
+| Q8 | Moderators: only the owner at launch? Photo pre-moderation or post? | **decided** (§10) |
+| Q9 | Phone verification (SMS costs money) | **decided: no** (§10) |
 | Q10 | Events: who may create, anonymous browsing (SEO/growth vs privacy), "attendees can like each other" | verified users; signed-in only; opt-in |
 | Q11 | On account deletion, what does the other party see of past messages? | **decided** (§10) |
 | Q12 | Data at rest without Raven encryption: field-level encryption of messages, disk encryption, or accept | **decided: field-level, messages** (§10) |
 | Q18 | Backups: database and key ring, where, how often, restore tested? (raised by Q12) | **decided** (§10) |
-| Q13 | Retention of inactive accounts | hide 6 months, delete 24 months |
-| Q14 | Age verification: self-declared birth date only, or more? | self-declared + report "underage" with immediate hide |
+| Q13 | Retention of inactive accounts | **decided** (§10) |
+| Q14 | Age verification: self-declared birth date only, or more? | **decided** (§10) |
 | Q15 | Launch region and UI languages | **region decided: worldwide** (§10); UI languages open |
-| Q16 | Funding a free service (donations? none?) | none in Stage 1 |
+| Q16 | Funding a free service (donations? none?) | **decided: none at launch** (§10) |
 
 ## 10. Spike results and grill decisions
 
@@ -424,3 +424,29 @@ Each spike has a question, a method and a pass bar; results go to §10 with numb
   enough (e.g. UK Online Safety Act, some US states, Australia); there the app refuses sign-up until a solution
   exists (country from the sign-up location, §5.2). Third-party facial age estimation is rejected for the launch
   (cost per check, faces to a third party; "free" and "no trackers").
+- **Q8, moderation: community moderation for public content, Moderator and Admin as separate roles** (owner,
+  2026-11-19: "I think I'd go for C - also, i don't have money to spend for other services", then "I follow you.
+  But we'll probably make a distinction between Admin and Moderator"). Built on `MintPlayer.Spark.Moderation`
+  (README: earned privileges gated by reputation + account age + active days; only reversible privileges are
+  earnable; ten vote-fraud defences). Three tiers:
+  1. **Community reviewers** (earned): review reports on **public content only**, which any eligible signed-in
+     user could already see: profile text, photos, events. Reversible actions only (hide/restore); several
+     independent reviewers per decision; may skip a case (explicit-photo warning).
+  2. **Moderator** (appointed by the Admin, never earned; interpretation, owner to correct): everything a
+     reviewer does, plus the private reports (reported message snapshots, underage reports and the one-off ID
+     proof of Q14), suspensions, statements of reasons and appeals (DSA). Confidentiality agreement; every
+     action logged with its reason; revocable at once.
+  3. **Admin** (the owner): Moderator rights, plus appointing/revoking moderators, the settings (Q7 limits, Q13
+     retention), the country blocks (Q14). No general browsing of user data; support access is logged.
+  - **Reputation without votes** (a dating app has none; votes would become a popularity score, against D4):
+    + for an upheld report, − for a rejected one, + for a review that agrees with the final outcome; privilege
+    gate also requires e.g. 60 days account age and 30 active days. Reputation is never shown on a profile and never
+    affects the stack.
+  - Photos are post-moderated (visible at once, checked after a report); pre-moderation would make new users wait
+    for one person. A local nudity classifier (no third party) is a Stage 3 idea.
+  - Accepted risks: brigading by a patient group (reversible actions, reviewer diversity, the owner audits
+    decisions); in the first months nobody has reputation, so Moderator/Admin handle everything.
+- **Q9, phone verification: no** (follows from the owner's "i don't have money to spend for other services",
+  2026-11-19; SMS costs per message). Email verification only.
+- **Q16, funding: none at launch.** The only new running cost is the backup Storage Box (Q18, ~€4/month); the app
+  runs on the existing VPS (Q2). Donations can be decided later without affecting the design.
