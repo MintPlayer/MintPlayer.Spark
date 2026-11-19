@@ -12,7 +12,8 @@ deployed on the VPS beside CodeCoverage, SeoTester and MintPlayer. The owner's b
 - direct messages, with a setting each user can turn on and off;
 - a web app that installs as a PWA (no app stores);
 - **no discrimination against men** (owner, 2026-11-19, answered as all four of): the same rules for every
-  gender, no hidden desirability score, no paywall on likes or swipes, and "who liked you" visible for free;
+  gender, no hidden desirability score, no paywall on likes or swipes, and "who liked you" visible for free
+  (*superseded by Q6, §10: everyone sees how many liked them, not who*);
 - free to use;
 - people organise events, and others search for them;
 - user information is never readable by anyone not entitled to it;
@@ -104,7 +105,7 @@ highlighted. Swipe right (like), left (pass), **undo the last swipe, free**. Ord
 least-recently-shown first, then most recently active (D4). **No score of how often someone is liked.** Keyboard
 and button alternatives to gestures (accessibility).
 
-**Likes and matches.** "Who liked you" list, free for everyone (owner). A mutual like is a match: in-app + push
+**Likes and matches.** A count of incoming likes, free for everyone; the likers come first in the stack (Q6). A mutual like is a match: in-app + push
 notification to both. Unmatch at any time (the conversation disappears for both).
 
 **Direct messages and the DM setting** (Q5 decides the exact semantics). Proposal:
@@ -151,7 +152,7 @@ events and organiser groups, de/en extra UI languages.
 3. **UI language ≠ spoken languages:** the default for "languages I speak" is the UI language, not the location.
 4. **Exposure fairness:** least-recently-shown first, so every eligible profile gets seen, instead of a popularity
    loop.
-5. **Undo, who-liked-you, unlimited radius changes, read-receipt toggle**, all free: the paywalled features of
+5. **Undo, like count, unlimited radius changes, read-receipt toggle**, all free: the paywalled features of
    Tinder, given to everyone.
 6. **Anti-scam in the first message** (no links/phone numbers) and a uniform daily like cap (D3) instead of paid
    limits.
@@ -193,7 +194,7 @@ and location + photos make it stalking-relevant. Real incidents shape the design
 |---|---|---|---|---|
 | profile card (name, age, photos, bio, languages, interests, optional fields) | yes | only when served in their stack, when they liked me, when matched, or when we are both opted-in attendees of an event; **never** when either blocked the other | only via a report | **no** |
 | birth date, email, exact location, filters, settings | yes | **never** | no (admin only, for support) | no |
-| swipes | own outgoing | incoming likes only ("who liked you"); passes never | no | no |
+| swipes | own outgoing | the **count** of incoming likes only (Q6); who liked, and passes, never | no | no |
 | messages | participants | participants only | only the messages attached to a report (snapshot) | no |
 | events | yes | public fields to signed-in users; private place after acceptance | yes | Q10 |
 
@@ -287,7 +288,7 @@ Each spike has a question, a method and a pass bar; results go to §10 with numb
 | Q3 | Gender model: which options, "interested in" multi-select, non-binary? | woman / man / non-binary + "more" free text; interested in = multi-select |
 | Q4 | Language filter: hard + mutual by default? Minimum level? | yes; "conversational" |
 | Q5 | DM setting: the three modes of §3.1? Do "open requests" exist at all? | yes, default "matches only" |
-| Q6 | "Who liked you" free: shown with photos, or blurred until I swipe on them myself? | shown, free (owner) — confirm photos |
+| Q6 | "Who liked you" free: shown with photos, or blurred until I swipe on them myself? | **decided: count only** (§10) |
 | Q7 | Uniform daily caps: values | 200 likes, 30 new conversations, 10 reports |
 | Q8 | Moderators: only the owner at launch? Photo pre-moderation or post? | owner only; post-moderation + auto-hide after reports |
 | Q9 | Phone verification (SMS costs money) | no |
@@ -334,3 +335,9 @@ Each spike has a question, a method and a pass bar; results go to §10 with numb
   requests from that sender; the sender never sees read state; **off**: nobody can start a new conversation, not
   even a new match (the match shows "not accepting new conversations right now"), existing conversations stay.
   Enforced server-side on the create-conversation and send-message endpoints, not in the UI only (S6).
+- **Q6, incoming likes: count only** (owner, 2026-11-19: "I'd go for B i think"). Changes the owner's first answer
+  ("show who liked you, free", §1). Everyone sees, for free, how many people liked them in the active mode; never
+  who. Pending likers are placed **first** in the stack (still only mutually eligible ones), so a like turns into a
+  match quickly; the identity is revealed only by the match. This is the one ordering exception to D4: it ranks by
+  "this person already chose you", never by popularity. The count endpoint returns a number only, never ids; a
+  blocked or suspended liker is not counted.

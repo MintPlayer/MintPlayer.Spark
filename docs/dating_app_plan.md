@@ -33,7 +33,7 @@ Update at every step; it is what survives a context compaction.
 | 1.4 | Photos: upload, re-encode, attachment storage, authorised serving, SW exclusion (S4 result) | metadata-strip and access tests green |
 | 1.5 | Onboarding + profile editor + preferences UI (languages with levels, mutual filters explained) | usable on a phone viewport |
 | 1.6 | Stack endpoint (S1/S2 result), shown-tracking, swipe/undo endpoints with quotas, match creation (S5 result) | endpoint + race tests green |
-| 1.7 | Swipe deck page (gestures + buttons + keyboard), "who liked you", matches list | Playwright check in mobile emulation |
+| 1.7 | Swipe deck page (gestures + buttons + keyboard), incoming-like count (Q6), matches list | Playwright check in mobile emulation |
 | 1.8 | Chat: `Conversation`/`Message` live, DM setting (Q5), message requests, first-message link block, read receipts toggle, mute/unmatch/block/report | S6 pass bars as tests |
 | 1.9 | Notifications: match + message via in-app/push/mail, per-user channels | push arrives with no tab open |
 | 1.10 | Safety + GDPR: moderation wiring (reports, review queue, suspensions, auto-hide), pause, export, hard delete incl. revisions (S10), retention job (Q13), consent screens, privacy/terms pages | S10 zero-hit test green |
