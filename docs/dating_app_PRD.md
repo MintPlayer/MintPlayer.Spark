@@ -315,3 +315,8 @@ Each spike has a question, a method and a pass bar; results go to §10 with numb
   active mode, so a friends-only user never appears in a dating stack. Proposed, unconfirmed: switching mode is
   allowed (at most once a day, D3), keeps both modes' matches and chats, and moves the profile to the other pool.
   Supersedes the "friendship" value of relationship intent in §3.1 (intent now only applies to relationship mode).
+- **Q3, gender model: broad** (owner, 2026-11-19: "C - let's make it broad"). Own gender: man, woman,
+  non-binary. "Interested in": any non-empty subset of the three, in **both** modes (so Q17's Friends "male and/or
+  female" gains non-binary, and Relationship is not limited to one gender). The mutual filter applies in both modes:
+  I see you only if my set contains your gender and yours contains mine. Pronouns stay an optional free-text field,
+  never filtered on. Gender is special-category-adjacent data: shown on the card, never queryable by others (§5.1).
