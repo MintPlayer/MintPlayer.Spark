@@ -182,6 +182,7 @@ public class ReportIngestOutcomeTests : CoverageRavenTest
             .AddSingleton(store)
             .AddSingleton(session)
             .AddSingleton<ICoverageParserFactory, CoverageParserFactory>()
+            .AddSingleton<CodeCoverage.Webhooks.CoverageWebhookPublisher>()
             .AddSingleton(typeof(ILogger<>), typeof(NullLogger<>))
             .BuildServiceProvider();
         var recipient = ActivatorUtilities.CreateInstance<ParseSessionRecipient>(services);

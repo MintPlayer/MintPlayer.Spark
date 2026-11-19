@@ -58,6 +58,7 @@ public partial class VersioningController : ControllerBase
     [Inject] private readonly TimeProvider clock;
     [Inject] private readonly ILogger<VersioningController> logger;
     [Inject] private readonly IDataProtectionProvider dataProtection;
+    [Inject] private readonly Webhooks.CoverageWebhookPublisher webhooks;
 
     /// <summary>See <c>UploadsController.Oidc</c>: GitHub is the only OIDC scheme registered.</summary>
     private static ForgeOidcProfile Oidc => ForgeOidcProfile.GitHub;
@@ -276,6 +277,8 @@ public partial class VersioningController : ControllerBase
         await session.StoreAsync(record, record.Id, cancellationToken);
         // #570 D11: which repository releases each package, and what each release brought, for a later backport's report.
         await UpstreamReleases.RecordAsync(session, repository.Id!, record.Releases, cancellationToken);
+        // #691 D41: saved with the run record; keyed by the run, so the action's retry of the same call sends nothing twice.
+        await webhooks.PublishAsync(VersioningRunResult.Of(record, repository, clock.GetUtcNow().UtcDateTime), repository, record.Id!, session, cancellationToken);
         await session.SaveChangesAsync(cancellationToken);
         // D15: the Releases follow on the versioning lane, one at a time, so a secondary rate limit parks the message
         // instead of holding this request (and the action's fallback clock) open.

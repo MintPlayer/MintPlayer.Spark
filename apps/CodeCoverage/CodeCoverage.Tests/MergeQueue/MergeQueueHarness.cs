@@ -185,12 +185,15 @@ internal sealed class MergeQueueHarness
     /// <summary>The run logs and command lines the engine opened and wrote.</summary>
     public Commands.RecordingLoggerScopes<CodeCoverage.Commands.CommandLifecycle> Logs { get; } = new();
 
+    /// <summary>#691 D41: the webhook events the engine published.</summary>
+    public RecordingWebhooks Webhooks { get; } = new();
+
     private MergeQueueEngine Engine(Raven.Client.Documents.Session.IAsyncDocumentSession session)
         => new(session, Forge, [Queue], Permissions, WriterOverride ?? Writer, TrialPicks, Attention, Outbox, Time,
             Options.Create(new MergeQueueOptions { GitWriterUrl = "http://writer" }),
             new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Coverage:BaseUrl"] = "https://coverage.example" }).Build(),
             Commands.CommandTestKit.Lifecycle(store, Reactions, Time, Logs),
-            NullLogger<MergeQueueEngine>.Instance, new WorkflowHook(NullLogger<WorkflowHook>.Instance));
+            NullLogger<MergeQueueEngine>.Instance, new WorkflowHook(NullLogger<WorkflowHook>.Instance), Webhooks.Publisher);
 
     public async Task SignalAsync(MergeQueueSignalMessage signal)
     {

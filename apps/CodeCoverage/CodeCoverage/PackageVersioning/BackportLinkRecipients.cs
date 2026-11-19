@@ -73,6 +73,7 @@ public partial class BackportLinkRecipient : IRecipient<BackportMergedMessage>, 
     [Inject] private readonly IEnumerable<IForgeLabels> labellers;
     [Inject] private readonly TimeProvider time;
     [Inject] private readonly ILogger<BackportLinkRecipient> logger;
+    [Inject] private readonly Webhooks.CoverageWebhookPublisher webhooks;
 
     public async Task HandleAsync(BackportMergedMessage message, CancellationToken cancellationToken = default)
     {
@@ -93,6 +94,11 @@ public partial class BackportLinkRecipient : IRecipient<BackportMergedMessage>, 
             var source = marked ?? BackportProvenance.FromText(pull.Body, pull.HeadRef) ?? await TrailerSourceAsync(repository, forge, pull, defaultBranch, cancellationToken);
             if (source is not { } number || number == pull.Number) return;
             if (await forge.GetPullRequestTextAsync(repository, number, cancellationToken) is not { Merged: true } original || original.BaseRef != defaultBranch) return;
+
+            // #691 D41: keyed by the backport pull request, so a redelivered merge sends nothing twice.
+            await webhooks.PublishAsync(new BackportMerged(repository.FullName, repository.Provider.ToString().ToLowerInvariant(), pull.Number, number, pull.BaseRef,
+                time.GetUtcNow()), repository, $"{repository.Id}/{pull.Number}/merged", session, cancellationToken);
+            await session.SaveChangesAsync(cancellationToken);
 
             var label = BackportProvenance.BackportedLabel(pull.BaseRef, config.EffectiveLines);
             if (labellers.FirstOrDefault(l => l.Provider == repository.Provider) is { } labels && !original.Labels.Contains(label))
@@ -136,7 +142,7 @@ public partial class BackportLinkRecipient : IRecipient<BackportMergedMessage>, 
                 cancellationToken: cancellationToken);
             // A writer pushed it, so it counts as the App's own backport for the approval floor and a writer's approval.
             await BackportRegenerationEngine.RecordAsync(session, repository.Id!, opened, source.Number, source.MergeCommitSha, line, time.GetUtcNow().UtcDateTime, cancellationToken);
-            await BackportAttempts.RecordAsync(session, repository, source.Number, source.MergeCommitSha, line, BackportAttempt.Opened, opened,
+            await BackportAttempts.RecordAsync(session, webhooks, repository, source.Number, source.MergeCommitSha, line, BackportAttempt.Opened, opened,
                 $"pushed by hand by {message.PusherLogin}", time.GetUtcNow().UtcDateTime, cancellationToken);
             await session.SaveChangesAsync(cancellationToken);
             logger.LogInformation("Backport link: opened #{Opened} for {Branch} of {Repository}", opened, message.Branch, repository.FullName);

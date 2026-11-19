@@ -1,6 +1,7 @@
 using System.Text;
 using CodeCoverage.Entities;
 using CodeCoverage.Ingestion.Parsing;
+using CodeCoverage.Webhooks;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark;
 using MintPlayer.Spark.Messaging.Abstractions;
@@ -21,6 +22,7 @@ public partial class ParseSessionRecipient : IRecipient<ParseSessionMessage>
     [Inject] private readonly IDocumentStore documentStore;
     [Inject] private readonly ICoverageParserFactory parserFactory;
     [Inject] private readonly ILogger<ParseSessionRecipient> logger;
+    [Inject] private readonly CoverageWebhookPublisher webhooks;
 
     public async Task HandleAsync(ParseSessionMessage message, CancellationToken cancellationToken = default)
     {
@@ -237,6 +239,8 @@ public partial class ParseSessionRecipient : IRecipient<ParseSessionMessage>
             // sessions touched but this one didn't).
             await session.SaveChangesAsync(cancellationToken);
             await RecomputeBuildSummary(build, cancellationToken);
+            // #691 D41: saved with the outcome it reports.
+            await CoverageWebhooks.PublishReportAsync(webhooks, session, build, buildSession, cancellationToken);
             await session.SaveChangesAsync(cancellationToken);
         }
         catch (Exception ex)
@@ -263,6 +267,7 @@ public partial class ParseSessionRecipient : IRecipient<ParseSessionMessage>
 
         buildSession.ParseStatus = "Failed";
         buildSession.Error = ex.Message;
+        await CoverageWebhooks.PublishReportAsync(webhooks, freshSession, build!, buildSession, cancellationToken);
         await freshSession.SaveChangesAsync(cancellationToken);
     }
 

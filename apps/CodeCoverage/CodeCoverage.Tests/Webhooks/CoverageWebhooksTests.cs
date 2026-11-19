@@ -18,7 +18,7 @@ using Xunit;
 namespace CodeCoverage.Tests.Webhooks;
 
 /// <summary>
-/// #691 M9 (<c>docs/apps_webhooks_PRD.md</c> D34): a finalized build is announced as <c>coverage.build.finalized</c> to
+/// #691 M9 (<c>docs/apps_webhooks_PRD.md</c> D34): a finalized build is announced as <c>coverage.build.completed</c> to
 /// the webhooks of its repository's forge account. The finalize only queues a message in its own session; the recipient
 /// publishes it with the build id as the idempotency key, and webhooks stay off unless the setting turns them on.
 /// </summary>
@@ -87,7 +87,7 @@ public class CoverageWebhooksTests : CoverageRavenTest
 
         await outbox.Received(1).EnqueueAsync(
             Arg.Any<IAsyncDocumentSession>(),
-            Arg.Is<CoverageBuildFinalizedWebhookMessage>(m => m.BuildId == BuildId),
+            Arg.Is<CoverageBuildCompletedWebhookMessage>(m => m.BuildId == BuildId),
             Arg.Any<BroadcastOptions?>(),
             Arg.Any<CancellationToken>());
     }
@@ -104,12 +104,12 @@ public class CoverageWebhooksTests : CoverageRavenTest
         outbox.ReceivedCalls().Should().BeEmpty("webhooks are off unless CodeCoverage:Webhooks:Enabled turns them on");
     }
 
-    private static CoverageBuildFinalizedRecipient Recipient(IAsyncDocumentSession session, IWebhookPublisher? publisher)
+    private static CoverageBuildCompletedRecipient Recipient(IAsyncDocumentSession session, IWebhookPublisher? publisher)
     {
         var services = new ServiceCollection();
         if (publisher is not null)
             services.AddSingleton(publisher);
-        return new CoverageBuildFinalizedRecipient(session, services.BuildServiceProvider());
+        return new CoverageBuildCompletedRecipient(session, services.BuildServiceProvider());
     }
 
     [Fact]
@@ -118,20 +118,20 @@ public class CoverageWebhooksTests : CoverageRavenTest
         using var store = GetDocumentStore();
         await SeedAsync(store, "Finalized");
         var publisher = Substitute.For<IWebhookPublisher>();
-        CoverageBuildFinalized? sent = null;
-        publisher.PublishAsync(Arg.Do<CoverageBuildFinalized>(e => sent = e), Arg.Any<WebhookOwner>(), Arg.Any<string>(), Arg.Any<IAsyncDocumentSession>(), Arg.Any<CancellationToken>())
+        CoverageBuildCompleted? sent = null;
+        publisher.PublishAsync(Arg.Do<CoverageBuildCompleted>(e => sent = e), Arg.Any<WebhookOwner>(), Arg.Any<string>(), Arg.Any<IAsyncDocumentSession>(), Arg.Any<CancellationToken>())
             .Returns("msg_x");
 
         using (var session = store.OpenAsyncSession())
-            await Recipient(session, publisher).HandleAsync(new CoverageBuildFinalizedWebhookMessage { BuildId = BuildId });
+            await Recipient(session, publisher).HandleAsync(new CoverageBuildCompletedWebhookMessage { BuildId = BuildId });
 
         await publisher.Received(1).PublishAsync(
-            Arg.Any<CoverageBuildFinalized>(),
+            Arg.Any<CoverageBuildCompleted>(),
             CoverageWebhooks.Account(AcmeKey),
             BuildId,
             Arg.Any<IAsyncDocumentSession>(),
             Arg.Any<CancellationToken>());
-        sent.Should().Be(new CoverageBuildFinalized(
+        sent.Should().Be(new CoverageBuildCompleted(
             "acme/widgets", "github", Sha, "feature", 12, Build.ComposeRun(7, 2), "CI", "Complete", "Debounce", false,
             new CoverageNumbers(80, 100, 3, 4, 5),
             new PatchNumbers(9, 10, "main"),
@@ -149,7 +149,7 @@ public class CoverageWebhooksTests : CoverageRavenTest
         var publisher = Substitute.For<IWebhookPublisher>();
 
         using (var session = store.OpenAsyncSession())
-            await Recipient(session, webhooksOn ? publisher : null).HandleAsync(new CoverageBuildFinalizedWebhookMessage { BuildId = BuildId });
+            await Recipient(session, webhooksOn ? publisher : null).HandleAsync(new CoverageBuildCompletedWebhookMessage { BuildId = BuildId });
 
         publisher.ReceivedCalls().Should().BeEmpty("there is no finalized build to announce, or no publisher to announce it with");
     }

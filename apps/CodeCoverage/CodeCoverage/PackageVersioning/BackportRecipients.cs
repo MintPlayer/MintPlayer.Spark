@@ -72,6 +72,7 @@ public partial class BackportRecipient : IRecipient<BackportMessage>
     [Inject] private readonly TimeProvider time;
     [Inject] private readonly ICommandLifecycle commands;
     [Inject] private readonly ILogger<BackportRecipient> logger;
+    [Inject] private readonly Webhooks.CoverageWebhookPublisher webhooks;
 
     public async Task HandleAsync(BackportMessage message, CancellationToken cancellationToken = default)
     {
@@ -142,7 +143,7 @@ public partial class BackportRecipient : IRecipient<BackportMessage>
         {
             using var fresh = session.Advanced.DocumentStore.OpenAsyncSession();
             foreach (var line in message.Lines.Distinct(StringComparer.Ordinal))
-                await BackportAttempts.RecordAsync(fresh, repository, message.Number, null, line, BackportAttempt.Failed, null, detail, time.GetUtcNow().UtcDateTime,
+                await BackportAttempts.RecordAsync(fresh, webhooks, repository, message.Number, null, line, BackportAttempt.Failed, null, detail, time.GetUtcNow().UtcDateTime,
                     cancellationToken, logId);
             await fresh.SaveChangesAsync(cancellationToken);
         }
@@ -264,7 +265,7 @@ public partial class BackportRecipient : IRecipient<BackportMessage>
         var now = time.GetUtcNow().UtcDateTime;
         // Segment B: every line asked for ends in a record, whatever the comment says.
         Task Attempt(string branch, string outcome, int? opened = null, string? detail = null)
-            => BackportAttempts.RecordAsync(session, repository, pull.Number, commit, branch, outcome, opened, detail, now, cancellationToken, logId);
+            => BackportAttempts.RecordAsync(session, webhooks, repository, pull.Number, commit, branch, outcome, opened, detail, now, cancellationToken, logId);
 
         if (result is null || result.Outcome != GitWriterBackportResult.Backported)
         {

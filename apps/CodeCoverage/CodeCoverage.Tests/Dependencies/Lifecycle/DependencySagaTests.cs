@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json.Nodes;
+using CodeCoverage.Dependencies;
 using CodeCoverage.Dependencies.Lifecycle;
 using CodeCoverage.Dependencies.Policy;
 using CodeCoverage.Entities;
@@ -80,6 +81,13 @@ public class DependencySagaTests : CoverageRavenTest
         run.RollingSha.Should().Be(h.Writer.RollingSha);
         run.RollingBotSha.Should().Be(h.Writer.BotSha);
         run.PullRequestNumber.Should().Be(h.Updates.LastPull.Number);
+        // #691 D41: the opened pull request goes to the account's webhooks; the run has not ended yet.
+        h.Webhooks.All.Should().ContainSingle().Which.Key.Should().Be($"{run.Id}/{run.Run}/opened/{h.Updates.LastPull.Number}");
+        h.Webhooks.Of<DependencyPullRequestOpened>().Single().Should().BeEquivalentTo(new
+        {
+            Run = new { Repository = "acme/widget", Forge = "github", BaseBranch = "master" },
+            Number = h.Updates.LastPull.Number,
+        });
     }
 
     [Fact]
@@ -183,6 +191,9 @@ public class DependencySagaTests : CoverageRavenTest
         (await h.RunAsync()).Outcome.Should().Be("apply-failed");
         h.Writer.Requests("delete").Should().ContainSingle().Which.ExpectedSha.Should().Be(h.Writer.PlanCommitSha);
         h.Writer.Requests("rolling").Should().BeEmpty();
+        // #691 D41: the run's end goes to the account's webhooks, with its outcome and no pull request.
+        h.Webhooks.Of<DependencyRunCompleted>().Should().ContainSingle().Which.Should()
+            .BeEquivalentTo(new { Outcome = "apply-failed", PullRequest = (int?)null, Run = new { Repository = "acme/widget" } });
     }
 
     [Fact]

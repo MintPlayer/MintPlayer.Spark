@@ -98,6 +98,7 @@ public class ForkContributionTests : CoverageRavenTest
             var services = new ServiceCollection()
                 .AddSingleton(store).AddSingleton(session)
                 .AddSingleton<ICoverageParserFactory, CoverageParserFactory>()
+                .AddSingleton<CodeCoverage.Webhooks.CoverageWebhookPublisher>()
                 .AddSingleton(typeof(ILogger<>), typeof(NullLogger<>))
                 .BuildServiceProvider();
             await ActivatorUtilities.CreateInstance<ParseSessionRecipient>(services)

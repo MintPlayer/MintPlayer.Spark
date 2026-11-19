@@ -33,6 +33,7 @@ public class BackportRegenerationEngineTests : CoverageRavenTest
     private readonly IWorkflowHook hook = Substitute.For<IWorkflowHook>();
     private readonly Outbox outbox = new();
     private readonly List<WorkflowHookRequest> dispatches = [];
+    private readonly RecordingWebhooks webhooks = new();
 
     public BackportRegenerationEngineTests()
     {
@@ -67,7 +68,7 @@ public class BackportRegenerationEngineTests : CoverageRavenTest
     }
 
     private BackportRegenerationEngine Engine(IAsyncDocumentSession session)
-        => new(session, [forge], [queue], writer, outbox, hook, TimeProvider.System, Options.Create(new MergeQueueOptions()), NullLogger<BackportRegenerationEngine>.Instance);
+        => new(session, [forge], [queue], writer, outbox, hook, TimeProvider.System, Options.Create(new MergeQueueOptions()), NullLogger<BackportRegenerationEngine>.Instance, webhooks.Publisher);
 
     private static BackportRegeneration Item(params string[] workflows) => new()
     {
