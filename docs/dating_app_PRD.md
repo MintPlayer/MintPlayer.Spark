@@ -172,7 +172,7 @@ importing contacts.
 | D1 | `apps/Bothmeet/Bothmeet` (host) + `apps/Bothmeet/Bothmeet.Library` (entities) + `apps/Bothmeet/Bothmeet.Tests`; ClientApp `@spark-apps/bothmeet`, scaffolded like `apps/MintPlayer` | the established production-app layout |
 | D2 | Own Spark accounts (`AddSparkFull`/Authorization, `SparkUser`), not SparkId | owner, 2026-11-19 |
 | D3 | **Same rules for everyone**: no gender-dependent code path anywhere; uniform limits, e.g. 200 likes/day, 30 new conversations/day, via quotas; nothing for sale | owner, 2026-11-19; numbers are a proposal (Q7) |
-| D4 | Stack order = mutual eligibility, then least-recently-shown, then last active. **No desirability score** is computed or stored | owner, 2026-11-19 |
+| D4 | Stack order = mutual eligibility, pending likers first (Q6), then a **random per-viewer order** that stays stable so a cursor can page it (S2). **No desirability score** is computed or stored. ~~then least-recently-shown, then last active~~ (superseded by S2, 2026-11-19: a changing sort key cannot be paged by cursor) | owner, 2026-11-19 (no score); S2 (order) |
 | D5 | Profiles are **never** reachable through generic queries for non-admins. The stack, likes, matches and event attendees are custom endpoints that return a `ProfileCard` projection, after the row checks of §5.1 | §5.1 |
 | D6 | Chat = `Conversation` + `Message` documents, `"live": true`, row filter "I am a participant"; push when no tab is open | compose existing blocks (memory "compose from existing blocks") |
 | D7 | Spatial: app index with `CreateSpatialField` on a **snapped** location (§5.2); radius via Raven `WithinRadiusOf` in the custom endpoints | S1 |
@@ -247,7 +247,7 @@ Each spike has a question, a method and a pass bar; results go to §10 with numb
 | # | Question | Method | Pass |
 |---|---|---|---|
 | S1 | Can a Spark app run a radius + filters query on an app-defined spatial index, through the Spark session and row security? Does a generic `Spatial` attribute/filter belong in Spark? | Local RavenDB, 1M synthetic profiles worldwide (Q15) with dense clusters (cities) and sparse areas, index with spatial field + languages/age/gender | radius + filters p95 < 100 ms in a dense city; one call path with row security |
-| S2 | Stack generation with **mutual** filters, excluding already-swiped and blocked, at 100k profiles and a user with 20k swipes | compare: query-then-exclude in memory, `NOT IN` on ids, and a per-user "seen" document | p95 < 150 ms, no full scans; pick one |
+| S2 | Stack generation with **mutual** filters, excluding already-swiped and blocked, at 1M profiles (Q15) and a user with 20k swipes | compare: query-then-exclude in memory, `NOT IN` on ids, and a per-user "seen" document | p95 < 150 ms, no full scans; pick one |
 | S3 | Does grid snapping + bucketed distance defeat trilateration? | an attacker test that moves three accounts and tries to locate a victim | best estimate no better than the cell (~1 km) |
 | S4 | Photo pipeline: library (SkiaSharp MIT vs ImageSharp split licence), EXIF strip proven, attachment vs volume storage, authorised serving, SW never caches across sign-out | upload a GPS-tagged JPEG, HEIC from iPhone, a PNG with a payload | output has no metadata; another user gets 404; SW cache empty after sign-out |
 | S5 | Two users like each other at the same moment: exactly one `Match` | deterministic id + optimistic concurrency vs compare-exchange; 1000 parallel pairs | 1000 matches, 0 duplicates, 0 lost |
@@ -477,3 +477,76 @@ Each spike has a question, a method and a pass bar; results go to §10 with numb
   2026-11-19; SMS costs per message). Email verification only.
 - **Q16, funding: none at launch.** The only new running cost is the backup Storage Box (Q18, ~€4/month); the app
   runs on the existing VPS (Q2). Donations can be decided later without affecting the design.
+
+### 10.1 S1/S2: stack query (2026-11-19)
+
+Setup: console app in the session scratchpad (`spikes/stack/Program.cs`, not committed), RavenDB.Client 7.2.6 against
+the local RavenDB 7.2.6 (Developer licence, 8-core dev machine, Lucene index), synthetic profiles only: 50 world
+cities with Zipf-sized populations (90%, σ ≈ 15 km) + 10% scattered, locations snapped to the 0.009° grid (§5.2),
+75% Relationship / 25% Friends, 48/48/4% man/woman/non-binary, 1–3 languages with levels, radius 10/25/50/100 km.
+Each run: 300 random viewers, page of 40, mutual radius checked after the query. "Densest city" = viewers within
+40 km of the largest city (≈ 200k profiles, more than any real launch will have). Throwaway databases deleted after.
+
+- **Loading:** 1M profiles bulk-inserted in 26–36 s; the stack index non-stale after 163–213 s. At 100k: 4 s / 18 s.
+- **S1, first index** (ranges: `BirthDate` between, `AgeMin ≤ myAge ≤ AgeMax`, `LastActiveAt ≥ now−90d`,
+  language as `LangTok in (…) and (LangFilterOn = false or LangMin ≤ myLevel)`, plus `spatial.within`):
+  100k: p95 54 ms (dense 61 ms), passes. **1M: p95 243 ms, dense 306 ms, fails** the 100 ms bar.
+- **Where the time goes (1M, p95 overall / dense):**
+
+  | Variant | p95 | dense p95 |
+  |---|---|---|
+  | full query, sorted | 243–273 ms | 306–371 ms |
+  | same, unsorted | 239 ms | 299 ms |
+  | without the two date ranges | 208 ms | 286 ms |
+  | mutual radius inside the query (one `spatial.within` per radius setting, OR-ed) | 334 ms | 408 ms |
+  | **radius only** (190k hits in the densest city) | **42–47 ms** | **48–54 ms** |
+  | **filters only**, no radius | **360 ms** | **411 ms** |
+
+  The spatial clause is cheap; the range and OR filters are evaluated over the whole index. Sorting costs nothing
+  measurable. Pushing the candidate's own radius into the query is slower, so that check stays after the query; it
+  discards 23% of the fetched rows (an earlier "50%" was a measuring bug: it counted rows dropped by `Take(20)`).
+- **Exact terms instead of ranges** (1M): the index stores precomputed tokens, the query sends exact values.
+  `Who` = `{mode}:{gender}:{wants}:{age}` per wanted gender (query: `in` over my genders × my age range ≤ 3×82
+  terms), `AccAge` = the ages the candidate accepts (query: `= myAge`), `AccLang` = the `{lang}{level}` of a viewer
+  the candidate accepts (query: per my language, `LangTok in (…) and AccLang = {lang}{myLevel}`), no date filter.
+  **p95 140 ms, dense 178 ms** (half the first index, still above 100 ms). The hybrid (age through a query-time
+  `BirthDate` range, no stored age) is **p95 162 ms, dense 217 ms**, same result rows. Unsorted variants are within noise.
+- **Two index-map traps** (cost one reindex each): an enum stored as a string cannot be cast to `int` in the map
+  (`InvalidCastException: Couldn't convert Man (LazyStringValue) to int32`, 94% of maps failed and Raven marked the
+  index errored); and the dynamic map cannot run `Enumerable.Range(…).Where(…)` (`CS1929` on `IEnumerable<int>`).
+  So `AccAge`/`AccLang` are **written by the app when the user saves their settings** and copied by the index; they
+  do not depend on the clock.
+- **The clock in the index.** Age changes on birthdays, and "active within 90 days" changes daily. Options:
+  - CronosCore's `DynamicDates` (DeCronosGroep, `CronosCore.RavenDB/Indexes/DynamicDates.cs`): a compare-exchange
+    "today" written at midnight and read with `LoadCompareExchangeValue` in ~20 indexes (CareAdmin, Fleet, …).
+    **Rejected for the stack:** a change re-maps every profile in the index, 163–213 s of indexing every night at 1M.
+  - Query-time ranges (owner's suggestion): correct, no job, but +22 ms p95 / +39 ms dense (the hybrid above).
+  - **Chosen:** a stored `Age` that a daily job updates for **today's birthdays only** (~1/365 of profiles,
+    ≈ 2.7k documents a day at 1M; 29 February counts as 28 February in non-leap years), and inactivity handled by
+    the Q13 sweep, which sets the profile status, so the index drops the profile with no date filter. The query uses
+    the age computed from the clock for `AccAge`, so a late job never makes it wrong in that direction.
+- **S2, excluding 20k swipes** (1M, worst case: the viewer swiped the first 20k profiles of their own stack order,
+  43,770 eligible):
+
+  | Approach | Time for 20 fresh cards |
+  |---|---|
+  | E1 stream the stack, skip swiped ids in memory | 1.1–1.4 s (streams 20,034 rows), + loading 20k swiped ids 0.17–2.2 s |
+  | E2 `not id() in (…20k ids)` | 2.0–2.8 s, + the same id load |
+  | **E3 per-viewer cursor on a stable order + cached swiped set** | **112–202 ms** (streams 33 rows) |
+  | (100k, 3,849 swipes: E1 245–355 ms, E2 5–48 ms) | |
+
+  **Chosen: E3.** The stack is paged by a cursor over a **stable** per-viewer order, so everything before the cursor
+  is already decided and the query starts after it; the swiped/blocked set (kept in memory for active users, or
+  one document per user) only catches stragglers. That rules out "least-recently-shown" ordering (D4 updated): the
+  order is a random key per profile, with a few independent keys (e.g. 8) and the viewer using
+  `key[hash(viewer) % 8]`, so not everyone sees the same profiles first. Profiles that join or move into range land
+  anywhere in the order; those behind the cursor are reached when the cursor wraps at the end of the stack (then
+  the swiped set does the skipping). Changing a filter does not move the order; widening one resets the cursor.
+  Pending likers (Q6) are a separate small query placed in front.
+- **Verdict.** S1's 100 ms bar is **not met at 1M** on this machine (p95 140 ms, 178 ms in a 200k-profile city).
+  S2's 150 ms bar is met in the worst case (112–202 ms, ≈ the S1 query itself). Accepted because the client
+  prefetches the next page while the user swipes through the current one (S7), so a swipe never waits on the query;
+  the query only has to be faster than ~20 swipes. **Production will be slower:** the VPS runs the Community licence
+  (3 cores, 6 GB, shared with three apps, Q2), so S8 repeats the 1M run under those limits before launch.
+- **Spark gap (D7):** nothing here needed Spark changes; spatial stays an app index and a custom endpoint. A generic
+  `Spatial` filter in Spark is not justified by this app alone.

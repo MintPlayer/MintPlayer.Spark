@@ -5,8 +5,10 @@ PRD: [dating_app_PRD.md](dating_app_PRD.md). Everything lands in **one PR** from
 step and run once at the end (global rules 5/6); spikes measure and record numbers in PRD §10.
 
 Status (2026-11-19): PRD and plan drafted; **grill done** (step 0.1): Q1–Q18 all decided, PRD §10. Launch
-blockers recorded there: backups (Q18), the legal check per country (Q14), DPIA/privacy policy/terms (§5.6). Next:
-spikes S1/S2 (step 0.2). No code yet.
+blockers recorded there: backups (Q18), the legal check per country (Q14), DPIA/privacy policy/terms (§5.6). Step
+0.2 (S1/S2) done, PRD §10.1: exact-term index + per-viewer cursor; S1's 100 ms bar missed at 1M (p95 140 ms),
+accepted with client prefetch, to be re-measured under the Community licence in S8. Next: S5/S3 (step 0.3). No app
+code yet.
 
 ### Log
 
@@ -20,13 +22,20 @@ Update at every step; it is what survives a context compaction.
   backup of them found); backups to a Storage Box; three-tier moderation; public event pages; 7 UI languages.
   Step 1.1 now scaffolds 7 languages (Q15); 1.8 encrypts message bodies (Q12); 1.10 adds the Q11 statuses and the
   Q13 sweep; 2.1 public event pages (Q10).
+- 2026-11-19: S1/S2 at 1M synthetic profiles (PRD §10.1). First index (ranges) p95 243 ms; the radius alone is
+  42 ms, the range/OR filters are the cost. Exact-term tokens: p95 140 ms (dense city 178 ms). Swipe exclusion:
+  in-memory skip 1.1–1.4 s and `NOT IN` 2.0–2.8 s in the worst case; a per-viewer cursor on a stable order 112–202
+  ms → chosen; D4 changes from least-recently-shown to a random stable per-viewer order. The clock: CronosCore's
+  `DynamicDates` rejected (nightly full re-map), stored `Age` updated for today's birthdays only. Two index-map
+  traps recorded (enum as string, `Enumerable.Range` in a dynamic map). Step 1.6 builds on this; S8 re-measures 1M
+  under the Community licence.
 
 ## Stage 0: decisions and spikes
 
 | Step | Work | Done when |
 |---|---|---|
 | 0.1 | Grill PRD §9 (Q1–Q16); record answers in PRD §10 and update D-numbers | every Q answered or explicitly deferred |
-| 0.2 | S1 spatial radius query + S2 stack generation (local RavenDB, 100k synthetic profiles, no personal data) | numbers in §10, approach chosen |
+| 0.2 | ✅ S1 spatial radius query + S2 stack generation (local RavenDB, 1M synthetic profiles, no personal data) | numbers in §10.1, approach chosen |
 | 0.3 | S5 match race, S3 trilateration test | pass bars met |
 | 0.4 | S4 photo pipeline, S10 deletion completeness (can run after M2) | pass bars met |
 | 0.5 | S8 production database option, for Q2 | owner decision |
@@ -40,7 +49,7 @@ Update at every step; it is what survives a context compaction.
 | 1.3 | Location: grid snapping, bucketed distance, rate-limited updates (S3 result) | trilateration test green |
 | 1.4 | Photos: upload, re-encode, attachment storage, authorised serving, SW exclusion (S4 result) | metadata-strip and access tests green |
 | 1.5 | Onboarding + profile editor + preferences UI (languages with levels, mutual filters explained) | usable on a phone viewport |
-| 1.6 | Stack endpoint (S1/S2 result), shown-tracking, swipe/undo endpoints with quotas, match creation (S5 result) | endpoint + race tests green |
+| 1.6 | Stack endpoint per §10.1: exact-term index (`Who`/`AccAge`/`AccLang` written on settings save), per-viewer cursor over random order keys, cached swiped/blocked set, likers-first query, mutual radius after the query; daily birthday `Age` job; swipe/undo endpoints with quotas, match creation (S5 result) | endpoint + race tests green |
 | 1.7 | Swipe deck page (gestures + buttons + keyboard), incoming-like count (Q6), matches list | Playwright check in mobile emulation |
 | 1.8 | Chat: `Conversation`/`Message` live, DM setting (Q5), message requests, first-message link block, read receipts toggle, mute/unmatch/block/report | S6 pass bars as tests |
 | 1.9 | Notifications: match + message via in-app/push/mail, per-user channels | push arrives with no tab open |
