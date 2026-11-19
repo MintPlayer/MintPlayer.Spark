@@ -409,3 +409,9 @@ Each spike has a question, a method and a pass bar; results go to §10 with numb
      account"). Exception: messages already captured in a report stay as an encrypted snapshot until the report is
      closed + 6 months; reporting a conversation snapshots it at once, so a victim can secure evidence before
      the harasser deletes. Unmatch follows the same rule (gone for both).
+- **Q13, inactive accounts** (owner, 2026-11-19: "A"). GDPR Art. 5(1)(e). Settings, changeable without a release:
+  **3 months** without sign-in → out of every stack (not a status change; signing in restores it). **12 months**
+  (visible accounts) or **24 months** (hidden accounts, Q11) → warning by mail and in-app at 30 and at 7 days
+  before deletion; no sign-in → full deletion per Q11. The other party's notification says "removed after a long
+  period of inactivity", not "deleted their account". A daily sweep (Spark cron) runs it; tests cover each
+  boundary.
