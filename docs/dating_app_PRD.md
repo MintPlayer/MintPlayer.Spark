@@ -82,7 +82,7 @@ TOTP. Date of birth at sign-up; under 18 cannot register (Q14 for how hard to ve
   interests (tags), **languages spoken with a level** (native, fluent, conversational, basic; ISO 639-1),
   home area (§5.2), optional: height, children, smoking, drinking, religion, education. Optional fields are
   shown only when filled in.
-- **pause profile** (invisible in every stack, matches and chats stay) and **delete account** (§5.6).
+- **account status** (Q11): visible, hidden ("in a relationship" / taking a break), or delete everything (§5.6).
 
 **Discovery preferences (filters).**
 
@@ -293,7 +293,7 @@ Each spike has a question, a method and a pass bar; results go to §10 with numb
 | Q8 | Moderators: only the owner at launch? Photo pre-moderation or post? | owner only; post-moderation + auto-hide after reports |
 | Q9 | Phone verification (SMS costs money) | no |
 | Q10 | Events: who may create, anonymous browsing (SEO/growth vs privacy), "attendees can like each other" | verified users; signed-in only; opt-in |
-| Q11 | On account deletion, what does the other party see of past messages? | conversation removed for both |
+| Q11 | On account deletion, what does the other party see of past messages? | **decided** (§10) |
 | Q12 | Data at rest without Raven encryption: field-level encryption of messages, disk encryption, or accept | **decided: field-level, messages** (§10) |
 | Q18 | Backups: database and key ring, where, how often, restore tested? (raised by Q12) | **decided** (§10) |
 | Q13 | Retention of inactive accounts | hide 6 months, delete 24 months |
@@ -395,3 +395,17 @@ Each spike has a question, a method and a pass bar; results go to §10 with numb
     into a scratch database, which proves an encrypted message decrypts. Both are part of the deploy stage.
   - Not checked yet: whether CodeCoverage/SeoTester/MintPlayer have a RavenDB backup task configured inside the
     database (cron/systemd showed none). Out of scope for this PR; worth an issue if they have none.
+- **Q11, leaving: three account statuses, and deletion removes conversations for both** (owner, 2026-11-19: "A -
+  But let users choose whether they want to be advertized, just hidden because they have a relationship (then they
+  can't swipe themselves either) or everything gone"). Replaces "pause profile" in §3.1.
+  1. **Visible** (default): in the stack of the active mode, can swipe.
+  2. **Hidden** ("in a relationship" or "taking a break", the user's label): out of every stack and every like
+     count, **cannot swipe**, no new message requests or matches. Back to visible at any time, with swipes,
+     matches and settings intact. Proposed, unconfirmed: existing conversations stay usable; events stay usable
+     (attending is not swiping); hidden applies to both modes, so a user in a relationship who wants friends
+     switches to visible in Friends mode (Q17) rather than staying hidden.
+  3. **Delete everything**: hard delete per §5.6; **every conversation the user was in disappears for both sides**
+     (theirs and the other party's messages). The other party gets a notification ("a match deleted their
+     account"). Exception: messages already captured in a report stay as an encrypted snapshot until the report is
+     closed + 6 months; reporting a conversation snapshots it at once, so a victim can secure evidence before
+     the harasser deletes. Unmatch follows the same rule (gone for both).
