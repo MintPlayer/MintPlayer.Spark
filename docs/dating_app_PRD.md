@@ -284,7 +284,7 @@ Each spike has a question, a method and a pass bar; results go to §10 with numb
 | # | Question | Proposal |
 |---|---|---|
 | Q1 | Name and domain | **decided: Bothmeet** (§10) |
-| Q2 | Shared `coverage-raven` with a database-scoped cert, or a dedicated RavenDB for Bothmeet? | shared (D8), unless S8 shows a dedicated Community server is free and cheap |
+| Q2 | Shared `coverage-raven` with a database-scoped cert, or a dedicated RavenDB for Bothmeet? | **decided: shared** (§10) |
 | Q3 | Gender model: which options, "interested in" multi-select, non-binary? | woman / man / non-binary + "more" free text; interested in = multi-select |
 | Q4 | Language filter: hard + mutual by default? Minimum level? | yes; "conversational" |
 | Q5 | DM setting: the three modes of §3.1? Do "open requests" exist at all? | yes, default "matches only" |
@@ -352,3 +352,10 @@ Each spike has a question, a method and a pass bar; results go to §10 with numb
   **30 reports per day**. Not tripled, because they are security controls rather than usage caps (owner to
   object): mode switch 1 per day (Q17), location change 1 per 10 minutes (§5.2, trilateration). Email
   verification is required before swiping (owner: "Email confirmation is probably required anyway"; already §3.1).
+- **Q2, production database: shared `coverage-raven`** (owner, 2026-11-19: "A", against the recommendation of a
+  dedicated container). D8 stands as written: database `Bothmeet`, certificate `bothmeet.crt` with Admin on
+  `Bothmeet` only, network `bothmeet-raven`, renewed by `raven-cert-renew`. Accepted risks: Bothmeet shares the
+  Community licence's hardware limits with CodeCoverage, SeoTester and MintPlayer, and the intimate data sits on the
+  same server as the other apps (isolation by certificate scope only). S8 shrinks to: measure the licence limits
+  (`/license/status`) and the other apps' current use, so the moment to move Bothmeet out (export + own server) is
+  a number, not a feeling.
