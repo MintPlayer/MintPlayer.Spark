@@ -246,7 +246,7 @@ Each spike has a question, a method and a pass bar; results go to §10 with numb
 
 | # | Question | Method | Pass |
 |---|---|---|---|
-| S1 | Can a Spark app run a radius + filters query on an app-defined spatial index, through the Spark session and row security? Does a generic `Spatial` attribute/filter belong in Spark? | Local RavenDB, 100k synthetic profiles in Flanders + Brussels + Wallonia, index with spatial field + languages/age/gender | radius + filters p95 < 100 ms; one call path with row security |
+| S1 | Can a Spark app run a radius + filters query on an app-defined spatial index, through the Spark session and row security? Does a generic `Spatial` attribute/filter belong in Spark? | Local RavenDB, 1M synthetic profiles worldwide (Q15) with dense clusters (cities) and sparse areas, index with spatial field + languages/age/gender | radius + filters p95 < 100 ms in a dense city; one call path with row security |
 | S2 | Stack generation with **mutual** filters, excluding already-swiped and blocked, at 100k profiles and a user with 20k swipes | compare: query-then-exclude in memory, `NOT IN` on ids, and a per-user "seen" document | p95 < 150 ms, no full scans; pick one |
 | S3 | Does grid snapping + bucketed distance defeat trilateration? | an attacker test that moves three accounts and tries to locate a victim | best estimate no better than the cell (~1 km) |
 | S4 | Photo pipeline: library (SkiaSharp MIT vs ImageSharp split licence), EXIF strip proven, attachment vs volume storage, authorised serving, SW never caches across sign-out | upload a GPS-tagged JPEG, HEIC from iPhone, a PNG with a payload | output has no metadata; another user gets 404; SW cache empty after sign-out |
@@ -289,7 +289,7 @@ Each spike has a question, a method and a pass bar; results go to §10 with numb
 | Q4 | Language filter: hard + mutual by default? Minimum level? | yes; "conversational" |
 | Q5 | DM setting: the three modes of §3.1? Do "open requests" exist at all? | yes, default "matches only" |
 | Q6 | "Who liked you" free: shown with photos, or blurred until I swipe on them myself? | **decided: count only** (§10) |
-| Q7 | Uniform daily caps: values | 200 likes, 30 new conversations, 10 reports |
+| Q7 | Uniform daily caps: values | **decided** (§10) |
 | Q8 | Moderators: only the owner at launch? Photo pre-moderation or post? | owner only; post-moderation + auto-hide after reports |
 | Q9 | Phone verification (SMS costs money) | no |
 | Q10 | Events: who may create, anonymous browsing (SEO/growth vs privacy), "attendees can like each other" | verified users; signed-in only; opt-in |
@@ -297,7 +297,7 @@ Each spike has a question, a method and a pass bar; results go to §10 with numb
 | Q12 | Data at rest without Raven encryption: field-level encryption of messages, disk encryption, or accept | field-level for messages, decide after S6 |
 | Q13 | Retention of inactive accounts | hide 6 months, delete 24 months |
 | Q14 | Age verification: self-declared birth date only, or more? | self-declared + report "underage" with immediate hide |
-| Q15 | Launch region and UI languages | Belgium; nl, fr, en |
+| Q15 | Launch region and UI languages | **region decided: worldwide** (§10); UI languages open |
 | Q16 | Funding a free service (donations? none?) | none in Stage 1 |
 
 ## 10. Spike results and grill decisions
@@ -341,3 +341,14 @@ Each spike has a question, a method and a pass bar; results go to §10 with numb
   match quickly; the identity is revealed only by the match. This is the one ordering exception to D4: it ranks by
   "this person already chose you", never by popularity. The count endpoint returns a number only, never ids; a
   blocked or suspended liker is not counted.
+- **Q15 (region): worldwide** (owner, 2026-11-19: "It's not about Belgium. It should be targetting worldwide.").
+  Belgium/Flanders is the owner's example of the language problem, not the market. Consequences: the
+  Belgium-sized estimates are void (S1 now 1M profiles worldwide); distances in km or miles per user locale;
+  times in the viewer's time zone (events); legal review covers more than GDPR/DSA (e.g. UK Online Safety Act and
+  US state age-verification laws, §7); the UI-language list is still open; the .be domains are irrelevant.
+- **Q7, uniform limits: proposal A tripled** (owner, 2026-11-19: "A looks good to me though, But I'd probably
+  tripple the numbers"). Same for every account, stored as settings (changeable without a release): **300 likes
+  per day** (passes unlimited), **60 new conversations per day** (matches + requests), **60 messages per minute**,
+  **30 reports per day**. Not tripled, because they are security controls rather than usage caps (owner to
+  object): mode switch 1 per day (Q17), location change 1 per 10 minutes (§5.2, trilateration). Email
+  verification is required before swiping (owner: "Email confirmation is probably required anyway"; already §3.1).
