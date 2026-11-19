@@ -139,6 +139,13 @@ The SQL Browser service is stopped, and `sqlcmd` needs `-C` (trust the certifica
 
 ## 3. Design direction (to be confirmed by spikes)
 
+> **Refined by S1/S2 (2026-11-19, §8):** D1 holds, with a precise division of labour. **Newtonsoft owns the
+> document.** It writes and reads the JSON with the InMemory/RavenDB settings, through the provider's own
+> parameterised SQL. **EF Core 11 only translates queries.** It sees `Data` as a complex type mapped `ToJson()`,
+> derived from the CLR type, and `QueryExecutor`'s `IQueryable<T>` is rewritten onto it. Members EF cannot map are
+> read by path through `JSON_VALUE`. The single-table-per-collection layout below is unchanged; `Raw` is added as a
+> non-persisted computed alias of `Data`.
+
 **Proposal D1: hybrid document tables.** The provider creates one table per collection:
 
 ```sql
@@ -213,7 +220,7 @@ Each spike ends with its result recorded in a new §8 entry, with evidence (numb
 | S10 | **Full-text:** install the Full-Text feature on the 2025 instance (owner's action) and on a CI image (`mssql-server-fts`), or ship the capability off with a `LIKE` fallback | search's tests on SQL Server, or a recorded "off" decision |
 | S11 | **Attachments** (low priority) | in or out |
 
-S1–S4 come first and gate the rest. S5–S8 can run in parallel after them.
+**S1 and S2 are done (§8.1).** S2b, their remainder, comes next with S3–S4. S1–S4 gate the rest. S5–S8 can run in parallel after them.
 
 ## 7. Milestones
 
@@ -243,7 +250,94 @@ Tests: single classes during development (TDD red→green). The full suite runs 
 
 ## 8. Spike results and decision log
 
-*(empty: each spike adds an entry with its evidence)*
+### 8.1 S1 + S2: mapping and query translation (2026-11-19)
+
+**Setup.**
+- Code: `docs/sql_server_spike/` (its README says how to rerun it). EF Core 11.0.0 and Microsoft.Data.SqlClient
+  7.1.2.
+- Servers: the owner's SQL Server 2025 (`localhost\MSSQLSERVER01`, compat 170) and 2022 (`localhost`, compat 160).
+- The entity copies HR's `Person` (`apps/HR/HR.Library/Entities/Person.cs`):
+  - the get-only persisted `FullName`
+  - the nested `Address`
+  - the `CarreerJob` collection
+  - the `List<string>` multi-reference
+  - `DateOnly?`
+  - plus a `DateTimeOffset?` and a string-stored enum
+- 15 query shapes, built the way `QueryExecutor` builds them:
+  - equality, null checks, `ids.Contains(Id)` (`In`), id prefix
+  - nested member, enum, `DateOnly` and `DateTimeOffset` comparisons
+  - `Contains` search
+  - `AnyContains` (:2368) over the primitive list, `Any` over the complex collection, captured-array `Any`
+  - the get-only property
+  - nested `OrderBy` with `Skip`/`Take` (:438, :1925)
+- Round 3 adds three D16 cases against a legacy document `{"FirstName":"Old","Legacy":"keep me"}`, which lacks
+  `LastName`, `Status` and `Jobs`.
+
+**Three mappings tried:**
+
+| | C1: relational (scalars as columns, nested values `ToJson`) | C2: `Doc { Id, Collection, Data }`, `Data` = the entity as one complex `ToJson` column, EF serialises | C3 / round 3: C2's query model, but **Newtonsoft serialises**, `Raw` = computed alias of `Data` |
+|---|---|---|---|
+| Query shapes translated server-side | 14/15 | 14/15 | **15/15 + 3 D16 cases**, on 2025 and 2022 |
+| Get-only `FullName` (persisted by RavenDB, `[Search]` in HR) | ✗ not mappable | ✗ `No backing field could be found … does not have a setter` | ✓ `JSON_VALUE([d].[Data], N'$.FullName') = N'Ann Smith'` |
+| `TranslatedString` (`Dictionary`, `[JsonConverter]`) | ✗ | ✗ `Complex type … has no properties defined` | ✓ written by its converter; querying it is a JSON path (S2b) |
+| Same JSON as InMemory/RavenDB | ✗ | ✗ (EF's own serialiser ignores `[JsonConverter]`s) | ✓ `InMemoryJson.Settings` |
+| `rowversion` concurrency | ✓ stale write → `DbUpdateConcurrencyException` | ✓ same | own SQL (`WHERE Version = @v`), S4 |
+| Schema evolution | migrations per model change | none (one JSON column) | none |
+
+**Generated SQL (round 3).** Every shape compiles to one statement, with no client evaluation. On 2025:
+
+- nested member: `JSON_QUERY([d].[Data], '$.Address') IS NOT NULL AND JSON_VALUE([d].[Data], '$.Address.City' RETURNING nvarchar(max)) = N'Ghent'`
+- `DateTimeOffset`: `JSON_VALUE([d].[Data], '$.Hired' RETURNING datetimeoffset) > @hiredAfter`. This compares
+  instants, so `09:00+02:00` correctly falls before `08:00Z`.
+- `AnyContains`: `JSON_CONTAINS(JSON_QUERY([d].[Data], '$.Professions'), N'professions/2') = 1`
+- `Any` over the complex collection: `EXISTS (SELECT 1 FROM OPENJSON([d].[Data], '$.Jobs') WITH ([ProfessionId] nvarchar(max) '$.ProfessionId') AS [j] WHERE …)`
+- paging: `ORDER BY JSON_VALUE(…'$.Address.City'…) OFFSET @p ROWS FETCH NEXT @p1 ROWS ONLY`
+
+On 2022, EF emits `CAST(JSON_VALUE(…) AS datetimeoffset)` and `… IN (SELECT [value] FROM OPENJSON(…))` instead, with
+the same rows.
+
+**Findings that shape the provider:**
+
+1. **EF cannot be the serialiser.** It can't map get-only persisted properties, dictionaries or `[JsonConverter]`
+   types, and it would give SQL Server a different JSON shape from the other two providers. Shadow properties on
+   complex types are unsupported (`Shadow properties are not supported on complex types`, efcore #35613), so a
+   "shadow twin" for a get-only property is impossible too.
+2. **Do not map a raw string property onto the same column.** EF accepts the model (round 2, e), but then
+   type-maps the column as `nvarchar(max)`:
+   - on 2022, `Address != null` becomes `JSON_VALUE(…'$.Address') IS NOT NULL`, which is always false (0 rows)
+   - on 2025, it is invalid SQL (`Incorrect syntax near 'json'`)
+   - `JSON_CONTAINS` fails (`Argument data type nvarchar(max) is invalid`)
+
+   A **non-persisted computed alias** (`[Raw] AS CAST([Data] AS nvarchar(max))` on 2025, `[Raw] AS [Data]` on 2022)
+   keeps both mappings correct, costs no storage, and is what `SELECT [d].[Raw]` reads.
+3. **Members outside EF's query model are read by path.** The provider's rewriter, which moves `x => …` onto
+   `d => …d.Data…`, turns them into a built-in `JSON_VALUE` DbFunction over `Raw`. This covers get-only properties
+   and, by the same route, any member EF can't map. String members are measured; typed members (`RETURNING`, or
+   `CAST` on 2022) are S2b.
+4. **The query model must mirror the serialiser settings.** With Newtonsoft's default (enums as numbers) and the
+   query model's string conversion, `Status == Retired` silently returned 0 rows. With `StringEnumConverter` (as
+   `InMemoryJson.Settings:17`), it returned 1. The provider derives both from one place.
+5. **D16 on SQL Server is a rewrite, as on RavenDB.** EF drops `(Status?)p.Status == null` because the query model
+   says non-nullable: the SQL is unchanged, and the absent `Status` is not matched. The SQL rewrite of
+   `m == default` is `m == default || JSON_VALUE(Raw, '$.m') IS NULL`. It matched the legacy document
+   (`[Ann, Cleo, Old]`), and `!Jobs.Any()` matches an absent `Jobs` as well (`NOT EXISTS (… OPENJSON …)`).
+6. **Unknown fields.** Newtonsoft drops `"Legacy"` on a load → save. That matches InMemory, and RavenDB keeps such
+   fields (memory note "Raven KEEPS undeclared fields"), so it is a provider difference the conformance suite should
+   pin, decided in S3.
+
+**Decisions:**
+- **D1 confirmed and refined** (header note in §3). Owner sign-off pending.
+- **O4 answered by evidence:** support 2022 and 2025. EF picks the SQL per compat level (`UseCompatibilityLevel`),
+  and the only provider-side difference is the `Raw` alias expression, so supporting 2022 is close to free. 2019
+  (compat 150) is untested.
+
+**Still open after S1/S2, carried as S2b:**
+- Run the real `QueryExecutor` end to end on the prototype session, instead of hand-built shapes: the row filter
+  (:1055), `In` (:664), search pushdown (:2155).
+- Generate the EF query model from arbitrary Spark entity types: which member types to leave to `JSON_VALUE`
+  (`Color`, `TranslatedString`, `object`, polymorphic members).
+- Typed path reads (`RETURNING int/datetimeoffset` on 2025, `CAST` on 2022).
+- Promoted computed columns plus indexes for `IndexedFields`, measured on a few thousand rows.
 
 ## 9. Stale in the 2026-11-09 draft
 
@@ -264,8 +358,8 @@ Tests: single classes during development (TDD red→green). The full suite runs 
   SPARK060)?
 - **O3, demo app:** which app runs on SQL Server? DemoApp is core-only and "new features don't land there". HR or QnA
   with a switch, or a new `apps/SqlDemo`?
-- **O4, minimum SQL Server:** 2022 (an `nvarchar` JSON column) or 2025 only (native `json`, `JSON_CONTAINS`)?
-  Supporting 2022 doubles the S1/S2 matrix, but SQL Server hosting is mostly 2019/2022 today.
+- ~~**O4, minimum SQL Server:** 2022 or 2025 only?~~ **Answered by S1/S2 (§8.1):** both, at almost no cost. EF
+  emits per compat level, and the provider differs only in the `Raw` alias. Confirm whether to also test 2019.
 - **O5, full-text:** install the Full-Text feature on the local 2025 instance for S10?
 
 ## 11. Out of scope
