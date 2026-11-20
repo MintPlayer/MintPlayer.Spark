@@ -4,7 +4,7 @@
 # Installed by .github/workflows/code-coverage-deploy.yml as /usr/local/sbin/raven-cert-renew and run nightly by
 # raven-cert-renew.timer. Decisions R1-R10 of the runbook:
 #   - the private CA (CA_DIR/ca.crt + ca.key, root-only) signs every leaf: the server, the operator, codecoverage,
-#     seotester and mintplayer certificates;
+#     seotester, mintplayer and iconic certificates;
 #   - when ANY leaf has RENEW_BEFORE_DAYS or fewer left, ALL of them are re-issued together with NEW keys, valid DAYS;
 #   - the new app certificates are registered beside the old ones with the still-valid operator BEFORE anything is
 #     swapped, so no app is ever without a registered certificate; then the files are swapped, RavenDB is recreated
@@ -30,6 +30,7 @@ umask 077
 CC_DIR=${CC_DIR:-/var/www/code-coverage}
 SEO_DIR=${SEO_DIR:-/var/www/seotester}
 MP_DIR=${MP_DIR:-/var/www/mintplayer}
+ICONIC_DIR=${ICONIC_DIR:-/var/www/iconic}
 CA_DIR=${CA_DIR:-/root/raven-ca}
 DAYS=${RAVEN_CERT_DAYS:-825}
 RENEW_BEFORE_DAYS=${RAVEN_RENEW_BEFORE_DAYS:-30}
@@ -60,10 +61,12 @@ envval() { sed -n "s/^$1=//p" "$CC_DIR/.env" | tail -n 1; }
 
 has_seo() { [ -f "$SEO_DIR/raven-certs/seotester.crt" ]; }
 has_mp() { [ -f "$MP_DIR/raven-certs/mintplayer.crt" ]; }
+has_iconic() { [ -f "$ICONIC_DIR/raven-certs/iconic.crt" ]; }
 
 cc() { docker compose --project-directory "$CC_DIR" --env-file "$CC_DIR/.env" "$@"; }
 seo() { docker compose --project-directory "$SEO_DIR" --env-file "$SEO_DIR/.env" "$@"; }
 mp() { docker compose --project-directory "$MP_DIR" --env-file "$MP_DIR/.env" "$@"; }
+iconic() { docker compose --project-directory "$ICONIC_DIR" --env-file "$ICONIC_DIR/.env" "$@"; }
 
 # The server certificate (public part) out of server.pfx; the password goes to openssl through the environment only.
 server_crt() {
@@ -88,6 +91,7 @@ leaves() {   # name and a command that prints the certificate, one per line
   echo "codecoverage cat $CC_DIR/raven-certs/codecoverage.crt"
   if has_seo; then echo "seotester cat $SEO_DIR/raven-certs/seotester.crt"; fi
   if has_mp; then echo "mintplayer cat $MP_DIR/raven-certs/mintplayer.crt"; fi
+  if has_iconic; then echo "iconic cat $ICONIC_DIR/raven-certs/iconic.crt"; fi
 }
 
 renewal_due() {
@@ -155,7 +159,7 @@ http_ok() {   # compose-function service path seconds: 200 from inside the conta
   return 1
 }
 
-# Removes every app registration (Name codecoverage* / seotester* / mintplayer*) that is not one of the installed
+# Removes every app registration (Name codecoverage* / seotester* / mintplayer* / iconic*) that is not one of the installed
 # certificates. Run after every renewal and harmless when there is nothing to remove, so an interrupted cleanup finishes
 # the next night.
 cleanup_registrations() {
@@ -163,6 +167,7 @@ cleanup_registrations() {
   keep="$(thumbprint "$CC_DIR/raven-certs/codecoverage.crt")"
   if has_seo; then keep="$keep $(thumbprint "$SEO_DIR/raven-certs/seotester.crt")"; expected=$((expected + 1)); fi
   if has_mp; then keep="$keep $(thumbprint "$MP_DIR/raven-certs/mintplayer.crt")"; expected=$((expected + 1)); fi
+  if has_iconic; then keep="$keep $(thumbprint "$ICONIC_DIR/raven-certs/iconic.crt")"; expected=$((expected + 1)); fi
   # Never delete with an incomplete keep-list: that would remove the registrations in use.
   [ "$(wc -w <<< "$keep")" -eq "$expected" ] || die "could not read the installed thumbprints; nothing removed"
   op "$CC_DIR/raven-operator/operator.crt" "$CC_DIR/raven-operator/operator.key" "$R/admin/certificates" \
@@ -180,7 +185,7 @@ def walk(node):
             yield from walk(value)
 for cert in walk(json.load(sys.stdin)):
     name, thumb = cert["Name"] or "", (cert["Thumbprint"] or "").upper()
-    if name.startswith(("codecoverage", "seotester", "mintplayer")) and thumb not in keep:
+    if name.startswith(("codecoverage", "seotester", "mintplayer", "iconic")) and thumb not in keep:
         print(thumb)
 ' | sort -u | while read -r old; do
       is_thumbprint "$old" || { log "skipping a malformed thumbprint from the server"; continue; }
@@ -209,6 +214,7 @@ renew() {
   issue "$new" codecoverage
   if has_seo; then issue "$new" seotester; fi
   if has_mp; then issue "$new" mintplayer; fi
+  if has_iconic; then issue "$new" iconic; fi
   openssl verify -CAfile "$CA_DIR/ca.crt" "$new"/*.crt > /dev/null || die "the new certificates do not verify against the CA"
   PFXPASS=$(envval RAVEN_SERVER_CERTIFICATE_PASSWORD) \
     openssl pkcs12 -export -inkey "$new/server.key" -in "$new/server.crt" -certfile "$CA_DIR/ca.crt" \
@@ -222,6 +228,9 @@ renew() {
   fi
   if has_mp; then
     register "$CC_DIR/raven-operator/operator.crt" "$CC_DIR/raven-operator/operator.key" "mintplayer-$stamp" MintPlayer "$new/mintplayer.crt"
+  fi
+  if has_iconic; then
+    register "$CC_DIR/raven-operator/operator.crt" "$CC_DIR/raven-operator/operator.key" "iconic-$stamp" Iconic "$new/iconic.crt"
   fi
 
   # 2. Swap the server and operator files and the thumbprint; keep the old ones to roll back.
@@ -270,6 +279,16 @@ renew() {
     if [ -n "$(mp ps -q mintplayer-app)" ]; then
       mp up -d --force-recreate --no-deps mintplayer-app
       http_ok mp mintplayer-app /health 360 || die "mintplayer-app is not ready with its new certificate"
+    fi
+  fi
+
+  if has_iconic; then
+    log "recreating iconic-app with its new certificate"
+    replace "$new/iconic.crt" "$ICONIC_DIR/raven-certs/iconic.crt"
+    replace "$new/iconic.key" "$ICONIC_DIR/raven-certs/iconic.key"
+    if [ -n "$(iconic ps -q iconic-app)" ]; then
+      iconic up -d --force-recreate --no-deps iconic-app
+      http_ok iconic iconic-app /health 360 || die "iconic-app is not ready with its new certificate"
     fi
   fi
 

@@ -54,7 +54,9 @@ export class EditorCanvasComponent {
   readonly size = signal({ width: 300, height: 300 });
   readonly zoom = signal(1);
   readonly pan = signal<Vec>({ x: 0, y: 0 });
-  private fitted = false;
+  /** The view follows the stage while it is fitted: a resize (the window, the timeline appearing) refits it, until the
+   *  person zooms or pans. */
+  private fitted = true;
 
   /** The shape being drawn. */
   readonly anchors = signal<Anchor[]>([]);
@@ -156,7 +158,7 @@ export class EditorCanvasComponent {
     const observer = new ResizeObserver(entries => {
       const r = entries[0].contentRect;
       this.size.set({ width: Math.max(1, Math.floor(r.width)), height: Math.max(1, Math.floor(r.height)) });
-      if (!this.fitted) { this.fit(); this.fitted = true; }
+      if (this.fitted) this.fit();
     });
     queueMicrotask(() => observer.observe(this.stage().nativeElement));
     destroyRef.onDestroy(() => observer.disconnect());
@@ -173,11 +175,13 @@ export class EditorCanvasComponent {
     const z = Math.max(0.05, Math.min((width - 32) / scene.width, (height - 32) / scene.height));
     this.zoom.set(z);
     this.pan.set({ x: (width - scene.width * z) / 2, y: (height - scene.height * z) / 2 });
+    this.fitted = true;
   }
 
   zoomBy(factor: number, at?: Vec): void {
     const { width, height } = this.size();
     const c = at ?? { x: width / 2, y: height / 2 };
+    this.fitted = false;
     const z0 = this.zoom(), z = Math.min(64, Math.max(0.05, z0 * factor));
     const p = this.pan();
     this.pan.set({ x: c.x - ((c.x - p.x) * z) / z0, y: c.y - ((c.y - p.y) * z) / z0 });
@@ -318,6 +322,9 @@ export class EditorCanvasComponent {
   // ------------------------------------------------------------------ pointer events
 
   onPointerDown(e: PointerEvent): void {
+    // The zoom buttons sit on the stage: capturing their pointer retargets the click to the stage, so they never
+    // fired for a real press, and the press drew on the picture underneath.
+    if ((e.target as Element | null)?.closest('.zoom-controls')) return;
     this.noSnap = e.altKey;
     const s = this.screen(e);
     this.pointers.set(e.pointerId, s);
@@ -375,11 +382,13 @@ export class EditorCanvasComponent {
         const z = Math.min(64, Math.max(0.05, (g.zoom0 * d) / Math.max(1, g.d0)));
         // Keep the design point under the starting midpoint under the fingers' midpoint.
         const dx = (g.mid0.x - g.pan0.x) / g.zoom0, dy = (g.mid0.y - g.pan0.y) / g.zoom0;
+        this.fitted = false;
         this.zoom.set(z);
         this.pan.set({ x: mid.x - dx * z, y: mid.y - dy * z });
         return;
       }
       case 'pan':
+        this.fitted = false;
         this.pan.set({ x: g.pan0.x + s.x - g.start.x, y: g.pan0.y + s.y - g.start.y });
         return;
       case 'point': {

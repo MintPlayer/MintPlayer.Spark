@@ -1,0 +1,204 @@
+name: iconic-deploy
+
+# Deploys apps/Iconic to iconic.mintplayer.com, on the VPS beside CodeCoverage, SeoTester and mintplayer.com
+# (docs/iconic_plan.md "Deploy"). Modelled on mintplayer-deploy.yml: ghcr → SSH → compose, the same repository secrets
+# (VPS_*), the same readiness loop. One image: ghcr.io/mintplayer/iconic:master.
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - 'apps/Iconic/Iconic/**'
+      - 'apps/Iconic/Iconic.Library/**'
+      - 'apps/Iconic/docker-compose.yml'
+      # Iconic's transitive ProjectReference closure, the same list as the Dockerfile's COPY lines and
+      # iconic-image-check.yml (tools/verify-iconic-deploy.test.mjs keeps the three equal to the csproj graph).
+      - 'libs/attributes/MintPlayer.Spark.Attributes/**'
+      - 'libs/authorization/MintPlayer.Spark.Authorization/**'
+      - 'libs/authorization/MintPlayer.Spark.Authorization.Abstractions/**'
+      - 'libs/history/MintPlayer.Spark.History/**'
+      - 'libs/history/MintPlayer.Spark.History.Abstractions/**'
+      - 'libs/mail/MintPlayer.Spark.MailManager/**'
+      - 'libs/mail/MintPlayer.Spark.MailManager.Abstractions/**'
+      - 'libs/messaging/MintPlayer.Spark.Messaging/**'
+      - 'libs/messaging/MintPlayer.Spark.Messaging.Abstractions/**'
+      - 'libs/migrations/MintPlayer.Spark.Migrations/**'
+      - 'libs/model/MintPlayer.Spark.Model/**'
+      - 'libs/source_generators/MintPlayer.Spark.LibraryGenerators/**'
+      - 'libs/source_generators/MintPlayer.Spark.SourceGenerators/**'
+      - 'libs/spark/MintPlayer.Spark/**'
+      - 'libs/spark/MintPlayer.Spark.SafeHttp/**'
+      - 'libs/spark/MintPlayer.Spark.Abstractions/**'
+      - 'libs/spark/MintPlayer.Spark.RavenDB/**'
+      - 'libs/subscription_worker/MintPlayer.Spark.SubscriptionWorker.Abstractions/**'
+      # Angular and TypeScript libraries baked into the image via `nx run @spark-apps/iconic:build`.
+      - 'libs/node_packages/ng-spark/**'
+      - 'libs/node_packages/constraint-solver/**'
+      # Workspace-level files that affect the build.
+      - 'package.json'
+      - 'package-lock.json'
+      - 'nx.json'
+      - 'tsconfig.base.json'
+      - '.github/workflows/iconic-deploy.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: mintplayer/iconic
+
+jobs:
+  build-and-push:
+
+    name: Build and push the Iconic image
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    permissions:
+      contents: read
+      id-token: write
+      packages: write
+      attestations: write
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v7
+
+    # No host .NET/Node setup: the Dockerfile's build stage restores, runs `npm ci`, the Nx build and
+    # `dotnet publish` inside the container (--skip-nx-cache: the shipped image is never replayed from a cache).
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v4
+
+    - name: Authenticate with GHCR
+      uses: docker/login-action@v4
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ github.token }}
+
+    - name: Extract tags/labels
+      id: meta-ghcr
+      uses: docker/metadata-action@v6
+      with:
+        github-token: ${{ github.token }}
+        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+
+    - name: Build and push Docker image
+      id: push-ghcr
+      uses: docker/build-push-action@v7
+      with:
+        context: .
+        file: ./apps/Iconic/Iconic/Dockerfile
+        push: true
+        tags: ${{ steps.meta-ghcr.outputs.tags }}
+        labels: ${{ steps.meta-ghcr.outputs.labels }}
+        cache-from: type=gha,scope=iconic
+        cache-to: type=gha,mode=max,scope=iconic
+
+    - name: Generate artifact attestation
+      uses: actions/attest-build-provenance@v4
+      with:
+        subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+        subject-digest: ${{ steps.push-ghcr.outputs.digest }}
+        push-to-registry: true
+
+    # Best-effort, as MintPlayer's: the package must be public for the VPS to pull without credentials. Verify in
+    # the package settings after the first run rather than trusting this step.
+    - name: Make the package public
+      continue-on-error: true
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        gh api --method PATCH -H "Accept: application/vnd.github+json" \
+          "/orgs/${{ github.repository_owner }}/packages/container/iconic" \
+          -f visibility=public 2>&1 || echo "(skipped — already public, missing, or insufficient token scope)"
+
+  deploy:
+
+    name: Deploy to VPS
+    runs-on: ubuntu-latest
+    # Room for pull + restart plus the 360s readiness bound below.
+    timeout-minutes: 20
+    needs: [build-and-push]
+    if: github.ref == 'refs/heads/master'
+
+    permissions:
+      contents: read
+      packages: read
+
+    steps:
+    - name: Deploy to VPS
+      uses: appleboy/ssh-action@v1.2.5
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        host: ${{ secrets.VPS_HOST }}
+        username: ${{ secrets.VPS_USERNAME }}
+        key: ${{ secrets.VPS_SSH_KEY }}
+        port: ${{ secrets.VPS_PORT }}
+        passphrase: ${{ secrets.VPS_SSH_KEY_PASSPHRASE }}
+        envs: GITHUB_TOKEN
+        script: |
+          # Fail on the FIRST failing command (code-coverage-deploy.yml learned this the hard way).
+          set -e
+
+          mkdir -p /var/www/iconic
+          cd /var/www/iconic
+
+          # .env is server-managed; deploys never write it. Only the compose file is refreshed from the repo.
+          test -f .env || { echo "::error::/var/www/iconic/.env is missing (docs/iconic_plan.md \"Deploy\")"; exit 1; }
+          # RavenDB is secured: this app's client certificate and the CA must be on the server. Presence only.
+          for f in raven-certs/iconic.crt raven-certs/iconic.key raven-certs/ca.crt; do
+            test -s "$f" || { echo "::error::/var/www/iconic/$f is missing (docs/iconic_plan.md \"Deploy\")"; exit 1; }
+          done
+          # The two backend networks this app shares (iconic-raven: CodeCoverage's coverage-raven + iconic-app;
+          # iconic-mail: the shared mail relay, apps/MailRelay, + iconic-app). External to every compose project, so
+          # they are created here, INTERNAL (no route out), when missing; idempotent, and a concurrent create by another
+          # deploy is fine (the second inspect finds it). A network of that name that is not internal is refused rather than
+          # used. The same block, over its own networks, in every deploy.
+          for net in iconic-raven iconic-mail; do
+            docker network inspect "$net" > /dev/null 2>&1 || docker network create --internal "$net" > /dev/null 2>&1 || docker network inspect "$net" > /dev/null
+            [ "$(docker network inspect -f '{{.Internal}}' "$net")" = "true" ] || { echo "::error::the network $net exists but is not internal: remove it (docker network rm $net) once nothing uses it, then redeploy"; exit 1; }
+          done
+          # The database is CodeCoverage's. Its compose file joins it to the shared network, but only once CodeCoverage is
+          # redeployed with it; until then it is attached here, under its service name, so the order of the two deploys does
+          # not matter. Idempotent; CodeCoverage's next up attaches it the same way. Refused (before touching the running
+          # stack) when CodeCoverage is not running at all. (The mail relay, apps/MailRelay, joins iconic-mail from its own
+          # compose file; until it runs, mail waits in the app's queue.)
+          for pair in coverage-raven:iconic-raven; do
+            svc=${pair%%:*}; net=${pair#*:}
+            id=$(docker ps -q --filter label=com.docker.compose.project=code-coverage --filter "label=com.docker.compose.service=$svc" | head -n 1)
+            [ -n "$id" ] || { echo "::error::CodeCoverage's $svc is not running"; exit 1; }
+            docker network inspect "$net" --format '{{range .Containers}}{{.Name}} {{end}}' | grep -q "$svc" || docker network connect --alias "$svc" "$net" "$id"
+          done
+          docker network inspect iconic-mail --format '{{range .Containers}}{{.Name}} {{end}}' | grep -qw 'mail-relay' || echo "::warning::mail-relay is not on the network iconic-mail yet: mail is queued until it is (deploy apps/MailRelay)"
+
+          rm -f docker-compose.yml
+          curl -sf -H "Authorization: token $GITHUB_TOKEN" -o docker-compose.yml \
+            https://raw.githubusercontent.com/${{ github.repository }}/master/apps/Iconic/docker-compose.yml
+
+          echo "$GITHUB_TOKEN" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+          # One pull at a time on the VPS: two deploys pulling a shared layer at once fail in containerd ("commit failed:
+          # rename .../ingest/... no such file or directory", code-coverage-deploy run 42339838410, 2026-11-07).
+          flock -w 120 /tmp/vps-deploy-pull.lock docker compose --env-file .env pull
+          docker compose --env-file .env down --remove-orphans
+          docker compose --env-file .env up -d --remove-orphans
+
+          docker image prune -f
+          docker compose --env-file .env ps
+
+          # Readiness that can fail. The bound is a FAILURE bound (the loop exits on the first 200): iconic-app's
+          # healthcheck start_period (300s) plus one minute, 36 probes 10s apart. Keep the two in step.
+          for i in $(seq 1 36); do
+            sleep 10
+            code=$(docker compose --env-file .env exec -T iconic-app bash -c "exec 3<>/dev/tcp/127.0.0.1/8080 && printf 'GET /health HTTP/1.0\r\nHost: localhost\r\n\r\n' >&3 && head -1 <&3" | grep -o '[0-9][0-9][0-9]' | head -1 || echo 000)
+            echo "readiness attempt $i: HTTP $code"
+            if [ "$code" = "200" ]; then exit 0; fi
+          done
+          echo "::error::iconic-app did not become ready within 360s — docker compose logs iconic-app"
+          exit 1

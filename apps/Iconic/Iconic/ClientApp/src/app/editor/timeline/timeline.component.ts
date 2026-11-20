@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, DestroyRef, effect, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, DestroyRef, effect, inject, untracked } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Color } from '@mintplayer/ng-bootstrap';
 import { BsButtonTypeDirective } from '@mintplayer/ng-bootstrap/button-type';
@@ -109,29 +109,43 @@ export class TimelineComponent {
     return { id, name: scene.layers[id].name, opacity: layerOpacity(scene, id, frame) };
   });
 
-  private timer: ReturnType<typeof setInterval> | null = null;
+  private raf: number | null = null;
+  private readonly fps = computed(() => this.store.scene().animation.fps);
 
   constructor() {
+    // The frame follows the clock, not a chain of timer ticks: an interval restarted per frame drifted (26 of 30 fps
+    // measured, because reading frame() here made every frame re-run this effect). Only playing and fps restart it.
     effect(() => {
       const playing = this.store.playing();
-      const fps = this.store.scene().animation.fps;
+      const fps = this.fps();
       this.stop();
       if (!playing) return;
-      if (this.store.frame() === null) this.store.frame.set(0);
-      this.timer = setInterval(() => {
-        const next = (this.store.frame() ?? 0) + 1;
-        if (next >= this.frames()) {
-          if (this.store.scene().animation.loop) this.store.frame.set(0);
-          else this.store.playing.set(false);
-        } else this.store.frame.set(next);
-      }, 1000 / fps);
+      const startFrame = untracked(() => this.store.frame()) ?? 0;
+      let start: number | null = null;
+      const tick = (now: number) => {
+        start ??= now;
+        const frames = untracked(() => this.frames());
+        let next = startFrame + Math.floor((now - start) * fps / 1000);
+        if (next >= frames) {
+          if (!untracked(() => this.store.scene().animation.loop)) {
+            this.store.frame.set(frames - 1);
+            this.store.playing.set(false);
+            return;
+          }
+          next %= frames;
+        }
+        if (next !== untracked(() => this.store.frame())) this.store.frame.set(next);
+        this.raf = requestAnimationFrame(tick);
+      };
+      untracked(() => { if (this.store.frame() === null) this.store.frame.set(0); });
+      this.raf = requestAnimationFrame(tick);
     });
     inject(DestroyRef).onDestroy(() => this.stop());
   }
 
   private stop(): void {
-    if (this.timer) clearInterval(this.timer);
-    this.timer = null;
+    if (this.raf !== null) cancelAnimationFrame(this.raf);
+    this.raf = null;
   }
 
   togglePlay(): void {

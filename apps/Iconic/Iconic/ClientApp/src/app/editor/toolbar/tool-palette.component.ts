@@ -54,10 +54,12 @@ const GROUPS: ToolButton[][] = [
     }
   `,
   styles: `
-    :host { display: flex; flex-direction: column; gap: 8px; padding: 6px; overflow-y: auto; }
+    /* The gutter is reserved: the column is as wide as its content, so a scrollbar that appears on a short window
+       would otherwise take its width out of the buttons and cut every icon in half. */
+    :host { display: flex; flex-direction: column; gap: 8px; padding: 6px; overflow-y: auto; scrollbar-gutter: stable; }
     .group { display: flex; flex-direction: column; gap: 2px; }
     @media (max-width: 767.98px) {
-      :host { flex-direction: row; overflow-x: auto; overflow-y: hidden; }
+      :host { flex-direction: row; overflow-x: auto; overflow-y: hidden; scrollbar-gutter: auto; }
       .group { flex-direction: row; }
     }
   `,

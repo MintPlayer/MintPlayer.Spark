@@ -25,7 +25,31 @@ The PRD is [iconic_PRD.md](iconic_PRD.md). Everything happens in one PR, #699, o
   - Stages 1–4: the client (core, formats, editor, pages), and the list and delete endpoints.
   - Spike results are in PRD §5.1. Departures from the plan are D25–D29: the own API, export on the main thread,
     point and opacity tracks only, no orient-to-tangent, and the saver's `active` guard.
-  - **NEXT:** the owner reviews the UX and runs the manual checks below. Then deploy.
+- 2026-11-20, browser checks (owner: "Use the playwright_node MCP browser to do the remaining checks"), on the local
+  host (https 5019, Chromium):
+  - S2: points snap to a line's end and become shared, and Alt turns snapping off.
+  - S3: an exported `.cur` and `.ani` load in Windows `LoadCursorFromFile`, with the hotspot scaled per entry
+    ((1,1) at 32 px, (2,2) at 64 px), and Chromium accepts the `.cur` as a CSS `cursor: url(...)`. Explorer's thumbnail can't be driven from
+    the browser; the Windows loader is the same decoder.
+  - S7: set to 30 fps, the preview advanced 26 frames a second while the browser ran 59.6 rAF/s. The playback effect
+    read `frame()`, so it restarted its `setInterval` on every frame. Playback is now a `requestAnimationFrame` clock,
+    and the frame number comes from elapsed time, so it doesn't drift. Measured afterwards: 30 frame changes and 30
+    redraws a second.
+  - Phone viewport (390×844, emulated; no real phone): the layout is usable after three fixes:
+    - the tool palette no longer clips its last tool (it reserves the scrollbar gutter, and is a row on phones);
+    - the canvas refits on resize until the user zooms or pans;
+    - the zoom buttons work again (the canvas's pointer capture had swallowed their clicks).
+  - Not changed, for the owner: "Start over?" is a native `confirm()`, and the default 8 px stroke is heavy on a
+    64 px cursor.
+- 2026-11-20, deploy pipeline (owner: "the dns records should be active now"). Copied from mintplayer.com's:
+  - the image and the stack: `apps/Iconic/Iconic/Dockerfile`, `apps/Iconic/docker-compose.yml` and `.env.example`;
+  - the workflows: `.github/workflows/iconic-deploy.yml` and `iconic-image-check.yml`;
+  - the backend networks `iconic-raven` and `iconic-mail`, joined by CodeCoverage's RavenDB and the mail relay;
+  - the nightly certificate renewal, which now covers Iconic;
+  - the checks in `tools/verify-iconic-deploy.test.mjs` and `verify-backend-networks.test.mjs`.
+
+  Merging also redeploys CodeCoverage and MailRelay. The server steps are under "Deploy" below.
+  - **NEXT:** the owner does the server steps, then merges.
 
 ## Stage 0: solver and skeleton
 
@@ -39,8 +63,8 @@ The PRD is [iconic_PRD.md](iconic_PRD.md). Everything happens in one PR, #699, o
 
 ## Stage 1: static vector
 
-- [x] **S2** snapping and constraint UX, built into the editor. **Owner review pending** (PRD §5.1).
-- [x] **S3** ICO/CUR/ANI writer and reader, with round-trip tests. **Manual checks pending:** Explorer, a Windows cursor, a CSS cursor.
+- [x] **S2** snapping and constraint UX, built into the editor. Checked in the browser 2026-11-20 (log).
+- [x] **S3** ICO/CUR/ANI writer and reader, with round-trip tests. Checked 2026-11-20: the Windows loader and the CSS cursor accept them (log).
 - [x] **S4** Chromium versus Firefox at 16 and 32 px, measured (PRD §5.1).
 - [x] **S5** document size, autosave as patches (fixed patch script, ops as `args`), and the attachment endpoints.
 - [x] Core library: the model, a command and undo stack, derived points with Split (D15), and the solver adapter.
@@ -61,7 +85,7 @@ The PRD is [iconic_PRD.md](iconic_PRD.md). Everything happens in one PR, #699, o
 ## Stage 3: animation
 
 - [x] **S6** GIF (gifenc, a global palette, a matte option), APNG and WebP. On the main thread (D26).
-- [x] **S7** each frame evaluated from the rest pose. **Owner check pending:** a mechanism at 30 fps in the preview.
+- [x] **S7** each frame evaluated from the rest pose. 30 fps in the preview, measured 2026-11-20 after the rAF fix (log).
 - [x] A timeline with point keyframe tracks, layer opacity keys and easing presets (D27).
 - [x] Motion paths bound to shapes (D28: no orient-to-tangent).
 - [x] GIF, APNG, WebP and ANI export.
@@ -71,6 +95,34 @@ The PRD is [iconic_PRD.md](iconic_PRD.md). Everything happens in one PR, #699, o
 - [x] Share links (`noindex`), Remix, report-by-email and takedown (D20).
 - [x] The thumbnail, and the hand-off of a draft to the account ("Save to my account" on the home page and in the editor).
 - [x] A `CLAUDE.md` entry marking Iconic as production.
-- [ ] Deploy to the VPS: DNS, the reverse proxy and the secrets need the owner.
+- [x] The deploy pipeline (log, 2026-11-20). DNS is set.
+- [ ] The server steps below, then the first deploy.
+
+### Deploy: the owner's server steps (once, before the first deploy)
+
+The deploy refuses to start until steps 1 and 3 are done. Never print a key or a `.env` value.
+
+1. `install -d -m 0750 /var/www/iconic`. Write `/var/www/iconic/.env` from `apps/Iconic/.env.example` and
+   `chmod 0600` it: the OAuth client ids and secrets, and `REPORT_ADDRESS`.
+2. Create the database `Iconic` on `coverage-raven` with the operator certificate. The app runs with
+   `EnsureDatabaseCreated=false`.
+3. Issue the `iconic` client certificate from `/root/raven-ca`, as for `seotester` in
+   `docs/code-coverage/raven-tls-migration.md` §4.2 (`-subj "/CN=iconic"`, `extendedKeyUsage=clientAuth`). Then
+   install it as §4.3 does:
+   - `install -d -m 0750 /var/www/iconic/raven-certs`
+   - `install -m 0644 ca.crt iconic.crt /var/www/iconic/raven-certs/`
+   - `install -m 0400 -o 1654 iconic.key /var/www/iconic/raven-certs/iconic.key` (1654 is `app` on the .NET base image)
+   - `shred -u iconic.key` in `/root/raven-ca`
+
+   From then on, `raven-cert-renew.sh` renews it nightly.
+4. Merging deploys three stacks:
+   - CodeCoverage: registers the certificate for the database `Iconic`, and joins `coverage-raven` to `iconic-raven`;
+   - MailRelay: joins `iconic-mail`;
+   - Iconic.
+
+   If the Iconic deploy runs before CodeCoverage's, re-run it with `workflow_dispatch`.
+5. Register the OAuth callbacks `https://iconic.mintplayer.com/signin-github`, `/signin-google` and
+   `/signin-microsoft`.
+6. The deploy makes the ghcr package `iconic` public; check that it did.
 - [ ] A phone viewport in E2E. Iconic has no E2E host yet; the unit and service tests cover the core and the API.
 - [x] Final test run (Iconic.Tests, the client core and formats, the solver) and a coverage check on the PR.

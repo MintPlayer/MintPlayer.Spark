@@ -111,12 +111,12 @@ jobs:
     # the artifacts are restored rather than recompiled -- and for an affected one it is a no-op the
     # step above already did.
     #
-    # Verifying all five, rather than skipping the unaffected ones, is deliberate. Skipping would be
+    # Verifying every app, rather than skipping the unaffected ones, is deliberate. Skipping would be
     # sound only if `affected` were exactly right, and dependency tracking here is not purely
     # automatic: code-coverage-deploy.yml maintains its ProjectReference closure as a hand-written path list. A
     # check that silently does nothing when that bookkeeping slips is worse than a slow one.
     - name: Restore the Spark app binaries the verifications need
-      run: npx nx run-many --target=build --projects=DemoApp,HR,Fleet,QnA,SparkId,CodeCoverage,SeoTester,MintPlayer
+      run: npx nx run-many --target=build --projects=DemoApp,HR,Fleet,QnA,SparkId,CodeCoverage,SeoTester,MintPlayer,Iconic
 
     # Catches a change that touched the entity classes without regenerating the model. Without this
     # the mismatch is only noticed at deployment, where it stops the application from starting.
@@ -127,7 +127,7 @@ jobs:
     # compiled against. Exit 3 means drift; the run fails before the slow test suite.
     - name: Verify Spark models are in sync
       run: |
-        for project in apps/DemoApp/DemoApp apps/HR/HR apps/Fleet/Fleet apps/QnA/QnA apps/SparkId/SparkId apps/CodeCoverage/CodeCoverage apps/SeoTester/SeoTester apps/MintPlayer/MintPlayer; do
+        for project in apps/DemoApp/DemoApp apps/HR/HR apps/Fleet/Fleet apps/QnA/QnA apps/SparkId/SparkId apps/CodeCoverage/CodeCoverage apps/SeoTester/SeoTester apps/MintPlayer/MintPlayer apps/Iconic/Iconic; do
           name="$(basename "$project")"
           # Globbed rather than hardcoding net11.0, so a target-framework bump cannot turn this
           # guard into a false alarm. Better than dotnet's start-process error, which names a path
@@ -152,7 +152,7 @@ jobs:
     # --spark-synchronize-security and commit the baseline. Exit 2: security.json does not compose.
     - name: Verify the anonymous surface has not widened
       run: |
-        for project in apps/DemoApp/DemoApp apps/HR/HR apps/Fleet/Fleet apps/QnA/QnA apps/SparkId/SparkId apps/CodeCoverage/CodeCoverage apps/SeoTester/SeoTester apps/MintPlayer/MintPlayer; do
+        for project in apps/DemoApp/DemoApp apps/HR/HR apps/Fleet/Fleet apps/QnA/QnA apps/SparkId/SparkId apps/CodeCoverage/CodeCoverage apps/SeoTester/SeoTester apps/MintPlayer/MintPlayer apps/Iconic/Iconic; do
           name="$(basename "$project")"
           # Globbed rather than hardcoding net11.0, so a target-framework bump cannot turn this
           # guard into a false alarm. Better than dotnet's start-process error, which names a path
