@@ -1,0 +1,50 @@
+{
+  "$schema": "../../../../schemas/security.schema.json",
+  "_comment": [
+    "A project is its owner's: ProjectActions.GetRowFilterAsync narrows every right below to the caller's own",
+    "projects (an administrator sees all). New is not granted: the editor creates projects through /api/iconic,",
+    "which applies the project quota (docs/iconic_PRD.md D21). Anonymous visitors get nothing from the model;",
+    "they draw with a local draft and open shared links through /api/iconic/shared (D3, D20)."
+  ],
+  "wellKnown": {
+    "anonymous": "00000000-0000-0000-0000-000000000000",
+    "authenticated": "1c010000-0000-4000-8000-00000000000f"
+  },
+  "groups": {
+    "00000000-0000-0000-0000-000000000000": "Anonymous visitors",
+    "1c010000-0000-4000-8000-00000000000f": "Signed-in users",
+    "1c010000-0000-4000-8000-000000000001": "Administrator"
+  },
+  "rights": [
+    {
+      "key": "1c01ffff-0000-4000-8000-000000000010",
+      "resource": "Delete/Project",
+      "groupId": "1c010000-0000-4000-8000-000000000001",
+      "isDenied": false
+    },
+    {
+      "key": "1c01ffff-0000-4000-8000-000000000003",
+      "resource": "History/Project",
+      "groupId": "1c010000-0000-4000-8000-000000000001",
+      "isDenied": false
+    },
+    {
+      "key": "1c01ffff-0000-4000-8000-000000000002",
+      "resource": "QueryReadEdit/Project",
+      "groupId": "1c010000-0000-4000-8000-000000000001",
+      "isDenied": false
+    },
+    {
+      "key": "1c01ffff-0000-4000-8000-000000000011",
+      "resource": "Delete/Project",
+      "groupId": "1c010000-0000-4000-8000-00000000000f",
+      "isDenied": false
+    },
+    {
+      "key": "1c01ffff-0000-4000-8000-000000000001",
+      "resource": "QueryReadEdit/Project",
+      "groupId": "1c010000-0000-4000-8000-00000000000f",
+      "isDenied": false
+    }
+  ]
+}

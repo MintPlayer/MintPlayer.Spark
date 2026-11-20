@@ -1,0 +1,21 @@
+<mjml>
+  <mj-head>
+    <mj-title>A shared drawing on {{ if app_name }}{{ app_name }}{{ else }}Iconic{{ end }} was reported</mj-title>
+    <mj-attributes>
+      <mj-all font-family="Segoe UI, Helvetica, Arial, sans-serif" />
+      <mj-text font-size="15px" line-height="22px" color="#111827" />
+    </mj-attributes>
+  </mj-head>
+  <mj-body background-color="#f3f4f6">
+    <mj-section background-color="#ffffff" padding="24px 0">
+      <mj-column>
+        <mj-text font-size="20px" font-weight="600">A shared drawing was reported</mj-text>
+        <mj-text>Someone reported the shared drawing “{{ project_name }}”.</mj-text>
+        <mj-text>{{ if reason }}Their reason: {{ reason }}{{ else }}They gave no reason.{{ end }}</mj-text>
+        <mj-button href="{{ share_url }}" background-color="#4b5563">Look at the drawing</mj-button>
+        <mj-text font-size="13px" color="#4b5563">If it breaks the rules, take it down. The link stops working at once, and the owner cannot share it again. Taking it down needs an administrator's sign-in.</mj-text>
+        <mj-button href="{{ takedown_url }}" background-color="#b91c1c">Take it down</mj-button>
+      </mj-column>
+    </mj-section>
+  </mj-body>
+</mjml>

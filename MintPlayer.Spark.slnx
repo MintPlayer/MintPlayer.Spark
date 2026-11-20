@@ -38,6 +38,11 @@
     <Project Path="apps/HR/HR.Tests/HR.Tests.csproj" />
     <Project Path="apps/HR/HR/HR.csproj" />
   </Folder>
+  <Folder Name="/apps/Iconic/">
+    <Project Path="apps/Iconic/Iconic.Library/Iconic.Library.csproj" />
+    <Project Path="apps/Iconic/Iconic.Tests/Iconic.Tests.csproj" />
+    <Project Path="apps/Iconic/Iconic/Iconic.csproj" />
+  </Folder>
   <Folder Name="/apps/MintPlayer/">
     <Project Path="apps/MintPlayer/MintPlayer.Library/MintPlayer.Library.csproj" />
     <Project Path="apps/MintPlayer/MintPlayer.Migration.Tests/MintPlayer.Migration.Tests.csproj" />
