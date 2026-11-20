@@ -56,11 +56,11 @@ jobs:
           for d in $domains; do
             test -s "mail-dkim/$d.private" || { echo "::error::/var/www/mail-relay/mail-dkim/$d.private is missing (apps/MailRelay/README.md)"; exit 1; }
           done
-          # One backend network per app (coverage-mail, seo-mail, mintplayer-mail: mail-relay + that app). External to
+          # One backend network per app (coverage-mail, seo-mail, mintplayer-mail, iconic-mail: mail-relay + that app). External to
           # every compose project, so they are created here, INTERNAL (no route out), when missing; idempotent, and a
           # concurrent create by another deploy is fine (the second inspect finds it). A network of that name that is not
           # internal is refused rather than used. The same block, over its own networks, in every deploy.
-          for net in coverage-mail seo-mail mintplayer-mail; do
+          for net in coverage-mail seo-mail mintplayer-mail iconic-mail; do
             docker network inspect "$net" > /dev/null 2>&1 || docker network create --internal "$net" > /dev/null 2>&1 || docker network inspect "$net" > /dev/null
             [ "$(docker network inspect -f '{{.Internal}}' "$net")" = "true" ] || { echo "::error::the network $net exists but is not internal: remove it (docker network rm $net) once nothing uses it, then redeploy"; exit 1; }
           done

@@ -1,0 +1,27 @@
+# Spark security posture: every effective right and the layer it comes from.
+# --spark-synchronize-security writes this file; --spark-verify-security fails when it drifts.
+# Rows: group | effect | resource | key | layer
+
+## Layers: libraries that ship rights (alias | assembly | hash)
+authorization | MintPlayer.Spark.Authorization | c6fc3af07823
+
+## Reachable without signing in (expanded)
+(nothing)
+
+## Granted to @anonymous
+(nothing)
+
+## Rights
+Administrator | grant | Delete/Project | 1c01ffff-0000-4000-8000-000000000010 | app
+Administrator | grant | History/Project | 1c01ffff-0000-4000-8000-000000000003 | app
+Administrator | grant | QueryReadEdit/Project | 1c01ffff-0000-4000-8000-000000000002 | app
+Signed-in users | grant | Delete/Project | 1c01ffff-0000-4000-8000-000000000011 | app
+Signed-in users | grant | QueryReadEdit/Project | 1c01ffff-0000-4000-8000-000000000001 | app
+Signed-in users (@authenticated) | grant | AddPasskey/Passkeys | authorization:passkeys-add | authorization
+Signed-in users (@authenticated) | grant | Query/PasskeyRow | authorization:passkey-rows-query | authorization
+Signed-in users (@authenticated) | grant | Read/Passkeys | authorization:passkeys-read | authorization
+Signed-in users (@authenticated) | grant | RemovePasskey/PasskeyRow | authorization:passkey-rows-remove | authorization
+Signed-in users (@authenticated) | grant | RenamePasskey/PasskeyRow | authorization:passkey-rows-rename | authorization
+
+## Inert: libraries switched off in "libraries"
+(nothing)

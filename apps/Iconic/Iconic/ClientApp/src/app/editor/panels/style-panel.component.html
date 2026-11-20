@@ -1,0 +1,134 @@
+@if (store.readOnly()) {
+  <p class="text-body-secondary small">This drawing is shared read-only. Remix it to edit a copy of your own.</p>
+} @else if (painting()) {
+  <h6>Paint</h6>
+  <bs-form>
+    <div class="d-flex align-items-center gap-2 mb-2">
+      <label for="paint-color" class="mb-0">Colour</label>
+      <input id="paint-color" type="color" class="color" [ngModel]="store.paintColor()" (ngModelChange)="store.paintColor.set($event)" />
+    </div>
+  </bs-form>
+  <bs-range [min]="0" [max]="1" [step]="0.05" label="Opacity" [value]="store.paintAlpha()" (valueChange)="store.paintAlpha.set($event)" />
+  <p class="small text-body-secondary mt-2">
+    Painting at {{ store.paintWidth() }} px: each output size has its own pixels. Pick the size under Outputs (preview).
+  </p>
+} @else {
+  <h6>{{ shapes().length ? (shapes().length === 1 ? 'Selected shape' : shapes().length + ' shapes') : 'New shapes' }}</h6>
+
+  <bs-form>
+    <div class="d-flex align-items-center gap-2 mb-2">
+      <label for="stroke-color" class="mb-0 flex-grow-1">Outline</label>
+      <input id="stroke-color" type="color" class="color" [ngModel]="stroke().color" (ngModelChange)="setStroke({ color: $event })" />
+    </div>
+  </bs-form>
+  <bs-range [min]="0" [max]="64" [step]="0.5" [label]="'Width ' + stroke().width" [value]="stroke().width" (valueChange)="setStroke({ width: $event })" />
+  <div class="row-2 mt-2">
+    <bs-select [ngModel]="dashIndex()" (ngModelChange)="setStroke({ dash: dashes[$event].value })" aria-label="Line style">
+      @for (d of dashes; track d.label; let i = $index) { <option [ngValue]="i">{{ d.label }}</option> }
+    </bs-select>
+    <bs-select [ngModel]="stroke().cap" (ngModelChange)="setStroke({ cap: $event })" aria-label="Line ends">
+      @for (c of caps; track c) { <option [ngValue]="c">{{ c }} ends</option> }
+    </bs-select>
+    <bs-select [ngModel]="stroke().join" (ngModelChange)="setStroke({ join: $event })" aria-label="Corners">
+      @for (j of joins; track j) { <option [ngValue]="j">{{ j }} corners</option> }
+    </bs-select>
+  </div>
+  <bs-range class="mt-2" [min]="0" [max]="1" [step]="0.05" label="Outline opacity" [value]="stroke().opacity" (valueChange)="setStroke({ opacity: $event })" />
+
+  <hr />
+  <bs-select [ngModel]="fill().type" (ngModelChange)="setFill({ type: $event })" aria-label="Fill">
+    @for (t of fillTypes; track t) { <option [ngValue]="t">{{ t === 'none' ? 'No fill' : t + ' fill' }}</option> }
+  </bs-select>
+  @if (fill().type !== 'none') {
+    <bs-form>
+      <div class="d-flex align-items-center gap-2 my-2">
+        <label for="fill-1" class="mb-0">Colour</label>
+        <input id="fill-1" type="color" class="color" [ngModel]="fill().color1" (ngModelChange)="setFill({ color1: $event })" />
+        @if (fill().type !== 'solid') {
+          <label for="fill-2" class="mb-0">to</label>
+          <input id="fill-2" type="color" class="color" [ngModel]="fill().color2" (ngModelChange)="setFill({ color2: $event })" />
+        }
+      </div>
+    </bs-form>
+    @if (fill().type === 'linear') {
+      <bs-range [min]="0" [max]="360" [step]="5" [label]="'Angle ' + degrees(fill().angle) + '°'" [value]="fill().angle" (valueChange)="setFill({ angle: $event })" />
+    }
+    <bs-range [min]="0" [max]="1" [step]="0.05" label="Fill opacity" [value]="fill().opacity" (valueChange)="setFill({ opacity: $event })" />
+  }
+  <p class="small text-body-secondary mt-1 mb-0">Lines ignore the fill; closed shapes (planes) use it.</p>
+
+  @if (store.tool() === 'regular' || store.tool() === 'star') {
+    <hr />
+    <bs-range [min]="3" [max]="16" [step]="1" [label]="(store.tool() === 'star' ? 'Points ' : 'Sides ') + store.sides()" [value]="store.sides()" (valueChange)="store.sides.set($event)" />
+  }
+
+  @if (text(); as t) {
+    <hr />
+    <h6>Text</h6>
+    <bs-form>
+      <label for="text-value">Text</label>
+      <input id="text-value" type="text" [ngModel]="t.text" (ngModelChange)="setText({ text: $event })" [ngModelOptions]="{ updateOn: 'blur' }" />
+      <label for="text-size" class="mt-2">Size</label>
+      <input id="text-size" type="number" min="1" max="2000" [ngModel]="t.size" (ngModelChange)="setText({ size: +$event || 1 })" [ngModelOptions]="{ updateOn: 'blur' }" />
+    </bs-form>
+    <div class="row-2 mt-2">
+      <bs-select [ngModel]="t.font ?? 'default'" (ngModelChange)="setText({ font: $event === 'default' ? null : $event })" aria-label="Font">
+        @for (f of fonts(); track f.id) { <option [ngValue]="f.id">{{ f.name }}</option> }
+      </bs-select>
+      <bs-select [ngModel]="t.align" (ngModelChange)="setText({ align: $event })" aria-label="Alignment">
+        <option [ngValue]="'left'">Left</option>
+        <option [ngValue]="'center'">Centre</option>
+        <option [ngValue]="'right'">Right</option>
+      </bs-select>
+    </div>
+    <label class="btn-like mt-2">
+      <input type="file" accept=".ttf,.otf,.woff,font/ttf,font/otf,font/woff" hidden (change)="uploadFont($event)" />
+      <span class="small text-primary upload"><spark-icon name="upload" /> Upload a font</span>
+    </label>
+    @if (fontError()) { <div class="small text-danger">{{ fontError() }}</div> }
+  }
+
+  @if (rect(); as r) {
+    <hr />
+    <bs-range [min]="0" [max]="128" [step]="1" [label]="'Corner radius ' + r.radius" [value]="r.radius" (valueChange)="setRadius($event)" />
+  }
+
+  @if (shapes().length) {
+    <hr />
+    <div class="d-flex flex-wrap gap-3">
+      <bs-checkbox [type]="'checkbox'" name="shape-guide" [checked]="!!shapes()[0].guide" (checkedChange)="setFlag('guide', $event === true)">Guide (editor only)</bs-checkbox>
+      <bs-checkbox [type]="'checkbox'" name="shape-hidden" [checked]="!!shapes()[0].hidden" (checkedChange)="setFlag('hidden', $event === true)">Hidden</bs-checkbox>
+    </div>
+    <div class="d-flex flex-wrap gap-1 mt-2">
+      <button type="button" [color]="colors.secondary" (click)="reorder(1)" title="Bring forward"><spark-icon name="chevron-up" /> Forward</button>
+      <button type="button" [color]="colors.secondary" (click)="reorder(-1)" title="Send backward"><spark-icon name="chevron-down" /> Backward</button>
+    </div>
+  }
+
+  <hr />
+  <div class="d-flex flex-wrap gap-1">
+    <button type="button" [color]="colors.secondary" (click)="copyStyle()" title="Copy this style"><spark-icon name="brush" /> Copy style</button>
+    <button type="button" [color]="colors.secondary" [disabled]="!hasCopied()" (click)="pasteStyle()" title="Apply the copied style">Paste style</button>
+  </div>
+
+  @if (points().length) {
+    <hr />
+    <h6>{{ points().length === 1 ? 'Selected point' : points().length + ' points' }}</h6>
+    <div class="d-flex flex-wrap gap-1">
+      <button type="button" [color]="allFixed() ? colors.primary : colors.secondary" (click)="toggleFixed()"><spark-icon name="pin-angle" /> {{ allFixed() ? 'Unfix' : 'Fix' }}</button>
+      @if (splittable().length) {
+        <button type="button" [color]="colors.secondary" (click)="split()" title="Give each shape its own copy of the shared point"><spark-icon name="scissors" /> Split</button>
+      }
+      @if (points().length > 1) {
+        <button type="button" [color]="colors.secondary" (click)="merge()" title="Make the selected points one point"><spark-icon name="intersect" /> Merge</button>
+      }
+      @if (derived().length) {
+        <button type="button" [color]="colors.secondary" (click)="detach()" title="Make a derived point free">Detach</button>
+      }
+    </div>
+    <p class="small text-body-secondary mt-2 mb-0">
+      Blue points are free, orange ones move along a line, green ones are fully determined. Purple diamonds are derived
+      (midpoints, points on an outline) and follow their shape.
+    </p>
+  }
+}

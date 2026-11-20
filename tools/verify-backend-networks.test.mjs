@@ -1,7 +1,7 @@
-// The backend topology shared by CodeCoverage (production, coverage.mintplayer.com), SeoTester, mintplayer.com and the
-// shared mail relay on one VPS (docs/seo_analyzer_PRD.md §12 D55, D56; docs/code-coverage/raven-tls-migration.md;
-// docs/mintplayer_mail_plan.md). Nothing here runs Docker; it reads the four compose files (apps/CodeCoverage,
-// apps/SeoTester, apps/MintPlayer, apps/MailRelay) and their deploy workflows, and holds them to the owner's "minimal
+// The backend topology shared by CodeCoverage (production, coverage.mintplayer.com), SeoTester, mintplayer.com, Iconic and
+// the shared mail relay on one VPS (docs/seo_analyzer_PRD.md §12 D55, D56; docs/code-coverage/raven-tls-migration.md;
+// docs/mintplayer_mail_plan.md). Nothing here runs Docker; it reads the five compose files (apps/CodeCoverage,
+// apps/SeoTester, apps/MintPlayer, apps/Iconic, apps/MailRelay) and their deploy workflows, and holds them to the owner's "minimal
 // network exposure" decisions:
 //
 // - networks are pairwise: each backend service is reachable only by the app container that uses it, and RavenDB and the
@@ -10,7 +10,8 @@
 //   every file that joins it, and every deploy creates its own `--internal` when missing, before compose runs, with the
 //   same block, and refuses one that is not internal;
 // - mintplayer.com (docs/mintplayer_website_PRD.md G3) shares RavenDB and the relay the same way, on its own pair
-//   (mintplayer-raven, mintplayer-mail), never on SeoTester's;
+//   (mintplayer-raven, mintplayer-mail), never on SeoTester's; Iconic (docs/iconic_PRD.md) likewise on iconic-raven and
+//   iconic-mail;
 // - Chromium is only on seo-browser;
 // - RavenDB is TLS-only (https/tcp URLs, no unsecured-access flag) and every app that reaches it presents a client
 //   certificate and trusts the private CA; a key or certificate is mounted only into the container that needs it, and the
@@ -33,12 +34,15 @@ const CC_DEPLOY = '.github/workflows/code-coverage-deploy.yml';
 const SEO_DEPLOY = '.github/workflows/seotester-deploy.yml';
 const MP = 'apps/MintPlayer/docker-compose.yml';
 const MP_DEPLOY = '.github/workflows/mintplayer-deploy.yml';
+const IC = 'apps/Iconic/docker-compose.yml';
+const IC_DEPLOY = '.github/workflows/iconic-deploy.yml';
 const MR = 'apps/MailRelay/docker-compose.yml';
 const MR_DEPLOY = '.github/workflows/mail-relay-deploy.yml';
 const MP_CROSS = ['mintplayer-raven', 'mintplayer-mail'];
-const DEPLOYS = { [CC]: CC_DEPLOY, [SEO]: SEO_DEPLOY, [MP]: MP_DEPLOY, [MR]: MR_DEPLOY };
+const IC_CROSS = ['iconic-raven', 'iconic-mail'];
+const DEPLOYS = { [CC]: CC_DEPLOY, [SEO]: SEO_DEPLOY, [MP]: MP_DEPLOY, [IC]: IC_DEPLOY, [MR]: MR_DEPLOY };
 
-const stacks = { [CC]: YAML.parse(read(CC)), [SEO]: YAML.parse(read(SEO)), [MP]: YAML.parse(read(MP)), [MR]: YAML.parse(read(MR)) };
+const stacks = { [CC]: YAML.parse(read(CC)), [SEO]: YAML.parse(read(SEO)), [MP]: YAML.parse(read(MP)), [IC]: YAML.parse(read(IC)), [MR]: YAML.parse(read(MR)) };
 // A new file is LF in a Windows working copy while older ones are CRLF; CI checks both out as LF.
 const readLf = (rel) => read(rel).replaceAll('\r\n', '\n');
 const networksOf = (service) => (Array.isArray(service.networks) ? service.networks : Object.keys(service.networks ?? {}));
@@ -88,6 +92,8 @@ test('each backend network holds exactly the services that need each other', () 
     'seo-mail': ['mail-relay', 'seotester-app'],
     'mintplayer-raven': ['coverage-raven', 'mintplayer-app'],
     'mintplayer-mail': ['mail-relay', 'mintplayer-app'],
+    'iconic-raven': ['coverage-raven', 'iconic-app'],
+    'iconic-mail': ['iconic-app', 'mail-relay'],
     // mintplayer.com's search engine (docs/spark_search_PRD.md D13): unauthenticated, so shared with the app alone.
     'mintplayer-search': ['mintplayer-app', 'mintplayer-search'],
     'seo-browser': ['seo-chromium', 'seotester-app'],
@@ -95,7 +101,7 @@ test('each backend network holds exactly the services that need each other', () 
     'seo-egress': ['seo-fetcher'],
   };
   for (const [name, want] of Object.entries(expected)) assert.deepEqual(members(name), want.sort(), `${name} members`);
-  assert.deepEqual(members('web'), ['coverage-app', 'mintplayer-app', 'seotester-app'], 'only the three apps are on Traefik\'s web');
+  assert.deepEqual(members('web'), ['coverage-app', 'iconic-app', 'mintplayer-app', 'seotester-app'], 'only the four apps are on Traefik\'s web');
   assert.ok(!nets.has('coverage-internal') && !nets.has('mintplayer-backend'), 'the old shared networks are gone (D48 superseded)');
 });
 
@@ -109,7 +115,7 @@ test('RavenDB and the mail relay share no network, and neither has a way out exc
   // fetcher's (PRD D54).
   assert.deepEqual(egress, ['coverage-git-egress', 'coverage-git-writer-egress', 'mail-relay-egress', 'seo-egress'], 'the only compose-created networks with a route out are the relay\'s, the two git sidecars\' and the fetcher\'s');
   assert.deepEqual(members('mail-relay-egress'), ['mail-relay'], 'the relay\'s egress network carries the relay alone');
-  assert.deepEqual(networksOf(stacks[MR].services['mail-relay']).sort(), ['coverage-mail', 'mail-relay-egress', 'mintplayer-mail', 'seo-mail'], 'the relay is on its mail networks and its way out, nothing else');
+  assert.deepEqual(networksOf(stacks[MR].services['mail-relay']).sort(), ['coverage-mail', 'iconic-mail', 'mail-relay-egress', 'mintplayer-mail', 'seo-mail'], 'the relay is on its mail networks and its way out, nothing else');
   assert.deepEqual(members('coverage-git-writer-egress'), ['coverage-git-writer'], 'the git writer\'s egress network carries the writer alone');
   assert.deepEqual(members('seo-egress'), ['seo-fetcher'], 'the fetcher\'s egress network carries the fetcher alone (no database, no relay)');
   assert.deepEqual(members('coverage-git-egress'), ['coverage-git'], 'the git sidecar\'s egress network carries the sidecar alone (D18)');
@@ -117,7 +123,7 @@ test('RavenDB and the mail relay share no network, and neither has a way out exc
     assert.ok(nets.get(name).decls.every((d) => d.internal === true), `${name} is internal: true`);
   }
   const ravenNets = [...nets].filter(([, n]) => n.members.has('coverage-raven')).map(([name]) => name).sort();
-  assert.deepEqual(ravenNets, ['coverage-db', 'mintplayer-raven', 'seo-raven'], 'RavenDB is only on internal networks (no egress, PRD D55)');
+  assert.deepEqual(ravenNets, ['coverage-db', 'iconic-raven', 'mintplayer-raven', 'seo-raven'], 'RavenDB is only on internal networks (no egress, PRD D55)');
 });
 
 test('RavenDB and the commit-graph sidecar share no network, and the sidecar is only where D24 puts it', () => {
@@ -202,7 +208,7 @@ test('the mail relay deploy refuses to start without a DKIM key for every sender
   assert.equal(relay.container_name, 'mail-relay', 'the apps and raven-cert-renew.sh reach it by that name');
   const defaults = /\$\{MAIL_SENDER_DOMAIN:-([^}]+)\}/.exec(env(relay).ALLOWED_SENDER_DOMAINS);
   assert.ok(defaults && script.includes(`domains="${defaults[1]}"`), 'the deploy\'s default domain list is the compose file\'s');
-  for (const [file, service] of [[CC, 'coverage-app'], [SEO, 'seotester-app'], [MP, 'mintplayer-app']]) {
+  for (const [file, service] of [[CC, 'coverage-app'], [SEO, 'seotester-app'], [MP, 'mintplayer-app'], [IC, 'iconic-app']]) {
     assert.equal(env(stacks[file].services[service]).Spark__Mail__Smtp__Host, '${MAIL_HOST:-mail-relay}', `${service} sends through mail-relay`);
   }
 });
@@ -219,6 +225,25 @@ test('mintplayer.com\'s networks are its own, never SeoTester\'s', () => {
   assert.match(read(CC_DEPLOY), /register_app_cert mintplayer MintPlayer \/var\/www\/mintplayer\/raven-certs\/mintplayer\.crt/, 'the CodeCoverage deploy registers the app\'s certificate for its database');
 });
 
+test('Iconic\'s networks are its own, never SeoTester\'s or mintplayer.com\'s', () => {
+  for (const name of IC_CROSS) {
+    assert.ok(!stacks[SEO].networks?.[name], `SeoTester does not join ${name}`);
+    assert.ok(!stacks[MP].networks?.[name], `mintplayer.com does not join ${name}`);
+  }
+  for (const name of MP_CROSS) assert.ok(!stacks[IC].networks?.[name], `Iconic does not join ${name}`);
+  const ic = readLf(IC_DEPLOY);
+  // No deploy order: the Iconic deploy attaches CodeCoverage's running database itself, under the service name.
+  assert.match(ic, /for pair in coverage-raven:iconic-raven; do/);
+  assert.match(ic, /docker network inspect iconic-mail --format '\{\{range \.Containers\}\}\{\{\.Name\}\} \{\{end\}\}' \| grep -qw 'mail-relay' \|\| echo "::warning::/);
+  assert.match(ic, /label=com\.docker\.compose\.project=code-coverage/);
+  assert.match(ic, /docker network connect --alias "\$svc" "\$net" "\$id"/);
+  assert.ok(ic.indexOf('docker network connect') < ic.indexOf('docker compose --env-file .env down'), 'attached before down');
+  assert.match(read(CC_DEPLOY), /register_app_cert iconic Iconic \/var\/www\/iconic\/raven-certs\/iconic\.crt/, 'the CodeCoverage deploy registers the app\'s certificate for its database');
+  const renew = read('apps/CodeCoverage/ops/raven-cert-renew.sh');
+  assert.match(renew, /issue "\$new" iconic/, 'the nightly renewal re-issues Iconic\'s certificate');
+  assert.match(renew, /"iconic-\$stamp" Iconic "\$new\/iconic\.crt"/, 'and registers it for the database Iconic');
+});
+
 test('Chromium is only on seo-browser', () => {
   assert.deepEqual(networksOf(stacks[SEO].services['seo-chromium']), ['seo-browser']);
 });
@@ -232,7 +257,7 @@ test('RavenDB accepts TLS only, and every app that reaches it presents a certifi
   assert.ok(raven.RAVEN_Security_Certificate_Path, 'a server certificate');
   assert.match(raven.RAVEN_Security_WellKnownCertificates_Admin, /^\$\{RAVEN_OPERATOR_THUMBPRINT:\?/, 'the operator is the only well-known admin, required');
 
-  const clients = [[CC, 'coverage-app', 'Coverage'], [SEO, 'seotester-app', 'SeoTester'], [MP, 'mintplayer-app', 'MintPlayer']];
+  const clients = [[CC, 'coverage-app', 'Coverage'], [SEO, 'seotester-app', 'SeoTester'], [MP, 'mintplayer-app', 'MintPlayer'], [IC, 'iconic-app', 'Iconic']];
   for (const [file, name] of clients) {
     const service = stacks[file].services[name];
     const e = env(service);
@@ -246,7 +271,7 @@ test('RavenDB accepts TLS only, and every app that reaches it presents a certifi
   }
   // Every service that joins a network with coverage-raven is RavenDB itself, an app above or the licence one-shot.
   const ravenPeers = new Set([...nets].filter(([, n]) => n.members.has('coverage-raven')).flatMap(([, n]) => [...n.members]));
-  assert.deepEqual([...ravenPeers].sort(), ['coverage-app', 'coverage-raven', 'coverage-raven-license', 'mintplayer-app', 'seotester-app']);
+  assert.deepEqual([...ravenPeers].sort(), ['coverage-app', 'coverage-raven', 'coverage-raven-license', 'iconic-app', 'mintplayer-app', 'seotester-app']);
   const license = stacks[CC].services['coverage-raven-license'].command;
   assert.ok(license.includes('--cert') && license.includes('--key') && license.includes('--cacert'), 'the licence one-shot authenticates and checks the server');
   assert.match(license.at(-1), /^https:\/\/coverage-raven:8080\/admin\/license\/activate$/);
@@ -263,7 +288,9 @@ test('no key or certificate is mounted into a container that does not need it', 
     'seotester.key': ['seotester-app'],
     'mintplayer.crt': ['mintplayer-app'],
     'mintplayer.key': ['mintplayer-app'],
-    'ca.crt': ['coverage-app', 'coverage-raven-license', 'mintplayer-app', 'seotester-app'],
+    'iconic.crt': ['iconic-app'],
+    'iconic.key': ['iconic-app'],
+    'ca.crt': ['coverage-app', 'coverage-raven-license', 'iconic-app', 'mintplayer-app', 'seotester-app'],
   };
   const seen = {};
   for (const compose of Object.values(stacks)) {
@@ -283,7 +310,7 @@ test('no key or certificate is mounted into a container that does not need it', 
 });
 
 test('each deploy checks, before compose, that every certificate file its stack mounts is on the server', () => {
-  for (const [file, workflow] of [[CC, CC_DEPLOY], [SEO, SEO_DEPLOY], [MP, MP_DEPLOY]]) {
+  for (const [file, workflow] of [[CC, CC_DEPLOY], [SEO, SEO_DEPLOY], [MP, MP_DEPLOY], [IC, IC_DEPLOY]]) {
     const script = read(workflow);
     const sources = Object.values(stacks[file].services).flatMap((s) => (s.volumes ?? []).map((v) => v.split(':')[0]))
       .filter((s) => /^\.\/raven-(certs|operator)\//.test(s)).map((s) => s.slice(2));

@@ -1,0 +1,31 @@
+{
+  "name": "Iconic",
+  "short_name": "Iconic",
+  "description": "Draw icons, cursors and animations from snapping shapes, and download them as ICO, CUR, ANI, PNG, SVG, GIF or WebP.",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "theme_color": "#f8f9fa",
+  "background_color": "#f8f9fa",
+  "icons": [
+    {
+      "src": "icons/icon-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-maskable-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

@@ -1,0 +1,96 @@
+# iconic.mintplayer.com (docs/iconic_PRD.md, docs/iconic_plan.md "Deploy"). Runs on the VPS beside CodeCoverage,
+# SeoTester and mintplayer.com, from /var/www/iconic (compose project "iconic"), and reuses CodeCoverage's RavenDB server
+# and the shared mail relay instead of running its own.
+#
+# Networks:
+#   web           Traefik's public network (external). The app's only route out, which it needs for the sign-in
+#                 providers' token endpoints.
+#   iconic-raven  internal: true, external (created by either deploy, removed by neither): this app and CodeCoverage's
+#                 coverage-raven ONLY (HTTPS with client certificates; the app's certificate may use the database
+#                 "Iconic" and nothing else).
+#   iconic-mail   internal: true, external, likewise: this app and the shared mail relay (apps/MailRelay) ONLY.
+#                 RavenDB and the mail relay never share a network.
+#
+# The deploy (.github/workflows/iconic-deploy.yml) refreshes this file and runs pull / down / up. .env and the volumes
+# are server-managed; deploys never write them. tools/verify-iconic-deploy.test.mjs keeps the rules above.
+
+services:
+
+  iconic-app:
+    # Pull-only (no build block), floating like CodeCoverage's: every push to master that changes the image deploys it.
+    image: ghcr.io/mintplayer/iconic:master
+    # Below Messaging's ClaimTtl (5 min): a message in flight finishes on SIGTERM.
+    stop_grace_period: 60s
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      # CodeCoverage's RavenDB server over HTTPS (iconic-raven), with this app's own client certificate, registered
+      # with Admin on the database Iconic only, and the private CA of the server's certificate.
+      - Spark__RavenDb__Urls__0=https://coverage-raven:8080
+      - Spark__RavenDb__Database=Iconic
+      - Spark__RavenDb__CertificateFile=/run/secrets/raven/iconic.crt
+      - Spark__RavenDb__CertificateKeyFile=/run/secrets/raven/iconic.key
+      - Spark__RavenDb__ServerCertificateAuthorityFile=/run/secrets/raven/ca.crt
+      # Off: creating a database needs the operator, who creates Iconic once (docs/iconic_plan.md "Deploy").
+      - Spark__RavenDb__EnsureDatabaseCreated=false
+      # Data Protection key ring on a volume: a redeploy does not sign everyone out.
+      - Spark__DataProtection__KeysPath=/var/lib/iconic/dataprotection-keys
+      # Sign-in providers (PRD D7). A provider without a ClientId is not offered.
+      - Spark__Auth__Providers__GitHub__ClientId=${GITHUB_CLIENT_ID:-}
+      - Spark__Auth__Providers__GitHub__ClientSecret=${GITHUB_CLIENT_SECRET:-}
+      - Spark__Auth__Providers__Google__ClientId=${GOOGLE_CLIENT_ID:-}
+      - Spark__Auth__Providers__Google__ClientSecret=${GOOGLE_CLIENT_SECRET:-}
+      - Spark__Auth__Providers__MicrosoftAccount__ClientId=${MICROSOFT_CLIENT_ID:-}
+      - Spark__Auth__Providers__MicrosoftAccount__ClientSecret=${MICROSOFT_CLIENT_SECRET:-}
+      # Where "Report this" on a shared drawing goes (PRD D20). Unset, reporting answers 503.
+      - Iconic__ReportAddress=${REPORT_ADDRESS:-}
+      # Mail through the shared relay (apps/MailRelay), send-only, from the apex's DKIM-signed domain. Security=None:
+      # the relay is reachable from here only on iconic-mail (internal) and advertises STARTTLS without a certificate.
+      - Spark__Mail__Smtp__Host=${MAIL_HOST:-mail-relay}
+      - Spark__Mail__Smtp__Port=${MAIL_PORT:-587}
+      - Spark__Mail__Smtp__Security=None
+      - Spark__Mail__From__Address=${MAIL_FROM_ADDRESS:-noreply@mintplayer.com}
+      - Spark__Mail__From__Name=${MAIL_FROM_NAME:-Iconic}
+    volumes:
+      - dataprotection-keys:/var/lib/iconic/dataprotection-keys
+      # Its RavenDB client certificate and the CA (server-managed). Only this container mounts them.
+      - ./raven-certs/iconic.crt:/run/secrets/raven/iconic.crt:ro
+      - ./raven-certs/iconic.key:/run/secrets/raven/iconic.key:ro
+      - ./raven-certs/ca.crt:/run/secrets/raven/ca.crt:ro
+    labels:
+      - "traefik.enable=true"
+      # Hard-coded, never interpolated (see apps/CodeCoverage/docker-compose.yml: an empty or CRLF value broke SNI).
+      - "traefik.http.routers.iconic.rule=Host(`iconic.mintplayer.com`)"
+      - "traefik.http.routers.iconic.entrypoints=websecure"
+      - "traefik.http.routers.iconic.tls.certresolver=letsencrypt"
+      - "traefik.http.services.iconic.loadbalancer.server.port=8080"
+      # Three networks: without this Traefik may pick an address it cannot reach (random 504s).
+      - "traefik.docker.network=web"
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080 && printf 'GET /health HTTP/1.0\\r\\nHost: localhost\\r\\n\\r\\n' >&3 && grep -q '200' <&3"]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+      # Startup deploys the indexes and runs the migrations before the app listens.
+      start_period: 300s
+    mem_limit: 768m
+    networks:
+      - web
+      - iconic-raven
+      - iconic-mail
+    restart: unless-stopped
+
+volumes:
+  dataprotection-keys:
+
+networks:
+  web:
+    external: true
+  # Shared with CodeCoverage and the mail relay (apps/CodeCoverage, apps/MailRelay declare them the same way): coverage-raven is
+  # reachable on iconic-raven, mail-relay on iconic-mail, by those names. No compose project owns them, so no stack's
+  # up/down touches them; every deploy that uses one creates it, internal, when missing.
+  iconic-raven:
+    external: true
+    name: iconic-raven
+  iconic-mail:
+    external: true
+    name: iconic-mail

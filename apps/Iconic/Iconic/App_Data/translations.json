@@ -1,0 +1,220 @@
+{
+  "$schema": "../../../../schemas/translations.schema.json",
+  "app": {
+    "title": {
+      "en": "Iconic",
+      "fr": "Iconic",
+      "nl": "Iconic"
+    }
+  },
+  "model": {
+    "Project": {
+      "attributes": {
+        "AttachmentBytes": {
+          "description": {
+            "en": "All attachments together (paint layers, fonts, thumbnail, snapshots), against the 10 MB quota."
+          },
+          "label": {
+            "en": "Files size",
+            "fr": "Taille des fichiers",
+            "nl": "Grootte bestanden"
+          }
+        },
+        "CreatedAt": {
+          "label": {
+            "en": "Created",
+            "fr": "Créé",
+            "nl": "Aangemaakt"
+          }
+        },
+        "CreatedBy": {
+          "label": {
+            "en": "Created by",
+            "fr": "Créé par",
+            "nl": "Aangemaakt door"
+          }
+        },
+        "Height": {
+          "label": {
+            "en": "Height",
+            "fr": "Hauteur",
+            "nl": "Hoogte"
+          }
+        },
+        "IsListed": {
+          "description": {
+            "en": "Listed in the public gallery, a later stage (D20). Kept apart from IsPublic from day one."
+          },
+          "label": {
+            "en": "Listed",
+            "fr": "Répertorié",
+            "nl": "Opgenomen in lijst"
+          }
+        },
+        "IsPublic": {
+          "description": {
+            "en": "Anyone with the share link may view and remix the project (D20)."
+          },
+          "label": {
+            "en": "Shared",
+            "fr": "Partagé",
+            "nl": "Gedeeld"
+          }
+        },
+        "Kind": {
+          "label": {
+            "en": "Kind",
+            "fr": "Type",
+            "nl": "Soort"
+          }
+        },
+        "ModifiedAt": {
+          "label": {
+            "en": "Modified",
+            "fr": "Modifié",
+            "nl": "Gewijzigd"
+          }
+        },
+        "ModifiedBy": {
+          "label": {
+            "en": "Modified by",
+            "fr": "Modifié par",
+            "nl": "Gewijzigd door"
+          }
+        },
+        "Name": {
+          "label": {
+            "en": "Name",
+            "fr": "Nom",
+            "nl": "Naam"
+          }
+        },
+        "OwnerId": {
+          "description": {
+            "en": "The owner's SparkUser id, stamped on create and never edited."
+          },
+          "label": {
+            "en": "Owner",
+            "fr": "Propriétaire",
+            "nl": "Eigenaar"
+          }
+        },
+        "SceneBytes": {
+          "description": {
+            "en": "The scene's size in bytes, against the 5 MB quota (D21)."
+          },
+          "label": {
+            "en": "Drawing size",
+            "fr": "Taille du dessin",
+            "nl": "Grootte tekening"
+          }
+        },
+        "ShareTakenDown": {
+          "description": {
+            "en": "Set by an administrator's takedown: the project can no longer be shared."
+          },
+          "label": {
+            "en": "Taken down",
+            "fr": "Retiré",
+            "nl": "Verwijderd na melding"
+          }
+        },
+        "ShareToken": {
+          "description": {
+            "en": "The share link's unguessable token; null until the project is first shared."
+          },
+          "label": {
+            "en": "Share link",
+            "fr": "Lien de partage",
+            "nl": "Deellink"
+          }
+        },
+        "Snapshots": {
+          "description": {
+            "en": "The named versions (D22), newest last. The scene of each is the attachment snapshots/{Id}.json."
+          },
+          "label": {
+            "en": "Versions",
+            "fr": "Versions",
+            "nl": "Versies"
+          }
+        },
+        "Width": {
+          "description": {
+            "en": "The design size in design pixels (D16): 256×256 for icons and cursors by default."
+          },
+          "label": {
+            "en": "Width",
+            "fr": "Largeur",
+            "nl": "Breedte"
+          }
+        }
+      },
+      "label": {
+        "en": "Project",
+        "fr": "Projet",
+        "nl": "Project"
+      }
+    },
+    "ProjectSnapshot": {
+      "attributes": {
+        "Bytes": {
+          "label": {
+            "en": "Size",
+            "fr": "Taille",
+            "nl": "Grootte"
+          }
+        },
+        "CreatedAt": {
+          "label": {
+            "en": "Saved",
+            "fr": "Enregistré",
+            "nl": "Opgeslagen"
+          }
+        },
+        "Name": {
+          "label": {
+            "en": "Name",
+            "fr": "Nom",
+            "nl": "Naam"
+          }
+        }
+      },
+      "label": {
+        "en": "Version",
+        "fr": "Version",
+        "nl": "Versie"
+      }
+    }
+  },
+  "programUnits": {
+    "groups": {
+      "projects": {
+        "en": "Projects",
+        "fr": "Projets",
+        "nl": "Projecten"
+      }
+    },
+    "myProjects": {
+      "en": "My projects",
+      "fr": "Mes projets",
+      "nl": "Mijn projecten"
+    }
+  },
+  "queries": {
+    "GetProjects": {
+      "label": {
+        "en": "Projects",
+        "fr": "Projets",
+        "nl": "Projecten"
+      }
+    },
+    "My_Projects": {
+      "label": {
+        "en": "My projects",
+        "fr": "Mes projets",
+        "nl": "Mijn projecten"
+      }
+    }
+  }
+}

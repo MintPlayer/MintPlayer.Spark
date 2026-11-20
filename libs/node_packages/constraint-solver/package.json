@@ -1,0 +1,20 @@
+{
+  "name": "@mintplayer/constraint-solver",
+  "version": "0.0.0-PLACEHOLDER",
+  "description": "A deterministic 2D geometric constraint solver in TypeScript: coincident, parallel, perpendicular, tangent, symmetric and more, solved live while dragging, with conflict and degrees-of-freedom analysis. No dependencies, no WASM.",
+  "keywords": ["constraint", "solver", "geometry", "cad", "sketch", "levenberg-marquardt", "mintplayer"],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/MintPlayer/MintPlayer.Spark",
+    "directory": "libs/node_packages/constraint-solver"
+  },
+  "license": "Apache-2.0",
+  "type": "module",
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsc -p tsconfig.lib.json && node build-manifest.mjs",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "bench": "vitest run --config bench/vitest.config.ts"
+  }
+}

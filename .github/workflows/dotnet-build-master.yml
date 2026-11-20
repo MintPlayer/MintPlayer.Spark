@@ -200,7 +200,7 @@ jobs:
     # @mintplayer/webhooks-receiver (#691) is a plain TypeScript package: tsc into its dist/, which its project.json
     # names as outputPath, so the versioning step stamps that copy too.
     - name: Build npm libraries
-      run: npx nx run-many --target=build --projects=@mintplayer/ng-spark,@mintplayer/webhooks-receiver ${{ github.ref_name != github.event.repository.default_branch && '--skip-nx-cache' || '' }}
+      run: npx nx run-many --target=build --projects=@mintplayer/ng-spark,@mintplayer/webhooks-receiver,@mintplayer/constraint-solver ${{ github.ref_name != github.event.repository.default_branch && '--skip-nx-cache' || '' }}
 
     # Versions every package this commit changes (docs/coverage_package_versioning_PRD.md): tags the commit
     # <package id>/v<version>, and stamps the npm versions into package.json and ng-packagr's dist copy.
@@ -266,6 +266,7 @@ jobs:
           nupkgs/
           libs/node_packages/ng-spark/dist/
           libs/node_packages/webhooks-receiver/dist/
+          libs/node_packages/constraint-solver/dist/
         if-no-files-found: error
         retention-days: 7
 
@@ -397,6 +398,17 @@ jobs:
       uses: MintPlayer/github-actions/publish-npm-packages@b08fbddf0b285a8633ac138b89d79ceb8cc8c888
       with:
         folder: libs/node_packages/webhooks-receiver/dist
+        registries: |
+          [
+            { "url": "https://registry.npmjs.org", "token": "${{ secrets.PUBLISH_TO_NPMJS }}", "provenance": true },
+            { "url": "https://npm.pkg.github.com", "token": "${{ github.token }}", "provenance": true }
+          ]
+
+    # The Iconic editor's solver (docs/iconic_PRD.md D14): plain TypeScript, built like webhooks-receiver.
+    - name: Push @mintplayer/constraint-solver
+      uses: MintPlayer/github-actions/publish-npm-packages@b08fbddf0b285a8633ac138b89d79ceb8cc8c888
+      with:
+        folder: libs/node_packages/constraint-solver/dist
         registries: |
           [
             { "url": "https://registry.npmjs.org", "token": "${{ secrets.PUBLISH_TO_NPMJS }}", "provenance": true },

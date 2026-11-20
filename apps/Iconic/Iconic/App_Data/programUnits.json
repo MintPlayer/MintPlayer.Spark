@@ -1,0 +1,22 @@
+{
+  "$schema": "../../../../schemas/programUnits.schema.json",
+  "programUnitGroups": [
+    {
+      "id": "1c020000-0000-4000-8000-000000000001",
+      "name": "programUnits.groups.projects",
+      "icon": "bi-palette",
+      "order": 1,
+      "programUnits": [
+        {
+          "id": "1c020000-0000-4000-8000-000000000101",
+          "name": "programUnits.myProjects",
+          "icon": "bi-folder",
+          "type": "query",
+          "queryId": "c0c1c0de-4a5e-4d1b-9b7e-1c001c000001",
+          "alias": "my-projects",
+          "order": 1
+        }
+      ]
+    }
+  ]
+}

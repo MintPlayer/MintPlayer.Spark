@@ -1,5 +1,5 @@
 # The outgoing mail relay shared by every app on the VPS: CodeCoverage (coverage.mintplayer.com), SeoTester
-# (seotester.mintplayer.com) and mintplayer.com. Its own compose project in /var/www/mail-relay, deployed by
+# (seotester.mintplayer.com), mintplayer.com and Iconic (iconic.mintplayer.com, sending as noreply@mintplayer.com). Its own compose project in /var/www/mail-relay, deployed by
 # .github/workflows/mail-relay-deploy.yml; it used to be the coverage-smtp service inside CodeCoverage's stack
 # (docs/mintplayer_mail_plan.md, "Rename the relay"). Each app sends under its own sender domain, all through this one
 # container and its one queue.
@@ -14,7 +14,7 @@
 # being avoided.
 #
 # ⚠️ It is NOT a mail server in the inbound sense. No ports are published, and the only containers that reach it are the
-# apps, each on an internal network of its own with the relay (coverage-mail, seo-mail, mintplayer-mail) — which is also
+# apps, each on an internal network of its own with the relay (coverage-mail, seo-mail, mintplayer-mail, iconic-mail) — which is also
 # what makes running it without authentication safe. It never shares a network with RavenDB
 # (tools/verify-backend-networks.test.mjs).
 #
@@ -71,6 +71,7 @@ services:
       - coverage-mail
       - seo-mail
       - mintplayer-mail
+      - iconic-mail
       # The relay's own way out (it delivers to recipients' MX on port 25). Nothing else joins it.
       - mail-relay-egress
     # bash, not sh: /dev/tcp is a bash feature, and this image's sh is dash, so the sh form failed on every probe and
@@ -96,5 +97,8 @@ networks:
   mintplayer-mail:
     external: true
     name: mintplayer-mail
+  iconic-mail:
+    external: true
+    name: iconic-mail
   mail-relay-egress:
     driver: bridge

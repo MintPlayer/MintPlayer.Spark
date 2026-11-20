@@ -45,6 +45,8 @@ services:
       - seo-raven
       # Likewise shared with mintplayer.com's app only (apps/MintPlayer/docker-compose.yml).
       - mintplayer-raven
+      # Likewise shared with Iconic's app only (apps/Iconic/docker-compose.yml).
+      - iconic-raven
     # No curl/wget assumptions: bash's /dev/tcp is enough for "is it listening".
     healthcheck:
       test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080"]
@@ -328,6 +330,7 @@ networks:
   #   coverage-git-writer-egress  coverage-git-writer (its way to the forges)
   #   seo-raven  (external) coverage-raven + SeoTester's app
   #   mintplayer-raven  (external) coverage-raven + mintplayer.com's app
+  #   iconic-raven  (external) coverage-raven + Iconic's app
   coverage-db:
     driver: bridge
     internal: true
@@ -362,3 +365,7 @@ networks:
   mintplayer-raven:
     external: true
     name: mintplayer-raven
+  # Shared with Iconic the same way (apps/Iconic/docker-compose.yml; both deploys create it).
+  iconic-raven:
+    external: true
+    name: iconic-raven

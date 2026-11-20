@@ -1,0 +1,30 @@
+{
+  "name": "@mintplayer/constraint-solver",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/node_packages/constraint-solver/src",
+  "projectType": "library",
+  "targets": {
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "tsc -p tsconfig.json && vitest run --config vitest.config.ts --coverage",
+        "cwd": "libs/node_packages/constraint-solver"
+      },
+      "configurations": {
+        "local": {
+          "command": "tsc -p tsconfig.json && vitest run --config vitest.config.ts"
+        }
+      },
+      "outputs": ["{projectRoot}/coverage"]
+    },
+    "build": {
+      "executor": "nx:run-commands",
+      "outputs": ["{options.outputPath}"],
+      "options": {
+        "command": "tsc -p tsconfig.lib.json && node build-manifest.mjs",
+        "cwd": "libs/node_packages/constraint-solver",
+        "outputPath": "libs/node_packages/constraint-solver/dist"
+      }
+    }
+  }
+}

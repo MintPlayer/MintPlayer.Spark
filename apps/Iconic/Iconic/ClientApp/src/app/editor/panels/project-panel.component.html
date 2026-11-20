@@ -1,0 +1,113 @@
+@if (error()) { <bs-alert [color]="'danger'">{{ error() }}</bs-alert> }
+@if (notice()) { <bs-alert [color]="'info'">{{ notice() }}</bs-alert> }
+@if (busy()) { <p class="small text-body-secondary">{{ busy() }}</p> }
+
+@if (!store.readOnly()) {
+  <bs-form>
+    <label for="project-name">Name</label>
+    <input id="project-name" type="text" maxlength="100" [ngModel]="store.name()" (ngModelChange)="setName($event)" [ngModelOptions]="{ updateOn: 'blur' }" />
+  </bs-form>
+  <div class="mt-2">
+    <bs-select [ngModel]="store.kind()" (ngModelChange)="setKind($event)" aria-label="Kind">
+      @for (k of kinds; track k) { <option [ngValue]="k">{{ k }}</option> }
+    </bs-select>
+  </div>
+  <hr />
+} @else {
+  <h6>{{ store.name() }}</h6>
+}
+
+<h6>Download</h6>
+@if (singleOutputs().length > 1 && store.kind() !== 'Icon' && store.kind() !== 'Cursor') {
+  <bs-select class="mb-2" [ngModel]="outputId()" (ngModelChange)="outputId.set($event)" aria-label="Size">
+    <option [ngValue]="null">Largest size</option>
+    @for (o of singleOutputs(); track o.id) { <option [ngValue]="o.id">{{ o.label }}</option> }
+  </bs-select>
+}
+<div class="d-flex flex-wrap gap-1">
+  @for (f of formats(); track f.format) {
+    <button type="button" [color]="$first ? colors.primary : colors.secondary" [disabled]="!!busy()" (click)="export(f)">
+      <spark-icon name="download" /> {{ f.label }}
+    </button>
+  }
+</div>
+
+@if (!store.readOnly()) {
+  <label class="d-block mt-2">
+    <input type="file" accept=".ico,.cur,.png,image/png,image/x-icon" hidden (change)="import($event)" />
+    <span class="small text-primary upload"><spark-icon name="upload" /> Import an .ico, .cur or PNG as a paint layer</span>
+  </label>
+}
+
+@switch (store.mode()) {
+  @case ('draft') {
+    <hr />
+    <h6>Draft</h6>
+    <p class="small">This drawing lives in this browser only.</p>
+    @if (signedIn()) {
+      <button type="button" [color]="colors.primary" (click)="saveDraftToAccount.emit()"><spark-icon name="cloud-upload" /> Save to my account</button>
+    } @else {
+      <p class="small text-body-secondary mb-0">Sign in to keep it in your account, open it on other devices and share it.</p>
+    }
+  }
+  @case ('shared') {
+    <hr />
+    @if (signedIn()) {
+      <button type="button" [color]="colors.primary" (click)="remix.emit()"><spark-icon name="files" /> Remix (edit a copy)</button>
+    } @else {
+      <p class="small text-body-secondary">Sign in to remix this drawing.</p>
+    }
+    <div class="mt-2">
+      <button type="button" [color]="colors.light" (click)="report.emit()"><spark-icon name="flag" /> Report</button>
+    </div>
+  }
+  @case ('owned') {
+    <hr />
+    <h6>Sharing</h6>
+    @if (takenDown()) {
+      <bs-alert [color]="'warning'">The share link was taken down after a report. The drawing itself is untouched.</bs-alert>
+    } @else if (isPublic() && shareUrl()) {
+      <bs-form><input type="text" readonly [value]="shareUrl()" aria-label="Share link" (focus)="$any($event.target).select()" /></bs-form>
+      <div class="d-flex flex-wrap gap-1 mt-1">
+        <button type="button" [color]="colors.secondary" (click)="copyLink()"><spark-icon name="link-45deg" /> Copy</button>
+        <button type="button" [color]="colors.secondary" (click)="share(true, true)" title="The old link stops working">New link</button>
+        <button type="button" [color]="colors.secondary" (click)="share(false)">Stop sharing</button>
+      </div>
+    } @else {
+      <p class="small text-body-secondary">Anyone with the link can view and download it, and remix a copy.</p>
+      <button type="button" [color]="colors.secondary" (click)="share(true)"><spark-icon name="share" /> Share a link</button>
+    }
+
+    <hr />
+    <h6>Snapshots</h6>
+    <bs-form>
+      <div class="d-flex gap-1">
+        <input type="text" maxlength="100" placeholder="Name (optional)" aria-label="Snapshot name" [ngModel]="snapshotName()" (ngModelChange)="snapshotName.set($event)" />
+        <button type="button" [color]="colors.secondary" [disabled]="!!busy()" (click)="createSnapshot()">Take</button>
+      </div>
+    </bs-form>
+    <bs-list-group class="mt-2">
+      @for (s of snapshots(); track s.id) {
+        <bs-list-group-item>
+          <div class="item">
+            <span class="grow" [title]="s.createdAt">{{ s.name }} <small class="text-body-secondary">{{ size(s.bytes) }}</small></span>
+            <button type="button" [color]="colors.light" title="Restore" aria-label="Restore snapshot" (click)="restoreSnapshot(s)"><spark-icon name="arrow-counterclockwise" /></button>
+            <button type="button" [color]="colors.light" title="Delete" aria-label="Delete snapshot" (click)="deleteSnapshot(s)"><spark-icon name="trash" /></button>
+          </div>
+        </bs-list-group-item>
+      } @empty {
+        <bs-list-group-item [disabled]="true">No snapshots.</bs-list-group-item>
+      }
+    </bs-list-group>
+
+    @if (usage(); as u) {
+      <hr />
+      <h6>Storage</h6>
+      <div class="meter-label"><span>Drawing</span><span>{{ size(u.sceneBytes) }} of {{ size(u.maxSceneBytes) }}</span></div>
+      <bs-progress label="Drawing size"><bs-progress-bar [minimum]="0" [maximum]="100" [value]="percent(u.sceneBytes, u.maxSceneBytes)" label="Drawing size" /></bs-progress>
+      <div class="meter-label mt-2"><span>Files</span><span>{{ size(u.attachmentBytes) }} of {{ size(u.maxAttachmentBytes) }}</span></div>
+      <bs-progress label="Files"><bs-progress-bar [minimum]="0" [maximum]="100" [value]="percent(u.attachmentBytes, u.maxAttachmentBytes)" label="Files" /></bs-progress>
+      <div class="meter-label mt-2"><span>Snapshots</span><span>{{ u.snapshots }} of {{ u.maxSnapshots }}</span></div>
+    }
+  }
+}

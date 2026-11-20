@@ -1,0 +1,119 @@
+@if (loading()) {
+  <div class="center"><bs-spinner label="Opening the drawing" /></div>
+} @else if (loadError()) {
+  <div class="center flex-column gap-2">
+    <bs-alert [color]="'danger'">{{ loadError() }}</bs-alert>
+    <button type="button" [color]="colors.secondary" (click)="open()">Try again</button>
+  </div>
+} @else {
+  <div class="editor" [class.with-timeline]="showTimeline()">
+    <header class="topbar">
+      <strong class="name text-truncate" [title]="store.name()">{{ store.name() }}</strong>
+      @if (store.mode() === 'shared') {
+        <span class="small text-body-secondary">shared, read-only</span>
+      } @else {
+        <span class="small save-state" [class.text-danger]="store.saver.state() === 'conflict' || store.saver.state() === 'quota'">{{ saveLabel() }}</span>
+        <span class="flex-grow-1"></span>
+        <button type="button" [color]="colors.light" [disabled]="!store.canUndo()" (click)="store.undo()" title="Undo (Ctrl+Z)" aria-label="Undo"><spark-icon name="arrow-counterclockwise" /></button>
+        <button type="button" [color]="colors.light" [disabled]="!store.canRedo()" (click)="store.redo()" title="Redo (Ctrl+Y)" aria-label="Redo"><spark-icon name="arrow-clockwise" /></button>
+        <span class="toggles">
+          <bs-checkbox [type]="'switch'" name="snap" [checked]="store.snapEnabled()" (checkedChange)="store.snapEnabled.set($event === true)">Snap</bs-checkbox>
+          <bs-checkbox [type]="'switch'" name="grid" [checked]="store.gridEnabled()" (checkedChange)="store.gridEnabled.set($event === true)">Grid</bs-checkbox>
+          <bs-form>
+            <input class="grid-size" type="number" min="1" max="256" aria-label="Grid size" [ngModel]="store.grid()" (ngModelChange)="store.grid.set(+$event > 0 ? +$event : 8)" />
+          </bs-form>
+          <bs-checkbox [type]="'switch'" name="guides" [checked]="store.showGuides()" (checkedChange)="store.showGuides.set($event === true)">Guides</bs-checkbox>
+        </span>
+      }
+      @if (phone()) {
+        <span class="flex-grow-1"></span>
+        <button type="button" [color]="colors.primary" (click)="panelsOpen.set(true)" aria-label="Panels"><spark-icon name="sliders" /></button>
+      }
+    </header>
+
+    @if (store.saver.state() === 'conflict' || store.saver.state() === 'quota') {
+      <bs-alert class="banner" [color]="store.saver.state() === 'conflict' ? 'warning' : 'danger'">
+        {{ store.saver.message() }}
+        @if (store.saver.state() === 'conflict') {
+          <button type="button" [color]="colors.secondary" class="ms-2" (click)="open()">Reload</button>
+        }
+      </bs-alert>
+    }
+    @if (actionError()) { <bs-alert class="banner" [color]="'danger'">{{ actionError() }}</bs-alert> }
+
+    <app-tool-palette class="palette" />
+    <app-editor-canvas class="canvas" />
+
+    @if (!phone()) {
+      <aside class="panels">
+        <ng-container *ngTemplateOutlet="panelTabs" />
+      </aside>
+    }
+
+    @if (showTimeline()) {
+      <app-timeline class="timeline" />
+    }
+  </div>
+
+  @if (phone()) {
+    <bs-offcanvas position="bottom" [open]="panelsOpen()" (openChange)="panelsOpen.set($event)">
+      <ng-container *bsOffcanvasHeader>{{ store.name() }}</ng-container>
+      @if (panelsOpen()) {
+        <ng-container *ngTemplateOutlet="panelTabs" />
+      }
+    </bs-offcanvas>
+  }
+}
+
+<ng-template #panelTabs>
+  <bs-tab-control [border]="true">
+    @if (!store.readOnly()) {
+      <bs-tab-page>
+        <ng-container *bsTabPageHeader>Style</ng-container>
+        <app-style-panel />
+      </bs-tab-page>
+    }
+    <bs-tab-page>
+      <ng-container *bsTabPageHeader>Layers</ng-container>
+      <app-layers-panel />
+    </bs-tab-page>
+    <bs-tab-page>
+      <ng-container *bsTabPageHeader>Sizes</ng-container>
+      <app-outputs-panel />
+    </bs-tab-page>
+    @if (!store.readOnly()) {
+      <bs-tab-page>
+        <ng-container *bsTabPageHeader>Constraints</ng-container>
+        <app-constraints-panel />
+      </bs-tab-page>
+    }
+    <bs-tab-page>
+      <ng-container *bsTabPageHeader>{{ store.readOnly() ? 'Drawing' : 'Project' }}</ng-container>
+      <app-project-panel [snapshots]="snapshots()" [isPublic]="isPublic()" [takenDown]="takenDown()" [signedIn]="signedIn()"
+                         (snapshotsChange)="snapshots.set($event)" (shareChange)="isPublic.set($event.isPublic)" (metaChange)="saveMeta($event)"
+                         (saveDraftToAccount)="handOff()" (remix)="remix()" (report)="reportOpen.set(true)" />
+    </bs-tab-page>
+  </bs-tab-control>
+</ng-template>
+
+<bs-modal [open]="reportOpen()" (openChange)="$event ? reportOpen.set(true) : closeReport()">
+  <ng-container *bsModalHeader>Report this drawing</ng-container>
+  @if (reportOpen()) {
+    @if (reportSent()) {
+      <p>Thank you. The report was sent to the site's owner, who can take the link down.</p>
+    } @else {
+      <bs-form>
+        <label for="report-reason">What is wrong with it?</label>
+        <textarea id="report-reason" rows="4" maxlength="1000" [ngModel]="reportReason()" (ngModelChange)="reportReason.set($event)"></textarea>
+      </bs-form>
+    }
+  }
+  <ng-container *bsModalFooter>
+    @if (reportSent()) {
+      <button type="button" [color]="colors.primary" (click)="closeReport()">Close</button>
+    } @else {
+      <button type="button" [color]="colors.secondary" (click)="closeReport()">Cancel</button>
+      <button type="button" [color]="colors.danger" [disabled]="working() || reportReason().trim().length < 3" (click)="sendReport()">Send report</button>
+    }
+  </ng-container>
+</bs-modal>
