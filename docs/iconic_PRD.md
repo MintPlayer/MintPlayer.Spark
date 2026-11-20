@@ -97,7 +97,8 @@ Project                      (a stored document; one per user creation)
  ├─ kind: Icon | Cursor | Image | Animation
  ├─ canvas: { width, height }          the design space, in "units" (vector)
  ├─ points[]                           shared, first-class (DrawIt idea)
- ├─ constraints[]                      between points/shapes (solver, D4)
+ ├─ constraints[]                      between points/shapes (solver, D4/D14)
+ │                                     points[] also holds derived points (D15)
  ├─ layers[]                           ordered, bottom → top
  │   ├─ ShapeLayer { shapes[] }
  │   ├─ PaintLayer { per-size bitmaps } pixel art, one PNG per output size (D2)
@@ -122,6 +123,7 @@ Project                      (a stored document; one per user creation)
   - polygon
   - closed curve (closed Bézier path)
   - regular polygon or star, generated from a center, a radius point and a count
+- **Text** (D23) stores a string, font, size, spacing and alignment. It has a fill style and a line style, and is rendered from glyph outlines.
 - **Line style:** color with alpha, width, dash pattern, dash cap, line join and line cap.
 - **Fill style:**
   - Types: none, solid, linear gradient, radial gradient, or pattern (hatch).
@@ -138,8 +140,8 @@ Project                      (a stored document; one per user creation)
 | D1 | **One drawing, many sizes.** The vector source renders at every output size. Each size can carry overrides (hidden layers, its own paint layer). | Owner, grill 2026-11-20 |
 | D2 | **A paint layer is a pixel bitmap per output size.** Tools: pencil, eraser, fill bucket, color picker. It is stored as PNG. A paint layer is never scaled; a size without a bitmap shows nothing for that layer. | Owner, grill 2026-11-20 |
 | D3 | **Public app.** Anyone signs up. Projects are private by default, and a public read-only share link is optional. Anonymous users can draw and export but not save. Their work stays in `localStorage` and is offered for import after sign-in. | Owner, grill 2026-11-20 |
-| D4 | **Shared points and a full geometric constraint solver.** Shapes refer to shared points (DrawIt). Constraints include coincident, horizontal, vertical, parallel, perpendicular, equal length, fixed length or angle, tangent, point-on-curve, midpoint and symmetric. They are solved live while dragging. The solver choice is spike **S1**. | Owner, grill 2026-11-20 (chose the solver over "shared points + smart snaps") |
-| D5 | **Animation: keyframes and motion paths.** A timeline has fps, duration and loop. Keyframe tracks per shape cover position, rotation, scale, opacity, stroke color and fill color, with linear or cubic-bezier easing. A shape can follow a path on a guide layer, optionally oriented along its tangent. Export samples `scene(t)` per frame. | Owner, grill 2026-11-20 |
+| D4 | **Shared points and a full geometric constraint solver.** Shapes refer to shared points (DrawIt). Constraints include coincident, horizontal, vertical, parallel, perpendicular, equal length, fixed length or angle, tangent, point-on-curve, midpoint and symmetric. They are solved live while dragging. **We write the solver ourselves** (D14). If S1 misses its bar, v1 ships with snapping and derived points only (D15); the model keeps `constraints[]`, so a solver can be added later without migrating projects. | Owner, grill 2026-11-20 (rounds 2 and 3, Q1 and Q5) |
+| D5 | **Animation: keyframes and motion paths.** A timeline has fps, duration and loop. A keyframe track targets a **shape** (position, rotation, scale, opacity, stroke color, fill color) or a **point** (position). Easing is linear or cubic-bezier. A shape can follow a path on a guide layer, optionally oriented along its tangent. Export samples `scene(t)` per frame. Point keyframes drive the geometry, and constraints (D4) and derived points (D15) are re-evaluated on every frame, so connected shapes follow and mechanisms work (D19). | Owner, grill 2026-11-20 (Q10: B) |
 | D6 | **Own accounts plus external logins.** `LocalCredentials.Full` with Google, Microsoft and GitHub, as `apps/MintPlayer` does. No SparkId. | Owner, grill 2026-11-20 |
 | D7 | **Exports in v1:** ICO, CUR, ANI, GIF, APNG, animated WebP, single-size PNG and SVG. **Import in v1:** `.ico`, `.cur` and `.png`, which become paint layers. | Owner, grill 2026-11-20 |
 | D8 | **Name: Iconic.** The app is `apps/Iconic`, the RavenDB database is `Iconic`, the host is `iconic.mintplayer.com`, and the ports are https 5019 and http 5020. | Owner (name), §2.2 (ports) |
@@ -148,6 +150,17 @@ Project                      (a stored document; one per user creation)
 | D11 | **The editor core is a framework-free TypeScript library** (`libs/iconic-core`, or inside the ClientApp at first). It holds the model, commands and undo, the solver adapter, the renderers, the animation sampler and the encoders. It is unit-tested with vitest. The Angular code is only the shell. This avoids DrawIt's god-class. | Proposed |
 | D12 | **Undo is command-based over the model**, with an inverse for every command. A point merge and a solver result are single undoable steps; DrawIt got both wrong. | Proposed |
 | D13 | **Zoneless Angular**, ng-bootstrap components and `<spark-icon>`, as in every app in this repo. | Repo rules (memory) |
+| D14 | **We write the constraint solver ourselves, as the published package `@mintplayer/constraint-solver`** (`libs/node_packages/constraint-solver`). It is framework-free TypeScript with no WASM and no dependencies.<br>**How it works:** each constraint is a residual with an analytic derivative. The solver is damped Newton / Levenberg–Marquardt starting from the current positions, so it picks the nearest solution and shapes don't flip to their mirror image. A drag is a soft, low-weight constraint. Independent groups (connected components) are solved separately.<br>**Where it should beat planegcs:** rank analysis of the Jacobian names the exact constraints that conflict; each point shows how many degrees of freedom it has left; the same input always gives the same output.<br>**Releasing:** it has no Angular dependency, so it has its own semver from 1.0.0 (CLAUDE.md, "versioning"). It copies the `@mintplayer/webhooks-receiver` setup: a `tsc` build, a `Push` step in `dotnet-build-master.yml`, and membership of "Angular suites" in `test.yml`.<br>**Fallback:** only permissively licensed solvers (MIT, BSD, Apache). **Planegcs (LGPL) is out.** | Owner, grill Q5 and Q6 |
+| D15 | **Derived points.** Snapping to a midpoint, an intersection or a spot on a path creates a point that stores *how* it is computed (`midpoint(p1,p2)`, `intersect(a,b)`, `onPath(shape,t)`). Derived points are recomputed in dependency order, in one pass with no solver.<br>**Split:** one click detaches any snapped or derived point into a free point. It is available from the context menu, with a shortcut, and on the snap glyph.<br>**Rules:** a snap that would create a cycle is refused, with an explanation. An intersection that no longer exists keeps its last position and is marked broken; it never throws.<br>**With or without the solver:** derived points work either way. If S1 passes, the solver runs after the derived-point pass. | Owner, grill Q2 (B + "easy way to split") |
+| D16 | **Units are design pixels.** A project has a design size: 256×256 by default for icons and cursors, any W×H for an image. Coordinates are floats in those pixels. Each output size scales from it, so the pixel grid for a 48 px output is 5.33 units; the snap engine handles grids that aren't whole numbers. **All exports are anti-aliased.** Canvas2D cannot turn anti-aliasing off for paths, so a hard-edged pixel look comes only from paint layers (D2). | Owner, grill Q3 |
+| D17 | **Stroke behaviour per output size.** Each size has a mode: *scale*, *scale with a minimum* (the user sets the minimum in px) or *fixed pixels*. The default is scale with a 1 px minimum. It sits beside that size's pixel-grid snapping. | Owner, grill Q4 |
+| D18 | **Full mobile editing, phones included.**<br>Pointer Events everywhere, so mouse, pen and touch use one code path. Pinch-zoom, two-finger pan and long-press for the context menu.<br>On phones, panels become bottom sheets and the toolbar collapses.<br>Touch has no hover, so it gets an **offset loupe** showing the snap target.<br>Snap tolerance is in screen pixels and depends on the input type.<br>The E2E tests include a phone viewport. | Owner, grill Q7 (C) |
+| D19 | **Frames are deterministic.** Frame *t* is solved from the **rest pose**, never warm-started from frame *t−1*. Scrubbing, playback and every export therefore produce the same pixels. | Proposed, a consequence of D5 |
+| D20 | **Sharing.** `isPublic` (it has a share link) and `isListed` (it appears in the gallery) are separate fields from day one.<br>v1 has unlisted links only: an unguessable URL with `noindex`, plus view, export and **Remix** (copy into my projects).<br>Shared pages carry a "report this" link that emails the owner, and the owner can take a share down.<br>The public gallery is a later stage, built on `libs/moderation`. | Owner, grill Q8 (C) |
+| D21 | **Quotas, enforced on the server:**<ul><li>200 projects per user</li><li>**5 MB of scene JSON** per project, which is RavenDB's huge-document threshold, so the server never warns</li><li>10 MB of attachments per project</li><li>50 saves a minute</li></ul>The editor shows usage live. A save over a limit fails with a clear message, and the work stays in the editor and in `localStorage`. Autosave sends **patches**, not the whole scene (S5). | Owner, grill Q9 (A, scene limit 5 MB) |
+| D22 | **History is named snapshots.** "Save version" stores an explicit snapshot, at most 20 per project, counted in the attachment quota, with restore. Autosave overwrites without creating a revision. Restore first snapshots the current state, so restoring never loses work. Undo during a session is the in-memory command stack (D12). | Owner, grill Q11 (B) |
+| D23 | **Text is live and rendered as outlines.** A text shape stores its string, font, size, spacing and alignment, and stays editable. **Every renderer draws it from glyph outlines produced by [opentype.js](https://github.com/opentypejs/opentype.js) (MIT)**: the on-screen editor, the raster exports and SVG. That means no `fillText`, no text-rendering differences between browsers, and no font embedding in SVG. "Convert to shapes" turns the text into ordinary plane shapes with shared points. Fonts come from a curated set (OFL or Apache) or a user upload (.ttf/.otf, counted in the attachment quota; the uploader is responsible for its licence). | Owner, grill Q12 (C), with outline rendering as my addition, so that C's editing gets B's identical output everywhere |
+| D24 | **One PR (#699)** with every stage as a milestone. Each milestone ends type-checked and demoable, and the tests run once, at the end (global rule 6). | Owner, grill Q13 (A) |
 
 ## 5. Spikes
 
@@ -155,29 +168,65 @@ Each spike ends in a short note in this PRD (§5.x result) with evidence (number
 
 | # | Spike | Question | Done when |
 |---|---|---|---|
-| **S1** | **Constraint solver** | Do we adopt an existing solver or build one? Candidates: **planegcs** (FreeCAD's GCS compiled to WASM, `@salusoft89/planegcs`, LGPL-2.1: check the licence for a client bundle), a hand-written Newton–Raphson / Levenberg–Marquardt solver over point coordinates, or `cassowary`/kiwi.js (linear only, so no tangents or circles). | Ten points with eight mixed constraints solve while dragging at ≥ 60 fps on a mid-range laptop. Over-constrained input is reported, never hung. Bundle size and licence are recorded. |
-| S2 | **Snapping and constraint UX** | How does a user add constraints without a CAD learning curve? Proposed: snapping *creates* constraints (drop on a point gives coincident; on a midpoint gives a midpoint constraint; near horizontal gives horizontal). They show as small glyphs that can be deleted. A toolbar offers explicit constraints. Hold Alt to place a point without snapping. | A clickable prototype; the owner decides. |
+| **S1** | **Our own constraint solver** (D14) | Can a hand-written damped Newton / Levenberg–Marquardt solver in TypeScript meet the bar? Scope: a residual for every constraint type in D4, solving connected components separately, conflict detection by Jacobian rank, and degrees of freedom per point. | Three conditions:<ul><li>200 points with 150 mixed constraints solve while dragging at ≥ 60 fps on a mid-range laptop **and on a mid-range phone** (D18)</li><li>over-constrained input names the conflicting constraints and never hangs</li><li>a corpus of degenerate cases passes: coinciding parallel lines, zero-length segments, tangent at radius 0, and a near-singular Jacobian</li></ul>**No-go** means v1 ships with D15 only (Q1). |
+| S2 | **Snapping and constraint UX, desktop and phone** | How does a user add constraints without a CAD learning curve? Proposed: snapping *creates* constraints or derived points (drop on a point gives coincident; on a midpoint gives a derived midpoint; near horizontal gives horizontal). They show as small glyphs that can be deleted, and a **Split** action is on the glyph (D15). A toolbar offers explicit constraints. Hold Alt to place a point without snapping. On touch, the offset loupe (D18) does the job of hover previews. | A clickable prototype at both desktop and phone widths; the owner decides. |
 | S3 | **ICO/CUR/ANI writer and reader** | A byte-exact writer for PNG and 32-bit BMP entries with an AND mask, the CUR hotspot, ANI, and a reader for import. | Files open in Windows Explorer, in a Windows cursor applied through Settings, and as a CSS `cursor:` in Chrome, Edge and Firefox. Round trip: write, read, compare pixels. |
 | S4 | **Pixel-exact small-size rendering** | Does Canvas2D at 16×16 with pixel-grid snapping give acceptable icons? How do the browsers differ in anti-aliasing? | The same scene rendered in Chrome and Firefox. The pixel differences are measured and recorded, and decide whether golden-image tests need a tolerance. |
-| S5 | **Storage shape** | Scene JSON as a string attribute versus `AsDetail` nesting. The size of a realistic project (500 shapes, 30 keyframe tracks). Attachment endpoints and authorization for paint layers. | A measured document size, plus the save/load round trip through a Spark custom endpoint or action. |
+| S5 | **Storage shape** | Scene JSON as a string attribute versus `AsDetail` nesting. The size of a realistic project (500 shapes, 30 keyframe tracks). **Autosave as patches** (D21): JSON Patch applied server-side through a parameterised patch script, never by splicing strings into RQL (CLAUDE.md). Attachment endpoints and authorization for paint layers, snapshots (D22) and fonts (D23). | A measured document size, the save/load round trip, and patch payload sizes for typical edits. |
 | S6 | **Animation export** | gifenc with a global palette and transparency (matte versus threshold). APNG encoder choice. WebP muxing. Encoding time for 64×64 × 60 frames in a worker. | Three files from one scene, viewed in browsers. Timings are recorded. |
-| S7 | **Constraints × animation** | When a keyframe moves a constrained point, is the solver run per frame (keyframes are drivers), or are constraints frozen during playback? | A decision with a demo. Proposed: keyframes animate *driver* values, the solver runs per sampled frame, and the solve is deterministic. |
+| S7 | **Constraints × animation** (D5, D19) | Point keyframes drive the geometry, and the solver plus derived points run on every frame, starting from the rest pose. Is that fast enough for live preview, and is it deterministic? | Three conditions:<ul><li>a swinging-arm mechanism plays at 30 fps in the preview</li><li>scrubbing to frame *t* and playing to frame *t* produce identical pixels</li><li>the GIF export equals the preview</li></ul> |
 
 ## 6. Scope by stage
 
 The stages are milestones inside **one PR** (owner rule: one PR per task; splitting needs the owner's word).
 
-- **Stage 0, skeleton.** Create `apps/Iconic` (host, Library, Tests, ClientApp) and register it in Nx. Accounts (D6). A `Project` entity with the generic query page. An empty editor route.
-- **Stage 1, static vector.** Spikes S1–S5. Points, constraints and snapping. All line and plane shapes with line and fill styles. Layers (shape and guide). Undo. Save and load. PNG and SVG export.
-- **Stage 2, icons and cursors.** Output sizes with per-size overrides. Paint layers. ICO and CUR export with a hotspot editor. Import of `.ico`, `.cur` and `.png`.
-- **Stage 3, animation.** Spikes S6 and S7. The timeline UI, keyframes and motion paths. GIF, APNG, WebP and ANI export.
-- **Stage 4, production.** Share links (D3). The thumbnail. Hand off localStorage drafts at sign-in. Deployment to the VPS beside the other apps. A `CLAUDE.md` entry marking Iconic as production.
+- **Stage 0, solver and skeleton.**
+  - Spike S1 and the `@mintplayer/constraint-solver` package (D14).
+  - Create `apps/Iconic` (host, Library, Tests, ClientApp) and register it in Nx.
+  - Accounts (D6).
+  - A `Project` entity with the generic query page, and quotas (D21).
+  - An empty editor route.
+- **Stage 1, static vector.**
+  - Spikes S2–S5.
+  - Points, derived points with Split (D15), constraints and snapping.
+  - All line and plane shapes, with line and fill styles.
+  - Text (D23).
+  - Layers: shape and guide.
+  - Undo.
+  - Save and load as patches.
+  - Snapshots (D22).
+  - PNG and SVG export.
+  - A responsive shell for desktop and phone (D18).
+- **Stage 2, icons and cursors.**
+  - Output sizes with per-size overrides and stroke modes (D17).
+  - Paint layers.
+  - ICO and CUR export, with a hotspot editor.
+  - Import of `.ico`, `.cur` and `.png`.
+- **Stage 3, animation.**
+  - Spikes S6 and S7.
+  - The timeline UI, with shape and point keyframes and motion paths.
+  - GIF, APNG, WebP and ANI export.
+- **Stage 4, production.**
+  - Share links, Remix, and report/takedown (D20).
+  - The thumbnail.
+  - Hand off `localStorage` drafts at sign-in.
+  - Deployment to the VPS beside the other apps.
+  - A `CLAUDE.md` entry marking Iconic as production.
+- **Later, not in v1:**
+  - the public gallery with moderation (D20)
+  - a solver if S1 failed (D4)
 
-**Out of scope:** real-time collaboration, text shapes (they need a font-embedding decision), boolean path operations (union and subtract), SVG import, and Lottie or SMIL export.
+**Out of scope:**
+- real-time collaboration
+- boolean path operations (union and subtract)
+- SVG import
+- Lottie or SMIL export
 
 ## 7. Risks
 
-- **The constraint solver is the largest unknown (S1).** A WASM solver adds bundle size and possibly an LGPL obligation. A hand-written solver risks convergence bugs. Mitigation: S1 comes first, and its fallback is D4-lite (shared points plus snapping, no solver). Falling back needs the owner's word.
+- **The constraint solver is the largest unknown (S1).** A hand-written solver risks convergence bugs in degenerate cases. Mitigation: S1 comes first and has a degenerate-case corpus. Its fallback is D15 (snapping and derived points), and animation still works without the solver (D5).
+- **Phone editing (D18)** widens S1's performance bar and S2's UX work. The solver has to hold 60 fps on a mid-range phone.
+- **A long-lived single PR (D24).** Integration problems surface late, because the tests run once. Mitigation: every milestone ends type-checked and demoable.
 - **Browser differences in anti-aliasing (S4).** These make golden-image tests brittle.
 - **GIF's 1-bit alpha** gives ugly fringes on cursors and icons. Mitigation: a matte-color option and APNG/WebP as alternatives.
 - **Document size** for large animated projects (S5).
@@ -195,11 +244,26 @@ The stages are milestones inside **one PR** (owner rule: one PR per task; splitt
 | Exports beyond ico, cur and gif | PNG/SVG, ANI, APNG/WebP, and import of ico/png: all four (D7) |
 | Name | Iconic (D8) |
 
+### Grill round 3 (owner, 2026-11-20)
+
+The owner said the answers are guidance, and the final call is mine where something needs to differ. Where I departed from or extended an answer, the decision row says so.
+
+| # | Question | Answer | Decision |
+|---|---|---|---|
+| Q1 | What happens if no solver meets the bar? | Try the solver first; fall back to snapping | D4 |
+| Q2 | What does a snap leave behind? | Derived points, with an easy way to split them | D15 |
+| Q3 | Units | Design pixels; the output is anti-aliased | D16 |
+| Q4 | Strokes at small sizes | The user chooses per output size | D17 |
+| Q5 | Solver licence | Write our own; otherwise permissive licences only | D14 |
+| Q6 | Where does the solver live? | Its own package, published | D14 |
+| Q7 | Touch and mobile | Full mobile editing, phones included | D18 |
+| Q8 | Gallery | Unlisted links now; fields ready for a gallery later | D20 |
+| Q9 | Quotas | Fixed limits; scene JSON limit 5 MB | D21 |
+| Q10 | Animation × constraints | Point keyframes drive the solver | D5, D19 |
+| Q11 | History | Named snapshots | D22 |
+| Q12 | Text | Live, editable text | D23 (rendered as outlines) |
+| Q13 | One PR? | One PR | D24 |
+
 ## 9. Open questions for the owner
 
-1. **Quotas.** Is there a cap on projects per user, document size or attachment size? Proposed: 200 projects and 5 MB per project, adjustable later.
-2. **Touch and mobile.** Should the editor work on tablets, with pointer events and pinch-zoom, or only on desktop?
-3. **Gallery.** Should public share links feed a browsable public gallery, or stay unlisted?
-4. **Solver fallback.** If S1 finds no solver that meets the bar, do you accept D4-lite (shared points plus snapping) for v1?
-5. **Licence.** Is an LGPL WASM dependency (planegcs) acceptable in the client bundle?
-6. **Units.** Should the canvas be in pixels of the largest output size, or in abstract units (for example 0–1000)? Proposed: abstract units, with the canvas aspect fixed per project.
+None open. The first-draft questions were answered in round 3: quotas (Q9), touch (Q7), gallery (Q8), the solver fallback (Q1), the licence (Q5) and units (Q3).
