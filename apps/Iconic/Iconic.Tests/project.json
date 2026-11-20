@@ -10,7 +10,7 @@
         "{workspaceRoot}/apps/Iconic/Iconic/appsettings*.json"
       ],
       "options": {
-        "cwd": "apps/MintPlayer/Iconic.Tests",
+        "cwd": "apps/Iconic/Iconic.Tests",
         "command": "dotnet test --no-build --no-restore --settings ../../../coverlet.runsettings --collect:\"XPlat Code Coverage\" --results-directory coverage",
         "args": []
       },
