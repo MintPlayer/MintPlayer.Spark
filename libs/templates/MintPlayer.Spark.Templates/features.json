@@ -305,6 +305,11 @@
     { "project": "templates/MintPlayer.Spark.Templates/MintPlayer.Spark.Templates.csproj", "reason": "not-an-app-feature" },
     { "project": "cli/MintPlayer.Spark.Cli/MintPlayer.Spark.Cli.csproj", "reason": "not-an-app-feature" },
     { "project": "cli/create-spark-app/create-spark-app.csproj", "reason": "not-an-app-feature" },
+    { "project": "webhooks/MintPlayer.Webhooks.Receiver/MintPlayer.Webhooks.Receiver.csproj", "reason": "not-an-app-feature" },
+    { "project": "webhooks/MintPlayer.Webhooks.Receiver.AspNetCore/MintPlayer.Webhooks.Receiver.AspNetCore.csproj", "reason": "not-an-app-feature" },
+    { "project": "webhooks/MintPlayer.Webhooks.Ed25519/MintPlayer.Webhooks.Ed25519.csproj", "reason": "not-an-app-feature" },
+    { "project": "webhooks/MintPlayer.Spark.Webhooks.Receiver/MintPlayer.Spark.Webhooks.Receiver.csproj", "reason": "not-an-app-feature" },
+    { "project": "apps/MintPlayer.Spark.Apps/MintPlayer.Spark.Apps.csproj", "reason": "not-an-app-feature" },
     { "project": "minification/MintPlayer.Spark.Minification/MintPlayer.Spark.Minification.csproj", "reason": "needs-prerendering" }
   ],
 

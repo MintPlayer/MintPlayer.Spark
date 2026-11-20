@@ -107,7 +107,7 @@ app.UseSpark();
 app.UseEndpoints(endpoints =>
 {
     endpoints.MapSpark();
-    endpoints.MapIconicApi();
+    endpoints.MapIconicEndpoints();
     endpoints.MapHealthChecks("/health").AllowAnonymous();
 });
 

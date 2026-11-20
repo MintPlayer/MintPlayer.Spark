@@ -1,22 +1,22 @@
-POST /api/iconic/admin/takedown | accepts(application/json) | antiforgery=required
+POST /api/iconic/admin/takedown | antiforgery=required
 GET /api/iconic/projects
-POST /api/iconic/projects | accepts(application/json) | antiforgery=required | rate-limit=policy:iconic-save
+POST /api/iconic/projects | antiforgery=required | rate-limit=policy:iconic-save
 DELETE /api/iconic/projects/{key} | antiforgery=required | rate-limit=policy:iconic-save
 GET /api/iconic/projects/{key}
 DELETE /api/iconic/projects/{key}/files/{**name} | antiforgery=required
 GET /api/iconic/projects/{key}/files/{**name}
 PUT /api/iconic/projects/{key}/files/{**name} | antiforgery=required | rate-limit=policy:iconic-save | request-size-limit=11534336
-PUT /api/iconic/projects/{key}/meta | accepts(application/json) | antiforgery=required | rate-limit=policy:iconic-save
-PATCH /api/iconic/projects/{key}/scene | accepts(application/json) | antiforgery=required | rate-limit=policy:iconic-save | request-size-limit=8388608
-PUT /api/iconic/projects/{key}/scene | accepts(application/json) | antiforgery=required | rate-limit=policy:iconic-save | request-size-limit=8388608
-POST /api/iconic/projects/{key}/share | accepts(application/json) | antiforgery=required
-POST /api/iconic/projects/{key}/snapshots | accepts(application/json) | antiforgery=required | rate-limit=policy:iconic-save
+PUT /api/iconic/projects/{key}/meta | antiforgery=required | rate-limit=policy:iconic-save
+PATCH /api/iconic/projects/{key}/scene | antiforgery=required | rate-limit=policy:iconic-save | request-size-limit=8388608
+PUT /api/iconic/projects/{key}/scene | antiforgery=required | rate-limit=policy:iconic-save | request-size-limit=8388608
+POST /api/iconic/projects/{key}/share | antiforgery=required
+POST /api/iconic/projects/{key}/snapshots | antiforgery=required | rate-limit=policy:iconic-save
 DELETE /api/iconic/projects/{key}/snapshots/{snapshotId} | antiforgery=required
 POST /api/iconic/projects/{key}/snapshots/{snapshotId}/restore | antiforgery=required | rate-limit=policy:iconic-save
 GET /api/iconic/shared/{token} | allow-anonymous
 GET /api/iconic/shared/{token}/files/{**name} | allow-anonymous
 POST /api/iconic/shared/{token}/remix | antiforgery=required | rate-limit=policy:iconic-save
-POST /api/iconic/shared/{token}/report | accepts(application/json) | allow-anonymous | antiforgery=required | rate-limit=policy:iconic-report
+POST /api/iconic/shared/{token}/report | allow-anonymous | antiforgery=required | rate-limit=policy:iconic-report
 * /health | allow-anonymous
 GET /spark
 POST /spark/actions/execute | antiforgery=required

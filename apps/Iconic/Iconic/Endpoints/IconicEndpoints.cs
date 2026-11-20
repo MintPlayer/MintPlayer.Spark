@@ -1,89 +1,297 @@
-using System.Threading.RateLimiting;
 using Iconic.Services;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.RateLimiting;
+using MintPlayer.AspNetCore.Endpoints;
+using MintPlayer.SourceGenerators.Attributes;
 
 namespace Iconic.Endpoints;
 
-/// <summary>
-/// The editor's API under <c>/api/iconic</c> (docs/iconic_PRD.md §6 Stage 0). Every state-changing call needs the
-/// antiforgery header; saves are rate-limited per user (D21) on top of Spark's per-IP limiter for the prefix.
-/// </summary>
-public static class IconicEndpoints
+// The editor's API under /api/iconic (docs/iconic_PRD.md §6 Stage 0, D25), as generator endpoint classes
+// (docs/endpoints_generator_completion_PRD.md R3). Each endpoint is a thin shell over ProjectService, which owns the
+// rules. Every state-changing call needs the antiforgery header; saves are rate-limited per user (D21) on top of
+// Spark's per-IP limiter for the prefix (IconicRateLimits).
+
+internal sealed class IconicProjectsGroup : IEndpointGroup
 {
-    public const string SavePolicy = "iconic-save";
-    public const string ReportPolicy = "iconic-report";
+    public static string Prefix => "/api/iconic/projects";
+}
 
-    public static IServiceCollection AddIconicRateLimits(this IServiceCollection services, IConfiguration configuration)
+internal sealed class IconicSharedGroup : IEndpointGroup
+{
+    public static string Prefix => "/api/iconic/shared";
+}
+
+internal sealed class IconicAdminGroup : IEndpointGroup
+{
+    public static string Prefix => "/api/iconic/admin";
+}
+
+/// <summary>The metadata the endpoints share.</summary>
+internal static class IconicEndpoint
+{
+    private static readonly RequireAntiforgeryTokenAttribute Csrf = new(true);
+
+    /// <summary>A state-changing call: the antiforgery header.</summary>
+    public static RouteHandlerBuilder Mutation(RouteHandlerBuilder builder) => builder.WithMetadata(Csrf);
+
+    /// <summary>A save: antiforgery plus the per-user save rate limit (D21).</summary>
+    public static RouteHandlerBuilder Save(RouteHandlerBuilder builder) => Mutation(builder).RequireRateLimiting(IconicRateLimits.SavePolicy);
+
+    /// <summary>A scene save: a body up to 8 MB, so the 5 MB quota answers 413 with its own message.</summary>
+    public static RouteHandlerBuilder SceneSave(RouteHandlerBuilder builder) => Save(builder).WithMetadata(new RequestSizeLimitAttribute(8 * 1024 * 1024));
+}
+
+// ---- projects -----------------------------------------------------------------------------------
+
+/// <summary><c>POST /api/iconic/projects</c>: a new project for the caller.</summary>
+[MemberOf<IconicProjectsGroup>]
+internal sealed partial class CreateProjectEndpoint : IPostEndpoint<CreateProjectRequest>
+{
+    public static string Path => "";
+    static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services) => IconicEndpoint.Save(builder);
+    [Inject] private readonly ProjectService projects;
+
+    public override Task<IResult> HandleAsync(CreateProjectRequest request, CancellationToken cancellationToken)
+        => projects.CreateAsync(request, cancellationToken);
+}
+
+/// <summary><c>GET /api/iconic/projects</c>: the caller's projects.</summary>
+[MemberOf<IconicProjectsGroup>]
+internal sealed partial class ListProjectsEndpoint : IGetEndpoint
+{
+    public static string Path => "";
+    [Inject] private readonly ProjectService projects;
+
+    public Task<IResult> HandleAsync(HttpContext httpContext) => projects.ListAsync(httpContext.RequestAborted);
+}
+
+/// <summary><c>GET /api/iconic/projects/{key}</c>: a project with its scene.</summary>
+[MemberOf<IconicProjectsGroup>]
+internal sealed partial class GetProjectEndpoint : IGetEndpoint
+{
+    public static string Path => "/{key}";
+    [RouteParam] public string Key { get; set; } = "";
+    [Inject] private readonly ProjectService projects;
+
+    public Task<IResult> HandleAsync(HttpContext httpContext) => projects.GetAsync(Key, httpContext.RequestAborted);
+}
+
+/// <summary><c>DELETE /api/iconic/projects/{key}</c>: the project and its scene, owner only.</summary>
+[MemberOf<IconicProjectsGroup>]
+internal sealed partial class DeleteProjectEndpoint : IDeleteEndpoint
+{
+    public static string Path => "/{key}";
+    static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services) => IconicEndpoint.Save(builder);
+    [RouteParam] public string Key { get; set; } = "";
+    [Inject] private readonly ProjectService projects;
+
+    public Task<IResult> HandleAsync(HttpContext httpContext) => projects.DeleteAsync(Key, httpContext.RequestAborted);
+}
+
+/// <summary><c>PUT /api/iconic/projects/{key}/meta</c>: name, kind and design size.</summary>
+[MemberOf<IconicProjectsGroup>]
+internal sealed partial class UpdateProjectEndpoint : IPutEndpoint<UpdateProjectRequest>
+{
+    public static string Path => "/{key}/meta";
+    static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services) => IconicEndpoint.Save(builder);
+    [RouteParam] public string Key { get; set; } = "";
+    [Inject] private readonly ProjectService projects;
+
+    public override Task<IResult> HandleAsync(UpdateProjectRequest request, CancellationToken cancellationToken)
+        => projects.UpdateAsync(Key, request, cancellationToken);
+}
+
+/// <summary><c>PUT /api/iconic/projects/{key}/scene</c>: the whole scene, at a version.</summary>
+[MemberOf<IconicProjectsGroup>]
+internal sealed partial class SaveSceneEndpoint : IPutEndpoint<SaveSceneRequest>
+{
+    public static string Path => "/{key}/scene";
+    static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services) => IconicEndpoint.SceneSave(builder);
+    [RouteParam] public string Key { get; set; } = "";
+    [Inject] private readonly ProjectService projects;
+
+    public override Task<IResult> HandleAsync(SaveSceneRequest request, CancellationToken cancellationToken)
+        => projects.SaveSceneAsync(Key, request, cancellationToken);
+}
+
+/// <summary><c>PATCH /api/iconic/projects/{key}/scene</c>: patch operations, at a version (S5).</summary>
+[MemberOf<IconicProjectsGroup>]
+internal sealed partial class PatchSceneEndpoint : IPatchEndpoint<PatchSceneRequest>
+{
+    public static string Path => "/{key}/scene";
+    static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services) => IconicEndpoint.SceneSave(builder);
+    [RouteParam] public string Key { get; set; } = "";
+    [Inject] private readonly ProjectService projects;
+
+    public override Task<IResult> HandleAsync(PatchSceneRequest request, CancellationToken cancellationToken)
+        => projects.PatchSceneAsync(Key, request, cancellationToken);
+}
+
+// ---- attachments ---------------------------------------------------------------------------------
+
+/// <summary>
+/// <c>PUT /api/iconic/projects/{key}/files/{**name}</c>: a paint bitmap, font or thumbnail. The body is raw bytes, not
+/// JSON, so there is no typed binding: ProjectService checks the name, the quota and the magic bytes while it reads
+/// the body under a cap.
+/// </summary>
+[MemberOf<IconicProjectsGroup>]
+internal sealed partial class PutFileEndpoint : IPutEndpoint
+{
+    public static string Path => "/{key}/files/{**name}";
+    static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services)
+        => IconicEndpoint.Save(builder).WithMetadata(new RequestSizeLimitAttribute(11 * 1024 * 1024));
+    [RouteParam] public string Key { get; set; } = "";
+    [RouteParam] public string Name { get; set; } = "";
+    [Inject] private readonly ProjectService projects;
+
+    public Task<IResult> HandleAsync(HttpContext httpContext) => projects.PutFileAsync(Key, Name, httpContext.Request, httpContext.RequestAborted);
+}
+
+/// <summary><c>GET /api/iconic/projects/{key}/files/{**name}</c></summary>
+[MemberOf<IconicProjectsGroup>]
+internal sealed partial class GetFileEndpoint : IGetEndpoint
+{
+    public static string Path => "/{key}/files/{**name}";
+    [RouteParam] public string Key { get; set; } = "";
+    [RouteParam] public string Name { get; set; } = "";
+    [Inject] private readonly ProjectService projects;
+
+    public Task<IResult> HandleAsync(HttpContext httpContext) => projects.GetFileAsync(Key, Name, httpContext.RequestAborted);
+}
+
+/// <summary><c>DELETE /api/iconic/projects/{key}/files/{**name}</c></summary>
+[MemberOf<IconicProjectsGroup>]
+internal sealed partial class DeleteFileEndpoint : IDeleteEndpoint
+{
+    public static string Path => "/{key}/files/{**name}";
+    static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services) => IconicEndpoint.Mutation(builder);
+    [RouteParam] public string Key { get; set; } = "";
+    [RouteParam] public string Name { get; set; } = "";
+    [Inject] private readonly ProjectService projects;
+
+    public Task<IResult> HandleAsync(HttpContext httpContext) => projects.DeleteFileAsync(Key, Name, httpContext.RequestAborted);
+}
+
+// ---- snapshots (D22) -----------------------------------------------------------------------------
+
+/// <summary><c>POST /api/iconic/projects/{key}/snapshots</c></summary>
+[MemberOf<IconicProjectsGroup>]
+internal sealed partial class CreateSnapshotEndpoint : IPostEndpoint<SnapshotRequest>
+{
+    public static string Path => "/{key}/snapshots";
+    static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services) => IconicEndpoint.Save(builder);
+    [RouteParam] public string Key { get; set; } = "";
+    [Inject] private readonly ProjectService projects;
+
+    public override Task<IResult> HandleAsync(SnapshotRequest request, CancellationToken cancellationToken)
+        => projects.CreateSnapshotAsync(Key, request, cancellationToken);
+}
+
+/// <summary><c>POST /api/iconic/projects/{key}/snapshots/{snapshotId}/restore</c>: snapshots the current state first.</summary>
+[MemberOf<IconicProjectsGroup>]
+internal sealed partial class RestoreSnapshotEndpoint : IPostEndpoint
+{
+    public static string Path => "/{key}/snapshots/{snapshotId}/restore";
+    static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services) => IconicEndpoint.Save(builder);
+    [RouteParam] public string Key { get; set; } = "";
+    [RouteParam] public string SnapshotId { get; set; } = "";
+    [Inject] private readonly ProjectService projects;
+
+    public Task<IResult> HandleAsync(HttpContext httpContext) => projects.RestoreSnapshotAsync(Key, SnapshotId, httpContext.RequestAborted);
+}
+
+/// <summary><c>DELETE /api/iconic/projects/{key}/snapshots/{snapshotId}</c></summary>
+[MemberOf<IconicProjectsGroup>]
+internal sealed partial class DeleteSnapshotEndpoint : IDeleteEndpoint
+{
+    public static string Path => "/{key}/snapshots/{snapshotId}";
+    static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services) => IconicEndpoint.Mutation(builder);
+    [RouteParam] public string Key { get; set; } = "";
+    [RouteParam] public string SnapshotId { get; set; } = "";
+    [Inject] private readonly ProjectService projects;
+
+    public Task<IResult> HandleAsync(HttpContext httpContext) => projects.DeleteSnapshotAsync(Key, SnapshotId, httpContext.RequestAborted);
+}
+
+// ---- sharing (D20) -------------------------------------------------------------------------------
+
+/// <summary><c>POST /api/iconic/projects/{key}/share</c>: turn the link on or off, or replace it.</summary>
+[MemberOf<IconicProjectsGroup>]
+internal sealed partial class ShareProjectEndpoint : IPostEndpoint<ShareRequest>
+{
+    public static string Path => "/{key}/share";
+    static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services) => IconicEndpoint.Mutation(builder);
+    [RouteParam] public string Key { get; set; } = "";
+    [Inject] private readonly ProjectService projects;
+
+    public override Task<IResult> HandleAsync(ShareRequest request, CancellationToken cancellationToken)
+        => projects.ShareAsync(Key, request, cancellationToken);
+}
+
+/// <summary><c>GET /api/iconic/shared/{token}</c>: a shared drawing, read-only, for anyone holding the link.</summary>
+[MemberOf<IconicSharedGroup>]
+internal sealed partial class GetSharedEndpoint : IGetEndpoint
+{
+    public static string Path => "/{token}";
+    static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services) => builder.AllowAnonymous();
+    [RouteParam] public string Token { get; set; } = "";
+    [Inject] private readonly ProjectService projects;
+
+    public Task<IResult> HandleAsync(HttpContext httpContext) => projects.GetSharedAsync(Token, httpContext.RequestAborted);
+}
+
+/// <summary><c>GET /api/iconic/shared/{token}/files/{**name}</c></summary>
+[MemberOf<IconicSharedGroup>]
+internal sealed partial class GetSharedFileEndpoint : IGetEndpoint
+{
+    public static string Path => "/{token}/files/{**name}";
+    static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services) => builder.AllowAnonymous();
+    [RouteParam] public string Token { get; set; } = "";
+    [RouteParam] public string Name { get; set; } = "";
+    [Inject] private readonly ProjectService projects;
+
+    public Task<IResult> HandleAsync(HttpContext httpContext) => projects.GetSharedFileAsync(Token, Name, httpContext.RequestAborted);
+}
+
+/// <summary><c>POST /api/iconic/shared/{token}/remix</c>: a copy in the caller's account.</summary>
+[MemberOf<IconicSharedGroup>]
+internal sealed partial class RemixEndpoint : IPostEndpoint
+{
+    public static string Path => "/{token}/remix";
+    static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services) => IconicEndpoint.Save(builder);
+    [RouteParam] public string Token { get; set; } = "";
+    [Inject] private readonly ProjectService projects;
+
+    public Task<IResult> HandleAsync(HttpContext httpContext) => projects.RemixAsync(Token, httpContext.RequestAborted);
+}
+
+/// <summary><c>POST /api/iconic/shared/{token}/report</c>: mails the administrators a takedown link.</summary>
+[MemberOf<IconicSharedGroup>]
+internal sealed partial class ReportSharedEndpoint : IPostEndpoint<ReportRequest>
+{
+    public static string Path => "/{token}/report";
+    static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services)
+        => IconicEndpoint.Mutation(builder.AllowAnonymous()).RequireRateLimiting(IconicRateLimits.ReportPolicy);
+    [RouteParam] public string Token { get; set; } = "";
+    [Inject] private readonly ProjectService projects;
+    [Inject] private readonly IConfiguration configuration;
+    [Inject] private readonly IHttpContextAccessor httpContextAccessor;
+
+    public override Task<IResult> HandleAsync(ReportRequest request, CancellationToken cancellationToken)
     {
-        var savesPerMinute = configuration.GetValue("Iconic:Quotas:SavesPerMinute", 50);
-        services.AddRateLimiter(options =>
-        {
-            options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
-            options.AddPolicy(SavePolicy, context => RateLimitPartition.GetFixedWindowLimiter(
-                partitionKey: context.User.Identity?.IsAuthenticated == true
-                    ? $"user:{context.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value}"
-                    : $"ip:{context.Connection.RemoteIpAddress}",
-                _ => new FixedWindowRateLimiterOptions { PermitLimit = savesPerMinute, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
-            // A report mails a person: a handful per address per hour is plenty.
-            options.AddPolicy(ReportPolicy, context => RateLimitPartition.GetFixedWindowLimiter(
-                partitionKey: context.Connection.RemoteIpAddress?.ToString() ?? "anonymous",
-                _ => new FixedWindowRateLimiterOptions { PermitLimit = 5, Window = TimeSpan.FromHours(1), QueueLimit = 0 }));
-        });
-        return services;
+        var http = httpContextAccessor.HttpContext!.Request;
+        return projects.ReportAsync(Token, request, configuration["Iconic:PublicBaseUrl"] ?? $"{http.Scheme}://{http.Host}", cancellationToken);
     }
+}
 
-    public static IEndpointRouteBuilder MapIconicApi(this IEndpointRouteBuilder endpoints)
-    {
-        var api = endpoints.MapGroup("/api/iconic");
-        var csrf = new RequireAntiforgeryTokenAttribute(true);
+/// <summary><c>POST /api/iconic/admin/takedown</c>: administrators only (ProjectService checks).</summary>
+[MemberOf<IconicAdminGroup>]
+internal sealed partial class TakedownEndpoint : IPostEndpoint<TakedownRequest>
+{
+    public static string Path => "/takedown";
+    static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services) => IconicEndpoint.Mutation(builder);
+    [Inject] private readonly ProjectService projects;
 
-        var projects = api.MapGroup("/projects");
-        projects.MapPost("", (CreateProjectRequest body, ProjectService s, CancellationToken ct) => s.CreateAsync(body, ct))
-            .WithMetadata(csrf).RequireRateLimiting(SavePolicy);
-        projects.MapGet("", (ProjectService s, CancellationToken ct) => s.ListAsync(ct));
-        projects.MapGet("/{key}", (string key, ProjectService s, CancellationToken ct) => s.GetAsync(key, ct));
-        projects.MapDelete("/{key}", (string key, ProjectService s, CancellationToken ct) => s.DeleteAsync(key, ct))
-            .WithMetadata(csrf).RequireRateLimiting(SavePolicy);
-        projects.MapPut("/{key}/meta", (string key, UpdateProjectRequest body, ProjectService s, CancellationToken ct) => s.UpdateAsync(key, body, ct))
-            .WithMetadata(csrf).RequireRateLimiting(SavePolicy);
-        projects.MapPut("/{key}/scene", (string key, SaveSceneRequest body, ProjectService s, CancellationToken ct) => s.SaveSceneAsync(key, body, ct))
-            .WithMetadata(csrf).RequireRateLimiting(SavePolicy)
-            .WithMetadata(new RequestSizeLimitAttribute(8 * 1024 * 1024));
-        projects.MapPatch("/{key}/scene", (string key, PatchSceneRequest body, ProjectService s, CancellationToken ct) => s.PatchSceneAsync(key, body, ct))
-            .WithMetadata(csrf).RequireRateLimiting(SavePolicy)
-            .WithMetadata(new RequestSizeLimitAttribute(8 * 1024 * 1024));
-
-        projects.MapPut("/{key}/files/{**name}", (string key, string name, HttpRequest http, ProjectService s, CancellationToken ct) => s.PutFileAsync(key, name, http, ct))
-            .WithMetadata(csrf).RequireRateLimiting(SavePolicy)
-            .WithMetadata(new RequestSizeLimitAttribute(11 * 1024 * 1024));
-        projects.MapGet("/{key}/files/{**name}", (string key, string name, ProjectService s, CancellationToken ct) => s.GetFileAsync(key, name, ct));
-        projects.MapDelete("/{key}/files/{**name}", (string key, string name, ProjectService s, CancellationToken ct) => s.DeleteFileAsync(key, name, ct))
-            .WithMetadata(csrf);
-
-        projects.MapPost("/{key}/snapshots", (string key, SnapshotRequest body, ProjectService s, CancellationToken ct) => s.CreateSnapshotAsync(key, body, ct))
-            .WithMetadata(csrf).RequireRateLimiting(SavePolicy);
-        projects.MapPost("/{key}/snapshots/{snapshotId}/restore", (string key, string snapshotId, ProjectService s, CancellationToken ct) => s.RestoreSnapshotAsync(key, snapshotId, ct))
-            .WithMetadata(csrf).RequireRateLimiting(SavePolicy);
-        projects.MapDelete("/{key}/snapshots/{snapshotId}", (string key, string snapshotId, ProjectService s, CancellationToken ct) => s.DeleteSnapshotAsync(key, snapshotId, ct))
-            .WithMetadata(csrf);
-
-        projects.MapPost("/{key}/share", (string key, ShareRequest body, ProjectService s, CancellationToken ct) => s.ShareAsync(key, body, ct))
-            .WithMetadata(csrf);
-
-        var shared = api.MapGroup("/shared");
-        shared.MapGet("/{token}", (string token, ProjectService s, CancellationToken ct) => s.GetSharedAsync(token, ct)).AllowAnonymous();
-        shared.MapGet("/{token}/files/{**name}", (string token, string name, ProjectService s, CancellationToken ct) => s.GetSharedFileAsync(token, name, ct)).AllowAnonymous();
-        shared.MapPost("/{token}/remix", (string token, ProjectService s, CancellationToken ct) => s.RemixAsync(token, ct))
-            .WithMetadata(csrf).RequireRateLimiting(SavePolicy);
-        shared.MapPost("/{token}/report", (string token, ReportRequest body, ProjectService s, IConfiguration configuration, HttpRequest http, CancellationToken ct)
-                => s.ReportAsync(token, body, configuration["Iconic:PublicBaseUrl"] ?? $"{http.Scheme}://{http.Host}", ct))
-            .AllowAnonymous().WithMetadata(csrf).RequireRateLimiting(ReportPolicy);
-
-        api.MapPost("/admin/takedown", (TakedownRequest body, ProjectService s, CancellationToken ct) => s.TakedownAsync(body, ct))
-            .WithMetadata(csrf);
-
-        return endpoints;
-    }
+    public override Task<IResult> HandleAsync(TakedownRequest request, CancellationToken cancellationToken)
+        => projects.TakedownAsync(request, cancellationToken);
 }
