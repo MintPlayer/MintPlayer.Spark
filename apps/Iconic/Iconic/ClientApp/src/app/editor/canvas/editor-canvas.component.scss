@@ -1,0 +1,84 @@
+:host {
+  display: block;
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+
+.stage {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  touch-action: none;
+  user-select: none;
+  background: var(--bs-tertiary-bg, #f1f3f5);
+}
+
+.art,
+.overlay {
+  position: absolute;
+  left: 0;
+  top: 0;
+}
+
+.overlay {
+  pointer-events: none;
+  overflow: visible;
+}
+
+.trail { fill: none; stroke: #6f42c1; stroke-dasharray: 2 2; opacity: 0.7; }
+.selected-outline { fill: none; stroke: #0d6efd; opacity: 0.6; }
+.selection-box { fill: none; stroke: #0d6efd; }
+.preview { fill: rgba(13, 110, 253, 0.08); stroke: #0d6efd; }
+.handle { stroke: #6c757d; }
+.anchor { fill: #0d6efd; }
+.marquee { fill: rgba(13, 110, 253, 0.08); stroke: #0d6efd; }
+.snap { fill: none; stroke: #fd7e14; }
+
+.glyph {
+  fill: #495057;
+  stroke: #fff;
+  paint-order: stroke;
+  text-anchor: middle;
+  dominant-baseline: central;
+  font-family: system-ui, sans-serif;
+  &.redundant { fill: #adb5bd; }
+  &.conflict { fill: #dc3545; }
+}
+
+/* Points coloured by what the solver leaves them (D14): free, on a curve, determined. */
+.point { stroke: #fff; }
+.dof2 { fill: #0d6efd; }
+.dof1 { fill: #fd7e14; }
+.dof0 { fill: #198754; }
+.fixed { fill: #212529; }
+.derived { fill: #6f42c1; }
+.conflict { fill: #dc3545; }
+.point.selected { stroke: #ffc107; }
+
+.hotspot {
+  fill: none;
+  stroke: #dc3545;
+}
+
+.loupe {
+  position: absolute;
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  border: 2px solid rgba(0, 0, 0, 0.4);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+  pointer-events: none;
+  display: none;
+  background: #fff;
+  &.shown { display: block; }
+}
+
+.zoom-controls {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  display: flex;
+  gap: 4px;
+}

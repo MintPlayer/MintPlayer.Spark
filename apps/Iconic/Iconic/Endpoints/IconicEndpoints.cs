@@ -42,7 +42,10 @@ public static class IconicEndpoints
         var projects = api.MapGroup("/projects");
         projects.MapPost("", (CreateProjectRequest body, ProjectService s, CancellationToken ct) => s.CreateAsync(body, ct))
             .WithMetadata(csrf).RequireRateLimiting(SavePolicy);
+        projects.MapGet("", (ProjectService s, CancellationToken ct) => s.ListAsync(ct));
         projects.MapGet("/{key}", (string key, ProjectService s, CancellationToken ct) => s.GetAsync(key, ct));
+        projects.MapDelete("/{key}", (string key, ProjectService s, CancellationToken ct) => s.DeleteAsync(key, ct))
+            .WithMetadata(csrf).RequireRateLimiting(SavePolicy);
         projects.MapPut("/{key}/meta", (string key, UpdateProjectRequest body, ProjectService s, CancellationToken ct) => s.UpdateAsync(key, body, ct))
             .WithMetadata(csrf).RequireRateLimiting(SavePolicy);
         projects.MapPut("/{key}/scene", (string key, SaveSceneRequest body, ProjectService s, CancellationToken ct) => s.SaveSceneAsync(key, body, ct))

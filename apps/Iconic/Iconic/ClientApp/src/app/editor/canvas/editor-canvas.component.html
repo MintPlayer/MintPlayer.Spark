@@ -1,0 +1,81 @@
+<div #stage class="stage" [style.cursor]="cursorStyle()"
+     (pointerdown)="onPointerDown($event)" (pointermove)="onPointerMove($event)"
+     (pointerup)="onPointerUp($event)" (pointercancel)="onPointerCancel($event)"
+     (pointerleave)="onLeave()" (dblclick)="onDoubleClick($event)" (wheel)="onWheel($event)"
+     (contextmenu)="$event.preventDefault()">
+  <canvas #canvas class="art" [style.width.px]="size().width" [style.height.px]="size().height"></canvas>
+
+  <svg class="overlay" [attr.width]="size().width" [attr.height]="size().height">
+    <g [attr.transform]="transform()">
+      @for (trail of trails(); track trail.id) {
+        <path class="trail" [attr.d]="trail.d" [attr.stroke-width]="px()" />
+      }
+      @for (outline of selectionOutlines(); track outline.id) {
+        <path class="selected-outline" [attr.d]="outline.d" [attr.stroke-width]="2 * px()" />
+      }
+      @if (selectionBox(); as box) {
+        <rect class="selection-box" [attr.x]="box.x" [attr.y]="box.y" [attr.width]="box.w" [attr.height]="box.h"
+              [attr.stroke-width]="px()" [attr.stroke-dasharray]="4 * px() + ' ' + 3 * px()" />
+      }
+      @if (preview()) {
+        <path class="preview" [attr.d]="preview()" [attr.stroke-width]="1.5 * px()" />
+      }
+      @for (glyph of glyphs(); track glyph.id) {
+        <text class="glyph" [class.conflict]="glyph.conflict" [class.redundant]="glyph.redundant"
+              [attr.x]="glyph.x" [attr.y]="glyph.y" [attr.font-size]="11 * px()"
+              [attr.stroke-width]="3 * px()">{{ glyph.text }}</text>
+      }
+      @for (p of pointViews(); track p.id) {
+        @if (p.derived) {
+          <rect class="point" [class]="p.cls" [class.selected]="p.selected"
+                [attr.x]="p.x - 4 * px()" [attr.y]="p.y - 4 * px()" [attr.width]="8 * px()" [attr.height]="8 * px()"
+                [attr.transform]="'rotate(45 ' + p.x + ' ' + p.y + ')'" [attr.stroke-width]="1.5 * px()" />
+        } @else {
+          <circle class="point" [class]="p.cls" [class.selected]="p.selected"
+                  [attr.cx]="p.x" [attr.cy]="p.y" [attr.r]="(p.fixed ? 5 : 4) * px()" [attr.stroke-width]="1.5 * px()" />
+        }
+      }
+      @if (anchors().length) {
+        @for (a of anchors(); track $index) {
+          <circle class="anchor" [attr.cx]="a.at.x" [attr.cy]="a.at.y" [attr.r]="3 * px()" />
+          @if (a.handle) {
+            <line class="handle" [attr.x1]="a.at.x" [attr.y1]="a.at.y" [attr.x2]="a.handle.x" [attr.y2]="a.handle.y" [attr.stroke-width]="px()" />
+            <circle class="anchor" [attr.cx]="a.handle.x" [attr.cy]="a.handle.y" [attr.r]="2.5 * px()" />
+          }
+        }
+      }
+      @if (hoverSnap(); as s) {
+        @switch (s.kind) {
+          @case ('point') { <circle class="snap" [attr.cx]="s.at.x" [attr.cy]="s.at.y" [attr.r]="8 * px()" [attr.stroke-width]="2 * px()" /> }
+          @case ('midpoint') {
+            <rect class="snap" [attr.x]="s.at.x - 5 * px()" [attr.y]="s.at.y - 5 * px()" [attr.width]="10 * px()" [attr.height]="10 * px()"
+                  [attr.transform]="'rotate(45 ' + s.at.x + ' ' + s.at.y + ')'" [attr.stroke-width]="2 * px()" />
+          }
+          @case ('onPath') {
+            <path class="snap" [attr.d]="'M' + (s.at.x - 5 * px()) + ' ' + (s.at.y - 5 * px()) + 'L' + (s.at.x + 5 * px()) + ' ' + (s.at.y + 5 * px()) + 'M' + (s.at.x + 5 * px()) + ' ' + (s.at.y - 5 * px()) + 'L' + (s.at.x - 5 * px()) + ' ' + (s.at.y + 5 * px())"
+                  [attr.stroke-width]="2 * px()" />
+          }
+        }
+      }
+      @if (hotspot(); as h) {
+        <g class="hotspot">
+          <circle [attr.cx]="h.x" [attr.cy]="h.y" [attr.r]="6 * px()" [attr.stroke-width]="1.5 * px()" />
+          <line [attr.x1]="h.x - 9 * px()" [attr.y1]="h.y" [attr.x2]="h.x + 9 * px()" [attr.y2]="h.y" [attr.stroke-width]="1.5 * px()" />
+          <line [attr.x1]="h.x" [attr.y1]="h.y - 9 * px()" [attr.x2]="h.x" [attr.y2]="h.y + 9 * px()" [attr.stroke-width]="1.5 * px()" />
+        </g>
+      }
+      @if (marquee(); as m) {
+        <rect class="marquee" [attr.x]="m.x" [attr.y]="m.y" [attr.width]="m.w" [attr.height]="m.h" [attr.stroke-width]="px()" />
+      }
+    </g>
+  </svg>
+
+  <canvas #loupeCanvas class="loupe" [class.shown]="!!loupe()"
+          [style.left.px]="(loupe()?.x ?? 0) - 60" [style.top.px]="(loupe()?.y ?? 0) - 150"></canvas>
+
+  <div class="zoom-controls">
+    <button type="button" [color]="colors.light" (click)="zoomBy(0.8)" aria-label="Zoom out"><spark-icon name="zoom-out" /></button>
+    <button type="button" [color]="colors.light" (click)="fit()" aria-label="Fit">{{ (zoom() * 100).toFixed(0) }}%</button>
+    <button type="button" [color]="colors.light" (click)="zoomBy(1.25)" aria-label="Zoom in"><spark-icon name="zoom-in" /></button>
+  </div>
+</div>

@@ -1,0 +1,87 @@
+<div class="page">
+  <section class="intro">
+    <h1>Iconic</h1>
+    <p class="lead">Draw icons, cursors, images and animations from lines and shapes, then download them as .ico, .cur, .ani, PNG, SVG, GIF or WebP.</p>
+  </section>
+
+  @if (error()) { <bs-alert [color]="'danger'">{{ error() }}</bs-alert> }
+
+  @if (draft(); as d) {
+    <bs-card class="mb-3">
+      <bs-card-header>In this browser</bs-card-header>
+      <bs-card-body>
+        <div class="draft">
+          <div class="flex-grow-1">
+            <strong>{{ d.name }}</strong> <span class="text-body-secondary small">{{ d.kind }} · {{ d.savedAt | date: 'short' }}</span>
+          </div>
+          <a routerLink="/draft" class="link"><spark-icon name="pencil" /> Continue</a>
+          @if (signedIn()) {
+            <button type="button" [color]="colors.primary" [disabled]="working()" (click)="keepDraft()"><spark-icon name="cloud-upload" /> Save to my account</button>
+          }
+        </div>
+      </bs-card-body>
+    </bs-card>
+  }
+
+  <bs-card class="mb-3">
+    <bs-card-header>New drawing</bs-card-header>
+    <bs-card-body>
+      <div class="kinds" role="radiogroup" aria-label="Kind">
+        @for (k of kinds; track k) {
+          <button type="button" role="radio" [attr.aria-checked]="kind() === k" [color]="kind() === k ? colors.primary : colors.light" class="kind" (click)="setKind(k)">
+            <strong>{{ k }}</strong>
+            <small>{{ kindText[k] }}</small>
+          </button>
+        }
+      </div>
+      <bs-form>
+        <div class="fields">
+          <div class="grow">
+            <label for="new-name">Name</label>
+            <input id="new-name" type="text" maxlength="100" [ngModel]="name()" (ngModelChange)="name.set($event)" (keydown.enter)="create()" />
+          </div>
+          <div>
+            <label for="new-w">Width</label>
+            <input id="new-w" type="number" min="8" max="4096" [ngModel]="width()" (ngModelChange)="width.set(+$event)" />
+          </div>
+          <div>
+            <label for="new-h">Height</label>
+            <input id="new-h" type="number" min="8" max="4096" [ngModel]="height()" (ngModelChange)="height.set(+$event)" />
+          </div>
+        </div>
+      </bs-form>
+      <div class="d-flex align-items-center gap-2 mt-3">
+        <button type="button" [color]="colors.primary" [disabled]="working() || (signedIn() && full())" (click)="create()"><spark-icon name="plus-lg" /> Start drawing</button>
+        @if (!signedIn()) {
+          <span class="small text-body-secondary">Without signing in, the drawing stays in this browser.</span>
+        } @else if (full()) {
+          <span class="small text-danger">You have {{ maxProjects() }} drawings, the most an account can keep. Delete one first.</span>
+        }
+      </div>
+    </bs-card-body>
+  </bs-card>
+
+  @if (signedIn()) {
+    <h2 class="h5">My drawings</h2>
+    @if (projects(); as list) {
+      <div class="grid">
+        @for (p of list; track p.key) {
+          <div class="tile">
+            <a class="thumb" [routerLink]="['/p', p.key]" [attr.aria-label]="'Open ' + p.name">
+              @if (thumbnail(p); as src) { <img [src]="src" [alt]="p.name" loading="lazy" /> } @else { <spark-icon name="image" /> }
+            </a>
+            <a class="title text-truncate" [routerLink]="['/p', p.key]">{{ p.name }}</a>
+            <span class="meta">
+              <span class="flex-grow-1">{{ p.kind }} · {{ p.width }}×{{ p.height }}@if (p.isPublic) { · shared }</span>
+              <button type="button" [color]="colors.light" [disabled]="working()" title="Delete" [attr.aria-label]="'Delete ' + p.name" (click)="remove(p)"><spark-icon name="trash" /></button>
+            </span>
+          </div>
+        } @empty {
+          <p class="text-body-secondary">No drawings yet.</p>
+        }
+      </div>
+    } @else {
+      <bs-spinner label="Loading your drawings" />
+    }
+  }
+</div>

@@ -66,6 +66,14 @@ public sealed class ProjectServiceTests : SparkTestDriver
         return Body(result).GetProperty("key").GetString()!;
     }
 
+    [Fact]
+    public void The_kind_is_read_by_name_as_the_client_sends_it()
+    {
+        var web = new JsonSerializerOptions(JsonSerializerDefaults.Web);
+        JsonSerializer.Deserialize<CreateProjectRequest>("""{"name":"x","kind":"Cursor"}""", web)!.Kind.Should().Be(ProjectKind.Cursor);
+        JsonSerializer.Deserialize<UpdateProjectRequest>("""{"kind":null}""", web)!.Kind.HasValue.Should().BeFalse();
+    }
+
     private async Task<ProjectScene> SceneAsync(string key)
     {
         using var session = Store.OpenAsyncSession();
@@ -86,6 +94,22 @@ public sealed class ProjectServiceTests : SparkTestDriver
     }
 
     [Fact]
+    public async Task The_list_holds_only_the_callers_projects()
+    {
+        var mine = Services(new User("users/1"));
+        var theirs = Services(new User("users/2"));
+        var a = await CreateAsync(mine);
+        var b = await CreateAsync(mine);
+        await CreateAsync(theirs);
+        WaitForIndexing(Store);
+
+        var body = Body(await Call(mine, s => s.ListAsync(default)));
+        body.GetProperty("projects").EnumerateArray().Select(p => p.GetProperty("key").GetString())
+            .Should().BeEquivalentTo([a, b]);
+        Status(await Call(Services(new User(null)), s => s.ListAsync(default))).Should().Be(401);
+    }
+
+    [Fact]
     public async Task Anonymous_callers_cannot_create()
     {
         var result = await Call(Services(new User(null)), s => s.CreateAsync(new CreateProjectRequest(null, null, null, null, null), default));
@@ -98,6 +122,20 @@ public sealed class ProjectServiceTests : SparkTestDriver
         var key = await CreateAsync(Services(new User("users/1")));
         var result = await Call(Services(new User("users/2")), s => s.GetAsync(key, default));
         Status(result).Should().Be(404);
+    }
+
+    [Fact]
+    public async Task Only_the_owner_deletes_a_project_with_its_scene()
+    {
+        var owner = Services(new User("users/1"));
+        var key = await CreateAsync(owner);
+
+        Status(await Call(Services(new User("users/2")), s => s.DeleteAsync(key, default))).Should().Be(404);
+        Status(await Call(owner, s => s.DeleteAsync(key, default))).Should().Be(204);
+
+        using var session = Store.OpenAsyncSession();
+        (await session.LoadAsync<Project>($"Projects/{key}")).Should().BeNull();
+        (await session.LoadAsync<ProjectScene>($"ProjectScenes/{key}")).Should().BeNull();
     }
 
     [Fact]

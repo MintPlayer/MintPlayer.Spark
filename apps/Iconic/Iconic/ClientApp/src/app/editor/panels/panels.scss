@@ -1,0 +1,65 @@
+:host {
+  display: block;
+  font-size: 0.875rem;
+}
+
+h6 {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--bs-secondary-color);
+  margin: 0 0 0.5rem;
+}
+
+hr {
+  margin: 0.75rem 0;
+}
+
+input.color {
+  width: 2.75rem;
+  height: 2rem;
+  padding: 0.15rem;
+  flex: 0 0 auto;
+}
+
+.row-2 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(6.5rem, 1fr));
+  gap: 0.25rem;
+}
+
+.upload {
+  cursor: pointer;
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  min-width: 0;
+
+  .grow {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+.thumb {
+  width: 2.25rem;
+  height: 2.25rem;
+  object-fit: contain;
+  image-rendering: pixelated;
+  background: repeating-conic-gradient(#e9ecef 0 25%, #fff 0 50%) 0 0 / 8px 8px;
+  border: 1px solid var(--bs-border-color);
+  flex: 0 0 auto;
+}
+
+.meter-label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.75rem;
+  color: var(--bs-secondary-color);
+}

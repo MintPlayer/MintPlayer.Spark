@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using Iconic.Entities;
 using Microsoft.Extensions.Options;
@@ -14,8 +15,9 @@ using Raven.Client.Exceptions;
 
 namespace Iconic.Services;
 
-public sealed record CreateProjectRequest(string? Name, ProjectKind? Kind, int? Width, int? Height, JsonElement? Scene);
-public sealed record UpdateProjectRequest(string? Name, ProjectKind? Kind, int? Width, int? Height);
+// The kind travels by name ("Icon"), as GetAsync answers it; System.Text.Json reads enums only as numbers otherwise.
+public sealed record CreateProjectRequest(string? Name, [property: JsonConverter(typeof(JsonStringEnumConverter<ProjectKind>))] ProjectKind? Kind, int? Width, int? Height, JsonElement? Scene);
+public sealed record UpdateProjectRequest(string? Name, [property: JsonConverter(typeof(JsonStringEnumConverter<ProjectKind>))] ProjectKind? Kind, int? Width, int? Height);
 public sealed record SaveSceneRequest(long Version, JsonElement Scene);
 public sealed record SceneOp(string? Op, List<string>? Path, JsonElement? Value);
 public sealed record PatchSceneRequest(long Version, List<SceneOp>? Ops);
@@ -78,6 +80,32 @@ public sealed partial class ProjectService
         return TypedResults.Ok(new { key, id = project.Id, version = 1L });
     }
 
+    /// <summary>The caller's projects for the editor's home page, newest change first, with the quota they count against.</summary>
+    public async Task<IResult> ListAsync(CancellationToken ct)
+    {
+        if (access.UserId is not { } userId) return TypedResults.Unauthorized();
+        var projects = await session.Query<Project>()
+            .Where(p => p.OwnerId == userId)
+            .OrderByDescending(p => p.ModifiedAt)
+            .Take(Q.MaxProjects)
+            .ToListAsync(ct);
+        return TypedResults.Ok(new
+        {
+            projects = projects.Select(p => new
+            {
+                key = KeyOf(p.Id!),
+                p.Name,
+                kind = p.Kind.ToString(),
+                p.Width,
+                p.Height,
+                p.ModifiedAt,
+                p.IsPublic,
+                hasThumbnail = FileTuples(p).Any(f => f.Name == "thumbnail.png"),
+            }),
+            maxProjects = Q.MaxProjects,
+        });
+    }
+
     private static Project NewProject(string key, string userId, string? name, ProjectKind? kind, int? width, int? height, long sceneBytes) => new()
     {
         Id = ProjectId(key),
@@ -126,6 +154,17 @@ public sealed partial class ProjectService
         if (request.Width is { } w) project.Width = Math.Clamp(w, 1, 4096);
         if (request.Height is { } h) project.Height = Math.Clamp(h, 1, 4096);
         Touch(project);
+        await session.SaveChangesAsync(ct);
+        return TypedResults.NoContent();
+    }
+
+    /// <summary>The editor's delete: the project (with its attachments: bitmaps, fonts, snapshots) and its scene, in one save.</summary>
+    public async Task<IResult> DeleteAsync(string key, CancellationToken ct)
+    {
+        var (project, error) = await LoadOwnedAsync(key, ct);
+        if (project is null) return error!;
+        session.Delete(project);
+        session.Delete(SceneId(key));
         await session.SaveChangesAsync(ct);
         return TypedResults.NoContent();
     }

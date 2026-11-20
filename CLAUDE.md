@@ -15,6 +15,11 @@ deployed beside CodeCoverage on the same VPS. Treat changes to it as production 
 server, and the users are the legacy site's real accounts. Its plan, decisions and log are in
 `docs/mintplayer_website_PRD.md` and `docs/mintplayer_website_plan.md`.
 
+**`apps/Iconic`** is production once deployed: the icon, cursor and animation editor at iconic.mintplayer.com
+(https 5019), on the same VPS. Its RavenDB database is `Iconic`; the projects, scenes and their attachments are users'
+work. The scene JSON is saved by patches through one fixed patch script (ops as `args`, never spliced). Its plan,
+decisions and log are in `docs/iconic_PRD.md` and `docs/iconic_plan.md`; its solver is `@mintplayer/constraint-solver`.
+
 - **`apps/SparkId`** is the demo identity provider (https 5011). HR, Fleet and QnA sign in against it,
   and Fleet validates the machine tokens it issues. Identity-provider work lands there, not in HR
   (`docs/identity_provider_platform_PRD.md`).

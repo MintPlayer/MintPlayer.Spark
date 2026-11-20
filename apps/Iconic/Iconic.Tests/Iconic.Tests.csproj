@@ -16,6 +16,7 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
     <PackageReference Include="MintPlayer.Assertions" Version="11.0.0" />
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="11.0.0" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.12.0" />
     <PackageReference Include="xunit" Version="2.9.3" />
     <PackageReference Include="xunit.runner.visualstudio" Version="4.0.1">
@@ -27,6 +28,11 @@
   <ItemGroup>
     <Using Include="Xunit" />
     <Using Include="MintPlayer.Assertions" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Boots Iconic's real Program for the route-table snapshot. -->
+    <Compile Include="..\..\..\tests\Shared\SparkAppRouteHost.cs" Link="_Shared\SparkAppRouteHost.cs" />
   </ItemGroup>
 
   <ItemGroup>
