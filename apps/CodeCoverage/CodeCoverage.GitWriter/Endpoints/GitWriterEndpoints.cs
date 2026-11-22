@@ -225,9 +225,11 @@ internal sealed partial class GitWriterTagsEndpoint : IPostEndpoint<TagsRequestW
         {
             if (wire is null || !Versioning.Versions.VersionTag.TryParse(wire.Name, out var tag) || tag.Name != wire.Name
                 || WireValidation.ObjectId(wire.Commit) is not { } commit
-                || (wire.ApiHash is not null && !Versioning.Validation.Identifiers.IsApiHash(wire.ApiHash)))
+                || (wire.ApiHash is not null && !Versioning.Validation.Identifiers.IsApiHash(wire.ApiHash))
+                // The annotation cleans and cuts the notes itself; this only bounds the wire (the raw body may run a little over).
+                || wire.Notes is { Length: > 2 * Versioning.Versions.TagAnnotation.MaxNotesLength })
                 return null;
-            result.Add(new(tag, commit, new Versioning.Versions.TagAnnotation(wire.ApiHash, null, run)));
+            result.Add(new(tag, commit, new Versioning.Versions.TagAnnotation(wire.ApiHash, null, run, wire.Notes)));
         }
         return result.Select(t => t.Tag.Name).Distinct(StringComparer.Ordinal).Count() == result.Count ? result : null;
     }

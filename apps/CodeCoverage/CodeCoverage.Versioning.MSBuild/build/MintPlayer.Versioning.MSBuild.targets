@@ -46,8 +46,10 @@
 		     packable. Only the task can tell: an assignment in a target overrides a global property. -->
 		<ResolveTagVersion TagPrefix="$(MintPlayerVersioningTagPrefix)" WorkingDirectory="$(MSBuildProjectDirectory)"
 		                   GitHubActions="$(GITHUB_ACTIONS)" GitHubEventName="$(GITHUB_EVENT_NAME)"
-		                   Majors="$(MintPlayerVersioningMajors)" GitHubRefName="$(GITHUB_REF_NAME)" GitHubBaseRef="$(GITHUB_BASE_REF)">
+		                   Majors="$(MintPlayerVersioningMajors)" GitHubRefName="$(GITHUB_REF_NAME)" GitHubBaseRef="$(GITHUB_BASE_REF)"
+		                   RepositoryUrl="$(RepositoryUrl)">
 			<Output TaskParameter="Version" PropertyName="MintPlayerVersion" />
+			<Output TaskParameter="ReleaseNotes" PropertyName="_MintPlayerVersioningNotes" />
 			<Output TaskParameter="ExplicitVersion" PropertyName="_MintPlayerVersioningExplicit" />
 			<Output TaskParameter="ExplicitPackageVersionOnly" PropertyName="_MintPlayerVersioningPackageOnly" />
 		</ResolveTagVersion>
@@ -63,6 +65,8 @@
 			<!-- A package the engine never tagged is not packed where packages are published, so a placeholder can never
 			     reach a feed. A pull-request or local build packs it at 0.0.0-untagged instead (the task decides). -->
 			<IsPackable Condition="'$(MintPlayerVersion)' == '0.0.0-PLACEHOLDER'">false</IsPackable>
+			<!-- #693 D11: the notes the tag froze, unless the project wrote its own. -->
+			<PackageReleaseNotes Condition="'$(PackageReleaseNotes)' == '' And '$(_MintPlayerVersioningNotes)' != ''">$(_MintPlayerVersioningNotes)</PackageReleaseNotes>
 		</PropertyGroup>
 		<PropertyGroup>
 			<_MintPlayerVersioningDone>true</_MintPlayerVersioningDone>

@@ -67,6 +67,16 @@ namespace MintPlayer.Versioning.MSBuild
 		[Output]
 		public bool ExplicitPackageVersionOnly { get; set; }
 
+		/// <summary><c>$(RepositoryUrl)</c>: a cut <see cref="ReleaseNotes"/> links the Release there (#693 D11).</summary>
+		public string RepositoryUrl { get; set; }
+
+		/// <summary>
+		/// #693 D11: the notes the resolved tag froze (the text after its <c>notes:</c> line), for <c>PackageReleaseNotes</c>.
+		/// Empty for a tag without notes: a seed tag, a person's tag, or one from before the changelog.
+		/// </summary>
+		[Output]
+		public string ReleaseNotes { get; set; }
+
 		public override bool Execute()
 		{
 			Version = TagVersion.Placeholder;
@@ -162,7 +172,25 @@ namespace MintPlayer.Versioning.MSBuild
 			}
 			Version = version;
 			Log.LogMessage(MessageImportance.Normal, "MintPlayer.Versioning: {0}{1}", TagPrefix, version);
+			ReleaseNotes = ReadNotes(TagPrefix + version);
 			return true;
+		}
+
+		/// <summary>The resolved tag's notes, cut to nuget.org's limit; empty when it has none or git fails (never fatal).</summary>
+		private string ReadNotes(string tag)
+		{
+			try
+			{
+				string output, error;
+				// The tag is a validated prefix plus a version of the grammar: no quote or space can be in it.
+				if (Git(WorkingDirectory, "for-each-ref --format=%(contents) \"refs/tags/" + tag + "\"", out output, out error) != 0) return "";
+				return TagVersion.NotesForPackage(output, tag, RepositoryUrl);
+			}
+			catch (Exception e)
+			{
+				Log.LogMessage(MessageImportance.Normal, "MintPlayer.Versioning: the notes of {0} could not be read ({1}).", tag, e.Message);
+				return "";
+			}
 		}
 
 		private static int Git(string directory, string arguments, out string output, out string error)
@@ -173,6 +201,8 @@ namespace MintPlayer.Versioning.MSBuild
 				UseShellExecute = false,
 				RedirectStandardOutput = true,
 				RedirectStandardError = true,
+				// Tag notes hold any text (#693); git writes UTF-8, not the console's code page.
+				StandardOutputEncoding = System.Text.Encoding.UTF8,
 				CreateNoWindow = true,
 			};
 			using (var process = Process.Start(info))
@@ -319,6 +349,47 @@ namespace MintPlayer.Versioning.MSBuild
 				if (c != 0) return c;
 			}
 			return 0;
+		}
+
+		/// <summary>nuget.org's limit on <c>releaseNotes</c>.</summary>
+		public const int MaxPackageNotes = 35000;
+
+		// The line the engine's VersionTag.Format writes before the notes (CodeCoverage.Versioning, VersionTag.NotesKey).
+		private const string NotesLine = "notes:";
+
+		/// <summary>
+		/// #693 D11: the notes block of a tag message (everything after its <c>notes:</c> line), cut to
+		/// <see cref="MaxPackageNotes"/> with a link to the full Release when <paramref name="repositoryUrl"/> names one.
+		/// Empty when the message has no notes block.
+		/// </summary>
+		public static string NotesForPackage(string message, string tag, string repositoryUrl)
+		{
+			if (string.IsNullOrEmpty(message)) return "";
+			var text = message.Replace("\r\n", "\n");
+			int start;
+			if (text.StartsWith(NotesLine + "\n", StringComparison.Ordinal)) start = NotesLine.Length + 1;
+			else
+			{
+				var at = text.IndexOf("\n" + NotesLine + "\n", StringComparison.Ordinal);
+				if (at < 0) return "";
+				start = at + NotesLine.Length + 2;
+			}
+			var notes = text.Substring(start).Trim();
+			if (notes.Length <= MaxPackageNotes) return notes;
+
+			var link = string.IsNullOrWhiteSpace(repositoryUrl) ? "" : ReleaseLink(repositoryUrl, tag);
+			var tail = link.Length == 0 ? "\n\n…" : "\n\n… The full notes: " + link;
+			var cut = notes.Substring(0, MaxPackageNotes - tail.Length);
+			var lastLine = cut.LastIndexOf('\n');
+			if (lastLine > 0) cut = cut.Substring(0, lastLine);
+			return cut.TrimEnd() + tail;
+		}
+
+		private static string ReleaseLink(string repositoryUrl, string tag)
+		{
+			var url = repositoryUrl.Trim().TrimEnd('/');
+			if (url.EndsWith(".git", StringComparison.OrdinalIgnoreCase)) url = url.Substring(0, url.Length - 4);
+			return url + "/releases/tag/" + Uri.EscapeDataString(tag).Replace("%2F", "/");
 		}
 	}
 }

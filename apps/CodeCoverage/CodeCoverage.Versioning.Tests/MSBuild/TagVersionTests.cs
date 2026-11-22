@@ -41,6 +41,30 @@ public class TagVersionTests
                 .Should().Be(Math.Sign(PackageVersion.Parse(left).CompareTo(PackageVersion.Parse(right))), $"{left} vs {right}");
     }
 
+    // #693 D11: the pack reads back exactly the notes the engine wrote into the tag.
+    [Fact]
+    public void Reads_the_notes_the_engine_froze_in_the_tag()
+    {
+        var tag = new VersionTag("Acme.Core", PackageVersion.Parse("1.2.0"));
+        var notes = "### Fixes\n- notes: in a line (#3)\n- Ünïcode (#4)";
+
+        TagVersion.NotesForPackage(new TagAnnotation(null, "1.0.0", Notes: notes).Format(tag), tag.Name, null).Should().Be(notes);
+        TagVersion.NotesForPackage(new TagAnnotation(null, "1.0.0").Format(tag), tag.Name, null).Should().Be("");
+        TagVersion.NotesForPackage("hand-made tag", tag.Name, null).Should().Be("");
+    }
+
+    [Fact]
+    public void Cuts_long_notes_at_a_line_and_links_the_Release()
+    {
+        var line = "- " + new string('x', 98) + "\n";
+        var message = "Acme.Core 1.2.0\n\nnotes:\n" + string.Concat(Enumerable.Repeat(line, 400));
+
+        var cut = TagVersion.NotesForPackage(message, "Acme.Core/v1.2.0", "https://github.com/acme/widgets.git");
+
+        cut.Length.Should().BeLessThanOrEqualTo(TagVersion.MaxPackageNotes);
+        cut.Should().EndWith("x\n\n… The full notes: https://github.com/acme/widgets/releases/tag/Acme.Core/v1.2.0");
+    }
+
     [Fact]
     public void Takes_the_highest_tag_of_its_own_package_only()
     {

@@ -321,7 +321,7 @@ public partial class VersioningController : ControllerBase
             var result = await writer.TagsAsync(new GitWriterTagsRequest(
                 repository.Provider.ToCanonicalString(), repository.GitHubId.ToString(CultureInfo.InvariantCulture), access.CloneUrl,
                 new CommitGraph.SidecarCredential(access.Username, access.Password), [branch], Tagger,
-                [.. plan.Tags.Select(t => new GitWriterTag(t.Name, plan.Commit, t.ApiHash))], plan.Run, plan.Fingerprint, plan.Scoped), cancellationToken);
+                [.. plan.Tags.Select(t => new GitWriterTag(t.Name, plan.Commit, t.ApiHash, t.Notes))], plan.Run, plan.Fingerprint, plan.Scoped), cancellationToken);
             return (result.Outcome, result.Reason) switch
             {
                 (GitWriterTagsResult.Tagged, _) => (StatusCodes.Status200OK, Released(planned, result.Tags ?? [])),

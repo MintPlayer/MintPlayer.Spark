@@ -24,7 +24,8 @@ public sealed record GitWriterTagsRequest(
     string Provider, string RepoId, string CloneUrl, SidecarCredential Credential, IReadOnlyList<string> Branches, GitWriterTagger Tagger,
     IReadOnlyList<GitWriterTag> Tags, string? Run = null, string? Fingerprint = null, bool FingerprintScoped = false);
 
-public sealed record GitWriterTag(string Name, string Commit, string? ApiHash = null);
+/// <param name="Notes">#693 D3: the release notes the plan froze for the tag's annotation; null for a seed.</param>
+public sealed record GitWriterTag(string Name, string Commit, string? ApiHash = null, string? Notes = null);
 
 /// <param name="Outcome"><c>tagged</c> with one result per tag, or a failure.</param>
 public sealed record GitWriterTagsResult(string Outcome, string? Reason, IReadOnlyList<GitWriterTagResult>? Tags, string? Detail, long DurationMs)

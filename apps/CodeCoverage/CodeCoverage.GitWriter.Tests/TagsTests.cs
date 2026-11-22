@@ -16,7 +16,7 @@ public class TagsTests : WriterTestBase
         ["credential"] = Credential(Token),
         ["branches"] = new[] { "main" },
         ["tagger"] = new { name = "coverage-bot", email = "bot@example.invalid" },
-        ["tags"] = tags.Select(t => new { name = t.Name, commit = t.Commit, apiHash = Hash }).ToArray(),
+        ["tags"] = tags.Select(t => new { name = t.Name, commit = t.Commit, apiHash = Hash, notes = "### Fixes\n- faster (#3)" }).ToArray(),
     };
 
     [Fact]
@@ -30,7 +30,8 @@ public class TagsTests : WriterTestBase
         first.Outcome.Should().Be("tagged", first.Detail);
         first.Tags.Should().ContainSingle().Which.Outcome.Should().Be("created");
         origin.InBare("rev-parse", "refs/tags/Core/v10.0.0^{commit}").Trim().Should().Be(main);
-        origin.InBare("cat-file", "-p", "refs/tags/Core/v10.0.0").Should().Contain("tagger coverage-bot <bot@example.invalid>").And.Contain("api-hash: " + Hash);
+        origin.InBare("cat-file", "-p", "refs/tags/Core/v10.0.0").Should().Contain("tagger coverage-bot <bot@example.invalid>").And.Contain("api-hash: " + Hash)
+            .And.EndWith("\nnotes:\n### Fixes\n- faster (#3)\n", "#693 D3: a plan's release freezes the notes it carried");
 
         var rerun = await Writer.TagsAsync(TagsRequest(origin, ("Core/v10.0.0", main)));
         rerun.Tags.Should().ContainSingle().Which.Outcome.Should().Be("already-present");

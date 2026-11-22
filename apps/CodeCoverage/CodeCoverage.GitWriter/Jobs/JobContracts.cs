@@ -226,6 +226,8 @@ public sealed class TagWire
     public string? Commit { get; set; }
     /// <summary><c>sha256:&lt;64 hex&gt;</c>, or null when the package's API could not be hashed (D6).</summary>
     public string? ApiHash { get; set; }
+    /// <summary>#693 D3: the notes frozen after the annotation's <c>notes:</c> line; null writes none.</summary>
+    public string? Notes { get; set; }
 }
 
 /// <param name="Outcome">One of <c>created</c>, <c>already-present</c>, <c>conflict</c>, <c>unreachable</c>.</param>
