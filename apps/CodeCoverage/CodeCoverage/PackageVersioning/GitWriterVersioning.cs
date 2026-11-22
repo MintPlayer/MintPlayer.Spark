@@ -87,7 +87,7 @@ public sealed record GitWriterRelease(string Id, string Kind, string Version, st
     GitWriterReleaseNotes? Release = null);
 
 /// <summary>The GitHub Release the app creates for a tag (D15).</summary>
-public sealed record GitWriterReleaseNotes(string Name, string Body, bool Prerelease);
+public sealed record GitWriterReleaseNotes(string Name, string Body, bool Prerelease, bool DependencyOnly = false);
 
 public sealed record GitWriterPackageNote(string Id, string Reason);
 

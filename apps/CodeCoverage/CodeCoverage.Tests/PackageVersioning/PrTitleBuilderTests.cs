@@ -1,4 +1,4 @@
-using CodeCoverage.PrTitles;
+using CodeCoverage.Versioning.Changelog;
 using Xunit;
 
 namespace CodeCoverage.Tests.PackageVersioning;

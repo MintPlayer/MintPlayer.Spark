@@ -417,7 +417,7 @@ public partial class VersioningController : ControllerBase
         record.Releases = response.Releases.Take(VersioningRun.MaxNotes).Select(r => new VersioningRunRelease
         {
             Id = r.Id, Kind = r.Kind, Version = r.Version, Tag = r.Tag, Reasons = [.. r.Reasons ?? []], TaggedByHand = r.TaggedByHand, TagOutcome = r.TagOutcome,
-            Release = r.Release is { } notes ? new VersioningRunReleaseNotes { Name = notes.Name, Body = notes.Body, Prerelease = notes.Prerelease } : null,
+            Release = r.Release is { } notes ? new VersioningRunReleaseNotes { Name = notes.Name, Body = notes.Body, Prerelease = notes.Prerelease, DependencyOnly = notes.DependencyOnly } : null,
         }).ToList();
         record.Refused = response.Refused.Take(VersioningRun.MaxNotes).Select(n => new VersioningRunNote { Id = n.Id, Reason = n.Reason }).ToList();
         record.Skipped = response.Skipped;

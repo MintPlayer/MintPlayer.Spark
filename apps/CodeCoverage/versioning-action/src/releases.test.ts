@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { type BranchCut, type Release } from './engine';
-import { createReleases, cutComment, cutReleaseBranches, MAX_WAIT_MS, retryAfterMs, SPACING_MS } from './releases';
+import { createReleases, createRunRelease, cutComment, cutReleaseBranches, MAX_WAIT_MS, retryAfterMs, SPACING_MS } from './releases';
 
 const release = (tag: string, withNotes = true): Release => ({
   id: tag.split('/v')[0], kind: 'nuget', version: tag.split('/v')[1], tag, reasons: [], taggedByHand: false, tagOutcome: 'created',
@@ -11,7 +11,7 @@ function harness(replies: Response[]) {
   const requests: { url: string; body: any }[] = [];
   const sleeps: number[] = [];
   const fetch = (async (url: string, init: RequestInit) => {
-    requests.push({ url, body: JSON.parse(init.body as string) });
+    requests.push({ url, body: init?.body ? JSON.parse(init.body as string) : undefined });
     return replies.shift()!;
   }) as unknown as typeof globalThis.fetch;
   const warnings: string[] = [];
@@ -42,6 +42,40 @@ describe('createReleases', () => {
     expect([...outcomes]).toEqual([['A/v1.0.0', 'created'], ['B/v1.0.0', 'failed']]);
     expect(h.sleeps).toEqual([5000, SPACING_MS]);
     expect(h.warnings).toEqual([expect.stringContaining('B/v1.0.0: HTTP 403')]);
+  });
+});
+
+describe('#693 D7: dependency-only packages and the run Release', () => {
+  const dependent = (tag: string): Release => ({ ...release(tag), release: { name: tag, body: 'Dependency update: A 1.0.0', prerelease: false, dependencyOnly: true } });
+  const request = { commit: 'c'.repeat(40), branch: 'release/dotnet-11.x', defaultBranch: 'master', date: '2026-11-22', serverUrl: 'https://github.com' };
+
+  it('gives a dependency-only package no Release of its own', async () => {
+    const h = harness([new Response('{}', { status: 201 })]);
+    const outcomes = await createReleases(h.options, [release('A/v1.0.0'), dependent('B/v2.0.1')]);
+    expect([...outcomes]).toEqual([['A/v1.0.0', 'created']]);
+  });
+
+  it('creates the run Release last, marked latest, under the first free release/<line>/<date> tag, linking the package Releases', async () => {
+    const h = harness([new Response('{}', { status: 200 }), new Response('', { status: 404 }), new Response('{}', { status: 201 })]);
+    const outcome = await createRunRelease(h.options, [release('@acme/ng/v22.1.0'), dependent('B/v2.0.1'), release('C/v1.0.0', false)], request);
+
+    expect(outcome).toBe('created');
+    expect(h.requests.map((r) => r.url)).toEqual([
+      'https://api.github.com/repos/acme/repo/git/ref/tags/release/dotnet-11.x/2026-11-22',
+      'https://api.github.com/repos/acme/repo/git/ref/tags/release/dotnet-11.x/2026-11-22.2',
+      'https://api.github.com/repos/acme/repo/releases',
+    ]);
+    expect(h.requests[2].body).toEqual({
+      tag_name: 'release/dotnet-11.x/2026-11-22.2', target_commitish: request.commit, name: 'dotnet-11.x 2026-11-22', prerelease: false, make_latest: 'true',
+      body: '### Packages\n- [@acme/ng 22.1.0](https://github.com/acme/repo/releases/tag/%40acme/ng/v22.1.0)\n\n### Dependency updates only\n- B 2.0.1',
+    });
+  });
+
+  it('names the tag by date alone on the default branch and creates nothing when nothing was released', async () => {
+    const h = harness([new Response('', { status: 404 }), new Response('{}', { status: 201 })]);
+    await createRunRelease(h.options, [release('A/v1.0.0')], { ...request, branch: 'master' });
+    expect(h.requests[1].body).toMatchObject({ tag_name: 'release/2026-11-22', name: '2026-11-22' });
+    expect(await createRunRelease(h.options, [release('A/v1.0.0', false)], request)).toBeNull();
   });
 });
 

@@ -51,7 +51,7 @@ export interface Release {
   taggedByHand: boolean;
   tagOutcome?: 'created' | 'already-present' | 'conflict' | 'unreachable' | 'rejected' | 'planned';
   /** The GitHub Release for the tag (PRD D15); absent when the tag is not in place. */
-  release?: { name: string; body: string; prerelease: boolean };
+  release?: { name: string; body: string; prerelease: boolean; dependencyOnly?: boolean };
 }
 
 export interface ManifestFile {
@@ -69,6 +69,8 @@ export interface EngineOptions {
   cwd: string;
   /** Pushes the tags instead of the checkout's credentials; only ever in the environment. */
   token?: string;
+  /** #693: reads the pull requests' labels and bodies for the notes; only ever in the environment. */
+  githubToken?: string;
 }
 
 export const defaultEngineProject = () => path.resolve(__dirname, '..', '..', 'CodeCoverage.Versioning.Cli');
@@ -130,7 +132,10 @@ export async function runLocal(options: EngineOptions, request: LocalRunRequest)
     options,
     ['run', '--repo', request.repo, '--manifest', request.manifest, '--config', request.config, '--branch', request.branch,
       '--default-branch', request.defaultBranch, '--out', request.out, ...(request.planOnly ? ['--plan-only'] : [])],
-    options.token && !request.planOnly ? { CODECOVERAGE_VERSIONING_TOKEN: options.token } : {},
+    {
+      ...(options.token && !request.planOnly ? { CODECOVERAGE_VERSIONING_TOKEN: options.token } : {}),
+      ...(options.githubToken ? { CODECOVERAGE_GITHUB_TOKEN: options.githubToken } : {}),
+    },
   );
   return JSON.parse(readFileSync(request.out, 'utf8'));
 }

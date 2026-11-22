@@ -1,7 +1,7 @@
 using CodeCoverage.Entities;
 using CodeCoverage.Feedback;
 using CodeCoverage.Forge;
-using CodeCoverage.PrTitles;
+using CodeCoverage.Versioning.Changelog;
 using Microsoft.Extensions.Logging;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Messaging.Abstractions;

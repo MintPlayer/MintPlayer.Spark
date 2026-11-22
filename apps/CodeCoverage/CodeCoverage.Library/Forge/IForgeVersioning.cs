@@ -93,7 +93,9 @@ public sealed record ForgeIssue(int Number, IReadOnlyList<string> Labels);
 public sealed record ForgeVersioningCheck(string Name, bool Completed, string Conclusion, string Title, string Summary, string? Text);
 
 /// <summary>A Release for an existing tag (D15).</summary>
-public sealed record ForgeRelease(string TagName, string Name, string Body, bool Prerelease);
+/// <param name="TargetCommit">#693 D7: a run's own Release creates its tag at this commit; null for an existing tag.</param>
+/// <param name="Latest">#693 D7: the run's own Release is the repository's latest; a package's never is.</param>
+public sealed record ForgeRelease(string TagName, string Name, string Body, bool Prerelease, string? TargetCommit = null, bool Latest = false);
 
 /// <summary>The outcome of a write that may meet an existing object.</summary>
 public enum ForgeWriteOutcome

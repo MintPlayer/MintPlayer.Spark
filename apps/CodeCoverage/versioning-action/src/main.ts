@@ -10,7 +10,7 @@ import { realExec, type Exec } from './exec';
 import { checkBranchName, fetchTags, prepareHistory, showOnDefaultBranch, taggedVersions } from './git';
 import { discoverPackages, PLACEHOLDER, writeVersions, type Stamp } from './npm';
 import { distTag, highest, parse } from './semver';
-import { createReleases, cutReleaseBranches } from './releases';
+import { createReleases, createRunRelease, cutReleaseBranches } from './releases';
 import { planOnServer, releaseOnServer, runOnServer, verifyTagsOnServer } from './server';
 
 export interface Inputs {
@@ -31,6 +31,8 @@ export interface Inputs {
   githubToken: string;
   repository: string;
   apiUrl: string;
+  /** `GITHUB_SERVER_URL`, for the links in the run's Release (#693 D7). */
+  serverUrl: string;
   runnerTemp: string;
   ref: string;
   eventName: string;
@@ -54,6 +56,7 @@ export function readInputs(env: NodeJS.ProcessEnv = process.env): Inputs {
     githubToken: get('github-token'),
     repository: env.GITHUB_REPOSITORY ?? '',
     apiUrl: env.GITHUB_API_URL || 'https://api.github.com',
+    serverUrl: env.GITHUB_SERVER_URL || 'https://github.com',
     runnerTemp: env.RUNNER_TEMP || os.tmpdir(),
     ref: env.GITHUB_REF ?? '',
     eventName: env.GITHUB_EVENT_NAME ?? '',
@@ -212,7 +215,7 @@ export async function version(inputs: Inputs, deps: Dependencies): Promise<Outpu
 
   const packages = (collected.manifest.packages as { id: string }[]).map((p) => p.id);
   const environment = buildEnvironment(section, response.lineMajors);
-  if (!planOnly) return { ...await finish(inputs, deps, mode, response, packages), environment };
+  if (!planOnly) return { ...await finish(inputs, deps, mode, response, packages, branch, defaultBranch), environment };
 
   for (const warning of response.warnings ?? []) deps.warn(warning);
   const failure = failureOf(response, true);
@@ -267,7 +270,8 @@ function answered(status: number, body: RunResponse): RunResponse {
 }
 
 function engineOptions(inputs: Inputs, deps: Dependencies): EngineOptions {
-  return { exec: deps.exec, project: deps.engineProject, prebuilt: deps.engineDll, cwd: inputs.runnerTemp, token: inputs.token || undefined };
+  return { exec: deps.exec, project: deps.engineProject, prebuilt: deps.engineDll, cwd: inputs.runnerTemp, token: inputs.token || undefined,
+    githubToken: inputs.githubToken || undefined };
 }
 
 function released(releases: Release[]): Pick<Outputs, 'released' | 'versions'> {
@@ -320,14 +324,15 @@ async function release(inputs: Inputs, deps: Dependencies, branch: string, defau
   }
   // A release answer may leave out the line's majors; the plan made them, and the release writes no other version.
   response = { ...response, lineMajors: response.lineMajors ?? plan.response.lineMajors };
-  return { ...await finish(inputs, deps, mode, response, plan.packages ?? []), environment: plan.environment ?? {} };
+  return { ...await finish(inputs, deps, mode, response, plan.packages ?? [], branch, defaultBranch), environment: plan.environment ?? {} };
 }
 
 /**
  * After the tags are written, by a run or a release: npm's versions, and in local mode the Releases and the cuts.
  * A release stamps again (the same stamps as its plan), so a job that did not inherit the plan's files publishes right.
  */
-async function finish(inputs: Inputs, deps: Dependencies, mode: 'server' | 'local', response: RunResponse, packages: string[]): Promise<Outputs> {
+async function finish(inputs: Inputs, deps: Dependencies, mode: 'server' | 'local', response: RunResponse, packages: string[],
+  branch: string, defaultBranch: string): Promise<Outputs> {
   const cwd = inputs.workspace;
   for (const warning of response.warnings ?? []) deps.warn(warning);
   const failure = failureOf(response);
@@ -345,8 +350,13 @@ async function finish(inputs: Inputs, deps: Dependencies, mode: 'server' | 'loca
   // that policy, so the `releases` input stands in for it, default on like the policy's own default.
   if (mode === 'local' && inputs.releases) {
     if (!inputs.githubToken || !inputs.repository) deps.warn('No github-token or GITHUB_REPOSITORY: the Releases are not created.');
-    else await createReleases({ apiUrl: inputs.apiUrl, repository: inputs.repository, token: inputs.githubToken, fetch: deps.fetch, sleep: deps.sleep,
-      log: deps.log, warn: deps.warn }, releases);
+    else {
+      const options = { apiUrl: inputs.apiUrl, repository: inputs.repository, token: inputs.githubToken, fetch: deps.fetch, sleep: deps.sleep,
+        log: deps.log, warn: deps.warn };
+      await createReleases(options, releases);
+      // #693 D7: the run's own Release last, marked latest, so it is the repository's overview.
+      await createRunRelease(options, releases, { commit: inputs.sha, branch, defaultBranch, date: new Date().toISOString().slice(0, 10), serverUrl: inputs.serverUrl });
+    }
   }
   // PRD D12: likewise for the release-branch cuts, behind `cut-release-branches` in place of the auto-cut policy.
   const cuts = response.branchCuts ?? [];

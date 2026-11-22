@@ -10,6 +10,13 @@ public sealed record ReleaseRunRequest(ReleaseManifest Manifest, VersioningSetti
 {
 	/// <summary>The release line being built when <see cref="VersioningSettings.Lines"/> is on (#568 D1).</summary>
 	public ReleaseLine? Line { get; init; }
+
+	/// <summary>
+	/// #693: the forge's answers about the pull requests in the notes (labels, bodies, current titles); null renders the
+	/// notes from git alone. Never serialized: each host supplies its own.
+	/// </summary>
+	[System.Text.Json.Serialization.JsonIgnore]
+	public Changelog.IPullRequestFacts? PullRequests { get; init; }
 }
 
 /// <summary>What a run planned and what became of each tag. <see cref="Tags"/> is empty when the plan refused anything.</summary>
@@ -36,7 +43,8 @@ public sealed record TagPlan(string Commit, string Fingerprint, string? Run, IRe
 	public bool Scoped { get; init; }
 }
 
-public sealed record PlannedTag(string Name, string? ApiHash);
+/// <param name="Notes">#693 D3: the release notes the tag freezes; null on a plan from before them.</param>
+public sealed record PlannedTag(string Name, string? ApiHash, string? Notes = null);
 
 /// <summary>The tag history changed after the plan was made, so its versions may be wrong (#552 D3).</summary>
 public sealed class StalePlanException(string message) : Exception(message);
@@ -97,18 +105,21 @@ public static class ReleaseRun
 		// before any tag is pushed, so a rerun after the fix starts from the same history.
 		if (plan.Refused.Count > 0) return new ReleaseRunResult(plan, [], graph.Warnings);
 
+		// #693 D3: the notes are rendered before the tags are written, because each tag freezes its own.
+		var rendered = new Dictionary<string, ReleaseNotesText>(StringComparer.Ordinal);
+		foreach (var release in plan.Releases.Where(r => !r.TaggedByHand))
+			rendered[release.Tag.Name] = await ReleaseNotes.ForAsync(git, head, release, request.PullRequests, cancellationToken);
+
 		var tags = plan.Releases
 			.Where(r => !r.TaggedByHand)
-			.Select(r => new TagToWrite(r.Tag, head, new TagAnnotation(r.ApiHash, null, request.Run)))
+			.Select(r => new TagToWrite(r.Tag, head, new TagAnnotation(r.ApiHash, null, request.Run, rendered[r.Tag.Name].Body)))
 			.ToList();
 		var written = tags.Count == 0 ? [] : await writer.WriteAsync(tags, cancellationToken);
 
 		// Notes for every tag now in place, the already-present ones too: a rerun after a failed Release creates what is missing.
-		var notes = new Dictionary<string, ReleaseNotesText>(StringComparer.Ordinal);
 		var placed = written.Where(t => t.Outcome is TagOutcome.Created or TagOutcome.AlreadyPresent or TagOutcome.Planned).Select(t => t.Tag.Name).ToHashSet(StringComparer.Ordinal);
 		var placedReleases = plan.Releases.Where(r => placed.Contains(r.Tag.Name)).ToList();
-		foreach (var release in placedReleases)
-			notes[release.Tag.Name] = await ReleaseNotes.ForAsync(git, head, release, cancellationToken);
+		var notes = placedReleases.ToDictionary(r => r.Tag.Name, r => rendered[r.Tag.Name], StringComparer.Ordinal);
 
 		// A cut follows a tag in place, never a refused or failed one: the branch marks a line that was really left.
 		var warnings = graph.Warnings.ToList();
@@ -133,7 +144,7 @@ public static class ReleaseRun
 		var scoped = request.Line is not null;
 		var fingerprint = (await TagHistory.ReadAsync(git, cancellationToken)).Fingerprint(names, scoped ? [.. recorder.Recorded.Select(t => t.Tag)] : null);
 		return (result, new TagPlan(request.Manifest.Commit!, fingerprint, request.Run,
-			[.. recorder.Recorded.Select(t => new PlannedTag(t.Tag.Name, t.Annotation.ApiHash))]) { Scoped = scoped });
+			[.. recorder.Recorded.Select(t => new PlannedTag(t.Tag.Name, t.Annotation.ApiHash, t.Annotation.Notes))]) { Scoped = scoped });
 	}
 
 	/// <summary>
@@ -149,7 +160,7 @@ public static class ReleaseRun
 		foreach (var planned in plan.Tags)
 		{
 			if (!VersionTag.TryParse(planned.Name, out var tag)) throw new VersioningException($"'{planned.Name}' is not a version tag.");
-			var annotation = new TagAnnotation(planned.ApiHash, null, plan.Run);
+			var annotation = new TagAnnotation(planned.ApiHash, null, plan.Run, planned.Notes);
 			annotation.Format(tag); // validates the hash and the run URL before anything is written
 			tags.Add(new TagToWrite(tag, commit, annotation));
 		}

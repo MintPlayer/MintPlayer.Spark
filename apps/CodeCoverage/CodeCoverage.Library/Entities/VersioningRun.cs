@@ -91,6 +91,9 @@ public class VersioningRun
     /// <summary>The release branches a platform major move asks for (D12), created behind the auto-cut policy.</summary>
     [IgnoreProperty]
     public List<VersioningRunBranchCut> BranchCuts { get; set; } = [];
+
+    /// <summary>#693 D7: the tag of the run's own Release once created; null while pending or with Releases off.</summary>
+    public string? RunReleaseTag { get; set; }
 }
 
 public sealed class VersioningRunBranchCut
@@ -135,6 +138,9 @@ public sealed class VersioningRunReleaseNotes
     public string Name { get; set; } = string.Empty;
     public string Body { get; set; } = string.Empty;
     public bool Prerelease { get; set; }
+
+    /// <summary>#693 D7: moved only with a dependency, so no Release of its own; the run's Release lists it.</summary>
+    public bool DependencyOnly { get; set; }
 }
 
 public sealed class VersioningRunNote

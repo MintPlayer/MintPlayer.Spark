@@ -51,11 +51,19 @@ public sealed record VersionTag(string PackageId, PackageVersion Version)
 /// version that computed it. Both fields are optional when read back, since a human's tag or a seed tag carries neither.
 /// <see cref="Run"/> is the workflow run that wrote the tag (#544 D5); a tag from before it, or a seed tag, has none.
 /// </summary>
-public sealed record TagAnnotation(string? ApiHash, string? EngineVersion, string? Run = null)
+/// <param name="Notes">
+/// #693 D3: the release notes, frozen when the tag is written. They follow a <c>notes:</c> line and run to the end of the
+/// message, so nothing in them is read as a key.
+/// </param>
+public sealed record TagAnnotation(string? ApiHash, string? EngineVersion, string? Run = null, string? Notes = null)
 {
 	public const string ApiHashKey = "api-hash:";
 	public const string EngineKey = "engine:";
 	public const string RunKey = "run:";
+	public const string NotesKey = "notes:";
+
+	/// <summary>The longest notes a tag carries: GitHub's Release body cap (125,000 characters).</summary>
+	public const int MaxNotesLength = 125_000;
 
 	/// <summary>The run's page from the runner's <c>GITHUB_SERVER_URL</c>, <c>GITHUB_REPOSITORY</c> and <c>GITHUB_RUN_ID</c>; null when any is unusable.</summary>
 	public static string? RunUrl(string? server, string? repository, string? runId)
@@ -75,7 +83,21 @@ public sealed record TagAnnotation(string? ApiHash, string? EngineVersion, strin
 			if (!Identifiers.IsRunUrl(Run)) throw new VersioningException($"'{Run}' is not a workflow run's URL.");
 			text.Append(RunKey).Append(' ').Append(Run).Append('\n');
 		}
+		if (!string.IsNullOrWhiteSpace(Notes))
+		{
+			text.Append('\n').Append(NotesKey).Append('\n').Append(CleanNotes(Notes)).Append('\n');
+		}
 		return text.ToString();
+	}
+
+	/// <summary>
+	/// The notes as a tag holds them: they come from pull-request titles and bodies, so control characters go (the tag
+	/// history splits messages on the record separator) and the text is cut at <see cref="MaxNotesLength"/>.
+	/// </summary>
+	public static string CleanNotes(string notes)
+	{
+		var clean = new string([.. notes.Where(c => c is '\n' or '\t' || !char.IsControl(c))]).Trim('\n');
+		return clean.Length <= MaxNotesLength ? clean : clean[..MaxNotesLength].TrimEnd() + "\n…";
 	}
 
 	/// <summary>
@@ -84,10 +106,17 @@ public sealed record TagAnnotation(string? ApiHash, string? EngineVersion, strin
 	/// </summary>
 	public static TagAnnotation Parse(string? message)
 	{
-		string? hash = null, engine = null, run = null;
-		foreach (var raw in (message ?? "").Split('\n'))
+		string? hash = null, engine = null, run = null, notes = null;
+		var lines = (message ?? "").Replace("\r", "").Split('\n');
+		for (var i = 0; i < lines.Length; i++)
 		{
-			var line = raw.Trim();
+			var line = lines[i].Trim();
+			if (line == NotesKey)
+			{
+				notes = string.Join('\n', lines[(i + 1)..]).Trim('\n');
+				if (notes.Length == 0) notes = null;
+				break;
+			}
 			if (line.StartsWith(ApiHashKey, StringComparison.Ordinal))
 			{
 				var value = line[ApiHashKey.Length..].Trim();
@@ -104,7 +133,7 @@ public sealed record TagAnnotation(string? ApiHash, string? EngineVersion, strin
 				run = Identifiers.IsRunUrl(value) ? value : null;
 			}
 		}
-		return new TagAnnotation(hash, engine, run);
+		return new TagAnnotation(hash, engine, run, notes);
 	}
 }
 

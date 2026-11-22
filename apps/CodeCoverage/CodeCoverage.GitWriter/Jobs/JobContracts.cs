@@ -334,7 +334,7 @@ public sealed class LockstepGroupWire
 public sealed record ReleaseWire(string Id, string Kind, string Version, string Tag, IReadOnlyList<string> Reasons, string? ApiHash, bool TaggedByHand, string? TagOutcome,
     ReleaseNotesWire? Release = null);
 
-public sealed record ReleaseNotesWire(string Name, string Body, bool Prerelease);
+public sealed record ReleaseNotesWire(string Name, string Body, bool Prerelease, bool DependencyOnly = false);
 
 /// <summary>A release branch a platform major move asks for (D12); the app creates it behind its auto-cut policy.</summary>
 public sealed record BranchCutWire(string Branch, int Major, string Commit, IReadOnlyList<string> Packages, int? PullRequest, string? Ecosystem = null);

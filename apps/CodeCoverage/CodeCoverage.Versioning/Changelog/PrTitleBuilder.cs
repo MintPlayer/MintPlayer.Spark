@@ -1,6 +1,6 @@
 using System.Text.RegularExpressions;
 
-namespace CodeCoverage.PrTitles;
+namespace CodeCoverage.Versioning.Changelog;
 
 /// <summary>
 /// Builds the corrected title of a pull request, <c>&lt;type&gt;: &lt;title&gt; (#issue/#issue)</c>

@@ -44,7 +44,7 @@ internal sealed record LocalRunResponse(
 			result.Plan.Refused.Count > 0 ? PlanRefused : Versioned, null, null,
 			[.. result.Plan.Releases.Select(r => new LocalRelease(r.Id, ManifestPackage.Wire(r.Project.Kind), r.Version.ToString(), r.Tag.Name, r.Reasons,
 				r.ApiHash, r.TaggedByHand, outcomes.TryGetValue(r.Tag.Name, out var written) ? TagWire(written.Outcome) : null,
-				result.Notes?.GetValueOrDefault(r.Tag.Name) is { } notes ? new LocalReleaseNotes(notes.Name, notes.Body, notes.Prerelease) : null))],
+				result.Notes?.GetValueOrDefault(r.Tag.Name) is { } notes ? new LocalReleaseNotes(notes.Name, notes.Body, notes.Prerelease, notes.DependencyOnly) : null))],
 			[.. result.Plan.Refused.Select(n => new LocalPackageNote(n.Id, n.Reason))],
 			result.Plan.Skipped.Count, result.Warnings, null, result.BranchCuts)
 		{
@@ -93,7 +93,8 @@ internal sealed record LocalRunResponse(
 internal sealed record LocalRelease(string Id, string Kind, string Version, string Tag, IReadOnlyList<string> Reasons, string? ApiHash, bool TaggedByHand, string? TagOutcome,
 	LocalReleaseNotes? Release);
 
-internal sealed record LocalReleaseNotes(string Name, string Body, bool Prerelease);
+/// <param name="DependencyOnly">#693 D7: no Release of its own; the run's Release lists it.</param>
+internal sealed record LocalReleaseNotes(string Name, string Body, bool Prerelease, bool DependencyOnly = false);
 
 internal sealed record LocalPackageNote(string Id, string Reason);
 

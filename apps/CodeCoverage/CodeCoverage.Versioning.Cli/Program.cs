@@ -2,6 +2,7 @@ using System.Text.Json;
 using CodeCoverage.Versioning.Versions;
 using CodeCoverage.Versioning.Api;
 using CodeCoverage.Versioning.Build;
+using CodeCoverage.Versioning.Changelog;
 using CodeCoverage.Versioning.Cli;
 using CodeCoverage.Versioning.Git;
 using CodeCoverage.Versioning.Graph;
@@ -108,7 +109,14 @@ static async Task<int> Run(Options options)
 		// #544 D5: the tags name the run that wrote them; the CLI runs on the runner, so its environment says which.
 		var run = TagAnnotation.RunUrl(Environment.GetEnvironmentVariable("GITHUB_SERVER_URL"), Environment.GetEnvironmentVariable("GITHUB_REPOSITORY"),
 			Environment.GetEnvironmentVariable("GITHUB_RUN_ID"));
-		var request = new ReleaseRunRequest(manifest, config.ToSettings(), branch == defaultBranch, branchMajor, run) { Line = line };
+		// #693: the pull requests' labels, bodies and current titles, read with the action's github-token when it has one.
+		using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(60) };
+		var githubToken = Environment.GetEnvironmentVariable("CODECOVERAGE_GITHUB_TOKEN");
+		var repository = Environment.GetEnvironmentVariable("GITHUB_REPOSITORY");
+		IPullRequestFacts? pullRequests = string.IsNullOrEmpty(githubToken) || string.IsNullOrEmpty(repository) ? null
+			: new GitHubPullRequestFacts(http, GitHubPullRequestFacts.GraphQlUrl(Environment.GetEnvironmentVariable("GITHUB_API_URL") ?? "https://api.github.com"),
+				repository, githubToken, message => Console.Error.WriteLine("warning: " + message));
+		var request = new ReleaseRunRequest(manifest, config.ToSettings(), branch == defaultBranch, branchMajor, run) { Line = line, PullRequests = pullRequests };
 		// #552 D1: decide and record, write nothing; push-tags writes the plan after the tests.
 		if (options.Has("plan-only"))
 		{

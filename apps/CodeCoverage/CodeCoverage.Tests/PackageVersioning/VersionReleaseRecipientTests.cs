@@ -18,6 +18,8 @@ public class VersionReleaseRecipientTests : CoverageRavenTest
     private const string RepositoryId = "Repositories/153";
     private const string AccountId = "Accounts/github/1";
     private const string RunId = "VersioningRuns/github/153/9.1";
+    private const string Commit = "cccccccccccccccccccccccccccccccccccccccc";
+    private const string RunTag = "release/dotnet-11.x/2026-11-22";
 
     private static VersioningRunRelease Release(string tag, bool withNotes = true, bool prerelease = false) => new()
     {
@@ -31,9 +33,12 @@ public class VersionReleaseRecipientTests : CoverageRavenTest
         if (accountOn is { } on) await session.StoreAsync(new Account { ReleaseOnTag = on }, AccountId);
         await session.StoreAsync(new Repository
         {
-            Account = accountOn is null ? null : AccountId, FullName = "acme/widgets", Provider = EForgeProvider.GitHub, ReleaseOnTag = policy,
+            Account = accountOn is null ? null : AccountId, FullName = "acme/widgets", Provider = EForgeProvider.GitHub, ReleaseOnTag = policy, DefaultBranch = "master",
         }, RepositoryId);
-        await session.StoreAsync(new VersioningRun { Repository = RepositoryId, Releases = [.. releases] }, RunId);
+        await session.StoreAsync(new VersioningRun
+        {
+            Repository = RepositoryId, Branch = "release/dotnet-11.x", Commit = Commit, StartedAtUtc = new DateTime(2026, 11, 22, 9, 0, 0, DateTimeKind.Utc), Releases = [.. releases],
+        }, RunId);
         await session.SaveChangesAsync();
     }
 
@@ -58,7 +63,7 @@ public class VersionReleaseRecipientTests : CoverageRavenTest
 
         await HandleAsync(store, forge);
 
-        forge.Releases.Select(r => r.TagName).Should().Equal(created ? ["Acme.Core/v1.2.0"] : []);
+        forge.Releases.Select(r => r.TagName).Should().Equal(created ? ["Acme.Core/v1.2.0", RunTag] : []);
     }
 
     [Fact]
@@ -74,9 +79,29 @@ public class VersionReleaseRecipientTests : CoverageRavenTest
         await HandleAsync(store, forge);
 
         forge.Releases.Select(r => (r.TagName, r.Name, r.Prerelease)).Should().Equal(
-            ("@acme/util/v2.0.0-next.1", "made by hand", true), ("Acme.Core/v1.2.0", "Acme.Core 1.2.0", false));
+            ("@acme/util/v2.0.0-next.1", "made by hand", true), ("Acme.Core/v1.2.0", "Acme.Core 1.2.0", false), (RunTag, "dotnet-11.x 2026-11-22", false));
         using var session = store.OpenAsyncSession();
         var run = await session.LoadAsync<VersioningRun>(RunId);
         run!.Releases.Select(r => r.ReleaseOutcome).Should().Equal("created", null, "exists");
+        run.RunReleaseTag.Should().Be(RunTag);
+    }
+
+    [Fact]
+    public async Task A_dependency_only_package_gets_no_Release_and_the_run_Release_is_latest_and_lists_it()
+    {
+        // #693 D7: the run's own Release is the overview; a taken date tag (another run that day) moves to the next .n.
+        using var store = GetDocumentStore();
+        var dependent = Release("Acme.Util/v2.0.1");
+        dependent.Release!.DependencyOnly = true;
+        await SeedAsync(store, true, EReleaseOnTagPolicy.Inherit, Release("Acme.Core/v1.2.0"), dependent);
+        var forge = new FakeForgeVersioning();
+        forge.Releases.Add(new ForgeRelease(RunTag, "earlier run", "", false));
+
+        await HandleAsync(store, forge);
+
+        var run = forge.Releases.Last();
+        (run.TagName, run.Latest, run.TargetCommit).Should().Be((RunTag + ".2", true, (string?)Commit));
+        run.Body.Should().Be("### Packages\n- [Acme.Core 1.2.0](https://github.com/acme/widgets/releases/tag/Acme.Core/v1.2.0)\n\n### Dependency updates only\n- Acme.Util 2.0.1");
+        forge.Releases.Select(r => r.TagName).Should().NotContain("Acme.Util/v2.0.1");
     }
 }
