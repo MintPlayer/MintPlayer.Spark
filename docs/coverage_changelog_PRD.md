@@ -224,14 +224,15 @@ The changelog is **rendered from git tags and PR metadata**, never committed wit
 - **Evidence:** the owner's principle quoted above; #153 D1; the prior-art table.
 - **Still open:** whether any committed file remains at all, for example a version-free pointer or index (Q7).
 
-### D3 — The release run freezes the notes into the annotated tag; RavenDB keeps a queryable copy (Q2)
+### D3 — The release run freezes the notes into the annotated tag; the database keeps a queryable copy (Q2)
 
 - **Who renders:** the `/release` run renders the finished sections, after applying the PR-body overrides and the
   `changelog:` labels, which only it can read through the API.
 - **Where they go:** a notes block in the tag message, below `api-hash:`, `engine:` and `run:` (D6). Pack, the action and
   the server mirror only read and join tag messages; no rendering logic goes into the MSBuild task.
-- **RavenDB:** keeps the entries (per PR, package and release) for the CodeCoverage repository page, the upcoming view
-  and the overrides set before a release. CI never depends on the server being up.
+- **Database:** keeps the entries (per PR, package and release) for the CodeCoverage repository page, the upcoming view
+  and the overrides set before a release, through the storage-agnostic `ISparkSession` (D16; RavenDB today). CI never
+  depends on the server being up.
 - **Corrections after a release** edit only the GitHub Release body. The tag stays as it was written.
 - **Evidence:** S1 (the tags are annotated and keyed, 0.40 s to read 464 of them). Owner, Q2: "I'll let you decide.
   A probably looks good … we probably 'could' store some information in the ravendb database".
@@ -264,16 +265,22 @@ promotions after it. Owner: "yes you should fix the detected bugs in this very s
 - **Relevance:** an entry exists only when the PR changed the package's inputs (`ReleaseNotes` input paths). CI, docs
   and test-only PRs never touch a package's inputs. The bot's own dependency PRs (author = the App, branch
   `mintplayer/dependencies`) become the "Dependencies" lines.
-- **Section:** the PR's type, decided by D14's order, which gains one step. **The branch prefix (`fix/`, `feat/`,
-  `docs/`, …) comes right after "the type already in the title".**
+- **Section:** the PR's type, decided by D14's order. ~~That order gains one step: the branch prefix (`fix/`, `feat/`,
+  `docs/`, …) right after "the type already in the title".~~ *Withdrawn 2026-11-22 (owner): branch names are free-form
+  for human developers, and Spark's prefixes are Claude Code's own choice, so the prefix is never read as a type.* Only
+  explicit signals count: a ticked template box, a type in the title, a `bug` label on a linked issue, or a D12 button.
+  D14's `feat` default no longer applies to the changelog (D12).
   - Shown: `feat`, `fix`, `perf` and `revert`, plus a Breaking section for `!`.
   - Dropped: `chore`, `ci`, `test`, `docs`, `build`, `style`, `refactor`.
   - Nothing found at all: "Changes".
 - **Title correction is switched on together with the changelog** (owner: "willing to also allow/enforce the
   title-correction feature, if we can also retroactively process the old pull-requests").
 - **Old PRs** are classified retroactively at render time. For an untyped subject, the release run looks up the PR from
-  its trailing `(#N)` and runs the same builder on the PR's current title, body, branch and linked issues. The result
-  is frozen into the tag (D3), so merged PR titles and git history are never rewritten.
+  its trailing `(#N)` and runs the same builder on the PR's current title, body and linked issues. The result is frozen
+  into the tag (D3), so merged PR titles and git history are never rewritten. An old PR with no explicit signal goes
+  under "Changes". For Spark's history that's most of it (3 of the last 60 PRs carry an explicit signal), so its first
+  changelog will have a large "Changes" block. A `## Changelog` body section (D9) can still type an old PR before its
+  release.
 - **Public API section per release:** the action diffs the normalized API listing (D6 of #153) against the previous
   version's. Added and removed symbols are listed, and a removal goes under Breaking. This is objective, needs no
   title, and works for old history too (S8: is the previous listing reliably available from the registry package?).
@@ -284,9 +291,9 @@ promotions after it. Owner: "yes you should fix the detected bugs in this very s
   - Paths: Spark's commits below `libs/spark/MintPlayer.Spark/` are almost all user-facing (#700, #690, #609, #561, #555).
     The remaining noise is the dependency bot and a few incidental touches (#577, #586).
   - Old PRs: in Spark's last 60 merged PRs, D14 as it stands found a type for only 3 (title 1, template 1, bug label 1)
-    and defaulted 57 to `feat`, including the fix #684. 58 of 60 branch names carry a type prefix: `fix/` 27, `feat/` 24,
-    `docs/` 2, `test/`, `ci/` and `chore/` 1 each, plus `mintplayer/` 3 and `backport/` 1 (GraphQL over the merged PRs,
-    2026-11-22).
+    and defaulted 57 to `feat`, including the fix #684. ~~58 of 60 branch names carry a type prefix~~ (GraphQL over the
+    merged PRs, 2026-11-22). The prefixes are Claude Code's, which is no evidence for human developers, so the step was
+    withdrawn.
   - Owner, Q14: "Otherwise, B looks good".
 
 ### D7 — Release notes reach Renovate and Dependabot through per-package Releases; one Release per run is the overview (Q3)
@@ -382,14 +389,41 @@ correction comes with the changelog) are answered by D6.
   creates the file if the repository has none, or appends the section visibly in the onboarding PR so the owner reviews
   it. The box wording is the wording `PrTitleBuilder.TemplateWords` already maps. Spark's own template gets the section
   in this PR.
-- **No silent `feat`:** when D14's order finds no explicit signal (no ticked box, no type in the title, no branch
-  prefix, no `bug` label), the title-correction check run asks with three buttons: **Feature**, **Fix** and
+- **No silent `feat`:** when D14's order finds no explicit signal (no ticked box, no type in the title, no `bug` label;
+  the branch name is never read, D6), the title-correction check run asks with three buttons: **Feature**, **Fix** and
   **Not user-facing**. "Not user-facing" means the same as `changelog: skip`. A click edits the title. The plumbing
   exists: check-run buttons already drive the merge queue (`OnQueueCheckButtonAsync`). GitHub allows three actions per
   check run.
 - **Limits accepted:** perf, revert and breaking still need a box or a type in the title. Only users with write access
   can click, so an outside contributor's PR waits for a maintainer or a ticked box.
 - **Evidence:** owner, Q10 (re-asked): "A".
+
+### D13 — The template section can be switched off (owner, 2026-11-22)
+
+*Numbering: D14 and D15 are skipped, because in this PRD a bare D14 or D15 means the versioning PRD's title correction and release notes.*
+
+- **Setting:** a `PrTemplatePolicy` (Inherit / Enabled / Disabled) on Repository with an Account default (Enabled),
+  the same shape as the other policies (`Repository.cs:237-259`). Owner: "users should probably be able to disable the
+  'auto-correct the pull-request template' feature which adds the checkboxes to the template".
+- **When the bot writes the section:** only in the onboarding PR, and in a re-onboarding while the policy is Enabled.
+  It never rewrites the template between onboardings, so a repository owner's later edits stay.
+- **When Disabled:** the template is not touched. The check-run buttons (D12) still work, so the type can still be
+  given.
+
+### D16 — New changelog storage goes through the storage-agnostic `ISparkSession` (owner, 2026-11-22)
+
+- **Session:** the database copy (D3), the settings and the CodeCoverage pages use `ISparkSession`
+  (`libs/spark/MintPlayer.Spark.Abstractions/Storage/ISparkSession.cs`, #551), never `IAsyncDocumentSession`. Owner:
+  "make sure you use the storage-agnostic provider, in case we'd ever start supporting SQL Server or mariadb".
+- **Available today:** `spark.UseRavenDb()` (`apps/CodeCoverage/CodeCoverage/Program.cs:98`) registers it
+  (`SparkRavenDbExtensions.cs:86`).
+- **Fits every provider:** documents with deterministic ids, read by `LoadAsync(ids)` (batched; the 30-request session
+  cap), and `Query<T>()` LINQ filters. No `Query<T, TIndex>()`, which binds to a RavenDB index
+  (`docs/sql_server_provider_PRD.md` Q5), no static indexes, and no RQL or patch scripts.
+- **Proof:** the changelog store's tests run on the in-memory provider (`InMemorySparkSession`,
+  `libs/spark/MintPlayer.Spark.InMemory`) as well as RavenDB (`RavenSparkSession`).
+- **Scope:** CodeCoverage itself still uses `IAsyncDocumentSession` in 115 files. Migrating those is out of scope; only
+  the new code is storage-agnostic.
 
 ## Original proposed design (before the grill; the decisions above win where they differ)
 
