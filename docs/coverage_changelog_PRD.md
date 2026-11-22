@@ -60,6 +60,21 @@ them as conventional commits, and **takes each entry's text from the linked issu
 collapse into "Various changes". Lines are prepend-only and are never revised when a title changes. Its PR-title
 rewriter is the origin of D14.
 
+**How it works, read first-hand 2026-11-22** (2,033 lines over 8 partial files):
+
+| Step | Mechanism | Weakness |
+|---|---|---|
+| **Wake-up** (`HasWork`) | Polls the clone. Wakes when there's no file, the file format's version constant changed, or an unprocessed commit has a build tag or a successful check run named after the repository. | Polling; one GitHub check-run request per commit. |
+| **Cursor** | `<!-- Version:x LastCommit:sha[,sha] -->` in the committed file, plus a second cursor in the database. When a cursor commit has vanished (production reset), it falls back to the newest production commit that has a database entry. | Two cursors to keep in agreement, with repair code for reset branches. |
+| **Version heading** | One heading per build tag, or per commit with a successful deployment check run. Version = MinVer computed for that commit, else the build number from the check run's title. Deployments older than a year are dropped. | A heading per deploy, many of them empty. The version is guessed after the fact. |
+| **Parse** | The subject line only, `type(scope)!: content`. Every `#N` is a reference. | `#N` mixes issue and PR numbers. |
+| **Entry text** | The **linked issue's title**: references matched to issues, else PR → closing issues through GraphQL. | Wrong or truncated text. Without an issue the entry becomes "Various changes", unless build tags are used. |
+| **Filter** | Drops `chore`, `chore(deps)`, `chore(release)`, `build`, per-module ignored scopes, and its own `docs: Automated` commits. `chore(deps)` becomes a package-version line. | `ci`, `test`, `refactor`, `style` and `docs` stay in. The list is duplicated (`:526`, `:673`). |
+| **Rendering** | An emoji per type, `⚠️ BREAKING:` and `[scope]` prefixes, prepended to the file. | No sections. Lines are never revised. |
+| **Write** | Checks out the *development* branch, commits `docs: Automated …` and pushes, after the deploy. | Exactly the "separate commit after the squash" the owner rules out. |
+| **Overrides** | A PR comment command, `changelog-set issue=N message="…"`, stores an override keyed by the PR's **head sha**. The job applies it when a deployed commit has that sha (`ChangeLog.cs:999`). | With squash merges the deployed commit has a new sha, so the override appears never to match. Inferred from the code, not reproduced. |
+| **Database copy** | A `ChangeLogs` document with production and staging entries, a formatting-version migration, and phantom-row cleanup. It feeds release notes, not the GitHub Release. | Grows without limit and needs its own repair code. |
+
 What we take: the type order of D14 (already taken). What we avoid: issue titles as entry text (often wrong or cut off
 with "..."), a heading per deploy (many empty versions), no sections, a committed file with a cursor comment, lost
 entries without an issue.
@@ -96,6 +111,21 @@ Packaging facts:
   That npmjs.com renders it is unverified (S3).
 - **GitHub Release bodies:** the ~125,000-character limit comes from tool issues, not GitHub's docs (unverified).
   `ReleaseNotes.MaxCommits = 200` already guards it.
+
+### Robustness: what the design must do better than the private app
+
+| Problem there | Answer here |
+|---|---|
+| A guessed version per deploy | The version is the tag the `/release` run itself creates (#153 D1), so nothing is guessed. |
+| Cursors in a file and in the database, with repair code | No cursor. The range is always previous tag..this tag of the package, recomputed from git (`ReleaseNotes.SubjectsAsync`). |
+| Polling and a check-run request per commit | Event-driven. Runs inside the `/release` run and on `pull_request` events. |
+| Entry text from the issue title | The corrected PR title (D14), with an optional body override. |
+| `#N` ambiguous between issue and PR | The PR number is the trailing `(#N)` GitHub's squash appends. Issues come from closing keywords (`PrTitleBuilder.LinkedIssues`). |
+| Overrides keyed by the PR head sha, lost on squash | Overrides keyed by the PR number, read when the release is rendered. |
+| A commit after the deploy | No commit at all (D2). |
+| One file for the whole repository | Per package, by the package's input paths (D15 already does this). |
+| No sections, noise kept | Sections; a filter shared by notes and changelog (Q4). |
+| About 2,000 lines without tests | Pure `Compose`-style functions with unit tests, and real-git tests as in `CodeCoverage.Versioning.Tests`. |
 
 ## Decisions
 
