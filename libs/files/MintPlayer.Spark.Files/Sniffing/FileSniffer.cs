@@ -28,19 +28,19 @@ public sealed class FileSniffer
     /// <summary>The formats every app recognises. Office files are recognised as their ZIP container plus their extension.</summary>
     public static readonly IReadOnlyList<ISparkFileSignature> BuiltIn =
     [
-        new MagicBytesSignature("PNG", Map((".png", "image/png")), (0, [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A])),
-        new MagicBytesSignature("JPEG", Map((".jpg", "image/jpeg"), (".jpeg", "image/jpeg")), (0, [0xFF, 0xD8, 0xFF])),
-        new MagicBytesSignature("GIF", Map((".gif", "image/gif")), (0, "GIF8"u8.ToArray()), (5, "a"u8.ToArray())),
-        new MagicBytesSignature("WebP", Map((".webp", "image/webp")), (0, "RIFF"u8.ToArray()), (8, "WEBP"u8.ToArray())),
-        new MagicBytesSignature("PDF", Map((".pdf", "application/pdf")), (0, "%PDF-"u8.ToArray())),
-        new MagicBytesSignature("Office Open XML", Map(
+        new MagicBytesSignature("PNG", Types((".png", "image/png")), (0, [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A])),
+        new MagicBytesSignature("JPEG", Types((".jpg", "image/jpeg"), (".jpeg", "image/jpeg")), (0, [0xFF, 0xD8, 0xFF])),
+        new MagicBytesSignature("GIF", Types((".gif", "image/gif")), (0, "GIF8"u8.ToArray()), (5, "a"u8.ToArray())),
+        new MagicBytesSignature("WebP", Types((".webp", "image/webp")), (0, "RIFF"u8.ToArray()), (8, "WEBP"u8.ToArray())),
+        new MagicBytesSignature("PDF", Types((".pdf", "application/pdf")), (0, "%PDF-"u8.ToArray())),
+        new MagicBytesSignature("Office Open XML", Types(
                 (".docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
                 (".xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
                 (".pptx", "application/vnd.openxmlformats-officedocument.presentationml.presentation")),
             // The ZIP container: generators differ in which entry they write first, so the first entry is not checked.
             // Such a file is still served as an attachment under the sandbox CSP, whatever is inside.
             (0, Zip)),
-        new MagicBytesSignature("ZIP", Map((".zip", "application/zip")), (0, Zip)),
+        new MagicBytesSignature("ZIP", Types((".zip", "application/zip")), (0, Zip)),
     ];
 
     /// <summary>
@@ -122,6 +122,6 @@ public sealed class FileSniffer
         return false;
     }
 
-    private static Dictionary<string, string> Map(params (string Extension, string ContentType)[] entries)
+    private static Dictionary<string, string> Types(params (string Extension, string ContentType)[] entries)
         => entries.ToDictionary(e => e.Extension, e => e.ContentType, StringComparer.OrdinalIgnoreCase);
 }

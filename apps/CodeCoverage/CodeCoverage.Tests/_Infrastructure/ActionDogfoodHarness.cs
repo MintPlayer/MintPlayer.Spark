@@ -150,6 +150,9 @@ public static class ActionDogfoodHarness
         // deliberately not accepted there at all.
         start.Environment["GitHub__Production__ClientId"] = "dogfood-not-a-real-client";
         start.Environment["GitHub__Production__ClientSecret"] = "dogfood-not-a-real-secret";
+        // Production refuses to start with file attributes and no scanner (#700 D5); production itself
+        // scans with coverage-clamav. The coverage upload path stores no files, so no scanner is needed here.
+        start.Environment["Spark__Files__AllowUnscannedFiles"] = "true";
 
         var server = Process.Start(start);
         server.Should().NotBeNull();

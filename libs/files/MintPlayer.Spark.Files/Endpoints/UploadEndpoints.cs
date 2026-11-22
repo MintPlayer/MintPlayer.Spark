@@ -126,13 +126,16 @@ internal sealed partial class DownloadFile : IEndpoint
 
     public static IEnumerable<string> Methods => ["GET"];
 
+    [QueryParam("type")] public string? ObjectTypeId { get; set; }
+    [QueryParam("id")] public string? Id { get; set; }
+    [QueryParam("attribute")] public string? Attribute { get; set; }
+    [QueryParam("file")] public string? File { get; set; }
+    [QueryParam("variant")] public string? Variant { get; set; }
+
     [Inject] private readonly FileDownloadService downloads;
 
     public Task<IResult> HandleAsync(HttpContext httpContext)
-    {
-        var query = httpContext.Request.Query;
-        return downloads.DownloadAsync(query["type"], query["id"], query["attribute"], query["file"], query["variant"], httpContext.RequestAborted);
-    }
+        => downloads.DownloadAsync(ObjectTypeId, Id, Attribute, File, Variant, httpContext.RequestAborted);
 }
 
 /// <summary>
@@ -148,10 +151,12 @@ internal sealed partial class FileContent : IEndpoint
 
     static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services) => builder.AllowAnonymous();
 
+    [RouteParam] public string Ticket { get; set; } = "";
+
     [Inject] private readonly FileDownloadService downloads;
 
     public Task<IResult> HandleAsync(HttpContext httpContext)
-        => downloads.ContentAsync(httpContext.Request.RouteValues["ticket"] as string, httpContext.RequestAborted);
+        => downloads.ContentAsync(Ticket, httpContext.RequestAborted);
 }
 
 /// <summary><c>POST /spark/files/commit</c>: checks the uploaded bytes of each token; a clean, accepted file becomes claimable.</summary>

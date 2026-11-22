@@ -82,6 +82,23 @@ describe('SparkPoCreateComponent', () => {
     expect(data['Jobs']).toEqual([]);
   });
 
+  // #700: the server refuses '' as a file value; a new object without a file sends null.
+  it('starts an empty single file attribute as null and a file list as an empty list', async () => {
+    const withFiles = {
+      ...personType,
+      attributes: [...personType.attributes,
+        { id: 'a-doc', name: 'Document', dataType: 'BinaryFile', storesFile: true, isRequired: false, isReadOnly: false, order: 5, showedOn: ShowedOn.PersistentObject } as any,
+        { id: 'a-photos', name: 'Photos', dataType: 'Image', storesFile: true, isArray: true, isRequired: false, isReadOnly: false, order: 6, showedOn: ShowedOn.PersistentObject } as any,
+      ],
+    } as any;
+    const { harness } = await setup({ getEntityTypes: vi.fn().mockResolvedValue([withFiles]) });
+    const c = await harness.navigateByUrl('/po/person/new', SparkPoCreateComponent);
+    await harness.fixture.whenStable();
+
+    expect(c.formData()['Document']).toBeNull();
+    expect(c.formData()['Photos']).toEqual([]);
+  });
+
   // #264 G1/G2: the create form draws the caller's create shape, not the edit one.
   it('asks the server for the type shaped for a new object', async () => {
     const { harness, service } = await setup();
