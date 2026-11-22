@@ -1,6 +1,20 @@
 {
   "$schema": "../../../../schemas/translations.schema.json",
+  "account": {
+    "clearAvatarConfirmation": {
+      "en": "Remove this account's custom avatar? The picture is erased for good, and the forge's avatar is shown again.",
+      "fr": "Supprimer l'avatar personnalisé de ce compte ? L'image est effacée définitivement et l'avatar de la forge est de nouveau affiché.",
+      "nl": "De eigen avatar van dit account verwijderen? De afbeelding wordt definitief gewist en de avatar van de forge wordt weer getoond."
+    }
+  },
   "actions": {
+    "ClearAvatar": {
+      "label": {
+        "en": "Remove custom avatar",
+        "fr": "Supprimer l'avatar personnalisé",
+        "nl": "Eigen avatar verwijderen"
+      }
+    },
     "ConvertCentralPackages": {
       "label": {
         "en": "Convert central package management",
@@ -682,6 +696,18 @@
         "Connection": {
           "description": {
             "en": "Whether we can still act on this account's repositories."
+          }
+        },
+        "CustomAvatar": {
+          "description": {
+            "en": "A profile picture the account's owner uploaded, shown instead of the forge's avatar.",
+            "fr": "Une photo de profil téléversée par le propriétaire du compte, affichée à la place de l'avatar de la forge.",
+            "nl": "Een profielfoto die de eigenaar van het account uploadde, getoond in plaats van de avatar van de forge."
+          },
+          "label": {
+            "en": "Custom avatar",
+            "fr": "Avatar personnalisé",
+            "nl": "Eigen avatar"
           }
         },
         "DeleteBranchOnPrClose": {

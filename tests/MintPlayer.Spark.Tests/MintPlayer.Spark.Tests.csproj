@@ -45,6 +45,8 @@
     <Content Include="Search\Data\*.json" CopyToOutputDirectory="PreserveNewest" />
     <!-- The generator's real output for SrchSong, pinned by its snapshot test; RavenSearchProviderTests deploys it. -->
     <Content Include="..\MintPlayer.Spark.SourceGenerators.Tests\VerifyResults\SearchIndexGeneratorTests\SearchIndexGeneratorTests.The_search_tests_index.verified.txt" Link="Search\Data\Spark_Search.generated.txt" CopyToOutputDirectory="PreserveNewest" />
+    <!-- #700: real files made by real encoders (Pillow, python-docx, mingw), never synthetic bytes. -->
+    <Content Include="Files\Fixtures\*" CopyToOutputDirectory="PreserveNewest" />
     <!-- xUnit only reads this from the output directory, not the project root. -->
     <Content Include="xunit.runner.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
@@ -85,6 +87,13 @@
     <ProjectReference Include="..\..\libs\webpush\MintPlayer.Spark.WebPush\MintPlayer.Spark.WebPush.csproj" />
     <ProjectReference Include="..\..\libs\notifications\MintPlayer.Spark.Notifications\MintPlayer.Spark.Notifications.csproj" />
     <ProjectReference Include="..\..\libs\apps\MintPlayer.Spark.Apps\MintPlayer.Spark.Apps.csproj" />
+    <ProjectReference Include="..\..\libs\files\MintPlayer.Spark.Files\MintPlayer.Spark.Files.csproj" />
+    <ProjectReference Include="..\..\libs\files\MintPlayer.Spark.Files.AzureBlob\MintPlayer.Spark.Files.AzureBlob.csproj" />
+    <ProjectReference Include="..\..\libs\files\MintPlayer.Spark.Files.ClamAV\MintPlayer.Spark.Files.ClamAV.csproj" />
+    <ProjectReference Include="..\..\libs\files\MintPlayer.Spark.Files.Images.NetVips\MintPlayer.Spark.Files.Images.NetVips.csproj" />
+    <ProjectReference Include="..\..\libs\files\MintPlayer.Spark.Files.Images.SkiaSharp\MintPlayer.Spark.Files.Images.SkiaSharp.csproj" />
+    <ProjectReference Include="..\..\libs\files\MintPlayer.Spark.Files.FileSystem\MintPlayer.Spark.Files.FileSystem.csproj" />
+    <ProjectReference Include="..\..\libs\files\MintPlayer.Spark.Files.S3\MintPlayer.Spark.Files.S3.csproj" />
     <!-- #691 M8: the receiver round trip, and the generated code checked against the CLI's output (golden). -->
     <ProjectReference Include="..\..\libs\webhooks\MintPlayer.Spark.Webhooks.Receiver\MintPlayer.Spark.Webhooks.Receiver.csproj" />
     <ProjectReference Include="..\..\libs\cli\MintPlayer.Spark.Cli.Commands\MintPlayer.Spark.Cli.Commands.csproj" />

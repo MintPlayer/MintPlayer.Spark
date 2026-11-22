@@ -48,6 +48,9 @@
 		<InternalsVisibleTo Include="MintPlayer.Spark.SitemapXml" />
 		<InternalsVisibleTo Include="MintPlayer.Spark.Search" />
 		<InternalsVisibleTo Include="MintPlayer.Spark.Search.OpenSearch" />
+		<!-- File downloads run the same internal read path as a load, then serve only what it returned (#700 D14), and
+		     the plugin resolves CLR types through the one framework resolver. -->
+		<InternalsVisibleTo Include="MintPlayer.Spark.Files" />
 		<!-- CodeCoverage's column guard pins its grids through the real loader and BuildColumns (#284 R8),
 		     not a re-implementation of the column rule. -->
 		<InternalsVisibleTo Include="CodeCoverage.Tests" />

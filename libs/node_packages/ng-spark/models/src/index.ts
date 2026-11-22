@@ -25,3 +25,4 @@ export * from './rule-evaluation';
 export * from './primitive-array';
 export * from './spark-app-url';
 export * from './spark-links';
+export * from './spark-file';

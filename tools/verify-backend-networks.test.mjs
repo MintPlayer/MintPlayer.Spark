@@ -84,6 +84,13 @@ test('each backend network holds exactly the services that need each other', () 
     // nothing.
     'coverage-git-writer': ['coverage-app', 'coverage-git-writer'],
     'coverage-git-writer-egress': ['coverage-git-writer'],
+    // The upload scanner (#700 M11): clamd's unauthenticated INSTREAM port is shared with the app alone, and its way out
+    // (freshclam's signature downloads) with nothing.
+    'coverage-clamav': ['coverage-app', 'coverage-clamav'],
+    'coverage-clamav-egress': ['coverage-clamav'],
+    // The file store (#700 M11, PRD D13): Garage's S3 API is shared with the app alone, which holds the only bucket key.
+    // No egress and no Traefik: the app proxies every byte.
+    'coverage-files': ['coverage-app', 'coverage-garage'],
     'seo-raven': ['coverage-raven', 'seotester-app'],
     'seo-mail': ['mail-relay', 'seotester-app'],
     'mintplayer-raven': ['coverage-raven', 'mintplayer-app'],
@@ -105,15 +112,22 @@ test('RavenDB and the mail relay share no network, and neither has a way out exc
   }
   const egress = [...nets].filter(([, n]) => n.decls.every((d) => d.internal !== true && d.external !== true)).map(([name]) => name).sort();
   // Non-internal networks of a stack: the external ones aside (Traefik's, and the shared backend networks the deploys
-  // create internal, checked below), only the relay's egress network, the git sidecars' (commit graph D18) and the
-  // fetcher's (PRD D54).
-  assert.deepEqual(egress, ['coverage-git-egress', 'coverage-git-writer-egress', 'mail-relay-egress', 'seo-egress'], 'the only compose-created networks with a route out are the relay\'s, the two git sidecars\' and the fetcher\'s');
+  // create internal, checked below), only the relay's egress network, the git sidecars' (commit graph D18), the
+  // scanner's (freshclam, #700 M11) and the fetcher's (PRD D54).
+  assert.deepEqual(egress, ['coverage-clamav-egress', 'coverage-git-egress', 'coverage-git-writer-egress', 'mail-relay-egress', 'seo-egress'], 'the only compose-created networks with a route out are the relay\'s, the two git sidecars\', the scanner\'s and the fetcher\'s');
+  assert.deepEqual(members('coverage-clamav-egress'), ['coverage-clamav'], 'the scanner\'s egress network carries clamd alone');
+  assert.deepEqual(networksOf(stacks[CC].services['coverage-clamav']).sort(), ['coverage-clamav', 'coverage-clamav-egress'], 'clamd is on its two networks only (never coverage-db or web)');
   assert.deepEqual(members('mail-relay-egress'), ['mail-relay'], 'the relay\'s egress network carries the relay alone');
   assert.deepEqual(networksOf(stacks[MR].services['mail-relay']).sort(), ['coverage-mail', 'mail-relay-egress', 'mintplayer-mail', 'seo-mail'], 'the relay is on its mail networks and its way out, nothing else');
   assert.deepEqual(members('coverage-git-writer-egress'), ['coverage-git-writer'], 'the git writer\'s egress network carries the writer alone');
   assert.deepEqual(members('seo-egress'), ['seo-fetcher'], 'the fetcher\'s egress network carries the fetcher alone (no database, no relay)');
   assert.deepEqual(members('coverage-git-egress'), ['coverage-git'], 'the git sidecar\'s egress network carries the sidecar alone (D18)');
-  for (const name of ['coverage-db', 'coverage-git', 'coverage-git-writer', 'seo-browser', 'seo-fetch', 'mintplayer-search']) {
+  assert.deepEqual(networksOf(stacks[CC].services['coverage-garage']), ['coverage-files'], 'Garage is on coverage-files only (no egress, never web)');
+  for (const [service, def] of Object.entries(stacks[CC].services)) {
+    if (service === 'coverage-garage') continue;
+    assert.ok(!(def.volumes ?? []).some((v) => v.startsWith('garage-data:')), `${service} must not mount the stored files (D13)`);
+  }
+  for (const name of ['coverage-clamav', 'coverage-files', 'coverage-db', 'coverage-git', 'coverage-git-writer', 'seo-browser', 'seo-fetch', 'mintplayer-search']) {
     assert.ok(nets.get(name).decls.every((d) => d.internal === true), `${name} is internal: true`);
   }
   const ravenNets = [...nets].filter(([, n]) => n.members.has('coverage-raven')).map(([name]) => name).sort();

@@ -179,4 +179,11 @@ public sealed class QueryResultItemValue
     public Dictionary<string, string?>? Breadcrumbs { get; init; }
 
     public IReadOnlyDictionary<string, string>? TypeHints { get; init; }
+
+    /// <summary>
+    /// For a cell holding stored files (#700 D15): the type and id of the row's document, so the response serializer can
+    /// sign each file's <c>url</c> as it does for a persistent object. Never written to the wire.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    internal (Guid ObjectTypeId, string EntityId)? FileOwner { get; init; }
 }

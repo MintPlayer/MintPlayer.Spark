@@ -57,6 +57,8 @@
     <Content Include="ReferencePicker\Data\*.json" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="QueryColumns\Data\*.json" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Ssr\Data\*.json" CopyToOutputDirectory="PreserveNewest" />
+    <!-- #700: the real files the Files integration tests sniff, shared rather than copied. -->
+    <Content Include="..\MintPlayer.Spark.Tests\Files\Fixtures\*" Link="Files\Fixtures\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <!--

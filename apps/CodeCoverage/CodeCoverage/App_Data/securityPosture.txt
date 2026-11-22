@@ -51,6 +51,7 @@ Anonymous visitors | grant | Read/Home | c0e5a9e1-0000-4000-8000-000000000041 | 
 Anonymous visitors | grant | Read/Log | c0e5a9e1-0000-4000-8000-0000000000b3 | app
 
 ## Rights
+Administrators | grant | ClearAvatar/Account | c0e5a9e1-0000-4000-8000-0000000000b7 | app
 Administrators | grant | ListAll/Log | c0e5a9e1-0000-4000-8000-0000000000b5 | app
 Administrators | grant | QueryRead/RepositoryGraphState | c0e5a9e1-0000-4000-8000-000000000092 | app
 Administrators | grant | ReadSettings/Account | c0e5a9e1-0000-4000-8000-000000000096 | app

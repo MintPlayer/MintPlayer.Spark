@@ -101,6 +101,17 @@ public class SparkModelShapeTests
             "it is a value carried in one attribute, not a nested entity");
     }
 
+    [Theory]
+    [InlineData(typeof(SparkFile))]
+    [InlineData(typeof(SparkImage))]
+    public void A_stored_file_is_not_a_nested_model(Type type)
+    {
+        // #700 M10: the Fleet synchronize wrote SparkFile.json and SparkImage.json as embedded models, because
+        // CollectEmbeddedTypes asks IsComplexType and a stored file is a class with properties. GetDataType already
+        // classified it as BinaryFile/Image; discovery has to agree, as it does for TranslatedString.
+        SparkModelShape.IsComplexType(type).Should().BeFalse("a stored file is a value carried in one attribute");
+    }
+
     [Fact]
     public void Canonical_text_uses_newline_and_no_BOM()
     {

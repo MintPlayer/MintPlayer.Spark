@@ -53,6 +53,13 @@ on:
       - 'libs/source_generators/MintPlayer.Spark.SourceGenerators/**'
       - 'libs/source_generators/MintPlayer.Spark.LibraryGenerators/**'
       - 'libs/socket_extensions/MintPlayer.Dotnet.SocketExtensions/**'
+      # Outgoing webhooks (#691), missing here until #700 M11.
+      - 'libs/apps/MintPlayer.Spark.Apps/**'
+      # File attributes (#700 M11): custom avatars, stored in Garage (S3), scanned by clamd, re-encoded by SkiaSharp.
+      - 'libs/files/MintPlayer.Spark.Files/**'
+      - 'libs/files/MintPlayer.Spark.Files.S3/**'
+      - 'libs/files/MintPlayer.Spark.Files.ClamAV/**'
+      - 'libs/files/MintPlayer.Spark.Files.Images.SkiaSharp/**'
       # Angular libraries baked into the image via `nx run @spark-apps/code-coverage:build`.
       - 'libs/node_packages/ng-spark/**'
       # Workspace-level files that affect the build.
@@ -367,6 +374,14 @@ jobs:
           rm -f docker-compose.yml
           curl -sf -H "Authorization: token $GITHUB_TOKEN" -o docker-compose.yml \
             https://raw.githubusercontent.com/${{ github.repository }}/master/apps/CodeCoverage/docker-compose.yml
+          # coverage-clamav's configuration (#700 M11), mounted read-only; from master like the compose file it belongs to.
+          curl -sf -H "Authorization: token $GITHUB_TOKEN" -o clamd.conf.new \
+            https://raw.githubusercontent.com/${{ github.repository }}/master/apps/CodeCoverage/ops/clamd.conf
+          install -m 0644 clamd.conf.new clamd.conf && rm -f clamd.conf.new
+          # coverage-garage's configuration (#700 M11), mounted read-only; holds no secret (the RPC secret is in .env).
+          curl -sf -H "Authorization: token $GITHUB_TOKEN" -o garage.toml.new \
+            https://raw.githubusercontent.com/${{ github.repository }}/master/apps/CodeCoverage/ops/garage.toml
+          install -m 0644 garage.toml.new garage.toml && rm -f garage.toml.new
 
           echo "$GITHUB_TOKEN" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 

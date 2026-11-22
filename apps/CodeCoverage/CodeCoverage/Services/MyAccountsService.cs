@@ -105,7 +105,7 @@ public partial class MyAccountsService : IMyAccountsService
                     // to "is this account connected", evaluated in the neutral layer because no
                     // per-forge answer existed. `Connection` is that answer: each forge writes what
                     // being connected means to it, and nothing here has to know.
-                    ? new MyAccountRow(owner, account.Login, provider, account.Type, account.AvatarUrl,
+                    ? new MyAccountRow(owner, account.Login, provider, account.Type, AccountAvatar.Resolve(account),
                         ownerRepos.Count, aggregate, account.Connection == RepositoryConnection.Connected)
                     : new MyAccountRow(owner, displayLogin, provider, "User", null, ownerRepos.Count, aggregate, false);
             })

@@ -63,6 +63,7 @@ import {
   nestedPoToDict,
   evaluateRules,
   hasShowedOnFlag,
+  isFileDataType,
   isPrimitiveArrayAttribute,
   mergeRefreshValues,
   overlayFromResponse,
@@ -70,7 +71,7 @@ import {
 } from '@mintplayer/ng-spark/models';
 import { SparkIconComponent } from '@mintplayer/ng-spark/icon';
 import { SparkAttributeDescriptionComponent } from '@mintplayer/ng-spark/attribute-description';
-import { SPARK_ATTRIBUTE_RENDERERS, SparkResolvedRowRenderer, rowRendererInputs, withDeclaredInputs } from '@mintplayer/ng-spark/renderers';
+import { SPARK_ATTRIBUTE_RENDERERS, SparkFileOwner, SparkResolvedRowRenderer, resolveAttributeRenderer, rowRendererInputs, withDeclaredInputs } from '@mintplayer/ng-spark/renderers';
 import { SparkReferencePickerComponent } from './spark-reference-picker.component';
 import { SparkLookupPickerComponent } from './spark-lookup-picker.component';
 import { SparkPrimitiveListEditorComponent } from './spark-primitive-list-editor.component';
@@ -138,6 +139,11 @@ export class SparkPoFormComponent {
   objectTypeId = input<string | undefined>(undefined);
   /** The id of the object being edited; absent for a create. */
   objectId = input<string | undefined>(undefined);
+  /**
+   * Set on the form inside an AsDetail modal (#700 M10): the document the row lives in and the AsDetail attribute. A file
+   * attribute of the row uploads against that document as `prefix.field`, since the row has no id of its own.
+   */
+  fileOwner = input<SparkFileOwner | null>(null);
   /**
    * The object as read from the server; absent for a create. `formData` keeps only a reference's id,
    * so this is where the form finds the server-resolved label of the value each Reference was loaded
@@ -682,16 +688,26 @@ export class SparkPoFormComponent {
   }
 
   getEditRendererComponent(attr: EntityAttributeDefinition): Type<any> | null {
-    if (!attr.renderer) return null;
-    const reg = this.rendererRegistry.find(r => r.name === attr.renderer);
-    return reg?.editComponent ?? null;
+    return resolveAttributeRenderer(this.rendererRegistry, attr, 'editComponent')?.editComponent ?? null;
+  }
+
+  /**
+   * A stored-file attribute (#700) with no renderer for it: `withFileAttributes()` is missing. The form shows a notice,
+   * never the default text input, which would hold the file's JSON.
+   */
+  isUnrenderedFileAttribute(attr: EntityAttributeDefinition): boolean {
+    return !!attr.storesFile && isFileDataType(attr.dataType) && !this.getEditRendererComponent(attr);
   }
 
   getEditRendererInputs(component: Type<any>, attr: EntityAttributeDefinition): Record<string, any> {
+    const owner = this.fileOwner();
     return withDeclaredInputs(component, {
       value: this.formData()[attr.name],
       attribute: attr,
       options: attr.rendererOptions,
+      objectTypeId: owner ? owner.objectTypeId : this.entityType()?.id,
+      objectId: owner ? owner.objectId : this.objectId(),
+      attributePath: owner ? `${owner.prefix}.${attr.name}` : undefined,
       valueChange: (newValue: any) => {
         const data = { ...this.formData() };
         data[attr.name] = newValue;
@@ -702,8 +718,7 @@ export class SparkPoFormComponent {
 
   /** Column renderer for a cell of an AsDetail sub-table (so embedded rows honor `col.renderer` too). */
   getAsDetailCellRendererComponent(col: EntityAttributeDefinition): Type<any> | null {
-    if (!col.renderer) return null;
-    return this.rendererRegistry.find(r => r.name === col.renderer)?.columnComponent ?? null;
+    return resolveAttributeRenderer(this.rendererRegistry, col, 'columnComponent')?.columnComponent ?? null;
   }
 
   /** Inputs of an AsDetail row renderer (`rowComponent`): the row and the object being edited. */
@@ -722,22 +737,47 @@ export class SparkPoFormComponent {
 
   /** Edit-renderer for an inline AsDetail cell (so inline editing honors `col.renderer`, not just display). */
   getAsDetailCellEditRenderer(col: EntityAttributeDefinition): Type<any> | null {
-    if (!col.renderer) return null;
-    return this.rendererRegistry.find(r => r.name === col.renderer)?.editComponent ?? null;
+    return resolveAttributeRenderer(this.rendererRegistry, col, 'editComponent')?.editComponent ?? null;
   }
 
-  getAsDetailCellEditRendererInputs(component: Type<any>, row: Record<string, any>, col: EntityAttributeDefinition): Record<string, any> {
+  getAsDetailCellEditRendererInputs(component: Type<any>, row: Record<string, any>, col: EntityAttributeDefinition, attr?: EntityAttributeDefinition): Record<string, any> {
+    const owner = attr ? this.asDetailFileOwner(attr) : null;
     return withDeclaredInputs(component, {
       value: row[col.name],
       attribute: col,
       options: col.rendererOptions,
       item: row,
+      objectTypeId: owner?.objectTypeId,
+      objectId: owner?.objectId,
+      attributePath: owner ? `${owner.prefix}.${col.name}` : undefined,
       valueChange: (newValue: any) => {
         row[col.name] = newValue;
         this.onFieldChange();
       },
     });
   }
+
+  /**
+   * The document a row of `attr` uploads its files against (#700 M10): this form's object, or, inside an AsDetail modal,
+   * the owner it was given. Memoized per attribute, so the modal's `[fileOwner]` input keeps its identity.
+   */
+  asDetailFileOwner(attr: EntityAttributeDefinition): SparkFileOwner | null {
+    const outer = this.fileOwner();
+    const objectTypeId = outer ? outer.objectTypeId : this.entityType()?.id;
+    if (!objectTypeId) return null;
+    const owner: SparkFileOwner = {
+      objectTypeId,
+      objectId: outer ? outer.objectId : this.objectId(),
+      prefix: outer ? `${outer.prefix}.${attr.name}` : attr.name,
+    };
+    const cached = this.fileOwners.get(attr.name);
+    if (cached && cached.objectTypeId === owner.objectTypeId && cached.objectId === owner.objectId && cached.prefix === owner.prefix)
+      return cached;
+    this.fileOwners.set(attr.name, owner);
+    return owner;
+  }
+
+  private readonly fileOwners = new Map<string, SparkFileOwner>();
 
   /**
    * Rules evaluated in the browser, against the *effective* metadata — so a rule a refresh hook

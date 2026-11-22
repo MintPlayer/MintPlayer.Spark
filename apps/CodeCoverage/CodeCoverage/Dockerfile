@@ -59,6 +59,14 @@ COPY ["libs/subscription_worker/MintPlayer.Spark.SubscriptionWorker.Abstractions
 COPY ["libs/source_generators/MintPlayer.Spark.SourceGenerators/MintPlayer.Spark.SourceGenerators.csproj", "libs/source_generators/MintPlayer.Spark.SourceGenerators/"]
 COPY ["libs/source_generators/MintPlayer.Spark.LibraryGenerators/MintPlayer.Spark.LibraryGenerators.csproj", "libs/source_generators/MintPlayer.Spark.LibraryGenerators/"]
 COPY ["libs/socket_extensions/MintPlayer.Dotnet.SocketExtensions/MintPlayer.Dotnet.SocketExtensions.csproj", "libs/socket_extensions/MintPlayer.Dotnet.SocketExtensions/"]
+# Outgoing webhooks (#691); missing from this list until #700 M11, when only the publish's second restore found it.
+COPY ["libs/apps/MintPlayer.Spark.Apps/MintPlayer.Spark.Apps.csproj", "libs/apps/MintPlayer.Spark.Apps/"]
+# File attributes (#700 M11). SkiaSharp's Linux native library is the NoDependencies build: the aspnet base image needs
+# no extra OS packages for it.
+COPY ["libs/files/MintPlayer.Spark.Files/MintPlayer.Spark.Files.csproj", "libs/files/MintPlayer.Spark.Files/"]
+COPY ["libs/files/MintPlayer.Spark.Files.S3/MintPlayer.Spark.Files.S3.csproj", "libs/files/MintPlayer.Spark.Files.S3/"]
+COPY ["libs/files/MintPlayer.Spark.Files.ClamAV/MintPlayer.Spark.Files.ClamAV.csproj", "libs/files/MintPlayer.Spark.Files.ClamAV/"]
+COPY ["libs/files/MintPlayer.Spark.Files.Images.SkiaSharp/MintPlayer.Spark.Files.Images.SkiaSharp.csproj", "libs/files/MintPlayer.Spark.Files.Images.SkiaSharp/"]
 RUN dotnet restore "./apps/CodeCoverage/CodeCoverage/CodeCoverage.csproj"
 COPY . .
 

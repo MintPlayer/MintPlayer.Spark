@@ -238,7 +238,8 @@ public sealed class ModelSynchronizerTests : IDisposable
     /// </summary>
     [Theory]
     [InlineData("MultiLineString")]
-    [InlineData("image")]
+    [InlineData("Image")]
+    [InlineData("BinaryFile")]
     [InlineData("url")]
     public void A_string_presentation_override_is_preserved_on_re_synchronize(string presentation)
     {
@@ -265,7 +266,29 @@ public sealed class ModelSynchronizerTests : IDisposable
         // A tripwire, not a tautology: adding a fourth presentation to SparkStringPresentations
         // without a matching InlineData would ship an override the synchronizer silently resets on
         // the next sync, and nothing else in the suite would notice.
-        SparkStringPresentations.All.Should().BeEquivalentTo(["MultiLineString", "image", "url"]);
+        SparkStringPresentations.All.Should().BeEquivalentTo(["MultiLineString", "Image", "BinaryFile", "url"]);
+    }
+
+    /// <summary>
+    /// #700: the lowercase <c>image</c> presentation became the <c>Image</c> data type. A model file
+    /// written before that still says <c>image</c>; the next synchronize rewrites it, which is the whole
+    /// migration (CodeCoverage's <c>Account.AvatarUrl</c> is the one in this repository).
+    /// </summary>
+    [Fact]
+    public void The_pre_700_image_presentation_is_normalised_to_Image_on_re_synchronize()
+    {
+        var ctx = typeof(OrderedContext);
+        var sync = CreateSynchronizer();
+
+        sync.SynchronizeModels(ctx);
+
+        var path = ModelFile("MS_OrderedParent");
+        File.WriteAllText(path, RetypeNameAttribute(File.ReadAllText(path), "image"));
+
+        sync.SynchronizeModels(ctx);
+
+        Read<EntityTypeFile>(path).PersistentObject.Attributes.Single(a => a.Name == "Name").DataType
+            .Should().Be("Image");
     }
 
     [Fact]
@@ -274,8 +297,8 @@ public sealed class ModelSynchronizerTests : IDisposable
         // The other half of the rule. Preservation is conditional on the CLR shape still being a
         // string; a hint describing something that is no longer true is worse than no hint, and it
         // is part of the structural hash, so verification would go on confirming the stale value.
-        SparkStringPresentations.Preserves("image", "string").Should().BeTrue();
-        SparkStringPresentations.Preserves("image", "datetime").Should().BeFalse();
+        SparkStringPresentations.Preserves("Image", "string").Should().BeTrue();
+        SparkStringPresentations.Preserves("Image", "datetime").Should().BeFalse();
         SparkStringPresentations.Preserves("Reference", "string").Should().BeFalse("only presentation overrides survive");
         SparkStringPresentations.Preserves(null, "string").Should().BeFalse();
     }

@@ -35,6 +35,8 @@ internal partial class DatabaseAccess : IDatabaseAccess
     [Inject] private readonly IReferenceTargetValidation referenceTargets;
     [Inject] private readonly Microsoft.AspNetCore.Http.IHttpContextAccessor? httpContextAccessor;
     [Inject] private readonly Microsoft.Extensions.Logging.ILogger<DatabaseAccess>? logger;
+    // #700: attaches claimed files once the entity has its id. Null without spark.AddFiles().
+    [Inject] private readonly ISparkFileValueHandler? fileValueHandler;
 
     public async Task<T?> GetDocumentUncheckedAsync<T>(string id) where T : class
     {
@@ -867,6 +869,10 @@ internal partial class DatabaseAccess : IDatabaseAccess
             await session.StoreAsync(entity, expectedChangeVector, session.GetId(entity)!);
         else
             await session.StoreAsync(entity);
+
+        // #700: the entity has its id now; claimed files attach (and dropped ones go) in this same commit.
+        if (fileValueHandler is not null)
+            await fileValueHandler.OnStoredAsync(new SparkFileStoredContext(entity, session.GetId(entity)!, session), CancellationToken.None);
 
         // Durable after-commit work (#482, D17), written in this commit. The store assigned the id.
         await interceptors.EnqueueCommittedAsync(context, session.GetId(entity)!, operation, isDelete: false, isReplaced: false, expectedChangeVector);

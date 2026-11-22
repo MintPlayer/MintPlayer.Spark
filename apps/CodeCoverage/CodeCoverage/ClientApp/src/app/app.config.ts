@@ -9,6 +9,7 @@ import { withScoreRenderers } from '@mintplayer/ng-spark/score-renderers';
 import { withDashboards, sparkDashboardRenderers } from '@mintplayer/ng-spark/dashboards';
 import { withBoards } from '@mintplayer/ng-spark/boards';
 import { withClientOperations } from '@mintplayer/ng-spark/client-operations';
+import { withFileAttributes } from '@mintplayer/ng-spark/files';
 import { withLanguageUrls, withSparkLanguage, withSparkTimezone } from '@mintplayer/ng-spark/services';
 
 import { routes } from './app.routes';
@@ -39,6 +40,8 @@ export const appConfig: ApplicationConfig = {
       // The Resync custom action's refreshQuery operation is dispatched here; without
       // this feature the action runs and the grid silently keeps its stale rows.
       withClientOperations(),
+      // #700 M11: the Image renderers (the account avatar, CustomAvatar's upload).
+      withFileAttributes(),
     ),
     provideZonelessChangeDetection()
   ]

@@ -20,6 +20,14 @@
     "selectionRule": "=0",
     "refreshOnCompleted": false
   },
+  "ClearAvatar": {
+    "icon": "Trash",
+    "showedOn": "detail",
+    "selectionRule": "=0",
+    "confirmation": "account.clearAvatarConfirmation",
+    "variant": "danger",
+    "refreshOnCompleted": true
+  },
   "Revoke": {
     "icon": "Trash",
     "showedOn": "query",

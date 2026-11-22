@@ -153,6 +153,15 @@
   <Folder Name="/libs/apps/">
     <Project Path="libs/apps/MintPlayer.Spark.Apps/MintPlayer.Spark.Apps.csproj" />
   </Folder>
+  <Folder Name="/libs/files/">
+    <Project Path="libs/files/MintPlayer.Spark.Files/MintPlayer.Spark.Files.csproj" />
+    <Project Path="libs/files/MintPlayer.Spark.Files.AzureBlob/MintPlayer.Spark.Files.AzureBlob.csproj" />
+    <Project Path="libs/files/MintPlayer.Spark.Files.ClamAV/MintPlayer.Spark.Files.ClamAV.csproj" />
+    <Project Path="libs/files/MintPlayer.Spark.Files.Images.NetVips/MintPlayer.Spark.Files.Images.NetVips.csproj" />
+    <Project Path="libs/files/MintPlayer.Spark.Files.Images.SkiaSharp/MintPlayer.Spark.Files.Images.SkiaSharp.csproj" />
+    <Project Path="libs/files/MintPlayer.Spark.Files.FileSystem/MintPlayer.Spark.Files.FileSystem.csproj" />
+    <Project Path="libs/files/MintPlayer.Spark.Files.S3/MintPlayer.Spark.Files.S3.csproj" />
+  </Folder>
   <Folder Name="/libs/notifications/">
     <Project Path="libs/notifications/MintPlayer.Spark.Notifications/MintPlayer.Spark.Notifications.csproj" />
   </Folder>

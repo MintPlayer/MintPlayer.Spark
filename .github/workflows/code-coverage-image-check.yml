@@ -44,6 +44,11 @@ on:
       - 'libs/source_generators/MintPlayer.Spark.SourceGenerators/**'
       - 'libs/source_generators/MintPlayer.Spark.LibraryGenerators/**'
       - 'libs/socket_extensions/MintPlayer.Dotnet.SocketExtensions/**'
+      - 'libs/apps/MintPlayer.Spark.Apps/**'
+      - 'libs/files/MintPlayer.Spark.Files/**'
+      - 'libs/files/MintPlayer.Spark.Files.S3/**'
+      - 'libs/files/MintPlayer.Spark.Files.ClamAV/**'
+      - 'libs/files/MintPlayer.Spark.Files.Images.SkiaSharp/**'
       - 'libs/node_packages/ng-spark/**'
       - 'package.json'
       - 'package-lock.json'
@@ -81,7 +86,18 @@ jobs:
         context: .
         file: ./apps/CodeCoverage/CodeCoverage/Dockerfile
         push: false
+        load: true
+        tags: codecoverage:pr-check
         cache-from: type=gha
+
+    # Container hygiene (#700 PRD C1, §0 item 14): no image the stack runs may carry sshd. This job scans the image it just
+    # built and every third-party image apps/CodeCoverage/docker-compose.yml pins; the git sidecar jobs scan their own.
+    # Fails on an openssh-server package or CVE-2026-123158.
+    - name: No sshd in the compose images (Trivy)
+      shell: bash
+      run: |
+        third_party=$(grep -E '^\s+image:' apps/CodeCoverage/docker-compose.yml | awk '{print $2}' | grep -v '^ghcr.io/mintplayer/' | sort -u)
+        bash tools/ci/trivy-no-sshd.sh codecoverage:pr-check $third_party
 
   # The commit-graph sidecar image (#504), built the same way so a broken sidecar Dockerfile surfaces here, not as a
   # failed deploy.
@@ -103,7 +119,12 @@ jobs:
         context: .
         file: ./apps/CodeCoverage/CodeCoverage.GitMirror/Dockerfile
         push: false
+        load: true
+        tags: codecoverage-git:pr-check
         cache-from: type=gha,scope=codecoverage-git
+
+    - name: No sshd in the image (Trivy, #700 PRD C1)
+      run: bash tools/ci/trivy-no-sshd.sh codecoverage-git:pr-check
 
   # The merge queue's git writer image (M3), built the same way. Its Dockerfile refuses a base image whose git lacks the
   # July 2025 security fixes, so that refusal surfaces here on the pull request, not as a failed deploy.
@@ -125,4 +146,9 @@ jobs:
         context: .
         file: ./apps/CodeCoverage/CodeCoverage.GitWriter/Dockerfile
         push: false
+        load: true
+        tags: codecoverage-git-writer:pr-check
         cache-from: type=gha,scope=codecoverage-git-writer
+
+    - name: No sshd in the image (Trivy, #700 PRD C1)
+      run: bash tools/ci/trivy-no-sshd.sh codecoverage-git-writer:pr-check

@@ -340,9 +340,25 @@ public sealed partial class ValueObjectCompletenessAnalyzer : DiagnosticAnalyzer
         return current is INamedTypeSymbol { TypeKind: TypeKind.Class, IsAbstract: false } named
             && named.SpecialType == SpecialType.None
             && !named.IsSparkScalarLike()
+            && !IsStoredFile(named)
             && named.GetMembers().OfType<IPropertySymbol>().Any(p => p.DeclaredAccessibility == Accessibility.Public)
             ? named
             : null;
+    }
+
+    /// <summary>
+    /// A stored file (<c>SparkFile</c>, <c>SparkImage</c> or a subclass, #700): a file attribute, not an AsDetail. Its rows are
+    /// identified by <c>FileId</c> and never matched by a row key, so a <c>List&lt;SparkImage&gt;</c> needs no
+    /// <c>[ValueObject]</c>. The runtime makes the same call before its complex-type fallback (<c>SparkModelShape</c>).
+    /// </summary>
+    private static bool IsStoredFile(INamedTypeSymbol type)
+    {
+        for (var current = type; current is not null; current = current.BaseType)
+        {
+            if (current.ToDisplayString() == "MintPlayer.Spark.Abstractions.SparkFile")
+                return true;
+        }
+        return false;
     }
 
     private static bool IsMarked(INamedTypeSymbol type)

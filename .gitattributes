@@ -83,6 +83,8 @@ apps/CodeCoverage/dependency-action/dist/index.js text eol=lf linguist-generated
 .github/actions/spark-regenerate/*.sh text eol=lf
 .github/actions/lockfile-regenerate/*.sh text eol=lf
 .github/actions/lockfile-regenerate/*.mjs text eol=lf
+# Read on the Linux VPS (the deploy installs them as they are): clamd.conf, the renewal script and its units (#700 M11).
+apps/CodeCoverage/ops/* text eol=lf
 
 ###############################################################################
 # Files the tools regenerate: the model synchronize (App_Data) and SPARK_UPDATE_GOLDEN
@@ -96,3 +98,6 @@ tests/MintPlayer.Spark.Tests/Layering/Golden/*.txt text eol=lf
 # `spark webhooks generate` output, rewritten by WebhookReceiverRoundTripTests under SPARK_UPDATE_GOLDEN (#691).
 tests/MintPlayer.Spark.Tests/Apps/Generated/*.g.cs text eol=lf
 libs/node_packages/webhooks-receiver/src/testing/*.ts text eol=lf
+
+# #700 file fixtures: exact bytes, never normalised (a sniffer test reads them as uploaded).
+tests/MintPlayer.Spark.Tests/Files/Fixtures/** binary

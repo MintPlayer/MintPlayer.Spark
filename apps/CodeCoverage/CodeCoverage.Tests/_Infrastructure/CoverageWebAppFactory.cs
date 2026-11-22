@@ -99,6 +99,9 @@ public sealed class CoverageWebAppFactory : WebApplicationFactory<Program>
         // The key ring lives in the test database. Production mounts a volume and sets
         // Spark:DataProtection:KeysPath instead, so the base appsettings.json carries neither.
         builder.UseSetting("Spark:DataProtection:Storage", "RavenDb");
+        // #700 M11: no clamd in the test host, which runs outside Development, where AddFiles() refuses to start without a
+        // scanner. Production sets ClamAV:Host instead (docker-compose.yml); a test that needs a scanner overrides this.
+        builder.UseSetting("Spark:Files:AllowUnscannedFiles", "true");
 
         // Placeholders, and deliberately obvious ones. The OAuth handler is registered but
         // never reached: these tests assert what happens BEFORE any redirect to GitHub, and a

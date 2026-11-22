@@ -17,6 +17,10 @@ using MintPlayer.Spark.Controllers;
 using MintPlayer.Spark.Boards;
 using MintPlayer.Spark.Dashboards;
 using MintPlayer.Spark.Extensions;
+using MintPlayer.Spark.Files;
+using MintPlayer.Spark.Files.ClamAV;
+using MintPlayer.Spark.Files.Images.SkiaSharp;
+using MintPlayer.Spark.Files.S3;
 using MintPlayer.Spark.Webhooks.GitHub.DevTunnel.Extensions;
 using MintPlayer.Spark.Authorization.Identity;
 using MintPlayer.Spark.IdentityProvider.Extensions;
@@ -338,6 +342,18 @@ builder.Services.AddSpark(builder.Configuration, spark =>
     spark.AddBoards();
     // #660: each bot command's log (and the merge queue's and backports'), readable by whoever may read its record.
     spark.AddLogs();
+    // #700 M11: custom avatars (Account.CustomAvatar). Every upload is re-encoded by SkiaSharp (metadata stripped, variants
+    // made). Production keeps the bytes in Garage over S3 (Files:S3, docker-compose.yml) and scans every upload with clamd
+    // (ClamAV:Host); without them the bytes stay in RavenDB attachments, and outside Development AddFiles() refuses to start
+    // with no scanner unless Spark:Files:AllowUnscannedFiles says so (the test host does).
+    spark.AddFiles(files =>
+    {
+        files.UseSkiaSharpImages();
+        if (builder.Configuration.GetSection("Files:S3") is { } s3 && !string.IsNullOrEmpty(s3["Bucket"]))
+            files.UseS3(s3);
+        if (!string.IsNullOrEmpty(builder.Configuration["ClamAV:Host"]))
+            files.UseClamAV(builder.Configuration.GetSection("ClamAV"));
+    });
 
     // ⚠ The four calls above are source-generated over THIS assembly only, so they do not see
     // anything in CodeCoverage.GithubIntegration. Its own entry point has to be called explicitly,

@@ -5,6 +5,12 @@ import { SparkParagraphRendererComponent } from './paragraph-renderer.component'
 export interface SparkAttributeRendererRegistration {
   /** The renderer name (must match attr.renderer in model JSON) */
   name: string;
+  /**
+   * Makes this the default renderer of every attribute of this data type (#700 SP6): `withFileAttributes()` registers
+   * the upload, detail and column components for `BinaryFile` and `Image` this way. An attribute's own `renderer`
+   * still wins (see {@link resolveAttributeRenderer}); an app registration still beats a shipped one by list order.
+   */
+  dataType?: string;
   /** Component for the PO detail page. Must implement SparkAttributeDetailRenderer. Omit for a column/edit-only renderer. */
   detailComponent?: Type<any> | null;
   /** Component for query-list column cells. Must implement SparkAttributeColumnRenderer. Omit for a detail/edit-only renderer. */
@@ -48,6 +54,32 @@ export interface SparkAttributeRendererRegistration {
    * as the core `paragraph` renderer, which are body text rather than a labelled value.
    */
   fullWidth?: boolean;
+}
+
+/** The members a host can ask a registration for. */
+export type SparkRendererSlot = 'detailComponent' | 'columnComponent' | 'editComponent' | 'filterLabel' | 'fullWidth';
+
+/**
+ * The one lookup every host uses (#700 SP6): the registration named by the attribute's `renderer` that provides `slot`,
+ * else the first registration for the attribute's `dataType` that provides it, else `null`. Without a `slot`, the first
+ * named, then the first by data type. The list order makes an app's registration beat a shipped one in both steps.
+ */
+export function resolveAttributeRenderer(
+  registry: readonly SparkAttributeRendererRegistration[],
+  attribute: { renderer?: string | null; dataType?: string | null } | null | undefined,
+  slot?: SparkRendererSlot,
+): SparkAttributeRendererRegistration | null {
+  if (!attribute) return null;
+  const provides = (r: SparkAttributeRendererRegistration) => !slot || !!r[slot];
+  if (attribute.renderer) {
+    const named = registry.find(r => r.name === attribute.renderer && provides(r));
+    if (named) return named;
+  }
+  if (attribute.dataType) {
+    const typed = registry.find(r => r.dataType === attribute.dataType && provides(r));
+    if (typed) return typed;
+  }
+  return null;
 }
 
 /**

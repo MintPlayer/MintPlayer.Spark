@@ -89,4 +89,20 @@ export interface SparkAttributeEditRenderer {
    * doesn't support outputs). Not declaring it disables write-back.
    */
   valueChange?: InputSignal<(value: any) => void>;
+  /** The id of the type being edited (the entity type's `id`), for a renderer that talks to the server about it (#700 uploads). */
+  objectTypeId?: InputSignal<string | undefined>;
+  /** The id of the object being edited; undefined on a create page. */
+  objectId?: InputSignal<string | undefined>;
+  /**
+   * For a field of an AsDetail row (#700 M10): its path on the document, `Parent.Field` (`ServiceEntries.Invoice`), with
+   * `objectTypeId`/`objectId` naming the document. Undefined for a top-level attribute, whose path is its name.
+   */
+  attributePath?: InputSignal<string | undefined>;
+}
+
+/** The document an AsDetail row's fields belong to, and the AsDetail attribute's path on it (#700 M10). */
+export interface SparkFileOwner {
+  objectTypeId: string;
+  objectId: string | undefined;
+  prefix: string;
 }

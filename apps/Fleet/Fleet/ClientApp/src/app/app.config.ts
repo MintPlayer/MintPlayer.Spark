@@ -9,6 +9,7 @@ import { withAuth, withSparkAuth } from '@mintplayer/ng-spark/auth';
 import { withAttributeRenderers } from '@mintplayer/ng-spark/renderers';
 import { withClientOperations } from '@mintplayer/ng-spark/client-operations';
 import { withBoards } from '@mintplayer/ng-spark/boards';
+import { withFileAttributes } from '@mintplayer/ng-spark/files';
 
 import { routes } from './app.routes';
 import { ColorDetailRendererComponent } from './renderers/color-detail-renderer.component';
@@ -30,6 +31,8 @@ export const appConfig: ApplicationConfig = {
       withAuth(),
       withClientOperations(),
       withBoards(),
+      // #700: the upload, detail and column renderers of Image and BinaryFile attributes.
+      withFileAttributes(),
       withAttributeRenderers([
         {
           name: 'color-swatch',

@@ -150,6 +150,9 @@ export class SparkPoCreateComponent {
         // Same reason as spark-po-edit: a lookup-backed boolean's third state is the absence of a
         // value, and seeding `false` here would make every new object explicitly opted out.
         data[attr.name] = false;
+      } else if (attr.storesFile && !attr.isArray) {
+        // No file yet is null, never '': the server refuses '' as a file value (#700).
+        data[attr.name] = null;
       } else if (isPrimitiveArrayAttribute(attr)) {
         // A list of plain values starts as an empty list, as an AsDetail array does.
         data[attr.name] = [];

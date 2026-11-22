@@ -7,7 +7,7 @@ import {
   SparkCellColumn,
   valueFor,
 } from '@mintplayer/ng-spark/models';
-import { SPARK_ATTRIBUTE_RENDERERS, cellValue, withDeclaredInputs } from '@mintplayer/ng-spark/renderers';
+import { SPARK_ATTRIBUTE_RENDERERS, cellValue, resolveAttributeRenderer, withDeclaredInputs } from '@mintplayer/ng-spark/renderers';
 import { SparkService } from '@mintplayer/ng-spark/services';
 
 /**
@@ -30,14 +30,12 @@ export class SparkGridRenderers {
 
   /** The registered column component for a column, or null to fall back to the default cell. */
   columnComponentFor(column: SparkCellColumn): Type<any> | null {
-    if (!column.renderer) return null;
-    return this.registry.find(r => r.name === column.renderer)?.columnComponent ?? null;
+    return resolveAttributeRenderer(this.registry, column, 'columnComponent')?.columnComponent ?? null;
   }
 
   /** The registered filter-label function for a column, or null to use the server-computed text. */
   filterLabelFor(column: SparkCellColumn): ((value: unknown) => string) | null {
-    if (!column.renderer) return null;
-    return this.registry.find(r => r.name === column.renderer)?.filterLabel ?? null;
+    return resolveAttributeRenderer(this.registry, column, 'filterLabel')?.filterLabel ?? null;
   }
 
   /**

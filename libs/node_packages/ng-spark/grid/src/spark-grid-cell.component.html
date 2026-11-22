@@ -30,8 +30,8 @@
     <span class="spark-color-swatch d-inline-block align-middle border rounded"
           [style.background-color]="colorVal"></span>
   }
-} @else if (column().dataType === 'image') {
-  @if (display(); as src) {
+} @else if (column().dataType === 'Image' && imageSrc()) {
+  @if (imageSrc(); as src) {
     <!-- `alt` is empty on purpose — the cell is decorative next to the row's own labelled
          columns, and a filename read aloud is worse than nothing. -->
     <img [src]="src" alt="" loading="lazy" class="spark-grid-image align-middle rounded">

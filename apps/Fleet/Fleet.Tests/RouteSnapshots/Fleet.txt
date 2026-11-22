@@ -60,6 +60,11 @@ PUT /spark/boards/{board} | antiforgery=required
 GET /spark/boards/{board}/catalog
 GET /spark/culture
 POST /spark/etl/deploy
+POST /spark/files/commit | antiforgery=required
+GET /spark/files/content/{ticket} | allow-anonymous
+GET /spark/files/download
+POST /spark/files/prepare | antiforgery=required
+POST /spark/files/upload | antiforgery=required | request-size-limit=10551296
 CONNECT,GET /spark/live
 GET /spark/lookupref
 GET /spark/lookupref/{name}

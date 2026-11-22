@@ -1,6 +1,7 @@
 import { isReservedAsDetailKey } from './as-detail-conversions';
 import { PersistentObject } from './persistent-object';
 import { PersistentObjectAttribute } from './persistent-object-attribute';
+import { comparableFile, isSparkFile, isSparkFileClaim } from './spark-file';
 
 /**
  * The one answer to "do these two reads hold the same content?", shared by History's revision diff
@@ -23,7 +24,8 @@ import { PersistentObjectAttribute } from './persistent-object-attribute';
 export function comparableValue(attribute: PersistentObjectAttribute | undefined): string {
   if (!attribute) return '\u0000absent';
   return JSON.stringify({
-    v: attribute.value ?? null,
+    // A stored file compares by its id: its signed `url` differs on every read (#700).
+    v: Array.isArray(attribute.value) ? attribute.value.map(comparableFile) : comparableFile(attribute.value ?? null),
     o: attribute.object ? nestedValues(attribute.object) : null,
     os: attribute.objects ? attribute.objects.map(nestedValues) : null,
   });
@@ -54,6 +56,7 @@ export function formValuesEqual(a: unknown, b: unknown): boolean {
 function normalizeFormValue(value: unknown): unknown {
   if (value === undefined || value === null) return null;
   if (Array.isArray(value)) return value.map(normalizeFormValue);
+  if (isSparkFile(value) || isSparkFileClaim(value)) return comparableFile(value);
   if (typeof value === 'object') {
     const result: Record<string, unknown> = {};
     for (const key of Object.keys(value as object).sort()) {

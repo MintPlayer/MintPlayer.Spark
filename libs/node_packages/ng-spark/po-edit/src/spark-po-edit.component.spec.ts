@@ -89,6 +89,24 @@ describe('SparkPoEditComponent', () => {
     expect(c.formData()).toEqual({ FirstName: 'Alice', LastName: 'Smith' });
   });
 
+  // #700: the server reads null as "no file" but refuses '' as a file value, so opening and saving a form
+  // whose file attribute is empty must send null.
+  it('keeps an empty stored-file attribute null, never an empty string', async () => {
+    const withDocument = {
+      ...personType,
+      attributes: [...personType.attributes, {
+        id: 'a-doc', name: 'Document', dataType: 'BinaryFile', storesFile: true,
+        isRequired: false, isReadOnly: false, order: 4, showedOn: ShowedOn.PersistentObject,
+      } as any],
+    } as any;
+    const item = { ...existingItem, attributes: [...existingItem.attributes, { id: 'a-doc', name: 'Document', value: null } as any] } as any;
+    const { harness } = await setup({ getEntityTypes: vi.fn().mockResolvedValue([withDocument]), get: vi.fn().mockResolvedValue(item) });
+    const c = await harness.navigateByUrl('/po/person/people%2F1/edit', SparkPoEditComponent);
+    await harness.fixture.whenStable();
+
+    expect(c.formData()['Document']).toBeNull();
+  });
+
   it('records load failure as a general validation error', async () => {
     const { harness } = await setup({
       get: vi.fn().mockRejectedValue(new HttpErrorResponse({ status: 404, error: { error: 'Not found' } })),

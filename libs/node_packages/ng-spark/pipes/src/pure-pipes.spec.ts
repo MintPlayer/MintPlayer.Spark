@@ -453,10 +453,12 @@ describe('InputTypePipe', () => {
     ['color', 'color'],
     ['string', 'text'],
     ['unknown-type', 'text'],
-    // #327 §9.1. Both hold a URL, so both get the browser's url validation and keyboard. `image`
-    // is a LINK to an image, not an upload — the value is still a string the author types.
+    // #327 §9.1, #700. These hold a URL, so they get the browser's url validation and keyboard. A file attribute reaches
+    // the default input only as a string (a stored file has its own renderer); the old `image` presentation is gone.
     ['url', 'url'],
-    ['image', 'url'],
+    ['Image', 'url'],
+    ['BinaryFile', 'url'],
+    ['image', 'text'],
   ])('maps %s → %s', (input, expected) => {
     expect(pipe.transform(input)).toBe(expected);
   });

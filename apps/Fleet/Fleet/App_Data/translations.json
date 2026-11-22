@@ -190,6 +190,11 @@
             }
           }
         },
+        "Photos": {
+          "description": {
+            "en": "Photos of the vehicle — the sample for a list of images (#700): resized variants, reorder, drag and drop."
+          }
+        },
         "PoliceReportNumber": {
           "description": {
             "en": "Police report reference, demanded once the vehicle is reported stolen.\nHidden and optional in the model; CarActions.OnRefreshAsync reveals it and makes it required when Status becomes Stolen. That is the whole point of the sample — the model declares the resting shape, the hook declares how the shape responds.\nIgnoreForIndexAttribute because no grid filters or sorts on it, matching Manager.",
@@ -217,6 +222,11 @@
         "RegisteredAt": {
           "description": {
             "en": "When the vehicle was registered, in the registering country's local time. The offset is data, not presentation: a Brussels registration is +02:00 and a Seattle one is -08:00, and losing that loses which country's morning it was.\nDemonstrates the DateTimeOffset treatment. No attribute is needed — the type is its own trigger. The generator emits a RegisteredAtRaw wrapper into VCar because RavenDB flattens a DateTimeOffset to its UTC equivalent whenever it becomes a scalar index field, and a projection would otherwise hand back +00:00. Ordering still runs on the real field, where the UTC-normalised instant is exactly what makes a sort across mixed offsets chronological."
+          }
+        },
+        "RegistrationDocument": {
+          "description": {
+            "en": "The registration certificate, as a PDF — the sample for a single binary file (#700)."
           }
         },
         "ServiceEntries": {
@@ -399,6 +409,11 @@
         "Description": {
           "description": {
             "en": "What was done at this visit."
+          }
+        },
+        "Invoice": {
+          "description": {
+            "en": "The garage's invoice, as a PDF — the sample for a file inside an AsDetail row (#700 M10)."
           }
         },
         "IsInvoiced": {

@@ -159,8 +159,10 @@
             } @else {
               -
             }
-          } @else if (attr.dataType === 'image') {
-            @let imageSrc = (attr.name | attributeValue:item():entityType():lookupReferenceOptions():allEntityTypes());
+          } @else if (attr.dataType === 'Image' && !attr.storesFile) {
+            <!-- A string Image (#700): a URL. A stored image is drawn by the Files renderer, or read as its file name. -->
+            @let imageValue = (attr.name | attributeValue:item():entityType():lookupReferenceOptions():allEntityTypes());
+            @let imageSrc = isDisplayableImageUrl(imageValue) ? imageValue : null;
             @if (imageSrc) {
               <img [src]="imageSrc" [alt]="(attr.label | resolveTranslation) || attr.name" loading="lazy"
                    class="img-fluid rounded" style="max-height: 12rem;">

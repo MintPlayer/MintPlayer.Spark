@@ -181,6 +181,18 @@
         ]
       },
       {
+        "id": "fab96809-3bfb-4bfe-937f-6c1579440fbb",
+        "name": "Photos",
+        "dataType": "Image",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 16,
+        "isArray": true,
+        "inQueryType": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
         "id": "e4e94390-49dd-46aa-ac4a-386e29ca51b8",
         "name": "PoliceReportNumber",
         "dataType": "string",
@@ -220,6 +232,24 @@
         "isArray": false,
         "showedOn": "Query, PersistentObject",
         "rules": []
+      },
+      {
+        "id": "a4956b4f-1521-4d36-a2b5-9eafdd095152",
+        "name": "RegistrationDocument",
+        "dataType": "BinaryFile",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 17,
+        "isArray": false,
+        "inQueryType": false,
+        "showedOn": "PersistentObject",
+        "rules": [],
+        "fileOptions": {
+          "accept": [
+            ".pdf"
+          ],
+          "maxBytes": 5000000
+        }
       },
       {
         "id": "225b8df2-3887-4e17-8145-26c57d1b9441",

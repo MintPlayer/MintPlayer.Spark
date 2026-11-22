@@ -194,7 +194,16 @@ public static class SparkModelShape
 
         var elementType = GetCollectionElementType(underlying);
         if (elementType != null)
+        {
+            // Before IsComplexType: SparkFile/SparkImage are classes with properties, so a
+            // List<SparkImage> would otherwise be classified as AsDetail (#700 SP1).
+            if (GetFileDataType(elementType) is { } fileElementType)
+                return fileElementType;
             return IsComplexType(elementType) ? "AsDetail" : GetDataType(elementType);
+        }
+
+        if (GetFileDataType(underlying) is { } fileDataType)
+            return fileDataType;
 
         return underlying switch
         {
@@ -213,6 +222,19 @@ public static class SparkModelShape
             _ when IsComplexType(underlying) => "AsDetail",
             _ => "string"
         };
+    }
+
+    /// <summary>
+    /// <c>Image</c> for <see cref="SparkImage"/> (and subclasses), <c>BinaryFile</c> for any other
+    /// <see cref="SparkFile"/>, otherwise <see langword="null"/> (#700). Image is tested first because it
+    /// derives from SparkFile.
+    /// </summary>
+    public static string? GetFileDataType(Type type)
+    {
+        var underlying = Nullable.GetUnderlyingType(type) ?? type;
+        if (typeof(SparkImage).IsAssignableFrom(underlying)) return SparkFileDataTypes.Image;
+        if (typeof(SparkFile).IsAssignableFrom(underlying)) return SparkFileDataTypes.BinaryFile;
+        return null;
     }
 
     /// <summary>
@@ -273,6 +295,11 @@ public static class SparkModelShape
             return false;
 
         if (type == typeof(TranslatedString))
+            return false;
+
+        // #700 M10: the same for a stored file. GetDataType classifies it as BinaryFile/Image, but the model
+        // synchronizer's discovery asked this method and wrote SparkFile.json/SparkImage.json as embedded models.
+        if (GetFileDataType(type) is not null)
             return false;
 
         return type.GetCachedProperties().Length > 0;

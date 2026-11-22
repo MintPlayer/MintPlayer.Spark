@@ -288,6 +288,8 @@ internal sealed partial class QueryResultProjector : IQueryResultProjector
                 : null,
             Breadcrumb = attribute.Breadcrumb,
             Breadcrumbs = attribute.Breadcrumbs,
+            // A file cell's url is signed as it is written (SparkFileUrls.SignCell), for this row's document (#700 D15).
+            FileOwner = attribute.Value is SparkFile or IEnumerable<SparkFile> ? (row.ObjectTypeId, row.Id!) : null,
         };
     }
 }

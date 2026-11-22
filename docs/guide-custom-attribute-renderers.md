@@ -243,6 +243,8 @@ you need.
 | `formData` | `Record<string, any>` | Yes | - | - | All attribute values (detail page only, for cross-field logic); AsDetail keys carry the nested PO(s) |
 | `item` | `PersistentObject \| Record<string, any>` | Yes | Yes | AsDetail cells only | The row/object this attribute belongs to (see [Row context](#row-context-the-item-input)) |
 | `valueChange` | `(value: any) => void` | - | - | Yes | Callback to report value changes to the parent form. Omitting it disables write-back |
+| `objectTypeId` | `string` | - | - | Yes (not AsDetail cells) | The entity type's `id`, for a renderer that talks to the server about the object (the file upload, #700) |
+| `objectId` | `string \| undefined` | - | - | Yes (not AsDetail cells) | The id of the object being edited; undefined on a create page |
 
 ## AsDetail Values
 
@@ -393,15 +395,37 @@ After synchronization, the model JSON will contain `"dataType": "color"` for the
 
 Spark checks for a custom renderer before applying built-in rendering:
 
+Every host (detail page, grid cell, AsDetail cells, edit form, dashboard tile, filter labels) finds the
+renderer through one exported function, `resolveAttributeRenderer(registry, attr, slot)` from
+`@mintplayer/ng-spark/renderers`: the registration **named** by `attr.renderer` that provides the slot,
+else the first registration for the attribute's **`dataType`** that provides it, else none.
+
 **Detail page / Query list:**
-1. Custom renderer (if `attr.renderer` matches a registration)
+1. Custom renderer (`attr.renderer` by name, then a registration for the `dataType`)
 2. Built-in rendering (boolean toggle, color swatch, Reference link, etc.)
 3. Plain text
 
 **Create / Edit form:**
-1. Custom edit renderer (if `attr.renderer` matches a registration with `editComponent`)
+1. Custom edit renderer (`attr.renderer` by name, then a registration for the `dataType`, with an `editComponent`)
 2. Built-in input (boolean toggle, Reference selector, etc.)
-3. Default `<input>` based on `dataType`
+3. Default `<input>` based on `dataType`. A stored-file attribute (`storesFile`) never falls back to it: without
+   `withFileAttributes()` the form shows "File attributes are not enabled in this app." instead.
+
+## A default renderer per data type (`dataType`)
+
+A registration with `dataType` becomes the renderer of **every** attribute of that data type that does not name one
+itself. An attribute's own `renderer` still wins, and a registration listed earlier wins: an app's
+`withAttributeRenderers` comes before ng-spark's shipped sets (`SparkFeatureOrder.builtInRegistrations`), so an app can
+replace a shipped data-type renderer.
+
+```ts
+withAttributeRenderers([
+  { name: 'my-image', dataType: 'Image', editComponent: MyImageUploadComponent },
+])
+```
+
+`withFileAttributes()` (`@mintplayer/ng-spark/files`) registers the file renderers this way for `BinaryFile` and `Image`;
+see [File attributes](guide-file-attributes.md).
 
 ## AsDetail row renderers (`rowComponent`)
 
@@ -448,6 +472,8 @@ A registration of your own can draw across the whole row too: `fullWidth: true`.
   id); `compareAttribute`; for an AsDetail list `compareRowKeyPattern` + `compareRowKeyReplacement`
   and `compareRowAttribute` (for a single AsDetail object, `compareRowAttribute` alone).
 - `@mintplayer/ng-spark/moderation` → `sparkModerationRenderers` (`spark-vote`).
+- `@mintplayer/ng-spark/files` → `withFileAttributes()`: `spark-file` (`BinaryFile`) and `spark-image` (`Image`), each
+  an upload edit renderer, a detail renderer and a grid cell, registered by data type (#700).
 
 ## Query page URL scope
 

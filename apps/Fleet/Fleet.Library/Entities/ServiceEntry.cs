@@ -37,4 +37,7 @@ public partial class ServiceEntry
     /// <c>ServiceEntryActions.OnDeleteRowAsync</c> refuses to let it be removed.
     /// </summary>
     public bool IsInvoiced { get; set; }
+
+    /// <summary>The garage's invoice, as a PDF — the sample for a file inside an AsDetail row (#700 M10).</summary>
+    public SparkFile? Invoice { get; set; }
 }

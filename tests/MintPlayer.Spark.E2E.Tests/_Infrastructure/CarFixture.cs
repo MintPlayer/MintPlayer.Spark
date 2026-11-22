@@ -26,6 +26,8 @@ internal static class CarFixture
         public const string Model = "Model";
         public const string Year = "Year";
         public const string RegisteredAt = "RegisteredAt";
+        public const string Photos = "Photos";
+        public const string RegistrationDocument = "RegistrationDocument";
     }
 
     /// <summary>

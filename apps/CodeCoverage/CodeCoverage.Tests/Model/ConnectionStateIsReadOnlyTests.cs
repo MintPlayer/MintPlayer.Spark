@@ -111,9 +111,10 @@ public class ConnectionStateIsReadOnlyTests
 
         // The merge queue's trust policy joined it (merge-queue PRD O11, O12, O22: set by the owner on the organization page),
         // and so did the dependency updater's owner settings (dependency-updates PRD §4.1, Q9) and the PR size labeller's
-        // (coverage_pr_size_labels PRD D1, D2, D5), and the versioning policies (coverage_package_versioning PRD D12, D14, D15).
+        // (coverage_pr_size_labels PRD D1, D2, D5), and the versioning policies (coverage_package_versioning PRD D12, D14, D15),
+        // and the owner's custom avatar (file_attributes PRD Q15, #700 M11).
         editable.Should().Equal(
-            ["AutoCutReleaseBranches", "DeleteBranchOnPrClose", "DependencyBisectBudget", "DependencyCooldown", "DependencyOnboardingMergeQueue", "DependencyRules", "DependencyScheduleFrequency",
+            ["AutoCutReleaseBranches", "CustomAvatar", "DeleteBranchOnPrClose", "DependencyBisectBudget", "DependencyCooldown", "DependencyOnboardingMergeQueue", "DependencyRules", "DependencyScheduleFrequency",
              "DependencyScheduleHour", "DependencyScheduleWeekday", "DependencyTimeZone", "DependencyUpdates",
              "MergeQueueApprovalFloor", "MergeQueueBypassRole", "MergeQueueCheckExclusions",
              "PrSizeIgnoreRules", "PrSizeLabels", "PrSizeLabelScale", "PrTitleCorrection", "ReleaseOnTag", "ReleaseRole"],

@@ -67,6 +67,11 @@ public class EndpointConventionsTests
         new("SparkPresentation", "Check", Rule.RequestServices,
             "a System.Text.Json serialization hook, which has no DI of its own; it only asks whether the host "
             + "is Development to throw on an unpresented object."),
+        new("SparkFileUrls", "Sign", Rule.RequestServices,
+            "called from SparkPresentation's System.Text.Json serialization hook, which has no DI; it resolves the "
+            + "optional ISparkFileUrlSigner (absent without the Files plugin) to sign embedded file URLs. #700 D15."),
+        new("SparkFileUrls", "SignCell", Rule.RequestServices,
+            "the query-cell twin of Sign, called from the same serialization hook for each file cell. #700 D15."),
     ];
 
     [Fact]
@@ -130,6 +135,9 @@ public class EndpointConventionsTests
         new("BoardResults", "maps a BoardSaveResult to its status (200/404/401/403/409/400), shared by the save and reset endpoints; a pure function of the value passed in, maps no route"),
         // apps (#691)
         new("AppsHttp", "the /spark/apps endpoints' shared caller id (the NameIdentifier claim), WebhookResult → 200/400/404/409 mapping and antiforgery metadata; pure functions of the values passed in, maps no route"),
+        // files (#700)
+        new("FilesHttp", "the /spark/files endpoints' shared FilesResult → 200/400/401/403/404/413/429 mapping and antiforgery metadata; pure functions of the values passed in, maps no route"),
+        new("SparkFileUrls", "signs the embedded file URLs of a PersistentObject being written to the response (D15), called by the read paths; the signer comes from the request's services when the Files plugin is present, maps no route"),
         // mcp (MCP PRD D3, D15): the /mcp endpoint is the SDK's, mapped through MapMcp, not a generator endpoint
         new("McpOrigin", "the Origin rule the /mcp gate middleware applies (D3); a pure function of the request headers and options, maps no route"),
         new("McpProtectedResource", "the RFC 9728 resource URL, challenge and document shared by the gate middleware and the two metadata endpoints; its services arrive as arguments, maps no route"),

@@ -40,7 +40,7 @@ public static class OwnerSettings
     /// <summary>An account's public face: the forge's own public profile, and whether we are connected to it.</summary>
     public static readonly IReadOnlySet<string> PublicAccountAttributes = new HashSet<string>(StringComparer.Ordinal)
     {
-        nameof(Account.Login), nameof(Account.Type), nameof(Account.AvatarUrl), nameof(Account.Provider),
+        nameof(Account.Login), nameof(Account.Type), nameof(Account.AvatarUrl), nameof(Account.CustomAvatar), nameof(Account.Provider),
         nameof(Account.Connection), nameof(Account.DisconnectedReason), nameof(Account.DisconnectedAtUtc),
     };
 

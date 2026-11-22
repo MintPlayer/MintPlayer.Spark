@@ -24,7 +24,7 @@ import {
 } from '@mintplayer/ng-spark/pipes';
 import { SparkAttributeDescriptionComponent } from '@mintplayer/ng-spark/attribute-description';
 import { SparkGridCellComponent } from '@mintplayer/ng-spark/grid';
-import { SPARK_ATTRIBUTE_RENDERERS, SparkResolvedRowRenderer, rendererValue, rowRendererInputs, withDeclaredInputs } from '@mintplayer/ng-spark/renderers';
+import { SPARK_ATTRIBUTE_RENDERERS, SparkResolvedRowRenderer, rendererValue, resolveAttributeRenderer, rowRendererInputs, withDeclaredInputs } from '@mintplayer/ng-spark/renderers';
 import {
   AttributeGroup,
   AttributeTab,
@@ -35,6 +35,7 @@ import {
   QueryResultItem,
   ShowedOn,
   hasShowedOnFlag,
+  isDisplayableImageUrl,
   isPrimitiveArrayAttribute,
 } from '@mintplayer/ng-spark/models';
 
@@ -58,6 +59,7 @@ export class SparkPoPresenterComponent {
   private readonly sparkService = inject(SparkService);
   private readonly pendingTasks = inject(PendingTasks);
   protected readonly rendererRegistry = inject(SPARK_ATTRIBUTE_RENDERERS);
+  protected readonly isDisplayableImageUrl = isDisplayableImageUrl;
 
   /** The loaded object. */
   readonly item = input.required<PersistentObject>();
@@ -159,13 +161,11 @@ export class SparkPoPresenterComponent {
 
   /** Whether the attribute's renderer asks for the whole row, without a label (`fullWidth`). */
   isFullWidthRenderer(attr: EntityAttributeDefinition): boolean {
-    if (!attr.renderer) return false;
-    return this.rendererRegistry.find(r => r.name === attr.renderer)?.fullWidth === true;
+    return resolveAttributeRenderer(this.rendererRegistry, attr, 'fullWidth')?.fullWidth === true;
   }
 
   getDetailRendererComponent(attr: EntityAttributeDefinition): Type<any> | null {
-    if (!attr.renderer) return null;
-    return this.rendererRegistry.find(r => r.name === attr.renderer)?.detailComponent ?? null;
+    return resolveAttributeRenderer(this.rendererRegistry, attr, 'detailComponent')?.detailComponent ?? null;
   }
 
   /** Inputs of an AsDetail row or leading-cell renderer: the row and the object that owns it. */
@@ -190,8 +190,7 @@ export class SparkPoPresenterComponent {
 
   /** Column renderer for a cell of an AsDetail sub-table (so embedded rows honor `col.renderer` too). */
   getAsDetailCellRendererComponent(col: EntityAttributeDefinition): Type<any> | null {
-    if (!col.renderer) return null;
-    return this.rendererRegistry.find(r => r.name === col.renderer)?.columnComponent ?? null;
+    return resolveAttributeRenderer(this.rendererRegistry, col, 'columnComponent')?.columnComponent ?? null;
   }
 
   getAsDetailCellRendererInputs(component: Type<any>, row: Record<string, any>, col: EntityAttributeDefinition): Record<string, any> {

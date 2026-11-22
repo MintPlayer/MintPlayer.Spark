@@ -5,6 +5,7 @@ import {
   QueryResultItem,
   resolveTranslation,
   resolvedBreadcrumb,
+  sparkFileText,
   valueFor,
 } from '@mintplayer/ng-spark/models';
 import { ReferenceChip } from './reference-chips.pipe';
@@ -67,6 +68,10 @@ export class QueryCellValuePipe implements PipeTransform {
       const parsed = new Date(cell.value as string);
       return Number.isNaN(parsed.getTime()) ? String(cell.value) : parsed;
     }
+
+    // A stored file (or a list of them, #700) reads as its name, never "[object Object]".
+    const fileText = sparkFileText(cell.value);
+    if (fileText !== null) return fileText;
 
     // A list of plain values (List<string>): its items, comma-separated. Interpolating the array
     // itself gave "a,b" without spaces. A reference array is drawn from its chips, not from here.
