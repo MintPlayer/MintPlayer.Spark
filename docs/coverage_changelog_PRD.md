@@ -127,6 +127,77 @@ Packaging facts:
 | No sections, noise kept | Sections; a filter shared by notes and changelog (Q4). |
 | About 2,000 lines without tests | Pure `Compose`-style functions with unit tests, and real-git tests as in `CodeCoverage.Versioning.Tests`. |
 
+## Spike results (2026-11-22)
+
+### S1: notes in the annotated tag message
+
+- **The tags are already annotated** and carry a parseable message. Spark has 490 tags, 478 of them package tags.
+  `MintPlayer.Spark/v11.1.0` reads `MintPlayer.Spark 11.1.0`, then `api-hash: sha256:…`, `engine: CodeCoverage.Versioning
+  1.0.0` and `run: <workflow run url>` (`git cat-file -p`). `TagAnnotation` (`CodeCoverage.Versioning/Versions/VersionTag.cs`)
+  already reads keyed lines, so a notes block fits.
+- **Reading every tag at pack time is cheap.** `git for-each-ref "refs/tags/*/v*" --merged origin/release/dotnet-11.x`
+  listed 464 tags with their subjects in **0.40 s**.
+- **Sizes:** the current Release bodies are 150 characters (`MintPlayer.Spark/v11.1.0`) and 262 characters (`v11.0.0`).
+  They are tiny because of the next finding.
+- **Still open:** whether CI checkouts of consumer repositories fetch the tag *objects*, and what recreating a tag does
+  (S1 remainder).
+
+### Defect found: the current D15 notes on release lines list the promotion, not the PRs
+
+- **What the published Release says.** The GitHub Release `MintPlayer.Spark/v11.1.0` reads, in full:
+  "Other changes: Promote release/dotnet-11.x to master fc95abe3820e", plus one dependency line. PR #690 (Spark templates,
+  CLI) is the change it shipped, and it is missing. `v11.0.0` shows the same thing.
+- **Why.** A release line's first-parent history between two tags is the promotion merge alone
+  (`abeeb94cd parents=ff9b6ca2d fc95abe38 | Promote release/dotnet-11.x to master …`). The squashed PR commits sit on its
+  second parent. `ReleaseNotes.SubjectsAsync` walks `--first-parent` (`ReleaseNotes.cs:36`), so it sees only the merge
+  subject.
+- **Proof of the fix's input.** `git log --no-merges MintPlayer.Spark/v11.0.0..MintPlayer.Spark/v11.1.0 --
+  libs/spark/MintPlayer.Spark` gives exactly `fc95abe38 Spark templates, spark CLI / create-spark-app (dnx) (#690)`.
+- **Consequence.** Since the squash queue makes every non-merge commit one PR, the range has to be the **non-merge
+  commits** of previous-tag..tag below the package's inputs, not the first-parent subjects. That's a bug fix to D15 in
+  this PR; it's also the changelog's core.
+
+### S5: backports
+
+- **What a backport commit looks like on the line:** `[dotnet-11.x] Reference ids bound to their declared collection, on
+  read and on save (#251) (#610)`. #251 is the issue (D14's suffix) and #610 is the backport PR. **The original PR
+  (#609) is not in the commit.** It is only in the backport PR's body: `Backport of #609` and
+  `<!-- backport-of: MintPlayer/MintPlayer.Spark#609 -->` (`gh pr view 610`). The squashed message carries only the
+  title and `Co-authored-by` trailers (`git log -1 --format=%B da8be3a91`).
+- **Duplicates are real.** A line receives a change through its backport commit, and later the same change arrives
+  again through a "Promote master … onto release/…" merge (`6e7481da6`). Deduplicating by the original PR number needs
+  that number somewhere git can read it.
+- **Fix candidate (Q13).** The merge queue composes the squashed commit's message itself (title plus co-author trailers,
+  merge-queue PRD D13/D60), so it can add a `Backport-of: #609` trailer. git alone then answers "is this the same
+  change?", with no API call at render time.
+
+### S4: relevance filter on real history
+
+The filter is the proposed type list. Results on Spark `master`, first-parent:
+
+| Range | Subjects | Typed | Untyped |
+|---|---|---|---|
+| since 2026-09-01 | 185 | 52 (27 `fix`, 14 `feat`, 2 `docs`, 1 `ci`, 1 `chore`; 7 use a scope as type, e.g. `codecoverage:`) | **133 (72%)** |
+| since 2026-10-25 (D14 shipped) | 94 | 18 | **76 (81%)** |
+
+Untyped examples: `File and image attributes (#700) (#702)`, `#691 Spark Apps and outbound Standard Webhooks (#694)`,
+`Spark templates, spark CLI / create-spark-app (dnx) (#690)`, and the dependency bot's own
+`Update dependencies (44 groups) (#685)`.
+
+**Spark itself does not have title correction on, so a type-only filter would drop most of Spark's real features**
+(#690, #694, #700). The changelog either requires D14 on, or needs a rule for untyped subjects (Q14). The dependency
+bot's titles are untyped too: it needs a `chore(deps)` title, or the filter needs to recognise it by author.
+
+### S2: a repository-wide Release under a non-package tag
+
+- **The tag grammar ignores it.** `VersionTag.TryParse` splits at the last `/v` and requires a package id and one of
+  our versions, so `release/dotnet-11.x/2026-11-22` is ignored (`VersionTag.cs:25-35`). The MSBuild prefix
+  `<PackageId>/v` doesn't match it either.
+- **The release webhook still reacts.** Its `release: published` event raises `ReleasePublished` for any tag
+  (`GitHubEventsRecipient.cs:639-648`). The only consumer, `DependencyUpdateRecipients.cs:156`, wakes downstream
+  updaters as a producer event: one extra wake-up per `/release`, never a wrong update.
+- **Conclusion:** a repository-wide Release is technically safe. Q3 is a product choice, not a risk.
+
 ## Decisions
 
 Each decision records its evidence; superseded text stays, struck through.
@@ -208,6 +279,8 @@ The changelog is **rendered from git tags and PR metadata**, never committed wit
 | Q10 | Should onboarding add a PR template with the type checklist when a repository has none? | Yes, only when the repository has none, using wording `TemplateWords` already maps. |
 | Q11 | Title separator: keep `(#1/#2)` or switch to the owner's `(#1 - #2)`? | Keep `/`. `IssueSuffix` strips it, and existing titles use it. |
 | Q12 | Unreleased visibility: only a CodeCoverage view, or also a draft GitHub Release per line? | Only the CodeCoverage view. Drafts add a second writer of Releases. |
+| Q13 | How does git know a backport commit is the same change as its original PR (S5)? | The merge queue writes a `Backport-of: #<n>` trailer into the squashed commit. |
+| Q14 | What happens to untyped subjects, which are 81% of Spark's since D14 shipped (S4)? | Require title correction for the changelog, and onboarding turns it on. Untyped subjects from before that are listed under "Changes" so that history isn't silently dropped. |
 
 ## Out of scope
 

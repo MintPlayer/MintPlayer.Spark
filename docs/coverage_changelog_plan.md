@@ -12,7 +12,13 @@
 - the existing D14 and D15 code.
 
 Grill Q1 was answered, then superseded by the owner's "no versions in commits" principle (PRD D1 → D2). The grill is
-paused. **NEXT:** run spikes S1–S7, then resume the grill at Q2 with their results, then write milestones.
+paused.
+
+**2026-11-22, later:** spikes S1, S2, S4 and S5 run; results are in the PRD under "Spike results".
+- **Defect:** D15 release notes on release lines list the promotion merge, not the PRs.
+- **New questions:** Q13 (backports carry no original PR number) and Q14 (81% of Spark's subjects are untyped).
+
+S3, S6 and S7 are implementation-shaped and come after the grill. **NEXT:** the grill, from Q2.
 
 ## Spikes
 
