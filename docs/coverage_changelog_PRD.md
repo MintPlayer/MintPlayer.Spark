@@ -1,7 +1,8 @@
 # Changelogs — the GitHub App writes the changelog of every onboarded repository, without committing a version
 
-**Status:** Investigated 2026-11-22 (five read-only research passes, below). Grilling paused after Q1 on the owner's
-objection (D1 superseded by D2); Q2–Q12 open. Spikes S1–S7 open, see [coverage_changelog_plan.md](coverage_changelog_plan.md).
+**Status:** Grilled 2026-11-22. Q1–Q15 are answered: D1 was superseded by D2, and D2–D12 stand. Spikes S1, S2, S4 and
+S5 have run. S3 (narrowed), S7, S8 and the rest of S1 run inside the milestones. S6 was dropped. Not started; see
+[coverage_changelog_plan.md](coverage_changelog_plan.md).
 **Issue:** #693 (empty; its description is rewritten from this PRD) · **App:** `apps/CodeCoverage` (production,
 coverage.mintplayer.com) · **one pull request**.
 
@@ -372,7 +373,25 @@ correction comes with the changelog) are answered by D6.
   including a tag without notes (seed tags, human tags), which leaves it empty.
 - **Evidence:** owner, Q15: "I tend to go for C".
 
-## Proposed design (to be grilled: Q10–Q12)
+### D12 — Human contributors: a "Type of change" template section and check-run buttons (Q10)
+
+- **Caveat to D6's evidence:** Spark's branch prefixes are chosen by Claude Code, so "58 of 60 branches carry a type"
+  says nothing about human contributors. They name branches `patch-1` or `my-change` and rarely type `feat:` (owner:
+  "Other people won't be using claude-code or an ai agent at all, and just choose their branch names themselves").
+- **Template:** the onboarding PR adds a short "Type of change" section to `.github/pull_request_template.md`. It
+  creates the file if the repository has none, or appends the section visibly in the onboarding PR so the owner reviews
+  it. The box wording is the wording `PrTitleBuilder.TemplateWords` already maps. Spark's own template gets the section
+  in this PR.
+- **No silent `feat`:** when D14's order finds no explicit signal (no ticked box, no type in the title, no branch
+  prefix, no `bug` label), the title-correction check run asks with three buttons: **Feature**, **Fix** and
+  **Not user-facing**. "Not user-facing" means the same as `changelog: skip`. A click edits the title. The plumbing
+  exists: check-run buttons already drive the merge queue (`OnQueueCheckButtonAsync`). GitHub allows three actions per
+  check run.
+- **Limits accepted:** perf, revert and breaking still need a box or a type in the title. Only users with write access
+  can click, so an outside contributor's PR waits for a maintainer or a ticked box.
+- **Evidence:** owner, Q10 (re-asked): "A".
+
+## Original proposed design (before the grill; the decisions above win where they differ)
 
 1. **One entry per merged PR and per affected release unit.** The entry text is the corrected PR title (D14), without
    the issue suffix. A `## Changelog` block in the PR body can override the text (Q5). Each entry keeps its PR number,
@@ -412,7 +431,7 @@ correction comes with the changelog) are answered by D6.
    - A `changelog:` section in `coverage.yml` for the filter overrides and the outputs.
    - Requires versioning. Title correction (D14) is strongly recommended, and the check run warns when it is off (Q9).
 
-## Questions (grill, paused after Q1)
+## Questions (all answered 2026-11-22)
 
 | # | Question | Recommendation |
 |---|---|---|
@@ -425,9 +444,9 @@ correction comes with the changelog) are answered by D6.
 | Q7 | ~~Any committed file at all?~~ | answered: D8 |
 | Q8 | ~~Spark changelog package for deployed apps?~~ | answered: D10 (out of scope) |
 | Q9 | ~~Does the changelog require title correction?~~ | answered: D6 (switched on with it) |
-| Q10 | Should onboarding add a PR template with the type checklist when a repository has none? | Yes, only when the repository has none, using wording `TemplateWords` already maps. |
-| Q11 | Title separator: keep `(#1/#2)` or switch to the owner's `(#1 - #2)`? | Keep `/`. `IssueSuffix` strips it, and existing titles use it. |
-| Q12 | Unreleased visibility: only a CodeCoverage view, or also a draft GitHub Release per line? | Only the CodeCoverage view. Drafts add a second writer of Releases. |
+| Q10 | ~~PR template type checklist?~~ | answered: D12 |
+| Q11 | ~~Title separator~~ | answered (owner: "A"): keep D14's `(#1/#2)`. The changelog shows the text without the suffix; issues become links behind the entry, and the PR number comes from the squash's final `(#N)`. |
+| Q12 | ~~Unreleased visibility~~ | answered (owner: "A"): a CodeCoverage page per repository shows, per release line, the entries since the line's last tag. It includes each entry's override (D9) and type source (D12), with links to fix them in the PR. No draft Releases. A `/release --dry-run` was proposed but not chosen. |
 | Q13 | ~~How does git know a backport commit is the same change as its original PR?~~ | answered: D5 |
 | Q14 | ~~What happens to untyped subjects?~~ | answered: D6 |
 

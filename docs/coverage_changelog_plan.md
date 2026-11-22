@@ -18,7 +18,9 @@ paused.
 - **Defect:** D15 release notes on release lines list the promotion merge, not the PRs.
 - **New questions:** Q13 (backports carry no original PR number) and Q14 (81% of Spark's subjects are untyped).
 
-S3, S6 and S7 are implementation-shaped and come after the grill. **NEXT:** the grill, from Q2.
+S3, S6 and S7 are implementation-shaped and come after the grill.
+
+**2026-11-22, grill complete:** Q1–Q15 answered (D2–D12). S6 was dropped (D10) and S3 narrowed (D11). **NEXT:** M1.
 
 ## Spikes
 
@@ -91,4 +93,26 @@ Each spike answers one question with a measurement. Results go into the PRD's de
 
 ## Milestones
 
-To be written after the grill resumes (Q2–Q12). Tests run once, at the end (owner rules).
+Grill complete 2026-11-22 (PRD D2–D12). One PR on `feat/issue693-changelog`. TDD: a red test first per behaviour, run
+singly. The full gate runs **once, at the end, on CI** (push → PR → checks; no local sweep).
+
+Two hosts render the notes: the server (`mode: server`) and the action (`mode: local`, which Spark uses). So every
+rendering change lands in both `CodeCoverage.Versioning` (C#) and `versioning-action/src` (TS). The action's `dist` is
+rebuilt in the main checkout only (CLAUDE.md, ncc).
+
+| # | Milestone | Decisions | Notes |
+|---|---|---|---|
+| M1 | **Range fix:** the notes take the non-merge commits of previous-tag..tag below the package's inputs, not `--first-parent`. | D4 | Red test: a real-git fixture with a promote merge (tree = master commit, parents = line tip + master) where today's notes show only "Promote …". Both hosts. |
+| M2 | **Deduplication:** key every entry by its original PR number. Read `Backport-of: #n`, then `(cherry picked from commit <sha>)`; at release time fall back to the backport PR body's `<!-- backport-of: … -->` through the API. | D5 | Red test: `da8be3a91`-style backport plus the original arriving through a promotion gives one entry. |
+| M3 | **Queue trailer:** the merge queue adds `Backport-of: #n` to a backport PR's squashed message. | D5 | Beside the co-author trailers (merge-queue D13/D60). |
+| M4 | **Entry model and renderer:** PR, issues, type, breaking, text, package; the D6 filter and sections; the D9 `## Changelog` body section and `changelog: skip` label; dependency-only lines. Pure functions. | D6, D9 | Replaces `ReleaseNotes.Compose`'s Features / Fixes / Other changes. Both hosts. |
+| M5 | **Title correction:** add a branch-prefix step after the title type. Switch it on together with the changelog policy. When no explicit signal is found, the check run asks with three buttons (Feature / Fix / Not user-facing), and a click edits the title. | D6, D12 | `PrTitleBuilder`, `PrTitleRecipients`, the check-run button handler as for the merge queue. |
+| M6 | **Retroactive typing:** for an untyped subject, the release run looks up the PR from its trailing `(#N)` and runs the builder on its current metadata. | D6 | API reads, bounded by `MaxCommits`. |
+| M7 | **Tag notes:** the release run writes a notes block into the annotated tag message; `TagAnnotation` reads it back. | D3 | Format shared by C# and TS. Finish S1: do consumer CI checkouts fetch the tag objects? |
+| M8 | **Releases:** per-package Releases only for packages with their own entries, `make_latest: false`. One per-run Release, tag `release/<line>/<yyyy-MM-dd>[.n]`, created last and marked latest, linking the package Releases. | D7 | `IForgeVersioning.CreateReleaseAsync` gains `make_latest`. Prove S2's "engine ignores the tag" with a test. |
+| M9 | **Public API section:** diff the normalized listing against the previous version's; removals go under Breaking. | D6 | Spike S8 first: the previous listing from the registry package. |
+| M10 | **`PackageReleaseNotes`:** `MintPlayer.Versioning.MSBuild` reads the tag's notes block into the nuspec, current version only, capped at 35,000 characters. | D11 | `RealPackTests`, including a tag without notes. |
+| M11 | **CodeCoverage (Spark):** `ChangelogPolicy` on Repository/Account (synchronize the model), a `changelog:` section in `coverage.yml` (parser like `VersioningYml`), the RavenDB entry copy, the repository changelog page and the upcoming entries per line. | D3, D10, Q12 | `actions.json`/`security.json` changes → synchronize and verify security; new endpoints → `CsrfSurfaceTests` and the route snapshot; translations → golden. |
+| M12 | **Onboarding:** add or append the "Type of change" template section; check the repository metadata (nuspec `RepositoryUrl`, npm `repository`) and warn; switch title correction on. | D7, D12 | Spark's own template and missing `RepositoryUrl`s in this PR. |
+| M13 | **Docs:** a user guide `docs/code-coverage/changelog.md` and the in-app guide; D15 marked superseded where it changed in `coverage_package_versioning_PRD.md`. | all | |
+| M14 | **Gate:** push, open the PR, watch every check, then ask the codecoverage MCP for patch coverage. | | Read failures from the log first. |
