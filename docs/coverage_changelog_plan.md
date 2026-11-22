@@ -82,6 +82,13 @@ Each spike answers one question with a measurement. Results go into the PRD's de
 - Add a `changelog:` section parser following `VersioningYml.cs`.
 - Check what onboarding would add as a PR template when none exists, and that `TemplateWords` maps every box.
 
+### S8 — The previous API listing for the Public API section (D6)
+
+- The action has the current normalized listing after the build (#153 D6). Can it reliably get the *previous*
+  version's listing from the registry package, as D6's fallback already does for the hash, for NuGet and npm, including
+  prereleases and `netstandard` generators?
+- Measure the listing size of `MintPlayer.Spark` to decide whether it is worth keeping in RavenDB instead.
+
 ## Milestones
 
 To be written after the grill resumes (Q2–Q12). Tests run once, at the end (owner rules).

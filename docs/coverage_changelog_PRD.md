@@ -223,7 +223,72 @@ The changelog is **rendered from git tags and PR metadata**, never committed wit
 - **Evidence:** the owner's principle quoted above; #153 D1; the prior-art table.
 - **Still open:** whether any committed file remains at all, for example a version-free pointer or index (Q7).
 
-## Proposed design (to be grilled: Q2–Q12)
+### D3 — The release run freezes the notes into the annotated tag; RavenDB keeps a queryable copy (Q2)
+
+- **Who renders:** the `/release` run renders the finished sections, after applying the PR-body overrides and the
+  `changelog:` labels, which only it can read through the API.
+- **Where they go:** a notes block in the tag message, below `api-hash:`, `engine:` and `run:` (D6). Pack, the action and
+  the server mirror only read and join tag messages; no rendering logic goes into the MSBuild task.
+- **RavenDB:** keeps the entries (per PR, package and release) for the CodeCoverage repository page, the upcoming view
+  and the overrides set before a release. CI never depends on the server being up.
+- **Corrections after a release** edit only the GitHub Release body. The tag stays as it was written.
+- **Evidence:** S1 (the tags are annotated and keyed, 0.40 s to read 464 of them). Owner, Q2: "I'll let you decide.
+  A probably looks good … we probably 'could' store some information in the ravendb database".
+
+### D4 — The defects found by the spikes are fixed in this pull request (owner, 2026-11-22)
+
+- **The range on a release line.** It becomes the non-merge commits of previous-tag..tag below the package's inputs,
+  instead of the first-parent subjects. Both copies change: `ReleaseNotes.cs` and `versioning-action/src/releases.ts`.
+- **Duplicates.** A backport and its original arriving through a promotion give one entry (Q13).
+
+"Promote" commits are Segment P's (`docs/release_lines_recovery_plan.md` §2 Q-A = B, §2b): on a `mode: promote`
+current line, `/release` writes a commit whose tree is a green master commit's, with the line tip and that commit as
+parents. `release/dotnet-11.x` holds cherry-picks up to `da8be3a91`, from before PR #626 switched Spark to promote, and
+promotions after it. Owner: "yes you should fix the detected bugs in this very same pull-request/branch".
+
+### D5 — A backport commit names its original in a trailer (Q13)
+
+- **New backports:** when the merge queue squashes a backport PR, it adds `Backport-of: #<n>` to the commit message,
+  beside its `Co-authored-by` trailers.
+- **Manual cherry-picks:** git's own `(cherry picked from commit <sha>)` (`-x`) is recognised too. That sha's commit
+  carries the original `(#n)`.
+- **Older backports** have no trailer. The release run falls back to the backport PR body's
+  `<!-- backport-of: owner/repo#n -->` through the API (`GET /commits/{sha}/pulls`).
+- **Deduplication key:** the original PR number. A change is one entry however it reached the line.
+- **Evidence:** S5 (`da8be3a91` carries only title and co-authors; PR #610's body carries the marker). Owner, Q13:
+  "I think i'll follow you".
+
+### D6 — Relevance comes from paths, sections from the type, plus a Public API section; title correction comes with the changelog and also classifies old PRs (Q14)
+
+- **Relevance:** an entry exists only when the PR changed the package's inputs (`ReleaseNotes` input paths). CI, docs
+  and test-only PRs never touch a package's inputs. The bot's own dependency PRs (author = the App, branch
+  `mintplayer/dependencies`) become the "Dependencies" lines.
+- **Section:** the PR's type, decided by D14's order, which gains one step. **The branch prefix (`fix/`, `feat/`,
+  `docs/`, …) comes right after "the type already in the title".**
+  - Shown: `feat`, `fix`, `perf` and `revert`, plus a Breaking section for `!`.
+  - Dropped: `chore`, `ci`, `test`, `docs`, `build`, `style`, `refactor`.
+  - Nothing found at all: "Changes".
+- **Title correction is switched on together with the changelog** (owner: "willing to also allow/enforce the
+  title-correction feature, if we can also retroactively process the old pull-requests").
+- **Old PRs** are classified retroactively at render time. For an untyped subject, the release run looks up the PR from
+  its trailing `(#N)` and runs the same builder on the PR's current title, body, branch and linked issues. The result
+  is frozen into the tag (D3), so merged PR titles and git history are never rewritten.
+- **Public API section per release:** the action diffs the normalized API listing (D6 of #153) against the previous
+  version's. Added and removed symbols are listed, and a removal goes under Breaking. This is objective, needs no
+  title, and works for old history too (S8: is the previous listing reliably available from the registry package?).
+- **Not done:** an API delta per PR. The hash exists per release, not per PR. Computing one per PR means building every
+  PR commit, and an API change isn't a feature/fix classification anyway (a fix can add API, a perf change touches none,
+  an app feature has no public API).
+- **Evidence:**
+  - Paths: Spark's commits below `libs/spark/MintPlayer.Spark/` are almost all user-facing (#700, #690, #609, #561, #555).
+    The remaining noise is the dependency bot and a few incidental touches (#577, #586).
+  - Old PRs: in Spark's last 60 merged PRs, D14 as it stands found a type for only 3 (title 1, template 1, bug label 1)
+    and defaulted 57 to `feat`, including the fix #684. 58 of 60 branch names carry a type prefix: `fix/` 27, `feat/` 24,
+    `docs/` 2, `test/`, `ci/` and `chore/` 1 each, plus `mintplayer/` 3 and `backport/` 1 (GraphQL over the merged PRs,
+    2026-11-22).
+  - Owner, Q14: "Otherwise, B looks good".
+
+## Proposed design (to be grilled: Q3–Q12)
 
 1. **One entry per merged PR and per affected release unit.** The entry text is the corrected PR title (D14), without
    the issue suffix. A `## Changelog` block in the PR body can override the text (Q5). Each entry keeps its PR number,
@@ -268,7 +333,7 @@ The changelog is **rendered from git tags and PR metadata**, never committed wit
 | # | Question | Recommendation |
 |---|---|---|
 | Q1 | ~~How does a version reach a committed CHANGELOG.md?~~ | answered, then superseded: D1 → D2 |
-| Q2 | Where do the rendered notes live as source of truth: the annotated tag's message, GitHub Releases, or RavenDB? Tags are immutable (a correction means re-tagging); Release bodies are editable but GitHub-only. | Tag message (offline, forge-neutral, already carries D6 metadata), plus per-PR overrides applied before the tag is written. Corrections after release edit only the Release body. |
+| Q2 | ~~Where do the rendered notes live as source of truth?~~ | answered: D3 |
 | Q3 | A repository-wide GitHub Release per `/release` run: yes or no? And its tag name? | No Release in v1. Use the CodeCoverage repository page instead. A non-package tag risks the engine and the downstream `release` webhook (S2). |
 | Q4 | Relevance filter: the type list, and does D15 adopt it (dropping "Other changes")? | Yes, one filter for both. |
 | Q5 | Entry text: corrected PR title, an optional `## Changelog` body block, or the issue title? | Title, with the body block as the override. Never the issue title (prior art). |
@@ -279,8 +344,8 @@ The changelog is **rendered from git tags and PR metadata**, never committed wit
 | Q10 | Should onboarding add a PR template with the type checklist when a repository has none? | Yes, only when the repository has none, using wording `TemplateWords` already maps. |
 | Q11 | Title separator: keep `(#1/#2)` or switch to the owner's `(#1 - #2)`? | Keep `/`. `IssueSuffix` strips it, and existing titles use it. |
 | Q12 | Unreleased visibility: only a CodeCoverage view, or also a draft GitHub Release per line? | Only the CodeCoverage view. Drafts add a second writer of Releases. |
-| Q13 | How does git know a backport commit is the same change as its original PR (S5)? | The merge queue writes a `Backport-of: #<n>` trailer into the squashed commit. |
-| Q14 | What happens to untyped subjects, which are 81% of Spark's since D14 shipped (S4)? | Require title correction for the changelog, and onboarding turns it on. Untyped subjects from before that are listed under "Changes" so that history isn't silently dropped. |
+| Q13 | ~~How does git know a backport commit is the same change as its original PR?~~ | answered: D5 |
+| Q14 | ~~What happens to untyped subjects?~~ | answered: D6 |
 
 ## Out of scope
 
