@@ -63,6 +63,12 @@ public class MergeQueueEntry
     /// </summary>
     public List<string>? CoAuthors { get; set; }
 
+    /// <summary>
+    /// #693 D5: the pull request this one backports, read with <see cref="CoAuthors"/>; written into the squash as a
+    /// <c>Backport-of: #n</c> trailer, so the changelog lists the change once across the lines. Null for any other.
+    /// </summary>
+    public int? BackportOf { get; set; }
+
     /// <summary>What the pull request's branch should hold now: the pinned head, then each commit the queue published.</summary>
     public string ExpectedHeadSha { get; set; } = string.Empty;
 

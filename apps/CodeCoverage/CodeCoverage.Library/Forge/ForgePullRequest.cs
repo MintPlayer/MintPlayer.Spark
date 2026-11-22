@@ -97,4 +97,7 @@ public sealed record ForgePullRequest(
 
     /// <summary>The pull request's title: the merge queue's squash commit subject.</summary>
     public string? Title { get; init; }
+
+    /// <summary>The pull request's body: a backport's provenance marker for the squash's <c>Backport-of:</c> trailer (#693 D5).</summary>
+    public string? Body { get; init; }
 }
