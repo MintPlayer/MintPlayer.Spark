@@ -239,8 +239,15 @@ The changelog is **rendered from git tags and PR metadata**, never committed wit
 
 ### D4 — The defects found by the spikes are fixed in this pull request (owner, 2026-11-22)
 
-- **The range on a release line.** It becomes the non-merge commits of previous-tag..tag below the package's inputs,
-  instead of the first-parent subjects. Both copies change: `ReleaseNotes.cs` and `versioning-action/src/releases.ts`.
+- **The range on a release line.** ~~It becomes the non-merge commits of previous-tag..tag below the package's inputs,
+  instead of the first-parent subjects. Both copies change: `ReleaseNotes.cs` and `versioning-action/src/releases.ts`.~~
+  *Revised in M1:* the walk stays first-parent, and a merge that is not a pull request's ("Promote …") is replaced by
+  the first-parent subjects of its first parent..second parent (nesting up to 3 deep). `--no-merges` would have broken
+  repositories that merge PRs with merge commits: their PR title is in the merge's body, and the branch's WIP commits
+  would have replaced it (`ReleaseNotesTests.Reads_first_parent_subjects_below_the_inputs_and_a_merge_commits_PR_title`).
+  Only `ReleaseNotes.cs` changes: `releases.ts` posts the notes the C# engine CLI renders (`Wire.cs:47`); it has no copy.
+  Red → green: `ReleaseNotesTests.A_promote_merge_on_a_release_line_lists_the_pull_requests_it_brings_in` (red found
+  only "Promote release/1.x to master …").
 - **Duplicates.** A backport and its original arriving through a promotion give one entry (Q13).
 
 "Promote" commits are Segment P's (`docs/release_lines_recovery_plan.md` §2 Q-A = B, §2b): on a `mode: promote`

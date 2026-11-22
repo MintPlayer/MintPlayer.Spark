@@ -67,6 +67,37 @@ public class ReleaseNotesTests : IDisposable
         subjects.Should().Equal("feat: merge-committed (#2) (#5)", "fix: squash merged (#3)");
     }
 
+    [Fact]
+    public async Task A_promote_merge_on_a_release_line_lists_the_pull_requests_it_brings_in()
+    {
+        // #693 D4: /release makes a commit whose tree is a master commit and whose parents are the line tip and that
+        // commit. The first-parent walk saw only "Promote …"; MintPlayer.Spark/v11.1.0 missed #690 that way.
+        Write("src/Core/A.cs", "a");
+        Git("init", "-q", "-b", "master");
+        Git("add", ".");
+        Git("commit", "-q", "-m", "chore: initial");
+        Git("branch", "release/1.x");
+        var since = Git("rev-parse", "HEAD");
+
+        Write("src/Core/A.cs", "b");
+        Git("commit", "-q", "-am", "feat: templates (#690)");
+        Write("docs/x.md", "x");
+        Git("add", ".");
+        Git("commit", "-q", "-m", "docs: guide (#691)");
+        Write("src/Core/A.cs", "c");
+        Git("commit", "-q", "-am", "fix: null id (#692)");
+        var master = Git("rev-parse", "HEAD");
+
+        Git("checkout", "-q", "release/1.x");
+        var tree = Git("rev-parse", master + "^{tree}");
+        var promote = Git("commit-tree", tree, "-p", "HEAD", "-p", master, "-m", $"Promote release/1.x to master {master[..12]}");
+        Git("reset", "-q", "--hard", promote);
+
+        var subjects = await ReleaseNotes.SubjectsAsync(new GitCli(Path.Combine(root.FullName, ".git")), since, promote, ["src/Core"]);
+
+        subjects.Should().Equal("fix: null id (#692)", "feat: templates (#690)");
+    }
+
     private void Write(string path, string text)
     {
         var full = Path.Combine(root.FullName, path);

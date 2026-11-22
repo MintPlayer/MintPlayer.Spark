@@ -29,19 +29,43 @@ public static partial class ReleaseNotes
 
 	/// <summary>
 	/// The first-parent subjects in <paramref name="from"/>..<paramref name="to"/> below <paramref name="paths"/>, newest
-	/// first: on the default branch every first-parent commit is one merged pull request.
+	/// first: on the default branch every first-parent commit is one merged pull request. A merge that is not a pull
+	/// request's (a release line's "Promote …", #693 D4) stands for the commits it brings in, so it is replaced by the
+	/// first-parent subjects of its first parent..second parent.
 	/// </summary>
 	public static async Task<IReadOnlyList<string>> SubjectsAsync(GitCli git, string from, string to, IReadOnlyList<string> paths, CancellationToken cancellationToken = default)
 	{
-		string[] arguments = ["log", "--first-parent", "-n", MaxCommits.ToString(System.Globalization.CultureInfo.InvariantCulture), "--format=%s%x1f%b%x1e",
-			$"{GitCli.RequireObjectId(from)}..{GitCli.RequireObjectId(to)}", "--", .. paths.Select(p => ":(literal)" + p)];
+		var subjects = new List<string>();
+		await CollectAsync(git, GitCli.RequireObjectId(from), GitCli.RequireObjectId(to), paths, subjects, MaxExpansionDepth, cancellationToken);
+		return subjects;
+	}
+
+	/// <summary>How deep promotions nest: a promote of a line that itself merged a promote. Deeper merges stay one line.</summary>
+	private const int MaxExpansionDepth = 3;
+
+	private static async Task CollectAsync(GitCli git, string from, string to, IReadOnlyList<string> paths, List<string> subjects, int depth, CancellationToken cancellationToken)
+	{
+		var remaining = MaxCommits - subjects.Count;
+		if (remaining <= 0) return;
+		string[] arguments = ["log", "--first-parent", "-n", remaining.ToString(System.Globalization.CultureInfo.InvariantCulture), "--format=%P%x1f%s%x1f%b%x1e",
+			$"{from}..{to}", "--", .. paths.Select(p => ":(literal)" + p)];
 		var result = (await git.RunAsync(arguments, cancellationToken: cancellationToken)).EnsureSuccess("log");
-		return Encoding.UTF8.GetString(result.Output)
-			.Split('\x1e', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-			.Select(entry => entry.Split('\x1f', 2))
-			.Select(parts => Subject(parts[0], parts.Length > 1 ? parts[1] : ""))
-			.Where(s => s.Length > 0)
-			.ToList();
+		var entries = Encoding.UTF8.GetString(result.Output).Split('\x1e', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+		foreach (var entry in entries)
+		{
+			if (subjects.Count >= MaxCommits) return;
+			var parts = entry.Split('\x1f', 3);
+			if (parts.Length < 2) continue;
+			var parents = parts[0].Split(' ', StringSplitOptions.RemoveEmptyEntries);
+			var body = parts.Length > 2 ? parts[2] : "";
+			if (parents.Length > 1 && depth > 0 && !MergePullRequest().IsMatch(parts[1]))
+			{
+				await CollectAsync(git, GitCli.RequireObjectId(parents[0]), GitCli.RequireObjectId(parents[1]), paths, subjects, depth - 1, cancellationToken);
+				continue;
+			}
+			var subject = Subject(parts[1], body);
+			if (subject.Length > 0) subjects.Add(subject);
+		}
 	}
 
 	private static string Subject(string subject, string body)

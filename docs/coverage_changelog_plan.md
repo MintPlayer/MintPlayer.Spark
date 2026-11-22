@@ -96,16 +96,18 @@ Each spike answers one question with a measurement. Results go into the PRD's de
 Grill complete 2026-11-22 (PRD D2–D13, D16). One PR on `feat/issue693-changelog`. TDD: a red test first per behaviour, run
 singly. The full gate runs **once, at the end, on CI** (push → PR → checks; no local sweep).
 
-Two hosts render the notes: the server (`mode: server`) and the action (`mode: local`, which Spark uses). So every
-rendering change lands in both `CodeCoverage.Versioning` (C#) and `versioning-action/src` (TS). The action's `dist` is
-rebuilt in the main checkout only (CLAUDE.md, ncc).
+~~Two hosts render the notes, so every rendering change lands in both C# and TS.~~ *Corrected in M1:* only
+`CodeCoverage.Versioning` (C#) renders. The action (`mode: local`) runs the C# engine CLI and posts the notes it
+returns (`CodeCoverage.Versioning.Cli/Wire.cs:47`). TS changes only where the action itself calls GitHub
+(`releases.ts`: `make_latest`, the per-run Release). The action's `dist` is rebuilt in the main checkout only
+(CLAUDE.md, ncc).
 
 | # | Milestone | Decisions | Notes |
 |---|---|---|---|
-| M1 | **Range fix:** the notes take the non-merge commits of previous-tag..tag below the package's inputs, not `--first-parent`. | D4 | Red test: a real-git fixture with a promote merge (tree = master commit, parents = line tip + master) where today's notes show only "Promote …". Both hosts. |
+| M1 ✅ | **Range fix:** a non-PR merge in the first-parent walk is expanded into its first parent..second parent. | D4 | Done: `ReleaseNotesTests.A_promote_merge_…` red → green. |
 | M2 | **Deduplication:** key every entry by its original PR number. Read `Backport-of: #n`, then `(cherry picked from commit <sha>)`; at release time fall back to the backport PR body's `<!-- backport-of: … -->` through the API. | D5 | Red test: `da8be3a91`-style backport plus the original arriving through a promotion gives one entry. |
 | M3 | **Queue trailer:** the merge queue adds `Backport-of: #n` to a backport PR's squashed message. | D5 | Beside the co-author trailers (merge-queue D13/D60). |
-| M4 | **Entry model and renderer:** PR, issues, type, breaking, text, package; the D6 filter and sections; the D9 `## Changelog` body section and `changelog: skip` label; dependency-only lines. Pure functions. | D6, D9 | Replaces `ReleaseNotes.Compose`'s Features / Fixes / Other changes. Both hosts. |
+| M4 | **Entry model and renderer:** PR, issues, type, breaking, text, package; the D6 filter and sections; the D9 `## Changelog` body section and `changelog: skip` label; dependency-only lines. Pure functions. | D6, D9 | Replaces `ReleaseNotes.Compose`'s Features / Fixes / Other changes. C# only. |
 | M5 | **Title correction:** switch it on together with the changelog policy. When no explicit signal is found (box, title type, `bug` label; never the branch name), the check run asks with three buttons (Feature / Fix / Not user-facing), and a click edits the title. | D6, D12 | `PrTitleBuilder`, `PrTitleRecipients`, the check-run button handler as for the merge queue. |
 | M6 | **Retroactive typing:** for an untyped subject, the release run looks up the PR from its trailing `(#N)` and runs the builder on its current metadata. | D6 | API reads, bounded by `MaxCommits`. |
 | M7 | **Tag notes:** the release run writes a notes block into the annotated tag message; `TagAnnotation` reads it back. | D3 | Format shared by C# and TS. Finish S1: do consumer CI checkouts fetch the tag objects? |
