@@ -288,7 +288,53 @@ promotions after it. Owner: "yes you should fix the detected bugs in this very s
     2026-11-22).
   - Owner, Q14: "Otherwise, B looks good".
 
-## Proposed design (to be grilled: Q3–Q12)
+### D7 — Release notes reach Renovate and Dependabot through per-package Releases; one Release per run is the overview (Q3)
+
+The owner's requirement: "let it be compatible with the conventions you mentioned (like renovate and dependabot)".
+Both bots read the notes from a **GitHub Release on the version tag**; a bare tag is not enough. Our tag format matches
+both. Sources, read at HEAD on 2026-11-22:
+
+- **Renovate:**
+  - **Tag match:** `getExactReleaseMatch` matches `(?:^|/)<packageName>[@_/-]v?<version>`, so `MintPlayer.Spark/v11.1.0`
+    and `@mintplayer/ng-spark/v22.4.0` both match (`lib/workers/repository/update/pr/changelog/release-notes.ts`
+    ~190-215).
+  - **Releases are listed, not tags:** `github/source.ts:168`.
+  - **Changelog files** are read from the *default branch* only (`github/source.ts:103-160`), and tried before the
+    Releases (`source.ts:79-81`).
+  - **Compare links** use the prefix `(pkg)[@_-]v?`, so `/v` gives no compare link (`source.ts:279-285`). That's
+    cosmetic.
+  - **The NuGet source URL** comes from the nuspec `repository@url` (`datasource/nuget/v3.ts:248-250`).
+- **Dependabot:**
+  - **Releases** are those whose tag starts with the dependency name, with the version matched at the end of the tag or
+    name (`common/lib/dependabot/metadata_finders/base/release_finder.rb:126-135`, `:261-267`).
+  - **Changelog files** are read from the default branch first, then at the tag
+    (`changelog_finder.rb:113-135`). A package directory is trusted only for npm `repository.directory` (`base.rb:18`).
+
+Decisions:
+- **Per package:** one Release per package tag stays (D15, `ResolveReleaseOnTag` default on), with the D6 sections. It's
+  created with `make_latest: false`.
+- **Per run:** one Release per `/release` run, created last and marked latest. It summarises every package the run
+  released, with links to the per-package Releases, so the repository's "Latest release" is the overview. Its tag is
+  `release/<line>/<yyyy-MM-dd>[.<n>]`, or `release/<yyyy-MM-dd>[.<n>]` without lines. The engine ignores that tag (S2).
+- **Fewer Releases:** a package released only because a dependency moved gets **no** per-package Release. It is listed
+  in the run's Release, its tag annotation and its packaged CHANGELOG.md. Measured: of the 30 Releases of 2026-11-18, 20
+  carried only "Dependency update" lines. The runs of 2026-11-12, 11-16 and 11-18 made 23, 46 and 30 Releases. The 11-16
+  count is inflated by the D4 defect: every package's notes held the promotion line.
+- **Metadata:** every package must name its repository, so both bots find the Releases: the nuspec `RepositoryUrl` and
+  npm `repository.url` plus `repository.directory`. Spark sets `RepositoryUrl` in only a few of its 68 packable csprojs
+  (`MintPlayer.Spark.AllFeatures`, `MintPlayer.Spark.Apps`, …). Onboarding checks it and the versioning check run warns
+  when it's missing (S7).
+
+### D8 — No changelog file is committed, not even a pointer (Q7)
+
+- **Why:** Renovate tries changelog files on the default branch *before* the Releases (`source.ts:79-81`), and
+  Dependabot does the same (`changelog_finder.rb:113-135`). A committed root `CHANGELOG.md` without our versions would be
+  found first and hold nothing to match, which is at best a wasted lookup. Not committing one means both go straight to
+  the Releases.
+- **Also:** it follows from D2.
+- **Exception:** a hand-written `CHANGELOG.md` a repository already has is left alone.
+
+## Proposed design (to be grilled: Q4–Q6, Q8–Q12)
 
 1. **One entry per merged PR and per affected release unit.** The entry text is the corrected PR title (D14), without
    the issue suffix. A `## Changelog` block in the PR body can override the text (Q5). Each entry keeps its PR number,
@@ -334,11 +380,11 @@ promotions after it. Owner: "yes you should fix the detected bugs in this very s
 |---|---|---|
 | Q1 | ~~How does a version reach a committed CHANGELOG.md?~~ | answered, then superseded: D1 → D2 |
 | Q2 | ~~Where do the rendered notes live as source of truth?~~ | answered: D3 |
-| Q3 | A repository-wide GitHub Release per `/release` run: yes or no? And its tag name? | No Release in v1. Use the CodeCoverage repository page instead. A non-package tag risks the engine and the downstream `release` webhook (S2). |
+| Q3 | ~~A repository-wide GitHub Release per `/release` run?~~ | answered: D7 |
 | Q4 | Relevance filter: the type list, and does D15 adopt it (dropping "Other changes")? | Yes, one filter for both. |
 | Q5 | Entry text: corrected PR title, an optional `## Changelog` body block, or the issue title? | Title, with the body block as the override. Never the issue title (prior art). |
 | Q6 | Breaking changes: a section of their own? D8 makes a break inside a platform generation a minor. | A "Breaking changes" section from `!`, independent of the version bump. |
-| Q7 | Any committed file at all? For example a version-free root `CHANGELOG.md` that links to the Releases and the CodeCoverage page. | No file, or a one-time static pointer written by onboarding (no versions, never rewritten). |
+| Q7 | ~~Any committed file at all?~~ | answered: D8 |
 | Q8 | Is the Spark-framework changelog package for deployed apps in scope of this PR? | Decide after S6. |
 | Q9 | Does the changelog require title correction (D14) on, or only warn? | Warn. |
 | Q10 | Should onboarding add a PR template with the type checklist when a repository has none? | Yes, only when the repository has none, using wording `TemplateWords` already maps. |
