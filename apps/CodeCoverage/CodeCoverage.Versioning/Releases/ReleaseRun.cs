@@ -108,7 +108,7 @@ public static class ReleaseRun
 		// #693 D3: the notes are rendered before the tags are written, because each tag freezes its own.
 		var rendered = new Dictionary<string, ReleaseNotesText>(StringComparer.Ordinal);
 		foreach (var release in plan.Releases.Where(r => !r.TaggedByHand))
-			rendered[release.Tag.Name] = await ReleaseNotes.ForAsync(git, head, release, request.PullRequests, cancellationToken);
+			rendered[release.Tag.Name] = await ReleaseNotes.ForAsync(git, head, release, request.PullRequests, request.Settings.ChangelogInclude, cancellationToken);
 
 		var tags = plan.Releases
 			.Where(r => !r.TaggedByHand)

@@ -323,6 +323,18 @@ public class ReadRowFilterTests : CoverageRavenTest
             .Should().ThrowExactlyAsync<SparkQueryParentRequiredException>();
     }
 
+    [Fact]
+    public async Task Repository_Changelog_refuses_a_parent_of_the_wrong_type()
+    {
+        using var store = GetDocumentStore();
+        using var session = store.OpenAsyncSession();
+        var actions = CreateActions<ChangelogReleaseActions>(VisibilityFor(session), session);
+
+        // #693 M11; the listing itself is ChangelogRecipientTests'.
+        await new Func<Task>(() => actions.Repository_Changelog(ParentArgs("Account", "Accounts/github/1")))
+            .Should().ThrowExactlyAsync<SparkQueryParentRequiredException>();
+    }
+
     private static Build BuildOf(string? commitId) => new() { Commit = commitId };
 
     [Theory]

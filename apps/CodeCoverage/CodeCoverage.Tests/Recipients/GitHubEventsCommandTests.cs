@@ -110,8 +110,9 @@ public class GitHubEventsCommandTests : CoverageRavenTest
         bus.Messages.Should().BeEmpty();
     }
 
-    private static string Release(string action, string tag, string? publishedAt) => $$$"""
-        {"action":"{{{action}}}","release":{"tag_name":"{{{tag}}}"{{{(publishedAt is null ? "" : $",\"published_at\":\"{publishedAt}\"")}}}},
+    private static string Release(string action, string tag, string? publishedAt, bool draft = false) => $$$"""
+        {"action":"{{{action}}}","release":{"tag_name":"{{{tag}}}","name":"Acme {{{tag}}}","body":"### Fixes\n- Crash (#3)","prerelease":false,
+         "draft":{{{(draft ? "true" : "false")}}},"target_commitish":"main"{{{(publishedAt is null ? "" : $",\"published_at\":\"{publishedAt}\"")}}}},
          "repository":{{{Repo}}},"sender":{"login":"maintainer","type":"User"}}
         """;
 
@@ -143,11 +144,27 @@ public class GitHubEventsCommandTests : CoverageRavenTest
         var untagged = await DeliverAsync(store, "release", Release("published", "", null));
 
         published.Of<ForgeWebhookMessage<ReleasePublished>>().Should().ContainSingle().Which.Event
-            .Should().Be(new ReleasePublished(RepositoryId, "v2.1.0", new DateTimeOffset(2026, 10, 30, 12, 0, 0, TimeSpan.Zero)));
+            .Should().Be(new ReleasePublished(RepositoryId, "v2.1.0", new DateTimeOffset(2026, 10, 30, 12, 0, 0, TimeSpan.Zero),
+                new ForgeReleaseNotes("Acme v2.1.0", "### Fixes\n- Crash (#3)", false, "main")));
         undated.Of<ForgeWebhookMessage<ReleasePublished>>().Should().ContainSingle().Which.Event.PublishedAt
             .Should().BeCloseTo(DateTimeOffset.UtcNow, TimeSpan.FromMinutes(1));
         created.Messages.Should().BeEmpty();
         untagged.Messages.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task An_edited_release_is_raised_with_its_notes_and_a_draft_edit_is_not()
+    {
+        using var store = GetDocumentStore();
+        await SeedAsync(store, busy: false);
+
+        var edited = await DeliverAsync(store, "release", Release("edited", "v2.1.0", "2026-10-30T12:00:00Z"));
+        var draft = await DeliverAsync(store, "release", Release("edited", "v2.2.0", null, draft: true));
+
+        edited.Of<ForgeWebhookMessage<ReleaseEdited>>().Should().ContainSingle().Which.Event
+            .Should().Be(new ReleaseEdited(RepositoryId, "v2.1.0", new ForgeReleaseNotes("Acme v2.1.0", "### Fixes\n- Crash (#3)", false, "main")));
+        edited.Of<ForgeWebhookMessage<ReleasePublished>>().Should().BeEmpty("an edit is no new release for the dependency updater");
+        draft.Messages.Should().BeEmpty();
     }
 
     [Fact]

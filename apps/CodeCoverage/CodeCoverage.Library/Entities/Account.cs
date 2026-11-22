@@ -1,4 +1,5 @@
 using CodeCoverage.Forge;
+using CodeCoverage.LookupReferences;
 using MintPlayer.Spark.Abstractions;
 
 namespace CodeCoverage.Entities;
@@ -238,6 +239,20 @@ public class Account : IForgeConnectable
     /// <summary>Whether the app cuts <c>release/&lt;major&gt;.x</c> when a platform major moves (D12). On by default, backfilled like <see cref="ReleaseOnTag"/>.</summary>
     [IgnoreForIndex]
     public bool AutoCutReleaseBranches { get; set; } = true;
+
+    /// <summary>
+    /// Whether the app keeps a changelog of this account's repositories and corrects their pull-request titles for it.
+    /// Off by default: it edits somebody else's pull requests.
+    /// </summary>
+    /// <remarks>docs/coverage_changelog_PRD.md D3, D6. A repository overrides it with <see cref="Repository.Changelog"/>.</remarks>
+    [IgnoreForIndex]
+    public bool Changelog { get; set; }
+
+    /// <summary>Whether onboarding adds a "Type of change" section to the pull-request template.</summary>
+    /// <remarks>docs/coverage_changelog_PRD.md D12, D13. The enum's zero is Enabled, so stored accounts read the default.</remarks>
+    [IgnoreForIndex]
+    [LookupReference(typeof(PrTemplateDefault))]
+    public EPrTemplateDefault PrTemplate { get; set; }
 
     /// <summary>The size scale, one label per row (D2). The app creates, renames and deletes these labels itself (D3).</summary>
     [IgnoreForIndex]

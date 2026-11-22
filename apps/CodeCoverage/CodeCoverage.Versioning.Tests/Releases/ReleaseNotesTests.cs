@@ -55,6 +55,20 @@ public class ReleaseNotesTests : IDisposable
             + "### Dependencies\n- Dependency update: Acme.Util 2.0.0");
     }
 
+    // #693 M11: versioning.changelog.include writes a type the notes drop by default under "Changes".
+    [Fact]
+    public async Task Included_types_are_written_under_changes()
+    {
+        var config = new VersioningConfig { Changelog = new VersioningChangelogConfig { Include = ["docs"] } };
+        config.Validate().Should().BeEmpty();
+
+        var notes = ReleaseNotes.Compose(Planned("1.3.0"), await Entries("docs: the guide (#9)", "ci: faster (#3)", "fix: x (#2)"), config.ToSettings().ChangelogInclude);
+
+        notes.Body.Should().Be("### Fixes\n- x (#2)\n\n### Changes\n- the guide (#9)");
+        new VersioningConfig { Changelog = new VersioningChangelogConfig { Include = ["feat", "docs"] } }.Validate()
+            .Should().Equal("versioning.changelog.include: 'feat' is not one of build, chore, ci, docs, refactor, style, test.");
+    }
+
     [Fact]
     public void An_api_delta_groups_target_frameworks_and_keeps_removals_first()
     {

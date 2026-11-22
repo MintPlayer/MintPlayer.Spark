@@ -43,6 +43,9 @@ public sealed record VersioningSettings
 	/// upstream; on its line it wins over <see cref="Prerelease"/>, and a package pin wins over it.
 	/// </summary>
 	public IReadOnlyDictionary<string, PrereleasePin> LinePrerelease { get; init; } = new Dictionary<string, PrereleasePin>();
+
+	/// <summary>#693 M11: <c>versioning.changelog.include</c>, the types the notes write under "Changes" too.</summary>
+	public IReadOnlySet<string> ChangelogInclude { get; init; } = new HashSet<string>();
 }
 
 /// <summary>What the build knows about one packed package (D5): what static parsing cannot read.</summary>

@@ -91,6 +91,18 @@
         "group": "b2e84c07-9d13-4f56-8a2b-6c9e17f0a582"
       },
       {
+        "id": "80e301fc-1dec-452e-acb4-0799bf2952cc",
+        "name": "Changelog",
+        "dataType": "boolean",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 29,
+        "isArray": false,
+        "inQueryType": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
         "id": "5edc4d64-35ee-476d-89e7-41618672bd44",
         "name": "Connection",
         "dataType": "string",
@@ -427,6 +439,19 @@
         "showedOn": "None",
         "rules": [],
         "group": "6b2e9d41-7c03-4f58-a1e6-2d94c8b05f73"
+      },
+      {
+        "id": "ccd555ab-1b08-47e7-a1e9-8b949ff66f24",
+        "name": "PrTemplate",
+        "dataType": "string",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 30,
+        "isArray": false,
+        "lookupReferenceType": "PrTemplateDefault",
+        "inQueryType": false,
+        "showedOn": "PersistentObject",
+        "rules": []
       },
       {
         "id": "9a24c292-181d-4e98-bc9c-474b1979ffd1",

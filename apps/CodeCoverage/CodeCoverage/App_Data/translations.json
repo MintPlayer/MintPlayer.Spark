@@ -693,6 +693,11 @@
             "nl": "Avatar"
           }
         },
+        "Changelog": {
+          "description": {
+            "en": "Whether the app keeps a changelog of this account's repositories and corrects their pull-request titles for it. Off by default: it edits somebody else's pull requests."
+          }
+        },
         "Connection": {
           "description": {
             "en": "Whether we can still act on this account's repositories."
@@ -937,6 +942,11 @@
             "en": "Size labels",
             "fr": "Étiquettes de taille",
             "nl": "Groottelabels"
+          }
+        },
+        "PrTemplate": {
+          "description": {
+            "en": "Whether onboarding adds a \"Type of change\" section to the pull-request template."
           }
         },
         "PrTitleCorrection": {
@@ -1614,6 +1624,50 @@
             "en": "Uploaded",
             "fr": "Envoyé",
             "nl": "Geüpload"
+          }
+        }
+      }
+    },
+    "ChangelogRelease": {
+      "attributes": {
+        "Notes": {
+          "description": {
+            "en": "The release notes, as markdown."
+          }
+        },
+        "Package": {
+          "description": {
+            "en": "The package id."
+          }
+        },
+        "Prerelease": {
+          "description": {
+            "en": "A prerelease version."
+          }
+        },
+        "ReleasedAtUtc": {
+          "description": {
+            "en": "When the Release was published."
+          }
+        },
+        "Repository": {
+          "description": {
+            "en": "The repository the package was released from."
+          }
+        },
+        "Tag": {
+          "description": {
+            "en": "The version tag; the Release carries the same name."
+          }
+        },
+        "Target": {
+          "description": {
+            "en": "The branch or commit the Release names."
+          }
+        },
+        "Version": {
+          "description": {
+            "en": "The version released."
           }
         }
       }
@@ -3138,6 +3192,11 @@
             "nl": "Badgetoken"
           }
         },
+        "Changelog": {
+          "description": {
+            "en": "Whether the app keeps a changelog for this repository, or the account's setting."
+          }
+        },
         "Connection": {
           "description": {
             "en": "Whether the GitHub App can still see this repository.",
@@ -3506,6 +3565,11 @@
             "en": "Size labels in effect",
             "fr": "Étiquettes de taille en vigueur",
             "nl": "Groottelabels van kracht"
+          }
+        },
+        "PrTemplate": {
+          "description": {
+            "en": "Whether onboarding adds a \"Type of change\" section to this repository's pull-request template, or the account's setting."
           }
         },
         "PrTitleCorrection": {

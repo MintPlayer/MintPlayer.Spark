@@ -234,6 +234,17 @@ The changelog is **rendered from git tags and PR metadata**, never committed wit
   and the overrides set before a release, through the storage-agnostic `ISparkSession` (D16; RavenDB today). CI never
   depends on the server being up.
 - **Corrections after a release** edit only the GitHub Release body. The tag stays as it was written.
+- **Done (M11):** the copy is one `ChangelogRelease` per version tag, `ChangelogReleases/{provider}/{repoId}/{tag}`,
+  written by `ChangelogRecipient` through `ISparkSession` only (loads by id, `LoadStartingWithAsync` for the page, no
+  index). *Deviation:* its source is the forge's `release` webhook (`published`, and `edited` for the corrections
+  above), not the versioning endpoint's `FinishAsync`. The action's local mode, which Spark itself runs, never calls the
+  server (`versioning-action/src/main.ts:351`), while both hosts create the Releases. The run Release (not a version
+  tag) and dependency-only packages (no Release, D7) get no copy. Gated by `Repository.ResolveChangelog` (account
+  default off: it switches title correction on, which edits other people's pull requests). Tests:
+  `ChangelogRecipientTests`, every case on the in-memory store and on RavenDB.
+- **Config placement (M11):** the filter overrides live under `versioning.changelog.include` in `coverage.yml`, not a
+  top-level `changelog:`. The action hands the engine only the `versioning:` section (`versioning-action/src/main.ts`,
+  `versioningSection`), so a top-level section would never reach local mode.
 - **Evidence:** S1 (the tags are annotated and keyed, 0.40 s to read 464 of them). Owner, Q2: "I'll let you decide.
   A probably looks good … we probably 'could' store some information in the ravendb database".
 

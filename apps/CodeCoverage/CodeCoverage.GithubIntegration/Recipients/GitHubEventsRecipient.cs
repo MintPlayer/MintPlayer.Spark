@@ -640,12 +640,18 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
     {
         using var payload = JsonDocument.Parse(message.EventJson);
         var root = payload.RootElement;
-        if (Text(root, "action") != "published") return;
+        var action = Text(root, "action");
+        if (action is not ("published" or "edited")) return;
         if (Child(root, "release") is not { } release || Text(release, "tag_name") is not { Length: > 0 } tag) return;
+        // #693 M11: the notes, for the changelog page; an edit of a draft is not a published Release's correction.
+        var notes = new ForgeReleaseNotes(Text(release, "name") ?? "", Text(release, "body") ?? "",
+            release.TryGetProperty("prerelease", out var pre) && pre.ValueKind == JsonValueKind.True, Text(release, "target_commitish"));
+        if (action == "edited" && release.TryGetProperty("draft", out var draft) && draft.ValueKind == JsonValueKind.True) return;
         var published = DateTimeOffset.TryParse(Text(release, "published_at"), System.Globalization.CultureInfo.InvariantCulture,
             System.Globalization.DateTimeStyles.AssumeUniversal, out var at) ? at : DateTimeOffset.UtcNow;
         if (await LoadKnownRepositoryIdAsync(root, ct) is not { } repositoryId) return;
-        await RaiseAsync(new ReleasePublished(repositoryId, tag, published), ct);
+        if (action == "edited") await RaiseAsync(new ReleaseEdited(repositoryId, tag, notes), ct);
+        else await RaiseAsync(new ReleasePublished(repositoryId, tag, published, notes), ct);
     }
 
     /// <summary>

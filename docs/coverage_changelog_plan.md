@@ -22,6 +22,10 @@ S3, S6 and S7 are implementation-shaped and come after the grill.
 
 **2026-11-22, grill complete:** Q1–Q15 answered (D2–D12). S6 was dropped (D10) and S3 narrowed (D11). **NEXT:** M1.
 
+**2026-11-23:** M1–M10 committed; S8 run (results under S8). M11's policies, `versioning.changelog.include` and the
+database copy with its repository query are committed (PRD D3 "Done (M11)"). **NEXT:** M11's upcoming view per release
+line (Q12), then M12–M14.
+
 ## Spikes
 
 Each spike answers one question with a measurement. Results go into the PRD's decisions with their evidence.

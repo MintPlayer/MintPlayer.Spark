@@ -24,12 +24,12 @@ public static partial class ReleaseNotes
 	public const int MaxCommits = 200;
 
 	public static async Task<ReleaseNotesText> ForAsync(GitCli git, string head, PlannedRelease release, IPullRequestFacts? pullRequests = null,
-		CancellationToken cancellationToken = default)
+		IReadOnlySet<string>? include = null, CancellationToken cancellationToken = default)
 	{
 		var commits = release.Since is { } since && release.Inputs is { Count: > 0 } inputs
 			? await CommitsAsync(git, since, head, inputs, cancellationToken)
 			: [];
-		return Compose(release, await EntriesAsync(commits, pullRequests, cancellationToken));
+		return Compose(release, await EntriesAsync(commits, pullRequests, cancellationToken), include);
 	}
 
 	/// <summary>The entries of <paramref name="commits"/>: parsed, resolved against the pull requests' facts, deduplicated.</summary>
@@ -114,14 +114,17 @@ public static partial class ReleaseNotes
 	];
 
 	/// <summary>The notes from the entries alone: pure, so both hosts and the tests agree.</summary>
-	public static ReleaseNotesText Compose(PlannedRelease release, IReadOnlyList<ChangelogEntry> entries)
+	/// <param name="include">#693 M11 (<c>versioning.changelog.include</c>): dropped types written under "Changes" instead.</param>
+	public static ReleaseNotesText Compose(PlannedRelease release, IReadOnlyList<ChangelogEntry> entries, IReadOnlySet<string>? include = null)
 	{
 		var body = new StringBuilder();
 		var own = 0;
 		var api = release.Api;
+		ChangeSection SectionOf(ChangelogEntry e)
+			=> e.Section == ChangeSection.Dropped && e.Type is { } type && include?.Contains(type) == true ? ChangeSection.Changes : e.Section;
 		foreach (var (section, heading) in Headings)
 		{
-			var lines = entries.Where(e => e.Section == section).Select(Line).ToList();
+			var lines = entries.Where(e => SectionOf(e) == section).Select(Line).ToList();
 			// #693 M9: a removal from the public API breaks its consumers, whatever the pull request's type said.
 			if (section == ChangeSection.Breaking && api is not null) lines.AddRange(api.Removed.Select(l => $"Removed from the public API: {Code(l)}"));
 			own += lines.Count;
