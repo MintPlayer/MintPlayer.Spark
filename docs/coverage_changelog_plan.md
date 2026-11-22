@@ -90,6 +90,19 @@ Each spike answers one question with a measurement. Results go into the PRD's de
   version's listing from the registry package, as D6's fallback already does for the hash, for NuGet and npm, including
   prereleases and `netstandard` generators?
 - Measure the listing size of `MintPlayer.Spark` to decide whether it is worth keeping in RavenDB instead.
+- **Result (2026-11-23):** yes. I measured it with a throwaway `dotnet run` script over `PublicPackageRegistry` against
+  nuget.org and npmjs.
+  - Local `MintPlayer.Spark` (net11.0): 921 lines, 124,020 characters, 6 lines over 400.
+  - Registry `MintPlayer.Spark` 11.0.0: 916 lines. The delta is 5 added and 0 removed, 819 characters.
+  - `@mintplayer/ng-spark` 22.0.0: 1,077 lines, 81,005 characters.
+  - `MintPlayer.Spark.SourceGenerators` 11.0.0 first came back **null**. The package ships its generator under
+    `analyzers/dotnet/roslyn5.9/cs/`, and the registry only looked in `analyzers/dotnet/cs/`. That was a #153 S7 bug too:
+    every generator release counted its API as changed. It is fixed in this PR, which reads the newest `roslyn<x.y>`
+    folder (red→green
+    `PackageRegistryTests.An_analyzer_in_a_roslyn_versioned_folder_is_read_from_the_newest_one`). After the fix it reads
+    564 lines.
+  - **Decision:** the registry is the source and nothing goes to RavenDB. A whole listing (about 124 KB) would cost a
+    document per release for data the registry already keeps. Only the capped delta travels, in the manifest.
 
 ## Milestones
 

@@ -290,7 +290,15 @@ promotions after it. Owner: "yes you should fix the detected bugs in this very s
   release.
 - **Public API section per release:** the action diffs the normalized API listing (D6 of #153) against the previous
   version's. Added and removed symbols are listed, and a removal goes under Breaking. This is objective, needs no
-  title, and works for old history too (S8: is the previous listing reliably available from the registry package?).
+  title, and works for old history too. **Done (M9):** S8 answered yes (see the plan's S8 results). The action reads the
+  previous version's listing from its registry package (`IPackageRegistry.ApiListingAsync`), whenever the last tag's hash
+  differs from the build. Behind an annotated tag, the delta is used only when the registry package hashes to the
+  annotation, so a different build of that version is never diffed against. The delta travels in the manifest
+  (`ManifestPackage.Api`, `ApiDelta`), so both hosts get it. A .NET line that changed in every framework is one line, a
+  framework added or dropped is one line, and removals are kept first. The caps are 100 lines of 400 characters per
+  package and 512 Ki characters per manifest, inside the 2 MiB upload. Past those caps a package loses its section and
+  the action says so. Nothing is stored in RavenDB: the registry already holds every released listing.
+  A re-run of a tagged commit has no section, because its last tag is the release itself.
 - **Not done:** an API delta per PR. The hash exists per release, not per PR. Computing one per PR means building every
   PR commit, and an API change isn't a feature/fix classification anyway (a fix can add API, a perf change touches none,
   an app feature has no public API).

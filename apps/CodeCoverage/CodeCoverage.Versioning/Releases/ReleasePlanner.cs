@@ -58,6 +58,9 @@ public sealed record PackageBuildFacts
 
 	/// <summary>The resolved versions of the package's dependencies, by name: what restore actually picked.</summary>
 	public IReadOnlyDictionary<string, string> ResolvedVersions { get; init; } = new Dictionary<string, string>();
+
+	/// <summary>#693 M9: the public API's change since the last tag's version, for the notes.</summary>
+	public ApiDelta? Api { get; init; }
 }
 
 public sealed record ReleaseContext
@@ -98,7 +101,7 @@ public sealed record ReleaseContext
 /// the line that gets a release branch. Null for a free package, which never cuts one.
 /// </param>
 public sealed record PlannedRelease(ProjectNode Project, PackageVersion Version, IReadOnlyList<string> Reasons, string? ApiHash, bool TaggedByHand,
-	string? Since = null, IReadOnlyList<string>? Inputs = null, IReadOnlyList<VersionTag>? Follows = null, int? MovedFromMajor = null)
+	string? Since = null, IReadOnlyList<string>? Inputs = null, IReadOnlyList<VersionTag>? Follows = null, int? MovedFromMajor = null, ApiDelta? Api = null)
 {
 	public string Id => Project.Id!;
 
@@ -266,7 +269,7 @@ public static class ReleasePlanner
 						? previous.Version.Major
 						: (int?)null;
 					released[id] = new PlannedRelease(project, version, reasons, facts?.ApiHash, TaggedByHand: false,
-						lastOnLine?.Commit, InputsOf(graph, project), follows, movedFrom);
+						lastOnLine?.Commit, InputsOf(graph, project), follows, movedFrom, apiChanged ? facts?.Api : null);
 					break;
 				case VersionDecision.Skip(var why):
 					skipped.Add(new PackageNote(id, why));

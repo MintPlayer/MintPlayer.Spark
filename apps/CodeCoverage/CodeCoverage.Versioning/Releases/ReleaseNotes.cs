@@ -118,11 +118,21 @@ public static partial class ReleaseNotes
 	{
 		var body = new StringBuilder();
 		var own = 0;
+		var api = release.Api;
 		foreach (var (section, heading) in Headings)
 		{
 			var lines = entries.Where(e => e.Section == section).Select(Line).ToList();
+			// #693 M9: a removal from the public API breaks its consumers, whatever the pull request's type said.
+			if (section == ChangeSection.Breaking && api is not null) lines.AddRange(api.Removed.Select(l => $"Removed from the public API: {Code(l)}"));
 			own += lines.Count;
 			Section(body, heading, lines);
+		}
+		if (api is not null)
+		{
+			List<string> added = [.. api.Added.Select(l => $"Added {Code(l)}")];
+			if (api.Omitted > 0) added.Add($"… and {api.Omitted} more API change{(api.Omitted == 1 ? "" : "s")}");
+			own += added.Count;
+			Section(body, "Public API", added);
 		}
 
 		List<string> dependencies =
@@ -150,6 +160,9 @@ public static partial class ReleaseNotes
 		if (entry.Issues.Count > 0) references.Add("closes " + string.Join(", ", entry.Issues.Select(i => $"#{i}")));
 		return references.Count == 0 ? entry.Text : $"{entry.Text} ({string.Join(", ", references)})";
 	}
+
+	/// <summary>An API line as inline code; a TypeScript template literal type holds backticks, so it gets a double fence.</summary>
+	private static string Code(string line) => line.Contains('`') ? $"`` {line} ``" : $"`{line}`";
 
 	private static void Section(StringBuilder body, string heading, List<string> lines)
 	{

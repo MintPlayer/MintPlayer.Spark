@@ -39,27 +39,53 @@ public static class BuildManifest
 		var tags = await TagHistory.ReadAsync(git, cancellationToken);
 		var notes = new List<string>(graph.Warnings);
 		var packages = new List<ManifestPackage>();
+		long apiCharacters = 0;
 
 		foreach (var node in graph.Packages.OrderBy(p => p.Id, StringComparer.Ordinal))
 		{
-			var package = node.Kind == PackageKind.NuGet ? DotnetPackage(request, node, notes) : NpmPackage(request, node, notes);
+			IReadOnlyList<string>? lines;
+			var package = node.Kind == PackageKind.NuGet ? DotnetPackage(request, node, notes, out lines) : NpmPackage(request, node, notes, out lines);
 
-			// The planner compares against the last tag on the run's line; only a tag without an annotation needs the registry.
+			// The planner compares against the last tag on the run's line. A tag without an annotation needs the registry for
+			// its hash (S7); a tag whose hash differs needs it for the listing the Public API section diffs against (#693 S8).
 			var history = tags.Of(node.Id!);
 			var line = request.BranchMajor ?? history.LastOrDefault()?.Version.Major;
-			if (request.Registry is not null && package.ApiHash is not null
+			if (request.Registry is not null && package.ApiHash is not null && lines is not null
 				// A lightweight tag (one made by hand) has no annotation at all; `{ Annotation.ApiHash: null }` would skip it.
-				&& history.LastOrDefault(t => t.Version.Major == line) is { } last && last.Annotation?.ApiHash is null)
+				&& history.LastOrDefault(t => t.Version.Major == line) is { } last && last.Annotation?.ApiHash != package.ApiHash)
 			{
+				var annotated = last.Annotation?.ApiHash is not null;
 				try
 				{
-					package = package with { PreviousApiHash = await request.Registry.ApiHashAsync(node, last.Version.ToString(), cancellationToken) };
-					if (package.PreviousApiHash is null) notes.Add($"{node.Id} {last.Version} is not on the public registry; its API counts as changed.");
+					var previous = await request.Registry.ApiListingAsync(node, last.Version.ToString(), cancellationToken);
+					if (previous is not null)
+					{
+						var previousHash = DotnetApiListing.Hash(previous);
+						package = package with
+						{
+							PreviousApiHash = annotated ? null : previousHash,
+							// The registry's package must be the tagged version's build: a hash that disagrees with the annotation is not.
+							Api = !annotated || previousHash == last.Annotation!.ApiHash ? ApiDelta.Between(previous, lines, node.Kind == PackageKind.NuGet) : null,
+						};
+					}
+					else if (!annotated) notes.Add($"{node.Id} {last.Version} is not on the public registry; its API counts as changed.");
 				}
 				catch (Exception e) when (e is HttpRequestException or InvalidDataException or IOException or TaskCanceledException)
 				{
-					notes.Add($"{node.Id} {last.Version} could not be read from the registry ({e.GetType().Name}); its API counts as changed.");
+					notes.Add(annotated
+						? $"{node.Id} {last.Version} could not be read from the registry ({e.GetType().Name}); its notes have no Public API section."
+						: $"{node.Id} {last.Version} could not be read from the registry ({e.GetType().Name}); its API counts as changed.");
 				}
+			}
+			// The deltas share one budget, so the manifest stays inside the upload; a package past it just loses its section.
+			if (package.Api is { } api)
+			{
+				if (apiCharacters + api.Characters > ReleaseManifest.MaxApiCharacters)
+				{
+					package = package with { Api = null };
+					notes.Add($"{node.Id}: the run's Public API budget ({ReleaseManifest.MaxApiCharacters} characters) is spent; its notes have no Public API section.");
+				}
+				else apiCharacters += api.Characters;
 			}
 			packages.Add(package);
 		}
@@ -67,8 +93,9 @@ public static class BuildManifest
 		return new BuildManifestResult(new ReleaseManifest { Commit = request.Commit, Packages = packages, Sdk = sdk }, notes);
 	}
 
-	private static ManifestPackage DotnetPackage(BuildManifestRequest request, ProjectNode node, List<string> notes)
+	private static ManifestPackage DotnetPackage(BuildManifestRequest request, ProjectNode node, List<string> notes, out IReadOnlyList<string>? listing)
 	{
+		listing = null;
 		var projectDirectory = Local(request.WorkingDirectory, node.Directory);
 		var assembly = (node.AssemblyName ?? node.Id!) + ".dll";
 		var outputs = new SortedDictionary<string, string>(StringComparer.Ordinal);
@@ -87,6 +114,7 @@ public static class BuildManifest
 			using var stream = File.OpenRead(path);
 			lines.AddRange(DotnetApiListing.List(stream).Select(l => $"{tfm} {l}"));
 		}
+		listing = lines;
 		return new ManifestPackage
 		{
 			Id = node.Id,
@@ -164,8 +192,9 @@ public static class BuildManifest
 		static int Maturity(SemVer version) => version.Prerelease is { } pre ? (int)Labels.Mirror(pre) : int.MaxValue;
 	}
 
-	private static ManifestPackage NpmPackage(BuildManifestRequest request, ProjectNode node, List<string> notes)
+	private static ManifestPackage NpmPackage(BuildManifestRequest request, ProjectNode node, List<string> notes, out IReadOnlyList<string>? listing)
 	{
+		listing = null;
 		// A library with a build output (ng-packagr, Nx) publishes that; any other package publishes its own folder.
 		var root = Local(request.WorkingDirectory, node.BuildOutput ?? node.Directory);
 		var files = Directory.Exists(root) ? Declarations(root).ToList() : [];
@@ -176,11 +205,12 @@ public static class BuildManifest
 				: $"{node.Id}: no .d.ts files; its API counts as changed.");
 			return new ManifestPackage { Id = node.Id, Kind = "npm", Packed = Directory.Exists(root) && node.BuildOutput is not null };
 		}
+		listing = TypeScriptApiListing.List(files.Select(f => (f, File.ReadAllText(Path.Combine(root, f)))));
 		return new ManifestPackage
 		{
 			Id = node.Id,
 			Kind = "npm",
-			ApiHash = TypeScriptApiListing.Hash(TypeScriptApiListing.List(files.Select(f => (f, File.ReadAllText(Path.Combine(root, f)))))),
+			ApiHash = TypeScriptApiListing.Hash(listing),
 			Packed = true,
 		};
 	}

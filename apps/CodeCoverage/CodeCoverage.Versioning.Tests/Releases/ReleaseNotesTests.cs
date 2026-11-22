@@ -39,6 +39,44 @@ public class ReleaseNotesTests : IDisposable
             + "### Dependencies\n- bump x to 2 (#4)\n- Dependency update: Acme.Util 2.0.0");
     }
 
+    // #693 M9 (D6): the API delta's removals are breaking, its additions a Public API section, and both make it the package's own.
+    [Fact]
+    public async Task The_public_api_delta_adds_breaking_lines_and_a_public_api_section()
+    {
+        var api = new ApiDelta { Added = ["class Acme.New", "type T = `a${string}`"], Removed = ["class Acme.Old"], Omitted = 2 };
+        var notes = ReleaseNotes.Compose(Planned("1.3.0", follows: [new VersionTag("Acme.Util", PackageVersion.Parse("2.0.0"))]) with { Api = api },
+            await Entries("feat: lists (#4)", "docs: typo (#3)"));
+
+        notes.DependencyOnly.Should().BeFalse();
+        notes.Body.Should().Be(
+            "### Breaking changes\n- Removed from the public API: `class Acme.Old`\n\n"
+            + "### Features\n- lists (#4)\n\n"
+            + "### Public API\n- Added `class Acme.New`\n- Added `` type T = `a${string}` ``\n- … and 2 more API changes\n\n"
+            + "### Dependencies\n- Dependency update: Acme.Util 2.0.0");
+    }
+
+    [Fact]
+    public void An_api_delta_groups_target_frameworks_and_keeps_removals_first()
+    {
+        ApiDelta.Between(["net8.0 A", "net10.0 A"], ["net8.0 A", "net10.0 A"], prefixedWithTargetFramework: true).Should().BeNull();
+
+        var delta = ApiDelta.Between(
+            ["net8.0 A", "net8.0 Gone", "net10.0 A", "net10.0 Gone", "net10.0 OnlyTen"],
+            ["net10.0 A", "net10.0 New", "net11.0 A"], prefixedWithTargetFramework: true)!;
+        delta.Removed.Should().Equal("target framework net8.0", "Gone", "OnlyTen");
+        delta.Added.Should().Equal("target framework net11.0", "New");
+
+        var partial = ApiDelta.Between(["net8.0 A", "net10.0 A"], ["net8.0 A"], prefixedWithTargetFramework: true);
+        partial!.Removed.Should().Equal("target framework net10.0");
+
+        var some = ApiDelta.Between(["net8.0 A", "net10.0 A"], ["net8.0 A", "net10.0 A", "net10.0 B"], prefixedWithTargetFramework: true);
+        some!.Added.Should().Equal("B (net10.0)");
+
+        var big = ApiDelta.Between([.. Enumerable.Range(0, 80).Select(i => $"old{i:D3}")], [.. Enumerable.Range(0, 80).Select(i => $"new{i:D3}")], false)!;
+        (big.Removed.Count, big.Added.Count, big.Omitted).Should().Be((80, 20, 60));
+        ApiDelta.Between([], [new string('x', 500)], false)!.Added.Single().Length.Should().Be(ApiDelta.MaxLineLength);
+    }
+
     [Fact]
     public async Task A_release_of_only_dropped_types_and_dependencies_is_dependency_only()
     {

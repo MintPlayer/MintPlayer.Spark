@@ -7,11 +7,14 @@ using CodeCoverage.Versioning.Validation;
 
 namespace CodeCoverage.Versioning.Build;
 
-/// <summary>The API hash of a version already published (PRD D6, S7), for a last tag whose annotation carries none.</summary>
+/// <summary>
+/// The normalized API listing of a version already published (PRD D6, S7; #693 S8): its hash stands in for a last tag
+/// whose annotation carries none, and its lines give the Public API section.
+/// </summary>
 public interface IPackageRegistry
 {
-	/// <returns>The hash, or null when the registry does not have that version.</returns>
-	Task<string?> ApiHashAsync(ProjectNode package, string version, CancellationToken cancellationToken = default);
+	/// <returns>The listing as <see cref="BuildManifest"/> builds it, or null when the registry does not have that version.</returns>
+	Task<IReadOnlyList<string>?> ApiListingAsync(ProjectNode package, string version, CancellationToken cancellationToken = default);
 }
 
 /// <summary>
@@ -24,7 +27,11 @@ public sealed class PublicPackageRegistry(HttpClient http) : IPackageRegistry
 	public const long MaxPackageBytes = 64 * 1024 * 1024;
 	public const long MaxEntryBytes = 16 * 1024 * 1024;
 
+	/// <summary>The hash of <see cref="ApiListingAsync"/>, as the build hashes its own listing.</summary>
 	public async Task<string?> ApiHashAsync(ProjectNode package, string version, CancellationToken cancellationToken = default)
+		=> await ApiListingAsync(package, version, cancellationToken) is { } lines ? DotnetApiListing.Hash(lines) : null;
+
+	public async Task<IReadOnlyList<string>?> ApiListingAsync(ProjectNode package, string version, CancellationToken cancellationToken = default)
 	{
 		if (package.Id is not { } id || !Identifiers.IsPackageId(id) || version.Length > 128 || version.Any(c => !(char.IsAsciiLetterOrDigit(c) || c is '.' or '-' or '+')))
 			return null;
@@ -41,10 +48,15 @@ public sealed class PublicPackageRegistry(HttpClient http) : IPackageRegistry
 		await using (var body = await response.Content.ReadAsStreamAsync(cancellationToken))
 			await CopyCappedAsync(body, buffer, MaxPackageBytes, cancellationToken);
 		buffer.Position = 0;
-		return package.Kind == PackageKind.NuGet ? NuGetHash(buffer, package) : await NpmHashAsync(buffer, cancellationToken);
+		return package.Kind == PackageKind.NuGet ? NuGetListing(buffer, package) : await NpmListingAsync(buffer, cancellationToken);
 	}
 
-	internal static string? NuGetHash(Stream nupkg, ProjectNode package)
+	internal static string? NuGetHash(Stream nupkg, ProjectNode package) => NuGetListing(nupkg, package) is { } lines ? DotnetApiListing.Hash(lines) : null;
+
+	internal static async Task<string?> NpmHashAsync(Stream tgz, CancellationToken cancellationToken)
+		=> await NpmListingAsync(tgz, cancellationToken) is { } lines ? TypeScriptApiListing.Hash(lines) : null;
+
+	internal static IReadOnlyList<string>? NuGetListing(Stream nupkg, ProjectNode package)
 	{
 		var assembly = (package.AssemblyName ?? package.Id!) + ".dll";
 		using var zip = new ZipArchive(nupkg, ZipArchiveMode.Read);
@@ -55,11 +67,30 @@ public sealed class PublicPackageRegistry(HttpClient http) : IPackageRegistry
 
 		// A source generator or analyzer ships its assembly under analyzers/dotnet/cs instead. The nupkg does not record the
 		// framework it was built for, and the build prefixes each line with it, so it is read from the project: one tfm.
+		// It sits in analyzers/dotnet/cs, or in a Roslyn-versioned analyzers/dotnet/roslyn<x.y>/cs (#693 S8: Spark's own
+		// generator does); with several, the newest Roslyn's copy is the one the current SDK loads.
 		if (lines.Count == 0 && package.TargetFrameworks is [var analyzerTfm] && Identifiers.IsTargetFramework(analyzerTfm)
-			&& zip.Entries.FirstOrDefault(e => e.FullName.Equals($"analyzers/dotnet/cs/{assembly}", StringComparison.OrdinalIgnoreCase)) is { } analyzer)
+			&& zip.Entries
+				.Select(e => (Entry: e, Roslyn: AnalyzerRoslyn(e.FullName, assembly)))
+				.Where(a => a.Roslyn is not null)
+				.OrderByDescending(a => a.Roslyn)
+				.Select(a => a.Entry)
+				.FirstOrDefault() is { } analyzer)
 			lines.AddRange(List(analyzer, analyzerTfm));
-		return lines.Count == 0 ? null : DotnetApiListing.Hash(lines);
+		return lines.Count == 0 ? null : lines;
 	}
+
+	/// <summary>
+	/// The Roslyn version of an analyzer entry for <paramref name="assembly"/>: 0.0 for the unversioned folder, null for
+	/// any other entry.
+	/// </summary>
+	private static Version? AnalyzerRoslyn(string path, string assembly) => path.Split('/') switch
+	{
+		["analyzers", "dotnet", "cs", var file] when file.Equals(assembly, StringComparison.OrdinalIgnoreCase) => new Version(0, 0),
+		["analyzers", "dotnet", var folder, "cs", var file] when file.Equals(assembly, StringComparison.OrdinalIgnoreCase)
+			&& folder.StartsWith("roslyn", StringComparison.Ordinal) && Version.TryParse(folder["roslyn".Length..], out var version) => version,
+		_ => null,
+	};
 
 	private static IEnumerable<string> List(ZipArchiveEntry entry, string tfm)
 	{
@@ -70,7 +101,7 @@ public sealed class PublicPackageRegistry(HttpClient http) : IPackageRegistry
 		return DotnetApiListing.List(copy).Select(l => $"{tfm} {l}").ToList();
 	}
 
-	internal static async Task<string?> NpmHashAsync(Stream tgz, CancellationToken cancellationToken)
+	internal static async Task<IReadOnlyList<string>?> NpmListingAsync(Stream tgz, CancellationToken cancellationToken)
 	{
 		var files = new List<(string Path, string Text)>();
 		await using var gzip = new GZipStream(tgz, CompressionMode.Decompress);
@@ -91,7 +122,7 @@ public sealed class PublicPackageRegistry(HttpClient http) : IPackageRegistry
 			files.Add((path, await reader.ReadToEndAsync(cancellationToken)));
 			if (files.Count > BuildManifest.MaxDeclarationFiles) break;
 		}
-		return files.Count == 0 ? null : TypeScriptApiListing.Hash(TypeScriptApiListing.List(files));
+		return files.Count == 0 ? null : TypeScriptApiListing.List(files);
 	}
 
 	private static async Task CopyCappedAsync(Stream source, Stream target, long max, CancellationToken cancellationToken)

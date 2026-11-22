@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using CodeCoverage.Versioning.Api;
 using CodeCoverage.Versioning.Build;
 using CodeCoverage.Versioning.Git;
 using CodeCoverage.Versioning.Graph;
@@ -9,7 +10,8 @@ namespace CodeCoverage.Versioning.Tests.Build;
 /// <summary>#153 M7 (D5, D6, S7): what the action reads from a built checkout, in both modes.</summary>
 public class BuildManifestTests : IDisposable
 {
-    private const string RegistryHash = "sha256:4444444444444444444444444444444444444444444444444444444444444444";
+    private static readonly IReadOnlyList<string> RegistryListing = ["index.d.ts: export declare function gone():void"];
+    private static readonly string RegistryHash = DotnetApiListing.Hash(RegistryListing);
 
     private readonly DirectoryInfo root = Directory.CreateTempSubdirectory("versioning-manifest-");
 
@@ -17,10 +19,10 @@ public class BuildManifestTests : IDisposable
     {
         public List<string> Asked { get; } = [];
 
-        public Task<string?> ApiHashAsync(ProjectNode package, string version, CancellationToken cancellationToken = default)
+        public Task<IReadOnlyList<string>?> ApiListingAsync(ProjectNode package, string version, CancellationToken cancellationToken = default)
         {
             Asked.Add($"{package.Id} {version}");
-            return Task.FromResult<string?>(RegistryHash);
+            return Task.FromResult<IReadOnlyList<string>?>(RegistryListing);
         }
     }
 
@@ -44,7 +46,7 @@ public class BuildManifestTests : IDisposable
     }
 
     [Fact]
-    public async Task Reads_the_built_api_of_each_package_and_asks_the_registry_only_behind_a_hand_made_tag()
+    public async Task Reads_the_built_api_of_each_package_and_takes_a_previous_hash_only_behind_a_hand_made_tag()
     {
         // The test assembly stands in for Acme.Core's build output: the lister reads any assembly's metadata.
         var assembly = Path.GetFileNameWithoutExtension(typeof(BuildManifestTests).Assembly.Location);
@@ -69,19 +71,47 @@ public class BuildManifestTests : IDisposable
         var packages = result.Manifest.Packages!.ToDictionary(p => p.Id!);
         packages.Keys.Should().BeEquivalentTo(["Acme.Core", "@acme/util", "@acme/bare"]);
         (packages["Acme.Core"].Packed, packages["Acme.Core"].ApiHash is null, packages["Acme.Core"].PreviousApiHash).Should().Be((true, false, null),
-            "an annotated tag carries its own hash, so the registry is not asked");
+            "an annotated tag carries its own hash");
         packages["Acme.Core"].TargetFrameworks.Should().Equal("net10.0");
         (packages["@acme/util"].Packed, packages["@acme/util"].ApiHash is null, packages["@acme/util"].PreviousApiHash).Should().Be((true, false, RegistryHash));
+        packages["@acme/util"].Api!.Removed.Should().Equal(RegistryListing);
+        packages["@acme/util"].Api!.Added.Should().ContainSingle().Which.Should().Contain("function util()");
         (packages["@acme/bare"].Packed, packages["@acme/bare"].ApiHash).Should().Be((false, null));
-        registry.Asked.Should().Equal("@acme/util 1.0.0");
+        // #693 S8: the annotated tag's hash differs from the build, so its listing is asked for too.
+        registry.Asked.Should().Equal("@acme/util 1.0.0", "Acme.Core 1.0.0");
         result.Notes.Should().ContainSingle().Which.Should().StartWith("@acme/bare: no .d.ts");
         result.Manifest.Validate().Should().BeEmpty();
     }
 
-    private sealed class AnsweringRegistry(Func<ProjectNode, string?> answer) : IPackageRegistry
+    private sealed class AnsweringRegistry(Func<ProjectNode, IReadOnlyList<string>?> answer) : IPackageRegistry
     {
-        public Task<string?> ApiHashAsync(ProjectNode package, string version, CancellationToken cancellationToken = default)
+        public Task<IReadOnlyList<string>?> ApiListingAsync(ProjectNode package, string version, CancellationToken cancellationToken = default)
             => Task.FromResult(answer(package));
+    }
+
+    // #693 S8: behind an annotated tag the listing comes from the registry only to diff against, and only when its hash is
+    // the annotation's: another build of that version is not what was released.
+    [Theory]
+    [InlineData(true, true)]
+    [InlineData(false, false)]
+    public async Task Behind_an_annotated_tag_the_registry_listing_gives_the_delta_only_when_it_matches(bool matching, bool hasDelta)
+    {
+        var assembly = Path.GetFileNameWithoutExtension(typeof(BuildManifestTests).Assembly.Location);
+        Write("src/Core/Core.csproj", $"<Project Sdk=\"Microsoft.NET.Sdk\">\n<PropertyGroup><TargetFramework>net10.0</TargetFramework><PackageId>Acme.Core</PackageId><AssemblyName>{assembly}</AssemblyName></PropertyGroup>\n</Project>\n");
+        Git("init", "-q", "-b", "main");
+        Git("add", ".");
+        Git("commit", "-q", "-m", "core");
+        IReadOnlyList<string> previous = ["net10.0 class Acme.Gone"];
+        Git("tag", "-a", "-m", "api-hash: " + (matching ? DotnetApiListing.Hash(previous) : RegistryHash), "Acme.Core/v1.0.0");
+        Directory.CreateDirectory(Path.Combine(root.FullName, "src/Core/bin/Release/net10.0"));
+        File.Copy(typeof(BuildManifestTests).Assembly.Location, Path.Combine(root.FullName, "src/Core/bin/Release/net10.0", assembly + ".dll"));
+
+        var result = await CollectAsync(Git("rev-parse", "HEAD"), new AnsweringRegistry(_ => previous));
+
+        var package = result.Manifest.Packages!.Single();
+        (package.PreviousApiHash, package.Api is not null).Should().Be(((string?)null, hasDelta));
+        if (hasDelta) package.Api!.Removed.Should().Equal("class Acme.Gone");
+        result.Manifest.Validate().Should().BeEmpty();
     }
 
     /// <summary>A .NET package built from the test assembly, tagged by hand at 1.0.0, with the given restore output.</summary>
