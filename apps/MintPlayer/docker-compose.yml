@@ -25,6 +25,8 @@ services:
     stop_grace_period: 60s
     environment:
       - ASPNETCORE_ENVIRONMENT=Production
+      # Workstation GC, as CodeCoverage's app: a heap per core is wasted on this shared 8 GB VPS (2026-11-22).
+      - DOTNET_gcServer=0
       # CodeCoverage's RavenDB server over HTTPS (mintplayer-raven), with this app's own client certificate, registered
       # with Admin on the database MintPlayer only, and the private CA of the server's certificate.
       - Spark__RavenDb__Urls__0=https://coverage-raven:8080

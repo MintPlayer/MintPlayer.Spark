@@ -173,6 +173,9 @@ services:
     # claim would let the sweeper hand the message to a new container while the old one is
     # still working on it.
     stop_grace_period: 120s
+    # The only large container without a cap: it shares the VPS with RavenDB, OpenSearch and the other apps. .NET sizes
+    # its heap to 75% of this limit, so a large report is collected harder rather than growing the host's usage.
+    mem_limit: 1536m
     depends_on:
       coverage-raven:
         condition: service_healthy
@@ -188,6 +191,9 @@ services:
       # Explicit: Program.cs derives the GitHub__{env}__* config prefix from
       # the environment name — anything else silently disables sign-in.
       - ASPNETCORE_ENVIRONMENT=Production
+      # Workstation GC: Server GC keeps a heap per core and held ~1.2 GB on this shared 8 GB VPS (measured 2026-11-22,
+      # 1.3 GB available on the host). Its traffic does not need it (docs/code-coverage/hosting.md, "Memory").
+      - DOTNET_gcServer=0
       # The secured server: this app's own client certificate (registered with Admin on the database Coverage
       # and nothing else) and the private CA that issued the server's certificate.
       - Spark__RavenDb__Urls__0=https://coverage-raven:8080
