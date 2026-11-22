@@ -33,11 +33,11 @@ public class PrTitleRecipientTests : CoverageRavenTest
         PullRequest = new ForgePullRequestText(7, title, body, headRef, Sha, "master", open, false, false, null, []),
     };
 
-    private static async Task CorrectAsync(IDocumentStore store, FakeForgeVersioning forge)
+    private static async Task CorrectAsync(IDocumentStore store, FakeForgeVersioning forge, string? button = null, PrSize.FakeForgeLabels? labels = null)
     {
         using var session = store.OpenAsyncSession();
-        await new PrTitleRecipient(session, [forge], NullLogger<PrTitleRecipient>.Instance)
-            .HandleAsync(new CorrectPrTitleMessage { RepositoryId = RepositoryId, Number = 7 });
+        await new PrTitleRecipient(session, [forge], [labels ?? new PrSize.FakeForgeLabels()], NullLogger<PrTitleRecipient>.Instance)
+            .HandleAsync(new CorrectPrTitleMessage { RepositoryId = RepositoryId, Number = 7, Button = button });
     }
 
     [Theory]
@@ -85,13 +85,57 @@ public class PrTitleRecipientTests : CoverageRavenTest
     {
         using var store = GetDocumentStore();
         await SeedAsync(store, accountOn: true);
-        var forge = Forge("Add the lister");
+        var forge = Forge("Add the lister", "- [x] Feature");
 
         await CorrectAsync(store, forge);
         await CorrectAsync(store, forge);
 
         forge.TitleUpdates.Should().Equal("feat: Add the lister");
         forge.Checks.Select(c => c.Title).Should().Equal("Title set to \"feat: Add the lister\"", "Title already correct");
+        forge.Checks.Should().OnlyContain(c => c.Actions!.Count == 0, "a typed title needs no buttons, and stale ones go");
+    }
+
+    // #693 D12: no silent feat. Without an explicit signal the title stays untyped and the check asks.
+    [Fact]
+    public async Task Without_a_signal_the_check_offers_the_buttons_and_a_click_types_the_title()
+    {
+        using var store = GetDocumentStore();
+        await SeedAsync(store, accountOn: true);
+        var forge = Forge("Add the lister", headRef: "fix/issue-12-lister");
+
+        await CorrectAsync(store, forge);
+
+        forge.TitleUpdates.Should().BeEmpty("the branch name is never read and nothing defaults to feat");
+        var asking = forge.Checks.Single();
+        asking.Title.Should().Be("Type of change?");
+        asking.Actions.Should().Equal(PrTitleCheck.Buttons);
+        asking.ExternalId.Should().Be("7");
+
+        await CorrectAsync(store, forge, PrTitleCheck.Fix.Identifier);
+
+        forge.TitleUpdates.Should().Equal("fix: Add the lister");
+        forge.Checks.Last().Summary.Should().Contain("the button chosen on this check");
+    }
+
+    [Fact]
+    public async Task Not_user_facing_labels_the_pull_request_and_the_check_stops_asking()
+    {
+        using var store = GetDocumentStore();
+        await SeedAsync(store, accountOn: true);
+        var forge = Forge("Bump the build image");
+        var labels = new PrSize.FakeForgeLabels();
+
+        await CorrectAsync(store, forge, PrTitleCheck.NotUserFacing.Identifier, labels);
+
+        labels.PullRequests[7].Should().Equal(PrTitleCheck.SkipLabel);
+        forge.TitleUpdates.Should().BeEmpty();
+        var check = forge.Checks.Single();
+        (check.Title, check.Actions!.Count).Should().Be(("Not user-facing", 0));
+
+        // Labelled already (by the button or by hand): a later edit does not ask again.
+        forge.PullRequest = forge.PullRequest! with { Labels = [PrTitleCheck.SkipLabel] };
+        await CorrectAsync(store, forge, labels: labels);
+        forge.Checks.Last().Title.Should().Be("Not user-facing");
     }
 
     [Fact]
@@ -112,7 +156,7 @@ public class PrTitleRecipientTests : CoverageRavenTest
     {
         using var store = GetDocumentStore();
         await SeedAsync(store, accountOn: true);
-        var forge = Forge("Add the lister");
+        var forge = Forge("Add the lister", "- [x] Feature");
         forge.FailTitleUpdateWith = new ForgeAccessDeniedException("Resource not accessible by integration", "pull_requests=write");
 
         await CorrectAsync(store, forge);

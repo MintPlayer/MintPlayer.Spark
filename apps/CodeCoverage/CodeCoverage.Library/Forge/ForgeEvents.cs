@@ -120,6 +120,12 @@ public sealed record PullRequestUpdated(
 /// </summary>
 public sealed record PullRequestDescribed(string RepositoryId, int Number) : IForgeEvent;
 
+/// <summary>
+/// A person clicked a button of the "PR title" check (#693 D12): <see cref="Identifier"/> is one of
+/// <c>PrTitleButtons</c>' identifiers. GitHub delivers the click only to the App that made the check run.
+/// </summary>
+public sealed record PullRequestTypeChosen(string RepositoryId, int Number, string Identifier, string ActorLogin) : IForgeEvent;
+
 /// <summary>A pull request was merged.</summary>
 /// <param name="HeadRef">The source branch, for the optional delete-after-merge courtesy.</param>
 /// <remarks>

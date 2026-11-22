@@ -118,6 +118,16 @@ public partial class GitHubForgeVersioning : IForgeVersioning
         };
         if (check.Completed) body["conclusion"] = check.Conclusion;
         body["output"] = output;
+        if (check.ExternalId is { } externalId) body["external_id"] = externalId;
+        if (check.Actions is { } actions)
+        {
+            if (actions.Count > ForgeQueueCheckAction.MaxActions)
+                throw new ArgumentException($"GitHub shows at most {ForgeQueueCheckAction.MaxActions} buttons on a check run.", nameof(check));
+            body["actions"] = new JsonArray([.. actions.Select(a => (JsonNode)new JsonObject
+            {
+                ["label"] = a.Label, ["description"] = a.Description, ["identifier"] = a.Identifier,
+            })]);
+        }
         return body;
     }
 

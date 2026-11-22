@@ -808,6 +808,11 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
     /// </remarks>
     private async Task OnQueueCheckButtonAsync(GitHubWebhookMessage message, JsonElement root, CancellationToken ct)
     {
+        if (Child(root, "check_run") is { } title && IsOurApp(title) && Text(title, "name") == PrTitleCheck.Name)
+        {
+            await OnTitleCheckButtonAsync(root, title, ct);
+            return;
+        }
         if (Child(root, "check_run") is not { } check || !IsOurApp(check) || Text(check, "name") != CheckGate.QueueCheckName) return;
         if (Child(root, "requested_action") is not { } requested || ButtonCommand(Text(requested, "identifier")) is not { } command) return;
         if (HumanSender(root) is not { } actor) return;
@@ -817,6 +822,17 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
         await RaiseAsync(new MergeQueueCommandIssued(repositoryId, number, command, actor, EMergeQueueCommandSource.Check), ct);
         logger.LogInformation("Merge queue: {Command} of #{Number} in {Repository} by @{Actor} (check button)",
             command == EMergeQueueCommand.Enqueue ? "enqueue" : "dequeue", number, message.RepositoryFullName, actor);
+    }
+
+    /// <summary>#693 D12: a click on a button of the "PR title" check, the clicker's choice of the pull request's type.</summary>
+    private async Task OnTitleCheckButtonAsync(JsonElement root, JsonElement check, CancellationToken ct)
+    {
+        if (Child(root, "requested_action") is not { } requested || Text(requested, "identifier") is not { } identifier || !PrTitleCheck.IsButton(identifier)) return;
+        if (HumanSender(root) is not { } actor) return;
+        if (CheckRunPullRequest(check) is not { } number) return;
+        if (await LoadKnownRepositoryIdAsync(root, ct) is not { } repositoryId) return;
+
+        await RaiseAsync(new PullRequestTypeChosen(repositoryId, number, identifier, actor), ct);
     }
 
     /// <summary>The command a button of the queue's check stands for; null for any other identifier.</summary>

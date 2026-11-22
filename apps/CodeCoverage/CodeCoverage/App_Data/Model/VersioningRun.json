@@ -110,6 +110,17 @@
         "rules": []
       },
       {
+        "id": "837efa49-2255-46f2-8e45-20a5c913315f",
+        "name": "RunReleaseTag",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 14,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
         "id": "9975dc69-a78a-44f3-b966-45a8b07badea",
         "name": "Skipped",
         "dataType": "number",

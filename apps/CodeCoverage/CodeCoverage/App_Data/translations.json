@@ -3844,6 +3844,11 @@
             "en": "The Repository document id."
           }
         },
+        "RunReleaseTag": {
+          "description": {
+            "en": "The tag of the run's own GitHub Release, which lists every package the run released."
+          }
+        },
         "WorkflowRef": {
           "description": {
             "en": "The token's workflow_ref (S6): which workflow asked for the tags."

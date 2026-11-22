@@ -232,6 +232,7 @@ public class RegistrationInventoryTests : CoverageRavenTest
     public void Pr_title_correction_is_registered() => AssertRegistered(
         typeof(IForgeVersioning),
         typeof(IRecipient<ForgeWebhookMessage<PullRequestDescribed>>),
+        typeof(IRecipient<ForgeWebhookMessage<PullRequestTypeChosen>>),
         typeof(IRecipient<global::CodeCoverage.PackageVersioning.CorrectPrTitleMessage>));
 
     /// <summary>

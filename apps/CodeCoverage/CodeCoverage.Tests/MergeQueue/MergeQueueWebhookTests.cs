@@ -373,6 +373,25 @@ public class MergeQueueWebhookTests : CoverageRavenTest
         bus.Messages.Should().HaveCount(1, "a click is a command, not a change of the commit's checks");
     }
 
+    // #693 D12: the "PR title" check's buttons are the clicker's choice of type, raised whatever the queue holds.
+    [Theory]
+    [InlineData("title-feat", true)]
+    [InlineData("title-skip", true)]
+    [InlineData("mq-enqueue", false)]
+    public async Task A_click_on_a_title_check_button_is_the_clickers_choice_of_type(string identifier, bool raised)
+    {
+        using var store = GetDocumentStore();
+        await SeedAsync(store, busy: false);
+
+        var bus = await DeliverAsync(store, "check_run", Click(identifier, name: PrTitleCheck.Name));
+
+        if (raised)
+            bus.Of<ForgeWebhookMessage<PullRequestTypeChosen>>().Should().ContainSingle().Which.Event
+                .Should().Be(new PullRequestTypeChosen(RepositoryId, 7, identifier, "maintainer"));
+        else
+            bus.Messages.Should().BeEmpty("the queue's button on the title check is no command");
+    }
+
     [Fact]
     public async Task A_click_on_a_check_without_an_external_id_names_the_one_pull_request_GitHub_lists()
     {

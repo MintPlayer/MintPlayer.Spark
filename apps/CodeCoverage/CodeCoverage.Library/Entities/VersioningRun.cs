@@ -92,7 +92,8 @@ public class VersioningRun
     [IgnoreProperty]
     public List<VersioningRunBranchCut> BranchCuts { get; set; } = [];
 
-    /// <summary>#693 D7: the tag of the run's own Release once created; null while pending or with Releases off.</summary>
+    /// <summary>The tag of the run's own GitHub Release, which lists every package the run released.</summary>
+    /// <remarks>#693 D7: null while pending or with Releases off.</remarks>
     public string? RunReleaseTag { get; set; }
 }
 
