@@ -44,7 +44,7 @@ Each spike answers one question with a measurement. Results go into the PRD's de
   - the `release: published` handler at `GitHubEventsRecipient.cs:644`, which feeds downstream dependency updates?
 - Write one red test per reader that must ignore it.
 
-### S3 — The changelog inside the artifacts
+### S3 — The changelog inside the artifacts (narrowed by D11: only `PackageReleaseNotes`; no CHANGELOG.md in nupkg or npm)
 
 - **.NET:** an MSBuild target in `MintPlayer.Versioning.MSBuild` writes `obj/CHANGELOG.md` from the reachable tags and
   packs it with `Pack="true"`, and fills `PackageReleaseNotes` (35,000-character cap). Prove it with a real
@@ -67,7 +67,7 @@ Each spike answers one question with a measurement. Results go into the PRD's de
 - Define the key (the original PR number) and write a red test: one change that ships on master's next line and on a
   backport line gives one entry in each line's notes and none twice.
 
-### S6 — A changelog inside a deployed Spark app (answers Q8)
+### ~~S6 — A changelog inside a deployed Spark app (answers Q8)~~ — dropped: D10, out of scope
 
 - Apps (`apps/*`) deploy from master untagged. Decide what "version" means for an app: deploy run, date, or the package
   versions it consumes.

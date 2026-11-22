@@ -334,7 +334,45 @@ Decisions:
 - **Also:** it follows from D2.
 - **Exception:** a hand-written `CHANGELOG.md` a repository already has is left alone.
 
-## Proposed design (to be grilled: Q4–Q6, Q8–Q12)
+### D9 — An entry's text comes from the PR title, or from a `## Changelog` section in the PR body (Q5)
+
+- **The section in the body:** each bullet of a `## Changelog` section becomes one entry. A bullet may carry its own
+  type (`- fix: …`). An empty section, or the text `none`, means no entry.
+- **Shortcut:** the `changelog: skip` label drops the PR without editing the body.
+- **When it is read:** by the release run, so the body can be corrected until `/release`. After that the text is frozen
+  in the tag (D3). An edit made after the merge leaves no trace in git: it is the correction window, and it is not
+  reviewed.
+- **Not done:** a bot command such as the private app's `changelog-set`. It is hidden state, and there it was keyed by a
+  sha that the squash changes.
+- **Evidence:** owner, Q5: "I'll follow you".
+
+Q4 (filter, and D15 adopting it), Q6 (a Breaking section, from `!` and from removed public API) and Q9 (title
+correction comes with the changelog) are answered by D6.
+
+### D10 — No changelog inside deployed apps; "Spark integration" means CodeCoverage's own pages (Q8)
+
+- **What ships:** the changelog appears as GitHub Releases (D7).
+- **Out of scope:** a `MintPlayer.Spark.Changelog` package and an ng-spark page for deployed apps (proposed design
+  item 6, spike S6).
+- **What "Spark integration" means:** CodeCoverage's changelog settings and its repository changelog page are Spark
+  pages (persistent objects, queries, `actions.json`, `security.json`).
+- **Evidence:** owner, Q8: "I think I'd go for C, we'll only ship github-releases that contain the generated changelog
+  file". Context: apps deploy untagged from master, and their image build has no git (`.dockerignore:4` `**/.git`).
+
+### D11 — The Release body is the changelog; the nupkg also carries `PackageReleaseNotes` (Q15)
+
+- **The GitHub Release body** (D7) is the generated changelog. Nothing is attached to the Release.
+- **NuGet:** `MintPlayer.Versioning.MSBuild` already resolves the highest reachable tag (#153 D9). It also reads that
+  tag's notes block (D3) into `PackageReleaseNotes`, the current version's section only, truncated to nuget.org's
+  35,000-character cap with a link to the Release. Visual Studio's NuGet window shows it.
+- **npm** gets nothing extra. npm has no release-notes field, and CHANGELOG.md in a tarball is read by nobody that
+  matters here (Renovate reads the default branch, D7).
+- **No cumulative CHANGELOG.md in packages.**
+- **Spike:** S3 shrinks to the MSBuild part: `RealPackTests` proves the nuspec `releaseNotes` from a tag annotation,
+  including a tag without notes (seed tags, human tags), which leaves it empty.
+- **Evidence:** owner, Q15: "I tend to go for C".
+
+## Proposed design (to be grilled: Q10–Q12)
 
 1. **One entry per merged PR and per affected release unit.** The entry text is the corrected PR title (D14), without
    the issue suffix. A `## Changelog` block in the PR body can override the text (Q5). Each entry keeps its PR number,
@@ -381,12 +419,12 @@ Decisions:
 | Q1 | ~~How does a version reach a committed CHANGELOG.md?~~ | answered, then superseded: D1 → D2 |
 | Q2 | ~~Where do the rendered notes live as source of truth?~~ | answered: D3 |
 | Q3 | ~~A repository-wide GitHub Release per `/release` run?~~ | answered: D7 |
-| Q4 | Relevance filter: the type list, and does D15 adopt it (dropping "Other changes")? | Yes, one filter for both. |
-| Q5 | Entry text: corrected PR title, an optional `## Changelog` body block, or the issue title? | Title, with the body block as the override. Never the issue title (prior art). |
-| Q6 | Breaking changes: a section of their own? D8 makes a break inside a platform generation a minor. | A "Breaking changes" section from `!`, independent of the version bump. |
+| Q4 | ~~Relevance filter~~ | answered: D6 |
+| Q5 | ~~Entry text~~ | answered: D9 |
+| Q6 | ~~Breaking changes~~ | answered: D6 |
 | Q7 | ~~Any committed file at all?~~ | answered: D8 |
-| Q8 | Is the Spark-framework changelog package for deployed apps in scope of this PR? | Decide after S6. |
-| Q9 | Does the changelog require title correction (D14) on, or only warn? | Warn. |
+| Q8 | ~~Spark changelog package for deployed apps?~~ | answered: D10 (out of scope) |
+| Q9 | ~~Does the changelog require title correction?~~ | answered: D6 (switched on with it) |
 | Q10 | Should onboarding add a PR template with the type checklist when a repository has none? | Yes, only when the repository has none, using wording `TemplateWords` already maps. |
 | Q11 | Title separator: keep `(#1/#2)` or switch to the owner's `(#1 - #2)`? | Keep `/`. `IssueSuffix` strips it, and existing titles use it. |
 | Q12 | Unreleased visibility: only a CodeCoverage view, or also a draft GitHub Release per line? | Only the CodeCoverage view. Drafts add a second writer of Releases. |
