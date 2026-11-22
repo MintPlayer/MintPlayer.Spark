@@ -27,6 +27,8 @@
 		<ProjectReference Include="..\..\..\libs\controllers\MintPlayer.Spark.Controllers\MintPlayer.Spark.Controllers.csproj" />
 		<!-- The MCP server and its embedded authorization server for agents (setup 3, docs/guide-mcp.md). -->
 		<ProjectReference Include="..\..\..\libs\mcp\MintPlayer.Spark.Mcp\MintPlayer.Spark.Mcp.csproj" />
+		<ProjectReference Include="..\..\..\libs\files\MintPlayer.Spark.Files\MintPlayer.Spark.Files.csproj" />
+		<ProjectReference Include="..\..\..\libs\files\MintPlayer.Spark.Files.Images.SkiaSharp\MintPlayer.Spark.Files.Images.SkiaSharp.csproj" />
 		<ProjectReference Include="..\..\..\libs\identity_provider\MintPlayer.Spark.IdentityProvider\MintPlayer.Spark.IdentityProvider.csproj" />
 		<ProjectReference Include="..\..\..\libs\source_generators\MintPlayer.Spark.SourceGenerators\MintPlayer.Spark.SourceGenerators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
 		<ProjectReference Include="..\..\..\libs\source_generators\MintPlayer.Spark.LibraryGenerators\MintPlayer.Spark.LibraryGenerators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />

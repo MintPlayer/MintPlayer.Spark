@@ -4,7 +4,7 @@ import { BsCardBodyComponent, BsCardComponent } from '@mintplayer/ng-bootstrap/c
 import { EntityAttributeDefinition, hasShowedOnFlag, PersistentObject, ShowedOn, TranslatedString } from '@mintplayer/ng-spark/models';
 import type { SparkDetailContext } from '@mintplayer/ng-spark/panels';
 import { ResolveTranslationPipe, TranslateKeyPipe } from '@mintplayer/ng-spark/pipes';
-import { rendererValue, SPARK_ATTRIBUTE_RENDERERS, withDeclaredInputs } from '@mintplayer/ng-spark/renderers';
+import { rendererValue, resolveAttributeRenderer, SPARK_ATTRIBUTE_RENDERERS, withDeclaredInputs } from '@mintplayer/ng-spark/renderers';
 import { formatSparkDashboardValue } from './dashboard-format';
 
 /** The `metadata` key a dashboard carries (the dashboards package's `SparkDashboardActions.MetadataKey`). */
@@ -122,7 +122,7 @@ export class SparkDashboardComponent {
 
   private tile(attribute: EntityAttributeDefinition, item: PersistentObject, formData: Record<string, any>): DashboardTile {
     const value = rendererValue(item.attributes.find(a => a.name === attribute.name));
-    const registration = attribute.renderer ? this.renderers.find(r => r.name === attribute.renderer) : undefined;
+    const registration = resolveAttributeRenderer(this.renderers, attribute, 'detailComponent');
     const component = registration?.detailComponent ?? null;
     // A table without a columnSpan takes the row; a columnSpan of 3 or more is the row, 2 is two columns.
     const columnSpan = attribute.columnSpan ?? (attribute.renderer === 'spark-dashboard-table' ? 3 : 1);

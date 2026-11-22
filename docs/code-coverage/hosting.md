@@ -44,7 +44,9 @@ what it must provide (Docker provider on `web`, `exposedbydefault=false`, entryp
 | `coverage-raven-license` | `curlimages/curl:8.11.1` | `coverage-db` | `./raven-license.json` → `/raven-license.json` (ro); the operator certificate and `ca.crt` (ro) | — | `"no"` (one-shot) | POSTs the licence to `https://coverage-raven:8080/admin/license/activate` with the operator certificate once Raven is healthy, with 10 retries 3 s apart, then exits. Runs on every `up`. Nothing depends on it. |
 | `coverage-git` | `ghcr.io/mintplayer/codecoverage-git:master` (floating, pull-only) | `coverage-git`, `coverage-git-egress` | `codecoverage-git-data` → `/data/git` | — | `unless-stopped` | The commit-graph mirror sidecar (#504, [commit-graph.md](commit-graph.md)): the only container that runs `git`. `mem_limit: 1g` (D22). Holds no App key, no Raven certificate and no stored credential; the app sends a token per fetch. ⚠️ **Its API has no authentication**: the `coverage-git` network is the boundary (D4). |
 | `coverage-git-writer` | `ghcr.io/mintplayer/codecoverage-git-writer:master` (floating, pull-only) | `coverage-git-writer`, `coverage-git-writer-egress` | `codecoverage-git-writer-jobs` → `/data/jobs` | — | `unless-stopped` | The merge queue's git writer (`docs/coverage_merge_queue_PRD.md` D2, M3): per job a bare, blob-less clone, the merge-tree resolver, `commit-tree` and a leased push. `mem_limit: 768m`, `pids_limit: 128`, `read_only: true` with a 64 MB `/tmp` tmpfs. Holds no App key, no Raven certificate and no stored credential; the app mints a short-lived token per request. ⚠️ **Its API has no authentication and pushes**: the `coverage-git-writer` network is the boundary. |
-| `coverage-app` | `ghcr.io/mintplayer/codecoverage:master` (floating, pull-only: no `build:` block) | `web`, `coverage-db`, `coverage-mail`, `coverage-git`, `coverage-git-writer` | `./github-app.pem` → `/run/secrets/github-app.pem` (ro); `./raven-certs/codecoverage.{crt,key}`, `ca.crt` (ro); `dataprotection-keys` → `/var/lib/codecoverage/dataprotection-keys` | `GET /health` must answer 200; interval 15 s, timeout 5 s, retries 8, **start period 600 s** | `unless-stopped` | The application. `stop_grace_period: 120s`. Waits for `coverage-raven` to be *healthy* and `coverage-git` to be *started* (not for the mail relay, another stack: MailManager retries) (the graph answers `unavailable` without the sidecar). |
+| `coverage-clamav` | `docker.io/clamav/clamav-debian:1.5.5` | `coverage-clamav`, `coverage-clamav-egress` | `./clamd.conf` → `/etc/clamav/clamd.conf` (ro); `clamav-db` → `/var/lib/clamav` | `clamdcheck.sh`; interval 60 s, timeout 10 s, retries 3, start period 360 s | `unless-stopped` | The upload scanner (#700 M7/M11): every uploaded file is streamed to clamd before it can be served, and a file it has not passed is never served (fail-closed). `mem_limit: 1400m` (~1.05 GiB with the signatures loaded); `ConcurrentDatabaseReload no` in `clamd.conf` keeps the daily signature reload from loading a second copy beside the first. glibc image, no `sshd`. The app's `/health/ready` ignores it, so a slow first start (~70 s loading signatures) cannot fail a deploy. |
+| `coverage-garage` | `docker.io/dxflrs/garage:v1.1.0` | `coverage-files` | `./garage.toml` → `/etc/garage.toml` (ro); `garage-data` → `/var/lib/garage` | `/garage status`; interval 60 s, timeout 10 s, retries 3, start period 30 s | `unless-stopped` | The file store (#700 M11, `docs/file_attributes_PRD.md` D13): S3-compatible, holds the custom avatars' bytes. Static image (no OS, no shell, no `sshd`), `mem_limit: 256m`. Its volume is mounted **here only**; the app reaches the bytes through the S3 API with its own bucket key. Not behind Traefik: the app proxies every upload and download. Refuses to start until `GARAGE_RPC_SECRET` is set; see "File storage" below. |
+| `coverage-app` | `ghcr.io/mintplayer/codecoverage:master` (floating, pull-only: no `build:` block) | `web`, `coverage-db`, `coverage-mail`, `coverage-git`, `coverage-git-writer`, `coverage-clamav`, `coverage-files` | `./github-app.pem` → `/run/secrets/github-app.pem` (ro); `./raven-certs/codecoverage.{crt,key}`, `ca.crt` (ro); `dataprotection-keys` → `/var/lib/codecoverage/dataprotection-keys` | `GET /health` must answer 200; interval 15 s, timeout 5 s, retries 8, **start period 600 s** | `unless-stopped` | The application. `stop_grace_period: 120s`. Waits for `coverage-raven` to be *healthy* and `coverage-git` to be *started* (not for the mail relay, another stack: MailManager retries) (the graph answers `unavailable` without the sidecar). |
 
 Named volumes: `raven-data`, `dataprotection-keys`, `codecoverage-git-data`, `codecoverage-git-writer-jobs`
 (the writer's job directories, empty between jobs; no backup). Docker prefixes them with the
@@ -52,6 +54,47 @@ compose project name, which is the directory name (`code-coverage` for `/var/www
 the database network is `code-coverage_coverage-db`. The backup commands in the README rely on
 that name. `codecoverage-git-data` (`code-coverage_codecoverage-git-data`) holds only mirrors, a cache of the forges:
 it needs no backup, and deleting it costs re-clones on the next views ([commit-graph.md](commit-graph.md) §9).
+`clamav-db` holds only clamd's signatures: no backup, and deleting it costs one download. **`garage-data` is data**: the
+stored files and Garage's metadata, backed up as described under "File storage".
+
+### File storage (Garage) and the upload scanner (#700 M11)
+
+Custom avatars (`Account.CustomAvatar`) are stored in `coverage-garage` and scanned by `coverage-clamav`. The networks
+follow the sidecar rule: `coverage-clamav` and `coverage-files` are `internal: true` and hold **exactly** `coverage-app`
+and their service. `coverage-clamav-egress` is clamd's own way out, for freshclam's signature downloads.
+`tools/verify-backend-networks.test.mjs` asserts that layout, including that no other service mounts `garage-data`.
+
+Until `COVERAGE_FILES_BUCKET` is set, the app keeps files as RavenDB attachments: `Program.cs` calls `UseS3` only when
+`Files:S3:Bucket` is set. Configure Garage **before** owners start uploading avatars. Files stored as attachments stay
+in RavenDB, so they are not readable once the app switches to S3.
+
+**One-time bootstrap**, on the server, in the compose directory:
+
+1. Add `GARAGE_RPC_SECRET=$(openssl rand -hex 32)` to `.env`, then `docker compose up -d coverage-garage`.
+2. Lay out the single node, then create the bucket and the app's own key:
+   ```sh
+   g() { docker compose exec coverage-garage /garage "$@"; }
+   g layout assign -z dc1 -c 20G "$(g node id -q | cut -d@ -f1)"
+   g layout apply --version 1
+   g bucket create codecoverage
+   g key create codecoverage-app        # prints the key id (GK…) and its secret: they go straight into .env
+   g bucket allow --read --write codecoverage --key codecoverage-app
+   ```
+   The key gets read and write on its own bucket only, never `--owner`. Buckets are private by default, and website
+   access stays off.
+3. Put `COVERAGE_FILES_BUCKET=codecoverage`, `COVERAGE_FILES_ACCESS_KEY` and `COVERAGE_FILES_SECRET_KEY` in `.env`
+   (never print them in a shared terminal), then `docker compose up -d coverage-app`.
+
+**Backups.** Back up `code-coverage_garage-data` together with the database, with Garage stopped so the sqlite metadata
+and the data blocks match:
+`docker compose stop coverage-garage && docker run --rm -v code-coverage_garage-data:/v:ro -v "$PWD/backups:/b" alpine tar czf /b/garage-$(date +%F).tgz -C /v . && docker compose start coverage-garage`.
+Uploads fail while it is stopped; avatars that are already stored fall back to the forge's avatar. To restore, untar into
+an empty volume with the same name. The keys and the bucket live in the metadata, so `.env` stays valid.
+
+**Why no public host.** D13 puts Garage behind Traefik on its own host, a cookie-less origin for presigned reads. That host
+needs a DNS record and a hard-coded router rule (see the `coverage.rule` row below for why it is never interpolated).
+Until the record exists, `Files__S3__DirectUploads=false` and `DirectDownloads=false`: the app proxies the bytes and
+serves them itself from `/spark/files/download`, with the same checks. For avatars capped at 2 MB that costs little.
 
 **`coverage-git`, `coverage-git-egress`** (#504, `docs/coverage_commit_graph_PRD.md` D4, D18, D24). The sidecar's API
 is unauthenticated, so its networks are the security boundary:
@@ -172,6 +215,8 @@ is **never written by a deploy**, and must have **LF line endings** — a CRLF f
 | `MAIL_HOST` | `Spark__Mail__Smtp__Host` | `mail-relay` | No | Where the app hands mail. The default is the shared relay (apps/MailRelay); change it only to bypass the relay. |
 | `MAIL_PORT` | `Spark__Mail__Smtp__Port` | `587` | No | Port on `MAIL_HOST`. |
 | `MAIL_SENDER_DOMAIN`, `MAIL_HELO_HOSTNAME`, `MAIL_DKIM_SELECTOR`, `MAIL_RELAY_*` | — | — | — | Moved to the relay's own `.env` (`/var/www/mail-relay/.env`) with the relay in 2026-10: [apps/MailRelay/.env.example](../../apps/MailRelay/.env.example). The ones still in this `.env` are ignored. |
+| `GARAGE_RPC_SECRET` | `coverage-garage` `GARAGE_RPC_SECRET` | empty | For file storage | Garage's cluster secret (`openssl rand -hex 32`). Unset: Garage refuses to start, and nothing else is affected (§1, "File storage"). |
+| `COVERAGE_FILES_BUCKET`, `COVERAGE_FILES_ACCESS_KEY`, `COVERAGE_FILES_SECRET_KEY` | `Files__S3__Bucket`, `__AccessKey`, `__SecretKey` | empty | For file storage | The bucket and the app's bucket-scoped key from the Garage bootstrap. An empty bucket keeps files as RavenDB attachments. The key is a secret: never print it. |
 | `GIT_MIRROR_MIN_FREE_BYTES` | sidecar `GitMirror__MinFreeBytes` | `16106127360` (15 GiB) | No | The host free-space floor: below it the commit-graph sidecar refuses every clone and fetch (D8, D20). It guards the root disk RavenDB shares. Not listed in `.env.example`. |
 
 Not in `.env` on purpose:
@@ -208,7 +253,8 @@ Set directly in `docker-compose.yml` (not overridable from `.env`):
 
 ## 3. Files next to the compose file
 
-All server-managed: a deploy re-downloads `docker-compose.yml` and touches nothing else.
+All server-managed: a deploy re-downloads `docker-compose.yml`, `clamd.conf` and `garage.toml` (both from
+`apps/CodeCoverage/ops/`; neither holds a secret) and touches nothing else.
 
 | Path (relative to the compose directory) | Required? | Owner / mode | Notes |
 |---|---|---|---|

@@ -14,8 +14,20 @@ namespace MintPlayer.Spark.Services;
 
 public interface IEntityMapper
 {
+    /// <summary>
+    /// A new entity from <paramref name="persistentObject"/>'s values, for inspection (a probe). File
+    /// attributes (#700) are left unset, because claiming an upload needs a session: a save creates
+    /// through <see cref="ToEntityAsync"/>.
+    /// </summary>
     object ToEntity(PersistentObject persistentObject);
+    /// <inheritdoc cref="ToEntity(PersistentObject)"/>
     T ToEntity<T>(PersistentObject persistentObject) where T : class;
+
+    /// <summary>
+    /// A new entity from <paramref name="persistentObject"/>'s values, for a save: references resolve
+    /// through <paramref name="session"/>, and file attributes claim their uploads (#700).
+    /// </summary>
+    Task<object> ToEntityAsync(PersistentObject persistentObject, ISparkSession session, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Scaffolds a blank PersistentObject from the schema named <paramref name="name"/>:
@@ -160,6 +172,10 @@ internal partial class EntityMapper : IEntityMapper
     [Inject] private readonly Abstractions.Authorization.IPermissionService? permissionService;
     // Tells the user when a row was restored rather than saved. Optional for the same reason.
     [Inject] private readonly Abstractions.ClientOperations.IClientAccessor? clientAccessor;
+    // The Files plugin's claim logic (#700). Null without spark.AddFiles(); a model with a stored-file
+    // attribute is then refused at startup (SparkFileAttributeStartupCheck), and a save that reaches a
+    // file attribute anyway (a hand-built mapper) throws rather than copying the client's value.
+    [Inject] private readonly ISparkFileValueHandler? fileValueHandler;
 
     private static readonly ICollectionGuard DefaultCollectionGuard = new CollectionGuard();
     private static readonly IReadOnlySet<string> NoTokens = new HashSet<string>();
@@ -178,11 +194,30 @@ internal partial class EntityMapper : IEntityMapper
         var entity = Activator.CreateInstance(entityType)
             ?? throw new InvalidOperationException($"Could not create instance of type '{entityTypeDefinition.ClrType}'");
 
-        // Route through PopulateObjectValues so AsDetail attributes recurse into nested
+        // Route through the shared population so AsDetail attributes recurse into nested
         // CLR instances and scalar attributes go through the canonical coercion path.
-        // PopulateObjectValues with includedDocuments=null throws on complex-typed
-        // Reference attributes — callers in that shape need the async overload.
-        PopulateObjectValues(persistentObject, entity);
+        // With includedDocuments=null it throws on complex-typed Reference attributes —
+        // callers in that shape need the async overload.
+        //
+        // File attributes (#700) are left unset: claiming an upload needs a session, and this
+        // conversion is a probe (the natural-id collision check), not a save. The save path
+        // creates through ToEntityAsync, which claims.
+        PopulateObjectValuesCore(persistentObject, entity, includedDocuments: null, skipFiles: true);
+        return entity;
+    }
+
+    public async Task<object> ToEntityAsync(PersistentObject persistentObject, ISparkSession session, CancellationToken cancellationToken = default)
+    {
+        var entityTypeDefinition = modelLoader.GetEntityType(persistentObject.ObjectTypeId)
+            ?? throw new InvalidOperationException($"Could not find EntityType with ID '{persistentObject.ObjectTypeId}'");
+
+        var entityType = SparkTypeResolver.ResolveClrType(entityTypeDefinition.ClrType)
+            ?? throw new InvalidOperationException($"Could not resolve type '{entityTypeDefinition.ClrType}'");
+
+        var entity = Activator.CreateInstance(entityType)
+            ?? throw new InvalidOperationException($"Could not create instance of type '{entityTypeDefinition.ClrType}'");
+
+        await PopulateObjectValuesAsync(persistentObject, entity, session, cancellationToken);
         return entity;
     }
 
@@ -591,8 +626,38 @@ internal partial class EntityMapper : IEntityMapper
         return raw;
     }
 
+    /// <summary>
+    /// The document a nested populate writes into, and the AsDetail attribute it is inside (#700 M10): a file in an
+    /// AsDetail row is bound to the document and <c>Parent.Field</c>, not to the row. Set by the outermost populate.
+    /// </summary>
+    private sealed record FileScope(object Root, string? RootTypeName, string Prefix);
+
+    private FileScope? fileScope;
+
     public async Task PopulateObjectValuesAsync(PersistentObject po, object entity,
         ISparkSession? session = null, CancellationToken cancellationToken = default)
+    {
+        if (fileScope is not null)
+        {
+            await PopulateObjectValuesCoreAsync(po, entity, session, cancellationToken);
+            return;
+        }
+
+        fileScope = new FileScope(entity, modelLoader.GetEntityTypeByClrType(entity.GetType().FullName ?? entity.GetType().Name)?.Name, "");
+        try
+        {
+            if (session is not null && fileValueHandler is not null)
+                await fileValueHandler.BeginAsync(new SparkFileBeginContext(entity, session), cancellationToken);
+            await PopulateObjectValuesCoreAsync(po, entity, session, cancellationToken);
+        }
+        finally
+        {
+            fileScope = null;
+        }
+    }
+
+    private async Task PopulateObjectValuesCoreAsync(PersistentObject po, object entity,
+        ISparkSession? session, CancellationToken cancellationToken)
     {
         var entityType = entity.GetType();
         var schemaAttributes = GetSchemaAttributeMap(entityType);
@@ -617,6 +682,10 @@ internal partial class EntityMapper : IEntityMapper
 
     public void PopulateObjectValues(PersistentObject po, object entity,
         Dictionary<string, object>? includedDocuments = null)
+        => PopulateObjectValuesCore(po, entity, includedDocuments, skipFiles: false);
+
+    private void PopulateObjectValuesCore(PersistentObject po, object entity,
+        Dictionary<string, object>? includedDocuments, bool skipFiles)
     {
         var entityType = entity.GetType();
         var schemaAttributes = GetSchemaAttributeMap(entityType);
@@ -633,6 +702,9 @@ internal partial class EntityMapper : IEntityMapper
 
             var property = entityType.GetCachedProperty(attribute.Name);
             if (property is null || !property.CanWrite)
+                continue;
+
+            if (skipFiles && IsFileProperty(property))
                 continue;
 
             // Sync path: delegate to the async core with a null session. Complex-typed
@@ -709,7 +781,26 @@ internal partial class EntityMapper : IEntityMapper
         // attribute should always find a matching collection/scalar on the entity.
         if (attribute is PersistentObjectAttributeAsDetail asDetail)
         {
-            await WriteAsDetailAsync(asDetail, property, entity, session, includedDocuments, cancellationToken);
+            var outer = fileScope;
+            if (outer is not null)
+                fileScope = outer with { Prefix = outer.Prefix.Length == 0 ? asDetail.Name : $"{outer.Prefix}.{asDetail.Name}" };
+            try
+            {
+                await WriteAsDetailAsync(asDetail, property, entity, session, includedDocuments, cancellationToken);
+            }
+            finally
+            {
+                fileScope = outer;
+            }
+            return;
+        }
+
+        // A stored file (#700): never deserialized from the client. Before the IsArray branch,
+        // which would otherwise coerce a List<SparkImage> from the posted JSON — and with it a
+        // forged fileId pointing at someone else's bytes (SP1).
+        if (IsFileProperty(property))
+        {
+            await WriteFileAsync(property, entity, attribute, session, cancellationToken);
             return;
         }
 
@@ -929,6 +1020,15 @@ internal partial class EntityMapper : IEntityMapper
             if (attribute is PersistentObjectAttributeAsDetail asDetail)
             {
                 if (await AsDetailWouldChangeAsync(asDetail, current, session, depth + 1, cancellationToken))
+                    return true;
+                continue;
+            }
+
+            // A stored file (#700 M10) is compared by file id, never written to a scratch: that write would claim the
+            // upload token, and a token claimed for a scratch is spent.
+            if (IsFileProperty(property))
+            {
+                if (FileValueWouldChange(attribute.Value, current))
                     return true;
                 continue;
             }
@@ -1265,6 +1365,95 @@ internal partial class EntityMapper : IEntityMapper
         },
     };
 
+    /// <summary>A <see cref="SparkFile"/>/<see cref="SparkImage"/> property, or a collection of them (#700).</summary>
+    internal static bool IsFileProperty(PropertyInfo property)
+    {
+        var type = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
+        return Abstractions.Model.SparkModelShape.GetFileDataType(GetCollectionElementType(type) ?? type) is not null;
+    }
+
+    /// <summary>
+    /// Whether a posted file value would change what <paramref name="current"/> holds: any upload token does, and so does a
+    /// different list of file ids (order included). Only decides whether a restore is announced, so a value it cannot read
+    /// counts as a change.
+    /// </summary>
+    private static bool FileValueWouldChange(object? posted, object? current)
+    {
+        List<string> held = current switch
+        {
+            null => [],
+            SparkFile single => [single.FileId],
+            System.Collections.IEnumerable many => many.OfType<SparkFile>().Select(f => f.FileId).ToList(),
+            _ => [],
+        };
+
+        JsonElement value;
+        try
+        {
+            value = posted switch
+            {
+                null => default,
+                JsonElement element => element,
+                _ => JsonSerializer.SerializeToElement(posted, posted.GetType(), JsonSerializerOptions.Web),
+            };
+        }
+        catch (Exception)
+        {
+            return true;
+        }
+
+        List<JsonElement> items = value.ValueKind switch
+        {
+            JsonValueKind.Undefined or JsonValueKind.Null => [],
+            JsonValueKind.Array => value.EnumerateArray().ToList(),
+            _ => [value],
+        };
+        if (items.Count != held.Count)
+            return true;
+
+        for (var i = 0; i < items.Count; i++)
+        {
+            if (items[i].ValueKind != JsonValueKind.Object)
+                return true;
+            string? fileId = null;
+            foreach (var member in items[i].EnumerateObject())
+            {
+                if (string.Equals(member.Name, "uploadToken", StringComparison.OrdinalIgnoreCase))
+                    return true;
+                if (string.Equals(member.Name, "fileId", StringComparison.OrdinalIgnoreCase) && member.Value.ValueKind == JsonValueKind.String)
+                    fileId = member.Value.GetString();
+            }
+            if (fileId != held[i])
+                return true;
+        }
+        return false;
+    }
+
+    private async Task WriteFileAsync(PropertyInfo property, object entity, PersistentObjectAttribute attribute,
+        ISparkSession? session, CancellationToken cancellationToken)
+    {
+        // Loud, never a silent drop: a file value that reached a path which cannot claim it would
+        // otherwise leave the stored file in place while the save reported success.
+        if (session is null)
+            throw new InvalidOperationException(
+                $"File attribute '{attribute.Name}' can only be saved through PopulateObjectValuesAsync (claiming an upload needs a session).");
+
+        if (fileValueHandler is null)
+            throw new InvalidOperationException(
+                $"'{entity.GetType().Name}.{attribute.Name}' is a file attribute, but file attributes are not enabled. Call spark.AddFiles() (MintPlayer.Spark.Files).");
+
+        var definition = modelLoader.GetEntityTypeByClrType(entity.GetType().FullName ?? entity.GetType().Name);
+        var owner = fileScope is { Prefix.Length: > 0 } scope
+            ? new SparkFileOwner(scope.Root, scope.RootTypeName, $"{scope.Prefix}.{attribute.Name}")
+            : null;
+        await fileValueHandler.WriteAsync(new SparkFileWriteContext(
+            entity, property, attribute,
+            definition?.Attributes.FirstOrDefault(a => a.Name == attribute.Name),
+            definition?.Name,
+            session,
+            owner), cancellationToken);
+    }
+
     private void SetPropertyValue(PropertyInfo property, object entity, object? value)
     {
         var targetType = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
@@ -1305,9 +1494,13 @@ internal partial class EntityMapper : IEntityMapper
                     var deserializedValue = je.Deserialize(targetType, ComplexValueOptions);
                     setter(entity, deserializedValue);
                 }
-                catch
+                catch (JsonException)
                 {
-                    // Skip properties that can't be deserialized
+                    // An object the property's type cannot be read from used to be skipped here, so the save
+                    // reported success and kept the stored value: an edit lost with no signal (#700 PRD §3.1,
+                    // the swallowed conversion). It is the scalar path's validation failure.
+                    throw new SparkValidationException(
+                        $"The value is not a valid {targetType.Name} for {property.Name}.", property.Name);
                 }
                 return;
             }

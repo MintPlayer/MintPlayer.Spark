@@ -135,7 +135,7 @@
                 @if (col.isReadOnly || !(attr | canEditDetailRow:asDetailPermissions())) {
                   <span class="text-muted">{{ row | asDetailCellValue:attr:col:asDetailReferenceOptions():loadedRowReferences()[attr.name] }}</span>
                 } @else if (getAsDetailCellEditRenderer(col); as editRenderer) {
-                  <ng-container *ngComponentOutlet="editRenderer; inputs: getAsDetailCellEditRendererInputs(editRenderer, row, col)"></ng-container>
+                  <ng-container *ngComponentOutlet="editRenderer; inputs: getAsDetailCellEditRendererInputs(editRenderer, row, col, attr)"></ng-container>
                 } @else if (col.dataType === 'AsDetail') {
                   <!-- Nested AsDetail can't flatten into a row: escalate to the row modal,
                        where the recursive spark-po-form renders the nested structure. -->
@@ -411,6 +411,9 @@
             </bs-input-group>
           } @else if (getEditRendererComponent(attr); as editComp) {
             <ng-container *ngComponentOutlet="editComp; inputs: getEditRendererInputs(editComp, attr)"></ng-container>
+          } @else if (isUnrenderedFileAttribute(attr)) {
+            <!-- #700 SP6: a stored file with no Files renderer (withFileAttributes() missing). Never the text input. -->
+            <p class="form-control-plaintext text-muted spark-files-not-enabled">{{ 'files.notEnabled' | t }}</p>
           } @else if (isPrimitiveList(attr)) {
             <!-- A list of plain values (List<string>, int[]): one input per item. Before this it fell
                  through to the single textbox below, which showed the items comma-joined and posted
@@ -487,6 +490,7 @@
           [referenceParentId]="referenceParentId()"
           [referenceParentType]="referenceParentType()"
           [triggerPathPrefix]="attr.isArray ? null : attr.name"
+          [fileOwner]="asDetailFileOwner(attr)"
           (nestedTriggerRequested)="onEmbeddedTrigger(attr.name, $event)"
           (nestedTriggerBlurred)="onEmbeddedTriggerBlur($event)"
           (referencePicked)="rememberPickedRowReference(attr.name, $event.attribute, $event.item)">

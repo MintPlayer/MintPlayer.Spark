@@ -33,6 +33,23 @@
         "rules": []
       },
       {
+        "id": "0b0fde7c-39ba-4d57-a4be-4f674fd1ee3c",
+        "name": "Invoice",
+        "dataType": "BinaryFile",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 6,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": [],
+        "fileOptions": {
+          "accept": [
+            ".pdf"
+          ],
+          "maxBytes": 5000000
+        }
+      },
+      {
         "id": "829a8fa8-9775-42c2-8b20-5f18b5957a68",
         "name": "IsInvoiced",
         "dataType": "boolean",

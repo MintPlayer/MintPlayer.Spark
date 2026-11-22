@@ -1,6 +1,8 @@
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Authorization;
+using MintPlayer.Spark.Abstractions.Model;
+using MintPlayer.Spark.Abstractions.Reflection;
 
 namespace MintPlayer.Spark.Services;
 
@@ -75,7 +77,7 @@ internal sealed partial class SparkCatalogue : ISparkCatalogue
 
             pruned.CanRead = await permissionService.IsAllowedAsync("Read", entityType.Name, cancellationToken);
 
-            visible.Add(pruned);
+            visible.Add(MarkStoredFiles(pruned, entityType));
         }
         return visible;
     }
@@ -101,8 +103,37 @@ internal sealed partial class SparkCatalogue : ISparkCatalogue
         // anything — the loader's definitions are shared process-wide.
         // A `new` form is shaped for the create form instead (#264, G1/G2): New-denied attributes absent
         // too, and no Edit deny applied. It only ever narrows what is seen: Read-denied stays absent.
-        return await attributeRights.ForFormAsync(
+        var shaped = await attributeRights.ForFormAsync(
             SubQueryPruner.EmbedDetailTypes(pruned, modelLoader), formVerb, cancellationToken);
+        return MarkStoredFiles(shaped, entityType);
+    }
+
+    /// <summary>
+    /// Tells the client which <c>BinaryFile</c>/<c>Image</c> attributes hold a stored file (uploaded) and which a URL string
+    /// (#700 M9, <see cref="EntityAttributeDefinition.StoresFile"/>): an empty value can't say. Copies whatever it changes, never
+    /// the loader's shared <paramref name="declared"/> graph.
+    /// </summary>
+    internal static EntityTypeDefinition MarkStoredFiles(EntityTypeDefinition shaped, EntityTypeDefinition declared)
+    {
+        if (!shaped.Attributes.Any(a => a.DataType is SparkFileDataTypes.BinaryFile or SparkFileDataTypes.Image))
+            return shaped;
+
+        var clrType = SparkTypeResolver.ResolveClrType(shaped.ClrType);
+        var result = ReferenceEquals(shaped, declared) ? shaped.ShallowCopy() : shaped;
+        result.Attributes = [.. shaped.Attributes.Select(attribute =>
+        {
+            if (attribute.DataType is not (SparkFileDataTypes.BinaryFile or SparkFileDataTypes.Image))
+                return attribute;
+            var property = clrType?.GetCachedProperty(attribute.Name);
+            var element = property is null ? null : SparkModelShape.GetCollectionElementType(property.PropertyType) ?? property.PropertyType;
+            var stores = element is not null && element != typeof(string) && SparkModelShape.GetFileDataType(element) is not null;
+            if (attribute.StoresFile == stores)
+                return attribute;
+            var copy = attribute.ShallowCopy();
+            copy.StoresFile = stores;
+            return copy;
+        })];
+        return result;
     }
 
     public async Task<IReadOnlyList<SparkQuery>> ListQueriesAsync(CancellationToken cancellationToken = default)

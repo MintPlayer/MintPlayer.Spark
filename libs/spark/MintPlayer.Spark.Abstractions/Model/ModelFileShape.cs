@@ -25,7 +25,8 @@ namespace MintPlayer.Spark.Abstractions.Model;
 /// <para>
 /// <b>Structural</b> (hashed): entity name, CLR type, alias, projection/query type, index name, per
 /// attribute — name, data type, required, read-only, array-ness, reference
-/// target, detail type, lookup type, sortability, projection membership, and validation rules — and
+/// target, detail type, lookup type, sortability, projection membership, validation rules and
+/// <c>fileOptions</c> (#700) — and
 /// per inline query its
 /// <c>indexName</c>. Validation is included deliberately: silently dropping a rule is an attack, not
 /// a restyling. A query's <c>indexName</c> is structural since issue #279 made it load-bearing: the
@@ -155,6 +156,7 @@ public static class ModelFileShape
                         AppendInline(builder, field, attribute);
 
                     AppendRules(builder, attribute);
+                    AppendFileOptions(builder, attribute);
                     builder.Append('\n');
                 }
             }
@@ -286,6 +288,20 @@ public static class ModelFileShape
             .OrderBy(r => r, StringComparer.Ordinal);
 
         builder.Append("\trules=[").Append(string.Join(",", rendered)).Append(']');
+    }
+
+    /// <summary>
+    /// A file attribute's <c>fileOptions</c> (#700 SP11): structural because <c>accept</c>, <c>maxBytes</c> and
+    /// <c>maxCount</c> gate writes. <c>variants</c> and <c>delivery</c> gate nothing but ride along, so the one
+    /// object has one rule (a recorded deviation from "presentational stays unhashed"). Canonicalised,
+    /// for the reason <see cref="AppendRules"/> records. Appended only when present, so no existing hash moves.
+    /// </summary>
+    private static void AppendFileOptions(StringBuilder builder, JsonElement attribute)
+    {
+        if (!attribute.TryGetProperty("fileOptions", out var options) || options.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
+            return;
+
+        builder.Append("\tfileOptions=").Append(Canonicalize(options));
     }
 
     private static void AppendScalar(StringBuilder builder, string name, JsonElement parent)

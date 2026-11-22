@@ -28,6 +28,18 @@ export enum EReferenceDisplayType {
  */
 export type RefreshTrigger = 'None' | 'Auto' | 'ValueChanged' | 'Blur';
 
+/** The model's `fileOptions` of a `BinaryFile`/`Image` attribute (#700). The server enforces every one of them again. */
+export interface SparkAttributeFileOptions {
+  /** MIME types and/or extensions (`image/png`, `.pdf`); the input's `accept`. */
+  accept?: string[];
+  maxBytes?: number;
+  /** For a list: how many files at most (the server's default is 10). */
+  maxCount?: number;
+  variants?: Record<string, number>;
+  maxPixels?: number;
+  delivery?: 'Redirect' | 'Proxy';
+}
+
 export interface EntityAttributeDefinition {
   id: string;
   name: string;
@@ -73,6 +85,13 @@ export interface EntityAttributeDefinition {
    * cannot claim a trigger the model did not declare.
    */
   triggersRefresh?: RefreshTrigger;
+  /**
+   * For a `BinaryFile`/`Image` attribute (#700): true when it holds a stored file (uploaded through the Files endpoints),
+   * absent when it holds a URL string. Set by the server per caller from the property's CLR type.
+   */
+  storesFile?: boolean;
+  /** For a `BinaryFile`/`Image` attribute (#700): what it accepts and how much. */
+  fileOptions?: SparkAttributeFileOptions;
   /** For LookupReference attributes, specifies the lookup reference type name */
   lookupReferenceType?: string;
   /**

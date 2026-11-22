@@ -55,7 +55,7 @@ public class OwnerPrivacyEndToEndTests(OwnerPrivacyHostFixture host) : IClassFix
 
     /// <summary>What a visitor may read of an account: the forge's own public profile, and whether we are connected to it.</summary>
     public static readonly string[] PublicAccountAttributes =
-        ["Login", "Type", "AvatarUrl", "Provider", "Connection", "DisconnectedReason", "DisconnectedAtUtc"];
+        ["Login", "Type", "AvatarUrl", "CustomAvatar", "Provider", "Connection", "DisconnectedReason", "DisconnectedAtUtc"];
 
     /// <summary>Owner-only: settings, and the server-side key.</summary>
     public static readonly string[] PrivateAccountAttributes =

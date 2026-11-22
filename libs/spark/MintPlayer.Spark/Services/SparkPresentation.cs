@@ -58,7 +58,26 @@ internal static class SparkPresentation
     private static void Modify(JsonTypeInfo typeInfo)
     {
         if (typeInfo.Type == typeof(PersistentObject))
-            typeInfo.OnSerializing = obj => Check((PersistentObject)obj);
+        {
+            typeInfo.OnSerializing = obj =>
+            {
+                var po = (PersistentObject)obj;
+                Check(po);
+                SparkFileUrls.Sign(po, Accessor.HttpContext);
+            };
+            typeInfo.OnSerialized = obj => SparkFileUrls.Release(obj, Accessor.HttpContext);
+        }
+        else if (typeInfo.Type == typeof(QueryResultItemValue))
+        {
+            // A query row went through row security and attribute redaction in the projector; its file cells are signed as
+            // a loaded object's are (#700 D15), so a grid can show a thumbnail without a request per row.
+            typeInfo.OnSerializing = obj => SparkFileUrls.SignCell((QueryResultItemValue)obj, Accessor.HttpContext);
+            typeInfo.OnSerialized = obj => SparkFileUrls.Release(obj, Accessor.HttpContext);
+        }
+        else if (typeInfo.Kind == JsonTypeInfoKind.Object && (typeof(SparkFile).IsAssignableFrom(typeInfo.Type) || typeInfo.Type == typeof(SparkImageVariant)))
+        {
+            SparkFileUrls.AddUrlProperty(typeInfo, Accessor);
+        }
     }
 
     /// <summary>The check itself.</summary>

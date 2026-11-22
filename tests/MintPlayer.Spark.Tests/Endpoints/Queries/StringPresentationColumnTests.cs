@@ -54,7 +54,7 @@ public class StringPresentationColumnTests(StringPresentationColumnTests.Host ho
                 },
                 new EntityAttributeDefinition
                 {
-                    Id = Guid.NewGuid(), Name = "Thumbnail", DataType = "image",
+                    Id = Guid.NewGuid(), Name = "Thumbnail", DataType = "Image",
                     ShowedOn = EShowedOn.Query | EShowedOn.PersistentObject,
                 },
                 new EntityAttributeDefinition
@@ -89,9 +89,9 @@ public class StringPresentationColumnTests(StringPresentationColumnTests.Host ho
 
         var result = await ExecuteAsync(factory);
 
-        // Case included: the client dispatches on `dataType === 'image'`, so a server that
-        // title-cased or normalised these would render plain text with nothing to say why.
-        result.Columns.Single(c => c.Name == "Thumbnail").DataType.Should().Be("image");
+        // Case included: the client dispatches on `dataType`, so a server that re-cased these would
+        // render plain text with nothing to say why. `Image` is the #700 data type a string URL also gets.
+        result.Columns.Single(c => c.Name == "Thumbnail").DataType.Should().Be("Image");
         result.Columns.Single(c => c.Name == "Homepage").DataType.Should().Be("url");
         result.Columns.Single(c => c.Name == "Title").DataType.Should().Be("string");
     }

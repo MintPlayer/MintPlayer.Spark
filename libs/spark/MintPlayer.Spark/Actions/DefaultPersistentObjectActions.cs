@@ -263,10 +263,13 @@ public partial class DefaultPersistentObjectActions<T> : IPersistentObjectAction
     /// </remarks>
     public virtual async Task<T> MapAsync(PersistentObject obj, T? existing)
     {
-        if (existing is null)
-            return entityMapper.ToEntity<T>(obj);
+        var session = RequireServices().GetRequiredService<Abstractions.Storage.ISparkSession>();
 
-        await entityMapper.PopulateObjectValuesAsync(obj, existing, RequireServices().GetRequiredService<Abstractions.Storage.ISparkSession>());
+        // Async for a creation too: file attributes (#700) claim their uploads through the session.
+        if (existing is null)
+            return (T)await entityMapper.ToEntityAsync(obj, session);
+
+        await entityMapper.PopulateObjectValuesAsync(obj, existing, session);
         return existing;
     }
 

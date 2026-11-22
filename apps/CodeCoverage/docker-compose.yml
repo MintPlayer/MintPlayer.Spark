@@ -161,6 +161,62 @@ services:
       - coverage-git-writer-egress
     restart: unless-stopped
 
+  # The upload virus scanner (#700 M7/M11): clamd, which coverage-app streams every uploaded file to (INSTREAM) before the
+  # file can be served. glibc image, no sshd (PRD §0 item 14). Uploads fail closed: while clamd is down or still loading
+  # its signatures (first start ~70 s), a file stays unscanned and is never served.
+  #
+  # Networks: coverage-clamav (internal) shared with coverage-app ONLY, and coverage-clamav-egress, its own way out for
+  # freshclam's signature downloads, shared with NOTHING. clamd holds no secret and its port is never published.
+  coverage-clamav:
+    image: docker.io/clamav/clamav-debian:1.5.5
+    volumes:
+      # The package's limits (AlertExceedsMax, MaxScanSize) plus ConcurrentDatabaseReload no; fetched by the deploy.
+      - ./clamd.conf:/etc/clamav/clamd.conf:ro
+      # The signatures, so a restart does not download them again.
+      - clamav-db:/var/lib/clamav
+    # About 1.05 GiB once the signatures are loaded (PRD SP4). ConcurrentDatabaseReload no keeps the daily reload from
+    # loading a second copy beside the first (owner, 2026-11-22, the shared 8 GB VPS).
+    mem_limit: 1400m
+    healthcheck:
+      test: ["CMD", "clamdcheck.sh"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 360s
+    networks:
+      - coverage-clamav
+      - coverage-clamav-egress
+    restart: unless-stopped
+
+  # The file store (#700 M11, PRD D13): Garage, S3-compatible, holding the custom avatars' bytes. A static image (no OS,
+  # no shell, no sshd). Its volume is mounted here ONLY, so no app container can read or write the stored files except
+  # through the S3 API with its own bucket-scoped key. One-time bootstrap (layout, bucket, key): docs/code-coverage/hosting.md,
+  # "File storage". Until Files__S3__Bucket is set, the app keeps files as RavenDB attachments instead.
+  #
+  # Network: coverage-files (internal) shared with coverage-app ONLY. No egress, no Traefik: the app proxies the bytes.
+  coverage-garage:
+    image: docker.io/dxflrs/garage:v1.1.0
+    environment:
+      # :- rather than :? on purpose: a missing secret stops Garage alone (it refuses to start), never the whole stack's
+      # deploy, and the app keeps files in RavenDB until the bucket is configured.
+      - GARAGE_RPC_SECRET=${GARAGE_RPC_SECRET:-}
+    volumes:
+      # Fetched by the deploy, like clamd.conf.
+      - ./garage.toml:/etc/garage.toml:ro
+      - garage-data:/var/lib/garage
+    # A few MiB idle (PRD SP9); the cap only bounds a runaway.
+    mem_limit: 256m
+    healthcheck:
+      # The image has no shell and no curl; its own binary asks the node.
+      test: ["CMD", "/garage", "status"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    networks:
+      - coverage-files
+    restart: unless-stopped
+
   coverage-app:
     # Pull-only: no build block, so `docker compose up -d` on the VPS can
     # never fall back to building from source — deploys are pull + restart.
@@ -186,6 +242,10 @@ services:
         condition: service_started
       # Started, not waited on: only the merge queue uses it, and its jobs are retried.
       coverage-git-writer:
+        condition: service_started
+      # Started, not waited on: an upload committed before clamd is ready fails closed (never served) and is retried by
+      # the user; the rest of the app does not need it.
+      coverage-clamav:
         condition: service_started
     environment:
       # Explicit: Program.cs derives the GitHub__{env}__* config prefix from
@@ -257,6 +317,19 @@ services:
       # The merge queue's git writer (M3), reachable only over the internal coverage-git-writer network. Unset turns the
       # merge queue's git steps off.
       - MergeQueue__GitWriterUrl=http://coverage-git-writer:8080
+      # The upload scanner (#700 M11), reachable only over the internal coverage-clamav network. Program.cs binds ClamAV:*
+      # to ClamAVOptions; the defaults (port 3310, 25 MiB stream, 60 s timeout) match ops/clamd.conf.
+      - ClamAV__Host=coverage-clamav
+      # The file store (#700 M11), reachable only over the internal coverage-files network. The bucket and its key come from
+      # the one-time Garage bootstrap (docs/code-coverage/hosting.md, File storage); an empty bucket keeps files in RavenDB.
+      # Bytes go through the app both ways: no browser reaches Garage, so it needs no public host (PRD D13, M11 note).
+      - Files__S3__ServiceUrl=http://coverage-garage:3900
+      - Files__S3__Region=garage
+      - Files__S3__Bucket=${COVERAGE_FILES_BUCKET:-}
+      - Files__S3__AccessKey=${COVERAGE_FILES_ACCESS_KEY:-}
+      - Files__S3__SecretKey=${COVERAGE_FILES_SECRET_KEY:-}
+      - Files__S3__DirectUploads=false
+      - Files__S3__DirectDownloads=false
     volumes:
       # GitHub App private key, downloaded from the App settings page; see
       # .env.example for the expected location.
@@ -309,6 +382,10 @@ services:
       - coverage-git
       # ⚠️ Shared with coverage-git-writer ONLY: the writer's API is unauthenticated and pushes, and this network is its boundary.
       - coverage-git-writer
+      # Shared with coverage-clamav ONLY (#700 M11): every upload is scanned there before it can be served.
+      - coverage-clamav
+      # Shared with coverage-garage ONLY (#700 M11): the file store's S3 API.
+      - coverage-files
     restart: unless-stopped
 
 volumes:
@@ -318,6 +395,11 @@ volumes:
   codecoverage-git-data:
   # The git writer's job directories (M3); mounted into coverage-git-writer only. Empty between jobs.
   codecoverage-git-writer-jobs:
+  # clamd's signatures (#700 M11); mounted into coverage-clamav only. Deleting it costs one download, nothing else.
+  clamav-db:
+  # The stored files and Garage's metadata (#700 M11); mounted into coverage-garage only. THIS is data: back it up
+  # (docs/code-coverage/hosting.md, File storage).
+  garage-data:
 
 networks:
   web:
@@ -332,6 +414,9 @@ networks:
   #   coverage-git-egress   coverage-git (its way to the forges, D18)
   #   coverage-git-writer         coverage-app, coverage-git-writer (the merge queue's unauthenticated writer API, M3)
   #   coverage-git-writer-egress  coverage-git-writer (its way to the forges)
+  #   coverage-clamav         coverage-app, coverage-clamav (the upload scanner, #700 M11)
+  #   coverage-clamav-egress  coverage-clamav (freshclam's signature downloads)
+  #   coverage-files          coverage-app, coverage-garage (the file store's S3 API, #700 M11)
   #   seo-raven  (external) coverage-raven + SeoTester's app
   #   mintplayer-raven  (external) coverage-raven + mintplayer.com's app
   coverage-db:
@@ -359,6 +444,17 @@ networks:
   # ⚠️ coverage-git-writer ALONE: its outbound route for clones and pushes. Nothing else may join it.
   coverage-git-writer-egress:
     driver: bridge
+  # EXACTLY coverage-app and coverage-clamav (#700 M11): only the app sends files to scan.
+  coverage-clamav:
+    driver: bridge
+    internal: true
+  # coverage-clamav ALONE: freshclam's outbound route. Nothing else may join it.
+  coverage-clamav-egress:
+    driver: bridge
+  # EXACTLY coverage-app and coverage-garage (#700 M11): only the app holds a key to the bucket.
+  coverage-files:
+    driver: bridge
+    internal: true
   # Shared with SeoTester. They belong to no compose project, so neither stack's `down` removes them; both deploy
   # workflows create them, internal, when missing (`docker network create --internal seo-raven`).
   seo-raven:

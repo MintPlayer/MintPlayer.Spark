@@ -68,6 +68,12 @@
 		<ProjectReference Include="..\..\..\libs\mcp\MintPlayer.Spark.Mcp\MintPlayer.Spark.Mcp.csproj" />
 		<ProjectReference Include="..\..\..\libs\identity_provider\MintPlayer.Spark.IdentityProvider\MintPlayer.Spark.IdentityProvider.csproj" />
 		<ProjectReference Include="..\..\..\libs\migrations\MintPlayer.Spark.Migrations\MintPlayer.Spark.Migrations.csproj" />
+		<!-- #700 M11: custom avatars. Stored in Garage through S3, scanned by clamd, re-encoded by SkiaSharp. Keep the
+		     Dockerfile's COPY list and the deploy/image-check path filters in step. -->
+		<ProjectReference Include="..\..\..\libs\files\MintPlayer.Spark.Files\MintPlayer.Spark.Files.csproj" />
+		<ProjectReference Include="..\..\..\libs\files\MintPlayer.Spark.Files.S3\MintPlayer.Spark.Files.S3.csproj" />
+		<ProjectReference Include="..\..\..\libs\files\MintPlayer.Spark.Files.ClamAV\MintPlayer.Spark.Files.ClamAV.csproj" />
+		<ProjectReference Include="..\..\..\libs\files\MintPlayer.Spark.Files.Images.SkiaSharp\MintPlayer.Spark.Files.Images.SkiaSharp.csproj" />
 		<ProjectReference Include="..\..\..\libs\webhooks\MintPlayer.Spark.Webhooks.GitHub\MintPlayer.Spark.Webhooks.GitHub.csproj" />
 		<ProjectReference Include="..\..\..\libs\webhooks\MintPlayer.Spark.Webhooks.GitHub.DevTunnel\MintPlayer.Spark.Webhooks.GitHub.DevTunnel.csproj" />
 		<ProjectReference Include="..\..\..\libs\source_generators\MintPlayer.Spark.SourceGenerators\MintPlayer.Spark.SourceGenerators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />

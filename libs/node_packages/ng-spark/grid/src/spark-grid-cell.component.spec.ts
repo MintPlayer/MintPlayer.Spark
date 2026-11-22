@@ -133,9 +133,9 @@ describe('SparkGridCellComponent', () => {
     });
   });
 
-  describe('image (#327 §9.1)', () => {
+  describe('a string Image (#327 §9.1, #700)', () => {
     it('renders an <img>, not the URL as text', () => {
-      const f = setup({ column: col({ dataType: 'image' }), display: 'https://cdn.example.com/a.png' });
+      const f = setup({ column: col({ dataType: 'Image' }), display: 'https://cdn.example.com/a.png' });
 
       const img = html(f).querySelector('img') as HTMLImageElement;
       expect(img).toBeTruthy();
@@ -148,17 +148,24 @@ describe('SparkGridCellComponent', () => {
       // rendered inside <mp-datatable>'s shadow root, where a class reached nothing; ng-bootstrap
       // 22.18.0 moved the datatable to the light DOM, so `.spark-grid-image` (max-height 2.5em)
       // now applies. What must stay true either way is that the image is constrained.
-      const f = setup({ column: col({ dataType: 'image' }), display: 'https://cdn.example.com/a.png' });
+      const f = setup({ column: col({ dataType: 'Image' }), display: 'https://cdn.example.com/a.png' });
 
       const img = html(f).querySelector('img') as HTMLImageElement;
       expect(img.classList).toContain('spark-grid-image');
     });
 
     it('renders nothing when the value is empty', () => {
-      const f = setup({ column: col({ dataType: 'image' }), display: null });
+      const f = setup({ column: col({ dataType: 'Image' }), display: null });
 
       expect(html(f).querySelector('img')).toBeNull();
     });
+
+    it.each(['car.png', 'javascript:alert(1)', 'http://plain.example.com/a.png', 'data:image/svg+xml,<svg/>'])(
+      'shows %s as text, never as an image (a stored image without the Files renderers, or a non-https URL)', display => {
+        const f = setup({ column: col({ dataType: 'Image' }), display });
+        expect(html(f).querySelector('img')).toBeNull();
+        expect(html(f).textContent).toContain(display);
+      });
   });
 
   describe('url (#327 §9.1)', () => {

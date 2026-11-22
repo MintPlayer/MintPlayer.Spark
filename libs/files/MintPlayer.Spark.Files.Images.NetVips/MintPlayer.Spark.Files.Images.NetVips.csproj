@@ -1,0 +1,42 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<TargetFramework>net11.0</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+		<IsPackable>true</IsPackable>
+
+		<!-- NuGet Package Metadata -->
+		<PackageId>MintPlayer.Spark.Files.Images.NetVips</PackageId>
+		<Version>0.0.0-PLACEHOLDER</Version>
+		<Authors>MintPlayer</Authors>
+		<Company>MintPlayer</Company>
+		<Description>Image processing for MintPlayer.Spark.Files with libvips (through NetVips): the same pixel cap, orientation, metadata-free re-encode and WebP variants as the SkiaSharp package, faster on large images. This package is MIT; the libvips binaries it brings (NetVips.Native) are LGPL-2.1, dynamically linked.</Description>
+		<PackageTags>files;uploads;images;thumbnails;libvips;netvips;spark</PackageTags>
+		<PackageLicenseExpression>MIT</PackageLicenseExpression>
+		<PackageProjectUrl>https://github.com/MintPlayer/MintPlayer.Spark</PackageProjectUrl>
+		<RepositoryUrl>https://github.com/MintPlayer/MintPlayer.Spark.git</RepositoryUrl>
+		<RepositoryType>git</RepositoryType>
+		<PackageReadmeFile>README.md</PackageReadmeFile>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<None Include="README.md" Pack="true" PackagePath="\" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<!-- NetVips (MIT) binds libvips; NetVips.Native carries libvips and its dependencies for every RID (LGPL-2.1).
+		     Kept out of core and Files by the licence policy: only an app that adds this package takes LGPL natives (D12). -->
+		<PackageReference Include="NetVips" Version="3.2.0" />
+		<PackageReference Include="NetVips.Native" Version="8.18.7" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\MintPlayer.Spark.Files\MintPlayer.Spark.Files.csproj" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<InternalsVisibleTo Include="MintPlayer.Spark.Tests" />
+	</ItemGroup>
+
+</Project>

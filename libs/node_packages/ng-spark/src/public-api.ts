@@ -19,6 +19,7 @@
 //   @mintplayer/ng-spark/history            (withHistory, <spark-po-history>, SparkHistoryService)
 //   @mintplayer/ng-spark/contributions      (withContributions, sparkContributionRenderers: attribution row + lineDiff, revert)
 //   @mintplayer/ng-spark/search             (withSearch, withOpenSearchDescription, sparkSearchRoutes, <spark-site-search>, SparkSearchService)
+//   @mintplayer/ng-spark/files              (withFileAttributes: BinaryFile/Image upload, detail and column renderers; SparkFilesService)
 
 export type { SparkConfig } from './lib/spark-config';
 export { SPARK_CONFIG, defaultSparkConfig } from './lib/spark-config';

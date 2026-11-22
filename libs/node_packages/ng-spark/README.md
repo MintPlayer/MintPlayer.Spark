@@ -71,6 +71,7 @@ Import from the entry point, not from the package root; each one is a separate c
 | `/po-detail`, `/po-create`, `/po-edit` | The routed detail, create and edit pages |
 | `/po-form` | `<spark-po-form>`, `<spark-reference-picker>`, `<spark-lookup-picker>` |
 | `/renderers` | `withAttributeRenderers([...])`, `SPARK_ATTRIBUTE_RENDERERS` (with the core `paragraph` renderer built in), `withDeclaredInputs` ([guide](https://github.com/MintPlayer/MintPlayer.Spark/blob/master/docs/guide-custom-attribute-renderers.md)) |
+| `/files` | `withFileAttributes()` — the `spark-file` (`BinaryFile`) and `spark-image` (`Image`) renderers: upload control with progress and scan status, detail view, grid cell, image variants, lists — the client of MintPlayer.Spark.Files ([guide](https://github.com/MintPlayer/MintPlayer.Spark/blob/master/docs/guide-file-attributes.md)) |
 | `/score-renderers` | `withScoreRenderers([...])` — the `spark-gauge`, `spark-threshold-bar`, `spark-trend` and `spark-delta` renderers, their components, bands and grade presets ([guide](https://github.com/MintPlayer/MintPlayer.Spark/blob/master/docs/guide-score-renderers.md)) |
 | `/panels` | `withDetailPanels(...)`, `withDetailActions(...)`, `withQueryListActions(...)` — how add-ons put components on the routed pages |
 | `/client-operations` | `withClientOperations()` — notify, navigate and refresh operations from server-side action code; the toast container |

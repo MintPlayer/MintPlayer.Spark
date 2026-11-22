@@ -72,6 +72,8 @@ public class RouteTableSnapshotTests(SparkSharedDatabase database)
             spark.AddSearch();
             spark.AddOpenSearchDescription(o => o.ShortName = "RouteSnapshot");
         },
+        // #700: the upload steps, each antiforgery-protected; the upload route carries its request size limit.
+        ["files"] = spark => MintPlayer.Spark.Files.SparkFilesExtensions.AddFiles(spark),
         ["webhooks"] = spark => spark.AddMessaging().AddGithubWebhooks(o => o.WebhookSecret = "route-snapshot"),
         ["webhooks-dev-app"] = spark => spark.AddMessaging().AddGithubWebhooks(o =>
         {

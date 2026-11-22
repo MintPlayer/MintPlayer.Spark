@@ -29,7 +29,18 @@ public class Account : IForgeConnectable
     public string Type { get; set; } = "User";
 
     /// <summary>URL of the account's GitHub avatar image, shown next to the login.</summary>
+    /// <remarks>Synced from the forge and read-only here. Shown only while there is no <see cref="CustomAvatar"/>.</remarks>
     public string? AvatarUrl { get; set; }
+
+    /// <summary>A profile picture the account's owner uploaded, shown instead of the forge's avatar.</summary>
+    /// <remarks>
+    /// #700 M11 (PRD Q15). Only a managed owner may change it (<c>AccountActions</c> narrows writes); administrators can
+    /// clear it (<c>ClearAvatar</c>). It is re-encoded on upload and scanned before it is served, and it is as visible as the
+    /// account itself: its download answers the uniform 401/404 to anyone who may not read the account.
+    /// <c>AccountAvatar.Resolve</c> (the app) is what every page shows. [IgnoreForIndex]: a stored file has no business in an index.
+    /// </remarks>
+    [IgnoreForIndex]
+    public SparkImage? CustomAvatar { get; set; }
 
     /// <summary>GitHub App installation on this account, when the app is installed.</summary>
     /// <remarks>

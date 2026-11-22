@@ -327,6 +327,83 @@ The GitHub Actions workflow (`code-coverage-deploy.yml`) automatically:
 
 The workflow only needs VPS SSH credentials as GitHub secrets. Application secrets (webhook secret, GitHub App credentials) live in the `.env` file and `github-app.pem` that you manage directly on the server.
 
+## File uploads
+
+An app with `BinaryFile` or `Image` attributes ([guide-file-attributes.md](guide-file-attributes.md)) needs, beyond the app and
+RavenDB: nothing extra (RavenDB attachments, no scanner in Development), or a scanner and optionally a storage service.
+
+### Native libraries per base image
+
+The image processors ship their natives in NuGet packages, so **no `apt`/`apk` package is needed** (PRD SP5, measured
+2026-11-22):
+
+| Base image | OS | Packages to install | Publish |
+|---|---|---|---|
+| `mcr.microsoft.com/dotnet/aspnet:11.0` | Ubuntu 26.04, glibc | none | portable, or `-r linux-x64` |
+| `mcr.microsoft.com/dotnet/aspnet:11.0-resolute-chiseled` | Ubuntu 26.04, distroless | none | portable, or `-r linux-x64` |
+| `mcr.microsoft.com/dotnet/aspnet:11.0-alpine` | Alpine 3.24, musl | none | portable, or `-r linux-musl-x64` |
+
+- `MintPlayer.Spark.Files.Images.SkiaSharp` references `SkiaSharp.NativeAssets.Linux.NoDependencies` itself. Referencing the plain
+  `SkiaSharp` package instead fails on Linux with `DllNotFoundException: libSkiaSharp`.
+- `MintPlayer.Spark.Files.Images.NetVips` brings `libvips.so.42` through `NetVips.Native` (LGPL; see its README).
+- A RID-specific publish must match the base image's C library.
+
+### Storage: Garage (S3-compatible)
+
+Run the store as its own service, with **its own volume that no other service mounts**, on an `internal: true` network shared
+with the app alone. Never publish its ports. Give each app its own bucket and its own key with read and write on that
+bucket only, never `--owner`. The keys are secrets in `.env`.
+
+```yaml
+services:
+  garage:
+    image: docker.io/dxflrs/garage:v1.1.0
+    environment:
+      - GARAGE_RPC_SECRET=${GARAGE_RPC_SECRET:-}
+    volumes:
+      - ./garage.toml:/etc/garage.toml:ro
+      - garage-data:/var/lib/garage
+    networks: [files]
+  app:
+    environment:
+      - Files__S3__ServiceUrl=http://garage:3900
+      - Files__S3__Region=garage
+      - Files__S3__Bucket=${FILES_BUCKET}
+      - Files__S3__AccessKey=${FILES_ACCESS_KEY}
+      - Files__S3__SecretKey=${FILES_SECRET_KEY}
+    networks: [files, default]
+networks:
+  files:
+    internal: true
+volumes:
+  garage-data:
+```
+
+Direct browser uploads and reads (`DirectUploads`, `DirectDownloads`) need the store on a public host of its own, behind the
+reverse proxy, with no cookies. Without one, leave both `false` and the app proxies the bytes. The single-node bootstrap
+(layout, bucket, key) and the backup are written out in [code-coverage/hosting.md](code-coverage/hosting.md), "File storage
+(Garage) and the upload scanner".
+
+### Scanner: ClamAV
+
+Outside Development an app with file attributes **refuses to start without a scanner**. Run `clamav/clamav-debian`, pinned
+to a version, with the [`clamd.conf`](../libs/files/MintPlayer.Spark.Files.ClamAV/clamd.conf) from the ClamAV package mounted
+read-only:
+
+- **`AlertExceedsMax yes`** is the setting that matters: without it an archive that unpacks past clamd's limits scans `OK`.
+- **Memory: about 1.05 GiB** once the signatures are loaded (CodeCoverage sets `mem_limit: 1400m`). The first start
+  downloads the signatures, about 70 s. Size the host for it; a small VPS may need swap.
+- Put it on an internal network shared with the app alone (never publish 3310), plus an egress network of its own for
+  freshclam's signature updates.
+
+Details and the measured limits are in the [ClamAV package README](../libs/files/MintPlayer.Spark.Files.ClamAV/README.md).
+
+### No sshd in any image
+
+No image in the stack may contain `openssh-server` (Alpine images included). CodeCoverage's image check enforces this with
+Trivy: `tools/ci/trivy-no-sshd.sh <image>…` fails on an `openssh-server*` package or a banned CVE. It runs on the images CI
+builds and on every third-party image the compose file pins.
+
 ## Data Persistence
 
 The `raven-data` volume persists the RavenDB data directory. Without this volume, all data is lost when the container is recreated.

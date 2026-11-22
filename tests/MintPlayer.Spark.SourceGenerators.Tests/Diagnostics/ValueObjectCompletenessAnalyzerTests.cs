@@ -81,6 +81,37 @@ public class ValueObjectCompletenessAnalyzerTests
         diagnostics[0].GetMessage().Should().Contain("TestApp.PhoneNumber");
     }
 
+    /// <summary>
+    /// #700: a list of stored files is a file attribute, not an AsDetail; its items are identified by <c>FileId</c>. Fleet's
+    /// <c>List&lt;SparkImage&gt; Photos</c> failed synchronize with SPARK017 before this (2026-11-22).
+    /// </summary>
+    [Fact]
+    public async Task A_list_of_stored_files_is_not_reported()
+    {
+        var diagnostics = await GeneratorHarness.RunAnalyzerAsync(AnalyzerName, ["""
+            using System.Collections.Generic;
+            using System.Linq;
+            using MintPlayer.Spark;
+            using MintPlayer.Spark.Abstractions;
+
+            namespace TestApp;
+
+            public class AppContext : SparkContext
+            {
+                public IQueryable<Car> Cars { get; set; } = null!;
+            }
+
+            public class Car
+            {
+                public string? Id { get; set; }
+                public List<SparkImage> Photos { get; set; } = new();
+                public SparkFile[] Documents { get; set; } = [];
+            }
+            """], Refs.Append(typeof(SparkImage)));
+
+        diagnostics.Should().BeEmpty();
+    }
+
     [Fact]
     public async Task A_marked_collection_element_is_accepted()
     {

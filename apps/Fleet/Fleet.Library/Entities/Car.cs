@@ -128,4 +128,12 @@ public partial class Car : IAuditCreated
     /// </remarks>
     [IgnoreForIndex]
     public List<Entities.ServiceEntry> ServiceEntries { get; set; } = [];
+
+    /// <summary>Photos of the vehicle — the sample for a list of images (#700): resized variants, reorder, drag and drop.</summary>
+    [IgnoreForIndex]
+    public List<SparkImage> Photos { get; set; } = [];
+
+    /// <summary>The registration certificate, as a PDF — the sample for a single binary file (#700).</summary>
+    [IgnoreForIndex]
+    public SparkFile? RegistrationDocument { get; set; }
 }

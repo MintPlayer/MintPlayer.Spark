@@ -90,6 +90,25 @@
     "confirmPurge": { "en": "Delete this item permanently, including its history? This cannot be undone.", "fr": "Supprimer définitivement cet élément, y compris son historique ? Cette action est irréversible.", "nl": "Dit item definitief verwijderen, inclusief de geschiedenis? Dit kan niet ongedaan worden gemaakt." },
     "unavailable":  { "en": "This item is not available.", "fr": "Cet élément n'est pas disponible.", "nl": "Dit item is niet beschikbaar." }
   },
+  "files": {
+    "notEnabled":   { "en": "File attributes are not enabled in this app.", "fr": "Les attributs de fichier ne sont pas activés dans cette application.", "nl": "Bestandsattributen zijn niet ingeschakeld in deze applicatie." },
+    "choose":       { "en": "Choose a file", "fr": "Choisir un fichier", "nl": "Kies een bestand" },
+    "chooseMany":   { "en": "Add files", "fr": "Ajouter des fichiers", "nl": "Bestanden toevoegen" },
+    "drop":         { "en": "Drop files here", "fr": "Déposez les fichiers ici", "nl": "Sleep bestanden hierheen" },
+    "replace":      { "en": "Replace", "fr": "Remplacer", "nl": "Vervangen" },
+    "remove":       { "en": "Remove", "fr": "Retirer", "nl": "Verwijderen" },
+    "download":     { "en": "Download", "fr": "Télécharger", "nl": "Downloaden" },
+    "uploading":    { "en": "Uploading…", "fr": "Envoi…", "nl": "Uploaden…" },
+    "checking":     { "en": "Checking…", "fr": "Vérification…", "nl": "Controleren…" },
+    "scanning":     { "en": "Scanning for malware…", "fr": "Analyse antivirus…", "nl": "Scannen op malware…" },
+    "refused":      { "en": "Refused", "fr": "Refusé", "nl": "Geweigerd" },
+    "failed":       { "en": "The upload failed.", "fr": "L'envoi a échoué.", "nl": "Het uploaden is mislukt." },
+    "tooLarge":     { "en": "This file is larger than allowed.", "fr": "Ce fichier dépasse la taille autorisée.", "nl": "Dit bestand is groter dan toegestaan." },
+    "tooMany":      { "en": "No more files can be added.", "fr": "Impossible d'ajouter d'autres fichiers.", "nl": "Er kunnen geen bestanden meer worden toegevoegd." },
+    "unavailable":  { "en": "Not available", "fr": "Indisponible", "nl": "Niet beschikbaar" },
+    "moveUp":       { "en": "Move up", "fr": "Monter", "nl": "Omhoog" },
+    "moveDown":     { "en": "Move down", "fr": "Descendre", "nl": "Omlaag" }
+  },
   "theme": {
     "auto":          { "en": "Auto theme",            "fr": "Thème automatique",          "nl": "Automatisch thema" },
     "light":         { "en": "Light theme",           "fr": "Thème clair",                "nl": "Licht thema" },

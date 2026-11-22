@@ -81,7 +81,7 @@
       {
         "id": "f6c2f843-1be2-4af2-902f-1547077bff03",
         "name": "AvatarUrl",
-        "dataType": "image",
+        "dataType": "Image",
         "isRequired": false,
         "isReadOnly": true,
         "order": 4,
@@ -101,6 +101,31 @@
         "showedOn": "Query, PersistentObject",
         "rules": [],
         "group": "e4b7205c-8f31-4a9d-b6e2-71c05f3a8d19"
+      },
+      {
+        "id": "83bea923-7410-4171-9c17-2bff55a2135d",
+        "name": "CustomAvatar",
+        "dataType": "Image",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 28,
+        "isArray": false,
+        "inQueryType": false,
+        "showedOn": "PersistentObject",
+        "rules": [],
+        "group": "b2e84c07-9d13-4f56-8a2b-6c9e17f0a582",
+        "fileOptions": {
+          "accept": [
+            ".png",
+            ".jpg",
+            ".jpeg",
+            ".webp"
+          ],
+          "maxBytes": 2000000,
+          "variants": {
+            "thumb": 160
+          }
+        }
       },
       {
         "id": "317fcf1b-886e-4de3-ba90-bcb93a5deae4",

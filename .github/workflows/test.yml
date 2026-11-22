@@ -95,6 +95,32 @@ jobs:
           opensearchproject/opensearch:3.9.0
         echo "SPARK_OPENSEARCH_URI=http://localhost:9200" >> "$GITHUB_ENV"
 
+    # #700 M5: the Azure Blob and S3 file stores' conformance tests (Files/Stores) need a server; without
+    # SPARK_AZURITE_CONNECTION_STRING / SPARK_S3_* they skip. Azurite starts in a second; Garage is set up here
+    # (layout, bucket, a key generated per run) by tools/ci/start-garage.sh, the version spike SP9 ran.
+    - name: File stores
+      if: matrix.projects == 'MintPlayer.Spark.Tests'
+      run: |
+        docker run -d --name azurite -p 10000:10000 mcr.microsoft.com/azure-storage/azurite:3.35.0 \
+          azurite-blob --blobHost 0.0.0.0 --skipApiVersionCheck --loose
+        echo "SPARK_AZURITE_CONNECTION_STRING=UseDevelopmentStorage=true" >> "$GITHUB_ENV"
+        bash tools/ci/start-garage.sh > "$RUNNER_TEMP/garage.env"
+        # Throwaway, but kept out of the job log all the same.
+        echo "::add-mask::$(grep '^SPARK_S3_SECRET_KEY=' "$RUNNER_TEMP/garage.env" | cut -d= -f2)"
+        cat "$RUNNER_TEMP/garage.env" >> "$GITHUB_ENV"
+
+    # #700 M7: the ClamAV client's live tests (Files/Scanning/ClamAVIntegrationTests) need clamd; without
+    # SPARK_CLAMAV_HOST they skip. The package's own clamd.conf is mounted, so its AlertExceedsMax is what is
+    # tested. CLAMAV_NO_FRESHCLAMD: the image bundles signatures; no CDN download per run. Detached like
+    # OpenSearch; "Run tests" waits for the readiness line, bounded.
+    - name: ClamAV
+      if: matrix.projects == 'MintPlayer.Spark.Tests'
+      run: |
+        docker run -d --name clamav -p 3310:3310 -e CLAMAV_NO_FRESHCLAMD=true \
+          -v "$GITHUB_WORKSPACE/libs/files/MintPlayer.Spark.Files.ClamAV/clamd.conf:/etc/clamav/clamd.conf:ro" \
+          clamav/clamav-debian:1.5.5
+        echo "SPARK_CLAMAV_HOST=localhost:3310" >> "$GITHUB_ENV"
+
     # The package managers ubuntu-latest lacks, at the versions the S13/S14 spikes ran. npm, yarn,
     # dotnet, java/maven/gradle, go, cargo, php/composer and docker are on the image already.
     - name: Integration toolchains
@@ -114,6 +140,10 @@ jobs:
         if [ -n "$SPARK_OPENSEARCH_URI" ]; then
           for i in $(seq 1 60); do curl -fs "$SPARK_OPENSEARCH_URI" > /dev/null && break; sleep 2; done
           curl -fs "$SPARK_OPENSEARCH_URI" > /dev/null || { docker logs opensearch | tail -50; exit 1; }
+        fi
+        if [ -n "$SPARK_CLAMAV_HOST" ]; then
+          for i in $(seq 1 90); do docker logs clamav 2>&1 | grep -q "socket found, clamd started" && break; sleep 2; done
+          docker logs clamav 2>&1 | grep -q "socket found, clamd started" || { docker logs clamav 2>&1 | tail -50; exit 1; }
         fi
         if [ -n "${{ matrix.projects }}" ]; then
           npx nx run-many --target=${{ matrix.target || 'test' }} --projects='${{ matrix.projects }}' --output-style=stream

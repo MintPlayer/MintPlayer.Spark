@@ -1003,6 +1003,68 @@ describe('SparkPoFormComponent', () => {
       const inputs = component.getAsDetailCellRendererInputs(StarsColumn, row, col);
       expect(inputs).toEqual({ value: 4, item: row });
     });
+
+    it('resolves a data-type registration and hands it the type and object ids (#700)', async () => {
+      @Component({ selector: 'spec-form-upload', standalone: true, template: '' })
+      class Upload {
+        value = input<any>();
+        objectTypeId = input<string>();
+        objectId = input<string>();
+      }
+      const { fixture, component } = createComponent({}, [{ name: 'spark-image', dataType: 'Image', editComponent: Upload }]);
+      fixture.componentRef.setInput('objectId', 'people/1');
+      await setEntityType(fixture, personType);
+      const photo = attr({ name: 'Photo', dataType: 'Image', storesFile: true });
+
+      expect(component.getEditRendererComponent(photo)).toBe(Upload);
+      expect(component.isUnrenderedFileAttribute(photo)).toBe(false);
+      expect(component.getEditRendererInputs(Upload, photo)).toEqual({ value: undefined, objectTypeId: 't-person', objectId: 'people/1' });
+    });
+
+    it('binds a file field of an AsDetail row to the document and Parent.Field (#700 M10)', async () => {
+      @Component({ selector: 'spec-form-row-upload', standalone: true, template: '' })
+      class RowUpload {
+        value = input<any>();
+        objectTypeId = input<string>();
+        objectId = input<string>();
+        attributePath = input<string>();
+      }
+      const { fixture, component } = createComponent({}, []);
+      fixture.componentRef.setInput('objectId', 'people/1');
+      await setEntityType(fixture, personType);
+      const services = attr({ name: 'Services', dataType: 'AsDetail', isArray: true });
+      const invoice = attr({ name: 'Invoice', dataType: 'BinaryFile', storesFile: true });
+
+      // An inline cell: this form's document, the AsDetail's name as prefix.
+      expect(component.getAsDetailCellEditRendererInputs(RowUpload, { Invoice: null }, invoice, services))
+        .toEqual({ value: null, objectTypeId: 't-person', objectId: 'people/1', attributePath: 'Services.Invoice' });
+
+      // The modal's form: given the owner, a field uploads against the outer document, not the row's type.
+      const owner = component.asDetailFileOwner(services)!;
+      expect(component.asDetailFileOwner(services)).toBe(owner);
+      fixture.componentRef.setInput('fileOwner', owner);
+      expect(component.getEditRendererInputs(RowUpload, invoice))
+        .toEqual({ value: undefined, objectTypeId: 't-person', objectId: 'people/1', attributePath: 'Services.Invoice' });
+    });
+
+    it('shows the not-enabled notice for a stored file without a renderer, never a text input (#700 SP6)', async () => {
+      const fileType: EntityType = {
+        ...personType,
+        attributes: [attr({ id: 'a-photo', name: 'Photo', dataType: 'Image', storesFile: true })],
+        tabs: [],
+        groups: [],
+      };
+      const { fixture, component } = createComponent();
+      await setEntityType(fixture, fileType);
+      fixture.detectChanges();
+
+      expect(component.isUnrenderedFileAttribute(fileType.attributes[0])).toBe(true);
+      const el = fixture.nativeElement as HTMLElement;
+      expect(el.querySelector('.spark-files-not-enabled')?.textContent).toContain('files.notEnabled');
+      expect(el.querySelector('input[type="text"], input[type="url"], input:not([type])')).toBeNull();
+      // A URL-string Image (no storesFile) keeps its URL input.
+      expect(component.isUnrenderedFileAttribute(attr({ name: 'Logo', dataType: 'Image' }))).toBe(false);
+    });
   });
 
   describe('nested form triggers (triggerPathPrefix)', () => {

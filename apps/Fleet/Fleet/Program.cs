@@ -14,6 +14,8 @@ using MintPlayer.Spark.Authorization.ResourceServer;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.IdentityProvider.Extensions;
 using MintPlayer.Spark.Mcp;
+using MintPlayer.Spark.Files;
+using MintPlayer.Spark.Files.Images.SkiaSharp;
 using MintPlayer.AspNetCore.SpaServices.Extensions;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -76,6 +78,13 @@ builder.Services.AddSparkFull(builder.Configuration, options =>
         // filter in CarActions scopes users to the cars they created by that stamp.
         spark.AddHistory();
         spark.AddBoards();
+
+        // #700: Car.Photos, Car.RegistrationDocument and ServiceEntry.Invoice are stored files. Bytes live in RavenDB
+        // attachments (the default store); images get their variants from SkiaSharp. The scanner is a demo stand-in that
+        // only knows the EICAR test file: a real app uses files.UseClamAV(...). Spark:Files in appsettings sets the rest.
+        spark.AddFiles(files => files
+            .UseSkiaSharpImages()
+            .UseScanner<Fleet.Files.FleetDemoScanner>());
 
         // What a context root's properties become when synchronize first creates their attributes
         // (docs/default_index_PRD.md, D9). It matters for a root over a type Fleet does not own: FleetContext's

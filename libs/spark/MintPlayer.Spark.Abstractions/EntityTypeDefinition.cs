@@ -530,6 +530,20 @@ public sealed class EntityAttributeDefinition
     /// Example: { "width": 480, "height": 270, "autoplay": false }
     /// </summary>
     public Dictionary<string, object>? RendererOptions { get; set; }
+    /// <summary>
+    /// The accept list, size and count limits, image variants and delivery of a <c>BinaryFile</c> or
+    /// <c>Image</c> attribute (#700). Hand-authored, preserved by the synchronizer, and structural (hashed).
+    /// </summary>
+    public SparkFileOptions? FileOptions { get; set; }
+
+    /// <summary>
+    /// Sent to clients for a <c>BinaryFile</c>/<c>Image</c> attribute (#700 M9): <see langword="true"/> when its property holds a
+    /// stored file (<c>SparkFile</c>/<c>SparkImage</c>, or a list of them), which is uploaded; <see langword="false"/> when it is a
+    /// string holding a URL. The catalogue sets it on its per-caller copy from the CLR property; it is not part of the model file
+    /// (never written while false, and overwritten whatever a model file says).
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)]
+    public bool StoresFile { get; set; }
 
     /// <summary>
     /// A member-wise copy, for a per-caller view of the attribute (attribute rights mark an

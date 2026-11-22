@@ -1,0 +1,17 @@
+# garage.toml for CodeCoverage's coverage-garage service (#700 M11, PRD D13). Mounted read-only over /etc/garage.toml.
+# Single node, one copy: the volume is the data, and its backup is in docs/code-coverage/hosting.md ("File storage").
+# rpc_secret comes from GARAGE_RPC_SECRET (.env), never from this file: no secret is committed.
+metadata_dir = "/var/lib/garage/meta"
+data_dir = "/var/lib/garage/data"
+db_engine = "sqlite"
+replication_factor = 1
+
+rpc_bind_addr = "[::]:3901"
+rpc_public_addr = "127.0.0.1:3901"
+
+# The S3 API, on the internal coverage-files network only (never published, never behind Traefik): coverage-app proxies
+# every upload and download (Files__S3__DirectUploads/DirectDownloads=false), so no browser reaches this port.
+[s3_api]
+s3_region = "garage"
+api_bind_addr = "[::]:3900"
+root_domain = ".s3.garage.internal"

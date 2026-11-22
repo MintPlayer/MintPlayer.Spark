@@ -279,6 +279,11 @@ public static class SparkExtensions
             .Concat(Services.SparkIndexBindingStartupCheck.Unmet(
                 app.ApplicationServices.GetRequiredService<Services.IModelLoader>(),
                 app.ApplicationServices.GetService<MintPlayer.Spark.Abstractions.Storage.ISparkStore>()))
+            // #700: malformed fileOptions, a file attribute without spark.AddFiles(), files in AsDetail rows.
+            .Concat(Services.SparkFileAttributeStartupCheck.Unmet(
+                app.ApplicationServices.GetRequiredService<Services.IModelLoader>(),
+                // Asked, not resolved: the handler is scoped, and resolving it from the root fails under scope validation.
+                filesEnabled: app.ApplicationServices.GetService<IServiceProviderIsService>()?.IsService(typeof(ISparkFileValueHandler)) == true))
             .ToList();
         if (unmet.Count > 0)
             throw new InvalidOperationException(string.Join(Environment.NewLine, unmet));

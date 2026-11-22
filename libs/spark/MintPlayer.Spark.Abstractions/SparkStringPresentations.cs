@@ -25,14 +25,21 @@ public static class SparkStringPresentations
     /// <summary>A string rendered as a textarea rather than a single-line input.</summary>
     public const string MultiLine = "MultiLineString";
 
-    /// <summary>A string holding an image URL, rendered as the image itself.</summary>
-    public const string Image = "image";
+    /// <summary>
+    /// A string holding an image's address (an <c>https:</c> URL or a <c>data:</c> URI), rendered as the
+    /// image itself. The same <c>Image</c> data type a <see cref="SparkImage"/> property gets (#700): the
+    /// old lowercase <c>image</c> presentation is normalised to it by the synchronizer.
+    /// </summary>
+    public const string Image = SparkFileDataTypes.Image;
+
+    /// <summary>A string holding a file's address (an <c>https:</c> URL or a <c>data:</c> URI), offered as a download (#700).</summary>
+    public const string BinaryFile = SparkFileDataTypes.BinaryFile;
 
     /// <summary>A string holding a link, rendered as an anchor.</summary>
     public const string Url = "url";
 
     /// <summary>Every presentation-only override of a string property.</summary>
-    public static readonly string[] All = [MultiLine, Image, Url];
+    public static readonly string[] All = [MultiLine, Image, BinaryFile, Url];
 
     /// <summary>
     /// Whether <paramref name="declared"/> is a presentation override that survives a synchronize
@@ -42,4 +49,12 @@ public static class SparkStringPresentations
         => derived == "string"
         && declared is not null
         && All.Contains(declared, StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// The canonical spelling of a preserved presentation: <c>image</c> → <c>Image</c> (#700), and any
+    /// other casing of a known name to its constant. The synchronizer writes this back, so a model file
+    /// carrying the pre-#700 <c>image</c> is migrated by the next synchronize.
+    /// </summary>
+    public static string Canonical(string declared)
+        => All.FirstOrDefault(p => string.Equals(p, declared, StringComparison.OrdinalIgnoreCase)) ?? declared;
 }

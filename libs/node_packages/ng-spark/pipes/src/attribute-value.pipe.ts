@@ -1,5 +1,5 @@
 import { Pipe, PipeTransform } from '@angular/core';
-import { EntityAttributeDefinition, EntityType, LookupReference, PersistentObject, isReservedAsDetailKey, nestedPoToDict, resolveTranslation, resolvedBreadcrumb } from '@mintplayer/ng-spark/models';
+import { EntityAttributeDefinition, EntityType, LookupReference, PersistentObject, isReservedAsDetailKey, nestedPoToDict, resolveTranslation, resolvedBreadcrumb, sparkFileText } from '@mintplayer/ng-spark/models';
 import { applyFieldTemplate } from './apply-field-template';
 
 @Pipe({ name: 'attributeValue', standalone: true, pure: true })
@@ -50,6 +50,10 @@ export class AttributeValuePipe implements PipeTransform {
     if (attrDef?.dataType === 'boolean') {
       return attr.value ?? null;
     }
+
+    // A stored file (or a list of them, #700) reads as its name, never "[object Object]".
+    const fileText = sparkFileText(attr.value);
+    if (fileText !== null) return fileText;
 
     return attr.value ?? '';
   }

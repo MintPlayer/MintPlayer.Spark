@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
 import { CommonModule, NgComponentOutlet } from '@angular/common';
 import { RouterModule, UrlTree } from '@angular/router';
-import { EntityAttributeDefinition, SparkCellColumn } from '@mintplayer/ng-spark/models';
+import { EntityAttributeDefinition, SparkCellColumn, isDisplayableImageUrl } from '@mintplayer/ng-spark/models';
 import { ReferenceChip } from '@mintplayer/ng-spark/pipes';
 import { SparkGridRenderers } from './spark-grid-renderers';
 
@@ -101,5 +101,14 @@ export class SparkGridCellComponent {
   protected readonly dateValue = computed(() => {
     const value = this.display();
     return value instanceof Date && !Number.isNaN(value.getTime()) ? value : null;
+  });
+
+  /**
+   * An `Image` cell holding a URL (#700: a string Image): an `https:` URL, a same-origin path or a raster `data:` URI.
+   * A stored image without the Files renderers reads as its file name, which is not a URL, and stays text.
+   */
+  protected readonly imageSrc = computed(() => {
+    const value = this.display();
+    return isDisplayableImageUrl(value) ? value : null;
   });
 }

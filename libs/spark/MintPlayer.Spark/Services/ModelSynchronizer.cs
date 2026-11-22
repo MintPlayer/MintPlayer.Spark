@@ -998,6 +998,11 @@ internal partial class ModelSynchronizer : IModelSynchronizer
                 {
                     existingAttr.DataType = dataType;
                 }
+                else
+                {
+                    // Preserved, in its canonical spelling: the pre-#700 `image` becomes `Image`.
+                    existingAttr.DataType = SparkStringPresentations.Canonical(existingAttr.DataType);
+                }
                 existingAttr.Order = existingAttr.Order > 0 ? existingAttr.Order : order;
 
                 // Assigned unconditionally, including back to null. These are all derived from the
