@@ -127,6 +127,26 @@ Traefik labels on `coverage-app`:
 | `traefik.http.services.coverage.loadbalancer.server.port` | `8080` | Pinned so Traefik never guesses. The image exposes 8080 only, deliberately (Dockerfile). |
 | `traefik.docker.network` | `web` | ⚠️ The app is on five networks; without this Traefik may pick its `coverage-db`, `coverage-mail`, `coverage-git` or `coverage-git-writer` address, which it cannot reach — random 504s. |
 
+### Memory
+
+The VPS is a Hetzner CPX32 (4 vCPU, 8 GB) shared by this stack, SeoTester, mintplayer.com and about twenty small
+sites. Measured 2026-11-22 before these settings: 1.3 GB available, no swap; the largest users were RavenDB (1.8 GB RSS,
+largely memory-mapped and reclaimable), `coverage-app` (1.2 GB, no limit), OpenSearch (981 MiB of its 1 GiB) and the
+demo sites' Node servers (~730 MB together).
+
+| Setting | Where | Why |
+|---|---|---|
+| `mem_limit: 1536m` | `coverage-app` | It was the only large container without a cap. .NET sizes its heap to 75% of the limit (~1.15 GB). |
+| `DOTNET_gcServer=0` | `coverage-app`, `seotester-app`, `mintplayer-app` | Server GC keeps a heap per core and holds memory for throughput these apps do not need. Workstation GC returns it. The environment variable overrides the image's runtimeconfig. |
+| 4 GB `/swapfile`, `vm.swappiness=10` | host (`/etc/fstab`, `/etc/sysctl.d/99-swap.conf`) | A safety net against the kernel's OOM killer, not working memory: swappiness 10 swaps only under pressure. The file has a fixed size and never grows. |
+
+The host settings are not deployed by any workflow; a rebuilt server needs them again:
+`fallocate -l 4G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile`, the fstab line
+`/swapfile none swap sw 0 0`, and `vm.swappiness=10` in `/etc/sysctl.d/99-swap.conf`.
+
+RavenDB is deliberately not capped: its memory-mapped files are page cache the kernel reclaims, and a cgroup limit
+would count them and slow every query.
+
 ## 2. Server `.env`
 
 Source: [`apps/CodeCoverage/.env.example`](../../apps/CodeCoverage/.env.example) and the
