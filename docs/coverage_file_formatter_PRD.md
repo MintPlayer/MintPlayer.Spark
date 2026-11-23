@@ -133,6 +133,8 @@ repository's runner (D1).
 | D15 | **The patch guard (former Q4) is `PatchValidator.Parse` with a per-entry-point path policy**, as `MigratePatchValidator` and `DependencyPatchValidator` already do. Both profiles keep `Parse`'s shape rules: only mode 100644, no binary patch, no copy. A formatter only rewrites files, so both also refuse **new files, deletions and renames**. On-demand: `IsWritablePath` (`.github/**` allowed, D7) minus the `exclude` globs. Pipeline: `IsSafePath` (never `.github/**`, D9.2) **and** the changed-files allow-list (D9.1) minus `exclude`. | S6 below. The proposed default, made stricter (no adds, deletes or renames) |
 | D16 | **The pipeline step never formats a file that was not already formatted.** Before rewriting, the action checks the **target branch's** copy of the conflicted files with `--verify-no-changes` (or the tool's equivalent). If any is not clean, the step is **skipped with a note** ("format the repository first"), like D9.3, and does not evict. The cost, accepted: a repository that never runs FormatRepository never gets whitespace conflicts resolved. | Q15 = A (owner, 2026-11-23). S1: Spark's defaults would change 258 files |
 
+| D17 | **The runner proves a hunk is whitespace-only (Q16 = A).** The writer's `whitespace` resolver pre-filters with "equal without whitespace" and resolves with the head's side (`merge-file --theirs`). The format run then rebuilds both whole-file resolutions (`merge-file --ours` and `--theirs` on `merge_base`, `ours_sha`, `theirs_sha`), formats both with the target's formatter, and requires them to be **byte-identical**. Otherwise the run fails, and the pull request is evicted as an unresolved conflict. The patch is the formatted `--theirs` file. C# gets no Roslyn check in the writer: the runner's proof covers it. | Owner, 2026-11-23 ("probably A"), confirmed by S10 (resolutions identical on git 2.43–2.54) and S11 (no false accept across 7 formatters) |
+
 ## Spike results (2026-11-23)
 
 ### S1 — dotnet format in a runner
@@ -275,6 +277,65 @@ The answers:
 5. These five clones at these commits become the script's test fixtures (M1). They are trimmed copies, so the tests
    need no network.
 
+### S10 — can the runner rebuild the writer's conflict hunks?
+
+**Setup:**
+- **The inputs:** 325 real (base, ours, theirs) triples of `.cs`/`.ts` files from this repository's history. For each
+  file, the three newest versions v1 < v2 < v3 became base = v2, ours = v1, theirs = v3, so both sides change the same
+  regions.
+- **The git versions:**
+  - the writer's own base image: `mcr.microsoft.com/dotnet/aspnet:11.0` + Debian git, **2.53.0**;
+  - `ubuntu:24.04`, **2.43.0**;
+  - `alpine:latest`, **2.54.1**;
+  - local Windows, **2.47.1**.
+
+| Call | Result |
+|---|---|
+| The writer's own `merge-file -p --diff3 --diff-algorithm=myers` (`ConflictRepository.cs:92`) | **byte-identical on 2.47.1, 2.53.0 and 2.54.1**: 325/325, of which 90 conflict |
+| The same on 2.43.0 | **exit 129, a usage error**: `merge-file --diff-algorithm` arrived in git 2.44 |
+| 2.43.0 **without** the flag, even with `-c diff.algorithm=histogram` | byte-identical to the writer on all 325: before 2.44, merge-file always uses myers |
+| `merge-file -p --ours` and `--theirs` (whole-file resolutions) on 2.43.0, 2.47.1 and 2.53.0 | **byte-identical**: 650/650. `--ours` equals `--theirs` on exactly the 235 triples without a conflict |
+
+The answers:
+
+1. **The runner can rebuild the writer's result exactly.**
+   - On git ≥ 2.44 it passes `--diff-algorithm=myers`; on older git it omits the flag (myers is fixed there).
+   - The action fails with a clear message only below 2.43, the oldest version measured.
+2. **What the runner needs:**
+   - **The sides:** stage 2 is the base branch, stage 3 the pull request (`MergeTreeOutput.cs:7`), and
+     `ConflictRepository` labels them ours and theirs. **So the head's side is `--theirs`**, and D10's resolution is
+     `merge-file --theirs`.
+   - **The inputs:**
+     - `merge_base`: explicit for a backport, which takes the commit's own parent;
+     - `ours_sha`: the target tip;
+     - `theirs_sha`: the head, or the cherry-picked commit;
+     - `paths`: the files the `whitespace` rule resolved.
+   - Each is fetched with `git fetch --depth=1 origin <sha>`. GitHub serves reachable commits by id; the M6 live proof
+     confirms this.
+
+### S11 — "format both resolutions, compare" per formatter
+
+**Setup:** each D13 formatter ran on pairs of whole files that differ in one way only, in throwaway containers.
+"same" means the two formatted files are byte-identical, so the hunk counts as whitespace-only.
+
+| Variant | dotnet format whitespace (SDK 11) | Prettier 3.10.1 | gofmt (Go 1.25) | rustfmt (stable) | ruff format | black | terraform fmt 1.13 |
+|---|---|---|---|---|---|---|---|
+| (a) spacing and indentation | same | same | same | same | same | same | same |
+| (b) line wrapping | differ | same | differ | same | same | same | differ |
+| (c) blank lines | differ | differ | differ | differ | differ | differ | differ |
+| (d) comment spacing | differ | differ | differ | differ | differ | differ | differ |
+| (e) **whitespace inside a string** | **differ** | **differ** | **differ** | **differ** | **differ** | **differ** | **differ** |
+
+The answers:
+
+1. **Correct where it matters:** (a) is accepted and (e) refused by all seven. There is no false accept.
+2. **The false refusals are safe and expected:**
+   - formatters keep blank lines and comment text, so (c) and (d) are refused everywhere;
+   - wrapping (b) is accepted only by the reflowing formatters (Prettier, rustfmt, ruff, black);
+   - every false refusal falls back to today's behaviour, evicting the pull request as an unresolved conflict.
+3. **This makes Q16 A the decision (D17).** The proof uses the target's own formatter, needs no lexer in the writer, and
+   works for every D13 language.
+
 ### S4 — reusing dispatch → artifact → GitWriter
 
 - **No generic "apply a patch on base X, push branch Y" job exists.**
@@ -354,7 +415,7 @@ The answers:
 
 ## Not decided yet
 
-- **Q16: how a non-C# hunk is proven whitespace-only (from S7).**
+- Nothing. Q16 became D17 after S10 and S11. The options were:
   - **A:** the writer uses "equal without whitespace" only as a pre-filter. The **runner proves** it for every language:
     1. rebuild both whole-file resolutions with the same `git merge-file --diff3 --diff-algorithm=myers` on the three
        commits, passed as inputs;

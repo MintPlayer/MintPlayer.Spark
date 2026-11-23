@@ -10,8 +10,10 @@
   S4–S9, then M1–M10.
 - **2026-11-23: S1, S4, S5, S6 and S9 done** (PRD "Spike results"). Q4 became D15. Q15 = A became D16 (skip the
   pipeline step when the target's copy is not already formatted). - **2026-11-23: S2, S7 and S8 done** (S2 and S8 in throwaway Docker containers on outside repositories; Spark has
-  no Prettier or ESLint config). All spikes are done. Q16 (how a non-C# hunk is proven whitespace-only) awaits the
-  owner. NEXT: M1.
+  no Prettier or ESLint config). Q16 was provisionally A; S10 and S11 were added to test it.
+- **2026-11-23: S10 and S11 done.** merge-file resolutions are byte-identical on git 2.43–2.54, and "format both,
+  compare" gives no false accept across 7 formatters. Q16 became D17. All spikes are done and nothing is open.
+  NEXT: M1.
 - Tests run **once, at the end** (M10). No interim gate runs.
 
 ## Spikes
@@ -77,6 +79,29 @@ These are the script's test fixtures, which the "parsers need real fixtures" rul
 2. How does the backport path run a line's workflow after the cherry-pick, so it can do the same?
 3. How is the formatter-inputs-changed skip (D9.3) detected from the pull request's diff?
 
+### S10 — Can the runner rebuild the writer's conflict hunks exactly? (≤ 1 h)
+
+Q16 A has the runner redo `git merge-file --diff3 --diff-algorithm=myers` on the three commits.
+1. On a few hundred real triples taken from this repository's history, is the output byte-identical across:
+   - the writer's git;
+   - Debian bookworm's git;
+   - the `ubuntu-24.04` runner's git;
+   - the newest git?
+2. Which inputs does the runner need (the base, ours and theirs commits; fetch depth), and which side is "ours"?
+   Stage 2 is the base branch (`MergeTreeOutput.cs:7`).
+
+### S11 — "Format both resolutions, compare" per formatter (≤ 1.5 h)
+
+For each D13 formatter (dotnet format whitespace, Prettier, gofmt, rustfmt, ruff format, black, terraform fmt), take
+pairs of whole files that differ only in:
+- (a) spacing and indentation;
+- (b) line wrapping;
+- (c) blank lines;
+- (d) comment spacing;
+- (e) whitespace **inside a string literal**.
+
+Check that (a) is accepted and (e) refused. Count the false refusals in (b)–(d).
+
 ## Milestones
 
 One commit per milestone. Paths are under `apps/CodeCoverage/`.
@@ -88,7 +113,18 @@ One commit per milestone. Paths are under `apps/CodeCoverage/`.
     - `paths` and `exclude`
     - `.github/**` excluded in the pipeline modes
     - output in `merge-queue-patch`
-  - The script's tests use the S8 fixtures.
+  - From the spikes:
+    - **Explicit file lists per tool, never `.`** (S8): filter by the tool's extensions, minus `exclude`.
+    - **.NET** (S1): `setup-dotnet` with `global-json-file`, `whitespace` + `style` per solution, `--include` the files.
+    - **JS** (S2): install with scripts off through the lockfile's package manager (corepack), then
+      `npx --no-install`. ESLint runs per nearest `eslint.config.*`.
+    - **Versions** (S8): the pins come from `uv.lock`/`requirements*.txt`/pre-commit, `rust-toolchain`,
+      `go.mod` and `.terraform-version`. The PR body names every version used.
+    - **The pipeline-mode proof** (D17, S10): inputs `merge_base`, `ours_sha`, `theirs_sha`. Rebuild
+      `merge-file --ours`/`--theirs` (`--diff-algorithm=myers` on git ≥ 2.44, omitted below), format both, require
+      them byte-identical.
+    - **The D16 check:** `--verify-no-changes` on the target's copy first, or skip with a note.
+  - The script's tests use the S8 fixtures (trimmed copies at the S8 commits) and the S11 pairs.
   - Add the `docs/code-coverage/templates/formatting.yml` template with the SECURITY header.
 - **M2 — Onboarding.** Add `EOnboardingFeature.Formatting`, the planner files and the chooser checkbox.
 - **M3 — Actions.**
@@ -108,6 +144,9 @@ One commit per milestone. Paths are under `apps/CodeCoverage/`.
 - **M6 — `whitespace` strategy.** Add the `autoResolve` strategy, the `formatting` preset, detection per S7, and the
   REGENERATE dispatch of the format workflow with the changed-files allow-list (D9, D10), and the
   "target's copy not formatted" skip (D16).
+  - The resolver pre-filters with "equal without whitespace" and resolves with `merge-file --theirs`, the head's side
+    (D17).
+  - REGENERATE passes the three commits to the run, and a failed proof evicts as an unresolved conflict.
 - **M7 — Backports.** Run the line's format workflow after a whitespace-only cherry-pick resolution.
 - **M8 — Notifications adoption.** Call `AddNotifications()` in CodeCoverage, with the `notifications:users` binding,
   the bell from the separate issue's work, and the `FormatRun` notifications.
