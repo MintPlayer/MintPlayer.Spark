@@ -117,135 +117,202 @@ the key claims against the code afterwards. Paths are under `libs/` unless they 
   sets `UserId` (and clears `VisitorId`) is therefore covered with no change.
 - **Coupling:** Notifications already references `MintPlayer.Spark.Authorization` directly, so no new dependency.
 
-## Design (proposed; items marked **Q** need the owner)
+## Decisions (grill, owner, 2026-11-23)
 
-### Server: `MintPlayer.Spark.Notifications`
+Every answer was given on 2026-11-23. Breaking changes are explicitly allowed for this PR ("For once, you are allowed
+to introduce breaking changes"). Stored classes must not be renamed, because a rename breaks loading documents that
+already exist. Interfaces may be renamed.
 
-- **R1. Visitor id.** `ISparkVisitor` (scoped) has two members:
-  - `string? Current`: reads `spark.visitor`.
-  - `string Ensure()`: issues the cookie when absent and returns the id.
+- **G1. Pop-out shape.**
+  - The owner's direction: one UI system, any of the three shapes, implementer's choice. The choice is **the bell**.
+  - The pop-out is **not** `<bs-toast>`. It reuses the bell's own list rows (title, a secondary body, a relative time),
+    the "nice list" seen on seotester.mintplayer.com.
+    - SeoTester has no UI of its own here: its list is ng-spark's bell dropdown (`shell.component.html:9`), and its
+      pop-ups are ng-spark's `<spark-toast-container />` (`app.html:3`).
+    - The rows move out of the bell's template into `<spark-notification-list>` in ng-spark. The dropdown and the
+      pop-out both render it.
+  - Pass 2's Toast findings therefore don't apply; only "never pop out on SSR" carries over.
+- **G2 (Q1). DemoApp proves the anonymous path, and Notifications is decoupled from Authorization now.**
+  - The owner: "We need to decouple the Notifications library from the Authorization library anyway, sooner or later.
+    So if we indeed need to do so, we should do it NOW." No app on the VPS has a use for anonymous notifications.
+  - DemoApp gets `withClientOperations()`, the bell, `AddNotifications()` (core only) and a demo action that notifies
+    its visitor a few seconds later.
+  - This is an owner-sanctioned exception to "new features don't land in DemoApp"; CLAUDE.md records it.
+  - HR is unchanged.
+  - DemoApp's `security.json` already has the anonymous well-known group, enforced by core's `PermissionService`, so it
+    binds `"notifications:users": [ "@anonymous", "@authenticated" ]`.
+- **G3 (Q2).** Superseded by G2: no production app gets anonymous notifications. SeoTester only swaps the UI.
+- **G4 (Q5). Decoupling: three seams in `MintPlayer.Spark.Abstractions`.** This is the owner's own idea ("an
+  `ISparkSessionPrincipal`-like interface … `SparkUser` implements it … core carries the tools to identify a
+  session"), steered toward the patterns already in Abstractions (`ISparkCurrentUser`, `ISparkUserNameResolver`).
+  1. **`ISparkCurrentUser` is renamed `ISparkCurrentPrincipal`** and gains `VisitorId` and `EnsureVisitorId()`.
+     - `Id` stays the user id. Its eight consumers (Authorization agents, Boards, Contributions, Files, History, Mcp)
+       follow the rename.
+     - Core `MintPlayer.Spark` implements it: the claim as today, plus the visitor cookie (G5).
+     - The visitor is a cookie, never a document. Loading principals through an interface would not work either:
+       RavenDB needs the concrete type, and an untyped load comes back as a `JObject`.
+  2. **`ISparkAccountDirectory`**: a batched `ResolveAsync(ids)` that returns `{ Email, EmailConfirmed, Culture }` per id.
+     - Authorization registers it over `SparkUser`.
+     - Notifications takes it as optional: without it, delivery is in-app only, and startup refuses mail or Web Push
+       configuration.
+  3. **The account lifecycle contracts move to Abstractions and lose `TUser`.** These are `ISparkSignedInHandler`,
+     `ISparkAccountDeletionHandler`, `ISparkAccountDeletedHandler` and `ISparkPersonalDataContributor`.
+     - They take an `ISparkAccount` (`Id`, `Email`, `EmailConfirmed`, …) that `SparkUser` implements. `SparkUser`
+       keeps its name and collection.
+     - Every implementer today (Notifications, Organizations, Moderation) reads only `user.Id`, so their migration is
+       mechanical.
+     - Authorization keeps invoking them.
 
-  The cookie:
-  - holds a random 128-bit id, protected with Data Protection (purpose `MintPlayer.Spark.Notifications.Visitor`);
-  - is `HttpOnly`, `Secure`, `SameSite=Lax`, `Path=/`, with an expiry equal to the visitor expiry (R4), renewed by each
-    `Ensure()`;
-  - is issued **only** by `Ensure()`, which an app calls when an anonymous request starts something that will notify
-    later. A plain visit never gets the cookie;
-  - is strictly necessary for a service the visitor requested, so no consent banner (written in the guide).
+  Result: Notifications drops its `ProjectReference` to `MintPlayer.Spark.Authorization`.
+- **G5 (Q3). Cookie lifetime.**
+  - `Spark:Visitor:Lifetime` (default 24 h, sliding) sets both the cookie and the expiry of visitor notifications.
+    Every `EnsureVisitorId()` renews it.
+  - `Spark:Visitor:SessionCookie: true` makes the cookie a browser-session cookie; the documents still expire after
+    `Lifetime`.
+- **G6 (Q4). Server-package detection.** No new flag and no probe: `withNotifications()` already exists
+  (`notifications/src/spark-notification.ts:59`).
+  - With it, the bell follows the server lists.
+  - Without it (CodeCoverage, Fleet, MintPlayer, QnA, SparkId), the bell shows session entries only: no server count,
+    no push toggle, no "all notifications" link.
+- **G7 (Q6). How the client knows a visitor exists.**
+  - A readable companion cookie, `spark.visitor.present=1`, carries no id and has the same expiry. It is set and cleared
+    together with `spark.visitor`.
+  - The service follows the live queries when signed in **or** when that cookie is present.
+  - The tab that is already open learns from the `visitorIssued` client operation: it reconnects the socket, because the
+    socket keeps its handshake's `HttpContext` (Pass 1), then follows.
+- **G8 (Q7). Pop-out behaviour.**
+  - At most 3 entries; the oldest leaves when a fourth arrives.
+  - Each entry hides after its `durationMs` (a `Notify`) or after 6 s (a live notification). Errors stay until
+    dismissed, and hovering pauses the timer.
+  - Nothing pops out while the dropdown is open, and nothing pops out on the server render.
+  - The badge counts unread server notifications plus unread session entries. Opening the dropdown marks the session
+    entries read.
+  - The guide explains why the badge can drop after a reload: session entries are gone by definition.
 
-  A signed-in caller's `Ensure()` returns null. The caller then addresses the user instead.
-- **R2. Addressing.**
+## Design
+
+### Core (`MintPlayer.Spark.Abstractions`, `MintPlayer.Spark`)
+
+- **R1. The visitor id** (G4.1, G5, G7). `ISparkCurrentPrincipal.EnsureVisitorId()` issues the visitor cookie when it is
+  absent and returns the id. A signed-in caller gets null and addresses the user instead.
+  - **The cookie, `spark.visitor`:**
+    - a random 128-bit id, protected with Data Protection (purpose `MintPlayer.Spark.Visitor`);
+    - `HttpOnly`, `Secure`, `SameSite=Lax`, `Path=/`, with a sliding `Spark:Visitor:Lifetime`;
+    - a tampered or foreign cookie reads as "no visitor".
+  - **The companion `spark.visitor.present=1`:** readable, no id, the same expiry.
+  - **Issued only by `EnsureVisitorId()`.** A plain visit never gets a cookie.
+  - The response that issues it carries the `visitorIssued` client operation.
+  - **Consent:** the cookie is strictly necessary for a service the visitor asked for, so no banner. The guide writes
+    this down.
+- **R2. The account seams** (G4.2, G4.3): `ISparkAccount`, `ISparkAccountDirectory` and the four lifecycle contracts
+  without `TUser`, in Abstractions.
+  - Authorization implements and invokes them.
+  - Organizations and Moderation migrate.
+
+### Server: `MintPlayer.Spark.Notifications` (no Authorization reference)
+
+- **R3. Addressing.**
   - `SparkNotification` gains `VisitorIds` beside `UserIds`.
-  - `Notification` gains `VisitorId` (one owner per document, as `UserId`), and exactly one of the two is set.
-  - Visitor ids are stored as `visitor:<id>`, so they can never equal a `SparkUsers/…` id.
-  - There is no API to enumerate or address another visitor: an app only has the id from `Ensure()` in the request
-    that started the work.
-- **R3. Row filter.** `OwnRows` becomes "`UserId == me` or `VisitorId == my visitor`".
+  - `Notification` gains `VisitorId`: one owner per document, like `UserId`, and exactly one of the two is set.
+  - Visitor ids are stored as `visitor:<id>`, so they can never equal a user id.
+  - There is no API to enumerate or address another visitor: an app only has the id `EnsureVisitorId()` returned in
+    the request that started the work.
+- **R4. Row filter.** `OwnRows` becomes "`UserId == me` or `VisitorId == my visitor`", read from
+  `ISparkCurrentPrincipal`.
   - Each side is present only when that identity exists, and both values go in as parameters.
-  - Anonymous with no cookie stays `_ => false`.
-  - `NotificationCaller` gains the visitor id, and the mark-read endpoint accepts a visitor caller.
+  - A caller with no identity still gets `_ => false`.
   - `PushSubscription` and `NotificationPreference` stay user-only.
-- **R4. Expiry.** A visitor document gets `ExpiresAtUtc = now + Spark:Notifications:VisitorExpiry` (default 24 h).
-  The stamper keeps an explicit value (Pass 1).
-- **R5. Channels.** Visitors get in-app only. `SparkNotifier` has a visitor branch that writes the documents and nothing
-  else.
-- **R6. Claim on sign-in.** `NotificationVisitorClaim<TUser> : ISparkSignedInHandler<TUser>` is registered by
-  `AddNotifications()` with `TryAddEnumerable`. When the cookie is present, it:
-  1. patches every `VisitorId == me` document to `UserId = user.Id, VisitorId = null`, with the expiry reset to the
-     user default;
-  2. deletes the cookie.
+- **R5. Expiry.** A visitor document gets `ExpiresAtUtc = now + Spark:Visitor:Lifetime`. The stamper keeps an explicit
+  value.
+- **R6. Channels.** Visitors get in-app only. Mail and Web Push need a user and the `ISparkAccountDirectory`; without
+  the directory, delivery is in-app only.
+- **R7. Claim on sign-in.** A `NotificationVisitorClaim : ISparkSignedInHandler`. When a visitor id is present, it:
+  1. patches every `VisitorId == me` document to `UserId = account.Id, VisitorId = null`, and resets the expiry to the
+     model default;
+  2. clears both cookies.
 
-  It is idempotent, and it is a no-op without a cookie.
-- **R7. Rights.** The library's `security.json` is unchanged. An application that wants visitor notifications binds the
-  slot to anonymous callers too: `"notifications:users": [ "Users", "@anonymous" ]`. The guide says so, and a visitor
-  without the binding gets the normal 404.
-- **R8. Endpoint group.** `NotificationsGroup` drops `RequireAuthorization()`. Mark-read authorizes inside:
-  - a caller with neither identity gets 401;
-  - the push endpoints keep requiring a user.
-
-  This touches `CsrfSurfaceTests` and the route snapshot.
+  It is idempotent, and a no-op without a visitor. Export and deletion then cover the claimed documents (Pass 3).
+- **R8. Rights and endpoints.**
+  - The library's `security.json` is unchanged; an app binds `notifications:users` to `@anonymous` to let visitors in.
+  - `NotificationsGroup` drops `RequireAuthorization()`. Mark-read authorizes inside: a caller with neither identity
+    gets 401. The push endpoints still require a user.
+  - This touches `CsrfSurfaceTests` and the route snapshot.
 
 ### Client: `@mintplayer/ng-spark`
 
-- **R9. One session store.**
-  - `SparkNotificationsService` (`notifications`) holds three things:
-    - the live server lists;
-    - **session entries**: `Notify` messages, kept in memory only;
-    - the pop-out queue.
-  - `client-operations`' `Notify` handler pushes a session entry into that service.
-  - `SparkNotificationService` (client-operations) and `<spark-toast-container>` are deleted (break, minor release).
-- **R10. The bell works without the server package.** CodeCoverage, Fleet, MintPlayer, QnA and SparkId don't call
-  `AddNotifications()`, so the bell needs a mode for that. How it detects the mode is **S4**. Without the package it
-  shows session entries only:
-  - no unread count from the server;
-  - no push toggle;
-  - no "all notifications" link.
-- **R11. Pop-out.**
-  - It is a second CDK connected overlay on the bell, holding `<bs-toast>`s from `@mintplayer/ng-bootstrap/toast`. It is
-    `aria-live` (`politeness`), and clicking one opens the entry.
-  - Live notifications pop out only when they **arrive**. The initial load does not pop out.
-  - **Browser only:** nothing pops out during SSR (Pass 2).
-  - **Several tabs:** a live notification pops out once. Each tab records the shown ids in `localStorage`, wrapped in
-    try/catch. Session entries belong to the tab whose request produced them, so they need no deduplication.
-- **R12. The socket after `Ensure()`.** A visitor's socket opened before the cookie existed must reconnect (Pass 1).
-  The mechanism is **S1b**. The proposal: a response that issued the cookie carries a client operation (`visitorIssued`);
-  the live client reconnects on it, and the subscriptions resume.
+- **R9. One store.** `SparkNotificationsService` holds:
+  - the live server lists, when `withNotifications()` is on (G6);
+  - the session entries: `Notify` messages, in memory, with `kind`;
+  - the pop-out queue.
+
+  The `notify` handler in `client-operations` pushes a session entry. `SparkNotificationService` (client-operations)
+  and `<spark-toast-container>` are deleted.
+- **R10. `<spark-notification-list>`.**
+  - The rows extracted from the bell, used by the dropdown and by the pop-out (G1).
+  - Session entries show a `kind` accent: a colour bar or an icon via `<spark-icon>`, never `bi bi-` classes.
+- **R11. The pop-out** (G8).
+  - A second CDK connected overlay on the bell.
+  - `aria-live`, and clicking an entry opens it.
+  - A live notification pops out when it **arrives**, never on the initial load.
+  - Across several tabs, a live notification pops out once: each tab records the ids it has shown in `localStorage`,
+    wrapped in try/catch.
+- **R12. Following as a visitor** (G7): follow the live queries when signed in or when `spark.visitor.present` is set.
+  On `visitorIssued`, reconnect the socket, then follow.
 - **R13. Missing bell.** In dev mode, a `Notify` that arrives with no bell rendered logs a console warning.
-- **R14. Apps.**
-  - CodeCoverage, Fleet, MintPlayer, QnA, SeoTester and SparkId replace `<spark-toast-container />` with the bell in
-    their header.
-  - SeoTester already has the bell, so it just drops the container.
-  - The template is already right.
-  - The two E2E locators move to the pop-out.
-
-## Open questions for the owner
-
-- **Q1. DemoApp and HR.** The issue lists DemoApp ("renders the bell with session entries and visitor notifications").
-  The code says otherwise:
-  - DemoApp and HR use neither the toast container nor `client-operations`.
-  - DemoApp is "core only, no Authorization, new features don't land there" (CLAUDE.md).
-  - Notifications requires Authorization (it references the package, and `AddAuthentication` is in its setup).
-
-  **Proposed:** neither app changes. Visitor notifications are proven in a test host (and SeoTester, Q2) instead.
-  Decoupling Notifications from Authorization is out of scope.
-- **Q2. Which production app proves the anonymous path?** SeoTester is the only app with `AddNotifications()`, and its
-  scans are already started anonymously.
-  **Proposed:** bind `@anonymous` in SeoTester and notify the visitor when an anonymous scan finishes. #657 (CodeCoverage)
-  then adds `AddNotifications()` on its own branch. Alternative: no production app changes in this PR.
-- **Q3. Cookie expiry.** **Proposed:** equal to `VisitorExpiry` (24 h), renewed by every `Ensure()`, so the cookie never
-  outlives its last notification by more than that.
-- **Q4. Server-package detection (S4).** **Proposed:** a provider flag, `provideSparkNotifications({ server: false })`,
-  so the client never has to probe and log 404s. Alternatives: probe `GET /spark/notifications/…`, or a capabilities
-  field.
+- **R14. The apps.**
+  - CodeCoverage, Fleet, MintPlayer, QnA and SparkId replace `<spark-toast-container />` with the bell in their
+    header.
+  - SeoTester drops the container; it already has the bell.
+  - DemoApp per G2. The template is already right.
+  - The E2E locators in `PasskeyCeremonyTests.cs:206` and `QnAContributionsBrowserTests.cs:156` move to the pop-out.
 
 ## Spikes
 
 | Id | Question | Status |
 |---|---|---|
-| S1 | Can the live queries' row filter key off a cookie-derived visitor id, with no per-query special case? | **Answered by reading** (Pass 1). To prove with a red test in M1. |
-| S1b | How does an open socket learn that a visitor id now exists (R12)? | Open: try the client-operation reconnect; measure that the subscriptions resume and the first push arrives. |
-| S2 | ng-bootstrap Toast in ng-spark: dependency, zoneless, SSR. | **Answered by reading** (Pass 2): dependency present, zoneless fine, no pop-out on SSR, anchor through a CDK overlay. To prove: `<bs-toast>` in a connected overlay in a zoneless vitest spec, and an SSR render of an app with the bell, without a hang. |
-| S3 | The claim-on-sign-in hook: does it cover external logins and passkeys? | **Answered** (Pass 3): `ISparkSignedInHandler<TUser>` covers every fresh sign-in. To prove with a test for password, passkey and external login. |
-| S4 | How does the bell know whether the server package is present (R10, Q4)? | Open. |
+| S1 | Can the live row filter key off a cookie-derived visitor id with no per-query special case? | **Answered by reading** (Pass 1). To prove with a red test in M2, over HTTP and `/spark/live`. |
+| S1b | Does `visitorIssued` → socket reconnect resume the subscriptions, and does a notification stored right after `EnsureVisitorId()` reach the open tab? | Open. Measure it and keep the numbers here. |
+| S2 | ng-bootstrap Toast in ng-spark. | **Dropped** (G1). Remaining check: `<spark-notification-list>` in a connected overlay renders zoneless, and no timer runs on the server. |
+| S3 | Does the claim hook cover every sign-in? | **Answered** (Pass 3). To prove for password, passkey and external login in M4. |
+| S4 | How does the bell know whether the server package is there? | **Answered** (G6): `withNotifications()`. |
+| S5 | Does the antiforgery/CSRF scheme protect an anonymous mark-read POST that relies on the visitor cookie? | Open; answer it in M3 before the endpoint changes. |
 
-## Acceptance (from the issue)
+## Acceptance (from the issue, plus G2/G4)
 
 - [ ] An anonymous visitor who starts a long-running action gets its result in the bell, after a reload too, within
-      the expiry.
+      `Spark:Visitor:Lifetime`. Proven in DemoApp.
 - [ ] A signed-in user's notifications behave as today, plus the pop-out.
 - [ ] `Notify` messages pop out of the bell in every app, and `<spark-toast-container>` no longer exists.
 - [ ] Signing in claims the visitor's notifications.
-- [ ] Docs: `docs/guide-notifications.md`, the library README and the ng-spark docs.
+- [ ] `MintPlayer.Spark.Notifications` has no reference to `MintPlayer.Spark.Authorization`.
+- [ ] Docs:
+  - `docs/guide-notifications.md`: visitors, the cookies and consent, `@anonymous`, the claim, the pop-out, the badge
+    after a reload;
+  - the library READMEs;
+  - the ng-spark docs;
+  - CLAUDE.md's DemoApp note.
 - [ ] Tests:
-  - row filtering by visitor id, with no cross-visitor reads (HTTP and live socket);
+  - visitor row filtering with no cross-visitor reads (HTTP and live);
+  - the cookie: issued only on `EnsureVisitorId()`, tampered or foreign rejected, session-cookie mode;
   - expiry;
-  - claiming;
-  - ng-spark specs for the bell and the pop-out;
-  - `CsrfSurfaceTests` and the route snapshot (R8).
-- [ ] Translation goldens are regenerated if `translations.json` changes.
+  - the claim;
+  - in-app only without the directory;
+  - ng-spark specs for the list, the bell, the pop-out and the follow rule;
+  - `CsrfSurfaceTests` and the route snapshot.
+- [ ] Layering and translation goldens regenerated in the same commit as the change that moves them.
 
 ## Versioning
 
-`@mintplayer/ng-spark` loses `<spark-toast-container>` and `SparkNotificationService`. That is an API break inside
-Angular 22, so it ships as a **minor**, with the break in the release notes. `MintPlayer.Spark.Notifications` gains API
-inside .NET 11, also a minor. The versions come from the engine; nobody edits them by hand.
+Breaking changes are allowed for this PR (owner, 2026-11-23). Each still ships as a **minor** inside its platform
+generation, with the break described in the release notes:
+
+- **NuGet (.NET 11):**
+  - `ISparkCurrentUser` → `ISparkCurrentPrincipal`;
+  - the lifecycle contracts move to Abstractions and lose `TUser`;
+  - Notifications drops its Authorization dependency, and `AddNotifications()` changes accordingly.
+  - Affected packages: Abstractions, Spark, Authorization, Organizations, Moderation, Notifications, and every package
+    that consumed `ISparkCurrentUser`.
+- **npm (Angular 22):** `@mintplayer/ng-spark` loses `<spark-toast-container>` and `SparkNotificationService`, and gains
+  `<spark-notification-list>`.
+
+The versions come from the engine; nobody edits them by hand.

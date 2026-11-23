@@ -7,65 +7,83 @@ PRD: [notification_bell_PRD.md](notification_bell_PRD.md). Issue #710. Branch `f
 
 **2026-11-23:**
 - The branch is cut from master `ff66fd0a6`.
-- Three read-only investigation passes are done (PRD "Investigation"). S1, S2 and S3 are answered by reading; S1b and
-  S4 are open.
-- Design R1–R14 is proposed. Q1–Q4 await the owner.
-- **NEXT:** grill Q1–Q4, then S1b and S4, then M1.
+- Three read-only investigation passes are done (PRD "Investigation").
+- The grill is done: decisions G1–G8 are in the PRD.
+  - **G1:** the bell, with a pop-out that reuses its own list rows, not `<bs-toast>`.
+  - **G2:** DemoApp proves the anonymous path, and Notifications is decoupled from Authorization now.
+  - **G4:** three seams in Abstractions, `ISparkCurrentUser` → `ISparkCurrentPrincipal`. Breaking changes are allowed;
+    stored classes are not renamed.
+- **NEXT:** spike S1b, then M1.
 
-## Spikes (before M1)
+## Spikes
 
-- **S1b. Socket reconnect after the cookie is issued.**
-  - Add a throwaway `visitorIssued` client operation in a test host.
-  - The live client reconnects on it.
-  - Measure: time to resubscribe, and whether a notification stored right after `Ensure()` reaches the open page. Keep
-    the measurement in the PRD.
-- **S4. Server-package detection.** Pick between a provider flag, a probe and a capabilities field (Q4). Write down the
-  choice and its evidence.
-- **S2 proof.** A zoneless vitest spec with `<bs-toast>` in a CDK connected overlay anchored to a host element. Check
-  that no `setTimeout` runs under `isPlatformServer`.
+- **S1b. The socket reconnect after `visitorIssued`.** In a test host, issue the visitor cookie mid-session, send
+  `visitorIssued`, then reconnect. Measure two things and keep the numbers in the PRD:
+  - the time until both live queries are subscribed again;
+  - whether a notification stored right after `EnsureVisitorId()` reaches the open tab.
+- **S5. CSRF for an anonymous POST.** Read how the antiforgery scheme treats anonymous callers. A mark-read that relies
+  only on the visitor cookie must not be forgeable cross-site. Settle this before M3 changes the endpoint group.
 
 ## Milestones
 
-Tests go red first, then green, one class at a time. The full sweep runs once, at the end (CI).
+Tests go red first, then green, one class at a time. The full sweep runs once, at the end (CI). Type-check between
+milestones.
 
-- **M1. Visitor identity and addressing (server).**
-  - `ISparkVisitor` (R1).
-  - `SparkNotification.VisitorIds` and `Notification.VisitorId` (R2).
-  - The visitor branch in `SparkNotifier`: in-app only, 24 h expiry (R4, R5).
-  - Tests: the cookie is issued only by `Ensure()`; a forged or tampered cookie is ignored; ids are prefixed; no mail
-    and no push for a visitor; `@expires` is 24 h.
-- **M2. Reading as a visitor (server).**
-  - `OwnRows` gains user-or-visitor (R3), and `NotificationCaller` gains the visitor id.
-  - `NotificationsGroup` authorizes inside the endpoints (R8).
-  - Tests: visitor A cannot read, mark or delete visitor B's notifications over HTTP **and** over `/spark/live`. A
-    user cannot see visitor rows, and the reverse. Without the `@anonymous` binding a visitor gets 404.
+- **M1. The seams in Abstractions** (R2, G4).
+  - Rename `ISparkCurrentUser` → `ISparkCurrentPrincipal` and update its consumers.
+  - Add `ISparkAccount` (implemented by `SparkUser`) and `ISparkAccountDirectory` (Authorization registers it).
+  - Move the four lifecycle contracts to Abstractions without `TUser`. Authorization invokes them; Organizations,
+    Moderation and Notifications migrate.
+  - Notifications uses the directory instead of loading `SparkUser`, and drops its Authorization `ProjectReference`.
+  - Tests: the existing deletion, export and sign-in handler tests stay green. Startup refuses mail or push
+    configuration without a directory.
+  - Regenerate the layering goldens if they move.
+- **M2. The visitor in core** (R1, G5, G7).
+  - `ISparkCurrentPrincipal.VisitorId` and `EnsureVisitorId()`, Data Protection, the companion cookie,
+    `Spark:Visitor:Lifetime` and `SessionCookie`, and the `visitorIssued` client operation.
+  - Tests:
+    - no cookie on a plain visit;
+    - issued and renewed by `EnsureVisitorId()`;
+    - a tampered or foreign cookie reads as none;
+    - session-cookie mode;
+    - null for a signed-in caller.
+- **M3. Visitor notifications** (R3–R6, R8).
+  - `VisitorIds` and `VisitorId`, the visitor branch in `SparkNotifier` (in-app only, `Lifetime` expiry), `OwnRows` on
+    user-or-visitor, and mark-read for visitors per S5.
+  - Tests:
+    - visitor A cannot read, mark or delete visitor B's rows, over HTTP **and** `/spark/live`;
+    - users and visitors cannot see each other's rows;
+    - without the `@anonymous` binding, a visitor gets 404;
+    - `@expires` follows `Lifetime`.
   - Update `CsrfSurfaceTests` and the route snapshot.
-- **M3. Claim on sign-in (server).**
-  - `NotificationVisitorClaim<TUser>` (R6).
-  - Tests for password, passkey and external sign-in: the documents move, the cookie is cleared, a second run is a
-    no-op, and the personal-data export and account deletion cover the claimed documents.
-- **M4. One store and the bell's session mode (ng-spark).**
-  - Session entries in `SparkNotificationsService` (R9).
-  - `client-operations` `Notify` → session entry.
+- **M4. The claim** (R7). `NotificationVisitorClaim`.
+  - Tests for password, passkey and external sign-in: the documents move, both cookies are cleared, a second run is a
+    no-op, and the export and deletion include the claimed documents.
+- **M5. ng-spark: one store and the list** (R9, R10, R12, R13).
+  - Session entries in `SparkNotificationsService`, and `notify` → session entry.
   - Delete `SparkNotificationService` and `<spark-toast-container>`.
-  - Server-package detection per S4 (R10).
-  - Specs: session entries, the session-only bell, and the dev-mode warning (R13).
-- **M5. The pop-out (ng-spark).**
-  - Connected overlay with `<bs-toast>` (R11).
-  - A live notification pops out on arrival but not on the initial load.
-  - Multi-tab deduplication through `localStorage`, with try/catch.
-  - Nothing pops out on SSR.
-  - The socket reconnects on `visitorIssued` (R12, per S1b).
+  - Extract `<spark-notification-list>`.
+  - Session-only mode without `withNotifications()`.
+  - The follow rule (signed in, or `spark.visitor.present`) and the reconnect on `visitorIssued` (per S1b).
+  - The dev-mode warning.
   - Specs for each.
-- **M6. Apps.**
-  - Replace `<spark-toast-container />` with the bell in the header of CodeCoverage, Fleet, MintPlayer, QnA and
-    SparkId; drop it from SeoTester (R14).
-  - Q2's production wiring, if chosen.
-  - Move the E2E locators in `PasskeyCeremonyTests` and `QnAContributionsBrowserTests` to the pop-out.
-  - Regenerate the translation goldens if a `translations.json` changed.
-- **M7. Docs.**
-  - `docs/guide-notifications.md`: visitors, the cookie and its consent position, the `@anonymous` binding, claiming,
-    and the pop-out.
-  - The library README and the ng-spark README / docs.
-  - The release-note text for the ng-spark break.
-- **M8. Gate.** One push, CI green, then the coverage check through the codecoverage MCP.
+- **M6. ng-spark: the pop-out** (R11, G8).
+  - Connected overlay, at most 3 entries, the timers (errors stay, hovering pauses).
+  - No pop-out while the dropdown is open, on the initial load, or on the server.
+  - Multi-tab deduplication in `localStorage`.
+  - The badge includes session entries; opening the dropdown marks them read.
+  - Specs for each.
+- **M7. The apps** (R14, G2).
+  - CodeCoverage, Fleet, MintPlayer, QnA and SparkId: the bell replaces `<spark-toast-container />`. SeoTester drops
+    the container.
+  - DemoApp:
+    - `AddNotifications()`, `withClientOperations()`, `withNotifications()` and the bell;
+    - the `@anonymous` + `@authenticated` binding;
+    - a demo action that notifies its visitor after a few seconds.
+  - Run `--spark-synchronize-model` (and verify-security) for every model or security change.
+  - Move the E2E locators. Regenerate the translation goldens with any `translations.json` change.
+- **M8. Docs.**
+  - `docs/guide-notifications.md`, the library READMEs and the ng-spark docs.
+  - CLAUDE.md's DemoApp note, recording the exception.
+  - The release-note text for every break (PRD "Versioning").
+- **M9. Gate.** One push, CI green, then the coverage check through the codecoverage MCP.
