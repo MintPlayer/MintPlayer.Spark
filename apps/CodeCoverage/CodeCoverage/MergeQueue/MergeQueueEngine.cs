@@ -5,6 +5,7 @@ using CodeCoverage.CommitGraph;
 using CodeCoverage.Entities;
 using CodeCoverage.Feedback;
 using CodeCoverage.Forge;
+using CodeCoverage.Formatting;
 using CodeCoverage.Git.MergeQueue;
 using CodeCoverage.LookupReferences;
 using CodeCoverage.WorkflowHooks;
@@ -1334,6 +1335,14 @@ public partial class MergeQueueEngine : IMergeQueueEngine
         // that declares it: GitHub refuses an undeclared input.
         if (entry.IsFork && entry.ForkInputWorkflows.Contains(file, StringComparer.Ordinal))
             inputs[MergeQueueForkGuard.ForkInput] = "true";
+        // #657 D17/D18: the formatting workflow proves the whitespace resolutions from the two sides the prepare merged, the
+        // base it rebased onto and the head it took; it computes the merge base itself.
+        if (file == FormattingWorkflow.FileName)
+        {
+            inputs["mode"] = "pipeline";
+            inputs["ours_sha"] = entry.BaseSha!;
+            inputs["theirs_sha"] = entry.ExpectedHeadSha;
+        }
         var request = new WorkflowHookRequest(file, entry.QueueBranch, inputs, TimeSpan.FromMinutes(entry.Config.PostRebaseTimeoutMinutes), RegeneratePurpose);
         var dispatch = await hook.DispatchAsync(Saga(context, entry), request, dispatched =>
         {

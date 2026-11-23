@@ -45,8 +45,12 @@ public static partial class MergeQueueWireRules
     /// <summary><c>line-set</c> (§10.2): the sorted, de-duplicated union of lines, for files like <c>go.sum</c>.</summary>
     public const string LineSet = "line-set";
 
+    /// <summary><c>whitespace</c> (#657 D10, D17): a conflict that differs only in whitespace takes the pull request's side,
+    /// and the repository's <c>formatting.yml</c> proves and formats it.</summary>
+    public const string Whitespace = "whitespace";
+
     /// <summary>Every strategy a rule may name; the writer's <c>ConflictResolverRegistry</c> holds exactly these.</summary>
-    public static IReadOnlySet<string> Strategies { get; } = new HashSet<string>(StringComparer.Ordinal) { TakeBase, KeepBoth, LineSet, KeyedMerge, Evict };
+    public static IReadOnlySet<string> Strategies { get; } = new HashSet<string>(StringComparer.Ordinal) { TakeBase, KeepBoth, LineSet, KeyedMerge, Evict, Whitespace };
 
     /// <summary>The content validators (§10.4 step 4). <c>no-conflict-markers</c> runs on every resolved content anyway;
     /// naming it is allowed and changes nothing.</summary>

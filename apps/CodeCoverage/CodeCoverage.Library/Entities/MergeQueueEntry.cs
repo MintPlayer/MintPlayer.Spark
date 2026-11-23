@@ -467,6 +467,8 @@ public enum EMergeQueueResolveStrategy
     Evict,
     /// <summary>A three-way merge per key of MSBuild files and package.json (#570).</summary>
     KeyedMerge,
+    /// <summary>A whitespace-only conflict takes the pull request's side; <c>formatting.yml</c> proves it (#657 D10, D17).</summary>
+    Whitespace,
 }
 
 public sealed class MergeQueueConfigValue
@@ -508,11 +510,12 @@ public sealed class MergeQueueAutoResolveRule
         EMergeQueueResolveStrategy.LineSet => "line-set",
         EMergeQueueResolveStrategy.Evict => "evict",
         EMergeQueueResolveStrategy.KeyedMerge => "keyed-merge",
+        EMergeQueueResolveStrategy.Whitespace => "whitespace",
         _ => "take-base",
     };
 
     /// <summary>Whether a resolution under this rule needs a regenerate run.</summary>
-    public bool Regenerates() => Regenerate ?? Strategy == EMergeQueueResolveStrategy.TakeBase;
+    public bool Regenerates() => Regenerate ?? Strategy is EMergeQueueResolveStrategy.TakeBase or EMergeQueueResolveStrategy.Whitespace;
 }
 
 /// <summary>When the regenerate workflow runs (§5.2).</summary>

@@ -101,6 +101,9 @@ public sealed class AutoResolveRule
             return null;
         if (validate is not null && (validate.Count > MergeQueueWireRules.MaxValidators || !validate.All(v => v is not null && MergeQueueWireRules.Validators.Contains(v))))
             return null;
+        // #657 D17: a whitespace resolution stands only once formatting.yml has proven it.
+        if (strategy == MergeQueueWireRules.Whitespace && regenerate == false)
+            return null;
         if (strategy != MergeQueueWireRules.TakeBase)
             return keys is { Count: > 0 } ? null : Create(path!, strategy, validate, regenerate);
         if (regenerate == false)

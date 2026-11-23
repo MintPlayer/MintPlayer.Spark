@@ -127,8 +127,8 @@ public static class MergeQueueWorkflowGuard
         {
             if (!resolution.Regenerate || resolution.Rule < 0 || resolution.Rule >= config.AutoResolve.Count)
                 continue;
-            if (config.AutoResolve[resolution.Rule].Source is { } source && source.StartsWith(MergeQueueYml.Source, StringComparison.Ordinal))
-                continue; // coverage.yml's own rule: its glob is in the list already.
+            if (config.AutoResolve[resolution.Rule] is { Source: { } source, Strategy: not EMergeQueueResolveStrategy.Whitespace } && source.StartsWith(MergeQueueYml.Source, StringComparison.Ordinal))
+                continue; // coverage.yml's own rule: its glob is in the list already (a whitespace rule's never is, #657 D18).
             var path = resolution.Path;
             if (!MergeQueueWireRules.IsGlob(path) || path.IndexOfAny(['*', '?', '[']) >= 0
                 || paths.Contains(path, StringComparer.Ordinal) || globs.Any(g => g.Matches(path)))
