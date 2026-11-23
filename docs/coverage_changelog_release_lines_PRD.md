@@ -127,9 +127,16 @@ The owner delegated the how ("make the release-lines feature and changelog featu
   then plan `release/dotnet-N.x` at main's head with notes. Prove the packages and notes equal what the next promotion's
   real run releases. Needs the fetch of the default branch and the ancestor check relaxed for this mode
   (`VersioningRunService.cs:152-159`).
+  **Done (M1):** `VersioningPlanPromotedTests`. After a second promotion, the plan at main's head lists only the
+  unpromoted `(#3)`, which is what that promotion's run would release.
 - **S2 — Current lines, shared.** Extract `ReleaseRecipient`'s current-line pick (`:148-149`) so the upcoming
   recipient and the run Release's latest flag use the same rule; check what the action (local mode) can see of the line
   branches.
+  **Done (M2, M3):**
+  - No extraction was needed: the rule is already the shared `ReleaseLinePattern.CurrentLines`. The upcoming recipient
+    and `VersionReleaseRecipient` call it after `ListBranchesAsync(BranchPrefix(pattern))`, as `/release` does.
+  - The action's checkout holds only the branch and the default branch. It lists the line branches through
+    `git/matching-refs/heads/<prefix>` with its token instead (`isCurrentLine`, a TS port of the pattern regex).
 - **S3 — `make_latest: false` keeps the existing Latest.** **Done (2026-11-23):** GitHub's REST "Create a release" takes
   `make_latest` as `true`, `false` or `legacy` and defaults to `true` for a newly published release; `false` does not set
   the new release as latest, so the current Latest stays. Source: the REST reference (not re-fetched this session).

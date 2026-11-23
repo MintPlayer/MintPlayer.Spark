@@ -77,7 +77,8 @@ renderer tests. Filed as **#706** (not part of this PR).
 - #693 PRD D3 "Consequence": the "non-merge commits" text is struck through and points to the D4 M1 revision and here.
 - `UpcomingChangelog` summary updated. It is not mirrored in the model JSON, so no resync.
 
-**NEXT:** M8 (push, PR, checks, patch coverage; the owner queues).
+**M8 (2026-11-23):** pushed; **PR #707** opened. **NEXT:** the checks, then patch coverage via the codecoverage MCP; the
+owner queues.
 
 ## Test harness (investigation pass 3)
 
