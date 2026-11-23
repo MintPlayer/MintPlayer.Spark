@@ -413,6 +413,20 @@ The answers:
   only the `.github/**` paths and the resolved paths (`GitWriterSidecarClient.cs:367-371`). Both come from
   `IForgeLabels.ListPullRequestFilesAsync` (`IForgeLabels.cs:57`), which PR size labels and backport attention already
   use. The list is passed to the workflow as `paths`.
+| D21 | **As built (M4–M7), five choices the decisions left open.** (1) The on-demand result goes through the git writer's existing `/jobs/onboarding` with a `format` field: the writer applies and checks the patch and force-pushes `mintplayer/format` or `mintplayer/lint`, so no new writer endpoint. (2) `exclude` globs are normalized once (`FormatPatchValidator.Glob`): a leading `./` is dropped, a glob without `/` gets `**/`, a trailing `/` gets `**`. (3) `ResolverVersion` is **not** bumped: no existing configuration's prepared tree changes, and a writer without the strategy refuses it as unknown. (4) In the pipeline the server does not apply `exclude` itself: the runner fails on an excluded candidate (D19), and the publish allow-list is only the concrete resolved paths, so an explicit `whitespace` rule never widens `regeneratedPaths` by its glob. (5) A backport proves a resolution only when nothing was normalized: the writer reports the line's tip, the picked commit and its parent only then, because a lockfile reset or a platform marker makes a synthetic commit that exists only in the writer. Otherwise the plan is refused and the pull request opens "Not regenerated". | M4–M7. Tests: `FormatWriterJobTests`, `FormatRunEngineTests`, `WhitespaceResolverTests`, `MergeQueueWhitespaceStrategyTests`, `BackportRegenerationEngineTests` (M7_*), `BackportTests` (proof assertions) |
+
+## As built (2026-11-23)
+
+| Milestone | Where |
+|---|---|
+| M1 runner | `.github/actions/format` (`action.yml`, `format.mjs`, `fetch-commits.sh`, `format.test.mjs`); template `apps/CodeCoverage/CodeCoverage/Formatting/formatting.yml` (D20) |
+| M2 onboarding | `EOnboardingFeature.Formatting`, `OnboardingPlanner` |
+| M3 actions | `FormatRepository`, `LintRepository` in `actions.json`, `security.json`, `translations.json` |
+| M4/M5 run and pull request | `FormatRunEngine`, `FormatRuns` entity, `FormatRepositoryAction`, `FormattingWorkflow`, `FormatPatchValidator`, writer `FormatAsync` (D21.1) |
+| M6 strategy | `WhitespaceResolver`, `AutoResolvePresets` (`formatting`), `MergeQueueYml`, `MergeQueueEngine.DispatchAsync` (D18 inputs) |
+| M7 backports | `BackportService` (`Proof*`), `BackportRegeneration.Plan` (D21.5) |
+| M8 notifications | `AddNotifications()`, the `notifications:users` binding |
+| M9 docs | [`code-coverage/formatting.md`](code-coverage/formatting.md), `merge-queue.md`, `backports.md`, `onboarding.md`, `README.md` |
 
 ## Not decided yet
 

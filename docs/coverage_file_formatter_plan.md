@@ -17,6 +17,8 @@
 - **2026-11-23: M1 done.** `.github/actions/format` (action, `format.mjs`, `fetch-commits.sh`, 20 tests in
   `test:tools`) and the `formatting.yml` template. Writing it settled D18–D20 (the run derives its own candidates, the
   server guards by the `whitespace` resolutions; D9.3 and D16 under D17; artifacts and inputs). NEXT: M2.
+- **2026-11-23: M2–M9 done.** One commit per milestone (M4, M5 and M8 together). As built: PRD D21 and "As built".
+  The template is `apps/CodeCoverage/CodeCoverage/Formatting/formatting.yml` (D20), not under `docs/`. NEXT: M10.
 - Tests run **once, at the end** (M10). No interim gate runs.
 
 ## Spikes
@@ -128,7 +130,8 @@ One commit per milestone. Paths are under `apps/CodeCoverage/`.
       them byte-identical.
     - **The D16 check:** `--verify-no-changes` on the target's copy first, or skip with a note.
   - The script's tests use the S8 fixtures (trimmed copies at the S8 commits) and the S11 pairs.
-  - Add the `docs/code-coverage/templates/formatting.yml` template with the SECURITY header.
+  - Add the `formatting.yml` template with the SECURITY header (as built at
+    `apps/CodeCoverage/CodeCoverage/Formatting/formatting.yml`, D20).
 - **M2 — Onboarding.** Add `EOnboardingFeature.Formatting`, the planner files and the chooser checkbox.
 - **M3 — Actions.**
   - Add `FormatRepository` and `LintRepository` to `actions.json`, `security.json` (+ `securityPosture.txt`) and
