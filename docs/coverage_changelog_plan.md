@@ -29,6 +29,24 @@ repository-metadata note, PRD D7/D12 "Done (M12)") is committed. M13: `docs/code
 step on `/versioning/setup`, the README row, D14/D15 marked superseded in `coverage_package_versioning_PRD.md`, and the
 action's stale `dist` rebuilt. **NEXT:** M14 (push, PR, checks, coverage).
 
+**2026-11-23, M14:** PR #704 opened. The CI fixes are in `0f8d1c3e7` and `d7561668c`:
+- `modelHashes.json` resynced after a hand edit;
+- the new model files' `$schema` made relative;
+- the Account tab group added;
+- the forge-webhook reference rows added;
+- `ConnectionStateIsReadOnlyTests` and `OwnerPrivacyEndToEndTests` classify the new policies.
+
+Run 45091276261 was then green except the dependency-action jvm IT, which hung in Maven at vitest's 300 s. That code is
+untouched by this PR; the same hang happened on PR #694. Patch coverage at `d7561668c` was 86.3% (753/873 lines).
+- **`c60af6f56`:** tests for `GitHubPullRequestFacts` and the changelog queries (`ChangelogQueryActionsTests`, on both
+  stores). They found a parsing defect, fixed (PRD Risks).
+- **`8101a4592`** (owner-approved CI change):
+  - the jvm IT slice caches `~/.m2/repository`;
+  - the IT harness caps each tool command at 120 s and logs a killed command's output (`IT_COMMAND_TIMEOUT_MS`,
+    `dependency-action/src/integration/setup.ts`).
+
+**NEXT:** checks green, then patch coverage via the MCP. The owner queues.
+
 ## Spikes
 
 Each spike answers one question with a measurement. Results go into the PRD's decisions with their evidence.
@@ -137,4 +155,4 @@ returns (`CodeCoverage.Versioning.Cli/Wire.cs:47`). TS changes only where the ac
 | M11 | **CodeCoverage (Spark):** `ChangelogPolicy` and `PrTemplatePolicy` on Repository/Account (synchronize the model), a `changelog:` section in `coverage.yml` (parser like `VersioningYml`), the entry copy **through `ISparkSession` only** (ids + `Query<T>()`, no indexes; tests on in-memory and RavenDB), the repository changelog page and the upcoming entries per line. | D3, D10, D13, D16, Q12 | `actions.json`/`security.json` changes → synchronize and verify security; new endpoints → `CsrfSurfaceTests` and the route snapshot; translations → golden. |
 | M12 | **Onboarding:** add or append the "Type of change" template section unless `PrTemplatePolicy` is Disabled; check the repository metadata (nuspec `RepositoryUrl`, npm `repository`) and warn; switch title correction on. | D7, D12 | Spark's own template and missing `RepositoryUrl`s in this PR. |
 | M13 | **Docs:** a user guide `docs/code-coverage/changelog.md` and the in-app guide; D15 marked superseded where it changed in `coverage_package_versioning_PRD.md`. | all | |
-| M14 | **Gate:** push, open the PR, watch every check, then ask the codecoverage MCP for patch coverage. | | Read failures from the log first. |
+| M14 | **Gate:** push, open the PR, watch every check, then ask the codecoverage MCP for patch coverage. | | Read failures from the log first. **In progress:** PR #704; see Status. |

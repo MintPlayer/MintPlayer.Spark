@@ -547,5 +547,11 @@ correction comes with the changelog) are answered by D6.
 - **A label added by hand doesn't refresh the title check.** Title correction runs on `opened`, `reopened` and a human's
   `edited` only (`GitHubEventsRecipient.cs:474,505`), so a `changelog: skip` label added in the sidebar shows on the check
   at the next edit. The release run reads labels fresh, so the changelog itself is right.
+- **A malformed answer from the pull-request lookup used to drop its whole batch (fixed).** `GitHubPullRequestFacts.Read`
+  called `TryGetInt32` on a `number` that wasn't a JSON number, and `TryGetInt32` throws on that rather than returning
+  false. The batch of up to 50 pull requests then fell back to the commit subjects, losing the `## Changelog` overrides
+  and skip labels. It is now skipped. Red then green:
+  `GitHubPullRequestFactsTests.Reads_labels_a_linked_bug_and_the_backport_marker_and_skips_issues_and_odd_shapes`
+  (`c60af6f56`).
 - **The upcoming view has no pull-request facts** (Q12 "Done"): its notes follow the commit subjects, not a `## Changelog`
   section or a skip label, until the release.
