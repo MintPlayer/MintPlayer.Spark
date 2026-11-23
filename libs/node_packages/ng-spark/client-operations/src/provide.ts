@@ -13,7 +13,7 @@ import type {
 import { SparkSecretDialogService } from './secret-dialog';
 import { SPARK_CLIENT_OPERATION_HANDLERS } from './handlers.token';
 import { SparkAttributeRefreshService } from './attribute-refresh.service';
-import { SparkNotificationService } from './notification.service';
+import { SparkSessionNotifications } from './session-notifications.service';
 import { SparkQueryRefreshService } from './query-refresh.service';
 
 /**
@@ -45,14 +45,15 @@ export function withClientOperations(): SparkFeature {
         {
             provide: SPARK_CLIENT_OPERATION_HANDLERS,
             useFactory: () => {
-                const notifications = inject(SparkNotificationService);
+                const notifications = inject(SparkSessionNotifications);
                 return {
                     type: 'notify',
                     handler: (operation: ClientOperation) => {
                         const notify = operation as NotifyOperation;
                         // The app-chosen language, not the browser's that the server resolved `message` in.
                         const message = (notify.translatedMessage && resolveTranslation(notify.translatedMessage)) || notify.message;
-                        notifications.show(message, notify.kind, notify.durationMs);
+                        // One UI system (#710): the bell lists it and pops it out.
+                        notifications.add(message, notify.kind, notify.durationMs);
                     },
                 };
             },

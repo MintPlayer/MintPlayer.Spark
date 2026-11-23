@@ -4,7 +4,8 @@ import { provideHttpClient } from '@angular/common/http';
 import { provideAnimations } from '@angular/platform-browser/animations';
 import { provideSpark } from '@mintplayer/ng-spark';
 import { withServiceWorker } from '@mintplayer/ng-spark/pwa';
-import { withLanguageUrls, withSparkLanguage, withSparkTimezone } from '@mintplayer/ng-spark/services';
+import { withLanguageUrls, withSparkLanguage, withSparkTimezone, withSparkVisitor } from '@mintplayer/ng-spark/services';
+import { withNotifications } from '@mintplayer/ng-spark/notifications';
 import { withAuth, withSparkAuth } from '@mintplayer/ng-spark/auth';
 import { withAttributeRenderers } from '@mintplayer/ng-spark/renderers';
 import { withClientOperations } from '@mintplayer/ng-spark/client-operations';
@@ -22,7 +23,9 @@ export const appConfig: ApplicationConfig = {
     provideRouter(routes),
     // withSparkTimezone() (#460 M9): the browser's zone travels as a header on every Spark call and is
     // kept in the spark-timezone cookie, so a server-side render could read it too.
-    provideHttpClient(...withSparkAuth(), ...withSparkLanguage(), ...withSparkTimezone()),
+    // withSparkVisitor() (#710): when a response issues a visitor id (RemindMe, signed out), the /spark/live socket is
+    // replaced, so the visitor's notifications reach the bell without a reload.
+    provideHttpClient(...withSparkAuth(), ...withSparkLanguage(), ...withSparkTimezone(), ...withSparkVisitor()),
     provideAnimations(),
     provideZonelessChangeDetection(),
     provideSpark(
@@ -38,6 +41,8 @@ export const appConfig: ApplicationConfig = {
       withModeration(),
       // Contributions M6: "Revert to this version" in the translation history (row menu and detail page).
       withContributions(),
+      // #710: the bell follows the stored notifications (MintPlayer.Spark.Notifications), for users and visitors.
+      withNotifications(),
       // The vote widget (`spark-vote`, M12), the translation attribution line and line diff
       // (Contributions), and QnA's author cell (reputation badge).
       withAttributeRenderers([

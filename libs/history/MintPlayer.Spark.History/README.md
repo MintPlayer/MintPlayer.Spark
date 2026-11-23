@@ -113,7 +113,7 @@ certificate may not, set `Spark:History:ConfigureRevisions = false`.
 ## Stamping
 
 On every write through `IDatabaseAccess` to an `IAuditable` type (each half on its own for `IAuditCreated` / `IAuditModified`): a create sets `CreatedBy`/`CreatedAt`
-and `ModifiedBy`/`ModifiedAt` from `ISparkCurrentUser` (the id; `null` for the system); every later
+and `ModifiedBy`/`ModifiedAt` from `ISparkCurrentPrincipal` (the id; `null` for the system); every later
 save — edit, revert, restore — keeps the **stored** `CreatedBy`/`CreatedAt` whatever was posted (so
 authorship cannot be claimed by editing) and sets `ModifiedBy`/`ModifiedAt`. A soft delete stamps
 `Modified*` too. A write a replica forwards (`Sync`) is stamped with the user the replica states

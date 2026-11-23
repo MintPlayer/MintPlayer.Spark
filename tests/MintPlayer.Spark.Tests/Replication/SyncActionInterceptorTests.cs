@@ -84,7 +84,7 @@ public class SyncActionInterceptorTests : SparkTestDriver
         stored.Actions.Should().ContainSingle().Which.InitiatorId.Should().Be("users/alice");
     }
 
-    private sealed class StaticUser(string? id) : MintPlayer.Spark.Abstractions.Authentication.ISparkCurrentUser
+    private sealed class StaticUser(string? id) : MintPlayer.Spark.Abstractions.Authentication.ISparkCurrentPrincipal
     {
         public string? Id => id;
         public bool IsAuthenticated => id is not null;

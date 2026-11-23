@@ -5,7 +5,7 @@ import { currentLanguage } from '@mintplayer/ng-spark/models';
 
 import { provideSpark } from '@mintplayer/ng-spark';
 import { withClientOperations } from './provide';
-import { SparkNotificationService } from './notification.service';
+import { SparkSessionNotifications } from './session-notifications.service';
 import { NotificationKind } from './operations';
 import { SPARK_CLIENT_OPERATION_HANDLERS } from './handlers.token';
 import { SparkAttributeRefreshService } from './attribute-refresh.service';
@@ -153,7 +153,7 @@ describe('withClientOperations', () => {
     it('shows the translated message in the language the user picked, not the browser one the server used', () => {
       configure();
       const dispatcher = TestBed.inject(SparkClientOperationDispatcher);
-      const show = vi.spyOn(TestBed.inject(SparkNotificationService), 'show').mockImplementation(() => undefined);
+      const show = vi.spyOn(TestBed.inject(SparkSessionNotifications), 'add').mockImplementation(() => undefined as never);
       currentLanguage.set('en'); // SparkLanguageService's choice; the browser sent Accept-Language: nl
 
       dispatcher.dispatch([{
@@ -169,7 +169,7 @@ describe('withClientOperations', () => {
     it('falls back to the plain message without translations', () => {
       configure();
       const dispatcher = TestBed.inject(SparkClientOperationDispatcher);
-      const show = vi.spyOn(TestBed.inject(SparkNotificationService), 'show').mockImplementation(() => undefined);
+      const show = vi.spyOn(TestBed.inject(SparkSessionNotifications), 'add').mockImplementation(() => undefined as never);
 
       dispatcher.dispatch([{ type: 'notify', message: 'Saved', kind: NotificationKind.Success, durationMs: 3000 } as ClientOperation]);
 

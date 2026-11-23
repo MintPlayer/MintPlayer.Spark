@@ -17,7 +17,7 @@ namespace MintPlayer.Spark.Tests.Mcp;
 /// An agent's principal carries the local user id as <see cref="ClaimTypes.NameIdentifier"/> in every setup (found wiring
 /// Fleet, 2026-10-12): application code reads the id from that claim as it does from the sign-in cookie, and Fleet's car
 /// row filter treated an authenticated principal without it as a machine, unrestricted, so an agent saw every user's cars.
-/// <c>ISparkCurrentUser.Id</c> already mapped the token's <c>sub</c> (M1); code that reads the claim did not.
+/// <c>ISparkCurrentPrincipal.Id</c> already mapped the token's <c>sub</c> (M1); code that reads the claim did not.
 /// </summary>
 /// <remarks>
 /// It also carries the role and group claims a cookie sign-in of the user carries (Identity's claims factory), read from

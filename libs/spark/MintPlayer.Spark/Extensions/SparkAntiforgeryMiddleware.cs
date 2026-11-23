@@ -153,6 +153,11 @@ internal static class SparkAntiforgeryMiddleware
     /// </summary>
     private static bool HasAmbientCredential(HttpContext context)
     {
+        // The visitor cookie is an ambient credential too (#710 S5): it reads and marks what was addressed to an
+        // anonymous browser, so a cross-site POST riding on it must fail the check like one riding on a login.
+        if (context.Request.Cookies.ContainsKey(Configuration.SparkVisitorOptions.CookieName))
+            return true;
+
         if (context.User.Identity?.IsAuthenticated != true)
             return false;
 

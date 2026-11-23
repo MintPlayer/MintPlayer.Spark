@@ -117,7 +117,7 @@ Stamping is done by Spark persistence interceptors on every write through `IData
 | Write-back from a replica (`Sync`) | stored values (the replica's user on an insert) | the user the replica states (`SyncAction.InitiatorId`) |
 | `Sync` from a replica that states no user (older, anonymous, background) | as sent | as sent |
 
-The current user is `ISparkCurrentUser.Id`: the `NameIdentifier` claim of the request's principal. Replace
+The current user is `ISparkCurrentPrincipal.Id`: the `NameIdentifier` claim of the request's principal. Replace
 the registration to act for someone else, such as a background job acting for a user.
 
 ### Writes that are not stamped

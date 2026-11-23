@@ -3,10 +3,11 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { DestroyRef, Injectable, PLATFORM_ID, Signal, WritableSignal, computed, effect, inject, signal, untracked } from '@angular/core';
 import { Router } from '@angular/router';
 import { SwPush } from '@angular/service-worker';
-import { Subscription, firstValueFrom } from 'rxjs';
-import { SPARK_AUTH_STATE, SPARK_CONFIG } from '@mintplayer/ng-spark';
+import { Observable, Subject, Subscription, firstValueFrom, map, merge } from 'rxjs';
+import { SPARK_AUTH_STATE, SPARK_CONFIG, sparkSignedIn } from '@mintplayer/ng-spark';
 import { LiveQueryRequest, QueryResult } from '@mintplayer/ng-spark/models';
-import { SparkLiveService, SparkService } from '@mintplayer/ng-spark/services';
+import { SparkLiveService, SparkService, SparkVisitorPresence } from '@mintplayer/ng-spark/services';
+import { SparkSessionNotifications } from '@mintplayer/ng-spark/client-operations';
 import { sparkInAppUrl } from '@mintplayer/ng-spark/pwa';
 import {
   SPARK_MY_NOTIFICATIONS_QUERY_ID,
@@ -14,7 +15,10 @@ import {
   SPARK_NOTIFICATION_TYPE_ID,
   SPARK_PUSH_PERMISSIONS,
   SPARK_UNREAD_NOTIFICATIONS_QUERY_ID,
+  SparkBellEntry,
   SparkNotification,
+  serverBellEntry,
+  sessionBellEntry,
   toSparkNotification,
 } from './spark-notification';
 
@@ -51,15 +55,44 @@ export class SparkNotificationsService {
   private readonly baseUrl = `${inject(SPARK_CONFIG, { optional: true })?.baseUrl ?? '/spark'}/notifications`;
   private readonly browser = isPlatformBrowser(inject(PLATFORM_ID));
 
+  private readonly presence = inject(SparkVisitorPresence);
+  private readonly authState = inject(SPARK_AUTH_STATE, { optional: true });
   private readonly unread = signal<QueryResult | null>(null);
   private readonly latest = signal<QueryResult | null>(null);
 
-  /** Unread notifications of the signed-in user; 0 until the first result and while signed out. */
-  readonly unreadCount: Signal<number> = computed(() => this.unread()?.totalItems ?? 0);
+  /** This session's client-operation notifications (`notify`), listed beside the stored ones. */
+  readonly session = inject(SparkSessionNotifications);
+  /** Whether the bell shows stored notifications at all ({@link SparkNotificationsOptions.server}). */
+  readonly server: boolean = this.options.server;
+  /**
+   * Whether the stored notifications are followed: the server package is there, and the caller is signed in or is an
+   * identified visitor (the `spark.visitor.present` cookie, #710 G7). An anonymous caller without a visitor id has none.
+   */
+  readonly following: Signal<boolean> = computed(() => this.server && (sparkSignedIn(this.authState?.()) || this.presence.present()));
+
+  /** Unread stored notifications of the caller; 0 until the first result and while not {@link following}. */
+  readonly serverUnreadCount: Signal<number> = computed(() => this.unread()?.totalItems ?? 0);
+  /** Everything the bell counts: unread stored notifications plus unread session ones. */
+  readonly unreadCount: Signal<number> = computed(() => this.serverUnreadCount() + this.session.unreadCount());
   /** The latest notifications (read or not), newest first; empty until the first result. */
   readonly recent: Signal<SparkNotification[]> = computed(() => (this.latest()?.items ?? []).map(toSparkNotification));
   /** Whether {@link recent} holds a result yet. */
   readonly loaded: Signal<boolean> = computed(() => this.latest() !== null);
+
+  /** What the bell lists: the recent stored notifications and this session's, newest first. */
+  readonly entries: Signal<SparkBellEntry[]> = computed(() => [
+    ...this.recent().map(serverBellEntry),
+    ...this.session.entries().map(sessionBellEntry),
+  ].sort((a, b) => (b.createdAt?.getTime() ?? 0) - (a.createdAt?.getTime() ?? 0)));
+
+  private readonly arrivals = new Subject<SparkBellEntry>();
+  /**
+   * Each entry as it arrives, for the pop-out: a session notification as it is added, and a stored one that appears
+   * unread in the live list after its first result. What the first result already held is not an arrival, so a
+   * page load pops nothing out.
+   */
+  readonly arrived: Observable<SparkBellEntry> = merge(this.arrivals, this.session.arrived.pipe(map(sessionBellEntry)));
+  private known: Set<string> | null = null;
 
   // --- Web Push ----------------------------------------------------------------------------------
 
@@ -87,22 +120,29 @@ export class SparkNotificationsService {
   readonly pushBusy: Signal<boolean> = this.busy.asReadonly();
 
   constructor() {
-    if (!this.browser) return;
-    const authState = inject(SPARK_AUTH_STATE, { optional: true });
+    if (!this.browser || !this.server) return;
 
     effect(onCleanup => {
-      authState?.();
+      // Tracked for change: a sign-in, a sign-out or a new visitor starts the subscriptions again.
+      const user = this.authState?.();
+      if (!this.following()) {
+        this.configured.set(false);
+        return;
+      }
       untracked(() => {
         const subscriptions = new Subscription();
         subscriptions.add(this.follow({ queryId: SPARK_UNREAD_NOTIFICATIONS_QUERY_ID, skip: 0, take: 1 }, this.unread));
         subscriptions.add(this.follow({ queryId: SPARK_MY_NOTIFICATIONS_QUERY_ID, skip: 0, take: this.options.recentCount }, this.latest));
-        // Whether push is configured is asked again per user: anonymous callers get a 401.
+        // Whether push is configured is asked again per user. Push needs an account: a visitor is never asked.
         this.publicKey = null;
-        void this.loadPublicKey();
+        if (sparkSignedIn(user)) void this.loadPublicKey();
+        else this.configured.set(false);
         onCleanup(() => {
           subscriptions.unsubscribe();
           this.unread.set(null);
           this.latest.set(null);
+          // Another identity's first result is not an arrival either.
+          this.known = null;
         });
       });
     });
@@ -206,7 +246,45 @@ export class SparkNotificationsService {
   // --- internals ---------------------------------------------------------------------------------
 
   private follow(request: LiveQueryRequest, target: WritableSignal<QueryResult | null>): Subscription {
-    return this.live.watchQuery(request).subscribe(event => target.set(event.type === 'result' ? event.result : null));
+    return this.live.watchQuery(request).subscribe(event => {
+      target.set(event.type === 'result' ? event.result : null);
+      if (target === this.latest && event.type === 'result') this.noticeArrivals(event.result);
+    });
+  }
+
+  private noticeArrivals(result: QueryResult): void {
+    const rows = (result.items ?? []).map(toSparkNotification);
+    const first = this.known === null;
+    this.known ??= new Set();
+    for (const row of rows) {
+      if (this.known.has(row.id)) continue;
+      this.known.add(row.id);
+      if (!first && !row.isRead) this.arrivals.next(serverBellEntry(row));
+    }
+  }
+
+  // --- the bell ----------------------------------------------------------------------------------
+
+  /** Chooses an entry: a stored one is opened ({@link open}), a session one is marked read. */
+  async choose(entry: SparkBellEntry): Promise<void> {
+    if (entry.source === 'session') {
+      this.session.markRead(entry.id);
+      return;
+    }
+    const notification = this.recent().find(n => n.id === entry.id)
+      ?? { id: entry.id, title: entry.title, body: entry.body, url: null, isRead: entry.isRead, createdAt: entry.createdAt };
+    await this.open(notification);
+  }
+
+  /** Marks everything read: this session's entries at once, the stored ones on the server when any is unread. */
+  async markAllRead(): Promise<void> {
+    this.session.markAllRead();
+    if (this.serverUnreadCount() > 0) await this.markRead();
+  }
+
+  /** Removes a session entry; a stored notification is not removed from here. */
+  dismiss(entry: SparkBellEntry): void {
+    if (entry.source === 'session') this.session.dismiss(entry.id);
   }
 
   private loadPublicKey(): Promise<string | null> {

@@ -13,6 +13,13 @@ public sealed class SparkNotificationsOptions
 
     /// <summary>The MailManager template of the notification mail; an app's own file of the same name wins.</summary>
     public string MailTemplate { get; set; } = SparkNotificationMailTemplates.Notification;
+
+    /// <summary>
+    /// The origin that mails and pushes make app-relative links absolute with. Null (the default) reads
+    /// <c>Spark:Auth:PublicBaseUrl</c>, else, in Development only, the request's origin
+    /// (<see cref="Abstractions.SparkPublicBaseUrl"/>).
+    /// </summary>
+    public string? PublicBaseUrl { get; set; }
 }
 
 /// <summary><c>Spark:Notifications:WebPush</c>. The keys come from <c>VapidDetails.Generate</c>; the private key is a secret (user secrets, environment, a vault).</summary>

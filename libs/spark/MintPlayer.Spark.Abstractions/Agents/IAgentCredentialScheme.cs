@@ -31,7 +31,7 @@ public interface IAgentCredentialScheme
 
     /// <summary>
     /// Whether the principal's <c>sub</c> is the local user id (setups 1 and 3). The Mcp package then declares
-    /// the request authenticated by a local-subject scheme, so <c>ISparkCurrentUser.Id</c> reads <c>sub</c> and
+    /// the request authenticated by a local-subject scheme, so <c>ISparkCurrentPrincipal.Id</c> reads <c>sub</c> and
     /// the user's groups come from the user store (PRD §4.6).
     /// </summary>
     bool SubjectIsLocalUserId { get; }

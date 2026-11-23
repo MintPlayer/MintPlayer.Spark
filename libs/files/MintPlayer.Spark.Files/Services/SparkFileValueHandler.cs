@@ -30,7 +30,7 @@ namespace MintPlayer.Spark.Files.Services;
 internal sealed partial class SparkFileValueHandler : ISparkFileValueHandler
 {
     [Inject] private readonly IModelLoader modelLoader;
-    [Inject] private readonly ISparkCurrentUser currentUser;
+    [Inject] private readonly ISparkCurrentPrincipal currentUser;
     [Inject] private readonly IOptions<SparkFilesOptions> options;
     [Inject] private readonly IFileStore fileStore;
     [Inject] private readonly FileClaimLedger ledger;

@@ -36,7 +36,28 @@ builder.Services.AddSpark(builder.Configuration, spark =>
 ```
 
 Make the keys once with `VapidDetails.Generate("mailto:ops@example.com")`. Without them Web Push is off and the
-other channels work. With them, startup refuses bad keys and a missing `AddMessaging()`.
+other channels work. With them, startup refuses bad keys, a missing `AddMessaging()` and a missing account directory.
+
+**No Authorization reference** (#710). Accounts come through `ISparkAccountDirectory`
+(`MintPlayer.Spark.Abstractions.Authentication`), which `AddAuthentication<TUser>()` registers. Without one (an app
+with no accounts, such as DemoApp), delivery is in-app only. Links in mails and pushes are made absolute with
+`Spark:Notifications:PublicBaseUrl`, else `Spark:Auth:PublicBaseUrl`.
+
+### Anonymous visitors
+
+`VisitorIds` addresses an anonymous browser, with the id `ISparkCurrentPrincipal.EnsureVisitorId()` returned in the
+request that started the work. That call issues the `spark.visitor` cookie (HttpOnly, Data Protection, sliding
+`Spark:Visitor:Lifetime`, default 24 h). The visitor's notifications are in-app only and expire with the visitor. To
+let visitors read them, bind the slot to the anonymous group as well:
+`"notifications:users": [ "@anonymous", "@authenticated" ]`. When the visitor signs in, what is still theirs moves to
+the account.
+
+```csharp
+// In the request: remember who to tell, e.g. on the queued message.
+var visitorId = principal.EnsureVisitorId();   // null when signed in: address principal.Id instead
+// Later, in the job (a Messaging recipient, a hosted service):
+await notifier.NotifyAsync(new SparkNotification { VisitorIds = [message.VisitorId], Title = "Your report is ready" });
+```
 
 ## Sending
 
@@ -53,14 +74,14 @@ await notifier.NotifyAsync(new SparkNotification
 });
 ```
 
-## Endpoints (`/spark/notifications`, signed in, antiforgery on POST)
+## Endpoints (`/spark/notifications`, antiforgery on POST)
 
 | Endpoint | Does |
 |---|---|
-| `POST /read` `{ ids? }` | marks those (or all unread) of the caller read |
-| `GET /push/key` | `{ publicKey }`; 404 while Web Push is off |
-| `POST /push/subscribe` | `PushSubscription.toJSON()`; 400 for bad keys or a push service outside `AllowedPushServices` |
-| `POST /push/unsubscribe` `{ endpoint }` | forgets that device |
+| `POST /read` `{ ids? }` | marks those (or all unread) of the caller read: a signed-in user's, or an identified visitor's; 401 for neither |
+| `GET /push/key` | `{ publicKey }`; 404 while Web Push is off (signed in) |
+| `POST /push/subscribe` | `PushSubscription.toJSON()`; 400 for bad keys or a push service outside `AllowedPushServices` (signed in) |
+| `POST /push/unsubscribe` `{ endpoint }` | forgets that device (signed in) |
 
 ## Options (`Spark:Notifications`)
 

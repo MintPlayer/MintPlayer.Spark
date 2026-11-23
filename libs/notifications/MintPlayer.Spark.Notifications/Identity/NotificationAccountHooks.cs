@@ -1,4 +1,4 @@
-using MintPlayer.Spark.Authorization.Identity;
+using MintPlayer.Spark.Abstractions.Authentication;
 using MintPlayer.Spark.Notifications.Models;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Linq;
@@ -6,10 +6,9 @@ using Raven.Client.Documents.Linq;
 namespace MintPlayer.Spark.Notifications.Identity;
 
 /// <summary>Deleting an account deletes its notifications, devices and preferences (D26).</summary>
-internal sealed class NotificationAccountDeletion<TUser>(IDocumentStore store) : ISparkAccountDeletionHandler<TUser>
-    where TUser : SparkUser
+internal sealed class NotificationAccountDeletion(IDocumentStore store) : ISparkAccountDeletionHandler
 {
-    public async Task OnDeletingAccountAsync(TUser user, CancellationToken cancellationToken)
+    public async Task OnDeletingAccountAsync(ISparkAccount user, CancellationToken cancellationToken)
     {
         if (user.Id is not { Length: > 0 } userId)
             return;
@@ -40,12 +39,11 @@ internal sealed class NotificationAccountDeletion<TUser>(IDocumentStore store) :
 }
 
 /// <summary>The personal-data export's <c>notifications</c> section: notifications, devices (without their endpoints' secrets) and preferences.</summary>
-internal sealed class NotificationPersonalData<TUser>(IDocumentStore store) : ISparkPersonalDataContributor<TUser>
-    where TUser : SparkUser
+internal sealed class NotificationPersonalData(IDocumentStore store) : ISparkPersonalDataContributor
 {
     public string Name => "notifications";
 
-    public async Task<object?> GetPersonalDataAsync(TUser user, CancellationToken cancellationToken)
+    public async Task<object?> GetPersonalDataAsync(ISparkAccount user, CancellationToken cancellationToken)
     {
         if (user.Id is not { Length: > 0 } userId)
             return null;

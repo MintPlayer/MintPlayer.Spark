@@ -4,8 +4,8 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using MintPlayer.Spark.Abstractions;
-using MintPlayer.Spark.Authorization.Configuration;
-using MintPlayer.Spark.Authorization.Identity;
+using MintPlayer.Spark.Abstractions.Authentication;
+using MintPlayer.Spark.Configuration;
 using MintPlayer.Spark.MailManager;
 using MintPlayer.Spark.Messaging;
 using MintPlayer.Spark.Notifications.Messaging;
@@ -14,12 +14,18 @@ using Raven.Client.Documents;
 
 namespace MintPlayer.Spark.Notifications.Services;
 
+/// <remarks>
+/// Knows no user type (<c>docs/notification_bell_PRD.md</c> G4): accounts come from the optional
+/// <see cref="ISparkAccountDirectory"/>. Without one, users get in-app notifications only, since mail and push
+/// need an account to address. Visitors (<see cref="SparkNotification.VisitorIds"/>) get in-app only, always,
+/// expiring with the visitor (<see cref="SparkVisitorOptions.Lifetime"/>).
+/// </remarks>
 internal sealed class SparkNotifier(
     IDocumentStore store,
     IServiceProvider services,
     SparkWebPushSender push,
     IOptions<SparkNotificationsOptions> options,
-    IOptions<SparkAuthenticationOptions> authOptions,
+    IOptions<SparkVisitorOptions> visitorOptions,
     TimeProvider timeProvider,
     ILogger<SparkNotifier> logger,
     IHttpContextAccessor? httpContextAccessor = null,
@@ -42,45 +48,58 @@ internal sealed class SparkNotifier(
             throw new ArgumentException($"A notification URL is {SparkLinkUrl.AllowedForms}.", nameof(notification));
 
         var now = timeProvider.GetUtcNow().UtcDateTime;
-        var absoluteUrl = Absolute(notification.Url);
         var outbox = services.GetService<IMessageOutbox>();
         var ids = new List<string>();
-        var mails = new List<(SparkUser User, string? Culture)>();
+        var mails = new List<ISparkAccount>();
         var pushes = 0;
 
         using var session = store.OpenAsyncSession();
-        var userIds = notification.UserIds.Where(id => !string.IsNullOrWhiteSpace(id)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-        var users = await session.LoadAsync<SparkUser>(userIds, cancellationToken);
+        var userIds = Clean(notification.UserIds);
+        // A visitor id always carries its prefix, so one can never address a user's notifications.
+        var visitorIds = Clean(notification.VisitorIds).Where(id => id.StartsWith(SparkVisitorOptions.IdPrefix, StringComparison.Ordinal)).ToList();
+
+        var directory = services.GetService<ISparkAccountDirectory>();
+        IReadOnlyDictionary<string, ISparkAccount>? accounts = null;
+        if (userIds.Count > 0 && directory is not null)
+            accounts = await directory.FindAsync(userIds, cancellationToken);
+
+        string? absoluteUrl = null;
+        var absoluteResolved = false;
+        string? AbsoluteUrl()
+        {
+            if (!absoluteResolved)
+            {
+                absoluteUrl = Absolute(notification.Url);
+                absoluteResolved = true;
+            }
+            return absoluteUrl;
+        }
 
         foreach (var userId in userIds)
         {
-            if (!users.TryGetValue(userId, out var user) || user is null)
+            // With a directory, an unknown id is skipped; without one, the id is taken at its word (in-app only).
+            ISparkAccount? account = null;
+            if (accounts is not null && !accounts.TryGetValue(userId, out account))
                 continue;
 
             var channels = await ChannelsAsync(session, userId, notification.OrganizationId, cancellationToken);
             string? notificationId = null;
             if (channels.InApp)
             {
-                var stored = new Notification
-                {
-                    Id = Notification.NewId(),
-                    UserId = userId,
-                    OrganizationId = notification.OrganizationId,
-                    Title = title,
-                    Body = notification.Body,
-                    Url = notification.Url,
-                    Category = notification.Category,
-                    CreatedAtUtc = now,
-                };
+                var stored = NewNotification(notification, title, now);
+                stored.UserId = userId;
                 // No ExpiresAtUtc: the library model's "expiresAfter" (90 days) stamps it (X1).
                 await session.StoreAsync(stored, stored.Id, cancellationToken);
                 notificationId = stored.Id!;
                 ids.Add(notificationId);
             }
 
+            if (account is null)
+                continue;
+
             if (channels.Push && push.Client is not null && outbox is not null)
             {
-                var payload = SparkWebPushSender.Payload(notificationId, title, notification.Body, absoluteUrl ?? notification.Url, notification.Category);
+                var payload = SparkWebPushSender.Payload(notificationId, title, notification.Body, AbsoluteUrl() ?? notification.Url, notification.Category);
                 var devices = await session.Advanced.LoadStartingWithAsync<PushSubscription>(PushSubscription.PrefixFor(userId), pageSize: 64, token: cancellationToken);
                 foreach (var device in devices)
                 {
@@ -96,8 +115,18 @@ internal sealed class SparkNotifier(
                 }
             }
 
-            if (channels.Email && user.EmailConfirmed && !string.IsNullOrWhiteSpace(user.Email))
-                mails.Add((user, user.PreferredCulture));
+            if (channels.Email && account.EmailConfirmed && !string.IsNullOrWhiteSpace(account.Email))
+                mails.Add(account);
+        }
+
+        foreach (var visitorId in visitorIds)
+        {
+            var stored = NewNotification(notification, title, now);
+            stored.VisitorId = visitorId;
+            // Explicit, so the model's 90 days don't apply: the notification dies with the visitor.
+            stored.ExpiresAtUtc = now + visitorOptions.Value.Lifetime;
+            await session.StoreAsync(stored, stored.Id, cancellationToken);
+            ids.Add(stored.Id!);
         }
 
         await session.SaveChangesAsync(cancellationToken);
@@ -111,15 +140,16 @@ internal sealed class SparkNotifier(
             }
             else
             {
-                foreach (var (user, culture) in mails)
+                var link = AbsoluteUrl();
+                foreach (var account in mails)
                 {
                     await mailer.SendAsync(new SparkMailRequest
                     {
                         Template = options.Value.MailTemplate,
-                        To = user.Email!,
-                        ToName = user.UserName,
-                        Culture = culture,
-                        Data = new { title, body = notification.Body, link = absoluteUrl, user_name = user.UserName },
+                        To = account.Email!,
+                        ToName = account.UserName,
+                        Culture = account.PreferredCulture,
+                        Data = new { title, body = notification.Body, link, user_name = account.UserName },
                     }, cancellationToken);
                     sent++;
                 }
@@ -128,6 +158,20 @@ internal sealed class SparkNotifier(
 
         return new SparkNotifyReceipt(ids, sent, pushes);
     }
+
+    private static List<string> Clean(IReadOnlyCollection<string>? ids)
+        => ids is null ? [] : ids.Where(id => !string.IsNullOrWhiteSpace(id)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+
+    private static Notification NewNotification(SparkNotification notification, string title, DateTime now) => new()
+    {
+        Id = Notification.NewId(),
+        OrganizationId = notification.OrganizationId,
+        Title = title,
+        Body = notification.Body,
+        Url = notification.Url,
+        Category = notification.Category,
+        CreatedAtUtc = now,
+    };
 
     /// <summary>The user's preference for the organization, else their default, else the configured defaults.</summary>
     internal async Task<SparkNotificationChannels> ChannelsAsync(Raven.Client.Documents.Session.IAsyncDocumentSession session, string userId, string? organizationId, CancellationToken cancellationToken)
@@ -146,10 +190,10 @@ internal sealed class SparkNotifier(
         // Decided on the text (SparkLinkUrl), not by Uri.TryCreate(UriKind.Absolute): on Linux that accepts "/runs/7" as a file:// URI.
         if (!SparkLinkUrl.IsAppPath(url))
             return url;
-        var origin = SparkPublicBaseUrl.Resolve(authOptions.Value.Links.PublicBaseUrl, configuration, environment, httpContextAccessor?.HttpContext);
+        var origin = SparkPublicBaseUrl.Resolve(options.Value.PublicBaseUrl, configuration, environment, httpContextAccessor?.HttpContext);
         if (origin is null)
         {
-            logger.LogWarning("Notification links stay relative: no public base URL is configured. Set 'Spark:Auth:PublicBaseUrl'.");
+            logger.LogWarning("Notification links stay relative: no public base URL is configured. Set 'Spark:Notifications:PublicBaseUrl' or 'Spark:Auth:PublicBaseUrl'.");
             return null;
         }
         return origin + url;

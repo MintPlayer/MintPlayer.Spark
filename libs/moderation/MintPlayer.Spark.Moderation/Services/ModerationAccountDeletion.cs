@@ -1,5 +1,5 @@
 using MintPlayer.SourceGenerators.Attributes;
-using MintPlayer.Spark.Authorization.Identity;
+using MintPlayer.Spark.Abstractions.Authentication;
 using MintPlayer.Spark.Moderation.Documents;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Linq;
@@ -14,15 +14,14 @@ namespace MintPlayer.Spark.Moderation.Services;
 /// anonymised — the entries stay (other users' reputation is made of them) but name
 /// <see cref="ModerationIds.DeletedUser"/> instead of the account.
 /// </summary>
-/// <remarks>Idempotent, as <see cref="ISparkAccountDeletionHandler{TUser}"/> requires: a retry repeats nothing that already happened.</remarks>
-internal sealed partial class ModerationAccountDeletionHandler<TUser> : ISparkAccountDeletionHandler<TUser>
-    where TUser : SparkUser
+/// <remarks>Idempotent, as <see cref="ISparkAccountDeletionHandler"/> requires: a retry repeats nothing that already happened.</remarks>
+internal sealed partial class ModerationAccountDeletionHandler : ISparkAccountDeletionHandler
 {
     [Inject] private readonly IDocumentStore documentStore;
     [Inject] private readonly ReputationLedger ledger;
     [Inject] private readonly ModerationAudit audit;
 
-    public async Task OnDeletingAccountAsync(TUser user, CancellationToken cancellationToken)
+    public async Task OnDeletingAccountAsync(ISparkAccount user, CancellationToken cancellationToken)
     {
         if (user.Id is not { Length: > 0 } userId)
             return;
@@ -90,14 +89,13 @@ internal static class ModerationAccountEraser
 }
 
 /// <summary>The account's moderation data in the personal-data export (D8).</summary>
-internal sealed partial class ModerationPersonalDataContributor<TUser> : ISparkPersonalDataContributor<TUser>
-    where TUser : SparkUser
+internal sealed partial class ModerationPersonalDataContributor : ISparkPersonalDataContributor
 {
     [Inject] private readonly IDocumentStore documentStore;
 
     public string Name => "moderation";
 
-    public async Task<object?> GetPersonalDataAsync(TUser user, CancellationToken cancellationToken)
+    public async Task<object?> GetPersonalDataAsync(ISparkAccount user, CancellationToken cancellationToken)
     {
         if (user.Id is not { Length: > 0 } userId)
             return null;

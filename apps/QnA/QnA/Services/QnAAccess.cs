@@ -12,7 +12,7 @@ namespace QnA.Services;
 /// </summary>
 public sealed partial class QnAAccess
 {
-    [Inject] private readonly ISparkCurrentUser currentUser;
+    [Inject] private readonly ISparkCurrentPrincipal currentUser;
     [Inject] private readonly IPermissionService permissions;
 
     private bool? isModerator;

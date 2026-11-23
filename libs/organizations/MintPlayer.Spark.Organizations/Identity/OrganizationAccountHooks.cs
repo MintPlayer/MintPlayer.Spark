@@ -1,6 +1,6 @@
 using Microsoft.Extensions.Options;
 using MintPlayer.Spark.Abstractions;
-using MintPlayer.Spark.Authorization.Identity;
+using MintPlayer.Spark.Abstractions.Authentication;
 using MintPlayer.Spark.Organizations.Models;
 using MintPlayer.Spark.Organizations.Services;
 using Raven.Client.Documents;
@@ -9,11 +9,9 @@ using Raven.Client.Documents.Linq;
 namespace MintPlayer.Spark.Organizations.Identity;
 
 /// <summary>Creates the user's personal organization on sign-in (D21): one load by id when it exists.</summary>
-internal sealed class PersonalOrganizationOnSignIn<TUser>(ISparkOrganizations organizations, IOptions<SparkOrganizationsOptions> options)
-    : ISparkSignedInHandler<TUser>
-    where TUser : SparkUser
+internal sealed class PersonalOrganizationOnSignIn(ISparkOrganizations organizations, IOptions<SparkOrganizationsOptions> options) : ISparkSignedInHandler
 {
-    public async Task OnSignedInAsync(TUser user, CancellationToken cancellationToken)
+    public async Task OnSignedInAsync(ISparkAccount user, CancellationToken cancellationToken)
     {
         if (options.Value.CreatePersonalOrganizationOnSignIn && user.Id is { Length: > 0 } id)
             await organizations.EnsurePersonalOrganizationAsync(id, cancellationToken);
@@ -26,11 +24,9 @@ internal sealed class PersonalOrganizationOnSignIn<TUser>(ISparkOrganizations or
 /// deletion stops with the account intact until ownership is transferred: an organization needs an Owner.
 /// </summary>
 /// <remarks>Checks everything before deleting anything, so a refusal leaves no half-deleted state; idempotent for the retry.</remarks>
-internal sealed class OrganizationAccountDeletion<TUser>(IDocumentStore store, SparkOrganizations organizations, OrganizationMembershipReader reader)
-    : ISparkAccountDeletionHandler<TUser>
-    where TUser : SparkUser
+internal sealed class OrganizationAccountDeletion(IDocumentStore store, SparkOrganizations organizations, OrganizationMembershipReader reader) : ISparkAccountDeletionHandler
 {
-    public async Task OnDeletingAccountAsync(TUser user, CancellationToken cancellationToken)
+    public async Task OnDeletingAccountAsync(ISparkAccount user, CancellationToken cancellationToken)
     {
         if (user.Id is not { Length: > 0 } userId)
             return;
@@ -86,13 +82,11 @@ internal sealed class OrganizationAccountDeletion<TUser>(IDocumentStore store, S
 /// The <c>organizations</c> section of the personal-data export (D26): each membership, and for every
 /// organization the user owns, what each <see cref="IOrganizationDataHandler"/> exports.
 /// </summary>
-internal sealed class OrganizationPersonalData<TUser>(IDocumentStore store, IEnumerable<IOrganizationDataHandler> dataHandlers)
-    : ISparkPersonalDataContributor<TUser>
-    where TUser : SparkUser
+internal sealed class OrganizationPersonalData(IDocumentStore store, IEnumerable<IOrganizationDataHandler> dataHandlers) : ISparkPersonalDataContributor
 {
     public string Name => "organizations";
 
-    public async Task<object?> GetPersonalDataAsync(TUser user, CancellationToken cancellationToken)
+    public async Task<object?> GetPersonalDataAsync(ISparkAccount user, CancellationToken cancellationToken)
     {
         if (user.Id is not { Length: > 0 } userId)
             return null;

@@ -92,7 +92,7 @@ internal static class ModerationEndpoint
             : Task.FromResult(addOn.Refusal(httpContext));
 
     /// <summary>An untyped request (accounts, cases, pages): signed-in callers only.</summary>
-    public static Task<IResult> UntypedAsync(HttpContext httpContext, ISparkAddOnEndpoints addOn, ISparkCurrentUser user, Func<Task<object?>> operation)
+    public static Task<IResult> UntypedAsync(HttpContext httpContext, ISparkAddOnEndpoints addOn, ISparkCurrentPrincipal user, Func<Task<object?>> operation)
         => user.IsAuthenticated
             ? RunAsync(httpContext, addOn, operation)
             : Task.FromResult(addOn.Refusal(httpContext));
@@ -254,7 +254,7 @@ internal sealed partial class ReputationEndpoint : IPostEndpoint<ModerationReque
     public static string Path => "/reputation";
     static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services) => ModerationEndpoint.Configure(builder);
     [Inject] private readonly ISparkModeration moderation;
-    [Inject] private readonly ISparkCurrentUser currentUser;
+    [Inject] private readonly ISparkCurrentPrincipal currentUser;
     [Inject] private readonly ISparkAddOnEndpoints addOn;
     private HttpContext httpContext = null!;
 
@@ -283,7 +283,7 @@ internal sealed partial class ReputationHistoryEndpoint : IPostEndpoint<Moderati
     public static string Path => "/reputation/history";
     static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services) => ModerationEndpoint.Configure(builder);
     [Inject] private readonly ModerationReview review;
-    [Inject] private readonly ISparkCurrentUser currentUser;
+    [Inject] private readonly ISparkCurrentPrincipal currentUser;
     [Inject] private readonly ISparkAddOnEndpoints addOn;
     private HttpContext httpContext = null!;
 
@@ -304,7 +304,7 @@ internal sealed partial class CasesEndpoint : IPostEndpoint<ModerationRequest>
     public static string Path => "/cases";
     static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services) => ModerationEndpoint.Configure(builder);
     [Inject] private readonly ModerationReview review;
-    [Inject] private readonly ISparkCurrentUser currentUser;
+    [Inject] private readonly ISparkCurrentPrincipal currentUser;
     [Inject] private readonly ISparkAddOnEndpoints addOn;
     private HttpContext httpContext = null!;
 
@@ -325,7 +325,7 @@ internal sealed partial class CaseEndpoint : IPostEndpoint<ModerationRequest>
     public static string Path => "/case";
     static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services) => ModerationEndpoint.Configure(builder);
     [Inject] private readonly ModerationReview review;
-    [Inject] private readonly ISparkCurrentUser currentUser;
+    [Inject] private readonly ISparkCurrentPrincipal currentUser;
     [Inject] private readonly ISparkAddOnEndpoints addOn;
     private HttpContext httpContext = null!;
 
@@ -346,7 +346,7 @@ internal sealed partial class DecideEndpoint : IPostEndpoint<ModerationRequest>
     public static string Path => "/case/decide";
     static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services) => ModerationEndpoint.Configure(builder);
     [Inject] private readonly ISparkModeration moderation;
-    [Inject] private readonly ISparkCurrentUser currentUser;
+    [Inject] private readonly ISparkCurrentPrincipal currentUser;
     [Inject] private readonly ISparkAddOnEndpoints addOn;
     private HttpContext httpContext = null!;
 
@@ -370,7 +370,7 @@ internal sealed partial class SuspendEndpoint : IPostEndpoint<ModerationRequest>
     public static string Path => "/suspend";
     static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services) => ModerationEndpoint.Configure(builder);
     [Inject] private readonly ISparkModeration moderation;
-    [Inject] private readonly ISparkCurrentUser currentUser;
+    [Inject] private readonly ISparkCurrentPrincipal currentUser;
     [Inject] private readonly ISparkAddOnEndpoints addOn;
     private HttpContext httpContext = null!;
 
@@ -394,7 +394,7 @@ internal sealed partial class UnsuspendEndpoint : IPostEndpoint<ModerationReques
     public static string Path => "/unsuspend";
     static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services) => ModerationEndpoint.Configure(builder);
     [Inject] private readonly ISparkModeration moderation;
-    [Inject] private readonly ISparkCurrentUser currentUser;
+    [Inject] private readonly ISparkCurrentPrincipal currentUser;
     [Inject] private readonly ISparkAddOnEndpoints addOn;
     private HttpContext httpContext = null!;
 
@@ -418,7 +418,7 @@ internal sealed partial class MergeEndpoint : IPostEndpoint<ModerationRequest>
     public static string Path => "/merge";
     static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services) => ModerationEndpoint.Configure(builder);
     [Inject] private readonly ISparkModeration moderation;
-    [Inject] private readonly ISparkCurrentUser currentUser;
+    [Inject] private readonly ISparkCurrentPrincipal currentUser;
     [Inject] private readonly ISparkAddOnEndpoints addOn;
     private HttpContext httpContext = null!;
 
@@ -442,7 +442,7 @@ internal sealed partial class AuditEndpoint : IPostEndpoint<ModerationRequest>
     public static string Path => "/audit";
     static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services) => ModerationEndpoint.Configure(builder);
     [Inject] private readonly ModerationReview review;
-    [Inject] private readonly ISparkCurrentUser currentUser;
+    [Inject] private readonly ISparkCurrentPrincipal currentUser;
     [Inject] private readonly ISparkAddOnEndpoints addOn;
     private HttpContext httpContext = null!;
 

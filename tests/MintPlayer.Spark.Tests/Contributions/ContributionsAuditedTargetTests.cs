@@ -70,7 +70,7 @@ public class ContributionsAuditedTargetTests : SparkTestDriver
             configureServices: s =>
             {
                 s.AddSingleton(identity);
-                s.AddScoped<ISparkCurrentUser, CoCurrentUser>();
+                s.AddScoped<ISparkCurrentPrincipal, CoCurrentUser>();
                 s.AddScoped<CaPostActions>();
             },
             configureSpark: spark =>

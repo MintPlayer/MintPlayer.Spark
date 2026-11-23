@@ -10,6 +10,10 @@
     "showedOn": "detail",
     "refreshOnCompleted": true
   },
+  "RemindMe": {
+    "icon": "Bell",
+    "showedOn": "detail"
+  },
   "DuplicateAnswer": {
     "showedOn": "query",
     "selectionRule": "=1",

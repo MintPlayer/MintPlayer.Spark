@@ -28,6 +28,9 @@ ReopenQuestion @app
 ReopenQuestion.icon = "Unlock" @app
 ReopenQuestion.showedOn = "detail" @app
 ReopenQuestion.refreshOnCompleted = true @app
+RemindMe @app
+RemindMe.icon = "Bell" @app
+RemindMe.showedOn = "detail" @app
 DuplicateAnswer @app
 DuplicateAnswer.showedOn = "query" @app
 DuplicateAnswer.selectionRule = "=1" @app

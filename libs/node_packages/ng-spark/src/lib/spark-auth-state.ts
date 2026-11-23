@@ -10,7 +10,16 @@ import { InjectionToken, Signal } from '@angular/core';
  * inject it `{ optional: true }` — absent, auth-sensitive data (the program-units menu) is
  * fetched once and never re-fetched.
  *
- * The signal's VALUE is deliberately opaque (`unknown`): consumers only track it for change,
- * never read it — what "the user" looks like belongs to the auth entry points.
+ * The signal's VALUE is mostly opaque (`unknown`): consumers track it for change, and when they must
+ * know whether someone is signed in they ask {@link sparkSignedIn}, never the shape itself.
  */
 export const SPARK_AUTH_STATE = new InjectionToken<Signal<unknown>>('SPARK_AUTH_STATE');
+
+/**
+ * Whether an auth-state value means "signed in": a falsy value, or an object with `isAuthenticated: false`
+ * (what `ng-spark/auth` holds for an anonymous visitor), is signed out; anything else is signed in.
+ */
+export function sparkSignedIn(state: unknown): boolean {
+  if (!state) return false;
+  return typeof state !== 'object' || (state as { isAuthenticated?: unknown }).isAuthenticated !== false;
+}

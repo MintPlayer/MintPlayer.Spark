@@ -62,7 +62,7 @@ public class McpExternalAuthorizationServerTests(SparkSharedDatabase database)
 
         whoami.Status.Should().Be(HttpStatusCode.OK, whoami.Body?.ToJsonString());
         whoami.ToolText.Should().Contain($"authenticated=True;id={userId};scheme={ExternalAgentServer.Scheme}",
-            "ISparkCurrentUser.Id is the local id, never the external subject");
+            "ISparkCurrentPrincipal.Id is the local id, never the external subject");
         describe.IsToolError.Should().BeFalse(describe.ToolText + " — Developers must come from the local user");
     }
 

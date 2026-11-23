@@ -18,7 +18,7 @@ namespace MintPlayer.Spark.Abstractions.Builder;
 /// <param name="SubjectIsLocalUserId">
 /// <c>true</c> when the principal this scheme produces names the local user by its <c>sub</c> claim and
 /// carries no <see cref="System.Security.Claims.ClaimTypes.NameIdentifier"/>: a bearer token this
-/// application issued itself (MCP PRD D4, §4.6). <c>ISparkCurrentUser.Id</c> then reads <c>sub</c>.
+/// application issued itself (MCP PRD D4, §4.6). <c>ISparkCurrentPrincipal.Id</c> then reads <c>sub</c>.
 /// <para>
 /// <c>false</c> (the default) for a token from another issuer: its <c>sub</c> names a user of <i>that</i>
 /// application, and stamping it as a local id would attribute writes to whoever happens to share it.

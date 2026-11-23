@@ -50,7 +50,7 @@ public class SyncAction
     public string[]? Properties { get; set; }
 
     /// <summary>
-    /// The user the replica made this edit for (its <c>ISparkCurrentUser.Id</c>), so the owner stamps
+    /// The user the replica made this edit for (its <c>ISparkCurrentPrincipal.Id</c>), so the owner stamps
     /// <c>ModifiedBy</c> with it (#271, F2). <see langword="null"/> for an anonymous or background write.
     /// Used for stamping only, never for authorization.
     /// </summary>

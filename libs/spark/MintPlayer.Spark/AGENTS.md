@@ -388,8 +388,8 @@ route table):
   is not sent (never built from the request `Host`).
 - `SparkUser.AuthenticatorKey` and token values are stored encrypted (`sdp1:`). Read them through
   `UserManager` (`GetAuthenticatorKeyAsync`, `GetAuthenticationTokenAsync`), never from the property.
-- App fields on the profile page: `ISparkProfileContributor<TUser>`; GDPR: `ISparkPersonalDataContributor<TUser>`
-  and `ISparkAccountDeletionHandler<TUser>` (idempotent — a failed deletion is retried with every
+- App fields on the profile page: `ISparkProfileContributor<TUser>`; GDPR: `ISparkPersonalDataContributor`
+  and `ISparkAccountDeletionHandler` (idempotent — a failed deletion is retried with every
   handler again). Register them as scoped services.
 - External providers: use the presets on the Spark builder, after `AddAuthentication<TUser>()`
   (`spark.AddGitHub`, `spark.AddGoogle`, `spark.AddOpenIdConnect`, …, or

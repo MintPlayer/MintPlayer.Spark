@@ -54,7 +54,7 @@ internal sealed partial class ModerationReview
 {
     [Inject] private readonly IDocumentStore documentStore;
     [Inject] private readonly IPermissionService permissions;
-    [Inject] private readonly ISparkCurrentUser currentUser;
+    [Inject] private readonly ISparkCurrentPrincipal currentUser;
     [Inject] private readonly IModerationAccounts accounts;
     [Inject] private readonly FraudDetector detector;
     [Inject] private readonly TimeProvider timeProvider;

@@ -168,7 +168,7 @@ public class SyncAction
 }
 ```
 
-`InitiatorId` is set from the sending module's `ISparkCurrentUser` for writes that go through the
+`InitiatorId` is set from the sending module's `ISparkCurrentPrincipal` for writes that go through the
 interceptors. The owner stamps `ModifiedBy` (and `CreatedBy` on an insert) of an audited entity with it.
 Without it the owner would keep the previous editor, and replication would then copy that stale value
 back over the replica's own stamp. See [guide-auditing.md](guide-auditing.md).

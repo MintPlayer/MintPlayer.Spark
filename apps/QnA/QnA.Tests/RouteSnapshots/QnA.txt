@@ -55,6 +55,10 @@ POST /spark/moderation/unlock | antiforgery=required
 POST /spark/moderation/unsuspend | antiforgery=required
 POST /spark/moderation/vote | antiforgery=required
 POST /spark/moderation/votes | antiforgery=required
+GET /spark/notifications/push/key | authorize(policy=;roles=;schemes=)
+POST /spark/notifications/push/subscribe | antiforgery=required | authorize(policy=;roles=;schemes=)
+POST /spark/notifications/push/unsubscribe | antiforgery=required | authorize(policy=;roles=;schemes=)
+POST /spark/notifications/read | antiforgery=required
 GET /spark/permissions/{entityTypeId}
 POST /spark/po/create | antiforgery=required
 POST /spark/po/delete | antiforgery=required

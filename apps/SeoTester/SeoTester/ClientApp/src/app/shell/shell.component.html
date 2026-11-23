@@ -1,13 +1,14 @@
 <spark-shell title="SeoTester">
   <!-- The menu is server-driven: Organizations, Notifications and (administrators only) Settings come with their
        packages. The topbar adds the organization switcher (lists follow it, Q-M11a), the notification bell (live
-       unread count, push opt-in) and the account pages. -->
+       unread count, push opt-in) and the account pages. The bell is shown signed out too: it is where an action's
+       message (a notify client operation) appears, for everyone (#710). -->
   <ng-container *sparkShellTopbarEnd>
     <spark-language-selector />
     @if (auth.isAuthenticated()) {
       <spark-organization-switcher />
-      <spark-notification-bell />
     }
+    <spark-notification-bell />
     <!-- How to connect an AI agent to /mcp, for everyone: drawn like the auth bar's login button beside it. -->
     <a class="btn btn-sm topbar-btn text-nowrap" routerLink="/connect-agent" [title]="'mcpUi.title' | t" data-connect-agent-link>
       <i class="bi bi-robot"></i><span class="d-none d-sm-inline"> {{ 'mcpUi.navLink' | t }}</span>

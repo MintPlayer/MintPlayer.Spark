@@ -365,7 +365,7 @@ and shared by `[SparkAuthorize(Group = …)]`, which matches a provider-returned
 by that group's untranslated name.
 
 **The current user.** Code that needs *who* rather than *which groups* — audit stamping, moderation —
-injects `ISparkCurrentUser` (`Id`, `IsAuthenticated`), scoped, which reads the principal's
+injects `ISparkCurrentPrincipal` (`Id`, `IsAuthenticated`), scoped, which reads the principal's
 `NameIdentifier` claim by default. It is an id, never a name; replace the registration to resolve it
 differently.
 

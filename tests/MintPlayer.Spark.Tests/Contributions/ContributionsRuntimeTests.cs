@@ -67,7 +67,7 @@ public class ContributionsRuntimeTests : SparkTestDriver
                 s.AddSingleton(identity);
                 s.AddSingleton(probe);
                 s.AddSingleton(race);
-                s.AddScoped<ISparkCurrentUser, CoCurrentUser>();
+                s.AddScoped<ISparkCurrentPrincipal, CoCurrentUser>();
                 services?.Invoke(s);
             },
             configureSpark: spark =>
@@ -589,7 +589,7 @@ public sealed class CoIdentity
     public string? Id { get; set; }
 }
 
-public sealed class CoCurrentUser(CoIdentity identity) : ISparkCurrentUser
+public sealed class CoCurrentUser(CoIdentity identity) : ISparkCurrentPrincipal
 {
     public string? Id => identity.Id;
     public bool IsAuthenticated => identity.Id is not null;

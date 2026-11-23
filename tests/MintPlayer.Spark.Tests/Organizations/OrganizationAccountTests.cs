@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.DependencyInjection;
 using MintPlayer.Spark.Abstractions;
+using MintPlayer.Spark.Abstractions.Authentication;
 using MintPlayer.Spark.Authorization.Identity;
 using MintPlayer.Spark.Organizations;
 using MintPlayer.Spark.Organizations.Models;
@@ -47,10 +48,10 @@ public class OrganizationAccountTests : OrganizationsTestHost
     private async Task DeleteAccountAsync(SparkUser user)
     {
         using var scope = Factory.CreateScope();
-        var handlers = scope.ServiceProvider.GetServices<ISparkAccountDeletionHandler<SparkUser>>().ToList();
+        var handlers = scope.ServiceProvider.GetServices<ISparkAccountDeletionHandler>().ToList();
         handlers.Should().Contain(h => h.GetType().Namespace == "MintPlayer.Spark.Organizations.Identity", "AddOrganizations registers its handler for any user type");
         foreach (var handler in handlers)
-            await handler.OnDeletingAccountAsync(user, CancellationToken.None);
+            await handler.OnDeletingAccountAsync(new SparkUserAccount(user), CancellationToken.None);
     }
 
     [Fact]
@@ -134,8 +135,8 @@ public class OrganizationAccountTests : OrganizationsTestHost
         await SeedOrganizationAsync("Beta", bob, (ann, OrganizationRole.Viewer));
 
         using var scope = Factory.CreateScope();
-        var contributor = scope.ServiceProvider.GetServices<ISparkPersonalDataContributor<SparkUser>>().Single(c => c.Name == "organizations");
-        var export = JsonSerializer.SerializeToNode(await contributor.GetPersonalDataAsync(ann, CancellationToken.None))!.AsArray();
+        var contributor = scope.ServiceProvider.GetServices<ISparkPersonalDataContributor>().Single(c => c.Name == "organizations");
+        var export = JsonSerializer.SerializeToNode(await contributor.GetPersonalDataAsync(new SparkUserAccount(ann), CancellationToken.None))!.AsArray();
 
         export.Select(e => e!["name"]!.GetValue<string>()).Should().BeEquivalentTo(["ann", "Acme", "Beta"]);
         var owned = export.Single(e => e!["name"]!.GetValue<string>() == "Acme")!;

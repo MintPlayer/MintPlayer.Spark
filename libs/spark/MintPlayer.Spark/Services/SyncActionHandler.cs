@@ -56,7 +56,7 @@ internal partial class SyncActionHandler : ISyncActionHandler
         // document in any collection — the certificate proved *which* module was calling and
         // nothing consulted what that module was allowed to touch.
         // The replica's user, for the owner's stamping interceptors (#271, F2): the caller here is a
-        // module certificate, so ISparkCurrentUser has no id to give them.
+        // module certificate, so ISparkCurrentPrincipal has no id to give them.
         using var initiator = (syncInitiator as SparkSyncInitiator)?.Begin(initiatorId);
         var saved = await databaseAccess.SavePersistentObjectAsync(po, Abstractions.Interceptors.PersistentObjectOperation.Sync);
 

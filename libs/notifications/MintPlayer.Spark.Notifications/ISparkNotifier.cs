@@ -23,8 +23,19 @@ public interface ISparkNotifier
 /// <summary>What to tell whom.</summary>
 public sealed record SparkNotification
 {
-    /// <summary>The users (<c>SparkUsers/…</c>). Unknown ids are skipped.</summary>
-    public required IReadOnlyCollection<string> UserIds { get; init; }
+    /// <summary>
+    /// The users (<c>SparkUsers/…</c>). With an <see cref="Abstractions.Authentication.ISparkAccountDirectory"/>
+    /// (Authorization registers one) unknown ids are skipped; without one, users get in-app only.
+    /// </summary>
+    public IReadOnlyCollection<string> UserIds { get; init; } = [];
+
+    /// <summary>
+    /// Anonymous visitors (<c>visitor:…</c>, from <see cref="Abstractions.Authentication.ISparkCurrentPrincipal.EnsureVisitorId"/>;
+    /// <c>docs/notification_bell_PRD.md</c> G4). In-app only, expiring with the visitor
+    /// (<c>Spark:Visitor:Lifetime</c>); an id without the <c>visitor:</c> prefix is ignored. When the visitor signs in,
+    /// what is still theirs moves to their account.
+    /// </summary>
+    public IReadOnlyCollection<string> VisitorIds { get; init; } = [];
 
     /// <summary>The headline: the list's first line, the push title, the mail subject. At most 200 characters.</summary>
     public required string Title { get; init; }

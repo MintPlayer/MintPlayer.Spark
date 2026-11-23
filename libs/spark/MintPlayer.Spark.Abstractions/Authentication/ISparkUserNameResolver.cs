@@ -1,7 +1,7 @@
 namespace MintPlayer.Spark.Abstractions.Authentication;
 
 /// <summary>
-/// Resolves user ids (the ids <see cref="ISparkCurrentUser"/> gives, which features store) to display
+/// Resolves user ids (the ids <see cref="ISparkCurrentPrincipal"/> gives, which features store) to display
 /// names, at read time — names are never copied into documents (GDPR: a renamed or deleted account
 /// shows its current name, or none).
 /// </summary>

@@ -67,7 +67,7 @@ POST /spark/mail/unsubscribe | antiforgery=not-required
 GET /spark/notifications/push/key | authorize(policy=;roles=;schemes=)
 POST /spark/notifications/push/subscribe | antiforgery=required | authorize(policy=;roles=;schemes=)
 POST /spark/notifications/push/unsubscribe | antiforgery=required | authorize(policy=;roles=;schemes=)
-POST /spark/notifications/read | antiforgery=required | authorize(policy=;roles=;schemes=)
+POST /spark/notifications/read | antiforgery=required
 POST /spark/organizations/accept | antiforgery=required | authorize(policy=;roles=;schemes=)
 GET /spark/organizations/current | authorize(policy=;roles=;schemes=)
 POST /spark/organizations/current | antiforgery=required | authorize(policy=;roles=;schemes=)

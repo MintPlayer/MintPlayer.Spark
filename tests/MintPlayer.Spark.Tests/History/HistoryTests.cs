@@ -57,7 +57,7 @@ public class HistoryTests(ITestOutputHelper output) : SparkTestDriver
                 services.AddSingleton<HiRecorder>();
                 services.AddTestAfterCommitOutbox();
                 services.AddScoped<HiNoteActions>();
-                services.AddScoped<ISparkCurrentUser>(_ => new HiUser(userId));
+                services.AddScoped<ISparkCurrentPrincipal>(_ => new HiUser(userId));
             },
             configureSpark: spark =>
             {
@@ -718,7 +718,7 @@ public sealed class HiNames : IHistoryUserNameResolver
             .ToDictionary(id => id, id => id == "users/alice" ? "Alice" : "Bob"));
 }
 
-public sealed class HiUser(string? id) : ISparkCurrentUser
+public sealed class HiUser(string? id) : ISparkCurrentPrincipal
 {
     public string? Id => id;
     public bool IsAuthenticated => id is not null;

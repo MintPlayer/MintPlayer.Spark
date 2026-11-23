@@ -18,7 +18,8 @@
     "moderation:flaggers": [ "Flaggers" ],
     "moderation:downvoters": [ "Downvoters" ],
     "moderation:reviewers": [ "Reviewers" ],
-    "moderation:moderators": [ "Moderators" ]
+    "moderation:moderators": [ "Moderators" ],
+    "notifications:users": [ "Anonymous visitors", "Signed-in users" ]
   },
   "rights": [
     {
@@ -118,6 +119,12 @@
       "isDenied": false
     },
     {
+      "key": "4e13ffff-0000-4000-8000-000000000051",
+      "resource": "RemindMe/Question",
+      "groupId": "00000000-0000-0000-0000-000000000000",
+      "isDenied": false
+    },
+    {
       "key": "4e13ffff-0000-4000-8000-000000000022",
       "resource": "Downvote/Question",
       "groupId": "4e130000-0000-4000-8000-000000000001",
@@ -198,6 +205,12 @@
     {
       "key": "4e13ffff-0000-4000-8000-000000000003",
       "resource": "QueryReadEditNewDelete/Question",
+      "groupId": "4e130000-0000-4000-8000-00000000000f",
+      "isDenied": false
+    },
+    {
+      "key": "4e13ffff-0000-4000-8000-000000000052",
+      "resource": "RemindMe/Question",
       "groupId": "4e130000-0000-4000-8000-00000000000f",
       "isDenied": false
     },

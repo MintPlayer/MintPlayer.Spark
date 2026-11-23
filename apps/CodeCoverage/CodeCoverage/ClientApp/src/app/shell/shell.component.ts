@@ -8,6 +8,7 @@ import {
 } from '@mintplayer/ng-spark/shell';
 import { TranslateKeyPipe } from '@mintplayer/ng-spark/pipes';
 import { SparkAuthBarComponent } from '@mintplayer/ng-spark/auth/auth-bar';
+import { SparkNotificationBellComponent } from '@mintplayer/ng-spark/notifications';
 
 /**
  * The application frame. All responsive behaviour — breakpoints, the overlay drawer,
@@ -34,6 +35,7 @@ import { SparkAuthBarComponent } from '@mintplayer/ng-spark/auth/auth-bar';
     BsAlertComponent,
     TranslateKeyPipe,
     SparkAuthBarComponent,
+    SparkNotificationBellComponent,
   ],
   templateUrl: './shell.component.html',
   styleUrl: './shell.component.scss',

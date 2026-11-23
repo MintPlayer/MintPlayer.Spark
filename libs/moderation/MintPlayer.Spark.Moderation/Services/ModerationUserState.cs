@@ -41,7 +41,7 @@ internal sealed partial class ModerationUserState
     private static readonly ConcurrentDictionary<string, byte> Recorded = new();
 
     [Inject] private readonly IDocumentStore documentStore;
-    [Inject] private readonly ISparkCurrentUser currentUser;
+    [Inject] private readonly ISparkCurrentPrincipal currentUser;
     [Inject] private readonly IModerationAccounts accounts;
     [Inject] private readonly ModerationIpHasher ipHasher;
     [Inject] private readonly IOptions<SparkModerationOptions> options;

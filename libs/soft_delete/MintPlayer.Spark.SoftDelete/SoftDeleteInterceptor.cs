@@ -33,7 +33,7 @@ internal sealed partial class SoftDeleteInterceptor
     : IDeleteReplacement, IBeforeDelete, IAfterDelete, IBeforeSave, INaturalIdCollision
 {
     [Inject] private readonly IDocumentStore documentStore;
-    [Inject] private readonly ISparkCurrentUser currentUser;
+    [Inject] private readonly ISparkCurrentPrincipal currentUser;
     [Inject] private readonly IPermissionService permissionService;
     [Inject] private readonly IModelLoader modelLoader;
     [Inject] private readonly SoftDeleteRequestState state;

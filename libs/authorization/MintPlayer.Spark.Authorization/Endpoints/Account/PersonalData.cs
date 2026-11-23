@@ -1,13 +1,14 @@
 using Microsoft.AspNetCore.Identity;
 using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.SourceGenerators.Attributes;
+using MintPlayer.Spark.Abstractions.Authentication;
 using MintPlayer.Spark.Authorization.Identity;
 
 namespace MintPlayer.Spark.Authorization.Endpoints.Account;
 
 /// <summary>
 /// <c>GET /spark/auth/manage/personal-data</c>: what the account holds about the person, plus every
-/// <see cref="ISparkPersonalDataContributor{TUser}"/>'s data, as a download (D8). Every mode.
+/// <see cref="ISparkPersonalDataContributor"/>'s data, as a download (D8). Every mode.
 /// </summary>
 [MemberOf<SparkAuthManageGroup>]
 internal sealed partial class PersonalData<TUser> : IGetEndpoint
@@ -16,7 +17,7 @@ internal sealed partial class PersonalData<TUser> : IGetEndpoint
     public static string Path => "/personal-data";
 
     [Inject] private readonly UserManager<TUser> userManager;
-    [Inject] private readonly IEnumerable<ISparkPersonalDataContributor<TUser>> contributors;
+    [Inject] private readonly IEnumerable<ISparkPersonalDataContributor> contributors;
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
@@ -24,9 +25,10 @@ internal sealed partial class PersonalData<TUser> : IGetEndpoint
             return Results.NotFound();
 
         var contributions = new Dictionary<string, object?>(StringComparer.Ordinal);
+        var account = new SparkUserAccount(user);
         foreach (var contributor in contributors)
         {
-            if (await contributor.GetPersonalDataAsync(user, httpContext.RequestAborted) is { } data)
+            if (await contributor.GetPersonalDataAsync(account, httpContext.RequestAborted) is { } data)
                 contributions[contributor.Name] = data;
         }
 

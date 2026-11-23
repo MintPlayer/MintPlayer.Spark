@@ -6,6 +6,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.SourceGenerators.Attributes;
+using MintPlayer.Spark.Abstractions.Authentication;
 using MintPlayer.Spark.Authorization.Configuration;
 using MintPlayer.Spark.Authorization.Extensions;
 using MintPlayer.Spark.Authorization.Identity;
@@ -36,8 +37,8 @@ internal sealed partial class DeleteAccount<TUser> : IDeleteEndpoint
     [Inject] private readonly UserManager<TUser> userManager;
     [Inject] private readonly SignInManager<TUser> signInManager;
     [Inject] private readonly IOptions<SparkAuthenticationOptions> options;
-    [Inject] private readonly IEnumerable<ISparkAccountDeletionHandler<TUser>> deletionHandlers;
-    [Inject] private readonly IEnumerable<ISparkAccountDeletedHandler<TUser>> deletedHandlers;
+    [Inject] private readonly IEnumerable<ISparkAccountDeletionHandler> deletionHandlers;
+    [Inject] private readonly IEnumerable<ISparkAccountDeletedHandler> deletedHandlers;
     [Inject] private readonly ILogger<DeleteAccount<TUser>> logger;
     // Optional parameters last: [Inject] makes a nullable field an optional constructor parameter.
     [Inject] private readonly TimeProvider? timeProvider;
@@ -65,11 +66,12 @@ internal sealed partial class DeleteAccount<TUser> : IDeleteEndpoint
 
         // Handlers first, the account last: a failing handler leaves the account intact and the
         // request retryable (D8).
+        var account = new SparkUserAccount(user);
         foreach (var handler in deletionHandlers)
         {
             try
             {
-                await handler.OnDeletingAccountAsync(user, httpContext.RequestAborted);
+                await handler.OnDeletingAccountAsync(account, httpContext.RequestAborted);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
@@ -92,7 +94,7 @@ internal sealed partial class DeleteAccount<TUser> : IDeleteEndpoint
         {
             try
             {
-                await handler.OnAccountDeletedAsync(user, CancellationToken.None);
+                await handler.OnAccountDeletedAsync(account, CancellationToken.None);
             }
             catch (Exception ex)
             {

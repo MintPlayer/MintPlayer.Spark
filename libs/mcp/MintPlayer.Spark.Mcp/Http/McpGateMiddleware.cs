@@ -35,7 +35,7 @@ internal sealed class SparkMcpEndpointMarker;
 /// <b>The scheme feature (spike S1 finding 1).</b> The composite records the scheme that authenticated the
 /// request in <see cref="ISparkAuthenticatedSchemeFeature"/>; after the principal is swapped it still names
 /// the cookie. It is reset here to the bearer scheme, or removed for an anonymous call, so nothing downstream
-/// (the antiforgery gate, <c>ISparkCurrentUser</c>) decides from a credential this endpoint ignored.
+/// (the antiforgery gate, <c>ISparkCurrentPrincipal</c>) decides from a credential this endpoint ignored.
 /// </para>
 /// </remarks>
 internal sealed class McpGateMiddleware(

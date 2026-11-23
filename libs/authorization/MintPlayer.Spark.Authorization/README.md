@@ -98,7 +98,7 @@ hand. They live under `/spark/auth/`:
 | `/spark/auth/manage/profile` | GET / POST | all | User name, `preferredCulture` (mail language) + app fields (`ISparkProfileContributor<TUser>`) |
 | `/spark/auth/manage/2fa` | POST | all | Microsoft's 2FA management (creates the authenticator key) |
 | `/spark/auth/manage/2fa/authenticator-uri` | GET | all | `{ sharedKey, authenticatorUri, qrCodeSvg }`, `Cache-Control: no-store` |
-| `/spark/auth/manage/personal-data` | GET | all | GDPR export: the account + `ISparkPersonalDataContributor<TUser>` sections |
+| `/spark/auth/manage/personal-data` | GET | all | GDPR export: the account + `ISparkPersonalDataContributor` sections |
 | `/spark/auth/manage/account` | DELETE | all | GDPR deletion, re-authentication required |
 | `/spark/auth/me` | GET | all | Current user info |
 | `/spark/auth/logout` | POST | all | Log out (requires XSRF token) |
@@ -307,20 +307,26 @@ Register the callback URL (`https://<host>/signin-…`) with the provider.
 
 #### Account deletion and personal data (#460 D8)
 
+The account hooks (`ISparkSignedInHandler`, `ISparkAccountDeletionHandler`, `ISparkAccountDeletedHandler`,
+`ISparkPersonalDataContributor`) live in `MintPlayer.Spark.Abstractions.Authentication` and take an `ISparkAccount`
+(`Id`, `UserName`, `Email`, `EmailConfirmed`, `PreferredCulture`), not the user type: a library can implement them
+without referencing this package (#710). This package invokes them with a `SparkUserAccount` view of the user
+(`.User` gives the `SparkUser` back), and registers `ISparkAccountDirectory` (accounts by id, batched) over the store.
+
 `DELETE /spark/auth/manage/account` with `{ password }`, or with no body when the session's sign-in is
 younger than `ReauthenticationMaxAge` (default 5 minutes) — otherwise `403 reauthentication_required`.
-Every `ISparkAccountDeletionHandler<TUser>` runs first (registration order); one that throws stops the
+Every `ISparkAccountDeletionHandler` runs first (registration order); one that throws stops the
 deletion with the account intact (`500 deletion_failed`, retryable — make handlers idempotent). The
 store deletes the account last and releases its email and passkey reservations. Only then does every
-`ISparkAccountDeletedHandler<TUser>` run — the place for a goodbye mail, which must not go out when
+`ISparkAccountDeletedHandler` run — the place for a goodbye mail, which must not go out when
 the deletion stopped; one that throws is logged and the response is still 204. Audit fields hold user
 ids only; **RavenDB revisions are not rewritten** — content-level personal data is the application's
 handler's job.
 
-#### After sign-in (`ISparkSignedInHandler<TUser>`)
+#### After sign-in (`ISparkSignedInHandler`)
 
 Every fresh sign-in (password, second factor, recovery code, external login, passkey; never a session
-refresh) runs each registered `ISparkSignedInHandler<TUser>` before the ticket is issued. A handler that
+refresh) runs each registered `ISparkSignedInHandler` before the ticket is issued. A handler that
 throws is logged and the sign-in still succeeds, so make it idempotent and cheap (a load by id). The
 Organizations package uses it to create a user's personal organization on first sign-in
 (`docs/guide-organizations.md`).
@@ -424,7 +430,7 @@ spark.AddExternalAgentAuthorizationServer("https://login.corp.example/realms/acm
   the MCP canonical URL. A sender-constrained token (`cnf`) is refused.
 - **Mapping**: only through a login of `loginProvider` whose key equals the token's `SubjectClaim`
   (`sub`; `oid` for Entra), via Identity's `FindByLoginAsync`. Never by email. Unmapped → 401.
-  `ISparkCurrentUser.Id` is the local id; groups come from the store, never from the token.
+  `ISparkCurrentPrincipal.Id` is the local id; groups come from the store, never from the token.
 - **Shadow grant** `AgentGrants/{userId}/ext/{sha256(issuer|clientId)[..32]}`, created on the agent's first
   call (client id from `azp`, else `client_id`): everything exposed, read only. Changes need the user's
   toggle on the account page **and** `WriteScope` (`mcp:write`) in the token. Revoking it keeps it as

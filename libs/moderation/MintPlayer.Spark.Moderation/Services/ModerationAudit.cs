@@ -13,7 +13,7 @@ namespace MintPlayer.Spark.Moderation.Services;
 internal sealed partial class ModerationAudit
 {
     [Inject] private readonly IDocumentStore documentStore;
-    [Inject] private readonly ISparkCurrentUser currentUser;
+    [Inject] private readonly ISparkCurrentPrincipal currentUser;
     [Inject] private readonly TimeProvider timeProvider;
 
     public async Task WriteAsync(

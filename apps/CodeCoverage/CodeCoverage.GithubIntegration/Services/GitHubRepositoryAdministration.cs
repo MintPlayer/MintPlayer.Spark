@@ -38,7 +38,7 @@ namespace CodeCoverage.Services;
 [Register(typeof(IForgeRepositoryAdministration), ServiceLifetime.Scoped)]
 public partial class GitHubRepositoryAdministration : IForgeRepositoryAdministration
 {
-    [Inject] private readonly ISparkCurrentUser currentUser;
+    [Inject] private readonly ISparkCurrentPrincipal currentUser;
     [Inject] private readonly UserManager<SparkUser> userManager;
     [Inject] private readonly IGitHubUserTokenService tokenService;
     [Inject] private readonly IGitHubAccessService access;

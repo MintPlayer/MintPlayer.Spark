@@ -153,7 +153,7 @@ public class QnAContributionsBrowserTests
             await row.Locator("button.btn-outline-danger").ClickAsync();
             await row.WaitForAsync(new() { State = WaitForSelectorState.Detached, Timeout = Timeout });
             await FormSave(page).ClickAsync();
-            var toast = page.Locator(".spark-toast-container").Filter(new() { HasTextString = "nl/Latn" });
+            var toast = page.Locator(".spark-notification-popout").Filter(new() { HasTextString = "nl/Latn" });
             await toast.WaitForAsync(new() { Timeout = Timeout });
             (await host.LoadAsync<StoredTranslation>(currentId)).Should().BeNull("the newer version was hidden by the revert, so nothing visible is left");
         }

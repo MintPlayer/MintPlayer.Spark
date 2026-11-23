@@ -7,7 +7,7 @@ namespace MintPlayer.Spark.Abstractions.Authentication;
 /// <remarks>
 /// <para>
 /// A write a replica forwards (<c>PersistentObjectOperation.Sync</c>) arrives under the sending
-/// module's certificate, so <see cref="ISparkCurrentUser.Id"/> is <see langword="null"/> on the owner.
+/// module's certificate, so <see cref="ISparkCurrentPrincipal.Id"/> is <see langword="null"/> on the owner.
 /// The replica states which user made the edit (<c>SyncAction.InitiatorId</c>), and this is how the
 /// owner's stamping interceptors learn it (#271, F2) — without it the owner kept the previous
 /// <c>ModifiedBy</c>, and replication then copied that stale value back over the replica's own stamp.

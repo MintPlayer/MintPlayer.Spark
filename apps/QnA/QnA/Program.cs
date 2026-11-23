@@ -1,6 +1,7 @@
 using System.Text.RegularExpressions;
 using MintPlayer.AspNetCore.SpaServices.Extensions;
 using MintPlayer.Spark;
+using MintPlayer.Spark.Abstractions.Authentication;
 using MintPlayer.Spark.Abstractions.Interceptors;
 using MintPlayer.Spark.Authorization.Configuration;
 using MintPlayer.Spark.Authorization.Extensions;
@@ -11,6 +12,7 @@ using MintPlayer.Spark.History;
 using MintPlayer.Spark.MailManager;
 using MintPlayer.Spark.Messaging;
 using MintPlayer.Spark.Moderation;
+using MintPlayer.Spark.Notifications;
 using MintPlayer.Spark.SoftDelete;
 using QnA;
 using QnA.Interceptors;
@@ -56,6 +58,13 @@ builder.Services.AddSpark(builder.Configuration, spark =>
     // AddModeration registers itself.
     spark.AddMessaging();
     spark.AddMailManager();
+    // RemindMeAction's delayed QuestionReminderMessage.
+    spark.AddRecipients();
+
+    // #710: stored notifications in the bell, for signed-in users and for anonymous visitors. The "notifications:users"
+    // slot is bound to both groups in security.json; a visitor gets a visitor id (24 h, sliding) when RemindMe needs
+    // one, and its notifications move to the account at sign-in. QnA is the anonymous demo (PRD G2).
+    spark.AddNotifications();
 
     // M6: deleting a question or an answer marks it deleted; moderators restore and purge.
     spark.AddSoftDelete();
@@ -87,7 +96,7 @@ builder.Services.AddScoped<QnAAccess>();
 builder.Services.AddScoped<QuestionStateChanges>();
 // An after-deletion handler: the goodbye mail is queued only once the store deleted the account
 // (Moderation's deletion handler removed the votes and flags before that).
-builder.Services.AddScoped<ISparkAccountDeletedHandler<SparkUser>, QnAAccountDeletionHandler>();
+builder.Services.AddScoped<ISparkAccountDeletedHandler, QnAAccountDeletionHandler>();
 
 builder.Services.ConfigureApplicationCookie(options =>
 {

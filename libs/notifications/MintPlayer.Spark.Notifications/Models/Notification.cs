@@ -11,8 +11,14 @@ public class Notification : IExpiring
 {
     public string? Id { get; set; }
 
-    /// <summary>The user it is for (<c>SparkUsers/…</c>).</summary>
+    /// <summary>The user it is for (<c>SparkUsers/…</c>); null when it is for a visitor.</summary>
     public string? UserId { get; set; }
+
+    /// <summary>
+    /// The anonymous visitor it is for (<c>visitor:…</c>; <c>docs/notification_bell_PRD.md</c> G4); null when it is
+    /// for a user. Moved to <see cref="UserId"/> when the visitor signs in.
+    /// </summary>
+    public string? VisitorId { get; set; }
 
     /// <summary>The organization it is about, which also picks the user's preferences; null for none.</summary>
     public string? OrganizationId { get; set; }

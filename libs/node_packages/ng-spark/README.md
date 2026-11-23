@@ -62,7 +62,7 @@ Import from the entry point, not from the package root; each one is a separate c
 |---|---|
 | `@mintplayer/ng-spark` | `provideSpark(...features)`, `withConfig(config)`, `sparkFeature`, `SparkFeatureOrder`, `SPARK_CONFIG` (`baseUrl`), `SPARK_AUTH_STATE` (the bridge `ng-spark/auth` fills) |
 | `/routes` | `sparkRoutes()` — the routed persistent-object and query pages |
-| `/services` | `SparkService`, `SparkLiveService`, `SparkLanguageService`, `SparkQueryActionsService`, `RetryActionService`; the timezone feature `withSparkTimezone()` |
+| `/services` | `SparkService`, `SparkLiveService`, `SparkLanguageService`, `SparkQueryActionsService`, `RetryActionService`; the timezone feature `withSparkTimezone()`; `withSparkVisitor()` (anonymous visitors, #710) |
 | `/models` | The wire types (persistent objects, attributes, queries, envelopes) |
 | `/shell` | `<spark-shell>` with its slot directives, `<spark-program-units>`, `<spark-language-selector>` ([guide](https://github.com/MintPlayer/MintPlayer.Spark/blob/master/docs/guide-program-units.md)) |
 | `/query-list` | `<spark-query-list>` — the routed query page |
@@ -74,7 +74,7 @@ Import from the entry point, not from the package root; each one is a separate c
 | `/files` | `withFileAttributes()` — the `spark-file` (`BinaryFile`) and `spark-image` (`Image`) renderers: upload control with progress and scan status, detail view, grid cell, image variants, lists — the client of MintPlayer.Spark.Files ([guide](https://github.com/MintPlayer/MintPlayer.Spark/blob/master/docs/guide-file-attributes.md)) |
 | `/score-renderers` | `withScoreRenderers([...])` — the `spark-gauge`, `spark-threshold-bar`, `spark-trend` and `spark-delta` renderers, their components, bands and grade presets ([guide](https://github.com/MintPlayer/MintPlayer.Spark/blob/master/docs/guide-score-renderers.md)) |
 | `/panels` | `withDetailPanels(...)`, `withDetailActions(...)`, `withQueryListActions(...)` — how add-ons put components on the routed pages |
-| `/client-operations` | `withClientOperations()` — notify, navigate and refresh operations from server-side action code; the toast container |
+| `/client-operations` | `withClientOperations()` — notify, navigate and refresh operations from server-side action code; `SparkSessionNotifications` holds the notify messages, which `<spark-notification-bell>` shows |
 | `/retry-action-modal` | The modal that answers a server's retry action ([guide](https://github.com/MintPlayer/MintPlayer.Spark/blob/master/docs/guide-manager-retry-actions.md)) |
 | `/attribute-description` | The [i] tooltip for attribute help text ([guide](https://github.com/MintPlayer/MintPlayer.Spark/blob/master/docs/guide-attribute-descriptions.md)) |
 | `/icon` | `<spark-icon>` |
@@ -87,7 +87,7 @@ Import from the entry point, not from the package root; each one is a separate c
 | `/pwa` | `withServiceWorker()` — Angular's service worker with Spark's update policy (`SparkServiceWorkerUpdates`) and in-app navigation for a clicked push notification (`SparkNotificationClicks`) |
 | `/share` | `withShareRoutes(options?)` — the anonymous page a share link opens (`shared/:type/:token?id=…`); `SparkSharedObject` (the `/spark/share/load` answer). The page itself is `SparkSharedObjectComponent` in `/share/page`, lazy-loaded |
 | `/search` | `withSearch({ pagePath, singleHit })`, `withOpenSearchDescription({ title })` (adds `<link rel="search">`), `sparkSearchRoutes()`, `<spark-site-search>` (the site-wide box, not the grid's `<spark-search-box>`), `SparkSearchPageComponent`, `SparkSearchService` — the client of MintPlayer.Spark.Search ([guide](https://github.com/MintPlayer/MintPlayer.Spark/blob/master/docs/guide-site-search.md)) |
-| `/notifications` | `<spark-notification-bell>`, `<spark-push-toggle>`, `SparkNotificationsService` (live unread count, latest notifications, mark read, Web Push opt-in), `withNotifications()` — the client of MintPlayer.Spark.Notifications |
+| `/notifications` | `<spark-notification-bell>` (list + pop-out of session and stored notifications), `<spark-notification-list>`, `<spark-push-toggle>`, `SparkNotificationsService` (live unread count, latest notifications, mark read, Web Push opt-in), `withNotifications()` — the client of MintPlayer.Spark.Notifications |
 
 ### Timezone (`withSparkTimezone`)
 
@@ -269,14 +269,20 @@ import { SparkNotificationBellComponent, SparkPushToggleComponent } from '@mintp
 <spark-push-toggle />                <!-- on an account or settings page -->
 ```
 
-The client of the server package MintPlayer.Spark.Notifications (`spark.AddNotifications()`):
+The bell is the one place notifications appear (#710): this session's `notify` messages (`withClientOperations()`)
+and, with `withNotifications()`, the stored ones of the server package MintPlayer.Spark.Notifications
+(`spark.AddNotifications()`):
 
-- The bell shows the unread count and, in its menu, the latest notifications (title, message, relative time).
-  Choosing one marks it read and follows its link, through the router when it is on this origin.
-  "Mark all as read" and a link to the full list (`/query/notifications`; `[allLink]` or
-  `withNotifications({ listLink, recentCount })` change it) complete the menu.
-- `SparkNotificationsService` holds `unreadCount`, `recent`, `markRead(ids?)` and `open(notification)`. Both
-  lists are live queries on the one `/spark/live` socket: no polling. They resubscribe when the signed-in user changes.
+- The bell shows the unread count and, in its menu, `<spark-notification-list>`: both kinds, newest first (title,
+  message, relative time). Choosing a stored one marks it read and follows its link, through the router when it is on
+  this origin; session messages can be closed. "Mark all as read" and a link to the full list (`/query/notifications`;
+  `[allLink]` or `withNotifications({ listLink, recentCount })` change it) complete the menu when the server is followed.
+- What arrives pops out below the bell: at most 3, for the entry's duration or 6 s; errors stay until closed, hovering
+  pauses, and nothing pops out while the menu is open or for what the first result held.
+- `SparkNotificationsService` holds `unreadCount` (stored + session), `serverUnreadCount`, `recent`, `entries`,
+  `markRead(ids?)`, `open(notification)`, `choose(entry)` and `dismiss(entry)`. The stored lists are live queries on
+  the one `/spark/live` socket: no polling. They follow a signed-in user, or an anonymous visitor once the server
+  identified one (`withSparkVisitor()` in `provideHttpClient`), and resubscribe when that changes.
 - Web Push: `enablePush()` (call it from a click: it asks permission first), `disablePush()`, `pushState`
   (`unsupported` · `denied` · `off` · `on`) and `pushConfigured` (the server has VAPID keys). Push needs
   `withServiceWorker()` with the worker enabled. On iPhone and iPad the app must be on the Home Screen
