@@ -45,7 +45,16 @@ untouched by this PR; the same hang happened on PR #694. Patch coverage at `d756
   - the IT harness caps each tool command at 120 s and logs a killed command's output (`IT_COMMAND_TIMEOUT_MS`,
     `dependency-action/src/integration/setup.ts`).
 
-**NEXT:** checks green, then patch coverage via the MCP. The owner queues.
+At `1f37bc443` every check is green, the jvm IT included, its first run with the Maven cache. Patch coverage is 94.9%
+(829/874 lines; codecoverage MCP). **M1–M14 done.** The PR was queued at the owner's word (2026-11-23).
+
+What is not implemented, by decision:
+- an API delta per PR (D6 "Not done");
+- a `changelog-set` bot command (D9 "Not done").
+
+Two deviations:
+- the versioning check run does not warn about missing repository metadata (D7);
+- the upcoming view shows no per-entry override or type source (Q12).
 
 ## Spikes
 
@@ -155,4 +164,4 @@ returns (`CodeCoverage.Versioning.Cli/Wire.cs:47`). TS changes only where the ac
 | M11 | **CodeCoverage (Spark):** `ChangelogPolicy` and `PrTemplatePolicy` on Repository/Account (synchronize the model), a `changelog:` section in `coverage.yml` (parser like `VersioningYml`), the entry copy **through `ISparkSession` only** (ids + `Query<T>()`, no indexes; tests on in-memory and RavenDB), the repository changelog page and the upcoming entries per line. | D3, D10, D13, D16, Q12 | `actions.json`/`security.json` changes → synchronize and verify security; new endpoints → `CsrfSurfaceTests` and the route snapshot; translations → golden. |
 | M12 | **Onboarding:** add or append the "Type of change" template section unless `PrTemplatePolicy` is Disabled; check the repository metadata (nuspec `RepositoryUrl`, npm `repository`) and warn; switch title correction on. | D7, D12 | Spark's own template and missing `RepositoryUrl`s in this PR. |
 | M13 | **Docs:** a user guide `docs/code-coverage/changelog.md` and the in-app guide; D15 marked superseded where it changed in `coverage_package_versioning_PRD.md`. | all | |
-| M14 | **Gate:** push, open the PR, watch every check, then ask the codecoverage MCP for patch coverage. | | Read failures from the log first. **In progress:** PR #704; see Status. |
+| M14 | **Gate:** push, open the PR, watch every check, then ask the codecoverage MCP for patch coverage. | | Read failures from the log first. **Done:** PR #704 green, patch 94.9%; see Status. |
