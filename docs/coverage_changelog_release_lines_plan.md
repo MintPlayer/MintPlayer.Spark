@@ -50,7 +50,16 @@ Green: 19/19 with `ChangelogQueryActionsTests`.
   because its title is the author's own.
 - **Green:** 11/11.
 
-**NEXT:** M5 (promote-notes edges in `ReleaseNotesTests`).
+**M5 done (2026-11-23):** `ReleaseNotesTests`, two new tests.
+- **A second promotion** (since = the first promotion's merge): only `fix: second (#2)` is listed. The docs-only commit is
+  filtered out by path. Walking from master's head, as R1 plans, gives the same list.
+- **A merge-queue backport** whose squash message carries `Backport-of: #609` among `Co-authored-by` lines, plus its
+  original arriving through a promotion: one entry, `null id (#609)`.
+- **Both passed on the first run.** This is coverage of edges that already worked, so there was no red and nothing to
+  fix. 11/11.
+- The 200-commit cap is not tested here: it is a constant, and a 200-commit fixture costs more than it proves.
+
+**NEXT:** M6 (run Release suffix only on "already exists").
 
 ## Test harness (investigation pass 3)
 
