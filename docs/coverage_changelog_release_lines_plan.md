@@ -1,0 +1,40 @@
+# Changelog × release lines — plan
+
+PRD: [coverage_changelog_release_lines_PRD.md](coverage_changelog_release_lines_PRD.md). Branch
+`fix/changelog-release-lines`, one pull request.
+
+## Status
+
+**2026-11-23:** branch cut from master `79e73922e`. Spark's repository has Changelog = Keep (set in the UI). The upcoming
+view shows master with no packages (PRD "The problem"). Three read-only investigation passes done (PRD
+"Investigation": G1–G6); decisions R1–R5 and spikes S1–S3 written. **NEXT:** S3 (docs check), S1 = M1's red test.
+
+## Test harness (investigation pass 3)
+
+- **Real git, real plan job:** `CodeCoverage.GitWriter.Tests` — `VersioningPlanTests` / `VersioningPlanReleaseTests` on
+  `WriterTestBase` (in-process `WriterHost` + `GitHttpServer`), fixture `Origin` (`_Infrastructure/Fixture.cs:90`:
+  `Write`, `Commit`, `Checkout`, `Push`, `Head`, `Ref`), tags via `PushTag` (`VersioningPlanReleaseTests.cs:115`).
+  Notes example: `VersioningPlanTests.cs:70` (`PostAsync` at `:15` hardcodes `branch="main"`). Lines settings:
+  `ReleaseLinesWire { Text = ReleaseLinePattern.DefaultText }` (`:120`); line request `Line = new ReleaseLine("dotnet", 10)`.
+  `PromoteTests.cs:13,17` builds promote requests. Needs only `git` on PATH.
+- **Server side:** `UpcomingChangelogRecipientTests` (substituted `IGitWriterSidecar`, both stores);
+  `ReleaseFlowTests.PromoteYml` (`:28`) and `git.ListBranchesAsync` stub (`:46`) for the current lines.
+
+## Spikes
+
+S1–S3 as in the PRD ("Spikes"). S1 doubles as M1's first red test.
+
+## Milestones
+
+Each: red test first, then the change, then the test green. Single test classes only; CI is the full gate.
+
+| # | Milestone | Decision | Notes |
+|---|---|---|---|
+| M1 | **Writer: plan a line at a default-branch sha.** A target-line field on the plan request and wire; fetch the default branch; accept a commit on it; `Line`/`BranchMajor` from the target. | R1, S1 | `VersioningPlanTests`, real git. |
+| M2 | **Server: compose per current line on a default-branch push** (promote mode); shared current-line rule; default-branch row hidden with lines on. | R1, S2 | `UpcomingChangelogRecipientTests` with `PromoteYml`, both stores; `ChangelogQueryActionsTests`. |
+| M3 | **Run Release latest only for a current line** (C# + TS, `dist` rebuilt in the main checkout). | R2, S3 | `VersionReleaseRecipient` tests; `releases.test.ts`. |
+| M4 | **Title correction skips backport PRs.** | R3 | `PrTitleRecipient` tests with a bracketed backport title. |
+| M5 | **Promote-notes edges** (second promotion, path filter, trailer + co-authors). | R4 | `ReleaseNotesTests`. |
+| M6 | **Run Release suffix only on "already exists"** (C# + TS). | R5 | |
+| M7 | **Docs:** `docs/code-coverage/changelog.md` (line repositories), #693 PRD wording fix and pointer here. | all | |
+| M8 | **Gate:** push, PR, checks, patch coverage via the MCP; the owner queues. | | |
