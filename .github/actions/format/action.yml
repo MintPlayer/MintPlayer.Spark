@@ -1,0 +1,156 @@
+name: Format
+description: >
+  Formats (or lints with fixes) a repository at the versions it pins, for CodeCoverage's FormatRepository and
+  LintRepository actions and for the merge queue's `whitespace` strategy. Uploads the result as the `merge-queue-patch`
+  artifact (and, outside the pipeline, `format-report`); never commits or pushes. See README.md.
+
+# SECURITY: this action installs the repository's JS packages (scripts off) and runs its formatter configs, which can be
+# code (prettier.config.js, eslint.config.js, MSBuild for dotnet style). The calling workflow must grant only
+# `contents: read`, pass no secrets, request no `id-token`, and run on a GitHub-hosted runner.
+
+inputs:
+  mode:
+    description: format | lint | pipeline. pipeline proves the merge queue's whitespace resolutions (D17) and formats them.
+    required: false
+    default: format
+  expected_sha:
+    description: The commit the run must be on (the dispatch input). Required in the pipeline mode.
+    required: false
+    default: ''
+  exclude:
+    description: Globs, one per line, the run never touches (coverage.yml formatting.exclude).
+    required: false
+    default: ''
+  ours_sha:
+    description: Pipeline only. The base branch's commit the queue merged onto.
+    required: false
+    default: ''
+  theirs_sha:
+    description: Pipeline only. The pull request's commit the queue merged.
+    required: false
+    default: ''
+  merge_base:
+    description: Pipeline only. Their merge base; empty computes it.
+    required: false
+    default: ''
+  pr_number:
+    description: Pipeline only. The pull request, so a fork's head can be fetched through refs/pull/<n>/head.
+    required: false
+    default: ''
+  token:
+    description: >
+      Used only to fetch the pipeline's commits of a private repository, in the first step, before any of the
+      repository's code runs, and never written to disk. The job's own token (contents: read).
+    required: false
+    default: ${{ github.token }}
+
+outputs:
+  changed:
+    description: '"true" when the patch is non-empty.'
+    value: ${{ steps.run.outputs.changed }}
+  file-count:
+    description: The number of files the patch touches.
+    value: ${{ steps.run.outputs.file-count }}
+  patch-path:
+    description: The patch file on the runner.
+    value: ${{ steps.run.outputs.patch-path }}
+
+runs:
+  using: composite
+  steps:
+    # First, before anything reads the repository's files: the only step that may hold a token.
+    - name: Fetch the commits to prove
+      id: commits
+      if: inputs.mode == 'pipeline'
+      shell: bash
+      env:
+        OURS_SHA: ${{ inputs.ours_sha }}
+        THEIRS_SHA: ${{ inputs.theirs_sha }}
+        MERGE_BASE: ${{ inputs.merge_base }}
+        PR_NUMBER: ${{ inputs.pr_number }}
+        FETCH_TOKEN: ${{ inputs.token }}
+      run: bash "$GITHUB_ACTION_PATH/fetch-commits.sh"
+
+    - name: Plan the toolchains
+      id: plan
+      shell: bash
+      env:
+        MODE: ${{ inputs.mode }}
+        EXCLUDE: ${{ inputs.exclude }}
+        EXPECTED_SHA: ${{ inputs.expected_sha }}
+      run: node "$GITHUB_ACTION_PATH/format.mjs" plan
+
+    - name: Setup Node (.nvmrc)
+      if: hashFiles('.nvmrc') != ''
+      uses: actions/setup-node@v7
+      with:
+        node-version-file: .nvmrc
+
+    - name: Setup Node (.node-version)
+      if: hashFiles('.nvmrc') == '' && hashFiles('.node-version') != ''
+      uses: actions/setup-node@v7
+      with:
+        node-version-file: .node-version
+
+    - name: Setup .NET (global.json)
+      if: steps.plan.outputs.dotnet == 'true' && hashFiles('global.json') != ''
+      uses: actions/setup-dotnet@v6
+      with:
+        global-json-file: global.json
+
+    # S1: whitespace gives the same result on SDK 10 and 11; style and analyzers need the repository's pin.
+    - name: Setup .NET (no global.json)
+      if: steps.plan.outputs.dotnet == 'true' && hashFiles('global.json') == ''
+      uses: actions/setup-dotnet@v6
+      with:
+        dotnet-version: 10.0.x
+
+    - name: Setup Go (go.mod)
+      if: steps.plan.outputs.go == 'true'
+      uses: actions/setup-go@v6
+      with:
+        go-version-file: go.mod
+        cache: false
+
+    - name: Setup Terraform (${{ steps.plan.outputs.terraform }})
+      if: steps.plan.outputs.terraform != ''
+      uses: hashicorp/setup-terraform@v3
+      with:
+        terraform_version: ${{ steps.plan.outputs.terraform }}
+        terraform_wrapper: false
+
+    - name: Format
+      id: run
+      shell: bash
+      env:
+        MODE: ${{ inputs.mode }}
+        EXCLUDE: ${{ inputs.exclude }}
+        EXPECTED_SHA: ${{ inputs.expected_sha }}
+        OURS_SHA: ${{ inputs.ours_sha }}
+        THEIRS_SHA: ${{ inputs.theirs_sha }}
+        MERGE_BASE: ${{ steps.commits.outputs.merge-base }}
+        OUT_DIR: ${{ runner.temp }}/format-out
+        DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+        DOTNET_NOLOGO: '1'
+        COREPACK_ENABLE_DOWNLOAD_PROMPT: '0'
+        NX_DAEMON: 'false'
+      run: node "$GITHUB_ACTION_PATH/format.mjs" run
+
+    # Uploaded even when empty: an empty patch from a green run means "nothing to format"; a failed run or a missing
+    # artifact means the queue evicts (pipeline) or the action reports a failure (format, lint).
+    - name: Upload merge-queue-patch
+      uses: actions/upload-artifact@v7
+      with:
+        name: merge-queue-patch
+        path: ${{ runner.temp }}/format-out/merge-queue.patch
+        if-no-files-found: error
+        retention-days: 3
+
+    - name: Upload format-report
+      if: inputs.mode != 'pipeline'
+      uses: actions/upload-artifact@v7
+      with:
+        name: format-report
+        path: ${{ runner.temp }}/format-out/format-report.json
+        if-no-files-found: error
+        retention-days: 3

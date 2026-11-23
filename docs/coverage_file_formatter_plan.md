@@ -14,6 +14,9 @@
 - **2026-11-23: S10 and S11 done.** merge-file resolutions are byte-identical on git 2.43–2.54, and "format both,
   compare" gives no false accept across 7 formatters. Q16 became D17. All spikes are done and nothing is open.
   NEXT: M1.
+- **2026-11-23: M1 done.** `.github/actions/format` (action, `format.mjs`, `fetch-commits.sh`, 20 tests in
+  `test:tools`) and the `formatting.yml` template. Writing it settled D18–D20 (the run derives its own candidates, the
+  server guards by the `whitespace` resolutions; D9.3 and D16 under D17; artifacts and inputs). NEXT: M2.
 - Tests run **once, at the end** (M10). No interim gate runs.
 
 ## Spikes

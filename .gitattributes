@@ -83,6 +83,8 @@ apps/CodeCoverage/dependency-action/dist/index.js text eol=lf linguist-generated
 .github/actions/spark-regenerate/*.sh text eol=lf
 .github/actions/lockfile-regenerate/*.sh text eol=lf
 .github/actions/lockfile-regenerate/*.mjs text eol=lf
+.github/actions/format/*.sh text eol=lf
+.github/actions/format/*.mjs text eol=lf
 # Read on the Linux VPS (the deploy installs them as they are): clamd.conf, the renewal script and its units (#700 M11).
 apps/CodeCoverage/ops/* text eol=lf
 

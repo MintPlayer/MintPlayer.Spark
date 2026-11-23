@@ -1,0 +1,101 @@
+# Template: the formatting workflow of CodeCoverage (docs/code-coverage/formatting.md).
+# Onboarding's "Formatting" checkbox installs it as .github/workflows/formatting.yml on the default branch.
+#
+# CodeCoverage dispatches it in three modes:
+#   - format     the FormatRepository action: formats every file at the versions the repository pins;
+#   - lint       the LintRepository action: applies the linters' fixes;
+#   - pipeline   the merge queue's and backports' `whitespace` strategy: proves that the pull request's side of each
+#                conflict differs from the base branch's only in what the formatter rewrites, and formats it.
+# The run uploads the result as a patch. CodeCoverage checks the patch and pushes it itself (a pull request for format
+# and lint, the mq/ branch for the pipeline): this workflow never commits or pushes.
+#
+# To use the `whitespace` strategy, name this workflow on the rules it serves in coverage.yml:
+#
+#   mergeQueue:
+#     autoResolve:
+#       - path: "**/*.cs"
+#         strategy: whitespace
+#         action: formatting.yml
+#
+# ┌─ SECURITY ─────────────────────────────────────────────────────────────────────────────────────────┐
+# │ This workflow RUNS THE REPOSITORY'S FORMATTER CONFIGS, which can be code, on a pull request's      │
+# │ merge in the pipeline mode.                                                                        │
+# │  - Never add a secret, an environment, or `${{ secrets.* }}` of any kind.                          │
+# │  - Never widen `permissions:`; never add `id-token: write`.                                        │
+# │  - Never run it on a self-hosted runner: the PR's code would run on your machine.                  │
+# │  - Keep `persist-credentials: false`, so the job token is not left in .git/config.                 │
+# │ For a private repository the action fetches the commits it proves with the job's own read-only     │
+# │ token, in its first step, before any repository code runs, and never writes it to disk.            │
+# │ The queue checks that the mq/ branch's copy of this file equals the default branch's before every  │
+# │ dispatch.                                                                                          │
+# └────────────────────────────────────────────────────────────────────────────────────────────────────┘
+
+name: formatting
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: format, lint or pipeline.
+        required: false
+        default: pipeline
+      expected_sha:
+        description: The commit to format. The run fails if the branch head differs.
+        required: false
+        default: ''
+      exclude:
+        description: Globs, one per line, never touched.
+        required: false
+        default: ''
+      pr_number:
+        description: The pull request being merged (pipeline).
+        required: false
+        default: ''
+      queue_run_id:
+        description: CodeCoverage's id for this run (shown in the run name only).
+        required: false
+        default: ''
+      merge_base:
+        description: The merge base of the two sides (pipeline; empty computes it).
+        required: false
+        default: ''
+      ours_sha:
+        description: The base branch's side (pipeline).
+        required: false
+        default: ''
+      theirs_sha:
+        description: The pull request's side (pipeline).
+        required: false
+        default: ''
+
+run-name: 'formatting ${{ inputs.mode }} ${{ inputs.pr_number && format(''PR #{0}'', inputs.pr_number) || '''' }} (${{ inputs.queue_run_id }})'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: formatting-${{ github.ref }}-${{ inputs.mode }}
+  cancel-in-progress: true
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # The dispatched branch as of the dispatch. The action compares it with expected_sha.
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      # Pin to a full commit SHA of MintPlayer/MintPlayer.Spark.
+      - uses: MintPlayer/MintPlayer.Spark/.github/actions/format@<commit-sha>
+        with:
+          mode: ${{ inputs.mode }}
+          expected_sha: ${{ inputs.expected_sha }}
+          exclude: ${{ inputs.exclude }}
+          pr_number: ${{ inputs.pr_number }}
+          merge_base: ${{ inputs.merge_base }}
+          ours_sha: ${{ inputs.ours_sha }}
+          theirs_sha: ${{ inputs.theirs_sha }}
