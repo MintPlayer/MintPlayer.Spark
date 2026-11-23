@@ -3,12 +3,8 @@ using CodeCoverage.Forge;
 using CodeCoverage.LookupReferences;
 using CodeCoverage.PackageVersioning;
 using CodeCoverage.Tests._Infrastructure;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using MintPlayer.Spark;
-using MintPlayer.Spark.Abstractions.Builder;
 using MintPlayer.Spark.Abstractions.Storage;
-using Raven.Client.Documents;
 using Xunit;
 
 namespace CodeCoverage.Tests.PackageVersioning;
@@ -25,29 +21,11 @@ public class ChangelogRecipientTests : CoverageRavenTest
     private static readonly string SiblingId = Repository.DocumentId(EForgeProvider.GitHub, Sibling);
     private static readonly DateTimeOffset Monday = new(2026, 11, 23, 9, 0, 0, TimeSpan.Zero);
 
-    public static TheoryData<string> Stores => ["memory", "raven"];
+    public static TheoryData<string> Stores => SparkStores.Both;
 
-    private sealed class Builder(IServiceCollection services) : ISparkBuilder
-    {
-        public IServiceCollection Services => services;
-        public IConfiguration? Configuration => null;
-        public SparkModuleRegistry Registry { get; } = new();
-    }
+    private ServiceProvider Provider(string store) => SparkStores.Provider(store, () => GetDocumentStore());
 
-    /// <summary>One provider's services; every <see cref="ISparkSession"/> comes from a scope of its own.</summary>
-    private ServiceProvider Provider(string store)
-    {
-        var services = new ServiceCollection().AddLogging();
-        if (store == "memory") new Builder(services).UseInMemory();
-        else services.AddSingleton<IDocumentStore>(GetDocumentStore()).AddRavenDbSessions();
-        return services.BuildServiceProvider();
-    }
-
-    private static async Task InScopeAsync(ServiceProvider provider, Func<ISparkSession, Task> work)
-    {
-        using var scope = provider.CreateScope();
-        await work(scope.ServiceProvider.GetRequiredService<ISparkSession>());
-    }
+    private static Task InScopeAsync(ServiceProvider provider, Func<ISparkSession, Task> work) => provider.InScopeAsync(work);
 
     private static async Task SeedAsync(ServiceProvider provider, EChangelogPolicy policy = EChangelogPolicy.Enabled, bool accountChangelog = false)
         => await InScopeAsync(provider, async session =>

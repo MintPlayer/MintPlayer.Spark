@@ -37,3 +37,32 @@ public partial class ChangelogReleaseActions : DefaultPersistentObjectActions<Ch
         return (await ChangelogRecipient.ForRepositoryAsync(session, repository)).AsQueryable();
     }
 }
+
+/// <summary>
+/// The upcoming changelog per release line on the repository page (#693 Q12). Visible iff its repository is; only
+/// <c>QueryRead</c> is granted, since <see cref="UpcomingChangelogRecipient"/> writes it.
+/// </summary>
+public partial class UpcomingChangelogActions : DefaultPersistentObjectActions<UpcomingChangelog>
+{
+    [Inject] private readonly ISparkVisibility visibility;
+    [Inject] private readonly ISparkSession session;
+
+    public override async Task<Expression<Func<UpcomingChangelog, bool>>?> GetRowFilterAsync(string action)
+    {
+        var repoIds = await visibility.GetVisibleRepositoryIdsAsync();
+        return r => r.Repository.In(repoIds);
+    }
+
+    /// <summary>
+    /// Custom query: a repository's lines, the default branch first. Source: "Custom.Repository_UpcomingChangelog". Empty
+    /// once the changelog is switched off, so a stale composition is not shown.
+    /// </summary>
+    public async Task<IQueryable<UpcomingChangelog>> Repository_UpcomingChangelog(CustomQueryArgs args)
+    {
+        args.EnsureParent("Repository");
+        if (await session.LoadAsync<Repository>(args.Parent!.Id) is not { } repository) return Enumerable.Empty<UpcomingChangelog>().AsQueryable();
+        var account = repository.Account is { Length: > 0 } accountId ? await session.LoadAsync<Account>(accountId) : null;
+        if (!Repository.ResolveChangelog(repository, account).Enabled) return Enumerable.Empty<UpcomingChangelog>().AsQueryable();
+        return (await UpcomingChangelogRecipient.ForRepositoryAsync(session, repository)).AsQueryable();
+    }
+}

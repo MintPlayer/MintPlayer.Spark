@@ -3896,6 +3896,30 @@
         }
       }
     },
+    "UpcomingChangelog": {
+      "attributes": {
+        "Branch": {
+          "description": {
+            "en": "The release line, or the default branch."
+          }
+        },
+        "Commit": {
+          "description": {
+            "en": "The commit the notes were composed at."
+          }
+        },
+        "Repository": {
+          "description": {
+            "en": "The repository the line belongs to."
+          }
+        },
+        "UpdatedAtUtc": {
+          "description": {
+            "en": "When the notes were composed."
+          }
+        }
+      }
+    },
     "VersioningRun": {
       "attributes": {
         "Outcome": {

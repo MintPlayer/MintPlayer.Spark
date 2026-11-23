@@ -98,15 +98,19 @@ public sealed record GitWriterBranchCut(string Branch, int Major, string Commit,
 /// <summary><c>POST jobs/versioning/plan</c> (#153 M11, D3 trigger B): would a run on <see cref="Commit"/> release anything?</summary>
 public sealed record GitWriterVersioningPlanRequest(
     string Provider, string RepoId, string CloneUrl, SidecarCredential Credential, string Branch, string DefaultBranch, string Commit, int? BranchMajor,
-    VersioningSettings Settings);
+    VersioningSettings Settings, bool Notes = false);
 
 /// <summary>The writer's answer. <see cref="Releases"/> holds package ids only: the plan has no API hashes, so its versions are not the run's.</summary>
+/// <param name="Upcoming">#693 Q12: with <see cref="GitWriterVersioningPlanRequest.Notes"/>, each planned package's notes.</param>
 public sealed record GitWriterVersioningPlanResult(
     string Outcome, string? Reason, IReadOnlyList<string>? Releases, IReadOnlyList<GitWriterPackageNote>? Refused, IReadOnlyList<string>? Warnings,
-    string? Detail, long DurationMs)
+    string? Detail, long DurationMs, IReadOnlyList<GitWriterUpcomingNotes>? Upcoming = null)
 {
     public const string Planned = "planned";
 }
+
+/// <param name="Omitted">The writer's budget ran out before this package, so its notes are empty.</param>
+public sealed record GitWriterUpcomingNotes(string Id, string Notes, bool Omitted = false);
 
 /// <summary><c>POST jobs/versioning/ecosystems</c> (#570 M8b, D5): the ecosystems a pull request touches.</summary>
 /// <param name="HeadRef">Where the head is fetched from, <c>refs/pull/N/head</c>.</param>

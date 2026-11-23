@@ -558,6 +558,7 @@
       "repository-versioning-runs",
       "repository-backport-attempts",
       "repository-command-invocations",
+      "repository-upcoming-changelog",
       "repository-changelog"
     ]
   },

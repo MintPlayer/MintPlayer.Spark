@@ -93,6 +93,8 @@ internal sealed partial class GitWriterVersioningRunEndpoint : IPostEndpoint<Ver
         var linePrerelease = wire.LinePrerelease ?? [];
         if (linePrerelease.Count > VersioningConfig.MaxLinePrerelease
             || !linePrerelease.All(p => ReleaseLine.TryParse(p.Key)?.ToString() == p.Key)) return null;
+        var include = wire.ChangelogInclude ?? [];
+        if (!include.All(t => t is not null && VersioningChangelogConfig.Includable.Contains(t))) return null;
         return new VersioningSettings
         {
             Ignore = ignore,
@@ -104,6 +106,7 @@ internal sealed partial class GitWriterVersioningRunEndpoint : IPostEndpoint<Ver
             Lines = lines,
             LinePins = new Dictionary<string, string>(linePins, StringComparer.Ordinal),
             LinePrerelease = new Dictionary<string, Versioning.Versions.PrereleasePin>(linePrerelease, StringComparer.Ordinal),
+            ChangelogInclude = include.ToHashSet(StringComparer.Ordinal),
         };
     }
 
@@ -153,7 +156,7 @@ internal sealed partial class GitWriterVersioningPlanEndpoint : IPostEndpoint<Ve
             return refusal.Result();
 
         return Results.Json(await runs.PlanAsync(new VersioningPlanJob($"{request.Provider}/{request.RepoId}", cloneUrl, credential, branch, defaultBranch, commit,
-            request.BranchMajor, settings) { Line = line }), GitWriterHost.Json);
+            request.BranchMajor, settings) { Line = line, Notes = request.Notes }), GitWriterHost.Json);
     }
 }
 

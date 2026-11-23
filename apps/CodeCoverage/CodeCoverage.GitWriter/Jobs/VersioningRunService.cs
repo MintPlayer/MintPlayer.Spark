@@ -16,6 +16,9 @@ public sealed record VersioningPlanJob(
 {
     /// <summary>The release line of <see cref="Branch"/> when lines are on (#568 D1).</summary>
     public ReleaseLine? Line { get; init; }
+
+    /// <summary>#693 Q12: compose each planned release's notes too.</summary>
+    public bool Notes { get; init; }
 }
 
 /// <summary>A validated <c>POST /jobs/versioning/backfill</c> (#638 D5-D8).</summary>
@@ -157,8 +160,24 @@ public sealed class VersioningRunService(JobRunner jobs)
         try
         {
             var (plan, warnings) = await ReleaseRun.PlanAsync(git, job.Commit, job.Settings, job.Branch == job.DefaultBranch, job.BranchMajor, context.Deadline, job.Line);
+            List<UpcomingNotesWire>? upcoming = null;
+            if (job.Notes)
+            {
+                // #693 Q12: the same composition a run makes, from the commits only; past the budget a package is named, not described.
+                upcoming = [];
+                long characters = 0;
+                foreach (var release in plan.Releases)
+                {
+                    var notes = characters < VersioningPlanResponse.MaxUpcomingCharacters
+                        ? (await ReleaseNotes.ForAsync(git, job.Commit, release, null, job.Settings.ChangelogInclude, context.Deadline)).Body
+                        : null;
+                    if (notes is not null && characters + notes.Length > VersioningPlanResponse.MaxUpcomingCharacters) notes = null;
+                    characters += notes?.Length ?? 0;
+                    upcoming.Add(new UpcomingNotesWire(release.Id, notes ?? "", notes is null));
+                }
+            }
             return new VersioningPlanResponse(JobOutcomes.Planned, null, plan.Releases.Select(r => r.Id).ToList(),
-                plan.Refused.Select(n => new PackageNoteWire(n.Id, n.Reason)).ToList(), warnings, null, context.ElapsedMilliseconds);
+                plan.Refused.Select(n => new PackageNoteWire(n.Id, n.Reason)).ToList(), warnings, null, context.ElapsedMilliseconds) { Upcoming = upcoming };
         }
         catch (GraphException e)
         {

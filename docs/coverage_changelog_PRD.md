@@ -245,6 +245,9 @@ The changelog is **rendered from git tags and PR metadata**, never committed wit
 - **Config placement (M11):** the filter overrides live under `versioning.changelog.include` in `coverage.yml`, not a
   top-level `changelog:`. The action hands the engine only the `versioning:` section (`versioning-action/src/main.ts`,
   `versioningSection`), so a top-level section would never reach local mode.
+- **Defect fixed (M11, per D4):** the writer's `VersioningSettingsWire` had no `ChangelogInclude`, so a server-mode run
+  ignored `versioning.changelog.include` silently. The wire now carries it, validated against
+  `VersioningChangelogConfig.Includable`. Red→green: `VersioningSettingsTests.Changelog_include_survives_the_wire_from_the_app_and_an_unknown_type_is_refused`.
 - **Evidence:** S1 (the tags are annotated and keyed, 0.40 s to read 464 of them). Owner, Q2: "I'll let you decide.
   A probably looks good … we probably 'could' store some information in the ravendb database".
 
@@ -506,7 +509,7 @@ correction comes with the changelog) are answered by D6.
 | Q9 | ~~Does the changelog require title correction?~~ | answered: D6 (switched on with it) |
 | Q10 | ~~PR template type checklist?~~ | answered: D12 |
 | Q11 | ~~Title separator~~ | answered (owner: "A"): keep D14's `(#1/#2)`. The changelog shows the text without the suffix; issues become links behind the entry, and the PR number comes from the squash's final `(#N)`. |
-| Q12 | ~~Unreleased visibility~~ | answered (owner: "A"): a CodeCoverage page per repository shows, per release line, the entries since the line's last tag. It includes each entry's override (D9) and type source (D12), with links to fix them in the PR. No draft Releases. A `/release --dry-run` was proposed but not chosen. |
+| Q12 | ~~Unreleased visibility~~ | answered (owner: "A"): a CodeCoverage page per repository shows, per release line, the entries since the line's last tag. It includes each entry's override (D9) and type source (D12), with links to fix them in the PR. No draft Releases. A `/release --dry-run` was proposed but not chosen. **Done (M11):** a push to the default branch or a release line (the patterns cached on the default branch's `UpcomingChangelog` document, so the push filter reads no `coverage.yml`) asks the writer's plan job with `notes: true`, which composes each planned package's notes from the commits since its tag (`VersioningRunService.PlanAsync`, a budget of 512 Ki characters, an over-budget package is marked omitted). The result is stored per line as `UpcomingChangelogs/{provider}/{repo}/{escaped branch}` through `ISparkSession` and listed by the `repository-upcoming-changelog` query. **Deviation:** no per-entry override (D9) or type source (D12) is shown. The writer's job token is scoped to contents, so the plan sees commits only, not pull-request bodies or labels; the upcoming notes are therefore what the commit subjects say, and a D9 override shows up only in the released notes. Widening the token was not chosen. Tests: `UpcomingChangelogRecipientTests` (memory and RavenDB), `VersioningPlanTests.With_notes_…`. |
 | Q13 | ~~How does git know a backport commit is the same change as its original PR?~~ | answered: D5 |
 | Q14 | ~~What happens to untyped subjects?~~ | answered: D6 |
 

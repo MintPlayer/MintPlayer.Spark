@@ -66,6 +66,44 @@ public class VersioningPlanTests : WriterTestBase
         (await PlanAsync(origin)).Releases.Should().Equal("Core");
     }
 
+    [Fact]
+    public async Task With_notes_the_plan_composes_each_package_s_upcoming_notes_from_the_commits_since_its_tag()
+    {
+        // #693 Q12: the upcoming view. The run tags Core; the two commits after it are what its next release would list.
+        using var origin = new Origin(Server, "plan-notes");
+        origin.Write("src/Core/Core.csproj", "<Project Sdk=\"Microsoft.NET.Sdk\">\n<PropertyGroup><TargetFramework>net10.0</TargetFramework></PropertyGroup>\n</Project>\n");
+        origin.Commit("feat: the first package (#1)");
+        origin.Push("main");
+        var run = await PostAsync<VersioningRunResponse>("/jobs/versioning/run", new()
+        {
+            ["tagger"] = new { name = "coverage-bot", email = "bot@example.invalid" },
+            ["manifest"] = new ReleaseManifest
+            {
+                Commit = origin.Head(),
+                Packages = [new ManifestPackage { Id = "Core", Kind = "nuget", ApiHash = "sha256:" + new string('1', 64), TargetFrameworks = ["net10.0"], Packed = true }],
+            },
+        }, origin);
+        run.Outcome.Should().Be("versioned", run.Detail);
+
+        origin.Write("src/Core/Api.cs", "namespace Core; public class Api { }\n");
+        origin.Commit("fix: a crash on start (#2)");
+        origin.Write("src/Core/Docs.cs", "namespace Core; public class Docs { }\n");
+        origin.Commit("docs: the guide (#3)");
+        origin.Push("main");
+
+        var plain = await PlanAsync(origin);
+        var noted = await PostAsync<VersioningPlanResponse>("/jobs/versioning/plan", new()
+        {
+            ["commit"] = origin.Head(),
+            ["notes"] = true,
+            ["settings"] = new VersioningSettingsWire { ChangelogInclude = ["docs"] },
+        }, origin);
+
+        plain.Upcoming.Should().BeNull("notes are composed only when asked for");
+        noted.Outcome.Should().Be(JobOutcomes.Planned, noted.Detail);
+        noted.Upcoming.Should().ContainSingle().Which.Should().Be(new UpcomingNotesWire("Core", "### Fixes\n- a crash on start (#2)\n\n### Changes\n- the guide (#3)"));
+    }
+
     [Theory]
     [InlineData("feature/x")]
     [InlineData("release/10.x")]   // a #153 release branch is no line once lines are on (#568 D1)

@@ -125,34 +125,44 @@ public partial class VersioningDispatchRecipient : IRecipient<VersioningDispatch
         await session.SaveChangesAsync(cancellationToken);
     }
 
-    private async Task<GitWriterVersioningPlanResult?> PlanAsync(Repository repository, IForgeMergeQueue git, VersioningDispatchMessage message, string defaultBranch,
+    private Task<GitWriterVersioningPlanResult?> PlanAsync(Repository repository, IForgeMergeQueue git, VersioningDispatchMessage message, string defaultBranch,
         int? branchMajor, VersioningSettings settings, CancellationToken cancellationToken)
+        => VersioningPlans.PlanAsync(writer, git, repository, message.Branch, message.Sha, defaultBranch, branchMajor, settings, false, logger, "Versioning dispatch",
+            cancellationToken);
+}
+
+/// <summary>The git writer's plan job for one pushed commit, under a job token revoked afterwards (#153 M11; #693 Q12).</summary>
+internal static class VersioningPlans
+{
+    /// <returns>The plan, or null when there is none (logged under <paramref name="caller"/>); the next push plans again.</returns>
+    public static async Task<GitWriterVersioningPlanResult?> PlanAsync(IGitWriterSidecar writer, IForgeMergeQueue git, Repository repository, string branch, string sha,
+        string defaultBranch, int? branchMajor, VersioningSettings settings, bool notes, ILogger logger, string caller, CancellationToken cancellationToken)
     {
         var push = await git.GetWriterAccessAsync(repository, null, false, cancellationToken);
         if (push.Access is not { } access)
         {
-            logger.LogWarning("Versioning dispatch: no writer access for {Repository}: {Reason}", repository.FullName, push.RefusalReason);
+            logger.LogWarning("{Caller}: no writer access for {Repository}: {Reason}", caller, repository.FullName, push.RefusalReason);
             return null;
         }
         try
         {
             var result = await writer.VersioningPlanAsync(new GitWriterVersioningPlanRequest(
                 repository.Provider.ToCanonicalString(), repository.GitHubId.ToString(CultureInfo.InvariantCulture), access.CloneUrl,
-                new CommitGraph.SidecarCredential(access.Username, access.Password), message.Branch, defaultBranch, message.Sha, branchMajor, settings),
+                new CommitGraph.SidecarCredential(access.Username, access.Password), branch, defaultBranch, sha, branchMajor, settings, notes),
                 cancellationToken);
             if (result.Outcome == GitWriterVersioningPlanResult.Planned) return result;
-            logger.LogWarning("Versioning dispatch: no plan for {Sha} on {Branch} of {Repository}: {Outcome} {Reason} {Detail}",
-                message.Sha, message.Branch, repository.FullName, result.Outcome, result.Reason, result.Detail);
+            logger.LogWarning("{Caller}: no plan for {Sha} on {Branch} of {Repository}: {Outcome} {Reason} {Detail}",
+                caller, sha, branch, repository.FullName, result.Outcome, result.Reason, result.Detail);
             return null;
         }
         catch (GitWriterRefusedException ex)
         {
-            logger.LogWarning(ex, "Versioning dispatch: the git writer refused the plan for {Repository}", repository.FullName);
+            logger.LogWarning(ex, "{Caller}: the git writer refused the plan for {Repository}", caller, repository.FullName);
             return null;
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException && !cancellationToken.IsCancellationRequested)
         {
-            logger.LogWarning(ex, "Versioning dispatch: the git writer did not answer for {Repository}", repository.FullName);
+            logger.LogWarning(ex, "{Caller}: the git writer did not answer for {Repository}", caller, repository.FullName);
             return null;
         }
         finally
