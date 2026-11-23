@@ -490,6 +490,68 @@
       "nl": "Alleen organisatie-eigenaars en repository-admins kunnen dependency-updates inschakelen."
     }
   },
+  "formatting": {
+    "chooseMessage": {
+      "en": "Each selected repository's formatting.yml workflow runs on its default branch, and its changes become a pull request. You are notified when it opens. The merge queue still waits for the reviews and checks the repository requires.",
+      "fr": "Le workflow formatting.yml de chaque dépôt sélectionné s'exécute sur sa branche par défaut, et ses modifications deviennent une pull request. Vous êtes averti à son ouverture. La file de fusion attend toujours les revues et les vérifications exigées par le dépôt.",
+      "nl": "De formatting.yml-workflow van elke geselecteerde repository draait op de standaardbranch, en de wijzigingen worden een pull request. Je krijgt een melding wanneer die opent. De merge queue wacht nog steeds op de reviews en checks die de repository vereist."
+    },
+    "chooseTitle": {
+      "en": "Open the pull requests",
+      "fr": "Ouvrir les pull requests",
+      "nl": "De pull requests openen"
+    },
+    "notStarted": {
+      "en": "{0} was not started: {1}",
+      "fr": "{0} n'a pas été lancé : {1}",
+      "nl": "{0} is niet gestart: {1}"
+    },
+    "open": {
+      "en": "Open the pull request",
+      "fr": "Ouvrir la pull request",
+      "nl": "De pull request openen"
+    },
+    "openAndQueue": {
+      "en": "Open it and add it to the merge queue",
+      "fr": "L'ouvrir et l'ajouter à la file de fusion",
+      "nl": "Openen en aan de merge queue toevoegen"
+    },
+    "reason.notFound": {
+      "en": "The repository was not found.",
+      "fr": "Le dépôt est introuvable.",
+      "nl": "De repository is niet gevonden."
+    },
+    "reason.notManaged": {
+      "en": "You cannot manage this repository's settings.",
+      "fr": "Vous ne pouvez pas gérer les paramètres de ce dépôt.",
+      "nl": "Je kunt de instellingen van deze repository niet beheren."
+    },
+    "reason.notSetUp": {
+      "en": "Set up Formatting first: its default branch has no .github/workflows/formatting.yml.",
+      "fr": "Configurez d'abord Formatting : sa branche par défaut n'a pas de .github/workflows/formatting.yml.",
+      "nl": "Stel eerst Formatting in: de standaardbranch heeft geen .github/workflows/formatting.yml."
+    },
+    "reason.running": {
+      "en": "A run is already going; its outcome arrives as a notification.",
+      "fr": "Une exécution est déjà en cours ; son résultat arrivera en notification.",
+      "nl": "Er loopt al een run; het resultaat komt als melding."
+    },
+    "reason.unreadable": {
+      "en": "The default branch could not be read from the forge.",
+      "fr": "La branche par défaut n'a pas pu être lue depuis la forge.",
+      "nl": "De standaardbranch kon niet van de forge gelezen worden."
+    },
+    "started": {
+      "en": "Started.",
+      "fr": "Lancé.",
+      "nl": "Gestart."
+    },
+    "startedOn": {
+      "en": "Running formatting.yml on {0}; you are notified when its pull request opens.",
+      "fr": "formatting.yml s'exécute sur {0} ; vous serez averti à l'ouverture de sa pull request.",
+      "nl": "formatting.yml draait op {0}; je krijgt een melding wanneer de pull request opent."
+    }
+  },
   "mcpUi": {
     "addressTitle": {
       "en": "Server address",

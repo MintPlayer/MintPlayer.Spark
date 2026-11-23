@@ -1,8 +1,8 @@
 {
   "version": 2,
-  "modelHash": "4d58d3b561b27ea68e30cf0aa92bec723c15b9530742d112d48461397e68fc99",
+  "modelHash": "3e0cfc22f1350570b07c8d6b81a84d56fd4a98703042ae5175c09add0e9aa925",
   "contextRoots": "6982b4808137febd7316d03216732ccfbca9dbc97924d1af548e2e1ecee68015",
-  "modelFiles": "dc4be4c35375d2650d68f8c715cd08163de5f457affb4431df38b0de4257c838",
+  "modelFiles": "8c9c1ba3651874504abca84e96d21763ef0fe509d70a4f8845a52679700e158b",
   "files": {
     "Account.json": "cf590ee0d92d5fcc50385f52870eb0e120a26329f7978e9f284628dd54e4590b",
     "ApiToken.json": "335fbf2468044559073c832ed0da7b73e1a8b4447f95d3e66df1c16815933619",
@@ -32,6 +32,8 @@
     "LogEntry.json": "1994c6064bbdae9c0ad6b0fa30b0aa5bc9109cd849c3f67902ed3cb7df8ca4d2",
     "ManagedLabel.json": "c8d85f8396fbbad5c19e264d18db2e6a6f99b8107687efa805a5e65612026561",
     "MyAccountRow.json": "57e03d0c983b0b1583d289dc3400e2840f2b1ad6d20b92e91e2016c9dfc0959c",
+    "Notification.json": "de4b9331d3dcfd1be52d90e7ad253408c88748b04d3a971b84b79ba4818c1bdd",
+    "NotificationPreference.json": "35a45688ce2b8d50cef7a07a40351bfd10babbbb2bd182b573cdca2c276b75da",
     "OidcApiScope.json": "2a1e2a01feaa390b07bbb761fdfedb6f07fee8646586b8c14851cbf0c98b16fc",
     "OidcApplication.json": "eb095d7621543951867e435be6d20b65691276e078bb12a39e6e39d8d819e34c",
     "OidcApplicationMember.json": "a80e1870ed16dd1bba0c536318d15ddc624edcd31d30b76b6b1086ffe85a502c",
@@ -58,6 +60,7 @@
     "PrSizeIgnoreRule.json": "b6691b1d36a9bb645a1cb38452eb34c63f775d6717f1269b99b2a6095e76295c",
     "PrSizeLabel.json": "7c7cd7fa26f13adc901771255fc40d5964ab01e203c0773d908c87a6b5ebd81b",
     "ProjectColumn.json": "0cf0f8a943163b86996690acb306a125960fd07b9cdd25633019b78a9ff02b3f",
+    "PushSubscription.json": "e32e2c6c486e62dfbffd5b4e30a2b49bc06b6f045066992220e66e7bc9cd5735",
     "ReportIngestOutcome.json": "914923e139ff8209050f9899f0972b18e25ce2f849b765062e979bee1fe3ee5e",
     "Repository.json": "8502667af5dd79be8e5f0639dcc48ad7b8df73176b4932d8fb34c65d4844089f",
     "RepositoryGraphState.json": "72dfae99f343bf8336ec4c601d5d6b3b9b5e507829405d6d23b73d86190326a5",
@@ -104,6 +107,7 @@
     "dashboards": "MintPlayer.Spark.Dashboards",
     "identity-provider": "MintPlayer.Spark.IdentityProvider",
     "logging": "MintPlayer.Spark.Logging",
+    "notifications": "MintPlayer.Spark.Notifications",
     "organizations": "MintPlayer.Spark.Organizations",
     "spark": "MintPlayer.Spark"
   },
@@ -122,6 +126,12 @@
     },
     "Model/LogEntry.json": {
       "logging": "1994c6064bbdae9c0ad6b0fa30b0aa5bc9109cd849c3f67902ed3cb7df8ca4d2"
+    },
+    "Model/Notification.json": {
+      "notifications": "de4b9331d3dcfd1be52d90e7ad253408c88748b04d3a971b84b79ba4818c1bdd"
+    },
+    "Model/NotificationPreference.json": {
+      "notifications": "35a45688ce2b8d50cef7a07a40351bfd10babbbb2bd182b573cdca2c276b75da"
     },
     "Model/OidcApiScope.json": {
       "identity-provider": "2a1e2a01feaa390b07bbb761fdfedb6f07fee8646586b8c14851cbf0c98b16fc"
@@ -186,6 +196,9 @@
     "Model/Passkeys.json": {
       "authorization": "738742f13217adeeb4724f72f968923099f7d7210cee1133dfd6707eb55856ce"
     },
+    "Model/PushSubscription.json": {
+      "notifications": "e32e2c6c486e62dfbffd5b4e30a2b49bc06b6f045066992220e66e7bc9cd5735"
+    },
     "Model/SparkUser.json": {
       "authorization": "81d5e4fe403e329fc20404f35c3b9944aa11c17374981df5a4073ddf08fcdb69"
     },
@@ -200,6 +213,7 @@
       "app": "74d417fe4c134a20d7ea8a19399c00f4ce1b9f49d648aa703a1d2c8fa571b29d",
       "dashboards": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
       "identity-provider": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "notifications": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
       "organizations": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
     }
   }

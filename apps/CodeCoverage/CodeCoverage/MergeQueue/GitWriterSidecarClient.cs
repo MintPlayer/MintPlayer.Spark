@@ -454,6 +454,13 @@ public sealed record GitWriterDependencyRequest(string Provider, string RepoId, 
     /// <summary>multi-target-dependency-split-PRD P7 (M7): the central package management conversion commit (MSBuild files,
     /// adding or deleting only <c>Directory.Packages.props</c>) on <c>mintplayer/central-package-management</c>.</summary>
     public bool Central { get; init; }
+
+    /// <summary>#657 M5: <c>format</c> or <c>lint</c>: <see cref="Patch"/> applied on the default branch's
+    /// <see cref="ExpectedSha"/> under the writer's format guard (D15), on <c>mintplayer/{mode}</c>. No <see cref="Files"/>.</summary>
+    public string? Format { get; init; }
+
+    /// <summary>With <see cref="Format"/>: the repository's <c>exclude</c> globs (D11).</summary>
+    public IReadOnlyList<string>? Exclude { get; init; }
 }
 
 public sealed record GitWriterMigratePatch(string Group, string Patch);

@@ -242,6 +242,36 @@ public sealed partial class WriterService
     public Task<DependencyJobResponse> CentralPackagesAsync(DependencyJob job, DependencyCommit commit, IReadOnlyList<(string Path, string? Content)> files)
         => FilesOnBranchAsync("central-packages", DependencyBranches.CentralPackageManagement, job, commit, files);
 
+    /// <summary>
+    /// #657 M5: a format run's patch applied on <c>expected_sha</c> (the default branch the run formatted) and force-pushed to
+    /// <see cref="DependencyBranches.FormatOf"/>. The patch is guarded by <see cref="FormatPatchValidator"/> (D15), and the
+    /// applied tree must differ from the base only in the paths it declares. A branch already holding that tree on that
+    /// parent is answered as it is, so a rerun restarts no checks.
+    /// </summary>
+    public Task<DependencyJobResponse> FormatAsync(DependencyJob job, DependencyCommit commit, string mode, byte[] patch, IReadOnlyList<string> exclude)
+        => jobs.RunAsync("format", job.Repo, async context =>
+        {
+            var verdict = FormatPatchValidator.Validate(patch, exclude, options.Value.MaxPatchBytes);
+            if (!verdict.Accepted)
+                return new DependencyJobResponse(JobOutcomes.PatchRejected, verdict.Reason, null, null, verdict.Paths, verdict.Detail, context.ElapsedMilliseconds);
+            await OpenDependenciesAsync(context, job);
+            var baseTree = await RevParseAsync(context, $"{job.ExpectedSha}^{{tree}}");
+            if (await ApplyPatchAsync(context, job.Credential, baseTree, patch, "format.patch") is not { } tree)
+                return new DependencyJobResponse(JobOutcomes.PatchRejected, PatchReasons.ApplyFailed, null, null, verdict.Paths, "git apply refused the patch on the formatted commit.", context.ElapsedMilliseconds);
+            if (await CheckTreeAsync(context, baseTree, tree, verdict.Paths) is { } unexpected)
+                return new DependencyJobResponse(JobOutcomes.PatchRejected, unexpected.Reason, null, null, unexpected.Paths, unexpected.Detail, context.ElapsedMilliseconds);
+            var branch = DependencyBranches.FormatOf(mode);
+            if (await ExistingSameAsync(context, job, branch, tree) is { } existing)
+                return new DependencyJobResponse(JobOutcomes.Pushed, null, existing, null, verdict.Paths, null, context.ElapsedMilliseconds);
+            var built = await CommitTreeOnAsync(context, tree, job.ExpectedSha, commit);
+            return await PushBotRefAsync(context, job, built, branch, null) switch
+            {
+                Push.Done or Push.UpToDate => new DependencyJobResponse(JobOutcomes.Pushed, null, built, null, verdict.Paths, null, context.ElapsedMilliseconds),
+                Push.Rejected rejected => new DependencyJobResponse(JobOutcomes.PushRejected, null, null, null, [], rejected.Detail, context.ElapsedMilliseconds),
+                _ => throw new InvalidOperationException("Unknown push outcome."),
+            };
+        }, (outcome, reason, detail, ms) => new DependencyJobResponse(outcome, reason, null, null, [], detail, ms));
+
     /// <summary>R14: the work ref is removed after every run, while it is still at <paramref name="expectedSha"/>.</summary>
     public Task<DependencyJobResponse> DependencyDeleteWorkRefAsync(string repo, Uri cloneUrl, GitCredential credential, string? expectedSha, string? line = null)
         => jobs.RunAsync("dependencies-delete", repo, async context =>
@@ -416,4 +446,10 @@ public static class DependencyBranches
 
     /// <summary>multi-target-dependency-split-PRD P7: the branch of the central package management conversion's pull request.</summary>
     public const string CentralPackageManagement = "mintplayer/central-package-management";
+
+    /// <summary>#657 M5: the format modes a commit is pushed for, each to its own branch.</summary>
+    public static readonly IReadOnlyList<string> FormatModes = ["format", "lint"];
+
+    /// <summary>#657 M5: the branch of a FormatRepository (<c>mintplayer/format</c>) or LintRepository (<c>mintplayer/lint</c>) pull request.</summary>
+    public static string FormatOf(string mode) => $"mintplayer/{mode}";
 }

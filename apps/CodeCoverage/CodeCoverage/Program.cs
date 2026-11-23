@@ -28,6 +28,7 @@ using MintPlayer.Spark.MailManager;
 using MintPlayer.Spark.Logging;
 using MintPlayer.Spark.Mcp;
 using MintPlayer.Spark.Messaging;
+using MintPlayer.Spark.Notifications;
 using MintPlayer.Spark.Webhooks.GitHub.Extensions;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -320,6 +321,9 @@ builder.Services.AddSpark(builder.Configuration, spark =>
     CodeCoverage.Webhooks.CoverageWebhooks.AddCoverageWebhooks(spark, builder.Configuration);
     if (mailConfigured)
         spark.AddMailManager();
+    // #657 M8 (D14): the bell's stored notifications; a format run's outcome reaches the user who started it.
+    // security.json binds "notifications:users" to the signed-in users.
+    spark.AddNotifications();
     spark.AddCustomActions();
     spark.AddRecipients();
     spark.AddCronJobs();

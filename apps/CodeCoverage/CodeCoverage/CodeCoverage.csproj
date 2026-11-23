@@ -64,6 +64,8 @@
 		<!-- #660: the command logs (spark.AddLogs()). -->
 		<ProjectReference Include="..\..\..\libs\logging\MintPlayer.Spark.Logging\MintPlayer.Spark.Logging.csproj" />
 		<ProjectReference Include="..\..\..\libs\messaging\MintPlayer.Spark.Messaging\MintPlayer.Spark.Messaging.csproj" />
+		<!-- #657 M8 (D14): a format run's outcome reaches its requester through ISparkNotifier (the bell, mail, Web Push). -->
+		<ProjectReference Include="..\..\..\libs\notifications\MintPlayer.Spark.Notifications\MintPlayer.Spark.Notifications.csproj" />
 		<ProjectReference Include="..\..\..\libs\apps\MintPlayer.Spark.Apps\MintPlayer.Spark.Apps.csproj" />
 		<ProjectReference Include="..\..\..\libs\mail\MintPlayer.Spark.MailManager\MintPlayer.Spark.MailManager.csproj" />
 		<!-- The MCP server for AI agents (plan M6) and its embedded authorization server (ForMcp().AgentsOnly(), PRD D24). -->

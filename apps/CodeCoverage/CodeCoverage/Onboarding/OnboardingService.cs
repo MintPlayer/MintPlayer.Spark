@@ -67,7 +67,31 @@ public interface IOnboardingService
     /// the repository is already that way, the bot cannot tell (M15), or the forge or the git writer refuses.
     /// </summary>
     Task<CentralPackageResult> ConvertCentralPackagesAsync(Repository repository, ECentralPackageDirection direction, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// #657 M4: the default branch's head, its <c>formatting.yml</c> (null when there is none, D1) and whether the merge queue
+    /// is on (D5). Null with <paramref name="refusal"/> when the repository cannot be read.
+    /// </summary>
+    Task<(FormattingTarget? Target, string? Refusal)> FormattingTargetAsync(Repository repository, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// #657 M5: the format run's <paramref name="patch"/> applied on <paramref name="baseSha"/> by the git writer (which guards it,
+    /// D15), pushed to <see cref="Formatting.FormattingWorkflow.Branch"/> and opened (or found) as a pull request into the
+    /// default branch (D6).
+    /// </summary>
+    Task<FormattingPullRequest> FormattingPullRequestAsync(Repository repository, FormattingCommit commit, CancellationToken cancellationToken = default);
 }
+
+/// <summary>What a format run starts from (#657 M4).</summary>
+/// <param name="Workflow">The default branch's <c>.github/workflows/formatting.yml</c>, or null.</param>
+public sealed record FormattingTarget(string Branch, string Sha, string? Workflow, bool MergeQueue);
+
+/// <summary>A format run's commit (#657 M5).</summary>
+/// <param name="Mode"><c>format</c> or <c>lint</c>.</param>
+public sealed record FormattingCommit(string Mode, string BaseSha, string Title, string Body, byte[] Patch, IReadOnlyList<string> Exclude, bool PushesWorkflowChanges);
+
+/// <summary>The pull request a format run opened, or why there is none.</summary>
+public sealed record FormattingPullRequest(bool Opened, string Note, string? Url, int? Number);
 
 /// <summary>What <see cref="IOnboardingService.ConvertCentralPackagesAsync"/> did for one repository.</summary>
 /// <param name="Opened">A pull request is open with the conversion.</param>
@@ -559,7 +583,7 @@ public partial class OnboardingService : IOnboardingService
         string head, IReadOnlyList<GitWriterFile> files, bool narrow, CancellationToken cancellationToken, string? narrowBody = null, string? narrowTitle = null)
     {
         var title = narrow ? narrowTitle ?? OnboardingPlanner.NarrowTitle : OnboardingPlanner.LineTitle;
-        var (opened, note, _) = await BotPullRequestAsync(repository, git, pulls, new BotPullRequest(
+        var (opened, note, _, _) = await BotPullRequestAsync(repository, git, pulls, new BotPullRequest(
             narrow ? "narrowing" : "workflow", lineBranch, head, narrow ? OnboardingPlanner.NarrowBranch(line) : OnboardingPlanner.LineBranch(line), title,
             narrowBody ?? OnboardingPlanner.LineBody(lineBranch, files.Select(f => f.Path)), files, request => request with { Line = line, Narrow = narrow }), cancellationToken);
         return (opened, note);
@@ -570,18 +594,19 @@ public partial class OnboardingService : IOnboardingService
     /// (shaped by <see cref="Shape"/>: a line, a narrowing, the central package conversion), pushed to <see cref="Branch"/>
     /// and opened into <see cref="BaseBranch"/> (or found, on a retry).
     /// </summary>
+    /// <param name="Workflows">#657 D7: the commit changes a workflow though <see cref="Files"/> does not say so (a format patch).</param>
     private sealed record BotPullRequest(string What, string BaseBranch, string Head, string Branch, string Title, string Body, IReadOnlyList<GitWriterFile> Files,
-        Func<GitWriterDependencyRequest, GitWriterDependencyRequest> Shape);
+        Func<GitWriterDependencyRequest, GitWriterDependencyRequest> Shape, bool Workflows = false);
 
-    private async Task<(bool Opened, string Note, string? Url)> BotPullRequestAsync(Repository repository, IForgeMergeQueue git, IForgeDependencyUpdates pulls, BotPullRequest bot,
+    private async Task<(bool Opened, string Note, string? Url, int? Number)> BotPullRequestAsync(Repository repository, IForgeMergeQueue git, IForgeDependencyUpdates pulls, BotPullRequest bot,
         CancellationToken cancellationToken)
     {
         // #649 D8: a commit that changes a workflow needs the token's workflows: write, the narrowing's too since #648.
-        var push = await git.GetWriterAccessAsync(repository, null, pushesWorkflowChanges: bot.Files.Any(f => LinePaths.IsWorkflow(f.Path)), cancellationToken);
+        var push = await git.GetWriterAccessAsync(repository, null, pushesWorkflowChanges: bot.Workflows || bot.Files.Any(f => LinePaths.IsWorkflow(f.Path)), cancellationToken);
         if (push.Access is not { } access)
         {
             logger.LogWarning("Onboarding: no {What} pull request into {Repository} {Branch}: {Reason}", bot.What, repository.FullName, bot.BaseBranch, push.RefusalReason);
-            return (false, $"no {bot.What} pull request into {bot.BaseBranch}: {push.RefusalReason?.TrimEnd('.')}", null);
+            return (false, $"no {bot.What} pull request into {bot.BaseBranch}: {push.RefusalReason?.TrimEnd('.')}", null, null);
         }
         var identity = new GitWriterIdentity(VersioningController.Tagger.Name, VersioningController.Tagger.Email, time.GetUtcNow());
         GitWriterDependencyResult pushed;
@@ -598,7 +623,7 @@ public partial class OnboardingService : IOnboardingService
         {
             // #649 D9: #648's refusal reached nobody but a sentence on the state; it is logged now.
             logger.LogWarning(ex, "Onboarding: the git writer refused {Repository} {Branch}'s {What}", repository.FullName, bot.BaseBranch, bot.What);
-            return (false, $"no {bot.What} pull request into {bot.BaseBranch}: {ex.Message.TrimEnd('.')}", null);
+            return (false, $"no {bot.What} pull request into {bot.BaseBranch}: {ex.Message.TrimEnd('.')}", null, null);
         }
         finally
         {
@@ -609,7 +634,9 @@ public partial class OnboardingService : IOnboardingService
             if (pushed.Outcome is GitWriterOutcomes.Busy or GitWriterOutcomes.Failed)
                 throw new GitWriterUnavailableException($"The git writer answered {bot.BaseBranch}'s {bot.What} with {pushed.Outcome}: {pushed.Detail}");
             logger.LogWarning("Onboarding: {Repository} {Branch}'s {What} was not pushed ({Outcome}): {Detail}", repository.FullName, bot.BaseBranch, bot.What, pushed.Outcome, pushed.Detail);
-            return (false, $"no {bot.What} pull request into {bot.BaseBranch} ({pushed.Outcome}): {pushed.Detail?.TrimEnd('.')}", null);
+            var why = pushed.Reason is { Length: > 0 } reason ? $"{pushed.Outcome}, {reason}" : pushed.Outcome;
+            var where = pushed.Paths is { Count: > 0 } paths ? $" on {string.Join(", ", paths.Take(5).Select(p => $"`{p}`"))}" : "";
+            return (false, $"no {bot.What} pull request into {bot.BaseBranch} ({why}{where}): {pushed.Detail?.TrimEnd('.')}", null, null);
         }
 
         var pull = await pulls.FindPullRequestAsync(repository, bot.Branch, bot.BaseBranch, cancellationToken);
@@ -624,7 +651,31 @@ public partial class OnboardingService : IOnboardingService
                 pull = await pulls.FindPullRequestAsync(repository, bot.Branch, bot.BaseBranch, cancellationToken) ?? throw ex;
             }
         }
-        return (true, $"opened #{pull.Number} into {bot.BaseBranch}", pull.HtmlUrl);
+        return (true, $"opened #{pull.Number} into {bot.BaseBranch}", pull.HtmlUrl, pull.Number);
+    }
+
+    public async Task<(FormattingTarget? Target, string? Refusal)> FormattingTargetAsync(Repository repository, CancellationToken cancellationToken = default)
+    {
+        if (RefusalBeforePlanning(repository) is { } refusal)
+            return (null, refusal);
+        var defaultBranch = repository.DefaultBranch!;
+        if (await ForgeRepositoryTree.OpenAsync(integrations.For(repository), repository, defaultBranch, cancellationToken) is not { } tree)
+            return (null, $"{defaultBranch} could not be read from the forge.");
+        var workflow = await tree.ReadTextAsync(Formatting.FormattingWorkflow.Path, Limits.MaxManifestBytes, cancellationToken);
+        var yml = await tree.ReadTextAsync(CoverageYml.FileName, Limits.MaxManifestBytes, cancellationToken);
+        var queue = MergeQueueYml.Parse(yml, defaultBranch).Section is { Enabled: true };
+        return (new FormattingTarget(defaultBranch, tree.Commit, workflow, queue), null);
+    }
+
+    public async Task<FormattingPullRequest> FormattingPullRequestAsync(Repository repository, FormattingCommit commit, CancellationToken cancellationToken = default)
+    {
+        var git = queues.First(q => q.Provider == repository.Provider);
+        var pulls = updates.First(u => u.Provider == repository.Provider);
+        var patch = Convert.ToBase64String(commit.Patch);
+        var (opened, note, url, number) = await BotPullRequestAsync(repository, git, pulls, new BotPullRequest(commit.Mode == "lint" ? "lint" : "format",
+            repository.DefaultBranch!, commit.BaseSha, Formatting.FormattingWorkflow.Branch(commit.Mode), commit.Title, commit.Body, [],
+            request => request with { Format = commit.Mode, Patch = patch, Exclude = commit.Exclude }, commit.PushesWorkflowChanges), cancellationToken);
+        return new(opened, note, url, number);
     }
 
     /// <summary>The MSBuild files a central package conversion reads, and at most how many.</summary>
@@ -656,7 +707,7 @@ public partial class OnboardingService : IOnboardingService
                 return new(false, string.Join(" ", conversion.Refusals));
             if (conversion.IsEmpty)
                 return new(false, "There is nothing to convert.");
-            var (opened, note, url) = await BotPullRequestAsync(repository, git, pulls, new BotPullRequest("central package management", defaultBranch, tree.Commit,
+            var (opened, note, url, _) = await BotPullRequestAsync(repository, git, pulls, new BotPullRequest("central package management", defaultBranch, tree.Commit,
                 CentralPackageConversion.Branch, conversion.Title, conversion.Body(), conversion.Files, request => request with { Central = true }), cancellationToken);
             return new(opened, note, url);
         }

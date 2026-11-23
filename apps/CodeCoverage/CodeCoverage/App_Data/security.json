@@ -10,7 +10,8 @@
     "c0e5ad00-0000-4000-8000-000000000001": "Administrators"
   },
   "bindings": {
-    "dashboards:administrators": [ "Administrators" ]
+    "dashboards:administrators": [ "Administrators" ],
+    "notifications:users": [ "Signed-in users" ]
   },
   "libraries": {
     "identity-provider": false,

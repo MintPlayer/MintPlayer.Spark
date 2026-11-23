@@ -361,6 +361,12 @@ public enum EMergeQueueCommandSource
     /// <see cref="DependencyUpdates"/>, the App counts as a writer and never reaches a bypass role.
     /// </summary>
     Backports,
+
+    /// <summary>
+    /// The pull request a FormatRepository or LintRepository run opened, queued at the requester's choice (#657 D5). The
+    /// actor is the person who started the run, so their own role on the forge applies, as for a label.
+    /// </summary>
+    Formatting,
 }
 
 public sealed class MergeQueueEntryEvent
