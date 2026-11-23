@@ -53,13 +53,56 @@ export interface RunReleaseRequest {
   date: string;
   /** The server's URL, for the links to the package Releases (`https://github.com`). */
   serverUrl: string;
+  /** Changelog × release lines R2: false on an older release line, whose run Release must not take "Latest" ({@link isCurrentLine}). */
+  latest: boolean;
+}
+
+/** `versioning.lines.pattern`'s default, as `ReleaseLinePattern.DefaultText`. */
+const DEFAULT_LINE_PATTERN = 'release/{ecosystem}-{major}.x';
+
+/** The pattern's regex, with the server's placeholders (`ReleaseLinePattern.TryParse`); null when it is not one. */
+function lineRegex(pattern: string): RegExp | null {
+  if (pattern.split('{ecosystem}').length !== 2 || pattern.split('{major}').length !== 2) return null;
+  const escaped = pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    .replace('\\{ecosystem\\}', '(?<ecosystem>[a-z][a-z0-9]{0,31})')
+    .replace('\\{major\\}', '(?<major>[1-9][0-9]{0,8})');
+  return new RegExp(`^${escaped}$`);
+}
+
+/**
+ * Changelog × release lines R2: whether a run on `branch` may mark its run Release latest. A release line is current when it
+ * is the highest major of its ecosystem among the line branches, the rule `/release` uses (`ReleaseLinePattern.CurrentLines`);
+ * the default branch, lines off and a branch that is no line stay latest. When the refs cannot be read the answer is false:
+ * GitHub then keeps the current Latest, which is never wrong.
+ */
+export async function isCurrentLine(options: ReleaseOptions, lines: unknown, branch: string, defaultBranch: string): Promise<boolean> {
+  if (branch === defaultBranch || !lines || typeof lines !== 'object') return true;
+  const configured = (lines as Record<string, unknown>).pattern;
+  const pattern = typeof configured === 'string' ? configured : DEFAULT_LINE_PATTERN;
+  const regex = lineRegex(pattern);
+  const mine = regex?.exec(branch)?.groups;
+  if (!regex || !mine) return true;
+  const prefix = pattern.slice(0, pattern.indexOf('{'));
+  const doFetch = options.fetch ?? fetch;
+  const reply = await doFetch(`${options.apiUrl}/repos/${options.repository}/git/matching-refs/heads/${prefix}`, {
+    headers: { authorization: `Bearer ${options.token}`, accept: 'application/vnd.github+json', 'x-github-api-version': '2022-11-28' },
+  });
+  if (!reply.ok) {
+    options.warn(`Run Release: listing the release lines answered HTTP ${reply.status}; the run Release is not marked latest.`);
+    return false;
+  }
+  const refs = (await reply.json()) as { ref?: unknown }[];
+  return !refs.some((r) => {
+    const other = typeof r.ref === 'string' ? regex.exec(r.ref.replace(/^refs\/heads\//, ''))?.groups : undefined;
+    return other?.ecosystem === mine.ecosystem && Number(other.major) > Number(mine.major);
+  });
 }
 
 /** The most `.n` suffixes tried for a run's tag on one day. */
 export const MAX_RUN_TAGS_PER_DAY = 20;
 
 /**
- * #693 D7: one Release per run, created last and marked latest, so the repository's "Latest release" is the overview. Its
+ * #693 D7: one Release per run, created last and marked latest (unless its line is an older one, R2), so the repository's "Latest release" is the overview. Its
  * tag is `release/<line>/<yyyy-MM-dd>[.<n>]` on a release line (the branch without its `release/`), else
  * `release/<yyyy-MM-dd>[.<n>]`; it holds no `/v`, so the engine never reads it as a version tag (S2). It lists every
  * package the run released, linking each one's own Release, and the dependency-only ones by name.
@@ -81,7 +124,7 @@ export async function createRunRelease(options: ReleaseOptions, releases: Releas
     name: line ? `${line} ${request.date}` : request.date,
     body: runBody(listed, options.repository, request.serverUrl),
     prerelease: false,
-    make_latest: 'true',
+    make_latest: request.latest ? 'true' : 'false',
   }, () => false);
 }
 

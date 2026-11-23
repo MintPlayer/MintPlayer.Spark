@@ -10,7 +10,7 @@ import { realExec, type Exec } from './exec';
 import { checkBranchName, fetchTags, prepareHistory, showOnDefaultBranch, taggedVersions } from './git';
 import { discoverPackages, PLACEHOLDER, writeVersions, type Stamp } from './npm';
 import { distTag, highest, parse } from './semver';
-import { createReleases, createRunRelease, cutReleaseBranches } from './releases';
+import { createReleases, createRunRelease, cutReleaseBranches, isCurrentLine } from './releases';
 import { planOnServer, releaseOnServer, runOnServer, verifyTagsOnServer } from './server';
 
 export interface Inputs {
@@ -215,7 +215,7 @@ export async function version(inputs: Inputs, deps: Dependencies): Promise<Outpu
 
   const packages = (collected.manifest.packages as { id: string }[]).map((p) => p.id);
   const environment = buildEnvironment(section, response.lineMajors);
-  if (!planOnly) return { ...await finish(inputs, deps, mode, response, packages, branch, defaultBranch), environment };
+  if (!planOnly) return { ...await finish(inputs, deps, mode, response, packages, branch, defaultBranch, section.lines), environment };
 
   for (const warning of response.warnings ?? []) deps.warn(warning);
   const failure = failureOf(response, true);
@@ -324,7 +324,17 @@ async function release(inputs: Inputs, deps: Dependencies, branch: string, defau
   }
   // A release answer may leave out the line's majors; the plan made them, and the release writes no other version.
   response = { ...response, lineMajors: response.lineMajors ?? plan.response.lineMajors };
-  return { ...await finish(inputs, deps, mode, response, plan.packages ?? [], branch, defaultBranch), environment: plan.environment ?? {} };
+  // R2: the run Release's latest flag needs the line pattern; the plan's section is not carried, so read it again.
+  // The tags are written by now, so an unreadable section only costs the flag (old behaviour: latest), never the release.
+  let lines: unknown;
+  if (inputs.releases && mode === 'local') {
+    try {
+      lines = versioningSection(await showOnDefaultBranch(deps.exec, cwd, defaultBranch, 'coverage.yml'), defaultBranch).lines;
+    } catch (error) {
+      deps.warn(`The versioning section could not be read again for the run Release (${(error as Error).message}).`);
+    }
+  }
+  return { ...await finish(inputs, deps, mode, response, plan.packages ?? [], branch, defaultBranch, lines), environment: plan.environment ?? {} };
 }
 
 /**
@@ -332,7 +342,7 @@ async function release(inputs: Inputs, deps: Dependencies, branch: string, defau
  * A release stamps again (the same stamps as its plan), so a job that did not inherit the plan's files publishes right.
  */
 async function finish(inputs: Inputs, deps: Dependencies, mode: 'server' | 'local', response: RunResponse, packages: string[],
-  branch: string, defaultBranch: string): Promise<Outputs> {
+  branch: string, defaultBranch: string, lines: unknown): Promise<Outputs> {
   const cwd = inputs.workspace;
   for (const warning of response.warnings ?? []) deps.warn(warning);
   const failure = failureOf(response);
@@ -354,8 +364,11 @@ async function finish(inputs: Inputs, deps: Dependencies, mode: 'server' | 'loca
       const options = { apiUrl: inputs.apiUrl, repository: inputs.repository, token: inputs.githubToken, fetch: deps.fetch, sleep: deps.sleep,
         log: deps.log, warn: deps.warn };
       await createReleases(options, releases);
-      // #693 D7: the run's own Release last, marked latest, so it is the repository's overview.
-      await createRunRelease(options, releases, { commit: inputs.sha, branch, defaultBranch, date: new Date().toISOString().slice(0, 10), serverUrl: inputs.serverUrl });
+      // #693 D7: the run's own Release last, marked latest, so it is the repository's overview; on an older line not (R2).
+      if (releases.some((r) => r.release)) {
+        const latest = await isCurrentLine(options, lines, branch, defaultBranch);
+        await createRunRelease(options, releases, { commit: inputs.sha, branch, defaultBranch, date: new Date().toISOString().slice(0, 10), serverUrl: inputs.serverUrl, latest });
+      }
     }
   }
   // PRD D12: likewise for the release-branch cuts, behind `cut-release-branches` in place of the auto-cut policy.

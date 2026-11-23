@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { type BranchCut, type Release } from './engine';
-import { createReleases, createRunRelease, cutComment, cutReleaseBranches, MAX_WAIT_MS, retryAfterMs, SPACING_MS } from './releases';
+import { createReleases, createRunRelease, cutComment, cutReleaseBranches, isCurrentLine, MAX_WAIT_MS, retryAfterMs, SPACING_MS } from './releases';
 
 const release = (tag: string, withNotes = true): Release => ({
   id: tag.split('/v')[0], kind: 'nuget', version: tag.split('/v')[1], tag, reasons: [], taggedByHand: false, tagOutcome: 'created',
@@ -47,7 +47,14 @@ describe('createReleases', () => {
 
 describe('#693 D7: dependency-only packages and the run Release', () => {
   const dependent = (tag: string): Release => ({ ...release(tag), release: { name: tag, body: 'Dependency update: A 1.0.0', prerelease: false, dependencyOnly: true } });
-  const request = { commit: 'c'.repeat(40), branch: 'release/dotnet-11.x', defaultBranch: 'master', date: '2026-11-22', serverUrl: 'https://github.com' };
+  const request = { commit: 'c'.repeat(40), branch: 'release/dotnet-11.x', defaultBranch: 'master', date: '2026-11-22', serverUrl: 'https://github.com', latest: true };
+
+  it('does not mark an older line\'s run Release latest', async () => {
+    // Changelog × release lines R2: a backport release must not take "Latest" from the current line.
+    const h = harness([new Response('', { status: 404 }), new Response('{}', { status: 201 })]);
+    await createRunRelease(h.options, [release('A/v10.0.3')], { ...request, branch: 'release/dotnet-10.x', latest: false });
+    expect(h.requests[1].body).toMatchObject({ tag_name: 'release/dotnet-10.x/2026-11-22', make_latest: 'false' });
+  });
 
   it('gives a dependency-only package no Release of its own', async () => {
     const h = harness([new Response('{}', { status: 201 })]);
@@ -76,6 +83,34 @@ describe('#693 D7: dependency-only packages and the run Release', () => {
     await createRunRelease(h.options, [release('A/v1.0.0')], { ...request, branch: 'master' });
     expect(h.requests[1].body).toMatchObject({ tag_name: 'release/2026-11-22', name: '2026-11-22' });
     expect(await createRunRelease(h.options, [release('A/v1.0.0', false)], request)).toBeNull();
+  });
+});
+
+describe('Changelog × release lines R2: isCurrentLine', () => {
+  const refs = (...branches: string[]) => new Response(JSON.stringify(branches.map((b) => ({ ref: `refs/heads/${b}` }))), { status: 200 });
+  const promote = { current: 'promote' };
+
+  it('is true for the highest major of the ecosystem and false for an older line', async () => {
+    const h = harness([refs('release/dotnet-10.x', 'release/dotnet-11.x', 'release/angular-22.x'), refs('release/dotnet-10.x', 'release/dotnet-11.x')]);
+    expect(await isCurrentLine(h.options, promote, 'release/dotnet-11.x', 'master')).toBe(true);
+    expect(await isCurrentLine(h.options, promote, 'release/dotnet-10.x', 'master')).toBe(false);
+    expect(h.requests[0].url).toBe('https://api.github.com/repos/acme/repo/git/matching-refs/heads/release/');
+  });
+
+  it('is true without a lookup for the default branch, with lines off, or for a branch that is no line', async () => {
+    const h = harness([]);
+    expect(await isCurrentLine(h.options, promote, 'master', 'master')).toBe(true);
+    expect(await isCurrentLine(h.options, undefined, 'release/dotnet-10.x', 'master')).toBe(true);
+    expect(await isCurrentLine(h.options, { pattern: 'lines/{ecosystem}/{major}' }, 'release/dotnet-10.x', 'master')).toBe(true);
+    expect(h.requests).toEqual([]);
+  });
+
+  it('reads a custom pattern, an empty lines section as the default, and is false with a warning when the refs cannot be read', async () => {
+    const h = harness([refs('lines/dotnet/9', 'lines/dotnet/10'), new Response('{}', { status: 500 })]);
+    expect(await isCurrentLine(h.options, { pattern: 'lines/{ecosystem}/{major}' }, 'lines/dotnet/9', 'master')).toBe(false);
+    expect(h.requests[0].url).toBe('https://api.github.com/repos/acme/repo/git/matching-refs/heads/lines/');
+    expect(await isCurrentLine(h.options, {}, 'release/dotnet-11.x', 'master')).toBe(false);
+    expect(h.warnings).toEqual([expect.stringContaining('HTTP 500')]);
   });
 });
 

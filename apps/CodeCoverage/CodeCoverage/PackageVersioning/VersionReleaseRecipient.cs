@@ -1,6 +1,7 @@
 using CodeCoverage.Entities;
 using CodeCoverage.Feedback;
 using CodeCoverage.Forge;
+using CodeCoverage.MergeQueue;
 using CodeCoverage.Versioning.Releases;
 using Microsoft.Extensions.Logging;
 using MintPlayer.SourceGenerators.Attributes;
@@ -30,6 +31,8 @@ public partial class VersionReleaseRecipient : IRecipient<CreateVersionReleasesM
 
     [Inject] private readonly IAsyncDocumentSession session;
     [Inject] private readonly IEnumerable<IForgeVersioning> forges;
+    [Inject] private readonly IForgeIntegrationResolver integrations;
+    [Inject] private readonly IEnumerable<IForgeMergeQueue> queues;
     [Inject] private readonly TimeProvider clock;
     [Inject] private readonly ILogger<VersionReleaseRecipient> logger;
 
@@ -66,7 +69,7 @@ public partial class VersionReleaseRecipient : IRecipient<CreateVersionReleasesM
     }
 
     /// <summary>
-    /// #693 D7: the run's own Release, last and marked latest. Its date is the run's start, so a retry names the same tag;
+    /// #693 D7: the run's own Release, last and marked latest unless its line is an older one (R2). Its date is the run's start, so a retry names the same tag;
     /// a candidate whose tag already has a Release is another run's, and the next <c>.n</c> is tried.
     /// </summary>
     private async Task CreateRunReleaseAsync(VersioningRun run, Repository repository, IForgeVersioning forge, bool first, CancellationToken cancellationToken)
@@ -79,7 +82,8 @@ public partial class VersionReleaseRecipient : IRecipient<CreateVersionReleasesM
         var date = DateOnly.FromDateTime(run.StartedAtUtc);
         var tagBase = RunRelease.TagBase(run.Branch, repository.DefaultBranch, date);
         var url = repository.Provider == EForgeProvider.GitHub ? $"https://github.com/{repository.FullName}" : "";
-        var release = new ForgeRelease(tagBase, RunRelease.Name(run.Branch, repository.DefaultBranch, date), RunRelease.Body(packages, url), false, run.Commit, Latest: true);
+        var latest = await MayBeLatestAsync(repository, run.Branch, cancellationToken);
+        var release = new ForgeRelease(tagBase, RunRelease.Name(run.Branch, repository.DefaultBranch, date), RunRelease.Body(packages, url), false, run.Commit, latest);
         for (var n = 1; n <= RunRelease.MaxPerDay; n++)
         {
             if (!first) await Task.Delay(Spacing, clock, cancellationToken);
@@ -92,5 +96,29 @@ public partial class VersionReleaseRecipient : IRecipient<CreateVersionReleasesM
             return;
         }
         logger.LogWarning("Versioning: every run Release tag from {Tag} on is taken in {Repository}", tagBase, repository.FullName);
+    }
+
+    /// <summary>
+    /// Changelog × release lines R2: a run on an older release line (a backport release) must not take "Latest" from the
+    /// current line. A branch is current when it is the highest major of its ecosystem among the line branches, the rule
+    /// <c>/release</c> uses; a branch that is no line (lines off, the default branch) stays latest. When the lines cannot be
+    /// read, the Release is not marked latest: GitHub then keeps the current Latest, which is never wrong.
+    /// </summary>
+    private async Task<bool> MayBeLatestAsync(Repository repository, string branch, CancellationToken cancellationToken)
+    {
+        if (repository.DefaultBranch is not { } defaultBranch || branch == defaultBranch) return true;
+        try
+        {
+            var config = VersioningYml.Parse(await integrations.For(repository).GetFileContentAsync(repository, defaultBranch, CoverageYml.FileName, cancellationToken)).Config;
+            if (config?.EffectiveLines is not { } pattern || !pattern.TryMatch(branch, out var line)) return true;
+            if (queues.FirstOrDefault(q => q.Provider == repository.Provider) is not { } git) return false;
+            var branches = await git.ListBranchesAsync(repository, SupportedLines.BranchPrefix(pattern), cancellationToken);
+            return pattern.CurrentLines([.. branches, branch]).Contains(line);
+        }
+        catch (ForgeRequestException ex) when (ForgeRateLimitedException.Find(ex) is null)
+        {
+            logger.LogWarning(ex, "Versioning: the release lines of {Repository} could not be read; the run Release is not marked latest", repository.FullName);
+            return false;
+        }
     }
 }

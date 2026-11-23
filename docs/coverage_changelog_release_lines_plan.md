@@ -26,7 +26,21 @@ Core with notes "- a leak on stop (#3)" only.
 - `ForRepositoryAsync` hides the default branch's document when it has a `LinePattern`.
 - `GitWriterVersioningPlanRequest.Promoted` and `VersioningPlans.PlanAsync(promoted:)` were added.
 
-Green: 19/19 with `ChangelogQueryActionsTests`. **NEXT:** M3 (run Release latest only for a current line, C# + TS).
+Green: 19/19 with `ChangelogQueryActionsTests`.
+
+**M3 done (2026-11-23):**
+- **C#:** `VersionReleaseRecipientTests.Only_a_current_line_s_run_Release_becomes_latest` (3 cases). It was red only on the
+  older-line case (dotnet-11.x while dotnet-12.x exists: `Latest` was true). `VersionReleaseRecipient.MayBeLatestAsync`
+  reads coverage.yml and lists the line branches; it applies `pattern.CurrentLines`. A forge error gives false, so GitHub
+  keeps the current Latest. Green: 10/10.
+- **TS:** `isCurrentLine` in `releases.ts`. It ports the pattern regex and calls `git/matching-refs/heads/<prefix>`.
+  `RunReleaseRequest.latest` feeds `make_latest`. `main.ts` passes `section.lines` on a run and re-reads the section on a
+  release (a read failure only warns).
+- **Caveat, no TS red:** the TS implementation was written before its tests ran, so there was no observed red on that
+  side.
+- **Checks:** 31/31 in `releases.test.ts` and `main.test.ts`; `tsc --noEmit` clean; `dist` rebuilt in the main checkout.
+
+**NEXT:** M4 (title correction skips backport PRs).
 
 ## Test harness (investigation pass 3)
 
