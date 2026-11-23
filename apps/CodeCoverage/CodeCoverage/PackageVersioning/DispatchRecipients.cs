@@ -136,7 +136,8 @@ internal static class VersioningPlans
 {
     /// <returns>The plan, or null when there is none (logged under <paramref name="caller"/>); the next push plans again.</returns>
     public static async Task<GitWriterVersioningPlanResult?> PlanAsync(IGitWriterSidecar writer, IForgeMergeQueue git, Repository repository, string branch, string sha,
-        string defaultBranch, int? branchMajor, VersioningSettings settings, bool notes, ILogger logger, string caller, CancellationToken cancellationToken)
+        string defaultBranch, int? branchMajor, VersioningSettings settings, bool notes, ILogger logger, string caller, CancellationToken cancellationToken,
+        bool promoted = false)
     {
         var push = await git.GetWriterAccessAsync(repository, null, false, cancellationToken);
         if (push.Access is not { } access)
@@ -148,7 +149,7 @@ internal static class VersioningPlans
         {
             var result = await writer.VersioningPlanAsync(new GitWriterVersioningPlanRequest(
                 repository.Provider.ToCanonicalString(), repository.GitHubId.ToString(CultureInfo.InvariantCulture), access.CloneUrl,
-                new CommitGraph.SidecarCredential(access.Username, access.Password), branch, defaultBranch, sha, branchMajor, settings, notes),
+                new CommitGraph.SidecarCredential(access.Username, access.Password), branch, defaultBranch, sha, branchMajor, settings, notes, promoted),
                 cancellationToken);
             if (result.Outcome == GitWriterVersioningPlanResult.Planned) return result;
             logger.LogWarning("{Caller}: no plan for {Sha} on {Branch} of {Repository}: {Outcome} {Reason} {Detail}",

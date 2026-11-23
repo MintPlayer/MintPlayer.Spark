@@ -96,9 +96,13 @@ public sealed record GitWriterPackageNote(string Id, string Reason);
 public sealed record GitWriterBranchCut(string Branch, int Major, string Commit, IReadOnlyList<string>? Packages, int? PullRequest, string? Ecosystem = null);
 
 /// <summary><c>POST jobs/versioning/plan</c> (#153 M11, D3 trigger B): would a run on <see cref="Commit"/> release anything?</summary>
+/// <param name="Promoted">
+/// Changelog × release lines R1: plan the line <paramref name="Branch"/> as if <c>/release</c> promoted <paramref name="Commit"/>,
+/// a commit on <paramref name="DefaultBranch"/>, into it now.
+/// </param>
 public sealed record GitWriterVersioningPlanRequest(
     string Provider, string RepoId, string CloneUrl, SidecarCredential Credential, string Branch, string DefaultBranch, string Commit, int? BranchMajor,
-    VersioningSettings Settings, bool Notes = false);
+    VersioningSettings Settings, bool Notes = false, bool Promoted = false);
 
 /// <summary>The writer's answer. <see cref="Releases"/> holds package ids only: the plan has no API hashes, so its versions are not the run's.</summary>
 /// <param name="Upcoming">#693 Q12: with <see cref="GitWriterVersioningPlanRequest.Notes"/>, each planned package's notes.</param>

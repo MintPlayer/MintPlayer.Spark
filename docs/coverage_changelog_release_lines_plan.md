@@ -14,8 +14,19 @@ view shows master with no packages (PRD "The problem"). Three read-only investig
 `VersioningPlanRequestWire` → endpoint (400 `promoted` unless the branch is a line) → `VersioningPlanJob` →
 `PlanAsync` fetches and checks ancestry against the default branch instead of the line. Green: 8/8 with
 `VersioningPlanTests`. S1 proven: after a second promotion (#2 promoted and tagged 10.0.1), the plan at main's head lists
-Core with notes "- a leak on stop (#3)" only. **NEXT:** M2 (server: `GitWriterVersioningPlanRequest.Promoted`, compose
-each current line on a default-branch push, hide the default-branch row with lines on).
+Core with notes "- a leak on stop (#3)" only.
+
+**M2 done (2026-11-23):** `UpcomingChangelogRecipientTests`. The first test moved to lines off (`versioning:` plain,
+`release/11.x`): with lines off, the default branch keeps its row. Two new tests, both stores. Red first: 4 failures
+(backport lines: main was planned and listed; promote: no promoted plan). Fix in `UpcomingChangelogRecipient`:
+- With lines on, a default-branch push plans nothing for the default branch. It stores the default branch's document as
+  the pattern cache only, with empty releases.
+- With `current: promote`, it lists the line branches and plans each `pattern.CurrentLines(...)` (the same rule
+  `/release` uses, so S2 needed no extraction) with `Promoted = true` at the default branch's sha.
+- `ForRepositoryAsync` hides the default branch's document when it has a `LinePattern`.
+- `GitWriterVersioningPlanRequest.Promoted` and `VersioningPlans.PlanAsync(promoted:)` were added.
+
+Green: 19/19 with `ChangelogQueryActionsTests`. **NEXT:** M3 (run Release latest only for a current line, C# + TS).
 
 ## Test harness (investigation pass 3)
 

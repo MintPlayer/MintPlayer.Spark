@@ -89,21 +89,57 @@ public partial class UpcomingChangelogRecipient : IRecipient<UpcomingChangelogMe
             return;
         }
         if (config is null || !config.IsVersionedBranch(message.Branch, defaultBranch, out var branchMajor)) return;
+        var settings = config.ToSettings();
+        var at = clock.GetUtcNow().UtcDateTime;
 
-        var plan = await VersioningPlans.PlanAsync(writer, git, repository, message.Branch, message.Sha, defaultBranch, branchMajor, config.ToSettings(), true,
+        if (message.Branch == defaultBranch && config.EffectiveLines is { } pattern)
+        {
+            // Changelog × release lines R1: with lines on the default branch releases nothing (#568 D15), so it is not planned
+            // and gets no row; its document only caches the patterns the push filter matches line pushes against.
+            var cache = await LoadOrStoreAsync(repository, defaultBranch, cancellationToken);
+            Apply(cache, repository.Id!, defaultBranch, message.Sha, at, []);
+            Cache(cache, config);
+            if (config.Lines?.PromotesCurrent == true)
+            {
+                // Promote lines move only on /release: compose each current line as if /release promoted this commit now.
+                // The lines are the ones /release picks: the highest major of each ecosystem among the line branches.
+                var branches = await git.ListBranchesAsync(repository, SupportedLines.BranchPrefix(pattern), cancellationToken);
+                foreach (var line in pattern.CurrentLines(branches))
+                {
+                    var branch = pattern.Format(line);
+                    config.IsVersionedBranch(branch, defaultBranch, out var lineMajor);
+                    var promoted = await VersioningPlans.PlanAsync(writer, git, repository, branch, message.Sha, defaultBranch, lineMajor, settings, true,
+                        logger, "Upcoming changelog", cancellationToken, promoted: true);
+                    if (promoted is null) continue;
+                    Apply(await LoadOrStoreAsync(repository, branch, cancellationToken), repository.Id!, branch, message.Sha, at, promoted.Upcoming ?? []);
+                }
+            }
+            await session.SaveChangesAsync(cancellationToken);
+            return;
+        }
+
+        var plan = await VersioningPlans.PlanAsync(writer, git, repository, message.Branch, message.Sha, defaultBranch, branchMajor, settings, true,
             logger, "Upcoming changelog", cancellationToken);
         if (plan is null) return;
 
-        var id = UpcomingChangelog.DocumentId(repository.Provider, repository.GitHubId, message.Branch);
+        var upcoming = await LoadOrStoreAsync(repository, message.Branch, cancellationToken);
+        Apply(upcoming, repository.Id!, message.Branch, message.Sha, at, plan.Upcoming ?? []);
+        if (message.Branch == defaultBranch) Cache(upcoming, config);
+        await session.SaveChangesAsync(cancellationToken);
+    }
+
+    private async Task<UpcomingChangelog> LoadOrStoreAsync(Repository repository, string branch, CancellationToken cancellationToken)
+    {
+        var id = UpcomingChangelog.DocumentId(repository.Provider, repository.GitHubId, branch);
         var upcoming = await session.LoadAsync<UpcomingChangelog>(id, cancellationToken);
         if (upcoming is null) await session.StoreAsync(upcoming = new UpcomingChangelog { Id = id }, id, cancellationToken);
-        Apply(upcoming, repository.Id!, message.Branch, message.Sha, clock.GetUtcNow().UtcDateTime, plan.Upcoming ?? []);
-        if (message.Branch == defaultBranch)
-        {
-            upcoming.LinePattern = config.EffectiveLines?.Text;
-            upcoming.ReleaseBranches = [.. config.EffectiveReleaseBranches];
-        }
-        await session.SaveChangesAsync(cancellationToken);
+        return upcoming;
+    }
+
+    private static void Cache(UpcomingChangelog defaultBranch, VersioningConfig config)
+    {
+        defaultBranch.LinePattern = config.EffectiveLines?.Text;
+        defaultBranch.ReleaseBranches = [.. config.EffectiveReleaseBranches];
     }
 
     internal static void Apply(UpcomingChangelog upcoming, string repositoryId, string branch, string commit, DateTime at, IReadOnlyList<GitWriterUpcomingNotes> notes)
@@ -116,13 +152,16 @@ public partial class UpcomingChangelogRecipient : IRecipient<UpcomingChangelogMe
             .Select(n => new UpcomingChangelogRelease { Package = n.Id, Notes = n.Notes, Omitted = n.Omitted })];
     }
 
-    /// <summary>A repository's lines, the default branch first, for the changelog page: the id prefix, no query.</summary>
+    /// <summary>
+    /// A repository's lines, the default branch first, for the changelog page: the id prefix, no query. With lines on the
+    /// default branch's document is the push filter's cache, not a row (R1).
+    /// </summary>
     public static async Task<List<UpcomingChangelog>> ForRepositoryAsync(ISparkSession session, Repository repository, CancellationToken cancellationToken = default)
     {
         // A repository has a handful of lines; one page of the prefix holds them all.
         var lines = await session.LoadStartingWithAsync<UpcomingChangelog>(UpcomingChangelog.ForRepository(repository.Provider, repository.GitHubId), 0, 1024,
             cancellationToken);
-        return [.. lines.Where(l => l.Repository == repository.Id)
+        return [.. lines.Where(l => l.Repository == repository.Id && !(l.Branch == repository.DefaultBranch && l.LinePattern is not null))
             .OrderBy(l => l.Branch == repository.DefaultBranch ? 0 : 1).ThenByDescending(l => l.Branch, StringComparer.Ordinal)];
     }
 }
