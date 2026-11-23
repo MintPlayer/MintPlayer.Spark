@@ -70,7 +70,8 @@ public sealed partial class GitHubPullRequestFacts(HttpClient http, string graph
 		foreach (var alias in repo.EnumerateObject())
 		{
 			var pull = alias.Value;
-			if (pull.ValueKind != JsonValueKind.Object || !pull.TryGetProperty("number", out var number) || !number.TryGetInt32(out var n)) continue;
+			if (pull.ValueKind != JsonValueKind.Object || !pull.TryGetProperty("number", out var number)
+				|| number.ValueKind != JsonValueKind.Number || !number.TryGetInt32(out var n)) continue;
 			var body = String(pull, "body");
 			var bug = pull.TryGetProperty("closingIssuesReferences", out var issues) && Nodes(issues)
 				.Any(issue => issue.TryGetProperty("labels", out var labels) && Names(labels).Any(l => string.Equals(l, "bug", StringComparison.OrdinalIgnoreCase)));
