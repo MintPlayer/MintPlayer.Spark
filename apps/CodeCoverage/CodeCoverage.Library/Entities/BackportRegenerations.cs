@@ -63,6 +63,16 @@ public class BackportRegeneration
     /// <summary>The files that need regenerating, for the note.</summary>
     public List<string> Paths { get; set; } = [];
 
+    /// <summary>#657 M7 (D18): the commits <c>formatting.yml</c> proves a whitespace resolution from: the line's tip the
+    /// change was picked onto, the picked commit, and the commit it was taken against.</summary>
+    public string? OursSha { get; set; }
+
+    /// <inheritdoc cref="OursSha"/>
+    public string? TheirsSha { get; set; }
+
+    /// <inheritdoc cref="OursSha"/>
+    public string? MergeBaseSha { get; set; }
+
     public int PostRebaseTimeoutMinutes { get; set; } = 20;
 
     /// <summary>Whether the opened pull request goes to the merge queue once regenerated (#570 M7, D12); decided when the

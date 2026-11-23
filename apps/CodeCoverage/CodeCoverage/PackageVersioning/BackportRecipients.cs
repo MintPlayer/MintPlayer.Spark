@@ -300,6 +300,7 @@ public partial class BackportRecipient : IRecipient<BackportMessage>
                             {
                                 Head = target.Head, Branch = target.Branch, Number = pull.Number, Title = title, Body = body, Sha = backportCommit, SourceSha = commit,
                                 Workflows = [.. plan.Workflows], RegeneratedPaths = [.. plan.Globs], Paths = [.. regenerate],
+                                OursSha = target.ProofOurs, TheirsSha = target.ProofTheirs, MergeBaseSha = target.ProofBase,
                                 PostRebaseTimeoutMinutes = queue!.PostRebaseTimeoutMinutes, Enqueue = Enqueues(backport, queue, target.Branch),
                             }, cancellationToken);
                             lines.Add($"- `{target.Branch}`: `{target.Head}` is pushed; its pull request opens once {string.Join(", ", plan.Workflows.Select(w => $"`{w}`"))} "
