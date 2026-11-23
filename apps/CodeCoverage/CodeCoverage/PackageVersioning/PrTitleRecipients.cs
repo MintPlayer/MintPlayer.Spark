@@ -75,6 +75,16 @@ public partial class PrTitleRecipient : IRecipient<CorrectPrTitleMessage>
         ForgeVersioningCheck? outcome = null;
         try
         {
+            // Changelog × release lines R3: the app's backport copies the source's corrected title behind its [line], and its
+            // changelog entry is the source's (#693 D5). Correcting it would only drop the prefix and the (#n) reference.
+            if (BackportProvenance.FromMarker(pull.Body, repository.FullName) is { } source)
+            {
+                var number = source.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                outcome = Check("Title left alone", $"A backport of #{number}: its changelog entry is #{number}'s, so this title is not corrected.")
+                    with { Actions = [], ExternalId = message.Number.ToString(System.Globalization.CultureInfo.InvariantCulture) };
+                return;
+            }
+
             var skipped = HasSkipLabel(pull.Labels);
             if (message.Button == PrTitleCheck.NotUserFacing.Identifier && !skipped)
             {

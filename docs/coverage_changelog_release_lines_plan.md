@@ -40,7 +40,17 @@ Green: 19/19 with `ChangelogQueryActionsTests`.
   side.
 - **Checks:** 31/31 in `releases.test.ts` and `main.test.ts`; `tsc --noEmit` clean; `dist` rebuilt in the main checkout.
 
-**NEXT:** M4 (title correction skips backport PRs).
+**M4 done (2026-11-23):** `PrTitleRecipientTests.The_app_s_backport_pull_request_keeps_its_title_and_asks_nothing`.
+- **Red:** the title `[dotnet-10.x] fix: Crash on empty input (#12)` was rewritten to `[dotnet-10.x] fix: Crash on empty
+  input`, losing `(#12)`.
+- **Fix:** `PrTitleRecipient` skips a pull request whose body carries the app's `backport-of` marker for this repository
+  (`BackportProvenance.FromMarker`). The check completes neutral with "Title left alone", names the source and shows no
+  buttons.
+- **Scope:** only the app's own backports are skipped. A hand-made "Backport of #N" pull request is still corrected,
+  because its title is the author's own.
+- **Green:** 11/11.
+
+**NEXT:** M5 (promote-notes edges in `ReleaseNotesTests`).
 
 ## Test harness (investigation pass 3)
 
