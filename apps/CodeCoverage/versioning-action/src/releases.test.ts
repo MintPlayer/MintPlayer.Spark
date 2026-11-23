@@ -49,6 +49,20 @@ describe('#693 D7: dependency-only packages and the run Release', () => {
   const dependent = (tag: string): Release => ({ ...release(tag), release: { name: tag, body: 'Dependency update: A 1.0.0', prerelease: false, dependencyOnly: true } });
   const request = { commit: 'c'.repeat(40), branch: 'release/dotnet-11.x', defaultBranch: 'master', date: '2026-11-22', serverUrl: 'https://github.com', latest: true };
 
+  it('moves to the next suffix when another run took the tag between the lookup and the post', async () => {
+    // Changelog × release lines R5 (G5): a 422 already_exists from the create call means "taken", not "failed".
+    const h = harness([
+      new Response('', { status: 404 }),
+      new Response('{"message":"Validation Failed","errors":[{"resource":"Release","code":"already_exists","field":"tag_name"}]}', { status: 422 }),
+      new Response('', { status: 404 }),
+      new Response('{}', { status: 201 }),
+    ]);
+    const outcome = await createRunRelease(h.options, [release('A/v1.0.0')], request);
+    expect(outcome).toBe('created');
+    expect(h.requests[3].body).toMatchObject({ tag_name: 'release/dotnet-11.x/2026-11-22.2' });
+    expect(h.warnings).toEqual([]);
+  });
+
   it('does not mark an older line\'s run Release latest', async () => {
     // Changelog × release lines R2: a backport release must not take "Latest" from the current line.
     const h = harness([new Response('', { status: 404 }), new Response('{}', { status: 201 })]);

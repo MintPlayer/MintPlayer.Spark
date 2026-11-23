@@ -113,19 +113,25 @@ export async function createRunRelease(options: ReleaseOptions, releases: Releas
   await (options.sleep ?? defaultSleep)(SPACING_MS); // after the package Releases, as GitHub's secondary limits ask
   const line = request.branch !== request.defaultBranch ? request.branch.replace(/^release\//, '') : null;
   const base = line ? `release/${line}/${request.date}` : `release/${request.date}`;
-  const tag = await freeTag(options, base);
-  if (!tag) {
-    options.warn(`Run Release: every tag from ${base} to ${base}.${MAX_RUN_TAGS_PER_DAY} exists; none was created.`);
-    return 'failed';
+  // R5: the lookup skips taken tags; a 422 already_exists from the create (another run took the tag in between) is
+  // "taken" too, so the loop moves to the next suffix rather than failing.
+  for (let n = 1; n <= MAX_RUN_TAGS_PER_DAY; n++) {
+    const tag = n === 1 ? base : `${base}.${n}`;
+    const free = await isFreeTag(options, tag);
+    if (free === null) return 'failed';
+    if (!free) continue;
+    const outcome = await post(options, `Release ${tag}`, '/releases', {
+      tag_name: tag,
+      target_commitish: request.commit,
+      name: line ? `${line} ${request.date}` : request.date,
+      body: runBody(listed, options.repository, request.serverUrl),
+      prerelease: false,
+      make_latest: request.latest ? 'true' : 'false',
+    }, (status, text) => status === 422 && text.includes('already_exists'));
+    if (outcome !== 'exists') return outcome;
   }
-  return post(options, `Release ${tag}`, '/releases', {
-    tag_name: tag,
-    target_commitish: request.commit,
-    name: line ? `${line} ${request.date}` : request.date,
-    body: runBody(listed, options.repository, request.serverUrl),
-    prerelease: false,
-    make_latest: request.latest ? 'true' : 'false',
-  }, () => false);
+  options.warn(`Run Release: every tag from ${base} to ${base}.${MAX_RUN_TAGS_PER_DAY} exists; none was created.`);
+  return 'failed';
 }
 
 /** The run Release's body: a line per package, linked to its own Release unless it moved only with a dependency. */
@@ -145,21 +151,18 @@ export function runBody(releases: Release[], repository: string, serverUrl: stri
   return lines.join('\n');
 }
 
-/** The first of `base`, `base.2`, `base.3`, … that is not a tag yet; null when all are taken. */
-async function freeTag(options: ReleaseOptions, base: string): Promise<string | null> {
+/** Whether `name` is not a tag yet; null (with a warning) when the lookup fails. */
+async function isFreeTag(options: ReleaseOptions, name: string): Promise<boolean | null> {
   const doFetch = options.fetch ?? fetch;
-  for (let n = 1; n <= MAX_RUN_TAGS_PER_DAY; n++) {
-    const name = n === 1 ? base : `${base}.${n}`;
-    const reply = await doFetch(`${options.apiUrl}/repos/${options.repository}/git/ref/tags/${name}`, {
-      headers: { authorization: `Bearer ${options.token}`, accept: 'application/vnd.github+json', 'x-github-api-version': '2022-11-28' },
-    });
-    if (reply.status === 404) return name;
-    if (!reply.ok) {
-      options.warn(`Run Release: looking up the tag ${name} answered HTTP ${reply.status}.`);
-      return null;
-    }
+  const reply = await doFetch(`${options.apiUrl}/repos/${options.repository}/git/ref/tags/${name}`, {
+    headers: { authorization: `Bearer ${options.token}`, accept: 'application/vnd.github+json', 'x-github-api-version': '2022-11-28' },
+  });
+  if (reply.status === 404) return true;
+  if (!reply.ok) {
+    options.warn(`Run Release: looking up the tag ${name} answered HTTP ${reply.status}.`);
+    return null;
   }
-  return null;
+  return false;
 }
 
 /**

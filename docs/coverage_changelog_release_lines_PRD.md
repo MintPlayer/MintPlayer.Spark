@@ -117,6 +117,9 @@ The owner delegated the how ("make the release-lines feature and changelog featu
 
 - C#: retry the next `.n` only when the tag exists, not after any failure. TS: treat a 422 `already_exists` from the
   create call as "taken" and move to the next suffix, closing the check-then-post race.
+- **Correction (M6, 2026-11-23):** the C# half of G5 was wrong. `ForgeWriteOutcome` has only `Created` and `Exists`
+  (`IForgeVersioning.cs:136-140`). A failed create throws, and the message is retried, so the C# loop already advances
+  only on "exists". Only the TS race was real; it is fixed.
 
 ## Spikes
 

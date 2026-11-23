@@ -59,7 +59,19 @@ Green: 19/19 with `ChangelogQueryActionsTests`.
   fix. 11/11.
 - The 200-commit cap is not tested here: it is a constant, and a 200-commit fixture costs more than it proves.
 
-**NEXT:** M6 (run Release suffix only on "already exists").
+**M6 done (2026-11-23):**
+- **C#: no change.** The loop already advances only on `Exists`, because failures throw (PRD R5 correction).
+- **TS red:** a 422 `already_exists` between the lookup and the create returned `'failed'`
+  (`releases.test.ts` "moves to the next suffix…").
+- **TS fix:** `createRunRelease` now runs one loop per suffix (look up, then create). A 422 `already_exists` counts as
+  taken and moves on to the next suffix. `freeTag` became `isFreeTag`.
+- **Checks:** green 32/32; `tsc` clean; `dist` rebuilt.
+
+**Side request (owner, 2026-11-23):** MailManager input sanitization audit. Content and attributes are HTML-encoded by
+default (`SparkMailRenderer.cs:168`). URL schemes in `href` are not checked (`SparkNotifier.cs:144-148`), and there are no
+renderer tests. Filed as **#706** (not part of this PR).
+
+**NEXT:** M7 (docs).
 
 ## Test harness (investigation pass 3)
 
