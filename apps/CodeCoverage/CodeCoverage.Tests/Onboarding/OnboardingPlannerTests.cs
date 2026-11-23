@@ -65,7 +65,9 @@ public class OnboardingPlannerTests
         workflow.Should().Contain("uses: MintPlayer/MintPlayer.Spark/.github/actions/format@format-v1")
             .And.Contain("permissions:\n  contents: read")
             .And.Contain("persist-credentials: false")
-            .And.NotContain("\r").And.NotContain("secrets.");
+            .And.NotContain("\r");
+        // The SECURITY header names `secrets.*` to forbid it; no line of the workflow itself may use one.
+        string.Join('\n', workflow.Split('\n').Where(l => !l.TrimStart().StartsWith('#'))).Should().NotContain("secrets.");
         plan.Body.Should().Contain("## Formatting").And.Contain("Format repository");
         plan.OnMerge.Should().BeEmpty();
     }
