@@ -695,7 +695,14 @@
         },
         "Changelog": {
           "description": {
-            "en": "Whether the app keeps a changelog of this account's repositories and corrects their pull-request titles for it. Off by default: it edits somebody else's pull requests."
+            "en": "Whether the app keeps a changelog of this account's repositories and corrects their pull-request titles for it. Off by default: it edits somebody else's pull requests.",
+            "fr": "Si l'app tient un changelog des dépôts de ce compte et corrige pour cela les titres de leurs pull requests. Désactivé par défaut : cela modifie les pull requests d'autres personnes.",
+            "nl": "Of de app een changelog bijhoudt van de repositories van dit account en daarvoor hun pull-requesttitels corrigeert. Standaard uit: het past pull requests van anderen aan."
+          },
+          "label": {
+            "en": "Changelog",
+            "fr": "Changelog",
+            "nl": "Changelog"
           }
         },
         "Connection": {
@@ -946,7 +953,14 @@
         },
         "PrTemplate": {
           "description": {
-            "en": "Whether onboarding adds a \"Type of change\" section to the pull-request template."
+            "en": "Whether onboarding adds a \"Type of change\" section to the pull-request template.",
+            "fr": "Si l'onboarding ajoute une section « Type of change » au modèle de pull request.",
+            "nl": "Of de onboarding een sectie \"Type of change\" toevoegt aan het pull-requestsjabloon."
+          },
+          "label": {
+            "en": "PR template",
+            "fr": "Modèle de PR",
+            "nl": "PR-sjabloon"
           }
         },
         "PrTitleCorrection": {
@@ -3194,7 +3208,14 @@
         },
         "Changelog": {
           "description": {
-            "en": "Whether the app keeps a changelog for this repository, or the account's setting."
+            "en": "Whether the app keeps a changelog for this repository, or the account's setting.",
+            "fr": "Si l'app tient un changelog pour ce dépôt, ou le réglage du compte.",
+            "nl": "Of de app een changelog bijhoudt voor deze repository, of de instelling van het account."
+          },
+          "label": {
+            "en": "Changelog",
+            "fr": "Changelog",
+            "nl": "Changelog"
           }
         },
         "Connection": {
@@ -3569,7 +3590,14 @@
         },
         "PrTemplate": {
           "description": {
-            "en": "Whether onboarding adds a \"Type of change\" section to this repository's pull-request template, or the account's setting."
+            "en": "Whether onboarding adds a \"Type of change\" section to this repository's pull-request template, or the account's setting.",
+            "fr": "Si l'onboarding ajoute une section « Type of change » au modèle de pull request de ce dépôt, ou le réglage du compte.",
+            "nl": "Of de onboarding een sectie \"Type of change\" toevoegt aan het pull-requestsjabloon van deze repository, of de instelling van het account."
+          },
+          "label": {
+            "en": "PR template",
+            "fr": "Modèle de PR",
+            "nl": "PR-sjabloon"
           }
         },
         "PrTitleCorrection": {
