@@ -7,7 +7,15 @@ PRD: [coverage_changelog_release_lines_PRD.md](coverage_changelog_release_lines_
 
 **2026-11-23:** branch cut from master `79e73922e`. Spark's repository has Changelog = Keep (set in the UI). The upcoming
 view shows master with no packages (PRD "The problem"). Three read-only investigation passes done (PRD
-"Investigation": G1–G6); decisions R1–R5 and spikes S1–S3 written. **NEXT:** S3 (docs check), S1 = M1's red test.
+"Investigation": G1–G6); decisions R1–R5 and spikes S1–S3 written. S3 done (REST reference).
+
+**M1 done (2026-11-23):** `VersioningPlanPromotedTests` (4 tests). Red first: the line plan at main's head failed with
+"The commit … is not on release/dotnet-10.x", and `promoted` on the default branch returned 200. Fix: `Promoted` on
+`VersioningPlanRequestWire` → endpoint (400 `promoted` unless the branch is a line) → `VersioningPlanJob` →
+`PlanAsync` fetches and checks ancestry against the default branch instead of the line. Green: 8/8 with
+`VersioningPlanTests`. S1 proven: after a second promotion (#2 promoted and tagged 10.0.1), the plan at main's head lists
+Core with notes "- a leak on stop (#3)" only. **NEXT:** M2 (server: `GitWriterVersioningPlanRequest.Promoted`, compose
+each current line on a default-branch push, hide the default-branch row with lines on).
 
 ## Test harness (investigation pass 3)
 

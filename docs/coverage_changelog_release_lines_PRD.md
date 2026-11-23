@@ -127,8 +127,9 @@ The owner delegated the how ("make the release-lines feature and changelog featu
 - **S2 — Current lines, shared.** Extract `ReleaseRecipient`'s current-line pick (`:148-149`) so the upcoming
   recipient and the run Release's latest flag use the same rule; check what the action (local mode) can see of the line
   branches.
-- **S3 — `make_latest: false` keeps the existing Latest.** Confirm from GitHub's REST docs that creating a release with
-  `make_latest: "false"` leaves the current Latest untouched.
+- **S3 — `make_latest: false` keeps the existing Latest.** **Done (2026-11-23):** GitHub's REST "Create a release" takes
+  `make_latest` as `true`, `false` or `legacy` and defaults to `true` for a newly published release; `false` does not set
+  the new release as latest, so the current Latest stays. Source: the REST reference (not re-fetched this session).
 
 ## Risks
 

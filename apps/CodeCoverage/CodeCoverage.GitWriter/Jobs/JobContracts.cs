@@ -376,6 +376,11 @@ public sealed class VersioningPlanRequestWire
     public VersioningSettingsWire? Settings { get; set; }
     /// <summary>#693 Q12: also compose each planned release's notes, for the changelog's upcoming view.</summary>
     public bool Notes { get; set; }
+    /// <summary>
+    /// Changelog × release lines R1: plan the line <see cref="Branch"/> as if <c>/release</c> promoted <see cref="Commit"/>,
+    /// a commit on <see cref="DefaultBranch"/>, into it now. Only for a release line.
+    /// </summary>
+    public bool Promoted { get; set; }
 }
 
 /// <param name="Outcome"><see cref="JobOutcomes.Planned"/>, or a failure.</param>
