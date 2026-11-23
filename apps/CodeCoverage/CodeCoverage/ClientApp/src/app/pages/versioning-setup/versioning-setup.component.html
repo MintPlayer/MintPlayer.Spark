@@ -104,8 +104,11 @@
           @case ('releases') {
             <ul class="mb-0" data-testid="vs-setup-releases">
               <li>
-                <strong>One GitHub Release per tag</strong>, titled <code>&lt;PackageId&gt; &lt;version&gt;</code>, with the
-                titles of the pull requests that touched the package as its notes.
+                <strong>One GitHub Release per package tag</strong>, titled <code>&lt;PackageId&gt; &lt;version&gt;</code>, with
+                the package's notes. A package released only because a dependency moved gets no Release of its own.
+              </li>
+              <li>
+                <strong>One Release per run</strong>, marked latest, that lists every package the run released.
               </li>
               <li>
                 <strong>Pull request title correction</strong> rewrites a title to <code>&lt;type&gt;: &lt;title&gt; (#issue)</code>,
@@ -113,13 +116,40 @@
               </li>
               <li>
                 Both are switches on the account's and the repository's <strong>Versioning</strong> tab: Release on tag is on
-                by default, title correction off.
+                by default, title correction off unless the changelog is on.
               </li>
               <li>
                 The <a routerLink="/commit-graph/setup">commit graph</a> marks each released commit with its run's status, and
                 offers <strong>re-run</strong> on a failed one to people who can write to the repository.
               </li>
               <li>A green publish run comments the packages and versions it released on the pull request it came from.</li>
+            </ul>
+          }
+          @case ('changelog') {
+            <ul class="mb-0" data-testid="vs-setup-changelog">
+              <li>
+                Switch <strong>Changelog</strong> on in the account's or the repository's <strong>Versioning</strong> tab. Each
+                Release's notes then have sections (Breaking changes, Features, Fixes, Performance, …, Public API), built from the pull
+                requests merged since the package's last tag. The notes are frozen in the tag; no changelog file is committed.
+              </li>
+              <li>
+                <strong>The type comes from an explicit signal only</strong>: a ticked box in the pull request's "Type of change"
+                section, a type in its title, or a <code>bug</code> label on an issue it closes. Without one, the title check
+                asks with Feature, Fix and Not user-facing buttons. The branch name is never read.
+              </li>
+              <li>
+                A <code>## Changelog</code> section in the pull request's body replaces its entry, one bullet per entry; the
+                <code>changelog: skip</code> label leaves it out. The body can be corrected until the release.
+              </li>
+              <li>
+                Onboarding adds the "Type of change" section to the pull-request template, unless <strong>PR template</strong>
+                is off. <code>versioning.changelog.include</code> in coverage.yml lists the types that are normally left out
+                (docs, chore, …) but should count.
+              </li>
+              <li>
+                The repository page lists each package's released notes and, per release line, what its next release would
+                list.
+              </li>
             </ul>
           }
           @case ('troubleshoot') {

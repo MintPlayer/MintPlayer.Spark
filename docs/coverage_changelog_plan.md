@@ -25,7 +25,9 @@ S3, S6 and S7 are implementation-shaped and come after the grill.
 **2026-11-23:** M1–M10 committed; S8 run (results under S8). M11's policies, `versioning.changelog.include` and the
 database copy with its repository query are committed (PRD D3 "Done (M11)"). The upcoming view per release line (Q12
 "Done (M11)") and the server-mode `changelog.include` wire fix are committed. M12 (onboarding's template section and
-repository-metadata note, PRD D7/D12 "Done (M12)") is committed. **NEXT:** M13, M14.
+repository-metadata note, PRD D7/D12 "Done (M12)") is committed. M13: `docs/code-coverage/changelog.md`, a "The changelog"
+step on `/versioning/setup`, the README row, D14/D15 marked superseded in `coverage_package_versioning_PRD.md`, and the
+action's stale `dist` rebuilt. **NEXT:** M14 (push, PR, checks, coverage).
 
 ## Spikes
 

@@ -412,8 +412,12 @@ Prior art: one of the owner's private apps.
   1. the ticked box in the PR template;
   2. the type already in the title;
   3. a `bug` label on a linked issue → `fix`;
-  4. the issue number in the branch name (`issues/#123`), whose labels are then checked as in step 3;
-  5. `feat`.
+  4. ~~the issue number in the branch name (`issues/#123`), whose labels are then checked as in step 3;~~
+  5. ~~`feat`.~~
+
+  **Superseded (#693 D6, D12, `coverage_changelog_PRD.md`):** the branch name is never read and there is no `feat`
+  default. A button the title check offers comes first; with no signal the title stays untyped and the check asks.
+  Title correction is also on whenever the changelog is (`Repository.ResolvePrTitleCorrection`).
 
   Bot PRs (`chore(deps)`) keep their own type.
 - **When:** `opened`, `edited`, `reopened` on unmerged PRs. A check run reports the result. The bot ignores `edited`
@@ -423,9 +427,13 @@ Prior art: one of the owner's private apps.
 
 ### D15 — One GitHub Release per tag, behind a policy (Q11)
 
-- Title `<PackageId> <version>`. Notes: the corrected titles of the PRs that touched the package since its previous
-  tag, grouped `feat` / `fix` / other. A dependent-only release says "Dependency update: <id> <version>". Prereleases
+- Title `<PackageId> <version>`. ~~Notes: the corrected titles of the PRs that touched the package since its previous
+  tag, grouped `feat` / `fix` / other. A dependent-only release says "Dependency update: <id> <version>".~~ Prereleases
   are marked as such.
+- **Superseded (#693, `coverage_changelog_PRD.md`):** the notes are the changelog sections (Breaking changes, Features,
+  Fixes, Performance, Reverts, Changes, Public API; D6), frozen in the tag's annotation (D3). A package released only because a dependency moved
+  gets no Release of its own, and one Release per run, marked latest, lists every package (D7). The nupkg carries the
+  notes as `PackageReleaseNotes` (D11).
 - **Policy** release-on-tag: Inherit / Enabled / Disabled, Account default **Enabled** (owner).
 - Created sequentially with backoff (secondary rate limits). The guide warns that a consumer workflow `on: release`
   fires once per Release.

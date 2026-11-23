@@ -541,4 +541,11 @@ correction comes with the changelog) are answered by D6.
 - **Tags are immutable.** A wrong entry in a tag message is permanent unless the tag is recreated, which consumers'
   caches won't see (Q2).
 - **Two copies of the notes logic** (`ReleaseNotes.cs` and `versioning-action/src/releases.ts`) must change together.
-  The action's `dist` is committed and byte-checked.
+  The action's `dist` is committed and byte-checked. Since M2 the action no longer composes package notes (they come
+  from the engine), so only the run Release body (`runBody`) is TypeScript. The source changes of M2–M8 had left `dist`
+  stale; it was rebuilt in the main checkout before the pull request (2026-11-23).
+- **A label added by hand doesn't refresh the title check.** Title correction runs on `opened`, `reopened` and a human's
+  `edited` only (`GitHubEventsRecipient.cs:474,505`), so a `changelog: skip` label added in the sidebar shows on the check
+  at the next edit. The release run reads labels fresh, so the changelog itself is right.
+- **The upcoming view has no pull-request facts** (Q12 "Done"): its notes follow the commit subjects, not a `## Changelog`
+  section or a skip label, until the release.

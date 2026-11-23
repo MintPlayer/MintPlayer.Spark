@@ -39,6 +39,7 @@ export default class VersioningSetupComponent {
     { id: 'workflow', title: 'The workflow step' },
     { id: 'configure', title: 'Configure it in coverage.yml' },
     { id: 'releases', title: 'GitHub Releases and the commit graph' },
+    { id: 'changelog', title: 'The changelog' },
     { id: 'troubleshoot', title: 'Troubleshooting' },
   ];
 
