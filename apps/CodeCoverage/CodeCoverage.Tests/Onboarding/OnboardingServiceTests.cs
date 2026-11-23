@@ -702,4 +702,75 @@ public class OnboardingServiceTests : CoverageRavenTest
         using var read = store.OpenAsyncSession();
         (await read.LoadAsync<VersioningOnboardingState>(VersioningOnboardingState.ForRepository(repository.Id!))).Should().BeNull();
     }
+
+    [Fact]
+    public async Task Issue657_the_formatting_target_is_the_default_branch_head_with_its_workflow_and_merge_queue()
+    {
+        using var store = GetDocumentStore();
+        var repository = await SeedRepositoryAsync(store);
+        const string workflow = "name: formatting\n";
+        const string yml = "mergeQueue:\n  enabled: true\n";
+        var forge = new ScriptedDiffService();
+        forge.Trees["main"] = new ForgeTree(Head, "tree-" + Head[..4],
+            [new ForgeTreeEntry(".github/workflows/formatting.yml", workflow.Length), new ForgeTreeEntry(CoverageYml.FileName, yml.Length)], false);
+        forge.Files[$"{Head}/.github/workflows/formatting.yml"] = workflow;
+        forge.Files[$"{Head}/{CoverageYml.FileName}"] = yml;
+        var h = Create(store, forge);
+
+        var (target, refusal) = await h.Service.FormattingTargetAsync(repository);
+
+        refusal.Should().BeNull();
+        target.Should().Be(new FormattingTarget("main", Head, workflow, MergeQueue: true));
+    }
+
+    [Fact]
+    public async Task Issue657_a_repository_without_the_workflow_has_a_target_without_one()
+    {
+        using var store = GetDocumentStore();
+        var repository = await SeedRepositoryAsync(store);
+        var h = Create(store);
+
+        var (target, _) = await h.Service.FormattingTargetAsync(repository);
+
+        target.Should().Be(new FormattingTarget("main", Head, null, MergeQueue: false), "the action refuses it: set up Formatting first (D1)");
+    }
+
+    [Fact]
+    public async Task Issue657_an_unreadable_or_unplannable_repository_has_no_target()
+    {
+        using var store = GetDocumentStore();
+        var repository = await SeedRepositoryAsync(store);
+        var forge = Repository(Head);
+        var h = Create(store, forge);
+        forge.Trees.Clear();
+
+        (await h.Service.FormattingTargetAsync(repository)).Should().Be(((FormattingTarget?)null, "main could not be read from the forge."));
+
+        repository.Archived = true;
+        (await h.Service.FormattingTargetAsync(repository)).Refusal.Should().Be("The repository is disconnected, archived or has no default branch.");
+    }
+
+    [Theory]
+    [InlineData("format", false)]
+    [InlineData("lint", true)]
+    public async Task Issue657_the_formatting_pull_request_hands_the_patch_to_the_writer_on_the_mode_s_branch(string mode, bool workflows)
+    {
+        using var store = GetDocumentStore();
+        var repository = await SeedRepositoryAsync(store);
+        var h = Create(store);
+        byte[] patch = [1, 2, 3];
+
+        var opened = await h.Service.FormattingPullRequestAsync(repository,
+            new FormattingCommit(mode, Head, "Tidy", "The body", patch, ["vendor/"], workflows));
+
+        opened.Opened.Should().BeTrue(opened.Note);
+        var push = h.Writer.Requests("onboarding").Single();
+        (push.Format, push.Patch, push.ExpectedSha).Should().Be((mode, Convert.ToBase64String(patch), Head));
+        push.Exclude.Should().Equal("vendor/");
+        h.Queue.WriterAccesses.Single().Workflows.Should().Be(workflows, "D7: only a patch that touches .github asks for workflows: write");
+        var created = h.Pulls.Created.Single();
+        (created.Head, created.Base, created.Title, created.Body).Should().Be(($"mintplayer/{mode}", "main", "Tidy", "The body"));
+        opened.Number.Should().BeGreaterThan(0);
+        h.Queue.RevokedTokens.Should().HaveCount(1);
+    }
 }

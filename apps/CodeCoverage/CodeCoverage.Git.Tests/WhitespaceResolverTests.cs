@@ -93,6 +93,39 @@ public class WhitespaceResolverTests
         (await MergeAsync(repo.Bare())).Should().BeOfType<MergeOutcome.Evicted>();
     }
 
+    [Fact]
+    public async Task D10_a_side_with_a_marker_like_line_evicts()
+    {
+        using var repo = new TestRepo();
+        var bare = Fixture(repo,
+            "class Widget\n{\n    int a;\n}\n/*\n=======\n*/\n",
+            "class Widget\n{\n    int  a;\n}\n/*\n=======\n*/\n",
+            "class Widget\n{\n  int a;\n}\n/*\n=======\n*/\n");
+
+        var evicted = (await MergeAsync(bare)).Should().BeOfType<MergeOutcome.Evicted>().Which;
+
+        evicted.Reason.Should().Be(EvictionReason.ResolverRefused);
+        evicted.Detail.Should().Contain("looks like a conflict marker");
+    }
+
+    [Fact]
+    public async Task D10_a_side_that_is_not_utf8_evicts()
+    {
+        using var repo = new TestRepo();
+        repo.Write(Path, "class Widget\n{\n    int a;\n}\n");
+        repo.Commit("base");
+        repo.InWork("branch", "pr");
+        repo.Write(Path, "class Widget\n{\n    int  a;\n}\n");
+        repo.Commit("A");
+        repo.Checkout("pr");
+        File.WriteAllBytes(System.IO.Path.Combine(repo.Work, Path), [.. "class Widget\n{\n  int a; // caf"u8, 0xE9, (byte)'\n', .. "}\n"u8]);
+        repo.Commit("B");
+
+        var evicted = (await MergeAsync(repo.Bare())).Should().BeOfType<MergeOutcome.Evicted>().Which;
+
+        evicted.Reason.Should().Be(EvictionReason.ResolverRefused);
+    }
+
     [Theory]
     [InlineData(new[] { "a b\n" }, new[] { "ab\n" }, true)]
     [InlineData(new[] { "a\n", "b\n" }, new[] { "a b\n" }, true)]     // a joined line is the same text

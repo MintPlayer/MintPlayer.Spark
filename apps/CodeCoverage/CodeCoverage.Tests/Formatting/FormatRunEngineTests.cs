@@ -222,14 +222,277 @@ public class FormatRunEngineTests : CoverageRavenTest
         dispatches.Should().ContainSingle();
     }
 
+    private async Task<string> FailureAsync(IDocumentStore store)
+    {
+        (await PendingAsync(store)).Should().BeNull("a failed run is forgotten");
+        await onboarding.DidNotReceiveWithAnyArgs().FormattingPullRequestAsync(default!, default!, default);
+        notifications.Single().Title.Should().Be("Format of acme/widgets: no pull request");
+        return notifications.Single().Body;
+    }
+
+    private void Observe(EWorkflowHookRunVerdict verdict, string? conclusion = null, string? headSha = null, string? htmlUrl = null)
+        => hook.ObserveAsync(Arg.Any<IWorkflowHookSaga>(), Arg.Any<WorkflowHookRun>(), Arg.Any<string>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
+            .Returns(new WorkflowHookObservation(verdict, verdict == EWorkflowHookRunVerdict.Missing ? null
+                : new ForgeWorkflowRun(41, "completed", conclusion, headSha ?? Sha, "main", htmlUrl)));
+
+    [Fact]
+    public async Task M5_a_failed_run_says_how_it_finished_and_links_the_run()
+    {
+        using var store = GetDocumentStore();
+        Observe(EWorkflowHookRunVerdict.Failed, "failure", htmlUrl: "https://example.invalid/run/41/attempt");
+        await StartAsync(store, Run());
+
+        await RunToCompletionAsync(store);
+
+        (await FailureAsync(store)).Should().Be("The `formatting.yml` run finished `failure`.");
+        notifications.Single().Url.Should().Be("https://example.invalid/run/41/attempt");
+        await hook.Received(1).AbandonAsync(Arg.Any<IWorkflowHookSaga>(), Arg.Any<IEnumerable<WorkflowHookRun>>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task M5_a_run_on_another_commit_asks_to_run_again()
+    {
+        using var store = GetDocumentStore();
+        Observe(EWorkflowHookRunVerdict.WrongCommit, "success", headSha: new string('b', 40));
+        await StartAsync(store, Run());
+
+        await RunToCompletionAsync(store);
+
+        (await FailureAsync(store)).Should().Be("The run formatted `bbbbbbbbbbbb`, but `main` was at `aaaaaaaaaaaa`; `main` moved, run it again.");
+    }
+
+    [Fact]
+    public async Task M5_a_vanished_run_is_reported()
+    {
+        using var store = GetDocumentStore();
+        Observe(EWorkflowHookRunVerdict.Missing);
+        await StartAsync(store, Run());
+
+        await RunToCompletionAsync(store);
+
+        (await FailureAsync(store)).Should().Be("The `formatting.yml` run 41 no longer exists.");
+    }
+
+    [Fact]
+    public async Task M5_a_run_still_going_waits()
+    {
+        using var store = GetDocumentStore();
+        Observe(EWorkflowHookRunVerdict.Running);
+        await StartAsync(store, Run());
+
+        await RunToCompletionAsync(store);
+
+        notifications.Should().BeEmpty();
+        (await PendingAsync(store))!.Run!.RunId.Should().Be(41);
+    }
+
+    [Fact]
+    public async Task M5_an_unusable_artifact_fails_the_run()
+    {
+        using var store = GetDocumentStore();
+        hook.DownloadArtifactAsync(Arg.Any<IWorkflowHookSaga>(), Arg.Any<long>(), "merge-queue-patch", Arg.Any<long>(), Arg.Any<CancellationToken>())
+            .Returns(new ForgeArtifactDownload(EForgeArtifactOutcome.NotFound, null, null, "no such artifact"));
+        await StartAsync(store, Run());
+
+        await RunToCompletionAsync(store);
+
+        (await FailureAsync(store)).Should().Be("The run left an unusable `merge-queue-patch` artifact (NotFound: no such artifact).");
+    }
+
+    [Fact]
+    public async Task M5_a_pull_request_that_could_not_open_says_why()
+    {
+        using var store = GetDocumentStore();
+        onboarding.FormattingPullRequestAsync(Arg.Any<Repository>(), Arg.Any<FormattingCommit>(), Arg.Any<CancellationToken>())
+            .Returns(new FormattingPullRequest(false, "the base branch moved", null, null));
+        await StartAsync(store, Run(enqueue: true));
+
+        await RunToCompletionAsync(store);
+
+        notifications.Single().Body.Should().Be("The base branch moved.");
+        outbox.Signals.Should().BeEmpty("nothing opened, so nothing is queued");
+        (await PendingAsync(store)).Should().BeNull();
+    }
+
+    [Fact]
+    public async Task M4_the_timeout_ends_the_run()
+    {
+        using var store = GetDocumentStore();
+        Observe(EWorkflowHookRunVerdict.Running);
+        await StartAsync(store, Run());
+        await StepAsync(store);
+        var pending = (await PendingAsync(store))!;
+
+        await StepAsync(store, new FormatRunStepMessage { RepositoryId = RepositoryId, Mode = "format", Generation = pending.Generation, Step = EFormatRunStep.Timeout });
+
+        (await FailureAsync(store)).Should().Be("The `formatting.yml` run took longer than 30 minutes.");
+        await hook.Received(1).AbandonAsync(Arg.Any<IWorkflowHookSaga>(), Arg.Any<IEnumerable<WorkflowHookRun>>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task D1_a_copy_that_differs_from_the_default_branch_is_refused()
+    {
+        using var store = GetDocumentStore();
+        hook.VerifyProvenanceAsync(Arg.Any<IWorkflowHookSaga>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<IReadOnlyList<string>>(), Arg.Any<CancellationToken>())
+            .Returns(new WorkflowHookProvenanceFailure(EWorkflowHookProvenance.Differs, FormattingWorkflow.Path));
+        await StartAsync(store, Run());
+
+        await StepAsync(store);
+
+        dispatches.Should().BeEmpty();
+        (await FailureAsync(store)).Should().Be("`.github/workflows/formatting.yml` differs from `main`'s copy.");
+    }
+
+    [Fact]
+    public async Task M4_without_a_git_writer_nothing_is_dispatched()
+    {
+        using var store = GetDocumentStore();
+        writer.IsConfigured.Returns(false);
+        await StartAsync(store, Run());
+
+        await StepAsync(store);
+
+        dispatches.Should().BeEmpty();
+        (await FailureAsync(store)).Should().Be("This server's git writer is not configured.");
+    }
+
+    [Theory]
+    [InlineData(EWorkflowHookDispatch.Refused, "The forge refused to run `formatting.yml` on `main` (WorkflowNotFound: Not Found).")]
+    [InlineData(EWorkflowHookDispatch.Uncorrelated, "The forge started `formatting.yml` without saying which run it is, so its result cannot be trusted.")]
+    public async Task M4_a_dispatch_that_did_not_start_a_known_run_fails(EWorkflowHookDispatch outcome, string body)
+    {
+        using var store = GetDocumentStore();
+        hook.DispatchAsync(Arg.Any<IWorkflowHookSaga>(), Arg.Any<WorkflowHookRequest>(), Arg.Any<Func<WorkflowHookDispatch, Task>>(), Arg.Any<CancellationToken>())
+            .Returns(new WorkflowHookDispatch(outcome, FormattingWorkflow.FileName, null, null, EForgeDispatchOutcome.WorkflowNotFound, "Not Found"));
+        await StartAsync(store, Run());
+
+        await StepAsync(store);
+
+        (await FailureAsync(store)).Should().Be(body);
+    }
+
+    [Fact]
+    public async Task M4_a_permission_the_forge_refuses_is_named()
+    {
+        using var store = GetDocumentStore();
+        hook.DispatchAsync(Arg.Any<IWorkflowHookSaga>(), Arg.Any<WorkflowHookRequest>(), Arg.Any<Func<WorkflowHookDispatch, Task>>(), Arg.Any<CancellationToken>())
+            .Returns<WorkflowHookDispatch>(_ => throw new ForgeAccessDeniedException("Resource not accessible by integration", "actions: write"));
+        await StartAsync(store, Run());
+
+        await StepAsync(store);
+
+        (await FailureAsync(store)).Should().Be("The forge refused a call the run needs (it asks for `actions: write`).");
+    }
+
+    [Fact]
+    public async Task M5_a_request_the_git_writer_refuses_is_named()
+    {
+        using var store = GetDocumentStore();
+        onboarding.FormattingPullRequestAsync(Arg.Any<Repository>(), Arg.Any<FormattingCommit>(), Arg.Any<CancellationToken>())
+            .Returns<FormattingPullRequest>(_ => throw new GitWriterRefusedException("onboarding", "format.exclude", "a list of globs"));
+        await StartAsync(store, Run());
+
+        await RunToCompletionAsync(store);
+
+        notifications.Single().Body.Should().Be("The git writer refused the onboarding request (`format.exclude` must be a list of globs).");
+        (await PendingAsync(store)).Should().BeNull();
+    }
+
+    [Fact]
+    public async Task M4_a_transient_failure_retries_the_step_later_then_gives_up()
+    {
+        using var store = GetDocumentStore();
+        hook.DispatchAsync(Arg.Any<IWorkflowHookSaga>(), Arg.Any<WorkflowHookRequest>(), Arg.Any<Func<WorkflowHookDispatch, Task>>(), Arg.Any<CancellationToken>())
+            .Returns<WorkflowHookDispatch>(_ => throw new HttpRequestException("connection reset"));
+        await StartAsync(store, Run());
+
+        await StepAsync(store);
+
+        var retry = outbox.Steps.Last();
+        (retry.Step, outbox.Options.Last()?.Delay).Should().Be((EFormatRunStep.Dispatch, TimeSpan.FromSeconds(15)));
+        (await PendingAsync(store))!.TransientFailures.Should().Be(1);
+        notifications.Should().BeEmpty();
+
+        for (var attempt = 2; attempt <= FormatRunEngine.MaxTransientRetries + 1; attempt++)
+            await StepAsync(store);
+
+        (await FailureAsync(store)).Should().Be($"It gave up after {FormatRunEngine.MaxTransientRetries + 1} failed attempts in a row (connection reset).");
+    }
+
+    [Fact]
+    public async Task M4_a_stale_run_is_replaced_by_a_new_request()
+    {
+        using var store = GetDocumentStore();
+        await StartAsync(store, Run());
+        using (var session = store.OpenAsyncSession())
+        {
+            var document = await session.LoadAsync<FormatRuns>(FormatRuns.ForRepository(RepositoryId));
+            document.Pending.Single().StartedUtc = DateTime.UtcNow - FormatRunEngine.Stale - TimeSpan.FromMinutes(1);
+            document.Pending.Single().Sha = "old";
+            await session.SaveChangesAsync();
+        }
+
+        (await StartAsync(store, Run())).Should().BeTrue("its timeout step was lost");
+
+        (await PendingAsync(store))!.Sha.Should().Be(Sha);
+    }
+
+    [Fact]
+    public async Task M4_an_abandoned_run_is_cancelled_whatever_the_generation()
+    {
+        using var store = GetDocumentStore();
+        await StartAsync(store, Run());
+
+        await StepAsync(store, new FormatRunStepMessage { RepositoryId = RepositoryId, Mode = "format", Generation = 99, Step = EFormatRunStep.CancelRun, RunId = 40 });
+
+        await hook.Received(1).CancelAbandonedRunAsync(Arg.Any<IWorkflowHookSaga>(), FormatRunEngine.Purpose, 40, Arg.Any<CancellationToken>());
+        dispatches.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task M4_a_finished_workflow_run_wakes_only_the_format_run_waiting_for_it()
+    {
+        using var store = GetDocumentStore();
+        await StartAsync(store, Run());
+        await StepAsync(store);
+        var bus = Substitute.For<IMessageBus>();
+        using var session = store.OpenAsyncSession();
+        var recipient = new FormatRunEventsRecipient(session, bus);
+
+        await recipient.HandleAsync(new ForgeWebhookMessage<CiRunCompleted>(EForgeProvider.GitHub, new CiRunCompleted(RepositoryId, 41, Sha, "success")));
+        await recipient.HandleAsync(new ForgeWebhookMessage<CiRunCompleted>(EForgeProvider.GitHub, new CiRunCompleted(RepositoryId, 77, Sha, "success")));
+        await recipient.HandleAsync(new ForgeWebhookMessage<CiRunCompleted>(EForgeProvider.GitHub, new CiRunCompleted("Projects/1", 41, Sha, "success")));
+
+        var generation = (await PendingAsync(store))!.Generation;
+        await bus.Received(1).BroadcastAsync(Arg.Any<FormatRunStepMessage>(), Arg.Any<CancellationToken>());
+        await bus.Received(1).BroadcastAsync(Arg.Is<FormatRunStepMessage>(m =>
+            m.RepositoryId == RepositoryId && m.Mode == "format" && m.Generation == generation && m.Step == EFormatRunStep.RunCompleted && m.RunId == 41), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task M4_the_step_recipient_hands_the_step_to_the_engine()
+    {
+        var engine = Substitute.For<IFormatRunEngine>();
+        var step = new FormatRunStepMessage { RepositoryId = RepositoryId, Mode = "format", Generation = 1, Step = EFormatRunStep.PollRun };
+
+        await new FormatRunRecipient(engine).HandleAsync(step);
+
+        await engine.Received(1).HandleStepAsync(step, Arg.Any<CancellationToken>());
+    }
+
     private sealed class Outbox : IMessageOutbox
     {
         public List<FormatRunStepMessage> Steps { get; } = [];
         public List<MergeQueueSignalMessage> Signals { get; } = [];
+        public List<BroadcastOptions?> Options { get; } = [];
 
         public Task EnqueueAsync<TMessage>(IAsyncDocumentSession session, TMessage message, BroadcastOptions? options = null, CancellationToken cancellationToken = default)
         {
-            if (message is FormatRunStepMessage step) Steps.Add(step);
+            if (message is FormatRunStepMessage step)
+            {
+                Steps.Add(step);
+                Options.Add(options);
+            }
             if (message is MergeQueueSignalMessage signal) Signals.Add(signal);
             return Task.CompletedTask;
         }
