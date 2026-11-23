@@ -5,7 +5,8 @@ namespace CodeCoverage.Entities;
 
 /// <summary>
 /// #693 Q12: what the next release of one line would list (docs/coverage_changelog_PRD.md, Q12 "A"). The entries since each
-/// package's last tag, composed by the git writer's plan job after every push to the line.
+/// package's last tag, composed by the git writer's plan job after every push to the line; with promote lines, a current
+/// line is composed on every default-branch push as if promoted (docs/coverage_changelog_release_lines_PRD.md R1).
 /// </summary>
 /// <remarks>
 /// <para>

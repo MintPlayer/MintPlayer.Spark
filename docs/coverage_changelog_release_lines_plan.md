@@ -71,7 +71,13 @@ Green: 19/19 with `ChangelogQueryActionsTests`.
 default (`SparkMailRenderer.cs:168`). URL schemes in `href` are not checked (`SparkNotifier.cs:144-148`), and there are no
 renderer tests. Filed as **#706** (not part of this PR).
 
-**NEXT:** M7 (docs).
+**M7 done (2026-11-23):**
+- `docs/code-coverage/changelog.md`: the run Release is latest only on a current line, and the `.n` suffix is explained.
+  The upcoming notes are described for lines off, promote lines and older/backport lines. Troubleshooting has two rows.
+- #693 PRD D3 "Consequence": the "non-merge commits" text is struck through and points to the D4 M1 revision and here.
+- `UpcomingChangelog` summary updated. It is not mirrored in the model JSON, so no resync.
+
+**NEXT:** M8 (push, PR, checks, patch coverage; the owner queues).
 
 ## Test harness (investigation pass 3)
 
