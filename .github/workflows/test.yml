@@ -129,6 +129,21 @@ jobs:
         npm install -g pnpm@10.18.0 --ignore-scripts
         pipx install uv==0.13.1
 
+    # Maven's own plugins come from Maven Central on a fresh runner (jvm.integration.test.ts's header); the artifacts
+    # under test come from a file:// repository. A download that stalls hung the Maven test at vitest's 300 s on PR #694
+    # (run 44337506945) and PR #704 (run 45091276261), so the plugins are cached. The key follows the jvm tests, which
+    # name what Maven resolves; restore-keys reuse the last cache when they change, and Maven fetches only what is new.
+    - name: Maven repository cache
+      if: contains(matrix.itGroup, 'jvm')
+      uses: actions/cache@v6
+      with:
+        # Not the artifacts under test: each run resolves them from its own file:// repository.
+        path: |
+          ~/.m2/repository
+          !~/.m2/repository/com/acme
+        key: dep-it-m2-${{ runner.os }}-${{ hashFiles('apps/CodeCoverage/dependency-action/src/integration/jvm.integration.test.ts') }}
+        restore-keys: dep-it-m2-${{ runner.os }}-
+
     - name: Run tests
       # Step-level, so a hung suite fails here and the artifact upload below still runs with what the
       # suite produced. The large .NET suites also carry --blame-hang (5-10 min per test) in their nx

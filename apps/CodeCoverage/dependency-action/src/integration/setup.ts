@@ -29,6 +29,27 @@ export interface ApplyRun {
   read(rel: string): string;
 }
 
+/**
+ * The longest one tool command may run in an integration test. The adapters allow 15-30 minutes, which suits a real
+ * repository, but vitest stops a test at 300 s (vitest.integration.config.ts), and a command still running then never
+ * returns its output: PR #694's run 44337506945 and PR #704's run 45091276261 both hung in Maven with an empty log.
+ * Below the test timeout, the command is killed, its output tail is logged, and the test fails on its own assertion.
+ */
+export const IT_COMMAND_TIMEOUT_MS = 120_000;
+
+function cappedExec(env: Record<string, string> | undefined): Exec {
+  return async (cmd, args, o) => {
+    const timeoutMs = Math.min(o.timeoutMs ?? IT_COMMAND_TIMEOUT_MS, IT_COMMAND_TIMEOUT_MS);
+    const started = Date.now();
+    const r = await realExec(cmd, args, { ...o, env: { ...env, ...o.env }, timeoutMs });
+    if (Date.now() - started >= timeoutMs) {
+      const tail = (text: string) => text.split('\n').slice(-40).join('\n');
+      console.error(`[integration] ${cmd} ${args.join(' ')} was killed after ${timeoutMs / 1000} s in ${o.cwd}\n--- stdout (tail)\n${tail(r.stdout)}\n--- stderr (tail)\n${tail(r.stderr)}`);
+    }
+    return r;
+  };
+}
+
 /** expected_sha (the given tree, committed) + the plan commit, then a real runApply. */
 export async function applyOnRepo(
   files: Record<string, string | Buffer>,
@@ -43,7 +64,7 @@ export async function applyOnRepo(
   writeTree(dir, { [PLAN_PATH]: JSON.stringify({ contractVersion: 1, kind: 'plan', planId: 'it', expectedSha: sha, groups }, null, 2) });
   commitAll(dir, 'plan');
   const out = tempDir();
-  const exec: Exec = opts.exec ?? ((cmd, args, o) => realExec(cmd, args, { ...o, env: { ...opts.env, ...o.env } }));
+  const exec: Exec = opts.exec ?? cappedExec(opts.env);
   const { result, patchFile } = await runApply({ exec, repoDir: dir, outDir: out, expectedSha: sha, feedSecrets: opts.feedSecrets ?? false });
   return { dir, sha, result, patch: fs.readFileSync(patchFile, 'utf8'), read: (rel) => fs.readFileSync(path.join(dir, rel), 'utf8') };
 }
