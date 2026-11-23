@@ -9,8 +9,9 @@
 - **2026-11-23: resumed.** #710 merged as #711 (`aff3e24bc`); the branch is rebased onto it. NEXT: spikes S1, S2,
   S4–S9, then M1–M10.
 - **2026-11-23: S1, S4, S5, S6 and S9 done** (PRD "Spike results"). Q4 became D15. Q15 = A became D16 (skip the
-  pipeline step when the target's copy is not already formatted). NEXT: S2 and S8 on real outside repositories (Spark has no Prettier or
-  ESLint config), then S7.
+  pipeline step when the target's copy is not already formatted). - **2026-11-23: S2, S7 and S8 done** (S2 and S8 in throwaway Docker containers on outside repositories; Spark has
+  no Prettier or ESLint config). All spikes are done. Q16 (how a non-C# hunk is proven whitespace-only) awaits the
+  owner. NEXT: M1.
 - Tests run **once, at the end** (M10). No interim gate runs.
 
 ## Spikes

@@ -170,6 +170,111 @@ The answers:
    - Object-initializer members are put on lines of their own (716 + 338 + 209 of the findings).
    - This is what FormatRepository is for (D4: one run after onboarding). For the pipeline step, D16 guards against it.
 
+### S2 — Prettier and ESLint at the pinned version, scripts off
+
+**Setup:** throwaway `node:24-bookworm` containers (Node 24.22.3), a shallow clone in a tmpfs, no repository mount.
+**Spark itself has no Prettier or ESLint config**, so the measurements are on three outside repositories.
+
+| | `vuejs/core` @44234e8 | `nrwl/nx-examples` @ff64e63 | `prettier/eslint-config-prettier` @bd6e617 |
+|---|---|---|---|
+| Package manager (`packageManager`) | pnpm 12.21 | yarn 4.15 | yarn 4.18 |
+| Install with scripts off (`pnpm install --frozen-lockfile --ignore-scripts` / `yarn install --immutable --mode=skip-build`) | 84 s, ok | 140 s, ok | 85 s, ok |
+| Prettier (resolved) / `--check .` | 3.10.1 / 32 s, 0 files | 2.6.2 / 4 s, 0 files | 3.9.6 / 6 s, 0 files |
+| `.prettierignore` holds (no `node_modules`/`dist` paths listed) | yes | yes | yes |
+| `npx prettier@<resolved>` **without** an install | 17 s, 0 files | 5 s, 0 files | **fails: "Cannot find package 'prettier-plugin-pkg'"** |
+| ESLint (resolved) / `eslint .` | 10.15.0 / 14 s, clean | 9.39.5 / 2 s, 2 warnings | 9.26.0 / 9 s, 12 warnings |
+
+The answers:
+
+1. **Install, then the local binary.** `npx prettier@<version>` without an install is faster (17 s against 84 + 32 s),
+   but it breaks as soon as `.prettierrc` names a plugin.
+   - **→ The action always installs with scripts off**, using the lockfile's package manager through corepack
+     (`npm ci --ignore-scripts`, `pnpm install --frozen-lockfile --ignore-scripts`,
+     `yarn install --immutable --mode=skip-build`), then runs `npx --no-install`.
+   - `.prettierignore` holds.
+2. **JS configs and plugins work with scripts off** in all three. That includes `eslint.config.js`/`.mjs`,
+   `@nx/eslint-plugin` and a Prettier plugin. No postinstall step was needed.
+3. **ESLint in an Nx workspace needs no build:** 2 s on nx-examples.
+   - **The project graph did fail:** `nx show projects` exits 1, because nx-examples' `@nx/dotnet` plugin needs
+     `dotnet`. ESLint ran anyway.
+   - A rule that reads the graph (`@nx/enforce-module-boundaries`) would need the plugins' toolchains on the runner.
+     This was not measured: the root config does not use that rule.
+   - **Nested configs:** nx-examples has 16 `eslint.config.mjs` files. From ESLint's documentation, not measured here:
+     ESLint 9 takes the config from the working directory, so a root `eslint .` skips the project configs, and ESLint 10
+     looks the config up per file.
+   - **→ The action groups files by their nearest `eslint.config.*` and runs ESLint from that directory.** That is
+     right on both 9 and 10.
+4. Install time (85–140 s) is most of a JS run, and the runner's npm cache is the lever for it (`actions/setup-node`
+   `cache:` keyed on the lockfile).
+
+### S7 — detecting whitespace-only conflict hunks
+
+**Measured:** 11 pairs of hunks were compared with Roslyn 4.14 `SyntaxFactory.ParseTokens` (a file-based app in the
+scratchpad), comparing kind and text per token.
+
+| Pair (ours / theirs) | Should be | "Equal without whitespace" | Roslyn tokens |
+|---|---|---|---|
+| re-indented; `Foo(a,b)` / `Foo( a, b )` | same | same | same |
+| an initializer put on several lines | same | same | same |
+| comment text `// a b` / `// a  b` | same | same | same (comments are trivia) |
+| `"a b"` / `"a  b"`; `"a b"` / `"ab"` | **different** | **same: wrong** | different |
+| verbatim string, interpolation hole `{a}` / `{ a }`, raw string re-indented, `' '` / `''` | **different** | **same: wrong** | different |
+| `a + +b` / `a++b` | **different** | **same: wrong** | different |
+| a hunk that **starts inside** a multi-line raw string | **different** | same: wrong | **same: wrong** |
+| the previous case, lexing the **whole file** | different | — | different |
+
+- **"Equal without whitespace" is wrong in 8 of 11 cases.** It may only act as a cheap pre-filter, never as the
+  decision.
+- **Roslyn tokens are exact once the whole file is lexed.** Lexing only the hunk fails when the hunk starts inside a
+  literal.
+- The resolver already has all three blobs: PREPARE is a single `git merge-tree --write-tree` (`MergeQueueResolver.cs:125`),
+  and hunks come from `git merge-file --diff3` (`ConflictRepository.cs:92`). So it can build both whole-file
+  resolutions (every hunk ours, every hunk theirs), lex both, and compare.
+- **TypeScript and JavaScript:** the writer is C# with no Node, and the TS scanner needs Node. The writer could carry a
+  hand-written JS lexer, but regex literals (`/a b/`) make one ambiguous. See Q16.
+- **`git merge-tree -X ignore-space-change` (git 2.47.1): accepted, and dangerous.**
+  - Setup: the target re-indents a line; the head changes spacing on that line **and** changes `"x y"` to `"x  y"` in
+    the next line.
+  - Result: exit 0, no conflict, and **the string change is lost silently**. The target's `"x y"` wins.
+  - **→ Never use it.** D10 decides per hunk, as planned.
+
+### S8 — the other formatters on real repositories
+
+**Setup:** each run was in a throwaway container (`--tmpfs /work`, no repository mount) on a shallow clone at the
+commit shown. Only the output folder was mounted.
+
+| Repository | Pin found | Config found | Format result | Lint result |
+|---|---|---|---|---|
+| `spf13/cobra` @adbc881 (golang:1.25) | `go 1.15` in `go.mod`, no `toolchain` line | none; gofmt has no config | `gofmt -l .` 1 s, **0 files** | `go vet` 62 s, clean |
+| `BurntSushi/ripgrep` @4a51093 (rust:1, rustc 1.100) | **none**: no `rust-toolchain*`; `rust-version` is the MSRV, not a pin | `rustfmt.toml` | `cargo fmt --all --check` 2 s, **0 files** | `cargo clippy --fix` 35 s: **48 files changed** (40× "doc list item without indentation", `matches!`, …) |
+| `pydantic/pydantic` @5176478 | ruff **0.17.3** from `uv.lock` | `[tool.ruff]`, `[tool.ruff.format]` | `ruff format --check .` 1 s: **38 files**, nearly all Python code blocks inside Markdown (36 under `docs/`) | `ruff check .` 1 s, 2 fixable |
+| `psf/black` @a12e959 | none (the project is black itself) | `[tool.black]` | `black --check .` 17 s, **0 files** (68 unchanged) | — |
+| `terraform-aws-modules/terraform-aws-vpc` @577ad62 (terraform 1.13.5) | none at the root; `.pre-commit-config.yaml` pins the hook repository (v1.108.1), not terraform | none; `terraform fmt` has no config | `terraform fmt -check -recursive` 1 s, **0 files** | — |
+
+The answers:
+
+1. **The format tools are stable across versions:** gofmt, rustfmt, black and terraform fmt gave clean runs on
+   well-kept repositories, even with a newer tool than the repository pins (Go 1.25 against `go 1.15`).
+2. **Lint is not stable without a pinned toolchain.** clippy on the newest rustc found 48 files in a well-kept
+   repository.
+   - **→ Lint mode uses `rust-toolchain(.toml)` when present, otherwise stable.** The pull request body names the
+     toolchain used.
+   - The pipeline never lints (D10 formats only).
+3. **The tool's scope is not the repository's scope.** `ruff format .` reaches Markdown code blocks that pydantic's own
+   tooling never formats.
+   - **→ The action never runs a tool on `.`.** It passes an explicit file list per tool, filtered by the tool's own
+     extensions (`*.py`/`*.pyi` for ruff and black, `*.go`, `*.rs` via `cargo fmt -- <files>`, `*.tf`/`*.tfvars`),
+     minus `exclude`.
+   - In the pipeline, that list is the changed files (D9.1).
+4. **Pin detection has these sources:**
+   - Python: `uv.lock`, `poetry.lock`, `requirements*.txt`, then the `.pre-commit-config.yaml` `rev`;
+   - Rust: `rust-toolchain(.toml)`;
+   - Go: `go.mod` `toolchain`, then `go`;
+   - Terraform: `.terraform-version`, then `required_version`, then the latest release.
+   - The pull request body names every version used.
+5. These five clones at these commits become the script's test fixtures (M1). They are trimmed copies, so the tests
+   need no network.
+
 ### S4 — reusing dispatch → artifact → GitWriter
 
 - **No generic "apply a patch on base X, push branch Y" job exists.**
@@ -249,7 +354,16 @@ The answers:
 
 ## Not decided yet
 
-- Nothing. Q15 is D16.
+- **Q16: how a non-C# hunk is proven whitespace-only (from S7).**
+  - **A:** the writer uses "equal without whitespace" only as a pre-filter. The **runner proves** it for every language:
+    1. rebuild both whole-file resolutions with the same `git merge-file --diff3 --diff-algorithm=myers` on the three
+       commits, passed as inputs;
+    2. format both with the target's formatter;
+    3. require the two results to be identical, or fail the run, which evicts the PR as an unresolved conflict does.
+    - Formatters never change string contents, so the formatter's own rules decide what counts as whitespace.
+  - **B:** Roslyn tokens in the writer for C# (exact), and a hand-written conservative lexer in the writer for TS/JS.
+    It refuses any hunk whose differing whitespace sits inside a string, a template or a possible regex literal.
+  - **C:** C# only in the first version; other types keep today's behaviour.
 
 ## Out of scope
 
