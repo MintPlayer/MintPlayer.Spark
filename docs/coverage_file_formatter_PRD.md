@@ -1,7 +1,7 @@
 # Formatting — repository actions and pipeline steps that format code by the repository's own settings
 
-**Status:** Grilled 2026-11-23 (Q1–Q14 answered, see "Decisions"). Nothing implemented. **Paused** until the anonymous
-async notifications issue (D14) is released; this feature's run feedback builds on it. Spikes are in
+**Status:** Grilled 2026-11-23 (Q1–Q14 answered, see "Decisions"). Nothing implemented. **Paused** until #710 (one bell
+UI + anonymous async notifications, D14) is released; this feature's run feedback builds on it. Spikes are in
 [coverage_file_formatter_plan.md](coverage_file_formatter_plan.md).
 **Issue:** #657 · **App:** `apps/CodeCoverage` (production, coverage.mintplayer.com) · one pull request
 
@@ -135,4 +135,4 @@ repository's runner (D1).
 - Other forges. The pull request building blocks are GitHub only, and onboarding already refuses the rest.
 - Running any formatter on the server.
 - Formatting on every push, or as a failing check.
-- The notification UI and anonymous async notifications: the separate issue (D14).
+- The notification UI and anonymous async notifications: #710 (D14).

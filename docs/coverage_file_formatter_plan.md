@@ -6,7 +6,7 @@
 ## Status
 
 - **2026-11-23: research and grill done** (PRD D1–D14).
-- **Paused:** the anonymous async notifications issue (PRD D14) is built and released first. #657 then resumes with
+- **Paused:** #710 (one bell UI + anonymous async notifications, PRD D14) is built and released first. #657 then resumes with
   spikes S1, S2, S4–S9, then M1–M10.
 - Tests run **once, at the end** (M10). No interim gate runs.
 
