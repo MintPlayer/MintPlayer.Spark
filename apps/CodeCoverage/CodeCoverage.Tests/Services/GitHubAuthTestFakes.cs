@@ -156,7 +156,7 @@ internal sealed class FakeHttpContextAccessor(ClaimsPrincipal principal) : IHttp
 /// The caller as Spark reports it, fixed by the test: <paramref name="userId"/> for a signed-in caller (whatever
 /// credential identified them — a cookie's NameIdentifier or an agent token's <c>sub</c>), null for an anonymous one.
 /// </summary>
-internal sealed class FakeSparkCurrentUser(string? userId) : MintPlayer.Spark.Abstractions.Authentication.ISparkCurrentUser
+internal sealed class FakeSparkCurrentUser(string? userId) : MintPlayer.Spark.Abstractions.Authentication.ISparkCurrentPrincipal
 {
     public string? Id => userId;
     public bool IsAuthenticated => userId is not null;

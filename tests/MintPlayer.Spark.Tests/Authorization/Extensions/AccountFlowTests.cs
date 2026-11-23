@@ -6,6 +6,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.DependencyInjection;
+using MintPlayer.Spark.Abstractions.Authentication;
 using MintPlayer.Spark.Authorization.Configuration;
 using MintPlayer.Spark.Authorization.Identity;
 using MintPlayer.Spark.Testing;
@@ -436,25 +437,25 @@ public class AccountFlowTests : SparkTestDriver
 
     #region D8 — personal data and deletion
 
-    private sealed class NotesContributor : ISparkPersonalDataContributor<SparkUser>
+    private sealed class NotesContributor : ISparkPersonalDataContributor
     {
         public string Name => "notes";
-        public Task<object?> GetPersonalDataAsync(SparkUser user, CancellationToken cancellationToken)
+        public Task<object?> GetPersonalDataAsync(ISparkAccount user, CancellationToken cancellationToken)
             => Task.FromResult<object?>(new[] { $"note of {user.UserName}" });
     }
 
-    private sealed class RecordingDeletionHandler(List<string> calls, bool fail) : ISparkAccountDeletionHandler<SparkUser>
+    private sealed class RecordingDeletionHandler(List<string> calls, bool fail) : ISparkAccountDeletionHandler
     {
-        public Task OnDeletingAccountAsync(SparkUser user, CancellationToken cancellationToken)
+        public Task OnDeletingAccountAsync(ISparkAccount user, CancellationToken cancellationToken)
         {
             calls.Add(user.Id!);
             return fail ? throw new InvalidOperationException("content store unavailable") : Task.CompletedTask;
         }
     }
 
-    private sealed class RecordingDeletedHandler(List<string> calls, Func<SparkUser, Task<bool>>? stillStored = null, bool fail = false) : ISparkAccountDeletedHandler<SparkUser>
+    private sealed class RecordingDeletedHandler(List<string> calls, Func<ISparkAccount, Task<bool>>? stillStored = null, bool fail = false) : ISparkAccountDeletedHandler
     {
-        public async Task OnAccountDeletedAsync(SparkUser user, CancellationToken cancellationToken)
+        public async Task OnAccountDeletedAsync(ISparkAccount user, CancellationToken cancellationToken)
         {
             calls.Add("deleted:" + user.Id + (stillStored is not null && await stillStored(user) ? ":still-stored" : string.Empty));
             if (fail)
@@ -470,8 +471,8 @@ public class AccountFlowTests : SparkTestDriver
         await using var host = started = await AccountTestHost.StartAsync(Store,
             services: s =>
             {
-                s.AddScoped<ISparkAccountDeletionHandler<SparkUser>>(_ => new RecordingDeletionHandler(calls, fail: false));
-                s.AddScoped<ISparkAccountDeletedHandler<SparkUser>>(_ => new RecordingDeletedHandler(calls,
+                s.AddScoped<ISparkAccountDeletionHandler>(_ => new RecordingDeletionHandler(calls, fail: false));
+                s.AddScoped<ISparkAccountDeletedHandler>(_ => new RecordingDeletedHandler(calls,
                     async u => await started!.FindByEmailAsync(u.Email!) is not null));
             });
         var user = await host.CreateUserAsync("goodbye", "goodbye@example.com");
@@ -491,8 +492,8 @@ public class AccountFlowTests : SparkTestDriver
         await using (var stopped = await AccountTestHost.StartAsync(Store,
             services: s =>
             {
-                s.AddScoped<ISparkAccountDeletionHandler<SparkUser>>(_ => new RecordingDeletionHandler(calls, fail: true));
-                s.AddScoped<ISparkAccountDeletedHandler<SparkUser>>(_ => new RecordingDeletedHandler(calls));
+                s.AddScoped<ISparkAccountDeletionHandler>(_ => new RecordingDeletionHandler(calls, fail: true));
+                s.AddScoped<ISparkAccountDeletedHandler>(_ => new RecordingDeletedHandler(calls));
             }))
         {
             await stopped.CreateUserAsync("stays", "stays@example.com");
@@ -505,7 +506,7 @@ public class AccountFlowTests : SparkTestDriver
 
         calls.Clear();
         await using var failing = await AccountTestHost.StartAsync(Store,
-            services: s => s.AddScoped<ISparkAccountDeletedHandler<SparkUser>>(_ => new RecordingDeletedHandler(calls, fail: true)));
+            services: s => s.AddScoped<ISparkAccountDeletedHandler>(_ => new RecordingDeletedHandler(calls, fail: true)));
         await failing.CreateUserAsync("gone", "gone@example.com");
         using var goneClient = failing.Client();
         var goneCookie = await failing.CookieSignInAsync(goneClient, "gone@example.com");
@@ -520,7 +521,7 @@ public class AccountFlowTests : SparkTestDriver
     public async Task Personal_data_holds_the_account_and_contributions_and_never_a_secret()
     {
         await using var host = await AccountTestHost.StartAsync(Store,
-            services: s => s.AddScoped<ISparkPersonalDataContributor<SparkUser>, NotesContributor>());
+            services: s => s.AddScoped<ISparkPersonalDataContributor, NotesContributor>());
         await host.CreateUserAsync("exporter", "export@example.com");
         await host.WithScopeAsync(async sp =>
         {
@@ -571,7 +572,7 @@ public class AccountFlowTests : SparkTestDriver
     {
         var calls = new List<string>();
         await using var host = await AccountTestHost.StartAsync(Store,
-            services: s => s.AddScoped<ISparkAccountDeletionHandler<SparkUser>>(_ => new RecordingDeletionHandler(calls, fail: false)));
+            services: s => s.AddScoped<ISparkAccountDeletionHandler>(_ => new RecordingDeletionHandler(calls, fail: false)));
         var user = await host.CreateUserAsync("leaver", "leaver@example.com");
         using var client = host.Client();
         var cookie = await host.CookieSignInAsync(client, "leaver@example.com");
@@ -614,7 +615,7 @@ public class AccountFlowTests : SparkTestDriver
     {
         var calls = new List<string>();
         await using var host = await AccountTestHost.StartAsync(Store,
-            services: s => s.AddScoped<ISparkAccountDeletionHandler<SparkUser>>(_ => new RecordingDeletionHandler(calls, fail: true)));
+            services: s => s.AddScoped<ISparkAccountDeletionHandler>(_ => new RecordingDeletionHandler(calls, fail: true)));
         await host.CreateUserAsync("keeper", "keeper@example.com");
         using var client = host.Client();
         var cookie = await host.CookieSignInAsync(client, "keeper@example.com");

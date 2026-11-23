@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using MintPlayer.Spark.Abstractions.Authentication;
 using MintPlayer.Spark.Authorization.Configuration;
 using System.Globalization;
 using System.Security.Claims;
@@ -139,19 +140,20 @@ public class SparkSignInManager<TUser> : SignInManager<TUser>
     }
 
     /// <summary>
-    /// Every <see cref="ISparkSignedInHandler{TUser}"/>, for a fresh sign-in only (a refresh arrives with
+    /// Every <see cref="ISparkSignedInHandler"/>, for a fresh sign-in only (a refresh arrives with
     /// <see cref="AuthenticatedAtItem"/> already set). A failure is logged, never refuses the sign-in.
     /// </summary>
     private async Task RunSignedInHandlersAsync(TUser user)
     {
-        if (Context.RequestServices?.GetService(typeof(IEnumerable<ISparkSignedInHandler<TUser>>)) is not IEnumerable<ISparkSignedInHandler<TUser>> handlers)
+        if (Context.RequestServices?.GetService(typeof(IEnumerable<ISparkSignedInHandler>)) is not IEnumerable<ISparkSignedInHandler> handlers)
             return;
 
+        var account = new SparkUserAccount(user);
         foreach (var handler in handlers)
         {
             try
             {
-                await handler.OnSignedInAsync(user, Context.RequestAborted);
+                await handler.OnSignedInAsync(account, Context.RequestAborted);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {

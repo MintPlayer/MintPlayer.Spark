@@ -23,6 +23,6 @@
 
 export type { SparkConfig } from './lib/spark-config';
 export { SPARK_CONFIG, defaultSparkConfig } from './lib/spark-config';
-export { SPARK_AUTH_STATE } from './lib/spark-auth-state';
+export { SPARK_AUTH_STATE, sparkSignedIn } from './lib/spark-auth-state';
 export { provideSpark, sparkFeature, withConfig, SparkFeatureOrder } from './lib/provide-spark';
 export type { SparkFeature } from './lib/provide-spark';

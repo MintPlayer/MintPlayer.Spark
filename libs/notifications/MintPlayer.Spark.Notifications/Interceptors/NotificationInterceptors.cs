@@ -53,6 +53,7 @@ internal sealed class NotificationInterceptors : IBeforeSave<Notification>
             // Read state is the only thing a user changes, and through /spark/notifications/read; a direct
             // edit (an application that grants Edit) keeps everything else as stored.
             entity.UserId = stored.UserId;
+            entity.VisitorId = stored.VisitorId;
             entity.OrganizationId = stored.OrganizationId;
             entity.Title = stored.Title;
             entity.Body = stored.Body;

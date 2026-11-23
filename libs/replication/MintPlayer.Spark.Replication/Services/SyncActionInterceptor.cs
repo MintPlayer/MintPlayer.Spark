@@ -20,7 +20,7 @@ internal partial class SyncActionInterceptor : ISyncActionInterceptor
     [Inject] private readonly IDocumentStore documentStore;
     [Inject] private readonly IOptions<SparkReplicationOptions> optionsAccessor;
     [Inject] private readonly ILogger<SyncActionInterceptor> logger;
-    [Inject] private readonly MintPlayer.Spark.Abstractions.Authentication.ISparkCurrentUser? currentUser = null;
+    [Inject] private readonly MintPlayer.Spark.Abstractions.Authentication.ISparkCurrentPrincipal? currentUser = null;
 
     private SparkReplicationOptions Options => optionsAccessor.Value;
 

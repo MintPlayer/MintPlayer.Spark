@@ -64,7 +64,7 @@ public class ContributionsSurfaceTests : SparkTestDriver
             {
                 s.AddSingleton(identity);
                 s.AddSingleton(audit);
-                s.AddScoped<ISparkCurrentUser, CoCurrentUser>();
+                s.AddScoped<ISparkCurrentPrincipal, CoCurrentUser>();
                 s.AddScoped<ISatelliteAuditSink, CoAuditSink>();
                 if (names)
                     s.AddScoped<ISparkUserNameResolver, CoNames>();

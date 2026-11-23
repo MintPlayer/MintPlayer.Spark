@@ -222,8 +222,8 @@ Rules:
    user's grant narrow it like every generic tool. A type the tool declares it reads through another (below) answers by
    that other type's layers.
 
-The caller is available as a `ClaimsPrincipal user` parameter or through `ISparkCurrentUser`; identify the user
-through `ISparkCurrentUser.Id`. An agent's principal carries the local user id as `sub` and as
+The caller is available as a `ClaimsPrincipal user` parameter or through `ISparkCurrentPrincipal`; identify the user
+through `ISparkCurrentPrincipal.Id`. An agent's principal carries the local user id as `sub` and as
 `ClaimTypes.NameIdentifier`, so code that reads the id from the claim (or `UserManager.GetUserAsync(principal)`), as
 from the sign-in cookie, works unchanged; before that, CodeCoverage's owner lookups missed every agent (plan M6). It
 also carries the role and group claims a cookie sign-in of the user carries (Identity's claims factory, made on every

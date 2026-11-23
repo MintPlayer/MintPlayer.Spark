@@ -125,6 +125,9 @@ public static class SparkExtensions
         // Viewer timezone (#460, item 7): header, then the spark-timezone cookie, then UTC.
         services.AddSparkConfigurationSection<SparkTimeZoneOptions>(SparkTimeZoneOptions.SectionName);
 
+        // Anonymous visitor id (#710 G4/G5): issued only by ISparkCurrentPrincipal.EnsureVisitorId().
+        services.AddSparkConfigurationSection<SparkVisitorOptions>(SparkVisitorOptions.SectionName);
+
         // Register the Spark services
         services.AddSparkServices();
 

@@ -24,7 +24,7 @@ internal sealed partial class SparkModeration : ISparkModeration
     [Inject] private readonly IDocumentStore documentStore;
     [Inject] private readonly ModerationTargets targets;
     [Inject] private readonly IPermissionService permissions;
-    [Inject] private readonly ISparkCurrentUser currentUser;
+    [Inject] private readonly ISparkCurrentPrincipal currentUser;
     [Inject] private readonly ModerationUserState userState;
     [Inject] private readonly ReputationLedger ledger;
     [Inject] private readonly ModerationAudit audit;

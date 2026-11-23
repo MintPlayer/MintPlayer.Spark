@@ -90,7 +90,7 @@ internal static partial class McpToolFilters
 
         LogCall(logger,
             request.Params?.Name,
-            services!.GetService<ISparkCurrentUser>()?.Id,
+            services!.GetService<ISparkCurrentPrincipal>()?.Id,
             state?.Agent.ClientId,
             state?.Agent.Kind.ToString() ?? "unknown",
             state?.Agent.GrantId,

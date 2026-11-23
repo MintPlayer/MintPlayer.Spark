@@ -10,7 +10,7 @@ public sealed partial class MintPlayerAccess
     /// <summary>The legacy role, kept as the group name (security.json).</summary>
     public const string AdministratorGroup = "Administrator";
 
-    [Inject] private readonly ISparkCurrentUser currentUser;
+    [Inject] private readonly ISparkCurrentPrincipal currentUser;
     [Inject] private readonly IGroupMembershipProvider groups;
 
     private bool? isAdministrator;

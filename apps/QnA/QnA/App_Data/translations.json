@@ -21,6 +21,16 @@
         "nl": "Dupliceren"
       }
     },
+    "RemindMe": {
+      "description": {
+        "en": "Sends a reminder of this question to your notification bell a few seconds later, signed in or not."
+      },
+      "label": {
+        "en": "Remind me",
+        "fr": "Me le rappeler",
+        "nl": "Herinner me"
+      }
+    },
     "ReopenQuestion": {
       "description": {
         "en": "Reopens a closed question, so it takes answers again."

@@ -2,6 +2,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
+using MintPlayer.Spark.Abstractions.Authentication;
 using MintPlayer.Spark.Abstractions.Builder;
 using MintPlayer.Spark.Abstractions.Interceptors;
 using MintPlayer.Spark.Authorization.Identity;
@@ -73,9 +74,9 @@ public static class SparkOrganizationsExtensions
         builder.AddInterceptor<OrganizationOwnedDefaults>();
 
         // Open generics: they close over whichever user type AddAuthentication<TUser>() registered.
-        services.TryAddEnumerable(ServiceDescriptor.Scoped(typeof(ISparkSignedInHandler<>), typeof(PersonalOrganizationOnSignIn<>)));
-        services.TryAddEnumerable(ServiceDescriptor.Scoped(typeof(ISparkAccountDeletionHandler<>), typeof(OrganizationAccountDeletion<>)));
-        services.TryAddEnumerable(ServiceDescriptor.Scoped(typeof(ISparkPersonalDataContributor<>), typeof(OrganizationPersonalData<>)));
+        services.TryAddEnumerable(ServiceDescriptor.Scoped(typeof(ISparkSignedInHandler), typeof(PersonalOrganizationOnSignIn)));
+        services.TryAddEnumerable(ServiceDescriptor.Scoped(typeof(ISparkAccountDeletionHandler), typeof(OrganizationAccountDeletion)));
+        services.TryAddEnumerable(ServiceDescriptor.Scoped(typeof(ISparkPersonalDataContributor), typeof(OrganizationPersonalData)));
 
         builder.Registry.AddEndpoints(endpoints => endpoints.MapSparkOrganizationsEndpoints());
 

@@ -5,7 +5,7 @@ using MintPlayer.Spark.Abstractions.Authentication;
 namespace MintPlayer.Spark.Services;
 
 /// <summary>
-/// The default <see cref="ISparkCurrentUser"/>: the request principal's
+/// The default <see cref="ISparkCurrentPrincipal"/>: the request principal's
 /// <see cref="ClaimTypes.NameIdentifier"/>, else — for a bearer token this application issued itself —
 /// its <c>sub</c>.
 /// </summary>
@@ -26,15 +26,30 @@ namespace MintPlayer.Spark.Services;
 /// issuer names a user of that issuer, not of this application.
 /// </para>
 /// </remarks>
-[Register(typeof(ISparkCurrentUser), ServiceLifetime.Scoped)]
-internal partial class HttpContextSparkCurrentUser : ISparkCurrentUser
+[Register(typeof(ISparkCurrentPrincipal), ServiceLifetime.Scoped)]
+internal partial class HttpContextSparkCurrentPrincipal : ISparkCurrentPrincipal
 {
     /// <summary>The JWT subject claim, as a resource server without inbound claim mapping keeps it.</summary>
     internal const string SubjectClaim = "sub";
 
     [Inject] private readonly IHttpContextAccessor httpContextAccessor;
+    [Inject] private readonly SparkVisitorCookies visitors;
 
     private ClaimsPrincipal? Principal => httpContextAccessor.HttpContext?.User;
+
+    /// <inheritdoc />
+    public string? VisitorId => httpContextAccessor.HttpContext is { } context ? visitors.Read(context) : null;
+
+    /// <inheritdoc />
+    public string? EnsureVisitorId()
+        => httpContextAccessor.HttpContext is { } context && !IsAuthenticated ? visitors.Ensure(context) : null;
+
+    /// <inheritdoc />
+    public void ForgetVisitor()
+    {
+        if (httpContextAccessor.HttpContext is { } context)
+            visitors.Clear(context);
+    }
 
     public bool IsAuthenticated => Principal?.Identity?.IsAuthenticated == true;
 

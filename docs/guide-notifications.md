@@ -9,7 +9,12 @@ up to three channels at once, chosen by the user per organization:
 - **mail**: one MailManager mail (`SparkNotifications/Notification`, en + nl);
 - **Web Push**: one push per subscribed device, also when no tab is open (the PWA's service worker shows it).
 
-Decisions and evidence: [seo_analyzer_PRD.md](seo_analyzer_PRD.md) X10, D20, D30, D38 and §12 "M6". Package
+The bell is also where an action's own message appears (`IClientAccessor.Notify`, the `notify` client operation): one
+UI system for both, see [Angular](#angular-mintplayerng-sparknotifications). Anonymous visitors can be notified too
+([below](#anonymous-visitors)).
+
+Decisions and evidence: [seo_analyzer_PRD.md](seo_analyzer_PRD.md) X10, D20, D30, D38 and §12 "M6";
+[notification_bell_PRD.md](notification_bell_PRD.md) (#710: the bell, visitors, the decoupling). Package
 references: [notifications](../libs/notifications/MintPlayer.Spark.Notifications/README.md),
 [Web Push](../libs/webpush/MintPlayer.Spark.WebPush/README.md).
 
@@ -18,12 +23,16 @@ references: [notifications](../libs/notifications/MintPlayer.Spark.Notifications
 ```csharp
 builder.Services.AddSpark(builder.Configuration, spark =>
 {
-    spark.AddAuthentication<SparkUser>();
+    spark.AddAuthentication<SparkUser>(); // optional: accounts (mail addresses, languages, push)
     spark.AddMessaging();          // every push is a durable outbox message
     spark.AddMailManager();        // optional: the mail channel
     spark.AddNotifications();      // options: Spark:Notifications, or AddNotifications(o => …)
 });
 ```
+
+The package does not reference Authorization (#710). It reads accounts through `ISparkAccountDirectory`
+(`MintPlayer.Spark.Abstractions.Authentication`), which Authorization registers. Without a directory every id is taken
+at its word and gets the in-app channel only; startup refuses Web Push configured without one.
 
 ```json
 // App_Data/security.json — startup is refused without the binding
@@ -67,8 +76,40 @@ public sealed partial class AlertService
 - A mail goes only to a **confirmed** address (`EmailConfirmed`): an X or Entra sign-in without a verified email
   proves nothing about the address.
 - Unknown user ids are skipped. Title ≤ 200, body ≤ 2 000 characters; a push carries the first 1 000.
-- Links need `Spark:Auth:PublicBaseUrl` (as every mailed link does); without it they stay relative and a warning
-  is logged.
+- Links need a public base URL: `SparkNotificationsOptions.PublicBaseUrl` (`Spark:Notifications:PublicBaseUrl`), else
+  `Spark:Auth:PublicBaseUrl` from configuration. A value set only in code on the Authorization options is no longer
+  read (#710). Without one, links stay relative and a warning is logged.
+
+## Anonymous visitors
+
+A visitor who is not signed in can be notified too, for work that finishes after the request (an export, a report):
+
+```csharp
+[Inject] private readonly ISparkCurrentPrincipal principal;
+
+var visitorId = principal.EnsureVisitorId();   // issues the visitor cookie when there is none; null for a signed-in caller
+await messageBus.DelayBroadcastAsync(new ReportMessage(visitorId), TimeSpan.FromSeconds(5));
+// … later, in the recipient:
+await notifier.NotifyAsync(new SparkNotification { VisitorIds = [message.VisitorId], Title = "Your report is ready" });
+```
+
+- The visitor id lives in `spark.visitor` (HttpOnly, Data Protection, 24 h sliding: `Spark:Visitor:Lifetime`;
+  `Spark:Visitor:SessionCookie` makes it a session cookie). `spark.visitor.present=1` tells the client one exists.
+  Both are set only when `EnsureVisitorId()` runs, that is when the visitor asked for something that answers later,
+  never on a plain visit: they are strictly necessary for a service the visitor requested. Say so in your cookie notice.
+- A visitor gets the **in-app** channel only, and the document expires with the cookie (`Lifetime`), not after the
+  model's 90 days. An id without the `visitor:` prefix addresses nobody, so a user id can never be passed as one.
+- Only that browser reads its rows, over HTTP and `/spark/live`. Marking read needs the antiforgery token, as any
+  cookie-authenticated POST does. Web Push and preferences stay for accounts.
+- **Signing in claims them:** the visitor's notifications move to the account (with the model's expiry) and both cookies
+  are cleared (`NotificationVisitorClaim`, an `ISparkSignedInHandler`). A job that finishes after the sign-in still
+  addresses the old visitor id, which nobody reads any more.
+- The slot must admit anonymous callers: `"notifications:users": [ "Anonymous visitors", "Signed-in users" ]` (group
+  names from your `groups` block).
+- Client: add `withSparkVisitor()` to `provideHttpClient(...)`. When a response sets the presence cookie it replaces the
+  live socket, which still carries the handshake's cookies, so the notification reaches the open tab.
+
+QnA's `RemindMe` action on a question is the working example.
 
 ## Channels per organization
 
@@ -120,8 +161,8 @@ and Safari were not measured (PRD §11 Q-M6a).
 ## Rows and rights
 
 - The package grants `QueryRead` + `Delete` on `Notification` and `PushSubscription`, and every verb on
-  `NotificationPreference`, to `notifications:users`. Every row is its user's alone (`UserId == caller` on every
-  path, the live socket included): anyone else gets the missing-row 404.
+  `NotificationPreference`, to `notifications:users`. Every row is its user's (or its visitor's) alone, on every path,
+  the live socket included: anyone else gets the missing-row 404, or the uniform 401 when anonymous.
 - Marking read is `POST /spark/notifications/read` with `{ ids }`, or no ids for all unread.
 - Deleting an account deletes its notifications, devices and preferences; the personal-data export gains a
   `notifications` section (devices without their endpoints).
@@ -130,16 +171,31 @@ and Safari were not measured (PRD §11 Q-M6a).
 ## Angular (`@mintplayer/ng-spark/notifications`)
 
 ```html
-<spark-notification-bell />        <!-- unread badge, recent list, mark all as read, push opt-in -->
+<spark-notification-bell />        <!-- unread badge, list, pop-out, mark all as read, push opt-in -->
 <spark-push-toggle />              <!-- the opt-in alone, e.g. on an account page -->
 ```
 
-- `SparkNotificationsService` (root): `unreadCount` (the live `UnreadNotifications` total), `recent` (live
-  `MyNotifications`), `markRead(ids?)`, `open(notification)` (marks read, navigates in-app for same-origin URLs),
-  and push: `pushSupported`, `pushState` (`unsupported` | `denied` | `off` | `on`), `pushConfigured`,
-  `enablePush()` (asks permission inside the click, subscribes through `SwPush`, posts the subscription; a
-  refused device is unsubscribed again), `disablePush()`. Both lists are subscriptions on the one live socket.
-- `withNotifications({ recentCount, listLink })` changes the defaults (8, `['/query', 'notifications']`).
+The bell is the one place Spark shows notifications (#710; `<spark-toast-container>` is gone). Put it in the shell's
+topbar of every app that uses `withClientOperations()`:
+
+- **The list** (`<spark-notification-list>`) holds the stored notifications and this session's `notify` messages,
+  newest first. Session entries are kept in memory (`SparkSessionNotifications`, at most 50) and can be closed; opening
+  the menu marks them read. They are not stored, so a reload drops them, and the badge with them.
+- **The pop-out** shows what arrives below the bell: at most 3, each for its `durationMs` or 6 s. An error, or a
+  duration of 0, stays until closed; hovering pauses. Nothing pops out while the menu is open, for what the first
+  result already held, on the server, or twice for one stored notification in a browser (`localStorage`).
+- Without `withNotifications()` (no server package) the bell lists session messages only. In dev mode
+  `SparkSessionNotifications` warns once when a message arrives and no bell is rendered.
+
+- `SparkNotificationsService` (root): `unreadCount` (stored + session), `serverUnreadCount`, `recent` (live
+  `MyNotifications`), `entries` (both, as `SparkBellEntry`), `arrived`, `following` (signed in, or an identified
+  visitor), `choose(entry)`, `markAllRead()`, `dismiss(entry)`, `markRead(ids?)`, `open(notification)` (marks read,
+  navigates in-app for same-origin URLs), and push: `pushSupported`, `pushState` (`unsupported` | `denied` | `off` |
+  `on`), `pushConfigured`, `enablePush()` (asks permission inside the click, subscribes through `SwPush`, posts the
+  subscription; a refused device is unsubscribed again), `disablePush()`. Both lists are subscriptions on the one live
+  socket.
+- `withNotifications({ recentCount, listLink })` turns the stored notifications on and changes the defaults (8,
+  `['/query', 'notifications']`).
 - Needs `@angular/service-worker` (for `SwPush`) and `withServiceWorker()`. Push is `unsupported` where
   there is no Notification API, `PushManager` or service worker (iOS outside an installed app).
 

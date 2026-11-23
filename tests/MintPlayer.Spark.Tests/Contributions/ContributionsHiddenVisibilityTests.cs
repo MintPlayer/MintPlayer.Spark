@@ -63,7 +63,7 @@ public class ContributionsHiddenVisibilityTests : SparkTestDriver
             {
                 s.AddSingleton(identity);
                 s.AddSingleton(new CoAuditLog());
-                s.AddScoped<ISparkCurrentUser, CoCurrentUser>();
+                s.AddScoped<ISparkCurrentPrincipal, CoCurrentUser>();
                 s.AddScoped<ISatelliteAuditSink, CoAuditSink>();
                 s.AddScoped<ISparkUserNameResolver, CoNames>();
             },

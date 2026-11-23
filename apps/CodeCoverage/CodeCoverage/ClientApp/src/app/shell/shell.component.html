@@ -18,8 +18,14 @@
 
     Connecting an AI agent (/connect-agent) is the Guides group's "Connect an AI agent" unit, a router link in the same
     tab; the topbar no longer repeats it.
+
+    The bell is where the actions' messages (notify client operations) appear: one UI system (#710). Without
+    withNotifications() it lists this session's messages only, since the server has no stored notifications.
   -->
-  <spark-auth-bar *sparkShellTopbarEnd />
+  <ng-container *sparkShellTopbarEnd>
+    <spark-notification-bell />
+    <spark-auth-bar />
+  </ng-container>
 
   <ng-container *sparkShellMainHeader>
     @if (loginError(); as error) {

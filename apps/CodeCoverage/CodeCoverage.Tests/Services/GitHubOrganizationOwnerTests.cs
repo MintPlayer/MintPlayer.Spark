@@ -64,7 +64,7 @@ public class GitHubOrganizationOwnerTests : CoverageRavenTest
 
         var services = new ServiceCollection();
         services.AddSingleton<IHttpContextAccessor>(new FakeHttpContextAccessor(GitHubAuthTestFakes.PrincipalFor(user)));
-        services.AddSingleton<MintPlayer.Spark.Abstractions.Authentication.ISparkCurrentUser>(new FakeSparkCurrentUser(user.Id));
+        services.AddSingleton<MintPlayer.Spark.Abstractions.Authentication.ISparkCurrentPrincipal>(new FakeSparkCurrentUser(user.Id));
         services.AddSingleton(GitHubAuthTestFakes.UserManagerOver(new InMemoryUserStore().Add(user)));
         services.AddSingleton<IGitHubUserTokenService>(new ScriptedTokenService(_ => new GitHubUserToken("user-token", GitHubTokenState.Ok)));
         services.AddSingleton<IHttpClientFactory>(new SingleClientHttpFactory(handler));

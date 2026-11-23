@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Options;
+using MintPlayer.Spark.Notifications.Actions;
 using MintPlayer.Spark.Notifications.Models;
 using MintPlayer.Spark.WebPush;
 using Raven.Client.Documents;
@@ -6,27 +7,31 @@ using Raven.Client.Documents.Linq;
 
 namespace MintPlayer.Spark.Notifications.Services;
 
-/// <summary>What a signed-in user does with their own notifications and devices (the <c>/spark/notifications</c> endpoints).</summary>
+/// <summary>What a caller does with their own notifications (user or visitor) and devices (users only): the <c>/spark/notifications</c> endpoints.</summary>
 internal sealed class NotificationInbox(IDocumentStore store, IOptions<SparkNotificationsOptions> options, TimeProvider timeProvider)
 {
     internal const int MarkAllLimit = 1024;
 
-    /// <summary>Marks <paramref name="ids"/> (or every unread one) of <paramref name="userId"/> read. Ids of other users are ignored.</summary>
-    public async Task<int> MarkReadAsync(string userId, IReadOnlyCollection<string>? ids, CancellationToken cancellationToken)
+    /// <summary>Marks <paramref name="ids"/> (or every unread one) of <paramref name="owner"/> read. Anyone else's ids are ignored.</summary>
+    public async Task<int> MarkReadAsync(NotificationOwner owner, IReadOnlyCollection<string>? ids, CancellationToken cancellationToken)
     {
+        if (!owner.IsKnown)
+            return 0;
+
         using var session = store.OpenAsyncSession();
         List<Notification> targets;
         if (ids is { Count: > 0 })
         {
             var loaded = await session.LoadAsync<Notification>(ids.Distinct().Take(MarkAllLimit), cancellationToken);
-            targets = loaded.Values.Where(n => n is not null && n.UserId == userId).ToList()!;
+            targets = loaded.Values.Where(n => n is not null && owner.Owns(n)).ToList()!;
         }
         else
         {
             // The values are parameters (never spliced). The index may lag a just-stored notification by a few
             // milliseconds; a click on "mark all" a moment after a push is answered by the next one.
             targets = await session.Query<Notification>()
-                .Where(n => n.UserId == userId && n.IsRead != true)
+                .Where(owner.Filter())
+                .Where(n => n.IsRead != true)
                 .Take(MarkAllLimit)
                 .ToListAsync(cancellationToken);
         }

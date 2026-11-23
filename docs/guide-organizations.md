@@ -102,7 +102,7 @@ removed member would keep reading the organization's data. Details: PRD §12 "Sp
 
 ## Personal organizations
 
-Every user gets one on their first sign-in (`ISparkSignedInHandler<TUser>`, a hook in the Authorization
+Every user gets one on their first sign-in (`ISparkSignedInHandler`, a hook in the Authorization
 package that runs after every fresh sign-in): id `Organizations/personal/{userId}`, named after the user,
 the user its only Owner. Its fixed id makes the creation idempotent and race-free; after the first time a
 sign-in costs one load by id. Turn it off with `Spark:Organizations:CreatePersonalOrganizationOnSignIn =
@@ -227,7 +227,7 @@ builder.Services.AddScoped<IOrganizationDataHandler, SiteData>();
   handler's `DeleteAsync` first, then deletes the memberships, the invitations and the organization in
   one commit. A handler that throws stops it with everything intact, so handlers must be idempotent.
 - **Leaving** removes access only. The last Owner must make someone else Owner first.
-- **Deleting an account** (`ISparkAccountDeletionHandler<TUser>`) deletes the user's own personal
+- **Deleting an account** (`ISparkAccountDeletionHandler`) deletes the user's own personal
   organization, with its other members' access (D42; someone else's personal organization they joined is
   left like any other), and
   any organization the user alone was in (handlers included), and every other membership. If the user is

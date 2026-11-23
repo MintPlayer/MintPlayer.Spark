@@ -7,9 +7,10 @@ import { BehaviorSubject, Subject, of, throwError } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { SPARK_AUTH_STATE } from '@mintplayer/ng-spark';
 import { QueryResult } from '@mintplayer/ng-spark/models';
-import { SparkService } from '@mintplayer/ng-spark/services';
+import { SPARK_VISITOR_PRESENCE_COOKIE, SparkService, SparkVisitorPresence } from '@mintplayer/ng-spark/services';
 import {
   SPARK_MY_NOTIFICATIONS_QUERY_ID,
+  SPARK_NOTIFICATIONS_OPTIONS,
   SPARK_NOTIFICATION_TYPE_ID,
   SPARK_PUSH_PERMISSIONS,
   SPARK_UNREAD_NOTIFICATIONS_QUERY_ID,
@@ -55,15 +56,24 @@ describe('SparkNotificationsService', () => {
   let spark: { get: ReturnType<typeof vi.fn> };
   let router: { url: string; navigateByUrl: ReturnType<typeof vi.fn> };
 
-  function setup(options: { swPush?: object; permissions?: SparkNotificationPermissions | null; authState?: ReturnType<typeof signal> } = {}) {
+  function setup(options: {
+    swPush?: object;
+    permissions?: SparkNotificationPermissions | null;
+    authState?: ReturnType<typeof signal>;
+    server?: boolean;
+    visitor?: boolean;
+  } = {}) {
+    if (options.visitor) document.cookie = `${SPARK_VISITOR_PRESENCE_COOKIE}=1; path=/`;
     TestBed.configureTestingModule({
       providers: [
         { provide: HttpClient, useValue: http },
         { provide: SparkService, useValue: spark },
         { provide: Router, useValue: router },
         { provide: SPARK_PUSH_PERMISSIONS, useValue: options.permissions ?? null },
+        { provide: SPARK_NOTIFICATIONS_OPTIONS, useValue: { recentCount: 8, listLink: ['/query', 'notifications'], server: options.server ?? true } },
         ...(options.swPush ? [{ provide: SwPush, useValue: options.swPush }] : []),
-        ...(options.authState ? [{ provide: SPARK_AUTH_STATE, useValue: options.authState }] : []),
+        // Signed in unless a spec says otherwise: the stored notifications are followed only for an identity.
+        { provide: SPARK_AUTH_STATE, useValue: options.authState ?? signal<unknown>({ userName: 'ann' }) },
       ],
     });
     const service = TestBed.inject(SparkNotificationsService);
@@ -87,6 +97,73 @@ describe('SparkNotificationsService', () => {
   afterEach(() => {
     TestBed.resetTestingModule();
     vi.unstubAllGlobals();
+    document.cookie = `${SPARK_VISITOR_PRESENCE_COOKIE}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/`;
+  });
+
+  describe('who is followed (#710)', () => {
+    it('follows nothing for an anonymous caller without a visitor id', () => {
+      const service = setup({ authState: signal<unknown>(null) });
+      expect(FakeWebSocket.instances).toHaveLength(0);
+      expect(service.following()).toBe(false);
+      expect(http.get).not.toHaveBeenCalled();
+    });
+
+    it('reads ng-spark/auth\'s signed-out user ({ isAuthenticated: false }) as anonymous', () => {
+      // A truthy signed-out state asked for the push key; its 401 sent QnA's anonymous readers to the login page.
+      const service = setup({ authState: signal<unknown>({ isAuthenticated: false }) });
+      expect(FakeWebSocket.instances).toHaveLength(0);
+      expect(service.following()).toBe(false);
+      expect(http.get).not.toHaveBeenCalled();
+    });
+
+    it('follows a visitor whose auth state is ng-spark/auth\'s signed-out user, without asking for the push key', () => {
+      const service = setup({ authState: signal<unknown>({ isAuthenticated: false }), visitor: true });
+      socket().open();
+      expect(service.following()).toBe(true);
+      expect(http.get).not.toHaveBeenCalled();
+    });
+
+    it('follows an identified visitor, without asking for the push key', () => {
+      const service = setup({ authState: signal<unknown>(null), visitor: true });
+      socket().open();
+      expect(service.following()).toBe(true);
+      expect(socket().sent.filter(s => s.op === 'subscribe')).toHaveLength(2);
+      expect(http.get).not.toHaveBeenCalled();
+      expect(service.pushConfigured()).toBe(false);
+    });
+
+    it('starts following when the visitor cookie appears after a response, and replaces the socket', () => {
+      const service = setup({ authState: signal<unknown>(null) });
+      expect(service.following()).toBe(false);
+
+      document.cookie = `${SPARK_VISITOR_PRESENCE_COOKIE}=1; path=/`;
+      TestBed.inject(SparkVisitorPresence).check();
+      TestBed.tick();
+
+      expect(service.following()).toBe(true);
+      socket().open();
+      expect(socket().sent.filter(s => s.op === 'subscribe')).toHaveLength(2);
+    });
+
+    it('follows nothing in session-only mode, and counts the session entries alone', () => {
+      const service = setup({ server: false });
+      expect(FakeWebSocket.instances).toHaveLength(0);
+      const release = service.session.attachHost();
+      service.session.add('Saved');
+      expect(service.unreadCount()).toBe(1);
+      release();
+    });
+
+    it('adds unread session entries to the stored unread count', () => {
+      const service = setup();
+      socket().open();
+      socket().frame({ type: 'result', sub: socket().sub(SPARK_UNREAD_NOTIFICATIONS_QUERY_ID), result: page([], 3) });
+      const release = service.session.attachHost();
+      service.session.add('Saved');
+      expect(service.serverUnreadCount()).toBe(3);
+      expect(service.unreadCount()).toBe(4);
+      release();
+    });
   });
 
   describe('in-app', () => {
@@ -142,13 +219,13 @@ describe('SparkNotificationsService', () => {
     });
 
     it('subscribes again when the signed-in user changes', () => {
-      const authState = signal<unknown>(null);
+      const authState = signal<unknown>({ userName: 'alice' });
       const service = setup({ authState });
       socket().open();
       const first = socket().sub(SPARK_UNREAD_NOTIFICATIONS_QUERY_ID);
       socket().frame({ type: 'result', sub: first, result: page([], 2) });
 
-      authState.set({ userName: 'alice' });
+      authState.set({ userName: 'bob' });
       TestBed.tick();
 
       expect(service.unreadCount()).toBe(0);

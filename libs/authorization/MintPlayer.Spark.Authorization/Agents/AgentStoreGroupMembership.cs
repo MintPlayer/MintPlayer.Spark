@@ -23,7 +23,7 @@ namespace MintPlayer.Spark.Authorization.Agents;
 /// that tests <c>User.IsInRole</c>), made from the user the scheme read for its token check.
 /// </para>
 /// </remarks>
-internal sealed class AgentStoreGroupMembership(IHttpContextAccessor accessor, ISparkCurrentUser currentUser, AgentRequestUser users)
+internal sealed class AgentStoreGroupMembership(IHttpContextAccessor accessor, ISparkCurrentPrincipal currentUser, AgentRequestUser users)
     : IGroupMembershipProvider
 {
     /// <summary>The claim types core's <c>ClaimsGroupMembershipProvider</c> reads groups from (and <see cref="IAgentRoleClaimsProvider"/> copies).</summary>

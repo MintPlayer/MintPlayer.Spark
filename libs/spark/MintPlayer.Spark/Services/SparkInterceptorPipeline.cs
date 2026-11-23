@@ -186,7 +186,7 @@ internal sealed partial class SparkInterceptorPipeline : ISparkInterceptorPipeli
                 $"'{context.EntityType.FullName}' uses server-assigned ids, which durable after-commit interceptors cannot address: " +
                 "the message is written in the same commit, before the id exists. Assign ids on the client (the default).");
 
-        var currentUser = serviceProvider.GetService<Abstractions.Authentication.ISparkCurrentUser>();
+        var currentUser = serviceProvider.GetService<Abstractions.Authentication.ISparkCurrentPrincipal>();
         var change = new SparkCommittedChange
         {
             EntityType = context.EntityType.FullName!,

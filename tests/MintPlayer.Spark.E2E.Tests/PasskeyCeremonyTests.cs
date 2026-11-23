@@ -203,7 +203,8 @@ public class PasskeyCeremonyTests
         page.Dialog += (_, dialog) => _ = dialog.AcceptAsync();
         await ChooseRowActionAsync(page, "RemovePasskey");
 
-        await page.Locator("spark-toast-container")
+        // The bell's pop-out shows the action's notify message (#710).
+        await page.Locator(".spark-notification-popout")
             .GetByText("This is the only way you can sign in, so it cannot be removed.", new() { Exact = false })
             .WaitForAsync(new() { Timeout = Timeout });
         (await MyPasskeysAsync(page)).Should().HaveCount(1, "the last way in must not be removed");

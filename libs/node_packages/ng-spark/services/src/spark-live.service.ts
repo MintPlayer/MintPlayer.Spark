@@ -264,6 +264,29 @@ export class SparkLiveService {
 
   // --- the socket ----------------------------------------------------------------------------------
 
+  /**
+   * Replaces the socket at once (no backoff) and resubscribes every watcher, each with a fresh snapshot.
+   *
+   * The server keeps the handshake's request for the socket's life, so it never sees a cookie issued later. Call
+   * this when the caller's identity changed without a sign-in, such as when the visitor cookie appears
+   * (`docs/notification_bell_PRD.md` G7). A no-op on the server and while nothing is watched: the next watcher opens
+   * a new socket anyway.
+   */
+  reconnect(): void {
+    if (!this.browser || this.entries.size === 0) return;
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+    const previous = this.socket;
+    // Detached first: its onclose sees another socket and stays quiet.
+    this.socket = null;
+    this.attempt = 0;
+    for (const entry of this.entries.values()) entry.state = null;
+    if (previous && previous.readyState <= OPEN) previous.close(1000, 'Reconnect');
+    this.open();
+  }
+
   private isOpen(): boolean {
     return this.socket !== null && this.socket.readyState === OPEN;
   }

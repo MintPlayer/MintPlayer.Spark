@@ -5,22 +5,41 @@
 ## Layers: libraries that ship rights (alias | assembly | hash)
 authorization | MintPlayer.Spark.Authorization | c6fc3af07823
 moderation | MintPlayer.Spark.Moderation | e3fcf87e79d3
+notifications | MintPlayer.Spark.Notifications | 0da69183be2b
 
 ## Reachable without signing in (expanded)
+Delete/Notification
+Delete/NotificationPreference
+Delete/PushSubscription
+Edit/NotificationPreference
+New/NotificationPreference
 Query/Answer
+Query/Notification
+Query/NotificationPreference
+Query/PushSubscription
 Query/Question
 Query/QuestionTranslationsContribution
 Query/SparkUser
 Read/Answer
+Read/Notification
+Read/NotificationPreference
+Read/PushSubscription
 Read/Question
 Read/QuestionTranslationsContribution
 Read/SparkUser
+RemindMe/Question
 
 ## Granted to @anonymous
 Anonymous visitors | grant | QueryRead/Answer | 4e13ffff-0000-4000-8000-000000000002 | app
 Anonymous visitors | grant | QueryRead/Question | 4e13ffff-0000-4000-8000-000000000001 | app
 Anonymous visitors | grant | QueryRead/QuestionTranslationsContribution | 4e13ffff-0000-4000-8000-000000000036 | app
 Anonymous visitors | grant | Read/SparkUser | 4e13ffff-0000-4000-8000-000000000049 | app
+Anonymous visitors | grant | RemindMe/Question | 4e13ffff-0000-4000-8000-000000000051 | app
+Anonymous visitors (notifications:users) | grant | Delete/Notification | notifications:notifications-delete | notifications
+Anonymous visitors (notifications:users) | grant | Delete/PushSubscription | notifications:devices-delete | notifications
+Anonymous visitors (notifications:users) | grant | QueryRead/Notification | notifications:notifications | notifications
+Anonymous visitors (notifications:users) | grant | QueryRead/PushSubscription | notifications:devices | notifications
+Anonymous visitors (notifications:users) | grant | QueryReadEditNewDelete/NotificationPreference | notifications:preferences | notifications
 
 ## Rights
 Downvoters | grant | Downvote/Answer | 4e13ffff-0000-4000-8000-000000000012 | app
@@ -66,12 +85,18 @@ Signed-in users | grant | QueryRead/QuestionTranslationsContribution | 4e13ffff-
 Signed-in users | grant | QueryReadEditNewDelete/Answer | 4e13ffff-0000-4000-8000-000000000004 | app
 Signed-in users | grant | QueryReadEditNewDelete/Question | 4e13ffff-0000-4000-8000-000000000003 | app
 Signed-in users | grant | Read/SparkUser | 4e13ffff-0000-4000-8000-000000000050 | app
+Signed-in users | grant | RemindMe/Question | 4e13ffff-0000-4000-8000-000000000052 | app
 Signed-in users | grant | ReopenQuestion/Question | 4e13ffff-0000-4000-8000-000000000008 | app
 Signed-in users (@authenticated) | grant | AddPasskey/Passkeys | authorization:passkeys-add | authorization
 Signed-in users (@authenticated) | grant | Query/PasskeyRow | authorization:passkey-rows-query | authorization
 Signed-in users (@authenticated) | grant | Read/Passkeys | authorization:passkeys-read | authorization
 Signed-in users (@authenticated) | grant | RemovePasskey/PasskeyRow | authorization:passkey-rows-remove | authorization
 Signed-in users (@authenticated) | grant | RenamePasskey/PasskeyRow | authorization:passkey-rows-rename | authorization
+Signed-in users (notifications:users) | grant | Delete/Notification | notifications:notifications-delete | notifications
+Signed-in users (notifications:users) | grant | Delete/PushSubscription | notifications:devices-delete | notifications
+Signed-in users (notifications:users) | grant | QueryRead/Notification | notifications:notifications | notifications
+Signed-in users (notifications:users) | grant | QueryRead/PushSubscription | notifications:devices | notifications
+Signed-in users (notifications:users) | grant | QueryReadEditNewDelete/NotificationPreference | notifications:preferences | notifications
 Voters | grant | Vote/Answer | 4e13ffff-0000-4000-8000-000000000010 | app
 Voters | grant | Vote/Question | 4e13ffff-0000-4000-8000-000000000009 | app
 

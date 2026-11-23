@@ -1,5 +1,6 @@
 using System.Net;
 using Microsoft.Extensions.DependencyInjection;
+using MintPlayer.Spark.Abstractions.Authentication;
 using MintPlayer.Spark.Authorization.Identity;
 using MintPlayer.Spark.Moderation;
 using MintPlayer.Spark.Moderation.Documents;
@@ -232,8 +233,8 @@ public class ModerationFraudTests : SparkTestDriver
         async Task DeleteBobAsync()
         {
             using var scope = host.Factory.CreateScope();
-            var handler = scope.ServiceProvider.GetServices<ISparkAccountDeletionHandler<SparkUser>>().Single(h => h.GetType().Name.StartsWith("ModerationAccountDeletionHandler"));
-            await handler.OnDeletingAccountAsync(new SparkUser { Id = Bob, UserName = "bob" }, CancellationToken.None);
+            var handler = scope.ServiceProvider.GetServices<ISparkAccountDeletionHandler>().Single(h => h.GetType().Name.StartsWith("ModerationAccountDeletionHandler"));
+            await handler.OnDeletingAccountAsync(new SparkUserAccount(new SparkUser { Id = Bob, UserName = "bob" }), CancellationToken.None);
         }
         await DeleteBobAsync();
         await DeleteBobAsync();

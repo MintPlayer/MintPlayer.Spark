@@ -149,6 +149,33 @@ describe('SparkLiveService', () => {
       await flush();
       expect(lastSocket().closeCalls).toEqual([{ code: 1000, reason: 'No live subscriptions' }]);
     });
+
+    it('reconnect replaces the socket at once and resubscribes every watcher; the old close stays quiet', () => {
+      const live = configure();
+      const watched = collect(live.watchQuery(request));
+      const first = lastSocket();
+      first.open();
+
+      live.reconnect();
+
+      expect(first.closeCalls).toEqual([{ code: 1000, reason: 'Reconnect' }]);
+      expect(sockets()).toHaveLength(2);
+      const second = lastSocket();
+      second.open();
+      expect(second.ops('subscribe').map(s => s.query)).toEqual([{ queryId: 'runningaudits', skip: 0, take: 20 }]);
+
+      // The detached socket's late close event must not schedule a backoff reopen.
+      first.serverClose(1000);
+      vi.advanceTimersByTime(60_000);
+      expect(sockets()).toHaveLength(2);
+      expect(watched.completed).toBe(false);
+    });
+
+    it('reconnect opens nothing while nothing is watched', () => {
+      const live = configure();
+      live.reconnect();
+      expect(sockets()).toHaveLength(0);
+    });
   });
 
   describe('sharing', () => {

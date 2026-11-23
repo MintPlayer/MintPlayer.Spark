@@ -73,6 +73,9 @@ public abstract class OrganizationsTestHost : SparkTestDriver
     /// <summary>Library aliases whose rights stay on, each with its slot bound to the signed-in group.</summary>
     internal Dictionary<string, string> ExtraLibrarySlots { get; } = [];
 
+    /// <summary>The groups a slot of <see cref="ExtraLibrarySlots"/> is bound to, when not only the signed-in group.</summary>
+    internal Dictionary<string, List<string>> SlotGroups { get; } = [];
+
     /// <summary>More model types for a test class built on this host.</summary>
     internal List<EntityTypeFile> ExtraModels { get; } = [];
 
@@ -119,7 +122,7 @@ public abstract class OrganizationsTestHost : SparkTestDriver
             libraries.Remove(alias);
         var bindings = new Dictionary<string, List<string>> { ["organizations:users"] = ["Signed-in users"] };
         foreach (var slot in ExtraLibrarySlots.Values)
-            bindings[slot] = ["Signed-in users"];
+            bindings[slot] = SlotGroups.TryGetValue(slot, out var groups) ? groups : ["Signed-in users"];
         return new SecurityConfiguration
         {
             WellKnown = new Dictionary<string, string>

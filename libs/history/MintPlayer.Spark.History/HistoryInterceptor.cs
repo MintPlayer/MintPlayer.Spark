@@ -23,7 +23,7 @@ namespace MintPlayer.Spark.History;
 /// </remarks>
 internal sealed partial class HistoryInterceptor : IBeforeSave, IBeforeDelete
 {
-    [Inject] private readonly ISparkCurrentUser currentUser;
+    [Inject] private readonly ISparkCurrentPrincipal currentUser;
     [Inject] private readonly IModelLoader modelLoader;
     [Inject] private readonly IAsyncDocumentSession session;
     [Inject] private readonly HistoryRequestState state;

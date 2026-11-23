@@ -22,7 +22,7 @@ public partial class StartAuditAction : SparkCustomAction
     [Inject] private readonly AuditStarter starter;
     [Inject] private readonly MintPlayer.Spark.Services.IModelLoader models;
     [Inject] private readonly IAsyncDocumentSession session;
-    [Inject] private readonly ISparkCurrentUser currentUser;
+    [Inject] private readonly ISparkCurrentPrincipal currentUser;
     [Inject] private readonly IManager manager;
 
     public override Task ExecuteAsync(CustomActionArgs args, CancellationToken cancellationToken)
@@ -35,7 +35,7 @@ public partial class StartFullCrawlAction : SparkCustomAction
     [Inject] private readonly AuditStarter starter;
     [Inject] private readonly MintPlayer.Spark.Services.IModelLoader models;
     [Inject] private readonly IAsyncDocumentSession session;
-    [Inject] private readonly ISparkCurrentUser currentUser;
+    [Inject] private readonly ISparkCurrentPrincipal currentUser;
     [Inject] private readonly IManager manager;
 
     public override Task ExecuteAsync(CustomActionArgs args, CancellationToken cancellationToken)
@@ -51,7 +51,7 @@ public partial class VerifySiteAction : SparkCustomAction
 {
     [Inject] private readonly SiteVerification verification;
     [Inject] private readonly IAsyncDocumentSession session;
-    [Inject] private readonly ISparkCurrentUser currentUser;
+    [Inject] private readonly ISparkCurrentPrincipal currentUser;
     [Inject] private readonly IManager manager;
 
     public override async Task ExecuteAsync(CustomActionArgs args, CancellationToken cancellationToken)
@@ -83,7 +83,7 @@ public partial class VerifySiteAction : SparkCustomAction
 
 internal static class SiteActionSupport
 {
-    public static async Task StartAsync(CustomActionArgs args, AuditStarter starter, IAsyncDocumentSession session, ISparkCurrentUser currentUser, IManager manager, MintPlayer.Spark.Services.IModelLoader models, bool fullCrawl, CancellationToken cancellationToken)
+    public static async Task StartAsync(CustomActionArgs args, AuditStarter starter, IAsyncDocumentSession session, ISparkCurrentPrincipal currentUser, IManager manager, MintPlayer.Spark.Services.IModelLoader models, bool fullCrawl, CancellationToken cancellationToken)
     {
         var site = await SiteAsync(args, session, cancellationToken);
         var result = await starter.StartAsync(site, UserId(currentUser), fullCrawl, cancellationToken);
@@ -102,9 +102,9 @@ internal static class SiteActionSupport
 
     /// <summary>
     /// The caller's user id: the sign-in cookie's, or an AI agent's (its bearer token carries the local id as <c>sub</c>,
-    /// which <see cref="ISparkCurrentUser"/> reads; MCP PRD D4). The scan and its quota are the user's either way.
+    /// which <see cref="ISparkCurrentPrincipal"/> reads; MCP PRD D4). The scan and its quota are the user's either way.
     /// </summary>
-    public static string UserId(ISparkCurrentUser currentUser)
+    public static string UserId(ISparkCurrentPrincipal currentUser)
         => currentUser.Id is { Length: > 0 } id
             ? id
             : throw new SparkValidationException("Sign in first.");

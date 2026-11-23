@@ -23,7 +23,7 @@ internal sealed partial class ListAgentGrants : IGetEndpoint
     static bool IEndpointBase.IsEnabled(IServiceProvider services) => AgentGrantsAccount.IsAvailable(services);
 
     [Inject] private readonly AgentGrantsAccount account;
-    [Inject] private readonly ISparkCurrentUser currentUser;
+    [Inject] private readonly ISparkCurrentPrincipal currentUser;
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
@@ -53,7 +53,7 @@ internal sealed partial class CreateAgentToken : IPostEndpoint<AgentTokenRequest
         => builder.WithMetadata(new RequireAntiforgeryTokenAttribute(true));
 
     [Inject] private readonly AgentGrantsAccount account;
-    [Inject] private readonly ISparkCurrentUser currentUser;
+    [Inject] private readonly ISparkCurrentPrincipal currentUser;
     [Inject] private readonly IHttpContextAccessor httpContextAccessor;
 
     public override async Task<IResult> HandleAsync(AgentTokenRequest request, CancellationToken cancellationToken)
@@ -82,7 +82,7 @@ internal sealed partial class UpdateAgentGrant : IPostEndpoint<AgentGrantUpdateR
         => builder.WithMetadata(new RequireAntiforgeryTokenAttribute(true));
 
     [Inject] private readonly AgentGrantsAccount account;
-    [Inject] private readonly ISparkCurrentUser currentUser;
+    [Inject] private readonly ISparkCurrentPrincipal currentUser;
     [Inject] private readonly IHttpContextAccessor httpContextAccessor;
 
     public override async Task<IResult> HandleAsync(AgentGrantUpdateRequest request, CancellationToken cancellationToken)
@@ -109,7 +109,7 @@ internal sealed partial class RevokeAgentGrant : IPostEndpoint<AgentGrantRevokeR
         => builder.WithMetadata(new RequireAntiforgeryTokenAttribute(true));
 
     [Inject] private readonly AgentGrantsAccount account;
-    [Inject] private readonly ISparkCurrentUser currentUser;
+    [Inject] private readonly ISparkCurrentPrincipal currentUser;
 
     public override async Task<IResult> HandleAsync(AgentGrantRevokeRequest request, CancellationToken cancellationToken)
     {
@@ -137,7 +137,7 @@ internal sealed partial class RevokeConnectedApplication : IPostEndpoint<Connect
         => builder.WithMetadata(new RequireAntiforgeryTokenAttribute(true));
 
     [Inject] private readonly AgentGrantsAccount account;
-    [Inject] private readonly ISparkCurrentUser currentUser;
+    [Inject] private readonly ISparkCurrentPrincipal currentUser;
 
     public override async Task<IResult> HandleAsync(ConnectedApplicationRevokeRequest request, CancellationToken cancellationToken)
     {

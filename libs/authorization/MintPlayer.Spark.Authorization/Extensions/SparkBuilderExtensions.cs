@@ -64,6 +64,9 @@ public static class SparkBuilderAuthorizationExtensions
 
         builder.Services.AddSparkAuthentication<TUser>(configureIdentity);
 
+        // #710 G4.2: accounts by id for packages that mail or push to users without referencing this one.
+        builder.Services.TryAddScoped<global::MintPlayer.Spark.Abstractions.Authentication.ISparkAccountDirectory, SparkUserAccountDirectory<TUser>>();
+
         // #460 D6. Registered after configureIdentity, and only ever switched on, so an application
         // that set IdentityOptions.SignIn.RequireConfirmedEmail itself keeps it.
         if (options.RequireConfirmedEmail)

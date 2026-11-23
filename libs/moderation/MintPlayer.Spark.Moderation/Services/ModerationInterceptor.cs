@@ -31,7 +31,7 @@ internal sealed partial class ModerationInterceptor : IBeforeSave, IAfterSave, I
 {
     [Inject] private readonly IDocumentStore documentStore;
     [Inject] private readonly IAsyncDocumentSession session;
-    [Inject] private readonly ISparkCurrentUser currentUser;
+    [Inject] private readonly ISparkCurrentPrincipal currentUser;
     [Inject] private readonly IPermissionService permissions;
     [Inject] private readonly IModelLoader modelLoader;
     [Inject] private readonly ModerationUserState userState;

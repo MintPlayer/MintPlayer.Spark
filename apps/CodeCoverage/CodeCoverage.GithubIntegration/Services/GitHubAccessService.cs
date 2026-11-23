@@ -15,7 +15,7 @@ namespace CodeCoverage.Services;
 [Register(typeof(IGitHubAccessService), ServiceLifetime.Scoped)]
 public partial class GitHubAccessService : IGitHubAccessService
 {
-    [Inject] private readonly ISparkCurrentUser currentUser;
+    [Inject] private readonly ISparkCurrentPrincipal currentUser;
     [Inject] private readonly UserManager<SparkUser> userManager;
     [Inject] private readonly IGitHubUserTokenService tokenService;
     [Inject] private readonly IHttpClientFactory httpClientFactory;

@@ -195,10 +195,10 @@ to its E2E host.
 
 ## GDPR (D8)
 
-- `ISparkAccountDeletionHandler<TUser>`: reverses every vote the account cast, deletes its votes,
+- `ISparkAccountDeletionHandler`: reverses every vote the account cast, deletes its votes,
   flags, network observations, profile, summary and suspension, and anonymises the ledger (entries
   stay — other users' reputation is made of them — but name `deleted-user`). Idempotent.
-- `ISparkPersonalDataContributor<TUser>` (`moderation` section): votes cast, flags raised,
+- `ISparkPersonalDataContributor` (`moderation` section): votes cast, flags raised,
   reputation, suspension.
 - RavenDB revisions of moderation documents are not rewritten (see the authorization guide).
 

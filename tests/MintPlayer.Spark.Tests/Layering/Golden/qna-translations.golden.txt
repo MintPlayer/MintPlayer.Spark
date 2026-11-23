@@ -7,6 +7,8 @@ actions.DuplicateAnswer.description	en="Copies one answer under the same questio
 actions.DuplicateAnswer.label	en="Duplicate"	fr="Dupliquer"	nl="Dupliceren"
 actions.Edit.label	en="Edit"	fr="Modifier"	nl="Bewerken"
 actions.New.label	en="New"	fr="Nouveau"	nl="Nieuw"
+actions.RemindMe.description	en="Sends a reminder of this question to your notification bell a few seconds later, signed in or not."
+actions.RemindMe.label	en="Remind me"	fr="Me le rappeler"	nl="Herinner me"
 actions.RemovePasskey.confirmation	en="Remove this passkey? You can no longer sign in with it."	fr="Supprimer cette clé d'accès ? Vous ne pourrez plus vous connecter avec elle."	nl="Deze passkey verwijderen? Je kunt er dan niet meer mee aanmelden."
 actions.RemovePasskey.label	en="Remove"	fr="Supprimer"	nl="Verwijderen"
 actions.RenamePasskey.label	en="Rename"	fr="Renommer"	nl="Hernoemen"

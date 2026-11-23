@@ -20,7 +20,7 @@ namespace MintPlayer.Spark.Contributions;
 internal sealed class ContributionsInterceptor(
     ContributionCatalog catalog,
     IAsyncDocumentSession session,
-    ISparkCurrentUser currentUser,
+    ISparkCurrentPrincipal currentUser,
     ContributionRequestState state,
     IServiceProvider services) : IAfterMaterialize, IAfterLoad, IBeforeSave, IAfterSave, IBeforeDelete, IAfterDelete
 {

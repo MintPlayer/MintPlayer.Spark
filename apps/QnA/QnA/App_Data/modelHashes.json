@@ -1,14 +1,17 @@
 {
   "version": 2,
-  "modelHash": "9509219f6e8595afe3ac5b5ac509d39a2a4681bd2a125455faf296dcccf8e91c",
+  "modelHash": "b702f958a9b5b718db7f5985650e2e4c9d88953d31938daa3df93e6e6b8bcc87",
   "contextRoots": "9099816a4937704d31a0f5356772deaed6e16029fadfd929187179bfb8f7d560",
-  "modelFiles": "2babe6f796db98de94454a53165b25a8c7382dcb031815e8b1315d777cd580d3",
+  "modelFiles": "cac87a6e599f525c325dbe593d3dc424fe9e312cffee4587fbda8326e817a635",
   "files": {
     "Answer.json": "86a72ec078dbcab0e7b653dfc99dcc13ed8eb6f5e45f924130d809a88e7936dc",
     "DeleteReason.json": "a8c08246c361d5da1a1cb242690b67107b686450953cf3d7b2a63db373f5af21",
+    "Notification.json": "de4b9331d3dcfd1be52d90e7ad253408c88748b04d3a971b84b79ba4818c1bdd",
+    "NotificationPreference.json": "35a45688ce2b8d50cef7a07a40351bfd10babbbb2bd182b573cdca2c276b75da",
     "PasskeyRename.json": "efd6a49e2c20d8420f48f546557fe7605a0553d3f4ce50ec8ae62876ce86714e",
     "PasskeyRow.json": "902d6e7e53ac01ab224b90bdd486b9ba3f4ee27273fe667c907312aac3541b33",
     "Passkeys.json": "738742f13217adeeb4724f72f968923099f7d7210cee1133dfd6707eb55856ce",
+    "PushSubscription.json": "e32e2c6c486e62dfbffd5b4e30a2b49bc06b6f045066992220e66e7bc9cd5735",
     "Question.json": "c5494d33322c902e6e41f933e9ad5c4fd19d3fc18c81554254def8c6f8b71308",
     "QuestionTranslation.json": "bc98eb12a927ff36de2140989bfcb46d6e5065cab2505ada83753aaacd722ee4",
     "QuestionTranslationsContribution.json": "316468ed65aa48feb7cd0578360faa3d2f3270df12071ba5a938f9fb4b56b228",
@@ -23,13 +26,20 @@
     "QuestionTranslationsCurrent": "755c7a7e305541f0966a37868d64b63cb32fe9292afdaa85f0f8a6d04395e505"
   },
   "configFiles": {
-    "actions.json": "805e0b26a125dc929469ee9786a5afdf6ccffa77dc3eec468b2c3f75d1672e97"
+    "actions.json": "9d36ec36a79eeb16f6815735bc4adaff4db209ab9e28ebcb22e58276f5271c6e"
   },
   "libraries": {
     "authorization": "MintPlayer.Spark.Authorization",
+    "notifications": "MintPlayer.Spark.Notifications",
     "spark": "MintPlayer.Spark"
   },
   "layers": {
+    "Model/Notification.json": {
+      "notifications": "de4b9331d3dcfd1be52d90e7ad253408c88748b04d3a971b84b79ba4818c1bdd"
+    },
+    "Model/NotificationPreference.json": {
+      "notifications": "35a45688ce2b8d50cef7a07a40351bfd10babbbb2bd182b573cdca2c276b75da"
+    },
     "Model/PasskeyRename.json": {
       "authorization": "efd6a49e2c20d8420f48f546557fe7605a0553d3f4ce50ec8ae62876ce86714e"
     },
@@ -39,14 +49,21 @@
     "Model/Passkeys.json": {
       "authorization": "738742f13217adeeb4724f72f968923099f7d7210cee1133dfd6707eb55856ce"
     },
+    "Model/PushSubscription.json": {
+      "notifications": "e32e2c6c486e62dfbffd5b4e30a2b49bc06b6f045066992220e66e7bc9cd5735"
+    },
     "Model/SparkUser.json": {
       "app": "7eee8b00f87ac257d0004a41cca502e60bdac4e699902155b014d77eeb56db1d",
       "authorization": "81d5e4fe403e329fc20404f35c3b9944aa11c17374981df5a4073ddf08fcdb69"
     },
     "actions.json": {
-      "app": "661569f862265c4ed99af5d6b237dee495773ada1836c53ea68ab13b81794245",
+      "app": "6d752241223f141afd51200548620cc86ae9025b97e0e196536f40cd50deacab",
       "authorization": "fb0d34fa66e732b157e4e222fb9c357e4219cf6d85177473103874e8c1090427",
       "spark": "5974b38c8164cafbfb22c012c52fb46dd27264181d772b9f004de1829d1838e6"
+    },
+    "programUnits.json": {
+      "app": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "notifications": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
     }
   }
 }

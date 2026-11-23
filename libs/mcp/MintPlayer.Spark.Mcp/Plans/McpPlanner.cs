@@ -80,7 +80,7 @@ internal sealed class McpPlanner(
     ISparkTypeResolver typeResolver,
     IDocumentStore store,
     IAsyncDocumentSession session,
-    ISparkCurrentUser currentUser,
+    ISparkCurrentPrincipal currentUser,
     IHttpContextAccessor httpContextAccessor,
     SparkMcpOptions options,
     IOptions<Microsoft.AspNetCore.Http.Json.JsonOptions> jsonOptions,

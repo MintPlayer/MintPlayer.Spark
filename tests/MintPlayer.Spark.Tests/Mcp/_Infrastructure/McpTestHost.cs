@@ -144,7 +144,7 @@ internal static class McpTestHost
 
 /// <summary>An application's own tools, written unprefixed: one read, one write.</summary>
 [McpServerToolType]
-public sealed class AcmeTestTools(ISparkCurrentUser currentUser, IHttpContextAccessor accessor)
+public sealed class AcmeTestTools(ISparkCurrentPrincipal currentUser, IHttpContextAccessor accessor)
 {
     [McpServerTool(Name = "whoami", ReadOnly = true)]
     public CallToolResult WhoAmI()

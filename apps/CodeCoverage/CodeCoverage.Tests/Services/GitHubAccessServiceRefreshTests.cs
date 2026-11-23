@@ -77,7 +77,7 @@ public class GitHubAccessServiceRefreshTests : CoverageRavenTest
 
         var services = new ServiceCollection();
         services.AddSingleton<IHttpContextAccessor>(new FakeHttpContextAccessor(principal ?? GitHubAuthTestFakes.PrincipalFor(user)));
-        services.AddSingleton<MintPlayer.Spark.Abstractions.Authentication.ISparkCurrentUser>(new FakeSparkCurrentUser(user.Id));
+        services.AddSingleton<MintPlayer.Spark.Abstractions.Authentication.ISparkCurrentPrincipal>(new FakeSparkCurrentUser(user.Id));
         services.AddSingleton(GitHubAuthTestFakes.UserManagerOver(new InMemoryUserStore().Add(user)));
         services.AddSingleton<IGitHubUserTokenService>(tokens);
         services.AddSingleton<IHttpClientFactory>(new SingleClientHttpFactory(handler));

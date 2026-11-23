@@ -36,7 +36,7 @@ internal sealed partial class FileUploadService
     [Inject] private readonly IPermissionService permissions;
     [Inject] private readonly IAttributeRights attributeRights;
     [Inject] private readonly IDatabaseAccess databaseAccess;
-    [Inject] private readonly ISparkCurrentUser currentUser;
+    [Inject] private readonly ISparkCurrentPrincipal currentUser;
     [Inject] private readonly IDocumentStore store;
     [Inject] private readonly IFileStore fileStore;
     [Inject] private readonly FileSniffer sniffer;

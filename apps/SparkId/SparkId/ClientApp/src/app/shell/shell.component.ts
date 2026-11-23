@@ -9,12 +9,13 @@ import {
 import { SparkAuthBarComponent } from '@mintplayer/ng-spark/auth/auth-bar';
 import { SparkAuthService } from '@mintplayer/ng-spark/auth/core';
 import { SparkIdentityProviderTextPipe } from '@mintplayer/ng-spark/identity-provider';
+import { SparkNotificationBellComponent } from '@mintplayer/ng-spark/notifications';
 
 @Component({
   selector: 'app-shell',
   imports: [
     RouterOutlet, RouterLink, RouterLinkActive, SparkShellComponent, SparkShellTopbarEndDirective, SparkShellSidebarTopDirective,
-    SparkLanguageSelectorComponent, SparkAuthBarComponent, SparkIdentityProviderTextPipe,
+    SparkLanguageSelectorComponent, SparkAuthBarComponent, SparkIdentityProviderTextPipe, SparkNotificationBellComponent,
   ],
   templateUrl: './shell.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush

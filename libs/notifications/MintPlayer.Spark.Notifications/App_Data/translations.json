@@ -71,6 +71,8 @@
       "empty": { "en": "No notifications", "fr": "Aucune notification", "nl": "Geen meldingen" },
       "markAllRead": { "en": "Mark all as read", "fr": "Tout marquer comme lu", "nl": "Alles als gelezen markeren" },
       "showAll": { "en": "All notifications", "fr": "Toutes les notifications", "nl": "Alle meldingen" },
+      "dismiss": { "en": "Dismiss", "fr": "Fermer", "nl": "Sluiten" },
+      "arrived": { "en": "New notification", "fr": "Nouvelle notification", "nl": "Nieuwe melding" },
       "pushEnable": { "en": "Turn on push notifications", "fr": "Activer les notifications push", "nl": "Pushmeldingen inschakelen" },
       "pushDisable": { "en": "Turn off push notifications on this device", "fr": "Désactiver les notifications push sur cet appareil", "nl": "Pushmeldingen op dit toestel uitschakelen" },
       "pushDenied": { "en": "Notifications are blocked for this site in your browser settings.", "fr": "Les notifications sont bloquées pour ce site dans les réglages du navigateur.", "nl": "Meldingen zijn voor deze site geblokkeerd in je browserinstellingen." },

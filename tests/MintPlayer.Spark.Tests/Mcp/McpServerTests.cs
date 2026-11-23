@@ -94,7 +94,7 @@ public class McpServerTests(SparkSharedDatabase database)
         var both = await CallAsync(client, "acme_whoami", new { }, Both(Bearer("alice"), Cookie("mallory")));
 
         bearer.ToolText.Should().Be($"authenticated=True;id=users/alice;scheme={McpTestHost.BearerScheme}",
-            "ISparkCurrentUser.Id maps the bearer's sub (D4), and the scheme feature names the bearer scheme");
+            "ISparkCurrentPrincipal.Id maps the bearer's sub (D4), and the scheme feature names the bearer scheme");
         both.ToolText.Should().Be(bearer.ToolText, "with bearer and cookie the bearer decides; spike S1 found the cookie winning without the gate");
     }
 

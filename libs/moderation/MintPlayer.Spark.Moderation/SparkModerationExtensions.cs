@@ -2,6 +2,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using MintPlayer.AspNetCore.Endpoints;
+using MintPlayer.Spark.Abstractions.Authentication;
 using MintPlayer.Spark.Abstractions.Builder;
 using MintPlayer.Spark.Abstractions.Interceptors;
 using MintPlayer.Spark.Authorization.Identity;
@@ -68,8 +69,8 @@ public static class SparkModerationExtensions
         services.TryAddScoped<ISparkModeration, SparkModeration>();
         services.TryAddScoped<ISparkModerationJobs, SparkModerationJobs>();
         services.TryAddScoped<IModerationAccounts, IdentityModerationAccounts<TUser>>();
-        services.TryAddEnumerable(ServiceDescriptor.Scoped<ISparkAccountDeletionHandler<TUser>, ModerationAccountDeletionHandler<TUser>>());
-        services.TryAddEnumerable(ServiceDescriptor.Scoped<ISparkPersonalDataContributor<TUser>, ModerationPersonalDataContributor<TUser>>());
+        services.TryAddEnumerable(ServiceDescriptor.Scoped<ISparkAccountDeletionHandler, ModerationAccountDeletionHandler>());
+        services.TryAddEnumerable(ServiceDescriptor.Scoped<ISparkPersonalDataContributor, ModerationPersonalDataContributor>());
 
         builder.AddGroupMembershipProvider<ModerationPrivilegeProvider>();
         builder.AddInterceptor<ModerationInterceptor>();

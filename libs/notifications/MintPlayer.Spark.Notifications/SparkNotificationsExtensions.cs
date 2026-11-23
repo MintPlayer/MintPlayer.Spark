@@ -4,7 +4,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 using MintPlayer.Spark.Abstractions.Builder;
 using MintPlayer.Spark.Abstractions.Interceptors;
-using MintPlayer.Spark.Authorization.Identity;
+using MintPlayer.Spark.Abstractions.Authentication;
 using MintPlayer.Spark.Http;
 using MintPlayer.Spark.Messaging;
 using MintPlayer.Spark.Messaging.Abstractions;
@@ -37,8 +37,10 @@ public static class SparkNotificationsExtensions
 
     /// <summary>
     /// Registers <see cref="ISparkNotifier"/>, the <c>/spark/notifications</c> endpoints, the Web Push queue and
-    /// its SSRF-safe client, the save rules and the account deletion and export hooks. Needs
-    /// <c>AddAuthentication&lt;TUser&gt;()</c>; Web Push also needs <c>AddMessaging()</c> (startup says so).
+    /// its SSRF-safe client, the save rules and the account deletion and export hooks. Works without accounts
+    /// (in-app only, for visitors and for user ids taken at their word); mail and Web Push need an
+    /// <see cref="ISparkAccountDirectory"/> (<c>AddAuthentication&lt;TUser&gt;()</c> registers one), and Web Push
+    /// also needs <c>AddMessaging()</c> (startup says so).
     /// </summary>
     [global::MintPlayer.Spark.Abstractions.Storage.SparkRequiresStore("Spark.Notifications", Provider = global::MintPlayer.Spark.Abstractions.Storage.SparkStoreProviders.RavenDb)]
     public static ISparkBuilder AddNotifications(this ISparkBuilder builder, Action<SparkNotificationsOptions>? configure = null)
@@ -89,9 +91,11 @@ public static class SparkNotificationsExtensions
         builder.AddInterceptor<NotificationInterceptors>();
         builder.AddInterceptor<NotificationPreferenceInterceptors>();
 
-        // Open generics: they close over whichever user type AddAuthentication<TUser>() registered.
-        services.TryAddEnumerable(ServiceDescriptor.Scoped(typeof(ISparkAccountDeletionHandler<>), typeof(NotificationAccountDeletion<>)));
-        services.TryAddEnumerable(ServiceDescriptor.Scoped(typeof(ISparkPersonalDataContributor<>), typeof(NotificationPersonalData<>)));
+        // The account hooks: an account library (Authorization) calls them; without one they are never called.
+        services.TryAddEnumerable(ServiceDescriptor.Scoped<ISparkAccountDeletionHandler, NotificationAccountDeletion>());
+        services.TryAddEnumerable(ServiceDescriptor.Scoped<ISparkPersonalDataContributor, NotificationPersonalData>());
+        // A visitor who signs in keeps their notifications (PRD R7).
+        services.TryAddEnumerable(ServiceDescriptor.Scoped<ISparkSignedInHandler, NotificationVisitorClaim>());
 
         MintPlayer.Spark.MailManager.SparkMailTemplateServiceCollectionExtensions.AddSparkMailTemplates(
             services, typeof(SparkNotificationsExtensions).Assembly, "SparkMail/");
@@ -122,6 +126,11 @@ public static class SparkNotificationsExtensions
             throw new InvalidOperationException(
                 "Web Push is configured (Spark:Notifications:WebPush) but Messaging is not: call spark.AddMessaging(). "
                 + "Each push is a durable message, retried while the push service is unavailable.");
+        using var scope = services.CreateScope();
+        if (scope.ServiceProvider.GetService<ISparkAccountDirectory>() is null)
+            throw new InvalidOperationException(
+                "Web Push is configured (Spark:Notifications:WebPush) but there are no accounts to push to: "
+                + "call spark.AddAuthentication<TUser>(), or register an ISparkAccountDirectory.");
     }
 
     private sealed class NotificationsMarker;

@@ -1,5 +1,6 @@
 using System.Linq.Expressions;
 using MintPlayer.SourceGenerators.Attributes;
+using MintPlayer.Spark.Abstractions.Authentication;
 using MintPlayer.Spark.Actions;
 using MintPlayer.Spark.Notifications.Endpoints;
 using MintPlayer.Spark.Notifications.Models;
@@ -10,17 +11,18 @@ using Raven.Client.Documents.Session;
 namespace MintPlayer.Spark.Notifications.Actions;
 
 /// <summary>
-/// A user's own notifications, and nobody else's: the row rule is <c>UserId == caller</c> on every action, so
-/// another user's notification is the missing-row 404 (#453) and an anonymous caller has none. The rule rides
-/// every read path, the live socket included (X4).
+/// The caller's own notifications, and nobody else's: the row rule is "<c>UserId == my user</c> or
+/// <c>VisitorId == my visitor</c>" on every action (<c>docs/notification_bell_PRD.md</c> R4), so anyone else's
+/// notification is the missing-row 404 (#453) and a caller with neither identity has none. The rule rides every
+/// read path, the live socket included (X4).
 /// </summary>
 public partial class NotificationActions : DefaultPersistentObjectActions<Notification>
 {
     [Inject] private readonly IAsyncDocumentSession session;
-    [Inject] private readonly IHttpContextAccessor httpContextAccessor;
+    [Inject] private readonly ISparkCurrentPrincipal principal;
 
     public override Task<Expression<Func<Notification, bool>>?> GetRowFilterAsync(string action)
-        => Task.FromResult<Expression<Func<Notification, bool>>?>(OwnRows.For<Notification>(httpContextAccessor, n => n.UserId));
+        => Task.FromResult<Expression<Func<Notification, bool>>?>(NotificationOwner.Of(principal).Filter());
 
     /// <summary>The list (<c>"live": true</c>): newest first by the query's sort.</summary>
     public IRavenQueryable<Notification> MyNotifications() => session.Query<Notification>();
@@ -51,6 +53,36 @@ public partial class NotificationPreferenceActions : DefaultPersistentObjectActi
         => Task.FromResult<Expression<Func<NotificationPreference, bool>>?>(OwnRows.For<NotificationPreference>(httpContextAccessor, p => p.UserId));
 
     public IRavenQueryable<NotificationPreference> MyNotificationPreferences() => session.Query<NotificationPreference>();
+}
+
+/// <summary>
+/// Who a notification can belong to: the caller's user id, their visitor id, or both (a visitor who signed in while
+/// a job was still running for the visitor). Each side counts only when present: a null side never matches the
+/// documents whose field is null.
+/// </summary>
+internal readonly record struct NotificationOwner(string? UserId, string? VisitorId)
+{
+    public static NotificationOwner Of(ISparkCurrentPrincipal principal)
+        => new(principal.Id is { Length: > 0 } id ? id : null, principal.VisitorId is { Length: > 0 } visitor ? visitor : null);
+
+    public bool IsKnown => UserId is not null || VisitorId is not null;
+
+    public bool Owns(Notification notification)
+        => (UserId is not null && notification.UserId == UserId) || (VisitorId is not null && notification.VisitorId == VisitorId);
+
+    /// <summary>The row filter. The captured values become query parameters, never spliced RQL.</summary>
+    public Expression<Func<Notification, bool>> Filter()
+    {
+        var userId = UserId;
+        var visitorId = VisitorId;
+        if (userId is not null && visitorId is not null)
+            return n => n.UserId == userId || n.VisitorId == visitorId;
+        if (userId is not null)
+            return n => n.UserId == userId;
+        if (visitorId is not null)
+            return n => n.VisitorId == visitorId;
+        return _ => false;
+    }
 }
 
 /// <summary>The "rows of the signed-in user" predicate, with a closed door for an anonymous caller.</summary>

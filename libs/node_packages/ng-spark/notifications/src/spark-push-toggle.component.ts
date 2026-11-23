@@ -8,6 +8,8 @@ export const SPARK_NOTIFICATION_TEXTS: Record<string, string> = {
   empty: 'No notifications',
   markAllRead: 'Mark all as read',
   showAll: 'All notifications',
+  dismiss: 'Dismiss',
+  arrived: 'New notification',
   pushEnable: 'Turn on push notifications',
   pushDisable: 'Turn off push notifications on this device',
   pushDenied: 'Notifications are blocked for this site in your browser settings.',

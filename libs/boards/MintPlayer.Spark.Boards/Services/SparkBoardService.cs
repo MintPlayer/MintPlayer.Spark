@@ -48,7 +48,7 @@ internal sealed partial class SparkBoardService
 {
     [Inject] private readonly SparkBoardRegistry registry;
     [Inject] private readonly SparkTileKindRegistry kinds;
-    [Inject] private readonly ISparkCurrentUser currentUser;
+    [Inject] private readonly ISparkCurrentPrincipal currentUser;
     [Inject] private readonly IPermissionService permissionService;
     [Inject] private readonly IDocumentStore store;
     [Inject] private readonly IOptions<SparkBoardsOptions> options;

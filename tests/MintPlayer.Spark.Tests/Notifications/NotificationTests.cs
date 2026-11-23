@@ -4,6 +4,7 @@ using System.Security.Cryptography;
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using MintPlayer.Spark.Abstractions;
+using MintPlayer.Spark.Abstractions.Authentication;
 using MintPlayer.Spark.Authorization.Identity;
 using MintPlayer.Spark.Messaging;
 using MintPlayer.Spark.Notifications;
@@ -42,6 +43,8 @@ public class NotificationTests : OrganizationsTestHost
             spark.AddMessaging(o => o.FallbackPollInterval = TimeSpan.FromMilliseconds(250));
             spark.AddNotifications(o =>
             {
+                // Its own option since #710 (no Authorization reference); the host sets the Auth one in code only.
+                o.PublicBaseUrl = PublicBaseUrl;
                 o.WebPush.PublicKey = Vapid.PublicKey;
                 o.WebPush.PrivateKey = Vapid.PrivateKey;
                 o.WebPush.Subject = Vapid.Subject;
@@ -236,15 +239,15 @@ public class NotificationTests : OrganizationsTestHost
 
         using (var scope = Factory.CreateScope())
         {
-            var export = scope.ServiceProvider.GetServices<ISparkPersonalDataContributor<SparkUser>>().Single(c => c.Name == "notifications");
-            var data = JsonSerializer.SerializeToNode(await export.GetPersonalDataAsync(ann, CancellationToken.None))!;
+            var export = scope.ServiceProvider.GetServices<ISparkPersonalDataContributor>().Single(c => c.Name == "notifications");
+            var data = JsonSerializer.SerializeToNode(await export.GetPersonalDataAsync(new SparkUserAccount(ann), CancellationToken.None))!;
             data["notifications"]!.AsArray().Count.Should().Be(1);
             data["devices"]!.AsArray().Single()!["Service"]!.GetValue<string>().Should().Be("fcm.googleapis.com");
             data["devices"]!.AsArray().Single()!.AsObject().ContainsKey("Endpoint").Should().BeFalse();
             data["preferences"]!.AsArray().Count.Should().Be(1);
 
-            foreach (var handler in scope.ServiceProvider.GetServices<ISparkAccountDeletionHandler<SparkUser>>().Where(h => h.GetType().Namespace!.Contains("Notifications")))
-                await handler.OnDeletingAccountAsync(ann, CancellationToken.None);
+            foreach (var handler in scope.ServiceProvider.GetServices<ISparkAccountDeletionHandler>().Where(h => h.GetType().Namespace!.Contains("Notifications")))
+                await handler.OnDeletingAccountAsync(new SparkUserAccount(ann), CancellationToken.None);
         }
 
         (await NotificationsOfAsync(ann.Id!)).Should().BeEmpty();
