@@ -361,6 +361,14 @@ Decisions:
   npm `repository.url` plus `repository.directory`. Spark sets `RepositoryUrl` in only a few of its 68 packable csprojs
   (`MintPlayer.Spark.AllFeatures`, `MintPlayer.Spark.Apps`, …). Onboarding checks it and the versioning check run warns
   when it's missing (S7).
+  - **Done (M12):** the graph reads `ProjectNode.NamesRepository` (`RepositoryUrl`, or `PublishRepositoryUrl=true` for
+    Source Link; npm `repository` as a string or with a `url`). With the changelog on, the onboarding pull request lists
+    the packages without it under "To do by hand" (`ChangelogOnboarding`). **Correction (2026-11-23):** Spark itself
+    already names it everywhere. Every one of the 171 tracked csprojs that declares a `PackageId` or `IsPackable=true`
+    sets `RepositoryUrl`, and both npm packages have `repository`; the "only a few" above was stale.
+  - **Deviation:** the versioning check run does not warn. `graph.Warnings` is what the check shows, and putting the
+    warning there would repeat it on every run of a repository that chose not to fix it; onboarding is where the owner
+    acts on it.
 
 ### D8 — No changelog file is committed, not even a pointer (Q7)
 
@@ -426,6 +434,12 @@ correction comes with the changelog) are answered by D6.
 - **Limits accepted:** perf, revert and breaking still need a box or a type in the title. Only users with write access
   can click, so an outside contributor's PR waits for a maintainer or a ticked box.
 - **Evidence:** owner, Q10 (re-asked): "A".
+- **Done (M12):** `ChangelogOnboarding` writes the section when versioning is planned and the changelog is on. It
+  creates `.github/pull_request_template.md`, or appends to an existing single template (`.github/`, the root or `docs/`,
+  any case). A template whose heading already says "Type of change" is left alone, so a rebuilt pull request changes
+  nothing. Boxes: Feature, Fix, Performance, Documentation, Refactor, Chore. Every one maps through
+  `PrTitleBuilder.TemplateWords`: `ChangelogOnboardingTests.Every_box_maps_to_a_type`. Title correction needs no switch
+  of its own: M11's `ResolvePrTitleCorrection` already follows the changelog. Spark's template has the section.
 
 ### D13 — The template section can be switched off (owner, 2026-11-22)
 

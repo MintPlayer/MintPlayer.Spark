@@ -76,6 +76,13 @@ public sealed record ProjectNode
 
 	/// <summary>The frontend framework whose resolved major anchors this npm package (D7), if any.</summary>
 	public string? FrameworkPackage { get; init; }
+
+	/// <summary>
+	/// Whether the package names its repository: a .NET <c>RepositoryUrl</c> (or <c>PublishRepositoryUrl</c>, which Source
+	/// Link fills in at pack), npm's <c>repository</c>. Renovate and Dependabot find the GitHub Releases through it
+	/// (#693 D7).
+	/// </summary>
+	public bool NamesRepository { get; init; }
 }
 
 /// <summary>The packages of a repository at one commit and the edges between them.</summary>

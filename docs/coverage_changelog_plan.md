@@ -24,7 +24,8 @@ S3, S6 and S7 are implementation-shaped and come after the grill.
 
 **2026-11-23:** M1–M10 committed; S8 run (results under S8). M11's policies, `versioning.changelog.include` and the
 database copy with its repository query are committed (PRD D3 "Done (M11)"). The upcoming view per release line (Q12
-"Done (M11)") and the server-mode `changelog.include` wire fix are committed. **NEXT:** M12–M14.
+"Done (M11)") and the server-mode `changelog.include` wire fix are committed. M12 (onboarding's template section and
+repository-metadata note, PRD D7/D12 "Done (M12)") is committed. **NEXT:** M13, M14.
 
 ## Spikes
 

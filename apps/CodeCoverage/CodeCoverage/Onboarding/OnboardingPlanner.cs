@@ -26,6 +26,12 @@ public sealed record OnboardingInputs
 
     /// <summary>D2: the offered older lines (branch names) the owner chose to create; the others are only offered.</summary>
     public IReadOnlyCollection<string> OlderLines { get; init; } = [];
+
+    /// <summary>#693 M12: the changelog is on (<c>Repository.ResolveChangelog</c>); with versioning it adds a "Changelog" section.</summary>
+    public bool Changelog { get; init; }
+
+    /// <summary>#693 D13: the "Type of change" template section may be written (<c>Repository.ResolvePrTemplate</c>).</summary>
+    public bool PrTemplate { get; init; } = true;
 }
 
 /// <param name="Features">What is set up: the picked features, and versioning when release lines are.</param>
@@ -133,6 +139,8 @@ public static partial class OnboardingPlanner
                 overlay.Apply(file);
             seeds = versioning.Seeds;
             sections.Add(("Versioning", versioning.Body));
+            if (inputs.Changelog)
+                sections.Add(("Changelog", await ChangelogOnboarding.PlanAsync(overlay, inputs.PrTemplate, notes, cancellationToken)));
         }
         if (features.Contains(EOnboardingFeature.ReleaseLines))
         {

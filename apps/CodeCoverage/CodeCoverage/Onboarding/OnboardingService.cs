@@ -682,6 +682,7 @@ public partial class OnboardingService : IOnboardingService
             return Planned.Refused($"{defaultBranch} could not be read from the forge.");
 
         var wantsVersioning = features.Contains(EOnboardingFeature.Versioning) || features.Contains(EOnboardingFeature.ReleaseLines);
+        var account = wantsVersioning && repository.Account is { Length: > 0 } accountId ? await session.LoadAsync<Account>(accountId, cancellationToken) : null;
         var plan = await OnboardingPlanner.PlanAsync(tree, new OnboardingInputs
         {
             Features = features,
@@ -691,6 +692,8 @@ public partial class OnboardingService : IOnboardingService
             Owner = repository.OwnerLogin,
             IsTagged = (package, ct) => pulls.HasTagWithPrefixAsync(repository, VersionTag.Prefix(package), ct),
             OlderLines = olderLines,
+            Changelog = wantsVersioning && Repository.ResolveChangelog(repository, account).Enabled,
+            PrTemplate = Repository.ResolvePrTemplate(repository, account).Enabled,
         }, cancellationToken);
         return new Planned(plan, tree, git, pulls, null);
     }

@@ -120,6 +120,7 @@ public sealed partial class DotnetProjectReader(IRepositoryTree tree, List<strin
 			DeclaredVersion = Property("PackageVersion") ?? Property("Version")
 				?? (Property("VersionPrefix") is { } prefix ? (Property("VersionSuffix") is { } suffix ? $"{prefix}-{suffix}" : prefix) : null),
 			BuildProps = buildProps,
+			NamesRepository = Property("RepositoryUrl") is not null || string.Equals(Property("PublishRepositoryUrl"), "true", StringComparison.OrdinalIgnoreCase),
 		};
 
 		string? Attribute(XElement item, string key)
