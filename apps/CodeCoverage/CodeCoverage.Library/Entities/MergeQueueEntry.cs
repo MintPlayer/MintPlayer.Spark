@@ -361,6 +361,12 @@ public enum EMergeQueueCommandSource
     /// <see cref="DependencyUpdates"/>, the App counts as a writer and never reaches a bypass role.
     /// </summary>
     Backports,
+
+    /// <summary>
+    /// The pull request a FormatRepository or LintRepository run opened, queued at the requester's choice (#657 D5). The
+    /// actor is the person who started the run, so their own role on the forge applies, as for a label.
+    /// </summary>
+    Formatting,
 }
 
 public sealed class MergeQueueEntryEvent
@@ -461,6 +467,8 @@ public enum EMergeQueueResolveStrategy
     Evict,
     /// <summary>A three-way merge per key of MSBuild files and package.json (#570).</summary>
     KeyedMerge,
+    /// <summary>A whitespace-only conflict takes the pull request's side; <c>formatting.yml</c> proves it (#657 D10, D17).</summary>
+    Whitespace,
 }
 
 public sealed class MergeQueueConfigValue
@@ -502,11 +510,12 @@ public sealed class MergeQueueAutoResolveRule
         EMergeQueueResolveStrategy.LineSet => "line-set",
         EMergeQueueResolveStrategy.Evict => "evict",
         EMergeQueueResolveStrategy.KeyedMerge => "keyed-merge",
+        EMergeQueueResolveStrategy.Whitespace => "whitespace",
         _ => "take-base",
     };
 
     /// <summary>Whether a resolution under this rule needs a regenerate run.</summary>
-    public bool Regenerates() => Regenerate ?? Strategy == EMergeQueueResolveStrategy.TakeBase;
+    public bool Regenerates() => Regenerate ?? Strategy is EMergeQueueResolveStrategy.TakeBase or EMergeQueueResolveStrategy.Whitespace;
 }
 
 /// <summary>When the regenerate workflow runs (§5.2).</summary>

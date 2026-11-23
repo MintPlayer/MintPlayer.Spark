@@ -57,6 +57,36 @@ public class OnboardingPlannerTests
     }
 
     [Fact]
+    public async Task Issue657_formatting_adds_the_workflow_at_the_moving_tag()
+    {
+        var plan = await OnboardingPlanner.PlanAsync(DotnetRepository(), Inputs(EOnboardingFeature.Formatting));
+
+        var workflow = plan.Files.Single(f => f.Path == ".github/workflows/formatting.yml").Content!;
+        workflow.Should().Contain("uses: MintPlayer/MintPlayer.Spark/.github/actions/format@format-v1")
+            .And.Contain("permissions:\n  contents: read")
+            .And.Contain("persist-credentials: false")
+            .And.NotContain("\r");
+        // The SECURITY header names `secrets.*` to forbid it; no line of the workflow itself may use one.
+        string.Join('\n', workflow.Split('\n').Where(l => !l.TrimStart().StartsWith('#'))).Should().NotContain("secrets.");
+        plan.Body.Should().Contain("## Formatting").And.Contain("Format repository");
+        plan.OnMerge.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Issue657_an_existing_formatting_workflow_is_kept_with_only_its_commit_pin_moved_to_the_tag()
+    {
+        const string pinned = "jobs:\n  format:\n    steps:\n      - uses: MintPlayer/MintPlayer.Spark/.github/actions/format@0123456789abcdef0123456789abcdef01234567\n        with:\n          mode: custom\n";
+        var plan = await OnboardingPlanner.PlanAsync(DotnetRepository().Add(".github/workflows/formatting.yml", pinned), Inputs(EOnboardingFeature.Formatting));
+
+        plan.Files.Single(f => f.Path == ".github/workflows/formatting.yml").Content
+            .Should().Be(pinned.Replace("@0123456789abcdef0123456789abcdef01234567", "@format-v1", StringComparison.Ordinal));
+
+        var atTag = await OnboardingPlanner.PlanAsync(DotnetRepository().Add(".github/workflows/formatting.yml", plan.Files[0].Content!), Inputs(EOnboardingFeature.Formatting));
+        atTag.Files.Should().NotContain(f => f.Path == ".github/workflows/formatting.yml");
+        atTag.Body.Should().Contain("left it as it is");
+    }
+
+    [Fact]
     public async Task Release_lines_bring_versioning_with_them()
     {
         var plan = await OnboardingPlanner.PlanAsync(DotnetRepository(), Inputs(EOnboardingFeature.ReleaseLines));

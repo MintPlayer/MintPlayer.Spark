@@ -39,6 +39,15 @@ internal sealed partial class GitWriterOnboardingEndpoint : IPostEndpoint<Versio
         if (DependencyFields.Job(refusal, request, options.Value.AllowInsecureHttp) is not { } job
             || DependencyFields.Commit(refusal, request) is not { } commit)
             return refusal.Result();
+        if (request.Format is not null)
+        {
+            if (!refusal.Check(DependencyBranches.FormatModes.Contains(request.Format, StringComparer.Ordinal), "format", FormatRule)
+                || !refusal.Check(job.Line is null && !request.Narrow && !request.Central && request.Files is not { Count: > 0 }, "files", FormatRule)
+                || refusal.Check(DependencyFields.Base64(request.Patch) is { Length: > 0 } decoded ? decoded : null, "patch", "a non-empty base64 patch") is not { } patch
+                || refusal.Check(Exclude(request.Exclude), "exclude", ExcludeRule) is not { } exclude)
+                return refusal.Result();
+            return Results.Json(await writer.FormatAsync(job, commit, request.Format, patch, exclude), GitWriterHost.Json);
+        }
         if (request.Central)
         {
             if (refusal.Check(job.Line is null && !request.Narrow ? CentralFiles(request.Files) : null, "files", CentralFilesRule) is not { } central)
@@ -55,6 +64,17 @@ internal sealed partial class GitWriterOnboardingEndpoint : IPostEndpoint<Versio
             return refusal.Result();
         return Results.Json(await writer.OnboardingAsync(job, commit, files), GitWriterHost.Json);
     }
+
+    /// <summary>#657 M5: a format commit is the default branch's, from a patch, with no files.</summary>
+    public const string FormatRule = "for a format commit: format or lint, on the default branch, with a patch and no files";
+
+    public const int MaxExclude = 64;
+    public const string ExcludeRule = "at most 64 globs of 1 to 256 printable characters";
+
+    internal static List<string>? Exclude(List<string>? globs)
+        => globs is null ? []
+            : globs.Count <= MaxExclude && globs.All(g => g is { Length: > 0 and <= 256 } && !g.Any(char.IsControl)) ? globs
+            : null;
 
     /// <summary>#638 D15: a line's narrowing rewrites project files, global.json and the workflows' SDK pins; #649 D7: the
     /// same predicate as the app's <c>LineNarrowing</c> (<see cref="LinePaths.IsNarrowable"/>).</summary>

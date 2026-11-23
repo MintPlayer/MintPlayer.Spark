@@ -3,6 +3,7 @@ using System.Text;
 using CodeCoverage.Entities;
 using CodeCoverage.Feedback;
 using CodeCoverage.Forge;
+using CodeCoverage.Formatting;
 using CodeCoverage.Git;
 using CodeCoverage.Git.MergeQueue;
 using CodeCoverage.MergeQueue;
@@ -172,6 +173,9 @@ public partial class BackportRegenerationEngine : IBackportRegenerationEngine
         }
         if (workflows.Count == 0)
             return new([], [], "`mergeQueue.postRebaseActionName` names no regenerate workflow");
+        // #657 M7 (D17): a whitespace resolution stands only once formatting.yml proved it, from commits the runner can fetch.
+        if (workflows.Contains(FormattingWorkflow.FileName) && (target.ProofOurs is null || target.ProofTheirs is null || target.ProofBase is null))
+            return new([], [], $"the line's platform values were rewritten, so `{FormattingWorkflow.FileName}` cannot prove the whitespace-only resolutions");
 
         // As the merge queue's publish (O37): the list, then each concrete path it does not already allow.
         var globs = new List<string>(section.RegeneratedPaths);
@@ -321,12 +325,21 @@ public partial class BackportRegenerationEngine : IBackportRegenerationEngine
         }
 
         var file = item.Workflows[item.Runs.Count];
-        var request = new WorkflowHookRequest(file, item.Head, new Dictionary<string, string>
+        var inputs = new Dictionary<string, string>
         {
             ["expected_sha"] = item.Sha,
             ["pr_number"] = item.Number.ToString(CultureInfo.InvariantCulture),
             ["queue_run_id"] = $"{item.Head.Replace('/', '-')}.{item.Runs.Count + 1}",
-        }, TimeSpan.FromMinutes(item.PostRebaseTimeoutMinutes), Purpose);
+        };
+        // #657 M7 (D18): the proof's three commits; a backport's merge base is the picked commit's own base, never computed.
+        if (file == FormattingWorkflow.FileName)
+        {
+            inputs["mode"] = "pipeline";
+            inputs["ours_sha"] = item.OursSha ?? string.Empty;
+            inputs["theirs_sha"] = item.TheirsSha ?? string.Empty;
+            inputs["merge_base"] = item.MergeBaseSha ?? string.Empty;
+        }
+        var request = new WorkflowHookRequest(file, item.Head, inputs, TimeSpan.FromMinutes(item.PostRebaseTimeoutMinutes), Purpose);
         var dispatch = await hook.DispatchAsync(saga, request, dispatched =>
         {
             // A new generation retires the previous run's timer and poll chain.

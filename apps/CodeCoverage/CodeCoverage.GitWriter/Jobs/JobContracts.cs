@@ -559,6 +559,17 @@ public sealed record BackportTargetResult(
     /// <summary>The platform values the change moved off this line's major, which normalization kept at the line's
     /// value (#638 D13); the app reports them on the backport, or on its "nothing left" close.</summary>
     public IReadOnlyList<PlatformKept> Kept { get; init; } = [];
+
+    /// <summary>#657 M7 (D18): the three commits the merge was made of, for <c>formatting.yml</c>'s proof of a whitespace
+    /// resolution: the line's tip, the picked commit and the commit it was taken against. Null when normalization rewrote
+    /// the change's sides (#570 D8): those commits exist only here, so no runner can fetch them and nothing can be proven.</summary>
+    public string? ProofOurs { get; init; }
+
+    /// <inheritdoc cref="ProofOurs"/>
+    public string? ProofTheirs { get; init; }
+
+    /// <inheritdoc cref="ProofOurs"/>
+    public string? ProofBase { get; init; }
 }
 
 /// <param name="Outcome"><see cref="JobOutcomes.Backported"/> when the job ran (each target has its own result), or a failure.</param>

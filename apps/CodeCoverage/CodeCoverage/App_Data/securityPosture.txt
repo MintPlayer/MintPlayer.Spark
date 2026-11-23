@@ -7,6 +7,7 @@ authorization | MintPlayer.Spark.Authorization | c6fc3af07823
 dashboards | MintPlayer.Spark.Dashboards | 4684f577b028
 identity-provider | MintPlayer.Spark.IdentityProvider | a47cb40caae8 | switched off
 logging | MintPlayer.Spark.Logging | 07ea1af27978
+notifications | MintPlayer.Spark.Notifications | 0da69183be2b
 organizations | MintPlayer.Spark.Organizations | 3f770bc98628 | switched off
 
 ## Reachable without signing in (expanded)
@@ -71,6 +72,8 @@ Signed-in users | grant | Edit/Account | c0e5a9e1-0000-4000-8000-00000000006b | 
 Signed-in users | grant | Edit/GitHubProject | c0e5a9e1-0000-4000-8000-000000000063 | app
 Signed-in users | grant | Edit/Repository | c0e5a9e1-0000-4000-8000-00000000006c | app
 Signed-in users | grant | EnableDependencyUpdates/DependencyOnboardingRow | c0e5a9e1-0000-4000-8000-0000000000a1 | app
+Signed-in users | grant | FormatRepository/Repository | c0e5a9e1-0000-4000-8000-0000000000c7 | app
+Signed-in users | grant | LintRepository/Repository | c0e5a9e1-0000-4000-8000-0000000000c8 | app
 Signed-in users | grant | Manage/RepoSettings | c0e5a9e1-0000-4000-8000-000000000032 | app
 Signed-in users | grant | New/ForgeCheck | c0e5a9e1-0000-4000-8000-0000000000ad | app
 Signed-in users | grant | New/SetUpFeatures | c0e5a9e1-0000-4000-8000-0000000000b0 | app
@@ -115,6 +118,11 @@ Signed-in users (@authenticated) | grant | Query/PasskeyRow | authorization:pass
 Signed-in users (@authenticated) | grant | Read/Passkeys | authorization:passkeys-read | authorization
 Signed-in users (@authenticated) | grant | RemovePasskey/PasskeyRow | authorization:passkey-rows-remove | authorization
 Signed-in users (@authenticated) | grant | RenamePasskey/PasskeyRow | authorization:passkey-rows-rename | authorization
+Signed-in users (notifications:users) | grant | Delete/Notification | notifications:notifications-delete | notifications
+Signed-in users (notifications:users) | grant | Delete/PushSubscription | notifications:devices-delete | notifications
+Signed-in users (notifications:users) | grant | QueryRead/Notification | notifications:notifications | notifications
+Signed-in users (notifications:users) | grant | QueryRead/PushSubscription | notifications:devices | notifications
+Signed-in users (notifications:users) | grant | QueryReadEditNewDelete/NotificationPreference | notifications:preferences | notifications
 
 ## Inert: libraries switched off in "libraries"
 identity-provider:administrators | grant | ApproveDeveloper/OidcDeveloperRequest | identity-provider:developer-requests-approve | identity-provider

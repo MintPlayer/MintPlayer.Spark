@@ -21,13 +21,15 @@ namespace CodeCoverage.Onboarding;
 /// <item><see cref="EOnboardingFeature.ReleaseLines"/>: <c>versioning.lines</c> is present.</item>
 /// <item><see cref="EOnboardingFeature.SizeLabels"/>: the setting is on (<see cref="Repository.ResolvePrSizeLabels"/>).</item>
 /// <item><see cref="EOnboardingFeature.Versioning"/>: <c>versioning:</c> is present.</item>
+/// <item><see cref="EOnboardingFeature.Formatting"/>: the formatting workflow is present.</item>
 /// </list>
 /// A section the file has but cannot be read counts as present: the owner put it there.
 /// </remarks>
 public static class OnboardingFeatureDetection
 {
     /// <param name="coverageYml">The default branch's <c>coverage.yml</c>, or null when it has none or it could not be read.</param>
-    public static IReadOnlySet<EOnboardingFeature> Detect(Repository repository, Account? account, string? coverageYml)
+    /// <param name="formattingWorkflow">#657: the default branch has <c>.github/workflows/formatting.yml</c>.</param>
+    public static IReadOnlySet<EOnboardingFeature> Detect(Repository repository, Account? account, string? coverageYml, bool formattingWorkflow = false)
     {
         ArgumentNullException.ThrowIfNull(repository);
         var features = new HashSet<EOnboardingFeature>();
@@ -46,6 +48,8 @@ public static class OnboardingFeatureDetection
             if (versioning.EffectiveLines is not null)
                 features.Add(EOnboardingFeature.ReleaseLines);
         }
+        if (formattingWorkflow)
+            features.Add(EOnboardingFeature.Formatting);
         return features;
     }
 }

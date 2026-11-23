@@ -41,6 +41,10 @@
 		<InternalsVisibleTo Include="CodeCoverage.GitMirror.Tests" />
 		<InternalsVisibleTo Include="CodeCoverage.Git.Tests" />
 		<InternalsVisibleTo Include="CodeCoverage.GitWriter.Tests" />
+		<!-- Patches/: the writer's validators build on PatchValidator's internals (#657 moved it here, so the app's Release
+		     build, which has no writer reference, can run FormatPatchValidator before asking for a token). -->
+		<InternalsVisibleTo Include="CodeCoverage.GitWriter" />
+		<InternalsVisibleTo Include="CodeCoverage.Tests" />
 	</ItemGroup>
 
 </Project>

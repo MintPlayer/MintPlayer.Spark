@@ -227,6 +227,59 @@ public class BackportRegenerationEngineTests : CoverageRavenTest
         plan.Globs.Should().Equal("**/package-lock.json", "App/packages.lock.json");
     }
 
+    private static readonly MergeQueueSection WhitespaceSection = new()
+    {
+        AutoResolve = [new MergeQueueAutoResolveRule { Path = "**/*.cs", Strategy = EMergeQueueResolveStrategy.Whitespace, Regenerate = true, Action = "formatting.yml" }],
+    };
+
+    private static GitWriterBackportTargetResult WhitespaceTarget(bool proven) => new("release/8.x", Head, Backport, GitWriterBackportTargetResult.Created, [],
+        Resolutions: [new("src/A.cs", "whitespace", true, 0)], Regenerate: ["src/A.cs"])
+    {
+        ProofOurs = proven ? new string('1', 40) : null, ProofTheirs = proven ? new string('2', 40) : null, ProofBase = proven ? new string('3', 40) : null,
+    };
+
+    /// <summary>#657 M7 (D17, D18): a whitespace resolution on a line runs formatting.yml, which may write only that file.</summary>
+    [Fact]
+    public void M7_a_whitespace_resolution_plans_formatting_yml_for_its_file_alone()
+    {
+        var plan = BackportRegenerationEngine.Plan(WhitespaceSection, WhitespaceTarget(proven: true));
+
+        plan.Refusal.Should().BeNull();
+        plan.Workflows.Should().Equal("formatting.yml");
+        plan.Globs.Should().Equal("src/A.cs");
+    }
+
+    /// <summary>#657 M7: normalized sides exist only in the writer, so the runner cannot fetch them and nothing is proven.</summary>
+    [Fact]
+    public void M7_without_the_proof_s_commits_the_backport_opens_not_regenerated()
+        => BackportRegenerationEngine.Plan(WhitespaceSection, WhitespaceTarget(proven: false)).Refusal.Should().Contain("cannot prove");
+
+    [Fact]
+    public async Task M7_formatting_yml_gets_the_three_commits_of_the_cherry_pick()
+    {
+        using var store = GetDocumentStore();
+        var item = Item("formatting.yml");
+        (item.OursSha, item.TheirsSha, item.MergeBaseSha) = (new string('1', 40), new string('2', 40), new string('3', 40));
+        await BeginAsync(store, item);
+
+        await StepAsync(store);
+
+        var request = dispatches.Single();
+        (request.Workflow, request.Inputs["mode"], request.Inputs["ours_sha"], request.Inputs["theirs_sha"], request.Inputs["merge_base"])
+            .Should().Be(("formatting.yml", "pipeline", new string('1', 40), new string('2', 40), new string('3', 40)));
+    }
+
+    [Fact]
+    public async Task M7_another_workflow_gets_no_proof_inputs()
+    {
+        using var store = GetDocumentStore();
+        await BeginAsync(store, Item("regenerate.yml"));
+
+        await StepAsync(store);
+
+        dispatches.Single().Inputs.Keys.Should().BeEquivalentTo(["expected_sha", "pr_number", "queue_run_id"]);
+    }
+
     [Fact]
     public async Task A_regenerated_backport_into_a_queue_line_is_handed_to_the_merge_queue()
     {

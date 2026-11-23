@@ -131,9 +131,14 @@ public sealed partial class BackportService
             var built = WriterService.Oid(await context.RequireAsync(["commit-tree", tree, "-p", tip, "-F", "-"], input: message, author: author, committer: job.Committer),
                 "commit-tree");
             var push = await WriterService.PushAsync(context, job.CloneUrl, job.Credential, built, "refs/heads/" + head, expected: null);
+            // #657 M7: the proof's commits, only when they are the forge's own (normalization left both sides alone).
+            var proven = string.Equals(mergeBase, @base, StringComparison.OrdinalIgnoreCase) && string.Equals(theirs, job.Commit, StringComparison.OrdinalIgnoreCase);
             results.Add(push switch
             {
-                WriterService.Push.Done or WriterService.Push.UpToDate => new BackportTargetResult(branch, head, built, Created, [], platformChanges, resolutions, Regenerate: regenerate),
+                WriterService.Push.Done or WriterService.Push.UpToDate => new BackportTargetResult(branch, head, built, Created, [], platformChanges, resolutions, Regenerate: regenerate)
+                {
+                    ProofOurs = proven ? tip : null, ProofTheirs = proven ? theirs : null, ProofBase = proven ? mergeBase : null,
+                },
                 WriterService.Push.LeaseRejected => new BackportTargetResult(branch, head, built, Exists, [], platformChanges, resolutions, Regenerate: regenerate),
                 WriterService.Push.Rejected rejected => new BackportTargetResult(branch, head, built, Rejected, [], platformChanges, resolutions, rejected.Detail, regenerate),
                 _ => throw new InvalidOperationException(),

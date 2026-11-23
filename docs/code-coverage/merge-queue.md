@@ -258,12 +258,12 @@ A repository with lockfiles and its own workflow per tool might add:
 | `postRebaseWhen` | `auto-resolved` · `always` · `never` | `auto-resolved` | Dispatch only after a resolved conflict, after every rebase, or never. |
 | `regeneratedPaths` | list of globs | `**/App_Data/modelHashes.json`, `**/App_Data/securityPosture.txt`, `**/package-lock.json`, `**/npm-shrinkwrap.json`, `**/yarn.lock`, `**/pnpm-lock.yaml`, `**/packages.lock.json` | The paths a regenerate patch may touch (T4). **Set, it replaces the default list entirely** (O37), even as `[]`; it is never merged into it. The path of every explicit `autoResolve` rule in `coverage.yml` that regenerates is added; a default or preset rule never adds its glob (below). At most 64 together, no empty pattern. An empty list is an error only when a workflow can run. |
 | `autoResolve[].path` | glob | — | Required. At most 64 entries, presets and defaults included. The first rule that matches a conflicted path decides. |
-| `autoResolve[].strategy` | `take-base` · `keep-both` · `keyed-merge` · `line-set` · `evict` | `take-base` | `take-base`: the base branch's file, then the regenerate run rewrites it. `keep-both`: both sides' insertions at one place, base branch first (O33). `keyed-merge`: a three-way merge per key of an MSBuild file's items and properties or a `package.json`'s dependencies; a package version both sides changed takes the highest (below). `line-set`: the sorted, de-duplicated union of lines (`go.sum`). `evict`: never resolved; masks a later rule or default for its path. Anything else is an error (`json-union` was dropped, O1). |
+| `autoResolve[].strategy` | `take-base` · `keep-both` · `keyed-merge` · `line-set` · `whitespace` · `evict` | `take-base` | `take-base`: the base branch's file, then the regenerate run rewrites it. `whitespace` (#657): a conflict whose sides differ only in whitespace takes the pull request's side, and `formatting.yml` proves and formats it ([formatting.md](formatting.md#the-whitespace-strategy)). `keep-both`: both sides' insertions at one place, base branch first (O33). `keyed-merge`: a three-way merge per key of an MSBuild file's items and properties or a `package.json`'s dependencies; a package version both sides changed takes the highest (below). `line-set`: the sorted, de-duplicated union of lines (`go.sum`). `evict`: never resolved; masks a later rule or default for its path. Anything else is an error (`json-union` was dropped, O1). |
 | `autoResolve[].keys` | list of top-level JSON member names | none | `take-base` only. None: a conflict on any line of the file resolves (O19). Given: only lines that hold one of these members do (O2), and every side must be a JSON object. At most 64 keys of 1–256 characters, no control character. |
 | `autoResolve[].validate` | list of `utf8` · `json` · `json-no-duplicate-keys` · `xml` · `msbuild-no-duplicate-keys` · `no-conflict-markers` · `yaml` · `github-workflow` | none | At most 8. The resolved file must pass each, inputs first (§10.4); a cleanly merged file under the rule and a regenerated one too. `msbuild-no-duplicate-keys` is `xml` plus: no `ItemGroup` holds one item twice (type, `Include`/`Update`/`Remove` value, `Condition`) and no `PropertyGroup` sets one property twice (name, `Condition`), case-insensitive, so two sides that each added a package with another version stay a conflict. `no-conflict-markers` always runs on resolved content. Not on `evict`. |
-| `autoResolve[].regenerate` | bool | see the rule | Whether a resolution under the rule runs a regenerate workflow. `take-base`: always (`false` is an error). `keep-both`, `line-set`: `true` when a workflow exists for the rule (`action` or `postRebaseActionName`) and `postRebaseWhen` is not `never`, else `false`; `true` without one is an error. |
+| `autoResolve[].regenerate` | bool | see the rule | Whether a resolution under the rule runs a regenerate workflow. `take-base`: always (`false` is an error). `whitespace`: always, with `formatting.yml` (`false`, another `action` or `postRebaseWhen: never` is an error). `keep-both`, `line-set`: `true` when a workflow exists for the rule (`action` or `postRebaseActionName`) and `postRebaseWhen` is not `never`, else `false`; `true` without one is an error. |
 | `autoResolve[].action` | file name | `postRebaseActionName` | The rule's own regenerate workflow, same file-name rule as `postRebaseActionName` (O36). Several distinct workflows run one after the other (§2.3). At most 8 distinct workflows. |
-| `autoResolveDefaults` | list of preset names | none | Opt-in `take-base` presets, appended after the explicit rules (table below). An unknown name is an error. |
+| `autoResolveDefaults` | list of preset names | none | Opt-in presets (`take-base`; `formatting` is `whitespace`), appended after the explicit rules (table below). An unknown name is an error. |
 | `keepBothDefaults` | `true` · `false` · map | all on | The `keep-both` defaults, appended after the presets (table below). `false` turns every group off; a map such as `{ json: false }` turns off the groups it names, the others stay on. |
 | `checks.retryFlaky` | int | `1` | 0–3. Re-runs of a failed check run before evicting (D9). The re-run waits until no other check is still running, because GitHub refuses to re-run a job while its workflow run is in progress. The failed jobs of one workflow run re-run together, in one new attempt of that run (#589). With no re-run left, a failure evicts at once. |
 | `checks.timeout` | duration | `60m` | 5–720 minutes, from the moment the queue starts waiting for checks. |
@@ -287,13 +287,14 @@ synchronize may rewrite.
 for that path. The queue check's "Effective configuration" lists every rule with its source: `coverage.yml @ <ref>`,
 `preset <name>` or `default` (O15).
 
-| Preset (`autoResolveDefaults`) | Rules (all `take-base`, regenerated) |
+| Preset (`autoResolveDefaults`) | Rules (`take-base` unless noted, all regenerated) |
 |---|---|
 | `spark` | `**/App_Data/modelHashes.json`, `**/App_Data/securityPosture.txt` |
 | `npm` | `**/package-lock.json`, `**/npm-shrinkwrap.json` |
 | `pnpm` | `**/pnpm-lock.yaml` |
 | `yarn` | `**/yarn.lock` |
 | `nuget` | `**/packages.lock.json` |
+| `formatting` | `whitespace`, by `formatting.yml`: `**/*.cs`, `*.ts`, `*.tsx`, `*.mts`, `*.cts`, `*.js`, `*.jsx`, `*.mjs`, `*.cjs`, `*.css`, `*.scss`, `*.less`, `*.go`, `*.rs`, `*.tf` (#657, [formatting.md](formatting.md)) |
 
 | Default group (`keepBothDefaults`) | Rules (all `keep-both`) | Validator |
 |---|---|---|
@@ -314,7 +315,9 @@ rule, as an exact entry beside the list (`MergeQueueWorkflowGuard.PublishRegener
 `patch-rejected` (`outside-regenerated-paths`). A file the list already covers takes no entry; a resolved path holding
 `*`, `?` or `[` is not added (it would match more than itself), so a patch to it is refused. The list and those files
 together are held to the writer's 64; more evicts `regenerated-paths-cap` before any run is dispatched. Only an
-explicit rule in `coverage.yml` with `regenerate: true` (or a `take-base` one) adds its glob: you wrote it. An entry
+explicit rule in `coverage.yml` with `regenerate: true` (or a `take-base` one) adds its glob: you wrote it. A
+`whitespace` rule never does, explicit or not: like a default, it allows only the concrete files it resolved, because
+`formatting.yml` may rewrite only what it proved (#657 D18). An entry
 prepared by a writer that does not report its resolutions (§10.6) sends its stored list as before.
 
 **keep-both, as built (§10.4).** The regions come from `git merge-file --diff3 --diff-algorithm=myers`, never zdiff3,
@@ -1006,7 +1009,7 @@ kebab-cased by the writer.
 | `unsupported-conflict-type` | A modify/delete, rename, directory/file, binary, mode or submodule conflict. | Rebase by hand. |
 | `conflict-without-stages` | git reported a conflict without a conflicted file, e.g. a directory rename. | Rebase by hand. |
 | `unsupported-entry`, `too-large`, `not-json` | An allow-listed file's sides are not two or three regular 100644 files, a side is over its strategy's cap (take-base 16 MiB; keep-both, line-set and validated files 4 MiB, §10.6), or (a `keys:` rule) not a JSON object. | Rebase by hand. |
-| `resolver-refused` | The rule's strategy does not resolve this conflict's shape: for `keep-both` and `line-set`, an add/add conflict, a changed base line (adding after a one-line last member included), a marker-like line in a side, a side that is not UTF-8, or a conflict at the end of a file without a final newline (§2.2); for `keyed-merge`, a value both sides changed that is no package version, a removed-and-changed key, an unorderable version, or a line that is not an entry. | Rebase by hand. |
+| `resolver-refused` | The rule's strategy does not resolve this conflict's shape: for `keep-both` and `line-set`, an add/add conflict, a changed base line (adding after a one-line last member included), a marker-like line in a side, a side that is not UTF-8, or a conflict at the end of a file without a final newline (§2.2); for `keyed-merge`, a value both sides changed that is no package version, a removed-and-changed key, an unorderable version, or a line that is not an entry; for `whitespace`, an add/add conflict, a side that is not UTF-8, a marker-like line, or a region whose sides differ in more than whitespace. | Rebase by hand. |
 | `invalid-side` | A side of the conflicted file already fails one of the rule's validators, so the queue does not judge a result (inputs first, §10.4). The message names the validator, the side and the position, never the content. | Fix the file, or rebase by hand. |
 | `invalid-result` | Every side passes the rule's validators, but the resolved file does not (for example both sides added the same JSON member), or it holds a conflict marker. The message names the validator and the position. | Rebase by hand. |
 | `merged-content-invalid` | git merged a file without a conflict, both sides pass its rule's validators, and the merged file does not (for example a duplicate member added at two places). | Rebase by hand. |

@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.RegularExpressions;
 using CodeCoverage.Entities;
+using CodeCoverage.Formatting;
 using CodeCoverage.Git.MergeQueue;
 using YamlDotNet.Serialization;
 using YamlDotNet.Serialization.NamingConventions;
@@ -196,6 +197,16 @@ public static partial class MergeQueueYml
                     takeBaseWithoutWorkflow |= workflow is null;
                     takeBaseNever |= never;
                     break;
+                case EMergeQueueResolveStrategy.Whitespace:
+                    // #657 D17: the head's side stands only once formatting.yml has proven it, so the rule always regenerates,
+                    // and with that workflow alone: another workflow cannot run the proof.
+                    if (rule.Regenerate == false || rule.Action is { } other && other != FormattingWorkflow.FileName)
+                        errors.Add($"mergeQueue.autoResolve '{rule.Path}': whitespace always regenerates with {FormattingWorkflow.FileName}, so it takes no regenerate: false or other action.");
+                    if (never)
+                        errors.Add($"mergeQueue.autoResolve '{rule.Path}': whitespace needs {FormattingWorkflow.FileName} to run, which postRebaseWhen 'never' forbids.");
+                    rule.Regenerate = true;
+                    rule.Action = FormattingWorkflow.FileName;
+                    break;
                 default:
                     if (rule.Regenerate == true && (workflow is null || never))
                         errors.Add($"mergeQueue.autoResolve '{rule.Path}' asks for regenerate, but no workflow runs for it: set its action or mergeQueue.postRebaseActionName, and a postRebaseWhen other than never.");
@@ -219,7 +230,8 @@ public static partial class MergeQueueYml
         // A default or preset rule never widens the list by its glob (`**/*.json` would let a regenerate run, which executes
         // the pull request's code (T5), rewrite every JSON file); the queue allows only the concrete files such a rule
         // resolved for the entry, at the publish (MergeQueueWorkflowGuard.PublishRegeneratedPaths).
-        foreach (var path in section.AutoResolve.Where(r => r.Regenerate == true && r.Source == Source).Select(r => r.Path))
+        // A whitespace rule never widens it either, even an explicit one: formatting.yml may write only the files it resolved (#657 D18).
+        foreach (var path in section.AutoResolve.Where(r => r.Regenerate == true && r.Source == Source && r.Strategy != EMergeQueueResolveStrategy.Whitespace).Select(r => r.Path))
             if (!section.RegeneratedPaths.Contains(path, StringComparer.Ordinal))
                 section.RegeneratedPaths.Add(path);
         if (section.RegeneratedPaths.Count > MergeQueueWireRules.MaxGlobs)
@@ -323,6 +335,7 @@ public static partial class MergeQueueYml
         MergeQueueWireRules.LineSet => EMergeQueueResolveStrategy.LineSet,
         MergeQueueWireRules.Evict => EMergeQueueResolveStrategy.Evict,
         MergeQueueWireRules.KeyedMerge => EMergeQueueResolveStrategy.KeyedMerge,
+        MergeQueueWireRules.Whitespace => EMergeQueueResolveStrategy.Whitespace,
         _ => EMergeQueueResolveStrategy.TakeBase,
     };
 
@@ -332,6 +345,7 @@ public static partial class MergeQueueYml
         Strategy = StrategyOf(preset.Strategy),
         Validate = [.. preset.Validate],
         Regenerate = preset.Regenerate,
+        Action = preset.Action,
         Source = source,
     };
 

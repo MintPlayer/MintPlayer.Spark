@@ -10,7 +10,8 @@
     "c0e5ad00-0000-4000-8000-000000000001": "Administrators"
   },
   "bindings": {
-    "dashboards:administrators": [ "Administrators" ]
+    "dashboards:administrators": [ "Administrators" ],
+    "notifications:users": [ "Signed-in users" ]
   },
   "libraries": {
     "identity-provider": false,
@@ -344,6 +345,18 @@
     {
       "key": "c0e5a9e1-0000-4000-8000-00000000006c",
       "resource": "Edit/Repository",
+      "groupId": "00000000-0000-0000-0000-000000000001",
+      "isDenied": false
+    },
+    {
+      "key": "c0e5a9e1-0000-4000-8000-0000000000c7",
+      "resource": "FormatRepository/Repository",
+      "groupId": "00000000-0000-0000-0000-000000000001",
+      "isDenied": false
+    },
+    {
+      "key": "c0e5a9e1-0000-4000-8000-0000000000c8",
+      "resource": "LintRepository/Repository",
       "groupId": "00000000-0000-0000-0000-000000000001",
       "isDenied": false
     },

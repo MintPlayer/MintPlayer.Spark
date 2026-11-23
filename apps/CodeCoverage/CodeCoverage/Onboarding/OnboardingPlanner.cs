@@ -2,6 +2,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using CodeCoverage.Dependencies.Lifecycle;
 using CodeCoverage.Feedback;
+using CodeCoverage.Formatting;
 using CodeCoverage.MergeQueue;
 using CodeCoverage.PackageVersioning;
 using CodeCoverage.Versioning.Graph;
@@ -75,6 +76,7 @@ public static partial class OnboardingPlanner
     public const string Title = "Set up MintPlayer CodeCoverage";
     public const string Branch = "mintplayer/onboarding";
     private const string Guides = "https://coverage.mintplayer.com";
+    private const string FormattingGuide = "https://github.com/MintPlayer/MintPlayer.Spark/blob/master/docs/code-coverage/formatting.md";
 
     /// <summary>D9: the title of a line's pull request that adds the default branch's regenerate workflow.</summary>
     public const string LineTitle = "Add the regenerate workflow to this release line";
@@ -161,6 +163,8 @@ public static partial class OnboardingPlanner
             sections.Add(("PR size labels", "Switched on for this repository when this pull request merges: every pull request gets one label, `size/XS` to `size/XXL`."));
         if (features.Contains(EOnboardingFeature.SdkFromGlobalJson))
             sections.Add(("SDK from global.json", await SdkFromGlobalJsonAsync(overlay, notes, cancellationToken)));
+        if (features.Contains(EOnboardingFeature.Formatting))
+            sections.Add(("Formatting", await FormattingAsync(overlay, cancellationToken)));
 
         var ordered = Enum.GetValues<EOnboardingFeature>().Where(features.Contains).ToList();
         var onMerge = ordered.Where(f => f is EOnboardingFeature.DependencyUpdates or EOnboardingFeature.SizeLabels).ToList();
@@ -365,6 +369,29 @@ public static partial class OnboardingPlanner
         return text.ToString();
     }
 
+    /// <summary>
+    /// #657 D2: the formatting workflow (<see cref="FormattingWorkflow"/>). A repository that has one keeps it (#658 F4: it is
+    /// its owner's), with only a commit pin of the action moved back to the moving tag.
+    /// </summary>
+    private static async Task<string> FormattingAsync(OverlayTree overlay, CancellationToken cancellationToken)
+    {
+        const string usage = "Run **Format repository** on the repository's page once this merges, so later pull requests start from formatted files. "
+            + "**Lint repository** applies the linters' fixes the same way. Name the workflow on a merge queue rule with `strategy: whitespace` to resolve "
+            + "conflicts that differ only in formatting.";
+        if (await overlay.ReadTextAsync(FormattingWorkflow.Path, Limits.MaxManifestBytes, cancellationToken) is { } existing)
+        {
+            var atTag = FormattingWorkflow.AtTag(existing);
+            if (atTag == existing)
+                return $"`{FormattingWorkflow.Path}` is there already; the bot left it as it is. {usage}";
+            overlay.Write(FormattingWorkflow.Path, atTag);
+            return $"`{FormattingWorkflow.Path}` is there already; its call of the format action moves from a commit to `{FormattingWorkflow.ActionTag}`, so fixes to the action reach it. {usage}";
+        }
+        overlay.Write(FormattingWorkflow.Path, FormattingWorkflow.Template());
+        return $"`{FormattingWorkflow.Path}` formats the repository at the versions it pins (dotnet format, Prettier, gofmt, rustfmt, ruff or black, terraform fmt) "
+            + $"when CodeCoverage dispatches it, and uploads a patch the bot checks and pushes; the workflow itself never pushes. Edit its `exclude:` list for files "
+            + $"that are never formatted. {usage} See the [formatting guide]({FormattingGuide}).";
+    }
+
     private static string Body(IReadOnlyList<EOnboardingFeature> features, List<(string Heading, string Text)> sections, List<string> notes,
         IReadOnlyList<VersioningSeed> seeds, LineRenamePlan renames, IReadOnlyList<OnboardingLineCut> cuts, IReadOnlyList<EOnboardingFeature> onMerge, string defaultBranch)
     {
@@ -404,6 +431,7 @@ public static partial class OnboardingPlanner
         EOnboardingFeature.SizeLabels => "PR size labels",
         EOnboardingFeature.Versioning => "package versioning",
         EOnboardingFeature.SdkFromGlobalJson => "the SDK from global.json",
+        EOnboardingFeature.Formatting => "formatting",
         _ => feature.ToString(),
     };
 

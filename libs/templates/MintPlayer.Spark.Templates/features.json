@@ -227,7 +227,7 @@
       "displayName": "Notifications",
       "description": "In-app, mail and Web Push notifications, with a bell in the top bar.",
       "store": "RavenDB",
-      "requires": [ "Authorization", "Messaging", "WebPush" ],
+      "requires": [ "Messaging", "WebPush" ],
       "registration": "AddNotifications",
       "client": [ "withNotifications" ]
     },
@@ -305,13 +305,25 @@
     { "project": "templates/MintPlayer.Spark.Templates/MintPlayer.Spark.Templates.csproj", "reason": "not-an-app-feature" },
     { "project": "cli/MintPlayer.Spark.Cli/MintPlayer.Spark.Cli.csproj", "reason": "not-an-app-feature" },
     { "project": "cli/create-spark-app/create-spark-app.csproj", "reason": "not-an-app-feature" },
-    { "project": "minification/MintPlayer.Spark.Minification/MintPlayer.Spark.Minification.csproj", "reason": "needs-prerendering" }
+    { "project": "minification/MintPlayer.Spark.Minification/MintPlayer.Spark.Minification.csproj", "reason": "needs-prerendering" },
+    { "project": "apps/MintPlayer.Spark.Apps/MintPlayer.Spark.Apps.csproj", "reason": "unreleased" },
+    { "project": "webhooks/MintPlayer.Spark.Webhooks.Receiver/MintPlayer.Spark.Webhooks.Receiver.csproj", "reason": "unreleased" },
+    { "project": "webhooks/MintPlayer.Webhooks.Receiver/MintPlayer.Webhooks.Receiver.csproj", "reason": "unreleased" },
+    { "project": "webhooks/MintPlayer.Webhooks.Receiver.AspNetCore/MintPlayer.Webhooks.Receiver.AspNetCore.csproj", "reason": "unreleased" },
+    { "project": "webhooks/MintPlayer.Webhooks.Ed25519/MintPlayer.Webhooks.Ed25519.csproj", "reason": "unreleased" },
+    { "project": "files/MintPlayer.Spark.Files/MintPlayer.Spark.Files.csproj", "reason": "unreleased" },
+    { "project": "files/MintPlayer.Spark.Files.AzureBlob/MintPlayer.Spark.Files.AzureBlob.csproj", "reason": "unreleased" },
+    { "project": "files/MintPlayer.Spark.Files.ClamAV/MintPlayer.Spark.Files.ClamAV.csproj", "reason": "unreleased" },
+    { "project": "files/MintPlayer.Spark.Files.FileSystem/MintPlayer.Spark.Files.FileSystem.csproj", "reason": "unreleased" },
+    { "project": "files/MintPlayer.Spark.Files.Images.NetVips/MintPlayer.Spark.Files.Images.NetVips.csproj", "reason": "unreleased" },
+    { "project": "files/MintPlayer.Spark.Files.Images.SkiaSharp/MintPlayer.Spark.Files.Images.SkiaSharp.csproj", "reason": "unreleased" },
+    { "project": "files/MintPlayer.Spark.Files.S3/MintPlayer.Spark.Files.S3.csproj", "reason": "unreleased" }
   ],
 
   "$reasons": {
     "dependency": "Not chosen on its own: it comes in through a core package or a feature.",
     "not-an-app-feature": "Not something a generated app turns on (tooling, client SDKs, test helpers, the template itself).",
-    "unreleased": "Not on nuget.org, so the template cannot pin it (SPARKTPL001 refuses the placeholder). Unused since #689's eight Web-SDK libraries became packable.",
+    "unreleased": "Not on nuget.org, so the template cannot pin it (SPARKTPL001 refuses the placeholder). A library leaves this list for a feature once its first version ships (the Files packages, Spark Apps and the webhook receivers, #691).",
     "needs-prerendering": "Refuses startup without UseSparkPrerendering(), and the template generates no server-rendered app."
   }
 }

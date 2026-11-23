@@ -86,6 +86,34 @@ public class MergeQueueResolutionEngineTests : CoverageRavenTest
         wire[1].Regenerate.Should().Be(false);
     }
 
+    /// <summary>#657 D17/D18: a whitespace resolution dispatches formatting.yml with the two sides it proves the resolution from.</summary>
+    [Fact]
+    public async Task A_whitespace_resolution_dispatches_formatting_yml_with_both_sides()
+    {
+        var h = await HarnessAsync("""
+            mergeQueue:
+              enabled: true
+              branches: [master]
+              autoResolveDefaults: [formatting]
+              keepBothDefaults: false
+            """);
+        h.Queue.Blobs["master:.github/workflows/formatting.yml"] = "f0f0";
+        h.Queue.Blobs[$"{Prepared}:.github/workflows/formatting.yml"] = "f0f0";
+        h.Writer.PrepareResults.Enqueue(PreparedWith(new GitWriterResolution("src/A.cs", "whitespace", true, 0)));
+
+        await h.EnqueueAsync();
+        await h.DrainAsync();
+
+        var entry = await h.EntryAsync();
+        entry.State.Should().Be(EMergeQueueEntryState.Regenerating);
+        entry.RegenerateWorkflows.Should().Equal(["formatting.yml"]);
+        var dispatch = h.Queue.Dispatches.Should().ContainSingle().Which;
+        dispatch.Workflow.Should().Be("formatting.yml");
+        (dispatch.Inputs["mode"], dispatch.Inputs["ours_sha"], dispatch.Inputs["theirs_sha"], dispatch.Inputs["expected_sha"])
+            .Should().Be(("pipeline", BaseSha, entry.ExpectedHeadSha, Prepared));
+        h.Writer.Prepares.Single().AutoResolve[0].Strategy.Should().Be("whitespace");
+    }
+
     [Fact]
     public async Task A_take_base_beside_a_keep_both_dispatches()
     {

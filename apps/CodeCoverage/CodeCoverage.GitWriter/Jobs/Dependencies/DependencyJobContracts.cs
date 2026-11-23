@@ -153,6 +153,17 @@ public sealed class VersioningOnboardingWire : DependencyCommitJobWire
     /// <summary>multi-target-dependency-split-PRD P7 (M7): the central package management conversion commit on the default
     /// branch instead of the onboarding's.</summary>
     public bool Central { get; set; }
+
+    /// <summary>#657 M5: <c>format</c> or <c>lint</c>, a FormatRepository or LintRepository run's commit: <see cref="Patch"/>
+    /// applied on <c>expected_sha</c> under <see cref="FormatPatchValidator"/>, pushed to <see cref="DependencyBranches.FormatOf"/>.
+    /// No <see cref="Files"/> then.</summary>
+    public string? Format { get; set; }
+
+    /// <summary>With <see cref="Format"/>: the run's <c>merge-queue-patch</c>, base64.</summary>
+    public string? Patch { get; set; }
+
+    /// <summary>With <see cref="Format"/>: the repository's <c>exclude</c> globs (D11), which the patch may not touch.</summary>
+    public List<string>? Exclude { get; set; }
 }
 
 /// <summary><c>DELETE /jobs/dependencies/work-ref</c>: removes the work ref after a run (R14), only while it is at

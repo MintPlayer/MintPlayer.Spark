@@ -74,6 +74,10 @@ dry-runs the cherry-pick onto every requested line. Each line is handled on its 
   files to regenerate by hand. A line without the workflow at all gets it from onboarding: when **Set up features**
   with *Release lines* merges, each supported line missing a regenerate workflow that the default branch's
   `mergeQueue` names gets a pull request adding it (#571 D9, [onboarding.md](onboarding.md#on-merge)).
+- **Whitespace-only conflicts** (#657) resolved under the `whitespace` strategy run the line's own `formatting.yml`
+  with the line's tip, the picked commit and its parent, which proves the resolution and formats it with the line's
+  formatter ([formatting.md](formatting.md#in-backports)). A backport whose platform values were rewritten cannot be
+  proven (its side exists only in the git writer), so it opens with the **Not regenerated** note instead.
 
 **Onboarding a repository with lines.** **Set up features** → *Release lines* adds `versioning.lines`, and when its
 pull request merges it renames old line branches (such as `release/6.0`) to `release/<ecosystem>-<major>.x` through

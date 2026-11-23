@@ -213,6 +213,16 @@ public sealed record GitWriterBackportTargetResult(string Branch, string Head, s
     IReadOnlyList<GitWriterPlatformChange>? PlatformChanges = null, IReadOnlyList<GitWriterBackportResolution>? Resolutions = null,
     IReadOnlyList<string>? Regenerate = null)
 {
+    /// <summary>#657 M7 (D18): the line's tip, the picked commit and the commit it was taken against, for
+    /// <c>formatting.yml</c>'s proof; null when normalization rewrote the sides, so nothing can be proven.</summary>
+    public string? ProofOurs { get; init; }
+
+    /// <inheritdoc cref="ProofOurs"/>
+    public string? ProofTheirs { get; init; }
+
+    /// <inheritdoc cref="ProofOurs"/>
+    public string? ProofBase { get; init; }
+
     /// <summary>First-party packages the change raised above this line's major, dropped by normalization (#570 D11).</summary>
     public IReadOnlyList<GitWriterDependencyRaise>? Raises { get; init; }
 

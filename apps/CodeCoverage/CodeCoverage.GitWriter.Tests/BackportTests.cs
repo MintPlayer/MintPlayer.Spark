@@ -59,6 +59,9 @@ public class BackportTests : WriterTestBase
             var commit = origin.InBare("cat-file", "commit", head);
             commit.Should().Contain("fix: guard against null (#7)").And.Contain($"(cherry picked from commit {squash})")
                 .And.Contain("author Fixture Author <author@example.invalid>").And.Contain("committer coverage-bot <bot@example.invalid>");
+            // #657 M7 (D18): nothing was normalized, so formatting.yml can prove a resolution from the forge's own commits.
+            var target = response.Targets.Single(t => t.Branch == $"release/{line}");
+            (target.ProofOurs, target.ProofTheirs, target.ProofBase).Should().Be((origin.Ref($"refs/heads/release/{line}"), squash, origin.InBare("rev-parse", squash + "^").Trim()));
         }
     }
 
@@ -180,6 +183,7 @@ public class BackportTests : WriterTestBase
         var target = response.Targets.Single();
         target.Push.Should().Be(BackportService.Created, string.Join(", ", target.Conflicts));
         target.Regenerate.Should().Equal(Lock);
+        target.ProofTheirs.Should().BeNull("#657 M7: the change's lockfile was reset, so its side exists only in the writer");
         var head = origin.Ref("refs/heads/backport/7-1.x")!;
         origin.InBare("cat-file", "blob", head + ":" + Lock).Should().Be("{ \"lockfileVersion\": 3, \"line\": true }\n", "a lockfile is never merged");
         origin.InBare("cat-file", "blob", head + ":fix.txt").Should().Be("fixed\n");
