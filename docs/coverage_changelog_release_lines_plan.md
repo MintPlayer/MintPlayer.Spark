@@ -80,6 +80,9 @@ renderer tests. Filed as **#706** (not part of this PR).
 **M8 (2026-11-23):** pushed; **PR #707** opened. **NEXT:** the checks, then patch coverage via the codecoverage MCP; the
 owner queues.
 
+**Done (2026-11-23):** PR #707 merged (master `2ac96dc0a`) and deployed. Recorded here by the #706 pull request, the
+next one to touch these docs. Spark's upcoming view fills on the next master push; `/release` on Spark awaits the owner.
+
 ## Test harness (investigation pass 3)
 
 - **Real git, real plan job:** `CodeCoverage.GitWriter.Tests` — `VersioningPlanTests` / `VersioningPlanReleaseTests` on

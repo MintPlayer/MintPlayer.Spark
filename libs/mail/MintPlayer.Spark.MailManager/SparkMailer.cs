@@ -39,6 +39,9 @@ internal sealed class SparkMailer(
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(request.Template);
         ArgumentException.ThrowIfNullOrWhiteSpace(request.To);
+        RefuseControlCharacters(request.Template, nameof(request.Template));
+        RefuseControlCharacters(request.Stream, nameof(request.Stream));
+        RefuseUnbuildableRecipient(request.To.Trim(), request.ToName, nameof(request.To), nameof(request.ToName));
 
         var deliveryId = NewDeliveryId();
         var stream = request.Stream ?? request.Template;
@@ -73,10 +76,44 @@ internal sealed class SparkMailer(
         return new SparkMailReceipt(deliveryId, Suppressed: false);
     }
 
+    /// <summary>
+    /// #706 D5: a value that ends up in a mail header carries no control character. MimeKit would encode or strip a
+    /// CR/LF (spike S2) rather than inject a header, but the result is a silently altered value; this makes it the
+    /// caller's error instead.
+    /// </summary>
+    private static void RefuseControlCharacters(string? value, string paramName)
+    {
+        if (value is not null && value.Any(char.IsControl))
+            throw new ArgumentException($"{paramName} must not contain a control character such as a line break: it goes into a mail header.", paramName);
+    }
+
+    /// <summary>
+    /// #706 D6: the recipient the handler will build (<c>new MailboxAddress(name, address)</c>), built here first, so an
+    /// address MimeKit refuses fails the call instead of a queued mail.
+    /// </summary>
+    private static void RefuseUnbuildableRecipient(string address, string? name, string addressParam, string nameParam)
+    {
+        RefuseControlCharacters(address, addressParam);
+        RefuseControlCharacters(name, nameParam);
+        try
+        {
+            _ = new MimeKit.MailboxAddress(name ?? string.Empty, address);
+        }
+        catch (MimeKit.ParseException ex)
+        {
+            throw new ArgumentException($"{addressParam} is not an email address (a bare address such as 'ann@example.com', no display name).", addressParam, ex);
+        }
+    }
+
     public async Task SendCampaignAsync(SparkMailCampaign campaign, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(campaign.CampaignId);
         ArgumentException.ThrowIfNullOrWhiteSpace(campaign.Template);
+        RefuseControlCharacters(campaign.CampaignId, nameof(campaign.CampaignId));
+        RefuseControlCharacters(campaign.Template, nameof(campaign.Template));
+        RefuseControlCharacters(campaign.Stream, nameof(campaign.Stream));
+        foreach (var recipient in campaign.Recipients)
+            RefuseUnbuildableRecipient(recipient.Email.Trim(), recipient.Name, nameof(recipient.Email), nameof(recipient.Name));
 
         var message = new SparkMailCampaignMessage
         {

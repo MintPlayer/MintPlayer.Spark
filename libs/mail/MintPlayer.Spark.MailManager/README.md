@@ -194,6 +194,19 @@ nothing itself — so write `{{ name }}`, never `{{ name | html.escape }}` (the 
 values). Data is any object that serializes to a JSON object; ISO date strings become dates. `app_name`
 is always defined (`Spark:Mail:ApplicationName`, or null).
 
+**Links are checked for their scheme (#706).** Escaping keeps a value inside its attribute, but it does not change
+`javascript:alert(1)`. So the renderer reads every `href` and `src` in the rendered HTML, from shipped templates, app
+overrides and campaign data alike. Each one must be an absolute `http`/`https` URL with a host (`SparkLinkUrl`), or
+a `mailto:` address in an `href`. Anything else fails the render with a `SparkMailTemplateException`, and the mail is
+`Failed` and not retried:
+- `javascript:`, `data:`, `file:`
+- an app path such as `/runs/7`, because a mail has no base URL
+- a relative or empty value
+- credentials in the URL
+
+Make links absolute before you pass them, and guard an optional one with `{{ if link }}`.
+`docs/mail_url_header_safety_PRD.md` has the evidence.
+
 **Test every template** in your own test project:
 
 ```csharp
@@ -224,6 +237,10 @@ await mailer.SendAsync(new SparkMailRequest
 - `Queue`: overrides `mail-transactional`; must be a declared queue.
 - `DeduplicationKey`, `Delay`: as in Messaging.
 - A suppressed recipient is not queued (`SparkMailReceipt.Suppressed`); the check runs again at send.
+- `To` is a bare address (`ann@example.com`); the display name goes in `ToName`. `SendAsync` and
+  `SendCampaignAsync` throw `ArgumentException` for an address MimeKit cannot build, or for a control
+  character (a line break) in `To`, `ToName`, `Template`, `Stream`, `CampaignId` or a recipient. These values
+  go into mail headers (#706). A queued mail whose address still fails is `Failed` and not retried.
 
 **Delivery ids.** Each mail gets a 32-hex delivery id: `Message-ID: <{id}@{From domain}>`, the VERP
 address and `SparkMailDeliveries/{id}` (status `Sent`/`Suppressed`/`Failed`/`Bounced`, the address,

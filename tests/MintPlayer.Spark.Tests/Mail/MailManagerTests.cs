@@ -405,6 +405,67 @@ public class MailManagerTests : SparkTestDriver
         (failure is NonRetryableException).Should().Be(permanent);
     }
 
+    // ---- #706: header-bound values (docs/mail_url_header_safety_PRD.md D5, D6) ---------------------------
+
+    public static TheoryData<string, SparkMailRequest> UnsafeRequests => new()
+    {
+        { "To", new SparkMailRequest { Template = "News", To = "ann@app.example\r\nBcc: eve@evil.example" } },
+        { "To", new SparkMailRequest { Template = "News", To = "not an address" } },
+        { "To", new SparkMailRequest { Template = "News", To = "Ann <ann@app.example>" } },
+        { "ToName", new SparkMailRequest { Template = "News", To = "ann@app.example", ToName = "Ann\r\nBcc: eve@evil.example" } },
+        { "Template", new SparkMailRequest { Template = "News\nX", To = "ann@app.example" } },
+        { "Stream", new SparkMailRequest { Template = "News", To = "ann@app.example", Stream = "news\r\n" } },
+    };
+
+    [Theory]
+    [MemberData(nameof(UnsafeRequests))]
+    public async Task SendAsync_refuses_a_header_value_with_a_line_break_and_an_address_MimeKit_cannot_build(string field, SparkMailRequest request)
+    {
+        using var sp = Build();
+        using var scope = sp.CreateScope();
+
+        var send = () => scope.ServiceProvider.GetRequiredService<ISparkMailer>().SendAsync(request);
+
+        var thrown = await send.Should().ThrowAsync<ArgumentException>();
+        thrown.Which.Message.Should().Contain(field);
+        sp.GetRequiredService<RecordingBus>().Published.Should().BeEmpty("refused at the call, never queued");
+    }
+
+    [Theory]
+    [InlineData("c1\r\nBcc: eve@evil.example", "ann@app.example", "Ann", "CampaignId")]
+    [InlineData("c1", "ann@app.example\r\nBcc: eve@evil.example", "Ann", "Email")]
+    [InlineData("c1", "ann@app.example", "Ann\nBcc: eve@evil.example", "Name")]
+    public async Task SendCampaignAsync_refuses_a_line_break_in_the_campaign_or_a_recipient(string campaignId, string email, string name, string field)
+    {
+        using var sp = Build();
+        using var scope = sp.CreateScope();
+
+        var send = () => scope.ServiceProvider.GetRequiredService<ISparkMailer>().SendCampaignAsync(new SparkMailCampaign
+        {
+            CampaignId = campaignId,
+            Template = "News",
+            Recipients = [new SparkMailCampaignRecipient { Email = email, Name = name }],
+        });
+
+        var thrown = await send.Should().ThrowAsync<ArgumentException>();
+        thrown.Which.Message.Should().Contain(field);
+        sp.GetRequiredService<RecordingBus>().Published.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task A_queued_mail_whose_address_MimeKit_cannot_build_fails_and_is_not_retried()
+    {
+        // A message queued before the D5 guard, or a campaign recipient that reached the handler: retrying cannot help.
+        WriteTemplate("News.mjml", "News");
+        using var sp = Build();
+        var message = new SparkMailMessage { DeliveryId = SparkMailer.NewDeliveryId(), Template = "News", To = "not an address", Culture = "en", Stream = "news" };
+
+        var handle = () => Handler(sp).HandleAsync(message);
+
+        await handle.Should().ThrowAsync<NonRetryableException>();
+        (await sp.GetRequiredService<SparkMailDeliveryStore>().LoadAsync(message.DeliveryId, default))!.Status.Should().Be(SparkMailDeliveryStatus.Failed);
+    }
+
     [Fact]
     public async Task The_pickup_folder_gets_one_eml_per_mail_and_RedirectTo_rewrites_the_recipient()
     {
