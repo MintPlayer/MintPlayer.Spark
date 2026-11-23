@@ -6,8 +6,11 @@
 ## Status
 
 - **2026-11-23: research and grill done** (PRD D1–D14).
-- **Paused:** #710 (one bell UI + anonymous async notifications, PRD D14) is built and released first. #657 then resumes with
-  spikes S1, S2, S4–S9, then M1–M10.
+- **2026-11-23: resumed.** #710 merged as #711 (`aff3e24bc`); the branch is rebased onto it. NEXT: spikes S1, S2,
+  S4–S9, then M1–M10.
+- **2026-11-23: S1, S4, S5, S6 and S9 done** (PRD "Spike results"). Q4 became D15. New Q15 (the pipeline step in an
+  unformatted repository) awaits the owner. NEXT: S2 and S8 on real outside repositories (Spark has no Prettier or
+  ESLint config), then S7.
 - Tests run **once, at the end** (M10). No interim gate runs.
 
 ## Spikes

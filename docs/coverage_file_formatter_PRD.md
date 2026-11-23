@@ -1,7 +1,7 @@
 # Formatting — repository actions and pipeline steps that format code by the repository's own settings
 
-**Status:** Grilled 2026-11-23 (Q1–Q14 answered, see "Decisions"). Nothing implemented. **Paused** until #710 (one bell
-UI + anonymous async notifications, D14) is released; this feature's run feedback builds on it. Spikes are in
+**Status:** Grilled 2026-11-23 (Q1–Q14 answered, see "Decisions"). Resumed 2026-11-23 after #710 merged (#711): the
+bell, its pop-out and visitor notifications this feature's run feedback builds on are on master. Spikes are in
 [coverage_file_formatter_plan.md](coverage_file_formatter_plan.md).
 **Issue:** #657 · **App:** `apps/CodeCoverage` (production, coverage.mintplayer.com) · one pull request
 
@@ -85,6 +85,11 @@ All verified against `master` @ `ff66fd0a6`. Paths are under `apps/CodeCoverage/
   - `client-operations` has a hand-rolled `<spark-toast-container>` (fixed top-right, plain `--bs-*` colours) that shows
     the in-request `manager.Client.Notify` messages.
   - Nothing toasts a live notification.
+- **Since #710 (#711, master `aff3e24bc`):** the toast container is gone. `<spark-notification-bell>` is in every app's
+  topbar, CodeCoverage's included, and pops out both the in-request `Notify` messages and arriving stored
+  notifications. CodeCoverage still has no `AddNotifications()`/`withNotifications()`, so its bell shows session
+  messages only until M8. `SparkNotification` also takes `VisitorIds`; FormatRun's requester is always signed in, so
+  `UserIds` is enough here.
 
 ## Formatter research
 
@@ -125,10 +130,131 @@ repository's runner (D1).
 | D13 | **The first version ships these tools.** Format: `dotnet format whitespace`+`style`, Prettier, `gofmt`, `rustfmt`, `ruff format`/`black` (whichever `pyproject.toml` configures), `terraform fmt`. Lint: `dotnet format analyzers`, `eslint --fix`, `ruff check --fix`, `cargo clippy --fix`; Go and Terraform report "format only". Each uses the repository's pinned version. | Q5 = B, ESLint included (owner) |
 | D14 | **Run feedback is a stored run plus a live notification.** A `FormatRun` document holds the repository, mode, requester, run id, state, head branch, the auto-queue choice and an expiry. Completion calls `ISparkNotifier.NotifyAsync`, which carries the pull request URL or the outcome ("already formatted", "run failed", "timed out"). CodeCoverage adopts `AddNotifications()`. **The bell-only UI and anonymous async notifications are a separate issue and pull request, released before this one** (Q12–Q14). | Q6 = A, Q12 = A, Q13 = A, Q14 = A in a separate PR (owner) |
 
+| D15 | **The patch guard (former Q4) is `PatchValidator.Parse` with a per-entry-point path policy**, as `MigratePatchValidator` and `DependencyPatchValidator` already do. Both profiles keep `Parse`'s shape rules: only mode 100644, no binary patch, no copy. A formatter only rewrites files, so both also refuse **new files, deletions and renames**. On-demand: `IsWritablePath` (`.github/**` allowed, D7) minus the `exclude` globs. Pipeline: `IsSafePath` (never `.github/**`, D9.2) **and** the changed-files allow-list (D9.1) minus `exclude`. | S6 below. The proposed default, made stricter (no adds, deletes or renames) |
+
+## Spike results (2026-11-23)
+
+### S1 — dotnet format in a runner
+
+The runs were on a `git archive` copy of this branch (3393 `.cs` files), never on the working tree: SDK 11.0.100,
+`dotnet format` 11.0.100-rtm, Windows.
+
+| Run | Result |
+|---|---|
+| `whitespace --folder --verify-no-changes`, whole tree | 24 s, no restore, exit 2: **6141 findings in 258 files** |
+| the same, `--include` one clean file | 2 s, exit 0 |
+| the same, `--include` one dirty file (`DotnetApiListing.cs`) | exit 2, 287 findings, **all in that file** |
+| `--include` that file, writing | the file only, 616 changed lines |
+| a nested `.editorconfig` beside it with `[*.cs] indent_style = tab` | exit 0 |
+| a nested one with `root = true` and only `end_of_line` | exit 2, 287 findings: the parent is ignored, defaults apply |
+| `style` on `CodeCoverage.Library.csproj`, no restore first | 13 s, exit 0; it restores on its own |
+| the same after an explicit restore, `--no-restore` | 9 s (restore 3 s) |
+| SDK **10.0.115** (`global.json` pinned to it), whitespace, whole tree | 24 s, **the same 6141 findings, line for line** |
+| SDK 10.0.115, `style` on a `net11.0` project | exit 1, crash: the project cannot load |
+
+The answers:
+
+1. **`whitespace --folder` needs no restore and no SDK match.**
+   - It is fast and gives the same results on SDK 10 and 11.
+   - `style` and `analyzers` load the projects. They need a restore (private feeds through the repository's own
+     `nuget.config` and the runner's credentials) and an SDK that can build the target framework.
+   - **→ The action runs `actions/setup-dotnet` with `global-json-file`**, then `whitespace` and `style` per solution.
+     Lint mode adds `analyzers`.
+2. **Nested `.editorconfig` and `root = true` are honoured, and `--include` is exact.** D9.1's allow-list therefore
+   maps directly onto `--include <changed files>`.
+3. **SDK noise: none for whitespace.** The real noise is elsewhere: **a repository without explicit settings is
+   formatted to the defaults.**
+   - Spark's root `.editorconfig` only sets `end_of_line` for generated files.
+   - So 42 files indented with tabs are converted to spaces.
+   - Object-initializer members are put on lines of their own (716 + 338 + 209 of the findings).
+   - This is what FormatRepository is for (D4: one run after onboarding). For the pipeline step it is a risk: see Q15.
+
+### S4 — reusing dispatch → artifact → GitWriter
+
+- **No generic "apply a patch on base X, push branch Y" job exists.**
+  - `PublishJob` (`CodeCoverage.GitWriter/Jobs/WriterService.cs:25`, `PublishAsync` :131-198) belongs to the merge queue.
+    It rebuilds the squashed commit, requires it to equal `PreparedSha`, and pushes with a lease on the PR head.
+  - The layout check is the dependency updater's alone (`DependencyPatchValidator.cs:251`).
+  - The closest job is `BackportRegeneratedJob` (`BackportService.cs:19`, `RegeneratedAsync` :226-). It validates the
+    patch, fetches the head, checks the tip against `ExpectedSha`, then applies with `WriterService.ApplyPatchAsync`
+    (:251). But it folds the patch into the backport commit, and its endpoint accepts only backport heads
+    (`VersioningEndpoints.cs:549`).
+- **→ M5 adds a new writer job and endpoint, modelled on `RegeneratedAsync`.** It fetches the base, checks the tip,
+  applies the patch, makes a child commit and pushes `coverage/format/<mode>`.
+- **Dispatch, correlation and expiry already exist in `WorkflowHook`** (`WorkflowHooks/WorkflowHook.cs:212-290`):
+  - stray runs on the ref are cancelled first;
+  - a dispatch must return a run id, otherwise the outcome is `Uncorrelated`;
+  - `PollRun` runs every 3 min, plus one `Timeout` per run;
+  - the `workflow_run` webhook (`CiRunCompleted`) matches the run by run id (`BackportRegeneration.cs:62-77, 304-328`);
+  - timeouts are gated by a generation number (`BackportRegeneration.cs:409`).
+- **→ `FormatRun` stores the run id and a generation**, the same way.
+- **The notifier call belongs in one finish method.** `BackportRegenerationEngine.FinishAsync` (:416) is the template:
+  it is the single exit for success and failure. Nothing in CodeCoverage calls `ISparkNotifier` yet (M8).
+
+### S5 — the template and its onboarding
+
+- **Onboarding never copies a composite action.** It edits files in place on an `OverlayTree`
+  (`OnboardingPlanner.cs:160-167, 348-366`), and templates call actions remotely, pinned to a commit:
+  `uses: MintPlayer/MintPlayer.Spark/.github/actions/spark-regenerate@<sha>` (`regenerate.yml:65`).
+- **Embedded templates:** the only one shipped today is `dependency-action/templates/*.yml`, with LogicalName
+  `DependencyTemplates.*` (`CodeCoverage.csproj:33`), read by `DependencyOnboarding.ReadTemplate`. Those under
+  `docs/code-coverage/templates/` are documentation only.
+- **→ M2 embeds `formatting.yml` the same way**, with its own LogicalName.
+- **Permissions:** the regenerate templates declare only `contents: read`. Uploading the `merge-queue-patch` artifact
+  happens inside the composite action and needs nothing more (`spark-regenerate/action.yml:120-126`;
+  `GitWriterSidecarClient.cs:52` expects that name). **→ The formatting template declares `contents: read`.**
+- **Missing or changed workflow:** `MergeQueueEngine.BeforeFirstDispatchAsync` (:1364-1408) calls
+  `VerifyProvenanceAsync`. `Missing` evicts with "workflow-missing"; `Differs` evicts with "workflow-differs". Backports
+  use the same check (`BackportRegeneration.cs:311-319`). It checks that the file exists and matches byte for byte, not
+  its version.
+- **→ The on-demand actions refuse "set up Formatting first" with the same `Missing` result** (D1).
+
+### S6 — the patch guard
+
+- `PatchValidator.Validate(patch, regeneratedPaths, maxBytes)` (`PatchValidator.cs:76`) takes globs that already act as
+  an allow-list.
+- For an exact list of files, the internal `Parse(patch, pathPolicy, maxBytes, files)` (:87) takes a path rule. This is
+  how `MigratePatchValidator` and `DependencyPatchValidator.cs:44` work.
+- What `Parse` refuses (doc :49-57):
+  - every mode except 100644, which rules out mode changes, symlinks, gitlinks and executables;
+  - binary patches, via a NUL check;
+  - copies.
+- A rename is a delete plus an add, and **both** paths are checked (:53, 204-217).
+- `PatchFile` reports `IsNew`, `IsDeleted` and `IsRename` (:290), so D15's "rewrite only" rule is a check over `files`.
+- `IsSafePath` (:312) refuses `.git`, `.github`, `.gitmodules` and `.gitattributes`.
+- **No validator takes an exclude list, and `PathGlob` has no negation.** → `exclude` is a second glob list in the path
+  policy (D15).
+
+### S9 — pipeline integration
+
+- **PREPARE already records which rule resolved each file.** `entry.Resolutions` holds `Path`, `Strategy`, `Regenerate`
+  and `Rule`, from `MergeQueueResolver` (`CodeCoverage.Git/MergeQueue/MergeQueueResolver.cs:205`; `Regenerate =
+  rule.Regenerate ?? resolver.RegeneratesByDefault`).
+- `MergeQueueWorkflowGuard.RegenerateWorkflows` (:91-101) maps them to `AutoResolve[Rule].Action`, and `DispatchAsync`
+  runs those workflows one after another (`MergeQueueEngine.cs:1118, 1304-1357`).
+- **→ A `whitespace` resolver with `RegeneratesByDefault = true`, plus the preset's `action: formatting.yml`, makes
+  REGENERATE dispatch the format workflow with no new engine path.**
+- Strategies are strings. A new one needs three things:
+  - a constant in `MergeQueueWireRules.Strategies` (:36-49);
+  - an `IConflictResolver`;
+  - an entry in `ConflictResolverRegistry.BuiltInResolvers()`, which `ConflictResolverRegistryTests` keeps in step.
+- **Backports:** `BackportRecipients.cs:292-303` calls `BackportRegenerationEngine.Plan` and then `BeginAsync`.
+  `DispatchAsync` (`BackportRegeneration.cs:295`) checks provenance against the line, then dispatches. The same
+  resolution record drives it (M7).
+- **The changed-files allow-list (D9.1) and the inputs-changed skip (D9.3)** cannot come from PREPARE: its result holds
+  only the `.github/**` paths and the resolved paths (`GitWriterSidecarClient.cs:367-371`). Both come from
+  `IForgeLabels.ListPullRequestFilesAsync` (`IForgeLabels.cs:57`), which PR size labels and backport attention already
+  use. The list is passed to the workflow as `paths`.
+
 ## Not decided yet
 
-- **On-demand patch guard (former Q4):** the proposed default is to refuse binary, rename, mode and symlink changes, and
-  anything the `exclude` list covers. S6 confirms what `PatchValidator` already refuses.
+- **Q15: the pipeline step in a repository that has never been formatted (from S1).**
+  - The problem: D10 rewrites a file with a whitespace-only conflict using the target branch's formatter. If that file
+    was never formatted, the rewrite brings unrelated changes into it. In Spark that would be tabs to spaces and
+    initializer wrapping.
+  - Proposed: before rewriting, the action runs `--verify-no-changes` on the **target branch's** copy of those files.
+  - If that copy is not already clean, the step is skipped with a note ("format the repository first"), like D9.3.
+    It does not evict.
 
 ## Out of scope
 
