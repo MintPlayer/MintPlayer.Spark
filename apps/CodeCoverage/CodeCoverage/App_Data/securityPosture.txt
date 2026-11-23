@@ -14,22 +14,26 @@ Browse/Coverage
 Query/Account
 Query/BackportAttempt
 Query/Build
+Query/ChangelogRelease
 Query/CommandInvocation
 Query/Commit
 Query/Home
 Query/Log
 Query/PlatformRelease
 Query/Repository
+Query/UpcomingChangelog
 Query/VersioningRun
 Read/Account
 Read/BackportAttempt
 Read/Build
+Read/ChangelogRelease
 Read/CommandInvocation
 Read/Commit
 Read/Home
 Read/Log
 Read/PlatformRelease
 Read/Repository
+Read/UpcomingChangelog
 Read/VersioningRun
 
 ## Granted to @anonymous
@@ -38,6 +42,7 @@ Anonymous visitors | grant | QueryRead/Account | c0e5a9e1-0000-4000-8000-0000000
 Anonymous visitors | deny | QueryRead/Account/OwnerKey | c0e5a9e1-0000-4000-8000-000000000081 | app
 Anonymous visitors | grant | QueryRead/BackportAttempt | c0e5a9e1-0000-4000-8000-0000000000ae | app
 Anonymous visitors | grant | QueryRead/Build | c0e5a9e1-0000-4000-8000-000000000004 | app
+Anonymous visitors | grant | QueryRead/ChangelogRelease | c0e5a9e1-0000-4000-8000-0000000000b8 | app
 Anonymous visitors | grant | QueryRead/CommandInvocation | c0e5a9e1-0000-4000-8000-0000000000b1 | app
 Anonymous visitors | grant | QueryRead/Commit | c0e5a9e1-0000-4000-8000-000000000003 | app
 Anonymous visitors | deny | QueryRead/Home/AccountCount | c0e5a9e1-0000-4000-8000-000000000088 | app
@@ -46,6 +51,7 @@ Anonymous visitors | grant | QueryRead/PlatformRelease | c0e5a9e1-0000-4000-8000
 Anonymous visitors | grant | QueryRead/Repository | c0e5a9e1-0000-4000-8000-000000000002 | app
 Anonymous visitors | deny | QueryRead/Repository/OwnerKey | c0e5a9e1-0000-4000-8000-000000000083 | app
 Anonymous visitors | deny | QueryRead/Repository/PreviousFullNames | c0e5a9e1-0000-4000-8000-000000000085 | app
+Anonymous visitors | grant | QueryRead/UpcomingChangelog | c0e5a9e1-0000-4000-8000-0000000000ba | app
 Anonymous visitors | grant | QueryRead/VersioningRun | c0e5a9e1-0000-4000-8000-0000000000a7 | app
 Anonymous visitors | grant | Read/Home | c0e5a9e1-0000-4000-8000-000000000041 | app
 Anonymous visitors | grant | Read/Log | c0e5a9e1-0000-4000-8000-0000000000b3 | app
@@ -74,6 +80,7 @@ Signed-in users | grant | QueryRead/Account | c0e5a9e1-0000-4000-8000-0000000000
 Signed-in users | deny | QueryRead/Account/OwnerKey | c0e5a9e1-0000-4000-8000-000000000082 | app
 Signed-in users | grant | QueryRead/BackportAttempt | c0e5a9e1-0000-4000-8000-0000000000af | app
 Signed-in users | grant | QueryRead/Build | c0e5a9e1-0000-4000-8000-000000000014 | app
+Signed-in users | grant | QueryRead/ChangelogRelease | c0e5a9e1-0000-4000-8000-0000000000b9 | app
 Signed-in users | grant | QueryRead/CommandInvocation | c0e5a9e1-0000-4000-8000-0000000000b2 | app
 Signed-in users | grant | QueryRead/Commit | c0e5a9e1-0000-4000-8000-000000000013 | app
 Signed-in users | grant | QueryRead/ForgeCheck | c0e5a9e1-0000-4000-8000-000000000093 | app
@@ -83,6 +90,7 @@ Signed-in users | grant | QueryRead/ProjectColumn | c0e5a9e1-0000-4000-8000-0000
 Signed-in users | grant | QueryRead/Repository | c0e5a9e1-0000-4000-8000-000000000012 | app
 Signed-in users | deny | QueryRead/Repository/OwnerKey | c0e5a9e1-0000-4000-8000-000000000084 | app
 Signed-in users | deny | QueryRead/Repository/PreviousFullNames | c0e5a9e1-0000-4000-8000-000000000086 | app
+Signed-in users | grant | QueryRead/UpcomingChangelog | c0e5a9e1-0000-4000-8000-0000000000bb | app
 Signed-in users | grant | QueryRead/VersioningRun | c0e5a9e1-0000-4000-8000-0000000000a8 | app
 Signed-in users | grant | QueryReadEditNew/ApiToken | c0e5a9e1-0000-4000-8000-000000000069 | app
 Signed-in users | grant | QueryReadEditNewDelete/DependencyRule | c0e5a9e1-0000-4000-8000-000000000094 | app

@@ -321,7 +321,7 @@ public partial class VersioningController : ControllerBase
             var result = await writer.TagsAsync(new GitWriterTagsRequest(
                 repository.Provider.ToCanonicalString(), repository.GitHubId.ToString(CultureInfo.InvariantCulture), access.CloneUrl,
                 new CommitGraph.SidecarCredential(access.Username, access.Password), [branch], Tagger,
-                [.. plan.Tags.Select(t => new GitWriterTag(t.Name, plan.Commit, t.ApiHash))], plan.Run, plan.Fingerprint, plan.Scoped), cancellationToken);
+                [.. plan.Tags.Select(t => new GitWriterTag(t.Name, plan.Commit, t.ApiHash, t.Notes))], plan.Run, plan.Fingerprint, plan.Scoped), cancellationToken);
             return (result.Outcome, result.Reason) switch
             {
                 (GitWriterTagsResult.Tagged, _) => (StatusCodes.Status200OK, Released(planned, result.Tags ?? [])),
@@ -417,7 +417,7 @@ public partial class VersioningController : ControllerBase
         record.Releases = response.Releases.Take(VersioningRun.MaxNotes).Select(r => new VersioningRunRelease
         {
             Id = r.Id, Kind = r.Kind, Version = r.Version, Tag = r.Tag, Reasons = [.. r.Reasons ?? []], TaggedByHand = r.TaggedByHand, TagOutcome = r.TagOutcome,
-            Release = r.Release is { } notes ? new VersioningRunReleaseNotes { Name = notes.Name, Body = notes.Body, Prerelease = notes.Prerelease } : null,
+            Release = r.Release is { } notes ? new VersioningRunReleaseNotes { Name = notes.Name, Body = notes.Body, Prerelease = notes.Prerelease, DependencyOnly = notes.DependencyOnly } : null,
         }).ToList();
         record.Refused = response.Refused.Take(VersioningRun.MaxNotes).Select(n => new VersioningRunNote { Id = n.Id, Reason = n.Reason }).ToList();
         record.Skipped = response.Skipped;

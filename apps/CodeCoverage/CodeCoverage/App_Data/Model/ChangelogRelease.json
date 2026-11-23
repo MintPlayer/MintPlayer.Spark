@@ -1,0 +1,120 @@
+{
+  "$schema": "../../../../../schemas/model.schema.json",
+  "persistentObject": {
+    "id": "40701149-fdfc-48e2-9104-0240196e78eb",
+    "name": "ChangelogRelease",
+    "clrType": "CodeCoverage.Entities.ChangelogRelease",
+    "breadcrumb": "{Repository}",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "65d18be2-e558-4239-af92-09a56960d05a",
+        "name": "Notes",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 8,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "e67157b5-a7a1-474f-b4c5-203e8d1e8e59",
+        "name": "Package",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "a7e1bd89-2202-46b5-9ab2-2b0f65b81018",
+        "name": "Prerelease",
+        "dataType": "boolean",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 7,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "f351ba78-9212-4bd4-86d6-e9c8869606b0",
+        "name": "ReleasedAtUtc",
+        "dataType": "datetime",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 6,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "5c97a5e5-1968-48fe-a23a-892162e94c7b",
+        "name": "Repository",
+        "dataType": "Reference",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 1,
+        "query": "GetRepositories",
+        "referenceType": "CodeCoverage.Entities.Repository",
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "24b01783-392b-4cfe-9bb6-ddeadb0d8b7e",
+        "name": "Tag",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 4,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "843ba096-83ad-468b-ada1-1ce6ad56572f",
+        "name": "Target",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 5,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "2a1b6ea3-0641-4cc8-a2b4-cfd34e27fc48",
+        "name": "Version",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 3,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      }
+    ],
+    "queries": []
+  },
+  "queries": [
+    {
+      "id": "b245e542-8140-4118-931c-e95d3ba4e666",
+      "name": "GetChangelogReleases",
+      "source": "Custom.Repository_Changelog",
+      "alias": "repository-changelog",
+      "sortColumns": [
+        {
+          "property": "ReleasedAtUtc",
+          "direction": "desc"
+        }
+      ],
+      "renderMode": "Pagination",
+      "entityType": "ChangelogRelease"
+    }
+  ]
+}

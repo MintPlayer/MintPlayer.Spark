@@ -96,6 +96,18 @@
       "isDenied": false
     },
     {
+      "key": "c0e5a9e1-0000-4000-8000-0000000000b8",
+      "resource": "QueryRead/ChangelogRelease",
+      "groupId": "00000000-0000-0000-0000-000000000000",
+      "isDenied": false
+    },
+    {
+      "key": "c0e5a9e1-0000-4000-8000-0000000000b9",
+      "resource": "QueryRead/ChangelogRelease",
+      "groupId": "00000000-0000-0000-0000-000000000001",
+      "isDenied": false
+    },
+    {
       "key": "c0e5a9e1-0000-4000-8000-0000000000b1",
       "resource": "QueryRead/CommandInvocation",
       "groupId": "00000000-0000-0000-0000-000000000000",
@@ -398,6 +410,18 @@
     {
       "key": "c0e5a9e1-0000-4000-8000-0000000000b0",
       "resource": "New/SetUpFeatures",
+      "groupId": "00000000-0000-0000-0000-000000000001",
+      "isDenied": false
+    },
+    {
+      "key": "c0e5a9e1-0000-4000-8000-0000000000ba",
+      "resource": "QueryRead/UpcomingChangelog",
+      "groupId": "00000000-0000-0000-0000-000000000000",
+      "isDenied": false
+    },
+    {
+      "key": "c0e5a9e1-0000-4000-8000-0000000000bb",
+      "resource": "QueryRead/UpcomingChangelog",
       "groupId": "00000000-0000-0000-0000-000000000001",
       "isDenied": false
     },

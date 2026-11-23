@@ -24,7 +24,8 @@ public sealed record GitWriterTagsRequest(
     string Provider, string RepoId, string CloneUrl, SidecarCredential Credential, IReadOnlyList<string> Branches, GitWriterTagger Tagger,
     IReadOnlyList<GitWriterTag> Tags, string? Run = null, string? Fingerprint = null, bool FingerprintScoped = false);
 
-public sealed record GitWriterTag(string Name, string Commit, string? ApiHash = null);
+/// <param name="Notes">#693 D3: the release notes the plan froze for the tag's annotation; null for a seed.</param>
+public sealed record GitWriterTag(string Name, string Commit, string? ApiHash = null, string? Notes = null);
 
 /// <param name="Outcome"><c>tagged</c> with one result per tag, or a failure.</param>
 public sealed record GitWriterTagsResult(string Outcome, string? Reason, IReadOnlyList<GitWriterTagResult>? Tags, string? Detail, long DurationMs)
@@ -87,7 +88,7 @@ public sealed record GitWriterRelease(string Id, string Kind, string Version, st
     GitWriterReleaseNotes? Release = null);
 
 /// <summary>The GitHub Release the app creates for a tag (D15).</summary>
-public sealed record GitWriterReleaseNotes(string Name, string Body, bool Prerelease);
+public sealed record GitWriterReleaseNotes(string Name, string Body, bool Prerelease, bool DependencyOnly = false);
 
 public sealed record GitWriterPackageNote(string Id, string Reason);
 
@@ -97,15 +98,19 @@ public sealed record GitWriterBranchCut(string Branch, int Major, string Commit,
 /// <summary><c>POST jobs/versioning/plan</c> (#153 M11, D3 trigger B): would a run on <see cref="Commit"/> release anything?</summary>
 public sealed record GitWriterVersioningPlanRequest(
     string Provider, string RepoId, string CloneUrl, SidecarCredential Credential, string Branch, string DefaultBranch, string Commit, int? BranchMajor,
-    VersioningSettings Settings);
+    VersioningSettings Settings, bool Notes = false);
 
 /// <summary>The writer's answer. <see cref="Releases"/> holds package ids only: the plan has no API hashes, so its versions are not the run's.</summary>
+/// <param name="Upcoming">#693 Q12: with <see cref="GitWriterVersioningPlanRequest.Notes"/>, each planned package's notes.</param>
 public sealed record GitWriterVersioningPlanResult(
     string Outcome, string? Reason, IReadOnlyList<string>? Releases, IReadOnlyList<GitWriterPackageNote>? Refused, IReadOnlyList<string>? Warnings,
-    string? Detail, long DurationMs)
+    string? Detail, long DurationMs, IReadOnlyList<GitWriterUpcomingNotes>? Upcoming = null)
 {
     public const string Planned = "planned";
 }
+
+/// <param name="Omitted">The writer's budget ran out before this package, so its notes are empty.</param>
+public sealed record GitWriterUpcomingNotes(string Id, string Notes, bool Omitted = false);
 
 /// <summary><c>POST jobs/versioning/ecosystems</c> (#570 M8b, D5): the ecosystems a pull request touches.</summary>
 /// <param name="HeadRef">Where the head is fetched from, <c>refs/pull/N/head</c>.</param>

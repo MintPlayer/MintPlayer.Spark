@@ -142,6 +142,12 @@ public sealed class NpmProjectReader(IRepositoryTree tree, List<string> warnings
 			DeclaredVersion = String(manifest, "version"),
 			BuildOutput = dest,
 			FrameworkPackage = MajorAnchor.FrameworkPackages.FirstOrDefault(f => dependencies.Any(d => d.Name == f && d.Kind != DependencyKind.Dev)),
+			NamesRepository = manifest.TryGetProperty("repository", out var repository) && repository.ValueKind switch
+			{
+				JsonValueKind.String => repository.GetString() is { Length: > 0 },
+				JsonValueKind.Object => String(repository, "url") is not null,
+				_ => false,
+			},
 		};
 	}
 

@@ -1,6 +1,6 @@
 using System.Text.RegularExpressions;
 
-namespace CodeCoverage.PrTitles;
+namespace CodeCoverage.Versioning.Changelog;
 
 /// <summary>
 /// Builds the corrected title of a pull request, <c>&lt;type&gt;: &lt;title&gt; (#issue/#issue)</c>
@@ -8,14 +8,16 @@ namespace CodeCoverage.PrTitles;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>The type</b> is the first of: the ticked box of the PR template; the type already in the title; a <c>bug</c> label on
-/// a linked issue (<c>fix</c>); a <c>bug</c> label on the issue named in the branch (<c>fix</c>); <c>feat</c>. A bot's pull
-/// request keeps the type in its title (<c>chore(deps)</c>) before the template is read.
+/// <b>The type</b> is the first of: the type a person chose with the check's button; the ticked box of the PR template; the
+/// type already in the title; a <c>bug</c> label on a linked issue (<c>fix</c>). A bot's pull request keeps the type in its
+/// title (<c>chore(deps)</c>) before anything else is read. Nothing else counts (#693 D6, D12): the branch name is never
+/// read, because people name branches freely, and there is no <c>feat</c> default. Without a signal the title stays
+/// untyped and the check asks.
 /// </para>
 /// <para>
 /// <b>Linked issues</b> are the ones the body closes with GitHub's keywords (<c>Closes #12</c>, <c>fixes owner/repo#12</c>),
-/// of this repository only, plus the issue the branch names when it exists. A link made in the sidebar alone is not seen:
-/// it is not in the payload, and reading it needs GraphQL for one suffix.
+/// of this repository only. A link made in the sidebar alone is not seen: it is not in the payload, and reading it needs
+/// GraphQL for one suffix.
 /// </para>
 /// <para>
 /// <b>A fixed point:</b> building from a corrected title gives the same title, so the app's own edit, which comes back as
@@ -41,15 +43,15 @@ public static partial class PrTitleBuilder
     /// <summary>Builds the title. Null when there is nothing to build from (an empty title).</summary>
     /// <param name="repositoryFullName"><c>owner/name</c>, to keep cross-repository references out.</param>
     /// <param name="issueLabels">The labels of an issue of this repository, or null when the number is no issue.</param>
+    /// <param name="chosenType">The type a person chose with the check's button (#693 D12); null otherwise.</param>
     public static async Task<PrTitleResult?> BuildAsync(
-        string title, string? body, string headRef, bool authorIsBot, string repositoryFullName,
-        Func<int, CancellationToken, Task<IReadOnlyList<string>?>> issueLabels, CancellationToken cancellationToken = default)
+        string title, string? body, bool authorIsBot, string repositoryFullName,
+        Func<int, CancellationToken, Task<IReadOnlyList<string>?>> issueLabels, string? chosenType = null, CancellationToken cancellationToken = default)
     {
         var parsed = Parse(title);
         if (parsed.Text.Length == 0) return null;
 
         var linked = LinkedIssues(body, repositoryFullName);
-        var branchIssue = BranchIssue(headRef);
 
         var labels = new Dictionary<int, IReadOnlyList<string>?>();
         async Task<IReadOnlyList<string>?> LabelsOf(int number)
@@ -59,29 +61,25 @@ public static partial class PrTitleBuilder
             return found;
         }
 
-        string type;
+        string? type;
         EPrTitleTypeSource source;
         if (authorIsBot && parsed.Type is not null)
             (type, source) = (parsed.Type, EPrTitleTypeSource.Title);
+        else if (chosenType is not null && Types.Contains(chosenType))
+            (type, source) = (chosenType, EPrTitleTypeSource.Button);
         else if (TemplateType(body) is { } ticked)
             (type, source) = (ticked, EPrTitleTypeSource.Template);
         else if (parsed.Type is not null)
             (type, source) = (parsed.Type, EPrTitleTypeSource.Title);
         else if (await AnyBugAsync(linked, LabelsOf))
             (type, source) = ("fix", EPrTitleTypeSource.LinkedIssue);
-        else if (branchIssue is { } named && await AnyBugAsync([named], LabelsOf))
-            (type, source) = ("fix", EPrTitleTypeSource.BranchIssue);
         else
-            (type, source) = ("feat", EPrTitleTypeSource.Default);
-
-        var issues = linked.ToList();
-        if (branchIssue is { } branch && !issues.Contains(branch) && await LabelsOf(branch) is not null)
-            issues.Add(branch);
+            (type, source) = (null, EPrTitleTypeSource.None);
 
         // A scope and a breaking-change bang belong to the type the title had; a type from elsewhere starts bare.
-        var scope = type == parsed.Type ? parsed.Scope + parsed.Bang : "";
-        var suffix = issues.Count == 0 ? "" : $" ({string.Join('/', issues.Select(i => $"#{i}"))})";
-        return new PrTitleResult($"{type}{scope}: {parsed.Text}{suffix}", type, source, issues);
+        var prefix = type is null ? "" : $"{type}{(type == parsed.Type ? parsed.Scope + parsed.Bang : "")}: ";
+        var suffix = linked.Count == 0 ? "" : $" ({string.Join('/', linked.Select(i => $"#{i}"))})";
+        return new PrTitleResult($"{prefix}{parsed.Text}{suffix}", type, source, linked);
     }
 
     private static async Task<bool> AnyBugAsync(IEnumerable<int> issues, Func<int, Task<IReadOnlyList<string>?>> labelsOf)
@@ -125,12 +123,6 @@ public static partial class PrTitleBuilder
         return found;
     }
 
-    /// <summary>The issue a branch names: <c>issues/#123</c>, <c>issue-123</c>, <c>feat/issue153-versioning</c>.</summary>
-    internal static int? BranchIssue(string? headRef)
-        => headRef is not null && BranchIssueReference().Match(headRef) is { Success: true } m && int.TryParse(m.Groups["n"].Value, out var n) && n > 0
-            ? n
-            : null;
-
     /// <summary>The type of the first ticked template box whose text starts with a known word.</summary>
     internal static string? TemplateType(string? body)
     {
@@ -154,22 +146,20 @@ public static partial class PrTitleBuilder
     [GeneratedRegex(@"(?i)\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s*:?\s+(?<repo>[A-Za-z0-9-]+/[A-Za-z0-9._-]+)?#(?<n>\d{1,9})\b")]
     private static partial Regex ClosingReference();
 
-    [GeneratedRegex(@"(?i)(?:^|[/_-])issues?[/_-]*#?(?<n>\d{1,9})(?!\d)")]
-    private static partial Regex BranchIssueReference();
-
     [GeneratedRegex(@"(?im)^\s*[-*]\s*\[[xX]\]\s*(?<text>.+)$")]
     private static partial Regex TickedBox();
 }
 
-/// <summary>The built title and how its type was decided, for the check run.</summary>
-public sealed record PrTitleResult(string Title, string Type, EPrTitleTypeSource TypeSource, IReadOnlyList<int> Issues);
+/// <summary>The built title and how its type was decided, for the check run; <see cref="Type"/> is null when nothing gave one.</summary>
+public sealed record PrTitleResult(string Title, string? Type, EPrTitleTypeSource TypeSource, IReadOnlyList<int> Issues);
 
-/// <summary>Where the type came from (D14's order).</summary>
+/// <summary>Where the type came from (D14's order, as #693 D6 and D12 changed it).</summary>
 public enum EPrTitleTypeSource
 {
+    Button,
     Template,
     Title,
     LinkedIssue,
-    BranchIssue,
-    Default,
+    /// <summary>No explicit signal: the title stays untyped and the check offers the buttons.</summary>
+    None,
 }

@@ -41,6 +41,10 @@ public partial class CoverageSparkContext : SparkContext
     public IQueryable<BackportAttempt> BackportAttempts => Session.Query<BackportAttempt>();
     // The bot commands written in comments (#660): read-only, listed per repository by Custom.Repository_CommandInvocations.
     public IQueryable<CommandInvocation> CommandInvocations => Session.Query<CommandInvocation>();
+    // The released versions' notes (#693 M11): read-only, listed per repository by Custom.Repository_Changelog.
+    public IQueryable<ChangelogRelease> ChangelogReleases => Session.Query<ChangelogRelease>();
+    // What each line's next release would list (#693 Q12): read-only, listed per repository by Custom.Repository_UpcomingChangelog.
+    public IQueryable<UpcomingChangelog> UpcomingChangelogs => Session.Query<UpcomingChangelog>();
     // The platform lifecycle (#568 M3): public, read-only, written by PlatformLifecycleCronJob.
     public IQueryable<PlatformRelease> PlatformReleases => Session.Query<PlatformRelease>();
 }

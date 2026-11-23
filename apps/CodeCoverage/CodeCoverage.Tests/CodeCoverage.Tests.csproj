@@ -47,6 +47,8 @@
 		     snapshot (endpoints_generator_completion_plan.md M0), shared with the library's test hosts. -->
 		<ProjectReference Include="..\..\..\libs\testing\MintPlayer.Spark.Testing\MintPlayer.Spark.Testing.csproj" />
 		<ProjectReference Include="..\CodeCoverage\CodeCoverage.csproj" />
+		<!-- #693 M11 (D16): the changelog copy is tested on the in-memory store as well as on RavenDB. -->
+		<ProjectReference Include="..\..\..\libs\spark\MintPlayer.Spark.InMemory\MintPlayer.Spark.InMemory.csproj" />
 		<ProjectReference Include="..\..\..\libs\source_generators\MintPlayer.Spark.SourceGenerators\MintPlayer.Spark.SourceGenerators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
 	</ItemGroup>
 

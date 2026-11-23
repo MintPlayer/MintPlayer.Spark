@@ -15,7 +15,8 @@ namespace CodeCoverage.PackageVersioning;
 public static class VersioningForm
 {
     public static readonly string[] Policies =
-        [nameof(Repository.PrTitleCorrection), nameof(Repository.ReleaseOnTag), nameof(Repository.AutoCutReleaseBranches)];
+        [nameof(Repository.PrTitleCorrection), nameof(Repository.ReleaseOnTag), nameof(Repository.AutoCutReleaseBranches),
+            nameof(Repository.Changelog), nameof(Repository.PrTemplate)];
 
     public static void Shape(PersistentObject po, bool supported)
     {

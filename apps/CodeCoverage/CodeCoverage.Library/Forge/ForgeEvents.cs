@@ -120,6 +120,12 @@ public sealed record PullRequestUpdated(
 /// </summary>
 public sealed record PullRequestDescribed(string RepositoryId, int Number) : IForgeEvent;
 
+/// <summary>
+/// A person clicked a button of the "PR title" check (#693 D12): <see cref="Identifier"/> is one of
+/// <c>PrTitleButtons</c>' identifiers. GitHub delivers the click only to the App that made the check run.
+/// </summary>
+public sealed record PullRequestTypeChosen(string RepositoryId, int Number, string Identifier, string ActorLogin) : IForgeEvent;
+
 /// <summary>A pull request was merged.</summary>
 /// <param name="HeadRef">The source branch, for the optional delete-after-merge courtesy.</param>
 /// <remarks>
@@ -341,7 +347,18 @@ public enum EDependencyCommand
 /// repository is on the same account and declares the package. <paramref name="PublishedAt"/> is the forge's time, compared
 /// with the registry's publish time the lookup reports.
 /// </summary>
-public sealed record ReleasePublished(string RepositoryId, string Tag, DateTimeOffset PublishedAt) : IForgeEvent;
+/// <param name="Notes">#693 M11: the Release's title, body and flags, which the changelog page copies.</param>
+public sealed record ReleasePublished(string RepositoryId, string Tag, DateTimeOffset PublishedAt, ForgeReleaseNotes? Notes = null) : IForgeEvent;
+
+/// <summary>
+/// #693 M11: a published Release's notes were edited (D3: corrections after a release edit only the Release), so the
+/// changelog page's copy follows them.
+/// </summary>
+public sealed record ReleaseEdited(string RepositoryId, string Tag, ForgeReleaseNotes Notes) : IForgeEvent;
+
+/// <summary>A Release's text as the forge holds it.</summary>
+/// <param name="Target">The branch or commit the Release names (GitHub's <c>target_commitish</c>).</param>
+public sealed record ForgeReleaseNotes(string Name, string Body, bool Prerelease, string? Target);
 
 /// <summary>
 /// The forge's advisory feed named a vulnerable dependency of the repository (R10): it skips the schedule and the cooldown.

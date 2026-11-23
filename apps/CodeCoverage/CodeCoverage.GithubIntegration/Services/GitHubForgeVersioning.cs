@@ -118,6 +118,16 @@ public partial class GitHubForgeVersioning : IForgeVersioning
         };
         if (check.Completed) body["conclusion"] = check.Conclusion;
         body["output"] = output;
+        if (check.ExternalId is { } externalId) body["external_id"] = externalId;
+        if (check.Actions is { } actions)
+        {
+            if (actions.Count > ForgeQueueCheckAction.MaxActions)
+                throw new ArgumentException($"GitHub shows at most {ForgeQueueCheckAction.MaxActions} buttons on a check run.", nameof(check));
+            body["actions"] = new JsonArray([.. actions.Select(a => (JsonNode)new JsonObject
+            {
+                ["label"] = a.Label, ["description"] = a.Description, ["identifier"] = a.Identifier,
+            })]);
+        }
         return body;
     }
 
@@ -130,8 +140,10 @@ public partial class GitHubForgeVersioning : IForgeVersioning
             ["body"] = release.Body,
             ["prerelease"] = release.Prerelease,
             // Never "latest" by GitHub's own guess: with one Release per package the newest is not the repository's latest.
-            ["make_latest"] = "false",
+            // Only the run's own Release (#693 D7) is.
+            ["make_latest"] = release.Latest ? "true" : "false",
         };
+        if (release.TargetCommit is { } commit) body["target_commitish"] = commit;
         using var reply = await SendAsync(repository, HttpMethod.Post, $"{RepoPath(repository)}/releases", body, cancellationToken);
         if (reply.Status == HttpStatusCode.UnprocessableEntity && reply.HasErrorCode("already_exists")) return ForgeWriteOutcome.Exists;
         reply.EnsureSuccess("contents=write");

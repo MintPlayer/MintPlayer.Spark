@@ -640,12 +640,18 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
     {
         using var payload = JsonDocument.Parse(message.EventJson);
         var root = payload.RootElement;
-        if (Text(root, "action") != "published") return;
+        var action = Text(root, "action");
+        if (action is not ("published" or "edited")) return;
         if (Child(root, "release") is not { } release || Text(release, "tag_name") is not { Length: > 0 } tag) return;
+        // #693 M11: the notes, for the changelog page; an edit of a draft is not a published Release's correction.
+        var notes = new ForgeReleaseNotes(Text(release, "name") ?? "", Text(release, "body") ?? "",
+            release.TryGetProperty("prerelease", out var pre) && pre.ValueKind == JsonValueKind.True, Text(release, "target_commitish"));
+        if (action == "edited" && release.TryGetProperty("draft", out var draft) && draft.ValueKind == JsonValueKind.True) return;
         var published = DateTimeOffset.TryParse(Text(release, "published_at"), System.Globalization.CultureInfo.InvariantCulture,
             System.Globalization.DateTimeStyles.AssumeUniversal, out var at) ? at : DateTimeOffset.UtcNow;
         if (await LoadKnownRepositoryIdAsync(root, ct) is not { } repositoryId) return;
-        await RaiseAsync(new ReleasePublished(repositoryId, tag, published), ct);
+        if (action == "edited") await RaiseAsync(new ReleaseEdited(repositoryId, tag, notes), ct);
+        else await RaiseAsync(new ReleasePublished(repositoryId, tag, published, notes), ct);
     }
 
     /// <summary>
@@ -808,6 +814,11 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
     /// </remarks>
     private async Task OnQueueCheckButtonAsync(GitHubWebhookMessage message, JsonElement root, CancellationToken ct)
     {
+        if (Child(root, "check_run") is { } title && IsOurApp(title) && Text(title, "name") == PrTitleCheck.Name)
+        {
+            await OnTitleCheckButtonAsync(root, title, ct);
+            return;
+        }
         if (Child(root, "check_run") is not { } check || !IsOurApp(check) || Text(check, "name") != CheckGate.QueueCheckName) return;
         if (Child(root, "requested_action") is not { } requested || ButtonCommand(Text(requested, "identifier")) is not { } command) return;
         if (HumanSender(root) is not { } actor) return;
@@ -817,6 +828,17 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
         await RaiseAsync(new MergeQueueCommandIssued(repositoryId, number, command, actor, EMergeQueueCommandSource.Check), ct);
         logger.LogInformation("Merge queue: {Command} of #{Number} in {Repository} by @{Actor} (check button)",
             command == EMergeQueueCommand.Enqueue ? "enqueue" : "dequeue", number, message.RepositoryFullName, actor);
+    }
+
+    /// <summary>#693 D12: a click on a button of the "PR title" check, the clicker's choice of the pull request's type.</summary>
+    private async Task OnTitleCheckButtonAsync(JsonElement root, JsonElement check, CancellationToken ct)
+    {
+        if (Child(root, "requested_action") is not { } requested || Text(requested, "identifier") is not { } identifier || !PrTitleCheck.IsButton(identifier)) return;
+        if (HumanSender(root) is not { } actor) return;
+        if (CheckRunPullRequest(check) is not { } number) return;
+        if (await LoadKnownRepositoryIdAsync(root, ct) is not { } repositoryId) return;
+
+        await RaiseAsync(new PullRequestTypeChosen(repositoryId, number, identifier, actor), ct);
     }
 
     /// <summary>The command a button of the queue's check stands for; null for any other identifier.</summary>

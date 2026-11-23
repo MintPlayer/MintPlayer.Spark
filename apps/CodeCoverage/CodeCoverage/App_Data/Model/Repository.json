@@ -61,6 +61,19 @@
         "rules": []
       },
       {
+        "id": "832d1c4c-636f-4e67-ad90-39f229f6bbda",
+        "name": "Changelog",
+        "dataType": "string",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 18,
+        "isArray": false,
+        "lookupReferenceType": "ChangelogPolicy",
+        "inQueryType": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
         "id": "02e8d12f-edc2-47e3-b018-1d551dd75e5e",
         "name": "Connection",
         "dataType": "string",
@@ -488,6 +501,19 @@
         "rules": []
       },
       {
+        "id": "21ceefc0-76d7-4f2a-8c24-c779614d9c5a",
+        "name": "PrTemplate",
+        "dataType": "string",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 19,
+        "isArray": false,
+        "lookupReferenceType": "PrTemplatePolicy",
+        "inQueryType": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
         "id": "edf6e1f9-2973-4ccf-8532-bd5379ce0083",
         "name": "PrTitleCorrection",
         "dataType": "string",
@@ -531,7 +557,9 @@
       "repository-commits",
       "repository-versioning-runs",
       "repository-backport-attempts",
-      "repository-command-invocations"
+      "repository-command-invocations",
+      "repository-upcoming-changelog",
+      "repository-changelog"
     ]
   },
   "queries": [

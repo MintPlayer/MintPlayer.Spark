@@ -88,6 +88,19 @@ public class PackageRegistryTests
         PublicPackageRegistry.NuGetHash(new MemoryStream(nupkg), NuGet(tfms: ["netstandard2.0", "net10.0"])).Should().BeNull("with two frameworks the analyzer's own is unknown");
     }
 
+    // #693 S8: MintPlayer.Spark.SourceGenerators 11.0.0 ships under analyzers/dotnet/roslyn5.9/cs, which the registry missed,
+    // so every generator release counted its API as changed. With several Roslyn folders the newest is the current build.
+    [Fact]
+    public void An_analyzer_in_a_roslyn_versioned_folder_is_read_from_the_newest_one()
+    {
+        var nupkg = Nupkg(
+            ($"analyzers/dotnet/roslyn4.8/cs/{AssemblyName}.dll", [1, 2, 3]),
+            ($"analyzers/dotnet/roslyn4.14/cs/{AssemblyName}.dll", File.ReadAllBytes(AssemblyPath)),
+            ($"analyzers/dotnet/roslyn4.14/cs/Helper.dll", [1, 2, 3]));
+
+        PublicPackageRegistry.NuGetHash(new MemoryStream(nupkg), NuGet(tfms: "netstandard2.0")).Should().Be(BuildHash("netstandard2.0"));
+    }
+
     [Fact]
     public async Task An_npm_tarball_hashes_its_declarations_and_skips_everything_else()
     {

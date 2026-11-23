@@ -17,6 +17,12 @@ public sealed record ReleaseManifest
 	public const int MaxResolvedVersions = 2_000;
 	public const int MaxVersionLength = 128;
 
+	/// <summary>
+	/// #693 M9: the characters every package's <see cref="ManifestPackage.Api"/> may hold together, well inside the 2 MiB
+	/// upload (<see cref="Limits.MaxManifestBytes"/>); 500 full deltas would be 20 MB.
+	/// </summary>
+	public const int MaxApiCharacters = 512 * 1024;
+
 	public int Version { get; init; } = CurrentVersion;
 
 	/// <summary>The commit the workflow built and the tags go on: a full sha.</summary>
@@ -42,6 +48,8 @@ public sealed record ReleaseManifest
 				if (Packages[i]?.Validate() is { } error) errors.Add($"packages[{i}]: {error}");
 			if (errors.Count == 0 && Packages.GroupBy(p => (p.Kind, p.Id)).Any(g => g.Count() > 1))
 				errors.Add("packages names a package twice.");
+			if (errors.Count == 0 && Packages.Sum(p => p.Api?.Characters ?? 0) > MaxApiCharacters)
+				errors.Add($"the packages' api lines hold more than {MaxApiCharacters} characters together.");
 		}
 		return errors;
 	}
@@ -54,6 +62,7 @@ public sealed record ReleaseManifest
 			PreviousApiHash = p.PreviousApiHash,
 			TargetFrameworks = p.TargetFrameworks ?? [],
 			ResolvedVersions = p.ResolvedVersions ?? new Dictionary<string, string>(),
+			Api = p.Api,
 		}, StringComparer.Ordinal);
 }
 
@@ -74,6 +83,9 @@ public sealed record ManifestPackage
 	public IReadOnlyList<string>? TargetFrameworks { get; init; }
 
 	public IReadOnlyDictionary<string, string>? ResolvedVersions { get; init; }
+
+	/// <summary>#693 M9: the public API's change since the last tag's version, when the registry had that version.</summary>
+	public ApiDelta? Api { get; init; }
 
 	/// <summary>The build packed it: it must then be a package of the statically parsed graph (D5).</summary>
 	public bool Packed { get; init; }
@@ -99,6 +111,6 @@ public sealed record ManifestPackage
 		if (ResolvedVersions is { } resolved && (resolved.Count > ReleaseManifest.MaxResolvedVersions
 			|| !resolved.All(r => Identifiers.IsPackageId(r.Key) && r.Value is { Length: > 0 and <= ReleaseManifest.MaxVersionLength })))
 			return $"resolvedVersions holds at most {ReleaseManifest.MaxResolvedVersions} package ids, each with a version.";
-		return null;
+		return Api?.Validate();
 	}
 }

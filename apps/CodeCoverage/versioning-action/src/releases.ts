@@ -27,7 +27,8 @@ export async function createReleases(options: ReleaseOptions, releases: Release[
   const outcomes = new Map<string, ReleaseOutcome>();
   const spaced = spacer(options);
   for (const release of releases) {
-    if (!release.release) continue;
+    // #693 D7: a package that moved only because a dependency did gets no Release of its own; the run's Release lists it.
+    if (!release.release || release.release.dependencyOnly) continue;
     await spaced();
     const outcome = await post(options, `Release ${release.tag}`, '/releases', {
       tag_name: release.tag,
@@ -40,6 +41,82 @@ export async function createReleases(options: ReleaseOptions, releases: Release[
     outcomes.set(release.tag, outcome);
   }
   return outcomes;
+}
+
+export interface RunReleaseRequest {
+  /** The commit the run tagged. */
+  commit: string;
+  /** The branch the run released from; a release line names the tag (`release/<line>/<date>`). */
+  branch: string;
+  defaultBranch: string;
+  /** Today, as `yyyy-MM-dd` (UTC); a parameter so the tests are fixed. */
+  date: string;
+  /** The server's URL, for the links to the package Releases (`https://github.com`). */
+  serverUrl: string;
+}
+
+/** The most `.n` suffixes tried for a run's tag on one day. */
+export const MAX_RUN_TAGS_PER_DAY = 20;
+
+/**
+ * #693 D7: one Release per run, created last and marked latest, so the repository's "Latest release" is the overview. Its
+ * tag is `release/<line>/<yyyy-MM-dd>[.<n>]` on a release line (the branch without its `release/`), else
+ * `release/<yyyy-MM-dd>[.<n>]`; it holds no `/v`, so the engine never reads it as a version tag (S2). It lists every
+ * package the run released, linking each one's own Release, and the dependency-only ones by name.
+ */
+export async function createRunRelease(options: ReleaseOptions, releases: Release[], request: RunReleaseRequest): Promise<ReleaseOutcome | null> {
+  const listed = releases.filter((r) => r.release);
+  if (listed.length === 0) return null;
+  await (options.sleep ?? defaultSleep)(SPACING_MS); // after the package Releases, as GitHub's secondary limits ask
+  const line = request.branch !== request.defaultBranch ? request.branch.replace(/^release\//, '') : null;
+  const base = line ? `release/${line}/${request.date}` : `release/${request.date}`;
+  const tag = await freeTag(options, base);
+  if (!tag) {
+    options.warn(`Run Release: every tag from ${base} to ${base}.${MAX_RUN_TAGS_PER_DAY} exists; none was created.`);
+    return 'failed';
+  }
+  return post(options, `Release ${tag}`, '/releases', {
+    tag_name: tag,
+    target_commitish: request.commit,
+    name: line ? `${line} ${request.date}` : request.date,
+    body: runBody(listed, options.repository, request.serverUrl),
+    prerelease: false,
+    make_latest: 'true',
+  }, () => false);
+}
+
+/** The run Release's body: a line per package, linked to its own Release unless it moved only with a dependency. */
+export function runBody(releases: Release[], repository: string, serverUrl: string): string {
+  const own = releases.filter((r) => !r.release!.dependencyOnly);
+  const dependents = releases.filter((r) => r.release!.dependencyOnly);
+  const lines: string[] = [];
+  if (own.length > 0) {
+    lines.push('### Packages');
+    for (const r of own) lines.push(`- [${r.id} ${r.version}](${serverUrl.replace(/\/$/, '')}/${repository}/releases/tag/${encodeURIComponent(r.tag).replace(/%2F/g, '/')})`);
+  }
+  if (dependents.length > 0) {
+    if (lines.length > 0) lines.push('');
+    lines.push('### Dependency updates only');
+    for (const r of dependents) lines.push(`- ${r.id} ${r.version}`);
+  }
+  return lines.join('\n');
+}
+
+/** The first of `base`, `base.2`, `base.3`, … that is not a tag yet; null when all are taken. */
+async function freeTag(options: ReleaseOptions, base: string): Promise<string | null> {
+  const doFetch = options.fetch ?? fetch;
+  for (let n = 1; n <= MAX_RUN_TAGS_PER_DAY; n++) {
+    const name = n === 1 ? base : `${base}.${n}`;
+    const reply = await doFetch(`${options.apiUrl}/repos/${options.repository}/git/ref/tags/${name}`, {
+      headers: { authorization: `Bearer ${options.token}`, accept: 'application/vnd.github+json', 'x-github-api-version': '2022-11-28' },
+    });
+    if (reply.status === 404) return name;
+    if (!reply.ok) {
+      options.warn(`Run Release: looking up the tag ${name} answered HTTP ${reply.status}.`);
+      return null;
+    }
+  }
+  return null;
 }
 
 /**

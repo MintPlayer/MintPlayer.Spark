@@ -246,13 +246,48 @@ public class Repository : IForgeConnectable
     [LookupReference(typeof(AutoCutReleaseBranchPolicy))]
     public EAutoCutReleaseBranchPolicy AutoCutReleaseBranches { get; set; }
 
-    /// <summary>The PR-title policy for this repository and where it comes from; a missing account is off (D14).</summary>
+    /// <summary>Whether the app keeps a changelog for this repository, or the account's setting.</summary>
+    /// <remarks>docs/coverage_changelog_PRD.md D3, D6.</remarks>
+    [IgnoreForIndex]
+    [LookupReference(typeof(ChangelogPolicy))]
+    public EChangelogPolicy Changelog { get; set; }
+
+    /// <summary>Whether onboarding adds a "Type of change" section to this repository's pull-request template, or the account's setting.</summary>
+    /// <remarks>docs/coverage_changelog_PRD.md D13.</remarks>
+    [IgnoreForIndex]
+    [LookupReference(typeof(PrTemplatePolicy))]
+    public EPrTemplatePolicy PrTemplate { get; set; }
+
+    /// <summary>
+    /// The PR-title policy for this repository and where it comes from; a missing account is off (D14). #693 D6: a
+    /// changelog switches it on, unless the repository says Disabled itself.
+    /// </summary>
     public static (bool Enabled, string Source) ResolvePrTitleCorrection(Repository? repository, Account? account)
         => repository?.PrTitleCorrection switch
         {
             EPrTitlePolicy.Enabled => (true, "repository"),
             EPrTitlePolicy.Disabled => (false, "repository"),
-            _ => (account?.PrTitleCorrection ?? false, account is null ? "default" : "organization"),
+            _ when account?.PrTitleCorrection == true => (true, "organization"),
+            _ when ResolveChangelog(repository, account) is (true, var source) => (true, $"{source} changelog"),
+            _ => (false, account is null ? "default" : "organization"),
+        };
+
+    /// <summary>The changelog policy and where it comes from; a missing account is off.</summary>
+    public static (bool Enabled, string Source) ResolveChangelog(Repository? repository, Account? account)
+        => repository?.Changelog switch
+        {
+            EChangelogPolicy.Enabled => (true, "repository"),
+            EChangelogPolicy.Disabled => (false, "repository"),
+            _ => (account?.Changelog ?? false, account is null ? "default" : "organization"),
+        };
+
+    /// <summary>The pull-request template policy (D13); a missing account takes the default, on.</summary>
+    public static (bool Enabled, string Source) ResolvePrTemplate(Repository? repository, Account? account)
+        => repository?.PrTemplate switch
+        {
+            EPrTemplatePolicy.Enabled => (true, "repository"),
+            EPrTemplatePolicy.Disabled => (false, "repository"),
+            _ => ((account?.PrTemplate ?? EPrTemplateDefault.Enabled) == EPrTemplateDefault.Enabled, account is null ? "default" : "organization"),
         };
 
     /// <summary>The release-on-tag policy; a missing account takes the default, on (D15).</summary>

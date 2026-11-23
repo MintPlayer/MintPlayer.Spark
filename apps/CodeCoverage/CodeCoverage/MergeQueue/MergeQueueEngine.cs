@@ -437,6 +437,7 @@ public partial class MergeQueueEngine : IMergeQueueEngine
         entry.AuthorLogin = pull.AuthorLogin;
         entry.Title = pull.Title;
         entry.CoAuthors = null;
+        entry.BackportOf = null;
         entry.EnqueuedAtUtc = Now;
         entry.StateChangedAtUtc = Now;
         entry.StartedAtUtc = null;
@@ -1070,6 +1071,7 @@ public partial class MergeQueueEngine : IMergeQueueEngine
         // §0 D60: once per run, while the branch still holds the pull request's own commits (after PUBLISH it holds the
         // queue's squash, whose trailers carry them over to a later run).
         entry.CoAuthors ??= [.. CoAuthorTrailers(await context.Queue.GetPullRequestCommitsAsync(repository, entry.Number, ct), entry.AuthorLogin, options.Value.CommitterEmail)];
+        entry.BackportOf ??= BackportOf(pull, repository);
 
         // O20 case 1: the head already contains the latest base, so the commit to merge is the head itself. Its checks
         // decide; nothing is rebased, published or regenerated.
@@ -2289,9 +2291,22 @@ public partial class MergeQueueEngine : IMergeQueueEngine
     private static string CommitMessage(MergeQueueEntry entry)
         => CommitBody(entry) is { } body ? $"{CommitTitle(entry)}\n\n{body}" : CommitTitle(entry);
 
-    /// <summary>The merge's <c>commit_message</c>: the co-author trailers, or nothing (§0 D60).</summary>
-    private static string? CommitBody(MergeQueueEntry entry)
-        => entry.CoAuthors is { Count: > 0 } coAuthors ? string.Join('\n', coAuthors) : null;
+    /// <summary>The merge's <c>commit_message</c>: the trailers (<c>Backport-of:</c>, then the co-authors), or nothing (§0 D60, #693 D5).</summary>
+    internal static string? CommitBody(MergeQueueEntry entry)
+    {
+        var trailers = new List<string>();
+        if (entry.BackportOf is { } original) trailers.Add($"Backport-of: #{original.ToString(CultureInfo.InvariantCulture)}");
+        if (entry.CoAuthors is { } coAuthors) trailers.AddRange(coAuthors);
+        return trailers.Count > 0 ? string.Join('\n', trailers) : null;
+    }
+
+    /// <summary>
+    /// #693 D5: the original of a backport. The app's own marker counts anywhere; a hand-made backport's "Backport of #N"
+    /// body or <c>backport/N-…</c> head only on a branch other than the default one, where a backport can land.
+    /// </summary>
+    internal static int? BackportOf(ForgePullRequest pull, Repository repository)
+        => PackageVersioning.BackportProvenance.FromMarker(pull.Body, repository.FullName)
+           ?? (repository.DefaultBranch is { } main && pull.BaseRef != main ? PackageVersioning.BackportProvenance.FromText(pull.Body, pull.HeadRef) : null);
 
     /// <summary>The most co-authors one squashed commit credits (§0 D60). GitHub lists 250 commits at most, but a single
     /// commit message may credit any number, and the message must stay within the writer's limit.</summary>

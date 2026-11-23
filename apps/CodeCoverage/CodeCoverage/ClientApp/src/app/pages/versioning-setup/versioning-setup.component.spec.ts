@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { settle } from '../../../testing/test-utils';
 import VersioningSetupComponent from './versioning-setup.component';
 
-const STEPS = ['how', 'onboard', 'workflow', 'configure', 'releases', 'troubleshoot'];
+const STEPS = ['how', 'onboard', 'workflow', 'configure', 'releases', 'changelog', 'troubleshoot'];
 
 describe('VersioningSetupComponent', () => {
   let harness: RouterTestingHarness;

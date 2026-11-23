@@ -2651,6 +2651,28 @@ public class MergeQueueEngineTests : CoverageRavenTest
         trailers.Should().NotContain(t => t.Contains("space@") || t.Contains("blank@") || t.Contains("merge-queue@"));
     }
 
+    // ── #693 D5: Backport-of trailer ───────────────────────────────────────────────────────────────────
+
+    private static ForgePullRequest Backport(string baseRef, string headRef, string? body)
+        => new(610, Head, headRef, 1, baseRef, 1, "master", true) { Body = body };
+
+    [Fact]
+    public void A_backport_names_its_original_in_a_trailer_before_the_co_authors()
+    {
+        var repository = new Repository { FullName = "acme/widgets", DefaultBranch = "master" };
+
+        MergeQueueEngine.BackportOf(Backport("release/dotnet-11.x", "x", "Fixes it\n\n<!-- backport-of: acme/widgets#609 -->"), repository).Should().Be(609);
+        MergeQueueEngine.BackportOf(Backport("release/dotnet-11.x", "x", "<!-- backport-of: other/repo#609 -->"), repository).Should().Be((int?)null);
+        MergeQueueEngine.BackportOf(Backport("release/dotnet-11.x", "backport/609-dotnet-11.x", null), repository).Should().Be(609);
+        MergeQueueEngine.BackportOf(Backport("master", "backport/609-dotnet-11.x", "Backport of #609"), repository)
+            .Should().Be((int?)null, "a hand-made backport's signs count only off the default branch");
+
+        MergeQueueEngine.CommitBody(new MergeQueueEntry { BackportOf = 609, CoAuthors = ["Co-authored-by: A <a@example.invalid>"] })
+            .Should().Be("Backport-of: #609\nCo-authored-by: A <a@example.invalid>");
+        MergeQueueEngine.CommitBody(new MergeQueueEntry { BackportOf = 609 }).Should().Be("Backport-of: #609");
+        MergeQueueEngine.CommitBody(new MergeQueueEntry { CoAuthors = [] }).Should().BeNull();
+    }
+
     // ── T9: a credential per writer job (§0 D59) ───────────────────────────────────────────────────────
 
     [Fact]

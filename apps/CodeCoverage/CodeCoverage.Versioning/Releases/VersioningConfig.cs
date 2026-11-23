@@ -73,6 +73,9 @@ public sealed class VersioningConfig
 	/// </summary>
 	public string? DependencyRanges { get; set; }
 
+	/// <summary>#693 M11: what the release notes write besides their default sections.</summary>
+	public VersioningChangelogConfig? Changelog { get; set; }
+
 	public const string MinimumRanges = "minimum";
 	public const string MajorBoundedRanges = "major-bounded";
 
@@ -163,6 +166,9 @@ public sealed class VersioningConfig
 			errors.Add("versioning.lines.workflow must be a workflow file name under .github/workflows, such as publish.yml.");
 		else if (Lines is { Current: VersioningLinesConfig.Promote, Workflow: null })
 			errors.Add("versioning.lines.workflow is required with current: promote: it names the workflow whose success on the default branch makes a commit releasable.");
+		foreach (var type in Changelog?.Include ?? [])
+			if (type is null || !VersioningChangelogConfig.Includable.Contains(type))
+				errors.Add($"versioning.changelog.include: '{Shown(type)}' is not one of {string.Join(", ", VersioningChangelogConfig.Includable)}.");
 		return errors;
 	}
 
@@ -178,6 +184,7 @@ public sealed class VersioningConfig
 		Lines = EffectiveLines,
 		LinePins = (Packages ?? []).Where(p => p.Value?.Line is not null).ToDictionary(p => p.Key, p => p.Value!.Line!, StringComparer.Ordinal),
 		LinePrerelease = (Lines?.Prerelease ?? []).ToDictionary(p => ReleaseLine.TryParse(p.Key)!.ToString(), p => Pin(p.Value), StringComparer.Ordinal),
+		ChangelogInclude = (Changelog?.Include ?? []).ToHashSet(StringComparer.Ordinal),
 	};
 
 	/// <summary>
@@ -233,6 +240,24 @@ public sealed class VersioningConfig
 	/// <summary>A value quoted in an error: a check-run summary is shown to the repository's readers, so it is bounded and printable.</summary>
 	private static string Shown(string? value)
 		=> value is null ? "(null)" : new string(value.Take(80).Select(c => char.IsControl(c) ? '?' : c).ToArray());
+}
+
+/// <summary>
+/// #693 M11: <c>versioning.changelog</c>. It sits inside <c>versioning:</c> because the action hands the engine only that
+/// section (<c>versioning-action/src/main.ts</c>, <c>versioningSection</c>), so a top-level section would reach the
+/// server host alone.
+/// </summary>
+/// <code>
+/// versioning:
+///   changelog:
+///     include: [docs, refactor]   # types written under "Changes"; by default they are left out
+/// </code>
+public sealed class VersioningChangelogConfig
+{
+	/// <summary>The types the notes leave out by default (#693 D6), so the ones <see cref="Include"/> may name.</summary>
+	public static readonly IReadOnlyList<string> Includable = ["build", "chore", "ci", "docs", "refactor", "style", "test"];
+
+	public List<string>? Include { get; set; }
 }
 
 public sealed class VersioningGroupConfig

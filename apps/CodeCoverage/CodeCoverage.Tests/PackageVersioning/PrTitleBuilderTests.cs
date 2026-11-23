@@ -1,24 +1,29 @@
-using CodeCoverage.PrTitles;
+using CodeCoverage.Versioning.Changelog;
 using Xunit;
 
 namespace CodeCoverage.Tests.PackageVersioning;
 
 /// <summary>
-/// The title rule (docs/coverage_package_versioning_PRD.md D14): the type's order of sources, the issue suffix, and the
-/// fixed point that keeps the app's own edit from changing anything.
+/// The title rule (docs/coverage_package_versioning_PRD.md D14, as #693 D6 and D12 changed it): the type's order of explicit
+/// sources, no default and no branch name, the issue suffix, and the fixed point that keeps the app's own edit from
+/// changing anything.
 /// </summary>
 public class PrTitleBuilderTests
 {
     private const string Repo = "MintPlayer/MintPlayer.Spark";
 
-    private static Task<PrTitleResult?> Build(string title, string? body = null, string headRef = "topic", bool bot = false,
+    private static Task<PrTitleResult?> Build(string title, string? body = null, bool bot = false, string? chosen = null,
         params (int Number, string[] Labels)[] issues)
-        => PrTitleBuilder.BuildAsync(title, body, headRef, bot, Repo,
-            (n, _) => Task.FromResult(issues.Where(i => i.Number == n).Select(i => (IReadOnlyList<string>?)i.Labels).FirstOrDefault()));
+        => PrTitleBuilder.BuildAsync(title, body, bot, Repo,
+            (n, _) => Task.FromResult(issues.Where(i => i.Number == n).Select(i => (IReadOnlyList<string>?)i.Labels).FirstOrDefault()), chosen);
 
+    // #693 D12: no silent feat.
     [Fact]
-    public async Task A_bare_title_defaults_to_feat()
-        => (await Build("Add the release lister"))!.Title.Should().Be("feat: Add the release lister");
+    public async Task A_bare_title_stays_untyped()
+    {
+        var result = await Build("Add the release lister");
+        (result!.Title, result.Type, result.TypeSource).Should().Be(("Add the release lister", (string?)null, EPrTitleTypeSource.None));
+    }
 
     [Fact]
     public async Task The_ticked_template_box_wins_over_the_title()
@@ -26,6 +31,16 @@ public class PrTitleBuilderTests
         var result = await Build("feat: Crash on empty input", "## Type\n- [ ] Feature\n- [x] Bug fix\n");
         result!.Title.Should().Be("fix: Crash on empty input");
         result.TypeSource.Should().Be(EPrTitleTypeSource.Template);
+    }
+
+    [Fact]
+    public async Task A_chosen_type_wins_over_everything_but_a_bots_own()
+    {
+        var result = await Build("Crash on empty input", "- [x] Feature", chosen: "fix");
+        (result!.Title, result.TypeSource).Should().Be(("fix: Crash on empty input", EPrTitleTypeSource.Button));
+
+        (await Build("chore(deps): bump x", bot: true, chosen: "feat"))!.Title.Should().Be("chore(deps): bump x");
+        (await Build("Something", chosen: "nonsense"))!.Type.Should().BeNull("only a known type is taken");
     }
 
     [Fact]
@@ -38,7 +53,7 @@ public class PrTitleBuilderTests
 
     [Fact]
     public async Task An_unknown_prefix_is_text_not_a_type()
-        => (await Build("WIP: something"))!.Title.Should().Be("feat: WIP: something");
+        => (await Build("WIP: something"))!.Type.Should().BeNull();
 
     [Fact]
     public async Task A_bug_labelled_linked_issue_makes_it_a_fix()
@@ -49,21 +64,9 @@ public class PrTitleBuilderTests
     }
 
     [Fact]
-    public async Task A_bug_labelled_branch_issue_makes_it_a_fix_and_joins_the_suffix()
-    {
-        var result = await Build("Crash on empty input", "Fixes #12", "fix/issue-40-crash", issues: [(12, ["enhancement"]), (40, ["Bug"])]);
-        result!.Title.Should().Be("fix: Crash on empty input (#12/#40)");
-        result.TypeSource.Should().Be(EPrTitleTypeSource.BranchIssue);
-    }
-
-    [Fact]
-    public async Task A_branch_number_that_is_no_issue_is_left_out()
-        => (await Build("Something", headRef: "feat/issue153-package-versioning"))!.Title.Should().Be("feat: Something");
-
-    [Fact]
     public async Task Another_repositorys_issue_is_ignored()
     {
-        var result = await Build("Something", "Closes other/repo#12, resolves MintPlayer/MintPlayer.Spark#13", issues: [(12, ["bug"]), (13, [])]);
+        var result = await Build("feat: Something", "Closes other/repo#12, resolves MintPlayer/MintPlayer.Spark#13", issues: [(12, ["bug"]), (13, [])]);
         result!.Title.Should().Be("feat: Something (#13)");
     }
 
@@ -87,14 +90,15 @@ public class PrTitleBuilderTests
         => (await Build("  (#3) ")).Should().BeNull();
 
     [Theory]
-    [InlineData("Crash on empty input", "Closes #12", "fix/issue-40")]
-    [InlineData("feat(ui): Add it (#9)", "- [x] Documentation", "topic")]
-    [InlineData("chore: x", null, "issues/#40")]
-    public async Task Building_from_the_built_title_changes_nothing(string title, string? body, string headRef)
+    [InlineData("Crash on empty input", "Closes #12")]
+    [InlineData("feat(ui): Add it (#9)", "- [x] Documentation")]
+    [InlineData("chore: x", null)]
+    [InlineData("Untyped (#4)", "Closes #40")]
+    public async Task Building_from_the_built_title_changes_nothing(string title, string? body)
     {
         (int, string[])[] issues = [(12, ["bug"]), (40, [])];
-        var first = await Build(title, body, headRef, issues: issues);
-        var second = await Build(first!.Title, body, headRef, issues: issues);
+        var first = await Build(title, body, issues: issues);
+        var second = await Build(first!.Title, body, issues: issues);
         second!.Title.Should().Be(first.Title);
     }
 
@@ -102,7 +106,7 @@ public class PrTitleBuilderTests
     public async Task Each_issue_is_looked_up_once()
     {
         var lookups = 0;
-        await PrTitleBuilder.BuildAsync("x", "Closes #7", "issue-7", false, Repo,
+        await PrTitleBuilder.BuildAsync("x", "Closes #7\nFixes #7", false, Repo,
             (_, _) => { lookups++; return Task.FromResult<IReadOnlyList<string>?>([]); });
         lookups.Should().Be(1);
     }

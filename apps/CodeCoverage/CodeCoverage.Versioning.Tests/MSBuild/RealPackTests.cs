@@ -154,6 +154,29 @@ public class RealPackTests(RealPackTests.Repo repo) : IClassFixture<RealPackTest
         }
     }
 
+    // #693 D11: the notes the engine froze in the tag become the nupkg's releaseNotes; a tag without notes leaves them out.
+    [Fact]
+    public void The_tags_frozen_notes_become_the_package_release_notes()
+    {
+        repo.TagWithMessage("A/v1.2.3", "api:abc\nengine:1.0.0\nrun:1\nnotes:\n### Fixes\n- Löst das Problem (#12)");
+        repo.Tag("B/v2.0.0");
+        try
+        {
+            var a = repo.Pack("A/A.csproj", Push);
+            a.ShouldPack("A.1.2.3.nupkg");
+            // The nuspec writer uses the platform's line endings.
+            a.Nuspec("A.1.2.3.nupkg").ReplaceLineEndings("\n").Should().Contain("<releaseNotes>### Fixes\n- Löst das Problem (#12)</releaseNotes>");
+
+            var b = repo.Pack("B/B.csproj", Push);
+            b.ShouldPack("B.2.0.0.nupkg");
+            b.Nuspec("B.2.0.0.nupkg").Should().NotContain("<releaseNotes>");
+        }
+        finally
+        {
+            repo.Untag("A/v1.2.3", "B/v2.0.0");
+        }
+    }
+
     public sealed record PackResult(int ExitCode, string Output, string Folder)
     {
         public IReadOnlyList<string> Packages => Directory.Exists(Folder)
@@ -228,6 +251,10 @@ public class RealPackTests(RealPackTests.Repo repo) : IClassFixture<RealPackTest
         {
             foreach (var name in names) Git("-c", "user.name=t", "-c", "user.email=t@t", "tag", "-a", "-m", "t", name);
         }
+
+        // As the engine's TagWriter writes it: verbatim, or git strips the notes' "### Fixes" headings as comments.
+        public void TagWithMessage(string name, string message)
+            => Git("-c", "user.name=t", "-c", "user.email=t@t", "tag", "-a", "--cleanup=verbatim", "-m", message, name);
 
         public void Untag(params string[] names) => Git(["tag", "--delete", .. names]);
 

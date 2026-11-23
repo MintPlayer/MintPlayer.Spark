@@ -77,6 +77,19 @@ public class VersioningSettingsTests
     }
 
     [Fact]
+    public void Changelog_include_survives_the_wire_from_the_app_and_an_unknown_type_is_refused()
+    {
+        // #693 M11: the writer's run composes the notes too, so it needs the types the repository writes under "Changes".
+        var sent = new Versioning.Releases.VersioningConfig { Changelog = new() { Include = ["docs", "ci"] } }.ToSettings();
+        var json = System.Text.Json.JsonSerializer.Serialize(sent, System.Text.Json.JsonSerializerOptions.Web);
+
+        var settings = GitWriterVersioningRunEndpoint.Settings(System.Text.Json.JsonSerializer.Deserialize<VersioningSettingsWire>(json, GitWriterHost.Json));
+
+        settings!.ChangelogInclude.Should().BeEquivalentTo(["docs", "ci"]);
+        GitWriterVersioningRunEndpoint.Settings(new VersioningSettingsWire { ChangelogInclude = ["feat"] }).Should().BeNull();
+    }
+
+    [Fact]
     public void Release_lines_survive_the_wire_from_the_app()
     {
         // #568 D2, D19: the pattern and the line pins reach the writer, which reads each run's line from the branch itself.

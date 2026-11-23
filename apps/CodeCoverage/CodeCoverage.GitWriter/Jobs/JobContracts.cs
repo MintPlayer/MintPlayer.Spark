@@ -226,6 +226,8 @@ public sealed class TagWire
     public string? Commit { get; set; }
     /// <summary><c>sha256:&lt;64 hex&gt;</c>, or null when the package's API could not be hashed (D6).</summary>
     public string? ApiHash { get; set; }
+    /// <summary>#693 D3: the notes frozen after the annotation's <c>notes:</c> line; null writes none.</summary>
+    public string? Notes { get; set; }
 }
 
 /// <param name="Outcome">One of <c>created</c>, <c>already-present</c>, <c>conflict</c>, <c>unreachable</c>.</param>
@@ -316,6 +318,8 @@ public sealed class VersioningSettingsWire
     public Dictionary<string, string>? LinePins { get; set; }
     /// <summary><c>versioning.lines.prerelease</c> (#568 D14): a label, <c>stable</c> or <c>upstream</c> per line.</summary>
     public Dictionary<string, Versioning.Versions.PrereleasePin>? LinePrerelease { get; set; }
+    /// <summary><c>versioning.changelog.include</c> (#693 M11): the dropped types the notes write under "Changes".</summary>
+    public List<string>? ChangelogInclude { get; set; }
 }
 
 public sealed class ReleaseLinesWire
@@ -334,7 +338,7 @@ public sealed class LockstepGroupWire
 public sealed record ReleaseWire(string Id, string Kind, string Version, string Tag, IReadOnlyList<string> Reasons, string? ApiHash, bool TaggedByHand, string? TagOutcome,
     ReleaseNotesWire? Release = null);
 
-public sealed record ReleaseNotesWire(string Name, string Body, bool Prerelease);
+public sealed record ReleaseNotesWire(string Name, string Body, bool Prerelease, bool DependencyOnly = false);
 
 /// <summary>A release branch a platform major move asks for (D12); the app creates it behind its auto-cut policy.</summary>
 public sealed record BranchCutWire(string Branch, int Major, string Commit, IReadOnlyList<string> Packages, int? PullRequest, string? Ecosystem = null);
@@ -370,13 +374,27 @@ public sealed class VersioningPlanRequestWire
     public string? Commit { get; set; }
     public int? BranchMajor { get; set; }
     public VersioningSettingsWire? Settings { get; set; }
+    /// <summary>#693 Q12: also compose each planned release's notes, for the changelog's upcoming view.</summary>
+    public bool Notes { get; set; }
 }
 
 /// <param name="Outcome"><see cref="JobOutcomes.Planned"/>, or a failure.</param>
 /// <param name="Releases">The ids of the packages a run would release.</param>
 public sealed record VersioningPlanResponse(
     string Outcome, string? Reason, IReadOnlyList<string> Releases, IReadOnlyList<PackageNoteWire> Refused, IReadOnlyList<string> Warnings, string? Detail,
-    long DurationMs);
+    long DurationMs)
+{
+    /// <summary>
+    /// #693 Q12: with <see cref="VersioningPlanRequestWire.Notes"/>, each planned package's notes since its last tag, from
+    /// the commits alone (the writer has no pull-request facts). Cut at <see cref="MaxUpcomingCharacters"/> in all.
+    /// </summary>
+    public IReadOnlyList<UpcomingNotesWire>? Upcoming { get; init; }
+
+    public const int MaxUpcomingCharacters = 512 * 1024;
+}
+
+/// <param name="Omitted">True when the budget ran out before this package; its notes are then empty.</param>
+public sealed record UpcomingNotesWire(string Id, string Notes, bool Omitted = false);
 
 /// <summary>
 /// <c>POST /jobs/versioning/ecosystems</c> (#570 M8b, PRD D5): which ecosystems a pull request touches, between the

@@ -90,10 +90,47 @@ public sealed record ForgeIssue(int Number, IReadOnlyList<string> Labels);
 
 /// <summary>One versioning check run: in progress, or completed with a conclusion.</summary>
 /// <param name="Conclusion">"success", "neutral" or "failure"; ignored while in progress.</param>
-public sealed record ForgeVersioningCheck(string Name, bool Completed, string Conclusion, string Title, string Summary, string? Text);
+public sealed record ForgeVersioningCheck(string Name, bool Completed, string Conclusion, string Title, string Summary, string? Text)
+{
+    /// <summary>
+    /// The check's buttons (#693 D12), held to GitHub's limits (<see cref="ForgeQueueCheckAction.MaxActions"/>). Null leaves
+    /// the check's buttons as they are; empty removes them.
+    /// </summary>
+    public IReadOnlyList<ForgeQueueCheckAction>? Actions { get; init; }
+
+    /// <summary>The check run's <c>external_id</c>: the pull request a click speaks for (GitHub lists none for a fork's commit).</summary>
+    public string? ExternalId { get; init; }
+}
+
+/// <summary>
+/// The "PR title" check (D14) and its buttons (#693 D12): offered when no explicit signal gives the type, so nothing is
+/// typed <c>feat</c> silently. A click edits the title (Feature, Fix) or adds the <c>changelog: skip</c> label.
+/// </summary>
+public static class PrTitleCheck
+{
+    public const string Name = "PR title";
+
+    /// <summary>The label that keeps a pull request out of the changelog (#693 D9).</summary>
+    public const string SkipLabel = "changelog: skip";
+
+    // GitHub's limits: a label of 20 characters, a description of 40 (ForgeQueueCheckAction).
+    public static readonly ForgeQueueCheckAction Feature = new("Feature", "Title gets feat: (changelog Features)", "title-feat");
+    public static readonly ForgeQueueCheckAction Fix = new("Fix", "Title gets fix: (changelog Fixes)", "title-fix");
+    public static readonly ForgeQueueCheckAction NotUserFacing = new("Not user-facing", "Adds the changelog: skip label", "title-skip");
+
+    public static readonly IReadOnlyList<ForgeQueueCheckAction> Buttons = [Feature, Fix, NotUserFacing];
+
+    /// <summary>The type a button gives the title; null for <see cref="NotUserFacing"/> or an identifier of no button.</summary>
+    public static string? TypeOf(string identifier)
+        => identifier == Feature.Identifier ? "feat" : identifier == Fix.Identifier ? "fix" : null;
+
+    public static bool IsButton(string? identifier) => Buttons.Any(b => b.Identifier == identifier);
+}
 
 /// <summary>A Release for an existing tag (D15).</summary>
-public sealed record ForgeRelease(string TagName, string Name, string Body, bool Prerelease);
+/// <param name="TargetCommit">#693 D7: a run's own Release creates its tag at this commit; null for an existing tag.</param>
+/// <param name="Latest">#693 D7: the run's own Release is the repository's latest; a package's never is.</param>
+public sealed record ForgeRelease(string TagName, string Name, string Body, bool Prerelease, string? TargetCommit = null, bool Latest = false);
 
 /// <summary>The outcome of a write that may meet an existing object.</summary>
 public enum ForgeWriteOutcome

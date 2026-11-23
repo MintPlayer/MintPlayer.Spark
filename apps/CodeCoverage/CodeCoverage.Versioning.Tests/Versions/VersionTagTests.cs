@@ -37,6 +37,18 @@ public class VersionTagTests
     }
 
     [Fact]
+    public void Notes_follow_the_keys_to_the_end_and_nothing_in_them_is_read_as_a_key()
+    {
+        // #693 D3: the notes are frozen in the tag; a note line that looks like a key stays a note.
+        var tag = VersionTag.For("MintPlayer.Mapper", PackageVersion.Parse("13.2.0"));
+        var notes = "### Fixes\n- run: faster (#3)\n- api-hash: is gone (#4)\u001e\u0000";
+        var message = new TagAnnotation(Hash, "1.4.0", null, notes).Format(tag);
+
+        TagAnnotation.Parse(message).Should().Be(new TagAnnotation(Hash, "1.4.0", null, "### Fixes\n- run: faster (#3)\n- api-hash: is gone (#4)"));
+        TagAnnotation.Parse($"MintPlayer.Mapper 13.2.0\n\napi-hash: {Hash}\n").Notes.Should().BeNull();
+    }
+
+    [Fact]
     public void The_annotation_carries_the_hash_and_the_engine_and_reads_back()
     {
         var tag = VersionTag.For("MintPlayer.Mapper", PackageVersion.Parse("13.2.0"));
