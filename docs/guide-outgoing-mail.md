@@ -314,6 +314,8 @@ reference. What matters for the relay:
 MJML + Scriban files in the app's repository, one per culture with a fallback chain
 (`Name.nl-BE.mjml` → `Name.nl.mjml` → `Name.mjml`). The account mails ship as embedded defaults in
 `en` and `nl`; an app overrides one by adding a file with the same name under `Templates/Mail/`.
+Every `href`/`src` in a rendered mail must be an absolute http(s) URL (or a `mailto:` href), or the
+render fails (#706; the MailManager README, "Links are checked for their scheme").
 
 ### 8.2 Bulk mail and pacing
 

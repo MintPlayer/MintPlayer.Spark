@@ -42,9 +42,10 @@ internal sealed class SparkMailHandler(
         {
             mime = await BuildAsync(message, cancellationToken);
         }
-        catch (Exception ex) when (ex is SparkMailTemplateException or CryptographicException)
+        catch (Exception ex) when (ex is SparkMailTemplateException or CryptographicException or ParseException)
         {
-            // A retry renders the same template with the same data: it cannot succeed.
+            // A retry renders the same template with the same data, and builds the same recipient (ParseException: an
+            // address MimeKit refuses, #706 D6): it cannot succeed.
             logger.LogError(ex, "Mail {DeliveryId} ({Template}) cannot be rendered; not retried.", message.DeliveryId, message.Template);
             await deliveries.RecordAsync(message.DeliveryId, d => Fill(d, message, SparkMailDeliveryStatus.Failed, ex.Message), cancellationToken);
             throw new NonRetryableException($"Mail template '{message.Template}' cannot be rendered: {ex.Message}", ex);

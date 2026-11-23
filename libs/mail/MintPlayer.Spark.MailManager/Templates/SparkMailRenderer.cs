@@ -4,6 +4,7 @@ using System.Net;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using MintPlayer.Spark.Abstractions;
 using Mjml.Net;
 using Scriban;
 using Scriban.Runtime;
@@ -46,7 +47,7 @@ public sealed partial class SparkMailRenderer(ISparkMailTemplateResolver resolve
     /// Renders <paramref name="template"/> for <paramref name="culture"/> with <paramref name="data"/>
     /// (a JSON object; its members are the template's variables).
     /// </summary>
-    /// <exception cref="SparkMailTemplateException">No such template, a Scriban error, or no <c>&lt;mj-title&gt;</c>.</exception>
+    /// <exception cref="SparkMailTemplateException">No such template, a Scriban error, no <c>&lt;mj-title&gt;</c>, or an <c>href</c>/<c>src</c> that is not an absolute http(s) URL (or a <c>mailto:</c> href).</exception>
     public Task<SparkRenderedMail> RenderAsync(string template, CultureInfo culture, JsonElement? data, CancellationToken cancellationToken = default)
         => RenderAsync(template, culture, data, sources: null, cancellationToken);
 
@@ -79,6 +80,7 @@ public sealed partial class SparkMailRenderer(ISparkMailTemplateResolver resolve
         }
         if (loader.Failure is { } includeFailure)
             throw includeFailure;
+        CheckLinks(result.Html, file);
 
         string text;
         if (resolver.Resolve(template, ".txt", culture) is { } textFile)
@@ -210,6 +212,45 @@ public sealed partial class SparkMailRenderer(ISparkMailTemplateResolver resolve
 
     [GeneratedRegex(@"<a\s[^>]*href=""([^""]*)""[^>]*>([\s\S]*?)</a>", RegexOptions.IgnoreCase)]
     private static partial Regex LinkRegex();
+
+    // A start tag. A template value cannot make one: its '<' is already "&lt;" (ToScriptObject), so only the template's
+    // own markup and what MJML emits for it are read, never text that merely says "href=".
+    [GeneratedRegex(@"<[a-zA-Z][^<>]*>")]
+    private static partial Regex StartTagRegex();
+
+    [GeneratedRegex("""\s(href|src)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))""", RegexOptions.IgnoreCase)]
+    private static partial Regex LinkAttributeRegex();
+
+    /// <summary>
+    /// #706 (docs/mail_url_header_safety_PRD.md D1-D3): every <c>href</c> and <c>src</c> in the rendered HTML is an
+    /// absolute http(s) URL (<see cref="SparkLinkUrl.IsAllowed"/>, app paths excluded: a mail has no base URL), or a
+    /// <c>mailto:</c> address in an <c>href</c>. Anything else (<c>javascript:</c>, <c>data:</c>, a relative or empty
+    /// value) fails the render. Encoding keeps a value inside its attribute but leaves its scheme alone.
+    /// </summary>
+    internal static void CheckLinks(string html, SparkMailTemplateFile file)
+    {
+        foreach (Match tag in StartTagRegex().Matches(html))
+        {
+            foreach (Match attribute in LinkAttributeRegex().Matches(tag.Value))
+            {
+                var name = attribute.Groups[1].Value.ToLowerInvariant();
+                var raw = attribute.Groups[2].Success ? attribute.Groups[2].Value
+                    : attribute.Groups[3].Success ? attribute.Groups[3].Value
+                    : attribute.Groups[4].Value;
+                if (!IsAllowedLink(name, WebUtility.HtmlDecode(raw)))
+                    // The value is left out: it may be personal data, and the delivery record keeps this message.
+                    throw new SparkMailTemplateException(
+                        $"Mail template '{file.Path}' ({file.Source}) renders an {name} that is not an absolute http(s) URL{(name == "href" ? " or a mailto: address" : string.Empty)}. Links in mail are checked for their scheme.");
+            }
+        }
+    }
+
+    private static bool IsAllowedLink(string attribute, string url)
+        => (SparkLinkUrl.IsAllowed(url) && !SparkLinkUrl.IsAppPath(url))
+        || (attribute == "href"
+            && url.Length > "mailto:".Length
+            && url.StartsWith("mailto:", StringComparison.OrdinalIgnoreCase)
+            && !url.Any(c => char.IsWhiteSpace(c) || char.IsControl(c)));
 
     [GeneratedRegex(@"</(p|div|td|tr|h[1-6]|li|table)>|<br\s*/?>", RegexOptions.IgnoreCase)]
     private static partial Regex BlockEndRegex();
