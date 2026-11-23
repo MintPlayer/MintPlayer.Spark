@@ -8,8 +8,8 @@
 - **2026-11-23: research and grill done** (PRD D1–D14).
 - **2026-11-23: resumed.** #710 merged as #711 (`aff3e24bc`); the branch is rebased onto it. NEXT: spikes S1, S2,
   S4–S9, then M1–M10.
-- **2026-11-23: S1, S4, S5, S6 and S9 done** (PRD "Spike results"). Q4 became D15. New Q15 (the pipeline step in an
-  unformatted repository) awaits the owner. NEXT: S2 and S8 on real outside repositories (Spark has no Prettier or
+- **2026-11-23: S1, S4, S5, S6 and S9 done** (PRD "Spike results"). Q4 became D15. Q15 = A became D16 (skip the
+  pipeline step when the target's copy is not already formatted). NEXT: S2 and S8 on real outside repositories (Spark has no Prettier or
   ESLint config), then S7.
 - Tests run **once, at the end** (M10). No interim gate runs.
 
@@ -105,7 +105,8 @@ One commit per milestone. Paths are under `apps/CodeCoverage/`.
   5. Enqueue if chosen (D5).
   6. Notify the requester (D14).
 - **M6 — `whitespace` strategy.** Add the `autoResolve` strategy, the `formatting` preset, detection per S7, and the
-  REGENERATE dispatch of the format workflow with the changed-files allow-list (D9, D10).
+  REGENERATE dispatch of the format workflow with the changed-files allow-list (D9, D10), and the
+  "target's copy not formatted" skip (D16).
 - **M7 — Backports.** Run the line's format workflow after a whitespace-only cherry-pick resolution.
 - **M8 — Notifications adoption.** Call `AddNotifications()` in CodeCoverage, with the `notifications:users` binding,
   the bell from the separate issue's work, and the `FormatRun` notifications.

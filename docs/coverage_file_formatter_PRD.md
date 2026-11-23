@@ -131,6 +131,7 @@ repository's runner (D1).
 | D14 | **Run feedback is a stored run plus a live notification.** A `FormatRun` document holds the repository, mode, requester, run id, state, head branch, the auto-queue choice and an expiry. Completion calls `ISparkNotifier.NotifyAsync`, which carries the pull request URL or the outcome ("already formatted", "run failed", "timed out"). CodeCoverage adopts `AddNotifications()`. **The bell-only UI and anonymous async notifications are a separate issue and pull request, released before this one** (Q12–Q14). | Q6 = A, Q12 = A, Q13 = A, Q14 = A in a separate PR (owner) |
 
 | D15 | **The patch guard (former Q4) is `PatchValidator.Parse` with a per-entry-point path policy**, as `MigratePatchValidator` and `DependencyPatchValidator` already do. Both profiles keep `Parse`'s shape rules: only mode 100644, no binary patch, no copy. A formatter only rewrites files, so both also refuse **new files, deletions and renames**. On-demand: `IsWritablePath` (`.github/**` allowed, D7) minus the `exclude` globs. Pipeline: `IsSafePath` (never `.github/**`, D9.2) **and** the changed-files allow-list (D9.1) minus `exclude`. | S6 below. The proposed default, made stricter (no adds, deletes or renames) |
+| D16 | **The pipeline step never formats a file that was not already formatted.** Before rewriting, the action checks the **target branch's** copy of the conflicted files with `--verify-no-changes` (or the tool's equivalent). If any is not clean, the step is **skipped with a note** ("format the repository first"), like D9.3, and does not evict. The cost, accepted: a repository that never runs FormatRepository never gets whitespace conflicts resolved. | Q15 = A (owner, 2026-11-23). S1: Spark's defaults would change 258 files |
 
 ## Spike results (2026-11-23)
 
@@ -167,7 +168,7 @@ The answers:
    - Spark's root `.editorconfig` only sets `end_of_line` for generated files.
    - So 42 files indented with tabs are converted to spaces.
    - Object-initializer members are put on lines of their own (716 + 338 + 209 of the findings).
-   - This is what FormatRepository is for (D4: one run after onboarding). For the pipeline step it is a risk: see Q15.
+   - This is what FormatRepository is for (D4: one run after onboarding). For the pipeline step, D16 guards against it.
 
 ### S4 — reusing dispatch → artifact → GitWriter
 
@@ -248,13 +249,7 @@ The answers:
 
 ## Not decided yet
 
-- **Q15: the pipeline step in a repository that has never been formatted (from S1).**
-  - The problem: D10 rewrites a file with a whitespace-only conflict using the target branch's formatter. If that file
-    was never formatted, the rewrite brings unrelated changes into it. In Spark that would be tabs to spaces and
-    initializer wrapping.
-  - Proposed: before rewriting, the action runs `--verify-no-changes` on the **target branch's** copy of those files.
-  - If that copy is not already clean, the step is skipped with a note ("format the repository first"), like D9.3.
-    It does not evict.
+- Nothing. Q15 is D16.
 
 ## Out of scope
 
