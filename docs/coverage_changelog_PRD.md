@@ -154,9 +154,11 @@ Packaging facts:
   subject.
 - **Proof of the fix's input.** `git log --no-merges MintPlayer.Spark/v11.0.0..MintPlayer.Spark/v11.1.0 --
   libs/spark/MintPlayer.Spark` gives exactly `fc95abe38 Spark templates, spark CLI / create-spark-app (dnx) (#690)`.
-- **Consequence.** Since the squash queue makes every non-merge commit one PR, the range has to be the **non-merge
-  commits** of previous-tag..tag below the package's inputs, not the first-parent subjects. That's a bug fix to D15 in
-  this PR; it's also the changelog's core.
+- **Consequence.** ~~Since the squash queue makes every non-merge commit one PR, the range has to be the **non-merge
+  commits** of previous-tag..tag below the package's inputs, not the first-parent subjects.~~ *Superseded by D4's M1
+  revision below:* the walk stays first-parent, and a non-PR merge ("Promote …") expands into the commits it brings in
+  (`ReleaseNotes.cs:70, 81-84`). That's a bug fix to D15 in this PR; it's also the changelog's core. Release lines ×
+  changelog follow-up: [coverage_changelog_release_lines_PRD.md](coverage_changelog_release_lines_PRD.md).
 
 ### S5: backports
 

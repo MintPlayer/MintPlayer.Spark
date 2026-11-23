@@ -170,6 +170,66 @@ public class ReleaseNotesTests : IDisposable
     }
 
     [Fact]
+    public async Task A_second_promotion_lists_only_what_master_gained_since_the_first_one_on_the_package_s_paths()
+    {
+        // Changelog × release lines R4 (G4): since is the first promotion's merge, whose second parent (master then) and its
+        // ancestors are excluded; a commit outside the package's paths is not listed.
+        Write("src/Core/A.cs", "a");
+        Git("init", "-q", "-b", "master");
+        Git("add", ".");
+        Git("commit", "-q", "-m", "chore: initial");
+        Git("branch", "release/1.x");
+
+        Write("src/Core/A.cs", "b");
+        Git("commit", "-q", "-am", "feat: first (#1)");
+        var first = Git("rev-parse", "HEAD");
+        Git("checkout", "-q", "release/1.x");
+        var promoted = Git("commit-tree", Git("rev-parse", first + "^{tree}"), "-p", "HEAD", "-p", first, "-m", "Promote master into release/1.x");
+        Git("reset", "-q", "--hard", promoted);
+
+        Git("checkout", "-q", "master");
+        Write("src/Core/A.cs", "c");
+        Git("commit", "-q", "-am", "fix: second (#2)");
+        Write("docs/x.md", "x");
+        Git("add", ".");
+        Git("commit", "-q", "-m", "docs: outside the package (#3)");
+        var master = Git("rev-parse", "HEAD");
+        Git("checkout", "-q", "release/1.x");
+        var again = Git("commit-tree", Git("rev-parse", master + "^{tree}"), "-p", "HEAD", "-p", master, "-m", "Promote master into release/1.x");
+
+        var git = new GitCli(Path.Combine(root.FullName, ".git"));
+        (await ReleaseNotes.SubjectsAsync(git, promoted, again, ["src/Core"])).Should().Equal("fix: second (#2)");
+        // Planned as if promoted (R1): from master's head, the same list.
+        (await ReleaseNotes.SubjectsAsync(git, promoted, master, ["src/Core"])).Should().Equal("fix: second (#2)");
+    }
+
+    [Fact]
+    public async Task A_merge_queue_backport_with_a_trailer_and_co_authors_and_its_original_are_one_entry()
+    {
+        // R4 (G6): the merge queue's squash commit carries the Backport-of trailer among Co-authored-by lines.
+        Write("src/Core/A.cs", "a");
+        Git("init", "-q", "-b", "master");
+        Git("add", ".");
+        Git("commit", "-q", "-m", "chore: initial");
+        Git("branch", "release/1.x");
+        var since = Git("rev-parse", "HEAD");
+
+        Write("src/Core/A.cs", "b");
+        Git("commit", "-q", "-am", "fix: null id (#609)");
+        var master = Git("rev-parse", "HEAD");
+
+        Git("checkout", "-q", "release/1.x");
+        Git("cherry-pick", "-n", master);
+        Git("commit", "-q", "-m", "[1.x] fix: null id (#610)\n\n* fix: null id\n\nBackport-of: #609\nCo-authored-by: Ann <ann@example.invalid>\nCo-authored-by: Bob <bob@example.invalid>");
+        var promote = Git("commit-tree", Git("rev-parse", master + "^{tree}"), "-p", "HEAD", "-p", master, "-m", "Promote master into release/1.x");
+
+        var notes = ReleaseNotes.Compose(Planned("1.1.0"),
+            await ReleaseNotes.EntriesAsync(await ReleaseNotes.CommitsAsync(new GitCli(Path.Combine(root.FullName, ".git")), since, promote, ["src/Core"]), null));
+
+        notes.Body.Should().Be("### Fixes\n- null id (#609)");
+    }
+
+    [Fact]
     public async Task A_backport_and_its_original_arriving_through_a_promotion_are_one_entry()
     {
         // #693 D5: the line had the change as a backport (a Backport-of trailer, or git's cherry-pick -x line); the next

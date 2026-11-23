@@ -19,6 +19,12 @@ public sealed record VersioningPlanJob(
 
     /// <summary>#693 Q12: compose each planned release's notes too.</summary>
     public bool Notes { get; init; }
+
+    /// <summary>
+    /// Changelog × release lines R1: <see cref="Commit"/> is on <see cref="DefaultBranch"/>, planned for the line
+    /// <see cref="Branch"/> as if promoted now. A promotion's tree is the commit's tree, so the plan is exact.
+    /// </summary>
+    public bool Promoted { get; init; }
 }
 
 /// <summary>A validated <c>POST /jobs/versioning/backfill</c> (#638 D5-D8).</summary>
@@ -149,14 +155,16 @@ public sealed class VersioningRunService(JobRunner jobs)
     public Task<VersioningPlanResponse> PlanAsync(VersioningPlanJob job) => jobs.RunAsync("versioning-plan", job.Repo, async context =>
     {
         await context.RequireAsync(["init", "--bare", "--quiet", "--template=", context.GitDirectory], inRepository: false);
+        // Promoted (R1): the commit lives on the default branch; the line itself only matters through its tags.
+        var source = job.Promoted ? job.DefaultBranch : job.Branch;
         await context.RequireAsync(["fetch", "--quiet", "--no-tags", "--no-write-fetch-head", job.CloneUrl.AbsoluteUri,
-            $"+refs/heads/{job.Branch}:refs/heads/{job.Branch}", "+refs/tags/*:refs/tags/*"], job.Credential);
+            $"+refs/heads/{source}:refs/heads/{source}", "+refs/tags/*:refs/tags/*"], job.Credential);
         context.EnsureWithinDisk();
 
         var git = new GitCli(context.GitDirectory);
-        var onBranch = await git.RunAsync(["merge-base", "--is-ancestor", job.Commit, "refs/heads/" + job.Branch], cancellationToken: context.Deadline);
+        var onBranch = await git.RunAsync(["merge-base", "--is-ancestor", job.Commit, "refs/heads/" + source], cancellationToken: context.Deadline);
         if (onBranch.ExitCode != 0)
-            throw new JobAbortedException(JobReasons.Unplannable, $"The commit {job.Commit} is not on {job.Branch}.");
+            throw new JobAbortedException(JobReasons.Unplannable, $"The commit {job.Commit} is not on {source}.");
         try
         {
             var (plan, warnings) = await ReleaseRun.PlanAsync(git, job.Commit, job.Settings, job.Branch == job.DefaultBranch, job.BranchMajor, context.Deadline, job.Line);

@@ -132,6 +132,8 @@ internal sealed partial class GitWriterVersioningPlanEndpoint : IPostEndpoint<Ve
 {
     public static string Path => "/jobs/versioning/plan";
 
+    public const string PromotedRule = "only a release line's plan, with lines on, can be planned as promoted";
+
     [Inject] private readonly VersioningRunService runs;
     [Inject] private readonly IOptions<GitWriterOptions> options;
 
@@ -154,9 +156,11 @@ internal sealed partial class GitWriterVersioningPlanEndpoint : IPostEndpoint<Ve
             return refusal.Result();
         if (!refusal.Check(GitWriterVersioningRunEndpoint.LineOf(settings, branch, defaultBranch, out var line), "branch", GitWriterVersioningRunEndpoint.LineRule))
             return refusal.Result();
+        if (!refusal.Check(!request.Promoted || line is not null, "promoted", PromotedRule))
+            return refusal.Result();
 
         return Results.Json(await runs.PlanAsync(new VersioningPlanJob($"{request.Provider}/{request.RepoId}", cloneUrl, credential, branch, defaultBranch, commit,
-            request.BranchMajor, settings) { Line = line, Notes = request.Notes }), GitWriterHost.Json);
+            request.BranchMajor, settings) { Line = line, Notes = request.Notes, Promoted = request.Promoted }), GitWriterHost.Json);
     }
 }
 

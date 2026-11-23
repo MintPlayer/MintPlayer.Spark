@@ -79,6 +79,26 @@ public class PrTitleRecipientTests : CoverageRavenTest
         check.Summary.Should().Contain("labelled `bug`").And.Contain("#12");
     }
 
+    [Fact]
+    public async Task The_app_s_backport_pull_request_keeps_its_title_and_asks_nothing()
+    {
+        // Changelog × release lines R3: the title copies the source's corrected one behind its line, and the changelog entry
+        // is the source's (#693 D5). Rewriting it only lost the [line] prefix and the (#n) reference.
+        using var store = GetDocumentStore();
+        await SeedAsync(store, accountOn: true);
+        const string title = "[dotnet-10.x] fix: Crash on empty input (#12)";
+        var forge = Forge(title, BackportProvenance.WithMarker("Backport of #12 to `release/dotnet-10.x`.", "acme/widgets", 12), "backport/12-dotnet-10.x");
+
+        await CorrectAsync(store, forge);
+
+        forge.TitleUpdates.Should().BeEmpty();
+        var check = forge.Checks.Should().ContainSingle().Which;
+        (check.Completed, check.Conclusion).Should().Be((true, (string?)"neutral"));
+        check.Title.Should().Be("Title left alone");
+        check.Summary.Should().Contain("#12");
+        check.Actions.Should().BeEmpty();
+    }
+
     /// <summary>The app's own edit comes back as an <c>edited</c> event; the second run must write nothing.</summary>
     [Fact]
     public async Task A_correct_title_is_left_alone()

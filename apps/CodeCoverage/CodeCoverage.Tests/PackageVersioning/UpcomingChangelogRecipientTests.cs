@@ -23,6 +23,8 @@ public class UpcomingChangelogRecipientTests : CoverageRavenTest
     private static readonly string RepositoryId = Repository.DocumentId(EForgeProvider.GitHub, Repo);
     private static readonly string Sha = new('a', 40);
     private const string Lines = "versioning:\n  lines: {}\n";
+    private const string Plain = "versioning:\n";
+    private const string PromoteYml = "versioning:\n  lines:\n    current: promote\n    trigger: manual\n    workflow: release.yml\n";
 
     private readonly IForgeMergeQueue git = Substitute.For<IForgeMergeQueue>();
     private readonly IForgeIntegration integration = Substitute.For<IForgeIntegration>();
@@ -38,8 +40,11 @@ public class UpcomingChangelogRecipientTests : CoverageRavenTest
         writer.IsConfigured.Returns(true);
         git.GetWriterAccessAsync(Arg.Any<Repository>(), null, false, Arg.Any<CancellationToken>())
             .Returns(new ForgePushAccess(new ForgeWriterAccess("https://example.invalid/acme/widgets.git", "https://example.invalid/acme/widgets.git", "x", "y"), null));
-        integration.GetFileContentAsync(Arg.Any<Repository>(), "main", CoverageYml.FileName, Arg.Any<CancellationToken>()).Returns(Lines);
+        Yml(Lines);
     }
+
+    private void Yml(string yml)
+        => integration.GetFileContentAsync(Arg.Any<Repository>(), "main", CoverageYml.FileName, Arg.Any<CancellationToken>()).Returns(yml);
 
     private ServiceProvider Provider(string store) => SparkStores.Provider(store, () => GetDocumentStore());
 
@@ -75,24 +80,84 @@ public class UpcomingChangelogRecipientTests : CoverageRavenTest
 
     [Theory]
     [MemberData(nameof(Stores))]
-    public async Task A_push_to_the_default_branch_and_to_a_line_keeps_each_line_s_upcoming_notes(string store)
+    public async Task A_push_to_the_default_branch_and_to_a_release_branch_keeps_each_branch_s_upcoming_notes(string store)
     {
+        // Lines off: the default branch releases, so it has its own row.
+        Yml(Plain);
         using var provider = Provider(store);
         await SeedAsync(provider);
 
         Plan(new GitWriterUpcomingNotes("Acme.Ui", "### Fixes\n- b (#2)"), new GitWriterUpcomingNotes("Acme.Core", "### Features\n- a (#1)"));
         await HandleAsync(provider, "main");
         Plan(new GitWriterUpcomingNotes("Acme.Core", "### Fixes\n- c (#3)"));
-        await HandleAsync(provider, "release/dotnet-11.x");
+        await HandleAsync(provider, "release/11.x");
         Plan();
-        await HandleAsync(provider, "release/dotnet-11.x");
+        await HandleAsync(provider, "release/11.x");
         await HandleAsync(provider, "feature/x");
 
-        await writer.Received(3).VersioningPlanAsync(Arg.Is<GitWriterVersioningPlanRequest>(r => r.Notes), Arg.Any<CancellationToken>());
+        await writer.Received(3).VersioningPlanAsync(Arg.Is<GitWriterVersioningPlanRequest>(r => r.Notes && !r.Promoted), Arg.Any<CancellationToken>());
         var lines = await ListAsync(provider);
-        lines.Select(l => (l.Branch, l.Packages)).Should().Equal(("main", "Acme.Core, Acme.Ui"), ("release/dotnet-11.x", ""));
+        lines.Select(l => (l.Branch, l.Packages)).Should().Equal(("main", "Acme.Core, Acme.Ui"), ("release/11.x", ""));
         lines[0].Notes.Should().Be("## Acme.Core\n\n### Features\n- a (#1)\n\n## Acme.Ui\n\n### Fixes\n- b (#2)");
-        (lines[0].Commit, lines[0].LinePattern).Should().Be((Sha, (string?)"release/{ecosystem}-{major}.x"));
+        (lines[0].Commit, lines[0].LinePattern).Should().Be((Sha, (string?)null));
+    }
+
+    [Theory]
+    [MemberData(nameof(Stores))]
+    public async Task With_backport_lines_the_default_branch_plans_nothing_and_has_no_row_and_each_line_composes_on_its_own_push(string store)
+    {
+        // Changelog × release lines R1: with lines on the default branch never releases (#568 D15).
+        using var provider = Provider(store);
+        await SeedAsync(provider);
+
+        await HandleAsync(provider, "main");
+        Plan(new GitWriterUpcomingNotes("Acme.Core", "### Fixes\n- c (#3)"));
+        await HandleAsync(provider, "release/dotnet-11.x");
+
+        await writer.Received(1).VersioningPlanAsync(Arg.Is<GitWriterVersioningPlanRequest>(r => r.Branch == "release/dotnet-11.x" && r.Commit == Sha && !r.Promoted),
+            Arg.Any<CancellationToken>());
+        await writer.Received(1).VersioningPlanAsync(Arg.Any<GitWriterVersioningPlanRequest>(), Arg.Any<CancellationToken>());
+        (await ListAsync(provider)).Select(l => (l.Branch, l.Packages)).Should().Equal(("release/dotnet-11.x", "Acme.Core"));
+        await PushAsync(provider, "release/dotnet-11.x");
+        await bus.Received(1).BroadcastOnceAsync(Arg.Is<UpcomingChangelogMessage>(m => m.Branch == "release/dotnet-11.x"), Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
+    [Theory]
+    [MemberData(nameof(Stores))]
+    public async Task With_promote_lines_a_default_branch_push_composes_each_current_line_as_if_promoted(string store)
+    {
+        // R1: what the next /release would ship. The current lines are the highest major per ecosystem.
+        Yml(PromoteYml);
+        git.ListBranchesAsync(Arg.Any<Repository>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(["release/dotnet-10.x", "release/dotnet-11.x", "release/angular-22.x"]);
+        writer.VersioningPlanAsync(Arg.Any<GitWriterVersioningPlanRequest>(), Arg.Any<CancellationToken>()).Returns(call =>
+        {
+            var request = call.Arg<GitWriterVersioningPlanRequest>();
+            GitWriterUpcomingNotes[] notes = request.Branch switch
+            {
+                "release/dotnet-11.x" => [new("Acme.Core", "### Fixes\n- c (#3)")],
+                "release/angular-22.x" => [new("@acme/ui", "### Fixes\n- d (#4)")],
+                _ => [new("Acme.Core", "### Fixes\n- backported (#5)")],
+            };
+            return new GitWriterVersioningPlanResult(GitWriterVersioningPlanResult.Planned, null, [.. notes.Select(n => n.Id)], [], [], null, 1, notes);
+        });
+        using var provider = Provider(store);
+        await SeedAsync(provider);
+
+        await HandleAsync(provider, "main");
+
+        await writer.Received(2).VersioningPlanAsync(Arg.Any<GitWriterVersioningPlanRequest>(), Arg.Any<CancellationToken>());
+        foreach (var line in new[] { "release/dotnet-11.x", "release/angular-22.x" })
+            await writer.Received(1).VersioningPlanAsync(Arg.Is<GitWriterVersioningPlanRequest>(r =>
+                r.Branch == line && r.DefaultBranch == "main" && r.Commit == Sha && r.Promoted && r.Notes), Arg.Any<CancellationToken>());
+        var lines = await ListAsync(provider);
+        lines.Select(l => (l.Branch, l.Packages, l.Commit)).Should().Equal(("release/dotnet-11.x", "Acme.Core", Sha), ("release/angular-22.x", "@acme/ui", Sha));
+
+        // An older line (a backport target) still composes on its own push, from its own commits.
+        await HandleAsync(provider, "release/dotnet-10.x");
+        await writer.Received(1).VersioningPlanAsync(Arg.Is<GitWriterVersioningPlanRequest>(r => r.Branch == "release/dotnet-10.x" && !r.Promoted),
+            Arg.Any<CancellationToken>());
+        (await ListAsync(provider)).Select(l => l.Branch).Should().Equal("release/dotnet-11.x", "release/dotnet-10.x", "release/angular-22.x");
     }
 
     [Theory]

@@ -1,9 +1,13 @@
 using CodeCoverage.Entities;
 using CodeCoverage.Forge;
+using CodeCoverage.Feedback;
 using CodeCoverage.LookupReferences;
+using CodeCoverage.MergeQueue;
 using CodeCoverage.PackageVersioning;
+using CodeCoverage.Tests._Infrastructure;
 using Microsoft.Extensions.Logging.Abstractions;
 using MintPlayer.Assertions;
+using NSubstitute;
 using Raven.Client.Documents;
 using Xunit;
 
@@ -42,11 +46,47 @@ public class VersionReleaseRecipientTests : CoverageRavenTest
         await session.SaveChangesAsync();
     }
 
-    private static async Task HandleAsync(IDocumentStore store, FakeForgeVersioning forge)
+    private const string LinesYml = "versioning:\n  lines:\n    current: promote\n    trigger: manual\n    workflow: release.yml\n";
+
+    private readonly IForgeIntegration integration = Substitute.For<IForgeIntegration>();
+    private readonly IForgeMergeQueue git = Substitute.For<IForgeMergeQueue>();
+
+    public VersionReleaseRecipientTests()
+    {
+        integration.Provider.Returns(EForgeProvider.GitHub);
+        git.Provider.Returns(EForgeProvider.GitHub);
+        Lines(LinesYml, "release/dotnet-11.x", "release/angular-22.x");
+    }
+
+    private void Lines(string yml, params string[] branches)
+    {
+        integration.GetFileContentAsync(Arg.Any<Repository>(), "master", CoverageYml.FileName, Arg.Any<CancellationToken>()).Returns(yml);
+        git.ListBranchesAsync(Arg.Any<Repository>(), Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(branches);
+    }
+
+    private async Task HandleAsync(IDocumentStore store, FakeForgeVersioning forge)
     {
         using var session = store.OpenAsyncSession();
-        await new VersionReleaseRecipient(session, [forge], TimeProvider.System, NullLogger<VersionReleaseRecipient>.Instance)
+        await new VersionReleaseRecipient(session, [forge], new SingleForgeResolver(integration), [git], TimeProvider.System, NullLogger<VersionReleaseRecipient>.Instance)
             .HandleAsync(new CreateVersionReleasesMessage { RunId = RunId });
+    }
+
+    [Theory]
+    [InlineData(LinesYml, new[] { "release/dotnet-11.x", "release/angular-22.x" }, true)]                         // the current line of its ecosystem
+    [InlineData(LinesYml, new[] { "release/dotnet-11.x", "release/dotnet-12.x", "release/angular-22.x" }, false)] // an older line: a backport release
+    [InlineData("versioning:\n", new[] { "release/dotnet-12.x" }, true)]                                          // lines off: no line at all
+    public async Task Only_a_current_line_s_run_Release_becomes_latest(string yml, string[] branches, bool latest)
+    {
+        // Changelog × release lines R2: a backport release on an older line must not take "Latest" from the current line.
+        Lines(yml, branches);
+        using var store = GetDocumentStore();
+        await SeedAsync(store, true, EReleaseOnTagPolicy.Inherit, Release("Acme.Core/v11.0.3"));
+        var forge = new FakeForgeVersioning();
+
+        await HandleAsync(store, forge);
+
+        var run = forge.Releases.Last();
+        (run.TagName, run.Latest).Should().Be((RunTag, latest));
     }
 
     [Theory]
