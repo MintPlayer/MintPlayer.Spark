@@ -1,0 +1,45 @@
+name: format-action-publish
+
+# Moves the `format-v1` tag that the formatting workflow template calls
+# (apps/CodeCoverage/CodeCoverage/Formatting/formatting.yml: `uses: .../.github/actions/format@format-v1`;
+# docs/coverage_file_formatter_PRD.md D20). The action is a composite with a plain Node script, so there
+# is no bundle to rebuild: the tag moves to the master commit that changed the action, after its tests
+# pass. Its own workflow for the `paths:` filter: the tag must only move for a commit that touched the
+# action, never for an unrelated master push.
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - '.github/actions/format/**'
+      # Docs and tests only: moving the tag would hand every consumer a bump with no code in it.
+      - '!.github/actions/format/**/*.md'
+      - '!.github/actions/format/**/*.test.mjs'
+      - '.github/workflows/format-action-publish.yml'
+  workflow_dispatch:
+
+# Queue rather than cancel: two publishers racing to force-move the tag is worse than waiting.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: move format-v1
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v7
+
+    - name: Test the action's script
+      run: node --test .github/actions/format/format.test.mjs
+
+    - name: Move the tag
+      run: |
+        git tag -f format-v1 "${GITHUB_SHA}"
+        git push -f origin refs/tags/format-v1

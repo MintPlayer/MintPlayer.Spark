@@ -64,5 +64,17 @@
     "showedOn": "query",
     "selectionRule": ">0",
     "refreshOnCompleted": false
+  },
+  "FormatRepository": {
+    "icon": "TextIndentLeft",
+    "showedOn": "query",
+    "selectionRule": ">0",
+    "refreshOnCompleted": false
+  },
+  "LintRepository": {
+    "icon": "CheckAll",
+    "showedOn": "query",
+    "selectionRule": ">0",
+    "refreshOnCompleted": false
   }
 }

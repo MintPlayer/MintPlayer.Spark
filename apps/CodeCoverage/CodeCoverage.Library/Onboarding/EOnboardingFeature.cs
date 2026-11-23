@@ -15,4 +15,10 @@ public enum EOnboardingFeature
     /// and on the .NET release lines. Opt-in, never forced (other people use the app, owner 2026-11-12).
     /// </summary>
     SdkFromGlobalJson,
+
+    /// <summary>
+    /// #657 D2: the formatting workflow (<c>.github/workflows/formatting.yml</c>), which FormatRepository, LintRepository and the
+    /// merge queue's <c>whitespace</c> strategy dispatch. Present when the default branch has that file.
+    /// </summary>
+    Formatting,
 }

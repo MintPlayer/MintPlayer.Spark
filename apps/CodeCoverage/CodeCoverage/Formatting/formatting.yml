@@ -43,10 +43,6 @@ on:
         description: The commit to format. The run fails if the branch head differs.
         required: false
         default: ''
-      exclude:
-        description: Globs, one per line, never touched.
-        required: false
-        default: ''
       pr_number:
         description: The pull request being merged (pipeline).
         required: false
@@ -89,12 +85,16 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
 
-      # Pin to a full commit SHA of MintPlayer/MintPlayer.Spark.
-      - uses: MintPlayer/MintPlayer.Spark/.github/actions/format@<commit-sha>
+      # format-v1 is a moving tag: every release of the action moves it, so a fix reaches the next run.
+      - uses: MintPlayer/MintPlayer.Spark/.github/actions/format@format-v1
         with:
           mode: ${{ inputs.mode }}
           expected_sha: ${{ inputs.expected_sha }}
-          exclude: ${{ inputs.exclude }}
+          # Files no run ever touches, one glob per line (generated code, vendored files). CodeCoverage reads this list
+          # too, and refuses a patch that touches them.
+          exclude: |
+            **/*.g.cs
+            **/*.Designer.cs
           pr_number: ${{ inputs.pr_number }}
           merge_base: ${{ inputs.merge_base }}
           ours_sha: ${{ inputs.ours_sha }}

@@ -18,7 +18,7 @@ inputs:
     required: false
     default: ''
   exclude:
-    description: Globs, one per line, the run never touches (coverage.yml formatting.exclude).
+    description: Globs, one per line, the run never touches (D11). Set in the calling workflow; CodeCoverage reads it there too.
     required: false
     default: ''
   ours_sha:

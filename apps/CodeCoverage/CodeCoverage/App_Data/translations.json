@@ -36,6 +36,20 @@
         "nl": "Dependency-updates inschakelen"
       }
     },
+    "FormatRepository": {
+      "label": {
+        "en": "Format repository",
+        "fr": "Formater le dépôt",
+        "nl": "Repository formatteren"
+      }
+    },
+    "LintRepository": {
+      "label": {
+        "en": "Lint repository",
+        "fr": "Linter le dépôt",
+        "nl": "Repository linten"
+      }
+    },
     "Resync": {
       "label": {
         "en": "Resync",
@@ -3808,6 +3822,18 @@
             "en": ".NET repository",
             "fr": "Dépôt .NET",
             "nl": ".NET-repository"
+          }
+        },
+        "Formatting": {
+          "description": {
+            "en": "Add the formatting workflow: format or lint the repository on demand, and let the merge queue resolve conflicts that differ only in formatting.",
+            "fr": "Ajouter le workflow de formatage : formater ou linter le dépôt à la demande, et laisser la file de fusion résoudre les conflits qui ne diffèrent que par la mise en forme.",
+            "nl": "De formatting-workflow toevoegen: de repository op aanvraag formatteren of linten, en de merge queue conflicten laten oplossen die alleen in opmaak verschillen."
+          },
+          "label": {
+            "en": "Formatting",
+            "fr": "Formatage",
+            "nl": "Opmaak"
           }
         },
         "MergeQueue": {

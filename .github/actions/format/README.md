@@ -1,7 +1,8 @@
 # format
 
 The runner side of CodeCoverage's formatting (#657, [PRD](../../../docs/coverage_file_formatter_PRD.md)). The
-workflow that calls it is [`docs/code-coverage/templates/formatting.yml`](../../../docs/code-coverage/templates/formatting.yml).
+workflow that calls it is [`apps/CodeCoverage/CodeCoverage/Formatting/formatting.yml`](../../../apps/CodeCoverage/CodeCoverage/Formatting/formatting.yml),
+which onboarding's Formatting checkbox installs as `.github/workflows/formatting.yml`.
 CodeCoverage dispatches that workflow and pushes the patch the run uploads; the run itself never commits or pushes.
 
 ## Modes

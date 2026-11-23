@@ -110,10 +110,14 @@ public partial class OnboardingService : IOnboardingService
     {
         var account = repository.Account is { Length: > 0 } accountId ? await session.LoadAsync<Account>(accountId, cancellationToken) : null;
         string? yml = null;
+        var formatting = false;
         if (repository.DefaultBranch is { Length: > 0 } defaultBranch
             && await ForgeRepositoryTree.OpenAsync(integrations.For(repository), repository, defaultBranch, cancellationToken) is { } tree)
+        {
             yml = await tree.ReadTextAsync(CoverageYml.FileName, Limits.MaxManifestBytes, cancellationToken);
-        var features = OnboardingFeatureDetection.Detect(repository, account, yml).ToHashSet();
+            formatting = await tree.ReadTextAsync(Formatting.FormattingWorkflow.Path, Limits.MaxManifestBytes, cancellationToken) is not null;
+        }
+        var features = OnboardingFeatureDetection.Detect(repository, account, yml, formatting).ToHashSet();
 
         // An open onboarding pull request's features are chosen already, though not applied yet. A closed one's are not.
         var state = await session.LoadAsync<VersioningOnboardingState>(VersioningOnboardingState.ForRepository(repository.Id!), cancellationToken);

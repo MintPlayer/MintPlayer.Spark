@@ -94,12 +94,23 @@
         "rules": []
       },
       {
+        "id": "c6d2f0a8-3b71-4e5c-9f84-1a7e2b6d0c53",
+        "name": "Formatting",
+        "dataType": "boolean",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 8,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
         "id": "a3e1b7d4-62c9-4e08-b5f2-7d9c0e1a4b86",
         "name": "DotnetRepository",
         "dataType": "boolean",
         "isRequired": false,
         "isReadOnly": true,
-        "order": 8,
+        "order": 9,
         "isArray": false,
         "showedOn": "None",
         "rules": []

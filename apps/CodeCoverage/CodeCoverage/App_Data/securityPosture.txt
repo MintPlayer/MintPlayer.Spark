@@ -71,6 +71,8 @@ Signed-in users | grant | Edit/Account | c0e5a9e1-0000-4000-8000-00000000006b | 
 Signed-in users | grant | Edit/GitHubProject | c0e5a9e1-0000-4000-8000-000000000063 | app
 Signed-in users | grant | Edit/Repository | c0e5a9e1-0000-4000-8000-00000000006c | app
 Signed-in users | grant | EnableDependencyUpdates/DependencyOnboardingRow | c0e5a9e1-0000-4000-8000-0000000000a1 | app
+Signed-in users | grant | FormatRepository/Repository | c0e5a9e1-0000-4000-8000-0000000000c7 | app
+Signed-in users | grant | LintRepository/Repository | c0e5a9e1-0000-4000-8000-0000000000c8 | app
 Signed-in users | grant | Manage/RepoSettings | c0e5a9e1-0000-4000-8000-000000000032 | app
 Signed-in users | grant | New/ForgeCheck | c0e5a9e1-0000-4000-8000-0000000000ad | app
 Signed-in users | grant | New/SetUpFeatures | c0e5a9e1-0000-4000-8000-0000000000b0 | app

@@ -31,6 +31,8 @@
 		<EmbeddedResource Include="..\contracts\dependency-update\*.schema.json" LogicalName="DependencyContracts.%(Filename)%(Extension)" />
 		<!-- The onboarding pull request's workflow templates (R16), one source with the action's own template tests. -->
 		<EmbeddedResource Include="..\dependency-action\templates\*.yml" LogicalName="DependencyTemplates.%(Filename)%(Extension)" />
+		<!-- #657 D2: the Formatting checkbox installs this template. Here, not under docs/, which the image's build context leaves out. -->
+		<EmbeddedResource Include="Formatting\formatting.yml" LogicalName="FormattingTemplates.formatting.yml" />
 	</ItemGroup>
 
 	<ItemGroup>
