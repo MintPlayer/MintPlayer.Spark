@@ -24,9 +24,10 @@ function stubService() {
     server: true,
     session: null as unknown as SparkSessionNotifications,
     serverUnreadCount,
-    unreadCount: computed(() => serverUnreadCount() + (stub.session?.unreadCount() ?? 0)),
+    // Explicit return types: these read `stub` inside its own initializer (TS7022/TS7024 under the spec type-check).
+    unreadCount: computed((): number => serverUnreadCount() + (stub.session?.unreadCount() ?? 0)),
     recent,
-    entries: computed(() => [...recent().map(serverBellEntry), ...(stub.session?.entries() ?? []).map(sessionBellEntry)]
+    entries: computed((): SparkBellEntry[] => [...recent().map(serverBellEntry), ...(stub.session?.entries() ?? []).map(sessionBellEntry)]
       .sort((a, b) => (b.createdAt?.getTime() ?? 0) - (a.createdAt?.getTime() ?? 0))),
     serverArrivals,
     arrived: null as unknown as Observable<SparkBellEntry>,
@@ -37,9 +38,9 @@ function stubService() {
     pushSupported: true,
     markRead: vi.fn().mockResolvedValue(1),
     open: vi.fn().mockResolvedValue(undefined),
-    choose: vi.fn(async (entry: SparkBellEntry) => { if (entry.source === 'session') stub.session.markRead(entry.id); }),
-    markAllRead: vi.fn(async () => stub.session.markAllRead()),
-    dismiss: vi.fn((entry: SparkBellEntry) => stub.session.dismiss(entry.id)),
+    choose: vi.fn(async (entry: SparkBellEntry): Promise<void> => { if (entry.source === 'session') stub.session.markRead(entry.id); }),
+    markAllRead: vi.fn(async (): Promise<void> => { stub.session.markAllRead(); }),
+    dismiss: vi.fn((entry: SparkBellEntry): void => { stub.session.dismiss(entry.id); }),
     enablePush: vi.fn().mockResolvedValue(true),
     disablePush: vi.fn().mockResolvedValue(undefined),
   };
