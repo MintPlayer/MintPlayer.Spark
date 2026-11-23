@@ -100,7 +100,8 @@
         "isArray": false,
         "inQueryType": false,
         "showedOn": "PersistentObject",
-        "rules": []
+        "rules": [],
+        "group": "5c8e2f17-3a94-4d6b-9e01-b7f4c2a8d613"
       },
       {
         "id": "5edc4d64-35ee-476d-89e7-41618672bd44",
@@ -451,7 +452,8 @@
         "lookupReferenceType": "PrTemplateDefault",
         "inQueryType": false,
         "showedOn": "PersistentObject",
-        "rules": []
+        "rules": [],
+        "group": "5c8e2f17-3a94-4d6b-9e01-b7f4c2a8d613"
       },
       {
         "id": "9a24c292-181d-4e98-bc9c-474b1979ffd1",

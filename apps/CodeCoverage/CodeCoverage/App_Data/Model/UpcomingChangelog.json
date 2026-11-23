@@ -1,5 +1,5 @@
 {
-  "$schema": "https://schemas.spark.mintplayer.com/v15/model.schema.json",
+  "$schema": "../../../../../schemas/model.schema.json",
   "persistentObject": {
     "id": "98b0b0da-0b2f-4890-9d32-d0cd0704a2d8",
     "name": "UpcomingChangelog",
