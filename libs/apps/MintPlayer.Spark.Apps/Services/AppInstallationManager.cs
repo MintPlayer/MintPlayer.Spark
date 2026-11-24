@@ -59,7 +59,7 @@ internal sealed partial class AppInstallationManager
         if (slug is null || !SlugShape.IsMatch(slug))
             return WebhookResult<AppInstallPrompt>.NotFound();
         using var session = store.OpenAsyncSession();
-        if (await session.LoadAsync<SparkApp>(SparkApp.IdFor(slug), cancellationToken) is not { } app)
+        if (await session.LoadAsync<SparkApp>(SparkApp.IdFor(slug).Value, cancellationToken) is not { } app)
             return WebhookResult<AppInstallPrompt>.NotFound();
 
         var manageable = (await owners.ListManageableAsync(userId, cancellationToken))
@@ -68,11 +68,11 @@ internal sealed partial class AppInstallationManager
         if (manageable.Count == 0)
             return WebhookResult<AppInstallPrompt>.NotFound();
 
-        var registries = await session.LoadAsync<WebhookOwnerRegistry>(manageable.Select(t => WebhookOwnerRegistry.IdFor(new(t.Kind, t.Key))), cancellationToken);
+        var registries = await session.LoadAsync<WebhookOwnerRegistry>(manageable.Select(t => WebhookOwnerRegistry.IdFor(new(t.Kind, t.Key)).Value), cancellationToken);
         var targets = new List<AppInstallTarget>();
         foreach (var target in manageable)
         {
-            var registry = registries.GetValueOrDefault(WebhookOwnerRegistry.IdFor(new(target.Kind, target.Key)));
+            var registry = registries.GetValueOrDefault(WebhookOwnerRegistry.IdFor(new(target.Kind, target.Key)).Value);
             var existing = registry?.InstallationIds.FirstOrDefault(id => app.InstallationIds.Contains(id, StringComparer.Ordinal));
             targets.Add(new(target.Kind, target.Key, target.DisplayName, existing?[AppInstallation.IdPrefix.Length..]));
         }
@@ -89,16 +89,16 @@ internal sealed partial class AppInstallationManager
 
         using var session = store.OpenAsyncSession();
         session.Advanced.OptimisticConcurrencyMode = OptimisticConcurrencyMode.Writes;
-        if (await session.LoadAsync<SparkApp>(SparkApp.IdFor(input.Slug), cancellationToken) is not { } app
+        if (await session.LoadAsync<SparkApp>(SparkApp.IdFor(input.Slug).Value, cancellationToken) is not { } app
             || (!app.Public && app.Owner != target))
             return WebhookResult<AppInstalled>.NotFound();
 
         var registryId = WebhookOwnerRegistry.IdFor(target);
-        var registry = await session.LoadAsync<WebhookOwnerRegistry>(registryId, cancellationToken);
+        var registry = await session.LoadAsync<WebhookOwnerRegistry>(registryId.Value, cancellationToken);
         if (registry is null)
         {
             registry = new WebhookOwnerRegistry { Id = registryId, OwnerKind = target.Kind, OwnerKey = target.Key };
-            await session.StoreAsync(registry, registryId, cancellationToken);
+            await session.StoreAsync(registry, registryId.Value, cancellationToken);
         }
         if (registry.InstallationIds.Any(id => app.InstallationIds.Contains(id, StringComparer.Ordinal)))
             return WebhookResult<AppInstalled>.Conflict($"The App '{app.Slug}' is installed there already.");
@@ -107,7 +107,7 @@ internal sealed partial class AppInstallationManager
 
         var installation = new AppInstallation
         {
-            Id = AppInstallation.IdPrefix + "in_" + Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(12)),
+            Id = AppInstallation.IdFor("in_" + Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(12))),
             AppSlug = app.Slug,
             TargetKind = target.Kind,
             TargetKey = target.Key,
@@ -116,10 +116,10 @@ internal sealed partial class AppInstallationManager
             InstalledUtc = time.GetUtcNow().UtcDateTime,
         };
         installation.GrantId = await OidcMachineClients.CreateGrantAsync(session, app.OidcApplicationId, Subject(installation), installation.Permissions, cancellationToken);
-        await session.StoreAsync(installation, string.Empty, installation.Id, cancellationToken);
-        registry.InstallationIds.Add(installation.Id);
+        await session.StoreAsync(installation, string.Empty, installation.Id.Value, cancellationToken);
+        registry.InstallationIds.Add(installation.Id.Value);
         // The App document is part of the uniqueness check: two installs of one App on one target race on both.
-        app.InstallationIds.Add(installation.Id);
+        app.InstallationIds.Add(installation.Id.Value);
         await NotifyAppAsync(session, app, installation, CreatedEvent, userId, cancellationToken);
 
         try
@@ -145,7 +145,7 @@ internal sealed partial class AppInstallationManager
         if (!await owners.CanManageAsync(target, userId, cancellationToken))
             return WebhookResult<IReadOnlyList<AppInstallationView>>.NotFound();
         using var session = store.OpenAsyncSession();
-        var registry = await session.LoadAsync<WebhookOwnerRegistry>(WebhookOwnerRegistry.IdFor(target), cancellationToken);
+        var registry = await session.LoadAsync<WebhookOwnerRegistry>(WebhookOwnerRegistry.IdFor(target).Value, cancellationToken);
         return WebhookResult<IReadOnlyList<AppInstallationView>>.Ok(await ViewsAsync(session, registry?.InstallationIds ?? [], cancellationToken));
     }
 
@@ -155,7 +155,7 @@ internal sealed partial class AppInstallationManager
         if (slug is null || !SlugShape.IsMatch(slug))
             return WebhookResult<IReadOnlyList<AppInstallationView>>.NotFound();
         using var session = store.OpenAsyncSession();
-        if (await session.LoadAsync<SparkApp>(SparkApp.IdFor(slug), cancellationToken) is not { } app
+        if (await session.LoadAsync<SparkApp>(SparkApp.IdFor(slug).Value, cancellationToken) is not { } app
             || !await owners.CanManageAsync(app.Owner, userId, cancellationToken))
             return WebhookResult<IReadOnlyList<AppInstallationView>>.NotFound();
         return WebhookResult<IReadOnlyList<AppInstallationView>>.Ok(await ViewsAsync(session, app.InstallationIds, cancellationToken));
@@ -236,9 +236,11 @@ internal sealed partial class AppInstallationManager
     private static async Task RemoveAsync(IAsyncDocumentSession session, AppInstallation installation, SparkApp app, CancellationToken cancellationToken)
     {
         await OidcMachineClients.WithdrawGrantAsync(session, installation.GrantId, revoke: true, cancellationToken);
-        if (await session.LoadAsync<WebhookOwnerRegistry>(WebhookOwnerRegistry.IdFor(installation.Target), cancellationToken) is { } registry)
-            registry.InstallationIds.Remove(installation.Id!);
-        app.InstallationIds.Remove(installation.Id!);
+        // Ignoring case: an installation listed before #536 is "AppInstallations/…" there, its loaded id lower case.
+        var id = installation.Id.Value;
+        if (await session.LoadAsync<WebhookOwnerRegistry>(WebhookOwnerRegistry.IdFor(installation.Target).Value, cancellationToken) is { } registry)
+            registry.InstallationIds.RemoveAll(i => string.Equals(i, id, StringComparison.OrdinalIgnoreCase));
+        app.InstallationIds.RemoveAll(i => string.Equals(i, id, StringComparison.OrdinalIgnoreCase));
         session.Delete(installation);
     }
 
@@ -253,7 +255,7 @@ internal sealed partial class AppInstallationManager
     /// </summary>
     private async Task NotifyAppAsync(IAsyncDocumentSession session, SparkApp app, AppInstallation installation, string type, string userId, CancellationToken cancellationToken)
     {
-        if (app.WebhookEndpointId is not { } ep || await session.LoadAsync<WebhookEndpoint>(WebhookEndpoint.IdPrefix + ep, cancellationToken) is not { Enabled: true } hook)
+        if (app.WebhookEndpointId is not { } ep || await session.LoadAsync<WebhookEndpoint>(WebhookEndpoint.IdFor(ep).Value, cancellationToken) is not { Enabled: true } hook)
             return;
         var now = time.GetUtcNow();
         var messageId = WebhookPublisher.NewMessageId(now);
@@ -290,9 +292,9 @@ internal sealed partial class AppInstallationManager
             return WebhookResult<AppInstallationView>.NotFound();
         using var session = store.OpenAsyncSession();
         session.Advanced.OptimisticConcurrencyMode = OptimisticConcurrencyMode.Writes;
-        var installation = await session.Include<AppInstallation>(i => i.GrantId).LoadAsync<AppInstallation>(AppInstallation.IdPrefix + id, cancellationToken);
+        var installation = await session.Include<AppInstallation>(i => i.GrantId).LoadAsync<AppInstallation>(AppInstallation.IdFor(id!).Value, cancellationToken);
         if (installation is null || !await owners.CanManageAsync(installation.Target, userId, cancellationToken)
-            || await session.LoadAsync<SparkApp>(SparkApp.IdFor(installation.AppSlug), cancellationToken) is not { } app)
+            || await session.LoadAsync<SparkApp>(SparkApp.IdFor(installation.AppSlug).Value, cancellationToken) is not { } app)
             return WebhookResult<AppInstallationView>.NotFound();
         try
         {
@@ -309,10 +311,10 @@ internal sealed partial class AppInstallationManager
         if (ids.Count == 0)
             return [];
         var installations = (await session.LoadAsync<AppInstallation>(ids, cancellationToken)).Values.Where(i => i is not null).ToList();
-        var apps = await session.LoadAsync<SparkApp>(installations.Select(i => SparkApp.IdFor(i!.AppSlug)).Distinct(), cancellationToken);
+        var apps = await session.LoadAsync<SparkApp>(installations.Select(i => SparkApp.IdFor(i!.AppSlug).Value).Distinct(), cancellationToken);
         return installations
-            .Where(i => apps.GetValueOrDefault(SparkApp.IdFor(i!.AppSlug)) is not null)
-            .Select(i => View(i!, apps[SparkApp.IdFor(i!.AppSlug)]!))
+            .Where(i => apps.GetValueOrDefault(SparkApp.IdFor(i!.AppSlug).Value) is not null)
+            .Select(i => View(i!, apps[SparkApp.IdFor(i!.AppSlug).Value]!))
             .OrderBy(v => v.InstalledUtc)
             .ToList();
     }

@@ -136,7 +136,7 @@ public class AppInstallationTests : AppsTestHost
         var signingKey = new RsaSecurityKey(rsa) { KeyId = key.GetProperty("key").GetProperty("keyId").GetString() };
         string clientId;
         using (var session = Store.OpenAsyncSession())
-            clientId = (await session.LoadAsync<SparkApp>(SparkApp.IdFor("shipper")))!.ClientId;
+            clientId = (await session.LoadAsync<SparkApp>(SparkApp.IdFor("shipper").Value))!.ClientId;
 
         var installationId = await InstallAsync("shipper", bob.Id!);
         var otherInstallation = await InstallAsync("other", bob.Id!);

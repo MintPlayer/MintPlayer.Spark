@@ -1,6 +1,7 @@
 using System.Text.Json.Nodes;
 using Microsoft.Extensions.Options;
 using MintPlayer.SourceGenerators.Attributes;
+using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Apps.Catalog;
 using MintPlayer.Spark.Apps.Models;
 using MintPlayer.Spark.Apps.Services;
@@ -34,7 +35,7 @@ internal sealed partial class WebhookFanOut : IRecipient<WebhookEventRaised>
             // A chain changed by another event in between is read again; so is a delivery made by a concurrent run.
             session.Advanced.OptimisticConcurrencyMode = Raven.Client.Documents.Session.OptimisticConcurrencyMode.Writes;
 
-            var registry = await session.LoadAsync<WebhookOwnerRegistry>(WebhookOwnerRegistry.IdFor(owner), cancellationToken);
+            var registry = await session.LoadAsync<WebhookOwnerRegistry>(WebhookOwnerRegistry.IdFor(owner).Value, cancellationToken);
             if (registry is not { HasDestinations: true })
                 return;
 
@@ -47,7 +48,7 @@ internal sealed partial class WebhookFanOut : IRecipient<WebhookEventRaised>
             if (targets.Count == 0)
                 return;
 
-            var ids = targets.Select(t => WebhookDelivery.IdFor(t.Endpoint.PublicId, message.CreatedUtc, message.MessageId)).ToList();
+            var ids = targets.Select(t => WebhookDelivery.IdFor(t.Endpoint.PublicId, message.CreatedUtc, message.MessageId).Value).ToList();
             var existing = await session.LoadAsync<WebhookDelivery>(ids, cancellationToken);
             for (var i = 0; i < targets.Count; i++)
             {
@@ -82,16 +83,16 @@ internal sealed partial class WebhookFanOut : IRecipient<WebhookEventRaised>
             .ToList();
         if (installations.Count == 0)
             return [];
-        var apps = await session.LoadAsync<SparkApp>(installations.Select(i => SparkApp.IdFor(i!.AppSlug)).Distinct(), cancellationToken);
+        var apps = await session.LoadAsync<SparkApp>(installations.Select(i => SparkApp.IdFor(i!.AppSlug).Value).Distinct(), cancellationToken);
         var subscribed = installations
-            .Select(i => (Installation: i!, App: apps.GetValueOrDefault(SparkApp.IdFor(i!.AppSlug))))
+            .Select(i => (Installation: i!, App: apps.GetValueOrDefault(SparkApp.IdFor(i!.AppSlug).Value)))
             .Where(x => x.App is { WebhookEndpointId: not null } && x.App.Events.Contains(message.EventType, StringComparer.Ordinal))
             .ToList();
         if (subscribed.Count == 0)
             return [];
-        var hooks = await session.LoadAsync<WebhookEndpoint>(subscribed.Select(x => WebhookEndpoint.IdPrefix + x.App!.WebhookEndpointId), cancellationToken);
+        var hooks = await session.LoadAsync<WebhookEndpoint>(subscribed.Select(x => WebhookEndpoint.IdFor(x.App!.WebhookEndpointId!).Value), cancellationToken);
         return subscribed
-            .Select(x => (Hook: hooks.GetValueOrDefault(WebhookEndpoint.IdPrefix + x.App!.WebhookEndpointId), x.Installation))
+            .Select(x => (Hook: hooks.GetValueOrDefault(WebhookEndpoint.IdFor(x.App!.WebhookEndpointId!).Value), x.Installation))
             .Where(x => x.Hook is { Enabled: true })
             .Select(x => (x.Hook!, WithInstallation(message.Payload, x.Installation)))
             .ToList();
@@ -107,7 +108,7 @@ internal sealed partial class WebhookFanOut : IRecipient<WebhookEventRaised>
 
     private WebhookDelivery New(string id, WebhookEventRaised message, WebhookEndpoint endpoint, string payload) => new()
     {
-        Id = id,
+        Id = Id<WebhookDelivery>.FromTrusted(id),
         MessageId = message.MessageId,
         EventType = message.EventType,
         EndpointId = endpoint.PublicId,

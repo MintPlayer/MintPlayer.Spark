@@ -1,16 +1,19 @@
+using MintPlayer.Spark.Abstractions;
+
 namespace MintPlayer.Spark.Apps.Models;
 
 /// <summary>
 /// An App (D5, D29): what a developer registers so other users can install it. Its identity is an
 /// <c>OidcApplication</c> of the site's identity provider (a <c>client_credentials</c> client that signs a
 /// <c>private_key_jwt</c> with one of <see cref="Keys"/>); its webhook is a <see cref="WebhookEndpoint"/> with
-/// <see cref="WebhookEndpoint.AppSlug"/> set. Id <c>SparkApps/{slug}</c>, so a slug is unique by construction.
+/// <see cref="WebhookEndpoint.AppSlug"/> set. Id <c>sparkapps/{slug}</c>, so a slug is unique by construction.
 /// </summary>
-public sealed class SparkApp
+[IdKind(SparkIdKind.Natural)]
+public sealed partial class SparkApp
 {
-    public const string IdPrefix = "SparkApps/";
+    public const string IdPrefix = "sparkapps/";
 
-    public string? Id { get; set; }
+    public Id<SparkApp> Id { get; set; }
     public string Slug { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
     public string? Description { get; set; }
@@ -48,20 +51,21 @@ public sealed class SparkApp
 
     public WebhookOwner Owner => new(OwnerKind, OwnerKey);
 
-    public static string IdFor(string slug) => IdPrefix + slug;
+    public static Id<SparkApp> IdFor(string slug) => Id<SparkApp>.FromTrusted(IdPrefix + slug);
 }
 
 /// <summary>
 /// An App installed on a target (a user or an organization, D30): what the installer granted it. Id
-/// <c>AppInstallations/in_…</c>; the <c>in_…</c> part is the public installation id the App sends with its token request.
+/// <c>appinstallations/in_…</c>; the <c>in_…</c> part is the public installation id the App sends with its token request.
 /// One per (App, target): the target's <see cref="WebhookOwnerRegistry.InstallationIds"/> is checked under optimistic
 /// concurrency.
 /// </summary>
-public sealed class AppInstallation
+[IdKind(SparkIdKind.Natural)]
+public sealed partial class AppInstallation
 {
-    public const string IdPrefix = "AppInstallations/";
+    public const string IdPrefix = "appinstallations/";
 
-    public string? Id { get; set; }
+    public Id<AppInstallation> Id { get; set; }
     public string AppSlug { get; set; } = string.Empty;
     public string TargetKind { get; set; } = string.Empty;
     public string TargetKey { get; set; } = string.Empty;
@@ -84,7 +88,10 @@ public sealed class AppInstallation
 
     public WebhookOwner Target => new(TargetKind, TargetKey);
 
-    public string PublicId => Id is null ? string.Empty : Id[IdPrefix.Length..];
+    public string PublicId => Id.IsEmpty ? string.Empty : Id.Value[IdPrefix.Length..];
+
+    /// <summary>The installation with public id <paramref name="publicId"/>.</summary>
+    public static Id<AppInstallation> IdFor(string publicId) => Id<AppInstallation>.FromTrusted(IdPrefix + publicId);
 }
 
 /// <summary>The public half of a key the App signs its client assertions with. The private half was shown once.</summary>

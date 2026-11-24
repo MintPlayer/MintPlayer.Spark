@@ -6,6 +6,7 @@ using System.Text;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using MintPlayer.SourceGenerators.Attributes;
+using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Apps.Models;
 using MintPlayer.Spark.Apps.Services;
 using MintPlayer.Spark.Http;
@@ -45,7 +46,7 @@ internal sealed partial class WebhookDeliveryHandler : IRecipient<WebhookDeliver
     private const int ResponseExcerptBytes = 2048;
 
     /// <summary>The endpoints this handling already disabled (patched, not edited: the loaded copy stays untouched).</summary>
-    private readonly HashSet<string> disabledNow = [];
+    private readonly HashSet<Id<WebhookEndpoint>> disabledNow = [];
 
     [Inject] private readonly IDocumentStore store;
     [Inject] private readonly IHttpClientFactory httpClientFactory;
@@ -77,7 +78,7 @@ internal sealed partial class WebhookDeliveryHandler : IRecipient<WebhookDeliver
         if (delivery is null || delivery.Status != WebhookDeliveryStatus.Pending)
             return; // expired from the log, or already settled (a duplicate message)
 
-        var endpoint = await session.LoadAsync<WebhookEndpoint>(WebhookEndpoint.IdPrefix + delivery.EndpointId, cancellationToken);
+        var endpoint = await session.LoadAsync<WebhookEndpoint>(WebhookEndpoint.IdFor(delivery.EndpointId).Value, cancellationToken);
         if (endpoint is null || !endpoint.Enabled)
         {
             await SettleAsync(session, delivery, WebhookDeliveryStatus.Failed, endpoint is null ? "The endpoint was deleted." : "The endpoint is disabled.", null, cancellationToken);
@@ -207,8 +208,8 @@ internal sealed partial class WebhookDeliveryHandler : IRecipient<WebhookDeliver
 
         var halt = status == WebhookDeliveryStatus.Failed && delivery.Ordered && options.Value.OnExhausted == WebhookExhaustedPolicy.Halt;
         WebhookEndpoint? halted = null;
-        if (halt && !disabledNow.Contains(WebhookEndpoint.IdPrefix + delivery.EndpointId)
-            && await session.LoadAsync<WebhookEndpoint>(WebhookEndpoint.IdPrefix + delivery.EndpointId, cancellationToken) is { Enabled: true } endpoint)
+        if (halt && !disabledNow.Contains(WebhookEndpoint.IdFor(delivery.EndpointId))
+            && await session.LoadAsync<WebhookEndpoint>(WebhookEndpoint.IdFor(delivery.EndpointId).Value, cancellationToken) is { Enabled: true } endpoint)
         {
             await DisableAsync(session, endpoint, $"Ordered delivery halted: {delivery.EventType} ({delivery.MessageId}) could not be delivered.");
             halted = endpoint;
@@ -221,7 +222,7 @@ internal sealed partial class WebhookDeliveryHandler : IRecipient<WebhookDeliver
 
     private Task DisableAsync(IAsyncDocumentSession session, WebhookEndpoint endpoint, string reason)
     {
-        if (disabledNow.Add(endpoint.Id!))
+        if (disabledNow.Add(endpoint.Id))
         {
             PatchEndpoint(session, endpoint, e => e.Enabled, false);
             PatchEndpoint(session, endpoint, e => e.DisabledReason, reason);
@@ -234,7 +235,7 @@ internal sealed partial class WebhookDeliveryHandler : IRecipient<WebhookDeliver
     /// overwrites those, where saving the loaded copy would.
     /// </summary>
     private static void PatchEndpoint<TValue>(IAsyncDocumentSession session, WebhookEndpoint endpoint, System.Linq.Expressions.Expression<Func<WebhookEndpoint, TValue>> path, TValue value)
-        => session.Advanced.Patch(endpoint.Id!, path, value);
+        => session.Advanced.Patch(endpoint.Id.Value, path, value);
 
     private async Task NotifyDisabledAsync(WebhookEndpoint endpoint, string reason, CancellationToken cancellationToken)
     {

@@ -95,6 +95,9 @@ public class DocumentIdProducer : Producer
 
         writer.WriteLine(Header);
         writer.WriteLine();
+        // The identity is string?: a project without <Nullable>enable</Nullable> warned CS8669 on it (Apps, #536 M2c).
+        writer.WriteLine("#nullable enable");
+        writer.WriteLine();
 
         foreach (var group in emitted.GroupBy(static e => e.PathSpec?.ContainingNamespace ?? string.Empty))
         {

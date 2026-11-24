@@ -35,10 +35,10 @@ internal sealed partial class InstallationTokenContributor : IOidcClientCredenti
         if (!AppInstallationManager.IsInstallationId(id))
             return unknown;
         using var session = store.OpenAsyncSession();
-        var installation = await session.LoadAsync<AppInstallation>(AppInstallation.IdPrefix + id, cancellationToken);
+        var installation = await session.LoadAsync<AppInstallation>(AppInstallation.IdFor(id).Value, cancellationToken);
         if (installation is null || installation.Suspended)
             return unknown;
-        var app = await session.LoadAsync<SparkApp>(SparkApp.IdFor(installation.AppSlug), cancellationToken);
+        var app = await session.LoadAsync<SparkApp>(SparkApp.IdFor(installation.AppSlug).Value, cancellationToken);
         if (app is null || app.OidcApplicationId != request.Application.Id)
             return unknown;
 

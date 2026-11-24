@@ -143,7 +143,7 @@ public abstract class AppsTestHost : OrganizationsTestHost
         catch (TimeoutException ex)
         {
             using var session = Store.OpenAsyncSession();
-            var chain = await session.LoadAsync<WebhookChain>(WebhookChain.IdFor(endpointId));
+            var chain = await session.LoadAsync<WebhookChain>(WebhookChain.IdFor(endpointId).Value);
             var state = string.Join("; ", (await DeliveriesAsync(endpointId)).Select(d => $"{d.Id} {d.Status} attempts={d.Attempts.Count}"));
             throw new TimeoutException($"{ex.Message} Deliveries: {state}. Chain: {System.Text.Json.JsonSerializer.Serialize(chain)}", ex);
         }

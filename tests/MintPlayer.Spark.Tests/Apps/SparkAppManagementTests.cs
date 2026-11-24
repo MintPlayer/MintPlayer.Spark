@@ -166,7 +166,7 @@ public class SparkAppManagementTests : AppsTestHost
             .Should().Be(HttpStatusCode.NotFound, "a malformed slug names nothing");
 
         using var session = Store.OpenAsyncSession();
-        var app = (await session.LoadAsync<SparkApp>(SparkApp.IdFor("bot")))!;
+        var app = (await session.LoadAsync<SparkApp>(SparkApp.IdFor("bot").Value))!;
         app.Name.Should().Be("Shipping bot", "no refused edit was stored");
         app.HomepageUrl.Should().Be("https://bot.example.com");
         app.Permissions.Should().Equal(["orders:read"]);
