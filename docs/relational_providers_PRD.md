@@ -284,10 +284,18 @@ MintPlayer.Spark.Abstractions
   `SynchronizeSparkModelsIfRequested`, `InitializeSparkSecurityIfRequested`, `VerifySparkSecurityIfRequested`
   (`apps/HR/HR/Program.cs:106-116`), `RegenerateSparkImageVariantsIfRequested`
   (`SparkImageVariantCommand.cs:23`) and `InitializeSparkModerationIfRequested` (`ModerationInitCommand.cs:44`).
-  Core gets an `ISparkCommand` contract (flag, description, whether it runs before `Build()` on the builder or after it
-  on the services, and `RunAsync` returning the exit code). Packages register theirs. `Program.cs` keeps two lines,
-  one before `Build()` and one after it, and adding a package's command no longer edits any app. `--spark-help` lists
-  what is registered. The existing commands move onto it in this PR (no backward compatibility).
+  Core gets an `ISparkCommand` contract (description, `RunAsync` returning the exit code). **There is no registry
+  class: the DI container is the registry** (the owner's multi-registration pattern). Each package registers its
+  commands keyed by their flag, `services.AddKeyedScoped<ISparkCommand, DatabaseMigrateCommand>("--spark-migrate")`,
+  and core resolves only the requested one in a scope (`GetRequiredKeyedService<ISparkCommand>(flag)`). The key
+  instead of `GetServices<ISparkCommand>().Where(c => c.Name == flag)` means only the requested command and its
+  dependencies are constructed: `--spark-synchronize-model` runs in CI without a database, and must not build the
+  migrate command's `DbContext` or document store on the way. `--spark-help` lists every key with its description.
+  `Program.cs` keeps one line after `Build()` (`if (await app.RunSparkCommandIfRequestedAsync(args)) return;`), and
+  adding a package's command edits no app. The commands that run on the builder today (synchronize, verify, describe,
+  the security and moderation initialisers) move after `Build()`, which constructs no service and opens no
+  connection; one that turns out to need the builder becomes a builder-phase hook of the same command. The existing
+  commands move onto it in this PR (no backward compatibility).
 - **Migrations (D33) are the first user.** Core owns `--spark-migrate`, `--spark-migration-script`,
   `Spark:Database:ApplyMigrations`, the startup order and the refusal message. Providers implement one contract,
   `ISparkSchemaMigrator` (pending migrations, apply, write a script):

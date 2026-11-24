@@ -231,8 +231,8 @@ source-generated from one id template per entity (PRD D23 rule 12).
    - the RavenDB wording in messages
    - the generators' neutral declarations (with S5): one `MintPlayer.Spark.SourceGenerators` package that renders the
      RavenDB index or the EF view mapping depending on the referenced provider (PRD D32)
-   - IoC (PRD D34): the `ISparkCommand` registry, with the five existing commands moved onto it and every app's
-     `Program.cs` (and the template's) reduced to the two command lines; `ISparkSchemaMigrator` with the RavenDB
+   - IoC (PRD D34): `ISparkCommand` as keyed DI registrations (no registry class), with the five existing commands
+     moved onto it and every app's `Program.cs` (and the template's) reduced to one command line after `Build()`; `ISparkSchemaMigrator` with the RavenDB
      implementation; `--spark-migrate` and `--spark-migration-script` in core; the data-migration runner on the
      neutral lease; a layering test against provider references in core
 4. **`MintPlayer.Spark.Relational`, `MintPlayer.Spark.SqlServer`, `MintPlayer.Spark.PostgreSql`** (D2):
