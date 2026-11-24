@@ -248,10 +248,14 @@ internal sealed class RavenSparkSession : ISparkSession
     /// RavenDB query goes over the wire.
     /// </remarks>
     public async Task<List<T>> ToListAsync<T>(IQueryable<T> query, CancellationToken cancellationToken = default)
-        => query is IRavenQueryable<T> raven ? await raven.ToListAsync(cancellationToken) : [.. query];
+        => query is IRavenQueryable<T> && RavenIdQueryRewriter.Rewrite(query) is IRavenQueryable<T> raven
+            ? await raven.ToListAsync(cancellationToken)
+            : [.. query];
 
     public async Task<int> CountAsync<T>(IQueryable<T> query, CancellationToken cancellationToken = default)
-        => query is IRavenQueryable<T> raven ? await raven.CountAsync(cancellationToken) : query.Count();
+        => query is IRavenQueryable<T> && RavenIdQueryRewriter.Rewrite(query) is IRavenQueryable<T> raven
+            ? await raven.CountAsync(cancellationToken)
+            : query.Count();
 
     public void Dispose()
     {

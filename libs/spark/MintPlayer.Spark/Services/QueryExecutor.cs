@@ -641,6 +641,22 @@ internal sealed record DatabasePage(int TotalItems);
         // ── The queryable branch pushes the filter into the provider, and stays string-only.
         // Not a limitation: RavenDB cannot translate ToString() into RQL, and a document id is a
         // string by definition, so nothing reachable here needs more.
+        // An Id<T> (#536 D23) is filtered with Contains over typed ids on every provider: RavenDB's execution-time
+        // rewrite turns it into id() IN (...), LINQ to objects compares the ids as they are.
+        if (declaredId is { CanRead: true } && SparkIdValues.IsId(declaredId.PropertyType) && source is IQueryable)
+        {
+            var parameter = Expression.Parameter(elementType, "x");
+            var idAccess = Expression.Property(parameter, declaredId);
+            var typedIds = SparkIdValues.ToCollection(typeof(List<>).MakeGenericType(declaredId.PropertyType), ids);
+            var contains = typedIds.GetType().GetMethod(nameof(List<object>.Contains))!;
+            var lambda = Expression.Lambda(Expression.Call(Expression.Constant(typedIds), contains, idAccess), parameter);
+            var where = typeof(Queryable).GetMethods()
+                .First(m => m.Name == nameof(Queryable.Where)
+                         && m.GetParameters()[1].ParameterType.GetGenericArguments()[0].GetGenericArguments().Length == 2)
+                .MakeGenericMethod(elementType);
+            return where.Invoke(null, [source, lambda])!;
+        }
+
         if (declaredId is { CanRead: true } && declaredId.PropertyType == typeof(string)
             && source is IQueryable)
         {

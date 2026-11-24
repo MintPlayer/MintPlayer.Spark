@@ -620,6 +620,12 @@ internal partial class EntityMapper : IEntityMapper
         if (underlying.IsEnum)
             return raw.ToString();
 
+        // Ids travel as their canonical strings (#536 D23 rule 4), one or a list of them.
+        if (SparkIdValues.IsId(underlying))
+            return SparkIdValues.ToText(raw);
+        if (SparkIdValues.CollectionElementOf(propertyType) is not null)
+            return SparkIdValues.ToTexts(raw).ToList();
+
         if (underlying == typeof(Color) && raw is Color colorValue)
             return colorValue.IsEmpty ? null : $"#{colorValue.R:x2}{colorValue.G:x2}{colorValue.B:x2}";
 
@@ -1547,6 +1553,11 @@ internal partial class EntityMapper : IEntityMapper
             if (targetType == typeof(string))
             {
                 convertedValue = value.ToString();
+            }
+            // An id (#536 D23): the wire carries its canonical string; Id<T> lowers it (D7).
+            else if (SparkIdValues.IsId(targetType))
+            {
+                convertedValue = SparkIdValues.FromText(property.PropertyType, value.ToString());
             }
             else if (targetType == typeof(Guid))
             {

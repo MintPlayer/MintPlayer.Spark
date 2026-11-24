@@ -23,15 +23,23 @@ public static class SparkStoreConfiguration
     public static Raven.Client.Documents.IDocumentStore ApplySparkConventions(
         this Raven.Client.Documents.IDocumentStore store)
     {
-        store.Conventions.UseNaturalIds().UseGeneratedIds();
+        store.Conventions.UseNaturalIds().UseGeneratedIds().UseTypedIds();
 
-        store.Conventions.Serialization = new Raven.Client.Json.Serialization.NewtonsoftJson.NewtonsoftJsonSerializationConventions
+        var serialization = new Raven.Client.Json.Serialization.NewtonsoftJson.NewtonsoftJsonSerializationConventions
         {
             CustomizeJsonSerializer = serializer =>
             {
                 serializer.Converters.Add(new Converters.ColorNewtonsoftJsonConverter());
-            }
+                serializer.Converters.Add(new Converters.IdNewtonsoftJsonConverter());
+            },
+            CustomizeJsonDeserializer = serializer =>
+            {
+                serializer.Converters.Add(new Converters.ColorNewtonsoftJsonConverter());
+                serializer.Converters.Add(new Converters.IdNewtonsoftJsonConverter());
+            },
         };
+        serialization.JsonContractResolver = new Converters.SparkRavenContractResolver(serialization);
+        store.Conventions.Serialization = serialization;
 
         return store;
     }
@@ -57,8 +65,9 @@ public static class SparkDocumentStoreConventions
     /// </summary>
     public static DocumentConventions UseNaturalIds(this DocumentConventions conventions)
     {
+        // Lowered (#536 D7): every id is lower case on every provider.
         conventions.RegisterAsyncIdConvention<IHasNaturalId>(
-            (_, entity) => Task.FromResult(entity.GetId()));
+            (_, entity) => Task.FromResult(entity.GetId().ToLowerInvariant()));
 
         return conventions;
     }
@@ -79,7 +88,35 @@ public static class SparkDocumentStoreConventions
     public static DocumentConventions UseGeneratedIds(this DocumentConventions conventions)
     {
         conventions.AsyncDocumentIdGenerator = (_, entity) =>
-            Task.FromResult($"{conventions.GetCollectionName(entity.GetType())}/{Guid.NewGuid()}");
+            Task.FromResult($"{conventions.GetCollectionName(entity.GetType())}/{Guid.NewGuid()}".ToLowerInvariant());
+
+        return conventions;
+    }
+
+    /// <summary>
+    /// The id rules for entities with an <see cref="Id{T}"/> (#536 D23 rule 6, D7):
+    /// <list type="bullet">
+    /// <item>the generated <c>__DocumentId</c> string member is the identity property when the type has one; a type
+    /// without it keeps its <c>Id</c> string, RavenDB's default</item>
+    /// <item>id prefixes RavenDB builds from a collection name (HiLo, and anyone asking the convention) are lower
+    /// case</item>
+    /// </list>
+    /// <see cref="DocumentConventions.FindCollectionName"/> is unchanged: it names the <c>@collection</c>, not the id.
+    /// </summary>
+    public static DocumentConventions UseTypedIds(this DocumentConventions conventions)
+    {
+        conventions.FindIdentityProperty = member => Converters.SparkDocumentIdentity.Of(member.DeclaringType!) is { } identity
+            ? member.Name == identity.Name
+            : member.Name == "Id";
+        conventions.TransformTypeCollectionNameToDocumentIdPrefix = static collection => collection.ToLowerInvariant();
+
+        // A reference stored as a string compares with an Id<T> value: the query sends the canonical string. RavenDB
+        // matches a converter by the value's runtime type, so one registration over the interface covers every T.
+        conventions.RegisterQueryValueConverter<ISparkId>(static (string _, ISparkId value, bool _, out string? text) =>
+        {
+            text = value.IsEmpty ? null : value.Value;
+            return true;
+        });
 
         return conventions;
     }

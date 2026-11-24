@@ -220,7 +220,7 @@ internal sealed partial class RavenSparkQueryProvider : ISparkQueryProvider
                 ?.MakeGenericMethod(k.Entity))
             ?? throw new InvalidOperationException("RavenDB's CountAsync could not be resolved.");
 
-        return await (Task<int>)method.Invoke(null, [source, cancellationToken])!;
+        return await (Task<int>)method.Invoke(null, [RavenIdQueryRewriter.Rewrite(source), cancellationToken])!;
     }
 
     public async Task<IReadOnlyList<object>> ToListAsync(IQueryable source, CancellationToken cancellationToken)
@@ -234,7 +234,7 @@ internal sealed partial class RavenSparkQueryProvider : ISparkQueryProvider
                 ?.MakeGenericMethod(k.Type))
             ?? throw new InvalidOperationException("RavenDB's ToListAsync could not be resolved.");
 
-        var task = (Task)method.Invoke(null, [source, cancellationToken])!;
+        var task = (Task)method.Invoke(null, [RavenIdQueryRewriter.Rewrite(source), cancellationToken])!;
         await task;
         return task.GetCompletedTaskResult() is System.Collections.IEnumerable rows ? [.. rows.Cast<object>()] : [];
     }
