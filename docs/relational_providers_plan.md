@@ -14,7 +14,7 @@ rounds, milestones and status. Branch `feat/536-sql-server-provider`, draft PR #
 - **Storage model (round 3):** a table per entity, mapped by EF Core. The model synchronize generates EF migrations;
   AsDetail collections are child tables; references are real FKs; the contract is typed; ids are `Id<T>` (D23).
   Breaking changes are allowed, with no backward compatibility.
-- **Next:** the owner's sign-off on O14 (rounds 6–9), then grilling round 5 on O10–O13 (change
+- **Next:** grilling round 5 on O10–O13 (change
   stamp, absent fields, revisions, get-only persisted properties).
   Then the gate spikes S-ID1, S-ID2, S-ID4, S2b, S3, S4 and S5 (§2).
 - Local spike servers left running:
@@ -181,12 +181,16 @@ rule and L1. Mistral hit its message limit again; DeepSeek is still suspended.
   proposed (b), then followed the recommendation: O15 is decided as (a), gated by spike S-ID4. If S-ID4 fails, O15
   reopens with a case-only re-key spiked on the same database copy.
 
+The owner then asked why the parent id can't keep being extracted from the nested id. It can, as long as the parse is
+not written by hand: `Commit.TryParseRepository` compares `"Commits"` case-sensitively and would fail closed under the
+lowercase rule, as it did once when the forge segment was added. O14 is decided as the LLMs' consensus with the code
+source-generated from one id template per entity (PRD D23 rule 12).
+
 ### Still open
 
 - O8 (the PostgreSQL 17 floor, probably moot)
 - O9 (bring-your-own `DbContext`, low priority)
 - **O10–O13 for round 5:** the change stamp, absent fields versus `NULL`, revisions, get-only persisted properties
-- **O14** (hierarchical natural ids): the LLM consensus of rounds 6–9 awaits the owner's sign-off
 
 ## 4. Milestones
 

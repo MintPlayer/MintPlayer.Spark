@@ -419,18 +419,33 @@ public List<Id<Profession>> ProfessionIds { get; set; } = [];
     it. The same entity has different ids per provider (`"people/1-A"` on RavenDB, `"people/1"` on SQL).
     - The docs list that migrator's duties: seed the EF HiLo sequences above the migrated maximum, map RavenDB's
       `"1-A"` ids to the new keys, and rewrite parent keys embedded in natural ids (rule 12).
-12. **Hierarchical natural ids** (O14, rounds 6–9). About 75 id builders nest other ids, for example
-    `"coverage/{repoId}/commits/{sha}"`.
+12. **Hierarchical natural ids** (O14, rounds 6–9; accepted by the owner 2026-11-24, with the code
+    source-generated). About 75 id builders nest other ids, for example `"commits/{provider}/{repositoryId}/{sha}"`.
     - They stay one string primary key (Natural kind). There is no composite key and no hidden surrogate key. Ids are
       immutable, so an embedded parent key can never go stale.
-    - **When a segment of a natural id is another entity's id, the entity also declares that reference as an
-      ordinary property** (`Id<Repository> RepositoryId`). D26 gives it a real FK and a delete rule, so the relational
-      model sees the link and no FK hides inside a string.
-    - A generator or analyzer checks that the id template and the property agree: the id is built from the property,
-      never from a free string.
-    - `LoadStartingWithAsync` stays an escaped `LIKE` prefix on the key (D7).
-    - The `LastIndexOf('/')` parsers (`ContributionHandler.cs:707`, `WebhookEndpointManager.cs:263`,
-      `MergeQueue.RepositorySuffix`) read that property instead of parsing the id.
+    - **The entity declares its id template once**, as an attribute, for example
+      `[IdTemplate("commits/{Provider}/{RepositoryId}/{Sha}")]` plus a variant such as
+      `"commits/{Provider}/{RepositoryId}/pr/{PullRequestNumber}/{Sha}"`. The source generator emits both directions
+      from it, so the builder and the parser can't drift apart:
+      - the id builder (`ids.New<Commit>(provider, repositoryId, sha)`), replacing hand-written `DocumentId(...)`
+        methods
+      - **a get-only property per segment that is another entity's id** (`Id<Repository> RepositoryId`), read back
+        from the id. D26 gives it a real FK and a delete rule, so the relational model sees the link and no FK hides
+        inside a string. On SQL it is stored as an ordinary column written on insert (how it is persisted follows
+        O13); on RavenDB it needs no field, because a prefix scan finds the children.
+      - get-only properties for the other segments the app reads (`Sha`, `PullRequestNumber`)
+    - **The generator refuses a template it can't parse back unambiguously:** at most one segment may contain `/`, and
+      only the last one; variants must differ in a literal segment (`pr`). The parse works on the lowercase id (D7), so
+      it never compares case.
+    - `LoadStartingWithAsync` stays an escaped `LIKE` prefix on the key (D7). The generator also emits the prefix for
+      "all children of this parent", so no prefix is concatenated by hand.
+    - **Hand-written id parsers are replaced by the generated properties.** The inventory:
+      - the `LastIndexOf('/')` parsers `ContributionHandler.cs:707`, `WebhookEndpointManager.cs:263` and
+        `MergeQueue.RepositorySuffix`
+      - `Commit.TryParseRepository` (`Commit.cs:194`). It compares `parts[0] != "Commits"` case-sensitively, so under
+        the lowercase rule it would return false for every commit and fail closed. It has failed closed before, when
+        the forge segment was added (its remarks, `Commit.cs:183-186`).
+      - any other `Split('/')` over an id, found with an analyzer that flags string operations on `Id<T>.Value`
 
 The full consensus and the spike details are in plan §3, rounds 4 and 6–9.
 
@@ -788,9 +803,11 @@ commercial-framework comparison added D30. The plan §3 has the log.
   relational providers, and does RavenDB change to match?
 - **O12, revisions (open, next grilling):** a framework `Revisions` table (portable, per-collection retention,
   `PurgeOnDelete`), or SQL Server temporal tables (PostgreSQL has none)?
-- **O14, hierarchical natural ids (resolved by the LLMs in rounds 6–9, awaiting the owner):** D23 rule 12 and D7.
-  A string primary key with prefix scans, plus an explicit `Id<Parent>` property (a real FK) wherever a segment is
-  another entity's id. Ids are lower case (D7, round 10), with binary key columns.
+- **O14, hierarchical natural ids (decided 2026-11-24):** D23 rule 12 and D7. The LLMs' consensus of rounds 6–9: a
+  string primary key with prefix scans, plus an `Id<Parent>` property (a real FK) wherever a segment is another
+  entity's id. The owner accepted it with one change: the code is source-generated from one id template per entity,
+  so the parent property is read from the id rather than declared by hand, and builder and parser can't drift. Ids
+  are lower case (D7, round 10), with binary key columns.
 - **O13, get-only persisted properties (open, next grilling):** for example `FullName`. Persist it as a computed column,
   recompute on save (as the commercial framework's RavenDB-only calculated attribute does), or keep it out of storage?
 - **O15, mixed-case ids in production RavenDB data (decided 2026-11-24: (a), no re-key, gated by S-ID4):** the owner
