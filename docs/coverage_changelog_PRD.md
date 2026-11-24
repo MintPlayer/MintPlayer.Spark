@@ -464,7 +464,7 @@ correction comes with the changelog) are answered by D6.
   (`SparkRavenDbExtensions.cs:86`).
 - **Fits every provider:** documents with deterministic ids, read by `LoadAsync(ids)` (batched; the 30-request session
   cap), and `Query<T>()` LINQ filters. No `Query<T, TIndex>()`, which binds to a RavenDB index
-  (`docs/sql_server_provider_PRD.md` Q5), no static indexes, and no RQL or patch scripts.
+  (`docs/relational_providers_PRD.md` Q5), no static indexes, and no RQL or patch scripts.
 - **Proof:** the changelog store's tests run on the in-memory provider (`InMemorySparkSession`,
   `libs/spark/MintPlayer.Spark.InMemory`) as well as RavenDB (`RavenSparkSession`).
 - **Scope:** CodeCoverage itself still uses `IAsyncDocumentSession` in 115 files. Migrating those is out of scope; only

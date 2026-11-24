@@ -1,6 +1,6 @@
 # #536 spikes S1/S2: the SQL Server mapping and query translation
 
-The evidence behind `docs/sql_server_provider_PRD.md` §8 (S1, S2). Throwaway code. There is **no `.csproj` here on
+The evidence behind `docs/relational_providers_PRD.md` §8 (S1, S2). Throwaway code. There is **no `.csproj` here on
 purpose**: `@nx/dotnet` infers a project from every `.csproj`, and CI would build it.
 
 To rerun it, copy the three `.cs` files to a scratch folder next to this project file:
