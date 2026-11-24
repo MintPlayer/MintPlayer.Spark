@@ -306,28 +306,46 @@ The dialect supplies the stamp and a *safe read horizon*:
 S14 proves the horizon with two interleaved transactions. The commercial framework gives no guidance here: on SQL it polls a cache
 table for its own caches and has no change feed for business data.
 
-**D7 (revised by D23, then by the round 6–9 consensus): ids are case-exact in their canonical form, and natural ids
-are unique ignoring case.**
-- Int and Guid keys can't differ in case: the model canonicalises them (digits; Guid `N`, lower case).
-- A natural key is canonical as the model builds it: the id template (D23 rule 12) or the entity's declared
-  normaliser (for example lower case for slugs) is the only way to create one, and `ids.Parse<T>` applies the same
-  normaliser. Casing that carries meaning is kept, not folded.
-- Every id the framework renders (URLs, JSON, client) is canonical, so the round trip is exact.
+**D7 (revised by D23, by the round 6–9 consensus, then by the owner's lowercase rule in round 10): every id is
+lower case, on every provider.** The owner proposed it (2026-11-24): `GetById("abc")` and `GetById("ABC")` must
+behave the same whatever database backs the app. ChatGPT, Claude, Gemini, Grok and Copilot agreed in round 10;
+Mistral was rate-limited.
+- **Spark lowercases (`ToLowerInvariant`) every id at the one canonicalisation point** (D23 rule 3): `ids.NewAsync`,
+  `ids.Parse`, the JSON converter and the route binder, and when a provider reads an id back (D23 rule 6). The whole
+  string is lowered, collection prefix included, so `Accounts/X` becomes `accounts/x`.
+- Int and Guid keys were canonical already (digits; Guid `N`). A natural key from a template or `IHasNaturalId` is
+  lowered with the rest. There are no per-entity normalisers.
+- **Casing that carries meaning never lives in an id.** A case-sensitive external key (a GitHub GraphQL node id, a
+  commit message slug shown to users) is its own property, which is already the rule: never parse values out of an
+  id. Ids display in lower case.
+- Two keys that differ only in case are already **one** RavenDB document today, so lowercasing makes no new
+  collision. It moves SQL to the same behaviour, so round 9's "natural ids unique ignoring case" needs no extra
+  index: a binary key over lowercase values is unique ignoring case by construction.
+- Every id the framework renders (URLs, JSON, client) is canonical, so the round trip is exact. A hand-typed
+  `ABC` in a URL is lowered by the route binder and found on every provider.
 - **SQL:** key columns and every FK column that points to one use a binary collation (PostgreSQL `"C"`, SQL Server
   `*_BIN2`); synchronize copies the key's collation onto the FK columns (SQL Server refuses an FK across collations).
-  Equality and prefix scans then get an index seek, with no `text_pattern_ops` and no `citext`. Natural keys are
-  `nvarchar(450)` (900 bytes, the clustered-key limit), and synchronize fails the build if a template can exceed it.
-- **Unique ignoring case:** `builds/Release` and `builds/release` are one document on RavenDB, so they must not be
-  two rows on SQL. Natural-kind tables get a unique index on the lower-cased key (SQL Server: a persisted computed
-  column `LOWER(key)`; PostgreSQL: an expression index on `lower(key)`). On RavenDB an insert stores with an empty
-  change vector ("must not exist"), which the server checks atomically. Both rejections become the same D30
-  validation message.
-- RavenDB still matches ids case-insensitively. That difference shows only for a hand-typed, non-canonical id: found
-  on RavenDB, 404 on SQL. It is documented.
-- `LoadStartingWith` over natural keys is `LIKE @prefix ESCAPE '\'`, with `%`, `_` and `\` escaped.
-- Conformance cases pin the canonical round trip, the rejection of a non-canonical `Id<T>` on store (also a
-  debug-time check), the prefix escaping, FK equality under the copied collation, and the case-variant rejection,
-  including non-ASCII variants (`LOWER()`, PostgreSQL's `lower()` and RavenDB's folding may differ there).
+  Equality and prefix scans then get an index seek, with no `text_pattern_ops`, no `citext` and no `LOWER()` index.
+  Natural keys are `nvarchar(450)` (900 bytes, the clustered-key limit), and synchronize fails the build if a
+  template can exceed it.
+- **RavenDB conventions** (`SparkStoreConfiguration.ApplySparkConventions`, the one place, set before
+  `Initialize()`): generated ids lowercase the prefix; `UseNaturalIds` lowers `GetId()`;
+  `TransformTypeCollectionNameToDocumentIdPrefix` lowers the name (RoleStore and HiLo read it); the HiLo id from
+  `ids.NewAsync` is lowered with its node tag (`people/1-a`). `FindCollectionName` is unchanged: it names the
+  `@collection`, not the id. Debug builds and a conformance test reject storing an id that is not lower case.
+- Code that builds an id prefix itself (`GetCollectionName(type) + "/"`) goes through `Id<T>` or the convention
+  above. Prefix checks that already compare `OrdinalIgnoreCase` (`SoftDeleteRawDeleteGuard.cs:36`) keep working.
+- **Collection collisions fail the model build (L1, round 10, unanimous).** Two entity classes whose collection
+  names are equal ignoring case, or one class name in two namespaces, share one RavenDB collection today (RavenDB
+  compares collection names ignoring case, and `FindCollectionName` ignores the namespace), and would share one
+  SQL Server table name under its default collation. Building the model fails on such a pair, on every provider.
+  Nothing checks this today.
+- `LoadStartingWith` over natural keys is `LIKE @prefix ESCAPE '\'`, with `%`, `_` and `\` escaped; the prefix is
+  lowered first.
+- Conformance cases pin the canonical round trip, `GetById` with an upper-case variant (found on every provider), the
+  rejection of a non-lowercase id on store, the prefix escaping, FK equality under the copied collation, and
+  non-ASCII keys (`ToLowerInvariant` runs in .NET, so the providers never fold case themselves).
+- Existing RavenDB data with mixed-case ids: O15.
 
 **D23: the id model, `Id<T>`.** ChatGPT, Claude, Gemini, Grok, Copilot and Mistral reached this consensus over five
 moderated rounds (2026-11-24). The owner accepted it ("probably good"). Rounds 6–9 checked it against the
@@ -351,8 +369,7 @@ public List<Id<Profession>> ProfessionIds { get; set; } = [];
    - There is no process-global state, because several test hosts share one process.
 3. **An id is canonicalised once, at creation, through the app model:** `ids.NewAsync<T>()`, `ids.Parse<T>(s)`, the
    model-scoped JSON converter and the route binder.
-   - The model normalises: `"042"` becomes `"42"`, Guid `D` becomes `N`, and a natural key goes through its
-     entity's normaliser (D7).
+   - The model normalises: `"042"` becomes `"42"`, Guid `D` becomes `N`, and the whole id is lowered (D7).
    - There is no public constructor and no implicit conversion. `FromTrusted` is internal, for the generator and
      the providers.
    - `default` is empty, and a store rejects it.
@@ -364,12 +381,13 @@ public List<Id<Profession>> ProfessionIds { get; set; } = [];
    - HiLo burns ranges on abandoned saves.
    - Natural-kind entities skip `NewAsync`: their key comes from the business key.
 6. **RavenDB:**
-   - A generated hidden `string? __DocumentId { get => Id.Value; set => Id = Id<T>.FromTrusted(value); }` is the
-     identity property, selected by `FindIdentityProperty`. RavenDB refuses a non-string identity member. There are
-     no store events.
-   - Int ids are RavenDB's **native HiLo**: `"people/1-A"` stays opaque, and the node tag is never stripped. On
-     RavenDB, "Integer" just means HiLo-generated. Sorting by id is alphabetical there (`people/10-A` sorts before
-     `people/2-A`), and that is documented.
+   - A generated hidden `string? __DocumentId { get => Id.Value; set => Id = Id<T>.FromTrusted(value.ToLowerInvariant()); }`
+     is the identity property, selected by `FindIdentityProperty`. RavenDB refuses a non-string identity member.
+     There are no store events. The setter lowers what RavenDB hands back, so a legacy mixed-case id reads as its
+     lowercase form (D7, O15).
+   - Int ids are RavenDB's **native HiLo**, lowered (D7): `"people/1-a"` stays opaque, and the node tag is never
+     stripped. On RavenDB, "Integer" just means HiLo-generated. Sorting by id is alphabetical there (`people/10-a`
+     sorts before `people/2-a`), and that is documented.
    - The stored JSON is unchanged: references stay strings.
 7. **Id lookups made by the framework itself** (detail load, reference resolution, row security, lookups) go through
    a provider hook: `Load` on RavenDB, key equality on EF. The commercial framework does the same: `Session.Load` on RavenDB, a
@@ -771,10 +789,26 @@ commercial-framework comparison added D30. The plan §3 has the log.
   `PurgeOnDelete`), or SQL Server temporal tables (PostgreSQL has none)?
 - **O14, hierarchical natural ids (resolved by the LLMs in rounds 6–9, awaiting the owner):** D23 rule 12 and D7.
   A string primary key with prefix scans, plus an explicit `Id<Parent>` property (a real FK) wherever a segment is
-  another entity's id. Ids are case-exact in canonical form, with binary key columns, and natural ids are unique
-  ignoring case.
+  another entity's id. Ids are lower case (D7, round 10), with binary key columns.
 - **O13, get-only persisted properties (open, next grilling):** for example `FullName`. Persist it as a computed column,
   recompute on save (as the commercial framework's RavenDB-only calculated attribute does), or keep it out of storage?
+- **O15, mixed-case ids in production RavenDB data (open, owner's call):** the owner wants a migration that lowercases
+  every document id in the production apps. All five LLMs that answered round 10 chose the alternative.
+  - **(a) No re-key.** RavenDB lookups already ignore case, and Spark lowers every id it reads (D23 rule 6), so the
+    app sees only lowercase ids. Reference fields inside documents need no patch either if RavenDB's string
+    equality in indexes ignores case (expected for both engines; to verify), and `LoadStartingWithAsync` must be
+    shown to ignore case on mixed-case ids.
+  - **(b) Re-key every document.** `Accounts/X` and `accounts/x` are the *same* RavenDB id, so the
+    `M_202609210900_ForgeQualifiedDocumentIds` pattern (put at the new id, then delete the old) would delete the
+    document. A case-only re-key needs a delete and a put of the same document in one transaction, and the
+    attachments, counters, time series and revisions moved by hand. Compare-exchange keys that hold ids must be
+    rewritten too.
+  - **Either way:** any write to the documents (the re-key, or a reference-field patch) gives them new change
+    vectors, so the messaging subscriptions would process them again. Pause the subscriptions and move their
+    positions past the migration, or don't write.
+  - Recommendation: (a), proven by a spike on a copy of the production `Coverage` database (S-ID4) that loads,
+    queries, prefix-scans and compares mixed-case ids through the lowercase `Id<T>`. Choose (b) only if the spike
+    fails, and spike the case-only re-key on the same copy first.
 
 ## 11. Out of scope
 

@@ -14,9 +14,9 @@ rounds, milestones and status. Branch `feat/536-sql-server-provider`, draft PR #
 - **Storage model (round 3):** a table per entity, mapped by EF Core. The model synchronize generates EF migrations;
   AsDetail collections are child tables; references are real FKs; the contract is typed; ids are `Id<T>` (D23).
   Breaking changes are allowed, with no backward compatibility.
-- **Next:** the owner's sign-off on O14 (rounds 6–9), then grilling round 5 on O10–O13 (change stamp, absent fields,
-  revisions, get-only persisted properties).
-  Then the gate spikes S-ID1, S-ID2, S2b, S3, S4 and S5 (§2).
+- **Next:** the owner's sign-off on O14 (rounds 6–9) and O15 (round 10), then grilling round 5 on O10–O13 (change
+  stamp, absent fields, revisions, get-only persisted properties).
+  Then the gate spikes S-ID1, S-ID2, S-ID4, S2b, S3, S4 and S5 (§2).
 - Local spike servers left running:
   - SQL Server: `SparkSpike536` on `localhost` and `localhost\MSSQLSERVER01`
   - Docker containers `spark536-pg` (`postgres:18`, 127.0.0.1:55432) and `spark536-maria` (`mariadb:11.8`,
@@ -36,6 +36,7 @@ Each spike ends with an entry in PRD §8, with evidence (numbers, file:line, a r
 | S13 | S1+S2 on **MariaDB 11.8** (Microting 11) | the same 18 shapes | ✅ PRD §8.2: 12/18, 5 silently wrong → **MariaDB deferred** |
 | **S-ID1** | **`Id<T>` on RavenDB** (D23 rule 6–7): <ul><li>the hidden pass-through `__DocumentId` (can it be non-public?) on load, query, streaming, subscriptions and lazy</li><li>query option (a): is a body field named `Id` treated specially by RQL or auto-indexes; is `RegisterQueryValueConverter` applied to `==`, each `Contains`/`In` element, `OrderBy` and projections; does the identity win over the body field on load; documents written outside the framework lack the field</li><li>then (b) the rewrite decorator, and (c) only if both fail</li><li>a re-save byte-diff on a production copy</li></ul> | DemoApp's `Person` round-trips with `Id<Person>`; author-written `Where(x => x.Id == v)` and `ids.Contains(x.Id)` return the right rows | gate |
 | **S-ID2** | **`Id<T>` on EF Core 11**, SQL Server + PostgreSQL + InMemory. Unverified so far (research from memory, 2026-11-24): <ul><li>converters on `Id<T>` as PK and FK</li><li>`UseHiLo` on a converted key: two inserts in one `SaveChanges`</li><li>`Contains` over converted values with 0/1/50/2000 ids (OPENJSON / `= ANY`; read the SQL)</li><li>a join entity and a child-table FK</li></ul> | all shapes run as SQL on both databases | gate |
+| **S-ID4** | **Mixed-case legacy ids under the lowercase rule** (O15), on a copy of the production `Coverage` database (never production itself): <ul><li>`LoadAsync`/batch load, `LoadStartingWithAsync` and an index equality query with lowercase ids against `Accounts/X`-style documents</li><li>the session identity map with a lowered `__DocumentId`, then `SaveChanges` (no duplicate, no casing change written)</li><li>Lucene and Corax reference-field equality ignoring case</li><li>only if (a) fails: a case-only re-key (delete + put in one batch) with attachments, and what the subscriptions see</li></ul> | (a) works without writing to any document, or (b) re-keys with every attachment kept | gate for O15 |
 | **S2b** | **The real `QueryExecutor` end to end** on an EF model generated from arbitrary Spark entities: TPH, JSON columns for `TranslatedString` (EF 10's `ToJson()` complex types; a `Dictionary` as a JSON column is unverified), child tables, join tables | the row filter (:1055), `In` (:664) and search pushdown (:2155) run as SQL on both databases | gate |
 | **S3** | **Schema:** the model synchronize generates EF migration files (D24) from a model built from metadata, through the public design-time services (`IMigrationsScaffolder`, `IMigrationsModelDiffer`, via `DesignTimeServicesBuilder`; never construct `MigrationsScaffolderDependencies`) | add a field, add a queryable field, add an AsDetail collection, add a reference, on both | gate |
 | **S4** | **Concurrency and keys:** the `bigint` version per table (D3); `""` = insert-only; the D14 etag on the wire; the typed contract (D27); case-insensitive natural keys and an escaped `LoadStartingWith` (D7); constraint errors become validation messages (D30) | the conformance tests for absent and stale versions pass, plus a natural-key case with `_` and `%`, plus a unique and an FK violation | gate |
@@ -51,7 +52,7 @@ Each spike ends with an entry in PRD §8, with evidence (numbers, file:line, a r
 | S17 | A provider-neutral test driver (`libs/testing`): a database per test class on a service container or a local instance; RavenDB keeps `RavenTestDriver` | one Spark.Tests class runs on all four providers | with M4 |
 | S18 | Null ordering (D4), with RavenDB's own order measured | a conformance case green on all four providers | with M4 |
 
-**Gates:** S-ID1, S-ID2, S2b, S3, S4 and S5 gate the provider work (M3). S6–S9 and S14–S16 can run in parallel
+**Gates:** S-ID1, S-ID2, S-ID4, S2b, S3, S4 and S5 gate the provider work (M3). S6–S9 and S14–S16 can run in parallel
 after them. ~~S13b~~ was dropped with MariaDB (O6), and S-ID3 (a compare-exchange HiLo) was dropped by the round 4
 consensus.
 
@@ -166,16 +167,30 @@ Mistral hit its message limit after round 7.
 
 Result: PRD D7 and D23 rules 7, 11 and 12. O14 waits for the owner.
 
+### Round 10: every id lower case (2026-11-24)
+
+The owner proposed that Spark lowercases every id when it creates, parses or reads one, so `GetById("ABC")` finds
+`abc` on every provider. Round 10 put it to the six conversations, together with a collection-collision guard (L1)
+and the choice for existing production ids (L2). ChatGPT, Claude, Gemini, Grok and Copilot agreed with the lowercase
+rule and L1. Mistral hit its message limit again; DeepSeek is still suspended.
+
+- The lowercase rule replaces round 9's lower-cased unique index and the per-entity normalisers (PRD D7).
+- L1: building the model fails when two entity types map to collection names that are equal ignoring case.
+- L2: all five chose (a), no re-key. Claude added that a reference-field patch re-triggers the subscriptions just as
+  a re-key would, and that `LoadStartingWithAsync` must be shown to ignore case on mixed-case ids. The owner leans
+  to (b), so this is open as O15, with spike S-ID4.
+
 ### Still open
 
 - O8 (the PostgreSQL 17 floor, probably moot)
 - O9 (bring-your-own `DbContext`, low priority)
 - **O10–O13 for round 5:** the change stamp, absent fields versus `NULL`, revisions, get-only persisted properties
 - **O14** (hierarchical natural ids): the LLM consensus of rounds 6–9 awaits the owner's sign-off
+- **O15** (mixed-case ids in production RavenDB data): (a) no re-key, or (b) a case-only re-key migration
 
 ## 4. Milestones
 
-1. **Gate spikes S-ID1, S-ID2, S2b, S3, S4, S5.** The PRD updated with their evidence.
+1. **Gate spikes S-ID1, S-ID2, S-ID4, S2b, S3, S4, S5.** The PRD updated with their evidence.
 2. **`Id<T>` and the typed contract on the existing providers** (D23, D27): RavenDB and InMemory.
    - the struct, the model registry (`ids.NewAsync/Parse`), the generator for `__DocumentId`, the JSON setup and the
      route binder
