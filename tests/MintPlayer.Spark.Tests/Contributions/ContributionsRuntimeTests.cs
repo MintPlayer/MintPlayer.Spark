@@ -494,7 +494,7 @@ public class ContributionsRuntimeTests : SparkTestDriver
                 UpdatedAt = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc),
             }, ContributionId("en", "Latn", Alice));
             await session.StoreAsync(new CoSongLyricsCurrent { TargetId = SongId, Language = "en", Script = "Latn", Text = "stale" }, CurrentId("en", "Latn"));
-            await session.StoreAsync(new ContributionShapeMarker { Shape = "0000000000000000" }, ContributionShapeMarker.IdFor(CoSongLyricsContributionMetadata.Instance));
+            await session.StoreAsync(new ContributionShapeMarker { Shape = "0000000000000000" }, ContributionShapeMarker.IdFor(CoSongLyricsContributionMetadata.Instance).Value);
         });
 
         await StartAsync(seedSong: false);
@@ -503,7 +503,7 @@ public class ContributionsRuntimeTests : SparkTestDriver
         current!.Text.Should().Be("truth", "the startup check rebuilt the current documents of the changed declaration");
         current.ContributionCount.Should().Be(1);
         current.ContributionId.Should().Be(ContributionId("en", "Latn", Alice));
-        (await ReadAsync<ContributionShapeMarker>(ContributionShapeMarker.IdFor(CoSongLyricsContributionMetadata.Instance)))!
+        (await ReadAsync<ContributionShapeMarker>(ContributionShapeMarker.IdFor(CoSongLyricsContributionMetadata.Instance).Value))!
             .Shape.Should().Be(CoSongLyricsContributionMetadata.Shape);
 
         // The marker now matches: a second start rebuilds nothing.
