@@ -398,7 +398,7 @@ Mistral was rate-limited.
   casing on save, S-ID1 G1), the prefix escaping, FK equality under the copied collation, and
   non-ASCII keys (`ToLowerInvariant` runs in .NET, so the providers never fold case themselves).
 - Existing RavenDB data with mixed-case ids is **not re-keyed** (O15): RavenDB lookups ignore case and Spark lowers
-  every id it reads. Spike S-ID4 proves it on a copy of a production database before M2.
+  every id it reads. Spike S-ID4 proved it on a copy of the development `Coverage` database (§8.5).
 
 **D23: the id model, `Id<T>`.** ChatGPT, Claude, Gemini, Grok, Copilot and Mistral reached this consensus over five
 moderated rounds (2026-11-24). The owner accepted it ("probably good"). Rounds 6–9 checked it against the
@@ -422,8 +422,8 @@ public List<Id<Profession>> ProfessionIds { get; set; } = [];
      server coordination (`SparkDocumentStoreConventions.cs`: HiLo "serializes writes behind a cluster-wide
      operation and makes ids guessable in sequence"). New Guids stay random (v4, `Guid.NewGuid()`), not UUIDv7: a v7
      id carries its creation time into every URL, and creation order is what the audit fields are for (`IAuditable`,
-     `CreatedAt`, in History). S-ID2 measures v4 against v7 insert cost on both databases' key column; only a large
-     measured difference reopens this.
+     `CreatedAt`, in History). **S-ID2 measured no large difference (§8.4):** 100k EF inserts take the same time
+     within noise on both databases. v7 only shrinks PostgreSQL's key index by 21%, so v4 stays.
    - The kind (Integer, Guid, Natural) is model metadata: an attribute gives the default, and the **app model** may
      override it, also for entities shipped in feature packages.
    - There is no process-global state, because several test hosts share one process.
@@ -473,10 +473,16 @@ public List<Id<Profession>> ProfessionIds { get; set; } = [];
      - (c) is not needed.
 8. **EF Core:**
    - Per-model value converters parse `"people/42"` into `int`/`bigint`/`Guid` columns, range-checked.
-   - Int keys use **HiLo** by default; IDENTITY is a documented opt-in that breaks rule 5.
-   - Guids are generated client-side: sequential on SQL Server, v7 on PostgreSQL.
-   - A ValueComparer is added only where a failing test shows EF needs one (a readonly struct over one string
-     compares correctly by default).
+   - Int keys use **HiLo** by default; IDENTITY is a documented opt-in that breaks rule 5. EF's `UseHiLo` works on
+     the converted `Id<T>` key on both databases and assigns the key at `Add`, before `SaveChanges` (S-ID2).
+   - Guids are generated client-side, v4 on every provider (rule 2), in a `uniqueidentifier`/`uuid` column. A string
+     key column costs 1.5× the pages on SQL Server and 1.9× the index on PostgreSQL (S-ID2).
+   - No ValueComparer was needed (S-ID2: PK, FK, nullable FK, join entity, owned child table, `FindAsync`).
+   - `Id<T>` implements `IComparable<Id<T>>` (ordinal). InMemory sorts by the CLR value and throws without it.
+     **Order by id differs per provider:** numeric for HiLo, `uniqueidentifier` byte order on SQL Server, alphabetical
+     on RavenDB. It is documented as unspecified for Guid ids.
+   - `ids.Contains(x.Id)` translates on every provider. EF 11 on SQL Server sends one parameter per id (2000 ids =
+     2000 parameters) and switches to `OPENJSON` past the 2100 limit; PostgreSQL binds one array, `= ANY(@ids)`.
 9. **One framework-owned JSON setup** covers every options instance: Newtonsoft for RavenDB documents, and
    System.Text.Json for MVC and SignalR. Writing an `Id<T>` needs no model; reading on the web validates through the
    model.
@@ -964,6 +970,94 @@ MariaDB's `JSON_VALUE` returns only scalars. The fork uses it for object and arr
   show both on synthetic documents only.
 - Still open for S-ID5: the collision build failure (L1) is model-build code, tested with M3's unit tests. It is not
   a RavenDB behaviour to spike.
+
+### 8.4 S-ID2: `Id<T>` on EF Core 11 (2026-11-24)
+
+**Setup.**
+- Code: `docs/relational_spike/sid2/Program.cs`. EF Core 11.0.0, Npgsql 11.0.0, InMemory 11.0.0.
+- Servers: SQL Server 2025 (`localhost\MSSQLSERVER01`) and 2022 (`localhost`), PostgreSQL 18 (`spark536-pg`),
+  InMemory.
+- The model has three id kinds:
+  - `Company`: Integer, HiLo → `bigint`.
+  - `Person`: Guid → `uniqueidentifier`/`uuid`.
+  - `Tag`: Natural → `nvarchar(400)`, `BIN2` collation on SQL Server.
+- Relations: a nullable converted FK `Person.CompanyId`, a join entity `PersonTag` with a composite converted key,
+  and an owned child table `PersonAddresses`.
+- The converters are what the generator would emit (`LongIdConverter`, `GuidIdConverter`, `KeyIdConverter`); the
+  prefix is a compile-time constant.
+
+**Results:** **25/25 on SQL Server 2025, SQL Server 2022, PostgreSQL 18 and InMemory.**
+
+| Shape | SQL Server | PostgreSQL |
+|---|---|---|
+| One `SaveChanges` with 2 HiLo, 2 natural, 2 Guid, 3 join and 2 child rows | ✓ | ✓ |
+| HiLo key assigned at `Add`, before `SaveChanges` (rule 5) | ✓ `companies/1`, `companies/2` | ✓ |
+| `x.Id == v`, `x.CompanyId == v`, `x.CompanyId == null`, natural key | `WHERE [p].[Id] = @annId` (`uniqueidentifier`) | `WHERE p."Id" = @annId` |
+| Join-entity navigation, reference navigation through the converted FK | `INNER`/`LEFT JOIN` on the columns | same |
+| `OrderBy(x => x.Id)`, projection `Select(x => new { x.Id, x.CompanyId })` | ✓ | ✓ |
+| `Contains` over 0 / 1 / 50 / 2000 / 5000 ids | `0 = 1` / `=` / `IN (@ids1..@ids50)` / 2000 parameters / `OPENJSON(@ids) WITH ([Value] uniqueidentifier)` | `= ANY (@ids)` from 50 up |
+| `Contains` over HiLo, nullable-FK and natural values | ✓ | ✓ |
+| Upper-case id input finds the row (`Id<T>` lowers before the converter) | ✓ | ✓ |
+| A dangling converted reference | FK violation (input for D30) | FK violation |
+
+InMemory first failed `OrderBy(x => x.Id)` ("At least one object must implement IComparable") until `Id<T>`
+implemented `IComparable<Id<T>>`.
+
+**Guid insert cost.** 100k rows through EF in `SaveChanges` batches of 1000, after a 100k warm-up, each flavour run
+twice:
+
+| Key | SQL Server 2025 | PostgreSQL 18 |
+|---|---|---|
+| v4 `uniqueidentifier`/`uuid` | 2.5 / 2.9 s, ~930 pages, 67% full | 3.4 / 7.6 s, PK index 3.9 MB |
+| v7 | 2.4 / 3.7 s, ~930 pages, 67% full | 3.5 / 3.6 s, PK index **3.1 MB** |
+| EF `SequentialGuidValueGenerator` | 2.5 / 2.7 s, ~930 pages, 67% full | not run |
+| v4 as `varchar` `people/{guid}` | 3.1 / 3.0 s, **~1360 pages** | 4.4 / 4.6 s, PK index **7.5 MB** |
+
+Measurement notes:
+- The first run, without the warm-up, put 6.9 s on v4 alone. That was warm-up, not the key.
+- On SQL Server every flavour, sequential included, leaves pages about 67% full with ~99% logical fragmentation.
+  EF's batched insert gains nothing from key order there.
+
+**Decisions:**
+- D23 rule 2 holds: v4. Rule 8: v4 on every provider, in a Guid column, not a string.
+- `Id<T>` implements `IComparable<Id<T>>`, and order by a Guid id is unspecified across providers.
+- No ValueComparer. EF's own HiLo meets rule 5.
+
+### 8.5 S-ID4: mixed-case legacy ids on a copy of a Coverage database (2026-11-24)
+
+**Setup.**
+- Code: `docs/relational_spike/sid4/Program.cs`.
+- The **local development** `Coverage` database (4677 documents, 29 collections) was exported with the client
+  smuggler (documents, indexes, identities, attachments) and imported into `spike_sid4`. The source was only read.
+- Every id is mixed-case:
+  - `Accounts/github/9629574`
+  - `Commits/github/{repo}/{sha}`
+  - `UserAccess/SparkUsers/{guid}`, a prefix that is not its collection name
+  - `ApiTokens/0000000000000003149-A`, HiLo with the node tag
+- References in bodies are mixed-case too (`Commit.Repository = "Repositories/github/…"`).
+- The entity classes stand in for the generator: a `[JsonIgnore]` id, a lowering `__DocumentId`, and every other
+  field through `[JsonExtensionData]`. `CommitDoc.Repository` lowers on read, as an `Id<Repository>` converter
+  would.
+
+**Results: 15/15.**
+
+| # | Check | Result |
+|---|---|---|
+| L1 | Batch `LoadAsync` of every document by its lowercased id | 4677/4677 found, `Id` lowercase |
+| L2 | Original, lower and upper casing in one session | one instance, 50/50 |
+| L3 | `LoadStartingWithAsync(lowercase prefix)` | all 26 prefixes return every document |
+| L4 | `Repository = $v` with the original, lower and upper value: the existing `Commits/ByRepository`, an auto-index, an explicit **Lucene** index and an explicit **Corax** index | all agree, 4/4 values each |
+| L5 | Load and save twice (add, then remove a field) all 248 documents of 7 collections (Accounts, Repositories, Commits, ApiTokens, SparkUsers, UserAccesses, MergeQueueEntries) | no duplicate (4677 → 4677); **0 ids changed casing**; `@flags` unchanged; the only body difference is `Commits.Repository` lowered ×32 |
+| L6 | After the re-save lowered every `Repository`, a query with the original casing on Lucene and Corax | still 4/4 |
+
+**Decisions:**
+- **O15 (a) holds: no re-key.** RavenDB keeps the stored id casing on save. Loads, prefix scans and reference
+  equality ignore case on both engines.
+- References written through `Id<T>` become lowercase on the next save of their document. That is the only byte
+  change, and queries are blind to it (L6), so it needs no migration.
+- **To rerun on a production copy:** `dotnet run -- <database>` against an imported production export. The checks
+  never write to the source. This run used the development database, which has every id shape the production one
+  has; a production export is the owner's call.
 
 ## 9. Stale in earlier drafts
 
