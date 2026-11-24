@@ -416,6 +416,13 @@ public List<Id<Profession>> ProfessionIds { get; set; } = [];
    per-entity id structs and no per-provider aliases.
 2. **It wraps only the canonical string `"{collection}/{key}"`.** Equality, hash and `ToString` are ordinal string
    operations. The key is everything after the *first* `/`, so a hierarchical natural key may contain `/` (O14).
+   - **Without an attribute the kind is Guid** (owner, 2026-11-24), as every generated id is today. Integer (HiLo) is
+     an opt-in. A Guid id can't be counted or guessed, which the existence-hiding rules rely on, and needs no
+     server coordination (`SparkDocumentStoreConventions.cs`: HiLo "serializes writes behind a cluster-wide
+     operation and makes ids guessable in sequence"). New Guids stay random (v4, `Guid.NewGuid()`), not UUIDv7: a v7
+     id carries its creation time into every URL, and creation order is what the audit fields are for (`IAuditable`,
+     `CreatedAt`, in History). S-ID2 measures v4 against v7 insert cost on both databases' key column; only a large
+     measured difference reopens this.
    - The kind (Integer, Guid, Natural) is model metadata: an attribute gives the default, and the **app model** may
      override it, also for entities shipped in feature packages.
    - There is no process-global state, because several test hosts share one process.
