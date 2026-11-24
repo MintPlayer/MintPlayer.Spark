@@ -6,25 +6,43 @@ rounds, milestones and status. Branch `feat/536-sql-server-provider`, draft PR #
 
 ## 1. Status (2026-11-24)
 
-- **Docs and spikes only, no product code yet.**
-  - Spikes S1, S2, S12 and S13 are done. Since round 3 they are history for the storage model (PRD §8).
-  - Grilling rounds 1–4, the commercial-framework comparison and the LLM rounds 6–9 on it are done (§3).
+- **M1 (the gate spikes) is done; there is no product code yet.** Everything so far is docs and throwaway spikes
+  under `docs/relational_spike/`, each with its evidence in PRD §8.
+  - All gate spikes are done (2026-11-24): S2b, S3, S4, S5, S19, S20, S-ID1, S-ID2, S-ID4, and S-ID5's RavenDB
+    half. PRD §8.3–8.12 has the evidence.
+  - S1, S2, S12 and S13 are done too. Since round 3 they are history for the storage model.
+  - The latest spike prototype is `docs/relational_spike/s2b/`: an EF implementation of the storage seam with views,
+    versions and D30. It has 64/64 tests green on both databases, and its README says how to rerun it.
+- **Every decision is made; nothing is open** (§3):
+  - grilling rounds 1–5
+  - the commercial-framework comparison and the LLM rounds 6–9
+  - O1–O17 (O8 and O9 on 2026-11-24)
 - **Scope:** SQL Server (2022, 2025) and PostgreSQL (17 and later; CI on 18, O8). MariaDB is deferred (O6). Tier 4
   (identity_provider, dashboards) is in. The demo is a new `apps/SqlDemo`.
-- **Storage model (round 3):** a table per entity, mapped by EF Core. The model synchronize generates EF migrations;
-  AsDetail collections are child tables; references are real FKs; the contract is typed; ids are `Id<T>` (D23).
-  Breaking changes are allowed, with no backward compatibility.
-- **Next:** M2. O8 and O9 are decided, so nothing is open. Every gate spike is done: S2b, S3, S4, S5, S19, S20, S-ID1, S-ID2, S-ID4 and
-  S-ID5's RavenDB half (PRD §8.3–8.12, 2026-11-24). The two upstream bugs S3 and S19 found have pull requests upstream and
-  workarounds in D24 and D33 (§5). Grilling round 5 decided O10–O13
-  (2026-11-24). O16 and O17 are decided (2026-11-24; O17's evidence is PRD §8.9). O8 and O9 are open, both low
-  priority.
-- Local spike servers left running:
-  - SQL Server: `SparkSpike536` on `localhost` and `localhost\MSSQLSERVER01`
-  - Docker containers `spark536-pg` (`postgres:18`, 127.0.0.1:55432) and `spark536-maria` (`mariadb:11.8`,
-    127.0.0.1:53306)
+- **Storage model (round 3):**
+  - a table per entity, mapped by EF Core
+  - the model synchronize generates EF migrations
+  - AsDetail collections are child tables, and references are real FKs
+  - the contract is typed, and ids are `Id<T>` (D23)
+  - views come from neutral `SparkView` declarations (D32, S5)
 
-  Remove the containers with `docker rm -f spark536-pg spark536-maria`. The MariaDB one is no longer needed.
+  Breaking changes are allowed, with no backward compatibility.
+- **Upstream:** S3 and S19 found two EF bugs. Their pull requests, dotnet/efcore#39784 and npgsql/efcore.pg#4163,
+  are open with the CLA signed. The workarounds are in D24 (`FreshSnapshotMigrationsAssembly`) and D33
+  (`AdvisoryLockHistoryRepository`), and they go once the fixes ship (§5).
+- **Next: M2,** `Id<T>` and the typed contract on RavenDB and InMemory (§4 item 2).
+  - Order: the core pieces in `libs/` first (the struct, the model registry, the generator for `__DocumentId`, JSON,
+    the route binder), then the feature libraries, then the apps.
+  - It touches the three production apps (CodeCoverage, SeoTester, MintPlayer). RavenDB stays green at the end of the
+    milestone, and D23's pass-through `__DocumentId` keeps the stored document ids unchanged (S-ID4: no re-key).
+  - The S2b query-seam items (`Search` takes words; captured values) and the S5 view declarations are M3's
+    (§4 item 3), not M2's.
+- **Local spike servers left running:**
+  - SQL Server: `SparkSpike536` on `localhost` and `localhost\MSSQLSERVER01`
+  - Docker `spark536-pg` (`postgres:18`, 127.0.0.1:55432). M4 needs it again.
+  - Docker `spark536-maria` (`mariadb:11.8`, 127.0.0.1:53306) is no longer needed: `docker rm -f spark536-maria`.
+
+  The PostgreSQL password is in `docs/relational_spike/Program.cs`. The spikes read it from `SPARK536_PG_PASSWORD`.
 
 ## 2. Spikes
 
@@ -210,7 +228,8 @@ None. O8 and O9 were decided on 2026-11-24 (owner, PRD §10):
 
 ## 4. Milestones
 
-1. **Gate spikes S-ID1, S-ID2, S-ID4, S-ID5, S2b, S3, S4, S5, S19, S20.** The PRD updated with their evidence.
+1. ✅ **Gate spikes S-ID1, S-ID2, S-ID4, S-ID5, S2b, S3, S4, S5, S19, S20.** The PRD updated with their evidence.
+   Done 2026-11-24 (PRD §8.3–8.12).
 2. **`Id<T>` and the typed contract on the existing providers** (D23, D27): RavenDB and InMemory.
    - the struct, the model registry (`ids.NewAsync/Parse`), the generator for `__DocumentId`, the JSON setup and the
      route binder

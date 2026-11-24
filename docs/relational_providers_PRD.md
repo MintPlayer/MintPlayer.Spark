@@ -5,7 +5,8 @@ Issue: [#536](https://github.com/MintPlayer/MintPlayer.Spark/issues/536). Builds
 "Storage-agnostic core", §8). The spikes, milestones, grilling rounds and status are in
 [`relational_providers_plan.md`](relational_providers_plan.md).
 
-Status: **plan, after a second investigation and three grilling rounds.** In scope: **SQL Server and PostgreSQL.**
+Status (2026-11-24): **every decision is made (§10) and every gate spike is done (§8.3–8.12); implementation starts
+at milestone M2** (plan §1, §4). In scope: **SQL Server and PostgreSQL** (PostgreSQL 17 and later, O8).
 MariaDB was investigated and spiked, then **dropped for now** (owner, 2026-11-24, §10 O6). The relational core keeps
 a dialect seam, so it can return once a maintained EF Core 11 provider exists.
 - 2026-11-19: first rewrite, SQL Server only, spikes S1/S2 (§8.1). The file was `docs/sql_server_provider_PRD.md`.
@@ -20,6 +21,9 @@ a dialect seam, so it can return once a maintained EF Core 11 provider exists.
   becomes typed. Breaking changes are allowed, with no backward compatibility. The id model `Id<T>` (D23) came from a
   moderated consensus of six LLMs. A comparison with a commercial framework's relational providers added D30, `LIKE`-first search,
   and framework id lookups through a provider hook (§3).
+- 2026-11-24, later: grilling round 5 and the owner decided O10–O17 and D31–D35. The gate spikes S-ID1/2/4/5,
+  S2b, S3, S4, S5, S19 and S20 proved the design (§8.3–8.12), and two upstream EF bugs got pull requests and
+  workarounds (D24, D33). O8 and O9 closed the open list.
 
 ## 1. Goal
 
@@ -224,7 +228,9 @@ found; the spike ran on them anyway. The SQL pin is `Microsoft.Data.SqlClient` 7
 GHSA-2fmv-rv2c-59x7). The repository has no `Directory.Packages.props`.
 
 CI images: `mcr.microsoft.com/mssql/server:2025-*`, `postgres:18` and `mariadb:11.8` all run as GitHub Actions
-service containers. The spikes pulled and ran `postgres:18` and `mariadb:11.8` on Docker Desktop.
+service containers. The spikes pulled and ran `postgres:18` and `mariadb:11.8` on Docker Desktop. With MariaDB
+deferred (O6) and the PostgreSQL floor at 17 (O8), CI uses `mssql/server:2025-*`, `postgres:18`, and `postgres:17`
+for the D31 behaviour tests only.
 
 ## 3. Design direction
 
@@ -1044,10 +1050,11 @@ MariaDB's `JSON_VALUE` returns only scalars. The fork uses it for object and arr
   guard on every store would trip on each legacy save, which O15 (a) allows.
 - The decorator sits behind Spark's session (`ISparkSession.Query<T>`). Author code on a raw `IAsyncDocumentSession`
   bypasses it; an analyzer flags `x.Id` in such queries (M3).
-- Still open for S-ID4: the byte-diff and the queries on a **copy of the production `Coverage` database**. C9 and P2
-  show both on synthetic documents only.
-- Still open for S-ID5: the collision build failure (L1) is model-build code, tested with M3's unit tests. It is not
-  a RavenDB behaviour to spike.
+- Left for S-ID4 at the time: the byte-diff and the queries on a **copy of the production `Coverage` database**.
+  C9 and P2 show both on synthetic documents only. **Done since: §8.5,** 15/15 on a copy of the development
+  database; a rerun on a production export is optional.
+- Left for S-ID5: the collision build failure (L1) is model-build code, tested with M3's unit tests. It is not a
+  RavenDB behaviour to spike.
 
 ### 8.4 S-ID2: `Id<T>` on EF Core 11 (2026-11-24)
 
@@ -1574,8 +1581,9 @@ Round 3 replaced all of these (D1, D23–D27).
 
 ## 10. Open questions for the owner
 
-Grilling round 2 (owner, 2026-11-24) answered O1, O2, O3 and O6. Round 3 reversed D1 and added D23–D27, and the
-commercial-framework comparison added D30. The plan §3 has the log.
+**All answered (2026-11-24): none is open.** Grilling round 2 (owner) answered O1, O2, O3 and O6. Round 3 reversed
+D1 and added D23–D27, and the commercial-framework comparison added D30. Round 5 decided O10–O13. The owner
+decided O14–O17, and O8 and O9 last. The plan §3 has the log.
 
 - ✅ **O1, one PR:** **one pull request** (rule 8), draft PR #697.
 - ✅ **O2, Tier 4:** **both identity_provider and dashboards are ported** in this work. S9 (samples table, rollups,
