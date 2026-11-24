@@ -68,9 +68,11 @@ internal sealed partial class OrganizationWebhookOwnerProvider : IWebhookOwnerPr
 
         using var session = store.OpenAsyncSession();
         var loaded = await session.LoadAsync<Organization>(ids, cancellationToken);
-        return loaded.Values
-            .Where(o => o?.Id is not null)
-            .Select(o => new WebhookOwnerDescription(Kind, o!.Id!, o.Name))
+        // Keyed by the membership's own OrganizationId: an organization created before #536 keeps "Organizations/…"
+        // there while its loaded Id is lower case.
+        return loaded
+            .Where(p => p.Value is not null)
+            .Select(p => new WebhookOwnerDescription(Kind, p.Key, p.Value!.Name))
             .OrderBy(o => o.DisplayName, StringComparer.CurrentCultureIgnoreCase)
             .ToList();
     }

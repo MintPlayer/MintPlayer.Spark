@@ -49,8 +49,8 @@ internal sealed class OrganizationInterceptors(SparkOrganizations organizations,
         entity.CreatedAtUtc = timeProvider.GetUtcNow().UtcDateTime;
 
         // The creator's Owner membership commits with the organization, or neither does.
-        var membership = SparkOrganizations.NewMembership(entity.Id, user, OrganizationRole.Owner, entity.CreatedAtUtc.Value);
-        await session.StoreAsync(membership, string.Empty, membership.Id);
+        var membership = SparkOrganizations.NewMembership(entity.Id.Value, user, OrganizationRole.Owner, entity.CreatedAtUtc.Value);
+        await session.StoreAsync(membership, string.Empty, membership.Id.Value);
         reader.Invalidate(userId);
     }
 
@@ -131,7 +131,7 @@ internal sealed class OrganizationMembershipInterceptors(OrganizationMembershipR
         {
             null => (OrganizationRole?)null,
             var userId when string.Equals(userId, target.UserId, StringComparison.OrdinalIgnoreCase) => target.Role,
-            var userId => (await session.LoadAsync<OrganizationMembership>(OrganizationMembership.IdFor(userId, organizationId)))?.Role,
+            var userId => (await session.LoadAsync<OrganizationMembership>(OrganizationMembership.IdFor(userId, organizationId).Value))?.Role,
         };
         if (role != OrganizationRole.Owner)
             throw new SparkValidationException("Only an Owner can give or take the Owner role.", nameof(OrganizationMembership.Role));

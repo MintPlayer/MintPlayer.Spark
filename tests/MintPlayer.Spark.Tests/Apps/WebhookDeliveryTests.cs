@@ -518,7 +518,7 @@ public class WebhookDeliveryTests : AppsTestHost
         var bob = await SeedUserAsync("bob");
         var cid = await SeedUserAsync("cid");
         var org = await SeedOrganizationAsync("Acme", ann, (bob, OrganizationRole.Admin), (cid, OrganizationRole.Member));
-        var owner = WebhookOwner.Organization(org.Id!);
+        var owner = WebhookOwner.Organization(org.Id.Value);
 
         var (endpointId, _) = await CreateEndpointAsync(bob.Id!, owner);
         (await SendAsync("/spark/apps/webhooks/endpoints", new { ownerKind = owner.Kind, ownerKey = owner.Key, url = ReceiverUrl, events = new[] { "*" } }, cid.Id)).Status

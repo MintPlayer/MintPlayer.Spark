@@ -33,16 +33,16 @@ public class OrganizationAccountTests : OrganizationsTestHost
     public async Task Signing_in_creates_the_personal_organization_once()
     {
         var ann = await SeedUserAsync("ann");
-        (await LoadAsync<Organization>(Organization.PersonalIdFor(ann.Id!))).Should().BeNull();
+        (await LoadAsync<Organization>(Organization.PersonalIdFor(ann.Id!).Value)).Should().BeNull();
 
         await SignInAsync(ann);
         await SignInAsync(ann);
 
-        var personal = await LoadAsync<Organization>(Organization.PersonalIdFor(ann.Id!));
+        var personal = await LoadAsync<Organization>(Organization.PersonalIdFor(ann.Id!).Value);
         personal.Should().NotBeNull("the sign-in hook created it (D21)");
         personal!.IsPersonal.Should().BeTrue();
         personal.Name.Should().Be("ann");
-        (await MembersAsync(personal.Id!)).Should().ContainSingle().Which.Role.Should().Be(OrganizationRole.Owner);
+        (await MembersAsync(personal.Id.Value)).Should().ContainSingle().Which.Role.Should().Be(OrganizationRole.Owner);
     }
 
     private async Task DeleteAccountAsync(SparkUser user)
@@ -65,17 +65,17 @@ public class OrganizationAccountTests : OrganizationsTestHost
         var solo = await SeedOrganizationAsync("Solo", ann);
         var shared = await SeedOrganizationAsync("Shared", ann, (bob, OrganizationRole.Owner));
         var member = await SeedOrganizationAsync("Member", bob, (ann, OrganizationRole.Member));
-        await SeedNoteAsync("kept", member.Id);
+        await SeedNoteAsync("kept", member.Id.Value);
 
         await DeleteAccountAsync(ann);
 
-        (await LoadAsync<Organization>(personal.Id!)).Should().BeNull("the personal organization goes with the account (D26)");
-        (await LoadAsync<Organization>(solo.Id!)).Should().BeNull("nobody else was in it");
-        sites.Deleted.Should().BeEquivalentTo([personal.Id!, solo.Id!]);
-        (await LoadAsync<Organization>(shared.Id!)).Should().NotBeNull("another Owner remains");
-        (await LoadAsync<Organization>(member.Id!)).Should().NotBeNull();
-        (await MembersAsync(shared.Id!)).Select(m => m.UserId).Should().Equal(bob.Id);
-        (await MembersAsync(member.Id!)).Select(m => m.UserId).Should().Equal(bob.Id);
+        (await LoadAsync<Organization>(personal.Id.Value)).Should().BeNull("the personal organization goes with the account (D26)");
+        (await LoadAsync<Organization>(solo.Id.Value)).Should().BeNull("nobody else was in it");
+        sites.Deleted.Should().BeEquivalentTo([personal.Id.Value, solo.Id.Value]);
+        (await LoadAsync<Organization>(shared.Id.Value)).Should().NotBeNull("another Owner remains");
+        (await LoadAsync<Organization>(member.Id.Value)).Should().NotBeNull();
+        (await MembersAsync(shared.Id.Value)).Select(m => m.UserId).Should().Equal(bob.Id);
+        (await MembersAsync(member.Id.Value)).Select(m => m.UserId).Should().Equal(bob.Id);
         (await Organizations().GetMembershipsAsync(ann.Id!)).Should().BeEmpty();
     }
 
@@ -93,7 +93,7 @@ public class OrganizationAccountTests : OrganizationsTestHost
             await session.StoreAsync(new OrganizationMembership
             {
                 Id = OrganizationMembership.IdFor(bob.Id!, annsPersonal.Id!),
-                OrganizationId = annsPersonal.Id,
+                OrganizationId = annsPersonal.Id.Value,
                 UserId = bob.Id,
                 UserName = bob.UserName,
                 Role = OrganizationRole.Member,
@@ -104,9 +104,9 @@ public class OrganizationAccountTests : OrganizationsTestHost
 
         await DeleteAccountAsync(bob);
 
-        (await LoadAsync<Organization>(annsPersonal.Id!)).Should().NotBeNull("it is ann's, not bob's");
+        (await LoadAsync<Organization>(annsPersonal.Id.Value)).Should().NotBeNull("it is ann's, not bob's");
         sites.Deleted.Should().BeEmpty();
-        (await MembersAsync(annsPersonal.Id!)).Select(m => m.UserId).Should().Equal(ann.Id);
+        (await MembersAsync(annsPersonal.Id.Value)).Select(m => m.UserId).Should().Equal(ann.Id);
     }
 
     [Fact]
@@ -120,8 +120,8 @@ public class OrganizationAccountTests : OrganizationsTestHost
         var delete = () => DeleteAccountAsync(ann);
 
         await delete.Should().ThrowAsync<SparkValidationException>().WithMessage("*Acme*");
-        (await LoadAsync<Organization>(personal.Id!)).Should().NotBeNull("nothing is deleted before every check passed");
-        (await Organizations().GetRoleAsync(acme.Id!, ann.Id!)).Should().Be(OrganizationRole.Owner);
+        (await LoadAsync<Organization>(personal.Id.Value)).Should().NotBeNull("nothing is deleted before every check passed");
+        (await Organizations().GetRoleAsync(acme.Id.Value, ann.Id!)).Should().Be(OrganizationRole.Owner);
     }
 
     [Fact]

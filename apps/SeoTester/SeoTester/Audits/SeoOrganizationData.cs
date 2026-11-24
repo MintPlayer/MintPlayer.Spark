@@ -22,7 +22,9 @@ internal sealed class SeoOrganizationData(IDocumentStore store) : IOrganizationD
     public async Task<object?> ExportAsync(Organization organization, CancellationToken cancellationToken)
     {
         using var session = store.OpenAsyncSession();
-        var organizationId = organization.Id;
+        // A string: the rows' OrganizationId is one. RavenDB compares it ignoring case, so rows of an organization
+        // created before #536 ("Organizations/…") still match its lower-case loaded id.
+        var organizationId = organization.Id.Value;
         var sites = await StreamAsync(session, session.Query<Site>().Where(s => s.OrganizationId == organizationId), cancellationToken);
         var runs = await StreamAsync(session, session.Query<AuditRun>().Where(r => r.OrganizationId == organizationId), cancellationToken);
         return new
@@ -41,7 +43,7 @@ internal sealed class SeoOrganizationData(IDocumentStore store) : IOrganizationD
             var query = new IndexQuery
             {
                 Query = $"from {RqlIdentifier.Collection(collection)} where OrganizationId = $organizationId",
-                QueryParameters = new Parameters { ["organizationId"] = organization.Id },
+                QueryParameters = new Parameters { ["organizationId"] = organization.Id.Value },
             };
             var operation = await store.Operations.SendAsync(new DeleteByQueryOperation(query), token: cancellationToken);
             await operation.WaitForCompletionAsync(TimeSpan.FromMinutes(5));

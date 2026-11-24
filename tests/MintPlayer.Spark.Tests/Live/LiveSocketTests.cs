@@ -34,7 +34,7 @@ public class LiveSocketTests : OrganizationsTestHost
     {
         var ann = await SeedUserAsync("ann");
         var org = await SeedOrganizationAsync("Acme", ann);
-        var note = await SeedNoteAsync("v1", org.Id);
+        var note = await SeedNoteAsync("v1", org.Id.Value);
         return (ann, org, note);
     }
 
@@ -156,14 +156,14 @@ public class LiveSocketTests : OrganizationsTestHost
         var (ann, org, note) = await SeedAsync();
         var carl = await SeedUserAsync("carl");
         var carlsOrg = await SeedOrganizationAsync("Initech", carl);
-        var hidden = await SeedNoteAsync("hidden", carlsOrg.Id);
+        var hidden = await SeedNoteAsync("hidden", carlsOrg.Id.Value);
         await using var client = await ConnectAsync(ann.Id);
         await client.SubscribeQueryAsync("q", NotesQuery());
         (await client.NextAsync("result", "q")).GetProperty("result").GetProperty("totalItems").GetInt32().Should().Be(1);
 
         // Same collection, other organization: re-evaluated, diffed, and nothing visible changed.
         await WriteAsync(hidden.Id!, n => n.Title = "hidden 2");
-        await SeedNoteAsync("hidden new", carlsOrg.Id);
+        await SeedNoteAsync("hidden new", carlsOrg.Id.Value);
         (await client.TryNextAsync(TimeSpan.FromSeconds(2))).Should().BeNull("a hidden row's change, or its existence, must not be observable");
 
         // The socket was watching all along: a visible write arrives.
@@ -184,7 +184,7 @@ public class LiveSocketTests : OrganizationsTestHost
             await session.StoreAsync(new OrganizationMembership
             {
                 Id = OrganizationMembership.IdFor(bob.Id!, org.Id!),
-                OrganizationId = org.Id,
+                OrganizationId = org.Id.Value,
                 UserId = bob.Id,
                 UserName = bob.UserName,
                 Role = OrganizationRole.Viewer,
@@ -202,7 +202,7 @@ public class LiveSocketTests : OrganizationsTestHost
 
         using (var session = Store.OpenAsyncSession())
         {
-            session.Delete(OrganizationMembership.IdFor(bob.Id!, org.Id!));
+            session.Delete(OrganizationMembership.IdFor(bob.Id!, org.Id).Value);
             await session.SaveChangesAsync();
         }
 
@@ -244,7 +244,7 @@ public class LiveSocketTests : OrganizationsTestHost
     {
         var (ann, _, _) = await SeedAsync();
         var carl = await SeedUserAsync("carl");
-        var carlsNote = await SeedNoteAsync("carl's", (await SeedOrganizationAsync("Initech", carl)).Id);
+        var carlsNote = await SeedNoteAsync("carl's", (await SeedOrganizationAsync("Initech", carl)).Id.Value);
         await using var client = await ConnectAsync(ann.Id);
 
         // Objects of a live type: a missing id and a row of another organization are both gone.
@@ -279,13 +279,13 @@ public class LiveSocketTests : OrganizationsTestHost
     public async Task A_new_row_is_added_and_a_deleted_row_removed_from_the_viewers_page()
     {
         var (ann, org, note) = await SeedAsync();
-        await SeedNoteAsync("b", org.Id);
-        await SeedNoteAsync("c", org.Id);
+        await SeedNoteAsync("b", org.Id.Value);
+        await SeedNoteAsync("c", org.Id.Value);
         await using var client = await ConnectAsync(ann.Id);
         await client.SubscribeQueryAsync("q", NotesQuery());
         (await client.NextAsync("result", "q")).GetProperty("result").GetProperty("totalItems").GetInt32().Should().Be(3);
 
-        var added = await SeedNoteAsync("d", org.Id);
+        var added = await SeedNoteAsync("d", org.Id.Value);
         var patch = (await client.NextAsync("patch", "q")).GetProperty("patch");
         patch.GetProperty("upsert").EnumerateArray().Select(i => i.GetProperty("id").GetString()).Should().Equal(added.Id);
         patch.GetProperty("order").EnumerateArray().Select(i => i.GetString()).Should().Contain(added.Id);
@@ -305,8 +305,8 @@ public class LiveSocketTests : OrganizationsTestHost
     public async Task An_update_changes_the_page_the_subscription_follows()
     {
         var (ann, org, _) = await SeedAsync();
-        await SeedNoteAsync("b", org.Id);
-        await SeedNoteAsync("c", org.Id);
+        await SeedNoteAsync("b", org.Id.Value);
+        await SeedNoteAsync("c", org.Id.Value);
         await using var client = await ConnectAsync(ann.Id);
         await client.SubscribeQueryAsync("q", new { queryId = NotesQueryId.ToString(), take = 2, sortColumns = new[] { new { property = "Title", direction = "asc" } } });
         var first = (await client.NextAsync("result", "q")).GetProperty("result");

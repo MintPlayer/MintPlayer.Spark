@@ -22,10 +22,11 @@ public enum OrganizationInvitationKind
 [RequiresOrganizationRole("New", OrganizationRole.Admin)]
 [RequiresOrganizationRole("Edit", OrganizationRole.Owner)]
 [RequiresOrganizationRole("Delete", OrganizationRole.Admin)]
-public class OrganizationInvitation : IOrganizationOwned, IExpiring
+[IdKind(SparkIdKind.Natural)]
+public partial class OrganizationInvitation : IOrganizationOwned, IExpiring
 {
-    /// <summary><c>OrganizationInvitations/{guid}</c>.</summary>
-    public string? Id { get; set; }
+    /// <summary><c>organizationinvitations/{guid}</c>.</summary>
+    public Id<OrganizationInvitation> Id { get; set; }
 
     /// <inheritdoc />
     public string? OrganizationId { get; set; }
@@ -58,5 +59,5 @@ public class OrganizationInvitation : IOrganizationOwned, IExpiring
     public DateTime? ExpiresAtUtc { get; set; }
 
     /// <summary>A new id.</summary>
-    public static string NewId() => "OrganizationInvitations/" + Guid.NewGuid().ToString("N");
+    public static Id<OrganizationInvitation> NewId() => Id<OrganizationInvitation>.FromTrusted("organizationinvitations/" + Guid.NewGuid().ToString("N"));
 }

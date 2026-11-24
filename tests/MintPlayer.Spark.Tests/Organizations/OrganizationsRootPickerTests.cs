@@ -81,8 +81,8 @@ public class OrganizationsRootPickerTests : OrganizationsTestHost
 
         var callers = new (string Label, string? UserId, HttpStatusCode Status, string Ids)[]
         {
-            ("member", vic.Id, HttpStatusCode.OK, acme.Id!),
-            ("owner", own.Id, HttpStatusCode.OK, other.Id!),
+            ("member", vic.Id, HttpStatusCode.OK, acme.Id.Value),
+            ("owner", own.Id, HttpStatusCode.OK, other.Id.Value),
             ("no organization", nob.Id, HttpStatusCode.OK, ""),
             ("anonymous", null, HttpStatusCode.Unauthorized, "-"),
         };

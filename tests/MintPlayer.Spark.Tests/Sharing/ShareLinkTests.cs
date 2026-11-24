@@ -291,13 +291,13 @@ public class ShareLinkTests : OrganizationsTestHost
         var acme = await SeedOrganizationAsync("Acme", ann, (max, OrganizationRole.Member));
         var globex = await SeedOrganizationAsync("Globex", out_);
         using var session = Store.OpenAsyncSession();
-        var note = new ShNote { Id = "ShNotes/1", Title = "Launch plan", Secret = "budget 1M", OrganizationId = acme.Id };
-        var other = new ShNote { Id = "ShNotes/2", Title = "Other", Secret = "x", OrganizationId = globex.Id };
+        var note = new ShNote { Id = "ShNotes/1", Title = "Launch plan", Secret = "budget 1M", OrganizationId = acme.Id.Value };
+        var other = new ShNote { Id = "ShNotes/2", Title = "Other", Secret = "x", OrganizationId = globex.Id.Value };
         await session.StoreAsync(note);
         await session.StoreAsync(other);
-        await session.StoreAsync(new ShComment { Id = "ShComments/1", NoteId = note.Id, OrganizationId = acme.Id, Text = "first", Author = "ann" });
-        await session.StoreAsync(new ShComment { Id = "ShComments/2", NoteId = note.Id, OrganizationId = acme.Id, Text = "second", Author = "max" });
-        await session.StoreAsync(new ShComment { Id = "ShComments/3", NoteId = other.Id, OrganizationId = globex.Id, Text = "elsewhere", Author = "out" });
+        await session.StoreAsync(new ShComment { Id = "ShComments/1", NoteId = note.Id, OrganizationId = acme.Id.Value, Text = "first", Author = "ann" });
+        await session.StoreAsync(new ShComment { Id = "ShComments/2", NoteId = note.Id, OrganizationId = acme.Id.Value, Text = "second", Author = "max" });
+        await session.StoreAsync(new ShComment { Id = "ShComments/3", NoteId = other.Id, OrganizationId = globex.Id.Value, Text = "elsewhere", Author = "out" });
         await session.SaveChangesAsync();
         return (ann, max, out_, note, other);
     }

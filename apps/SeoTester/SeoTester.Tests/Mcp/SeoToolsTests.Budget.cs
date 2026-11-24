@@ -84,7 +84,7 @@ public partial class SeoToolsTests
             }, user);
             await session.StoreAsync(new Organization { Name = "Budget " + suffix, IsPersonal = false, CreatedBy = user, CreatedAtUtc = DateTime.UtcNow }, organization);
             await session.StoreAsync(new OrganizationMembership { OrganizationId = organization, UserId = user, UserName = name, Role = OrganizationRole.Owner, JoinedAtUtc = DateTime.UtcNow },
-                OrganizationMembership.IdFor(user, organization));
+                OrganizationMembership.IdFor(user, organization).Value);
             await session.SaveChangesAsync();
         }
 

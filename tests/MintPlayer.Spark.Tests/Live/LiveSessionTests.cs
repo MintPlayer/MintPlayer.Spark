@@ -64,7 +64,7 @@ public class LiveSessionTests(ITestOutputHelper output) : OrganizationsTestHost
             o.SlidingExpiration = false;
         });
         var ann = await UserWithPasswordAsync("ann");
-        var note = await SeedNoteAsync("v1", (await SeedOrganizationAsync("Acme", ann)).Id);
+        var note = await SeedNoteAsync("v1", (await SeedOrganizationAsync("Acme", ann)).Id.Value);
         var cookie = await SignInAsync(ann.UserName!);
 
         await using (var client = await ConnectAsync(cookie))
@@ -99,7 +99,7 @@ public class LiveSessionTests(ITestOutputHelper output) : OrganizationsTestHost
         // The push only brings the conflict forward; the server keeps the guarantee. An edit page that ignored
         // the banner and saves its old base must get the 409 and the merge, never overwrite.
         var ann = await SeedUserAsync("ann");
-        var note = await SeedNoteAsync("v1", (await SeedOrganizationAsync("Acme", ann)).Id);
+        var note = await SeedNoteAsync("v1", (await SeedOrganizationAsync("Acme", ann)).Id.Value);
         await using var client = await LiveTestClient.ConnectAsync(Factory.CreateWebSocketClient(), Server,
             request => request.Headers[OgPrincipalStartupFilter.Header] = ann.Id);
         await client.SubscribePoAsync("n", NoteTypeId.ToString(), note.Id!);

@@ -136,7 +136,7 @@ public partial class SeoToolsTests
                 UserName = name, NormalizedUserName = name.ToUpperInvariant(), Email = name + "@example.com",
                 NormalizedEmail = (name + "@example.com").ToUpperInvariant(), EmailConfirmed = true, SecurityStamp = Guid.NewGuid().ToString("N"),
             }, user);
-            await session.StoreAsync(new OrganizationMembership { OrganizationId = Acme, UserId = user, UserName = name, Role = OrganizationRole.Member, JoinedAtUtc = DateTime.UtcNow }, membership);
+            await session.StoreAsync(new OrganizationMembership { OrganizationId = Acme, UserId = user, UserName = name, Role = OrganizationRole.Member, JoinedAtUtc = DateTime.UtcNow }, membership.Value);
             await session.SaveChangesAsync();
         }
         var site = await SeedSiteAsync(host, Acme);
@@ -147,7 +147,7 @@ public partial class SeoToolsTests
         var before = await CallSettledAsync(client, "seotester_run_summary", new { site = site.Id }, token);
         using (var session = host.Database.OpenAsyncSession())
         {
-            session.Delete(membership);
+            session.Delete(membership.Value);
             await session.SaveChangesAsync();
         }
         var after = await SeoMcp.CallAsync(client, "seotester_run_summary", new { site = site.Id }, token);

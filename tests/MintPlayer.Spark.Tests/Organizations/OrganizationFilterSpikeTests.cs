@@ -69,7 +69,7 @@ public class OrganizationFilterSpikeTests(ITestOutputHelper output) : Organizati
                         UserName = "u" + n,
                         Role = OrganizationRole.Viewer,
                         JoinedAtUtc = DateTime.UtcNow,
-                    }, OrganizationMembership.IdFor(userId, OrgId(o)));
+                    }, OrganizationMembership.IdFor(userId, OrgId(o)).Value);
                 }
             }
         }
