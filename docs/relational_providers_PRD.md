@@ -319,8 +319,8 @@ MintPlayer.Spark.Abstractions
 - The same rule holds for every other decision: the absent-field rewrite (O11) lives in the RavenDB provider, the
   id conventions (D7) in each provider's registration, and the view rendering (D32) in each provider.
 
-**D35 (the owner's direction, 2026-11-24; the shape below is the proposal, O16 open): the test harness splits the
-way the runtime does.** `MintPlayer.Spark.Testing` is RavenDB-only today: it references `RavenDB.TestDriver` and
+**D35 (the owner's direction, 2026-11-24; the provider choice is O16, decided: the referenced provider package
+decides): the test harness splits the way the runtime does.** `MintPlayer.Spark.Testing` is RavenDB-only today: it references `RavenDB.TestDriver` and
 `MintPlayer.Spark.RavenDB`, `SparkTestDriver` and `SparkSharedDatabase` derive from `RavenTestDriver`, and
 `SparkEndpointFactory` takes an `IDocumentStore` (`SparkEndpointFactory.cs:116-117`). 255 test files derive from
 those drivers. The relational providers have no equivalent of `RavenTestDriver`; EF Core ships none.
@@ -1392,16 +1392,30 @@ commercial-framework comparison added D30. The plan §3 has the log.
   - Recommendation: (a), proven by a spike on a copy of the production `Coverage` database (S-ID4) that loads,
     queries, prefix-scans and compares mixed-case ids through the lowercase `Id<T>`. Choose (b) only if the spike
     fails, and spike the case-only re-key on the same copy first.
-- **O16, how a test project picks its database (open, D35):**
-  - **(a) An assembly attribute**, `[assembly: SparkTestDatabase<SqlServerTestDatabase>]`. A test project names its
-    provider once, as `Program.cs` does (D34).
-  - **(b) A generic base class** per test class, `SparkTestDriver<TDatabase>`. Explicit, but a class cannot run on
-    another provider without a subclass per provider (the conformance suite's pattern today, §2.4).
-  - **(c) An environment variable only.**
-  - Recommendation: (a), with `SPARK_TEST_DATABASE` overriding it, so CI runs the neutral framework suites once per
-    provider as a matrix while app test projects stay on their own provider. Trap: a project that overrides the
-    variable must reference every provider package it may select, and a typo must fail at startup, never fall back
-    silently.
+- **O16, how a test project picks its database type (decided 2026-11-24, owner: (d)):** the question is the
+  provider (RavenDB, SQL Server, PostgreSQL), never the database name, which stays the driver's business as on
+  master (`RavenTestDriver.GetDocumentStore` names each database off a process-wide counter,
+  `SparkTestDriver.cs:20`). On master nothing chooses: the drivers derive from `RavenTestDriver`. D35 moves them
+  into a neutral package, so the provider has to come from somewhere.
+  - **(d) The provider package the test project references decides.** Each `MintPlayer.Spark.Testing.<Provider>`
+    ships `build/MintPlayer.Spark.Testing.<Provider>.targets` that adds an `AssemblyAttribute` item, so the build
+    writes `[assembly: SparkTestDatabase(typeof(SqlServerTestDatabase))]` into the test assembly. An app's test
+    project references one provider package, as it already does, and writes nothing. A project that references
+    several, in practice Spark's own neutral suites, gets several attributes and must set `SPARK_TEST_DATABASE`;
+    the CI matrix sets it per leg.
+  - The neutral driver fails at startup, naming the candidates, when there are several attributes and no variable,
+    when the variable names a provider the project does not reference, and when there is no attribute at all. It
+    never falls back to a default: a SQL Server matrix leg that silently ran PostgreSQL would pass.
+  - It is `build/`, not `buildTransitive/`: the test project references the testing package directly. The runtime
+    packages (`MintPlayer.Spark.SqlServer`, …) ship no build files for this. They reach a test project only through
+    the testing package, so their targets would have to be `buildTransitive/` and would also load into every
+    production app. The owner's option of having them expose MSBuild properties stays available if a real need
+    appears.
+  - Rejected: (a) the same attribute written by hand, one line (d) generates; (b) a generic base class per test
+    class, `SparkTestDriver<TDatabase>`, which repeats the choice in every class and needs a subclass per provider
+    (the conformance suite's pattern today, §2.4); (c) the environment variable only, which makes a local run depend
+    on something set per machine.
+  - Checked in S17: the generated attribute, and the three startup failures.
 - **O17, where the migration scaffolding lives (decided 2026-11-24, owner, evidence §8.9):** a separate
   **`MintPlayer.Spark.Relational.Design`** package that stays in `bin` and out of every publish. Core's
   synchronize command loads it by name, the way the EF tools find a provider's design-time services (an assembly

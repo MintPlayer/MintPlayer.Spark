@@ -16,8 +16,8 @@ rounds, milestones and status. Branch `feat/536-sql-server-provider`, draft PR #
   Breaking changes are allowed, with no backward compatibility.
 - **Next:** the gate spikes S5, S4 and S2b (§2). S3, S19, S20, S-ID1, S-ID2, S-ID4 and S-ID5's RavenDB half are
   done (PRD §8.3–8.8, 2026-11-24). Grilling round 5 decided O10–O13
-  (2026-11-24). O17 is decided (2026-11-24, PRD §8.9). O8 and O9 are open, both low priority, and so is O16 (the
-  test harness's provider choice, D35).
+  (2026-11-24). O16 and O17 are decided (2026-11-24; O17's evidence is PRD §8.9). O8 and O9 are open, both low
+  priority.
 - Local spike servers left running:
   - SQL Server: `SparkSpike536` on `localhost` and `localhost\MSSQLSERVER01`
   - Docker containers `spark536-pg` (`postgres:18`, 127.0.0.1:55432) and `spark536-maria` (`mariadb:11.8`,
@@ -51,7 +51,7 @@ Each spike ends with an entry in PRD §8, with evidence (numbers, file:line, a r
 | S11 | Attachments (low priority) | in or out | later |
 | S15 | `ISparkAtomicValues` and leases: a table with compare-and-swap, against advisory locks under connection pooling and loss | <ul><li>cron: one occurrence fires once across two hosts, and poisoned values are reclaimed</li><li>migrations: one runner, and takeover after a killed host</li></ul> | with S6 |
 | S16 | Aggregate tables for moderation's 3 map-reduce indexes: updated in the same transaction from the loaded old row; set-based writes refused on aggregated collections | moderation's reputation tests on both | with Tier 3 |
-| S17 | **The split test harness** (PRD D35): <ul><li>`ISparkTestDatabaseProvider` in a neutral `MintPlayer.Spark.Testing`; `.RavenDB` keeps `RavenTestDriver`; `.SqlServer` finds a server from a connection string, then LocalDB on Windows, then Testcontainers</li><li>`.PostgreSql` defaults to `MysticMind.PostgresEmbed` (no Docker, like `RavenTestDriver`): PostgreSQL 18 binaries available from zonky, the cold start including the first download, cleanup of processes and data folders on Windows, and its licence (permissive only)</li><li>the cost of a database per class: create + migrate on SQL Server; a `TEMPLATE` clone on PostgreSQL; against a Respawn reset of a shared database</li><li>the provider choice (O16)</li></ul> | one Spark.Tests class runs on RavenDB, InMemory, SQL Server and PostgreSQL without a line of provider code; the per-class cost is measured on both SQL databases | with M4 |
+| S17 | **The split test harness** (PRD D35): <ul><li>`ISparkTestDatabaseProvider` in a neutral `MintPlayer.Spark.Testing`; `.RavenDB` keeps `RavenTestDriver`; `.SqlServer` finds a server from a connection string, then LocalDB on Windows, then Testcontainers</li><li>`.PostgreSql` defaults to `MysticMind.PostgresEmbed` (no Docker, like `RavenTestDriver`): PostgreSQL 18 binaries available from zonky, the cold start including the first download, cleanup of processes and data folders on Windows, and its licence (permissive only)</li><li>the cost of a database per class: create + migrate on SQL Server; a `TEMPLATE` clone on PostgreSQL; against a Respawn reset of a shared database</li><li>the provider choice (O16, decided): each provider testing package's `build/*.targets` generates `[assembly: SparkTestDatabase(…)]`; with several, `SPARK_TEST_DATABASE` picks one; several without the variable, an unreferenced provider in it, or none at all fails at startup</li></ul> | one Spark.Tests class runs on RavenDB, InMemory, SQL Server and PostgreSQL without a line of provider code; the per-class cost is measured on both SQL databases | with M4 |
 | S18 | Null ordering (D4), with RavenDB's own order measured | a conformance case green on all four providers | with M4 |
 | **S19** | **Applying migrations** (PRD D33): <ul><li>EF's migration lock with two instances starting together, on SQL Server and PostgreSQL</li><li>the order framework schema → app migrations → data migrations, and a failure halfway (EF 10: a transaction per migration)</li><li>`--spark-migration-script` writing the framework and app migrations as one idempotent script, run twice</li><li>`ApplyMigrations=false` refusing to start on a pending migration</li></ul> | one instance migrates and the other waits; the script applies once and is a no-op the second time | ✅ PRD §8.7: EF's lock is not enough (Npgsql releases it per migration; neither covers `CREATE DATABASE`), so D33 adds Spark's session guard in `master`/`postgres`; it passes on both. Failure halfway, the script and the pending check pass |
 | **S20** | **Commands as keyed DI registrations** (PRD D34): `GetRequiredKeyedService<ISparkCommand>(flag)` after `Build()`; `--spark-synchronize-model` moved after `Build()` constructs no document store or `DbContext` and opens no connection (no database reachable); `--spark-help` lists the keys | synchronize runs with no database; only the requested command is constructed | ✅ PRD §8.6: 12/12; help reads the descriptors; last registration wins; core commands take only contracts with a core default |
@@ -205,7 +205,6 @@ source-generated from one id template per entity (PRD D23 rule 12).
 
 - O8 (the PostgreSQL 17 floor, probably moot)
 - O9 (bring-your-own `DbContext`, low priority)
-- O16 (how a test project picks its database, D35)
 
 ## 4. Milestones
 
@@ -328,3 +327,7 @@ during development (TDD red→green). The full suite runs once at the end, via p
     at startup), a package `.props` file (its `Update` runs before the reference exists) and a Debug-only
     `Condition` (the line belongs at publish; in-repo apps still use one, since a `ProjectReference` never sees a
     package's targets).
+  - O16 decided by the owner: the provider testing package the test project references decides, through an
+    `[assembly: SparkTestDatabase(…)]` its `build/*.targets` generates; `SPARK_TEST_DATABASE` picks one when a
+    project references several (Spark's neutral suites, the CI matrix), and every ambiguity fails at startup.
+    The runtime provider packages ship no build files for it.
