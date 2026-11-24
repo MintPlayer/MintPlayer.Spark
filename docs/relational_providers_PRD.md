@@ -495,6 +495,57 @@ sites). With D23 the type is inferred: `Delete(person.CompanyId)` can only delet
 **Full-text search: `LIKE` first, an FTS dialect opt-in later** (the commercial-framework comparison, owner 2026-11-24).
 - The commercial framework runs production apps on SQL with `LIKE` only. It has no `CONTAINS`, `FREETEXT` or `tsvector` anywhere.
 - So `Search()` on relational databases translates to `LIKE` (escaped). S10 moves off the critical path.
+- **Search ignores case on both databases** (found 2026-11-24). SQL Server's `LIKE` follows the column's collation,
+  which is case-insensitive for ordinary columns (only key and FK columns are binary, D7). PostgreSQL's `LIKE` is
+  case-sensitive under every collation, so its dialect emits `ILIKE`. A D31 test pins both.
+
+**D31 (owner, 2026-11-24): tests pin the database behaviour each decision relies on.** Every decision in this PRD
+assumes something about SQL Server or PostgreSQL. A test per assumption, named after the decision it protects, runs
+against the real database, so a new server version or a changed setting fails a named test instead of corrupting
+data quietly. They live in the relational test project, one class per dialect (`SqlServerBehaviourTests`,
+`PostgreSqlBehaviourTests`), and run in CI on the service containers that S17 already needs (§9 CI budget). They
+test the databases, not Spark; the conformance suite tests Spark on top of them. The first set:
+
+| Decision | Pinned behaviour |
+|---|---|
+| D6, O10 | A sequence value read by a cursor skips a row that commits later (the failure that ruled sequences out); reading below `MIN_ACTIVE_ROWVERSION()` / `pg_snapshot_xmin` does not skip it with two interleaved transactions (S14) |
+| D6, O10 | `rowversion` changes on every update; the PostgreSQL trigger's `xid8` does too; `@@DBTS` and `pg_current_xact_id()` move on any commit |
+| D7 | Under the binary collation `'abc' <> 'ABC'` and the key index serves an equality and a `LIKE 'prefix%'` seek; SQL Server refuses an FK between columns of different collations; a 451-character `nvarchar` key is refused (900-byte limit) |
+| D7 | `LIKE ... ESCAPE '\'` treats escaped `%`, `_` and `\` literally |
+| Search | `LIKE` on an ordinary SQL Server column ignores case; PostgreSQL's `LIKE` does not and `ILIKE` does |
+| D5 | `datetimeoffset` and `timestamptz` compare instants: 12:00+02:00 equals 10:00Z |
+| D3 | `UPDATE ... WHERE Version = @v` reports 0 rows on a stale version |
+| D30 | The error numbers and SQLSTATEs D30 maps are the ones the servers raise for unique, FK, not-null and length violations |
+| O11 | `ADD COLUMN ... NOT NULL DEFAULT` fills existing rows with the default; a nullable column added later is `NULL` |
+| O12 | `OUTPUT` / `RETURNING` hands back the updated rows inside the same transaction, and a rollback discards both |
+| O13 | EF with `PreferFieldDuringConstruction` reads the getter on save, so a change to `FirstName` rewrites `FullName` |
+| S12 | `jsonb` reorders keys and collapses duplicates (harmless because the dirty check diffs the load snapshot; the test keeps that assumption visible) |
+| D32 | A plain view returns a committed write at once (no staleness); a view over an AsDetail child table returns a row per child |
+
+**D32 (owner, 2026-11-24): `[GenerateIndex]` renders an SQL view and indexes from the same source generator.**
+- **How a view compares to a RavenDB index.** Both are a named projection defined in code and queried like a
+  collection (`Query<T, TIndex>`), with computed fields. The differences:
+  - A RavenDB index is computed ahead and stored, and updated **asynchronously**, so results can be stale
+    (`WaitForNonStaleResults`). A plain SQL view is a stored query, computed when read, so it is always consistent and
+    `WaitForConsistencyAsync` is a no-op.
+  - Speed comes from indexes on the underlying table columns, not from the view. Materialised forms are not chosen:
+    SQL Server indexed views have heavy restrictions (`SCHEMABINDING`, no outer joins, deterministic expressions
+    only), and PostgreSQL's materialised views need a manual `REFRESH`.
+  - `[Search]` analyzers don't exist; search is `LIKE`/`ILIKE` (above).
+  - A RavenDB index can index inside a collection. A view over an AsDetail child table (D25) returns a row per child,
+    so a generated view never joins a child table; an index over child values becomes an `EXISTS` filter on the query.
+  - Many generated indexes need no view at all on SQL. Person's `FullName` is already a stored column (O13), so its
+    `[GenerateIndex]` becomes indexes on the filtered and sorted columns. A view is generated only for what the table
+    lacks, such as a value read from a referenced entity (a join).
+- **One package, which checks the references** (the owner's preference, already the S5 plan above). The generator
+  emits the neutral view declaration always, the RavenDB index only when RavenDB's types are referenced (the
+  existing check, `GenerateIndexGenerator.cs:155`), and the EF mapping (`ToView`, column indexes) only when the
+  relational provider's types are referenced. A RavenDB-only app compiles no EF code.
+- **The SQL text is not written by the generator.** A compiler plugin can't run EF's translator, and rewriting C# into
+  two SQL dialects by hand would duplicate it. The generator emits the declaration as a LINQ expression; model
+  synchronize has EF translate it per dialect and writes `CREATE VIEW` and `CREATE INDEX` into the generated EF
+  migration (D24), where the developer reviews the SQL.
+- S5 proves it on DemoApp's `VPerson` and one view with a join, on both databases.
 
 **Unknown fields.** A row has only the mapped columns, so undeclared fields are lost, as on InMemory. RavenDB keeps
 them (§8.1 finding 6). The conformance suite pins each provider's behaviour. **Absent field versus `NULL`** (D16): a

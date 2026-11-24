@@ -39,7 +39,7 @@ Each spike ends with an entry in PRD §8, with evidence (numbers, file:line, a r
 | **S2b** | **The real `QueryExecutor` end to end** on an EF model generated from arbitrary Spark entities: TPH, JSON columns for `TranslatedString` (EF 10's `ToJson()` complex types; a `Dictionary` as a JSON column is unverified), child tables, join tables | the row filter (:1055), `In` (:664) and search pushdown (:2155) run as SQL on both databases | gate |
 | **S3** | **Schema:** the model synchronize generates EF migration files (D24) from a model built from metadata, through the public design-time services (`IMigrationsScaffolder`, `IMigrationsModelDiffer`, via `DesignTimeServicesBuilder`; never construct `MigrationsScaffolderDependencies`) | add a field, add a queryable field, add an AsDetail collection, add a reference, on both | gate |
 | **S4** | **Concurrency and keys:** the `bigint` version per table (D3); `""` = insert-only; the D14 etag on the wire; the typed contract (D27); case-insensitive natural keys and an escaped `LoadStartingWith` (D7); constraint errors become validation messages (D30) | the conformance tests for absent and stale versions pass, plus a natural-key case with `_` and `%`, plus a unique and an FK violation | gate |
-| **S5** | Neutral views: one declaration, rendered by RavenDB as an index, by relational databases as an SQL view or indexes, and by InMemory as LINQ | DemoApp's `VPerson` (computed `FullName`) from one declaration on InMemory + both databases | gate |
+| **S5** | Neutral views: one declaration, rendered by RavenDB as an index, by relational databases as an SQL view or indexes, and by InMemory as LINQ | DemoApp's `VPerson` (computed `FullName`) and one view with a join, from one declaration on InMemory + both databases; synchronize writes the EF-translated `CREATE VIEW` into the migration (PRD D32) | gate |
 | S6 | Neutral contracts: <ul><li>`SetExpiry`</li><li>`ISparkStoreLock`</li><li>`ISparkAtomicValues`</li><li>`StreamAsync`</li><li>`Reserve/Release` (in the `SaveChanges` transaction)</li><li>`UpdateWhereAsync`/`DeleteWhereAsync`</li><li>`PatchAppend`</li></ul>(design-principles: deep modules, one contract per concern) | settings, mail (expiry) and cron (atomic value) green on all providers | after the gates |
 | S7 + S14 | **Subscriptions:** <ul><li>a per-subscription cursor over the `ChangeStamp`, below the safe horizon (D6; where the stamp lives is O10)</li><li>tombstones for deletes</li><li>a neutral predicate instead of RQL</li><li>a lease replacing `WaitForFree`</li></ul> | <ul><li>two interleaved transactions never skip a row (the D6 horizon)</li><li>a new subscription sees the backlog</li><li>a message survives a host restart</li><li>two hosts never process one message</li><li>subscription_worker's tests on both</li></ul> | after S6 |
 | S8 | Revisions (O12): written by **every** write path, including `UpdateWhere`/`PatchAppend` and sweepers; revision id = `Version`; per-collection retention and `PurgeOnDelete` | history's tests on both; a soft-delete restore; a set-based update leaves a revision | after S6 and O12 |
@@ -229,7 +229,8 @@ source-generated from one id template per entity (PRD D23 rule 12).
    - the `SparkDataProtectionStorage` rename
    - the `SparkStoreRequirement` default hint
    - the RavenDB wording in messages
-   - the generators' neutral declarations (with S5)
+   - the generators' neutral declarations (with S5): one `MintPlayer.Spark.SourceGenerators` package that renders the
+     RavenDB index or the EF view mapping depending on the referenced provider (PRD D32)
 4. **`MintPlayer.Spark.Relational`, `MintPlayer.Spark.SqlServer`, `MintPlayer.Spark.PostgreSql`** (D2):
    - `UseSqlServer()`, `UsePostgreSql()` and their `SparkStoreProviders` constants
    - the EF model built from the Spark model, the migration generator (D24), child and join tables (D25, D26)
@@ -238,9 +239,13 @@ source-generated from one id template per entity (PRD D23 rule 12).
    - constraint-error translation (D30)
 5. **Conformance:** the two relational subclasses, plus new cases on all four providers:
    - row security, `DateTimeOffset`, paging and null ordering
-   - `Id<T>` round trips, case-insensitive natural keys and escaped prefixes
+   - `Id<T>` round trips, lowercase ids (an upper-case `GetById` is found everywhere) and escaped prefixes
    - expiry, atomic values, leases, reservations and streaming
    - **a wrong-rows guard for every query shape**
+   - the absent-field rewrite for nullable members, and absent-field sorting and distinct values (O11)
+   - **the database behaviour tests (PRD D31):** `SqlServerBehaviourTests` and `PostgreSqlBehaviourTests`, one test per
+     assumption, named after the decision it protects. Each one is written when its milestone first relies on it,
+     not all at once.
 
    This comes with the neutral test driver (S17).
 6. **Tier 1 and Tier 2 ports** (PRD §5), plus the lookup lost-update fix.
