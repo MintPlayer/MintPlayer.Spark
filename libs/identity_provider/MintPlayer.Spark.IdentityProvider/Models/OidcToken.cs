@@ -1,3 +1,5 @@
+using MintPlayer.Spark.Abstractions;
+
 namespace MintPlayer.Spark.IdentityProvider.Models;
 
 /// <summary>
@@ -11,9 +13,9 @@ namespace MintPlayer.Spark.IdentityProvider.Models;
 /// <see cref="ExpiresAt"/> itself.
 /// </para>
 /// </summary>
-public class OidcToken
+public partial class OidcToken
 {
-    public string? Id { get; set; }
+    public Id<OidcToken> Id { get; set; }
     public string ApplicationId { get; set; } = string.Empty;
     /// <summary>The <see cref="OidcGrant"/> the token was issued under; empty for machine tokens.</summary>
     public string AuthorizationId { get; set; } = string.Empty;

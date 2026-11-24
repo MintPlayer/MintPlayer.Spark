@@ -124,7 +124,7 @@ public class OidcConsentWithdrawalTests(OidcSharedHost host) : OidcTestHost(host
         var (browser, tokens) = await EstablishGrantAsync(app, UserEmail("seam"), ["openid", "api.read", "offline_access"]);
         var refreshToken = tokens.GetProperty("refresh_token").GetString()!;
 
-        await WithdrawAsync(browser, app.Id!);
+        await WithdrawAsync(browser, app.Id.Value);
 
         var refreshed = await RefreshAsync(app, refreshToken);
 
@@ -154,7 +154,7 @@ public class OidcConsentWithdrawalTests(OidcSharedHost host) : OidcTestHost(host
 
         (await ActiveAsync()).Should().BeTrue("before withdrawal it is a live token");
 
-        await WithdrawAsync(browser, app.Id!);
+        await WithdrawAsync(browser, app.Id.Value);
 
         (await ActiveAsync()).Should().BeFalse(
             "a resource server that asks us must not be told a withdrawn token is good — this is "
@@ -172,14 +172,14 @@ public class OidcConsentWithdrawalTests(OidcSharedHost host) : OidcTestHost(host
         await SeedUserAsync(UserEmail("rewiden"));
 
         var (browser, _) = await EstablishGrantAsync(app, UserEmail("rewiden"), ["openid", "api.read", "offline_access"]);
-        await WithdrawAsync(browser, app.Id!);
+        await WithdrawAsync(browser, app.Id.Value);
 
         // The client comes back asking for the least it can.
         await ObtainCodeAsync(app, UserEmail("rewiden"), ["openid"]);
 
         using var session = Store.OpenAsyncSession();
         var grant = await session.LoadAsync<OidcGrant>(
-            OidcAuthorizationReferenceProbe.DocumentId(await SubjectOfAsync(UserEmail("rewiden")), app.Id!));
+            OidcAuthorizationReferenceProbe.DocumentId(await SubjectOfAsync(UserEmail("rewiden")), app.Id.Value));
 
         grant.GrantedScopes.Should().Equal(["openid"],
             "the merge only ever adds and the list was never reset, so reinstatement used to hand "
@@ -197,7 +197,7 @@ public class OidcConsentWithdrawalTests(OidcSharedHost host) : OidcTestHost(host
         await SeedUserAsync(UserEmail("implicit"));
 
         var (browser, _) = await EstablishGrantAsync(app, UserEmail("implicit"), ["openid", "api.read", "offline_access"]);
-        await WithdrawAsync(browser, app.Id!);
+        await WithdrawAsync(browser, app.Id.Value);
 
         var authorize = await browser.GetAsync(
             $"/connect/authorize?client_id={app.ClientId}"
@@ -218,7 +218,7 @@ public class OidcConsentWithdrawalTests(OidcSharedHost host) : OidcTestHost(host
 
         var (browser, tokens) = await EstablishGrantAsync(app, UserEmail("csrf"), ["openid", "api.read", "offline_access"]);
 
-        var result = await WithdrawAsync(browser, app.Id!, includeAntiforgery: false);
+        var result = await WithdrawAsync(browser, app.Id.Value, includeAntiforgery: false);
         result.Should().Be("400");
 
         var refreshed = await RefreshAsync(app, tokens.GetProperty("refresh_token").GetString()!);
@@ -241,7 +241,7 @@ public class OidcConsentWithdrawalTests(OidcSharedHost host) : OidcTestHost(host
         // valid antiforgery token — then they post the *victim's* application id with it.
         var (attacker, _) = await EstablishGrantAsync(attackerApp, UserEmail("attacker"), ["openid", "offline_access"]);
         await Store.WaitForIndexingAsync();
-        await WithdrawAsync(attacker, victimApp.Id!);
+        await WithdrawAsync(attacker, victimApp.Id.Value);
 
         var app = victimApp;
 
@@ -304,7 +304,7 @@ public class OidcConsentWithdrawalTests(OidcSharedHost host) : OidcTestHost(host
         var token = await AntiforgeryFromApplicationsPageAsync(browser);
         var form = new Dictionary<string, string>
         {
-            ["application_id"] = app.Id!,
+            ["application_id"] = app.Id.Value,
             ["__RequestVerificationToken"] = token,
         };
 
@@ -358,7 +358,7 @@ public class OidcConsentWithdrawalTests(OidcSharedHost host) : OidcTestHost(host
         var (browser, tokens) = await EstablishGrantAsync(app, UserEmail("epoch"), ["openid", "api.read", "offline_access"]);
         var refreshToken = tokens.GetProperty("refresh_token").GetString()!;
 
-        await WithdrawAsync(browser, app.Id!);
+        await WithdrawAsync(browser, app.Id.Value);
 
         // Stand in for a token the sweep missed.
         using (var session = Store.OpenAsyncSession())
@@ -401,7 +401,7 @@ public class OidcConsentWithdrawalTests(OidcSharedHost host) : OidcTestHost(host
             })));
 
         var (browser, _) = await EstablishGrantAsync(interactive, UserEmail("machine"), ["openid", "offline_access"]);
-        await WithdrawAsync(browser, interactive.Id!);
+        await WithdrawAsync(browser, interactive.Id.Value);
 
         var introspection = await BodyAsync(await Client.PostAsync("/connect/introspect",
             new FormUrlEncodedContent(new Dictionary<string, string>
@@ -431,7 +431,7 @@ public class OidcConsentWithdrawalTests(OidcSharedHost host) : OidcTestHost(host
         var (browser, tokens) = await EstablishGrantAsync(app, UserEmail("revocable"), ["openid", "offline_access"]);
         var accessToken = tokens.GetProperty("access_token").GetString()!;
 
-        await WithdrawAsync(browser, app.Id!);
+        await WithdrawAsync(browser, app.Id.Value);
 
         // Put it back to valid, as the sweep would have left it had it missed the token.
         var jti = JsonDocument.Parse(
@@ -492,7 +492,9 @@ internal static class OidcAuthorizationReferenceProbe
 {
     public static string DocumentId(string subject, string applicationId)
     {
-        var key = System.Text.Encoding.UTF8.GetBytes($"{subject.Length}:{subject}|{applicationId}");
+        // The application id in its pre-#536 casing, as OidcGrantReference hashes it.
+        var applicationKey = "OidcApplications/" + applicationId[(applicationId.IndexOf('/') + 1)..];
+        var key = System.Text.Encoding.UTF8.GetBytes($"{subject.Length}:{subject}|{applicationKey}");
         return "OidcGrants/" + Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(key));
     }
 }

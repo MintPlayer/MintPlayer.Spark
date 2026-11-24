@@ -78,20 +78,20 @@ public class OidcOperationsTests(OidcSharedHost host) : OidcTestHost(host), ICla
     private async Task<OidcGrant?> GrantAsync(Issued issued)
     {
         using var session = Store.OpenAsyncSession();
-        return await session.LoadAsync<OidcGrant>(OidcGrantReference.DocumentId(issued.User.Id!, issued.App.Id!));
+        return await session.LoadAsync<OidcGrant>(OidcGrantReference.DocumentId(issued.User.Id!, issued.App.Id.Value));
     }
 
     private async Task<List<OidcToken>> TokensOfAsync(OidcApplication app)
     {
         using var session = Store.OpenAsyncSession();
         return [.. (await CaseTokensAsync(session)).Where(t =>
-            t.ApplicationId == app.Id && t.Type is OidcTokenTypes.AccessToken or OidcTokenTypes.RefreshToken)];
+            t.ApplicationId == app.Id.Value && t.Type is OidcTokenTypes.AccessToken or OidcTokenTypes.RefreshToken)];
     }
 
     private async Task<double> TokensIssuedAsync(OidcApplication app)
     {
         using var session = Store.OpenAsyncSession();
-        var entries = await session.IncrementalTimeSeriesFor(app.Id!, OidcExpiry.TokensTimeSeries).GetAsync();
+        var entries = await session.IncrementalTimeSeriesFor(app.Id.Value,OidcExpiry.TokensTimeSeries).GetAsync();
         return entries?.Sum(e => e.Value) ?? 0;
     }
 
@@ -144,7 +144,7 @@ public class OidcOperationsTests(OidcSharedHost host) : OidcTestHost(host), ICla
 
         using (var session = Store.OpenAsyncSession())
         {
-            var app = await session.LoadAsync<OidcApplication>(disabled.App.Id);
+            var app = await session.LoadAsync<OidcApplication>(disabled.App.Id.Value);
             var before = new OidcApplication { Id = app.Id, ClientId = app.ClientId, Enabled = true };
             app.Enabled = false;
             await session.SaveChangesAsync();
@@ -178,7 +178,7 @@ public class OidcOperationsTests(OidcSharedHost host) : OidcTestHost(host), ICla
         {
             await session.Query<OidcToken>()
                 .Customize(x => x.WaitForNonStaleResults())
-                .Where(t => t.ApplicationId == issued.App.Id && t.Status == "valid")
+                .Where(t => t.ApplicationId == issued.App.Id.Value && t.Status == "valid")
                 .ToListAsync();
         }
 
@@ -191,7 +191,7 @@ public class OidcOperationsTests(OidcSharedHost host) : OidcTestHost(host), ICla
             {
                 await session.StoreAsync(new OidcToken
                 {
-                    Id = lateToken, ApplicationId = issued.App.Id!, Subject = issued.User.Id!, Type = OidcTokenTypes.AccessToken,
+                    Id = MintPlayer.Spark.Abstractions.Id<OidcToken>.FromTrusted(lateToken), ApplicationId = issued.App.Id.Value, Subject = issued.User.Id!, Type = OidcTokenTypes.AccessToken,
                     Status = "valid", CreatedAt = DateTime.UtcNow, ExpiresAt = DateTime.UtcNow.AddHours(1),
                 });
                 await session.SaveChangesAsync();
@@ -202,7 +202,7 @@ public class OidcOperationsTests(OidcSharedHost host) : OidcTestHost(host), ICla
                 await Task.Delay(TimeSpan.FromSeconds(1));
                 await Store.Maintenance.SendAsync(new Raven.Client.Documents.Operations.Indexes.StartIndexingOperation());
             });
-            await OidcDisableCascade.RevokeApplicationAsync(Store, issued.App.Id!);
+            await OidcDisableCascade.RevokeApplicationAsync(Store, issued.App.Id.Value);
             await resume;
         }
         finally
@@ -222,7 +222,7 @@ public class OidcOperationsTests(OidcSharedHost host) : OidcTestHost(host), ICla
 
         using (var session = Store.OpenAsyncSession())
         {
-            var app = await session.LoadAsync<OidcApplication>(issued.App.Id);
+            var app = await session.LoadAsync<OidcApplication>(issued.App.Id.Value);
             // Only the Enabled → disabled transition cascades; Before says it was off already.
             var before = new OidcApplication { Id = app.Id, ClientId = app.ClientId, Enabled = false };
             app.Enabled = false;
@@ -295,7 +295,7 @@ public class OidcOperationsTests(OidcSharedHost host) : OidcTestHost(host), ICla
     public async Task RevokeGrant_revokes_the_grant_and_the_tokens_issued_under_it()
     {
         var issued = await IssueAsync("revoked", ["openid", "offline_access"]);
-        var grantId = OidcGrantReference.DocumentId(issued.User.Id!, issued.App.Id!);
+        var grantId = OidcGrantReference.DocumentId(issued.User.Id!, issued.App.Id.Value);
         await WarmGrantSweepIndexAsync(grantId);
 
         using (var session = Store.OpenAsyncSession())
@@ -323,7 +323,7 @@ public class OidcOperationsTests(OidcSharedHost host) : OidcTestHost(host), ICla
     public async Task RevokeGrant_does_nothing_for_a_caller_who_is_not_an_administrator()
     {
         var issued = await IssueAsync("kept", ["openid", "offline_access"]);
-        var grantId = OidcGrantReference.DocumentId(issued.User.Id!, issued.App.Id!);
+        var grantId = OidcGrantReference.DocumentId(issued.User.Id!, issued.App.Id.Value);
 
         using (var session = Store.OpenAsyncSession())
         {

@@ -69,6 +69,6 @@ internal sealed partial class OidcGoLiveReviewActions : ISparkOwnsRowSecurity
         var apps = await session.Query<OidcApplication>()
             .Where(a => a.GoLiveReview != null && a.GoLiveReview.Status == OidcScopeStatuses.Pending)
             .ToListAsync();
-        return apps.Select(a => new OidcGoLiveReview(a.Id!, a.DisplayName, a.ClientId, a.GoLiveReview?.RequestedAt)).AsQueryable();
+        return apps.Select(a => new OidcGoLiveReview(a.Id.Value, a.DisplayName, a.ClientId, a.GoLiveReview?.RequestedAt)).AsQueryable();
     }
 }

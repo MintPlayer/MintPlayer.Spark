@@ -53,7 +53,7 @@ public class OidcTeamActionsTests(OidcSharedHost host) : OidcTestHost(host), ICl
     {
         var app = await SeedApplicationAsync(ClientId("team"));
         using var session = Store.OpenAsyncSession();
-        var stored = await session.LoadAsync<OidcApplication>(app.Id);
+        var stored = await session.LoadAsync<OidcApplication>(app.Id.Value);
         stored.Members.Add(Member(AppAdmin, OidcMemberRoles.Admin));
         stored.Members.Add(Member(TeamDeveloper, OidcMemberRoles.Developer));
         stored.Members.AddRange(extra);
@@ -117,9 +117,9 @@ public class OidcTeamActionsTests(OidcSharedHost host) : OidcTestHost(host), ICl
         var app = await SeedTeamAsync();
         var manager = Answering("identityProvider.invite", $"  {UserEmail("new")}  ", OidcMemberRoles.Tester);
 
-        await InviteAsync(manager, app.Id!, AppAdmin);
+        await InviteAsync(manager, app.Id.Value, AppAdmin);
 
-        var invited = (await LoadAsync(app.Id!)).Members.Should().ContainSingle(m => m.Status == OidcMemberStatuses.Invited).Which;
+        var invited = (await LoadAsync(app.Id.Value)).Members.Should().ContainSingle(m => m.Status == OidcMemberStatuses.Invited).Which;
         invited.Email.Should().Be(UserEmail("new"));
         invited.Role.Should().Be(OidcMemberRoles.Tester);
         invited.InvitedBy.Should().Be(AppAdmin);
@@ -133,11 +133,11 @@ public class OidcTeamActionsTests(OidcSharedHost host) : OidcTestHost(host), ICl
         var app = await SeedTeamAsync();
         var manager = Answering(RetryResult.CancelOption, null, null);
 
-        await InviteAsync(manager, app.Id!, AppAdmin);
+        await InviteAsync(manager, app.Id.Value, AppAdmin);
 
         var prompt = await manager.GetPersistentObjectAsync("OidcInvitation");
         prompt["Role"].Value.Should().Be(OidcMemberRoles.Developer);
-        (await LoadAsync(app.Id!)).Members.Should().HaveCount(2, "a cancelled form invites nobody");
+        (await LoadAsync(app.Id.Value)).Members.Should().HaveCount(2, "a cancelled form invites nobody");
         manager.Client.DidNotReceive().Notify(Arg.Any<string>(), Arg.Any<NotificationKind>());
     }
 
@@ -150,9 +150,9 @@ public class OidcTeamActionsTests(OidcSharedHost host) : OidcTestHost(host), ICl
         var app = await SeedTeamAsync();
         var manager = Answering("identityProvider.invite", email, role);
 
-        await InviteAsync(manager, app.Id!, AppAdmin);
+        await InviteAsync(manager, app.Id.Value, AppAdmin);
 
-        (await LoadAsync(app.Id!)).Members.Should().HaveCount(2);
+        (await LoadAsync(app.Id.Value)).Members.Should().HaveCount(2);
         Notified(manager, "identityProvider.inviteInvalid", NotificationKind.Error);
     }
 
@@ -162,10 +162,10 @@ public class OidcTeamActionsTests(OidcSharedHost host) : OidcTestHost(host), ICl
         var app = await SeedTeamAsync();
         var manager = Answering("identityProvider.invite", UserEmail("new"), OidcMemberRoles.Tester);
 
-        await InviteAsync(manager, app.Id!, TeamDeveloper);
+        await InviteAsync(manager, app.Id.Value, TeamDeveloper);
         await InviteAsync(manager, "OidcApplications/does-not-exist", AppAdmin);
 
-        (await LoadAsync(app.Id!)).Members.Should().HaveCount(2);
+        (await LoadAsync(app.Id.Value)).Members.Should().HaveCount(2);
         Notified(manager, "identityProvider.adminOnly", NotificationKind.Error);
         manager.Retry.DidNotReceiveWithAnyArgs().Action(default!, default!, default, default, default);
     }
@@ -189,9 +189,9 @@ public class OidcTeamActionsTests(OidcSharedHost host) : OidcTestHost(host), ICl
         var developer = app.Members.Single(m => m.UserId == TeamDeveloper);
         var manager = Manager();
 
-        await ResendAsync(manager, Rows(app.Id!, pending.MemberId!, developer.MemberId!), AppAdmin);
+        await ResendAsync(manager, Rows(app.Id.Value, pending.MemberId!, developer.MemberId!), AppAdmin);
 
-        var members = (await LoadAsync(app.Id!)).Members;
+        var members = (await LoadAsync(app.Id.Value)).Members;
         members.Single(m => m.MemberId == pending.MemberId).Status.Should().Be(OidcMemberStatuses.Revoked);
         var fresh = members.Should().ContainSingle(m => m.Status == OidcMemberStatuses.Invited).Which;
         fresh.Email.Should().Be(UserEmail("pending"));
@@ -208,10 +208,10 @@ public class OidcTeamActionsTests(OidcSharedHost host) : OidcTestHost(host), ICl
         var app = await SeedTeamAsync(pending);
         var manager = Manager();
 
-        await ResendAsync(manager, Rows(app.Id!, pending.MemberId!), TeamDeveloper);
+        await ResendAsync(manager, Rows(app.Id.Value, pending.MemberId!), TeamDeveloper);
         await ResendAsync(manager, new CustomActionArgs { SelectedItems = [] }, AppAdmin);
 
-        (await LoadAsync(app.Id!)).Members.Single(m => m.MemberId == pending.MemberId).InvitationHash.Should().Be("old-hash");
+        (await LoadAsync(app.Id.Value)).Members.Single(m => m.MemberId == pending.MemberId).InvitationHash.Should().Be("old-hash");
         Notified(manager, "identityProvider.adminOnly", NotificationKind.Error);
     }
 
@@ -231,9 +231,9 @@ public class OidcTeamActionsTests(OidcSharedHost host) : OidcTestHost(host), ICl
         var developer = app.Members.Single(m => m.UserId == TeamDeveloper);
         var manager = Manager();
 
-        await RemoveAsync(manager, Rows(app.Id!, developer.MemberId!, pending.MemberId!), AppAdmin);
+        await RemoveAsync(manager, Rows(app.Id.Value, developer.MemberId!, pending.MemberId!), AppAdmin);
 
-        var members = (await LoadAsync(app.Id!)).Members;
+        var members = (await LoadAsync(app.Id.Value)).Members;
         members.Single(m => m.MemberId == developer.MemberId).Status.Should().Be(OidcMemberStatuses.Revoked);
         var revoked = members.Single(m => m.MemberId == pending.MemberId);
         revoked.Status.Should().Be(OidcMemberStatuses.Revoked);
@@ -249,9 +249,9 @@ public class OidcTeamActionsTests(OidcSharedHost host) : OidcTestHost(host), ICl
         var admin = app.Members.Single(m => m.UserId == AppAdmin);
         var manager = Manager();
 
-        await RemoveAsync(manager, Rows(app.Id!, admin.MemberId!), AppAdmin);
+        await RemoveAsync(manager, Rows(app.Id.Value, admin.MemberId!), AppAdmin);
 
-        (await LoadAsync(app.Id!)).Members.Single(m => m.UserId == AppAdmin).Status.Should().Be(OidcMemberStatuses.Active);
+        (await LoadAsync(app.Id.Value)).Members.Single(m => m.UserId == AppAdmin).Status.Should().Be(OidcMemberStatuses.Active);
         Notified(manager, "identityProvider.lastAdmin", NotificationKind.Error);
     }
 
@@ -262,12 +262,12 @@ public class OidcTeamActionsTests(OidcSharedHost host) : OidcTestHost(host), ICl
         var app = await SeedTeamAsync(second);
         var manager = Manager();
 
-        await RemoveAsync(manager, Rows(app.Id!, second.MemberId!), TeamDeveloper);
-        (await LoadAsync(app.Id!)).Members.Single(m => m.MemberId == second.MemberId).Status.Should().Be(OidcMemberStatuses.Active);
+        await RemoveAsync(manager, Rows(app.Id.Value, second.MemberId!), TeamDeveloper);
+        (await LoadAsync(app.Id.Value)).Members.Single(m => m.MemberId == second.MemberId).Status.Should().Be(OidcMemberStatuses.Active);
         Notified(manager, "identityProvider.adminOnly", NotificationKind.Error);
 
-        await RemoveAsync(manager, Rows(app.Id!, second.MemberId!), AppAdmin);
-        (await LoadAsync(app.Id!)).Members.Single(m => m.MemberId == second.MemberId).Status.Should().Be(OidcMemberStatuses.Revoked);
+        await RemoveAsync(manager, Rows(app.Id.Value, second.MemberId!), AppAdmin);
+        (await LoadAsync(app.Id.Value)).Members.Single(m => m.MemberId == second.MemberId).Status.Should().Be(OidcMemberStatuses.Revoked);
     }
 
     // ---------- back to Development ----------
@@ -290,12 +290,12 @@ public class OidcTeamActionsTests(OidcSharedHost host) : OidcTestHost(host), ICl
     public async Task An_admin_takes_a_live_application_back_to_development()
     {
         var app = await SeedTeamAsync();
-        await SetModeAsync(app.Id!, OidcApplicationModes.Live);
+        await SetModeAsync(app.Id.Value, OidcApplicationModes.Live);
         var manager = Manager();
 
-        await SwitchToDevelopmentAsync(manager, app.Id!, AppAdmin);
+        await SwitchToDevelopmentAsync(manager, app.Id.Value, AppAdmin);
 
-        (await LoadAsync(app.Id!)).Mode.Should().Be(OidcApplicationModes.Development);
+        (await LoadAsync(app.Id.Value)).Mode.Should().Be(OidcApplicationModes.Development);
         manager.Client.Received().RefreshAttribute(Arg.Any<PersistentObject>(), nameof(OidcApplication.Mode));
     }
 
@@ -303,16 +303,16 @@ public class OidcTeamActionsTests(OidcSharedHost host) : OidcTestHost(host), ICl
     public async Task A_team_developer_cannot_switch_back_and_a_development_application_stays_as_it_is()
     {
         var app = await SeedTeamAsync();
-        await SetModeAsync(app.Id!, OidcApplicationModes.Live);
+        await SetModeAsync(app.Id.Value, OidcApplicationModes.Live);
         var manager = Manager();
 
-        await SwitchToDevelopmentAsync(manager, app.Id!, TeamDeveloper);
-        (await LoadAsync(app.Id!)).Mode.Should().Be(OidcApplicationModes.Live);
+        await SwitchToDevelopmentAsync(manager, app.Id.Value, TeamDeveloper);
+        (await LoadAsync(app.Id.Value)).Mode.Should().Be(OidcApplicationModes.Live);
         Notified(manager, "identityProvider.adminOnly", NotificationKind.Error);
 
-        await SetModeAsync(app.Id!, OidcApplicationModes.Development);
+        await SetModeAsync(app.Id.Value, OidcApplicationModes.Development);
         var quiet = Manager();
-        await SwitchToDevelopmentAsync(quiet, app.Id!, AppAdmin);
+        await SwitchToDevelopmentAsync(quiet, app.Id.Value, AppAdmin);
         quiet.Client.DidNotReceiveWithAnyArgs().RefreshAttribute(default!, default!);
     }
 }

@@ -40,7 +40,7 @@ public partial class M_202610091000_FleetApi : ISparkMigration
         {
             await session.StoreAsync(new OidcResource
             {
-                Id = id,
+                Id = MintPlayer.Spark.Abstractions.Id<OidcResource>.FromTrusted(id),
                 Kind = OidcResourceKinds.Api,
                 Name = "fleet",
                 DisplayName = TranslatedString.Create("Spark Fleet", "Spark Fleet", "Spark Fleet"),

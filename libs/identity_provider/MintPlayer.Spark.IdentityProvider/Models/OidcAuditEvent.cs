@@ -1,3 +1,5 @@
+using MintPlayer.Spark.Abstractions;
+
 namespace MintPlayer.Spark.IdentityProvider.Models;
 
 /// <summary>
@@ -7,9 +9,9 @@ namespace MintPlayer.Spark.IdentityProvider.Models;
 /// <c>Audit.RetentionDays</c> through <c>@expires</c>. Revisions are not the audit trail: they are
 /// capped on the Community licence.
 /// </summary>
-public class OidcAuditEvent
+public partial class OidcAuditEvent
 {
-    public string? Id { get; set; }
+    public Id<OidcAuditEvent> Id { get; set; }
     /// <summary>When it happened, in UTC.</summary>
     public DateTime At { get; set; }
     /// <summary>What happened: one of <see cref="OidcAuditKinds"/>.</summary>

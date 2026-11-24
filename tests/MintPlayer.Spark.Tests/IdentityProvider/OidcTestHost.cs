@@ -222,7 +222,7 @@ public abstract class OidcTestHost : SparkSharedTestDriver, IAsyncLifetime
                     {
                         api = new OidcResource
                         {
-                            Id = apiId,
+                            Id = Id<OidcResource>.FromTrusted(apiId),
                             Kind = OidcResourceKinds.Api,
                             Name = apiName,
                             DisplayName = TranslatedString.Create(apiName),
@@ -242,7 +242,7 @@ public abstract class OidcTestHost : SparkSharedTestDriver, IAsyncLifetime
 
                 await session.StoreAsync(new OidcResource
                 {
-                    Id = id,
+                    Id = Id<OidcResource>.FromTrusted(id),
                     Kind = OidcResourceKinds.Identity,
                     Name = name,
                     DisplayName = TranslatedString.Create(name),
@@ -252,7 +252,7 @@ public abstract class OidcTestHost : SparkSharedTestDriver, IAsyncLifetime
             }
         });
 
-        seededApplicationIds.Add(app.Id!);
+        seededApplicationIds.Add(app.Id.Value);
         return app;
     }
 
@@ -290,7 +290,7 @@ public abstract class OidcTestHost : SparkSharedTestDriver, IAsyncLifetime
     {
         var family = new OidcRefreshFamily
         {
-            Id = OidcRefreshFamilies.DocumentId(refreshToken.Id!),
+            Id = MintPlayer.Spark.Abstractions.Id<OidcRefreshFamily>.FromTrusted(OidcRefreshFamilies.DocumentId(refreshToken.Id.Value)),
             ApplicationId = refreshToken.ApplicationId,
             AuthorizationId = refreshToken.AuthorizationId,
             Subject = refreshToken.Subject,
@@ -298,7 +298,7 @@ public abstract class OidcTestHost : SparkSharedTestDriver, IAsyncLifetime
             CreatedAt = refreshToken.CreatedAt,
             ExpiresAt = refreshToken.ExpiresAt,
         };
-        refreshToken.FamilyId = family.Id;
+        refreshToken.FamilyId = family.Id.Value;
         refreshToken.Generation = family.Generation;
         await session.StoreAsync(family);
         await session.StoreAsync(refreshToken);
@@ -676,9 +676,9 @@ public abstract class OidcTestHost : SparkSharedTestDriver, IAsyncLifetime
         var handle = OidcRequestReference.GenerateValue();
         var request = new OidcToken
         {
-            Id = OidcRequestReference.DocumentId(handle),
+            Id = Id<OidcToken>.FromTrusted(OidcRequestReference.DocumentId(handle)),
             Type = OidcTokenTypes.AuthorizationRequest,
-            ApplicationId = app.Id!,
+            ApplicationId = app.Id.Value,
             Subject = subject,
             RedirectUri = redirectUri ?? app.RedirectUris[0],
             Scopes = [.. scopes ?? ["openid"]],

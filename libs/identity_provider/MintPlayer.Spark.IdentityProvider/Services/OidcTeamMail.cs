@@ -28,7 +28,7 @@ internal sealed class OidcTeamMail(
         string link;
         try
         {
-            link = links.Invitation(http, app.Id!, token);
+            link = links.Invitation(http, app.Id.Value, token);
         }
         catch (InvalidOperationException ex)
         {

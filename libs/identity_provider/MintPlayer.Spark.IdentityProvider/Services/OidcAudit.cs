@@ -33,7 +33,8 @@ public sealed class OidcAudit(SparkIdentityProviderOptions options)
             IpAddress = ipAddress,
             Details = details is null ? [] : new Dictionary<string, string>(details),
         };
-        await session.StoreAsync(audit, "OidcAuditEvents/", ct);
+        // A generated id, "oidcauditevents/{guid}" (#536 D7), in place of a server-generated "OidcAuditEvents/…" one.
+        await session.StoreAsync(audit, ct);
         OidcExpiry.Stamp(session, audit, now.AddDays(Math.Max(1, options.Audit.RetentionDays)));
     }
 }

@@ -64,26 +64,26 @@ internal sealed partial class OidcAgentClientCleanupService(
         {
             using var session = store.OpenAsyncSession();
             // Re-read: a sign-in since the query keeps the client.
-            var current = await session.LoadAsync<OidcApplication>(app.Id, ct);
+            var current = await session.LoadAsync<OidcApplication>(app.Id.Value, ct);
             if (current is null || current.LastUsedAt >= cutoff)
                 continue;
 
             var subjects = (await session.Query<OidcGrant>()
                     // Bounded: a grant the index has not seen would keep its agent grant (which /mcp refuses anyway: no client).
                     .Customize(x => x.WaitForNonStaleResults(IndexWait))
-                    .Where(g => g.ApplicationId == current.Id)
+                    .Where(g => g.ApplicationId == current.Id.Value)
                     .Select(g => g.Subject)
                     .ToListAsync(ct))
                 .Distinct(StringComparer.Ordinal)
                 .ToList();
 
-            await OidcDisableCascade.RevokeApplicationAsync(store, current.Id!, ct);
+            await OidcDisableCascade.RevokeApplicationAsync(store, current.Id.Value, ct);
             foreach (var subject in subjects)
                 await agentGrants.RemoveAsync(subject, current.ClientId, ct);
 
             await OidcClientIdReservation.ReleaseAsync(session, current);
             session.Delete(current);
-            await audit.RecordAsync(session, OidcAuditKinds.RegistrationPruned, actorId: null, current.Id,
+            await audit.RecordAsync(session, OidcAuditKinds.RegistrationPruned, actorId: null, current.Id.Value,
                 details: new Dictionary<string, string> { ["clientId"] = current.ClientId, ["lastUsedAt"] = current.LastUsedAt?.ToString("O") ?? "" }, ct: ct);
             await session.SaveChangesAsync(ct);
             pruned++;

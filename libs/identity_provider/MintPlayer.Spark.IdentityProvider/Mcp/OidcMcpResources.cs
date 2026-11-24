@@ -180,7 +180,7 @@ internal sealed class OidcMcpResources(SparkIdentityProviderOptions options)
         {
             await session.StoreAsync(new OidcResource
             {
-                Id = offline,
+                Id = Id<OidcResource>.FromTrusted(offline),
                 Kind = OidcResourceKinds.Identity,
                 Name = OidcAgentClients.OfflineAccess,
                 DisplayName = TranslatedString.Create("Stay signed in", "Rester connecté", "Aangemeld blijven"),
@@ -195,7 +195,7 @@ internal sealed class OidcMcpResources(SparkIdentityProviderOptions options)
 
     private static OidcResource NewResource(string id, string name, TranslatedString displayName, TranslatedString description) => new()
     {
-        Id = id,
+        Id = Id<OidcResource>.FromTrusted(id),
         Kind = OidcResourceKinds.Api,
         Name = name,
         DisplayName = displayName,

@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions;
 using System.Security.Claims;
 using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.JsonWebTokens;
@@ -51,7 +52,7 @@ internal sealed class OidcSessionStore(IDocumentStore store, OidcKeyRing keys, I
         {
             record = new OidcToken
             {
-                Id = DocumentId(sid),
+                Id = Id<OidcToken>.FromTrusted(DocumentId(sid)),
                 Type = OidcTokenTypes.Session,
                 Subject = userId,
                 SessionId = sid,

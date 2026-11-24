@@ -1,3 +1,5 @@
+using MintPlayer.Spark.Abstractions;
+
 namespace MintPlayer.Spark.IdentityProvider.Models;
 
 /// <summary>
@@ -18,13 +20,14 @@ namespace MintPlayer.Spark.IdentityProvider.Models;
 /// decides for.
 /// </para>
 /// </summary>
-public class OidcRefreshFamily
+[IdKind(SparkIdKind.Natural)]
+public partial class OidcRefreshFamily
 {
     /// <summary>
     /// <c>OidcRefreshFamilies/&lt;hash&gt;</c>, derived from the id of the code or device code that started it, so a code
     /// presented again finds the family it started.
     /// </summary>
-    public string? Id { get; set; }
+    public Id<OidcRefreshFamily> Id { get; set; }
     public string ApplicationId { get; set; } = string.Empty;
     /// <summary>
     /// The <see cref="OidcGrant"/> the family was issued under. Withdrawing the grant ends the family through it: every

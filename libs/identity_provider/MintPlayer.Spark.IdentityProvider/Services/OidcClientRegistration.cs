@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions;
 using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Http;
 using MintPlayer.Spark.IdentityProvider.Models;
@@ -59,7 +60,7 @@ internal sealed class OidcClientRegistration(Configuration.SparkIdentityProvider
         var token = OidcTokenReference.GenerateValue();
         await session.StoreExpiringAsync(new OidcToken
         {
-            Id = OidcTokenReference.DocumentId("iat:" + token),
+            Id = Id<OidcToken>.FromTrusted(OidcTokenReference.DocumentId("iat:" + token)),
             Type = OidcTokenTypes.RegistrationAccessToken,
             Subject = developerId,
             Status = "valid",

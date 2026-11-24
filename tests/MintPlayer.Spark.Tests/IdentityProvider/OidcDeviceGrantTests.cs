@@ -239,7 +239,7 @@ public class OidcDeviceGrantTests(OidcSharedHost host) : OidcTestHost(host), ICl
         var app = await SeedDeviceClientAsync("tv");
         using (var session = Store.OpenAsyncSession())
         {
-            var stored = (await session.LoadAsync<OidcApplication>(app.Id))!;
+            var stored = (await session.LoadAsync<OidcApplication>(app.Id.Value))!;
             stored.Mode = OidcApplicationModes.Development;
             await session.SaveChangesAsync();
         }

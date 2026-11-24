@@ -246,7 +246,7 @@ public class OidcAdminRouteTests(OidcAdminRouteTests.AdminRouteHost host)
         // Secrets are read-only on the screen; attach one the way the secret-issuing flow stores it.
         using (var session = Store.OpenAsyncSession())
         {
-            var stored = await session.LoadAsync<OidcApplication>(app.Id!);
+            var stored = await session.LoadAsync<OidcApplication>(app.Id.Value);
             stored.Secrets.Add(new ClientSecret { SecretId = Guid.NewGuid().ToString("N"), Hash = ClientSecretHasher.Hash("issued-secret"), CreatedAt = DateTime.UtcNow });
             await session.SaveChangesAsync();
         }

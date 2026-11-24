@@ -40,7 +40,7 @@ public partial class M_202610091100_StandardIdentityResources : ISparkMigration
 
         await session.StoreAsync(new OidcResource
         {
-            Id = id,
+            Id = Id<OidcResource>.FromTrusted(id),
             Kind = OidcResourceKinds.Identity,
             Name = name,
             DisplayName = displayName,

@@ -223,7 +223,7 @@ internal sealed class OidcClientAuthenticator(
             ClientSecretHasher.Verify(secret, DummyHash); // O15: a client with no secrets costs the same
 
         if (matched is { SecretId: { } secretId } && (matched.LastUsedAt is null || matched.LastUsedAt < now.AddHours(-1)))
-            await StampLastUsedAsync(app.Id!, secretId, now, ct);
+            await StampLastUsedAsync(app.Id.Value, secretId, now, ct);
 
         return matched is not null;
     }

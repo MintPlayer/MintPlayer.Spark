@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions;
 using Microsoft.AspNetCore.Http;
 using MintPlayer.Spark.IdentityProvider.Configuration;
 using MintPlayer.Spark.IdentityProvider.Models;
@@ -51,7 +52,7 @@ internal sealed class OidcAgentDynamicRegistration(
         var now = DateTime.UtcNow;
         var app = new OidcApplication
         {
-            Id = OidcAgentClients.ApplicationId(clientId),
+            Id = Id<OidcApplication>.FromTrusted(OidcAgentClients.ApplicationId(clientId)),
             ClientId = clientId,
             CreatedAt = now,
             LastUsedAt = now,
@@ -65,7 +66,7 @@ internal sealed class OidcAgentDynamicRegistration(
         using var session = store.OpenAsyncSession();
         await OidcClientIdReservation.ReserveAsync(session, app);
         await session.StoreAsync(app, ct);
-        await audit.RecordAsync(session, OidcAuditKinds.DynamicRegistration, actorId: null, app.Id, ipAddress: address,
+        await audit.RecordAsync(session, OidcAuditKinds.DynamicRegistration, actorId: null, app.Id.Value, ipAddress: address,
             details: new Dictionary<string, string> { ["agent"] = "true", ["clientName"] = app.DisplayName }, ct: ct);
         await session.SaveChangesAsync(ct);
 

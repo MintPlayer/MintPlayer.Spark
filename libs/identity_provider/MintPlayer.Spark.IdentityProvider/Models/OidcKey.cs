@@ -1,3 +1,5 @@
+using MintPlayer.Spark.Abstractions;
+
 namespace MintPlayer.Spark.IdentityProvider.Models;
 
 /// <summary>
@@ -7,10 +9,11 @@ namespace MintPlayer.Spark.IdentityProvider.Models;
 /// clear. Losing the Data Protection key ring makes it unreadable, and startup then fails rather than
 /// silently minting new keys (spike S2).
 /// </summary>
-public class OidcKey
+[IdKind(SparkIdKind.Natural)]
+public partial class OidcKey
 {
     /// <summary>The document id, <c>OidcKeys/&lt;kid&gt;</c>.</summary>
-    public string? Id { get; set; }
+    public Id<OidcKey> Id { get; set; }
     /// <summary>The key id published in the JWKS and stamped into every token header.</summary>
     public string Kid { get; set; } = string.Empty;
     /// <summary><c>sig</c> or <c>enc</c>.</summary>

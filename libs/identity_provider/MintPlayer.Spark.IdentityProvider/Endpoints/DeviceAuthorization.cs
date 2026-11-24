@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions;
 using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.IdentityProvider.Endpoints.Oidc;
@@ -64,9 +65,9 @@ internal sealed partial class OidcDeviceAuthorization : IPostEndpoint<OidcDevice
         var expiresAt = DateTime.UtcNow.Add(OidcDeviceCodes.Lifetime);
         var device = new OidcToken
         {
-            Id = OidcDeviceCodes.DeviceDocumentId(deviceCode),
+            Id = Id<OidcToken>.FromTrusted(OidcDeviceCodes.DeviceDocumentId(deviceCode)),
             Type = OidcTokenTypes.DeviceCode,
-            ApplicationId = app.Id!,
+            ApplicationId = app.Id.Value,
             Scopes = scopes,
             Status = "pending",
             CreatedAt = DateTime.UtcNow,
@@ -76,13 +77,13 @@ internal sealed partial class OidcDeviceAuthorization : IPostEndpoint<OidcDevice
         await session.StoreExpiringAsync(device, ct);
         await session.StoreExpiringAsync(new OidcToken
         {
-            Id = OidcDeviceCodes.UserCodeDocumentId(userCode),
+            Id = Id<OidcToken>.FromTrusted(OidcDeviceCodes.UserCodeDocumentId(userCode)),
             Type = OidcTokenTypes.DeviceCode,
-            ApplicationId = app.Id!,
+            ApplicationId = app.Id.Value,
             Status = "pointer",
             CreatedAt = DateTime.UtcNow,
             ExpiresAt = expiresAt,
-            Properties = { ["device"] = device.Id },
+            Properties = { ["device"] = device.Id.Value },
         }, ct);
         await session.SaveChangesAsync(ct);
 

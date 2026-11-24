@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.IdentityProvider.Endpoints;
 using MintPlayer.Spark.IdentityProvider.Indexes;
 using MintPlayer.Spark.IdentityProvider.Models;
@@ -55,7 +56,7 @@ internal static class OidcAuthorizationFlow
         bool remember,
         CancellationToken ct)
     {
-        var authorizationId = OidcGrantReference.DocumentId(userId, app.Id!);
+        var authorizationId = OidcGrantReference.DocumentId(userId, app.Id.Value);
 
         for (var attempt = 0; ; attempt++)
         {
@@ -90,8 +91,8 @@ internal static class OidcAuthorizationFlow
         {
             auth = new OidcGrant
             {
-                Id = authorizationId,
-                ApplicationId = app.Id!,
+                Id = Id<OidcGrant>.FromTrusted(authorizationId),
+                ApplicationId = app.Id.Value,
                 Subject = userId,
                 CreatedAt = DateTime.UtcNow,
             };
@@ -177,7 +178,7 @@ internal static class OidcAuthorizationFlow
         {
             // The id is the hash of the code, so redemption is a strongly-consistent
             // point-load and the code itself is never persisted.
-            Id = OidcTokenReference.DocumentId(code),
+            Id = Id<OidcToken>.FromTrusted(OidcTokenReference.DocumentId(code)),
             ApplicationId = request.ApplicationId,
             AuthorizationId = request.AuthorizationId,
             Subject = request.Subject,

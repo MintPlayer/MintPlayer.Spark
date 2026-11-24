@@ -80,7 +80,7 @@ public class OidcClientAuthenticatorTests(OidcClientAuthenticatorTests.ThrottleH
         var app = await SeedApplicationAsync(ClientId(name), secret: secret);
         await SeedAsync(async session =>
         {
-            var stored = await session.LoadAsync<OidcApplication>(app.Id);
+            var stored = await session.LoadAsync<OidcApplication>(app.Id.Value);
             stored!.Jwks = key.JwksJson;
             stored.TokenEndpointAuthMethod = method;
         });
@@ -200,7 +200,7 @@ public class OidcClientAuthenticatorTests(OidcClientAuthenticatorTests.ThrottleH
     {
         var app = await SeedApplicationAsync(ClientId("basic-app"));
         await SeedAsync(async session =>
-            (await session.LoadAsync<OidcApplication>(app.Id))!.TokenEndpointAuthMethod = OidcClientAuthMethods.SecretBasic);
+            (await session.LoadAsync<OidcApplication>(app.Id.Value))!.TokenEndpointAuthMethod = OidcClientAuthMethods.SecretBasic);
 
         (await RevokeAsync(new Dictionary<string, string> { ["client_id"] = app.ClientId, ["client_secret"] = Secret }))
             .StatusCode.Should().Be(HttpStatusCode.OK, "basic and post carry the same secret");

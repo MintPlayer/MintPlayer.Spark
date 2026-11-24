@@ -145,7 +145,7 @@ internal sealed partial class SparkAppManager
             HomepageUrl = NullIfEmpty(input.HomepageUrl),
             OwnerKind = owner.Kind,
             OwnerKey = owner.Key,
-            OidcApplicationId = client.Id!,
+            OidcApplicationId = client.Id.Value,
             ClientId = client.ClientId,
             Permissions = permissions,
             Events = events,

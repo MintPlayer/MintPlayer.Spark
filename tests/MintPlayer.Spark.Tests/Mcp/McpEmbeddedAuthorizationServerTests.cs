@@ -234,7 +234,7 @@ public class McpEmbeddedAuthorizationServerTests(SparkSharedDatabase database)
             var (token, jti) = generator.GenerateAccessToken(user, app!, McpEmbeddedHost.Issuer, [fleet], 5);
             await session.StoreAsync(new OidcToken
             {
-                Id = OidcTokenReference.DocumentId(jti), ApplicationId = app!.Id!, AuthorizationId = authorizationId, Subject = user.Id!,
+                Id = MintPlayer.Spark.Abstractions.Id<OidcToken>.FromTrusted(OidcTokenReference.DocumentId(jti)), ApplicationId = app.Id.Value, AuthorizationId = authorizationId, Subject = user.Id!,
                 Type = OidcTokenTypes.AccessToken, Scopes = ["fleet.read"], Status = "valid", CreatedAt = DateTime.UtcNow, ExpiresAt = DateTime.UtcNow.AddMinutes(5),
             });
             await session.SaveChangesAsync();

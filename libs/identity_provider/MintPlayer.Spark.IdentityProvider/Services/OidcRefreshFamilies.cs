@@ -1,4 +1,5 @@
 using System.Diagnostics.CodeAnalysis;
+using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.IdentityProvider.Models;
 using Raven.Client.Documents.Session;
 
@@ -18,7 +19,12 @@ internal static class OidcRefreshFamilies
     /// The family started by redeeming the code or device code recorded at <paramref name="originTokenId"/>. Derived from
     /// it, so a code presented again finds the family it started without anything stored on the code.
     /// </summary>
-    public static string DocumentId(string originTokenId) => OpaqueHandle.DocumentId(CollectionPrefix, originTokenId);
+    /// <remarks>
+    /// The token id enters the hash in its pre-#536 casing, "OidcTokens/{hex}": a loaded token answers
+    /// "oidctokens/{hex}" since ids went lower case (D7), and a code redeemed before that keeps finding its family.
+    /// </remarks>
+    public static string DocumentId(string originTokenId)
+        => OpaqueHandle.DocumentId(CollectionPrefix, "OidcTokens/" + originTokenId[(originTokenId.IndexOf('/') + 1)..]);
 
     /// <summary>
     /// Starts the family of <paramref name="refreshToken"/>, issued by redeeming <paramref name="origin"/>, and enrols it
@@ -30,7 +36,7 @@ internal static class OidcRefreshFamilies
     {
         var family = new OidcRefreshFamily
         {
-            Id = DocumentId(origin.Id!),
+            Id = Id<OidcRefreshFamily>.FromTrusted(DocumentId(origin.Id.Value)),
             ApplicationId = refreshToken.ApplicationId,
             AuthorizationId = refreshToken.AuthorizationId,
             Subject = refreshToken.Subject,
@@ -59,9 +65,9 @@ internal static class OidcRefreshFamilies
 
     private static void Enrol(OidcRefreshFamily family, OidcToken refreshToken, OidcToken accessToken)
     {
-        refreshToken.FamilyId = family.Id;
+        refreshToken.FamilyId = family.Id.Value;
         refreshToken.Generation = family.Generation;
-        accessToken.FamilyId = family.Id;
+        accessToken.FamilyId = family.Id.Value;
     }
 
     /// <summary>The family <paramref name="token"/> belongs to; null when it has none, or the family is gone.</summary>

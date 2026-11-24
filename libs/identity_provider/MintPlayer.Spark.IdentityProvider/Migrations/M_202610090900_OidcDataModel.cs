@@ -139,7 +139,7 @@ public partial class M_202610090900_OidcDataModel : ISparkMigration
         var resource = await session.LoadAsync<OidcResource>(id, ct);
         if (resource is null)
         {
-            resource = new OidcResource { Id = id, Name = name, Kind = kind };
+            resource = new OidcResource { Id = Id<OidcResource>.FromTrusted(id), Name = name, Kind = kind };
             await session.StoreAsync(resource, ct);
         }
         resources[name] = resource;

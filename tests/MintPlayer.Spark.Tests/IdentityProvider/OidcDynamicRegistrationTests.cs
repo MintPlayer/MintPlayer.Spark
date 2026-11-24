@@ -165,7 +165,7 @@ public class OidcDynamicRegistrationTests(OidcSharedHost host) : OidcTestHost(ho
         var value = OidcTokenReference.GenerateValue();
         await SeedAsync(session => session.StoreAsync(new OidcToken
         {
-            Id = OidcTokenReference.DocumentId("iat:" + value),
+            Id = MintPlayer.Spark.Abstractions.Id<OidcToken>.FromTrusted(OidcTokenReference.DocumentId("iat:" + value)),
             Type = OidcTokenTypes.RegistrationAccessToken,
             Subject = developerId,
             Status = "valid",
@@ -206,7 +206,7 @@ public class OidcDynamicRegistrationTests(OidcSharedHost host) : OidcTestHost(ho
         var api = ClientId("partner");
         await SeedAsync(session => session.StoreAsync(new OidcResource
         {
-            Id = OidcScopeCatalog.ResourceId(api),
+            Id = MintPlayer.Spark.Abstractions.Id<OidcResource>.FromTrusted(OidcScopeCatalog.ResourceId(api)),
             Kind = OidcResourceKinds.Api,
             Name = api,
             DisplayName = MintPlayer.Spark.Abstractions.TranslatedString.Create(api),

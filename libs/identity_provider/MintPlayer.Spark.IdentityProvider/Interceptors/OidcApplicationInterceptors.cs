@@ -120,7 +120,8 @@ public sealed partial class OidcApplicationInterceptors : IBeforeSave<OidcApplic
         if (string.IsNullOrWhiteSpace(entity.ClientId))
             entity.ClientId = OidcClientIdReservation.GenerateClientId();
 
-        entity.Id ??= "OidcApplications/" + Guid.NewGuid().ToString("N");
+        if (entity.Id.IsEmpty)
+            entity.Id = Id<OidcApplication>.FromTrusted("oidcapplications/" + Guid.NewGuid().ToString("N"));
         entity.CreatedAt ??= DateTime.UtcNow;
 
         if (context.User?.FindFirstValue(ClaimTypes.NameIdentifier) is { } userId)
@@ -220,7 +221,7 @@ public sealed partial class OidcApplicationInterceptors : IBeforeSave<OidcApplic
             .Where(a => a.ClientId == entity.ClientId, exact: true)
             .ToListAsync();
 
-        if (clash.Any(a => !string.Equals(a.Id, entity.Id, StringComparison.Ordinal)))
+        if (clash.Any(a => !string.Equals(a.Id.Value, entity.Id.Value, StringComparison.OrdinalIgnoreCase)))
         {
             throw new SparkValidationException(
                 $"Client id '{entity.ClientId}' is already registered. Client ids must be unique — "
@@ -396,10 +397,10 @@ public sealed partial class OidcApplicationInterceptors : IBeforeSave<OidcApplic
             && context.Session is IAsyncDocumentSession session && entity.Id is { } applicationId)
         {
             var store = session.Advanced.DocumentStore;
-            await OidcDisableCascade.RevokeApplicationAsync(store, applicationId);
+            await OidcDisableCascade.RevokeApplicationAsync(store, applicationId.Value);
             using var auditSession = store.OpenAsyncSession();
             await audit.RecordAsync(auditSession, OidcAuditKinds.ApplicationDisabled,
-                context.User?.FindFirstValue(ClaimTypes.NameIdentifier), applicationId);
+                context.User?.FindFirstValue(ClaimTypes.NameIdentifier), applicationId.Value);
             await auditSession.SaveChangesAsync();
         }
     }

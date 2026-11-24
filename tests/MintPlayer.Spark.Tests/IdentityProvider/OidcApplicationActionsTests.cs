@@ -321,7 +321,7 @@ public class OidcResourceActionsTests
         var api = Api("api", "api.read");
 
         (await SaveAsync(api)).Should().BeNull();
-        api.Id.Should().Be(OidcScopeCatalog.ResourceId("api"));
+        api.Id.Value.Should().Be(OidcScopeCatalog.ResourceId("api").ToLowerInvariant());
         (await SaveAsync(new OidcResource { Name = "profile" })).Should().BeNull();
     }
 

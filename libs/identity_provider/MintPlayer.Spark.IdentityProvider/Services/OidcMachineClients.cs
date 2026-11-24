@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.IdentityProvider.Models;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Session;
@@ -19,7 +20,7 @@ public static class OidcMachineClients
         ArgumentException.ThrowIfNullOrWhiteSpace(createdBy);
         var app = new OidcApplication
         {
-            Id = "OidcApplications/" + Guid.NewGuid().ToString("N"),
+            Id = Id<OidcApplication>.FromTrusted("oidcapplications/" + Guid.NewGuid().ToString("N")),
             ClientId = OidcClientIdReservation.GenerateClientId(),
             DisplayName = displayName,
             ClientType = "confidential",
@@ -30,7 +31,7 @@ public static class OidcMachineClients
             CreatedBy = createdBy,
         };
         await OidcClientIdReservation.ReserveAsync(session, app);
-        await session.StoreAsync(app, app.Id, ct);
+        await session.StoreAsync(app, app.Id.Value, ct);
         return app;
     }
 
@@ -43,15 +44,15 @@ public static class OidcMachineClients
     {
         var grant = new OidcGrant
         {
-            Id = OidcGrantReference.DocumentId(subject, applicationId),
+            Id = Id<OidcGrant>.FromTrusted(OidcGrantReference.DocumentId(subject, applicationId)),
             ApplicationId = applicationId,
             Subject = subject,
             Status = "valid",
             GrantedScopes = scopes.ToList(),
             CreatedAt = DateTime.UtcNow,
         };
-        await session.StoreAsync(grant, grant.Id, ct);
-        return grant.Id;
+        await session.StoreAsync(grant, grant.Id.Value, ct);
+        return grant.Id.Value;
     }
 
     /// <summary>

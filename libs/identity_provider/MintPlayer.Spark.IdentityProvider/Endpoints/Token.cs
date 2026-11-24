@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions;
 using System.Security.Cryptography;
 using System.Text;
 using Microsoft.AspNetCore.Http;
@@ -162,7 +163,7 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
             // derived from it is now suspect: the family it started is revoked, exactly (RFC 6749
             // §4.1.2), and nothing else of the grant. The bookkeeping after it is best-effort: if a
             // concurrent request is doing the same, either suffices and the caller is refused regardless.
-            var startedFamily = OidcRefreshFamilies.DocumentId(codeToken.Id!);
+            var startedFamily = OidcRefreshFamilies.DocumentId(codeToken.Id.Value);
             await RevokeFamilyAsync(startedFamily, OidcRefreshFamilyRevocations.CodeReplay, reused: null, ct);
             await SweepFamilyAsync(session, codeToken, startedFamily, ct);
             await TrySaveAsync(session, ct);
@@ -180,7 +181,7 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
         // redirect_uri check below compares against the code's own stored value, which is the
         // *issuing* client's registered URI and therefore public information, so it provides
         // no client binding of its own.
-        if (!string.Equals(codeToken.ApplicationId, app.Id, StringComparison.Ordinal))
+        if (!string.Equals(codeToken.ApplicationId, app.Id.Value, StringComparison.OrdinalIgnoreCase))
         {
             return Results.Json(new { error = "invalid_grant", error_description = "Invalid or expired authorization code." }, statusCode: 400);
         }
@@ -283,8 +284,8 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
         var accessTokenDoc = new OidcToken
         {
             // Keyed by jti so the token can be looked up, and therefore revoked.
-            Id = OidcTokenReference.DocumentId(accessTokenJti),
-            ApplicationId = app.Id!,
+            Id = Id<OidcToken>.FromTrusted(OidcTokenReference.DocumentId(accessTokenJti)),
+            ApplicationId = app.Id.Value,
             AuthorizationId = codeToken.AuthorizationId,
             Subject = codeToken.Subject,
             SessionId = codeToken.SessionId,
@@ -301,13 +302,13 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
         {
             var refreshTokenDoc = new OidcToken
             {
-                ApplicationId = app.Id!,
+                ApplicationId = app.Id.Value,
                 AuthorizationId = codeToken.AuthorizationId,
                 Subject = codeToken.Subject,
                 // An agent's refresh token is not tied to the browser session it was consented in: signing out of the
                 // website must not sign the agent out. The user revokes it under Connected applications (D12, D14).
                 SessionId = mcpToken ? null : codeToken.SessionId,
-                Id = OidcTokenReference.DocumentId(refreshTokenValue),
+                Id = Id<OidcToken>.FromTrusted(OidcTokenReference.DocumentId(refreshTokenValue)),
                 Type = OidcTokenTypes.RefreshToken,
                 Scopes = grantedScopeNames,
                 Status = "valid",
@@ -330,8 +331,8 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
         // this was its second spend, and the family the winner started is revoked.
         if (!await TrySaveAsync(session, ct))
         {
-            if (await SpentMeanwhileAsync(codeToken.Id!, ct))
-                await RevokeFamilyAsync(OidcRefreshFamilies.DocumentId(codeToken.Id!), OidcRefreshFamilyRevocations.CodeReplay, reused: null, ct);
+            if (await SpentMeanwhileAsync(codeToken.Id.Value, ct))
+                await RevokeFamilyAsync(OidcRefreshFamilies.DocumentId(codeToken.Id.Value), OidcRefreshFamilyRevocations.CodeReplay, reused: null, ct);
             return Results.Json(new { error = "invalid_grant", error_description = "Invalid or expired authorization code." }, statusCode: 400);
         }
 
@@ -453,10 +454,10 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
     private async Task RecordAgentTokenAsync(OidcApplication app, string? subject, string grantType, CancellationToken ct)
     {
         using var bookkeeping = store.OpenAsyncSession();
-        await audit.RecordAsync(bookkeeping, OidcAuditKinds.TokenIssued, actorId: subject, app.Id, subject,
+        await audit.RecordAsync(bookkeeping, OidcAuditKinds.TokenIssued, actorId: subject, app.Id.Value, subject,
             httpContext.Connection.RemoteIpAddress?.ToString(), new Dictionary<string, string> { ["grantType"] = grantType }, ct);
         if (Mcp.OidcAgentClients.IsAgent(app) && (app.LastUsedAt is null || app.LastUsedAt < DateTime.UtcNow.AddHours(-1)))
-            bookkeeping.Advanced.Patch<OidcApplication, DateTime?>(app.Id!, a => a.LastUsedAt, DateTime.UtcNow);
+            bookkeeping.Advanced.Patch<OidcApplication, DateTime?>(app.Id.Value, a => a.LastUsedAt, DateTime.UtcNow);
         await bookkeeping.SaveChangesAsync(ct);
     }
 
@@ -527,7 +528,7 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
         if (refreshTokenDoc == null
             || !OidcRefreshFamilies.IsActive(refreshTokenDoc, family)
             || refreshTokenDoc.ExpiresAt < DateTime.UtcNow
-            || !string.Equals(refreshTokenDoc.ApplicationId, app.Id, StringComparison.Ordinal))
+            || !string.Equals(refreshTokenDoc.ApplicationId, app.Id.Value, StringComparison.OrdinalIgnoreCase))
         {
             return Results.Json(new { error = "invalid_grant", error_description = "Invalid or expired refresh token." }, statusCode: 400);
         }
@@ -635,8 +636,8 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
         // Store new tokens
         var newAccessTokenDoc = new OidcToken
         {
-            Id = OidcTokenReference.DocumentId(newAccessTokenJti),
-            ApplicationId = app.Id!,
+            Id = Id<OidcToken>.FromTrusted(OidcTokenReference.DocumentId(newAccessTokenJti)),
+            ApplicationId = app.Id.Value,
             AuthorizationId = refreshTokenDoc.AuthorizationId,
             Subject = refreshTokenDoc.Subject,
             SessionId = refreshTokenDoc.SessionId,
@@ -649,11 +650,11 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
 
         var newRefreshTokenDoc = new OidcToken
         {
-            ApplicationId = app.Id!,
+            ApplicationId = app.Id.Value,
             AuthorizationId = refreshTokenDoc.AuthorizationId,
             Subject = refreshTokenDoc.Subject,
             SessionId = refreshTokenDoc.SessionId,
-            Id = OidcTokenReference.DocumentId(newRefreshTokenValue),
+            Id = Id<OidcToken>.FromTrusted(OidcTokenReference.DocumentId(newRefreshTokenValue)),
             Type = OidcTokenTypes.RefreshToken,
             // RFC 6749 §6: "If a new refresh token is issued, the refresh token scope MUST be
             // identical to that of the refresh token included by the client in the request."
@@ -684,7 +685,7 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
         // revoked the family instead, nothing is left to do.
         if (!await TrySaveAsync(session, ct))
         {
-            if (await SpentMeanwhileAsync(refreshTokenDoc.Id!, ct))
+            if (await SpentMeanwhileAsync(refreshTokenDoc.Id.Value, ct))
                 await RevokeFamilyAsync(refreshTokenDoc.FamilyId, OidcRefreshFamilyRevocations.RefreshTokenReuse, reused: refreshTokenDoc, ct);
             return Results.Json(new { error = "invalid_grant", error_description = "Invalid or expired refresh token." }, statusCode: 400);
         }
@@ -808,8 +809,8 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
         {
             // Without this key a machine token was unrevocable outright: nothing tied the JWT
             // to a record, so there was no handle to revoke.
-            Id = OidcTokenReference.DocumentId(accessTokenJti),
-            ApplicationId = app.Id!,
+            Id = Id<OidcToken>.FromTrusted(OidcTokenReference.DocumentId(accessTokenJti)),
+            ApplicationId = app.Id.Value,
             Subject = $"client:{app.ClientId}",
             Type = OidcTokenTypes.AccessToken,
             Scopes = grantedScopeNames,
@@ -859,8 +860,8 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
         var now = DateTime.UtcNow;
         await session.StoreExpiringAsync(new OidcToken
         {
-            Id = OidcTokenReference.DocumentId(jti),
-            ApplicationId = app.Id!,
+            Id = Id<OidcToken>.FromTrusted(OidcTokenReference.DocumentId(jti)),
+            ApplicationId = app.Id.Value,
             AuthorizationId = contribution.AuthorizationId,
             Subject = contribution.Subject ?? $"client:{app.ClientId}",
             Type = OidcTokenTypes.AccessToken,
@@ -932,7 +933,7 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
             .Where(t => t.AuthorizationId == presented.AuthorizationId && t.Status == "valid")
             .ToListAsync(ct);
 
-        foreach (var token in tokens.Where(t => t.FamilyId == familyId))
+        foreach (var token in tokens.Where(t => string.Equals(t.FamilyId, familyId, StringComparison.OrdinalIgnoreCase)))
             token.Status = "revoked";
     }
 

@@ -30,7 +30,7 @@ internal static class OidcClientIdReservation
     /// <summary>Reserves <paramref name="entity"/>'s client id for its document, or throws when another application holds it.</summary>
     public static async Task ReserveAsync(IAsyncDocumentSession session, OidcApplication entity)
     {
-        if (string.IsNullOrEmpty(entity.Id))
+        if (string.IsNullOrEmpty(entity.Id.Value))
             return; // An edit of an application stored before reservations existed and never loaded with an id; nothing to name.
 
         var operations = session.Advanced.DocumentStore.Operations.ForDatabase(session.Advanced.DocumentStore.Database);
@@ -42,13 +42,13 @@ internal static class OidcClientIdReservation
             var existing = await operations.SendAsync(new GetCompareExchangeValueOperation<string>(key));
             if (existing is null)
             {
-                var created = await operations.SendAsync(new PutCompareExchangeValueOperation<string>(key, entity.Id, 0));
-                if (created.Successful || string.Equals(created.Value, entity.Id, StringComparison.OrdinalIgnoreCase))
+                var created = await operations.SendAsync(new PutCompareExchangeValueOperation<string>(key, entity.Id.Value, 0));
+                if (created.Successful || string.Equals(created.Value, entity.Id.Value, StringComparison.OrdinalIgnoreCase))
                     return;
                 continue;
             }
 
-            if (string.Equals(existing.Value, entity.Id, StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(existing.Value, entity.Id.Value, StringComparison.OrdinalIgnoreCase))
                 return;
 
             if (await session.Advanced.ExistsAsync(existing.Value))
@@ -56,7 +56,7 @@ internal static class OidcClientIdReservation
 
             // The owner was never saved, or was deleted without releasing: take it over, but only
             // if nobody else did in the meantime (the index is the compare).
-            var takenOver = await operations.SendAsync(new PutCompareExchangeValueOperation<string>(key, entity.Id, existing.Index));
+            var takenOver = await operations.SendAsync(new PutCompareExchangeValueOperation<string>(key, entity.Id.Value, existing.Index));
             if (takenOver.Successful)
                 return;
         }
@@ -69,7 +69,7 @@ internal static class OidcClientIdReservation
     {
         var operations = session.Advanced.DocumentStore.Operations.ForDatabase(session.Advanced.DocumentStore.Database);
         var existing = await operations.SendAsync(new GetCompareExchangeValueOperation<string>(Key(entity.ClientId)));
-        if (existing is not null && string.Equals(existing.Value, entity.Id, StringComparison.OrdinalIgnoreCase))
+        if (existing is not null && string.Equals(existing.Value, entity.Id.Value, StringComparison.OrdinalIgnoreCase))
             await operations.SendAsync(new DeleteCompareExchangeValueOperation<string>(Key(entity.ClientId), existing.Index));
     }
 

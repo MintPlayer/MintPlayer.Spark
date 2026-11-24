@@ -59,7 +59,7 @@ public class OidcInvitationTests(OidcSharedHost host) : OidcTestHost(host), ICla
     private async Task<string?> InviteAsync(OidcApplication app, string email, string role = OidcMemberRoles.Developer)
     {
         using var session = Store.OpenAsyncSession();
-        var tracked = await session.LoadAsync<OidcApplication>(app.Id);
+        var tracked = await session.LoadAsync<OidcApplication>(app.Id.Value);
         var token = await Invitations.InviteAsync(tracked, email, role, Inviter, CancellationToken.None);
         await session.SaveChangesAsync();
         return token;
@@ -102,7 +102,7 @@ public class OidcInvitationTests(OidcSharedHost host) : OidcTestHost(host), ICla
         knownToken.Should().NotBeNull("an approved developer at that address is mailed a link");
         unknownToken.Should().BeNull("nobody is mailed when the address has no account");
 
-        var stored = await LoadAsync(app.Id!);
+        var stored = await LoadAsync(app.Id.Value);
         foreach (var entry in new[] { EntryFor(stored, known), EntryFor(stored, unknown) })
         {
             entry.Status.Should().Be(OidcMemberStatuses.Invited);
@@ -136,17 +136,17 @@ public class OidcInvitationTests(OidcSharedHost host) : OidcTestHost(host), ICla
         var user = await SeedFindableUserAsync(email, developer: true);
         var token = (await InviteAsync(app, email))!;
 
-        var first = await AcceptAsync(app.Id!, token, user.Id!);
+        var first = await AcceptAsync(app.Id.Value, token, user.Id!);
         first.Accepted.Should().BeTrue();
         first.ApplicationName.Should().Be(app.DisplayName);
 
-        var stored = await LoadAsync(app.Id!);
+        var stored = await LoadAsync(app.Id.Value);
         var member = stored.ActiveMember(user.Id);
         member.Should().NotBeNull();
         member!.Role.Should().Be(OidcMemberRoles.Developer);
         member.InvitationHash.Should().BeNull("the hash is cleared on acceptance, so the link is spent");
 
-        var second = await AcceptAsync(app.Id!, token, user.Id!);
+        var second = await AcceptAsync(app.Id.Value, token, user.Id!);
         second.Accepted.Should().BeFalse("a spent link must not work again");
     }
 
@@ -160,15 +160,15 @@ public class OidcInvitationTests(OidcSharedHost host) : OidcTestHost(host), ICla
 
         using (var session = Store.OpenAsyncSession())
         {
-            var tracked = await session.LoadAsync<OidcApplication>(app.Id);
+            var tracked = await session.LoadAsync<OidcApplication>(app.Id.Value);
             EntryFor(tracked, email).InvitationExpiresAt = DateTime.UtcNow.AddMinutes(-1);
             await session.SaveChangesAsync();
         }
 
-        var outcome = await AcceptAsync(app.Id!, token, user.Id!);
+        var outcome = await AcceptAsync(app.Id.Value, token, user.Id!);
 
         outcome.Accepted.Should().BeFalse();
-        (await LoadAsync(app.Id!)).ActiveMember(user.Id).Should().BeNull();
+        (await LoadAsync(app.Id.Value)).ActiveMember(user.Id).Should().BeNull();
     }
 
     /// <summary>A token opens only the application it was issued for, and trying another does not spend it.</summary>
@@ -181,11 +181,11 @@ public class OidcInvitationTests(OidcSharedHost host) : OidcTestHost(host), ICla
         var user = await SeedFindableUserAsync(email, developer: true);
         var token = (await InviteAsync(app, email))!;
 
-        var wrong = await AcceptAsync(other.Id!, token, user.Id!);
+        var wrong = await AcceptAsync(other.Id.Value, token, user.Id!);
         wrong.Accepted.Should().BeFalse();
-        (await LoadAsync(other.Id!)).ActiveMember(user.Id).Should().BeNull();
+        (await LoadAsync(other.Id.Value)).ActiveMember(user.Id).Should().BeNull();
 
-        (await AcceptAsync(app.Id!, token, user.Id!)).Accepted.Should().BeTrue(
+        (await AcceptAsync(app.Id.Value, token, user.Id!)).Accepted.Should().BeTrue(
             "the refusal on the wrong application must not have consumed the invitation");
     }
 
@@ -199,10 +199,10 @@ public class OidcInvitationTests(OidcSharedHost host) : OidcTestHost(host), ICla
         var intruder = await SeedFindableUserAsync(UserEmail("intruder"), developer: true);
         var token = (await InviteAsync(app, email))!;
 
-        var outcome = await AcceptAsync(app.Id!, token, intruder.Id!);
+        var outcome = await AcceptAsync(app.Id.Value, token, intruder.Id!);
 
         outcome.Accepted.Should().BeFalse();
-        (await LoadAsync(app.Id!)).ActiveMember(intruder.Id).Should().BeNull();
+        (await LoadAsync(app.Id.Value)).ActiveMember(intruder.Id).Should().BeNull();
     }
 
     /// <summary>
@@ -221,9 +221,9 @@ public class OidcInvitationTests(OidcSharedHost host) : OidcTestHost(host), ICla
 
         var refusals = new[]
         {
-            await AcceptAsync(app.Id!, OidcRequestReference.GenerateValue(), user.Id!),
-            await AcceptAsync(other.Id!, token, user.Id!),
-            await AcceptAsync(app.Id!, token, intruder.Id!),
+            await AcceptAsync(app.Id.Value, OidcRequestReference.GenerateValue(), user.Id!),
+            await AcceptAsync(other.Id.Value, token, user.Id!),
+            await AcceptAsync(app.Id.Value, token, intruder.Id!),
             await AcceptAsync("OidcApplications/does-not-exist-" + Scope, token, user.Id!),
         };
 
@@ -245,8 +245,8 @@ public class OidcInvitationTests(OidcSharedHost host) : OidcTestHost(host), ICla
         var firstToken = (await InviteAsync(app, email))!;
         var secondToken = (await InviteAsync(app, email))!;
 
-        (await AcceptAsync(app.Id!, firstToken, user.Id!)).Accepted.Should().BeFalse("the first link was replaced");
-        (await AcceptAsync(app.Id!, secondToken, user.Id!)).Accepted.Should().BeTrue();
+        (await AcceptAsync(app.Id.Value, firstToken, user.Id!)).Accepted.Should().BeFalse("the first link was replaced");
+        (await AcceptAsync(app.Id.Value, secondToken, user.Id!)).Accepted.Should().BeTrue();
     }
 
     /// <summary>A Developer seat is checked again at acceptance: losing developer status in between blocks joining.</summary>
@@ -259,10 +259,10 @@ public class OidcInvitationTests(OidcSharedHost host) : OidcTestHost(host), ICla
         var token = (await InviteAsync(app, email))!;
         await SetDeveloperAsync(user.Id!, OidcDeveloperStatuses.Revoked);
 
-        var outcome = await AcceptAsync(app.Id!, token, user.Id!);
+        var outcome = await AcceptAsync(app.Id.Value, token, user.Id!);
 
         outcome.Accepted.Should().BeFalse();
-        (await LoadAsync(app.Id!)).ActiveMember(user.Id).Should().BeNull();
+        (await LoadAsync(app.Id.Value)).ActiveMember(user.Id).Should().BeNull();
     }
 
     // ---------- the HTTP endpoint ----------
@@ -284,7 +284,7 @@ public class OidcInvitationTests(OidcSharedHost host) : OidcTestHost(host), ICla
         var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync()).RootElement;
         body.GetProperty("accepted").GetBoolean().Should().BeTrue();
 
-        (await LoadAsync(app.Id!)).ActiveMember(user.Id).Should().NotBeNull();
+        (await LoadAsync(app.Id.Value)).ActiveMember(user.Id).Should().NotBeNull();
     }
 
     /// <summary>Anonymous callers are turned away before anything is looked up, and the invitation stays pending.</summary>
@@ -301,8 +301,8 @@ public class OidcInvitationTests(OidcSharedHost host) : OidcTestHost(host), ICla
             new { applicationId = app.Id, token });
 
         response.IsSuccessStatusCode.Should().BeFalse();
-        (await LoadAsync(app.Id!)).ActiveMember(user.Id).Should().BeNull();
-        EntryFor(await LoadAsync(app.Id!), email).Status.Should().Be(OidcMemberStatuses.Invited);
+        (await LoadAsync(app.Id.Value)).ActiveMember(user.Id).Should().BeNull();
+        EntryFor(await LoadAsync(app.Id.Value), email).Status.Should().Be(OidcMemberStatuses.Invited);
     }
 
     /// <summary>An application id outside the applications collection is refused with the generic answer.</summary>

@@ -39,7 +39,8 @@ internal sealed partial class InstallationTokenContributor : IOidcClientCredenti
         if (installation is null || installation.Suspended)
             return unknown;
         var app = await session.LoadAsync<SparkApp>(SparkApp.IdFor(installation.AppSlug).Value, cancellationToken);
-        if (app is null || app.OidcApplicationId != request.Application.Id)
+        // Ignoring case: the stored id keeps the casing it was written in, "OidcApplications/…" before #536 (D7).
+        if (app is null || !string.Equals(app.OidcApplicationId, request.Application.Id.Value, StringComparison.OrdinalIgnoreCase))
             return unknown;
 
         // The requested scopes narrow the token; asking for one the installation did not grant is refused, not dropped.
