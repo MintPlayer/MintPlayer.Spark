@@ -331,3 +331,7 @@ during development (TDD red→green). The full suite runs once at the end, via p
     `[assembly: SparkTestDatabase(…)]` its `build/*.targets` generates; `SPARK_TEST_DATABASE` picks one when a
     project references several (Spark's neutral suites, the CI matrix), and every ambiguity fails at startup.
     The runtime provider packages ship no build files for it.
+  - Upstream reports (owner's go): the S3 snapshot trap is the open dotnet/efcore#36016, now commented with the root
+    cause, a SQLite repro and a fix; the S19 lock race is filed as npgsql/efcore.pg#4162. Repros with a workaround
+    and an upstream patch on a `fix` branch: PieterjanDeClippel/efcore-scaffold-readonly-snapshot and
+    PieterjanDeClippel/efcore-npgsql-migration-lock-race. Spark already avoids both (fresh context, D33 guard).

@@ -1177,7 +1177,10 @@ on contracts with a core default.
   `LOCK TABLE "__EFMigrationsHistory" IN ACCESS EXCLUSIVE MODE` inside each migration's transaction. The lock
   ends at that commit, and the next migration's lock is taken again, so a second instance that read the same pending
   list in between applies the same later migration. SQL Server's `sp_getapplock` is session-owned and holds across
-  the run. This is a candidate upstream issue for Npgsql (not filed; the owner decides).
+  the run. Root cause: EF's migrator plans once and does not re-read the history after reacquiring a
+  transaction-scoped lock. Filed as npgsql/efcore.pg#4162 (2026-11-24, owner's go) with a standalone repro and a
+  session advisory lock fix (github.com/PieterjanDeClippel/efcore-npgsql-migration-lock-race, `fix` branch: 3/3
+  runs pass). D33's own guard makes it moot for Spark.
 - **Neither provider covers database creation.** Instances race on `CREATE DATABASE`; on SQL Server the loser can
   also fail to log into the winner's database before it is online.
 - **The fix, now in D33:** Spark takes a session-level lock in the server's maintenance database (`master` /
@@ -1225,7 +1228,9 @@ on contracts with a core default.
    release/11.0; the same guard was internal in EF 10). The scaffolder reads `null` as "no previous model" and emits
    a migration that **recreates every table**, silently. Reproduced on both databases for v2–v6; a new context (its
    own scoped `IMigrationsAssembly`) scaffolds correctly. The EF tools never meet it because they run the check
-   and the scaffold in separate processes. Synchronize also refuses a scaffolded migration that creates a table the
+   and the scaffold in separate processes. It is the open dotnet/efcore#36016; the root cause, a SQLite repro and
+   a fix (the scaffolder processes a fresh snapshot instance) were posted there on 2026-11-24
+   (github.com/PieterjanDeClippel/efcore-scaffold-readonly-snapshot, `fix` branch). Synchronize also refuses a scaffolded migration that creates a table the
    snapshot already has. Candidate upstream issue (not filed; the owner decides).
 3. **A queryable string needs a length on SQL Server:** `CREATE INDEX` on `nvarchar(max)` is refused ("invalid for
    use as a key column in an index"). PostgreSQL indexes `text`, but one rule for both: a queryable string
