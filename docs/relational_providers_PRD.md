@@ -582,7 +582,12 @@ The full consensus and the spike details are in plan §3, rounds 4 and 6–9.
 - **The framework's own tables** (outbox, leases, atomic values, reservations, revisions, change log) live in their
   own schema and are versioned separately from the app's. The commercial framework keeps its own tables the same way, with
   hand-written versioned scripts.
-- The S3 gate decides how the migration is produced from a model built from metadata.
+- **How (S3, §8.8):** synchronize builds the `DbContext` from the model, compares it with the compiled snapshot
+  (`HasPendingModelChanges()`), and on a change scaffolds through EF's public design-time services on a **fresh
+  context** (the same context scaffolds a migration that recreates every table). It writes the migration, designer
+  and snapshot files, prints the operations and EF's warnings, and refuses a migration that recreates a table the
+  snapshot already has or splits an attribute id into a drop and an add. A queryable string attribute has a maximum
+  length. Where the design-time code lives is O17.
 
 **D33 (owner, 2026-11-24): when migrations are generated and applied.** RavenDB apps need no schema step today; SQL
 apps do. The switches and the startup order are core's; each provider implements `ISparkSchemaMigrator` (D34).
@@ -1184,6 +1189,59 @@ on contracts with a core default.
   `PERFORM` works. The SQL Server script needs splitting on `GO`. Hand-written SQL in a Spark-generated migration is
   rare, but the D31 tests run the script once per dialect so a non-scriptable statement fails CI.
 
+### 8.8 S3: synchronize generates EF migrations from a model built from metadata (2026-11-24)
+
+**Setup.**
+- Code: `docs/relational_spike/s3/` (console, net11.0, EF Core 11.0.0, Npgsql EF 11.0.0, EF Design 11.0.0), against
+  SQL Server 2025 and PostgreSQL 18. `run.sh` runs the sequence.
+- The model is **metadata**, not attributes: `OnModelCreating` maps what a per-version model description says
+  (attributes, queryable flag and length, AsDetail collections, references) over CLR classes that carry every
+  property, as Spark's model JSON does. Keys and references are `Id<T>` with the Guid converter (S-ID2).
+- Each version is its own process: `gen n` scaffolds V*n* for both providers, the next `dotnet run` rebuilds with the
+  generated files compiled in (what a developer's build does), and `verify n` checks nothing is pending, migrates and
+  exercises the new shape.
+
+**Results: 6 versions × 2 databases, every check green (gen 2–6: 4–6 checks each; verify: 6–20 checks each).**
+
+| Model change | Scaffolded `Up` (identical on both databases) | Verified |
+|---|---|---|
+| v1 initial | `CreateTable(Companies)`, `CreateTable(People)` (Guid keys: `uniqueidentifier` / `uuid`) | round trip |
+| v2 add a field | `AddColumn(Email)` | round trip |
+| v3 make it queryable (length 256) | `AlterColumn(Email)` `nvarchar(max)` → `nvarchar(256)`, `CreateIndex(IX_People_Email)`; reporter: "may result in the loss of data" | index used by a filter |
+| v4 add an AsDetail collection | `CreateTable(PersonAddresses)`: PK (`PersonId`, `Id`), FK to `People` with cascade (D25) | round trip; deleting the owner leaves 0 child rows |
+| v5 add a reference | `AddColumn(CompanyId)`, `CreateIndex`, `AddForeignKey(FK_People_Companies_CompanyId)` (D26, no navigation) | filter by reference; a dangling id is refused (SQL Server's FK conflict / SQLSTATE 23503, D30) |
+| v6 rename a field | `RenameColumn(LastName → Surname)`, no data-loss warning | a row written in v5 keeps its value |
+| v6 again, no change | `HasPendingModelChanges()` false: nothing written | — |
+
+**Findings.**
+1. **Only public API is needed.** `services.AddEntityFrameworkDesignTimeServices(reporter)`,
+   `AddDbContextDesignTimeServices(context)`, and the provider's `IDesignTimeServices` found through the public
+   `DesignTimeProviderServicesAttribute` on its assembly (what the EF tools do). `IOperationReporter` and
+   `ISnapshotModelProcessor` are public since EF 11 (dotnet/efcore#38408). No EF1001 warning, no
+   `DesignTimeServicesBuilder`, no `dotnet ef`, no `IDesignTimeDbContextFactory`.
+2. **Trap: scaffold on a fresh context.** `HasPendingModelChanges()` finalizes the context's cached snapshot model,
+   and `SnapshotModelProcessor.Process` returns `null` for a read-only model (`SnapshotModelProcessor.cs:59-66` on
+   release/11.0; the same guard was internal in EF 10). The scaffolder reads `null` as "no previous model" and emits
+   a migration that **recreates every table**, silently. Reproduced on both databases for v2–v6; a new context (its
+   own scoped `IMigrationsAssembly`) scaffolds correctly. The EF tools never meet it because they run the check
+   and the scaffold in separate processes. Synchronize also refuses a scaffolded migration that creates a table the
+   snapshot already has. Candidate upstream issue (not filed; the owner decides).
+3. **A queryable string needs a length on SQL Server:** `CREATE INDEX` on `nvarchar(max)` is refused ("invalid for
+   use as a key column in an index"). PostgreSQL indexes `text`, but one rule for both: a queryable string
+   attribute gets a maximum length in the model, and making an existing field queryable narrows the column, which EF
+   flags as possible data loss.
+4. **EF's differ detected the rename by itself** (same table, same column type). Spark's model attributes carry
+   stable ids, so synchronize can check EF's pairing against them and refuse a drop + add of the same attribute id.
+5. **Synchronize must show the reporter's warnings** (the data-loss one above) and the generated operations, since
+   the developer reviews the migration in the pull request (D33).
+6. **Migrations are per provider** (column types differ): one folder and namespace per provider context, bound by
+   `[DbContext(typeof(…))]`. An app has one provider, so one set. EF 11 also names the class after the id
+   (`_20261124134420_V6_RenameLastName`) and writes the last migration id into the snapshot, so two branches that
+   both add a migration conflict on that line, by design: the second regenerates after the rebase.
+7. **`Microsoft.EntityFrameworkCore.Design` is heavy:** it brings Roslyn (`Microsoft.CodeAnalysis.CSharp`,
+   `.Workspaces`, `.Workspaces.MSBuild`), `Microsoft.Build.Framework`, Humanizer and Mono.TextTemplating: 17 MB of
+   DLLs plus 14 culture folders. Synchronize runs on a developer's machine, so production should not ship it (O17).
+
 ## 9. Stale in earlier drafts
 
 **In the 2026-11-09 draft:**
@@ -1306,6 +1364,19 @@ commercial-framework comparison added D30. The plan §3 has the log.
     provider as a matrix while app test projects stay on their own provider. Trap: a project that overrides the
     variable must reference every provider package it may select, and a typo must fail at startup, never fall back
     silently.
+- **O17, where the migration scaffolding lives (open, S3 finding 7):** `Microsoft.EntityFrameworkCore.Design` adds
+  17 MB of Roslyn and MSBuild assemblies, needed only when a developer runs synchronize.
+  - **(a) A `MintPlayer.Spark.Relational.Design` package, loaded by name.** Core's synchronize command looks for it
+    the way the EF tools find a provider's design-time services (an assembly attribute naming an `ISparkSchemaScaffolder`
+    implementation). The app references it only for development builds
+    (`Condition="'$(Configuration)' == 'Debug'"`), and never names it in code, so a Release publish carries none of it.
+    Without it, synchronize writes the model JSON and stops with a message that names the package.
+  - **(b) Inside `MintPlayer.Spark.Relational`.** Nothing to set up, but every production image carries Roslyn.
+  - **(c) A separate `dotnet` tool.** It needs the design-time `DbContext` factory D33 avoids.
+  - Recommendation: (a). It is D34's rule (core owns the command, a package plugs in) plus EF's own discovery
+    pattern. Trap: a developer who builds Release locally gets the "add the package" message from synchronize, and a
+    template that forgets the condition ships Roslyn silently, so the template and a D31-style test pin the
+    condition.
 
 ## 11. Out of scope
 

@@ -14,9 +14,10 @@ rounds, milestones and status. Branch `feat/536-sql-server-provider`, draft PR #
 - **Storage model (round 3):** a table per entity, mapped by EF Core. The model synchronize generates EF migrations;
   AsDetail collections are child tables; references are real FKs; the contract is typed; ids are `Id<T>` (D23).
   Breaking changes are allowed, with no backward compatibility.
-- **Next:** the gate spikes S3, S5, S4 and S2b (§2). S19, S20, S-ID1, S-ID2, S-ID4 and S-ID5's RavenDB half are
-  done (PRD §8.3–8.7, 2026-11-24). Grilling round 5 decided O10–O13
-  (2026-11-24). O8 and O9 are open, both low priority, and so is O16 (the test harness's provider choice, D35).
+- **Next:** the gate spikes S5, S4 and S2b (§2). S3, S19, S20, S-ID1, S-ID2, S-ID4 and S-ID5's RavenDB half are
+  done (PRD §8.3–8.8, 2026-11-24). Grilling round 5 decided O10–O13
+  (2026-11-24). O8 and O9 are open, both low priority, and so are O16 (the test harness's provider choice, D35) and
+  O17 (where the migration scaffolding lives).
 - Local spike servers left running:
   - SQL Server: `SparkSpike536` on `localhost` and `localhost\MSSQLSERVER01`
   - Docker containers `spark536-pg` (`postgres:18`, 127.0.0.1:55432) and `spark536-maria` (`mariadb:11.8`,
@@ -39,7 +40,7 @@ Each spike ends with an entry in PRD §8, with evidence (numbers, file:line, a r
 | **S-ID5** | **Id conventions under the lowercase rule** (PRD D7), RavenDB 7: <ul><li>`ApplySparkConventions` with lowercased generated, natural and HiLo ids (node tag `-a`)</li><li>`TransformTypeCollectionNameToDocumentIdPrefix` lowered, read by `RoleStore` and HiLo</li><li>the session identity map when the same document is loaded as `Accounts/X` and `accounts/x`</li><li>the debug guard refusing a non-lowercase id on store</li><li>the collection-collision build failure (two types, names equal ignoring case)</li></ul> | every generated id is lowercase; one entity per document in the session; the collision fails the model build | ✅ RavenDB half, PRD §8.3 (generated, natural, HiLo lowered; one instance per document; the guard checks new documents only). The collision failure is tested in M3 |
 | **S-ID4** | **Mixed-case legacy ids under the lowercase rule** (O15), on a copy of the production `Coverage` database (never production itself): <ul><li>`LoadAsync`/batch load, `LoadStartingWithAsync` and an index equality query with lowercase ids against `Accounts/X`-style documents</li><li>the session identity map with a lowered `__DocumentId`, then `SaveChanges` (no duplicate, no casing change written)</li><li>Lucene and Corax reference-field equality ignoring case</li><li>only if (a) fails: a case-only re-key (delete + put in one batch) with attachments, and what the subscriptions see</li></ul> | (a) works without writing to any document, or (b) re-keys with every attachment kept | ✅ PRD §8.5: 15/15 on a copy of the development `Coverage` database; no re-key. A rerun on a production export is optional (owner) |
 | **S2b** | **The real `QueryExecutor` end to end** on an EF model generated from arbitrary Spark entities: TPH, JSON columns for `TranslatedString` (EF 10's `ToJson()` complex types; a `Dictionary` as a JSON column is unverified), child tables, join tables | the row filter (:1055), `In` (:664) and search pushdown (:2155) run as SQL on both databases | gate |
-| **S3** | **Schema:** the model synchronize generates EF migration files (D24) from a model built from metadata, through the public design-time services (`IMigrationsScaffolder`, `IMigrationsModelDiffer`, via `DesignTimeServicesBuilder`; never construct `MigrationsScaffolderDependencies`) | add a field, add a queryable field, add an AsDetail collection, add a reference, on both | gate |
+| **S3** | **Schema:** the model synchronize generates EF migration files (D24) from a model built from metadata, through the public design-time services (`IMigrationsScaffolder`, `IMigrationsModelDiffer`, via `DesignTimeServicesBuilder`; never construct `MigrationsScaffolderDependencies`) | add a field, add a queryable field, add an AsDetail collection, add a reference, on both | ✅ PRD §8.8: all six versions (plus a rename and a no-change run) scaffold the expected operations and migrate on both, from public API only. Scaffold on a fresh context (EF 11 trap); queryable strings need a length; Design's 17 MB → O17 |
 | **S4** | **Concurrency and keys:** the `bigint` version per table (D3); `""` = insert-only; the D14 etag on the wire; the typed contract (D27); lowercase ids and an escaped `LoadStartingWith` (D7); constraint errors become validation messages (D30) | the conformance tests for absent and stale versions pass, plus a natural-key case with `_` and `%`, plus a unique and an FK violation | gate |
 | **S5** | Neutral views: one declaration, rendered by RavenDB as an index, by relational databases as an SQL view or indexes, and by InMemory as LINQ | DemoApp's `VPerson` (computed `FullName`) and one view with a join, from one declaration on InMemory + both databases; synchronize writes the EF-translated `CREATE VIEW` into the migration (PRD D32) | gate |
 | S6 | Neutral contracts: <ul><li>`SetExpiry`</li><li>`ISparkStoreLock`</li><li>`ISparkAtomicValues`</li><li>`StreamAsync`</li><li>`Reserve/Release` (in the `SaveChanges` transaction)</li><li>`UpdateWhereAsync`/`DeleteWhereAsync`</li><li>`PatchAppend`</li></ul>(design-principles: deep modules, one contract per concern) | settings, mail (expiry) and cron (atomic value) green on all providers | after the gates |
@@ -205,6 +206,7 @@ source-generated from one id template per entity (PRD D23 rule 12).
 - O8 (the PostgreSQL 17 floor, probably moot)
 - O9 (bring-your-own `DbContext`, low priority)
 - O16 (how a test project picks its database, D35)
+- O17 (where the migration scaffolding lives: a development-only design package, S3)
 
 ## 4. Milestones
 
@@ -313,3 +315,8 @@ during development (TDD red→green). The full suite runs once at the end, via p
     MariaDB has no maintained .NET package. The owner followed the recommendation: PostgresEmbed as
     `.Testing.PostgreSql`'s default; connection string → LocalDB → Testcontainers for SQL Server. Checks added to
     S17.
+  - Spike S3, PRD §8.8: synchronize can scaffold EF migrations from a metadata-built model through public
+    design-time API only. Add field, queryable field, AsDetail, reference and rename all scaffold and migrate on
+    both databases. Trap found: scaffolding on the context that ran `HasPendingModelChanges()` silently recreates
+    every table (EF 11 `SnapshotModelProcessor` returns null for a finalized model). O17 opened for
+    `Microsoft.EntityFrameworkCore.Design`'s 17 MB.
