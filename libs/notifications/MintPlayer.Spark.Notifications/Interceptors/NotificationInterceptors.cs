@@ -34,7 +34,7 @@ internal sealed class NotificationPreferenceInterceptors : IBeforeSave<Notificat
         entity.UserId = userId;
         entity.OrganizationId = string.IsNullOrWhiteSpace(entity.OrganizationId) ? null : entity.OrganizationId.Trim();
         entity.Id = NotificationPreference.IdFor(userId, entity.OrganizationId);
-        if (await context.GetSession().Advanced.ExistsAsync(entity.Id))
+        if (await context.GetSession().Advanced.ExistsAsync(entity.Id.Value))
             throw new SparkValidationException(entity.OrganizationId is null
                 ? "You already have default notification preferences: edit them instead."
                 : "You already have notification preferences for this organization: edit them instead.");

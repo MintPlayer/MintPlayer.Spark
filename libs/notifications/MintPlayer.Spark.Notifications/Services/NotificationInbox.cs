@@ -60,11 +60,11 @@ internal sealed class NotificationInbox(IDocumentStore store, IOptions<SparkNoti
 
         using var session = store.OpenAsyncSession();
         var id = PushSubscription.IdFor(userId, subscription.Endpoint);
-        var stored = await session.LoadAsync<PushSubscription>(id, cancellationToken);
+        var stored = await session.LoadAsync<PushSubscription>(id.Value, cancellationToken);
         if (stored is null)
         {
             stored = new PushSubscription { Id = id, UserId = userId, Endpoint = subscription.Endpoint, CreatedAtUtc = timeProvider.GetUtcNow().UtcDateTime };
-            await session.StoreAsync(stored, id, cancellationToken);
+            await session.StoreAsync(stored, id.Value, cancellationToken);
 
             // One device too many drops the oldest, so a user who reinstalls a browser a hundred times keeps a bounded list.
             var existing = await session.Advanced.LoadStartingWithAsync<PushSubscription>(PushSubscription.PrefixFor(userId), pageSize: 1024, token: cancellationToken);
@@ -86,7 +86,7 @@ internal sealed class NotificationInbox(IDocumentStore store, IOptions<SparkNoti
     {
         using var session = store.OpenAsyncSession();
         var id = PushSubscription.IdFor(userId, endpoint);
-        if (await session.LoadAsync<PushSubscription>(id, cancellationToken) is not { } stored)
+        if (await session.LoadAsync<PushSubscription>(id.Value, cancellationToken) is not { } stored)
             return false;
         session.Delete(stored);
         await session.SaveChangesAsync(cancellationToken);

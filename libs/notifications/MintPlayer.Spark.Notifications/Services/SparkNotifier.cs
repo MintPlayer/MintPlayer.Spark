@@ -89,8 +89,8 @@ internal sealed class SparkNotifier(
                 var stored = NewNotification(notification, title, now);
                 stored.UserId = userId;
                 // No ExpiresAtUtc: the library model's "expiresAfter" (90 days) stamps it (X1).
-                await session.StoreAsync(stored, stored.Id, cancellationToken);
-                notificationId = stored.Id!;
+                await session.StoreAsync(stored, stored.Id.Value, cancellationToken);
+                notificationId = stored.Id.Value;
                 ids.Add(notificationId);
             }
 
@@ -105,7 +105,7 @@ internal sealed class SparkNotifier(
                 {
                     await outbox.EnqueueAsync(session, new WebPushDeliveryMessage
                     {
-                        SubscriptionId = device.Id!,
+                        SubscriptionId = device.Id.Value,
                         Payload = payload,
                         Topic = Topic(notification.Category),
                         Urgent = notification.Urgent,
@@ -125,8 +125,8 @@ internal sealed class SparkNotifier(
             stored.VisitorId = visitorId;
             // Explicit, so the model's 90 days don't apply: the notification dies with the visitor.
             stored.ExpiresAtUtc = now + visitorOptions.Value.Lifetime;
-            await session.StoreAsync(stored, stored.Id, cancellationToken);
-            ids.Add(stored.Id!);
+            await session.StoreAsync(stored, stored.Id.Value, cancellationToken);
+            ids.Add(stored.Id.Value);
         }
 
         await session.SaveChangesAsync(cancellationToken);
@@ -176,8 +176,8 @@ internal sealed class SparkNotifier(
     /// <summary>The user's preference for the organization, else their default, else the configured defaults.</summary>
     internal async Task<SparkNotificationChannels> ChannelsAsync(Raven.Client.Documents.Session.IAsyncDocumentSession session, string userId, string? organizationId, CancellationToken cancellationToken)
     {
-        var scoped = NotificationPreference.IdFor(userId, organizationId);
-        var fallback = NotificationPreference.IdFor(userId, null);
+        var scoped = NotificationPreference.IdFor(userId, organizationId).Value;
+        var fallback = NotificationPreference.IdFor(userId, null).Value;
         var found = await session.LoadAsync<NotificationPreference>([scoped, fallback], cancellationToken);
         var preference = (found.TryGetValue(scoped, out var s) ? s : null) ?? (found.TryGetValue(fallback, out var f) ? f : null);
         return preference is null

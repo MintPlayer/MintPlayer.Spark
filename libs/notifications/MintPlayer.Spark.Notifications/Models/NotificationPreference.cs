@@ -1,3 +1,5 @@
+using MintPlayer.Spark.Abstractions;
+
 namespace MintPlayer.Spark.Notifications.Models;
 
 /// <summary>
@@ -12,9 +14,10 @@ namespace MintPlayer.Spark.Notifications.Models;
 /// without organizations keeps one default row per user. An application with organizations can turn the
 /// attribute into a reference to <c>Organization</c> in its own model layer.
 /// </remarks>
-public class NotificationPreference
+[IdKind(SparkIdKind.Natural)]
+public partial class NotificationPreference
 {
-    public string? Id { get; set; }
+    public Id<NotificationPreference> Id { get; set; }
 
     public string? UserId { get; set; }
 
@@ -32,6 +35,9 @@ public class NotificationPreference
 
     public const string DefaultScope = "default";
 
-    public static string IdFor(string userId, string? organizationId)
-        => "NotificationPreferences/" + userId + "/" + (string.IsNullOrEmpty(organizationId) ? DefaultScope : organizationId);
+    /// <summary>The prefix of every row of <paramref name="userId"/>. Rows stored before #536 keep their mixed casing; RavenDB ids ignore case.</summary>
+    public static string PrefixFor(string userId) => "notificationpreferences/" + userId + "/";
+
+    public static Id<NotificationPreference> IdFor(string userId, string? organizationId)
+        => Id<NotificationPreference>.FromTrusted(PrefixFor(userId) + (string.IsNullOrEmpty(organizationId) ? DefaultScope : organizationId));
 }

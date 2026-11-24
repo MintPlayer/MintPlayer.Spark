@@ -141,9 +141,9 @@ public class NotificationTests : OrganizationsTestHost
 
         await AsyncWait.UntilAsync(() => pushService.Received.Count >= 2, "both pushes to reach the push service", TimeSpan.FromSeconds(30));
         // ForAsync treats a null result as "not yet", so the deletion is polled as an existence flag.
-        await AsyncWait.ForAsync(async () => (bool?)(await LoadAsync<PushSubscription>(PushSubscription.IdFor(ann.Id!, "https://web.push.apple.com/laptop")) is not null),
+        await AsyncWait.ForAsync(async () => (bool?)(await LoadAsync<PushSubscription>(PushSubscription.IdFor(ann.Id!, "https://web.push.apple.com/laptop").Value) is not null),
             exists => exists == false, "the 410 device to be deleted", exists => exists == true ? "still stored" : "deleted", TimeSpan.FromSeconds(30));
-        (await LoadAsync<PushSubscription>(PushSubscription.IdFor(ann.Id!, "https://fcm.googleapis.com/fcm/send/phone"))).Should().NotBeNull();
+        (await LoadAsync<PushSubscription>(PushSubscription.IdFor(ann.Id!, "https://fcm.googleapis.com/fcm/send/phone").Value)).Should().NotBeNull();
 
         var toPhone = pushService.Received.Single(r => r.Uri == "https://fcm.googleapis.com/fcm/send/phone");
         toPhone.Headers["Urgency"].Should().Be("high");
@@ -222,7 +222,7 @@ public class NotificationTests : OrganizationsTestHost
             (await SendAsync("/spark/notifications/push/subscribe", Body($"https://fcm.googleapis.com/fcm/send/d{i}", p256dh, auth), ann.Id)).Status.Should().Be(HttpStatusCode.NoContent);
         var devices = await DevicesOfAsync(ann.Id!);
         devices.Count.Should().Be(20, "MaxDevicesPerUser: the oldest go");
-        devices.Should().NotContain(PushSubscription.IdFor(ann.Id!, "https://fcm.googleapis.com/fcm/send/d0"));
+        devices.Should().NotContain(PushSubscription.IdFor(ann.Id!, "https://fcm.googleapis.com/fcm/send/d0").Value);
 
         (await SendAsync("/spark/notifications/push/unsubscribe", new { endpoint = "https://fcm.googleapis.com/fcm/send/d21" }, ann.Id)).Status.Should().Be(HttpStatusCode.NoContent);
         (await DevicesOfAsync(ann.Id!)).Count.Should().Be(19);
@@ -252,7 +252,7 @@ public class NotificationTests : OrganizationsTestHost
 
         (await NotificationsOfAsync(ann.Id!)).Should().BeEmpty();
         (await DevicesOfAsync(ann.Id!)).Should().BeEmpty();
-        (await LoadAsync<NotificationPreference>(NotificationPreference.IdFor(ann.Id!, null))).Should().BeNull();
+        (await LoadAsync<NotificationPreference>(NotificationPreference.IdFor(ann.Id!, null).Value)).Should().BeNull();
         (await NotificationsOfAsync(bob.Id!)).Count.Should().Be(1, "another user's notifications stay");
     }
 
@@ -270,10 +270,10 @@ public class NotificationTests : OrganizationsTestHost
         return (key, auth);
     }
 
-    private async Task StoreAsync(object entity)
+    private async Task StoreAsync(NotificationPreference preference)
     {
         using var session = Store.OpenAsyncSession();
-        await session.StoreAsync(entity);
+        await session.StoreAsync(preference, preference.Id.Value);
         await session.SaveChangesAsync();
     }
 
@@ -283,7 +283,7 @@ public class NotificationTests : OrganizationsTestHost
     private async Task<List<string>> DevicesOfAsync(string userId)
     {
         using var session = Store.OpenAsyncSession();
-        return (await session.Advanced.LoadStartingWithAsync<PushSubscription>(PushSubscription.PrefixFor(userId), pageSize: 1024)).Select(d => d.Id!).ToList();
+        return (await session.Advanced.LoadStartingWithAsync<PushSubscription>(PushSubscription.PrefixFor(userId), pageSize: 1024)).Select(d => d.Id.Value).ToList();
     }
 
     /// <summary>Reads frames of <paramref name="sub"/> until one carries a total, and returns it.</summary>
