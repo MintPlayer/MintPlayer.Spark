@@ -14,8 +14,8 @@ rounds, milestones and status. Branch `feat/536-sql-server-provider`, draft PR #
 - **Storage model (round 3):** a table per entity, mapped by EF Core. The model synchronize generates EF migrations;
   AsDetail collections are child tables; references are real FKs; the contract is typed; ids are `Id<T>` (D23).
   Breaking changes are allowed, with no backward compatibility.
-- **Next:** the gate spikes S5, S4 and S2b (§2). S3, S19, S20, S-ID1, S-ID2, S-ID4 and S-ID5's RavenDB half are
-  done (PRD §8.3–8.8, 2026-11-24). The two upstream bugs S3 and S19 found have pull requests upstream and
+- **Next:** the gate spikes S4 and S5 (§2). S2b, S3, S19, S20, S-ID1, S-ID2, S-ID4 and S-ID5's RavenDB half are
+  done (PRD §8.3–8.10, 2026-11-24). The two upstream bugs S3 and S19 found have pull requests upstream and
   workarounds in D24 and D33 (§5). Grilling round 5 decided O10–O13
   (2026-11-24). O16 and O17 are decided (2026-11-24; O17's evidence is PRD §8.9). O8 and O9 are open, both low
   priority.
@@ -40,7 +40,7 @@ Each spike ends with an entry in PRD §8, with evidence (numbers, file:line, a r
 | **S-ID2** | **`Id<T>` on EF Core 11**, SQL Server + PostgreSQL + InMemory. Unverified so far (research from memory, 2026-11-24): <ul><li>converters on `Id<T>` as PK and FK</li><li>`UseHiLo` on a converted key: two inserts in one `SaveChanges`</li><li>`Contains` over converted values with 0/1/50/2000 ids (OPENJSON / `= ANY`; read the SQL)</li><li>a join entity and a child-table FK</li><li>the Guid key column: `uniqueidentifier`/`uuid` against the lowercase string, and v4 against v7 insert cost over 100k rows (PRD D23 rule 2: v4 stays unless the difference is large)</li></ul> | all shapes run as SQL on both databases | ✅ PRD §8.4: 25/25 on SQL Server 2025, 2022, PostgreSQL 18 and InMemory; v4 stays; `Id<T>` gets `IComparable` |
 | **S-ID5** | **Id conventions under the lowercase rule** (PRD D7), RavenDB 7: <ul><li>`ApplySparkConventions` with lowercased generated, natural and HiLo ids (node tag `-a`)</li><li>`TransformTypeCollectionNameToDocumentIdPrefix` lowered, read by `RoleStore` and HiLo</li><li>the session identity map when the same document is loaded as `Accounts/X` and `accounts/x`</li><li>the debug guard refusing a non-lowercase id on store</li><li>the collection-collision build failure (two types, names equal ignoring case)</li></ul> | every generated id is lowercase; one entity per document in the session; the collision fails the model build | ✅ RavenDB half, PRD §8.3 (generated, natural, HiLo lowered; one instance per document; the guard checks new documents only). The collision failure is tested in M3 |
 | **S-ID4** | **Mixed-case legacy ids under the lowercase rule** (O15), on a copy of the production `Coverage` database (never production itself): <ul><li>`LoadAsync`/batch load, `LoadStartingWithAsync` and an index equality query with lowercase ids against `Accounts/X`-style documents</li><li>the session identity map with a lowered `__DocumentId`, then `SaveChanges` (no duplicate, no casing change written)</li><li>Lucene and Corax reference-field equality ignoring case</li><li>only if (a) fails: a case-only re-key (delete + put in one batch) with attachments, and what the subscriptions see</li></ul> | (a) works without writing to any document, or (b) re-keys with every attachment kept | ✅ PRD §8.5: 15/15 on a copy of the development `Coverage` database; no re-key. A rerun on a production export is optional (owner) |
-| **S2b** | **The real `QueryExecutor` end to end** on an EF model generated from arbitrary Spark entities: TPH, JSON columns for `TranslatedString` (EF 10's `ToJson()` complex types; a `Dictionary` as a JSON column is unverified), child tables, join tables | the row filter (:1055), `In` (:664) and search pushdown (:2155) run as SQL on both databases | gate |
+| **S2b** | **The real `QueryExecutor` end to end** on an EF model generated from arbitrary Spark entities: TPH, JSON columns for `TranslatedString` (EF 10's `ToJson()` complex types; a `Dictionary` as a JSON column is unverified), child tables, join tables | the row filter (:1055), `In` (:664) and search pushdown (:2155) run as SQL on both databases | ✅ PRD §8.10: 14/14 on both, `QueryExecutor` unmodified; `TranslatedString` is a converter JSON column; O13's stored get-only member works. For M2: `Search` takes words, not RavenDB's `*word*`; the executor composes captured values, not constants (literals today). For M3: `AsSplitQuery` for types with several AsDetail collections |
 | **S3** | **Schema:** the model synchronize generates EF migration files (D24) from a model built from metadata, through the public design-time services (`IMigrationsScaffolder`, `IMigrationsModelDiffer`, via `DesignTimeServicesBuilder`; never construct `MigrationsScaffolderDependencies`) | add a field, add a queryable field, add an AsDetail collection, add a reference, on both | ✅ PRD §8.8: all six versions (plus a rename and a no-change run) scaffold the expected operations and migrate on both, from public API only. the EF 11 snapshot trap is worked around by `FreshSnapshotMigrationsAssembly` (dotnet/efcore#39784 upstream); queryable strings need a length; Design's 17 MB → O17, decided (§8.9: a development-dependency package, out of every publish) |
 | **S4** | **Concurrency and keys:** the `bigint` version per table (D3); `""` = insert-only; the D14 etag on the wire; the typed contract (D27); lowercase ids and an escaped `LoadStartingWith` (D7); constraint errors become validation messages (D30) | the conformance tests for absent and stale versions pass, plus a natural-key case with `_` and `%`, plus a unique and an FK violation | gate |
 | **S5** | Neutral views: one declaration, rendered by RavenDB as an index, by relational databases as an SQL view or indexes, and by InMemory as LINQ | DemoApp's `VPerson` (computed `FullName`) and one view with a join, from one declaration on InMemory + both databases; synchronize writes the EF-translated `CREATE VIEW` into the migration (PRD D32) | gate |
@@ -235,6 +235,9 @@ source-generated from one id template per entity (PRD D23 rule 12).
    - the `SparkDataProtectionStorage` rename
    - the `SparkStoreRequirement` default hint
    - the RavenDB wording in messages
+   - the query seam (S2b, PRD §8.10): `ISparkQueryProvider.Search` takes the words, and RavenDB adds its own `*`;
+     `QueryExecutor` composes filter values as captured fields, not `Expression.Constant` (EF writes constants as
+     literals, one query plan per value)
    - the generators' neutral declarations (with S5): one `MintPlayer.Spark.SourceGenerators` package that renders the
      RavenDB index or the EF view mapping depending on the referenced provider (PRD D32)
    - IoC (PRD D34): `ISparkCommand` as keyed DI registrations (no registry class), with the five existing commands
@@ -243,7 +246,8 @@ source-generated from one id template per entity (PRD D23 rule 12).
      neutral lease; a layering test against provider references in core
 4. **`MintPlayer.Spark.Relational`, `MintPlayer.Spark.SqlServer`, `MintPlayer.Spark.PostgreSql`** (D2):
    - `UseSqlServer()`, `UsePostgreSql()` and their `SparkStoreProviders` constants
-   - the EF model built from the Spark model, the migration generator (D24), child and join tables (D25, D26)
+   - the EF model built from the Spark model, the migration generator (D24), child and join tables (D25, D26): the
+     join-list rewrite and load step proven in S2b, and `AsSplitQuery` for types with several AsDetail collections
    - applying migrations (D33): at startup by default (framework schema, app migrations, then the data migrations),
      `--spark-migrate`, `--spark-migration-script`, the `ApplyMigrations=false` startup check, and the per-app
      pending-model-changes test
@@ -345,3 +349,9 @@ during development (TDD red→green). The full suite runs once at the end, via p
     still reproduces without the decorator. S19's new scenario 1d gives each migration once on PostgreSQL with
     EF's lock alone. D33's guard stays for `CREATE DATABASE` and the data migrations. Both workarounds go once
     their fixes ship.
+  - Spike S2b, PRD §8.10: the real `QueryExecutor` runs on an EF prototype of the storage seam inside the real test
+    host, 14/14 on both databases. Row filter, `In`, search, the reference-list column filter, TPH, the
+    `TranslatedString` JSON column, the AsDetail child table and O13's stored get-only member all run as SQL. Found
+    on the way: `Search` receives RavenDB's `*word*` syntax (0 rows on the first run), and `Expression.Constant`
+    becomes a SQL literal, so a query plan per value. Both are fixed in M2. M3 needs `AsSplitQuery` for types with
+    several AsDetail collections.

@@ -1300,6 +1300,61 @@ Findings:
 5. **A transitive arrival cannot be stripped from the package side:** the class library keeps the closure reachable.
    The package warns in that case instead (O17 setting 3).
 
+### 8.10 S2b: the real `QueryExecutor` over EF tables (2026-11-24)
+
+**Setup.**
+- Code: `docs/relational_spike/s2b/` (its README says how to rerun it).
+- A throwaway EF Core implementation of `ISparkStore`, `ISparkSession` and `ISparkQueryProvider` (`EfSpark.cs`). It
+  builds a `DbContext` from a model description, with no `DbSet` properties and no EF attributes on the entities.
+- The real Spark host (`SparkEndpointFactory`) swaps those three services in. `IQueryExecutor` runs unmodified, with
+  the model's attributes, an actions class with a row filter, and `Database.*` query sources.
+- Model:
+  - `Employee`: a reference `Company` (an FK, no navigation, D26), a `TranslatedString Title` (a JSON column, D1),
+    an AsDetail `List<Address>` (a child table keyed (owner id, id), D25), a reference list `List<string> Skills`
+    (a join table, D26) and a stored get-only `FullName` (O13)
+  - `Vehicle`/`Car`/`Truck` (TPH), `Company`, `Skill`
+- EF Core 11.0.0 on SQL Server (`MSSQLSERVER01`) and Npgsql 11.0.0 on PostgreSQL 18.
+
+**Results: 14/14, the same 7 cases on both databases.** SQL from `S2B_LOG=1`:
+
+| Case | SQL Server | PostgreSQL |
+|---|---|---|
+| row filter (:1055), count and page | `WHERE [e].[Owner] = N'alice'` | `WHERE e."Owner" = 'alice'` |
+| restrict-to-ids `In` (:664), composed with the row filter | `… AND [e].[Id] IN (@Values1, @Values2)` | `… AND e."Id" = ANY (@Values)` |
+| search pushdown (:2155) | `LOWER([e].[LastName]) LIKE @Value1_contains ESCAPE N'\'` per searchable string member, ORed | `lower(e."LastName") LIKE @Value1_contains` |
+| column filter on the reference list | `EXISTS (… FROM [EmployeeSkills] … WHERE [e0].[OwnerId] = [e].[Id] AND [e0].[TargetId] = N'skills/csharp')` | the same, `EXISTS` |
+| TPH: a query over `Vehicle` | one table, `Discriminator` column, both rows | the same |
+| load: JSON column, child table, join list | `LEFT JOIN [EmployeeAddresses]`, then `[OwnerId] IN (@ids1, @ids2)` on the join table | `= ANY (@ids)` |
+| O13: change `FirstName`, save, query by `FullName` | `UPDATE` writes the recomputed `FullName`; `WHERE [e].[FullName] = …` | the same |
+
+**Findings:**
+1. **The gate passes: EF translates `QueryExecutor`'s trees as they are.** The row filter, `In`, search, the column
+   filters and the sort run in one statement per query, with no rewrite except the join lists (finding 4).
+2. **The `Search` contract speaks RavenDB.** `QueryExecutor` hands the provider `*word*` per word
+   (`QueryExecutor.cs:2004`), which is RavenDB's wildcard syntax; the first run found 0 rows on both databases,
+   because `LIKE '%*love*%'` matches nothing. M2 changes `ISparkQueryProvider.Search` to take the words, and the
+   RavenDB provider adds its wildcards itself.
+3. **`Expression.Constant` becomes a SQL literal.** The first run's `In` was `IN (N'employees/grace', …)`: correct, but
+   one query plan per id set. The provider now puts values in a captured field, which EF parameterizes (the table).
+   The same applies to `QueryExecutor`'s own constants: the column-filter value is `N'skills/csharp'` in the SQL.
+   EF escapes it, so it is not an injection, but it is one plan per filter value. M2 composes the executor's values
+   as captured fields. A row filter written as a lambda in an actions class keeps its literals, as in any EF app.
+4. **The D26 join list needs a query rewrite and a load step, and both are small.** EF ignores the CLR
+   `List<string>`; an `ExpressionVisitor` turns `x.Skills != null` into `true` and `Any`/`Contains` over it into a
+   subquery on the join table (`EXISTS`). After a page is read, one query per join table fills the lists
+   (`OwnerId IN (…)`). Writes rewrite an owner's rows in the same transaction.
+5. **AsDetail collections are joined into every page read.** EF loads owned collections with the owner, so the page
+   query has a `LEFT JOIN [EmployeeAddresses]`; `COUNT` does not. With two AsDetail collections on one type, that is
+   a cartesian product: the provider uses `AsSplitQuery()` for such types (M3).
+6. **O13 works as decided:** the generated backing field, mapped with `HasField` and
+   `PreferFieldDuringConstruction`. EF reads the getter when it saves, so the dirty check sees the recomputed value
+   and rewrites the column. Queries on `FullName` hit the column, not the getter.
+7. **`TranslatedString` round-trips through its own converter, and search skips it** (`Search` takes string
+   members only). Searching translated text is S10's question, not a gate.
+8. The S1/S2 leftovers carried as S2b in §8.1 (`JSON_VALUE` for unmapped members, typed path reads, promoted
+   computed columns, `x.Id` on the JSON copy) belonged to the hybrid layout. D1 round 3 removed them: every member is
+   a column or a JSON column, and `Id` is the key column, as the SQL above shows.
+
 ## 9. Stale in earlier drafts
 
 **In the 2026-11-09 draft:**
