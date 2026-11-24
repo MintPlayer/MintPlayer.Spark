@@ -2,6 +2,7 @@
 // Gate question: do the row filter, restrict-to-ids and search run as SQL, unchanged, over D1/D25/D26 tables?
 using System.Linq.Expressions;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using MintPlayer.Spark;
@@ -86,14 +87,18 @@ public abstract partial class S2bTests(string provider) : SparkTestDriver
         Model<Vehicle>(VehicleTypeId, "{Plate}", A("Plate")),
         Model<Employee>(EmployeeTypeId, "{LastName}",
             A("FirstName"), A("LastName"), A("Owner"),
+            // S5: the view's columns, as synchronize puts a default view's fields on the model.
+            A("FullName"), A("CompanyName"),
             A("Company", "Reference", a => a.ReferenceType = typeof(Company).FullName),
             A("Title", "TranslatedString"),
             A("Skills", "Reference", a => { a.ReferenceType = typeof(Skill).FullName; a.IsArray = true; })),
     ];
 
-    private static EfSparkModel SparkModel()
+    internal static EfSparkModel SparkModel(ISparkView? view = null, string variant = "")
     {
-        var m = new EfSparkModel();
+        var m = new EfSparkModel { Variant = variant };
+        // S5: the neutral view (S5Views.cs).
+        m.Views.Add(view ?? new EmployeesWithCompany());
         m.Collections.Add((typeof(Company), "Companies", []));
         m.Collections.Add((typeof(Skill), "Skills", []));
         m.Collections.Add((typeof(Vehicle), "Vehicles", [typeof(Car), typeof(Truck)]));
@@ -105,8 +110,41 @@ public abstract partial class S2bTests(string provider) : SparkTestDriver
         {
             mb.Entity<Tag>().Property(t => t.Name).HasMaxLength(20);
             mb.Entity<Tag>().HasIndex(t => t.Name).IsUnique();
+            // S5: a column change on a table the view reads.
+            if (variant == "LastName80") mb.Entity<Employee>().Property(e => e.LastName).HasMaxLength(80);
         };
         return m;
+    }
+
+    internal DbContextOptions Options()
+    {
+        var db = "sparkspike536s2b";
+        var builder = new DbContextOptionsBuilder();
+        if (provider == "sqlserver")
+            builder.UseSqlServer($@"Server=localhost\MSSQLSERVER01;Database={db};Trusted_Connection=True;TrustServerCertificate=True");
+        else
+            builder.UseNpgsql($"Host=127.0.0.1;Port=55432;Username=postgres;Password={Environment.GetEnvironmentVariable("SPARK536_PG_PASSWORD")};Database={db}");
+        builder.Log();
+        return builder.Options;
+    }
+
+    /// <summary>
+    /// S5: the schema comes from the migration operations (EF's plus the views'), not EnsureCreated, which skips views.
+    /// This is what applying the scaffolded initial migration runs.
+    /// </summary>
+    internal static async Task CreateFromNothingAsync(SparkEfContext ctx)
+    {
+        await ctx.Database.EnsureDeletedAsync();
+        await ctx.GetService<Microsoft.EntityFrameworkCore.Storage.IRelationalDatabaseCreator>().CreateAsync();
+        await ApplyAsync(ctx, ctx.GetService<Microsoft.EntityFrameworkCore.Migrations.IMigrationsModelDiffer>()
+            .GetDifferences(null, ctx.GetService<Microsoft.EntityFrameworkCore.Metadata.IDesignTimeModel>().Model.GetRelationalModel()));
+    }
+
+    internal static async Task ApplyAsync(SparkEfContext ctx, IReadOnlyList<Microsoft.EntityFrameworkCore.Migrations.Operations.MigrationOperation> operations)
+    {
+        var commands = ctx.GetService<Microsoft.EntityFrameworkCore.Migrations.IMigrationsSqlGenerator>().Generate(operations, ctx.Model);
+        await ctx.GetService<Microsoft.EntityFrameworkCore.Migrations.IMigrationCommandExecutor>()
+            .ExecuteNonQueryAsync(commands, ctx.GetService<Microsoft.EntityFrameworkCore.Storage.IRelationalConnection>());
     }
 
     private EfSparkStore efStore = null!;
@@ -116,20 +154,10 @@ public abstract partial class S2bTests(string provider) : SparkTestDriver
     public override async Task InitializeAsync()
     {
         await base.InitializeAsync();
-        var db = "sparkspike536s2b";
-        var builder = new DbContextOptionsBuilder();
-        if (provider == "sqlserver")
-            builder.UseSqlServer($@"Server=localhost\MSSQLSERVER01;Database={db};Trusted_Connection=True;TrustServerCertificate=True");
-        else
-            builder.UseNpgsql($"Host=127.0.0.1;Port=55432;Username=postgres;Password={Environment.GetEnvironmentVariable("SPARK536_PG_PASSWORD")};Database={db}");
-        builder.Log();
-        efStore = new EfSparkStore(builder.Options, SparkModel(), provider);
+        efStore = new EfSparkStore(Options(), SparkModel(), provider);
 
         await using (var ctx = efStore.NewContext())
-        {
-            await ctx.Database.EnsureDeletedAsync();
-            await ctx.Database.EnsureCreatedAsync();
-        }
+            await CreateFromNothingAsync(ctx);
         await SeedRelationalAsync();
 
         factory = new SparkEndpointFactory<S2bContext>(Store, Models(),
@@ -141,6 +169,9 @@ public abstract partial class S2bTests(string provider) : SparkTestDriver
                 services.AddSingleton<ISparkStore>(efStore);
                 services.AddScoped<ISparkSession>(sp => sp.GetRequiredService<ISparkStore>().OpenSession());
                 services.AddScoped<ISparkQueryProvider>(sp => new EfSparkQueryProvider(sp.GetRequiredService<ISparkSession>()));
+                // S5: the catalog knows the neutral view by name, as it knows a RavenDB index.
+                services.RemoveAll<IIndexCatalog>();
+                services.AddSingleton<IIndexCatalog>(new SpikeIndexCatalog(typeof(EmployeesWithCompany), typeof(Employee), typeof(VEmployee)));
             },
             security: SparkTestSecurity.Permissive);
         executor = factory.GetService<IQueryExecutor>();

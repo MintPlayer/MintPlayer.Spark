@@ -719,7 +719,10 @@ test the databases, not Spark; the conformance suite tests Spark on top of them.
   two SQL dialects by hand would duplicate it. The generator emits the declaration as a LINQ expression; model
   synchronize has EF translate it per dialect and writes `CREATE VIEW` and `CREATE INDEX` into the generated EF
   migration (D24), where the developer reviews the SQL.
-- S5 proves it on DemoApp's `VPerson` and one view with a join, on both databases.
+- **S5 (§8.12) proved it** with one declaration: a computed column, a value read through a reference, and a count
+  over a join table. It rendered on SQL Server, PostgreSQL, InMemory and RavenDB. The join form is `Load<T>(id)`, not
+  LINQ `join`. Spark's differ writes `CREATE VIEW`/`DROP VIEW` into the migration, and recreates a view whenever a
+  table it reads changes.
 
 **Unknown fields.** A row has only the mapped columns, so undeclared fields are lost, as on InMemory. RavenDB keeps
 them (§8.1 finding 6). The conformance suite pins each provider's behaviour. **Absent field versus `NULL`** (D16): a
@@ -1415,6 +1418,130 @@ The D14 cases go through Spark's own `IDatabaseAccess` (load, save and delete of
    `ExecuteDeleteAsync` is the alternative in M3, in the same transaction.
 8. **Query etags cost one query per page,** although the page query has already read `Version`. In M3, the
    relational `GetVersionsAsync` answers rows the session tracks from the tracker.
+
+### 8.12 S5: neutral views (2026-11-24)
+
+**Setup.** The S2b prototype and host (`docs/relational_spike/s2b/`, `S5Views.cs` and `S5Tests.cs`), with one view
+declared once:
+
+```csharp
+public sealed class EmployeesWithCompany : SparkView<VEmployee>
+{
+    public override Expression<Func<ISparkViewSource, IQueryable<VEmployee>>> Map => s =>
+        from e in s.Set<Employee>()
+        select new VEmployee
+        {
+            Id = e.Id,
+            FullName = e.FirstName + " " + e.LastName,           // computed (not the O13 stored column)
+            Owner = e.Owner,
+            CompanyName = s.Load<Company>(e.Company)!.Name,     // through a reference: the join D32 needs a view for
+            SkillCount = e.Skills.Count(),                      // over a D26 join table
+        };
+}
+```
+
+`ISparkViewSource` has two members: `Set<T>()` is a collection, and `Load<T>(id)` follows a reference id to its row,
+or null. Each renderer rewrites those two calls in the declaration:
+
+| Provider | `Set<T>()` | `Load<T>(id)` |
+|---|---|---|
+| EF | the table's query root | `Where(t => t.Id == id).FirstOrDefault()`, a scalar subquery |
+| RavenDB | the map's `docs` | `LoadDocument` |
+| InMemory | the stored rows (LINQ to objects) | a lookup, with member access made null-safe |
+
+From the declaration:
+- EF writes the view's SQL per dialect (`ToQueryString`) at synchronize time.
+- The row type is mapped with `ToView`.
+- A subclass of EF's migrations differ puts `CREATE VIEW`/`DROP VIEW` into the migration.
+
+The database is now created from those migration operations (EF's SQL generator), not `EnsureCreated`, which skips
+views. S2b's and S4's 44 tests therefore ran on a migration-built schema too.
+
+**Results: 10 cases, all green on both databases.** Together with S2b and S4 that is 64/64. Evidence comes from
+`S2B_LOG=1`.
+
+| Case | Result |
+|---|---|
+| EF writes the view SQL per dialect, with no parameters | ✓ below |
+| `Query<VEmployee, EmployeesWithCompany>()` is a set over the view | ✓ `FROM [EmployeesWithCompany]` |
+| a committed write is in the view at once | ✓ (D32: no staleness, `WaitForConsistencyAsync` stays a no-op) |
+| the same declaration as LINQ to objects (InMemory) | ✓ the same rows as SQL |
+| the same declaration deploys as a RavenDB index | ✓ the same rows, via `ProjectInto` |
+| `QueryExecutor` queries the view by index name (catalog entry, `OpenIndex`) | ✓ row filter and search compose: see 5 |
+| the initial migration creates the view after the tables, and `Down` drops it before them; the snapshot keeps the SQL | ✓ |
+| an unchanged model has no pending change | ✓ `HasDifferences` false |
+| a changed view: the migration is `DROP VIEW` + `CREATE VIEW` and nothing else | ✓ applied, and the new `FullName` reads back |
+| a column change on a table the view reads: the view is dropped before and recreated after | ✓ (see 4) |
+
+The SQL EF wrote, and the RavenDB map:
+
+```sql
+-- SQL Server
+SELECT [e].[Id], [e].[FirstName] + N' ' + [e].[LastName] AS [FullName], [e].[Owner], (
+    SELECT TOP(1) [c].[Name] FROM [Companies] AS [c] WHERE [c].[Id] = [e].[Company]) AS [CompanyName], (
+    SELECT COUNT(*) FROM [EmployeeSkills] AS [e0] WHERE [e0].[OwnerId] = [e].[Id]) AS [SkillCount]
+FROM [Employees] AS [e]
+-- PostgreSQL
+SELECT e."Id", e."FirstName" || ' ' || e."LastName" AS "FullName", e."Owner", (
+    SELECT c."Name" FROM "Companies" AS c WHERE c."Id" = e."Company" LIMIT 1) AS "CompanyName", (
+    SELECT count(*)::int FROM "EmployeeSkills" AS e0 WHERE e0."OwnerId" = e."Id") AS "SkillCount"
+FROM "Employees" AS e
+-- RavenDB
+docs.Employees.Select(e => new { FullName = (e.FirstName + " ") + e.LastName, Owner = e.Owner,
+    CompanyName = (this.LoadDocument(e.Company, "Companies")).Name, SkillCount = Enumerable.Count(e.Skills) })
+```
+
+**Findings:**
+1. **D32 holds: one declaration, four renderings.** The generator emits the declaration, and nothing in it is
+   provider-specific. The SQL comes from EF at synchronize time, as decided.
+2. **`Load<T>(id)` is the one join form.** It is RavenDB's `LoadDocument`, SQL's scalar subquery on the key, and a
+   lookup in memory. A general LINQ `join` has no RavenDB map form, so the declaration API offers `Load` and no
+   `join`.
+   - Each member read through a `Load` is its own subquery, so three columns of one company make three subqueries.
+     That is fine for a reference's display name, and it is an optimisation for later (`OUTER APPLY` /
+     `LEFT JOIN LATERAL`).
+   - SQL and RavenDB propagate a missing reference as null, but LINQ to objects would throw. The InMemory renderer
+     therefore makes member access through `Load` null-safe.
+3. **EF's differ ignores a `ToView` entity, so views need a differ of Spark's own.** That differ subclasses the
+   pubternal `MigrationsModelDiffer` (EF1001), which has two consequences:
+   - Its constructor already differs between `v11.0.0` and EF's main branch, which adds an `IDiagnosticsLogger`.
+     The relational provider package pins its EF minor and has a test that builds the differ.
+   - `HasDifferences` doesn't call `GetDifferences`, so both are overridden. Without that, the pending-changes test
+     (D33) misses a view change.
+
+   The SQL and the tables the view reads travel as two model annotations, `Spark:ViewSql` and `Spark:ViewTables`.
+   The snapshot keeps both, so the next migration diffs them.
+4. **A view is recreated when a table it reads changes, not only when its SQL changes.**
+   - PostgreSQL refuses `ALTER COLUMN … TYPE` under a view: `0A000: cannot alter type of a column used by a view
+     or rule`.
+   - SQL Server accepts it, and keeps the view's stale column metadata.
+
+   So the differ drops an affected view before EF's operations and creates it after them. "Affected" means its SQL
+   changed, or an operation touches a table in `Spark:ViewTables`. The tables come from the declaration (its `Set`
+   and `Load` types, plus their D26 join tables).
+5. **The executor needs no change.**
+   - `OpenIndex` returns the view's set, typed by the row type.
+   - `RerootOntoIndexQuery` takes it, because the element types differ.
+   - `Project` has nothing to do.
+   - `RowSecurity` rebinds the entity's row filter (`Owner == "alice"`) onto `VEmployee` by member name.
+   - Search reaches a column read through a reference: `search: "acme"` finds Ada.
+
+   As with RavenDB views, the searchable columns must be attributes of the entity's model (synchronize puts a
+   default view's fields there).
+6. **The view SQL that EF writes has the platform's line endings** (`\r\n` on Windows, inside the
+   `migrationBuilder.Sql("…")` string and the snapshot annotation). Synchronize normalizes it to `\n`. Otherwise a
+   migration generated on Windows and one generated on Linux differ, and the snapshot reports a change that isn't
+   one. This is the same rule as "Regenerated files are LF".
+7. **EF inlines the declaration's constants as literals** (`N' '`), so `ToQueryString` has no `DECLARE` and the
+   view body takes no parameters. A declaration that captured a variable would produce one. The generator only
+   emits literals, and synchronize refuses SQL that contains a parameter.
+8. **Read the declaration once.** An expression-bodied `Map` builds a new tree on every read, with new parameter
+   instances. A renderer that reads `Parameters` and `Body` from two reads matches nothing. `SparkView` caches it.
+9. **RavenDB's map needs the shape `Set<T>().Select(…)`,** with one source collection. RavenDB supplies a
+   projection's `Id` from the document, so the renderer drops the `Id` binding.
+
+**Not covered:** concatenation of nullable columns. The view's string columns are required here. SQL's `NULL + ' '`
+is `NULL`, while C#'s is `" "`, so a nullable-column case belongs in D31's database behaviour tests in M6.
 
 ## 9. Stale in earlier drafts
 

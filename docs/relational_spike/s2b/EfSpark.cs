@@ -1,6 +1,6 @@
 // #536 spike S2b: an EF Core prototype of Spark's storage seam (ISparkStore, ISparkSession, ISparkQueryProvider), so
 // the real QueryExecutor runs unmodified over relational tables (PRD D1, D25, D26). Throwaway: it covers what the
-// executor's read path needs, plus the writes the seed uses. Versions (S4) and views (S5) are not here.
+// executor's read path needs, plus the writes. S4 added versions and D30; S5 added views (S5Views.cs).
 using System.Linq.Expressions;
 using System.Reflection;
 using System.Text.Json;
@@ -25,6 +25,16 @@ public sealed class EfSparkModel
 
     /// <summary>App-specific mapping a Spark model would also carry (unique attributes, lengths).</summary>
     public Action<ModelBuilder>? Configure { get; set; }
+
+    /// <summary>S5: the neutral view declarations (D32), and the SQL EF rendered for each (filled by the store).</summary>
+    public List<ISparkView> Views { get; } = [];
+    public Dictionary<string, string> ViewSql { get; } = [];
+
+    /// <summary>Names a <see cref="Configure"/> variant, so two shapes of the model get two EF model cache entries.</summary>
+    public string Variant { get; set; } = "";
+
+    /// <summary>EF caches one model per key: views unrendered vs rendered, and each variant, are different models.</summary>
+    public string CacheKey => Variant + "|" + string.Join("|", ViewSql.OrderBy(v => v.Key).Select(v => v.Key + "=" + v.Value));
 
     public string CollectionOf(Type type)
         => Collections.FirstOrDefault(c => c.Root == type || c.Derived.Contains(type) || c.Root.IsAssignableFrom(type)).Table
@@ -77,8 +87,30 @@ public sealed class SparkEfContext(DbContextOptions options, EfSparkModel model)
             });
         }
 
+        foreach (var view in model.Views)
+        {
+            // D32: the view's row type is mapped to the view; EF creates no table for it.
+            var vb = mb.Entity(view.ResultType);
+            vb.ToView(view.Name);
+            vb.HasKey("Id");
+            if (model.ViewSql.TryGetValue(view.Name, out var sql))
+            {
+                // The rendered SQL and the tables it reads travel in the model, so the snapshot keeps them and the
+                // differ (SparkViewDiffer) compares them.
+                vb.HasAnnotation(SparkViewDiffer.SqlAnnotation, sql);
+                vb.HasAnnotation(SparkViewDiffer.TablesAnnotation, string.Join(",", view.ReadTypes
+                    .SelectMany(t => model.Joins.Where(j => j.Owner == t).Select(j => j.Table).Prepend(model.CollectionOf(t)))
+                    .Distinct().Order()));
+            }
+        }
+
         model.Configure?.Invoke(mb);
     }
+
+    protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
+        => optionsBuilder
+            .ReplaceService<IModelCacheKeyFactory, SparkModelCacheKeyFactory>()
+            .ReplaceService<Microsoft.EntityFrameworkCore.Migrations.IMigrationsModelDiffer, SparkViewDiffer>();
 
     /// <summary>D7: key and FK columns compare bytes; ids are lowercase by construction.</summary>
     private string KeyCollation => Database.IsNpgsql() ? "C" : "Latin1_General_BIN2";
@@ -137,8 +169,31 @@ public sealed class SparkEfContext(DbContextOptions options, EfSparkModel model)
 }
 
 /// <summary>The store: options per provider, one DbContext per session.</summary>
-public sealed class EfSparkStore(DbContextOptions options, EfSparkModel model, string providerName) : ISparkStore
+public sealed class SparkModelCacheKeyFactory : IModelCacheKeyFactory
 {
+    public object Create(DbContext context, bool designTime)
+        => (context.GetType(), ((SparkEfContext)context).SparkModel.CacheKey, designTime);
+}
+
+public sealed class EfSparkStore : ISparkStore
+{
+    private readonly DbContextOptions options;
+    private readonly EfSparkModel model;
+    private readonly string providerName;
+
+    public EfSparkStore(DbContextOptions options, EfSparkModel model, string providerName)
+    {
+        (this.options, this.model, this.providerName) = (options, model, providerName);
+        // S5: what synchronize does at design time. EF translates each neutral view on a model without the SQL yet;
+        // the SQL then goes into the model (a new cache key), where the differ turns it into CREATE VIEW.
+        if (model.Views.Count > 0 && model.ViewSql.Count == 0)
+        {
+            using var render = NewContext();
+            var sql = model.Views.ToDictionary(v => v.Name, v => EfViewRenderer.Render(v, render).ToQueryString());
+            foreach (var (name, text) in sql) model.ViewSql[name] = text;
+        }
+    }
+
     public string ProviderName => providerName;
     public SparkStoreCapabilities Capabilities => SparkStoreCapabilities.None;
     public EfSparkModel Model => model;
@@ -160,8 +215,11 @@ public sealed class EfSparkSession(SparkEfContext db) : ISparkSession
     public event Action<object>? BeforeDelete;
 
     public IQueryable<T> Query<T>() where T : class => db.Set<T>();
+    // S5: a view's row type is mapped to its SQL view (ToView), so the view is just another set.
     public IQueryable<T> Query<T, TIndex>() where T : class where TIndex : class, new()
-        => throw new NotSupportedException("Views are spike S5.");
+        => db.SparkModel.Views.Any(v => v.GetType() == typeof(TIndex) && v.ResultType == typeof(T))
+            ? db.Set<T>()
+            : throw new InvalidOperationException($"{typeof(TIndex).Name} is not a view yielding {typeof(T).Name}.");
 
     // ---- loads ----
     public async Task<T?> LoadAsync<T>(string id, CancellationToken cancellationToken = default) where T : class
@@ -450,8 +508,14 @@ public sealed class EfSparkQueryProvider(ISparkSession session) : ISparkQueryPro
 
     public bool IsStoreQuery(IQueryable source) => source.Provider is IAsyncQueryProvider;
 
+    // S5: the view's own set, typed by its row type. QueryExecutor then skips Project (the element type is already the
+    // projection) and RowSecurity rebinds the entity's row filter onto the row type by member name.
     public IQueryable OpenIndex(Type entityType, Type indexType, bool narrowToCollection)
-        => throw new NotSupportedException("Views are spike S5.");
+    {
+        var view = Session.Db.SparkModel.Views.SingleOrDefault(v => v.GetType() == indexType)
+            ?? throw new InvalidOperationException($"{indexType.Name} is not a view.");
+        return (IQueryable)typeof(DbContext).GetMethod(nameof(DbContext.Set), Type.EmptyTypes)!.MakeGenericMethod(view.ResultType).Invoke(Session.Db, [])!;
+    }
 
     public IQueryable Project(IQueryable source, Type resultType) => source;
 

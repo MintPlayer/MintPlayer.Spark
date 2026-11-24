@@ -14,8 +14,8 @@ rounds, milestones and status. Branch `feat/536-sql-server-provider`, draft PR #
 - **Storage model (round 3):** a table per entity, mapped by EF Core. The model synchronize generates EF migrations;
   AsDetail collections are child tables; references are real FKs; the contract is typed; ids are `Id<T>` (D23).
   Breaking changes are allowed, with no backward compatibility.
-- **Next:** the last gate spike, S5 (§2). S2b, S3, S4, S19, S20, S-ID1, S-ID2, S-ID4 and S-ID5's RavenDB half are
-  done (PRD §8.3–8.11, 2026-11-24). The two upstream bugs S3 and S19 found have pull requests upstream and
+- **Next:** grill O8 and O9, then M2. Every gate spike is done: S2b, S3, S4, S5, S19, S20, S-ID1, S-ID2, S-ID4 and
+  S-ID5's RavenDB half (PRD §8.3–8.12, 2026-11-24). The two upstream bugs S3 and S19 found have pull requests upstream and
   workarounds in D24 and D33 (§5). Grilling round 5 decided O10–O13
   (2026-11-24). O16 and O17 are decided (2026-11-24; O17's evidence is PRD §8.9). O8 and O9 are open, both low
   priority.
@@ -43,7 +43,7 @@ Each spike ends with an entry in PRD §8, with evidence (numbers, file:line, a r
 | **S2b** | **The real `QueryExecutor` end to end** on an EF model generated from arbitrary Spark entities: TPH, JSON columns for `TranslatedString` (EF 10's `ToJson()` complex types; a `Dictionary` as a JSON column is unverified), child tables, join tables | the row filter (:1055), `In` (:664) and search pushdown (:2155) run as SQL on both databases | ✅ PRD §8.10: 14/14 on both, `QueryExecutor` unmodified; `TranslatedString` is a converter JSON column; O13's stored get-only member works. For M2: `Search` takes words, not RavenDB's `*word*`; the executor composes captured values, not constants (literals today). For M3: `AsSplitQuery` for types with several AsDetail collections |
 | **S3** | **Schema:** the model synchronize generates EF migration files (D24) from a model built from metadata, through the public design-time services (`IMigrationsScaffolder`, `IMigrationsModelDiffer`, via `DesignTimeServicesBuilder`; never construct `MigrationsScaffolderDependencies`) | add a field, add a queryable field, add an AsDetail collection, add a reference, on both | ✅ PRD §8.8: all six versions (plus a rename and a no-change run) scaffold the expected operations and migrate on both, from public API only. the EF 11 snapshot trap is worked around by `FreshSnapshotMigrationsAssembly` (dotnet/efcore#39784 upstream); queryable strings need a length; Design's 17 MB → O17, decided (§8.9: a development-dependency package, out of every publish) |
 | **S4** | **Concurrency and keys:** the `bigint` version per table (D3); `""` = insert-only; the D14 etag on the wire; the typed contract (D27); lowercase ids and an escaped `LoadStartingWith` (D7); constraint errors become validation messages (D30) | the conformance tests for absent and stale versions pass, plus a natural-key case with `_` and `%`, plus a unique and an FK violation | ✅ PRD §8.11: 15 cases green on both, through the session and Spark's own `IDatabaseAccess`. The version covers the aggregate (child and join rows move it: D3 refined); a duplicate PK is concurrency, a unique index validation; SQL Server's errors are localized (names matched against the model, tested in German); 2628 carries the value |
-| **S5** | Neutral views: one declaration, rendered by RavenDB as an index, by relational databases as an SQL view or indexes, and by InMemory as LINQ | DemoApp's `VPerson` (computed `FullName`) and one view with a join, from one declaration on InMemory + both databases; synchronize writes the EF-translated `CREATE VIEW` into the migration (PRD D32) | gate |
+| **S5** | Neutral views: one declaration, rendered by RavenDB as an index, by relational databases as an SQL view or indexes, and by InMemory as LINQ | DemoApp's `VPerson` (computed `FullName`) and one view with a join, from one declaration on InMemory + both databases; synchronize writes the EF-translated `CREATE VIEW` into the migration (PRD D32) | ✅ PRD §8.12: 10 cases green on both (64/64 with S2b and S4). <ul><li>One declaration renders four ways: SQL Server, PostgreSQL, RavenDB (`LoadDocument`) and InMemory.</li><li>The join form is `Load<T>(id)`.</li><li>`QueryExecutor` queries the view by name, unmodified.</li><li>Spark's differ (subclassing the pubternal one) writes `CREATE VIEW`/`DROP VIEW`, and recreates a view around a change to a table it reads (PostgreSQL refuses the `ALTER` otherwise).</li></ul> |
 | S6 | Neutral contracts: <ul><li>`SetExpiry`</li><li>`ISparkStoreLock`</li><li>`ISparkAtomicValues`</li><li>`StreamAsync`</li><li>`Reserve/Release` (in the `SaveChanges` transaction)</li><li>`UpdateWhereAsync`/`DeleteWhereAsync`</li><li>`PatchAppend`</li></ul>(design-principles: deep modules, one contract per concern) | settings, mail (expiry) and cron (atomic value) green on all providers | after the gates |
 | S7 + S14 | **Subscriptions:** <ul><li>a per-subscription cursor over the `ChangeStamp`, below the safe horizon (D6; where the stamp lives is O10)</li><li>tombstones for deletes</li><li>a neutral predicate instead of RQL</li><li>a lease replacing `WaitForFree`</li></ul> | <ul><li>two interleaved transactions never skip a row (the D6 horizon)</li><li>a new subscription sees the backlog</li><li>a message survives a host restart</li><li>two hosts never process one message</li><li>subscription_worker's tests on both</li></ul> | after S6 |
 | S8 | Revisions (O12): written by **every** write path, including `UpdateWhere`/`PatchAppend` and sweepers; revision id = `Version`; per-collection retention and `PurgeOnDelete` | history's tests on both; a soft-delete restore; a set-based update leaves a revision | after S6 and O12 |
@@ -238,8 +238,12 @@ source-generated from one id template per entity (PRD D23 rule 12).
    - the query seam (S2b, PRD §8.10): `ISparkQueryProvider.Search` takes the words, and RavenDB adds its own `*`;
      `QueryExecutor` composes filter values as captured fields, not `Expression.Constant` (EF writes constants as
      literals, one query plan per value)
-   - the generators' neutral declarations (with S5): one `MintPlayer.Spark.SourceGenerators` package that renders the
-     RavenDB index or the EF view mapping depending on the referenced provider (PRD D32)
+   - the generators' neutral declarations, as S5 proved them (PRD D32, §8.12): one `MintPlayer.Spark.SourceGenerators`
+     package that emits `SparkView<TRow>` declarations, with `Set<T>()` and `Load<T>(id)` and no `join`. It renders
+     the RavenDB index or the EF view mapping depending on the referenced provider. Also in core:
+     - the InMemory renderer (LINQ to objects, null-safe through `Load`), so `InMemorySparkQueryProvider.OpenIndex`
+       stops throwing
+     - the generator emits literals only; synchronize refuses view SQL that contains a parameter
    - IoC (PRD D34): `ISparkCommand` as keyed DI registrations (no registry class), with the five existing commands
      moved onto it and every app's `Program.cs` (and the template's) reduced to one command line after `Build()`; `ISparkSchemaMigrator` with the RavenDB
      implementation; `--spark-migrate` and `--spark-migration-script` in core; the data-migration runner on the
@@ -255,6 +259,13 @@ source-generated from one id template per entity (PRD D23 rule 12).
      pending-model-changes test
    - the store, session, query provider, change feed, expiration, the data-protection key store, atomic values,
      leases and reservations
+   - views (D32, S5):
+     - `ToView` mapping plus EF's translated SQL in the `Spark:ViewSql`/`Spark:ViewTables` annotations, normalized
+       to `\n`
+     - Spark's differ, a subclass of the pubternal `MigrationsModelDiffer` that overrides both `GetDifferences` and
+       `HasDifferences`. It drops a view first and creates it last whenever its SQL or a table it reads changes. A
+       test constructs the differ, so an EF minor that changes its constructor fails the build, not production
+     - the schema in tests comes from the migration operations, never `EnsureCreated` (which skips views)
    - constraint-error translation (D30), as S4 proved it: the constraint name matched against EF's model, never the
      message's wording (SQL Server localizes it); a duplicate PK is concurrency; a length error located by value
 5. **Conformance:** the two relational subclasses, plus new cases on all four providers:
@@ -362,3 +373,11 @@ during development (TDD red→green). The full suite runs once at the end, via p
     (44/44 with S2b's). D3 refined: the version covers the aggregate, because EF leaves the owner unchanged when
     only its child or join rows change. The D30 translator matches names against the model, because SQL Server
     localizes its messages and German drops the quotes (tested with `Current Language=Deutsch`).
+  - Spike S5, PRD §8.12, the last gate: 10 cases green on both databases (64/64 with S2b and S4).
+    - One `SparkView` declaration renders as the SQL Server and PostgreSQL view SQL (written by EF), as a RavenDB
+      map (with `LoadDocument`) and as LINQ to objects, with the same rows from each.
+    - `QueryExecutor` queries the view by name, unmodified.
+    - Spark's differ writes `CREATE VIEW`/`DROP VIEW` into the migration. PostgreSQL refuses `ALTER COLUMN TYPE`
+      under a view, so the differ recreates a view around any change to a table it reads.
+    - The pubternal differ's constructor already changed after EF `v11.0.0`.
+    - The view SQL carries `\r\n` on Windows, so synchronize normalizes it.
