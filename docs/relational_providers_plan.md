@@ -14,8 +14,8 @@ rounds, milestones and status. Branch `feat/536-sql-server-provider`, draft PR #
 - **Storage model (round 3):** a table per entity, mapped by EF Core. The model synchronize generates EF migrations;
   AsDetail collections are child tables; references are real FKs; the contract is typed; ids are `Id<T>` (D23).
   Breaking changes are allowed, with no backward compatibility.
-- **Next:** the gate spikes S4 and S5 (§2). S2b, S3, S19, S20, S-ID1, S-ID2, S-ID4 and S-ID5's RavenDB half are
-  done (PRD §8.3–8.10, 2026-11-24). The two upstream bugs S3 and S19 found have pull requests upstream and
+- **Next:** the last gate spike, S5 (§2). S2b, S3, S4, S19, S20, S-ID1, S-ID2, S-ID4 and S-ID5's RavenDB half are
+  done (PRD §8.3–8.11, 2026-11-24). The two upstream bugs S3 and S19 found have pull requests upstream and
   workarounds in D24 and D33 (§5). Grilling round 5 decided O10–O13
   (2026-11-24). O16 and O17 are decided (2026-11-24; O17's evidence is PRD §8.9). O8 and O9 are open, both low
   priority.
@@ -42,7 +42,7 @@ Each spike ends with an entry in PRD §8, with evidence (numbers, file:line, a r
 | **S-ID4** | **Mixed-case legacy ids under the lowercase rule** (O15), on a copy of the production `Coverage` database (never production itself): <ul><li>`LoadAsync`/batch load, `LoadStartingWithAsync` and an index equality query with lowercase ids against `Accounts/X`-style documents</li><li>the session identity map with a lowered `__DocumentId`, then `SaveChanges` (no duplicate, no casing change written)</li><li>Lucene and Corax reference-field equality ignoring case</li><li>only if (a) fails: a case-only re-key (delete + put in one batch) with attachments, and what the subscriptions see</li></ul> | (a) works without writing to any document, or (b) re-keys with every attachment kept | ✅ PRD §8.5: 15/15 on a copy of the development `Coverage` database; no re-key. A rerun on a production export is optional (owner) |
 | **S2b** | **The real `QueryExecutor` end to end** on an EF model generated from arbitrary Spark entities: TPH, JSON columns for `TranslatedString` (EF 10's `ToJson()` complex types; a `Dictionary` as a JSON column is unverified), child tables, join tables | the row filter (:1055), `In` (:664) and search pushdown (:2155) run as SQL on both databases | ✅ PRD §8.10: 14/14 on both, `QueryExecutor` unmodified; `TranslatedString` is a converter JSON column; O13's stored get-only member works. For M2: `Search` takes words, not RavenDB's `*word*`; the executor composes captured values, not constants (literals today). For M3: `AsSplitQuery` for types with several AsDetail collections |
 | **S3** | **Schema:** the model synchronize generates EF migration files (D24) from a model built from metadata, through the public design-time services (`IMigrationsScaffolder`, `IMigrationsModelDiffer`, via `DesignTimeServicesBuilder`; never construct `MigrationsScaffolderDependencies`) | add a field, add a queryable field, add an AsDetail collection, add a reference, on both | ✅ PRD §8.8: all six versions (plus a rename and a no-change run) scaffold the expected operations and migrate on both, from public API only. the EF 11 snapshot trap is worked around by `FreshSnapshotMigrationsAssembly` (dotnet/efcore#39784 upstream); queryable strings need a length; Design's 17 MB → O17, decided (§8.9: a development-dependency package, out of every publish) |
-| **S4** | **Concurrency and keys:** the `bigint` version per table (D3); `""` = insert-only; the D14 etag on the wire; the typed contract (D27); lowercase ids and an escaped `LoadStartingWith` (D7); constraint errors become validation messages (D30) | the conformance tests for absent and stale versions pass, plus a natural-key case with `_` and `%`, plus a unique and an FK violation | gate |
+| **S4** | **Concurrency and keys:** the `bigint` version per table (D3); `""` = insert-only; the D14 etag on the wire; the typed contract (D27); lowercase ids and an escaped `LoadStartingWith` (D7); constraint errors become validation messages (D30) | the conformance tests for absent and stale versions pass, plus a natural-key case with `_` and `%`, plus a unique and an FK violation | ✅ PRD §8.11: 15 cases green on both, through the session and Spark's own `IDatabaseAccess`. The version covers the aggregate (child and join rows move it: D3 refined); a duplicate PK is concurrency, a unique index validation; SQL Server's errors are localized (names matched against the model, tested in German); 2628 carries the value |
 | **S5** | Neutral views: one declaration, rendered by RavenDB as an index, by relational databases as an SQL view or indexes, and by InMemory as LINQ | DemoApp's `VPerson` (computed `FullName`) and one view with a join, from one declaration on InMemory + both databases; synchronize writes the EF-translated `CREATE VIEW` into the migration (PRD D32) | gate |
 | S6 | Neutral contracts: <ul><li>`SetExpiry`</li><li>`ISparkStoreLock`</li><li>`ISparkAtomicValues`</li><li>`StreamAsync`</li><li>`Reserve/Release` (in the `SaveChanges` transaction)</li><li>`UpdateWhereAsync`/`DeleteWhereAsync`</li><li>`PatchAppend`</li></ul>(design-principles: deep modules, one contract per concern) | settings, mail (expiry) and cron (atomic value) green on all providers | after the gates |
 | S7 + S14 | **Subscriptions:** <ul><li>a per-subscription cursor over the `ChangeStamp`, below the safe horizon (D6; where the stamp lives is O10)</li><li>tombstones for deletes</li><li>a neutral predicate instead of RQL</li><li>a lease replacing `WaitForFree`</li></ul> | <ul><li>two interleaved transactions never skip a row (the D6 horizon)</li><li>a new subscription sees the backlog</li><li>a message survives a host restart</li><li>two hosts never process one message</li><li>subscription_worker's tests on both</li></ul> | after S6 |
@@ -248,12 +248,15 @@ source-generated from one id template per entity (PRD D23 rule 12).
    - `UseSqlServer()`, `UsePostgreSql()` and their `SparkStoreProviders` constants
    - the EF model built from the Spark model, the migration generator (D24), child and join tables (D25, D26): the
      join-list rewrite and load step proven in S2b, and `AsSplitQuery` for types with several AsDetail collections
+   - the aggregate version (S4): child and join row changes move the root's version; `GetVersionsAsync` answers
+     tracked rows from the tracker; unversioned deletes by id through `ExecuteDeleteAsync`
    - applying migrations (D33): at startup by default (framework schema, app migrations, then the data migrations),
      `--spark-migrate`, `--spark-migration-script`, the `ApplyMigrations=false` startup check, and the per-app
      pending-model-changes test
    - the store, session, query provider, change feed, expiration, the data-protection key store, atomic values,
      leases and reservations
-   - constraint-error translation (D30)
+   - constraint-error translation (D30), as S4 proved it: the constraint name matched against EF's model, never the
+     message's wording (SQL Server localizes it); a duplicate PK is concurrency; a length error located by value
 5. **Conformance:** the two relational subclasses, plus new cases on all four providers:
    - row security, `DateTimeOffset`, paging and null ordering
    - `Id<T>` round trips, lowercase ids (an upper-case `GetById` is found everywhere) and escaped prefixes
@@ -355,3 +358,7 @@ during development (TDD red→green). The full suite runs once at the end, via p
     on the way: `Search` receives RavenDB's `*word*` syntax (0 rows on the first run), and `Expression.Constant`
     becomes a SQL literal, so a query plan per value. Both are fixed in M2. M3 needs `AsSplitQuery` for types with
     several AsDetail collections.
+  - Spike S4, PRD §8.11: 15 cases green on both databases, with the D14 etag through Spark's own `IDatabaseAccess`
+    (44/44 with S2b's). D3 refined: the version covers the aggregate, because EF leaves the owner unchanged when
+    only its child or join rows change. The D30 translator matches names against the model, because SQL Server
+    localizes its messages and German drops the quotes (tested with `Current Language=Deutsch`).

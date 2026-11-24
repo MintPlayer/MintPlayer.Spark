@@ -57,7 +57,7 @@ public class S2bContext : SparkContext
     public IQueryable<Company> Companies => Session.Query<Company>();
 }
 
-public abstract class S2bTests(string provider) : SparkTestDriver
+public abstract partial class S2bTests(string provider) : SparkTestDriver
 {
     private static readonly Guid EmployeeTypeId = Guid.Parse("53620000-0000-4000-8000-000000000001");
     private static readonly Guid VehicleTypeId = Guid.Parse("53620000-0000-4000-8000-000000000002");
@@ -99,6 +99,13 @@ public abstract class S2bTests(string provider) : SparkTestDriver
         m.Collections.Add((typeof(Vehicle), "Vehicles", [typeof(Car), typeof(Truck)]));
         m.Collections.Add((typeof(Employee), "Employees", []));
         m.Joins.Add(new JoinCollection(typeof(Employee), nameof(Employee.Skills), typeof(Skill), "EmployeeSkills"));
+        // S4: natural ids, a unique attribute, a length (S4Tests.cs).
+        m.Collections.Add((typeof(Tag), "Tags", []));
+        m.Configure = mb =>
+        {
+            mb.Entity<Tag>().Property(t => t.Name).HasMaxLength(20);
+            mb.Entity<Tag>().HasIndex(t => t.Name).IsUnique();
+        };
         return m;
     }
 

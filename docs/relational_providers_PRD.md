@@ -363,7 +363,9 @@ those drivers. The relational providers have no equivalent of `RavenTestDriver`;
 - **Guard:** the layering tests (`tests/MintPlayer.Spark.Tests/Layering/`) fail when `Abstractions` or `MintPlayer.Spark`
   references a provider assembly or a database client.
 
-**D3: the version is a `bigint` column on every table**, a concurrency token the provider increments.
+**D3: the version is a `bigint` column on every table**, a concurrency token the provider increments. *(S4, §8.11:
+it is on every root table and covers the aggregate. A change to a child row (D25) or a join row (D26) moves the
+root's version, which EF alone does not do.)*
 - A write is `UPDATE … SET Version = @v + 1 WHERE <key> = @id AND Version = @v`. EF's 0-rows-affected
   `DbUpdateConcurrencyException` becomes `SparkStoreConcurrencyException`. S12 and S13 measured the statement shape
   (1 row, then 0 for the stale write).
@@ -1354,6 +1356,65 @@ Findings:
 8. The S1/S2 leftovers carried as S2b in §8.1 (`JSON_VALUE` for unmapped members, typed path reads, promoted
    computed columns, `x.Id` on the JSON copy) belonged to the hybrid layout. D1 round 3 removed them: every member is
    a column or a JSON column, and `Id` is the key column, as the SQL above shows.
+
+The S2b result table above is from the S2b run itself, 14/14. With the S4 cases added, the whole suite runs 44/44
+on both databases.
+
+### 8.11 S4: versions, etags, natural ids and constraint errors (2026-11-24)
+
+**Setup.** The same prototype and host as S2b (`docs/relational_spike/s2b/`, `S4Tests.cs`), extended as follows:
+- a shadow `bigint Version` concurrency token on every root table, which the session increments (D3)
+- key and FK columns in a binary collation, `Latin1_General_BIN2` and `"C"` (D7)
+- a natural-key `Tag` with a unique `Name` of at most 20 characters
+- D30's translator
+
+The D14 cases go through Spark's own `IDatabaseAccess` (load, save and delete of a persistent object), not the session.
+
+**Results: 15 cases, all green on both databases** (with S2b's, 44/44 in total). SQL from `S2B_LOG=1`:
+
+| Case | Result and SQL |
+|---|---|
+| a new row is version 1; a save with nothing changed writes nothing | ✓ |
+| a change to a child row only (D25), or to the join list only (D26), moves the aggregate's version | ✓ 1 → 2 → 3 |
+| a stale version at commit, after any earlier check | ✓ `UPDATE … SET …, [Version] = @p2 WHERE [Id] = @p3 AND [Version] = @p4` affects 0 rows → `SparkStoreConcurrencyException` |
+| `""` inserts only: a second insert under the same id | ✓ the duplicate primary key (2627 / 23505 on the PK) → concurrency, not validation |
+| delete by id with a stale version / the current one | ✓ `DELETE … WHERE [Id] = @p0 AND [Version] = @p1`; child and join rows go by `ON DELETE CASCADE` |
+| D14 save with the loaded etag | ✓ etag `"1"` in, `"2"` back |
+| D14 save / delete with a stale etag | ✓ `SparkConcurrencyException` (409); the row keeps its version |
+| query rows carry their etags | ✓ through `GetVersionsAsync`: one `SELECT [Id], [Version] … IN (…)` per page |
+| `LoadStartingWith("tags/a_")` and `"tags/a%"` | ✓ only the literal matches: `LIKE @idPrefix_startswith ESCAPE N'\'` (PostgreSQL: backslash is its default escape) |
+| `employees/ada` found, `Employees/Ada` not | ✓ the binary collation; lowering is Spark's job (D7), never the database's |
+| unique, length, not-null and FK violations | ✓ each a `SparkValidationException` naming `Name` or `Company`; the length message does not carry the value |
+| the same on SQL Server with `Current Language=Deutsch` | ✓ |
+
+**Findings:**
+1. **D3 holds as decided**, on both databases: an `UPDATE` or `DELETE` carries `WHERE Id = @id AND Version = @v`.
+   EF's 0-rows-affected exception becomes `SparkStoreConcurrencyException`, and Spark's existing 409 path takes it
+   from there unchanged.
+2. **The version belongs to the aggregate, not the table row.** EF marks an owner unchanged when only its owned
+   child rows or its join rows change, so its version would stay put while the data moved. The session bumps the
+   root's version itself whenever a child or join row of it changes. **D3 refined:** the version is on the root's
+   table and covers the aggregate (D25 child rows, D26 join rows).
+3. **A duplicate primary key and a duplicate unique index are different errors.** The first is a concurrency failure
+   (`""` meant "must not exist"); the second is a validation message. The translator tells them apart by matching the
+   constraint name against EF's model (`IKey.GetName()` against `IIndex.GetDatabaseName()`).
+4. **SQL Server's constraint errors are localized, and not every language quotes the names.** In German, 2601 reads
+   `… mit dem eindeutigen IX_Tags_Name-Index …` and 515 `… in die Name-Spalte …`. A parser keyed on English words
+   or on quotes fails there. The translator offers every identifier-like word of the message to the model, failed
+   entities first, and the model picks the constraint, index or column it knows. PostgreSQL reports
+   `ConstraintName` and `ColumnName` in fields, except for 22001.
+5. **Neither database names the column of a length violation reliably:** PostgreSQL's 22001 never does, and
+   SQL Server's 8152 (compatibility below 150) doesn't either. The translator finds the value that exceeds its
+   column's maximum length among the failed entries. **SQL Server's 2628 message includes the truncated value**
+   (`Truncated value: '…'`), so D30's rule that a raw database message never reaches the client is about data, not
+   only about tidiness.
+6. **The untyped members need the id's collection prefix to find a type** (`ExistsAsync(id)`, `Delete(id, version)`,
+   `GetVersionsAsync(ids)`). The prototype parses the prefix; D27 removes this by passing the type.
+7. **An unversioned delete by id has to read the version first.** EF always puts the concurrency token in the
+   `WHERE` clause, so the stub needs the current value. That is one `SELECT` before the `DELETE`;
+   `ExecuteDeleteAsync` is the alternative in M3, in the same transaction.
+8. **Query etags cost one query per page,** although the page query has already read `Version`. In M3, the
+   relational `GetVersionsAsync` answers rows the session tracks from the tracker.
 
 ## 9. Stale in earlier drafts
 
