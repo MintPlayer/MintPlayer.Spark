@@ -11,9 +11,10 @@ using Sparrow;
 namespace MintPlayer.Spark.Dashboards.Services;
 
 /// <summary>The backing document of a dashboard's history (D14): it holds the time series and nothing else.</summary>
-internal sealed class SparkDashboard
+[IdKind(SparkIdKind.Natural)]
+internal sealed partial class SparkDashboard
 {
-    public string? Id { get; set; }
+    public Id<SparkDashboard> Id { get; set; }
     public string? Name { get; set; }
 }
 
@@ -41,7 +42,8 @@ internal sealed class DashboardStorage(IDocumentStore store, IOptions<SparkDashb
     /// <summary>The rollup policy's name: a rolled-up series is <c>{name}@rollup</c>.</summary>
     public const string RollupPolicy = "rollup";
 
-    public static string DocumentId(string dashboard) => $"{Collection}/{dashboard}";
+    /// <summary><c>sparkdashboards/{dashboard}</c>, lower case (#536 D7); an existing <c>SparkDashboards/{Name}</c> loads as it.</summary>
+    public static Id<SparkDashboard> DocumentId(string dashboard) => Id<SparkDashboard>.FromTrusted($"{Collection}/{dashboard}");
 
     // ---- configuration -------------------------------------------------------------------------------------
 
@@ -122,10 +124,10 @@ internal sealed class DashboardStorage(IDocumentStore store, IOptions<SparkDashb
         if (samples.Count == 0)
             return;
 
-        var id = DocumentId(dashboard);
+        var id = DocumentId(dashboard).Value;
         using var session = store.OpenAsyncSession();
         if (await session.LoadAsync<SparkDashboard>(id, cancellationToken) is null)
-            await session.StoreAsync(new SparkDashboard { Id = id, Name = dashboard }, id, cancellationToken);
+            await session.StoreAsync(new SparkDashboard { Id = DocumentId(dashboard), Name = dashboard }, id, cancellationToken);
         foreach (var (series, value) in samples)
             session.TimeSeriesFor(id, RqlIdentifier.Collection(series)).Append(timestamp, value);
         await session.SaveChangesAsync(cancellationToken);
@@ -146,7 +148,7 @@ internal sealed class DashboardStorage(IDocumentStore store, IOptions<SparkDashb
 
         using var session = store.OpenAsyncSession();
         var results = await session.Advanced.AsyncRawQuery<TimeSeriesAggregationResult>(rql)
-            .AddParameter("id", DocumentId(dashboard))
+            .AddParameter("id", DocumentId(dashboard).Value)
             .AddParameter("from", from)
             .AddParameter("to", to)
             .AddParameter("g", $"{Math.Max(1, (int)Math.Ceiling(bucket.TotalMinutes))} minutes")

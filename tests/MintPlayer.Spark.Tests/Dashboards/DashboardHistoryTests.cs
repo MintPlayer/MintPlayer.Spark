@@ -55,7 +55,7 @@ public class DashboardHistoryTests : SparkTestDriver
     private async Task<TimeSeriesEntry[]> EntriesAsync(string series)
     {
         using var session = Store.OpenAsyncSession();
-        return await session.TimeSeriesFor(DashboardStorage.DocumentId("HtDashboard"), series).GetAsync() ?? [];
+        return await session.TimeSeriesFor(DashboardStorage.DocumentId("HtDashboard").Value, series).GetAsync() ?? [];
     }
 
     [Fact]
