@@ -296,9 +296,20 @@ MintPlayer.Spark.Abstractions
   the security and moderation initialisers) move after `Build()`, which constructs no service and opens no
   connection; one that turns out to need the builder becomes a builder-phase hook of the same command. The existing
   commands move onto it in this PR (no backward compatibility).
+- **Proven by S20 (§8.6), with three rules:**
+  - The runner resolves inside a scope. Resolving a scoped command from the root provider throws under
+    `ValidateScopes`.
+  - `--spark-help` reads the keys from the service descriptors (`ServiceDescriptor.ServiceKey`), captured by a
+    singleton that `AddSpark` registers. `GetKeyedServices(AnyKey)` would construct every command instead.
+  - A command takes only contracts that core gives a default. In Development, `ValidateOnBuild` refuses `Build()`
+    when a core command's dependency is registered only by a provider. When core and a provider register the same
+    key, the **last registration wins**, so a provider registers after `AddSpark`.
+  - Moving after `Build()` also retires `SparkSecurityVerificationExtensions.cs:75`'s throwaway
+    `BuildServiceProvider()` before `Build()`. It existed only so that nothing needing a database was constructed.
 - **Migrations (D33) are the first user.** Core owns `--spark-migrate`, `--spark-migration-script`,
   `Spark:Database:ApplyMigrations`, the startup order and the refusal message. Providers implement one contract,
-  `ISparkSchemaMigrator` (pending migrations, apply, write a script):
+  `ISparkSchemaMigrator` (the startup guard, pending migrations, apply, write a script; S19 showed the guard must be
+  Spark's own, D33):
   - **RavenDB** applies what it already deploys at startup (indexes, the revisions configuration), reports nothing
     pending, and writes no script (it says RavenDB has no schema script and exits 0).
   - **SqlServer / PostgreSql**, through `Relational`, apply the framework schema and the app's EF migrations, and
@@ -307,6 +318,37 @@ MintPlayer.Spark.Abstractions
     compare-exchange lock (`SparkMigrationRunner.cs:15`) onto the neutral lease contract (§4.1, Tier 2).
 - The same rule holds for every other decision: the absent-field rewrite (O11) lives in the RavenDB provider, the
   id conventions (D7) in each provider's registration, and the view rendering (D32) in each provider.
+
+**D35 (the owner's direction, 2026-11-24; the shape below is the proposal, O16 open): the test harness splits the
+way the runtime does.** `MintPlayer.Spark.Testing` is RavenDB-only today: it references `RavenDB.TestDriver` and
+`MintPlayer.Spark.RavenDB`, `SparkTestDriver` and `SparkSharedDatabase` derive from `RavenTestDriver`, and
+`SparkEndpointFactory` takes an `IDocumentStore` (`SparkEndpointFactory.cs:116-117`). 255 test files derive from
+those drivers. The relational providers have no equivalent of `RavenTestDriver`; EF Core ships none.
+- **`MintPlayer.Spark.Testing` (neutral, no database reference)** owns the entry points:
+  - the `SparkTestDriver` (per case, database created on first use) and `SparkSharedDatabase` (per class) lifecycles
+  - `SparkEndpointFactory`, which boots the host and lets the provider plug itself in instead of swapping an
+    `IDocumentStore`
+  - `SeedAsync` over `ISparkSession`, the JSON fixtures, and `WaitForConsistencyAsync` instead of
+    `WaitForIndexesAsync`
+  - `SparkTestSecurity`, `AsyncWait`, `RouteTableSnapshot`, `VerifyDefaults`, `Wire`, and the `AGENTS.md` and
+    targets
+  - a neutral query recorder (RavenDB: the request event `RqlRecorder` uses; EF: a `DbCommandInterceptor`)
+- **One contract, `ISparkTestDatabaseProvider`**: locate or provision the server once per process, then create a
+  database, configure the host for it, wait for consistency, and drop it. This is the conformance suite's
+  `CreateStoreAsync()` override (§2.4) grown into a package.
+- **`MintPlayer.Spark.Testing.RavenDB`** gets today's code: `RavenTestDriver`, the embedded server and
+  `RavenServerLocator`, the licence, `RavenDatabaseDeletion`, index deployment and `RqlRecorder`. Its
+  `RavenSparkTestDriver` still exposes the raw `IDocumentStore` for tests that pin RavenDB behaviour.
+- **`MintPlayer.Spark.Testing.SqlServer` / `.PostgreSql`** (`.MariaDb` with its provider, O6): a server from a
+  connection-string variable (a local instance, or the CI service container D31 already needs), otherwise
+  Testcontainers (MIT). A database per class, migrated through the same guarded startup as production (D33, S19).
+  PostgreSQL can clone a migrated template (`CREATE DATABASE … TEMPLATE`). SQL Server has no template, so S17 measures
+  create-and-migrate per class against resetting a shared database between classes (Respawn, Apache-2.0).
+- **Moving the 255 files:** no backward compatibility. Tests that touch the raw store move to `RavenSparkTestDriver`
+  in one mechanical rename. They move to the neutral driver as their library is ported to `ISparkSession`
+  (§5 tiers), and only then run on every provider.
+- Why not one testing package with every provider in it: every test project would pull in RavenDB, the EF
+  providers and Testcontainers, against D34's rule that an app names its provider once.
 - **Guard:** the layering tests (`tests/MintPlayer.Spark.Tests/Layering/`) fail when `Abstractions` or `MintPlayer.Spark`
   references a provider assembly or a database client.
 
@@ -547,9 +589,16 @@ EF tools would have to rebuild).
   2. the app's EF migrations
   3. the data migrations, as today
 
-  EF 9 and later take an exclusive database lock around applying migrations, so several instances starting together
-  are safe, and since EF 10 each migration runs in its own transaction again. EF refuses to apply while the model has
-  changes no migration covers (`PendingModelChangesWarning`), which backs up the CI test.
+  **EF's own migration lock is not enough (S19, §8.7).** On SQL Server it serializes instances on an existing
+  database, but on PostgreSQL (Npgsql 11.0.0) it is held only per migration, so two instances both apply the later
+  migrations. On both databases instances race on `CREATE DATABASE`. So the core startup sequence takes **Spark's
+  own session-level guard** around all three steps *and* the database creation: the migrator contract's
+  `AcquireStartupGuardAsync`, which the SQL providers implement with `sp_getapplock @LockOwner='Session'` in `master`
+  and `pg_advisory_lock` in the `postgres` maintenance database, keyed `spark:migrations:{database}`; RavenDB keeps
+  its compare-exchange lease. Each migration still runs in its own transaction (EF 10+): a failure halfway leaves
+  the earlier migrations applied, rolls the failing one back as a whole, and the next start resumes from there. EF
+  refuses to apply while the model has changes no migration covers (`PendingModelChangesWarning`), which backs up
+  the CI test.
 - **Mode 2, a separate step:** `<app> --spark-migrate` applies all three and exits. It suits a pipeline step or an
   init container run with a login that may change the schema, while the app itself runs with
   `Spark:Database:ApplyMigrations=false` and a login without DDL rights. This is what an EF migration bundle does,
@@ -1059,6 +1108,71 @@ Measurement notes:
   never write to the source. This run used the development database, which has every id shape the production one
   has; a production export is the owner's call.
 
+### 8.6 S20: commands as keyed DI registrations (2026-11-24)
+
+**Setup.**
+- Code: `docs/relational_spike/s20/Program.cs`, a `WebApplication` (Microsoft.NET.Sdk.Web, net11.0) built once per
+  scenario.
+- `AddSparkCore()` registers four keyed scoped commands and the key catalogue. A "provider" registers a document-store
+  singleton, an EF `DbContext` aimed at an unreachable SQL Server (`10.255.255.1`, 5 s timeout) with a
+  connection-counting interceptor, and its own `--spark-migration-script`.
+- Every constructor increments a counter.
+
+**Results: 12/12.**
+
+| Scenario | Result |
+|---|---|
+| `--spark-migrate` | only `MigrateCommand` constructed (store 0, connections 0) |
+| `--spark-synchronize-model` | resolves the `DbContext` and diffs its model (1 `CreateTableOperation`) in 0.7 s; **store 0, connections 0** |
+| No `--spark-*` flag | not handled, nothing constructed |
+| Unknown `--spark-nonsense` | "Unknown command …. Run --spark-help." |
+| `--spark-help` | lists all four keys from the descriptors; no other command constructed |
+| The same key from core and from the provider | the provider's (last) registration runs; without the provider, core's default runs |
+| Development (`ValidateOnBuild`, `ValidateScopes`) | keyed scoped commands pass; a scoped command resolved from the root throws |
+
+**Found on the way:** with `AddSparkCore()` alone (no `DbContext` registered), Development's `ValidateOnBuild`
+failed `Build()` on the synchronize command's dependency. That is the rule added to D34: a core command depends only
+on contracts with a core default.
+
+### 8.7 S19: applying migrations with several instances, failures and scripts (2026-11-24)
+
+**Setup.**
+- Code: `docs/relational_spike/s19/Program.cs` (console, net11.0, EF Core 11.0.0, Npgsql EF 11.0.0), run as
+  `dotnet run -- sqlserver` (SQL Server 2025, local instance) and `dotnet run -- postgres` (PostgreSQL 18 container).
+- D33's startup sequence: a framework `DbContext` with its own history table (`__SparkFrameworkMigrations`, one
+  migration), then the app's three migrations (`People`; `Slow`, which sleeps 3 s so that instances overlap;
+  `Half`, which adds a column), then a data step guarded by its own record, standing in for `ISparkMigration`.
+- `S19_LOG=1` writes EF's SQL to `sql.log`; that is how the Npgsql lock was read.
+
+**Results: SQL Server 19/20, PostgreSQL 18/20; every failure is a finding, and the guarded variant passes on both.**
+
+| Scenario | SQL Server | PostgreSQL |
+|---|---|---|
+| 1. Two instances, database does not exist, EF alone | ❌ `CREATE DATABASE` race ("already exists"; in earlier runs also "Cannot open database … login failed" while the winner's database was not online yet) | ❌ the same race, and the migration race below |
+| 1b. Three instances, empty database exists, EF alone | ✅ `sp_getapplock` serializes them; each migration applied once | ❌ **"column Email already exists"** (3/3 runs) |
+| 1c. Three instances, database does not exist, **Spark's guard** | ✅ one instance migrates (3.1 s), the others find nothing pending; each migration and the data step once | ✅ the same |
+| 2. Migration 3 fails halfway | ✅ migrations 1–2 stay applied; the failing one rolls back as a whole (its table is gone); it stays pending; a restart with the fix completes | ✅ the same |
+| 3. Idempotent script (framework + app), generated without a database | ✅ applied twice: the second run is a no-op; `MigrateAsync` then finds nothing pending (split on `GO`) | ✅ the same |
+| 4. `GetPendingMigrationsAsync` on a database that does not exist | ✅ 3 pending in 6 ms (the basis of the `ApplyMigrations=false` refusal) | ✅ 3 pending in 7 ms |
+
+**Findings.**
+- **Npgsql 11.0.0's migration lock is held per migration, not around the run.** EF's SQL log shows
+  `LOCK TABLE "__EFMigrationsHistory" IN ACCESS EXCLUSIVE MODE` inside each migration's transaction. The lock
+  ends at that commit, and the next migration's lock is taken again, so a second instance that read the same pending
+  list in between applies the same later migration. SQL Server's `sp_getapplock` is session-owned and holds across
+  the run. This is a candidate upstream issue for Npgsql (not filed; the owner decides).
+- **Neither provider covers database creation.** Instances race on `CREATE DATABASE`; on SQL Server the loser can
+  also fail to log into the winner's database before it is online.
+- **The fix, now in D33:** Spark takes a session-level lock in the server's maintenance database (`master` /
+  `postgres`) keyed `spark:migrations:{database}` (a parameter, never spliced), and holds it across database
+  creation, framework schema, app migrations and data migrations. The first instance does the work; the others wait
+  and then find nothing pending (a few milliseconds each). A guard taken on the target database itself still failed
+  on SQL Server, because the database must exist to connect to it.
+- **Raw SQL in a migration must be valid inside PL/pgSQL `DO` blocks** in the PostgreSQL idempotent script, which
+  wraps each statement in `DO $EF$ BEGIN IF NOT EXISTS(…) THEN … END IF; END $EF$;`. A bare `SELECT` fails there;
+  `PERFORM` works. The SQL Server script needs splitting on `GO`. Hand-written SQL in a Spark-generated migration is
+  rare, but the D31 tests run the script once per dialect so a non-scriptable statement fails CI.
+
 ## 9. Stale in earlier drafts
 
 **In the 2026-11-09 draft:**
@@ -1171,6 +1285,16 @@ commercial-framework comparison added D30. The plan §3 has the log.
   - Recommendation: (a), proven by a spike on a copy of the production `Coverage` database (S-ID4) that loads,
     queries, prefix-scans and compares mixed-case ids through the lowercase `Id<T>`. Choose (b) only if the spike
     fails, and spike the case-only re-key on the same copy first.
+- **O16, how a test project picks its database (open, D35):**
+  - **(a) An assembly attribute**, `[assembly: SparkTestDatabase<SqlServerTestDatabase>]`. A test project names its
+    provider once, as `Program.cs` does (D34).
+  - **(b) A generic base class** per test class, `SparkTestDriver<TDatabase>`. Explicit, but a class cannot run on
+    another provider without a subclass per provider (the conformance suite's pattern today, §2.4).
+  - **(c) An environment variable only.**
+  - Recommendation: (a), with `SPARK_TEST_DATABASE` overriding it, so CI runs the neutral framework suites once per
+    provider as a matrix while app test projects stay on their own provider. Trap: a project that overrides the
+    variable must reference every provider package it may select, and a typo must fail at startup, never fall back
+    silently.
 
 ## 11. Out of scope
 

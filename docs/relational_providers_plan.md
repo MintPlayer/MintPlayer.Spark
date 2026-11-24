@@ -14,9 +14,9 @@ rounds, milestones and status. Branch `feat/536-sql-server-provider`, draft PR #
 - **Storage model (round 3):** a table per entity, mapped by EF Core. The model synchronize generates EF migrations;
   AsDetail collections are child tables; references are real FKs; the contract is typed; ids are `Id<T>` (D23).
   Breaking changes are allowed, with no backward compatibility.
-- **Next:** the gate spikes S20, S19, S3, S5, S4 and S2b (§2). S-ID1, S-ID2, S-ID4 and S-ID5's RavenDB half are
-  done (PRD §8.3–8.5, 2026-11-24). Grilling round 5 decided O10–O13
-  (2026-11-24); only O8 and O9 are open, both low priority.
+- **Next:** the gate spikes S3, S5, S4 and S2b (§2). S19, S20, S-ID1, S-ID2, S-ID4 and S-ID5's RavenDB half are
+  done (PRD §8.3–8.7, 2026-11-24). Grilling round 5 decided O10–O13
+  (2026-11-24). O8 and O9 are open, both low priority, and so is O16 (the test harness's provider choice, D35).
 - Local spike servers left running:
   - SQL Server: `SparkSpike536` on `localhost` and `localhost\MSSQLSERVER01`
   - Docker containers `spark536-pg` (`postgres:18`, 127.0.0.1:55432) and `spark536-maria` (`mariadb:11.8`,
@@ -50,10 +50,10 @@ Each spike ends with an entry in PRD §8, with evidence (numbers, file:line, a r
 | S11 | Attachments (low priority) | in or out | later |
 | S15 | `ISparkAtomicValues` and leases: a table with compare-and-swap, against advisory locks under connection pooling and loss | <ul><li>cron: one occurrence fires once across two hosts, and poisoned values are reclaimed</li><li>migrations: one runner, and takeover after a killed host</li></ul> | with S6 |
 | S16 | Aggregate tables for moderation's 3 map-reduce indexes: updated in the same transaction from the loaded old row; set-based writes refused on aggregated collections | moderation's reputation tests on both | with Tier 3 |
-| S17 | A provider-neutral test driver (`libs/testing`): a database per test class on a service container or a local instance; RavenDB keeps `RavenTestDriver` | one Spark.Tests class runs on all four providers | with M4 |
+| S17 | **The split test harness** (PRD D35): <ul><li>`ISparkTestDatabaseProvider` in a neutral `MintPlayer.Spark.Testing`; `.RavenDB` keeps `RavenTestDriver`; `.SqlServer` and `.PostgreSql` find a server from a connection string or Testcontainers</li><li>the cost of a database per class: create + migrate on SQL Server; a `TEMPLATE` clone on PostgreSQL; against a Respawn reset of a shared database</li><li>the provider choice (O16)</li></ul> | one Spark.Tests class runs on RavenDB, InMemory, SQL Server and PostgreSQL without a line of provider code; the per-class cost is measured on both SQL databases | with M4 |
 | S18 | Null ordering (D4), with RavenDB's own order measured | a conformance case green on all four providers | with M4 |
-| **S19** | **Applying migrations** (PRD D33): <ul><li>EF's migration lock with two instances starting together, on SQL Server and PostgreSQL</li><li>the order framework schema → app migrations → data migrations, and a failure halfway (EF 10: a transaction per migration)</li><li>`--spark-migration-script` writing the framework and app migrations as one idempotent script, run twice</li><li>`ApplyMigrations=false` refusing to start on a pending migration</li></ul> | one instance migrates and the other waits; the script applies once and is a no-op the second time | gate |
-| **S20** | **Commands as keyed DI registrations** (PRD D34): `GetRequiredKeyedService<ISparkCommand>(flag)` after `Build()`; `--spark-synchronize-model` moved after `Build()` constructs no document store or `DbContext` and opens no connection (no database reachable); `--spark-help` lists the keys | synchronize runs with no database; only the requested command is constructed | gate |
+| **S19** | **Applying migrations** (PRD D33): <ul><li>EF's migration lock with two instances starting together, on SQL Server and PostgreSQL</li><li>the order framework schema → app migrations → data migrations, and a failure halfway (EF 10: a transaction per migration)</li><li>`--spark-migration-script` writing the framework and app migrations as one idempotent script, run twice</li><li>`ApplyMigrations=false` refusing to start on a pending migration</li></ul> | one instance migrates and the other waits; the script applies once and is a no-op the second time | ✅ PRD §8.7: EF's lock is not enough (Npgsql releases it per migration; neither covers `CREATE DATABASE`), so D33 adds Spark's session guard in `master`/`postgres`; it passes on both. Failure halfway, the script and the pending check pass |
+| **S20** | **Commands as keyed DI registrations** (PRD D34): `GetRequiredKeyedService<ISparkCommand>(flag)` after `Build()`; `--spark-synchronize-model` moved after `Build()` constructs no document store or `DbContext` and opens no connection (no database reachable); `--spark-help` lists the keys | synchronize runs with no database; only the requested command is constructed | ✅ PRD §8.6: 12/12; help reads the descriptors; last registration wins; core commands take only contracts with a core default |
 
 **Gates:** S-ID1, S-ID2, S-ID4, S-ID5, S2b, S3, S4, S5, S19 and S20 gate the provider work (M3). S6–S9 and S14–S16 can run in parallel
 after them. ~~S13b~~ was dropped with MariaDB (O6), and S-ID3 (a compare-exchange HiLo) was dropped by the round 4
@@ -204,6 +204,7 @@ source-generated from one id template per entity (PRD D23 rule 12).
 
 - O8 (the PostgreSQL 17 floor, probably moot)
 - O9 (bring-your-own `DbContext`, low priority)
+- O16 (how a test project picks its database, D35)
 
 ## 4. Milestones
 
@@ -258,7 +259,8 @@ source-generated from one id template per entity (PRD D23 rule 12).
      assumption, named after the decision it protects. Each one is written when its milestone first relies on it,
      not all at once.
 
-   This comes with the neutral test driver (S17).
+   This comes with the split test harness (S17, PRD D35): `MintPlayer.Spark.Testing` becomes neutral, today's
+   RavenDB code moves to `MintPlayer.Spark.Testing.RavenDB`, and `.SqlServer`/`.PostgreSql` join.
 6. **Tier 1 and Tier 2 ports** (PRD §5), plus the lookup lost-update fix.
 7. **Tier 3:** S7/S14 subscriptions and messaging, S8 revisions, S16 moderation. Then search with `LIKE` (S10).
 8. **Tier 4:** identity_provider, and dashboards (S9).
@@ -298,3 +300,11 @@ during development (TDD red→green). The full suite runs once at the end, via p
     `Id<T>` needs `IComparable`. 100k inserts show no large v4/v7 difference, so v4 stays.
   - Spike S-ID4, PRD §8.5: 15/15 on a copy of the development `Coverage` database. Mixed-case legacy ids need no
     re-key on Lucene or Corax.
+  - Spike S20, PRD §8.6: 12/12. Commands as keyed DI registrations construct only the requested command;
+    synchronize opens no connection. D34 gets three rules.
+  - Spike S19, PRD §8.7: EF's migration lock is not enough. Npgsql 11 holds it per migration (two instances
+    both applied a later migration, 3/3 runs), and neither provider guards `CREATE DATABASE`. D33 now takes Spark's
+    own session lock in `master`/`postgres` around creation and all three steps, and that passes on both. Failure
+    halfway, the idempotent script and the pending check pass.
+  - The owner asked for a provider-neutral test harness: D35 proposes `MintPlayer.Spark.Testing` plus
+    `.RavenDB/.SqlServer/.PostgreSql` packages; S17 widened; O16 (how a project picks its database) is open.
