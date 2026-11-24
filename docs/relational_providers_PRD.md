@@ -394,7 +394,8 @@ Mistral was rate-limited.
 - `LoadStartingWith` over natural keys is `LIKE @prefix ESCAPE '\'`, with `%`, `_` and `\` escaped; the prefix is
   lowered first.
 - Conformance cases pin the canonical round trip, `GetById` with an upper-case variant (found on every provider), the
-  rejection of a non-lowercase id on store, the prefix escaping, FK equality under the copied collation, and
+  rejection of a non-lowercase id when a **new** document is stored (a legacy RavenDB document reports its stored
+  casing on save, S-ID1 G1), the prefix escaping, FK equality under the copied collation, and
   non-ASCII keys (`ToLowerInvariant` runs in .NET, so the providers never fold case themselves).
 - Existing RavenDB data with mixed-case ids is **not re-keyed** (O15): RavenDB lookups ignore case and Spark lowers
   every id it reads. Spike S-ID4 proves it on a copy of a production database before M2.
@@ -443,23 +444,33 @@ public List<Id<Profession>> ProfessionIds { get; set; } = [];
    - A generated hidden `string? __DocumentId { get => Id.Value; set => Id = Id<T>.FromTrusted(value.ToLowerInvariant()); }`
      is the identity property, selected by `FindIdentityProperty`. RavenDB refuses a non-string identity member.
      There are no store events. The setter lowers what RavenDB hands back, so a legacy mixed-case id reads as its
-     lowercase form (D7, O15).
+     lowercase form (D7, O15). The member may be private (S-ID1 C2, R7).
+   - The public `Id<T>` is `[JsonIgnore]` (generator-emitted), so the body never carries an `Id` field. A re-save of
+     today's string-Id document is byte-identical (S-ID1 P2), and nothing needs a backfill patch.
    - Int ids are RavenDB's **native HiLo**, lowered (D7): `"people/1-a"` stays opaque, and the node tag is never
      stripped. On RavenDB, "Integer" just means HiLo-generated. Sorting by id is alphabetical there (`people/10-a`
      sorts before `people/2-a`), and that is documented.
+   - The HiLo comes from **Spark's own** `AsyncMultiDatabaseHiLoIdGenerator`. `ApplySparkConventions` overrides
+     `AsyncDocumentIdGenerator` (Guid ids), and from then on `store.HiLoIdGenerator` throws (S-ID1 C13).
    - The stored JSON is unchanged: references stay strings.
 7. **Id lookups made by the framework itself** (detail load, reference resolution, row security, lookups) go through
    a provider hook: `Load` on RavenDB, key equality on EF. The commercial framework does the same: `Session.Load` on RavenDB, a
    key-equality expression on EF.
    - The hook has a batch form (`LoadMany`: one `IN` query on EF), so reference resolution is never N+1. D30 uses the
      same hook to name the referenced row in an FK-violation message.
-   - **Only LINQ that an app author writes against `x.Id`** needs translation on RavenDB. Spike S-ID1 tries, in
-     order, and the first that passes wins:
-     - (a) `Id` also stored as a body field (`"Id": "people/42"`) + `RegisterQueryValueConverter`, with a one-time
-       patch per collection `from People update { this.Id = id(this) }`. On load, RavenDB's identity must win over
-       the body field.
-     - (b) an execution-time expression rewrite `x.Id → x.__DocumentId` through a provider decorator.
-     - (c) the native `IRavenQueryable` plus framework `WhereId`/`WhereIds` helpers.
+   - **Only LINQ that an app author writes against `x.Id`** needs translation on RavenDB. **(b) won (S-ID1, §8.3):**
+     an execution-time expression rewrite through a provider decorator.
+     - It turns the entity's own `x.Id` into the identity member, so the client emits `id()`. This covers `==`,
+       `!=`, `Contains`/`In` and `OrderBy`, and a projection selects `id() as …`.
+     - `id()` matches the real document id, case-insensitively. It finds documents with no body `Id` (every
+       document today), and a lowercase value finds a mixed-case legacy id (O15).
+     - The same decorator lowers `coll.Contains(x.Member)` into `x.Member.In(coll)` for any element type. The RavenDB
+       client rejects `Contains` even over `List<string>` (S-ID1 C4 control), which is why the apps write `.In()` by
+       hand today (`AccountActions.cs:118`).
+     - (a) was measured and rejected: RQL treats a body field `Id` as an ordinary field. Documents without it
+       (all of production) are invisible to `where Id = …` (C6), and keeping it would need a backfill patch and a
+       byte change on every re-save.
+     - (c) is not needed.
 8. **EF Core:**
    - Per-model value converters parse `"people/42"` into `int`/`bigint`/`Guid` columns, range-checked.
    - Int keys use **HiLo** by default; IDENTITY is a documented opt-in that breaks rule 5.
@@ -906,6 +917,53 @@ MariaDB's `JSON_VALUE` returns only scalars. The fork uses it for object and arr
 - D1 holds on PostgreSQL. On MariaDB it would hold only with translation fixes.
 - **MariaDB deferred** (owner, O6). S13 stays as the evidence for that decision and for a later return.
 - D2–D7 proposed (§3). D6 and D7 were corrected or added by grilling round 1. Owner sign-off pending.
+
+### 8.3 S-ID1 + S-ID5 (RavenDB half): `Id<T>` on RavenDB 7.2 (2026-11-24)
+
+**Setup.**
+- Code: `docs/relational_spike/sid1/Program.cs`, a console app with a minimal `Id<T>`, its Newtonsoft converter and
+  the generator's `__DocumentId` written by hand.
+- Run against the local dev server (RavenDB 7.2.6, client 7.2.7, .NET 11), throwaway database `spike_sid1`.
+- 51 checks, 46 pass. All 5 failures are expected negatives, kept as evidence: four raw `Contains` queries and the
+  option-(a) body-field query (C6).
+
+**Results:**
+
+| # | Check | Result |
+|---|---|---|
+| C1 | Store, load, upper-case load (same session instance) | ✓ |
+| C2, R7 | A **private** `__DocumentId` as the identity, on load and in a rewritten query | ✓ |
+| C3 | (a) `Where(x => x.Id == v)` via `RegisterQueryValueConverter` → `where Id = $p0` | ✓, but it is a **body** field |
+| C4 | `list.Contains(x.Id)`, `array.Contains(x.Id)` and the control `List<string>.Contains(x.Name)` | ⚠ `NotSupportedException` for all, raw client |
+| C4 | `x.Id.In(list)`, `x.Id.In(array)`, `x.Id == a \|\| x.Id == b`, a reference `x.CompanyId == v` | ✓ |
+| C4 (b) | `Contains` rewritten to `In`, own id and reference | ✓ `where Id in ($p0)` |
+| C5 | (a) `OrderBy`, `OrderByDescending`, projection `Select(new { x.Id })` | ✓ |
+| C6 | (a) query by `Id` for a document **without** a body `Id` | ✗ 0 hits: every production document today |
+| C7 | Identity wins over a disagreeing body `Id` on load | ✓ |
+| C8 | (a) RQL `Id` matches the body value, not the document id | ✓, confirms C6 |
+| C9 | Legacy `People/Legacy…` document: lowercase load gives one instance; `LoadStartingWith("people/legacy")` finds it; save keeps the stored casing; no duplicate | ✓ |
+| C10–C12 | Streaming, lazy load, subscription worker: `Id` set from the identity | ✓ |
+| C13 | HiLo: `people/1-A` lowered to `people/1-a` and loaded by the original casing. `store.HiLoIdGenerator` **throws** once `AsyncDocumentIdGenerator` is set, so Spark needs its own `AsyncMultiDatabaseHiLoIdGenerator` | ✓ |
+| C14 | `TransformTypeCollectionNameToDocumentIdPrefix` lowered (`People` → `people`) | ✓ |
+| R1–R6 | (b) `x.Id` rewritten to the identity: `where id() = $p0`, `id() != `, `id() in (…)`, `order by id()`; finds documents without a body `Id`; ignores a disagreeing body; a lowercase value matches a mixed-case stored id | ✓ |
+| P1–P4 | `[JsonIgnore]` public `Id<T>`: today's string-Id document loads; load, change, change back, save is **byte-identical**; rewritten query; projection `select id() as DocId` | ✓ |
+| G1 | `OnBeforeStore`'s `DocumentId` for a saved legacy document is the **stored** casing (`People/Legacy…`) | observed |
+| G2, G3 | `ApplySparkConventions` lowered: generated `companies/{guid}` and natural `tags/dotnet` | ✓ |
+
+**Decisions:**
+- D23 rule 7: **(b), the rewrite decorator.** (a) is rejected by C6/C8, and (c) is not needed.
+- D23 rule 6: the public `Id<T>` is `[JsonIgnore]`, so documents stay byte-identical (P2). HiLo uses Spark's own
+  generator (C13).
+- D7 / S-ID5: `UseGeneratedIds` today builds `{GetCollectionName(type)}/{guid}`, which gives `People/…`. It gets
+  `.ToLowerInvariant()`, as `UseNaturalIds` does (G2, G3).
+- **The debug guard checks only new documents.** RavenDB reports the stored casing for a legacy document (G1). A
+  guard on every store would trip on each legacy save, which O15 (a) allows.
+- The decorator sits behind Spark's session (`ISparkSession.Query<T>`). Author code on a raw `IAsyncDocumentSession`
+  bypasses it; an analyzer flags `x.Id` in such queries (M3).
+- Still open for S-ID4: the byte-diff and the queries on a **copy of the production `Coverage` database**. C9 and P2
+  show both on synthetic documents only.
+- Still open for S-ID5: the collision build failure (L1) is model-build code, tested with M3's unit tests. It is not
+  a RavenDB behaviour to spike.
 
 ## 9. Stale in earlier drafts
 
