@@ -33,7 +33,7 @@ internal sealed class OidcAgentGrants(AgentGrantStore grants, IDocumentStore sto
             SecurityStamp = securityStamp ?? string.Empty,
             OidcGrantId = oidcGrantId,
         };
-        if (await grants.GetOwnAsync(userId, grant.Id, ct) is { } previous)
+        if (await grants.GetOwnAsync(userId, grant.Id.Value, ct) is { } previous)
         {
             grant.CreatedAt = previous.CreatedAt;
             grant.LastUsedAt = previous.LastUsedAt;
@@ -44,7 +44,7 @@ internal sealed class OidcAgentGrants(AgentGrantStore grants, IDocumentStore sto
 
     /// <summary>The OAuth grant was withdrawn (or its client removed): the agent grant goes with it.</summary>
     public async Task RemoveAsync(string userId, string clientId, CancellationToken ct)
-        => await grants.DeleteAsync(userId, AgentGrantIds.Application(userId, clientId), ct);
+        => await grants.DeleteAsync(userId, AgentGrantIds.Application(userId, clientId).Value, ct);
 
     /// <summary>The user revoked the agent grant on Connected applications: withdraw the linked OAuth grant and its tokens.</summary>
     public async Task RevokedAsync(AgentGrant grant, CancellationToken cancellationToken)

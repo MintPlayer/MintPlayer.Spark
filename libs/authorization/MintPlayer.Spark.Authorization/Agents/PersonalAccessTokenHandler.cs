@@ -42,7 +42,7 @@ internal sealed partial class PersonalAccessTokenHandler(
         if (!PersonalAccessTokens.TryParse(token, out var userId, out var tokenId))
             return Refuse("malformed");
 
-        var grant = await grants.GetAsync(AgentGrantIds.PersonalAccessToken(userId, tokenId), Context.RequestAborted);
+        var grant = await grants.GetAsync(AgentGrantIds.PersonalAccessToken(userId, tokenId).Value, Context.RequestAborted);
         if (grant is null || grant.Kind != EAgentKind.PersonalAccessToken
             || !string.Equals(grant.UserId, userId, StringComparison.OrdinalIgnoreCase)
             || !PersonalAccessTokens.Matches(token, grant.TokenHash))
@@ -52,15 +52,15 @@ internal sealed partial class PersonalAccessTokenHandler(
 
         var now = time.GetUtcNow();
         if (grant.ExpiresAt is not { } expires || expires <= now)
-            return Refuse("expired", grant.Id);
+            return Refuse("expired", grant.Id.Value);
 
         var user = await users.GetAsync(grant.UserId, Context.RequestAborted);
         if (user is null)
-            return Refuse("user deleted", grant.Id);
+            return Refuse("user deleted", grant.Id.Value);
         if (!string.Equals(user.SecurityStamp ?? string.Empty, grant.SecurityStamp ?? string.Empty, StringComparison.Ordinal))
-            return Refuse("security stamp changed", grant.Id);
+            return Refuse("security stamp changed", grant.Id.Value);
         if (AgentRequestUser.IsLockedOut(user, now))
-            return Refuse("user locked out", grant.Id);
+            return Refuse("user locked out", grant.Id.Value);
 
         await grants.TouchAsync(grant, Context.RequestAborted);
 
@@ -73,7 +73,7 @@ internal sealed partial class PersonalAccessTokenHandler(
                 // The local id under the name application code reads too (Actions, row policies, quotas), as a cookie carries it.
                 new Claim(ClaimTypes.NameIdentifier, grant.UserId),
                 new Claim("name", user.UserName ?? grant.UserId),
-                new Claim(PersonalAccessTokens.GrantClaim, grant.Id!),
+                new Claim(PersonalAccessTokens.GrantClaim, grant.Id.Value),
                 .. roles.Claims,
             ],
             Scheme.Name, "name", roles.RoleClaimType);

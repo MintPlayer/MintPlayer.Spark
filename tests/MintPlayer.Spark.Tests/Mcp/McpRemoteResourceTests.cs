@@ -108,7 +108,7 @@ public class McpRemoteResourceTests(SparkSharedDatabase database, McpRemoteSecon
         Audiences(Payload(next["access_token"]!.GetValue<string>())).Should().Equal([McpRemoteHost.RemoteUrl]);
 
         using var session = Store.OpenAsyncSession();
-        (await session.LoadAsync<AgentGrant>(AgentGrantIds.Application(user.Id!, agent.Agent.ClientId)))
+        (await session.LoadAsync<AgentGrant>(AgentGrantIds.Application(user.Id!, agent.Agent.ClientId).Value))
             .Should().BeNull("the agent's grant lives in the resource application, not here");
         (await session.LoadAsync<OidcGrant>(OidcGrantReference.DocumentId(user.Id!, OidcAgentClients.ApplicationId(agent.Agent.ClientId))))!
             .Status.Should().Be("valid", "the OAuth grant here keeps the bookkeeping (revocation, the refresh family)");
@@ -254,7 +254,7 @@ public class McpRemoteResourceTests(SparkSharedDatabase database, McpRemoteSecon
         whoami.ToolText.Should().Contain($"id={linked.Id};", "the resource application's own user, found by the linked login, never by email");
 
         using var session = Store.OpenAsyncSession();
-        var grant = await session.LoadAsync<AgentGrant>(AgentGrantIds.ExternalAuthorizationServer(linked.Id!, McpRemoteHost.Issuer, agent.Agent.ClientId));
+        var grant = await session.LoadAsync<AgentGrant>(AgentGrantIds.ExternalAuthorizationServer(linked.Id!, McpRemoteHost.Issuer, agent.Agent.ClientId).Value);
         grant.Should().NotBeNull("the shadow grant is made in the resource application on the first call (D22)");
         grant!.Permissions.Should().Be(EAgentPermission.Read);
         grant.SecurityStamp.Should().Be((await session.LoadAsync<SparkUser>(linked.Id!))!.SecurityStamp, "stamped like every other agent grant (owner, 2026-10-12)");

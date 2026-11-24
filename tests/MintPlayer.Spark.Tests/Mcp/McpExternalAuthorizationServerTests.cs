@@ -45,7 +45,7 @@ public class McpExternalAuthorizationServerTests(SparkSharedDatabase database)
     private static Task<Reply> DescribeAsync(HttpClient client, string token)
         => CallAsync(client, "acme_describe", new { type = "GuardedDoc" }, McpExternalHost.Token(token));
 
-    private string GrantId(string userId) => AgentGrantIds.ExternalAuthorizationServer(userId, issuer.Issuer, TestIssuer.ClientId);
+    private string GrantId(string userId) => AgentGrantIds.ExternalAuthorizationServer(userId, issuer.Issuer, TestIssuer.ClientId).Value;
 
     // ── the mapping ─────────────────────────────────────────────────────────────────────────────────
 
@@ -311,14 +311,14 @@ public class McpExternalAuthorizationServerTests(SparkSharedDatabase database)
     [Fact]
     public void The_write_cap_is_the_intersection_of_the_grant_and_the_token_scope()
     {
-        var all = new AgentGrant { Id = "AgentGrants/u/ext/x", Permissions = EAgentPermission.Read | EAgentPermission.Write };
+        var all = new AgentGrant { Id = Id<AgentGrant>.FromTrusted("agentgrants/u/ext/x"), Permissions = EAgentPermission.Read | EAgentPermission.Write };
         var typed = new AgentGrant
         {
-            Id = "AgentGrants/u/ext/y",
+            Id = Id<AgentGrant>.FromTrusted("agentgrants/u/ext/y"),
             Permissions = EAgentPermission.Read | EAgentPermission.Write,
             Types = [new AgentGrantType { Name = "GuardedDoc", Permissions = EAgentPermission.Read | EAgentPermission.Write }],
         };
-        var readOnly = new AgentGrant { Id = "AgentGrants/u/ext/z", Permissions = EAgentPermission.Read };
+        var readOnly = new AgentGrant { Id = Id<AgentGrant>.FromTrusted("agentgrants/u/ext/z"), Permissions = EAgentPermission.Read };
 
         ExternalAgentServerScheme.ScopeOf(all, ["mcp:read", "mcp:write"], "mcp:write").Permissions.Should().Be(EAgentPermission.Read | EAgentPermission.Write);
         ExternalAgentServerScheme.ScopeOf(all, ["mcp:read"], "mcp:write").Permissions.Should().Be(EAgentPermission.Read);

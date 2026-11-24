@@ -9,9 +9,9 @@ namespace MintPlayer.Spark.Authorization.Agents;
 /// <remarks>
 /// <para>
 /// <b>Natural ids</b> (<see cref="AgentGrantIds"/>), one document per user and agent:
-/// <c>AgentGrants/{userId}/pat/{tokenId}</c> for a personal access token,
-/// <c>AgentGrants/{userId}/ext/{sha256(issuer|clientId)[..32]}</c> for an external authorization server's client,
-/// <c>AgentGrants/{userId}/app/{clientId}</c> for an embedded-server client. The user id is part of the id, so a
+/// <c>agentgrants/{userId}/pat/{tokenId}</c> for a personal access token,
+/// <c>agentgrants/{userId}/ext/{sha256(issuer|clientId)[..32]}</c> for an external authorization server's client,
+/// <c>agentgrants/{userId}/app/{clientId}</c> for an embedded-server client (lower case, #536 D7). The user id is part of the id, so a
 /// user's grants are found without an index and the account endpoints never address another user's.
 /// </para>
 /// <para>
@@ -19,10 +19,11 @@ namespace MintPlayer.Spark.Authorization.Agents;
 /// what the user's own rights allow and never widens it.
 /// </para>
 /// </remarks>
-public sealed class AgentGrant
+[IdKind(SparkIdKind.Natural)]
+public sealed partial class AgentGrant
 {
     /// <summary>The natural id; see <see cref="AgentGrantIds"/>.</summary>
-    public string? Id { get; set; }
+    public Id<AgentGrant> Id { get; set; }
 
     /// <summary>The user the agent acts as.</summary>
     public string UserId { get; set; } = string.Empty;
@@ -86,7 +87,7 @@ public sealed class AgentGrant
 
     /// <summary>The grant as the permission layer applies it.</summary>
     public AgentGrantScope ToScope()
-        => new(Id!, Permissions, Types?.GroupBy(t => t.Name, StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.First().Permissions, StringComparer.Ordinal));
+        => new(Id.Value, Permissions, Types?.GroupBy(t => t.Name, StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.First().Permissions, StringComparer.Ordinal));
 }
 
 /// <summary>One chosen type of an <see cref="AgentGrant"/>.</summary>

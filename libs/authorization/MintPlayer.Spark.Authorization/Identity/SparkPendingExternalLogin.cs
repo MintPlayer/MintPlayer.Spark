@@ -1,3 +1,5 @@
+using MintPlayer.Spark.Abstractions;
+
 namespace MintPlayer.Spark.Authorization.Identity;
 
 /// <summary>
@@ -22,9 +24,10 @@ namespace MintPlayer.Spark.Authorization.Identity;
 /// means a database read cannot yield a usable link capability.
 /// </para>
 /// </remarks>
-public class SparkPendingExternalLogin
+[IdKind(SparkIdKind.Natural)]
+public partial class SparkPendingExternalLogin
 {
-    /// <summary>Document id: <c>SparkPendingExternalLogins/{hash}</c>, hashed from the triple below.</summary>
+    /// <summary>Document id: <c>sparkpendingexternallogins/{hash}</c>, hashed from the triple below.</summary>
     /// <remarks>
     /// Derived rather than random, which is a change of mind worth recording. A random id would have
     /// forced the "is one already pending?" check to be a <em>query</em>, and an auto-index that is
@@ -32,7 +35,7 @@ public class SparkPendingExternalLogin
     /// Deriving the key makes it a load. It leaks nothing about the account because it is a hash,
     /// and it is not the capability, so carrying it in the mailed token costs nothing.
     /// </remarks>
-    public string? Id { get; set; }
+    public Id<SparkPendingExternalLogin> Id { get; set; }
 
     /// <summary>SHA-256 of the single-use token that was mailed, hex-encoded.</summary>
     /// <remarks>

@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Identity;
 using MintPlayer.SourceGenerators.Attributes;
+using MintPlayer.Spark.Abstractions;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Session;
 using System.Security.Cryptography;
@@ -110,7 +111,7 @@ public partial class SparkExternalLoginLinker<TUser> where TUser : SparkUser, ne
     /// </remarks>
     public static readonly TimeSpan ConfirmationWindow = TimeSpan.FromHours(1);
 
-    private const string IdPrefix = "SparkPendingExternalLogins/";
+    private const string IdPrefix = "sparkpendingexternallogins/"; // Lower case (#536 D7); a token mailed before still loads.
 
     [Inject] private readonly IDocumentStore documentStore;
     [Inject] private readonly UserManager<TUser> userManager;
@@ -185,7 +186,7 @@ public partial class SparkExternalLoginLinker<TUser> where TUser : SparkUser, ne
         {
             await session.StoreAsync(new SparkPendingExternalLogin
             {
-                Id = documentId,
+                Id = Id<SparkPendingExternalLogin>.FromTrusted(documentId),
                 TokenHash = HashSecret(secret),
                 UserId = user.Id,
                 LoginProvider = loginProvider,

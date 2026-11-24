@@ -123,7 +123,7 @@ public class McpOutputBudgetTests(ITestOutputHelper output) : SparkTestDriver
             ExpiresAt = DateTimeOffset.UtcNow.AddDays(1),
             TokenHash = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(token))),
             SecurityStamp = stamp,
-        }, AgentGrantIds.PersonalAccessToken(userId, tokenId));
+        }, AgentGrantIds.PersonalAccessToken(userId, tokenId).Value);
         await session.SaveChangesAsync();
         return (userId, token);
     }

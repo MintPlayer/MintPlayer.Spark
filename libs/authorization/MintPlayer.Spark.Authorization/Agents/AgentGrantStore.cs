@@ -70,7 +70,7 @@ internal sealed partial class AgentGrantStore(IDocumentStore store, TimeProvider
     public async Task SaveAsync(AgentGrant grant, CancellationToken cancellationToken = default)
     {
         using var session = store.OpenAsyncSession();
-        await session.StoreAsync(grant, grant.Id, cancellationToken);
+        await session.StoreAsync(grant, grant.Id.Value, cancellationToken);
         if (grant.ExpiresAt is { } expires)
         {
             // RavenDB's expiration removes the document once the token cannot be used anyway (when the database
@@ -78,7 +78,7 @@ internal sealed partial class AgentGrantStore(IDocumentStore store, TimeProvider
             session.Advanced.GetMetadataFor(grant)[Constants.Documents.Metadata.Expires] = expires.UtcDateTime.ToString("O");
         }
         await session.SaveChangesAsync(cancellationToken);
-        Invalidate(grant.Id!);
+        Invalidate(grant.Id.Value);
     }
 
     /// <summary>
@@ -91,15 +91,15 @@ internal sealed partial class AgentGrantStore(IDocumentStore store, TimeProvider
         {
             using var session = store.OpenAsyncSession();
             // An empty change vector: the write fails if the document exists (optimistic concurrency on creation).
-            await session.StoreAsync(grant, string.Empty, grant.Id, cancellationToken);
+            await session.StoreAsync(grant, string.Empty, grant.Id.Value, cancellationToken);
             await session.SaveChangesAsync(cancellationToken);
-            Invalidate(grant.Id!);
+            Invalidate(grant.Id.Value);
             return grant;
         }
         catch (Raven.Client.Exceptions.ConcurrencyException)
         {
-            Invalidate(grant.Id!);
-            return await GetAsync(grant.Id!, cancellationToken);
+            Invalidate(grant.Id.Value);
+            return await GetAsync(grant.Id.Value, cancellationToken);
         }
     }
 
@@ -127,7 +127,7 @@ internal sealed partial class AgentGrantStore(IDocumentStore store, TimeProvider
     public async Task TouchAsync(AgentGrant grant, CancellationToken cancellationToken = default)
     {
         var now = time.GetUtcNow();
-        var id = grant.Id!;
+        var id = grant.Id.Value;
         var last = touched.TryGetValue(id, out var written) ? written : grant.LastUsedAt ?? DateTimeOffset.MinValue;
         if (now - last < TouchEvery)
             return;

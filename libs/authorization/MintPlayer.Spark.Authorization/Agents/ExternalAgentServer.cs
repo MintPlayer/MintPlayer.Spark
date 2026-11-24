@@ -65,7 +65,7 @@ internal sealed class ExternalAgentServerScheme(SparkExternalAgentServerOptions 
 
         var agent = new AgentInformation(EAgentKind.ExternalAuthorizationServer, grant.ClientId, VerifiedHost: null, grant.Name, principal)
         {
-            GrantId = grant.Id,
+            GrantId = grant.Id.Value,
         };
         return new AgentCredential(agent, ScopeOf(grant, ExternalAgentServer.ScopesOf(principal), options.WriteScope));
     }
@@ -159,7 +159,7 @@ internal sealed partial class ExternalAgentTokenHandler(
         // The shadow grant (D22, R3-Q18): created on first use, everything exposed, read only, bound to the user's
         // security stamp like a personal access token's and an embedded server's grant (owner, 2026-10-12).
         var id = AgentGrantIds.ExternalAuthorizationServer(userId, options.Issuer, clientId);
-        var grant = await grants.GetAsync(id, Context.RequestAborted)
+        var grant = await grants.GetAsync(id.Value, Context.RequestAborted)
             ?? await grants.CreateIfMissingAsync(new AgentGrant
             {
                 Id = id,
@@ -194,7 +194,7 @@ internal sealed partial class ExternalAgentTokenHandler(
                 new Claim("name", user.UserName ?? userId),
                 new Claim("client_id", clientId),
                 new Claim("scope", string.Join(' ', ExternalAgentServer.ScopesOf(token))),
-                new Claim(ExternalAgentServer.GrantClaim, grant.Id!),
+                new Claim(ExternalAgentServer.GrantClaim, grant.Id.Value),
                 .. roles.Claims,
             ],
             Scheme.Name, "name", roles.RoleClaimType);
