@@ -59,7 +59,14 @@ public interface ISparkSession : IDisposable
     /// <summary>Documents whose id starts with <paramref name="idPrefix"/>, in id order.</summary>
     Task<IReadOnlyList<T>> LoadStartingWithAsync<T>(string idPrefix, int start = 0, int pageSize = 25, CancellationToken cancellationToken = default) where T : class;
 
-    Task<bool> ExistsAsync(string id, CancellationToken cancellationToken = default);
+    /// <summary>
+    /// Whether a <typeparamref name="T"/> is stored under <paramref name="id"/>. Typed (#536 D27): a relational store
+    /// answers from <typeparamref name="T"/>'s table.
+    /// </summary>
+    Task<bool> ExistsAsync<T>(Id<T> id, CancellationToken cancellationToken = default) where T : class;
+
+    /// <summary><see cref="ExistsAsync{T}"/> for a caller that holds a <see cref="Type"/>.</summary>
+    Task<bool> ExistsAsync(Type entityType, string id, CancellationToken cancellationToken = default);
 
     /// <summary>Tracks <paramref name="entity"/> for the next commit; the provider assigns an id when it has none.</summary>
     Task StoreAsync(object entity, CancellationToken cancellationToken = default);
@@ -72,8 +79,14 @@ public interface ISparkSession : IDisposable
     /// </summary>
     Task StoreAsync(object entity, string? expectedVersion, string id, CancellationToken cancellationToken = default);
 
-    /// <summary>Deletes <paramref name="id"/> at the next commit, checked against <paramref name="expectedVersion"/> when given.</summary>
-    void Delete(string id, string? expectedVersion = null);
+    /// <summary>
+    /// Deletes the <typeparamref name="T"/> stored under <paramref name="id"/> at the next commit, checked against
+    /// <paramref name="expectedVersion"/> when given (#536 D27).
+    /// </summary>
+    void Delete<T>(Id<T> id, string? expectedVersion = null) where T : class;
+
+    /// <summary><see cref="Delete{T}(Id{T}, string?)"/> for a caller that holds a <see cref="Type"/>.</summary>
+    void Delete(Type entityType, string id, string? expectedVersion = null);
 
     void Delete(object entity);
 
@@ -84,8 +97,14 @@ public interface ISparkSession : IDisposable
     /// <summary>The version of a tracked entity (RavenDB: its change vector). Throws for an entity the session does not track.</summary>
     string? GetVersion(object entity);
 
-    /// <summary>The stored versions of <paramref name="ids"/>, read without loading the documents. Missing ids are absent.</summary>
-    Task<IReadOnlyDictionary<string, string>> GetVersionsAsync(IEnumerable<string> ids, CancellationToken cancellationToken = default);
+    /// <summary>
+    /// The stored versions of <paramref name="ids"/>, read without loading the documents. Missing ids are absent.
+    /// Keys are the canonical ids (#536 D27).
+    /// </summary>
+    Task<IReadOnlyDictionary<string, string>> GetVersionsAsync<T>(IEnumerable<Id<T>> ids, CancellationToken cancellationToken = default) where T : class;
+
+    /// <summary><see cref="GetVersionsAsync{T}"/> for a caller that holds a <see cref="Type"/>.</summary>
+    Task<IReadOnlyDictionary<string, string>> GetVersionsAsync(Type entityType, IEnumerable<string> ids, CancellationToken cancellationToken = default);
 
     /// <summary>The collection <paramref name="type"/> is stored in.</summary>
     string GetCollectionName(Type type);

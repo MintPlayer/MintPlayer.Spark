@@ -45,11 +45,21 @@ internal sealed partial class QueryResultProjector : IQueryResultProjector
     // on its own session (the live stream opens one per evaluation) loses nothing by the scope's.
     [Inject] private readonly Abstractions.Storage.ISparkSession session;
     [Inject] private readonly ISparkEntityLinks links;
+    [Inject] private readonly IModelLoader modelLoader;
 
     public async Task<IReadOnlyList<QueryResultItem>> ToItemsAsync(
         RowSecurityGate.SecuredRows rows, IReadOnlyList<QueryColumn> columns, string queryName, CancellationToken cancellationToken = default)
     {
-        var etags = await session.GetVersionsAsync(rows.Rows.Select(row => row.Id).OfType<string>(), cancellationToken);
+        // Versions are read per entity type (#536 D27): a relational store answers from the type's table.
+        var etags = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var group in rows.Rows.Where(row => !string.IsNullOrEmpty(row.Id)).GroupBy(row => row.ObjectTypeId))
+        {
+            if (modelLoader.GetEntityType(group.Key)?.ClrType is not { Length: > 0 } clrType
+                || SparkTypeResolver.ResolveClrType(clrType) is not { } entityType)
+                continue;
+            foreach (var (id, version) in await session.GetVersionsAsync(entityType, group.Select(row => row.Id!), cancellationToken))
+                etags[id] = version;
+        }
         return Project(rows, columns, queryName, etags, links);
     }
 

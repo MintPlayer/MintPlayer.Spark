@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Reflection;
+using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Storage;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Commands;
@@ -109,8 +110,12 @@ internal sealed class RavenSparkSession : ISparkSession
     public async Task<IReadOnlyList<T>> LoadStartingWithAsync<T>(string idPrefix, int start = 0, int pageSize = 25, CancellationToken cancellationToken = default) where T : class
         => [.. await Session.Advanced.LoadStartingWithAsync<T>(idPrefix, null, start, pageSize, token: cancellationToken)];
 
-    public Task<bool> ExistsAsync(string id, CancellationToken cancellationToken = default)
-        => Session.Advanced.ExistsAsync(id, cancellationToken);
+    public Task<bool> ExistsAsync<T>(Id<T> id, CancellationToken cancellationToken = default) where T : class
+        => ExistsAsync(typeof(T), id.Value, cancellationToken);
+
+    /// <remarks>A document id names one document across every collection, so the type isn't needed here.</remarks>
+    public Task<bool> ExistsAsync(Type entityType, string id, CancellationToken cancellationToken = default)
+        => string.IsNullOrEmpty(id) ? Task.FromResult(false) : Session.Advanced.ExistsAsync(id, cancellationToken);
 
     public Task StoreAsync(object entity, CancellationToken cancellationToken = default)
         => Session.StoreAsync(entity, cancellationToken);
@@ -121,7 +126,10 @@ internal sealed class RavenSparkSession : ISparkSession
     public Task StoreAsync(object entity, string? expectedVersion, string id, CancellationToken cancellationToken = default)
         => Session.StoreAsync(entity, expectedVersion, id, cancellationToken);
 
-    public void Delete(string id, string? expectedVersion = null)
+    public void Delete<T>(Id<T> id, string? expectedVersion = null) where T : class
+        => Delete(typeof(T), id.Value, expectedVersion);
+
+    public void Delete(Type entityType, string id, string? expectedVersion = null)
     {
         if (expectedVersion is null)
             Session.Delete(id);
@@ -129,7 +137,13 @@ internal sealed class RavenSparkSession : ISparkSession
             Session.Delete(id, expectedVersion);
     }
 
-    public void Delete(object entity) => Session.Delete(entity);
+    public void Delete(object entity)
+    {
+        // A string here is an id meant for Delete(Type, id): the untyped Delete(string) is gone (#536 D27).
+        if (entity is string)
+            throw new ArgumentException("Delete(object) takes an entity; delete by id with Delete<T>(Id<T>) or Delete(Type, string).", nameof(entity));
+        Session.Delete(entity);
+    }
 
     public async Task SaveChangesAsync(CancellationToken cancellationToken = default)
     {
@@ -155,7 +169,10 @@ internal sealed class RavenSparkSession : ISparkSession
     /// the two reads hands the grid a newer etag than its values — a window of one round trip, against the
     /// minutes a grid stays open, which is the race D14 closes.
     /// </remarks>
-    public async Task<IReadOnlyDictionary<string, string>> GetVersionsAsync(IEnumerable<string> ids, CancellationToken cancellationToken = default)
+    public Task<IReadOnlyDictionary<string, string>> GetVersionsAsync<T>(IEnumerable<Id<T>> ids, CancellationToken cancellationToken = default) where T : class
+        => GetVersionsAsync(typeof(T), ids.Select(id => id.Value), cancellationToken);
+
+    public async Task<IReadOnlyDictionary<string, string>> GetVersionsAsync(Type entityType, IEnumerable<string> ids, CancellationToken cancellationToken = default)
     {
         var distinct = ids.Where(id => !string.IsNullOrEmpty(id)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
         var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
