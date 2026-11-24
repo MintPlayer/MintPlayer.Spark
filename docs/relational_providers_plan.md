@@ -7,12 +7,16 @@ rounds, milestones and status. Branch `feat/536-sql-server-provider`, draft PR #
 ## 1. Status (2026-11-24)
 
 - **Docs and spikes only, no product code yet.**
-  - Spikes S1, S2, S12 and S13 are done.
-  - The PRD was rewritten, and both grilling rounds are done (§3).
+  - Spikes S1, S2, S12 and S13 are done. Since round 3 they are history for the storage model (PRD §8).
+  - Grilling rounds 1–4 and the commercial-framework comparison are done (§3).
 - **Scope:** SQL Server (2022, 2025) and PostgreSQL (18; 17 is open, O8). MariaDB is deferred (O6). Tier 4
   (identity_provider, dashboards) is in. The demo is a new `apps/SqlDemo`.
-- The branch was rebased onto master `0b9915c50` on 2026-11-24. It conflicted on nothing: it held docs only.
-- **Next:** owner sign-off on D1–D7 (PRD §3), then the gate spikes S2b, S3, S4 and S5 (§2).
+- **Storage model (round 3):** a table per entity, mapped by EF Core. The model synchronize generates EF migrations;
+  AsDetail collections are child tables; references are real FKs; the contract is typed; ids are `Id<T>` (D23).
+  Breaking changes are allowed, with no backward compatibility.
+- **Next:** grilling round 5 on O10–O14 (change stamp, absent fields, revisions, get-only persisted properties,
+  hierarchical natural ids).
+  Then the gate spikes S-ID1, S-ID2, S2b, S3, S4 and S5 (§2).
 - Local spike servers left running:
   - SQL Server: `SparkSpike536` on `localhost` and `localhost\MSSQLSERVER01`
   - Docker containers `spark536-pg` (`postgres:18`, 127.0.0.1:55432) and `spark536-maria` (`mariadb:11.8`,
@@ -26,27 +30,30 @@ Each spike ends with an entry in PRD §8, with evidence (numbers, file:line, a r
 
 | # | Question | Done when | Status |
 |---|---|---|---|
-| S1 | Mapping: does the hybrid document table hold? (SQL Server) | DemoApp's and HR's models stored on 2022 and 2025 | ✅ PRD §8.1 |
+| S1 | Mapping: does the hybrid document table hold? (SQL Server) | DemoApp's and HR's models stored on 2022 and 2025 | ✅ PRD §8.1 (history: D1 reversed) |
 | S2 | Query translation on SQL Server: the filters, sort, `In`, `AnyContains`, D16, `DateTimeOffset`, with no client evaluation | the shapes produce SQL | ✅ PRD §8.1 |
 | S12 | S1+S2 on **PostgreSQL 18** (Npgsql 11) | the same 18 shapes | ✅ PRD §8.2: 18/18 |
 | S13 | S1+S2 on **MariaDB 11.8** (Microting 11) | the same 18 shapes | ✅ PRD §8.2: 12/18, 5 silently wrong → **MariaDB deferred** |
-| ~~S13b~~ | MariaDB translation fixes | — | dropped with MariaDB (O6) |
-| **S2b** | The real `QueryExecutor` end to end on a prototype session. Also: <ul><li>a query model generated from arbitrary Spark entities</li><li>typed path reads</li><li>`x.Id` mapped onto the key column</li><li>promoted columns measured on a few thousand rows</li><li>PostgreSQL `"Data"::text` against a virtual `Raw` (O8)</li></ul> | the row filter (:1055), `In` (:664) and search pushdown (:2155) run as SQL on both databases | gate |
-| **S3** | Schema: create and widen tables and generated columns from the model, with Synchronize's never-remove (D8), and no EF migrations | add a field, add a queryable field, remove a field (column kept), on both | gate |
-| **S4** | Concurrency and keys: the `bigint` version (D3); `""` = insert-only; the D14 etag on the wire; case-insensitive `IdKey` and an escaped `LoadStartingWith` (D7) | the conformance tests for absent and stale versions pass, plus a case-insensitivity case with `_` and `%` in ids | gate |
-| **S5** | Neutral views: one declaration, rendered by RavenDB as an index, by relational databases as generated columns/views, and by InMemory as LINQ. *Moved into the gates by round 1:* Tier 0 apps and the demo use views. | DemoApp's `VPerson` (computed `FullName`) from one declaration on InMemory + both databases | gate |
+| **S-ID1** | **`Id<T>` on RavenDB** (D23 rule 6–7): <ul><li>the hidden pass-through `__DocumentId` (can it be non-public?) on load, query, streaming, subscriptions and lazy</li><li>query option (a): is a body field named `Id` treated specially by RQL or auto-indexes; is `RegisterQueryValueConverter` applied to `==`, each `Contains`/`In` element, `OrderBy` and projections; does the identity win over the body field on load; documents written outside the framework lack the field</li><li>then (b) the rewrite decorator, and (c) only if both fail</li><li>a re-save byte-diff on a production copy</li></ul> | DemoApp's `Person` round-trips with `Id<Person>`; author-written `Where(x => x.Id == v)` and `ids.Contains(x.Id)` return the right rows | gate |
+| **S-ID2** | **`Id<T>` on EF Core 11**, SQL Server + PostgreSQL + InMemory. Unverified so far (research from memory, 2026-11-24): <ul><li>converters on `Id<T>` as PK and FK</li><li>`UseHiLo` on a converted key: two inserts in one `SaveChanges`</li><li>`Contains` over converted values with 0/1/50/2000 ids (OPENJSON / `= ANY`; read the SQL)</li><li>a join entity and a child-table FK</li></ul> | all shapes run as SQL on both databases | gate |
+| **S2b** | **The real `QueryExecutor` end to end** on an EF model generated from arbitrary Spark entities: TPH, JSON columns for `TranslatedString` (EF 10's `ToJson()` complex types; a `Dictionary` as a JSON column is unverified), child tables, join tables | the row filter (:1055), `In` (:664) and search pushdown (:2155) run as SQL on both databases | gate |
+| **S3** | **Schema:** the model synchronize generates EF migration files (D24) from a model built from metadata, through the public design-time services (`IMigrationsScaffolder`, `IMigrationsModelDiffer`, via `DesignTimeServicesBuilder`; never construct `MigrationsScaffolderDependencies`) | add a field, add a queryable field, add an AsDetail collection, add a reference, on both | gate |
+| **S4** | **Concurrency and keys:** the `bigint` version per table (D3); `""` = insert-only; the D14 etag on the wire; the typed contract (D27); case-insensitive natural keys and an escaped `LoadStartingWith` (D7); constraint errors become validation messages (D30) | the conformance tests for absent and stale versions pass, plus a natural-key case with `_` and `%`, plus a unique and an FK violation | gate |
+| **S5** | Neutral views: one declaration, rendered by RavenDB as an index, by relational databases as an SQL view or indexes, and by InMemory as LINQ | DemoApp's `VPerson` (computed `FullName`) from one declaration on InMemory + both databases | gate |
 | S6 | Neutral contracts: <ul><li>`SetExpiry`</li><li>`ISparkStoreLock`</li><li>`ISparkAtomicValues`</li><li>`StreamAsync`</li><li>`Reserve/Release` (in the `SaveChanges` transaction)</li><li>`UpdateWhereAsync`/`DeleteWhereAsync`</li><li>`PatchAppend`</li></ul>(design-principles: deep modules, one contract per concern) | settings, mail (expiry) and cron (atomic value) green on all providers | after the gates |
-| S7 + S14 | **Subscriptions:** <ul><li>a per-subscription cursor over `Documents.ChangeStamp`, below the safe horizon (D6)</li><li>tombstones for deletes</li><li>a neutral predicate instead of RQL</li><li>a lease replacing `WaitForFree`</li></ul> | <ul><li>two interleaved transactions never skip a row (the D6 horizon)</li><li>a new subscription sees the backlog</li><li>a message survives a host restart</li><li>two hosts never process one message</li><li>subscription_worker's tests on both</li></ul> | after S6 |
-| S8 | Revisions: a `Revisions` table written by **every** write path, including `UpdateWhere`/`PatchAppend` and sweepers; revision id = `Version`; per-collection retention and `PurgeOnDelete` | history's tests on both; a soft-delete restore; a set-based update leaves a revision | after S6 |
+| S7 + S14 | **Subscriptions:** <ul><li>a per-subscription cursor over the `ChangeStamp`, below the safe horizon (D6; where the stamp lives is O10)</li><li>tombstones for deletes</li><li>a neutral predicate instead of RQL</li><li>a lease replacing `WaitForFree`</li></ul> | <ul><li>two interleaved transactions never skip a row (the D6 horizon)</li><li>a new subscription sees the backlog</li><li>a message survives a host restart</li><li>two hosts never process one message</li><li>subscription_worker's tests on both</li></ul> | after S6 |
+| S8 | Revisions (O12): written by **every** write path, including `UpdateWhere`/`PatchAppend` and sweepers; revision id = `Version`; per-collection retention and `PurgeOnDelete` | history's tests on both; a soft-delete restore; a set-based update leaves a revision | after S6 and O12 |
 | S9 | Dashboards: a samples table, a rollup job and retention; RQL aggregation as LINQ (in scope, O2) | dashboards' tests on both | after S6 |
-| S10 | Full-text: SQL Server FTS (probe), PostgreSQL `tsvector`; `LIKE` fallback | search's tests on both, or a recorded "off" for SQL Server without FTS | later (O5) |
+| S10 | Full-text: **`LIKE` first** (the commercial-framework comparison); an FTS dialect (SQL Server FTS, PostgreSQL `tsvector`) is an opt-in later | search's tests on both with `LIKE` | later, off the critical path |
 | S11 | Attachments (low priority) | in or out | later |
 | S15 | `ISparkAtomicValues` and leases: a table with compare-and-swap, against advisory locks under connection pooling and loss | <ul><li>cron: one occurrence fires once across two hosts, and poisoned values are reclaimed</li><li>migrations: one runner, and takeover after a killed host</li></ul> | with S6 |
 | S16 | Aggregate tables for moderation's 3 map-reduce indexes: updated in the same transaction from the loaded old row; set-based writes refused on aggregated collections | moderation's reputation tests on both | with Tier 3 |
 | S17 | A provider-neutral test driver (`libs/testing`): a database per test class on a service container or a local instance; RavenDB keeps `RavenTestDriver` | one Spark.Tests class runs on all four providers | with M4 |
 | S18 | Null ordering (D4), with RavenDB's own order measured | a conformance case green on all four providers | with M4 |
 
-**Gates:** S2b, S3, S4 and S5 gate the provider work (M3). S6–S9 and S14–S16 can run in parallel after them.
+**Gates:** S-ID1, S-ID2, S2b, S3, S4 and S5 gate the provider work (M3). S6–S9 and S14–S16 can run in parallel
+after them. ~~S13b~~ was dropped with MariaDB (O6), and S-ID3 (a compare-exchange HiLo) was dropped by the round 4
+consensus.
 
 ## 3. Grilling rounds
 
@@ -60,10 +67,10 @@ PostgreSQL 18 virtual columns. The findings, each checked against the code befor
 |---|---|---|---|
 | 1 | blocker | A cursor on a database sequence skips rows: a value is allocated before commit, and commits land out of order. | D6 rewritten: a commit-ordered `ChangeStamp` with a safe read horizon (`MIN_ACTIVE_ROWVERSION()`, `pg_snapshot_xmin`). S14 tests interleaved transactions. |
 | 2 | blocker | Cron is not a lease. `TryClaimOccurrenceAsync` is a never-expiring compare-and-swap of "latest claimed occurrence" with poison handling (`SparkCronScheduler.cs:236-274`, **verified**). A lease would let a second host fire the same occurrence. | A neutral `ISparkAtomicValues` (the compare-exchange equivalent) with leases built on it; cron uses it directly. S15 extended. |
-| 3 | important | Ids are case-insensitive on InMemory and RavenDB (`InMemoryDatabase.cs:12/:43-44`, **verified**); PostgreSQL `text` isn't. `LIKE 'prefix%'` mis-handles `_` and `%`. | D7: a lower-cased `IdKey` primary key, `LIKE … ESCAPE`. S4 extended. |
+| 3 | important | Ids are case-insensitive on InMemory and RavenDB (`InMemoryDatabase.cs:12/:43-44`, **verified**); PostgreSQL `text` isn't. `LIKE 'prefix%'` mis-handles `_` and `%`. | D7: a lower-cased `IdKey` primary key, `LIKE … ESCAPE`. S4 extended. (Revised by D23.) |
 | 4 | important | Revisions written "by the session at commit" miss set-based writes and sweepers. | Every write path writes revisions; revision id = `Version`. S8 extended. |
 | 5 | important | Messaging's `Advanced.Patch` list appends are concurrency-safe; load-modify-save would lose updates or 409. | A neutral `PatchAppend`. |
-| 6 | important | A change-only outbox gives a new subscription no backlog; RavenDB subscriptions deliver current state. | The cursor runs over `Documents.ChangeStamp`, plus tombstones for deletes. |
+| 6 | important | A change-only outbox gives a new subscription no backlog; RavenDB subscriptions deliver current state. | The cursor runs over the `ChangeStamp`, plus tombstones for deletes. |
 | 7 | important | Map-reduce aggregate tables need the old row; unloaded `Delete`/`UpdateWhere` break `Sum + @d`. | The hook loads the old row in the transaction; set-based writes are refused on aggregated collections. |
 | 8 | important | "Tier 0 works already" ignored views (`Query<T,TIndex>`), which need S5, yet S5 sat in M6. | S5 is now a gate; Tier 0 reworded. |
 | 9–11 | minor | `Reserve` must join `SaveChanges` (already covered); D3's `xmin` reason was half a reason; the `Sequence` wording was ambiguous for deletes. | Reworded. |
@@ -77,32 +84,115 @@ PostgreSQL 18 virtual columns. The findings, each checked against the code befor
 | O2: Tier 4 (identity_provider, dashboards) | **Port both** |
 | O3: demo app | **A new `apps/SqlDemo`** |
 
-Still open: O5 (install full-text locally, needed only by S10) and O8 (the PostgreSQL 17 floor, decided by S2b).
+### Round 3: the owner (2026-11-24)
+
+| Question | Answer |
+|---|---|
+| Storage model | **A table per entity with EF Core** (D1 reversed); the collection is the TPH root table; core value types are JSON columns |
+| Schema changes | **The model synchronize generates EF migration files** (D24) |
+| AsDetail | **Relational child tables** (D25) |
+| References | **Real FKs** (D26). Reference integrity on every provider is a separate issue with its own investigation |
+| Untyped contract members | **Typed `<T>`** (D27, about 89 call sites) |
+| Compatibility | **Breaking changes allowed, no backward compatibility yet** |
+| Ids | Typed; the full string on RavenDB; int or Guid per entity on relational databases; **one compiled library per feature** (so a generated `global using` alias per provider was rejected). The design went to round 4. |
+
+### Round 4: the id model, moderated across six LLMs (2026-11-24)
+
+The owner had the design debated in a browser with ChatGPT, Claude and Gemini (rounds 1–3), then Grok, Copilot and
+Mistral (challenge, rounds 4–5). DeepSeek answered only round 1, because its account was suspended. All six ended
+with "AGREE WITH CONSENSUS", and the owner accepted it ("probably good"): PRD D23.
+
+Facts checked locally during the rounds:
+- Raven.Client 7.2.7 has **no** `RegisterIdConvention`, `IdentityTypeConvertors` or `DelegateTypeConverter`.
+  DeepSeek's and Mistral's first designs relied on them.
+- It does have `FindIdentityProperty`, `RegisterQueryValueConverter`, `OnAfterConversionToEntity` and
+  `GenerateNextIdForAsync`.
+
+What changed between rounds:
+
+| Topic | After round 3 | Final (rounds 4–5) | Why |
+|---|---|---|---|
+| Payload | a kind tag + long/Guid/string | **the canonical string only**; kind is model metadata | simpler; the wire format is the domain format (Grok, Copilot; all accepted) |
+| RavenDB int ids | a framework HiLo over compare-exchange | **RavenDB's native HiLo**, `"people/1-A"` opaque | the owner's requirement said "RavenDB's HiLo"; one allocator less |
+| RavenDB sync | store events | **a pass-through property** | follows from the string payload (Claude) |
+| `x.Id` queries | an execution-time rewrite | **spike order: body field → rewrite → helpers** | the rewrite is "a LINQ provider shim forever" (Copilot) |
+| ValueComparer | always | **only when a test needs one** | an immutable struct over a string compares correctly |
+| Migration between providers | a framework ETL that re-keys | **not framework work**: the developer writes a one-shot migrator | owner, 2026-11-24 |
+
+### Comparison with a commercial framework (2026-11-24)
+
+Three read-only investigators compared a commercial .NET framework that ships RavenDB, SQL Server and PostgreSQL
+providers. Its code is proprietary and is not in this repository. Where it and Spark differ:
+
+| Topic | Commercial framework | Spark |
+|---|---|---|
+| Ids | the native CLR key per provider; an untyped `ObjectId` string on the wire, split on `;` for composite keys | `Id<T>`, provider-neutral, so one compiled library runs everywhere |
+| SQL int ids | IDENTITY, known after save | HiLo, known before save |
+| SQL storage | row per table, but the app writes the `DbContext` | row per table, model generated by the framework (D1, D24) |
+| Schema | the app owns it; the framework's own tables use versioned scripts | migrations generated; framework tables in their own schema |
+| Concurrency on SQL | none | `Version bigint` (D3) |
+| Live updates | caches only; SQL polls a cache table | a commit-ordered change stamp (D6, O10) |
+| Revisions | none (the request log only) | open (O12) |
+
+The owner accepted four changes from it:
+1. framework id lookups through a provider hook (D23 rule 7)
+2. constraint errors become validation messages (D30); FK scalars never surface twice (D26)
+3. `LIKE`-first search, with FTS later (S10)
+4. no composite keys and no id obfuscation
+
+### Still open
+
+- O8 (the PostgreSQL 17 floor, probably moot)
+- O9 (bring-your-own `DbContext`, low priority)
+- **O10–O14 for round 5:** the change stamp, absent fields versus `NULL`, revisions, get-only persisted properties,
+  hierarchical natural ids
 
 ## 4. Milestones
 
-1. **Gate spikes S2b, S3, S4, S5.** The PRD updated; owner sign-off on D1–D7.
-2. **Neutral contract additions** (S6, S15), implemented on RavenDB and InMemory first, with no behaviour change on
+1. **Gate spikes S-ID1, S-ID2, S2b, S3, S4, S5.** The PRD updated with their evidence.
+2. **`Id<T>` and the typed contract on the existing providers** (D23, D27): RavenDB and InMemory.
+   - the struct, the model registry (`ids.NewAsync/Parse`), the generator for `__DocumentId`, the JSON setup and the
+     route binder
+   - every entity's `Id` and reference fields in core, the feature libraries and the apps
+   - breaking, with no shims
+   - RavenDB stays green at the end of the milestone
+   - **Size (inventory, 2026-11-24, grep counts, tests excluded):**
+     - **Large:**
+       - about 105 entity classes with a `string Id` (42 libs, 63 apps)
+       - about 235 `*Id`/`*Ids` string properties (151 libs, 84 apps), some of them external ids that stay strings
+         (GitHub, OIDC client ids), and 49 `[Reference]` attributes
+       - about 75 hierarchical id builders plus 31 `LoadStartingWithAsync` uses (O14)
+       - the session's untyped members across 53 files
+     - **Medium:** generators and analyzers:
+       - `ValueObjectKeyGenerator.Producer.cs:69`
+       - `GenerateIndexGenerator.Producer.cs:238`
+       - `MissingReferenceRootAnalyzer.cs:145`
+       - `SparkModelSymbols.cs:96-105`
+       - `SearchIndexGenerator.cs:124/166`
+     - **Small:** Angular. ng-spark passes ids through `encodeURIComponent` and never parses them.
+3. **Neutral contract additions** (S6, S15), implemented on RavenDB and InMemory first, with no behaviour change on
    RavenDB. Also the core clean-ups from PRD §2.3:
    - the `SparkDataProtectionStorage` rename
    - the `SparkStoreRequirement` default hint
    - the RavenDB wording in messages
    - the generators' neutral declarations (with S5)
-3. **`MintPlayer.Spark.Relational`, `MintPlayer.Spark.SqlServer`, `MintPlayer.Spark.PostgreSql`** (D2):
+4. **`MintPlayer.Spark.Relational`, `MintPlayer.Spark.SqlServer`, `MintPlayer.Spark.PostgreSql`** (D2):
    - `UseSqlServer()`, `UsePostgreSql()` and their `SparkStoreProviders` constants
+   - the EF model built from the Spark model, the migration generator (D24), child and join tables (D25, D26)
    - the store, session, query provider, change feed, expiration, the data-protection key store, atomic values,
      leases and reservations
-4. **Conformance:** the two relational subclasses, plus new cases on all four providers:
+   - constraint-error translation (D30)
+5. **Conformance:** the two relational subclasses, plus new cases on all four providers:
    - row security, `DateTimeOffset`, paging and null ordering
-   - case-insensitive ids and escaped prefixes
+   - `Id<T>` round trips, case-insensitive natural keys and escaped prefixes
    - expiry, atomic values, leases, reservations and streaming
    - **a wrong-rows guard for every query shape**
 
    This comes with the neutral test driver (S17).
-5. **Tier 1 and Tier 2 ports** (PRD §5), plus the lookup lost-update fix.
-6. **Tier 3:** S7/S14 subscriptions and messaging, S8 revisions, S16 moderation. Then search (S10).
-7. **Tier 4:** identity_provider, and dashboards (S9).
-8. **Demo, CI, docs:**
+6. **Tier 1 and Tier 2 ports** (PRD §5), plus the lookup lost-update fix.
+7. **Tier 3:** S7/S14 subscriptions and messaging, S8 revisions, S16 moderation. Then search with `LIKE` (S10).
+8. **Tier 4:** identity_provider, and dashboards (S9).
+9. **Demo, CI, docs:**
    - **`apps/SqlDemo`**, using the ported libraries, with E2E coverage
    - CI: pinned `mcr.microsoft.com/mssql/server:2025-*` and `postgres:18` service containers. They join existing job
      groups (the 20-concurrent-job limit, `.github/workflows/test.yml`). The relational conformance classes are
@@ -127,3 +217,6 @@ during development (TDD red→green). The full suite runs once at the end, via p
   - The PRD was renamed from `sql_server_provider_PRD.md` and rewritten, and this plan was split out of it.
   - Grilling round 1 (adversarial review): D6 rewritten, D7 added, five equivalents corrected.
   - Grilling round 2 (owner): one PR, MariaDB deferred, Tier 4 in, `apps/SqlDemo`.
+  - Grilling round 3 (owner): D1 reversed to a table per entity on EF Core; D24–D27; breaking changes allowed.
+  - Round 4: the id model `Id<T>` (D23), a consensus of six LLMs moderated in the browser.
+  - The comparison with a commercial framework: D30, `LIKE`-first search, id lookups through a provider hook.

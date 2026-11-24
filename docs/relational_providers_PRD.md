@@ -5,7 +5,7 @@ Issue: [#536](https://github.com/MintPlayer/MintPlayer.Spark/issues/536). Builds
 "Storage-agnostic core", §8). The spikes, milestones, grilling rounds and status are in
 [`relational_providers_plan.md`](relational_providers_plan.md).
 
-Status: **plan, after a second investigation and two grilling rounds.** In scope: **SQL Server and PostgreSQL.**
+Status: **plan, after a second investigation and three grilling rounds.** In scope: **SQL Server and PostgreSQL.**
 MariaDB was investigated and spiked, then **dropped for now** (owner, 2026-11-24, §10 O6). The relational core keeps
 a dialect seam, so it can return once a maintained EF Core 11 provider exists.
 - 2026-11-19: first rewrite, SQL Server only, spikes S1/S2 (§8.1). The file was `docs/sql_server_provider_PRD.md`.
@@ -15,6 +15,11 @@ a dialect seam, so it can return once a maintained EF Core 11 provider exists.
   - a RavenDB-to-relational equivalents table (§4)
   - spikes S12/S13, the D1 hybrid on PostgreSQL 18 and MariaDB 11.8 (§8.2)
   - a grilling round (plan §3)
+- 2026-11-24, grilling round 3 (owner): **D1 reversed to a table per entity mapped by EF Core.** The model
+  synchronize generates EF migrations, AsDetail becomes child tables, references become real FKs, and the contract
+  becomes typed. Breaking changes are allowed, with no backward compatibility. The id model `Id<T>` (D23) came from a
+  moderated consensus of six LLMs. A comparison with a commercial framework's relational providers added D30, `LIKE`-first search,
+  and framework id lookups through a provider hook (§3).
 
 ## 1. Goal
 
@@ -28,7 +33,8 @@ stay the same (D15 portability goal, `docs/spark_editor_PRD.md` §4a).
 - **A plugin built around a RavenDB feature stays RavenDB-only, and says so.** It is refused at startup and by
   SPARK060, with a stated reason. Today that is replication (RavenDB ETL), plus whatever §5 and the owner's answers
   add.
-- One relational core holds what the three databases share. Three thin dialect packages hold what differs (D2, §3).
+- One relational core holds what the databases share. Thin dialect packages hold what differs (D2, §3).
+- **One compiled feature library runs on every provider.** Ids are typed and provider-neutral (D23).
 - Every provider passes the provider conformance suite, which this work extends (§2.4).
 
 ## 2. Findings
@@ -222,75 +228,71 @@ service containers. The spikes pulled and ran `postgres:18` and `mariadb:11.8` o
 
 ## 3. Design direction
 
-**D1: the hybrid document table (confirmed by S1/S2 on SQL Server, S12 on PostgreSQL; S13 showed MariaDB would need translation fixes, and it is deferred).**
-Newtonsoft owns the document: it writes and reads the JSON with the InMemory/RavenDB settings, through the provider's
-own parameterised SQL. EF Core 11 only *translates queries*: it sees `Data` as a complex type mapped `ToJson()`,
-derived from the CLR type, and `QueryExecutor`'s `IQueryable<T>` is rewritten onto it. Members EF cannot map are read
-by path. `Raw` is a non-persisted computed alias of `Data`, which Newtonsoft reads.
+**Grilling round 3 (owner, 2026-11-24) reversed D1:** a table per entity, mapped by EF Core. The hybrid document
+table that S1, S2, S12 and S13 proved is history (§8, §9). **Breaking changes are allowed, and no backward
+compatibility is needed yet** (owner, 2026-11-24, said twice): the session contract, the entity shape and the stored
+ids change outright, with no shims.
 
-**D1a: one global `Documents` table** (2026-11-19). The id space is global. Several contract members carry no type
-(`ExistsAsync(id)`, `Delete(id, expectedVersion)`, `GetVersionsAsync(ids)`). A load through a base type must return
-the stored derived type. Dynamic lookups are stored as `LookupReferences/{name}` in the collection
-`DynamicLookupReferenceDocuments`.
+Decisions D1–D7 are local to this PRD. D14–D16 are `docs/spark_editor_PRD.md`'s, which ends at D22, so the decisions
+added here start at D23.
 
-| Column | SQL Server | PostgreSQL | MariaDB (deferred; kept from S13) |
-|---|---|---|---|
-| `Id` (PK) | `nvarchar(450)` | `text` | `varchar(255)` utf8mb4 (**the 255 limit is a constraint on id length**) |
-| `Collection`, `ClrType` | `nvarchar` | `text` | `varchar` (not `longtext`: it must be indexable) |
-| `Data` | `json` (2025) / `nvarchar(max)` (2022) | `jsonb` | `JSON` (`longtext`) |
-| `Raw` (computed, not persisted) | `CAST(Data AS nvarchar(max))` / `Data` | `GENERATED ALWAYS AS ("Data")` virtual (PG 18); `STORED` on PG 17 | `AS (Data)` virtual |
-| `Version` | `bigint` (D3) | `bigint` (D3) | `bigint` (D3) |
-| `ExpiresAt` | `datetime2` | `timestamptz` | `datetime(6)` UTC |
-| `IdKey` (PK, D7) | lower-cased `Id` | lower-cased `Id` | lower-cased `Id` |
-| `ChangeStamp` (D6) | `rowversion` | `xid8` (`pg_current_xact_id()`) | counter row (deferred dialect) |
+**D1 (round 3): a table per entity, mapped by EF Core 11.**
+- The framework builds the EF model from the Spark model: one table per collection. A collection with derived types
+  is one TPH table (the root's) with a discriminator column.
+- Scalar properties are columns. Core value types without a relational shape (`TranslatedString` and its kind) are
+  JSON columns: `json` on SQL Server 2025, `nvarchar(max)` on 2022, `jsonb` on PostgreSQL.
+- EF Core reads, writes and translates queries. `QueryExecutor`'s `IQueryable<T>` runs on EF's own translator, with
+  no rewrite.
+- **A commercial framework does the same** (compared 2026-11-24): its SQL Server and PostgreSQL packages map one
+  row per table through EF Core. The difference: its apps write their own `DbContext`, while Spark generates the
+  model (D24), so a feature library ships its entities with no EF code.
 
-Promoted queryable fields become generated columns with indexes, filtered per collection where the database allows
-it (SQL Server filtered indexes, PostgreSQL partial indexes; MariaDB has neither, so it gets a composite index led by
-`Collection`). They follow `IndexedFields` and the neutral views (S5), and match "indexes only in the application":
-the app declares what is queryable, and the provider renders it.
+**D1a: superseded.** The global `Documents` table and its global id space existed because several contract members
+carried no type (`ExistsAsync(id)`, `Delete(id, expectedVersion)`, `GetVersionsAsync(ids)`). D27 types them, and D23
+puts the type in the id.
 
-**D2 (new): one relational core, three thin dialects.**
+**D2: one relational core, two dialects.**
 
 ```
 MintPlayer.Spark.Abstractions
-  └─ MintPlayer.Spark.Relational   documents table, unit of work + identity map (InMemory's snapshot diff),
-     │                             query rewriter (T → Doc<T>.Data), outbox, leases, reservations, revisions table,
-     │                             expiry sweeper, aggregate tables, conformance hooks; depends on EF Core Relational
-     ├─ MintPlayer.Spark.SqlServer  IRelationalDialect: DDL, Raw alias, path reads, JSON patch, claim (READPAST)
-     ├─ MintPlayer.Spark.PostgreSql IRelationalDialect: jsonb, NULLS FIRST, SKIP LOCKED, optional LISTEN/NOTIFY wake-up
-     └─ (MintPlayer.Spark.MariaDb   deferred: needs a maintained EF 11 provider plus the §8.2 translation fixes)
+  └─ MintPlayer.Spark.Relational   EF model built from the Spark model, migration generator (D24), unit of work over
+     │                             a DbContext, outbox, leases, reservations, revisions, expiry sweeper, aggregate
+     │                             tables, constraint-error translation (D30), conformance hooks
+     ├─ MintPlayer.Spark.SqlServer  EF provider setup, HiLo sequences, JSON column type, claim hints (READPAST),
+     │                             error numbers
+     ├─ MintPlayer.Spark.PostgreSql EF provider setup, HiLo sequences, jsonb, NULLS FIRST, SKIP LOCKED, SQLSTATEs,
+     │                             optional LISTEN/NOTIFY wake-up
+     └─ (MintPlayer.Spark.MariaDb   deferred: needs a maintained EF 11 provider; §7 risk 1)
 ```
 
-- The neutral contracts (§4.1) are implemented once in `Relational`, on plain tables that all three databases
-  share. Database-specific features stay optional: advisory locks, `LISTEN/NOTIFY`, full-text, temporal tables.
-- A dialect is small: the DDL fragments, the path-read function, claim hints, JSON patch syntax, null ordering, and
-  the translation fixes.
-- Why not one package per database with everything in it? Three copies of the unit of work, outbox and revisions
-  would drift, and the conformance suite would find the same bug three times.
+- The neutral contracts (§4.1) are implemented once, in `Relational`. Database-specific features stay optional:
+  advisory locks, `LISTEN/NOTIFY`, full-text, temporal tables.
+- Why not one package per database with everything in it? Two copies of the unit of work, outbox and revisions
+  would drift, and the conformance suite would find the same bug twice.
 
-**D3 (new): the version is a `bigint` the provider increments**, on all three databases.
-- A write is `UPDATE … SET Version = Version + 1 WHERE Id = @id AND Version = @v`, and 0 rows affected is
-  `SparkStoreConcurrencyException`. S12 and S13 measured this (1 row, then 0 for the stale write).
+**D3: the version is a `bigint` column on every table**, a concurrency token the provider increments.
+- A write is `UPDATE … SET Version = @v + 1 WHERE <key> = @id AND Version = @v`. EF's 0-rows-affected
+  `DbUpdateConcurrencyException` becomes `SparkStoreConcurrencyException`. S12 and S13 measured the statement shape
+  (1 row, then 0 for the stale write).
 - An expected version of `""` is an `INSERT` that fails on a duplicate key.
-- SQL Server's `rowversion` and PostgreSQL's `xmin` would also work, but neither is portable. One mechanism keeps
-  the dialects thin. (Commit *order* is a different problem with a different answer, D6.)
+- `rowversion` and `xmin` would also work, but neither is portable. One mechanism keeps the dialects thin.
 - The version string on the wire stays opaque (D14 etag, #467).
+- The commercial framework has no optimistic concurrency on SQL at all: only its RavenDB package registers a token handler (change
+  vector). Spark keeps the stricter rule.
 
-**D4 (new): sort order is normalised to nulls first.** InMemory (LINQ-to-objects) and SQL Server and MariaDB sort
-nulls first ascending, and PostgreSQL sorts them last (S12: `[Cleo,Ann,Bob,Old]` against MariaDB's
-`[Bob,Old,Cleo,Ann]`). The PostgreSQL dialect emits `NULLS FIRST` (and `NULLS LAST` descending), and a conformance
-case pins it. RavenDB's order is measured in the same case.
+**D4: sort order is normalised to nulls first.** InMemory (LINQ-to-objects), SQL Server and MariaDB sort nulls first
+ascending, and PostgreSQL sorts them last (S12). The PostgreSQL dialect emits `NULLS FIRST` (and `NULLS LAST`
+descending), and a conformance case pins it. RavenDB's order is measured in the same case.
 
-**D5 (new): `DateTimeOffset` compares instants on every provider.** SQL Server (`datetimeoffset`) and PostgreSQL
-(`timestamptz`) do this. MariaDB has no offset-aware type, and the fork's `CAST(… AS datetime(6))` drops the offset,
-which gives wrong rows (S13). The MariaDB dialect translates a `DateTimeOffset` member read to a UTC normalisation of
-the stored string. The stored JSON keeps the offset, so the document shape stays the same.
+**D5: `DateTimeOffset` compares instants on every provider.** SQL Server (`datetimeoffset`) and PostgreSQL
+(`timestamptz`) do this. (MariaDB has no offset-aware type, S13; it is deferred.)
 
-**D6 (new, corrected by grilling round 1): a commit-ordered `ChangeStamp` replaces `@last-modified` as the change
-order.** It is written on every store and delete. The subscription cursor, the change feed's reconnect and
-messaging's fallback order use it.
+**D6: a commit-ordered `ChangeStamp`** replaces `@last-modified` as the change order for the subscription cursor, the
+change feed's reconnect and messaging's fallback order. **Round 3 makes it per table, and where it lives is open**
+(§10 O10): a stamp column on every entity table with a cursor per (subscription, table), or one change-log table
+written in the same transaction as the entity.
 
-**A plain database sequence is wrong here.** A sequence value is allocated before commit:
+A plain database sequence is wrong either way. A sequence value is allocated before commit:
 1. Transaction A takes 10.
 2. Transaction B takes 11 and commits.
 3. A cursor reads 11 and advances.
@@ -299,38 +301,135 @@ messaging's fallback order use it.
 The dialect supplies the stamp and a *safe read horizon*:
 - **SQL Server:** a `rowversion` column, read only below `MIN_ACTIVE_ROWVERSION()`.
 - **PostgreSQL:** `pg_current_xact_id()` stored per row, read only below `pg_snapshot_xmin(pg_current_snapshot())`,
-  ordered by (xid, Id).
-- **The fallback** for any future dialect: allocate the stamp from a single counter row at the end of the commit,
-  which serialises committing writers.
+  ordered by (xid, key).
 
-S14 proves the horizon with two interleaved transactions. A durable cursor also makes `ISparkChangeFeed.Reconnected`
-safe to fire rarely: `LiveHub` marks everything dirty on it (`LiveHub.cs:56`).
+S14 proves the horizon with two interleaved transactions. The commercial framework gives no guidance here: on SQL it polls a cache
+table for its own caches and has no change feed for business data.
 
-**D7 (new, grilling round 1): ids are case-insensitive, as on RavenDB and InMemory.** InMemory keys every dictionary
-`OrdinalIgnoreCase` (`InMemoryDatabase.cs:12/:43-44`, `InMemorySparkSession.cs:13/:32`). `LoadStartingWith` matches
-and orders case-insensitively. PostgreSQL `text` is case-sensitive, and SQL Server depends on the column's collation.
-- The primary key is a normalised `IdKey` (invariant lower case), next to the original `Id`.
-- `Collection` gets the same treatment.
-- `LoadStartingWith` becomes `IdKey LIKE @prefix ESCAPE '\'`, with `%`, `_` and `\` escaped in the prefix (`_` is
-  common in ids).
+**D7 (revised by D23): ids compare case-insensitively, as on RavenDB and InMemory.**
+- Int and Guid keys can't differ in case: the model canonicalises them (digits; Guid `N`, lower case).
+- Natural keys are normalised by the model when an id is created or parsed, and their column compares
+  case-insensitively.
+- `LoadStartingWith` over natural keys is `LIKE @prefix ESCAPE '\'`, with `%`, `_` and `\` escaped.
 - A conformance case pins it.
-- This is portable and needs neither `citext` nor nondeterministic collations.
 
-**Unknown fields.** Newtonsoft drops undeclared fields on load and save. InMemory behaves the same way, and RavenDB
-keeps them (§8.1 finding 6). The conformance suite pins each provider's behaviour.
+**D23: the id model, `Id<T>`.** ChatGPT, Claude, Gemini, Grok, Copilot and Mistral reached this consensus over five
+moderated rounds (2026-11-24). The owner accepted it ("probably good").
 
-**PostgreSQL stores `jsonb`, which normalises the text:** keys are reordered, whitespace changes and duplicate keys
-collapse (S12: the stored text was not byte-identical, but it was equivalent). That is harmless. The dirty check
-diffs the snapshot taken at load, not the stored text. `json` would keep the text but loses GIN indexing and `@>`.
+A feature author writes only:
+
+```csharp
+public Id<Person> Id { get; set; }
+public Id<Company>? CompanyId { get; set; }
+public List<Id<Profession>> ProfessionIds { get; set; } = [];
+```
+
+1. **One generic readonly struct `Id<T>` on every provider**, compiled once per feature library. There are no
+   per-entity id structs and no per-provider aliases.
+2. **It wraps only the canonical string `"{collection}/{key}"`.** Equality, hash and `ToString` are ordinal string
+   operations. The key is everything after the *first* `/`, so a hierarchical natural key may contain `/` (O14).
+   - The kind (Integer, Guid, Natural) is model metadata: an attribute gives the default, and the **app model** may
+     override it, also for entities shipped in feature packages.
+   - There is no process-global state, because several test hosts share one process.
+3. **An id is canonicalised once, at creation, through the app model:** `ids.NewAsync<T>()`, `ids.Parse<T>(s)`, the
+   model-scoped JSON converter and the route binder.
+   - The model normalises: `"042"` becomes `"42"`, Guid `D` becomes `N`, and casing is fixed (D7).
+   - There is no public constructor and no implicit conversion. `FromTrusted` is internal, for the generator and
+     the providers.
+   - `default` is empty, and a store rejects it.
+4. **The collection prefix is fixed at compile time.** The canonical string is the format on the wire, in RLS, in
+   audit and in live updates, on every provider. URLs may carry only the key.
+5. **The id is known before `StoreAsync`.** `ids.NewAsync<T>()` draws from RavenDB's native HiLo
+   (`GenerateNextIdForAsync`) or from EF's HiLo sequence, so references staged in the same session already carry the
+   final id.
+   - HiLo burns ranges on abandoned saves.
+   - Natural-kind entities skip `NewAsync`: their key comes from the business key.
+6. **RavenDB:**
+   - A generated hidden `string? __DocumentId { get => Id.Value; set => Id = Id<T>.FromTrusted(value); }` is the
+     identity property, selected by `FindIdentityProperty`. RavenDB refuses a non-string identity member. There are
+     no store events.
+   - Int ids are RavenDB's **native HiLo**: `"people/1-A"` stays opaque, and the node tag is never stripped. On
+     RavenDB, "Integer" just means HiLo-generated. Sorting by id is alphabetical there (`people/10-A` sorts before
+     `people/2-A`), and that is documented.
+   - The stored JSON is unchanged: references stay strings.
+7. **Id lookups made by the framework itself** (detail load, reference resolution, row security, lookups) go through
+   a provider hook: `Load` on RavenDB, key equality on EF. The commercial framework does the same: `Session.Load` on RavenDB, a
+   key-equality expression on EF.
+   - **Only LINQ that an app author writes against `x.Id`** needs translation on RavenDB. Spike S-ID1 tries, in
+     order, and the first that passes wins:
+     - (a) `Id` also stored as a body field (`"Id": "people/42"`) + `RegisterQueryValueConverter`, with a one-time
+       patch per collection `from People update { this.Id = id(this) }`. On load, RavenDB's identity must win over
+       the body field.
+     - (b) an execution-time expression rewrite `x.Id → x.__DocumentId` through a provider decorator.
+     - (c) the native `IRavenQueryable` plus framework `WhereId`/`WhereIds` helpers.
+8. **EF Core:**
+   - Per-model value converters parse `"people/42"` into `int`/`bigint`/`Guid` columns, range-checked.
+   - Int keys use **HiLo** by default; IDENTITY is a documented opt-in that breaks rule 5.
+   - Guids are generated client-side: sequential on SQL Server, v7 on PostgreSQL.
+   - A ValueComparer is added only where a failing test shows EF needs one (a readonly struct over one string
+     compares correctly by default).
+9. **One framework-owned JSON setup** covers every options instance: Newtonsoft for RavenDB documents, and
+   System.Text.Json for MVC and SignalR. Writing an `Id<T>` needs no model; reading on the web validates through the
+   model.
+10. **Not supported:**
+    - composite keys
+    - id obfuscation (the commercial framework offers it as an option)
+11. **No cross-provider migration tooling** (owner, 2026-11-24). Moving between database systems is a one-shot job:
+    the developer writes their own migrator, which maps the first database's ids to the second's after inserting into
+    it. The same entity has different ids per provider (`"people/1-A"` on RavenDB, `"people/1"` on SQL).
+
+The full consensus and the spike details are in plan §3, round 4.
+
+**D24 (round 3): model synchronize generates the EF migration files** (option C).
+- The app's schema follows its model through ordinary EF migrations that the developer reviews and commits.
+- **The framework's own tables** (outbox, leases, atomic values, reservations, revisions, change log) live in their
+  own schema and are versioned separately from the app's. The commercial framework keeps its own tables the same way, with
+  hand-written versioned scripts.
+- The S3 gate decides how the migration is produced from a model built from metadata.
+
+**D25 (round 3): AsDetail collections are relational child tables.**
+- Child rows already have ids (`ValueObjectKeyGenerator` emits `string Id`).
+- A child table is keyed by (owner id, child id), with an FK to the owner and cascade delete.
+- On RavenDB they stay embedded in the parent document.
+
+**D26 (round 3): references are real foreign keys, with no navigation properties.**
+- `Id<T>` and `Id<T>?` are FK columns.
+- `List<Id<T>>` maps to a framework-owned join table, which EF sees as a join entity, never as an EF collection.
+- The `Id<T>` property is itself the reference attribute, so no FK column surfaces twice in the UI model. That is
+  the commercial framework's "hide the FK scalars" rule, met by construction. The child tables' owner keys and the join tables'
+  columns are framework-only.
+- **Reference integrity** (a delete guard, and what happens on rename) on every provider is a **separate issue** with
+  its own investigation.
+
+**D27 (round 3): a typed contract.** `ExistsAsync`, `Delete` and `GetVersionsAsync` take `Id<T>` (about 89 call
+sites). With D23 the type is inferred: `Delete(person.CompanyId)` can only delete a `Company`.
+
+**D30 (the commercial-framework comparison): database constraint errors become validation messages.**
+- The dialects translate unique, foreign-key, not-null and length violations into Spark's validation error, naming
+  the attribute:
+  - SQL Server error numbers 2601, 2627, 547, 515, 2628 and 8152
+  - PostgreSQL SQLSTATEs 23505, 23503, 23502 and 22001
+- A raw database exception never reaches the client.
+- The commercial framework's SQL Server package does this.
+
+**Full-text search: `LIKE` first, an FTS dialect opt-in later** (the commercial-framework comparison, owner 2026-11-24).
+- The commercial framework runs production apps on SQL with `LIKE` only. It has no `CONTAINS`, `FREETEXT` or `tsvector` anywhere.
+- So `Search()` on relational databases translates to `LIKE` (escaped). S10 moves off the critical path.
+
+**Unknown fields.** A row has only the mapped columns, so undeclared fields are lost, as on InMemory. RavenDB keeps
+them (§8.1 finding 6). The conformance suite pins each provider's behaviour. **Absent field versus `NULL`** (D16): a
+column always exists, so "absent" can only be `NULL`. The consequences are open (§10 O11).
+
+**JSON columns on PostgreSQL** use `jsonb`, which normalises the text (keys reordered, whitespace changed, duplicate
+keys collapsed; S12). That is harmless: the dirty check diffs the snapshot taken at load, not the stored text.
 
 **Reservations** (`ISparkSession.Reserve/Release`) join the session's `SaveChanges` transaction. That replaces
-`UserStore.cs:206`'s cluster-wide transaction (round 1, confirmed).
+`UserStore.cs:206`'s cluster-wide transaction.
 
-**Lookup references** need nothing provider-specific. A dynamic lookup is one `Documents` row loaded by id, entities
-store the key as a string, and labels are resolved after load. **A gap on every provider:**
-`LookupReferenceService.AddValueAsync`/`UpdateValueAsync`/`DeleteValueAsync` load, modify and store with no
-`expectedVersion` (`:136-154`), so two concurrent edits lose one of them. The fix (store with `GetVersion`, plus a
-conformance case) belongs in this work.
+**Lookup references:** a dynamic lookup gets its own table. Entities store the key, and labels are resolved after
+load. **There is a gap on every provider:** `LookupReferenceService.AddValueAsync`/`UpdateValueAsync`/`DeleteValueAsync`
+load, modify and store with no `expectedVersion` (`:136-154`), so two concurrent edits lose one of them. The fix
+(store with `GetVersion`, plus a conformance case) belongs in this work.
 
 ## 4. RavenDB features and their relational equivalents
 
@@ -341,29 +440,29 @@ contract (or reuses one), implemented by RavenDB, InMemory and `Relational`.
 
 | RavenDB feature | Spark contract | Recommended relational mechanism (all three) | Database specifics | Not chosen, and why |
 |---|---|---|---|---|
-| Documents, collections, `@metadata` | `ISparkSession` | the `Documents` table (D1a) | the column types in §3 | a table per collection (breaks the global id space, D1a); a relational EF model (a migration per model change) |
-| Static map index | neutral view declaration (S5) | generated columns + indexes; an SQL view for projections | SQL Server: computed column + filtered index. PG: expression or partial index. MariaDB: virtual column + index. | materialised views (manual refresh on PostgreSQL, absent on MariaDB) |
+| Documents, collections, `@metadata` | `ISparkSession` | **a table per collection, mapped by EF Core** (D1, round 3); TPH for derived types; JSON columns for core value types | `json`/`nvarchar(max)` vs `jsonb` | the hybrid `Documents` table (D1 before round 3: proven by S1/S2/S12, reversed by the owner) |
+| Static map index | neutral view declaration (S5) | indexes on the entity's columns; an SQL view for projections and computed fields | SQL Server: filtered index. PG: partial or expression index. | materialised views (manual refresh on PostgreSQL) |
 | Map-reduce index (moderation only) | neutral aggregate declaration (S16) | an **aggregate table updated in the same transaction** as the source document (`UPDATE … SET Sum = Sum + @d`, upsert). The hook needs the old row to compute `@d`, so it loads the old row inside the transaction. Set-based `DeleteWhere`/`UpdateWhere` on an aggregated collection is refused (*round 1*). | upsert: `MERGE` / `INSERT … ON CONFLICT` / `INSERT … ON DUPLICATE KEY UPDATE` | SQL Server indexed views (SQL Server-only, many restrictions); recomputing on read (slow) |
 | `WaitForNonStaleResults` | `WaitForConsistencyAsync` | a no-op: commit is consistent, and so are the aggregate tables | — | — |
-| `Search()` full-text | FullTextSearch capability | per dialect, probed at startup; off means `LIKE` with a startup warning | SQL Server: `CONTAINS`/`FREETEXT` when installed. PG: `tsvector` + GIN, `pg_trgm` for fuzzy. MariaDB: InnoDB `FULLTEXT` on a generated column. | an external engine (OpenSearch) is the search library's own provider, not the store's |
-| Subscriptions | Subscriptions capability (S7/S14) | **a durable per-subscription cursor over `Documents.ChangeStamp`** below the safe horizon (D6). That delivers each document's *current state*, backlog included, as a RavenDB subscription does. A **`Tombstones` table** (Id, Collection, ChangeStamp) carries deletes. Matching uses the subscription's neutral predicate (an expression over `T`, replacing RQL). Delivery is at-least-once, and the batch is acked when the handler returns. | PG: `LISTEN/NOTIFY` as an optional wake-up hint | a change-only outbox (*corrected in round 1*: a new subscription would miss the backlog); SQL Server Query Notifications/`SqlDependency` (not durable); CDC (needs SQL Agent, so not on Express); PG logical decoding (operations-heavy) |
+| `Search()` full-text | FullTextSearch capability | **`LIKE` (escaped) first**, as the commercial framework does on SQL; a full-text dialect is an opt-in later (S10) | SQL Server: `CONTAINS`/`FREETEXT` when installed. PG: `tsvector` + GIN, `pg_trgm` for fuzzy. MariaDB: InnoDB `FULLTEXT` on a generated column. | an external engine (OpenSearch) is the search library's own provider, not the store's |
+| Subscriptions | Subscriptions capability (S7/S14) | **a durable per-subscription cursor over the `ChangeStamp`** below the safe horizon (D6; per table or one change log, open O10). That delivers each document's *current state*, backlog included, as a RavenDB subscription does. A **`Tombstones` table** (Id, Collection, ChangeStamp) carries deletes. Matching uses the subscription's neutral predicate (an expression over `T`, replacing RQL). Delivery is at-least-once, and the batch is acked when the handler returns. | PG: `LISTEN/NOTIFY` as an optional wake-up hint | a change-only outbox (*corrected in round 1*: a new subscription would miss the backlog); SQL Server Query Notifications/`SqlDependency` (not durable); CDC (needs SQL Agent, so not on Express); PG logical decoding (operations-heavy) |
 | `WaitForFree` single worker | `ISparkStoreLock` | a lease (below) held by the active worker; messaging's claim stays a versioned `UPDATE` | — | — |
 | Compare-exchange | **`ISparkAtomicValues`** (S15): get, compare-and-swap, delete; the neutral compare-exchange | an **`AtomicValues` table** (Key PK, Value, Version, ExpiresAt NULL), written with a versioned `UPDATE` / insert-only `INSERT` | optional fast path for short locks: `sp_getapplock`, `pg_advisory_lock` | — |
 | ↳ lease / lock (migrations, messaging, dashboards) | `ISparkStoreLock` on `ISparkAtomicValues` | a value with `ExpiresAt`, renewed by compare-and-swap | — | session-scoped database locks alone: they are released on connection loss and fight connection pooling |
 | ↳ never-expiring claim (**cron**) | `ISparkAtomicValues` directly | *corrected in round 1:* cron's `TryClaimOccurrenceAsync` (`SparkCronScheduler.cs:236-274`) is a compare-and-swap of "latest claimed occurrence", with poison handling. **An expiring lease would let a second host fire the same occurrence.** | — | a lease |
 | Compare-exchange uniqueness | `ISparkSession.Reserve/Release` (S6) | a **`Reservations` table** (Key PK, OwnerId) written **in the same transaction** as the document. This covers `UserStore.cs:206`'s cluster-wide transaction for free. | — | a unique index on a generated JSON column (works, but per field, and the takeover-when-owner-missing rule needs code anyway) |
 | Cluster-wide transaction | — | a plain database transaction | — | — |
-| Revisions | Revisions capability (S8) | a **`Revisions` table** (Id, Version, Collection, Data, ChangedAt, Deleted). **Every write path writes it** through one internal code path: session commit, `UpdateWhere`/`PatchAppend`, sweepers (*round 1*: RavenDB writes a revision on every write, set-based ones included). The revision id is the opaque `Version` (history's `RevertAsync` takes it as a string, `ISparkHistory.cs:38`). Per-collection retention is enforced by a sweeper. | — | temporal tables: SQL Server and MariaDB have them, PostgreSQL doesn't, and they can't do per-collection retention or `PurgeOnDelete` |
+| Revisions | Revisions capability (S8) | **open since round 3 (O12):** a framework `Revisions` table holding the row as JSON, or SQL Server temporal tables (none on PostgreSQL; the commercial framework has no revisions at all). The pre-round-3 choice: a **`Revisions` table** (Id, Version, Collection, Data, ChangedAt, Deleted). **Every write path writes it** through one internal code path: session commit, `UpdateWhere`/`PatchAppend`, sweepers (*round 1*: RavenDB writes a revision on every write, set-based ones included). The revision id is the opaque `Version` (history's `RevertAsync` takes it as a string, `ISparkHistory.cs:38`). Per-collection retention is enforced by a sweeper. | — | temporal tables: SQL Server and MariaDB have them, PostgreSQL doesn't, and they can't do per-collection retention or `PurgeOnDelete` |
 | `@expires` | `ISparkSession.SetExpiry` + `ISparkStoreExpiration` | the `ExpiresAt` column + an in-process sweeper | — | `pg_cron`, the MariaDB event scheduler (they depend on extensions or server configuration) |
 | `@refresh` | — | not needed: it is no longer used (§2.6) | — | — |
 | Counters | a field, or `ISparkSession.Increment` | an atomic `UPDATE … SET n = n + 1` on a `Counters` table | — | — |
 | Time series | dashboards' own samples store (S9) | a `Samples` table, a rollup job and retention | TimescaleDB is optional on PostgreSQL | — |
 | Attachments | Attachments capability (S11) | off on relational at first: the files library uses its pluggable blob stores (FileSystem, S3, AzureBlob) | later: `varbinary(max)` / `bytea` / `LONGBLOB` side table | blobs in the database by default (backup size, memory) |
 | `Patch`, `PatchByQuery`, `DeleteByQuery` | `UpdateWhereAsync`/`DeleteWhereAsync` and **`PatchAppend`** (S6), or load-modify-save | load-modify-save in batches where a document's own rules must run; set-based where they don't. **Concurrent appends** (messaging's `Advanced.Patch` list add and `Defer(PatchCommandData)`: `MessageProgress.cs:50`, `MessageProcessor.cs:607`, `MessageRetrySweeper.cs:142-160`) use the atomic `PatchAppend`, because load-modify-save would lose updates or 409 under contention (*round 1*). | `JSON_MODIFY(…, 'append $.x', …)` / `jsonb_set(… \|\| …)` | — |
-| `StreamAsync` | `ISparkSession.StreamAsync` | keyset paging over `(Collection, Id)` | — | server cursors (they hold a connection) |
+| `StreamAsync` | `ISparkSession.StreamAsync` | keyset paging over the table's key | — | server cursors (they hold a connection) |
 | `Lazily` | — | plain batched calls | — | — |
 | Includes | `includePaths` (exists) | a second batched load by ids (`IN`) | — | — |
-| Change vector, optimistic concurrency | `expectedVersion` (exists) | `Version bigint` (D3) | — | `rowversion`/`xmin` (D3) |
+| Change vector, optimistic concurrency | `expectedVersion` (exists) | `Version bigint` per table (D3) | — | `rowversion`/`xmin` (D3) |
 | `@last-modified` order | — | `ChangeStamp` below the safe horizon (D6) | — | timestamps (ties and clock skew) |
 | Data-protection keys | `ISparkDataProtectionKeyStore` | a `DataProtectionKeys` table | — | — |
 | ETL (replication) | — | none: **RavenDB-only**, refused by SPARK060 | — | — |
@@ -377,8 +476,8 @@ contract (or reuses one), implemented by RavenDB, InMemory and `Relational`.
 | Expiration | sweeper | sweeper | yes |
 | Indexes (neutral views) | yes | yes | S5, which gates M3 (round 1) |
 | Subscriptions | `ChangeStamp` cursor + tombstones | `ChangeStamp` cursor + tombstones | if S7/S14 hold |
-| Revisions | revisions table | revisions table | if S8 holds |
-| FullTextSearch | when the feature is installed (probed) | yes (`tsvector`) | S10 |
+| Revisions | revisions table or temporal tables (O12) | revisions table | if S8 holds |
+| FullTextSearch | `LIKE`; FTS opt-in later | `LIKE`; `tsvector` opt-in later | S10, off the critical path |
 | Attachments | off at first | off at first | S11 |
 
 ## 5. Feature tiers
@@ -421,6 +520,14 @@ They are in [`relational_providers_plan.md`](relational_providers_plan.md).
    join existing job groups (plan M8).
 
 ## 8. Spike results and decision log
+
+**Since round 3, these spikes are history for the storage model:** they proved the hybrid document table that the
+owner then reversed (D1). What still holds for EF Core table-per-entity:
+- PostgreSQL's null order (D4)
+- the `DateTimeOffset` findings (D5)
+- the version-statement shape (D3)
+- the D16 rewrite of absent members
+- MariaDB's wrong rows (§7 risk 1)
 
 ### 8.1 S1 + S2: mapping and query translation (2026-11-19)
 
@@ -594,9 +701,19 @@ MariaDB's `JSON_VALUE` returns only scalars. The fork uses it for object and arr
 - It assumed "SQL Server, later maybe PostgreSQL/SQLite". The scope is now SQL Server, PostgreSQL and MariaDB, with a
   shared relational core (D2).
 
+**In the 2026-11-24 draft, before grilling round 3:**
+- D1 was a hybrid `Documents` table: Newtonsoft owned the JSON, and EF only translated queries through a `Doc<T>`
+  rewrite.
+- D1a was one global table with a global id space.
+- D7 was a lower-cased `IdKey` primary key.
+- The equivalents table assumed a `Documents.ChangeStamp` and a `Raw` alias column.
+
+Round 3 replaced all of these (D1, D23–D27).
+
 ## 10. Open questions for the owner
 
-Grilling round 2 (owner, 2026-11-24) answered O1, O2, O3 and O6. The plan §3 has the log.
+Grilling round 2 (owner, 2026-11-24) answered O1, O2, O3 and O6. Round 3 reversed D1 and added D23–D27, and the
+commercial-framework comparison added D30. The plan §3 has the log.
 
 - ✅ **O1, one PR:** **one pull request** (rule 8), draft PR #697.
 - ✅ **O2, Tier 4:** **both identity_provider and dashboards are ported** in this work. S9 (samples table, rollups,
@@ -604,17 +721,34 @@ Grilling round 2 (owner, 2026-11-24) answered O1, O2, O3 and O6. The plan §3 ha
 - ✅ **O3, demo app:** **a new `apps/SqlDemo`**, dedicated to the relational providers. It is the E2E proof, so it
   uses the ported feature libraries, not core alone.
 - ~~**O4, minimum SQL Server**~~ Answered by S1/S2: 2022 and 2025.
-- **O5, full-text (open):** install the Full-Text feature on the local 2025 instance for S10? It is not needed before
-  S10.
+- **O5, full-text:** deferred with S10. `LIKE` comes first (§3).
 - ✅ **O6, MariaDB:** **dropped for now.** In scope: SQL Server and PostgreSQL. §7 risk 1 says when it returns.
 - ✅ **O7, order:** follows from O6. SQL Server and PostgreSQL are built together on the shared core.
-- **O8, PostgreSQL floor (open):** 18 only (virtual `Raw`), or also 17 (stored `Raw`, or reading `"Data"::text`)?
-  S2b measures the `"Data"::text` read. If it costs nothing, 17 comes free. Decide then.
+- **O8, PostgreSQL floor (open, probably moot):** 18 was needed only for the virtual `Raw` column, which round 3
+  removed. Support 17 as well, or test only 18?
+- **O9, bring-your-own `DbContext` (open, low priority):** The commercial framework's apps write their own `DbContext`. Should Spark
+  offer a hook to configure what its generated model can't map? Recommendation: not until a real case needs it.
+- **O10, change stamp (open, next grilling):** a stamp column per entity table with a cursor per (subscription,
+  table), or one change-log table written in the same transaction (D6)?
+- **O11, absent field versus `NULL` (open, next grilling):** a column always exists, so what does D16 mean on
+  relational providers, and does RavenDB change to match?
+- **O12, revisions (open, next grilling):** a framework `Revisions` table (portable, per-collection retention,
+  `PurgeOnDelete`), or SQL Server temporal tables (PostgreSQL has none)?
+- **O14, hierarchical natural ids (open, next grilling):** about 75 id builders compose ids that nest other ids
+  (`$"Coll/{..}"`, `ForRepository`/`PrefixFor`/`IdFor`). 13 `StartsWith("Coll/")` guards, 31 `LoadStartingWithAsync`
+  uses and a few `LastIndexOf('/')` parsers (`ContributionHandler.cs:707`, `WebhookEndpointManager.cs:263`,
+  `MergeQueue.RepositorySuffix`) depend on that shape. They fit the Natural kind: `Id<T>` splits on the *first* `/`
+  only, and on SQL the key is a string column. Open: does a prefix scan over a natural key (D7's escaped `LIKE`) cover
+  every `LoadStartingWithAsync` use, or do some of them become a query on a parent FK?
+- **O13, get-only persisted properties (open, next grilling):** for example `FullName`. Persist it as a computed column,
+  recompute on save (as the commercial framework's RavenDB-only calculated attribute does), or keep it out of storage?
 
 ## 11. Out of scope
 
 - **MariaDB, for now** (O6; investigated, spiked in S13, deferred).
 - SQLite and MySQL.
-- Migrating existing RavenDB data to a relational database.
+- Migrating data between providers. That is the developer's own one-shot migrator, which maps ids (D23 rule 11).
+- Reference integrity (delete guard, rename): a separate issue (D26).
+- Composite keys and id obfuscation (D23 rule 10).
 - Replication (§5).
 - The libraries with no tracked source (§2.5).
