@@ -587,7 +587,8 @@ The full consensus and the spike details are in plan §3, rounds 4 and 6–9.
   context** (the same context scaffolds a migration that recreates every table). It writes the migration, designer
   and snapshot files, prints the operations and EF's warnings, and refuses a migration that recreates a table the
   snapshot already has or splits an attribute id into a drop and an add. A queryable string attribute has a maximum
-  length. Where the design-time code lives is O17.
+  length. The design-time code lives in `MintPlayer.Spark.Relational.Design`, a development dependency that stays
+  in `bin` and out of every publish (O17, §8.9).
 
 **D33 (owner, 2026-11-24): when migrations are generated and applied.** RavenDB apps need no schema step today; SQL
 apps do. The switches and the startup order are core's; each provider implements `ISparkSchemaMigrator` (D34).
@@ -1242,6 +1243,43 @@ on contracts with a core default.
    `.Workspaces`, `.Workspaces.MSBuild`), `Microsoft.Build.Framework`, Humanizer and Mono.TextTemplating: 17 MB of
    DLLs plus 14 culture folders. Synchronize runs on a developer's machine, so production should not ship it (O17).
 
+### 8.9 O17: keeping EF Design out of production (2026-11-24)
+
+Question: can the scaffolding code from S3 ship in a package without its Roslyn closure reaching a production
+publish? Probes in a scratch folder (not committed: three throwaway projects and a packed local package); the
+console app's publish output was counted and run each time. A Debug publish of the app with EF Design flowing in
+carries 46 DLLs, 42 MB, 11 of them Roslyn, MSBuild or Design.
+
+| Shape | Release publish | Runs |
+|---|---|---|
+| (b) Design inside the relational package, `Publish="false"` on Design only, from a package `.targets` | only `Microsoft.EntityFrameworkCore.Design.dll` dropped; Roslyn stays | yes |
+| (b) the same, plus the 19 packages only Design brings (hand-kept list) | 27 DLLs, 16 MB, none of them Roslyn | yes, synchronize reports Design missing |
+| (b) the same, the app also references `Humanizer.Core` itself | Humanizer dropped too | **no: `FileNotFoundException: Humanizer` at startup** |
+| (b), the app on Humanizer 2.14 | restore fails, NU1605: Design pins Humanizer 3.0.10 | n/a |
+| (a) `DevelopmentDependency` package added with `dotnet add` (`PrivateAssets="all"`) | 26 DLLs, 17 MB, no Roslyn, the app's own Humanizer kept; **the same in a Debug publish** | yes |
+| (a) the same, `dotnet build` (Debug or Release) | 8 Roslyn and Design DLLs in `bin` | yes, the design package loads |
+| (a) reference written by hand, no metadata | 46 DLLs, 42 MB, Roslyn shipped | yes |
+| (a) hand-written, package `build/*.props` with `Update … Publish="false"` | 46 DLLs, 42 MB: the `Update` runs before the item exists | yes |
+| (a) hand-written, package `build/*.targets` with the same `Update` | 26 DLLs, 17 MB, no Roslyn | yes |
+| (a) hand-written, package `buildTransitive/*.targets` adding `Publish="false"` in a target | 26 DLLs, 17 MB, no Roslyn | yes |
+| (a) the package referenced by a class library, the host gets it through a `ProjectReference` | only the design package's DLL dropped; Roslyn stays | yes |
+
+Findings:
+
+1. **A package's targets cannot change restore.** Restore runs with `ExcludeRestorePackageImports=true`, and once
+   for every configuration, so `PackageReference Remove`, `PrivateAssets` or `IncludeAssets` set from a package file
+   never reach it. What can be changed afterwards is publish, through `Publish="false"`.
+2. **The SDK computes what is safe to drop; a hand-kept list cannot.** Excluding one package drops the part of its
+   closure that no other included reference reaches. That is why the app's own Humanizer survives (a), and why the
+   hand-kept list in (b) crashed the app: it named Humanizer outright.
+3. **The line falls at publish, not at the configuration.** `PrivateAssets="all"` excludes from publish in every
+   configuration (`Microsoft.NET.Sdk.Shared.targets:53-55`), and `bin` keeps the package in every configuration.
+   That suits synchronize, which runs from `bin`.
+4. **`.props` versus `.targets`:** a package's `.props` is imported before the project's items, a `.targets` file
+   after them, so only the `.targets` file can update the app's own reference.
+5. **A transitive arrival cannot be stripped from the package side:** the class library keeps the closure reachable.
+   The package warns in that case instead (O17 setting 3).
+
 ## 9. Stale in earlier drafts
 
 **In the 2026-11-09 draft:**
@@ -1364,19 +1402,35 @@ commercial-framework comparison added D30. The plan §3 has the log.
     provider as a matrix while app test projects stay on their own provider. Trap: a project that overrides the
     variable must reference every provider package it may select, and a typo must fail at startup, never fall back
     silently.
-- **O17, where the migration scaffolding lives (open, S3 finding 7):** `Microsoft.EntityFrameworkCore.Design` adds
-  17 MB of Roslyn and MSBuild assemblies, needed only when a developer runs synchronize.
-  - **(a) A `MintPlayer.Spark.Relational.Design` package, loaded by name.** Core's synchronize command looks for it
-    the way the EF tools find a provider's design-time services (an assembly attribute naming an `ISparkSchemaScaffolder`
-    implementation). The app references it only for development builds
-    (`Condition="'$(Configuration)' == 'Debug'"`), and never names it in code, so a Release publish carries none of it.
-    Without it, synchronize writes the model JSON and stops with a message that names the package.
-  - **(b) Inside `MintPlayer.Spark.Relational`.** Nothing to set up, but every production image carries Roslyn.
-  - **(c) A separate `dotnet` tool.** It needs the design-time `DbContext` factory D33 avoids.
-  - Recommendation: (a). It is D34's rule (core owns the command, a package plugs in) plus EF's own discovery
-    pattern. Trap: a developer who builds Release locally gets the "add the package" message from synchronize, and a
-    template that forgets the condition ships Roslyn silently, so the template and a D31-style test pin the
-    condition.
+- **O17, where the migration scaffolding lives (decided 2026-11-24, owner, evidence §8.9):** a separate
+  **`MintPlayer.Spark.Relational.Design`** package that stays in `bin` and out of every publish. Core's
+  synchronize command loads it by name, the way the EF tools find a provider's design-time services (an assembly
+  attribute naming an `ISparkSchemaScaffolder` implementation). The app never names it in code. Without it,
+  synchronize writes the model JSON and stops with a message that names the package and says to reference it in
+  the host project. The package has three settings, and no others:
+  1. **`<DevelopmentDependency>true</DevelopmentDependency>`** in the package. `dotnet add` and Visual Studio then
+     write `PrivateAssets="all"` (it does not flow to the projects that reference the app's project) and an
+     `IncludeAssets` without `compile` (the app cannot compile against design-time types, which it never needs).
+     The SDK leaves a `PrivateAssets="all"` package out of publish (`Microsoft.NET.Sdk.Shared.targets:53-55`).
+  2. **`PrivateAssets="none"` on its own reference to `Microsoft.EntityFrameworkCore.Design`**, itself a
+     development dependency: without it EF Design is not a dependency in the nuspec, and the package arrives without
+     it.
+  3. **`buildTransitive/MintPlayer.Spark.Relational.Design.targets`**, a `.targets` file (a `.props` file runs
+     before the project's own items exist, so its `Update` matches nothing: measured). It marks the app's reference
+     `Publish="false"`, which covers a reference written by hand without `PrivateAssets`. When the package reaches a
+     project only through another project, it raises a build warning instead, because nothing on the package side
+     can keep Roslyn out of that publish (measured).
+  - It replaces the Debug-only reference first proposed (a `Condition` on `Configuration`). The line is drawn at
+    publish, not at the configuration: synchronize works from `bin` in any configuration, and production images
+    are published (`code-coverage-deploy.yml`, `mintplayer-deploy.yml` and the Dockerfiles run `dotnet publish`).
+  - **In this repository** apps use `ProjectReference`, which a package's `.targets` file never reaches, so an
+    in-repo app that uses a relational provider references the design project in a Debug-only `ItemGroup`, as
+    `apps/CodeCoverage/CodeCoverage/CodeCoverage.csproj:93` does for its git writer.
+  - Rejected: (b) inside `MintPlayer.Spark.Relational`, whether shipped whole or stripped by a hand-kept list
+    (§8.9 shows the list removes packages the app uses itself, and the app crashes at startup in production
+    only); (c) a separate `dotnet` tool, which needs the design-time `DbContext` factory D33 avoids.
+  - Trap: a deployment that copies `bin` instead of publishing ships 17 MB of Roslyn with no warning. It costs
+    size, not correctness, and the guide says "publish, don't copy `bin`".
 
 ## 11. Out of scope
 
