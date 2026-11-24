@@ -19,6 +19,7 @@ DbContextOptions<T> Opt<T>(string db, string history) where T : DbContext
     var b = new DbContextOptionsBuilder<T>();
     if (provider == "sqlserver") b.UseSqlServer(Cs(db), o => o.MigrationsHistoryTable(history));
     else b.UseNpgsql(Cs(db), o => o.MigrationsHistoryTable(history));
+    if (AdvisoryLock.Enabled && provider != "sqlserver") b.ReplaceService<IHistoryRepository, AdvisoryLockHistoryRepository>();
     if (Environment.GetEnvironmentVariable("S19_LOG") == "1") b.LogTo(s => { lock (SqlLog.Gate) File.AppendAllText("sql.log", s + Environment.NewLine); }, Microsoft.Extensions.Logging.LogLevel.Debug);
     return b.Options;
 }
@@ -94,6 +95,28 @@ async Task<string> Startup(string db, string who, bool failing = false)
     var seeded = await Scalar(c, $"SELECT COUNT(*) FROM {Q("People")}");
     Report("1b each migration applied once", hist == 3 && fwHist == 1, $"app history {hist}, framework history {fwHist}");
     Report("1b the unlocked data step ran once", seeded == 1, $"{seeded} seeded rows (no lease around the data step here)");
+}
+
+// 1d. As 1b, with the workaround for npgsql/efcore.pg#4162 (fix: npgsql/efcore.pg#4163): a history repository that
+//     holds a session-level advisory lock for the whole Migrate() run. SQL Server needs nothing: sp_getapplock is
+//     already a session lock.
+{
+    var db = "sparkspike536mig1d";
+    await Fresh(db);
+    await using (var fw = Fw(db)) await fw.Database.EnsureCreatedAsync();
+    AdvisoryLock.Enabled = true;
+    var sw = Stopwatch.StartNew();
+    try
+    {
+        var outs = await Task.WhenAll(Startup(db, "A"), Startup(db, "B"), Startup(db, "C"));
+        Report("1d three instances on an existing database, EF's lock (+ the Npgsql workaround): no error", true, $"{string.Join("; ", outs)} ({sw.ElapsedMilliseconds} ms)");
+    }
+    catch (Exception ex) { Report("1d three instances on an existing database, EF's lock (+ the Npgsql workaround): no error", false, Flatten(ex)); }
+    finally { AdvisoryLock.Enabled = false; }
+    await using var c = App(db);
+    var hist = await Scalar(c, $"SELECT COUNT(*) FROM {Q("__EFMigrationsHistory")}");
+    var fwHist = await Scalar(c, $"SELECT COUNT(*) FROM {Q("__SparkFrameworkMigrations")}");
+    Report("1d each migration applied once", hist == 3 && fwHist == 1, $"app history {hist}, framework history {fwHist}");
 }
 
 // 1c. Spark's own guard: create the database tolerating "already exists", then hold a session-level lock
@@ -278,3 +301,60 @@ public sealed class Half : Migration
 public static class FailSwitch { public static bool Value; }
 
 public static class SqlLog { public static readonly object Gate = new(); }
+public static class AdvisoryLock { public static bool Enabled; }
+
+// npgsql/efcore.pg#4162: the stock repository's LOCK TABLE ends with each migration's transaction, while the migrator
+// plans the run once; another instance applies the next migration in between and this one applies it again. A session
+// advisory lock with LockReleaseBehavior.Connection is taken once, before the history is read, and held for the run.
+#pragma warning disable EF1001 // NpgsqlHistoryRepository is an internal API.
+public sealed class AdvisoryLockHistoryRepository(HistoryRepositoryDependencies dependencies)
+    : Npgsql.EntityFrameworkCore.PostgreSQL.Migrations.Internal.NpgsqlHistoryRepository(dependencies)
+#pragma warning restore EF1001
+{
+    public override LockReleaseBehavior LockReleaseBehavior => LockReleaseBehavior.Connection;
+
+    public override IMigrationsDatabaseLock AcquireDatabaseLock()
+    {
+        Dependencies.MigrationsLogger.AcquiringMigrationLock();
+        Command($"SELECT pg_advisory_lock({LockKey})").ExecuteNonQuery(Parameters());
+        return new Lock(this);
+    }
+
+    public override async Task<IMigrationsDatabaseLock> AcquireDatabaseLockAsync(CancellationToken cancellationToken = default)
+    {
+        Dependencies.MigrationsLogger.AcquiringMigrationLock();
+        await Command($"SELECT pg_advisory_lock({LockKey})").ExecuteNonQueryAsync(Parameters(), cancellationToken);
+        return new Lock(this);
+    }
+
+    // A number computed here (64-bit FNV-1a of the history table's name), spliced as a numeric literal: no text from
+    // configuration reaches the SQL.
+    private long LockKey
+    {
+        get
+        {
+            var hash = 14695981039346656037UL;
+            foreach (var b in System.Text.Encoding.UTF8.GetBytes($"efcore:migrations:{TableSchema}.{TableName}")) hash = (hash ^ b) * 1099511628211UL;
+            return unchecked((long)hash);
+        }
+    }
+
+    private Microsoft.EntityFrameworkCore.Storage.IRelationalCommand Command(string sql) => Dependencies.RawSqlCommandBuilder.Build(sql);
+    private Microsoft.EntityFrameworkCore.Storage.RelationalCommandParameterObject Parameters()
+        => new(Dependencies.Connection, null, null, Dependencies.CurrentContext.Context, Dependencies.CommandLogger, CommandSource.Migrations);
+
+    private sealed class Lock(AdvisoryLockHistoryRepository repository) : IMigrationsDatabaseLock
+    {
+        public IHistoryRepository HistoryRepository => repository;
+        public void Dispose()
+        {
+            if (repository.Dependencies.Connection.DbConnection.State == System.Data.ConnectionState.Open)
+                repository.Command($"SELECT pg_advisory_unlock({repository.LockKey})").ExecuteNonQuery(repository.Parameters());
+        }
+        public async ValueTask DisposeAsync()
+        {
+            if (repository.Dependencies.Connection.DbConnection.State == System.Data.ConnectionState.Open)
+                await repository.Command($"SELECT pg_advisory_unlock({repository.LockKey})").ExecuteNonQueryAsync(repository.Parameters());
+        }
+    }
+}

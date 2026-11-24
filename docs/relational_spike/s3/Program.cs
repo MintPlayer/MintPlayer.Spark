@@ -14,6 +14,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Migrations.Design;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using S3;
 
 var cmd = args.Length > 0 ? args[0] : "gen";
@@ -45,26 +46,25 @@ foreach (var provider in new[] { "SqlServer", "PostgreSql" })
 
         if (version >= 2)
         {
-            // The trap: the check above finalized this context's snapshot model, and EF 11's
-            // SnapshotModelProcessor.Process returns null for a read-only model, so scaffolding on the SAME
-            // context diffs against nothing and recreates every table.
-            var (trapScaffolder, trapSp) = Scaffolder(db, new CollectingReporter());
+            // The trap (dotnet/efcore#36016): the check above finalized this context's snapshot model, and EF 11's
+            // SnapshotModelProcessor.Process returns null for a read-only model, so scaffolding on the SAME context
+            // without the workaround diffs against nothing and recreates every table.
+            var (trapScaffolder, trapSp) = Scaffolder(db, new CollectingReporter(), freshSnapshot: false);
             var trap = trapScaffolder.ScaffoldMigration("Trap", "S3", $"Migrations.{provider}", "C#");
-            Report($"{provider} v{version}: scaffolding on the context that ran HasPendingModelChanges recreates every table (trap)", trap.MigrationCode.Split("protected override void Down")[0].Contains("name: \"Companies\""), "reproduced: its Up creates Companies again");
+            Report($"{provider} v{version}: without the workaround, scaffolding on the context that ran HasPendingModelChanges recreates every table (trap)", trap.MigrationCode.Split("protected override void Down")[0].Contains("name: \"Companies\""), "reproduced: its Up creates Companies again");
             await trapSp.DisposeAsync();
         }
 
-        // A fresh context: its own scoped IMigrationsAssembly, so a fresh, mutable snapshot model.
-        await using var scaffoldDb = NewDb(provider);
+        // The same context, with FreshSnapshotMigrationsAssembly in the design-time services: what synchronize does.
         var reporter = new CollectingReporter();
-        var (scaffolder, sp) = Scaffolder(scaffoldDb, reporter);
+        var (scaffolder, sp) = Scaffolder(db, reporter);
         await using var _sp = sp;
         var name = $"V{version}_{Meta.Label(version)}";
         var migration = scaffolder.ScaffoldMigration(name, rootNamespace: "S3", subNamespace: $"Migrations.{provider}", language: "C#");
         var files = scaffolder.Save(projectDir, migration, Path.Combine(projectDir, "Migrations", provider));
         var up = migration.MigrationCode.Split("protected override void Down")[0];
         var ops = Regex.Matches(up, @"migrationBuilder\.(\w+)(?:<\w+>)?\(\s*(?:name: ""(\w+)"")?").Select(m => m.Groups[1].Value + (m.Groups[2].Success ? $"({m.Groups[2].Value})" : "")).ToList();
-        Report($"{provider} v{version}: scaffolded {migration.MigrationId}", true, string.Join(", ", ops));
+        Report($"{provider} v{version}: scaffolded {migration.MigrationId} on the context that ran HasPendingModelChanges", version == 1 || !ops.Contains("CreateTable(Companies)"), string.Join(", ", ops));
         foreach (var w in reporter.Warnings) Report($"{provider} v{version}: reporter warning", true, w);
         File.WriteAllText(Path.Combine(projectDir, $"last-up-{provider}.txt"), up);
         _ = files;
@@ -153,7 +153,7 @@ async Task Exercise(AppDb db, string provider)
 }
 
 // Design-time services composed from public API only: no `dotnet ef`, no IDesignTimeDbContextFactory.
-static (IMigrationsScaffolder, ServiceProvider) Scaffolder(DbContext db, IOperationReporter reporter)
+static (IMigrationsScaffolder, ServiceProvider) Scaffolder(DbContext db, IOperationReporter reporter, bool freshSnapshot = true)
 {
     var services = new ServiceCollection();
     services.AddEntityFrameworkDesignTimeServices(reporter);
@@ -164,6 +164,12 @@ static (IMigrationsScaffolder, ServiceProvider) Scaffolder(DbContext db, IOperat
     var attr = providerAssembly.GetCustomAttribute<DesignTimeProviderServicesAttribute>()!;
     var designTime = (IDesignTimeServices)Activator.CreateInstance(providerAssembly.GetType(attr.TypeName, throwOnError: true)!)!;
     designTime.ConfigureDesignTimeServices(services);
+    if (freshSnapshot)
+    {
+        // The workaround for dotnet/efcore#36016, until the fix (dotnet/efcore#39784) ships: the scaffolder reads its
+        // own snapshot instance, never the context's finalized one.
+        services.Replace(ServiceDescriptor.Singleton<IMigrationsAssembly>(new FreshSnapshotMigrationsAssembly(db.GetService<IMigrationsAssembly>())));
+    }
     var sp = services.BuildServiceProvider();
     return (sp.GetRequiredService<IMigrationsScaffolder>(), sp);
 }
@@ -251,6 +257,21 @@ namespace S3
     public sealed class PostgreSqlAppDb : AppDb
     {
         protected override void OnConfiguring(DbContextOptionsBuilder b) => b.UseNpgsql($"Host=127.0.0.1;Port=55432;Username=postgres;Password={Environment.GetEnvironmentVariable("SPARK536_PG_PASSWORD")};Database=sparkspike536s3");
+    }
+
+    // dotnet/efcore#36016: the context's IMigrationsAssembly caches one ModelSnapshot, which HasPendingModelChanges()
+    // and Migrate() finalize, and SnapshotModelProcessor returns null for a finalized model. A new instance of the
+    // snapshot class builds a new, mutable model. Registered in the design-time services after
+    // AddDbContextDesignTimeServices.
+    public sealed class FreshSnapshotMigrationsAssembly(IMigrationsAssembly inner) : IMigrationsAssembly
+    {
+        private readonly Lazy<ModelSnapshot?> snapshot = new(() => inner.ModelSnapshot is { } shared ? (ModelSnapshot)Activator.CreateInstance(shared.GetType())! : null);
+        public ModelSnapshot? ModelSnapshot => snapshot.Value;
+        public IReadOnlyDictionary<string, TypeInfo> Migrations => inner.Migrations;
+        public Assembly Assembly => inner.Assembly;
+        public string? FindMigrationId(string nameOrId) => inner.FindMigrationId(nameOrId);
+        public Migration CreateMigration(TypeInfo migrationClass, string activeProvider) => inner.CreateMigration(migrationClass, activeProvider);
+        public void AddMigrations(Assembly additionalMigrationsAssembly) => inner.AddMigrations(additionalMigrationsAssembly);
     }
 
     public sealed class CollectingReporter : IOperationReporter

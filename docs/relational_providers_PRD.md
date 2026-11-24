@@ -583,8 +583,11 @@ The full consensus and the spike details are in plan §3, rounds 4 and 6–9.
   own schema and are versioned separately from the app's. The commercial framework keeps its own tables the same way, with
   hand-written versioned scripts.
 - **How (S3, §8.8):** synchronize builds the `DbContext` from the model, compares it with the compiled snapshot
-  (`HasPendingModelChanges()`), and on a change scaffolds through EF's public design-time services on a **fresh
-  context** (the same context scaffolds a migration that recreates every table). It writes the migration, designer
+  (`HasPendingModelChanges()`), and on a change scaffolds through EF's public design-time services on the same
+  context. The design-time services replace `IMigrationsAssembly` with `FreshSnapshotMigrationsAssembly`, which hands
+  the scaffolder its own instance of the snapshot class. Without it, the check has already finalized the shared
+  snapshot and EF 11 scaffolds a migration that recreates every table (dotnet/efcore#36016). The decorator goes
+  once EF ships the fix (dotnet/efcore#39784), as does the refusal below, which stays as a guard until then. It writes the migration, designer
   and snapshot files, prints the operations and EF's warnings, and refuses a migration that recreates a table the
   snapshot already has or splits an attribute id into a drop and an add. A queryable string attribute has a maximum
   length. The design-time code lives in `MintPlayer.Spark.Relational.Design`, a development dependency that stays
@@ -608,7 +611,11 @@ EF tools would have to rebuild).
 
   **EF's own migration lock is not enough (S19, §8.7).** On SQL Server it serializes instances on an existing
   database, but on PostgreSQL (Npgsql 11.0.0) it is held only per migration, so two instances both apply the later
-  migrations. On both databases instances race on `CREATE DATABASE`. So the core startup sequence takes **Spark's
+  migrations (npgsql/efcore.pg#4162). The PostgreSQL provider therefore registers `AdvisoryLockHistoryRepository`
+  (`ReplaceService<IHistoryRepository, …>`), which holds a session advisory lock for the whole `Migrate()` run as
+  `sp_getapplock` does. With it, EF's lock alone applies each migration once on both databases (S19 1d). It goes once
+  Npgsql ships the fix (npgsql/efcore.pg#4163). On both databases instances still race on `CREATE DATABASE`, and EF's
+  lock does not cover the data migrations. So the core startup sequence takes **Spark's
   own session-level guard** around all three steps *and* the database creation: the migrator contract's
   `AcquireStartupGuardAsync`, which the SQL providers implement with `sp_getapplock @LockOwner='Session'` in `master`
   and `pg_advisory_lock` in the `postgres` maintenance database, keyed `spark:migrations:{database}`; RavenDB keeps
@@ -1161,12 +1168,14 @@ on contracts with a core default.
   `Half`, which adds a column), then a data step guarded by its own record, standing in for `ISparkMigration`.
 - `S19_LOG=1` writes EF's SQL to `sql.log`; that is how the Npgsql lock was read.
 
-**Results: SQL Server 19/20, PostgreSQL 18/20; every failure is a finding, and the guarded variant passes on both.**
+**Results: SQL Server 21/22, PostgreSQL 20/22 (with 1d); every failure is a finding, and the guarded variant and
+the Npgsql workaround pass on both.**
 
 | Scenario | SQL Server | PostgreSQL |
 |---|---|---|
 | 1. Two instances, database does not exist, EF alone | ❌ `CREATE DATABASE` race ("already exists"; in earlier runs also "Cannot open database … login failed" while the winner's database was not online yet) | ❌ the same race, and the migration race below |
 | 1b. Three instances, empty database exists, EF alone | ✅ `sp_getapplock` serializes them; each migration applied once | ❌ **"column Email already exists"** (3/3 runs) |
+| 1d. As 1b, EF's lock with **the Npgsql workaround** (`AdvisoryLockHistoryRepository`; rerun 2026-11-24) | ✅ the same as 1b (no workaround needed) | ✅ each migration applied once (3.1 s) |
 | 1c. Three instances, database does not exist, **Spark's guard** | ✅ one instance migrates (3.1 s), the others find nothing pending; each migration and the data step once | ✅ the same |
 | 2. Migration 3 fails halfway | ✅ migrations 1–2 stay applied; the failing one rolls back as a whole (its table is gone); it stays pending; a restart with the fix completes | ✅ the same |
 | 3. Idempotent script (framework + app), generated without a database | ✅ applied twice: the second run is a no-op; `MigrateAsync` then finds nothing pending (split on `GO`) | ✅ the same |
@@ -1180,7 +1189,9 @@ on contracts with a core default.
   the run. Root cause: EF's migrator plans once and does not re-read the history after reacquiring a
   transaction-scoped lock. Filed as npgsql/efcore.pg#4162 (2026-11-24, owner's go) with a standalone repro and a
   session advisory lock fix (github.com/PieterjanDeClippel/efcore-npgsql-migration-lock-race, `fix` branch: 3/3
-  runs pass). D33's own guard makes it moot for Spark.
+  runs pass). The fix is upstream as npgsql/efcore.pg#4163: red on `main` with a new parallel test across three
+  migrations, green with the change (56/56 of the migration-lock and history test classes). Until it ships,
+  the provider registers the same code as `AdvisoryLockHistoryRepository` (D33); scenario 1d proves it.
 - **Neither provider covers database creation.** Instances race on `CREATE DATABASE`; on SQL Server the loser can
   also fail to log into the winner's database before it is online.
 - **The fix, now in D33:** Spark takes a session-level lock in the server's maintenance database (`master` /
@@ -1223,15 +1234,19 @@ on contracts with a core default.
    `DesignTimeProviderServicesAttribute` on its assembly (what the EF tools do). `IOperationReporter` and
    `ISnapshotModelProcessor` are public since EF 11 (dotnet/efcore#38408). No EF1001 warning, no
    `DesignTimeServicesBuilder`, no `dotnet ef`, no `IDesignTimeDbContextFactory`.
-2. **Trap: scaffold on a fresh context.** `HasPendingModelChanges()` finalizes the context's cached snapshot model,
+2. **Trap: the shared snapshot is finalized.** `HasPendingModelChanges()` finalizes the context's cached snapshot model,
    and `SnapshotModelProcessor.Process` returns `null` for a read-only model (`SnapshotModelProcessor.cs:59-66` on
    release/11.0; the same guard was internal in EF 10). The scaffolder reads `null` as "no previous model" and emits
    a migration that **recreates every table**, silently. Reproduced on both databases for v2–v6; a new context (its
    own scoped `IMigrationsAssembly`) scaffolds correctly. The EF tools never meet it because they run the check
    and the scaffold in separate processes. It is the open dotnet/efcore#36016; the root cause, a SQLite repro and
    a fix (the scaffolder processes a fresh snapshot instance) were posted there on 2026-11-24
-   (github.com/PieterjanDeClippel/efcore-scaffold-readonly-snapshot, `fix` branch). Synchronize also refuses a scaffolded migration that creates a table the
-   snapshot already has. Candidate upstream issue (not filed; the owner decides).
+   (github.com/PieterjanDeClippel/efcore-scaffold-readonly-snapshot, `fix` branch). The fix is upstream as
+   dotnet/efcore#39784: red on `main` with a new scaffolder test, green with the change. **Workaround (rerun
+   2026-11-24):** `FreshSnapshotMigrationsAssembly`, an `IMigrationsAssembly` decorator in the design-time services
+   that returns a new instance of the snapshot class. With it, every version scaffolds the expected operations on
+   the context that ran the check, while the same scaffold without it still recreates every table (both databases,
+   v2–v6). Synchronize also refuses a scaffolded migration that creates a table the snapshot already has.
 3. **A queryable string needs a length on SQL Server:** `CREATE INDEX` on `nvarchar(max)` is refused ("invalid for
    use as a key column in an index"). PostgreSQL indexes `text`, but one rule for both: a queryable string
    attribute gets a maximum length in the model, and making an existing field queryable narrows the column, which EF

@@ -12,4 +12,5 @@ Throwaway code. There is no `.csproj` here on purpose, because `@nx/dotnet` woul
    (`127.0.0.1:55432`, password from the `SPARK536_PG_PASSWORD` environment variable).
 
 The spike drops and recreates its own `sparkspike536mig*` databases. Set `S19_LOG=1` to write EF's SQL to `sql.log`.
-Scenarios 1 and 1b use EF's own migration lock and are expected to fail (they are the findings); 1c is Spark's guard.
+Scenarios 1 and 1b use EF's own migration lock and are expected to fail (they are the findings); 1d adds the
+Npgsql workaround (`AdvisoryLockHistoryRepository`, npgsql/efcore.pg#4162) and passes; 1c is Spark's guard.
