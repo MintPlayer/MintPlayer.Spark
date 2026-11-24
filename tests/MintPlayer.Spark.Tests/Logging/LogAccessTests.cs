@@ -27,7 +27,7 @@ public class LogAccessTests : OrganizationsTestHost
     private async Task<string> WriteLogAsync(string key, string? relatedPersistentObjectId, string text)
     {
         await Factory.GetService<ILoggerScopeProvider>().LogAsync(key, LogLevel.Information, text, relatedPersistentObjectId: relatedPersistentObjectId);
-        return LogIds.ForKey(key);
+        return LogIds.ForKey(key).Value;
     }
 
     private Task<(HttpStatusCode Status, System.Text.Json.JsonElement Body)> LoadLogAsync(string id, string? userId)

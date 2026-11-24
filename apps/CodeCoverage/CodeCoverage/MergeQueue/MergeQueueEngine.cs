@@ -364,7 +364,7 @@ public partial class MergeQueueEngine : IMergeQueueEngine
         // #660 G11: every run has a log, whatever queued it; a /queue command's record points at it (G7).
         entry.CommandInvocation = invocation;
         var logKey = RunLogKey(repository, entry);
-        entry.LogId = LogIds.ForKey(logKey);
+        entry.LogId = LogIds.ForKey(logKey).Value;
         // Related to the repository, not the entry: a merge-queue entry is no persistent object, so only the repository's
         // own gate can open the log (G15, ISparkReadAccess).
         await using var runLog = commands.OpenLog(null, logKey, repository.Id);

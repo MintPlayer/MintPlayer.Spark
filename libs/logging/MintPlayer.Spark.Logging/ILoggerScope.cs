@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using MintPlayer.Spark.Abstractions;
 
 namespace MintPlayer.Spark.Logging;
 
@@ -40,7 +41,7 @@ public interface ILoggerScopeProvider<out TCategoryName> : ILoggerScopeProvider;
 public interface ILoggerScope : IAsyncDisposable, IDisposable
 {
     /// <summary>The <c>Log</c> document's id.</summary>
-    string Id { get; }
+    Id<Models.Log> Id { get; }
 
     /// <summary>The application's own <see cref="ILogger"/>: one call reaches every configured sink and this log.</summary>
     ILogger Logger { get; }

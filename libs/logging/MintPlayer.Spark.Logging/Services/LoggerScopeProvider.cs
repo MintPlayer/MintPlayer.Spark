@@ -1,4 +1,6 @@
 using Microsoft.Extensions.Logging;
+using MintPlayer.Spark.Abstractions;
+using MintPlayer.Spark.Logging.Models;
 
 namespace MintPlayer.Spark.Logging.Services;
 
@@ -21,7 +23,7 @@ internal class LoggerScopeProvider(ILoggerFactory loggerFactory, LogWriter write
 #pragma warning restore CA2254
     }
 
-    private LoggerScope Open(string id, string? relatedPersistentObjectId, DateTime? expiresAtUtc)
+    private LoggerScope Open(Id<Log> id, string? relatedPersistentObjectId, DateTime? expiresAtUtc)
     {
         var logger = loggerFactory.CreateLogger(categoryName);
         var state = new LogScopeState(id, relatedPersistentObjectId, expiresAtUtc);
@@ -38,7 +40,7 @@ internal sealed class LoggerScope(LogScopeState state, IDisposable? handle, ILog
 {
     private int disposed;
 
-    public string Id => state.Id;
+    public Id<Log> Id => state.Id;
 
     public ILogger Logger => logger;
 

@@ -57,7 +57,7 @@ public abstract class LogScopeTests : IAsyncLifetime
         string id;
         await using (var scope = Scopes.CreateScope())
         {
-            id = scope.Id;
+            id = scope.Id.Value;
             scope.Logger.LogInformation("Started {Number}", 42);
             await Task.Yield();
             Elsewhere.LogWarning(new InvalidOperationException("boom"), "Deep down");
@@ -80,7 +80,7 @@ public abstract class LogScopeTests : IAsyncLifetime
         Elsewhere.LogInformation("No scope");
         string id;
         await using (var scope = Scopes.CreateScope())
-            id = scope.Id;
+            id = scope.Id.Value;
 
         (await LoadAsync(id)).Should().BeNull("an empty scope writes nothing");
     }
@@ -91,11 +91,11 @@ public abstract class LogScopeTests : IAsyncLifetime
         string outer, inner;
         await using (var o = Scopes.CreateScope())
         {
-            outer = o.Id;
+            outer = o.Id.Value;
             Elsewhere.LogInformation("Outer before");
             await using (var i = Scopes.CreateScope())
             {
-                inner = i.Id;
+                inner = i.Id.Value;
                 Elsewhere.LogInformation("Inner");
             }
             Elsewhere.LogInformation("Outer after");
@@ -113,7 +113,7 @@ public abstract class LogScopeTests : IAsyncLifetime
             first.Logger.LogInformation("Received");
         await Scopes.LogAsync("commands/github/1/2", LogLevel.Information, "Done", expiresAtUtc: expires);
 
-        var log = await LoadAsync(LogIds.ForKey("commands/github/1/2"));
+        var log = await LoadAsync(LogIds.ForKey("commands/github/1/2").Value);
         log!.Entries.Select(e => e.Text).Should().Equal("Received", "Done");
         log.RelatedPersistentObjectId.Should().Be("CommandInvocations/github/1/2");
         log.ExpiresAtUtc.Should().Be(expires);
@@ -128,7 +128,7 @@ public abstract class LogScopeTests : IAsyncLifetime
             scope.Logger.LogInformation("Writer {N}", n);
         })));
 
-        (await LoadAsync(LogIds.ForKey("tests/concurrent")))!.Entries.Select(e => e.Text)
+        (await LoadAsync(LogIds.ForKey("tests/concurrent").Value))!.Entries.Select(e => e.Text)
             .Should().BeEquivalentTo(Enumerable.Range(0, 5).Select(n => $"Writer {n}"));
     }
 
@@ -140,11 +140,11 @@ public abstract class LogScopeTests : IAsyncLifetime
         string outer, inner;
         await using (var o = Scopes.CreateScope())
         {
-            outer = o.Id;
+            outer = o.Id.Value;
             Elsewhere.LogInformation("Outer");
             await using (var i = Scopes.CreateScope())
             {
-                inner = i.Id;
+                inner = i.Id.Value;
                 Elsewhere.LogInformation("Inner");
                 late = Task.Run(async () =>
                 {
@@ -167,7 +167,7 @@ public abstract class LogScopeTests : IAsyncLifetime
         string id;
         await using (var scope = filtered.GetRequiredService<ILoggerScopeProvider>().CreateScope())
         {
-            id = scope.Id;
+            id = scope.Id.Value;
             scope.Logger.LogInformation("Chatty");
             scope.Logger.LogWarning("Kept");
         }
@@ -181,7 +181,7 @@ public abstract class LogScopeTests : IAsyncLifetime
         var typed = services.GetRequiredService<ILoggerScopeProvider<LogScopeTests>>();
         await using var scope = typed.CreateScope();
         scope.Logger.IsEnabled(LogLevel.Information).Should().BeTrue();
-        scope.Id.Should().StartWith(LogIds.Prefix);
+        scope.Id.Value.Should().StartWith(LogIds.Prefix);
     }
 }
 
@@ -221,7 +221,7 @@ public class LogIdsTests
     [InlineData("a/b")]
     [InlineData("runs/v1.2:3")]
     public void A_feature_prefix_and_an_id_is_a_key(string key)
-        => LogIds.ForKey(key).Should().Be("Logs/" + key);
+        => LogIds.ForKey(key).Value.Should().Be("logs/" + key.ToLowerInvariant(), "every id is lower case (#536 D7)");
 
     [Theory]
     [InlineData("")]
@@ -240,7 +240,7 @@ public class LogIdsTests
     [Fact]
     public void A_key_is_at_most_200_characters()
     {
-        LogIds.ForKey("a/" + new string('b', 198)).Should().NotBeNull();
+        LogIds.ForKey("a/" + new string('b', 198)).IsEmpty.Should().BeFalse();
         ((Action)(() => LogIds.ForKey("a/" + new string('b', 199)))).Should().Throw<ArgumentException>();
     }
 }

@@ -47,7 +47,7 @@ public class CommandLifecycleTests : CoverageRavenTest
         var record = await CommandTestKit.InvocationAsync(store, Repo, Comment);
         record!.Command.Should().Be("/queue", "only the first line is the command");
         record.Outcome.Should().Be(ECommandOutcome.Received);
-        record.LogId.Should().Be(LogIds.ForKey(CommandInvocation.LogKeyOf(first!)));
+        record.LogId.Should().Be(LogIds.ForKey(CommandInvocation.LogKeyOf(first!)).Value);
         record.ExpiresAtUtc.HasValue.Should().BeFalse("G5: a command still going never expires");
     }
 
@@ -152,7 +152,7 @@ public class CommandLifecycleTests : CoverageRavenTest
         var (_, lifecycle) = await LifecycleAsync();
         var id = await lifecycle.BeginAsync(Repo, 7, Comment, "/queue", "maintainer");
 
-        await lifecycle.LinkLogAsync(id, LogIds.ForKey("merge-queue/github/6600/7/run-1"));
+        await lifecycle.LinkLogAsync(id, LogIds.ForKey("merge-queue/github/6600/7/run-1").Value);
         await lifecycle.FinishAsync(id, ECommandOutcome.Refused, "not mergeable");
 
         logs.Lines.Should().ContainSingle().Which.Key.Should().Be("merge-queue/github/6600/7/run-1");

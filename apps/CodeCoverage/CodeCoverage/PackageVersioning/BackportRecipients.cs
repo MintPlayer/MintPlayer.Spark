@@ -85,7 +85,7 @@ public partial class BackportRecipient : IRecipient<BackportMessage>
         await using var log = commands.OpenLog(invocation,
             $"backports/{repository.Provider.ToCanonicalString()}/{repository.GitHubId.ToString(CultureInfo.InvariantCulture)}/{message.Number}/{time.GetUtcNow().UtcTicks}",
             repository.Id);
-        logId = log.Id;
+        logId = log.Id.Value;
         if (repository.Connection == RepositoryConnection.Disconnected || repository.Archived
             || forges.FirstOrDefault(f => f.Provider == repository.Provider) is not { } forge
             || queues.FirstOrDefault(q => q.Provider == repository.Provider) is not { } git

@@ -6,10 +6,11 @@ namespace MintPlayer.Spark.Logging.Models;
 /// What was logged inside one log scope (<see cref="ILoggerScope"/>), in order. Written only by the scope; read as a
 /// persistent object whose access the shipped <c>LogActions</c> inherits from <see cref="RelatedPersistentObjectId"/>.
 /// </summary>
-public class Log : IExpiring
+[IdKind(SparkIdKind.Natural)]
+public partial class Log : IExpiring
 {
-    /// <summary><c>Logs/{key}</c>: a generated Guid, or the key a feature passed to reopen the same log.</summary>
-    public string? Id { get; set; }
+    /// <summary><c>logs/{key}</c>: a generated Guid, or the key a feature passed to reopen the same log.</summary>
+    public Id<Log> Id { get; set; }
 
     /// <summary>The record this log belongs to, if any: the log is readable exactly when that record is.</summary>
     public string? RelatedPersistentObjectId { get; set; }

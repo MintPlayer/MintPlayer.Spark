@@ -65,9 +65,9 @@ internal sealed class RecordingLoggerScopes<T> : ILoggerScopeProvider<T>
         return Task.CompletedTask;
     }
 
-    private sealed class Scope(string id) : ILoggerScope
+    private sealed class Scope(MintPlayer.Spark.Abstractions.Id<MintPlayer.Spark.Logging.Models.Log> id) : ILoggerScope
     {
-        public string Id { get; } = id;
+        public MintPlayer.Spark.Abstractions.Id<MintPlayer.Spark.Logging.Models.Log> Id { get; } = id;
         public ILogger Logger => NullLogger.Instance;
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
         public void Dispose() { }

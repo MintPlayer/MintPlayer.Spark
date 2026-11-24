@@ -1,5 +1,6 @@
 using System.Collections;
 using System.Collections.Concurrent;
+using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Logging.Models;
 
 namespace MintPlayer.Spark.Logging.Services;
@@ -8,13 +9,13 @@ namespace MintPlayer.Spark.Logging.Services;
 /// The state a log scope pushes through <c>ILogger.BeginScope</c>. The document provider files each entry under the
 /// innermost one open in the async flow. As a key/value list it also tags every other sink's entries with <c>LogId</c>.
 /// </summary>
-internal sealed class LogScopeState(string id, string? relatedPersistentObjectId, DateTime? expiresAtUtc)
+internal sealed class LogScopeState(Id<Log> id, string? relatedPersistentObjectId, DateTime? expiresAtUtc)
     : IReadOnlyList<KeyValuePair<string, object?>>
 {
     private readonly ConcurrentQueue<LogEntry> entries = new();
     private volatile bool closed;
 
-    public string Id { get; } = id;
+    public Id<Log> Id { get; } = id;
     public string? RelatedPersistentObjectId { get; } = relatedPersistentObjectId;
     public DateTime? ExpiresAtUtc { get; } = expiresAtUtc;
 
@@ -43,7 +44,7 @@ internal sealed class LogScopeState(string id, string? relatedPersistentObjectId
 
     public int Count => 1;
     public KeyValuePair<string, object?> this[int index]
-        => index == 0 ? new("LogId", Id) : throw new ArgumentOutOfRangeException(nameof(index));
+        => index == 0 ? new("LogId", Id.Value) : throw new ArgumentOutOfRangeException(nameof(index));
     public IEnumerator<KeyValuePair<string, object?>> GetEnumerator() { yield return this[0]; }
     IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
     public override string ToString() => $"LogId:{Id}";
