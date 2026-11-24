@@ -29,7 +29,7 @@ public class SettingsEndpointTests : SparkTestDriver
     private const string AdminsName = "StAdmins";
     private const string EditorsName = "StEditors";
 
-    private static readonly string MaxPagesId = Setting.IdFor(SparkSettingsTests.StSettings.MaxPages.Key);
+    private static readonly string MaxPagesId = Setting.IdFor(SparkSettingsTests.StSettings.MaxPages.Key).Value;
 
     private readonly List<IAsyncDisposable> factories = [];
 
@@ -221,7 +221,8 @@ public class SettingsEndpointTests : SparkTestDriver
         const string oldId = "Settings/Seo:Removed";
         using (var session = Store.OpenAsyncSession())
         {
-            await session.StoreAsync(new Setting { Id = oldId, Key = "Seo:Removed", Type = "Int32" }, oldId);
+            // A legacy mixed-case id, as production stores it (#536 O15: no re-key).
+            await session.StoreAsync(new Setting { Id = MintPlayer.Spark.Abstractions.Id<Setting>.FromTrusted(oldId), Key = "Seo:Removed", Type = "Int32" }, oldId);
             await session.SaveChangesAsync();
         }
 

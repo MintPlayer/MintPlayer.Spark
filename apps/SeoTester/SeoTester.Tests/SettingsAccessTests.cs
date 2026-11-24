@@ -30,16 +30,16 @@ public class SettingsAccessTests(SeoTesterHostFixture host)
 
         status.Should().Be(HttpStatusCode.OK, raw);
         var ids = body.GetProperty("items").EnumerateArray().Select(i => i.GetProperty("id").GetString()).ToList();
-        ids.Should().Contain(Setting.IdFor(SeoSettings.UnverifiedPagesPerRun.Key));
-        ids.Should().Contain(Setting.IdFor(SeoSettings.Sharing.Key));
-        ids.Should().Contain(Setting.IdFor(SeoQuotas.Audits.Limit.Key));
+        ids.Should().Contain(Setting.IdFor(SeoSettings.UnverifiedPagesPerRun.Key).Value);
+        ids.Should().Contain(Setting.IdFor(SeoSettings.Sharing.Key).Value);
+        ids.Should().Contain(Setting.IdFor(SeoQuotas.Audits.Limit.Key).Value);
     }
 
     [Fact]
     public async Task A_signed_in_user_who_is_not_an_administrator_neither_lists_nor_edits_a_setting()
     {
         using var client = host.CreateClient();
-        var id = Setting.IdFor(SeoSettings.UnverifiedPagesPerRun.Key);
+        var id = Setting.IdFor(SeoSettings.UnverifiedPagesPerRun.Key).Value;
 
         var (listStatus, _, _) = await SeoRequests.PostAsync(client, "/spark/queries/execute", Wire.Query(SettingsQueryId), "SparkUsers/member");
         var (editStatus, _, _) = await SeoRequests.PostAsync(client, "/spark/po/update", await EditAsync(id, "5000"), "SparkUsers/member");

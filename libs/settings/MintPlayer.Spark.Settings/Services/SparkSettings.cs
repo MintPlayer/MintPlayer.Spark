@@ -68,7 +68,7 @@ internal sealed class SparkSettings(
         using var session = store.OpenAsyncSession();
         for (var start = 0; ; start += PageSize)
         {
-            var page = await session.Advanced.LoadStartingWithAsync<Setting>(Setting.IdFor(string.Empty), start: start, pageSize: PageSize, token: cancellationToken);
+            var page = await session.Advanced.LoadStartingWithAsync<Setting>(Setting.IdFor(string.Empty).Value, start: start, pageSize: PageSize, token: cancellationToken);
             var count = 0;
             foreach (var setting in page)
             {

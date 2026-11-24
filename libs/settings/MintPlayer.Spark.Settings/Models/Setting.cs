@@ -1,3 +1,5 @@
+using MintPlayer.Spark.Abstractions;
+
 namespace MintPlayer.Spark.Settings.Models;
 
 /// <summary>
@@ -6,10 +8,11 @@ namespace MintPlayer.Spark.Settings.Models;
 /// <see cref="SparkSetting{T}"/> and keeps <see cref="Type"/>, <see cref="Default"/> and
 /// <see cref="Description"/> in step with the code; only <see cref="Value"/> is the administrator's.
 /// </summary>
-public class Setting
+[IdKind(SparkIdKind.Natural)]
+public partial class Setting
 {
-    /// <summary>The document id, <c>Settings/{Key}</c>.</summary>
-    public string? Id { get; set; }
+    /// <summary>The document id, <c>settings/{key}</c>.</summary>
+    public Id<Setting> Id { get; set; }
 
     /// <summary>The configuration key the setting overrides, e.g. <c>Seo:Limits:MaxPages</c>.</summary>
     public string Key { get; set; } = string.Empty;
@@ -27,5 +30,5 @@ public class Setting
     public string Description { get; set; } = string.Empty;
 
     /// <summary>The document id of the setting <paramref name="key"/>.</summary>
-    public static string IdFor(string key) => "Settings/" + key;
+    public static Id<Setting> IdFor(string key) => Id<Setting>.FromTrusted("settings/" + key);
 }

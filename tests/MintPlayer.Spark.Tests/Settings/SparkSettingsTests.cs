@@ -61,9 +61,9 @@ public class SparkSettingsTests : SparkTestDriver
     private async Task StoreValueAsync(string key, string? value)
     {
         using var session = Store.OpenAsyncSession();
-        var setting = await session.LoadAsync<Setting>(Setting.IdFor(key)) ?? new Setting { Id = Setting.IdFor(key), Key = key };
+        var setting = await session.LoadAsync<Setting>(Setting.IdFor(key).Value) ?? new Setting { Id = Setting.IdFor(key), Key = key };
         setting.Value = value;
-        await session.StoreAsync(setting, setting.Id);
+        await session.StoreAsync(setting, setting.Id.Value);
         await session.SaveChangesAsync();
     }
 
@@ -94,7 +94,7 @@ public class SparkSettingsTests : SparkTestDriver
         await StoreValueAsync(StSettings.MaxPages.Key, "25");
         using (var session = Store.OpenAsyncSession())
         {
-            session.Delete(Setting.IdFor(StSettings.MaxPages.Key));
+            session.Delete(Setting.IdFor(StSettings.MaxPages.Key).Value);
             await session.SaveChangesAsync();
         }
 
@@ -194,7 +194,7 @@ public class SparkSettingsTests : SparkTestDriver
         using (var session = Store.OpenAsyncSession())
         {
             // A stale description from an older build, which the next seed refreshes.
-            var stale = await session.LoadAsync<Setting>(Setting.IdFor(StSettings.CoolDown.Key));
+            var stale = await session.LoadAsync<Setting>(Setting.IdFor(StSettings.CoolDown.Key).Value);
             stale.Description = "old text";
             stale.Value = "00:10:00";
             await session.SaveChangesAsync();
