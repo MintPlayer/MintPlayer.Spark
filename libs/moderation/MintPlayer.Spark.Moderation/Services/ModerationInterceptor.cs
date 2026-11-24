@@ -158,7 +158,7 @@ internal sealed partial class ModerationInterceptor : IBeforeSave, IAfterSave, I
         if (!typeof(IModeratable).IsAssignableFrom(entityType))
             return false;
         using var check = documentStore.OpenAsyncSession();
-        if (!await check.Advanced.ExistsAsync(ModerationIds.Lock(id)))
+        if (!await check.Advanced.ExistsAsync(ModerationIds.Lock(id).Value))
             return false;
         // Moderators of the type are exempt.
         return !await permissions.IsAllowedAsync(ModerationRights.Lock, TypeName(entityType));
@@ -177,11 +177,11 @@ internal sealed partial class ModerationInterceptor : IBeforeSave, IAfterSave, I
         var now = UtcNow;
         var counterId = ModerationIds.PostCounter(snapshot.UserId, ModerationIds.Day(now));
         // On the request session: committed in the same transaction as the post it counts.
-        var counter = await session.LoadAsync<ModerationCounter>(counterId) ?? new ModerationCounter();
+        var counter = await session.LoadAsync<ModerationCounter>(counterId.Value) ?? new ModerationCounter();
         if (counter.Count >= limits.MaxPostsPerDay)
             throw new SparkThrottledException($"New accounts may post {limits.MaxPostsPerDay} times a day.", now.Date.AddDays(1) - now);
         counter.Count++;
-        await session.StoreAsync(counter, counterId);
+        await session.StoreAsync(counter, counterId.Value);
         session.Advanced.GetMetadataFor(counter)["@expires"] = now.Date.AddDays(2).ToString("O");
     }
 

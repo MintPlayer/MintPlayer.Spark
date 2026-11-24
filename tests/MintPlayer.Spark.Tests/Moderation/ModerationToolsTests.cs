@@ -229,19 +229,19 @@ public class ModerationToolsTests : SparkTestDriver
         await host.SendAsync("/spark/moderation/flag", Wire.Typed(MoHost.PostTypeId, new { reason = "meh" }, other), Carol);
         (await host.SendAsync("/spark/moderation/flag", Wire.Typed(MoHost.PostTypeId, new { reason = "" }, post), Carol)).Status.Should().Be(HttpStatusCode.BadRequest);
 
-        var caseId = ModerationIds.FlagCase(post);
+        var caseId = ModerationIds.FlagCase(post).Value;
         (await host.LoadAsync<ReviewCase>(caseId))!.FlagCount.Should().Be(2, "one open flag per user and post");
 
         (await host.SendAsync("/spark/moderation/cases", new { }, Bob)).Status.Should().Be(HttpStatusCode.NotFound, "no Review right");
         var (_, queue) = await host.ModeratorAsync("/spark/moderation/cases", new { });
-        queue.GetProperty("result").EnumerateArray().Select(c => c.GetProperty("id").GetString()).Should().BeEquivalentTo([caseId, ModerationIds.FlagCase(other)]);
+        queue.GetProperty("result").EnumerateArray().Select(c => c.GetProperty("id").GetString()).Should().BeEquivalentTo([caseId, ModerationIds.FlagCase(other).Value]);
 
         (await host.ModeratorAsync("/spark/moderation/case/decide", new { caseId, decision = "uphold" })).Status.Should().Be(HttpStatusCode.OK);
-        (await host.ModeratorAsync("/spark/moderation/case/decide", new { caseId = ModerationIds.FlagCase(other), decision = "decline" })).Status.Should().Be(HttpStatusCode.OK);
+        (await host.ModeratorAsync("/spark/moderation/case/decide", new { caseId = ModerationIds.FlagCase(other).Value, decision = "decline" })).Status.Should().Be(HttpStatusCode.OK);
 
         (await host.SummaryAsync(Bob)).Total.Should().Be(2, "flag upheld: +2, credited at once");
         (await host.SummaryAsync(Carol)).Total.Should().Be(2, "one upheld (+2), one declined (0)");
-        (await host.LoadAsync<ModerationFlag>(ModerationIds.Flag(Carol, other)))!.Status.Should().Be(ModerationCaseStatus.Declined);
+        (await host.LoadAsync<ModerationFlag>(ModerationIds.Flag(Carol, other).Value))!.Status.Should().Be(ModerationCaseStatus.Declined);
     }
 
     // ---- suspensions -----------------------------------------------------------------------------

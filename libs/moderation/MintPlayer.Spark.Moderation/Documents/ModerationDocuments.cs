@@ -1,3 +1,5 @@
+using MintPlayer.Spark.Abstractions;
+
 namespace MintPlayer.Spark.Moderation.Documents;
 
 // Moderation's data are plain RavenDB documents behind /spark/moderation/* (#460, T6), not persistent
@@ -6,9 +8,10 @@ namespace MintPlayer.Spark.Moderation.Documents;
 // one reversal per original entry), so the rule is enforced by the id, not by a query.
 
 /// <summary>A voter's vote on one target. Id: <see cref="ModerationIds.Vote"/>.</summary>
-public sealed class ModerationVote
+[IdKind(SparkIdKind.Natural)]
+public sealed partial class ModerationVote
 {
-    public string? Id { get; set; }
+    public Id<ModerationVote> Id { get; set; }
     public string VoterId { get; set; } = string.Empty;
     public string TargetId { get; set; } = string.Empty;
     public string TargetType { get; set; } = string.Empty;
@@ -33,9 +36,10 @@ public sealed class ModerationVote
 /// <see cref="Credited"/> and <see cref="CompensatedById"/> flags: a correction is a compensating
 /// entry (<see cref="ReputationEventKinds.Reversal"/> / <see cref="ReputationEventKinds.Retraction"/>).
 /// </summary>
-public sealed class ReputationEvent
+[IdKind(SparkIdKind.Natural)]
+public sealed partial class ReputationEvent
 {
-    public string? Id { get; set; }
+    public Id<ReputationEvent> Id { get; set; }
     /// <summary>Whose reputation this changes. <see cref="ModerationIds.DeletedUser"/> once that account is deleted.</summary>
     public string UserId { get; set; } = string.Empty;
     public string Kind { get; set; } = string.Empty;
@@ -68,9 +72,10 @@ public sealed class ReputationEvent
 }
 
 /// <summary>The score of one target, kept beside it (never on it: a vote must not move the target's etag). Id: <see cref="ModerationIds.Tally"/>.</summary>
-public sealed class ModerationTally
+[IdKind(SparkIdKind.Natural)]
+public sealed partial class ModerationTally
 {
-    public string? Id { get; set; }
+    public Id<ModerationTally> Id { get; set; }
     public string TargetId { get; set; } = string.Empty;
     public int Up { get; set; }
     public int Down { get; set; }
@@ -78,25 +83,28 @@ public sealed class ModerationTally
 }
 
 /// <summary>An exact per-day counter for the write-path caps. Id: <see cref="ModerationIds.Counter"/>; expires after 31 days.</summary>
-public sealed class ModerationCounter
+[IdKind(SparkIdKind.Natural)]
+public sealed partial class ModerationCounter
 {
-    public string? Id { get; set; }
+    public Id<ModerationCounter> Id { get; set; }
     public int Count { get; set; }
 }
 
 /// <summary>Per-user activity (the minActiveDays gate). Id: <see cref="ModerationIds.Profile"/>.</summary>
-public sealed class ModerationProfile
+[IdKind(SparkIdKind.Natural)]
+public sealed partial class ModerationProfile
 {
-    public string? Id { get; set; }
+    public Id<ModerationProfile> Id { get; set; }
     public string UserId { get; set; } = string.Empty;
     public int ActiveDays { get; set; }
     public string? LastActiveDay { get; set; }
 }
 
 /// <summary>A user's reputation as the privilege provider reads it, recomputed from the ledger index. Id: <see cref="ModerationIds.Summary"/>.</summary>
-public sealed class ReputationSummary
+[IdKind(SparkIdKind.Natural)]
+public sealed partial class ReputationSummary
 {
-    public string? Id { get; set; }
+    public Id<ReputationSummary> Id { get; set; }
     public string UserId { get; set; } = string.Empty;
     /// <summary>Sum of every credited entry — the number shown on the badge.</summary>
     public int Total { get; set; }
@@ -116,9 +124,10 @@ public sealed class ReputationSummary
 }
 
 /// <summary>A flag raised on a target. Id: <see cref="ModerationIds.Flag"/> (one per flagger and target).</summary>
-public sealed class ModerationFlag
+[IdKind(SparkIdKind.Natural)]
+public sealed partial class ModerationFlag
 {
-    public string? Id { get; set; }
+    public Id<ModerationFlag> Id { get; set; }
     public string FlaggerId { get; set; } = string.Empty;
     public string TargetId { get; set; } = string.Empty;
     public string TargetType { get; set; } = string.Empty;
@@ -141,9 +150,10 @@ public static class ModerationCaseStatus
 }
 
 /// <summary>A case in the review queue: a flagged target, or accounts a fraud rule wants a human to look at.</summary>
-public sealed class ReviewCase
+[IdKind(SparkIdKind.Natural)]
+public sealed partial class ReviewCase
 {
-    public string? Id { get; set; }
+    public Id<ReviewCase> Id { get; set; }
     /// <summary><c>flag</c>, or the fraud rule id (<c>reciprocal</c>, <c>fast-voting</c>, <c>registration-cluster</c>).</summary>
     public string Kind { get; set; } = string.Empty;
     public string Status { get; set; } = ModerationCaseStatus.Open;
@@ -161,9 +171,10 @@ public sealed class ReviewCase
 }
 
 /// <summary>A locked target. Id: <see cref="ModerationIds.Lock"/>.</summary>
-public sealed class ModerationLock
+[IdKind(SparkIdKind.Natural)]
+public sealed partial class ModerationLock
 {
-    public string? Id { get; set; }
+    public Id<ModerationLock> Id { get; set; }
     public string TargetId { get; set; } = string.Empty;
     public string TargetType { get; set; } = string.Empty;
     public string? Reason { get; set; }
@@ -172,9 +183,10 @@ public sealed class ModerationLock
 }
 
 /// <summary>A suspended account. Id: <see cref="ModerationIds.Suspension"/>; read by id, so it is effective instantly.</summary>
-public sealed class ModerationSuspension
+[IdKind(SparkIdKind.Natural)]
+public sealed partial class ModerationSuspension
 {
-    public string? Id { get; set; }
+    public Id<ModerationSuspension> Id { get; set; }
     public string UserId { get; set; } = string.Empty;
     /// <summary>Null: until lifted.</summary>
     public DateTime? UntilUtc { get; set; }
@@ -185,9 +197,9 @@ public sealed class ModerationSuspension
 }
 
 /// <summary>One moderation decision, for the audit log.</summary>
-public sealed class ModerationAuditEntry
+public sealed partial class ModerationAuditEntry
 {
-    public string? Id { get; set; }
+    public Id<ModerationAuditEntry> Id { get; set; }
     public string? ActorId { get; set; }
     public string Action { get; set; } = string.Empty;
     public string? TargetId { get; set; }
@@ -203,9 +215,10 @@ public sealed class ModerationAuditEntry
 /// "This account was seen from this network" (fraud measure 9): an HMAC of the truncated address
 /// (/24 IPv4, /48 IPv6) under a rotated server-side key — never the address. Expires after 90 days.
 /// </summary>
-public sealed class ModerationIpObservation
+[IdKind(SparkIdKind.Natural)]
+public sealed partial class ModerationIpObservation
 {
-    public string? Id { get; set; }
+    public Id<ModerationIpObservation> Id { get; set; }
     public string UserId { get; set; } = string.Empty;
     public string KeyId { get; set; } = string.Empty;
     public string Hash { get; set; } = string.Empty;
@@ -213,9 +226,10 @@ public sealed class ModerationIpObservation
 }
 
 /// <summary>One period's HMAC key, stored Data-Protection-protected (the key ring lives outside the database).</summary>
-public sealed class ModerationIpKey
+[IdKind(SparkIdKind.Natural)]
+public sealed partial class ModerationIpKey
 {
-    public string? Id { get; set; }
+    public Id<ModerationIpKey> Id { get; set; }
     public string ProtectedKey { get; set; } = string.Empty;
     public DateTime CreatedAtUtc { get; set; }
 }

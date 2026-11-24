@@ -43,9 +43,9 @@ internal static class ModerationAccountEraser
 
         using (var session = store.OpenAsyncSession())
         {
-            session.Delete(ModerationIds.Profile(userId));
-            session.Delete(ModerationIds.Summary(userId));
-            session.Delete(ModerationIds.Suspension(userId));
+            session.Delete(ModerationIds.Profile(userId).Value);
+            session.Delete(ModerationIds.Summary(userId).Value);
+            session.Delete(ModerationIds.Suspension(userId).Value);
             await session.SaveChangesAsync(cancellationToken);
         }
 
@@ -102,8 +102,8 @@ internal sealed partial class ModerationPersonalDataContributor : ISparkPersonal
         using var session = documentStore.OpenAsyncSession();
         var votes = await session.Query<ModerationVote>().Where(v => v.VoterId == userId).Take(10_000).ToListAsync(cancellationToken);
         var flags = await session.Query<ModerationFlag>().Where(f => f.FlaggerId == userId).Take(10_000).ToListAsync(cancellationToken);
-        var summary = await session.LoadAsync<ReputationSummary>(ModerationIds.Summary(userId), cancellationToken);
-        var suspension = await session.LoadAsync<ModerationSuspension>(ModerationIds.Suspension(userId), cancellationToken);
+        var summary = await session.LoadAsync<ReputationSummary>(ModerationIds.Summary(userId).Value, cancellationToken);
+        var suspension = await session.LoadAsync<ModerationSuspension>(ModerationIds.Suspension(userId).Value, cancellationToken);
         return new
         {
             reputation = summary?.Total ?? 0,

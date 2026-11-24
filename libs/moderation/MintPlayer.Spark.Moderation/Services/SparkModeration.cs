@@ -86,17 +86,17 @@ internal sealed partial class SparkModeration : ISparkModeration
         var authorId = target.AuthorId;
 
         using var session = OpenSession();
-        var voteLazy = session.Advanced.Lazily.LoadAsync<ModerationVote>(voteId);
-        var tallyLazy = session.Advanced.Lazily.LoadAsync<ModerationTally>(ModerationIds.Tally(target.Id));
-        var castLazy = session.Advanced.Lazily.LoadAsync<ModerationCounter>(ModerationIds.CastCounter(voterId, day));
+        var voteLazy = session.Advanced.Lazily.LoadAsync<ModerationVote>(voteId.Value);
+        var tallyLazy = session.Advanced.Lazily.LoadAsync<ModerationTally>(ModerationIds.Tally(target.Id).Value);
+        var castLazy = session.Advanced.Lazily.LoadAsync<ModerationCounter>(ModerationIds.CastCounter(voterId, day).Value);
         Lazy<Task<ModerationCounter>>? receivedLazy = null;
         Lazy<Task<Dictionary<string, ModerationCounter>>>? pairLazy = null;
         var pairIds = new List<string>();
         if (authorId is not null)
         {
-            receivedLazy = session.Advanced.Lazily.LoadAsync<ModerationCounter>(ModerationIds.RecipientCounter(authorId, day));
+            receivedLazy = session.Advanced.Lazily.LoadAsync<ModerationCounter>(ModerationIds.RecipientCounter(authorId, day).Value);
             for (var d = 0; d < 30; d++)
-                pairIds.Add(ModerationIds.PairCounter(voterId, authorId, ModerationIds.Day(now.AddDays(-d))));
+                pairIds.Add(ModerationIds.PairCounter(voterId, authorId, ModerationIds.Day(now.AddDays(-d))).Value);
             pairLazy = session.Advanced.Lazily.LoadAsync<ModerationCounter>(pairIds);
         }
         await session.Advanced.Eagerly.ExecuteAllPendingLazyOperationsAsync(cancellationToken);
@@ -142,7 +142,7 @@ internal sealed partial class SparkModeration : ISparkModeration
             if (direction > 0) tally.Up++;
             else tally.Down++;
             cast.Count++;
-            await StoreCounterAsync(session, cast, ModerationIds.CastCounter(voterId, day), now);
+            await StoreCounterAsync(session, cast, ModerationIds.CastCounter(voterId, day).Value, now);
 
             if (authorId is not null)
             {
@@ -178,7 +178,7 @@ internal sealed partial class SparkModeration : ISparkModeration
                 if (points > 0)
                 {
                     received.Count += points;
-                    await StoreCounterAsync(session, received, ModerationIds.RecipientCounter(authorId, day), now);
+                    await StoreCounterAsync(session, received, ModerationIds.RecipientCounter(authorId, day).Value, now);
                 }
                 if (points != 0)
                 {
@@ -186,11 +186,11 @@ internal sealed partial class SparkModeration : ISparkModeration
                     await StoreCounterAsync(session, pairToday, pairIds[0], now);
                 }
 
-                var recipientEvent = NewVoteEvent(voteId, vote.Revision, "recipient", authorId, kind, points, voterId, target, now, day, fraud);
+                var recipientEvent = NewVoteEvent(voteId.Value, vote.Revision, "recipient", authorId, kind, points, voterId, target, now, day, fraud);
                 recipientEvent.VoteWeight = direction > 0 && points > 0 ? 1 : 0;
                 recipientEvent.ZeroedBy = zeroedBy;
-                await session.StoreAsync(recipientEvent, string.Empty, recipientEvent.Id, cancellationToken);
-                vote.EventIds.Add(recipientEvent.Id!);
+                await session.StoreAsync(recipientEvent, string.Empty, recipientEvent.Id.Value, cancellationToken);
+                vote.EventIds.Add(recipientEvent.Id.Value);
             }
 
             if (direction < 0 && ChargesDownvoter(target.TypeName, settings))
@@ -198,16 +198,16 @@ internal sealed partial class SparkModeration : ISparkModeration
                 var cost = settings.PointsFor(ReputationEventKinds.DownvoteCast);
                 if (cost != 0)
                 {
-                    var voterEvent = NewVoteEvent(voteId, vote.Revision, "voter", voterId, ReputationEventKinds.DownvoteCast, cost, null, target, now, day, fraud);
-                    await session.StoreAsync(voterEvent, string.Empty, voterEvent.Id, cancellationToken);
-                    vote.EventIds.Add(voterEvent.Id!);
+                    var voterEvent = NewVoteEvent(voteId.Value, vote.Revision, "voter", voterId, ReputationEventKinds.DownvoteCast, cost, null, target, now, day, fraud);
+                    await session.StoreAsync(voterEvent, string.Empty, voterEvent.Id.Value, cancellationToken);
+                    vote.EventIds.Add(voterEvent.Id.Value);
                 }
             }
         }
 
         if (isNew)
-            await session.StoreAsync(vote, string.Empty, voteId, cancellationToken);
-        await session.StoreAsync(tally, ModerationIds.Tally(target.Id), cancellationToken);
+            await session.StoreAsync(vote, string.Empty, voteId.Value, cancellationToken);
+        await session.StoreAsync(tally, ModerationIds.Tally(target.Id).Value, cancellationToken);
         await session.SaveChangesAsync(cancellationToken);
         return State(target.Id, tally, direction, locked: false);
     }
@@ -256,17 +256,17 @@ internal sealed partial class SparkModeration : ISparkModeration
         // One type per request (objectTypeId), so the caller's rights are asked once, not per id.
         var (canUp, canDown) = await VoteRightsAsync(visible[0].TypeName, cancellationToken);
         using var session = documentStore.OpenAsyncSession();
-        var tallies = await session.LoadAsync<ModerationTally>(visible.Select(t => ModerationIds.Tally(t.Id)), cancellationToken);
-        var locks = await session.LoadAsync<ModerationLock>(visible.Select(t => ModerationIds.Lock(t.Id)), cancellationToken);
+        var tallies = await session.LoadAsync<ModerationTally>(visible.Select(t => ModerationIds.Tally(t.Id).Value), cancellationToken);
+        var locks = await session.LoadAsync<ModerationLock>(visible.Select(t => ModerationIds.Lock(t.Id).Value), cancellationToken);
         var votes = voterId is null
             ? new Dictionary<string, ModerationVote>()
-            : await session.LoadAsync<ModerationVote>(visible.Select(t => ModerationIds.Vote(voterId, t.Id)), cancellationToken);
+            : await session.LoadAsync<ModerationVote>(visible.Select(t => ModerationIds.Vote(voterId, t.Id).Value), cancellationToken);
 
         return visible.Select(t => WithRights(State(
             t.Id,
-            tallies.GetValueOrDefault(ModerationIds.Tally(t.Id)) ?? new ModerationTally { TargetId = t.Id },
-            voterId is null ? 0 : votes.GetValueOrDefault(ModerationIds.Vote(voterId, t.Id))?.Direction ?? 0,
-            locks.GetValueOrDefault(ModerationIds.Lock(t.Id)) is not null), canUp, canDown)).ToList();
+            tallies.GetValueOrDefault(ModerationIds.Tally(t.Id).Value) ?? new ModerationTally { TargetId = t.Id },
+            voterId is null ? 0 : votes.GetValueOrDefault(ModerationIds.Vote(voterId, t.Id).Value)?.Direction ?? 0,
+            locks.GetValueOrDefault(ModerationIds.Lock(t.Id).Value) is not null), canUp, canDown)).ToList();
     }
 
     private static ModerationVoteState State(string id, ModerationTally tally, int mine, bool locked)
@@ -312,8 +312,8 @@ internal sealed partial class SparkModeration : ISparkModeration
                 using var session = OpenSession();
                 var flagId = ModerationIds.Flag(flaggerId, target.Id);
                 var caseId = ModerationIds.FlagCase(target.Id);
-                var flag = await session.LoadAsync<ModerationFlag>(flagId, cancellationToken);
-                var reviewCase = await session.LoadAsync<ReviewCase>(caseId, cancellationToken);
+                var flag = await session.LoadAsync<ModerationFlag>(flagId.Value, cancellationToken);
+                var reviewCase = await session.LoadAsync<ReviewCase>(caseId.Value, cancellationToken);
                 if (flag is not null && flag.Status == ModerationCaseStatus.Open)
                     return; // One open flag per user and target; answered like a success (no oracle).
 
@@ -322,7 +322,7 @@ internal sealed partial class SparkModeration : ISparkModeration
                     reviewCase = new ReviewCase { Kind = "flag", TargetId = target.Id, TargetType = target.TypeName, OpenedAtUtc = now };
                     if (target.AuthorId is { } author)
                         reviewCase.AccountIds.Add(author);
-                    await session.StoreAsync(reviewCase, string.Empty, caseId, cancellationToken);
+                    await session.StoreAsync(reviewCase, string.Empty, caseId.Value, cancellationToken);
                 }
                 else if (reviewCase.Status != ModerationCaseStatus.Open)
                 {
@@ -340,11 +340,11 @@ internal sealed partial class SparkModeration : ISparkModeration
                 if (flag is null)
                 {
                     flag = new ModerationFlag { FlaggerId = flaggerId, TargetId = target.Id, TargetType = target.TypeName };
-                    await session.StoreAsync(flag, string.Empty, flagId, cancellationToken);
+                    await session.StoreAsync(flag, string.Empty, flagId.Value, cancellationToken);
                 }
                 flag.Reason = reviewCase.Summary;
                 flag.RaisedAtUtc = now;
-                flag.CaseId = caseId;
+                flag.CaseId = caseId.Value;
                 flag.Status = ModerationCaseStatus.Open;
                 await session.SaveChangesAsync(cancellationToken);
                 return;
@@ -371,7 +371,7 @@ internal sealed partial class SparkModeration : ISparkModeration
             Reason = reason,
             LockedBy = actor,
             LockedAtUtc = UtcNow,
-        }, ModerationIds.Lock(target.Id), cancellationToken);
+        }, ModerationIds.Lock(target.Id).Value, cancellationToken);
         await session.SaveChangesAsync(cancellationToken);
         await audit.WriteAsync("lock", target.Id, target.TypeName, target.AuthorId, reason: reason, cancellationToken: cancellationToken);
     }
@@ -383,7 +383,7 @@ internal sealed partial class SparkModeration : ISparkModeration
         await permissions.EnsureAuthorizedAsync(ModerationRights.Lock, target.TypeName, cancellationToken);
 
         using var session = documentStore.OpenAsyncSession();
-        session.Delete(ModerationIds.Lock(target.Id));
+        session.Delete(ModerationIds.Lock(target.Id).Value);
         await session.SaveChangesAsync(cancellationToken);
         await audit.WriteAsync("unlock", target.Id, target.TypeName, target.AuthorId, cancellationToken: cancellationToken);
     }
@@ -391,7 +391,7 @@ internal sealed partial class SparkModeration : ISparkModeration
     internal async Task<bool> IsLockedAsync(string targetId, CancellationToken cancellationToken = default)
     {
         using var session = documentStore.OpenAsyncSession();
-        return await session.Advanced.ExistsAsync(ModerationIds.Lock(targetId), cancellationToken);
+        return await session.Advanced.ExistsAsync(ModerationIds.Lock(targetId).Value, cancellationToken);
     }
 
     // ---- accounts ------------------------------------------------------------------------------
@@ -422,7 +422,7 @@ internal sealed partial class SparkModeration : ISparkModeration
                 SuspendedBy = actor,
                 SuspendedAtUtc = now,
                 CaseId = caseId,
-            }, ModerationIds.Suspension(userId), cancellationToken);
+            }, ModerationIds.Suspension(userId).Value, cancellationToken);
             await session.SaveChangesAsync(cancellationToken);
         }
         await accounts.LockOutAsync(userId, until is { } u ? new DateTimeOffset(u, TimeSpan.Zero) : null, cancellationToken);
@@ -435,7 +435,7 @@ internal sealed partial class SparkModeration : ISparkModeration
         await permissions.EnsureAuthorizedAsync(ModerationRights.Suspend, ModerationRights.Target, cancellationToken);
         using (var session = documentStore.OpenAsyncSession())
         {
-            session.Delete(ModerationIds.Suspension(userId));
+            session.Delete(ModerationIds.Suspension(userId).Value);
             await session.SaveChangesAsync(cancellationToken);
         }
         await accounts.LiftLockOutAsync(userId, cancellationToken);
@@ -486,7 +486,7 @@ internal sealed partial class SparkModeration : ISparkModeration
     {
         var actor = RequireUser();
         await permissions.EnsureAuthorizedAsync(ModerationRights.Review, ModerationRights.Target, cancellationToken);
-        if (string.IsNullOrEmpty(caseId) || !caseId.StartsWith("ModerationCases/", StringComparison.Ordinal))
+        if (string.IsNullOrEmpty(caseId) || !caseId.StartsWith("moderationcases/", StringComparison.OrdinalIgnoreCase))
             throw new SparkRowLevelAccessDeniedException("Review/Moderation");
 
         ReviewCase? reviewCase;
@@ -568,7 +568,7 @@ internal sealed partial class SparkModeration : ISparkModeration
             flag.Status = status;
             if (points == 0)
                 continue;
-            var eventId = ModerationIds.FlagEvent(flag.Id!, $"{status}-{now:yyyyMMddHHmmss}");
+            var eventId = ModerationIds.FlagEvent(flag.Id.Value, $"{status}-{now:yyyyMMddHHmmss}");
             // Flag outcomes are decided by a moderator, not farmed: credited at once.
             await session.StoreAsync(new ReputationEvent
             {
@@ -582,7 +582,7 @@ internal sealed partial class SparkModeration : ISparkModeration
                 CreditableAfterUtc = now,
                 Credited = true,
                 CaseId = caseId,
-            }, string.Empty, eventId, cancellationToken);
+            }, string.Empty, eventId.Value, cancellationToken);
             users.Add(flag.FlaggerId);
         }
         await session.SaveChangesAsync(cancellationToken);

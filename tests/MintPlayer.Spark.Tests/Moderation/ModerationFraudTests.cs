@@ -73,9 +73,9 @@ public class ModerationFraudTests : SparkTestDriver
 
         var report = await host.DetectAsync();
 
-        var caseId = ModerationIds.FraudCase("serial", Bob, Alice);
+        var caseId = ModerationIds.FraudCase("serial", Bob, Alice).Value;
         report.ReversedCases.Should().Contain(caseId);
-        report.ReversedCases.Should().NotContain(ModerationIds.FraudCase("serial", Carol, Erin));
+        report.ReversedCases.Should().NotContain(ModerationIds.FraudCase("serial", Carol, Erin).Value);
         var reviewCase = await host.LoadAsync<ReviewCase>(caseId);
         reviewCase!.Status.Should().Be(ModerationCaseStatus.Reversed);
         reviewCase.VoteIds.Should().HaveCount(5);
@@ -83,10 +83,10 @@ public class ModerationFraudTests : SparkTestDriver
         var reversals = (await host.EventsForAsync(Alice)).Where(e => e.Kind == ReputationEventKinds.Reversal).ToList();
         reversals.Should().HaveCount(5);
         reversals.Should().OnlyContain(e => e.RuleId == "serial" && e.CaseId == caseId && e.Points == -10);
-        (await host.LoadAsync<ModerationTally>(ModerationIds.Tally(alicePosts[0])))!.Score.Should().Be(0);
+        (await host.LoadAsync<ModerationTally>(ModerationIds.Tally(alicePosts[0]).Value))!.Score.Should().Be(0);
         // The stored summary (what the privilege provider reads), with no recompute or crediting run:
         // the reversal itself lowered the total.
-        var stored = await host.LoadAsync<ReputationSummary>(ModerationIds.Summary(Alice));
+        var stored = await host.LoadAsync<ReputationSummary>(ModerationIds.Summary(Alice).Value);
         stored!.Total.Should().Be(0, "a reversal of credited entries counts at once");
         stored.Pending.Should().Be(0);
 
@@ -118,7 +118,7 @@ public class ModerationFraudTests : SparkTestDriver
 
         var report = await host.DetectAsync();
 
-        report.ReversedCases.Should().Equal(ModerationIds.FraudCase("concentration", Dave, Alice));
+        report.ReversedCases.Should().Equal(ModerationIds.FraudCase("concentration", Dave, Alice).Value);
         (await host.EventsForAsync(Alice)).Count(e => e.RuleId == "concentration").Should().Be(6, "6 of Dave's 10 votes (60 %) went to Alice");
         (await host.EventsForAsync(Erin)).Should().NotContain(e => e.Kind == ReputationEventKinds.Reversal);
     }
@@ -140,7 +140,7 @@ public class ModerationFraudTests : SparkTestDriver
 
         var report = await host.DetectAsync();
 
-        var caseId = ModerationIds.FraudCase("reciprocal", Bob, Carol);
+        var caseId = ModerationIds.FraudCase("reciprocal", Bob, Carol).Value;
         report.OpenedCases.Should().Contain(caseId);
         report.ReversedCases.Should().BeEmpty();
         (await host.LoadAsync<ReviewCase>(caseId))!.Status.Should().Be(ModerationCaseStatus.Open);
@@ -164,7 +164,7 @@ public class ModerationFraudTests : SparkTestDriver
 
         var report = await host.DetectAsync();
 
-        report.OpenedCases.Should().Contain(ModerationIds.FraudCase("fast-voting", Erin, Alice));
+        report.OpenedCases.Should().Contain(ModerationIds.FraudCase("fast-voting", Erin, Alice).Value);
         report.OpenedCases.Should().NotContain(c => c.Contains(Dave));
     }
 
@@ -197,8 +197,8 @@ public class ModerationFraudTests : SparkTestDriver
 
         var report = await host.DetectAsync();
 
-        report.OpenedCases.Should().Contain(ModerationIds.FraudCase("registration-cluster", "users/x1", "users/x2"));
-        report.OpenedCases.Should().Contain(ModerationIds.FraudCase("registration-cluster", "users/y1", "users/y2"));
+        report.OpenedCases.Should().Contain(ModerationIds.FraudCase("registration-cluster", "users/x1", "users/x2").Value);
+        report.OpenedCases.Should().Contain(ModerationIds.FraudCase("registration-cluster", "users/y1", "users/y2").Value);
         report.OpenedCases.Should().NotContain(c => c.Contains("users/z1"), "a shared webmail domain is no signal");
     }
 
@@ -244,8 +244,8 @@ public class ModerationFraudTests : SparkTestDriver
         alice.Count(e => e.RuleId == "account-deleted").Should().Be(2, "one reversal per original entry, however often the handler runs");
         alice.Sum(e => e.Points).Should().Be(10, "only Carol's vote remains");
         (await host.EventsForAsync(Bob)).Should().BeEmpty("the down-vote's cost now names deleted-user");
-        (await host.LoadAsync<ModerationVote>(ModerationIds.Vote(Bob, posts[0]))).Should().BeNull();
-        (await host.LoadAsync<ModerationTally>(ModerationIds.Tally(posts[0])))!.Score.Should().Be(1);
+        (await host.LoadAsync<ModerationVote>(ModerationIds.Vote(Bob, posts[0]).Value)).Should().BeNull();
+        (await host.LoadAsync<ModerationTally>(ModerationIds.Tally(posts[0]).Value))!.Score.Should().Be(1);
     }
 
     [Fact]
@@ -282,7 +282,7 @@ public class ModerationFraudTests : SparkTestDriver
         host.RemoteIp = null;
         await host.CreditAsync();
         await host.DetectAsync();
-        var caseId = ModerationIds.FraudCase("reciprocal", Bob, Carol);
+        var caseId = ModerationIds.FraudCase("reciprocal", Bob, Carol).Value;
 
         (await host.SendAsync("/spark/moderation/case", new { caseId }, Bob)).Status.Should().Be(HttpStatusCode.NotFound, "Bob has no Review right");
         var (status, body) = await host.ModeratorAsync("/spark/moderation/case", new { caseId });

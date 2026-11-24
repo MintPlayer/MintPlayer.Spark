@@ -74,7 +74,7 @@ internal sealed partial class ModerationReview
     public async Task<ModerationCaseDetail> GetCaseAsync(string caseId, CancellationToken cancellationToken)
     {
         await permissions.EnsureAuthorizedAsync(ModerationRights.Review, ModerationRights.Target, cancellationToken);
-        if (string.IsNullOrEmpty(caseId) || !caseId.StartsWith("ModerationCases/", StringComparison.Ordinal))
+        if (string.IsNullOrEmpty(caseId) || !caseId.StartsWith("moderationcases/", StringComparison.OrdinalIgnoreCase))
             throw new SparkRowLevelAccessDeniedException("Review/Moderation");
 
         using var session = documentStore.OpenAsyncSession();
@@ -84,7 +84,7 @@ internal sealed partial class ModerationReview
 
         var votes = (await session.LoadAsync<ModerationVote>(reviewCase.VoteIds, cancellationToken)).Values.Where(v => v is not null).Select(v => v!).ToList();
         var timeline = votes.OrderBy(v => v.CastAtUtc).Select(v => new ModerationTimelineEntry(
-            v.Id!, v.VoterId, v.AuthorId, v.TargetId, v.Direction, v.CastAtUtc, v.TargetPostedAtUtc,
+            v.Id.Value, v.VoterId, v.AuthorId, v.TargetId, v.Direction, v.CastAtUtc, v.TargetPostedAtUtc,
             v.TargetPostedAtUtc is { } posted ? (v.CastAtUtc - posted).TotalSeconds : null)).ToList();
 
         var accountIds = reviewCase.AccountIds.Where(a => a.Length > 0).Distinct(StringComparer.Ordinal).ToList();
@@ -101,7 +101,7 @@ internal sealed partial class ModerationReview
         // Reputation before/after: the credited, not-yet-compensated points the case's votes gave.
         var eventIds = votes.SelectMany(v => v.EventIds).Distinct().ToArray();
         var events = eventIds.Length == 0 ? [] : (await session.LoadAsync<ReputationEvent>(eventIds, cancellationToken)).Values.Where(e => e is not null).Select(e => e!).ToList();
-        var summaries = await session.LoadAsync<ReputationSummary>(accountIds.Select(ModerationIds.Summary), cancellationToken);
+        var summaries = await session.LoadAsync<ReputationSummary>(accountIds.Select(id => ModerationIds.Summary(id).Value), cancellationToken);
         var known = await accounts.GetAsync(accountIds, cancellationToken);
         var networks = await detector.NetworksOfAsync(accountIds, cancellationToken);
         var now = timeProvider.GetUtcNow().UtcDateTime;
@@ -109,7 +109,7 @@ internal sealed partial class ModerationReview
         var caseAccounts = new List<ModerationCaseAccount>();
         foreach (var id in accountIds)
         {
-            var before = summaries.GetValueOrDefault(ModerationIds.Summary(id))?.Total ?? 0;
+            var before = summaries.GetValueOrDefault(ModerationIds.Summary(id).Value)?.Total ?? 0;
             var gained = events.Where(e => e.UserId == id && e.Credited && e.CompensatedById is null).Sum(e => e.Points);
             known.TryGetValue(id, out var account);
             caseAccounts.Add(new ModerationCaseAccount(
@@ -175,7 +175,7 @@ internal sealed partial class ModerationReview
             .ToListAsync(cancellationToken);
 
         var lines = new List<ModerationReputationLine>();
-        foreach (var group in events.GroupBy(e => e.Kind == ReputationEventKinds.Reversal ? "reversal:" + (e.CaseId ?? e.RuleId) : e.Id!))
+        foreach (var group in events.GroupBy(e => e.Kind == ReputationEventKinds.Reversal ? "reversal:" + (e.CaseId ?? e.RuleId) : e.Id.Value))
         {
             var first = group.First();
             if (first.Kind == ReputationEventKinds.Reversal)
@@ -202,7 +202,7 @@ internal sealed partial class ModerationReview
 
     private static ModerationCaseSummary Summarize(ReviewCase c) => new()
     {
-        Id = c.Id!,
+        Id = c.Id.Value,
         Kind = c.Kind,
         Status = c.Status,
         TargetId = c.TargetId,

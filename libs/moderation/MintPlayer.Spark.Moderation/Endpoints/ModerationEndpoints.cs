@@ -219,8 +219,8 @@ internal sealed partial class StatusEndpoint : IPostEndpoint<ModerationTargetReq
             var canLock = await permissions.IsAllowedAsync(ModerationRights.Lock, target.TypeName);
             var canReview = await permissions.IsAllowedAsync(ModerationRights.Review, ModerationRights.Target);
             using var session = documentStore.OpenAsyncSession();
-            var lockDoc = await session.LoadAsync<Documents.ModerationLock>(Documents.ModerationIds.Lock(target.Id));
-            var flagCase = canReview ? await session.LoadAsync<Documents.ReviewCase>(Documents.ModerationIds.FlagCase(target.Id)) : null;
+            var lockDoc = await session.LoadAsync<Documents.ModerationLock>(Documents.ModerationIds.Lock(target.Id).Value);
+            var flagCase = canReview ? await session.LoadAsync<Documents.ReviewCase>(Documents.ModerationIds.FlagCase(target.Id).Value) : null;
             return new
             {
                 id = target.Id,
@@ -230,7 +230,7 @@ internal sealed partial class StatusEndpoint : IPostEndpoint<ModerationTargetReq
                 canLock,
                 canReview,
                 canSuspend = await permissions.IsAllowedAsync(ModerationRights.Suspend, ModerationRights.Target),
-                openCaseId = flagCase?.Status == Documents.ModerationCaseStatus.Open ? flagCase.Id : null,
+                openCaseId = flagCase?.Status == Documents.ModerationCaseStatus.Open ? flagCase.Id.Value : null,
                 openFlags = flagCase?.Status == Documents.ModerationCaseStatus.Open ? flagCase.FlagCount : 0,
             };
         });

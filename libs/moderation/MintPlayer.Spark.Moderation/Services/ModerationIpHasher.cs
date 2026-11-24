@@ -56,10 +56,10 @@ internal sealed partial class ModerationIpHasher
         var fraud = options.Value.Fraud;
         var period = (long)Math.Floor((now - DateTime.UnixEpoch).TotalDays / fraud.IpKeyRotationDays);
         var keyId = ModerationIds.IpKey(period);
-        var key = await GetKeyAsync(keyId, now, fraud, cancellationToken);
+        var key = await GetKeyAsync(keyId.Value, now, fraud, cancellationToken);
         var network = Truncate(address);
         var hash = Convert.ToHexString(HMACSHA256.HashData(key, network)).ToLowerInvariant();
-        return (keyId, hash[..32]);
+        return (keyId.Value, hash[..32]);
     }
 
     private async Task<byte[]> GetKeyAsync(string keyId, DateTime now, ModerationFraudOptions fraud, CancellationToken cancellationToken)
