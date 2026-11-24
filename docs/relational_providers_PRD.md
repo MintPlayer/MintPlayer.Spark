@@ -288,9 +288,20 @@ descending), and a conformance case pins it. RavenDB's order is measured in the 
 (`timestamptz`) do this. (MariaDB has no offset-aware type, S13; it is deferred.)
 
 **D6: a commit-ordered `ChangeStamp`** replaces `@last-modified` as the change order for the subscription cursor, the
-change feed's reconnect and messaging's fallback order. **Round 3 makes it per table, and where it lives is open**
-(§10 O10): a stamp column on every entity table with a cursor per (subscription, table), or one change-log table
-written in the same transaction as the entity.
+change feed's reconnect and messaging's fallback order. **Round 3 made it per table; grilling round 5 (O10,
+2026-11-24) put it on the entity table:**
+- **A stamp column on every entity table**, with a cursor per (subscription, table). SQL Server: a `rowversion`
+  column. PostgreSQL: an `xid8` column set by a trigger that synchronize generates.
+- A subscription reads `WHERE stamp > @cursor AND stamp < @horizon AND <its filter> ORDER BY stamp` on the table
+  itself. A new subscription starts at stamp 0, so the table is its backlog: the current state, once per row, as
+  RavenDB delivers it. There is no change log to trim.
+- **Deletes** write a row to a framework `Tombstones` table (stamp, table, key) in the same transaction (D24's own
+  schema), read with the same horizon.
+- **Live updates** first probe whether the database stamp moved since the last poll (`@@DBTS` on SQL Server,
+  `pg_current_xact_id()` on PostgreSQL), and only then query the watched tables.
+- Rejected: one change-log table (an extra write per save, a hot insert point, and trimming that leaves a new
+  subscription without its backlog), and both together (the cost of each).
+- The trap: one long transaction holds the horizon back, so every subscription waits for it. S14 measures that.
 
 A plain database sequence is wrong either way. A sequence value is allocated before commit:
 1. Transaction A takes 10.
@@ -487,7 +498,20 @@ sites). With D23 the type is inferred: `Delete(person.CompanyId)` can only delet
 
 **Unknown fields.** A row has only the mapped columns, so undeclared fields are lost, as on InMemory. RavenDB keeps
 them (§8.1 finding 6). The conformance suite pins each provider's behaviour. **Absent field versus `NULL`** (D16): a
-column always exists, so "absent" can only be `NULL`. The consequences are open (§10 O11).
+column always exists, so "absent" can only be `NULL`. **Decided in grilling round 5 (O11, 2026-11-24): D16 is
+Spark's meaning on every provider, extended to nullable members.**
+- An absent field means the CLR default: `default` for a non-nullable member (the existing D16 rewrite), `null` for
+  a nullable one. The RavenDB provider rewrites `x.N == null` into "null or not present" (RQL `not exists(...)`) and
+  `!= null` into its negation. Today `== null` misses the absent rows and `!= null` includes them
+  (`AbsentVersusNullFieldTests`).
+- SQL gets there by construction: the generated migration adds a non-nullable column with the CLR default, and a
+  nullable one as `NULL`. No data is written on any provider.
+- If S12 shows that "not present" can't be expressed through the RavenDB LINQ provider, those members alone fall
+  back to a synchronize-generated backfill patch.
+- Sorting and distinct values (the `< none >` entry) are conformance cases too: RavenDB sorts an absent field
+  apart from the default, and the result must match SQL's.
+- The generator warns on an initializer on a persisted value-type property (`int Priority { get; set; } = 5`): a
+  document without the field shows 5 but is queried as 0.
 
 **JSON columns on PostgreSQL** use `jsonb`, which normalises the text (keys reordered, whitespace changed, duplicate
 keys collapsed; S12). That is harmless: the dirty check diffs the snapshot taken at load, not the stored text.
@@ -797,19 +821,53 @@ commercial-framework comparison added D30. The plan §3 has the log.
   removed. Support 17 as well, or test only 18?
 - **O9, bring-your-own `DbContext` (open, low priority):** The commercial framework's apps write their own `DbContext`. Should Spark
   offer a hook to configure what its generated model can't map? Recommendation: not until a real case needs it.
-- **O10, change stamp (open, next grilling):** a stamp column per entity table with a cursor per (subscription,
-  table), or one change-log table written in the same transaction (D6)?
-- **O11, absent field versus `NULL` (open, next grilling):** a column always exists, so what does D16 mean on
-  relational providers, and does RavenDB change to match?
-- **O12, revisions (open, next grilling):** a framework `Revisions` table (portable, per-collection retention,
-  `PurgeOnDelete`), or SQL Server temporal tables (PostgreSQL has none)?
+- **O10, change stamp (decided 2026-11-24, round 5):** a stamp column per entity table plus a `Tombstones` table (D6).
+- **O11, absent field versus `NULL` (decided 2026-11-24, round 5):** D16 everywhere, extended to nullable members
+  (RavenDB rewrites `== null` to include absent fields); no backfill (§8, "Unknown fields").
+- **O12, revisions (decided 2026-11-24, round 5):** a framework `Revisions` table on both SQL databases, in Spark's
+  own schema (D24).
+  - **Opt-in, as today:** only an app with History, and only for the entity types whose model `Revisions` block or
+    `Spark:History:Types` setting enables them (`RevisionsConfigurator.Resolve`, `RevisionsConfigurator.cs:146`).
+    Every other save writes nothing extra. RavenDB's database-wide `Default` revisions setting (set outside Spark)
+    has no SQL equivalent, so on SQL only opted-in types get revisions.
+  - A row is (table, key, `Version`, time, JSON snapshot of the **whole aggregate**, parent plus AsDetail rows),
+    serialised by Spark, so it is the JSON RavenDB and InMemory hold and a revert restores the same record. The
+    revision id is the `Version` (D3).
+  - Written in the save's transaction. Set-based writes on an opted-in type take the changed rows from `OUTPUT`
+    (SQL Server) or `RETURNING` (PostgreSQL) and insert their revisions in the same transaction. Retention by count
+    and age, and `PurgeOnDelete`, run as the type configures.
+  - **The table is always present** in the provider's framework schema, empty until a type opts in (the owner left
+    this to me). The relational provider implements the `Revisions` capability itself, as the RavenDB server does,
+    so soft_delete and files find it whether or not History is installed. One framework schema with one version
+    avoids a schema variant per installed package, and turning History on later needs no migration.
+  - Rejected: SQL Server temporal tables (SQL Server only, retention by age only, purging needs versioning off, an
+    aggregate spread over several timelines) and triggers (the database's JSON is not Spark's).
+  - The trap: a write path that bypasses the unit of work writes no revision. S8 has a conformance case per write
+    path, and framework SQL never writes an entity table directly.
 - **O14, hierarchical natural ids (decided 2026-11-24):** D23 rule 12 and D7. The LLMs' consensus of rounds 6–9: a
   string primary key with prefix scans, plus an `Id<Parent>` property (a real FK) wherever a segment is another
   entity's id. The owner accepted it with one change: the code is source-generated from one id template per entity,
   so the parent property is read from the id rather than declared by hand, and builder and parser can't drift. Ids
   are lower case (D7, round 10), with binary key columns.
-- **O13, get-only persisted properties (open, next grilling):** for example `FullName`. Persist it as a computed column,
-  recompute on save (as the commercial framework's RavenDB-only calculated attribute does), or keep it out of storage?
+- **O13, get-only persisted properties (decided 2026-11-24, round 5): stored, recomputed on every save**, as RavenDB
+  does today (its serialiser writes getters). Example: `Person.FullName => $"{FirstName} {LastName}"`
+  (`apps/HR/HR.Library/Entities/Person.cs:24`), which HR searches and sorts on.
+  - Every getter works, also ones that call methods or read a `TranslatedString`; the column can be indexed and
+    sorted; revisions hold the same JSON. Rejected: a computed column and expanding the getter in queries, because
+    both work only for getters that translate to SQL, and an untranslatable one breaks a grid filter at run time.
+  - **Source-generated** (the owner's suggestion). Entities are already `partial` for D23's generated
+    `__DocumentId`. For each get-only property on a persisted entity the generator emits a private backing field,
+    and the EF model maps the property to it with `PropertyAccessMode.PreferFieldDuringConstruction`: EF writes the
+    field when it materialises a row (unused) and reads the getter when it saves, so the column always holds the
+    getter's current value. `p.FullName` in LINQ then translates to the column directly, with no query rewrite and
+    no shadow property. EF's round-3 error was "No backing field could be found … does not have a setter", so the
+    field is what it lacks; S2b proves the mapping, the dirty check (a change to `FirstName` rewrites `FullName`)
+    and the translation on both databases. Fallback: a shadow column plus a query rewrite of the member.
+  - **Analyzer warnings** on a stored getter that reads the clock (`DateTime.Now`, `TimeProvider`) or another
+    entity: its stored value would only be as fresh as the last save.
+  - **Formula changes:** the generator emits a hash of each stored getter's body into the model, and synchronize
+    reports which types' stored getters changed. Recomputing them is an explicit migration the developer chooses,
+    never automatic, because rewriting rows re-triggers the subscriptions (O15). The same holds on RavenDB.
 - **O15, mixed-case ids in production RavenDB data (decided 2026-11-24: (a), no re-key, gated by S-ID4):** the owner
   first proposed a migration that lowercases every document id in the production apps. All five LLMs that answered
   round 10 chose (a), and the owner followed the recommendation ("I'll follow your decision").

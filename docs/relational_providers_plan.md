@@ -14,9 +14,8 @@ rounds, milestones and status. Branch `feat/536-sql-server-provider`, draft PR #
 - **Storage model (round 3):** a table per entity, mapped by EF Core. The model synchronize generates EF migrations;
   AsDetail collections are child tables; references are real FKs; the contract is typed; ids are `Id<T>` (D23).
   Breaking changes are allowed, with no backward compatibility.
-- **Next:** grilling round 5 on O10–O13 (change
-  stamp, absent fields, revisions, get-only persisted properties).
-  Then the gate spikes S-ID1, S-ID2, S-ID4, S2b, S3, S4 and S5 (§2).
+- **Next:** the gate spikes S-ID1, S-ID2, S-ID4, S2b, S3, S4 and S5 (§2). Grilling round 5 decided O10–O13
+  (2026-11-24); only O8 and O9 are open, both low priority.
 - Local spike servers left running:
   - SQL Server: `SparkSpike536` on `localhost` and `localhost\MSSQLSERVER01`
   - Docker containers `spark536-pg` (`postgres:18`, 127.0.0.1:55432) and `spark536-maria` (`mariadb:11.8`,
@@ -186,11 +185,21 @@ not written by hand: `Commit.TryParseRepository` compares `"Commits"` case-sensi
 lowercase rule, as it did once when the forge segment was added. O14 is decided as the LLMs' consensus with the code
 source-generated from one id template per entity (PRD D23 rule 12).
 
+### Grilling round 5 (owner, 2026-11-24)
+
+- **O10:** a stamp column on every entity table (`rowversion`; `xid8` by trigger on PostgreSQL) plus a framework
+  `Tombstones` table. A new subscription's backlog is the table itself (PRD D6).
+- **O11:** D16 everywhere, extended to nullable members: RavenDB rewrites `== null` to include absent fields; SQL
+  adds columns with the CLR default. No backfill. Sorting and distinct values are conformance cases.
+- **O12:** a framework `Revisions` table with whole-aggregate JSON snapshots, opt-in per type as today. The owner
+  left its presence to me: always present in the provider's framework schema.
+- **O13:** stored get-only properties, recomputed on save, through a generated backing field and
+  `PreferFieldDuringConstruction` (the owner suggested source generation). S2b proves it.
+
 ### Still open
 
 - O8 (the PostgreSQL 17 floor, probably moot)
 - O9 (bring-your-own `DbContext`, low priority)
-- **O10–O13 for round 5:** the change stamp, absent fields versus `NULL`, revisions, get-only persisted properties
 
 ## 4. Milestones
 
