@@ -9,12 +9,12 @@ rounds, milestones and status. Branch `feat/536-sql-server-provider`, draft PR #
 - **Docs and spikes only, no product code yet.**
   - Spikes S1, S2, S12 and S13 are done. Since round 3 they are history for the storage model (PRD §8).
   - Grilling rounds 1–4, the commercial-framework comparison and the LLM rounds 6–9 on it are done (§3).
-- **Scope:** SQL Server (2022, 2025) and PostgreSQL (18; 17 is open, O8). MariaDB is deferred (O6). Tier 4
+- **Scope:** SQL Server (2022, 2025) and PostgreSQL (17 and later; CI on 18, O8). MariaDB is deferred (O6). Tier 4
   (identity_provider, dashboards) is in. The demo is a new `apps/SqlDemo`.
 - **Storage model (round 3):** a table per entity, mapped by EF Core. The model synchronize generates EF migrations;
   AsDetail collections are child tables; references are real FKs; the contract is typed; ids are `Id<T>` (D23).
   Breaking changes are allowed, with no backward compatibility.
-- **Next:** grill O8 and O9, then M2. Every gate spike is done: S2b, S3, S4, S5, S19, S20, S-ID1, S-ID2, S-ID4 and
+- **Next:** M2. O8 and O9 are decided, so nothing is open. Every gate spike is done: S2b, S3, S4, S5, S19, S20, S-ID1, S-ID2, S-ID4 and
   S-ID5's RavenDB half (PRD §8.3–8.12, 2026-11-24). The two upstream bugs S3 and S19 found have pull requests upstream and
   workarounds in D24 and D33 (§5). Grilling round 5 decided O10–O13
   (2026-11-24). O16 and O17 are decided (2026-11-24; O17's evidence is PRD §8.9). O8 and O9 are open, both low
@@ -204,8 +204,9 @@ source-generated from one id template per entity (PRD D23 rule 12).
 
 ### Still open
 
-- O8 (the PostgreSQL 17 floor, probably moot)
-- O9 (bring-your-own `DbContext`, low priority)
+None. O8 and O9 were decided on 2026-11-24 (owner, PRD §10):
+- **O8:** PostgreSQL 17 and later. CI runs on 18, and the D31 behaviour tests run on 17 too.
+- **O9:** a public `ConfigureModel(ModelBuilder)` hook on `UseSqlServer`/`UsePostgreSql`, in M4.
 
 ## 4. Milestones
 
@@ -249,7 +250,8 @@ source-generated from one id template per entity (PRD D23 rule 12).
      implementation; `--spark-migrate` and `--spark-migration-script` in core; the data-migration runner on the
      neutral lease; a layering test against provider references in core
 4. **`MintPlayer.Spark.Relational`, `MintPlayer.Spark.SqlServer`, `MintPlayer.Spark.PostgreSql`** (D2):
-   - `UseSqlServer()`, `UsePostgreSql()` and their `SparkStoreProviders` constants
+   - `UseSqlServer()`, `UsePostgreSql()` and their `SparkStoreProviders` constants, with the public
+     `ConfigureModel(ModelBuilder)` hook (O9), which runs last in `OnModelCreating`
    - the EF model built from the Spark model, the migration generator (D24), child and join tables (D25, D26): the
      join-list rewrite and load step proven in S2b, and `AsSplitQuery` for types with several AsDetail collections
    - the aggregate version (S4): child and join row changes move the root's version; `GetVersionsAsync` answers
@@ -285,7 +287,8 @@ source-generated from one id template per entity (PRD D23 rule 12).
 8. **Tier 4:** identity_provider, and dashboards (S9).
 9. **Demo, CI, docs:**
    - **`apps/SqlDemo`**, using the ported libraries, with E2E coverage
-   - CI: pinned `mcr.microsoft.com/mssql/server:2025-*` and `postgres:18` service containers. They join existing job
+   - CI: pinned `mcr.microsoft.com/mssql/server:2025-*` and `postgres:18` service containers, plus `postgres:17` for the
+     D31 behaviour tests only (O8). They join existing job
      groups (the 20-concurrent-job limit, `.github/workflows/test.yml`). The relational conformance classes are
      sharded like the rest (`tools/test-shard-weights.json`).
    - guides
@@ -381,3 +384,5 @@ during development (TDD red→green). The full suite runs once at the end, via p
       under a view, so the differ recreates a view around any change to a table it reads.
     - The pubternal differ's constructor already changed after EF `v11.0.0`.
     - The view SQL carries `\r\n` on Windows, so synchronize normalizes it.
+  - O8 and O9 decided (owner): PostgreSQL 17 and later, with CI on 18 and the D31 behaviour tests on 17 too; a
+    public `ConfigureModel(ModelBuilder)` hook in M4, and no app-supplied `DbContext`. No decision is open.

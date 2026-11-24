@@ -1586,10 +1586,19 @@ commercial-framework comparison added D30. The plan §3 has the log.
 - **O5, full-text:** deferred with S10. `LIKE` comes first (§3).
 - ✅ **O6, MariaDB:** **dropped for now.** In scope: SQL Server and PostgreSQL. §7 risk 1 says when it returns.
 - ✅ **O7, order:** follows from O6. SQL Server and PostgreSQL are built together on the shared core.
-- **O8, PostgreSQL floor (open, probably moot):** 18 was needed only for the virtual `Raw` column, which round 3
-  removed. Support 17 as well, or test only 18?
-- **O9, bring-your-own `DbContext` (open, low priority):** The commercial framework's apps write their own `DbContext`. Should Spark
-  offer a hook to configure what its generated model can't map? Recommendation: not until a real case needs it.
+- **O8, PostgreSQL floor (decided 2026-11-24, owner): 17 and later, CI on 18.** 18 was needed only for the virtual
+  `Raw` column, which round 3 removed. S2b, S4 and S5 used nothing newer than 17 (jsonb, advisory locks, `ILIKE`,
+  scalar subqueries, the `"C"` collation). `uuidv7()` is 18-only, but D23 keeps v4 Guids. The full suite runs on
+  `postgres:18`. The D31 behaviour-test class also runs on `postgres:17` inside an existing job, which adds no job
+  against the 20-concurrent limit. That run is what catches an 18-only feature slipping in.
+- **O9, own model configuration (decided 2026-11-24, owner): a public `ModelBuilder` hook, now.** The commercial
+  framework's apps write their own `DbContext`. Spark keeps owning the context and the model, and offers
+  `UseSqlServer(o => o.ConfigureModel(mb => …))` and `UsePostgreSql(o => o.ConfigureModel(…))`. The callback runs
+  last in `OnModelCreating`, after Spark's mapping (where S2b's `Configure` seam runs). An app adjusts the generated
+  model there, for example column types, check constraints or extra indexes, and synchronize scaffolds the result
+  into the migration like any other model change (D24). A full app-supplied `DbContext` was rejected because it
+  splits the ownership of the model and of D33's startup order. `ISparkMigration` stays the escape for raw DDL.
+  Lands in M4 with the provider packages.
 - **O10, change stamp (decided 2026-11-24, round 5):** a stamp column per entity table plus a `Tombstones` table (D6).
 - **O11, absent field versus `NULL` (decided 2026-11-24, round 5):** D16 everywhere, extended to nullable members
   (RavenDB rewrites `== null` to include absent fields); no backfill (§8, "Unknown fields").
