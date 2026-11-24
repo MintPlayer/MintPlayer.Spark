@@ -95,8 +95,10 @@ internal sealed class McpPlanner(
     /// <summary>The most characters of diff one plan may show: the answer has to fit an agent's tool-output budget.</summary>
     private const int MaxChangesCharacters = 30_000;
 
-    private const string Collection = "McpPlans/";
-    private static readonly Regex PlanIdPattern = new("^McpPlans/[0-9a-f]{32}$", RegexOptions.CultureInvariant);
+    private const string Collection = "mcpplans/";
+
+    /// <summary>The prefix ignoring case: a plan proposed before #536 (D7) was handed out as <c>McpPlans/…</c>.</summary>
+    private static readonly Regex PlanIdPattern = new("^(?i:mcpplans)/[0-9a-f]{32}$", RegexOptions.CultureInvariant);
 
     /// <summary>A validated plan, as <c>propose_changes</c> answers it.</summary>
     public sealed record Proposal(string PlanId, DateTime ExpiresAt, IReadOnlyList<string> Changes);
@@ -133,7 +135,7 @@ internal sealed class McpPlanner(
         var now = DateTime.UtcNow;
         var plan = new McpPlan
         {
-            Id = Collection + Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(16)),
+            Id = Id<McpPlan>.FromTrusted(Collection + Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(16))),
             UserId = owner.UserId,
             ClientId = owner.ClientId,
             AgentKind = owner.Kind,
@@ -148,12 +150,12 @@ internal sealed class McpPlanner(
         // Its own session: the request session holds what the checks loaded, and nothing of it may be written.
         using (var planSession = store.OpenAsyncSession())
         {
-            await planSession.StoreAsync(plan, plan.Id, cancellationToken);
+            await planSession.StoreAsync(plan, plan.Id.Value, cancellationToken);
             planSession.Advanced.GetMetadataFor(plan)[Constants.Documents.Metadata.Expires] = plan.ExpiresAt;
             await planSession.SaveChangesAsync(cancellationToken);
         }
 
-        return new Proposal(plan.Id!, plan.ExpiresAt, rendered);
+        return new Proposal(plan.Id.Value, plan.ExpiresAt, rendered);
     }
 
     public async Task<Application> ApplyAsync(string? planId, IReadOnlyList<string>? changes, CancellationToken cancellationToken)
@@ -209,12 +211,12 @@ internal sealed class McpPlanner(
         {
             // The batch's commit found a document changed after its checks (RavenDB's own change-vector check).
             const string conflict = "Conflict (409): an object of the plan changed since the plan was proposed. Nothing was saved. Read it again and propose new changes.";
-            await RecordFailureAsync(plan.Id!, conflict);
+            await RecordFailureAsync(plan.Id.Value, conflict);
             throw new McpPlanRefusal(conflict);
         }
         catch (Exception ex)
         {
-            await RecordFailureAsync(plan.Id!, ex is McpPlanRefusal ? ex.Message : "The apply failed: " + ex.GetType().Name);
+            await RecordFailureAsync(plan.Id.Value, ex is McpPlanRefusal ? ex.Message : "The apply failed: " + ex.GetType().Name);
             throw;
         }
     }
@@ -249,7 +251,7 @@ internal sealed class McpPlanner(
             resultIds.Add(null);
             try
             {
-                await RecordSuccessAsync(plan.Id!, resultIds, inRequestSession: false, cancellationToken);
+                await RecordSuccessAsync(plan.Id.Value, resultIds, inRequestSession: false, cancellationToken);
             }
             catch (Exception ex)
             {
@@ -269,11 +271,11 @@ internal sealed class McpPlanner(
                 }
 
                 // The plan's "applied" record commits with the data, in the same transaction.
-                await RecordSuccessAsync(plan.Id!, resultIds, inRequestSession: true, cancellationToken);
+                await RecordSuccessAsync(plan.Id.Value, resultIds, inRequestSession: true, cancellationToken);
             }, RequestBudget(operations.Count), $"MCP apply_changes ({operations.Count} operations)");
         }
 
-        return new Application(plan.Id!, plan.Changes, resultIds, actionResult);
+        return new Application(plan.Id.Value, plan.Changes, resultIds, actionResult);
     }
 
     // ---- preparing an operation ------------------------------------------------------------------------------------
