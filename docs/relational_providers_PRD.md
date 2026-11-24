@@ -270,6 +270,38 @@ MintPlayer.Spark.Abstractions
 - Why not one package per database with everything in it? Two copies of the unit of work, outbox and revisions
   would drift, and the conformance suite would find the same bug twice.
 
+**D34 (owner, 2026-11-24): inversion of control everywhere. Core owns every entry point; providers only plug in.**
+- **`MintPlayer.Spark.Abstractions` and `MintPlayer.Spark`** hold the contracts and the generic logic: command-line
+  switches, startup steps and their order, options, canonicalisation (D7), the neutral view declaration (D32), and
+  the conformance suite. **The provider packages** (RavenDB, SqlServer, PostgreSql, later MariaDb) only register
+  implementations of those contracts from their `UseRavenDb()` / `UseSqlServer()` / `UsePostgreSql()` call.
+- An app's `Program.cs` names its provider once, in that call, and nowhere else. Core never asks which provider is
+  installed (no `is RavenSparkStore`, no provider name strings); it resolves a contract, or reads a capability
+  (`SparkStoreCapabilities`) when the feature is optional.
+- A provider with nothing to do for a contract registers a no-op, or nothing where core treats absence as "nothing
+  to do". It never needs its own switch or extension method.
+- **Commands become one registry.** Today every command is its own extension that each app must call by hand:
+  `SynchronizeSparkModelsIfRequested`, `InitializeSparkSecurityIfRequested`, `VerifySparkSecurityIfRequested`
+  (`apps/HR/HR/Program.cs:106-116`), `RegenerateSparkImageVariantsIfRequested`
+  (`SparkImageVariantCommand.cs:23`) and `InitializeSparkModerationIfRequested` (`ModerationInitCommand.cs:44`).
+  Core gets an `ISparkCommand` contract (flag, description, whether it runs before `Build()` on the builder or after it
+  on the services, and `RunAsync` returning the exit code). Packages register theirs. `Program.cs` keeps two lines,
+  one before `Build()` and one after it, and adding a package's command no longer edits any app. `--spark-help` lists
+  what is registered. The existing commands move onto it in this PR (no backward compatibility).
+- **Migrations (D33) are the first user.** Core owns `--spark-migrate`, `--spark-migration-script`,
+  `Spark:Database:ApplyMigrations`, the startup order and the refusal message. Providers implement one contract,
+  `ISparkSchemaMigrator` (pending migrations, apply, write a script):
+  - **RavenDB** applies what it already deploys at startup (indexes, the revisions configuration), reports nothing
+    pending, and writes no script (it says RavenDB has no schema script and exits 0).
+  - **SqlServer / PostgreSql**, through `Relational`, apply the framework schema and the app's EF migrations, and
+    write the idempotent script.
+  - The data migrations (`ISparkMigration`) run after the schema on every provider. Their runner moves off RavenDB's
+    compare-exchange lock (`SparkMigrationRunner.cs:15`) onto the neutral lease contract (§4.1, Tier 2).
+- The same rule holds for every other decision: the absent-field rewrite (O11) lives in the RavenDB provider, the
+  id conventions (D7) in each provider's registration, and the view rendering (D32) in each provider.
+- **Guard:** the layering tests (`tests/MintPlayer.Spark.Tests/Layering/`) fail when `Abstractions` or `MintPlayer.Spark`
+  references a provider assembly or a database client.
+
 **D3: the version is a `bigint` column on every table**, a concurrency token the provider increments.
 - A write is `UPDATE … SET Version = @v + 1 WHERE <key> = @id AND Version = @v`. EF's 0-rows-affected
   `DbUpdateConcurrencyException` becomes `SparkStoreConcurrencyException`. S12 and S13 measured the statement shape
@@ -468,7 +500,8 @@ The full consensus and the spike details are in plan §3, rounds 4 and 6–9.
 - The S3 gate decides how the migration is produced from a model built from metadata.
 
 **D33 (owner, 2026-11-24): when migrations are generated and applied.** RavenDB apps need no schema step today; SQL
-apps do. Spark keeps the RavenDB experience by default and offers two stricter modes from the same app binary, with
+apps do. The switches and the startup order are core's; each provider implements `ISparkSchemaMigrator` (D34).
+Spark keeps the RavenDB experience by default and offers two stricter modes from the same app binary, with
 no `dotnet ef` tool and no design-time `DbContext` factory (Spark builds the `DbContext` from its model, which the
 EF tools would have to rebuild).
 - **Generated in development only.** `--spark-synchronize-model` writes the EF migration for a model change (D24),
