@@ -339,9 +339,20 @@ those drivers. The relational providers have no equivalent of `RavenTestDriver`;
 - **`MintPlayer.Spark.Testing.RavenDB`** gets today's code: `RavenTestDriver`, the embedded server and
   `RavenServerLocator`, the licence, `RavenDatabaseDeletion`, index deployment and `RqlRecorder`. Its
   `RavenSparkTestDriver` still exposes the raw `IDocumentStore` for tests that pin RavenDB behaviour.
-- **`MintPlayer.Spark.Testing.SqlServer` / `.PostgreSql`** (`.MariaDb` with its provider, O6): a server from a
-  connection-string variable (a local instance, or the CI service container D31 already needs), otherwise
-  Testcontainers (MIT). A database per class, migrated through the same guarded startup as production (D33, S19).
+- **Locating the server is the provider's job, and only RavenDB and PostgreSQL can ship one** (researched
+  2026-11-24, the owner followed the recommendation). `RavenTestDriver` is not in-process either:
+  `RavenDB.Embedded` ships the server binaries and starts `Raven.Server` as a child process. The other databases:
+  - **PostgreSQL has the same model:** `MysticMind.PostgresEmbed` (NuGet 5.2.1) downloads zonky's minimal real
+    PostgreSQL binaries (Windows, Linux, macOS), runs `initdb` and starts a `postgres` process. It is
+    `.Testing.PostgreSql`'s default, so a developer needs no Docker, as with RavenDB. A connection-string variable
+    overrides it.
+  - **SQL Server cannot:** Microsoft does not redistribute the engine. LocalDB is the real engine, started on
+    demand, but it is Windows-only, installed by an MSI, and its 2025 package was reported to miss native binaries.
+    `.Testing.SqlServer` takes a connection-string variable (a local instance, or the CI service container D31
+    already needs), then LocalDB on Windows, then Testcontainers (MIT).
+  - **MariaDB has no maintained .NET equivalent** of Java's MariaDB4j: Testcontainers, when its provider returns (O6).
+- **`MintPlayer.Spark.Testing.SqlServer` / `.PostgreSql`** (`.MariaDb` with its provider, O6) create a database per
+  class, migrated through the same guarded startup as production (D33, S19).
   PostgreSQL can clone a migrated template (`CREATE DATABASE … TEMPLATE`). SQL Server has no template, so S17 measures
   create-and-migrate per class against resetting a shared database between classes (Respawn, Apache-2.0).
 - **Moving the 255 files:** no backward compatibility. Tests that touch the raw store move to `RavenSparkTestDriver`
