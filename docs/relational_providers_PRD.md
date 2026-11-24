@@ -306,15 +306,33 @@ The dialect supplies the stamp and a *safe read horizon*:
 S14 proves the horizon with two interleaved transactions. The commercial framework gives no guidance here: on SQL it polls a cache
 table for its own caches and has no change feed for business data.
 
-**D7 (revised by D23): ids compare case-insensitively, as on RavenDB and InMemory.**
+**D7 (revised by D23, then by the round 6–9 consensus): ids are case-exact in their canonical form, and natural ids
+are unique ignoring case.**
 - Int and Guid keys can't differ in case: the model canonicalises them (digits; Guid `N`, lower case).
-- Natural keys are normalised by the model when an id is created or parsed, and their column compares
-  case-insensitively.
+- A natural key is canonical as the model builds it: the id template (D23 rule 12) or the entity's declared
+  normaliser (for example lower case for slugs) is the only way to create one, and `ids.Parse<T>` applies the same
+  normaliser. Casing that carries meaning is kept, not folded.
+- Every id the framework renders (URLs, JSON, client) is canonical, so the round trip is exact.
+- **SQL:** key columns and every FK column that points to one use a binary collation (PostgreSQL `"C"`, SQL Server
+  `*_BIN2`); synchronize copies the key's collation onto the FK columns (SQL Server refuses an FK across collations).
+  Equality and prefix scans then get an index seek, with no `text_pattern_ops` and no `citext`. Natural keys are
+  `nvarchar(450)` (900 bytes, the clustered-key limit), and synchronize fails the build if a template can exceed it.
+- **Unique ignoring case:** `builds/Release` and `builds/release` are one document on RavenDB, so they must not be
+  two rows on SQL. Natural-kind tables get a unique index on the lower-cased key (SQL Server: a persisted computed
+  column `LOWER(key)`; PostgreSQL: an expression index on `lower(key)`). On RavenDB an insert stores with an empty
+  change vector ("must not exist"), which the server checks atomically. Both rejections become the same D30
+  validation message.
+- RavenDB still matches ids case-insensitively. That difference shows only for a hand-typed, non-canonical id: found
+  on RavenDB, 404 on SQL. It is documented.
 - `LoadStartingWith` over natural keys is `LIKE @prefix ESCAPE '\'`, with `%`, `_` and `\` escaped.
-- A conformance case pins it.
+- Conformance cases pin the canonical round trip, the rejection of a non-canonical `Id<T>` on store (also a
+  debug-time check), the prefix escaping, FK equality under the copied collation, and the case-variant rejection,
+  including non-ASCII variants (`LOWER()`, PostgreSQL's `lower()` and RavenDB's folding may differ there).
 
 **D23: the id model, `Id<T>`.** ChatGPT, Claude, Gemini, Grok, Copilot and Mistral reached this consensus over five
-moderated rounds (2026-11-24). The owner accepted it ("probably good").
+moderated rounds (2026-11-24). The owner accepted it ("probably good"). Rounds 6–9 checked it against the
+commercial-framework comparison. They added the batch form of rule 7, the migrator duties of rule 11, rule 12
+(hierarchical ids) and the case rules of D7.
 
 A feature author writes only:
 
@@ -333,7 +351,8 @@ public List<Id<Profession>> ProfessionIds { get; set; } = [];
    - There is no process-global state, because several test hosts share one process.
 3. **An id is canonicalised once, at creation, through the app model:** `ids.NewAsync<T>()`, `ids.Parse<T>(s)`, the
    model-scoped JSON converter and the route binder.
-   - The model normalises: `"042"` becomes `"42"`, Guid `D` becomes `N`, and casing is fixed (D7).
+   - The model normalises: `"042"` becomes `"42"`, Guid `D` becomes `N`, and a natural key goes through its
+     entity's normaliser (D7).
    - There is no public constructor and no implicit conversion. `FromTrusted` is internal, for the generator and
      the providers.
    - `default` is empty, and a store rejects it.
@@ -355,6 +374,8 @@ public List<Id<Profession>> ProfessionIds { get; set; } = [];
 7. **Id lookups made by the framework itself** (detail load, reference resolution, row security, lookups) go through
    a provider hook: `Load` on RavenDB, key equality on EF. The commercial framework does the same: `Session.Load` on RavenDB, a
    key-equality expression on EF.
+   - The hook has a batch form (`LoadMany`: one `IN` query on EF), so reference resolution is never N+1. D30 uses the
+     same hook to name the referenced row in an FK-violation message.
    - **Only LINQ that an app author writes against `x.Id`** needs translation on RavenDB. Spike S-ID1 tries, in
      order, and the first that passes wins:
      - (a) `Id` also stored as a body field (`"Id": "people/42"`) + `RegisterQueryValueConverter`, with a one-time
@@ -377,8 +398,22 @@ public List<Id<Profession>> ProfessionIds { get; set; } = [];
 11. **No cross-provider migration tooling** (owner, 2026-11-24). Moving between database systems is a one-shot job:
     the developer writes their own migrator, which maps the first database's ids to the second's after inserting into
     it. The same entity has different ids per provider (`"people/1-A"` on RavenDB, `"people/1"` on SQL).
+    - The docs list that migrator's duties: seed the EF HiLo sequences above the migrated maximum, map RavenDB's
+      `"1-A"` ids to the new keys, and rewrite parent keys embedded in natural ids (rule 12).
+12. **Hierarchical natural ids** (O14, rounds 6–9). About 75 id builders nest other ids, for example
+    `"coverage/{repoId}/commits/{sha}"`.
+    - They stay one string primary key (Natural kind). There is no composite key and no hidden surrogate key. Ids are
+      immutable, so an embedded parent key can never go stale.
+    - **When a segment of a natural id is another entity's id, the entity also declares that reference as an
+      ordinary property** (`Id<Repository> RepositoryId`). D26 gives it a real FK and a delete rule, so the relational
+      model sees the link and no FK hides inside a string.
+    - A generator or analyzer checks that the id template and the property agree: the id is built from the property,
+      never from a free string.
+    - `LoadStartingWithAsync` stays an escaped `LIKE` prefix on the key (D7).
+    - The `LastIndexOf('/')` parsers (`ContributionHandler.cs:707`, `WebhookEndpointManager.cs:263`,
+      `MergeQueue.RepositorySuffix`) read that property instead of parsing the id.
 
-The full consensus and the spike details are in plan §3, round 4.
+The full consensus and the spike details are in plan §3, rounds 4 and 6–9.
 
 **D24 (round 3): model synchronize generates the EF migration files** (option C).
 - The app's schema follows its model through ordinary EF migrations that the developer reviews and commits.
@@ -734,12 +769,10 @@ commercial-framework comparison added D30. The plan §3 has the log.
   relational providers, and does RavenDB change to match?
 - **O12, revisions (open, next grilling):** a framework `Revisions` table (portable, per-collection retention,
   `PurgeOnDelete`), or SQL Server temporal tables (PostgreSQL has none)?
-- **O14, hierarchical natural ids (open, next grilling):** about 75 id builders compose ids that nest other ids
-  (`$"Coll/{..}"`, `ForRepository`/`PrefixFor`/`IdFor`). 13 `StartsWith("Coll/")` guards, 31 `LoadStartingWithAsync`
-  uses and a few `LastIndexOf('/')` parsers (`ContributionHandler.cs:707`, `WebhookEndpointManager.cs:263`,
-  `MergeQueue.RepositorySuffix`) depend on that shape. They fit the Natural kind: `Id<T>` splits on the *first* `/`
-  only, and on SQL the key is a string column. Open: does a prefix scan over a natural key (D7's escaped `LIKE`) cover
-  every `LoadStartingWithAsync` use, or do some of them become a query on a parent FK?
+- **O14, hierarchical natural ids (resolved by the LLMs in rounds 6–9, awaiting the owner):** D23 rule 12 and D7.
+  A string primary key with prefix scans, plus an explicit `Id<Parent>` property (a real FK) wherever a segment is
+  another entity's id. Ids are case-exact in canonical form, with binary key columns, and natural ids are unique
+  ignoring case.
 - **O13, get-only persisted properties (open, next grilling):** for example `FullName`. Persist it as a computed column,
   recompute on save (as the commercial framework's RavenDB-only calculated attribute does), or keep it out of storage?
 

@@ -8,14 +8,14 @@ rounds, milestones and status. Branch `feat/536-sql-server-provider`, draft PR #
 
 - **Docs and spikes only, no product code yet.**
   - Spikes S1, S2, S12 and S13 are done. Since round 3 they are history for the storage model (PRD §8).
-  - Grilling rounds 1–4 and the commercial-framework comparison are done (§3).
+  - Grilling rounds 1–4, the commercial-framework comparison and the LLM rounds 6–9 on it are done (§3).
 - **Scope:** SQL Server (2022, 2025) and PostgreSQL (18; 17 is open, O8). MariaDB is deferred (O6). Tier 4
   (identity_provider, dashboards) is in. The demo is a new `apps/SqlDemo`.
 - **Storage model (round 3):** a table per entity, mapped by EF Core. The model synchronize generates EF migrations;
   AsDetail collections are child tables; references are real FKs; the contract is typed; ids are `Id<T>` (D23).
   Breaking changes are allowed, with no backward compatibility.
-- **Next:** grilling round 5 on O10–O14 (change stamp, absent fields, revisions, get-only persisted properties,
-  hierarchical natural ids).
+- **Next:** the owner's sign-off on O14 (rounds 6–9), then grilling round 5 on O10–O13 (change stamp, absent fields,
+  revisions, get-only persisted properties).
   Then the gate spikes S-ID1, S-ID2, S2b, S3, S4 and S5 (§2).
 - Local spike servers left running:
   - SQL Server: `SparkSpike536` on `localhost` and `localhost\MSSQLSERVER01`
@@ -140,12 +140,38 @@ The owner accepted four changes from it:
 3. `LIKE`-first search, with FTS later (S10)
 4. no composite keys and no id obfuscation
 
+### Rounds 6–9: the consensus checked against the comparison (2026-11-24)
+
+The six conversations saw the comparison, the accepted changes and the O14 inventory. DeepSeek was still suspended;
+Mistral hit its message limit after round 7.
+- **Round 6.** Everyone accepted the comparison's changes. Untyped native keys solve a different problem: they give up
+  one compiled library per feature. O14 split three ways:
+  - a string primary key only (Grok, Copilot, ChatGPT, Gemini)
+  - plus an explicit parent FK column (Claude)
+  - a hidden surrogate key, only where an embedded key is an int/Guid entity key (Mistral)
+- **Round 7, a merged proposal (M1–M6):**
+  - a string primary key
+  - an explicit `Id<Parent>` property wherever a segment is an entity id, checked against the id template
+  - binary key columns
+  - a batch id-lookup hook
+  - the migrator's duties written down
+  - the parsers replaced by the property
+
+  Four agreed. Mistral and Gemini objected that a binary column contradicts D7's case-insensitive ids.
+- **Round 8.** Ids became case-exact in canonical form, with FK columns copying the key's collation. Claude found the
+  last gap: two natural ids that differ only in case are one document on RavenDB but two rows on SQL.
+- **Round 9.** Natural ids are unique ignoring case on every provider: a lower-cased unique index on SQL, and a
+  "must not exist" insert on RavenDB. ChatGPT, Copilot, Grok, Claude and Gemini agreed. Their notes are in PRD D7: the
+  RavenDB check is atomic, and the conformance test needs non-ASCII case variants.
+
+Result: PRD D7 and D23 rules 7, 11 and 12. O14 waits for the owner.
+
 ### Still open
 
 - O8 (the PostgreSQL 17 floor, probably moot)
 - O9 (bring-your-own `DbContext`, low priority)
-- **O10–O14 for round 5:** the change stamp, absent fields versus `NULL`, revisions, get-only persisted properties,
-  hierarchical natural ids
+- **O10–O13 for round 5:** the change stamp, absent fields versus `NULL`, revisions, get-only persisted properties
+- **O14** (hierarchical natural ids): the LLM consensus of rounds 6–9 awaits the owner's sign-off
 
 ## 4. Milestones
 
