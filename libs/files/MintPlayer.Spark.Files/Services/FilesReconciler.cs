@@ -51,10 +51,10 @@ internal sealed partial class FilesReconciler
         foreach (var chunk in staged.Chunk(Batch))
         {
             using var session = store.OpenAsyncSession();
-            var uploads = await session.LoadAsync<SparkFileUpload>(chunk.Select(s => SparkFileUpload.IdFor(s.Token)), cancellationToken);
+            var uploads = await session.LoadAsync<SparkFileUpload>(chunk.Select(s => SparkFileUpload.IdFor(s.Token).Value), cancellationToken);
             foreach (var (key, token) in chunk)
             {
-                var upload = uploads.GetValueOrDefault(SparkFileUpload.IdFor(token));
+                var upload = uploads.GetValueOrDefault(SparkFileUpload.IdFor(token).Value);
                 if (upload is null || upload.State is SparkFileUploadState.Claimed or SparkFileUploadState.Refused)
                     deleted.Add(key);
             }

@@ -164,7 +164,7 @@ public class ObjectStoreClaimTests : FilesTestHost
         var (token, _) = await StageAsync(Alice, "Document", "scan.pdf");
         using (var session = Store.OpenAsyncSession())
         {
-            var upload = await session.LoadAsync<SparkFileUpload>(SparkFileUpload.IdFor(token));
+            var upload = await session.LoadAsync<SparkFileUpload>(SparkFileUpload.IdFor(token).Value);
             upload!.State = SparkFileUploadState.Claimed;
             await session.SaveChangesAsync();
         }

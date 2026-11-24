@@ -53,7 +53,7 @@ internal sealed partial class DeferredFileScanner
 
         using var session = store.OpenAsyncSession();
         session.Advanced.OptimisticConcurrencyMode = Raven.Client.Documents.Session.OptimisticConcurrencyMode.Writes;
-        var upload = await session.LoadAsync<SparkFileUpload>(SparkFileUpload.IdFor(token), cancellationToken);
+        var upload = await session.LoadAsync<SparkFileUpload>(SparkFileUpload.IdFor(token).Value, cancellationToken);
         if (upload is null || !WaitsForScan(upload) || IsExpired(upload))
             return null;
 

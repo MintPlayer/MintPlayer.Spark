@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using Microsoft.Extensions.Options;
+using MintPlayer.Spark.Abstractions;
 using Raven.Client.Documents;
 
 namespace MintPlayer.Spark.MailManager.Deliveries;
@@ -21,14 +22,15 @@ public enum SparkMailDeliveryStatus
 }
 
 /// <summary>
-/// <c>SparkMailDeliveries/{deliveryId}</c>: what a VERP bounce is matched against. Kept for
+/// <c>sparkmaildeliveries/{deliveryId}</c>: what a VERP bounce is matched against. Kept for
 /// <see cref="SparkMailOptions.DeliveryRetentionDays"/> (RavenDB <c>@expires</c>). Holds the address —
 /// personal data, which is why it expires.
 /// </summary>
-public sealed class SparkMailDelivery
+[IdKind(SparkIdKind.Natural)]
+public sealed partial class SparkMailDelivery
 {
     /// <summary>The document id.</summary>
-    public string? Id { get; set; }
+    public Id<SparkMailDelivery> Id { get; set; }
 
     /// <summary>The recipient.</summary>
     public string Email { get; set; } = string.Empty;
@@ -52,16 +54,17 @@ public sealed class SparkMailDelivery
     public string? Detail { get; set; }
 
     /// <summary>The document id for <paramref name="deliveryId"/>.</summary>
-    public static string IdFor(string deliveryId) => $"SparkMailDeliveries/{deliveryId}";
+    public static Id<SparkMailDelivery> IdFor(string deliveryId) => Id<SparkMailDelivery>.FromTrusted($"sparkmaildeliveries/{deliveryId}");
 }
 
 /// <summary>
-/// <c>SparkMailSuppressions/{sha256(normalized email)}</c>: the address is not stored, only its hash.
+/// <c>sparkmailsuppressions/{sha256(normalized email)}</c>: the address is not stored, only its hash.
 /// </summary>
-public sealed class SparkMailSuppression
+[IdKind(SparkIdKind.Natural)]
+public sealed partial class SparkMailSuppression
 {
     /// <summary>The document id.</summary>
-    public string? Id { get; set; }
+    public Id<SparkMailSuppression> Id { get; set; }
 
     /// <summary>Suppressed for every stream.</summary>
     public bool All { get; set; }
@@ -76,8 +79,8 @@ public sealed class SparkMailSuppression
     public DateTime UpdatedAtUtc { get; set; }
 
     /// <summary>The document id for <paramref name="email"/>.</summary>
-    public static string IdFor(string email)
-        => $"SparkMailSuppressions/{Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(Normalize(email))))}";
+    public static Id<SparkMailSuppression> IdFor(string email)
+        => Id<SparkMailSuppression>.FromTrusted($"sparkmailsuppressions/{Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(Normalize(email))))}");
 
     /// <summary>Trimmed and lower-cased (the local part is case-insensitive in practice).</summary>
     public static string Normalize(string email) => email.Trim().ToLowerInvariant();
@@ -89,7 +92,7 @@ internal sealed class SparkMailSuppressions(IDocumentStore store) : ISparkMailSu
     public async Task<bool> IsSuppressedAsync(string email, string? stream = null, CancellationToken cancellationToken = default)
     {
         using var session = store.OpenAsyncSession();
-        var doc = await session.LoadAsync<SparkMailSuppression>(SparkMailSuppression.IdFor(email), cancellationToken);
+        var doc = await session.LoadAsync<SparkMailSuppression>(SparkMailSuppression.IdFor(email).Value, cancellationToken);
         return doc is not null && (doc.All || (stream is not null && doc.Streams.Contains(stream, StringComparer.OrdinalIgnoreCase)));
     }
 
@@ -97,11 +100,11 @@ internal sealed class SparkMailSuppressions(IDocumentStore store) : ISparkMailSu
     {
         using var session = store.OpenAsyncSession();
         var id = SparkMailSuppression.IdFor(email);
-        var doc = await session.LoadAsync<SparkMailSuppression>(id, cancellationToken);
+        var doc = await session.LoadAsync<SparkMailSuppression>(id.Value, cancellationToken);
         if (doc is null)
         {
             doc = new SparkMailSuppression { Id = id };
-            await session.StoreAsync(doc, cancellationToken);
+            await session.StoreAsync(doc, id.Value, cancellationToken);
         }
         if (stream is null)
             doc.All = true;
@@ -115,8 +118,7 @@ internal sealed class SparkMailSuppressions(IDocumentStore store) : ISparkMailSu
     public async Task<bool> RemoveAsync(string email, string? stream = null, CancellationToken cancellationToken = default)
     {
         using var session = store.OpenAsyncSession();
-        var id = SparkMailSuppression.IdFor(email);
-        var doc = await session.LoadAsync<SparkMailSuppression>(id, cancellationToken);
+        var doc = await session.LoadAsync<SparkMailSuppression>(SparkMailSuppression.IdFor(email).Value, cancellationToken);
         if (doc is null)
             return false;
         if (stream is null)
@@ -140,11 +142,11 @@ internal sealed class SparkMailDeliveryStore(IDocumentStore store, IOptions<Spar
     {
         using var session = store.OpenAsyncSession();
         var id = SparkMailDelivery.IdFor(deliveryId);
-        var doc = await session.LoadAsync<SparkMailDelivery>(id, cancellationToken);
+        var doc = await session.LoadAsync<SparkMailDelivery>(id.Value, cancellationToken);
         if (doc is null)
         {
             doc = new SparkMailDelivery { Id = id };
-            await session.StoreAsync(doc, cancellationToken);
+            await session.StoreAsync(doc, id.Value, cancellationToken);
             session.Advanced.GetMetadataFor(doc)["@expires"] = DateTime.UtcNow.AddDays(options.Value.DeliveryRetentionDays).ToString("O");
         }
         update(doc);
@@ -155,6 +157,6 @@ internal sealed class SparkMailDeliveryStore(IDocumentStore store, IOptions<Spar
     public async Task<SparkMailDelivery?> LoadAsync(string deliveryId, CancellationToken cancellationToken)
     {
         using var session = store.OpenAsyncSession();
-        return await session.LoadAsync<SparkMailDelivery>(SparkMailDelivery.IdFor(deliveryId), cancellationToken);
+        return await session.LoadAsync<SparkMailDelivery>(SparkMailDelivery.IdFor(deliveryId).Value, cancellationToken);
     }
 }

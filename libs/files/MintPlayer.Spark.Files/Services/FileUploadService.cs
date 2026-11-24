@@ -114,7 +114,7 @@ internal sealed partial class FileUploadService
                 CreatedAtUtc = now.UtcDateTime,
                 ExpiresAtUtc = (now + settings.StagingLifetime).UtcDateTime,
             };
-            await session.StoreAsync(upload, upload.Id, cancellationToken);
+            await session.StoreAsync(upload, upload.Id.Value, cancellationToken);
 
             var direct = await fileStore.CreateUploadTargetAsync(stagingKey, maxBytes, uploadDeadline, cancellationToken);
             prepared.Add(direct is null
@@ -134,7 +134,7 @@ internal sealed partial class FileUploadService
             return FilesResult<bool>.Fail(FilesOutcome.NotFound);
 
         using var session = store.OpenAsyncSession();
-        var upload = await session.LoadAsync<SparkFileUpload>(SparkFileUpload.IdFor(token), cancellationToken);
+        var upload = await session.LoadAsync<SparkFileUpload>(SparkFileUpload.IdFor(token).Value, cancellationToken);
         // Another user's token, a used one and an expired one answer alike: there is no such slot.
         if (upload is null || upload.UserId != userId || upload.State != SparkFileUploadState.Prepared
             || upload.UploadDeadlineUtc < clock.GetUtcNow().UtcDateTime || IsExpired(upload))
@@ -165,11 +165,11 @@ internal sealed partial class FileUploadService
             return FilesResult<CommitFilesOutput>.Fail(FilesOutcome.Invalid, $"Commit 1 to {options.Value.MaxBatch} tokens.");
 
         using var session = store.OpenAsyncSession();
-        var loaded = await session.LoadAsync<SparkFileUpload>(tokens.Distinct().Select(SparkFileUpload.IdFor), cancellationToken);
+        var loaded = await session.LoadAsync<SparkFileUpload>(tokens.Distinct().Select(t => SparkFileUpload.IdFor(t).Value), cancellationToken);
         var results = new List<CommittedFile>(tokens.Count);
         foreach (var token in tokens)
         {
-            var upload = loaded.GetValueOrDefault(SparkFileUpload.IdFor(token));
+            var upload = loaded.GetValueOrDefault(SparkFileUpload.IdFor(token).Value);
             if (upload is null || upload.UserId != userId || IsExpired(upload))
             {
                 results.Add(new CommittedFile(token, null, null, 0, SparkFileScanStatus.Pending, null, null, "No such upload."));
