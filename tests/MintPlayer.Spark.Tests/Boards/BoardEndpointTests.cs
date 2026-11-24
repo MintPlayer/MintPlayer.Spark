@@ -113,7 +113,7 @@ public class BoardEndpointTests : OrganizationsTestHost
         // The removal comes back, so the next save can state it again.
         saved.GetProperty("removed").EnumerateArray().Select(t => t.GetProperty("id").GetString()).Should().Equal("note-count");
 
-        var stored = await LoadAsync<BoardLayout>(BoardLayout.IdFor(ann.Id!, "home"));
+        var stored = await LoadAsync<BoardLayout>(BoardLayout.IdFor(ann.Id!, "home").Value);
         stored!.Owner.Should().Be(ann.Id);
         // The hidden default's position is kept, though Ann never saw it.
         stored.Layouts[2].Select(e => e.Id).Should().Contain("gone");
@@ -142,7 +142,7 @@ public class BoardEndpointTests : OrganizationsTestHost
         var (status, reset) = await RequestAsync(HttpMethod.Delete, "/spark/boards/home", ann.Id);
         status.Should().Be(HttpStatusCode.OK);
         TileIds(reset).Should().Equal("notes", "note-count");
-        (await LoadAsync<BoardLayout>(BoardLayout.IdFor(ann.Id!, "home"))).Should().BeNull();
+        (await LoadAsync<BoardLayout>(BoardLayout.IdFor(ann.Id!, "home").Value)).Should().BeNull();
     }
 
     [Fact]

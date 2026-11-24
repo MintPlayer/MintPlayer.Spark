@@ -63,7 +63,7 @@ internal sealed partial class SparkBoardService
         if (UserId() is { } userId)
         {
             using var session = store.OpenAsyncSession();
-            stored = await session.LoadAsync<BoardLayout>(BoardLayout.IdFor(userId, board.Id), cancellationToken);
+            stored = await session.LoadAsync<BoardLayout>(BoardLayout.IdFor(userId, board.Id).Value, cancellationToken);
             if (stored is not null)
                 changeVector = session.Advanced.GetChangeVectorFor(stored);
         }
@@ -83,7 +83,7 @@ internal sealed partial class SparkBoardService
         // A first save is stored as "must not exist", so two first saves race to one winner too.
         session.Advanced.OptimisticConcurrencyMode = Raven.Client.Documents.Session.OptimisticConcurrencyMode.Writes;
         var id = BoardLayout.IdFor(userId, board.Id);
-        var stored = await session.LoadAsync<BoardLayout>(id, cancellationToken);
+        var stored = await session.LoadAsync<BoardLayout>(id.Value, cancellationToken);
         if (stored is not null && session.Advanced.GetChangeVectorFor(stored) != changeVector)
             return new(BoardSaveOutcome.Conflict, "the board was changed elsewhere; reload it");
 
@@ -122,7 +122,7 @@ internal sealed partial class SparkBoardService
         }
         else
         {
-            await session.StoreAsync(layout, id, cancellationToken);
+            await session.StoreAsync(layout, id.Value, cancellationToken);
         }
         try
         {
@@ -146,7 +146,7 @@ internal sealed partial class SparkBoardService
             return new(BoardSaveOutcome.Forbidden);
         using (var session = store.OpenAsyncSession())
         {
-            session.Delete(BoardLayout.IdFor(userId, board.Id));
+            session.Delete(BoardLayout.IdFor(userId, board.Id).Value);
             await session.SaveChangesAsync(cancellationToken);
         }
         return new(BoardSaveOutcome.Saved, Board: await ViewAsync(board, null, null, cancellationToken));
