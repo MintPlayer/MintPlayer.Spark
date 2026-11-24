@@ -234,6 +234,9 @@ source-generated from one id template per entity (PRD D23 rule 12).
 4. **`MintPlayer.Spark.Relational`, `MintPlayer.Spark.SqlServer`, `MintPlayer.Spark.PostgreSql`** (D2):
    - `UseSqlServer()`, `UsePostgreSql()` and their `SparkStoreProviders` constants
    - the EF model built from the Spark model, the migration generator (D24), child and join tables (D25, D26)
+   - applying migrations (D33): at startup by default (framework schema, app migrations, then the data migrations),
+     `--spark-migrate`, `--spark-migration-script`, the `ApplyMigrations=false` startup check, and the per-app
+     pending-model-changes test
    - the store, session, query provider, change feed, expiration, the data-protection key store, atomic values,
      leases and reservations
    - constraint-error translation (D30)

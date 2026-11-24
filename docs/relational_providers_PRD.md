@@ -467,6 +467,40 @@ The full consensus and the spike details are in plan §3, rounds 4 and 6–9.
   hand-written versioned scripts.
 - The S3 gate decides how the migration is produced from a model built from metadata.
 
+**D33 (owner, 2026-11-24): when migrations are generated and applied.** RavenDB apps need no schema step today; SQL
+apps do. Spark keeps the RavenDB experience by default and offers two stricter modes from the same app binary, with
+no `dotnet ef` tool and no design-time `DbContext` factory (Spark builds the `DbContext` from its model, which the
+EF tools would have to rebuild).
+- **Generated in development only.** `--spark-synchronize-model` writes the EF migration for a model change (D24),
+  and the developer reviews and commits it with the change, as the model JSON is today. Nothing generates a
+  migration at run time. A test per app (with the D31 tests) fails when the model has changes no migration covers
+  (EF's `HasPendingModelChanges()`), so a forgotten migration fails CI rather than startup.
+- **Default: applied at startup** (the owner's lean, and what Spark already does). `SparkMigrationRunner` already
+  applies the data migrations (`ISparkMigration`) once at startup and makes the other instances wait
+  (`SparkMigrationRunner.cs:9-11`); RavenDB index deployment runs at startup too. The SQL providers apply, in order:
+  1. the framework schema (D24's own tables, its own history table)
+  2. the app's EF migrations
+  3. the data migrations, as today
+
+  EF 9 and later take an exclusive database lock around applying migrations, so several instances starting together
+  are safe, and since EF 10 each migration runs in its own transaction again. EF refuses to apply while the model has
+  changes no migration covers (`PendingModelChangesWarning`), which backs up the CI test.
+- **Mode 2, a separate step:** `<app> --spark-migrate` applies all three and exits. It suits a pipeline step or an
+  init container run with a login that may change the schema, while the app itself runs with
+  `Spark:Database:ApplyMigrations=false` and a login without DDL rights. This is what an EF migration bundle does,
+  and the app binary already is one.
+- **Mode 3, a script for a DBA:** `<app> --spark-migration-script <file> [--from <migration>] [--to <migration>]` writes one
+  idempotent SQL script (`--idempotent` semantics: it checks the history tables) covering the framework schema and the
+  app's migrations in the right order. Data migrations are C# and can't be scripted: they run at the next startup or
+  through `--spark-migrate`, and need only data rights.
+- **With `ApplyMigrations=false`, startup checks and refuses:** pending migrations stop the app with a message that
+  names both commands, instead of running against an older schema.
+- Why not scripts as the default: the review a script offers already happens on the generated migration file in the
+  pull request; scripts add a manual step to every deploy; and the three production apps here deploy as containers that
+  migrate themselves at startup (the RavenDB precedent `M_202609210900_ForgeQualifiedDocumentIds` and its
+  healthcheck `start_period`). Microsoft recommends applying migrations at deploy time rather than at startup, mainly
+  because of concurrent instances (which the lock now covers) and DDL rights at run time (which mode 2 covers).
+
 **D25 (round 3): AsDetail collections are relational child tables.**
 - Child rows already have ids (`ValueObjectKeyGenerator` emits `string Id`).
 - A child table is keyed by (owner id, child id), with an FK to the owner and cascade delete.
