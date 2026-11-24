@@ -14,7 +14,7 @@ rounds, milestones and status. Branch `feat/536-sql-server-provider`, draft PR #
 - **Storage model (round 3):** a table per entity, mapped by EF Core. The model synchronize generates EF migrations;
   AsDetail collections are child tables; references are real FKs; the contract is typed; ids are `Id<T>` (D23).
   Breaking changes are allowed, with no backward compatibility.
-- **Next:** the owner's sign-off on O14 (rounds 6–9) and O15 (round 10), then grilling round 5 on O10–O13 (change
+- **Next:** the owner's sign-off on O14 (rounds 6–9), then grilling round 5 on O10–O13 (change
   stamp, absent fields, revisions, get-only persisted properties).
   Then the gate spikes S-ID1, S-ID2, S-ID4, S2b, S3, S4 and S5 (§2).
 - Local spike servers left running:
@@ -177,8 +177,9 @@ rule and L1. Mistral hit its message limit again; DeepSeek is still suspended.
 - The lowercase rule replaces round 9's lower-cased unique index and the per-entity normalisers (PRD D7).
 - L1: building the model fails when two entity types map to collection names that are equal ignoring case.
 - L2: all five chose (a), no re-key. Claude added that a reference-field patch re-triggers the subscriptions just as
-  a re-key would, and that `LoadStartingWithAsync` must be shown to ignore case on mixed-case ids. The owner leans
-  to (b), so this is open as O15, with spike S-ID4.
+  a re-key would, and that `LoadStartingWithAsync` must be shown to ignore case on mixed-case ids. The owner had
+  proposed (b), then followed the recommendation: O15 is decided as (a), gated by spike S-ID4. If S-ID4 fails, O15
+  reopens with a case-only re-key spiked on the same database copy.
 
 ### Still open
 
@@ -186,7 +187,6 @@ rule and L1. Mistral hit its message limit again; DeepSeek is still suspended.
 - O9 (bring-your-own `DbContext`, low priority)
 - **O10–O13 for round 5:** the change stamp, absent fields versus `NULL`, revisions, get-only persisted properties
 - **O14** (hierarchical natural ids): the LLM consensus of rounds 6–9 awaits the owner's sign-off
-- **O15** (mixed-case ids in production RavenDB data): (a) no re-key, or (b) a case-only re-key migration
 
 ## 4. Milestones
 

@@ -345,7 +345,8 @@ Mistral was rate-limited.
 - Conformance cases pin the canonical round trip, `GetById` with an upper-case variant (found on every provider), the
   rejection of a non-lowercase id on store, the prefix escaping, FK equality under the copied collation, and
   non-ASCII keys (`ToLowerInvariant` runs in .NET, so the providers never fold case themselves).
-- Existing RavenDB data with mixed-case ids: O15.
+- Existing RavenDB data with mixed-case ids is **not re-keyed** (O15): RavenDB lookups ignore case and Spark lowers
+  every id it reads. Spike S-ID4 proves it on a copy of a production database before M2.
 
 **D23: the id model, `Id<T>`.** ChatGPT, Claude, Gemini, Grok, Copilot and Mistral reached this consensus over five
 moderated rounds (2026-11-24). The owner accepted it ("probably good"). Rounds 6–9 checked it against the
@@ -792,8 +793,9 @@ commercial-framework comparison added D30. The plan §3 has the log.
   another entity's id. Ids are lower case (D7, round 10), with binary key columns.
 - **O13, get-only persisted properties (open, next grilling):** for example `FullName`. Persist it as a computed column,
   recompute on save (as the commercial framework's RavenDB-only calculated attribute does), or keep it out of storage?
-- **O15, mixed-case ids in production RavenDB data (open, owner's call):** the owner wants a migration that lowercases
-  every document id in the production apps. All five LLMs that answered round 10 chose the alternative.
+- **O15, mixed-case ids in production RavenDB data (decided 2026-11-24: (a), no re-key, gated by S-ID4):** the owner
+  first proposed a migration that lowercases every document id in the production apps. All five LLMs that answered
+  round 10 chose (a), and the owner followed the recommendation ("I'll follow your decision").
   - **(a) No re-key.** RavenDB lookups already ignore case, and Spark lowers every id it reads (D23 rule 6), so the
     app sees only lowercase ids. Reference fields inside documents need no patch either if RavenDB's string
     equality in indexes ignores case (expected for both engines; to verify), and `LoadStartingWithAsync` must be
