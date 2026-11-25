@@ -86,9 +86,11 @@ public class SparkFullProducer : Producer
 
             using (writer.OpenBlock("global::MintPlayer.Spark.SparkExtensions.AddSpark(services, configuration, spark =>"))
             {
-                // The full bundle runs on RavenDB (#551): its feature packages (contributions, search, messaging…)
-                // are RavenDB-backed.
-                writer.WriteLine("global::MintPlayer.Spark.SparkRavenDbExtensions.UseRavenDb(spark);");
+                // The store: options.Store picks one (#536: the bundled features run on any store); RavenDB otherwise.
+                using (writer.OpenBlock("if (options.Store != null)"))
+                    writer.WriteLine("options.Store(spark);");
+                using (writer.OpenBlock("else"))
+                    writer.WriteLine("global::MintPlayer.Spark.SparkRavenDbExtensions.UseRavenDb(spark);");
                 writer.WriteLine($"global::MintPlayer.Spark.SparkExtensions.UseContext<{contextType}>(spark);");
 
                 // These registration extensions are generated into {RootNamespace} by the other

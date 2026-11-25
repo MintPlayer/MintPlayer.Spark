@@ -503,6 +503,11 @@ rounds, milestones and status. Branch `feat/536-sql-server-provider`, draft PR #
     - `SparkFileUpload` is registered as a stored type (D36).
     - **Evidence:** `NeutralFilesStoreTests` (claim + reconcile, the deferred sweep, the default store) 3/3 on all four
       databases; the Files suites on RavenDB 264/264 (28 skipped: cloud stores).
+  - **M6l (2026-11-25): AllFeatures on any store.** `SparkFullOptions.Store` (`spark => spark.UseSqlServer(…)`, …)
+    picks the store; the generated `AddSparkFull` falls back to `UseRavenDb` only when it is unset. Replication stays
+    RavenDB-only. Evidence: `SparkFullGeneratorTests` 12/12 (new: the store switch).
+    - CI run 45633705145 (commit `5b3a502e9`): everything green except the four Spark.Tests shards, whose build task
+      failed on the Nx remote cache ("Misconfigured remote cache endpoint: 500"), not on a test.
   - **M6k (2026-11-25): the app template on any store.** `features.json` no longer pins RavenDB for the 13 ported
     features (Authorization, Migrations, Messaging, Mail, Cron, Mcp, Contributions, Settings, GitHubWebhooks,
     GitHubDevTunnel, Boards, Notifications, Organizations). History, SoftDelete, Dashboards, IdentityProvider,

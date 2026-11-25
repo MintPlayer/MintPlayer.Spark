@@ -59,6 +59,29 @@ public class SparkFullGeneratorTests
         combined.Should().Contain("TestApp.AppContext");
     }
 
+    /// <summary>#536: <c>options.Store</c> picks the store; RavenDB only when it is unset.</summary>
+    [Fact]
+    public void The_store_comes_from_the_options_with_RavenDB_as_the_fallback()
+    {
+        var source = """
+            using MintPlayer.Spark;
+
+            namespace TestApp;
+
+            public class AppContext : SparkContext { }
+            """;
+
+        var result = GeneratorHarness.Run(
+            GeneratorName,
+            [source],
+            referenceTypes: [typeof(SparkContext)],
+            rootNamespace: "TestApp",
+            generatorAssemblyName: GeneratorAssembly);
+
+        var combined = string.Join("\n", result.GeneratedSources.Select(s => s.Source)).Replace("\r\n", "\n");
+        combined.Should().MatchRegex(@"if \(options\.Store != null\)\s*\{\s*options\.Store\(spark\);\s*\}\s*else\s*\{\s*global::MintPlayer\.Spark\.SparkRavenDbExtensions\.UseRavenDb\(spark\);\s*\}");
+    }
+
     [Fact]
     public void SparkUser_subclass_is_routed_through_AddAuthentication()
     {
