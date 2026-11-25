@@ -45,7 +45,11 @@ public sealed class SparkSharedDatabase : IAsyncLifetime
     }
 }
 
-/// <summary>The base class for tests on a <see cref="SparkSharedDatabase"/>: the class's database, per case.</summary>
+/// <summary>
+/// The base class for tests on a <see cref="SparkSharedDatabase"/>: the class's database, per case. It carries the
+/// <see cref="SparkTestTraits"/> trait; a class that takes the fixture without this base declares the trait itself.
+/// </summary>
+[Trait(SparkTestTraits.Database, SparkTestTraits.Any)]
 public abstract class SparkSharedTestDriver : IAsyncLifetime
 {
     private readonly SparkSharedDatabase shared;

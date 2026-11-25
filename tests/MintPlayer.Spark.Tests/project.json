@@ -12,8 +12,11 @@
         "{workspaceRoot}/tools/test-shard.mjs",
         "{workspaceRoot}/tools/test-shard-weights.json",
         "{workspaceRoot}/tests/MintPlayer.Spark.SourceGenerators.Tests/VerifyResults/SearchIndexGeneratorTests/*.verified.txt",
+        "{workspaceRoot}/tools/test-servers.mjs",
         { "env": "SPARK_TEST_SHARD" },
+        { "env": "SPARK_TEST_FILTER" },
         { "env": "SPARK_TEST_DATABASE" },
+        { "runtime": "node tools/test-servers.mjs" },
         { "env": "SPARK_OPENSEARCH_URI" }
       ],
       "options": {

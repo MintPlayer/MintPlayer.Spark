@@ -3,7 +3,8 @@
 //
 //   SPARK_TEST_SHARD=2/4 node tools/test-shard.mjs <project dir> dotnet test --no-build ...
 //
-// Without SPARK_TEST_SHARD the command runs unchanged, so local runs and `nx run-many` see no difference.
+// Without SPARK_TEST_SHARD (and SPARK_TEST_FILTER, below) the command runs unchanged, so local runs and
+// `nx run-many` see no difference.
 // With it, `--filter` and a per-shard trx logger are appended:
 //
 // - The test classes are found in the project's sources (a file with a [Fact] or [Theory]) and packed into
@@ -127,6 +128,13 @@ export function filterFor(groups, index) {
     .join('&');
 }
 
+/** One VSTest filter that every given filter must pass (the shard's and SPARK_TEST_FILTER's); null for none. */
+export function combineFilters(filters) {
+  const set = filters.filter(Boolean);
+  if (set.length === 0) return null;
+  return set.length === 1 ? set[0] : set.map((f) => `(${f})`).join('&');
+}
+
 export function parseShard(value) {
   const m = /^(\d+)\/(\d+)$/.exec(value ?? '');
   if (!m) return null;
@@ -174,12 +182,21 @@ function main(argv) {
 
   const [projectDir, command, ...args] = argv;
   const shard = parseShard(process.env.SPARK_TEST_SHARD);
+  const filters = [];
   if (shard) {
     const groups = pack(applyWeights(discover(path.resolve(projectDir)), loadWeights()), shard.count);
-    args.push('--filter', filterFor(groups, shard.index));
+    filters.push(filterFor(groups, shard.index));
     args.push('--logger', `trx;LogFileName=shard-${shard.index}-of-${shard.count}.trx`);
     console.log(`Shard ${shard.index}/${shard.count}: ${shard.index < shard.count ? `${groups[shard.index - 1].classes.length} classes` : 'every class the other shards do not run'}.`);
   }
+  // SPARK_TEST_FILTER narrows the run further: CI's SQL Server and PostgreSQL legs pass `SparkDatabase=Any`, the
+  // provider-neutral classes (#536 M9, SparkTestTraits).
+  if (process.env.SPARK_TEST_FILTER) {
+    filters.push(process.env.SPARK_TEST_FILTER);
+    console.log(`Filter: ${process.env.SPARK_TEST_FILTER}.`);
+  }
+  const filter = combineFilters(filters);
+  if (filter) args.push('--filter', filter);
   const child = spawn(command, args, { stdio: 'inherit' });
   child.on('exit', (code, signal) => process.exit(signal ? 1 : code ?? 1));
 }

@@ -58,6 +58,16 @@ public class CarTests : SparkTestDriver
 
 On SQL Server and PostgreSQL the database's schema comes from the model, as the app's migrations would make it; a later host on the same database applies only its differences.
 
+### One CI leg per database: the `SparkDatabase=Any` trait
+
+`SparkTestDriver` and `SparkSharedTestDriver` carry the xUnit trait `SparkDatabase=Any` (`SparkTestTraits`), and xUnit hands it down to every class on them. A project that runs its RavenDB tests once and its neutral tests on every database selects them by it:
+
+```bash
+SPARK_TEST_DATABASE=PostgreSql dotnet test --filter SparkDatabase=Any
+```
+
+A class that takes `SparkSharedDatabase` as a fixture without the driver base declares the trait itself, with `[Trait(SparkTestTraits.Database, SparkTestTraits.Any)]`. Spark's own suite has a test that fails when a neutral class lacks it (`ProviderNeutralTraitTests`).
+
 ### 2. Provide a RavenDB license
 
 RavenDB 7.x requires a license even for the embedded TestDriver. `RavenSparkTestDriver` loads one from, in order:

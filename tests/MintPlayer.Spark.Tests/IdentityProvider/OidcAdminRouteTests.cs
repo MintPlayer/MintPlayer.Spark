@@ -46,6 +46,7 @@ namespace MintPlayer.Spark.Tests.IdentityProvider;
 /// pair is minted once, as in <c>RetryFromEveryHook</c>.
 /// </para>
 /// </summary>
+[Trait(SparkTestTraits.Database, SparkTestTraits.Any)]
 public class OidcAdminRouteTests(OidcAdminRouteTests.AdminRouteHost host)
     : IClassFixture<OidcAdminRouteTests.AdminRouteHost>
 {

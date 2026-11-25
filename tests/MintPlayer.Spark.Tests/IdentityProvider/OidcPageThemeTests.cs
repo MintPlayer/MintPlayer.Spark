@@ -11,6 +11,7 @@ namespace MintPlayer.Spark.Tests.IdentityProvider;
 /// attribute and leaves the page's <c>prefers-color-scheme</c> block in charge. The cookie is
 /// attacker-controlled, so an unrecognised value must never reach the HTML.
 /// </summary>
+[Trait(SparkTestTraits.Database, SparkTestTraits.Any)]
 public class OidcPageThemeTests(OidcSharedHost host) : IClassFixture<OidcSharedHost>
 {
     private const string MediaBlock = "@media (prefers-color-scheme: dark){:root:not([data-bs-theme=light])";

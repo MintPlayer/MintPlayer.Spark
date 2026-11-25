@@ -45,9 +45,10 @@ namespace MintPlayer.Spark.Tests.IdentityProvider;
 /// <para>
 /// Provider-neutral (#536 M8b): the database is the test assembly's (<c>SPARK_TEST_DATABASE</c>), so the whole suite
 /// runs on RavenDB, SQL Server, PostgreSQL and InMemory. A case about RavenDB's own behaviour (indexing paused, the
-/// token time series) checks <see cref="IsRavenDb"/>.
+/// token time series) checks <see cref="IsRavenDb"/>. The trait puts every class on it in CI's SQL legs (M9).
 /// </para>
 /// </summary>
+[Trait(SparkTestTraits.Database, SparkTestTraits.Any)]
 public abstract class OidcTestHost : IAsyncLifetime
 {
     private readonly OidcSharedHost host;

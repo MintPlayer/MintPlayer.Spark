@@ -100,7 +100,11 @@ parallel `Angular apps` job (`--exclude='*,!@spark-demo/*,!@spark-apps/*'`; `nx 
 
 **`MintPlayer.Spark.Tests` references four test databases** (RavenDB, InMemory, SqlServer, PostgreSql; #536 D35),
 so its provider-neutral classes (`SparkTestDriver`, `SparkSharedDatabase`) need `SPARK_TEST_DATABASE` to pick one.
-CI and `npm run test:affected` set `RavenDB`; set it yourself for a single-class `dotnet test`.
+CI and `npm run test:affected` set `RavenDB`; set it yourself for a single-class `dotnet test`. CI's `SQL Server` and
+`PostgreSQL` jobs (#536 M9) run those classes again, selected by the trait `SparkDatabase=Any`, with
+`MintPlayer.Spark.Relational.Tests`, each on a real server the job starts. A neutral class that takes `SparkSharedDatabase`
+or a `SparkSharedHost<>` without a driver base declares the trait itself; `ProviderNeutralTraitTests` fails otherwise.
+The run is at the 20-job limit with them: a new matrix entry joins an existing job.
 
 ### The local sweep: `npm run test:affected`
 

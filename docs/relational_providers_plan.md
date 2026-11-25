@@ -549,6 +549,40 @@ rounds, milestones and status. Branch `feat/536-sql-server-provider`, draft PR #
       `ISparkStore` and reserves each client id. Before, a new database found the seeded clients only through the
       reservation migration that runs after them. `OidcClientIdReservation` is public for it. `SparkId.Tests` 3/3 (red
       first: "the seed reserves client id 'qna'").
+    - Done: pushed as `8b32534fb`.
+  - **M9a (2026-11-25): CI database legs.** Two new jobs in `.github/workflows/test.yml`, `SQL Server` and `PostgreSQL`.
+    - **What they run:** the provider-neutral classes of `MintPlayer.Spark.Tests` and all of
+      `MintPlayer.Spark.Relational.Tests` (which "Other suites" no longer runs). The RavenDB shards still run the neutral
+      classes on RavenDB.
+    - **How they find the classes:** the xUnit trait `SparkDatabase=Any` (`SparkTestTraits`, in `MintPlayer.Spark.Testing`).
+      `SparkTestDriver`, `SparkSharedTestDriver` and `OidcTestHost` carry it, and xUnit 2.9.3 hands a class trait down
+      to subclasses. Measured: two levels down (`OidcErrorPageTests`), a RavenDB-only class left out. A class on a
+      shared fixture without a driver base declares it (2 did). `ProviderNeutralTraitTests` guards both directions: red
+      first with 32+ classes listed, then green. `tools/test-shard.mjs` appends `SPARK_TEST_FILTER` to its filter, with
+      a unit test.
+    - **Servers:** detached containers started before Setup, pinned (O8):
+      - `mcr.microsoft.com/mssql/server:2025-CU11-ubuntu-24.04`, `postgres:18.7`, and `postgres:17.12` for the D31 behaviour
+        tests only (a plain `dotnet test` step).
+      - A password per run, masked.
+      - SQL Server counts as ready when `sqlcmd` (in the image, checked) can create and drop a database.
+      - PostgreSQL counts as ready on `pg_isready` over TCP.
+    - **Cache key:** `tools/test-servers.mjs`, a `runtime` input, prints whether each server variable is set, plus the
+      image. A run with a server never replays a run that skipped without one, and no password enters the key.
+    - **The 20-job limit:** "Library suites" and "CodeCoverage git suites" share a job now (3.4 and 2.4 min, ~1.5 min
+      of each being setup). 17 matrix jobs + 3 = 20.
+    - **Measured locally:**
+      - the neutral set on PostgreSQL 18: 515 tests, 513 passed and 2 skipped (`INC:Tokens`), in 2 m 1 s;
+      - on InMemory: 22 s;
+      - `PostgreSqlBehaviourTests` on `postgres:17.12`: 12/12.
+      - The SQL Server 2025 container crashes on this machine's Docker Desktop (lsass, `0x00000002`), a known WSL2
+        problem. GitHub's runners are plain Ubuntu.
+    - **Found by CI run 45694125923:** two Cli.Tests failed on a stale build. `MintPlayer.Spark.Cli.Commands` embeds
+      `libs/templates/MintPlayer.Spark.Templates/features.json` through a link, and Nx only hashes files under the
+      project. Its new `project.json` names the linked files as inputs, as `MintPlayer.Spark.Abstractions` does for
+      `Shared`.
+    - **Blocked, owner:** every job of runs 45669749753 and 45694125923 fails when storing to the Nx remote cache
+      ("Misconfigured remote cache endpoint: Unexpected response status: 500"). Reads answer normally (an unknown hash
+      gives 404 in 0.45 s). The Spark.Tests build took 37 s, then the upload ran 2 m 43 s and got a 500.
   - **M8c (in progress): revisit earlier milestones under D46** (RavenDB's format may change through a migration). Look
     for designs that kept RavenDB's old format only for its own sake, and for stale values left behind.
     - Done: the compare-exchange value `spark/dashboards/sampler` (M8a) is deleted by

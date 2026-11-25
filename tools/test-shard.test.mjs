@@ -7,7 +7,7 @@ import { strict as assert } from 'node:assert';
 import path from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { applyWeights, discover, filterFor, pack, parseShard, parseTestFile, timingsFromTrx } from './test-shard.mjs';
+import { applyWeights, combineFilters, discover, filterFor, pack, parseShard, parseTestFile, timingsFromTrx } from './test-shard.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PROJECT = path.join(ROOT, 'tests', 'MintPlayer.Spark.Tests');
@@ -95,6 +95,12 @@ test('trx durations are summed per class', () => {
   <UnitTest name="B" id="2"><TestMethod className="Ns.One" name="B" /></UnitTest>
 </TestDefinitions></TestRun>`;
   assert.deepEqual(timingsFromTrx([trx]), { 'Ns.One': 61.5 });
+});
+
+test('SPARK_TEST_FILTER narrows a shard, and runs alone without one', () => {
+  assert.equal(combineFilters([undefined, 'SparkDatabase=Any']), 'SparkDatabase=Any');
+  assert.equal(combineFilters(['FullyQualifiedName~A.|FullyQualifiedName~B.', 'SparkDatabase=Any']), '(FullyQualifiedName~A.|FullyQualifiedName~B.)&(SparkDatabase=Any)');
+  assert.equal(combineFilters([undefined, '']), null);
 });
 
 test('SPARK_TEST_SHARD is i/n', () => {

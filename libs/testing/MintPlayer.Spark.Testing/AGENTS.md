@@ -25,6 +25,8 @@ Spark is **not** Vidyano. If you have written tests for the originating framewor
   passes `Database` to `SparkEndpointFactory` and seeds through `factory.SeedAsync`, with no
   `IDocumentStore` in sight. A project referencing several provider packages runs on the one
   `SPARK_TEST_DATABASE` names (`RavenDB`, `SqlServer`, `PostgreSql`, `InMemory`); there is no default.
+  The neutral drivers carry the trait `SparkDatabase=Any` (`SparkTestTraits`), which CI's SQL legs filter
+  on; a class on `SparkSharedDatabase` without a driver base must declare it, or no SQL leg runs it.
 - **A 404 does not mean "not found".** Spark answers 404 for *denied* as well as *absent*, on
   purpose, so it is not an existence oracle. Asserting `NotFound` proves refusal-**or**-absence —
   never absence. [Details](#the-404-rule-audit-m-3).

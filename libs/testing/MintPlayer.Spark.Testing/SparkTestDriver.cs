@@ -11,7 +11,9 @@ namespace MintPlayer.Spark.Testing;
 /// <remarks>
 /// A test that pins one database's behaviour stays on that provider's driver (<c>RavenSparkTestDriver</c>). For a
 /// database per test class, use <see cref="SparkSharedDatabase"/> and <see cref="SparkSharedTestDriver"/>.
+/// It carries the <see cref="SparkTestTraits"/> trait, so a CI leg per database selects every class on it.
 /// </remarks>
+[Trait(SparkTestTraits.Database, SparkTestTraits.Any)]
 public abstract class SparkTestDriver : IAsyncLifetime
 {
     private ISparkTestDatabase? database;
