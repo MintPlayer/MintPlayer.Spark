@@ -16,6 +16,12 @@ public interface ISparkViewSource
     T? Load<T>(string? id) where T : class;
 
     T? Load<T>(Id<T>? id) where T : class;
+
+    /// <summary>
+    /// The stored id of <paramref name="row"/>, a row of a <see cref="Set{T}"/>: what a view binds to its row's <c>Id</c>
+    /// without knowing how the entity types its id. RavenDB supplies a projection's id itself; elsewhere it is the key.
+    /// </summary>
+    string? IdOf<T>(T row) where T : class;
 }
 
 /// <summary>A view as the catalog and the providers see it, without its row type.</summary>
@@ -100,6 +106,10 @@ public abstract class SparkViewRewriter : ExpressionVisitor
     /// <summary>What <c>Load&lt;<paramref name="type"/>&gt;(id)</c> becomes; <paramref name="id"/> is already rewritten.</summary>
     protected abstract Expression RenderLoad(Type type, Expression id);
 
+    /// <summary>What <c>IdOf(row)</c> becomes; <paramref name="row"/> is already rewritten.</summary>
+    protected virtual Expression RenderIdOf(Expression row)
+        => throw new NotSupportedException($"{GetType().Name} cannot render IdOf outside a row's Id binding.");
+
     /// <summary>Whether <paramref name="node"/> is a call on the view's source.</summary>
     protected bool IsSourceCall(Expression? node, string method)
         => node is MethodCallExpression call && call.Object == source && call.Method.Name == method;
@@ -110,6 +120,8 @@ public abstract class SparkViewRewriter : ExpressionVisitor
             return RenderSet(node.Method.GetGenericArguments()[0]);
         if (node.Object == source && node.Method.Name == nameof(ISparkViewSource.Load))
             return RenderLoad(node.Method.GetGenericArguments()[0], Visit(node.Arguments[0]));
+        if (node.Object == source && node.Method.Name == nameof(ISparkViewSource.IdOf))
+            return RenderIdOf(Visit(node.Arguments[0]));
         return base.VisitMethodCall(node);
     }
 
@@ -127,7 +139,7 @@ public abstract class SparkViewRewriter : ExpressionVisitor
 
         protected override Expression VisitMethodCall(MethodCallExpression node)
         {
-            if (node.Method.DeclaringType == typeof(ISparkViewSource))
+            if (node.Method.DeclaringType == typeof(ISparkViewSource) && node.Method.Name != nameof(ISparkViewSource.IdOf))
                 Calls.Add((node.Method.GetGenericArguments()[0], node.Method.Name == nameof(ISparkViewSource.Set)));
             return base.VisitMethodCall(node);
         }

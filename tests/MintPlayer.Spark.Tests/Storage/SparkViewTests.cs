@@ -31,8 +31,27 @@ public class SparkViewTests
         public string? Company { get; set; }
         public Id<ViewCompany>? Employer { get; set; }
         public List<string> Skills { get; set; } = [];
+        public ViewAddress? Address { get; set; }
+        public Dictionary<string, string>? Labels { get; set; }
 
         private string? __DocumentId { get => Id.IsEmpty ? null : Id.Value; set => Id = Id<ViewEmployee>.FromTrusted(value); }
+    }
+
+    public class ViewAddress { public string City { get; set; } = ""; }
+
+    public class VEmployeeDetail
+    {
+        public string? Id { get; set; }
+        public string? City { get; set; }
+        public string? Dutch { get; set; }
+    }
+
+    /// <summary>The shape the generator emits: IdOf for the id, and paths through values that can be absent.</summary>
+    public sealed class EmployeeDetails : SparkView<VEmployeeDetail>
+    {
+        public override Expression<Func<ISparkViewSource, IQueryable<VEmployeeDetail>>> Map => s =>
+            from e in s.Set<ViewEmployee>()
+            select new VEmployeeDetail { Id = s.IdOf(e), City = e.Address!.City, Dutch = e.Labels!["nl"] };
     }
 
     public class VEmployee
@@ -113,6 +132,29 @@ public class SparkViewTests
         rows[1].FullName.Should().Be("Alan Turing");
         rows[1].CompanyName.Should().BeNull("a missing reference reads as null, as in SQL and RavenDB");
         rows[1].EmployerName.Should().BeNull("an absent Id<T> loads nothing");
+    }
+
+    [Fact]
+    public async Task InMemory_reads_the_id_and_propagates_absent_values_as_null()
+    {
+        var store = new InMemorySparkStore(new InMemoryDatabase());
+        using (var seed = store.OpenSession())
+        {
+            await seed.StoreAsync(new ViewEmployee { FirstName = "Ada", Address = new ViewAddress { City = "London" }, Labels = new() { ["nl"] = "Ada NL" } }, "viewemployees/1");
+            await seed.StoreAsync(new ViewEmployee { FirstName = "Alan", Labels = new() { ["en"] = "Alan" } }, "viewemployees/2");
+            await seed.SaveChangesAsync();
+        }
+
+        using var session = store.OpenSession();
+        var rows = new InMemorySparkQueryProvider(session)
+            .OpenIndex(typeof(ViewEmployee), typeof(EmployeeDetails), narrowToCollection: false)
+            .Cast<VEmployeeDetail>().OrderBy(r => r.Id).ToList();
+
+        rows.Select(r => r.Id).Should().Equal("viewemployees/1", "viewemployees/2");
+        rows[0].City.Should().Be("London");
+        rows[0].Dutch.Should().Be("Ada NL");
+        rows[1].City.Should().BeNull("an absent complex value reads as null, as the database propagates it");
+        rows[1].Dutch.Should().BeNull("a missing dictionary key reads as null, as RavenDB reads a missing path");
     }
 
     [Fact]

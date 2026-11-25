@@ -26,6 +26,7 @@ public class GenerateIndexProducer : Producer, IDiagnosticReporter
 
     private readonly IEnumerable<GeneratedIndexInfo> entities;
     private readonly bool knowsSpark;
+    private readonly bool knowsViews;
     private readonly List<string> languages;
     private readonly HashSet<string> claimedEntities;
 
@@ -36,6 +37,7 @@ public class GenerateIndexProducer : Producer, IDiagnosticReporter
     public GenerateIndexProducer(
         IEnumerable<GeneratedIndexInfo> entities,
         bool knowsSpark,
+        bool knowsViews,
         List<string> languages,
         HashSet<string> claimedEntities,
         string rootNamespace)
@@ -43,6 +45,7 @@ public class GenerateIndexProducer : Producer, IDiagnosticReporter
     {
         this.entities = entities;
         this.knowsSpark = knowsSpark;
+        this.knowsViews = knowsViews;
         this.languages = languages;
         this.claimedEntities = claimedEntities;
     }
@@ -222,6 +225,11 @@ public class GenerateIndexProducer : Producer, IDiagnosticReporter
                 WriteIndexEntity(writer, list[i]);
                 writer.WriteLine();
                 WriteIndex(writer, list[i], cancellationToken);
+                if (knowsViews)
+                {
+                    writer.WriteLine();
+                    WriteView(writer, list[i], cancellationToken);
+                }
             }
         }
     }
@@ -298,6 +306,48 @@ public class GenerateIndexProducer : Producer, IDiagnosticReporter
             writer.WriteLine("partial void OnInitialize();");
         }
     }
+
+    /// <summary>
+    /// The same projection as a provider-neutral <c>SparkView</c> (#536 D32), under the index's name. On RavenDB the
+    /// native index above shadows it (it carries the analyzers and companions' indexing); a provider without native
+    /// indexes renders this one. The map is the index's, read from <c>s.Set&lt;T&gt;()</c>, with the id through
+    /// <c>s.IdOf</c>. Literals only: a view body takes no parameters.
+    /// </summary>
+    /// <remarks>
+    /// No <c>[DefaultIndex]</c>: the native index beside it holds the claim and shadows the view. The view claims it
+    /// once the generator emits views without RavenDB (M4).
+    /// </remarks>
+    private void WriteView(IndentedTextWriter writer, GeneratedIndexInfo info, CancellationToken cancellationToken)
+    {
+        using (writer.OpenBlock($"public sealed partial class {info.IndexName}{ViewSuffix} : {SparkViews}.SparkView<{info.IndexEntityName}>"))
+        {
+            writer.WriteLine($"public override string Name => {Quote(info.IndexName)};");
+            writer.WriteLine();
+            writer.WriteLine($"public override global::System.Linq.Expressions.Expression<global::System.Func<{SparkViews}.ISparkViewSource, global::System.Linq.IQueryable<{info.IndexEntityName}>>> Map => {ViewSource} =>");
+            writer.Indent++;
+            writer.WriteLine($"from {info.ItemVariable} in {ViewSource}.Set<{info.EntityFullName}>()");
+            writer.WriteLine($"select new {info.IndexEntityName}()");
+            writer.WriteLine("{");
+            writer.Indent++;
+            writer.WriteLine($"Id = {ViewSource}.IdOf({info.ItemVariable}),");
+            foreach (var property in Fields(info))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                writer.WriteLine($"{property.Name} = {property.MapExpression},");
+            }
+            writer.Indent--;
+            writer.WriteLine("};");
+            writer.Indent--;
+        }
+    }
+
+    /// <summary>The view class is the index's name plus this; its <c>Name</c> is the index's, so the two bind as one.</summary>
+    internal const string ViewSuffix = "_View";
+
+    private const string SparkViews = "global::MintPlayer.Spark.Abstractions.Views";
+
+    /// <summary>The view's source parameter, named so no entity's item variable can collide with it.</summary>
+    private const string ViewSource = "__spark";
 
     /// <summary>
     /// Attribute lines for one field declaration. A sort companion always carries

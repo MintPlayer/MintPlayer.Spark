@@ -120,7 +120,22 @@ rounds, milestones and status. Branch `feat/536-sql-server-provider`, draft PR #
     `Project` turns into `ProjectInto<TRow>`. The view-entry helpers moved to Abstractions (`SparkViewEntries`, internal)
     so both catalogs share them. Tests: `RavenSparkViewTests` (2): the same declaration and rows as InMemory, and the
     rendered map. The test entities hand-write the generated `__DocumentId` member, as `SparkIdConformanceTests` do.
-    Next: M3f-3, the generator.
+  - **M3f-3, the generator emits a view beside each generated index (2026-11-25):** `GenerateIndexGenerator` writes
+    `{Index}_View : SparkView<{IndexEntity}>` with `Name => "{Index}"` and the index's own map, read from
+    `__spark.Set<T>()` (the generated maps are plain member reads, so every provider can render them). The row's id is
+    `__spark.IdOf(item)`, new on `ISparkViewSource`: the stored id without the generator knowing the id's type.
+    RavenDB drops the binding, InMemory reads `session.GetId`, EF (M4) will read the key. InMemory now propagates
+    absent values as a database does: any member read through something that can be null, and a dictionary indexer
+    (a translation), yields the default. Decisions:
+    (1) The view is emitted only inside the existing gate (an application that references RavenDB) and only when
+    `SparkView<TRow>` resolves; the native index shadows it there, so no app's behaviour or model files change.
+    (2) It carries no `[DefaultIndex]` while the native index beside it holds the claim. **Splitting the gate** (views
+    without RavenDB, no `[FromIndex]`/native index, the view claiming the default) **waits for M4**, when an EF app
+    exists to verify it.
+    Found on the way: since S-ID6 (`dee4c6778`) `SparkMultiMapIndexCreationTask` hides Raven's `AddMap` with a
+    rewriting one, and `DefaultIndexAnalyzer` only recognised Raven's, so a Spark multi-map's claims all raised
+    SPARK053. It now accepts both (`DefaultIndexAnalyzerTests` 23/23). Tests: generator suite 740/740 (two snapshots
+    gained the view), `SparkViewTests` (10).
   - Order: the core pieces in `libs/` first (the struct, the model registry, the generator for `__DocumentId`, JSON,
     the route binder), then the feature libraries, then the apps.
   - It touches the three production apps (CodeCoverage, SeoTester, MintPlayer). RavenDB stays green at the end of the

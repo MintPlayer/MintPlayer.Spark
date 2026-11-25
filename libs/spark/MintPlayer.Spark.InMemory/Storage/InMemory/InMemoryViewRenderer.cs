@@ -36,18 +36,48 @@ internal static class InMemoryViewRenderer
             return Expression.Call(typeof(Rewriter), nameof(Find), [type], Expression.Constant(lookup), key);
         }
 
+        protected override Expression RenderIdOf(Expression row)
+            => Expression.Call(Expression.Constant(session), typeof(ISparkSession).GetMethod(nameof(ISparkSession.GetId))!, Expression.Convert(row, typeof(object)));
+
+        /// <summary>
+        /// Every member read through something that can be null yields the default instead of throwing, as a database
+        /// propagates NULL: a missing reference (<c>Load</c>), an absent complex value (<c>x.Address!.City</c>), a
+        /// translation's dictionary.
+        /// </summary>
         protected override Expression VisitMember(MemberExpression node)
         {
-            if (!IsSourceCall(node.Expression, nameof(ISparkViewSource.Load)))
+            if (node.Expression is null || node.Expression is ParameterExpression)
                 return base.VisitMember(node);
 
-            var loaded = Visit(node.Expression!);
-            var read = Expression.MakeMemberAccess(loaded, node.Member);
-            return Expression.Condition(
-                Expression.Equal(loaded, Expression.Constant(null, loaded.Type)),
-                Expression.Default(node.Type),
-                read);
+            var inner = Visit(node.Expression);
+            var read = Expression.MakeMemberAccess(inner, node.Member);
+            return CanBeNull(inner.Type) ? NullSafe(inner, read, node.Type) : read;
         }
+
+        /// <summary>A dictionary indexer reads a missing key as the default, as RavenDB reads a missing path.</summary>
+        protected override Expression VisitMethodCall(MethodCallExpression node)
+        {
+            if (node is { Method.Name: "get_Item", Object: { } target, Arguments.Count: 1 }
+                && ReadOnlyDictionary(target.Type) is { } dictionary)
+            {
+                var visited = Visit(target);
+                var lookup = Expression.Call(typeof(CollectionExtensions), nameof(CollectionExtensions.GetValueOrDefault),
+                    dictionary.GetGenericArguments(), Expression.Convert(visited, dictionary), Visit(node.Arguments[0]));
+                var read = lookup.Type == node.Type ? (Expression)lookup : Expression.Convert(lookup, node.Type);
+                return NullSafe(visited, read, node.Type);
+            }
+
+            return base.VisitMethodCall(node);
+        }
+
+        private static bool CanBeNull(Type type) => !type.IsValueType || Nullable.GetUnderlyingType(type) is not null;
+
+        private static Expression NullSafe(Expression inner, Expression read, Type type)
+            => Expression.Condition(Expression.Equal(inner, Expression.Constant(null, inner.Type)), Expression.Default(type), read);
+
+        private static Type? ReadOnlyDictionary(Type type)
+            => type.GetInterfaces().Append(type)
+                .FirstOrDefault(i => i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IReadOnlyDictionary<,>));
 
         private static readonly MethodInfo QueryOfT = typeof(ISparkSession).GetMethods()
             .Single(m => m.Name == nameof(ISparkSession.Query) && m.GetGenericArguments().Length == 1);

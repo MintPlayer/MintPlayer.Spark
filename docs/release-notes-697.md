@@ -69,3 +69,10 @@ tags, and everything ships once the merged pull request is backported to `releas
    runs `--spark-migrate` (schema, indexes, data migrations) with a login that may change the schema, or a DBA runs
    the idempotent script `--spark-migration-script <file> [--from <m>] [--to <m>]` writes. RavenDB and InMemory have
    no schema, so for them nothing changes.
+7. **`SparkView<TRow>`: a projection declared once, for every provider** (M3, D32). A view's `Map` reads
+   `s.Set<T>()`, follows a reference with `s.Load<T>(id)` and binds the row's id with `s.IdOf(row)`. RavenDB renders
+   it as a static index, InMemory as LINQ to objects, and the SQL providers will render it as a view. It is queried
+   by its `Name`, like an index, and a model's `indexName` may name it. On RavenDB a native index of the same name
+   shadows it. `[GenerateIndex]` now also emits `{Index}_View` beside the generated index, which the index shadows,
+   so a RavenDB app sees no change. Core's empty index catalog is replaced by one that lists the declared views, so
+   an InMemory app can query a view.
