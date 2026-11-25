@@ -28,6 +28,11 @@ internal static class SparkViewEntries
 
     public static ISparkView Instantiate(Type viewType) => (ISparkView)Activator.CreateInstance(viewType)!;
 
+    /// <summary>Whether the view yields one row per entity of its collection: no reduce, and one map (no <c>Concat</c>).</summary>
+    public static bool IsRowPerEntity(ISparkView view)
+        => view.ReduceDefinition is null
+           && view.Definition.Body is not System.Linq.Expressions.MethodCallExpression { Method.Name: nameof(Queryable.Concat) };
+
     /// <summary>A view's catalog entry: its name, its collection and its row type as the projection.</summary>
     public static IndexCatalogEntry EntryFor(Type viewType)
     {
@@ -36,7 +41,9 @@ internal static class SparkViewEntries
         {
             IndexName = view.Name,
             IndexType = viewType,
-            CollectionType = view.CollectionType,
+            // S16: a reduce or multi-map view has no row per entity of one collection, so it maps none and is never
+            // an entity type's default (as a native multi-map without a marker).
+            CollectionType = IsRowPerEntity(view) ? view.CollectionType : null,
             ProjectionType = view.RowType,
         };
     }
@@ -46,6 +53,10 @@ internal static class SparkViewEntries
     {
         if (entry.IndexType.GetCustomAttribute<DefaultIndexAttribute>() is not { } marker)
             return [];
+
+        if (entry.CollectionType is null)
+            throw new InvalidOperationException(
+                $"[DefaultIndex] on view {entry.IndexType.FullName}: a view with a Reduce or several maps (Concat) has no row per entity, so it cannot be an entity type's default.");
 
         var listed = marker.EntityTypes.Distinct().ToList();
         if (listed.Count == 0 || (listed.Count == 1 && listed[0] == entry.CollectionType))

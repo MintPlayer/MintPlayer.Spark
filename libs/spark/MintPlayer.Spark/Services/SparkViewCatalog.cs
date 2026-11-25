@@ -64,7 +64,7 @@ internal sealed partial class SparkViewCatalog : IIndexCatalog
                 entry.ClaimedTypes = SparkViewEntries.ResolveClaim(entry);
 
             var byDefault = new Dictionary<IndexCatalogEntry, List<Type>>();
-            foreach (var entityType in byName.Values.Select(e => e.CollectionType!).Distinct())
+            foreach (var entityType in byName.Values.Select(e => e.CollectionType).OfType<Type>().Distinct())
             {
                 if (Elect(entityType, [.. byName.Values.OrderBy(e => e.IndexName, StringComparer.Ordinal)]) is not { } @default)
                     continue;

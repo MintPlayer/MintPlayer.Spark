@@ -45,6 +45,8 @@ internal static class RelationalViewRenderer
     {
         var body = new Rewriter(view.Definition, db).Visit(view.Definition.Body);
         body = KeyBesideRow(body, view);
+        if (view.ReduceDefinition is { } reduce)
+            body = ReduceRewriter.Over(reduce, body);
         var root = Set(db, view.CollectionType);
         var query = root.Provider.CreateQuery(body);
         var rewrite = typeof(JoinRewriter).GetMethod(nameof(JoinRewriter.Rewrite))!.MakeGenericMethod(query.ElementType);
@@ -143,6 +145,55 @@ internal static class RelationalViewRenderer
 
     private static readonly MethodInfo SetOfT = typeof(DbContext).GetMethod(nameof(DbContext.Set), Type.EmptyTypes)!;
 
+
+    /// <summary>
+    /// S16: a view's reduce over the map's query. The reduce is written against <see cref="IEnumerable{T}"/> (RavenDB's
+    /// form); its parameter becomes the map query and each <see cref="Enumerable"/> call on a query becomes the
+    /// <see cref="Queryable"/> one, so EF writes <c>GROUP BY</c> with <c>SUM</c>. Calls on a group (<c>g.Sum</c>) stay.
+    /// </summary>
+    private sealed class ReduceRewriter(ParameterExpression rows, Expression map) : ExpressionVisitor
+    {
+        public static Expression Over(LambdaExpression reduce, Expression map)
+            => new ReduceRewriter(reduce.Parameters[0], map).Visit(reduce.Body);
+
+        protected override Expression VisitParameter(ParameterExpression node) => node == rows ? map : node;
+
+        protected override Expression VisitMethodCall(MethodCallExpression node)
+        {
+            var args = node.Arguments.Select(Visit).ToList();
+            if (node.Method.DeclaringType != typeof(Enumerable) || args.Count == 0 || !typeof(IQueryable).IsAssignableFrom(args[0]!.Type))
+                return node.Update(node.Object, args!);
+
+            var generic = node.Method.IsGenericMethod ? node.Method.GetGenericArguments() : Type.EmptyTypes;
+            foreach (var candidate in typeof(Queryable).GetMethods().Where(m => m.Name == node.Method.Name
+                         && m.GetParameters().Length == args.Count && m.IsGenericMethod == node.Method.IsGenericMethod
+                         && (!m.IsGenericMethod || m.GetGenericArguments().Length == generic.Length)))
+            {
+                var method = candidate.IsGenericMethod ? candidate.MakeGenericMethod(generic) : candidate;
+                var parameters = method.GetParameters();
+                var call = new Expression[args.Count];
+                var fits = true;
+                for (var i = 0; i < args.Count && fits; i++)
+                {
+                    var arg = args[i]!;
+                    if (arg is LambdaExpression lambda)
+                    {
+                        fits = parameters[i].ParameterType == typeof(Expression<>).MakeGenericType(lambda.Type);
+                        call[i] = Expression.Quote(lambda);
+                    }
+                    else
+                    {
+                        fits = parameters[i].ParameterType.IsAssignableFrom(arg.Type);
+                        call[i] = arg;
+                    }
+                }
+                if (fits)
+                    return Expression.Call(method, call);
+            }
+
+            throw new NotSupportedException($"A view's reduce cannot call Enumerable.{node.Method.Name} on the map's rows in SQL.");
+        }
+    }
 
     private sealed class Rewriter(LambdaExpression definition, SparkDbContext db) : SparkViewRewriter(definition)
     {

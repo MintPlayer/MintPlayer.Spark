@@ -199,6 +199,8 @@ answers are less demanding than the API list suggests.
   - files reads them and deletes them
 - **Indexes:**
   - No index anywhere uses `LoadDocument`, multi-map or fan-out.
+  - ⚠️ **Corrected 2026-11-25:** `apps/MintPlayer`'s `Likes_Count` is a multi-map with fan-out and a reduce, and the
+    generated `Spark_Search` is a multi-map. Map-reduce and multi-map views are D43 (plan M7e).
   - **Only moderation has map-reduce:** 3 `group by` + `Sum` indexes (`ModerationIndexes.cs:44/:72/:126`), read with
     `WaitForNonStaleResults` (×10) for read-your-writes. This is the hardest part to port.
   - The rest are plain map indexes: messaging (by priority), identity_provider (2), replication (by status), and
@@ -525,6 +527,20 @@ auto-indexes".
   fixture passes the whole test assembly, which holds SQL-only views RavenDB cannot render.
 - **Staleness.** The page and the sweeper read the index as it is, as they did before D40. Neither waits: the
   subscription batch covers what the page misses, and every write re-checks its predicate on the loaded document.
+
+**D43 (S16, 2026-11-25): map-reduce and multi-map indexes are views; SQL computes the reduce on read.** It supersedes
+the aggregate tables of the S16 row and the §"Map-reduce index" table row (*round 1*).
+- `SparkView<TRow>.Reduce` (`group … into g select new TRow { keys, g.Sum(…) }`) and several maps joined by
+  `Concat` declare it once. RavenDB renders a multi-map index (`AddMap` per map, the `Reduce`); SQL Server and
+  PostgreSQL a `UNION ALL` under `GROUP BY` that EF writes; memory a LINQ grouping.
+- **Why not aggregate tables:** the owner's goal equates RavenDB indexes with SQL views. A view is always current, so
+  reads need no non-stale wait, and set-based writes on an aggregated collection stay allowed (moderation's account
+  deletion is one). Aggregate tables needed the old row on every write and refused `UpdateWhere`/`DeleteWhere`.
+- **Cost, measured (spike S16-V, plan M7e):** 100k rows, no index on the group key: one key's cells in 10 ms
+  (PostgreSQL) and 55–66 ms (SQL Server) warm; the whole 2,250-cell view in 23–33 ms and 565–711 ms.
+- **Limits:** every map assigns every member (EF's set operations require it), a sum a map lacks is `0`, the reduce
+  uses keys and scalar aggregates only, a reduce view has no `Id` and is never an entity type's default. Fan-out
+  (`SelectMany`) in a map is not supported yet (`Likes_Count`).
 
 *Evidence:*
 - `NeutralMessagingTests` 4/4 on RavenDB, InMemory, SQL Server and PostgreSQL. The new assertion: on RavenDB a

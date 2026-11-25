@@ -503,6 +503,43 @@ rounds, milestones and status. Branch `feat/536-sql-server-provider`, draft PR #
     - `SparkFileUpload` is registered as a stored type (D36).
     - **Evidence:** `NeutralFilesStoreTests` (claim + reconcile, the deferred sweep, the default store) 3/3 on all four
       databases; the Files suites on RavenDB 264/264 (28 skipped: cloud stores).
+  - **M7e (2026-11-25, IN PROGRESS): S16 map-reduce and multi-map views, then Moderation on any store.**
+    - **D43 (supersedes the S16 row's aggregate tables): a reduce is a `GROUP BY` view, computed on read.** The owner's
+      goal equates RavenDB indexes with SQL views; a view is always current (no `WaitForNonStaleResults` needed), and
+      set-based writes stay allowed (moderation's account deletion is a `DeleteWhere` on an aggregated collection,
+      which the aggregate-table design would have refused).
+    - **Declaration:** `SparkView<TRow>.Reduce` (optional), `Expression<Func<IEnumerable<TRow>, IEnumerable<TRow>>>`:
+      `group r by key into g select new TRow { keys, g.Sum(…) }`. Several maps are joined by `Concat`:
+      `s.Set<A>().Where(…).Select(…).Concat(s.Set<B>().Select(…))`. Each map may have `Where`s before its `Select`.
+    - **Rendering:** RavenDB: one map, no reduce → `RavenViewIndex<T>` as before; otherwise
+      `RavenMultiMapViewIndex<TRow>` (one `AddMap` per `Concat` operand, `Reduce` as declared, or `StoreAllFields`
+      without one). SQL: `ReduceRewriter` (`RelationalViewRenderer.cs`) turns the reduce's `Enumerable` calls on the
+      map query into `Queryable` ones; EF writes `UNION ALL` under `GROUP BY` … `SUM`. InMemory: the compiled reduce over
+      the mapped rows.
+    - A reduce or multi-map view's catalog entry has `CollectionType = null` (`SparkViewEntries.IsRowPerEntity`): it
+      is never an entity type's default, and `[DefaultIndex]` on it is refused.
+    - **Spike S16-V** (`RelationalReduceViewSpikeTests`, `SPARK_S16_SPIKE=1`): 100k events, 1,000 users, 30 days, no index
+      on the group key. One user's cells: PostgreSQL 10 ms warm (46 cold), SQL Server 55–66 ms warm (929 cold); the
+      whole view (2,250 cells): PostgreSQL 23–33 ms, SQL Server 565–711 ms. Fast enough for moderation's reads (a
+      user's reputation, the nightly detector). TODO: an index on the group-key columns would cut SQL Server's.
+    - **Investigation (2026-11-25, owner asked):**
+      - EF translates `Concat` of member-init projections from different tables to `UNION ALL` when both sides assign
+        **every** member (else `ProjectionMappingCountMismatch`; `SelectExpression.cs:2320`), and a `GroupBy` with
+        scalar aggregates over it (`AdHocMiscellaneousQueryRelationalTestBase.cs:2600`). The column type comes from the
+        first side: give it a typed value, never a bare `null`. Use `0`, not `null`, for a sum a map lacks. A collection
+        inside a group (`g.ToList()`) throws. The renderer must refuse those shapes with a clear message (TODO).
+      - Repo survey: the PRD's "no index uses multi-map or fan-out" is wrong. `apps/MintPlayer/.../Likes_Count.cs:14` is a
+        multi-map **with fan-out** (`from subjectId in u.Likes`) and a reduce, and the generated `Spark_Search` is a
+        multi-map without reduce (S10). Moderation's three reduces are single-map. `[GenerateIndex]` cannot emit
+        multi-maps. Fan-out (`SelectMany` over a list) is NOT supported by views yet (TODO: EF primitive collections →
+        `OPENJSON`/`jsonb_array_elements`; RavenDB `from x in d.List`).
+    - **Relational limit found:** a row type maps to one SQL view (`SparkRelationalModel.MapViews`), so two views
+      cannot share a row type.
+    - **Evidence (views part, commit after `1c72801d2`):** `NeutralReduceViewTests` (single-map reduce through
+      insert/update/delete/UpdateWhere/DeleteWhere; multi-map reduce over two collections) + `SparkViewTests` 12/12 on
+      InMemory, RavenDB, SQL Server and PostgreSQL; relational view tests 20/20; RavenDB default-index, multi-map,
+      catalog, binding and neutral messaging tests 46/46.
+    - **Next:** finish the tests on SQL; port moderation's 4 indexes to views and its services to `ISparkStore`.
   - **M7d (2026-11-25): S8 revisions — History and SoftDelete on any store.** `ISparkRevisions` (Abstractions) is the
     neutral revisions API: `ConfigureAsync` (merge, returns the changed collections), `GetLimitsAsync`, `ListAsync`
     (newest first), `GetAsync` (scoped to the id and the type's collection; a delete revision has no content),

@@ -17,6 +17,10 @@ internal static class InMemoryViewRenderer
         var body = new Rewriter(view.Definition, session).Visit(view.Definition.Body);
         var rows = Expression.Lambda(body).Compile().DynamicInvoke()!;
 
+        // S16: a reduce groups the mapped rows, as RavenDB's map-reduce and SQL's GROUP BY do.
+        if (view.ReduceDefinition is { } reduce)
+            rows = reduce.Compile().DynamicInvoke(rows)!;
+
         // Materialized once: a query that is enumerated twice (count, then page) must not run the view twice.
         var list = typeof(Enumerable).GetMethod(nameof(Enumerable.ToList))!.MakeGenericMethod(view.RowType).Invoke(null, [rows])!;
         return Queryable.AsQueryable((System.Collections.IEnumerable)list);

@@ -41,6 +41,9 @@ public interface ISparkView
 
     /// <summary>Every entity type the view reads (<c>Set</c> and <c>Load</c>): the tables it depends on.</summary>
     IReadOnlyList<Type> ReadTypes { get; }
+
+    /// <summary>The reduce, read once (<see cref="SparkView{TRow}.ReduceDefinition"/>), or <see langword="null"/> for a map-only view.</summary>
+    LambdaExpression? ReduceDefinition { get; }
 }
 
 /// <summary>
@@ -59,7 +62,13 @@ public interface ISparkView
 /// </example>
 /// <remarks>
 /// <list type="bullet">
-/// <item>The shape is <c>Set&lt;T&gt;().Select(…)</c>: RavenDB's map takes one source collection.</item>
+/// <item>The shape is <c>Set&lt;T&gt;().Select(…)</c>, optionally with <c>Where</c> before the <c>Select</c>: RavenDB's map takes one source collection.</item>
+/// <item>
+/// A <see cref="SparkView{TRow}.Reduce"/> groups the mapped rows and sums them (#536 S16): a RavenDB map-reduce index,
+/// a <c>GROUP BY</c> view in SQL, a grouping in memory. Its shape is <c>group r by key into g select new TRow { … }</c>
+/// with keys and <c>g.Sum(…)</c>/<c>g.Count()</c> only, and its output is the map's row type, as RavenDB requires.
+/// A reduced row has no <c>Id</c>.
+/// </item>
 /// <item>Constants only: a captured variable would become a parameter, and a view body takes none.</item>
 /// <item>Member access through <c>Load</c> yields <see langword="null"/> (or the default) for a missing reference on every provider.</item>
 /// </list>
@@ -83,6 +92,32 @@ public abstract class SparkView<TRow> : ISparkView where TRow : class
     public Expression<Func<ISparkViewSource, IQueryable<TRow>>> Definition => definition ??= Map;
 
     LambdaExpression ISparkView.Definition => Definition;
+
+    /// <summary>
+    /// Groups the mapped rows (#536 S16), e.g.
+    /// <c>rows =&gt; from r in rows group r by r.UserId into g select new TRow { UserId = g.Key, Points = g.Sum(x =&gt; x.Points) }</c>.
+    /// <see langword="null"/> (the default) for a map-only view. Read it through <see cref="ReduceDefinition"/>.
+    /// </summary>
+    public virtual Expression<Func<IEnumerable<TRow>, IEnumerable<TRow>>>? Reduce => null;
+
+    private Expression<Func<IEnumerable<TRow>, IEnumerable<TRow>>>? reduceDefinition;
+    private bool reduceRead;
+
+    /// <summary><see cref="Reduce"/>, read once (see <see cref="Definition"/>).</summary>
+    public Expression<Func<IEnumerable<TRow>, IEnumerable<TRow>>>? ReduceDefinition
+    {
+        get
+        {
+            if (!reduceRead)
+            {
+                reduceDefinition = Reduce;
+                reduceRead = true;
+            }
+            return reduceDefinition;
+        }
+    }
+
+    LambdaExpression? ISparkView.ReduceDefinition => ReduceDefinition;
 
     public IReadOnlyList<Type> ReadTypes => readTypes ??= SparkViewRewriter.SourceCalls(Definition).Select(c => c.Type).Distinct().ToList();
 
