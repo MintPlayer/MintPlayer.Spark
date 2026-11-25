@@ -112,7 +112,7 @@ builder.Services.AddSpark(builder.Configuration, spark =>
 #endif
 #if (UseMessaging)
 
-    // A durable message bus on RavenDB, configured from Spark:Messaging.
+    // A durable message bus on the app's store, configured from Spark:Messaging.
     spark.AddMessaging();
 #endif
 #if (UseMail)

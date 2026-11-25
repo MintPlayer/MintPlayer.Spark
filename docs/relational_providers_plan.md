@@ -503,6 +503,20 @@ rounds, milestones and status. Branch `feat/536-sql-server-provider`, draft PR #
     - `SparkFileUpload` is registered as a stored type (D36).
     - **Evidence:** `NeutralFilesStoreTests` (claim + reconcile, the deferred sweep, the default store) 3/3 on all four
       databases; the Files suites on RavenDB 264/264 (28 skipped: cloud stores).
+  - **M6k (2026-11-25): the app template on any store.** `features.json` no longer pins RavenDB for the 13 ported
+    features (Authorization, Migrations, Messaging, Mail, Cron, Mcp, Contributions, Settings, GitHubWebhooks,
+    GitHubDevTunnel, Boards, Notifications, Organizations). History, SoftDelete, Dashboards, IdentityProvider,
+    Moderation, Replication, Search, OpenSearch and OpenSearchDescription stay pinned until their Tier 3/4 ports.
+    - `template.json`: sign-in (`AuthMode`) is offered on any store; `HasOidc` no longer requires RavenDB.
+    - `appsettings.json`: only `Spark:RavenDb` is gated by `IsRaven`. Before, an in-memory app lost every section
+      (GitHub, Mail, Auth providers); the in-memory branch ends `Spark` with a `_comment`, so the file stays valid JSON.
+    - The sample migration `SeedPeople` writes through `ISparkStore`.
+    - ⚠️ **The template offers no SQL Server or PostgreSQL store yet.** SPARKTPL001 fails a Release pack that pins a
+      package with no `<Package>/v<version>` tag, and the relational packages are `excluded` ("unreleased") in
+      `features.json`. The store choices join after their first release (open item for the owner, not a rule to bend).
+    - ⚠️ **The `sparkindex` item template stays a RavenDB index**: it has a `[Search]` companion, which a
+      `SparkView` does not support yet (S10). It becomes a view once S10 lands.
+    - **Evidence:** `MintPlayer.Spark.Templates.Tests` 23/23.
   - **M6j (2026-11-25): Authorization on any store.** The package no longer pins RavenDB (`RequireStore` is gone):
     - `UserStore`, `RoleStore`, the account directory, `AgentRequestUser`, `AgentGrantStore` and
       `SparkExternalLoginLinker` take `ISparkStore`. Users, roles, agent grants and pending links are stored types
@@ -550,7 +564,7 @@ rounds, milestones and status. Branch `feat/536-sql-server-provider`, draft PR #
     - **Evidence:** `NeutralContributionsStoreTests` (prefix = collection, latest wins, rebuild + shape check) 3/3 on
       all four databases; the Contributions suites on RavenDB 59/59; the generator tests 72/72 (snapshots re-accepted
       after review).
-  - **Next:** the authorization user store (reservations), templates and AllFeatures. Cron, the subscription worker's remaining hosted services and others adopt
+  - **Next:** AllFeatures, then Tier 3 (S8 revisions, S16 Moderation, S10 search). Cron, the subscription worker's remaining hosted services and others adopt
     `ISparkStoreReadiness` as they are ported.
 - **Local spike servers left running:**
   - SQL Server: `SparkSpike536` on `localhost` and `localhost\MSSQLSERVER01`
