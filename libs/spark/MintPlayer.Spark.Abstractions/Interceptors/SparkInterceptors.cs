@@ -358,3 +358,15 @@ public sealed class LoadContext : SparkInterceptorContext
     /// <summary>The object as it will be returned; interceptors may decorate it.</summary>
     public required PersistentObject PersistentObject { get; init; }
 }
+
+/// <summary>Provider-neutral access to the unit of work a <see cref="SparkInterceptorContext"/> carries (#536 M6).</summary>
+public static class SparkInterceptorContextStorageExtensions
+{
+    /// <summary>The session the write commits through (for a materialize, the one the entity was loaded in).</summary>
+    public static Storage.ISparkSession GetSparkSession(this SparkInterceptorContext context)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        return context.StorageSession
+            ?? throw new InvalidOperationException("This interceptor context was built without a storage session.");
+    }
+}

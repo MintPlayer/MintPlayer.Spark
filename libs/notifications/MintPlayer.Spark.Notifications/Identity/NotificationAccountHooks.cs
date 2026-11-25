@@ -1,45 +1,31 @@
 using MintPlayer.Spark.Abstractions.Authentication;
+using MintPlayer.Spark.Abstractions.Storage;
 using MintPlayer.Spark.Notifications.Models;
-using Raven.Client.Documents;
-using Raven.Client.Documents.Linq;
 
 namespace MintPlayer.Spark.Notifications.Identity;
 
 /// <summary>Deleting an account deletes its notifications, devices and preferences (D26).</summary>
-internal sealed class NotificationAccountDeletion(IDocumentStore store) : ISparkAccountDeletionHandler
+internal sealed class NotificationAccountDeletion(ISparkStore store) : ISparkAccountDeletionHandler
 {
     public async Task OnDeletingAccountAsync(ISparkAccount user, CancellationToken cancellationToken)
     {
         if (user.Id is not { Length: > 0 } userId)
             return;
 
-        using var session = store.OpenAsyncSession();
-        foreach (var device in await session.Advanced.LoadStartingWithAsync<PushSubscription>(PushSubscription.PrefixFor(userId), pageSize: 1024, token: cancellationToken))
+        using var session = store.OpenSession();
+        foreach (var device in await session.LoadStartingWithAsync<PushSubscription>(PushSubscription.PrefixFor(userId), 0, 1024, cancellationToken))
             session.Delete(device);
-        foreach (var preference in await session.Advanced.LoadStartingWithAsync<NotificationPreference>(NotificationPreference.PrefixFor(userId), pageSize: 1024, token: cancellationToken))
+        foreach (var preference in await session.LoadStartingWithAsync<NotificationPreference>(NotificationPreference.PrefixFor(userId), 0, 1024, cancellationToken))
             session.Delete(preference);
         await session.SaveChangesAsync(cancellationToken);
 
-        // Notifications have random ids: delete them by query, in pages, waiting for the index so none is missed.
-        while (true)
-        {
-            using var page = store.OpenAsyncSession();
-            var batch = await page.Query<Notification>()
-                .Customize(c => c.WaitForNonStaleResults(TimeSpan.FromSeconds(30)))
-                .Where(n => n.UserId == userId)
-                .Take(512)
-                .ToListAsync(cancellationToken);
-            if (batch.Count == 0)
-                break;
-            foreach (var notification in batch)
-                page.Delete(notification);
-            await page.SaveChangesAsync(cancellationToken);
-        }
+        // Notifications have random ids: one set-based delete, which sees every committed one (RavenDB waits for its index).
+        await session.DeleteWhereAsync<Notification>(n => n.UserId == userId, cancellationToken);
     }
 }
 
 /// <summary>The personal-data export's <c>notifications</c> section: notifications, devices (without their endpoints' secrets) and preferences.</summary>
-internal sealed class NotificationPersonalData(IDocumentStore store) : ISparkPersonalDataContributor
+internal sealed class NotificationPersonalData(ISparkStore store) : ISparkPersonalDataContributor
 {
     public string Name => "notifications";
 
@@ -48,14 +34,11 @@ internal sealed class NotificationPersonalData(IDocumentStore store) : ISparkPer
         if (user.Id is not { Length: > 0 } userId)
             return null;
 
-        using var session = store.OpenAsyncSession();
-        var notifications = await session.Query<Notification>()
-            .Customize(c => c.WaitForNonStaleResults(TimeSpan.FromSeconds(30)))
-            .Where(n => n.UserId == userId)
-            .Take(10_000)
-            .ToListAsync(cancellationToken);
-        var devices = await session.Advanced.LoadStartingWithAsync<PushSubscription>(PushSubscription.PrefixFor(userId), pageSize: 1024, token: cancellationToken);
-        var preferences = await session.Advanced.LoadStartingWithAsync<NotificationPreference>(NotificationPreference.PrefixFor(userId), pageSize: 1024, token: cancellationToken);
+        using var session = store.OpenSession();
+        await store.WaitForConsistencyAsync(session, [session.GetCollectionName(typeof(Notification))], TimeSpan.FromSeconds(30), null, cancellationToken);
+        var notifications = await session.ToListAsync(session.Query<Notification>().Where(n => n.UserId == userId).Take(10_000), cancellationToken);
+        var devices = await session.LoadStartingWithAsync<PushSubscription>(PushSubscription.PrefixFor(userId), 0, 1024, cancellationToken);
+        var preferences = await session.LoadStartingWithAsync<NotificationPreference>(NotificationPreference.PrefixFor(userId), 0, 1024, cancellationToken);
 
         return new
         {

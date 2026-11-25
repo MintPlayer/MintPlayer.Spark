@@ -1,12 +1,10 @@
 using System.Linq.Expressions;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions.Authentication;
+using MintPlayer.Spark.Abstractions.Storage;
 using MintPlayer.Spark.Actions;
 using MintPlayer.Spark.Notifications.Endpoints;
 using MintPlayer.Spark.Notifications.Models;
-using Raven.Client.Documents;
-using Raven.Client.Documents.Linq;
-using Raven.Client.Documents.Session;
 
 namespace MintPlayer.Spark.Notifications.Actions;
 
@@ -18,14 +16,14 @@ namespace MintPlayer.Spark.Notifications.Actions;
 /// </summary>
 public partial class NotificationActions : DefaultPersistentObjectActions<Notification>
 {
-    [Inject] private readonly IAsyncDocumentSession session;
+    [Inject] private readonly ISparkSession session;
     [Inject] private readonly ISparkCurrentPrincipal principal;
 
     public override Task<Expression<Func<Notification, bool>>?> GetRowFilterAsync(string action)
         => Task.FromResult<Expression<Func<Notification, bool>>?>(NotificationOwner.Of(principal).Filter());
 
     /// <summary>The list (<c>"live": true</c>): newest first by the query's sort.</summary>
-    public IRavenQueryable<Notification> MyNotifications() => session.Query<Notification>();
+    public IQueryable<Notification> MyNotifications() => session.Query<Notification>();
 
     /// <summary>The unread ones: the bell's count is this query's <c>totalItems</c>, followed live.</summary>
     public IQueryable<Notification> UnreadNotifications() => session.Query<Notification>().Where(n => n.IsRead != true);
@@ -34,25 +32,25 @@ public partial class NotificationActions : DefaultPersistentObjectActions<Notifi
 /// <summary>A user's devices. Listing and deleting (unsubscribing a lost device) only; the browser subscribes through <c>/spark/notifications/push/subscribe</c>.</summary>
 public partial class PushSubscriptionActions : DefaultPersistentObjectActions<PushSubscription>
 {
-    [Inject] private readonly IAsyncDocumentSession session;
+    [Inject] private readonly ISparkSession session;
     [Inject] private readonly IHttpContextAccessor httpContextAccessor;
 
     public override Task<Expression<Func<PushSubscription, bool>>?> GetRowFilterAsync(string action)
         => Task.FromResult<Expression<Func<PushSubscription, bool>>?>(OwnRows.For<PushSubscription>(httpContextAccessor, s => s.UserId));
 
-    public IRavenQueryable<PushSubscription> MyPushSubscriptions() => session.Query<PushSubscription>();
+    public IQueryable<PushSubscription> MyPushSubscriptions() => session.Query<PushSubscription>();
 }
 
 /// <summary>A user's channel choices: one row per organization plus an optional default (no organization).</summary>
 public partial class NotificationPreferenceActions : DefaultPersistentObjectActions<NotificationPreference>
 {
-    [Inject] private readonly IAsyncDocumentSession session;
+    [Inject] private readonly ISparkSession session;
     [Inject] private readonly IHttpContextAccessor httpContextAccessor;
 
     public override Task<Expression<Func<NotificationPreference, bool>>?> GetRowFilterAsync(string action)
         => Task.FromResult<Expression<Func<NotificationPreference, bool>>?>(OwnRows.For<NotificationPreference>(httpContextAccessor, p => p.UserId));
 
-    public IRavenQueryable<NotificationPreference> MyNotificationPreferences() => session.Query<NotificationPreference>();
+    public IQueryable<NotificationPreference> MyNotificationPreferences() => session.Query<NotificationPreference>();
 }
 
 /// <summary>

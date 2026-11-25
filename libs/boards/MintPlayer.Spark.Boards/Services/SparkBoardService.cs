@@ -5,8 +5,7 @@ using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Authentication;
 using MintPlayer.Spark.Abstractions.Authorization;
 using MintPlayer.Spark.Boards.Kinds;
-using Raven.Client.Documents;
-using Raven.Client.Exceptions;
+using MintPlayer.Spark.Abstractions.Storage;
 
 namespace MintPlayer.Spark.Boards.Services;
 
@@ -50,7 +49,7 @@ internal sealed partial class SparkBoardService
     [Inject] private readonly SparkTileKindRegistry kinds;
     [Inject] private readonly ISparkCurrentPrincipal currentUser;
     [Inject] private readonly IPermissionService permissionService;
-    [Inject] private readonly IDocumentStore store;
+    [Inject] private readonly ISparkStore store;
     [Inject] private readonly IOptions<SparkBoardsOptions> options;
 
     /// <summary>The caller's board, or null when no such board is declared.</summary>
@@ -62,10 +61,10 @@ internal sealed partial class SparkBoardService
         string? changeVector = null;
         if (UserId() is { } userId)
         {
-            using var session = store.OpenAsyncSession();
+            using var session = store.OpenSession();
             stored = await session.LoadAsync<BoardLayout>(BoardLayout.IdFor(userId, board.Id).Value, cancellationToken);
             if (stored is not null)
-                changeVector = session.Advanced.GetChangeVectorFor(stored);
+                changeVector = session.GetVersion(stored);
         }
         return await ViewAsync(board, stored, changeVector, cancellationToken);
     }
@@ -79,12 +78,12 @@ internal sealed partial class SparkBoardService
         if (!await CanCustomizeAsync(cancellationToken))
             return new(BoardSaveOutcome.Forbidden);
 
-        using var session = store.OpenAsyncSession();
+        using var session = store.OpenSession();
         // A first save is stored as "must not exist", so two first saves race to one winner too.
-        session.Advanced.OptimisticConcurrencyMode = Raven.Client.Documents.Session.OptimisticConcurrencyMode.Writes;
+        session.OptimisticConcurrency = true;
         var id = BoardLayout.IdFor(userId, board.Id);
         var stored = await session.LoadAsync<BoardLayout>(id.Value, cancellationToken);
-        if (stored is not null && session.Advanced.GetChangeVectorFor(stored) != changeVector)
+        if (stored is not null && session.GetVersion(stored) != changeVector)
             return new(BoardSaveOutcome.Conflict, "the board was changed elsewhere; reload it");
 
         // Every new or kept user tile is checked now, against the kind it names.
@@ -128,11 +127,11 @@ internal sealed partial class SparkBoardService
         {
             await session.SaveChangesAsync(cancellationToken);
         }
-        catch (ConcurrencyException)
+        catch (SparkStoreConcurrencyException)
         {
             return new(BoardSaveOutcome.Conflict, "the board was changed elsewhere; reload it");
         }
-        return new(BoardSaveOutcome.Saved, Board: await ViewAsync(board, layout, session.Advanced.GetChangeVectorFor(layout), cancellationToken));
+        return new(BoardSaveOutcome.Saved, Board: await ViewAsync(board, layout, session.GetVersion(layout), cancellationToken));
     }
 
     /// <summary>Deletes the caller's layout: the board is the application's default again.</summary>
@@ -144,9 +143,9 @@ internal sealed partial class SparkBoardService
             return new(BoardSaveOutcome.Unauthorized);
         if (!await CanCustomizeAsync(cancellationToken))
             return new(BoardSaveOutcome.Forbidden);
-        using (var session = store.OpenAsyncSession())
+        using (var session = store.OpenSession())
         {
-            session.Delete(BoardLayout.IdFor(userId, board.Id).Value);
+            session.Delete(BoardLayout.IdFor(userId, board.Id));
             await session.SaveChangesAsync(cancellationToken);
         }
         return new(BoardSaveOutcome.Saved, Board: await ViewAsync(board, null, null, cancellationToken));
