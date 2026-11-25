@@ -738,6 +738,14 @@ test the databases, not Spark; the conformance suite tests Spark on top of them.
 | S12 | `jsonb` reorders keys and collapses duplicates (harmless because the dirty check diffs the load snapshot; the test keeps that assumption visible) |
 | D32 | A plain view returns a committed write at once (no staleness); a view over an AsDetail child table returns a row per child |
 
+*Built in M5c (2026-11-25):* `tests/MintPlayer.Spark.Relational.Tests/Behaviour/`, 25 tests, all green on SQL Server
+(local 2022 instance) and PostgreSQL 18 (Docker). Each class creates its own `spark_beh_<12 hex>` database and drops
+it afterwards; without the dialect's variable (`SPARK_TEST_SQLSERVER`, `SPARK_TEST_POSTGRESQL`) the tests skip. Every
+row above has a test except O13, which tests EF's mapping rather than the server and joins the conformance suite with
+the O13 tier port (M6). Beyond the table: the SQL Server unique-index error is 2601 (the constraint's is 2627, both
+mapped), and the equality cases assert O20's measured difference (SQL Server ignores case, PostgreSQL does not), so
+deciding O20 will update them.
+
 **D32 (owner, 2026-11-24): `[GenerateIndex]` renders an SQL view and indexes from the same source generator.**
 - **How a view compares to a RavenDB index.** Both are a named projection defined in code and queried like a
   collection (`Query<T, TIndex>`), with computed fields. The differences:

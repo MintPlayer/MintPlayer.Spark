@@ -397,6 +397,10 @@ rounds, milestones and status. Branch `feat/536-sql-server-provider`, draft PR #
     - **Finding, open as O20:** string equality and `StartsWith` ignore case on RavenDB and SQL Server, and respect
       it on PostgreSQL and InMemory (measured). The guard's data avoids case-only differences until it is decided.
     - Spark.Tests storage, absent-field and query classes 229/229 (RavenDB, InMemory); Relational.Tests 148/148.
+  - **M5c (2026-11-25): the database behaviour tests (PRD D31, as built).** `SqlServerBehaviourTests` (13) and
+    `PostgreSqlBehaviourTests` (12) on a shared `BehaviourDatabase` base, raw SQL against a throwaway database per
+    class. 25/25 locally. Every row of the D31 table except O13 (moves to M6). CI runs them once M8 adds the service
+    containers and the `postgres:17` leg.
 - **Local spike servers left running:**
   - SQL Server: `SparkSpike536` on `localhost` and `localhost\MSSQLSERVER01`
   - Docker `spark536-pg` (`postgres:18`, 127.0.0.1:55432). M4 needs it again.
@@ -660,7 +664,7 @@ None. O8 and O9 were decided on 2026-11-24 (owner, PRD §10):
    - the absent-field rewrite for nullable members, and absent-field sorting and distinct values (O11)
    - **the database behaviour tests (PRD D31):** `SqlServerBehaviourTests` and `PostgreSqlBehaviourTests`, one test per
      assumption, named after the decision it protects. Each one is written when its milestone first relies on it,
-     not all at once.
+     not all at once. ✅ M5c (§1), O13 in M6.
 
    This comes with the split test harness (S17, PRD D35): `MintPlayer.Spark.Testing` becomes neutral, today's
    RavenDB code moves to `MintPlayer.Spark.Testing.RavenDB`, and `.SqlServer`/`.PostgreSql` join. ✅ M5a (§1).
