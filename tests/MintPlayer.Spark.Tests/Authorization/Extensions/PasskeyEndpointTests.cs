@@ -33,6 +33,8 @@ public class PasskeyEndpointTests : RavenSparkTestDriver
                 .ConfigureServices(services =>
                 {
                     services.AddSingleton<IDocumentStore>(Store);
+
+                    services.AddSingleton<global::MintPlayer.Spark.Abstractions.Storage.ISparkStore>(Store.AsSparkStore());
                     services.AddSparkAuthentication<SparkUser>();
                     services.AddTestMailSink(); // #460 D6: registration needs a mail sender
                     services.Configure<SparkAuthenticationOptions>(o =>
@@ -162,7 +164,7 @@ public class PasskeyEndpointTests : RavenSparkTestDriver
     {
         using var host = await StartAsync(SparkPasskeys.Enabled);
 
-        using (var store = new UserStore<SparkUser>(Store))
+        using (var store = new UserStore<SparkUser>(Store.AsSparkStore()))
         {
             var user = new SparkUser { UserName = "known@example.com", Email = "known@example.com", NormalizedEmail = "KNOWN@EXAMPLE.COM" };
             (await store.CreateAsync(user, CancellationToken.None)).Succeeded.Should().BeTrue();

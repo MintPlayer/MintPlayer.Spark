@@ -388,9 +388,11 @@ public static class LegacyTransformer
                 plan.Issue(IssueSeverity.Info, "authenticator-unfinished", id, "authenticator key without 2FA enabled (enrolment never finished) — kept");
 
             plan.Add(id, "SparkUsers", user);
-            if (user.NormalizedEmail != null)
-                plan.CompareExchange[Ids.EmailReservation(user.NormalizedEmail)] = id;
-            else
+            // Every key UserStore finds the user by (email, user name, logins: SparkUserReservations), or the imported
+            // user is not found by it and a sign-in creates a second account.
+            foreach (var key in SparkUserReservations.KeysOf(user))
+                plan.CompareExchange[key] = id;
+            if (user.NormalizedEmail == null)
                 plan.Issue(IssueSeverity.Warning, "user-no-email", id, "no email → no emails/ reservation");
         }
     }

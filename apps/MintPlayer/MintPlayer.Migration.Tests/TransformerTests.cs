@@ -242,7 +242,10 @@ public class TransformerTests
         ((plain.Logins.Single().LoginProvider, plain.Logins.Single().ProviderKey)).Should().Be(("Google", "g-123"));
 
         plan.CompareExchange["emails/admin@example.com"].Should().Be(Ids.User(Admin));
-        plan.CompareExchange.Count.Should().Be(2);
+        // Every key UserStore finds a user by: email, user name and logins (#536), or the imported user is not found.
+        plan.CompareExchange[SparkUserReservations.LoginKey("Google", "g-123")].Should().Be(Ids.User(Plain));
+        plan.CompareExchange.Keys.Should().BeEquivalentTo(
+            SparkUserReservations.KeysOf(admin).Concat(SparkUserReservations.KeysOf(plain)));
     }
 
     [Fact]

@@ -1,5 +1,6 @@
 using MintPlayer.Spark.Authorization.Identity;
-using Raven.Client.Documents;
+using MintPlayer.Spark.Abstractions.Builder;
+using MintPlayer.Spark.Abstractions.Storage;
 
 namespace MintPlayer.Spark.Authorization.Agents;
 
@@ -8,7 +9,7 @@ namespace MintPlayer.Spark.Authorization.Agents;
 /// lockout) and the store-backed groups (PRD §4.6) share the read. Scoped, so nothing outlives the request:
 /// a role removal or a stamp change applies to the next call.
 /// </summary>
-internal sealed class AgentRequestUser(IDocumentStore store)
+internal sealed class AgentRequestUser(ISparkStore store, SparkModuleRegistry registry)
 {
     private (string Id, Task<SparkUser?> User)? loaded;
 
@@ -24,8 +25,9 @@ internal sealed class AgentRequestUser(IDocumentStore store)
 
     private async Task<SparkUser?> LoadAsync(string userId, CancellationToken cancellationToken)
     {
-        using var session = store.OpenAsyncSession();
-        return await session.LoadAsync<SparkUser>(userId, cancellationToken);
+        // As the application's user type: a store with a schema keeps each type in its own table (#536).
+        using var session = store.OpenSession();
+        return (SparkUser?)await session.LoadAsync(registry.IdentityUserType ?? typeof(SparkUser), userId, cancellationToken);
     }
 
     /// <summary>Whether Identity would refuse the user's sign-in as locked out.</summary>

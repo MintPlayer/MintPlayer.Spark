@@ -85,6 +85,13 @@ tags, and everything ships once the merged pull request is backported to `releas
     Spark.Files runs on any store (M6h). RavenDB attachments stay the default file store on RavenDB. On SQL Server,
     PostgreSQL and InMemory, `AddFiles` needs a file store (`files.UseFileSystem(path)`, `UseAzureBlob` or `UseS3`);
     without one the app refuses to start.
+    Spark.Authorization runs on any store (M6j) and no longer requires RavenDB. The user store finds users by name and
+    by external login through reservations (`usernames/…`, `logins/…`; compare exchange on RavenDB), as it already
+    did by email, so user names and logins are now unique. Migration `M_202611251200_UserLookupReservations` claims
+    them for existing RavenDB users at startup; a duplicate name or login from before stays with the first user and is
+    logged. A user document written around the user store (a seeder, an import) holds no reservation and is not found by
+    name, email or login: call `SparkUserReservations.ClaimAsync(store, userId, user)` after writing it.
+    `SparkUserBackfill` and the older user migrations run on RavenDB only.
     Spark.Contributions runs on any store (M6i) and no longer references MintPlayer.Spark.RavenDB. **Its document ids
     change:** every contribution and current id now starts with its own collection
     (`songlyricscontributions/songs/1/lyricscontributions/…`, `songlyricscurrents/songs/1/lyrics/…`), because a

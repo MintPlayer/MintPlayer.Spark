@@ -21,7 +21,7 @@ public class UserStoreTests : RavenSparkTestDriver
     private readonly Microsoft.AspNetCore.DataProtection.IDataProtectionProvider dataProtection =
         new Microsoft.AspNetCore.DataProtection.EphemeralDataProtectionProvider();
 
-    private UserStore<SparkUser> CreateStore() => new(Store, dataProtection);
+    private UserStore<SparkUser> CreateStore() => new(Store.AsSparkStore(), dataProtection);
 
     private static SparkUser NewUser(string? userName = "alice", string? email = null)
     {
@@ -402,7 +402,7 @@ public class UserStoreTests : RavenSparkTestDriver
                 ["a1b2c3d4-0000-0000-0000-000000000002"] = "Fleet managers",
             },
         });
-        using var store = new UserStore<SparkUser>(Store, dataProtection, securityConfiguration: loader);
+        using var store = new UserStore<SparkUser>(Store.AsSparkStore(), dataProtection, securityConfiguration: loader);
         var user = new SparkUser { Roles = ["fleet MANAGERS", "Fleet managers"] };
 
         await store.AddToRoleAsync(user, "ADMINISTRATORS", CancellationToken.None);

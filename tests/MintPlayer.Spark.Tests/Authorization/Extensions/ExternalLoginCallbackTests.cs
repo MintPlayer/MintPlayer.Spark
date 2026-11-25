@@ -51,6 +51,8 @@ public class ExternalLoginCallbackTests : RavenSparkTestDriver
                 .ConfigureServices(services =>
                 {
                     services.AddSingleton<IDocumentStore>(Store);
+
+                    services.AddSingleton<global::MintPlayer.Spark.Abstractions.Storage.ISparkStore>(Store.AsSparkStore());
                     if (logs is not null)
                         services.AddLogging(b => b.AddProvider(logs));
                     services.AddSparkAuthentication<SparkUser>();

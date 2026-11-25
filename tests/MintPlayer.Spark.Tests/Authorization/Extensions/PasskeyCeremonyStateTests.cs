@@ -41,6 +41,8 @@ public class PasskeyCeremonyStateTests : RavenSparkTestDriver
                 .ConfigureServices(services =>
                 {
                     services.AddSingleton<IDocumentStore>(Store);
+
+                    services.AddSingleton<global::MintPlayer.Spark.Abstractions.Storage.ISparkStore>(Store.AsSparkStore());
                     services.AddSparkAuthentication<SparkUser>();
 
                     // Disabled keeps the MapIdentityApi surface minimal; the ceremony helpers are

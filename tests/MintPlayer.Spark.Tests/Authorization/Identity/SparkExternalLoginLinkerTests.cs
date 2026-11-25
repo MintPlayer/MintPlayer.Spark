@@ -79,7 +79,7 @@ public class SparkExternalLoginLinkerTests(RavenSparkSharedDatabase database)
         var clock = new StoppedClock(new DateTimeOffset(2026, 9, 21, 12, 0, 0, TimeSpan.Zero));
 
         return new Harness(
-            new SparkExternalLoginLinker<SparkUser>(Store, userManager, clock, sender),
+            new SparkExternalLoginLinker<SparkUser>(Store.AsSparkStore(), userManager, clock, sender),
             sender, clock, userManager, user);
     }
 
@@ -326,7 +326,7 @@ public class SparkExternalLoginLinkerTests(RavenSparkSharedDatabase database)
     public async Task A_request_with_no_sender_registered_throws_rather_than_writing_silently()
     {
         var h = NewHarness();
-        var linker = new SparkExternalLoginLinker<SparkUser>(Store, h.UserManager, h.Clock, confirmationSender: null);
+        var linker = new SparkExternalLoginLinker<SparkUser>(Store.AsSparkStore(), h.UserManager, h.Clock, confirmationSender: null);
 
         var act = async () => await linker.RequestLinkAsync(
             h.User, Provider, ProviderKey, Provider, null, t => t);

@@ -42,7 +42,7 @@ public class UserStorePasskeyTests : RavenSparkTestDriver
     [Fact]
     public async Task Adding_a_passkey_reserves_the_credential_id()
     {
-        using var store = new UserStore<SparkUser>(Store);
+        using var store = new UserStore<SparkUser>(Store.AsSparkStore());
         var user = await CreateUserAsync(store, "reserve@example.com");
         var credentialId = CredentialId(1);
 
@@ -55,7 +55,7 @@ public class UserStorePasskeyTests : RavenSparkTestDriver
     [Fact]
     public async Task FindByPasskeyId_resolves_the_owner()
     {
-        using var store = new UserStore<SparkUser>(Store);
+        using var store = new UserStore<SparkUser>(Store.AsSparkStore());
         var user = await CreateUserAsync(store, "resolve@example.com");
         var credentialId = CredentialId(2);
 
@@ -71,7 +71,7 @@ public class UserStorePasskeyTests : RavenSparkTestDriver
     [Fact]
     public async Task FindByPasskeyId_returns_null_for_an_unknown_credential()
     {
-        using var store = new UserStore<SparkUser>(Store);
+        using var store = new UserStore<SparkUser>(Store.AsSparkStore());
 
         (await store.FindByPasskeyIdAsync(CredentialId(200), CancellationToken.None)).Should().BeNull();
     }
@@ -80,7 +80,7 @@ public class UserStorePasskeyTests : RavenSparkTestDriver
     [Fact]
     public async Task A_credential_id_cannot_be_claimed_by_two_users()
     {
-        using var store = new UserStore<SparkUser>(Store);
+        using var store = new UserStore<SparkUser>(Store.AsSparkStore());
         var first = await CreateUserAsync(store, "first@example.com");
         var second = await CreateUserAsync(store, "second@example.com");
         var credentialId = CredentialId(3);
@@ -103,7 +103,7 @@ public class UserStorePasskeyTests : RavenSparkTestDriver
     [Fact]
     public async Task Updating_a_passkey_advances_the_mutable_fields_only()
     {
-        using var store = new UserStore<SparkUser>(Store);
+        using var store = new UserStore<SparkUser>(Store.AsSparkStore());
         var user = await CreateUserAsync(store, "update@example.com");
         var credentialId = CredentialId(4);
 
@@ -131,7 +131,7 @@ public class UserStorePasskeyTests : RavenSparkTestDriver
     [Fact]
     public async Task Removing_a_passkey_releases_the_reservation()
     {
-        using var store = new UserStore<SparkUser>(Store);
+        using var store = new UserStore<SparkUser>(Store.AsSparkStore());
         var user = await CreateUserAsync(store, "remove@example.com");
         var credentialId = CredentialId(5);
 
@@ -149,7 +149,7 @@ public class UserStorePasskeyTests : RavenSparkTestDriver
     [Fact]
     public async Task Deleting_a_user_releases_every_passkey_reservation()
     {
-        using var store = new UserStore<SparkUser>(Store);
+        using var store = new UserStore<SparkUser>(Store.AsSparkStore());
         var user = await CreateUserAsync(store, "deleted@example.com");
         byte[] first = CredentialId(6), second = CredentialId(7);
 
@@ -170,7 +170,7 @@ public class UserStorePasskeyTests : RavenSparkTestDriver
     [Fact]
     public async Task Re_enrolling_after_a_failed_document_write_succeeds()
     {
-        using var store = new UserStore<SparkUser>(Store);
+        using var store = new UserStore<SparkUser>(Store.AsSparkStore());
         var user = await CreateUserAsync(store, "retry@example.com");
         var credentialId = CredentialId(8);
 
@@ -188,7 +188,7 @@ public class UserStorePasskeyTests : RavenSparkTestDriver
     [Fact]
     public async Task Get_and_find_round_trip_every_field()
     {
-        using var store = new UserStore<SparkUser>(Store);
+        using var store = new UserStore<SparkUser>(Store.AsSparkStore());
         var user = await CreateUserAsync(store, "roundtrip@example.com");
         var credentialId = CredentialId(9);
 
@@ -216,7 +216,7 @@ public class UserStorePasskeyTests : RavenSparkTestDriver
         var credentialId = CredentialId(10);
         string userId;
 
-        using (var store = new UserStore<SparkUser>(Store))
+        using (var store = new UserStore<SparkUser>(Store.AsSparkStore()))
         {
             var user = await CreateUserAsync(store, "persisted@example.com");
             await store.AddOrUpdatePasskeyAsync(user, PasskeyInfo(credentialId, signCount: 3), CancellationToken.None);
@@ -224,7 +224,7 @@ public class UserStorePasskeyTests : RavenSparkTestDriver
             userId = user.Id!;
         }
 
-        using var reader = new UserStore<SparkUser>(Store);
+        using var reader = new UserStore<SparkUser>(Store.AsSparkStore());
         var reloaded = await reader.FindByIdAsync(userId, CancellationToken.None);
 
         reloaded.Should().NotBeNull();
@@ -236,7 +236,7 @@ public class UserStorePasskeyTests : RavenSparkTestDriver
     [Fact]
     public async Task Removing_an_unknown_passkey_is_a_no_op()
     {
-        using var store = new UserStore<SparkUser>(Store);
+        using var store = new UserStore<SparkUser>(Store.AsSparkStore());
         var user = await CreateUserAsync(store, "noop@example.com");
 
         await store.RemovePasskeyAsync(user, CredentialId(202), CancellationToken.None);

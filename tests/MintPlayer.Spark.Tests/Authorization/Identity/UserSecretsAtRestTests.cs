@@ -35,6 +35,8 @@ public class UserSecretsAtRestTests : RavenSparkTestDriver
         }).Build());
         services.AddSingleton<IHostEnvironment>(new HostingEnvironment { EnvironmentName = "Production", ContentRootPath = Path.GetTempPath() });
         services.AddSingleton(Store);
+
+        services.AddSingleton<global::MintPlayer.Spark.Abstractions.Storage.ISparkStore>(Store.AsSparkStore());
         // The key ring and the sessions come from the RavenDB provider (#551 D20).
         services.AddRavenDbSessions();
         services.AddLogging();

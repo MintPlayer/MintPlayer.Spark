@@ -45,6 +45,8 @@ public class GitHubChallengeShapeTests(RavenSparkSharedDatabase database)
                 .ConfigureServices(services =>
                 {
                     services.AddSingleton<IDocumentStore>(Store);
+
+                    services.AddSingleton<global::MintPlayer.Spark.Abstractions.Storage.ISparkStore>(Store.AsSparkStore());
                     services.AddSparkAuthentication<SparkUser>();
                     TestSparkAuth.Builder(services).AddGitHub(options =>
                     {
@@ -146,6 +148,8 @@ public class GitHubChallengeShapeTests(RavenSparkSharedDatabase database)
                 .ConfigureServices(services =>
                 {
                     services.AddSingleton<IDocumentStore>(Store);
+
+                    services.AddSingleton<global::MintPlayer.Spark.Abstractions.Storage.ISparkStore>(Store.AsSparkStore());
                     services.AddSparkAuthentication<SparkUser>();
                     TestSparkAuth.Builder(services).AddGitHub(options =>
                     {

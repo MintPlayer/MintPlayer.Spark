@@ -76,6 +76,8 @@ public class LocalCredentialModeTests(RavenSparkSharedDatabase database)
                 .ConfigureServices(services =>
                 {
                     services.AddSingleton<IDocumentStore>(Store);
+
+                    services.AddSingleton<global::MintPlayer.Spark.Abstractions.Storage.ISparkStore>(Store.AsSparkStore());
                     services.AddSparkAuthentication<SparkUser>();
                     services.Configure<SparkAuthenticationOptions>(o => o.LocalCredentials = mode);
                     services.AddTestMailSink(); // #460 D6: registration needs a mail sender

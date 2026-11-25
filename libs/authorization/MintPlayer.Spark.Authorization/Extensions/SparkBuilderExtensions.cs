@@ -16,9 +16,9 @@ namespace MintPlayer.Spark.Authorization.Extensions;
 public static class SparkBuilderAuthorizationExtensions
 {
     /// <summary>
-    /// Adds Spark authentication with RavenDB-backed identity stores.
-    /// Registers ASP.NET Core Identity services, bearer + cookie authentication,
-    /// and the RavenDB user/role stores.
+    /// Adds Spark authentication with identity stores on the application's Spark store (RavenDB, SQL Server,
+    /// PostgreSQL or in memory, #536). Registers ASP.NET Core Identity services, bearer + cookie authentication,
+    /// and the user/role stores.
     /// </summary>
     /// <param name="configure">
     /// Configures Spark's own authentication surface — notably
@@ -31,15 +31,19 @@ public static class SparkBuilderAuthorizationExtensions
     /// <c>spark.AddGoogle(…)</c>, <c>spark.AddOpenIdConnect(…)</c>, <c>spark.AddExternalProviders(configuration)</c>,
     /// or <c>spark.AddExternalScheme(scheme, policy)</c> for a handler registered by hand.
     /// </remarks>
-    [global::MintPlayer.Spark.Abstractions.Storage.SparkRequiresStore("Spark.Authorization", Provider = global::MintPlayer.Spark.Abstractions.Storage.SparkStoreProviders.RavenDb)]
     public static ISparkBuilder AddAuthentication<TUser>(
         this ISparkBuilder builder,
         Action<SparkAuthenticationOptions>? configure = null,
         Action<IdentityOptions>? configureIdentity = null)
         where TUser : SparkUser, new()
     {
-        // #551 D13: users, roles and tokens are RavenDB documents, through its own client.
-        global::MintPlayer.Spark.Abstractions.Storage.SparkStoreRequirementExtensions.RequireStore(builder, "Spark.Authorization", provider: global::MintPlayer.Spark.Abstractions.Storage.SparkStoreProviders.RavenDb);
+        // #536: users, roles, grants and pending links are documents of whichever store the application chose. A store
+        // with a schema needs their tables (D36); the user type is the application's own. The backfill marker has none: the
+        // backfill runs on RavenDB only.
+        global::MintPlayer.Spark.Abstractions.Storage.SparkStoredTypeServiceCollectionExtensions.AddSparkStoredType<TUser>(builder.Services);
+        global::MintPlayer.Spark.Abstractions.Storage.SparkStoredTypeServiceCollectionExtensions.AddSparkStoredType<SparkRole>(builder.Services);
+        global::MintPlayer.Spark.Abstractions.Storage.SparkStoredTypeServiceCollectionExtensions.AddSparkStoredType<global::MintPlayer.Spark.Authorization.Agents.AgentGrant>(builder.Services);
+        global::MintPlayer.Spark.Abstractions.Storage.SparkStoredTypeServiceCollectionExtensions.AddSparkStoredType<SparkPendingExternalLogin>(builder.Services);
 
         var options = new SparkAuthenticationOptions();
         configure?.Invoke(options);

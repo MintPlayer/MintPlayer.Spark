@@ -40,6 +40,8 @@ public class AuthCapabilitiesTests(RavenSparkSharedDatabase database)
                 .ConfigureServices(services =>
                 {
                     services.AddSingleton<IDocumentStore>(Store);
+
+                    services.AddSingleton<global::MintPlayer.Spark.Abstractions.Storage.ISparkStore>(Store.AsSparkStore());
                     services.AddSparkAuthentication<SparkUser>();
                     services.Configure<SparkAuthenticationOptions>(o =>
                     {
@@ -198,6 +200,8 @@ public class AuthCapabilitiesTests(RavenSparkSharedDatabase database)
                 .ConfigureServices(services =>
                 {
                     services.AddSingleton<IDocumentStore>(Store);
+
+                    services.AddSingleton<global::MintPlayer.Spark.Abstractions.Storage.ISparkStore>(Store.AsSparkStore());
                     services.AddSparkAuthentication<SparkUser>();
                     services.Configure<SparkAuthenticationOptions>(o => o.LocalCredentials = SparkLocalCredentials.Disabled);
                     services.AddTestMailSink();

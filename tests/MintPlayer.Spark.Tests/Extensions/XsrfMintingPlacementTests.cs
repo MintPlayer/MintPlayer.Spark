@@ -46,6 +46,8 @@ public class XsrfMintingPlacementTests : RavenSparkTestDriver
                 .ConfigureServices(services =>
                 {
                     services.AddSingleton<IDocumentStore>(Store);
+
+                    services.AddSingleton<global::MintPlayer.Spark.Abstractions.Storage.ISparkStore>(Store.AsSparkStore());
                     services.AddSparkAuthentication<SparkUser>();
                     services.AddAntiforgery(o => o.HeaderName = "X-XSRF-TOKEN");
                     services.AddAuthorization();
@@ -165,7 +167,7 @@ public class XsrfMintingPlacementTests : RavenSparkTestDriver
     /// </remarks>
     private async Task SeedUserAsync()
     {
-        using var store = new UserStore<SparkUser>(Store);
+        using var store = new UserStore<SparkUser>(Store.AsSparkStore());
         var existing = await store.FindByNameAsync("PROBE@EXAMPLE.COM", CancellationToken.None);
         if (existing is not null)
         {

@@ -14,7 +14,7 @@ namespace MintPlayer.Spark.Tests.Authorization.Identity;
 /// </summary>
 public class RoleStoreTests : RavenSparkTestDriver
 {
-    private RoleStore CreateStore() => new(Store);
+    private RoleStore CreateStore() => new(Store.AsSparkStore());
 
     [Fact]
     public async Task CreateAsync_assigns_deterministic_id_derived_from_name()

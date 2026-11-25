@@ -1,3 +1,4 @@
+using MintPlayer.Spark;
 using System.Net;
 using System.Security.Claims;
 using System.Text.Encodings.Web;
@@ -80,6 +81,7 @@ internal sealed class ExternalTwoFactorTestHost
                 .ConfigureServices(services =>
                 {
                     services.AddSingleton(store);
+                    services.AddSingleton<global::MintPlayer.Spark.Abstractions.Storage.ISparkStore>(store.AsSparkStore());
                     services.AddSparkAuthentication<SparkUser>();
                     services.Configure<SparkAuthenticationOptions>(o =>
                     {

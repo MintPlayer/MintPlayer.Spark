@@ -283,6 +283,8 @@ public sealed class XsrfSurfaceHosts : RavenSparkSharedDatabase
                 .ConfigureServices(services =>
                 {
                     services.AddSingleton<IDocumentStore>(Store);
+
+                    services.AddSingleton<global::MintPlayer.Spark.Abstractions.Storage.ISparkStore>(Store.AsSparkStore());
                     services.AddSparkAuthentication<SparkUser>();
                     services.Configure<SparkAuthenticationOptions>(o => o.LocalCredentials = SparkLocalCredentials.Full);
                     services.AddTestMailSink(); // #460 D6: registration needs a mail sender

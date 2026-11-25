@@ -503,6 +503,34 @@ rounds, milestones and status. Branch `feat/536-sql-server-provider`, draft PR #
     - `SparkFileUpload` is registered as a stored type (D36).
     - **Evidence:** `NeutralFilesStoreTests` (claim + reconcile, the deferred sweep, the default store) 3/3 on all four
       databases; the Files suites on RavenDB 264/264 (28 skipped: cloud stores).
+  - **M6j (2026-11-25): Authorization on any store.** The package no longer pins RavenDB (`RequireStore` is gone):
+    - `UserStore`, `RoleStore`, the account directory, `AgentRequestUser`, `AgentGrantStore` and
+      `SparkExternalLoginLinker` take `ISparkStore`. Users, roles, agent grants and pending links are stored types
+      (D36); the user type is the application's own (`SparkModuleRegistry.IdentityUserType`).
+    - **Every lookup a user is found by is a reservation (S6), never a query.** Emails (`emails/`) and passkeys
+      (`passkeys/`) already were (compare exchange on RavenDB, same keys). User names (`usernames/{lower}`) and
+      external logins (`logins/{sha256 hex of provider + key}`) are new: the old LINQ queries made RavenDB auto
+      indexes (D42), and a relational store keeps `Logins` in a JSON column no query can filter. A reservation also
+      makes names and logins unique on every store (`DuplicateUserName`, `LoginAlreadyAssociated`). Create claims
+      them with the document; Update moves the changed ones in the same save; Delete releases them all.
+    - **A failed save drops the store's session.** Every session keeps its pending reservations after a failed save
+      (as RavenDB keeps pending changes), so a later save retried the taken key. The store opens a fresh session and
+      re-attaches a user handed out earlier at the version it was handed out with (`StoreAsync(user, version, id)`),
+      so optimistic concurrency still holds.
+    - Role and claim lookups (`GetUsersInRoleAsync`, `GetUsersForClaimAsync`) are rare and admin-only: they stream
+      the collection unfiltered and match in memory (no index).
+    - **Migration `M_202611251200_UserLookupReservations`** (RavenDB only) claims the email, name and login reservations
+      of users written before. A key another user holds is logged and left to that user.
+    - ⚠️ **A user written around the store is not found by name, email or login** (a raw seed, an import). The key
+      formats and a `ClaimAsync(store, id, user)` are public in `SparkUserReservations`, which the store, the migration
+      and the MintPlayer legacy importer share; the importer now writes every key, not only the email (owner,
+      2026-11-25: "note it down in the code as a comment. If possible, fix it").
+    - `SparkUserBackfill` and the two older user migrations stay RavenDB-only (they repair RavenDB data, and read
+      revisions); elsewhere they do nothing. The backfill marker is therefore not a stored type.
+    - **Evidence:** `NeutralUserStoreTests` (emails, names, logins, roles, claims, passkeys, delete, roles store, a
+      save after a failed one) 4/4 on InMemory, RavenDB, SQL Server and PostgreSQL;
+      `UserLookupReservationsMigrationTests` green; the authorization suites on RavenDB 874/874; CodeCoverage's
+      sign-in and GitHub-access tests 76/76.
   - **M6i (2026-11-25): Contributions on any store.** The package no longer references MintPlayer.Spark.RavenDB:
     - `ContributionHandler`, `SparkContributions`, the actions, the interceptor and `RevertContribution` use
       `ISparkSession`/`ISparkStore`. Prefix loads page with `LoadStartingWithAsync(prefix, 0, 1024, startAfter)`; the

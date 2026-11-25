@@ -89,6 +89,8 @@ public class ExternalLoginLinkingTests : RavenSparkTestDriver
                 .ConfigureServices(services =>
                 {
                     services.AddSingleton<IDocumentStore>(Store);
+
+                    services.AddSingleton<global::MintPlayer.Spark.Abstractions.Storage.ISparkStore>(Store.AsSparkStore());
                     services.AddSparkAuthentication<SparkUser>();
                     services.AddTestMailSink(); // #460 D6: registration needs a mail sender
                     services.AddAuthorization();

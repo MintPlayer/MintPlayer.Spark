@@ -39,6 +39,8 @@ public class ExternalLoginRefusalTests : RavenSparkTestDriver
                 .ConfigureServices(services =>
                 {
                     services.AddSingleton<IDocumentStore>(Store);
+
+                    services.AddSingleton<global::MintPlayer.Spark.Abstractions.Storage.ISparkStore>(Store.AsSparkStore());
                     services.AddSparkAuthentication<SparkUser>();
                     // The mode MapSparkIdentityApi's former parameter defaulted to.
                     services.Configure<MintPlayer.Spark.Authorization.Configuration.SparkAuthenticationOptions>(

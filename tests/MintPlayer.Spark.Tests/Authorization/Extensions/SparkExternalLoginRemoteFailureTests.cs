@@ -229,6 +229,8 @@ public class SparkExternalLoginRemoteFailureTests(RavenSparkSharedDatabase datab
                 .ConfigureServices(services =>
                 {
                     services.AddSingleton<IDocumentStore>(Store);
+
+                    services.AddSingleton<global::MintPlayer.Spark.Abstractions.Storage.ISparkStore>(Store.AsSparkStore());
                     services.AddSparkAuthentication<SparkUser>();
                     TestSparkAuth.Builder(services).AddGitHub(o =>
                     {
