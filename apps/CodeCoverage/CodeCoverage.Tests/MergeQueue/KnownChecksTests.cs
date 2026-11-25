@@ -235,9 +235,9 @@ public class KnownChecksTests : CoverageRavenTest
 
         (await h.EntryAsync()).State.Should().Be(EMergeQueueEntryState.Merged);
         var reported = h.Raised.OfType<ForgeWebhookMessage<CheckReported>>().Select(m => m.Event).ToList();
-        reported.Should().Contain(new CheckReported(RepositoryId, "build", null, null), "the expected-minimum read gives the name alone");
-        reported.Should().Contain(new CheckReported(RepositoryId, "build", EForgeCheckKind.CheckRun, "github-actions"));
-        reported.Should().Contain(new CheckReported(RepositoryId, "ci/legacy", EForgeCheckKind.Status, null));
+        reported.Should().Contain(new CheckReported(RepositoryId.ToLowerInvariant(), "build", null, null), "the expected-minimum read gives the name alone");
+        reported.Should().Contain(new CheckReported(RepositoryId.ToLowerInvariant(), "build", EForgeCheckKind.CheckRun, "github-actions"));
+        reported.Should().Contain(new CheckReported(RepositoryId.ToLowerInvariant(), "ci/legacy", EForgeCheckKind.Status, null));
     }
 
     [Fact]
@@ -342,8 +342,9 @@ public class KnownChecksTests : CoverageRavenTest
             await new KnownChecksScheduler(session, bus, NullLogger<KnownChecksScheduler>.Instance)
                 .ScheduleAccountAsync(account, waitForIndex: true);
 
-        bus.Of<RefreshKnownChecksMessage>().Select(m => m.RepositoryId).Should().Equal(RepoId(1));
-        bus.DeduplicationKeys.Should().ContainSingle().Which.Should().Be($"known-checks-{RepoId(1)}-{DateTimeOffset.UtcNow:yyyy-MM-dd}");
+        // The loaded repository's id, lower case (#536 D7).
+        bus.Of<RefreshKnownChecksMessage>().Select(m => m.RepositoryId).Should().Equal(RepoId(1).ToLowerInvariant());
+        bus.DeduplicationKeys.Should().ContainSingle().Which.Should().Be($"known-checks-{RepoId(1).ToLowerInvariant()}-{DateTimeOffset.UtcNow:yyyy-MM-dd}");
     }
 
     [Fact]

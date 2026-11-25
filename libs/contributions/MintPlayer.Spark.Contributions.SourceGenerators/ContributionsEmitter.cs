@@ -150,7 +150,7 @@ internal static class ContributionsEmitter
         w.Line("/// <summary>The document id RavenDB reads and writes: <c>Id</c> as its canonical string (#536 D23 rule 6).</summary>");
         w.Line("[global::System.ComponentModel.EditorBrowsable(global::System.ComponentModel.EditorBrowsableState.Never)]");
         w.Line("[global::System.Text.Json.Serialization.JsonIgnore]");
-        w.Line($"private string? __DocumentId {{ get => Id.IsEmpty ? null : Id.Value; set => Id = global::MintPlayer.Spark.Abstractions.Id<{typeName}>.FromTrusted(value); }}");
+        w.Line($"internal string? __DocumentId {{ get => Id.IsEmpty ? null : Id.Value; set => Id = global::MintPlayer.Spark.Abstractions.Id<{typeName}>.FromTrusted(value); }}");
         w.Line();
     }
 

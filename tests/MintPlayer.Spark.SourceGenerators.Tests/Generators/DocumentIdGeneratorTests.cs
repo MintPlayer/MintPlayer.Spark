@@ -50,7 +50,7 @@ public class DocumentIdGeneratorTests
         Errors(result).Should().BeEmpty();
         var combined = Combined(result);
         combined.Should().Contain("partial class Person");
-        combined.Should().Contain("private string? __DocumentId { get => Id.IsEmpty ? null : Id.Value; set => Id = global::MintPlayer.Spark.Abstractions.Id<global::TestApp.Person>.FromTrusted(value); }");
+        combined.Should().Contain("internal string? __DocumentId { get => Id.IsEmpty ? null : Id.Value; set => Id = global::MintPlayer.Spark.Abstractions.Id<global::TestApp.Person>.FromTrusted(value); }");
         combined.Should().Contain("partial class Company");
     }
 

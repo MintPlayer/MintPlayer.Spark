@@ -85,7 +85,8 @@ public sealed class ScriptedDiffService(CommitComparison? comparison = null)
     /// What <see cref="GetGitAccessAsync"/> answers, per repository document id; a repository not
     /// listed gets anonymous access to a made-up clone URL. Null in the map means "no path".
     /// </summary>
-    public Dictionary<string, ForgeGitAccess?> GitAccess { get; } = [];
+    /// <remarks>Keyed ignoring case: a loaded repository's id is lower case, the tests name it in its legacy casing (#536 D7).</remarks>
+    public Dictionary<string, ForgeGitAccess?> GitAccess { get; } = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>How many times git access was asked for.</summary>
     public int GitAccessCalls { get; private set; }

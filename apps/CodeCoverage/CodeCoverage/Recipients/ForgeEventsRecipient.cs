@@ -278,7 +278,8 @@ public partial class ForgeEventsRecipient :
 
         if (evt.ReportedByAccountId is { Length: > 0 } reporter
             && repository.Account is not null
-            && repository.Account != reporter)
+            // A stored reference keeps its legacy casing; a loaded id is lower case (#536 D7).
+            && !string.Equals(repository.Account, reporter, StringComparison.OrdinalIgnoreCase))
         {
             logger.LogInformation(
                 "Ignoring a stale loss of {FullName} reported by {Reporter}: it now belongs to {Owner}",

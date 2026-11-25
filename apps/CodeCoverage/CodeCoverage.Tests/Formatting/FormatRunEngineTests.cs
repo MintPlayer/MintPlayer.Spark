@@ -152,7 +152,8 @@ public class FormatRunEngineTests : CoverageRavenTest
 
         outbox.Signals.Single().Should().BeEquivalentTo(new
         {
-            RepositoryId, Kind = EMergeQueueSignal.Command, Number = 12, Command = EMergeQueueCommand.Enqueue, Actor = "octocat", Source = EMergeQueueCommandSource.Formatting,
+            RepositoryId = RepositoryId.ToLowerInvariant(), // the loaded repository's id (#536 D7)
+            Kind = EMergeQueueSignal.Command, Number = 12, Command = EMergeQueueCommand.Enqueue, Actor = "octocat", Source = EMergeQueueCommandSource.Formatting,
         });
         notifications.Single().Body.Should().Contain("handed to the merge queue");
     }

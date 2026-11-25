@@ -132,8 +132,8 @@ public class MergeQueueCommandReactionTests : CoverageRavenTest
 
         h.Reactions.Added.Should().BeEmpty();
         var entry = await h.EntryAsync();
-        entry.LogId.Should().StartWith("Logs/merge-queue/github/910040/7/", "G11: a label's run is logged too");
-        h.Logs.Opened.Should().Contain(o => o.Key == entry.LogId![5..] && o.Related == RepositoryId && o.ExpiresAtUtc != null,
+        entry.LogId.Should().StartWith("logs/merge-queue/github/910040/7/", "G11: a label's run is logged too (a new id is lower case, #536 D7)");
+        h.Logs.Opened.Should().Contain(o => o.Key == entry.LogId![5..] && string.Equals(o.Related, RepositoryId, StringComparison.OrdinalIgnoreCase) && o.ExpiresAtUtc != null,
             "G15: a run log opens with its repository (a merge-queue entry is no persistent object)");
     }
 }

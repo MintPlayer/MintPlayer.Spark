@@ -72,9 +72,9 @@ public class AddSparkDocumentStoreFactoryTests(SparkSharedDatabase database)
         var entity = new FactoryProbe();
         var id = await store.Conventions.AsyncDocumentIdGenerator(store.Database, entity);
 
-        // The generator format is "{collection}/{guid}". Default conventions pluralize to "FactoryProbes".
+        // The generator format is "{collection}/{guid}", lower case (#536 D7): "factoryprobes/…".
         id.Should().Contain("/");
-        id.Should().StartWith(store.Conventions.GetCollectionName(typeof(FactoryProbe)) + "/");
+        id.Should().StartWith(store.Conventions.GetCollectionName(typeof(FactoryProbe)).ToLowerInvariant() + "/");
         Guid.TryParse(id.Split('/').Last(), out _).Should().BeTrue();
     }
 

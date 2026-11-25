@@ -56,10 +56,28 @@ public abstract partial class ObjectFileStore : IFileStore
     public string EntityKey(string entityId, string fileId)
         => FileIdPattern().IsMatch(fileId) ? EntityPrefix(entityId) + fileId : throw new ArgumentException("Not a file id.", nameof(fileId));
 
+    /// <remarks>
+    /// Keyed by the lower-case id (#536 D7): a loaded id is lower case, a stored reference may keep its legacy casing, and
+    /// both must find the same objects. An object keyed by a legacy casing is moved by the reconcile
+    /// (<see cref="Services.FilesReconciler"/>).
+    /// </remarks>
     public string EntityPrefix(string entityId)
     {
         ArgumentException.ThrowIfNullOrEmpty(entityId);
-        return EntitiesRoot + Base64Url(Encoding.UTF8.GetBytes(entityId)) + "/";
+        return EntitiesRoot + Base64Url(Encoding.UTF8.GetBytes(entityId.ToLowerInvariant())) + "/";
+    }
+
+    /// <summary>
+    /// The key <paramref name="key"/> has under the lower-case id, when it is an entity's object keyed by another casing
+    /// (stored before #536 D7).
+    /// </summary>
+    public bool TryLowerCaseKey(string key, out string lowerCaseKey)
+    {
+        lowerCaseKey = string.Empty;
+        if (!TryParseEntity(key, out var entityId, out _) || entityId == entityId.ToLowerInvariant())
+            return false;
+        lowerCaseKey = EntityPrefix(entityId) + key[(key.LastIndexOf('/') + 1)..];
+        return true;
     }
 
     /// <summary>Deletes the file and every variant of it; the store keeps no other copy.</summary>

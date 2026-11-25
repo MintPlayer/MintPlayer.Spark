@@ -85,7 +85,7 @@ public class PublishFeedbackCronJobTests : CoverageRavenTest
 
         bus.Broadcast.OfType<PublishPullRequestCommentMessage>().Should().ContainSingle();
         bus.Broadcast.OfType<PublishPullRequestCommentMessage>().First().FeedbackId
-            .Should().Be(PullRequestFeedback.DocumentId(EForgeProvider.GitHub, RepoId, 79));
+            .Should().Be(PullRequestFeedback.DocumentId(EForgeProvider.GitHub, RepoId, 79).ToLowerInvariant(), "it is the loaded feedback's id (#536 D7)");
     }
 
     [Fact]

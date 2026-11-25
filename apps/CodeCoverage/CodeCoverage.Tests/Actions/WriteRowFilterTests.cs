@@ -94,7 +94,8 @@ public class WriteRowFilterTests : CoverageRavenTest
         using var session = store.OpenAsyncSession();
         var query = session.Query<Repository>();
         if (filter is not null) query = query.Where(filter);
-        var rows = await query.ToListAsync();
+        // As Spark runs a row filter: through the id rewriter (Contains over typed ids becomes In).
+        var rows = await MintPlayer.Spark.Storage.Raven.RavenIdQueryRewriter.Rewrite(query).ToListAsync();
         return [.. rows.Select(r => r.FullName).OrderBy(n => n, StringComparer.Ordinal)];
     }
 
@@ -166,7 +167,8 @@ public class WriteRowFilterTests : CoverageRavenTest
         using var session = store.OpenAsyncSession();
         var query = session.Query<Account>();
         if (filter is not null) query = query.Where(filter);
-        var rows = await query.ToListAsync();
+        // As Spark runs a row filter: through the id rewriter (Contains over typed ids becomes In).
+        var rows = await MintPlayer.Spark.Storage.Raven.RavenIdQueryRewriter.Rewrite(query).ToListAsync();
         return [.. rows.Select(a => a.Login).OrderBy(n => n, StringComparer.Ordinal)];
     }
 

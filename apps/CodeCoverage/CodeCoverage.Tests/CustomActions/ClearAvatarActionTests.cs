@@ -82,7 +82,8 @@ public class ClearAvatarActionTests : CoverageRavenTest
         var account = await LoadAsync(store);
         account.CustomAvatar.Should().BeNull();
         AccountAvatar.Resolve(account).Should().Be("https://avatars.example/acme.png");
-        await harness.Files.Received(1).EraseAsync(AccountId, "f-1", Arg.Any<CancellationToken>());
+        // The loaded account's id, lower case (#536 D7); the file store keys by it ignoring case.
+        await harness.Files.Received(1).EraseAsync(AccountId.ToLowerInvariant(), "f-1", Arg.Any<CancellationToken>());
     }
 
     /// <summary>A failed erase after the commit leaves unreferenced bytes for the reconcile, never an account pointing at nothing.</summary>

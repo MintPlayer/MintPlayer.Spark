@@ -284,7 +284,9 @@ public abstract class SparkAppTestHost : IAsyncLifetime
     /// <summary>Opens a store on the app database. The caller disposes it.</summary>
     protected IDocumentStore OpenAppStore()
     {
+        // The app's own conventions: an entity with an Id<T> key cannot be stored without them (#536 M2c).
         var store = new DocumentStore { Urls = RavenServer.Store.Urls, Database = TestDatabase };
+        store.ApplySparkConventions();
         store.Initialize();
         return store;
     }

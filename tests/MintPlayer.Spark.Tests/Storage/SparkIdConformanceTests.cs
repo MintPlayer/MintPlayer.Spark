@@ -23,7 +23,7 @@ public abstract class SparkIdConformanceTests : IAsyncLifetime
         public Id<IdCompany> Id { get; set; }
         public string Name { get; set; } = string.Empty;
 
-        private string? __DocumentId { get => Id.IsEmpty ? null : Id.Value; set => Id = Id<IdCompany>.FromTrusted(value); }
+        internal string? __DocumentId { get => Id.IsEmpty ? null : Id.Value; set => Id = Id<IdCompany>.FromTrusted(value); }
     }
 
     public class IdPerson
@@ -33,7 +33,20 @@ public abstract class SparkIdConformanceTests : IAsyncLifetime
         public Id<IdCompany>? CompanyId { get; set; }
         public List<Id<IdPerson>> FriendIds { get; set; } = [];
 
-        private string? __DocumentId { get => Id.IsEmpty ? null : Id.Value; set => Id = Id<IdPerson>.FromTrusted(value); }
+        internal string? __DocumentId { get => Id.IsEmpty ? null : Id.Value; set => Id = Id<IdPerson>.FromTrusted(value); }
+    }
+
+    /// <summary>A base type that owns the id, as MintPlayer's <c>Subject</c> does for songs and artists.</summary>
+    public abstract class IdSubject
+    {
+        public Id<IdSubject> Id { get; set; }
+
+        internal string? __DocumentId { get => Id.IsEmpty ? null : Id.Value; set => Id = Id<IdSubject>.FromTrusted(value); }
+    }
+
+    public class IdSong : IdSubject
+    {
+        public string Title { get; set; } = string.Empty;
     }
 
     protected ISparkStore Store { get; private set; } = null!;
@@ -98,6 +111,28 @@ public abstract class SparkIdConformanceTests : IAsyncLifetime
         empty.IsEmpty.Should().BeTrue();
         var act = () => Ids.Parse<IdPerson>("");
         act.Should().Throw<FormatException>();
+    }
+
+    /// <summary>
+    /// The id declared on a base type: the derived entity is stored under its own collection and loads with its id.
+    /// RavenDB looks for the identity member on the derived type, where a base's private member is invisible.
+    /// </summary>
+    [Fact]
+    public async Task An_id_declared_on_a_base_type_round_trips()
+    {
+        var song = new IdSong { Id = Id<IdSubject>.FromTrusted("idsongs/sky"), Title = "Sky" };
+        using (var session = Store.OpenSession())
+        {
+            await session.StoreAsync(song);
+            await session.SaveChangesAsync();
+        }
+
+        using var read = Store.OpenSession();
+        var loaded = await read.LoadAsync<IdSong>("IdSongs/sky");
+
+        loaded.Should().NotBeNull();
+        loaded!.Id.Value.Should().Be("idsongs/sky");
+        loaded.Title.Should().Be("Sky");
     }
 
     [Fact]

@@ -132,7 +132,8 @@ public sealed partial class CommitGraphSidecarClient(HttpClient http, IOptions<C
         return true;
     }
 
-    [GeneratedRegex("^Repositories/(?<provider>[a-z]+)/(?<repo>[0-9A-Za-z_-]{1,64})$")]
+    // A loaded id is lower case, a stored reference keeps its legacy casing (#536 D7); the path is the same for both.
+    [GeneratedRegex("^(?i:repositories)/(?<provider>[a-z]+)/(?<repo>[0-9A-Za-z_-]{1,64})$")]
     private static partial Regex RepositoryIdShape();
 }
 

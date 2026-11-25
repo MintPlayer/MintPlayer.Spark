@@ -23,6 +23,9 @@ public sealed class MintPlayerTestHost : SparkAppTestHost
 
     /// <summary>The seeded song and its two artists (<c>Ssr/Data/mintplayer-ssr.json</c>).</summary>
     public const string SongId = "Songs/e2e-sky";
+
+    /// <summary>The song's id as the page's canonical URL carries it: lower case (#536 D7). <see cref="SongId"/> is a 301 to it.</summary>
+    public const string CanonicalSongId = "songs/e2e-sky";
     public const string SongSlug = "a-sky-full-of-stars";
 
     /// <summary>The home board's second path, served without minification (<c>Spark:Minification:ExcludedPaths</c>).</summary>

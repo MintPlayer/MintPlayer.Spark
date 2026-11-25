@@ -89,7 +89,7 @@ public class CoverageWebhooksTests : CoverageRavenTest
 
         await outbox.Received(1).EnqueueAsync(
             Arg.Any<IAsyncDocumentSession>(),
-            Arg.Is<CoverageBuildCompletedWebhookMessage>(m => m.BuildId == BuildId),
+            Arg.Is<CoverageBuildCompletedWebhookMessage>(m => string.Equals(m.BuildId, BuildId, StringComparison.OrdinalIgnoreCase)),
             Arg.Any<BroadcastOptions?>(),
             Arg.Any<CancellationToken>());
     }
@@ -130,7 +130,8 @@ public class CoverageWebhooksTests : CoverageRavenTest
         await publisher.Received(1).PublishAsync(
             Arg.Any<CoverageBuildCompleted>(),
             CoverageWebhooks.Account(AcmeKey),
-            BuildId,
+            // The delivery key is the loaded build's id, lower case (#536 D7).
+            BuildId.ToLowerInvariant(),
             Arg.Any<IAsyncDocumentSession>(),
             Arg.Any<CancellationToken>());
         sent.Should().Be(new CoverageBuildCompleted(

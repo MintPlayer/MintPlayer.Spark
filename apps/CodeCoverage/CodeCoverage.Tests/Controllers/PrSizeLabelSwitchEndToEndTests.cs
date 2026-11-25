@@ -137,7 +137,8 @@ public class PrSizeLabelSwitchEndToEndTests(OwnerPrivacyHostFixture host) : ICla
             var messages = await session.Query<SparkMessage>().Customize(c => c.WaitForNonStaleResults())
                 .Where(m => m.QueueName == CoverageQueues.PrSizeLabels).ToListAsync();
             var count = messages.Count(m => m.MessageType.Contains(typeof(T).Name, StringComparison.Ordinal)
-                && m.PayloadJson.Contains(host.PublicRepositoryId, StringComparison.Ordinal));
+                // The payload carries the loaded (lower-case) id (#536 D7).
+                && m.PayloadJson.Contains(host.PublicRepositoryId, StringComparison.OrdinalIgnoreCase));
             if (count >= expected || DateTime.UtcNow > deadline) return count;
             await Task.Delay(100);
         }

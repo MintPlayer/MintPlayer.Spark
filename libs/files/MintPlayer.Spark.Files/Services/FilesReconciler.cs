@@ -37,8 +37,9 @@ internal sealed partial class FilesReconciler
     /// <summary>One sweep; returns the keys it deleted. Does nothing for a store that commits with the session.</summary>
     public async Task<IReadOnlyList<string>> ReconcileAsync(CancellationToken cancellationToken)
     {
-        if (fileStore is not ObjectFileStore)
+        if (fileStore is not ObjectFileStore objects)
             return [];
+        await LowerCaseLegacyKeysAsync(objects, cancellationToken);
         var cutoff = clock.GetUtcNow() - options.Value.ReconcileGrace;
         var deleted = new List<string>();
 
@@ -90,6 +91,29 @@ internal sealed partial class FilesReconciler
         if (deleted.Count > 0)
             logger.LogInformation("The file reconcile deleted {Count} unheld object(s).", deleted.Count);
         return deleted;
+    }
+
+    /// <summary>
+    /// Moves every entity object keyed by a legacy casing of its id to the lower-case key (#536 D7, <see cref="ObjectFileStore.EntityPrefix"/>),
+    /// whatever its age: a move loses nothing. Copy first, then delete, so a crash in between leaves both and the next
+    /// sweep finishes the move. Returns how many it moved.
+    /// </summary>
+    public async Task<int> LowerCaseLegacyKeysAsync(ObjectFileStore objects, CancellationToken cancellationToken)
+    {
+        var moves = new List<(string From, string To)>();
+        await foreach (var item in objects.ListAsync(ObjectFileStore.EntitiesRoot, cancellationToken))
+        {
+            if (objects.TryLowerCaseKey(item.Key, out var to))
+                moves.Add((item.Key, to));
+        }
+        foreach (var (from, to) in moves)
+        {
+            await objects.CopyAsync(from, to, cancellationToken);
+            await objects.DeleteAsync(from, cancellationToken);
+        }
+        if (moves.Count > 0)
+            logger.LogInformation("The file reconcile moved {Count} object(s) to their lower-case entity key.", moves.Count);
+        return moves.Count;
     }
 
     /// <summary>Per existing document, every string held by a property named <c>FileId</c>, at any depth.</summary>
@@ -157,8 +181,17 @@ internal sealed partial class FilesReconcileService : BackgroundService
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         var interval = options.Value.ReconcileInterval;
-        if (fileStore is not ObjectFileStore || interval <= TimeSpan.Zero)
+        if (fileStore is not ObjectFileStore objects || interval <= TimeSpan.Zero)
             return;
+        try
+        {
+            // At once, not at the first tick: until it runs, a file stored under a legacy casing is not found (#536 D7).
+            await reconciler.LowerCaseLegacyKeysAsync(objects, stoppingToken);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogWarning(ex, "Moving files to their lower-case keys failed; the reconcile retries.");
+        }
         using var timer = new PeriodicTimer(interval, clock);
         while (await timer.WaitForNextTickAsync(stoppingToken))
         {

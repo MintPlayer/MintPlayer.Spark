@@ -676,7 +676,7 @@ public class GitHubEventsRecipientTests : CoverageRavenTest
         await recipient.HandleAsync(Message("push", PushJson(after: HeadSha, before: PreviousTip)));
 
         bus.Of<ForgeWebhookMessage<TagPushed>>().Select(m => m.Event).Should().Equal(
-            new TagPushed(Repository.DocumentId(EForgeProvider.GitHub, RepoId), "Acme.Core/v11.5.0", HeadSha, "acme"));
+            new TagPushed(Repository.DocumentId(EForgeProvider.GitHub, RepoId).ToLowerInvariant(), "Acme.Core/v11.5.0", HeadSha, "acme"));
     }
 
     /// <summary>
@@ -695,7 +695,7 @@ public class GitHubEventsRecipientTests : CoverageRavenTest
             labels: LabelsJson("backport 8.x", "bug", "backport: 9.x", "Backport 8.x"))));
 
         Backports(bus).Should().ContainSingle().Which.Should().BeEquivalentTo(new BackportRequested(
-            Repository.DocumentId(EForgeProvider.GitHub, RepoId), 42, ["8.x", "9.x"], "acme", EBackportSource.Merge));
+            Repository.DocumentId(EForgeProvider.GitHub, RepoId).ToLowerInvariant(), 42, ["8.x", "9.x"], "acme", EBackportSource.Merge));
         bus.Of<ForgeWebhookMessage<PullRequestMerged>>().Should().ContainSingle();
     }
 
@@ -989,7 +989,7 @@ public class GitHubEventsRecipientTests : CoverageRavenTest
         await CreateRecipient(session, out var bus).HandleAsync(Message("push", json));
 
         var scan = bus.Of<CodeCoverage.Dependencies.ScanRepositoryManifestsMessage>().Should().ContainSingle().Which;
-        scan.RepositoryId.Should().Be(Repository.DocumentId(EForgeProvider.GitHub, RepoId));
+        scan.RepositoryId.Should().Be(Repository.DocumentId(EForgeProvider.GitHub, RepoId).ToLowerInvariant(), "the loaded repository's id (#536 D7)");
         bus.DeduplicationKeys.Should().Contain($"manifest-scan-{scan.RepositoryId}-{HeadSha}");
     }
 

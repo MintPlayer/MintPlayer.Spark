@@ -676,10 +676,13 @@ internal sealed record DatabasePage(int TotalItems);
             // Contains is an INSTANCE method, so the list is the receiver and not the first
             // argument — the other way round throws "Static method requires null instance".
             var idList = ids.ToList();
+            // In memory, a row's id is compared ignoring case, as a store compares document ids: a loaded id is lower
+            // case, a submitted one may keep its legacy casing (#536 D7).
+            var idSet = new HashSet<string>(ids, StringComparer.OrdinalIgnoreCase);
 
             Expression predicate = queryProvider.IsStoreQuery((IQueryable)source)
                 ? queryProvider.In(idAccess, idList)
-                : Expression.Call(Expression.Constant(idList), ContainsMethod, idAccess);
+                : Expression.Call(Expression.Constant(idSet), ContainsMethod, idAccess);
 
             var lambda = Expression.Lambda(predicate, parameter);
 
@@ -768,9 +771,9 @@ internal sealed record DatabasePage(int TotalItems);
     private static string HookHost(EntityTypeDefinition definition, object? actions)
         => actions?.GetType().Name ?? $"{definition.Name}Actions";
 
-    /// <summary>The <c>List&lt;string&gt;.Contains</c> the default restriction composes.</summary>
-    private static readonly MethodInfo ContainsMethod = typeof(List<string>)
-        .GetMethod(nameof(List<string>.Contains), [typeof(string)])!;
+    /// <summary>The <c>HashSet&lt;string&gt;.Contains</c> the default in-memory restriction composes (the set ignores case).</summary>
+    private static readonly MethodInfo ContainsMethod = typeof(HashSet<string>)
+        .GetMethod(nameof(HashSet<string>.Contains), [typeof(string)])!;
 
     /// <summary>
     /// An actions class's optional <c>RestrictToIds</c>, duck-typed and cached (nulls too).

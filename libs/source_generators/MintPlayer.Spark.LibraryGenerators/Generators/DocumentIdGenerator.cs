@@ -11,10 +11,13 @@ namespace MintPlayer.Spark.LibraryGenerators.Generators;
 /// Gives every entity whose <c>Id</c> is an <c>Id&lt;Self&gt;</c> the hidden string member RavenDB uses as its
 /// identity property (#536 D23 rule 6, spike S-ID1):
 /// <code>
-/// private string? __DocumentId { get => Id.IsEmpty ? null : Id.Value; set => Id = Id&lt;Person&gt;.FromTrusted(value); }
+/// internal string? __DocumentId { get => Id.IsEmpty ? null : Id.Value; set => Id = Id&lt;Person&gt;.FromTrusted(value); }
 /// </code>
 /// RavenDB refuses a non-string identity member, so the typed <c>Id</c> can't be the identity itself. The member is
-/// private: RavenDB finds it through <c>FindIdentityProperty</c>, the serializers skip it, and no app code sees it.
+/// internal: RavenDB finds it through <c>FindIdentityProperty</c> and the serializers skip it. Not private: RavenDB
+/// looks for it on the stored (derived) type, and reflection hides a base type's private members from a derived one,
+/// so an entity whose id a base type declares (MintPlayer's <c>Song : Subject</c>) was stored under a generated id
+/// and loaded with none.
 /// <c>FromTrusted</c> lowers what RavenDB hands back, so a legacy mixed-case id reads as its lowercase form (D7).
 /// Providers that map the typed id directly (EF Core) ignore the member.
 /// </summary>
@@ -112,7 +115,7 @@ public class DocumentIdProducer : Producer
                     writer.WriteLine("/// <summary>The document id RavenDB reads and writes: <c>Id</c> as its canonical string (#536 D23 rule 6).</summary>");
                     writer.WriteLine("[global::System.ComponentModel.EditorBrowsable(global::System.ComponentModel.EditorBrowsableState.Never)]");
                     writer.WriteLine("[global::System.Text.Json.Serialization.JsonIgnore]");
-                    writer.WriteLine($"private string? __DocumentId {{ get => Id.IsEmpty ? null : Id.Value; set => Id = global::MintPlayer.Spark.Abstractions.Id<{entity.FullyQualifiedName}>.FromTrusted(value); }}");
+                    writer.WriteLine($"internal string? __DocumentId {{ get => Id.IsEmpty ? null : Id.Value; set => Id = global::MintPlayer.Spark.Abstractions.Id<{entity.FullyQualifiedName}>.FromTrusted(value); }}");
                 }
             }
 
