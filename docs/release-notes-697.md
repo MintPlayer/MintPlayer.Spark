@@ -27,6 +27,8 @@ tags, and everything ships once the merged pull request is backported to `releas
 3. **`Spark:DataProtection:Storage=RavenDb` is now `Storage=Store`** (M3, PRD §2.3). It keeps the key ring in the
    application's database through whichever store provider is registered. Update test hosts and any deployment that
    sets it; `KeysPath` is unchanged.
+4. **`ISparkQueryProvider.Search` takes the words** (M3, S2b): `Search(source, properties, IReadOnlyList<string> words)`,
+   plain text with no wildcards. A provider adds its own syntax; RavenDB still wraps each word in `*`.
 
 ## New
 
@@ -35,3 +37,5 @@ tags, and everything ships once the merged pull request is backported to `releas
    and call `ids.Parse<T>`.
 2. **Provider-neutral startup messages** (M3): a feature with no store asks for any store provider unless it names one,
    and the index-binding, live-update and expiration messages no longer assume RavenDB.
+3. **`SparkExpressions.Captured(value, type)`** (M3, S2b): a request value as a captured field, which EF turns into a
+   query parameter instead of a literal. Spark's own column filters and id restrictions use it.

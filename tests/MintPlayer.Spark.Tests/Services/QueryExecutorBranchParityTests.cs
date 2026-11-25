@@ -38,13 +38,13 @@ public class QueryExecutorBranchParityTests
     /// </remarks>
     private static readonly string[] RequestRefinements =
     [
-        "searchTerm",
+        "searchWords",
         "restrictToIds",
         "columnFilters",
     ];
 
     [Theory]
-    [InlineData("searchTerm")]
+    [InlineData("searchWords")]
     [InlineData("restrictToIds")]
     [InlineData("columnFilters")]
     public void Both_source_branches_accept_the_same_request_refinements(string parameterName)

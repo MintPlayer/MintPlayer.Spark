@@ -28,7 +28,7 @@ internal sealed partial class InMemorySparkQueryProvider : ISparkQueryProvider
 
     public IReadOnlySet<string>? IndexedFields(IQueryable source) => null;
 
-    public IQueryable? Search(IQueryable source, IReadOnlyList<PropertyInfo> properties, string term) => null;
+    public IQueryable? Search(IQueryable source, IReadOnlyList<PropertyInfo> properties, IReadOnlyList<string> words) => null;
 
     public Task<int> CountAsync(IQueryable source, CancellationToken cancellationToken)
         => Task.FromResult(source.Cast<object>().Count());

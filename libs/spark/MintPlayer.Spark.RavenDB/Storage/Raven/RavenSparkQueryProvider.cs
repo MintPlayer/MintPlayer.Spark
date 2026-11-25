@@ -166,7 +166,13 @@ internal sealed partial class RavenSparkQueryProvider : ISparkQueryProvider
 
     private static readonly IReadOnlySet<string> EmptyFieldSet = new HashSet<string>(StringComparer.Ordinal);
 
-    /// <summary>One <c>Search</c> clause per property.</summary>
+    /// <summary>
+    /// RavenDB's term for <paramref name="words"/>: each wrapped in <c>*</c>, so a word matches as a substring, also on
+    /// a plain default-indexed field whose whole value is one term (measured on RavenDB 7.2.5).
+    /// </summary>
+    internal static string WildcardTerm(IReadOnlyList<string> words) => string.Join(' ', words.Select(static word => $"*{word}*"));
+
+    /// <summary>One <c>Search</c> clause per property, for <see cref="WildcardTerm"/> of the words.</summary>
     /// <remarks>
     /// <para>
     /// <see cref="SearchOptions"/> is never passed explicitly. That is a safety requirement rather than a style
@@ -179,8 +185,9 @@ internal sealed partial class RavenSparkQueryProvider : ISparkQueryProvider
     /// </para>
     /// <para>Every argument is passed because <see cref="MethodInfo.Invoke"/> does not apply optional parameter defaults.</para>
     /// </remarks>
-    public IQueryable? Search(IQueryable source, IReadOnlyList<PropertyInfo> properties, string term)
+    public IQueryable? Search(IQueryable source, IReadOnlyList<PropertyInfo> properties, IReadOnlyList<string> words)
     {
+        var term = WildcardTerm(words);
         var elementType = source.ElementType;
         var searchMethod = ReflectionCache.GetOrAdd<(string Op, Type Element), MethodInfo>(
             ("RavenSparkQueryProvider.LinqSearch", elementType),

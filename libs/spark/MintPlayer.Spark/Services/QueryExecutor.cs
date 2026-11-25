@@ -303,17 +303,17 @@ internal partial class QueryExecutor : IQueryExecutor
         // The grid's own search, exactly as /execute applies it (#460 M15): pushed down where it can
         // be, narrowed in memory where it cannot. Without it a searched grid's filter panel listed the
         // values of rows the grid was not showing.
-        var searchTerm = BuildSearchTerm(querySearch);
+        var searchWords = BuildSearchWords(querySearch);
 
         // Bounded, not paged: a distinct list still describes the whole result set rather than the page
         // the grid is on, but it stops at MaxDistinctScanRows and reports the truncation instead of
         // materializing an entire production collection because someone opened a filter panel.
         var source = isCustom
-            ? await ExecuteCustomQueryAsync(query, name, parent, searchTerm, 0, MaxDistinctScanRows, querySearch, null, columnFilters, cancellationToken)
-            : await ExecuteDatabaseQueryAsync(query, name, parent, searchTerm, null, columnFilters,
+            ? await ExecuteCustomQueryAsync(query, name, parent, searchWords, 0, MaxDistinctScanRows, querySearch, null, columnFilters, cancellationToken)
+            : await ExecuteDatabaseQueryAsync(query, name, parent, searchWords, null, columnFilters,
                 skip: 0, take: MaxDistinctScanRows, cancellationToken);
 
-        var rows = searchTerm != null && !source.SearchPushedDown
+        var rows = searchWords != null && !source.SearchPushedDown
             ? NarrowBySearch(source.Rows, querySearch!, source.Definition)
             : source.Rows;
 
@@ -337,7 +337,7 @@ internal partial class QueryExecutor : IQueryExecutor
         var (isCustom, name) = ResolveSource(query);
 
         // Null/whitespace collapses to null here, so every path below tests one thing.
-        var searchTerm = BuildSearchTerm(search);
+        var searchWords = BuildSearchWords(search);
 
         // The presentation hook, called once for BOTH sources at the single funnel every query and
         // every bulk-action re-materialization passes through.
@@ -358,8 +358,8 @@ internal partial class QueryExecutor : IQueryExecutor
         EnsureQueryNotDisabled(query, disabledActions);
 
         var source = isCustom
-            ? await ExecuteCustomQueryAsync(query, name, parent, searchTerm, skip, take, search, restrictToIds, columnFilters, cancellationToken)
-            : await ExecuteDatabaseQueryAsync(query, name, parent, searchTerm, restrictToIds, columnFilters, skip, take, cancellationToken);
+            ? await ExecuteCustomQueryAsync(query, name, parent, searchWords, skip, take, search, restrictToIds, columnFilters, cancellationToken)
+            : await ExecuteDatabaseQueryAsync(query, name, parent, searchWords, restrictToIds, columnFilters, skip, take, cancellationToken);
 
         var (allResults, definition, searchPushedDown, authorTotalItems, _, _, _) = source;
 
@@ -420,7 +420,7 @@ internal partial class QueryExecutor : IQueryExecutor
         // break the gate's invariant — it only ever removes rows that already passed — which is why
         // SecuredRows.Narrow is an instance method: you must already hold a secured set to get
         // another one.
-        if (searchTerm != null && !searchPushedDown)
+        if (searchWords != null && !searchPushedDown)
             allResults = NarrowBySearch(allResults, search!, definition);
 
         // Counted after filtering and before paging, either way — which is what keeps
@@ -649,7 +649,7 @@ internal sealed record DatabasePage(int TotalItems);
             var idAccess = Expression.Property(parameter, declaredId);
             var typedIds = SparkIdValues.ToCollection(typeof(List<>).MakeGenericType(declaredId.PropertyType), ids);
             var contains = typedIds.GetType().GetMethod(nameof(List<object>.Contains))!;
-            var lambda = Expression.Lambda(Expression.Call(Expression.Constant(typedIds), contains, idAccess), parameter);
+            var lambda = Expression.Lambda(Expression.Call(SparkExpressions.Captured(typedIds, typedIds.GetType()), contains, idAccess), parameter);
             var where = typeof(Queryable).GetMethods()
                 .First(m => m.Name == nameof(Queryable.Where)
                          && m.GetParameters()[1].ParameterType.GetGenericArguments()[0].GetGenericArguments().Length == 2)
@@ -682,7 +682,7 @@ internal sealed record DatabasePage(int TotalItems);
 
             Expression predicate = queryProvider.IsStoreQuery((IQueryable)source)
                 ? queryProvider.In(idAccess, idList)
-                : Expression.Call(Expression.Constant(idSet), ContainsMethod, idAccess);
+                : Expression.Call(SparkExpressions.Captured(idList, idList.GetType()), ContainsMethod, idAccess);
 
             var lambda = Expression.Lambda(predicate, parameter);
 
@@ -995,7 +995,7 @@ internal sealed record DatabasePage(int TotalItems);
         => (indexType != null && resultType != entityType) ? resultType : entityType;
 
     private async Task<QuerySourceResult> ExecuteDatabaseQueryAsync(
-        SparkQuery query, string propertyName, PersistentObject? parent, string? searchTerm,
+        SparkQuery query, string propertyName, PersistentObject? parent, IReadOnlyList<string>? searchWords,
         IReadOnlyCollection<string>? restrictToIds, IReadOnlyList<QueryColumnFilter>? columnFilters,
         int skip, int take, CancellationToken cancellationToken)
     {
@@ -1090,9 +1090,9 @@ internal sealed record DatabasePage(int TotalItems);
         // security predicate ahead of the search group yields `(predicate) and (search or search)`.
         // Reversing them, or passing SearchOptions explicitly, ORs the predicate in instead.
         var searchPushedDown = false;
-        if (searchTerm != null && isStoreQuery)
+        if (searchWords != null && isStoreQuery)
         {
-            (queryable, searchPushedDown) = ApplySearch(queryable, sortType, searchTerm, ResolveIndexedSearchFields(queryable), surface);
+            (queryable, searchPushedDown) = ApplySearch(queryable, sortType, searchWords, ResolveIndexedSearchFields(queryable), surface);
         }
 
         if (restrictToIds is { Count: > 0 })
@@ -1139,7 +1139,7 @@ internal sealed record DatabasePage(int TotalItems);
         // build over. Correctness here does not depend on that gate having run.
         var mayPageInDatabase = rowFilter.CanPageInDatabase
             && restrictToIds is not { Count: > 0 }
-            && (searchTerm is null || searchPushedDown)
+            && (searchWords is null || searchPushedDown)
             && indexType is null
             && isStoreQuery;
 
@@ -1223,7 +1223,7 @@ internal sealed record DatabasePage(int TotalItems);
     #region Custom Queries
 
     private async Task<QuerySourceResult> ExecuteCustomQueryAsync(
-        SparkQuery query, string methodName, PersistentObject? parent, string? searchTerm,
+        SparkQuery query, string methodName, PersistentObject? parent, IReadOnlyList<string>? searchWords,
         int skip, int take, string? search, IReadOnlyCollection<string>? restrictToIds,
         IReadOnlyList<QueryColumnFilter>? columnFilters,
         CancellationToken cancellationToken)
@@ -1459,9 +1459,9 @@ internal sealed record DatabasePage(int TotalItems);
         // Only a RavenDB-backed queryable can push the search into the database; an in-memory
         // IQueryable has no Search, and the caller's own filtering may already have materialized.
         var searchPushedDown = false;
-        if (searchTerm != null && isStoreQuery)
+        if (searchWords != null && isStoreQuery)
         {
-            (result, searchPushedDown) = ApplySearch(result, methodInfo.ResultElementType, searchTerm, indexedFields, surface);
+            (result, searchPushedDown) = ApplySearch(result, methodInfo.ResultElementType, searchWords, indexedFields, surface);
         }
 
         // Apply sorting if the result is IQueryable
@@ -2012,18 +2012,20 @@ internal sealed record DatabasePage(int TotalItems);
             })));
     }
 
-    internal static string? BuildSearchTerm(string? search)
+    /// <summary>
+    /// The words of a search, or null for no search. Wildcard characters are stripped: a bare <c>*</c> would match
+    /// every row, and a provider adds its own syntax (#536 S2b).
+    /// </summary>
+    internal static IReadOnlyList<string>? BuildSearchWords(string? search)
     {
         if (string.IsNullOrWhiteSpace(search)) return null;
 
-        var words = search
+        string[] words = [.. search
             .Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)
             .Select(static word => word.Replace("*", string.Empty).Replace("?", string.Empty))
-            .Where(static word => word.Length > 0)
-            .Select(static word => $"*{word}*");
+            .Where(static word => word.Length > 0)];
 
-        var term = string.Join(' ', words);
-        return term.Length == 0 ? null : term;
+        return words.Length == 0 ? null : words;
     }
 
     /// <summary>
@@ -2143,7 +2145,7 @@ internal sealed record DatabasePage(int TotalItems);
     /// </para>
     /// </summary>
     private (object Queryable, bool Applied) ApplySearch(
-        object queryable, Type elementType, string term, IReadOnlySet<string>? indexedFields,
+        object queryable, Type elementType, IReadOnlyList<string> words, IReadOnlySet<string>? indexedFields,
         EntityTypeDefinition surface)
     {
         var properties = ResolveSearchableProperties(elementType)
@@ -2171,7 +2173,7 @@ internal sealed record DatabasePage(int TotalItems);
         }
 
         // A provider without full-text search answers null, and the in-memory fallback takes over.
-        return queryProvider.Search((IQueryable)queryable, properties, term) is { } searched
+        return queryProvider.Search((IQueryable)queryable, properties, words) is { } searched
             ? (searched, true)
             : (queryable, false);
     }
@@ -2344,7 +2346,7 @@ internal sealed record DatabasePage(int TotalItems);
     /// <c>excludes</c> chain. Conflating the two is what made an unconvertible value on a nullable
     /// column return the rows with <em>no</em> value — the exact complement of the request.
     /// </remarks>
-    private static Expression? AnyEquals(MemberExpression member, object?[] values, Type propertyType)
+    internal static Expression? AnyEquals(MemberExpression member, object?[] values, Type propertyType)
     {
         // A collection column holds SEVERAL values per row, so "one of these values" has to mean the
         // collection CONTAINS one of them — never that the collection EQUALS one of them. RavenDB
@@ -2372,7 +2374,8 @@ internal sealed record DatabasePage(int TotalItems);
             if (!TryConvertFilterValue(raw, propertyType, out var value))
                 continue;
 
-            var equals = Expression.Equal(member, Expression.Constant(value, propertyType));
+            // A captured field, not a constant: EF makes it a parameter (#536 S2b), where a constant is a literal.
+            var equals = Expression.Equal(member, SparkExpressions.Captured(value, propertyType));
             any = any is null ? equals : Expression.OrElse(any, equals);
         }
 
@@ -2396,7 +2399,7 @@ internal sealed record DatabasePage(int TotalItems);
             if (!TryConvertFilterValue(raw, elementType, out var value))
                 continue;
 
-            var equals = Expression.Equal(element, Expression.Constant(value, elementType));
+            var equals = Expression.Equal(element, SparkExpressions.Captured(value, elementType));
 
             any = any is null ? equals : Expression.OrElse(any, equals);
         }

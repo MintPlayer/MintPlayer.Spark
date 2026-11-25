@@ -48,11 +48,12 @@ public interface ISparkQueryProvider
     IReadOnlySet<string>? IndexedFields(IQueryable source);
 
     /// <summary>
-    /// Full-text search for <paramref name="term"/> over <paramref name="properties"/>, ANDed with what
-    /// <paramref name="source"/> already filters. Null when the provider has no full-text search; Spark then
-    /// narrows the materialized rows itself.
+    /// Search for <paramref name="words"/> over <paramref name="properties"/>, ANDed with what <paramref name="source"/>
+    /// already filters: every word must occur, as a substring ignoring case, in one of the properties. The words are
+    /// plain text with no wildcards (#536 S2b); a provider adds its own syntax (RavenDB wraps each in <c>*</c>). Null
+    /// when the provider has no search; Spark then narrows the materialized rows itself.
     /// </summary>
-    IQueryable? Search(IQueryable source, IReadOnlyList<PropertyInfo> properties, string term);
+    IQueryable? Search(IQueryable source, IReadOnlyList<PropertyInfo> properties, IReadOnlyList<string> words);
 
     /// <summary>Counts a store query's rows.</summary>
     Task<int> CountAsync(IQueryable source, CancellationToken cancellationToken);

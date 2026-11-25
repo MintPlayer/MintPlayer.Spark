@@ -38,7 +38,16 @@ rounds, milestones and status. Branch `feat/536-sql-server-provider`, draft PR #
     a named provider still names its `Use` method (tests `No_store_and_no_provider_named_…`,
     `No_store_with_a_provider_named_…`). The LiveHub, index-binding and composed-query messages are neutral. The
     expiration floor stays on every provider, so one setting runs on all of them, and its message says the limit is
-    RavenDB's. Still open in M3: the query seam (S2b), the neutral view declarations (S5/D32), IoC (D34).
+    RavenDB's.
+  - **M3b, the query seam (S2b, PRD §8.10 findings 2–3):** `ISparkQueryProvider.Search` takes the words
+    (`QueryExecutor.BuildSearchWords`: split, `*`/`?` stripped, null when empty); RavenDB wraps each word itself
+    (`RavenSparkQueryProvider.WildcardTerm`, the same `*a* *b*` term as before). The executor's filter values
+    (column filters, scalar and collection, and the restrict-to-ids lists) are captured fields through the new
+    public `SparkExpressions.Captured(value, type)`, a field read off a constant holder as a closure compiles, so EF
+    parameterizes them. RavenDB reads them as closures (`RavenIdQueryRewriter` evaluates any expression); the
+    provider's own `In` keeps its constant, since the relational provider builds its own. Tests:
+    `CapturedFilterValueTests` (red first: 3 value constants found), `SearchPushdownTests`, and 14 column-filter
+    classes on RavenDB, 130 green. Still open in M3: the neutral view declarations (S5/D32), IoC (D34).
   - Order: the core pieces in `libs/` first (the struct, the model registry, the generator for `__DocumentId`, JSON,
     the route binder), then the feature libraries, then the apps.
   - It touches the three production apps (CodeCoverage, SeoTester, MintPlayer). RavenDB stays green at the end of the

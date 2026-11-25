@@ -1,5 +1,6 @@
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Services;
+using MintPlayer.Spark.Storage.Raven;
 using MintPlayer.Spark.Testing;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Indexes;
@@ -109,8 +110,9 @@ public class SearchPushdownTests(SearchPushdownTests.SeededCars cars)
     /// <summary>Applies the framework's own term shape, so these tests exercise what production emits.</summary>
     private async Task<List<string>> SearchAsync(string userInput, Func<VCar, object>? _ = null)
     {
-        var term = QueryExecutor.BuildSearchTerm(userInput);
-        term.Should().NotBeNull("the fixture inputs are all non-empty");
+        var words = QueryExecutor.BuildSearchWords(userInput);
+        words.Should().NotBeNull("the fixture inputs are all non-empty");
+        var term = RavenSparkQueryProvider.WildcardTerm(words!);
 
         using var session = Store.OpenAsyncSession();
         var results = await session.Query<VCar, Cars_Search>()
@@ -123,12 +125,22 @@ public class SearchPushdownTests(SearchPushdownTests.SeededCars cars)
 
     // ---------------------------------------------------------------- term construction
 
+    /// <summary>
+    /// The executor hands the provider plain words (#536 S2b): a wildcard is RavenDB's syntax, and on SQL
+    /// <c>LIKE '%*love*%'</c> matches nothing.
+    /// </summary>
     [Theory]
-    [InlineData("volks", "*volks*")]
-    [InlineData("volks gti", "*volks* *gti*")]
-    [InlineData("  spaced   out  ", "*spaced* *out*")]
-    public void A_term_wraps_every_word_in_wildcards(string input, string expected)
-        => QueryExecutor.BuildSearchTerm(input).Should().Be(expected);
+    [InlineData("volks", new[] { "volks" })]
+    [InlineData("volks gti", new[] { "volks", "gti" })]
+    [InlineData("  spaced   out  ", new[] { "spaced", "out" })]
+    public void The_executor_splits_the_input_into_words(string input, string[] expected)
+        => QueryExecutor.BuildSearchWords(input).Should().Equal(expected);
+
+    [Theory]
+    [InlineData(new[] { "volks" }, "*volks*")]
+    [InlineData(new[] { "volks", "gti" }, "*volks* *gti*")]
+    public void The_RavenDB_provider_wraps_every_word_in_wildcards(string[] words, string expected)
+        => RavenSparkQueryProvider.WildcardTerm(words).Should().Be(expected);
 
     /// <summary>
     /// Null, empty and whitespace must all collapse to "no search", because RavenDB does not treat them that
@@ -141,7 +153,7 @@ public class SearchPushdownTests(SearchPushdownTests.SeededCars cars)
     [InlineData("   ")]
     [InlineData("\t\n")]
     public void An_empty_term_is_no_search_at_all(string? input)
-        => QueryExecutor.BuildSearchTerm(input).Should().BeNull();
+        => QueryExecutor.BuildSearchWords(input).Should().BeNull();
 
     /// <summary>
     /// A bare <c>*</c> matches every document, so a caller typing one must not be able to widen their own
@@ -153,10 +165,14 @@ public class SearchPushdownTests(SearchPushdownTests.SeededCars cars)
     [InlineData("**", null)]
     [InlineData("?", null)]
     [InlineData("* ?", null)]
-    [InlineData("vol*ks", "*volks*")]
-    [InlineData("*volks*", "*volks*")]
+    [InlineData("vol*ks", "volks")]
+    [InlineData("*volks*", "volks")]
     public void Caller_supplied_wildcards_are_stripped(string input, string? expected)
-        => QueryExecutor.BuildSearchTerm(input).Should().Be(expected);
+    {
+        var words = QueryExecutor.BuildSearchWords(input);
+        if (expected is null) words.Should().BeNull();
+        else words.Should().Equal(expected);
+    }
 
     // ---------------------------------------------------------------- matching semantics
 
@@ -247,7 +263,7 @@ public class SearchPushdownTests(SearchPushdownTests.SeededCars cars)
     [Fact]
     public async Task A_field_that_was_never_declared_searchable_still_matches()
     {
-        var term = QueryExecutor.BuildSearchTerm("olkswag");
+        var term = RavenSparkQueryProvider.WildcardTerm(QueryExecutor.BuildSearchWords("olkswag")!);
 
         using var session = Store.OpenAsyncSession();
         var results = await session.Query<VCar, Cars_Search>()
