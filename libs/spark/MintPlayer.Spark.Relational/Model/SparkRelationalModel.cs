@@ -137,8 +137,40 @@ public sealed class SparkRelationalModel
 
         model.Tables = tables;
         model.Joins = [.. types.SelectMany(t => JoinsOf(model, t))];
-        model.Views = [.. views ?? []];
+        model.Views = MapViews(model, views ?? [], out var unmapped);
+        model.UnmappedViews = unmapped;
         return model;
+    }
+
+    /// <summary>
+    /// The views declared over types that are not stored here (a module's view over a type this app doesn't keep), by
+    /// view type, with the reason: they get no SQL view, and querying one says why.
+    /// </summary>
+    public IReadOnlyDictionary<Type, string> UnmappedViews { get; private set; } = new Dictionary<Type, string>();
+
+    private static List<ISparkView> MapViews(SparkRelationalModel model, IEnumerable<ISparkView> views, out Dictionary<Type, string> unmapped)
+    {
+        unmapped = [];
+        var mapped = new List<ISparkView>();
+        foreach (var view in views.DistinctBy(v => v.GetType()))
+        {
+            if (view.ReadTypes.FirstOrDefault(t => model.TableOf(t) is null) is { } missing)
+            {
+                unmapped[view.GetType()] = $"View {view.Name} reads {missing.Name}, which this app does not store.";
+                continue;
+            }
+            if (model.TableOf(view.RowType) is not null)
+                throw new InvalidOperationException($"View {view.Name}: its row type {view.RowType.FullName} is a stored type. A view yields a row type of its own.");
+            if (mapped.FirstOrDefault(v => v.RowType == view.RowType) is { } other)
+                throw new InvalidOperationException($"Views {other.Name} and {view.Name} yield the same row type {view.RowType.Name}: a row type maps to one SQL view.");
+            if (mapped.FirstOrDefault(v => string.Equals(v.Name, view.Name, StringComparison.OrdinalIgnoreCase)) is { } named)
+                throw new InvalidOperationException($"Views {named.GetType().FullName} and {view.GetType().FullName} have the same name '{view.Name}'.");
+            if (model.Tables.Any(t => string.Equals(t.Name, view.Name, StringComparison.OrdinalIgnoreCase))
+                || model.Joins.Any(j => string.Equals(j.Name, view.Name, StringComparison.OrdinalIgnoreCase)))
+                throw new InvalidOperationException($"View {view.Name} has the name of a table. Rename the view (override Name).");
+            mapped.Add(view);
+        }
+        return mapped;
     }
 
     private static int Depth(Type type)

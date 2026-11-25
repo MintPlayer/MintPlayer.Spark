@@ -26,10 +26,14 @@ public class GenerateIndexProducer : Producer, IDiagnosticReporter
 
     private readonly IEnumerable<GeneratedIndexInfo> entities;
     private readonly bool knowsSpark;
+    private readonly bool knowsRaven;
     private readonly bool knowsViews;
     private readonly List<string> languages;
     private readonly HashSet<string> claimedEntities;
 
+    /// <param name="knowsSpark">Whether anything is emitted: the application, with a native index or a view to write.</param>
+    /// <param name="knowsRaven">Whether the native RavenDB index (and <c>[FromIndex]</c>) is emitted.</param>
+    /// <param name="knowsViews">Whether the neutral view is emitted; without RavenDB it claims the default.</param>
     /// <param name="claimedEntities">
     /// Entities (fully-qualified, <c>global::</c>-prefixed) that a hand-written index claims with
     /// <c>[DefaultIndex]</c>; their generated index is emitted without the marker (D5).
@@ -37,6 +41,7 @@ public class GenerateIndexProducer : Producer, IDiagnosticReporter
     public GenerateIndexProducer(
         IEnumerable<GeneratedIndexInfo> entities,
         bool knowsSpark,
+        bool knowsRaven,
         bool knowsViews,
         List<string> languages,
         HashSet<string> claimedEntities,
@@ -45,6 +50,7 @@ public class GenerateIndexProducer : Producer, IDiagnosticReporter
     {
         this.entities = entities;
         this.knowsSpark = knowsSpark;
+        this.knowsRaven = knowsRaven;
         this.knowsViews = knowsViews;
         this.languages = languages;
         this.claimedEntities = claimedEntities;
@@ -223,8 +229,11 @@ public class GenerateIndexProducer : Producer, IDiagnosticReporter
 
                 if (i > 0) writer.WriteLine();
                 WriteIndexEntity(writer, list[i]);
-                writer.WriteLine();
-                WriteIndex(writer, list[i], cancellationToken);
+                if (knowsRaven)
+                {
+                    writer.WriteLine();
+                    WriteIndex(writer, list[i], cancellationToken);
+                }
                 if (knowsViews)
                 {
                     writer.WriteLine();
@@ -239,10 +248,12 @@ public class GenerateIndexProducer : Producer, IDiagnosticReporter
 
     private void WriteIndexEntity(IndentedTextWriter writer, GeneratedIndexInfo info)
     {
-        writer.WriteLine($"[{SparkAbstractions}.FromIndexAttribute(typeof({info.IndexName}))]");
+        // [FromIndex] binds the row to the native index; a view names its row type itself.
+        if (knowsRaven)
+            writer.WriteLine($"[{SparkAbstractions}.FromIndexAttribute(typeof({info.IndexName}))]");
         using (writer.OpenBlock($"public partial class {info.IndexEntityName}"))
         {
-            // Declared but never assigned in the map: RavenDB supplies the document id for an entity index.
+            // Never assigned in the native map (RavenDB supplies the document id); the view binds it with IdOf.
             writer.WriteLine("public string? Id { get; set; }");
 
             foreach (var property in Fields(info))
@@ -314,11 +325,15 @@ public class GenerateIndexProducer : Producer, IDiagnosticReporter
     /// <c>s.IdOf</c>. Literals only: a view body takes no parameters.
     /// </summary>
     /// <remarks>
-    /// No <c>[DefaultIndex]</c>: the native index beside it holds the claim and shadows the view. The view claims it
-    /// once the generator emits views without RavenDB (M4).
+    /// With RavenDB, no <c>[DefaultIndex]</c>: the native index beside it holds the claim and shadows the view. Without
+    /// it (#536 M4d), the view is all there is and claims the default as the index would have.
     /// </remarks>
     private void WriteView(IndentedTextWriter writer, GeneratedIndexInfo info, CancellationToken cancellationToken)
     {
+        if (!knowsRaven && !string.IsNullOrEmpty(info.Description))
+            writer.WriteLine($"[global::System.ComponentModel.Description({Quote(info.Description!)})]");
+        if (!knowsRaven && !claimedEntities.Contains(info.EntityFullName))
+            writer.WriteLine($"[{SparkAbstractions}.DefaultIndexAttribute]");
         using (writer.OpenBlock($"public sealed partial class {info.IndexName}{ViewSuffix} : {SparkViews}.SparkView<{info.IndexEntityName}>"))
         {
             writer.WriteLine($"public override string Name => {Quote(info.IndexName)};");

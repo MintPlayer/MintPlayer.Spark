@@ -40,6 +40,10 @@
 	</ItemGroup>
 
 	<ItemGroup>
+		<InternalsVisibleTo Include="MintPlayer.Spark.Relational.Tests" />
+	</ItemGroup>
+
+	<ItemGroup>
 		<!-- O17 setting 3: a .targets file (a .props file runs before the app's items exist), transitive. -->
 		<None Include="buildTransitive\MintPlayer.Spark.Relational.Design.targets" Pack="true" PackagePath="buildTransitive\" />
 	</ItemGroup>

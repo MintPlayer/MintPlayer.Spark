@@ -270,6 +270,36 @@ rounds, milestones and status. Branch `feat/536-sql-server-provider`, draft PR #
     - **Left for later slices:** D24's refusal of an attribute id split into drop + add (it needs the attribute ids
       as column annotations, so the snapshot keeps them: M4d, with the differ's view work), and the per-app
       pending-model-changes test (M9, with the first SQL app).
+  - **M4d (2026-11-25):**
+    - **Views (D32):** `RelationalViewRenderer` renders each `SparkView<TRow>`'s `Map` through EF's `ToQueryString`
+      against the store's own `SparkDbContext`: `Set<T>()` is the table, `Load<T>(id)` a correlated
+      `FirstOrDefault`, `IdOf(row)` the key. EF can't cast `Id<T>` to string (`EF.Property<string>` fails with "No
+      coercion operator"), so the key is projected beside the row (`SparkViewRow<TRow, TKey>`), EF flattens it, and
+      the row's string `Id` column gets the collection's key converter: it reads as the whole id. A `Map` that
+      captures a variable becomes a parameter, which a view can't hold: the renderer refuses it. The row type is
+      mapped `ToView(name)` with the SQL and the tables it reads as annotations (`Spark:ViewSql`, `Spark:ViewTables`)
+      on the row entity, so the snapshot keeps them. The model is built twice (once to render, once with the SQL);
+      the model cache key tells them apart.
+    - **`SparkMigrationsModelDiffer`** drops a view first and creates it last when its SQL changed, when it appears or
+      goes, or when any operation touches a table it reads (an altered column under a view fails on SQL Server).
+      `SparkRelationalDialect.CreateViewSql`: SQL Server wraps it in `EXEC(N'…')`, because `CREATE VIEW` must start
+      a batch and EF's idempotent script puts every statement in `IF … BEGIN … END`.
+    - `SparkRelationalModel` refuses a row type that is a stored type, two views with one row type, duplicate view
+      names and a view named like a table; a view that reads a type the app does not store is skipped and querying
+      it names the reason. `Query<T, TIndex>()` and the query provider's `OpenIndex` read the view.
+    - **D24's attribute-id guard:** every column carries its attribute's id (`Spark:AttributeId`, from the new
+      `ISparkStoredTypes.AttributeId`), and the scaffolder refuses a migration that drops and re-adds a column of
+      the same id. **Finding:** EF's differ already turns a drop + add of the same shape into a `RenameColumn` by
+      itself, even for unrelated attributes; the guard catches a rename with a type change. A rename that keeps the
+      data is open question O19.
+    - **Generator gate split:** an application (`OutputKind` Console/Windows) with `[GenerateIndex]` and `SparkView`
+      resolvable gets the row class and the view; the native index and `[FromIndex]` only when RavenDB.Client is
+      referenced. Without RavenDB the view carries `[DefaultIndex]` (unless another type claims it) and
+      `[Description]`. A class library still gets nothing.
+    - Tests: `RelationalViewTests` (rows, `Load`, a join count, a null reference, find by whole id, `OpenIndex`, a
+      changed view recreated, a view surviving a column alter, the idempotent block, the captured-variable refusal,
+      the unmapped view), scaffolder tests for the view's place and snapshot and for the guard, and two generator
+      gate tests. Relational 122/122 on both servers, SourceGenerators 742/742.
   - Order: the core pieces in `libs/` first (the struct, the model registry, the generator for `__DocumentId`, JSON,
     the route binder), then the feature libraries, then the apps.
   - It touches the three production apps (CodeCoverage, SeoTester, MintPlayer). RavenDB stays green at the end of the

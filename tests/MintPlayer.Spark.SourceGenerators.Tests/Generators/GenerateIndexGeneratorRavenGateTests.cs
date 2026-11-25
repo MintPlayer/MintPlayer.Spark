@@ -40,6 +40,39 @@ public class GenerateIndexGeneratorRavenGateTests
         result.GeneratorDiagnostics.Should().BeEmpty();
     }
 
+    /// <summary>
+    /// The gate split (#536 M4d): an application on a store without native indexes (SQL, InMemory) gets the row type
+    /// and the view, which claims the default the index would have, and nothing that needs RavenDB.
+    /// </summary>
+    [Fact]
+    public void Without_RavenDB_Client_an_application_gets_the_view_as_its_default()
+    {
+        var result = GeneratorHarness.Run(
+            GeneratorName,
+            [Source],
+            referenceTypes: [typeof(GenerateIndexAttribute), typeof(MintPlayer.Spark.Abstractions.Views.SparkView<>)],
+            rootNamespace: "Lib", outputKind: Microsoft.CodeAnalysis.OutputKind.ConsoleApplication);
+
+        var source = result.GeneratedSources.Should().ContainSingle().Which.Source;
+        source.Should().Contain("[global::MintPlayer.Spark.Abstractions.DefaultIndexAttribute]");
+        source.Should().Contain("Cars_Overview_View : global::MintPlayer.Spark.Abstractions.Views.SparkView<VCar>");
+        source.Should().NotContain("Raven").And.NotContain("FromIndexAttribute");
+        // CS5001: the test source has no Main; everything the generator wrote compiles.
+        result.FinalCompilationDiagnostics.Where(d => d.Severity == Microsoft.CodeAnalysis.DiagnosticSeverity.Error && d.Id != "CS5001").Should().BeEmpty();
+    }
+
+    [Fact]
+    public void A_class_library_without_RavenDB_Client_gets_no_view()
+    {
+        var result = GeneratorHarness.Run(
+            GeneratorName,
+            [Source],
+            referenceTypes: [typeof(GenerateIndexAttribute), typeof(MintPlayer.Spark.Abstractions.Views.SparkView<>)],
+            rootNamespace: "Lib");
+
+        result.GeneratedSources.Should().BeEmpty();
+    }
+
     [Fact]
     public void With_RavenDB_Client_referenced_the_index_is_emitted()
     {

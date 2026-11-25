@@ -10,6 +10,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using MintPlayer.Spark.Abstractions.Storage;
 using MintPlayer.Spark.Relational.Design;
+using MintPlayer.Spark.Relational.Model;
 using MintPlayer.Spark.Relational.Storage;
 
 [assembly: SparkSchemaScaffolder(typeof(RelationalSchemaScaffolder))]
@@ -45,6 +46,7 @@ public sealed class RelationalSchemaScaffolder : ISparkSchemaScaffolder
 
         var operations = Differences(designServices, db);
         RefuseRecreatedTables(designServices, operations);
+        RefuseSplitAttributes(PreviousModel(designServices)?.GetRelationalModel(), db.GetService<IDesignTimeModel>().Model.GetRelationalModel(), operations);
 
         var provider = store.Setup.Dialect.ProviderName;
         var rootNamespace = store.MigrationsAssembly ?? Assembly.GetEntryAssembly()?.GetName().Name ?? "App";
@@ -108,6 +110,36 @@ public sealed class RelationalSchemaScaffolder : ISparkSchemaScaffolder
                 $"Spark refused the migration: it creates {string.Join(", ", recreated)}, which the last migration's snapshot already has. "
                 + "The comparison ran against no previous model (dotnet/efcore#36016); nothing was written.");
     }
+
+    /// <summary>
+    /// D24: a column dropped and a column added for the same attribute (its id, <see cref="SparkDbContext.AttributeIdAnnotation"/>)
+    /// is a renamed attribute, which EF can't tell from a removed one and a new one: applying it would lose the column's
+    /// data.
+    /// </summary>
+    internal static void RefuseSplitAttributes(IRelationalModel? previous, IRelationalModel target, IReadOnlyList<MigrationOperation> operations)
+    {
+        if (previous is null)
+            return;
+        var split = new List<string>();
+        foreach (var drop in operations.OfType<DropColumnOperation>())
+        {
+            if (AttributeIdOf(previous.FindTable(drop.Table, drop.Schema)?.FindColumn(drop.Name)) is not { } id)
+                continue;
+            split.AddRange(operations.OfType<AddColumnOperation>()
+                .Where(add => add.Table == drop.Table && add.Schema == drop.Schema
+                    && AttributeIdOf(target.FindTable(add.Table, add.Schema)?.FindColumn(add.Name)) == id)
+                .Select(add => $"{drop.Table}.{drop.Name} -> {add.Name}"));
+        }
+        if (split.Count > 0)
+            throw new InvalidOperationException(
+                $"Spark refused the migration: it drops and re-adds the column of a renamed attribute ({string.Join(", ", split)}), "
+                + "which loses the column's data. Nothing was written. If it is really a new attribute, give it a new id in the "
+                + "model; a rename that keeps the data is open question O19 of docs/relational_providers_PRD.md.");
+    }
+
+    private static string? AttributeIdOf(IColumn? column)
+        => column?.PropertyMappings.Select(m => m.Property.FindAnnotation(SparkDbContext.AttributeIdAnnotation)?.Value as string)
+            .FirstOrDefault(id => id is not null);
 
     private static string Describe(MigrationOperation operation)
     {

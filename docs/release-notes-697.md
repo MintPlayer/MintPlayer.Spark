@@ -71,10 +71,12 @@ tags, and everything ships once the merged pull request is backported to `releas
    no schema, so for them nothing changes.
 7. **`SparkView<TRow>`: a projection declared once, for every provider** (M3, D32). A view's `Map` reads
    `s.Set<T>()`, follows a reference with `s.Load<T>(id)` and binds the row's id with `s.IdOf(row)`. RavenDB renders
-   it as a static index, InMemory as LINQ to objects, and the SQL providers will render it as a view. It is queried
+   it as a static index, InMemory as LINQ to objects, and SQL Server and PostgreSQL as a database view (created by the
+   app's migrations, recreated when its `Map` or a table under it changes). A `Map` may only use constants. It is queried
    by its `Name`, like an index, and a model's `indexName` may name it. On RavenDB a native index of the same name
    shadows it. `[GenerateIndex]` now also emits `{Index}_View` beside the generated index, which the index shadows,
-   so a RavenDB app sees no change. Core's empty index catalog is replaced by one that lists the declared views, so
+   so a RavenDB app sees no change. An application without RavenDB.Client gets only the row type and the view, which
+   becomes the entity's default. Core's empty index catalog is replaced by one that lists the declared views, so
    an InMemory app can query a view.
 8. **More of the store on `ISparkSession`** (M3, S6), so code needs no RavenDB session for them:
    - `SetExpiry`/`GetExpiry`: when the store may delete a document (RavenDB's `@expires`).
@@ -91,8 +93,9 @@ tags, and everything ships once the merged pull request is backported to `releas
    `builder.UsePostgreSql()` store the app in a table per entity through EF Core 11, with the connection string from
    `ConnectionStrings:Spark` unless `options.ConnectionString` sets one. `options.ConfigureModel(mb => …)` adjusts the
    EF model last. Child collections (`[ValueObject]` lists) become child tables, references become foreign keys,
-   reference lists become join tables, and the version covers the whole aggregate. *In progress: migrations, views,
-   the change feed and the framework's own documents land in the next slices.*
+   reference lists become join tables, and the version covers the whole aggregate. *In progress: the change feed
+   lands in the next slice.* A migration that drops and re-adds the column of a renamed attribute (same id) is
+   refused (open question O19).
     The relational providers also keep atomic values (so leases work), integer ids (a HiLo), the Data Protection key
     ring, expiry and the expiration sweep, reservations, streams, set-based delete/update and appends. A `decimal`
     is `decimal(38,18)` on SQL Server. A `DateTime` keeps its ticks but not its `Kind` (open question O18); prefer

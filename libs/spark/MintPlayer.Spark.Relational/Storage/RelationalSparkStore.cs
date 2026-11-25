@@ -41,6 +41,14 @@ public sealed class RelationalSparkStore : ISparkStore
             typeof(SparkFrameworkDbContext).Assembly.GetName().Name, SparkFrameworkSchema.HistoryTable, SparkFrameworkSchema.Schema));
         configure?.Invoke(framework);
         frameworkOptions = framework.Options;
+
+        // D32: EF writes each view's SQL from a model without it (no connection is opened); the model with the SQL is
+        // the one every context uses from here on, and the one synchronize compares with the snapshot.
+        if (setup.RenderedViews is null)
+        {
+            using var render = NewContext();
+            setup.RenderedViews = RelationalViewRenderer.RenderAll(render);
+        }
     }
 
     public SparkContextSetup Setup { get; }

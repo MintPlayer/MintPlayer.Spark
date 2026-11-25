@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using MintPlayer.Spark.Relational.Schema;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Storage;
+using MintPlayer.Spark.Abstractions.Views;
 using MintPlayer.Spark.Relational;
 using MintPlayer.Spark.Relational.Model;
 using MintPlayer.Spark.Relational.Storage;
@@ -55,17 +56,19 @@ public sealed class RelationalTestDatabase : IAsyncDisposable
     /// migration operations, D33), never <c>EnsureCreated</c>.
     /// </summary>
     public static async Task<RelationalTestDatabase> CreateAsync(
-        RelationalTestServer server, IEnumerable<Type> types, Action<ModelBuilder>? configureModel = null, string? database = null)
+        RelationalTestServer server, IEnumerable<Type> types, Action<ModelBuilder>? configureModel = null, string? database = null,
+        IEnumerable<ISparkView>? views = null)
     {
-        var store = Open(server, types, configureModel, database ?? "spark_rel_" + Guid.NewGuid().ToString("N")[..12]);
+        var store = Open(server, types, configureModel, database ?? "spark_rel_" + Guid.NewGuid().ToString("N")[..12], views);
         await RelationalSchema.CreateFromModelAsync(store);
         return new RelationalTestDatabase(store);
     }
 
     /// <summary>A store over <paramref name="database"/> with the model of <paramref name="types"/>; creates nothing.</summary>
-    public static RelationalSparkStore Open(RelationalTestServer server, IEnumerable<Type> types, Action<ModelBuilder>? configureModel, string database)
+    public static RelationalSparkStore Open(
+        RelationalTestServer server, IEnumerable<Type> types, Action<ModelBuilder>? configureModel, string database, IEnumerable<ISparkView>? views = null)
     {
-        var model = SparkRelationalModel.Build(types, t => SparkRelationalExtensions.KindOf(t, new SparkIdOptions()));
+        var model = SparkRelationalModel.Build(types, t => SparkRelationalExtensions.KindOf(t, new SparkIdOptions()), views);
         return new RelationalSparkStore(
             new SparkContextSetup(model, server.Dialect, configureModel is null ? [] : [configureModel]), server.ConnectionStringFor(database));
     }

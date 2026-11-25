@@ -21,8 +21,8 @@ public sealed class RelationalSparkQueryProvider : ISparkQueryProvider
 
     public bool IsStoreQuery(IQueryable source) => source.Provider is IAsyncQueryProvider;
 
-    public IQueryable OpenIndex(Type entityType, Type indexType, bool narrowToCollection)
-        => throw new NotSupportedException($"{indexType.Name}: views on the relational providers arrive with #536 M4d.");
+    /// <summary>A <c>SparkView&lt;TRow&gt;</c> is an SQL view (#536 D32); it reads one collection, so there is nothing to narrow.</summary>
+    public IQueryable OpenIndex(Type entityType, Type indexType, bool narrowToCollection) => Session.ViewRows(indexType);
 
     public IQueryable Project(IQueryable source, Type resultType) => source;
 

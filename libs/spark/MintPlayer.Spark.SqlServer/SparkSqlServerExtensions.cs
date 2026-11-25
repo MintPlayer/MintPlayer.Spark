@@ -107,6 +107,13 @@ public sealed partial class SqlServerSparkDialect : SparkRelationalDialect
 
     public override string LockRowSql(string table, string column) => $"SELECT 1 FROM {table} WITH (UPDLOCK, ROWLOCK) WHERE {column} = {{0}}";
 
+    /// <summary>
+    /// <c>CREATE VIEW</c> must start its batch, which it doesn't inside an idempotent script's <c>IF … BEGIN</c>, so it
+    /// runs through <c>EXEC</c>, as EF runs its own such statements.
+    /// </summary>
+    public override string CreateViewSql(string view, string select)
+        => $"EXEC(N'{base.CreateViewSql(view, select).TrimEnd(';').Replace("'", "''", StringComparison.Ordinal)}');";
+
     [GeneratedRegex("[A-Za-z0-9_]+")]
     private static partial Regex Word();
 }

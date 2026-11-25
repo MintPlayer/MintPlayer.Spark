@@ -79,8 +79,36 @@ public sealed partial class RelationalSparkSession : ISparkSession
         return db.Set<T>();
     }
 
+    /// <summary>A view (D32) is its row type's set, mapped to the SQL view; rows are read-only, so untracked.</summary>
     public IQueryable<T> Query<T, TIndex>() where T : class where TIndex : class, new()
-        => throw new NotSupportedException($"{typeof(TIndex).Name}: views on the relational providers arrive with #536 M4d.");
+    {
+        var view = ViewOf(typeof(TIndex));
+        if (view.RowType != typeof(T))
+            throw new InvalidOperationException($"View {view.Name} yields {view.RowType.Name}, not {typeof(T).Name}.");
+        return db.Set<T>().AsNoTracking();
+    }
+
+    /// <summary>The mapped view declared by <paramref name="viewType"/>, or why there is none.</summary>
+    internal Abstractions.Views.ISparkView ViewOf(Type viewType)
+    {
+        if (Model.Views.FirstOrDefault(v => v.GetType() == viewType) is { } view)
+            return view;
+        if (Model.UnmappedViews.TryGetValue(viewType, out var reason))
+            throw new InvalidOperationException(reason);
+        throw typeof(Abstractions.Views.ISparkView).IsAssignableFrom(viewType)
+            ? new InvalidOperationException($"View {viewType.Name} is not in this store's model: declare it in an index assembly of the app.")
+            : new NotSupportedException(
+                $"The relational providers have no native indexes: {viewType.Name} cannot be queried. Declare it as a SparkView<TRow>.");
+    }
+
+    /// <summary>The rows of a view, untyped (the query pipeline's <c>OpenIndex</c>).</summary>
+    internal IQueryable ViewRows(Type viewType)
+    {
+        var view = ViewOf(viewType);
+        var set = (IQueryable)typeof(DbContext).GetMethod(nameof(DbContext.Set), Type.EmptyTypes)!.MakeGenericMethod(view.RowType).Invoke(db, [])!;
+        return (IQueryable)typeof(EntityFrameworkQueryableExtensions).GetMethod(nameof(EntityFrameworkQueryableExtensions.AsNoTracking))!
+            .MakeGenericMethod(view.RowType).Invoke(null, [set])!;
+    }
 
     public async Task<List<T>> ToListAsync<T>(IQueryable<T> query, CancellationToken cancellationToken = default)
     {

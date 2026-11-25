@@ -20,6 +20,30 @@ internal sealed partial class SparkStoredTypes : ISparkStoredTypes
 
     public IReadOnlyCollection<Type> Types => types ??= Collect();
 
+    private Dictionary<(Type, string), Guid>? attributeIds;
+
+    public Guid? AttributeId(Type type, string property)
+    {
+        attributeIds ??= CollectAttributeIds();
+        for (var t = type; t is not null; t = t.BaseType)
+            if (attributeIds.TryGetValue((t, property), out var id))
+                return id;
+        return null;
+    }
+
+    private Dictionary<(Type, string), Guid> CollectAttributeIds()
+    {
+        var ids = new Dictionary<(Type, string), Guid>();
+        foreach (var definition in modelLoader.GetEntityTypes())
+        {
+            if (typeResolver.Resolve(definition.ClrType) is not { } clr)
+                continue;
+            foreach (var attribute in definition.Attributes)
+                ids.TryAdd((clr, attribute.Name), attribute.Id);
+        }
+        return ids;
+    }
+
     private List<Type> Collect()
     {
         var fromModel = modelLoader.GetEntityTypes()

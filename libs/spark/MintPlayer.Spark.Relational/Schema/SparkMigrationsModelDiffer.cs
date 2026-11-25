@@ -1,6 +1,7 @@
 using System.Collections;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Migrations.Operations;
@@ -19,27 +20,89 @@ namespace MintPlayer.Spark.Relational.Schema;
 /// existing rows ("contains null values"). It gets the empty collection: <c>'[]'</c> in JSON, <c>'{}'</c> for a native
 /// array.</item>
 /// </list>
-/// The view handling of D32 (drop first, create last) joins it in M4d.
+/// <item>D32: EF ignores an entity type mapped to a view. A Spark view carries its SQL and the tables it reads as
+/// annotations; a view is dropped first and created last when it appears, disappears, its SQL changes, or an
+/// operation touches a table it reads (PostgreSQL refuses to alter a column a view depends on, and SQL Server keeps a
+/// view's stale column list).</item>
+/// </list>
 /// </summary>
 #pragma warning disable EF1001 // MigrationsModelDiffer is pubternal; a test constructs this class, so a constructor change in an EF minor fails the build.
 public sealed class SparkMigrationsModelDiffer : Microsoft.EntityFrameworkCore.Migrations.Internal.MigrationsModelDiffer
 {
+    /// <summary>A view's SELECT, on its row's entity type.</summary>
+    public const string ViewSqlAnnotation = "Spark:ViewSql";
+
+    /// <summary>The tables a view reads, comma-separated, on its row's entity type.</summary>
+    public const string ViewTablesAnnotation = "Spark:ViewTables";
+
+    private readonly ISqlGenerationHelper sql;
+    private readonly ICurrentDbContext currentContext;
+
     public SparkMigrationsModelDiffer(
         IRelationalTypeMappingSource typeMappingSource,
         IMigrationsAnnotationProvider migrationsAnnotationProvider,
         IRelationalAnnotationProvider relationalAnnotationProvider,
         IRowIdentityMapFactory rowIdentityMapFactory,
-        CommandBatchPreparerDependencies commandBatchPreparerDependencies)
+        CommandBatchPreparerDependencies commandBatchPreparerDependencies,
+        ISqlGenerationHelper sql,
+        ICurrentDbContext currentContext)
         : base(typeMappingSource, migrationsAnnotationProvider, relationalAnnotationProvider, rowIdentityMapFactory, commandBatchPreparerDependencies)
     {
+        this.sql = sql;
+        this.currentContext = currentContext;
     }
+
+    /// <summary>EF's own answer looks at tables only; a view-only change is a difference too.</summary>
+    public override bool HasDifferences(IRelationalModel? source, IRelationalModel? target) => GetDifferences(source, target).Count > 0;
 
     public override IReadOnlyList<MigrationOperation> GetDifferences(IRelationalModel? source, IRelationalModel? target)
     {
         var operations = base.GetDifferences(source, target);
-        if (source is null || target is null)
+        if (source is not null && target is not null)
+            AddCollectionDefaults(operations, target);
+        return WithViews(operations, source, target);
+    }
+
+    private IReadOnlyList<MigrationOperation> WithViews(IReadOnlyList<MigrationOperation> operations, IRelationalModel? source, IRelationalModel? target)
+    {
+        var before = Views(source);
+        var after = Views(target);
+        if (before.Count == 0 && after.Count == 0)
             return operations;
 
+        var touched = operations.OfType<ITableMigrationOperation>().Select(o => o.Table)
+            .Concat(operations.OfType<RenameTableOperation>().SelectMany(o => new[] { o.Name, o.NewName ?? o.Name }))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        bool Changed(SparkViewDefinition view, Dictionary<(string?, string), SparkViewDefinition> other)
+            => !other.TryGetValue(view.Key, out var o) || o.Sql != view.Sql
+               || view.Tables.Any(touched.Contains) || o.Tables.Any(touched.Contains);
+
+        var drops = before.Values.Where(v => Changed(v, after)).OrderBy(v => v.Name, StringComparer.Ordinal)
+            .Select(v => new SqlOperation { Sql = $"DROP VIEW {sql.DelimitIdentifier(v.Name, v.Schema)};" });
+        var dialect = currentContext.Context is Model.SparkDbContext spark
+            ? spark.Setup.Dialect
+            : SparkRelationalDialect.ForProvider(currentContext.Context.Database.ProviderName);
+        var creates = after.Values.Where(v => Changed(v, before)).OrderBy(v => v.Name, StringComparer.Ordinal)
+            .Select(v => new SqlOperation { Sql = dialect.CreateViewSql(sql.DelimitIdentifier(v.Name, v.Schema), v.Sql) });
+        return [.. drops, .. operations, .. creates];
+    }
+
+    private sealed record SparkViewDefinition(string Name, string? Schema, string Sql, string[] Tables)
+    {
+        public (string?, string) Key => (Schema, Name);
+    }
+
+    private static Dictionary<(string?, string), SparkViewDefinition> Views(IRelationalModel? model)
+        => model?.Model.GetEntityTypes()
+            .Where(e => e.FindAnnotation(ViewSqlAnnotation)?.Value is string && e.GetViewName() is not null)
+            .Select(e => new SparkViewDefinition(e.GetViewName()!, e.GetViewSchema(), (string)e[ViewSqlAnnotation]!,
+                ((string?)e[ViewTablesAnnotation] ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries)))
+            .ToDictionary(v => v.Key)
+           ?? [];
+
+    private static void AddCollectionDefaults(IReadOnlyList<MigrationOperation> operations, IRelationalModel target)
+    {
         foreach (var add in operations.OfType<AddColumnOperation>())
         {
             if (add.IsNullable || add.DefaultValue is not null || add.DefaultValueSql is not null || add.ComputedColumnSql is not null)
@@ -50,7 +113,6 @@ public sealed class SparkMigrationsModelDiffer : Microsoft.EntityFrameworkCore.M
             if (column?.PropertyMappings.FirstOrDefault()?.Property is { } property && IsCollection(property))
                 add.DefaultValueSql = column.StoreType.EndsWith("[]", StringComparison.Ordinal) ? "'{}'" : "'[]'";
         }
-        return operations;
     }
 
     private static bool IsCollection(IProperty property)

@@ -68,8 +68,12 @@ public static class SparkRelationalExtensions
                 throw new InvalidOperationException(
                     $"Spark store {dialect.ProviderName}: no connection string. Set ConnectionStrings:Spark, or pass one to Use{dialect.ProviderName}().");
             var idOptions = sp.GetService<IOptions<SparkIdOptions>>()?.Value ?? new SparkIdOptions();
-            var model = SparkRelationalModel.Build(sp.GetRequiredService<ISparkStoredTypes>().Types, type => KindOf(type, idOptions));
-            var setup = new SparkContextSetup(model, dialect, options.ModelConfigurations);
+            // D32: the views declared in the app's index assemblies, the ones the index catalog lists.
+            var views = (sp.GetService<SparkModuleRegistry>()?.ResolveIndexAssemblies() ?? [])
+                .SelectMany(Abstractions.Views.SparkViewEntries.ViewTypes).Distinct().Select(Abstractions.Views.SparkViewEntries.Instantiate);
+            var storedTypes = sp.GetRequiredService<ISparkStoredTypes>();
+            var model = SparkRelationalModel.Build(storedTypes.Types, type => KindOf(type, idOptions), views);
+            var setup = new SparkContextSetup(model, dialect, options.ModelConfigurations, storedTypes.AttributeId);
             return new RelationalSparkStore(setup, connectionString, b => options.ContextConfigurations.ForEach(c => c(b)),
                 options.MigrationsAssembly ?? Assembly.GetEntryAssembly()?.GetName().Name);
         });

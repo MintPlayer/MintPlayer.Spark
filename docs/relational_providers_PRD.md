@@ -1758,6 +1758,17 @@ decided O14–O17, and O8 and O9 last. The plan §3 has the log.
     a column, and EF's converters cannot span two columns, so it needs its own mapping.
   - Recommendation: (b), plus an analyzer note steering new code to `DateTimeOffset` (D5) and `DateOnly`. The suite's
     `KeepsDateTimeKind` switch skips only the kind assertions until this is decided.
+- **O19, a renamed attribute on SQL (open, found in M4d, 2026-11-25):** D24 refuses a migration that drops and re-adds
+  the column of one attribute id (`RelationalSchemaScaffolder.RefuseSplitAttributes`), because applying it loses the
+  column's data. Measured: EF's differ renames a column itself when only its name changed (its heuristic matches
+  columns of the same shape, even for unrelated attributes), so the refusal fires on a rename **with** a type change.
+  - (a) **Interim, in place:** refuse, and tell the developer to give a really new attribute a new id.
+  - (b) **Rewrite the pair** into `RenameColumn` + `AlterColumn` when the ids match; EF converts the data where the
+    database can, and a failing conversion fails the migration, not silently.
+  - (c) Leave the migration to the developer (edit the scaffolded file).
+  - Recommendation: (b); it keeps the data for every convertible change and fails loudly otherwise. The flip side
+    of EF's heuristic (an unrelated drop + add of the same shape becomes a rename, carrying data into a new
+    attribute) is the mirror case: (b) would also split that rename when the ids differ.
 
 ## 11. Out of scope
 

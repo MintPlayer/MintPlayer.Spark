@@ -15,6 +15,13 @@ public interface ISparkStoredTypes
 {
     /// <summary>The stored types, each once. A type and a stored base type of it share the base type's table.</summary>
     IReadOnlyCollection<Type> Types { get; }
+
+    /// <summary>
+    /// The app model's id of the attribute <paramref name="property"/> of <paramref name="type"/> (or of a stored base
+    /// type that lists it), or <see langword="null"/> when the model has none. A schema keeps it with the column, so a
+    /// renamed attribute is recognised as the same one (D24).
+    /// </summary>
+    Guid? AttributeId(Type type, string property);
 }
 
 /// <summary>The types added in code, beside the app model's (<see cref="ISparkStoredTypes"/>).</summary>

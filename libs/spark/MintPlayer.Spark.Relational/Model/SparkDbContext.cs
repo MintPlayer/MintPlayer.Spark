@@ -10,12 +10,18 @@ namespace MintPlayer.Spark.Relational.Model;
 /// <summary>What a <see cref="SparkDbContext"/> is built from: the relational model, the dialect and the app's hooks.</summary>
 public sealed class SparkContextSetup
 {
-    internal SparkContextSetup(SparkRelationalModel model, SparkRelationalDialect dialect, IReadOnlyList<Action<ModelBuilder>> configureModel)
+    internal SparkContextSetup(
+        SparkRelationalModel model, SparkRelationalDialect dialect, IReadOnlyList<Action<ModelBuilder>> configureModel,
+        Func<Type, string, Guid?>? attributeId = null)
     {
         Model = model;
         Dialect = dialect;
         ConfigureModel = configureModel;
+        AttributeId = attributeId ?? ((_, _) => null);
     }
+
+    /// <summary>The app model's attribute id of a stored property (<see cref="Abstractions.Storage.ISparkStoredTypes.AttributeId"/>).</summary>
+    public Func<Type, string, Guid?> AttributeId { get; }
 
     public SparkRelationalModel Model { get; }
 
@@ -23,7 +29,16 @@ public sealed class SparkContextSetup
 
     /// <summary>The app's <c>ConfigureModel</c> hooks (O9), run last.</summary>
     public IReadOnlyList<Action<ModelBuilder>> ConfigureModel { get; }
+
+    /// <summary>
+    /// The SQL EF rendered for each view (D32), by view name; <see langword="null"/> until the store has rendered them.
+    /// The model built before that is the render model, whose views carry no SQL; it is a different cached EF model.
+    /// </summary>
+    public IReadOnlyDictionary<string, SparkViewSql>? RenderedViews { get; internal set; }
 }
+
+/// <summary>A view's SQL, and the tables it reads (which the differ watches).</summary>
+public sealed record SparkViewSql(string Sql, IReadOnlyList<string> Tables);
 
 /// <summary>
 /// The <see cref="DbContext"/> Spark builds from its model (#536 D1): no <c>DbSet</c> properties and no EF attributes on
@@ -78,6 +93,9 @@ public sealed class SparkDbContext : DbContext
 
         foreach (var join in model.Joins)
             MapJoin(modelBuilder, join);
+
+        foreach (var view in model.Views)
+            MapView(modelBuilder, view);
 
         // The framework schema's tables, which its own migrations create (D24): used here, never migrated here.
         SparkFrameworkSchema.Map(modelBuilder, Setup.Dialect.KeyCollation, excludeFromMigrations: true);
@@ -148,7 +166,15 @@ public sealed class SparkDbContext : DbContext
 
             MapValue(property, entity.Ignore, name => entity.Property(name), type);
         }
+
+        // D24: the column remembers its attribute, so a rename (same attribute, new name) can't pass as a drop and an add.
+        foreach (var property in SparkRelationalModel.DeclaredStoredProperties(type))
+            if (entity.Metadata.FindDeclaredProperty(property.Name) is { } column && Setup.AttributeId(type, property.Name) is { } attributeId)
+                column.SetAnnotation(AttributeIdAnnotation, attributeId.ToString("D"));
     }
+
+    /// <summary>The app model's attribute id, on the column's property (D24).</summary>
+    public const string AttributeIdAnnotation = "Spark:AttributeId";
 
     /// <summary>The type an id property points at: <see cref="Id{T}"/>'s <c>T</c>, or a <c>[Reference]</c> string's target.</summary>
     private static Type? ReferenceTarget(PropertyInfo property)
@@ -239,6 +265,49 @@ public sealed class SparkDbContext : DbContext
         });
     }
 
+    /// <summary>
+    /// D32: the view's row type is mapped to the SQL view of the view's name, which EF never creates itself. The row's
+    /// <c>Id</c> holds the collection's key with the collection's converter, so a <see cref="string"/> row id reads as the
+    /// whole id (<c>people/…</c>) as on the other providers. The rendered SQL and the tables it reads ride on the entity
+    /// type as annotations, so the snapshot keeps them and <see cref="Schema.SparkMigrationsModelDiffer"/> compares them.
+    /// </summary>
+    private void MapView(ModelBuilder modelBuilder, Abstractions.Views.ISparkView view)
+    {
+        var collection = Setup.Model.RequireTable(view.CollectionType);
+        var entity = modelBuilder.Entity(view.RowType);
+        entity.ToView(view.Name);
+        var id = view.RowType.GetProperty("Id", BindingFlags.Public | BindingFlags.Instance);
+        if (id is { CanWrite: true })
+        {
+            entity.HasKey(id.Name);
+            KeyColumn(entity.Property(id.Name), id.PropertyType, collection);
+        }
+        else
+            entity.HasNoKey();
+
+        foreach (var property in view.RowType.GetProperties(BindingFlags.Public | BindingFlags.Instance).Where(p => p.GetIndexParameters().Length == 0))
+        {
+            if (property.Name == id?.Name && id.CanWrite)
+                continue;
+            if (ReferenceTarget(property) is { } target && IsMapped(property) && property.CanWrite)
+            {
+                var column = entity.Property(property.Name);
+                if (Setup.Model.TableOf(target) is { } targetTable)
+                    KeyColumn(column, property.PropertyType, targetTable);
+                else if (SparkIdConverters.ForUnstored(property.PropertyType) is { } converter)
+                    column.HasConversion(converter);
+                continue;
+            }
+            MapValue(property, entity.Ignore, name => entity.Property(name), view.RowType);
+        }
+
+        if (Setup.RenderedViews?.GetValueOrDefault(view.Name) is { } rendered)
+        {
+            entity.HasAnnotation(Schema.SparkMigrationsModelDiffer.ViewSqlAnnotation, rendered.Sql);
+            entity.HasAnnotation(Schema.SparkMigrationsModelDiffer.ViewTablesAnnotation, string.Join(",", rendered.Tables));
+        }
+    }
+
     private void MapJoin(ModelBuilder modelBuilder, SparkJoinTable join)
     {
         var owner = Setup.Model.RequireTable(join.Owner);
@@ -267,5 +336,5 @@ public sealed class SparkDbContext : DbContext
 internal sealed class SparkModelCacheKeyFactory : IModelCacheKeyFactory
 {
     public object Create(DbContext context, bool designTime)
-        => (context.GetType(), ((SparkDbContext)context).Setup, designTime);
+        => (context.GetType(), ((SparkDbContext)context).Setup, ((SparkDbContext)context).Setup.RenderedViews is null, designTime);
 }

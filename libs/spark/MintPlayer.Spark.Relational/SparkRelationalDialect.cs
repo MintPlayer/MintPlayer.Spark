@@ -68,4 +68,10 @@ public abstract class SparkRelationalDialect
     /// <paramref name="column"/> are delimited identifiers from the model, the key is parameter <c>{0}</c>.
     /// </summary>
     public abstract string LockRowSql(string table, string column);
+
+    /// <summary>
+    /// The statement that creates a view (D32): <paramref name="view"/> is the delimited name, <paramref name="select"/>
+    /// the SQL EF rendered. It must also run inside the <c>IF … BEGIN … END</c> of an idempotent migration script.
+    /// </summary>
+    public virtual string CreateViewSql(string view, string select) => $"CREATE VIEW {view} AS\n{select};";
 }

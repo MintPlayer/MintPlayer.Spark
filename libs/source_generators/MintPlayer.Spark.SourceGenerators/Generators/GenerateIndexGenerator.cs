@@ -181,8 +181,15 @@ public class GenerateIndexGenerator : IncrementalGenerator
         var knowsViewsProvider = context.CompilationProvider
             .Select(static (compilation, ct) => compilation.GetTypeByMetadataName(SparkViewMetadataName) != null);
 
+        // The gate split (#536 M4d): an application without RavenDB (a relational or in-memory store) still gets the
+        // index entity and the view, which then claims the default; the native index and [FromIndex] need RavenDB.
+        var emitsGeneratedProvider = context.CompilationProvider
+            .Select(static (compilation, ct) =>
+                compilation.GetTypeByMetadataName(GenerateIndexAttributeFullName) != null
+                && compilation.Options.OutputKind is OutputKind.ConsoleApplication or OutputKind.WindowsApplication);
+
         var sourceProvider = allEntitiesProvider
-            .Combine(emitsIndexesProvider)
+            .Combine(emitsGeneratedProvider.Combine(emitsIndexesProvider))
             .Combine(languagesProvider)
             .Combine(claimsProvider)
             .Combine(settingsProvider)
@@ -190,7 +197,7 @@ public class GenerateIndexGenerator : IncrementalGenerator
             .Select(static Producer (providers, ct) =>
             {
                 var entities = providers.Left.Left.Left.Left.Left;
-                var knowsSpark = providers.Left.Left.Left.Left.Right;
+                var (emitsGenerated, knowsRaven) = providers.Left.Left.Left.Left.Right;
                 var languages = providers.Left.Left.Left.Right;
                 var claims = providers.Left.Left.Right;
                 var settings = providers.Left.Right;
@@ -198,7 +205,8 @@ public class GenerateIndexGenerator : IncrementalGenerator
 
                 return new GenerateIndexProducer(
                     entities.ToList(),
-                    knowsSpark,
+                    emitsGenerated && (knowsRaven || knowsViews),
+                    knowsRaven,
                     knowsViews,
                     languages,
                     ClaimedEntities(claims, entities),
