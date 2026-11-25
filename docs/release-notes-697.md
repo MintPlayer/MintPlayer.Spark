@@ -75,6 +75,13 @@ tags, and everything ships once the merged pull request is backported to `releas
     RavenDB, and `OidcMachineClients` takes `ISparkSession`/`ISparkStore`.
     `ISparkSession.LoadStartingWithAsync` gained a `startAfter` parameter before `cancellationToken`: a caller that
     passed the token by position names it (`cancellationToken: ct`).
+    MailManager, Cron and MCP no longer reference RavenDB either (M6e–g):
+    - Mail delivery records and MCP plans are `IExpiring` (`ExpiresAtUtc`) instead of carrying hand-written `@expires`
+      metadata. An MCP plan's store expiry is one day after it stops being appliable, so an expired plan still answers
+      "expired".
+    - Cron claims occurrences through `ISparkAtomicValues`, with the same `cron/{job}` key and value as before.
+    - Apps, MailManager and MCP register their document types (`AddSparkStoredType`), so SQL Server and PostgreSQL get
+      their tables.
 12. **Messaging runs on any store with subscriptions** (M7b, D40), and its package no longer references RavenDB:
     - `IMessageOutbox.EnqueueAsync` and `ISparkAfterCommitOutbox.EnqueueAsync` take an `ISparkSession`, not a RavenDB
       session. Wrap a raw session with `session.AsSparkSession()`.

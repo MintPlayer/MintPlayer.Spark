@@ -470,7 +470,29 @@ rounds, milestones and status. Branch `feat/536-sql-server-provider`, draft PR #
       (`AsRavenSession()` and the new `AsRavenStore()`) until M8.
     - **Evidence:** the `LoadStartingWith` conformance tests on all four databases; the Apps, Organizations, Settings
       and Notifications suites and CodeCoverage's webhook tests on RavenDB (see the log).
-  - **Next:** the rest of M6 (templates, Tier 2). Cron, the subscription worker's remaining hosted services and others adopt
+  - **M6e (2026-11-25): MailManager on any store.**
+    - Suppressions and delivery records use `ISparkStore`. `SparkMailDelivery` is `IExpiring` instead of setting
+      `@expires` by hand.
+    - Apps and MailManager now register their document types (D36). They are in no library model, so a store with a
+      schema had no tables for them: Apps on SQL would have failed on its first write.
+    - **Bug found by the neutral test:** `InMemorySparkSession.Delete(entity)` called `Delete(id)` with the id string,
+      which bound back to `Delete(object)` and threw. The conformance suite only deleted by id; it now has
+      `Delete_removes_a_loaded_entity`.
+    - **Evidence:** `NeutralMailStoreTests` and the Delete conformance cases on all four databases; the Mail suite on
+      RavenDB 95/95.
+  - **M6f (2026-11-25): Cron on any store.** The occurrence claim uses `ISparkAtomicValues` with the same key
+    (`cron/{job}`) and value, so existing RavenDB claims carry over. The scheduler awaits `ISparkStoreReadiness` (D41).
+    **Evidence:** `NeutralCronClaimTests` on all four databases; the Cron suite on RavenDB 29/29 (its poison tests
+    write raw compare-exchange values, so the keys match).
+  - **M6g (2026-11-25): MCP on any store.** `McpPlanner` takes `ISparkStore` and the scoped `ISparkSession`. `McpPlan`
+    is `IExpiring`, and its `ExpiresAtUtc` trails the domain `ExpiresAt` by one day (`HousekeepingGrace`). SQL Server
+    and PostgreSQL hide expired rows from loads, so without the grace an expired plan would answer "not found" instead
+    of "this plan expired". **Evidence:** `NeutralMcpPlanStoreTests` on all four databases; MCP suites on RavenDB
+    181/181.
+  - **Search stays on RavenDB for now:** its default provider reads the generated `Spark_Search` index. The SQL side is
+    `LIKE` search (S10), which the milestones place in Tier 3.
+  - **Next:** Files (attachments off on SQL: the pluggable blob stores; revisions), Contributions (streaming), the
+    authorization user store (reservations), templates and AllFeatures. Cron, the subscription worker's remaining hosted services and others adopt
     `ISparkStoreReadiness` as they are ported.
 - **Local spike servers left running:**
   - SQL Server: `SparkSpike536` on `localhost` and `localhost\MSSQLSERVER01`
