@@ -1,7 +1,6 @@
 using System.Diagnostics.CodeAnalysis;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.IdentityProvider.Models;
-using Raven.Client.Documents.Session;
 
 namespace MintPlayer.Spark.IdentityProvider.Services;
 
@@ -32,7 +31,7 @@ internal static class OidcRefreshFamilies
     /// with the tokens or not at all.
     /// </summary>
     public static async Task StartAsync(
-        IAsyncDocumentSession session, OidcToken origin, OidcToken refreshToken, OidcToken accessToken, CancellationToken ct)
+        ISparkSession session, OidcToken origin, OidcToken refreshToken, OidcToken accessToken, CancellationToken ct)
     {
         var family = new OidcRefreshFamily
         {
@@ -54,7 +53,7 @@ internal static class OidcRefreshFamilies
     /// rotation, so under the session's optimistic concurrency a rotation racing another rotation of the family, or its
     /// revocation, fails as a whole.
     /// </summary>
-    public static void Advance(IAsyncDocumentSession session, OidcRefreshFamily family, OidcToken successor, OidcToken accessToken)
+    public static void Advance(ISparkSession session, OidcRefreshFamily family, OidcToken successor, OidcToken accessToken)
     {
         family.Generation++;
         family.RotatedAt = successor.CreatedAt;
@@ -71,7 +70,7 @@ internal static class OidcRefreshFamilies
     }
 
     /// <summary>The family <paramref name="token"/> belongs to; null when it has none, or the family is gone.</summary>
-    public static async Task<OidcRefreshFamily?> LoadAsync(IAsyncDocumentSession session, OidcToken token, CancellationToken ct)
+    public static async Task<OidcRefreshFamily?> LoadAsync(ISparkSession session, OidcToken token, CancellationToken ct)
         => string.IsNullOrEmpty(token.FamilyId) ? null : await session.LoadAsync<OidcRefreshFamily>(token.FamilyId, ct);
 
     /// <summary>
@@ -95,7 +94,7 @@ internal static class OidcRefreshFamilies
     /// consult (client credentials, a code redeemed without a refresh token); a family that is gone fails closed, as a
     /// missing grant does in <see cref="OidcGrants.PermitsAsync"/>.
     /// </summary>
-    public static async Task<bool> PermitsAsync(IAsyncDocumentSession session, OidcToken token, CancellationToken ct)
+    public static async Task<bool> PermitsAsync(ISparkSession session, OidcToken token, CancellationToken ct)
         => string.IsNullOrEmpty(token.FamilyId)
            || await session.LoadAsync<OidcRefreshFamily>(token.FamilyId, ct) is { Status: "valid" };
 
@@ -104,8 +103,10 @@ internal static class OidcRefreshFamilies
     /// the write then wins against a rotation that committed after the family was read here, and a rotation that read the
     /// family before this commits fails on its own optimistic concurrency. Revoked is final, so overwriting a rotation's
     /// generation loses nothing. Returns false when there is nothing to revoke: no family, gone, or already revoked.
+    /// A relational store checks the loaded version regardless (#536 D37): the caller retries a
+    /// <see cref="SparkStoreConcurrencyException"/> with a fresh session.
     /// </summary>
-    public static async Task<bool> RevokeAsync(IAsyncDocumentSession session, string? familyId, string reason, CancellationToken ct)
+    public static async Task<bool> RevokeAsync(ISparkSession session, string? familyId, string reason, CancellationToken ct)
     {
         if (string.IsNullOrEmpty(familyId) || await session.LoadAsync<OidcRefreshFamily>(familyId, ct) is not { Status: "valid" } family)
             return false;

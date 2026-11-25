@@ -8,7 +8,6 @@ using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Authorization.Agents;
 using MintPlayer.Spark.IdentityProvider.Configuration;
 using MintPlayer.Spark.IdentityProvider.Services;
-using Raven.Client.Documents;
 
 namespace MintPlayer.Spark.IdentityProvider.Mcp;
 
@@ -66,7 +65,7 @@ internal sealed partial class OidcAgentBearerHandler(
     IOptionsMonitor<AuthenticationSchemeOptions> schemeOptions,
     ILoggerFactory loggerFactory,
     UrlEncoder encoder,
-    IDocumentStore store,
+    ISparkStore store,
     OidcKeyRing keys,
     OidcIssuer issuer,
     OidcMcpResources resources,
@@ -88,7 +87,7 @@ internal sealed partial class OidcAgentBearerHandler(
         if (token.Count(c => c == '.') != 2)
             return AuthenticateResult.NoResult();
 
-        using var session = store.OpenAsyncSession();
+        using var session = store.OpenSession();
         var resolved = await AccessTokens.ResolveAsync(session, keys, token, issuer.Resolve(Request), Context.RequestAborted);
         if (resolved is null)
             return Refuse("not a token of this server");

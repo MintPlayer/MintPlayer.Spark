@@ -1,6 +1,5 @@
 using MintPlayer.Spark.IdentityProvider.Configuration;
 using MintPlayer.Spark.IdentityProvider.Models;
-using Raven.Client.Documents.Session;
 
 namespace MintPlayer.Spark.IdentityProvider.Services;
 
@@ -13,7 +12,7 @@ public sealed class OidcAudit(SparkIdentityProviderOptions options)
 {
     /// <summary>Adds an event to <paramref name="session"/>. The caller's SaveChanges commits it.</summary>
     public async Task RecordAsync(
-        IAsyncDocumentSession session,
+        ISparkSession session,
         string kind,
         string? actorId,
         string? applicationId = null,

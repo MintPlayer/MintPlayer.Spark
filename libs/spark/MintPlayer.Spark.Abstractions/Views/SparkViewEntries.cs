@@ -28,10 +28,23 @@ internal static class SparkViewEntries
 
     public static ISparkView Instantiate(Type viewType) => (ISparkView)Activator.CreateInstance(viewType)!;
 
-    /// <summary>Whether the view yields one row per entity of its collection: no reduce, and one map (no <c>Concat</c>).</summary>
+    /// <summary>
+    /// Whether the view yields one row per entity of its collection: no reduce, one map (no <c>Concat</c>), and no
+    /// fan-out (no <c>SelectMany</c>, which yields a row per list item, #536 D48).
+    /// </summary>
     public static bool IsRowPerEntity(ISparkView view)
-        => view.ReduceDefinition is null
-           && view.Definition.Body is not System.Linq.Expressions.MethodCallExpression { Method.Name: nameof(Queryable.Concat) };
+    {
+        if (view.ReduceDefinition is not null) return false;
+
+        // The map is a chain of Queryable calls down to s.Set<T>(): Concat at its top, SelectMany anywhere in it.
+        for (var node = view.Definition.Body as System.Linq.Expressions.MethodCallExpression;
+             node is { Method.DeclaringType: var declaring } && declaring == typeof(Queryable);
+             node = node.Arguments[0] as System.Linq.Expressions.MethodCallExpression)
+        {
+            if (node.Method.Name is nameof(Queryable.Concat) or nameof(Queryable.SelectMany)) return false;
+        }
+        return true;
+    }
 
     /// <summary>A view's catalog entry: its name, its collection and its row type as the projection.</summary>
     public static IndexCatalogEntry EntryFor(Type viewType)
@@ -41,8 +54,9 @@ internal static class SparkViewEntries
         {
             IndexName = view.Name,
             IndexType = viewType,
-            // S16: a reduce or multi-map view has no row per entity of one collection, so it maps none and is never
-            // an entity type's default (as a native multi-map without a marker).
+            // S16: a reduce, multi-map or fan-out view has no row per entity of one collection, so it maps none and
+            // can never be an entity type's default (as a native multi-map without a marker). One that has is a
+            // default only when it claims [DefaultIndex] (D48): see the catalogs' elections.
             CollectionType = IsRowPerEntity(view) ? view.CollectionType : null,
             ProjectionType = view.RowType,
         };

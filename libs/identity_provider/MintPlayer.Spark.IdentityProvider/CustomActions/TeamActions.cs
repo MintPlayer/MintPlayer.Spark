@@ -6,7 +6,6 @@ using MintPlayer.Spark.Abstractions.Retry;
 using MintPlayer.Spark.IdentityProvider.Actions;
 using MintPlayer.Spark.IdentityProvider.Models;
 using MintPlayer.Spark.IdentityProvider.Services;
-using Raven.Client.Documents.Session;
 
 namespace MintPlayer.Spark.IdentityProvider.CustomActions;
 
@@ -17,7 +16,7 @@ namespace MintPlayer.Spark.IdentityProvider.CustomActions;
 internal sealed partial class InviteMemberAction : ICustomAction
 {
     [Inject] private readonly IManager manager;
-    [Inject] private readonly IAsyncDocumentSession session;
+    [Inject] private readonly ISparkSession session;
     [Inject] private readonly OidcPortalAccess access;
     [Inject] private readonly OidcInvitations invitations;
     [Inject] private readonly OidcAudit audit;
@@ -75,7 +74,7 @@ internal sealed partial class InviteMemberAction : ICustomAction
 internal sealed partial class ResendInvitationAction : ICustomAction
 {
     [Inject] private readonly IManager manager;
-    [Inject] private readonly IAsyncDocumentSession session;
+    [Inject] private readonly ISparkSession session;
     [Inject] private readonly OidcPortalAccess access;
     [Inject] private readonly OidcInvitations invitations;
     [Inject] private readonly OidcAudit audit;
@@ -117,7 +116,7 @@ internal sealed partial class ResendInvitationAction : ICustomAction
 internal sealed partial class RemoveMemberAction : ICustomAction
 {
     [Inject] private readonly IManager manager;
-    [Inject] private readonly IAsyncDocumentSession session;
+    [Inject] private readonly ISparkSession session;
     [Inject] private readonly OidcPortalAccess access;
     [Inject] private readonly OidcAudit audit;
 
@@ -160,7 +159,7 @@ internal sealed partial class RemoveMemberAction : ICustomAction
 internal sealed partial class SwitchToLiveAction : ICustomAction
 {
     [Inject] private readonly IManager manager;
-    [Inject] private readonly IAsyncDocumentSession session;
+    [Inject] private readonly ISparkSession session;
     [Inject] private readonly OidcPortalAccess access;
     [Inject] private readonly OidcAudit audit;
     [Inject] private readonly Configuration.SparkIdentityProviderOptions options;
@@ -199,7 +198,7 @@ internal sealed partial class SwitchToLiveAction : ICustomAction
 internal sealed partial class SwitchToDevelopmentAction : ICustomAction
 {
     [Inject] private readonly IManager manager;
-    [Inject] private readonly IAsyncDocumentSession session;
+    [Inject] private readonly ISparkSession session;
     [Inject] private readonly OidcPortalAccess access;
     [Inject] private readonly OidcAudit audit;
 
@@ -224,6 +223,6 @@ internal sealed partial class SwitchToDevelopmentAction : ICustomAction
 /// <summary>Loads the application a team row action was invoked under (the sub-query's container).</summary>
 internal static class OidcTeam
 {
-    public static async Task<OidcApplication?> LoadAsync(CustomActionArgs args, IAsyncDocumentSession session, CancellationToken ct)
+    public static async Task<OidcApplication?> LoadAsync(CustomActionArgs args, ISparkSession session, CancellationToken ct)
         => args.QueryParent?.Id is { Length: > 0 } id ? await session.LoadAsync<OidcApplication>(id, ct) : null;
 }

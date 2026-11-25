@@ -2,7 +2,6 @@ using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Authorization.Agents;
 using MintPlayer.Spark.IdentityProvider.Models;
 using MintPlayer.Spark.IdentityProvider.Services;
-using Raven.Client.Documents;
 
 namespace MintPlayer.Spark.IdentityProvider.Mcp;
 
@@ -12,7 +11,7 @@ namespace MintPlayer.Spark.IdentityProvider.Mcp;
 /// agent grant is the source of truth for what the agent may do; the <c>OidcGrant</c> keeps the OAuth bookkeeping
 /// (scopes, token chain).
 /// </summary>
-internal sealed class OidcAgentGrants(AgentGrantStore grants, IDocumentStore store, IServiceProvider services) : IAgentGrantLink
+internal sealed class OidcAgentGrants(AgentGrantStore grants, ISparkStore store, IServiceProvider services) : IAgentGrantLink
 {
     /// <summary>Writes (or replaces) the user's grant for this agent client with what they chose on the consent screen.</summary>
     public async Task<AgentGrant> GrantAsync(
@@ -53,7 +52,7 @@ internal sealed class OidcAgentGrants(AgentGrantStore grants, IDocumentStore sto
             return;
 
         string? applicationId;
-        using (var session = store.OpenAsyncSession())
+        using (var session = store.OpenSession())
             applicationId = (await session.LoadAsync<OidcGrant>(grant.OidcGrantId, cancellationToken))?.ApplicationId;
         if (applicationId is null)
             return;

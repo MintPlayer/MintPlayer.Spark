@@ -5,8 +5,6 @@ using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.IdentityProvider.Endpoints.Oidc;
 using MintPlayer.Spark.IdentityProvider.Models;
 using MintPlayer.Spark.IdentityProvider.Services;
-using Raven.Client.Documents;
-using Raven.Client.Documents.Linq;
 using static MintPlayer.Spark.IdentityProvider.Endpoints.ConnectPage;
 
 namespace MintPlayer.Spark.IdentityProvider.Endpoints;
@@ -31,7 +29,7 @@ internal sealed partial class OidcConsentPage : IGetEndpoint<string>
     // Optional: a missing handle is this page's own 400, not the binder's.
     [QueryParam("request_id")] public string? RequestId { get; set; }
 
-    [Inject] private readonly IDocumentStore store;
+    [Inject] private readonly ISparkStore store;
     [Inject] private readonly IAntiforgery antiforgery;
     [Inject] private readonly IHttpContextAccessor httpContextAccessor;
     [Inject] private readonly ConnectText text;
@@ -54,7 +52,7 @@ internal sealed partial class OidcConsentPage : IGetEndpoint<string>
             return Results.Redirect($"/connect/login?returnUrl={Uri.EscapeDataString(returnUrl)}");
         }
 
-        using var session = store.OpenAsyncSession();
+        using var session = store.OpenSession();
 
         var request = await OidcAuthorizationFlow.LoadPendingRequestAsync(session, requestId, userId, ct);
         if (request == null)
@@ -225,7 +223,7 @@ internal sealed partial class OidcConsentSubmit : IPostEndpoint<OidcConsentSubmi
 
     static bool IEndpointBase.IsEnabled(IServiceProvider services) => OidcSurface.Of(services).AuthorizationCode;
 
-    [Inject] private readonly IDocumentStore store;
+    [Inject] private readonly ISparkStore store;
     [Inject] private readonly OidcAudit audit;
     [Inject] private readonly OidcIssuer oidcIssuer;
     [Inject] private readonly ConnectText text;
@@ -265,7 +263,7 @@ internal sealed partial class OidcConsentSubmit : IPostEndpoint<OidcConsentSubmi
         if (string.IsNullOrEmpty(userId))
             return ConnectResults.ErrorPage(context, text, options.Branding, StatusCodes.Status401Unauthorized, "errorNotAuthenticated");
 
-        using var session = store.OpenAsyncSession();
+        using var session = store.OpenSession();
 
         var request = await OidcAuthorizationFlow.LoadPendingRequestAsync(session, requestId, userId, ct);
         if (request == null)
@@ -322,7 +320,7 @@ internal sealed partial class OidcConsentSubmit : IPostEndpoint<OidcConsentSubmi
             return ConnectResults.ErrorPage(context, text, options.Branding, StatusCodes.Status400BadRequest, "errorNoScopes");
 
         request.Scopes = grantedScopes;
-        request.AuthorizationId = await OidcAuthorizationFlow.EnsureAuthorizationAsync(session, app, userId, grantedScopes, submission.Remember, ct);
+        request.AuthorizationId = await OidcAuthorizationFlow.EnsureAuthorizationAsync(store, app, userId, grantedScopes, submission.Remember, ct);
         await audit.RecordAsync(session, OidcAuditKinds.ConsentGranted, userId, app.Id.Value, userId, context.Connection.RemoteIpAddress?.ToString(),
             new Dictionary<string, string> { ["scopes"] = string.Join(' ', grantedScopes), ["remembered"] = submission.Remember.ToString() }, ct);
 

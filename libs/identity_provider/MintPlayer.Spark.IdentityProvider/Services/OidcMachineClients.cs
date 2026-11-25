@@ -29,7 +29,7 @@ public static class OidcMachineClients
             CreatedAt = DateTime.UtcNow,
             CreatedBy = createdBy,
         };
-        await OidcClientIdReservation.ReserveAsync(session.AsRavenSession(), app);
+        await OidcClientIdReservation.ReserveAsync(session, app, ct);
         await session.StoreAsync(app, app.Id.Value, ct);
         return app;
     }
@@ -76,15 +76,13 @@ public static class OidcMachineClients
     /// Deletes the client: every token and grant it holds is revoked first (<see cref="OidcDisableCascade"/>), then the
     /// document goes and its client id is released. A missing client is not an error.
     /// </summary>
-    public static async Task DeleteAsync(ISparkStore sparkStore, string applicationId, CancellationToken ct = default)
+    public static async Task DeleteAsync(ISparkStore store, string applicationId, CancellationToken ct = default)
     {
-        // #536: the identity provider itself still runs on RavenDB (M8); its callers already speak the neutral API.
-        var store = sparkStore.AsRavenStore();
         await OidcDisableCascade.RevokeApplicationAsync(store, applicationId, ct);
-        using var session = store.OpenAsyncSession();
+        using var session = store.OpenSession();
         if (await session.LoadAsync<OidcApplication>(applicationId, ct) is not { } app)
             return;
-        await OidcClientIdReservation.ReleaseAsync(session, app);
+        OidcClientIdReservation.Release(session, app);
         session.Delete(app);
         await session.SaveChangesAsync(ct);
     }

@@ -1,8 +1,8 @@
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions.Authorization;
 using MintPlayer.Spark.IdentityProvider.Models;
+using MintPlayer.Spark.IdentityProvider.Services;
 using MintPlayer.Spark.Queries;
-using Raven.Client.Documents.Session;
 
 namespace MintPlayer.Spark.IdentityProvider.Actions;
 
@@ -26,7 +26,9 @@ internal sealed partial class OidcApplicationMemberRowActions : ISparkOwnsRowSec
 
     public const string QueryAlias = "oidc-application-members";
 
-    [Inject] private readonly IAsyncDocumentSession session;
+    [Inject] private readonly ISparkSession session;
+    [Inject] private readonly ISparkStore store;
+    [Inject] private readonly OidcUserDocuments users;
 
     public async Task<IQueryable<OidcApplicationMemberRow>> Members(CustomQueryArgs args)
     {
@@ -39,12 +41,10 @@ internal sealed partial class OidcApplicationMemberRowActions : ISparkOwnsRowSec
             return Enumerable.Empty<OidcApplicationMemberRow>().AsQueryable();
 
         var userIds = app.Members.Where(m => m.Status == OidcMemberStatuses.Active && m.UserId is not null).Select(m => m.UserId!).ToList();
-        var names = new Dictionary<string, string>(StringComparer.Ordinal);
-        using (var lookup = session.Advanced.DocumentStore.OpenAsyncSession())
-        {
-            foreach (var (id, user) in await lookup.LoadAsync<UserNameHolder>(userIds))
-                names[id] = user?.UserName ?? id;
-        }
+        // The accounts load in a session of their own: the request's session stays the application's unit of work.
+        using var lookup = store.OpenSession();
+        var names = (await users.LoadAsync(lookup, userIds, CancellationToken.None))
+            .ToDictionary(p => p.Key, p => p.Value.UserName ?? p.Key, StringComparer.OrdinalIgnoreCase);
 
         var now = DateTime.UtcNow;
         return app.Members
@@ -58,10 +58,5 @@ internal sealed partial class OidcApplicationMemberRowActions : ISparkOwnsRowSec
                 m.AcceptedAt))
             .ToList()
             .AsQueryable();
-    }
-
-    private sealed class UserNameHolder
-    {
-        public string? UserName { get; set; }
     }
 }

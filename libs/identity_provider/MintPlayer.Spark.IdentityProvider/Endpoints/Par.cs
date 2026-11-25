@@ -2,7 +2,6 @@ using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.IdentityProvider.Endpoints.Oidc;
 using MintPlayer.Spark.IdentityProvider.Services;
-using Raven.Client.Documents;
 
 namespace MintPlayer.Spark.IdentityProvider.Endpoints;
 
@@ -24,7 +23,7 @@ internal sealed partial class OidcPushedAuthorization : IPostEndpoint<OidcAuthor
 
     static bool IEndpointBase.IsEnabled(IServiceProvider services) => OidcSurface.Of(services).PushedAuthorization;
 
-    [Inject] private readonly IDocumentStore store;
+    [Inject] private readonly ISparkStore store;
     [Inject] private readonly OidcClientAuthenticator clientAuthenticator;
     [Inject] private readonly OidcRequestObjects requestObjects;
     [Inject] private readonly OidcIssuer oidcIssuer;
@@ -46,7 +45,7 @@ internal sealed partial class OidcPushedAuthorization : IPostEndpoint<OidcAuthor
 
     public override async Task<IResult> HandleAsync(OidcAuthorizeParameters request, CancellationToken ct)
     {
-        using var session = store.OpenAsyncSession();
+        using var session = store.OpenSession();
         var client = await clientAuthenticator.AuthenticateAsync(context, form, session, ct);
         if (!client.Succeeded)
             return client.ToResult(context);

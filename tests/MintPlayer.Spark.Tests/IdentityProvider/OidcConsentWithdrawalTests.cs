@@ -3,7 +3,6 @@ using System.Net;
 using System.Text.Json;
 using MintPlayer.Spark.IdentityProvider.Models;
 using MintPlayer.Spark.IdentityProvider.Services;
-using Raven.Client.Documents;
 
 namespace MintPlayer.Spark.Tests.IdentityProvider;
 
@@ -56,7 +55,7 @@ public class OidcConsentWithdrawalTests(OidcSharedHost host) : OidcTestHost(host
     /// </summary>
     private async Task<string> AntiforgeryFromApplicationsPageAsync(Browser browser)
     {
-        await Store.WaitForIndexingAsync();
+        await WaitForIndexesAsync();
         var page = await browser.GetAsync("/connect/applications");
         return AntiforgeryTokenFrom(await page.Content.ReadAsStringAsync());
     }
@@ -177,7 +176,7 @@ public class OidcConsentWithdrawalTests(OidcSharedHost host) : OidcTestHost(host
         // The client comes back asking for the least it can.
         await ObtainCodeAsync(app, UserEmail("rewiden"), ["openid"]);
 
-        using var session = Store.OpenAsyncSession();
+        using var session = Store.OpenSession();
         var grant = await session.LoadAsync<OidcGrant>(
             OidcAuthorizationReferenceProbe.DocumentId(await SubjectOfAsync(UserEmail("rewiden")), app.Id.Value));
 
@@ -240,7 +239,7 @@ public class OidcConsentWithdrawalTests(OidcSharedHost host) : OidcTestHost(host
         // The attacker holds a grant of their own, which is what gets them a page carrying a
         // valid antiforgery token — then they post the *victim's* application id with it.
         var (attacker, _) = await EstablishGrantAsync(attackerApp, UserEmail("attacker"), ["openid", "offline_access"]);
-        await Store.WaitForIndexingAsync();
+        await WaitForIndexesAsync();
         await WithdrawAsync(attacker, victimApp.Id.Value);
 
         var app = victimApp;
@@ -264,7 +263,7 @@ public class OidcConsentWithdrawalTests(OidcSharedHost host) : OidcTestHost(host
         await EstablishGrantAsync(mine, UserEmail("mine"), ["openid", "offline_access"]);
         await EstablishGrantAsync(theirs, UserEmail("theirs"), ["openid", "offline_access"]);
 
-        await Store.WaitForIndexingAsync();
+        await WaitForIndexesAsync();
 
         var browser = await SignInAsync(UserEmail("mine"));
         var html = await (await browser.GetAsync("/connect/applications")).Content.ReadAsStringAsync();
@@ -361,7 +360,7 @@ public class OidcConsentWithdrawalTests(OidcSharedHost host) : OidcTestHost(host
         await WithdrawAsync(browser, app.Id.Value);
 
         // Stand in for a token the sweep missed.
-        using (var session = Store.OpenAsyncSession())
+        using (var session = Store.OpenSession())
         {
             var doc = await session.LoadAsync<OidcToken>(OidcTokenReference.DocumentId(refreshToken));
             doc.Status = "valid";
@@ -440,7 +439,7 @@ public class OidcConsentWithdrawalTests(OidcSharedHost host) : OidcTestHost(host
                     .PadRight(accessToken.Split('.')[1].Length + (4 - accessToken.Split('.')[1].Length % 4) % 4, '='))))
             .RootElement.GetProperty("jti").GetString()!;
 
-        using (var session = Store.OpenAsyncSession())
+        using (var session = Store.OpenSession())
         {
             var doc = await session.LoadAsync<OidcToken>(OidcTokenReference.DocumentId(jti));
             doc.Status = "valid";
@@ -454,7 +453,7 @@ public class OidcConsentWithdrawalTests(OidcSharedHost host) : OidcTestHost(host
             ["token"] = accessToken,
         }));
 
-        using (var session = Store.OpenAsyncSession())
+        using (var session = Store.OpenSession())
         {
             var doc = await session.LoadAsync<OidcToken>(OidcTokenReference.DocumentId(jti));
             doc.Status.Should().Be("revoked",

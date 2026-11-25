@@ -1,9 +1,8 @@
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions.Authorization;
+using MintPlayer.Spark.IdentityProvider.Indexes;
 using MintPlayer.Spark.IdentityProvider.Models;
 using MintPlayer.Spark.IdentityProvider.Services;
-using Raven.Client.Documents;
-using Raven.Client.Documents.Session;
 
 namespace MintPlayer.Spark.IdentityProvider.Actions;
 
@@ -13,8 +12,8 @@ public sealed record OidcDeveloperRequest(string Id, string? UserName, string? E
 
 /// <summary>
 /// Backs <c>Custom.DeveloperRequests</c>, the administrators' queue of pending developer requests
-/// (<c>docs/identity_provider_platform_PRD.md</c> D2). A virtual type: its rows are users whose
-/// <c>Developer.Status</c> is <c>Requested</c>, projected per request.
+/// (<c>docs/identity_provider_platform_PRD.md</c> D2). A virtual type: its rows are the <see cref="OidcDeveloper"/>
+/// documents whose status is <c>Requested</c>, with the requesting user's name and email.
 /// </summary>
 internal sealed partial class OidcDeveloperRequestActions : ISparkOwnsRowSecurity
 {
@@ -23,23 +22,29 @@ internal sealed partial class OidcDeveloperRequestActions : ISparkOwnsRowSecurit
         "the library's security.json grants it to identity-provider:administrators alone. The projection carries " +
         "the user name, email and request date: what an administrator needs to decide, and nothing of the credentials.";
 
-    [Inject] private readonly IAsyncDocumentSession session;
+    [Inject] private readonly ISparkSession session;
     [Inject] private readonly OidcUserDocuments users;
 
     /// <summary>The pending requests, oldest first by the query's sort.</summary>
     public async Task<IQueryable<OidcDeveloperRequest>> DeveloperRequests()
     {
-        // The collection is an identifier (RqlIdentifier-validated in OidcUserDocuments); the status is a parameter.
-        // `id()`, not `id(u)` over an alias: in a plain (non-JavaScript) select the server rejected the
-        // aliased form with "id(doc) must be called with an object argument", a 500 on every load of the
-        // queue (found by the E2E journey, IdentityProviderJourneyTests).
-        var rows = await session.Advanced
-            .AsyncRawQuery<OidcDeveloperRequest>(
-                $"from '{users.Collection}' where {OidcDeveloper.FieldName}.Status = $status "
-              + $"select id() as Id, UserName, Email, "
-              + $"{OidcDeveloper.FieldName}.RequestedAt as RequestedAt, {OidcDeveloper.FieldName}.TermsVersion as TermsVersion")
-            .AddParameter("status", OidcDeveloperStatuses.Requested)
-            .ToListAsync();
-        return rows.AsQueryable();
+        // The view narrows (#536 D47); the loaded documents decide, compared exactly.
+        var rows = await session.ToListAsync(session.Query<OidcDeveloperState, OidcDevelopers_ByStatus>()
+            .Where(d => d.Status == OidcDeveloperStatuses.Requested));
+        if (rows.Count == 0)
+            return Enumerable.Empty<OidcDeveloperRequest>().AsQueryable();
+
+        var developers = await session.LoadAsync<OidcDeveloper>(rows.Select(r => r.Id).OfType<string>());
+        var pending = developers.Values.OfType<OidcDeveloper>()
+            .Where(d => d.Status == OidcDeveloperStatuses.Requested && d.UserId.Length > 0)
+            .ToList();
+        var accounts = await users.LoadAsync(session, pending.Select(d => d.UserId), CancellationToken.None);
+        return pending
+            .Select(d => (Developer: d, Account: accounts.GetValueOrDefault(d.UserId)))
+            .Where(p => p.Account is not null) // a deleted user's request is nobody's to decide
+            .Select(p => new OidcDeveloperRequest(p.Developer.UserId, p.Account!.UserName, p.Account.Email,
+                p.Developer.RequestedAt, p.Developer.TermsVersion))
+            .ToList()
+            .AsQueryable();
     }
 }

@@ -17,7 +17,6 @@ using MintPlayer.Spark.IdentityProvider.Endpoints.Oidc;
 using MintPlayer.Spark.IdentityProvider.Indexes;
 using MintPlayer.Spark.IdentityProvider.Models;
 using MintPlayer.Spark.IdentityProvider.Services;
-using Raven.Client.Documents;
 
 namespace MintPlayer.Spark.IdentityProvider.Extensions;
 
@@ -43,13 +42,17 @@ public static class SparkIdentityProviderExtensions
     /// <see cref="SparkIdentityProviderOptions.Endpoints"/> and <see cref="SparkIdentityProviderOptions.AgentsOnly"/> choose fewer.
     /// </remarks>
     /// <exception cref="InvalidOperationException">The chosen flows and endpoints do not fit together (the message names the dependency).</exception>
-    [global::MintPlayer.Spark.Abstractions.Storage.SparkRequiresStore("Spark.IdentityProvider", Provider = global::MintPlayer.Spark.Abstractions.Storage.SparkStoreProviders.RavenDb)]
     public static ISparkBuilder AddIdentityProvider(
         this ISparkBuilder builder,
         Action<SparkIdentityProviderOptions>? configure = null)
     {
-        // #551 D13: its stores use RavenDB's own client.
-        global::MintPlayer.Spark.Abstractions.Storage.SparkStoreRequirementExtensions.RequireStore(builder, "Spark.IdentityProvider", provider: global::MintPlayer.Spark.Abstractions.Storage.SparkStoreProviders.RavenDb);
+        // #536 M8b (D47): on any store. The documents the app model does not list are declared here, so a relational store
+        // has their tables; the views (Indexes/OidcViews.cs) deploy with the application's own.
+        SparkStoredTypeServiceCollectionExtensions.AddSparkStoredType<OidcToken>(builder.Services);
+        SparkStoredTypeServiceCollectionExtensions.AddSparkStoredType<OidcKey>(builder.Services);
+        SparkStoredTypeServiceCollectionExtensions.AddSparkStoredType<OidcRefreshFamily>(builder.Services);
+        SparkStoredTypeServiceCollectionExtensions.AddSparkStoredType<OidcDeveloper>(builder.Services);
+        builder.Registry.AddIndexAssembly(typeof(OidcTokens_ByState).Assembly);
 
         var options = new SparkIdentityProviderOptions();
         // Spark:IdentityProvider first, the lambda second: code wins over configuration, as everywhere in Spark.
@@ -95,7 +98,7 @@ public static class SparkIdentityProviderExtensions
         // bound developers group derived from it per request, and the audit trail (D9).
         builder.Services.AddSingleton<OidcDevelopers>();
         var moduleRegistry = builder.Registry;
-        builder.Services.AddSingleton(sp => new OidcUserDocuments(moduleRegistry, sp.GetRequiredService<IDocumentStore>()));
+        builder.Services.AddSingleton(_ => new OidcUserDocuments(moduleRegistry));
         builder.Services.AddSingleton<OidcAudit>();
         builder.Services.AddSingleton<OidcPortalMail>();
         // The portal mails' default templates (Mail/SparkIdentityProvider/*.mjml, embedded as SparkMail/…);
@@ -182,7 +185,7 @@ public static class SparkIdentityProviderExtensions
             OidcUserEndpoints.Map(endpoints, userType);
         });
 
-        // Authorization requests, tokens, sessions and audit events carry @expires, so RavenDB reaps them
+        // Authorization requests, tokens, sessions and audit events carry an expiry, so the store reaps them
         // itself rather than needing a sweeper. Deletion is housekeeping only: an expired record is refused
         // on read whether or not the document is still there (OidcExpiry). UseSpark() enables expiration
         // once, with the shared frequency.
@@ -220,8 +223,7 @@ public static class SparkIdentityProviderExtensions
                 await next();
             });
 
-            var documentStore = app.ApplicationServices.GetRequiredService<IDocumentStore>();
-            new OidcApplications_ByClientId().Execute(documentStore);
+            var store = app.ApplicationServices.GetRequiredService<ISparkStore>();
 
             // The key ring before the first request: a ring that cannot be decrypted stops startup here,
             // with the reason, rather than failing the first token request.
@@ -233,18 +235,16 @@ public static class SparkIdentityProviderExtensions
             {
                 var corsOrigins = app.ApplicationServices.GetRequiredService<OidcCorsOrigins>();
                 corsOrigins.Initialize(
-                    documentStore,
+                    store,
                     app.ApplicationServices.GetService<ILoggerFactory>()?.CreateLogger<OidcCorsOrigins>());
                 corsOrigins.LoadAsync().GetAwaiter().GetResult();
             }
-
-            new OidcGrants_BySubject().Execute(documentStore);
 
             // ForMcp() / ForMcpResource(): one MCP resource per endpoint, its canonical URL as its audience, before the
             // first request (startup fails here, with the reason: ForMcp() without spark.AddMcp or a canonical URL, a
             // malformed or duplicate endpoint URL).
             if (options.Mcp is not null)
-                app.ApplicationServices.GetRequiredService<Mcp.OidcMcpResources>().InitializeAsync(app.ApplicationServices, documentStore).GetAwaiter().GetResult();
+                app.ApplicationServices.GetRequiredService<Mcp.OidcMcpResources>().InitializeAsync(app.ApplicationServices, store).GetAwaiter().GetResult();
         });
 
         return builder;

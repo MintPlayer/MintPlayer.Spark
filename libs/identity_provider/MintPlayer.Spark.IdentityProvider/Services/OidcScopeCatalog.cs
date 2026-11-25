@@ -1,6 +1,4 @@
 using MintPlayer.Spark.IdentityProvider.Models;
-using Raven.Client.Documents;
-using Raven.Client.Documents.Session;
 
 namespace MintPlayer.Spark.IdentityProvider.Services;
 
@@ -38,18 +36,18 @@ public static class OidcScopeCatalog
     /// defined, or whose scope or resource is disabled, is left out.
     /// </summary>
     public static Task<List<OidcScopeDefinition>> LoadAsync(
-        IAsyncDocumentSession session, IEnumerable<string> scopeNames, CancellationToken ct)
+        ISparkSession session, IEnumerable<string> scopeNames, CancellationToken ct)
         => LoadAsync(session, scopeNames, mcpResourceId: null, ct);
 
     /// <summary>
-    /// <see cref="LoadAsync(IAsyncDocumentSession, IEnumerable{string}, CancellationToken)"/> for an agent's request for
+    /// <see cref="LoadAsync(ISparkSession, IEnumerable{string}, CancellationToken)"/> for an agent's request for
     /// one MCP endpoint: <c>mcp:read</c> and <c>mcp:write</c> resolve in <paramref name="mcpResourceId"/>, that endpoint's
     /// resource, and so carry its audience. Every MCP endpoint (the application's own, <c>OidcResources/mcp</c>, and other
     /// applications', <c>ForMcpResource</c>) owns the same two scope names, so the name alone cannot say which;
     /// <see langword="null"/> resolves them by their prefix, as any API scope.
     /// </summary>
     public static async Task<List<OidcScopeDefinition>> LoadAsync(
-        IAsyncDocumentSession session, IEnumerable<string> scopeNames, string? mcpResourceId, CancellationToken ct)
+        ISparkSession session, IEnumerable<string> scopeNames, string? mcpResourceId, CancellationToken ct)
     {
         var names = scopeNames.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         if (names.Count == 0)
@@ -59,7 +57,11 @@ public static class OidcScopeCatalog
             .SelectMany(n => ApiResourceIdOf(n, mcpResourceId) is { } api ? new[] { ResourceId(n), api } : [ResourceId(n)])
             .Distinct(StringComparer.Ordinal)
             .ToList();
-        var resources = await session.LoadAsync<OidcResource>(ids, ct);
+        // Ids compare ignoring case: a relational store answers them in lower case.
+        var resources = new Dictionary<string, OidcResource>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (id, resource) in await session.LoadAsync<OidcResource>(ids, ct))
+            if (resource is not null)
+                resources[id] = resource;
 
         var result = new List<OidcScopeDefinition>(names.Count);
         foreach (var name in names)
@@ -77,13 +79,14 @@ public static class OidcScopeCatalog
             : ResourceId(api);
 
     /// <summary>Every enabled scope listed in the discovery document.</summary>
-    public static async Task<List<OidcScopeDefinition>> LoadDiscoverableAsync(IAsyncDocumentSession session, CancellationToken ct)
+    public static async Task<List<OidcScopeDefinition>> LoadDiscoverableAsync(ISparkSession session, CancellationToken ct)
     {
-        // A query, not loads: discovery lists what exists, and a few seconds of index staleness on a
-        // public listing decides nothing. Every decision path above loads.
-        var resources = await session.Query<OidcResource>()
-            .Where(r => r.Enabled && r.ShowInDiscoveryDocument)
-            .ToListAsync(ct);
+        // A scan of the collection, filtered here (#536 D47): resources are few, and on RavenDB a where clause on a
+        // collection query builds an auto index (D42). Every decision path above loads.
+        var resources = new List<OidcResource>();
+        await foreach (var row in session.StreamAsync(session.Query<OidcResource>(), ct))
+            if (row.Document is { Enabled: true, ShowInDiscoveryDocument: true } resource)
+                resources.Add(resource);
 
         return resources
             .SelectMany(Flatten)

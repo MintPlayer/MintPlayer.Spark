@@ -147,6 +147,24 @@ public class NeutralReduceViewTests : SparkTestDriver
             select new RvFan { Subject = subject, UserId = u.UserId };
     }
 
+    public class RvLike
+    {
+        public string? Id { get; set; }
+        public string Subject { get; set; } = string.Empty;
+    }
+
+    /// <summary>
+    /// A fan-out map whose rows carry their document's id (#536 D47: the identity provider's <c>OidcApplications_ByMember</c>
+    /// shape): every row of one document has the same <c>Id</c>, so the id is no row key.
+    /// </summary>
+    public sealed class RvLikes : SparkView<RvLike>
+    {
+        public override Expression<Func<ISparkViewSource, IQueryable<RvLike>>> Map => s =>
+            from u in s.Set<RvLiker>()
+            from subject in u.Likes
+            select new RvLike { Id = s.IdOf(u), Subject = subject };
+    }
+
     private SparkEndpointFactory<ReduceViewContext> NewHost() => new(
         Database,
         [],
@@ -163,6 +181,7 @@ public class NeutralReduceViewTests : SparkTestDriver
             catalog.RegisterIndex(typeof(RvLabels));
             catalog.RegisterIndex(typeof(RvLikeCounts));
             catalog.RegisterIndex(typeof(RvFans));
+            catalog.RegisterIndex(typeof(RvLikes));
         });
 
     [Fact]
@@ -205,6 +224,26 @@ public class NeutralReduceViewTests : SparkTestDriver
         var fans = await read.ToListAsync(read.Query<RvFan, RvFans>().Where(f => f.Subject == "s1"));
 
         fans.Select(f => f.UserId).Order().Should().Equal(["alice", "bob"]);
+    }
+
+    [Fact]
+    public async Task A_fan_out_map_view_carries_its_document_id_on_every_row()
+    {
+        await using var host = NewHost();
+        using (var session = host.GetService<ISparkStore>().OpenSession())
+        {
+            await session.StoreAsync(new RvLiker { Id = "rvlikers/1", UserId = "alice", Likes = ["s1", "s2"] });
+            await session.StoreAsync(new RvLiker { Id = "rvlikers/2", UserId = "bob", Likes = ["s1"] });
+            await session.SaveChangesAsync();
+        }
+
+        await host.WaitForConsistencyAsync();
+        using var read = host.GetService<ISparkStore>().OpenSession();
+        var alice = await read.ToListAsync(read.Query<RvLike, RvLikes>().Where(l => l.Id == "rvlikers/1"));
+        var s1 = await read.ToListAsync(read.Query<RvLike, RvLikes>().Where(l => l.Subject == "s1"));
+
+        alice.Select(l => l.Subject).Order().Should().Equal(["s1", "s2"], "two rows share one id, and neither is merged into the other");
+        s1.Select(l => l.Id!.ToLowerInvariant()).Order().Should().Equal(["rvlikers/1", "rvlikers/2"]);
     }
 
     private static async Task<List<(string, int, int)>> LikeCountsAsync(SparkEndpointFactory<ReduceViewContext> host)

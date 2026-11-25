@@ -7,7 +7,6 @@ using Microsoft.IdentityModel.Tokens;
 using MintPlayer.Spark.IdentityProvider.Models;
 using MintPlayer.Spark.IdentityProvider.Services;
 using MintPlayer.Spark.Testing;
-using Raven.Client.Documents;
 
 namespace MintPlayer.Spark.Tests.IdentityProvider;
 
@@ -57,7 +56,7 @@ public class OidcSessionLogoutTests(OidcSessionLogoutTests.LogoutHost host)
 
         if (backChannelUri is not null)
         {
-            using var session = Store.OpenAsyncSession();
+            using var session = Store.OpenSession();
             var stored = await session.LoadAsync<OidcApplication>(app.Id.Value);
             stored.BackChannelLogoutUri = backChannelUri;
             await session.SaveChangesAsync();
@@ -127,20 +126,10 @@ public class OidcSessionLogoutTests(OidcSessionLogoutTests.LogoutHost host)
         => new JsonWebToken(idToken).TryGetPayloadValue<string>("sid", out var sid) ? sid : throw new InvalidOperationException("No sid in the id_token.");
 
     /// <summary>
-    /// Builds the index the logout sweep reads and lets it catch up, so a case about what logout does is
-    /// not decided by whether a just-minted refresh token was indexed yet. The sweep's staleness is its
-    /// own case below.
+    /// Lets the views the logout sweep reads catch up, so a case about what logout does is not decided by
+    /// whether a just-minted refresh token was indexed yet. The sweep's staleness is its own case below.
     /// </summary>
-    private async Task WarmSessionSweepIndexAsync(string sid)
-    {
-        using (var session = Store.OpenAsyncSession())
-        {
-            _ = await session.Query<OidcToken>()
-                .Where(t => t.SessionId == sid && t.Type == OidcTokenTypes.RefreshToken && t.Status == "valid")
-                .ToListAsync();
-        }
-        await Store.WaitForIndexingAsync();
-    }
+    private Task WarmSessionSweepIndexAsync(string sid) => WaitForIndexesAsync();
 
     [Fact]
     public async Task The_id_token_carries_the_provider_sid_and_the_session_records_the_client()
@@ -155,7 +144,7 @@ public class OidcSessionLogoutTests(OidcSessionLogoutTests.LogoutHost host)
         var sid = SidOf(tokens.GetProperty("id_token").GetString()!);
         sid.Should().NotBeNullOrEmpty();
 
-        using var session = Store.OpenAsyncSession();
+        using var session = Store.OpenSession();
         var record = await session.LoadAsync<OidcToken>(OidcSessionStore.DocumentId(sid));
         record.Should().NotBeNull("a client receiving tokens joins the provider session");
         record!.Type.Should().Be(OidcTokenTypes.Session);
@@ -214,7 +203,7 @@ public class OidcSessionLogoutTests(OidcSessionLogoutTests.LogoutHost host)
 
         (await browser.GetAsync("/connect/logout")).StatusCode.Should().Be(HttpStatusCode.OK);
 
-        using (var session = Store.OpenAsyncSession())
+        using (var session = Store.OpenSession())
         {
             (await session.LoadAsync<OidcToken>(OidcTokenReference.DocumentId(refreshToken)))!.Status.Should().Be("revoked");
             (await session.LoadAsync<OidcToken>(OidcSessionStore.DocumentId(sid)))!.Status.Should().Be("revoked");
@@ -242,7 +231,7 @@ public class OidcSessionLogoutTests(OidcSessionLogoutTests.LogoutHost host)
 
         (await browser.GetAsync("/connect/logout")).StatusCode.Should().Be(HttpStatusCode.OK);
 
-        using (var session = Store.OpenAsyncSession())
+        using (var session = Store.OpenSession())
         {
             var missed = await session.LoadAsync<OidcToken>(OidcTokenReference.DocumentId(refreshToken));
             missed!.Status = "valid";

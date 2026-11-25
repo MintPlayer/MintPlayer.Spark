@@ -52,7 +52,7 @@ public class OidcTeamActionsTests(OidcSharedHost host) : OidcTestHost(host), ICl
     private async Task<OidcApplication> SeedTeamAsync(params OidcApplicationMember[] extra)
     {
         var app = await SeedApplicationAsync(ClientId("team"));
-        using var session = Store.OpenAsyncSession();
+        using var session = Store.OpenSession();
         var stored = await session.LoadAsync<OidcApplication>(app.Id.Value);
         stored.Members.Add(Member(AppAdmin, OidcMemberRoles.Admin));
         stored.Members.Add(Member(TeamDeveloper, OidcMemberRoles.Developer));
@@ -63,7 +63,7 @@ public class OidcTeamActionsTests(OidcSharedHost host) : OidcTestHost(host), ICl
 
     private async Task<OidcApplication> LoadAsync(string id)
     {
-        using var session = Store.OpenAsyncSession();
+        using var session = Store.OpenSession();
         return await session.LoadAsync<OidcApplication>(id);
     }
 
@@ -104,7 +104,7 @@ public class OidcTeamActionsTests(OidcSharedHost host) : OidcTestHost(host), ICl
 
     private async Task InviteAsync(IManager manager, string applicationId, string userId)
     {
-        using var session = Store.OpenAsyncSession();
+        using var session = Store.OpenSession();
         await new InviteMemberAction(
             manager: manager, session: session, access: Access(userId), invitations: Factory.GetService<OidcInvitations>(),
             audit: Audit, teamMail: Factory.GetService<OidcTeamMail>())
@@ -174,7 +174,7 @@ public class OidcTeamActionsTests(OidcSharedHost host) : OidcTestHost(host), ICl
 
     private async Task ResendAsync(IManager manager, CustomActionArgs args, string userId)
     {
-        using var session = Store.OpenAsyncSession();
+        using var session = Store.OpenSession();
         await new ResendInvitationAction(
             manager: manager, session: session, access: Access(userId), invitations: Factory.GetService<OidcInvitations>(),
             audit: Audit, teamMail: Factory.GetService<OidcTeamMail>())
@@ -219,7 +219,7 @@ public class OidcTeamActionsTests(OidcSharedHost host) : OidcTestHost(host), ICl
 
     private async Task RemoveAsync(IManager manager, CustomActionArgs args, string userId)
     {
-        using var session = Store.OpenAsyncSession();
+        using var session = Store.OpenSession();
         await new RemoveMemberAction(manager: manager, session: session, access: Access(userId), audit: Audit).ExecuteAsync(args);
     }
 
@@ -274,14 +274,14 @@ public class OidcTeamActionsTests(OidcSharedHost host) : OidcTestHost(host), ICl
 
     private async Task SwitchToDevelopmentAsync(IManager manager, string applicationId, string userId)
     {
-        using var session = Store.OpenAsyncSession();
+        using var session = Store.OpenSession();
         await new SwitchToDevelopmentAction(manager: manager, session: session, access: Access(userId), audit: Audit)
             .ExecuteAsync(new CustomActionArgs { Parent = Parent(applicationId) });
     }
 
     private async Task SetModeAsync(string id, string mode)
     {
-        using var session = Store.OpenAsyncSession();
+        using var session = Store.OpenSession();
         (await session.LoadAsync<OidcApplication>(id)).Mode = mode;
         await session.SaveChangesAsync();
     }

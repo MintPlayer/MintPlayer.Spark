@@ -135,7 +135,6 @@
       "project": "identity_provider/MintPlayer.Spark.IdentityProvider/MintPlayer.Spark.IdentityProvider.csproj",
       "displayName": "Identity provider",
       "description": "Make this app an OpenID Connect provider that other apps sign in against.",
-      "store": "RavenDB",
       "requires": [ "Authorization", "Migrations" ],
       "registration": "AddIdentityProvider"
     },

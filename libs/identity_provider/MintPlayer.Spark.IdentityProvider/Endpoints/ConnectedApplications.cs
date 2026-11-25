@@ -3,13 +3,8 @@ using Microsoft.AspNetCore.Antiforgery;
 using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.IdentityProvider.Endpoints.Oidc;
-using MintPlayer.Spark.IdentityProvider.Indexes;
 using MintPlayer.Spark.IdentityProvider.Models;
 using MintPlayer.Spark.IdentityProvider.Services;
-using Raven.Client.Documents;
-using Raven.Client.Documents.Linq;
-using Raven.Client.Documents.Session;
-using Raven.Client.Exceptions;
 using static MintPlayer.Spark.IdentityProvider.Endpoints.ConnectPage;
 
 namespace MintPlayer.Spark.IdentityProvider.Endpoints;
@@ -40,7 +35,7 @@ internal sealed partial class OidcConnectedApplications : IGetEndpoint<string>
     /// <summary>The outcome of a withdrawal, carried back by its redirect.</summary>
     [QueryParam("status")] public string? Status { get; set; }
 
-    [Inject] private readonly IDocumentStore store;
+    [Inject] private readonly ISparkStore store;
     [Inject] private readonly IAntiforgery antiforgery;
     [Inject] private readonly IHttpContextAccessor httpContextAccessor;
     [Inject] private readonly ConnectText text;
@@ -57,31 +52,26 @@ internal sealed partial class OidcConnectedApplications : IGetEndpoint<string>
             return Results.Redirect($"/connect/login?returnUrl={Uri.EscapeDataString(returnUrl)}");
         }
 
-        using var session = store.OpenAsyncSession();
+        using var session = store.OpenSession();
 
         var grants = await LoadGrantsAsync(session, userId, ct);
 
         // Names for the rows. A grant whose application has been deleted still lists and still
         // withdraws — that is the grant a user is most likely to want gone, and dropping the row
         // would leave it un-withdrawable through the only surface that can withdraw it.
-        var apps = await session.LoadAsync<OidcApplication>(
-            grants.Select(g => g.ApplicationId).Distinct(), ct);
+        var apps = await session.LoadExistingAsync<OidcApplication>(grants.Select(g => g.ApplicationId), ct);
         var scopeDefinitions = await OidcScopeCatalog.LoadAsync(session, grants.SelectMany(g => g.GrantedScopes), ct);
 
         return ConnectResults.Html(RenderPage(context, grants, apps, scopeDefinitions, NoticeKey(Status)));
     }
 
     private static async Task<List<OidcGrant>> LoadGrantsAsync(
-        IAsyncDocumentSession session, string userId, CancellationToken ct)
+        ISparkSession session, string userId, CancellationToken ct)
     {
-        // Display only — see the index's own remarks. Status is filtered in memory rather than
-        // as a query predicate so a stale index cannot decide what the user is shown.
-        var all = await session
-            .Query<OidcGrant, OidcGrants_BySubject>()
-            .Where(a => a.Subject == userId, exact: true)
-            .ToListAsync(ct);
-
-        return [.. all.Where(a => a.Status == "valid").OrderBy(a => a.ApplicationId, StringComparer.Ordinal)];
+        // Display only — see the view's own remarks. Status is checked on the loaded grants, so a stale view cannot
+        // decide what the user is shown.
+        var all = await session.ValidGrantsOfSubjectAsync(userId, ct);
+        return [.. all.OrderBy(a => a.ApplicationId, StringComparer.Ordinal)];
     }
 
     /// <summary>The text key for a withdrawal outcome; any other value shows nothing.</summary>

@@ -34,7 +34,7 @@ public class OidcDataModelMigrationTests : RavenSparkTestDriver
         await Store.Operations.SendAsync(new PatchOperation("OidcApplications/legacy", null,
             new PatchRequest { Script = "this.AllowedScopes = ['openid', 'profile'];" }));
 
-        await new M_202610090900_OidcDataModel(Store).UpAsync(CancellationToken.None);
+        await new M_202610090900_OidcDataModel(raven: Store, sparkStore: Store.AsSparkStore()).UpAsync(CancellationToken.None);
 
         using (var check = Store.OpenAsyncSession())
         {

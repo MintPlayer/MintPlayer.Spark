@@ -1,10 +1,6 @@
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.IdentityProvider.Endpoints;
-using MintPlayer.Spark.IdentityProvider.Indexes;
 using MintPlayer.Spark.IdentityProvider.Models;
-using Raven.Client.Documents;
-using Raven.Client.Documents.Session;
-using Raven.Client.Exceptions;
 
 namespace MintPlayer.Spark.IdentityProvider.Services;
 
@@ -49,7 +45,7 @@ internal static class OidcAuthorizationFlow
     /// </para>
     /// </remarks>
     internal static async Task<string> EnsureAuthorizationAsync(
-        IAsyncDocumentSession session,
+        ISparkStore store,
         OidcApplication app,
         string userId,
         List<string> scopes,
@@ -62,10 +58,10 @@ internal static class OidcAuthorizationFlow
         {
             try
             {
-                await WriteGrantAsync(session.Advanced.DocumentStore, authorizationId, app, userId, scopes, remember, ct);
+                await WriteGrantAsync(store, authorizationId, app, userId, scopes, remember, ct);
                 return authorizationId;
             }
-            catch (ConcurrencyException) when (attempt < 3)
+            catch (SparkStoreConcurrencyException) when (attempt < 3)
             {
                 // Someone else changed the grant between our read and write. Re-read and reapply:
                 // the merge is order-independent, so a retry converges rather than clobbering.
@@ -74,7 +70,7 @@ internal static class OidcAuthorizationFlow
     }
 
     private static async Task WriteGrantAsync(
-        IDocumentStore store,
+        ISparkStore store,
         string authorizationId,
         OidcApplication app,
         string userId,
@@ -82,8 +78,8 @@ internal static class OidcAuthorizationFlow
         bool remember,
         CancellationToken ct)
     {
-        using var session = store.OpenAsyncSession();
-        session.Advanced.OptimisticConcurrencyMode = OptimisticConcurrencyMode.Writes;
+        using var session = store.OpenSession();
+        session.OptimisticConcurrency = true;
 
         var auth = await session.LoadAsync<OidcGrant>(authorizationId, ct);
 
@@ -146,7 +142,7 @@ internal static class OidcAuthorizationFlow
     /// form_post) and with <c>iss</c> (RFC 9207).
     /// </summary>
     internal static async Task<IResult> IssueCodeResponseAsync(
-        IAsyncDocumentSession session,
+        ISparkSession session,
         OidcToken request,
         string issuer,
         CancellationToken ct)
@@ -157,7 +153,7 @@ internal static class OidcAuthorizationFlow
     }
 
     internal static async Task<string> IssueCodeAsync(
-        IAsyncDocumentSession session,
+        ISparkSession session,
         OidcToken request,
         CancellationToken ct)
     {
@@ -168,7 +164,7 @@ internal static class OidcAuthorizationFlow
     }
 
     private static async Task<(string Code, OidcToken Token)> MintCodeAsync(
-        IAsyncDocumentSession session,
+        ISparkSession session,
         OidcToken request,
         CancellationToken ct)
     {
@@ -214,7 +210,7 @@ internal static class OidcAuthorizationFlow
     /// already used, or belongs to a different signed-in user.
     /// </summary>
     internal static async Task<OidcToken?> LoadPendingRequestAsync(
-        IAsyncDocumentSession session, string requestId, string userId, CancellationToken ct)
+        ISparkSession session, string requestId, string userId, CancellationToken ct)
     {
         var request = await session.LoadAsync<OidcToken>(
             OidcRequestReference.DocumentId(requestId), ct);
@@ -233,22 +229,26 @@ internal static class OidcAuthorizationFlow
         return request;
     }
 
+    /// <summary>
+    /// The application registered under <paramref name="clientId"/>, compared exactly, or null.
+    /// </summary>
+    /// <remarks>
+    /// Through the client-id reservation (#536 D47), which names the owning application: a strongly consistent read
+    /// on every store, where the index this replaced lagged behind a client registered seconds before. The reservation
+    /// key is lower case, so the client id is then compared <b>exactly</b>: "acmeapp" must not resolve the application
+    /// registered as "AcmeApp" (impersonation by casing, on the lookup that decides which client every other check is
+    /// applied to).
+    /// </remarks>
     internal static async Task<OidcApplication?> FindApplicationByClientIdAsync(
-        IAsyncDocumentSession session, string clientId, CancellationToken ct)
+        ISparkSession session, string clientId, CancellationToken ct)
     {
-        // Agent clients (metadata documents, anonymous registration; MCP PRD D5) live at a natural id derived from
-        // the client id: a point load, consistent the moment the client was registered, where the index below may not
-        // have caught up yet when the agent redeems its first code seconds later. The id is a hash, so the client id
-        // is compared exactly as well.
-        var agent = await session.LoadAsync<OidcApplication>(Mcp.OidcAgentClients.ApplicationId(clientId), ct);
-        if (agent is not null && string.Equals(agent.ClientId, clientId, StringComparison.Ordinal))
-            return agent;
-
-        // exact: true because RavenDB compares strings case-insensitively by default, which
-        // would make "acmeapp" resolve the application registered as "AcmeApp" — impersonation
-        // by casing, on the lookup that decides which client every other check is applied to.
-        return await session.Query<OidcApplication, OidcApplications_ByClientId>()
-            .Where(a => a.ClientId == clientId, exact: true)
-            .FirstOrDefaultAsync(ct);
+        if (string.IsNullOrEmpty(clientId))
+            return null;
+        // Agent clients (metadata documents, anonymous registration; MCP PRD D5) live at a natural id derived from the
+        // client id, so a point load finds them without the reservation.
+        var owner = await session.GetReservationAsync(OidcClientIdReservation.Key(clientId), ct)
+            ?? Mcp.OidcAgentClients.ApplicationId(clientId);
+        var app = await session.LoadAsync<OidcApplication>(owner, ct);
+        return app is not null && string.Equals(app.ClientId, clientId, StringComparison.Ordinal) ? app : null;
     }
 }

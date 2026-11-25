@@ -1,7 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using MintPlayer.Spark.MailManager;
-using Raven.Client.Documents;
 
 namespace MintPlayer.Spark.IdentityProvider.Services;
 
@@ -19,20 +18,13 @@ public static class OidcPortalMailTemplates
 /// Sends the portal's mails through MailManager when the application registered it, and logs that a
 /// mail was discarded otherwise, the way the account mails do (<c>SparkMailEmailSender</c>).
 /// </summary>
-internal sealed class OidcPortalMail(IServiceProvider services, IDocumentStore store, ILogger<OidcPortalMail> logger)
+internal sealed class OidcPortalMail(IServiceProvider services, ISparkStore store, OidcUserDocuments users, ILogger<OidcPortalMail> logger)
 {
-    private sealed class Recipient
-    {
-        public string? Email { get; set; }
-        public string? UserName { get; set; }
-        public string? PreferredCulture { get; set; }
-    }
-
     /// <summary>Mails a user by id: their address and language are read from their document.</summary>
     public async Task SendToUserAsync(string userId, string template, object data, CancellationToken ct = default)
     {
-        using var session = store.OpenAsyncSession();
-        var user = await session.LoadAsync<Recipient>(userId, ct);
+        using var session = store.OpenSession();
+        var user = (await users.LoadAsync(session, [userId], ct)).Values.FirstOrDefault();
         if (string.IsNullOrEmpty(user?.Email))
         {
             logger.LogWarning("The {Template} mail for user {UserId} was not sent: the user has no email address.", template, userId);

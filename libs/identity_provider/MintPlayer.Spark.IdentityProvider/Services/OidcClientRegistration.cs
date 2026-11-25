@@ -2,7 +2,6 @@ using MintPlayer.Spark.Abstractions;
 using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Http;
 using MintPlayer.Spark.IdentityProvider.Models;
-using Raven.Client.Documents.Session;
 
 namespace MintPlayer.Spark.IdentityProvider.Services;
 
@@ -55,7 +54,7 @@ internal sealed class OidcClientRegistration(Configuration.SparkIdentityProvider
     public static readonly TimeSpan InitialTokenLifetime = TimeSpan.FromDays(1);
 
     /// <summary>Issues an initial access token for <paramref name="developerId"/>; the plaintext is returned once.</summary>
-    public static async Task<string> IssueInitialAccessTokenAsync(IAsyncDocumentSession session, string developerId, CancellationToken ct)
+    public static async Task<string> IssueInitialAccessTokenAsync(ISparkSession session, string developerId, CancellationToken ct)
     {
         var token = OidcTokenReference.GenerateValue();
         await session.StoreExpiringAsync(new OidcToken
@@ -72,7 +71,7 @@ internal sealed class OidcClientRegistration(Configuration.SparkIdentityProvider
     }
 
     /// <summary>The bearer token of a registration request, resolved: an initial access token (registering) or a client's registration access token (managing it).</summary>
-    public static async Task<OidcToken?> ResolveBearerAsync(IAsyncDocumentSession session, HttpRequest request, string kind, CancellationToken ct)
+    public static async Task<OidcToken?> ResolveBearerAsync(ISparkSession session, HttpRequest request, string kind, CancellationToken ct)
     {
         var header = request.Headers.Authorization.ToString();
         if (!header.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))

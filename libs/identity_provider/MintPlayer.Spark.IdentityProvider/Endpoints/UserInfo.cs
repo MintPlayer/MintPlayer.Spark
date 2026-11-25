@@ -5,8 +5,6 @@ using MintPlayer.Spark.Authorization.Identity;
 using MintPlayer.Spark.IdentityProvider.Endpoints.Oidc;
 using MintPlayer.Spark.IdentityProvider.Models;
 using MintPlayer.Spark.IdentityProvider.Services;
-using Raven.Client.Documents;
-using Raven.Client.Documents.Linq;
 
 namespace MintPlayer.Spark.IdentityProvider.Endpoints;
 
@@ -32,7 +30,7 @@ internal sealed partial class OidcUserInfo<TUser> : IGetEndpoint
     static bool IEndpointBase.IsEnabled(IServiceProvider services) => OidcSurface.Of(services).UserInfo;
 
     [Inject] private readonly UserManager<TUser> userManager;
-    [Inject] private readonly IDocumentStore store;
+    [Inject] private readonly ISparkStore store;
     [Inject] private readonly OidcKeyRing signingKeyService;
     [Inject] private readonly OidcIssuer oidcIssuer;
     [Inject] private readonly OidcProofOfPossession proofOfPossession;
@@ -56,7 +54,7 @@ internal sealed partial class OidcUserInfo<TUser> : IGetEndpoint
         var accessToken = authHeader![(scheme.Length + 1)..];
         var issuer = oidcIssuer.Resolve(context.Request);
 
-        using var session = store.OpenAsyncSession();
+        using var session = store.OpenSession();
 
         // Signature and expiry alone cannot tell that a token was revoked, so this endpoint
         // went on serving a revoked token's claims for the rest of its lifetime.
@@ -142,7 +140,7 @@ internal sealed partial class OidcUserInfoByPost<TUser> : IPostEndpoint<OidcUser
         => builder.WithMetadata(new Microsoft.AspNetCore.Antiforgery.RequireAntiforgeryTokenAttribute(false));
 
     [Inject] private readonly UserManager<TUser> userManager;
-    [Inject] private readonly IDocumentStore store;
+    [Inject] private readonly ISparkStore store;
     [Inject] private readonly OidcKeyRing signingKeyService;
     [Inject] private readonly OidcIssuer oidcIssuer;
     [Inject] private readonly OidcProofOfPossession proofOfPossession;

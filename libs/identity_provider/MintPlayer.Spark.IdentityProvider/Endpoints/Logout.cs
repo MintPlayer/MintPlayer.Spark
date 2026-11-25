@@ -5,7 +5,6 @@ using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Authorization.Identity;
 using MintPlayer.Spark.IdentityProvider.Endpoints.Oidc;
 using MintPlayer.Spark.IdentityProvider.Services;
-using Raven.Client.Documents;
 
 namespace MintPlayer.Spark.IdentityProvider.Endpoints;
 
@@ -34,7 +33,7 @@ internal sealed partial class OidcLogout<TUser> : IGetEndpoint<string>
     [Inject] private readonly OidcKeyRing signingKeyService;
     [Inject] private readonly OidcSessionStore sessions;
     [Inject] private readonly OidcIssuer oidcIssuer;
-    [Inject] private readonly IDocumentStore store;
+    [Inject] private readonly ISparkStore store;
     [Inject] private readonly IHttpContextAccessor httpContextAccessor;
     [Inject] private readonly ConnectText text;
     [Inject] private readonly Configuration.SparkIdentityProviderOptions options;
@@ -58,7 +57,7 @@ internal sealed partial class OidcLogout<TUser> : IGetEndpoint<string>
             return ConnectResults.Html(SignedOutPage(context, ended.FrontChannelUris, continueTo: null));
 
         // Validate post_logout_redirect_uri against registered client URIs
-        using var session = store.OpenAsyncSession();
+        using var session = store.OpenSession();
 
         // The URI must be registered by *the client asking*, which means the request has to
         // say who that is. Validating against every enabled application instead — as this

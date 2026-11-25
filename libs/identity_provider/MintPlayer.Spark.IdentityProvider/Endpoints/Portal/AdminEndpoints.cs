@@ -3,8 +3,6 @@ using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.IdentityProvider.Models;
 using MintPlayer.Spark.IdentityProvider.Services;
-using Raven.Client.Documents;
-using Raven.Client.Documents.Session;
 
 namespace MintPlayer.Spark.IdentityProvider.Endpoints.Portal;
 
@@ -23,18 +21,20 @@ internal sealed partial class ListSigningKeys : IGetEndpoint
     static bool IEndpointBase.IsEnabled(IServiceProvider services) => OidcSurface.Of(services).Administration;
 
     [Inject] private readonly OidcPortalAccess access;
-    [Inject] private readonly IAsyncDocumentSession session;
+    [Inject] private readonly ISparkSession session;
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
         if (!await access.IsAdministratorAsync())
             return TypedResults.Forbid();
 
-        var keys = await session.Query<OidcKey>()
-            .OrderByDescending(k => k.CreatedAt)
-            .Select(k => new { k.Kid, k.Algorithm, k.State, k.CreatedAt, k.ActivatedAt, k.RetiredAt })
-            .ToListAsync(httpContext.RequestAborted);
-        return TypedResults.Ok(keys.Select(k => new OidcKeySummary(k.Kid, k.Algorithm, k.State, k.CreatedAt, k.ActivatedAt, k.RetiredAt)));
+        // A scan, sorted here (#536 D47): the ring is a handful of documents, and on RavenDB an ordered collection query
+        // builds an auto index (D42).
+        var keys = new List<OidcKeySummary>();
+        await foreach (var row in session.StreamAsync(session.Query<OidcKey>(), httpContext.RequestAborted))
+            if (row.Document is { } k)
+                keys.Add(new OidcKeySummary(k.Kid, k.Algorithm, k.State, k.CreatedAt, k.ActivatedAt, k.RetiredAt));
+        return TypedResults.Ok(keys.OrderByDescending(k => k.CreatedAt).ToList());
     }
 }
 

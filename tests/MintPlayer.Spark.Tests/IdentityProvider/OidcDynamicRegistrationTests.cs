@@ -4,7 +4,6 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using MintPlayer.Spark.IdentityProvider.Models;
 using MintPlayer.Spark.IdentityProvider.Services;
-using Raven.Client.Documents;
 
 namespace MintPlayer.Spark.Tests.IdentityProvider;
 
@@ -31,21 +30,21 @@ public class OidcDynamicRegistrationTests(OidcSharedHost host) : OidcTestHost(ho
 
     private async Task SetDeveloperStatusAsync(string userId, string status)
     {
-        using var session = Store.OpenAsyncSession();
-        OidcDevelopers.Set(session, userId, new OidcDeveloper
+        using var session = Store.OpenSession();
+        await OidcDevelopers.SetAsync(session, userId, new OidcDeveloper
         {
             Status = status,
             TermsVersion = 1,
             RequestedAt = DateTime.UtcNow,
             DecidedAt = DateTime.UtcNow,
-        });
+        }, CancellationToken.None);
         await session.SaveChangesAsync();
     }
 
     /// <summary>What the portal endpoint does, without the browser: tested end to end separately below.</summary>
     private async Task<string> InitialAccessTokenAsync(string developerId)
     {
-        using var session = Store.OpenAsyncSession();
+        using var session = Store.OpenSession();
         var token = await OidcClientRegistration.IssueInitialAccessTokenAsync(session, developerId, CancellationToken.None);
         await session.SaveChangesAsync();
         return token;
@@ -85,8 +84,8 @@ public class OidcDynamicRegistrationTests(OidcSharedHost host) : OidcTestHost(ho
     /// <summary>A collection query filtered in memory: it can never be stale, unlike an index query.</summary>
     private async Task<OidcApplication?> StoredApplicationAsync(string clientId)
     {
-        using var session = Store.OpenAsyncSession();
-        return (await session.Query<OidcApplication>().ToListAsync()).SingleOrDefault(a => a.ClientId == clientId);
+        using var session = Store.OpenSession();
+        return (await session.ToListAsync(session.Query<OidcApplication>())).SingleOrDefault(a => a.ClientId == clientId);
     }
 
     // ---------- registering: the initial access token gate ----------

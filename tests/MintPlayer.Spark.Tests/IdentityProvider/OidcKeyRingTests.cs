@@ -92,7 +92,7 @@ public class OidcKeyRingRotationTests : OidcTestHost
 
     private async Task<OidcKey?> LoadKeyAsync(string kid)
     {
-        using var session = Store.OpenAsyncSession();
+        using var session = Store.OpenSession();
         return await session.LoadAsync<OidcKey>("OidcKeys/" + kid);
     }
 
@@ -161,7 +161,7 @@ public class OidcKeyRingRotationTests : OidcTestHost
         await Ring.RotateAsync(force: true);
 
         // Age the retirement past Keys:RetainRetiredDays (14 by default).
-        using (var session = Store.OpenAsyncSession())
+        using (var session = Store.OpenSession())
         {
             var retired = await session.LoadAsync<OidcKey>("OidcKeys/" + oldKid);
             retired.RetiredAt = DateTime.UtcNow.AddDays(-15);
@@ -245,7 +245,7 @@ public class OidcKeyRingPrePublishTests(OidcKeyRingPrePublishTests.PrePublishHos
         foreach (var kid in published)
             kids.Should().Contain(kid, "relying parties must have cached the next key before it signs");
 
-        using var session = Store.OpenAsyncSession();
+        using var session = Store.OpenSession();
         foreach (var kid in published)
             (await session.LoadAsync<OidcKey>("OidcKeys/" + kid)).State.Should().Be(OidcKeyStates.Next);
 

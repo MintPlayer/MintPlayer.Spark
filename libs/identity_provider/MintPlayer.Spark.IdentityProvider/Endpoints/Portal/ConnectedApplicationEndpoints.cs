@@ -2,11 +2,8 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Antiforgery;
 using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.SourceGenerators.Attributes;
-using MintPlayer.Spark.IdentityProvider.Indexes;
 using MintPlayer.Spark.IdentityProvider.Models;
 using MintPlayer.Spark.IdentityProvider.Services;
-using Raven.Client.Documents;
-using Raven.Client.Documents.Session;
 
 namespace MintPlayer.Spark.IdentityProvider.Endpoints.Portal;
 
@@ -38,7 +35,7 @@ internal sealed partial class GetConnectedApplications : IGetEndpoint
 
     static bool IEndpointBase.IsEnabled(IServiceProvider services) => OidcSurface.Of(services).ConnectedApplications;
 
-    [Inject] private readonly IDocumentStore store;
+    [Inject] private readonly ISparkStore store;
     [Inject] private readonly ConnectText text;
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
@@ -48,19 +45,16 @@ internal sealed partial class GetConnectedApplications : IGetEndpoint
             return TypedResults.Unauthorized();
 
         var ct = httpContext.RequestAborted;
-        using var session = store.OpenAsyncSession();
-        var grants = await session.Query<OidcGrant, OidcGrants_BySubject>()
-            .Where(g => g.Subject == userId, exact: true)
-            .ToListAsync(ct);
-        grants = grants.Where(g => g.Status == "valid").ToList();
+        using var session = store.OpenSession();
+        var grants = await session.ValidGrantsOfSubjectAsync(userId, ct);
 
-        var apps = await session.LoadAsync<OidcApplication>(grants.Select(g => g.ApplicationId).Distinct(), ct);
+        var apps = await session.LoadExistingAsync<OidcApplication>(grants.Select(g => g.ApplicationId), ct);
         var definitions = await OidcScopeCatalog.LoadAsync(session, grants.SelectMany(g => g.GrantedScopes), ct);
 
         var result = new List<ConnectedApplication>();
         foreach (var grant in grants.OrderBy(g => g.CreatedAt))
         {
-            if (!apps.TryGetValue(grant.ApplicationId, out var app) || app is null)
+            if (!apps.TryGetValue(grant.ApplicationId, out var app))
                 continue;
             var scopes = grant.GrantedScopes.Select(name =>
             {

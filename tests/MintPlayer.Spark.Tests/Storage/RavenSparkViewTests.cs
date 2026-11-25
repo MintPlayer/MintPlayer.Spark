@@ -67,6 +67,18 @@ public class RavenSparkViewTests : IAsyncLifetime
         definition.Maps.Should().ContainSingle().Which.Should().Contain("LoadDocument").And.NotContain("Id =");
     }
 
+    [Fact]
+    public void The_catalog_elects_no_view_it_does_not_claim()
+    {
+        var catalog = new IndexCatalog();
+        catalog.RegisterIndex(typeof(EmployeesWithCompany));
+        catalog.RegisterIndex(typeof(EmployeeDetails));
+
+        ((Action)catalog.Freeze).Should().NotThrow(
+            "every view has a row type, so having one chooses nothing: a view is a default only by [DefaultIndex] (#536 D48)");
+        catalog.GetDefaultFor(typeof(ViewEmployee)).Should().BeNull();
+    }
+
     private sealed class Driver : RavenSparkTestDriver
     {
         public IDocumentStore DocumentStore => Store;

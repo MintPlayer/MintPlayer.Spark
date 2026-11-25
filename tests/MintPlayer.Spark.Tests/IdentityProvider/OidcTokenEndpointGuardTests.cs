@@ -181,7 +181,7 @@ public class OidcTokenEndpointGuardTests(OidcSharedHost host) : OidcTestHost(hos
         var response = await RefreshAsync(webapp, refresh);
 
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
-        using var session = Store.OpenAsyncSession();
+        using var session = Store.OpenSession();
         (await session.LoadAsync<OidcToken>(OidcTokenReference.DocumentId(refresh))).Status.Should().Be("revoked");
     }
 

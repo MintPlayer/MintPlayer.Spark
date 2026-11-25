@@ -4,7 +4,6 @@ using System.Text.Json;
 using MintPlayer.Spark.Authorization.Identity;
 using MintPlayer.Spark.IdentityProvider.Models;
 using MintPlayer.Spark.IdentityProvider.Services;
-using Raven.Client.Documents;
 
 namespace MintPlayer.Spark.Tests.IdentityProvider;
 
@@ -24,41 +23,35 @@ public class OidcInvitationTests(OidcSharedHost host) : OidcTestHost(host), ICla
 
     private OidcInvitations Invitations => Factory.GetService<OidcInvitations>();
 
-    /// <summary>A user whose address the invitation lookup can already find (it rides an auto-index).</summary>
+    /// <summary>
+    /// A user the invitation lookup finds. It finds an address through the user's e-mail reservation (#536 D47), which
+    /// creating the user claims in the same save, so the account is findable the moment it exists: nothing to wait for.
+    /// </summary>
     private async Task<SparkUser> SeedFindableUserAsync(string email, bool developer)
     {
         var user = await SeedUserAsync(email);
         if (developer)
             await SetDeveloperAsync(user.Id!, OidcDeveloperStatuses.Approved);
-
-        // The same auto-index the invitation's raw query uses (from SparkUsers where NormalizedEmail = $email),
-        // waited on so the account is findable: an index query is eventually consistent.
-        var normalized = email.Trim().ToUpperInvariant();
-        using var session = Store.OpenAsyncSession();
-        _ = await session.Query<SparkUser>()
-            .Customize(c => c.WaitForNonStaleResults(TimeSpan.FromSeconds(30)))
-            .Where(u => u.NormalizedEmail == normalized)
-            .FirstOrDefaultAsync();
         return user;
     }
 
     private async Task SetDeveloperAsync(string userId, string status)
     {
-        using var session = Store.OpenAsyncSession();
-        OidcDevelopers.Set(session, userId, new OidcDeveloper
+        using var session = Store.OpenSession();
+        await OidcDevelopers.SetAsync(session, userId, new OidcDeveloper
         {
             Status = status,
             TermsVersion = 1,
             RequestedAt = DateTime.UtcNow,
             DecidedAt = DateTime.UtcNow,
-        });
+        }, CancellationToken.None);
         await session.SaveChangesAsync();
     }
 
     /// <summary>Invites <paramref name="email"/> the way the action does: in a session, saved, then the token (or null) back.</summary>
     private async Task<string?> InviteAsync(OidcApplication app, string email, string role = OidcMemberRoles.Developer)
     {
-        using var session = Store.OpenAsyncSession();
+        using var session = Store.OpenSession();
         var tracked = await session.LoadAsync<OidcApplication>(app.Id.Value);
         var token = await Invitations.InviteAsync(tracked, email, role, Inviter, CancellationToken.None);
         await session.SaveChangesAsync();
@@ -67,7 +60,7 @@ public class OidcInvitationTests(OidcSharedHost host) : OidcTestHost(host), ICla
 
     private async Task<OidcInvitations.Acceptance> AcceptAsync(string applicationId, string token, string userId)
     {
-        using var session = Store.OpenAsyncSession();
+        using var session = Store.OpenSession();
         var outcome = await Invitations.AcceptAsync(session, applicationId, token, userId, CancellationToken.None);
         if (outcome.Accepted)
             await session.SaveChangesAsync();
@@ -76,7 +69,7 @@ public class OidcInvitationTests(OidcSharedHost host) : OidcTestHost(host), ICla
 
     private async Task<OidcApplication> LoadAsync(string id)
     {
-        using var session = Store.OpenAsyncSession();
+        using var session = Store.OpenSession();
         return await session.LoadAsync<OidcApplication>(id);
     }
 
@@ -158,7 +151,7 @@ public class OidcInvitationTests(OidcSharedHost host) : OidcTestHost(host), ICla
         var user = await SeedFindableUserAsync(email, developer: true);
         var token = (await InviteAsync(app, email))!;
 
-        using (var session = Store.OpenAsyncSession())
+        using (var session = Store.OpenSession())
         {
             var tracked = await session.LoadAsync<OidcApplication>(app.Id.Value);
             EntryFor(tracked, email).InvitationExpiresAt = DateTime.UtcNow.AddMinutes(-1);

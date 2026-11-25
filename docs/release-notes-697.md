@@ -147,8 +147,24 @@ tags, and everything ships once the merged pull request is backported to `releas
 17. **Dashboards: `RavenStatisticsProvider` is now `StoreStatisticsProvider`** (M8a, D45). It reads
     `ISparkStoreStatistics`, so it works on any store; `DatabaseStatistics()` adds it as before. The sampler's lease
     moved from RavenDB's compare-exchange value `spark/dashboards/sampler` to the atomic value `dashboards/sampler`. The
-    old value is left unused. While old and new instances run side by side, a slot may be sampled by both: its point
+    old value is deleted by the migration `M_202611251400_DashboardsSamplerLeaseRetired` (RavenDB only; it runs through
+    the application's generated `AddMigrations()`). While old and new instances run side by side, a slot may be sampled by both: its point
     is overwritten, not doubled.
+18. **The identity provider runs on any store** (M8b, D47), and its package no longer references RavenDB's session.
+    - **Client-id lookup:** an application is found by its client id only through its reservation
+      (`oidc/client-ids/{client id}`, the same compare-exchange key as before). Code that stores an `OidcApplication`
+      outside the provider's pipeline, such as a seed migration, calls `OidcClientIdReservation.ReserveAsync` (now
+      public) before the save.
+    - **Migrations:** two RavenDB-only migrations come with the package. `M_202611251300_OidcDevelopersCollection`
+      moves each user's undeclared `Developer` field into an `OidcDevelopers` document. `M_202611251310_OidcClientIdReservations`
+      reserves the client id of every application saved before reservations existed, then deletes the
+      `OidcApplications/ByClientId` index. When two old applications share a client id, the first keeps it and the
+      migration logs the second.
+    - **Natural ids (D49):** `OidcApplication`, `OidcToken` and `OidcGrant` are `[IdKind(Natural)]`. No stored id
+      changes; `ids.Parse<OidcApplication>` now keeps a 32-digit key as written instead of adding dashes.
+19. **A `SparkView` is an entity type's default index only when it claims `[DefaultIndex]`** (M8b, D48). Before, an
+    entity type's sole view was elected implicitly, and two views without a claim made startup throw. A native RavenDB
+    index keeps the implicit election. A fan-out view maps no collection, so it cannot be a default index.
 
 ## New
 
@@ -262,3 +278,6 @@ tags, and everything ships once the merged pull request is backported to `releas
       `SparkDashboardSamples`, with the same 7-day raw and 90-day 5-minute rollup retention. Synchronize adds the
       table to the app's migration.
     - **`ISparkStoreStatistics`:** per-collection document counts and sizes on disk, for any store.
+21. **The identity provider on every store** (M8b, D47): OpenID Connect, OAuth 2.1, device flow, DPoP, the MCP
+    authorization server and the administration screens. Its queries are `SparkView`s, deployed with the app's. On SQL
+    Server and PostgreSQL its tables come from the app's migration. The `INC:Tokens` counter is RavenDB only.

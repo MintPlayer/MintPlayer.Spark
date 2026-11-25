@@ -34,8 +34,8 @@ internal sealed record DashboardSamplerLeaseValue(string NodeId, DateTime Acquir
 /// </para>
 /// <para>
 /// The key is <see cref="Key"/>, not the <c>spark/dashboards/sampler</c> compare-exchange value RavenDB applications
-/// held before: that one is a JSON object, which the text values of <see cref="ISparkAtomicValues"/> cannot read. It
-/// is left behind, unused.
+/// held before: that one is a JSON object, which the text values of <see cref="ISparkAtomicValues"/> cannot read.
+/// <c>M_202611251400_DashboardsSamplerLeaseRetired</c> deletes it (#536 D46).
 /// </para>
 /// </remarks>
 internal sealed class DashboardSamplerLease(ISparkAtomicValues values)

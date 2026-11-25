@@ -168,17 +168,35 @@ public class SparkViewTests
     }
 
     [Fact]
-    public void The_view_catalog_enters_a_view_with_its_row_as_projection_and_elects_the_sole_view()
+    public void The_view_catalog_enters_a_view_with_its_row_as_projection_and_elects_no_view_it_does_not_claim()
     {
-        var catalog = new SparkViewCatalog();
-        catalog.RegisterIndex(typeof(EmployeesWithCompany));
-        catalog.Freeze();
+        var sole = new SparkViewCatalog();
+        sole.RegisterIndex(typeof(EmployeesWithCompany));
+        sole.Freeze();
 
-        var entry = catalog.GetByIndexName("employeeswithcompany")!;
+        var entry = sole.GetByIndexName("employeeswithcompany")!;
         entry.IndexType.Should().Be(typeof(EmployeesWithCompany));
         entry.CollectionType.Should().Be(typeof(ViewEmployee));
         entry.ProjectionType.Should().Be(typeof(VEmployee));
-        catalog.GetDefaultFor(typeof(ViewEmployee)).Should().BeSameAs(entry);
+        sole.GetDefaultFor(typeof(ViewEmployee)).Should().BeNull(
+            "every view has a row type, so having one chooses nothing: a view is a default only by [DefaultIndex] (#536 D48)");
+
+        var several = new SparkViewCatalog();
+        several.RegisterIndex(typeof(EmployeesWithCompany));
+        several.RegisterIndex(typeof(EmployeeDetails));
+        ((Action)several.Freeze).Should().NotThrow("helper views over one collection are no competing defaults");
+        several.GetDefaultFor(typeof(ViewEmployee)).Should().BeNull();
+    }
+
+    [Fact]
+    public void A_fan_out_view_has_no_row_per_entity()
+    {
+        var catalog = new SparkViewCatalog();
+        catalog.RegisterIndex(typeof(NeutralReduceViewTests.RvFans));
+        catalog.Freeze();
+
+        catalog.GetByIndexName(nameof(NeutralReduceViewTests.RvFans))!.CollectionType.Should().BeNull(
+            "a row per list item is no row per entity, so the view cannot be the entity type's default (#536 D48, as S16)");
     }
 
     [Fact]

@@ -6,15 +6,13 @@ using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.Tokens;
 using MintPlayer.Spark.IdentityProvider.Configuration;
 using MintPlayer.Spark.IdentityProvider.Models;
-using Raven.Client.Documents;
-using Raven.Client.Documents.Session;
 
 namespace MintPlayer.Spark.IdentityProvider.Services;
 
 /// <summary>
 /// The provider's signing keys (<c>docs/identity_provider_platform_PRD.md</c> D1 <c>OidcKeys</c>, D8 Keys, I10).
 /// <list type="bullet">
-/// <item>Stored in RavenDB, the private half protected with ASP.NET Data Protection
+/// <item>Stored in the application's store, the private half protected with ASP.NET Data Protection
 /// (<see cref="ProtectorPurpose"/>). Losing the Data Protection key ring makes them unreadable, and
 /// startup then fails loudly: silently minting new keys would invalidate every token in flight and hide
 /// the loss (spike S2).</item>
@@ -29,7 +27,7 @@ namespace MintPlayer.Spark.IdentityProvider.Services;
 /// Every instance reloads the ring every five minutes, so a rotation by one host reaches the others.
 /// </summary>
 internal sealed class OidcKeyRing(
-    IDocumentStore store,
+    ISparkStore store,
     IDataProtectionProvider dataProtection,
     IHostEnvironment environment,
     SparkIdentityProviderOptions options,
@@ -94,7 +92,7 @@ internal sealed class OidcKeyRing(
     /// <summary>Loads the ring, creating what is missing. Called once at startup; throws when stored keys cannot be read.</summary>
     public async Task InitializeAsync(CancellationToken ct = default)
     {
-        using var session = store.OpenAsyncSession();
+        using var session = store.OpenSession();
         var stored = await LoadAllAsync(session, ct);
 
         if (!stored.Any(k => k.Document.State == OidcKeyStates.Active && k.PrivateKey.Kty == "RSA"))
@@ -135,7 +133,7 @@ internal sealed class OidcKeyRing(
             var prePublish = TimeSpan.FromDays(Math.Max(0, options.Keys.PrePublishDays));
             var retain = TimeSpan.FromDays(Math.Max(1, options.Keys.RetainRetiredDays));
 
-            using var session = store.OpenAsyncSession();
+            using var session = store.OpenSession();
             var all = await LoadAllAsync(session, ct);
             foreach (var kty in new[] { "RSA", "EC" })
             {
@@ -190,39 +188,47 @@ internal sealed class OidcKeyRing(
 
     private IReadOnlyList<Loaded> Current()
     {
+        // The reload runs in the background (the store's session is asynchronous); this request signs and validates
+        // with the keys held. A rotation publishes the next key days before it signs, so a few seconds' lag is harmless.
         if (DateTime.UtcNow - loadedAt > ReloadEvery && gate.Wait(0))
-        {
-            try
-            {
-                using var session = store.OpenSession();
-                // The whole collection, filtered here: a where clause would be answered by an auto-index.
-                var reloaded = session.Advanced.RawQuery<OidcKey>("from OidcKeys").ToList().Where(k => k.Use == "sig").Select(Open).ToList();
-                if (reloaded.Count > 0)
-                    keys = reloaded;
-                loadedAt = DateTime.UtcNow;
-            }
-            catch (Exception ex) when (ex is not CryptographicException)
-            {
-                // A reload is a refresh; the keys already held keep working.
-                logger.LogWarning(ex, "Reloading the identity provider's key ring failed; keeping the loaded keys.");
-                loadedAt = DateTime.UtcNow;
-            }
-            finally
-            {
-                gate.Release();
-            }
-        }
+            _ = ReloadAsync();
         return keys;
     }
 
-    private async Task<List<Loaded>> LoadAllAsync(IAsyncDocumentSession session, CancellationToken ct)
+    /// <summary>Reloads the ring; the caller holds <see cref="gate"/>, which this releases.</summary>
+    private async Task ReloadAsync()
     {
-        // A collection scan, not an index read: the ring is a handful of documents, and a stale view
-        // could miss the key that is signing. Filtered in memory, because any where clause, even on a
-        // collection query, is answered by an auto-index (which made a rotation right after another one
-        // load no active key).
-        var docs = await session.Advanced.AsyncRawQuery<OidcKey>("from OidcKeys").ToListAsync(ct);
-        return docs.Where(d => d.Use == "sig").Select(Open).ToList();
+        try
+        {
+            using var session = store.OpenSession();
+            var reloaded = await LoadAllAsync(session, CancellationToken.None);
+            if (reloaded.Count > 0)
+                keys = reloaded;
+        }
+        catch (Exception ex)
+        {
+            // A reload is a refresh; the keys already held keep working.
+            logger.LogWarning(ex, "Reloading the identity provider's key ring failed; keeping the loaded keys.");
+        }
+        finally
+        {
+            loadedAt = DateTime.UtcNow;
+            gate.Release();
+        }
+    }
+
+    private async Task<List<Loaded>> LoadAllAsync(ISparkSession session, CancellationToken ct)
+    {
+        // A collection scan, not a view read: the ring is a handful of documents, and a stale view could miss the key
+        // that is signing. Filtered in memory, because on RavenDB a where clause on a collection query is answered by an
+        // auto index (which made a rotation right after another one load no active key).
+        var docs = new List<OidcKey>();
+        await foreach (var row in session.StreamAsync(session.Query<OidcKey>(), ct))
+            if (row.Document is { } key)
+                docs.Add(key);
+        // A streamed document is not tracked; the rotation changes and deletes keys through this session.
+        var tracked = await session.LoadAsync<OidcKey>(docs.Where(d => d.Use == "sig").Select(d => d.Id.Value), ct);
+        return tracked.Values.OfType<OidcKey>().Select(Open).ToList();
     }
 
     private Loaded Open(OidcKey document)
@@ -242,7 +248,7 @@ internal sealed class OidcKeyRing(
 
     private string Unprotect(OidcKey document) => Protector.Unprotect(document.ProtectedPrivateJwk);
 
-    private async Task<Loaded> CreateAsync(IAsyncDocumentSession session, string kty, (RSA Rsa, string Kid)? import, CancellationToken ct, string state = OidcKeyStates.Active)
+    private async Task<Loaded> CreateAsync(ISparkSession session, string kty, (RSA Rsa, string Kid)? import, CancellationToken ct, string state = OidcKeyStates.Active)
     {
         JsonWebKey jwk;
         string kid;

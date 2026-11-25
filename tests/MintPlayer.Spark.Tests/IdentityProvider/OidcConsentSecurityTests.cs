@@ -1,7 +1,6 @@
 using MintPlayer.Spark.Testing;
 using System.Net;
 using MintPlayer.Spark.IdentityProvider.Models;
-using Raven.Client.Documents;
 
 namespace MintPlayer.Spark.Tests.IdentityProvider;
 
@@ -65,8 +64,8 @@ public class OidcConsentSecurityTests(OidcSharedHost host) : OidcTestHost(host),
         location.Should().StartWith(RedirectUri + "?code=");
         location.Should().Contain("state=st-1", "the client's CSRF defence depends on state coming back");
 
-        await Store.WaitForIndexingAsync();
-        using var session = Store.OpenAsyncSession();
+        await WaitForIndexesAsync();
+        using var session = Store.OpenSession();
         var codes = await CaseTokensAsync(session);
         codes.Should().ContainSingle().Which.Type.Should().Be("authorization_code");
     }
@@ -153,8 +152,8 @@ public class OidcConsentSecurityTests(OidcSharedHost host) : OidcTestHost(host),
 
         replay.StatusCode.Should().Be(HttpStatusCode.BadRequest);
 
-        await Store.WaitForIndexingAsync();
-        using var session = Store.OpenAsyncSession();
+        await WaitForIndexesAsync();
+        using var session = Store.OpenSession();
         (await CaseTokensAsync(session)).Should().ContainSingle("a replay must not mint a second code");
     }
 
@@ -254,8 +253,8 @@ public class OidcConsentSecurityTests(OidcSharedHost host) : OidcTestHost(host),
             ["__RequestVerificationToken"] = token,
         });
 
-        await Store.WaitForIndexingAsync();
-        using var session = Store.OpenAsyncSession();
+        await WaitForIndexesAsync();
+        using var session = Store.OpenSession();
         var code = (await CaseTokensAsync(session)).SingleOrDefault();
         (code?.Scopes).Should().NotContain("admin", "the grant is bounded by what authorize validated");
     }
@@ -303,8 +302,8 @@ public class OidcConsentSecurityTests(OidcSharedHost host) : OidcTestHost(host),
         // The wait matters most here, and not for flakiness. This asserts *absence*: a stale index
         // returns nothing, so without it the assertion passes whether or not a code was minted —
         // a security check that succeeds for the wrong reason and would never be noticed.
-        await Store.WaitForIndexingAsync();
-        using var session = Store.OpenAsyncSession();
+        await WaitForIndexesAsync();
+        using var session = Store.OpenSession();
         var tokens = await CaseTokensAsync(session);
         tokens.Should().BeEmpty("no authorization code may exist");
     }

@@ -1,7 +1,7 @@
+using MintPlayer.Spark;
 using MintPlayer.Spark.IdentityProvider.Models;
 using MintPlayer.Spark.IdentityProvider.Services;
 using MintPlayer.Spark.Testing;
-using Raven.Client.Documents;
 using SparkId.Migrations;
 
 namespace SparkId.Tests;
@@ -16,7 +16,7 @@ public class DevelopmentRelyingPartiesTests : RavenSparkTestDriver
     [Fact]
     public async Task A_relying_party_is_a_confidential_PKCE_client_with_the_presets_exact_redirects_and_a_hashed_secret()
     {
-        using (var session = Store.OpenAsyncSession())
+        using (var session = Store.AsSparkStore().OpenSession())
         {
             await DevelopmentRelyingParties.EnsureAsync(session, M_202610101200_SeoTesterRelyingParty.ClientId, "SeoTester",
                 M_202610101200_SeoTesterRelyingParty.Origin, M_202610101200_SeoTesterRelyingParty.Secret, default);
@@ -44,33 +44,40 @@ public class DevelopmentRelyingPartiesTests : RavenSparkTestDriver
     {
         foreach (var rp in M_202610081200_RelyingParties.RelyingParties)
         {
-            using var session = Store.OpenAsyncSession();
+            using var session = Store.AsSparkStore().OpenSession();
             await DevelopmentRelyingParties.EnsureAsync(session, rp.ClientId, rp.DisplayName, rp.Origin, rp.Secret, default);
             await session.SaveChangesAsync();
         }
-        using (var session = Store.OpenAsyncSession())
+        using (var session = Store.AsSparkStore().OpenSession())
         {
-            var qna = await session.Query<OidcApplication>().Customize(c => c.WaitForNonStaleResults()).Where(a => a.ClientId == "qna").SingleAsync();
+            var qna = await session.LoadAsync<OidcApplication>((await LoadAsync("qna")).Id.Value);
             qna.DisplayName = "Edited by an administrator";
             await session.SaveChangesAsync();
         }
 
-        using (var session = Store.OpenAsyncSession())
+        using (var session = Store.AsSparkStore().OpenSession())
         {
             await DevelopmentRelyingParties.EnsureAsync(session, "qna", "Spark QnA", "https://localhost:5009", "dev-only-qna-secret-not-for-production", default);
             await session.SaveChangesAsync();
         }
 
-        using var check = Store.OpenAsyncSession();
-        var all = await check.Query<OidcApplication>().Customize(c => c.WaitForNonStaleResults()).ToListAsync();
+        using var check = Store.AsSparkStore().OpenSession();
+        // A collection scan without a filter builds no index (D42).
+        var all = await check.ToListAsync(check.Query<OidcApplication>());
         all.Select(a => a.ClientId).OrderBy(c => c).Should().Equal("fleet", "hr", "qna");
-        all.Single(a => a.ClientId == "qna").DisplayName.Should().Be("Edited by an administrator");
-        all.Single(a => a.ClientId == "hr").RedirectUris.Should().Equal("https://localhost:5005/signin-SparkId");
+        (await LoadAsync("qna")).DisplayName.Should().Be("Edited by an administrator");
+        (await LoadAsync("hr")).RedirectUris.Should().Equal("https://localhost:5005/signin-SparkId");
     }
 
+    /// <summary>
+    /// The application the provider finds for <paramref name="clientId"/>: through its client-id reservation, the only
+    /// lookup by client id (#536 D47). A seed that stores the application without it is never found.
+    /// </summary>
     private async Task<OidcApplication> LoadAsync(string clientId)
     {
-        using var session = Store.OpenAsyncSession();
-        return await session.Query<OidcApplication>().Customize(c => c.WaitForNonStaleResults()).Where(a => a.ClientId == clientId).SingleAsync();
+        using var session = Store.AsSparkStore().OpenSession();
+        var owner = await session.GetReservationAsync(OidcClientIdReservation.Key(clientId));
+        owner.Should().NotBeNull($"the seed reserves client id '{clientId}'");
+        return (await session.LoadAsync<OidcApplication>(owner!))!;
     }
 }

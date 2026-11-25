@@ -1,9 +1,6 @@
 using MintPlayer.Spark.Authorization.Agents;
-using MintPlayer.Spark.IdentityProvider.Indexes;
 using MintPlayer.Spark.IdentityProvider.Models;
 using MintPlayer.Spark.IdentityProvider.Services;
-using Raven.Client.Documents;
-using Raven.Client.Documents.Linq;
 
 namespace MintPlayer.Spark.IdentityProvider.Mcp;
 
@@ -13,26 +10,22 @@ namespace MintPlayer.Spark.IdentityProvider.Mcp;
 /// everything the user allowed. Agent clients are left out: their <c>AgentGrant</c> is listed already, and revoking it
 /// revokes the OAuth grant too (D12). <c>/connect/applications</c> and the SPA portal page stay as they are.
 /// </summary>
-internal sealed class OidcConnectedApplicationSource(IDocumentStore store, OidcGrantWithdrawal withdrawal, ConnectText text) : ISparkConnectedApplicationSource
+internal sealed class OidcConnectedApplicationSource(ISparkStore store,OidcGrantWithdrawal withdrawal, ConnectText text) : ISparkConnectedApplicationSource
 {
     public string Name => "identity-provider";
 
     public async Task<IReadOnlyList<SparkConnectedApplication>> ListAsync(string userId, CancellationToken cancellationToken = default)
     {
-        using var session = store.OpenAsyncSession();
-        // A list, not a decision: the index's few seconds of staleness decide nothing (revocation loads).
-        var grants = (await session.Query<OidcGrant, OidcGrants_BySubject>()
-                .Where(g => g.Subject == userId, exact: true)
-                .ToListAsync(cancellationToken))
-            .Where(g => g.Status == "valid")
-            .ToList();
-        var apps = await session.LoadAsync<OidcApplication>(grants.Select(g => g.ApplicationId).Distinct(), cancellationToken);
+        using var session = store.OpenSession();
+        // A list, not a decision: the view's few seconds of staleness decide nothing (revocation loads).
+        var grants = await session.ValidGrantsOfSubjectAsync(userId, cancellationToken);
+        var apps = await session.LoadExistingAsync<OidcApplication>(grants.Select(g => g.ApplicationId), cancellationToken);
         var definitions = await OidcScopeCatalog.LoadAsync(session, grants.SelectMany(g => g.GrantedScopes), cancellationToken);
 
         var result = new List<SparkConnectedApplication>();
         foreach (var grant in grants.OrderBy(g => g.CreatedAt))
         {
-            if (!apps.TryGetValue(grant.ApplicationId, out var app) || app is null || OidcAgentClients.IsAgent(app)
+            if (!apps.TryGetValue(grant.ApplicationId, out var app) || OidcAgentClients.IsAgent(app)
                 || grant.GrantedScopes.Any(s => s is OidcAgentClients.ReadScope or OidcAgentClients.WriteScope))
                 continue;
 
@@ -49,7 +42,7 @@ internal sealed class OidcConnectedApplicationSource(IDocumentStore store, OidcG
     public async Task<bool> RevokeAsync(string userId, string id, CancellationToken cancellationToken = default)
     {
         // The id is the application's; the grant is addressed through the signed-in user, so no other user's can be named.
-        using (var session = store.OpenAsyncSession())
+        using (var session = store.OpenSession())
         {
             var grant = await session.LoadAsync<OidcGrant>(OidcGrantReference.DocumentId(userId, id), cancellationToken);
             if (grant is not { Status: "valid" } || !string.Equals(grant.Subject, userId, StringComparison.Ordinal))

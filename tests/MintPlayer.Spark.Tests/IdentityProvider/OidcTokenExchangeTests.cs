@@ -70,7 +70,7 @@ public class OidcTokenExchangeTests(OidcSharedHost host) : OidcTestHost(host), I
 
         if (allowImpersonation)
         {
-            using var session = Store.OpenAsyncSession();
+            using var session = Store.OpenSession();
             var stored = (await session.LoadAsync<OidcApplication>(app.Id.Value))!;
             stored.AllowImpersonation = true;
             await session.SaveChangesAsync();

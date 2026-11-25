@@ -26,8 +26,8 @@ internal sealed partial class OidcTokenEndpoint<TUser>
         if (string.IsNullOrEmpty(deviceCode))
             return Results.Json(new { error = "invalid_request", error_description = "device_code is required." }, statusCode: 400);
 
-        using var session = store.OpenAsyncSession();
-        session.Advanced.OptimisticConcurrencyMode = Raven.Client.Documents.Session.OptimisticConcurrencyMode.Writes;
+        using var session = store.OpenSession();
+        session.OptimisticConcurrency = true;
 
         var client = await clientAuthenticator.AuthenticateAsync(httpContext, form, session, ct);
         if (!client.Succeeded)
@@ -161,7 +161,7 @@ internal sealed partial class OidcTokenEndpoint<TUser>
         if (string.IsNullOrEmpty(subjectToken) || subjectTokenType != AccessTokenType)
             return Results.Json(new { error = "invalid_request", error_description = "subject_token must be an access token." }, statusCode: 400);
 
-        using var session = store.OpenAsyncSession();
+        using var session = store.OpenSession();
         var client = await clientAuthenticator.AuthenticateAsync(httpContext, form, session, ct);
         if (!client.Succeeded)
             return client.ToResult(httpContext);

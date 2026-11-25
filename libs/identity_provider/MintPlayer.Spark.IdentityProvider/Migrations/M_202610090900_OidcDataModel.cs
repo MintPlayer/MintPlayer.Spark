@@ -29,13 +29,20 @@ namespace MintPlayer.Spark.IdentityProvider.Migrations;
 /// </list>
 /// Idempotent: each step reads only the old shape, and a second run finds none.
 /// Measured before writing it (R3): no production database holds identity-provider documents.
+/// <para>
+/// RavenDB only (#536 D47): the old shapes were only ever written to RavenDB, and a store on SQL Server, PostgreSQL or
+/// in memory starts in the platform model.
+/// </para>
 /// </summary>
 public partial class M_202610090900_OidcDataModel : ISparkMigration
 {
     public static long Version => 202610090900;
     public static string? Description => "Identity provider platform data model: OidcResources, OidcGrants, application Scopes[], token expiry";
 
-    [Inject] private readonly IDocumentStore store;
+    [Inject] private readonly IDocumentStore? raven;
+    [Inject] private readonly ISparkStore sparkStore;
+
+    private IDocumentStore store => raven!;
 
     private sealed class LegacyScope
     {
@@ -61,6 +68,9 @@ public partial class M_202610090900_OidcDataModel : ISparkMigration
 
     public async Task UpAsync(CancellationToken cancellationToken)
     {
+        if (raven is null || sparkStore.ProviderName != SparkStoreProviders.RavenDb)
+            return;
+
         var renames = await MigrateScopesAsync(cancellationToken);
         await MigrateApplicationsAsync(renames, cancellationToken);
         await MigrateGrantsAsync(cancellationToken);
@@ -166,8 +176,10 @@ public partial class M_202610090900_OidcDataModel : ISparkMigration
         if (legacy.Count == 0)
             return;
 
-        var definitions = await OidcScopeCatalog.LoadAsync(
-            session, legacy.SelectMany(l => l.AllowedScopes ?? []).Select(n => renames.GetValueOrDefault(n, n)), ct);
+        List<OidcScopeDefinition> definitions;
+        using (var lookup = sparkStore.OpenSession())
+            definitions = await OidcScopeCatalog.LoadAsync(
+                lookup, legacy.SelectMany(l => l.AllowedScopes ?? []).Select(n => renames.GetValueOrDefault(n, n)), ct);
 
         foreach (var old in legacy)
         {

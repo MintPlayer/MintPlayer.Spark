@@ -12,8 +12,7 @@ using MintPlayer.Spark.IdentityProvider.Models;
 using MintPlayer.Spark.IdentityProvider.Services;
 using MintPlayer.Spark.Services;
 using MintPlayer.Spark.Testing;
-using Raven.Client.Documents;
-using Raven.Client.Documents.Linq;
+using MintPlayer.Spark.Abstractions.Storage;
 using PO = MintPlayer.Spark.Abstractions.PersistentObject;
 using POA = MintPlayer.Spark.Abstractions.PersistentObjectAttribute;
 
@@ -48,22 +47,24 @@ namespace MintPlayer.Spark.Tests.IdentityProvider;
 /// </para>
 /// </summary>
 public class OidcAdminRouteTests(OidcAdminRouteTests.AdminRouteHost host)
-    : RavenSparkSharedTestDriver(host), IClassFixture<OidcAdminRouteTests.AdminRouteHost>
+    : IClassFixture<OidcAdminRouteTests.AdminRouteHost>
 {
     /// <summary>Nothing of the package's: its persistent objects come from its library layer.</summary>
     public sealed class AdminContext : SparkContext
     {
     }
 
-    public sealed class AdminRouteHost : SharedSparkHost<AdminContext>
+    private ISparkStore Store => host.Factory.GetService<ISparkStore>();
+
+    public sealed class AdminRouteHost : SparkSharedHost<AdminContext>
     {
         public HttpClient Client { get; private set; } = null!;
         public string Cookies { get; private set; } = null!;
         public string Xsrf { get; private set; } = null!;
 
-        protected override SparkEndpointFactory<AdminContext> CreateFactory() =>
+        protected override SparkEndpointFactory<AdminContext> CreateFactory(ISparkTestDatabase database) =>
             new(
-                Store.AsSparkTestDatabase(),
+                database,
                 models: [],
                 configureSpark: spark =>
                 {
@@ -100,11 +101,9 @@ public class OidcAdminRouteTests(OidcAdminRouteTests.AdminRouteHost host)
     /// <summary>The applications registered under <paramref name="displayName"/> (the client id is generated).</summary>
     private async Task<List<OidcApplication>> RegisteredAsync(string displayName)
     {
-        await Store.WaitForIndexingAsync();
-        using var session = Store.OpenAsyncSession();
-        return await session.Query<OidcApplication>()
-            .Where(a => a.DisplayName == displayName, exact: true)
-            .ToListAsync();
+        // A collection read filtered in memory: no index, so nothing stale (D42).
+        using var session = Store.OpenSession();
+        return [.. (await session.ToListAsync(session.Query<OidcApplication>())).Where(a => a.DisplayName == displayName)];
     }
 
     private Task<HttpResponseMessage> PostAsync(
@@ -239,19 +238,17 @@ public class OidcAdminRouteTests(OidcAdminRouteTests.AdminRouteHost host)
             ("AllowedGrantTypes", new[] { "client_credentials" }))))
             .StatusCode.Should().Be(HttpStatusCode.Created);
 
-        // Client lookup rides an eventually-consistent index, so a just-registered application is
-        // not usable the instant the screen returns — the same trap the fixture hit when seeding.
+        // The client id is found through its reservation, which the screen's save claimed: usable the
+        // instant the screen returns (#536 D47).
         var app = (await RegisteredAsync("route-service")).Single();
 
         // Secrets are read-only on the screen; attach one the way the secret-issuing flow stores it.
-        using (var session = Store.OpenAsyncSession())
+        using (var session = Store.OpenSession())
         {
             var stored = await session.LoadAsync<OidcApplication>(app.Id.Value);
-            stored.Secrets.Add(new ClientSecret { SecretId = Guid.NewGuid().ToString("N"), Hash = ClientSecretHasher.Hash("issued-secret"), CreatedAt = DateTime.UtcNow });
+            stored!.Secrets.Add(new ClientSecret { SecretId = Guid.NewGuid().ToString("N"), Hash = ClientSecretHasher.Hash("issued-secret"), CreatedAt = DateTime.UtcNow });
             await session.SaveChangesAsync();
         }
-
-        await Store.WaitForIndexingAsync();
 
         var token = await host.Client.PostAsync("/connect/token", new FormUrlEncodedContent(
             new Dictionary<string, string>

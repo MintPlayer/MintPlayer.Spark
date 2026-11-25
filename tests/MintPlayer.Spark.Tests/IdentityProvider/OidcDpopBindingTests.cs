@@ -110,7 +110,7 @@ public class OidcDpopBindingTests(OidcSharedHost host) : OidcTestHost(host), ICl
     public async Task A_client_registered_with_RequireDpop_must_send_a_proof()
     {
         var (app, code) = await CodeAsync();
-        using (var session = Store.OpenAsyncSession())
+        using (var session = Store.OpenSession())
         {
             var stored = await session.LoadAsync<OidcApplication>(app.Id.Value);
             stored.RequireDpop = true;

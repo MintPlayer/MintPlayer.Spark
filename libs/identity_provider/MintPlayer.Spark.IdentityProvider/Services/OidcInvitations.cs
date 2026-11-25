@@ -1,9 +1,8 @@
 using System.Security.Cryptography;
 using System.Text;
 using MintPlayer.Spark.IdentityProvider.Configuration;
+using MintPlayer.Spark.Authorization.Identity;
 using MintPlayer.Spark.IdentityProvider.Models;
-using Raven.Client.Documents;
-using Raven.Client.Documents.Session;
 
 namespace MintPlayer.Spark.IdentityProvider.Services;
 
@@ -21,19 +20,13 @@ namespace MintPlayer.Spark.IdentityProvider.Services;
 /// </para>
 /// </summary>
 internal sealed class OidcInvitations(
-    IDocumentStore store,
+    ISparkStore store,
     OidcUserDocuments users,
     OidcDevelopers developers,
     SparkIdentityProviderOptions options)
 {
     /// <summary>The outcome of accepting: the application's name, or why not, phrased without disclosing anything.</summary>
     public sealed record Acceptance(bool Accepted, string? ApplicationName, string? Problem);
-
-    private sealed class Account
-    {
-        public string? Id { get; set; }
-        public string? NormalizedEmail { get; set; }
-    }
 
     /// <summary>
     /// Adds a pending invitation to <paramref name="app"/> (tracked in the caller's session) and returns
@@ -74,7 +67,7 @@ internal sealed class OidcInvitations(
     }
 
     /// <summary>Accepts the invitation <paramref name="token"/> to <paramref name="applicationId"/> as <paramref name="userId"/>.</summary>
-    public async Task<Acceptance> AcceptAsync(IAsyncDocumentSession session, string applicationId, string token, string userId, CancellationToken ct)
+    public async Task<Acceptance> AcceptAsync(ISparkSession session, string applicationId, string token, string userId, CancellationToken ct)
     {
         const string invalid = "This invitation is not valid. It may have expired, been replaced, or been sent to another account.";
 
@@ -85,9 +78,10 @@ internal sealed class OidcInvitations(
         if (app is null || entry is null || entry.InvitationExpiresAt < DateTime.UtcNow)
             return new(false, null, invalid);
 
-        using (var lookup = store.OpenAsyncSession())
+        // A session of its own: the request session may track the same id as the application's user type already.
+        using (var lookup = store.OpenSession())
         {
-            var account = await lookup.LoadAsync<Account>(userId, ct);
+            var account = (await users.LoadAsync(lookup, [userId], ct)).Values.FirstOrDefault();
             if (account?.NormalizedEmail is null || account.NormalizedEmail != Normalize(entry.Email))
                 return new(false, null, invalid);
         }
@@ -105,15 +99,11 @@ internal sealed class OidcInvitations(
         return new(true, app.DisplayName, null);
     }
 
-    /// <summary>The user id of the account behind <paramref name="normalizedEmail"/>, if any.</summary>
-    private async Task<Account?> FindAccountAsync(string normalizedEmail, CancellationToken ct)
+    /// <summary>The account behind <paramref name="normalizedEmail"/>, if any, found through the user store's email reservation.</summary>
+    private async Task<SparkUser?> FindAccountAsync(string normalizedEmail, CancellationToken ct)
     {
-        using var session = store.OpenAsyncSession();
-        // The collection is RqlIdentifier-validated (OidcUserDocuments); the address is a parameter.
-        return await session.Advanced
-            .AsyncRawQuery<Account>($"from '{users.Collection}' where NormalizedEmail = $email select id() as Id, NormalizedEmail")
-            .AddParameter("email", normalizedEmail)
-            .FirstOrDefaultAsync(ct);
+        using var session = store.OpenSession();
+        return await users.FindByEmailAsync(session, normalizedEmail, ct);
     }
 
     /// <summary>The way ASP.NET Identity normalizes an address (<c>UpperInvariantLookupNormalizer</c>).</summary>

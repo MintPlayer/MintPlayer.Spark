@@ -627,7 +627,8 @@ collections.** `spark.AddSearch()` no longer requires RavenDB.
   - Memory: the counts, no sizes (`null`, which the sampler skips).
 - **The sampler lease (D29):** an `ISparkAtomicValues` value with JSON text, under the new key `dashboards/sampler`.
   RavenDB's old compare-exchange value `spark/dashboards/sampler` held a JSON object, which the text values of
-  `RavenAtomicValues` (`GetCompareExchangeValueOperation<string>`) cannot read. It is left behind, unused. During a
+  `RavenAtomicValues` (`GetCompareExchangeValueOperation<string>`) cannot read. A RavenDB migration
+  (`M_202611251400_DashboardsSamplerLeaseRetired`, D46/M8c) deletes it against its index. During a
   rolling deploy, an old and a new instance hold different keys, so one slot may be sampled twice: a point is
   overwritten, never doubled.
 - **The history:** the internal `IDashboardHistory`, chosen by `ISparkStore.ProviderName`
@@ -657,6 +658,97 @@ collections.** `spark.AddSearch()` no longer requires RavenDB.
   - the averages at 5-minute (rollup) and 1-minute (raw) buckets, with a slot written twice counted once;
   - the shipped statistics dashboard through `/spark/po/load`.
 - The RavenDB Dashboards suite 24/24, CodeCoverage `HostMetricsDashboardTests` 11/11, and the templates tests 23/23.
+
+**D46 (M8b, 2026-11-25): RavenDB's stored format may change, through a RavenDB data migration.** The owner, on the
+IdentityProvider port: "You can also write a RavenMigration that corrects the documents - currently everything in
+production is a ravendb database", and then: "My remark about how we CAN in fact modify the documents in the database,
+counts for everything, also for the already-implemented features in this pull-request ... so it applies overall".
+- A port takes the clean store-neutral design. Where that changes what RavenDB stores (a field moved to its own
+  collection, a key renamed, a value reshaped), an `ISparkMigration` converts the production documents. It runs on
+  RavenDB only (`ISparkStore.ProviderName`), with parameters for values and `RqlIdentifier` for identifiers.
+- This applies to the milestones already done too: a design that kept RavenDB's old format only for its own sake is
+  revisited (the list is in the plan, M8c), and stale values a port left behind are removed.
+
+**D47 (M8b, 2026-11-25): the identity provider runs on every store.** `AddIdentityProvider` and `features.json` drop
+the RavenDB pin. What replaces each RavenDB construct:
+- **Sessions:** `ISparkSession` and `ISparkStore`. A second session is `ISparkStore.OpenSession()`. Optimistic
+  concurrency is `ISparkSession.OptimisticConcurrency`, and a conflict is `SparkStoreConcurrencyException`.
+- **Queries (D32, D42):** a query that filters a collection inside a service queries a `SparkView` instead, then
+  batch-loads the rows it needs and compares exactly (a view compares case-insensitively). The views, in
+  `Indexes/OidcViews.cs`:
+  - `OidcTokens_ByState`, `OidcTokens_ByScope` (fanned out per scope): the disable cascade, the sweeps, logout;
+  - `OidcGrants_BySubject` (the static index of that name, now a view; RavenDB redeploys it side by side);
+  - `OidcDevelopers_ByStatus`: the administrators' queue of developer requests;
+  - `OidcApplications_ByMember`, `OidcApplications_ByScope` (both fanned out), `OidcApplications_WithGoLiveReview`:
+    "applications I administer" (the audit row filter), the scope-approval and the go-live queues;
+  - `OidcAgentClients_ByLastUse`: the cleanup of unused dynamic agent registrations.
+
+  `AddIdentityProvider` declares the package an index assembly, so `UseSpark` deploys its views with the app's. The
+  keys (`from OidcKeys`) stay a scan of the collection, which builds no index. Query pages and row filters stay LINQ
+  over `ISparkSession.Query<T>()`, as for every Spark type.
+- **Finding an application by its client id** is the client-id reservation alone (`oidc/client-ids/{lower client
+  id}` → the application id): strongly consistent on every store, where the `OidcApplications_ByClientId` index was
+  eventually consistent. `ISparkSession.Reserve` writes the same compare-exchange key and value as the hand-written
+  code did. The reservation is claimed in the application's own save (its before-save interceptor, through
+  `SparkInterceptorContext.StorageSession`) and released in its delete's own save (the before-delete interceptor),
+  so a refused write takes neither back. A RavenDB migration (`M_202611251310_OidcClientIdReservations`) claims the
+  reservation of every application saved before reservations existed, leaves a key another live application holds to
+  it (logged), and deletes the index.
+- **Developer status** moves from a `Developer` field on the user's document to an `OidcDeveloper` document of its
+  own, `oidcdevelopers/{sha256(lower user id)}` (a user id holds a `/`). The field was undeclared on the user type:
+  only RavenDB keeps such a field, and a relational table has no column for it. A RavenDB migration
+  (`M_202611251300_OidcDevelopersCollection`) moves every user's field into its document and removes it from the user.
+  The administrators' queue queries `OidcDevelopers_ByStatus` and loads the users in one batch.
+- **Users by id or e-mail:** `OidcUserDocuments` loads users as the application's user type in a session of its own
+  (one session cannot track one id as two types); by e-mail through the e-mail reservation
+  (`SparkUserReservations.EmailKey`), instead of a raw query of the users' collection. A user seeded without
+  `UserManager` holds no reservation and is not found by e-mail.
+- **The key ring** reloads every 5 minutes in the background: the store's session is asynchronous, and the signing
+  path is synchronous. A failed reload keeps the loaded keys.
+- **Expiry:** `ISparkSession.SetExpiry`/`GetExpiry`. RavenDB still writes `@expires`.
+- **Bulk writes:** the disable cascade and `LastUsedAt` use `UpdateWhereAsync`. The cascade finds its ids through a
+  view first, so RavenDB's patch is `id() in (…)`, which needs no index.
+- **`INC:Tokens`** (a per-application token counter that nothing reads) stays a RavenDB time series, written through
+  the RavenDB session, as Dashboards keep theirs (D45). Other stores write no counter; the token rows themselves are
+  the record.
+- **The historic migration** `M_202610090900_OidcDataModel` converted RavenDB documents from before the data model. It
+  now runs on RavenDB only; a new database of another store has nothing to convert.
+- **Tests:** the OIDC suite moves to the neutral harness, so it runs on InMemory, SQL Server, PostgreSQL and RavenDB.
+
+**D48 (M8b, 2026-11-25): a `SparkView` is an entity type's default index only when it claims `[DefaultIndex]`.**
+default_index_PRD D3 elects an entity type's sole index *with a view* implicitly, because a `[FromIndex]` view is an
+author's choice; with two such indexes and no claim, startup throws. Every `SparkView` has its row type, so having one
+chooses nothing. The identity provider's four helper views over `OidcApplication` (D47) made every host refuse to
+start ("4 indexes with a [FromIndex] view map entity type OidcApplication ... and none claims it", 443 of 603 OIDC
+tests on RavenDB, 2026-11-25). With one helper view, it would have become the query shape of any application that
+lists the entity type, under an `indexName` nobody chose.
+- **Both catalogs** (RavenDB's `IndexCatalog`, core's `SparkViewCatalog`) elect a view only by its claim. A native
+  index keeps D3 unchanged. `[GenerateIndex]` already writes `[DefaultIndex]` on the view it emits without RavenDB.
+- **A fan-out view** (`SelectMany`, a row per list item) has no row per entity, like a reduce or a multi-map (S16). Its
+  entry maps no collection, and a claim on it is refused.
+- No model file in the repository bound a helper view (`indexName`/`queryType` of `Moderation_*`, `Oidc*` or
+  `SparkMessages_*`: none in `apps/` or `libs/`).
+- Tests: `SparkViewTests.The_view_catalog_enters_a_view_with_its_row_as_projection_and_elects_no_view_it_does_not_claim`,
+  `SparkViewTests.A_fan_out_view_has_no_row_per_entity`, `RavenSparkViewTests.The_catalog_elects_no_view_it_does_not_claim`
+  (red first: all three failed before the change).
+
+**D49 (M8b, 2026-11-25): the identity provider's documents with computed ids are Natural.** On a relational store, the
+default Guid kind makes the key a `uniqueidentifier`/`uuid` column. It refused 158 of 602 OIDC tests per SQL store
+("'oidctokens/{hex}' is not an id of collection OidcTokens", 2026-11-25).
+- **`OidcToken`**: every id is a SHA-256 of the handle it stands for (`OidcTokenReference`, `OidcRequestReference`,
+  device codes), set before the store. A bearer value is never persisted, so the id cannot be a Guid.
+- **`OidcGrant`**: the id hashes the (subject, application) pair (`OidcGrantReference`), one grant per pair by
+  construction.
+- **`OidcApplication`**: the provider sets every application's id. An agent client's id derives from its client id
+  (`oidcapplications/agent-{hash}`, `OidcAgentClients.ApplicationId`, a point load). Every other id is
+  `oidcapplications/{guid}` in the 32-digit form. The Guid kind fails both shapes: a relational key refuses the agent
+  ids, and `ISparkIds.Parse` rewrites a 32-digit key into the dashed form, which names another document on RavenDB.
+- **Why not re-key (D46):** production CodeCoverage and SeoTester run `ForMcp().AgentsOnly()`. Their agent clients'
+  grants hash the application id, and tokens, refresh families and agent grants hold it. A re-key would rewrite five
+  collections of live data to gain a column type. The Natural kind changes no stored document. On a relational store,
+  the key becomes a text column holding the part after `oidcapplications/`.
+- The other IdP types with a business key (`OidcResource`, `OidcKey`, `OidcRefreshFamily`, `OidcDeveloper`) were
+  already Natural.
 
 **D3: the version is a `bigint` column on every table**, a concurrency token the provider increments. *(S4, §8.11:
 it is on every root table and covers the aggregate. A change to a child row (D25) or a join row (D26) moves the

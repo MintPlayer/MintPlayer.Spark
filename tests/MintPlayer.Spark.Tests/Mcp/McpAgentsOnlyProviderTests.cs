@@ -226,12 +226,12 @@ public class McpAgentsOnlyProviderTests(RavenSparkSharedDatabase database)
         // A valid initial access token of an approved developer, as the portal would have issued it: developer registration
         // is not part of this provider, so it registers nothing.
         string initialAccessToken;
-        using (var session = Store.OpenAsyncSession())
+        using (var session = Store.AsSparkStore().OpenSession())
         {
-            OidcDevelopers.Set(session, user.Id!, new OidcDeveloper
+            await OidcDevelopers.SetAsync(session, user.Id!, new OidcDeveloper
             {
                 Status = OidcDeveloperStatuses.Approved, TermsVersion = 1, RequestedAt = DateTime.UtcNow, DecidedAt = DateTime.UtcNow,
-            });
+            }, CancellationToken.None);
             initialAccessToken = await OidcClientRegistration.IssueInitialAccessTokenAsync(session, user.Id!, CancellationToken.None);
             await session.SaveChangesAsync();
         }

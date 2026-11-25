@@ -3,7 +3,6 @@ using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.IdentityProvider.Endpoints.Oidc;
 using MintPlayer.Spark.IdentityProvider.Models;
 using MintPlayer.Spark.IdentityProvider.Services;
-using Raven.Client.Documents;
 
 namespace MintPlayer.Spark.IdentityProvider.Endpoints;
 
@@ -52,7 +51,7 @@ internal sealed partial class OidcRevoke : IPostEndpoint<OidcClientTokenRequest>
 
     static bool IEndpointBase.IsEnabled(IServiceProvider services) => OidcSurface.Of(services).Revocation;
 
-    [Inject] private readonly IDocumentStore store;
+    [Inject] private readonly ISparkStore store;
     [Inject] private readonly OidcKeyRing signingKeyService;
     [Inject] private readonly OidcIssuer oidcIssuer;
     [Inject] private readonly OidcClientAuthenticator clientAuthenticator;
@@ -87,7 +86,7 @@ internal sealed partial class OidcRevoke : IPostEndpoint<OidcClientTokenRequest>
             return Results.Json(new { error = "invalid_request", error_description = "token is required." }, statusCode: 400);
         }
 
-        using var session = store.OpenAsyncSession();
+        using var session = store.OpenSession();
 
         // Authenticate client (D8). A public client may revoke its own tokens (RFC 7009 §2.1).
         var client = await clientAuthenticator.AuthenticateAsync(httpContext, form, session, ct);
@@ -129,10 +128,8 @@ internal sealed partial class OidcRevoke : IPostEndpoint<OidcClientTokenRequest>
             // If revoking a refresh token, also revoke associated access tokens
             if (tokenDoc.Type == "refresh_token" && !string.IsNullOrEmpty(tokenDoc.AuthorizationId))
             {
-                var associatedTokens = await session
-                    .Query<OidcToken>()
-                    .Where(t => t.AuthorizationId == tokenDoc.AuthorizationId && t.Type == "access_token" && t.Status == "valid")
-                    .ToListAsync(ct);
+                var associatedTokens = (await OidcTokenSweep.ValidOfAuthorizationAsync(session, tokenDoc.AuthorizationId, ct))
+                    .Where(t => t.Type == OidcTokenTypes.AccessToken);
 
                 foreach (var at in associatedTokens)
                 {

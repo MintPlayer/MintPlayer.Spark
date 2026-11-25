@@ -138,7 +138,9 @@ public sealed class SparkIdTestHost : SparkAppTestHost
         var scopeName = $"{audience}.{scopeSuffix}";
 
         using var appStore = OpenAppStore();
-        using var session = appStore.OpenAsyncSession();
+        // Spark's session, not RavenDB's: the provider finds an application by its client id only through the
+        // client-id reservation (#536 D47), which a raw session's save never claims.
+        using var session = appStore.AsSparkStore().OpenSession();
 
         // The audience is the API resource's name: a token carrying one of its scopes is addressed
         // to it, not to everything the issuer serves.
@@ -147,12 +149,14 @@ public sealed class SparkIdTestHost : SparkAppTestHost
         if (api is null)
         {
             api = new OidcResource { Id = MintPlayer.Spark.Abstractions.Id<OidcResource>.FromTrusted(resourceId), Kind = OidcResourceKinds.Api, Name = audience };
-            await session.StoreAsync(api);
+            await session.StoreAsync(api, resourceId);
         }
         api.Scopes.Add(new OidcApiScope { Name = scopeName });
 
-        await session.StoreAsync(new OidcApplication
+        var app = new OidcApplication
         {
+            // Natural ids (#536 D49): the provider sets every application's id, so the seed does too.
+            Id = MintPlayer.Spark.Abstractions.Id<OidcApplication>.FromTrusted("oidcapplications/" + Guid.NewGuid().ToString("N")),
             ClientId = clientId,
             DisplayName = clientId,
             ClientType = "confidential",
@@ -162,7 +166,9 @@ public sealed class SparkIdTestHost : SparkAppTestHost
             Scopes = [new OidcApplicationScope { Name = scopeName }],
             Mode = OidcApplicationModes.Live,
             Claims = [new ClientClaim { Type = "group", Value = group }],
-        });
+        };
+        await OidcClientIdReservation.ReserveAsync(session, app);
+        await session.StoreAsync(app, app.Id.Value);
 
         await session.SaveChangesAsync();
         await appStore.WaitForIndexingAsync(TestDatabase);

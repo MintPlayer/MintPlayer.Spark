@@ -4,8 +4,6 @@ using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.IdentityProvider.Endpoints.Oidc;
 using MintPlayer.Spark.IdentityProvider.Models;
 using MintPlayer.Spark.IdentityProvider.Services;
-using Raven.Client.Documents;
-using Raven.Client.Documents.Session;
 
 namespace MintPlayer.Spark.IdentityProvider.Endpoints;
 
@@ -26,7 +24,7 @@ internal sealed partial class OidcRegisterClient : IPostEndpoint<OidcClientMetad
 
     static bool IEndpointBase.IsEnabled(IServiceProvider services) => OidcSurface.Of(services).Registration;
 
-    [Inject] private readonly IDocumentStore store;
+    [Inject] private readonly ISparkStore store;
     [Inject] private readonly OidcClientRegistration registration;
     [Inject] private readonly OidcDevelopers developers;
     [Inject] private readonly OidcAudit audit;
@@ -47,7 +45,7 @@ internal sealed partial class OidcRegisterClient : IPostEndpoint<OidcClientMetad
     public override async Task<IResult> HandleAsync(OidcClientMetadata metadata, CancellationToken ct)
     {
         var http = httpContextAccessor.HttpContext!;
-        using var session = store.OpenAsyncSession();
+        using var session = store.OpenSession();
 
         // MCP PRD D5 (G6): with idp.ForMcp(), a request WITHOUT an initial access token registers an AI agent with
         // loopback redirects only. A request that presents a token is still a developer's, and is judged as one.
@@ -93,7 +91,7 @@ internal sealed partial class OidcRegisterClient : IPostEndpoint<OidcClientMetad
         }
 
         await Interceptors.OidcApplicationInterceptors.MarkCrossOwnerScopesAsync(session, app, app.Scopes, initial.Subject);
-        await OidcClientIdReservation.ReserveAsync(session, app);
+        await OidcClientIdReservation.ReserveAsync(session, app, ct);
         await session.StoreAsync(app, ct);
 
         // RFC 7592: the client manages its registration with a token of its own.
@@ -137,12 +135,12 @@ internal sealed partial class OidcReadClientRegistration : IGetEndpoint
 
     [RouteParam] public string ClientId { get; set; } = "";
 
-    [Inject] private readonly IDocumentStore store;
+    [Inject] private readonly ISparkStore store;
     [Inject] private readonly OidcIssuer oidcIssuer;
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
-        using var session = store.OpenAsyncSession();
+        using var session = store.OpenSession();
         if (await OidcRegistrationAccess.LoadAsync(session, httpContext, ClientId) is not { } app)
             return OidcRegistrationAccess.Unauthorized(httpContext);
         return Results.Json(OidcClientRegistration.Describe(app, oidcIssuer.Resolve(httpContext.Request)));
@@ -159,7 +157,7 @@ internal sealed partial class OidcUpdateClientRegistration : IPutEndpoint<OidcCl
 
     [RouteParam] public string ClientId { get; set; } = "";
 
-    [Inject] private readonly IDocumentStore store;
+    [Inject] private readonly ISparkStore store;
     [Inject] private readonly OidcClientRegistration registration;
     [Inject] private readonly OidcAudit audit;
     [Inject] private readonly OidcIssuer oidcIssuer;
@@ -168,7 +166,7 @@ internal sealed partial class OidcUpdateClientRegistration : IPutEndpoint<OidcCl
     public override async Task<IResult> HandleAsync(OidcClientMetadata metadata, CancellationToken ct)
     {
         var http = httpContextAccessor.HttpContext!;
-        using var session = store.OpenAsyncSession();
+        using var session = store.OpenSession();
         if (await OidcRegistrationAccess.LoadAsync(session, http, ClientId) is not { } app)
             return OidcRegistrationAccess.Unauthorized(http);
 
@@ -194,20 +192,21 @@ internal sealed partial class OidcDeleteClientRegistration : IDeleteEndpoint
 
     [RouteParam] public string ClientId { get; set; } = "";
 
-    [Inject] private readonly IDocumentStore store;
+    [Inject] private readonly ISparkStore store;
     [Inject] private readonly OidcAudit audit;
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
         var ct = httpContext.RequestAborted;
-        using var session = store.OpenAsyncSession();
+        using var session = store.OpenSession();
         if (await OidcRegistrationAccess.LoadAsync(session, httpContext, ClientId) is not { } app)
             return OidcRegistrationAccess.Unauthorized(httpContext);
 
         session.Delete(app);
+        // Released in the same save as the delete: the client id is free exactly when the application is gone.
+        OidcClientIdReservation.Release(session, app);
         await audit.RecordAsync(session, OidcAuditKinds.ApplicationDeleted, app.CreatedBy, app.Id.Value, ipAddress: httpContext.Connection.RemoteIpAddress?.ToString(), ct: ct);
         await session.SaveChangesAsync(ct);
-        await OidcClientIdReservation.ReleaseAsync(session, app);
         return Results.NoContent();
     }
 }
@@ -215,7 +214,7 @@ internal sealed partial class OidcDeleteClientRegistration : IDeleteEndpoint
 internal static class OidcRegistrationAccess
 {
     /// <summary>The application the request's registration access token manages, when it names <paramref name="clientId"/>.</summary>
-    public static async Task<OidcApplication?> LoadAsync(IAsyncDocumentSession session, HttpContext http, string clientId, CancellationToken ct = default)
+    public static async Task<OidcApplication?> LoadAsync(ISparkSession session, HttpContext http, string clientId, CancellationToken ct = default)
     {
         var token = await OidcClientRegistration.ResolveBearerAsync(session, http.Request, "client", ct);
         if (token?.ApplicationId is not { Length: > 0 } applicationId)

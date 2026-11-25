@@ -10,10 +10,6 @@ using MintPlayer.Spark.IdentityProvider.Endpoints.Oidc;
 using MintPlayer.Spark.IdentityProvider.Indexes;
 using MintPlayer.Spark.IdentityProvider.Models;
 using MintPlayer.Spark.IdentityProvider.Services;
-using Raven.Client.Documents;
-using Raven.Client.Documents.Linq;
-using Raven.Client.Exceptions;
-using Raven.Client.Documents.Session;
 
 namespace MintPlayer.Spark.IdentityProvider.Endpoints;
 
@@ -61,7 +57,7 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
 {
     public static string Path => "/token";
 
-    [Inject] private readonly IDocumentStore store;
+    [Inject] private readonly ISparkStore store;
     [Inject] private readonly OidcTokenGenerator tokenGenerator;
     [Inject] private readonly UserManager<TUser> userManager;
     [Inject] private readonly OidcIssuer oidcIssuer;
@@ -132,13 +128,13 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
             return Results.Json(new { error = "invalid_request", error_description = "Missing required parameters." }, statusCode: 400);
         }
 
-        using var session = store.OpenAsyncSession();
+        using var session = store.OpenSession();
 
         // Redemption is the point where a single-use credential is spent, so the write that
         // spends it must fail if anyone else spent it first. The point-load fixed replay
         // through a stale index; this fixes replay through simultaneity, where two requests
         // both load a valid code, both check it, and both save.
-        session.Advanced.OptimisticConcurrencyMode = OptimisticConcurrencyMode.Writes;
+        session.OptimisticConcurrency = true;
 
         // Validate client (D8: basic, post, private_key_jwt, mTLS, or none for a public client)
         var client = await clientAuthenticator.AuthenticateAsync(httpContext, form, session, ct);
@@ -429,7 +425,7 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
     /// <c>resource</c>), so a token for another application's endpoint keeps that audience; an endpoint no longer
     /// configured leaves them undefined, and the caller answers <see cref="McpResourceUnavailable"/>.
     /// </summary>
-    private Task<List<OidcScopeDefinition>> LoadScopesAsync(IAsyncDocumentSession session, OidcToken token, List<string> names, CancellationToken ct)
+    private Task<List<OidcScopeDefinition>> LoadScopesAsync(ISparkSession session, OidcToken token, List<string> names, CancellationToken ct)
     {
         if (!IsMcp(token))
             return Token.LoadScopesAsync(session, names, ct);
@@ -444,7 +440,7 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
 
     private async Task RecordPkceFailureAsync(OidcToken codeToken, CancellationToken ct)
     {
-        using var auditSession = store.OpenAsyncSession();
+        using var auditSession = store.OpenSession();
         await audit.RecordAsync(auditSession, OidcAuditKinds.PkceFailed, actorId: null, codeToken.ApplicationId, codeToken.Subject,
             httpContext.Connection.RemoteIpAddress?.ToString(), ct: ct);
         await auditSession.SaveChangesAsync(ct);
@@ -453,12 +449,14 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
     /// <summary>The audit event of an agent's token issue, and the client's last use (an unused registration is pruned, M3b).</summary>
     private async Task RecordAgentTokenAsync(OidcApplication app, string? subject, string grantType, CancellationToken ct)
     {
-        using var bookkeeping = store.OpenAsyncSession();
+        using var bookkeeping = store.OpenSession();
         await audit.RecordAsync(bookkeeping, OidcAuditKinds.TokenIssued, actorId: subject, app.Id.Value, subject,
             httpContext.Connection.RemoteIpAddress?.ToString(), new Dictionary<string, string> { ["grantType"] = grantType }, ct);
-        if (Mcp.OidcAgentClients.IsAgent(app) && (app.LastUsedAt is null || app.LastUsedAt < DateTime.UtcNow.AddHours(-1)))
-            bookkeeping.Advanced.Patch<OidcApplication, DateTime?>(app.Id.Value, a => a.LastUsedAt, DateTime.UtcNow);
         await bookkeeping.SaveChangesAsync(ct);
+        // A set-based write of the one field, so a concurrent edit of the application is not overwritten (#536 D47).
+        var applicationId = app.Id;
+        if (Mcp.OidcAgentClients.IsAgent(app) && (app.LastUsedAt is null || app.LastUsedAt < DateTime.UtcNow.AddHours(-1)))
+            await bookkeeping.UpdateWhereAsync<OidcApplication>(a => a.Id == applicationId, set => set.Set(a => a.LastUsedAt, DateTime.UtcNow), ct);
     }
 
     /// <summary>Whether <paramref name="app"/> gets refresh tokens: this provider offers the flow, and the client is registered for it.</summary>
@@ -479,10 +477,10 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
             return Results.Json(new { error = "invalid_request" }, statusCode: 400);
         }
 
-        using var session = store.OpenAsyncSession();
+        using var session = store.OpenSession();
 
         // Rotation spends the presented token, so it races exactly as code redemption does.
-        session.Advanced.OptimisticConcurrencyMode = OptimisticConcurrencyMode.Writes;
+        session.OptimisticConcurrency = true;
 
         var client = await clientAuthenticator.AuthenticateAsync(httpContext, form, session, ct);
         if (!client.Succeeded)
@@ -722,7 +720,7 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
     {
         var scope = request.Scope;
 
-        using var session = store.OpenAsyncSession();
+        using var session = store.OpenSession();
 
         var client = await clientAuthenticator.AuthenticateAsync(httpContext, form, session, ct);
         if (!client.Succeeded)
@@ -840,7 +838,7 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
     /// contributor's grant id, so revoking that grant ends the token at once (<see cref="OidcGrants.PermitsAsync"/>).
     /// </summary>
     private async Task<IResult> IssueContributedTokenAsync(
-        IAsyncDocumentSession session, OidcApplication app, System.Security.Cryptography.X509Certificates.X509Certificate2? certificate,
+        ISparkSession session, OidcApplication app, System.Security.Cryptography.X509Certificates.X509Certificate2? certificate,
         OidcClientCredentialsContribution contribution, CancellationToken ct)
     {
         var audience = contribution.Audience ?? app.ClientId;
@@ -897,17 +895,14 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
     /// </para>
     /// </summary>
     private static async Task RevokeAuthorizationChainAsync(
-        IAsyncDocumentSession session, OidcToken compromised, CancellationToken ct)
+        ISparkSession session, OidcToken compromised, CancellationToken ct)
     {
         compromised.Status = "revoked";
 
         if (string.IsNullOrEmpty(compromised.AuthorizationId))
             return;
 
-        var siblings = await session
-            .Query<OidcToken>()
-            .Where(t => t.AuthorizationId == compromised.AuthorizationId && t.Status == "valid")
-            .ToListAsync(ct);
+        var siblings = await OidcTokenSweep.ValidOfAuthorizationAsync(session, compromised.AuthorizationId, ct);
 
         foreach (var sibling in siblings)
             sibling.Status = "revoked";
@@ -921,17 +916,14 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
     /// needs no index of its own and never touches another family of the grant.
     /// </summary>
     private static async Task SweepFamilyAsync(
-        IAsyncDocumentSession session, OidcToken presented, string? familyId, CancellationToken ct)
+        ISparkSession session, OidcToken presented, string? familyId, CancellationToken ct)
     {
         presented.Status = "revoked";
 
         if (string.IsNullOrEmpty(familyId) || string.IsNullOrEmpty(presented.AuthorizationId))
             return;
 
-        var tokens = await session
-            .Query<OidcToken>()
-            .Where(t => t.AuthorizationId == presented.AuthorizationId && t.Status == "valid")
-            .ToListAsync(ct);
+        var tokens = await OidcTokenSweep.ValidOfAuthorizationAsync(session, presented.AuthorizationId, ct);
 
         foreach (var token in tokens.Where(t => string.Equals(t.FamilyId, familyId, StringComparison.OrdinalIgnoreCase)))
             token.Status = "revoked";
@@ -949,21 +941,40 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
     /// </para>
     /// </summary>
     /// <param name="reused">The presented refresh token when the signal is its reuse; null for a code spent twice.</param>
+    /// <remarks>
+    /// A relational store checks a loaded row's version whatever <see cref="ISparkSession.OptimisticConcurrency"/> says
+    /// (#536 D37), so there a write that committed after the family was read (the winner's rotation) fails this save.
+    /// The revocation then reads the family afresh and writes again; revoked is final, so it settles in a few attempts.
+    /// On RavenDB the first attempt always commits.
+    /// </remarks>
     private async Task RevokeFamilyAsync(string? familyId, string reason, OidcToken? reused, CancellationToken ct)
     {
-        using var revocation = store.OpenAsyncSession();
-        revocation.Advanced.OptimisticConcurrencyMode = OptimisticConcurrencyMode.None;
-
-        var revoked = await OidcRefreshFamilies.RevokeAsync(revocation, familyId, reason, ct);
-        if (reused is not null)
+        const int Attempts = 5;
+        for (var attempt = 1; ; attempt++)
         {
-            await audit.RecordAsync(revocation, OidcAuditKinds.RefreshTokenReuse, actorId: null,
-                reused.ApplicationId, reused.Subject,
-                httpContext.Connection.RemoteIpAddress?.ToString(), ct: ct);
-        }
+            using var revocation = store.OpenSession();
+            revocation.OptimisticConcurrency = false;
 
-        if (revoked || reused is not null)
-            await revocation.SaveChangesAsync(ct);
+            var revoked = await OidcRefreshFamilies.RevokeAsync(revocation, familyId, reason, ct);
+            if (reused is not null)
+            {
+                await audit.RecordAsync(revocation, OidcAuditKinds.RefreshTokenReuse, actorId: null,
+                    reused.ApplicationId, reused.Subject,
+                    httpContext.Connection.RemoteIpAddress?.ToString(), ct: ct);
+            }
+
+            if (!revoked && reused is null)
+                return;
+            try
+            {
+                await revocation.SaveChangesAsync(ct);
+                return;
+            }
+            catch (SparkStoreConcurrencyException) when (attempt < Attempts)
+            {
+                // Another write to the family committed first; read it again.
+            }
+        }
     }
 
     /// <summary>
@@ -972,7 +983,7 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
     /// </summary>
     private async Task<bool> SpentMeanwhileAsync(string tokenId, CancellationToken ct)
     {
-        using var session = store.OpenAsyncSession();
+        using var session = store.OpenSession();
         return await session.LoadAsync<OidcToken>(tokenId, ct) is { Status: "redeemed" };
     }
 
@@ -986,14 +997,14 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
     /// since they are already returning an error.
     /// </para>
     /// </summary>
-    private static async Task<bool> TrySaveAsync(IAsyncDocumentSession session, CancellationToken ct)
+    private static async Task<bool> TrySaveAsync(ISparkSession session, CancellationToken ct)
     {
         try
         {
             await session.SaveChangesAsync(ct);
             return true;
         }
-        catch (ConcurrencyException)
+        catch (SparkStoreConcurrencyException)
         {
             return false;
         }
@@ -1021,7 +1032,7 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
 /// </remarks>
 internal static class Token
 {
-    internal static Task<List<OidcScopeDefinition>> LoadScopesAsync(IAsyncDocumentSession session, List<string> scopeNames, CancellationToken ct)
+    internal static Task<List<OidcScopeDefinition>> LoadScopesAsync(ISparkSession session, List<string> scopeNames, CancellationToken ct)
         => OidcScopeCatalog.LoadAsync(session, scopeNames, ct);
 
     internal static bool VerifyClientSecret(string secret, List<ClientSecret> secrets)

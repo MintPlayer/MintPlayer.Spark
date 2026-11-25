@@ -166,7 +166,8 @@ internal partial class IndexCatalog : IIndexCatalog
     /// The election for one entity type (D3). A claim wins, view or not — a viewless default shapes nothing,
     /// and its queries return entity documents (SP4). Without a claim, only an index <em>with a view</em> is a
     /// default implicitly, and only when it is the sole one: an index without a view contributes nothing to the
-    /// model file, so electing one silently would stamp an <c>indexName</c> nobody chose.
+    /// model file, so electing one silently would stamp an <c>indexName</c> nobody chose. For the same reason a
+    /// <c>SparkView</c> is a default only by its claim (#536 D48): every view has its row type, so it chooses nothing.
     /// </summary>
     private static IndexCatalogEntry? Elect(Type entityType, IReadOnlyList<IndexCatalogEntry> entries)
     {
@@ -181,7 +182,10 @@ internal partial class IndexCatalog : IIndexCatalog
                 $"[DefaultIndex(...)] list.");
         }
 
-        var viewed = entries.Where(e => e.CollectionType == entityType && e.ProjectionType is not null).ToList();
+        // A SparkView (#536 D48) is a default only by its claim: its row type is no [FromIndex] choice.
+        var viewed = entries
+            .Where(e => e.CollectionType == entityType && e.ProjectionType is not null && !SparkViewEntries.IsView(e.IndexType))
+            .ToList();
         if (viewed.Count <= 1) return viewed.FirstOrDefault();
 
         throw new InvalidOperationException(

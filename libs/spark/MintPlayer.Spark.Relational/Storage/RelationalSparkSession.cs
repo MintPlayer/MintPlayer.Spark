@@ -142,8 +142,21 @@ public sealed partial class RelationalSparkSession : ISparkSession
     {
         var requested = ids.Where(id => id is not null).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         var table = Model.RequireTable(typeof(T));
-        var keys = requested.Select(table.KeyValue).OfType<object>().ToList();
         var found = new Dictionary<string, T>(StringComparer.Ordinal);
+
+        // The session's own documents first, as RavenDB's and memory's sessions answer: one stored but not saved yet is
+        // that instance, one deleted in the session is gone, one loaded already is the tracked instance (no query).
+        var settled = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var id in requested)
+        {
+            if (TrackedById(typeof(T), id) is not { State: not EntityState.Detached } entry)
+                continue;
+            settled.Add(id);
+            if (entry.State != EntityState.Deleted && entry.Entity is T entity)
+                found[id.ToLowerInvariant()] = entity;
+        }
+
+        var keys = requested.Where(id => !settled.Contains(id)).Select(table.KeyValue).OfType<object>().ToList();
         if (keys.Count > 0)
         {
             Request();

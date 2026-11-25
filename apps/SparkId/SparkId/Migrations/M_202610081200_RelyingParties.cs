@@ -1,10 +1,9 @@
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
+using MintPlayer.Spark.Abstractions.Storage;
 using MintPlayer.Spark.IdentityProvider.Models;
 using MintPlayer.Spark.IdentityProvider.Services;
 using MintPlayer.Spark.Migrations;
-using Raven.Client.Documents;
-using Raven.Client.Documents.Session;
 
 namespace SparkId.Migrations;
 
@@ -43,7 +42,9 @@ public partial class M_202610081200_RelyingParties : ISparkMigration
         ("fleet", "Spark Fleet", "https://localhost:5003", "dev-only-fleet-secret-not-for-production"),
     ];
 
-    [Inject] private readonly IAsyncDocumentSession session;
+    // The Spark store, not a RavenDB session: the seed runs on every store, and its save claims the client-id
+    // reservations (#536 D47).
+    [Inject] private readonly ISparkStore store;
     [Inject] private readonly IHostEnvironment environment;
 
     public async Task UpAsync(CancellationToken cancellationToken)
@@ -51,9 +52,10 @@ public partial class M_202610081200_RelyingParties : ISparkMigration
         if (!environment.IsDevelopment())
             return;
 
-        await EnsureScopeAsync("openid", TranslatedString.Create("Your identity", "Votre identité", "Je identiteit"), ["sub"], required: true, cancellationToken);
-        await EnsureScopeAsync("profile", TranslatedString.Create("Your profile", "Votre profil", "Je profiel"), ["name", "preferred_username", "given_name", "family_name"], required: false, cancellationToken);
-        await EnsureScopeAsync("email", TranslatedString.Create("Your email address", "Votre adresse e-mail", "Je e-mailadres"), ["email", "email_verified"], required: false, cancellationToken);
+        using var session = store.OpenSession();
+        await EnsureScopeAsync(session, "openid", TranslatedString.Create("Your identity", "Votre identité", "Je identiteit"), ["sub"], required: true, cancellationToken);
+        await EnsureScopeAsync(session, "profile", TranslatedString.Create("Your profile", "Votre profil", "Je profiel"), ["name", "preferred_username", "given_name", "family_name"], required: false, cancellationToken);
+        await EnsureScopeAsync(session, "email", TranslatedString.Create("Your email address", "Votre adresse e-mail", "Je e-mailadres"), ["email", "email_verified"], required: false, cancellationToken);
 
         foreach (var rp in RelyingParties)
             await DevelopmentRelyingParties.EnsureAsync(session, rp.ClientId, rp.DisplayName, rp.Origin, rp.Secret, cancellationToken);
@@ -61,16 +63,16 @@ public partial class M_202610081200_RelyingParties : ISparkMigration
         await session.SaveChangesAsync(cancellationToken);
     }
 
-    private async Task EnsureScopeAsync(string name, TranslatedString displayName, List<string> claimTypes, bool required, CancellationToken ct)
+    private static async Task EnsureScopeAsync(ISparkSession session, string name, TranslatedString displayName, List<string> claimTypes, bool required, CancellationToken ct)
     {
-        // Natural id (OidcScopeCatalog): a point-load decides, no index involved.
+        // Natural id (OidcScopeCatalog): a point lookup decides, no index involved.
         var id = OidcScopeCatalog.ResourceId(name);
-        if (await session.Advanced.ExistsAsync(id, ct))
+        if (await session.ExistsAsync(typeof(OidcResource), id, ct))
             return;
 
         await session.StoreAsync(new OidcResource
         {
-            Id = MintPlayer.Spark.Abstractions.Id<OidcResource>.FromTrusted(id),
+            Id = Id<OidcResource>.FromTrusted(id),
             Kind = OidcResourceKinds.Identity,
             Name = name,
             DisplayName = displayName,
@@ -78,6 +80,6 @@ public partial class M_202610081200_RelyingParties : ISparkMigration
             Required = required,
             ShowInDiscoveryDocument = true,
             Enabled = true,
-        }, ct);
+        }, id, ct);
     }
 }

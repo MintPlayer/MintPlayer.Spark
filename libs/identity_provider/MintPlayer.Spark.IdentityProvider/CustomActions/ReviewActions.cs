@@ -5,7 +5,6 @@ using MintPlayer.Spark.Abstractions.ClientOperations;
 using MintPlayer.Spark.IdentityProvider.Actions;
 using MintPlayer.Spark.IdentityProvider.Models;
 using MintPlayer.Spark.IdentityProvider.Services;
-using Raven.Client.Documents.Session;
 
 namespace MintPlayer.Spark.IdentityProvider.CustomActions;
 
@@ -13,7 +12,7 @@ namespace MintPlayer.Spark.IdentityProvider.CustomActions;
 internal sealed partial class ApproveScopeAction : ICustomAction
 {
     [Inject] private readonly IManager manager;
-    [Inject] private readonly IAsyncDocumentSession session;
+    [Inject] private readonly ISparkSession session;
     [Inject] private readonly OidcPortalAccess access;
     [Inject] private readonly OidcAudit audit;
     [Inject] private readonly OidcPortalMail mail;
@@ -26,7 +25,7 @@ internal sealed partial class ApproveScopeAction : ICustomAction
 internal sealed partial class RejectScopeAction : ICustomAction
 {
     [Inject] private readonly IManager manager;
-    [Inject] private readonly IAsyncDocumentSession session;
+    [Inject] private readonly ISparkSession session;
     [Inject] private readonly OidcPortalAccess access;
     [Inject] private readonly OidcAudit audit;
     [Inject] private readonly OidcPortalMail mail;
@@ -37,7 +36,7 @@ internal sealed partial class RejectScopeAction : ICustomAction
 
 internal static class OidcScopeDecision
 {
-    public static async Task DecideAsync(CustomActionArgs args, bool approve, IManager manager, IAsyncDocumentSession session,
+    public static async Task DecideAsync(CustomActionArgs args, bool approve, IManager manager, ISparkSession session,
         OidcPortalAccess access, OidcAudit audit, OidcPortalMail mail, CancellationToken ct)
     {
         var notify = new List<(OidcApplication App, string Scope, string Resource)>();
@@ -80,7 +79,7 @@ internal static class OidcScopeDecision
 internal sealed partial class ApproveGoLiveAction : ICustomAction
 {
     [Inject] private readonly IManager manager;
-    [Inject] private readonly IAsyncDocumentSession session;
+    [Inject] private readonly ISparkSession session;
     [Inject] private readonly OidcPortalAccess access;
     [Inject] private readonly OidcAudit audit;
     [Inject] private readonly OidcPortalMail mail;
@@ -93,7 +92,7 @@ internal sealed partial class ApproveGoLiveAction : ICustomAction
 internal sealed partial class RejectGoLiveAction : ICustomAction
 {
     [Inject] private readonly IManager manager;
-    [Inject] private readonly IAsyncDocumentSession session;
+    [Inject] private readonly ISparkSession session;
     [Inject] private readonly OidcPortalAccess access;
     [Inject] private readonly OidcAudit audit;
     [Inject] private readonly OidcPortalMail mail;
@@ -104,7 +103,7 @@ internal sealed partial class RejectGoLiveAction : ICustomAction
 
 internal static class OidcGoLiveDecision
 {
-    public static async Task DecideAsync(CustomActionArgs args, bool approve, IManager manager, IAsyncDocumentSession session,
+    public static async Task DecideAsync(CustomActionArgs args, bool approve, IManager manager, ISparkSession session,
         OidcPortalAccess access, OidcAudit audit, OidcPortalMail mail, CancellationToken ct)
     {
         if (!await access.IsAdministratorAsync()) return;

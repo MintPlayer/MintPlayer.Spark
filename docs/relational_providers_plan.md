@@ -517,6 +517,52 @@ rounds, milestones and status. Branch `feat/536-sql-server-provider`, draft PR #
       - The RavenDB Dashboards suite 24/24, CodeCoverage `HostMetricsDashboardTests` 11/11 and the templates tests
         23/23.
     - **Next:** M8b IdentityProvider, then M9.
+  - **M8b (in progress, 2026-11-25): the identity provider on any store (PRD D47).** Design in D47. The survey found
+    69 files with RavenDB code: about 15 collection queries with a filter, 2 static indexes, 3 raw queries, 2
+    patches, `@expires` metadata, one time series, the client-id compare-exchange, and the developer status as an
+    undeclared field on the user document.
+    - **Library:** builds clean with no RavenDB session. What still touches RavenDB is guarded: the three migrations
+      (RavenDB only) and the `INC:Tokens` counter (`session.Native is IAsyncDocumentSession`). `features.json` drops the
+      IdP's `"store": "RavenDB"`.
+    - **Harness:** `OidcTestHost`/`OidcSharedHost` run on `ISparkTestDatabase` (new `SparkSharedHost<TContext>`), so the
+      ~35 OIDC classes run on every store. Seeds reserve the client id, as the interceptor does. Tests that pause
+      RavenDB's indexing run the pause on RavenDB only (`PauseIndexingAsync`); the two `INC:Tokens` tests skip elsewhere.
+      Still RavenDB-only: `OidcCorsScopeTests`, `OidcLocalCredentialModeTests`, the MCP hosts.
+    - **D48** (found by the first run, 443 of 603 failing on RavenDB): four helper views over `OidcApplication` made
+      every host refuse to start. A `SparkView` is a default only by its `[DefaultIndex]` claim now, and a fan-out view
+      has no row per entity. Three red-first tests in `SparkViewTests`/`RavenSparkViewTests`.
+    - **Migrations:** `OidcStoreNeutralMigrationTests` (RavenDB, 2/2). The client-id migration failed the whole save
+      when two old applications shared a client id (red first); it now settles each key once and logs the second.
+    - **Measured 2026-11-25:** OIDC suite on RavenDB 603/603 (1 m 21 s).
+    - **SQL Server and PostgreSQL, run by run (602 tests each):**
+      1. 421 failing on each: the fan-out `IdOf` (M8c below).
+      2. 161 failing. 158 of them were "'oidctokens/{hex}' is not an id of collection OidcTokens": hashed ids on a Guid
+         key, now PRD D49 (`OidcToken`, `OidcGrant` and `OidcApplication` are Natural). The other 3 were "another
+         instance with the same key is already being tracked": the relational `LoadAsync(ids)` reloaded rows the
+         session had already stored. It now answers from the tracker first, with a conformance case
+         `A_session_loads_what_it_stored_or_deleted_before_saving` (70/70 on both SQL stores).
+      3. 2 failing on each (598 passed, 2 `INC:Tokens` skipped): the two concurrent-redemption tests of
+         `OidcRefreshTokenFamilyTests`. `RevokeFamilyAsync` turned off `OptimisticConcurrency` to get last-write-wins,
+         but the relational session checks a loaded row regardless (D37). It now retries with a fresh read, at most 5
+         attempts (revoked is final).
+    - **SparkId:** the development seed (`DevelopmentRelyingParties`, both relying-party migrations) moved to
+      `ISparkStore` and reserves each client id. Before, a new database found the seeded clients only through the
+      reservation migration that runs after them. `OidcClientIdReservation` is public for it. `SparkId.Tests` 3/3 (red
+      first: "the seed reserves client id 'qna'").
+  - **M8c (in progress): revisit earlier milestones under D46** (RavenDB's format may change through a migration). Look
+    for designs that kept RavenDB's old format only for its own sake, and for stale values left behind.
+    - Done: the compare-exchange value `spark/dashboards/sampler` (M8a) is deleted by
+      `M_202611251400_DashboardsSamplerLeaseRetired` (`DashboardSamplerLeaseMigrationTests`, red first, RavenDB 1/1).
+    - Found by the OIDC suite on SQL (421 of 602 failing on both SQL stores): the relational renderer refused
+      `Id = s.IdOf(x)` in a fan-out's result selector. `KeyBesideRow` now wraps `SelectMany`'s result selector as it
+      wraps `Select`'s (`NeutralReduceViewTests.A_fan_out_map_view_carries_its_document_id_on_every_row`, red on SQL
+      Server first; 7/7 on SQL Server, PostgreSQL and InMemory).
+    - Kept, reviewed under D46: the hash inputs of `OidcGrantReference` and `OidcRefreshFamilies` fix the pre-#536
+      casing (`OidcApplications/{key}`, `OidcTokens/{hex}`). A hash needs one canonical input on every store, and the
+      old form serves as well as a lower-case one. Changing it would re-key every grant and family, and with them every
+      token's `AuthorizationId`: a migration D46 allows but nothing gains from. It matches O15 (a), no re-key.
+    - Kept, reviewed: D44 (RavenDB keeps its search index) and D45 (RavenDB keeps its time series) use a RavenDB
+      feature where it is better. They are not format preservation.
   - **M7g (2026-11-25): fan-out views (PRD D43, "Fan-out maps").** `from x in s.Set<T>() from item in x.List select …`
     in a `SparkView` map.
     - RavenDB: `RavenViewIndexes.Map` renders a `SelectMany` with a result selector.

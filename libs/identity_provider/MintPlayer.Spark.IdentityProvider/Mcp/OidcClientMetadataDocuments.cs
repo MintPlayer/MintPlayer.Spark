@@ -6,7 +6,6 @@ using MintPlayer.Spark.Http;
 using MintPlayer.Spark.IdentityProvider.Configuration;
 using MintPlayer.Spark.IdentityProvider.Models;
 using MintPlayer.Spark.IdentityProvider.Services;
-using Raven.Client.Documents;
 
 namespace MintPlayer.Spark.IdentityProvider.Mcp;
 
@@ -30,7 +29,7 @@ namespace MintPlayer.Spark.IdentityProvider.Mcp;
 /// </para>
 /// </remarks>
 internal sealed partial class OidcClientMetadataDocuments(
-    IDocumentStore store,
+    ISparkStore store,
     IHttpClientFactory httpClients,
     SparkIdentityProviderOptions options,
     OidcAgentRegistrationLimiter limiter,
@@ -92,7 +91,7 @@ internal sealed partial class OidcClientMetadataDocuments(
         if (CheckClientId(clientId) is { } invalid)
             return (null, invalid);
 
-        using var session = store.OpenAsyncSession();
+        using var session = store.OpenSession();
         var id = OidcAgentClients.ApplicationId(clientId);
         var existing = await session.LoadAsync<OidcApplication>(id, ct);
         if (existing is not null && !string.Equals(existing.ClientId, clientId, StringComparison.Ordinal))
@@ -125,7 +124,7 @@ internal sealed partial class OidcClientMetadataDocuments(
         {
             try
             {
-                await OidcClientIdReservation.ReserveAsync(session, app);
+                await OidcClientIdReservation.ReserveAsync(session, app, ct);
             }
             catch (Abstractions.SparkValidationException)
             {

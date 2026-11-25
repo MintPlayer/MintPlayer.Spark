@@ -1,5 +1,4 @@
 using MintPlayer.Spark.IdentityProvider.Models;
-using Raven.Client.Documents;
 
 namespace MintPlayer.Spark.IdentityProvider.Services;
 
@@ -10,12 +9,12 @@ namespace MintPlayer.Spark.IdentityProvider.Services;
 /// </summary>
 internal static class OidcGrantUsage
 {
-    public static async Task TouchAsync(IDocumentStore store, string? grantId, CancellationToken ct)
+    public static async Task TouchAsync(ISparkStore store, string? grantId, CancellationToken ct)
     {
         if (string.IsNullOrEmpty(grantId))
             return;
 
-        using var session = store.OpenAsyncSession();
+        using var session = store.OpenSession();
         var grant = await session.LoadAsync<OidcGrant>(grantId, ct);
         var now = DateTime.UtcNow;
         if (grant is null || grant.LastUsedAt > now.AddHours(-1))
@@ -23,6 +22,6 @@ internal static class OidcGrantUsage
 
         grant.LastUsedAt = now;
         try { await session.SaveChangesAsync(ct); }
-        catch (Raven.Client.Exceptions.ConcurrencyException) { /* bookkeeping only */ }
+        catch (SparkStoreConcurrencyException) { /* bookkeeping only */ }
     }
 }

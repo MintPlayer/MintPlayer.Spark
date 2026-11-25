@@ -5,7 +5,6 @@ using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.IdentityProvider.Endpoints.Oidc;
 using MintPlayer.Spark.IdentityProvider.Models;
 using MintPlayer.Spark.IdentityProvider.Services;
-using Raven.Client.Documents;
 using static MintPlayer.Spark.IdentityProvider.Endpoints.ConnectPage;
 
 namespace MintPlayer.Spark.IdentityProvider.Endpoints;
@@ -25,7 +24,7 @@ internal sealed partial class OidcDevicePage : IGetEndpoint<string>
     [QueryParam("user_code")] public string? UserCode { get; set; }
     [QueryParam("status")] public string? Status { get; set; }
 
-    [Inject] private readonly IDocumentStore store;
+    [Inject] private readonly ISparkStore store;
     [Inject] private readonly IAntiforgery antiforgery;
     [Inject] private readonly IHttpContextAccessor httpContextAccessor;
     [Inject] private readonly ConnectText text;
@@ -41,7 +40,7 @@ internal sealed partial class OidcDevicePage : IGetEndpoint<string>
             return Results.Redirect($"/connect/login?returnUrl={Uri.EscapeDataString(returnUrl)}");
         }
 
-        using var session = store.OpenAsyncSession();
+        using var session = store.OpenSession();
         OidcToken? device = null;
         OidcApplication? app = null;
         List<OidcScopeDefinition> scopes = [];
@@ -105,7 +104,7 @@ internal sealed partial class OidcDeviceSubmit : IPostEndpoint<OidcDeviceDecisio
 
     static bool IEndpointBase.IsEnabled(IServiceProvider services) => OidcSurface.Of(services).DeviceCode;
 
-    [Inject] private readonly IDocumentStore store;
+    [Inject] private readonly ISparkStore store;
     [Inject] private readonly OidcAudit audit;
 
     private HttpContext context = null!;
@@ -126,7 +125,7 @@ internal sealed partial class OidcDeviceSubmit : IPostEndpoint<OidcDeviceDecisio
         if (signedIn is null)
             return Results.Redirect("/connect/device");
 
-        using var session = store.OpenAsyncSession();
+        using var session = store.OpenSession();
         var device = string.IsNullOrEmpty(request.UserCode) ? null : await OidcDeviceCodes.FindByUserCodeAsync(session, request.UserCode, ct);
         var app = device is null ? null : await session.LoadAsync<OidcApplication>(device.ApplicationId, ct);
         if (device is null || app is null)
@@ -147,7 +146,7 @@ internal sealed partial class OidcDeviceSubmit : IPostEndpoint<OidcDeviceDecisio
         device.Properties["amr"] = string.Join(' ', signedIn.Amr);
         device.Properties["acr"] = signedIn.Acr;
         if (signedIn.SessionId is { } sid) device.Properties["sid"] = sid;
-        device.AuthorizationId = await OidcAuthorizationFlow.EnsureAuthorizationAsync(session, app, signedIn.UserId, scopes, remember: false, ct);
+        device.AuthorizationId = await OidcAuthorizationFlow.EnsureAuthorizationAsync(store, app, signedIn.UserId, scopes, remember: false, ct);
         await audit.RecordAsync(session, OidcAuditKinds.ConsentGranted, signedIn.UserId, app.Id.Value, signedIn.UserId,
             context.Connection.RemoteIpAddress?.ToString(), new Dictionary<string, string> { ["scopes"] = string.Join(' ', scopes), ["device"] = "true" }, ct);
         await session.SaveChangesAsync(ct);

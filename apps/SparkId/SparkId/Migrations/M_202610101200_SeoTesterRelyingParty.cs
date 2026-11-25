@@ -1,6 +1,6 @@
 using MintPlayer.SourceGenerators.Attributes;
+using MintPlayer.Spark.Abstractions.Storage;
 using MintPlayer.Spark.Migrations;
-using Raven.Client.Documents.Session;
 
 namespace SparkId.Migrations;
 
@@ -23,7 +23,7 @@ public partial class M_202610101200_SeoTesterRelyingParty : ISparkMigration
     internal const string Origin = "https://localhost:5013";
     internal const string Secret = "dev-only-seotester-secret-not-for-production";
 
-    [Inject] private readonly IAsyncDocumentSession session;
+    [Inject] private readonly ISparkStore store;
     [Inject] private readonly IHostEnvironment environment;
 
     public async Task UpAsync(CancellationToken cancellationToken)
@@ -31,6 +31,7 @@ public partial class M_202610101200_SeoTesterRelyingParty : ISparkMigration
         if (!environment.IsDevelopment())
             return;
 
+        using var session = store.OpenSession();
         await DevelopmentRelyingParties.EnsureAsync(session, ClientId, "SeoTester", Origin, Secret, cancellationToken);
         await session.SaveChangesAsync(cancellationToken);
     }

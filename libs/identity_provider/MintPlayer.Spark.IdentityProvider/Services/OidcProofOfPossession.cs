@@ -2,7 +2,6 @@ using System.Security.Cryptography.X509Certificates;
 using Microsoft.AspNetCore.Http;
 using MintPlayer.Spark.Authorization.ResourceServer;
 using MintPlayer.Spark.IdentityProvider.Models;
-using Raven.Client.Documents;
 
 namespace MintPlayer.Spark.IdentityProvider.Services;
 
@@ -28,7 +27,7 @@ internal sealed record OidcPossession(IReadOnlyDictionary<string, object>? Confi
 /// certificate (<c>cnf.x5t#S256</c>).</item>
 /// </list>
 /// </summary>
-internal sealed class OidcProofOfPossession(IDocumentStore store, OidcIssuer issuer)
+internal sealed class OidcProofOfPossession(ISparkStore store, OidcIssuer issuer)
 {
     public const string DpopHeader = SparkDpopProof.Header;
     public static readonly string[] DpopAlgorithms = SparkDpopProof.Algorithms;

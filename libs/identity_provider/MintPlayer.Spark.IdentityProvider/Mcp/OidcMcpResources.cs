@@ -5,7 +5,6 @@ using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.IdentityProvider.Configuration;
 using MintPlayer.Spark.IdentityProvider.Models;
 using MintPlayer.Spark.IdentityProvider.Services;
-using Raven.Client.Documents;
 
 namespace MintPlayer.Spark.IdentityProvider.Mcp;
 
@@ -112,13 +111,13 @@ internal sealed class OidcMcpResources(SparkIdentityProviderOptions options)
     internal static string RemoteResourceName(string audience)
         => OidcAgentClients.ResourceName + "-" + Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(audience)))[..32];
 
-    public async Task InitializeAsync(IServiceProvider services, IDocumentStore store)
+    public async Task InitializeAsync(IServiceProvider services, ISparkStore store)
     {
         if (options.Mcp is not { } mcp)
             return;
 
         var endpoints = new List<OidcMcpEndpoint>();
-        using var session = store.OpenAsyncSession();
+        using var session = store.OpenSession();
 
         if (mcp.ServesLocalEndpoint)
         {

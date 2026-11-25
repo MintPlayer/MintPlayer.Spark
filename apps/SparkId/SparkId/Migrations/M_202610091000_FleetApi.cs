@@ -1,10 +1,9 @@
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
+using MintPlayer.Spark.Abstractions.Storage;
 using MintPlayer.Spark.IdentityProvider.Models;
 using MintPlayer.Spark.IdentityProvider.Services;
 using MintPlayer.Spark.Migrations;
-using Raven.Client.Documents;
-using Raven.Client.Documents.Session;
 
 namespace SparkId.Migrations;
 
@@ -27,7 +26,8 @@ public partial class M_202610091000_FleetApi : ISparkMigration
     public static long Version => 202610091000;
     public static string? Description => "Development: seed the fleet API resource (fleet.read) and offer it to HR";
 
-    [Inject] private readonly IAsyncDocumentSession session;
+    // The Spark store: the seed runs on every store (#536 D47).
+    [Inject] private readonly ISparkStore store;
     [Inject] private readonly IHostEnvironment environment;
 
     public async Task UpAsync(CancellationToken cancellationToken)
@@ -35,12 +35,13 @@ public partial class M_202610091000_FleetApi : ISparkMigration
         if (!environment.IsDevelopment())
             return;
 
+        using var session = store.OpenSession();
         var id = OidcScopeCatalog.ResourceId("fleet");
-        if (!await session.Advanced.ExistsAsync(id, cancellationToken))
+        if (!await session.ExistsAsync(typeof(OidcResource), id, cancellationToken))
         {
             await session.StoreAsync(new OidcResource
             {
-                Id = MintPlayer.Spark.Abstractions.Id<OidcResource>.FromTrusted(id),
+                Id = Id<OidcResource>.FromTrusted(id),
                 Kind = OidcResourceKinds.Api,
                 Name = "fleet",
                 DisplayName = TranslatedString.Create("Spark Fleet", "Spark Fleet", "Spark Fleet"),
@@ -55,12 +56,14 @@ public partial class M_202610091000_FleetApi : ISparkMigration
                         Enabled = true,
                     },
                 ],
-            }, cancellationToken);
+            }, id, cancellationToken);
         }
 
-        var hr = await session.Query<OidcApplication>()
-            .Where(a => a.ClientId == "hr", exact: true)
-            .FirstOrDefaultAsync(cancellationToken);
+        // By its client-id reservation (D47), which the relying-party seed claimed: a filtered collection query would
+        // build an auto index on RavenDB (D42).
+        var hr = await session.GetReservationAsync(OidcClientIdReservation.Key("hr"), cancellationToken) is { } owner
+            ? await session.LoadAsync<OidcApplication>(owner, cancellationToken)
+            : null;
         if (hr is not null && !hr.Scopes.Any(s => s.Name == "fleet.read"))
             hr.Scopes.Add(new OidcApplicationScope { Name = "fleet.read", Required = false });
 

@@ -7,6 +7,7 @@ namespace MintPlayer.Spark.IdentityProvider.Models;
 /// (<c>docs/identity_provider_platform_PRD.md</c> D1, D6), one document per user × application with a
 /// natural id (<c>OidcGrantReference</c>). Replaces <c>OidcAuthorizations</c>.
 /// </summary>
+[IdKind(SparkIdKind.Natural)]
 public partial class OidcGrant
 {
     public Id<OidcGrant> Id { get; set; }

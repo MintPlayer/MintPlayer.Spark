@@ -2,7 +2,6 @@ using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions.Authorization;
 using MintPlayer.Spark.IdentityProvider.Models;
 using MintPlayer.Spark.Queries;
-using Raven.Client.Documents.Session;
 
 namespace MintPlayer.Spark.IdentityProvider.Actions;
 
@@ -19,7 +18,7 @@ internal sealed partial class OidcApplicationSecretRowActions : ISparkOwnsRowSec
 
     public const string QueryAlias = "oidc-application-secrets";
 
-    [Inject] private readonly IAsyncDocumentSession session;
+    [Inject] private readonly ISparkSession session;
 
     public async Task<IQueryable<OidcApplicationSecretRow>> Secrets(CustomQueryArgs args)
     {

@@ -180,6 +180,27 @@ public abstract class SparkStoreConformanceTests : IAsyncLifetime
         session.IsLoaded("ConfDocs/identity").Should().BeTrue();
     }
 
+    /// <summary>
+    /// A document stored but not saved yet is what the session loads for its id, and one deleted in the session loads as
+    /// null (#536 D47: the identity provider's seed stores a resource, then loads it again for the next scope).
+    /// </summary>
+    [SkippableFact]
+    public async Task A_session_loads_what_it_stored_or_deleted_before_saving()
+    {
+        await StoreAsync(Sample("ConfDocs/doomed"));
+
+        using var session = Store.OpenSession();
+        var stored = Sample("ConfDocs/pending");
+        await session.StoreAsync(stored);
+        ReferenceEquals(await session.LoadAsync<ConfDoc>("CONFDOCS/pending"), stored).Should().BeTrue("the session holds the stored instance");
+        (await session.LoadAsync<ConfDoc>(["confdocs/pending"]))["confdocs/pending"].Should().BeSameAs(stored);
+
+        session.Delete(typeof(ConfDoc), "ConfDocs/doomed");
+        (await session.LoadAsync<ConfDoc>("ConfDocs/doomed")).Should().BeNull("a document deleted in the session is gone for it");
+
+        await session.SaveChangesAsync();
+    }
+
     [SkippableFact]
     public async Task Changes_are_tracked_and_saved()
     {

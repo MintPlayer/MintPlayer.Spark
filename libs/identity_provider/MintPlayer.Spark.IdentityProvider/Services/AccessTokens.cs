@@ -1,7 +1,6 @@
 using Microsoft.IdentityModel.JsonWebTokens;
 using Microsoft.IdentityModel.Tokens;
 using MintPlayer.Spark.IdentityProvider.Models;
-using Raven.Client.Documents.Session;
 
 namespace MintPlayer.Spark.IdentityProvider.Services;
 
@@ -29,7 +28,7 @@ internal static class AccessTokens
 {
     /// <summary>Resolves the token, or null if it is not a well-formed token we signed.</summary>
     public static async Task<ResolvedAccessToken?> ResolveAsync(
-        IAsyncDocumentSession session,
+        ISparkSession session,
         OidcKeyRing keys,
         string token,
         string issuer,
@@ -53,8 +52,7 @@ internal static class AccessTokens
         var jti = jwt.Id;
         var record = string.IsNullOrEmpty(jti)
             ? null
-            // The family comes with the record (consulted below), in the same round trip.
-            : await session.Include<OidcToken>(t => t.FamilyId!).LoadAsync<OidcToken>(OidcTokenReference.DocumentId(jti), ct);
+            : await session.LoadAsync<OidcToken>(OidcTokenReference.DocumentId(jti), ct);
 
         if (record is not { Type: "access_token" })
             record = null;

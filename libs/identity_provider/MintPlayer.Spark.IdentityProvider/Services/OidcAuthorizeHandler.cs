@@ -4,8 +4,6 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.WebUtilities;
 using MintPlayer.Spark.IdentityProvider.Configuration;
 using MintPlayer.Spark.IdentityProvider.Models;
-using Raven.Client.Documents;
-using Raven.Client.Documents.Session;
 
 namespace MintPlayer.Spark.IdentityProvider.Services;
 
@@ -24,7 +22,7 @@ namespace MintPlayer.Spark.IdentityProvider.Services;
 /// here; every other error goes back to the client.
 /// </summary>
 internal sealed class OidcAuthorizeHandler(
-    IDocumentStore store,
+    ISparkStore store,
     SparkIdentityProviderOptions options,
     OidcIssuer oidcIssuer,
     OidcRequestObjects requestObjects,
@@ -48,7 +46,7 @@ internal sealed class OidcAuthorizeHandler(
     public async Task<IResult> HandleAsync(HttpContext context, OidcAuthorizeParameters parameters, CancellationToken ct)
     {
         var issuer = oidcIssuer.Resolve(context.Request);
-        using var session = store.OpenAsyncSession();
+        using var session = store.OpenSession();
 
         // --- 1. Resolve PAR / JAR into plain parameters ------------------------------------------
         var resolved = await requestObjects.ResolveAsync(session, parameters, issuer, ct);
@@ -270,7 +268,7 @@ internal sealed class OidcAuthorizeHandler(
         // consent type.
         if (app.ConsentType == "implicit" && options.AutoApproveImplicitConsent && !withdrawn && !forceConsent)
         {
-            request.AuthorizationId = await OidcAuthorizationFlow.EnsureAuthorizationAsync(session, app, userId, requestedScopes, remember: true, ct);
+            request.AuthorizationId = await OidcAuthorizationFlow.EnsureAuthorizationAsync(store, app, userId, requestedScopes, remember: true, ct);
             return await OidcAuthorizationFlow.IssueCodeResponseAsync(session, request, issuer, ct);
         }
 
@@ -320,7 +318,7 @@ internal sealed class OidcAuthorizeHandler(
     /// to a consent screen or straight to code issuance.
     /// </summary>
     private static async Task<(OidcToken Request, string RequestId)> CreateRequestAsync(
-        IAsyncDocumentSession session, OidcApplication app, string userId, List<string> scopes,
+        ISparkSession session, OidcApplication app, string userId, List<string> scopes,
         OidcAuthorizeParameters p, OidcInteractiveSession signedIn, string? responseMode, CancellationToken ct)
     {
         var requestId = OidcRequestReference.GenerateValue();
@@ -357,7 +355,7 @@ internal sealed class OidcAuthorizeHandler(
             Properties = properties,
         };
 
-        // Let RavenDB reap the document. Most requests are consumed within seconds and none is of
+        // Let the store reap the document. Most requests are consumed within seconds and none is of
         // any use after ExpiresAt. Security does not rest on the deletion having happened —
         // LoadPendingRequestAsync refuses an expired request either way.
         await session.StoreExpiringAsync(request, ct);

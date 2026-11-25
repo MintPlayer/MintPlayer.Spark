@@ -111,7 +111,16 @@ internal sealed partial class SparkViewCatalog : IIndexCatalog
     /// <summary>The names of the views declared in <paramref name="assemblies"/>, before any catalog is populated.</summary>
     public static IReadOnlySet<string> ViewNames(IReadOnlyList<Assembly> assemblies) => SparkViewEntries.ViewNames(assemblies);
 
-    /// <summary>The same election as the RavenDB catalog's (default_index_PRD D3): a claim wins, else the sole view.</summary>
+    /// <summary>
+    /// The same election as the RavenDB catalog's for views (default_index_PRD D3, #536 D48): the view that claims the
+    /// type with <c>[DefaultIndex]</c>, else none.
+    /// </summary>
+    /// <remarks>
+    /// D3 elects the sole index <em>with a view</em> implicitly because a <c>[FromIndex]</c> view is an author's choice.
+    /// Every <see cref="SparkView{TRow}"/> has its row type, so it chooses nothing: electing a sole one would stamp an
+    /// <c>indexName</c> nobody chose, and the views a module queries for itself (the identity provider's, moderation's)
+    /// would become the query shape of an entity an application lists.
+    /// </remarks>
     private static IndexCatalogEntry? Elect(Type entityType, IReadOnlyList<IndexCatalogEntry> entries)
     {
         var claims = entries.Where(e => e.ClaimedTypes.Contains(entityType)).ToList();
@@ -120,11 +129,6 @@ internal sealed partial class SparkViewCatalog : IIndexCatalog
             throw new InvalidOperationException(
                 $"{claims.Count} views claim [DefaultIndex] for entity type {entityType.Name} ({string.Join(", ", claims.Select(c => c.IndexName))}). " +
                 "An entity type has exactly one default: remove the marker from all but one of them.");
-
-        var viewed = entries.Where(e => e.CollectionType == entityType).ToList();
-        if (viewed.Count <= 1) return viewed.FirstOrDefault();
-        throw new InvalidOperationException(
-            $"{viewed.Count} views read entity type {entityType.Name} ({string.Join(", ", viewed.Select(c => c.IndexName))}) and none claims it " +
-            "with [DefaultIndex]. Exactly one is an entity type's default: mark it with [DefaultIndex].");
+        return null;
     }
 }

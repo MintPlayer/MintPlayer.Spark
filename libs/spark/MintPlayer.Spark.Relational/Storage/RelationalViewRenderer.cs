@@ -58,11 +58,18 @@ internal static class RelationalViewRenderer
     /// type, and EF has no cast between them. So the key is projected beside the row:
     /// <c>Select(p =&gt; new SparkViewRow { Id = p.Id, Row = new TRow { … } })</c>, which EF flattens to the same columns,
     /// the key named <c>Id</c>. The view's row type maps that column with the collection's key converter.
+    /// <para>
+    /// A fan-out map (#536 D43, D47) ends in <c>SelectMany(source, x =&gt; x.List, (x, item) =&gt; new TRow { Id = s.IdOf(x), … })</c>:
+    /// its result selector is wrapped the same way. Every row of one document then has the same <c>Id</c>; a view is read
+    /// without tracking, so EF merges no rows by that key.
+    /// </para>
     /// </summary>
     private static Expression KeyBesideRow(Expression body, ISparkView view)
     {
-        if (body is not MethodCallExpression { Method.Name: nameof(Queryable.Select), Arguments: [var source, UnaryExpression { Operand: LambdaExpression selector }] } select
+        if (body is not MethodCallExpression { Method.Name: nameof(Queryable.Select) or nameof(Queryable.SelectMany) } select
             || select.Method.DeclaringType != typeof(Queryable)
+            || select.Arguments[^1] is not UnaryExpression { Operand: LambdaExpression selector }
+            || (select.Method.Name == nameof(Queryable.SelectMany) && select.Arguments.Count != 3)
             || selector.Body is not MemberInitExpression init)
         {
             KeyMarkerFinder.Refuse(body, view);
@@ -85,7 +92,11 @@ internal static class RelationalViewRenderer
             Expression.Bind(wrapper.GetProperty(nameof(SparkViewRow<object, object>.Id))!, key),
             Expression.Bind(wrapper.GetProperty(nameof(SparkViewRow<object, object>.Row))!, row));
         var lambda = Expression.Lambda(projected, selector.Parameters);
-        return Expression.Call(typeof(Queryable), nameof(Queryable.Select), [selector.Parameters[0].Type, wrapper], source, Expression.Quote(lambda));
+        // The same overload with the wrapper as its result type: Select<TSource, TResult>, SelectMany<TSource, TCollection, TResult>.
+        var generic = select.Method.GetGenericArguments();
+        generic[^1] = wrapper;
+        return Expression.Call(select.Method.GetGenericMethodDefinition().MakeGenericMethod(generic),
+            [.. select.Arguments.SkipLast(1), Expression.Quote(lambda)]);
     }
 
     /// <summary><c>IdOf(row)</c> while the declaration is rewritten; only ever the row's <c>Id</c> binding.</summary>
