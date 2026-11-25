@@ -22,7 +22,7 @@ public class QnAContributionsTests
 
     public QnAContributionsTests(QnAE2ECollectionFixture fixture) => host = fixture.Host;
 
-    private static string CurrentId(string questionId, string language, string script) => $"{questionId}/Translations/{language}/{script}";
+    private static string CurrentId(string questionId, string language, string script) => $"questiontranslationscurrents/{questionId}/translations/{language}/{script}".ToLowerInvariant(); // #536 D23 rule 12
 
     /// <summary>
     /// A member who is not the author saves a translation of the question; the title they also posted is

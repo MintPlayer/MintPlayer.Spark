@@ -78,9 +78,12 @@ namespace TestApp.Charts
         /// <summary>Copied from <see cref="global::TestApp.Charts.Ranking.Note"/>.</summary>
         public string? Note { get; set; }
 
-        /// <summary><c>{targetId}/RankingsContributions/{Year}/{Region}/{Edition}/{Live}/User/{userId}</c>; the user id keeps its own slashes.</summary>
+        /// <summary>The lower-case prefix every id of this type starts with: its collection name and a slash.</summary>
+        public const string CollectionPrefix = "chartrankingscontributions/";
+
+        /// <summary><c>{collection}/{targetId}/RankingsContributions/{Year}/{Region}/{Edition}/{Live}/User/{userId}</c>; the user id keeps its own slashes.</summary>
         public static string GetId(string targetId, int year, global::TestApp.Charts.Region region, global::System.Guid edition, bool live, string userId)
-            => (targetId + "/RankingsContributions/" + global::MintPlayer.Spark.Contributions.ContributionSlotFormat.Format(year) + "/" + global::MintPlayer.Spark.Contributions.ContributionSlotFormat.FormatEnum<global::TestApp.Charts.Region>(region) + "/" + global::MintPlayer.Spark.Contributions.ContributionSlotFormat.Format(edition) + "/" + global::MintPlayer.Spark.Contributions.ContributionSlotFormat.Format(live) + "/User/" + userId).ToLowerInvariant();
+            => (CollectionPrefix + targetId + "/RankingsContributions/" + global::MintPlayer.Spark.Contributions.ContributionSlotFormat.Format(year) + "/" + global::MintPlayer.Spark.Contributions.ContributionSlotFormat.FormatEnum<global::TestApp.Charts.Region>(region) + "/" + global::MintPlayer.Spark.Contributions.ContributionSlotFormat.Format(edition) + "/" + global::MintPlayer.Spark.Contributions.ContributionSlotFormat.Format(live) + "/User/" + userId).ToLowerInvariant();
 
         string global::MintPlayer.Spark.Abstractions.IHasNaturalId.GetId() => GetId(TargetId, Year, Region, Edition, Live, ContributorId);
     }
@@ -132,9 +135,12 @@ namespace TestApp.Charts
         /// <summary>Copied from <see cref="global::TestApp.Charts.Ranking.Note"/>.</summary>
         public string? Note { get; set; }
 
-        /// <summary><c>{targetId}/Rankings/{Year}/{Region}/{Edition}/{Live}</c>.</summary>
+        /// <summary>The lower-case prefix every id of this type starts with: its collection name and a slash.</summary>
+        public const string CollectionPrefix = "chartrankingscurrents/";
+
+        /// <summary><c>{collection}/{targetId}/Rankings/{Year}/{Region}/{Edition}/{Live}</c>.</summary>
         public static string GetId(string targetId, int year, global::TestApp.Charts.Region region, global::System.Guid edition, bool live)
-            => (targetId + "/Rankings/" + global::MintPlayer.Spark.Contributions.ContributionSlotFormat.Format(year) + "/" + global::MintPlayer.Spark.Contributions.ContributionSlotFormat.FormatEnum<global::TestApp.Charts.Region>(region) + "/" + global::MintPlayer.Spark.Contributions.ContributionSlotFormat.Format(edition) + "/" + global::MintPlayer.Spark.Contributions.ContributionSlotFormat.Format(live)).ToLowerInvariant();
+            => (CollectionPrefix + targetId + "/Rankings/" + global::MintPlayer.Spark.Contributions.ContributionSlotFormat.Format(year) + "/" + global::MintPlayer.Spark.Contributions.ContributionSlotFormat.FormatEnum<global::TestApp.Charts.Region>(region) + "/" + global::MintPlayer.Spark.Contributions.ContributionSlotFormat.Format(edition) + "/" + global::MintPlayer.Spark.Contributions.ContributionSlotFormat.Format(live)).ToLowerInvariant();
 
         string global::MintPlayer.Spark.Abstractions.IHasNaturalId.GetId() => GetId(TargetId, Year, Region, Edition, Live);
     }
@@ -177,9 +183,11 @@ namespace TestApp.Charts
         public override string ShapeHash => Shape;
 
         /// <inheritdoc />
-        public override string ContributionPrefix(string targetId) => targetId + "/RankingsContributions/";
+        public override string ContributionCollectionPrefix => global::TestApp.Charts.ChartRankingsContribution.CollectionPrefix;
         /// <inheritdoc />
-        public override string CurrentPrefix(string targetId) => targetId + "/Rankings/";
+        public override string ContributionPrefix(string targetId) => global::TestApp.Charts.ChartRankingsContribution.CollectionPrefix + targetId.ToLowerInvariant() + "/rankingscontributions/";
+        /// <inheritdoc />
+        public override string CurrentPrefix(string targetId) => global::TestApp.Charts.ChartRankingsCurrent.CollectionPrefix + targetId.ToLowerInvariant() + "/rankings/";
 
         /// <inheritdoc />
         public override global::System.Collections.Generic.IReadOnlyList<global::TestApp.Charts.Ranking> GetRows(global::TestApp.Charts.Chart target)

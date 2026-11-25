@@ -5,7 +5,7 @@ using MintPlayer.Spark.Abstractions.Authorization;
 using MintPlayer.Spark.Actions;
 using MintPlayer.Spark.Queries;
 using MintPlayer.Spark.Services;
-using Raven.Client.Documents.Session;
+using MintPlayer.Spark.Abstractions.Storage;
 
 namespace MintPlayer.Spark.Contributions;
 
@@ -23,7 +23,7 @@ internal sealed class ContributionActions<TContribution>(
     IEntityMapper entityMapper,
     ContributionCatalog catalog,
     IModelLoader modelLoader,
-    IAsyncDocumentSession session,
+    ISparkSession session,
     IServiceProvider services,
     IHttpContextAccessor? httpContextAccessor = null)
     : DefaultPersistentObjectActions<TContribution>(entityMapper, httpContextAccessor)

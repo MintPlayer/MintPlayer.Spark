@@ -3,7 +3,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using MintPlayer.Spark.Services;
 using MintPlayer.Spark.Abstractions;
-using Raven.Client.Documents;
+using MintPlayer.Spark.Abstractions.Storage;
 
 namespace MintPlayer.Spark.Contributions;
 
@@ -15,9 +15,14 @@ internal sealed partial class ContributionShapeMarker
     public string Shape { get; set; } = "";
     public DateTime CheckedAt { get; set; }
 
-    /// <summary><c>sparkcontributions/shapes/{queryname}</c> (lower case, #536 D7; a marker written before still loads).</summary>
+    /// <summary>
+    /// <c>contributionshapemarkers/{queryname}</c>: lower case (#536 D7) and under its own collection (D23 rule 12), so a
+    /// relational table accepts it. A marker written under the old <c>sparkcontributions/shapes/</c> id is not found, so
+    /// the first startup after the upgrade rebuilds each declaration's current documents once.
+    /// </summary>
     public static Id<ContributionShapeMarker> IdFor(ContributionDescriptor descriptor)
-        => Id<ContributionShapeMarker>.FromTrusted("sparkcontributions/shapes/" + descriptor.ContributionsQueryName);
+        => Id<ContributionShapeMarker>.FromTrusted(
+            SparkCollectionNames.Of(typeof(ContributionShapeMarker)).ToLowerInvariant() + "/" + descriptor.ContributionsQueryName.ToLowerInvariant());
 }
 
 /// <summary>
@@ -37,14 +42,48 @@ internal sealed class ContributionShapeCheck(IServiceProvider services, ILogger<
 {
     internal const int BatchSize = 64;
 
-    public Task StartAsync(CancellationToken cancellationToken) => RunAsync(cancellationToken);
+    private readonly CancellationTokenSource stopping = new();
+    private Task? deferred;
 
-    public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+    /// <summary>
+    /// Runs before the app serves (RavenDB, in-memory: the store is ready at once). A store with a schema is ready only
+    /// once <c>UseSpark</c> applied it, after the hosted services started (#536 D41), so there the check runs in the
+    /// background as soon as it is.
+    /// </summary>
+    public Task StartAsync(CancellationToken cancellationToken)
+    {
+        var readiness = services.GetRequiredService<ISparkStoreReadiness>().WaitAsync(stopping.Token);
+        if (readiness.IsCompletedSuccessfully)
+            return RunAsync(cancellationToken);
+        deferred = Task.Run(async () =>
+        {
+            try
+            {
+                await readiness;
+                await RunAsync(stopping.Token);
+            }
+            catch (OperationCanceledException) when (stopping.IsCancellationRequested)
+            {
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "The contributions shape check failed; the current documents were not rebuilt.");
+            }
+        });
+        return Task.CompletedTask;
+    }
+
+    public async Task StopAsync(CancellationToken cancellationToken)
+    {
+        await stopping.CancelAsync();
+        if (deferred is not null)
+            await deferred.WaitAsync(cancellationToken).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+    }
 
     internal async Task<int> RunAsync(CancellationToken cancellationToken)
     {
         InitializeModelAssemblies();
-        var store = services.GetRequiredService<IDocumentStore>();
+        var store = services.GetRequiredService<ISparkStore>();
         var catalog = services.GetRequiredService<ContributionCatalog>();
         var rebuilt = 0;
 
@@ -52,7 +91,7 @@ internal sealed class ContributionShapeCheck(IServiceProvider services, ILogger<
         {
             var descriptor = handler.Descriptor;
             var markerId = ContributionShapeMarker.IdFor(descriptor).Value;
-            using (var read = store.OpenAsyncSession())
+            using (var read = store.OpenSession())
             {
                 var marker = await read.LoadAsync<ContributionShapeMarker>(markerId, cancellationToken);
                 if (marker is not null && marker.Shape == descriptor.ShapeHash)
@@ -60,7 +99,7 @@ internal sealed class ContributionShapeCheck(IServiceProvider services, ILogger<
             }
 
             IReadOnlyCollection<string> targets;
-            using (var scan = store.OpenAsyncSession())
+            using (var scan = store.OpenSession())
                 targets = await handler.TargetIdsAsync(scan, cancellationToken);
 
             if (targets.Count > 0)
@@ -70,7 +109,7 @@ internal sealed class ContributionShapeCheck(IServiceProvider services, ILogger<
             foreach (var batch in targets.Chunk(BatchSize))
                 await SparkContributions.RebuildAsync(store, handler, batch, logger, cancellationToken);
 
-            using (var write = store.OpenAsyncSession())
+            using (var write = store.OpenSession())
             {
                 await write.StoreAsync(new ContributionShapeMarker { Shape = descriptor.ShapeHash, CheckedAt = DateTime.UtcNow }, markerId, cancellationToken);
                 await write.SaveChangesAsync(cancellationToken);

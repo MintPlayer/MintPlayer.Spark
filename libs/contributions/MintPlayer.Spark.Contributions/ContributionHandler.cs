@@ -4,8 +4,7 @@ using System.Text.Json.Nodes;
 using Microsoft.Extensions.DependencyInjection;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Interceptors;
-using Raven.Client.Documents;
-using Raven.Client.Documents.Session;
+using MintPlayer.Spark.Abstractions.Storage;
 
 namespace MintPlayer.Spark.Contributions;
 
@@ -13,7 +12,7 @@ namespace MintPlayer.Spark.Contributions;
 internal sealed class OwnerSave
 {
     public required SaveContext Context { get; init; }
-    public required IAsyncDocumentSession Session { get; init; }
+    public required ISparkSession Session { get; init; }
 
     /// <summary>The target's id; for a create, stores the target first so it has one (only when something is written).</summary>
     public required Func<Task<string>> TargetIdAsync { get; init; }
@@ -33,7 +32,7 @@ internal sealed class OwnerSave
 /// <summary>A moderator's write over contributions (remove a version, revert), in the given session.</summary>
 internal sealed class ModeratorWrite
 {
-    public required IAsyncDocumentSession Session { get; init; }
+    public required ISparkSession Session { get; init; }
 
     /// <summary>Who hides (<c>DeletedBy</c>): the caller's id, or the system contributor.</summary>
     public required string UserId { get; init; }
@@ -52,12 +51,12 @@ internal interface IContributionHandler
     ContributionDescriptor Descriptor { get; }
 
     /// <summary>
-    /// Fills the property from the current documents (one lazy request), and — with
+    /// Fills the property from the current documents (one request), and — with
     /// <paramref name="names"/> and <see cref="ContributionAttribution.Contributor"/> — the contributor
     /// names (one batched <c>ISparkUserNameResolver</c> call). With <paramref name="state"/>, records
     /// who wrote each row's version (<see cref="ContributionRequestState.RowContributors"/>).
     /// </summary>
-    Task HydrateAsync(object target, IAsyncDocumentSession session, IServiceProvider? names, ContributionRequestState? state = null);
+    Task HydrateAsync(object target, ISparkSession session, IServiceProvider? names, ContributionRequestState? state = null);
 
     /// <summary>A current document is being deleted (a moderator removes the whole version): hides every visible contribution of its slot.</summary>
     Task<IReadOnlyList<string>> OnCurrentDeletingAsync(object current, string id, ModeratorWrite write);
@@ -66,7 +65,7 @@ internal interface IContributionHandler
     Task<(string TargetId, IReadOnlyList<string> Affected)> RevertAsync(string contributionId, ModeratorWrite write);
 
     /// <summary>The target's contributions (every slot, hidden ones too), with names filled for the contributions query.</summary>
-    Task<IReadOnlyList<IContribution>> ContributionsOfAsync(string targetId, IAsyncDocumentSession session, IServiceProvider services);
+    Task<IReadOnlyList<IContribution>> ContributionsOfAsync(string targetId, ISparkSession session, IServiceProvider services);
 
     /// <summary>The target id a current document belongs to (its id minus the property and slot segments).</summary>
     string? TargetIdOfCurrent(string currentId);
@@ -75,19 +74,19 @@ internal interface IContributionHandler
     Task OnOwnerSaveAsync(OwnerSave save);
 
     /// <summary>Deletes every contribution and current document of a target that is really deleted.</summary>
-    Task OnOwnerDeletedAsync(string targetId, IAsyncDocumentSession session);
+    Task OnOwnerDeletedAsync(string targetId, ISparkSession session);
 
     /// <summary>A contribution document was saved directly (restore, moderator edit): recompute its slot.</summary>
-    Task OnContributionSavedAsync(object contribution, object? before, IAsyncDocumentSession session);
+    Task OnContributionSavedAsync(object contribution, object? before, ISparkSession session);
 
     /// <summary>A contribution document is about to be deleted or hidden: recompute its slot without it.</summary>
-    Task OnContributionDeletingAsync(object contribution, string id, IAsyncDocumentSession session);
+    Task OnContributionDeletingAsync(object contribution, string id, ISparkSession session);
 
     /// <summary>Recomputes every slot's current document of a target from its contributions.</summary>
-    Task RebuildAsync(string targetId, IAsyncDocumentSession session);
+    Task RebuildAsync(string targetId, ISparkSession session);
 
     /// <summary>Every target id that has a contribution or a current document of this declaration (streamed).</summary>
-    Task<IReadOnlyCollection<string>> TargetIdsAsync(IAsyncDocumentSession session, CancellationToken cancellationToken);
+    Task<IReadOnlyCollection<string>> TargetIdsAsync(ISparkSession session, CancellationToken cancellationToken);
 }
 
 /// <summary>
@@ -125,14 +124,14 @@ internal sealed class ContributionHandler<TTarget, TElement, TContribution, TCur
 
     private bool ShowsContributor => (d.Attribution & ContributionAttribution.Contributor) != 0;
 
-    public async Task HydrateAsync(object target, IAsyncDocumentSession session, IServiceProvider? names, ContributionRequestState? state = null)
+    public async Task HydrateAsync(object target, ISparkSession session, IServiceProvider? names, ContributionRequestState? state = null)
     {
         var entity = (TTarget)target;
-        var targetId = session.Advanced.GetDocumentId(entity);
+        var targetId = session.GetId(entity);
         if (string.IsNullOrEmpty(targetId))
             return;
 
-        var currents = await LoadCurrentsAsync(session, targetId, lazily: true);
+        var currents = await LoadCurrentsAsync(session, targetId);
         // Names are resolved at read time, never stored (PRD Q6): one batched call per entity.
         var resolved = names is not null && ShowsContributor && currents.Count > 0
             ? await ContributorNames.ResolveAsync(names, currents.Select(c => c.ContributorId))
@@ -148,60 +147,46 @@ internal sealed class ContributionHandler<TTarget, TElement, TContribution, TCur
         }
     }
 
-    /// <summary>The target's current documents, in id order — one (lazy) request up to <see cref="PageSize"/>.</summary>
-    private async Task<List<TCurrent>> LoadCurrentsAsync(IAsyncDocumentSession session, string targetId, bool lazily)
+    /// <summary>The target's current documents, in id order — one request up to <see cref="PageSize"/>.</summary>
+    private async Task<List<TCurrent>> LoadCurrentsAsync(ISparkSession session, string targetId)
     {
         if (!d.IsCollection)
         {
-            var id = CurrentIdOf(targetId, "");
-            var one = lazily
-                ? await session.Advanced.Lazily.LoadAsync<TCurrent>(id).Value
-                : await session.LoadAsync<TCurrent>(id);
+            var one = await session.LoadAsync<TCurrent>(CurrentIdOf(targetId, ""));
             return one is not null && InCollection(session, one) ? [one] : [];
         }
 
-        return await LoadPrefixAsync<TCurrent>(session, d.CurrentPrefix(targetId), lazily);
+        return await LoadPrefixAsync<TCurrent>(session, d.CurrentPrefix(targetId));
     }
 
     /// <summary>
     /// Every document under <paramref name="prefix"/> (always ending in <c>/</c>) of <typeparamref name="T"/>'s
-    /// collection, paged by <see cref="PageSize"/>. The first page is lazy when asked, so a hydration is one
-    /// request; a second page only exists past <see cref="PageSize"/> documents.
+    /// collection, paged by <see cref="PageSize"/>: one request, and a second page only exists past
+    /// <see cref="PageSize"/> documents.
     /// </summary>
-    private static async Task<List<T>> LoadPrefixAsync<T>(IAsyncDocumentSession session, string prefix, bool lazily = false)
+    private static async Task<List<T>> LoadPrefixAsync<T>(ISparkSession session, string prefix)
         where T : class
     {
         var result = new List<T>();
         string? startAfter = null;
         while (true)
         {
-            IReadOnlyCollection<KeyValuePair<string, T>> page;
-            if (lazily && startAfter is null)
-                page = await session.Advanced.Lazily.LoadStartingWithAsync<T>(prefix, pageSize: PageSize).Value;
-            else
-            {
-                var docs = await session.Advanced.LoadStartingWithAsync<T>(prefix, pageSize: PageSize, startAfter: startAfter);
-                page = [.. docs.Where(x => x is not null).Select(x => new KeyValuePair<string, T>(session.Advanced.GetDocumentId(x), x))];
-            }
-
-            foreach (var (_, doc) in page)
+            var page = await session.LoadStartingWithAsync<T>(prefix, 0, PageSize, startAfter);
+            foreach (var doc in page)
                 if (doc is not null && InCollection(session, doc))
                     result.Add(doc);
 
             if (page.Count < PageSize)
                 return result;
-            startAfter = page.Select(p => p.Key).Max(StringComparer.Ordinal);
+            startAfter = page.Select(x => session.GetId(x)).Max(StringComparer.Ordinal);
         }
     }
 
     /// <summary>A prefix holds only this declaration's documents by construction; this guards a hand-made id.</summary>
-    private static bool InCollection<T>(IAsyncDocumentSession session, T document) where T : class
+    private static bool InCollection<T>(ISparkSession session, T document) where T : class
     {
-        var expected = session.Advanced.DocumentStore.Conventions.FindCollectionName(typeof(T));
-        var metadata = session.Advanced.GetMetadataFor(document);
-        return !metadata.TryGetValue(Raven.Client.Constants.Documents.Metadata.Collection, out string? collection)
-               || collection is null
-               || string.Equals(collection, expected, StringComparison.OrdinalIgnoreCase);
+        var collection = session.GetStoredCollectionName(document);
+        return collection is null || string.Equals(collection, session.GetCollectionName(typeof(T)), StringComparison.OrdinalIgnoreCase);
     }
 
     private bool IsHidden(TContribution contribution) => d.IsSoftDeletable && SoftDeleteBridge.IsDeleted(contribution);
@@ -292,7 +277,7 @@ internal sealed class ContributionHandler<TTarget, TElement, TContribution, TCur
                             $"{d.PropertyName}: your version of '{key}' was hidden by a moderator and cannot be changed.", d.PropertyName);
                     SoftDeleteBridge.Revive(mine);
                 }
-                var changeVector = session.Advanced.GetChangeVectorFor(mine);
+                var changeVector = session.GetVersion(mine);
                 d.CopyValues(row, mine);
                 mine.UpdatedAt = updatedAt;
                 mine.ContributorId = userId;
@@ -324,7 +309,7 @@ internal sealed class ContributionHandler<TTarget, TElement, TContribution, TCur
 
             if (d.IsSoftDeletable)
             {
-                var changeVector = session.Advanced.GetChangeVectorFor(mine);
+                var changeVector = session.GetVersion(mine);
                 SoftDeleteBridge.Withdraw(mine, userId, save.Now);
                 await session.StoreAsync(mine, changeVector, id);
             }
@@ -414,7 +399,7 @@ internal sealed class ContributionHandler<TTarget, TElement, TContribution, TCur
     /// With <paramref name="preferred"/> (the caller's own upsert) that one becomes current, and the
     /// slot is only read when the declaration counts contributions.
     /// </summary>
-    private async Task<TCurrent?> RecomputeAsync(IAsyncDocumentSession session, string targetId, string slotKey,
+    private async Task<TCurrent?> RecomputeAsync(ISparkSession session, string targetId, string slotKey,
         Dictionary<string, TContribution?> overrides, TContribution? preferred = null)
     {
         TContribution? winner;
@@ -425,7 +410,7 @@ internal sealed class ContributionHandler<TTarget, TElement, TContribution, TCur
         {
             var byId = new Dictionary<string, TContribution>(StringComparer.OrdinalIgnoreCase);
             foreach (var c in await LoadPrefixAsync<TContribution>(session, SlotContributionPrefix(targetId, slotKey)))
-                byId[session.Advanced.GetDocumentId(c) ?? ""] = c;
+                byId[session.GetId(c) ?? ""] = c;
             foreach (var (id, c) in overrides)
             {
                 if (c is null)
@@ -450,13 +435,13 @@ internal sealed class ContributionHandler<TTarget, TElement, TContribution, TCur
     /// Writes (or deletes) one current document with a pinned change vector: update → the version this
     /// session loaded, create → <c>""</c> (must not exist), delete → the loaded version (S-C4).
     /// </summary>
-    private async Task<TCurrent?> WriteCurrentAsync(IAsyncDocumentSession session, string id, TContribution? winner, int count)
+    private async Task<TCurrent?> WriteCurrentAsync(ISparkSession session, string id, TContribution? winner, int count)
     {
         var existing = await session.LoadAsync<TCurrent>(id);
         if (winner is null)
         {
             if (existing is not null)
-                CascadeDelete(session, id, session.Advanced.GetChangeVectorFor(existing));
+                CascadeDelete(session, typeof(TCurrent), id, session.GetVersion(existing));
             return null;
         }
 
@@ -472,18 +457,18 @@ internal sealed class ContributionHandler<TTarget, TElement, TContribution, TCur
 
         // A fresh instance under the loaded change vector: the tracked one is swapped out, never mutated,
         // so a refused save (F6) evicts the new one and leaves nothing changed behind.
-        var changeVector = session.Advanced.GetChangeVectorFor(existing);
-        session.Advanced.Evict(existing);
+        var changeVector = session.GetVersion(existing);
+        session.Evict(existing);
         await session.StoreAsync(desired, changeVector, id);
         return desired;
     }
 
     // ---- direct writes of a contribution document ----------------------------------------------------
 
-    public async Task OnContributionSavedAsync(object contribution, object? before, IAsyncDocumentSession session)
+    public async Task OnContributionSavedAsync(object contribution, object? before, ISparkSession session)
     {
         var c = (TContribution)contribution;
-        var id = session.Advanced.GetDocumentId(c);
+        var id = session.GetId(c);
         if (string.IsNullOrEmpty(id) || string.IsNullOrEmpty(c.TargetId))
             return;
 
@@ -494,7 +479,7 @@ internal sealed class ContributionHandler<TTarget, TElement, TContribution, TCur
         await RecomputeAsync(session, c.TargetId, d.SlotKeyOfContribution(c), new() { [id] = c });
     }
 
-    public async Task OnContributionDeletingAsync(object contribution, string id, IAsyncDocumentSession session)
+    public async Task OnContributionDeletingAsync(object contribution, string id, ISparkSession session)
     {
         var c = (TContribution)contribution;
         if (string.IsNullOrEmpty(c.TargetId))
@@ -530,7 +515,7 @@ internal sealed class ContributionHandler<TTarget, TElement, TContribution, TCur
         {
             if (IsHidden(contribution))
                 continue;
-            var contributionId = session.Advanced.GetDocumentId(contribution);
+            var contributionId = session.GetId(contribution);
             await GuardAsync(write.Guards, contributionId, targetId, write.User);
             await HideAsync(session, contribution, contributionId, write, SoftDeleteBridge.VersionRemovedReason);
             affected.Add(contributionId);
@@ -570,7 +555,7 @@ internal sealed class ContributionHandler<TTarget, TElement, TContribution, TCur
         var affected = new List<string>();
         foreach (var contribution in await LoadPrefixAsync<TContribution>(session, SlotContributionPrefix(targetId, slotKey)))
         {
-            var id = session.Advanced.GetDocumentId(contribution);
+            var id = session.GetId(contribution);
             if (IsHidden(contribution) || string.Equals(id, contributionId, StringComparison.OrdinalIgnoreCase))
                 continue;
             // "Newer" in the order recompute picks by: UpdatedAt, then id (ordinal) on a tie.
@@ -596,19 +581,19 @@ internal sealed class ContributionHandler<TTarget, TElement, TContribution, TCur
         }
     }
 
-    private async Task HideAsync(IAsyncDocumentSession session, TContribution contribution, string id, ModeratorWrite write, string reason)
+    private async Task HideAsync(ISparkSession session, TContribution contribution, string id, ModeratorWrite write, string reason)
     {
         if (d.IsSoftDeletable)
         {
-            var changeVector = session.Advanced.GetChangeVectorFor(contribution);
+            var changeVector = session.GetVersion(contribution);
             SoftDeleteBridge.Hide(contribution, write.UserId, write.Now, reason);
             await session.StoreAsync(contribution, changeVector, id);
         }
         else
-            CascadeDelete(session, id, session.Advanced.GetChangeVectorFor(contribution));
+            CascadeDelete(session, typeof(TContribution), id, session.GetVersion(contribution));
     }
 
-    public async Task<IReadOnlyList<IContribution>> ContributionsOfAsync(string targetId, IAsyncDocumentSession session, IServiceProvider services)
+    public async Task<IReadOnlyList<IContribution>> ContributionsOfAsync(string targetId, ISparkSession session, IServiceProvider services)
     {
         var contributions = await LoadPrefixAsync<TContribution>(session, d.ContributionPrefix(targetId));
         var names = await ContributorNames.ResolveAsync(services, contributions.Select(c => c.ContributorId));
@@ -619,12 +604,12 @@ internal sealed class ContributionHandler<TTarget, TElement, TContribution, TCur
 
     // ---- the owner's delete ---------------------------------------------------------------------------
 
-    public async Task OnOwnerDeletedAsync(string targetId, IAsyncDocumentSession session)
+    public async Task OnOwnerDeletedAsync(string targetId, ISparkSession session)
     {
         // A cascade of the owner's own hard delete, committed with it (see CascadeDelete).
         foreach (var c in await LoadPrefixAsync<TContribution>(session, d.ContributionPrefix(targetId)))
             CascadeDelete(session, c);
-        foreach (var current in await LoadCurrentsAsync(session, targetId, lazily: false))
+        foreach (var current in await LoadCurrentsAsync(session, targetId))
             CascadeDelete(session, current);
     }
 
@@ -633,34 +618,35 @@ internal sealed class ContributionHandler<TTarget, TElement, TContribution, TCur
     /// delete) and commits with it, so it is marked as the framework's: contributions and current documents
     /// may be soft-deletable, and the SoftDelete raw-delete guard refuses any other hard delete (#482, D32).
     /// </summary>
-    private static void CascadeDelete(IAsyncDocumentSession session, object document)
+    private static void CascadeDelete(ISparkSession session, object document)
     {
-        if (session.Advanced.GetDocumentId(document) is { } id)
-            SparkRawWrites.Cascade(session, id);
+        // The guard (SoftDelete) sees the provider's own session, as core marks its persister's deletes.
+        if (session.GetId(document) is { } id)
+            SparkRawWrites.Cascade(session.Native, id);
         session.Delete(document);
     }
 
-    private static void CascadeDelete(IAsyncDocumentSession session, string id, string? changeVector)
+    private static void CascadeDelete(ISparkSession session, Type type, string id, string? version)
     {
-        SparkRawWrites.Cascade(session, id);
-        session.Delete(id, changeVector);
+        SparkRawWrites.Cascade(session.Native, id);
+        session.Delete(type, id, version);
     }
 
     // ---- rebuild --------------------------------------------------------------------------------------
 
-    public async Task RebuildAsync(string targetId, IAsyncDocumentSession session)
+    public async Task RebuildAsync(string targetId, ISparkSession session)
     {
         var bySlot = (await LoadPrefixAsync<TContribution>(session, d.ContributionPrefix(targetId)))
             .GroupBy(c => d.SlotKeyOfContribution(c), StringComparer.Ordinal)
             .ToDictionary(g => g.Key, g => g.ToList(), StringComparer.Ordinal);
-        var currents = await LoadCurrentsAsync(session, targetId, lazily: false);
+        var currents = await LoadCurrentsAsync(session, targetId);
 
         foreach (var (slotKey, contributions) in bySlot)
         {
             var visible = contributions.Where(c => !IsHidden(c)).ToList();
             var winner = visible
                 .OrderByDescending(c => c.UpdatedAt)
-                .ThenByDescending(c => session.Advanced.GetDocumentId(c), StringComparer.Ordinal)
+                .ThenByDescending(c => session.GetId(c), StringComparer.Ordinal)
                 .FirstOrDefault();
             await WriteCurrentAsync(session, CurrentIdOf(targetId, slotKey), winner, visible.Count);
         }
@@ -668,39 +654,40 @@ internal sealed class ContributionHandler<TTarget, TElement, TContribution, TCur
         // A current document no contribution backs, or one stored under an id its slot does not give.
         foreach (var current in currents)
         {
-            var id = session.Advanced.GetDocumentId(current);
-            if (id is null || !session.Advanced.IsLoaded(id))
+            var id = session.GetId(current);
+            if (id is null || !session.IsLoaded(id))
                 continue;
             var slotKey = d.SlotKeyOfCurrent(current);
             if (!bySlot.ContainsKey(slotKey) || !string.Equals(id, CurrentIdOf(targetId, slotKey), StringComparison.OrdinalIgnoreCase))
-                CascadeDelete(session, id, session.Advanced.GetChangeVectorFor(current));
+                CascadeDelete(session, typeof(TCurrent), id, session.GetVersion(current));
         }
     }
 
-    public async Task<IReadOnlyCollection<string>> TargetIdsAsync(IAsyncDocumentSession session, CancellationToken cancellationToken)
+    public async Task<IReadOnlyCollection<string>> TargetIdsAsync(ISparkSession session, CancellationToken cancellationToken)
     {
         var ids = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         // Collection queries without a filter are served from the collection, not an index.
-        await using (var contributions = await session.Advanced.StreamAsync(session.Query<TContribution>(), cancellationToken))
-            while (await contributions.MoveNextAsync())
-                if (contributions.Current.Document?.TargetId is { Length: > 0 } targetId)
-                    ids.Add(targetId);
+        await foreach (var row in session.StreamAsync(session.Query<TContribution>(), cancellationToken))
+            if (row.Document?.TargetId is { Length: > 0 } targetId)
+                ids.Add(targetId);
 
         // The current id is {targetId}/{Property}[/{slot}…]: drop the last 1 + slot-count segments.
         var suffixSegments = 1 + (d.IsCollection ? d.SlotNames.Count : 0);
-        await using (var currents = await session.Advanced.StreamAsync(session.Query<TCurrent>(), cancellationToken))
-            while (await currents.MoveNextAsync())
-                if (TargetOf(currents.Current.Id, suffixSegments) is { } targetId)
-                    ids.Add(targetId);
+        await foreach (var row in session.StreamAsync(session.Query<TCurrent>(), cancellationToken))
+            if (TargetOf(row.Id, suffixSegments) is { } targetId)
+                ids.Add(targetId);
 
         return ids;
     }
 
+    /// <summary>The current id is <c>{collection}/{targetId}/{Property}[/{slot}…]</c> (PRD D23 rule 12).</summary>
     private static string? TargetOf(string? currentId, int suffixSegments)
     {
-        if (string.IsNullOrEmpty(currentId))
+        var prefix = SparkCollectionNames.Of(typeof(TCurrent)).ToLowerInvariant() + "/";
+        if (string.IsNullOrEmpty(currentId) || !currentId.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
             return null;
+        currentId = currentId[prefix.Length..];
         var end = currentId.Length;
         for (var i = 0; i < suffixSegments; i++)
         {

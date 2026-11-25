@@ -503,7 +503,26 @@ rounds, milestones and status. Branch `feat/536-sql-server-provider`, draft PR #
     - `SparkFileUpload` is registered as a stored type (D36).
     - **Evidence:** `NeutralFilesStoreTests` (claim + reconcile, the deferred sweep, the default store) 3/3 on all four
       databases; the Files suites on RavenDB 264/264 (28 skipped: cloud stores).
-  - **Next:** Contributions (streaming), the authorization user store (reservations), templates and AllFeatures. Cron, the subscription worker's remaining hosted services and others adopt
+  - **M6i (2026-11-25): Contributions on any store.** The package no longer references MintPlayer.Spark.RavenDB:
+    - `ContributionHandler`, `SparkContributions`, the actions, the interceptor and `RevertContribution` use
+      `ISparkSession`/`ISparkStore`. Prefix loads page with `LoadStartingWithAsync(prefix, 0, 1024, startAfter)`; the
+      shape check finds its targets by streaming both collections unfiltered (a collection scan, no auto index, D42).
+    - **Ids follow D23 rule 12.** A natural id that does not start with its own collection is refused by a relational
+      table, so the generated `GetId`s now start with the type's collection: `songlyricscontributions/songs/1/
+      lyricscontributions/en/latn/user/users/a` and `songlyricscurrents/songs/1/lyrics/en/latn`. The generator emits
+      `CollectionPrefix` as a literal (`{typename}s/`), because the declaring library may reference only the
+      abstractions; a test pins it to `SparkCollectionNames`. The handler's id parser (`TargetOf`) strips the prefix.
+      The shape marker is `contributionshapemarkers/{queryname}`.
+    - The line-diff `compareIdPattern` takes an optional collection prefix (`ContributionCollectionPrefix` on the
+      descriptor), so ids written before still match. QnA's stale seeded pattern (case-sensitive, pre-D7) was dropped
+      and re-seeded by the synchronizer.
+    - The shape check waits for `ISparkStoreReadiness` off the startup path (D41): inline when the store is already
+      ready, else on a background task that `StopAsync` awaits.
+    - The descriptors' contribution and current types are registered as stored types (D36).
+    - **Evidence:** `NeutralContributionsStoreTests` (prefix = collection, latest wins, rebuild + shape check) 3/3 on
+      all four databases; the Contributions suites on RavenDB 59/59; the generator tests 72/72 (snapshots re-accepted
+      after review).
+  - **Next:** the authorization user store (reservations), templates and AllFeatures. Cron, the subscription worker's remaining hosted services and others adopt
     `ISparkStoreReadiness` as they are ported.
 - **Local spike servers left running:**
   - SQL Server: `SparkSpike536` on `localhost` and `localhost\MSSQLSERVER01`

@@ -35,12 +35,9 @@ public static class SparkContributionsExtensions
     /// <see cref="ContributionRights"/>), served by <c>POST /spark/po/revert-contribution</c>, which this maps.
     /// </para>
     /// </remarks>
-    [global::MintPlayer.Spark.Abstractions.Storage.SparkRequiresStore("Spark.Contributions", Provider = global::MintPlayer.Spark.Abstractions.Storage.SparkStoreProviders.RavenDb)]
     public static ISparkBuilder AddContributions(this ISparkBuilder builder, params Assembly[] declaringAssemblies)
     {
         ArgumentNullException.ThrowIfNull(builder);
-        // #551 D13: contributions are kept and applied through RavenDB's own client.
-        global::MintPlayer.Spark.Abstractions.Storage.SparkStoreRequirementExtensions.RequireStore(builder, "Spark.Contributions", provider: global::MintPlayer.Spark.Abstractions.Storage.SparkStoreProviders.RavenDb);
         foreach (var assembly in declaringAssemblies)
             ContributionCatalog.EnsureInitialized(assembly);
         ContributionCatalog.EnsureEntryAssembliesInitialized();
@@ -50,6 +47,18 @@ public static class SparkContributionsExtensions
         builder.Services.TryAddScoped<ContributionRequestState>();
         builder.AddInterceptor<ContributionsInterceptor>();
         builder.Services.TryAddEnumerable(ServiceDescriptor.Singleton<IHostedService, ContributionShapeCheck>());
+        global::MintPlayer.Spark.Abstractions.Storage.SparkStoreReadinessServiceCollectionExtensions.AddSparkStoreReadiness(builder.Services);
+
+        // #536 D36: a store with a schema needs a table per document type Contributions keeps.
+        global::MintPlayer.Spark.Abstractions.Storage.SparkStoredTypeServiceCollectionExtensions.AddSparkStoredType<ContributionShapeMarker>(builder.Services);
+        builder.Services.Configure<global::MintPlayer.Spark.Abstractions.Storage.SparkStoredTypeOptions>(options =>
+        {
+            foreach (var descriptor in ContributionRegistry.Descriptors)
+            {
+                options.Types.Add(descriptor.ContributionType);
+                options.Types.Add(descriptor.CurrentType);
+            }
+        });
 
         // The generated contribution types' actions, which serve the generated contributions query
         // (M5b). Per declaration known now — the ones the module initializers above registered.

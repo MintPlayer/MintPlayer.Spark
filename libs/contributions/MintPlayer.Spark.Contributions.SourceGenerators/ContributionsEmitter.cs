@@ -80,11 +80,12 @@ internal static class ContributionsEmitter
         }
 
         w.Line();
-        w.Line($"/// <summary><c>{{targetId}}/{m.PropertyName}Contributions/{SlotPath(m)}User/{{userId}}</c>; the user id keeps its own slashes.</summary>");
+        WriteCollectionPrefix(w, m.ContributionName);
+        w.Line($"/// <summary><c>{{collection}}/{{targetId}}/{m.PropertyName}Contributions/{SlotPath(m)}User/{{userId}}</c>; the user id keeps its own slashes.</summary>");
         var parameters = string.Concat(m.Slots.Select(s => $", {s.Type} {s.ParameterName}"));
         w.Line($"public static string GetId(string targetId{parameters}, string userId)");
         // Lower case, as every new id (#536 D7): the handler stores under this string, so it is the document id itself.
-        w.Line($"    => (targetId + \"/{m.PropertyName}Contributions/\"{SlotConcat(m, s => s.ParameterName)}{UserSegment(m)} + userId).ToLowerInvariant();");
+        w.Line($"    => (CollectionPrefix + targetId + \"/{m.PropertyName}Contributions/\"{SlotConcat(m, s => s.ParameterName)}{UserSegment(m)} + userId).ToLowerInvariant();");
         w.Line();
         var args = string.Concat(m.Slots.Select(s => $", {s.Name}"));
         w.Line($"string {HasNaturalId}.GetId() => GetId(TargetId{args}, ContributorId);");
@@ -124,14 +125,28 @@ internal static class ContributionsEmitter
 
         w.Line();
         var path = m.IsCollection ? "/" + SlotPath(m).TrimEnd('/') : "";
-        w.Line($"/// <summary><c>{{targetId}}/{m.PropertyName}{path}</c>.</summary>");
+        WriteCollectionPrefix(w, m.CurrentName);
+        w.Line($"/// <summary><c>{{collection}}/{{targetId}}/{m.PropertyName}{path}</c>.</summary>");
         var parameters = string.Concat(m.Slots.Select(s => $", {s.Type} {s.ParameterName}"));
         w.Line($"public static string GetId(string targetId{parameters})");
-        w.Line($"    => (targetId + \"/{m.PropertyName}{(m.IsCollection ? "/" : "")}\"{SlotConcat(m, s => s.ParameterName)}).ToLowerInvariant();");
+        w.Line($"    => (CollectionPrefix + targetId + \"/{m.PropertyName}{(m.IsCollection ? "/" : "")}\"{SlotConcat(m, s => s.ParameterName)}).ToLowerInvariant();");
         w.Line();
         var args = string.Concat(m.Slots.Select(s => $", {s.Name}"));
         w.Line($"string {HasNaturalId}.GetId() => GetId(TargetId{args});");
         w.Close();
+    }
+
+    /// <summary>
+    /// #536 (PRD D23 rule 12): a natural id stays under its own collection, so a store with a schema finds its table from
+    /// it. The prefix is the collection name, lower case, as every id (D7). A literal: the declaring library may reference
+    /// only the abstractions, not <c>SparkCollectionNames</c>. The generated names end in <c>Contribution</c> or
+    /// <c>Current</c>, which every pluralizer (Spark's, RavenDB's) turns into <c>…s</c>.
+    /// </summary>
+    private static void WriteCollectionPrefix(Writer w, string typeName)
+    {
+        w.Line("/// <summary>The lower-case prefix every id of this type starts with: its collection name and a slash.</summary>");
+        w.Line($"public const string CollectionPrefix = \"{typeName.ToLowerInvariant()}s/\";");
+        w.Line();
     }
 
     private const string NaturalIdKind =
@@ -215,9 +230,11 @@ internal static class ContributionsEmitter
         w.Line("public override string ShapeHash => Shape;");
         w.Line();
         w.Line("/// <inheritdoc />");
-        w.Line($"public override string ContributionPrefix(string targetId) => targetId + \"/{m.PropertyName}Contributions/\";");
+        w.Line($"public override string ContributionCollectionPrefix => {c}.CollectionPrefix;");
         w.Line("/// <inheritdoc />");
-        w.Line($"public override string CurrentPrefix(string targetId) => targetId + \"/{m.PropertyName}/\";");
+        w.Line($"public override string ContributionPrefix(string targetId) => {c}.CollectionPrefix + targetId.ToLowerInvariant() + \"/{m.PropertyName.ToLowerInvariant()}contributions/\";");
+        w.Line("/// <inheritdoc />");
+        w.Line($"public override string CurrentPrefix(string targetId) => {cur}.CollectionPrefix + targetId.ToLowerInvariant() + \"/{m.PropertyName.ToLowerInvariant()}/\";");
         w.Line();
 
         // Rows

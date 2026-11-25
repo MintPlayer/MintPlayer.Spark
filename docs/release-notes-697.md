@@ -85,6 +85,15 @@ tags, and everything ships once the merged pull request is backported to `releas
     Spark.Files runs on any store (M6h). RavenDB attachments stay the default file store on RavenDB. On SQL Server,
     PostgreSQL and InMemory, `AddFiles` needs a file store (`files.UseFileSystem(path)`, `UseAzureBlob` or `UseS3`);
     without one the app refuses to start.
+    Spark.Contributions runs on any store (M6i) and no longer references MintPlayer.Spark.RavenDB. **Its document ids
+    change:** every contribution and current id now starts with its own collection
+    (`songlyricscontributions/songs/1/lyricscontributions/…`, `songlyricscurrents/songs/1/lyrics/…`), because a
+    relational table accepts only ids of its own collection. Contributions stored under the old ids
+    (`songs/1/lyricscontributions/…`) are not found any more; an app with contribution data must re-key them (load each,
+    store it under the generated `GetId`, delete the old one) before upgrading. The startup shape marker moves to
+    `contributionshapemarkers/{queryname}`, so the first start rebuilds each declaration's current documents once.
+    A model's seeded `lineDiff` options are not rewritten by the synchronizer: delete the `renderer`/`rendererOptions`
+    of the contribution's value attributes and synchronize to re-seed a pattern that takes the new ids.
 12. **Messaging runs on any store with subscriptions** (M7b, D40), and its package no longer references RavenDB:
     - `IMessageOutbox.EnqueueAsync` and `ISparkAfterCommitOutbox.EnqueueAsync` take an `ISparkSession`, not a RavenDB
       session. Wrap a raw session with `session.AsSparkSession()`.

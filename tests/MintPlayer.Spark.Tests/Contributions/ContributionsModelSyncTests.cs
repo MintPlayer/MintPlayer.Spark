@@ -147,7 +147,7 @@ public class ContributionsModelSyncTests : IDisposable
         var id = CoSongLyricsContribution.GetId("CoSongs/1", "en", "Latn", "MintPlayerUsers/abc");
 
         // A new id is lower case (#536 D7); one written before keeps its casing, and the pattern takes both.
-        id.Should().Be("cosongs/1/lyricscontributions/en/latn/user/mintplayerusers/abc");
+        id.Should().Be("cosonglyricscontributions/cosongs/1/lyricscontributions/en/latn/user/mintplayerusers/abc");
         System.Text.RegularExpressions.Regex.Replace(id, (string)options["compareIdPattern"], (string)options["compareIdReplacement"])
             .Should().Be("cosongs/1");
         System.Text.RegularExpressions.Regex.Replace(id, (string)options["compareRowKeyPattern"], (string)options["compareRowKeyReplacement"])

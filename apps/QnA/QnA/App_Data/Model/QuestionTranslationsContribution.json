@@ -21,11 +21,11 @@
         "renderer": "lineDiff",
         "rendererOptions": {
           "compareType": "Question",
-          "compareIdPattern": "^(.+?)/TranslationsContributions/([^/]+/[^/]+)/User/.+$",
+          "compareIdPattern": "^(?:[Qq][Uu][Ee][Ss][Tt][Ii][Oo][Nn][Tt][Rr][Aa][Nn][Ss][Ll][Aa][Tt][Ii][Oo][Nn][Ss][Cc][Oo][Nn][Tt][Rr][Ii][Bb][Uu][Tt][Ii][Oo][Nn][Ss]/)?(.+?)/[Tt][Rr][Aa][Nn][Ss][Ll][Aa][Tt][Ii][Oo][Nn][Ss][Cc][Oo][Nn][Tt][Rr][Ii][Bb][Uu][Tt][Ii][Oo][Nn][Ss]/([^/]+/[^/]+)/[Uu][Ss][Ee][Rr]/.+$",
           "compareIdReplacement": "$1",
           "compareAttribute": "Translations",
           "compareRowAttribute": "Body",
-          "compareRowKeyPattern": "^(.+?)/TranslationsContributions/([^/]+/[^/]+)/User/.+$",
+          "compareRowKeyPattern": "^(?:[Qq][Uu][Ee][Ss][Tt][Ii][Oo][Nn][Tt][Rr][Aa][Nn][Ss][Ll][Aa][Tt][Ii][Oo][Nn][Ss][Cc][Oo][Nn][Tt][Rr][Ii][Bb][Uu][Tt][Ii][Oo][Nn][Ss]/)?(.+?)/[Tt][Rr][Aa][Nn][Ss][Ll][Aa][Tt][Ii][Oo][Nn][Ss][Cc][Oo][Nn][Tt][Rr][Ii][Bb][Uu][Tt][Ii][Oo][Nn][Ss]/([^/]+/[^/]+)/[Uu][Ss][Ee][Rr]/.+$",
           "compareRowKeyReplacement": "$2"
         }
       },
@@ -141,11 +141,11 @@
         "renderer": "lineDiff",
         "rendererOptions": {
           "compareType": "Question",
-          "compareIdPattern": "^(.+?)/TranslationsContributions/([^/]+/[^/]+)/User/.+$",
+          "compareIdPattern": "^(?:[Qq][Uu][Ee][Ss][Tt][Ii][Oo][Nn][Tt][Rr][Aa][Nn][Ss][Ll][Aa][Tt][Ii][Oo][Nn][Ss][Cc][Oo][Nn][Tt][Rr][Ii][Bb][Uu][Tt][Ii][Oo][Nn][Ss]/)?(.+?)/[Tt][Rr][Aa][Nn][Ss][Ll][Aa][Tt][Ii][Oo][Nn][Ss][Cc][Oo][Nn][Tt][Rr][Ii][Bb][Uu][Tt][Ii][Oo][Nn][Ss]/([^/]+/[^/]+)/[Uu][Ss][Ee][Rr]/.+$",
           "compareIdReplacement": "$1",
           "compareAttribute": "Translations",
           "compareRowAttribute": "Title",
-          "compareRowKeyPattern": "^(.+?)/TranslationsContributions/([^/]+/[^/]+)/User/.+$",
+          "compareRowKeyPattern": "^(?:[Qq][Uu][Ee][Ss][Tt][Ii][Oo][Nn][Tt][Rr][Aa][Nn][Ss][Ll][Aa][Tt][Ii][Oo][Nn][Ss][Cc][Oo][Nn][Tt][Rr][Ii][Bb][Uu][Tt][Ii][Oo][Nn][Ss]/)?(.+?)/[Tt][Rr][Aa][Nn][Ss][Ll][Aa][Tt][Ii][Oo][Nn][Ss][Cc][Oo][Nn][Tt][Rr][Ii][Bb][Uu][Tt][Ii][Oo][Nn][Ss]/([^/]+/[^/]+)/[Uu][Ss][Ee][Rr]/.+$",
           "compareRowKeyReplacement": "$2"
         }
       },

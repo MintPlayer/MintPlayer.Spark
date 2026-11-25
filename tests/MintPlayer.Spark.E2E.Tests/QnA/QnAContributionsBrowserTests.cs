@@ -82,7 +82,7 @@ public class QnAContributionsBrowserTests
         using var other = await host.CreateUserAsync("ui-tr-other");
         var question = await author.Client.AskAsync("Browser translation " + Guid.NewGuid().ToString("N")[..10]);
         var questionId = question.Id!;
-        var currentId = $"{questionId}/Translations/nl/Latn";
+        var currentId = $"questiontranslationscurrents/{questionId}/translations/nl/latn".ToLowerInvariant(); // #536 D23 rule 12
 
         var translatorContext = await fixture.Browser.NewContextAsync(new() { IgnoreHTTPSErrors = true, BaseURL = host.AppUrl });
         var moderatorContext = await fixture.Browser.NewContextAsync(new() { IgnoreHTTPSErrors = true, BaseURL = host.AppUrl });

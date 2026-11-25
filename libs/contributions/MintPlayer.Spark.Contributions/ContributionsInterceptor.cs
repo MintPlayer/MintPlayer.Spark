@@ -2,7 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Authentication;
 using MintPlayer.Spark.Abstractions.Interceptors;
-using Raven.Client.Documents.Session;
+using MintPlayer.Spark.Abstractions.Storage;
 
 namespace MintPlayer.Spark.Contributions;
 
@@ -19,7 +19,7 @@ namespace MintPlayer.Spark.Contributions;
 /// </remarks>
 internal sealed class ContributionsInterceptor(
     ContributionCatalog catalog,
-    IAsyncDocumentSession session,
+    ISparkSession session,
     ISparkCurrentPrincipal currentUser,
     ContributionRequestState state,
     IServiceProvider services) : IAfterMaterialize, IAfterLoad, IBeforeSave, IAfterSave, IBeforeDelete, IAfterDelete
@@ -45,7 +45,7 @@ internal sealed class ContributionsInterceptor(
         var names = context.Reason == MaterializeReason.Before ? null : services;
         var rows = context.Reason == MaterializeReason.Before ? null : state;
         foreach (var handler in catalog.ForTarget(context.EntityType))
-            await handler.HydrateAsync(context.Entity, context.GetSession(), names, rows);
+            await handler.HydrateAsync(context.Entity, context.GetSparkSession(), names, rows);
     }
 
     /// <summary>
@@ -185,11 +185,11 @@ internal sealed class ContributionsInterceptor(
         // A create: the contribution ids need the target's. Storing it now is what the
         // framework does next anyway (its StoreAsync of a tracked entity is a no-op); a refusal evicts it.
         var entity = context.Entity;
-        var id = session.Advanced.GetDocumentId(entity);
+        var id = session.GetId(entity);
         if (string.IsNullOrEmpty(id))
         {
             await session.StoreAsync(entity);
-            id = session.Advanced.GetDocumentId(entity);
+            id = session.GetId(entity);
         }
         if (string.IsNullOrEmpty(id) || id.EndsWith('/') || id.EndsWith('|'))
             throw new InvalidOperationException(
