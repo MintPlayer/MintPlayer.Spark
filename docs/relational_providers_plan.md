@@ -503,6 +503,20 @@ rounds, milestones and status. Branch `feat/536-sql-server-provider`, draft PR #
     - `SparkFileUpload` is registered as a stored type (D36).
     - **Evidence:** `NeutralFilesStoreTests` (claim + reconcile, the deferred sweep, the default store) 3/3 on all four
       databases; the Files suites on RavenDB 264/264 (28 skipped: cloud stores).
+  - **M8a (2026-11-25): S9, Dashboards on any store (PRD D45).**
+    - `ISparkStoreStatistics` in Abstractions, implemented by RavenDB (statistics operations), relational (`COUNT` per
+      table, sizes from the dialect's `DatabaseSizeSql`/`TableSizesSql`) and memory (counts only).
+      `StoreStatisticsProvider` replaces `RavenStatisticsProvider`.
+    - The sampler lease is an `ISparkAtomicValues` value (`dashboards/sampler`, JSON text).
+    - `IDashboardHistory`: RavenDB keeps `DashboardStorage` (time series). Other stores use `StoreDashboardHistory`:
+      `SparkDashboardSample` raw rows plus rollup rows, with expiry, and `LastAt` for idempotence.
+    - The RavenDB pin is gone from `AddDashboards` and from `features.json`.
+    - **Evidence:**
+      - On all four databases: `SparkStoreStatisticsTests` 1/1, `NeutralDashboardHistoryTests` 4/4 and
+        `DashboardEndpointTests` 8/8 (moved to `SparkTestDriver`).
+      - The RavenDB Dashboards suite 24/24, CodeCoverage `HostMetricsDashboardTests` 11/11 and the templates tests
+        23/23.
+    - **Next:** M8b IdentityProvider, then M9.
   - **M7g (2026-11-25): fan-out views (PRD D43, "Fan-out maps").** `from x in s.Set<T>() from item in x.List select …`
     in a `SparkView` map.
     - RavenDB: `RavenViewIndexes.Map` renders a `SelectMany` with a result selector.

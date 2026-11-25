@@ -152,6 +152,15 @@ public sealed class PostgreSqlSparkDialect : SparkRelationalDialect
     /// </summary>
     public override string HorizonSql => "SELECT pg_snapshot_xmin(pg_current_snapshot())::text::bigint";
 
+    public override string DatabaseSizeSql => "SELECT pg_database_size(current_database())";
+
+    /// <summary>Every ordinary table outside the system schemas, its indexes and TOAST included.</summary>
+    public override string TableSizesSql => """
+        SELECT c.relname, pg_total_relation_size(c.oid)
+        FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE c.relkind IN ('r', 'p') AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+        """;
+
     /// <summary>PostgreSQL names the constraint and the column in fields of its own, never only in the message.</summary>
     public override SparkConstraintError? Classify(Exception databaseException)
     {

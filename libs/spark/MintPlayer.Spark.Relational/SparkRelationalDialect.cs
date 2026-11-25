@@ -109,4 +109,13 @@ public abstract class SparkRelationalDialect
     /// cheap probe the feed polls first.
     /// </summary>
     public abstract string HorizonSql { get; }
+
+    /// <summary><c>SELECT</c> of the database's size on disk in bytes, as one <c>bigint</c> (<c>ISparkStoreStatistics</c>).</summary>
+    public abstract string DatabaseSizeSql { get; }
+
+    /// <summary>
+    /// <c>SELECT</c> of every table's name and size on disk in bytes (<c>bigint</c>), one row per table. Constant text: the
+    /// catalog is read, nothing is spliced in.
+    /// </summary>
+    public abstract string TableSizesSql { get; }
 }

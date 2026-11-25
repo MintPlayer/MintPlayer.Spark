@@ -208,7 +208,7 @@ answers are less demanding than the API list suggests.
     moderation (2).
 - **Time series:**
   - Dashboards append samples with raw and rollup retention policies, and aggregate them in RQL `group by`/`avg()`
-    (`DashboardStorage.cs:62/:78-106/:130/:145`).
+    (`DashboardStorage.cs:62/:78-106/:130/:145`). Ported by D45: RavenDB keeps them; other stores keep rows.
   - IdP's `INC:Tokens` is write-only: no reader was found.
 - **Set-based writes:**
   - IdP's revoke cascade is a `PatchByQuery` with `AllowStale = false` (`OidcDisableCascade.cs:56`). In SQL that is
@@ -614,6 +614,49 @@ collections.** `spark.AddSearch()` no longer requires RavenDB.
 - Templates generator and manifest tests 17/17.
 - `SearchStoreRequirementTests` and `SparkStoreRequirementTests` 8/8: search and a custom engine have no unmet
   requirement on InMemory, OpenSearch does.
+
+**D45 (S9, 2026-11-25): Dashboards run on every store. RavenDB keeps its time series; the others keep sample rows.**
+`spark.AddDashboards()` no longer requires RavenDB. Three RavenDB dependencies are replaced:
+- **The statistics:** `ISparkStoreStatistics` (Abstractions) answers the `DatabaseStatistics` widget, through
+  `StoreStatisticsProvider` (was `RavenStatisticsProvider`). It returns the size on disk, the document count, and each
+  collection's count and size.
+  - RavenDB: the two statistics operations, as before (`RavenStoreStatistics`).
+  - SQL Server and PostgreSQL: an exact `COUNT` per collection table (`RelationalStoreStatistics`). Sizes come from
+    the dialect's catalog queries: `sys.database_files` and `sys.dm_db_partition_stats`, or `pg_database_size` and
+    `pg_total_relation_size`. A login without rights on the catalog still gets the counts, with no sizes.
+  - Memory: the counts, no sizes (`null`, which the sampler skips).
+- **The sampler lease (D29):** an `ISparkAtomicValues` value with JSON text, under the new key `dashboards/sampler`.
+  RavenDB's old compare-exchange value `spark/dashboards/sampler` held a JSON object, which the text values of
+  `RavenAtomicValues` (`GetCompareExchangeValueOperation<string>`) cannot read. It is left behind, unused. During a
+  rolling deploy, an old and a new instance hold different keys, so one slot may be sampled twice: a point is
+  overwritten, never doubled.
+- **The history:** the internal `IDashboardHistory`, chosen by `ISparkStore.ProviderName`
+  (`DashboardHistoryRegistration.AddDashboardHistory`).
+  - RavenDB: `DashboardStorage`, the time series of `SparkDashboards/{name}`, unchanged. CodeCoverage and SeoTester
+    keep their history.
+  - Every other store: `StoreDashboardHistory`. Each sample is a `SparkDashboardSample` row,
+    `sparkdashboardsamples/{dashboard}/{series}/raw/{epoch ms}`, which expires after `RawRetention`. It is also added
+    to the row of its rollup interval (`…/rollup/{epoch ms}`: `Sum`, `Count`, `LastAt`), which expires after
+    `RollupRetention`. These are RavenDB's two policies, kept by hand. `LastAt` makes a slot written twice count once.
+    The sampler is the single writer under the lease.
+  - **Read:** a bucket at least as coarse as the rollup interval reads the rollups only (2,016 rows for the default
+    7-day window). A finer one also reads the raw samples, and a bucket the raw samples still cover uses them. Buckets
+    are whole minutes, as RavenDB's `group by N minutes`. The values are averages rounded to 3 decimals, oldest
+    first, and an empty bucket has no point.
+  - Never used on RavenDB, so its query of the collection builds no auto index (D42). Its table is unindexed beyond
+    the key: a read scans the dashboard's rows, which retention bounds.
+- **Why not one design for every store:** RavenDB time series are what production uses (CodeCoverage, SeoTester).
+  Moving them to rows would drop their history for no gain, as Search keeps `Spark_Search` (D44).
+- **Template:** `features.json` no longer pins Dashboards to RavenDB.
+
+*Evidence:*
+- `SparkStoreStatisticsTests` 1/1 on InMemory, SQL Server, PostgreSQL and RavenDB: per-collection counts, and sizes
+  on the three databases.
+- `NeutralDashboardHistoryTests` 4/4 and `DashboardEndpointTests` 8/8 (now `SparkTestDriver`), on all four:
+  - two concurrent samplers claim each slot once;
+  - the averages at 5-minute (rollup) and 1-minute (raw) buckets, with a slot written twice counted once;
+  - the shipped statistics dashboard through `/spark/po/load`.
+- The RavenDB Dashboards suite 24/24, CodeCoverage `HostMetricsDashboardTests` 11/11, and the templates tests 23/23.
 
 **D3: the version is a `bigint` column on every table**, a concurrency token the provider increments. *(S4, §8.11:
 it is on every root table and covers the aggregate. A change to a child row (D25) or a join row (D26) moves the

@@ -144,6 +144,11 @@ tags, and everything ships once the merged pull request is backported to `releas
 16. **`UseOpenSearch` declares that it needs RavenDB** (M7f, D44). The engine syncs from RavenDB's `Spark_Search`
     index, so on another store the host refuses to start, naming "Spark.Search.OpenSearch". Before, the whole of
     `AddSearch` was refused off RavenDB; now it runs on any store, as does a custom `UseProvider<T>` engine.
+17. **Dashboards: `RavenStatisticsProvider` is now `StoreStatisticsProvider`** (M8a, D45). It reads
+    `ISparkStoreStatistics`, so it works on any store; `DatabaseStatistics()` adds it as before. The sampler's lease
+    moved from RavenDB's compare-exchange value `spark/dashboards/sampler` to the atomic value `dashboards/sampler`. The
+    old value is left unused. While old and new instances run side by side, a slot may be sampled by both: its point
+    is overwritten, not doubled.
 
 ## New
 
@@ -250,3 +255,10 @@ tags, and everything ships once the merged pull request is backported to `releas
     `from x in s.Set<T>() from item in x.List select new TRow { … }`, yielding one row per item. RavenDB fans out in
     the index; SQL Server reads the list column with `OPENJSON` and PostgreSQL with `unnest`. It works with or without
     a reduce, and a missing list yields no rows.
+20. **Dashboards on every store** (M8a, D45). `AddDashboards()` no longer requires RavenDB.
+    - **Database statistics:** the shipped dashboard shows the store's size, documents and collections. Memory has
+      no sizes.
+    - **History:** RavenDB keeps it in time series, as before. SQL Server, PostgreSQL and memory keep it as rows in
+      `SparkDashboardSamples`, with the same 7-day raw and 90-day 5-minute rollup retention. Synchronize adds the
+      table to the app's migration.
+    - **`ISparkStoreStatistics`:** per-collection document counts and sizes on disk, for any store.

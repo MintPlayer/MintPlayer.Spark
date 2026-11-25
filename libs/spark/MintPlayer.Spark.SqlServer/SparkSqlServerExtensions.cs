@@ -129,6 +129,16 @@ public sealed partial class SqlServerSparkDialect : SparkRelationalDialect
     /// </summary>
     public override string HorizonSql => "SELECT CAST(MIN_ACTIVE_ROWVERSION() AS bigint)";
 
+    /// <summary>The data and log files, in 8 KB pages.</summary>
+    public override string DatabaseSizeSql => "SELECT CAST(SUM(CAST(size AS bigint)) * 8192 AS bigint) FROM sys.database_files";
+
+    /// <summary>Reserved pages per table, indexes included (<c>sys.dm_db_partition_stats</c>, needs VIEW DATABASE STATE).</summary>
+    public override string TableSizesSql => """
+        SELECT t.name, CAST(SUM(s.reserved_page_count) * 8192 AS bigint)
+        FROM sys.dm_db_partition_stats s JOIN sys.tables t ON t.object_id = s.object_id
+        GROUP BY t.name
+        """;
+
     [GeneratedRegex("[A-Za-z0-9_]+")]
     private static partial Regex Word();
 }

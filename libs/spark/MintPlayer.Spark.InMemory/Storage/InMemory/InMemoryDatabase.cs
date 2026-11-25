@@ -55,6 +55,13 @@ internal sealed class InMemoryDatabase
             return documents.GetValueOrDefault(id);
     }
 
+    /// <summary>Each collection's document count (<see cref="InMemoryStoreStatistics"/>).</summary>
+    public IReadOnlyList<(string Collection, int Documents)> CollectionCounts()
+    {
+        lock (gate)
+            return [.. documents.Values.GroupBy(e => e.Collection, StringComparer.OrdinalIgnoreCase).Select(g => (g.Key, g.Count()))];
+    }
+
     public IReadOnlyList<Entry> InCollection(string collection)
     {
         lock (gate)

@@ -35,7 +35,7 @@ internal sealed partial class SparkDashboard
 /// (S11), so a sample is one <see cref="double"/> per series; there is no other way to append.
 /// </para>
 /// </remarks>
-internal sealed class DashboardStorage(IDocumentStore store, IOptions<SparkDashboardsOptions> options, ILogger<DashboardStorage> logger)
+internal sealed class DashboardStorage(IDocumentStore store, IOptions<SparkDashboardsOptions> options, ILogger<DashboardStorage> logger) : IDashboardHistory
 {
     public const string Collection = "SparkDashboards";
 

@@ -6,7 +6,8 @@ namespace MintPlayer.Spark.Dashboards.Services;
 
 /// <summary>
 /// Samples every value declared with <see cref="SparkDashboardBuilder.History"/> once per
-/// <see cref="SparkDashboardsOptions.SampleInterval"/> into its time series (D14, D29).
+/// <see cref="SparkDashboardsOptions.SampleInterval"/> into its <see cref="IDashboardHistory"/> (D14, D29): RavenDB's time
+/// series, or a store's sample rows (#536 D45).
 /// </summary>
 /// <remarks>
 /// <para>
@@ -22,7 +23,7 @@ namespace MintPlayer.Spark.Dashboards.Services;
 internal sealed class DashboardSampler(
     DashboardCatalog catalog,
     DashboardReader reader,
-    DashboardStorage storage,
+    IDashboardHistory storage,
     DashboardSamplerLease lease,
     IHostApplicationLifetime lifetime,
     IOptions<SparkDashboardsOptions> options,
@@ -62,7 +63,7 @@ internal sealed class DashboardSampler(
         }
         catch (Exception ex) when (!stoppingToken.IsCancellationRequested)
         {
-            logger.LogError(ex, "Could not configure the {Collection} collection's time-series policies and revisions; dashboard history is not sampled.", DashboardStorage.Collection);
+            logger.LogError(ex, "Could not prepare the dashboard history (on RavenDB, the {Collection} collection's time-series policies and revisions); dashboard history is not sampled.", DashboardStorage.Collection);
             return;
         }
 

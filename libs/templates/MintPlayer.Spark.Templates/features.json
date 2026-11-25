@@ -125,7 +125,6 @@
       "project": "dashboards/MintPlayer.Spark.Dashboards/MintPlayer.Spark.Dashboards.csproj",
       "displayName": "Dashboards",
       "description": "Live dashboards, starting with the database statistics one.",
-      "store": "RavenDB",
       "requires": [ "Authorization" ],
       "registration": "AddDashboards",
       "client": [ "withDashboards" ]

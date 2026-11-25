@@ -53,11 +53,11 @@ public sealed class SparkDashboardBuilder
     }
 
     /// <summary>
-    /// Adds the built-in RavenDB statistics provider (D13): <c>DatabaseSize</c> (bytes on disk),
+    /// Adds the built-in database statistics provider (D13; #536 D45: any store): <c>DatabaseSize</c> (bytes on disk),
     /// <c>DocumentCount</c>, <c>CollectionCount</c> and <c>Collections</c> (a table of <c>name</c>,
-    /// <c>documents</c> and <c>sizeBytes</c>, largest first), read with the application's own document store.
+    /// <c>documents</c> and <c>sizeBytes</c>, largest first), read with the application's own store.
     /// </summary>
-    public SparkDashboardBuilder DatabaseStatistics() => Provider<RavenStatisticsProvider>();
+    public SparkDashboardBuilder DatabaseStatistics() => Provider<StoreStatisticsProvider>();
 
     /// <summary>
     /// Adds the built-in host metrics provider (<c>docs/spark_dashboards_PRD.md</c> §9.2): <c>HostDisk</c> (a meter of
@@ -71,7 +71,8 @@ public sealed class SparkDashboardBuilder
 
     /// <summary>
     /// Keeps a history of each named value: sampled every <see cref="SparkDashboardsOptions.SampleInterval"/> into a
-    /// single-valued RavenDB time series of that name on <c>SparkDashboards/{dashboard}</c> (D14, D29). A model
+    /// single-valued RavenDB time series of that name on <c>SparkDashboards/{dashboard}</c> (D14, D29), or on another
+    /// store into the rows of <c>SparkDashboardSamples</c> (#536 D45). A model
     /// attribute named <c>{value}History</c> receives it as points for <c>spark-trend</c>. A name is a plain
     /// identifier (letters, digits, underscores); only a number or a meter's value is ever written.
     /// </summary>

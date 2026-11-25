@@ -32,6 +32,8 @@ public class DashboardHistoryTests : RavenSparkTestDriver
         services.AddSingleton(typeof(ILogger<>), typeof(NullLogger<>));
         services.AddSingleton(Options.Create(new SparkDashboardsOptions()));
         services.AddSingleton<DashboardStorage>();
+        services.AddSingleton<IDashboardHistory>(sp => sp.GetRequiredService<DashboardStorage>());
+        services.AddSingleton<MintPlayer.Spark.Abstractions.Storage.ISparkAtomicValues>(sp => new MintPlayer.Spark.Storage.Raven.RavenAtomicValues(sp.GetRequiredService<IDocumentStore>()));
         services.AddSingleton<DashboardReader>();
         services.AddSingleton<DashboardSamplerLease>();
         services.AddSingleton<IHostApplicationLifetime, NoLifetime>();

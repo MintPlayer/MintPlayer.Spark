@@ -103,6 +103,7 @@ public static class SparkRelationalExtensions
             sp.GetRequiredService<ISparkStoreLock>(), sp.GetService<ISparkChangeFeed>(), options.ChangeFeedPollInterval));
         services.AddSingleton<ISparkStoreExpiration>(sp => new RelationalExpiration(
             sp.GetRequiredService<RelationalSparkStore>(), sp.GetService<Microsoft.Extensions.Logging.ILogger<RelationalExpiration>>()));
+        services.AddSingleton<ISparkStoreStatistics>(sp => new RelationalStoreStatistics(sp.GetRequiredService<RelationalSparkStore>()));
         return builder;
     }
 

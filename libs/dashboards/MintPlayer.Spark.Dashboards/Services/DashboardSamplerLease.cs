@@ -1,10 +1,10 @@
-using Raven.Client.Documents;
-using Raven.Client.Documents.Operations.CompareExchange;
+using System.Text.Json;
+using MintPlayer.Spark.Abstractions.Storage;
 
 namespace MintPlayer.Spark.Dashboards.Services;
 
 /// <summary>
-/// The compare-exchange value of the sampler lease (D29): who holds it, until when, and the last slot sampled.
+/// The atomic value of the sampler lease (D29), stored as JSON text: who holds it, until when, and the last slot sampled.
 /// </summary>
 /// <param name="NodeId">Holder identity: machine name plus a per-instance GUID, so a restarted host is not its own dead predecessor.</param>
 /// <param name="AcquiredAtUtc">When this holder first took the lease.</param>
@@ -14,28 +14,33 @@ namespace MintPlayer.Spark.Dashboards.Services;
 internal sealed record DashboardSamplerLeaseValue(string NodeId, DateTime AcquiredAtUtc, DateTime ExpiresAtUtc, long Fence, long LastSlot);
 
 /// <summary>
-/// The claim on "this host samples slot N", one compare-exchange value for the cluster (D29).
+/// The claim on "this host samples slot N", one <see cref="ISparkAtomicValues"/> value for every instance that shares
+/// the database (D29; #536 D45: on any store, RavenDB's compare-exchange among them).
 /// </summary>
 /// <remarks>
 /// <para>
 /// Modelled on Messaging's <c>MessagingLeaseManager</c> (holder identity, takeover only once the holder's lease has
-/// expired, every write guarded on the index that was read, release guarded on identity), with the slot added: a host
+/// expired, every write guarded on the version that was read, release guarded on identity), with the slot added: a host
 /// writes slot N only after its compare-and-swap of <c>LastSlot</c> to N succeeds, so each slot is claimed once
-/// cluster-wide even across a handover. S11 measured 0 duplicates over 78 contended slots.
+/// across the instances even across a handover. S11 measured 0 duplicates over 78 contended slots.
 /// </para>
 /// <para>
 /// A separate claim rather than Messaging's lease generalised: that one is a renewed leadership lease of a package
-/// the dashboards must not depend on, and moving it into a shared assembly would put a RavenDB dependency into the
-/// RavenDB-free Abstractions (or add a package) and change a production lease for no gain to Messaging.
+/// the dashboards must not depend on, and changing it would change a production lease for no gain to Messaging.
 /// </para>
 /// <para>
 /// Not a safety mechanism on its own: appends use the slot-aligned timestamp, so even a double write of a slot would
-/// overwrite the point instead of adding one.
+/// overwrite the point instead of adding one (and a store's rollup skips a slot it has counted).
+/// </para>
+/// <para>
+/// The key is <see cref="Key"/>, not the <c>spark/dashboards/sampler</c> compare-exchange value RavenDB applications
+/// held before: that one is a JSON object, which the text values of <see cref="ISparkAtomicValues"/> cannot read. It
+/// is left behind, unused.
 /// </para>
 /// </remarks>
-internal sealed class DashboardSamplerLease(IDocumentStore store)
+internal sealed class DashboardSamplerLease(ISparkAtomicValues values)
 {
-    public const string Key = "spark/dashboards/sampler";
+    public const string Key = "dashboards/sampler";
 
     /// <summary>This instance's identity.</summary>
     public string NodeId { get; } = $"{Environment.MachineName}/{Guid.NewGuid():N}";
@@ -46,34 +51,38 @@ internal sealed class DashboardSamplerLease(IDocumentStore store)
     /// </summary>
     public async Task<bool> TryClaimSlotAsync(long slot, DateTime nowUtc, TimeSpan ttl, CancellationToken cancellationToken)
     {
-        var current = await store.Operations.SendAsync(
-            new GetCompareExchangeValueOperation<DashboardSamplerLeaseValue>(Key), token: cancellationToken);
+        var current = await values.GetAsync(Key, cancellationToken);
 
         DashboardSamplerLeaseValue next;
-        long index;
+        long version;
         if (current is null)
         {
-            // index 0: succeeds only if the key does not exist yet.
+            // version 0: succeeds only if the key does not exist yet.
             next = new DashboardSamplerLeaseValue(NodeId, nowUtc, nowUtc + ttl, 1, slot);
-            index = 0;
+            version = 0;
         }
         else
         {
-            var value = current.Value;
-            if (value.LastSlot >= slot)
-                return false; // this slot (or a later one) was sampled already
-            if (value.NodeId != NodeId && value.ExpiresAtUtc > nowUtc)
-                return false; // someone else holds a live lease
+            if (Parse(current.Value) is { } value)
+            {
+                if (value.LastSlot >= slot)
+                    return false; // this slot (or a later one) was sampled already
+                if (value.NodeId != NodeId && value.ExpiresAtUtc > nowUtc)
+                    return false; // someone else holds a live lease
 
-            next = value.NodeId == NodeId
-                ? value with { ExpiresAtUtc = nowUtc + ttl, LastSlot = slot }
-                : new DashboardSamplerLeaseValue(NodeId, nowUtc, nowUtc + ttl, value.Fence + 1, slot);
-            index = current.Index;
+                next = value.NodeId == NodeId
+                    ? value with { ExpiresAtUtc = nowUtc + ttl, LastSlot = slot }
+                    : new DashboardSamplerLeaseValue(NodeId, nowUtc, nowUtc + ttl, value.Fence + 1, slot);
+            }
+            else
+            {
+                // Unreadable: nobody can be holding it, so it is taken over like a lapsed lease.
+                next = new DashboardSamplerLeaseValue(NodeId, nowUtc, nowUtc + ttl, 1, slot);
+            }
+            version = current.Version;
         }
 
-        var result = await store.Operations.SendAsync(
-            new PutCompareExchangeValueOperation<DashboardSamplerLeaseValue>(Key, next, index), token: cancellationToken);
-        return result.Successful;
+        return await values.TryPutAsync(Key, JsonSerializer.Serialize(next), version, cancellationToken) is not null;
     }
 
     /// <summary>
@@ -82,12 +91,22 @@ internal sealed class DashboardSamplerLease(IDocumentStore store)
     /// </summary>
     public async Task ReleaseAsync(CancellationToken cancellationToken)
     {
-        var current = await store.Operations.SendAsync(
-            new GetCompareExchangeValueOperation<DashboardSamplerLeaseValue>(Key), token: cancellationToken);
-        if (current is null || current.Value.NodeId != NodeId)
+        var current = await values.GetAsync(Key, cancellationToken);
+        if (current is null || Parse(current.Value) is not { } value || value.NodeId != NodeId)
             return;
-        await store.Operations.SendAsync(
-            new PutCompareExchangeValueOperation<DashboardSamplerLeaseValue>(Key, current.Value with { ExpiresAtUtc = DateTime.MinValue }, current.Index),
-            token: cancellationToken);
+        await values.TryPutAsync(Key, JsonSerializer.Serialize(value with { ExpiresAtUtc = DateTime.MinValue }), current.Version, cancellationToken);
+    }
+
+    /// <summary>The lease <paramref name="json"/> holds, or <see langword="null"/> when it is not one.</summary>
+    internal static DashboardSamplerLeaseValue? Parse(string json)
+    {
+        try
+        {
+            return JsonSerializer.Deserialize<DashboardSamplerLeaseValue>(json);
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
     }
 }

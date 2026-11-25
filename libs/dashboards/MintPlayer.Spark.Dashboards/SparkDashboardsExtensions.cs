@@ -29,7 +29,7 @@ namespace MintPlayer.Spark.Dashboards;
 /// </summary>
 public static class SparkDashboardsExtensions
 {
-    /// <summary>The package's own dashboard: the RavenDB statistics, with the history of its size and document count.</summary>
+    /// <summary>The package's own dashboard: the store's statistics, with the history of its size and document count.</summary>
     public const string DatabaseStatistics = "DatabaseStatistics";
 
     /// <summary>
@@ -38,11 +38,12 @@ public static class SparkDashboardsExtensions
     /// again (from another library or module) to declare more.
     /// </summary>
     /// <exception cref="ArgumentException">A dashboard or history name is not a plain identifier.</exception>
-    [global::MintPlayer.Spark.Abstractions.Storage.SparkRequiresStore("Spark.Dashboards", Provider = global::MintPlayer.Spark.Abstractions.Storage.SparkStoreProviders.RavenDb)]
+    [global::MintPlayer.Spark.Abstractions.Storage.SparkRequiresStore("Spark.Dashboards")]
     public static ISparkBuilder AddDashboards(this ISparkBuilder builder, Action<SparkDashboardsBuilder>? configure = null)
     {
-        // #551 D13: widgets query through RavenDB's own client.
-        global::MintPlayer.Spark.Abstractions.Storage.SparkStoreRequirementExtensions.RequireStore(builder, "Spark.Dashboards", provider: global::MintPlayer.Spark.Abstractions.Storage.SparkStoreProviders.RavenDb);
+        // #536 D45: any store. The statistics come from ISparkStoreStatistics, the lease is an atomic value, and the
+        // history is RavenDB's time series there and sample rows elsewhere.
+        global::MintPlayer.Spark.Abstractions.Storage.SparkStoreRequirementExtensions.RequireStore(builder, "Spark.Dashboards");
 
         var services = builder.Services;
         var catalog = services.FirstOrDefault(d => d.ServiceType == typeof(DashboardCatalog))?.ImplementationInstance as DashboardCatalog;
@@ -58,9 +59,8 @@ public static class SparkDashboardsExtensions
 
             services.TryAddSingleton(TimeProvider.System);
             services.TryAddSingleton<SparkCpuUsage>();
-            services.TryAddSingleton<DashboardStorage>();
+            services.AddDashboardHistory();
             services.TryAddSingleton<DashboardReader>();
-            services.TryAddSingleton<DashboardSamplerLease>();
             services.TryAddSingleton<DashboardSampler>();
             services.AddHostedService(sp => sp.GetRequiredService<DashboardSampler>());
             services.AddHostedService<DashboardNotifier>();
@@ -76,7 +76,7 @@ public static class SparkDashboardsExtensions
     }
 
     /// <summary>As <see cref="AddDashboards(ISparkBuilder, Action{SparkDashboardsBuilder}?)"/>, with options in code (applied after <c>Spark:Dashboards</c>).</summary>
-    [global::MintPlayer.Spark.Abstractions.Storage.SparkRequiresStore("Spark.Dashboards", Provider = global::MintPlayer.Spark.Abstractions.Storage.SparkStoreProviders.RavenDb)]
+    [global::MintPlayer.Spark.Abstractions.Storage.SparkRequiresStore("Spark.Dashboards")]
     public static ISparkBuilder AddDashboards(this ISparkBuilder builder, Action<SparkDashboardsOptions> options, Action<SparkDashboardsBuilder>? configure = null)
     {
         builder.AddDashboards(configure);
@@ -86,6 +86,26 @@ public static class SparkDashboardsExtensions
 }
 
 /// <summary>What <c>UseSpark()</c> checks: every declared dashboard can actually be served.</summary>
+internal static class DashboardHistoryRegistration
+{
+    /// <summary>
+    /// The sampler's lease and the history of the application's store (#536 D45): RavenDB's time series, or
+    /// <see cref="StoreDashboardHistory"/>'s rows on any other store, picked by <c>ISparkStore.ProviderName</c>.
+    /// </summary>
+    public static IServiceCollection AddDashboardHistory(this IServiceCollection services)
+    {
+        services.TryAddSingleton<DashboardStorage>();
+        services.TryAddSingleton<StoreDashboardHistory>();
+        services.TryAddSingleton<IDashboardHistory>(sp =>
+            sp.GetRequiredService<global::MintPlayer.Spark.Abstractions.Storage.ISparkStore>().ProviderName == global::MintPlayer.Spark.Abstractions.Storage.SparkStoreProviders.RavenDb
+                ? sp.GetRequiredService<DashboardStorage>()
+                : sp.GetRequiredService<StoreDashboardHistory>());
+        global::MintPlayer.Spark.Abstractions.Storage.SparkStoredTypeServiceCollectionExtensions.AddSparkStoredType<SparkDashboardSample>(services);
+        services.TryAddSingleton<DashboardSamplerLease>();
+        return services;
+    }
+}
+
 internal static class DashboardStartup
 {
     public static void Verify(IServiceProvider services, DashboardCatalog catalog)
