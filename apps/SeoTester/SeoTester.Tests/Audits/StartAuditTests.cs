@@ -23,13 +23,13 @@ public class StartAuditTests(SeoTesterHostFixture host)
         await SetSettingAsync(host, SeoQuotas.Audits.Limit.Key, "-1");
         var site = await SeedSiteAsync(host, Acme);
 
-        var (status, body, raw) = await ActionAsync(host, SiteTypeId, "Site", "StartAudit", site.Id!, Max);
+        var (status, body, raw) = await ActionAsync(host, SiteTypeId, "Site", "StartAudit", site.Id.Value, Max);
 
         status.Should().Be(HttpStatusCode.OK, raw);
         var runId = body.GetProperty("result").GetProperty("runId").GetString()!;
         body.GetProperty("result").GetProperty("joined").GetBoolean().Should().BeFalse();
         var run = (await LoadDocumentAsync<AuditRun>(host, runId))!;
-        run.ShouldSatisfy(r => r.SiteId == site.Id && r.OrganizationId == Acme && r.Origin == site.Origin && r.Status is "Queued" or "Running"
+        run.ShouldSatisfy(r => r.SiteId == site.Id.Value && r.OrganizationId == Acme && r.Origin == site.Origin && r.Status is "Queued" or "Running"
             && r.StartedBy == Max && !r.IsVerified && !r.DeepCrawl && r.MaxPages == 100 && r.WallTimeMinutes == 10 && r.ConnectionsPerHost == 1
             && !r.IntrusiveProbes);
         run.Participants.Should().Equal(Max);
@@ -39,7 +39,7 @@ public class StartAuditTests(SeoTesterHostFixture host)
 
         (await LoadDocumentAsync<TargetCooldown>(host, TargetCooldown.IdFor(site.Host)))!.ExpiresAtUtc!.Value.Should().BeCloseTo(DateTime.UtcNow.AddHours(6), TimeSpan.FromMinutes(5));
         (await QueuedProbesAsync()).Should().Contain(runId, "the first stage's message is in the outbox with the run");
-        (await LogAsync(site.Id!)).Should().Contain(e => e.Kind == AuditLogKinds.AuditStarted && e.RunId == runId && e.UserId == Max
+        (await LogAsync(site.Id.Value)).Should().Contain(e => e.Kind == AuditLogKinds.AuditStarted && e.RunId == runId && e.UserId == Max
             && e.ExpiresAtUtc > DateTime.UtcNow.AddDays(360));
     }
 
@@ -48,16 +48,16 @@ public class StartAuditTests(SeoTesterHostFixture host)
     {
         await SetSettingAsync(host, SeoQuotas.Audits.Limit.Key, "-1");
         var site = await SeedSiteAsync(host, Acme);
-        var first = await ActionAsync(host, SiteTypeId, "Site", "StartAudit", site.Id!, Max);
+        var first = await ActionAsync(host, SiteTypeId, "Site", "StartAudit", site.Id.Value, Max);
         var runId = first.Body.GetProperty("result").GetProperty("runId").GetString()!;
 
-        var (status, body, raw) = await ActionAsync(host, SiteTypeId, "Site", "StartAudit", site.Id!, Ann);
+        var (status, body, raw) = await ActionAsync(host, SiteTypeId, "Site", "StartAudit", site.Id.Value, Ann);
 
         status.Should().Be(HttpStatusCode.OK, raw);
         body.GetProperty("result").GetProperty("joined").GetBoolean().Should().BeTrue();
         body.GetProperty("result").GetProperty("runId").GetString().Should().Be(runId);
         (await LoadDocumentAsync<AuditRun>(host, runId))!.Participants.Should().Equal(Max, Ann);
-        (await LogAsync(site.Id!)).Should().Contain(e => e.Kind == AuditLogKinds.AuditJoined && e.UserId == Ann);
+        (await LogAsync(site.Id.Value)).Should().Contain(e => e.Kind == AuditLogKinds.AuditJoined && e.UserId == Ann);
     }
 
     /// <summary>D17: the cool-down holds the target across all users; Globex does not join Acme's run (D18: members only).</summary>
@@ -67,13 +67,13 @@ public class StartAuditTests(SeoTesterHostFixture host)
         await SetSettingAsync(host, SeoQuotas.Audits.Limit.Key, "-1");
         var acmeSite = await SeedSiteAsync(host, Acme);
         var globexSite = await SeedSiteAsync(host, Globex, hostName: acmeSite.Host);
-        (await ActionAsync(host, SiteTypeId, "Site", "StartAudit", acmeSite.Id!, Max)).Status.Should().Be(HttpStatusCode.OK);
+        (await ActionAsync(host, SiteTypeId, "Site", "StartAudit", acmeSite.Id.Value, Max)).Status.Should().Be(HttpStatusCode.OK);
 
-        var (status, _, raw) = await ActionAsync(host, SiteTypeId, "Site", "StartAudit", globexSite.Id!, Bob);
+        var (status, _, raw) = await ActionAsync(host, SiteTypeId, "Site", "StartAudit", globexSite.Id.Value, Bob);
 
         status.Should().Be(HttpStatusCode.TooManyRequests, raw);
         raw.Should().Contain("audited recently");
-        (await LogAsync(globexSite.Id!)).Should().Contain(e => e.Kind == AuditLogKinds.CoolDownRefused && e.UserId == Bob);
+        (await LogAsync(globexSite.Id.Value)).Should().Contain(e => e.Kind == AuditLogKinds.CoolDownRefused && e.UserId == Bob);
     }
 
     /// <summary>
@@ -87,7 +87,7 @@ public class StartAuditTests(SeoTesterHostFixture host)
         var acmeSite = await SeedSiteAsync(host, Acme);
         var globexSite = await SeedSiteAsync(host, Globex, hostName: acmeSite.Host);
 
-        var (status, body, raw) = await ActionAsync(host, SiteTypeId, "Site", "StartAudit", acmeSite.Id!, Max);
+        var (status, body, raw) = await ActionAsync(host, SiteTypeId, "Site", "StartAudit", acmeSite.Id.Value, Max);
         status.Should().Be(HttpStatusCode.OK, raw);
         var runId = body.GetProperty("result").GetProperty("runId").GetString()!;
         var navigate = body.GetProperty("operations").EnumerateArray()
@@ -110,10 +110,10 @@ public class StartAuditTests(SeoTesterHostFixture host)
     {
         await SetSettingAsync(host, SeoQuotas.VerifiedAudits.Limit.Key, "-1");
         var site = await SeedSiteAsync(host, Acme, verified: true);
-        await ActionAsync(host, SiteTypeId, "Site", "StartAudit", site.Id!, Max);
-        await CompleteRunsAsync(site.Id!);
+        await ActionAsync(host, SiteTypeId, "Site", "StartAudit", site.Id.Value, Max);
+        await CompleteRunsAsync(site.Id.Value);
 
-        var (status, body, raw) = await ActionAsync(host, SiteTypeId, "Site", "StartAudit", site.Id!, Max);
+        var (status, body, raw) = await ActionAsync(host, SiteTypeId, "Site", "StartAudit", site.Id.Value, Max);
 
         status.Should().Be(HttpStatusCode.OK, raw);
         var run = (await LoadDocumentAsync<AuditRun>(host, body.GetProperty("result").GetProperty("runId").GetString()!))!;
@@ -129,10 +129,10 @@ public class StartAuditTests(SeoTesterHostFixture host)
         {
             var site = await SeedSiteAsync(host, Acme);
 
-            var (status, _, raw) = await ActionAsync(host, SiteTypeId, "Site", "StartAudit", site.Id!, Ann);
+            var (status, _, raw) = await ActionAsync(host, SiteTypeId, "Site", "StartAudit", site.Id.Value, Ann);
 
             status.Should().Be(HttpStatusCode.TooManyRequests, raw);
-            (await LogAsync(site.Id!)).Should().Contain(e => e.Kind == AuditLogKinds.QuotaRefused);
+            (await LogAsync(site.Id.Value)).Should().Contain(e => e.Kind == AuditLogKinds.QuotaRefused);
             (await LoadDocumentAsync<TargetCooldown>(host, TargetCooldown.IdFor(site.Host))).Should().BeNull("a refused start leaves no cool-down");
         }
         finally
@@ -147,9 +147,9 @@ public class StartAuditTests(SeoTesterHostFixture host)
         await SetSettingAsync(host, SeoQuotas.Audits.Limit.Key, "-1");
         var site = await SeedSiteAsync(host, Acme);
 
-        (await ActionAsync(host, SiteTypeId, "Site", "StartAudit", site.Id!, Vic)).Status.Should().Be(HttpStatusCode.NotFound, "Member and up (D23)");
-        (await ActionAsync(host, SiteTypeId, "Site", "StartAudit", site.Id!, Bob)).Status.Should().Be(HttpStatusCode.NotFound);
-        (await ActionAsync(host, SiteTypeId, "Site", "StartFullCrawl", site.Id!, Max)).Status.Should().BeOneOf(HttpStatusCode.Forbidden, HttpStatusCode.BadRequest);
+        (await ActionAsync(host, SiteTypeId, "Site", "StartAudit", site.Id.Value, Vic)).Status.Should().Be(HttpStatusCode.NotFound, "Member and up (D23)");
+        (await ActionAsync(host, SiteTypeId, "Site", "StartAudit", site.Id.Value, Bob)).Status.Should().Be(HttpStatusCode.NotFound);
+        (await ActionAsync(host, SiteTypeId, "Site", "StartFullCrawl", site.Id.Value, Max)).Status.Should().BeOneOf(HttpStatusCode.Forbidden, HttpStatusCode.BadRequest);
     }
 
     [Fact]
@@ -158,7 +158,7 @@ public class StartAuditTests(SeoTesterHostFixture host)
         await SetSettingAsync(host, SeoQuotas.FullCrawls.Limit.Key, "-1");
         var site = await SeedSiteAsync(host, Acme, verified: true);
 
-        var (status, body, raw) = await ActionAsync(host, SiteTypeId, "Site", "StartFullCrawl", site.Id!, Ann);
+        var (status, body, raw) = await ActionAsync(host, SiteTypeId, "Site", "StartFullCrawl", site.Id.Value, Ann);
 
         status.Should().Be(HttpStatusCode.OK, raw);
         var run = (await LoadDocumentAsync<AuditRun>(host, body.GetProperty("result").GetProperty("runId").GetString()!))!;
@@ -174,7 +174,7 @@ public class StartAuditTests(SeoTesterHostFixture host)
         {
             var site = await SeedSiteAsync(host, Acme, verified: true);
 
-            var (_, body, raw) = await ActionAsync(host, SiteTypeId, "Site", "StartAudit", site.Id!, Ann);
+            var (_, body, raw) = await ActionAsync(host, SiteTypeId, "Site", "StartAudit", site.Id.Value, Ann);
 
             var run = (await LoadDocumentAsync<AuditRun>(host, body.GetProperty("result").GetProperty("runId").GetString()!))!;
             run.ShouldSatisfy(r => r.IsVerified && !r.DeepCrawl && r.MaxPages == 100);
@@ -207,7 +207,7 @@ public class StartAuditTests(SeoTesterHostFixture host)
         var raw = await session.Advanced.AsyncRawQuery<Newtonsoft.Json.Linq.JObject>("from SparkMessages").WaitForNonStaleResults().ToListAsync();
         return raw.Select(m => m.ToString(Newtonsoft.Json.Formatting.None))
             .Where(json => json.Contains(SeoQueues.Probe, StringComparison.Ordinal))
-            .SelectMany(json => System.Text.RegularExpressions.Regex.Matches(json, "AuditRuns/[0-9A-Za-z-]+").Select(m => m.Value))
+            .SelectMany(json => System.Text.RegularExpressions.Regex.Matches(json, "(?i)auditruns/[0-9a-z-]+").Select(m => m.Value))
             .ToList();
     }
 }

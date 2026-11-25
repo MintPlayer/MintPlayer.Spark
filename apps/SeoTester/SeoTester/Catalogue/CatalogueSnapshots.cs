@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Settings;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Session;
@@ -82,7 +83,7 @@ public static class CheckDefinitionMapping
     /// <summary>Writes <paramref name="shipped"/> onto <paramref name="definition"/> and records its hash as seeded.</summary>
     public static void Apply(ShippedCheck shipped, CheckDefinition definition)
     {
-        definition.Id = CheckDefinition.IdFor(shipped.Id);
+        definition.Id = Id<CheckDefinition>.FromTrusted(CheckDefinition.IdFor(shipped.Id));
         definition.CheckId = shipped.Id;
         definition.Category = shipped.Category.ToString();
         definition.Severity = shipped.Severity.ToString();

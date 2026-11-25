@@ -10,9 +10,10 @@ namespace SeoTester.Entities;
 /// adding a copy per scan (owner decision 2026-10-12); <see cref="RunId"/> names the scan that wrote it. Shown as a
 /// sub-query of that scan; what each scan measured stays on its <see cref="AuditRun"/> (totals, samples, the delta).
 /// </summary>
-public class PageResult : IOrganizationOwned, IExpiring
+[IdKind(SparkIdKind.Natural)]
+public partial class PageResult : IOrganizationOwned, IExpiring
 {
-    public string? Id { get; set; }
+    public Id<PageResult> Id { get; set; }
 
     [Reference(typeof(AuditRun))]
     public string? RunId { get; set; }
@@ -87,7 +88,7 @@ public class PageResult : IOrganizationOwned, IExpiring
     /// The site, never its origin: the same origin can be a site of several organizations, and the page is read under its
     /// site's organization.
     /// </summary>
-    public static string OwnerOf(AuditRun run) => run.SiteId ?? run.Id!;
+    public static string OwnerOf(AuditRun run) => run.SiteId ?? run.Id.Value;
 
     /// <summary>The prefix every page id of <paramref name="owner"/> (<see cref="OwnerOf"/>) starts with (read by prefix, no index).</summary>
     public static string PrefixFor(string owner) => $"{owner}/pages/";

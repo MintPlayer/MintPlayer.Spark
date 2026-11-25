@@ -45,7 +45,7 @@ public partial class PageBatchRecipient : IRecipient<PageBatchMessage>
     {
         if (await RunPipeline.LoadActiveAsync(session, message.RunId, cancellationToken) is not { } run)
             return;
-        var frontier = await session.LoadAsync<CrawlFrontier>(CrawlFrontier.IdFor(run.Id!), cancellationToken);
+        var frontier = await session.LoadAsync<CrawlFrontier>(CrawlFrontier.IdFor(run.Id.Value), cancellationToken);
         if (frontier is null || frontier.NextBatch != message.BatchNo)
             return; // a redelivery of a batch that already committed
         // Written back with the version read here: of two deliveries of one batch, only one commits.
@@ -133,7 +133,7 @@ public partial class PageBatchRecipient : IRecipient<PageBatchMessage>
                     int done;
                     lock (gate)
                         done = frontier.Fetched + results.Count;
-                    await pipeline.WriteProgressAsync(run.Id!, "crawl", done, frontier.Seen.Count, entry.Url, cancellationToken);
+                    await pipeline.WriteProgressAsync(run.Id.Value, "crawl", done, frontier.Seen.Count, entry.Url, cancellationToken);
                 }
             }
         }
@@ -159,8 +159,8 @@ public partial class PageBatchRecipient : IRecipient<PageBatchMessage>
         var current = results.LastOrDefault()?.Result.Url;
         if (stop is null)
         {
-            RunPipeline.PatchProgress(session, run.Id!, "crawl", frontier.Fetched, frontier.Seen.Count, current);
-            var next = new PageBatchMessage(run.Id!, frontier.NextBatch);
+            RunPipeline.PatchProgress(session, run.Id.Value, "crawl", frontier.Fetched, frontier.Seen.Count, current);
+            var next = new PageBatchMessage(run.Id.Value, frontier.NextBatch);
             await outbox.EnqueueAsync(session, next, backOff is { } delay ? new BroadcastOptions { Delay = delay } : null, cancellationToken);
         }
         else
@@ -168,15 +168,15 @@ public partial class PageBatchRecipient : IRecipient<PageBatchMessage>
             frontier.StopReason = stop == "done" ? null : stop;
             if (run.DeepCrawl && frontier.External.Count > 0 && frontier.ExternalResults is null)
                 frontier.ExternalResults = await CheckExternalLinksAsync(frontier.External, cancellationToken);
-            RunPipeline.PatchProgress(session, run.Id!, "aggregate", frontier.Fetched, frontier.Seen.Count, null);
-            session.Advanced.Patch<AuditRun, string>(run.Id!, r => r.StagesDone, stages => stages.Add(PipelineStages.Crawl));
+            RunPipeline.PatchProgress(session, run.Id.Value, "aggregate", frontier.Fetched, frontier.Seen.Count, null);
+            session.Advanced.Patch<AuditRun, string>(run.Id.Value, r => r.StagesDone, stages => stages.Add(PipelineStages.Crawl));
             // The render and PageSpeed stages sample the crawled pages, so they start now, side by side; each enqueues
             // the aggregate as it finishes, and the aggregate waits for both (M10).
-            await outbox.EnqueueAsync(session, new RenderSampleMessage(run.Id!), cancellationToken: cancellationToken);
-            await outbox.EnqueueAsync(session, new PsiMessage(run.Id!), cancellationToken: cancellationToken);
+            await outbox.EnqueueAsync(session, new RenderSampleMessage(run.Id.Value), cancellationToken: cancellationToken);
+            await outbox.EnqueueAsync(session, new PsiMessage(run.Id.Value), cancellationToken: cancellationToken);
         }
 
-        await session.StoreAsync(frontier, changeVector, frontier.Id, cancellationToken);
+        await session.StoreAsync(frontier, changeVector, frontier.Id.Value, cancellationToken);
         await session.SaveChangesAsync(cancellationToken);
         logger.LogInformation("Run {RunId} batch {Batch}: {Pages} pages in {Ms} ms{Stop}", run.Id, batchNo, results.Count, budget.ElapsedMilliseconds,
             stop is null ? "" : ", crawl finished: " + stop);

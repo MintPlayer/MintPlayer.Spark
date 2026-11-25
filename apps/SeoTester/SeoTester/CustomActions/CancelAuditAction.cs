@@ -33,10 +33,10 @@ public partial class CancelAuditAction : SparkCustomAction
 
         var userId = httpContextAccessor.HttpContext?.User.FindFirstValue(ClaimTypes.NameIdentifier);
         session.Advanced.Evict(run);
-        session.Advanced.Patch<AuditRun, bool>(run.Id!, r => r.CancelRequested, true);
-        session.Advanced.Patch<AuditRun, string>(run.Id!, r => r.CancelledBy!, userId!);
+        session.Advanced.Patch<AuditRun, bool>(run.Id.Value, r => r.CancelRequested, true);
+        session.Advanced.Patch<AuditRun, string>(run.Id.Value, r => r.CancelledBy!, userId!);
         if (run.SiteId is not null && await session.LoadAsync<Site>(run.SiteId, cancellationToken) is { } site)
-            await session.StoreAsync(await auditLog.EntryAsync(AuditLogKinds.AuditCancelled, userId, site, run.Id, null, cancellationToken), cancellationToken);
+            await session.StoreAsync(await auditLog.EntryAsync(AuditLogKinds.AuditCancelled, userId, site, run.Id.Value, null, cancellationToken), cancellationToken);
         await session.SaveChangesAsync(cancellationToken);
         args.SetResult(new { runId = run.Id, cancelRequested = true });
         manager.Client.Notify(manager.GetTranslatedMessage("seo.auditCancelling", run.Origin), NotificationKind.Info);

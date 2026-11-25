@@ -34,7 +34,7 @@ public class RemoteFetcherPipelineTests(SeoRemoteFetcherHostFixture host)
         var site = await SeedSiteAsync(host, Acme, hostName: h);
 
         await SetSettingAsync(host, SeoQuotas.Audits.Limit.Key, "-1");
-        var (status, body, raw) = await ActionAsync(host, SiteTypeId, "Site", "StartAudit", site.Id!, Max);
+        var (status, body, raw) = await ActionAsync(host, SiteTypeId, "Site", "StartAudit", site.Id.Value, Max);
         status.Should().Be(HttpStatusCode.OK, raw);
         var run = await FakeSite.FinishedAsync(host.Database, body.GetProperty("result").GetProperty("runId").GetString()!);
 
@@ -67,9 +67,9 @@ public class RemoteFetcherPipelineTests(SeoRemoteFetcherHostFixture host)
         host.Web.Redirect(redirected.Origin + "/", "https://attacker.example.org/");
         host.Web.Page("https://attacker.example.org/", $"<html><head>{OwnershipProof.MetaTag(redirected.VerificationToken!)}</head></html>");
 
-        (await ActionAsync(host, SiteTypeId, "Site", "VerifySite", byDns.Id!, Ann)).Body.GetProperty("result").GetProperty("outcome").GetString().Should().Be("Verified");
-        (await ActionAsync(host, SiteTypeId, "Site", "VerifySite", byFile.Id!, Ann)).Body.GetProperty("result").GetProperty("outcome").GetString().Should().Be("Verified");
-        (await ActionAsync(host, SiteTypeId, "Site", "VerifySite", redirected.Id!, Ann)).Body.GetProperty("result").GetProperty("outcome").GetString().Should().Be("NoProof");
+        (await ActionAsync(host, SiteTypeId, "Site", "VerifySite", byDns.Id.Value, Ann)).Body.GetProperty("result").GetProperty("outcome").GetString().Should().Be("Verified");
+        (await ActionAsync(host, SiteTypeId, "Site", "VerifySite", byFile.Id.Value, Ann)).Body.GetProperty("result").GetProperty("outcome").GetString().Should().Be("Verified");
+        (await ActionAsync(host, SiteTypeId, "Site", "VerifySite", redirected.Id.Value, Ann)).Body.GetProperty("result").GetProperty("outcome").GetString().Should().Be("NoProof");
 
         host.Web.RequestsTo("attacker.example.org").Should().BeEmpty("the fetcher's verification client refuses a redirect off the origin");
         host.AppWeb.Requests.Should().BeEmpty();

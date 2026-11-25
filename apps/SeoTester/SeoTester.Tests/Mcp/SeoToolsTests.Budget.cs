@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Authorization.Identity;
 using MintPlayer.Spark.Mcp;
 using MintPlayer.Spark.Organizations;
@@ -112,8 +113,8 @@ public partial class SeoToolsTests
                 widest ??= url;
                 await bulk.StoreAsync(new PageResult
                 {
-                    Id = PageResult.IdFor(site.Id!, url),
-                    RunId = run.Id,
+                    Id = Id<PageResult>.FromTrusted(PageResult.IdFor(site.Id.Value, url)),
+                    RunId = run.Id.Value,
                     OrganizationId = organization,
                     Url = url,
                     StatusCode = 200,

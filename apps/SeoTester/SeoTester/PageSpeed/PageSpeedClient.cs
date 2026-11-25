@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -75,7 +76,7 @@ public sealed class PageSpeedClient(IDocumentStore store, ISeoFetcher fetcher, I
             using var session = store.OpenAsyncSession();
             await session.StoreAsync(new LookupCache
             {
-                Id = id,
+                Id = Id<LookupCache>.FromTrusted(id),
                 Kind = "psi",
                 Key = key,
                 Status = result.StatusCode,

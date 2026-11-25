@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions;
 using System.Net;
 using System.Text.Json.Nodes;
 using MintPlayer.Spark.Mcp;
@@ -100,7 +101,7 @@ public partial class SeoToolsTests(SeoTesterHostFixture host, Xunit.Abstractions
         }
 
         // Parity: the web refuses Ann the same site.
-        (await LoadAsync(host, SiteTypeId, globex.Id!, Ann)).Status.Should().Be(HttpStatusCode.NotFound);
+        (await LoadAsync(host, SiteTypeId, globex.Id.Value, Ann)).Status.Should().Be(HttpStatusCode.NotFound);
     }
 
     [Fact]
@@ -116,7 +117,7 @@ public partial class SeoToolsTests(SeoTesterHostFixture host, Xunit.Abstractions
         var reply = await CallSettledAsync(client, "seotester_run_summary", new { site = site.Id }, token);
 
         reply.IsToolError.Should().BeFalse(reply.ToolText);
-        reply.Data["scan"]!["id"]!.GetValue<string>().Should().Be(run.Id, "the latest finished scan");
+        reply.Data["scan"]!["id"]!.GetValue<string>().Should().Be(run.Id.Value, "the latest finished scan");
         var checks = reply.Data["checks"]!.AsArray();
         checks[0]!["check"]!.GetValue<string>().Should().Be("seo.title-present", "failures come first");
         checks[0]!["severity"]!.GetValue<string>().Should().NotBeNullOrEmpty("the catalogue's severity");
@@ -244,10 +245,10 @@ public partial class SeoToolsTests(SeoTesterHostFixture host, Xunit.Abstractions
         var reply = await SeoMcp.CallAsync(client, "seotester_get_page", new { site = site.Id, url = site.Origin + "/a", run = older.Id }, token);
 
         reply.IsToolError.Should().BeFalse(reply.ToolText);
-        reply.Data["scan"]!["id"]!.GetValue<string>().Should().Be(older.Id, "the scan asked for");
+        reply.Data["scan"]!["id"]!.GetValue<string>().Should().Be(older.Id.Value, "the scan asked for");
         reply.Data["page"]!["title"]!.GetValue<string>().Should().Be("One heading", "the page's one stored result: the newer scan's fetch replaced the older one's");
-        reply.Data["page"]!["scan"]!.GetValue<string>().Should().Be(newer.Id);
-        reply.Note.Should().Contain(newer.Id!).And.Contain("latest result");
+        reply.Data["page"]!["scan"]!.GetValue<string>().Should().Be(newer.Id.Value);
+        reply.Note.Should().Contain(newer.Id.Value).And.Contain("latest result");
     }
 
     [Fact]
@@ -273,7 +274,7 @@ public partial class SeoToolsTests(SeoTesterHostFixture host, Xunit.Abstractions
         var partial = await CallSettledAsync(client, "seotester_list_findings", new { site = other.Id, run = partly.Id }, token);
 
         replaced.IsToolError.Should().BeFalse(replaced.ToolText);
-        replaced.Note.Should().Contain(newer.Id!).And.Contain("not a clean result");
+        replaced.Note.Should().Contain(newer.Id.Value).And.Contain("not a clean result");
         var rule = replaced.Data["rules"]![0]!;
         rule["check"]!.GetValue<string>().Should().Be("seo.single-h1");
         rule["affectedPages"]!.GetValue<int>().Should().Be(2, "the older scan's own totals");
@@ -281,7 +282,7 @@ public partial class SeoToolsTests(SeoTesterHostFixture host, Xunit.Abstractions
         partial.IsToolError.Should().BeFalse(partial.ToolText);
         partial.Data["totalPages"]!.GetValue<int>().Should().Be(1, "the page whose latest result is still this scan's");
         partial.Data["rules"]![0]!["pages"]!.AsArray().Select(p => p!["url"]!.GetValue<string>()).Should().Equal(other.Origin + "/c");
-        partial.Note.Should().Contain(later.Id!).And.Contain("1 of this scan's 2 pages");
+        partial.Note.Should().Contain(later.Id.Value).And.Contain("1 of this scan's 2 pages");
     }
 
     // ---- The one write: seotester_start_scan (D24) ------------------------------------------------------------------------
@@ -305,7 +306,7 @@ public partial class SeoToolsTests(SeoTesterHostFixture host, Xunit.Abstractions
         started.IsToolError.Should().BeFalse(started.ToolText);
         var runId = started.Data["scan"]!.GetValue<string>();
         var run = (await LoadDocumentAsync<AuditRun>(host, runId))!;
-        run.ShouldSatisfy(r => r.SiteId == site.Id && r.StartedBy == Max && r.OrganizationId == Acme);
+        run.ShouldSatisfy(r => r.SiteId == site.Id.Value && r.StartedBy == Max && r.OrganizationId == Acme);
         started.Note.Should().Contain("seotester_scan_status");
 
         var status = await SeoMcp.CallAsync(client, "seotester_scan_status", new { run = runId }, readOnly);
@@ -325,9 +326,9 @@ public partial class SeoToolsTests(SeoTesterHostFixture host, Xunit.Abstractions
         bob.ToolText.Should().Be(SparkMcpResult.NotFoundMessage, "Globex holds no such site");
         vic.ToolText.Should().Be(SparkMcpResult.NotFoundMessage, "a Viewer may read the site but not start a scan (Member and up, D23)");
         // Parity: the web's button refuses Vic the same way.
-        (await ActionAsync(host, SiteTypeId, "Site", "StartAudit", site.Id!, Vic)).Status.Should().Be(HttpStatusCode.NotFound);
+        (await ActionAsync(host, SiteTypeId, "Site", "StartAudit", site.Id.Value, Vic)).Status.Should().Be(HttpStatusCode.NotFound);
         using var session = host.Database.OpenAsyncSession();
-        (await session.Query<AuditRun>().Customize(c => c.WaitForNonStaleResults()).Where(r => r.SiteId == site.Id).CountAsync()).Should().Be(0);
+        (await session.Query<AuditRun>().Customize(c => c.WaitForNonStaleResults()).Where(r => r.SiteId == site.Id.Value).CountAsync()).Should().Be(0);
     }
 
     [Fact]
@@ -344,7 +345,7 @@ public partial class SeoToolsTests(SeoTesterHostFixture host, Xunit.Abstractions
             reply.IsToolError.Should().BeTrue();
             reply.Note.Should().StartWith("Text between").And.Contain("Not started:");
             using var session = host.Database.OpenAsyncSession();
-            (await session.Query<AuditLogEntry>().Customize(c => c.WaitForNonStaleResults()).Where(e => e.SiteId == site.Id).ToListAsync())
+            (await session.Query<AuditLogEntry>().Customize(c => c.WaitForNonStaleResults()).Where(e => e.SiteId == site.Id.Value).ToListAsync())
                 .Should().Contain(e => e.Kind == AuditLogKinds.QuotaRefused && e.UserId == Ann, "the same AuditStarter wrote the refusal");
         }
         finally
@@ -384,7 +385,7 @@ public partial class SeoToolsTests(SeoTesterHostFixture host, Xunit.Abstractions
     {
         var run = new AuditRun
         {
-            SiteId = site.Id,
+            SiteId = site.Id.Value,
             OrganizationId = site.OrganizationId,
             Origin = site.Origin,
             Status = AuditRunStatus.Completed,
@@ -412,8 +413,8 @@ public partial class SeoToolsTests(SeoTesterHostFixture host, Xunit.Abstractions
     {
         var page = new PageResult
         {
-            Id = PageResult.IdFor(run.SiteId!, url),
-            RunId = run.Id,
+            Id = Id<PageResult>.FromTrusted(PageResult.IdFor(run.SiteId!, url)),
+            RunId = run.Id.Value,
             OrganizationId = run.OrganizationId,
             Url = url,
             StatusCode = 200,

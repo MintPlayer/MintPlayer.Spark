@@ -99,11 +99,11 @@ public sealed partial class AuditStarter(
                 changeVector = session.Advanced.GetChangeVectorFor(cooldown);
                 session.Advanced.Evict(cooldown);
             }
-            await session.StoreAsync(new TargetCooldown { Host = site.Host, RunId = run.Id, ExpiresAtUtc = until }, changeVector, TargetCooldown.IdFor(site.Host), cancellationToken);
+            await session.StoreAsync(new TargetCooldown { Host = site.Host, RunId = run.Id.Value, ExpiresAtUtc = until }, changeVector, TargetCooldown.IdFor(site.Host), cancellationToken);
         }
 
-        await session.StoreAsync(await auditLog.EntryAsync(AuditLogKinds.AuditStarted, userId, site, run.Id, fullCrawl ? "full crawl" : scheduled ? "scheduled" : null, cancellationToken), cancellationToken);
-        await outbox.EnqueueAsync(session, new SiteProbeMessage(run.Id!), cancellationToken: cancellationToken);
+        await session.StoreAsync(await auditLog.EntryAsync(AuditLogKinds.AuditStarted, userId, site, run.Id.Value, fullCrawl ? "full crawl" : scheduled ? "scheduled" : null, cancellationToken), cancellationToken);
+        await outbox.EnqueueAsync(session, new SiteProbeMessage(run.Id.Value), cancellationToken: cancellationToken);
         try
         {
             await session.SaveChangesAsync(cancellationToken);
@@ -112,7 +112,7 @@ public sealed partial class AuditStarter(
         {
             await RefuseAsync(AuditLogKinds.CoolDownRefused, site, userId, $"{site.Host}: a simultaneous start", manager.GetTranslatedMessage("seo.auditRace", site.Host), null, cancellationToken);
         }
-        return new AuditStartResult(run.Id!, Joined: false);
+        return new AuditStartResult(run.Id.Value, Joined: false);
     }
 
     /// <summary>Joins an audit of the site's origin running in one of the caller's organizations (Member or more), if any.</summary>
@@ -138,10 +138,10 @@ public sealed partial class AuditStarter(
         // whole-document write would put back what this request read.
         session.Advanced.Evict(run);
         if (!run.Participants.Contains(userId))
-            session.Advanced.Patch<AuditRun, string>(run.Id!, r => r.Participants, participants => participants.Add(userId));
-        await session.StoreAsync(await auditLog.EntryAsync(AuditLogKinds.AuditJoined, userId, site, run.Id, null, cancellationToken), cancellationToken);
+            session.Advanced.Patch<AuditRun, string>(run.Id.Value, r => r.Participants, participants => participants.Add(userId));
+        await session.StoreAsync(await auditLog.EntryAsync(AuditLogKinds.AuditJoined, userId, site, run.Id.Value, null, cancellationToken), cancellationToken);
         await session.SaveChangesAsync(cancellationToken);
-        return new AuditStartResult(run.Id!, Joined: true);
+        return new AuditStartResult(run.Id.Value, Joined: true);
     }
 
     private async Task<AuditRun> NewRunAsync(Site site, string userId, bool deep, bool fullCrawl, DateTime now, CancellationToken cancellationToken)
@@ -150,7 +150,7 @@ public sealed partial class AuditStarter(
         var snapshot = await snapshots.CreateAsync(session, cancellationToken);
         return new AuditRun
         {
-            SiteId = site.Id,
+            SiteId = site.Id.Value,
             OrganizationId = site.OrganizationId,
             Origin = site.Origin,
             Status = AuditRunStatus.Queued,

@@ -27,9 +27,9 @@ namespace SeoTester.Entities;
 [RequiresOrganizationRole("ShareLink", OrganizationRole.Admin)]
 [RequiresOrganizationRole("RevokeShareLink", OrganizationRole.Admin)]
 [RequiresOrganizationRole(SeoActionNames.ShareBadge, OrganizationRole.Admin)]
-public class Site : IOrganizationOwned, ISparkShareable
+public partial class Site : IOrganizationOwned, ISparkShareable
 {
-    public string? Id { get; set; }
+    public Id<Site> Id { get; set; }
 
     /// <summary>The owning organization; the creator's personal organization when the form leaves it empty (D21).</summary>
     [Reference(typeof(Organization))]

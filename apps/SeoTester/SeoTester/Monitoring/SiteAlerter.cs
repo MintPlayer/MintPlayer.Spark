@@ -72,7 +72,7 @@ public sealed class SiteAlerter(
                     UserIds = members,
                     Title = title,
                     Body = body,
-                    Url = RunPipeline.RunUrl(run.Id!),
+                    Url = RunPipeline.RunUrl(run.Id.Value),
                     OrganizationId = site.OrganizationId,
                     Category = CategoryOf(alert.Kind),
                     Urgent = alert.Kind != SiteAlertKind.ScoreDrop,
@@ -99,7 +99,7 @@ public sealed class SiteAlerter(
                 UserIds = userIds,
                 Title = title.Length > 200 ? title[..200] : title,
                 Body = body,
-                Url = "/po/site/" + Uri.EscapeDataString(site.Id!),
+                Url = "/po/site/" + Uri.EscapeDataString(site.Id.Value),
                 OrganizationId = site.OrganizationId,
                 Category = category,
             }, cancellationToken);

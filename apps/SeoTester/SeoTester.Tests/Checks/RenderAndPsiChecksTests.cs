@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions;
 using SeoTester.Checks;
 using SeoTester.Entities;
 using SeoTester.PageSpeed;
@@ -236,7 +237,7 @@ public class RenderAndPsiChecksTests
     {
         PageResult Page(string path, int depth, int status = 200, string? final = null) => new()
         {
-            Id = "r/pages/" + path, Url = "https://a.test" + path, Depth = depth, StatusCode = status, Fingerprint = "00", FinalUrl = final,
+            Id = Id<PageResult>.FromTrusted("r/pages/" + path), Url = "https://a.test" + path, Depth = depth, StatusCode = status, Fingerprint = "00", FinalUrl = final,
         };
         var pages = new[]
         {
@@ -254,7 +255,7 @@ public class RenderAndPsiChecksTests
     {
         var run = new AuditRun
         {
-            Id = "AuditRuns/1", Origin = "https://a.test", Score = 72, Grade = "C", PagesDone = 12, CompletedAtUtc = new DateTime(2026, 10, 10, 12, 0, 0, DateTimeKind.Utc),
+            Id = Id<AuditRun>.FromTrusted("AuditRuns/1"), Origin = "https://a.test", Score = 72, Grade = "C", PagesDone = 12, CompletedAtUtc = new DateTime(2026, 10, 10, 12, 0, 0, DateTimeKind.Utc),
             CategoryScores = [new RunCategoryScore { Category = "Seo", Score = 72, Grade = "C" }],
             CheckResults =
             [

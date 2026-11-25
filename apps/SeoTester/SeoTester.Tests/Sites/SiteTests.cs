@@ -65,12 +65,12 @@ public class SiteTests(SeoTesterHostFixture host)
     {
         var site = await SeedSiteAsync(host, Acme);
 
-        var (status, _, raw) = await UpdateAsync(host, SiteTypeId, "Site", site.Id!, Max,
+        var (status, _, raw) = await UpdateAsync(host, SiteTypeId, "Site", site.Id.Value, Max,
             ("PwaProfile", true), ("Origin", "https://elsewhere.example.org"), ("OrganizationId", "Organizations/personal/SparkUsers/max"),
             ("IsVerified", true), ("VerifiedAtUtc", "2026-10-01T00:00:00Z"), ("LatestGrade", "A"));
 
         status.Should().Be(HttpStatusCode.OK, raw);
-        var stored = (await LoadDocumentAsync<Site>(host, site.Id!))!;
+        var stored = (await LoadDocumentAsync<Site>(host, site.Id.Value))!;
         stored.PwaProfile.Should().BeTrue();
         stored.Origin.Should().Be(site.Origin);
         stored.OrganizationId.Should().Be(Acme);
@@ -85,9 +85,9 @@ public class SiteTests(SeoTesterHostFixture host)
     {
         var site = await SeedSiteAsync(host, Acme);
 
-        (await LoadAsync(host, SiteTypeId, site.Id!, Vic)).Status.Should().Be(HttpStatusCode.OK);
-        (await UpdateAsync(host, SiteTypeId, "Site", site.Id!, Vic, ("PwaProfile", true))).Status.Should().Be(HttpStatusCode.NotFound);
-        (await LoadAsync(host, SiteTypeId, site.Id!, Bob)).Status.Should().Be(HttpStatusCode.NotFound, "missing and forbidden read the same (#453)");
-        (await LoadAsync(host, SiteTypeId, site.Id!, null)).Status.Should().BeOneOf(HttpStatusCode.Unauthorized, HttpStatusCode.NotFound);
+        (await LoadAsync(host, SiteTypeId, site.Id.Value, Vic)).Status.Should().Be(HttpStatusCode.OK);
+        (await UpdateAsync(host, SiteTypeId, "Site", site.Id.Value, Vic, ("PwaProfile", true))).Status.Should().Be(HttpStatusCode.NotFound);
+        (await LoadAsync(host, SiteTypeId, site.Id.Value, Bob)).Status.Should().Be(HttpStatusCode.NotFound, "missing and forbidden read the same (#453)");
+        (await LoadAsync(host, SiteTypeId, site.Id.Value, null)).Status.Should().BeOneOf(HttpStatusCode.Unauthorized, HttpStatusCode.NotFound);
     }
 }

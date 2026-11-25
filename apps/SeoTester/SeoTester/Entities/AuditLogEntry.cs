@@ -7,9 +7,9 @@ namespace SeoTester.Entities;
 /// organization, and what was refused. Administrators only. Expires after <c>SeoTester:AuditLog:Retention</c> (1 year),
 /// set when written. Written by server code only.
 /// </summary>
-public class AuditLogEntry : IExpiring
+public partial class AuditLogEntry : IExpiring
 {
-    public string? Id { get; set; }
+    public Id<AuditLogEntry> Id { get; set; }
 
     public DateTime AtUtc { get; set; }
 
@@ -58,9 +58,10 @@ public static class AuditLogKinds
 /// written by <c>StartAudit</c> by id, <c>TargetCooldowns/{host}</c>. It expires with the cool-down (X1), so an expired
 /// one that RavenDB has not swept yet must be treated as absent: compare <see cref="ExpiresAtUtc"/> yourself.
 /// </summary>
-public class TargetCooldown : IExpiring
+[IdKind(SparkIdKind.Natural)]
+public partial class TargetCooldown : IExpiring
 {
-    public string? Id { get; set; }
+    public Id<TargetCooldown> Id { get; set; }
     public string Host { get; set; } = string.Empty;
     public string? RunId { get; set; }
     public DateTime? ExpiresAtUtc { get; set; }

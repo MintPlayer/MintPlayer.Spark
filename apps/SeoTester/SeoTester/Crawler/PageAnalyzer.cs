@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions;
 using System.Globalization;
 using SeoTester.Checks;
 using SeoTester.Crawling;
@@ -50,8 +51,8 @@ public static class PageAnalyzer
 
         var result = new PageResult
         {
-            Id = PageResult.IdFor(PageResult.OwnerOf(run), entry.Url),
-            RunId = run.Id,
+            Id = Id<PageResult>.FromTrusted(PageResult.IdFor(PageResult.OwnerOf(run), entry.Url)),
+            RunId = run.Id.Value,
             OrganizationId = run.OrganizationId,
             Url = entry.Url,
             StatusCode = fetch.StatusCode,

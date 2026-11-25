@@ -117,9 +117,9 @@ public sealed partial class CheckDefinitionSaveInterceptor : IBeforeSave<CheckDe
         definition.CheckId = definition.CheckId?.Trim() ?? string.Empty;
         if (!ShippedCatalogue.IsCheckId(definition.CheckId))
             throw new SparkValidationException("A check id is '<category>.<name>' in lower case, e.g. 'seo.title-present'.");
-        definition.Id = CheckDefinition.IdFor(definition.CheckId);
+        definition.Id = Id<CheckDefinition>.FromTrusted(CheckDefinition.IdFor(definition.CheckId));
         definition.SeededHash = null;
-        if (await session.Advanced.ExistsAsync(definition.Id))
+        if (await session.Advanced.ExistsAsync(definition.Id.Value))
             throw new SparkValidationException($"The check '{definition.CheckId}' already exists.");
     }
 }

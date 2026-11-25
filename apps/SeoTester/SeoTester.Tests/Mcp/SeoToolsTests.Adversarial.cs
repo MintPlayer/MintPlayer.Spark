@@ -86,8 +86,8 @@ public partial class SeoToolsTests
             reply.ToolText.Should().Be(SparkMcpResult.NotFoundMessage, $"{what}: one answer for 'not yours' and 'not there' (D17)");
         }
         // Parity: the web refuses Ann the other organization's scan and page alike.
-        (await LoadAsync(host, AuditRunTypeId, globexRun.Id!, Ann)).Status.Should().Be(HttpStatusCode.NotFound);
-        (await LoadAsync(host, PageResultTypeId, globexPage.Id!, Ann)).Status.Should().Be(HttpStatusCode.NotFound);
+        (await LoadAsync(host, AuditRunTypeId, globexRun.Id.Value, Ann)).Status.Should().Be(HttpStatusCode.NotFound);
+        (await LoadAsync(host, PageResultTypeId, globexPage.Id.Value, Ann)).Status.Should().Be(HttpStatusCode.NotFound);
     }
 
     [Fact]
@@ -114,7 +114,7 @@ public partial class SeoToolsTests
         }
         page.ErrorMessage.Should().Be(unknown.ErrorMessage, "an existing and an unknown page answer alike");
         using var session = host.Database.OpenAsyncSession();
-        (await session.Query<AuditRun>().Customize(c => c.WaitForNonStaleResults()).Where(r => r.SiteId == site.Id).CountAsync())
+        (await session.Query<AuditRun>().Customize(c => c.WaitForNonStaleResults()).Where(r => r.SiteId == site.Id.Value).CountAsync())
             .Should().Be(1, "no scan was started");
     }
 
@@ -155,7 +155,7 @@ public partial class SeoToolsTests
         before.IsToolError.Should().BeFalse(before.Raw);
         after.Status.Should().Be(HttpStatusCode.OK, "the token is still valid: leaving an organization changes no security stamp");
         after.ToolText.Should().Be(SparkMcpResult.NotFoundMessage, "the membership is read on every call");
-        (await LoadAsync(host, SiteTypeId, site.Id!, user)).Status.Should().Be(HttpStatusCode.NotFound, "the web agrees");
+        (await LoadAsync(host, SiteTypeId, site.Id.Value, user)).Status.Should().Be(HttpStatusCode.NotFound, "the web agrees");
     }
 
     /// <summary>A personal access token of <paramref name="user"/> for the chosen <paramref name="types"/> only, read only.</summary>

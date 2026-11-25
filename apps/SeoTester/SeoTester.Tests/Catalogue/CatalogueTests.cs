@@ -140,7 +140,7 @@ public class CatalogueTests(SeoTesterHostFixture host)
         }), "SparkUsers/admin", Administrators);
 
         status.Should().Be(HttpStatusCode.Created, raw);
-        body.GetProperty("result").GetProperty("id").GetString().Should().Be(CheckDefinition.IdFor(checkId));
+        body.GetProperty("result").GetProperty("id").GetString().Should().Be(CheckDefinition.IdFor(checkId).ToLowerInvariant(), "a new id is lower case (#536 D7)");
         (await LoadDocumentAsync<CheckDefinition>(host, CheckDefinition.IdFor(checkId)))!.SeededHash.Should().BeNull("an administrator's entry is never the seeder's");
     }
 

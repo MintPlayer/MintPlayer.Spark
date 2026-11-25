@@ -42,7 +42,7 @@ public class MonitoringTests(SeoPipelineHostFixture host)
     {
         var site = await SeedSiteAsync(host, Acme, verified, hostName);
         using var session = host.Database.OpenAsyncSession();
-        var stored = await session.LoadAsync<Site>(site.Id);
+        var stored = await session.LoadAsync<Site>(site.Id.Value);
         stored.Monitoring = schedule;
         stored.MonitoringBy = Max;
         stored.NextMonitoringRunAtUtc = next ?? DateTime.UtcNow.AddDays(30);
@@ -59,7 +59,7 @@ public class MonitoringTests(SeoPipelineHostFixture host)
 
     /// <summary>A form save: the required origin is always posted, as the SPA does.</summary>
     private Task<(HttpStatusCode Status, System.Text.Json.JsonElement Body, string Raw)> UpdateSiteAsync(Site site, string user, params (string Name, object? Value)[] values)
-        => UpdateAsync(host, SiteTypeId, "Site", site.Id!, user, [("Origin", site.Origin), .. values]);
+        => UpdateAsync(host, SiteTypeId, "Site", site.Id.Value, user, [("Origin", site.Origin), .. values]);
 
     private async Task<int> DispatchAsync()
     {
@@ -74,12 +74,12 @@ public class MonitoringTests(SeoPipelineHostFixture host)
         var refused = await UpdateSiteAsync(unverified, Max, ("Monitoring", MonitoringSchedule.Weekly));
         refused.Status.Should().Be(HttpStatusCode.BadRequest, refused.Raw);
         refused.Raw.Should().Contain("verified site");
-        (await LoadDocumentAsync<Site>(host, unverified.Id!))!.Monitoring.Should().Be(MonitoringSchedule.Off);
+        (await LoadDocumentAsync<Site>(host, unverified.Id.Value))!.Monitoring.Should().Be(MonitoringSchedule.Off);
 
         var verified = await SeedSiteAsync(host, Acme, verified: true, hostName: FakeSite.NewHost());
         var on = await UpdateSiteAsync(verified, Max, ("Monitoring", MonitoringSchedule.Weekly), ("AlertScoreDrop", 3));
         on.Status.Should().Be(HttpStatusCode.OK, on.Raw);
-        var stored = (await LoadDocumentAsync<Site>(host, verified.Id!))!;
+        var stored = (await LoadDocumentAsync<Site>(host, verified.Id.Value))!;
         stored.MonitoringBy.Should().Be(Max);
         stored.AlertScoreDrop.Should().Be(3);
         stored.NextMonitoringRunAtUtc!.Value.Should().BeCloseTo(DateTime.UtcNow, TimeSpan.FromMinutes(1), "never audited: the next sweep runs it");
@@ -87,15 +87,15 @@ public class MonitoringTests(SeoPipelineHostFixture host)
         // An unchanged schedule keeps its member and slot whatever is posted; another member's change takes it over.
         var kept = await UpdateSiteAsync(verified, Ann, ("Monitoring", MonitoringSchedule.Weekly), ("MonitoringBy", Ann), ("NextMonitoringRunAtUtc", "2030-01-01T00:00:00Z"));
         kept.Status.Should().Be(HttpStatusCode.OK, kept.Raw);
-        var after = (await LoadDocumentAsync<Site>(host, verified.Id!))!;
+        var after = (await LoadDocumentAsync<Site>(host, verified.Id.Value))!;
         after.MonitoringBy.Should().Be(Max);
         after.NextMonitoringRunAtUtc!.Value.Should().Be(stored.NextMonitoringRunAtUtc!.Value);
 
         (await UpdateSiteAsync(verified, Ann, ("Monitoring", MonitoringSchedule.Monthly))).Status.Should().Be(HttpStatusCode.OK);
-        (await LoadDocumentAsync<Site>(host, verified.Id!))!.MonitoringBy.Should().Be(Ann);
+        (await LoadDocumentAsync<Site>(host, verified.Id.Value))!.MonitoringBy.Should().Be(Ann);
 
         (await UpdateSiteAsync(verified, Max, ("Monitoring", MonitoringSchedule.Off))).Status.Should().Be(HttpStatusCode.OK);
-        var off = (await LoadDocumentAsync<Site>(host, verified.Id!))!;
+        var off = (await LoadDocumentAsync<Site>(host, verified.Id.Value))!;
         off.MonitoringBy.Should().BeNull();
         off.NextMonitoringRunAtUtc.HasValue.Should().BeFalse();
 
@@ -115,16 +115,16 @@ public class MonitoringTests(SeoPipelineHostFixture host)
         await DispatchAsync();
         await DispatchAsync();
 
-        var run = (await FakeSite.WaitForAsync(host.Database, await SingleRunIdAsync(due.Id!), _ => true, TimeSpan.FromSeconds(30)));
+        var run = (await FakeSite.WaitForAsync(host.Database, await SingleRunIdAsync(due.Id.Value), _ => true, TimeSpan.FromSeconds(30)));
         run.StartedBy.Should().Be(Max, "scheduled runs are started for the member who set the schedule");
-        (await FakeSite.FinishedAsync(host.Database, run.Id!)).Status.Should().Be(AuditRunStatus.Completed);
-        (await RunsOfAsync(due.Id!)).Should().ContainSingle("two sweeps, one slot, one run");
-        (await RunsOfAsync(unverified.Id!)).Should().BeEmpty("monitoring is verified-only by default (D11)");
-        (await RunsOfAsync(notDue.Id!)).Should().BeEmpty();
-        (await LoadDocumentAsync<Site>(host, due.Id!))!.NextMonitoringRunAtUtc.Should().Be(slot.AddDays(7));
+        (await FakeSite.FinishedAsync(host.Database, run.Id.Value)).Status.Should().Be(AuditRunStatus.Completed);
+        (await RunsOfAsync(due.Id.Value)).Should().ContainSingle("two sweeps, one slot, one run");
+        (await RunsOfAsync(unverified.Id.Value)).Should().BeEmpty("monitoring is verified-only by default (D11)");
+        (await RunsOfAsync(notDue.Id.Value)).Should().BeEmpty();
+        (await LoadDocumentAsync<Site>(host, due.Id.Value))!.NextMonitoringRunAtUtc.Should().Be(slot.AddDays(7));
 
         using var session = host.Database.OpenAsyncSession();
-        (await session.Query<AuditLogEntry>().Customize(c => c.WaitForNonStaleResults()).Where(e => e.RunId == run.Id && e.Kind == AuditLogKinds.AuditStarted).ToListAsync())
+        (await session.Query<AuditLogEntry>().Customize(c => c.WaitForNonStaleResults()).Where(e => e.RunId == run.Id.Value && e.Kind == AuditLogKinds.AuditStarted).ToListAsync())
             .Should().ContainSingle().Which.Detail.Should().Be("scheduled");
     }
 
@@ -134,7 +134,7 @@ public class MonitoringTests(SeoPipelineHostFixture host)
         while (watch.Elapsed < TimeSpan.FromSeconds(30))
         {
             if ((await RunsOfAsync(siteId)).FirstOrDefault() is { } run)
-                return run.Id!;
+                return run.Id.Value;
             await Task.Delay(100);
         }
         throw new TimeoutException($"No scheduled run of {siteId} started.");
@@ -165,19 +165,19 @@ public class MonitoringTests(SeoPipelineHostFixture host)
         second.CheckResults.Single(r => r.CheckId == "seo.title-present").ShouldSatisfy(r => r.Status == "Fail" && r.Delta == "New");
         second.Score!.Value.Should().BeLessThan(first.Score!.Value);
 
-        var alerts = await AlertsAsync(second.Id!, expected: 6);
+        var alerts = await AlertsAsync(second.Id.Value, expected: 6);
         foreach (var member in new[] { Ann, Max, Vic })
         {
             alerts.Should().Contain(n => n.UserId == member && n.Category == "seo-alert-critical" && n.Title.Contains(second.Origin), $"{member} is a member of Acme");
             alerts.Should().Contain(n => n.UserId == member && n.Category == "seo-alert-score-drop");
         }
         alerts.Should().NotContain(n => n.UserId == Bob, "Bob is not in Acme");
-        (await AlertsAsync(secondOther.Id!, expected: 0)).Should().BeEmpty("a site without monitoring gets the completion notice only");
+        (await AlertsAsync(secondOther.Id.Value, expected: 0)).Should().BeEmpty("a site without monitoring gets the completion notice only");
     }
 
     private async Task<AuditRun> FinishedRunAsync(Site site)
     {
-        var (status, body, raw) = await ActionAsync(host, SiteTypeId, "Site", "StartAudit", site.Id!, Max);
+        var (status, body, raw) = await ActionAsync(host, SiteTypeId, "Site", "StartAudit", site.Id.Value, Max);
         status.Should().Be(HttpStatusCode.OK, raw);
         return await FakeSite.FinishedAsync(host.Database, body.GetProperty("result").GetProperty("runId").GetString()!);
     }

@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions;
 using Raven.Client.Documents;
 using SeoTester.Checks;
 using SeoTester.Entities;
@@ -54,7 +55,7 @@ public sealed class ExternalLookups(IDocumentStore store, ISeoFetcher fetcher, T
         var result = await fetcher.FetchAsync(url, MaxAnswerBytes, cancellationToken, client: SeoHttp.Lookups);
         var entry = new LookupCache
         {
-            Id = id,
+            Id = Id<LookupCache>.FromTrusted(id),
             Kind = kind,
             Key = key.ToLowerInvariant(),
             Status = result.StatusCode,

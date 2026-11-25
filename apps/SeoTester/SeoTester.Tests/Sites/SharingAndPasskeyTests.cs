@@ -20,8 +20,8 @@ public class SharingAndPasskeyTests(SeoTesterHostFixture host)
     {
         var site = await SeedSiteAsync(host, Acme);
 
-        (await ActionAsync(host, SiteTypeId, "Site", "ShareLink", site.Id!, Max)).Status.Should().Be(HttpStatusCode.NotFound, "D31: Owners and Admins");
-        var link = await ShareAsync(site.Id!);
+        (await ActionAsync(host, SiteTypeId, "Site", "ShareLink", site.Id.Value, Max)).Status.Should().Be(HttpStatusCode.NotFound, "D31: Owners and Admins");
+        var link = await ShareAsync(site.Id.Value);
         var shared = await PostAsync(host, "/spark/share/load", link, null);
 
         shared.Status.Should().Be(HttpStatusCode.OK, shared.Raw);
@@ -36,17 +36,17 @@ public class SharingAndPasskeyTests(SeoTesterHostFixture host)
     public async Task Under_VerifiedOnly_an_unverified_sites_link_stops_and_comes_back_once_verified()
     {
         var site = await SeedSiteAsync(host, Acme);
-        var link = await ShareAsync(site.Id!);
+        var link = await ShareAsync(site.Id.Value);
 
         await SetSettingAsync(host, SeoSettings.Sharing.Key, nameof(SeoFeatureScope.VerifiedOnly));
         try
         {
             (await PostAsync(host, "/spark/share/load", link, null)).Status.Should().Be(HttpStatusCode.NotFound);
-            (await ActionAsync(host, SiteTypeId, "Site", "ShareLink", site.Id!, Ann)).Raw.Should().NotContain("/shared/");
+            (await ActionAsync(host, SiteTypeId, "Site", "ShareLink", site.Id.Value, Ann)).Raw.Should().NotContain("/shared/");
 
             using (var session = host.Database.OpenAsyncSession())
             {
-                (await session.LoadAsync<SeoTester.Entities.Site>(site.Id)).IsVerified = true;
+                (await session.LoadAsync<SeoTester.Entities.Site>(site.Id.Value)).IsVerified = true;
                 await session.SaveChangesAsync();
             }
             (await PostAsync(host, "/spark/share/load", link, null)).Status.Should().Be(HttpStatusCode.OK);
