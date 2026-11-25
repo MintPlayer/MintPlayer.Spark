@@ -66,7 +66,28 @@ public sealed class RelationalSparkStore : ISparkStore
 
     public string ProviderName => Setup.Dialect.ProviderName;
 
-    public SparkStoreCapabilities Capabilities => SparkStoreCapabilities.None;
+    /// <summary>D6: the change feed (<see cref="RelationalSparkChangeFeed"/>) over the stamps and the tombstones.</summary>
+    public SparkStoreCapabilities Capabilities => SparkStoreCapabilities.ChangeNotifications;
+
+    /// <summary>Raised after a session's commit with what it wrote (<see cref="ISparkChangeFeed.OnCommitted"/>).</summary>
+    internal event Action<IReadOnlyList<SparkStoreChange>>? Committed;
+
+    internal void RaiseCommitted(IReadOnlyList<SparkStoreChange> changes)
+    {
+        if (changes.Count == 0 || Committed is not { } committed)
+            return;
+        foreach (var handler in committed.GetInvocationList().Cast<Action<IReadOnlyList<SparkStoreChange>>>())
+        {
+            try
+            {
+                handler(changes);
+            }
+            catch
+            {
+                // A handler never throws into a writer (ISparkChangeFeed).
+            }
+        }
+    }
 
     /// <summary>A new context over the store's database; the caller disposes it.</summary>
     public SparkDbContext NewContext() => new(options, Setup);

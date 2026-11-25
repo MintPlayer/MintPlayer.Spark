@@ -96,8 +96,11 @@ tags, and everything ships once the merged pull request is backported to `releas
    `builder.UsePostgreSql()` store the app in a table per entity through EF Core 11, with the connection string from
    `ConnectionStrings:Spark` unless `options.ConnectionString` sets one. `options.ConfigureModel(mb => …)` adjusts the
    EF model last. Child collections (`[ValueObject]` lists) become child tables, references become foreign keys,
-   reference lists become join tables, and the version covers the whole aggregate. *In progress: the change feed
-   lands in the next slice.* A migration that drops and re-adds the column of a renamed attribute (same id) is
+   reference lists become join tables, and the version covers the whole aggregate. **Live updates work on both**
+   (M4e): every table has a `SparkChangeStamp` column the database moves on each write (`rowversion`; on PostgreSQL
+   an `xid8` set by a trigger the migrations create), deletes leave a row in `spark.Tombstones` for a day, and the
+   change feed polls every `options.ChangeFeedPollInterval` (1 s). An open transaction delays the feed until it ends,
+   on PostgreSQL even one in another database on the same server. A migration that drops and re-adds the column of a renamed attribute (same id) is
    refused (open question O19).
     The relational providers also keep atomic values (so leases work), integer ids (a HiLo), the Data Protection key
     ring, expiry and the expiration sweep, reservations, streams, set-based delete/update and appends. A `decimal`

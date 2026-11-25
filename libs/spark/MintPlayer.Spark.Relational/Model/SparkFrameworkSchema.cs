@@ -6,7 +6,8 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace MintPlayer.Spark.Relational.Model;
 
 /// <summary>
-/// The store's own tables (#536 D24): reservations (S6), atomic values (S15) and the Data Protection key ring, in the
+/// The store's own tables (#536 D24): reservations (S6), atomic values (S15), the Data Protection key ring and the change
+/// feed's tombstones (D6), in the
 /// <c>spark</c> schema, versioned apart from the app's tables by Spark's hand-written migrations
 /// (<see cref="SparkFrameworkDbContext"/>, history <c>spark.__SparkFrameworkMigrations</c>). The app's
 /// <see cref="SparkDbContext"/> maps the same tables to use them, excluded from the app's migrations.
@@ -18,11 +19,13 @@ public static class SparkFrameworkSchema
     public const string Reservations = "Reservations";
     public const string AtomicValues = "AtomicValues";
     public const string DataProtectionKeys = "DataProtectionKeys";
+    public const string Tombstones = "Tombstones";
     internal const int KeyLength = 450;
 
     /// <summary>Maps the framework tables. Keys compare bytes, as ids do (D7).</summary>
-    internal static void AddTables(ModelBuilder modelBuilder, string keyCollation, bool excludeFromMigrations)
+    internal static void AddTables(ModelBuilder modelBuilder, SparkRelationalDialect dialect, bool excludeFromMigrations)
     {
+        var keyCollation = dialect.KeyCollation;
         var reservation = modelBuilder.Entity<SparkReservationRow>();
         reservation.ToTable(Reservations, Schema, t => t.ExcludeFromMigrations(excludeFromMigrations));
         reservation.HasKey(r => r.Key);
@@ -40,6 +43,17 @@ public static class SparkFrameworkSchema
         key.ToTable(DataProtectionKeys, Schema, t => t.ExcludeFromMigrations(excludeFromMigrations));
         key.HasKey(r => r.Name);
         key.Property(r => r.Name).HasMaxLength(KeyLength).UseCollation(keyCollation);
+
+        // D6: a deleted row, stamped in the deleting transaction, for the change feed (#536 M4e).
+        var tombstone = modelBuilder.Entity<SparkTombstoneRow>();
+        tombstone.ToTable(Tombstones, Schema, t => t.ExcludeFromMigrations(excludeFromMigrations));
+        tombstone.HasKey(r => r.Id);
+        tombstone.Property(r => r.Id).ValueGeneratedNever();
+        tombstone.Property(r => r.Collection).HasMaxLength(KeyLength).UseCollation(keyCollation);
+        tombstone.Property(r => r.DocumentId).HasMaxLength(KeyLength).UseCollation(keyCollation);
+        dialect.StampColumn(tombstone.Property(r => r.Stamp));
+        tombstone.HasIndex(r => r.Stamp);
+        tombstone.HasIndex(r => r.DeletedAt);
     }
 }
 
@@ -55,7 +69,7 @@ public sealed class SparkFrameworkDbContext : DbContext
     public SparkRelationalDialect Dialect { get; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
-        => SparkFrameworkSchema.AddTables(modelBuilder, Dialect.KeyCollation, excludeFromMigrations: false);
+        => SparkFrameworkSchema.AddTables(modelBuilder, Dialect, excludeFromMigrations: false);
 
     /// <summary>
     /// The framework's migrations are written by hand, with no model snapshot, so EF's pending-changes check has

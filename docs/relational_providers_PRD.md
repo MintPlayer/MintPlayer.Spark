@@ -416,6 +416,11 @@ change feed's reconnect and messaging's fallback order. **Round 3 made it per ta
 - Rejected: one change-log table (an extra write per save, a hot insert point, and trimming that leaves a new
   subscription without its backlog), and both together (the cost of each).
 - The trap: one long transaction holds the horizon back, so every subscription waits for it. S14 measures that.
+  **On PostgreSQL that is any transaction on the server** (M4e, 2026-11-25): transaction ids are cluster-wide, so
+  an open transaction in another database holds the horizon back too. Late, never skipped; give a Spark database a
+  server of its own when other databases there run long transactions.
+- **As built (M4e):** the horizon doubles as the probe (it moves whenever a transaction commits), so a poll with
+  nothing new is one query. Tombstones are kept a day.
 
 A plain database sequence is wrong either way. A sequence value is allocated before commit:
 1. Transaction A takes 10.

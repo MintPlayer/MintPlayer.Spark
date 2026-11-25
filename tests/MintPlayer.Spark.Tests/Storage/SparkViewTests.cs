@@ -20,7 +20,7 @@ public class SparkViewTests
         public string Name { get; set; } = "";
 
         // What the document-id generator emits (D23); this project runs no generator.
-        private string? __DocumentId { get => Id.IsEmpty ? null : Id.Value; set => Id = Id<ViewCompany>.FromTrusted(value); }
+        internal string? __DocumentId { get => Id.IsEmpty ? null : Id.Value; set => Id = Id<ViewCompany>.FromTrusted(value); }
     }
 
     public class ViewEmployee
@@ -34,7 +34,7 @@ public class SparkViewTests
         public ViewAddress? Address { get; set; }
         public Dictionary<string, string>? Labels { get; set; }
 
-        private string? __DocumentId { get => Id.IsEmpty ? null : Id.Value; set => Id = Id<ViewEmployee>.FromTrusted(value); }
+        internal string? __DocumentId { get => Id.IsEmpty ? null : Id.Value; set => Id = Id<ViewEmployee>.FromTrusted(value); }
     }
 
     public class ViewAddress { public string City { get; set; } = ""; }

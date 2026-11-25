@@ -74,4 +74,39 @@ public abstract class SparkRelationalDialect
     /// the SQL EF rendered. It must also run inside the <c>IF … BEGIN … END</c> of an idempotent migration script.
     /// </summary>
     public virtual string CreateViewSql(string view, string select) => $"CREATE VIEW {view} AS\n{select};";
+
+    // ---- D6: the change stamp (#536 M4e) ----
+
+    /// <summary>
+    /// The store type of the change stamp (D6): a value the database itself moves on every insert and update, in commit
+    /// order below <see cref="HorizonSql"/>. SQL Server's <c>rowversion</c>; PostgreSQL's <c>xid8</c>, set by a trigger.
+    /// </summary>
+    public abstract string StampColumnType { get; }
+
+    /// <summary>The stamp's default on insert (PostgreSQL's <c>pg_current_xact_id()</c>), or <see langword="null"/>.</summary>
+    public virtual string? StampDefaultSql => null;
+
+    /// <summary>Maps <paramref name="property"/> (a <see cref="ulong"/>) as the stamp column: never written by EF.</summary>
+    public virtual void StampColumn(PropertyBuilder property)
+    {
+        property.HasColumnType(StampColumnType).ValueGeneratedOnAddOrUpdate();
+        if (StampDefaultSql is { } sql)
+            property.HasDefaultValueSql(sql);
+    }
+
+    /// <summary>
+    /// The statement that makes <paramref name="table"/> (delimited) move its stamp on update, or <see langword="null"/>
+    /// when the column type does that itself. Synchronize's migrations emit it after the table or the column is created.
+    /// </summary>
+    public virtual string? StampTriggerSql(string table) => null;
+
+    /// <summary>What the framework migration that adds the stamp (<c>SparkFramework0002</c>) creates besides the table, or <see langword="null"/>.</summary>
+    public virtual string? StampFrameworkSql => null;
+
+    /// <summary>
+    /// <c>SELECT</c> of the safe read horizon, as a <c>bigint</c>: every stamp below it belongs to a committed write, and
+    /// a write not committed yet gets a stamp at or above it. It moves whenever a transaction commits, so it is also the
+    /// cheap probe the feed polls first.
+    /// </summary>
+    public abstract string HorizonSql { get; }
 }

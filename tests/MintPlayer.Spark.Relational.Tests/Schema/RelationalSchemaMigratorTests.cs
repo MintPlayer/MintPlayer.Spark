@@ -22,6 +22,8 @@ public class MigPerson
 /// </summary>
 public abstract partial class RelationalSchemaMigratorTests : IAsyncLifetime
 {
+    private static readonly string[] FrameworkMigrations = ["20261125000001_SparkFramework0001", "20261125000002_SparkFramework0002"];
+
     private readonly List<RelationalSparkStore> created = [];
 
     protected abstract RelationalTestServer? Server { get; }
@@ -51,7 +53,7 @@ public abstract partial class RelationalSchemaMigratorTests : IAsyncLifetime
     {
         var migrator = new RelationalSchemaMigrator(NewStore());
 
-        (await migrator.GetPendingMigrationsAsync()).Should().Equal(["20261125000001_SparkFramework0001"]);
+        (await migrator.GetPendingMigrationsAsync()).Should().Equal(FrameworkMigrations);
     }
 
     [SkippableFact]
@@ -63,7 +65,7 @@ public abstract partial class RelationalSchemaMigratorTests : IAsyncLifetime
 
         (await new RelationalSchemaMigrator(store).GetPendingMigrationsAsync()).Should().BeEmpty();
         await using var framework = store.NewFrameworkContext();
-        (await framework.Database.GetAppliedMigrationsAsync()).Should().Equal(["20261125000001_SparkFramework0001"]);
+        (await framework.Database.GetAppliedMigrationsAsync()).Should().Equal(FrameworkMigrations);
     }
 
     [SkippableFact]

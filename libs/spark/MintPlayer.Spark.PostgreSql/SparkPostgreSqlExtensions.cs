@@ -10,7 +10,7 @@ namespace MintPlayer.Spark;
 public static class SparkPostgreSqlExtensions
 {
     /// <summary>Uses PostgreSQL, with the connection string from <c>ConnectionStrings:Spark</c> unless <paramref name="configure"/> sets one.</summary>
-    [global::MintPlayer.Spark.Abstractions.Storage.SparkStoreProvider(global::MintPlayer.Spark.Abstractions.Storage.SparkStoreProviders.PostgreSql, global::MintPlayer.Spark.Abstractions.Storage.SparkStoreCapabilities.None)]
+    [global::MintPlayer.Spark.Abstractions.Storage.SparkStoreProvider(global::MintPlayer.Spark.Abstractions.Storage.SparkStoreProviders.PostgreSql, global::MintPlayer.Spark.Abstractions.Storage.SparkStoreCapabilities.ChangeNotifications)]
     public static ISparkBuilder UsePostgreSql(this ISparkBuilder builder, Action<SparkRelationalOptions>? configure = null)
         => builder.UseRelational(new PostgreSqlSparkDialect(), configure);
 }
@@ -106,6 +106,31 @@ public sealed class PostgreSqlSparkDialect : SparkRelationalDialect
     public override void JsonColumn(PropertyBuilder property) => property.HasColumnType("jsonb");
 
     public override string LockRowSql(string table, string column) => $"SELECT 1 FROM {table} WHERE {column} = {{0}} FOR UPDATE";
+
+    /// <summary>D6: the writing transaction's id, which a trigger sets on every insert and update.</summary>
+    public override string StampColumnType => "xid8";
+
+    public override string? StampDefaultSql => "pg_current_xact_id()";
+
+    /// <summary>The function every table's stamp trigger calls, in the framework schema (<c>SparkFramework0002</c>).</summary>
+    public const string StampFunction = "spark.set_change_stamp";
+
+    public override string? StampFrameworkSql => $$"""
+        CREATE OR REPLACE FUNCTION {{StampFunction}}() RETURNS trigger LANGUAGE plpgsql AS $spark$
+        BEGIN
+            NEW."{{MintPlayer.Spark.Relational.Model.SparkDbContext.StampProperty}}" := pg_current_xact_id();
+            RETURN NEW;
+        END
+        $spark$;
+        """;
+
+    public override string? StampTriggerSql(string table)
+        => $"CREATE TRIGGER spark_change_stamp BEFORE INSERT OR UPDATE ON {table} FOR EACH ROW EXECUTE FUNCTION {StampFunction}();";
+
+    /// <summary>
+    /// Every transaction id below the snapshot's <c>xmin</c> has ended, and every open or later one is at or above it.
+    /// </summary>
+    public override string HorizonSql => "SELECT pg_snapshot_xmin(pg_current_snapshot())::text::bigint";
 
     /// <summary>PostgreSQL names the constraint and the column in fields of its own, never only in the message.</summary>
     public override SparkConstraintError? Classify(Exception databaseException)

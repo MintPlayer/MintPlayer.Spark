@@ -161,7 +161,7 @@ rounds, milestones and status. Branch `feat/536-sql-server-provider`, draft PR #
       for the messaging port (M7), which writes expiry through `SetExpiry`.
     The feature libraries still call RavenDB directly; they move onto these contracts in their tier ports (M6–M8).
     That closes M3 except the generator gate split, which is M4's.
-- **In progress: M4** (§4 item 4), in five slices:
+- **Done: M4** (§4 item 4), in five slices (M4e closed it, 2026-11-25):
   - M4a: the packages, the EF model, the store, the session and the query provider, with store tests on both
     databases
   - M4b: the S6 members (expiry, stream, reservations, `DeleteWhere`/`UpdateWhere`, `PatchAppend`), atomic values,
@@ -170,7 +170,7 @@ rounds, milestones and status. Branch `feat/536-sql-server-provider`, draft PR #
     the startup guard and the script; tests then build their schema from migrations, not `EnsureCreated`
   - M4d: views (D32: `ToView`, the `Spark:ViewSql` annotations, the differ subclass), `Query<T, TIndex>`, and the
     generator gate split
-  - M4e: the change feed (D6 stamps)
+  - M4e: the change feed (D6 stamps) ✅
   - **M4a (2026-11-25):**
     - `MintPlayer.Spark.Relational` (EF Core 11 Relational), `MintPlayer.Spark.SqlServer` (`UseSqlServer()`, binary
       `Latin1_General_100_BIN2` keys, SqlException numbers) and `MintPlayer.Spark.PostgreSql` (`UsePostgreSql()`,
@@ -270,6 +270,37 @@ rounds, milestones and status. Branch `feat/536-sql-server-provider`, draft PR #
     - **Left for later slices:** D24's refusal of an attribute id split into drop + add (it needs the attribute ids
       as column annotations, so the snapshot keeps them: M4d, with the differ's view work), and the per-app
       pending-model-changes test (M9, with the first SQL app).
+  - **M4e (2026-11-25): the change feed (D6).**
+    - **The stamp:** every entity table has a `SparkChangeStamp` column the database moves on every insert and
+      update. SQL Server: `rowversion`, read as a big-endian `ulong` (`NumberToBytesConverter<ulong>`). PostgreSQL:
+      `xid8` with default `pg_current_xact_id()`, plus a `BEFORE INSERT OR UPDATE` trigger calling
+      `spark.set_change_stamp()`. Synchronize's migrations get the trigger from `SparkMigrationsModelDiffer`, after a
+      table with the column is created or the column is added (`SparkRelationalDialect.StampTriggerSql`). EF never
+      writes the stamp, and it is no concurrency token: `Version` stays the only one (D3). A child or join row change
+      moves the root's `Version`, so the root row is written and its stamp moves too (tested).
+    - **Framework migration `SparkFramework0002`:** `spark.Tombstones` (Guid id, collection, document id, stamp,
+      `DeletedAt`) and, on PostgreSQL, the trigger function. A session's delete, `DeleteWhereAsync` (now in a context
+      of its own: ids first, then `filter AND key IN (…)` per 500, a tombstone each, one transaction) all write
+      tombstones in the deleting transaction. Tombstones are kept a day (`TombstoneRetention`), trimmed hourly by the
+      feed and by the expiration sweep.
+    - **`RelationalSparkChangeFeed`:** `OnCommitted` from the store's post-commit event (each stored root with its new
+      version, each deleted one with none). The watches poll (`SparkRelationalOptions.ChangeFeedPollInterval`, 1 s):
+      read the dialect's horizon (`MIN_ACTIVE_ROWVERSION()` / `pg_snapshot_xmin(pg_current_snapshot())`); when it has
+      not moved, nothing committed and the poll ends; otherwise read the watched tables' rows and the tombstones in
+      `[cursor, horizon)` (id and version only) and advance. The horizon doubles as the probe, so no separate
+      `@@DBTS`/`pg_current_xact_id()` read. A watch is confirmed once the feed has a cursor. A failed poll retries from
+      the same cursor; the first success after it raises `Reconnected`. Registered with
+      `SparkStoreCapabilities.ChangeNotifications` on both providers.
+    - **Finding: PostgreSQL's horizon is the whole server's.** Transaction ids are cluster-wide, so an open
+      transaction in *another database* on the same server holds every watch back. The relational tests run their
+      classes in parallel, each in its own database, and a single poll after a write was not enough on PostgreSQL.
+      Nothing is skipped; it is reported later, and a write from just before a watch can be reported once after it.
+      The tests poll until the change arrives (bounded at 10 s). PRD D6's trap now names this.
+    - Tests: `RelationalChangeFeedTests` on both servers: the stamp moves on update and on a child-row change;
+      `OnCommitted` reports a store and a delete; a collection watch sees another store's write and delete; a document
+      watch reports that document only; **a transaction that commits late is read once it has committed** (A
+      inserts and stays open, B commits after it: not reported until A commits, then both); a set-based delete leaves
+      one tombstone per row, and trimming removes it. Relational suite 134/134 with both servers.
   - **CI fix after M4d (2026-11-25):** CI had been red since M2 because the lower-case ids (D7) were verified only on
     the classes M2c touched. Real defects it found, each now compares ids ignoring case: CodeCoverage's forge
     disconnect (`ForgeEventsRecipient` ignored it), the commit-graph sidecar id regex (answered "unavailable"),
@@ -533,7 +564,7 @@ None. O8 and O9 were decided on 2026-11-24 (owner, PRD §10):
        - `SparkModelSymbols.cs:96-105`
        - `SearchIndexGenerator.cs:124/166`
      - **Small:** Angular. ng-spark passes ids through `encodeURIComponent` and never parses them.
-3. **Neutral contract additions** (S6, S15), implemented on RavenDB and InMemory first, with no behaviour change on
+3. ✅ **Neutral contract additions** (S6, S15), implemented on RavenDB and InMemory first, with no behaviour change on
    RavenDB. Also the core clean-ups from PRD §2.3:
    - the `SparkDataProtectionStorage` rename
    - the `SparkStoreRequirement` default hint
@@ -551,7 +582,8 @@ None. O8 and O9 were decided on 2026-11-24 (owner, PRD §10):
      moved onto it and every app's `Program.cs` (and the template's) reduced to one command line after `Build()`; `ISparkSchemaMigrator` with the RavenDB
      implementation; `--spark-migrate` and `--spark-migration-script` in core; the data-migration runner on the
      neutral lease; a layering test against provider references in core
-4. **`MintPlayer.Spark.Relational`, `MintPlayer.Spark.SqlServer`, `MintPlayer.Spark.PostgreSql`** (D2):
+4. ✅ **`MintPlayer.Spark.Relational`, `MintPlayer.Spark.SqlServer`, `MintPlayer.Spark.PostgreSql`** (D2). Done
+   2026-11-25 (§1 M4a–M4e):
    - `UseSqlServer()`, `UsePostgreSql()` and their `SparkStoreProviders` constants, with the public
      `ConfigureModel(ModelBuilder)` hook (O9), which runs last in `OnModelCreating`
    - the EF model built from the Spark model, the migration generator (D24), child and join tables (D25, D26): the

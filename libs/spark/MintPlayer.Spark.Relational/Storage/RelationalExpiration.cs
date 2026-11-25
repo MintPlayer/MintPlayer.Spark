@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Data.Common;
 using System.Reflection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -67,6 +68,15 @@ public sealed class RelationalExpiration : ISparkStoreExpiration, IDisposable
             {
                 logger?.LogWarning(ex, "Expired rows of {Table} were not deleted.", table.Name);
             }
+        }
+        try
+        {
+            // The change feed's tombstones (D6) expire too, also in an app whose feed nobody watches.
+            await RelationalSparkChangeFeed.TrimTombstonesAsync(store, now - RelationalSparkChangeFeed.TombstoneRetention, cancellationToken);
+        }
+        catch (DbException ex)
+        {
+            logger?.LogWarning(ex, "Expired tombstones were not deleted.");
         }
         return deleted;
     }

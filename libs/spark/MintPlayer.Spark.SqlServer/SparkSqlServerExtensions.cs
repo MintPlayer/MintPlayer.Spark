@@ -10,7 +10,7 @@ namespace MintPlayer.Spark;
 public static class SparkSqlServerExtensions
 {
     /// <summary>Uses SQL Server, with the connection string from <c>ConnectionStrings:Spark</c> unless <paramref name="configure"/> sets one.</summary>
-    [global::MintPlayer.Spark.Abstractions.Storage.SparkStoreProvider(global::MintPlayer.Spark.Abstractions.Storage.SparkStoreProviders.SqlServer, global::MintPlayer.Spark.Abstractions.Storage.SparkStoreCapabilities.None)]
+    [global::MintPlayer.Spark.Abstractions.Storage.SparkStoreProvider(global::MintPlayer.Spark.Abstractions.Storage.SparkStoreProviders.SqlServer, global::MintPlayer.Spark.Abstractions.Storage.SparkStoreCapabilities.ChangeNotifications)]
     public static ISparkBuilder UseSqlServer(this ISparkBuilder builder, Action<SparkRelationalOptions>? configure = null)
         => builder.UseRelational(new SqlServerSparkDialect(), configure);
 }
@@ -113,6 +113,21 @@ public sealed partial class SqlServerSparkDialect : SparkRelationalDialect
     /// </summary>
     public override string CreateViewSql(string view, string select)
         => $"EXEC(N'{base.CreateViewSql(view, select).TrimEnd(';').Replace("'", "''", StringComparison.Ordinal)}');";
+
+    /// <summary>D6: <c>rowversion</c>, which the server moves on every insert and update; read as a big-endian number.</summary>
+    public override string StampColumnType => "rowversion";
+
+    public override void StampColumn(Microsoft.EntityFrameworkCore.Metadata.Builders.PropertyBuilder property)
+    {
+        base.StampColumn(property);
+        property.HasConversion(new Microsoft.EntityFrameworkCore.Storage.ValueConversion.NumberToBytesConverter<ulong>());
+    }
+
+    /// <summary>
+    /// Every row with a lower <c>rowversion</c> is committed: <c>MIN_ACTIVE_ROWVERSION()</c> is the lowest stamp an open
+    /// transaction holds, or the next one to be handed out.
+    /// </summary>
+    public override string HorizonSql => "SELECT CAST(MIN_ACTIVE_ROWVERSION() AS bigint)";
 
     [GeneratedRegex("[A-Za-z0-9_]+")]
     private static partial Regex Word();

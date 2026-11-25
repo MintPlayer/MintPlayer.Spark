@@ -24,6 +24,7 @@ namespace MintPlayer.Spark.Relational.Schema;
 /// annotations; a view is dropped first and created last when it appears, disappears, its SQL changes, or an
 /// operation touches a table it reads (PostgreSQL refuses to alter a column a view depends on, and SQL Server keeps a
 /// view's stale column list).</item>
+/// <item>D6: on PostgreSQL a table gets its change-stamp trigger once its stamp column exists.</item>
 /// </list>
 /// </summary>
 #pragma warning disable EF1001 // MigrationsModelDiffer is pubternal; a test constructs this class, so a constructor change in an EF minor fails the build.
@@ -60,7 +61,32 @@ public sealed class SparkMigrationsModelDiffer : Microsoft.EntityFrameworkCore.M
         var operations = base.GetDifferences(source, target);
         if (source is not null && target is not null)
             AddCollectionDefaults(operations, target);
-        return WithViews(operations, source, target);
+        return WithViews(WithStampTriggers(operations), source, target);
+    }
+
+    private SparkRelationalDialect Dialect => currentContext.Context is Model.SparkDbContext spark
+        ? spark.Setup.Dialect
+        : SparkRelationalDialect.ForProvider(currentContext.Context.Database.ProviderName);
+
+    /// <summary>
+    /// D6: where the stamp's column type does not move itself on update (PostgreSQL), the table gets the dialect's
+    /// trigger once its stamp column exists: after the table is created, or the column added.
+    /// </summary>
+    private IReadOnlyList<MigrationOperation> WithStampTriggers(IReadOnlyList<MigrationOperation> operations)
+    {
+        var stamped = operations.OfType<CreateTableOperation>()
+            .Where(c => c.Columns.Any(col => col.Name == Model.SparkDbContext.StampProperty)).Select(c => (c.Name, c.Schema))
+            .Concat(operations.OfType<AddColumnOperation>().Where(a => a.Name == Model.SparkDbContext.StampProperty).Select(a => (Name: a.Table, a.Schema)))
+            .ToList();
+        if (stamped.Count == 0)
+            return operations;
+        var dialect = Dialect;
+        var triggers = stamped
+            .Select(t => dialect.StampTriggerSql(sql.DelimitIdentifier(t.Name, t.Schema)))
+            .OfType<string>()
+            .Select(trigger => new SqlOperation { Sql = trigger })
+            .ToList();
+        return triggers.Count == 0 ? operations : [.. operations, .. triggers];
     }
 
     private IReadOnlyList<MigrationOperation> WithViews(IReadOnlyList<MigrationOperation> operations, IRelationalModel? source, IRelationalModel? target)
@@ -80,9 +106,7 @@ public sealed class SparkMigrationsModelDiffer : Microsoft.EntityFrameworkCore.M
 
         var drops = before.Values.Where(v => Changed(v, after)).OrderBy(v => v.Name, StringComparer.Ordinal)
             .Select(v => new SqlOperation { Sql = $"DROP VIEW {sql.DelimitIdentifier(v.Name, v.Schema)};" });
-        var dialect = currentContext.Context is Model.SparkDbContext spark
-            ? spark.Setup.Dialect
-            : SparkRelationalDialect.ForProvider(currentContext.Context.Database.ProviderName);
+        var dialect = Dialect;
         var creates = after.Values.Where(v => Changed(v, before)).OrderBy(v => v.Name, StringComparer.Ordinal)
             .Select(v => new SqlOperation { Sql = dialect.CreateViewSql(sql.DelimitIdentifier(v.Name, v.Schema), v.Sql) });
         return [.. drops, .. operations, .. creates];

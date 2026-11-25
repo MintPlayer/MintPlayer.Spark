@@ -48,6 +48,7 @@ public sealed record SparkViewSql(string Sql, IReadOnlyList<string> Tables);
 /// <list type="bullet">
 /// <item>One table per collection, TPH for stored derived types; the key column per <see cref="SparkKeyShape"/>.</item>
 /// <item>D3: a <c>Version</c> bigint concurrency token on every table, moved by the session.</item>
+/// <item>D6: a <c>SparkChangeStamp</c> on every table, moved by the database, which the change feed reads.</item>
 /// <item>D7: text keys and the FK columns pointing at them compare bytes (the dialect's binary collation).</item>
 /// <item>D25: a <c>[ValueObject]</c> collection is a child table keyed by (owner id, row key), deleted with its owner.</item>
 /// <item>D26: an id property is an FK column, a reference list a join table; neither is an EF navigation.</item>
@@ -62,6 +63,9 @@ public sealed class SparkDbContext : DbContext
 
     /// <summary>S6 <c>SetExpiry</c>: when the expiration sweeper may delete the row (UTC), on every table.</summary>
     public const string ExpiresProperty = "SparkExpiresAt";
+
+    /// <summary>D6: the change stamp, which the database moves on every insert and update of the row (#536 M4e).</summary>
+    public const string StampProperty = "SparkChangeStamp";
 
     internal const int KeyLength = SparkFrameworkSchema.KeyLength;
 
@@ -84,6 +88,8 @@ public sealed class SparkDbContext : DbContext
             entity.Property<long>(VersionProperty).IsConcurrencyToken();
             entity.Property<DateTimeOffset?>(ExpiresProperty);
             entity.HasIndex(ExpiresProperty);
+            Setup.Dialect.StampColumn(entity.Property<ulong>(StampProperty));
+            entity.HasIndex(StampProperty);
 
             foreach (var derived in table.Derived)
                 modelBuilder.Entity(derived).HasBaseType(BaseOf(derived, table));
@@ -98,7 +104,7 @@ public sealed class SparkDbContext : DbContext
             MapView(modelBuilder, view);
 
         // The framework schema's tables, which its own migrations create (D24): used here, never migrated here.
-        SparkFrameworkSchema.AddTables(modelBuilder, Setup.Dialect.KeyCollation, excludeFromMigrations: true);
+        SparkFrameworkSchema.AddTables(modelBuilder, Setup.Dialect, excludeFromMigrations: true);
 
         foreach (var configure in Setup.ConfigureModel)
             configure(modelBuilder);

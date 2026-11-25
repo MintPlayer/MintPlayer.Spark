@@ -24,6 +24,12 @@ public sealed class SparkRelationalOptions
     /// </summary>
     public string? MigrationsAssembly { get; set; }
 
+    /// <summary>
+    /// How often the change feed's watches poll the database (D6); when empty,
+    /// <see cref="RelationalSparkChangeFeed.DefaultPollInterval"/>. Each poll is one query when nothing has committed.
+    /// </summary>
+    public TimeSpan? ChangeFeedPollInterval { get; set; }
+
     internal List<Action<ModelBuilder>> ModelConfigurations { get; } = [];
 
     internal List<Action<DbContextOptionsBuilder>> ContextConfigurations { get; } = [];
@@ -86,6 +92,10 @@ public static class SparkRelationalExtensions
         services.AddSingleton<ISparkAtomicValues>(sp => new RelationalAtomicValues(sp.GetRequiredService<RelationalSparkStore>()));
         services.AddSingleton<ISparkIntegerIdSource>(sp => new RelationalIntegerIdSource(sp.GetRequiredService<ISparkAtomicValues>(), sp.GetRequiredService<RelationalSparkStore>()));
         services.AddSingleton<ISparkDataProtectionKeyStore>(sp => new RelationalDataProtectionKeyStore(sp.GetRequiredService<RelationalSparkStore>()));
+        // D6: live updates over the stamps and the tombstones (M4e).
+        services.AddSingleton<ISparkChangeFeed>(sp => new RelationalSparkChangeFeed(
+            sp.GetRequiredService<RelationalSparkStore>(), options.ChangeFeedPollInterval,
+            sp.GetService<Microsoft.Extensions.Logging.ILogger<RelationalSparkChangeFeed>>()));
         services.AddSingleton<ISparkStoreExpiration>(sp => new RelationalExpiration(
             sp.GetRequiredService<RelationalSparkStore>(), sp.GetService<Microsoft.Extensions.Logging.ILogger<RelationalExpiration>>()));
         return builder;

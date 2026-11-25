@@ -35,9 +35,9 @@ public sealed partial class RelationalSparkSession : ISparkSession
     /// <summary>A stored instance whose row existed, mapped to the loaded instance its values were copied onto.</summary>
     private readonly Dictionary<object, object> aliases = new(ReferenceEqualityComparer.Instance);
 
-    private readonly RelationalSparkStore? store;
+    private readonly RelationalSparkStore store;
 
-    public RelationalSparkSession(SparkDbContext db, RelationalSparkStore? store = null)
+    public RelationalSparkSession(SparkDbContext db, RelationalSparkStore store)
     {
         this.db = db;
         this.store = store;
@@ -371,12 +371,38 @@ public sealed partial class RelationalSparkSession : ISparkSession
             db.Remove(target);
     }
 
+    /// <summary>
+    /// What the save writes, for <see cref="ISparkChangeFeed.OnCommitted"/> (D6): each stored root with its new version,
+    /// each deleted one with none. A deleted root also gets its tombstone row here, in the same transaction.
+    /// </summary>
+    private List<SparkStoreChange> CommittedChanges()
+    {
+        var changes = new List<SparkStoreChange>();
+        var now = DateTimeOffset.UtcNow;
+        foreach (var entry in Roots().ToList())
+        {
+            var table = Model.RequireTable(entry.Metadata.ClrType);
+            switch (entry.State)
+            {
+                case EntityState.Added or EntityState.Modified:
+                    changes.Add(new(GetId(entry.Entity), table.Name, FormatVersion((long)entry.Property(SparkDbContext.VersionProperty).CurrentValue!)));
+                    break;
+                case EntityState.Deleted when GetId(entry.Entity) is { } id:
+                    changes.Add(new(id, table.Name, null));
+                    db.Add(RelationalTombstones.For(table, id, now));
+                    break;
+            }
+        }
+        return changes;
+    }
+
     public async Task SaveChangesAsync(CancellationToken cancellationToken = default)
     {
+        List<SparkStoreChange> changes;
         db.ChangeTracker.DetectChanges();
         foreach (var entry in Roots().Where(e => e.State is EntityState.Added or EntityState.Modified).ToList())
             BeforeStore?.Invoke(entry.Entity);
-        if (store?.BeforeSaveHooks is { Count: > 0 } hooks)
+        if (store.BeforeSaveHooks is { Count: > 0 } hooks)
         {
             db.ChangeTracker.DetectChanges();
             foreach (var entry in Roots().Where(e => e.State is EntityState.Added or EntityState.Modified).ToList())
@@ -398,6 +424,7 @@ public sealed partial class RelationalSparkSession : ISparkSession
             var changedOwners = await WriteJoinRowsAsync(cancellationToken);
             MoveVersions(changedOwners);
             await ApplyReservationsAsync(cancellationToken);
+            changes = CommittedChanges();
 
             await WriteAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
@@ -407,6 +434,9 @@ public sealed partial class RelationalSparkSession : ISparkSession
             quiet = false;
         }
         db.ChangeTracker.AcceptAllChanges();
+        foreach (var tombstone in db.ChangeTracker.Entries<SparkTombstoneRow>().ToList())
+            tombstone.State = EntityState.Detached;
+        store.RaiseCommitted(changes);
         expectations.Clear();
         unversionedDeletes.Clear();
         patches.Clear();
@@ -684,7 +714,9 @@ public sealed partial class RelationalSparkSession : ISparkSession
         Request();
         try
         {
-            return await JoinRewriter.Rewrite(db, db.Set<T>().Where(predicate)).ExecuteDeleteAsync(cancellationToken);
+            // Outside the unit of work, in a context of its own: each deleted row leaves a tombstone (D6).
+            await using var own = store.NewContext();
+            return await RelationalTombstones.DeleteAsync<T>(own, q => JoinRewriter.Rewrite(own, q.Where(predicate)), DateTimeOffset.UtcNow, cancellationToken);
         }
         catch (DbUpdateException ex)
         {
