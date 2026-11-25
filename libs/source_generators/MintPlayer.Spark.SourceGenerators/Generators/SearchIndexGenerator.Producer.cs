@@ -57,7 +57,7 @@ public class SearchIndexProducer : Producer
                         writer.WriteLine($"select new {entry}");
                         writer.WriteLine("{");
                         writer.Indent++;
-                        writer.WriteLine("Id = d.Id,");
+                        writer.WriteLine(map.HasTypedId ? "Id = d.Id.Value," : "Id = d.Id,");
                         writer.WriteLine($"Type = {SymbolDisplay.FormatLiteral(map.EntityName, true)},");
                         writer.WriteLine("Text = text,");
                         writer.WriteLine("Terms = new[] { text },");

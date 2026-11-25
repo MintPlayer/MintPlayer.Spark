@@ -140,6 +140,8 @@ public class SearchIndexGenerator : IncrementalGenerator
             EntityFullName = type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
             Fields = textFields,
             HasIsDeleted = isDeleted,
+            HasTypedId = FindProperty(type, "Id")?.Type is INamedTypeSymbol { Name: "Id", IsGenericType: true } idType
+                && idType.ContainingNamespace.ToDisplayString() == "MintPlayer.Spark.Abstractions",
         };
     }
 

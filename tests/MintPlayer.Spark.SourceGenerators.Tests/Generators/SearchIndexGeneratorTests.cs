@@ -90,6 +90,37 @@ public class SearchIndexGeneratorTests
     }
 
     [Fact]
+    public void A_typed_id_is_mapped_as_its_text_even_when_inherited()
+    {
+        // #536 D23: the entry's Id is text, an entity's is Id<T> (here on the hierarchy root, as MintPlayer's Subject).
+        const string source = """
+            namespace Music;
+            public abstract class Subject
+            {
+                public MintPlayer.Spark.Abstractions.Id<Subject> Id { get; set; }
+            }
+            public class Song : Subject
+            {
+                public string Title { get; set; } = "";
+            }
+            public class Artist
+            {
+                public string? Id { get; set; }
+                public string Name { get; set; } = "";
+            }
+            """;
+        var result = Run(
+            references: [.. SearchReferences, typeof(MintPlayer.Spark.Abstractions.Id<>)],
+            source: source,
+            models: [Model("Song", """{ "enabled": true, "fields": ["Title"] }""", "{Title}"), Model("Artist", """{ "enabled": true }""")]);
+
+        Errors(result).Should().BeEmpty();
+        var index = Index(result);
+        index.Should().Contain("Id = d.Id.Value,", "the typed id maps its text");
+        index.Should().Contain("Id = d.Id,", "a string id maps as it is");
+    }
+
+    [Fact]
     public void Without_search_fields_the_breadcrumb_placeholders_are_searched()
     {
         var index = Index(Run(models: MusicModels()));

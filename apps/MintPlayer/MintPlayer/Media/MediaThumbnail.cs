@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions;
 using MintPlayer.Media;
 
 namespace MintPlayer.Media;
@@ -11,11 +12,12 @@ namespace MintPlayer.Media;
 /// <see cref="ThumbnailUrl"/> null means the platform said no (deleted, private, refused), which is permanent:
 /// delete the document to have it asked again (D12).
 /// </remarks>
-public sealed class MediaThumbnail
+[IdKind(SparkIdKind.Natural)]
+public sealed partial class MediaThumbnail
 {
     public const string Collection = "MediaThumbnails";
 
-    public string? Id { get; set; }
+    public Id<MediaThumbnail> Id { get; set; }
 
     /// <summary>The player plugin's id: <see cref="MediaUrl.YouTube"/>, <see cref="MediaUrl.Vimeo"/>, ….</summary>
     public string Platform { get; set; } = string.Empty;
