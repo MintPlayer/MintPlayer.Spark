@@ -397,6 +397,18 @@ InMemory and SQL. A type a query or load names that is not in the list fails wit
   converter, so the column holds the key, but no FK constraint: EF requires the same CLR type on both ends of a
   relationship. The FK appears once the property is converted to `Id<T>`. *(M4a; HR's `Person.Company` is one.)*
 
+**D37 (M6, 2026-11-25): `ISparkSession.OptimisticConcurrency`, the neutral `OptimisticConcurrencyMode.Writes`.** The
+Tier 1 libraries set RavenDB's mode in about 15 places (settings, quotas, boards, apps, organizations) so a
+read-modify-write loses no concurrent change and a create never overwrites. Passing an expected version at each
+`StoreAsync` would rewrite every one of those flows, so the session gets the switch instead. When set, every write
+checks with no version passed: a loaded entity must still be at the version it was read at, a new one must not exist,
+and the save throws `SparkStoreConcurrencyException`. RavenDB maps it to its mode (keeping `WritesAndReads` if a raw
+session set it); InMemory derives the expected version per tracked row at save; the relational session already checks
+every loaded row (the version is EF's concurrency token, D3) and adds the "must not exist" check for new rows. Off, a
+new entity at a stored id replaces it on every provider. *Evidence:* `OptimisticConcurrency_checks_every_loaded_and_new_document`
+and `Without_OptimisticConcurrency_a_new_document_replaces_a_stored_one`, 4/4 on RavenDB and InMemory, 4/4 on SQL
+Server and PostgreSQL.
+
 **D3: the version is a `bigint` column on every table**, a concurrency token the provider increments. *(S4, §8.11:
 it is on every root table and covers the aggregate. A change to a child row (D25) or a join row (D26) moves the
 root's version, which EF alone does not do.)*

@@ -447,6 +447,18 @@ internal sealed class RavenSparkSession : ISparkSession
 
     public int NumberOfRequests => Session.Advanced.NumberOfRequests;
 
+    public bool OptimisticConcurrency
+    {
+        get => Session.Advanced.OptimisticConcurrencyMode != global::Raven.Client.Documents.Session.OptimisticConcurrencyMode.None;
+        set
+        {
+            if (value != OptimisticConcurrency) // keeps WritesAndReads, set on the raw session, when asked for on
+                Session.Advanced.OptimisticConcurrencyMode = value
+                    ? global::Raven.Client.Documents.Session.OptimisticConcurrencyMode.Writes
+                    : global::Raven.Client.Documents.Session.OptimisticConcurrencyMode.None;
+        }
+    }
+
     public int MaxNumberOfRequests
     {
         get => Session.Advanced.MaxNumberOfRequestsPerSession;

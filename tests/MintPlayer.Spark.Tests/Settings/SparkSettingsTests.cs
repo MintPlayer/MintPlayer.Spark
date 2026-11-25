@@ -51,7 +51,7 @@ public class SparkSettingsTests : RavenSparkTestDriver
 
     private SparkSettings Service(Dictionary<string, string?>? configuration = null, TimeProvider? clock = null, ILogger<SparkSettings>? logger = null)
         => new(
-            Store,
+            Store.AsSparkStore(),
             Catalog(),
             Options.Create(new SparkSettingsOptions()),
             logger ?? NullLogger<SparkSettings>.Instance,
@@ -187,7 +187,7 @@ public class SparkSettingsTests : RavenSparkTestDriver
     public async Task The_seeder_writes_one_document_per_key_is_idempotent_and_never_touches_Value()
     {
         var catalog = Catalog();
-        var seeder = new SettingsSeeder(Store, catalog, Service(), NullLogger<SettingsSeeder>.Instance);
+        var seeder = new SettingsSeeder(Store.AsSparkStore(), catalog, Service(), NullLogger<SettingsSeeder>.Instance);
 
         (await seeder.SeedAsync(CancellationToken.None)).Should().Be(3);
         await StoreValueAsync(StSettings.MaxPages.Key, "25");

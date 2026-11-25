@@ -54,6 +54,9 @@ public sealed partial class RelationalSparkSession : ISparkSession
     /// <summary>RavenDB's default (30), so a code path that would exhaust a RavenDB session fails here too.</summary>
     public int MaxNumberOfRequests { get; set; } = 30;
 
+    /// <summary>A loaded row is always checked (its version is EF's concurrency token); this adds the new-row check.</summary>
+    public bool OptimisticConcurrency { get; set; }
+
     /// <summary>Set while one session call issues several statements (a save, a load's join tables): they count as one.</summary>
     private bool quiet;
 
@@ -478,7 +481,7 @@ public sealed partial class RelationalSparkSession : ISparkSession
             foreach (var entry in group)
             {
                 var id = GetId(entry.Entity)!;
-                var expected = expectations.GetValueOrDefault(entry.Entity);
+                var expected = expectations.GetValueOrDefault(entry.Entity) ?? (OptimisticConcurrency ? "" : null);
                 if (!existing.TryGetValue(id, out var stored))
                 {
                     if (expected is { Length: > 0 })

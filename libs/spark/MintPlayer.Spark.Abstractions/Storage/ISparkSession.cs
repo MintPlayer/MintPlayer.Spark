@@ -161,6 +161,15 @@ public interface ISparkSession : IDisposable
 
     Task SaveChangesAsync(CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// #536 D37: when set, every write checks without an expected version passed: a loaded entity must still be at the
+    /// version it was read at, a new one must not exist yet, and <see cref="SaveChangesAsync"/> throws
+    /// <see cref="SparkStoreConcurrencyException"/> otherwise (RavenDB: <c>OptimisticConcurrencyMode.Writes</c>).
+    /// Off (the default), a new entity whose id is stored replaces it; a loaded one is checked by the relational providers
+    /// regardless.
+    /// </summary>
+    bool OptimisticConcurrency { get; set; }
+
     string? GetId(object entity);
 
     /// <summary>The version of a tracked entity (RavenDB: its change vector). Throws for an entity the session does not track.</summary>

@@ -253,6 +253,59 @@ public abstract class SparkStoreConformanceTests : IAsyncLifetime
         (await verify.ExistsAsync(typeof(ConfDoc), "ConfDocs/bystander")).Should().BeFalse("a commit is all or nothing");
     }
 
+    /// <summary>
+    /// #536 D37: with <see cref="ISparkSession.OptimisticConcurrency"/> every write checks, without an expected version
+    /// passed: a loaded document must still be at the version it was read at, and a new one must not exist yet.
+    /// </summary>
+    [SkippableFact]
+    public async Task OptimisticConcurrency_checks_every_loaded_and_new_document()
+    {
+        await StoreAsync(Sample("ConfDocs/occ-loaded"));
+        await StoreAsync(Sample("ConfDocs/occ-taken"));
+
+        using var reader = Store.OpenSession();
+        reader.OptimisticConcurrency = true;
+        var loaded = (await reader.LoadAsync<ConfDoc>("ConfDocs/occ-loaded"))!;
+
+        using (var other = Store.OpenSession())
+        {
+            (await other.LoadAsync<ConfDoc>("ConfDocs/occ-loaded"))!.Count = 7;
+            await other.SaveChangesAsync();
+        }
+
+        loaded.Count = 8;
+        var stale = () => reader.SaveChangesAsync();
+        await stale.Should().ThrowAsync<SparkStoreConcurrencyException>();
+
+        using var writer = Store.OpenSession();
+        writer.OptimisticConcurrency = true;
+        await writer.StoreAsync(Sample("ConfDocs/occ-taken"));
+        var taken = () => writer.SaveChangesAsync();
+        await taken.Should().ThrowAsync<SparkStoreConcurrencyException>();
+
+        using var fresh = Store.OpenSession();
+        fresh.OptimisticConcurrency = true;
+        await fresh.StoreAsync(Sample("ConfDocs/occ-new"));
+        await fresh.SaveChangesAsync();
+        (await fresh.LoadAsync<ConfDoc>("ConfDocs/occ-new"))!.Count++;
+        await fresh.SaveChangesAsync(); // the session's own write moved the version it checks against
+    }
+
+    [SkippableFact]
+    public async Task Without_OptimisticConcurrency_a_new_document_replaces_a_stored_one()
+    {
+        await StoreAsync(Sample("ConfDocs/occ-put"));
+        using (var session = Store.OpenSession())
+        {
+            var replacement = Sample("ConfDocs/occ-put");
+            replacement.Count = 42;
+            await session.StoreAsync(replacement);
+            await session.SaveChangesAsync();
+        }
+        using var verify = Store.OpenSession();
+        (await verify.LoadAsync<ConfDoc>("ConfDocs/occ-put"))!.Count.Should().Be(42);
+    }
+
     [SkippableFact]
     public async Task A_save_with_a_stale_version_fails()
     {

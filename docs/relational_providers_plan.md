@@ -401,6 +401,12 @@ rounds, milestones and status. Branch `feat/536-sql-server-provider`, draft PR #
     `PostgreSqlBehaviourTests` (12) on a shared `BehaviourDatabase` base, raw SQL against a throwaway database per
     class. 25/25 locally. Every row of the D31 table except O13 (moves to M6). CI runs them once M8 adds the service
     containers and the `postgres:17` leg.
+- **In progress: M6, the Tier 1 and Tier 2 ports.**
+  - **M6a (2026-11-25): `ISparkSession.OptimisticConcurrency` (PRD D37) and Settings.** Tier 1 sets RavenDB's
+    `OptimisticConcurrencyMode.Writes` in about 15 places, so the neutral session got the switch (conformance 4/4 on
+    each of the four providers). `MintPlayer.Spark.Settings` (settings, seeder, quotas) now runs on `ISparkStore` and
+    drops `RavenDB.Client`; it declares `Setting` and `SparkQuotaUsage` as stored types (D36). Settings tests 25/25
+    on RavenDB.
 - **Local spike servers left running:**
   - SQL Server: `SparkSpike536` on `localhost` and `localhost\MSSQLSERVER01`
   - Docker `spark536-pg` (`postgres:18`, 127.0.0.1:55432). M4 needs it again.

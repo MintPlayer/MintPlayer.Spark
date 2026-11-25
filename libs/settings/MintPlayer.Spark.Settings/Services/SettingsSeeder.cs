@@ -1,8 +1,7 @@
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using MintPlayer.Spark.Abstractions.Storage;
 using MintPlayer.Spark.Settings.Models;
-using Raven.Client.Documents;
-using Raven.Client.Exceptions;
 
 namespace MintPlayer.Spark.Settings.Services;
 
@@ -24,7 +23,7 @@ namespace MintPlayer.Spark.Settings.Services;
 /// </para>
 /// </remarks>
 internal sealed class SettingsSeeder(
-    IDocumentStore store,
+    ISparkStore store,
     SparkSettingsCatalog catalog,
     ISparkSettings settings,
     ILogger<SettingsSeeder> logger) : IHostedLifecycleService
@@ -48,7 +47,7 @@ internal sealed class SettingsSeeder(
                 }
                 return;
             }
-            catch (ConcurrencyException) when (attempt < Attempts)
+            catch (SparkStoreConcurrencyException) when (attempt < Attempts)
             {
                 // Someone saved a setting (or another instance seeded) in between; read again.
             }
@@ -58,8 +57,8 @@ internal sealed class SettingsSeeder(
     /// <summary>One pass; the number of documents created or refreshed.</summary>
     internal async Task<int> SeedAsync(CancellationToken cancellationToken)
     {
-        using var session = store.OpenAsyncSession();
-        session.Advanced.OptimisticConcurrencyMode = Raven.Client.Documents.Session.OptimisticConcurrencyMode.Writes;
+        using var session = store.OpenSession();
+        session.OptimisticConcurrency = true;
 
         var declared = catalog.All.ToList();
         var existing = await session.LoadAsync<Setting>(declared.Select(s => Setting.IdFor(s.Key).Value), cancellationToken);

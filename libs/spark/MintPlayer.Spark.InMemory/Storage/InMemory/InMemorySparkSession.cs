@@ -43,6 +43,12 @@ internal sealed class InMemorySparkSession : ISparkSession
     /// <summary>RavenDB's default (30), so a code path that would exhaust a RavenDB session fails here too.</summary>
     public int MaxNumberOfRequests { get; set; } = 30;
 
+    public bool OptimisticConcurrency { get; set; }
+
+    /// <summary>The version a write of <paramref name="row"/> must find: the caller's, else D37's implicit one, else none.</summary>
+    private string? Expected(Tracked row)
+        => row.ExpectedVersion ?? (OptimisticConcurrency ? (row.Snapshot is null ? string.Empty : row.Version) : null);
+
     public event Action<object>? BeforeStore;
     public event Action<object>? BeforeDelete;
 
@@ -299,7 +305,7 @@ internal sealed class InMemorySparkSession : ISparkSession
                 // Like RavenDB's OnBeforeDelete: raised by the commit, for the entities it deletes.
                 BeforeDelete?.Invoke(row.Entity);
                 if (row.Snapshot is not null || row.ExpectedVersion is not null)
-                    writes.Add(new InMemoryDatabase.Remove(id, row.ExpectedVersion));
+                    writes.Add(new InMemoryDatabase.Remove(id, Expected(row)));
                 continue;
             }
             if (row.Snapshot is not null && row.ExpectedVersion is null && !row.ExpiryChanged && InMemoryJson.Serialize(row.Entity) == row.Snapshot)
@@ -308,7 +314,7 @@ internal sealed class InMemorySparkSession : ISparkSession
             // Like RavenDB's OnBeforeStore: the hook may still change the entity, so it serializes afterwards.
             BeforeStore?.Invoke(row.Entity);
             var json = InMemoryJson.Serialize(row.Entity);
-            writes.Add(new InMemoryDatabase.Put(id, row.ExpectedVersion, json, row.Entity.GetType(), GetCollectionName(row.Entity.GetType()), row.ExpiresAt));
+            writes.Add(new InMemoryDatabase.Put(id, Expected(row), json, row.Entity.GetType(), GetCollectionName(row.Entity.GetType()), row.ExpiresAt));
             stored.Add((row, json));
         }
         foreach (var (id, expected) in deletesById)
