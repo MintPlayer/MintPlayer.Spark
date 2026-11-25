@@ -17,7 +17,7 @@ partial class SparkDbContextModelSnapshot : ModelSnapshot
     // If you encounter a merge conflict in the line below, it means you need to
     // discard one of the migration branches and recreate its migrations on top of
     // the other branch. See https://aka.ms/efcore-docs-migrations-conflicts for more info.
-    public override string LastMigrationId => "20261125221310_SparkModel";
+    public override string LastMigrationId => "20261125224818_SparkModel";
 
     protected override void BuildModel(ModelBuilder modelBuilder)
     {
@@ -761,6 +761,42 @@ partial class SparkDbContextModelSnapshot : ModelSnapshot
                     {
                         t.ExcludeFromMigrations();
                     });
+            });
+
+        modelBuilder.Entity("MintPlayer.Spark.Services.DynamicLookupReferenceDocument", b =>
+            {
+                b.Property<string>("Id")
+                    .HasMaxLength(450)
+                    .HasColumnType("character varying(450)")
+                    .UseCollation("C");
+
+                b.Property<string>("Name")
+                    .IsRequired()
+                    .HasColumnType("text");
+
+                b.Property<ulong>("SparkChangeStamp")
+                    .ValueGeneratedOnAddOrUpdate()
+                    .HasColumnType("xid8")
+                    .HasDefaultValueSql("pg_current_xact_id()");
+
+                b.Property<DateTimeOffset?>("SparkExpiresAt")
+                    .HasColumnType("timestamp with time zone");
+
+                b.Property<string>("Values")
+                    .IsRequired()
+                    .HasColumnType("jsonb");
+
+                b.Property<long>("Version")
+                    .IsConcurrencyToken()
+                    .HasColumnType("bigint");
+
+                b.HasKey("Id");
+
+                b.HasIndex("SparkChangeStamp");
+
+                b.HasIndex("SparkExpiresAt");
+
+                b.ToTable("DynamicLookupReferenceDocuments");
             });
 
         modelBuilder.Entity("SqlDemo.Entities.Author", b =>

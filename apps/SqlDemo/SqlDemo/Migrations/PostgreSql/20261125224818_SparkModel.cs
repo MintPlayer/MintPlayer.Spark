@@ -7,7 +7,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace SqlDemo.Migrations.PostgreSql;
 
 /// <inheritdoc />
-public partial class _20261125221310_SparkModel : Migration
+public partial class _20261125224818_SparkModel : Migration
 {
     /// <inheritdoc />
     protected override void Up(MigrationBuilder migrationBuilder)
@@ -55,6 +55,22 @@ public partial class _20261125221310_SparkModel : Migration
             constraints: table =>
             {
                 table.PrimaryKey("PK_Authors", x => x.Id);
+            });
+
+        migrationBuilder.CreateTable(
+            name: "DynamicLookupReferenceDocuments",
+            columns: table => new
+            {
+                Id = table.Column<string>(type: "character varying(450)", maxLength: 450, nullable: false, collation: "C"),
+                Name = table.Column<string>(type: "text", nullable: false),
+                Values = table.Column<string>(type: "jsonb", nullable: false),
+                SparkChangeStamp = table.Column<ulong>(type: "xid8", nullable: false, defaultValueSql: "pg_current_xact_id()"),
+                SparkExpiresAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
+                Version = table.Column<long>(type: "bigint", nullable: false)
+            },
+            constraints: table =>
+            {
+                table.PrimaryKey("PK_DynamicLookupReferenceDocuments", x => x.Id);
             });
 
         migrationBuilder.CreateTable(
@@ -308,6 +324,16 @@ public partial class _20261125221310_SparkModel : Migration
             column: "SparkExpiresAt");
 
         migrationBuilder.CreateIndex(
+            name: "IX_DynamicLookupReferenceDocuments_SparkChangeStamp",
+            table: "DynamicLookupReferenceDocuments",
+            column: "SparkChangeStamp");
+
+        migrationBuilder.CreateIndex(
+            name: "IX_DynamicLookupReferenceDocuments_SparkExpiresAt",
+            table: "DynamicLookupReferenceDocuments",
+            column: "SparkExpiresAt");
+
+        migrationBuilder.CreateIndex(
             name: "IX_SparkMailDeliveries_SparkChangeStamp",
             table: "SparkMailDeliveries",
             column: "SparkChangeStamp");
@@ -391,6 +417,8 @@ public partial class _20261125221310_SparkModel : Migration
 
         migrationBuilder.Sql("CREATE TRIGGER spark_change_stamp BEFORE INSERT OR UPDATE ON \"Authors\" FOR EACH ROW EXECUTE FUNCTION spark.set_change_stamp();");
 
+        migrationBuilder.Sql("CREATE TRIGGER spark_change_stamp BEFORE INSERT OR UPDATE ON \"DynamicLookupReferenceDocuments\" FOR EACH ROW EXECUTE FUNCTION spark.set_change_stamp();");
+
         migrationBuilder.Sql("CREATE TRIGGER spark_change_stamp BEFORE INSERT OR UPDATE ON \"SparkMailDeliveries\" FOR EACH ROW EXECUTE FUNCTION spark.set_change_stamp();");
 
         migrationBuilder.Sql("CREATE TRIGGER spark_change_stamp BEFORE INSERT OR UPDATE ON \"SparkMailSuppressions\" FOR EACH ROW EXECUTE FUNCTION spark.set_change_stamp();");
@@ -426,6 +454,9 @@ public partial class _20261125221310_SparkModel : Migration
 
         migrationBuilder.DropTable(
             name: "Books");
+
+        migrationBuilder.DropTable(
+            name: "DynamicLookupReferenceDocuments");
 
         migrationBuilder.DropTable(
             name: "SparkMailDeliveries");

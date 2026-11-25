@@ -303,3 +303,8 @@ tags, and everything ships once the merged pull request is backported to `releas
 4. **The reference check on save loaded the target untyped** (M9b, #251), which a SQL store cannot do: saving a
    reference failed with "System.Object is not a stored type". `ISparkReadAccess` (who may read a log) had the same
    defect.
+5. **Concurrent edits to a dynamic lookup no longer lose one** (#536 PRD §3), on every store. Two administrators
+   adding, renaming or deleting values of the same lookup at once used to keep only the last change, since the values
+   are one document stored without a version check. Each edit now stores at the version it read and is applied again
+   to a fresh read when another one landed first. On SQL Server and PostgreSQL dynamic lookups get the table
+   `DynamicLookupReferenceDocuments`, which every relational app's migration now includes.

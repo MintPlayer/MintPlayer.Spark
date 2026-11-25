@@ -52,6 +52,9 @@ internal sealed partial class SparkStoredTypes : ISparkStoredTypes
             // A [ValueObject] has a generated row Id but no document of its own: it lives inside its owner.
             .Where(t => t.IsClass && !t.IsAbstract && t.GetCustomAttribute<global::MintPlayer.Spark.Abstractions.ValueObjectAttribute>() is null
                 && t.GetProperty("Id", BindingFlags.Public | BindingFlags.Instance) is { CanWrite: true });
-        return [.. fromModel.Concat(options.Value.Types).Distinct()];
+        // Core's own documents. The dynamic lookups' values table is declared whether or not the app has a dynamic lookup:
+        // discovery scans the loaded assemblies, and the schema must not depend on which ones happen to be loaded.
+        Type[] core = [typeof(DynamicLookupReferenceDocument)];
+        return [.. fromModel.Concat(core).Concat(options.Value.Types).Distinct()];
     }
 }

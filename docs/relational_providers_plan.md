@@ -4,9 +4,13 @@ Issue [#536](https://github.com/MintPlayer/MintPlayer.Spark/issues/536). The wha
 [`relational_providers_PRD.md`](relational_providers_PRD.md). This file holds the how and when: spikes, grilling
 rounds, milestones and status. Branch `feat/536-sql-server-provider`, draft PR #697, **one pull request** (O1).
 
-## 1. Status (2026-11-24)
+## 1. Status (2026-11-25)
 
-- **M1 (the gate spikes) is done; there is no product code yet.** Everything so far is docs and throwaway spikes
+- **Now (2026-11-25, evening): every milestone M1–M9 is implemented, M8c is reviewed, and the work is pushed for CI.**
+  What is left: every check on PR #697 green (the SQL Server and PostgreSQL legs run on GitHub for the first time),
+  then mark the PR ready. The entries below are each milestone's record; the oldest bullets describe the state of
+  their day.
+- **M1 (the gate spikes) is done.** Everything so far is docs and throwaway spikes
   under `docs/relational_spike/`, each with its evidence in PRD §8.
   - All gate spikes are done (2026-11-24): S2b, S3, S4, S5, S19, S20, S-ID1, S-ID2, S-ID4, and S-ID5's RavenDB
     half. PRD §8.3–8.12 has the evidence.
@@ -646,12 +650,24 @@ rounds, milestones and status. Branch `feat/536-sql-server-provider`, draft PR #
       and an id no table claims is not found. The Log keeps its id-only API and RavenDB's stored logs need no
       migration. `NeutralReadAccessTests` (3: readable, missing, no such collection) red on PostgreSQL, then green on
       both.
+    - **Milestone 6's lookup fix, found open:** the plan's item 6 ("plus the lookup lost-update fix", PRD §3 "Lookup
+      references") had not been done, and dynamic lookups had no table on SQL ("DynamicLookupReferenceDocument is not
+      a stored type"). `NeutralLookupReferenceTests` (3) went red on both stores: on RavenDB, concurrent adds and an
+      update beside a delete kept only one; on PostgreSQL, every call threw. `LookupReferenceService` now edits through
+      one `EditAsync`: load, edit, store at the version read (empty when there was no document), and again from a fresh
+      read on `SparkStoreConcurrencyException`, at most 5 times; each round lets at least one writer through. Core
+      declares `DynamicLookupReferenceDocument` a stored type whether or not the app has a dynamic lookup, because
+      discovery scans the loaded assemblies and the schema must not depend on load order. Green on both stores, with
+      `LookupReferenceServiceTests` 35/35 on RavenDB. SqlDemo's initial migration was scaffolded again with the
+      `DynamicLookupReferenceDocuments` table (values as `jsonb`); nothing else changed.
     - **Result:** the SqlDemo E2E run is 5/5 green locally on PostgreSQL.
     - **The guide:** `docs/guide-relational-stores.md` (choosing a store, a table per stored type, ids and references,
       migrations, views, capabilities, testing).
     - **Next:** commit and push M9a + M9b, then CI.
-  - **M8c (in progress): revisit earlier milestones under D46** (RavenDB's format may change through a migration). Look
-    for designs that kept RavenDB's old format only for its own sake, and for stale values left behind.
+  - **M8c (done 2026-11-25): revisit earlier milestones under D46** (RavenDB's format may change through a migration). Look
+    for designs that kept RavenDB's old format only for its own sake, and for stale values left behind. Besides the
+    items below, M9b's review kept the Log's id-only related record (no format change needed, defect 5) and found
+    milestone 6's open lookup fix.
     - Done: the compare-exchange value `spark/dashboards/sampler` (M8a) is deleted by
       `M_202611251400_DashboardsSamplerLeaseRetired` (`DashboardSamplerLeaseMigrationTests`, red first, RavenDB 1/1).
     - Found by the OIDC suite on SQL (421 of 602 failing on both SQL stores): the relational renderer refused
