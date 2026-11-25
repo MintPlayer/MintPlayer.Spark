@@ -42,6 +42,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\libs\spark\MintPlayer.Spark.SqlServer\MintPlayer.Spark.SqlServer.csproj" />
     <ProjectReference Include="..\..\libs\spark\MintPlayer.Spark.PostgreSql\MintPlayer.Spark.PostgreSql.csproj" />
+    <ProjectReference Include="..\..\libs\spark\MintPlayer.Spark.Relational.Design\MintPlayer.Spark.Relational.Design.csproj" />
   </ItemGroup>
 
 </Project>

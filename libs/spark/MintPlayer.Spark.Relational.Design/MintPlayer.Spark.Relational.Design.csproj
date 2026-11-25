@@ -1,0 +1,47 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<TargetFramework>net11.0</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+		<OutputType>Library</OutputType>
+		<IsPackable>true</IsPackable>
+
+		<!-- NuGet Package Metadata -->
+		<PackageId>MintPlayer.Spark.Relational.Design</PackageId>
+		<Version>0.0.0-PLACEHOLDER</Version>
+		<Authors>MintPlayer</Authors>
+		<Company>MintPlayer</Company>
+		<Description>Design-time support for MintPlayer.Spark's SQL providers: --spark-synchronize-model writes the EF migration for a model change. A development dependency: it stays in bin and out of every publish.</Description>
+		<PackageTags>low-code;framework;efcore;migrations;design-time</PackageTags>
+		<PackageLicenseExpression>MIT</PackageLicenseExpression>
+		<PackageProjectUrl>https://github.com/MintPlayer/MintPlayer.Spark</PackageProjectUrl>
+		<RepositoryUrl>https://github.com/MintPlayer/MintPlayer.Spark.git</RepositoryUrl>
+		<RepositoryType>git</RepositoryType>
+
+		<!--
+		  #536 O17 setting 1: dotnet add and Visual Studio then write PrivateAssets="all" (it does not flow on) and an
+		  IncludeAssets without compile; the SDK leaves a PrivateAssets="all" package out of publish.
+		-->
+		<DevelopmentDependency>true</DevelopmentDependency>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<FrameworkReference Include="Microsoft.AspNetCore.App" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<!--
+		  O17 setting 2: EF Design is itself a development dependency; without PrivateAssets="none" it would not be a
+		  dependency in the nuspec, and the package would arrive without it.
+		-->
+		<PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="11.0.0" PrivateAssets="none" />
+		<ProjectReference Include="..\MintPlayer.Spark.Relational\MintPlayer.Spark.Relational.csproj" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<!-- O17 setting 3: a .targets file (a .props file runs before the app's items exist), transitive. -->
+		<None Include="buildTransitive\MintPlayer.Spark.Relational.Design.targets" Pack="true" PackagePath="buildTransitive\" />
+	</ItemGroup>
+
+</Project>

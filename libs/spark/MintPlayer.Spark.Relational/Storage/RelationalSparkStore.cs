@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using MintPlayer.Spark.Abstractions.Storage;
+using MintPlayer.Spark.Relational.Schema;
 using MintPlayer.Spark.Relational.Model;
 
 namespace MintPlayer.Spark.Relational.Storage;
@@ -10,18 +11,48 @@ namespace MintPlayer.Spark.Relational.Storage;
 /// </summary>
 public sealed class RelationalSparkStore : ISparkStore
 {
-    private readonly DbContextOptions<SparkDbContext> options;
+    /// <summary>The app's migrations are recorded in EF's usual history table.</summary>
+    public const string AppHistoryTable = "__EFMigrationsHistory";
 
-    public RelationalSparkStore(SparkContextSetup setup, string connectionString, Action<DbContextOptionsBuilder>? configure = null)
+    private readonly DbContextOptions<SparkDbContext> options;
+    private readonly DbContextOptions<SparkFrameworkDbContext> frameworkOptions;
+
+    /// <param name="setup">The model, dialect and hooks.</param>
+    /// <param name="connectionString">The database.</param>
+    /// <param name="configure">The app's context options (logging, interceptors), applied to both contexts.</param>
+    /// <param name="migrationsAssembly">
+    /// The assembly that holds the app's migrations (D33), which synchronize writes; <see langword="null"/> for none, as
+    /// in tests, whose schema comes from the model (<see cref="RelationalSchema.CreateFromModelAsync"/>).
+    /// </param>
+    public RelationalSparkStore(SparkContextSetup setup, string connectionString, Action<DbContextOptionsBuilder>? configure = null, string? migrationsAssembly = null)
     {
         Setup = setup;
+        ConnectionString = connectionString;
+        MigrationsAssembly = migrationsAssembly;
+        SparkRelationalDialect.Register(setup.Dialect);
+
         var builder = new DbContextOptionsBuilder<SparkDbContext>();
-        setup.Dialect.UseProvider(builder, connectionString);
+        setup.Dialect.UseProvider(builder, connectionString, new SparkMigrationsSettings(migrationsAssembly ?? typeof(RelationalSparkStore).Assembly.GetName().Name, AppHistoryTable, null));
         configure?.Invoke(builder);
         options = builder.Options;
+
+        var framework = new DbContextOptionsBuilder<SparkFrameworkDbContext>();
+        setup.Dialect.UseProvider(framework, connectionString, new SparkMigrationsSettings(
+            typeof(SparkFrameworkDbContext).Assembly.GetName().Name, SparkFrameworkSchema.HistoryTable, SparkFrameworkSchema.Schema));
+        configure?.Invoke(framework);
+        frameworkOptions = framework.Options;
     }
 
     public SparkContextSetup Setup { get; }
+
+    /// <summary>The database's connection string.</summary>
+    public string ConnectionString { get; }
+
+    /// <summary>The assembly holding the app's migrations, or <see langword="null"/> when the app has none (tests).</summary>
+    public string? MigrationsAssembly { get; }
+
+    /// <summary>A new context over the framework schema (D24); the caller disposes it.</summary>
+    public SparkFrameworkDbContext NewFrameworkContext() => new(frameworkOptions, Setup.Dialect);
 
     public SparkRelationalModel Model => Setup.Model;
 

@@ -15,7 +15,7 @@ internal static class SparkCoreCommands
         services.AddSingleton(new SparkServiceRegistrations(services));
 
         services.AddSparkCommand<SparkModelCommand>(SparkDevelopmentExtensions.SynchronizeFlag,
-            "Regenerates App_Data/Model and App_Data/modelHashes.json from the entity classes.");
+            "Regenerates App_Data/Model and App_Data/modelHashes.json from the entity classes; on SQL Server and PostgreSQL also writes the migration for the change ([--name <migration>]).");
         services.AddSparkCommand<SparkModelCommand>(SparkDevelopmentExtensions.VerifyFlag,
             "Writes nothing; exits 3 when the committed model has drifted from the entity classes (the merge-queue gate).");
         services.AddSparkCommand<SparkModelCommand>(SparkDescribeCommand.Flag,
@@ -49,10 +49,17 @@ internal sealed partial class SparkModelCommand : ISparkCommand
 {
     [Inject] private readonly SparkServiceRegistrations registrations;
     [Inject] private readonly IHostEnvironment environment;
+    [Inject] private readonly IServiceProvider provider;
 
-    public Task<int> RunAsync(IReadOnlyList<string> args, CancellationToken cancellationToken)
-        => Task.FromResult(SparkCoreCommands.ExitCodeOf(() =>
-            SparkDevelopmentExtensions.RunModelCommands(new SparkCommandHost(registrations.Services, environment), [.. args])));
+    public async Task<int> RunAsync(IReadOnlyList<string> args, CancellationToken cancellationToken)
+    {
+        var exitCode = SparkCoreCommands.ExitCodeOf(() =>
+            SparkDevelopmentExtensions.RunModelCommands(new SparkCommandHost(registrations.Services, environment), [.. args]));
+        // The model JSON first, then the migration for it (D24): a provider with a schema scaffolds one.
+        if (exitCode != 0 || !args.Contains(SparkDevelopmentExtensions.SynchronizeFlag))
+            return exitCode;
+        return await SparkSchemaScaffolding.RunAsync(provider, environment, args, cancellationToken);
+    }
 }
 
 internal sealed partial class SparkSecurityInitCommand : ISparkCommand

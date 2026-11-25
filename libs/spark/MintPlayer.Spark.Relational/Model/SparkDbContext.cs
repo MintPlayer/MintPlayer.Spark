@@ -48,10 +48,7 @@ public sealed class SparkDbContext : DbContext
     /// <summary>S6 <c>SetExpiry</c>: when the expiration sweeper may delete the row (UTC), on every table.</summary>
     public const string ExpiresProperty = "SparkExpiresAt";
 
-    public const string ReservationsTable = "SparkReservations";
-    public const string AtomicValuesTable = "SparkAtomicValues";
-    public const string DataProtectionKeysTable = "SparkDataProtectionKeys";
-    internal const int KeyLength = 450;
+    internal const int KeyLength = SparkFrameworkSchema.KeyLength;
 
     public SparkDbContext(DbContextOptions<SparkDbContext> options, SparkContextSetup setup) : base(options) => Setup = setup;
 
@@ -82,32 +79,11 @@ public sealed class SparkDbContext : DbContext
         foreach (var join in model.Joins)
             MapJoin(modelBuilder, join);
 
-        MapFrameworkTables(modelBuilder);
+        // The framework schema's tables, which its own migrations create (D24): used here, never migrated here.
+        SparkFrameworkSchema.Map(modelBuilder, Setup.Dialect.KeyCollation, excludeFromMigrations: true);
 
         foreach (var configure in Setup.ConfigureModel)
             configure(modelBuilder);
-    }
-
-    /// <summary>The store's own tables: reservations (S6) and atomic values (S15). Keys compare bytes, as ids do (D7).</summary>
-    private void MapFrameworkTables(ModelBuilder modelBuilder)
-    {
-        var reservation = modelBuilder.Entity<SparkReservationRow>();
-        reservation.ToTable(ReservationsTable);
-        reservation.HasKey(r => r.Key);
-        reservation.Property(r => r.Key).HasMaxLength(KeyLength).UseCollation(Setup.Dialect.KeyCollation);
-        reservation.Property(r => r.OwnerId).HasMaxLength(KeyLength).UseCollation(Setup.Dialect.KeyCollation);
-        reservation.Property(r => r.Version).IsConcurrencyToken();
-
-        var atomic = modelBuilder.Entity<SparkAtomicValueRow>();
-        atomic.ToTable(AtomicValuesTable);
-        atomic.HasKey(r => r.Key);
-        atomic.Property(r => r.Key).HasMaxLength(KeyLength).UseCollation(Setup.Dialect.KeyCollation);
-        atomic.Property(r => r.Version).IsConcurrencyToken();
-
-        var key = modelBuilder.Entity<SparkDataProtectionKeyRow>();
-        key.ToTable(DataProtectionKeysTable);
-        key.HasKey(r => r.Name);
-        key.Property(r => r.Name).HasMaxLength(KeyLength).UseCollation(Setup.Dialect.KeyCollation);
     }
 
     private Type BaseOf(Type derived, SparkTable table)
@@ -122,7 +98,9 @@ public sealed class SparkDbContext : DbContext
         => Setup.Dialect.ConfigureConventions(configurationBuilder);
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
-        => optionsBuilder.ReplaceService<IModelCacheKeyFactory, SparkModelCacheKeyFactory>();
+        => optionsBuilder
+            .ReplaceService<IModelCacheKeyFactory, SparkModelCacheKeyFactory>()
+            .ReplaceService<Microsoft.EntityFrameworkCore.Migrations.IMigrationsModelDiffer, Schema.SparkMigrationsModelDiffer>();
 
     /// <summary>A key or FK column for ids of <paramref name="target"/>: its converter, and for text its length and collation.</summary>
     private void KeyColumn(PropertyBuilder property, Type propertyType, SparkTable target)

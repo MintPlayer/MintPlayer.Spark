@@ -20,9 +20,70 @@ public sealed class PostgreSqlSparkDialect : SparkRelationalDialect
 {
     public override string ProviderName => global::MintPlayer.Spark.Abstractions.Storage.SparkStoreProviders.PostgreSql;
 
-    public override void UseProvider(DbContextOptionsBuilder builder, string connectionString) => builder.UseNpgsql(connectionString);
+    /// <summary>
+    /// Npgsql, with <see cref="AdvisoryLockHistoryRepository"/> in place of the stock history repository, whose lock
+    /// ends with each migration's transaction (npgsql/efcore.pg#4162; S19 scenario 1b). It goes when Npgsql ships the
+    /// fix (npgsql/efcore.pg#4163).
+    /// </summary>
+    public override void UseProvider(DbContextOptionsBuilder builder, string connectionString, SparkMigrationsSettings migrations)
+    {
+        builder.UseNpgsql(connectionString, pg =>
+        {
+            if (migrations.Assembly is { } assembly)
+                pg.MigrationsAssembly(assembly);
+            pg.MigrationsHistoryTable(migrations.HistoryTable, migrations.HistorySchema);
+        });
+        builder.ReplaceService<Microsoft.EntityFrameworkCore.Migrations.IHistoryRepository, AdvisoryLockHistoryRepository>();
+    }
+
+    public override string EfProviderName => "Npgsql.EntityFrameworkCore.PostgreSQL";
 
     public override string KeyCollation => "C";
+
+    /// <summary>
+    /// A session advisory lock in the <c>postgres</c> maintenance database, keyed by a hash of
+    /// <c>spark:migrations:{database}</c> passed as a parameter (S19 scenario 1c).
+    /// </summary>
+    public override async Task<IAsyncDisposable> AcquireMigrationGuardAsync(string connectionString, CancellationToken cancellationToken)
+    {
+        var target = new NpgsqlConnectionStringBuilder(connectionString);
+        var resource = "spark:migrations:" + target.Database;
+        var connection = new NpgsqlConnection(new NpgsqlConnectionStringBuilder(connectionString) { Database = "postgres", Pooling = false }.ConnectionString);
+        try
+        {
+            await connection.OpenAsync(cancellationToken);
+            await using var command = connection.CreateCommand();
+            command.CommandText = "SELECT pg_advisory_lock(hashtextextended(@resource, 0))";
+            command.Parameters.AddWithValue("resource", resource);
+            command.CommandTimeout = 610;
+            await command.ExecuteNonQueryAsync(cancellationToken);
+            return new Guard(connection, resource);
+        }
+        catch
+        {
+            await connection.DisposeAsync();
+            throw;
+        }
+    }
+
+    private sealed class Guard(NpgsqlConnection connection, string resource) : IAsyncDisposable
+    {
+        public async ValueTask DisposeAsync()
+        {
+            try
+            {
+                await using var command = connection.CreateCommand();
+                command.CommandText = "SELECT pg_advisory_unlock(hashtextextended(@resource, 0))";
+                command.Parameters.AddWithValue("resource", resource);
+                await command.ExecuteNonQueryAsync();
+            }
+            finally
+            {
+                // Closing an unpooled connection ends the session, which releases the lock in any case.
+                await connection.DisposeAsync();
+            }
+        }
+    }
 
     /// <summary>
     /// A <see cref="DateTime"/> is <c>timestamp without time zone</c>, as <c>datetime2</c> is on SQL Server: Npgsql refuses

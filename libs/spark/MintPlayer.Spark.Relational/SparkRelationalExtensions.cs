@@ -7,6 +7,7 @@ using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Builder;
 using MintPlayer.Spark.Abstractions.Storage;
 using MintPlayer.Spark.Relational.Model;
+using MintPlayer.Spark.Relational.Schema;
 using MintPlayer.Spark.Relational.Storage;
 
 namespace MintPlayer.Spark.Relational;
@@ -16,6 +17,12 @@ public sealed class SparkRelationalOptions
 {
     /// <summary>The connection string; when empty, the configuration's <c>ConnectionStrings:Spark</c>.</summary>
     public string? ConnectionString { get; set; }
+
+    /// <summary>
+    /// The assembly that holds the app's migrations (D33); when empty, the entry assembly, where synchronize writes
+    /// them (<c>Migrations/&lt;Provider&gt;</c> in the host project).
+    /// </summary>
+    public string? MigrationsAssembly { get; set; }
 
     internal List<Action<ModelBuilder>> ModelConfigurations { get; } = [];
 
@@ -63,8 +70,12 @@ public static class SparkRelationalExtensions
             var idOptions = sp.GetService<IOptions<SparkIdOptions>>()?.Value ?? new SparkIdOptions();
             var model = SparkRelationalModel.Build(sp.GetRequiredService<ISparkStoredTypes>().Types, type => KindOf(type, idOptions));
             var setup = new SparkContextSetup(model, dialect, options.ModelConfigurations);
-            return new RelationalSparkStore(setup, connectionString, b => options.ContextConfigurations.ForEach(c => c(b)));
+            return new RelationalSparkStore(setup, connectionString, b => options.ContextConfigurations.ForEach(c => c(b)),
+                options.MigrationsAssembly ?? Assembly.GetEntryAssembly()?.GetName().Name);
         });
+        services.AddSingleton<ISparkSchemaMigrator>(sp => new RelationalSchemaMigrator(sp.GetRequiredService<RelationalSparkStore>()));
+        // Synchronize's migration writer (O17): a development dependency core loads by name, never named in code.
+        services.AddSingleton(new SparkSchemaDesignAssembly("MintPlayer.Spark.Relational.Design"));
         services.AddSingleton<ISparkStore>(sp => sp.GetRequiredService<RelationalSparkStore>());
         services.AddScoped<ISparkSession>(sp => sp.GetRequiredService<ISparkStore>().OpenSession());
         services.AddScoped<ISparkQueryProvider>(sp => new RelationalSparkQueryProvider(sp.GetRequiredService<ISparkSession>()));

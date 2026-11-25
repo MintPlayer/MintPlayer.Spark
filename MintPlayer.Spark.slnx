@@ -199,6 +199,7 @@
     <Project Path="libs/spark/MintPlayer.Spark.PostgreSql/MintPlayer.Spark.PostgreSql.csproj" />
     <Project Path="libs/spark/MintPlayer.Spark.RavenDB/MintPlayer.Spark.RavenDB.csproj" />
     <Project Path="libs/spark/MintPlayer.Spark.Relational/MintPlayer.Spark.Relational.csproj" />
+    <Project Path="libs/spark/MintPlayer.Spark.Relational.Design/MintPlayer.Spark.Relational.Design.csproj" />
     <Project Path="libs/spark/MintPlayer.Spark.SafeHttp/MintPlayer.Spark.SafeHttp.csproj" />
     <Project Path="libs/spark/MintPlayer.Spark.SqlServer/MintPlayer.Spark.SqlServer.csproj" />
   </Folder>

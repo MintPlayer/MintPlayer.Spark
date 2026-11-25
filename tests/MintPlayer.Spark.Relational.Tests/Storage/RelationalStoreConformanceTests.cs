@@ -1,4 +1,6 @@
 using MintPlayer.Spark.Abstractions.Storage;
+using Microsoft.EntityFrameworkCore;
+using MintPlayer.Spark.Relational.Schema;
 using MintPlayer.Spark.Relational.Storage;
 using MintPlayer.Spark.Relational.Tests._Infrastructure;
 using MintPlayer.Spark.Tests.Storage;
@@ -26,14 +28,38 @@ public abstract class RelationalStoreConformanceTests : SparkStoreConformanceTes
     protected override bool KeepsDateTimeKind => false;
 
     /// <summary>
-    /// D16 on a table: a column a migration added reads as the CLR default in rows written before it. That needs the
-    /// migrations of #536 M4c; a type of another shape is another table here, not the same document.
+    /// D16 on a table: a row written before a property existed reads it as the CLR default once the migration that
+    /// adds its column ran. The V1 shape is mapped onto the same table, and the database moves from V1's model to V2's
+    /// through the migration operations between them, as a generated migration would.
     /// </summary>
     [SkippableFact]
-    public override Task An_absent_field_reads_as_the_clr_default()
+    public override async Task An_absent_field_reads_as_the_clr_default()
     {
-        Skip.If(true, "#536 M4c: the relational form of D16 is a column added by a migration.");
-        return Task.CompletedTask;
+        var server = Server ?? throw new SkipException("No server is configured for this provider.");
+        var name = "spark_rel_" + Guid.NewGuid().ToString("N")[..12];
+        await using var v1 = await RelationalTestDatabase.CreateAsync(
+            server, [typeof(ConfDocV1)], mb => mb.Entity<ConfDocV1>().ToTable("ConfDocs"), name);
+        using (var write = v1.Store.OpenSession())
+        {
+            await write.StoreAsync(new ConfDocV1 { Id = "ConfDocs/old", Name = "Old" });
+            await write.SaveChangesAsync();
+        }
+
+        var v2 = RelationalTestDatabase.Open(server, [typeof(ConfDoc)], null, name);
+        await using (var target = v2.NewContext())
+        await using (var source = v1.Store.NewContext())
+            await RelationalSchema.ApplyDifferencesAsync(target, source);
+
+        using var session = v2.OpenSession();
+        var loaded = await session.LoadAsync<ConfDoc>("ConfDocs/old");
+
+        loaded.Should().NotBeNull();
+        loaded!.Name.Should().Be("Old");
+        loaded.Count.Should().Be(0);
+        loaded.Flag.Should().BeFalse();
+        loaded.Key.Should().Be(Guid.Empty);
+        loaded.Status.Should().Be(ConfStatus.Draft);
+        loaded.Tags.Should().BeEmpty();
     }
 
     public override async Task DisposeAsync()

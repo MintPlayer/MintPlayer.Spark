@@ -97,6 +97,15 @@ tags, and everything ships once the merged pull request is backported to `releas
     ring, expiry and the expiration sweep, reservations, streams, set-based delete/update and appends. A `decimal`
     is `decimal(38,18)` on SQL Server. A `DateTime` keeps its ticks but not its `Kind` (open question O18); prefer
     `DateTimeOffset`.
+
+    **Migrations (M4c):** at startup (or with `--spark-migrate`) the provider creates the database, applies Spark's
+    own schema (schema `spark`) and then the app's EF migrations, holding a lock in the server's maintenance database
+    so several instances migrate once. `--spark-synchronize-model` writes the migration for a model change into
+    `Migrations/<Provider>` of the host project, once the host references **`MintPlayer.Spark.Relational.Design`** as a
+    development dependency (it stays out of `dotnet publish`; publish, don't copy `bin`). A model with changes no
+    migration covers stops startup with a message naming that command. `options.MigrationsAssembly` moves the
+    migrations out of the entry assembly. `RelationalSchema.CreateFromModelAsync` builds a schema from the model
+    without migrations, for test databases.
 10. **`ISparkStoredTypes` and `AddSparkStoredType<T>()`** (M4, D36): the list of types a store keeps, from the app
     model plus explicit registrations. `SparkCollectionNames.Of(type)` is the collection (table) name every provider
     uses.

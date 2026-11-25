@@ -227,6 +227,49 @@ rounds, milestones and status. Branch `feat/536-sql-server-provider`, draft PR #
       non-UTC `DateTimeOffset` (written as UTC) and either kind of `DateTime` in the "wrong" column (ticks to
       `timestamp`). **`DateTime.Kind` does not survive a SQL column: open question O18.** The absent-field case (D16)
       skips on SQL until M4c's migrations.
+  - **M4c (2026-11-25):**
+    - **Framework schema (D24):** reservations, atomic values and the key ring move to schema `spark` (`spark.Reservations`,
+      `spark.AtomicValues`, `spark.DataProtectionKeys`) with their own history `spark.__SparkFrameworkMigrations`.
+      `SparkFrameworkDbContext` migrates them with hand-written migrations in the Relational package
+      (`Migrations/Framework`, the first `20261125000001_SparkFramework0001`); `SparkDbContext` maps the same tables
+      with `ExcludeFromMigrations`, so an app's migrations never contain them. A framework migration finds its key
+      collation through the dialect registered for `MigrationBuilder.ActiveProvider`. With no snapshot, the framework
+      context ignores EF's pending-changes warning; a test compares the migrated columns with the ones the framework
+      model's own operations create instead.
+    - **`RelationalSchemaMigrator`** (`ISparkSchemaMigrator`): `ApplyAsync` takes the dialect's guard
+      (`sp_getapplock` in `master`, `pg_advisory_lock(hashtextextended(…))` in `postgres`, the key a parameter),
+      creates the database, migrates the framework schema, refuses a model with changes no migration covers (naming
+      `--spark-synchronize-model`), then applies the app's migrations (none: nothing to do). Pending migrations of a
+      database that does not exist are all of them; the script is the framework's whole idempotent script plus the
+      app's `from`/`to` range. PostgreSQL registers `AdvisoryLockHistoryRepository` (S19, until npgsql/efcore.pg#4163).
+    - The app's migrations are in `SparkRelationalOptions.MigrationsAssembly`, by default the entry assembly, in
+      EF's `__EFMigrationsHistory`.
+    - **`RelationalSchema`**: `CreateFromModelAsync` (framework migrations, then the model's own operations: for test
+      databases and prototypes; tests no longer call `EnsureCreated`) and `ApplyDifferencesAsync(target, from)`.
+    - **`SparkMigrationsModelDiffer`** replaces EF's differ in `SparkDbContext` (pubternal; a test resolves it, so an EF
+      constructor change fails the build: 11.0.0's has five parameters, EF `main` six). Found by the D16 case: EF adds
+      a required collection column with no default, which PostgreSQL refuses for existing rows. The differ gives it
+      the empty collection, as SQL (`'[]'` for JSON, `'{}'` for Npgsql's native `text[]`): a default value goes through
+      the array converter and fails. The view handling joins it in M4d.
+    - **D16 on SQL passes** on both databases: a V1 row, the V1 → V2 operations, the V2 read gives the CLR defaults.
+    - **`MintPlayer.Spark.Relational.Design`** (O17): `RelationalSchemaScaffolder`, named by
+      `[assembly: SparkSchemaScaffolder]`, which core finds by the `SparkSchemaDesignAssembly` name the provider
+      registers. `--spark-synchronize-model` writes the model JSON, then the migration into
+      `Migrations/<Provider>` of the content root (`--name` names it), and prints the operations and EF's warnings;
+      without the package it says to reference it and exits 1. EF's design-time services come from public API plus
+      the provider's attribute; `FreshSnapshotMigrationsAssembly` works around dotnet/efcore#36016, and a migration
+      that creates a table the last snapshot has is refused. The package has O17's three settings
+      (`DevelopmentDependency`, EF Design with `PrivateAssets="none"`, `buildTransitive` targets with
+      `Publish="false"` and warning `SPARKDESIGN001` when it arrives through another project).
+    - New contracts in Abstractions: `ISparkSchemaScaffolder`, `SparkScaffoldRequest`/`Result`,
+      `SparkSchemaDesignAssembly`, `SparkSchemaScaffolderAttribute`.
+    - Tests: `RelationalSchemaMigratorTests` (pending on a missing database, three concurrent instances migrate once,
+      the refusal, the script applied twice, the framework migrations against the framework model) and
+      `RelationalSchemaScaffolderTests` (no server: a dummy connection string). Relational suite 100/100 with both
+      servers.
+    - **Left for later slices:** D24's refusal of an attribute id split into drop + add (it needs the attribute ids
+      as column annotations, so the snapshot keeps them: M4d, with the differ's view work), and the per-app
+      pending-model-changes test (M9, with the first SQL app).
   - Order: the core pieces in `libs/` first (the struct, the model registry, the generator for `__DocumentId`, JSON,
     the route binder), then the feature libraries, then the apps.
   - It touches the three production apps (CodeCoverage, SeoTester, MintPlayer). RavenDB stays green at the end of the
