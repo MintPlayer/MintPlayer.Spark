@@ -331,7 +331,10 @@ public class McpPlanTests(RavenSparkSharedDatabase database)
         using var session = Store.OpenAsyncSession();
         var plan = await session.LoadAsync<McpPlan>(planId);
         var expires = DateTime.Parse(session.Advanced.GetMetadataFor(plan)[Constants.Documents.Metadata.Expires].ToString()!).ToUniversalTime();
-        expires.Should().BeCloseTo(plan!.CreatedAt + McpPlanner.ProposalLifetime, TimeSpan.FromSeconds(5));
+        plan!.ExpiresAt.Should().BeCloseTo(plan.CreatedAt + McpPlanner.ProposalLifetime, TimeSpan.FromSeconds(5));
+        // #536: the store's housekeeping trails it (McpPlan.HousekeepingGrace), so a store that hides expired rows
+        // still finds a just-expired plan and the agent is told it expired.
+        expires.Should().BeCloseTo(plan.ExpiresAt + McpPlan.HousekeepingGrace, TimeSpan.FromSeconds(5));
     }
 
     [Fact]

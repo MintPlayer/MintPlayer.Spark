@@ -42,11 +42,10 @@ public static class SparkMcpExtensions
     /// <c>MapSpark()</c>.
     /// </summary>
     /// <exception cref="InvalidOperationException">Called twice, or the options are unusable.</exception>
-    [global::MintPlayer.Spark.Abstractions.Storage.SparkRequiresStore("Spark.Mcp", Provider = global::MintPlayer.Spark.Abstractions.Storage.SparkStoreProviders.RavenDb)]
     public static ISparkBuilder AddMcp(this ISparkBuilder builder, Action<SparkMcpOptions>? configure = null)
     {
-        // #551 D13: the planner queries through a RavenDB session.
-        global::MintPlayer.Spark.Abstractions.Storage.SparkStoreRequirementExtensions.RequireStore(builder, "Spark.Mcp", provider: global::MintPlayer.Spark.Abstractions.Storage.SparkStoreProviders.RavenDb);
+        // #536: the planner runs on any store (ISparkStore); D36 registers the plans' table.
+        global::MintPlayer.Spark.Abstractions.Storage.SparkStoredTypeServiceCollectionExtensions.AddSparkStoredType<Plans.McpPlan>(builder.Services);
 
         var services = builder.Services;
         if (services.Any(d => d.ServiceType == typeof(SparkMcpOptions)))

@@ -5,16 +5,21 @@ namespace MintPlayer.Spark.Mcp.Plans;
 /// <summary>
 /// A set of changes an agent proposed (MCP PRD D8), in the <c>McpPlans</c> collection: what <c>propose_changes</c>
 /// validated and showed, bound to the user, the agent and the grant that proposed it. <c>apply_changes</c> runs it
-/// once. A proposed plan carries <c>@expires</c> 10 minutes ahead; an applied (or failed) one is kept
+/// once. A proposed plan stops being appliable 10 minutes ahead; an applied (or failed) one is kept
 /// <see cref="SparkMcpOptions.PlanRetention"/> as the record of what agents changed.
 /// </summary>
 /// <remarks>
-/// RavenDB deletes an expired plan itself, which is housekeeping only: every read checks
-/// <see cref="ExpiresAt"/>, because the expiration sweep may run long after it.
+/// The store deletes an expired plan itself (<see cref="IExpiring"/>), which is housekeeping only: every read checks
+/// <see cref="ExpiresAt"/>, because the expiration sweep may run long after it. <see cref="ExpiresAtUtc"/> trails it
+/// by <see cref="HousekeepingGrace"/>: a store that hides expired rows from loads (SQL Server, PostgreSQL) still finds
+/// a plan that just expired, so the agent is told it expired rather than that it does not exist.
 /// </remarks>
 [IdKind(SparkIdKind.Natural)]
-internal sealed partial class McpPlan
+internal sealed partial class McpPlan : IExpiring
 {
+    /// <summary>How long after <see cref="ExpiresAt"/> the store may delete the plan.</summary>
+    public static readonly TimeSpan HousekeepingGrace = TimeSpan.FromDays(1);
+
     /// <summary><c>mcpplans/{32 hex}</c>, handed to the agent as the plan id.</summary>
     public Id<McpPlan> Id { get; set; }
 
@@ -42,6 +47,12 @@ internal sealed partial class McpPlan
 
     /// <summary>When a proposed plan stops being appliable; for an applied or failed one, when the record goes.</summary>
     public DateTime ExpiresAt { get; set; }
+
+    /// <summary>When the store deletes it: <see cref="ExpiresAt"/> plus <see cref="HousekeepingGrace"/> (<see cref="Stamp"/>).</summary>
+    public DateTime? ExpiresAtUtc { get; set; }
+
+    /// <summary>Sets <see cref="ExpiresAtUtc"/> from <see cref="ExpiresAt"/>; call after every change to it.</summary>
+    public void Stamp() => ExpiresAtUtc = ExpiresAt + HousekeepingGrace;
 
     public McpPlanStatus Status { get; set; } = McpPlanStatus.Proposed;
 
