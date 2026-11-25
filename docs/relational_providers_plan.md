@@ -109,9 +109,18 @@ rounds, milestones and status. Branch `feat/536-sql-server-provider`, draft PR #
     RavenDB's catalog (a bare `[DefaultIndex]` claim wins, else the sole view of a type). InMemory's `OpenIndex` renders
     a view as LINQ to objects over the session (`InMemoryViewRenderer`: a per-render id lookup, case-insensitive, and
     null-safe member access through `Load`), materialized once. `SparkIndexBindingStartupCheck` accepts a binding that
-    names a view declared in the index assemblies. Tests: `SparkViewTests` (7). Next: M3f-2, RavenDB renders a
-    `SparkView` (its catalog enters views no native index shadows, deploys the rendered map, queries it by name), then
-    M3f-3, the generator.
+    names a view declared in the index assemblies. Tests: `SparkViewTests` (7).
+  - **M3f-2, RavenDB renders a view:** `RavenViewIndex<TEntity>` (a `SparkIndexCreationTask`, so the S-ID6 id rewrite
+    applies) turns `Set<T>().Select(…)` into `docs.Select(…)`, `Load` into `LoadDocument` (a typed id as its text),
+    drops the row's `Id` binding and stores all fields; any other shape throws, naming the view. The catalog enters a
+    view after every native index, and **a native index of the same name shadows it** (for a RavenDB app the generator
+    will emit both, and the native one carries analyzers and companions); an explicit `RegisterIndex` of a clashing
+    view throws. `RavenIndexDeployment` deploys the unshadowed views after the assemblies' native indexes (the
+    deployment filter applies to view types). `OpenIndex` on a view is `Query<TEntity>(viewName)`, which the executor's
+    `Project` turns into `ProjectInto<TRow>`. The view-entry helpers moved to Abstractions (`SparkViewEntries`, internal)
+    so both catalogs share them. Tests: `RavenSparkViewTests` (2): the same declaration and rows as InMemory, and the
+    rendered map. The test entities hand-write the generated `__DocumentId` member, as `SparkIdConformanceTests` do.
+    Next: M3f-3, the generator.
   - Order: the core pieces in `libs/` first (the struct, the model registry, the generator for `__DocumentId`, JSON,
     the route binder), then the feature libraries, then the apps.
   - It touches the three production apps (CodeCoverage, SeoTester, MintPlayer). RavenDB stays green at the end of the

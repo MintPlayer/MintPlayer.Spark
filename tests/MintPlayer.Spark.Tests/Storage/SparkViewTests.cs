@@ -18,6 +18,9 @@ public class SparkViewTests
     {
         public Id<ViewCompany> Id { get; set; }
         public string Name { get; set; } = "";
+
+        // What the document-id generator emits (D23); this project runs no generator.
+        private string? __DocumentId { get => Id.IsEmpty ? null : Id.Value; set => Id = Id<ViewCompany>.FromTrusted(value); }
     }
 
     public class ViewEmployee
@@ -28,6 +31,8 @@ public class SparkViewTests
         public string? Company { get; set; }
         public Id<ViewCompany>? Employer { get; set; }
         public List<string> Skills { get; set; } = [];
+
+        private string? __DocumentId { get => Id.IsEmpty ? null : Id.Value; set => Id = Id<ViewEmployee>.FromTrusted(value); }
     }
 
     public class VEmployee

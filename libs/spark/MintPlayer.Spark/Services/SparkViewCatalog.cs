@@ -25,10 +25,10 @@ internal sealed partial class SparkViewCatalog : IIndexCatalog
 
     public void RegisterIndex(Type indexType)
     {
-        if (!IsView(indexType))
+        if (!SparkViewEntries.IsView(indexType))
             throw new NotSupportedException($"This store provider has no native indexes, so index {indexType.Name} cannot be registered. Declare it as a SparkView<TRow>.");
 
-        var entry = EntryFor(indexType);
+        var entry = SparkViewEntries.EntryFor(indexType);
         lock (gate)
         {
             if (frozen)
@@ -50,7 +50,7 @@ internal sealed partial class SparkViewCatalog : IIndexCatalog
 
     public void RegisterAssemblies(IReadOnlyList<Assembly> assemblies)
     {
-        foreach (var type in assemblies.SelectMany(ViewTypes))
+        foreach (var type in assemblies.SelectMany(SparkViewEntries.ViewTypes))
             RegisterIndex(type);
     }
 
@@ -61,9 +61,7 @@ internal sealed partial class SparkViewCatalog : IIndexCatalog
             if (frozen) return;
 
             foreach (var entry in byName.Values)
-                entry.ClaimedTypes = entry.IndexType.GetCustomAttribute<DefaultIndexAttribute>() is { } marker
-                    ? ResolveClaim(entry, marker)
-                    : [];
+                entry.ClaimedTypes = SparkViewEntries.ResolveClaim(entry);
 
             var byDefault = new Dictionary<IndexCatalogEntry, List<Type>>();
             foreach (var entityType in byName.Values.Select(e => e.CollectionType!).Distinct())
@@ -108,50 +106,10 @@ internal sealed partial class SparkViewCatalog : IIndexCatalog
     public IReadOnlySet<string>? GetQuerySurface(IndexCatalogEntry entry) => null;
 
     /// <summary>Reads the declaration, as the providers will: a view that starts from no <c>Set&lt;T&gt;()</c> throws here.</summary>
-    public void BuildDefinition(IndexCatalogEntry entry) => _ = Instantiate(entry.IndexType).CollectionType;
-
-    /// <summary>Whether <paramref name="type"/> is a concrete view declaration.</summary>
-    public static bool IsView(Type type)
-        => !type.IsAbstract && typeof(ISparkView).IsAssignableFrom(type) && type.GetConstructor(Type.EmptyTypes) is not null;
-
-    /// <summary>The view declarations in <paramref name="assembly"/>.</summary>
-    public static IEnumerable<Type> ViewTypes(Assembly assembly)
-    {
-        Type?[] types;
-        try { types = assembly.GetTypes(); }
-        catch (ReflectionTypeLoadException ex) { types = ex.Types; }
-        return types.OfType<Type>().Where(IsView);
-    }
+    public void BuildDefinition(IndexCatalogEntry entry) => _ = SparkViewEntries.Instantiate(entry.IndexType).CollectionType;
 
     /// <summary>The names of the views declared in <paramref name="assemblies"/>, before any catalog is populated.</summary>
-    public static IReadOnlySet<string> ViewNames(IReadOnlyList<Assembly> assemblies)
-        => assemblies.SelectMany(ViewTypes).Select(t => Instantiate(t).Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
-
-    public static ISparkView Instantiate(Type viewType) => (ISparkView)Activator.CreateInstance(viewType)!;
-
-    /// <summary>A view's catalog entry: its name, its collection and its row type as the projection.</summary>
-    public static IndexCatalogEntry EntryFor(Type viewType)
-    {
-        var view = Instantiate(viewType);
-        return new IndexCatalogEntry
-        {
-            IndexName = view.Name,
-            IndexType = viewType,
-            CollectionType = view.CollectionType,
-            ProjectionType = view.RowType,
-        };
-    }
-
-    /// <summary>A view is the default of the collection it enumerates, and nothing else.</summary>
-    private static IReadOnlyList<Type> ResolveClaim(IndexCatalogEntry entry, DefaultIndexAttribute marker)
-    {
-        var listed = marker.EntityTypes.Distinct().ToList();
-        if (listed.Count == 0 || (listed.Count == 1 && listed[0] == entry.CollectionType))
-            return [entry.CollectionType!];
-        throw new InvalidOperationException(
-            $"[DefaultIndex({string.Join(", ", listed.Select(t => $"typeof({t.Name})"))})] on view {entry.IndexType.FullName}: a view is the " +
-            $"default of the collection it reads, {entry.CollectionType!.Name}, and nothing else. Write a bare [DefaultIndex].");
-    }
+    public static IReadOnlySet<string> ViewNames(IReadOnlyList<Assembly> assemblies) => SparkViewEntries.ViewNames(assemblies);
 
     /// <summary>The same election as the RavenDB catalog's (default_index_PRD D3): a claim wins, else the sole view.</summary>
     private static IndexCatalogEntry? Elect(Type entityType, IReadOnlyList<IndexCatalogEntry> entries)

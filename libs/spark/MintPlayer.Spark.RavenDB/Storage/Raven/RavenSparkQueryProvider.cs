@@ -24,9 +24,26 @@ internal sealed partial class RavenSparkQueryProvider : ISparkQueryProvider
         => typeof(IRavenQueryable<>).MakeGenericType(source.ElementType).IsInstanceOfType(source);
 
     public IQueryable OpenIndex(Type entityType, Type indexType, bool narrowToCollection)
-        => narrowToCollection
-            ? CollectionNarrowedIndex(entityType, indexType)
-            : IndexWithType(entityType, indexType);
+        => typeof(Abstractions.Views.ISparkView).IsAssignableFrom(indexType)
+            ? ViewIndex(entityType, Abstractions.Views.SparkViewEntries.Instantiate(indexType).Name)
+            : narrowToCollection
+                ? CollectionNarrowedIndex(entityType, indexType)
+                : IndexWithType(entityType, indexType);
+
+    /// <summary>
+    /// <c>session.Query&lt;entityType&gt;(indexName)</c>: a <c>SparkView</c> deployed as a static index of its name (#536
+    /// D32). The executor's <see cref="Project"/> then reads its stored fields into the row type.
+    /// </summary>
+    private IQueryable ViewIndex(Type entityType, string indexName)
+    {
+        var method = ReflectionCache.GetOrAdd<(string Op, Type Entity), MethodInfo>(
+            ("RavenSparkQueryProvider.SessionQueryByIndexName", entityType),
+            static k => typeof(IAsyncDocumentSession).GetMethods()
+                .Single(m => m.Name == "Query" && m.IsGenericMethod && m.GetGenericArguments().Length == 1
+                    && m.GetParameters() is [{ ParameterType: var p }, ..] && p == typeof(string))
+                .MakeGenericMethod(k.Entity));
+        return (IQueryable)method.Invoke(Session, [indexName, null, false])!;
+    }
 
     /// <summary><c>session.Query&lt;resultType, indexType&gt;()</c>.</summary>
     private IQueryable IndexWithType(Type resultType, Type indexType)
