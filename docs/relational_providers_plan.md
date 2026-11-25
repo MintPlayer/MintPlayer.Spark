@@ -101,6 +101,17 @@ rounds, milestones and status. Branch `feat/536-sql-server-provider`, draft PR #
     migration may query a new one) but installs no expiration stamper, which only a running app needs. Index deploy
     is now `SparkExtensions.DeploySparkIndexes(IServiceProvider, …)`. Tests: `SparkMigrationCommandsTests` (9),
     `ProviderNeutralCoreTests` (Abstractions, core and Migrations reference no Raven/EF/Npgsql/SqlClient assembly).
+  - **M3f-1, neutral views: the declaration, core's catalog, InMemory (D32/S5):** `ISparkViewSource`
+    (`Set<T>()`, `Load<T>(string?)` and `Load<T>(Id<T>?)`), `ISparkView`, `SparkView<TRow>` (declaration read once,
+    `CollectionType` = the first `Set`, `ReadTypes`) and the public `SparkViewRewriter` base in
+    `Abstractions/Views/SparkView.cs`. Core's `EmptyIndexCatalog` became `SparkViewCatalog`: it enters every concrete
+    view with a public parameterless constructor (name, collection, row type as projection) and elects defaults like
+    RavenDB's catalog (a bare `[DefaultIndex]` claim wins, else the sole view of a type). InMemory's `OpenIndex` renders
+    a view as LINQ to objects over the session (`InMemoryViewRenderer`: a per-render id lookup, case-insensitive, and
+    null-safe member access through `Load`), materialized once. `SparkIndexBindingStartupCheck` accepts a binding that
+    names a view declared in the index assemblies. Tests: `SparkViewTests` (7). Next: M3f-2, RavenDB renders a
+    `SparkView` (its catalog enters views no native index shadows, deploys the rendered map, queries it by name), then
+    M3f-3, the generator.
   - Order: the core pieces in `libs/` first (the struct, the model registry, the generator for `__DocumentId`, JSON,
     the route binder), then the feature libraries, then the apps.
   - It touches the three production apps (CodeCoverage, SeoTester, MintPlayer). RavenDB stays green at the end of the

@@ -293,7 +293,8 @@ public static class SparkExtensions
             // #551 D20: an index binding in the model, on a store without indexes.
             .Concat(Services.SparkIndexBindingStartupCheck.Unmet(
                 app.ApplicationServices.GetRequiredService<Services.IModelLoader>(),
-                app.ApplicationServices.GetService<MintPlayer.Spark.Abstractions.Storage.ISparkStore>()))
+                app.ApplicationServices.GetService<MintPlayer.Spark.Abstractions.Storage.ISparkStore>(),
+                Services.SparkViewCatalog.ViewNames(app.ApplicationServices.GetRequiredService<SparkModuleRegistry>().ResolveIndexAssemblies())))
             // #700: malformed fileOptions, a file attribute without spark.AddFiles(), files in AsDetail rows.
             .Concat(Services.SparkFileAttributeStartupCheck.Unmet(
                 app.ApplicationServices.GetRequiredService<Services.IModelLoader>(),
