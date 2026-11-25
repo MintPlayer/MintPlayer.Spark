@@ -1,5 +1,5 @@
 {
-  "$schema": "https://schemas.spark.mintplayer.com/v15/translations.schema.json",
+  "$schema": "../../../../schemas/translations.schema.json",
   "app": {
     "selectMenuItem": {
       "en": "Pick Books or Authors in the sidebar to get started."

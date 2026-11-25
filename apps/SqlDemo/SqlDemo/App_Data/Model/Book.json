@@ -1,5 +1,5 @@
 {
-  "$schema": "https://schemas.spark.mintplayer.com/v15/model.schema.json",
+  "$schema": "../../../../../schemas/model.schema.json",
   "persistentObject": {
     "id": "2cea3221-e367-48c1-973f-b5a946c13d9b",
     "name": "Book",

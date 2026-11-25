@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Authorization;
+using MintPlayer.Spark.Abstractions.Storage;
 using MintPlayer.Spark.Authorization.Extensions;
 using MintPlayer.Spark.Authorization.Identity;
 using MintPlayer.Spark.Extensions;
@@ -166,10 +167,13 @@ public abstract class OrganizationsTestHost : RavenSparkTestDriver
 
     // ---- seeding -----------------------------------------------------------------------------------
 
-    /// <summary>A user document, as Identity would store it.</summary>
+    /// <summary>
+    /// A user document, as Identity would store it, with its name and e-mail reservations: the user store finds a user
+    /// by name or e-mail only through them (#536 D42), so sign-in needs them.
+    /// </summary>
     internal async Task<SparkUser> SeedUserAsync(string name, bool emailConfirmed = true)
     {
-        _ = Factory;
+        var sparkStore = Factory.GetService<ISparkStore>();
         var user = new SparkUser
         {
             Id = "SparkUsers/" + name,
@@ -183,6 +187,7 @@ public abstract class OrganizationsTestHost : RavenSparkTestDriver
         using var session = Store.OpenAsyncSession();
         await session.StoreAsync(user, user.Id);
         await session.SaveChangesAsync();
+        (await SparkUserReservations.ClaimAsync(sparkStore, user.Id, user)).Should().BeEmpty();
         return user;
     }
 

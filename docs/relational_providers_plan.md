@@ -663,7 +663,16 @@ rounds, milestones and status. Branch `feat/536-sql-server-provider`, draft PR #
     - **Result:** the SqlDemo E2E run is 5/5 green locally on PostgreSQL.
     - **The guide:** `docs/guide-relational-stores.md` (choosing a store, a table per stored type, ids and references,
       migrations, views, capabilities, testing).
-    - **Next:** commit and push M9a + M9b, then CI.
+    - **First CI run (45716696452, head f039c3756):** the SQL Server, PostgreSQL, E2E and SqlDemo legs passed on
+      their first GitHub run. Three failures in `MintPlayer.Spark.Tests` on RavenDB, all fixed:
+      - `SparkSchemaGeneratorTests`: the synchronize had written SqlDemo's `$schema` as the hosted URL. The repo's
+        apps use relative paths, so `Author.json`, `Book.json` and `translations.json` now point at `schemas/`.
+      - `EndpointConventionsTests` R3 reads every invocation named `Map` as a hand-mapped route, so
+        `RavenViewIndexes.Map` is now `RenderMap`.
+      - `LiveSessionTests.L7`: sign-in answered 401. `OrganizationsTestHost.SeedUserAsync` wrote raw users without
+        reservations, and since M6j the user store finds a user by name or e-mail only through them (D42). The seed
+        now claims them with `SparkUserReservations.ClaimAsync`.
+    - **Next:** every check green, then mark the PR ready.
   - **M8c (done 2026-11-25): revisit earlier milestones under D46** (RavenDB's format may change through a migration). Look
     for designs that kept RavenDB's old format only for its own sake, and for stale values left behind. Besides the
     items below, M9b's review kept the Log's id-only related record (no format change needed, defect 5) and found
@@ -682,7 +691,7 @@ rounds, milestones and status. Branch `feat/536-sql-server-provider`, draft PR #
       feature where it is better. They are not format preservation.
   - **M7g (2026-11-25): fan-out views (PRD D43, "Fan-out maps").** `from x in s.Set<T>() from item in x.List select …`
     in a `SparkView` map.
-    - RavenDB: `RavenViewIndexes.Map` renders a `SelectMany` with a result selector.
+    - RavenDB: `RavenViewIndexes.RenderMap` renders a `SelectMany` with a result selector.
     - Memory: `InMemoryViewRenderer` reads a null list as empty.
     - SQL: unchanged, because EF translates primitive collections (`OPENJSON`, `unnest`).
     - **Evidence:**

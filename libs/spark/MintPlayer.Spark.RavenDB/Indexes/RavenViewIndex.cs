@@ -47,7 +47,8 @@ internal static class RavenViewIndexes
     /// (<c>from x in Set&lt;T&gt;() from item in x.List select …</c>, a <c>SelectMany</c> with a result selector) is
     /// RavenDB's own fan-out: an index entry per item.
     /// </summary>
-    internal static LambdaExpression Map(ISparkView view, Expression branch, AbstractCommonApiForIndexes index, out Type entityType)
+    /// <remarks>Not named <c>Map</c>: <c>EndpointConventionsTests</c> reads every <c>Map(…)</c> call as a hand-mapped route.</remarks>
+    internal static LambdaExpression RenderMap(ISparkView view, Expression branch, AbstractCommonApiForIndexes index, out Type entityType)
     {
         var definition = view.Definition;
         if (branch is not MethodCallExpression { Method.Name: nameof(Queryable.Select) or nameof(Queryable.SelectMany) } select
@@ -127,7 +128,7 @@ internal sealed class RavenViewIndex<TEntity> : SparkIndexCreationTask<TEntity>
     public RavenViewIndex(ISparkView view)
     {
         name = view.Name;
-        Map = (Expression<Func<IEnumerable<TEntity>, System.Collections.IEnumerable>>)RavenViewIndexes.Map(view, view.Definition.Body, this, out _);
+        Map = (Expression<Func<IEnumerable<TEntity>, System.Collections.IEnumerable>>)RavenViewIndexes.RenderMap(view, view.Definition.Body, this, out _);
         StoreAllFields(FieldStorage.Yes);
     }
 
@@ -151,7 +152,7 @@ internal sealed class RavenMultiMapViewIndex<TRow> : AbstractMultiMapIndexCreati
         name = view.Name;
         foreach (var branch in RavenViewIndexes.Branches(view))
         {
-            var map = RavenViewIndexes.Map(view, branch, this, out var entityType);
+            var map = RavenViewIndexes.RenderMap(view, branch, this, out var entityType);
             AddMapOfT.MakeGenericMethod(entityType).Invoke(this, [map]);
         }
 
