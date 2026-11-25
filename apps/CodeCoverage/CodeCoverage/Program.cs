@@ -405,7 +405,7 @@ builder.Services.AddSpark(builder.Configuration, spark =>
 // The Data Protection key ring (auth + antiforgery cookies both decrypt with it) is wired by Spark
 // core (#460, D5). appsettings.json sets only ApplicationName=CodeCoverage; production sets
 // Spark__DataProtection__KeysPath in docker-compose.yml to a directory on the dataprotection-keys
-// volume, so a redeploy keeps the ring. Test hosts set Spark:DataProtection:Storage=RavenDb instead —
+// volume, so a redeploy keeps the ring. Test hosts set Spark:DataProtection:Storage=Store instead —
 // never both, which Spark refuses. Changing ApplicationName or the key location signs every user out
 // once. (The ring previously lived in RavenDB DataProtectionKeys/ documents; those are orphaned by the
 // move to KeysPath and can be deleted once the first deploy with the volume is healthy.)

@@ -46,8 +46,12 @@ public static class SparkStoreRequirementExtensions
         {
             if (store is null)
             {
-                messages.Add($"{requirement.Feature} needs a store, and none is registered: call "
-                    + $"spark.{(requirement.Provider is null or SparkStoreProviders.RavenDb ? "UseRavenDb" : "Use" + requirement.Provider)}() in AddSpark.");
+                messages.Add($"{requirement.Feature} needs a store, and none is registered: call " + requirement.Provider switch
+                {
+                    null => "a store provider's Use method in AddSpark, such as spark.UseRavenDb() or spark.UseSqlServer().",
+                    SparkStoreProviders.RavenDb => "spark.UseRavenDb() in AddSpark.",
+                    var named => $"spark.Use{named}() in AddSpark.",
+                });
                 continue;
             }
 

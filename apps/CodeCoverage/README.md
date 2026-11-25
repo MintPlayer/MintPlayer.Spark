@@ -612,7 +612,7 @@ The key ring decrypts authentication and antiforgery cookies. Spark refuses to s
 without a location for it; the compose file points `Spark__DataProtection__KeysPath` at the
 `dataprotection-keys` volume, and the Dockerfile pre-creates that mount point owned by the `app`
 user, so a fresh volume is writable by the non-root process. `appsettings.json` deliberately sets no
-`Storage`, because `KeysPath` and `Storage=RavenDb` together also refuse startup. Changing
+`Storage`, because `KeysPath` and `Storage=Store` together also refuse startup. Changing
 `Spark:DataProtection:ApplicationName` (`CodeCoverage`) or the key location signs every user out
 once.
 

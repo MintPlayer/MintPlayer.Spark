@@ -15,7 +15,7 @@ namespace MintPlayer.Spark.Configuration;
 /// <para>
 /// ⚠️ <see cref="KeysPath"/> is only as durable as the folder it names. A path inside a container
 /// that is not a mounted volume loses its keys on redeploy exactly as the default does; making it
-/// durable is the operator's responsibility. <see cref="SparkDataProtectionStorage.RavenDb"/> keeps
+/// durable is the operator's responsibility. <see cref="SparkDataProtectionStorage.Store"/> keeps
 /// the keys next to the rest of the application's state instead.
 /// </para>
 /// </remarks>
@@ -48,7 +48,8 @@ public enum SparkDataProtectionStorage
     None,
 
     /// <summary>
-    /// In RavenDB, as documents under <c>DataProtectionKeys/</c> in the application's database.
+    /// In the application's own database, through the store provider's <c>ISparkDataProtectionKeyStore</c>
+    /// (RavenDB: documents under <c>DataProtectionKeys/</c>).
     /// </summary>
-    RavenDb,
+    Store,
 }

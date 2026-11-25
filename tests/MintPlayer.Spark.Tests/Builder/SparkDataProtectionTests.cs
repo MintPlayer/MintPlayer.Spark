@@ -68,7 +68,7 @@ public class SparkDataProtectionTests : SparkTestDriver
         var spark = SparkProvider(new()
         {
             ["Spark:DataProtection:ApplicationName"] = "CodeCoverage",
-            ["Spark:DataProtection:Storage"] = "RavenDb",
+            ["Spark:DataProtection:Storage"] = "Store",
         });
 
         spark.CreateProtector(Purpose).Unprotect(ciphertext).Should().Be("signed-in");
@@ -86,7 +86,7 @@ public class SparkDataProtectionTests : SparkTestDriver
         var spark = SparkProvider(new()
         {
             ["Spark:DataProtection:ApplicationName"] = "SomethingElse",
-            ["Spark:DataProtection:Storage"] = "RavenDb",
+            ["Spark:DataProtection:Storage"] = "Store",
         });
 
         var act = () => spark.CreateProtector(Purpose).Unprotect(ciphertext);
@@ -97,7 +97,7 @@ public class SparkDataProtectionTests : SparkTestDriver
     [Fact]
     public void New_keys_land_under_the_same_prefix_and_collection()
     {
-        var spark = SparkProvider(new() { ["Spark:DataProtection:Storage"] = "RavenDb" });
+        var spark = SparkProvider(new() { ["Spark:DataProtection:Storage"] = "Store" });
 
         spark.CreateProtector(Purpose).Protect("anything");
 
@@ -132,7 +132,7 @@ public class SparkDataProtectionTests : SparkTestDriver
     public void Naming_two_places_for_the_key_ring_is_refused()
     {
         var act = () => SparkDataProtection.Validate(
-            new SparkDataProtectionOptions { KeysPath = "/keys", Storage = SparkDataProtectionStorage.RavenDb },
+            new SparkDataProtectionOptions { KeysPath = "/keys", Storage = SparkDataProtectionStorage.Store },
             new HostingEnvironment { EnvironmentName = Environments.Development });
 
         act.Should().Throw<InvalidOperationException>().WithMessage("*both KeysPath*");

@@ -30,7 +30,15 @@ rounds, milestones and status. Branch `feat/536-sql-server-provider`, draft PR #
 - **Upstream:** S3 and S19 found two EF bugs. Their pull requests, dotnet/efcore#39784 and npgsql/efcore.pg#4163,
   are open with the CLA signed. The workarounds are in D24 (`FreshSnapshotMigrationsAssembly`) and D33
   (`AdvisoryLockHistoryRepository`), and they go once the fixes ship (§5).
-- **Next: M2,** `Id<T>` and the typed contract on RavenDB and InMemory (§4 item 2).
+- **Done: M2,** `Id<T>` and the typed contract on RavenDB and InMemory (§4 item 2). **In progress: M3** (§4 item 3).
+  - **Release note:** `docs/release-notes-697.md` gets each milestone's breaking changes as they land.
+  - **M3a, core clean-ups (PRD §2.3):** `SparkDataProtectionStorage.RavenDb` → `Store` (no shim; production
+    sets only `KeysPath`, so only test hosts and docs changed; the "set Storage = File" hint named a value that
+    never existed and now says `KeysPath`). `SparkStoreRequirement` with no provider asks for any store provider;
+    a named provider still names its `Use` method (tests `No_store_and_no_provider_named_…`,
+    `No_store_with_a_provider_named_…`). The LiveHub, index-binding and composed-query messages are neutral. The
+    expiration floor stays on every provider, so one setting runs on all of them, and its message says the limit is
+    RavenDB's. Still open in M3: the query seam (S2b), the neutral view declarations (S5/D32), IoC (D34).
   - Order: the core pieces in `libs/` first (the struct, the model registry, the generator for `__DocumentId`, JSON,
     the route binder), then the feature libraries, then the apps.
   - It touches the three production apps (CodeCoverage, SeoTester, MintPlayer). RavenDB stays green at the end of the

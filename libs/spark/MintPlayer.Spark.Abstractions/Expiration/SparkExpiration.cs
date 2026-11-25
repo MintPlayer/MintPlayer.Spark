@@ -41,9 +41,10 @@ public static class SparkExpiration
         if (frequency < MinimumDeleteFrequency)
             throw new InvalidOperationException(
                 $"Spark:Expiration:DeleteFrequency is {frequency}, more often than every {MinimumDeleteFrequency.TotalHours:0} hours. " +
-                "The RavenDB Community licence refuses that and the server dies on the configuration change; a Developer " +
-                "licence accepts it, so it would pass every test and fail in production. Use 36 hours or more. Expired " +
-                "documents are hidden from every Spark read regardless of when the sweep deletes them.");
+                "On the RavenDB provider, the Community licence refuses that and the server dies on the configuration change; " +
+                "a Developer licence accepts it, so it would pass every test and fail in production. The floor holds on every " +
+                "provider, so one setting runs on all of them. Use 36 hours or more. Expired documents are hidden from every " +
+                "Spark read regardless of when the sweep deletes them.");
         return (long)Math.Ceiling(frequency.TotalSeconds);
     }
 

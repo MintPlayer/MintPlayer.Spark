@@ -29,7 +29,7 @@ internal static class SparkIndexBindingStartupCheck
             :
             [
                 $"The {store.ProviderName} provider has no indexes, but the model binds one: {string.Join(", ", bindings)}. "
-                + "Remove the indexName (the query then reads the collection), or use a provider with indexes (spark.UseRavenDb()).",
+                + "Remove the indexName (the query then reads the collection), or use a provider with indexes (one whose capabilities include Indexes).",
             ];
     }
 }

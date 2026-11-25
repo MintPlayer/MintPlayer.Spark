@@ -31,7 +31,7 @@ public class UserSecretsAtRestTests : SparkTestDriver
         services.AddSingleton<IConfiguration>(new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
         {
             ["Spark:DataProtection:ApplicationName"] = applicationName,
-            ["Spark:DataProtection:Storage"] = "RavenDb",
+            ["Spark:DataProtection:Storage"] = "Store",
         }).Build());
         services.AddSingleton<IHostEnvironment>(new HostingEnvironment { EnvironmentName = "Production", ContentRootPath = Path.GetTempPath() });
         services.AddSingleton(Store);

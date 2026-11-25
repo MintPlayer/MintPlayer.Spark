@@ -2,7 +2,7 @@ FROM mcr.microsoft.com/dotnet/aspnet:11.0 AS base
 # Mount point for the Data Protection key ring. Outside Development Spark refuses to start unless the
 # key ring is persisted, so run the image with a volume mounted here and
 # Spark__DataProtection__KeysPath=/var/lib/demoapp/dataprotection-keys (or with
-# Spark__DataProtection__Storage=RavenDb instead). Created as root and handed to `app` because a
+# Spark__DataProtection__Storage=Store instead). Created as root and handed to `app` because a
 # fresh named volume copies the mount point's ownership from the image: without this the directory
 # would be root-owned and the non-root app could not write its first key.
 RUN mkdir -p /var/lib/demoapp/dataprotection-keys && chown app:app /var/lib/demoapp/dataprotection-keys

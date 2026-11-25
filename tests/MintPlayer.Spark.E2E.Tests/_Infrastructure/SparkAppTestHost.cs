@@ -268,7 +268,7 @@ public abstract class SparkAppTestHost : IAsyncLifetime
 
     /// <summary>
     /// Adds the app's own entries to the generated <c>appsettings.{Env}.json</c>. The base has already set
-    /// <c>Spark:RavenDb</c>, <c>Spark:DataProtection:Storage = RavenDb</c>, <c>Spark:HttpsRedirection = false</c>,
+    /// <c>Spark:RavenDb</c>, <c>Spark:DataProtection:Storage = Store</c>, <c>Spark:HttpsRedirection = false</c>,
     /// <c>Spark:RateLimiter:PermitLimit</c> and (in pickup mode) <c>Spark:Mail:PickupFolder</c>; an entry set
     /// here wins. A file the app reads from its content root is registered with
     /// <see cref="RegisterTemporaryFile"/> so dispose removes it.
@@ -835,7 +835,7 @@ public abstract class SparkAppTestHost : IAsyncLifetime
             },
             // #460 D5: the app's base appsettings no longer choose a key store, and outside Development
             // Spark refuses to start without one. The key ring lives in the per-host database.
-            ["DataProtection"] = new JsonObject { ["Storage"] = "RavenDb" },
+            ["DataProtection"] = new JsonObject { ["Storage"] = "Store" },
             ["HttpsRedirection"] = false,
             ["RateLimiter"] = new JsonObject { ["PermitLimit"] = RateLimitPermits },
             // The identity provider's machine endpoints have a budget of their own (PRD D9); inert in apps

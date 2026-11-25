@@ -40,11 +40,19 @@ public class SparkStoreRequirementTests
     }
 
     [Fact]
-    public void No_store_says_which_provider_to_register()
+    public void No_store_and_no_provider_named_asks_for_any_store_provider()
     {
         var unmet = SparkStoreRequirementExtensions.Unmet([new SparkStoreRequirement("Spark.Messaging", SparkStoreCapabilities.Subscriptions)], null);
 
-        unmet.Should().Equal("Spark.Messaging needs a store, and none is registered: call spark.UseRavenDb() in AddSpark.");
+        unmet.Should().Equal("Spark.Messaging needs a store, and none is registered: call a store provider's Use method in AddSpark, such as spark.UseRavenDb() or spark.UseSqlServer().");
+    }
+
+    [Fact]
+    public void No_store_with_a_provider_named_says_which_one_to_register()
+    {
+        var unmet = SparkStoreRequirementExtensions.Unmet([new SparkStoreRequirement("Spark.Apps", SparkStoreCapabilities.None, SparkStoreProviders.RavenDb)], null);
+
+        unmet.Should().Equal("Spark.Apps needs a store, and none is registered: call spark.UseRavenDb() in AddSpark.");
     }
 
     // ---- D20: index bindings in the model -------------------------------------------------------------------

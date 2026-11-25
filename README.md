@@ -338,7 +338,7 @@ The other demos run the same way, each from its own project directory:
 docker build -f apps/DemoApp/DemoApp/Dockerfile -t demoapp .
 ```
 
-The image listens on 8080 as the non-root `app` user. Outside Development, Spark refuses to start unless the Data Protection key ring is persisted, so mount a volume at `/var/lib/demoapp/dataprotection-keys` and pass `-e Spark__DataProtection__KeysPath=/var/lib/demoapp/dataprotection-keys` (or pass `-e Spark__DataProtection__Storage=RavenDb` instead). Point it at a database with `-e Spark__RavenDb__Urls__0=http://<host>:8080`.
+The image listens on 8080 as the non-root `app` user. Outside Development, Spark refuses to start unless the Data Protection key ring is persisted, so mount a volume at `/var/lib/demoapp/dataprotection-keys` and pass `-e Spark__DataProtection__KeysPath=/var/lib/demoapp/dataprotection-keys` (or pass `-e Spark__DataProtection__Storage=Store` instead). Point it at a database with `-e Spark__RavenDb__Urls__0=http://<host>:8080`.
 
 > **RavenDB note:** the demos connect to `http://localhost:8080` (`appsettings.json` → `Spark:RavenDb:Urls`). If you point them at a **standalone/local RavenDB** instead of the Docker container above, make sure its `PublicServerUrl` is `http://localhost:8080` — *not* `http://host.docker.internal:8080`. RavenDB advertises `PublicServerUrl` through its cluster topology and the client routes **all** subsequent requests there (caching it under `apps/**/bin/**/*.raven-cluster-topology`); a `host.docker.internal` value the host can't reach makes every request fail with `ServiceUnavailable`. `host.docker.internal` is only correct when a *container* must reach a host-installed database.
 
