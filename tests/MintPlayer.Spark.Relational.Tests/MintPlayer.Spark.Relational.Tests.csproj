@@ -33,6 +33,12 @@
     one, a server comes from SPARK_TEST_SQLSERVER / SPARK_TEST_POSTGRESQL (a connection string; each class creates
     and drops its own database). Without the variable a provider's tests are skipped.
   -->
+  <!-- The store conformance suite every provider runs (#551 M7); its RavenDB and InMemory subclasses stay in Spark.Tests. -->
+  <ItemGroup>
+    <Compile Include="..\MintPlayer.Spark.Tests\Storage\SparkStoreConformanceTests.cs" Link="Storage\SparkStoreConformanceTests.cs" />
+    <Compile Include="..\MintPlayer.Spark.Tests\Storage\SparkAtomicValuesConformanceTests.cs" Link="Storage\SparkAtomicValuesConformanceTests.cs" />
+  </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\..\libs\spark\MintPlayer.Spark.SqlServer\MintPlayer.Spark.SqlServer.csproj" />
     <ProjectReference Include="..\..\libs\spark\MintPlayer.Spark.PostgreSql\MintPlayer.Spark.PostgreSql.csproj" />

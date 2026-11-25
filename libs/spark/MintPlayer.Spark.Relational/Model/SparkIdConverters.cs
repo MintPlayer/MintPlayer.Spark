@@ -19,7 +19,7 @@ internal static class SparkIdConverters
     {
         var clr = Nullable.GetUnderlyingType(propertyType) ?? propertyType;
         if (target.Key == SparkKeyShape.Text)
-            return clr == typeof(string) ? null : Create(typeof(TextIdConverter<>), clr, target.Prefix);
+            return Create(clr == typeof(string) ? typeof(LowerTextConverter) : typeof(TextIdConverter<>), clr, target.Prefix);
         var definition = target.Key switch
         {
             SparkKeyShape.Guid => clr == typeof(string) ? typeof(GuidTextConverter) : typeof(GuidIdConverter<>),
@@ -33,7 +33,7 @@ internal static class SparkIdConverters
     public static ValueConverter? ForUnstored(Type propertyType)
     {
         var clr = Nullable.GetUnderlyingType(propertyType) ?? propertyType;
-        return clr == typeof(string) ? null : Create(typeof(TextIdConverter<>), clr, "");
+        return Create(clr == typeof(string) ? typeof(LowerTextConverter) : typeof(TextIdConverter<>), clr, "");
     }
 
     private static ValueConverter Create(Type definition, Type clr, string prefix)
@@ -73,6 +73,10 @@ internal static class SparkIdConverters
 #pragma warning disable CS9113 // the prefix is part of every converter's constructor; whole-text ids don't need it
     private sealed class TextIdConverter<T>(string prefix) : ValueConverter<Id<T>, string>(
         id => Lower(id.Value), text => Id<T>.FromTrusted(text));
+
+    /// <summary>A whole-text string id, lowered on the way in (D7), so <c>x.Id == "People/1"</c> finds <c>people/1</c>.</summary>
+    private sealed class LowerTextConverter(string prefix) : ValueConverter<string, string>(
+        text => Lower(text), text => text);
 #pragma warning restore CS9113
 
     private sealed class GuidTextConverter(string prefix) : ValueConverter<string, Guid>(

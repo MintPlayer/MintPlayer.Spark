@@ -24,7 +24,27 @@ public sealed class PostgreSqlSparkDialect : SparkRelationalDialect
 
     public override string KeyCollation => "C";
 
+    /// <summary>
+    /// A <see cref="DateTime"/> is <c>timestamp without time zone</c>, as <c>datetime2</c> is on SQL Server: Npgsql refuses
+    /// to write a non-UTC value to <c>timestamptz</c>. A <see cref="DateTimeOffset"/> is <c>timestamptz</c>, written as
+    /// its UTC instant (Npgsql refuses other offsets too); it reads back with offset 0, the same instant (D5).
+    /// </summary>
+    public override void ConfigureConventions(ModelConfigurationBuilder builder)
+    {
+        builder.Properties<DateTime>().HaveColumnType("timestamp without time zone").HaveConversion<TicksDateTimeConverter>();
+        builder.Properties<DateTimeOffset>().HaveConversion<UtcDateTimeOffsetConverter>();
+    }
+
+    /// <summary>The ticks as written, whatever the kind (Npgsql refuses a UTC value here too): what <c>datetime2</c> keeps.</summary>
+    private sealed class TicksDateTimeConverter() : Microsoft.EntityFrameworkCore.Storage.ValueConversion.ValueConverter<DateTime, DateTime>(
+        value => DateTime.SpecifyKind(value, DateTimeKind.Unspecified), value => value);
+
+    private sealed class UtcDateTimeOffsetConverter() : Microsoft.EntityFrameworkCore.Storage.ValueConversion.ValueConverter<DateTimeOffset, DateTimeOffset>(
+        value => value.ToUniversalTime(), value => value);
+
     public override void JsonColumn(PropertyBuilder property) => property.HasColumnType("jsonb");
+
+    public override string LockRowSql(string table, string column) => $"SELECT 1 FROM {table} WHERE {column} = {{0}} FOR UPDATE";
 
     /// <summary>PostgreSQL names the constraint and the column in fields of its own, never only in the message.</summary>
     public override SparkConstraintError? Classify(Exception databaseException)

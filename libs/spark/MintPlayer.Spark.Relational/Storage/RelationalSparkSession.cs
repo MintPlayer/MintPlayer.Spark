@@ -4,6 +4,7 @@ using System.Reflection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Query;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Reflection;
 using MintPlayer.Spark.Abstractions.Storage;
@@ -34,7 +35,13 @@ public sealed partial class RelationalSparkSession : ISparkSession
     /// <summary>A stored instance whose row existed, mapped to the loaded instance its values were copied onto.</summary>
     private readonly Dictionary<object, object> aliases = new(ReferenceEqualityComparer.Instance);
 
-    public RelationalSparkSession(SparkDbContext db) => this.db = db;
+    private readonly RelationalSparkStore? store;
+
+    public RelationalSparkSession(SparkDbContext db, RelationalSparkStore? store = null)
+    {
+        this.db = db;
+        this.store = store;
+    }
 
     public SparkDbContext Context => db;
 
@@ -44,7 +51,21 @@ public sealed partial class RelationalSparkSession : ISparkSession
 
     public int NumberOfRequests { get; private set; }
 
+    /// <summary>RavenDB's default (30), so a code path that would exhaust a RavenDB session fails here too.</summary>
     public int MaxNumberOfRequests { get; set; } = 30;
+
+    /// <summary>Set while one session call issues several statements (a save, a load's join tables): they count as one.</summary>
+    private bool quiet;
+
+    private void Request()
+    {
+        if (quiet)
+            return;
+        if (++NumberOfRequests > MaxNumberOfRequests)
+            throw new InvalidOperationException(
+                $"The maximum number of requests ({MaxNumberOfRequests}) allowed for this session has been reached. "
+                + "Use SparkSessionExtensions.IgnoreMaxRequests() around a path that needs more.");
+    }
 
     public event Action<object>? BeforeStore;
 
@@ -63,7 +84,7 @@ public sealed partial class RelationalSparkSession : ISparkSession
 
     public async Task<List<T>> ToListAsync<T>(IQueryable<T> query, CancellationToken cancellationToken = default)
     {
-        NumberOfRequests++;
+        Request();
         var rows = await JoinRewriter.Rewrite(db, query).ToListAsync(cancellationToken);
         await HydrateAsync(rows.Cast<object>(), cancellationToken);
         return rows;
@@ -71,7 +92,7 @@ public sealed partial class RelationalSparkSession : ISparkSession
 
     public Task<int> CountAsync<T>(IQueryable<T> query, CancellationToken cancellationToken = default)
     {
-        NumberOfRequests++;
+        Request();
         return JoinRewriter.Rewrite(db, query).CountAsync(cancellationToken);
     }
 
@@ -88,7 +109,7 @@ public sealed partial class RelationalSparkSession : ISparkSession
         var found = new Dictionary<string, T>(StringComparer.Ordinal);
         if (keys.Count > 0)
         {
-            NumberOfRequests++;
+            Request();
             var rows = await WhereKeyIn(db.Set<T>(), table, keys).ToListAsync(cancellationToken);
             await HydrateAsync(rows, cancellationToken);
             foreach (var row in rows)
@@ -142,7 +163,7 @@ public sealed partial class RelationalSparkSession : ISparkSession
             throw new NotSupportedException(
                 $"{typeof(T).Name} has {table.Key} ids: a prefix scan can cover the whole collection ('{table.Prefix}'), not part of a key.");
 
-        NumberOfRequests++;
+        Request();
         var rows = await query.OrderBy(x => EF.Property<object>(x, table.IdProperty.Name)).Skip(start).Take(pageSize).ToListAsync(cancellationToken);
         await HydrateAsync(rows, cancellationToken);
         return rows;
@@ -217,7 +238,7 @@ public sealed partial class RelationalSparkSession : ISparkSession
         var keys = ids.Select(table.KeyValue).OfType<object>().ToList();
         if (keys.Count == 0)
             return [];
-        NumberOfRequests++;
+        Request();
         var task = (Task<Dictionary<string, long>>)VersionsOfTypedMethod.MakeGenericMethod(table.Root, table.IdProperty.PropertyType)
             .Invoke(this, [table, keys, cancellationToken])!;
         return await task;
@@ -327,17 +348,53 @@ public sealed partial class RelationalSparkSession : ISparkSession
         db.ChangeTracker.DetectChanges();
         foreach (var entry in Roots().Where(e => e.State is EntityState.Added or EntityState.Modified).ToList())
             BeforeStore?.Invoke(entry.Entity);
+        if (store?.BeforeSaveHooks is { Count: > 0 } hooks)
+        {
+            db.ChangeTracker.DetectChanges();
+            foreach (var entry in Roots().Where(e => e.State is EntityState.Added or EntityState.Modified).ToList())
+            {
+                var expiry = entry.Property(SparkDbContext.ExpiresProperty);
+                foreach (var hook in hooks)
+                    hook(entry.Entity, entry.State == EntityState.Added, value => expiry.CurrentValue = value?.ToUniversalTime());
+            }
+        }
 
-        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
-        await ResolveExistingRowsAsync(cancellationToken);
-        await ResolveUnversionedDeletesAsync(cancellationToken);
-        var changedOwners = await WriteJoinRowsAsync(cancellationToken);
-        MoveVersions(changedOwners);
+        Request();
+        quiet = true;
+        try
+        {
+            await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+            await ResolveExistingRowsAsync(cancellationToken);
+            await ResolveUnversionedDeletesAsync(cancellationToken);
+            await ApplyPatchesAsync(cancellationToken);
+            var changedOwners = await WriteJoinRowsAsync(cancellationToken);
+            MoveVersions(changedOwners);
+            await ApplyReservationsAsync(cancellationToken);
 
-        NumberOfRequests++;
+            await WriteAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+        }
+        finally
+        {
+            quiet = false;
+        }
+        db.ChangeTracker.AcceptAllChanges();
+        expectations.Clear();
+        unversionedDeletes.Clear();
+        patches.Clear();
+        reservations.Clear();
+    }
+
+    private async Task WriteAsync(CancellationToken cancellationToken)
+    {
         try
         {
             await db.SaveChangesAsync(acceptAllChangesOnSuccess: false, cancellationToken);
+        }
+        catch (DbUpdateException ex) when (ex.Entries.FirstOrDefault(e => e.Entity is SparkReservationRow) is { Entity: SparkReservationRow row })
+        {
+            // Another unit of work claimed or moved the key between our read and our write.
+            throw new SparkReservationTakenException(row.Key, "a concurrent unit of work");
         }
         catch (DbUpdateConcurrencyException ex)
         {
@@ -347,10 +404,6 @@ public sealed partial class RelationalSparkSession : ISparkSession
         {
             throw SparkConstraintErrors.Translate(db, db.Setup.Dialect, ex);
         }
-        await transaction.CommitAsync(cancellationToken);
-        db.ChangeTracker.AcceptAllChanges();
-        expectations.Clear();
-        unversionedDeletes.Clear();
     }
 
     /// <summary>
@@ -378,12 +431,14 @@ public sealed partial class RelationalSparkSession : ISparkSession
                     throw new SparkStoreConcurrencyException($"'{id}' was expected not to exist.");
 
                 var incoming = entry.Entity;
+                var expiry = entry.Property(SparkDbContext.ExpiresProperty).CurrentValue; // a PUT replaces it, as on RavenDB
                 entry.State = EntityState.Detached;
                 foreach (var owned in OwnedEntries(id))
                     owned.State = EntityState.Detached;
                 var loaded = (await LoadAsync(incoming.GetType(), id, cancellationToken))
                     ?? throw new SparkStoreConcurrencyException($"'{id}' was deleted while it was being stored.");
                 CopyOnto(incoming, loaded);
+                db.Entry(loaded).Property(SparkDbContext.ExpiresProperty).CurrentValue = expiry;
                 aliases[incoming] = loaded;
                 var version = db.Entry(loaded).Property(SparkDbContext.VersionProperty);
                 version.OriginalValue = expected is { Length: > 0 } ? ParseVersion(expected) : stored;
@@ -445,7 +500,7 @@ public sealed partial class RelationalSparkSession : ISparkSession
             var owner = Model.RequireTable(join.Owner);
             var set = db.Set<Dictionary<string, object>>(join.Name);
             var ownerKeys = mine.Select(o => owner.IdProperty.GetValue(o)!).ToList();
-            NumberOfRequests++;
+            Request();
             var stored = await set.Where(JoinOwnerIn(owner, ownerKeys)).ToListAsync(cancellationToken);
             var byOwner = stored.ToLookup(r => SparkIdValues.ToText(r[SparkDbContext.OwnerIdProperty])!, StringComparer.OrdinalIgnoreCase);
             foreach (var entity in mine)
@@ -488,28 +543,212 @@ public sealed partial class RelationalSparkSession : ISparkSession
         }
     }
 
-    // ---- set-based and S6 members (#536 M4b) ----
+    // ---- S6: expiry, streams, reservations, set-based writes, appends (#536 M4b) ----
 
-    public void SetExpiry(object entity, DateTimeOffset? expiresAt) => throw NotYet();
+    /// <summary>The row's <see cref="SparkDbContext.ExpiresProperty"/> column, in UTC; a change to it alone is a write.</summary>
+    public void SetExpiry(object entity, DateTimeOffset? expiresAt)
+        => ExpiryOf(entity).CurrentValue = expiresAt?.ToUniversalTime();
 
-    public DateTimeOffset? GetExpiry(object entity) => throw NotYet();
+    public DateTimeOffset? GetExpiry(object entity) => (DateTimeOffset?)ExpiryOf(entity).CurrentValue;
 
-    public IAsyncEnumerable<SparkStreamResult<T>> StreamAsync<T>(IQueryable<T> query, CancellationToken cancellationToken = default) => throw NotYet();
+    private PropertyEntry ExpiryOf(object entity)
+    {
+        ArgumentNullException.ThrowIfNull(entity);
+        return TrackedEntry(entity) is { State: not EntityState.Detached } entry
+            ? entry.Property(SparkDbContext.ExpiresProperty)
+            : throw new InvalidOperationException("The session does not track this entity: load or store it first.");
+    }
 
-    public void Reserve(string key, string ownerId) => throw NotYet();
+    /// <summary>
+    /// Every row of <paramref name="query"/>, untracked, with its version. The rows are read before the first is yielded:
+    /// one connection cannot read a result and the join tables at once.
+    /// </summary>
+    public async IAsyncEnumerable<SparkStreamResult<T>> StreamAsync<T>(IQueryable<T> query,
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        Request();
+        var x = Expression.Parameter(typeof(T), "x");
+        var version = Expression.Call(typeof(EF), nameof(EF.Property), [typeof(long)], x, Expression.Constant(SparkDbContext.VersionProperty));
+        var pair = Expression.New(typeof(KeyValuePair<T, long>).GetConstructor([typeof(T), typeof(long)])!, x, version);
+        var rewritten = JoinRewriter.Rewrite(db, query);
+        var untracked = rewritten.Provider.CreateQuery<T>(Expression.Call(AsNoTrackingMethod.MakeGenericMethod(typeof(T)), rewritten.Expression));
+        var withVersions = untracked
+            .Select(Expression.Lambda<Func<T, KeyValuePair<T, long>>>(pair, x));
+        var rows = await withVersions.ToListAsync(cancellationToken);
+        quiet = true;
+        try
+        {
+            await HydrateAsync(rows.Select(r => (object)r.Key!), cancellationToken);
+        }
+        finally
+        {
+            quiet = false;
+        }
+        foreach (var (document, stored) in rows)
+            yield return new SparkStreamResult<T>(SparkIdValues.ReadEntityId(document!)?.ToLowerInvariant(), document, FormatVersion(stored));
+    }
 
-    public void Release(string key, string ownerId) => throw NotYet();
+    private static readonly MethodInfo AsNoTrackingMethod = typeof(EntityFrameworkQueryableExtensions).GetMethod(nameof(EntityFrameworkQueryableExtensions.AsNoTracking))!;
 
-    public Task<string?> GetReservationAsync(string key, CancellationToken cancellationToken = default) => throw NotYet();
+    private readonly List<(string Key, string OwnerId, bool Claim)> reservations = [];
 
-    public Task<long> DeleteWhereAsync<T>(Expression<Func<T, bool>> predicate, CancellationToken cancellationToken = default) where T : class => throw NotYet();
+    public void Reserve(string key, string ownerId) => reservations.Add((key, ownerId.ToLowerInvariant(), true));
 
-    public void PatchAppend<T, TItem>(string id, Expression<Func<T, IEnumerable<TItem>>> list, TItem item) where T : class => throw NotYet();
+    public void Release(string key, string ownerId) => reservations.Add((key, ownerId.ToLowerInvariant(), false));
 
-    public Task<long> UpdateWhereAsync<T>(Expression<Func<T, bool>> predicate, Action<SparkSetters<T>> set, CancellationToken cancellationToken = default) where T : class => throw NotYet();
+    public async Task<string?> GetReservationAsync(string key, CancellationToken cancellationToken = default)
+    {
+        Request();
+        return await db.Set<SparkReservationRow>().AsNoTracking().Where(r => r.Key == key).Select(r => r.OwnerId).FirstOrDefaultAsync(cancellationToken);
+    }
 
-    private static NotSupportedException NotYet([System.Runtime.CompilerServices.CallerMemberName] string member = "")
-        => new($"{member} is not implemented on the relational providers yet (#536 M4b).");
+    /// <summary>
+    /// Claims and releases, in the save's transaction. A key held by another document that still exists (and is not deleted
+    /// by this save) is taken; one whose holder is gone is taken over. A concurrent claim fails the insert or the
+    /// version check of the row, and so the save.
+    /// </summary>
+    private async Task ApplyReservationsAsync(CancellationToken cancellationToken)
+    {
+        foreach (var (key, ownerId, claim) in reservations)
+        {
+            var row = await db.Set<SparkReservationRow>().FindAsync([key], cancellationToken);
+            if (!claim)
+            {
+                if (row is not null && string.Equals(row.OwnerId, ownerId, StringComparison.OrdinalIgnoreCase))
+                    db.Remove(row);
+                continue;
+            }
+            if (row is null)
+            {
+                db.Add(new SparkReservationRow { Key = key, OwnerId = ownerId, Version = 1 });
+                continue;
+            }
+            var releasedHere = db.Entry(row).State == EntityState.Deleted;
+            if (!releasedHere && string.Equals(row.OwnerId, ownerId, StringComparison.OrdinalIgnoreCase))
+                continue;
+            if (!releasedHere && await HolderExistsAsync(row.OwnerId, cancellationToken))
+                throw new SparkReservationTakenException(key, row.OwnerId);
+            db.Entry(row).State = EntityState.Unchanged;
+            row.OwnerId = ownerId;
+            row.Version++;
+        }
+    }
+
+    private async Task<bool> HolderExistsAsync(string holderId, CancellationToken cancellationToken)
+    {
+        var lowered = holderId.ToLowerInvariant();
+        if (Roots().Any(e => string.Equals(GetId(e.Entity), lowered, StringComparison.Ordinal)
+                && e.State == EntityState.Deleted))
+            return false;
+        var table = Model.Tables.Where(t => lowered.StartsWith(t.Prefix, StringComparison.Ordinal) || t.Key == SparkKeyShape.Text && t.KeyValue(lowered) is not null)
+            .OrderByDescending(t => lowered.StartsWith(t.Prefix, StringComparison.Ordinal))
+            .FirstOrDefault();
+        return table is not null && (await VersionsOfAsync(table.Root, [lowered], cancellationToken)).Count > 0;
+    }
+
+    /// <summary>
+    /// <c>DELETE … WHERE predicate</c>, now and outside the unit of work: no hooks, and tracked copies go stale. Child and
+    /// join rows go by <c>ON DELETE CASCADE</c>; a row another row still references fails as a validation error (D30).
+    /// </summary>
+    public async Task<long> DeleteWhereAsync<T>(Expression<Func<T, bool>> predicate, CancellationToken cancellationToken = default) where T : class
+    {
+        Model.RequireTable(typeof(T));
+        Request();
+        try
+        {
+            return await JoinRewriter.Rewrite(db, db.Set<T>().Where(predicate)).ExecuteDeleteAsync(cancellationToken);
+        }
+        catch (DbUpdateException ex)
+        {
+            throw SparkConstraintErrors.Translate(db, db.Setup.Dialect, ex);
+        }
+    }
+
+    /// <summary>
+    /// <c>UPDATE … SET m = @v, Version = Version + 1 WHERE predicate</c>, now and outside the unit of work. Top-level
+    /// members only: a member inside a JSON column cannot be set in place.
+    /// </summary>
+    public async Task<long> UpdateWhereAsync<T>(Expression<Func<T, bool>> predicate, Action<SparkSetters<T>> set, CancellationToken cancellationToken = default) where T : class
+    {
+        Model.RequireTable(typeof(T));
+        var setters = new SparkSetters<T>();
+        set(setters);
+        foreach (var setter in setters.Setters)
+            if (setter.Members.Count != 1)
+                throw new NotSupportedException($"UpdateWhere sets top-level members on the relational providers; '{setter.Path}' is inside a JSON column.");
+
+        Request();
+        try
+        {
+            return await JoinRewriter.Rewrite(db, db.Set<T>().Where(predicate)).ExecuteUpdateAsync(builder =>
+            {
+                foreach (var setter in setters.Setters)
+                    SetPropertyMethod.MakeGenericMethod(typeof(T), setter.Members[0].PropertyType)
+                        .Invoke(null, [builder, setter.Members[0], setter.Value]);
+                builder.SetProperty(x => EF.Property<long>(x, SparkDbContext.VersionProperty), x => EF.Property<long>(x, SparkDbContext.VersionProperty) + 1);
+            }, cancellationToken);
+        }
+        catch (DbUpdateException ex)
+        {
+            throw SparkConstraintErrors.Translate(db, db.Setup.Dialect, ex);
+        }
+    }
+
+    private static readonly MethodInfo SetPropertyMethod = typeof(RelationalSparkSession).GetMethod(nameof(SetProperty), BindingFlags.NonPublic | BindingFlags.Static)!;
+
+    private static void SetProperty<T, TValue>(UpdateSettersBuilder<T> builder, PropertyInfo member, object? value) where T : class
+    {
+        var x = Expression.Parameter(typeof(T), "x");
+        builder.SetProperty(Expression.Lambda<Func<T, TValue>>(Expression.Property(x, member), x), (TValue)value!);
+    }
+
+    private readonly List<(Type Type, string Id, Func<object, object?> List, object? Item)> patches = [];
+
+    /// <summary>
+    /// Appended by <see cref="SaveChangesAsync"/> to the stored row: it locks the row, reads it again and appends, so
+    /// appends from units of work that read the row at the same time all land.
+    /// </summary>
+    public void PatchAppend<T, TItem>(string id, Expression<Func<T, IEnumerable<TItem>>> list, TItem item) where T : class
+    {
+        Model.RequireTable(typeof(T));
+        var getter = list.Compile();
+        patches.Add((typeof(T), id, entity => getter((T)entity), item));
+    }
+
+    private async Task ApplyPatchesAsync(CancellationToken cancellationToken)
+    {
+        if (patches.Count == 0)
+            return;
+        var helper = db.GetService<Microsoft.EntityFrameworkCore.Storage.ISqlGenerationHelper>();
+        foreach (var (type, id, getList, item) in patches)
+        {
+            var table = Model.RequireTable(type);
+            var key = table.KeyValue(id) ?? throw new InvalidOperationException($"'{id}' is not an id of collection {table.Name}.");
+            var entityType = db.Model.FindEntityType(table.Root)!;
+            var sql = db.Setup.Dialect.LockRowSql(
+                helper.DelimitIdentifier(table.Name, entityType.GetSchema()),
+                helper.DelimitIdentifier(entityType.FindProperty(table.IdProperty.Name)!.GetColumnName()));
+            var provider = entityType.FindProperty(table.IdProperty.Name)!.GetTypeMapping().Converter;
+            await db.Database.ExecuteSqlRawAsync(sql, [provider?.ConvertToProvider(key) ?? key], cancellationToken);
+
+            object entity;
+            if (TrackedById(type, id) is { } tracked)
+            {
+                if (tracked.State != EntityState.Unchanged || OwnedEntries(GetId(tracked.Entity)).Any(e => e.State != EntityState.Unchanged))
+                    throw new InvalidOperationException($"PatchAppend on '{id}', which this session has changed: append to the list instead.");
+                await tracked.ReloadAsync(cancellationToken);
+                entity = tracked.Entity;
+            }
+            else
+                entity = await LoadAsync(type, id, cancellationToken)
+                    ?? throw new SparkStoreConcurrencyException($"'{id}' does not exist: there is nothing to append to.");
+
+            if (getList(entity) is not System.Collections.IList target)
+                throw new NotSupportedException($"PatchAppend needs a list on {type.Name}.");
+            target.Add(item);
+        }
+        db.ChangeTracker.DetectChanges();
+    }
 
     // ---- the identity map ----
 
@@ -550,6 +789,8 @@ public sealed partial class RelationalSparkSession : ISparkSession
         expectations.Clear();
         unversionedDeletes.Clear();
         aliases.Clear();
+        patches.Clear();
+        reservations.Clear();
     }
 
     public void Dispose() => db.Dispose();
@@ -559,7 +800,7 @@ public sealed partial class RelationalSparkSession : ISparkSession
     private object Resolve(object entity) => aliases.TryGetValue(entity, out var loaded) ? loaded : entity;
 
     private IEnumerable<EntityEntry> Roots()
-        => db.ChangeTracker.Entries().Where(e => !e.Metadata.IsOwned() && !e.Metadata.HasSharedClrType);
+        => db.ChangeTracker.Entries().Where(e => !e.Metadata.IsOwned() && !e.Metadata.HasSharedClrType && Model.TableOf(e.Metadata.ClrType) is not null);
 
     private IEnumerable<EntityEntry> OwnedEntries(string? ownerId)
         => db.ChangeTracker.Entries().Where(e => e.Metadata.IsOwned()
@@ -587,7 +828,6 @@ public sealed partial class RelationalSparkSession : ISparkSession
             if (owners.Count == 0)
                 continue;
             var owner = Model.RequireTable(join.Owner);
-            NumberOfRequests++;
             var links = await db.Set<Dictionary<string, object>>(join.Name).AsNoTracking()
                 .Where(JoinOwnerIn(owner, [.. owners.Select(o => owner.IdProperty.GetValue(o)!)]))
                 .ToListAsync(cancellationToken);

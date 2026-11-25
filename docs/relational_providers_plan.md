@@ -203,6 +203,30 @@ rounds, milestones and status. Branch `feat/536-sql-server-provider`, draft PR #
     - Known gaps, for later slices: `DateTime.Kind` round trip, Npgsql's `DateTimeOffset` offset 0, PostgreSQL's
       NULLS FIRST (S18), `[Sortable]` child order (an ordinal column), arrays as child collections, querying inside
       JSON columns, enums stored as int, and the Integer kind (needs `ISparkIntegerIdSource`, M4b).
+  - **M4b (2026-11-25):**
+    - **The conformance suites run on SQL now** (M5's first part, brought forward): `SparkStoreConformanceTests` and
+      `SparkAtomicValuesConformanceTests` are split from their RavenDB/InMemory subclasses
+      (`*ConformanceProviders.cs`) and linked into `MintPlayer.Spark.Relational.Tests`. Their cases are
+      `[SkippableFact]`, and a provider without a server returns no store, so every case skips instead of failing.
+      Ids are compared case-insensitively (`Canon`, D7: SQL hands them back lowercase).
+    - The S6 members on `RelationalSparkSession`: `SetExpiry`/`GetExpiry` (a `SparkExpiresAt` column, indexed, UTC;
+      a PUT replaces it as on RavenDB), `StreamAsync` (untracked rows with versions; read whole before yielding,
+      since one connection cannot read the join tables meanwhile), `Reserve`/`Release` (table `SparkReservations`,
+      resolved in the save's transaction; a holder that is gone or deleted by the same save is taken over; a
+      concurrent claim fails the insert or the row's version and becomes `SparkReservationTakenException`),
+      `DeleteWhereAsync`/`UpdateWhereAsync` (`ExecuteDelete`/`ExecuteUpdate`, the version `+ 1`, top-level members
+      only), and `PatchAppend` (the save locks the row, `UPDLOCK`/`FOR UPDATE` from the dialect, reads it again and
+      appends; refused on a row the session changed itself).
+    - The request budget (30) is enforced as on InMemory; a save, and the join-table reads of a load, count as one.
+    - `ISparkAtomicValues` (table `SparkAtomicValues`), so core's lease works; `ISparkIntegerIdSource` as a HiLo of
+      32 over an atomic value per collection; `ISparkDataProtectionKeyStore` (`SparkDataProtectionKeys`);
+      `ISparkStoreExpiration` (a store save hook mirrors `IExpiring.ExpiresAtUtc` into `SparkExpiresAt`; the sweep
+      deletes past rows table by table and logs a row another row still references).
+    - Found by the suite: SQL Server's default `decimal(18,2)` rounded `1234.5678` (now `decimal(38,18)`); a string
+      `x.Id == "ConfDocs/a"` did not lower its parameter (a lowering converter on whole-text keys); Npgsql refuses a
+      non-UTC `DateTimeOffset` (written as UTC) and either kind of `DateTime` in the "wrong" column (ticks to
+      `timestamp`). **`DateTime.Kind` does not survive a SQL column: open question O18.** The absent-field case (D16)
+      skips on SQL until M4c's migrations.
   - Order: the core pieces in `libs/` first (the struct, the model registry, the generator for `__DocumentId`, JSON,
     the route binder), then the feature libraries, then the apps.
   - It touches the three production apps (CodeCoverage, SeoTester, MintPlayer). RavenDB stays green at the end of the

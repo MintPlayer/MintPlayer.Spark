@@ -93,6 +93,10 @@ tags, and everything ships once the merged pull request is backported to `releas
    EF model last. Child collections (`[ValueObject]` lists) become child tables, references become foreign keys,
    reference lists become join tables, and the version covers the whole aggregate. *In progress: migrations, views,
    the change feed and the framework's own documents land in the next slices.*
+    The relational providers also keep atomic values (so leases work), integer ids (a HiLo), the Data Protection key
+    ring, expiry and the expiration sweep, reservations, streams, set-based delete/update and appends. A `decimal`
+    is `decimal(38,18)` on SQL Server. A `DateTime` keeps its ticks but not its `Kind` (open question O18); prefer
+    `DateTimeOffset`.
 10. **`ISparkStoredTypes` and `AddSparkStoredType<T>()`** (M4, D36): the list of types a store keeps, from the app
     model plus explicit registrations. `SparkCollectionNames.Of(type)` is the collection (table) name every provider
     uses.

@@ -32,7 +32,33 @@ public sealed class RelationalSparkStore : ISparkStore
     /// <summary>A new context over the store's database; the caller disposes it.</summary>
     public SparkDbContext NewContext() => new(options, Setup);
 
-    public ISparkSession OpenSession() => new RelationalSparkSession(NewContext());
+    public ISparkSession OpenSession() => new RelationalSparkSession(NewContext(), this);
+
+    private volatile Action<object, bool, Action<DateTimeOffset?>>[] beforeSave = [];
+
+    /// <summary>
+    /// The store's own save hooks (the expiration stamper): called for every new or changed row with the entity, whether
+    /// it is new, and a setter for its expiry column. Dispose the result to remove the hook.
+    /// </summary>
+    internal IDisposable AddBeforeSave(Action<object, bool, Action<DateTimeOffset?>> hook)
+    {
+        lock (this)
+            beforeSave = [.. beforeSave, hook];
+        return new Removal(() =>
+        {
+            lock (this)
+                beforeSave = [.. beforeSave.Where(h => h != hook)];
+        });
+    }
+
+    internal IReadOnlyList<Action<object, bool, Action<DateTimeOffset?>>> BeforeSaveHooks => beforeSave;
+
+    private sealed class Removal(Action remove) : IDisposable
+    {
+        private Action? remove = remove;
+
+        public void Dispose() => Interlocked.Exchange(ref remove, null)?.Invoke();
+    }
 
     public string GetCollectionName(Type type) => Model.TableOf(type)?.Name ?? SparkCollectionNames.Of(type);
 

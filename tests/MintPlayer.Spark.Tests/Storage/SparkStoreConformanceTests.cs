@@ -1,9 +1,4 @@
 using MintPlayer.Spark.Abstractions.Storage;
-using MintPlayer.Spark.Storage.InMemory;
-using MintPlayer.Spark.Storage.Raven;
-using MintPlayer.Spark.Testing;
-using Raven.Client.Documents;
-using Raven.Client.Documents.Linq;
 
 namespace MintPlayer.Spark.Tests.Storage;
 
@@ -51,14 +46,30 @@ public abstract class SparkStoreConformanceTests : IAsyncLifetime
     public class ConfCategory { public string? Id { get; set; } }
     public class ConfBox { public string? Id { get; set; } }
 
-    protected ISparkStore Store { get; private set; } = null!;
+    private ISparkStore? store;
 
-    protected abstract Task<ISparkStore> CreateStoreAsync();
+    /// <summary>The provider's store; a provider with no server configured skips the test here.</summary>
+    protected ISparkStore Store => store ?? throw new SkipException("No server is configured for this provider.");
+
+    /// <summary>The store under test, or <see langword="null"/> when its server is not configured (the case skips).</summary>
+    protected abstract Task<ISparkStore?> CreateStoreAsync();
+
+    /// <summary>
+    /// Ids compare case-insensitively on every provider (#536 D7); the relational providers hand them back lowercase,
+    /// RavenDB and InMemory as they were written. Assertions compare this form.
+    /// </summary>
+    protected static string? Canon(string? id) => id?.ToLowerInvariant();
+
+    /// <summary>
+    /// Whether a <see cref="DateTime"/> reads back with the <see cref="DateTime.Kind"/> it was written with. RavenDB and
+    /// InMemory keep it in the document; a SQL column keeps the ticks only (#536, open question O18).
+    /// </summary>
+    protected virtual bool KeepsDateTimeKind => true;
 
     /// <summary>A query whose reads see every committed write: RavenDB's indexes are eventually consistent.</summary>
     protected virtual IQueryable<T> Settled<T>(IQueryable<T> query) => query;
 
-    public virtual async Task InitializeAsync() => Store = await CreateStoreAsync();
+    public virtual async Task InitializeAsync() => store = await CreateStoreAsync();
 
     public virtual Task DisposeAsync() => Task.CompletedTask;
 
@@ -87,7 +98,7 @@ public abstract class SparkStoreConformanceTests : IAsyncLifetime
         await session.SaveChangesAsync();
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Values_round_trip_through_a_new_session()
     {
         await StoreAsync(Sample("ConfDocs/values"));
@@ -102,9 +113,12 @@ public abstract class SparkStoreConformanceTests : IAsyncLifetime
         loaded.Price.Should().Be(expected.Price);
         loaded.Flag.Should().BeTrue();
         loaded.Utc.Should().Be(expected.Utc);
-        loaded.Utc.Kind.Should().Be(DateTimeKind.Utc);
         loaded.Unspecified.Should().Be(expected.Unspecified);
-        loaded.Unspecified.Kind.Should().Be(DateTimeKind.Unspecified);
+        if (KeepsDateTimeKind)
+        {
+            loaded.Utc.Kind.Should().Be(DateTimeKind.Utc);
+            loaded.Unspecified.Kind.Should().Be(DateTimeKind.Unspecified);
+        }
         loaded.Day.Should().Be(expected.Day);
         loaded.Key.Should().Be(expected.Key);
         loaded.Status.Should().Be(ConfStatus.Published);
@@ -115,8 +129,8 @@ public abstract class SparkStoreConformanceTests : IAsyncLifetime
         loaded.Tags.Should().BeEquivalentTo(["a", "b"]);
     }
 
-    [Fact]
-    public async Task An_absent_field_reads_as_the_clr_default()
+    [SkippableFact]
+    public virtual async Task An_absent_field_reads_as_the_clr_default()
     {
         // D16: a document written before a property existed loads with that property at its default.
         await StoreAsync(new ConfDocV1 { Id = "ConfDocs/old", Name = "Old" });
@@ -133,7 +147,7 @@ public abstract class SparkStoreConformanceTests : IAsyncLifetime
         loaded.Tags.Should().BeEmpty();
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Collection_names_follow_the_same_conventions()
     {
         Store.GetCollectionName(typeof(ConfPerson)).Should().Be("ConfPeople");
@@ -152,7 +166,7 @@ public abstract class SparkStoreConformanceTests : IAsyncLifetime
         session.GetStoredCollectionName(person).Should().Be("ConfPeople");
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task A_session_returns_one_instance_per_id()
     {
         await StoreAsync(Sample("ConfDocs/identity"));
@@ -165,7 +179,7 @@ public abstract class SparkStoreConformanceTests : IAsyncLifetime
         session.IsLoaded("ConfDocs/identity").Should().BeTrue();
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Changes_are_tracked_and_saved()
     {
         await StoreAsync(Sample("ConfDocs/tracked"));
@@ -184,7 +198,7 @@ public abstract class SparkStoreConformanceTests : IAsyncLifetime
         (await verify.LoadAsync<ConfDoc>("ConfDocs/tracked"))!.Count.Should().Be(43);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task BeforeStore_fires_at_commit_for_new_and_changed_documents_only()
     {
         await StoreAsync(Sample("ConfDocs/hook-a"), Sample("ConfDocs/hook-b"));
@@ -201,10 +215,10 @@ public abstract class SparkStoreConformanceTests : IAsyncLifetime
         stored.Should().BeEmpty("the hook runs when the session commits");
         await session.SaveChangesAsync();
 
-        stored.Should().BeEquivalentTo(["ConfDocs/hook-a", "ConfDocs/hook-c"]);
+        stored.Select(Canon).Should().BeEquivalentTo(["confdocs/hook-a", "confdocs/hook-c"]);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Delete_removes_the_document()
     {
         await StoreAsync(Sample("ConfDocs/delete"));
@@ -220,7 +234,7 @@ public abstract class SparkStoreConformanceTests : IAsyncLifetime
         (await verify.LoadAsync<ConfDoc>("ConfDocs/delete")).Should().BeNull();
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task A_save_that_expects_absence_fails_when_the_document_exists_and_writes_nothing()
     {
         await StoreAsync(Sample("ConfDocs/taken"));
@@ -238,7 +252,7 @@ public abstract class SparkStoreConformanceTests : IAsyncLifetime
         (await verify.ExistsAsync(typeof(ConfDoc), "ConfDocs/bystander")).Should().BeFalse("a commit is all or nothing");
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task A_save_with_a_stale_version_fails()
     {
         await StoreAsync(Sample("ConfDocs/versioned"));
@@ -264,7 +278,7 @@ public abstract class SparkStoreConformanceTests : IAsyncLifetime
         await act.Should().ThrowAsync<SparkStoreConcurrencyException>();
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task LoadStartingWith_pages_in_id_order()
     {
         var c = Sample("ConfPrefix/c");
@@ -274,14 +288,14 @@ public abstract class SparkStoreConformanceTests : IAsyncLifetime
 
         using var session = Store.OpenSession();
         var all = await session.LoadStartingWithAsync<ConfDoc>("ConfPrefix/");
-        all.Select(d => d.Id).Should().BeEquivalentTo(["ConfPrefix/a", "ConfPrefix/b", "ConfPrefix/c"],
+        all.Select(d => Canon(d.Id)).Should().BeEquivalentTo(["confprefix/a", "confprefix/b", "confprefix/c"],
             o => o.WithStrictOrdering());
 
         var page = await session.LoadStartingWithAsync<ConfDoc>("ConfPrefix/", start: 1, pageSize: 1);
-        page.Select(d => d.Id).Should().BeEquivalentTo(["ConfPrefix/b"]);
+        page.Select(d => Canon(d.Id)).Should().BeEquivalentTo(["confprefix/b"]);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Queries_filter_on_strings_enums_dates_and_guids()
     {
         var match = Sample("ConfQueried/match");
@@ -294,23 +308,23 @@ public abstract class SparkStoreConformanceTests : IAsyncLifetime
 
         using var session = Store.OpenSession();
         var byName = await session.ToListAsync(Settled(session.Query<ConfDoc>()).Where(d => d.Name == "Sample"));
-        byName.Select(d => d.Id).Should().BeEquivalentTo(["ConfQueried/match"]);
+        byName.Select(d => Canon(d.Id)).Should().BeEquivalentTo(["confqueried/match"]);
 
         var byStatus = await session.ToListAsync(Settled(session.Query<ConfDoc>()).Where(d => d.Status == ConfStatus.Archived));
-        byStatus.Select(d => d.Id).Should().BeEquivalentTo(["ConfQueried/other"]);
+        byStatus.Select(d => Canon(d.Id)).Should().BeEquivalentTo(["confqueried/other"]);
 
         var since = match.Utc.AddDays(-1);
         var byDate = await session.ToListAsync(Settled(session.Query<ConfDoc>()).Where(d => d.Utc >= since));
-        byDate.Select(d => d.Id).Should().BeEquivalentTo(["ConfQueried/match"]);
+        byDate.Select(d => Canon(d.Id)).Should().BeEquivalentTo(["confqueried/match"]);
 
         var key = match.Key;
         var byKey = await session.ToListAsync(Settled(session.Query<ConfDoc>()).Where(d => d.Key == key));
-        byKey.Select(d => d.Id).Should().BeEquivalentTo(["ConfQueried/match"]);
+        byKey.Select(d => Canon(d.Id)).Should().BeEquivalentTo(["confqueried/match"]);
 
         (await session.CountAsync(Settled(session.Query<ConfDoc>()))).Should().Be(2);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Queried_documents_are_tracked_by_the_session()
     {
         await StoreAsync(Sample("ConfDocs/queried"));
@@ -322,7 +336,7 @@ public abstract class SparkStoreConformanceTests : IAsyncLifetime
         ReferenceEquals(fromQuery, loaded).Should().BeTrue();
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task An_expiry_is_kept_by_later_writes_until_cleared()
     {
         var expires = new DateTimeOffset(2031, 5, 6, 7, 8, 9, TimeSpan.Zero);
@@ -358,7 +372,7 @@ public abstract class SparkStoreConformanceTests : IAsyncLifetime
         }
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Setting_only_the_expiry_is_a_write()
     {
         await StoreAsync(Sample("ConfDocs/expiry-only"));
@@ -375,7 +389,7 @@ public abstract class SparkStoreConformanceTests : IAsyncLifetime
         read.GetExpiry((await read.LoadAsync<ConfDoc>("ConfDocs/expiry-only"))!).Should().Be(expires);
     }
 
-    [Fact]
+    [SkippableFact]
     public void An_expiry_needs_an_entity_the_session_tracks()
     {
         using var session = Store.OpenSession();
@@ -383,7 +397,7 @@ public abstract class SparkStoreConformanceTests : IAsyncLifetime
         act.Should().Throw<InvalidOperationException>();
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task A_stream_yields_every_match_with_its_id_and_version_untracked()
     {
         var small = Sample("ConfStreamed/small");
@@ -399,7 +413,7 @@ public abstract class SparkStoreConformanceTests : IAsyncLifetime
         await foreach (var row in session.StreamAsync(session.Query<ConfDoc>().Where(d => d.Count > 10)))
             streamed.Add(row);
 
-        streamed.Select(r => r.Id).Should().BeEquivalentTo(["ConfStreamed/a", "ConfStreamed/b"]);
+        streamed.Select(r => Canon(r.Id)).Should().BeEquivalentTo(["confstreamed/a", "confstreamed/b"]);
         streamed.Select(r => r.Document.Name).Distinct().Should().Equal(["Sample"]);
         streamed.Where(r => string.IsNullOrEmpty(r.Version)).Should().BeEmpty();
 
@@ -414,7 +428,7 @@ public abstract class SparkStoreConformanceTests : IAsyncLifetime
         (await read.LoadAsync<ConfDoc>("ConfStreamed/a"))!.Name.Should().Be("Sample", "changing a streamed row saves nothing");
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task A_reservation_is_claimed_with_the_save_and_refused_to_a_second_owner()
     {
         using (var session = Store.OpenSession())
@@ -426,7 +440,7 @@ public abstract class SparkStoreConformanceTests : IAsyncLifetime
 
         using (var session = Store.OpenSession())
         {
-            (await session.GetReservationAsync("conf-unique/alpha")).Should().Be("ConfDocs/owner-a");
+            Canon(await session.GetReservationAsync("conf-unique/alpha")).Should().Be("confdocs/owner-a");
 
             // The owner reserving again changes nothing.
             session.Reserve("conf-unique/alpha", "ConfDocs/owner-a");
@@ -444,10 +458,10 @@ public abstract class SparkStoreConformanceTests : IAsyncLifetime
 
         using var read = Store.OpenSession();
         (await read.LoadAsync<ConfDoc>("ConfDocs/owner-b")).Should().BeNull("a refused reservation writes nothing");
-        (await read.GetReservationAsync("conf-unique/alpha")).Should().Be("ConfDocs/owner-a");
+        Canon(await read.GetReservationAsync("conf-unique/alpha")).Should().Be("confdocs/owner-a");
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Only_the_owner_releases_a_reservation()
     {
         using (var session = Store.OpenSession())
@@ -461,7 +475,7 @@ public abstract class SparkStoreConformanceTests : IAsyncLifetime
         {
             session.Release("conf-unique/beta", "ConfDocs/someone-else");
             await session.SaveChangesAsync();
-            (await session.GetReservationAsync("conf-unique/beta")).Should().Be("ConfDocs/holder");
+            Canon(await session.GetReservationAsync("conf-unique/beta")).Should().Be("confdocs/holder");
         }
 
         using (var session = Store.OpenSession())
@@ -475,7 +489,7 @@ public abstract class SparkStoreConformanceTests : IAsyncLifetime
         (await read.GetReservationAsync("conf-unique/beta")).Should().BeNull();
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task A_reservation_whose_owner_is_gone_is_taken_over()
     {
         // Held for a document that was never stored: what a crash between the claim and the write leaves behind.
@@ -493,10 +507,10 @@ public abstract class SparkStoreConformanceTests : IAsyncLifetime
         }
 
         using var read = Store.OpenSession();
-        (await read.GetReservationAsync("conf-unique/gamma")).Should().Be("ConfDocs/claimant");
+        Canon(await read.GetReservationAsync("conf-unique/gamma")).Should().Be("confdocs/claimant");
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task DeleteWhere_deletes_the_matching_rows_only()
     {
         var keep = Sample("ConfBulkDelete/keep");
@@ -511,7 +525,7 @@ public abstract class SparkStoreConformanceTests : IAsyncLifetime
         left.Where(p => p.Value is not null).Select(p => p.Key).Should().BeEquivalentTo(["ConfBulkDelete/keep"]);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task UpdateWhere_sets_members_on_the_matching_rows_and_moves_their_version()
     {
         var other = Sample("ConfBulkUpdate/other");
@@ -537,7 +551,7 @@ public abstract class SparkStoreConformanceTests : IAsyncLifetime
         (await read.LoadAsync<ConfDoc>("ConfBulkUpdate/other"))!.Name.Should().Be("Sample");
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Concurrent_appends_all_land()
     {
         var doc = Sample("ConfDocs/appended");
@@ -562,7 +576,7 @@ public abstract class SparkStoreConformanceTests : IAsyncLifetime
         stored.Name.Should().Be("Sample", "an append touches only its list");
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task The_request_budget_is_enforced_and_can_be_lifted()
     {
         // Loads, not ExistsAsync: RavenDB's ExistsAsync does not count against MaxNumberOfRequestsPerSession.
@@ -581,63 +595,4 @@ public abstract class SparkStoreConformanceTests : IAsyncLifetime
                 await lifted.LoadAsync<ConfDoc>($"ConfDocs/budget-{i}");
         }
     }
-}
-
-/// <summary>The suite against RavenDB, an embedded server per class.</summary>
-public sealed class RavenSparkStoreConformanceTests : SparkStoreConformanceTests
-{
-    private readonly Driver driver = new();
-
-    protected override async Task<ISparkStore> CreateStoreAsync()
-    {
-        await driver.InitializeAsync();
-        return new RavenSparkStore(driver.DocumentStore);
-    }
-
-    protected override IQueryable<T> Settled<T>(IQueryable<T> query)
-        => ((IRavenQueryable<T>)query).Customize(c => c.WaitForNonStaleResults(TimeSpan.FromSeconds(30)));
-
-    public override async Task DisposeAsync() => await driver.DisposeAsync();
-
-    public class ConfDocs_ByName : Raven.Client.Documents.Indexes.AbstractIndexCreationTask<ConfDoc>
-    {
-        public ConfDocs_ByName()
-        {
-            Map = docs => from d in docs select new { d.Name };
-        }
-    }
-
-    /// <summary>
-    /// An index-backed root (<c>Session.Query&lt;T, TIndex&gt;()</c>, what every generated view root calls). Its binding used
-    /// to be an open-instance delegate over a generic interface method, which the runtime refuses with
-    /// NotSupportedException, so each index root failed on first use.
-    /// </summary>
-    [Fact]
-    public async Task An_index_query_reads_through_the_index()
-    {
-        await new ConfDocs_ByName().ExecuteAsync(driver.DocumentStore);
-        using (var write = Store.OpenSession())
-        {
-            await write.StoreAsync(new ConfDoc { Id = "ConfDocs/indexed-1", Name = "Indexed" });
-            await write.StoreAsync(new ConfDoc { Id = "ConfDocs/indexed-2", Name = "Other" });
-            await write.SaveChangesAsync();
-        }
-
-        using var session = Store.OpenSession();
-        var found = await session.ToListAsync(Settled(session.Query<ConfDoc, ConfDocs_ByName>()).Where(d => d.Name == "Indexed"));
-
-        found.Select(d => d.Id).Should().Equal(["ConfDocs/indexed-1"]);
-    }
-
-    private sealed class Driver : SparkTestDriver
-    {
-        public IDocumentStore DocumentStore => Store;
-    }
-}
-
-/// <summary>The suite against the in-memory store.</summary>
-public sealed class InMemorySparkStoreConformanceTests : SparkStoreConformanceTests
-{
-    protected override Task<ISparkStore> CreateStoreAsync()
-        => Task.FromResult<ISparkStore>(new InMemorySparkStore(new InMemoryDatabase()));
 }

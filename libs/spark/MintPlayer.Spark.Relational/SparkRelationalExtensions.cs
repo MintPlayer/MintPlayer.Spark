@@ -68,6 +68,11 @@ public static class SparkRelationalExtensions
         services.AddSingleton<ISparkStore>(sp => sp.GetRequiredService<RelationalSparkStore>());
         services.AddScoped<ISparkSession>(sp => sp.GetRequiredService<ISparkStore>().OpenSession());
         services.AddScoped<ISparkQueryProvider>(sp => new RelationalSparkQueryProvider(sp.GetRequiredService<ISparkSession>()));
+        services.AddSingleton<ISparkAtomicValues>(sp => new RelationalAtomicValues(sp.GetRequiredService<RelationalSparkStore>()));
+        services.AddSingleton<ISparkIntegerIdSource>(sp => new RelationalIntegerIdSource(sp.GetRequiredService<ISparkAtomicValues>(), sp.GetRequiredService<RelationalSparkStore>()));
+        services.AddSingleton<ISparkDataProtectionKeyStore>(sp => new RelationalDataProtectionKeyStore(sp.GetRequiredService<RelationalSparkStore>()));
+        services.AddSingleton<ISparkStoreExpiration>(sp => new RelationalExpiration(
+            sp.GetRequiredService<RelationalSparkStore>(), sp.GetService<Microsoft.Extensions.Logging.ILogger<RelationalExpiration>>()));
         return builder;
     }
 

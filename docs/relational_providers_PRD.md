@@ -1743,6 +1743,21 @@ decided O14–O17, and O8 and O9 last. The plan §3 has the log.
     only); (c) a separate `dotnet` tool, which needs the design-time `DbContext` factory D33 avoids.
   - Trap: a deployment that copies `bin` instead of publishing ships 17 MB of Roslyn with no warning. It costs
     size, not correctness, and the guide says "publish, don't copy `bin`".
+- **O18, `DateTime.Kind` on SQL (open, found in M4b, 2026-11-25):** a document keeps a `DateTime`'s kind (RavenDB writes
+  `Z` for UTC, nothing for Unspecified); a `datetime2` or `timestamp without time zone` column keeps the ticks only.
+  The store conformance suite (`Values_round_trip_through_a_new_session`) shows it: on both SQL databases a UTC value
+  reads back with the same ticks and Kind Unspecified. PostgreSQL makes it worse: Npgsql refuses to write a UTC
+  `DateTime` to `timestamp` and a non-UTC one to `timestamptz`, so M4b writes the ticks to `timestamp` whatever the
+  kind (`PostgreSqlSparkDialect.ConfigureConventions`).
+  - (a) **Interim, in place:** ticks only, read as Unspecified, on both databases. Code that calls
+    `ToUniversalTime()` on a value it wrote as `DateTime.UtcNow` shifts it by the server's offset.
+  - (b) **Read as UTC** (a converter that sets Kind Utc): right for `UtcNow` values, which is what Spark and the
+    feature libraries write; a `datetime-local` value written Unspecified would serialize with `Z` and display
+    shifted in the browser.
+  - (c) **Keep the kind:** a hidden column per `DateTime` property, or encode it. Lossless, but every `DateTime` costs
+    a column, and EF's converters cannot span two columns, so it needs its own mapping.
+  - Recommendation: (b), plus an analyzer note steering new code to `DateTimeOffset` (D5) and `DateOnly`. The suite's
+    `KeepsDateTimeKind` switch skips only the kind assertions until this is decided.
 
 ## 11. Out of scope
 
