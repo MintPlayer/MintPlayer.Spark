@@ -82,6 +82,9 @@ tags, and everything ships once the merged pull request is backported to `releas
     - Cron claims occurrences through `ISparkAtomicValues`, with the same `cron/{job}` key and value as before.
     - Apps, MailManager and MCP register their document types (`AddSparkStoredType`), so SQL Server and PostgreSQL get
       their tables.
+    Spark.Files runs on any store (M6h). RavenDB attachments stay the default file store on RavenDB. On SQL Server,
+    PostgreSQL and InMemory, `AddFiles` needs a file store (`files.UseFileSystem(path)`, `UseAzureBlob` or `UseS3`);
+    without one the app refuses to start.
 12. **Messaging runs on any store with subscriptions** (M7b, D40), and its package no longer references RavenDB:
     - `IMessageOutbox.EnqueueAsync` and `ISparkAfterCommitOutbox.EnqueueAsync` take an `ISparkSession`, not a RavenDB
       session. Wrap a raw session with `session.AsSparkSession()`.

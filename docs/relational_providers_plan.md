@@ -491,8 +491,19 @@ rounds, milestones and status. Branch `feat/536-sql-server-provider`, draft PR #
     181/181.
   - **Search stays on RavenDB for now:** its default provider reads the generated `Spark_Search` index. The SQL side is
     `LIKE` search (S10), which the milestones place in Tier 3.
-  - **Next:** Files (attachments off on SQL: the pluggable blob stores; revisions), Contributions (streaming), the
-    authorization user store (reservations), templates and AllFeatures. Cron, the subscription worker's remaining hosted services and others adopt
+  - **M6h (2026-11-25): Files on any store.** `FileUploadService`, `DeferredFileScanner` and `ImageVariantRegenerator`
+    take `ISparkStore`:
+    - The scanner's sweep and the regenerator stream `Query<T>()` without a filter. On RavenDB that is a collection
+      scan, so it creates no auto index (D42).
+    - Concurrency goes through `OptimisticConcurrency` / `GetVersion` and `SparkStoreConcurrencyException`.
+    - `FilesReconciler` still reads documents raw on RavenDB. On a store with a schema it loads each id as the stored
+      type whose collection the id names, and collects `FileId` from the entity written as JSON.
+    - The RavenDB pin is gone. Attachments stay the default on RavenDB. Any other provider must choose a file store
+      (`UseFileSystem`, `UseAzureBlob`, `UseS3`); without one the host refuses to start, naming them.
+    - `SparkFileUpload` is registered as a stored type (D36).
+    - **Evidence:** `NeutralFilesStoreTests` (claim + reconcile, the deferred sweep, the default store) 3/3 on all four
+      databases; the Files suites on RavenDB 264/264 (28 skipped: cloud stores).
+  - **Next:** Contributions (streaming), the authorization user store (reservations), templates and AllFeatures. Cron, the subscription worker's remaining hosted services and others adopt
     `ISparkStoreReadiness` as they are ported.
 - **Local spike servers left running:**
   - SQL Server: `SparkSpike536` on `localhost` and `localhost\MSSQLSERVER01`

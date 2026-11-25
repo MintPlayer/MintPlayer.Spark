@@ -15,7 +15,7 @@ using MintPlayer.Spark.Files.Sniffing;
 using MintPlayer.Spark.Files.Staging;
 using MintPlayer.Spark.Files.Storage;
 using MintPlayer.Spark.Services;
-using Raven.Client.Documents;
+using MintPlayer.Spark.Abstractions.Storage;
 
 namespace MintPlayer.Spark.Files.Services;
 
@@ -37,7 +37,7 @@ internal sealed partial class FileUploadService
     [Inject] private readonly IAttributeRights attributeRights;
     [Inject] private readonly IDatabaseAccess databaseAccess;
     [Inject] private readonly ISparkCurrentPrincipal currentUser;
-    [Inject] private readonly IDocumentStore store;
+    [Inject] private readonly ISparkStore store;
     [Inject] private readonly IFileStore fileStore;
     [Inject] private readonly FileSniffer sniffer;
     [Inject] private readonly UploadRateLimiter rateLimiter;
@@ -91,7 +91,7 @@ internal sealed partial class FileUploadService
         var now = clock.GetUtcNow();
         var uploadDeadline = now + settings.UploadWindow;
         var prepared = new List<PreparedFile>(files.Count);
-        using var session = store.OpenAsyncSession();
+        using var session = store.OpenSession();
         foreach (var file in files)
         {
             var token = NewToken();
@@ -133,7 +133,7 @@ internal sealed partial class FileUploadService
         if (string.IsNullOrEmpty(token) || token.Length > 64)
             return FilesResult<bool>.Fail(FilesOutcome.NotFound);
 
-        using var session = store.OpenAsyncSession();
+        using var session = store.OpenSession();
         var upload = await session.LoadAsync<SparkFileUpload>(SparkFileUpload.IdFor(token).Value, cancellationToken);
         // Another user's token, a used one and an expired one answer alike: there is no such slot.
         if (upload is null || upload.UserId != userId || upload.State != SparkFileUploadState.Prepared
@@ -164,7 +164,7 @@ internal sealed partial class FileUploadService
             || tokens.Any(t => string.IsNullOrEmpty(t) || t.Length > 64))
             return FilesResult<CommitFilesOutput>.Fail(FilesOutcome.Invalid, $"Commit 1 to {options.Value.MaxBatch} tokens.");
 
-        using var session = store.OpenAsyncSession();
+        using var session = store.OpenSession();
         var loaded = await session.LoadAsync<SparkFileUpload>(tokens.Distinct().Select(t => SparkFileUpload.IdFor(t).Value), cancellationToken);
         var results = new List<CommittedFile>(tokens.Count);
         foreach (var token in tokens)

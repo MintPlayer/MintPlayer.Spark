@@ -4,6 +4,8 @@ using Microsoft.Extensions.Options;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Files.Staging;
 using MintPlayer.Spark.Files.Storage;
+using System.Text.Json;
+using MintPlayer.Spark.Abstractions.Storage;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Commands;
 using Sparrow.Json;
@@ -19,8 +21,8 @@ namespace MintPlayer.Spark.Files.Services;
 /// <item>it is staged, and its upload document is gone (expired), claimed or refused;</item>
 /// <item>it is an entity's file, and the entity is gone or no longer holds that file id anywhere in its document.</item>
 /// </list>
-/// Documents are read raw, never through a typed or <c>object</c> load: the sweep must not depend on a CLR type, and every
-/// <c>FileId</c> in the document counts, however deeply nested. Deletes are idempotent, so two instances sweeping at once
+/// On RavenDB documents are read raw, never through a typed or <c>object</c> load: the sweep must not depend on a CLR type, and
+/// every <c>FileId</c> in the document counts, however deeply nested. A store with a schema loads the row as its stored type. Deletes are idempotent, so two instances sweeping at once
 /// is harmless.
 /// </summary>
 [Register(Microsoft.Extensions.DependencyInjection.ServiceLifetime.Singleton)]
@@ -29,7 +31,8 @@ internal sealed partial class FilesReconciler
     private const int Batch = 256;
 
     [Inject] private readonly IFileStore fileStore;
-    [Inject] private readonly IDocumentStore store;
+    [Inject] private readonly ISparkStore store;
+    [Inject] private readonly ISparkStoredTypes storedTypes;
     [Inject] private readonly IOptions<SparkFilesOptions> options;
     [Inject] private readonly TimeProvider clock;
     [Inject] private readonly ILogger<FilesReconciler> logger;
@@ -51,7 +54,7 @@ internal sealed partial class FilesReconciler
         }
         foreach (var chunk in staged.Chunk(Batch))
         {
-            using var session = store.OpenAsyncSession();
+            using var session = store.OpenSession();
             var uploads = await session.LoadAsync<SparkFileUpload>(chunk.Select(s => SparkFileUpload.IdFor(s.Token).Value), cancellationToken);
             foreach (var (key, token) in chunk)
             {
@@ -117,7 +120,65 @@ internal sealed partial class FilesReconciler
     }
 
     /// <summary>Per existing document, every string held by a property named <c>FileId</c>, at any depth.</summary>
-    private async Task<Dictionary<string, HashSet<string>>> FileIdsAsync(string[] ids, CancellationToken cancellationToken)
+    private Task<Dictionary<string, HashSet<string>>> FileIdsAsync(string[] ids, CancellationToken cancellationToken)
+        => string.Equals(store.ProviderName, SparkStoreProviders.RavenDb, StringComparison.OrdinalIgnoreCase)
+            ? RawFileIdsAsync(store.AsRavenStore(), ids, cancellationToken)
+            : TypedFileIdsAsync(ids, cancellationToken);
+
+    /// <summary>
+    /// A store with a schema (#536) keeps a row per stored type, so the id's collection names the type to load. A row's
+    /// columns are its type's properties: the loaded entity, written as JSON, holds every <c>FileId</c> the row does.
+    /// An id whose collection no stored type has counts as gone.
+    /// </summary>
+    private async Task<Dictionary<string, HashSet<string>>> TypedFileIdsAsync(string[] ids, CancellationToken cancellationToken)
+    {
+        var result = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
+        var byPrefix = storedTypes.Types
+            .GroupBy(t => store.GetCollectionName(t) + "/", StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.FirstOrDefault(t => !g.Any(o => o != t && o.IsAssignableFrom(t))) ?? g.First(), StringComparer.OrdinalIgnoreCase);
+        using var session = store.OpenSession();
+        foreach (var group in ids.GroupBy(id => id.IndexOf('/') is var slash and > 0 ? id[..(slash + 1)] : string.Empty, StringComparer.OrdinalIgnoreCase))
+        {
+            if (!byPrefix.TryGetValue(group.Key, out var type))
+                continue;
+            var loaded = await session.LoadAsync(type, group, cancellationToken);
+            foreach (var (id, entity) in loaded)
+            {
+                if (entity is null)
+                    continue;
+                var found = new HashSet<string>(StringComparer.Ordinal);
+                Collect(JsonSerializer.SerializeToElement(entity, entity.GetType()), found);
+                result[id] = found;
+            }
+        }
+        return result;
+    }
+
+    private static void Collect(JsonElement value, HashSet<string> found)
+    {
+        switch (value.ValueKind)
+        {
+            case JsonValueKind.Object:
+                foreach (var property in value.EnumerateObject())
+                {
+                    if (string.Equals(property.Name, nameof(Abstractions.SparkFile.FileId), StringComparison.OrdinalIgnoreCase))
+                    {
+                        if (property.Value.ValueKind == JsonValueKind.String && property.Value.GetString() is { Length: > 0 } fileId)
+                            found.Add(fileId);
+                        continue;
+                    }
+                    Collect(property.Value, found);
+                }
+                break;
+            case JsonValueKind.Array:
+                foreach (var element in value.EnumerateArray())
+                    Collect(element, found);
+                break;
+        }
+    }
+
+    /// <summary>RavenDB: the documents read raw, so the sweep depends on no CLR type.</summary>
+    private static async Task<Dictionary<string, HashSet<string>>> RawFileIdsAsync(IDocumentStore store, string[] ids, CancellationToken cancellationToken)
     {
         var result = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
         var executor = store.GetRequestExecutor();
