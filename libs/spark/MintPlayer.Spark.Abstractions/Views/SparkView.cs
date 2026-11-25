@@ -64,6 +64,12 @@ public interface ISparkView
 /// <list type="bullet">
 /// <item>The shape is <c>Set&lt;T&gt;().Select(…)</c>, optionally with <c>Where</c> before the <c>Select</c>: RavenDB's map takes one source collection.</item>
 /// <item>
+/// A fan-out map yields a row per list item: <c>from x in s.Set&lt;T&gt;() from item in x.List select new TRow { … }</c>
+/// (#536, <c>Likes_Count</c>). RavenDB fans out in the index, SQL Server reads the list column with <c>OPENJSON</c>,
+/// PostgreSQL with <c>unnest</c>, memory with <c>SelectMany</c>; a missing list yields no rows everywhere. A fanned-out
+/// row has no <c>Id</c> (<c>IdOf</c> binds one row per entity).
+/// </item>
+/// <item>
 /// A <see cref="SparkView{TRow}.Reduce"/> groups the mapped rows and sums them (#536 S16): a RavenDB map-reduce index,
 /// a <c>GROUP BY</c> view in SQL, a grouping in memory. Its shape is <c>group r by key into g select new TRow { … }</c>
 /// with keys and <c>g.Sum(…)</c>/<c>g.Count()</c> only, and its output is the map's row type, as RavenDB requires.

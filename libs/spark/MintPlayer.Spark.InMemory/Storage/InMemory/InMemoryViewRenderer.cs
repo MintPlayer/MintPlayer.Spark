@@ -58,9 +58,23 @@ internal static class InMemoryViewRenderer
             return CanBeNull(inner.Type) ? NullSafe(inner, read, node.Type) : read;
         }
 
-        /// <summary>A dictionary indexer reads a missing key as the default, as RavenDB reads a missing path.</summary>
+        /// <summary>
+        /// A dictionary indexer reads a missing key as the default, as RavenDB reads a missing path. A fan-out over a
+        /// missing list (<c>from item in x.List</c> with <c>List</c> null) yields no rows, as it does in RavenDB and SQL.
+        /// </summary>
         protected override Expression VisitMethodCall(MethodCallExpression node)
         {
+            if (node.Method.DeclaringType == typeof(Queryable) && node.Method.Name == nameof(Queryable.SelectMany)
+                && node.Arguments[1] is UnaryExpression { NodeType: ExpressionType.Quote, Operand: LambdaExpression items })
+            {
+                var visited = (LambdaExpression)Visit(items);
+                var itemsType = visited.ReturnType;
+                var empty = Expression.Constant(Array.CreateInstance(itemsType.GetGenericArguments()[0], 0), itemsType);
+                var safe = Expression.Lambda(visited.Type,
+                    Expression.Coalesce(Expression.Convert(visited.Body, itemsType), empty), visited.Parameters);
+                return node.Update(null, [Visit(node.Arguments[0]), Expression.Quote(safe), .. node.Arguments.Skip(2).Select(Visit)!]);
+            }
+
             if (node is { Method.Name: "get_Item", Object: { } target, Arguments.Count: 1 }
                 && ReadOnlyDictionary(target.Type) is { } dictionary)
             {

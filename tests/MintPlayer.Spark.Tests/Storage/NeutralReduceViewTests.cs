@@ -95,6 +95,58 @@ public class NeutralReduceViewTests : SparkTestDriver
             s.Set<RvEvent>().Select(e => new RvLabel { Id = s.IdOf(e), Label = e.UserId + "/" + e.Day, Points = e.Points * 10 });
     }
 
+    /// <summary>One user's liked and disliked subjects, as <c>apps/MintPlayer</c>'s <c>UserLike</c>.</summary>
+    public class RvLiker
+    {
+        public string? Id { get; set; }
+        public string UserId { get; set; } = string.Empty;
+        public List<string>? Likes { get; set; } = [];
+        public List<string>? Dislikes { get; set; } = [];
+    }
+
+    public class RvLikeCount
+    {
+        public string Subject { get; set; } = string.Empty;
+        public int Likes { get; set; }
+        public int Dislikes { get; set; }
+    }
+
+    /// <summary>
+    /// A fan-out map-reduce (<c>Likes_Count</c>): every list item is a row, summed per subject. RavenDB's
+    /// <c>from s in u.Likes</c>; SQL Server's <c>OPENJSON</c> and PostgreSQL's <c>unnest</c> over the list column.
+    /// </summary>
+    public sealed class RvLikeCounts : SparkView<RvLikeCount>
+    {
+        public override Expression<Func<ISparkViewSource, IQueryable<RvLikeCount>>> Map => s =>
+            (from u in s.Set<RvLiker>()
+             from subject in u.Likes
+             select new RvLikeCount { Subject = subject, Likes = 1, Dislikes = 0 })
+            .Concat(
+             from u in s.Set<RvLiker>()
+             from subject in u.Dislikes
+             select new RvLikeCount { Subject = subject, Likes = 0, Dislikes = 1 });
+
+        public override Expression<Func<IEnumerable<RvLikeCount>, IEnumerable<RvLikeCount>>> Reduce => rows =>
+            from r in rows
+            group r by r.Subject into g
+            select new RvLikeCount { Subject = g.Key, Likes = g.Sum(x => x.Likes), Dislikes = g.Sum(x => x.Dislikes) };
+    }
+
+    public class RvFan
+    {
+        public string Subject { get; set; } = string.Empty;
+        public string UserId { get; set; } = string.Empty;
+    }
+
+    /// <summary>A fan-out map without a reduce: a row per liked subject, which has no id of its own.</summary>
+    public sealed class RvFans : SparkView<RvFan>
+    {
+        public override Expression<Func<ISparkViewSource, IQueryable<RvFan>>> Map => s =>
+            from u in s.Set<RvLiker>()
+            from subject in u.Likes
+            select new RvFan { Subject = subject, UserId = u.UserId };
+    }
+
     private SparkEndpointFactory<ReduceViewContext> NewHost() => new(
         Database,
         [],
@@ -102,13 +154,66 @@ public class NeutralReduceViewTests : SparkTestDriver
         {
             services.AddSparkStoredType<RvEvent>();
             services.AddSparkStoredType<RvBonus>();
+            services.AddSparkStoredType<RvLiker>();
         },
         configureIndexCatalog: catalog =>
         {
             catalog.RegisterIndex(typeof(RvCells));
             catalog.RegisterIndex(typeof(RvTotals));
             catalog.RegisterIndex(typeof(RvLabels));
+            catalog.RegisterIndex(typeof(RvLikeCounts));
+            catalog.RegisterIndex(typeof(RvFans));
         });
+
+    [Fact]
+    public async Task A_fan_out_reduce_view_sums_every_list_item_and_follows_an_update()
+    {
+        await using var host = NewHost();
+        using (var session = host.GetService<ISparkStore>().OpenSession())
+        {
+            await session.StoreAsync(new RvLiker { Id = "rvlikers/1", UserId = "alice", Likes = ["s1", "s2"], Dislikes = ["s3"] });
+            await session.StoreAsync(new RvLiker { Id = "rvlikers/2", UserId = "bob", Likes = ["s1"], Dislikes = ["s2"] });
+            // A missing list fans out to nothing, as an empty one does.
+            await session.StoreAsync(new RvLiker { Id = "rvlikers/3", UserId = "carol", Likes = [], Dislikes = null });
+            await session.SaveChangesAsync();
+        }
+
+        (await LikeCountsAsync(host)).Should().Equal([("s1", 2, 0), ("s2", 1, 1), ("s3", 0, 1)]);
+
+        using (var session = host.GetService<ISparkStore>().OpenSession())
+        {
+            (await session.LoadAsync<RvLiker>("rvlikers/1"))!.Likes = ["s2"];
+            await session.SaveChangesAsync();
+        }
+
+        (await LikeCountsAsync(host)).Should().Equal([("s1", 1, 0), ("s2", 1, 1), ("s3", 0, 1)]);
+    }
+
+    [Fact]
+    public async Task A_fan_out_map_view_has_a_row_per_list_item()
+    {
+        await using var host = NewHost();
+        using (var session = host.GetService<ISparkStore>().OpenSession())
+        {
+            await session.StoreAsync(new RvLiker { Id = "rvlikers/1", UserId = "alice", Likes = ["s1", "s2"] });
+            await session.StoreAsync(new RvLiker { Id = "rvlikers/2", UserId = "bob", Likes = ["s1"] });
+            await session.SaveChangesAsync();
+        }
+
+        await host.WaitForConsistencyAsync();
+        using var read = host.GetService<ISparkStore>().OpenSession();
+        var fans = await read.ToListAsync(read.Query<RvFan, RvFans>().Where(f => f.Subject == "s1"));
+
+        fans.Select(f => f.UserId).Order().Should().Equal(["alice", "bob"]);
+    }
+
+    private static async Task<List<(string, int, int)>> LikeCountsAsync(SparkEndpointFactory<ReduceViewContext> host)
+    {
+        await host.WaitForConsistencyAsync();
+        using var session = host.GetService<ISparkStore>().OpenSession();
+        var counts = await session.ToListAsync(session.Query<RvLikeCount, RvLikeCounts>());
+        return [.. counts.Select(c => (c.Subject, c.Likes, c.Dislikes)).OrderBy(c => c.Subject)];
+    }
 
     /// <summary>
     /// The rows of a map view are the view's, not the documents': RavenDB must read the stored, computed fields

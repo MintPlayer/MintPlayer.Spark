@@ -246,3 +246,7 @@ tags, and everything ships once the merged pull request is backported to `releas
       soft-deleted rows are left out.
     - **Order:** best first.
     - **Limits:** no typo tolerance, and SQL does not fold accents in stored text.
+19. **Fan-out views** (M7g): a `SparkView` map may read a list,
+    `from x in s.Set<T>() from item in x.List select new TRow { … }`, yielding one row per item. RavenDB fans out in
+    the index; SQL Server reads the list column with `OPENJSON` and PostgreSQL with `unnest`. It works with or without
+    a reduce, and a missing list yields no rows.

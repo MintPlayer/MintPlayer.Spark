@@ -43,12 +43,16 @@ internal static class RavenViewIndexes
 
     /// <summary>
     /// One map, <c>Set&lt;T&gt;().Where(…).Select(…)</c>, as RavenDB's <c>docs =&gt; …</c> over <c>T</c>, which
-    /// <paramref name="entityType"/> returns; <paramref name="index"/> owns <c>LoadDocument</c>.
+    /// <paramref name="entityType"/> returns; <paramref name="index"/> owns <c>LoadDocument</c>. A fan-out map
+    /// (<c>from x in Set&lt;T&gt;() from item in x.List select …</c>, a <c>SelectMany</c> with a result selector) is
+    /// RavenDB's own fan-out: an index entry per item.
     /// </summary>
     internal static LambdaExpression Map(ISparkView view, Expression branch, AbstractCommonApiForIndexes index, out Type entityType)
     {
         var definition = view.Definition;
-        if (branch is not MethodCallExpression { Method.Name: nameof(Queryable.Select) } select)
+        if (branch is not MethodCallExpression { Method.Name: nameof(Queryable.Select) or nameof(Queryable.SelectMany) } select
+            || select.Method.DeclaringType != typeof(Queryable)
+            || select.Arguments.Count != (select.Method.Name == nameof(Queryable.Select) ? 2 : 3))
             throw Shape(view);
 
         var filters = new Stack<LambdaExpression>();
@@ -68,13 +72,26 @@ internal static class RavenViewIndexes
         Expression chain = docs;
         foreach (var filter in filters)
             chain = Expression.Call(typeof(Enumerable), nameof(Enumerable.Where), [entityType], chain, rewriter.Visit(filter));
-        var projection = (LambdaExpression)rewriter.Visit(StripQuotes(select.Arguments[1]));
-        var map = Expression.Call(typeof(Enumerable), nameof(Enumerable.Select), [entityType, view.RowType], chain, projection);
+
+        Expression map;
+        if (select.Method.Name == nameof(Queryable.SelectMany))
+        {
+            var items = (LambdaExpression)rewriter.Visit(StripQuotes(select.Arguments[1]));
+            var result = (LambdaExpression)rewriter.Visit(StripQuotes(select.Arguments[2]));
+            map = Expression.Call(typeof(Enumerable), nameof(Enumerable.SelectMany),
+                [entityType, result.Parameters[1].Type, view.RowType], chain, items, result);
+        }
+        else
+        {
+            var projection = (LambdaExpression)rewriter.Visit(StripQuotes(select.Arguments[1]));
+            map = Expression.Call(typeof(Enumerable), nameof(Enumerable.Select), [entityType, view.RowType], chain, projection);
+        }
         return Expression.Lambda(typeof(Func<,>).MakeGenericType(docs.Type, typeof(System.Collections.IEnumerable)), map, docs);
     }
 
     private static NotSupportedException Shape(ISparkView view) => new(
-        $"View {view.Name} cannot be a RavenDB index: each map must have the shape Set<T>().Where(…).Select(…), maps joined by Concat.");
+        $"View {view.Name} cannot be a RavenDB index: each map must have the shape Set<T>().Where(…).Select(…), or "
+        + "from x in Set<T>() from item in x.List select … for a fan-out, maps joined by Concat.");
 
     private static Expression StripQuotes(Expression e) => e is UnaryExpression { NodeType: ExpressionType.Quote } quote ? quote.Operand : e;
 

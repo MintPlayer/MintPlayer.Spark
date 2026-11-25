@@ -503,6 +503,18 @@ rounds, milestones and status. Branch `feat/536-sql-server-provider`, draft PR #
     - `SparkFileUpload` is registered as a stored type (D36).
     - **Evidence:** `NeutralFilesStoreTests` (claim + reconcile, the deferred sweep, the default store) 3/3 on all four
       databases; the Files suites on RavenDB 264/264 (28 skipped: cloud stores).
+  - **M7g (2026-11-25): fan-out views (PRD D43, "Fan-out maps").** `from x in s.Set<T>() from item in x.List select …`
+    in a `SparkView` map.
+    - RavenDB: `RavenViewIndexes.Map` renders a `SelectMany` with a result selector.
+    - Memory: `InMemoryViewRenderer` reads a null list as empty.
+    - SQL: unchanged, because EF translates primitive collections (`OPENJSON`, `unnest`).
+    - **Evidence:**
+      - `NeutralReduceViewTests` 6/6 on InMemory, SQL Server, PostgreSQL and RavenDB. New: a `Likes_Count`-shaped
+        two-map fan-out reduce through an update, and a map-only fan-out.
+      - The other RavenDB view, index and catalog tests 50/50.
+    - `apps/MintPlayer`'s `Likes_Count` stays a native RavenDB index. It is production, and moving it to a `SparkView`
+      would rebuild its index there for no change in behaviour. The view form is proven by the test above.
+    - **Next:** M8 IdentityProvider + Dashboards (S9), then M9.
   - **M7f (2026-11-25): S10, site search on any store (PRD D44).** RavenDB keeps the generated `Spark_Search` index and
     `RavenSearchProvider`. Every other store gets `StoreSearchProvider` (`libs/search/MintPlayer.Spark.Search/`):
     - A substring prefilter per word over the type's search fields (`LIKE`/`strpos`, a parameter per word, `IsDeleted`

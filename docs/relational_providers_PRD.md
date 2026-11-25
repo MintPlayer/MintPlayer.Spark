@@ -540,8 +540,19 @@ the aggregate tables of the S16 row and the §"Map-reduce index" table row (*rou
 - **Cost, measured (spike S16-V, plan M7e):** 100k rows, no index on the group key: one key's cells in 10 ms
   (PostgreSQL) and 55–66 ms (SQL Server) warm; the whole 2,250-cell view in 23–33 ms and 565–711 ms.
 - **Limits:** every map assigns every member (EF's set operations require it), a sum a map lacks is `0`, the reduce
-  uses keys and scalar aggregates only, a reduce view has no `Id` and is never an entity type's default. Fan-out
-  (`SelectMany`) in a map is not supported yet (`Likes_Count`).
+  uses keys and scalar aggregates only, a reduce view has no `Id` and is never an entity type's default.
+- **Fan-out maps (M7g, 2026-11-25):** `from x in s.Set<T>() from item in x.List select new TRow { … }` yields one row
+  per list item (`Likes_Count`).
+  - RavenDB renders `docs.SelectMany(x => x.List, (x, item) => …)`.
+  - EF translates the primitive collection: `OPENJSON` on SQL Server, `unnest` on PostgreSQL.
+  - Memory runs `SelectMany`, with a missing list read as empty, as RavenDB and SQL read it.
+  - A fanned-out row has no `Id`.
+  - Only the query-syntax pair (`SelectMany` with a result selector) is accepted. A `where` between the two `from`s
+    makes transparent identifiers, which RavenDB's map shape does not take.
+  - *Evidence:* `NeutralReduceViewTests` 6/6 on all four databases, with a two-map fan-out reduce through an update
+    and a map-only fan-out.
+  - SQL Server and PostgreSQL passed before any change: EF already translated the shape. RavenDB failed to deploy
+    ("Could not find index"), and memory threw `NullReferenceException` on a null list.
 - **One row-per-entity view per entity type, one SQL view per row type.** Two row-per-entity views over the same type
   make the catalog demand a `[DefaultIndex]`, so moderation folded `EntriesToCredit` into `Moderation_Ledger`.
 - **RavenDB reads a map view's rows with `ProjectInto`** (`RavenSparkSession.ViewRows`), added at execution when the
