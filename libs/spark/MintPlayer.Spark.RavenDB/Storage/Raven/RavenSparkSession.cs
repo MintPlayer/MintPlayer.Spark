@@ -136,8 +136,8 @@ internal sealed class RavenSparkSession : ISparkSession
         return result;
     }
 
-    public async Task<IReadOnlyList<T>> LoadStartingWithAsync<T>(string idPrefix, int start = 0, int pageSize = 25, CancellationToken cancellationToken = default) where T : class
-        => [.. await Session.Advanced.LoadStartingWithAsync<T>(idPrefix, null, start, pageSize, token: cancellationToken)];
+    public async Task<IReadOnlyList<T>> LoadStartingWithAsync<T>(string idPrefix, int start = 0, int pageSize = 25, string? startAfter = null, CancellationToken cancellationToken = default) where T : class
+        => [.. await Session.Advanced.LoadStartingWithAsync<T>(idPrefix, null, start, pageSize, startAfter: startAfter, token: cancellationToken)];
 
     public Task<bool> ExistsAsync<T>(Id<T> id, CancellationToken cancellationToken = default) where T : class
         => ExistsAsync(typeof(T), id.Value, cancellationToken);

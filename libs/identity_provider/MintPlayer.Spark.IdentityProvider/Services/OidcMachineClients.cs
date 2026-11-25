@@ -1,7 +1,6 @@
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.IdentityProvider.Models;
-using Raven.Client.Documents;
-using Raven.Client.Documents.Session;
+using MintPlayer.Spark.Abstractions.Storage;
 
 namespace MintPlayer.Spark.IdentityProvider.Services;
 
@@ -14,7 +13,7 @@ namespace MintPlayer.Spark.IdentityProvider.Services;
 public static class OidcMachineClients
 {
     /// <summary>Creates the client in <paramref name="session"/>; it exists once the session saves.</summary>
-    public static async Task<OidcApplication> CreateAsync(IAsyncDocumentSession session, string displayName, string createdBy, string? homepageUrl, CancellationToken ct = default)
+    public static async Task<OidcApplication> CreateAsync(ISparkSession session, string displayName, string createdBy, string? homepageUrl, CancellationToken ct = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(displayName);
         ArgumentException.ThrowIfNullOrWhiteSpace(createdBy);
@@ -30,7 +29,7 @@ public static class OidcMachineClients
             CreatedAt = DateTime.UtcNow,
             CreatedBy = createdBy,
         };
-        await OidcClientIdReservation.ReserveAsync(session, app);
+        await OidcClientIdReservation.ReserveAsync(session.AsRavenSession(), app);
         await session.StoreAsync(app, app.Id.Value, ct);
         return app;
     }
@@ -40,7 +39,7 @@ public static class OidcMachineClients
     /// one per <paramref name="subject"/> (e.g. <c>installation:in_…</c>), its id derived from the pair. Created valid in
     /// <paramref name="session"/>; returns its id, for <see cref="OidcClientCredentialsContribution.AuthorizationId"/>.
     /// </summary>
-    public static async Task<string> CreateGrantAsync(IAsyncDocumentSession session, string applicationId, string subject, IEnumerable<string> scopes, CancellationToken ct = default)
+    public static async Task<string> CreateGrantAsync(ISparkSession session, string applicationId, string subject, IEnumerable<string> scopes, CancellationToken ct = default)
     {
         var grant = new OidcGrant
         {
@@ -60,7 +59,7 @@ public static class OidcMachineClients
     /// <see cref="OidcGrant.LastRevokedAt"/>); <paramref name="revoke"/> also ends the grant itself, so no token under it
     /// is honoured again. In <paramref name="session"/>; the caller saves.
     /// </summary>
-    public static async Task WithdrawGrantAsync(IAsyncDocumentSession session, string grantId, bool revoke, CancellationToken ct = default)
+    public static async Task WithdrawGrantAsync(ISparkSession session, string grantId, bool revoke, CancellationToken ct = default)
     {
         if (await session.LoadAsync<OidcGrant>(grantId, ct) is not { } grant)
             return;
@@ -77,8 +76,10 @@ public static class OidcMachineClients
     /// Deletes the client: every token and grant it holds is revoked first (<see cref="OidcDisableCascade"/>), then the
     /// document goes and its client id is released. A missing client is not an error.
     /// </summary>
-    public static async Task DeleteAsync(IDocumentStore store, string applicationId, CancellationToken ct = default)
+    public static async Task DeleteAsync(ISparkStore sparkStore, string applicationId, CancellationToken ct = default)
     {
+        // #536: the identity provider itself still runs on RavenDB (M8); its callers already speak the neutral API.
+        var store = sparkStore.AsRavenStore();
         await OidcDisableCascade.RevokeApplicationAsync(store, applicationId, ct);
         using var session = store.OpenAsyncSession();
         if (await session.LoadAsync<OidcApplication>(applicationId, ct) is not { } app)

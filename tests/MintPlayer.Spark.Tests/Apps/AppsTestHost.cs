@@ -1,3 +1,4 @@
+using MintPlayer.Spark;
 using System.Collections.Concurrent;
 using System.ComponentModel;
 using System.Net;
@@ -71,7 +72,7 @@ public abstract class AppsTestHost : OrganizationsTestHost
     {
         using var scope = Factory.CreateScope();
         using var session = Store.OpenAsyncSession();
-        var id = await Publisher(scope).PublishAsync(data, owner, session);
+        var id = await Publisher(scope).PublishAsync(data, owner, session.AsSparkSession());
         await session.SaveChangesAsync();
         return id;
     }

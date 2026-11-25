@@ -1,7 +1,7 @@
 using CodeCoverage.Webhooks;
 using Microsoft.Extensions.DependencyInjection;
 using MintPlayer.Spark.Apps;
-using Raven.Client.Documents.Session;
+using MintPlayer.Spark.Abstractions.Storage;
 
 namespace CodeCoverage.Tests;
 
@@ -25,11 +25,11 @@ public sealed class RecordingWebhooks : IWebhookPublisher
 
     public IReadOnlyList<TEvent> Of<TEvent>() => [.. All.Select(p => p.Data).OfType<TEvent>()];
 
-    public Task<string?> PublishAsync<TEvent>(TEvent data, WebhookOwner owner, IAsyncDocumentSession session, CancellationToken cancellationToken = default)
+    public Task<string?> PublishAsync<TEvent>(TEvent data, WebhookOwner owner, ISparkSession session, CancellationToken cancellationToken = default)
         where TEvent : notnull
         => Record(data, owner, null);
 
-    public Task<string?> PublishAsync<TEvent>(TEvent data, WebhookOwner owner, string idempotencyKey, IAsyncDocumentSession session, CancellationToken cancellationToken = default)
+    public Task<string?> PublishAsync<TEvent>(TEvent data, WebhookOwner owner, string idempotencyKey, ISparkSession session, CancellationToken cancellationToken = default)
         where TEvent : notnull
         => Record(data, owner, idempotencyKey);
 

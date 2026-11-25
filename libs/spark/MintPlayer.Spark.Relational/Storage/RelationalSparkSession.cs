@@ -178,19 +178,34 @@ public sealed partial class RelationalSparkSession : ISparkSession
     private static readonly MethodInfo LoadManyMethod = typeof(RelationalSparkSession).GetMethods()
         .Single(m => m.Name == nameof(LoadAsync) && m.IsGenericMethod && m.GetParameters() is [{ ParameterType: var p }, _] && p == typeof(IEnumerable<string>));
 
-    public async Task<IReadOnlyList<T>> LoadStartingWithAsync<T>(string idPrefix, int start = 0, int pageSize = 25, CancellationToken cancellationToken = default) where T : class
+    public async Task<IReadOnlyList<T>> LoadStartingWithAsync<T>(string idPrefix, int start = 0, int pageSize = 25, string? startAfter = null, CancellationToken cancellationToken = default) where T : class
     {
         var table = Model.RequireTable(typeof(T));
         var prefix = idPrefix.ToLowerInvariant();
+        string? afterKey = null;
+        if (startAfter is not null)
+        {
+            // The key column holds the whole id (Text) or the part after the collection (Natural); a Guid or bigint key
+            // has no text order to resume from.
+            var after = startAfter.ToLowerInvariant();
+            afterKey = table.Key switch
+            {
+                SparkKeyShape.Text => after,
+                SparkKeyShape.Natural when after.StartsWith(table.Prefix, StringComparison.Ordinal) => after[table.Prefix.Length..],
+                SparkKeyShape.Natural => throw new ArgumentException($"'{startAfter}' is not an id of {typeof(T).Name} ('{table.Prefix}').", nameof(startAfter)),
+                _ => throw new NotSupportedException($"{typeof(T).Name} has {table.Key} ids: startAfter needs text ids."),
+            };
+        }
         IQueryable<T> query;
         if (table.Key == SparkKeyShape.Text || (table.Key == SparkKeyShape.Natural && prefix.StartsWith(table.Prefix, StringComparison.Ordinal)))
         {
             // D7: an escaped LIKE on the key column, so the prefix's own % and _ match themselves.
             var keyPrefix = table.Key == SparkKeyShape.Text ? prefix : prefix[table.Prefix.Length..];
-            query = KeyLike(table, typeof(T), keyPrefix).Cast<T>();
+            query = KeyLike(table, typeof(T), keyPrefix, afterKey).Cast<T>();
         }
         else if (table.Prefix.StartsWith(prefix, StringComparison.Ordinal))
-            query = db.Set<T>(); // the prefix covers the whole collection
+            // The prefix covers the whole collection.
+            query = afterKey is null ? db.Set<T>() : KeyLike(table, typeof(T), "", afterKey).Cast<T>();
         else if (table.Key == SparkKeyShape.Natural)
             return [];
         else
@@ -203,15 +218,23 @@ public sealed partial class RelationalSparkSession : ISparkSession
         return rows;
     }
 
-    /// <summary><c>SELECT * FROM table WHERE key LIKE @p ESCAPE '\'</c>: the table and column come from the model, the value is a parameter.</summary>
-    private IQueryable KeyLike(SparkTable table, Type type, string keyPrefix)
+    /// <summary>
+    /// <c>SELECT * FROM table WHERE key LIKE @p0 ESCAPE '\' [AND key &gt; @p1]</c>: the table and column come from the
+    /// model, the values are parameters. The comparison uses the column's collation, as the ORDER BY does.
+    /// </summary>
+    private IQueryable KeyLike(SparkTable table, Type type, string keyPrefix, string? afterKey = null)
     {
         var helper = db.GetService<Microsoft.EntityFrameworkCore.Storage.ISqlGenerationHelper>();
         var entityType = db.Model.FindEntityType(table.Root)!;
-        var column = entityType.FindProperty(table.IdProperty.Name)!.GetColumnName();
-        var sql = $"SELECT * FROM {helper.DelimitIdentifier(table.Name, entityType.GetSchema())} WHERE {helper.DelimitIdentifier(column)} LIKE {{0}} ESCAPE '\\'";
-        var pattern = EscapeLike(keyPrefix) + "%";
-        var rooted = (IQueryable)FromSqlMethod.MakeGenericMethod(table.Root).Invoke(null, [SetOf(table.Root), sql, new object[] { pattern }])!;
+        var column = helper.DelimitIdentifier(entityType.FindProperty(table.IdProperty.Name)!.GetColumnName());
+        var sql = $"SELECT * FROM {helper.DelimitIdentifier(table.Name, entityType.GetSchema())} WHERE {column} LIKE {{0}} ESCAPE '\\'";
+        object[] parameters = [EscapeLike(keyPrefix) + "%"];
+        if (afterKey is not null)
+        {
+            sql += $" AND {column} > {{1}}";
+            parameters = [parameters[0], afterKey];
+        }
+        var rooted = (IQueryable)FromSqlMethod.MakeGenericMethod(table.Root).Invoke(null, [SetOf(table.Root), sql, parameters])!;
         return type == table.Root ? rooted : (IQueryable)OfTypeMethod.MakeGenericMethod(type).Invoke(null, [rooted])!;
     }
 

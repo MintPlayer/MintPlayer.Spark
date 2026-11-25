@@ -7,8 +7,7 @@ using MintPlayer.Spark.Apps.Models;
 using MintPlayer.Spark.Apps.Services;
 using MintPlayer.Spark.Messaging.Abstractions;
 using MintPlayer.Webhooks;
-using Raven.Client.Documents;
-using Raven.Client.Exceptions;
+using MintPlayer.Spark.Abstractions.Storage;
 
 namespace MintPlayer.Spark.Apps.Messaging;
 
@@ -21,7 +20,7 @@ namespace MintPlayer.Spark.Apps.Messaging;
 [Register(typeof(IRecipient<WebhookEventRaised>), Microsoft.Extensions.DependencyInjection.ServiceLifetime.Scoped)]
 internal sealed partial class WebhookFanOut : IRecipient<WebhookEventRaised>
 {
-    [Inject] private readonly IDocumentStore store;
+    [Inject] private readonly ISparkStore store;
     [Inject] private readonly WebhookScheduler scheduler;
     [Inject] private readonly WebhookEventCatalog catalog;
     [Inject] private readonly IOptions<SparkAppsOptions> options;
@@ -31,9 +30,9 @@ internal sealed partial class WebhookFanOut : IRecipient<WebhookEventRaised>
         var owner = new WebhookOwner(message.OwnerKind, message.OwnerKey);
         for (var attempt = 1; ; attempt++)
         {
-            using var session = store.OpenAsyncSession();
+            using var session = store.OpenSession();
             // A chain changed by another event in between is read again; so is a delivery made by a concurrent run.
-            session.Advanced.OptimisticConcurrencyMode = Raven.Client.Documents.Session.OptimisticConcurrencyMode.Writes;
+            session.OptimisticConcurrency = true;
 
             var registry = await session.LoadAsync<WebhookOwnerRegistry>(WebhookOwnerRegistry.IdFor(owner).Value, cancellationToken);
             if (registry is not { HasDestinations: true })
@@ -62,7 +61,7 @@ internal sealed partial class WebhookFanOut : IRecipient<WebhookEventRaised>
                 await session.SaveChangesAsync(cancellationToken);
                 return;
             }
-            catch (ConcurrencyException) when (attempt < 10)
+            catch (SparkStoreConcurrencyException) when (attempt < 10)
             {
             }
         }
@@ -74,7 +73,7 @@ internal sealed partial class WebhookFanOut : IRecipient<WebhookEventRaised>
     /// payload names the installation, so the App knows which token to ask for.
     /// </summary>
     private async Task<IEnumerable<(WebhookEndpoint, string)>> InstallationTargetsAsync(
-        Raven.Client.Documents.Session.IAsyncDocumentSession session, WebhookOwnerRegistry registry, WebhookEventRaised message, CancellationToken cancellationToken)
+        ISparkSession session, WebhookOwnerRegistry registry, WebhookEventRaised message, CancellationToken cancellationToken)
     {
         if (registry.InstallationIds.Count == 0 || catalog.Find(message.EventType) is not { } descriptor)
             return [];

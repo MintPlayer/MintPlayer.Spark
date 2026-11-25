@@ -152,10 +152,11 @@ internal sealed class InMemorySparkSession : ISparkSession
     public Task<IReadOnlyDictionary<string, object?>> LoadAsync(Type entityType, IEnumerable<string> ids, CancellationToken cancellationToken = default)
         => Task.FromResult<IReadOnlyDictionary<string, object?>>(LoadMany(ids, entityType));
 
-    public Task<IReadOnlyList<T>> LoadStartingWithAsync<T>(string idPrefix, int start = 0, int pageSize = 25, CancellationToken cancellationToken = default) where T : class
+    public Task<IReadOnlyList<T>> LoadStartingWithAsync<T>(string idPrefix, int start = 0, int pageSize = 25, string? startAfter = null, CancellationToken cancellationToken = default) where T : class
     {
         Request();
         IReadOnlyList<T> rows = [.. database.StartingWith(idPrefix)
+            .Where(e => startAfter is null || StringComparer.OrdinalIgnoreCase.Compare(e.Id, startAfter) > 0)
             .Skip(start)
             .Take(pageSize)
             .Select(e => Materialize(e, typeof(T)))

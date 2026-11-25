@@ -63,8 +63,11 @@ public interface ISparkSession : IDisposable
     /// <summary>Untyped <see cref="LoadAsync{T}(IEnumerable{string}, CancellationToken)"/>.</summary>
     Task<IReadOnlyDictionary<string, object?>> LoadAsync(Type entityType, IEnumerable<string> ids, CancellationToken cancellationToken = default);
 
-    /// <summary>Documents whose id starts with <paramref name="idPrefix"/>, in id order.</summary>
-    Task<IReadOnlyList<T>> LoadStartingWithAsync<T>(string idPrefix, int start = 0, int pageSize = 25, CancellationToken cancellationToken = default) where T : class;
+    /// <summary>
+    /// Documents whose id starts with <paramref name="idPrefix"/>, in id order; with <paramref name="startAfter"/>, only
+    /// those whose id sorts after it (keyset paging). The order is the store's own (collation, case-insensitive ids).
+    /// </summary>
+    Task<IReadOnlyList<T>> LoadStartingWithAsync<T>(string idPrefix, int start = 0, int pageSize = 25, string? startAfter = null, CancellationToken cancellationToken = default) where T : class;
 
     /// <summary>
     /// Whether a <typeparamref name="T"/> is stored under <paramref name="id"/>. Typed (#536 D27): a relational store

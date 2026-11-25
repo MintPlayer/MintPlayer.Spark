@@ -458,8 +458,19 @@ rounds, milestones and status. Branch `feat/536-sql-server-provider`, draft PR #
       - RavenDB messaging 217/217
       - neighbouring suites 663/663
       - the CodeCoverage auto-index tests 39/39
-  - **Next:** Apps off the `AsSparkSession()` bridge and its RavenDB pin (Patch → load-modify-save); then the rest of
-    M6 (templates, Tier 2). Cron, the subscription worker's remaining hosted services and others adopt
+  - **M6d (2026-11-25): Apps on any store.**
+    - **Apps drop `RavenDB.Client` and their RavenDB pin.** Every service takes `ISparkStore`/`ISparkSession`, and
+      `IWebhookPublisher.PublishAsync` takes an `ISparkSession` (a raw RavenDB session wraps with `AsSparkSession()`).
+    - **The delivery handler's endpoint patches** (failure count, breaker) became load-modify-save in a fresh session
+      with optimistic concurrency, retried up to 5 times; a deleted endpoint is skipped.
+    - **`LoadStartingWithAsync` gained `startAfter`** (keyset paging, the delivery log). RavenDB passes it through,
+      InMemory compares case-insensitively, and SQL adds `AND key > @p1` to the escaped LIKE (text and natural keys;
+      Guid and integer keys throw `NotSupportedException`).
+    - **`OidcMachineClients` speaks the neutral API.** Inside, the identity provider still bridges to RavenDB
+      (`AsRavenSession()` and the new `AsRavenStore()`) until M8.
+    - **Evidence:** the `LoadStartingWith` conformance tests on all four databases; the Apps, Organizations, Settings
+      and Notifications suites and CodeCoverage's webhook tests on RavenDB (see the log).
+  - **Next:** the rest of M6 (templates, Tier 2). Cron, the subscription worker's remaining hosted services and others adopt
     `ISparkStoreReadiness` as they are ported.
 - **Local spike servers left running:**
   - SQL Server: `SparkSpike536` on `localhost` and `localhost\MSSQLSERVER01`

@@ -13,9 +13,9 @@ internal sealed class NotificationAccountDeletion(ISparkStore store) : ISparkAcc
             return;
 
         using var session = store.OpenSession();
-        foreach (var device in await session.LoadStartingWithAsync<PushSubscription>(PushSubscription.PrefixFor(userId), 0, 1024, cancellationToken))
+        foreach (var device in await session.LoadStartingWithAsync<PushSubscription>(PushSubscription.PrefixFor(userId), 0, 1024, cancellationToken: cancellationToken))
             session.Delete(device);
-        foreach (var preference in await session.LoadStartingWithAsync<NotificationPreference>(NotificationPreference.PrefixFor(userId), 0, 1024, cancellationToken))
+        foreach (var preference in await session.LoadStartingWithAsync<NotificationPreference>(NotificationPreference.PrefixFor(userId), 0, 1024, cancellationToken: cancellationToken))
             session.Delete(preference);
         await session.SaveChangesAsync(cancellationToken);
 
@@ -36,8 +36,8 @@ internal sealed class NotificationPersonalData(ISparkStore store) : ISparkPerson
 
         using var session = store.OpenSession();
         var notifications = await session.ToListAsync(session.Query<Notification>(TimeSpan.FromSeconds(30)).Where(n => n.UserId == userId).Take(10_000), cancellationToken);
-        var devices = await session.LoadStartingWithAsync<PushSubscription>(PushSubscription.PrefixFor(userId), 0, 1024, cancellationToken);
-        var preferences = await session.LoadStartingWithAsync<NotificationPreference>(NotificationPreference.PrefixFor(userId), 0, 1024, cancellationToken);
+        var devices = await session.LoadStartingWithAsync<PushSubscription>(PushSubscription.PrefixFor(userId), 0, 1024, cancellationToken: cancellationToken);
+        var preferences = await session.LoadStartingWithAsync<NotificationPreference>(NotificationPreference.PrefixFor(userId), 0, 1024, cancellationToken: cancellationToken);
 
         return new
         {

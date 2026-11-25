@@ -17,6 +17,11 @@ public static class RavenSparkSessionExtensions
     public static ISparkStore AsSparkStore(this Raven.Client.Documents.IDocumentStore store)
         => new Storage.Raven.RavenSparkStore(store);
 
+    /// <summary>The RavenDB store behind <paramref name="store"/>; throws when another provider serves it.</summary>
+    public static Raven.Client.Documents.IDocumentStore AsRavenStore(this ISparkStore store)
+        => (store as Storage.Raven.RavenSparkStore)?.DocumentStore
+            ?? throw new NotSupportedException($"This needs a RavenDB store, but the store's provider is '{store.ProviderName}'.");
+
     /// <summary>The RavenDB session behind <paramref name="session"/>; throws when another provider serves it.</summary>
     public static IAsyncDocumentSession AsRavenSession(this ISparkSession session)
         => session.Native as IAsyncDocumentSession

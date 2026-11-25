@@ -1,7 +1,7 @@
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Organizations;
 using MintPlayer.Spark.Organizations.Models;
-using Raven.Client.Documents;
+using MintPlayer.Spark.Abstractions.Storage;
 
 namespace MintPlayer.Spark.Apps;
 
@@ -44,7 +44,7 @@ internal sealed class UserWebhookOwnerProvider : IWebhookOwnerProvider
 internal sealed partial class OrganizationWebhookOwnerProvider : IWebhookOwnerProvider
 {
     [Inject] private readonly IServiceProvider services;
-    [Inject] private readonly IDocumentStore store;
+    [Inject] private readonly ISparkStore store;
 
     public string Kind => WebhookOwner.OrganizationKind;
 
@@ -66,7 +66,7 @@ internal sealed partial class OrganizationWebhookOwnerProvider : IWebhookOwnerPr
         if (ids.Count == 0)
             return [];
 
-        using var session = store.OpenAsyncSession();
+        using var session = store.OpenSession();
         var loaded = await session.LoadAsync<Organization>(ids, cancellationToken);
         // Keyed by the membership's own OrganizationId: an organization created before #536 keeps "Organizations/…"
         // there while its loaded Id is lower case.

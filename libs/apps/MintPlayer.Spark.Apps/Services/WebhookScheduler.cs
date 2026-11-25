@@ -3,9 +3,7 @@ using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Apps.Messaging;
 using MintPlayer.Spark.Apps.Models;
 using MintPlayer.Spark.Messaging;
-using Raven.Client.Documents;
-using Raven.Client.Documents.Session;
-using Raven.Client.Exceptions;
+using MintPlayer.Spark.Abstractions.Storage;
 
 namespace MintPlayer.Spark.Apps.Services;
 
@@ -17,7 +15,7 @@ namespace MintPlayer.Spark.Apps.Services;
 [Register(Microsoft.Extensions.DependencyInjection.ServiceLifetime.Scoped)]
 internal sealed partial class WebhookScheduler
 {
-    [Inject] private readonly IDocumentStore store;
+    [Inject] private readonly ISparkStore store;
     [Inject] private readonly IMessageOutbox outbox;
     [Inject] private readonly IOptions<SparkAppsOptions> options;
 
@@ -28,13 +26,13 @@ internal sealed partial class WebhookScheduler
     /// optimistic concurrency on). <paramref name="bypassChain"/> is for pings and redeliveries, which are not events
     /// in the stream.
     /// </summary>
-    public async Task ScheduleAsync(IAsyncDocumentSession session, WebhookDelivery delivery, bool bypassChain, CancellationToken cancellationToken)
+    public async Task ScheduleAsync(ISparkSession session, WebhookDelivery delivery, bool bypassChain, CancellationToken cancellationToken)
     {
         var id = delivery.Id.Value;
         if (!Ordered || bypassChain)
         {
             await session.StoreAsync(delivery, id, cancellationToken);
-            await outbox.EnqueueAsync(session.AsSparkSession(), new WebhookDeliveryMessage { DeliveryId = id }, cancellationToken: cancellationToken);
+            await outbox.EnqueueAsync(session, new WebhookDeliveryMessage { DeliveryId = id }, cancellationToken: cancellationToken);
             return;
         }
 
@@ -50,7 +48,7 @@ internal sealed partial class WebhookScheduler
         if (chain.InFlight is null && !chain.Halted)
         {
             chain.InFlight = id;
-            await outbox.EnqueueAsync(session.AsSparkSession(), new WebhookDeliveryMessage { DeliveryId = id }, cancellationToken: cancellationToken);
+            await outbox.EnqueueAsync(session, new WebhookDeliveryMessage { DeliveryId = id }, cancellationToken: cancellationToken);
         }
         else
         {
@@ -89,13 +87,13 @@ internal sealed partial class WebhookScheduler
             {
                 delivery.Status = WebhookDeliveryStatus.Pending;
                 delivery.CompletedUtc = null;
-                await outbox.EnqueueAsync(session.AsSparkSession(), new WebhookDeliveryMessage { DeliveryId = head }, cancellationToken: cancellationToken);
+                await outbox.EnqueueAsync(session, new WebhookDeliveryMessage { DeliveryId = head }, cancellationToken: cancellationToken);
                 return true;
             }
             return await StartNextAsync(session, chain, cancellationToken);
         }, cancellationToken);
 
-    private async Task<bool> StartNextAsync(IAsyncDocumentSession session, WebhookChain chain, CancellationToken cancellationToken)
+    private async Task<bool> StartNextAsync(ISparkSession session, WebhookChain chain, CancellationToken cancellationToken)
     {
         chain.InFlight = null;
         while (chain.Waiting.Count > 0)
@@ -106,18 +104,18 @@ internal sealed partial class WebhookScheduler
             if (await session.LoadAsync<WebhookDelivery>(next, cancellationToken) is null)
                 continue;
             chain.InFlight = next;
-            await outbox.EnqueueAsync(session.AsSparkSession(), new WebhookDeliveryMessage { DeliveryId = next }, cancellationToken: cancellationToken);
+            await outbox.EnqueueAsync(session, new WebhookDeliveryMessage { DeliveryId = next }, cancellationToken: cancellationToken);
             break;
         }
         return true;
     }
 
-    private async Task WithChainAsync(string endpointPublicId, Func<IAsyncDocumentSession, WebhookChain, Task<bool>> change, CancellationToken cancellationToken)
+    private async Task WithChainAsync(string endpointPublicId, Func<ISparkSession, WebhookChain, Task<bool>> change, CancellationToken cancellationToken)
     {
         for (var attempt = 1; ; attempt++)
         {
-            using var session = store.OpenAsyncSession();
-            session.Advanced.OptimisticConcurrencyMode = Raven.Client.Documents.Session.OptimisticConcurrencyMode.Writes;
+            using var session = store.OpenSession();
+            session.OptimisticConcurrency = true;
             var chain = await session.LoadAsync<WebhookChain>(WebhookChain.IdFor(endpointPublicId).Value, cancellationToken);
             if (chain is null || !await change(session, chain))
                 return;
@@ -126,7 +124,7 @@ internal sealed partial class WebhookScheduler
                 await session.SaveChangesAsync(cancellationToken);
                 return;
             }
-            catch (ConcurrencyException) when (attempt < 10)
+            catch (SparkStoreConcurrencyException) when (attempt < 10)
             {
                 // Another delivery or event moved the chain first: read it again.
             }

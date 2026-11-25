@@ -365,6 +365,11 @@ public abstract class SparkStoreConformanceTests : IAsyncLifetime
 
         var page = await session.LoadStartingWithAsync<ConfDoc>("ConfPrefix/", start: 1, pageSize: 1);
         page.Select(d => Canon(d.Id)).Should().BeEquivalentTo(["confprefix/b"]);
+
+        // Keyset paging: the ids after the last one seen, whatever its case.
+        var after = await session.LoadStartingWithAsync<ConfDoc>("ConfPrefix/", startAfter: "CONFPREFIX/A");
+        after.Select(d => Canon(d.Id)).Should().BeEquivalentTo(["confprefix/b", "confprefix/c"], o => o.WithStrictOrdering());
+        (await session.LoadStartingWithAsync<ConfDoc>("ConfPrefix/", startAfter: "ConfPrefix/c")).Should().BeEmpty();
     }
 
     [SkippableFact]

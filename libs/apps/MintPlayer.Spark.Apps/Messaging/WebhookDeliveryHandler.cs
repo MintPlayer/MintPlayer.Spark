@@ -12,9 +12,8 @@ using MintPlayer.Spark.Apps.Services;
 using MintPlayer.Spark.Http;
 using MintPlayer.Spark.Messaging;
 using MintPlayer.Spark.Messaging.Abstractions;
+using MintPlayer.Spark.Abstractions.Storage;
 using MintPlayer.Webhooks;
-using Raven.Client.Documents;
-using Raven.Client.Documents.Session;
 
 namespace MintPlayer.Spark.Apps.Messaging;
 
@@ -45,10 +44,16 @@ internal sealed partial class WebhookDeliveryHandler : IRecipient<WebhookDeliver
     /// <summary>D23: the log keeps a 2 KB response excerpt.</summary>
     private const int ResponseExcerptBytes = 2048;
 
-    /// <summary>The endpoints this handling already disabled (patched, not edited: the loaded copy stays untouched).</summary>
+    /// <summary>The endpoints this handling already disabled (changed after the save, not edited: the loaded copy stays untouched).</summary>
     private readonly HashSet<Id<WebhookEndpoint>> disabledNow = [];
 
-    [Inject] private readonly IDocumentStore store;
+    /// <summary>The field changes per endpoint id, applied after the delivery's save (<see cref="SaveAsync"/>).</summary>
+    private readonly Dictionary<string, List<Action<WebhookEndpoint>>> endpointChanges = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>A versioned endpoint write that lost to a concurrent edit is retried this often on the fresh copy.</summary>
+    private const int EndpointWriteAttempts = 5;
+
+    [Inject] private readonly ISparkStore store;
     [Inject] private readonly IHttpClientFactory httpClientFactory;
     [Inject] private readonly WebhookSecretProtector secrets;
     [Inject] private readonly WebhookScheduler scheduler;
@@ -73,7 +78,7 @@ internal sealed partial class WebhookDeliveryHandler : IRecipient<WebhookDeliver
 
     public async Task HandleAsync(WebhookDeliveryMessage message, CancellationToken cancellationToken = default)
     {
-        using var session = store.OpenAsyncSession();
+        using var session = store.OpenSession();
         var delivery = await session.LoadAsync<WebhookDelivery>(message.DeliveryId, cancellationToken);
         if (delivery is null || delivery.Status != WebhookDeliveryStatus.Pending)
             return; // expired from the log, or already settled (a duplicate message)
@@ -122,16 +127,19 @@ internal sealed partial class WebhookDeliveryHandler : IRecipient<WebhookDeliver
         {
             if (response is { IsSuccessStatusCode: true })
             {
-                PatchEndpoint(session, endpoint, e => e.ConsecutiveFailures, 0);
-                PatchEndpoint(session, endpoint, e => e.FailingSinceUtc, (DateTime?)null);
-                PatchEndpoint(session, endpoint, e => e.LastSuccessUtc, (DateTime?)now);
+                ChangeEndpoint(endpoint, e =>
+                {
+                    e.ConsecutiveFailures = 0;
+                    e.FailingSinceUtc = null;
+                    e.LastSuccessUtc = now;
+                });
                 await SettleAsync(session, delivery, WebhookDeliveryStatus.Succeeded, null, null, cancellationToken);
                 return;
             }
 
             if (response?.StatusCode == HttpStatusCode.Gone)
             {
-                await DisableAsync(session, endpoint, "The receiver answered 410 Gone.");
+                DisableEndpoint(endpoint, "The receiver answered 410 Gone.");
                 await SettleAsync(session, delivery, WebhookDeliveryStatus.Failed, null, null, cancellationToken);
                 await NotifyDisabledAsync(endpoint, "The receiver answered 410 Gone.", cancellationToken);
                 return;
@@ -139,7 +147,7 @@ internal sealed partial class WebhookDeliveryHandler : IRecipient<WebhookDeliver
 
             if (response is { StatusCode: HttpStatusCode.TooManyRequests or HttpStatusCode.ServiceUnavailable } && RetryAfter(response) is { } delay)
             {
-                await session.SaveChangesAsync(cancellationToken);
+                await SaveAsync(session, cancellationToken);
                 throw new RetryAfterException(delay, $"The receiver asked to wait {delay}.");
             }
         }
@@ -162,21 +170,20 @@ internal sealed partial class WebhookDeliveryHandler : IRecipient<WebhookDeliver
         return await httpClientFactory.CreateClient(SparkAppsExtensions.DeliveryHttpClient).SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
     }
 
-    private async Task FailedAttemptAsync(IAsyncDocumentSession session, WebhookDelivery delivery, WebhookEndpoint endpoint, bool countAgainstEndpoint, CancellationToken cancellationToken)
+    private async Task FailedAttemptAsync(ISparkSession session, WebhookDelivery delivery, WebhookEndpoint endpoint, bool countAgainstEndpoint, CancellationToken cancellationToken)
     {
         var now = time.GetUtcNow().UtcDateTime;
         string? disabled = null;
         if (countAgainstEndpoint)
         {
-            PatchEndpoint(session, endpoint, e => e.ConsecutiveFailures, endpoint.ConsecutiveFailures + 1);
-            PatchEndpoint(session, endpoint, e => e.LastFailureUtc, (DateTime?)now);
+            CountFailure(endpoint, now);
             var failingSince = endpoint.FailingSinceUtc ?? now;
             if (endpoint.FailingSinceUtc is null)
-                PatchEndpoint(session, endpoint, e => e.FailingSinceUtc, (DateTime?)now);
+                ChangeEndpoint(endpoint, e => e.FailingSinceUtc ??= now);
             if (now - failingSince >= options.Value.AutoDisableAfter)
             {
                 disabled = $"Every delivery failed since {failingSince:u}.";
-                await DisableAsync(session, endpoint, disabled);
+                DisableEndpoint(endpoint, disabled);
             }
         }
 
@@ -188,21 +195,18 @@ internal sealed partial class WebhookDeliveryHandler : IRecipient<WebhookDeliver
             return;
         }
 
-        await session.SaveChangesAsync(cancellationToken);
+        await SaveAsync(session, cancellationToken);
         throw new WebhookDeliveryFailedException($"Delivery {delivery.Id} failed (attempt {context.AttemptCount}); retrying.");
     }
 
     /// <summary>Final state, saved; then an ordered chain moves on (or halts).</summary>
-    private async Task SettleAsync(IAsyncDocumentSession session, WebhookDelivery delivery, WebhookDeliveryStatus status, string? note, WebhookEndpoint? countFor, CancellationToken cancellationToken, bool countFailure = false)
+    private async Task SettleAsync(ISparkSession session, WebhookDelivery delivery, WebhookDeliveryStatus status, string? note, WebhookEndpoint? countFor, CancellationToken cancellationToken, bool countFailure = false)
     {
         var now = time.GetUtcNow().UtcDateTime;
         if (note is not null)
             delivery.Attempts.Add(new WebhookDeliveryAttempt { AtUtc = now, Error = note });
         if (countFailure && countFor is not null)
-        {
-            PatchEndpoint(session, countFor, e => e.ConsecutiveFailures, countFor.ConsecutiveFailures + 1);
-            PatchEndpoint(session, countFor, e => e.LastFailureUtc, (DateTime?)now);
-        }
+            CountFailure(countFor, now);
         delivery.Status = status;
         delivery.CompletedUtc = now;
 
@@ -211,31 +215,76 @@ internal sealed partial class WebhookDeliveryHandler : IRecipient<WebhookDeliver
         if (halt && !disabledNow.Contains(WebhookEndpoint.IdFor(delivery.EndpointId))
             && await session.LoadAsync<WebhookEndpoint>(WebhookEndpoint.IdFor(delivery.EndpointId).Value, cancellationToken) is { Enabled: true } endpoint)
         {
-            await DisableAsync(session, endpoint, $"Ordered delivery halted: {delivery.EventType} ({delivery.MessageId}) could not be delivered.");
+            DisableEndpoint(endpoint, $"Ordered delivery halted: {delivery.EventType} ({delivery.MessageId}) could not be delivered.");
             halted = endpoint;
         }
-        await session.SaveChangesAsync(cancellationToken);
+        await SaveAsync(session, cancellationToken);
         await scheduler.CompleteAsync(delivery, halt, cancellationToken);
         if (halted is not null)
             await NotifyDisabledAsync(halted, "Ordered delivery halted.", cancellationToken);
     }
 
-    private Task DisableAsync(IAsyncDocumentSession session, WebhookEndpoint endpoint, string reason)
+    private void DisableEndpoint(WebhookEndpoint endpoint, string reason)
     {
         if (disabledNow.Add(endpoint.Id))
+            ChangeEndpoint(endpoint, e =>
+            {
+                e.Enabled = false;
+                e.DisabledReason = reason;
+            });
+    }
+
+    /// <summary>One more failure in a row, counted on the stored value: a concurrent delivery's count is not lost.</summary>
+    private void CountFailure(WebhookEndpoint endpoint, DateTime now)
+        => ChangeEndpoint(endpoint, e =>
         {
-            PatchEndpoint(session, endpoint, e => e.Enabled, false);
-            PatchEndpoint(session, endpoint, e => e.DisabledReason, reason);
-        }
-        return Task.CompletedTask;
+            e.ConsecutiveFailures++;
+            e.LastFailureUtc = now;
+        });
+
+    /// <summary>
+    /// Queues a change to some of the endpoint's fields. The endpoint document is also edited by its owner (rotation,
+    /// URL, events); saving the loaded copy would overwrite those, so <see cref="SaveAsync"/> applies the change to the
+    /// stored copy instead.
+    /// </summary>
+    private void ChangeEndpoint(WebhookEndpoint endpoint, Action<WebhookEndpoint> change)
+    {
+        if (!endpointChanges.TryGetValue(endpoint.Id.Value, out var changes))
+            endpointChanges[endpoint.Id.Value] = changes = [];
+        changes.Add(change);
     }
 
     /// <summary>
-    /// Patches one field. The endpoint document is also edited by its owner (rotation, URL, events); a field patch never
-    /// overwrites those, where saving the loaded copy would.
+    /// Saves the delivery, then each changed endpoint (#536; RavenDB field patches before): loaded fresh, changed and
+    /// stored at the version read, retried on a concurrent write, so an owner's edit is never overwritten. The endpoint
+    /// writes follow the delivery's save rather than sharing it; a crash between the two loses a counter update,
+    /// which the next delivery's outcome corrects.
     /// </summary>
-    private static void PatchEndpoint<TValue>(IAsyncDocumentSession session, WebhookEndpoint endpoint, System.Linq.Expressions.Expression<Func<WebhookEndpoint, TValue>> path, TValue value)
-        => session.Advanced.Patch(endpoint.Id.Value, path, value);
+    private async Task SaveAsync(ISparkSession session, CancellationToken cancellationToken)
+    {
+        await session.SaveChangesAsync(cancellationToken);
+        foreach (var (id, changes) in endpointChanges)
+        {
+            for (var attempt = 1; ; attempt++)
+            {
+                using var endpointSession = store.OpenSession();
+                endpointSession.OptimisticConcurrency = true;
+                if (await endpointSession.LoadAsync<WebhookEndpoint>(id, cancellationToken) is not { } stored)
+                    break; // deleted meanwhile
+                foreach (var change in changes)
+                    change(stored);
+                try
+                {
+                    await endpointSession.SaveChangesAsync(cancellationToken);
+                    break;
+                }
+                catch (SparkStoreConcurrencyException) when (attempt < EndpointWriteAttempts)
+                {
+                }
+            }
+        }
+        endpointChanges.Clear();
+    }
 
     private async Task NotifyDisabledAsync(WebhookEndpoint endpoint, string reason, CancellationToken cancellationToken)
     {

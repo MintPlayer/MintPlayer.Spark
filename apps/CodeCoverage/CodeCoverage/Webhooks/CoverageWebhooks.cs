@@ -173,7 +173,7 @@ public sealed partial class CoverageWebhookPublisher
     {
         if (services.GetService<IWebhookPublisher>() is not { } webhooks || repository.OwnerLogin is not { Length: > 0 })
             return;
-        await webhooks.PublishAsync(data, CoverageWebhooks.Account(repository.OwnerKey), key, session, cancellationToken);
+        await webhooks.PublishAsync(data, CoverageWebhooks.Account(repository.OwnerKey), key, session.AsSparkSession(), cancellationToken);
     }
 }
 
@@ -221,7 +221,7 @@ public sealed partial class CoverageBuildCompletedRecipient : IRecipient<Coverag
         if (commit?.Repository is null || await session.LoadAsync<Repository>(commit.Repository, cancellationToken) is not { } repository)
             return;
 
-        await webhooks.PublishAsync(CoverageWebhooks.Describe(build, commit, repository), CoverageWebhooks.Account(repository.OwnerKey), build.Id.Value, session, cancellationToken);
+        await webhooks.PublishAsync(CoverageWebhooks.Describe(build, commit, repository), CoverageWebhooks.Account(repository.OwnerKey), build.Id.Value, session.AsSparkSession(), cancellationToken);
         await session.SaveChangesAsync(cancellationToken);
     }
 }

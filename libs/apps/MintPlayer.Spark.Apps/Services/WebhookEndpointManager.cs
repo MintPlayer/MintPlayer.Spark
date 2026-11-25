@@ -6,8 +6,7 @@ using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Apps.Catalog;
 using MintPlayer.Spark.Apps.Models;
 using MintPlayer.Webhooks;
-using Raven.Client.Documents;
-using Raven.Client.Exceptions;
+using MintPlayer.Spark.Abstractions.Storage;
 
 namespace MintPlayer.Spark.Apps.Services;
 
@@ -54,7 +53,7 @@ internal sealed partial class WebhookEndpointManager
     private static readonly Regex EndpointIdShape = new("^ep_[0-9a-f]{24}$", RegexOptions.CultureInvariant);
     private static readonly Regex DeliveryIdShape = new("^ep_[0-9a-f]{24}/[0-9a-f]{16}_msg_[0-9a-f]{32}(_r[0-9a-f]{8})?$", RegexOptions.CultureInvariant);
 
-    [Inject] private readonly IDocumentStore store;
+    [Inject] private readonly ISparkStore store;
     [Inject] private readonly WebhookOwnerResolver owners;
     [Inject] private readonly WebhookEventCatalog catalog;
     [Inject] private readonly WebhookSecretProtector secrets;
@@ -73,7 +72,7 @@ internal sealed partial class WebhookEndpointManager
         if (!await owners.CanManageAsync(owner, userId, cancellationToken))
             return WebhookResult<IReadOnlyList<WebhookEndpointView>>.NotFound();
 
-        using var session = store.OpenAsyncSession();
+        using var session = store.OpenSession();
         var registry = await session.LoadAsync<WebhookOwnerRegistry>(WebhookOwnerRegistry.IdFor(owner).Value, cancellationToken);
         if (registry is null)
             return WebhookResult<IReadOnlyList<WebhookEndpointView>>.Ok([]);
@@ -95,8 +94,8 @@ internal sealed partial class WebhookEndpointManager
         if (input.Description is { Length: > 200 })
             return WebhookResult<WebhookEndpointSecret>.Invalid("The description is at most 200 characters.");
 
-        using var session = store.OpenAsyncSession();
-        session.Advanced.OptimisticConcurrencyMode = Raven.Client.Documents.Session.OptimisticConcurrencyMode.Writes;
+        using var session = store.OpenSession();
+        session.OptimisticConcurrency = true;
         var registryId = WebhookOwnerRegistry.IdFor(owner);
         var registry = await session.LoadAsync<WebhookOwnerRegistry>(registryId.Value, cancellationToken);
         if (registry is null)
@@ -125,7 +124,7 @@ internal sealed partial class WebhookEndpointManager
         {
             await session.SaveChangesAsync(cancellationToken);
         }
-        catch (ConcurrencyException)
+        catch (SparkStoreConcurrencyException)
         {
             return WebhookResult<WebhookEndpointSecret>.Conflict("The owner's webhooks changed meanwhile; try again.");
         }
@@ -216,7 +215,7 @@ internal sealed partial class WebhookEndpointManager
         }, cancellationToken);
 
     /// <summary>A <c>ping</c> to <paramref name="endpoint"/> in <paramref name="session"/>, outside any ordered chain; returns the delivery id.</summary>
-    internal async Task<string> SchedulePingAsync(Raven.Client.Documents.Session.IAsyncDocumentSession session, WebhookEndpoint endpoint, CancellationToken cancellationToken)
+    internal async Task<string> SchedulePingAsync(ISparkSession session, WebhookEndpoint endpoint, CancellationToken cancellationToken)
     {
         var now = time.GetUtcNow();
         var messageId = WebhookPublisher.NewMessageId(now);
@@ -245,12 +244,12 @@ internal sealed partial class WebhookEndpointManager
         {
             if (after is not null && !DeliveryIdShape.IsMatch(after))
                 return WebhookResult<IReadOnlyList<WebhookDeliveryView>>.Invalid("after is not a delivery id.");
-            var page = await session.Advanced.LoadStartingWithAsync<WebhookDelivery>(
+            var page = await session.LoadStartingWithAsync<WebhookDelivery>(
                 WebhookDelivery.PrefixFor(endpoint.PublicId),
                 // Lower case, as every id now is: RavenDB matches a prefix and a start-after ignoring case.
                 pageSize: Math.Clamp(pageSize, 1, 100),
                 startAfter: after is null ? null : WebhookDelivery.IdFor(after).Value,
-                token: cancellationToken);
+                cancellationToken: cancellationToken);
             return WebhookResult<IReadOnlyList<WebhookDeliveryView>>.Ok(page.Select(View).ToList());
         }, cancellationToken);
 
@@ -286,14 +285,14 @@ internal sealed partial class WebhookEndpointManager
         }, cancellationToken);
     }
 
-    private async Task<WebhookResult<T>> WithEndpointAsync<T>(string? id, string userId, Func<Raven.Client.Documents.Session.IAsyncDocumentSession, WebhookEndpoint, Task<WebhookResult<T>>> action, CancellationToken cancellationToken)
+    private async Task<WebhookResult<T>> WithEndpointAsync<T>(string? id, string userId, Func<ISparkSession, WebhookEndpoint, Task<WebhookResult<T>>> action, CancellationToken cancellationToken)
     {
         if (id is null || !EndpointIdShape.IsMatch(id))
             return WebhookResult<T>.NotFound();
-        using var session = store.OpenAsyncSession();
+        using var session = store.OpenSession();
         // The delivery engine patches the same document (failure streak, auto-disable): an edit made on a stale copy
         // must not undo that.
-        session.Advanced.OptimisticConcurrencyMode = Raven.Client.Documents.Session.OptimisticConcurrencyMode.Writes;
+        session.OptimisticConcurrency = true;
         var endpoint = await session.LoadAsync<WebhookEndpoint>(WebhookEndpoint.IdFor(id).Value, cancellationToken);
         if (endpoint is null || !await owners.CanManageAsync(endpoint.Owner, userId, cancellationToken))
             return WebhookResult<T>.NotFound();
@@ -301,7 +300,7 @@ internal sealed partial class WebhookEndpointManager
         {
             return await action(session, endpoint);
         }
-        catch (ConcurrencyException)
+        catch (SparkStoreConcurrencyException)
         {
             return WebhookResult<T>.Conflict("The webhook changed meanwhile; reload and try again.");
         }

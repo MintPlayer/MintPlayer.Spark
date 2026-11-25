@@ -71,6 +71,10 @@ tags, and everything ships once the merged pull request is backported to `releas
     that took an `IAsyncDocumentSession` (for example `OrganizationMembershipReader.LoadAsync`) take an
     `ISparkSession`: wrap a raw session with `session.AsSparkSession()`. Notifications' own reads and writes are
     neutral too; it keeps its RavenDB reference until messaging is ported (M7).
+    Apps follow (M6d): `IWebhookPublisher.PublishAsync` takes an `ISparkSession`, the package no longer references
+    RavenDB, and `OidcMachineClients` takes `ISparkSession`/`ISparkStore`.
+    `ISparkSession.LoadStartingWithAsync` gained a `startAfter` parameter before `cancellationToken`: a caller that
+    passed the token by position names it (`cancellationToken: ct`).
 12. **Messaging runs on any store with subscriptions** (M7b, D40), and its package no longer references RavenDB:
     - `IMessageOutbox.EnqueueAsync` and `ISparkAfterCommitOutbox.EnqueueAsync` take an `ISparkSession`, not a RavenDB
       session. Wrap a raw session with `session.AsSparkSession()`.

@@ -1,3 +1,4 @@
+using MintPlayer.Spark;
 using System.Net;
 using System.Text;
 using System.Text.Json;
@@ -128,7 +129,7 @@ public class WebhookDeliveryTests : AppsTestHost
         using (var scope = Factory.CreateScope())
         using (var session = Store.OpenAsyncSession())
         {
-            (await Publisher(scope).PublishAsync(new OrderShipped("rolled-back", 1, null), WebhookOwner.User(ann.Id!), session)).Should().NotBeNull();
+            (await Publisher(scope).PublishAsync(new OrderShipped("rolled-back", 1, null), WebhookOwner.User(ann.Id!), session.AsSparkSession())).Should().NotBeNull();
             // no SaveChanges: the business write failed, so the event never happened
         }
         (await PublishAsync(new OrderShipped("bob's", 1, null), WebhookOwner.User(bob.Id!))).Should().BeNull("bob has no webhook");
@@ -149,7 +150,7 @@ public class WebhookDeliveryTests : AppsTestHost
         {
             using var scope = Factory.CreateScope();
             using var session = Store.OpenAsyncSession();
-            var id = await Publisher(scope).PublishAsync(new OrderShipped(orderId, 1, null), owner, key, session);
+            var id = await Publisher(scope).PublishAsync(new OrderShipped(orderId, 1, null), owner, key, session.AsSparkSession());
             await session.SaveChangesAsync();
             return id;
         }
@@ -540,7 +541,7 @@ public class WebhookDeliveryTests : AppsTestHost
         var ann = await SeedUserAsync("ann");
         using var scope = Factory.CreateScope();
         using var session = Store.OpenAsyncSession();
-        var publish = () => Publisher(scope).PublishAsync(new { Hello = "world" }, WebhookOwner.User(ann.Id!), session);
+        var publish = () => Publisher(scope).PublishAsync(new { Hello = "world" }, WebhookOwner.User(ann.Id!), session.AsSparkSession());
         (await publish.Should().ThrowAsync<InvalidOperationException>()).Which.Message.Should().Contain("not a webhook event");
     }
 }

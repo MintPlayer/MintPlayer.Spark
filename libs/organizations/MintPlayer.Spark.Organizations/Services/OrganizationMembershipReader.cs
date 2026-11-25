@@ -57,7 +57,7 @@ internal sealed class OrganizationMembershipReader(ISparkStore store)
         var all = new List<OrganizationMembership>();
         for (var start = 0; ; start += PageSize)
         {
-            var batch = await session.LoadStartingWithAsync<OrganizationMembership>(prefix, start, PageSize, cancellationToken);
+            var batch = await session.LoadStartingWithAsync<OrganizationMembership>(prefix, start, PageSize, cancellationToken: cancellationToken);
             all.AddRange(batch);
             if (batch.Count < PageSize)
                 return all;

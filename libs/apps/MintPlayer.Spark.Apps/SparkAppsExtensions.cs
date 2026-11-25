@@ -42,11 +42,9 @@ public static class SparkAppsExtensions
     /// SSRF-safe client), the user and organization owners and the <c>/spark/apps</c> endpoints. Needs
     /// <c>AddAuthentication&lt;TUser&gt;()</c> and <c>AddMessaging()</c>.
     /// </summary>
-    [global::MintPlayer.Spark.Abstractions.Storage.SparkRequiresStore("Spark.Apps", Provider = global::MintPlayer.Spark.Abstractions.Storage.SparkStoreProviders.RavenDb)]
     public static ISparkBuilder AddApps(this ISparkBuilder builder, Action<AppsBuilder>? configure = null)
     {
-        global::MintPlayer.Spark.Abstractions.Storage.SparkStoreRequirementExtensions.RequireStore(builder, "Spark.Apps", provider: global::MintPlayer.Spark.Abstractions.Storage.SparkStoreProviders.RavenDb);
-
+        // #536: Apps run on any store (ISparkStore); Messaging and Authorization bring their own requirements.
         var services = builder.Services;
         if (services.Any(d => d.ServiceType == typeof(AppsMarker)))
             throw new InvalidOperationException("AddApps() is called twice; register every event in one call.");

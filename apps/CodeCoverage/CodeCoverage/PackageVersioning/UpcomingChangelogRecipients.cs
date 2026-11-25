@@ -161,7 +161,7 @@ public partial class UpcomingChangelogRecipient : IRecipient<UpcomingChangelogMe
     {
         // A repository has a handful of lines; one page of the prefix holds them all.
         var lines = await session.LoadStartingWithAsync<UpcomingChangelog>(UpcomingChangelog.ForRepository(repository.Provider, repository.GitHubId), 0, 1024,
-            cancellationToken);
+            cancellationToken: cancellationToken);
         return [.. lines.Where(l => string.Equals(l.Repository, repository.Id.Value, StringComparison.OrdinalIgnoreCase) && !(l.Branch == repository.DefaultBranch && l.LinePattern is not null))
             .OrderBy(l => l.Branch == repository.DefaultBranch ? 0 : 1).ThenByDescending(l => l.Branch, StringComparer.Ordinal)];
     }

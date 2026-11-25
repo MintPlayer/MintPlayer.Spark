@@ -65,7 +65,7 @@ internal sealed class NotificationInbox(ISparkStore store, IOptions<SparkNotific
             await session.StoreAsync(stored, id.Value, cancellationToken);
 
             // One device too many drops the oldest, so a user who reinstalls a browser a hundred times keeps a bounded list.
-            var existing = await session.LoadStartingWithAsync<PushSubscription>(PushSubscription.PrefixFor(userId), 0, 1024, cancellationToken);
+            var existing = await session.LoadStartingWithAsync<PushSubscription>(PushSubscription.PrefixFor(userId), 0, 1024, cancellationToken: cancellationToken);
             var others = existing.Where(e => e.Id != id).OrderBy(e => e.CreatedAtUtc).ToList();
             var max = Math.Max(1, options.Value.WebPush.MaxDevicesPerUser);
             foreach (var old in others.Take(Math.Max(0, others.Count + 1 - max)))

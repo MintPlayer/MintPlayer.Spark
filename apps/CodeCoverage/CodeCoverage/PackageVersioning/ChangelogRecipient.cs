@@ -65,7 +65,7 @@ public partial class ChangelogRecipient :
         var releases = new List<ChangelogRelease>();
         for (var start = 0; ; start += page)
         {
-            var batch = await session.LoadStartingWithAsync<ChangelogRelease>(prefix, start, page, cancellationToken);
+            var batch = await session.LoadStartingWithAsync<ChangelogRelease>(prefix, start, page, cancellationToken: cancellationToken);
             releases.AddRange(batch.Where(r => string.Equals(r.Repository, repository.Id.Value, StringComparison.OrdinalIgnoreCase)));
             if (batch.Count < page) break;
         }
