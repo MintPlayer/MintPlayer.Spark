@@ -150,7 +150,7 @@ public partial class ForgeCheckActions : DefaultPersistentObjectActions<ForgeChe
 
         var accountId = account.Id;
         var repositories = await session.Query<Repository, Indexes.Repositories_Overview>()
-            .Where(r => r.Account == accountId)
+            .Where(r => r.Account == accountId.Value)
             .Take(MaxAccountRepositories)
             .ToListAsync();
 

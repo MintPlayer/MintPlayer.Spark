@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions;
 using CodeCoverage.Entities;
 using CodeCoverage.Feedback;
 using CodeCoverage.Forge;
@@ -126,11 +127,11 @@ public partial class FormatRunEngine : IFormatRunEngine
     public async Task<bool> StartAsync(Repository repository, FormatRun run, CancellationToken cancellationToken = default)
     {
         session.Advanced.OptimisticConcurrencyMode = OptimisticConcurrencyMode.Writes;
-        var id = FormatRuns.ForRepository(repository.Id!);
+        var id = FormatRuns.ForRepository(repository.Id.Value);
         var document = await session.LoadAsync<FormatRuns>(id, cancellationToken);
         if (document is null)
         {
-            document = new FormatRuns { Id = id };
+            document = new FormatRuns { Id = Id<FormatRuns>.FromTrusted(id) };
             await session.StoreAsync(document, id, cancellationToken);
         }
         if (document.Pending.FirstOrDefault(p => p.Mode == run.Mode) is { } going)
@@ -142,7 +143,7 @@ public partial class FormatRunEngine : IFormatRunEngine
         run.StartedUtc = Now;
         run.Note(Now, $"requested on {run.Branch} at {Short(run.Sha)}");
         document.Pending.Add(run);
-        await ScheduleAsync(repository.Id!, run, EFormatRunStep.Dispatch, null, null, cancellationToken);
+        await ScheduleAsync(repository.Id.Value, run, EFormatRunStep.Dispatch, null, null, cancellationToken);
         await session.SaveChangesAsync(cancellationToken);
         return true;
     }
@@ -202,7 +203,7 @@ public partial class FormatRunEngine : IFormatRunEngine
             {
                 var delay = TimeSpan.FromSeconds(Math.Min(600, 15 * Math.Pow(2, run.TransientFailures - 1)));
                 logger.LogWarning(ex, "Format run: {Step} of {Mode} in {Repository} failed; retrying in {Delay}", step.Step, run.Mode, repository.FullName, delay);
-                await ScheduleAsync(repository.Id!, run, step.Step, delay, step.RunId, ct);
+                await ScheduleAsync(repository.Id.Value, run, step.Step, delay, step.RunId, ct);
             }
         }
         await session.SaveChangesAsync(ct);
@@ -306,7 +307,7 @@ public partial class FormatRunEngine : IFormatRunEngine
         {
             await outbox.EnqueueAsync(session, new MergeQueueSignalMessage
             {
-                RepositoryId = context.Repository.Id!, Kind = EMergeQueueSignal.Command, Number = number, Command = EMergeQueueCommand.Enqueue,
+                RepositoryId = context.Repository.Id.Value, Kind = EMergeQueueSignal.Command, Number = number, Command = EMergeQueueCommand.Enqueue,
                 Actor = actor, Source = EMergeQueueCommandSource.Formatting,
             }, null, ct);
         }
@@ -363,9 +364,9 @@ public partial class FormatRunEngine : IFormatRunEngine
 
         public Task ScheduleAsync(EWorkflowHookStep step, TimeSpan? delay, long? runId, CancellationToken cancellationToken) => step switch
         {
-            EWorkflowHookStep.PollRun => engine.ScheduleAsync(context.Repository.Id!, context.Run, EFormatRunStep.PollRun, delay, null, cancellationToken),
-            EWorkflowHookStep.Timeout => engine.ScheduleAsync(context.Repository.Id!, context.Run, EFormatRunStep.Timeout, delay, null, cancellationToken),
-            EWorkflowHookStep.CancelRun => engine.ScheduleAsync(context.Repository.Id!, context.Run, EFormatRunStep.CancelRun, null, runId, cancellationToken),
+            EWorkflowHookStep.PollRun => engine.ScheduleAsync(context.Repository.Id.Value, context.Run, EFormatRunStep.PollRun, delay, null, cancellationToken),
+            EWorkflowHookStep.Timeout => engine.ScheduleAsync(context.Repository.Id.Value, context.Run, EFormatRunStep.Timeout, delay, null, cancellationToken),
+            EWorkflowHookStep.CancelRun => engine.ScheduleAsync(context.Repository.Id.Value, context.Run, EFormatRunStep.CancelRun, null, runId, cancellationToken),
             _ => throw new ArgumentOutOfRangeException(nameof(step), step, null),
         };
     }

@@ -73,11 +73,11 @@ public partial class RepositoryManifestScanner : IRepositoryManifestScanner
             return EManifestScanOutcome.Skipped;
         }
 
-        var manifestId = RepositoryManifest.ForRepository(repository.Id!);
+        var manifestId = RepositoryManifest.ForRepository(repository.Id.Value);
         var manifest = await session.LoadAsync<RepositoryManifest>(manifestId, cancellationToken);
         if (manifest is null)
         {
-            manifest = new RepositoryManifest { Repository = repository.Id };
+            manifest = new RepositoryManifest { Repository = repository.Id.Value };
             await session.StoreAsync(manifest, manifestId, cancellationToken);
         }
         manifest.OwnerKey = repository.OwnerKey;

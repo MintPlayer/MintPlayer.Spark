@@ -33,10 +33,10 @@ public static class BuildFinalizer
         // upload behind #415. Empty and zero must not be different things.
         build.Coverage ??= new CoverageSummary();
 
-        if (build.Id is not null)
+        if (!build.Id.IsEmpty)
         {
-            await MaterializeTreeSummary(session, build.Id, cancellationToken);
-            build.FlagCoverage = await MaterializeFlagSummaries(session, build.Id, cancellationToken);
+            await MaterializeTreeSummary(session, build.Id.Value, cancellationToken);
+            build.FlagCoverage = await MaterializeFlagSummaries(session, build.Id.Value, cancellationToken);
         }
 
         if (build.Commit is not null)
@@ -53,7 +53,7 @@ public static class BuildFinalizer
                 // finalized build of the commit and carries the rest forward.
                 // LatestBuildId still points at the newest finalized build for
                 // readers that predate the assembly.
-                commit.LatestBuildId = build.Id;
+                commit.LatestBuildId = build.Id.Value;
 
                 if (webhooks is not null)
                     await webhooks.EnqueueCompletedAsync(session, build, cancellationToken);

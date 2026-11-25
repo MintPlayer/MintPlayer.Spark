@@ -48,7 +48,7 @@ public partial class SetUpRulesetsAction : SparkCustomAction
 
     public override async Task ExecuteAsync(CustomActionArgs args, CancellationToken cancellationToken = default)
     {
-        var ids = args.SelectedItems.Select(i => i.Id).OfType<string>().Distinct(StringComparer.Ordinal).ToList();
+        var ids = args.SelectedItems.Select(i => i.Id).OfType<string>().Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         if (ids.Count == 0)
             return;
 
@@ -62,7 +62,7 @@ public partial class SetUpRulesetsAction : SparkCustomAction
         var targets = new List<RulesetTarget>();
         foreach (var repository in repositories)
         {
-            if (managed.GetValueOrDefault(repository.Id!) is null)
+            if (managed.GetValueOrDefault(repository.Id.Value) is null)
                 failed.Add(RulesetRepositoryResult.Failure(repository, manager.GetTranslatedMessage("rulesets.reason.notManaged")));
             else if (rulesets.TargetFor(repository, out var reason) is { } target)
                 targets.Add(target);

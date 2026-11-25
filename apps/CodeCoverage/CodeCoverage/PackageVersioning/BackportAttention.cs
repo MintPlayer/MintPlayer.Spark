@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions;
 using System.Globalization;
 using CodeCoverage.Entities;
 using CodeCoverage.Forge;
@@ -74,7 +75,7 @@ public partial class BackportAttention : IBackportAttention
 
     public async Task<string> HeldAsync(Repository repository, MergeQueueEntry held, IReadOnlyList<MergeQueueEntry> waiting, CancellationToken cancellationToken = default)
     {
-        var record = await session.LoadAsync<BackportPullRequest>(BackportPullRequest.DocumentId(repository.Id!, held.Number), cancellationToken);
+        var record = await session.LoadAsync<BackportPullRequest>(BackportPullRequest.DocumentId(repository.Id.Value, held.Number), cancellationToken);
         var asked = await WhoAsync(repository, held, record, owners: false, cancellationToken);
 
         if (Queue(repository) is { } queue)
@@ -112,7 +113,7 @@ public partial class BackportAttention : IBackportAttention
 
     public async Task<string?> ReminderAsync(Repository repository, MergeQueueEntry held, int reminder, CancellationToken cancellationToken = default)
     {
-        var record = await session.LoadAsync<BackportPullRequest>(BackportPullRequest.DocumentId(repository.Id!, held.Number), cancellationToken);
+        var record = await session.LoadAsync<BackportPullRequest>(BackportPullRequest.DocumentId(repository.Id.Value, held.Number), cancellationToken);
         var asked = await WhoAsync(repository, held, record, owners: reminder > 1, cancellationToken);
         var since = held.HeldSinceUtc is { } at ? $" since {at.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)}" : string.Empty;
         var stands = $"This backport has held `{held.BaseBranch}`{since}, and the backports behind it still wait.";
@@ -138,7 +139,7 @@ public partial class BackportAttention : IBackportAttention
         if (Queue(repository) is { } queue)
             await TryAsync(() => queue.RemoveLabelAsync(repository, entry.Number, Label, cancellationToken), "remove the label", entry, repository);
 
-        if (await session.LoadAsync<BackportPullRequest>(BackportPullRequest.DocumentId(repository.Id!, entry.Number), cancellationToken) is { } record
+        if (await session.LoadAsync<BackportPullRequest>(BackportPullRequest.DocumentId(repository.Id.Value, entry.Number), cancellationToken) is { } record
             && await session.LoadAsync<BackportAttempt>(BackportAttempt.DocumentId(repository.Provider, repository.GitHubId, record.Source, entry.BaseBranch), cancellationToken)
                 is { Outcome: BackportAttempt.Held } attempt)
         {
@@ -217,7 +218,7 @@ public partial class BackportAttention : IBackportAttention
         {
             attempt = new BackportAttempt
             {
-                Id = id, Repository = repository.Id!, Source = record.Source, SourceSha = record.SourceSha, Branch = held.BaseBranch,
+                Id = Id<BackportAttempt>.FromTrusted(id), Repository = repository.Id.Value, Source = record.Source, SourceSha = record.SourceSha, Branch = held.BaseBranch,
                 PullRequest = held.Number, AttemptedAtUtc = time.GetUtcNow().UtcDateTime,
             };
             await session.StoreAsync(attempt, id, ct);

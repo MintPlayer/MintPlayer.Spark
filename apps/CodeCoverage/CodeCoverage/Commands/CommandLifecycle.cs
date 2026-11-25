@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions;
 using CodeCoverage.Entities;
 using CodeCoverage.Forge;
 using MintPlayer.SourceGenerators.Attributes;
@@ -82,14 +83,14 @@ public partial class CommandLifecycle : ICommandLifecycle
     public async Task<string?> BeginAsync(Repository repository, int number, long? commentId, string command, string actor, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(repository);
-        if (commentId is not { } comment || repository.Id is null) return null;
+        if (commentId is not { } comment || repository.Id.IsEmpty) return null;
         var id = CommandInvocation.DocumentId(repository.Provider, repository.GitHubId, comment);
         var text = FirstLine(command);
         try
         {
             var record = await UpdateAsync(id, create: () => new CommandInvocation
             {
-                Id = id, Repository = repository.Id, Number = number, CommentId = comment, Command = text, Actor = actor,
+                Id = Id<CommandInvocation>.FromTrusted(id), Repository = repository.Id.Value, Number = number, CommentId = comment, Command = text, Actor = actor,
                 ReceivedAtUtc = Now, Outcome = ECommandOutcome.Received, LogId = LogIds.ForKey(CommandInvocation.LogKeyOf(id)).Value,
             }, mutate: (_, isNew) => isNew, cancellationToken);
             if (record is null) return null;

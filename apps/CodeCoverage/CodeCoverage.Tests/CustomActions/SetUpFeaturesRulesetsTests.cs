@@ -38,7 +38,7 @@ public class SetUpFeaturesRulesetsTests : CoverageRavenTest
             => throw new NotSupportedException();
 
         public Task<IReadOnlyDictionary<string, string?>> CheckAsync(IReadOnlyList<Repository> repositories, CancellationToken cancellationToken = default)
-            => Task.FromResult<IReadOnlyDictionary<string, string?>>(repositories.ToDictionary(r => r.Id!, _ => (string?)DependencyOnboardingService.Owner));
+            => Task.FromResult<IReadOnlyDictionary<string, string?>>(repositories.ToDictionary(r => r.Id.Value, _ => (string?)DependencyOnboardingService.Owner));
     }
 
     private sealed class Lease : ISparkOneShotOAuthLease
@@ -141,7 +141,7 @@ public class SetUpFeaturesRulesetsTests : CoverageRavenTest
         Received.InOrder(() =>
         {
             f.Onboarding.OnboardAsync(Arg.Any<Repository>(), Arg.Any<IReadOnlySet<EOnboardingFeature>>(), Arg.Any<IReadOnlyCollection<string>>(), Arg.Any<CancellationToken>(), Arg.Any<IReadOnlyCollection<string>?>());
-            f.Queue.ApplyRulesetPlanAsync(Arg.Is<Repository>(r => r.Id == RepositoryId), "master", Arg.Any<MergeQueueRulesetPlan>(), Token, Arg.Any<CancellationToken>());
+            f.Queue.ApplyRulesetPlanAsync(Arg.Is<Repository>(r => string.Equals(r.Id.Value, RepositoryId, StringComparison.OrdinalIgnoreCase)), "master", Arg.Any<MergeQueueRulesetPlan>(), Token, Arg.Any<CancellationToken>());
         });
         f.Lease.Disposed.Should().Be(1, "the token is revoked when the chooser ends");
     }
@@ -166,7 +166,7 @@ public class SetUpFeaturesRulesetsTests : CoverageRavenTest
 
         Received.InOrder(() =>
         {
-            f.Queue.ApplyRulesetPlanAsync(Arg.Is<Repository>(r => r.Id == RepositoryId), "master", Arg.Any<MergeQueueRulesetPlan>(), Token, Arg.Any<CancellationToken>());
+            f.Queue.ApplyRulesetPlanAsync(Arg.Is<Repository>(r => string.Equals(r.Id.Value, RepositoryId, StringComparison.OrdinalIgnoreCase)), "master", Arg.Any<MergeQueueRulesetPlan>(), Token, Arg.Any<CancellationToken>());
             f.Onboarding.OnboardAsync(Arg.Any<Repository>(), Arg.Any<IReadOnlySet<EOnboardingFeature>>(), Arg.Any<IReadOnlyCollection<string>>(), Arg.Any<CancellationToken>(), Arg.Any<IReadOnlyCollection<string>?>());
         });
         await f.Queue.ReceivedWithAnyArgs(1).ApplyRulesetPlanAsync(default!, default!, default!, default!, default);

@@ -7,10 +7,11 @@ namespace CodeCoverage.Entities;
 /// A commit we have seen (via push/pull_request webhooks or a coverage upload).
 /// Document id is Commits/{repoGitHubId}/{sha} so any source can upsert idempotently.
 /// </summary>
-public class Commit
+[IdKind(SparkIdKind.Natural)]
+public partial class Commit
 {
     /// <summary>Document id of this commit, <c>Commits/{repoGitHubId}/{sha}</c>.</summary>
-    public string? Id { get; set; }
+    public Id<Commit> Id { get; set; }
 
     /// <summary>The repository this commit belongs to.</summary>
     [Reference(typeof(Repository))]
@@ -198,7 +199,7 @@ public class Commit
         repositoryId = 0;
 
         var parts = commitId?.Split('/');
-        if (parts is not { Length: >= 3 } || parts[0] != "Commits")
+        if (parts is not { Length: >= 3 } || !string.Equals(parts[0], "Commits", StringComparison.OrdinalIgnoreCase))
             return false;
 
         // Current shape: Commits/{provider}/{repositoryId}/...

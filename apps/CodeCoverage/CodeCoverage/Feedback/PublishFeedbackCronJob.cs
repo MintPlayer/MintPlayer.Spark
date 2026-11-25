@@ -39,8 +39,8 @@ public partial class PublishFeedbackCronJob : ISparkCronJob
 
         foreach (var build in due)
         {
-            if (build.Id is null) continue;
-            await messageBus.BroadcastAsync(new PublishFeedbackMessage { BuildId = build.Id }, cancellationToken);
+            if (build.Id.IsEmpty) continue;
+            await messageBus.BroadcastAsync(new PublishFeedbackMessage { BuildId = build.Id.Value }, cancellationToken);
         }
 
         if (due.Count > 0)
@@ -53,8 +53,8 @@ public partial class PublishFeedbackCronJob : ISparkCronJob
 
         foreach (var feedback in comments)
         {
-            if (feedback.Id is null) continue;
-            await messageBus.BroadcastAsync(new PublishPullRequestCommentMessage { FeedbackId = feedback.Id }, cancellationToken);
+            if (feedback.Id.IsEmpty) continue;
+            await messageBus.BroadcastAsync(new PublishPullRequestCommentMessage { FeedbackId = feedback.Id.Value }, cancellationToken);
         }
 
         if (comments.Count > 0)

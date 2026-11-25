@@ -146,7 +146,7 @@ public partial class DependencyOnboardingService : IDependencyOnboardingService
                 var account = accounts.GetValueOrDefault(Account.DocumentId(provider, listed.AccountForgeId));
                 var run = runs.GetValueOrDefault(DependencyUpdateRun.ForRepository(id));
                 rows.Add(new DependencyOnboardingEntry(
-                    repository?.Id, provider.ToCanonicalString(), listed.FullName, listed.AccountLogin, listed.IsPrivate, reason,
+                    repository?.Id.Value, provider.ToCanonicalString(), listed.FullName, listed.AccountLogin, listed.IsPrivate, reason,
                     (repository?.DependencyUpdates ?? EDependencyUpdatesPolicy.Inherit).ToString(),
                     repository is not null && Repository.ResolveDependencyUpdates(repository, account),
                     account?.DependencyUpdates ?? false,
@@ -168,13 +168,13 @@ public partial class DependencyOnboardingService : IDependencyOnboardingService
     {
         var answer = new Dictionary<string, string?>(StringComparer.Ordinal);
         var unresolved = new List<Repository>();
-        foreach (var repository in repositories.Where(r => r.Id is not null))
+        foreach (var repository in repositories.Where(r => !r.Id.IsEmpty))
         {
             if (await visibility.CanManageOwnerAsync(repository.OwnerKey))
-                answer[repository.Id!] = Owner;
+                answer[repository.Id.Value] = Owner;
             else
             {
-                answer[repository.Id!] = null;
+                answer[repository.Id.Value] = null;
                 unresolved.Add(repository);
             }
         }

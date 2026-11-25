@@ -41,7 +41,7 @@ public partial class SetUpFeaturesAction : SparkCustomAction
     {
         if (args.Parent?.Id is not { Length: > 0 } id || await session.LoadAsync<Repository>(id, cancellationToken) is not { } repository)
             return;
-        if ((await permissions.CheckAsync([repository], cancellationToken)).GetValueOrDefault(repository.Id!) is null)
+        if ((await permissions.CheckAsync([repository], cancellationToken)).GetValueOrDefault(repository.Id.Value) is null)
         {
             Report(new(VersioningOnboardingOutcome.Refused, manager.GetTranslatedMessage("onboarding.notManaged")), args);
             return;
@@ -209,7 +209,7 @@ public partial class SetUpFeaturesAction : SparkCustomAction
     /// </summary>
     private async Task<bool> IsDotnetAsync(Repository repository, CancellationToken cancellationToken)
     {
-        var manifest = await session.LoadAsync<RepositoryManifest>(RepositoryManifest.ForRepository(repository.Id!), cancellationToken);
+        var manifest = await session.LoadAsync<RepositoryManifest>(RepositoryManifest.ForRepository(repository.Id.Value), cancellationToken);
         return manifest is null
             || manifest.Produces.Any(p => p.Ecosystem == Dependencies.ManifestEcosystems.NuGet)
             || manifest.Consumes.Any(c => c.Ecosystem == Dependencies.ManifestEcosystems.NuGet)

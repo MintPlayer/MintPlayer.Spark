@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions;
 namespace CodeCoverage.Entities;
 
 /// <summary>
@@ -10,9 +11,10 @@ namespace CodeCoverage.Entities;
 /// rewrites it. A push to the default branch is always planned, so a change to the patterns lands with that push.
 /// Loaded by id only (<see cref="ForRepository"/>); not indexed.
 /// </remarks>
-public class VersioningDispatchState
+[IdKind(SparkIdKind.Natural)]
+public partial class VersioningDispatchState
 {
-    public string? Id { get; set; }
+    public Id<VersioningDispatchState> Id { get; set; }
 
     /// <summary>The workflow file the server dispatches, or null when the repository uses the action step alone.</summary>
     public string? Dispatch { get; set; }

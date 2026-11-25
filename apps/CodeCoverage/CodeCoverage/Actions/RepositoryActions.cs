@@ -246,7 +246,9 @@ public partial class RepositoryActions : DefaultPersistentObjectActions<Reposito
         {
             var managed = await visibility.GetManagedOwnersAsync();
             var administered = await visibility.GetAdministeredRepositoryIdsAsync();
-            return repository => repository.OwnerKey.In(managed) || repository.Id.In(administered);
+            // Typed, so the store matches the document key ignoring case; the RavenDB query rewriter turns Contains into an In.
+            var administeredIds = administered.Select(Id<Repository>.FromTrusted).ToArray();
+            return repository => repository.OwnerKey.In(managed) || administeredIds.Contains(repository.Id);
         }
 
         // The one place the two READ rules diverge. "Query" is the grid — a listing, which must stop
@@ -295,7 +297,7 @@ public partial class RepositoryActions : DefaultPersistentObjectActions<Reposito
             return Enumerable.Empty<Repository>().AsQueryable();
 
         return session.Query<Repository, Indexes.Repositories_Overview>()
-            .Where(r => r.Account == account.Id);
+            .Where(r => r.Account == account.Id.Value);
     }
 
     /// <summary>

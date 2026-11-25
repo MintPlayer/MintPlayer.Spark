@@ -58,35 +58,35 @@ public partial class DependencyUpdatesCronJob : ISparkCronJob
             .Where(r => r.OwnerKey == ownerKey)
             .Take(1024)
             .ToListAsync(ct);
-        var enabled = repositories.Where(r => r.Id is not null && r.DefaultBranch is not null && r.Connection != RepositoryConnection.Disconnected && !r.Archived
+        var enabled = repositories.Where(r => !r.Id.IsEmpty && r.DefaultBranch is not null && r.Connection != RepositoryConnection.Disconnected && !r.Archived
             && Repository.ResolveDependencyUpdates(r, account)).ToList();
         if (enabled.Count == 0) return;
-        var runs = await session.LoadAsync<DependencyUpdateRun>(enabled.Select(r => DependencyUpdateRun.ForRepository(r.Id!)), ct);
+        var runs = await session.LoadAsync<DependencyUpdateRun>(enabled.Select(r => DependencyUpdateRun.ForRepository(r.Id.Value)), ct);
         foreach (var repository in enabled)
         {
-            var run = runs.GetValueOrDefault(DependencyUpdateRun.ForRepository(repository.Id!));
+            var run = runs.GetValueOrDefault(DependencyUpdateRun.ForRepository(repository.Id.Value));
             // R23: onboarding is event-driven (the switch's after-commit hook). This is only the daily fallback: a blocked
             // onboarding (a permission not accepted yet), and one the event could not do (no default branch yet when the
             // switch was flipped). An owner-closed onboarding is filtered by OnboardAsync itself (P15), not here.
             if (run is null || run.Onboarding is EDependencyOnboarding.None or EDependencyOnboarding.Blocked)
             {
-                await messageBus.BroadcastOnceAsync(new DependencyUpdateSignalMessage { RepositoryId = repository.Id!, Kind = EDependencySignal.Onboard },
+                await messageBus.BroadcastOnceAsync(new DependencyUpdateSignalMessage { RepositoryId = repository.Id.Value, Kind = EDependencySignal.Onboard },
                     $"dependency-onboard:{repository.Id}:{now.UtcDateTime:yyyy-MM-dd}", ct);
             }
             if (run?.FileDisabled == true) continue;
 
             var schedule = DependencySlots.Effective(repository, account, run);
-            var (due, key) = DependencySlots.Due(schedule, now, repository.Id!);
+            var (due, key) = DependencySlots.Due(schedule, now, repository.Id.Value);
             if (!due) continue;
             await messageBus.BroadcastOnceAsync(new DependencyUpdateSignalMessage
             {
-                RepositoryId = repository.Id!, Kind = EDependencySignal.Trigger, Trigger = EDependencyRunTrigger.Scheduled,
+                RepositoryId = repository.Id.Value, Kind = EDependencySignal.Trigger, Trigger = EDependencyRunTrigger.Scheduled,
             }, key, ct);
             // #568 D13: each supported release line gets its own run in the same slot (the lines the last run read).
             foreach (var line in run?.FileLines ?? [])
                 await messageBus.BroadcastOnceAsync(new DependencyUpdateSignalMessage
                 {
-                    RepositoryId = repository.Id!, Line = line, Kind = EDependencySignal.Trigger, Trigger = EDependencyRunTrigger.Scheduled,
+                    RepositoryId = repository.Id.Value, Line = line, Kind = EDependencySignal.Trigger, Trigger = EDependencyRunTrigger.Scheduled,
                 }, $"{key}:{line}", ct);
         }
     }

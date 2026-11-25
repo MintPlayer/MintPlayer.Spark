@@ -56,8 +56,8 @@ public partial class ManifestScanScheduler : IManifestScanScheduler
                 if (repository.Connection == RepositoryConnection.Disconnected || repository.Archived) continue;
 
                 await messageBus.BroadcastOnceAsync(
-                    new ScanRepositoryManifestsMessage { RepositoryId = repository.Id! },
-                    ManifestScanTriggers.DailyKey(repository.Id!, now),
+                    new ScanRepositoryManifestsMessage { RepositoryId = repository.Id.Value },
+                    ManifestScanTriggers.DailyKey(repository.Id.Value, now),
                     cancellationToken);
                 queued++;
             }

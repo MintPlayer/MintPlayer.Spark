@@ -22,7 +22,8 @@ namespace CodeCoverage.Entities;
 /// every manifest of an account in one round trip by id, with no index.
 /// </para>
 /// </remarks>
-public class RepositoryManifest
+[IdKind(SparkIdKind.Natural)]
+public partial class RepositoryManifest
 {
     /// <summary>
     /// Bumped whenever a parser changes what it extracts. A manifest scanned by an older version is
@@ -32,7 +33,7 @@ public class RepositoryManifest
     public const int CurrentParserVersion = 1;
 
     /// <summary><c>RepositoryManifests/{provider}/{repositoryId}</c>.</summary>
-    public string? Id { get; set; }
+    public Id<RepositoryManifest> Id { get; set; }
 
     /// <summary>The repository this describes.</summary>
     [Reference(typeof(Repository))]

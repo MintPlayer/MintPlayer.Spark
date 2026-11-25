@@ -243,17 +243,17 @@ public partial class DependencyPropagation : IDependencyPropagation
             .Where(r => r.OwnerKey == producer.OwnerKey)
             .Take(1024)
             .ToListAsync(cancellationToken);
-        var candidates = repositories.Where(r => r.Id is not null && r.Id != message.ProducerRepositoryId && r.Connection != RepositoryConnection.Disconnected && !r.Archived).ToList();
+        var candidates = repositories.Where(r => !r.Id.IsEmpty && !string.Equals(r.Id.Value, message.ProducerRepositoryId, StringComparison.OrdinalIgnoreCase) && r.Connection != RepositoryConnection.Disconnected && !r.Archived).ToList();
         if (candidates.Count == 0) return;
-        var manifests = await session.LoadAsync<RepositoryManifest>(candidates.Select(r => RepositoryManifest.ForRepository(r.Id!)), cancellationToken);
+        var manifests = await session.LoadAsync<RepositoryManifest>(candidates.Select(r => RepositoryManifest.ForRepository(r.Id.Value)), cancellationToken);
         foreach (var consumer in candidates)
         {
-            if (manifests.GetValueOrDefault(RepositoryManifest.ForRepository(consumer.Id!)) is not { } manifest
+            if (manifests.GetValueOrDefault(RepositoryManifest.ForRepository(consumer.Id.Value)) is not { } manifest
                 || !manifest.Consumes.Any(d => produced.Contains((d.Ecosystem.ToLowerInvariant(), d.Name))))
                 continue;
             await messageBus.BroadcastOnceAsync(new DependencyUpdateSignalMessage
             {
-                RepositoryId = consumer.Id!, Kind = EDependencySignal.Trigger, Trigger = EDependencyRunTrigger.OwnRelease,
+                RepositoryId = consumer.Id.Value, Kind = EDependencySignal.Trigger, Trigger = EDependencyRunTrigger.OwnRelease,
             }, $"dependency-own:{consumer.Id}:{message.ProducerRepositoryId}:{message.EventAtUtc.Ticks}", cancellationToken);
         }
     }

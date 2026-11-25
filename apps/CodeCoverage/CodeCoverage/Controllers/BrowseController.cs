@@ -94,10 +94,10 @@ public partial class BrowseController : ControllerBase
         // manifest is never read, so nothing of it can leak into an edge.
         var manifests = visible.Count == 0
             ? new Dictionary<string, RepositoryManifest>()
-            : await session.LoadAsync<RepositoryManifest>(visible.Select(r => RepositoryManifest.ForRepository(r.Id!)), cancellationToken);
+            : await session.LoadAsync<RepositoryManifest>(visible.Select(r => RepositoryManifest.ForRepository(r.Id.Value)), cancellationToken);
         var byRepository = visible.ToDictionary(
-            r => r.Id!,
-            r => manifests.GetValueOrDefault(RepositoryManifest.ForRepository(r.Id!)));
+            r => r.Id.Value,
+            r => manifests.GetValueOrDefault(RepositoryManifest.ForRepository(r.Id.Value)), StringComparer.OrdinalIgnoreCase);
 
         return Ok(Dependencies.DependencyGraph.Build(visible, byRepository));
     }
@@ -301,7 +301,7 @@ public partial class BrowseController : ControllerBase
     {
         var account = await scope.ListAccountAsync(provider, login, cancellationToken);
         if (account is null) return Refuse();
-        var visible = account.Repositories.ToDictionary(r => r.Id!, r => r);
+        var visible = account.Repositories.ToDictionary(r => r.Id.Value, r => r, StringComparer.OrdinalIgnoreCase);
         if (visible.Count == 0) return Ok(new Dictionary<string, double[]>());
 
         var repoIds = visible.Keys.ToArray();
@@ -366,7 +366,7 @@ public partial class BrowseController : ControllerBase
             .Where(a => a.OwnerKey == ownerKey)
             .FirstOrDefaultAsync(cancellationToken);
         if (account is null) return NotFound();
-        return Ok(new AccountRef(account.Id!, account.Login));
+        return Ok(new AccountRef(account.Id.Value, account.Login));
     }
 
     public sealed record AccountRef(string Id, string Login);
@@ -380,7 +380,7 @@ public partial class BrowseController : ControllerBase
         var commit = await session.LoadAsync<Commit>(Commit.DocumentId(repository.Provider, repository.GitHubId, sha), cancellationToken);
         if (commit is null) return NotFound();
 
-        var assembly = await session.LoadAsync<CommitAssembly>(CommitAssembly.DocumentId(commit.Id!), cancellationToken);
+        var assembly = await session.LoadAsync<CommitAssembly>(CommitAssembly.DocumentId(commit.Id.Value), cancellationToken);
 
         var builds = new List<Build>();
         var buildsPrefix = $"{Commit.DocumentId(repository.Provider, repository.GitHubId, sha)}/builds/";
@@ -431,7 +431,7 @@ public partial class BrowseController : ControllerBase
             // Per-flag totals of the build the page shows; null before flags
             // had storage. Keys are sanitized flag names — the same values
             // GetTree's ?flag= accepts.
-            FlagTotals = builds.FirstOrDefault(b => b.Id == commit.LatestBuildId)?.FlagCoverage,
+            FlagTotals = builds.FirstOrDefault(b => string.Equals(b.Id.Value, commit.LatestBuildId, StringComparison.OrdinalIgnoreCase))?.FlagCoverage,
             Builds = builds
                 .OrderByDescending(b => b.CreatedAtUtc)
                 .Select(b => new BuildInfo(b.CiRunId, b.CiRunAttempt, b.Status, b.FinalizeReason, b.WorkflowName,
@@ -654,6 +654,6 @@ public partial class BrowseController : ControllerBase
     private RepoInfo ToRepoInfo(Repository r, bool canManage)
         // Id first: the /{provider}/r/{owner}/{name} route resolves it to forward into the
         // generic Spark detail page.
-        => new(r.Id!, r.OwnerLogin, r.Name, r.FullName, r.IsPrivate, r.DefaultBranch, r.LatestCoverage, r.LatestCoverageSha,
+        => new(r.Id.Value, r.OwnerLogin, r.Name, r.FullName, r.IsPrivate, r.DefaultBranch, r.LatestCoverage, r.LatestCoverageSha,
             canManage, canManage ? r.BadgeToken : null, configuration["Coverage:BaseUrl"]?.TrimEnd('/'));
 }

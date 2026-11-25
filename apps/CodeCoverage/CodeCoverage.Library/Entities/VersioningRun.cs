@@ -19,7 +19,8 @@ namespace CodeCoverage.Entities;
 /// them as the <see cref="Tags"/> and <see cref="RefusedPackages"/> summaries.
 /// </para>
 /// </remarks>
-public class VersioningRun
+[IdKind(SparkIdKind.Natural)]
+public partial class VersioningRun
 {
     public const string Prefix = "VersioningRuns/";
     public const int MaxNotes = 500;
@@ -31,7 +32,7 @@ public class VersioningRun
     public static string ForRepository(EForgeProvider provider, long repositoryId)
         => $"{Prefix}{provider.ToString().ToLowerInvariant()}/{repositoryId}/";
 
-    public string? Id { get; set; }
+    public Id<VersioningRun> Id { get; set; }
 
     /// <summary>The <see cref="Entities.Repository"/> document id.</summary>
     [Reference(typeof(Repository))]

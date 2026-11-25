@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions;
 namespace CodeCoverage.Entities;
 
 /// <summary>
@@ -15,9 +16,10 @@ namespace CodeCoverage.Entities;
 /// through <c>MergeQueueController</c> (M6), under the browse API's visibility rules.
 /// </para>
 /// </remarks>
-public class MergeQueue
+[IdKind(SparkIdKind.Natural)]
+public partial class MergeQueue
 {
-    public string? Id { get; set; }
+    public Id<MergeQueue> Id { get; set; }
 
     /// <summary>The repository document id, <c>Repositories/{provider}/{id}</c>.</summary>
     public string Repository { get; set; } = string.Empty;
@@ -63,7 +65,7 @@ public class MergeQueue
     {
         const string prefix = "Repositories/";
         ArgumentException.ThrowIfNullOrEmpty(repositoryId);
-        if (!repositoryId.StartsWith(prefix, StringComparison.Ordinal) || repositoryId.Length == prefix.Length)
+        if (!repositoryId.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) || repositoryId.Length == prefix.Length)
             throw new ArgumentException($"'{repositoryId}' is not a repository document id.", nameof(repositoryId));
         return repositoryId[prefix.Length..];
     }

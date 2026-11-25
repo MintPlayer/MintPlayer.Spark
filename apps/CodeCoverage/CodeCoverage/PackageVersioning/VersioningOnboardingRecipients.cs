@@ -43,7 +43,7 @@ public partial class VersioningSeedsRecipient : IRecipient<VersioningSeedsMessag
     {
         var repository = await session.LoadAsync<Repository>(message.RepositoryId, cancellationToken);
         if (repository is null || repository.Connection == RepositoryConnection.Disconnected || repository.Archived) return;
-        using var held = await locks.TryEnterAsync(repository.Id!, cancellationToken)
+        using var held = await locks.TryEnterAsync(repository.Id.Value, cancellationToken)
             ?? throw new GitWriterUnavailableException("A versioning run of this repository is still going.");
         // #571 M10d: the seeds, then the chooser's settings, renames and line workflows (only the seeds for a #153 pull request).
         // #649 D9: nobody watches a merge's outcome, so it is logged; a failed step as a warning.

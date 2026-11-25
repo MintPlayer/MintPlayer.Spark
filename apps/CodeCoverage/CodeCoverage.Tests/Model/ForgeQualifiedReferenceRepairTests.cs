@@ -133,7 +133,7 @@ public class ForgeQualifiedReferenceRepairTests : CoverageRavenTest
 
         // ⚠️ The board's OWN id must not move — it is node-id-derived, which is exactly why the
         // first migration skipped this collection and why only the reference had to follow.
-        board.Id.Should().Be("GitHubProjects/PVT_kwDO");
+        board.Id.Value.Should().Be("githubprojects/pvt_kwdo");
     }
 
     /// <summary>

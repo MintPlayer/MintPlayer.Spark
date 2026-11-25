@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions;
 namespace CodeCoverage.Entities;
 
 /// <summary>
@@ -9,9 +10,10 @@ namespace CodeCoverage.Entities;
 /// Loaded by id only (<see cref="ForRepository"/>), so the <c>workflow_run</c> webhook's filter is one point load. A
 /// backport leaves <see cref="Pending"/> when its pull request opens; the document then holds nothing.
 /// </remarks>
-public class BackportRegenerations
+[IdKind(SparkIdKind.Natural)]
+public partial class BackportRegenerations
 {
-    public string? Id { get; set; }
+    public Id<BackportRegenerations> Id { get; set; }
 
     public List<BackportRegeneration> Pending { get; set; } = [];
 

@@ -67,8 +67,8 @@ public class ChangelogRecipientTests : CoverageRavenTest
         releases.Select(r => (r.Package, r.Version, r.Prerelease)).Should().Equal(
             ("Acme.Core", "11.3.0-preview.1", true), ("Acme.Core", "11.2.0", false));
         var first = releases[1];
-        (first.Id, first.Repository, first.Tag, first.Target, first.Notes, first.ReleasedAtUtc).Should().Be(
-            (ChangelogRelease.DocumentId(EForgeProvider.GitHub, Repo, "Acme.Core/v11.2.0"), RepoId, "Acme.Core/v11.2.0", (string?)"master",
+        (first.Id.Value, first.Repository, first.Tag, first.Target, first.Notes, first.ReleasedAtUtc).Should().Be(
+            (ChangelogRelease.DocumentId(EForgeProvider.GitHub, Repo, "Acme.Core/v11.2.0").ToLowerInvariant(), RepoId.ToLowerInvariant(), "Acme.Core/v11.2.0", (string?)"master",
                 "### Features\n- Faster (#12)", Monday.UtcDateTime));
     }
 

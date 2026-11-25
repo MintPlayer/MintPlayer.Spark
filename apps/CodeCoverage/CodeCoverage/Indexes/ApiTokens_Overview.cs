@@ -23,7 +23,7 @@ public partial class ApiTokens_Overview : SparkIndexCreationTask<ApiToken>
                         let account = LoadDocument<Account>(token.Account)
                         select new VApiToken
                         {
-                            Id = token.Id,
+                            Id = token.Id.Value,
                             Scope = token.Scope,
                             Account = token.Account,
                             AccountLogin = account != null ? account.Login : null,

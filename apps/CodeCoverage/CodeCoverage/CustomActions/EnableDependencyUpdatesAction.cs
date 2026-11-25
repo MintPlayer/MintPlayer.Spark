@@ -42,16 +42,16 @@ public partial class EnableDependencyUpdatesAction : SparkCustomAction
 
     public override async Task ExecuteAsync(CustomActionArgs args, CancellationToken cancellationToken = default)
     {
-        var ids = args.SelectedItems.Select(i => i.Id).OfType<string>().Distinct(StringComparer.Ordinal).ToList();
+        var ids = args.SelectedItems.Select(i => i.Id).OfType<string>().Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         if (ids.Count == 0)
             return;
 
         var loaded = await session.LoadAsync<Repository>(ids, cancellationToken);
         var repositories = ids.Select(id => loaded.GetValueOrDefault(id)).OfType<Repository>().ToList();
         var reasons = await onboarding.CheckAsync(repositories, cancellationToken);
-        var allowed = repositories.Where(r => reasons.GetValueOrDefault(r.Id!) is not null).ToList();
-        var refused = repositories.Where(r => reasons.GetValueOrDefault(r.Id!) is null)
-            .Select(r => new DependencyOnboardingRefusal(r.Id!, r.FullName, Reason("notManaged", "you don't manage this repository"))).ToList();
+        var allowed = repositories.Where(r => reasons.GetValueOrDefault(r.Id.Value) is not null).ToList();
+        var refused = repositories.Where(r => reasons.GetValueOrDefault(r.Id.Value) is null)
+            .Select(r => new DependencyOnboardingRefusal(r.Id.Value, r.FullName, Reason("notManaged", "you don't manage this repository"))).ToList();
         refused.AddRange(ids.Where(id => !loaded.ContainsKey(id) || loaded[id] is null).Select(id => new DependencyOnboardingRefusal(id, id, Reason("notFound", "no such repository"))));
 
         bool withMergeQueue = true;
@@ -73,12 +73,12 @@ public partial class EnableDependencyUpdatesAction : SparkCustomAction
         }
 
         var enabled = new List<string>();
-        var objects = allowed.Count == 0 ? [] : await databaseAccess.GetPersistentObjectsByIdAsync(RepositoryType, [.. allowed.Select(r => r.Id!)]);
+        var objects = allowed.Count == 0 ? [] : await databaseAccess.GetPersistentObjectsByIdAsync(RepositoryType, [.. allowed.Select(r => r.Id.Value)]);
         foreach (var repository in allowed)
         {
-            if (objects.FirstOrDefault(o => string.Equals(o.Id, repository.Id, StringComparison.Ordinal)) is not { } po)
+            if (objects.FirstOrDefault(o => string.Equals(o.Id, repository.Id.Value, StringComparison.OrdinalIgnoreCase)) is not { } po)
             {
-                refused.Add(new DependencyOnboardingRefusal(repository.Id!, repository.FullName, Reason("notManaged", "you don't manage this repository")));
+                refused.Add(new DependencyOnboardingRefusal(repository.Id.Value, repository.FullName, Reason("notManaged", "you don't manage this repository")));
                 continue;
             }
             po[nameof(Repository.DependencyUpdates)].Value = nameof(EDependencyUpdatesPolicy.Enabled);
@@ -93,7 +93,7 @@ public partial class EnableDependencyUpdatesAction : SparkCustomAction
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
                 logger.LogWarning(ex, "Dependency onboarding: could not enable {Repository}", repository.FullName);
-                refused.Add(new DependencyOnboardingRefusal(repository.Id!, repository.FullName, Reason("saveRefused", $"the save was refused: {ex.Message}", ex.Message)));
+                refused.Add(new DependencyOnboardingRefusal(repository.Id.Value, repository.FullName, Reason("saveRefused", $"the save was refused: {ex.Message}", ex.Message)));
             }
         }
 

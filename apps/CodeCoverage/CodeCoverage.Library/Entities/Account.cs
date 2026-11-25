@@ -10,10 +10,11 @@ namespace CodeCoverage.Entities;
 /// webhook upserts are idempotent.
 /// </summary>
 [GenerateIndex]
-public class Account : IForgeConnectable
+[IdKind(SparkIdKind.Natural)]
+public partial class Account : IForgeConnectable
 {
     /// <summary>Document id of this account, <c>Accounts/{GitHubId}</c>.</summary>
-    public string? Id { get; set; }
+    public Id<Account> Id { get; set; }
 
     /// <summary>GitHub's numeric id for this user or organization; stable even when the login is renamed.</summary>
     /// <remarks>

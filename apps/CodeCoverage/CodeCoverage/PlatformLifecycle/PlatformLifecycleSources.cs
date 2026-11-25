@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions;
 using System.Globalization;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -30,7 +31,7 @@ public static partial class PlatformLifecycleSources
             if (String(release, "channel-version") is not { } name || !IsChannel(name) || rows.Any(r => r.Channel == name)) continue;
             rows.Add(new PlatformRelease
             {
-                Id = PlatformRelease.IdFor(Dotnet, name),
+                Id = Id<PlatformRelease>.FromTrusted(PlatformRelease.IdFor(Dotnet, name)),
                 Platform = Dotnet,
                 Channel = name,
                 Major = MajorOf(name) ?? 0,
@@ -70,7 +71,7 @@ public static partial class PlatformLifecycleSources
             var latest = release.TryGetProperty("latest", out var l) && l.ValueKind == JsonValueKind.Object ? l : (JsonElement?)null;
             rows.Add(new PlatformRelease
             {
-                Id = PlatformRelease.IdFor(platform, name),
+                Id = Id<PlatformRelease>.FromTrusted(PlatformRelease.IdFor(platform, name)),
                 Platform = platform,
                 Channel = name,
                 Major = major,

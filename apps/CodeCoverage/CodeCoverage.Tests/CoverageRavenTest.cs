@@ -63,6 +63,8 @@ public abstract class CoverageRavenTest : RavenTestDriver
         MintPlayer.Spark.Testing.RavenDatabaseDeletion.DeleteOnDispose(documentStore);
         // No topology cache file per database. See RavenDatabaseDeletion.DisableTopologyCache.
         MintPlayer.Spark.Testing.RavenDatabaseDeletion.DisableTopologyCache(documentStore);
+        // The app's store conventions (#536): an entity's identity is its generated __DocumentId, not its Id<T>.
+        MintPlayer.Spark.SparkStoreConfiguration.ApplySparkConventions(documentStore);
         base.PreInitialize(documentStore);
     }
 

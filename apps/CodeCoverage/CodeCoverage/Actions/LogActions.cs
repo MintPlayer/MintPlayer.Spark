@@ -59,8 +59,8 @@ public partial class LogActions : MintPlayer.Spark.Logging.Actions.LogActions
     private async Task<Repository?> RepositoryOfAsync(string? related)
     {
         if (related is not { Length: > 0 }) return null;
-        if (related.StartsWith(CommandInvocation.Prefix, StringComparison.Ordinal))
+        if (related.StartsWith(CommandInvocation.Prefix, StringComparison.OrdinalIgnoreCase))
             return await documents.LoadAsync<CommandInvocation>(related) is { } command ? await documents.LoadAsync<Repository>(command.Repository) : null;
-        return related.StartsWith("Repositories/", StringComparison.Ordinal) ? await documents.LoadAsync<Repository>(related) : null;
+        return related.StartsWith("Repositories/", StringComparison.OrdinalIgnoreCase) ? await documents.LoadAsync<Repository>(related) : null;
     }
 }

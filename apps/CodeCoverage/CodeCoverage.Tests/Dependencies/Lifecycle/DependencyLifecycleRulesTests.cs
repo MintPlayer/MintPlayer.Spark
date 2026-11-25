@@ -97,6 +97,19 @@ public class DependencySlotsTests
         DependencySlots.Due(schedule, at, Repo).Key.Should().NotBe(DependencySlots.Due(schedule, at, "Repositories/github/1").Key);
     }
 
+    /// <summary>#536: a loaded id is lower case while a stored reference keeps its casing, and RavenDB ignores the
+    /// difference. The slot must too, or the same repository gets two minutes and two keys, so two runs a day.</summary>
+    [Fact]
+    public void The_slot_ignores_the_casing_of_the_repository_id()
+    {
+        var schedule = new DependencySchedule(EDependencyScheduleFrequency.Daily, EDependencyWeekday.Monday, 6, "UTC");
+        var at = new DateTimeOffset(2026, 10, 19, 6, 59, 0, TimeSpan.Zero);
+        var lower = Repo.ToLowerInvariant();
+        DependencySlots.SpreadMinute(lower).Should().Be(DependencySlots.SpreadMinute(Repo));
+        DependencySlots.Due(schedule, at, lower).Key.Should().Be(DependencySlots.Due(schedule, at, Repo).Key);
+        (DependencySlots.Next(schedule, at, lower) == DependencySlots.Next(schedule, at, Repo)).Should().BeTrue();
+    }
+
     [Fact]
     public void A_monthly_slot_is_the_first_such_weekday()
     {

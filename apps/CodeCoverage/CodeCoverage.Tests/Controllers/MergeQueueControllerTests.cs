@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions;
 using System.Security.Claims;
 using System.Text.Json;
 using CodeCoverage.Controllers;
@@ -128,7 +129,7 @@ public class MergeQueueControllerTests : CoverageRavenTest
     {
         var entry = new MergeQueueEntry
         {
-            Id = MergeQueueEntry.DocumentId(RepositoryId, number), Repository = RepositoryId, BaseBranch = "master", Number = number, Run = 1,
+            Id = Id<MergeQueueEntry>.FromTrusted(MergeQueueEntry.DocumentId(RepositoryId, number)), Repository = RepositoryId, BaseBranch = "master", Number = number, Run = 1,
             State = state, Title = $"Pull request {number}", AuthorLogin = "contributor", EnqueuedBy = "maintainer", EnqueuedVia = EMergeQueueCommandSource.Label,
             EnqueuedAtUtc = new DateTime(2026, 10, 14, 9, 0, 0, DateTimeKind.Utc), StateChangedAtUtc = new DateTime(2026, 10, 14, 9, number, 0, DateTimeKind.Utc),
             Config = new MergeQueueConfigSnapshot
@@ -150,21 +151,21 @@ public class MergeQueueControllerTests : CoverageRavenTest
 
     private static void Busy(IAsyncDocumentSession session)
     {
-        var queue = new QueueDocument { Id = QueueDocument.DocumentId(RepositoryId), Repository = RepositoryId };
+        var queue = new QueueDocument { Id = Id<QueueDocument>.FromTrusted(QueueDocument.DocumentId(RepositoryId)), Repository = RepositoryId };
         var lane = queue.LaneFor("master");
         lane.Current = MergeQueueEntry.DocumentId(RepositoryId, 7);
         lane.Waiting.AddRange([MergeQueueEntry.DocumentId(RepositoryId, 9), MergeQueueEntry.DocumentId(RepositoryId, 8)]);
         queue.Record(Outcome(5, EMergeQueueEntryState.Merged, null, minute: 1));
         queue.Record(Outcome(6, EMergeQueueEntryState.Evicted, "author-push", minute: 2));
         queue.Record(Outcome(10, EMergeQueueEntryState.Refused, "branch", branch: "release", minute: 3));
-        session.StoreAsync(queue, queue.Id).GetAwaiter().GetResult();
+        session.StoreAsync(queue, queue.Id.Value).GetAwaiter().GetResult();
         foreach (var entry in new[]
         {
             Entry(7, EMergeQueueEntryState.AwaitingChecks, "published 555555555555"),
             Entry(9, EMergeQueueEntryState.Queued, "queued by @maintainer (label)"),
             Entry(8, EMergeQueueEntryState.Queued, "queued by @maintainer (button)"),
         })
-            session.StoreAsync(entry, entry.Id).GetAwaiter().GetResult();
+            session.StoreAsync(entry, entry.Id.Value).GetAwaiter().GetResult();
     }
 
     private static string Describe(IConvertToActionResult result) => result.Convert() switch
@@ -209,11 +210,11 @@ public class MergeQueueControllerTests : CoverageRavenTest
     {
         using var store = await SeedAsync(GetDocumentStore(), more: session =>
         {
-            var queue = new QueueDocument { Id = QueueDocument.DocumentId(RepositoryId), Repository = RepositoryId };
+            var queue = new QueueDocument { Id = Id<QueueDocument>.FromTrusted(QueueDocument.DocumentId(RepositoryId)), Repository = RepositoryId };
             queue.Record(Outcome(5, EMergeQueueEntryState.Merged, null));
-            session.StoreAsync(queue, queue.Id).GetAwaiter().GetResult();
+            session.StoreAsync(queue, queue.Id.Value).GetAwaiter().GetResult();
             var ended = Entry(5, EMergeQueueEntryState.Merged, "Merged");
-            session.StoreAsync(ended, ended.Id).GetAwaiter().GetResult();
+            session.StoreAsync(ended, ended.Id.Value).GetAwaiter().GetResult();
         });
         using var session = store.OpenAsyncSession();
 
@@ -263,7 +264,7 @@ public class MergeQueueControllerTests : CoverageRavenTest
         var result = await Controller(session, world, SignedIn()).Enqueue("github", "acme", "widget", 7, default);
 
         Describe(result).Should().Be("""202 {"number":7,"command":"enqueue","actor":"contributor"}""");
-        world.Bus.Commands.Should().Equal([new MergeQueueCommandIssued(RepositoryId, 7, EMergeQueueCommand.Enqueue, "contributor", EMergeQueueCommandSource.Button)],
+        world.Bus.Commands.Should().Equal([new MergeQueueCommandIssued(RepositoryId.ToLowerInvariant(), 7, EMergeQueueCommand.Enqueue, "contributor", EMergeQueueCommandSource.Button)],
             "the same event a label or a comment raises, so the engine's O9 check is the gate for all three (O8)");
         ((ForgeWebhookMessage<MergeQueueCommandIssued>)world.Bus.Messages[0]).Provider.Should().Be(EForgeProvider.GitHub);
     }
@@ -326,7 +327,7 @@ public class MergeQueueControllerTests : CoverageRavenTest
         Describe(await Controller(session, world, SignedIn()).Dequeue("github", "acme", "widget", 8, default))
             .Should().Be("""202 {"number":8,"command":"dequeue","actor":"contributor"}""");
 
-        world.Bus.Commands.Should().Equal([new MergeQueueCommandIssued(RepositoryId, 8, EMergeQueueCommand.Dequeue, "contributor", EMergeQueueCommandSource.Button)],
+        world.Bus.Commands.Should().Equal([new MergeQueueCommandIssued(RepositoryId.ToLowerInvariant(), 8, EMergeQueueCommand.Dequeue, "contributor", EMergeQueueCommandSource.Button)],
             "the engine decides whether the actor may (the author, or write)");
     }
 
@@ -366,7 +367,7 @@ public class MergeQueueControllerTests : CoverageRavenTest
         {
             Busy(session);
             foreach (var ended in new[] { Entry(6, EMergeQueueEntryState.Evicted, "evicted"), Entry(11, EMergeQueueEntryState.Dequeued, "dequeued") })
-                session.StoreAsync(ended, ended.Id).GetAwaiter().GetResult();
+                session.StoreAsync(ended, ended.Id.Value).GetAwaiter().GetResult();
         });
         using var session = store.OpenAsyncSession();
         var world = CandidateWorld();
@@ -440,7 +441,7 @@ public class MergeQueueControllerTests : CoverageRavenTest
         // Through the controller's own session: it remembers #2 as missing from the first call, and storing it is what a
         // request's fresh session would see anyway.
         var queued = Entry(2, EMergeQueueEntryState.Queued, "queued");
-        await session.StoreAsync(queued, queued.Id);
+        await session.StoreAsync(queued, queued.Id.Value);
         await session.SaveChangesAsync();
 
         Candidates(await controller.Candidates("github", "acme", "widget", false, default)).PullRequests.Select(p => p.Number)

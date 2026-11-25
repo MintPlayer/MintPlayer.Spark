@@ -30,7 +30,7 @@ public partial class DeletePullRequestBuildsRecipient : IRecipient<DeletePullReq
         using var requestScope = session.IgnoreMaxRequests(logger: logger);
 
         var repository = await session.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, message.RepositoryGitHubId), cancellationToken);
-        var repositoryId = repository?.Id ?? Repository.DocumentId(EForgeProvider.GitHub, message.RepositoryGitHubId);
+        var repositoryId = repository is { Id.IsEmpty: false } ? repository.Id.Value : Repository.DocumentId(EForgeProvider.GitHub, message.RepositoryGitHubId);
 
         var commits = await session.Query<VCommit, Commits_ByRepository>()
             .Where(r => r.Repository == repositoryId && r.PullRequestNumber == message.PullRequestNumber)
@@ -41,7 +41,7 @@ public partial class DeletePullRequestBuildsRecipient : IRecipient<DeletePullReq
         var deleted = 0;
         foreach (var commit in commits)
         {
-            if (commit.Id is null)
+            if (commit.Id.IsEmpty)
                 continue;
             // ⚠️ The default-branch exemption must not apply to fork-contributed coverage. A fork's
             // head branch is very often literally `main`, because contributors fork and commit on

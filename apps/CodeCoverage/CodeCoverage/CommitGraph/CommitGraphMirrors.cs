@@ -286,7 +286,7 @@ public partial class CommitGraphMirrors : ICommitGraphMirrors
     private async Task<bool> InstallationOverCapAsync(string installation, string exceptStateId, CancellationToken cancellationToken)
     {
         var used = (await ListStatesAsync(cancellationToken))
-            .Where(s => s.HasMirror && s.Id != exceptStateId && s.InstallationId == installation)
+            .Where(s => s.HasMirror && !string.Equals(s.Id.Value, exceptStateId, StringComparison.OrdinalIgnoreCase) && s.InstallationId == installation)
             .Sum(s => s.SizeBytes);
         return used >= options.Value.InstallationCapBytes;
     }
@@ -302,9 +302,9 @@ public partial class CommitGraphMirrors : ICommitGraphMirrors
         var total = mirrors.Sum(s => s.SizeBytes);
 
         foreach (var victim in mirrors
-                     .Where(s => s.Id != protectedStateId)
+                     .Where(s => !string.Equals(s.Id.Value, protectedStateId, StringComparison.OrdinalIgnoreCase))
                      .OrderBy(s => s.LastViewedAtUtc ?? DateTime.MinValue)
-                     .ThenBy(s => s.Id, StringComparer.Ordinal))
+                     .ThenBy(s => s.Id.Value, StringComparer.Ordinal))
         {
             if (beforeClone ? total < budget : total <= budget) break;
             try

@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions;
 using System.Net;
 using CodeCoverage.Entities;
 using CodeCoverage.Forge;
@@ -97,7 +98,7 @@ public class GitHubRateLimitTests
 
     private static Repository Target(bool isPrivate = true) => new()
     {
-        Id = Repository.DocumentId(EForgeProvider.GitHub, 910040), GitHubId = 910040, Name = "widget", FullName = "acme/widget", OwnerLogin = "acme",
+        Id = Id<Repository>.FromTrusted(Repository.DocumentId(EForgeProvider.GitHub, 910040)), GitHubId = 910040, Name = "widget", FullName = "acme/widget", OwnerLogin = "acme",
         Account = AccountId, IsPrivate = isPrivate, DefaultBranch = "main",
     };
 

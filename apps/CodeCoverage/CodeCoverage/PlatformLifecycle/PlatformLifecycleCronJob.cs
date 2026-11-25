@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions;
 using CodeCoverage.Entities;
 using CodeCoverage.Versioning.Releases;
 using Microsoft.Extensions.Options;
@@ -119,21 +120,21 @@ public partial class PlatformLifecycleCronJob : ISparkCronJob
         }
 
         var stored = await session.Advanced.LoadStartingWithAsync<PlatformRelease>(PlatformRelease.Prefix, pageSize: 1024, token: cancellationToken);
-        var byId = stored.ToDictionary(r => r.Id!, StringComparer.Ordinal);
-        var today = rows.Select(r => r.Id!).ToHashSet(StringComparer.Ordinal);
+        var byId = stored.ToDictionary(r => r.Id.Value, StringComparer.OrdinalIgnoreCase);
+        var today = rows.Select(r => r.Id.Value).ToHashSet(StringComparer.OrdinalIgnoreCase);
         var collected = settings.Platforms.Keys.Append(PlatformLifecycleSources.Dotnet).ToHashSet(StringComparer.Ordinal);
         var removed = 0;
         foreach (var row in stored)
         {
-            if (today.Contains(row.Id!)) continue;
+            if (today.Contains(row.Id.Value)) continue;
             if (collected.Contains(row.Platform) && !answered.Contains(row.Platform)) continue;
             session.Delete(row);
             removed++;
         }
         foreach (var row in rows)
         {
-            if (byId.GetValueOrDefault(row.Id!) is { } existing) Copy(row, existing);
-            else await session.StoreAsync(row, row.Id, cancellationToken);
+            if (byId.GetValueOrDefault(row.Id.Value) is { } existing) Copy(row, existing);
+            else await session.StoreAsync(row, row.Id.Value, cancellationToken);
         }
         var bands = await CollectSdkComponentsAsync(http, settings, rows.Where(r => r.Platform == PlatformLifecycleSources.Dotnet && r.Phase != "eol"), now, cancellationToken);
         if (rows.Count == 0 && removed == 0 && bands == 0) return;
@@ -161,14 +162,14 @@ public partial class PlatformLifecycleCronJob : ISparkCronJob
             async Task<string?> File(string path) => await FetchAsync(http, $"{settings.VmrRawUrl}{tag}/{path}", cancellationToken, status => missing |= status == 404);
             var (msbuild, roslyn, nuget) = (await File(SdkComponentSources.MsbuildPath), await File(SdkComponentSources.RoslynPath), await File(SdkComponentSources.NugetPath));
             if (!missing && (msbuild is null || roslyn is null || nuget is null)) continue;
-            var document = stored.GetValueOrDefault(band) ?? new SdkBandComponents { Id = SdkBandComponents.IdFor(band), Band = band };
+            var document = stored.GetValueOrDefault(band) ?? new SdkBandComponents { Id = Id<SdkBandComponents>.FromTrusted(SdkBandComponents.IdFor(band)), Band = band };
             document.Tag = tag;
             document.TagMissing = missing;
             document.Msbuild = missing ? null : Parse(SdkComponentSources.ReadMsbuild, msbuild!, tag);
             document.Roslyn = missing ? null : Parse(SdkComponentSources.ReadRoslyn, roslyn!, tag);
             document.Nuget = missing ? null : Parse(SdkComponentSources.ReadNuget, nuget!, tag);
             document.CollectedAtUtc = now;
-            if (!stored.ContainsKey(band)) await session.StoreAsync(document, document.Id, cancellationToken);
+            if (!stored.ContainsKey(band)) await session.StoreAsync(document, document.Id.Value, cancellationToken);
             read++;
         }
         return read;
@@ -195,7 +196,7 @@ public partial class PlatformLifecycleCronJob : ISparkCronJob
             var channel = major.ToString(System.Globalization.CultureInfo.InvariantCulture);
             rows.Add(new PlatformRelease
             {
-                Id = PlatformRelease.IdFor(platform, channel), Platform = platform, Channel = channel, Major = major, Name = channel,
+                Id = Id<PlatformRelease>.FromTrusted(PlatformRelease.IdFor(platform, channel)), Platform = platform, Channel = channel, Major = major, Name = channel,
                 Phase = "preview", LatestVersion = version, Source = tagsUrl, CollectedAtUtc = now,
             });
         }
@@ -212,7 +213,7 @@ public partial class PlatformLifecycleCronJob : ISparkCronJob
         if (preview is null) return;
         rows.Add(new PlatformRelease
         {
-            Id = PlatformRelease.IdFor(platform, preview.Channel), Platform = platform, Channel = preview.Channel,
+            Id = Id<PlatformRelease>.FromTrusted(PlatformRelease.IdFor(platform, preview.Channel)), Platform = platform, Channel = preview.Channel,
             Major = PlatformLifecycleSources.MajorOf(preview.Channel) ?? 0, Name = preview.Name ?? preview.Channel,
             Phase = "preview", LatestVersion = preview.Version, LatestReleasedOn = preview.ReleasedOn, Source = url, CollectedAtUtc = now,
         });

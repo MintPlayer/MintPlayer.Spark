@@ -61,7 +61,7 @@ public sealed class ScriptedDiffService(CommitComparison? comparison = null)
 
     public Task ReconcileAsync(Account account, CancellationToken cancellationToken = default)
     {
-        Reconciled.Add(account.Id ?? account.OwnerKey);
+        Reconciled.Add(account.Id.IsEmpty ? account.OwnerKey : account.Id.Value);
         return Task.CompletedTask;
     }
 
@@ -97,7 +97,7 @@ public sealed class ScriptedDiffService(CommitComparison? comparison = null)
     {
         GitAccessCalls++;
         if (GitAccessFailure is not null) return Task.FromException<ForgeGitAccess?>(GitAccessFailure);
-        return Task.FromResult(repository.Id is not null && GitAccess.TryGetValue(repository.Id, out var access)
+        return Task.FromResult(!repository.Id.IsEmpty && GitAccess.TryGetValue(repository.Id.Value, out var access)
             ? access
             : ForgeGitAccess.Anonymous($"https://forge.example.invalid/{repository.FullName}.git"));
     }

@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions;
 using CodeCoverage.Entities;
 using MintPlayer.SourceGenerators.Attributes;
 using Raven.Client.Documents.Session;
@@ -40,7 +41,7 @@ public partial class DependencyStateStore : IDependencyStateStore
         var state = await session.LoadAsync<DependencyUpdateState>(id, cancellationToken);
         if (state is not null)
             return state;
-        state = new DependencyUpdateState { Id = id, Repository = repositoryId };
+        state = new DependencyUpdateState { Id = Id<DependencyUpdateState>.FromTrusted(id), Repository = repositoryId };
         await session.StoreAsync(state, id, cancellationToken);
         return state;
     }
@@ -51,7 +52,7 @@ public partial class DependencyStateStore : IDependencyStateStore
         var fleet = await session.LoadAsync<DependencyFleetState>(id, cancellationToken);
         if (fleet is not null)
             return fleet;
-        fleet = new DependencyFleetState { Id = id, Account = accountId };
+        fleet = new DependencyFleetState { Id = Id<DependencyFleetState>.FromTrusted(id), Account = accountId };
         await session.StoreAsync(fleet, id, cancellationToken);
         return fleet;
     }

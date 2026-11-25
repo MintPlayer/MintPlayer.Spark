@@ -39,7 +39,7 @@ public partial class VersioningRunActions : DefaultPersistentObjectActions<Versi
         await using (var stream = await session.Advanced.StreamAsync<VersioningRun>(VersioningRun.ForRepository(repository.Provider, repository.GitHubId)))
         {
             while (await stream.MoveNextAsync())
-                if (stream.Current.Document is { } run && run.Repository == repository.Id) runs.Add(run);
+                if (stream.Current.Document is { } run && string.Equals(run.Repository, repository.Id.Value, StringComparison.OrdinalIgnoreCase)) runs.Add(run);
         }
         return runs.OrderByDescending(r => r.StartedAtUtc).AsQueryable();
     }

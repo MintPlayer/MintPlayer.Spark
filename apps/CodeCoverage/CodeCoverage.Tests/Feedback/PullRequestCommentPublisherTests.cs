@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions;
 using CodeCoverage.Forge;
 using CodeCoverage.Entities;
 using CodeCoverage.Feedback;
@@ -71,7 +72,7 @@ public class PullRequestCommentPublisherTests : CoverageRavenTest
 
     private static Entities.Repository Repo() => new()
     {
-        Id = Entities.Repository.DocumentId(EForgeProvider.GitHub, RepoId),
+        Id = Id<Entities.Repository>.FromTrusted(Entities.Repository.DocumentId(EForgeProvider.GitHub, RepoId)),
         GitHubId = RepoId,
         Name = "MintPlayer.Spark",
         FullName = "MintPlayer/MintPlayer.Spark",

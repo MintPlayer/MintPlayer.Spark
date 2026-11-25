@@ -67,7 +67,7 @@ public class ApiTokenIdMigrationTests : CoverageRavenTest
         var tokens = await AllAsync(store);
         tokens.Should().ContainSingle();
         tokens[0].Hash.Should().Be(Hash);
-        tokens[0].Id.Should().NotContain(Hash);
+        tokens[0].Id.Value.Should().NotContain(Hash);
     }
 
     [Fact]
@@ -82,7 +82,7 @@ public class ApiTokenIdMigrationTests : CoverageRavenTest
         token.Scope.Should().Be("Account");
         // Read from the raw document: a later migration (M_202610021200) turns it into Account.
         using (var raw = store.OpenAsyncSession())
-            ((await raw.LoadAsync<Dictionary<string, object?>>(token.Id))["AccountLogin"]?.ToString()).Should().Be("MintPlayer");
+            ((await raw.LoadAsync<Dictionary<string, object?>>(token.Id.Value))["AccountLogin"]?.ToString()).Should().Be("MintPlayer");
         token.Description.Should().Be("MintPlayer token");
         token.CreatedAtUtc.ToUniversalTime().Should().Be(new DateTime(2026, 8, 13, 10, 49, 57, DateTimeKind.Utc));
     }
@@ -138,13 +138,13 @@ public class ApiTokenIdMigrationTests : CoverageRavenTest
             var token = new ApiToken { Scope = "Account", Hash = "already", CreatedAtUtc = DateTime.UtcNow };
             await session.StoreAsync(token, ApiToken.NewDocumentId());
             await session.SaveChangesAsync();
-            id = token.Id!;
+            id = token.Id.Value;
         }
 
         await RunAsync(store);
 
         var tokens = await AllAsync(store);
         tokens.Should().ContainSingle();
-        tokens[0].Id.Should().Be(id);
+        tokens[0].Id.Value.Should().Be(id);
     }
 }

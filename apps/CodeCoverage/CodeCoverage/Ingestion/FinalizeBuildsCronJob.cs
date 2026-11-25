@@ -90,12 +90,12 @@ public partial class FinalizeBuildsCronJob : ISparkCronJob
         // publishes feedback once the commit's headline is rebuilt.
         foreach (var build in finalized)
         {
-            if (build.Id is null)
+            if (build.Id.IsEmpty)
                 continue;
             if (build.Commit is not null)
-                await messageBus.BroadcastAsync(new AssembleCommitMessage { CommitId = build.Commit, BuildId = build.Id }, cancellationToken);
+                await messageBus.BroadcastAsync(new AssembleCommitMessage { CommitId = build.Commit, BuildId = build.Id.Value }, cancellationToken);
             else
-                await messageBus.BroadcastAsync(new Feedback.PublishFeedbackMessage { BuildId = build.Id }, cancellationToken);
+                await messageBus.BroadcastAsync(new Feedback.PublishFeedbackMessage { BuildId = build.Id.Value }, cancellationToken);
         }
     }
 }

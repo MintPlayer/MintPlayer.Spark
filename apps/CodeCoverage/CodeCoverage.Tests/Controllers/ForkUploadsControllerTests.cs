@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions;
 using System.Text;
 using CodeCoverage.Controllers;
 using CodeCoverage.Entities;
@@ -39,7 +40,7 @@ public class ForkUploadsControllerTests
 
     private static Repository PublicRepository() => new()
     {
-        Id = Repository.DocumentId(EForgeProvider.GitHub, BaseRepositoryId),
+        Id = Id<Repository>.FromTrusted(Repository.DocumentId(EForgeProvider.GitHub, BaseRepositoryId)),
         GitHubId = BaseRepositoryId,
         Name = "widget",
         FullName = "acme/widget",

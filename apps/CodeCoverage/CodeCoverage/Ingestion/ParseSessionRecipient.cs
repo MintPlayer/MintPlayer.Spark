@@ -162,8 +162,8 @@ public partial class ParseSessionRecipient : IRecipient<ParseSessionMessage>
                         var (path, matched) = normalizer.Normalize(parsedFile.RawPath);
                         string[] documentIds =
                         [
-                            FileCoverage.DocumentId(build.Id!, path),
-                            .. buildSession.Flags.Select(flag => FileCoverage.FlagDocumentId(build.Id!, flag, path)),
+                            FileCoverage.DocumentId(build.Id.Value, path),
+                            .. buildSession.Flags.Select(flag => FileCoverage.FlagDocumentId(build.Id.Value, flag, path)),
                         ];
                         return (parsedFile, path, matched, documentIds);
                     })
@@ -195,7 +195,7 @@ public partial class ParseSessionRecipient : IRecipient<ParseSessionMessage>
                         {
                             fileCoverage = new FileCoverage
                             {
-                                BuildId = build.Id!,
+                                BuildId = build.Id.Value,
                                 Path = path,
                                 Matched = matched,
                                 // Only when it differs — storing a copy of Path for every

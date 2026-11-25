@@ -94,9 +94,10 @@ public sealed record DependencyReportFailure(string Group, string Status, string
 public static class DependencySlots
 {
     /// <summary>The minute of the hour a repository's run starts at, from its id: repositories at the same slot are
-    /// staggered across the hour instead of dispatching at once (§7.7).</summary>
+    /// staggered across the hour instead of dispatching at once (§7.7). The id is hashed lower case: a loaded id is lower case
+    /// while a stored reference keeps its casing, and both name the same repository (#536).</summary>
     public static int SpreadMinute(string repositoryId)
-        => BitConverter.ToUInt16(SHA256.HashData(Encoding.UTF8.GetBytes(repositoryId)), 0) % 60;
+        => BitConverter.ToUInt16(SHA256.HashData(Encoding.UTF8.GetBytes(repositoryId.ToLowerInvariant())), 0) % 60;
 
     /// <summary>
     /// Whether the slot is due at <paramref name="nowUtc"/>, and its deduplication key: one run per repository per slot, however
@@ -107,7 +108,7 @@ public static class DependencySlots
     {
         var zone = Zone(schedule.TimeZone);
         var local = TimeZoneInfo.ConvertTime(nowUtc, zone);
-        var key = $"dependency-slot:{repositoryId}:{local:yyyy-MM-dd}";
+        var key = $"dependency-slot:{repositoryId.ToLowerInvariant()}:{local:yyyy-MM-dd}";
         return (IsSlotDay(schedule, local.DateTime) && local.Hour == schedule.Hour && local.Minute >= SpreadMinute(repositoryId), key);
     }
 

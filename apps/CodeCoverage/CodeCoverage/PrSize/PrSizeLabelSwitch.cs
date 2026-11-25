@@ -40,7 +40,7 @@ public static class PrSizeLabelSwitch
     {
         if (before is { PrSizeLabels: true } && !after.PrSizeLabels && after.Id is { } accountId)
         {
-            var labelled = (await RepositoriesWithLabelsAsync(session, accountId, default))
+            var labelled = (await RepositoriesWithLabelsAsync(session, accountId.Value, default))
                 .Count(r => r.PrSizeLabels == EPrSizeLabelPolicy.Inherit);
             if (labelled > 0 && Ask(manager,
                     $"Also remove the size labels from the {labelled} {(labelled == 1 ? "repository" : "repositories")} that inherit this setting? {Consequence}"))
@@ -66,9 +66,9 @@ public static class PrSizeLabelSwitch
         foreach (var repository in repositories)
         {
             if (decision == Remove && repository.PrSizeLabels == EPrSizeLabelPolicy.Inherit)
-                await bus.BroadcastAsync(new RemovePrSizeLabelsMessage { RepositoryId = repository.Id! }, ct);
+                await bus.BroadcastAsync(new RemovePrSizeLabelsMessage { RepositoryId = repository.Id.Value }, ct);
             else if (decision == Reconcile)
-                await bus.BroadcastAsync(new ReconcilePrSizeLabelsMessage { RepositoryId = repository.Id! }, ct);
+                await bus.BroadcastAsync(new ReconcilePrSizeLabelsMessage { RepositoryId = repository.Id.Value }, ct);
             else
                 continue;
             count++;
@@ -103,6 +103,6 @@ public static class PrSizeLabelSwitch
             .Where(r => r.Account == accountId)
             .Take(1024)
             .ToListAsync(ct);
-        return repositories.Where(r => r.Id is not null && r.PrSizeLabelState.Count > 0).ToList();
+        return repositories.Where(r => !r.Id.IsEmpty && r.PrSizeLabelState.Count > 0).ToList();
     }
 }

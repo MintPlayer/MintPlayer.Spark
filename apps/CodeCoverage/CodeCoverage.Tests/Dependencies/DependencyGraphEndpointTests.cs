@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions;
 using System.Text.Json;
 using CodeCoverage.Controllers;
 using CodeCoverage.Dependencies;
@@ -133,7 +134,7 @@ public class DependencyGraphEndpointTests : CoverageRavenTest
 
         graph.Nodes.Select(n => n.FullName).Should().Equal("acme/app", "acme/lib", "acme/unscanned");
         graph.Edges.Select(Edge).Should().Equal(
-            $"{RepoId(Lib)} -> {RepoId(App)}: actions:acme/lib@.github/workflows/ci.yml; npm:@acme/lib@e2e/package.json (dev); npm:@acme/lib@package.json");
+            $"{RepoId(Lib).ToLowerInvariant()} -> {RepoId(App).ToLowerInvariant()}: actions:acme/lib@.github/workflows/ci.yml; npm:@acme/lib@e2e/package.json (dev); npm:@acme/lib@package.json");
         // Not even a package name of the hidden repository survives into a visible edge.
         graph.Edges.SelectMany(e => e.Dependencies).Any(d => d.Name.Contains("secret", StringComparison.OrdinalIgnoreCase)).Should().BeFalse();
     }
@@ -233,11 +234,11 @@ public class DependencyGraphEndpointTests : CoverageRavenTest
 
         graph.Nodes.Select(n => n.FullName).Should().Equal("acme/app", "acme/lib", "acme/secret", "acme/unscanned");
         graph.Edges.Select(e => $"{e.From} -> {e.To}").Should().Equal(
-            $"{RepoId(Lib)} -> {RepoId(Secret)}",
-            $"{RepoId(Lib)} -> {RepoId(App)}",
-            $"{RepoId(Secret)} -> {RepoId(App)}");
+            $"{RepoId(Lib)} -> {RepoId(Secret)}".ToLowerInvariant(),
+            $"{RepoId(Lib)} -> {RepoId(App)}".ToLowerInvariant(),
+            $"{RepoId(Secret)} -> {RepoId(App)}".ToLowerInvariant());
         // NuGet ids compare case-insensitively.
-        graph.Edges.Single(e => e.From == RepoId(Secret)).Dependencies.Should().ContainSingle().Which.Name.Should().Be("acme.secret");
+        graph.Edges.Single(e => e.From == RepoId(Secret).ToLowerInvariant()).Dependencies.Should().ContainSingle().Which.Name.Should().Be("acme.secret");
 
         var app = graph.Nodes.Single(n => n.Name == "app");
         app.ScanError.Should().Be("1 of 3 manifest files could not be read.");
@@ -292,7 +293,7 @@ public class DependencyGraphEndpointTests : CoverageRavenTest
         root.EnumerateObject().Select(p => p.Name).Should().Equal("nodes", "edges");
         var node = root.GetProperty("nodes")[0];
         node.EnumerateObject().Select(p => p.Name).Should().Equal("id", "fullName", "name", "isPrivate", "archived", "scannedAt", "scanError");
-        node.GetProperty("id").GetString().Should().Be(RepoId(App));
+        node.GetProperty("id").GetString().Should().Be(RepoId(App).ToLowerInvariant());
         node.GetProperty("scannedAt").ValueKind.Should().Be(JsonValueKind.String);
         root.GetProperty("nodes")[2].GetProperty("scannedAt").ValueKind.Should().Be(JsonValueKind.Null);
 
@@ -306,8 +307,8 @@ public class DependencyGraphEndpointTests : CoverageRavenTest
     [Fact]
     public void A_sub_image_is_built_by_the_repository_it_is_named_under_and_actions_match_by_repository()
     {
-        var producer = new Repository { Id = RepoId(1), Name = "Platform", FullName = "Acme/Platform" };
-        var consumer = new Repository { Id = RepoId(2), Name = "svc", FullName = "acme/svc" };
+        var producer = new Repository { Id = Id<Repository>.FromTrusted(RepoId(1)), Name = "Platform", FullName = "Acme/Platform" };
+        var consumer = new Repository { Id = Id<Repository>.FromTrusted(RepoId(2)), Name = "svc", FullName = "acme/svc" };
         var manifests = new Dictionary<string, RepositoryManifest?>
         {
             [RepoId(1)] = null,
@@ -325,8 +326,8 @@ public class DependencyGraphEndpointTests : CoverageRavenTest
         var graph = DependencyGraph.Build([producer, consumer], manifests);
 
         var edge = graph.Edges.Should().ContainSingle().Which;
-        edge.From.Should().Be(RepoId(1));
-        edge.To.Should().Be(RepoId(2));
+        edge.From.Should().Be(RepoId(1).ToLowerInvariant());
+        edge.To.Should().Be(RepoId(2).ToLowerInvariant());
         edge.Dependencies.Select(d => d.Name).Should().Equal("acme/platform", "ghcr.io/acme/platform/worker");
     }
 }

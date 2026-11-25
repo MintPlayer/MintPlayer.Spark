@@ -33,7 +33,7 @@ public static class AccountAvatar
     /// forge's avatar is better than a broken image.
     /// </remarks>
     public static string? CustomUrl(Account account)
-        => account is { Id: { Length: > 0 } id, CustomAvatar: { ScanStatus: SparkFileScanStatus.Clean, FileId.Length: > 0 } image }
+        => account is { Id.Value: { Length: > 0 } id, CustomAvatar: { ScanStatus: SparkFileScanStatus.Clean, FileId.Length: > 0 } image }
             && image.Variants.TryGetValue(Variant, out var thumb) && !string.IsNullOrEmpty(thumb?.FileId)
             ? SparkFileDownloadUrl.For(new SparkFileLocation(AccountType, id, Attribute, image, Variant))
             : null;

@@ -163,7 +163,7 @@ public class UploadActionWindowsPathsTests : CoverageRavenTest
         var files = (await check.Query<FileCoverage>()
                 .Where(f => f.BuildId == buildId)
                 .ToListAsync())
-            .Where(f => f.Id!.StartsWith($"{buildId}/files/", StringComparison.Ordinal))
+            .Where(f => f.Id.Value.StartsWith($"{buildId}/files/", StringComparison.OrdinalIgnoreCase))
             .ToList();
 
         files.Should().HaveCount(1);

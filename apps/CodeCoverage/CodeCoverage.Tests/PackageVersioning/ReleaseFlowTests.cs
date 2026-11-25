@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions;
 using System.Net;
 using CodeCoverage.Entities;
 using CodeCoverage.Feedback;
@@ -74,7 +75,7 @@ public class ReleaseFlowTests : CoverageRavenTest
     {
         using var seed = store.OpenAsyncSession();
         await seed.StoreAsync(new Repository { FullName = "acme/widgets", Provider = EForgeProvider.GitHub, DefaultBranch = "main", GitHubId = 626 }, RepositoryId);
-        foreach (var version in versions) await seed.StoreAsync(version, version.Id);
+        foreach (var version in versions) await seed.StoreAsync(version, version.Id.Value);
         await seed.SaveChangesAsync();
     }
 
@@ -83,7 +84,7 @@ public class ReleaseFlowTests : CoverageRavenTest
         VersionTag.TryParse(tag, out var parsed).Should().BeTrue();
         return new ReleaseVersion
         {
-            Id = ReleaseVersion.DocumentId(RepositoryId, tag), Repository = RepositoryId, PackageId = parsed.PackageId, Version = parsed.Version.ToString(),
+            Id = Id<ReleaseVersion>.FromTrusted(ReleaseVersion.DocumentId(RepositoryId, tag)), Repository = RepositoryId, PackageId = parsed.PackageId, Version = parsed.Version.ToString(),
             Tag = tag, Actor = "octo", Source = ReleaseVersion.FromTag, RecordedUtc = new DateTime(2026, 11, 1, 0, 0, 0, DateTimeKind.Utc),
         };
     }

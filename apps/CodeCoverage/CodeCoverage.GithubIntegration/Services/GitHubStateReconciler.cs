@@ -105,7 +105,7 @@ public partial class GitHubStateReconciler : IGitHubStateReconciler
                 repository.PreviousFullNames.Add(repository.FullName);
             }
 
-            repository.Account = account.Id;
+            repository.Account = account.Id.Value;
             repository.Name = ghRepo.Name;
             repository.FullName = ghRepo.FullName;
             repository.OwnerLogin = ghRepo.OwnerLogin;
@@ -202,7 +202,7 @@ public partial class GitHubStateReconciler : IGitHubStateReconciler
                 }
             }
 
-            project.Account = account.Id;
+            project.Account = account.Id.Value;
             project.OwnerLogin = account.Login;
             project.InstallationId = installationId;
             project.Number = board.Number;
@@ -254,9 +254,9 @@ public partial class GitHubStateReconciler : IGitHubStateReconciler
 
     private async Task<IReadOnlyList<Repository>> LoadRepositoriesOfAsync(Account account, CancellationToken ct)
     {
-        if (account.Id is null) return [];
+        if (account.Id.IsEmpty) return [];
 
-        return await indexes.RepositoriesOfAccountAsync(session, account.Id, MaxRepositoriesPerAccount, ct);
+        return await indexes.RepositoriesOfAccountAsync(session, account.Id.Value, MaxRepositoriesPerAccount, ct);
     }
 
     /// <summary>
@@ -325,8 +325,8 @@ public partial class GitHubStateReconciler : IGitHubStateReconciler
 
     private async Task<IReadOnlyList<GitHubProject>> LoadProjectsOfAsync(Account account, CancellationToken ct)
     {
-        if (account.Id is null) return [];
+        if (account.Id.IsEmpty) return [];
 
-        return await indexes.ProjectsOfAccountAsync(session, account.Id, MaxProjectsPerAccount, ct);
+        return await indexes.ProjectsOfAccountAsync(session, account.Id.Value, MaxProjectsPerAccount, ct);
     }
 }

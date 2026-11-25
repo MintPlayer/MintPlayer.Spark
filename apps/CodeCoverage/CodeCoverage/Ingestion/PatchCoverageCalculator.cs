@@ -17,7 +17,7 @@ public static class PatchCoverageCalculator
     public static async Task<PatchCoverage?> ComputeAsync(
         IAsyncDocumentSession session, IForgeIntegrationResolver forges, Build build, Commit commit, CancellationToken cancellationToken)
     {
-        if (build.Id is null || commit.Repository is null)
+        if (build.Id.IsEmpty || commit.Repository is null)
             return null;
 
         // Declared base first (what the uploader's affected-computation used);
@@ -37,7 +37,7 @@ public static class PatchCoverageCalculator
 
         var candidates = comparison.Files
             .Where(f => f.Status != "removed" && f.AddedLines.Length > 0)
-            .ToDictionary(f => FileCoverage.DocumentId(build.Id, f.Path), f => f);
+            .ToDictionary(f => FileCoverage.DocumentId(build.Id.Value, f.Path), f => f);
 
         var measured = await session.LoadAsync<FileCoverage>(candidates.Keys, cancellationToken);
 

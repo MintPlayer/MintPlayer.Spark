@@ -21,7 +21,8 @@ namespace CodeCoverage.Entities;
 /// </para>
 /// <para>A read-only Spark entity: the repository page lists it through <c>Custom.Repository_Changelog</c>.</para>
 /// </remarks>
-public class ChangelogRelease
+[IdKind(SparkIdKind.Natural)]
+public partial class ChangelogRelease
 {
     public const string Prefix = "ChangelogReleases/";
 
@@ -34,7 +35,7 @@ public class ChangelogRelease
     public static string ForRepository(EForgeProvider provider, long repositoryId)
         => $"{Prefix}{provider.ToString().ToLowerInvariant()}/{repositoryId}/";
 
-    public string? Id { get; set; }
+    public Id<ChangelogRelease> Id { get; set; }
 
     /// <summary>The repository the package was released from.</summary>
     [Reference(typeof(Repository))]

@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions;
 using CodeCoverage.LookupReferences;
 
 namespace CodeCoverage.Entities;
@@ -20,14 +21,15 @@ public sealed record DependencySchedule(EDependencyScheduleFrequency Frequency, 
 /// comment commands (N6) write holds and approvals through <c>DependencyStateStore</c>.
 /// </para>
 /// </remarks>
-public class DependencyUpdateState
+[IdKind(SparkIdKind.Natural)]
+public partial class DependencyUpdateState
 {
     public const string Prefix = "DependencyUpdateStates/";
 
     /// <summary>A repository's history is bounded: the oldest first-seen entries go first.</summary>
     public const int MaxFirstSeen = 5000;
 
-    public string? Id { get; set; }
+    public Id<DependencyUpdateState> Id { get; set; }
 
     public string Repository { get; set; } = string.Empty;
 
@@ -191,12 +193,13 @@ public class DependencyApproval
 /// bot confirmed as the account's own.
 /// </summary>
 /// <remarks><c>DependencyFleetStates/{provider}/{id}</c> beside <c>Accounts/{provider}/{id}</c>, loaded by id.</remarks>
-public class DependencyFleetState
+[IdKind(SparkIdKind.Natural)]
+public partial class DependencyFleetState
 {
     public const string Prefix = "DependencyFleetStates/";
     public const int MaxEntries = 2000;
 
-    public string? Id { get; set; }
+    public Id<DependencyFleetState> Id { get; set; }
 
     public string Account { get; set; } = string.Empty;
 

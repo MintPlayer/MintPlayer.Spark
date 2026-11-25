@@ -813,8 +813,8 @@ public sealed class OwnerPrivacyHostFixture : SparkTestDriver
 
         public Task<IReadOnlyDictionary<string, bool>> CheckAdministratorAsync(Account account, IReadOnlyList<Repository> repositories, string login,
             CancellationToken cancellationToken = default)
-            => Task.FromResult<IReadOnlyDictionary<string, bool>>(repositories.Where(r => r.Id is not null)
-                .ToDictionary(r => r.Id!, r => login == Login && Administers(r.GitHubId)));
+            => Task.FromResult<IReadOnlyDictionary<string, bool>>(repositories.Where(r => !r.Id.IsEmpty)
+                .ToDictionary(r => r.Id.Value, r => login == Login && Administers(r.GitHubId)));
 
         public async Task<IReadOnlySet<string>> GetAdministeredRepositoriesAsync(Account account, IReadOnlyList<Repository> repositories,
             CancellationToken cancellationToken = default)

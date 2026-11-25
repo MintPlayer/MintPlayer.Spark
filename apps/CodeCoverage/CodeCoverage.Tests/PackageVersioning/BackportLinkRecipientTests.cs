@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions;
 using CodeCoverage.Entities;
 using CodeCoverage.Feedback;
 using CodeCoverage.Forge;
@@ -65,7 +66,7 @@ public class BackportLinkRecipientTests : CoverageRavenTest
         webhooks.All.Should().ContainSingle().Which.Should().BeEquivalentTo(new
         {
             Data = new { Repository = "acme/widgets", Forge = "github", Number = 20, Source = 7, Line },
-            Key = $"{RepositoryId}/20/merged",
+            Key = $"{RepositoryId}/20/merged".ToLowerInvariant(),
         });
         webhooks.All[0].Owner.Should().Be(CodeCoverage.Webhooks.CoverageWebhooks.Account("github:acme"));
     }
@@ -77,7 +78,7 @@ public class BackportLinkRecipientTests : CoverageRavenTest
         var id = BackportPullRequest.DocumentId(RepositoryId, 20);
         using (var seed = store.OpenAsyncSession())
         {
-            await seed.StoreAsync(new BackportPullRequest { Id = id, Repository = RepositoryId, Number = 20, Source = 7, Branch = Line }, id);
+            await seed.StoreAsync(new BackportPullRequest { Id = Id<BackportPullRequest>.FromTrusted(id), Repository = RepositoryId, Number = 20, Source = 7, Branch = Line }, id);
             await seed.SaveChangesAsync();
         }
 

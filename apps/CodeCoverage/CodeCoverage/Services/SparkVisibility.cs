@@ -20,7 +20,7 @@ public partial class SparkVisibility : ISparkVisibility
     private Task<string[]>? managedOwners;
     private Task<string[]>? administeredIds;
     private readonly Dictionary<string, Task<bool>> managesOwner = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, Task<IReadOnlySet<string>>> administeredByAccount = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, Task<IReadOnlySet<string>>> administeredByAccount = new(StringComparer.OrdinalIgnoreCase);
 
     public Task<string[]> GetAllowedOwnersAsync()
         => owners ??= QueryAllowedOwnersAsync();
@@ -112,12 +112,12 @@ public partial class SparkVisibility : ISparkVisibility
             return true;
         // A repository admin has explicit access, so the account's installation is in the owner set: anything outside it
         // costs no forge call.
-        if (repository.Id is null || repository.Account is null
+        if (repository.Id.IsEmpty || repository.Account is null
             || !(await GetAllowedOwnersAsync()).Contains(repository.OwnerKey, StringComparer.OrdinalIgnoreCase))
         {
             return false;
         }
-        return (await AdministeredInAccountAsync(repository.Provider, repository.Account)).Contains(repository.Id);
+        return (await AdministeredInAccountAsync(repository.Provider, repository.Account)).Contains(repository.Id.Value);
     }
 
     public Task<string[]> GetAdministeredRepositoryIdsAsync() => administeredIds ??= QueryAdministeredRepositoryIdsAsync();
@@ -134,8 +134,8 @@ public partial class SparkVisibility : ISparkVisibility
             .Where(a => a.OwnerKey.In(unmanaged))
             .ToListAsync();
         var ids = new List<string>();
-        foreach (var account in accounts.Where(a => a.Id is not null))
-            ids.AddRange(await AdministeredInAccountAsync(account.Provider, account.Id!));
+        foreach (var account in accounts.Where(a => !a.Id.IsEmpty))
+            ids.AddRange(await AdministeredInAccountAsync(account.Provider, account.Id.Value));
         return [.. ids];
     }
 
@@ -171,8 +171,14 @@ public partial class SparkVisibility : ISparkVisibility
         var allowed = await GetAllowedOwnersAsync();
         var ids = await session.Query<Repository, Indexes.Repositories_Overview>()
             .Where(RepositoryVisibility.Filter(allowed))
-            .Select(r => r.Id)
+            .ProjectInto<IdRow>()
             .ToListAsync();
-        return [.. ids.OfType<string>()];
+        return [.. ids.Select(r => r.Id).OfType<string>()];
     }
+}
+
+/// <summary>A projected document key (#536): a raw session can't project an entity's typed <c>Id</c>.</summary>
+file sealed class IdRow
+{
+    public string? Id { get; set; }
 }

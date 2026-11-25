@@ -22,10 +22,11 @@ namespace CodeCoverage.Entities;
 /// </para>
 /// </summary>
 [GenerateIndex]
-public class GitHubProject : IForgeConnectable
+[IdKind(SparkIdKind.Natural)]
+public partial class GitHubProject : IForgeConnectable
 {
     /// <summary>Document id of this board, <c>GitHubProjects/{NodeId}</c>.</summary>
-    public string? Id { get; set; }
+    public Id<GitHubProject> Id { get; set; }
 
     /// <summary>
     /// Derives the document id from GitHub's GraphQL node id, so discovery is an idempotent upsert:

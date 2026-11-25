@@ -243,15 +243,15 @@ public partial class GitHubForgeClient : IForgeClient
 
     private async Task<long?> ResolveInstallationAsync(Repository repository, CancellationToken cancellationToken)
     {
-        if (repository.Id is not null && installations.TryGetValue(repository.Id, out var memoized))
+        if (!repository.Id.IsEmpty && installations.TryGetValue(repository.Id.Value, out var memoized))
             return memoized;
 
         long? installationId = null;
         if (repository.Account is not null)
             installationId = (await session.LoadAsync<Account>(repository.Account, cancellationToken))?.InstallationId;
 
-        if (repository.Id is not null)
-            installations[repository.Id] = installationId;
+        if (!repository.Id.IsEmpty)
+            installations[repository.Id.Value] = installationId;
 
         return installationId;
     }

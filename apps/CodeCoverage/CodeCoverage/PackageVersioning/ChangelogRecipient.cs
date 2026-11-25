@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions;
 using CodeCoverage.Entities;
 using CodeCoverage.Forge;
 using CodeCoverage.Versioning.Versions;
@@ -41,12 +42,12 @@ public partial class ChangelogRecipient :
         var copy = await session.LoadAsync<ChangelogRelease>(documentId, cancellationToken);
         if (copy is null)
         {
-            copy = new ChangelogRelease { Id = documentId, ReleasedAtUtc = publishedAt ?? DateTime.UtcNow };
+            copy = new ChangelogRelease { Id = Id<ChangelogRelease>.FromTrusted(documentId), ReleasedAtUtc = publishedAt ?? DateTime.UtcNow };
             await session.StoreAsync(copy, documentId, cancellationToken);
         }
         else if (publishedAt is { } at)
             copy.ReleasedAtUtc = at;
-        copy.Repository = id;
+        copy.Repository = id.Value;
         copy.Package = version.PackageId;
         copy.Version = version.Version.ToString();
         copy.Tag = tag;
@@ -65,7 +66,7 @@ public partial class ChangelogRecipient :
         for (var start = 0; ; start += page)
         {
             var batch = await session.LoadStartingWithAsync<ChangelogRelease>(prefix, start, page, cancellationToken);
-            releases.AddRange(batch.Where(r => r.Repository == repository.Id));
+            releases.AddRange(batch.Where(r => string.Equals(r.Repository, repository.Id.Value, StringComparison.OrdinalIgnoreCase)));
             if (batch.Count < page) break;
         }
         return [.. releases.OrderByDescending(r => r.ReleasedAtUtc).ThenBy(r => r.Package, StringComparer.Ordinal)];

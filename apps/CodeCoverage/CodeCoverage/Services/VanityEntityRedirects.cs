@@ -29,7 +29,7 @@ internal sealed partial class AccountVanityRedirect : ISparkEntityRedirect
         var account = await session.Query<Account, Indexes.Accounts_Overview>()
             .Where(a => a.OwnerKey == ownerKey)
             .FirstOrDefaultAsync(cancellationToken);
-        return account?.Id is { } id ? new SparkEntityTarget("account", id) : null;
+        return account?.Id is { } id ? new SparkEntityTarget("account", id.Value) : null;
     }
 }
 
@@ -42,7 +42,7 @@ internal sealed partial class RepositoryVanityRedirect : ISparkEntityRedirect
 
     public async Task<SparkEntityTarget?> ResolveAsync(IReadOnlyDictionary<string, string> values, CancellationToken cancellationToken)
         => await scope.ResolveAsync(values["provider"], values["owner"], values["repo"], cancellationToken) is { Id: { } id }
-            ? new SparkEntityTarget("repository", id)
+            ? new SparkEntityTarget("repository", id.Value)
             : null;
 }
 

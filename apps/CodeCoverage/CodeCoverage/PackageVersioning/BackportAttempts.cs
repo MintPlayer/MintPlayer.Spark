@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions;
 using CodeCoverage.Entities;
 using Raven.Client.Documents.Session;
 
@@ -19,7 +20,7 @@ internal static class BackportAttempts
             new DateTimeOffset(DateTime.SpecifyKind(nowUtc, DateTimeKind.Utc))), repository, $"{id}/{outcome}/{pullRequest}", session, cancellationToken);
         await session.StoreAsync(new BackportAttempt
         {
-            Id = id, Repository = repository.Id!, Source = source, SourceSha = sourceSha, Branch = branch, Outcome = outcome, PullRequest = pullRequest,
+            Id = Id<BackportAttempt>.FromTrusted(id), Repository = repository.Id.Value, Source = source, SourceSha = sourceSha, Branch = branch, Outcome = outcome, PullRequest = pullRequest,
             Detail = detail is { Length: > BackportAttempt.MaxDetail } ? detail[..BackportAttempt.MaxDetail] : detail, AttemptedAtUtc = nowUtc,
             LogId = logId,
         }, id, cancellationToken);

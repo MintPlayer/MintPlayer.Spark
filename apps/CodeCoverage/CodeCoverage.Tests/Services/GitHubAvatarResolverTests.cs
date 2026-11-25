@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions;
 using System.Text.Json;
 using CodeCoverage.CommitGraph;
 using CodeCoverage.Entities;
@@ -17,7 +18,7 @@ public class GitHubAvatarResolverTests
 
     private static Repository Target(string fullName = "acme/widget", bool installed = true) => new()
     {
-        Id = Repository.DocumentId(EForgeProvider.GitHub, 910040), GitHubId = 910040, Name = "widget", FullName = fullName,
+        Id = Id<Repository>.FromTrusted(Repository.DocumentId(EForgeProvider.GitHub, 910040)), GitHubId = 910040, Name = "widget", FullName = fullName,
         OwnerLogin = "acme", Account = installed ? AccountId : null,
     };
 

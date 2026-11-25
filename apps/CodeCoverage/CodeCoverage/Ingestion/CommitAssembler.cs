@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions;
 using CodeCoverage.Entities;
 using CodeCoverage.Forge;
 using CodeCoverage.Indexes;
@@ -57,7 +58,7 @@ public partial class CommitAssembler : ICommitAssembler
                 else
                 {
                     var copy = CoverageMerger.Clone(source);
-                    copy.Origin = new FileOrigin { Kind = FileOrigin.Measured, FromSha = commit.Sha, FromBuildId = build.Id, OriginSha = commit.Sha };
+                    copy.Origin = new FileOrigin { Kind = FileOrigin.Measured, FromSha = commit.Sha, FromBuildId = build.Id.Value, OriginSha = commit.Sha };
                     files[source.Path] = copy;
                 }
             }
@@ -74,7 +75,7 @@ public partial class CommitAssembler : ICommitAssembler
             Sha = commit.Sha,
             Builds = [.. builds.Select(b => new AssemblyBuild
             {
-                BuildId = b.Id!, CiRunId = b.CiRunId, CiRunAttempt = b.CiRunAttempt,
+                BuildId = b.Id.Value, CiRunId = b.CiRunId, CiRunAttempt = b.CiRunAttempt,
                 Partial = b.Partial, CarryForward = b.CarryForward, DeclaredBaseSha = b.DeclaredBaseSha,
             })],
             HeadFileCount = head.Paths.Count,
@@ -105,7 +106,7 @@ public partial class CommitAssembler : ICommitAssembler
 
         commit.Coverage = assembly.Coverage;
         commit.AssemblyCompleteness = assembly.Completeness;
-        commit.LatestBuildId = builds[^1].Id;
+        commit.LatestBuildId = builds[^1].Id.Value;
 
         Promote(commit, repository, assembly);
         await StampDeltas(commit, repository, cancellationToken);
@@ -130,7 +131,7 @@ public partial class CommitAssembler : ICommitAssembler
         var prefix = $"{commitId}/builds/";
         var loaded = await session.Advanced.LoadStartingWithAsync<Build>(prefix, exclude: "*/files/*|*/flags/*|*/tree", pageSize: 256, token: cancellationToken);
         return loaded
-            .Where(b => b.Id is not null && !b.Id.AsSpan(prefix.Length).Contains('/'))
+            .Where(b => !b.Id.IsEmpty && !b.Id.Value.AsSpan(prefix.Length).Contains('/'))
             .Where(b => b.Status == "Finalized")
             .GroupBy(b => b.CiRunId)
             .Select(g => g.OrderByDescending(b => b.CiRunAttempt).First())
@@ -305,7 +306,7 @@ public partial class CommitAssembler : ICommitAssembler
         {
             var id = CommitAssembly.FileDocumentId(commitId, file.Path);
             stale.Remove(id);
-            file.Id = id;
+            file.Id = Id<FileCoverage>.FromTrusted(id);
             await session.StoreAsync(file, id, cancellationToken);
             tree.Files.Add(new TreeFileSummary
             {
@@ -446,7 +447,7 @@ public partial class CommitAssembler : ICommitAssembler
 
         var date = commit.Date.Value;
         var candidates = await session.Query<VCommit, Commits_ByRepository>()
-            .Where(r => r.Repository == repository.Id && r.Branch == repository.DefaultBranch
+            .Where(r => r.Repository == repository.Id.Value && r.Branch == repository.DefaultBranch
                 && r.CompleteCoverage && r.ContributedFromFork != true && r.Date <= date)
             .OrderByDescending(r => r.Date)
             .OfType<Commit>()
@@ -464,7 +465,7 @@ public partial class CommitAssembler : ICommitAssembler
     private async Task RestampDependants(Commit commit, Repository repository, double? percent, CancellationToken cancellationToken)
     {
         var children = await session.Query<VCommit, Commits_ByRepository>()
-            .Where(r => r.Repository == repository.Id && r.ParentSha == commit.Sha && r.HasCoverage)
+            .Where(r => r.Repository == repository.Id.Value && r.ParentSha == commit.Sha && r.HasCoverage)
             .OfType<Commit>()
             .Take(DependantLimit)
             .ToListAsync(cancellationToken);
@@ -484,7 +485,7 @@ public partial class CommitAssembler : ICommitAssembler
 
         var date = commit.Date.Value;
         var later = await session.Query<VCommit, Commits_ByRepository>()
-            .Where(r => r.Repository == repository.Id && r.HasCoverage && r.ContributedFromFork != true && r.Date > date)
+            .Where(r => r.Repository == repository.Id.Value && r.HasCoverage && r.ContributedFromFork != true && r.Date > date)
             .OrderBy(r => r.Date)
             .OfType<Commit>()
             .Take(DependantLimit)

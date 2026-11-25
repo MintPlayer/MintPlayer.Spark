@@ -19,7 +19,8 @@ namespace CodeCoverage.Entities;
 /// </para>
 /// <para>A read-only Spark entity: the repository page lists it through <c>Custom.Repository_UpcomingChangelog</c>.</para>
 /// </remarks>
-public class UpcomingChangelog
+[IdKind(SparkIdKind.Natural)]
+public partial class UpcomingChangelog
 {
     public const string Prefix = "UpcomingChangelogs/";
 
@@ -30,7 +31,7 @@ public class UpcomingChangelog
     public static string ForRepository(EForgeProvider provider, long repositoryId)
         => $"{Prefix}{provider.ToString().ToLowerInvariant()}/{repositoryId}/";
 
-    public string? Id { get; set; }
+    public Id<UpcomingChangelog> Id { get; set; }
 
     /// <summary>The repository the line belongs to.</summary>
     [Reference(typeof(Repository))]

@@ -84,7 +84,7 @@ public partial class BackportRecipient : IRecipient<BackportMessage>
             message.ActorLogin, cancellationToken);
         await using var log = commands.OpenLog(invocation,
             $"backports/{repository.Provider.ToCanonicalString()}/{repository.GitHubId.ToString(CultureInfo.InvariantCulture)}/{message.Number}/{time.GetUtcNow().UtcTicks}",
-            repository.Id);
+            repository.Id.Value);
         logId = log.Id.Value;
         if (repository.Connection == RepositoryConnection.Disconnected || repository.Archived
             || forges.FirstOrDefault(f => f.Provider == repository.Provider) is not { } forge
@@ -312,12 +312,12 @@ public partial class BackportRecipient : IRecipient<BackportMessage>
                     var opened = await forge.OpenPullRequestAsync(repository, target.Head, target.Branch, title, body, cancellationToken: cancellationToken);
                     // #570 M7, D12: a backport with stale regenerated files waits for a person.
                     var enqueue = target.Regenerate is not { Count: > 0 } && Enqueues(backport, queue, target.Branch);
-                    await BackportRegenerationEngine.RecordAsync(session, repository.Id!, opened, pull.Number, commit, target.Branch, now, cancellationToken);
+                    await BackportRegenerationEngine.RecordAsync(session, repository.Id.Value, opened, pull.Number, commit, target.Branch, now, cancellationToken);
                     await (target.Regenerate is { Count: > 0 } notRegenerated
                         ? Attempt(target.Branch, BackportAttempt.NotRegenerated, opened, $"{notRegenerated.Count} regenerated file(s) are stale")
                         : Attempt(target.Branch, BackportAttempt.Opened, opened));
                     if (enqueue)
-                        await BackportRegenerationEngine.EnqueueAsync(outbox, session, repository.Id!, opened, cancellationToken);
+                        await BackportRegenerationEngine.EnqueueAsync(outbox, session, repository.Id.Value, opened, cancellationToken);
                     await session.SaveChangesAsync(cancellationToken);
                     lines.Add((target.Resolutions is { Count: > 0 } resolved
                         ? $"- `{target.Branch}`: #{opened}, with {resolved.Count} conflict{(resolved.Count == 1 ? "" : "s")} resolved automatically"
@@ -351,7 +351,7 @@ public partial class BackportRecipient : IRecipient<BackportMessage>
                             repository.FullName, pull.Number),
                         draft: true, cancellationToken: cancellationToken);
                     // Once someone resolves the conflicts, a writer's approval queues it like any other backport.
-                    await BackportRegenerationEngine.RecordAsync(session, repository.Id!, draft, pull.Number, commit, target.Branch, now, cancellationToken);
+                    await BackportRegenerationEngine.RecordAsync(session, repository.Id.Value, draft, pull.Number, commit, target.Branch, now, cancellationToken);
                     await Attempt(target.Branch, BackportAttempt.Drafted, draft, string.Join(", ", (target.Conflicts ?? []).Take(50)));
                     await session.SaveChangesAsync(cancellationToken);
                     lines.Add($"- `{target.Branch}`: #{draft}, a draft with {target.Conflicts?.Count ?? 0} conflicting file{(target.Conflicts?.Count == 1 ? "" : "s")} to resolve");

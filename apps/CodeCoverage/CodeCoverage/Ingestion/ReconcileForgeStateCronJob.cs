@@ -67,7 +67,7 @@ public partial class ReconcileForgeStateCronJob : ISparkCronJob
             // request; after a failed account has cleared the session (below), it is fetched again,
             // because an entity from before the clear is no longer tracked and its changes would
             // never be saved.
-            var account = await session.LoadAsync<Account>(listed.Id, cancellationToken);
+            var account = await session.LoadAsync<Account>(listed.Id.Value, cancellationToken);
             if (account is null) continue;
 
             // One account failing must not cost every account behind it in the list its sweep.

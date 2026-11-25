@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions;
 using System.Security.Cryptography;
 using System.Text;
 
@@ -14,9 +15,10 @@ namespace CodeCoverage.Entities;
 /// placed there fails the release.</para>
 /// <para>Loaded by id prefix only (<see cref="Prefix"/>): a repository has a handful, so no index is needed.</para>
 /// </remarks>
-public class ReleaseVersion
+[IdKind(SparkIdKind.Natural)]
+public partial class ReleaseVersion
 {
-    public string? Id { get; set; }
+    public Id<ReleaseVersion> Id { get; set; }
 
     public string Repository { get; set; } = string.Empty;
 

@@ -40,7 +40,7 @@ public partial class CommandInvocationActions : DefaultPersistentObjectActions<C
         await using (var stream = await session.Advanced.StreamAsync<CommandInvocation>(CommandInvocation.ForRepository(repository.Provider, repository.GitHubId)))
         {
             while (await stream.MoveNextAsync())
-                if (stream.Current.Document is { } command && command.Repository == repository.Id) commands.Add(command);
+                if (stream.Current.Document is { } command && string.Equals(command.Repository, repository.Id.Value, StringComparison.OrdinalIgnoreCase)) commands.Add(command);
         }
         return commands.OrderByDescending(c => c.ReceivedAtUtc).AsQueryable();
     }

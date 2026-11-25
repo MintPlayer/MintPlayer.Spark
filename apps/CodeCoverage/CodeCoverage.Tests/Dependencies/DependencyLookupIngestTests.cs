@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions;
 using CodeCoverage.Dependencies;
 using CodeCoverage.Entities;
 using CodeCoverage.Forge;
@@ -43,29 +44,29 @@ public class DependencyLookupIngestTests
     {
         static Repository Repo(long id, string name) => new()
         {
-            Id = Repository.DocumentId(EForgeProvider.GitHub, id), GitHubId = id, Name = name, FullName = $"acme/{name}", OwnerLogin = "acme", DefaultBranch = "main",
+            Id = Id<Repository>.FromTrusted(Repository.DocumentId(EForgeProvider.GitHub, id)), GitHubId = id, Name = name, FullName = $"acme/{name}", OwnerLogin = "acme", DefaultBranch = "main",
         };
         var lib = Repo(1, "lib");
         var app = Repo(2, "app");
         var libManifest = new RepositoryManifest
         {
-            Repository = lib.Id, ScannedAt = DependencyTestKit.Now,
+            Repository = lib.Id.Value, ScannedAt = DependencyTestKit.Now,
             Produces = [new ManifestPackage { Ecosystem = "npm", Name = "@acme/lib", Path = "package.json" }],
         };
         var appManifest = new RepositoryManifest
         {
-            Repository = app.Id,
+            Repository = app.Id.Value,
             // The scanners' stale npm reading, and a Dockerfile the lookup did not report.
             Consumes = [new ManifestDependency { Ecosystem = "npm", Name = "@acme/old", Path = "package.json" },
                         new ManifestDependency { Ecosystem = "docker", Name = "ghcr.io/acme/lib", Path = "Dockerfile" }],
         };
         DependencyLookupIngest.Apply(appManifest, DependencyTestKit.Lookup(Record("npm", "@acme/lib", "web/package.json", "^2.0.0")), DependencyTestKit.Now);
 
-        var graph = DependencyGraph.Build([lib, app], new Dictionary<string, RepositoryManifest?> { [lib.Id!] = libManifest, [app.Id!] = appManifest });
+        var graph = DependencyGraph.Build([lib, app], new Dictionary<string, RepositoryManifest?> { [lib.Id.Value] = libManifest, [app.Id.Value] = appManifest });
 
         var edge = graph.Edges.Should().ContainSingle().Which;
         edge.Dependencies.Select(d => $"{d.Ecosystem}:{d.Name}@{d.ManifestPath}").Should().Equal(["docker:ghcr.io/acme/lib@Dockerfile", "npm:@acme/lib@web/package.json"]);
-        graph.Nodes.Single(n => n.Id == app.Id).ScannedAt.Should().Be(DependencyTestKit.Now, "a repository whose lookup ran counts as scanned");
+        graph.Nodes.Single(n => string.Equals(n.Id, app.Id.Value, StringComparison.OrdinalIgnoreCase)).ScannedAt.Should().Be(DependencyTestKit.Now, "a repository whose lookup ran counts as scanned");
         appManifest.LookupSha.Should().Be(DependencyTestKit.Sha);
     }
 

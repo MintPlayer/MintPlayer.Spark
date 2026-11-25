@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions;
 using System.Net;
 using System.Text.Json;
 using CodeCoverage.Entities;
@@ -20,7 +21,7 @@ public class GitHubForgeCommentReactionsTests
 
     private static Repository Target() => new()
     {
-        Id = Repository.DocumentId(EForgeProvider.GitHub, 910040),
+        Id = Id<Repository>.FromTrusted(Repository.DocumentId(EForgeProvider.GitHub, 910040)),
         GitHubId = 910040, Name = "widget", FullName = "acme/widget", OwnerLogin = "acme", Account = AccountId,
     };
 

@@ -161,7 +161,7 @@ public static class DependencyPolicyEngine
         private readonly Dictionary<string, HashSet<string>> joinedBlockers = new(StringComparer.Ordinal);
         private readonly HashSet<(string Group, string DepNames, string Targets)> currentTargets = [];
         private readonly HashSet<(string Eco, string Dep, string Version)> red = input.Fleet.RedVersions
-            .Where(r => !string.Equals(r.Repository, input.State.Repository, StringComparison.Ordinal) || input.State.Repository.Length == 0)
+            .Where(r => !string.Equals(r.Repository, input.State.Repository, StringComparison.OrdinalIgnoreCase) || input.State.Repository.Length == 0)
             .Select(r => (r.Ecosystem, r.DepName, r.Version)).ToHashSet();
         private readonly HashSet<(string Eco, string Dep, string Version)> own = input.Fleet.OwnReleases
             .Select(r => (r.Ecosystem, r.DepName, r.Version)).ToHashSet();

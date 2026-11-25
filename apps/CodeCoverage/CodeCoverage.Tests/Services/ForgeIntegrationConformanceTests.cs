@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions;
 using CodeCoverage.Entities;
 using CodeCoverage.Forge;
 using CodeCoverage.Services;
@@ -132,7 +133,7 @@ public class ForgeIntegrationConformanceTests
 
     private const string SampleSha = "4a5b6c7d8e9f00112233445566778899aabbccdd";
 
-    private static Repository SampleRepository =>new() { Id = "Repositories/1", OwnerLogin = "acme", Name = "widget" };
+    private static Repository SampleRepository =>new() { Id = Id<Repository>.FromTrusted("Repositories/1"), OwnerLogin = "acme", Name = "widget" };
 
     public static TheoryData<Type> Implementations
     {

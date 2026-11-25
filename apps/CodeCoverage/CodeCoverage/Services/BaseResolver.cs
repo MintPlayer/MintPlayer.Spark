@@ -50,7 +50,7 @@ public partial class BaseResolver : IBaseResolver
         // learn their default branch, so the head's own branch beats nothing.
         var branch = repository.DefaultBranch ?? head.Branch;
         var query = session.Query<VCommit, Commits_ByRepository>()
-            .Where(r => r.Repository == repository.Id && r.HasCoverage);
+            .Where(r => r.Repository == repository.Id.Value && r.HasCoverage);
         if (branch is not null)
             query = query.Where(r => r.Branch == branch);
 
@@ -81,7 +81,7 @@ public partial class BaseResolver : IBaseResolver
     /// </summary>
     private async Task<string?> UsableBuildIdAsync(Commit? commit, CancellationToken cancellationToken)
     {
-        if (commit?.Coverage is null || commit.LatestBuildId is null || commit.Id is null)
+        if (commit?.Coverage is null || commit.LatestBuildId is null || commit.Id.IsEmpty)
             return null;
 
         // ⚠️ Fork-contributed coverage is never a comparison base, and this is the chokepoint all
@@ -97,7 +97,7 @@ public partial class BaseResolver : IBaseResolver
         // An assembled commit is usable by definition (the assembly is the
         // preferred base); a bare finalized build remains acceptable for commits
         // that predate assemblies.
-        if (await session.Advanced.ExistsAsync(CommitAssembly.DocumentId(commit.Id), cancellationToken))
+        if (await session.Advanced.ExistsAsync(CommitAssembly.DocumentId(commit.Id.Value), cancellationToken))
             return commit.LatestBuildId;
 
         return await session.Advanced.ExistsAsync(BuildTreeSummary.DocumentId(commit.LatestBuildId), cancellationToken)

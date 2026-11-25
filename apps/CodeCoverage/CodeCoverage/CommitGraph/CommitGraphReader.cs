@@ -128,14 +128,14 @@ public partial class CommitGraphReader : ICommitGraphReader
     public async Task<CommitGraphResponse> ReadAsync(Repository repository, CommitGraphRequest request, CancellationToken cancellationToken = default)
     {
         if (!sidecar.IsConfigured) return CommitGraphResponse.Empty("unavailable", "disabled");
-        if (repository.Id is not { } repositoryId || !CommitGraphSidecarClient.TryPath(repositoryId, out _))
+        if (repository.Id.IsEmpty || !CommitGraphSidecarClient.TryPath(repository.Id.Value, out _))
             return CommitGraphResponse.Empty("unavailable", "unsupported");
         if (forges.For(repository.Provider) is not { } forge || !forge.Capabilities.Contains(EForgeCapability.GitMirror))
             return CommitGraphResponse.Empty("unavailable", "unsupported");
 
         var o = options.Value;
         var now = time.GetUtcNow();
-        var state = await StampViewAsync(repositoryId, now.UtcDateTime, cancellationToken);
+        var state = await StampViewAsync(repository.Id.Value, now.UtcDateTime, cancellationToken);
 
         if (!state.HasMirror)
         {
@@ -148,14 +148,14 @@ public partial class CommitGraphReader : ICommitGraphReader
                 && state.LastFetchAtUtc > now.UtcDateTime.AddMinutes(-o.RetryAfterMinutes))
                 return CommitGraphResponse.Empty("unavailable", state.Reason ?? state.Outcome);
 
-            await RequestCloneAsync(repositoryId, now, cancellationToken);
+            await RequestCloneAsync(repository.Id.Value, now, cancellationToken);
             return CommitGraphResponse.Empty("syncing");
         }
 
         SidecarGraphResult result;
         try
         {
-            result = await sidecar.GetGraphAsync(repositoryId, new SidecarGraphQuery(
+            result = await sidecar.GetGraphAsync(repository.Id.Value, new SidecarGraphQuery(
                 Math.Max(0, request.From),
                 Math.Clamp(request.Count, 1, CommitGraphRequest.MaxCount),
                 NullIfEmpty(request.Ref),
@@ -176,7 +176,7 @@ public partial class CommitGraphReader : ICommitGraphReader
             case SidecarGraphStatus.Missing:
                 // The state said there was a mirror; the sidecar has none (a lost volume). Same path
                 // as a first view.
-                await RequestCloneAsync(repositoryId, now, cancellationToken, mirrorLost: true);
+                await RequestCloneAsync(repository.Id.Value, now, cancellationToken, mirrorLost: true);
                 return CommitGraphResponse.Empty("syncing");
             case SidecarGraphStatus.Stale:
                 return CommitGraphResponse.Empty("stale", snapshotId: result.SnapshotId);
@@ -187,8 +187,8 @@ public partial class CommitGraphReader : ICommitGraphReader
         // Stale-on-view (D23): serve what there is, refresh behind it.
         if (!state.Syncing && (state.LastFetchAtUtc ?? DateTime.MinValue) < now.UtcDateTime.AddMinutes(-o.StaleAfterMinutes))
             await messageBus.BroadcastOnceAsync(
-                new FetchCommitGraphMessage { RepositoryId = repositoryId, AllowClone = false },
-                CommitGraphTriggers.ViewKey(repositoryId, now, TimeSpan.FromMinutes(o.StaleAfterMinutes)), cancellationToken);
+                new FetchCommitGraphMessage { RepositoryId = repository.Id.Value, AllowClone = false },
+                CommitGraphTriggers.ViewKey(repository.Id.Value, now, TimeSpan.FromMinutes(o.StaleAfterMinutes)), cancellationToken);
 
         return await BuildAsync(repository, result.Page!, cancellationToken);
     }

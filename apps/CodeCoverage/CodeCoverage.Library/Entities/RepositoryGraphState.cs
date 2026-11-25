@@ -25,9 +25,10 @@ namespace CodeCoverage.Entities;
 /// </para>
 /// </remarks>
 [GenerateIndex]
-public class RepositoryGraphState
+[IdKind(SparkIdKind.Natural)]
+public partial class RepositoryGraphState
 {
-    public string? Id { get; set; }
+    public Id<RepositoryGraphState> Id { get; set; }
 
     /// <summary>The repository document id, e.g. <c>Repositories/github/123</c>.</summary>
     [Reference(typeof(Repository))]
@@ -83,12 +84,13 @@ public class RepositoryGraphState
 }
 
 /// <summary>Running totals of the mirror housekeeping, for the host metrics dashboard (D10, §9).</summary>
-public class CommitGraphMetrics
+[IdKind(SparkIdKind.Natural)]
+public partial class CommitGraphMetrics
 {
     /// <summary>The single document's id.</summary>
     public const string DocumentId = "CommitGraphMetrics/mirrors";
 
-    public string? Id { get; set; }
+    public Id<CommitGraphMetrics> Id { get; set; }
 
     /// <summary>Mirrors deleted to make room or because nobody looked at them (not deletions for lost access).</summary>
     public long Evictions { get; set; }
@@ -113,14 +115,15 @@ public class CommitGraphMetrics
 /// bytes, once fetched, are an attachment on this document and expire with it.
 /// </para>
 /// </remarks>
-public class AuthorAvatar
+[IdKind(SparkIdKind.Natural)]
+public partial class AuthorAvatar
 {
     public const string Prefix = "AuthorAvatars/";
 
     /// <summary>The attachment holding the fetched image.</summary>
     public const string ImageAttachment = "image";
 
-    public string? Id { get; set; }
+    public Id<AuthorAvatar> Id { get; set; }
 
     /// <summary>Where the image is, or null for a negative entry (initials).</summary>
     public string? Url { get; set; }

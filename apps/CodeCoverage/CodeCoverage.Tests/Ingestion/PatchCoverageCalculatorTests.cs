@@ -35,7 +35,7 @@ public class PatchCoverageCalculatorTests : CoverageRavenTest
         await session.StoreAsync(commit, Commit.DocumentId(EForgeProvider.GitHub, RepoGitHubId, HeadSha));
 
         var buildId = Build.DocumentId(EForgeProvider.GitHub, RepoGitHubId, HeadSha, 1, 1);
-        var build = new Build { Commit = commit.Id, CiRunId = 1, CiRunAttempt = 1, DeclaredBaseSha = BaseSha, CreatedAtUtc = DateTime.UtcNow };
+        var build = new Build { Commit = commit.Id.Value, CiRunId = 1, CiRunAttempt = 1, DeclaredBaseSha = BaseSha, CreatedAtUtc = DateTime.UtcNow };
         await session.StoreAsync(build, buildId);
 
         foreach (var file in files)
@@ -54,8 +54,8 @@ public class PatchCoverageCalculatorTests : CoverageRavenTest
     private static async Task<PatchCoverage?> Compute(IDocumentStore store, Build build, Commit commit, CommitComparison? comparison)
     {
         using var session = store.OpenAsyncSession();
-        var freshBuild = await session.LoadAsync<Build>(build.Id);
-        var freshCommit = await session.LoadAsync<Commit>(commit.Id);
+        var freshBuild = await session.LoadAsync<Build>(build.Id.Value);
+        var freshCommit = await session.LoadAsync<Commit>(commit.Id.Value);
         return await PatchCoverageCalculator.ComputeAsync(session, new ScriptedDiffService(comparison), freshBuild, freshCommit, CancellationToken.None);
     }
 
@@ -102,9 +102,9 @@ public class PatchCoverageCalculatorTests : CoverageRavenTest
         using var store = GetDocumentStore();
         var (build, commit) = await Seed(store, File("libs/a/x.ts", (1, LineStatus.Covered)));
         using var session = store.OpenAsyncSession();
-        var freshBuild = await session.LoadAsync<Build>(build.Id);
+        var freshBuild = await session.LoadAsync<Build>(build.Id.Value);
         freshBuild.DeclaredBaseSha = null;
-        var freshCommit = await session.LoadAsync<Commit>(commit.Id);
+        var freshCommit = await session.LoadAsync<Commit>(commit.Id.Value);
 
         var patch = await PatchCoverageCalculator.ComputeAsync(session, new ScriptedDiffService(), freshBuild, freshCommit, CancellationToken.None);
 

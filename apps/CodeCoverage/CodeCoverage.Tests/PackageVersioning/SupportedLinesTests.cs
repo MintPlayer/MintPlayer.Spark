@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions;
 using CodeCoverage.Entities;
 using CodeCoverage.PackageVersioning;
 using CodeCoverage.Versioning.Releases;
@@ -14,7 +15,7 @@ public class SupportedLinesTests
     private static PlatformRelease Release(string platform, int major, string phase)
     {
         var channel = platform == "dotnet" ? $"{major}.0" : $"{major}";
-        return new() { Id = PlatformRelease.IdFor(platform, channel), Platform = platform, Channel = channel, Major = major, Name = channel, Phase = phase };
+        return new() { Id = Id<PlatformRelease>.FromTrusted(PlatformRelease.IdFor(platform, channel)), Platform = platform, Channel = channel, Major = major, Name = channel, Phase = phase };
     }
 
     private static readonly PlatformRelease[] Releases =

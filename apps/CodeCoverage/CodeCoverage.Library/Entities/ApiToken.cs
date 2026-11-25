@@ -29,10 +29,11 @@ namespace CodeCoverage.Entities;
 /// exist, for whom, and when has no upside.
 /// </para>
 /// </remarks>
-public class ApiToken
+[IdKind(SparkIdKind.Natural)]
+public partial class ApiToken
 {
     /// <summary>Document id, <c>ApiTokens/{guid}</c>. Carries no information — see the remarks above.</summary>
-    public string? Id { get; set; }
+    public Id<ApiToken> Id { get; set; }
 
     /// <summary>
     /// SHA-256 of the token value, lowercase hex. The only thing that identifies a presented token,

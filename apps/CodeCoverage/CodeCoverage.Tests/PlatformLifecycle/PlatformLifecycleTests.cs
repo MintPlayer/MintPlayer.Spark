@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions;
 using System.Net;
 using CodeCoverage.Entities;
 using CodeCoverage.PlatformLifecycle;
@@ -31,7 +32,7 @@ public class PlatformLifecycleTests : CoverageRavenTest
         rows.Select(r => r.Channel).Should().Equal("11.0", "10.0", "9.0", "8.0", "7.0", "6.0", "5.0", "3.1", "3.0", "2.2", "2.1", "2.0", "1.1", "1.0");
         Row(rows, "11.0").Should().BeEquivalentTo(new
         {
-            Id = "PlatformReleases/dotnet/11.0", Major = 11, Name = "11.0", Phase = "preview", IsLts = false, SupportEndsOn = (DateTime?)null,
+            Id = Id<PlatformRelease>.FromTrusted("PlatformReleases/dotnet/11.0"), Major = 11, Name = "11.0", Phase = "preview", IsLts = false, SupportEndsOn = (DateTime?)null,
             LatestVersion = "11.0.0-rc.3", LatestSdk = "11.0.100-rc.3.26522.148", LatestReleasedOn = (DateTime?)Day(2026, 10, 25),
         });
         Row(rows, "10.0").Should().BeEquivalentTo(new { Phase = "active", IsLts = true, SupportEndsOn = (DateTime?)Day(2028, 11, 14), LatestSdk = "10.0.403" });
@@ -47,7 +48,7 @@ public class PlatformLifecycleTests : CoverageRavenTest
 
         Row(rows, "22").Should().BeEquivalentTo(new
         {
-            Id = "PlatformReleases/angular/22", Platform = "angular", Major = 22, Phase = "active", IsLts = false, LatestVersion = "22.2.4",
+            Id = Id<PlatformRelease>.FromTrusted("PlatformReleases/angular/22"), Platform = "angular", Major = 22, Phase = "active", IsLts = false, LatestVersion = "22.2.4",
             ReleasedOn = (DateTime?)Day(2026, 6, 3),
             ActiveSupportEndsOn = (DateTime?)Day(2027, 6, 30),
             SupportEndsOn = (DateTime?)Day(2028, 6, 30),
@@ -67,7 +68,7 @@ public class PlatformLifecycleTests : CoverageRavenTest
     {
         var rows = PlatformLifecycleSources.ReadEndOfLife(platform, Fixture.Read("PlatformLifecycle/" + fixture), Url, Now);
 
-        rows[0].Should().BeEquivalentTo(new { Id = $"PlatformReleases/{platform}/{newest}", Channel = newest, LatestVersion = latest });
+        rows[0].Should().BeEquivalentTo(new { Id = Id<PlatformRelease>.FromTrusted($"PlatformReleases/{platform}/{newest}"), Channel = newest, LatestVersion = latest });
         rows.Select(r => r.Channel).Should().BeInDescendingOrder(PlatformLifecycleSources.ChannelComparer.Instance);
     }
 
@@ -226,8 +227,8 @@ public class PlatformLifecycleTests : CoverageRavenTest
     [Fact]
     public void A_row_without_a_channel_never_reaches_the_lookup_table()
     {
-        var old = new PlatformRelease { Id = "PlatformReleases/dotnet/11", Platform = "dotnet", Major = 11, Name = "11.0", Phase = "preview", LatestVersion = "11.0.0-rc.3" };
-        var current = new PlatformRelease { Id = PlatformRelease.IdFor("dotnet", "10.0"), Platform = "dotnet", Channel = "10.0", Major = 10, Name = "10.0", Phase = "active", LatestVersion = "10.0.1" };
+        var old = new PlatformRelease { Id = Id<PlatformRelease>.FromTrusted("PlatformReleases/dotnet/11"), Platform = "dotnet", Major = 11, Name = "11.0", Phase = "preview", LatestVersion = "11.0.0-rc.3" };
+        var current = new PlatformRelease { Id = Id<PlatformRelease>.FromTrusted(PlatformRelease.IdFor("dotnet", "10.0")), Platform = "dotnet", Channel = "10.0", Major = 10, Name = "10.0", Phase = "active", LatestVersion = "10.0.1" };
 
         var table = CodeCoverage.Dependencies.Policy.DependencyPlatformTable.Json([old, current], []);
 
@@ -267,7 +268,7 @@ public class PlatformLifecycleTests : CoverageRavenTest
         using var store = GetDocumentStore();
         using (var session = store.OpenAsyncSession())
         {
-            await session.StoreAsync(new PlatformRelease { Id = "PlatformReleases/dotnet/11", Platform = "dotnet", Major = 11, Name = "11.0", Phase = "preview" });
+            await session.StoreAsync(new PlatformRelease { Id = Id<PlatformRelease>.FromTrusted("PlatformReleases/dotnet/11"), Platform = "dotnet", Major = 11, Name = "11.0", Phase = "preview" });
             await session.SaveChangesAsync();
         }
 
@@ -275,7 +276,7 @@ public class PlatformLifecycleTests : CoverageRavenTest
 
         using var check = store.OpenAsyncSession();
         var stored = await check.Advanced.LoadStartingWithAsync<PlatformRelease>(PlatformRelease.Prefix, pageSize: 1024);
-        stored.Should().NotContain(r => r.Id == "PlatformReleases/dotnet/11");
+        stored.Should().NotContain(r => string.Equals(r.Id.Value, "PlatformReleases/dotnet/11", StringComparison.OrdinalIgnoreCase));
         PlatformLifecycleStartup.NeedsCollection(stored).Should().BeFalse();
     }
 

@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions;
 using CodeCoverage.Entities;
 using CodeCoverage.Services;
 using Microsoft.Extensions.DependencyInjection;
@@ -56,13 +57,13 @@ public class GitHubForgeClientBranchDeleteTests
         var client = Create(installer);
 
         // The repository has no account, so no installation can be resolved.
-        await client.DeleteBranchAsync(new Repository { Id = "Repositories/9", OwnerLogin = "acme", Name = "widget" }, "x");
+        await client.DeleteBranchAsync(new Repository { Id = Id<Repository>.FromTrusted("Repositories/9"), OwnerLogin = "acme", Name = "widget" }, "x");
 
         installer.Created.Should().Be(0, "a missing credential must not produce an API call");
     }
 
     private static Repository SampleRepository
-        => new() { Id = "Repositories/1", GitHubId = 1, OwnerLogin = "acme", Name = "widget" };
+        => new() { Id = Id<Repository>.FromTrusted("Repositories/1"), GitHubId = 1, OwnerLogin = "acme", Name = "widget" };
 
     private static GitHubForgeClient Create(ThrowingInstallationService installer)
     {

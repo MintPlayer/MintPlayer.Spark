@@ -15,7 +15,7 @@ public class AccountAvatarTests
     private const string Forge = "https://avatars.example/acme.png";
     private static readonly string AccountId = Account.DocumentId(EForgeProvider.GitHub, 1);
 
-    private static Account With(SparkImage? avatar) => new() { Id = AccountId, GitHubId = 1, Login = "acme", AvatarUrl = Forge, CustomAvatar = avatar };
+    private static Account With(SparkImage? avatar) => new() { Id = Id<Account>.FromTrusted(AccountId), GitHubId = 1, Login = "acme", AvatarUrl = Forge, CustomAvatar = avatar };
 
     private static SparkImage Avatar(SparkFileScanStatus status = SparkFileScanStatus.Clean, bool thumb = true)
     {
@@ -29,7 +29,7 @@ public class AccountAvatarTests
     {
         var url = AccountAvatar.Resolve(With(Avatar()));
 
-        url.Should().Be(SparkFileDownloadUrl.For(new SparkFileLocation(AccountAvatar.AccountType, AccountId, "CustomAvatar", Avatar(), "thumb")));
+        url.Should().Be(SparkFileDownloadUrl.For(new SparkFileLocation(AccountAvatar.AccountType, AccountId.ToLowerInvariant(), "CustomAvatar", Avatar(), "thumb")));
         url.Should().StartWith("/spark/files/download?type=");
         url.Should().EndWith("&attribute=CustomAvatar&file=f-1&variant=thumb");
     }
@@ -51,5 +51,5 @@ public class AccountAvatarTests
 
     [Fact]
     public void An_account_with_neither_has_no_avatar()
-        => AccountAvatar.Resolve(new Account { Id = AccountId, GitHubId = 1, Login = "acme" }).Should().BeNull();
+        => AccountAvatar.Resolve(new Account { Id = Id<Account>.FromTrusted(AccountId), GitHubId = 1, Login = "acme" }).Should().BeNull();
 }

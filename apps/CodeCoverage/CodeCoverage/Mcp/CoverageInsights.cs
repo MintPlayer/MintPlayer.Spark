@@ -251,7 +251,7 @@ public partial class CoverageInsights : ICoverageInsights
         // commits, and its pull request is exactly the context in which they mean something. Still this repository's
         // own id, so nothing of another repository is reachable.
         var head = await session.Query<Indexes.VCommit, Indexes.Commits_ByRepository>()
-            .Where(c => c.Repository == repository.Id && c.PullRequestNumber == pullRequest && c.HasCoverage)
+            .Where(c => c.Repository == repository.Id.Value && c.PullRequestNumber == pullRequest && c.HasCoverage)
             .OrderByDescending(c => c.Date)
             .OfType<Commit>()
             .FirstOrDefaultAsync(cancellationToken);
@@ -271,7 +271,7 @@ public partial class CoverageInsights : ICoverageInsights
 
         var candidates = comparison.Files
             .Where(f => f.Status != "removed" && f.AddedLines.Length > 0)
-            .GroupBy(f => FileCoverage.DocumentId(build.Id, f.Path))
+            .GroupBy(f => FileCoverage.DocumentId(build.Id.Value, f.Path))
             .ToDictionary(g => g.Key, g => g.First());
         Dictionary<string, FileCoverage> measured = candidates.Count == 0
             ? []

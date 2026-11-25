@@ -42,14 +42,16 @@ public static class DependencyGraph
         IReadOnlyCollection<Repository> repositories,
         IReadOnlyDictionary<string, RepositoryManifest?> manifestsByRepositoryId)
     {
+        // Keyed by repository id, matched ignoring case: a loaded id is lower case, a stored reference keeps its casing (#536).
+        manifestsByRepositoryId = new Dictionary<string, RepositoryManifest?>(manifestsByRepositoryId, StringComparer.OrdinalIgnoreCase);
         var nodes = repositories
             .OrderBy(r => r.Name, StringComparer.OrdinalIgnoreCase)
-            .ThenBy(r => r.Id, StringComparer.Ordinal)
+            .ThenBy(r => r.Id.Value, StringComparer.Ordinal)
             .Select(r =>
             {
-                var manifest = manifestsByRepositoryId.GetValueOrDefault(r.Id!);
+                var manifest = manifestsByRepositoryId.GetValueOrDefault(r.Id.Value);
                 // P12: a repository whose lookup ran counts as scanned, even before its first manifest scan.
-                return new DependencyGraphNode(r.Id!, r.FullName, r.Name, r.IsPrivate, r.Archived, manifest?.ScannedAt ?? manifest?.LookupAt, manifest?.ScanError);
+                return new DependencyGraphNode(r.Id.Value, r.FullName, r.Name, r.IsPrivate, r.Archived, manifest?.ScannedAt ?? manifest?.LookupAt, manifest?.ScanError);
             })
             .ToList();
 
@@ -64,24 +66,24 @@ public static class DependencyGraph
 
         foreach (var repository in repositories)
         {
-            AddProducer(ManifestEcosystems.Actions, ActionsManifestParser.ProducedName(repository.FullName), repository.Id!);
-            AddProducer(ManifestEcosystems.Docker, DockerManifestParser.ProducedName(repository.FullName), repository.Id!);
-            if (manifestsByRepositoryId.GetValueOrDefault(repository.Id!) is { } manifest)
+            AddProducer(ManifestEcosystems.Actions, ActionsManifestParser.ProducedName(repository.FullName), repository.Id.Value);
+            AddProducer(ManifestEcosystems.Docker, DockerManifestParser.ProducedName(repository.FullName), repository.Id.Value);
+            if (manifestsByRepositoryId.GetValueOrDefault(repository.Id.Value) is { } manifest)
                 foreach (var package in manifest.Produces)
-                    AddProducer(package.Ecosystem, package.Name, repository.Id!);
+                    AddProducer(package.Ecosystem, package.Name, repository.Id.Value);
         }
 
         var edges = new Dictionary<(string From, string To), HashSet<DependencyGraphDependency>>();
         foreach (var consumer in repositories)
         {
-            if (manifestsByRepositoryId.GetValueOrDefault(consumer.Id!) is not { } manifest) continue;
+            if (manifestsByRepositoryId.GetValueOrDefault(consumer.Id.Value) is not { } manifest) continue;
 
             foreach (var dependency in DependencyLookupIngest.Consumes(manifest))
             {
                 foreach (var producer in ProducersOf(producers, dependency))
                 {
-                    if (producer == consumer.Id) continue;
-                    var key = (producer, consumer.Id!);
+                    if (string.Equals(producer, consumer.Id.Value, StringComparison.OrdinalIgnoreCase)) continue;
+                    var key = (producer, consumer.Id.Value);
                     if (!edges.TryGetValue(key, out var set)) edges[key] = set = [];
                     set.Add(new DependencyGraphDependency(dependency.Ecosystem, dependency.Name, dependency.Path, dependency.Dev));
                 }

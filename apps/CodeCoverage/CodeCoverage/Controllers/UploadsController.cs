@@ -411,7 +411,7 @@ public partial class UploadsController : ControllerBase
         // Never ratchet against fork-contributed coverage — same reasoning as BaseResolver's
         // chokepoint, and this baseline is computed independently of it.
         var query = session.Query<VCommit, Commits_ByRepository>()
-            .Where(r => r.Repository == repo.Id && r.HasCoverage && r.ContributedFromFork != true);
+            .Where(r => r.Repository == repo.Id.Value && r.HasCoverage && r.ContributedFromFork != true);
         if (branch is not null)
             query = query.Where(r => r.Branch == branch);
 
@@ -614,11 +614,11 @@ public partial class UploadsController : ControllerBase
         // transfer is followed rather than outlived. A token without an account authorizes nothing.
         bool IsAuthorized(Repository repository) => scope switch
         {
-            "Account" => account is not null && string.Equals(account, repository.Account, StringComparison.Ordinal),
+            "Account" => account is not null && string.Equals(account, repository.Account, StringComparison.OrdinalIgnoreCase),
             // Membership, not equality — the claims carry document ids, one per repository the
             // token was scoped to.
             "Repository" => repoIds.Contains(
-                Entities.Repository.DocumentId(EForgeProvider.GitHub, repository.GitHubId), StringComparer.Ordinal),
+                Entities.Repository.DocumentId(EForgeProvider.GitHub, repository.GitHubId), StringComparer.OrdinalIgnoreCase),
             _ => false,
         };
 
@@ -703,7 +703,7 @@ public partial class UploadsController : ControllerBase
         repository = new Repository
         {
             GitHubId = gitHubRepoId,
-            Account = account?.Id,
+            Account = account?.Id.Value,
             Name = fullName.Split('/')[1],
             FullName = fullName,
             OwnerLogin = ownerLogin,

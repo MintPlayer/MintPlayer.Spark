@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions;
 using CodeCoverage.Commands;
 using CodeCoverage.Entities;
 using CodeCoverage.Forge;
@@ -17,7 +18,7 @@ public class CommandLifecycleTests : CoverageRavenTest
 
     private static readonly Repository Repo = new()
     {
-        Id = Repository.DocumentId(EForgeProvider.GitHub, 6600), Provider = EForgeProvider.GitHub, GitHubId = 6600, FullName = "acme/widget",
+        Id = Id<Repository>.FromTrusted(Repository.DocumentId(EForgeProvider.GitHub, 6600)), Provider = EForgeProvider.GitHub, GitHubId = 6600, FullName = "acme/widget",
     };
 
     private readonly FakeCommentReactions reactions = new();
@@ -28,7 +29,7 @@ public class CommandLifecycleTests : CoverageRavenTest
         var store = GetDocumentStore();
         using (var session = store.OpenAsyncSession())
         {
-            await session.StoreAsync(new Repository { Provider = Repo.Provider, GitHubId = Repo.GitHubId, FullName = Repo.FullName }, Repo.Id);
+            await session.StoreAsync(new Repository { Provider = Repo.Provider, GitHubId = Repo.GitHubId, FullName = Repo.FullName }, Repo.Id.Value);
             await session.SaveChangesAsync();
         }
         return (store, CommandTestKit.Lifecycle(store, reactions, logs: logs, retentionDays: retentionDays));
