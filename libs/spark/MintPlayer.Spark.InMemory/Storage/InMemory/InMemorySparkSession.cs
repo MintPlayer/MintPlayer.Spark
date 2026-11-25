@@ -303,7 +303,7 @@ internal sealed class InMemorySparkSession : ISparkSession
             throw new ArgumentException("Delete(object) takes an entity; delete by id with Delete<T>(Id<T>) or Delete(Type, string).", nameof(entity));
         if (!ids.TryGetValue(entity, out var id))
             throw new InvalidOperationException($"{entity.GetType().Name} is not associated with the session; it cannot be deleted.");
-        Delete(id);
+        Delete(entity.GetType(), id);
     }
 
     public Task SaveChangesAsync(CancellationToken cancellationToken = default)

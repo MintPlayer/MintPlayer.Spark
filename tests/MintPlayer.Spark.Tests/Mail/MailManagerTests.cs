@@ -69,6 +69,7 @@ public class MailManagerTests : RavenSparkTestDriver
         collection.AddSingleton<IConfiguration>(configuration);
         collection.AddSingleton<IHostEnvironment>(new TestHostEnvironment(contentRoot) { EnvironmentName = environment });
         collection.AddSingleton<Raven.Client.Documents.IDocumentStore>(Store);
+        collection.AddSingleton(MintPlayer.Spark.RavenSparkSessionExtensions.AsSparkStore(Store));
         collection.AddDataProtection().UseEphemeralDataProtectionProvider();
         collection.AddSingleton<RecordingBus>();
         collection.AddSingleton<IMessageBus>(sp => sp.GetRequiredService<RecordingBus>());

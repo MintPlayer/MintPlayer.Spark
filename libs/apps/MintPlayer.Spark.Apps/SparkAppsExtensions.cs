@@ -49,6 +49,14 @@ public static class SparkAppsExtensions
         if (services.Any(d => d.ServiceType == typeof(AppsMarker)))
             throw new InvalidOperationException("AddApps() is called twice; register every event in one call.");
         services.AddSingleton<AppsMarker>();
+        // #536 D36: the documents Apps keeps; a store with a schema builds their tables.
+        global::MintPlayer.Spark.Abstractions.Storage.SparkStoredTypeServiceCollectionExtensions.AddSparkStoredType<Models.SparkApp>(services);
+        global::MintPlayer.Spark.Abstractions.Storage.SparkStoredTypeServiceCollectionExtensions.AddSparkStoredType<Models.AppInstallation>(services);
+        global::MintPlayer.Spark.Abstractions.Storage.SparkStoredTypeServiceCollectionExtensions.AddSparkStoredType<Models.WebhookEndpoint>(services);
+        global::MintPlayer.Spark.Abstractions.Storage.SparkStoredTypeServiceCollectionExtensions.AddSparkStoredType<Models.WebhookOwnerRegistry>(services);
+        global::MintPlayer.Spark.Abstractions.Storage.SparkStoredTypeServiceCollectionExtensions.AddSparkStoredType<Models.WebhookEventKey>(services);
+        global::MintPlayer.Spark.Abstractions.Storage.SparkStoredTypeServiceCollectionExtensions.AddSparkStoredType<Models.WebhookDelivery>(services);
+        global::MintPlayer.Spark.Abstractions.Storage.SparkStoredTypeServiceCollectionExtensions.AddSparkStoredType<Models.WebhookChain>(services);
 
         var apps = new AppsBuilder();
         configure?.Invoke(apps);

@@ -236,6 +236,22 @@ public abstract class SparkStoreConformanceTests : IAsyncLifetime
     }
 
     [SkippableFact]
+    public async Task Delete_removes_a_loaded_entity()
+    {
+        await StoreAsync(Sample("ConfDocs/delete-loaded"));
+
+        using (var session = Store.OpenSession())
+        {
+            var loaded = await session.LoadAsync<ConfDoc>("ConfDocs/delete-loaded");
+            session.Delete(loaded!);
+            await session.SaveChangesAsync();
+        }
+
+        using var verify = Store.OpenSession();
+        (await verify.LoadAsync<ConfDoc>("ConfDocs/delete-loaded")).Should().BeNull();
+    }
+
+    [SkippableFact]
     public async Task A_save_that_expects_absence_fails_when_the_document_exists_and_writes_nothing()
     {
         await StoreAsync(Sample("ConfDocs/taken"));
