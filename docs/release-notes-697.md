@@ -22,6 +22,9 @@ tags, and everything ships once the merged pull request is backported to `releas
    - On a raw `IAsyncDocumentSession`, ids are not rewritten. A typed `Contains` fails there (use RQL
      `id() in ($ids)`), and projecting `r.Id` to text needs a row with a `string? Id`.
    - Stored document ids don't change: no data migration.
+   - **Files in an object store** (S3 and the other `ObjectFileStore` backends) are kept under the lower-cased entity
+     id. The files reconciler moves a legacy-cased key to its lower-case one once at startup and on every reconcile
+     (`FilesReconciler.LowerCaseLegacyKeysAsync`), so no manual step is needed.
 2. **`ISparkSession`'s untyped id members are gone** (M2, D27). `ExistsAsync`, `Delete` and `GetVersionsAsync` take an
    `Id<T>`, or a `Type` and the id. `Delete(object)` refuses a string.
 3. **`Spark:DataProtection:Storage=RavenDb` is now `Storage=Store`** (M3, PRD §2.3). It keeps the key ring in the

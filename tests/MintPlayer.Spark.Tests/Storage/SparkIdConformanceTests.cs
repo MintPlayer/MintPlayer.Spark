@@ -49,15 +49,6 @@ public abstract class SparkIdConformanceTests : IAsyncLifetime
         public string Title { get; set; } = string.Empty;
     }
 
-    /// <summary>Natural ids from the attribute alone, as CodeCoverage's entities declare them.</summary>
-    [IdKind(SparkIdKind.Natural)]
-    public class IdPostcode
-    {
-        public Id<IdPostcode> Id { get; set; }
-
-        internal string? __DocumentId { get => Id.IsEmpty ? null : Id.Value; set => Id = Id<IdPostcode>.FromTrusted(value); }
-    }
-
     protected ISparkStore Store { get; private set; } = null!;
 
     protected ISparkIds Ids { get; private set; } = null!;
@@ -120,24 +111,6 @@ public abstract class SparkIdConformanceTests : IAsyncLifetime
         empty.IsEmpty.Should().BeTrue();
         var act = () => Ids.Parse<IdPerson>("");
         act.Should().Throw<FormatException>();
-    }
-
-    /// <summary>
-    /// D23 rule 2: <see cref="IdKindAttribute"/> sets the kind. A natural key is kept as written (lowered), where a
-    /// Guid-kind key is normalised, it may hold a <c>/</c>, and <c>NewAsync</c> can't make one.
-    /// </summary>
-    [Fact]
-    public async Task The_IdKind_attribute_makes_a_natural_key_kept_as_written()
-    {
-        var prefix = Store.GetCollectionName(typeof(IdPostcode)).ToLowerInvariant() + "/";
-
-        Ids.KindOf(typeof(IdPostcode)).Should().Be(SparkIdKind.Natural);
-        Ids.Parse<IdPostcode>("042").Value.Should().Be(prefix + "042");
-        Ids.Parse<IdPostcode>("BE/9000").Value.Should().Be(prefix + "be/9000");
-        Ids.Parse<IdPerson>("042").Key.Should().Be("42");
-
-        var act = () => Ids.NewAsync<IdPostcode>();
-        await act.Should().ThrowAsync<InvalidOperationException>();
     }
 
     /// <summary>

@@ -270,6 +270,20 @@ rounds, milestones and status. Branch `feat/536-sql-server-provider`, draft PR #
     - **Left for later slices:** D24's refusal of an attribute id split into drop + add (it needs the attribute ids
       as column annotations, so the snapshot keeps them: M4d, with the differ's view work), and the per-app
       pending-model-changes test (M9, with the first SQL app).
+  - **CI fix after M4d (2026-11-25):** CI had been red since M2 because the lower-case ids (D7) were verified only on
+    the classes M2c touched. Real defects it found, each now compares ids ignoring case: CodeCoverage's forge
+    disconnect (`ForgeEventsRecipient` ignored it), the commit-graph sidecar id regex (answered "unavailable"),
+    `QueryExecutor.RestrictToIds` in memory (custom-query row actions answered 404), the breadcrumb resolver's id maps
+    (a legacy-cased reference lost its label: MintPlayer's song page showed no artists), and the object file store
+    (keys are now lower-cased; the reconciler moves legacy keys). Test expectations of legacy-cased ids became the
+    loaded lower-case id. The E2E host's raw store now applies `ApplySparkConventions` (an `Id<T>` can't be stored
+    otherwise). `SparkFrameworkSchema.Map` is now `AddTables`: the route guard reads any `Map(` call as a hand
+    mapping. **`__DocumentId` is now `internal`, not `private`:** RavenDB looks for the identity member on the
+    stored type, and reflection hides a base type's private member from a derived one, so MintPlayer's songs and
+    artists (`Song : Subject`, the id declared on `Subject`) were stored under a generated id and loaded with an
+    empty one: no 301, no breadcrumbs, "a row with no id". Pinned by
+    `SparkIdConformanceTests.An_id_declared_on_a_base_type_round_trips` (red on RavenDB before the change).
+    **Lesson:** a change of id casing needs the whole suite on CI, not the touched classes.
   - **M4d (2026-11-25):**
     - **Views (D32):** `RelationalViewRenderer` renders each `SparkView<TRow>`'s `Map` through EF's `ToQueryString`
       against the store's own `SparkDbContext`: `Set<T>()` is the table, `Load<T>(id)` a correlated

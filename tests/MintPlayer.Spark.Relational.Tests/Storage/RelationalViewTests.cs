@@ -257,7 +257,9 @@ public abstract class RelationalViewTests : IAsyncLifetime
     [SkippableFact]
     public void A_view_that_captures_a_variable_is_refused()
     {
-        var error = Record.Exception(() => RelationalTestDatabase.Open(RequireServer, Types, null, "spark_vw_never", [new VwCaptured()]));
+        // Outside Record.Exception, so a missing server skips the test instead of being recorded as its error.
+        var server = RequireServer;
+        var error = Record.Exception(() => RelationalTestDatabase.Open(server, Types, null, "spark_vw_never", [new VwCaptured()]));
 
         error.Should().BeOfType<InvalidOperationException>();
         error!.Message.Should().Contain("VwCaptured").And.Contain("constant");

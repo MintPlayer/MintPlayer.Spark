@@ -98,7 +98,7 @@ public sealed class SparkDbContext : DbContext
             MapView(modelBuilder, view);
 
         // The framework schema's tables, which its own migrations create (D24): used here, never migrated here.
-        SparkFrameworkSchema.Map(modelBuilder, Setup.Dialect.KeyCollation, excludeFromMigrations: true);
+        SparkFrameworkSchema.AddTables(modelBuilder, Setup.Dialect.KeyCollation, excludeFromMigrations: true);
 
         foreach (var configure in Setup.ConfigureModel)
             configure(modelBuilder);

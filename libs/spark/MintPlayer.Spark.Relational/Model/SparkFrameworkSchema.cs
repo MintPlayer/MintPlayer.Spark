@@ -21,7 +21,7 @@ public static class SparkFrameworkSchema
     internal const int KeyLength = 450;
 
     /// <summary>Maps the framework tables. Keys compare bytes, as ids do (D7).</summary>
-    internal static void Map(ModelBuilder modelBuilder, string keyCollation, bool excludeFromMigrations)
+    internal static void AddTables(ModelBuilder modelBuilder, string keyCollation, bool excludeFromMigrations)
     {
         var reservation = modelBuilder.Entity<SparkReservationRow>();
         reservation.ToTable(Reservations, Schema, t => t.ExcludeFromMigrations(excludeFromMigrations));
@@ -55,7 +55,7 @@ public sealed class SparkFrameworkDbContext : DbContext
     public SparkRelationalDialect Dialect { get; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
-        => SparkFrameworkSchema.Map(modelBuilder, Dialect.KeyCollation, excludeFromMigrations: false);
+        => SparkFrameworkSchema.AddTables(modelBuilder, Dialect.KeyCollation, excludeFromMigrations: false);
 
     /// <summary>
     /// The framework's migrations are written by hand, with no model snapshot, so EF's pending-changes check has

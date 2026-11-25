@@ -682,7 +682,7 @@ internal sealed record DatabasePage(int TotalItems);
 
             Expression predicate = queryProvider.IsStoreQuery((IQueryable)source)
                 ? queryProvider.In(idAccess, idList)
-                : Expression.Call(SparkExpressions.Captured(idList, idList.GetType()), ContainsMethod, idAccess);
+                : Expression.Call(SparkExpressions.Captured(idSet, idSet.GetType()), ContainsMethod, idAccess);
 
             var lambda = Expression.Lambda(predicate, parameter);
 
