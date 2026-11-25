@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<TargetFramework>net11.0</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+		<OutputType>Library</OutputType>
+		<IsPackable>true</IsPackable>
+
+		<!-- NuGet Package Metadata -->
+		<PackageId>MintPlayer.Spark.PostgreSql</PackageId>
+		<Version>0.0.0-PLACEHOLDER</Version>
+		<Authors>MintPlayer</Authors>
+		<Company>MintPlayer</Company>
+		<Description>A PostgreSQL storage provider for MintPlayer.Spark: spark.UsePostgreSql(). A table per entity, mapped by EF Core from the Spark model, with generated migrations.</Description>
+		<PackageTags>low-code;framework;postgresql;efcore;storage-provider</PackageTags>
+		<PackageLicenseExpression>MIT</PackageLicenseExpression>
+		<PackageProjectUrl>https://github.com/MintPlayer/MintPlayer.Spark</PackageProjectUrl>
+		<RepositoryUrl>https://github.com/MintPlayer/MintPlayer.Spark.git</RepositoryUrl>
+		<RepositoryType>git</RepositoryType>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<FrameworkReference Include="Microsoft.AspNetCore.App" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="11.0.0" />
+		<ProjectReference Include="..\MintPlayer.Spark.Relational\MintPlayer.Spark.Relational.csproj" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<InternalsVisibleTo Include="MintPlayer.Spark.Relational.Tests" />
+	</ItemGroup>
+
+</Project>

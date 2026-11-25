@@ -369,6 +369,19 @@ those drivers. The relational providers have no equivalent of `RavenTestDriver`;
 - **Guard:** the layering tests (`tests/MintPlayer.Spark.Tests/Layering/`) fail when `Abstractions` or `MintPlayer.Spark`
   references a provider assembly or a database client.
 
+**D36 (M4a, 2026-11-25): core says which types are tables.** A relational provider needs its entity list when it
+builds the EF model; RavenDB and InMemory never needed one. Core's `ISparkStoredTypes` (Abstractions, implemented by
+`SparkStoredTypes` in `MintPlayer.Spark`) lists the model's entity types that `ISparkTypeResolver` resolves to a
+non-abstract class with a public writable `Id`, minus `[ValueObject]` types, plus the types registered with
+`services.AddSparkStoredType<T>()` (stored documents outside the app model: the framework's own, from M4b on). A
+derived type with a stored base becomes TPH in the base's table. Table names come from `SparkCollectionNames.Of(type)`
+(Abstractions), the rule InMemory already had (the base name pluralized), so `relcompanies/…` ids are the same on
+InMemory and SQL. A type a query or load names that is not in the list fails with a message that names
+`AddSparkStoredType`.
+- **Deviation from D26:** a `[Reference]` **string** that points at an `Id<T>`-keyed table gets the target's key
+  converter, so the column holds the key, but no FK constraint: EF requires the same CLR type on both ends of a
+  relationship. The FK appears once the property is converted to `Id<T>`. *(M4a; HR's `Person.Company` is one.)*
+
 **D3: the version is a `bigint` column on every table**, a concurrency token the provider increments. *(S4, §8.11:
 it is on every root table and covers the aggregate. A change to a child row (D25) or a join row (D26) moves the
 root's version, which EF alone does not do.)*

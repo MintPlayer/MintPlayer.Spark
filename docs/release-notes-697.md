@@ -87,3 +87,12 @@ tags, and everything ships once the merged pull request is backported to `releas
 
    A custom `ISparkSession` implementation must add these members. On InMemory, `Query<T>()` now reads its rows when
    the query runs rather than when it is opened, as RavenDB does.
+9. **`MintPlayer.Spark.SqlServer` and `MintPlayer.Spark.PostgreSql`** (M4, D2): `builder.UseSqlServer()` and
+   `builder.UsePostgreSql()` store the app in a table per entity through EF Core 11, with the connection string from
+   `ConnectionStrings:Spark` unless `options.ConnectionString` sets one. `options.ConfigureModel(mb => …)` adjusts the
+   EF model last. Child collections (`[ValueObject]` lists) become child tables, references become foreign keys,
+   reference lists become join tables, and the version covers the whole aggregate. *In progress: migrations, views,
+   the change feed and the framework's own documents land in the next slices.*
+10. **`ISparkStoredTypes` and `AddSparkStoredType<T>()`** (M4, D36): the list of types a store keeps, from the app
+    model plus explicit registrations. `SparkCollectionNames.Of(type)` is the collection (table) name every provider
+    uses.

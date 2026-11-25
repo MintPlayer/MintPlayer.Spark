@@ -21,6 +21,8 @@ public static class SparkStoreProviders
 {
     public const string RavenDb = "RavenDB";
     public const string InMemory = "InMemory";
+    public const string SqlServer = "SqlServer";
+    public const string PostgreSql = "PostgreSql";
 }
 
 public static class SparkStoreRequirementExtensions

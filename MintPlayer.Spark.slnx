@@ -196,8 +196,11 @@
     <Project Path="libs/spark/MintPlayer.Spark.Abstractions/MintPlayer.Spark.Abstractions.csproj" />
     <Project Path="libs/spark/MintPlayer.Spark/MintPlayer.Spark.csproj" />
     <Project Path="libs/spark/MintPlayer.Spark.InMemory/MintPlayer.Spark.InMemory.csproj" />
+    <Project Path="libs/spark/MintPlayer.Spark.PostgreSql/MintPlayer.Spark.PostgreSql.csproj" />
     <Project Path="libs/spark/MintPlayer.Spark.RavenDB/MintPlayer.Spark.RavenDB.csproj" />
+    <Project Path="libs/spark/MintPlayer.Spark.Relational/MintPlayer.Spark.Relational.csproj" />
     <Project Path="libs/spark/MintPlayer.Spark.SafeHttp/MintPlayer.Spark.SafeHttp.csproj" />
+    <Project Path="libs/spark/MintPlayer.Spark.SqlServer/MintPlayer.Spark.SqlServer.csproj" />
   </Folder>
   <Folder Name="/libs/subscription_worker/">
     <Project Path="libs/subscription_worker/MintPlayer.Spark.SubscriptionWorker.Abstractions/MintPlayer.Spark.SubscriptionWorker.Abstractions.csproj" />
@@ -221,6 +224,7 @@
     <Project Path="tests/MintPlayer.Spark.Client.Tests/MintPlayer.Spark.Client.Tests.csproj" />
     <Project Path="tests/MintPlayer.Spark.E2E.Tests/MintPlayer.Spark.E2E.Tests.csproj" />
     <Project Path="tests/MintPlayer.Spark.Gs1.Tests/MintPlayer.Spark.Gs1.Tests.csproj" />
+    <Project Path="tests/MintPlayer.Spark.Relational.Tests/MintPlayer.Spark.Relational.Tests.csproj" />
     <Project Path="tests/MintPlayer.Spark.Templates.Tests/MintPlayer.Spark.Templates.Tests.csproj" />
     <Project Path="tests/MintPlayer.Spark.Cli.Tests/MintPlayer.Spark.Cli.Tests.csproj" />
     <Project Path="tests/MintPlayer.Spark.SourceGenerators.Tests/MintPlayer.Spark.SourceGenerators.Tests.csproj" />

@@ -161,6 +161,48 @@ rounds, milestones and status. Branch `feat/536-sql-server-provider`, draft PR #
       for the messaging port (M7), which writes expiry through `SetExpiry`.
     The feature libraries still call RavenDB directly; they move onto these contracts in their tier ports (M6–M8).
     That closes M3 except the generator gate split, which is M4's.
+- **In progress: M4** (§4 item 4), in five slices:
+  - M4a: the packages, the EF model, the store, the session and the query provider, with store tests on both
+    databases
+  - M4b: the S6 members (expiry, stream, reservations, `DeleteWhere`/`UpdateWhere`, `PatchAppend`), atomic values,
+    leases, the data-protection key store, the expiration sweeper and the integer HiLo
+  - M4c: migrations (D24, D33): the generator in `MintPlayer.Spark.Relational.Design` (O17), `ISparkSchemaMigrator`,
+    the startup guard and the script; tests then build their schema from migrations, not `EnsureCreated`
+  - M4d: views (D32: `ToView`, the `Spark:ViewSql` annotations, the differ subclass), `Query<T, TIndex>`, and the
+    generator gate split
+  - M4e: the change feed (D6 stamps)
+  - **M4a (2026-11-25):**
+    - `MintPlayer.Spark.Relational` (EF Core 11 Relational), `MintPlayer.Spark.SqlServer` (`UseSqlServer()`, binary
+      `Latin1_General_100_BIN2` keys, SqlException numbers) and `MintPlayer.Spark.PostgreSql` (`UsePostgreSql()`,
+      `"C"` keys, `jsonb`, SQLSTATEs). `SparkStoreProviders.SqlServer`/`PostgreSql`.
+    - **Which types are tables (PRD D36):** core's `ISparkStoredTypes` lists the model's entity types that resolve to
+      a non-abstract class with a writable `Id`, minus `[ValueObject]`s, plus `AddSparkStoredType<T>()` for stored
+      types outside the model (framework documents, in later slices). Table names come from the new shared
+      `SparkCollectionNames.Of(type)`, which InMemory now uses too, so ids are the same on every provider.
+    - `SparkRelationalModel`: a table per root type, TPH for derived types, a case-insensitive name collision check,
+      join tables for reference lists. `SparkDbContext` maps it: the key column holds the key only (`Id<T>` →
+      `Guid`/`long`/text by kind, D23) with converters, a shadow `Version` concurrency token, `[ValueObject]`
+      collections as child tables (D25), references as FK columns with `Restrict` FKs (D26), complex values and
+      `TranslatedString` as JSON columns, `List<primitive>` as EF primitive collections, get-only members only with a
+      `__stored_` field (O13). The `ConfigureModel` hooks run last (O9).
+    - ⚠️ A `[Reference]` **string** pointing at an `Id<T>`-keyed table gets the key converter but no FK: EF needs the
+      same CLR type on both sides. The FK comes when the property becomes `Id<T>` (HR's `Person.Company` and others
+      still are strings).
+    - `RelationalSparkSession`: the unit of work over one `DbContext` in one transaction. The version moves over
+      the aggregate (a row, child row or join row change moves the root's version, D3); `""` is insert-only; a
+      store of a new instance over an existing row is a document PUT (the row is loaded, its values, children and
+      joins replaced, and the instance aliased to it); deletes by id are unversioned or versioned; loads are
+      case-insensitive (ids are lowered, D7); `LoadStartingWith` is an escaped `LIKE` with the model's identifiers
+      and the pattern as a parameter; reference-list predicates (`Contains`, `Any`, `Count`, `!= null`) are
+      rewritten onto the join table (`JoinRewriter`, as S2b proved); constraint errors become
+      `SparkValidationException` naming the attribute and a duplicate key becomes concurrency (D30).
+    - `RelationalSparkQueryProvider`: `In` and `Search` (a lower-cased `Contains` per word, until S10).
+    - `MintPlayer.Spark.Relational.Tests`: `SqlServerStoreTests` and `PostgreSqlStoreTests`, 18/18 against SQL
+      Server 2022 and PostgreSQL 18. Until S17 (M5) the server comes from `SPARK_TEST_SQLSERVER` /
+      `SPARK_TEST_POSTGRESQL`; without them the tests skip.
+    - Known gaps, for later slices: `DateTime.Kind` round trip, Npgsql's `DateTimeOffset` offset 0, PostgreSQL's
+      NULLS FIRST (S18), `[Sortable]` child order (an ordinal column), arrays as child collections, querying inside
+      JSON columns, enums stored as int, and the Integer kind (needs `ISparkIntegerIdSource`, M4b).
   - Order: the core pieces in `libs/` first (the struct, the model registry, the generator for `__DocumentId`, JSON,
     the route binder), then the feature libraries, then the apps.
   - It touches the three production apps (CodeCoverage, SeoTester, MintPlayer). RavenDB stays green at the end of the
