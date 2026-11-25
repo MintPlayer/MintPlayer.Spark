@@ -6,10 +6,16 @@ rounds, milestones and status. Branch `feat/536-sql-server-provider`, draft PR #
 
 ## 1. Status (2026-11-25)
 
-- **Now (2026-11-25, evening): every milestone M1–M9 is implemented, M8c is reviewed, and the work is pushed for CI.**
-  What is left: every check on PR #697 green (the SQL Server and PostgreSQL legs run on GitHub for the first time),
-  then mark the PR ready. The entries below are each milestone's record; the oldest bullets describe the state of
-  their day.
+- **Now (2026-11-26): done. Every milestone M1–M9 is implemented and PR #697 is ready for review.** The pull-request
+  run 45720024787 (head 7f7fe9e82) is green, including the SQL Server and PostgreSQL legs. The first run's three
+  failures are fixed (M9b, "First CI run"). Two things remain, both for the owner:
+  - **GitGuardian:** the check fails on six false positives in earlier commits of the PR. Five are
+    `apps/SqlDemo/SqlDemo/App_Data/modelHashes.json` hashes. The sixth is `password="$(openssl rand -hex 16)"` in
+    `.github/workflows/test.yml`, a value made fresh per run. Every commit is scanned, so they are cleared in the
+    dashboard (Ignore, false positive) and the check re-run.
+  - **Decisions O18, O19 and O20** (PRD §10): each has its interim behaviour in place and a recommendation.
+
+  The entries below are each milestone's record; the oldest bullets describe the state of their day.
 - **M1 (the gate spikes) is done.** Everything so far is docs and throwaway spikes
   under `docs/relational_spike/`, each with its evidence in PRD §8.
   - All gate spikes are done (2026-11-24): S2b, S3, S4, S5, S19, S20, S-ID1, S-ID2, S-ID4, and S-ID5's RavenDB
