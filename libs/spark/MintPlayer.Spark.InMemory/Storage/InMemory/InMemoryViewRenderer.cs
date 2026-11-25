@@ -80,7 +80,7 @@ internal static class InMemoryViewRenderer
                 .FirstOrDefault(i => i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IReadOnlyDictionary<,>));
 
         private static readonly MethodInfo QueryOfT = typeof(ISparkSession).GetMethods()
-            .Single(m => m.Name == nameof(ISparkSession.Query) && m.GetGenericArguments().Length == 1);
+            .Single(m => m.Name == nameof(ISparkSession.Query) && m.GetGenericArguments().Length == 1 && m.GetParameters().Length == 0);
 
         private object Query(Type type) => QueryOfT.MakeGenericMethod(type).Invoke(session, [])!;
 
