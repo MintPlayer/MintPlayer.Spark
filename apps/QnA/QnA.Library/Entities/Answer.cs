@@ -10,7 +10,7 @@ namespace QnA.Entities;
 public partial class Answer : IModeratable, ISoftDeletable, IAuditable
 {
     /// <summary>Unique identifier of the answer, assigned automatically when it is posted.</summary>
-    public string? Id { get; set; }
+    public Id<Answer> Id { get; set; }
 
     /// <summary>The question this answers. A closed question refuses new answers.</summary>
     [Reference(typeof(Question))]

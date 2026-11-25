@@ -83,14 +83,14 @@ public partial class QuestionActions : DefaultPersistentObjectActions<Question>,
         if (!canManage || !question.IsClosed)
             target.DisableActions("ReopenQuestion");
 
-        if (question.Id is { } id && !await access.IsModeratorAsync() && await HasLiveAnswersAsync(id))
+        if (!question.Id.IsEmpty && question.Id.Value is var id && !await access.IsModeratorAsync() && await HasLiveAnswersAsync(id))
             target.DisableActions("Delete");
     }
 
     /// <summary>Applies a pending Close / Reopen (<see cref="QuestionStateChanges"/>) to the entity being saved.</summary>
     public ValueTask OnBeforeSaveAsync(Question entity, SaveContext context)
     {
-        if (entity.Id is { } id && stateChanges.TryTakeClosed(id, out var isClosed))
+        if (!entity.Id.IsEmpty && entity.Id.Value is var id && stateChanges.TryTakeClosed(id, out var isClosed))
             entity.IsClosed = isClosed;
         return ValueTask.CompletedTask;
     }

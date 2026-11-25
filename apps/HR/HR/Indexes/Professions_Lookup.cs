@@ -25,7 +25,7 @@ public partial class Professions_Lookup : SparkIndexCreationTask<Profession>
         Map = professions => from profession in professions
                              select new VProfessionLookup
                              {
-                                 Id = profession.Id,
+                                 Id = profession.Id.Value,
                                  Description = profession.Description,
                                  Regime = profession.Regime,
                                  Label = profession.Description + " (" + profession.Regime + ")",

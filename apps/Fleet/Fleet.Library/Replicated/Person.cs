@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Replication.Abstractions;
 
 namespace Fleet.Replicated;
@@ -19,10 +20,10 @@ namespace Fleet.Replicated;
             }
         });
     """)]
-public class Person
+public partial class Person
 {
     /// <summary>Identifier of the person, replicated from HR; it matches the HR document id.</summary>
-    public string? Id { get; set; }
+    public Id<Person> Id { get; set; }
     /// <summary>Given name of the person, replicated read-only from HR.</summary>
     public string FirstName { get; set; } = string.Empty;
     /// <summary>Family name of the person, replicated read-only from HR.</summary>

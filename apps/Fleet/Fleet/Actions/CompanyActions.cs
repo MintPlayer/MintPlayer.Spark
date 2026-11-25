@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Authorization;
 using System.Runtime.CompilerServices;
 using Fleet.Replicated;
@@ -22,9 +23,9 @@ public partial class CompanyActions : DefaultPersistentObjectActions<Company>, I
     {
         var companies = new List<Company>
         {
-            new() { Id = "companies/contoso", Name = "Contoso", Website = "https://contoso.example", EmployeeCount = 1200 },
-            new() { Id = "companies/fabrikam", Name = "Fabrikam", Website = "https://fabrikam.example", EmployeeCount = 340 },
-            new() { Id = "companies/initech", Name = "Initech", Website = "https://initech.example", EmployeeCount = 58 },
+            new() { Id = Id<Company>.FromTrusted("companies/contoso"), Name = "Contoso", Website = "https://contoso.example", EmployeeCount = 1200 },
+            new() { Id = Id<Company>.FromTrusted("companies/fabrikam"), Name = "Fabrikam", Website = "https://fabrikam.example", EmployeeCount = 340 },
+            new() { Id = Id<Company>.FromTrusted("companies/initech"), Name = "Initech", Website = "https://initech.example", EmployeeCount = 58 },
         };
 
         // Initial snapshot

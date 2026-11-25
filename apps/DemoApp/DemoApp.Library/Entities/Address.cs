@@ -1,9 +1,10 @@
+using MintPlayer.Spark.Abstractions;
 namespace DemoApp.Library.Entities;
 
-public class Address
+public partial class Address
 {
     /// <summary>Unique identifier of this address, assigned automatically when it is saved.</summary>
-    public string? Id { get; set; }
+    public Id<Address> Id { get; set; }
     /// <summary>Street name and house number, for example <c>Main Street 12</c>.</summary>
     public string Street { get; set; } = string.Empty;
     /// <summary>City or town the address is located in.</summary>

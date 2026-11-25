@@ -52,7 +52,10 @@ export function lineDiffTextOf(po: PersistentObject | null | undefined, source: 
   const attribute = po?.attributes?.find(a => a.name === source.attribute);
   if (!attribute) return null;
   if (source.rowKey !== undefined) {
-    const row = attribute.objects?.find(o => o.id === source.rowKey);
+    // Ignoring case: the key is derived from a document id, lower case since #536 (D7), while the row's key keeps the
+    // slot values' casing ("en/Latn"). Ids never told the two apart, so neither does this.
+    const rowKey = source.rowKey.toLowerCase();
+    const row = attribute.objects?.find(o => o.id?.toLowerCase() === rowKey);
     // No row for the slot: there is no current version (all hidden) — compare with nothing.
     if (!row) return '';
     return valueText(row.attributes?.find(a => a.name === source.rowAttribute));

@@ -677,12 +677,12 @@ public sealed class CoRace(IDocumentStore store)
         using var session = store.OpenAsyncSession();
         var contribution = CoSongLyricsContributionMetadata.Instance.CreateContribution(targetId,
             new CoLyrics { Language = "en", Script = "Latn", Text = "bob's concurrent text" }, "users/bob", DateTime.UtcNow);
-        await session.StoreAsync(contribution, contribution.Id);
+        await session.StoreAsync(contribution, contribution.Id.Value);
         var current = CoSongLyricsContributionMetadata.Instance.CreateCurrent(contribution, 1);
-        var existing = await session.LoadAsync<CoSongLyricsCurrent>(current.Id);
+        var existing = await session.LoadAsync<CoSongLyricsCurrent>(current.Id.Value);
         if (existing is not null)
             session.Advanced.Evict(existing);
-        await session.StoreAsync(current, current.Id);
+        await session.StoreAsync(current, current.Id.Value);
         await session.SaveChangesAsync();
         Fired = true;
     }

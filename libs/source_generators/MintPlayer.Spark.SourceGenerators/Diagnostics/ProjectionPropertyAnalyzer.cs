@@ -76,7 +76,7 @@ public sealed partial class ProjectionPropertyAnalyzer : DiagnosticAnalyzer
                 ?? Location.None;
 
             // 5a. Check type mismatch
-            if (!SymbolEqualityComparer.Default.Equals(projProp.Type, entityProp.Type))
+            if (!SymbolEqualityComparer.Default.Equals(projProp.Type, entityProp.Type) && !IsIdText(projProp.Type, entityProp.Type))
             {
                 context.ReportDiagnostic(Diagnostic.Create(
                     PropertyTypeMismatchRule,
@@ -147,4 +147,19 @@ public sealed partial class ProjectionPropertyAnalyzer : DiagnosticAnalyzer
     /// </remarks>
     private static INamedTypeSymbol? GetEntityTypeFromIndex(INamedTypeSymbol indexType)
         => RavenIndexHierarchy.MappedCollection(indexType);
+
+    /// <summary>
+    /// A projection holds a typed id (<c>Id&lt;T&gt;</c>, or a nullable one) as its text: an index row carries the
+    /// canonical string the map wrote (<c>x.Id.Value</c>), as the generated views declare it (#536 D23).
+    /// </summary>
+    private static bool IsIdText(ITypeSymbol projectionType, ITypeSymbol entityType)
+    {
+        if (projectionType.SpecialType != SpecialType.System_String)
+            return false;
+        var type = entityType is INamedTypeSymbol { OriginalDefinition.SpecialType: SpecialType.System_Nullable_T } nullable
+            ? nullable.TypeArguments[0]
+            : entityType;
+        return type is INamedTypeSymbol { IsGenericType: true } id
+            && id.ConstructedFrom.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) == "global::MintPlayer.Spark.Abstractions.Id<T>";
+    }
 }

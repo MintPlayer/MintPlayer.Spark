@@ -45,11 +45,10 @@ internal static class ContributionsEmitter
         w.Line("/// target or the property means migrating both.");
         w.Line("/// </remarks>");
         w.Line("[global::System.CodeDom.Compiler.GeneratedCode(\"MintPlayer.Spark.Contributions.SourceGenerators\", \"1\")]");
+        w.Line(NaturalIdKind);
         w.Open($"{access} partial class {m.ContributionName} : {interfaces}");
 
-        w.Line("/// <summary>The document id; see <see cref=\"GetId\"/>.</summary>");
-        w.Line("public string? Id { get; set; }");
-        w.Line();
+        WriteTypedId(w, m.ContributionName);
         w.Line("/// <inheritdoc />");
         w.Line("public string TargetId { get; set; } = \"\";");
         w.Line();
@@ -84,7 +83,8 @@ internal static class ContributionsEmitter
         w.Line($"/// <summary><c>{{targetId}}/{m.PropertyName}Contributions/{SlotPath(m)}User/{{userId}}</c>; the user id keeps its own slashes.</summary>");
         var parameters = string.Concat(m.Slots.Select(s => $", {s.Type} {s.ParameterName}"));
         w.Line($"public static string GetId(string targetId{parameters}, string userId)");
-        w.Line($"    => targetId + \"/{m.PropertyName}Contributions/\"{SlotConcat(m, s => s.ParameterName)}{UserSegment(m)} + userId;");
+        // Lower case, as every new id (#536 D7): the handler stores under this string, so it is the document id itself.
+        w.Line($"    => (targetId + \"/{m.PropertyName}Contributions/\"{SlotConcat(m, s => s.ParameterName)}{UserSegment(m)} + userId).ToLowerInvariant();");
         w.Line();
         var args = string.Concat(m.Slots.Select(s => $", {s.Name}"));
         w.Line($"string {HasNaturalId}.GetId() => GetId(TargetId{args}, ContributorId);");
@@ -99,11 +99,10 @@ internal static class ContributionsEmitter
         w.Line($"/// <c>{{targetId}}/{m.PropertyName}{(m.IsCollection ? "/" + SlotPath(m).TrimEnd('/') : "")}</c>.");
         w.Line("/// </summary>");
         w.Line("[global::System.CodeDom.Compiler.GeneratedCode(\"MintPlayer.Spark.Contributions.SourceGenerators\", \"1\")]");
+        w.Line(NaturalIdKind);
         w.Open($"{access} partial class {m.CurrentName} : global::MintPlayer.Spark.Contributions.ICurrentContribution, {HasNaturalId}");
 
-        w.Line("/// <summary>The document id; see <see cref=\"GetId\"/>.</summary>");
-        w.Line("public string? Id { get; set; }");
-        w.Line();
+        WriteTypedId(w, m.CurrentName);
         w.Line("/// <summary>The document id of the target entity (part of <see cref=\"Id\"/>).</summary>");
         w.Line("public string TargetId { get; set; } = \"\";");
         w.Line();
@@ -128,11 +127,31 @@ internal static class ContributionsEmitter
         w.Line($"/// <summary><c>{{targetId}}/{m.PropertyName}{path}</c>.</summary>");
         var parameters = string.Concat(m.Slots.Select(s => $", {s.Type} {s.ParameterName}"));
         w.Line($"public static string GetId(string targetId{parameters})");
-        w.Line($"    => targetId + \"/{m.PropertyName}{(m.IsCollection ? "/" : "")}\"{SlotConcat(m, s => s.ParameterName)};");
+        w.Line($"    => (targetId + \"/{m.PropertyName}{(m.IsCollection ? "/" : "")}\"{SlotConcat(m, s => s.ParameterName)}).ToLowerInvariant();");
         w.Line();
         var args = string.Concat(m.Slots.Select(s => $", {s.Name}"));
         w.Line($"string {HasNaturalId}.GetId() => GetId(TargetId{args});");
         w.Close();
+    }
+
+    private const string NaturalIdKind =
+        "[global::MintPlayer.Spark.Abstractions.IdKind(global::MintPlayer.Spark.Abstractions.SparkIdKind.Natural)]";
+
+    /// <summary>
+    /// The typed id and, beside it, the string identity RavenDB reads and writes (#536 D23 rule 6). Spark's
+    /// DocumentIdGenerator emits that member for a hand-written entity, but no generator sees another's output, so
+    /// this one writes it for the types it generates, in the same shape.
+    /// </summary>
+    private static void WriteTypedId(Writer w, string typeName)
+    {
+        w.Line("/// <summary>The document id; see <see cref=\"GetId\"/>.</summary>");
+        w.Line($"public global::MintPlayer.Spark.Abstractions.Id<{typeName}> Id {{ get; set; }}");
+        w.Line();
+        w.Line("/// <summary>The document id RavenDB reads and writes: <c>Id</c> as its canonical string (#536 D23 rule 6).</summary>");
+        w.Line("[global::System.ComponentModel.EditorBrowsable(global::System.ComponentModel.EditorBrowsableState.Never)]");
+        w.Line("[global::System.Text.Json.Serialization.JsonIgnore]");
+        w.Line($"private string? __DocumentId {{ get => Id.IsEmpty ? null : Id.Value; set => Id = global::MintPlayer.Spark.Abstractions.Id<{typeName}>.FromTrusted(value); }}");
+        w.Line();
     }
 
     private static void WriteSlotAndValueProperties(Writer w, ContributionModel m)
@@ -264,7 +283,7 @@ internal static class ContributionsEmitter
         w.Line("/// <inheritdoc />");
         w.Open($"public override {c} CreateContribution(string targetId, {e} row, string contributorId, global::System.DateTime updatedAtUtc)");
         w.Open($"return new {c}", trailer: "");
-        w.Line($"Id = ContributionId(targetId, row, contributorId),");
+        w.Line($"Id = global::MintPlayer.Spark.Abstractions.Id<{c}>.FromTrusted(ContributionId(targetId, row, contributorId)),");
         w.Line("TargetId = targetId,");
         w.Line("ContributorId = contributorId,");
         w.Line("UpdatedAt = updatedAtUtc,");
@@ -282,7 +301,7 @@ internal static class ContributionsEmitter
         w.Open($"public override {cur} CreateCurrent({c} contribution, int contributionCount)");
         var contributionSlots = string.Concat(m.Slots.Select(s => $", contribution.{s.Name}"));
         w.Open($"return new {cur}", trailer: "");
-        w.Line($"Id = {cur}.GetId(contribution.TargetId{contributionSlots}),");
+        w.Line($"Id = global::MintPlayer.Spark.Abstractions.Id<{cur}>.FromTrusted({cur}.GetId(contribution.TargetId{contributionSlots})),");
         w.Line("TargetId = contribution.TargetId,");
         w.Line("ContributorId = contribution.ContributorId,");
         w.Line($"ContributionId = {c}.GetId(contribution.TargetId{contributionSlots}, contribution.ContributorId),");

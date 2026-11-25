@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Replication.Abstractions;
 using System.Drawing;
 
@@ -21,10 +22,10 @@ namespace HR.Replicated;
             }
         });
     """)]
-public class Car
+public partial class Car
 {
     /// <summary>Identifier of the car, replicated read-only from the Fleet app.</summary>
-    public string? Id { get; set; }
+    public Id<Car> Id { get; set; }
     /// <summary>Registration plate of the car as maintained in the Fleet app.</summary>
     public string LicensePlate { get; set; } = string.Empty;
     /// <summary>Make and model of the car as maintained in the Fleet app.</summary>

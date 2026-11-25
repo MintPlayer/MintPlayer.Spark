@@ -1,9 +1,10 @@
+using MintPlayer.Spark.Abstractions;
 namespace DemoApp.Library.Entities;
 
-public class Company
+public partial class Company
 {
     /// <summary>Unique identifier of this company, assigned automatically when it is saved.</summary>
-    public string? Id { get; set; }
+    public Id<Company> Id { get; set; }
     /// <summary>Official name of the company as it should appear in lists and on people's records.</summary>
     public string Name { get; set; } = string.Empty;
     /// <summary>Public website address of the company, including <c>https://</c>.</summary>

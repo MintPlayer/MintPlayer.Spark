@@ -300,7 +300,7 @@ public class ContributionsSurfaceTests : SparkTestDriver
         var entry = host.Audit.Entries.Should().ContainSingle().Which;
         entry.Action.Should().Be("RemoveContributionVersion");
         entry.DocumentId.Should().Be(CurrentId("en", "Latn"));
-        entry.TargetId.Should().Be(SongId);
+        entry.TargetId.Should().Be(SongId.ToLowerInvariant(), "it is derived from the current's id, lower case since #536 (D7)");
         entry.AffectedDocumentIds.Should().Equal(ContributionId("en", "Latn", Alice), ContributionId("en", "Latn", Bob), ContributionId("en", "Latn", Carol));
 
         // Restoring one brings the slot back with that version.
