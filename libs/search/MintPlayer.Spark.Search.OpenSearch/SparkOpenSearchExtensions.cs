@@ -1,4 +1,5 @@
 using MintPlayer.Spark.Abstractions.Interceptors;
+using MintPlayer.Spark.Abstractions.Storage;
 
 namespace MintPlayer.Spark.Search.OpenSearch;
 
@@ -7,9 +8,17 @@ namespace MintPlayer.Spark.Search.OpenSearch;
 /// OpenSearch engine answers searches, kept in sync from the app's <c>Spark_Search</c> index, which keeps answering
 /// while the engine is unreachable.
 /// </summary>
-/// <remarks>Needs Spark Messaging (<c>spark.AddMessaging()</c>): hard deletes reach the engine as durable messages.</remarks>
+/// <remarks>
+/// Needs Spark Messaging (<c>spark.AddMessaging()</c>): hard deletes reach the engine as durable messages. Needs RavenDB:
+/// the sync reads RavenDB's <c>Spark_Search</c> index, which no other store has (#536 D44; on SQL the collections are
+/// searched directly).
+/// </remarks>
 public static class SparkOpenSearchExtensions
 {
+    /// <summary>The feature name the store check reports.</summary>
+    internal const string Feature = "Spark.Search.OpenSearch";
+
+    [SparkRequiresStore(Feature, Provider = SparkStoreProviders.RavenDb)]
     public static SparkSearchOptions UseOpenSearch(this SparkSearchOptions search, Action<SparkOpenSearchOptions> configure)
     {
         var options = new SparkOpenSearchOptions();
@@ -18,6 +27,7 @@ public static class SparkOpenSearchExtensions
 
         return search.UseProvider<OpenSearchSearchProvider>(services =>
         {
+            services.AddSingleton(new SparkStoreRequirement(Feature, SparkStoreCapabilities.None, SparkStoreProviders.RavenDb));
             services.AddSingleton(options);
             services.AddHttpClient(OpenSearchEngine.HttpClientName, client =>
             {

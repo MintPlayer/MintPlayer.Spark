@@ -490,7 +490,7 @@ rounds, milestones and status. Branch `feat/536-sql-server-provider`, draft PR #
     of "this plan expired". **Evidence:** `NeutralMcpPlanStoreTests` on all four databases; MCP suites on RavenDB
     181/181.
   - **Search stays on RavenDB for now:** its default provider reads the generated `Spark_Search` index. The SQL side is
-    `LIKE` search (S10), which the milestones place in Tier 3.
+    `LIKE` search (S10), which the milestones place in Tier 3. *(Done in M7f, D44.)*
   - **M6h (2026-11-25): Files on any store.** `FileUploadService`, `DeferredFileScanner` and `ImageVariantRegenerator`
     take `ISparkStore`:
     - The scanner's sweep and the regenerator stream `Query<T>()` without a filter. On RavenDB that is a collection
@@ -503,7 +503,39 @@ rounds, milestones and status. Branch `feat/536-sql-server-provider`, draft PR #
     - `SparkFileUpload` is registered as a stored type (D36).
     - **Evidence:** `NeutralFilesStoreTests` (claim + reconcile, the deferred sweep, the default store) 3/3 on all four
       databases; the Files suites on RavenDB 264/264 (28 skipped: cloud stores).
-  - **M7e (2026-11-25, IN PROGRESS): S16 map-reduce and multi-map views, then Moderation on any store.**
+  - **M7f (2026-11-25): S10, site search on any store (PRD D44).** RavenDB keeps the generated `Spark_Search` index and
+    `RavenSearchProvider`. Every other store gets `StoreSearchProvider` (`libs/search/MintPlayer.Spark.Search/`):
+    - A substring prefilter per word over the type's search fields (`LIKE`/`strpos`, a parameter per word, `IsDeleted`
+      excluded, `take × 4` rows), then whole words in memory with the term's own tokenizer, the last word a prefix
+      while suggesting. Ranking: whole words, type order, natural id.
+    - `SearchProviderSelector` picks RavenDB's provider or the store's from `ISparkStore.ProviderName`, also as the
+      engine's fallback.
+    - `AddSearch` requires no provider any more. `UseOpenSearch` requires RavenDB (requirement
+      "Spark.Search.OpenSearch"), because it syncs from the index; a custom `UseProvider<T>` engine is not bound.
+    - `features.json` unpins Search and OpenSearchDescription; OpenSearch stays RavenDB.
+    - **Not a view after all:** the earlier "S10 (search as a view)" note was wrong. Relational `KeyBesideRow` takes a
+      single top-level `Select`, the collections' keys have different shapes, and `Terms`/`@last-modified` have no
+      SQL equivalent (PRD D44).
+    - **Limits:** no fuzzy, no diacritic folding in the SQL prefilter, a `LIKE '%…%'` scan.
+    - **Found on the way:**
+      - A top-level fixture index named `Spark/Search` replaced the generated index in every RavenDB test host of the
+        assembly, and `RavenSearchProviderTests` saw 0 entries. The fixture is nested in `NeutralSearchTests` now and
+        armed through `configureIndexCatalog` on RavenDB only.
+      - `SparkStoreRequirementTests` asserted that InMemory lacks Revisions, which it has offered since M7d. The test
+        now uses FullTextSearch.
+    - **Evidence:**
+      - `NeutralSearchTests` 3/3 on InMemory, SQL Server, PostgreSQL and RavenDB.
+      - RavenDB search, OpenSearchDescription and store requirements: 28 passed, 9 skipped (OpenSearch container),
+        0 failed.
+      - Templates generator and manifest tests 17/17.
+      - `SearchStoreRequirementTests` + `SparkStoreRequirementTests` 8/8.
+    - **Still open from M6k:** the `sparkindex` item template stays a RavenDB index. A `SparkView` has no `[Search]`
+      companion, and D44 needs none: on SQL the collections are searched directly.
+    - **Next:**
+      - Fan-out views (`Likes_Count`).
+      - M8: IdentityProvider and Dashboards (S9).
+      - M9: `apps/SqlDemo` plus E2E, CI database legs, guides.
+  - **M7e (2026-11-25): S16 map-reduce and multi-map views, then Moderation on any store.**
     - **D43 (supersedes the S16 row's aggregate tables): a reduce is a `GROUP BY` view, computed on read.** The owner's
       goal equates RavenDB indexes with SQL views; a view is always current (no `WaitForNonStaleResults` needed), and
       set-based writes stay allowed (moderation's account deletion is a `DeleteWhere` on an aggregated collection,
@@ -593,7 +625,7 @@ rounds, milestones and status. Branch `feat/536-sql-server-provider`, draft PR #
       - **Evidence:** `NeutralReduceViewTests` 4/4 on all four databases (map view, stream, multi-map, reduce). The
         moderation suites (`Tests.Moderation` + `Issue467ModerationBatchTests`) **54/54 on InMemory, SQL Server,
         PostgreSQL and RavenDB** (2026-11-25).
-    - **Next:** S10 (search as a view, D44), then fan-out views, M8, M9.
+    - **Next:** S10 (done in M7f; not a view, D44), then fan-out views, M8, M9.
   - **M7d (2026-11-25): S8 revisions — History and SoftDelete on any store.** `ISparkRevisions` (Abstractions) is the
     neutral revisions API: `ConfigureAsync` (merge, returns the changed collections), `GetLimitsAsync`, `ListAsync`
     (newest first), `GetAsync` (scoped to the id and the type's collection; a delete revision has no content),
@@ -636,7 +668,8 @@ rounds, milestones and status. Branch `feat/536-sql-server-provider`, draft PR #
       package with no `<Package>/v<version>` tag, and the relational packages are `excluded` ("unreleased") in
       `features.json`. The store choices join after their first release (open item for the owner, not a rule to bend).
     - ⚠️ **The `sparkindex` item template stays a RavenDB index**: it has a `[Search]` companion, which a
-      `SparkView` does not support yet (S10). It becomes a view once S10 lands.
+      `SparkView` does not support yet (S10). It becomes a view once S10 lands. *(M7f: S10 landed without a search
+      view, D44, so this item stays open: the item template could become a `SparkView` without its `[Search]` part.)*
     - **Evidence:** `MintPlayer.Spark.Templates.Tests` 23/23.
   - **M6j (2026-11-25): Authorization on any store.** The package no longer pins RavenDB (`RequireStore` is gone):
     - `UserStore`, `RoleStore`, the account directory, `AgentRequestUser`, `AgentGrantStore` and

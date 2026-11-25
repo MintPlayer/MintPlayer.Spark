@@ -141,6 +141,9 @@ tags, and everything ships once the merged pull request is backported to `releas
 15. **`ISparkSession.Query<TRow, TView>()` on RavenDB reads the view's columns** (M7e). A map view used to hand back the
     source documents, so a computed column came back empty or as the document's field of the same name. A query the
     caller does not project itself is now read with `ProjectInto<TRow>()`.
+16. **`UseOpenSearch` declares that it needs RavenDB** (M7f, D44). The engine syncs from RavenDB's `Spark_Search`
+    index, so on another store the host refuses to start, naming "Spark.Search.OpenSearch". Before, the whole of
+    `AddSearch` was refused off RavenDB; now it runs on any store, as does a custom `UseProvider<T>` engine.
 
 ## New
 
@@ -236,3 +239,10 @@ tags, and everything ships once the merged pull request is backported to `releas
 17. **`ISparkSession.Query<TRow, TView>(TimeSpan waitForIndexes)`** (M7e): a read that must include every committed
     write. RavenDB waits for the index and throws `TimeoutException` when it is still stale; the other stores have
     nothing to wait for.
+18. **Site search on every store** (M7f, D44). RavenDB keeps its generated `Spark_Search` index (Lucene, fuzzy).
+    SQL Server, PostgreSQL and InMemory search each searchable type's collection directly:
+    - **Fields:** the label's attributes and `search.fields`.
+    - **Matching:** every word must be a whole word of them. The last word is completed while suggesting, and
+      soft-deleted rows are left out.
+    - **Order:** best first.
+    - **Limits:** no typo tolerance, and SQL does not fold accents in stored text.

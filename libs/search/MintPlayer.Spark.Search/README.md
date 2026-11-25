@@ -19,9 +19,13 @@ Opt a type in from its model JSON:
 - `fields` are searched besides the label's attributes. Only string and string-collection properties count.
 - Every hit is re-read through the type's list query as the caller, so query rights, row policies and redaction
   apply exactly as on the list page. A provider only proposes candidates.
-- By default the app's generated `Spark_Search` RavenDB index answers. The generator writes it into the application
-  (never a library) when the app references this package. An engine package (`MintPlayer.Spark.Search.OpenSearch`)
-  can take over; the RavenDB index stays the fallback while the engine is unreachable.
+- On RavenDB the app's generated `Spark_Search` index answers. The generator writes it into the application (never a
+  library) when the app references this package. An engine package (`MintPlayer.Spark.Search.OpenSearch`, RavenDB
+  only) can take over; the RavenDB index stays the fallback while the engine is unreachable.
+- On SQL Server, PostgreSQL and InMemory the collections answer (`StoreSearchProvider`, #536 D44). Each word is
+  matched case-insensitively as a substring in the database (`LIKE`, a query parameter per word). Then every word must
+  be a whole word of the label's attributes or `fields`; the last one may be a prefix while suggesting. There is no
+  typo tolerance (`fuzzy` is ignored), and SQL does not fold accents in the stored text.
 - With `AddPrerendering`, the SPA's results page (`/search?q=`) is server-rendered with its results.
 
 Endpoints (anonymous, rate limited per address): `GET /spark/search?q=&take=`, `GET /spark/search/suggest?q=`,
@@ -39,7 +43,7 @@ Endpoints (anonymous, rate limited per address): `GET /spark/search?q=&take=`, `
 | `MinTermLength` | 2 | A shorter term returns nothing. |
 | `RateLimit` / `RateLimitWindow` | 120 / 1 min | Per client address, across the three endpoints. |
 | `SearchPagePath` | `/search` | The SPA's results page. |
-| `UseProvider<T>(services)` | | Another `ISparkSearchProvider`; the RavenDB one stays the fallback. |
+| `UseProvider<T>(services)` | | Another `ISparkSearchProvider`; the store's own provider stays the fallback. |
 
 ## The provider contract
 

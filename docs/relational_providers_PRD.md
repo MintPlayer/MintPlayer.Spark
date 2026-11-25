@@ -200,7 +200,8 @@ answers are less demanding than the API list suggests.
 - **Indexes:**
   - No index anywhere uses `LoadDocument`, multi-map or fan-out.
   - ⚠️ **Corrected 2026-11-25:** `apps/MintPlayer`'s `Likes_Count` is a multi-map with fan-out and a reduce, and the
-    generated `Spark_Search` is a multi-map. Map-reduce and multi-map views are D43 (plan M7e).
+    generated `Spark_Search` is a multi-map. Map-reduce and multi-map views are D43 (plan M7e). Search does not
+    become a view: D44 searches the collections on every store but RavenDB.
   - **Only moderation has map-reduce:** 3 `group by` + `Sum` indexes (`ModerationIndexes.cs:44/:72/:126`), read with
     `WaitForNonStaleResults` (×10) for read-your-writes. This is the hardest part to port.
   - The rest are plain map indexes: messaging (by priority), identity_provider (2), replication (by status), and
@@ -559,6 +560,50 @@ the aggregate tables of the S16 row and the §"Map-reduce index" table row (*rou
 - Subscription worker, replication, storage, notifications, apps, webhooks and layering 663/663.
 - `DependencyOnboardingTamperEndToEndTests` and `NoAutoIndex*` 39/39.
 
+**D44 (S10, 2026-11-25): site search runs on every store. RavenDB keeps its index; the others search the
+collections.** `spark.AddSearch()` no longer requires RavenDB.
+- **RavenDB:** unchanged. It uses the generated `Spark_Search` multi-map index and `RavenSearchProvider`: Lucene,
+  fuzzy matching, a score.
+- **Every other store (SQL Server, PostgreSQL, memory):** `StoreSearchProvider` (`libs/search/…/StoreSearchProvider.cs`)
+  answers.
+  - **Fields:** for each searchable type it reads the type's search fields. These are the placeholders of
+    `search.label` (else of the breadcrumb), then `search.fields`, kept when they hold a string or a string
+    collection: the same fields the generator indexes.
+  - **The prefilter, in the store:** every word must be a lower-cased substring of one field, and `IsDeleted` rows are
+    excluded. Each word is a captured value, so SQL gets it as a parameter (`LIKE`, `strpos`), never as text. The
+    query reads `take × 4` rows.
+  - **The match, in memory:** every word must be a whole word of the text, split by `SearchTerms.Words`, the same
+    tokenizer as the term. The last word may be a prefix while typing (suggest).
+  - **Order:** more whole words first, then the type's order, then natural id order.
+  - The selector picks the store's provider from `ISparkStore.ProviderName`.
+- **Why not a multi-map view (D43):**
+  - Relational views key a row beside the row (`KeyBesideRow`), which supports a single top-level `Select` only.
+  - Ids from different collections have different key shapes (text, natural, integer, Guid converters), so a
+    `UNION ALL` over the collections has no common key column.
+  - The index row's `Terms` array and its `@last-modified` metadata have no SQL equivalent.
+  - The collections already answer the question without a second schema object to migrate.
+- **Limits:**
+  - No typo tolerance: `search.fuzzy` needs RavenDB.
+  - The SQL prefilter does not fold diacritics, so a stored `Café` is not found by `cafe` on SQL. The term is folded,
+    and memory folds both sides.
+  - The prefilter scans: it is a `LIKE '%word%'` on SQL. A full-text dialect (SQL Server `CONTAINS`, PostgreSQL
+    `tsvector`) stays the opt-in of §4.1 (O5).
+  - The OpenSearch engine syncs from RavenDB's `Spark_Search` index (spark_search_PRD D8), so `UseOpenSearch`
+    requires RavenDB (store requirement "Spark.Search.OpenSearch", also `[SparkRequiresStore]` for SPARK060). Another
+    engine (`UseProvider<T>`) is not bound to a store: it need not read that index.
+- **Template:** `features.json` no longer pins Search and OpenSearchDescription to RavenDB. The OpenSearch engine
+  stays pinned.
+
+*Evidence:*
+- `NeutralSearchTests` 3/3 on InMemory, SQL Server, PostgreSQL and RavenDB. It goes through the real endpoints
+  (`/spark/search`, `/suggest`, `/resolve`): a search field, words from different fields, a string collection, a
+  soft-deleted row, case, every-word-must-match, prefix only while suggesting, a substring that is not a word.
+- RavenDB search, OpenSearchDescription and store requirements: 28 passed, 9 skipped (the OpenSearch container
+  tests), 0 failed.
+- Templates generator and manifest tests 17/17.
+- `SearchStoreRequirementTests` and `SparkStoreRequirementTests` 8/8: search and a custom engine have no unmet
+  requirement on InMemory, OpenSearch does.
+
 **D3: the version is a `bigint` column on every table**, a concurrency token the provider increments. *(S4, §8.11:
 it is on every root table and covers the aggregate. A change to a child row (D25) or a join row (D26) moves the
 root's version, which EF alone does not do.)*
@@ -872,7 +917,8 @@ sites). With D23 the type is inferred: `Delete(person.CompanyId)` can only delet
 
 **Full-text search: `LIKE` first, an FTS dialect opt-in later** (the commercial-framework comparison, owner 2026-11-24).
 - The commercial framework runs production apps on SQL with `LIKE` only. It has no `CONTAINS`, `FREETEXT` or `tsvector` anywhere.
-- So `Search()` on relational databases translates to `LIKE` (escaped). S10 moves off the critical path.
+- So `Search()` on relational databases translates to `LIKE` (escaped). S10 moves off the critical path. *(Done
+  2026-11-25: site search on SQL is D44.)*
 - **Search ignores case on both databases** (found 2026-11-24). SQL Server's `LIKE` follows the column's collation,
   which is case-insensitive for ordinary columns (only key and FK columns are binary, D7). PostgreSQL's `LIKE` is
   case-sensitive under every collation, so its dialect emits `ILIKE`. A D31 test pins both.
@@ -1022,7 +1068,7 @@ contract (or reuses one), implemented by RavenDB, InMemory and `Relational`.
 | Indexes (neutral views) | yes | yes | S5, which gates M3 (round 1) |
 | Subscriptions | `ChangeStamp` cursor + tombstones | `ChangeStamp` cursor + tombstones | if S7/S14 hold |
 | Revisions | revisions table or temporal tables (O12) | revisions table | if S8 holds |
-| FullTextSearch | `LIKE`; FTS opt-in later | `LIKE`; `tsvector` opt-in later | S10, off the critical path |
+| FullTextSearch | `LIKE`; FTS opt-in later | `LIKE`; `tsvector` opt-in later | site search on `LIKE` + whole words in memory (D44); the capability itself stays RavenDB's |
 | Attachments | off at first | off at first | S11 |
 
 ## 5. Feature tiers
@@ -1809,7 +1855,8 @@ decided O14–O17, and O8 and O9 last. The plan §3 has the log.
 - ✅ **O3, demo app:** **a new `apps/SqlDemo`**, dedicated to the relational providers. It is the E2E proof, so it
   uses the ported feature libraries, not core alone.
 - ~~**O4, minimum SQL Server**~~ Answered by S1/S2: 2022 and 2025.
-- **O5, full-text:** deferred with S10. `LIKE` comes first (§3).
+- **O5, full-text:** `LIKE` came first (§3, D44: site search on every store). A full-text dialect (`CONTAINS`,
+  `tsvector`) stays deferred: it needs a full-text catalog or a generated column per searchable type.
 - ✅ **O6, MariaDB:** **dropped for now.** In scope: SQL Server and PostgreSQL. §7 risk 1 says when it returns.
 - ✅ **O7, order:** follows from O6. SQL Server and PostgreSQL are built together on the shared core.
 - **O8, PostgreSQL floor (decided 2026-11-24, owner): 17 and later, CI on 18.** 18 was needed only for the virtual

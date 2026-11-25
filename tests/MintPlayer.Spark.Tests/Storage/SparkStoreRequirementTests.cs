@@ -15,9 +15,9 @@ public class SparkStoreRequirementTests
     public void A_missing_capability_names_the_feature_and_the_capability()
     {
         var unmet = SparkStoreRequirementExtensions.Unmet(
-            [new SparkStoreRequirement("Spark.History", SparkStoreCapabilities.Revisions)], InMemory);
+            [new SparkStoreRequirement("Spark.Example", SparkStoreCapabilities.FullTextSearch)], InMemory);
 
-        unmet.Should().Equal("Spark.History needs Revisions; the InMemory provider doesn't offer it.");
+        unmet.Should().Equal("Spark.Example needs FullTextSearch; the InMemory provider doesn't offer it.");
     }
 
     [Fact]
@@ -32,8 +32,8 @@ public class SparkStoreRequirementTests
     [Fact]
     public void An_offered_capability_and_a_duplicate_declaration_are_met_or_reported_once()
     {
-        // Revisions: a capability the InMemory store lacks (it offers Subscriptions since #536 D39).
-        var requirement = new SparkStoreRequirement("Spark.History", SparkStoreCapabilities.Revisions);
+        // FullTextSearch: a capability the InMemory store lacks (it offers Subscriptions since #536 D39, Revisions since S8).
+        var requirement = new SparkStoreRequirement("Spark.Example", SparkStoreCapabilities.FullTextSearch);
 
         SparkStoreRequirementExtensions.Unmet(
             [new SparkStoreRequirement("Spark.Live", SparkStoreCapabilities.ChangeNotifications)], InMemory).Should().BeEmpty();

@@ -233,7 +233,6 @@
       "project": "search/MintPlayer.Spark.Search/MintPlayer.Spark.Search.csproj",
       "displayName": "Site search",
       "description": "Search across the types whose model JSON says \"search\": { \"enabled\": true }, with a results page at /search.",
-      "store": "RavenDB",
       "registration": "AddSearch",
       "client": [ "withSearch" ]
     },
@@ -242,7 +241,7 @@
       "flag": "opensearch",
       "project": "search/MintPlayer.Spark.Search.OpenSearch/MintPlayer.Spark.Search.OpenSearch.csproj",
       "displayName": "OpenSearch engine",
-      "description": "Answer site search from an OpenSearch engine when Search:OpenSearch:Uri is set; RavenDB stays the fallback.",
+      "description": "Answer site search from an OpenSearch engine when Search:OpenSearch:Uri is set; RavenDB's own search index stays the fallback.",
       "store": "RavenDB",
       "requires": [ "Search" ],
       "appsettings": "Search",
@@ -254,7 +253,6 @@
       "project": "search/MintPlayer.Spark.OpenSearchDescription/MintPlayer.Spark.OpenSearchDescription.csproj",
       "displayName": "Browser search engine",
       "description": "Let browsers add the app as a search engine (/opensearch.xml).",
-      "store": "RavenDB",
       "requires": [ "Search" ],
       "registration": "AddOpenSearchDescription",
       "client": [ "withOpenSearchDescription" ]

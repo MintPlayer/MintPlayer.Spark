@@ -24,7 +24,10 @@ internal static class SearchTerms
     }
 
     /// <summary>The term's words, lower-cased and diacritics folded, at most <see cref="MaxWords"/>.</summary>
-    public static IReadOnlyList<string> Words(string term)
+    public static IReadOnlyList<string> Words(string term) => Words(term, MaxWords);
+
+    /// <summary>The text's words as <see cref="Words(string)"/> splits them, at most <paramref name="maxWords"/>.</summary>
+    public static IReadOnlyList<string> Words(string term, int maxWords)
     {
         var words = new List<string>();
         var current = new StringBuilder();
@@ -36,7 +39,7 @@ internal static class SearchTerms
                 continue;
             }
             Flush();
-            if (words.Count == MaxWords)
+            if (words.Count == maxWords)
                 return words;
         }
         Flush();
@@ -44,7 +47,7 @@ internal static class SearchTerms
 
         void Flush()
         {
-            if (current.Length > 0 && words.Count < MaxWords)
+            if (current.Length > 0 && words.Count < maxWords)
                 words.Add(current.ToString());
             current.Clear();
         }
