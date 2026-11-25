@@ -83,8 +83,9 @@ public sealed class RelationalExpiration : ISparkStoreExpiration, IDisposable
 
     private static readonly MethodInfo SweepTableMethod = typeof(RelationalExpiration).GetMethod(nameof(SweepTable), BindingFlags.NonPublic | BindingFlags.Static)!;
 
+    /// <summary>Through <see cref="RelationalTombstones.DeleteAsync"/>, so an expired row leaves its tombstone (D6) and delete revision (S8).</summary>
     private static Task<int> SweepTable<T>(SparkDbContext db, DateTimeOffset now, CancellationToken cancellationToken) where T : class
-        => db.Set<T>().Where(x => EF.Property<DateTimeOffset?>(x, SparkDbContext.ExpiresProperty) <= now).ExecuteDeleteAsync(cancellationToken);
+        => RelationalTombstones.DeleteAsync<T>(db, q => q.Where(x => EF.Property<DateTimeOffset?>(x, SparkDbContext.ExpiresProperty) <= now), now, cancellationToken);
 
     public void Dispose() => Interlocked.Exchange(ref sweep, null)?.Dispose();
 }

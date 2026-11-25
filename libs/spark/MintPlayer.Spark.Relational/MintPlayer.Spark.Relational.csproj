@@ -30,7 +30,10 @@
 
 	<ItemGroup>
 		<PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="11.0.0" />
+		<!-- Revisions (#536 S8, O12) hold the document as RavenDB and the in-memory store serialize it: Newtonsoft.Json (MIT). -->
+		<PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
 		<ProjectReference Include="..\MintPlayer.Spark.Abstractions\MintPlayer.Spark.Abstractions.csproj" />
+		<Compile Include="..\Shared\Documents\*.cs" Link="Shared\%(Filename)%(Extension)" />
 	</ItemGroup>
 
 	<ItemGroup>

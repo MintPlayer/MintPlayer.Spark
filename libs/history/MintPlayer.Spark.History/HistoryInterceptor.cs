@@ -6,7 +6,7 @@ using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Authentication;
 using MintPlayer.Spark.Abstractions.Interceptors;
 using MintPlayer.Spark.Services;
-using Raven.Client.Documents.Session;
+using MintPlayer.Spark.Abstractions.Storage;
 
 namespace MintPlayer.Spark.History;
 
@@ -25,7 +25,7 @@ internal sealed partial class HistoryInterceptor : IBeforeSave, IBeforeDelete
 {
     [Inject] private readonly ISparkCurrentPrincipal currentUser;
     [Inject] private readonly IModelLoader modelLoader;
-    [Inject] private readonly IAsyncDocumentSession session;
+    [Inject] private readonly ISparkSession session;
     [Inject] private readonly HistoryRequestState state;
     [Inject] private readonly TimeProvider? timeProvider;
     [Inject] private readonly ISparkSyncInitiator? syncInitiator = null;
@@ -188,10 +188,10 @@ internal sealed partial class HistoryInterceptor : IBeforeSave, IBeforeDelete
     private bool RevisionsEnabled(Type entityType)
         => modelLoader.GetEntityTypeByClrType(entityType.FullName ?? entityType.Name)?.Revisions?.Enabled == true;
 
-    private string? ChangeVectorOf(object entity)
+    private string? VersionOf(object entity)
     {
-        // Not tracked by the request session (a create, before it is stored): no change vector to report.
-        try { return session.Advanced.GetChangeVectorFor(entity); }
+        // Not tracked by the request session (a create, before it is stored): no version to report.
+        try { return session.GetVersion(entity); }
         catch (InvalidOperationException) { return null; }
         catch (ArgumentException) { return null; }
     }
@@ -200,9 +200,9 @@ internal sealed partial class HistoryInterceptor : IBeforeSave, IBeforeDelete
     private bool HasChanged(object entity)
     {
         // RavenDB answers false for an entity it does not track; only a tracked one can be unchanged.
-        if (ChangeVectorOf(entity) is null)
+        if (VersionOf(entity) is null)
             return true;
-        try { return session.Advanced.HasChanged(entity); }
+        try { return session.HasChanged(entity); }
         catch (InvalidOperationException) { return true; }
         catch (ArgumentException) { return true; }
     }

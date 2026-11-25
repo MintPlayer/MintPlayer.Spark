@@ -37,6 +37,8 @@
 		<PackageReference Include="MintPlayer.SourceGenerators.Attributes" Version="13.1.2" />
 		<PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
 		<ProjectReference Include="..\MintPlayer.Spark.Abstractions\MintPlayer.Spark.Abstractions.csproj" />
+		<!-- How a document is serialized, shared with the relational providers' revisions (#536 S8). -->
+		<Compile Include="..\Shared\Documents\*.cs" Link="Shared\%(Filename)%(Extension)" />
 	</ItemGroup>
 
 	<ItemGroup>

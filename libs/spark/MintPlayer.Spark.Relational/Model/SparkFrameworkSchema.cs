@@ -20,6 +20,7 @@ public static class SparkFrameworkSchema
     public const string AtomicValues = "AtomicValues";
     public const string DataProtectionKeys = "DataProtectionKeys";
     public const string Tombstones = "Tombstones";
+    public const string Revisions = "Revisions";
     internal const int KeyLength = 450;
 
     /// <summary>Maps the framework tables. Keys compare bytes, as ids do (D7).</summary>
@@ -54,6 +55,16 @@ public static class SparkFrameworkSchema
         dialect.StampColumn(tombstone.Property(r => r.Stamp));
         tombstone.HasIndex(r => r.Stamp);
         tombstone.HasIndex(r => r.DeletedAt);
+
+        // S8 (O12): revisions, always present, empty until a collection keeps them (#536 SparkFramework0003).
+        var revision = modelBuilder.Entity<SparkRevisionRow>();
+        revision.ToTable(Revisions, Schema, t => t.ExcludeFromMigrations(excludeFromMigrations));
+        revision.HasKey(r => r.Id);
+        revision.Property(r => r.Id).ValueGeneratedNever();
+        revision.Property(r => r.Collection).HasMaxLength(KeyLength).UseCollation(keyCollation);
+        revision.Property(r => r.DocumentId).HasMaxLength(KeyLength).UseCollation(keyCollation);
+        revision.Property(r => r.ClrType).HasMaxLength(1024);
+        revision.HasIndex(r => new { r.Collection, r.DocumentId, r.At });
     }
 }
 

@@ -91,7 +91,7 @@ public class HistoryTests(ITestOutputHelper output) : RavenSparkTestDriver
         config.Default!.MinimumRevisionsToKeep.Should().Be(1, "the default is kept");
 
         // Idempotent: the same model again changes nothing, and sends nothing.
-        var changed = await RevisionsConfigurator.ApplyAsync(Store, host.Factory.GetService<IModelLoader>(), host.Factory.GetService<IOptions<SparkHistoryOptions>>().Value, NullLogger.Instance);
+        var changed = await RevisionsConfigurator.ApplyAsync(host.Factory.GetService<MintPlayer.Spark.Abstractions.Storage.ISparkRevisions>(), host.Factory.GetService<MintPlayer.Spark.Abstractions.Storage.ISparkStore>(), host.Factory.GetService<IModelLoader>(), host.Factory.GetService<IOptions<SparkHistoryOptions>>().Value, NullLogger.Instance);
         changed.Should().BeEmpty();
     }
 
@@ -120,7 +120,7 @@ public class HistoryTests(ITestOutputHelper output) : RavenSparkTestDriver
         config.Collections["HiOthers"].MinimumRevisionAgeToKeep.Should().Be(TimeSpan.FromDays(3));
         config.Default!.MinimumRevisionsToKeep.Should().Be(1, "the default is kept");
 
-        (await RevisionsConfigurator.ApplyAsync(Store, host.Factory.GetService<IModelLoader>(), host.Factory.GetService<IOptions<SparkHistoryOptions>>().Value, NullLogger.Instance))
+        (await RevisionsConfigurator.ApplyAsync(host.Factory.GetService<MintPlayer.Spark.Abstractions.Storage.ISparkRevisions>(), host.Factory.GetService<MintPlayer.Spark.Abstractions.Storage.ISparkStore>(), host.Factory.GetService<IModelLoader>(), host.Factory.GetService<IOptions<SparkHistoryOptions>>().Value, NullLogger.Instance))
             .Should().BeEmpty("the same options again send nothing");
     }
 
@@ -495,7 +495,7 @@ public class HistoryTests(ITestOutputHelper output) : RavenSparkTestDriver
     private string NotesCollection => Store.Conventions.FindCollectionName(typeof(HiNote));
 
     private async Task<RevisionsConfiguration> ReadRevisionsConfigAsync()
-        => (await Store.Maintenance.SendAsync(new RevisionsConfigurator.GetRevisionsConfigurationOperation()))!;
+        => (await Store.Maintenance.SendAsync(new MintPlayer.Spark.Storage.Raven.RavenSparkRevisions.GetRevisionsConfigurationOperation()))!;
 
     private async Task<HiNote> SeedNoteAsync(string title, string? owner = null, string? secret = null)
     {

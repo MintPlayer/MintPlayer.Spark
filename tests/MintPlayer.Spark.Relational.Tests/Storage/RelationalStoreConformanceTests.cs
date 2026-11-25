@@ -116,6 +116,38 @@ public abstract class RelationalSubscriptionsConformanceTests : SparkSubscriptio
     }
 }
 
+/// <summary>The revisions suite against a relational provider's <c>spark.Revisions</c> table (#536 S8).</summary>
+public abstract class RelationalRevisionsConformanceTests : SparkRevisionsConformanceTests
+{
+    private RelationalTestDatabase? database;
+
+    protected abstract RelationalTestServer? Server { get; }
+
+    protected override async Task<(ISparkStore Store, ISparkRevisions Revisions)?> CreateAsync()
+    {
+        if (Server is not { } server)
+            return null;
+        database = await RelationalTestDatabase.CreateAsync(server, [typeof(RevDoc), typeof(RevOther)]);
+        return (database.Store, new RelationalSparkRevisions(database.Store));
+    }
+
+    public override async Task DisposeAsync()
+    {
+        if (database is not null)
+            await database.DisposeAsync();
+    }
+}
+
+public sealed class SqlServerRevisionsConformanceTests : RelationalRevisionsConformanceTests
+{
+    protected override RelationalTestServer? Server => RelationalTestServer.SqlServer;
+}
+
+public sealed class PostgreSqlRevisionsConformanceTests : RelationalRevisionsConformanceTests
+{
+    protected override RelationalTestServer? Server => RelationalTestServer.PostgreSql;
+}
+
 public sealed class SqlServerSubscriptionsConformanceTests : RelationalSubscriptionsConformanceTests
 {
     protected override RelationalTestServer? Server => RelationalTestServer.SqlServer;

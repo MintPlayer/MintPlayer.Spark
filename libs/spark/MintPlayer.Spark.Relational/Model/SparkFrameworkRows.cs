@@ -38,6 +38,31 @@ public sealed class SparkTombstoneRow
     public DateTimeOffset DeletedAt { get; set; }
 }
 
+/// <summary>
+/// One revision of a document (#536 S8, O12): table <c>spark.Revisions</c>, written in the writing transaction. A delete
+/// revision has no <see cref="Json"/>.
+/// </summary>
+public sealed class SparkRevisionRow
+{
+    public Guid Id { get; set; }
+
+    /// <summary>The document's collection (its table name).</summary>
+    public string Collection { get; set; } = string.Empty;
+
+    public string DocumentId { get; set; } = string.Empty;
+
+    /// <summary>The document's version the revision holds (D3); a delete revision's is the deleted version + 1.</summary>
+    public long Version { get; set; }
+
+    public DateTimeOffset At { get; set; }
+
+    /// <summary>The CLR type the JSON reads back as (the aggregate root's concrete type).</summary>
+    public string? ClrType { get; set; }
+
+    /// <summary>The whole aggregate (row, child rows, reference lists) as Spark serializes a document.</summary>
+    public string? Json { get; set; }
+}
+
 /// <summary>A compare-and-swap value (S15, <c>ISparkAtomicValues</c>): table <c>SparkAtomicValues</c>.</summary>
 public sealed class SparkAtomicValueRow
 {

@@ -1815,6 +1815,10 @@ decided O14–O17, and O8 and O9 last. The plan §3 has the log.
   - Written in the save's transaction. Set-based writes on an opted-in type take the changed rows from `OUTPUT`
     (SQL Server) or `RETURNING` (PostgreSQL) and insert their revisions in the same transaction. Retention by count
     and age, and `PurgeOnDelete`, run as the type configures.
+  - **Implemented (M7d, 2026-11-25)** behind `ISparkRevisions`, one implementation per store. Deviation: set-based
+    updates read the changed rows back by key inside the transaction (one SELECT after the chunked UPDATE) instead of
+    `OUTPUT`/`RETURNING`, which EF's `ExecuteUpdate` does not expose; same atomicity, one extra round trip, and only
+    for opted-in types. ⚠️ Relational versions count per document and restart after a delete and re-create.
   - **The table is always present** in the provider's framework schema, empty until a type opts in (the owner left
     this to me). The relational provider implements the `Revisions` capability itself, as the RavenDB server does,
     so soft_delete and files find it whether or not History is installed. One framework schema with one version

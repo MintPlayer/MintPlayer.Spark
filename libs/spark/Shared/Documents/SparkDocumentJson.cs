@@ -3,15 +3,15 @@ using Newtonsoft.Json;
 using Newtonsoft.Json.Converters;
 using MintPlayer.Spark.Abstractions.Reflection;
 
-namespace MintPlayer.Spark.Storage.InMemory;
+namespace MintPlayer.Spark.Storage;
 
 /// <summary>
-/// How the in-memory store serializes a document. It follows the RavenDB client's conventions, so an entity reads back
+/// How a document is serialized by the in-memory store, and by the relational providers' revisions (#536 S8). It follows the RavenDB client's conventions, so an entity reads back
 /// the same from either provider: Newtonsoft.Json, enums as their names, <see cref="Color"/> as <c>#rrggbb</c> (Spark's
 /// RavenDB converter), and collections replaced rather than appended to on read. Each load deserializes a fresh
 /// instance, which is what keeps sessions from sharing state.
 /// </summary>
-internal static class InMemoryJson
+internal static class SparkDocumentJson
 {
     public static readonly JsonSerializerSettings Settings = new()
     {

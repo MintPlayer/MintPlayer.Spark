@@ -38,6 +38,7 @@
     <Compile Include="..\MintPlayer.Spark.Tests\Storage\SparkStoreConformanceTests.cs" Link="Storage\SparkStoreConformanceTests.cs" />
     <Compile Include="..\MintPlayer.Spark.Tests\Storage\SparkAtomicValuesConformanceTests.cs" Link="Storage\SparkAtomicValuesConformanceTests.cs" />
     <Compile Include="..\MintPlayer.Spark.Tests\Storage\SparkSubscriptionsConformanceTests.cs" Link="Storage\SparkSubscriptionsConformanceTests.cs" />
+    <Compile Include="..\MintPlayer.Spark.Tests\Storage\SparkRevisionsConformanceTests.cs" Link="Storage\SparkRevisionsConformanceTests.cs" />
   </ItemGroup>
 
   <ItemGroup>

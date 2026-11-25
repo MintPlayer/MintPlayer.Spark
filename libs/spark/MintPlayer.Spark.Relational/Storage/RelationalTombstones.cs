@@ -26,23 +26,52 @@ internal static class RelationalTombstones
         where T : class
     {
         var table = db.SparkModel.RequireTable(typeof(T));
+        var revisions = db.Setup.RevisionsOf(table.Name);
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
-        var x = Expression.Parameter(typeof(T), "x");
-        var key = Expression.Lambda<Func<T, object>>(Expression.Convert(Expression.Property(Expression.Convert(x, table.Root), table.IdProperty), typeof(object)), x);
-        var keys = await filter(db.Set<T>()).Select(key).ToListAsync(cancellationToken);
+        var rows = await filter(db.Set<T>().AsNoTracking()).Select(KeyAndVersion<T>(table)).ToListAsync(cancellationToken);
 
         var deleted = 0;
-        foreach (var chunk in keys.Chunk(Chunk))
+        var touched = new List<RelationalRevisions.Touched>();
+        foreach (var chunk in rows.Chunk(Chunk))
         {
-            var count = await RelationalSparkSession.WhereKeyIn(filter(db.Set<T>()), table, chunk).ExecuteDeleteAsync(cancellationToken);
+            var count = await RelationalSparkSession.WhereKeyIn(filter(db.Set<T>()), table, [.. chunk.Select(r => r.Key)]).ExecuteDeleteAsync(cancellationToken);
             if (count == 0)
                 continue;
             deleted += count;
-            db.AddRange(chunk.Select(k => For(table, SparkIdValues.ToText(k)!, now)));
+            foreach (var row in chunk)
+            {
+                var id = SparkIdValues.ToText(row.Key)!;
+                db.Add(For(table, id, now));
+                // S8: a delete revision (or the purge), like the unit of work's delete.
+                if (revisions is null)
+                    continue;
+                if (!revisions.PurgeOnDelete)
+                    db.Add(RelationalRevisions.Deleted(table, id, row.Version, now));
+                touched.Add(new(table.Name, id, revisions, Deleted: true));
+            }
         }
         if (deleted > 0)
             await db.SaveChangesAsync(cancellationToken);
+        await RelationalRevisions.ApplyAsync(db, touched, now, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return deleted;
     }
+
+    /// <summary><c>x =&gt; new KeyVersion { Key = (object)x.Id, Version = EF.Property&lt;long&gt;(x, "Version") }</c>.</summary>
+    public static Expression<Func<T, KeyVersion>> KeyAndVersion<T>(SparkTable table)
+    {
+        var x = Expression.Parameter(typeof(T), "x");
+        return Expression.Lambda<Func<T, KeyVersion>>(Expression.MemberInit(Expression.New(typeof(KeyVersion)),
+            Expression.Bind(typeof(KeyVersion).GetProperty(nameof(KeyVersion.Key))!,
+                Expression.Convert(Expression.Property(Expression.Convert(x, table.Root), table.IdProperty), typeof(object))),
+            Expression.Bind(typeof(KeyVersion).GetProperty(nameof(KeyVersion.Version))!,
+                Expression.Call(typeof(EF), nameof(EF.Property), [typeof(long)], x, Expression.Constant(SparkDbContext.VersionProperty)))), x);
+    }
+}
+
+/// <summary>A row's key and version, read before a set-based write (S8).</summary>
+internal sealed class KeyVersion
+{
+    public object Key { get; set; } = default!;
+    public long Version { get; set; }
 }

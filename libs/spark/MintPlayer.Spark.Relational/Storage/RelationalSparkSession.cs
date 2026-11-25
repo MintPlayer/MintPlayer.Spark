@@ -404,21 +404,38 @@ public sealed partial class RelationalSparkSession : ISparkSession
     /// What the save writes, for <see cref="ISparkChangeFeed.OnCommitted"/> (D6): each stored root with its new version,
     /// each deleted one with none. A deleted root also gets its tombstone row here, in the same transaction.
     /// </summary>
-    private List<SparkStoreChange> CommittedChanges()
+    /// <remarks>
+    /// S8: a root of a table that keeps revisions also gets its revision row here (the whole aggregate, after the version
+    /// moved), or a delete revision; <paramref name="touched"/> collects them for the pruning after the write.
+    /// </remarks>
+    private List<SparkStoreChange> CommittedChanges(DateTimeOffset now, List<RelationalRevisions.Touched> touched)
     {
         var changes = new List<SparkStoreChange>();
-        var now = DateTimeOffset.UtcNow;
         foreach (var entry in Roots().ToList())
         {
             var table = Model.RequireTable(entry.Metadata.ClrType);
+            var revisions = db.Setup.RevisionsOf(table.Name);
             switch (entry.State)
             {
                 case EntityState.Added or EntityState.Modified:
-                    changes.Add(new(GetId(entry.Entity), table.Name, FormatVersion((long)entry.Property(SparkDbContext.VersionProperty).CurrentValue!)));
+                    var id = GetId(entry.Entity);
+                    var version = (long)entry.Property(SparkDbContext.VersionProperty).CurrentValue!;
+                    changes.Add(new(id, table.Name, FormatVersion(version)));
+                    if (revisions is not null && id is not null)
+                    {
+                        db.Add(RelationalRevisions.Of(table, id, version, entry.Entity, now));
+                        touched.Add(new(table.Name, id, revisions, Deleted: false));
+                    }
                     break;
-                case EntityState.Deleted when GetId(entry.Entity) is { } id:
-                    changes.Add(new(id, table.Name, null));
-                    db.Add(RelationalTombstones.For(table, id, now));
+                case EntityState.Deleted when GetId(entry.Entity) is { } deletedId:
+                    changes.Add(new(deletedId, table.Name, null));
+                    db.Add(RelationalTombstones.For(table, deletedId, now));
+                    if (revisions is not null)
+                    {
+                        if (!revisions.PurgeOnDelete)
+                            db.Add(RelationalRevisions.Deleted(table, deletedId, (long)entry.Property(SparkDbContext.VersionProperty).OriginalValue!, now));
+                        touched.Add(new(table.Name, deletedId, revisions, Deleted: true));
+                    }
                     break;
             }
         }
@@ -453,9 +470,12 @@ public sealed partial class RelationalSparkSession : ISparkSession
             var changedOwners = await WriteJoinRowsAsync(cancellationToken);
             MoveVersions(changedOwners);
             await ApplyReservationsAsync(cancellationToken);
-            changes = CommittedChanges();
+            var now = DateTimeOffset.UtcNow;
+            var touched = new List<RelationalRevisions.Touched>();
+            changes = CommittedChanges(now, touched);
 
             await WriteAsync(cancellationToken);
+            await RelationalRevisions.ApplyAsync(db, touched, now, cancellationToken);
             await transaction.CommitAsync(cancellationToken);
         }
         finally
@@ -463,8 +483,8 @@ public sealed partial class RelationalSparkSession : ISparkSession
             quiet = false;
         }
         db.ChangeTracker.AcceptAllChanges();
-        foreach (var tombstone in db.ChangeTracker.Entries<SparkTombstoneRow>().ToList())
-            tombstone.State = EntityState.Detached;
+        foreach (var written in db.ChangeTracker.Entries().Where(e => e.Entity is SparkTombstoneRow or SparkRevisionRow).ToList())
+            written.State = EntityState.Detached;
         store.RaiseCommitted(changes);
         expectations.Clear();
         unversionedDeletes.Clear();
@@ -812,15 +832,75 @@ public sealed partial class RelationalSparkSession : ISparkSession
                 throw new NotSupportedException($"UpdateWhere sets top-level members on the relational providers; '{setter.Path}' is inside a JSON column.");
 
         Request();
+        var table = Model.RequireTable(typeof(T));
+        if (db.Setup.RevisionsOf(table.Name) is { } revisions)
+        {
+            // S8: in a unit of work of its own, so the session's pending changes stay pending.
+            using var own = new RelationalSparkSession(store.NewContext(), store);
+            return await own.UpdateWithRevisionsAsync(table, revisions, predicate, setters, cancellationToken);
+        }
         try
         {
-            return await JoinRewriter.Rewrite(db, db.Set<T>().Where(predicate)).ExecuteUpdateAsync(builder =>
+            return await JoinRewriter.Rewrite(db, db.Set<T>().Where(predicate)).ExecuteUpdateAsync(builder => Apply(builder, setters), cancellationToken);
+        }
+        catch (DbUpdateException ex)
+        {
+            throw SparkConstraintErrors.Translate(db, db.Setup.Dialect, ex);
+        }
+    }
+
+    private static void Apply<T>(UpdateSettersBuilder<T> builder, SparkSetters<T> setters) where T : class
+    {
+        foreach (var setter in setters.Setters)
+            SetPropertyMethod.MakeGenericMethod(typeof(T), setter.Members[0].PropertyType)
+                .Invoke(null, [builder, setter.Members[0], setter.Value]);
+        builder.SetProperty(x => EF.Property<long>(x, SparkDbContext.VersionProperty), x => EF.Property<long>(x, SparkDbContext.VersionProperty) + 1);
+    }
+
+    /// <summary>
+    /// S8's set-based update on a table that keeps revisions, in one transaction: the matching rows' keys and versions are
+    /// read (locked by the update that follows), each chunk is updated with <c>predicate AND key IN (…)</c>, and every row
+    /// whose version moved is read back whole and written as a revision.
+    /// </summary>
+    private async Task<long> UpdateWithRevisionsAsync<T>(SparkTable table, SparkRevisionSettings revisions, Expression<Func<T, bool>> predicate,
+        SparkSetters<T> setters, CancellationToken cancellationToken) where T : class
+    {
+        try
+        {
+            await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+            var before = await JoinRewriter.Rewrite(db, db.Set<T>().AsNoTracking().Where(predicate)).Select(RelationalTombstones.KeyAndVersion<T>(table)).ToListAsync(cancellationToken);
+            if (before.Count == 0)
+                return 0;
+            var keys = before.Select(k => k.Key).ToList();
+            var versionBefore = before.ToDictionary(k => SparkIdValues.ToText(k.Key)!, k => k.Version, StringComparer.OrdinalIgnoreCase);
+
+            long updated = 0;
+            foreach (var chunk in keys.Chunk(500))
+                updated += await WhereKeyIn(JoinRewriter.Rewrite(db, db.Set<T>().Where(predicate)), table, chunk)
+                    .ExecuteUpdateAsync(builder => Apply(builder, setters), cancellationToken);
+
+            var now = DateTimeOffset.UtcNow;
+            var touched = new List<RelationalRevisions.Touched>();
+            foreach (var chunk in keys.Chunk(500))
             {
-                foreach (var setter in setters.Setters)
-                    SetPropertyMethod.MakeGenericMethod(typeof(T), setter.Members[0].PropertyType)
-                        .Invoke(null, [builder, setter.Members[0], setter.Value]);
-                builder.SetProperty(x => EF.Property<long>(x, SparkDbContext.VersionProperty), x => EF.Property<long>(x, SparkDbContext.VersionProperty) + 1);
-            }, cancellationToken);
+                var rows = await WhereKeyIn(db.Set<T>(), table, chunk).ToListAsync(cancellationToken);
+                await HydrateAsync(rows, cancellationToken);
+                foreach (var row in rows)
+                {
+                    if (GetId(row) is not { } id)
+                        continue;
+                    var version = (long)db.Entry(row).Property(SparkDbContext.VersionProperty).CurrentValue!;
+                    var rowKey = table.IdProperty.GetValue(row);
+                    if (rowKey is not null && versionBefore.TryGetValue(SparkIdValues.ToText(rowKey)!, out var was) && was == version)
+                        continue; // stopped matching before the update reached it
+                    db.Add(RelationalRevisions.Of(table, id, version, row, now));
+                    touched.Add(new(table.Name, id, revisions, Deleted: false));
+                }
+            }
+            await db.SaveChangesAsync(cancellationToken);
+            await RelationalRevisions.ApplyAsync(db, touched, now, cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+            return updated;
         }
         catch (DbUpdateException ex)
         {

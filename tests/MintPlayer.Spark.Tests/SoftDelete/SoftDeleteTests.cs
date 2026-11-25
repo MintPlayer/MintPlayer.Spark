@@ -1034,7 +1034,7 @@ internal sealed class SdRefusingRevisions : ISoftDeleteRevisions
 {
     public Task EnsureCanDeleteAsync() => throw new InvalidOperationException("Purge refused: the probe was not allowed.");
 
-    public Task<long> DeleteAsync(string id) => throw new InvalidOperationException("Must not be reached: the probe refused.");
+    public Task<long> DeleteAsync(Type entityType, string id) => throw new InvalidOperationException("Must not be reached: the probe refused.");
 }
 
 /// <summary>A custom action that records the rows it ran on.</summary>

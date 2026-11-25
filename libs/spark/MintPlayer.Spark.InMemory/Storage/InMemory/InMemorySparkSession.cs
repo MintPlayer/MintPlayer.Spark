@@ -220,14 +220,14 @@ internal sealed class InMemorySparkSession : ISparkSession
             return null;
 
         var type = requested.IsAssignableFrom(entry.ClrType) ? entry.ClrType : requested;
-        var entity = InMemoryJson.Deserialize(entry.Json, type);
+        var entity = SparkDocumentJson.Deserialize(entry.Json, type);
         InMemoryConventions.WriteId(entity, entry.Id);
         if (streaming is not null)
         {
             streaming[entity] = (entry.Id, entry.Version);
             return entity;
         }
-        tracked[entry.Id] = new Tracked(entity, InMemoryJson.Serialize(entity), entry.Version, entry.ExpiresAt);
+        tracked[entry.Id] = new Tracked(entity, SparkDocumentJson.Serialize(entity), entry.Version, entry.ExpiresAt);
         ids[entity] = entry.Id;
         return entity;
     }
@@ -320,12 +320,12 @@ internal sealed class InMemorySparkSession : ISparkSession
                     writes.Add(new InMemoryDatabase.Remove(id, Expected(row)));
                 continue;
             }
-            if (row.Snapshot is not null && row.ExpectedVersion is null && !row.ExpiryChanged && InMemoryJson.Serialize(row.Entity) == row.Snapshot)
+            if (row.Snapshot is not null && row.ExpectedVersion is null && !row.ExpiryChanged && SparkDocumentJson.Serialize(row.Entity) == row.Snapshot)
                 continue;
 
             // Like RavenDB's OnBeforeStore: the hook may still change the entity, so it serializes afterwards.
             BeforeStore?.Invoke(row.Entity);
-            var json = InMemoryJson.Serialize(row.Entity);
+            var json = SparkDocumentJson.Serialize(row.Entity);
             writes.Add(new InMemoryDatabase.Put(id, Expected(row), json, row.Entity.GetType(), GetCollectionName(row.Entity.GetType()), row.ExpiresAt));
             stored.Add((row, json));
         }
@@ -370,7 +370,7 @@ internal sealed class InMemorySparkSession : ISparkSession
             var target = read(row) as ICollection<TItem>
                 ?? throw new InvalidOperationException($"Cannot append to {list} of '{id}': the list is null or fixed-size.");
             target.Add(item);
-            return InMemoryJson.Serialize(row);
+            return SparkDocumentJson.Serialize(row);
         }));
     }
 
@@ -397,7 +397,7 @@ internal sealed class InMemorySparkSession : ISparkSession
                 return null;
             foreach (var setter in setters.Setters)
                 setter.ApplyTo(row);
-            return InMemoryJson.Serialize(row);
+            return SparkDocumentJson.Serialize(row);
         }));
     }
 
@@ -405,7 +405,7 @@ internal sealed class InMemorySparkSession : ISparkSession
     private static T? Read<T>(InMemoryDatabase.Entry entry) where T : class
     {
         var type = typeof(T).IsAssignableFrom(entry.ClrType) ? entry.ClrType : typeof(T);
-        var row = InMemoryJson.Deserialize(entry.Json, type);
+        var row = SparkDocumentJson.Deserialize(entry.Json, type);
         InMemoryConventions.WriteId(row, entry.Id);
         return row as T;
     }
@@ -484,7 +484,7 @@ internal sealed class InMemorySparkSession : ISparkSession
             || row.Snapshot is null
             || row.Deleted
             || row.ExpiryChanged
-            || InMemoryJson.Serialize(entity) != row.Snapshot;
+            || SparkDocumentJson.Serialize(entity) != row.Snapshot;
 
     public IReadOnlyCollection<SparkTrackedEntity> TrackedEntities
         => [.. tracked.Values.Select(row => new SparkTrackedEntity(row.Entity, row.Deleted))];

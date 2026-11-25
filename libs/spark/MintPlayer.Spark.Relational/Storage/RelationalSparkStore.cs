@@ -67,7 +67,7 @@ public sealed class RelationalSparkStore : ISparkStore
     public string ProviderName => Setup.Dialect.ProviderName;
 
     /// <summary>D6: the change feed (<see cref="RelationalSparkChangeFeed"/>) over the stamps and the tombstones.</summary>
-    public SparkStoreCapabilities Capabilities => SparkStoreCapabilities.ChangeNotifications | SparkStoreCapabilities.Subscriptions;
+    public SparkStoreCapabilities Capabilities => SparkStoreCapabilities.ChangeNotifications | SparkStoreCapabilities.Subscriptions | SparkStoreCapabilities.Revisions;
 
     /// <summary>Raised after a session's commit with what it wrote (<see cref="ISparkChangeFeed.OnCommitted"/>).</summary>
     internal event Action<IReadOnlyList<SparkStoreChange>>? Committed;

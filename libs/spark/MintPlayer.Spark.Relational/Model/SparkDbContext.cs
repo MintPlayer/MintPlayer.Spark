@@ -35,6 +35,17 @@ public sealed class SparkContextSetup
     /// The model built before that is the render model, whose views carry no SQL; it is a different cached EF model.
     /// </summary>
     public IReadOnlyDictionary<string, SparkViewSql>? RenderedViews { get; internal set; }
+
+    /// <summary>
+    /// Which tables keep revisions (#536 S8), by table name, as <see cref="Abstractions.Storage.ISparkRevisions.ConfigureAsync"/>
+    /// set them. Held here so every write path, in any context of the store, finds them.
+    /// </summary>
+    internal System.Collections.Concurrent.ConcurrentDictionary<string, Abstractions.Storage.SparkRevisionSettings> Revisions { get; }
+        = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>The settings of <paramref name="table"/> when it keeps revisions; otherwise <see langword="null"/>.</summary>
+    internal Abstractions.Storage.SparkRevisionSettings? RevisionsOf(string table)
+        => Revisions.TryGetValue(table, out var settings) && settings.Enabled ? settings : null;
 }
 
 /// <summary>A view's SQL, and the tables it reads (which the differ watches).</summary>

@@ -92,6 +92,7 @@ public static class SparkRelationalExtensions
         services.AddSingleton<ISparkAtomicValues>(sp => new RelationalAtomicValues(sp.GetRequiredService<RelationalSparkStore>()));
         services.AddSingleton<ISparkIntegerIdSource>(sp => new RelationalIntegerIdSource(sp.GetRequiredService<ISparkAtomicValues>(), sp.GetRequiredService<RelationalSparkStore>()));
         services.AddSingleton<ISparkDataProtectionKeyStore>(sp => new RelationalDataProtectionKeyStore(sp.GetRequiredService<RelationalSparkStore>()));
+        services.AddSingleton<ISparkRevisions>(sp => new RelationalSparkRevisions(sp.GetRequiredService<RelationalSparkStore>()));
         // D6: live updates over the stamps and the tombstones (M4e).
         services.AddSingleton<ISparkChangeFeed>(sp => new RelationalSparkChangeFeed(
             sp.GetRequiredService<RelationalSparkStore>(), options.ChangeFeedPollInterval,

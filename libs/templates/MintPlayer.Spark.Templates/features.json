@@ -67,7 +67,6 @@
       "project": "history/MintPlayer.Spark.History/MintPlayer.Spark.History.csproj",
       "displayName": "History",
       "description": "Revisions, audit stamping and revert.",
-      "store": "RavenDB",
       "registration": "AddHistory",
       "client": [ "withHistory" ]
     },
@@ -77,7 +76,6 @@
       "project": "soft_delete/MintPlayer.Spark.SoftDelete/MintPlayer.Spark.SoftDelete.csproj",
       "displayName": "Soft delete",
       "description": "Deleting marks a record deleted; restore and purge later.",
-      "store": "RavenDB",
       "registration": "AddSoftDelete",
       "client": [ "withSoftDelete" ]
     },

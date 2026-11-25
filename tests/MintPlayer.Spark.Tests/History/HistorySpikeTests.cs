@@ -217,7 +217,7 @@ public class HistorySpikeTests(ITestOutputHelper output) : RavenSparkTestDriver
     [Fact]
     public async Task The_configurators_licence_read_is_the_status_Type()
     {
-        var type = await Store.Maintenance.Server.SendAsync(new MintPlayer.Spark.History.RevisionsConfigurator.GetLicenceTypeOperation());
+        var type = await Store.Maintenance.Server.SendAsync(new MintPlayer.Spark.Storage.Raven.RavenSparkRevisions.GetLicenceTypeOperation());
         output.WriteLine($"licence type read by the configurator: {type}");
 
         type.Should().NotBeNullOrEmpty();

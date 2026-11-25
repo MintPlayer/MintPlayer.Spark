@@ -503,6 +503,31 @@ rounds, milestones and status. Branch `feat/536-sql-server-provider`, draft PR #
     - `SparkFileUpload` is registered as a stored type (D36).
     - **Evidence:** `NeutralFilesStoreTests` (claim + reconcile, the deferred sweep, the default store) 3/3 on all four
       databases; the Files suites on RavenDB 264/264 (28 skipped: cloud stores).
+  - **M7d (2026-11-25): S8 revisions — History and SoftDelete on any store.** `ISparkRevisions` (Abstractions) is the
+    neutral revisions API: `ConfigureAsync` (merge, returns the changed collections), `GetLimitsAsync`, `ListAsync`
+    (newest first), `GetAsync` (scoped to the id and the type's collection; a delete revision has no content),
+    `EnsureCanDeleteAsync`, `DeleteAsync`. Capability `SparkStoreCapabilities.Revisions`; History and SoftDelete
+    `RequireStore` it with no provider pin, and `features.json` no longer pins them to RavenDB.
+    - **RavenDB** (`RavenSparkRevisions`): versions are change vectors. A delete revision loads as an empty document, so
+      it is filtered by `@flags` DeleteRevision. ⚠️ An unknown change vector makes the server answer 404 and the client
+      throw a `NullReferenceException` in `GetRevisions<T>`; the batch is retried one change vector at a time. The
+      licence probe and configuration document operations moved here from History.
+    - **Relational** (`RelationalSparkRevisions`): rows in `spark.Revisions`, written in the writing transaction by
+      every write path (unit of work, `UpdateWhere`, `DeleteWhere`, the expiry sweep); retention by
+      `RelationalRevisions.ApplyAsync`. Versions count per document (1, 2, …). ⚠️ They restart after a delete and a
+      re-create; `GetAsync` then answers with the newest revision of that number.
+    - **In memory** (`InMemorySparkRevisions`): beside the documents, same semantics as relational.
+    - **D6 fix:** the relational expiry sweep wrote no tombstones; it now deletes through `RelationalTombstones.DeleteAsync`
+      (tombstone + delete revision per row). A set-based update with revisions on reads the rows back and writes one
+      revision per row whose version moved.
+    - History checks the store's limits (RavenDB Community: 2 revisions / 45 days) before configuring, on every wanted
+      collection. `HistoryInterceptor` reads versions through `ISparkSession`; the History project no longer
+      references RavenDB.Client. SoftDelete's purge deletes revisions through `ISparkRevisions`; its raw-delete guard
+      and startup index checks still run only when an `IDocumentStore` resolves.
+    - **Evidence:** `SparkRevisionsConformanceTests` (11 facts) on InMemory, RavenDB, SQL Server and PostgreSQL;
+      `NeutralHistoryStoreTests` (list + read, revert, soft delete → restore → purge) 3/3 on all four databases; the
+      History, SoftDelete and revisions suites on RavenDB 94/94; `MintPlayer.Spark.Templates.Tests` 23/23 (the
+      store-bound test now pins Replication, which stays RavenDB ETL).
   - **M6l (2026-11-25): AllFeatures on any store.** `SparkFullOptions.Store` (`spark => spark.UseSqlServer(…)`, …)
     picks the store; the generated `AddSparkFull` falls back to `UseRavenDb` only when it is unset. Replication stays
     RavenDB-only. Evidence: `SparkFullGeneratorTests` 12/12 (new: the store switch).
@@ -569,7 +594,7 @@ rounds, milestones and status. Branch `feat/536-sql-server-provider`, draft PR #
     - **Evidence:** `NeutralContributionsStoreTests` (prefix = collection, latest wins, rebuild + shape check) 3/3 on
       all four databases; the Contributions suites on RavenDB 59/59; the generator tests 72/72 (snapshots re-accepted
       after review).
-  - **Next:** AllFeatures, then Tier 3 (S8 revisions, S16 Moderation, S10 search). Cron, the subscription worker's remaining hosted services and others adopt
+  - **Next:** Tier 3 (S16 Moderation, S10 search), then Tier 4. Cron, the subscription worker's remaining hosted services and others adopt
     `ISparkStoreReadiness` as they are ported.
 - **Local spike servers left running:**
   - SQL Server: `SparkSpike536` on `localhost` and `localhost\MSSQLSERVER01`
@@ -600,7 +625,7 @@ Each spike ends with an entry in PRD §8, with evidence (numbers, file:line, a r
 | **S5** | Neutral views: one declaration, rendered by RavenDB as an index, by relational databases as an SQL view or indexes, and by InMemory as LINQ | DemoApp's `VPerson` (computed `FullName`) and one view with a join, from one declaration on InMemory + both databases; synchronize writes the EF-translated `CREATE VIEW` into the migration (PRD D32) | ✅ PRD §8.12: 10 cases green on both (64/64 with S2b and S4). <ul><li>One declaration renders four ways: SQL Server, PostgreSQL, RavenDB (`LoadDocument`) and InMemory.</li><li>The join form is `Load<T>(id)`.</li><li>`QueryExecutor` queries the view by name, unmodified.</li><li>Spark's differ (subclassing the pubternal one) writes `CREATE VIEW`/`DROP VIEW`, and recreates a view around a change to a table it reads (PostgreSQL refuses the `ALTER` otherwise).</li></ul> |
 | S6 | Neutral contracts: <ul><li>`SetExpiry`</li><li>`ISparkStoreLock`</li><li>`ISparkAtomicValues`</li><li>`StreamAsync`</li><li>`Reserve/Release` (in the `SaveChanges` transaction)</li><li>`UpdateWhereAsync`/`DeleteWhereAsync`</li><li>`PatchAppend`</li></ul>(design-principles: deep modules, one contract per concern) | settings, mail (expiry) and cron (atomic value) green on all providers | after the gates |
 | S7 + S14 | **Subscriptions:** <ul><li>a per-subscription cursor over the `ChangeStamp`, below the safe horizon (D6; where the stamp lives is O10)</li><li>tombstones for deletes</li><li>a neutral predicate instead of RQL</li><li>a lease replacing `WaitForFree`</li></ul> | <ul><li>two interleaved transactions never skip a row (the D6 horizon)</li><li>a new subscription sees the backlog</li><li>a message survives a host restart</li><li>two hosts never process one message</li><li>subscription_worker's tests on both</li></ul> | after S6 |
-| S8 | Revisions (O12): written by **every** write path, including `UpdateWhere`/`PatchAppend` and sweepers; revision id = `Version`; per-collection retention and `PurgeOnDelete` | history's tests on both; a soft-delete restore; a set-based update leaves a revision | after S6 and O12 |
+| S8 ✅ M7d | Revisions (O12): written by **every** write path, including `UpdateWhere`/`PatchAppend` and sweepers; revision id = `Version`; per-collection retention and `PurgeOnDelete` | history's tests on both; a soft-delete restore; a set-based update leaves a revision | after S6 and O12 |
 | S9 | Dashboards: a samples table, a rollup job and retention; RQL aggregation as LINQ (in scope, O2) | dashboards' tests on both | after S6 |
 | S10 | Full-text: **`LIKE` first** (the commercial-framework comparison); an FTS dialect (SQL Server FTS, PostgreSQL `tsvector`) is an opt-in later | search's tests on both with `LIKE` | later, off the critical path |
 | S11 | Attachments (low priority) | in or out | later |

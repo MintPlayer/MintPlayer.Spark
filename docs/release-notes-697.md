@@ -120,6 +120,12 @@ tags, and everything ships once the merged pull request is backported to `releas
       (`ISparkStoreReadiness`, below).
     - `RetryNumerator`, a RavenDB counter, moved from `MintPlayer.Spark.SubscriptionWorker.Abstractions` to
       `MintPlayer.Spark.Replication.Services`, the namespace of its only user.
+13. **History and SoftDelete no longer reference RavenDB's client** (M7d, S8). They work through `ISparkRevisions` and
+    `ISparkStore`:
+    - `ISoftDeleteRevisions.DeleteAsync` takes the entity type and the id (was the RavenDB session's document).
+    - `HistoryInterceptor` reads versions through `ISparkSession`.
+    - The licence probe and the revisions-configuration operations moved to `MintPlayer.Spark.Storage.Raven.RavenSparkRevisions`.
+    - The licence check now covers every collection History configures, not only the changed ones.
 
 ## New
 
@@ -203,3 +209,8 @@ tags, and everything ships once the merged pull request is backported to `releas
     library registers it with `services.AddSparkStoreReadiness()`.
 14. **`ISparkSession.Query<TRow, TView>()` takes a `SparkView` on every store** (D42). RavenDB queries the view's static
     index and InMemory renders it; SQL Server and PostgreSQL already read the SQL view.
+15. **`ISparkRevisions`** (M7d, S8): configure, list, read and delete document revisions on every store, through one
+    API. RavenDB keeps its own revisions; SQL Server and PostgreSQL write `spark.Revisions` in the writing transaction
+    on every write path, set-based updates and deletes and the expiry sweep included; InMemory keeps them beside its
+    documents. Stores that have it report `SparkStoreCapabilities.Revisions`. History and SoftDelete now run on any
+    store with revisions.

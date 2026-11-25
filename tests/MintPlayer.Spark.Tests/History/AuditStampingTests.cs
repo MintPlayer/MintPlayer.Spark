@@ -3,7 +3,7 @@ using MintPlayer.Spark.Abstractions.Interceptors;
 using MintPlayer.Spark.History;
 using MintPlayer.Spark.Services;
 using NSubstitute;
-using Raven.Client.Documents.Session;
+using MintPlayer.Spark.Abstractions.Storage;
 
 namespace MintPlayer.Spark.Tests.History;
 
@@ -35,11 +35,11 @@ public class AuditStampingTests
     /// answer an empty change vector and HasChanged == false, and the interceptor would then skip a
     /// save with a stored version as "nothing changed".
     /// </summary>
-    private static IAsyncDocumentSession ChangedSession()
+    private static ISparkSession ChangedSession()
     {
-        var session = Substitute.For<IAsyncDocumentSession>();
-        session.Advanced.GetChangeVectorFor(Arg.Any<object>()).Returns("A:1-test");
-        session.Advanced.HasChanged(Arg.Any<object>()).Returns(true);
+        var session = Substitute.For<ISparkSession>();
+        session.GetVersion(Arg.Any<object>()).Returns("A:1-test");
+        session.HasChanged(Arg.Any<object>()).Returns(true);
         return session;
     }
 

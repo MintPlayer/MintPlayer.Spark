@@ -125,16 +125,21 @@ internal sealed class InMemoryDatabase
                         documents[put.Id] = new Entry(put.Id, put.Json, put.ClrType, put.Collection, version, put.ExpiresAt);
                         versions[put.Id] = version;
                         changes.Add(new SparkStoreChange(put.Id, put.Collection, version));
+                        KeepRevision(documents[put.Id]);
                         break;
                     case Remove remove:
                         if (documents.Remove(remove.Id, out var removed))
+                        {
                             changes.Add(new SparkStoreChange(remove.Id, removed.Collection, null));
+                            KeepDeleteRevision(removed);
+                        }
                         versions[remove.Id] = null;
                         break;
                     case Patch patch when documents.GetValueOrDefault(patch.Id) is { } current:
                         var patched = $"A:{++etag}";
                         documents[patch.Id] = current with { Json = patch.Apply(current), Version = patched };
                         changes.Add(new SparkStoreChange(patch.Id, current.Collection, patched));
+                        KeepRevision(documents[patch.Id]);
                         break;
                 }
             }
@@ -166,11 +171,13 @@ internal sealed class InMemoryDatabase
                 {
                     documents.Remove(entry.Id);
                     changes.Add(new SparkStoreChange(entry.Id, entry.Collection, null));
+                    KeepDeleteRevision(entry);
                     continue;
                 }
                 var version = $"A:{++etag}";
                 documents[entry.Id] = entry with { Json = json!, Version = version };
                 changes.Add(new SparkStoreChange(entry.Id, entry.Collection, version));
+                KeepRevision(documents[entry.Id]);
             }
         }
 
@@ -181,6 +188,76 @@ internal sealed class InMemoryDatabase
 
     /// <summary>What a <see cref="Rewrite"/> function returns to delete the row.</summary>
     public static readonly string Deleted = new(['\0']);
+
+    // ---- revisions (#536 S8): written under the commit lock, by every write path above ----
+
+    /// <summary>One revision: the document's JSON at <paramref name="Version"/>, or none for a delete.</summary>
+    internal sealed record Revision(string Id, string Collection, string Version, DateTimeOffset At, string? Json, Type? ClrType);
+
+    private readonly Dictionary<string, List<Revision>> revisions = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, SparkRevisionSettings> revisionSettings = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>The clock revisions are stamped and pruned by; tests move it.</summary>
+    internal TimeProvider Time { get; set; } = TimeProvider.System;
+
+    /// <summary>Sets the named collections' settings; returns the labels of those that changed.</summary>
+    public IReadOnlyList<string> ConfigureRevisions(IReadOnlyList<SparkRevisionCollection> collections)
+    {
+        var changed = new List<string>();
+        lock (gate)
+            foreach (var collection in collections)
+                if (!revisionSettings.TryGetValue(collection.Collection, out var current) || current != collection.Settings)
+                {
+                    revisionSettings[collection.Collection] = collection.Settings;
+                    changed.Add(collection.Label);
+                }
+        return changed;
+    }
+
+    /// <summary>The document's revisions, newest first.</summary>
+    public IReadOnlyList<Revision> RevisionsOf(string id)
+    {
+        lock (gate)
+            return revisions.TryGetValue(id, out var list) ? [.. Enumerable.Reverse(list)] : [];
+    }
+
+    public long DeleteRevisions(string id)
+    {
+        lock (gate)
+            return revisions.Remove(id, out var list) ? list.Count : 0;
+    }
+
+    private void KeepRevision(Entry entry)
+    {
+        if (!revisionSettings.TryGetValue(entry.Collection, out var settings) || !settings.Enabled)
+            return;
+        Append(new Revision(entry.Id, entry.Collection, entry.Version, Time.GetUtcNow(), entry.Json, entry.ClrType), settings);
+    }
+
+    private void KeepDeleteRevision(Entry entry)
+    {
+        if (!revisionSettings.TryGetValue(entry.Collection, out var settings) || !settings.Enabled)
+            return;
+        if (settings.PurgeOnDelete)
+        {
+            revisions.Remove(entry.Id);
+            return;
+        }
+        Append(new Revision(entry.Id, entry.Collection, $"A:{++etag}", Time.GetUtcNow(), null, null), settings);
+    }
+
+    private void Append(Revision revision, SparkRevisionSettings settings)
+    {
+        if (!revisions.TryGetValue(revision.Id, out var list))
+            revisions[revision.Id] = list = [];
+        list.Add(revision);
+        var newestFirst = Enumerable.Reverse(list).ToList();
+        var expired = SparkRevisionRetention.Expired([.. newestFirst.Select(r => r.At)], settings, revision.At)
+            .Select(i => newestFirst[i])
+            .ToHashSet();
+        if (expired.Count > 0)
+            list.RemoveAll(expired.Contains);
+    }
 
     private bool ExistsAfter(string id, IReadOnlyList<Write> writes)
     {
