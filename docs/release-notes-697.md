@@ -58,6 +58,11 @@ tags, and everything ships once the merged pull request is backported to `releas
 
    The namespace is unchanged. `SparkEndpointFactory` takes an `ISparkTestDatabase`: pass `Store.AsSparkTestDatabase()`
    where you passed `Store`. The old names now belong to the neutral drivers (below).
+8. **On RavenDB, `== null` through Spark's session finds a field the document never wrote** (M5, O11). A document
+   saved before a nullable property existed now matches `x.Prop == null` and no longer matches `x.Prop != null`, as a
+   `NULL` column does on SQL. It applies to `ISparkSession.Query`, the query pages and `DeleteWhere`/`UpdateWhere`;
+   a raw `IAsyncDocumentSession` query is unchanged.
+9. **PostgreSQL sorts nulls first ascending and last descending** (M5, D4), like the other providers.
 
 ## New
 

@@ -412,6 +412,9 @@ root's version, which EF alone does not do.)*
 **D4: sort order is normalised to nulls first.** InMemory (LINQ-to-objects), SQL Server and MariaDB sort nulls first
 ascending, and PostgreSQL sorts them last (S12). The PostgreSQL dialect emits `NULLS FIRST` (and `NULLS LAST`
 descending), and a conformance case pins it. RavenDB's order is measured in the same case.
+*Built in M5b:* `Nulls_sort_first_ascending_and_last_descending` passes on all four providers. RavenDB already sorts
+nulls first. Npgsql's `ReverseNullOrdering()` went internal in 11.0, so the PostgreSQL dialect replaces
+`IQuerySqlGeneratorFactory` with one that constructs Npgsql's generator with that flag on.
 
 **D5: `DateTimeOffset` compares instants on every provider.** SQL Server (`datetimeoffset`) and PostgreSQL
 (`timestamptz`) do this. (MariaDB has no offset-aware type, S13; it is deferred.)
@@ -775,6 +778,13 @@ Spark's meaning on every provider, extended to nullable members.**
   nullable one as `NULL`. No data is written on any provider.
 - If S12 shows that "not present" can't be expressed through the RavenDB LINQ provider, those members alone fall
   back to a synchronize-generated backfill patch.
+  *Built in M5b, without a backfill:* the LINQ provider cannot say "exists", but it sends a null as a parameter
+  (`Rating = $p0`, `p0 = null`). `RavenAbsentNullRewriter` rewrites those comparisons in the RQL's `where` clause
+  before it is sent: `F = $p` → `(F = $p or (true and not exists(F)))`, `F != $p` → `(F != $p and exists(F))`. The
+  field name is checked with `RqlIdentifier.FieldPath`, and values stay parameters. Spark's session applies it to
+  `Query<T>`, `Query<T, TIndex>` and the set-based writes; a raw RavenDB session keeps RavenDB's meaning
+  (`AbsentVersusNullFieldTests` still pins that). The conformance case `An_absent_nullable_field_is_null_to_queries_and_sorting`
+  covers `==`, `!=`, negation, conjunction, sorting (absent sorts with the nulls) and `DeleteWhere`.
 - Sorting and distinct values (the `< none >` entry) are conformance cases too: RavenDB sorts an absent field
   apart from the default, and the result must match SQL's.
 - The generator warns on an initializer on a persisted value-type property (`int Priority { get; set; } = 5`): a
@@ -1789,6 +1799,27 @@ decided O14–O17, and O8 and O9 last. The plan §3 has the log.
   - Recommendation: (b); it keeps the data for every convertible change and fails loudly otherwise. The flip side
     of EF's heuristic (an unrelated drop + add of the same shape becomes a rename, carrying data into a new
     attribute) is the mirror case: (b) would also split that rename when the ids differ.
+- **O20, case in string equality (open, found in M5b, 2026-11-25):** measured with the store conformance suite, a
+  row named `Alpha` queried with `Name == "ALPHA"` and `Name.StartsWith("al")`:
+
+  | Provider | `==` | `StartsWith` | Why |
+  |---|---|---|---|
+  | RavenDB | found | found | the auto-index's default analyzer lowercases terms |
+  | SQL Server | found | found | ordinary columns take the database's case-insensitive collation (only keys are `BIN2`, D7) |
+  | PostgreSQL | not found | not found | the default collation is deterministic |
+  | InMemory | not found | not found | LINQ to objects compares ordinally |
+
+  An app moved from RavenDB to PostgreSQL silently loses rows from every filter that differs only in case. Search
+  already ignores case on both SQL databases (`ILIKE` on PostgreSQL).
+  - (a) **Ignore case everywhere** (RavenDB's meaning, which apps were written against): PostgreSQL text columns get a
+    nondeterministic ICU collation (`und-u-ks-level2`), which PostgreSQL 18 also honours in `LIKE`; on 17 the dialect
+    rewrites `StartsWith` to `ILIKE`. InMemory rewrites string comparisons to `OrdinalIgnoreCase`. Keys stay binary (D7).
+  - (b) **Respect case everywhere:** RavenDB would need exact-match analyzers on every index field, which changes the
+    behaviour of every existing app.
+  - (c) Leave it to the provider and document it.
+  - Recommendation: (a). The trap: a nondeterministic collation makes `DISTINCT` and `GROUP BY` fold `Alpha` and `ALPHA`
+    into one value, as RavenDB's facets already do. The conformance guard keeps its data unambiguous in case until this
+    is decided.
 
 ## 11. Out of scope
 

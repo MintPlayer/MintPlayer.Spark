@@ -33,8 +33,28 @@ public sealed class PostgreSqlSparkDialect : SparkRelationalDialect
                 pg.MigrationsAssembly(assembly);
             pg.MigrationsHistoryTable(migrations.HistoryTable, migrations.HistorySchema);
         });
+
+        builder.ReplaceService<Microsoft.EntityFrameworkCore.Query.IQuerySqlGeneratorFactory, NullsFirstQuerySqlGeneratorFactory>();
         builder.ReplaceService<Microsoft.EntityFrameworkCore.Migrations.IHistoryRepository, AdvisoryLockHistoryRepository>();
     }
+
+    /// <summary>
+    /// D4: nulls first ascending and last descending, as on SQL Server, InMemory and RavenDB (PostgreSQL's default is the
+    /// reverse). Npgsql's generator appends <c>NULLS FIRST</c> / <c>NULLS LAST</c> to every <c>ORDER BY</c> when its
+    /// reverse-null-ordering flag is on; the option that sets it went internal in 11.0, so this factory passes the flag.
+    /// </summary>
+#pragma warning disable EF1001 // Npgsql's generator is pubternal; the conformance case Nulls_sort_first_ascending_and_last_descending pins it.
+    internal sealed class NullsFirstQuerySqlGeneratorFactory(
+        Microsoft.EntityFrameworkCore.Query.QuerySqlGeneratorDependencies dependencies,
+        Microsoft.EntityFrameworkCore.Storage.IRelationalTypeMappingSource typeMappingSource,
+        Npgsql.EntityFrameworkCore.PostgreSQL.Infrastructure.Internal.INpgsqlSingletonOptions options)
+        : Microsoft.EntityFrameworkCore.Query.IQuerySqlGeneratorFactory
+    {
+        public Microsoft.EntityFrameworkCore.Query.QuerySqlGenerator Create()
+            => new Npgsql.EntityFrameworkCore.PostgreSQL.Query.Internal.NpgsqlQuerySqlGenerator(
+                dependencies, typeMappingSource, reverseNullOrderingEnabled: true, options.PostgresVersion);
+    }
+#pragma warning restore EF1001
 
     public override string EfProviderName => "Npgsql.EntityFrameworkCore.PostgreSQL";
 

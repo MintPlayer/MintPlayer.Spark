@@ -42,10 +42,14 @@ internal sealed class RavenSparkSession : ISparkSession
 
     private IDocumentStore Store => Session.Advanced.DocumentStore;
 
-    public IQueryable<T> Query<T>() where T : class => Session.Query<T>();
+    public IQueryable<T> Query<T>() where T : class => AbsentIsNull(Session.Query<T>());
 
     public IQueryable<T> Query<T, TIndex>() where T : class where TIndex : class, new()
-        => IndexQuery<T, TIndex>.Open(Session);
+        => AbsentIsNull(IndexQuery<T, TIndex>.Open(Session));
+
+    /// <summary>O11: <c>== null</c> also finds a field the document never wrote (<see cref="RavenAbsentNullRewriter"/>).</summary>
+    private static IQueryable<T> AbsentIsNull<T>(IQueryable<T> query)
+        => query is IRavenQueryable<T> raven ? raven.Customize(c => c.BeforeQueryExecuted(RavenAbsentNullRewriter.Rewrite)) : query;
 
     /// <summary>
     /// RavenDB's <c>Query&lt;T, TIndex&gt;</c> constrains <typeparamref name="TIndex"/> to its own index base, which the
@@ -231,7 +235,11 @@ internal sealed class RavenSparkSession : ISparkSession
     private static QueryOperationOptions BulkOptions => new() { AllowStale = false, StaleTimeout = BulkTimeout, RetrieveDetails = false };
 
     private IndexQuery IndexQueryFor<T>(System.Linq.Expressions.Expression<Func<T, bool>> predicate) where T : class
-        => ((IRavenQueryInspector)RavenIdQueryRewriter.Rewrite(Session.Query<T>().Where(predicate))).GetIndexQuery(isAsync: true);
+    {
+        var query = ((IRavenQueryInspector)RavenIdQueryRewriter.Rewrite(Session.Query<T>().Where(predicate))).GetIndexQuery(isAsync: true);
+        RavenAbsentNullRewriter.Rewrite(query);
+        return query;
+    }
 
     // ---- reservations ----
 

@@ -23,6 +23,18 @@ public sealed class RavenSparkStoreConformanceTests : SparkStoreConformanceTests
 
     public override async Task DisposeAsync() => await driver.DisposeAsync();
 
+    /// <summary>A patch that deletes the property, so the document is the shape an older entity wrote.</summary>
+    protected override async Task RemoveFieldAsync(string id, string field)
+    {
+        var operation = await driver.DocumentStore.Operations.SendAsync(new Raven.Client.Documents.Operations.PatchByQueryOperation(
+            new Raven.Client.Documents.Queries.IndexQuery
+            {
+                Query = $"from ConfDocs as d where id() = $id update {{ delete d.{MintPlayer.Spark.Abstractions.RqlIdentifier.FieldPath(field)}; }}",
+                QueryParameters = new Raven.Client.Parameters { ["id"] = id },
+            }));
+        await operation.WaitForCompletionAsync(TimeSpan.FromSeconds(30));
+    }
+
     public class ConfDocs_ByName : Raven.Client.Documents.Indexes.AbstractIndexCreationTask<ConfDoc>
     {
         public ConfDocs_ByName()

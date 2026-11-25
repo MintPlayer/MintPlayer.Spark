@@ -33,6 +33,7 @@ public abstract class SparkStoreConformanceTests : IAsyncLifetime
         public string? Nothing { get; set; }
         public ConfAddress? Address { get; set; }
         public List<string> Tags { get; set; } = [];
+        public DateTimeOffset At { get; set; }
     }
 
     /// <summary>The same collection's documents as an older shape wrote them: no Count, Flag or Tags.</summary>
@@ -594,5 +595,167 @@ public abstract class SparkStoreConformanceTests : IAsyncLifetime
             for (var i = 0; i < 40; i++)
                 await lifted.LoadAsync<ConfDoc>($"ConfDocs/budget-{i}");
         }
+    }
+
+    // #536 M5: the cases the plan lists for every provider (§4 item 5).
+
+    /// <summary>
+    /// Removes <paramref name="field"/> from the stored document, as a document written before the member existed lacks
+    /// it. On a provider whose rows always carry every member (a column, or JSON read back into the CLR type) an absent
+    /// field is <c>null</c> by construction, so this writes the null.
+    /// </summary>
+    protected virtual async Task RemoveFieldAsync(string id, string field)
+    {
+        using var session = Store.OpenSession();
+        var doc = (await session.LoadAsync<ConfDoc>(id))!;
+        typeof(ConfDoc).GetProperty(field)!.SetValue(doc, null);
+        await session.SaveChangesAsync();
+    }
+
+    /// <summary>O11 (D16 for nullable members): a field the document never wrote is <c>null</c> to every query shape.</summary>
+    [SkippableFact]
+    public async Task An_absent_nullable_field_is_null_to_queries_and_sorting()
+    {
+        var absent = Row("ConfAbsent/absent", 1, nothing: "removed", maybe: ConfStatus.Archived);
+        await StoreAsync(absent, Row("ConfAbsent/null", 2), Row("ConfAbsent/set", 3, nothing: "set", maybe: ConfStatus.Published));
+        await RemoveFieldAsync("ConfAbsent/absent", nameof(ConfDoc.Nothing));
+        await RemoveFieldAsync("ConfAbsent/absent", nameof(ConfDoc.MaybeStatus));
+
+        (await IdsAsync(q => q.Where(d => d.Nothing == null))).Should().BeEquivalentTo(["confabsent/absent", "confabsent/null"]);
+        (await IdsAsync(q => q.Where(d => d.Nothing != null))).Should().BeEquivalentTo(["confabsent/set"]);
+        (await IdsAsync(q => q.Where(d => d.MaybeStatus == null))).Should().BeEquivalentTo(["confabsent/absent", "confabsent/null"]);
+        (await IdsAsync(q => q.Where(d => !(d.MaybeStatus == null)))).Should().BeEquivalentTo(["confabsent/set"]);
+        (await IdsAsync(q => q.Where(d => d.MaybeStatus != ConfStatus.Published))).Should().BeEquivalentTo(["confabsent/absent", "confabsent/null"]);
+        (await IdsAsync(q => q.Where(d => d.Count > 0 && d.Nothing == null))).Should().BeEquivalentTo(["confabsent/absent", "confabsent/null"]);
+
+        var ascending = await IdsAsync(q => q.OrderBy(d => d.Nothing));
+        // An absent field sorts with the nulls (D4).
+        ascending.Take(2).Should().BeEquivalentTo(["confabsent/absent", "confabsent/null"]);
+        ascending.Last().Should().Be("confabsent/set");
+
+        using (var session = Store.OpenSession())
+            (await session.DeleteWhereAsync<ConfDoc>(d => d.Nothing == null)).Should().Be(2, "a set-based write reads absent as null too");
+        (await IdsAsync(q => q)).Should().BeEquivalentTo(["confabsent/set"]);
+    }
+
+    private async Task<List<string?>> IdsAsync(Func<IQueryable<ConfDoc>, IQueryable<ConfDoc>> shape)
+    {
+        using var session = Store.OpenSession();
+        var rows = await session.ToListAsync(shape(Settled(session.Query<ConfDoc>())));
+        return rows.Select(d => Canon(d.Id)).ToList();
+    }
+
+    private static ConfDoc Row(string id, int count, string name = "Sample", ConfStatus? maybe = null, string? nothing = null, params string[] tags)
+    {
+        var doc = Sample(id);
+        doc.Count = count;
+        doc.Name = name;
+        doc.MaybeStatus = maybe;
+        doc.Nothing = nothing;
+        doc.Tags = [.. tags];
+        return doc;
+    }
+
+    [SkippableFact]
+    public async Task Ids_load_in_any_casing_from_a_fresh_session()
+    {
+        await StoreAsync(Sample("ConfDocs/Casing-1"));
+
+        using var session = Store.OpenSession();
+        var loaded = await session.LoadAsync<ConfDoc>("CONFDOCS/CASING-1");
+        loaded.Should().NotBeNull("ids compare ignoring case on every provider (D7)");
+        (await session.ExistsAsync(typeof(ConfDoc), "confdocs/casing-1")).Should().BeTrue();
+        Canon(session.GetId(loaded!)).Should().Be("confdocs/casing-1");
+    }
+
+    [SkippableFact]
+    public async Task LoadStartingWith_matches_wildcard_characters_literally()
+    {
+        await StoreAsync(Sample("ConfEscape/a_b"), Sample("ConfEscape/axb"), Sample("ConfEscape/a%c"), Sample("ConfEscape/a[d"));
+
+        using var session = Store.OpenSession();
+        (await session.LoadStartingWithAsync<ConfDoc>("ConfEscape/a_")).Select(d => Canon(d.Id))
+            .Should().Equal(["confescape/a_b"], "an underscore is not a single-character wildcard");
+        (await session.LoadStartingWithAsync<ConfDoc>("ConfEscape/a%")).Select(d => Canon(d.Id))
+            .Should().Equal(["confescape/a%c"], "a percent sign is not a wildcard");
+        (await session.LoadStartingWithAsync<ConfDoc>("ConfEscape/a[")).Select(d => Canon(d.Id))
+            .Should().Equal(["confescape/a[d"], "a bracket opens no character class");
+    }
+
+    [SkippableFact]
+    public async Task Paging_follows_the_order()
+    {
+        await StoreAsync(Row("ConfPaged/5", 5), Row("ConfPaged/1", 1), Row("ConfPaged/4", 4), Row("ConfPaged/2", 2), Row("ConfPaged/3", 3));
+
+        (await IdsAsync(q => q.OrderBy(d => d.Count).Skip(1).Take(2)))
+            .Should().Equal(["confpaged/2", "confpaged/3"]);
+        (await IdsAsync(q => q.OrderByDescending(d => d.Count).Skip(3).Take(5)))
+            .Should().Equal(["confpaged/2", "confpaged/1"]);
+        (await IdsAsync(q => q.OrderBy(d => d.Name).ThenByDescending(d => d.Count).Take(1)))
+            .Should().Equal(["confpaged/5"]);
+    }
+
+    /// <summary>D4: nulls sort first ascending and last descending, on every provider (PostgreSQL's default is the reverse).</summary>
+    [SkippableFact]
+    public async Task Nulls_sort_first_ascending_and_last_descending()
+    {
+        await StoreAsync(
+            Row("ConfNulls/b", 1, nothing: "b", maybe: ConfStatus.Published),
+            Row("ConfNulls/none", 2),
+            Row("ConfNulls/a", 3, nothing: "a", maybe: ConfStatus.Draft));
+
+        (await IdsAsync(q => q.OrderBy(d => d.Nothing))).Should().Equal(["confnulls/none", "confnulls/a", "confnulls/b"]);
+        (await IdsAsync(q => q.OrderByDescending(d => d.Nothing))).Should().Equal(["confnulls/b", "confnulls/a", "confnulls/none"]);
+        (await IdsAsync(q => q.OrderBy(d => d.MaybeStatus))).Should().Equal(["confnulls/none", "confnulls/a", "confnulls/b"]);
+        (await IdsAsync(q => q.OrderByDescending(d => d.MaybeStatus))).Should().Equal(["confnulls/b", "confnulls/a", "confnulls/none"]);
+    }
+
+    /// <summary>D5: a <see cref="DateTimeOffset"/> compares and sorts by its instant, whatever its offset.</summary>
+    [SkippableFact]
+    public async Task DateTimeOffsets_compare_and_sort_by_their_instant()
+    {
+        var early = Sample("ConfInstant/early");
+        early.At = new DateTimeOffset(2026, 6, 1, 10, 0, 0, TimeSpan.FromHours(2));   // 08:00Z
+        var late = Sample("ConfInstant/late");
+        late.At = new DateTimeOffset(2026, 6, 1, 9, 0, 0, TimeSpan.Zero);              // 09:00Z, an earlier wall clock
+        await StoreAsync(late, early);
+
+        using (var session = Store.OpenSession())
+            (await session.LoadAsync<ConfDoc>("ConfInstant/early"))!.At.UtcDateTime.Should().Be(new DateTime(2026, 6, 1, 8, 0, 0, DateTimeKind.Utc));
+
+        (await IdsAsync(q => q.OrderBy(d => d.At))).Should().Equal(["confinstant/early", "confinstant/late"]);
+        var cut = new DateTimeOffset(2026, 6, 1, 8, 30, 0, TimeSpan.Zero);
+        (await IdsAsync(q => q.Where(d => d.At > cut))).Should().Equal(["confinstant/late"]);
+    }
+
+    /// <summary>
+    /// A wrong-rows guard: every query shape core and the feature libraries write, against rows that differ in exactly
+    /// the member each shape reads, so a provider that drops or loosens a predicate returns a row it must not.
+    /// </summary>
+    [SkippableFact]
+    public async Task Every_query_shape_returns_exactly_its_rows()
+    {
+        await StoreAsync(
+            Row("ConfShapes/a", 1, "Alpha", ConfStatus.Published, "x", "red", "blue"),
+            Row("ConfShapes/b", 2, "Beta", ConfStatus.Archived, null, "blue"),
+            Row("ConfShapes/c", 3, "Gamma", null, "y"),
+            Row("ConfShapes/d", 4, "Delta", ConfStatus.Draft, null, "red"));
+        var keys = new[] { "Beta", "Gamma" };
+
+        (await IdsAsync(q => q.Where(d => d.Count > 1 && d.Count < 4))).Should().BeEquivalentTo(["confshapes/b", "confshapes/c"]);
+        (await IdsAsync(q => q.Where(d => d.Count <= 1 || d.Count >= 4))).Should().BeEquivalentTo(["confshapes/a", "confshapes/d"]);
+        (await IdsAsync(q => q.Where(d => !(d.Count == 2)))).Should().BeEquivalentTo(["confshapes/a", "confshapes/c", "confshapes/d"]);
+        (await IdsAsync(q => q.Where(d => d.Name != "Beta"))).Should().BeEquivalentTo(["confshapes/a", "confshapes/c", "confshapes/d"]);
+        (await IdsAsync(q => q.Where(d => keys.Contains(d.Name)))).Should().BeEquivalentTo(["confshapes/b", "confshapes/c"]);
+        (await IdsAsync(q => q.Where(d => d.Name.StartsWith("Al")))).Should().BeEquivalentTo(["confshapes/a"]);
+        (await IdsAsync(q => q.Where(d => d.Tags.Contains("red")))).Should().BeEquivalentTo(["confshapes/a", "confshapes/d"]);
+        (await IdsAsync(q => q.Where(d => d.Tags.Any()))).Should().BeEquivalentTo(["confshapes/a", "confshapes/b", "confshapes/d"]);
+        (await IdsAsync(q => q.Where(d => d.Nothing == null))).Should().BeEquivalentTo(["confshapes/b", "confshapes/d"]);
+        (await IdsAsync(q => q.Where(d => d.Nothing != null))).Should().BeEquivalentTo(["confshapes/a", "confshapes/c"]);
+        (await IdsAsync(q => q.Where(d => d.MaybeStatus == null))).Should().BeEquivalentTo(["confshapes/c"]);
+        (await IdsAsync(q => q.Where(d => d.MaybeStatus == ConfStatus.Archived))).Should().BeEquivalentTo(["confshapes/b"]);
+        (await IdsAsync(q => q.Where(d => d.MaybeStatus != ConfStatus.Published || d.Count == 4)))
+            .Should().BeEquivalentTo(["confshapes/b", "confshapes/c", "confshapes/d"]);
+        (await IdsAsync(q => q.Where(d => d.Count >= 2).Where(d => d.Nothing == null))).Should().BeEquivalentTo(["confshapes/b", "confshapes/d"]);
     }
 }

@@ -387,6 +387,16 @@ rounds, milestones and status. Branch `feat/536-sql-server-provider`, draft PR #
       earlier one's write) 3/3 on each of RavenDB, InMemory, SQL Server and PostgreSQL; `SparkTestDatabasesTests` 7/7.
     - The template's test project references `MintPlayer.Spark.Testing.RavenDB`; `features.json` lists it in core
       and the four relational packages as unreleased. Templates.Tests 23/23.
+  - **M5b (2026-11-25): new store conformance cases, on all four providers.**
+    - Cases: ids in any casing from a fresh session; `LoadStartingWith` with `_`, `%` and `[` taken literally; paging
+      after an order; nulls first ascending and last descending (D4); `DateTimeOffset` compared and sorted by instant
+      (D5, +02:00 against UTC); a wrong-rows guard over 14 query shapes; an absent nullable field read as null by
+      `==`, `!=`, negation, sorting and `DeleteWhere` (O11).
+    - Red first: PostgreSQL sorted nulls last. Fixed in its dialect (PRD D4, as built). RavenDB failed the absent
+      case. Fixed by `RavenAbsentNullRewriter` (PRD "Unknown fields", as built), without a backfill.
+    - **Finding, open as O20:** string equality and `StartsWith` ignore case on RavenDB and SQL Server, and respect
+      it on PostgreSQL and InMemory (measured). The guard's data avoids case-only differences until it is decided.
+    - Spark.Tests storage, absent-field and query classes 229/229 (RavenDB, InMemory); Relational.Tests 148/148.
 - **Local spike servers left running:**
   - SQL Server: `SparkSpike536` on `localhost` and `localhost\MSSQLSERVER01`
   - Docker `spark536-pg` (`postgres:18`, 127.0.0.1:55432). M4 needs it again.
