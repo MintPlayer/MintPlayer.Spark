@@ -10,7 +10,7 @@ namespace MintPlayer.Spark;
 public static class SparkPostgreSqlExtensions
 {
     /// <summary>Uses PostgreSQL, with the connection string from <c>ConnectionStrings:Spark</c> unless <paramref name="configure"/> sets one.</summary>
-    [global::MintPlayer.Spark.Abstractions.Storage.SparkStoreProvider(global::MintPlayer.Spark.Abstractions.Storage.SparkStoreProviders.PostgreSql, global::MintPlayer.Spark.Abstractions.Storage.SparkStoreCapabilities.ChangeNotifications)]
+    [global::MintPlayer.Spark.Abstractions.Storage.SparkStoreProvider(global::MintPlayer.Spark.Abstractions.Storage.SparkStoreProviders.PostgreSql, global::MintPlayer.Spark.Abstractions.Storage.SparkStoreCapabilities.ChangeNotifications | global::MintPlayer.Spark.Abstractions.Storage.SparkStoreCapabilities.Subscriptions | global::MintPlayer.Spark.Abstractions.Storage.SparkStoreCapabilities.Revisions)]
     public static ISparkBuilder UsePostgreSql(this ISparkBuilder builder, Action<SparkRelationalOptions>? configure = null)
         => builder.UseRelational(new PostgreSqlSparkDialect(), configure);
 }

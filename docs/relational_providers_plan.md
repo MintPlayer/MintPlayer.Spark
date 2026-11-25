@@ -580,9 +580,37 @@ rounds, milestones and status. Branch `feat/536-sql-server-provider`, draft PR #
       `libs/templates/MintPlayer.Spark.Templates/features.json` through a link, and Nx only hashes files under the
       project. Its new `project.json` names the linked files as inputs, as `MintPlayer.Spark.Abstractions` does for
       `Shared`.
-    - **Blocked, owner:** every job of runs 45669749753 and 45694125923 fails when storing to the Nx remote cache
-      ("Misconfigured remote cache endpoint: Unexpected response status: 500"). Reads answer normally (an unknown hash
-      gives 404 in 0.45 s). The Spark.Tests build took 37 s, then the upload ran 2 m 43 s and got a 500.
+    - **Was blocked, now fixed (2026-11-25, owner-approved):** every job of runs 45669749753 and 45694125923 failed when
+      storing to the Nx remote cache ("Misconfigured remote cache endpoint: Unexpected response status: 500"). Reads
+      answered normally (an unknown hash gives 404 in 0.45 s).
+      - Cause: the VPS root disk was 100% full (150 GB); the cache volume had grown to 111 GB.
+      - Why it grew: the cache server swept once per `CLEANUP_THRESHOLD` (336h), so entries lived up to 28 days.
+      - Fix: entries unused for more than 3 days deleted. The threshold is now 72h, and the server sweeps hourly
+        (`src/sweep-interval.patch` in the cache stack, with a Go test, red then green).
+      - After: 65 GB, disk 75%.
+  - **M9b (2026-11-25, in progress): `apps/SqlDemo`**, the PostgreSQL demo (O3).
+    - **The app:** `Author` and `Book` (`IAuditCreated`). Messaging, MailManager, History, local accounts with confirmed
+      e-mail. The Book list reads `Books_WithAuthor`, a `[DefaultIndex]` `SparkView` with a `Load<Author>` join. Model
+      synchronize wrote it as a `CREATE VIEW` in `Migrations/PostgreSql`, and `Books.Author` gets a real FK.
+    - **Reference type:** `Book.Author` is `Id<Author>?`, not a `[Reference]` string. The relational renderer refuses
+      `Load<T>` by a string when the key is `Id<T>` ("declare the reference as Id`1"), although the D26 deviation stores the
+      same key in that column. This is a known limit of D32 on SQL: a RavenDB app's string references need a typed id
+      before their joins move to SQL.
+    - **Framework defect found:** `UsePostgreSql`, `UseSqlServer` and `UseInMemory` still declared
+      `[SparkStoreProvider(…, ChangeNotifications)]`. The stores offer Subscriptions since M7a/D39 and Revisions since S8,
+      so SPARK060 refused `AddMessaging()` and `AddHistory()` on them at compile time ("Spark.Messaging needs
+      Subscriptions; the PostgreSql provider doesn't offer it"). Nothing compared the attribute with
+      `ISparkStore.Capabilities`. `SparkStoreProviderAttributeTests` does now (red for the three, green for RavenDB;
+      then 4/4), and the three attributes declare `ChangeNotifications | Subscriptions | Revisions`.
+    - Done so far:
+      - model synchronize, verify-model, synchronize-security and verify-security pass against local PostgreSQL;
+      - `security.json`: everyone reads, Administrators maintain Books and Authors and read History;
+      - `programUnits.json`, `translations.json`, and `revisions` enabled on Book.
+    - **Next:**
+      - an E2E host on PostgreSQL (SparkAppTestHost generalized from RavenDB) with tests;
+      - the E2E CI job's PostgreSQL server;
+      - README/AGENTS.md;
+      - the M9 guides.
   - **M8c (in progress): revisit earlier milestones under D46** (RavenDB's format may change through a migration). Look
     for designs that kept RavenDB's old format only for its own sake, and for stale values left behind.
     - Done: the compare-exchange value `spark/dashboards/sampler` (M8a) is deleted by

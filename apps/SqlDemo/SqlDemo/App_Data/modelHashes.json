@@ -1,0 +1,43 @@
+{
+  "version": 2,
+  "modelHash": "8a2a710b6c87f916fee594f2050b2ac85c761577b88e9ddce393444fbbfd7fbe",
+  "contextRoots": "7dc04043119ee0aaafa512a777bc9e5de84a6393d3f9bd46a198898005325f87",
+  "modelFiles": "e3596d66756da8a6cb54b1f8778c312ed678adca7d887b0822a70594483b5292",
+  "files": {
+    "Author.json": "2745586dfc51d6ece79978794597e1f6698c1753585d3395fe75fbd1591539e8",
+    "Book.json": "c960af8ade3f6245550392eab1f6083c8b70ca7b19007a9f3ca489635fa85715",
+    "PasskeyRename.json": "efd6a49e2c20d8420f48f546557fe7605a0553d3f4ce50ec8ae62876ce86714e",
+    "PasskeyRow.json": "902d6e7e53ac01ab224b90bdd486b9ba3f4ee27273fe667c907312aac3541b33",
+    "Passkeys.json": "738742f13217adeeb4724f72f968923099f7d7210cee1133dfd6707eb55856ce",
+    "SparkUser.json": "81d5e4fe403e329fc20404f35c3b9944aa11c17374981df5a4073ddf08fcdb69"
+  },
+  "entities": {
+    "Author": "3baa54a3b42229fb402f6adbda3c037ceb06076609b54c74f11bd20022ed5190",
+    "Book": "6c616f6a218e3314a86e44b41ef3951f1a91a9f4d4da44dad57da275e4182b6b"
+  },
+  "configFiles": {
+    "actions.json": "32cc41b3dafef21b94b7ca75ac82dfed573e43b1207fe4902a16d9e3e9572b4d"
+  },
+  "libraries": {
+    "authorization": "MintPlayer.Spark.Authorization",
+    "spark": "MintPlayer.Spark"
+  },
+  "layers": {
+    "Model/PasskeyRename.json": {
+      "authorization": "efd6a49e2c20d8420f48f546557fe7605a0553d3f4ce50ec8ae62876ce86714e"
+    },
+    "Model/PasskeyRow.json": {
+      "authorization": "902d6e7e53ac01ab224b90bdd486b9ba3f4ee27273fe667c907312aac3541b33"
+    },
+    "Model/Passkeys.json": {
+      "authorization": "738742f13217adeeb4724f72f968923099f7d7210cee1133dfd6707eb55856ce"
+    },
+    "Model/SparkUser.json": {
+      "authorization": "81d5e4fe403e329fc20404f35c3b9944aa11c17374981df5a4073ddf08fcdb69"
+    },
+    "actions.json": {
+      "authorization": "fb0d34fa66e732b157e4e222fb9c357e4219cf6d85177473103874e8c1090427",
+      "spark": "5974b38c8164cafbfb22c012c52fb46dd27264181d772b9f004de1829d1838e6"
+    }
+  }
+}

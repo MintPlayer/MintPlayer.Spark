@@ -10,7 +10,7 @@ namespace MintPlayer.Spark;
 public static class SparkSqlServerExtensions
 {
     /// <summary>Uses SQL Server, with the connection string from <c>ConnectionStrings:Spark</c> unless <paramref name="configure"/> sets one.</summary>
-    [global::MintPlayer.Spark.Abstractions.Storage.SparkStoreProvider(global::MintPlayer.Spark.Abstractions.Storage.SparkStoreProviders.SqlServer, global::MintPlayer.Spark.Abstractions.Storage.SparkStoreCapabilities.ChangeNotifications)]
+    [global::MintPlayer.Spark.Abstractions.Storage.SparkStoreProvider(global::MintPlayer.Spark.Abstractions.Storage.SparkStoreProviders.SqlServer, global::MintPlayer.Spark.Abstractions.Storage.SparkStoreCapabilities.ChangeNotifications | global::MintPlayer.Spark.Abstractions.Storage.SparkStoreCapabilities.Subscriptions | global::MintPlayer.Spark.Abstractions.Storage.SparkStoreCapabilities.Revisions)]
     public static ISparkBuilder UseSqlServer(this ISparkBuilder builder, Action<SparkRelationalOptions>? configure = null)
         => builder.UseRelational(new SqlServerSparkDialect(), configure);
 }

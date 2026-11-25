@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<TargetFramework>net11.0</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+		<IsPackable>false</IsPackable>
+		<SparkEntityLibrary>true</SparkEntityLibrary>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<!-- Attributes (+ Model) only: the entities know no store, so the same library would run on RavenDB unchanged. -->
+		<ProjectReference Include="..\..\..\libs\attributes\MintPlayer.Spark.Attributes\MintPlayer.Spark.Attributes.csproj" />
+		<ProjectReference Include="..\..\..\libs\model\MintPlayer.Spark.Model\MintPlayer.Spark.Model.csproj" />
+		<!-- Book : IAuditCreated (#271): LibraryGenerators emits CreatedBy/CreatedAt, History stamps them. -->
+		<ProjectReference Include="..\..\..\libs\history\MintPlayer.Spark.History.Abstractions\MintPlayer.Spark.History.Abstractions.csproj" />
+		<!-- Runs AttributeDescriptionsGenerator here, where the /// summaries live (#348). -->
+		<ProjectReference Include="..\..\..\libs\source_generators\MintPlayer.Spark.SourceGenerators\MintPlayer.Spark.SourceGenerators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+		<!-- The document-id members (__DocumentId) and the audit members. Analyzer references are not transitive. -->
+		<ProjectReference Include="..\..\..\libs\source_generators\MintPlayer.Spark.LibraryGenerators\MintPlayer.Spark.LibraryGenerators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+	</ItemGroup>
+
+</Project>

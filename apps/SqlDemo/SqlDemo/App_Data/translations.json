@@ -1,0 +1,121 @@
+{
+  "$schema": "https://schemas.spark.mintplayer.com/v15/translations.schema.json",
+  "app": {
+    "selectMenuItem": {
+      "en": "Pick Books or Authors in the sidebar to get started."
+    },
+    "welcomeSubtitle": {
+      "en": "A Spark application on PostgreSQL: tables from migrations, the book list from an SQL view."
+    },
+    "welcomeTitle": {
+      "en": "Welcome to the Spark SQL demo"
+    }
+  },
+  "model": {
+    "Author": {
+      "attributes": {
+        "Country": {
+          "description": {
+            "en": "The country the author is from."
+          },
+          "label": {
+            "en": "Country"
+          }
+        },
+        "Name": {
+          "description": {
+            "en": "The author's name as printed on the cover, e.g. Ursula K. Le Guin."
+          },
+          "label": {
+            "en": "Name"
+          }
+        }
+      },
+      "label": {
+        "en": "Author"
+      }
+    },
+    "Book": {
+      "attributes": {
+        "Author": {
+          "description": {
+            "en": "The author who wrote the book: a foreign key to the Authors table."
+          },
+          "label": {
+            "en": "Author"
+          }
+        },
+        "AuthorName": {
+          "description": {
+            "en": "The author's name, joined in by the view; empty when the book has no author."
+          },
+          "label": {
+            "en": "Author"
+          }
+        },
+        "CreatedAt": {
+          "label": {
+            "en": "Created at"
+          }
+        },
+        "CreatedBy": {
+          "label": {
+            "en": "Created by"
+          }
+        },
+        "Isbn": {
+          "description": {
+            "en": "The book's ISBN-13, e.g. 978-0-441-47812-5."
+          },
+          "label": {
+            "en": "ISBN"
+          }
+        },
+        "Title": {
+          "description": {
+            "en": "The book's title."
+          },
+          "label": {
+            "en": "Title"
+          }
+        },
+        "Year": {
+          "description": {
+            "en": "The year the book was first published."
+          },
+          "label": {
+            "en": "Year"
+          }
+        }
+      },
+      "label": {
+        "en": "Book"
+      }
+    }
+  },
+  "programUnits": {
+    "authors": {
+      "en": "Authors"
+    },
+    "books": {
+      "en": "Books"
+    },
+    "groups": {
+      "catalogue": {
+        "en": "Catalogue"
+      }
+    }
+  },
+  "queries": {
+    "GetAuthors": {
+      "label": {
+        "en": "Authors"
+      }
+    },
+    "GetBooks": {
+      "label": {
+        "en": "Books"
+      }
+    }
+  }
+}

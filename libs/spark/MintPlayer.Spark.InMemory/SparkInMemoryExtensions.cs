@@ -27,13 +27,14 @@ public sealed class InMemoryOptions
 
 /// <summary>
 /// <c>UseInMemory()</c>: the process's memory as the application's store (#551 D14). Documents live in a dictionary,
-/// queries run as LINQ-to-objects, and the change feed is in-process; there are no indexes, subscriptions, revisions,
-/// attachments, expiration or full-text search. <b>Data resets on restart</b>: for demos, prototypes and tests.
+/// queries run as LINQ-to-objects, and the change feed, subscriptions (#536 D39) and revisions (S8) are in-process; there
+/// are no indexes, attachments, expiration or full-text search. <b>Data resets on restart</b>: for demos, prototypes and
+/// tests.
 /// </summary>
 public static class SparkInMemoryExtensions
 {
     /// <summary>Uses an in-memory store, seeded by <paramref name="configure"/>.</summary>
-    [global::MintPlayer.Spark.Abstractions.Storage.SparkStoreProvider(global::MintPlayer.Spark.Abstractions.Storage.SparkStoreProviders.InMemory, global::MintPlayer.Spark.Abstractions.Storage.SparkStoreCapabilities.ChangeNotifications)]
+    [global::MintPlayer.Spark.Abstractions.Storage.SparkStoreProvider(global::MintPlayer.Spark.Abstractions.Storage.SparkStoreProviders.InMemory, global::MintPlayer.Spark.Abstractions.Storage.SparkStoreCapabilities.ChangeNotifications | global::MintPlayer.Spark.Abstractions.Storage.SparkStoreCapabilities.Subscriptions | global::MintPlayer.Spark.Abstractions.Storage.SparkStoreCapabilities.Revisions)]
     public static ISparkBuilder UseInMemory(this ISparkBuilder builder, Action<InMemoryOptions>? configure = null)
     {
         var options = new InMemoryOptions();

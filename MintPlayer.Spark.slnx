@@ -61,6 +61,10 @@
     <Project Path="apps/SparkId/SparkId.Tests/SparkId.Tests.csproj" />
     <Project Path="apps/SparkId/SparkId/SparkId.csproj" />
   </Folder>
+  <Folder Name="/apps/SqlDemo/">
+    <Project Path="apps/SqlDemo/SqlDemo.Library/SqlDemo.Library.csproj" />
+    <Project Path="apps/SqlDemo/SqlDemo/SqlDemo.csproj" />
+  </Folder>
   <Folder Name="/libs/" />
   <Folder Name="/libs/all_features/">
     <Project Path="libs/all_features/MintPlayer.Spark.AllFeatures.SourceGenerators/MintPlayer.Spark.AllFeatures.SourceGenerators.csproj" />

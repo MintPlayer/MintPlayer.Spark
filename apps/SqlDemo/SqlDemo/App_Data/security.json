@@ -1,0 +1,26 @@
+{
+  "$schema": "../../../../schemas/security.schema.json",
+  "_comment": [
+    "Everyone reads the catalogue; Administrators maintain it and read a book's history.",
+    "Every anonymous grant is mirrored on authenticated: anonymous is not a floor.",
+    "The rights are the same as they would be on RavenDB: security.json knows no store (#536)."
+  ],
+  "wellKnown": {
+    "anonymous": "00000000-0000-0000-0000-000000000000",
+    "authenticated": "5a1d0000-0000-4000-8000-00000000000f"
+  },
+  "groups": {
+    "00000000-0000-0000-0000-000000000000": "Anonymous visitors",
+    "5a1d0000-0000-4000-8000-00000000000f": "Signed-in users",
+    "5a1d0000-0000-4000-8000-000000000001": "Administrators"
+  },
+  "rights": [
+    { "key": "5a1dffff-0000-4000-8000-000000000001", "resource": "QueryRead/Author",                "groupId": "00000000-0000-0000-0000-000000000000", "isDenied": false },
+    { "key": "5a1dffff-0000-4000-8000-000000000021", "resource": "QueryReadEditNewDelete/Author",   "groupId": "5a1d0000-0000-4000-8000-000000000001", "isDenied": false },
+    { "key": "5a1dffff-0000-4000-8000-000000000011", "resource": "QueryRead/Author",                "groupId": "5a1d0000-0000-4000-8000-00000000000f", "isDenied": false },
+    { "key": "5a1dffff-0000-4000-8000-000000000002", "resource": "QueryRead/Book",                  "groupId": "00000000-0000-0000-0000-000000000000", "isDenied": false },
+    { "key": "5a1dffff-0000-4000-8000-000000000023", "resource": "History/Book",                    "groupId": "5a1d0000-0000-4000-8000-000000000001", "isDenied": false },
+    { "key": "5a1dffff-0000-4000-8000-000000000022", "resource": "QueryReadEditNewDelete/Book",     "groupId": "5a1d0000-0000-4000-8000-000000000001", "isDenied": false },
+    { "key": "5a1dffff-0000-4000-8000-000000000012", "resource": "QueryRead/Book",                  "groupId": "5a1d0000-0000-4000-8000-00000000000f", "isDenied": false }
+  ]
+}

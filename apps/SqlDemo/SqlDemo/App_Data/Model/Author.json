@@ -1,0 +1,51 @@
+{
+  "$schema": "https://schemas.spark.mintplayer.com/v15/model.schema.json",
+  "persistentObject": {
+    "id": "7f2cb8e2-e488-4343-975d-ba64859d4ae1",
+    "name": "Author",
+    "clrType": "SqlDemo.Entities.Author",
+    "breadcrumb": "{Name}",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "72001031-0bfb-483e-85fc-b243661e1526",
+        "name": "Country",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "71346a2b-4db3-4817-a62f-11d6a4e4b463",
+        "name": "Name",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 1,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      }
+    ],
+    "queries": []
+  },
+  "queries": [
+    {
+      "id": "3c39ca26-23e6-4c96-bd87-cf70d8f1fed8",
+      "name": "GetAuthors",
+      "source": "Database.Authors",
+      "sortColumns": [
+        {
+          "property": "Name",
+          "direction": "asc"
+        }
+      ],
+      "renderMode": "Pagination",
+      "entityType": "Author"
+    }
+  ]
+}
