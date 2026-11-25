@@ -1,13 +1,13 @@
 using System.Collections.Concurrent;
+using System.Runtime.CompilerServices;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions.Authentication;
 using MintPlayer.Spark.Abstractions.Authorization;
+using MintPlayer.Spark.Abstractions.Storage;
 using MintPlayer.Spark.Moderation.Documents;
-using Raven.Client.Documents;
-using Raven.Client.Documents.Session;
 
 namespace MintPlayer.Spark.Moderation.Services;
 
@@ -36,11 +36,11 @@ internal sealed class ModerationUserSnapshot
 /// </summary>
 internal sealed partial class ModerationUserState
 {
-    // Process-wide memo of (database, user, day, network) already recorded, so an active user costs
-    // one write a day, not one per request.
-    private static readonly ConcurrentDictionary<string, byte> Recorded = new();
+    // Process-wide memo, per store (database), of the (user, day) and network observations already recorded, so an
+    // active user costs one write a day, not one per request.
+    private static readonly ConditionalWeakTable<ISparkStore, ConcurrentDictionary<string, byte>> RecordedPerStore = new();
 
-    [Inject] private readonly IDocumentStore documentStore;
+    [Inject] private readonly ISparkStore store;
     [Inject] private readonly ISparkCurrentPrincipal currentUser;
     [Inject] private readonly IModerationAccounts accounts;
     [Inject] private readonly ModerationIpHasher ipHasher;
@@ -78,23 +78,25 @@ internal sealed partial class ModerationUserState
     /// <summary>Reads any user's snapshot (the vote path reads the voter's).</summary>
     public async Task<ModerationUserSnapshot> ReadAsync(string userId)
     {
-        using var session = documentStore.OpenAsyncSession();
-        var summary = session.Advanced.Lazily.LoadAsync<ReputationSummary>(ModerationIds.Summary(userId).Value);
-        var profile = session.Advanced.Lazily.LoadAsync<ModerationProfile>(ModerationIds.Profile(userId).Value);
-        var suspension = session.Advanced.Lazily.LoadAsync<ModerationSuspension>(ModerationIds.Suspension(userId).Value);
-        await session.Advanced.Eagerly.ExecuteAllPendingLazyOperationsAsync();
+        using var session = store.OpenSession();
+        var summaryId = ModerationIds.Summary(userId).Value;
+        var profileId = ModerationIds.Profile(userId).Value;
+        var suspensionId = ModerationIds.Suspension(userId).Value;
+        await session.PreloadAsync([(typeof(ReputationSummary), summaryId), (typeof(ModerationProfile), profileId), (typeof(ModerationSuspension), suspensionId)]);
         var account = (await accounts.GetAsync([userId])).GetValueOrDefault(userId);
 
         return new ModerationUserSnapshot
         {
             UserId = userId,
             Account = account,
-            Summary = await summary.Value,
-            Profile = await profile.Value,
-            Suspension = await suspension.Value,
+            Summary = await session.LoadAsync<ReputationSummary>(summaryId),
+            Profile = await session.LoadAsync<ModerationProfile>(profileId),
+            Suspension = await session.LoadAsync<ModerationSuspension>(suspensionId),
             NowUtc = timeProvider.GetUtcNow().UtcDateTime,
         };
     }
+
+    private ConcurrentDictionary<string, byte> Recorded => RecordedPerStore.GetValue(store, static _ => new(StringComparer.Ordinal));
 
     private async Task<ModerationProfile?> RecordActivityAsync(ModerationUserSnapshot snapshot)
     {
@@ -102,11 +104,11 @@ internal sealed partial class ModerationUserState
         var result = snapshot.Profile;
         try
         {
-            var memo = $"{documentStore.Database}|{snapshot.UserId}|{day}";
+            var memo = $"{snapshot.UserId}|{day}";
             if (snapshot.Profile?.LastActiveDay != day && Recorded.TryAdd(memo, 0))
             {
-                using var session = documentStore.OpenAsyncSession();
-                session.Advanced.OptimisticConcurrencyMode = OptimisticConcurrencyMode.Writes;
+                using var session = store.OpenSession();
+                session.OptimisticConcurrency = true;
                 var profile = await session.LoadAsync<ModerationProfile>(ModerationIds.Profile(snapshot.UserId).Value)
                               ?? new ModerationProfile { UserId = snapshot.UserId };
                 if (profile.LastActiveDay != day)
@@ -137,15 +139,14 @@ internal sealed partial class ModerationUserState
                 return;
             var (keyId, hash) = await ipHasher.HashAsync(address);
             var observationId = ModerationIds.IpObservation(snapshot.UserId, day, hash);
-            if (!Recorded.TryAdd($"{documentStore.Database}|{observationId}", 0))
+            if (!Recorded.TryAdd(observationId.Value, 0))
                 return;
-            using var ipSession = documentStore.OpenAsyncSession();
-            if (await ipSession.Advanced.ExistsAsync(observationId.Value))
+            using var ipSession = store.OpenSession();
+            if (await ipSession.ExistsAsync(observationId))
                 return;
             var observation = new ModerationIpObservation { UserId = snapshot.UserId, KeyId = keyId, Hash = hash, Day = day };
             await ipSession.StoreAsync(observation, observationId.Value);
-            ipSession.Advanced.GetMetadataFor(observation)["@expires"] =
-                snapshot.NowUtc.AddDays(options.Value.Fraud.IpObservationRetentionDays).ToString("O");
+            ipSession.SetExpiry(observation, new DateTimeOffset(snapshot.NowUtc.AddDays(options.Value.Fraud.IpObservationRetentionDays), TimeSpan.Zero));
             await ipSession.SaveChangesAsync();
         }
     }

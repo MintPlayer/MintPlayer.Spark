@@ -24,7 +24,7 @@
       "type": "parameter",
       "datatype": "choice",
       "displayName": "Store",
-      "description": "Where the data lives. A few features (dashboards, moderation, search, replication, the identity provider) still need RavenDB.",
+      "description": "Where the data lives. A few features (dashboards, search, replication, the identity provider) still need RavenDB.",
       "defaultValue": "RavenDB",
       "choices": [
         { "choice": "RavenDB", "displayName": "RavenDB", "description": "A RavenDB server (Spark:RavenDb in appsettings.json)." },

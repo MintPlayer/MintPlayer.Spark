@@ -1,7 +1,7 @@
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions.Interceptors;
-using MintPlayer.Spark.Moderation.Documents;
-using Raven.Client.Documents;
+using MintPlayer.Spark.Abstractions.Storage;
+using MintPlayer.Spark.Moderation.Indexes;
 
 namespace MintPlayer.Spark.Moderation.Services;
 
@@ -20,7 +20,7 @@ internal sealed partial class ModerationVoteReversal : IAfterDeleteCommitted<IMo
     /// <summary>Set by the before-delete interceptor when this delete must reverse the post's votes.</summary>
     public const string ReverseVotesFact = "Moderation.ReverseVotes";
 
-    [Inject] private readonly IDocumentStore documentStore;
+    [Inject] private readonly ISparkStore store;
     [Inject] private readonly ReputationLedger ledger;
 
     public async Task OnAfterDeleteCommittedAsync(SparkCommittedChange change, CancellationToken cancellationToken)
@@ -28,14 +28,13 @@ internal sealed partial class ModerationVoteReversal : IAfterDeleteCommitted<IMo
         if (!change.Facts.ContainsKey(ReverseVotesFact))
             return;
 
-        using var read = documentStore.OpenAsyncSession();
-        // The documents, not a projection of Id: a typed id is not a field RavenDB can project (#536 D23).
-        var votes = await read.Query<ModerationVote>()
-            .Customize(c => c.WaitForNonStaleResults(TimeSpan.FromSeconds(30)))
-            .Where(v => v.TargetId == change.Id && v.Direction != 0)
-            .Take(10_000)
-            .ToListAsync(cancellationToken);
-        var voteIds = votes.Select(v => v.Id.Value).ToList();
+        using var read = store.OpenSession();
+        // The view's id column is a plain string (s.IdOf), so it projects; the document's typed id would not (#536 D23).
+        var targetId = change.Id;
+        var voteIds = (await read.ToListAsync(read.Query<Moderation_Votes.Result, Moderation_Votes>(ReputationLedger.IndexWait)
+            .Where(v => v.TargetId == targetId && v.Direction != 0)
+            .Select(v => v.Id)
+            .Take(10_000), cancellationToken)).OfType<string>().ToList();
 
         if (voteIds.Count > 0)
             await ledger.ReverseVotesAsync(voteIds, "content-deleted", null, cancellationToken);

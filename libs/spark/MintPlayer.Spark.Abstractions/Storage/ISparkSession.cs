@@ -38,6 +38,13 @@ public interface ISparkSession : IDisposable
     /// </summary>
     IQueryable<T> Query<T, TIndex>() where T : class where TIndex : class, new();
 
+    /// <summary>
+    /// <see cref="Query{T, TIndex}()"/> for an answer that must include every committed write (a reputation total, the
+    /// entries a job credits): the query waits up to <paramref name="waitForIndexes"/> for the index, and RavenDB throws
+    /// <see cref="TimeoutException"/> when it is still stale then. A provider whose views are always current ignores it.
+    /// </summary>
+    IQueryable<T> Query<T, TIndex>(TimeSpan waitForIndexes) where T : class where TIndex : class, new();
+
     Task<T?> LoadAsync<T>(string id, CancellationToken cancellationToken = default) where T : class;
 
     /// <summary>Loads by id; a missing id maps to null. Keys are the ids asked for.</summary>

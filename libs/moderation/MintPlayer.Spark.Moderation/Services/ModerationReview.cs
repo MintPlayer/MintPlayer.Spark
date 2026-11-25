@@ -1,9 +1,9 @@
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions.Authentication;
 using MintPlayer.Spark.Abstractions.Authorization;
+using MintPlayer.Spark.Abstractions.Storage;
 using MintPlayer.Spark.Moderation.Documents;
-using Raven.Client.Documents;
-using Raven.Client.Documents.Linq;
+using MintPlayer.Spark.Moderation.Indexes;
 
 namespace MintPlayer.Spark.Moderation.Services;
 
@@ -52,7 +52,7 @@ public sealed record ModerationReputationLine(string Label, string Kind, int Poi
 /// <summary>The read side: the review queue, a case's evidence, the audit log and a user's own history.</summary>
 internal sealed partial class ModerationReview
 {
-    [Inject] private readonly IDocumentStore documentStore;
+    [Inject] private readonly ISparkStore store;
     [Inject] private readonly IPermissionService permissions;
     [Inject] private readonly ISparkCurrentPrincipal currentUser;
     [Inject] private readonly IModerationAccounts accounts;
@@ -62,23 +62,31 @@ internal sealed partial class ModerationReview
     public async Task<IReadOnlyList<ModerationCaseSummary>> ListCasesAsync(string? status, int skip, int take, CancellationToken cancellationToken)
     {
         await permissions.EnsureAuthorizedAsync(ModerationRights.Review, ModerationRights.Target, cancellationToken);
-        using var session = documentStore.OpenAsyncSession();
-        IRavenQueryable<ReviewCase> query = session.Query<ReviewCase>();
+        using var session = store.OpenSession();
+        var query = session.Query<Moderation_Cases.Result, Moderation_Cases>();
         var wanted = string.IsNullOrEmpty(status) ? ModerationCaseStatus.Open : status;
         if (wanted != "all")
             query = query.Where(c => c.Status == wanted);
-        var cases = await query.OrderByDescending(c => c.OpenedAtUtc).Skip(Math.Max(0, skip)).Take(Math.Clamp(take, 1, 200)).ToListAsync(cancellationToken);
-        return cases.Select(Summarize).ToList();
+        var ids = await session.ToListAsync(query.OrderByDescending(c => c.OpenedAtUtc).Skip(Math.Max(0, skip)).Take(Math.Clamp(take, 1, 200)).Select(c => c.Id), cancellationToken);
+        return (await LoadInOrderAsync<ReviewCase>(session, ids, cancellationToken)).Select(Summarize).ToList();
+    }
+
+    /// <summary>The documents <paramref name="ids"/> names, in that order (a view's sort); one batch, ids deleted meanwhile skipped.</summary>
+    private static async Task<List<T>> LoadInOrderAsync<T>(ISparkSession session, IReadOnlyList<string?> ids, CancellationToken cancellationToken) where T : class
+    {
+        var wanted = ids.OfType<string>().ToList();
+        var loaded = await session.LoadAsync<T>(wanted, cancellationToken);
+        return [.. wanted.Select(id => loaded.GetValueOrDefault(id)).OfType<T>()];
     }
 
     public async Task<ModerationCaseDetail> GetCaseAsync(string caseId, CancellationToken cancellationToken)
     {
         await permissions.EnsureAuthorizedAsync(ModerationRights.Review, ModerationRights.Target, cancellationToken);
-        if (string.IsNullOrEmpty(caseId) || !caseId.StartsWith("moderationcases/", StringComparison.OrdinalIgnoreCase))
+        if (string.IsNullOrEmpty(caseId) || !caseId.StartsWith(ModerationIds.CasePrefix, StringComparison.OrdinalIgnoreCase))
             throw new SparkRowLevelAccessDeniedException("Review/Moderation");
 
-        using var session = documentStore.OpenAsyncSession();
-        session.Advanced.MaxNumberOfRequestsPerSession = int.MaxValue;
+        using var session = store.OpenSession();
+        session.MaxNumberOfRequests = int.MaxValue;
         var reviewCase = await session.LoadAsync<ReviewCase>(caseId, cancellationToken)
                          ?? throw new SparkRowLevelAccessDeniedException("Review/Moderation");
 
@@ -119,7 +127,8 @@ internal sealed partial class ModerationReview
         }
 
         var flags = reviewCase.Kind == "flag"
-            ? (await session.Query<ModerationFlag>().Where(f => f.CaseId == caseId).Take(200).ToListAsync(cancellationToken))
+            ? (await LoadInOrderAsync<ModerationFlag>(session, await session.ToListAsync(session.Query<Moderation_Flags.Result, Moderation_Flags>()
+                    .Where(f => f.CaseId == caseId).Select(f => f.Id).Take(200), cancellationToken), cancellationToken))
                 .Select(f => new ModerationFlagView(f.FlaggerId, f.Reason, f.RaisedAtUtc, f.Status)).ToList()
             : [];
 
@@ -138,26 +147,26 @@ internal sealed partial class ModerationReview
     {
         if (networks is null || networks.Count == 0)
             return 0;
-        using var session = documentStore.OpenAsyncSession();
-        var hashes = networks.Select(n => n[(n.IndexOf(':') + 1)..]).Distinct().ToArray();
-        var others = await session.Query<ModerationIpObservation>()
-            .Where(o => o.Hash.In(hashes) && o.UserId != userId)
+        using var session = store.OpenSession();
+        List<string> hashes = [.. networks.Select(n => n[(n.IndexOf(':') + 1)..]).Distinct()];
+        var others = await session.ToListAsync(session.Query<Moderation_IpObservations.Result, Moderation_IpObservations>()
+            .Where(o => hashes.Contains(o.Hash) && o.UserId != userId)
             .Select(o => o.UserId)
             .Distinct()
-            .Take(1000)
-            .ToListAsync(cancellationToken);
+            .Take(1000), cancellationToken);
         return others.Count;
     }
 
     public async Task<IReadOnlyList<ModerationAuditEntry>> ListAuditAsync(int skip, int take, CancellationToken cancellationToken)
     {
         await permissions.EnsureAuthorizedAsync(ModerationRights.Audit, ModerationRights.Target, cancellationToken);
-        using var session = documentStore.OpenAsyncSession();
-        return await session.Query<ModerationAuditEntry>()
+        using var session = store.OpenSession();
+        var ids = await session.ToListAsync(session.Query<Moderation_Audit.Result, Moderation_Audit>()
             .OrderByDescending(e => e.AtUtc)
             .Skip(Math.Max(0, skip))
             .Take(Math.Clamp(take, 1, 200))
-            .ToListAsync(cancellationToken);
+            .Select(e => e.Id), cancellationToken);
+        return await LoadInOrderAsync<ModerationAuditEntry>(session, ids, cancellationToken);
     }
 
     /// <summary>
@@ -167,12 +176,12 @@ internal sealed partial class ModerationReview
     public async Task<IReadOnlyList<ModerationReputationLine>> MyHistoryAsync(int take, CancellationToken cancellationToken)
     {
         var userId = currentUser.IsAuthenticated && currentUser.Id is { Length: > 0 } id ? id : throw new SparkAccessDeniedException("Moderation");
-        using var session = documentStore.OpenAsyncSession();
-        var events = await session.Query<ReputationEvent>()
+        using var session = store.OpenSession();
+        var events = await LoadInOrderAsync<ReputationEvent>(session, await session.ToListAsync(session.Query<Moderation_Ledger.Result, Moderation_Ledger>()
             .Where(e => e.UserId == userId)
             .OrderByDescending(e => e.CreatedAtUtc)
             .Take(Math.Clamp(take, 1, 500))
-            .ToListAsync(cancellationToken);
+            .Select(e => e.Id), cancellationToken), cancellationToken);
 
         var lines = new List<ModerationReputationLine>();
         foreach (var group in events.GroupBy(e => e.Kind == ReputationEventKinds.Reversal ? "reversal:" + (e.CaseId ?? e.RuleId) : e.Id.Value))

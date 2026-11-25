@@ -541,6 +541,15 @@ the aggregate tables of the S16 row and the §"Map-reduce index" table row (*rou
 - **Limits:** every map assigns every member (EF's set operations require it), a sum a map lacks is `0`, the reduce
   uses keys and scalar aggregates only, a reduce view has no `Id` and is never an entity type's default. Fan-out
   (`SelectMany`) in a map is not supported yet (`Likes_Count`).
+- **One row-per-entity view per entity type, one SQL view per row type.** Two row-per-entity views over the same type
+  make the catalog demand a `[DefaultIndex]`, so moderation folded `EntriesToCredit` into `Moderation_Ledger`.
+- **RavenDB reads a map view's rows with `ProjectInto`** (`RavenSparkSession.ViewRows`), added at execution when the
+  caller made no projection. Without it RavenDB returns the source documents and a computed column is lost (measured:
+  `NeutralReduceViewTests.A_map_view_reads_its_computed_columns_…`). Not when the query is opened: RavenDB refuses a
+  second projection, and callers project ids (`Select(r => r.Id)`) after their filters.
+- **Moderation (S16's consumer) runs on any store:** 9 views (3 reduces, 6 row-per-entity), reads by id after a view
+  query (D42), `ISparkSession.Query<TRow, TView>(TimeSpan)` where a read must include every write (RavenDB waits,
+  SQL and memory do not need to).
 
 *Evidence:*
 - `NeutralMessagingTests` 4/4 on RavenDB, InMemory, SQL Server and PostgreSQL. The new assertion: on RavenDB a

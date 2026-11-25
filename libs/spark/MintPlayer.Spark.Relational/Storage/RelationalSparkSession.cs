@@ -85,6 +85,9 @@ public sealed partial class RelationalSparkSession : ISparkSession
         return db.Set<T>();
     }
 
+    /// <summary>An SQL view is computed when read: nothing to wait for.</summary>
+    public IQueryable<T> Query<T, TIndex>(TimeSpan waitForIndexes) where T : class where TIndex : class, new() => Query<T, TIndex>();
+
     /// <summary>A view (D32) is its row type's set, mapped to the SQL view; rows are read-only, so untracked.</summary>
     public IQueryable<T> Query<T, TIndex>() where T : class where TIndex : class, new()
     {
@@ -668,17 +671,25 @@ public sealed partial class RelationalSparkSession : ISparkSession
 
     /// <summary>
     /// Every row of <paramref name="query"/>, untracked, with its version. The rows are read before the first is yielded:
-    /// one connection cannot read a result and the join tables at once.
+    /// one connection cannot read a result and the join tables at once. A view row (#536 D43) is no document: it has no
+    /// version column and nothing to hydrate, so it streams as read, with no version.
     /// </summary>
     public async IAsyncEnumerable<SparkStreamResult<T>> StreamAsync<T>(IQueryable<T> query,
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         Request();
+        var rewritten = JoinRewriter.Rewrite(db, query);
+        var untracked = rewritten.Provider.CreateQuery<T>(Expression.Call(AsNoTrackingMethod.MakeGenericMethod(typeof(T)), rewritten.Expression));
+        if (db.Model.FindEntityType(typeof(T))?.FindProperty(SparkDbContext.VersionProperty) is null)
+        {
+            foreach (var row in await untracked.ToListAsync(cancellationToken))
+                yield return new SparkStreamResult<T>(row is null ? null : SparkIdValues.ReadEntityId(row)?.ToLowerInvariant(), row, null);
+            yield break;
+        }
+
         var x = Expression.Parameter(typeof(T), "x");
         var version = Expression.Call(typeof(EF), nameof(EF.Property), [typeof(long)], x, Expression.Constant(SparkDbContext.VersionProperty));
         var pair = Expression.New(typeof(KeyValuePair<T, long>).GetConstructor([typeof(T), typeof(long)])!, x, version);
-        var rewritten = JoinRewriter.Rewrite(db, query);
-        var untracked = rewritten.Provider.CreateQuery<T>(Expression.Call(AsNoTrackingMethod.MakeGenericMethod(typeof(T)), rewritten.Expression));
         var withVersions = untracked
             .Select(Expression.Lambda<Func<T, KeyValuePair<T, long>>>(pair, x));
         var rows = await withVersions.ToListAsync(cancellationToken);

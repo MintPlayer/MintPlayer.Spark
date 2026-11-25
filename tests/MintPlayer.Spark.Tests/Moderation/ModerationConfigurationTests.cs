@@ -189,7 +189,7 @@ public class ModerationConfigurationTests : RavenSparkTestDriver
     [Fact]
     public async Task An_invalid_layered_configuration_refuses_startup()
     {
-        var act = async () => await MoHost.StartAsync(Store, o => o.Reputation["NotAnEvent"] = 1);
+        var act = async () => await MoHost.StartAsync(Store.AsSparkTestDatabase(), o => o.Reputation["NotAnEvent"] = 1);
 
         (await act.Should().ThrowAsync<InvalidOperationException>()).Which.Message.Should().Contain("'NotAnEvent' is unknown");
     }
@@ -197,7 +197,7 @@ public class ModerationConfigurationTests : RavenSparkTestDriver
     [Fact]
     public async Task The_moderation_indexes_are_deployed_by_AddModeration()
     {
-        await using var host = await MoHost.StartAsync(Store);
+        await using var host = await MoHost.StartAsync(Store.AsSparkTestDatabase());
 
         var names = await Store.Maintenance.SendAsync(new GetIndexNamesOperation(0, 256));
         foreach (var expected in ModerationIndexNames.All)

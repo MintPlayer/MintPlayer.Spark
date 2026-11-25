@@ -9,21 +9,28 @@ namespace MintPlayer.Spark.Moderation.Documents;
 /// is re-keyed. The ids stored inside documents (<see cref="ModerationVote.EventIds"/>, <c>CaseId</c>, <c>VoteId</c>,
 /// <c>CompensatesId</c>) keep the casing they were written with, so code comparing one of them in memory with an id
 /// from here compares ignoring case.
+/// <para>
+/// Every id starts with its type's collection (<c>SparkCollectionNames</c>, lower case): a relational store refuses an id
+/// of another collection. Summaries were <c>moderationreputation/…</c> and cases <c>moderationcases/…</c> before #536 M7e.
+/// </para>
 /// </remarks>
 public static class ModerationIds
 {
     /// <summary>What a deleted account's ids are replaced with in the ledger.</summary>
     public const string DeletedUser = "deleted-user";
 
+    /// <summary>The prefix of every review case id; the review endpoints refuse any other id.</summary>
+    public const string CasePrefix = "reviewcases/";
+
     public static Id<ModerationVote> Vote(string voterId, string targetId) => Id<ModerationVote>.FromTrusted($"moderationvotes/{voterId}/{targetId}");
     public static Id<ModerationTally> Tally(string targetId) => Id<ModerationTally>.FromTrusted($"moderationtallies/{targetId}");
     public static Id<ModerationFlag> Flag(string flaggerId, string targetId) => Id<ModerationFlag>.FromTrusted($"moderationflags/{flaggerId}/{targetId}");
-    public static Id<ReviewCase> FlagCase(string targetId) => Id<ReviewCase>.FromTrusted($"moderationcases/flag/{targetId}");
-    public static Id<ReviewCase> FraudCase(string ruleId, string a, string b) => Id<ReviewCase>.FromTrusted($"moderationcases/{ruleId}/{a}/{b}");
+    public static Id<ReviewCase> FlagCase(string targetId) => Id<ReviewCase>.FromTrusted($"{CasePrefix}flag/{targetId}");
+    public static Id<ReviewCase> FraudCase(string ruleId, string a, string b) => Id<ReviewCase>.FromTrusted($"{CasePrefix}{ruleId}/{a}/{b}");
     public static Id<ModerationLock> Lock(string targetId) => Id<ModerationLock>.FromTrusted($"moderationlocks/{targetId}");
     public static Id<ModerationSuspension> Suspension(string userId) => Id<ModerationSuspension>.FromTrusted($"moderationsuspensions/{userId}");
     public static Id<ModerationProfile> Profile(string userId) => Id<ModerationProfile>.FromTrusted($"moderationprofiles/{userId}");
-    public static Id<ReputationSummary> Summary(string userId) => Id<ReputationSummary>.FromTrusted($"moderationreputation/{userId}");
+    public static Id<ReputationSummary> Summary(string userId) => Id<ReputationSummary>.FromTrusted($"reputationsummaries/{userId}");
 
     /// <summary>A vote's ledger entry: <c>{voteId}/{revision}/{role}</c> (role <c>recipient</c> or <c>voter</c>).</summary>
     public static Id<ReputationEvent> VoteEvent(string voteId, int revision, string role)

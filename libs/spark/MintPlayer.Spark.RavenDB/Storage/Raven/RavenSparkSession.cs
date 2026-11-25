@@ -56,6 +56,9 @@ internal sealed class RavenSparkSession : ISparkSession
             ? Session.Query<T>(ViewName<T, TIndex>.Name)
             : IndexQuery<T, TIndex>.Open(Session));
 
+    public IQueryable<T> Query<T, TIndex>(TimeSpan waitForIndexes) where T : class where TIndex : class, new()
+        => Query<T, TIndex>() is IRavenQueryable<T> raven ? raven.Customize(c => c.WaitForNonStaleResults(waitForIndexes)) : Query<T, TIndex>();
+
     private static class ViewName<T, TView> where T : class
     {
         public static readonly string Name = Resolve();
@@ -65,6 +68,7 @@ internal sealed class RavenSparkSession : ISparkSession
             var view = Abstractions.Views.SparkViewEntries.Instantiate(typeof(TView));
             if (view.RowType != typeof(T))
                 throw new InvalidOperationException($"View {view.Name} yields {view.RowType.Name}, not {typeof(T).Name}.");
+            ViewIndexNames.TryAdd(view.Name, 0);
             return view.Name;
         }
     }
@@ -355,7 +359,7 @@ internal sealed class RavenSparkSession : ISparkSession
     public async IAsyncEnumerable<SparkStreamResult<T>> StreamAsync<T>(IQueryable<T> query,
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        await using var stream = await Session.Advanced.StreamAsync(RavenIdQueryRewriter.Rewrite(query), cancellationToken);
+        await using var stream = await Session.Advanced.StreamAsync(RavenIdQueryRewriter.Rewrite(ViewRows(query)), cancellationToken);
         while (await stream.MoveNextAsync())
             yield return new SparkStreamResult<T>(stream.Current.Id, stream.Current.Document, stream.Current.ChangeVector);
     }
@@ -492,9 +496,32 @@ internal sealed class RavenSparkSession : ISparkSession
     /// RavenDB query goes over the wire.
     /// </remarks>
     public async Task<List<T>> ToListAsync<T>(IQueryable<T> query, CancellationToken cancellationToken = default)
-        => query is IRavenQueryable<T> && RavenIdQueryRewriter.Rewrite(query) is IRavenQueryable<T> raven
+        => query is IRavenQueryable<T> && RavenIdQueryRewriter.Rewrite(ViewRows(query)) is IRavenQueryable<T> raven
             ? await raven.ToListAsync(cancellationToken)
             : [.. query];
+
+    /// <summary>Index names of the <see cref="Abstractions.Views.SparkView{TRow}"/>s this process has queried.</summary>
+    private static readonly ConcurrentDictionary<string, byte> ViewIndexNames = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// The rows of a view, read as the view computed them: <c>ProjectInto&lt;T&gt;()</c> when the caller made no projection
+    /// of its own. Without it RavenDB answers a map view's query with the source documents, so a computed column comes
+    /// back as the document's field of that name or empty (measured: <c>Label</c> empty, <c>Points</c> the document's 2
+    /// instead of the view's 20). It is added here, at execution, and not when the query is opened: the caller still
+    /// composes <c>Where</c>/<c>OrderBy</c>/<c>Take</c> on the row type, and RavenDB refuses a second projection (a
+    /// <c>Select(r =&gt; r.Id)</c> after it).
+    /// </summary>
+    private static IQueryable<T> ViewRows<T>(IQueryable<T> query)
+    {
+        if (query is not IRavenQueryInspector { IndexName: { } index } || !ViewIndexNames.ContainsKey(index))
+            return query;
+        for (var expression = query.Expression; expression is System.Linq.Expressions.MethodCallExpression call; expression = call.Arguments[0])
+        {
+            if (call.Method.Name is "Select" or "ProjectInto" or "OfType" or "As")
+                return query;
+        }
+        return query.ProjectInto<T>();
+    }
 
     public async Task<int> CountAsync<T>(IQueryable<T> query, CancellationToken cancellationToken = default)
         => query is IRavenQueryable<T> && RavenIdQueryRewriter.Rewrite(query) is IRavenQueryable<T> raven

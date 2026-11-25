@@ -141,7 +141,7 @@ public class QnAContributionsTests
 
         await host.WaitForIndexingAsync();
         var queue = (await moderator.PostJsonAsync("/spark/moderation/cases", new { take = 200 })).Result();
-        queue.EnumerateArray().Select(c => c.GetProperty("id").GetString()).Should().Contain($"moderationcases/flag/{version}".ToLowerInvariant()); // As ModerationIds writes it (#536 D7).
+        queue.EnumerateArray().Select(c => c.GetProperty("id").GetString()).Should().Contain($"reviewcases/flag/{version}".ToLowerInvariant()); // As ModerationIds writes it (#536 D7).
     }
 
     /// <summary>Anonymous visitors read translations but cannot write one: the save is refused, nothing is stored.</summary>

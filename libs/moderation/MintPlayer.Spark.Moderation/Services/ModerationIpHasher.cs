@@ -1,13 +1,13 @@
 using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;
+using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.Options;
 using MintPlayer.SourceGenerators.Attributes;
+using MintPlayer.Spark.Abstractions.Storage;
 using MintPlayer.Spark.Moderation.Documents;
-using Raven.Client.Documents;
-using Raven.Client.Exceptions;
 
 namespace MintPlayer.Spark.Moderation.Services;
 
@@ -33,9 +33,11 @@ namespace MintPlayer.Spark.Moderation.Services;
 internal sealed partial class ModerationIpHasher
 {
     private const string Purpose = "MintPlayer.Spark.Moderation.IpHashKey.v1";
-    private static readonly ConcurrentDictionary<string, byte[]> Keys = new();
 
-    [Inject] private readonly IDocumentStore documentStore;
+    /// <summary>The unprotected keys per store (one per application's database), dropped with the store.</summary>
+    private static readonly ConditionalWeakTable<ISparkStore, ConcurrentDictionary<string, byte[]>> Keys = new();
+
+    [Inject] private readonly ISparkStore store;
     [Inject] private readonly IDataProtectionProvider dataProtection;
     [Inject] private readonly IOptions<SparkModerationOptions> options;
     [Inject] private readonly TimeProvider timeProvider;
@@ -64,28 +66,28 @@ internal sealed partial class ModerationIpHasher
 
     private async Task<byte[]> GetKeyAsync(string keyId, DateTime now, ModerationFraudOptions fraud, CancellationToken cancellationToken)
     {
-        var cacheKey = documentStore.Database + "|" + keyId;
-        if (Keys.TryGetValue(cacheKey, out var cached))
+        var keys = Keys.GetValue(store, static _ => new ConcurrentDictionary<string, byte[]>(StringComparer.Ordinal));
+        if (keys.TryGetValue(keyId, out var cached))
             return cached;
 
         var protector = dataProtection.CreateProtector(Purpose);
         for (var attempt = 0; attempt < 3; attempt++)
         {
-            using var session = documentStore.OpenAsyncSession();
+            using var session = store.OpenSession();
             var stored = await session.LoadAsync<ModerationIpKey>(keyId, cancellationToken);
             if (stored is not null)
-                return Keys[cacheKey] = protector.Unprotect(Convert.FromBase64String(stored.ProtectedKey));
+                return keys[keyId] = protector.Unprotect(Convert.FromBase64String(stored.ProtectedKey));
 
             var fresh = RandomNumberGenerator.GetBytes(32);
             var document = new ModerationIpKey { ProtectedKey = Convert.ToBase64String(protector.Protect(fresh)), CreatedAtUtc = now };
             await session.StoreAsync(document, string.Empty, keyId, cancellationToken);
-            session.Advanced.GetMetadataFor(document)["@expires"] = now.AddDays(fraud.IpKeyRotationDays + fraud.IpObservationRetentionDays).ToString("O");
+            session.SetExpiry(document, new DateTimeOffset(now.AddDays(fraud.IpKeyRotationDays + fraud.IpObservationRetentionDays), TimeSpan.Zero));
             try
             {
                 await session.SaveChangesAsync(cancellationToken);
-                return Keys[cacheKey] = fresh;
+                return keys[keyId] = fresh;
             }
-            catch (ConcurrencyException)
+            catch (SparkStoreConcurrencyException)
             {
                 // Another node created this period's key first: read theirs.
             }

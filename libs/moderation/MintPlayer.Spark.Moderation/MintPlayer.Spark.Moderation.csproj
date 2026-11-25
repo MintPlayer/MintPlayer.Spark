@@ -33,7 +33,6 @@
 		</PackageReference>
 		<PackageReference Include="MintPlayer.SourceGenerators.Attributes" Version="13.1.2" GeneratePathProperty="true" />
 		<PackageReference Include="MintPlayer.AspNetCore.Endpoints" Version="11.4.1" />
-		<PackageReference Include="RavenDB.Client" Version="7.2.7" />
 	</ItemGroup>
 
 	<ItemGroup>

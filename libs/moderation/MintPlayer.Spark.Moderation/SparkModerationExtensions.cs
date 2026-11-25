@@ -36,17 +36,19 @@ public static class SparkModerationExtensions
     /// does not validate against <c>security.json</c>.
     /// </para>
     /// </remarks>
-    [global::MintPlayer.Spark.Abstractions.Storage.SparkRequiresStore("Spark.Moderation", Provider = global::MintPlayer.Spark.Abstractions.Storage.SparkStoreProviders.RavenDb)]
+    [global::MintPlayer.Spark.Abstractions.Storage.SparkRequiresStore("Spark.Moderation")]
     public static ISparkBuilder AddModeration<TUser>(this ISparkBuilder builder, Action<SparkModerationOptions>? configure = null)
         where TUser : SparkUser
     {
-        // #551 D13: reviews, votes and the ledger go through RavenDB's own client.
-        global::MintPlayer.Spark.Abstractions.Storage.SparkStoreRequirementExtensions.RequireStore(builder, "Spark.Moderation", provider: global::MintPlayer.Spark.Abstractions.Storage.SparkStoreProviders.RavenDb);
+        // Any store (#536 M7e): votes, the ledger and reviews go through ISparkStore, and every read is one of
+        // the SparkViews in Indexes/ (D42, D43).
+        global::MintPlayer.Spark.Abstractions.Storage.SparkStoreRequirementExtensions.RequireStore(builder, "Spark.Moderation");
 
         if (builder.Configuration is IConfigurationBuilder configurationBuilder)
             configurationBuilder.AddSparkModerationFile();
 
         var services = builder.Services;
+        AddStoredTypes(services);
         global::MintPlayer.Spark.Abstractions.Commands.SparkCommandServiceCollectionExtensions.AddSparkCommand<SparkModerationInitCommand>(
             services, SparkModerationInitExtensions.InitFlag,
             "Prints the security.json rights the configured moderation privileges and moderators need; writes nothing.");
@@ -102,5 +104,23 @@ public static class SparkModerationExtensions
         // The per-library method the Endpoints generator emits for this assembly (AssemblyInfo.cs).
         builder.Registry.AddEndpoints(endpoints => endpoints.MapSparkModerationEndpoints());
         return builder;
+    }
+
+    /// <summary>Moderation's documents, so a relational store has their tables (D18) and their collections are known everywhere.</summary>
+    private static void AddStoredTypes(IServiceCollection services)
+    {
+        global::MintPlayer.Spark.Abstractions.Storage.SparkStoredTypeServiceCollectionExtensions.AddSparkStoredType<Documents.ModerationVote>(services);
+        global::MintPlayer.Spark.Abstractions.Storage.SparkStoredTypeServiceCollectionExtensions.AddSparkStoredType<Documents.ReputationEvent>(services);
+        global::MintPlayer.Spark.Abstractions.Storage.SparkStoredTypeServiceCollectionExtensions.AddSparkStoredType<Documents.ModerationTally>(services);
+        global::MintPlayer.Spark.Abstractions.Storage.SparkStoredTypeServiceCollectionExtensions.AddSparkStoredType<Documents.ModerationCounter>(services);
+        global::MintPlayer.Spark.Abstractions.Storage.SparkStoredTypeServiceCollectionExtensions.AddSparkStoredType<Documents.ModerationProfile>(services);
+        global::MintPlayer.Spark.Abstractions.Storage.SparkStoredTypeServiceCollectionExtensions.AddSparkStoredType<Documents.ReputationSummary>(services);
+        global::MintPlayer.Spark.Abstractions.Storage.SparkStoredTypeServiceCollectionExtensions.AddSparkStoredType<Documents.ModerationFlag>(services);
+        global::MintPlayer.Spark.Abstractions.Storage.SparkStoredTypeServiceCollectionExtensions.AddSparkStoredType<Documents.ReviewCase>(services);
+        global::MintPlayer.Spark.Abstractions.Storage.SparkStoredTypeServiceCollectionExtensions.AddSparkStoredType<Documents.ModerationLock>(services);
+        global::MintPlayer.Spark.Abstractions.Storage.SparkStoredTypeServiceCollectionExtensions.AddSparkStoredType<Documents.ModerationSuspension>(services);
+        global::MintPlayer.Spark.Abstractions.Storage.SparkStoredTypeServiceCollectionExtensions.AddSparkStoredType<Documents.ModerationAuditEntry>(services);
+        global::MintPlayer.Spark.Abstractions.Storage.SparkStoredTypeServiceCollectionExtensions.AddSparkStoredType<Documents.ModerationIpObservation>(services);
+        global::MintPlayer.Spark.Abstractions.Storage.SparkStoredTypeServiceCollectionExtensions.AddSparkStoredType<Documents.ModerationIpKey>(services);
     }
 }

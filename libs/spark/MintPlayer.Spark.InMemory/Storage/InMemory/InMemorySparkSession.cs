@@ -113,6 +113,9 @@ internal sealed class InMemorySparkSession : ISparkSession
         await Task.CompletedTask;
     }
 
+    /// <summary>Views are rendered when queried: nothing to wait for.</summary>
+    public IQueryable<T> Query<T, TIndex>(TimeSpan waitForIndexes) where T : class where TIndex : class, new() => Query<T, TIndex>();
+
     /// <remarks>A <see cref="Abstractions.Views.SparkView{TRow}"/> is rendered as LINQ to objects (#536 D32, D42); a native index is not.</remarks>
     public IQueryable<T> Query<T, TIndex>() where T : class where TIndex : class, new()
     {

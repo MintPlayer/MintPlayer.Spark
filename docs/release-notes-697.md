@@ -126,6 +126,21 @@ tags, and everything ships once the merged pull request is backported to `releas
     - `HistoryInterceptor` reads versions through `ISparkSession`.
     - The licence probe and the revisions-configuration operations moved to `MintPlayer.Spark.Storage.Raven.RavenSparkRevisions`.
     - The licence check now covers every collection History configures, not only the changed ones.
+14. **Moderation runs on any store** (M7e) and its package no longer references RavenDB's client:
+    - Its four RavenDB indexes are `SparkView`s now, plus six row-per-entity views that replace its plain collection
+      queries (which made RavenDB build auto indexes). The names are `Moderation_ReputationCells`,
+      `Moderation_PendingReputation`, `Moderation_VotePairs`, `Moderation_Votes`, `Moderation_Flags`, `Moderation_Ledger`,
+      `Moderation_IpObservations`, `Moderation_Cases` and `Moderation_Audit` (`ModerationIndexNames.All`).
+    - `Moderation_EntriesToCredit` is gone: the crediting job reads `Moderation_Ledger`. On an existing RavenDB
+      database the old indexes (`Moderation/…`) stay until you delete them.
+    - `IModerationAccounts`' default implementation reads users through `ISparkStore`.
+    - Two id prefixes change, because a relational store requires an id to start with its collection: summaries are
+      `reputationsummaries/{userId}` (were `moderationreputation/…`) and review cases `reviewcases/…` (were
+      `moderationcases/…`, now `ModerationIds.CasePrefix`). The crediting job rewrites every summary, so old summaries
+      are only orphaned; open cases under the old prefix are refused by the review endpoints and need re-flagging.
+15. **`ISparkSession.Query<TRow, TView>()` on RavenDB reads the view's columns** (M7e). A map view used to hand back the
+    source documents, so a computed column came back empty or as the document's field of the same name. A query the
+    caller does not project itself is now read with `ProjectInto<TRow>()`.
 
 ## New
 
@@ -214,3 +229,10 @@ tags, and everything ships once the merged pull request is backported to `releas
     on every write path, set-based updates and deletes and the expiry sweep included; InMemory keeps them beside its
     documents. Stores that have it report `SparkStoreCapabilities.Revisions`. History and SoftDelete now run on any
     store with revisions.
+16. **Map-reduce and multi-map views** (M7e, D43): `SparkView<TRow>.Reduce` (`group r by key into g select new TRow
+    { …, g.Sum(…) }`) and several maps joined by `Concat`. RavenDB deploys a map-reduce or multi-map index; SQL Server
+    and PostgreSQL a view with `UNION ALL` under `GROUP BY`, always current; InMemory computes it on read. Such a view
+    is never an entity type's default index.
+17. **`ISparkSession.Query<TRow, TView>(TimeSpan waitForIndexes)`** (M7e): a read that must include every committed
+    write. RavenDB waits for the index and throws `TimeoutException` when it is still stale; the other stores have
+    nothing to wait for.

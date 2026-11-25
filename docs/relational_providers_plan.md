@@ -539,7 +539,61 @@ rounds, milestones and status. Branch `feat/536-sql-server-provider`, draft PR #
       insert/update/delete/UpdateWhere/DeleteWhere; multi-map reduce over two collections) + `SparkViewTests` 12/12 on
       InMemory, RavenDB, SQL Server and PostgreSQL; relational view tests 20/20; RavenDB default-index, multi-map,
       catalog, binding and neutral messaging tests 46/46.
-    - **Next:** finish the tests on SQL; port moderation's 4 indexes to views and its services to `ISparkStore`.
+    - **Part 2 plan, moderation port** (18 files, ~4,000 lines; RavenDB API use per file: SparkModeration 20,
+      ReputationLedger 13, ModerationUserState 10, AccountDeletion 9, ModerationQueries 7, Interceptor 6, Targets 5,
+      Review 5, IpHasher 4, VoteReversal 4, FraudDetector 4, Accounts 4, Audit 2, Endpoints 1):
+      1. `ModerationIndexes.cs`: the 4 indexes become `SparkView`s of the same names (3 reduces; `EntriesToCredit` a map
+         with `Id = s.IdOf(e)` so the job loads the entries by id instead of `.OfType<ReputationEvent>()`).
+      2. ⚠️ D42: moderation's plain collection queries made RavenDB auto indexes. Each gets a declared row-per-entity
+         view (`Id` + the filtered/sorted fields), then a batched `LoadAsync<T>(ids)`: votes (VoterId, TargetId,
+         Direction, CastAtUtc), flags (FlaggerId, CaseId, Status), ledger entries (UserId, VoterId, CreatedAtUtc),
+         IP observations (UserId, Hash), review cases (Status, OpenedAtUtc), audit entries (AtUtc).
+      3. Services and endpoints take `ISparkStore`/`ISparkSession`; `WaitForNonStaleResults` → the store's
+         `WaitForConsistencyAsync` before a view read (a no-op on SQL and memory); `Advanced.ExistsAsync` →
+         `ExistsAsync`; `Lazily`/`Include` → batched loads; streaming → `StreamAsync`.
+      4. Documents become stored types (D36); `RequireStore` drops the RavenDB pin; `features.json` unpins Moderation.
+      5. A neutral moderation test on all four databases (vote → ledger → credit → reputation; flag → case; account
+         deletion), plus the existing RavenDB suites (`tests/MintPlayer.Spark.Tests/Moderation/`).
+    - **Part 2 as built (2026-11-25, uncommitted until the suites pass):**
+      - **9 views** (`ModerationIndexes.cs`): the 3 reduces (`ReputationCells`, `PendingReputation`, `VotePairs`) and 6
+        row-per-entity views (`Votes`, `Flags`, `Ledger`, `IpObservations`, `Cases`, `Audit`). `EntriesToCredit` is
+        **folded into `Moderation_Ledger`** (`Credited`, `CreditableAfterUtc` columns): two row-per-entity views over
+        `ReputationEvent` make the catalog throw "2 views read entity type … none claims it with [DefaultIndex]". Breaking:
+        the index `Moderation_EntriesToCredit` is gone (RavenDB keeps the old index until it is deleted by hand).
+      - **New neutral API:** `ISparkSession.Query<T, TIndex>(TimeSpan waitForIndexes)`. RavenDB: `WaitForNonStaleResults`,
+        `TimeoutException` when still stale; SQL and memory: no wait (a view is always current). Used instead of
+        `WaitForConsistencyAsync` because the badge read must time out *and* fall back to the stale figure (2 s).
+      - Every read is a view, then a batched `LoadAsync<T>(ids)` (D42). Account deletion deletes by id from the views,
+        not `DeleteWhereAsync`: on RavenDB that is a by-query operation over the collection, which would build an auto
+        index. Lazy loads → `PreloadAsync` + `LoadAsync`; `@expires` → `SetExpiry`; `ConcurrencyException` →
+        `SparkStoreConcurrencyException`; the per-database memos (activity, IP keys) are keyed by the `ISparkStore`
+        instance (`ConditionalWeakTable`) instead of `documentStore.Database`.
+      - **IN filters:** `List<string>.Contains(x.Field)`, never an array: in C# 14 `array.Contains` binds to the span
+        overload inside an expression tree, which no provider translates.
+      - **RavenDB defect fixed, `RavenSparkSession.ViewRows`:** `Query<T, TView>()` on a map view returned the **source
+        documents**, so a computed column read as the document's field of that name or empty (measured by
+        `NeutralReduceViewTests.A_map_view_reads_its_computed_columns_…`: `Label` empty, `Points` 2 instead of 20). The
+        session now adds `ProjectInto<T>()` at execution (`ToListAsync`, `StreamAsync`) when the caller made no
+        projection. Not when the query is opened: callers still compose `Where`/`Take` on the row type, and RavenDB refuses
+        a second projection (`Select(r => r.Id)` after it). Reduce views were unaffected (their results are the rows).
+      - Unpinned: `SparkRequiresStore("Spark.Moderation")` with no provider, its 13 documents are stored types, the
+        package no longer references `RavenDB.Client`, `features.json` and `template.json` no longer list it as RavenDB-only.
+      - **Tests:** `MoHost` takes an `ISparkTestDatabase` and reads through `ISparkStore`; `ModerationVoteTests`,
+        `ModerationFraudTests`, `ModerationToolsTests`, `ModerationSatelliteWriteGuardTests` and
+        `Issue467ModerationBatchTests` moved to `SparkTestDriver`, so they run on whichever database
+        `SPARK_TEST_DATABASE` picks. The spike and configuration classes stay RavenDB (index deployment, bulk insert).
+      - **Ids follow their collection** (relational stores refuse an id of another collection, "'x' is not an id of
+        collection Y"): `ModerationIds.Summary` → `reputationsummaries/{userId}` (was `moderationreputation/…`), cases →
+        `ModerationIds.CasePrefix` `reviewcases/…` (was `moderationcases/…`). Breaking; only QnA (a demo) uses Moderation.
+      - **Relational `StreamAsync` over a view** failed ("Translation of 'EF.Property<long>(… RvLabel …, "Version")'
+        failed"): a keyless view row has no version column. It now streams view rows as read, version null (red, then
+        green: `NeutralReduceViewTests.A_map_view_and_a_reduce_view_stream_their_rows`).
+      - `TestAfterCommitOutbox` (test infrastructure) reads through `ISparkStore`, registers its document as a stored
+        type and lets the store pick the id (it used `IDocumentStore` and a `TestOutbox/` prefix).
+      - **Evidence:** `NeutralReduceViewTests` 4/4 on all four databases (map view, stream, multi-map, reduce). The
+        moderation suites (`Tests.Moderation` + `Issue467ModerationBatchTests`) **54/54 on InMemory, SQL Server,
+        PostgreSQL and RavenDB** (2026-11-25).
+    - **Next:** S10 (search as a view, D44), then fan-out views, M8, M9.
   - **M7d (2026-11-25): S8 revisions — History and SoftDelete on any store.** `ISparkRevisions` (Abstractions) is the
     neutral revisions API: `ConfigureAsync` (merge, returns the changed collections), `GetLimitsAsync`, `ListAsync`
     (newest first), `GetAsync` (scoped to the id and the type's collection; a delete revision has no content),

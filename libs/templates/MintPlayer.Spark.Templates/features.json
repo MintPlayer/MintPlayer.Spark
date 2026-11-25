@@ -146,7 +146,6 @@
       "project": "moderation/MintPlayer.Spark.Moderation/MintPlayer.Spark.Moderation.csproj",
       "displayName": "Moderation",
       "description": "Reputation, votes, flags and review queues; the sample Person becomes moderatable.",
-      "store": "RavenDB",
       "requires": [ "Authorization", "Cron", "Messaging" ],
       "registration": "AddModeration",
       "client": [ "withModeration" ]

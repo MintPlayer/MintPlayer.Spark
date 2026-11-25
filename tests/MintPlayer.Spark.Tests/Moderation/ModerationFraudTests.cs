@@ -6,7 +6,6 @@ using MintPlayer.Spark.Moderation;
 using MintPlayer.Spark.Moderation.Documents;
 using MintPlayer.Spark.Moderation.Services;
 using MintPlayer.Spark.Testing;
-using Raven.Client.Documents;
 
 namespace MintPlayer.Spark.Tests.Moderation;
 
@@ -14,13 +13,13 @@ namespace MintPlayer.Spark.Tests.Moderation;
 /// #460 §3.12 fraud measures 6 (nightly detector), 7 (compensating reversals), 8 (review surface) and
 /// 9 (hashed network observations). Every scenario is driven by the host's clock.
 /// </summary>
-public class ModerationFraudTests : RavenSparkTestDriver
+public class ModerationFraudTests : SparkTestDriver
 {
     private const string Alice = "users/alice", Bob = "users/bob", Carol = "users/carol", Dave = "users/dave", Erin = "users/erin";
 
     private async Task<MoHost> StartAsync(Action<SparkModerationOptions>? configure = null)
     {
-        var host = await MoHost.StartAsync(Store, o =>
+        var host = await MoHost.StartAsync(Database, o =>
         {
             // Caps are measure 4's test; here they would hide what the detector is looking at.
             o.Fraud.MaxCreditedPairVotesPerDay = 1000;
@@ -41,12 +40,6 @@ public class ModerationFraudTests : RavenSparkTestDriver
         for (var i = 0; i < count; i++)
             posts.Add(await host.SeedPostAsync(author, $"{author}-{i}", host.Clock.Now.AddDays(-1)));
         return posts;
-    }
-
-    private static async Task<int> CountAsync<T>(IDocumentStore store)
-    {
-        using var session = store.OpenAsyncSession();
-        return await session.Query<T>().Customize(c => c.WaitForNonStaleResults()).CountAsync();
     }
 
     // ---- measure 6: serial -------------------------------------------------------------------------
@@ -95,9 +88,9 @@ public class ModerationFraudTests : RavenSparkTestDriver
         (await host.SummaryAsync(Erin)).Total.Should().Be(40, "the control pair is untouched");
 
         // Idempotent: a second run writes no second compensation.
-        var before = await CountAsync<ReputationEvent>(host.Store);
+        var before = await host.EventCountAsync();
         await host.DetectAsync();
-        (await CountAsync<ReputationEvent>(host.Store)).Should().Be(before);
+        (await host.EventCountAsync()).Should().Be(before);
     }
 
     // ---- measure 6: concentration ------------------------------------------------------------------
@@ -344,18 +337,18 @@ public class ModerationFraudTests : RavenSparkTestDriver
         host.RemoteIp = "203.0.113.5";
         await host.SendAsync("/spark/moderation/reputation", new { }, Bob);
         host.RemoteIp = null;
-        using (var session = host.Store.OpenAsyncSession())
+        var observationId = (await host.ObservationsOfAsync(Bob)).Should().ContainSingle().Which.Id.Value;
+        using (var session = host.Store.OpenSession())
         {
-            var observation = await session.Query<ModerationIpObservation>().Customize(c => c.WaitForNonStaleResults()).Where(o => o.UserId == Bob).SingleAsync();
+            var observation = (await session.LoadAsync<ModerationIpObservation>(observationId))!;
             observation.Hash.Should().Be(a.Hash);
-            var expires = DateTime.Parse((string)session.Advanced.GetMetadataFor(observation)["@expires"], null, System.Globalization.DateTimeStyles.RoundtripKind);
-            expires.Should().Be(host.Clock.Now.UtcDateTime.AddDays(90));
+            session.GetExpiry(observation).Should().Be(new DateTimeOffset(host.Clock.Now.UtcDateTime.AddDays(90), TimeSpan.Zero));
 
             var key = await session.LoadAsync<ModerationIpKey>(a.KeyId);
             key!.ProtectedKey.Should().NotBeNullOrEmpty();
-            ((string)session.Advanced.GetMetadataFor(key)["@expires"]).Should().NotBeNullOrEmpty("a key outlives its last observation by the retention, then goes");
+            session.GetExpiry(key).HasValue.Should().BeTrue("a key outlives its last observation by the retention, then goes");
         }
-        var raw = await ObservationsJsonAsync(host.Store);
+        var raw = System.Text.Json.JsonSerializer.Serialize(await host.ObservationsOfAsync(null));
         raw.Should().NotContain("203.0.113");
 
         // Rotation: the same address hashes differently in the next period.
@@ -363,12 +356,5 @@ public class ModerationFraudTests : RavenSparkTestDriver
         var rotated = Hash("203.0.113.5");
         rotated.KeyId.Should().NotBe(a.KeyId);
         rotated.Hash.Should().NotBe(a.Hash);
-    }
-
-    private static async Task<string> ObservationsJsonAsync(IDocumentStore store)
-    {
-        using var session = store.OpenAsyncSession();
-        var docs = await session.Query<ModerationIpObservation>().Customize(c => c.WaitForNonStaleResults()).ToListAsync();
-        return System.Text.Json.JsonSerializer.Serialize(docs);
     }
 }

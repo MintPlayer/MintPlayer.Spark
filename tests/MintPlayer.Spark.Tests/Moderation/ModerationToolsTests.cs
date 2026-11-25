@@ -14,13 +14,13 @@ namespace MintPlayer.Spark.Tests.Moderation;
 /// suspensions' server-side write block, the new-account throttle (429), and a moderator's delete
 /// reversing the votes of the post.
 /// </summary>
-public class ModerationToolsTests : RavenSparkTestDriver
+public class ModerationToolsTests : SparkTestDriver
 {
     private const string Alice = "users/alice", Bob = "users/bob", Carol = "users/carol";
 
     private async Task<MoHost> StartAsync(Action<SparkModerationOptions>? configure = null)
     {
-        var host = await MoHost.StartAsync(Store, configure);
+        var host = await MoHost.StartAsync(Database, configure);
         foreach (var user in new[] { Alice, Bob, Carol, "users/mod" })
             await host.SeedUserAsync(user);
         return host;
@@ -334,9 +334,7 @@ public class ModerationToolsTests : RavenSparkTestDriver
         await host.DrainAsync();
         (await host.EventsForAsync(Alice)).Should().NotContain(e => e.Kind == ReputationEventKinds.Reversal, "the author's own delete reverses nothing");
 
-        string? etag;
-        using (var session = host.Store.OpenAsyncSession())
-            etag = session.Advanced.GetChangeVectorFor(await session.LoadAsync<MoPost>(post));
+        var etag = await host.EtagAsync(post);
         (await host.ModeratorAsync("/spark/po/purge", Wire.Typed(MoHost.PostTypeId, new { etag }, id: post))).Status.Should().Be(HttpStatusCode.NoContent);
 
         await host.DrainAsync();

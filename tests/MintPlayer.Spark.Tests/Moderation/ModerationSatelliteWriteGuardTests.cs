@@ -11,7 +11,7 @@ namespace MintPlayer.Spark.Tests.Moderation;
 /// caller's behalf that are not PO saves (a contribution). The contributions side of the seam (a guard
 /// refusing writes nothing) is <c>ContributionsRuntimeTests</c>; this is Moderation's answer.
 /// </summary>
-public class ModerationSatelliteWriteGuardTests : RavenSparkTestDriver
+public class ModerationSatelliteWriteGuardTests : SparkTestDriver
 {
     private static async Task EnsureAsync(MoHost host, Type documentType, string documentId)
     {
@@ -30,8 +30,12 @@ public class ModerationSatelliteWriteGuardTests : RavenSparkTestDriver
     [Fact]
     public async Task A_locked_moderatable_document_is_refused_and_an_unlocked_one_or_a_plain_type_is_not()
     {
-        await using var host = await MoHost.StartAsync(Store);
-        await SeedAsync(session => session.StoreAsync(new ModerationLock(), ModerationIds.Lock("MoPosts/locked").Value));
+        await using var host = await MoHost.StartAsync(Database);
+        using (var session = host.Store.OpenSession())
+        {
+            await session.StoreAsync(new ModerationLock(), ModerationIds.Lock("MoPosts/locked").Value);
+            await session.SaveChangesAsync();
+        }
 
         var ex = (await new Func<Task>(() => EnsureAsync(host, typeof(MoPost), "MoPosts/locked")).Should().ThrowExactlyAsync<SparkValidationException>()).Which;
         ex.Message.Should().Contain("locked");

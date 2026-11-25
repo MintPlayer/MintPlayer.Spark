@@ -11,8 +11,9 @@ queue, locks, suspensions and an audit log.
 - UI: `@mintplayer/ng-spark/moderation` (vote widget, flag button, review queue, reputation badge,
   moderator panel).
 
-Moderation's data are plain RavenDB documents behind `/spark/moderation/*` (T6), not persistent
-objects: an application does not own or sync a model for them.
+Moderation's data are plain documents behind `/spark/moderation/*` (T6), not persistent
+objects: an application does not own or sync a model for them. It runs on any Spark store (RavenDB,
+SQL Server, PostgreSQL, in memory; #536); the store must support document expiration.
 
 ## Setup
 
@@ -121,14 +122,16 @@ Privileges are applied as groups by a composed group-membership provider (core's
   see, that does not exist, or whose type is not `IModeratable` is the standard refusal (404, or 401
   when signing in would help) — byte-identical, so the vote and flag endpoints never reveal a hidden
   post (#453).
-- Reputation is summed by hand-written map-reduce indexes (`Moderation/ReputationCells`,
-  `Moderation/PendingReputation`, `Moderation/VotePairs`, and the map index
-  `Moderation/EntriesToCredit`), deployed from this assembly by core; a test asserts they deploy
-  (a deploy failure only logs to the console). The privilege provider reads a per-user
-  `moderationreputation/{userId}` summary document, recomputed from the indexes by the crediting job
+- Reputation is summed by `SparkView`s with a reduce (`Moderation_ReputationCells`,
+  `Moderation_PendingReputation`, `Moderation_VotePairs`): a map-reduce index on RavenDB, a
+  `GROUP BY` view on SQL Server and PostgreSQL, deployed from this assembly by core. Every other read
+  goes through a row-per-entity view (`Moderation_Votes`, `_Flags`, `_Ledger`, `_IpObservations`,
+  `_Cases`, `_Audit`) and loads the documents by id, so RavenDB never builds an auto index. A test
+  asserts they deploy (a deploy failure only logs to the console). The privilege provider reads a per-user
+  `reputationsummaries/{userId}` summary document, recomputed from the views by the crediting job
   and by every reversal, flag decision and deletion — so a request costs one batched load, never a
   query. A vote does not recompute (it would cost the vote path two index waits); the badge's
-  "+N pending" is therefore read live from `Moderation/PendingReputation` by
+  "+N pending" is therefore read live from `Moderation_PendingReputation` by
   `GetReputationAsync`, so a new vote shows at once.
 - A reversal of an entry that is already credited is itself credited at once (a decision, like a
   flag outcome), so the total drops when the reversal recomputes the summary, not at the next
@@ -159,7 +162,8 @@ configuration. What bounds the damage is that only reversible privileges are ear
 ## Flags, review, locks, suspensions
 
 - `POST /spark/moderation/flag { objectTypeId, id, reason }`: one open flag per user and post,
-  joined into `moderationcases/flag/{targetId}`. Upheld: each flagger `FlagUpheld` (+2, credited at
+  joined into `reviewcases/flag/{targetId}` (every id starts with its collection, which a
+  relational store requires). Upheld: each flagger `FlagUpheld` (+2, credited at
   once); declined: `FlagDeclined` (0).
 - **Lock** (`Lock/T`): `moderationlocks/{targetId}`. For everyone without `Lock/T` a save, AsDetail
   change, custom-action write, revert, delete, restore and purge of the post is **400 "This post is

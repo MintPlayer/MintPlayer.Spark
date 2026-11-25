@@ -4,11 +4,9 @@ using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Authentication;
 using MintPlayer.Spark.Abstractions.Authorization;
+using MintPlayer.Spark.Abstractions.Storage;
 using MintPlayer.Spark.Moderation.Documents;
-using Raven.Client.Documents;
-using Raven.Client.Documents.Linq;
-using Raven.Client.Documents.Session;
-using Raven.Client.Exceptions;
+using MintPlayer.Spark.Moderation.Indexes;
 
 namespace MintPlayer.Spark.Moderation.Services;
 
@@ -21,7 +19,7 @@ internal sealed partial class SparkModeration : ISparkModeration
 {
     private const int MaxAttempts = 4;
 
-    [Inject] private readonly IDocumentStore documentStore;
+    [Inject] private readonly ISparkStore store;
     [Inject] private readonly ModerationTargets targets;
     [Inject] private readonly IPermissionService permissions;
     [Inject] private readonly ISparkCurrentPrincipal currentUser;
@@ -68,7 +66,7 @@ internal sealed partial class SparkModeration : ISparkModeration
                 var (canUp, canDown) = await VoteRightsAsync(target.TypeName, cancellationToken);
                 return WithRights(state, canUp, canDown);
             }
-            catch (ConcurrencyException) when (attempt < MaxAttempts)
+            catch (SparkStoreConcurrencyException) when (attempt < MaxAttempts)
             {
                 // A concurrent vote moved the tally or a counter; decide again on fresh state.
                 logger.LogDebug("Vote on {TargetId} by {VoterId} lost a race (attempt {Attempt}); retrying.", target.Id, voterId, attempt);
@@ -86,36 +84,38 @@ internal sealed partial class SparkModeration : ISparkModeration
         var authorId = target.AuthorId;
 
         using var session = OpenSession();
-        var voteLazy = session.Advanced.Lazily.LoadAsync<ModerationVote>(voteId.Value);
-        var tallyLazy = session.Advanced.Lazily.LoadAsync<ModerationTally>(ModerationIds.Tally(target.Id).Value);
-        var castLazy = session.Advanced.Lazily.LoadAsync<ModerationCounter>(ModerationIds.CastCounter(voterId, day).Value);
-        Lazy<Task<ModerationCounter>>? receivedLazy = null;
-        Lazy<Task<Dictionary<string, ModerationCounter>>>? pairLazy = null;
+        // Everything the decision reads, in one round trip where the store batches (RavenDB: lazy loads).
+        var tallyId = ModerationIds.Tally(target.Id).Value;
+        var castId = ModerationIds.CastCounter(voterId, day).Value;
+        var receivedId = authorId is null ? null : ModerationIds.RecipientCounter(authorId, day).Value;
         var pairIds = new List<string>();
         if (authorId is not null)
         {
-            receivedLazy = session.Advanced.Lazily.LoadAsync<ModerationCounter>(ModerationIds.RecipientCounter(authorId, day).Value);
             for (var d = 0; d < 30; d++)
                 pairIds.Add(ModerationIds.PairCounter(voterId, authorId, ModerationIds.Day(now.AddDays(-d))).Value);
-            pairLazy = session.Advanced.Lazily.LoadAsync<ModerationCounter>(pairIds);
         }
-        await session.Advanced.Eagerly.ExecuteAllPendingLazyOperationsAsync(cancellationToken);
+        List<string> counterIds = receivedId is null ? [castId, .. pairIds] : [castId, receivedId, .. pairIds];
+        await session.PreloadAsync(
+            [(typeof(ModerationVote), voteId.Value), (typeof(ModerationTally), tallyId), .. counterIds.Select(id => (typeof(ModerationCounter), id))],
+            cancellationToken);
 
-        var vote = await voteLazy.Value;
-        var tally = await tallyLazy.Value ?? new ModerationTally { TargetId = target.Id };
+        var vote = await session.LoadAsync<ModerationVote>(voteId.Value, cancellationToken);
+        var tally = await session.LoadAsync<ModerationTally>(tallyId, cancellationToken) ?? new ModerationTally { TargetId = target.Id };
 
         if (vote is not null && vote.Direction == direction)
             return State(target.Id, tally, direction, locked: false);
 
+        var counters = await session.LoadAsync<ModerationCounter>(counterIds, cancellationToken);
+
         // Fraud measure 4: votes cast per voter per day. Counted per cast or change, never refunded.
-        var cast = await castLazy.Value ?? new ModerationCounter();
+        var cast = counters.GetValueOrDefault(castId) ?? new ModerationCounter();
         if (direction != 0 && cast.Count >= fraud.MaxVotesCastPerDay)
             throw new SparkThrottledException($"You have cast {fraud.MaxVotesCastPerDay} votes today.", now.Date.AddDays(1) - now);
 
         // Withdraw what the previous direction wrote: a Retraction per entry, the tally drops it.
         if (vote is not null && vote.Direction != 0)
         {
-            var previous = vote.EventIds.Count == 0 ? new Dictionary<string, ReputationEvent>() : await session.LoadAsync<ReputationEvent>(vote.EventIds, cancellationToken);
+            var previous = vote.EventIds.Count == 0 ? new Dictionary<string, ReputationEvent?>() : await session.LoadAsync<ReputationEvent>(vote.EventIds, cancellationToken);
             foreach (var entry in previous.Values)
             {
                 if (entry is not null)
@@ -146,10 +146,9 @@ internal sealed partial class SparkModeration : ISparkModeration
 
             if (authorId is not null)
             {
-                var received = await receivedLazy!.Value ?? new ModerationCounter();
-                var pairs = await pairLazy!.Value;
-                var pairToday = pairs.GetValueOrDefault(pairIds[0]) ?? new ModerationCounter();
-                var pair30 = pairs.Values.Where(c => c is not null).Sum(c => c!.Count);
+                var received = counters.GetValueOrDefault(receivedId!) ?? new ModerationCounter();
+                var pairToday = counters.GetValueOrDefault(pairIds[0]) ?? new ModerationCounter();
+                var pair30 = pairIds.Sum(id => counters.GetValueOrDefault(id)?.Count ?? 0);
 
                 var kind = direction > 0 ? ReputationEventKinds.UpvoteReceived : ReputationEventKinds.DownvoteReceived;
                 var points = settings.PointsFor(kind);
@@ -232,10 +231,10 @@ internal sealed partial class SparkModeration : ISparkModeration
     private static bool ChargesDownvoter(string typeName, SparkModerationOptions settings)
         => settings.DownvoteCastTypes.Count == 0 || settings.DownvoteCastTypes.Contains(typeName, StringComparer.OrdinalIgnoreCase);
 
-    private static async Task StoreCounterAsync(IAsyncDocumentSession session, ModerationCounter counter, string id, DateTime now)
+    private static async Task StoreCounterAsync(ISparkSession session, ModerationCounter counter, string id, DateTime now)
     {
         await session.StoreAsync(counter, id);
-        session.Advanced.GetMetadataFor(counter)["@expires"] = now.Date.AddDays(31).ToString("O");
+        session.SetExpiry(counter, new DateTimeOffset(now.Date.AddDays(31), TimeSpan.Zero));
     }
 
     public async Task<IReadOnlyList<ModerationVoteState>> GetVotesAsync(Guid objectTypeId, IReadOnlyCollection<string> ids, CancellationToken cancellationToken = default)
@@ -255,11 +254,11 @@ internal sealed partial class SparkModeration : ISparkModeration
         var voterId = currentUser.IsAuthenticated ? currentUser.Id : null;
         // One type per request (objectTypeId), so the caller's rights are asked once, not per id.
         var (canUp, canDown) = await VoteRightsAsync(visible[0].TypeName, cancellationToken);
-        using var session = documentStore.OpenAsyncSession();
+        using var session = store.OpenSession();
         var tallies = await session.LoadAsync<ModerationTally>(visible.Select(t => ModerationIds.Tally(t.Id).Value), cancellationToken);
         var locks = await session.LoadAsync<ModerationLock>(visible.Select(t => ModerationIds.Lock(t.Id).Value), cancellationToken);
         var votes = voterId is null
-            ? new Dictionary<string, ModerationVote>()
+            ? new Dictionary<string, ModerationVote?>()
             : await session.LoadAsync<ModerationVote>(visible.Select(t => ModerationIds.Vote(voterId, t.Id).Value), cancellationToken);
 
         return visible.Select(t => WithRights(State(
@@ -349,7 +348,7 @@ internal sealed partial class SparkModeration : ISparkModeration
                 await session.SaveChangesAsync(cancellationToken);
                 return;
             }
-            catch (ConcurrencyException) when (attempt < MaxAttempts)
+            catch (SparkStoreConcurrencyException) when (attempt < MaxAttempts)
             {
             }
         }
@@ -363,7 +362,7 @@ internal sealed partial class SparkModeration : ISparkModeration
         var target = await targets.ResolveAsync(objectTypeId, id);
         await permissions.EnsureAuthorizedAsync(ModerationRights.Lock, target.TypeName, cancellationToken);
 
-        using var session = documentStore.OpenAsyncSession();
+        using var session = store.OpenSession();
         await session.StoreAsync(new ModerationLock
         {
             TargetId = target.Id,
@@ -382,16 +381,16 @@ internal sealed partial class SparkModeration : ISparkModeration
         var target = await targets.ResolveAsync(objectTypeId, id);
         await permissions.EnsureAuthorizedAsync(ModerationRights.Lock, target.TypeName, cancellationToken);
 
-        using var session = documentStore.OpenAsyncSession();
-        session.Delete(ModerationIds.Lock(target.Id).Value);
+        using var session = store.OpenSession();
+        session.Delete(ModerationIds.Lock(target.Id));
         await session.SaveChangesAsync(cancellationToken);
         await audit.WriteAsync("unlock", target.Id, target.TypeName, target.AuthorId, cancellationToken: cancellationToken);
     }
 
     internal async Task<bool> IsLockedAsync(string targetId, CancellationToken cancellationToken = default)
     {
-        using var session = documentStore.OpenAsyncSession();
-        return await session.Advanced.ExistsAsync(ModerationIds.Lock(targetId).Value, cancellationToken);
+        using var session = store.OpenSession();
+        return await session.ExistsAsync(ModerationIds.Lock(targetId), cancellationToken);
     }
 
     // ---- accounts ------------------------------------------------------------------------------
@@ -412,7 +411,7 @@ internal sealed partial class SparkModeration : ISparkModeration
 
         // The document first: it is what the write block and the privilege provider read, by id, on
         // the very next request. The Identity lockout + stamp refresh then ends the sign-in.
-        using (var session = documentStore.OpenAsyncSession())
+        using (var session = store.OpenSession())
         {
             await session.StoreAsync(new ModerationSuspension
             {
@@ -433,9 +432,9 @@ internal sealed partial class SparkModeration : ISparkModeration
     {
         RequireUser();
         await permissions.EnsureAuthorizedAsync(ModerationRights.Suspend, ModerationRights.Target, cancellationToken);
-        using (var session = documentStore.OpenAsyncSession())
+        using (var session = store.OpenSession())
         {
-            session.Delete(ModerationIds.Suspension(userId).Value);
+            session.Delete(ModerationIds.Suspension(userId));
             await session.SaveChangesAsync(cancellationToken);
         }
         await accounts.LiftLockOutAsync(userId, cancellationToken);
@@ -449,16 +448,16 @@ internal sealed partial class SparkModeration : ISparkModeration
         if (string.IsNullOrEmpty(duplicateId) || string.IsNullOrEmpty(intoId) || duplicateId == intoId)
             throw new SparkValidationException("Name two different accounts.");
 
-        var voteIds = await VotesCastByAsync(documentStore, duplicateId, cancellationToken);
+        var voteIds = await VotesCastByAsync(store, duplicateId, cancellationToken);
         await ledger.ReverseVotesAsync(voteIds, "merge", caseId, cancellationToken);
         await audit.WriteAsync("merge", null, null, duplicateId, caseId, details: $"into {intoId}; {voteIds.Count} vote(s) reversed", cancellationToken: cancellationToken);
     }
 
-    internal static async Task<IReadOnlyList<string>> VotesCastByAsync(IDocumentStore store, string voterId, CancellationToken cancellationToken)
+    internal static async Task<IReadOnlyList<string>> VotesCastByAsync(ISparkStore store, string voterId, CancellationToken cancellationToken)
     {
-        using var session = store.OpenAsyncSession();
-        var rows = await ModerationQueries.StreamAllAsync(session, () => session.Query<ModerationVote>().Where(v => v.VoterId == voterId), cancellationToken);
-        return rows.Select(r => r.Id).ToList();
+        using var session = store.OpenSession();
+        var rows = await ModerationQueries.StreamAllAsync<Moderation_Votes.Result, Moderation_Votes>(session, q => q.Where(v => v.VoterId == voterId), cancellationToken);
+        return rows.Select(r => r.Id!).ToList();
     }
 
     public async Task<ModerationReputation> GetReputationAsync(string userId, CancellationToken cancellationToken = default)
@@ -486,11 +485,11 @@ internal sealed partial class SparkModeration : ISparkModeration
     {
         var actor = RequireUser();
         await permissions.EnsureAuthorizedAsync(ModerationRights.Review, ModerationRights.Target, cancellationToken);
-        if (string.IsNullOrEmpty(caseId) || !caseId.StartsWith("moderationcases/", StringComparison.OrdinalIgnoreCase))
+        if (string.IsNullOrEmpty(caseId) || !caseId.StartsWith(ModerationIds.CasePrefix, StringComparison.OrdinalIgnoreCase))
             throw new SparkRowLevelAccessDeniedException("Review/Moderation");
 
         ReviewCase? reviewCase;
-        using (var read = documentStore.OpenAsyncSession())
+        using (var read = store.OpenSession())
             reviewCase = await read.LoadAsync<ReviewCase>(caseId, cancellationToken);
         if (reviewCase is null)
             throw new SparkRowLevelAccessDeniedException("Review/Moderation");
@@ -539,9 +538,9 @@ internal sealed partial class SparkModeration : ISparkModeration
             }
         }
 
-        using (var write = documentStore.OpenAsyncSession())
+        using (var write = store.OpenSession())
         {
-            write.Advanced.OptimisticConcurrencyMode = OptimisticConcurrencyMode.Writes;
+            write.OptimisticConcurrency = true;
             var stored = await write.LoadAsync<ReviewCase>(caseId, cancellationToken);
             stored!.Status = status;
             stored.Decision = decision;
@@ -555,16 +554,19 @@ internal sealed partial class SparkModeration : ISparkModeration
     private async Task SettleFlagsAsync(ReviewCase reviewCase, string caseId, string status, DateTime now, CancellationToken cancellationToken)
     {
         using var session = OpenSession();
-        var flags = await session.Query<ModerationFlag>()
-            .Customize(c => c.WaitForNonStaleResults(TimeSpan.FromSeconds(30)))
+        var flagIds = await session.ToListAsync(session.Query<Moderation_Flags.Result, Moderation_Flags>(ReputationLedger.IndexWait)
             .Where(f => f.CaseId == caseId && f.Status == ModerationCaseStatus.Open)
-            .Take(1024)
-            .ToListAsync(cancellationToken);
+            .Select(f => f.Id)
+            .Take(1024), cancellationToken);
+        var flags = await session.LoadAsync<ModerationFlag>(flagIds.OfType<string>(), cancellationToken);
         var kind = status == ModerationCaseStatus.Upheld ? ReputationEventKinds.FlagUpheld : ReputationEventKinds.FlagDeclined;
         var points = options.Value.PointsFor(kind);
         var users = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var flag in flags)
+        foreach (var flag in flags.Values)
         {
+            // Settled or withdrawn since the view was read.
+            if (flag is null || flag.Status != ModerationCaseStatus.Open)
+                continue;
             flag.Status = status;
             if (points == 0)
                 continue;
@@ -596,11 +598,11 @@ internal sealed partial class SparkModeration : ISparkModeration
             ? id
             : throw new SparkAccessDeniedException("Moderation");
 
-    private IAsyncDocumentSession OpenSession()
+    private ISparkSession OpenSession()
     {
-        var session = documentStore.OpenAsyncSession();
-        session.Advanced.OptimisticConcurrencyMode = OptimisticConcurrencyMode.Writes;
-        session.Advanced.MaxNumberOfRequestsPerSession = int.MaxValue;
+        var session = store.OpenSession();
+        session.OptimisticConcurrency = true;
+        session.MaxNumberOfRequests = int.MaxValue;
         return session;
     }
 }

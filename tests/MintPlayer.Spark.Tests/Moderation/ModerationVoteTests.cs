@@ -11,13 +11,13 @@ namespace MintPlayer.Spark.Tests.Moderation;
 /// hidden post indistinguishable from a missing one, voter eligibility (3), caps (4), delayed crediting
 /// (5), diversity (2) and the privilege gates (1). Time is the host's clock, never the wall clock.
 /// </summary>
-public class ModerationVoteTests : RavenSparkTestDriver
+public class ModerationVoteTests : SparkTestDriver
 {
     private const string Alice = "users/alice", Bob = "users/bob", Carol = "users/carol", Dave = "users/dave", Erin = "users/erin";
 
     private async Task<MoHost> StartAsync(Action<SparkModerationOptions>? configure = null)
     {
-        var host = await MoHost.StartAsync(Store, configure);
+        var host = await MoHost.StartAsync(Database, configure);
         foreach (var user in new[] { Alice, Bob, Carol, Dave, Erin })
             await host.SeedUserAsync(user);
         return host;
@@ -71,7 +71,7 @@ public class ModerationVoteTests : RavenSparkTestDriver
         await using var host = await StartAsync();
         var post = await host.SeedPostAsync(Alice);
         string plainId;
-        using (var session = host.Store.OpenAsyncSession())
+        using (var session = host.Store.OpenSession())
         {
             var plain = new MoPlain { Title = "plain" };
             await session.StoreAsync(plain);
@@ -140,7 +140,7 @@ public class ModerationVoteTests : RavenSparkTestDriver
         });
         await host.SeedUserAsync("users/newbie", ageDays: 3);
         await host.SeedUserAsync("users/veteran", ageDays: 30);
-        using (var session = host.Store.OpenAsyncSession())
+        using (var session = host.Store.OpenSession())
         {
             await session.StoreAsync(new ReputationSummary { UserId = "users/veteran", Total = 60 }, ModerationIds.Summary("users/veteran").Value);
             await session.StoreAsync(new ReputationSummary { UserId = Carol, Total = 10 }, ModerationIds.Summary(Carol).Value);
@@ -380,7 +380,7 @@ public class ModerationVoteTests : RavenSparkTestDriver
         await using var host = await StartAsync(o =>
             o.Privileges["Upvote"] = new ModerationPrivilegeOptions { GroupId = MoSecurity.Voters, Rep = 15, MinAccountAgeDays = 10, MinActiveDays = 2 });
         await host.SeedUserAsync("users/young", ageDays: 5);
-        using (var session = host.Store.OpenAsyncSession())
+        using (var session = host.Store.OpenSession())
         {
             foreach (var user in new[] { "users/young", Bob })
                 await session.StoreAsync(new ReputationSummary { UserId = user, Total = 20, PrivilegeReputation = 20 }, ModerationIds.Summary(user).Value);
@@ -411,7 +411,7 @@ public class ModerationVoteTests : RavenSparkTestDriver
     {
         await using var host = await StartAsync(o =>
             o.Privileges["Upvote"] = new ModerationPrivilegeOptions { GroupId = MoSecurity.Voters, MinAccountAgeDays = 1 });
-        using (var session = host.Store.OpenAsyncSession())
+        using (var session = host.Store.OpenSession())
         {
             // An account from before #460 M5 whose backfill found no revision: CreatedAtUtc null.
             await session.StoreAsync(new MintPlayer.Spark.Authorization.Identity.SparkUser { UserName = "legacy" }, "users/legacy");

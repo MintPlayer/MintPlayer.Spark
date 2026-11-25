@@ -1,8 +1,8 @@
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.DependencyInjection;
 using MintPlayer.SourceGenerators.Attributes;
+using MintPlayer.Spark.Abstractions.Storage;
 using MintPlayer.Spark.Authorization.Identity;
-using Raven.Client.Documents;
 
 namespace MintPlayer.Spark.Moderation.Services;
 
@@ -38,7 +38,7 @@ public interface IModerationAccounts
 }
 
 /// <summary>
-/// <see cref="IModerationAccounts"/> over ASP.NET Core Identity with Spark's RavenDB user store.
+/// <see cref="IModerationAccounts"/> over ASP.NET Core Identity with Spark's user store.
 /// </summary>
 /// <remarks>
 /// Reads go straight to the user documents (one batched load, no Identity round trip). The lockout
@@ -49,7 +49,7 @@ public interface IModerationAccounts
 internal sealed partial class IdentityModerationAccounts<TUser> : IModerationAccounts
     where TUser : SparkUser
 {
-    [Inject] private readonly IDocumentStore documentStore;
+    [Inject] private readonly ISparkStore store;
     [Inject] private readonly IServiceProvider services;
 
     public async Task<IReadOnlyDictionary<string, ModerationAccount>> GetAsync(IReadOnlyCollection<string> userIds, CancellationToken cancellationToken = default)
@@ -58,8 +58,8 @@ internal sealed partial class IdentityModerationAccounts<TUser> : IModerationAcc
         if (ids.Length == 0)
             return new Dictionary<string, ModerationAccount>();
 
-        using var session = documentStore.OpenAsyncSession();
-        session.Advanced.MaxNumberOfRequestsPerSession = int.MaxValue;
+        using var session = store.OpenSession();
+        session.MaxNumberOfRequests = int.MaxValue;
         var users = await session.LoadAsync<TUser>(ids, cancellationToken);
         return users.Where(u => u.Value is not null).ToDictionary(
             u => u.Key,
