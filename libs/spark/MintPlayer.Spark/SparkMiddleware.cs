@@ -473,6 +473,10 @@ public static class SparkExtensions
             }
         });
 
+        // The schema first (#536 D33): applied, or refused while pending with ApplyMigrations=false. A store without a
+        // schema (RavenDB, in-memory) registers no migrator and skips it.
+        Services.SparkSchemaStartup.RunAsync(app.ApplicationServices, CancellationToken.None).GetAwaiter().GetResult();
+
         // Create RavenDB indexes
         CreateSparkIndexes(app, registry.ResolveIndexAssemblies(), registry.IndexDeploymentFilter);
 
@@ -799,6 +803,13 @@ public static class SparkExtensions
         IApplicationBuilder app,
         IReadOnlyList<Assembly> assemblies,
         Func<Type, bool>? deploymentFilter)
+        => DeploySparkIndexes(app.ApplicationServices, assemblies, deploymentFilter);
+
+    /// <summary>Also <c>--spark-migrate</c>'s (#536 D33): a data migration may query an index the release adds.</summary>
+    internal static void DeploySparkIndexes(
+        IServiceProvider services,
+        IReadOnlyList<Assembly> assemblies,
+        Func<Type, bool>? deploymentFilter)
     {
         if (assemblies.Count == 0)
         {
@@ -809,12 +820,12 @@ public static class SparkExtensions
         // Catalog population is a correctness precondition, before any database call: the model-hash check runs
         // straight after this and must see a complete catalog even when the store is unreachable and the deployment
         // below fails. Freezing runs the [DefaultIndex] validation, so an ambiguous default fails startup here.
-        var indexCatalog = app.ApplicationServices.GetRequiredService<IIndexCatalog>();
+        var indexCatalog = services.GetRequiredService<IIndexCatalog>();
         indexCatalog.RegisterAssemblies(assemblies);
         indexCatalog.Freeze();
 
         // The provider writes the definitions (#551 D20); a store without indexes has nothing to deploy. A deployment
         // filter (SparkModuleRegistry.IndexDeploymentFilter, set by test hosts) narrows only this step.
-        app.ApplicationServices.GetService<Abstractions.Storage.ISparkIndexDeployment>()?.Deploy(assemblies, deploymentFilter);
+        services.GetService<Abstractions.Storage.ISparkIndexDeployment>()?.Deploy(assemblies, deploymentFilter);
     }
 }

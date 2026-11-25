@@ -48,6 +48,10 @@ public static class SparkMigrationsExtensions
             // the same "do once at startup against the store" slot index creation uses.
             builder.Registry.AddMiddleware(app => SparkMigrationRunner.RunAtStartup(app.ApplicationServices));
 
+            // The same run for --spark-migrate (#536 D33), after the schema.
+            builder.Services.AddSingleton<global::MintPlayer.Spark.Abstractions.Storage.ISparkDataMigrations>(
+                sp => new SparkDataMigrations(sp));
+
             return registry;
         }
     }

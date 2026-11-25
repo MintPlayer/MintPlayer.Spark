@@ -63,3 +63,9 @@ tags, and everything ships once the merged pull request is backported to `releas
    delete, by version) that every provider implements, and a lease over it that core implements once: it renews
    itself while held, frees after its time to live when its holder dies, and cancels `Lost` when someone else took
    it.
+6. **Schema migrations: `--spark-migrate`, `--spark-migration-script` and `Spark:Database:ApplyMigrations`** (M3,
+   D33): a provider with a schema registers `ISparkSchemaMigrator`. By default the app applies pending migrations at
+   startup. With `Spark:Database:ApplyMigrations=false` it refuses to start while any are pending, and a deploy step
+   runs `--spark-migrate` (schema, indexes, data migrations) with a login that may change the schema, or a DBA runs
+   the idempotent script `--spark-migration-script <file> [--from <m>] [--to <m>]` writes. RavenDB and InMemory have
+   no schema, so for them nothing changes.

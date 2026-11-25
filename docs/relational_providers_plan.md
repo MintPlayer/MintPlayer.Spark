@@ -87,6 +87,20 @@ rounds, milestones and status. Branch `feat/536-sql-server-provider`, draft PR #
     `SparkStoreLockTests` (9), `SparkMigrationRunnerTests` unchanged in substance (their pre-seeded locks are old-format
     DateTimes): 56 green. Not yet: cron, messaging and dashboards on the values/lease (the feature-library port), and
     the rest of S6 (`SetExpiry`, `StreamAsync`, `Reserve/Release`, `UpdateWhere/DeleteWhere`, `PatchAppend`).
+  - **M3e, the schema migrator and the migration commands (D33):** `ISparkSchemaMigrator` (pending, apply, write
+    script) and `ISparkDataMigrations` in Abstractions. Only a provider with a schema registers a migrator; absent
+    means nothing to do (RavenDB, InMemory). `UseSpark` runs `SparkSchemaStartup` before the indexes:
+    `Spark:Database:ApplyMigrations` (default true) applies, false refuses to start while migrations are pending,
+    naming them and both flags. New core commands: `--spark-migrate` (schema, then the indexes, then the data
+    migrations; exits 0) and `--spark-migration-script <file> [--from] [--to]` (usage error 2; a store without schema
+    says so and writes nothing). `MintPlayer.Spark.Migrations` registers `ISparkDataMigrations` over its runner.
+    **Deviations from D33:** (1) the concurrency guard lives inside the provider's `ApplyAsync` (EF takes its own
+    database lock), not a core lease around it; (2) the data migrations keep their own lease and their AfterSpark slot
+    at startup, so RavenDB's startup order is unchanged; (3) with `ApplyMigrations=false` the data migrations still run
+    at startup, since they need only data rights; (4) on RavenDB `--spark-migrate` deploys the indexes (a data
+    migration may query a new one) but installs no expiration stamper, which only a running app needs. Index deploy
+    is now `SparkExtensions.DeploySparkIndexes(IServiceProvider, …)`. Tests: `SparkMigrationCommandsTests` (9),
+    `ProviderNeutralCoreTests` (Abstractions, core and Migrations reference no Raven/EF/Npgsql/SqlClient assembly).
   - Order: the core pieces in `libs/` first (the struct, the model registry, the generator for `__DocumentId`, JSON,
     the route binder), then the feature libraries, then the apps.
   - It touches the three production apps (CodeCoverage, SeoTester, MintPlayer). RavenDB stays green at the end of the
