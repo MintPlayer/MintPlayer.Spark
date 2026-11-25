@@ -46,8 +46,7 @@ internal sealed partial class NotificationVisitorClaim : ISparkSignedInHandler
         for (var page = 0; page < 100; page++)
         {
             using var session = store.OpenSession();
-            await store.WaitForConsistencyAsync(session, [session.GetCollectionName(typeof(Notification))], TimeSpan.FromSeconds(30), null, cancellationToken);
-            var batch = await session.ToListAsync(session.Query<Notification>().Where(n => n.VisitorId == visitorId).Take(PageSize), cancellationToken);
+            var batch = await session.ToListAsync(session.Query<Notification>(TimeSpan.FromSeconds(30)).Where(n => n.VisitorId == visitorId).Take(PageSize), cancellationToken);
             if (batch.Count == 0)
                 break;
             foreach (var notification in batch)

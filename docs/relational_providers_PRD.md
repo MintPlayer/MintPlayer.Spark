@@ -409,6 +409,15 @@ new entity at a stored id replaces it on every provider. *Evidence:* `Optimistic
 and `Without_OptimisticConcurrency_a_new_document_replaces_a_stored_one`, 4/4 on RavenDB and InMemory, 4/4 on SQL
 Server and PostgreSQL.
 
+**D38 (M6, 2026-11-25): `ISparkSession.Query<T>(TimeSpan waitForIndexes)`, the per-query index wait.** Organizations
+and Notifications decide on query answers (is another Owner left, which links are pending, what to export) and
+waited with `Customize(c => c.WaitForNonStaleResults(15 s))`. `ISparkStore.WaitForConsistencyAsync` is no substitute:
+it waits only for the indexes that already exist over the collections, and the first query of a new shape makes
+RavenDB create its auto index on the spot, which that wait never sees. So the session takes the wait per query.
+RavenDB customizes the query; InMemory and the relational providers read committed data anyway and call `Query<T>()`.
+*Evidence:* `A_waited_query_sees_a_document_committed_just_before` (a fresh name, so a new query shape), green on
+RavenDB, InMemory, SQL Server and PostgreSQL; the Organizations and Notifications classes 67/67 on RavenDB.
+
 **D3: the version is a `bigint` column on every table**, a concurrency token the provider increments. *(S4, §8.11:
 it is on every root table and covers the aggregate. A change to a child row (D25) or a join row (D26) moves the
 root's version, which EF alone does not do.)*

@@ -25,6 +25,13 @@ public interface ISparkSession : IDisposable
     IQueryable<T> Query<T>() where T : class;
 
     /// <summary>
+    /// #536 D38: <see cref="Query{T}()"/> for an answer that must include every committed write, such as "is another
+    /// Owner left": the query waits up to <paramref name="waitForIndexes"/> for the indexes it reads, including one it
+    /// creates (RavenDB's <c>WaitForNonStaleResults</c>). A provider whose reads are always current ignores it.
+    /// </summary>
+    IQueryable<T> Query<T>(TimeSpan waitForIndexes) where T : class;
+
+    /// <summary>
     /// The rows of the index <typeparamref name="TIndex"/> as <typeparamref name="T"/> (a view root: the generated
     /// <c>VPeople =&gt; Session.Query&lt;VPerson, People_Overview&gt;()</c>). A store without indexes throws
     /// <see cref="NotSupportedException"/>.

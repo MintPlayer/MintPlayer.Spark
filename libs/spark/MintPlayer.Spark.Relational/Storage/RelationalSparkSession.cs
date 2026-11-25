@@ -76,6 +76,9 @@ public sealed partial class RelationalSparkSession : ISparkSession
 
     // ---- queries ----
 
+    /// <summary>A table read is always current: nothing to wait for.</summary>
+    public IQueryable<T> Query<T>(TimeSpan waitForIndexes) where T : class => Query<T>();
+
     public IQueryable<T> Query<T>() where T : class
     {
         Model.RequireTable(typeof(T));

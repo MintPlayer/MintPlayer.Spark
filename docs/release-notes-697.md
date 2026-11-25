@@ -63,6 +63,14 @@ tags, and everything ships once the merged pull request is backported to `releas
    `NULL` column does on SQL. It applies to `ISparkSession.Query`, the query pages and `DeleteWhere`/`UpdateWhere`;
    a raw `IAsyncDocumentSession` query is unchanged.
 9. **PostgreSQL sorts nulls first ascending and last descending** (M5, D4), like the other providers.
+10. **`ISparkSession` has two new members** (M6, D37/D38): `OptimisticConcurrency` (the neutral
+    `OptimisticConcurrencyMode.Writes`) and `Query<T>(TimeSpan waitForIndexes)` (RavenDB's `WaitForNonStaleResults`
+    on one query). A custom `ISparkSession` implementation must add them.
+11. **Settings, Boards and Organizations no longer reference RavenDB** (M6). They run on `ISparkStore`/`ISparkSession`,
+    so any store provider keeps them, and their packages no longer bring `RavenDB.Client` along. Internal helpers
+    that took an `IAsyncDocumentSession` (for example `OrganizationMembershipReader.LoadAsync`) take an
+    `ISparkSession`: wrap a raw session with `session.AsSparkSession()`. Notifications' own reads and writes are
+    neutral too; it keeps its RavenDB reference until messaging is ported (M7).
 
 ## New
 

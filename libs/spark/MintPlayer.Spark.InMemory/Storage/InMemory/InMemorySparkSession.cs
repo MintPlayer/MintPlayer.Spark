@@ -66,6 +66,9 @@ internal sealed class InMemorySparkSession : ISparkSession
     /// Read when the query runs, not when it is opened, as a RavenDB query is: that is what lets <see cref="StreamAsync{T}"/>
     /// read the rows untracked.
     /// </remarks>
+    /// <summary>Reads are always current here: nothing to wait for.</summary>
+    public IQueryable<T> Query<T>(TimeSpan waitForIndexes) where T : class => Query<T>();
+
     public IQueryable<T> Query<T>() where T : class
     {
         Request();

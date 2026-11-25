@@ -291,6 +291,24 @@ public abstract class SparkStoreConformanceTests : IAsyncLifetime
         await fresh.SaveChangesAsync(); // the session's own write moved the version it checks against
     }
 
+    /// <summary>
+    /// #536 D38: a query that waits for its indexes sees a document committed just before it, even when that query is
+    /// the first of its shape (RavenDB creates its auto index on the spot, which a store-level wait cannot cover).
+    /// </summary>
+    [SkippableFact]
+    public async Task A_waited_query_sees_a_document_committed_just_before()
+    {
+        var name = "waited-" + Guid.NewGuid().ToString("N");
+        var doc = Sample("ConfDocs/waited");
+        doc.Name = name;
+        doc.Count = 41;
+        await StoreAsync(doc);
+
+        using var session = Store.OpenSession();
+        var found = await session.ToListAsync(session.Query<ConfDoc>(TimeSpan.FromSeconds(15)).Where(d => d.Name == name && d.Count == 41));
+        found.Should().ContainSingle().Which.Name.Should().Be(name);
+    }
+
     [SkippableFact]
     public async Task Without_OptimisticConcurrency_a_new_document_replaces_a_stored_one()
     {

@@ -7,16 +7,13 @@ using MintPlayer.Spark.Authorization.Identity;
 using MintPlayer.Spark.Organizations.Identity;
 using MintPlayer.Spark.Organizations.Models;
 using MintPlayer.Spark.Services;
-using Raven.Client.Documents;
-using Raven.Client.Documents.Linq;
-using Raven.Client.Documents.Session;
-using Raven.Client.Exceptions;
+using MintPlayer.Spark.Abstractions.Storage;
 
 namespace MintPlayer.Spark.Organizations.Services;
 
 /// <summary>The default <see cref="ISparkOrganizations"/> (scoped).</summary>
 internal sealed class SparkOrganizations(
-    IDocumentStore store,
+    ISparkStore store,
     OrganizationMembershipReader reader,
     CurrentOrganization current,
     OrganizationMail mail,
@@ -53,7 +50,7 @@ internal sealed class SparkOrganizations(
         Require(userId, nameof(userId));
         var id = Organization.PersonalIdFor(userId);
 
-        using var session = store.OpenAsyncSession();
+        using var session = store.OpenSession();
         if (await session.LoadAsync<Organization>(id.Value, cancellationToken) is { } existing)
             return existing;
 
@@ -77,9 +74,9 @@ internal sealed class SparkOrganizations(
         {
             await session.SaveChangesAsync(cancellationToken);
         }
-        catch (ConcurrencyException)
+        catch (SparkStoreConcurrencyException)
         {
-            using var again = store.OpenAsyncSession();
+            using var again = store.OpenSession();
             return await again.LoadAsync<Organization>(id.Value, cancellationToken)
                 ?? throw new InvalidOperationException($"The personal organization of '{userId}' could not be created.");
         }
@@ -93,7 +90,7 @@ internal sealed class SparkOrganizations(
         Require(ownerUserId, nameof(ownerUserId));
         name = ValidName(name);
 
-        using var session = store.OpenAsyncSession();
+        using var session = store.OpenSession();
         var user = await session.LoadAsync<SparkUser>(ownerUserId, cancellationToken)
             ?? throw new InvalidOperationException($"User '{ownerUserId}' does not exist.");
 
@@ -114,7 +111,7 @@ internal sealed class SparkOrganizations(
         if (role is OrganizationRole.Owner || !Enum.IsDefined(role))
             throw new SparkValidationException("An invitation gives the Viewer, Member or Admin role. Ownership is transferred to a member.", nameof(OrganizationInvitation.Role));
 
-        using var session = store.OpenAsyncSession();
+        using var session = store.OpenSession();
         var organization = await LoadOrganizationAsync(session, organizationId, cancellationToken);
         var inviter = await RequireRoleAsync(session, organization.Id.Value, inviterUserId, OrganizationRole.Admin, cancellationToken);
         // D43 (owner correction 2026-10-10): the mail goes out on the inviter's behalf, so the inviter's
@@ -158,7 +155,7 @@ internal sealed class SparkOrganizations(
         if (role is OrganizationRole.Owner || !Enum.IsDefined(role))
             throw new SparkValidationException("A join request asks for the Viewer, Member or Admin role.", nameof(OrganizationInvitation.Role));
 
-        using var session = store.OpenAsyncSession();
+        using var session = store.OpenSession();
         var organization = await session.LoadAsync<Organization>(Require(organizationId, nameof(organizationId)), cancellationToken)
             ?? throw new SparkRowLevelAccessDeniedException("Organization");
         if (await session.LoadAsync<OrganizationMembership>(OrganizationMembership.IdFor(requesterUserId, organization.Id).Value, cancellationToken) is not null)
@@ -214,9 +211,9 @@ internal sealed class SparkOrganizations(
             || !invitationId.StartsWith("OrganizationInvitations/", StringComparison.OrdinalIgnoreCase))
             return OrganizationAcceptance.Invalid;
 
-        using var session = store.OpenAsyncSession();
+        using var session = store.OpenSession();
         // Spending the link is a delete with the version read here: of two concurrent accepts, one fails.
-        session.Advanced.OptimisticConcurrencyMode = OptimisticConcurrencyMode.Writes;
+        session.OptimisticConcurrency = true;
 
         var invitation = await session.LoadAsync<OrganizationInvitation>(invitationId, cancellationToken);
         if (invitation?.TokenHash is null
@@ -266,7 +263,7 @@ internal sealed class SparkOrganizations(
         {
             await session.SaveChangesAsync(cancellationToken);
         }
-        catch (ConcurrencyException)
+        catch (SparkStoreConcurrencyException)
         {
             return OrganizationAcceptance.Invalid;
         }
@@ -280,7 +277,7 @@ internal sealed class SparkOrganizations(
     public async Task LeaveAsync(string organizationId, string userId, CancellationToken cancellationToken = default)
     {
         Require(userId, nameof(userId));
-        using var session = store.OpenAsyncSession();
+        using var session = store.OpenSession();
         var membership = await session.LoadAsync<OrganizationMembership>(OrganizationMembership.IdFor(userId, Require(organizationId, nameof(organizationId))).Value, cancellationToken)
             ?? throw new SparkRowLevelAccessDeniedException("Organization");
         var organization = await LoadOrganizationAsync(session, organizationId, cancellationToken);
@@ -302,8 +299,8 @@ internal sealed class SparkOrganizations(
         if (string.Equals(fromUserId, toUserId, StringComparison.OrdinalIgnoreCase))
             throw new SparkValidationException("Choose another member to make Owner.");
 
-        using var session = store.OpenAsyncSession();
-        session.Advanced.OptimisticConcurrencyMode = OptimisticConcurrencyMode.Writes;
+        using var session = store.OpenSession();
+        session.OptimisticConcurrency = true;
         var organization = await LoadOrganizationAsync(session, organizationId, cancellationToken);
         var from = await RequireRoleAsync(session, organization.Id.Value, fromUserId, OrganizationRole.Owner, cancellationToken);
         if (organization.IsPersonal)
@@ -321,7 +318,7 @@ internal sealed class SparkOrganizations(
     public async Task DeleteAsync(string organizationId, string actingUserId, CancellationToken cancellationToken = default)
     {
         Require(actingUserId, nameof(actingUserId));
-        using var session = store.OpenAsyncSession();
+        using var session = store.OpenSession();
         var organization = await LoadOrganizationAsync(session, organizationId, cancellationToken);
         await RequireRoleAsync(session, organization.Id.Value, actingUserId, OrganizationRole.Owner, cancellationToken);
         if (organization.IsPersonal)
@@ -339,74 +336,68 @@ internal sealed class SparkOrganizations(
     /// D26's cascade, written into <paramref name="session"/> (the caller saves): every
     /// <see cref="IOrganizationDataHandler"/> first, then the organization's memberships and invitations.
     /// </summary>
-    internal async Task DeleteDependentsAsync(IAsyncDocumentSession session, Organization organization, CancellationToken cancellationToken)
+    internal async Task DeleteDependentsAsync(ISparkSession session, Organization organization, CancellationToken cancellationToken)
     {
         foreach (var handler in dataHandlers)
             await handler.DeleteAsync(organization, cancellationToken);
 
         foreach (var id in await IdsAsync<OrganizationMembership>(session, organization.Id.Value, cancellationToken))
-            session.Delete(id);
+            session.Delete(typeof(OrganizationMembership), id);
         foreach (var id in await IdsAsync<OrganizationInvitation>(session, organization.Id.Value, cancellationToken))
-            session.Delete(id);
+            session.Delete(typeof(OrganizationInvitation), id);
     }
 
     /// <summary>Whether an Owner other than <paramref name="userId"/> exists.</summary>
-    internal static async Task<bool> HasOtherOwnerAsync(IAsyncDocumentSession session, string organizationId, string userId, CancellationToken cancellationToken)
+    internal static async Task<bool> HasOtherOwnerAsync(ISparkSession session, string organizationId, string userId, CancellationToken cancellationToken)
         => (await OwnersAsync(session, organizationId, cancellationToken)).Any(o => !string.Equals(o.UserId, userId, StringComparison.OrdinalIgnoreCase));
 
     /// <summary>The organization's members, read from an index that is waited on: these answers decide whether an Owner remains.</summary>
-    internal static async Task<List<OrganizationMembership>> MembersAsync(IAsyncDocumentSession session, string organizationId, CancellationToken cancellationToken)
+    internal static async Task<List<OrganizationMembership>> MembersAsync(ISparkSession session, string organizationId, CancellationToken cancellationToken)
     {
         var all = new List<OrganizationMembership>();
         for (var skip = 0; ; skip += 1024)
         {
-            var page = await session.Query<OrganizationMembership>()
-                .Customize(c => c.WaitForNonStaleResults(TimeSpan.FromSeconds(15)))
+            var page = await session.ToListAsync(session.Query<OrganizationMembership>(TimeSpan.FromSeconds(15))
                 .Where(m => m.OrganizationId == organizationId)
-                .Skip(skip).Take(1024)
-                .ToListAsync(cancellationToken);
+                .Skip(skip).Take(1024), cancellationToken);
             all.AddRange(page);
             if (page.Count < 1024)
                 return all;
         }
     }
 
-    private static async Task<List<OrganizationMembership>> OwnersAsync(IAsyncDocumentSession session, string organizationId, CancellationToken cancellationToken)
+    private static async Task<List<OrganizationMembership>> OwnersAsync(ISparkSession session, string organizationId, CancellationToken cancellationToken)
         => (await MembersAsync(session, organizationId, cancellationToken)).Where(m => m.Role == OrganizationRole.Owner).ToList();
 
-    private static async Task<List<string>> IdsAsync<T>(IAsyncDocumentSession session, string organizationId, CancellationToken cancellationToken)
+    private static async Task<List<string>> IdsAsync<T>(ISparkSession session, string organizationId, CancellationToken cancellationToken)
         where T : class, IOrganizationOwned
     {
         var ids = new List<string>();
         for (var skip = 0; ; skip += 1024)
         {
-            var page = await session.Query<T>()
-                .Customize(c => c.WaitForNonStaleResults(TimeSpan.FromSeconds(15)))
+            var page = await session.ToListAsync(session.Query<T>(TimeSpan.FromSeconds(15))
                 .Where(x => x.OrganizationId == organizationId)
-                .Skip(skip).Take(1024)
-                .ToListAsync(cancellationToken);
-            ids.AddRange(page.Select(x => session.Advanced.GetDocumentId(x)).Where(id => id is not null)!);
+                .Skip(skip).Take(1024), cancellationToken);
+            ids.AddRange(page.Select(x => session.GetId(x)).Where(id => id is not null)!);
             if (page.Count < 1024)
                 return ids;
         }
     }
 
     private static async Task<List<OrganizationInvitation>> PendingAsync(
-        IAsyncDocumentSession session, string organizationId, OrganizationInvitationKind kind,
+        ISparkSession session, string organizationId, OrganizationInvitationKind kind,
         System.Linq.Expressions.Expression<Func<OrganizationInvitation, bool>> match, CancellationToken cancellationToken)
-        => await session.Query<OrganizationInvitation>()
-            // Waited on: a pending link the index has not seen yet would stay live beside its replacement.
-            .Customize(c => c.WaitForNonStaleResults(TimeSpan.FromSeconds(15)))
+        // Waited on: a pending link the index has not seen yet would stay live beside its replacement.
+        => await session.ToListAsync(session.Query<OrganizationInvitation>(TimeSpan.FromSeconds(15))
             .Where(i => i.OrganizationId == organizationId && i.Kind == kind)
-            .Where(match)
-            .ToListAsync(cancellationToken);
+            .Where(match), cancellationToken);
 
-    private static async Task<Organization> LoadOrganizationAsync(IAsyncDocumentSession session, string organizationId, CancellationToken cancellationToken)
+    private static async Task<Organization> LoadOrganizationAsync(ISparkSession session, string organizationId, CancellationToken cancellationToken)
         => await session.LoadAsync<Organization>(Require(organizationId, nameof(organizationId)), cancellationToken)
             ?? throw new SparkRowLevelAccessDeniedException("Organization");
 
     /// <summary>The acting user's membership, read from storage, when its role is at least <paramref name="required"/>; else the missing-row refusal.</summary>
-    private static async Task<OrganizationMembership> RequireRoleAsync(IAsyncDocumentSession session, string organizationId, string userId, OrganizationRole required, CancellationToken cancellationToken)
+    private static async Task<OrganizationMembership> RequireRoleAsync(ISparkSession session, string organizationId, string userId, OrganizationRole required, CancellationToken cancellationToken)
     {
         var membership = await session.LoadAsync<OrganizationMembership>(OrganizationMembership.IdFor(userId, organizationId).Value, cancellationToken);
         return membership is not null && membership.Role >= required

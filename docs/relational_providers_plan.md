@@ -407,6 +407,17 @@ rounds, milestones and status. Branch `feat/536-sql-server-provider`, draft PR #
     each of the four providers). `MintPlayer.Spark.Settings` (settings, seeder, quotas) now runs on `ISparkStore` and
     drops `RavenDB.Client`; it declares `Setting` and `SparkQuotaUsage` as stored types (D36). Settings tests 25/25
     on RavenDB.
+  - **M6b (2026-11-25): Boards, and Notifications' own reads and writes.** Boards drops `RavenDB.Client` (19/19).
+    Notifications' actions, inbox, account hooks, visitor claim and interceptors run on `ISparkSession`; interceptors
+    get the neutral session through `SparkInterceptorContext.GetSparkSession()`. `SparkNotifier` and `WebPushDelivery`
+    still enqueue through messaging's `IMessageOutbox` (RavenDB session), so the package keeps its pin until M7
+    (29/29).
+  - **M6c (2026-11-25): `Query<T>(TimeSpan)` (PRD D38) and Organizations.** The per-query index wait, green on all
+    four providers. Organizations (service, reader, row policy, interceptors, hooks, actions, current organization)
+    runs on `ISparkStore`; the row policy uses `ids.Contains(x.OrganizationId)`, which RavenDB's session rewrites
+    into `In()`. The package drops its RavenDB references. Organizations + Notifications 67/67 on RavenDB.
+  - **Next in M6:** Apps (Patch → load-modify-save; webhooks wait for messaging, M7), templates and AllFeatures'
+    generator, then Tier 2 (mail, mcp, cron, contributions, authorization user store, search, files) and O13.
 - **Local spike servers left running:**
   - SQL Server: `SparkSpike536` on `localhost` and `localhost\MSSQLSERVER01`
   - Docker `spark536-pg` (`postgres:18`, 127.0.0.1:55432). M4 needs it again.

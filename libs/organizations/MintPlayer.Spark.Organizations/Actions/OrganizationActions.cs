@@ -4,9 +4,7 @@ using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Queries;
 using MintPlayer.Spark.Actions;
 using MintPlayer.Spark.Organizations.Models;
-using Raven.Client.Documents;
-using Raven.Client.Documents.Linq;
-using Raven.Client.Documents.Session;
+using MintPlayer.Spark.Abstractions.Storage;
 
 namespace MintPlayer.Spark.Organizations.Actions;
 
@@ -18,20 +16,20 @@ namespace MintPlayer.Spark.Organizations.Actions;
 /// </summary>
 public partial class OrganizationActions : DefaultPersistentObjectActions<Organization>
 {
-    [Inject] private readonly IAsyncDocumentSession session;
+    [Inject] private readonly ISparkSession session;
     [Inject] private readonly IServiceProvider services;
 
     /// <inheritdoc cref="OrganizationActionsFailClosed" />
     public override Task<Expression<Func<Organization, bool>>?> GetRowFilterAsync(string action) => OrganizationActionsFailClosed.Filter<Organization>(services);
 
     /// <summary>Every organization the caller belongs to (the row policy narrows it).</summary>
-    public IRavenQueryable<Organization> Organizations() => session.Query<Organization>();
+    public IQueryable<Organization> Organizations() => session.Query<Organization>();
 }
 
 /// <summary>Backs <c>Custom.OrganizationMembers</c>, the members list on an organization's page.</summary>
 public partial class OrganizationMembershipActions : DefaultPersistentObjectActions<OrganizationMembership>
 {
-    [Inject] private readonly IAsyncDocumentSession session;
+    [Inject] private readonly ISparkSession session;
     [Inject] private readonly IServiceProvider services;
 
     /// <inheritdoc cref="OrganizationActionsFailClosed" />
@@ -50,7 +48,7 @@ public partial class OrganizationMembershipActions : DefaultPersistentObjectActi
 /// <summary>Backs <c>Custom.OrganizationInvitations</c>, the pending invitations and join requests on an organization's page (Admins and up).</summary>
 public partial class OrganizationInvitationActions : DefaultPersistentObjectActions<OrganizationInvitation>
 {
-    [Inject] private readonly IAsyncDocumentSession session;
+    [Inject] private readonly ISparkSession session;
     [Inject] private readonly IServiceProvider services;
 
     /// <inheritdoc cref="OrganizationActionsFailClosed" />

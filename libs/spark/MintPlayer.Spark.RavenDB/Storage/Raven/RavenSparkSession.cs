@@ -44,6 +44,9 @@ internal sealed class RavenSparkSession : ISparkSession
 
     public IQueryable<T> Query<T>() where T : class => AbsentIsNull(Session.Query<T>());
 
+    public IQueryable<T> Query<T>(TimeSpan waitForIndexes) where T : class
+        => AbsentIsNull(Session.Query<T>().Customize(c => c.WaitForNonStaleResults(waitForIndexes)));
+
     public IQueryable<T> Query<T, TIndex>() where T : class where TIndex : class, new()
         => AbsentIsNull(IndexQuery<T, TIndex>.Open(Session));
 

@@ -1,10 +1,9 @@
 using Microsoft.Extensions.Options;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Authentication;
+using MintPlayer.Spark.Abstractions.Storage;
 using MintPlayer.Spark.Organizations.Models;
 using MintPlayer.Spark.Organizations.Services;
-using Raven.Client.Documents;
-using Raven.Client.Documents.Linq;
 
 namespace MintPlayer.Spark.Organizations.Identity;
 
@@ -24,14 +23,14 @@ internal sealed class PersonalOrganizationOnSignIn(ISparkOrganizations organizat
 /// deletion stops with the account intact until ownership is transferred: an organization needs an Owner.
 /// </summary>
 /// <remarks>Checks everything before deleting anything, so a refusal leaves no half-deleted state; idempotent for the retry.</remarks>
-internal sealed class OrganizationAccountDeletion(IDocumentStore store, SparkOrganizations organizations, OrganizationMembershipReader reader) : ISparkAccountDeletionHandler
+internal sealed class OrganizationAccountDeletion(ISparkStore store, SparkOrganizations organizations, OrganizationMembershipReader reader) : ISparkAccountDeletionHandler
 {
     public async Task OnDeletingAccountAsync(ISparkAccount user, CancellationToken cancellationToken)
     {
         if (user.Id is not { Length: > 0 } userId)
             return;
 
-        using var session = store.OpenAsyncSession();
+        using var session = store.OpenSession();
         var memberships = await OrganizationMembershipReader.LoadAsync(session, userId, cancellationToken);
         var toDelete = new List<Organization>();
         foreach (var membership in memberships)
@@ -67,10 +66,8 @@ internal sealed class OrganizationAccountDeletion(IDocumentStore store, SparkOrg
             session.Delete(membership);
 
         // The user's own pending join requests go with them.
-        var requests = await session.Query<OrganizationInvitation>()
-            .Customize(c => c.WaitForNonStaleResults(TimeSpan.FromSeconds(15)))
-            .Where(i => i.UserId == userId && i.Kind == OrganizationInvitationKind.JoinRequest)
-            .ToListAsync(cancellationToken);
+        var requests = await session.ToListAsync(session.Query<OrganizationInvitation>(TimeSpan.FromSeconds(15))
+            .Where(i => i.UserId == userId && i.Kind == OrganizationInvitationKind.JoinRequest), cancellationToken);
         foreach (var request in requests)
             session.Delete(request);
 
@@ -83,7 +80,7 @@ internal sealed class OrganizationAccountDeletion(IDocumentStore store, SparkOrg
 /// The <c>organizations</c> section of the personal-data export (D26): each membership, and for every
 /// organization the user owns, what each <see cref="IOrganizationDataHandler"/> exports.
 /// </summary>
-internal sealed class OrganizationPersonalData(IDocumentStore store, IEnumerable<IOrganizationDataHandler> dataHandlers) : ISparkPersonalDataContributor
+internal sealed class OrganizationPersonalData(ISparkStore store, IEnumerable<IOrganizationDataHandler> dataHandlers) : ISparkPersonalDataContributor
 {
     public string Name => "organizations";
 
@@ -92,7 +89,7 @@ internal sealed class OrganizationPersonalData(IDocumentStore store, IEnumerable
         if (user.Id is not { Length: > 0 } userId)
             return null;
 
-        using var session = store.OpenAsyncSession();
+        using var session = store.OpenSession();
         var memberships = await OrganizationMembershipReader.LoadAsync(session, userId, cancellationToken);
         var result = new List<object>();
         foreach (var membership in memberships.OrderBy(m => m.JoinedAtUtc))

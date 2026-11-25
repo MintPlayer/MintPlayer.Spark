@@ -35,8 +35,7 @@ internal sealed class NotificationPersonalData(ISparkStore store) : ISparkPerson
             return null;
 
         using var session = store.OpenSession();
-        await store.WaitForConsistencyAsync(session, [session.GetCollectionName(typeof(Notification))], TimeSpan.FromSeconds(30), null, cancellationToken);
-        var notifications = await session.ToListAsync(session.Query<Notification>().Where(n => n.UserId == userId).Take(10_000), cancellationToken);
+        var notifications = await session.ToListAsync(session.Query<Notification>(TimeSpan.FromSeconds(30)).Where(n => n.UserId == userId).Take(10_000), cancellationToken);
         var devices = await session.LoadStartingWithAsync<PushSubscription>(PushSubscription.PrefixFor(userId), 0, 1024, cancellationToken);
         var preferences = await session.LoadStartingWithAsync<NotificationPreference>(NotificationPreference.PrefixFor(userId), 0, 1024, cancellationToken);
 

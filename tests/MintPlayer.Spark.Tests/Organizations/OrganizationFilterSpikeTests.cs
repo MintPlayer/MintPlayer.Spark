@@ -1,3 +1,4 @@
+using MintPlayer.Spark;
 using System.Diagnostics;
 using System.Net;
 using System.Text;
@@ -93,7 +94,7 @@ public class OrganizationFilterSpikeTests(ITestOutputHelper output) : Organizati
             var prefix = await MedianAsync(async () =>
             {
                 using var session = Store.OpenAsyncSession();
-                return (await OrganizationMembershipReader.LoadAsync(session, userId, CancellationToken.None)).Count;
+                return (await OrganizationMembershipReader.LoadAsync(session.AsSparkSession(), userId, CancellationToken.None)).Count;
             }, n);
             var byIndex = await MedianAsync(async () =>
             {
