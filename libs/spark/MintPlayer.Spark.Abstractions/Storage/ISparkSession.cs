@@ -90,6 +90,75 @@ public interface ISparkSession : IDisposable
 
     void Delete(object entity);
 
+    /// <summary>
+    /// When the store may delete <paramref name="entity"/> (#536 S6; RavenDB's <c>@expires</c>), or
+    /// <see langword="null"/> for never. The entity must be tracked; <see cref="SaveChangesAsync"/> writes it, and later
+    /// writes keep it until it is set again. Deleting is the store's expiration sweep, where it runs: until then the row
+    /// stays readable. An <see cref="IExpiring"/> entity needs none of this: its expiry is stamped from the entity.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">The session does not track <paramref name="entity"/>.</exception>
+    void SetExpiry(object entity, DateTimeOffset? expiresAt);
+
+    /// <summary>The expiry of a tracked entity, as stored or as set in this session; <see langword="null"/> for none.</summary>
+    DateTimeOffset? GetExpiry(object entity);
+
+    /// <summary>
+    /// Every row of <paramref name="query"/>, read as a stream (#536 S6): for scans and backfills over more rows than a
+    /// page. The rows are not tracked, so changing one saves nothing and the request budget is not spent per row. Load
+    /// a row by its id to change it.
+    /// </summary>
+    /// <remarks>
+    /// RavenDB does not wait for indexing on a stream: a query over an index that may be stale settles it first (a
+    /// <c>Take(0)</c> read with the wait). Relational providers page over the key.
+    /// </remarks>
+    IAsyncEnumerable<SparkStreamResult<T>> StreamAsync<T>(IQueryable<T> query, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Claims the unique <paramref name="key"/> (an email, a client id) for the document <paramref name="ownerId"/>
+    /// (#536 S6). <see cref="SaveChangesAsync"/> claims it with the documents. The owner claiming it again changes
+    /// nothing. A key held by a document that no longer exists is taken over: what a crash or a delete without
+    /// <see cref="Release"/> leaves behind. A key another existing document holds fails the save with
+    /// <see cref="SparkReservationTakenException"/>, and nothing is written.
+    /// </summary>
+    /// <remarks>
+    /// Relational stores and memory write reservations in the documents' transaction. RavenDB claims them (compare
+    /// exchange) before it writes the documents and frees them again when that write fails; the takeover rule covers
+    /// a crash in between. Keys are compared case-insensitively; a caller prefixes its own (<c>emails/</c>).
+    /// </remarks>
+    void Reserve(string key, string ownerId);
+
+    /// <summary>Frees <paramref name="key"/> with the save, but only while <paramref name="ownerId"/> holds it.</summary>
+    void Release(string key, string ownerId);
+
+    /// <summary>The document that holds <paramref name="key"/>, read from the store now; <see langword="null"/> when free.</summary>
+    Task<string?> GetReservationAsync(string key, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Deletes every <typeparamref name="T"/> matching <paramref name="predicate"/> in the store, now and set-based
+    /// (#536 S6; RavenDB's delete by query, SQL's <c>DELETE … WHERE</c>), and returns how many.
+    /// </summary>
+    /// <remarks>
+    /// Outside the unit of work: no hooks run (<see cref="BeforeDelete"/>), and copies this session already tracks are
+    /// not updated. Where a document's own rules must run, load, delete and save instead.
+    /// </remarks>
+    Task<long> DeleteWhereAsync<T>(System.Linq.Expressions.Expression<Func<T, bool>> predicate, CancellationToken cancellationToken = default) where T : class;
+
+    /// <summary>
+    /// Sets members of every <typeparamref name="T"/> matching <paramref name="predicate"/> in the store, now and
+    /// set-based (#536 S6; RavenDB's patch by query, SQL's <c>UPDATE … WHERE</c>), and returns how many. Each updated
+    /// row gets a new version.
+    /// </summary>
+    /// <remarks>The same limits as <see cref="DeleteWhereAsync{T}"/>: no <see cref="BeforeStore"/>, and tracked copies go stale.</remarks>
+    /// <summary>
+    /// Appends <paramref name="item"/> to the list at <paramref name="list"/> of the stored document
+    /// <paramref name="id"/> (#536 S6). <see cref="SaveChangesAsync"/> applies it to the stored document, not to a
+    /// copy this session read, so concurrent appends all land where a load-modify-save would lose one or conflict.
+    /// A document that no longer exists is skipped. A copy this session tracks is not updated.
+    /// </summary>
+    void PatchAppend<T, TItem>(string id, System.Linq.Expressions.Expression<Func<T, IEnumerable<TItem>>> list, TItem item) where T : class;
+
+    Task<long> UpdateWhereAsync<T>(System.Linq.Expressions.Expression<Func<T, bool>> predicate, Action<SparkSetters<T>> set, CancellationToken cancellationToken = default) where T : class;
+
     Task SaveChangesAsync(CancellationToken cancellationToken = default);
 
     string? GetId(object entity);

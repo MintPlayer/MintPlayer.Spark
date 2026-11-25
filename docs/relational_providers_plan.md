@@ -136,6 +136,31 @@ rounds, milestones and status. Branch `feat/536-sql-server-provider`, draft PR #
     rewriting one, and `DefaultIndexAnalyzer` only recognised Raven's, so a Spark multi-map's claims all raised
     SPARK053. It now accepts both (`DefaultIndexAnalyzerTests` 23/23). Tests: generator suite 740/740 (two snapshots
     gained the view), `SparkViewTests` (10).
+  - **M3g, the rest of S6 on `ISparkSession` (2026-11-25):** five contracts, each shaped by its callers and tested in
+    `SparkStoreConformanceTests` on RavenDB and InMemory (47/47):
+    - `SetExpiry(entity, DateTimeOffset?)`/`GetExpiry`: the store's own expiry of a tracked entity (`@expires` on
+      RavenDB), kept by later writes until set again, and an expiry-only change is a write. Callers (mail, MCP plans,
+      moderation, OIDC, agent grants, messaging) only write it; `GetExpiry` serves the suite and the SQL column.
+    - `StreamAsync(query)` → `SparkStreamResult<T>(Id, Document, Version)`, untracked. InMemory's `Query<T>()` now
+      reads its rows when the query runs (as RavenDB's does), so a stream can read them detached; a row the session
+      already tracks comes back as that instance.
+    - `Reserve(key, owner)`/`Release(key, owner)`/`GetReservationAsync(key)` + `SparkReservationTakenException`. A key
+      whose holder document no longer exists is taken over (the rule `UserStore` and `OidcClientIdReservation` have
+      today). InMemory applies them in the commit; RavenDB claims by compare exchange before the documents, frees
+      its claims when the write fails, and releases after it succeeds (a crash in between leaves an ownerless claim,
+      which the takeover rule frees). Raven keys and values are the callers' existing ones, so the stored reservations
+      keep working. ⚠️ On RavenDB a claim and the owner's first write are still two steps: a second claimant who looks
+      in between sees no owner and takes the key over. That is the race the callers have today; SQL closes it.
+    - `DeleteWhereAsync(predicate)`/`UpdateWhereAsync(predicate, set => set.Set(x => x.M, value))`: immediate,
+      set-based, outside the unit of work (no hooks, tracked copies go stale), returning the count. RavenDB renders
+      the LINQ query's RQL and parameters and appends `update { this.<path> = $__spark_setN; }` with
+      `RqlIdentifier.FieldPath`-validated paths; values are parameters. Constants only (`SparkSetters<T>`).
+    - `PatchAppend<T, TItem>(id, x => x.List, item)`: applied by `SaveChanges` to the stored document, so concurrent
+      appends all land (RavenDB's typed `Advanced.Patch`; InMemory a patch write under the commit lock, dry-run first
+      so a failing patch writes nothing). Messaging's metadata patches (`@expires` on progress documents) remain
+      for the messaging port (M7), which writes expiry through `SetExpiry`.
+    The feature libraries still call RavenDB directly; they move onto these contracts in their tier ports (M6–M8).
+    That closes M3 except the generator gate split, which is M4's.
   - Order: the core pieces in `libs/` first (the struct, the model registry, the generator for `__DocumentId`, JSON,
     the route binder), then the feature libraries, then the apps.
   - It touches the three production apps (CodeCoverage, SeoTester, MintPlayer). RavenDB stays green at the end of the

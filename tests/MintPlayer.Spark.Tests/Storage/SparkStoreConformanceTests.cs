@@ -323,6 +323,246 @@ public abstract class SparkStoreConformanceTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task An_expiry_is_kept_by_later_writes_until_cleared()
+    {
+        var expires = new DateTimeOffset(2031, 5, 6, 7, 8, 9, TimeSpan.Zero);
+        using (var session = Store.OpenSession())
+        {
+            var doc = Sample("ConfDocs/expiring");
+            await session.StoreAsync(doc, doc.Id!);
+            session.SetExpiry(doc, expires);
+            await session.SaveChangesAsync();
+        }
+
+        using (var session = Store.OpenSession())
+        {
+            var doc = (await session.LoadAsync<ConfDoc>("ConfDocs/expiring"))!;
+            session.GetExpiry(doc).Should().Be(expires);
+            doc.Name = "Renamed";
+            await session.SaveChangesAsync();
+        }
+
+        using (var session = Store.OpenSession())
+        {
+            var doc = (await session.LoadAsync<ConfDoc>("ConfDocs/expiring"))!;
+            doc.Name.Should().Be("Renamed");
+            session.GetExpiry(doc).Should().Be(expires, "a write that does not touch the expiry keeps it");
+            session.SetExpiry(doc, null);
+            await session.SaveChangesAsync();
+        }
+
+        using (var session = Store.OpenSession())
+        {
+            var doc = (await session.LoadAsync<ConfDoc>("ConfDocs/expiring"))!;
+            session.GetExpiry(doc).HasValue.Should().BeFalse();
+        }
+    }
+
+    [Fact]
+    public async Task Setting_only_the_expiry_is_a_write()
+    {
+        await StoreAsync(Sample("ConfDocs/expiry-only"));
+        var expires = new DateTimeOffset(2032, 1, 2, 3, 4, 5, TimeSpan.Zero);
+
+        using (var session = Store.OpenSession())
+        {
+            var doc = (await session.LoadAsync<ConfDoc>("ConfDocs/expiry-only"))!;
+            session.SetExpiry(doc, expires.ToOffset(TimeSpan.FromHours(2)));
+            await session.SaveChangesAsync();
+        }
+
+        using var read = Store.OpenSession();
+        read.GetExpiry((await read.LoadAsync<ConfDoc>("ConfDocs/expiry-only"))!).Should().Be(expires);
+    }
+
+    [Fact]
+    public void An_expiry_needs_an_entity_the_session_tracks()
+    {
+        using var session = Store.OpenSession();
+        var act = () => session.SetExpiry(Sample("ConfDocs/untracked"), DateTimeOffset.UtcNow);
+        act.Should().Throw<InvalidOperationException>();
+    }
+
+    [Fact]
+    public async Task A_stream_yields_every_match_with_its_id_and_version_untracked()
+    {
+        var small = Sample("ConfStreamed/small");
+        small.Count = 1;
+        await StoreAsync(Sample("ConfStreamed/a"), Sample("ConfStreamed/b"), small);
+
+        // RavenDB refuses to wait for indexing on a stream: the query settles first, in a session of its own.
+        using (var settle = Store.OpenSession())
+            await settle.ToListAsync(Settled(settle.Query<ConfDoc>()).Where(d => d.Count > 10));
+
+        using var session = Store.OpenSession();
+        var streamed = new List<SparkStreamResult<ConfDoc>>();
+        await foreach (var row in session.StreamAsync(session.Query<ConfDoc>().Where(d => d.Count > 10)))
+            streamed.Add(row);
+
+        streamed.Select(r => r.Id).Should().BeEquivalentTo(["ConfStreamed/a", "ConfStreamed/b"]);
+        streamed.Select(r => r.Document.Name).Distinct().Should().Equal(["Sample"]);
+        streamed.Where(r => string.IsNullOrEmpty(r.Version)).Should().BeEmpty();
+
+        foreach (var row in streamed)
+        {
+            session.IsLoaded(row.Id!).Should().BeFalse("a streamed row is not tracked");
+            row.Document.Name = "Changed";
+        }
+        await session.SaveChangesAsync();
+
+        using var read = Store.OpenSession();
+        (await read.LoadAsync<ConfDoc>("ConfStreamed/a"))!.Name.Should().Be("Sample", "changing a streamed row saves nothing");
+    }
+
+    [Fact]
+    public async Task A_reservation_is_claimed_with_the_save_and_refused_to_a_second_owner()
+    {
+        using (var session = Store.OpenSession())
+        {
+            await session.StoreAsync(Sample("ConfDocs/owner-a"), "ConfDocs/owner-a");
+            session.Reserve("conf-unique/alpha", "ConfDocs/owner-a");
+            await session.SaveChangesAsync();
+        }
+
+        using (var session = Store.OpenSession())
+        {
+            (await session.GetReservationAsync("conf-unique/alpha")).Should().Be("ConfDocs/owner-a");
+
+            // The owner reserving again changes nothing.
+            session.Reserve("conf-unique/alpha", "ConfDocs/owner-a");
+            await session.SaveChangesAsync();
+        }
+
+        using (var session = Store.OpenSession())
+        {
+            await session.StoreAsync(Sample("ConfDocs/owner-b"), "ConfDocs/owner-b");
+            session.Reserve("conf-unique/alpha", "ConfDocs/owner-b");
+            var act = () => session.SaveChangesAsync();
+            var thrown = await act.Should().ThrowAsync<SparkReservationTakenException>();
+            thrown.Which.Key.Should().Be("conf-unique/alpha");
+        }
+
+        using var read = Store.OpenSession();
+        (await read.LoadAsync<ConfDoc>("ConfDocs/owner-b")).Should().BeNull("a refused reservation writes nothing");
+        (await read.GetReservationAsync("conf-unique/alpha")).Should().Be("ConfDocs/owner-a");
+    }
+
+    [Fact]
+    public async Task Only_the_owner_releases_a_reservation()
+    {
+        using (var session = Store.OpenSession())
+        {
+            await session.StoreAsync(Sample("ConfDocs/holder"), "ConfDocs/holder");
+            session.Reserve("conf-unique/beta", "ConfDocs/holder");
+            await session.SaveChangesAsync();
+        }
+
+        using (var session = Store.OpenSession())
+        {
+            session.Release("conf-unique/beta", "ConfDocs/someone-else");
+            await session.SaveChangesAsync();
+            (await session.GetReservationAsync("conf-unique/beta")).Should().Be("ConfDocs/holder");
+        }
+
+        using (var session = Store.OpenSession())
+        {
+            session.Delete(typeof(ConfDoc), "ConfDocs/holder");
+            session.Release("conf-unique/beta", "ConfDocs/holder");
+            await session.SaveChangesAsync();
+        }
+
+        using var read = Store.OpenSession();
+        (await read.GetReservationAsync("conf-unique/beta")).Should().BeNull();
+    }
+
+    [Fact]
+    public async Task A_reservation_whose_owner_is_gone_is_taken_over()
+    {
+        // Held for a document that was never stored: what a crash between the claim and the write leaves behind.
+        using (var session = Store.OpenSession())
+        {
+            session.Reserve("conf-unique/gamma", "ConfDocs/never-stored");
+            await session.SaveChangesAsync();
+        }
+
+        using (var session = Store.OpenSession())
+        {
+            await session.StoreAsync(Sample("ConfDocs/claimant"), "ConfDocs/claimant");
+            session.Reserve("conf-unique/gamma", "ConfDocs/claimant");
+            await session.SaveChangesAsync();
+        }
+
+        using var read = Store.OpenSession();
+        (await read.GetReservationAsync("conf-unique/gamma")).Should().Be("ConfDocs/claimant");
+    }
+
+    [Fact]
+    public async Task DeleteWhere_deletes_the_matching_rows_only()
+    {
+        var keep = Sample("ConfBulkDelete/keep");
+        keep.Count = 1;
+        await StoreAsync(Sample("ConfBulkDelete/a"), Sample("ConfBulkDelete/b"), keep);
+
+        using (var session = Store.OpenSession())
+            (await session.DeleteWhereAsync<ConfDoc>(d => d.Count > 10 && d.Name == "Sample")).Should().Be(2);
+
+        using var read = Store.OpenSession();
+        var left = await read.LoadAsync<ConfDoc>(["ConfBulkDelete/a", "ConfBulkDelete/b", "ConfBulkDelete/keep"]);
+        left.Where(p => p.Value is not null).Select(p => p.Key).Should().BeEquivalentTo(["ConfBulkDelete/keep"]);
+    }
+
+    [Fact]
+    public async Task UpdateWhere_sets_members_on_the_matching_rows_and_moves_their_version()
+    {
+        var other = Sample("ConfBulkUpdate/other");
+        other.Count = 1;
+        await StoreAsync(Sample("ConfBulkUpdate/a"), other);
+        string before;
+        using (var session = Store.OpenSession())
+            before = session.GetVersion((await session.LoadAsync<ConfDoc>("ConfBulkUpdate/a"))!)!;
+
+        using (var session = Store.OpenSession())
+        {
+            var updated = await session.UpdateWhereAsync<ConfDoc>(d => d.Count > 10,
+                set => set.Set(d => d.Name, "Bulk").Set(d => d.Status, ConfStatus.Archived).Set(d => d.Nothing, null));
+            updated.Should().Be(1);
+        }
+
+        using var read = Store.OpenSession();
+        var a = (await read.LoadAsync<ConfDoc>("ConfBulkUpdate/a"))!;
+        a.Name.Should().Be("Bulk");
+        a.Status.Should().Be(ConfStatus.Archived);
+        a.Count.Should().Be(42, "members not set keep their value");
+        read.GetVersion(a).Should().NotBe(before);
+        (await read.LoadAsync<ConfDoc>("ConfBulkUpdate/other"))!.Name.Should().Be("Sample");
+    }
+
+    [Fact]
+    public async Task Concurrent_appends_all_land()
+    {
+        var doc = Sample("ConfDocs/appended");
+        doc.Tags = ["first"];
+        await StoreAsync(doc);
+
+        // Two units of work that both read the document before either saves: a load-modify-save would lose one.
+        using (var one = Store.OpenSession())
+        using (var two = Store.OpenSession())
+        {
+            await one.LoadAsync<ConfDoc>("ConfDocs/appended");
+            await two.LoadAsync<ConfDoc>("ConfDocs/appended");
+            one.PatchAppend<ConfDoc, string>("ConfDocs/appended", d => d.Tags, "from-one");
+            two.PatchAppend<ConfDoc, string>("ConfDocs/appended", d => d.Tags, "from-two");
+            await one.SaveChangesAsync();
+            await two.SaveChangesAsync();
+        }
+
+        using var read = Store.OpenSession();
+        var stored = (await read.LoadAsync<ConfDoc>("ConfDocs/appended"))!;
+        stored.Tags.Should().Equal(["first", "from-one", "from-two"]);
+        stored.Name.Should().Be("Sample", "an append touches only its list");
+    }
+
+    [Fact]
     public async Task The_request_budget_is_enforced_and_can_be_lifted()
     {
         // Loads, not ExistsAsync: RavenDB's ExistsAsync does not count against MaxNumberOfRequestsPerSession.

@@ -76,3 +76,14 @@ tags, and everything ships once the merged pull request is backported to `releas
    shadows it. `[GenerateIndex]` now also emits `{Index}_View` beside the generated index, which the index shadows,
    so a RavenDB app sees no change. Core's empty index catalog is replaced by one that lists the declared views, so
    an InMemory app can query a view.
+8. **More of the store on `ISparkSession`** (M3, S6), so code needs no RavenDB session for them:
+   - `SetExpiry`/`GetExpiry`: when the store may delete a document (RavenDB's `@expires`).
+   - `StreamAsync(query)`: every row of a query as untracked `SparkStreamResult<T>` (id, document, version).
+   - `Reserve`/`Release`/`GetReservationAsync`: unique keys claimed with the save. A key held by another existing
+     document fails the save with `SparkReservationTakenException`; one whose holder is gone is taken over.
+   - `DeleteWhereAsync`/`UpdateWhereAsync`: set-based delete and update by a predicate, with constant assignments
+     (`set => set.Set(x => x.Status, Status.Archived)`).
+   - `PatchAppend`: an append to a stored list that concurrent writers cannot lose.
+
+   A custom `ISparkSession` implementation must add these members. On InMemory, `Query<T>()` now reads its rows when
+   the query runs rather than when it is opened, as RavenDB does.

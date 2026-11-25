@@ -13,13 +13,28 @@ internal sealed class InMemoryDatabase
     private readonly Lock gate = new();
     private long etag;
 
-    internal sealed record Entry(string Id, string Json, Type ClrType, string Collection, string Version);
+    /// <param name="ExpiresAt">The store's expiry (<c>ISparkSession.SetExpiry</c>); nothing sweeps it in memory.</param>
+    internal sealed record Entry(string Id, string Json, Type ClrType, string Collection, string Version, DateTimeOffset? ExpiresAt = null);
 
     internal abstract record Write(string Id, string? ExpectedVersion);
 
-    internal sealed record Put(string Id, string? ExpectedVersion, string Json, Type ClrType, string Collection) : Write(Id, ExpectedVersion);
+    internal sealed record Put(string Id, string? ExpectedVersion, string Json, Type ClrType, string Collection, DateTimeOffset? ExpiresAt = null) : Write(Id, ExpectedVersion);
 
     internal sealed record Remove(string Id, string? ExpectedVersion) : Write(Id, ExpectedVersion);
+
+    /// <summary>A change of the stored document's JSON, applied under the lock (<c>PatchAppend</c>); a missing document is skipped.</summary>
+    internal sealed record Patch(string Id, Func<Entry, string> Apply) : Write(Id, null);
+
+    /// <summary>A unique key claimed (<paramref name="Claim"/>) or freed for the document <paramref name="Owner"/>.</summary>
+    internal sealed record Reservation(string Key, string Owner, bool Claim);
+
+    private readonly Dictionary<string, string> reservations = new(StringComparer.OrdinalIgnoreCase);
+
+    public string? ReservationOwner(string key)
+    {
+        lock (gate)
+            return reservations.GetValueOrDefault(key);
+    }
 
     /// <summary>Raised after a commit, outside the lock, with what it stored and deleted.</summary>
     public event Action<IReadOnlyList<SparkStoreChange>>? Committed;
@@ -50,9 +65,11 @@ internal sealed class InMemoryDatabase
     /// must equal the stored version.
     /// </summary>
     /// <exception cref="SparkStoreConcurrencyException">An expected version did not match; nothing was written.</exception>
-    public IReadOnlyDictionary<string, string?> Commit(IReadOnlyList<Write> writes)
+    /// <exception cref="SparkReservationTakenException">A claimed key is held by another existing document; nothing was written.</exception>
+    public IReadOnlyDictionary<string, string?> Commit(IReadOnlyList<Write> writes, IReadOnlyList<Reservation>? reservationChanges = null)
     {
-        if (writes.Count == 0)
+        reservationChanges ??= [];
+        if (writes.Count == 0 && reservationChanges.Count == 0)
             return new Dictionary<string, string?>();
 
         var versions = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
@@ -69,13 +86,33 @@ internal sealed class InMemoryDatabase
                         $"Document '{write.Id}' is at version '{current ?? "(none)"}', the write expected '{(expected.Length == 0 ? "(none)" : expected)}'.");
             }
 
+            // A patch that cannot apply (a null list) must fail before anything is written.
+            foreach (var patch in writes.OfType<Patch>())
+                if (documents.GetValueOrDefault(patch.Id) is { } target)
+                    patch.Apply(target);
+
+            // A key's holder counts while its document exists once this commit is applied; one that is gone is taken over.
+            foreach (var claim in reservationChanges.Where(r => r.Claim))
+                if (reservations.GetValueOrDefault(claim.Key) is { } holder
+                    && !string.Equals(holder, claim.Owner, StringComparison.OrdinalIgnoreCase)
+                    && ExistsAfter(holder, writes))
+                    throw new SparkReservationTakenException(claim.Key, holder);
+
+            foreach (var change in reservationChanges)
+            {
+                if (change.Claim)
+                    reservations[change.Key] = change.Owner;
+                else if (reservations.GetValueOrDefault(change.Key) is { } holder && string.Equals(holder, change.Owner, StringComparison.OrdinalIgnoreCase))
+                    reservations.Remove(change.Key);
+            }
+
             foreach (var write in writes)
             {
                 switch (write)
                 {
                     case Put put:
                         var version = $"A:{++etag}";
-                        documents[put.Id] = new Entry(put.Id, put.Json, put.ClrType, put.Collection, version);
+                        documents[put.Id] = new Entry(put.Id, put.Json, put.ClrType, put.Collection, version, put.ExpiresAt);
                         versions[put.Id] = version;
                         changes.Add(new SparkStoreChange(put.Id, put.Collection, version));
                         break;
@@ -84,11 +121,60 @@ internal sealed class InMemoryDatabase
                             changes.Add(new SparkStoreChange(remove.Id, removed.Collection, null));
                         versions[remove.Id] = null;
                         break;
+                    case Patch patch when documents.GetValueOrDefault(patch.Id) is { } current:
+                        var patched = $"A:{++etag}";
+                        documents[patch.Id] = current with { Json = patch.Apply(current), Version = patched };
+                        changes.Add(new SparkStoreChange(patch.Id, current.Collection, patched));
+                        break;
                 }
             }
         }
 
         Committed?.Invoke(changes);
         return versions;
+    }
+
+    /// <summary>
+    /// A set-based change of <paramref name="collection"/> under the lock: <paramref name="rewrite"/> gets each row and
+    /// returns its new JSON, <see cref="Deleted"/>, or <see langword="null"/> to leave it. Returns how many rows changed.
+    /// </summary>
+    public long Rewrite(string collection, Func<Entry, string?> rewrite)
+    {
+        var changes = new List<SparkStoreChange>();
+        lock (gate)
+        {
+            // Every row is decided before any is written, so a rewrite that throws changes nothing.
+            var decided = documents.Values
+                .Where(e => string.Equals(e.Collection, collection, StringComparison.OrdinalIgnoreCase))
+                .Select(e => (Entry: e, Json: rewrite(e)))
+                .Where(d => d.Json is not null)
+                .ToList();
+
+            foreach (var (entry, json) in decided)
+            {
+                if (ReferenceEquals(json, Deleted))
+                {
+                    documents.Remove(entry.Id);
+                    changes.Add(new SparkStoreChange(entry.Id, entry.Collection, null));
+                    continue;
+                }
+                var version = $"A:{++etag}";
+                documents[entry.Id] = entry with { Json = json!, Version = version };
+                changes.Add(new SparkStoreChange(entry.Id, entry.Collection, version));
+            }
+        }
+
+        if (changes.Count > 0)
+            Committed?.Invoke(changes);
+        return changes.Count;
+    }
+
+    /// <summary>What a <see cref="Rewrite"/> function returns to delete the row.</summary>
+    public static readonly string Deleted = new(['\0']);
+
+    private bool ExistsAfter(string id, IReadOnlyList<Write> writes)
+    {
+        var last = writes.LastOrDefault(w => w is not Patch && string.Equals(w.Id, id, StringComparison.OrdinalIgnoreCase));
+        return last is null ? documents.ContainsKey(id) : last is Put;
     }
 }

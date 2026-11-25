@@ -5,6 +5,9 @@ using MintPlayer.Spark.Abstractions.Storage;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Commands;
 using Raven.Client.Documents.Linq;
+using Raven.Client.Documents.Operations;
+using Raven.Client.Documents.Operations.CompareExchange;
+using Raven.Client.Documents.Queries;
 using Raven.Client.Documents.Session;
 using Sparrow.Json;
 
@@ -145,16 +148,194 @@ internal sealed class RavenSparkSession : ISparkSession
         Session.Delete(entity);
     }
 
+    /// <remarks>
+    /// Reservations are compare-exchange values, which a session that is not cluster-wide cannot write with its
+    /// documents. So the claims come first, the documents second, and a failed write frees the claims it made; the
+    /// releases follow a successful write. A crash in between leaves a claim whose owner does not exist, which the
+    /// next claimant takes over.
+    /// </remarks>
     public async Task SaveChangesAsync(CancellationToken cancellationToken = default)
     {
+        var claimed = new List<(string Key, long Index)>();
         try
         {
+            foreach (var (key, owner, _) in reservations.Where(r => r.Claim))
+                if (await ClaimAsync(key, owner, cancellationToken) is { } index)
+                    claimed.Add((key, index));
+
             await Session.SaveChangesAsync(cancellationToken);
         }
-        catch (global::Raven.Client.Exceptions.ConcurrencyException ex)
+        catch (Exception ex)
         {
-            throw new SparkStoreConcurrencyException("A document changed since the write expected it.", ex);
+            foreach (var (key, index) in claimed)
+                await Operations.SendAsync(new DeleteCompareExchangeValueOperation<string>(key, index), token: CancellationToken.None);
+            if (ex is global::Raven.Client.Exceptions.ConcurrencyException)
+                throw new SparkStoreConcurrencyException("A document changed since the write expected it.", ex);
+            throw;
         }
+
+        foreach (var (key, owner, _) in reservations.Where(r => !r.Claim))
+        {
+            var current = await Operations.SendAsync(new GetCompareExchangeValueOperation<string>(key), token: cancellationToken);
+            if (current is not null && string.Equals(current.Value, owner, StringComparison.OrdinalIgnoreCase))
+                await Operations.SendAsync(new DeleteCompareExchangeValueOperation<string>(key, current.Index), token: cancellationToken);
+        }
+        reservations.Clear();
+    }
+
+    /// <remarks>RavenDB's typed patch: the session sends it in the save's batch, and the server appends to the stored array.</remarks>
+    public void PatchAppend<T, TItem>(string id, System.Linq.Expressions.Expression<Func<T, IEnumerable<TItem>>> list, TItem item) where T : class
+    {
+        ArgumentException.ThrowIfNullOrEmpty(id);
+        Session.Advanced.Patch<T, TItem>(id, list, array => array.Add(item));
+    }
+
+    // ---- set-based ----
+
+    /// <summary>How long a set-based operation waits for a stale index, and for itself to finish.</summary>
+    private static readonly TimeSpan BulkTimeout = TimeSpan.FromMinutes(5);
+
+    public async Task<long> DeleteWhereAsync<T>(System.Linq.Expressions.Expression<Func<T, bool>> predicate, CancellationToken cancellationToken = default) where T : class
+    {
+        var operation = await Operations.SendAsync(new DeleteByQueryOperation(IndexQueryFor(predicate), BulkOptions), token: cancellationToken);
+        return (await operation.WaitForCompletionAsync<BulkOperationResult>(BulkTimeout)).Total;
+    }
+
+    /// <remarks>
+    /// The LINQ query renders the RQL and its parameters; the assignments are appended as <c>update { … }</c>. Field paths
+    /// are validated identifiers (<see cref="RqlIdentifier.FieldPath"/>) and values are parameters: nothing is spliced.
+    /// </remarks>
+    public async Task<long> UpdateWhereAsync<T>(System.Linq.Expressions.Expression<Func<T, bool>> predicate, Action<SparkSetters<T>> set, CancellationToken cancellationToken = default) where T : class
+    {
+        var setters = new SparkSetters<T>();
+        set(setters);
+        if (setters.Setters.Count == 0)
+            throw new ArgumentException("UpdateWhere needs at least one Set.", nameof(set));
+
+        var query = IndexQueryFor(predicate);
+        var parameters = query.QueryParameters ?? new global::Raven.Client.Parameters();
+        var assignments = new System.Text.StringBuilder();
+        for (var i = 0; i < setters.Setters.Count; i++)
+        {
+            var name = $"__spark_set{i}";
+            assignments.Append($"this.{RqlIdentifier.FieldPath(setters.Setters[i].Path)} = ${name}; ");
+            parameters[name] = setters.Setters[i].Value;
+        }
+        query.Query += $" update {{ {assignments}}}";
+        query.QueryParameters = parameters;
+
+        var operation = await Operations.SendAsync(new PatchByQueryOperation(query, BulkOptions), token: cancellationToken);
+        return (await operation.WaitForCompletionAsync<BulkOperationResult>(BulkTimeout)).Total;
+    }
+
+    private static QueryOperationOptions BulkOptions => new() { AllowStale = false, StaleTimeout = BulkTimeout, RetrieveDetails = false };
+
+    private IndexQuery IndexQueryFor<T>(System.Linq.Expressions.Expression<Func<T, bool>> predicate) where T : class
+        => ((IRavenQueryInspector)RavenIdQueryRewriter.Rewrite(Session.Query<T>().Where(predicate))).GetIndexQuery(isAsync: true);
+
+    // ---- reservations ----
+
+    private readonly List<(string Key, string Owner, bool Claim)> reservations = [];
+
+    private global::Raven.Client.Documents.Operations.OperationExecutor Operations
+        => Store.Operations.ForDatabase(((InMemoryDocumentSessionOperations)Session).DatabaseName);
+
+    public void Reserve(string key, string ownerId)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(key);
+        ArgumentException.ThrowIfNullOrEmpty(ownerId);
+        reservations.Add((key, ownerId, true));
+    }
+
+    public void Release(string key, string ownerId)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(key);
+        ArgumentException.ThrowIfNullOrEmpty(ownerId);
+        reservations.Add((key, ownerId, false));
+    }
+
+    public async Task<string?> GetReservationAsync(string key, CancellationToken cancellationToken = default)
+    {
+        var current = await Operations.SendAsync(new GetCompareExchangeValueOperation<string>(key), token: cancellationToken);
+        return string.IsNullOrEmpty(current?.Value) ? null : current.Value;
+    }
+
+    /// <summary>
+    /// Claims <paramref name="key"/> for <paramref name="owner"/>: the new index when this call wrote it, or
+    /// <see langword="null"/> when the owner already held it. Takes over a key whose holder no longer exists, against
+    /// the index just read, so two claimants cannot both win. An empty value (a claim in flight under the pre-#536
+    /// protocol) is never taken over.
+    /// </summary>
+    private async Task<long?> ClaimAsync(string key, string owner, CancellationToken cancellationToken)
+    {
+        for (var attempt = 0; attempt < 2; attempt++)
+        {
+            var existing = await Operations.SendAsync(new GetCompareExchangeValueOperation<string>(key), token: cancellationToken);
+            if (existing is null)
+            {
+                var created = await Operations.SendAsync(new PutCompareExchangeValueOperation<string>(key, owner, 0), token: cancellationToken);
+                if (created.Successful)
+                    return created.Index;
+                continue;
+            }
+
+            if (string.Equals(existing.Value, owner, StringComparison.OrdinalIgnoreCase))
+                return null;
+            if (string.IsNullOrEmpty(existing.Value) || await OwnerExistsAsync(existing.Value, cancellationToken))
+                throw new SparkReservationTakenException(key, existing.Value ?? string.Empty);
+
+            var takenOver = await Operations.SendAsync(new PutCompareExchangeValueOperation<string>(key, owner, existing.Index), token: cancellationToken);
+            if (takenOver.Successful)
+                return takenOver.Index;
+        }
+
+        var holder = await Operations.SendAsync(new GetCompareExchangeValueOperation<string>(key), token: cancellationToken);
+        throw new SparkReservationTakenException(key, holder?.Value ?? string.Empty);
+    }
+
+    /// <summary>Asked of a session of its own: this one's request budget and identity map stay untouched.</summary>
+    private async Task<bool> OwnerExistsAsync(string id, CancellationToken cancellationToken)
+    {
+        using var probe = Store.OpenAsyncSession(((InMemoryDocumentSessionOperations)Session).DatabaseName);
+        return await probe.Advanced.ExistsAsync(id, cancellationToken);
+    }
+
+    /// <remarks>The <c>@expires</c> metadata, in UTC. RavenDB keeps metadata across writes, and a metadata change alone is a write.</remarks>
+    public void SetExpiry(object entity, DateTimeOffset? expiresAt)
+    {
+        var metadata = TrackedMetadata(entity);
+        if (expiresAt is { } value)
+            metadata[global::Raven.Client.Constants.Documents.Metadata.Expires] = value.UtcDateTime.ToString("O");
+        else
+            metadata.Remove(global::Raven.Client.Constants.Documents.Metadata.Expires);
+    }
+
+    public DateTimeOffset? GetExpiry(object entity)
+        => TrackedMetadata(entity).TryGetValue(global::Raven.Client.Constants.Documents.Metadata.Expires, out object? value)
+            ? value switch
+            {
+                null => null,
+                DateTime dateTime => new DateTimeOffset(DateTime.SpecifyKind(dateTime, DateTimeKind.Utc)),
+                DateTimeOffset offset => offset.ToUniversalTime(),
+                _ => DateTimeOffset.Parse(value.ToString()!, System.Globalization.CultureInfo.InvariantCulture,
+                    System.Globalization.DateTimeStyles.AssumeUniversal | System.Globalization.DateTimeStyles.AdjustToUniversal),
+            }
+            : null;
+
+    public async IAsyncEnumerable<SparkStreamResult<T>> StreamAsync<T>(IQueryable<T> query,
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        await using var stream = await Session.Advanced.StreamAsync(RavenIdQueryRewriter.Rewrite(query), cancellationToken);
+        while (await stream.MoveNextAsync())
+            yield return new SparkStreamResult<T>(stream.Current.Id, stream.Current.Document, stream.Current.ChangeVector);
+    }
+
+    private IMetadataDictionary TrackedMetadata(object entity)
+    {
+        ArgumentNullException.ThrowIfNull(entity);
+        if (Session.Advanced.GetDocumentId(entity) is null)
+            throw new InvalidOperationException($"{entity.GetType().Name} is not associated with the session; store or load it first.");
+        return Session.Advanced.GetMetadataFor(entity);
     }
 
     public string? GetId(object entity) => Session.Advanced.GetDocumentId(entity);
@@ -218,7 +399,11 @@ internal sealed class RavenSparkSession : ISparkSession
 
     public void Evict(object entity) => Session.Advanced.Evict(entity);
 
-    public void Clear() => Session.Advanced.Clear();
+    public void Clear()
+    {
+        Session.Advanced.Clear();
+        reservations.Clear();
+    }
 
     public event Action<object>? BeforeStore
     {

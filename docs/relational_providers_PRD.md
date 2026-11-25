@@ -752,6 +752,11 @@ keys collapsed; S12). That is harmless: the dirty check diffs the snapshot taken
 
 **Reservations** (`ISparkSession.Reserve/Release`) join the session's `SaveChanges` transaction. That replaces
 `UserStore.cs:206`'s cluster-wide transaction.
+*Built in M3g:* a key whose holder document no longer exists is taken over, which is the callers' existing rule. On
+RavenDB a wrapped session is not cluster-wide, so the claim (compare exchange) precedes the documents' write. A failed
+write frees the claim. ⚠️ A second claimant arriving between the claim and the owner's first write sees no owner and
+takes the key over. That race exists in `UserStore` and `OidcClientIdReservation` today; the relational transaction
+and InMemory's commit lock close it. Evidence: `SparkStoreConformanceTests` reservation cases, green on both providers.
 
 **Lookup references:** a dynamic lookup gets its own table. Entities store the key, and labels are resolved after
 load. **There is a gap on every provider:** `LookupReferenceService.AddValueAsync`/`UpdateValueAsync`/`DeleteValueAsync`
