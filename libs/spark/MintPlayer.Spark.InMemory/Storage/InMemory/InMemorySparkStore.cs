@@ -14,7 +14,7 @@ internal sealed partial class InMemorySparkStore : ISparkStore
 
     public string ProviderName => "InMemory";
 
-    public SparkStoreCapabilities Capabilities => SparkStoreCapabilities.ChangeNotifications;
+    public SparkStoreCapabilities Capabilities => SparkStoreCapabilities.ChangeNotifications | SparkStoreCapabilities.Subscriptions;
 
     public ISparkSession OpenSession() => new InMemorySparkSession(database);
 

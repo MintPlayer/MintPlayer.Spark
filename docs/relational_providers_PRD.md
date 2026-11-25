@@ -418,6 +418,29 @@ RavenDB customizes the query; InMemory and the relational providers read committ
 *Evidence:* `A_waited_query_sees_a_document_committed_just_before` (a fresh name, so a new query shape), green on
 RavenDB, InMemory, SQL Server and PostgreSQL; the Organizations and Notifications classes 67/67 on RavenDB.
 
+**D39 (M7a, 2026-11-25): `ISparkSubscriptions`, the neutral subscription (S7 + S14).** Messaging, the subscription
+worker and replication all run on RavenDB data subscriptions. The neutral contract keeps their guarantees: durable
+(a named definition survives restarts), exclusive (one runner per name; the rest wait), at least once (a batch whose
+handler threw comes again), current state, the backlog included. A definition is a name plus a LINQ predicate.
+- **RavenDB** keeps its data subscriptions: the typed predicate is rendered by the client to the subscription's RQL,
+  `UpdateAsync(CreateNew = true)` creates or moves the definition, exclusivity is `WaitForFree`. Two runners that
+  create the same name at once race: the loser gets "already in use in a subscription with different Id"
+  (`RavenException`), so the create is retried, which then updates the winner's definition.
+- **InMemory, SQL Server and PostgreSQL** share `SparkCursorSubscriptions`: a cursor, "every stamp up to here is
+  handled", in `ISparkAtomicValues` (`spark/subscriptions/{name}`, a registry under `spark/subscriptions`), and the
+  `ISparkStoreLock` lease `spark/subscriptions/{name}/runner` (30 s). A poll reads the D6 horizon, then the matching
+  rows with a stamp in (cursor, horizon) by stamp. The cursor moves by compare-and-swap after the handler returned; a
+  runner whose swap fails has lost the subscription and waits for the lease again. A batch never splits a stamp:
+  PostgreSQL stamps a whole transaction with one `xid8`, so a transaction is one batch even past `MaxDocsPerBatch`.
+  This process's commits wake the runners (the change feed); others' are seen on the next poll.
+- Deletes are not delivered (a subscription sees current documents, as RavenDB's does); the change feed's tombstones
+  (M4e) serve the consumers that need deletes.
+*Evidence:* `SparkSubscriptionsConformanceTests` (backlog + later commits in batches of 2, an enum/bool/null filter, a
+handler that threw, a restart resuming after the cursor, a second runner waiting until the first stops, names and
+delete): 6/6 on RavenDB (three runs in a row) and InMemory, 6/6 on SQL Server, 7/7 on PostgreSQL with
+`One_transaction_is_never_split_across_batches`. The first RavenDB run failed the exclusivity case on the create race
+above.
+
 **D3: the version is a `bigint` column on every table**, a concurrency token the provider increments. *(S4, §8.11:
 it is on every root table and covers the aggregate. A change to a child row (D25) or a join row (D26) moves the
 root's version, which EF alone does not do.)*

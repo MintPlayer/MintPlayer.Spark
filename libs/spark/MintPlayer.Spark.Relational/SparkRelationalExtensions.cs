@@ -96,6 +96,10 @@ public static class SparkRelationalExtensions
         services.AddSingleton<ISparkChangeFeed>(sp => new RelationalSparkChangeFeed(
             sp.GetRequiredService<RelationalSparkStore>(), options.ChangeFeedPollInterval,
             sp.GetService<Microsoft.Extensions.Logging.ILogger<RelationalSparkChangeFeed>>()));
+        // D39: subscriptions as a cursor over the same stamps, one runner per name through the store lock.
+        services.AddSingleton<ISparkSubscriptions>(sp => new RelationalSparkSubscriptions(
+            sp.GetRequiredService<RelationalSparkStore>(), sp.GetRequiredService<ISparkAtomicValues>(),
+            sp.GetRequiredService<ISparkStoreLock>(), sp.GetService<ISparkChangeFeed>(), options.ChangeFeedPollInterval));
         services.AddSingleton<ISparkStoreExpiration>(sp => new RelationalExpiration(
             sp.GetRequiredService<RelationalSparkStore>(), sp.GetService<Microsoft.Extensions.Logging.ILogger<RelationalExpiration>>()));
         return builder;

@@ -37,9 +37,11 @@
   <ItemGroup>
     <Compile Include="..\MintPlayer.Spark.Tests\Storage\SparkStoreConformanceTests.cs" Link="Storage\SparkStoreConformanceTests.cs" />
     <Compile Include="..\MintPlayer.Spark.Tests\Storage\SparkAtomicValuesConformanceTests.cs" Link="Storage\SparkAtomicValuesConformanceTests.cs" />
+    <Compile Include="..\MintPlayer.Spark.Tests\Storage\SparkSubscriptionsConformanceTests.cs" Link="Storage\SparkSubscriptionsConformanceTests.cs" />
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\libs\spark\MintPlayer.Spark\MintPlayer.Spark.csproj" />
     <ProjectReference Include="..\..\libs\spark\MintPlayer.Spark.SqlServer\MintPlayer.Spark.SqlServer.csproj" />
     <ProjectReference Include="..\..\libs\spark\MintPlayer.Spark.PostgreSql\MintPlayer.Spark.PostgreSql.csproj" />
     <ProjectReference Include="..\..\libs\spark\MintPlayer.Spark.Relational.Design\MintPlayer.Spark.Relational.Design.csproj" />

@@ -146,3 +146,6 @@ tags, and everything ships once the merged pull request is backported to `releas
     `MintPlayer.Spark.Testing.SqlServer` (`SPARK_TEST_SQLSERVER`, else LocalDB, else a Testcontainers container),
     `MintPlayer.Spark.Testing.PostgreSql` (`SPARK_TEST_POSTGRESQL`, else an embedded server), or InMemory from the
     neutral package. A project with several picks one with `SPARK_TEST_DATABASE`.
+12. **`ISparkSubscriptions`** (M7a, D39): durable, exclusive, at-least-once subscriptions over a collection with a LINQ
+    filter, on every store. RavenDB runs them as data subscriptions; InMemory, SQL Server and PostgreSQL as a cursor
+    over the commit stamp with a lease. Stores that have it report `SparkStoreCapabilities.Subscriptions`.

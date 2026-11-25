@@ -654,6 +654,51 @@ public sealed partial class RelationalSparkSession : ISparkSession
 
     private static readonly MethodInfo AsNoTrackingMethod = typeof(EntityFrameworkQueryableExtensions).GetMethod(nameof(EntityFrameworkQueryableExtensions.AsNoTracking))!;
 
+    /// <summary>
+    /// The rows of <typeparamref name="T"/> matching <paramref name="filter"/> with a stamp in (<paramref name="after"/>,
+    /// <paramref name="before"/>), by stamp, untracked, with version and stamp (#536 D39's subscription read).
+    /// </summary>
+    internal async Task<IReadOnlyList<SparkStampedDocument<T>>> ReadStampedAsync<T>(Expression<Func<T, bool>>? filter,
+        ulong after, ulong before, int take, CancellationToken cancellationToken) where T : class
+    {
+        Request();
+        var query = Query<T>();
+        if (filter is not null)
+            query = query.Where(filter);
+        query = query
+            .Where(e => EF.Property<ulong>(e, SparkDbContext.StampProperty) > after && EF.Property<ulong>(e, SparkDbContext.StampProperty) < before)
+            .OrderBy(e => EF.Property<ulong>(e, SparkDbContext.StampProperty));
+        if (take > 0)
+            query = query.Take(take);
+
+        var x = Expression.Parameter(typeof(T), "x");
+        var row = Expression.New(typeof(StampedRow<T>).GetConstructors()[0],
+            x,
+            Expression.Call(typeof(EF), nameof(EF.Property), [typeof(long)], x, Expression.Constant(SparkDbContext.VersionProperty)),
+            Expression.Call(typeof(EF), nameof(EF.Property), [typeof(ulong)], x, Expression.Constant(SparkDbContext.StampProperty)));
+        var rewritten = JoinRewriter.Rewrite(db, query);
+        var untracked = rewritten.Provider.CreateQuery<T>(Expression.Call(AsNoTrackingMethod.MakeGenericMethod(typeof(T)), rewritten.Expression));
+        var rows = await untracked.Select(Expression.Lambda<Func<T, StampedRow<T>>>(row, x)).ToListAsync(cancellationToken);
+        quiet = true;
+        try
+        {
+            await HydrateAsync(rows.Select(r => (object)r.Document), cancellationToken);
+        }
+        finally
+        {
+            quiet = false;
+        }
+        return [.. rows.Select(r => new SparkStampedDocument<T>(SparkIdValues.ReadEntityId(r.Document)!.ToLowerInvariant(), r.Document, FormatVersion(r.Version), r.Stamp))];
+    }
+
+    /// <summary>A row with its version and stamp, as EF projects it.</summary>
+    private sealed class StampedRow<T>(T document, long version, ulong stamp)
+    {
+        public T Document { get; } = document;
+        public long Version { get; } = version;
+        public ulong Stamp { get; } = stamp;
+    }
+
     private readonly List<(string Key, string OwnerId, bool Claim)> reservations = [];
 
     public void Reserve(string key, string ownerId) => reservations.Add((key, ownerId.ToLowerInvariant(), true));

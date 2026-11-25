@@ -36,6 +36,16 @@ internal sealed class InMemoryDatabase
             return reservations.GetValueOrDefault(key);
     }
 
+    /// <summary>The last version number a commit gave out: every version up to it has committed (#536 D39's horizon).</summary>
+    public long LastEtag
+    {
+        get
+        {
+            lock (gate)
+                return etag;
+        }
+    }
+
     /// <summary>Raised after a commit, outside the lock, with what it stored and deleted.</summary>
     public event Action<IReadOnlyList<SparkStoreChange>>? Committed;
 

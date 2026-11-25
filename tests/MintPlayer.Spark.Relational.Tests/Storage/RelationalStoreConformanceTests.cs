@@ -91,6 +91,53 @@ public abstract class RelationalAtomicValuesConformanceTests : SparkAtomicValues
     }
 }
 
+/// <summary>The subscriptions suite against a relational provider's commit stamps (#536 D39).</summary>
+public abstract class RelationalSubscriptionsConformanceTests : SparkSubscriptionsConformanceTests
+{
+    private RelationalTestDatabase? database;
+
+    protected abstract RelationalTestServer? Server { get; }
+
+    protected override async Task<(ISparkStore Store, ISparkSubscriptions Subscriptions)?> CreateAsync()
+    {
+        if (Server is not { } server)
+            return null;
+        database = await RelationalTestDatabase.CreateAsync(server, [typeof(SubDoc)]);
+        var values = new RelationalAtomicValues(database.Store);
+        var subscriptions = new RelationalSparkSubscriptions(database.Store, values,
+            new MintPlayer.Spark.Services.SparkStoreLock(values, TimeProvider.System), pollInterval: TimeSpan.FromMilliseconds(200));
+        return (database.Store, subscriptions);
+    }
+
+    public override async Task DisposeAsync()
+    {
+        if (database is not null)
+            await database.DisposeAsync();
+    }
+}
+
+public sealed class SqlServerSubscriptionsConformanceTests : RelationalSubscriptionsConformanceTests
+{
+    protected override RelationalTestServer? Server => RelationalTestServer.SqlServer;
+}
+
+public sealed class PostgreSqlSubscriptionsConformanceTests : RelationalSubscriptionsConformanceTests
+{
+    protected override RelationalTestServer? Server => RelationalTestServer.PostgreSql;
+
+    /// <summary>PostgreSQL stamps a whole transaction with one xid: a batch never cuts through it, whatever its size.</summary>
+    [SkippableFact]
+    public async Task One_transaction_is_never_split_across_batches()
+    {
+        await StoreAsync(Doc("subdocs/t1"), Doc("subdocs/t2"), Doc("subdocs/t3"), Doc("subdocs/t4"), Doc("subdocs/t5"));
+
+        await using var runner = new Runner(Subscriptions, new SparkSubscriptionDefinition<SubDoc>("conf-xid"), Fast);
+        await runner.WaitForAsync("subdocs/t1", "subdocs/t2", "subdocs/t3", "subdocs/t4", "subdocs/t5");
+
+        runner.Batches.Should().ContainSingle().Which.Should().HaveCount(5);
+    }
+}
+
 public sealed class SqlServerAtomicValuesConformanceTests : RelationalAtomicValuesConformanceTests
 {
     protected override RelationalTestServer? Server => RelationalTestServer.SqlServer;

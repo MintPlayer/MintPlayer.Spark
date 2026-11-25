@@ -418,6 +418,14 @@ rounds, milestones and status. Branch `feat/536-sql-server-provider`, draft PR #
     into `In()`. The package drops its RavenDB references. Organizations + Notifications 67/67 on RavenDB.
   - **Next in M6:** Apps (Patch → load-modify-save; webhooks wait for messaging, M7), templates and AllFeatures'
     generator, then Tier 2 (mail, mcp, cron, contributions, authorization user store, search, files) and O13.
+  - **M7a (2026-11-25): `ISparkSubscriptions` (PRD D39, spikes S7 + S14).** Messaging comes before Apps and the rest
+    of Notifications, which enqueue through it. The neutral subscription: RavenDB data subscriptions on RavenDB, a
+    commit-stamp cursor plus a lease (`SparkCursorSubscriptions`) on InMemory, SQL Server and PostgreSQL. The
+    conformance suite is green on all four (25 cases). Found on the way: RavenDB's create-or-update races between two
+    runners; the create is now retried.
+  - **Next in M7:** `SparkSubscriptionWorker` onto `ISparkSubscriptions`, then messaging (lease → `ISparkStoreLock`,
+    feeder, per-queue worker, claims, sweeper, the outbox on `ISparkSession`, `SparkMessages_ByPriority`), then
+    Notifications' `SparkNotifier`/`WebPushDelivery` and Apps.
 - **Local spike servers left running:**
   - SQL Server: `SparkSpike536` on `localhost` and `localhost\MSSQLSERVER01`
   - Docker `spark536-pg` (`postgres:18`, 127.0.0.1:55432). M4 needs it again.
