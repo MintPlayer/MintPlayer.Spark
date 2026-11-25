@@ -1,3 +1,4 @@
+using MintPlayer.Spark;
 using Microsoft.Extensions.Options;
 using MintPlayer.Spark.Messaging;
 using MintPlayer.Spark.Messaging.Abstractions;
@@ -113,7 +114,7 @@ public sealed class RunPipeline(
     public async Task FinishStageAsync(IAsyncDocumentSession session, IMessageOutbox outbox, string runId, string stage, CancellationToken cancellationToken)
     {
         session.Advanced.Patch<AuditRun, string>(runId, r => r.StagesDone, stages => stages.Add(stage));
-        await outbox.EnqueueAsync(session, new SeoTester.Messaging.AggregateMessage(runId), cancellationToken: cancellationToken);
+        await outbox.EnqueueAsync(session.AsSparkSession(), new SeoTester.Messaging.AggregateMessage(runId), cancellationToken: cancellationToken);
     }
 
     /// <summary>

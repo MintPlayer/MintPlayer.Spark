@@ -56,10 +56,10 @@ public sealed class TestAfterCommitOutbox
 
 internal sealed class TestAfterCommitOutboxSeam(TestAfterCommitOutbox state) : ISparkAfterCommitOutbox
 {
-    public async Task EnqueueAsync(object session, SparkAfterCommitWork work, CancellationToken cancellationToken = default)
+    public async Task EnqueueAsync(MintPlayer.Spark.Abstractions.Storage.ISparkSession session, SparkAfterCommitWork work, CancellationToken cancellationToken = default)
     {
         var id = $"TestOutbox/{Guid.NewGuid():N}";
-        await ((IAsyncDocumentSession)session).StoreAsync(new TestAfterCommitOutbox.Stored { Work = work }, id, cancellationToken);
+        await session.StoreAsync(new TestAfterCommitOutbox.Stored { Work = work }, id, cancellationToken);
         state.Add(id);
     }
 }

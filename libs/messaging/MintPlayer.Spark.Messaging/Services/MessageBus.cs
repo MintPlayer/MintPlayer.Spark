@@ -4,8 +4,7 @@ using Microsoft.Extensions.Options;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Messaging.Abstractions;
 using MintPlayer.Spark.Messaging.Models;
-using Raven.Client.Documents;
-using Raven.Client.Documents.Session;
+using MintPlayer.Spark.Abstractions.Storage;
 using Newtonsoft.Json;
 
 namespace MintPlayer.Spark.Messaging.Services;
@@ -18,7 +17,7 @@ internal partial class MessageBus : IMessageBus, IMessageOutbox
     /// </summary>
     internal const int MaxReadableKeyLength = 64;
 
-    [Inject] private readonly IDocumentStore documentStore;
+    [Inject] private readonly ISparkStore documentStore;
     [Inject] private readonly IOptions<SparkMessagingOptions> options;
 
     private SparkMessagingOptions Options => options.Value;
@@ -55,7 +54,7 @@ internal partial class MessageBus : IMessageBus, IMessageOutbox
         var messageType = typeof(TMessage);
         var sparkMessage = CreateMessage(message, broadcastOptions);
 
-        using var session = documentStore.OpenAsyncSession();
+        using var session = documentStore.OpenSession();
 
         if (broadcastOptions.DeduplicationKey is not { } deduplicationKey)
         {
@@ -67,27 +66,27 @@ internal partial class MessageBus : IMessageBus, IMessageOutbox
         // The key goes in the document id, so the database enforces uniqueness.
         var id = DeduplicationId(messageType, deduplicationKey);
 
-        if (await session.Advanced.ExistsAsync(id, cancellationToken))
+        if (await session.ExistsAsync(typeof(SparkMessage), id, cancellationToken))
             return;
 
-        // Empty change vector plus optimistic concurrency means "create only": if another host
+        // An empty expected version plus optimistic concurrency means "create only": if another host
         // stored the same key between the check above and this save, the save fails rather than
         // overwriting — which matters because the existing document may already be mid-flight, and
         // overwriting it would reset a message someone is processing back to Pending.
-        session.Advanced.OptimisticConcurrencyMode = OptimisticConcurrencyMode.Writes;
-        await session.StoreAsync(sparkMessage, changeVector: string.Empty, id, cancellationToken);
+        session.OptimisticConcurrency = true;
+        await session.StoreAsync(sparkMessage, string.Empty, id, cancellationToken);
 
         try
         {
             await session.SaveChangesAsync(cancellationToken);
         }
-        catch (Raven.Client.Exceptions.ConcurrencyException)
+        catch (SparkStoreConcurrencyException)
         {
             // Already enqueued by a concurrent caller. That is the requested behaviour.
         }
     }
 
-    public async Task EnqueueAsync<TMessage>(IAsyncDocumentSession session, TMessage message, BroadcastOptions? broadcastOptions = null, CancellationToken cancellationToken = default)
+    public async Task EnqueueAsync<TMessage>(ISparkSession session, TMessage message, BroadcastOptions? broadcastOptions = null, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(session);
         broadcastOptions ??= new BroadcastOptions();

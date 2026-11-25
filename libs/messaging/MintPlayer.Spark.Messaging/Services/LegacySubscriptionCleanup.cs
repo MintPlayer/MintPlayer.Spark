@@ -1,5 +1,5 @@
 using MintPlayer.SourceGenerators.Attributes;
-using Raven.Client.Documents;
+using MintPlayer.Spark.Abstractions.Storage;
 
 namespace MintPlayer.Spark.Messaging.Services;
 
@@ -38,7 +38,7 @@ internal sealed partial class LegacySubscriptionCleanup
     /// </summary>
     private const string LegacyPrefix = MessageFeeder.SubscriptionNameConstant + "-";
 
-    [Inject] private readonly IDocumentStore documentStore;
+    [Inject] private readonly ISparkSubscriptions subscriptions;
     [Inject] private readonly ILogger<LegacySubscriptionCleanup> logger;
 
     /// <summary>
@@ -49,19 +49,18 @@ internal sealed partial class LegacySubscriptionCleanup
     {
         try
         {
-            var existing = await documentStore.Subscriptions.GetSubscriptionsAsync(0, 1024, token: cancellationToken);
+            var existing = await subscriptions.GetNamesAsync(cancellationToken);
 
             // Prefix, never a hardcoded list: the names embed queue names, including
             // assembly-qualified generic arguments, and the set that accumulated in production was
             // not the set anyone would have written down.
             var legacy = existing
-                .Where(s => s.SubscriptionName?.StartsWith(LegacyPrefix, StringComparison.Ordinal) == true)
-                .Select(s => s.SubscriptionName!)
+                .Where(name => name.StartsWith(LegacyPrefix, StringComparison.Ordinal))
                 .ToList();
 
             foreach (var name in legacy)
             {
-                await documentStore.Subscriptions.DeleteAsync(name, token: cancellationToken);
+                await subscriptions.DeleteAsync(name, cancellationToken);
                 logger.LogInformation("Deleted legacy per-queue subscription '{SubscriptionName}'", name);
             }
 

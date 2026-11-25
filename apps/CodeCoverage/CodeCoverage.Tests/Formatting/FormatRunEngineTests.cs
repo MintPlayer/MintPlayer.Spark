@@ -487,7 +487,7 @@ public class FormatRunEngineTests : CoverageRavenTest
         public List<MergeQueueSignalMessage> Signals { get; } = [];
         public List<BroadcastOptions?> Options { get; } = [];
 
-        public Task EnqueueAsync<TMessage>(IAsyncDocumentSession session, TMessage message, BroadcastOptions? options = null, CancellationToken cancellationToken = default)
+        public Task EnqueueAsync<TMessage>(MintPlayer.Spark.Abstractions.Storage.ISparkSession session, TMessage message, BroadcastOptions? options = null, CancellationToken cancellationToken = default)
         {
             if (message is FormatRunStepMessage step)
             {

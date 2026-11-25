@@ -1,7 +1,5 @@
 using MintPlayer.Spark.Messaging.Abstractions;
-using MintPlayer.Spark.Messaging.Indexes;
 using MintPlayer.Spark.Messaging.Services;
-using Raven.Client.Documents;
 
 namespace MintPlayer.Spark.Messaging;
 
@@ -16,7 +14,11 @@ internal static class SparkMessagingExtensions
             services.Configure(configure);
         }
 
-        // IAsyncDocumentSession is now registered by AddSpark() in the core library.
+        // The documents messaging stores, so a relational provider maps a table for each (#536 D40).
+        global::MintPlayer.Spark.Abstractions.Storage.SparkStoredTypeServiceCollectionExtensions.AddSparkStoredType<Models.SparkMessage>(services);
+        global::MintPlayer.Spark.Abstractions.Storage.SparkStoredTypeServiceCollectionExtensions.AddSparkStoredType<Models.SparkMessageProgress>(services);
+        global::MintPlayer.Spark.Abstractions.Storage.SparkStoreReadinessServiceCollectionExtensions.AddSparkStoreReadiness(services);
+
         services.AddScoped<MessageBus>();
         services.AddScoped<IMessageBus>(sp => sp.GetRequiredService<MessageBus>());
         services.AddScoped<IMessageOutbox>(sp => sp.GetRequiredService<MessageBus>());
@@ -58,17 +60,4 @@ internal static class SparkMessagingExtensions
         return services;
     }
 
-    /// <summary>
-    /// Deploys the SparkMessages RavenDB index. Call this after the application is built.
-    /// </summary>
-    internal static IApplicationBuilder CreateSparkMessagingIndexes(this IApplicationBuilder app)
-    {
-        var documentStore = app.ApplicationServices.GetRequiredService<IDocumentStore>();
-        new SparkMessages_ByQueue().Execute(documentStore);
-        // The single feeder's sorted page (#460, M16b). Until it is built the feeder serves the
-        // subscription batch alone, so a slow first build delays nothing.
-        new SparkMessages_ByPriority().Execute(documentStore);
-
-        return app;
-    }
 }

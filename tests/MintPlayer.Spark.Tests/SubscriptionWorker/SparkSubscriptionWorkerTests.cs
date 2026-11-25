@@ -1,20 +1,22 @@
 using System.Collections.Concurrent;
 using Microsoft.Extensions.Logging.Abstractions;
+using MintPlayer.Spark.Abstractions.Storage;
+using MintPlayer.Spark.Storage.Raven;
 using MintPlayer.Spark.SubscriptionWorker;
 using MintPlayer.Spark.Testing;
-using Raven.Client.Documents;
 using Raven.Client.Documents.Subscriptions;
-using Raven.Client.Exceptions.Database;
 using Raven.Client.Exceptions.Documents.Subscriptions;
 
 namespace MintPlayer.Spark.Tests.SubscriptionWorker;
 
 /// <summary>
 /// The lifecycle of <see cref="SparkSubscriptionWorker{T}"/> itself, independent of any product
-/// worker: graceful stop, create-vs-update, a throwing batch, and the non-recoverable exits.
+/// worker: graceful stop, create-vs-update, a throwing batch, and the non-recoverable exit. It runs on RavenDB
+/// through <see cref="RavenSparkSubscriptions"/>; the store-neutral delivery itself is pinned by
+/// <c>SparkSubscriptionsConformanceTests</c> on every provider (#536 D39).
 /// <para>
 /// Each test runs in its own database (RavenSparkTestDriver), and each creates at most one subscription,
-/// so none of them competes with the Community licence cap. The missing-database test creates none.
+/// so none of them competes with the Community licence cap.
 /// </para>
 /// </summary>
 public class SparkSubscriptionWorkerTests : RavenSparkTestDriver
@@ -27,13 +29,13 @@ public class SparkSubscriptionWorkerTests : RavenSparkTestDriver
         public string? Name { get; set; }
     }
 
-    private sealed class ProbeWorker(IDocumentStore store, string? database = null)
-        : SparkSubscriptionWorker<ProbeDoc>(store, NullLoggerFactory.Instance)
+    private sealed class ProbeWorker(ISparkSubscriptions subscriptions)
+        : SparkSubscriptionWorker<ProbeDoc>(subscriptions, NullLoggerFactory.Instance)
     {
         public const string Name = "Probe";
 
         /// <summary>Runs for every batch; throw from it to exercise the subscriber-error path.</summary>
-        public Func<SubscriptionBatch<ProbeDoc>, Task> OnBatch { get; set; } = _ => Task.CompletedTask;
+        public Func<SparkSubscriptionBatch<ProbeDoc>, Task> OnBatch { get; set; } = _ => Task.CompletedTask;
 
         public ConcurrentQueue<string> Processed { get; } = new();
         public TaskCompletionSource<Exception> NonRecoverable { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -41,13 +43,9 @@ public class SparkSubscriptionWorkerTests : RavenSparkTestDriver
         public bool Stopped;
 
         protected override string SubscriptionName => Name;
-        protected override string? Database => database;
         protected override TimeSpan RetryDelay => TimeSpan.FromMilliseconds(50);
 
-        protected override SubscriptionCreationOptions ConfigureSubscription()
-            => new() { Query = "from ProbeDocs" };
-
-        protected override async Task ProcessBatchAsync(SubscriptionBatch<ProbeDoc> batch, CancellationToken cancellationToken)
+        protected override async Task ProcessBatchAsync(SparkSubscriptionBatch<ProbeDoc> batch, CancellationToken cancellationToken)
         {
             await OnBatch(batch);
             foreach (var item in batch.Items)
@@ -109,7 +107,7 @@ public class SparkSubscriptionWorkerTests : RavenSparkTestDriver
     [Fact]
     public async Task A_graceful_stop_completes_ExecuteTask_without_a_fault()
     {
-        var worker = new ProbeWorker(Store);
+        var worker = new ProbeWorker(new RavenSparkSubscriptions(Store));
         var id = await SeedDocAsync("one");
 
         await RunAsync(worker, async () =>
@@ -137,7 +135,7 @@ public class SparkSubscriptionWorkerTests : RavenSparkTestDriver
             Name = ProbeWorker.Name,
             Query = "from ProbeDocs",
         });
-        var worker = new ProbeWorker(Store);
+        var worker = new ProbeWorker(new RavenSparkSubscriptions(Store));
         var id = await SeedDocAsync("existing");
 
         await RunAsync(worker, () => WaitForProcessedAsync(worker, 1));
@@ -149,7 +147,7 @@ public class SparkSubscriptionWorkerTests : RavenSparkTestDriver
     [Fact]
     public async Task A_batch_that_throws_is_redelivered_after_the_retry_delay()
     {
-        var worker = new ProbeWorker(Store);
+        var worker = new ProbeWorker(new RavenSparkSubscriptions(Store));
         var attempts = 0;
         worker.OnBatch = _ => Interlocked.Increment(ref attempts) == 1
             ? throw new InvalidOperationException("first delivery fails")
@@ -163,24 +161,6 @@ public class SparkSubscriptionWorkerTests : RavenSparkTestDriver
         worker.BatchesCompleted.Should().BeGreaterThanOrEqualTo(1);
     }
 
-    [Fact]
-    public async Task A_missing_database_is_non_recoverable_and_creates_no_subscription()
-    {
-        var worker = new ProbeWorker(Store, database: $"missing-{Guid.NewGuid():N}");
-
-        Exception? exception = null;
-        await RunAsync(worker, async () =>
-        {
-            exception = await worker.NonRecoverable.Task.WaitAsync(Timeout);
-            await worker.ExecuteTask!.WaitAsync(Timeout);
-        });
-
-        exception.Should().BeOfType<DatabaseDoesNotExistException>();
-        worker.Stopped.Should().BeTrue();
-        worker.ExecuteTask!.IsCompletedSuccessfully.Should().BeTrue(
-            "a non-recoverable error ends the loop; it does not fault the host");
-    }
-
     /// <summary>
     /// Deleting a subscription under a running worker is fatal by design — the worker stops rather
     /// than recreate a definition someone removed on purpose. Isolated: this test's own database
@@ -189,7 +169,7 @@ public class SparkSubscriptionWorkerTests : RavenSparkTestDriver
     [Fact]
     public async Task A_subscription_deleted_under_the_worker_is_non_recoverable()
     {
-        var worker = new ProbeWorker(Store);
+        var worker = new ProbeWorker(new RavenSparkSubscriptions(Store));
         await SeedDocAsync("before");
 
         Exception? exception = null;

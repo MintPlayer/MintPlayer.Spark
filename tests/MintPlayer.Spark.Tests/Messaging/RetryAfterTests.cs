@@ -1,3 +1,4 @@
+using MintPlayer.Spark;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -54,7 +55,7 @@ public class RetryAfterTests : RavenSparkTestDriver
     }
 
     private MessageProcessor NewProcessor(IServiceProvider services, SparkMessagingOptions? options = null)
-        => new(services, Store, Options.Create(options ?? new SparkMessagingOptions()), NullLogger<MessageProcessor>.Instance);
+        => new(services, Store.SparkStore(), Options.Create(options ?? new SparkMessagingOptions()), NullLogger<MessageProcessor>.Instance);
 
     private async Task<string> SeedAsync(int errors = 0, int parks = 0, int maxAttempts = 5, Action<SparkMessage>? shape = null)
     {

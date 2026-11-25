@@ -1,10 +1,10 @@
+using MintPlayer.Spark;
 using System.Collections.Concurrent;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Hosting;
 using MintPlayer.Spark.Messaging;
 using MintPlayer.Spark.Messaging.Abstractions;
-using MintPlayer.Spark.Messaging.Indexes;
 using MintPlayer.Spark.Messaging.Models;
 using MintPlayer.Spark.Messaging.Services;
 using MintPlayer.Spark.Testing;
@@ -37,8 +37,6 @@ public class LeaderHandoverSpikeTests(ITestOutputHelper output) : RavenSparkTest
     private const string Low = "sm8-low";
     private static readonly TimeSpan HandlerDelay = TimeSpan.FromMilliseconds(3);
 
-    protected override IEnumerable<System.Reflection.Assembly> IndexAssemblies
-        => [typeof(SparkMessages_ByPriority).Assembly];
 
     [MessageQueue(High)] public sealed record HighJob(int N);
     [MessageQueue(Normal)] public sealed record NormalJob(int N);
@@ -104,6 +102,7 @@ public class LeaderHandoverSpikeTests(ITestOutputHelper output) : RavenSparkTest
         var services = new ServiceCollection();
         services.AddLogging(b => b.AddProvider(new TestOutputLoggerProvider(output)));
         services.AddSingleton<IDocumentStore>(store);
+        services.AddRavenDbSessions(); // #536 D40
         services.AddSingleton(ledger);
         services.AddSparkMessaging(o =>
         {
@@ -151,6 +150,7 @@ public class LeaderHandoverSpikeTests(ITestOutputHelper output) : RavenSparkTest
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddSingleton(Store);
+        services.AddRavenDbSessions(); // #536 D40: messaging runs on ISparkStore/ISparkSubscriptions/ISparkAtomicValues
         services.AddSingleton<MessagingLeaseManager>();
         return services.BuildServiceProvider().GetRequiredService<MessagingLeaseManager>();
     }

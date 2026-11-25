@@ -165,7 +165,7 @@ internal sealed class WorkflowHookHarness(IDocumentStore store)
         public void Note(string text) => probe.History.Add($"{harness.Time.GetUtcNow():O} {text}");
 
         public Task ScheduleAsync(EWorkflowHookStep step, TimeSpan? delay, long? runId, CancellationToken cancellationToken)
-            => harness.Outbox.EnqueueAsync(session, new ProbeStep
+            => harness.Outbox.EnqueueAsync(MintPlayer.Spark.RavenSparkSessionExtensions.AsSparkSession(session), new ProbeStep
             {
                 DocumentId = probe.Id!,
                 Generation = probe.Generation,

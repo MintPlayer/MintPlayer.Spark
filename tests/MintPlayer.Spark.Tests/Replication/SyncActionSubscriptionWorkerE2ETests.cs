@@ -116,11 +116,12 @@ public class SyncActionSubscriptionWorkerE2ETests : RavenSparkTestDriver
         var options = opts ?? DefaultOptions();
 
         // Generated ctor order: own [Inject] fields first (httpClientProvider, moduleDirectory),
-        // then base [Inject] members in declaration order (DocumentStore property, loggerFactory field).
+        // then base [Inject] members in declaration order (Subscriptions property, loggerFactory field).
         return new SyncActionSubscriptionWorker(
             new StubReplicationHttpClientProvider(handler),
             new ModuleDirectory(Options.Create(options)),
             Store,
+            Store.SparkSubscriptions(),
             NullLoggerFactory.Instance);
     }
 

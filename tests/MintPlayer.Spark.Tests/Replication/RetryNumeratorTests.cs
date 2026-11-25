@@ -1,9 +1,9 @@
-using MintPlayer.Spark.SubscriptionWorker;
+using MintPlayer.Spark.Replication.Services;
 using NSubstitute;
 using Raven.Client.Documents.Session;
 using Raven.Client.Json;
 
-namespace MintPlayer.Spark.Tests.SubscriptionWorker;
+namespace MintPlayer.Spark.Tests.Replication;
 
 public class RetryNumeratorTests
 {

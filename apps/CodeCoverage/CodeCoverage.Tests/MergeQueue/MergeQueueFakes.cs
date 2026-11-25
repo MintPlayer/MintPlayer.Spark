@@ -481,7 +481,7 @@ internal sealed class FakeOutbox : IMessageOutbox
 {
     public ConcurrentQueue<(object Message, BroadcastOptions? Options)> Messages { get; } = new();
 
-    public Task EnqueueAsync<TMessage>(IAsyncDocumentSession session, TMessage message, BroadcastOptions? options = null, CancellationToken cancellationToken = default)
+    public Task EnqueueAsync<TMessage>(MintPlayer.Spark.Abstractions.Storage.ISparkSession session, TMessage message, BroadcastOptions? options = null, CancellationToken cancellationToken = default)
     {
         Messages.Enqueue((message!, options));
         return Task.CompletedTask;

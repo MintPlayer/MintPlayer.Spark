@@ -1,11 +1,8 @@
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 using MintPlayer.SourceGenerators.Attributes;
-using MintPlayer.Spark.Messaging.Indexes;
+using MintPlayer.Spark.Abstractions.Storage;
 using MintPlayer.Spark.Messaging.Models;
-using Raven.Client.Documents;
-using Raven.Client.Documents.Commands.Batches;
-using Raven.Client.Documents.Operations;
 
 namespace MintPlayer.Spark.Messaging.Services;
 
@@ -28,7 +25,7 @@ internal sealed partial class MessageRetrySweeper : BackgroundService
     // Bounds a single sweep; a larger backlog drains over subsequent sweeps.
     private const int MaxMessagesPerSweep = 512;
 
-    [Inject] private readonly IDocumentStore documentStore;
+    [Inject] private readonly ISparkStore store;
     [Inject] private readonly IOptions<SparkMessagingOptions> options;
     [Inject] private readonly ILogger<MessageRetrySweeper> logger;
     [Inject] private readonly MessagingLeaseManager leaseManager;
@@ -40,7 +37,7 @@ internal sealed partial class MessageRetrySweeper : BackgroundService
             try
             {
                 // Delay first: at startup the subscriptions themselves deliver everything
-                // already due, and the SparkMessages_ByQueue index may still be deploying.
+                // already due, and the store may still be starting.
                 await Task.Delay(options.Value.FallbackPollInterval, stoppingToken);
 
                 // Leader-only. Every write below is idempotent, so this is a courtesy rather than
@@ -74,96 +71,88 @@ internal sealed partial class MessageRetrySweeper : BackgroundService
     /// <summary>Touches every due parked message once. Internal for tests.</summary>
     internal async Task<int> SweepOnceAsync(CancellationToken cancellationToken)
     {
-        using var session = documentStore.OpenAsyncSession();
         var now = DateTime.UtcNow;
 
         // Pending-with-null-NextAttempt is excluded on purpose: those are new messages the
         // subscription already receives on the write that created them.
         // WakeUp != true, not WakeUp == false: an absent JSON field does not match `== false` in
         // RQL, so messages written before the field existed would never be selected. The guard
-        // stops the sweep re-patching the same already-woken set every interval — a message stays
+        // stops the sweep re-writing the same already-woken set every interval — a message stays
         // due until a worker picks it up and clears the gate, so without it each sweep rewrites
-        // every parked message, bumping change vectors and re-triggering delivery for no reason.
-        // MessageRetrySweeper's replication twin has had this guard; this one did not.
-        var dueIds = await session.Query<SparkMessage, SparkMessages_ByQueue>()
-            .Where(m => (m.Status == EMessageStatus.Pending || m.Status == EMessageStatus.Failed)
+        // every parked message, bumping versions and re-triggering delivery for no reason.
+        var dueIds = await CandidateIdsAsync(m => (m.Status == EMessageStatus.Pending || m.Status == EMessageStatus.Failed)
                         && m.NextAttemptAtUtc != null
                         && m.NextAttemptAtUtc <= now
-                        && m.WakeUp != true)
-            .Select(m => m.Id)
-            .Take(MaxMessagesPerSweep)
-            .ToListAsync(cancellationToken);
+                        && m.WakeUp != true, cancellationToken);
 
-        if (dueIds.Count == 0)
-            return 0;
-
-        // Server-side patches, never load-modify-save: with last-write-wins a full-document save
-        // could resurrect a message the worker completed after our query ran. And the patch
-        // re-checks the query's predicate on the document as it is NOW, because the ids came from
-        // an index that may be stale: under load SparkMessages_ByQueue lags by seconds, so it still
-        // lists a message as deferred after the feeder woke, claimed and completed it. An
-        // unconditional patch then rewrote that completed message on every sweep until the index
-        // caught up — 11 extra writes per message in one loaded S-M3 run (revision history in
-        // contributions_PRD §5c), each one re-dirtying the index it was waiting for — and could set
-        // WakeUp on a message Processing or parked at Failed for a later backoff. A document that no
-        // longer matches is left untouched: a no-op patch writes nothing.
-        return await PatchWhereStillMatchingAsync(dueIds!, WakeUpScript, now, cancellationToken);
+        // Written only while the document itself still matches (UpdateWhileStillMatchingAsync): the ids came from a
+        // query that may be stale. Under load RavenDB's index lagged by seconds, so it still listed a message as
+        // deferred after the feeder woke, claimed and completed it. An unconditional write then rewrote that completed
+        // message on every sweep until the index caught up — 11 extra writes per message in one loaded S-M3 run
+        // (revision history in contributions_PRD §5c), each one re-dirtying the index it was waiting for — and could
+        // set WakeUp on a message Processing or parked at Failed for a later backoff.
+        return await UpdateWhileStillMatchingAsync(dueIds,
+            m => (m.Status == EMessageStatus.Pending || m.Status == EMessageStatus.Failed)
+                 && m.NextAttemptAtUtc != null && m.NextAttemptAtUtc <= now && m.WakeUp != true,
+            m =>
+            {
+                m.WakeUp = true;
+                m.LastWakeUpUtc = now;
+            },
+            cancellationToken);
     }
 
-    /// <summary>The wake-up, applied only while the document itself is still due and unwoken.</summary>
-    private const string WakeUpScript = """
-        if ((this.Status === 'Pending' || this.Status === 'Failed')
-            && this.NextAttemptAtUtc != null && this.NextAttemptAtUtc <= args.now
-            && this.WakeUp !== true) {
-            this.WakeUp = true;
-            this.LastWakeUpUtc = args.now;
-        }
-        """;
-
-    /// <summary>The reclaim, applied only while the document itself is still at Processing on a lapsed (or absent) claim.</summary>
-    private const string ReclaimScript = """
-        if (this.Status === 'Processing'
-            && (this.ClaimExpiresAtUtc == null || this.ClaimExpiresAtUtc <= args.now)) {
-            this.Status = 'Pending';
-            this.OwnerId = null;
-            this.ClaimExpiresAtUtc = null;
-            this.WakeUp = true;
-            this.LastWakeUpUtc = args.now;
-            this.AttemptCount = (this.AttemptCount || 0) + 1;
-            this.ReclaimCount = (this.ReclaimCount || 0) + 1;
-        }
-        """;
+    private async Task<IReadOnlyList<string>> CandidateIdsAsync(System.Linq.Expressions.Expression<Func<SparkMessage, bool>> predicate, CancellationToken cancellationToken)
+    {
+        using var session = store.OpenSession();
+        var ids = await session.ToListAsync(session.Query<SparkMessage>().Where(predicate).Select(m => m.Id).Take(MaxMessagesPerSweep), cancellationToken);
+        return [.. ids.OfType<string>()];
+    }
 
     /// <summary>
-    /// Runs <paramref name="script"/> on every id in one batch and returns how many documents it
-    /// actually changed. The script compares <c>args.now</c> with the stored dates as strings, which is
-    /// chronological because RavenDB writes a UTC <see cref="DateTime"/> in this same fixed-width form.
+    /// Applies <paramref name="change"/> to each of <paramref name="ids"/> that still satisfies
+    /// <paramref name="stillMatches"/> as it is stored now, and returns how many it changed (#536 D40). Each save names
+    /// the version it read: a document written in between is left alone, and the next sweep looks at it again. Never a
+    /// blind full-document write — with last-write-wins it could resurrect a message a worker completed after the read.
+    /// It replaces RavenDB patch scripts, so it runs on every store.
     /// </summary>
-    private async Task<int> PatchWhereStillMatchingAsync(IReadOnlyList<string> ids, string script, DateTime now, CancellationToken cancellationToken)
+    private async Task<int> UpdateWhileStillMatchingAsync(
+        IReadOnlyList<string> ids, Func<SparkMessage, bool> stillMatches, Action<SparkMessage> change, CancellationToken cancellationToken)
     {
-        var patch = new PatchRequest
-        {
-            Script = script,
-            Values = { ["now"] = now.ToString("yyyy-MM-dd'T'HH:mm:ss.fffffff'Z'", System.Globalization.CultureInfo.InvariantCulture) },
-        };
-        var commands = ids.Select(id => (ICommandData)new PatchCommandData(id, changeVector: null, patch)).ToList();
+        if (ids.Count == 0)
+            return 0;
 
-        var executor = documentStore.GetRequestExecutor();
-        using (executor.ContextPool.AllocateOperationContext(out var context))
+        IReadOnlyDictionary<string, SparkMessage?> loaded;
+        var versions = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
+        using (var read = store.OpenSession())
         {
-            var command = new SingleNodeBatchCommand(documentStore.Conventions, commands);
-            await executor.ExecuteAsync(command, context, sessionInfo: null, cancellationToken);
-
-            var patched = 0;
-            foreach (var item in command.Result!.Results)
-            {
-                if (item is Sparrow.Json.BlittableJsonReaderObject result
-                    && result.TryGet(nameof(PatchStatus), out string? status)
-                    && status == nameof(PatchStatus.Patched))
-                    patched++;
-            }
-            return patched;
+            loaded = await read.LoadAsync<SparkMessage>(ids, cancellationToken);
+            foreach (var (id, message) in loaded)
+                if (message is not null)
+                    versions[id] = read.GetVersion(message);
         }
+
+        var changed = 0;
+        foreach (var (id, message) in loaded)
+        {
+            if (message is null || !stillMatches(message))
+                continue;
+
+            change(message);
+            using var write = store.OpenSession();
+            write.OptimisticConcurrency = true;
+            try
+            {
+                await write.StoreAsync(message, versions[id], id, cancellationToken);
+                await write.SaveChangesAsync(cancellationToken);
+                changed++;
+            }
+            catch (SparkStoreConcurrencyException)
+            {
+                // Written by someone else since the read: it no longer reads as this sweep saw it.
+            }
+        }
+        return changed;
     }
 
     /// <summary>
@@ -185,7 +174,6 @@ internal sealed partial class MessageRetrySweeper : BackgroundService
     /// </summary>
     internal async Task<int> ReclaimAbandonedAsync(CancellationToken cancellationToken)
     {
-        using var session = documentStore.OpenAsyncSession();
         var now = DateTime.UtcNow;
 
         // Two arms, and the second is the upgrade path.
@@ -199,22 +187,14 @@ internal sealed partial class MessageRetrySweeper : BackgroundService
         //
         // `== null` is correct here where `!= true` is needed for booleans: a missing field does not
         // match `== false`, but it does match `== null`.
-        var abandonedIds = await session.Query<SparkMessage, SparkMessages_ByQueue>()
-            .Where(m => m.Status == EMessageStatus.Processing
+        var abandonedIds = await CandidateIdsAsync(m => m.Status == EMessageStatus.Processing
                         && ((m.ClaimExpiresAtUtc != null && m.ClaimExpiresAtUtc <= now)
-                            || m.ClaimExpiresAtUtc == null))
-            .Select(m => m.Id)
-            .Take(MaxMessagesPerSweep)
-            .ToListAsync(cancellationToken);
+                            || m.ClaimExpiresAtUtc == null), cancellationToken);
 
-        if (abandonedIds.Count == 0)
-            return 0;
-
-        // Field-level patches for the same reason as the wake-up sweep: a load-modify-save would
-        // overwrite the whole document under last-write-wins and could resurrect a message the
-        // owning process completed after this query ran. Patching only the claim fields is safe
-        // even against a live owner — it loses the claim, and the pump's next renewal fails and
-        // abandons the message rather than double-completing it.
+        // A versioned write for the same reason as the wake-up sweep: a blind save would overwrite the
+        // whole document under last-write-wins and could resurrect a message the owning process completed
+        // after this query ran. It is safe even against a live owner — the owner loses the claim, and the
+        // pump's next renewal fails and abandons the message rather than double-completing it.
         //
         // ReclaimCount is incremented so an abandoned message cannot cycle for ever: every reclaim
         // is a failed attempt for each handler that had not finished (RetryBudget), and once the
@@ -224,9 +204,21 @@ internal sealed partial class MessageRetrySweeper : BackgroundService
         // decision never read, so a message that killed its host every time was never dead-lettered.
         // AttemptCount is still incremented here, as the pickup count it is.
         //
-        // The predicate is re-checked on the document, as in the wake-up: a stale index can still
-        // list as Processing a message that has since completed, and an unconditional patch would
+        // The predicate is re-checked on the document, as in the wake-up: a stale query can still
+        // list as Processing a message that has since completed, and an unconditional write would
         // put that completed message back to Pending and run its handlers a second time.
-        return await PatchWhereStillMatchingAsync(abandonedIds!, ReclaimScript, now, cancellationToken);
+        return await UpdateWhileStillMatchingAsync(abandonedIds,
+            m => m.Status == EMessageStatus.Processing && (m.ClaimExpiresAtUtc == null || m.ClaimExpiresAtUtc <= now),
+            m =>
+            {
+                m.Status = EMessageStatus.Pending;
+                m.OwnerId = null;
+                m.ClaimExpiresAtUtc = null;
+                m.WakeUp = true;
+                m.LastWakeUpUtc = now;
+                m.AttemptCount++;
+                m.ReclaimCount++;
+            },
+            cancellationToken);
     }
 }

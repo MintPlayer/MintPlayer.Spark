@@ -1,9 +1,9 @@
+using MintPlayer.Spark;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using MintPlayer.Spark.Messaging;
 using MintPlayer.Spark.Messaging.Abstractions;
-using MintPlayer.Spark.Messaging.Indexes;
 using MintPlayer.Spark.Messaging.Models;
 using MintPlayer.Spark.Messaging.Services;
 using MintPlayer.Spark.Testing;
@@ -25,8 +25,6 @@ public class MessageReclaimDeadLetterTests : RavenSparkTestDriver
 {
     private const string Owner = "this-node/0001";
 
-    protected override IEnumerable<System.Reflection.Assembly> IndexAssemblies
-        => [typeof(SparkMessages_ByQueue).Assembly];
 
     public sealed class Crash { public string? Text { get; set; } }
 
@@ -67,14 +65,14 @@ public class MessageReclaimDeadLetterTests : RavenSparkTestDriver
     }
 
     private MessageProcessor NewProcessor(IServiceProvider services)
-        => new(services, Store, Options.Create(new SparkMessagingOptions()), NullLogger<MessageProcessor>.Instance);
+        => new(services, Store.SparkStore(), Options.Create(new SparkMessagingOptions()), NullLogger<MessageProcessor>.Instance);
 
     private MessageRetrySweeper NewSweeper()
         => new(
-            Store,
+            Store.SparkStore(),
             Options.Create(new SparkMessagingOptions()),
             NullLogger<MessageRetrySweeper>.Instance,
-            new MessagingLeaseManager(Store, NullLogger<MessagingLeaseManager>.Instance) { IsHeld = true });
+            Store.HeldLease());
 
     private async Task<string> SeedAsync<TRecipient>(int maxAttempts)
     {

@@ -335,7 +335,7 @@ public class DependencyUpdateRecipientsTests : CoverageRavenTest
         fleet.ProducerEvents.Should().HaveCount(DependencyPropagation.EventsPerProducer);
         fleet.ProducerEvents.Min(e => e.AtUtc).Should().Be(start.AddMinutes(3));
         await outbox.Received(DependencyPropagation.EventsPerProducer + 3).EnqueueAsync(
-            Arg.Any<Raven.Client.Documents.Session.IAsyncDocumentSession>(),
+            Arg.Any<MintPlayer.Spark.Abstractions.Storage.ISparkSession>(),
             Arg.Is<DependencyPropagationMessage>(m => m.AccountId == AccountId && m.ProducerRepositoryId == RepositoryId),
             Arg.Is<BroadcastOptions?>(o => o!.Delay == DependencyPropagation.Debounce),
             Arg.Any<CancellationToken>());

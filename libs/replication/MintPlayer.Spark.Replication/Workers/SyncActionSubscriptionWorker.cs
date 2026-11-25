@@ -1,10 +1,11 @@
+using System.Linq.Expressions;
 using MintPlayer.SourceGenerators.Attributes;
+using MintPlayer.Spark.Abstractions.Storage;
 using MintPlayer.Spark.Replication.Abstractions.Models;
 using MintPlayer.Spark.Replication.Models;
 using MintPlayer.Spark.Replication.Services;
 using MintPlayer.Spark.SubscriptionWorker;
 using Raven.Client.Documents;
-using Raven.Client.Documents.Subscriptions;
 using System.Net;
 
 namespace MintPlayer.Spark.Replication.Workers;
@@ -17,10 +18,15 @@ internal partial class SyncActionSubscriptionWorker : SparkSubscriptionWorker<Sp
 {
     [Inject] private readonly IReplicationHttpClientProvider httpClientProvider;
     [Inject] private readonly IModuleDirectory moduleDirectory;
+    // Replication is RavenDB ETL (RavenDB-only, #536 §5), so the worker writes through a RavenDB session and keeps its
+    // attempt count in a RavenDB counter.
+    [Inject] private readonly IDocumentStore documentStore;
     private readonly RetryNumerator retryNumerator = new();
 
-    protected override SubscriptionCreationOptions ConfigureSubscription()
+    protected override Expression<Func<SparkSyncAction, bool>> Filter
     {
+        get
+        {
         // Two ways in: a brand-new action (no retry scheduled yet), or one whose backoff the
         // sweeper has since declared elapsed.
         //
@@ -31,20 +37,20 @@ internal partial class SyncActionSubscriptionWorker : SparkSubscriptionWorker<Sp
         // 7.2.5 refuses the query outright. SyncActionRetrySweeper evaluates the clock instead and
         // writes the verdict to WakeUp, and that write is what brings the document back for
         // re-evaluation.
-        return new SubscriptionCreationOptions
-        {
-            Query = "from SparkSyncActions where Status = 'Pending' and (NextAttemptAtUtc = null or WakeUp = true)",
-        };
+            return x => x.Status == ESyncActionStatus.Pending && (x.NextAttemptAtUtc == null || x.WakeUp == true);
+        }
     }
 
     protected override async Task ProcessBatchAsync(
-        SubscriptionBatch<SparkSyncAction> batch,
+        SparkSubscriptionBatch<SparkSyncAction> batch,
         CancellationToken cancellationToken)
     {
         foreach (var item in batch.Items)
         {
-            var syncAction = item.Result;
-            var session = batch.OpenAsyncSession();
+            var syncAction = item.Document;
+            using var session = documentStore.OpenAsyncSession();
+            // The delivered document, written back whole as the subscription's batch session did (last write wins).
+            await session.StoreAsync(syncAction, item.Id, cancellationToken);
 
             try
             {

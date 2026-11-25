@@ -115,6 +115,8 @@ public static class SparkExtensions
         // dashboards. A provider registers ISparkAtomicValues; nothing here touches a store until a lease is taken.
         Microsoft.Extensions.DependencyInjection.Extensions.ServiceCollectionDescriptorExtensions.TryAddSingleton(services, TimeProvider.System);
         Microsoft.Extensions.DependencyInjection.Extensions.ServiceCollectionDescriptorExtensions.TryAddSingleton<Abstractions.Storage.ISparkStoreLock, SparkStoreLock>(services);
+        // Background services wait on it before their first store access; UseSpark completes it after the schema (D41).
+        Abstractions.Storage.SparkStoreReadinessServiceCollectionExtensions.AddSparkStoreReadiness(services);
 
         // Forwarded headers (#460, D15) — trusted from private ranges by default, placed at the
         // front of the pipeline by a startup filter. An application no longer configures or calls
@@ -476,7 +478,18 @@ public static class SparkExtensions
 
         // The schema first (#536 D33): applied, or refused while pending with ApplyMigrations=false. A store without a
         // schema (RavenDB, in-memory) registers no migrator and skips it.
-        Services.SparkSchemaStartup.RunAsync(app.ApplicationServices, CancellationToken.None).GetAwaiter().GetResult();
+        // Then the background services waiting on ISparkStoreReadiness may start (D41); they see the failure too.
+        var readiness = app.ApplicationServices.GetService<Abstractions.Storage.SparkStoreReadiness>();
+        try
+        {
+            Services.SparkSchemaStartup.RunAsync(app.ApplicationServices, CancellationToken.None).GetAwaiter().GetResult();
+            readiness?.SetReady();
+        }
+        catch (Exception ex)
+        {
+            readiness?.SetFailed(ex);
+            throw;
+        }
 
         // Create RavenDB indexes
         CreateSparkIndexes(app, registry.ResolveIndexAssemblies(), registry.IndexDeploymentFilter);

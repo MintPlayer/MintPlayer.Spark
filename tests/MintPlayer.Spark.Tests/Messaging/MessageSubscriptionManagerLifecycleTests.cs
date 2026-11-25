@@ -1,3 +1,4 @@
+using MintPlayer.Spark;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Hosting;
@@ -20,8 +21,6 @@ namespace MintPlayer.Spark.Tests.Messaging;
 /// </summary>
 public class MessageSubscriptionManagerLifecycleTests : RavenSparkTestDriver
 {
-    protected override IEnumerable<System.Reflection.Assembly> IndexAssemblies
-        => [typeof(MintPlayer.Spark.Messaging.Indexes.SparkMessages_ByQueue).Assembly];
 
     [Fact]
     public async Task Logs_a_warning_and_returns_when_no_IRecipient_is_registered()
@@ -31,6 +30,7 @@ public class MessageSubscriptionManagerLifecycleTests : RavenSparkTestDriver
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddSingleton(Store);
+        services.AddRavenDbSessions(); // #536 D40: messaging runs on ISparkStore/ISparkSubscriptions/ISparkAtomicValues
         services.AddSparkMessaging();
         await using var provider = services.BuildServiceProvider();
 
@@ -177,9 +177,7 @@ public class MessageSubscriptionManagerLifecycleTests : RavenSparkTestDriver
         await AsyncWait.UntilAsync(() => hosted.IsLeader, "the manager to take the lease", TimeSpan.FromSeconds(30));
         await hosted.StopAsync(CancellationToken.None);
 
-        var lease = await Store.Operations.SendAsync(
-            new Raven.Client.Documents.Operations.CompareExchange.GetCompareExchangeValueOperation<MessagingLease>("spark/messaging/leader"));
-        lease.Should().BeNull("a graceful stop releases the lease so a standby takes over on its next poll");
+        (await ReadLeaseAsync()).Should().BeNull("a graceful stop releases the lease so a standby takes over on its next poll");
     }
 
     [Fact]
@@ -211,6 +209,7 @@ public class MessageSubscriptionManagerLifecycleTests : RavenSparkTestDriver
         var services = new ServiceCollection();
         services.AddLogging(b => b.AddProvider(new RecordingLoggerProvider(log)));
         services.AddSingleton(Store);
+        services.AddRavenDbSessions(); // #536 D40: messaging runs on ISparkStore/ISparkSubscriptions/ISparkAtomicValues
         services.AddSingleton(gate);
         services.AddSparkMessaging(o => o.ClaimTtl = TimeSpan.FromMinutes(2));
         services.AddScoped<MintPlayer.Spark.Messaging.Abstractions.IRecipient<TestHold>, TestHoldRecipient>();
@@ -270,6 +269,7 @@ public class MessageSubscriptionManagerLifecycleTests : RavenSparkTestDriver
         var services = new ServiceCollection();
         services.AddLogging(b => b.AddProvider(new RecordingLoggerProvider(log)));
         services.AddSingleton<Raven.Client.Documents.IDocumentStore>(store);
+        services.AddRavenDbSessions();
         services.AddSparkMessaging(o => o.SubscriptionMode = ESubscriptionMode.SingleSubscription);
         services.AddScoped<MintPlayer.Spark.Messaging.Abstractions.IRecipient<TestPing>, TestPingRecipient>();
         var provider = services.BuildServiceProvider();
@@ -306,6 +306,7 @@ public class MessageSubscriptionManagerLifecycleTests : RavenSparkTestDriver
         var services = new ServiceCollection();
         services.AddLogging(b => b.AddProvider(sink));
         services.AddSingleton(Store);
+        services.AddRavenDbSessions(); // #536 D40: messaging runs on ISparkStore/ISparkSubscriptions/ISparkAtomicValues
         services.AddSingleton(gate);
         services.AddSparkMessaging(o =>
         {
@@ -354,6 +355,7 @@ public class MessageSubscriptionManagerLifecycleTests : RavenSparkTestDriver
         var services = new ServiceCollection();
         services.AddLogging(b => b.AddProvider(new RecordingLoggerProvider(log)));
         services.AddSingleton(Store);
+        services.AddRavenDbSessions(); // #536 D40: messaging runs on ISparkStore/ISparkSubscriptions/ISparkAtomicValues
         services.AddSingleton(counter);
         services.AddSparkMessaging(o => o.SubscriptionMode = ESubscriptionMode.SingleSubscription);
         services.AddScoped<MintPlayer.Spark.Messaging.Abstractions.IRecipient<TestPing>, CountingPingRecipient>();
@@ -374,10 +376,9 @@ public class MessageSubscriptionManagerLifecycleTests : RavenSparkTestDriver
             await AsyncWait.UntilAsync(() => counter.Count >= 1, "the first message to be handled", TimeSpan.FromSeconds(90));
 
             // 2. Lose the lease: the next renewal fails and ExecuteAsync tears down (drain included).
-            var lease = await Store.Operations.SendAsync(
-                new Raven.Client.Documents.Operations.CompareExchange.GetCompareExchangeValueOperation<MessagingLease>("spark/messaging/leader"));
-            await Store.Operations.SendAsync(
-                new Raven.Client.Documents.Operations.CompareExchange.DeleteCompareExchangeValueOperation<MessagingLease>("spark/messaging/leader", lease.Index));
+            var atomicValues = Store.AtomicValues();
+            var lease = await atomicValues.GetAsync("spark/messaging/lease");
+            (await atomicValues.TryDeleteAsync("spark/messaging/lease", lease!.Version)).Should().BeTrue();
             await AsyncWait.UntilAsync(
                 () => log.Any(e => e.Message.StartsWith("Lost the messaging lease", StringComparison.Ordinal)),
                 "the renewal to fail and the teardown to start", MessagingLeaseManager.RenewInterval * 3);
@@ -422,14 +423,16 @@ public class MessageSubscriptionManagerLifecycleTests : RavenSparkTestDriver
     }
 
     private async Task<MessagingLease?> ReadLeaseAsync()
-        => (await Store.Operations.SendAsync(
-            new Raven.Client.Documents.Operations.CompareExchange.GetCompareExchangeValueOperation<MessagingLease>("spark/messaging/leader")))?.Value;
+        => await Store.AtomicValues().GetAsync("spark/messaging/lease") is { } stored
+            ? System.Text.Json.JsonSerializer.Deserialize<MessagingLease>(stored.Value)
+            : null;
 
     private ServiceProvider BuildProvider(ESubscriptionMode mode, bool registerSecondQueue)
     {
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddSingleton(Store);
+        services.AddRavenDbSessions(); // #536 D40: messaging runs on ISparkStore/ISparkSubscriptions/ISparkAtomicValues
         services.AddSparkMessaging(o => o.SubscriptionMode = mode);
         services.AddScoped<MintPlayer.Spark.Messaging.Abstractions.IRecipient<TestPing>, TestPingRecipient>();
         if (registerSecondQueue)

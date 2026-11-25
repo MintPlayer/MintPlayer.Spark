@@ -1,3 +1,4 @@
+using MintPlayer.Spark;
 using MintPlayer.Spark.Abstractions;
 using System.Globalization;
 using System.Text;
@@ -127,7 +128,7 @@ public partial class BackportRegenerationEngine : IBackportRegenerationEngine
 
     /// <summary>Hands an opened backport pull request to the merge queue (#570 M7, D12); the queue re-checks everything.</summary>
     internal static Task EnqueueAsync(IMessageOutbox outbox, IAsyncDocumentSession session, string repositoryId, int number, CancellationToken ct)
-        => outbox.EnqueueAsync(session, new MergeQueueSignalMessage
+        => outbox.EnqueueAsync(session.AsSparkSession(), new MergeQueueSignalMessage
         {
             RepositoryId = repositoryId, Kind = EMergeQueueSignal.Command, Number = number, Command = EMergeQueueCommand.Enqueue,
             Actor = QueueActor, Source = EMergeQueueCommandSource.Backports,
@@ -447,7 +448,7 @@ public partial class BackportRegenerationEngine : IBackportRegenerationEngine
     }
 
     private Task ScheduleAsync(string repositoryId, BackportRegeneration item, EBackportRegenerationStep step, TimeSpan? delay, long? runId, CancellationToken ct)
-        => outbox.EnqueueAsync(session, new BackportRegenerationStepMessage
+        => outbox.EnqueueAsync(session.AsSparkSession(), new BackportRegenerationStepMessage
         {
             RepositoryId = repositoryId, Head = item.Head, Generation = item.Generation, Step = step, RunId = runId,
         }, delay is null ? null : new BroadcastOptions { Delay = delay }, ct);

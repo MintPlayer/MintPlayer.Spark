@@ -190,6 +190,10 @@ public abstract class SparkCursorSubscriptions : ISparkSubscriptions
         Func<SparkSubscriptionBatch<T>, CancellationToken, Task> handler, CancellationToken cancellationToken) where T : class
     {
         var stored = await Values.GetAsync(CursorKey(definition.Name), cancellationToken);
+        // No cursor yet is a new subscription, unless the registry no longer names it: a delete under the runner ends
+        // the run, as on RavenDB, rather than starting over from the first document.
+        if (stored is null && !Names(await Values.GetAsync(RegistryKey, cancellationToken)).Contains(definition.Name))
+            throw new SparkSubscriptionException($"Subscription '{definition.Name}' was deleted.");
         var cursor = stored is null ? 0UL : ulong.Parse(stored.Value, CultureInfo.InvariantCulture);
         var horizon = await ReadHorizonAsync(cancellationToken);
         if (horizon <= cursor + 1)

@@ -1,7 +1,7 @@
 using Microsoft.Extensions.Logging;
 using Raven.Client.Documents.Session;
 
-namespace MintPlayer.Spark.SubscriptionWorker;
+namespace MintPlayer.Spark.Replication.Services;
 
 /// <summary>
 /// Outcome of a single <see cref="RetryNumerator.TrackRetryAsync"/> call.

@@ -71,6 +71,22 @@ tags, and everything ships once the merged pull request is backported to `releas
     that took an `IAsyncDocumentSession` (for example `OrganizationMembershipReader.LoadAsync`) take an
     `ISparkSession`: wrap a raw session with `session.AsSparkSession()`. Notifications' own reads and writes are
     neutral too; it keeps its RavenDB reference until messaging is ported (M7).
+12. **Messaging runs on any store with subscriptions** (M7b, D40), and its package no longer references RavenDB:
+    - `IMessageOutbox.EnqueueAsync` and `ISparkAfterCommitOutbox.EnqueueAsync` take an `ISparkSession`, not a RavenDB
+      session. Wrap a raw session with `session.AsSparkSession()`.
+    - The indexes `SparkMessages_ByPriority` and `SparkMessages_ByQueue` and `CreateSparkMessagingIndexes` are gone;
+      the feeder and the retry sweeper use plain queries. On an existing RavenDB database the two indexes stay until
+      you delete them.
+    - The messaging lease moved from the compare-exchange key `spark/messaging/leader` to `spark/messaging/lease`.
+      While old and new hosts run side by side during a deploy, each version holds its own lease. Stop the old
+      hosts before starting the new ones.
+    - `SparkSubscriptionWorker<T>` runs on `ISparkSubscriptions`. `Filter` is a LINQ expression, `ProcessBatchAsync`
+      takes a `SparkSubscriptionBatch<T>`, and the RavenDB-specific members (`DocumentStore`, `Database`,
+      `ConfigureSubscription`) are gone. The constructor now takes `ISparkSubscriptions` and an `ILoggerFactory`.
+    - On a relational store, messaging's background work waits for `UseSpark` to apply the schema
+      (`ISparkStoreReadiness`, below).
+    - `RetryNumerator`, a RavenDB counter, moved from `MintPlayer.Spark.SubscriptionWorker.Abstractions` to
+      `MintPlayer.Spark.Replication.Services`, the namespace of its only user.
 
 ## New
 
@@ -149,3 +165,6 @@ tags, and everything ships once the merged pull request is backported to `releas
 12. **`ISparkSubscriptions`** (M7a, D39): durable, exclusive, at-least-once subscriptions over a collection with a LINQ
     filter, on every store. RavenDB runs them as data subscriptions; InMemory, SQL Server and PostgreSQL as a cursor
     over the commit stamp with a lease. Stores that have it report `SparkStoreCapabilities.Subscriptions`.
+13. **`ISparkStoreReadiness`** (M7b, D41): a background service awaits `WaitAsync()` before its first store access.
+    On a relational store it returns once `UseSpark` has applied the schema; elsewhere it returns at once. A feature
+    library registers it with `services.AddSparkStoreReadiness()`.

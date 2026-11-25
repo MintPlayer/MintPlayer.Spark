@@ -1,6 +1,5 @@
 using MintPlayer.Spark.Messaging.Abstractions;
 using MintPlayer.Spark.Messaging.Models;
-using Raven.Client.Documents.Session;
 
 namespace MintPlayer.Spark.Messaging.Services;
 
@@ -11,17 +10,17 @@ namespace MintPlayer.Spark.Messaging.Services;
 /// </summary>
 internal sealed class MessageProgress : IMessageProgress
 {
-    private IAsyncDocumentSession? session;
+    private MessageSession? session;
     private HandlerExecution? handler;
     private string? messageId;
     private int handlerIndex;
 
-    // A copy of the stored steps. The tracked sidecar entity itself is never mutated: RavenDB refuses
-    // a save that both PUTs a document and PATCHes it, and appending by patch is the point.
+    // A copy of the stored steps. The tracked sidecar entity itself is never mutated: a save that both
+    // writes a document whole and appends to it is refused (RavenDB), and appending is the point.
     private HashSet<string>? steps;
     private bool exists;
 
-    internal void SetContext(IAsyncDocumentSession currentSession, SparkMessage message, HandlerExecution current, int index)
+    internal void SetContext(MessageSession currentSession, SparkMessage message, HandlerExecution current, int index)
     {
         session = currentSession;
         handler = current;
@@ -47,11 +46,11 @@ internal sealed class MessageProgress : IMessageProgress
         var id = SparkMessageProgress.IdFor(messageId!, handlerIndex);
         if (exists)
         {
-            session!.Advanced.Patch<SparkMessageProgress, string>(id, p => p.Steps, list => list.Add(step));
+            session!.Session.PatchAppend<SparkMessageProgress, string>(id, p => p.Steps, step);
         }
         else
         {
-            await session!.StoreAsync(new SparkMessageProgress
+            await session!.Session.StoreAsync(new SparkMessageProgress
             {
                 MessageId = messageId!,
                 HandlerIndex = handlerIndex,
@@ -73,7 +72,7 @@ internal sealed class MessageProgress : IMessageProgress
         if (steps is not null)
             return steps;
 
-        var stored = await session.LoadAsync<SparkMessageProgress>(
+        var stored = await session.Session.LoadAsync<SparkMessageProgress>(
             SparkMessageProgress.IdFor(messageId, handlerIndex), cancellationToken);
         exists = stored is not null;
         steps = stored is null ? new HashSet<string>(StringComparer.Ordinal) : new HashSet<string>(stored.Steps, StringComparer.Ordinal);

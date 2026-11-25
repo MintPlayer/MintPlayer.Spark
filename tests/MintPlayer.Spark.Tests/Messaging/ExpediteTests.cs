@@ -1,3 +1,4 @@
+using MintPlayer.Spark;
 using System.Collections.Concurrent;
 using System.Threading.Channels;
 using Microsoft.Extensions.DependencyInjection;
@@ -27,8 +28,6 @@ public class ExpediteTests(ITestOutputHelper output) : RavenSparkTestDriver
     private static readonly DateTime T0 = new(2026, 10, 16, 12, 0, 0, DateTimeKind.Utc);
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(30);
 
-    protected override IEnumerable<System.Reflection.Assembly> IndexAssemblies
-        => [typeof(MintPlayer.Spark.Messaging.Indexes.SparkMessages_ByQueue).Assembly];
 
     // ---- the lane buffer ------------------------------------------------------------------------
 
@@ -180,7 +179,7 @@ public class ExpediteTests(ITestOutputHelper output) : RavenSparkTestDriver
 
     private record Onboard(string RepositoryId);
 
-    private MessageBus NewBus() => new(Store, Options.Create(new SparkMessagingOptions()));
+    private MessageBus NewBus() => new(Store.SparkStore(), Options.Create(new SparkMessagingOptions()));
 
     private async Task<SparkMessage> SingleAsync(string repositoryId)
     {
@@ -199,7 +198,7 @@ public class ExpediteTests(ITestOutputHelper output) : RavenSparkTestDriver
         await bus.BroadcastOnceAsync(new Onboard("once"), "dependency-onboard:once", new BroadcastOptions { Expedite = true });
         using (var session = Store.OpenAsyncSession())
         {
-            await ((IMessageOutbox)bus).EnqueueAsync(session, new Onboard("outbox"), new BroadcastOptions { Expedite = true });
+            await ((IMessageOutbox)bus).EnqueueAsync(session.AsSparkSession(), new Onboard("outbox"), new BroadcastOptions { Expedite = true });
             await session.SaveChangesAsync();
         }
 
@@ -286,8 +285,8 @@ public class ExpediteTests(ITestOutputHelper output) : RavenSparkTestDriver
         services.AddSingleton<IRecipient<Job>>(recipient);
         await using var provider = services.BuildServiceProvider();
         var options = Options.Create(new SparkMessagingOptions { ClaimTtl = TimeSpan.FromMinutes(5), HandlerTimeout = TimeSpan.FromMinutes(1) });
-        var processor = new MessageProcessor(provider, Store, options, NullLogger<MessageProcessor>.Instance);
-        await using var router = new MessageQueueRouter(processor, Store, options, NullLogger<MessageQueueRouter>.Instance);
+        var processor = new MessageProcessor(provider, Store.SparkStore(), options, NullLogger<MessageProcessor>.Instance);
+        await using var router = new MessageQueueRouter(processor, Store.SparkStore(), options, NullLogger<MessageQueueRouter>.Instance);
         router.Start(CancellationToken.None);
 
         var ids = new Dictionary<string, string>();
@@ -321,13 +320,14 @@ public class ExpediteTests(ITestOutputHelper output) : RavenSparkTestDriver
     [Fact]
     public async Task An_expedited_message_published_behind_more_than_a_page_of_its_own_queue_is_claimed_first()
     {
-        // The index change: without Expedite in SparkMessages_ByPriority's sort, the first page is the
+        // Without Expedite in the page's sort (MessageFeeder.ReadPageAsync), the first page is the
         // 256 oldest normal messages and the expedited one waits for the subscription to reach it.
         const int normalCount = 300;
         var seen = new ConcurrentBag<int>();
         var services = new ServiceCollection();
         services.AddLogging(b => b.AddProvider(new TestOutputLoggerProvider(output)));
         services.AddSingleton(Store);
+        services.AddRavenDbSessions(); // #536 D40: messaging runs on ISparkStore/ISparkSubscriptions/ISparkAtomicValues
         services.AddSingleton(seen);
         services.AddSparkMessaging(o => o.FallbackPollInterval = TimeSpan.FromSeconds(1));
         services.AddScoped<IRecipient<PipelineWork>, PipelineRecipient>();

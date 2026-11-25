@@ -441,6 +441,74 @@ delete): 6/6 on RavenDB (three runs in a row) and InMemory, 6/6 on SQL Server, 7
 `One_transaction_is_never_split_across_batches`. The first RavenDB run failed the exclusivity case on the create race
 above.
 
+**D40 (M7b, 2026-11-25): messaging on the neutral storage seam.** The messaging package drops `RavenDB.Client` and
+requires only the Subscriptions capability (`[SparkRequiresStore("Spark.Messaging", Subscriptions)]`, no provider).
+Each RavenDB mechanism it used has a neutral replacement:
+- **The sequence.** The feeder's FIFO key was `QueuedAtUtc ?? @last-modified`, computed by the static index
+  `SparkMessages_ByPriority` (S-M7). No other store has `@last-modified`. `MessageFeeder.AssignSequences` now keeps a
+  captured `QueuedAtUtc` and gives an uncaptured message `now + n ticks` on the lease holder's clock: first the batch
+  in delivery order (commit order on every store), then what only the page holds, by `CreatedAtUtc`. The claim or
+  deferral write stores it, as before.
+- **The indexes.** `SparkMessages_ByPriority` and `SparkMessages_ByQueue` are deleted, along with the startup middleware
+  that deployed them. The page and the sweeper's candidates are plain `Query<SparkMessage>()` queries: an auto-index on
+  RavenDB, a table scan or ad-hoc index elsewhere. The trade-off: under D4's nulls-first order an uncaptured message
+  sorts first in its priority on the page. `AssignSequences` still places it after the captured ones, and the batch
+  serves it anyway.
+- **The sweeper.** Patch scripts that re-checked the predicate on the server become a batch load, a predicate check in
+  C#, and one versioned store per document (`OptimisticConcurrency`, expected version). A
+  `SparkStoreConcurrencyException` skips the document; the next sweep sees it again. The stale-query guarantee holds:
+  `MessageRetrySweeperStaleIndexTests` freezes RavenDB's indexing (`StopIndexingOperation`, after the sweep's own
+  auto-indexes exist) and checks that a message which moved on is left alone.
+- **The handler session (`MessageSession`).** `ClaimedExecution` renews the claim from its own session while handlers
+  run. RavenDB's session is last-write-wins and never noticed. A relational store checks the loaded version on every
+  UPDATE, so the owner's next save conflicted. On conflict, `MessageSession` probes the stored message: if it is still
+  Processing under this owner, only a renewal wrote it, and the save is retried with the stored version (at most 3
+  attempts). Otherwise the claim is lost and the conflict is rethrown.
+- **Progress sidecars.** The terminal save used a deferred patch to set `@expires` on each sidecar. Now the sidecars
+  are evicted, reloaded and given `SetExpiry` in the same save, so steps appended by `PatchAppend` are not overwritten.
+- **The lease.** The compare-exchange value becomes an `ISparkAtomicValues` entry holding the lease as JSON, under a new
+  key `spark/messaging/lease`. The old key `spark/messaging/leader` held a typed compare-exchange object; it lapses
+  within one TTL of the upgrade.
+- **The outbox.** `IMessageOutbox.EnqueueAsync` and `ISparkAfterCommitOutbox.EnqueueAsync` take an `ISparkSession`.
+  Callers still on a raw RavenDB session bridge with `session.AsSparkSession()` until their own port.
+- **The subscription worker.** `SparkSubscriptionWorker<T>` runs on `ISparkSubscriptions` (D39).
+  `LegacySubscriptionCleanup` lists and deletes through it too. `RetryNumerator`, a RavenDB counter, moves to
+  Replication, its only user.
+- **Stored types.** `AddSparkMessaging` registers `SparkMessage` and `SparkMessageProgress` with `AddSparkStoredType`,
+  so a relational provider maps their tables.
+
+*Evidence:*
+- `NeutralMessagingTests` (new, on the neutral driver) passes 3/3 on RavenDB, InMemory, SQL Server and PostgreSQL: a
+  broadcast message, an outbox message and a failed-once message retried by the sweeper, each handled and completed.
+- On RavenDB, the messaging test folder, the subscription worker, replication's worker and the subscription
+  conformance tests pass 265/265. The subscription conformance tests also pass on SQL Server and PostgreSQL, 15/15,
+  including the new `A_subscription_deleted_under_its_runner_ends_the_run`.
+- CodeCoverage's outbox users pass 286/286, and the generator tests 2/2.
+- Found on the way:
+  - A shared read helper in `MessageSubscriptionManagerLifecycleTests` and one assertion read the old lease key, so
+    three "the lease is released" assertions passed without checking anything. They now read the new key.
+  - The outbox's explicit `SparkMessages/{guid}` id had been dropped in the port. It is restored.
+
+**D41 (M7b, 2026-11-25): `ISparkStoreReadiness`, background work waits for the schema.** ASP.NET Core starts hosted
+services before the web host builds its pipeline, and `UseSpark` applies the relational schema while building it (D33).
+On a fresh SQL Server or PostgreSQL database, messaging's lease read found no `AtomicValues` table (or no database at
+all), and `MessageSubscriptionManager.ExecuteAsync` died. All three `NeutralMessagingTests` failed after a 60 s wait,
+with "relation spark.AtomicValues does not exist" on PostgreSQL and "Cannot open database" on SQL Server. RavenDB has
+no schema, so it never showed.
+- `ISparkStoreReadiness.WaitAsync` returns once the store can serve background work. `SparkStoreReadiness` is ready
+  at construction when no `ISparkSchemaMigrator` is registered (RavenDB, InMemory, a test's bare container).
+  Otherwise `UseSpark` completes it after the schema step, or faults it with the step's exception.
+- `AddSparkStoreReadiness()` registers it once: core calls it, and so does every feature with a background service.
+  A container built without `AddSpark` still resolves it.
+- Messaging's manager waits on it before the legacy cleanup and the lease. The retry sweeper needs no gate of its own,
+  because it runs only while the lease is held. Cron, the subscription worker and the other hosted services adopt it
+  when they are ported.
+- Rejected: catching the store error in each loop and retrying. That puts an error in every first boot's log, delays
+  messaging by a poll interval, and leaves each new background service to rediscover the race.
+
+*Evidence:* `NeutralMessagingTests` went from 0/3 to 3/3 on SQL Server and PostgreSQL. The RavenDB messaging set,
+including the containers built without `AddSpark`, stayed green (227/227).
+
 **D3: the version is a `bigint` column on every table**, a concurrency token the provider increments. *(S4, §8.11:
 it is on every root table and covers the aggregate. A change to a child row (D25) or a join row (D26) moves the
 root's version, which EF alone does not do.)*

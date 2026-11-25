@@ -1,6 +1,5 @@
+using MintPlayer.Spark.Abstractions.Storage;
 using MintPlayer.Spark.Messaging.Models;
-using Raven.Client.Documents;
-using Raven.Client.Documents.Session;
 
 namespace MintPlayer.Spark.Messaging.Services;
 
@@ -37,11 +36,11 @@ internal static class MessageClaims
     /// </summary>
     /// <remarks>
     /// The caller must have opened <paramref name="session"/> with optimistic concurrency enabled
-    /// (<see cref="OptimisticConcurrencyMode.Writes"/>). Without it RavenDB's default is last-write-wins, and
+    /// (<see cref="ISparkSession.OptimisticConcurrency"/>). Without it the default is last-write-wins, and
     /// two feeders would both "successfully" claim the same message and both run its handlers.
     /// </remarks>
     public static async Task<bool> TryClaimAsync(
-        IAsyncDocumentSession session,
+        ISparkSession session,
         SparkMessage message,
         string ownerId,
         TimeSpan ttl,
@@ -60,7 +59,7 @@ internal static class MessageClaims
             await session.SaveChangesAsync(cancellationToken);
             return true;
         }
-        catch (Raven.Client.Exceptions.ConcurrencyException)
+        catch (SparkStoreConcurrencyException)
         {
             // Someone else got there first. Not an error: the other holder will process it.
             return false;
@@ -74,7 +73,7 @@ internal static class MessageClaims
     /// working on this message", since it is now scheduled for redelivery.
     /// </summary>
     public static async Task<bool> TryRenewAsync(
-        IDocumentStore store,
+        ISparkStore store,
         string messageId,
         string ownerId,
         TimeSpan ttl,
@@ -87,8 +86,8 @@ internal static class MessageClaims
         const int attempts = 3;
         for (var attempt = 1; ; attempt++)
         {
-            using var session = store.OpenAsyncSession();
-            session.Advanced.OptimisticConcurrencyMode = OptimisticConcurrencyMode.Writes;
+            using var session = store.OpenSession();
+            session.OptimisticConcurrency = true;
 
             var message = await session.LoadAsync<SparkMessage>(messageId, cancellationToken);
             if (message is null || message.OwnerId != ownerId || message.Status != EMessageStatus.Processing)
@@ -101,10 +100,10 @@ internal static class MessageClaims
                 await session.SaveChangesAsync(cancellationToken);
                 return true;
             }
-            catch (Raven.Client.Exceptions.ConcurrencyException) when (attempt < attempts)
+            catch (SparkStoreConcurrencyException) when (attempt < attempts)
             {
             }
-            catch (Raven.Client.Exceptions.ConcurrencyException)
+            catch (SparkStoreConcurrencyException)
             {
                 return false;
             }
@@ -122,12 +121,12 @@ internal static class MessageClaims
     /// Pending (the sweeper requeued it) or Processing under another owner.
     /// </remarks>
     public static async Task<bool> WasReclaimedAsync(
-        IDocumentStore store,
+        ISparkStore store,
         string messageId,
         string ownerId,
         CancellationToken cancellationToken)
     {
-        using var session = store.OpenAsyncSession();
+        using var session = store.OpenSession();
         var message = await session.LoadAsync<SparkMessage>(messageId, cancellationToken);
         return message is not null
             && ((message.Status == EMessageStatus.Pending && !IsDeferredByThrottle(message))
@@ -150,12 +149,12 @@ internal static class MessageClaims
     /// out the whole claim TTL before the sweeper reclaimed them.
     /// </summary>
     public static async Task ReleaseUnstartedAsync(
-        IDocumentStore store,
+        ISparkStore store,
         string messageId,
         string ownerId,
         CancellationToken cancellationToken)
     {
-        using var session = store.OpenAsyncSession();
+        using var session = store.OpenSession();
         var message = await session.LoadAsync<SparkMessage>(messageId, cancellationToken);
         if (message is null || message.OwnerId != ownerId)
             return;
@@ -184,7 +183,7 @@ internal static class MessageClaims
     /// </para>
     /// </summary>
     public static async Task<bool> DeferUnstartedAsync(
-        IAsyncDocumentSession session,
+        ISparkSession session,
         SparkMessage message,
         DateTime nextAttemptAtUtc,
         CancellationToken cancellationToken)
@@ -200,14 +199,14 @@ internal static class MessageClaims
 
         // Forced for this one entity, leaving the session's own mode alone: the processor's session is
         // deliberately last-write-wins for the handler saves that follow a normal admission.
-        // Re-storing a tracked entity with its own change vector forces the check for that entity only.
-        await session.StoreAsync(message, session.Advanced.GetChangeVectorFor(message), message.Id, cancellationToken);
+        // Re-storing a tracked entity with its own version forces the check for that entity only.
+        await session.StoreAsync(message, session.GetVersion(message), message.Id!, cancellationToken);
         try
         {
             await session.SaveChangesAsync(cancellationToken);
             return true;
         }
-        catch (Raven.Client.Exceptions.ConcurrencyException)
+        catch (SparkStoreConcurrencyException)
         {
             return false;
         }

@@ -88,7 +88,7 @@ public class CoverageWebhooksTests : CoverageRavenTest
         await FinalizeAsync(store, queue);
 
         await outbox.Received(1).EnqueueAsync(
-            Arg.Any<IAsyncDocumentSession>(),
+            Arg.Any<MintPlayer.Spark.Abstractions.Storage.ISparkSession>(),
             Arg.Is<CoverageBuildCompletedWebhookMessage>(m => string.Equals(m.BuildId, BuildId, StringComparison.OrdinalIgnoreCase)),
             Arg.Any<BroadcastOptions?>(),
             Arg.Any<CancellationToken>());

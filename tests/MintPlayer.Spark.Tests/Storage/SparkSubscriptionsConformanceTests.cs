@@ -75,6 +75,9 @@ public abstract class SparkSubscriptionsConformanceTests : IAsyncLifetime
 
         public IReadOnlyList<string> Received => [.. Batches.SelectMany(b => b)];
 
+        /// <summary>The run itself: it ends on a stop, or throws when the subscription cannot run.</summary>
+        public Task Completion => run;
+
         /// <summary>Waits until every one of <paramref name="ids"/> arrived; 30 s is the failure bound.</summary>
         public async Task WaitForAsync(params string[] ids)
         {
@@ -215,6 +218,23 @@ public abstract class SparkSubscriptionsConformanceTests : IAsyncLifetime
             await Task.Delay(50);
         }
         throw new TimeoutException($"Neither runner received {id} within 30 s.");
+    }
+
+    /// <summary>A delete under a running subscription ends the run: it does not start over from the first document.</summary>
+    [SkippableFact]
+    public async Task A_subscription_deleted_under_its_runner_ends_the_run()
+    {
+        var definition = new SparkSubscriptionDefinition<SubDoc>("conf-deleted");
+        await StoreAsync(Doc("subdocs/a"));
+        var runner = new Runner(Subscriptions, definition, Fast);
+        await runner.WaitForAsync("subdocs/a");
+
+        await Subscriptions.DeleteAsync(definition.Name);
+
+        var ended = await Task.WhenAny(runner.Completion, Task.Delay(TimeSpan.FromSeconds(30)));
+        ended.Should().BeSameAs(runner.Completion, "the run ends within 30 s of the delete");
+        await ((Func<Task>)(() => runner.Completion)).Should().ThrowAsync<SparkSubscriptionException>();
+        runner.Received.Should().HaveCount(1);
     }
 
     [SkippableFact]

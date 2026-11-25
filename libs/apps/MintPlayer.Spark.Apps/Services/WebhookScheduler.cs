@@ -34,7 +34,7 @@ internal sealed partial class WebhookScheduler
         if (!Ordered || bypassChain)
         {
             await session.StoreAsync(delivery, id, cancellationToken);
-            await outbox.EnqueueAsync(session, new WebhookDeliveryMessage { DeliveryId = id }, cancellationToken: cancellationToken);
+            await outbox.EnqueueAsync(session.AsSparkSession(), new WebhookDeliveryMessage { DeliveryId = id }, cancellationToken: cancellationToken);
             return;
         }
 
@@ -50,7 +50,7 @@ internal sealed partial class WebhookScheduler
         if (chain.InFlight is null && !chain.Halted)
         {
             chain.InFlight = id;
-            await outbox.EnqueueAsync(session, new WebhookDeliveryMessage { DeliveryId = id }, cancellationToken: cancellationToken);
+            await outbox.EnqueueAsync(session.AsSparkSession(), new WebhookDeliveryMessage { DeliveryId = id }, cancellationToken: cancellationToken);
         }
         else
         {
@@ -89,7 +89,7 @@ internal sealed partial class WebhookScheduler
             {
                 delivery.Status = WebhookDeliveryStatus.Pending;
                 delivery.CompletedUtc = null;
-                await outbox.EnqueueAsync(session, new WebhookDeliveryMessage { DeliveryId = head }, cancellationToken: cancellationToken);
+                await outbox.EnqueueAsync(session.AsSparkSession(), new WebhookDeliveryMessage { DeliveryId = head }, cancellationToken: cancellationToken);
                 return true;
             }
             return await StartNextAsync(session, chain, cancellationToken);
@@ -106,7 +106,7 @@ internal sealed partial class WebhookScheduler
             if (await session.LoadAsync<WebhookDelivery>(next, cancellationToken) is null)
                 continue;
             chain.InFlight = next;
-            await outbox.EnqueueAsync(session, new WebhookDeliveryMessage { DeliveryId = next }, cancellationToken: cancellationToken);
+            await outbox.EnqueueAsync(session.AsSparkSession(), new WebhookDeliveryMessage { DeliveryId = next }, cancellationToken: cancellationToken);
             break;
         }
         return true;

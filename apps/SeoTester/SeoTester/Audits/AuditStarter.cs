@@ -1,3 +1,4 @@
+using MintPlayer.Spark;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Messaging;
 using MintPlayer.Spark.Organizations;
@@ -103,7 +104,7 @@ public sealed partial class AuditStarter(
         }
 
         await session.StoreAsync(await auditLog.EntryAsync(AuditLogKinds.AuditStarted, userId, site, run.Id.Value, fullCrawl ? "full crawl" : scheduled ? "scheduled" : null, cancellationToken), cancellationToken);
-        await outbox.EnqueueAsync(session, new SiteProbeMessage(run.Id.Value), cancellationToken: cancellationToken);
+        await outbox.EnqueueAsync(session.AsSparkSession(), new SiteProbeMessage(run.Id.Value), cancellationToken: cancellationToken);
         try
         {
             await session.SaveChangesAsync(cancellationToken);

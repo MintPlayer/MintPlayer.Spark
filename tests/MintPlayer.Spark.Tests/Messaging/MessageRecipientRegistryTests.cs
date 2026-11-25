@@ -1,3 +1,4 @@
+using MintPlayer.Spark;
 using Microsoft.Extensions.DependencyInjection;
 using MintPlayer.Spark.Messaging;
 using MintPlayer.Spark.Messaging.Abstractions;
@@ -37,6 +38,7 @@ public class MessageRecipientRegistryTests(RavenSparkSharedDatabase database)
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddSingleton(Store);
+        services.AddRavenDbSessions(); // #536 D40: messaging runs on ISparkStore/ISparkSubscriptions/ISparkAtomicValues
         services.AddSparkMessaging();
         register(services);
         return services.BuildServiceProvider();

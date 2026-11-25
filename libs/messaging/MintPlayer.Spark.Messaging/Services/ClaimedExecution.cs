@@ -1,4 +1,4 @@
-using Raven.Client.Documents;
+using MintPlayer.Spark.Abstractions.Storage;
 
 namespace MintPlayer.Spark.Messaging.Services;
 
@@ -17,7 +17,7 @@ namespace MintPlayer.Spark.Messaging.Services;
 internal static class ClaimedExecution
 {
     public static async Task RunAsync(
-        IDocumentStore store,
+        ISparkStore store,
         SparkMessagingOptions options,
         ILogger logger,
         string messageId,
@@ -58,7 +58,7 @@ internal static class ClaimedExecution
     }
 
     private static async Task RenewUntilDoneAsync(
-        IDocumentStore store, SparkMessagingOptions options, ILogger logger, string messageId, CancellationToken cancellationToken)
+        ISparkStore store, SparkMessagingOptions options, ILogger logger, string messageId, CancellationToken cancellationToken)
     {
         while (!cancellationToken.IsCancellationRequested)
         {

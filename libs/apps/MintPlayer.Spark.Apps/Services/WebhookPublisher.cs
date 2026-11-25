@@ -103,7 +103,7 @@ internal sealed partial class WebhookPublisher : IWebhookPublisher
             Payload = Envelope(descriptor.Name, now, JsonSerializer.SerializeToNode(data, data.GetType(), WebhookJson.Options), options.Value.MaxPayloadBytes),
             CreatedUtc = now.UtcDateTime,
         };
-        await outbox.EnqueueAsync(session, message, cancellationToken: cancellationToken);
+        await outbox.EnqueueAsync(session.AsSparkSession(), message, cancellationToken: cancellationToken);
         return message.MessageId;
     }
 

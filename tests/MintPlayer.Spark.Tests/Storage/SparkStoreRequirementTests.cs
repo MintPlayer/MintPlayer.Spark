@@ -32,7 +32,8 @@ public class SparkStoreRequirementTests
     [Fact]
     public void An_offered_capability_and_a_duplicate_declaration_are_met_or_reported_once()
     {
-        var requirement = new SparkStoreRequirement("Spark.Messaging", SparkStoreCapabilities.Subscriptions);
+        // Revisions: a capability the InMemory store lacks (it offers Subscriptions since #536 D39).
+        var requirement = new SparkStoreRequirement("Spark.History", SparkStoreCapabilities.Revisions);
 
         SparkStoreRequirementExtensions.Unmet(
             [new SparkStoreRequirement("Spark.Live", SparkStoreCapabilities.ChangeNotifications)], InMemory).Should().BeEmpty();

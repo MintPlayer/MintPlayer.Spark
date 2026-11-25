@@ -103,7 +103,7 @@ internal sealed class SparkNotifier(
                 var devices = await session.Advanced.LoadStartingWithAsync<PushSubscription>(PushSubscription.PrefixFor(userId), pageSize: 64, token: cancellationToken);
                 foreach (var device in devices)
                 {
-                    await outbox.EnqueueAsync(session, new WebPushDeliveryMessage
+                    await outbox.EnqueueAsync(session.AsSparkSession(), new WebPushDeliveryMessage
                     {
                         SubscriptionId = device.Id.Value,
                         Payload = payload,

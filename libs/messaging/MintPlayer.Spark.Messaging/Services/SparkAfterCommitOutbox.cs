@@ -1,7 +1,7 @@
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions.Interceptors;
 using MintPlayer.Spark.Messaging.Abstractions;
-using Raven.Client.Documents.Session;
+using MintPlayer.Spark.Abstractions.Storage;
 
 namespace MintPlayer.Spark.Messaging.Services;
 
@@ -14,8 +14,8 @@ internal sealed partial class SparkAfterCommitOutbox : ISparkAfterCommitOutbox
 {
     [Inject] private readonly IMessageOutbox outbox;
 
-    public Task EnqueueAsync(object session, SparkAfterCommitWork work, CancellationToken cancellationToken = default)
-        => outbox.EnqueueAsync((IAsyncDocumentSession)session, work, cancellationToken: cancellationToken);
+    public Task EnqueueAsync(ISparkSession session, SparkAfterCommitWork work, CancellationToken cancellationToken = default)
+        => outbox.EnqueueAsync(session, work, cancellationToken: cancellationToken);
 }
 
 /// <summary>Runs the durable interceptor a <see cref="SparkAfterCommitWork"/> message names; a throw is retried.</summary>

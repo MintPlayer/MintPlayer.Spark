@@ -1,3 +1,4 @@
+using MintPlayer.Spark;
 using MintPlayer.Spark.Abstractions;
 using System.Globalization;
 using System.Text;
@@ -1529,7 +1530,7 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
         if (refusal is null && run.PullRequestNumber is { } pr)
         {
             // R5: auto-merge is the merge queue, only; it re-checks the rules, the approvals and the checks itself.
-            await outbox.EnqueueAsync(session, new MergeQueueSignalMessage
+            await outbox.EnqueueAsync(session.AsSparkSession(), new MergeQueueSignalMessage
             {
                 RepositoryId = repository.Id.Value, Kind = EMergeQueueSignal.Command, Number = pr, Command = EMergeQueueCommand.Enqueue,
                 Actor = QueueActor, Source = EMergeQueueCommandSource.DependencyUpdates,
@@ -2079,7 +2080,7 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
         var run = context.Run;
         if (run.WorkRefSha is not { } sha) return;
         run.WorkRefSha = null;
-        await outbox.EnqueueAsync(session, new DependencyUpdateStepMessage
+        await outbox.EnqueueAsync(session.AsSparkSession(), new DependencyUpdateStepMessage
         {
             RepositoryId = run.Repository, Line = run.Line, Run = run.Run, Generation = run.Generation, Step = EDependencyStep.Cleanup, ExpectedSha = sha,
         }, null, ct);
@@ -2263,7 +2264,7 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
     }
 
     private Task ScheduleAsync(DependencyUpdateRun run, EDependencyStep step, TimeSpan? delay, CancellationToken ct, bool expedite = false)
-        => outbox.EnqueueAsync(session, new DependencyUpdateStepMessage
+        => outbox.EnqueueAsync(session.AsSparkSession(), new DependencyUpdateStepMessage
         {
             RepositoryId = run.Repository, Line = run.Line, Run = run.Run, Generation = run.Generation, Step = step,
         }, delay is null && !expedite ? null : new BroadcastOptions { Delay = delay, Expedite = expedite }, ct);
@@ -2305,7 +2306,7 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
         {
             EWorkflowHookStep.PollRun => engine.ScheduleAsync(context.Run, EDependencyStep.PollRun, delay, cancellationToken),
             EWorkflowHookStep.Timeout => engine.ScheduleAsync(context.Run, EDependencyStep.Timeout, delay, cancellationToken),
-            EWorkflowHookStep.CancelRun => engine.outbox.EnqueueAsync(engine.session, new DependencyUpdateStepMessage
+            EWorkflowHookStep.CancelRun => engine.outbox.EnqueueAsync(engine.session.AsSparkSession(), new DependencyUpdateStepMessage
             {
                 RepositoryId = context.Run.Repository, Line = context.Run.Line, Run = context.Run.Run, Generation = context.Run.Generation, Step = EDependencyStep.CancelRun, RunId = runId,
             }, null, cancellationToken),

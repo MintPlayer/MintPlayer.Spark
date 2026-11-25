@@ -1,3 +1,4 @@
+using MintPlayer.Spark;
 using Microsoft.Extensions.DependencyInjection;
 using MintPlayer.Spark.Messaging;
 using MintPlayer.Spark.Messaging.Abstractions;
@@ -31,6 +32,7 @@ public class MessageTypeAllowListTests(RavenSparkSharedDatabase database)
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddSingleton(Store);
+        services.AddRavenDbSessions(); // #536 D40: messaging runs on ISparkStore/ISparkSubscriptions/ISparkAtomicValues
         services.AddSparkMessaging();
         services.AddScoped<IRecipient<FooMessage>, FooRecipient>();
 
@@ -49,6 +51,7 @@ public class MessageTypeAllowListTests(RavenSparkSharedDatabase database)
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddSingleton(Store);
+        services.AddRavenDbSessions(); // #536 D40: messaging runs on ISparkStore/ISparkSubscriptions/ISparkAtomicValues
         services.AddSparkMessaging();
         services.AddScoped<IRecipient<FooMessage>, FooRecipient>();
 
@@ -67,6 +70,7 @@ public class MessageTypeAllowListTests(RavenSparkSharedDatabase database)
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddSingleton(Store);
+        services.AddRavenDbSessions(); // #536 D40: messaging runs on ISparkStore/ISparkSubscriptions/ISparkAtomicValues
         services.AddSparkMessaging();
         services.AddScoped<IRecipient<FooMessage>, FooRecipient>();
 
@@ -88,6 +92,7 @@ public class MessageTypeAllowListTests(RavenSparkSharedDatabase database)
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddSingleton(Store);
+        services.AddRavenDbSessions(); // #536 D40: messaging runs on ISparkStore/ISparkSubscriptions/ISparkAtomicValues
         services.AddSparkMessaging();
 
         using var provider = services.BuildServiceProvider();

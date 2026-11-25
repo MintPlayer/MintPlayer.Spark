@@ -1,6 +1,7 @@
 using MintPlayer.Entities;
 using MintPlayer.Media;
 using MintPlayer.SourceGenerators.Attributes;
+using MintPlayer.Spark;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Authorization;
 using MintPlayer.Spark.Abstractions.Interceptors;
@@ -70,7 +71,7 @@ public partial class SongActions : DefaultPersistentObjectActions<Song>, IBefore
     {
         var added = AddedMediaUrls(context.Before as Song, entity);
         if (added.Length > 0)
-            await outbox.EnqueueAsync(context.GetSession(), new MediaUrlsAdded(added));
+            await outbox.EnqueueAsync(context.GetSession().AsSparkSession(), new MediaUrlsAdded(added));
     }
 
     /// <summary>The media URLs <paramref name="after"/> has and <paramref name="before"/> had not, that a player plugin recognises.</summary>

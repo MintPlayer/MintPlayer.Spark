@@ -1,5 +1,5 @@
 using MintPlayer.Spark.Messaging.Abstractions;
-using Raven.Client.Documents.Session;
+using MintPlayer.Spark.Abstractions.Storage;
 
 namespace MintPlayer.Spark.Messaging;
 
@@ -16,5 +16,5 @@ public interface IMessageOutbox
     /// <see cref="BroadcastOptions.DeduplicationKey"/>, which is refused: deduplication needs optimistic
     /// concurrency on the whole session, and a duplicate would then roll back the caller's own write.
     /// </summary>
-    Task EnqueueAsync<TMessage>(IAsyncDocumentSession session, TMessage message, BroadcastOptions? options = null, CancellationToken cancellationToken = default);
+    Task EnqueueAsync<TMessage>(ISparkSession session, TMessage message, BroadcastOptions? options = null, CancellationToken cancellationToken = default);
 }

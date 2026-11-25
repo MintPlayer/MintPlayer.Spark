@@ -201,7 +201,7 @@ internal sealed partial class SparkInterceptorPipeline : ISparkInterceptorPipeli
         };
 
         foreach (var interceptor in durable)
-            await outbox.EnqueueAsync(context.Session, new SparkAfterCommitWork { InterceptorType = interceptor.GetType().FullName!, IsDelete = isDelete, Change = change });
+            await outbox.EnqueueAsync(context.GetSparkSession(), new SparkAfterCommitWork { InterceptorType = interceptor.GetType().FullName!, IsDelete = isDelete, Change = change });
     }
 
     public async Task RunIsolatedAsync<TInterceptor>(IReadOnlyList<TInterceptor> interceptors, Func<TInterceptor, ValueTask> call, Type entityType, string? id) where TInterceptor : class, ISparkInterceptor

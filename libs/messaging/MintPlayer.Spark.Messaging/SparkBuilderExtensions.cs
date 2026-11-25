@@ -8,7 +8,7 @@ public static class SparkBuilderMessagingExtensions
     private const string ConfigurationSection = "Spark:Messaging";
 
     /// <summary>
-    /// Adds Spark durable messaging infrastructure (message bus, subscription manager, indexes).
+    /// Adds Spark durable messaging infrastructure (message bus, subscription manager, retry sweeper).
     /// <para>
     /// Options bind from the <c>Spark:Messaging</c> configuration section first, then
     /// <paramref name="configure"/> runs — so code wins over configuration, matching
@@ -23,13 +23,13 @@ public static class SparkBuilderMessagingExtensions
     /// appsettings, environment variables and user secrets override property by property.
     /// </para>
     /// </summary>
-    [global::MintPlayer.Spark.Abstractions.Storage.SparkRequiresStore("Spark.Messaging", global::MintPlayer.Spark.Abstractions.Storage.SparkStoreCapabilities.Subscriptions, Provider = global::MintPlayer.Spark.Abstractions.Storage.SparkStoreProviders.RavenDb)]
+    [global::MintPlayer.Spark.Abstractions.Storage.SparkRequiresStore("Spark.Messaging", global::MintPlayer.Spark.Abstractions.Storage.SparkStoreCapabilities.Subscriptions)]
     public static ISparkBuilder AddMessaging(
         this ISparkBuilder builder,
         Action<SparkMessagingOptions>? configure = null)
     {
-        // #551 D13: delivery runs on RavenDB subscriptions, through the store's own client.
-        global::MintPlayer.Spark.Abstractions.Storage.SparkStoreRequirementExtensions.RequireStore(builder, "Spark.Messaging", global::MintPlayer.Spark.Abstractions.Storage.SparkStoreCapabilities.Subscriptions, global::MintPlayer.Spark.Abstractions.Storage.SparkStoreProviders.RavenDb);
+        // #536 D39/D40: delivery runs on the store's neutral subscriptions, so any provider with Subscriptions serves it.
+        global::MintPlayer.Spark.Abstractions.Storage.SparkStoreRequirementExtensions.RequireStore(builder, "Spark.Messaging", global::MintPlayer.Spark.Abstractions.Storage.SparkStoreCapabilities.Subscriptions);
 
         var section = builder.Configuration?.GetSection(ConfigurationSection);
 
@@ -42,11 +42,7 @@ public static class SparkBuilderMessagingExtensions
         if (section is not null)
             builder.Services.PostConfigure<SparkMessagingOptions>(options => ApplyQueueConfiguration(section, options));
 
-        // Register middleware callback to create messaging indexes at startup
-        builder.Registry.AddMiddleware(app =>
-            SparkMessagingExtensions.CreateSparkMessagingIndexes(app));
-
-        // Terminal messages and their progress sidecars carry @expires (retention). UseSpark() enables
+        // Terminal messages and their progress sidecars carry an expiry (retention). UseSpark() enables
         // expiration once, at the Community licence's 36 h floor (SparkExpiration.MinimumDeleteFrequency):
         // a terminal message can linger that long, which nothing depends on.
         builder.Registry.RequireDocumentExpiration("Messaging");

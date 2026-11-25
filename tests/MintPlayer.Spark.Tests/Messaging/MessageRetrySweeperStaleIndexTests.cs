@@ -1,7 +1,6 @@
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using MintPlayer.Spark.Messaging;
-using MintPlayer.Spark.Messaging.Indexes;
 using MintPlayer.Spark.Messaging.Models;
 using MintPlayer.Spark.Messaging.Services;
 using MintPlayer.Spark.Testing;
@@ -11,10 +10,11 @@ using Raven.Client.Documents.Operations.Indexes;
 namespace MintPlayer.Spark.Tests.Messaging;
 
 /// <summary>
-/// <see cref="MessageRetrySweeper"/> takes its ids from <see cref="SparkMessages_ByQueue"/>, which under
-/// load lags the documents by seconds. Each test indexes a message, stops the index, then moves the
-/// document on, so the index lists it in a state it has left: exactly what a loaded host sees. The
-/// sweep must judge the document, not the index entry.
+/// <see cref="MessageRetrySweeper"/> takes its ids from a query, and on RavenDB a query answers from an index that
+/// under load lags the documents by seconds (#536 D40: a plain query, so an auto-index, where it used to be the
+/// static SparkMessages_ByQueue). Each test lets the sweep's queries build their indexes, indexes a message, stops
+/// indexing, then moves the document on, so the query lists it in a state it has left: exactly what a loaded host
+/// sees. The sweep must judge the document, not the query's answer.
 /// <para>
 /// Found through S-M3 failing under a loaded sweep (contributions_PRD §5c): a completed message was
 /// rewritten by every sweep until the index caught up, 11 times in one run.
@@ -22,15 +22,13 @@ namespace MintPlayer.Spark.Tests.Messaging;
 /// </summary>
 public class MessageRetrySweeperStaleIndexTests : RavenSparkTestDriver
 {
-    protected override IEnumerable<System.Reflection.Assembly> IndexAssemblies
-        => [typeof(SparkMessages_ByQueue).Assembly];
 
     private MessageRetrySweeper NewSweeper()
         => new(
-            Store,
+            Store.SparkStore(),
             Options.Create(new SparkMessagingOptions()),
             NullLogger<MessageRetrySweeper>.Instance,
-            new MessagingLeaseManager(Store, NullLogger<MessagingLeaseManager>.Instance) { IsHeld = true });
+            Store.HeldLease());
 
     private static SparkMessage Message(EMessageStatus status) => new()
     {
@@ -42,16 +40,23 @@ public class MessageRetrySweeperStaleIndexTests : RavenSparkTestDriver
         Status = status,
     };
 
-    /// <summary>Stores <paramref name="message"/>, waits until the index has it, then stops the index.</summary>
+    /// <summary>
+    /// Runs both sweeps on an empty database, so their queries create the auto-indexes they answer from; stores
+    /// <paramref name="message"/>, waits until those indexes have it, then stops indexing on the database.
+    /// </summary>
     private async Task<string> IndexThenFreezeAsync(SparkMessage message)
     {
+        var warmUp = NewSweeper();
+        await warmUp.SweepOnceAsync(CancellationToken.None);
+        await warmUp.ReclaimAbandonedAsync(CancellationToken.None);
+
         using (var session = Store.OpenAsyncSession())
         {
             await session.StoreAsync(message);
             await session.SaveChangesAsync();
         }
         await Store.WaitForIndexingAsync();
-        await Store.Maintenance.SendAsync(new StopIndexOperation(new SparkMessages_ByQueue().IndexName));
+        await Store.Maintenance.SendAsync(new StopIndexingOperation());
         return message.Id!;
     }
 

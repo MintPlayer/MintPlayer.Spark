@@ -2,7 +2,7 @@ using System.Collections.Concurrent;
 using System.Threading.Channels;
 using Microsoft.Extensions.Options;
 using MintPlayer.SourceGenerators.Attributes;
-using Raven.Client.Documents;
+using MintPlayer.Spark.Abstractions.Storage;
 
 namespace MintPlayer.Spark.Messaging.Services;
 
@@ -38,7 +38,7 @@ internal sealed partial class MessageQueueRouter : IAsyncDisposable
     private const int LaneCapacity = 512;
 
     [Inject] private readonly MessageProcessor processor;
-    [Inject] private readonly IDocumentStore documentStore;
+    [Inject] private readonly ISparkStore documentStore;
     [Inject] private readonly IOptions<SparkMessagingOptions> optionsAccessor;
     [Inject] private readonly ILogger<MessageQueueRouter> logger;
 

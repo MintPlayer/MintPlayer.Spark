@@ -201,7 +201,7 @@ public class SparkAppTests : AppsTestHost
 
     private sealed class NoOutbox : MintPlayer.Spark.Messaging.IMessageOutbox
     {
-        public Task EnqueueAsync<TMessage>(Raven.Client.Documents.Session.IAsyncDocumentSession session, TMessage message, MintPlayer.Spark.Messaging.Abstractions.BroadcastOptions? options = null, CancellationToken cancellationToken = default)
+        public Task EnqueueAsync<TMessage>(MintPlayer.Spark.Abstractions.Storage.ISparkSession session, TMessage message, MintPlayer.Spark.Messaging.Abstractions.BroadcastOptions? options = null, CancellationToken cancellationToken = default)
             => Task.CompletedTask;
     }
 }

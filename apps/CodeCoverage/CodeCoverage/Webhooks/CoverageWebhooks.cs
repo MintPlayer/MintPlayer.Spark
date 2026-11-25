@@ -1,3 +1,4 @@
+using MintPlayer.Spark;
 using System.ComponentModel;
 using System.Security.Claims;
 using CodeCoverage.Entities;
@@ -195,7 +196,7 @@ public sealed partial class CoverageWebhookQueue
     /// <summary>A no-op while webhooks are off. Stored in <paramref name="session"/>: it goes out only if the finalize commits.</summary>
     public Task EnqueueCompletedAsync(IAsyncDocumentSession session, Build build, CancellationToken cancellationToken)
         => build.Id is { } id && services.GetService<IWebhookPublisher>() is not null
-            ? services.GetRequiredService<MintPlayer.Spark.Messaging.IMessageOutbox>().EnqueueAsync(session, new CoverageBuildCompletedWebhookMessage { BuildId = id.Value }, cancellationToken: cancellationToken)
+            ? services.GetRequiredService<MintPlayer.Spark.Messaging.IMessageOutbox>().EnqueueAsync(session.AsSparkSession(), new CoverageBuildCompletedWebhookMessage { BuildId = id.Value }, cancellationToken: cancellationToken)
             : Task.CompletedTask;
 }
 

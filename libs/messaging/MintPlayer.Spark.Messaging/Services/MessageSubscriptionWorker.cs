@@ -1,14 +1,13 @@
+using System.Linq.Expressions;
 using Microsoft.Extensions.Options;
+using MintPlayer.Spark.Abstractions.Storage;
 using MintPlayer.Spark.Messaging.Models;
 using MintPlayer.Spark.SubscriptionWorker;
-using Raven.Client.Documents;
-using Raven.Client.Documents.Session;
-using Raven.Client.Documents.Subscriptions;
 
 namespace MintPlayer.Spark.Messaging.Services;
 
 /// <summary>
-/// One RavenDB data subscription for a single queue — the pre-rework delivery model, kept for
+/// One subscription for a single queue — the pre-rework delivery model, kept for
 /// <see cref="ESubscriptionMode.SubscriptionPerQueue"/>.
 /// <para>
 /// It costs one subscription per queue name, which is why it is no longer the default: RavenDB caps
@@ -29,66 +28,69 @@ internal sealed class MessageSubscriptionWorker : SparkSubscriptionWorker<SparkM
     private readonly string _queueName;
     private readonly IServiceProvider _serviceProvider;
     private readonly SparkMessagingOptions _options;
+    private readonly ISparkStore _store;
 
     protected override string SubscriptionName => $"SparkMessaging-{_queueName}";
     protected override int MaxDocsPerBatch => 1;
 
     // Hand-written ctor — the queueName is a per-instance runtime value supplied by
     // MessageSubscriptionManager and can't be DI-resolved, so [Inject] doesn't apply here.
-    // Forwards (store, loggerFactory) to the base (which uses [PostConstruct] to derive the
+    // Forwards (subscriptions, loggerFactory) to the base (which uses [PostConstruct] to derive the
     // per-class logger via loggerFactory.CreateLogger(GetType())).
     public MessageSubscriptionWorker(
         string queueName,
-        IDocumentStore store,
+        ISparkSubscriptions subscriptions,
+        ISparkStore store,
         IServiceProvider serviceProvider,
         IOptions<SparkMessagingOptions> options,
         ILoggerFactory loggerFactory)
-        : base(store, loggerFactory)
+        : base(subscriptions, loggerFactory)
     {
         _queueName = queueName;
+        _store = store;
         _serviceProvider = serviceProvider;
         _options = options.Value;
     }
 
-    protected override SubscriptionCreationOptions ConfigureSubscription()
+    protected override Expression<Func<SparkMessage, bool>> Filter
     {
-        // R2-H14: refuse queue names that don't match the strict identifier allowlist, because this
-        // mode interpolates the name into RQL. (The single-subscription feeder has no QueueName
-        // predicate at all, so it has no such surface — this validation is why the two differ.)
-        // An earlier EscapeRql helper escaped the single quote but not the backslash, so `\\'`
-        // round-tripped to `\\\'` and still closed the literal. The set of valid queue names is
-        // bounded — developer-declared via attribute, or an explicit override — so a strict
-        // allowlist is the right shape. Throw at startup so the operator sees it before traffic.
-        if (!QueueNames.IsValid(_queueName))
-            throw new InvalidOperationException(
-                $"Invalid Spark message queue name '{_queueName}'. Queue names must match [A-Za-z0-9._+`-]+.");
-
-        // Both halves of the designed pickup condition: new messages, AND messages whose retry
-        // backoff or broadcast delay has elapsed. Subscriptions re-evaluate a document only when it
-        // is written, so nothing could ever match a parked message again on its own; and a
-        // where-clause cannot evaluate time — `NextAttemptAtUtc <= now()` silently never matches,
-        // verified empirically. So "the backoff has elapsed" is materialized as plain field state
-        // by MessageRetrySweeper, whose patch also bumps the change vector that triggers
-        // re-evaluation. Never put now() here (invariant 7).
-        return new SubscriptionCreationOptions
+        get
         {
-            Query = $@"from SparkMessages where QueueName = '{_queueName}' and ((Status = '{nameof(EMessageStatus.Pending)}' and (NextAttemptAtUtc = null or WakeUp = true)) or (Status = '{nameof(EMessageStatus.Failed)}' and WakeUp = true))"
-        };
+            // R2-H14: refuse queue names that don't match the strict identifier allowlist. The filter is typed now
+            // (#536 D39), but RavenDB still renders the name into the subscription's RQL. (The single-subscription feeder has no QueueName
+            // predicate at all, so it has no such surface — this validation is why the two differ.)
+            // An earlier EscapeRql helper escaped the single quote but not the backslash, so `\\'`
+            // round-tripped to `\\\'` and still closed the literal. The set of valid queue names is
+            // bounded — developer-declared via attribute, or an explicit override — so a strict
+            // allowlist is the right shape. Throw at startup so the operator sees it before traffic.
+            if (!QueueNames.IsValid(_queueName))
+                throw new InvalidOperationException(
+                    $"Invalid Spark message queue name '{_queueName}'. Queue names must match [A-Za-z0-9._+`-]+.");
+
+            // Both halves of the designed pickup condition: new messages, AND messages whose retry
+            // backoff or broadcast delay has elapsed. Subscriptions re-evaluate a document only when it
+            // is written, so nothing could ever match a parked message again on its own; and a
+            // where-clause cannot evaluate time — `NextAttemptAtUtc <= now()` silently never matches,
+            // verified empirically. So "the backoff has elapsed" is materialized as plain field state
+            // by MessageRetrySweeper, whose patch also bumps the change vector that triggers
+            // re-evaluation. Never put now() here (invariant 7).
+            var queueName = _queueName;
+            return m => m.QueueName == queueName
+                && ((m.Status == EMessageStatus.Pending && (m.NextAttemptAtUtc == null || m.WakeUp == true))
+                    || (m.Status == EMessageStatus.Failed && m.WakeUp == true));
+        }
     }
 
-    protected override async Task ProcessBatchAsync(SubscriptionBatch<SparkMessage> batch, CancellationToken cancellationToken)
+    protected override async Task ProcessBatchAsync(SparkSubscriptionBatch<SparkMessage> batch, CancellationToken cancellationToken)
     {
         var processor = _serviceProvider.GetRequiredService<MessageProcessor>();
 
         foreach (var item in batch.Items)
         {
-            if (item.Result.Id is null)
-                continue;
+            using var session = _store.OpenSession();
+            session.OptimisticConcurrency = true;
 
-            using var session = batch.OpenAsyncSession();
-            session.Advanced.OptimisticConcurrencyMode = OptimisticConcurrencyMode.Writes;
-
-            var message = await session.LoadAsync<SparkMessage>(item.Result.Id, cancellationToken);
+            var message = await session.LoadAsync<SparkMessage>(item.Id, cancellationToken);
             if (message is null)
                 continue;
 
@@ -114,7 +116,7 @@ internal sealed class MessageSubscriptionWorker : SparkSubscriptionWorker<SparkM
             // twice, and a hung handler held this queue's subscription for ever.
             var messageId = message.Id!;
             await ClaimedExecution.RunAsync(
-                DocumentStore, _options, Logger, messageId, _options.HandlerTimeoutFor(_queueName),
+                _store, _options, Logger, messageId, _options.HandlerTimeoutFor(_queueName),
                 token => processor.ProcessAsync(messageId, MessageClaims.NodeId, token, cancellationToken),
                 cancellationToken);
         }

@@ -10,8 +10,8 @@
 		<Version>0.0.0-PLACEHOLDER</Version>
 		<Authors>MintPlayer</Authors>
 		<Company>MintPlayer</Company>
-		<Description>Public abstractions for MintPlayer.Spark.SubscriptionWorker: the SparkSubscriptionWorker&lt;T&gt; base class, RetryNumerator, options. Reference this from libraries that only need to DEFINE workers; reference the implementation package from hosts that register them.</Description>
-		<PackageTags>ravendb;subscription;worker;abstractions</PackageTags>
+		<Description>Public abstractions for MintPlayer.Spark.SubscriptionWorker: the SparkSubscriptionWorker&lt;T&gt; base class, on any Spark store. Reference this from libraries that only need to DEFINE workers; reference the implementation package from hosts that register them.</Description>
+		<PackageTags>spark;subscription;worker;abstractions</PackageTags>
 		<PackageLicenseExpression>MIT</PackageLicenseExpression>
 		<PackageProjectUrl>https://github.com/MintPlayer/MintPlayer.Spark</PackageProjectUrl>
 		<RepositoryUrl>https://github.com/MintPlayer/MintPlayer.Spark.git</RepositoryUrl>
@@ -24,7 +24,11 @@
 			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
 		</PackageReference>
 		<PackageReference Include="MintPlayer.SourceGenerators.Attributes" Version="13.1.2" GeneratePathProperty="true" />
-		<PackageReference Include="RavenDB.Client" Version="7.2.7" />
+	</ItemGroup>
+
+	<!-- #536 D39: workers run on ISparkSubscriptions, so any store provider keeps them. -->
+	<ItemGroup>
+		<ProjectReference Include="..\..\spark\MintPlayer.Spark.Abstractions\MintPlayer.Spark.Abstractions.csproj" />
 	</ItemGroup>
 
 </Project>

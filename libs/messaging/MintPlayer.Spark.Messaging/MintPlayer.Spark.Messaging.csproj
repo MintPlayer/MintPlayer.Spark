@@ -41,7 +41,8 @@
 			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
 		</PackageReference>
 		<PackageReference Include="MintPlayer.SourceGenerators.Attributes" Version="13.1.2" GeneratePathProperty="true" />
-		<PackageReference Include="RavenDB.Client" Version="7.2.7" />
+		<!-- Message payloads are Newtonsoft JSON (it came through RavenDB.Client before #536 D40). -->
+		<PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
 	</ItemGroup>
 
 </Project>

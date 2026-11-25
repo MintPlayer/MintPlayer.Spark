@@ -1,3 +1,4 @@
+using MintPlayer.Spark;
 using Microsoft.Extensions.Options;
 using MintPlayer.Spark.Messaging;
 using MintPlayer.Spark.Messaging.Abstractions;
@@ -17,7 +18,7 @@ public class MessageBusTests : RavenSparkTestDriver
     private record OrderShipped(string OrderId);
 
     private IMessageBus NewBus(SparkMessagingOptions? options = null)
-        => new MessageBus(Store, Options.Create(options ?? new SparkMessagingOptions()));
+        => new MessageBus(Store.SparkStore(), Options.Create(options ?? new SparkMessagingOptions()));
 
     [Fact]
     public async Task BroadcastAsync_persists_a_SparkMessage_with_inferred_queue_name_and_payload()
@@ -234,7 +235,7 @@ public class MessageBusTests : RavenSparkTestDriver
     {
         using (var session = Store.OpenAsyncSession())
         {
-            await NewOutbox().EnqueueAsync(session, new OrderPlaced("orders/2", 1m));
+            await NewOutbox().EnqueueAsync(session.AsSparkSession(), new OrderPlaced("orders/2", 1m));
             await session.StoreAsync(new { Name = "the data change" }, "Data/1");
 
             using (var other = Store.OpenAsyncSession())
@@ -254,7 +255,7 @@ public class MessageBusTests : RavenSparkTestDriver
     public async Task EnqueueAsync_in_a_session_that_is_never_saved_publishes_nothing()
     {
         using (var session = Store.OpenAsyncSession())
-            await NewOutbox().EnqueueAsync(session, new OrderPlaced("orders/3", 1m));
+            await NewOutbox().EnqueueAsync(session.AsSparkSession(), new OrderPlaced("orders/3", 1m));
 
         using var verify = Store.OpenAsyncSession();
         (await verify.Query<SparkMessage>().Customize(c => c.WaitForNonStaleResults()).CountAsync()).Should().Be(0);
@@ -264,7 +265,7 @@ public class MessageBusTests : RavenSparkTestDriver
     public async Task EnqueueAsync_refuses_a_deduplication_key()
     {
         using var session = Store.OpenAsyncSession();
-        var act = () => NewOutbox().EnqueueAsync(session, new OrderPlaced("orders/4", 1m), new BroadcastOptions { DeduplicationKey = "k" });
+        var act = () => NewOutbox().EnqueueAsync(session.AsSparkSession(), new OrderPlaced("orders/4", 1m), new BroadcastOptions { DeduplicationKey = "k" });
 
         await act.Should().ThrowAsync<ArgumentException>();
         session.Advanced.OptimisticConcurrencyMode.Should().Be(OptimisticConcurrencyMode.None, "the caller's session is left as it was");

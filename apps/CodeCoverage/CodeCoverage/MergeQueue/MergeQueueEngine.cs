@@ -1,3 +1,4 @@
+using MintPlayer.Spark;
 using MintPlayer.Spark.Abstractions;
 using System.Globalization;
 using System.Text.RegularExpressions;
@@ -1925,7 +1926,7 @@ public partial class MergeQueueEngine : IMergeQueueEngine
 
         // §0 D106: the linked issues, through the outbox, so the step is queued exactly when the merge is recorded. A crash
         // before the save leaves the entry merging, and whichever of the poll or the merged event completes it queues it.
-        await outbox.EnqueueAsync(session, new MergeQueueStepMessage
+        await outbox.EnqueueAsync(session.AsSparkSession(), new MergeQueueStepMessage
         {
             EntryId = entry.Id.Value, Run = entry.Run, Generation = entry.Generation, Step = EMergeQueueStep.CloseIssues,
         }, new BroadcastOptions { Delay = CloseIssuesDelay }, ct);
@@ -2038,7 +2039,7 @@ public partial class MergeQueueEngine : IMergeQueueEngine
         // D5: the queue branch goes once the run is over, under a lease on the commit we left there. Only a run that
         // dispatched ever pushed one (§0 D65), so a run that did not has nothing to delete.
         if (entry.QueueBranchSha is { } pushed)
-            await outbox.EnqueueAsync(session, new MergeQueueStepMessage
+            await outbox.EnqueueAsync(session.AsSparkSession(), new MergeQueueStepMessage
             {
                 EntryId = entry.Id.Value, Run = entry.Run, Generation = entry.Generation, Step = EMergeQueueStep.Cleanup,
                 QueueBranch = entry.QueueBranch, ExpectedSha = pushed,
@@ -2247,7 +2248,7 @@ public partial class MergeQueueEngine : IMergeQueueEngine
             EWorkflowHookStep.PollRun => engine.ScheduleAsync(entry, EMergeQueueStep.PollRun, delay, cancellationToken),
             EWorkflowHookStep.Timeout => engine.ScheduleAsync(entry, EMergeQueueStep.Timeout, delay, cancellationToken),
             // §0 D53: not gated on the entry (CancelRunAsync), so it carries the run.
-            EWorkflowHookStep.CancelRun => engine.outbox.EnqueueAsync(engine.session, new MergeQueueStepMessage
+            EWorkflowHookStep.CancelRun => engine.outbox.EnqueueAsync(engine.session.AsSparkSession(), new MergeQueueStepMessage
             {
                 EntryId = entry.Id.Value, Run = entry.Run, Generation = entry.Generation, Step = EMergeQueueStep.CancelRun, RunId = runId,
             }, null, cancellationToken),
@@ -2455,13 +2456,13 @@ public partial class MergeQueueEngine : IMergeQueueEngine
     {
         var repository = context.Repository;
         foreach (var due in ForgeCheck.Due(repository.KnownChecks, reported, Now))
-            await outbox.EnqueueAsync(session,
+            await outbox.EnqueueAsync(session.AsSparkSession(),
                 new ForgeWebhookMessage<CheckReported>(repository.Provider, new CheckReported(repository.Id.Value, due.Name, due.Kind, due.AppSlug)),
                 cancellationToken: ct);
     }
 
     private Task ScheduleAsync(MergeQueueEntry entry, EMergeQueueStep step, TimeSpan? delay, CancellationToken ct)
-        => outbox.EnqueueAsync(session, new MergeQueueStepMessage
+        => outbox.EnqueueAsync(session.AsSparkSession(), new MergeQueueStepMessage
         {
             EntryId = entry.Id.Value,
             Run = entry.Run,

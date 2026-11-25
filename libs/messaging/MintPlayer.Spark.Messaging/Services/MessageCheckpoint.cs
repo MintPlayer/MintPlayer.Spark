@@ -1,6 +1,5 @@
 using MintPlayer.Spark.Messaging.Abstractions;
 using MintPlayer.Spark.Messaging.Models;
-using Raven.Client.Documents.Session;
 
 namespace MintPlayer.Spark.Messaging.Services;
 
@@ -11,10 +10,10 @@ namespace MintPlayer.Spark.Messaging.Services;
 /// </summary>
 internal sealed class MessageCheckpoint : IMessageCheckpoint
 {
-    private IAsyncDocumentSession? _session;
+    private MessageSession? _session;
     private HandlerExecution? _handlerExecution;
 
-    internal void SetContext(IAsyncDocumentSession session, HandlerExecution handlerExecution)
+    internal void SetContext(MessageSession session, HandlerExecution handlerExecution)
     {
         _session = session;
         _handlerExecution = handlerExecution;

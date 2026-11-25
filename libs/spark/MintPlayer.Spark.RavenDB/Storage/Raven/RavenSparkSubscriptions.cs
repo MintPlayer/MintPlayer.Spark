@@ -43,6 +43,10 @@ internal sealed partial class RavenSparkSubscriptions : ISparkSubscriptions
                     $"Subscription '{definition.Name}' cannot be created: the RavenDB licence refused it ({ex.Message}). Reduce the number of "
                     + "subscriptions or raise the licence limit.", ex);
             }
+            catch (Exception ex) when (ex is DatabaseDoesNotExistException or AuthorizationException)
+            {
+                throw new SparkSubscriptionException($"Subscription '{definition.Name}' cannot be created: {ex.Message}", ex);
+            }
             catch (RavenException) when (attempt < 3)
             {
                 // Two runners creating the same name at once: one create wins and the other's is refused ("already in use

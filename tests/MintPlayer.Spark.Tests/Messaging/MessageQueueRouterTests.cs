@@ -103,8 +103,8 @@ public class MessageQueueRouterTests : RavenSparkTestDriver
         _cleanup.Add(provider);
 
         var options = Options.Create(messagingOptions ?? FastOptions);
-        var processor = new MessageProcessor(provider, processorStore ?? Store, options, NullLogger<MessageProcessor>.Instance);
-        var router = new MessageQueueRouter(processor, routerStore ?? Store, options, _log);
+        var processor = new MessageProcessor(provider, (processorStore ?? Store).SparkStore(), options, NullLogger<MessageProcessor>.Instance);
+        var router = new MessageQueueRouter(processor, (routerStore ?? Store).SparkStore(), options, _log);
         router.Start(CancellationToken.None);
         _cleanup.Add(router);
         return router;

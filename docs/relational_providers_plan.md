@@ -423,9 +423,31 @@ rounds, milestones and status. Branch `feat/536-sql-server-provider`, draft PR #
     commit-stamp cursor plus a lease (`SparkCursorSubscriptions`) on InMemory, SQL Server and PostgreSQL. The
     conformance suite is green on all four (25 cases). Found on the way: RavenDB's create-or-update races between two
     runners; the create is now retried.
-  - **Next in M7:** `SparkSubscriptionWorker` onto `ISparkSubscriptions`, then messaging (lease → `ISparkStoreLock`,
-    feeder, per-queue worker, claims, sweeper, the outbox on `ISparkSession`, `SparkMessages_ByPriority`), then
-    Notifications' `SparkNotifier`/`WebPushDelivery` and Apps.
+  - **M7b (2026-11-25): messaging and the subscription worker on any store (PRD D40, D41).**
+    - **Messaging drops `RavenDB.Client`.** It needs only the Subscriptions capability. Each RavenDB mechanism has a
+      neutral replacement:
+      - the feeder's `@last-modified` sequence becomes `AssignSequences`
+      - its two static indexes become plain queries
+      - the sweeper's patch scripts become versioned stores
+      - the lease's compare-exchange value becomes an atomic value under a new key
+      - the outbox takes `ISparkSession`
+    - **Relational stores check a loaded row's version on every UPDATE.** So the handler session, `MessageSession`,
+      retries a save that conflicted only with its own claim renewal.
+    - **`ISparkStoreReadiness` (D41).** On a fresh database, hosted services started before `UseSpark` had migrated.
+      Messaging now waits for the schema.
+    - **The worker and its callers.** `SparkSubscriptionWorker<T>` runs on `ISparkSubscriptions`; `RetryNumerator` moves
+      to Replication. Callers still on a raw RavenDB session bridge with `AsSparkSession()`: Apps, Notifications,
+      MintPlayer, CodeCoverage and SeoTester. The bridge is behaviour-neutral on RavenDB.
+    - **Evidence.**
+      - `NeutralMessagingTests` 3/3 on all four databases
+      - RavenDB messaging, subscription worker and replication 265/265
+      - subscription conformance 15/15 on SQL Server + PostgreSQL
+      - CodeCoverage 286/286
+    - **CI fix.** `SparkStoreRequirementTests` assumed InMemory lacks Subscriptions, which M7a changed; it now uses
+      Revisions.
+  - **Next:** Notifications' `SparkNotifier`/`WebPushDelivery` and Apps off the `AsSparkSession()` bridge and their
+    RavenDB pins; then the rest of M6 (templates, Tier 2); cron, the subscription worker's remaining hosted services
+    and others adopt `ISparkStoreReadiness` as they are ported.
 - **Local spike servers left running:**
   - SQL Server: `SparkSpike536` on `localhost` and `localhost\MSSQLSERVER01`
   - Docker `spark536-pg` (`postgres:18`, 127.0.0.1:55432). M4 needs it again.
