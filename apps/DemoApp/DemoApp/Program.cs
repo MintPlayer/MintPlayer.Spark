@@ -1,6 +1,7 @@
 using DemoApp;
 using MintPlayer.AspNetCore.SpaServices.Extensions;
 using MintPlayer.Spark;
+using MintPlayer.Spark.Commands;
 using MintPlayer.Spark.Controllers;
 using MintPlayer.Spark.Extensions;
 using System.Text.RegularExpressions;
@@ -31,22 +32,12 @@ builder.Services.AddSpaStaticFilesImproved(configuration =>
     configuration.RootPath = "ClientApp/dist/ClientApp/browser";
 });
 
-// Model synchronization is a build step, not a run mode: it writes App_Data/Model/*.json from the
-// entity classes and needs no database, so it runs here and the process returns before Build().
-if (builder.SynchronizeSparkModelsIfRequested(args))
-    return;
-
-// Writes a starting App_Data/security.json for an application that has none. Never overwrites.
-if (builder.InitializeSparkSecurityIfRequested(args))
-    return;
-
-// --spark-verify-security fails the build when the set of rights reachable WITHOUT signing in
-// has changed. security.json is a data file: widening it is a one-line diff that reads no
-// differently from narrowing it, so the baseline is what makes the change reviewable.
-if (builder.VerifySparkSecurityIfRequested(args))
-    return;
-
 var app = builder.Build();
+
+// Spark's commands (--spark-help lists them): model synchronization, security, and every package's own. Building the
+// host constructs no service and opens no connection, so the ones that need no database run in CI.
+if (await app.RunSparkCommandIfRequestedAsync(args))
+    return;
 
 // Configure the HTTP request pipeline.
 app.UseHttpsRedirection();

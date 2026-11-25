@@ -47,6 +47,9 @@ public static class SparkModerationExtensions
             configurationBuilder.AddSparkModerationFile();
 
         var services = builder.Services;
+        global::MintPlayer.Spark.Abstractions.Commands.SparkCommandServiceCollectionExtensions.AddSparkCommand<SparkModerationInitCommand>(
+            services, SparkModerationInitExtensions.InitFlag,
+            "Prints the security.json rights the configured moderation privileges and moderators need; writes nothing.");
         var optionsBuilder = services.AddOptions<SparkModerationOptions>();
         if (configure is not null)
             optionsBuilder.Configure(configure);

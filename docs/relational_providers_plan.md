@@ -56,11 +56,22 @@ rounds, milestones and status. Branch `feat/536-sql-server-provider`, draft PR #
     reading `ServiceDescriptor`s; (2) an unknown `--spark-` flag is refused with exit 2 instead of starting the
     host (every `--spark-` flag in the repo is a command, so a typo must not boot the web server). Last registration
     of a flag wins for both the command and its help line. Test: `SparkCommandRunnerTests` (7).
-    **NEXT, M3c-2:** move the five commands (synchronize/verify model + describe, init security,
-    verify/synchronize security, init moderation, image variants) onto it, the apps' and template's `Program.cs`
-    to one line after `Build()`, the generator comment (`SparkFullGenerator.Producer.cs:156`), the AGENTS guide, and
-    the ~60 test call sites; `SynchronizeIfMissing` (no flag) becomes the runner's no-command step; retire
-    `SparkSecurityVerificationExtensions.cs:75`'s throwaway `BuildServiceProvider()`.
+  - **M3c-2, the commands on `ISparkCommand` (D34):** the five commands are commands now. `AddSpark` registers
+    `--spark-synchronize-model`, `--spark-verify-model`, `--spark-describe` (`SparkModelCommand`),
+    `--spark-init-security` and `--spark-synchronize-security`/`--spark-verify-security`
+    (`Commands/SparkCoreCommands.cs`); `AddModeration` registers `--spark-init-moderation`, `AddFiles`
+    `--spark-regenerate-variants`. The public builder-phase methods (`SynchronizeSparkModelsIfRequested` and its
+    `<TContext>` overload, `InitializeSparkSecurityIfRequested`, `VerifySparkSecurityIfRequested`,
+    `InitializeSparkModerationIfRequested`, the image-variant one) are gone; their bodies are internal and take a
+    `SparkCommandHost(Services, Environment, Provider?)`. Every app and the template call
+    `if (await app.RunSparkCommandIfRequestedAsync(args)) return;` once, after `Build()`; with no command it runs
+    `SynchronizeIfMissing`. **Deviations:** (1) the commands still report through `Environment.ExitCode`, read back
+    by `ExitCodeOf`, so the ~60 test call sites stay as they were through test-only extensions of the old names
+    (`tests/MintPlayer.Spark.Tests/_Infrastructure/SparkCommandTestExtensions.cs`); (2) the command reads the
+    service registrations from a `SparkServiceRegistrations` singleton (the collection itself), since the model and
+    posture code read descriptors; (3) the posture command runs on the app's provider, and the throwaway
+    `BuildServiceProvider()` remains only for that test path. The null-guard tests went with the public methods.
+    Test: `AddSpark_registers_the_core_commands`.
   - Order: the core pieces in `libs/` first (the struct, the model registry, the generator for `__DocumentId`, JSON,
     the route binder), then the feature libraries, then the apps.
   - It touches the three production apps (CodeCoverage, SeoTester, MintPlayer). RavenDB stays green at the end of the

@@ -153,7 +153,7 @@ public class SparkFullProducer : Producer
         writer.WriteLine("/// </summary>");
         writer.WriteLine("/// <remarks>");
         writer.WriteLine("/// Model synchronization is no longer mounted here — it is a build step, not middleware.");
-        writer.WriteLine("/// Call <c>builder.SynchronizeSparkModelsIfRequested(args)</c> before <c>builder.Build()</c>.");
+        writer.WriteLine("/// Call <c>app.RunSparkCommandIfRequestedAsync(args)</c> right after <c>builder.Build()</c>.");
         writer.WriteLine("/// </remarks>");
         using (writer.OpenBlock("public static global::Microsoft.AspNetCore.Builder.IApplicationBuilder UseSparkFull(this global::Microsoft.AspNetCore.Builder.IApplicationBuilder app)"))
         {

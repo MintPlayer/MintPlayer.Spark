@@ -108,6 +108,9 @@ public static class SparkExtensions
         services.Configure<Microsoft.AspNetCore.Mvc.MvcOptions>(options =>
             options.ModelBinderProviders.Insert(0, new Services.SparkIdModelBinderProvider()));
 
+        // The command-line commands (#536 D34): keyed by their flag, run by app.RunSparkCommandIfRequestedAsync(args).
+        Commands.SparkCoreCommands.AddSparkCoreCommands(services);
+
         // Forwarded headers (#460, D15) — trusted from private ranges by default, placed at the
         // front of the pipeline by a startup filter. An application no longer configures or calls
         // UseForwardedHeaders() itself; see SparkForwardedHeadersOptions.

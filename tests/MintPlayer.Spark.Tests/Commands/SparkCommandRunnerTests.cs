@@ -118,4 +118,19 @@ public class SparkCommandRunnerTests
 
         register.Should().Throw<ArgumentException>();
     }
+
+    [Fact]
+    public void AddSpark_registers_the_core_commands()
+    {
+        var services = new ServiceCollection();
+        services.AddSpark(new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build(), _ => { });
+
+        var flags = services.Where(d => d.ServiceType == typeof(SparkCommandDescription))
+            .Select(d => ((SparkCommandDescription)d.ImplementationInstance!).Flag).ToList();
+        string[] expected = [
+            "--spark-synchronize-model", "--spark-verify-model", "--spark-describe",
+            "--spark-init-security", "--spark-synchronize-security", "--spark-verify-security"];
+        expected.Except(flags).Should().BeEmpty();
+        services.Should().Contain(d => d.ServiceType == typeof(ISparkCommand) && Equals(d.ServiceKey, "--spark-verify-security"));
+    }
 }

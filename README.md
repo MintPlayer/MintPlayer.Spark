@@ -65,9 +65,11 @@ The fastest way to get started is with `MintPlayer.Spark.AllFeatures`. Reference
 ```csharp
 builder.Services.AddSparkFull(builder.Configuration);
 
-// Build step: regenerates App_Data/Model when --spark-synchronize-model is passed.
-// Needs no database, so it also runs in CI.
-if (builder.SynchronizeSparkModelsIfRequested(args))
+var app = builder.Build();
+
+// Spark's commands: --spark-synchronize-model regenerates App_Data/Model, --spark-help lists the rest.
+// Building the host opens no database, so the model commands also run in CI.
+if (await app.RunSparkCommandIfRequestedAsync(args))
     return;
 
 app.UseRouting();
@@ -398,8 +400,9 @@ accident; this one is not, so do it first.
    // before
    app.UseSpark(o => o.SynchronizeModelsIfRequested<MyContext>(args));
 
-   // after — needs no database, so it also runs in CI
-   if (builder.SynchronizeSparkModelsIfRequested(args))
+   // after: one line after Build() runs every Spark command; needs no database, so it also runs in CI
+   var app = builder.Build();
+   if (await app.RunSparkCommandIfRequestedAsync(args))
        return;
    ```
 

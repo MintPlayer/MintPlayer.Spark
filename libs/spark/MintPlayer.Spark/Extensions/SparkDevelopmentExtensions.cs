@@ -1,6 +1,7 @@
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Builder;
 using MintPlayer.Spark.Abstractions.Model;
+using MintPlayer.Spark.Commands;
 using MintPlayer.Spark.Configuration;
 using MintPlayer.Spark.Services;
 using System.Reflection;
@@ -8,7 +9,8 @@ using System.Reflection;
 namespace MintPlayer.Spark;
 
 /// <summary>
-/// Build-time Spark commands, invoked from <c>Program.cs</c> before <c>builder.Build()</c>.
+/// Build-time Spark commands. Since #536 D34 they run as <see cref="Abstractions.Commands.ISparkCommand"/>s, right after
+/// <c>builder.Build()</c>, which constructs no service and opens no connection.
 /// <para>
 /// Model synchronization is a code-generation step, not a run mode: it reflects over the entity
 /// classes and writes <c>App_Data/Model/*.json</c>. It needs no database, no service provider and no
@@ -26,7 +28,7 @@ public static class SparkDevelopmentExtensions
     /// to, optionally one element and the layer each leaf came from, then exits. Opens no database,
     /// like the model commands. See <see cref="SparkDescribeCommand"/>.
     /// </summary>
-    private static bool DescribeIfRequested(WebApplicationBuilder builder, string[] args)
+    private static bool DescribeIfRequested(SparkCommandHost builder, string[] args)
     {
         if (!SparkDescribeCommand.TryParse(args, out var kind, out var name, out var layers))
             return false;
@@ -56,36 +58,21 @@ public static class SparkDevelopmentExtensions
     private const int ExitDrift = 3;
 
     /// <summary>
-    /// Handles the build-time model commands and reports whether the host should stop instead of
-    /// starting.
+    /// Runs the model commands (#536 D34: they are <see cref="Abstractions.Commands.ISparkCommand"/>s now, run by
+    /// <c>app.RunSparkCommandIfRequestedAsync(args)</c> after <c>Build()</c>) and reports whether one ran.
     /// <list type="bullet">
     /// <item><c>--spark-synchronize-model</c> regenerates <c>App_Data/Model</c> and the hash file.</item>
     /// <item><c>--spark-verify-model</c> writes nothing and exits 3 if the model has drifted — the
     /// merge-queue gate.</item>
+    /// <item><c>--spark-describe</c> prints what a kind composes to.</item>
     /// </list>
-    /// <para>
-    /// The entity context type is taken from the registration made by
-    /// <c>spark.UseContext&lt;TContext&gt;()</c>, so no type argument is needed here.
-    /// </para>
-    /// <para>
-    /// Neither command opens a database connection, so both run in CI.
-    /// </para>
+    /// With none of them, it writes a missing model on a first Development run when
+    /// <see cref="SparkOptions.SynchronizeModelIfMissing"/> asks for it. The context type is the one
+    /// <c>spark.UseContext&lt;TContext&gt;()</c> registered, unless <paramref name="contextType"/> names one. None of
+    /// this opens a database connection, so it all runs in CI.
     /// </summary>
-    /// <returns>
-    /// <see langword="true"/> when a command was handled and the host should return from
-    /// <c>Main</c>; <see langword="false"/> when no Spark command was requested.
-    /// </returns>
-    /// <example>
-    /// <code>
-    /// builder.Services.AddSpark(builder.Configuration, spark => spark.UseContext&lt;MyContext&gt;());
-    ///
-    /// if (builder.SynchronizeSparkModelsIfRequested(args))
-    ///     return;
-    /// </code>
-    /// </example>
-    public static bool SynchronizeSparkModelsIfRequested(this WebApplicationBuilder builder, string[] args)
+    internal static bool RunModelCommands(SparkCommandHost builder, string[] args, Type? contextType = null)
     {
-        ArgumentNullException.ThrowIfNull(builder);
         ArgumentNullException.ThrowIfNull(args);
 
         if (DescribeIfRequested(builder, args))
@@ -94,46 +81,17 @@ public static class SparkDevelopmentExtensions
         var verifyOnly = args.Contains(VerifyFlag);
         if (!verifyOnly && !args.Contains(SynchronizeFlag))
         {
-            SynchronizeIfMissing(builder, builder.Services.LastOrDefault(d => d.ServiceType == typeof(SparkContext))?.ImplementationType);
+            SynchronizeIfMissing(builder, contextType ?? builder.Services.LastOrDefault(d => d.ServiceType == typeof(SparkContext))?.ImplementationType);
             return false;
         }
 
-        if (!TryResolveRegisteredContextType(builder.Services, out var contextType))
+        if (contextType is null && !TryResolveRegisteredContextType(builder.Services, out contextType))
             return true;
 
         if (verifyOnly)
             Verify(builder, contextType);
         else
             Synchronize(builder, contextType);
-
-        return true;
-    }
-
-    /// <summary>
-    /// Explicit-context overload of
-    /// <see cref="SynchronizeSparkModelsIfRequested(WebApplicationBuilder, string[])"/>, for apps that
-    /// prefer to name the context at the call site rather than rely on the registration.
-    /// </summary>
-    public static bool SynchronizeSparkModelsIfRequested<TContext>(this WebApplicationBuilder builder, string[] args)
-        where TContext : SparkContext
-    {
-        ArgumentNullException.ThrowIfNull(builder);
-        ArgumentNullException.ThrowIfNull(args);
-
-        if (DescribeIfRequested(builder, args))
-            return true;
-
-        var verifyOnly = args.Contains(VerifyFlag);
-        if (!verifyOnly && !args.Contains(SynchronizeFlag))
-        {
-            SynchronizeIfMissing(builder, typeof(TContext));
-            return false;
-        }
-
-        if (verifyOnly)
-            Verify(builder, typeof(TContext));
-        else
-            Synchronize(builder, typeof(TContext));
 
         return true;
     }
@@ -205,7 +163,7 @@ public static class SparkDevelopmentExtensions
     /// checkout, needs a git index, and reports drift for any unrelated dirt.
     /// </para>
     /// </summary>
-    private static void Verify(WebApplicationBuilder builder, Type contextType)
+    private static void Verify(SparkCommandHost builder, Type contextType)
     {
         if (!IsUsableContextType(contextType))
             return;
@@ -1507,7 +1465,7 @@ public static class SparkDevelopmentExtensions
     /// it would without the option.
     /// </para>
     /// </remarks>
-    private static void SynchronizeIfMissing(WebApplicationBuilder builder, Type? contextType)
+    private static void SynchronizeIfMissing(SparkCommandHost builder, Type? contextType)
     {
         var options = builder.Services.LastOrDefault(d => d.ServiceType == typeof(SparkOptions))?.ImplementationInstance as SparkOptions;
         if (options?.SynchronizeModelIfMissing != true || !builder.Environment.IsDevelopment() || contextType is null)
@@ -1521,7 +1479,7 @@ public static class SparkDevelopmentExtensions
         Synchronize(builder, contextType);
     }
 
-    private static void Synchronize(WebApplicationBuilder builder, Type contextType)
+    private static void Synchronize(SparkCommandHost builder, Type contextType)
     {
         // The context is never instantiated. The synchronizer reflects over the context's property
         // TYPES and never invokes a getter, so no session, no service provider and no RavenDB
@@ -1632,8 +1590,7 @@ public static class SparkDevelopmentExtensions
         {
             Console.Error.WriteLine(
                 $"Spark: {SynchronizeFlag} was passed but no SparkContext is registered. " +
-                "Call spark.UseContext<TContext>() inside AddSpark(...), or use the " +
-                "SynchronizeSparkModelsIfRequested<TContext>(args) overload.");
+                "Call spark.UseContext<TContext>() inside AddSpark(...).");
             Environment.ExitCode = ExitMisconfigured;
             return false;
         }
@@ -1642,8 +1599,7 @@ public static class SparkDevelopmentExtensions
         {
             Console.Error.WriteLine(
                 "Spark: the registered SparkContext has no implementation type, so its model shape " +
-                "cannot be determined. Use the " +
-                "SynchronizeSparkModelsIfRequested<TContext>(args) overload.");
+                "cannot be determined. Register it with spark.UseContext<TContext>().");
             Environment.ExitCode = ExitMisconfigured;
             return false;
         }

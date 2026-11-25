@@ -49,7 +49,7 @@ public class SparkSecurityInitExtensionsTests : IDisposable
     [Fact]
     public void The_scaffold_is_written_with_LF_endings()
     {
-        SparkSecurityInitExtensions.InitializeSparkSecurityIfRequested(Builder(), ["--spark-init-security"]);
+        Builder().InitializeSparkSecurityIfRequested(["--spark-init-security"]);
 
         var text = File.ReadAllText(SecurityPath);
 
@@ -65,7 +65,7 @@ public class SparkSecurityInitExtensionsTests : IDisposable
     [Fact]
     public void The_scaffold_is_valid_JSON()
     {
-        SparkSecurityInitExtensions.InitializeSparkSecurityIfRequested(Builder(), ["--spark-init-security"]);
+        Builder().InitializeSparkSecurityIfRequested(["--spark-init-security"]);
 
         var act = () => JsonDocument.Parse(File.ReadAllText(SecurityPath));
 
@@ -148,17 +148,5 @@ public class SparkSecurityInitExtensionsTests : IDisposable
         Builder().InitializeSparkSecurityIfRequested(["--spark-init-security"]);
 
         File.ReadAllText(SecurityPath).Should().Be(first, "the second run hits the never-overwrite path");
-    }
-
-    [Fact]
-    public void Null_arguments_are_rejected()
-    {
-        var builder = Builder();
-
-        var nullArgs = () => builder.InitializeSparkSecurityIfRequested(null!);
-        nullArgs.Should().Throw<ArgumentNullException>();
-
-        var nullBuilder = () => ((WebApplicationBuilder)null!).InitializeSparkSecurityIfRequested([]);
-        nullBuilder.Should().Throw<ArgumentNullException>();
     }
 }

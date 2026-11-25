@@ -65,6 +65,9 @@ public static class SparkFilesExtensions
         else
             services.AddSingleton(typeof(IFileStore), files.StoreType ?? typeof(RavenAttachmentFileStore));
         services.AddSparkFilesServices();
+        global::MintPlayer.Spark.Abstractions.Commands.SparkCommandServiceCollectionExtensions.AddSparkCommand<Images.SparkImageVariantCommand>(
+            services, Images.SparkImageVariantCommand.Flag,
+            "--spark-regenerate-variants [--force]: remakes the stored images' variants that no longer match the configuration.");
         builder.AddInterceptor<FileStoreInterceptor>();
         // A store outside RavenDB is swept for what a crash between commit and store left behind; the service idles otherwise.
         services.AddHostedService<FilesReconcileService>();

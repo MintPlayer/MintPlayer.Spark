@@ -30,7 +30,14 @@ public static class SparkCommandRunner
         ArgumentNullException.ThrowIfNull(args);
 
         if (await RunAsync(app.Services, args, Console.Out, Console.Error, cancellationToken) is not { } exitCode)
+        {
+            // No command: the host starts. A first Development run writes a missing model first, when
+            // SparkOptions.SynchronizeModelIfMissing asks for it, before anything reads the model.
+            if (app.Services.GetService<SparkServiceRegistrations>() is { } registrations
+                && app.Services.GetService<IHostEnvironment>() is { } environment)
+                SparkDevelopmentExtensions.RunModelCommands(new SparkCommandHost(registrations.Services, environment), args);
             return false;
+        }
 
         Environment.ExitCode = exitCode;
         return true;

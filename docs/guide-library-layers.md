@@ -37,8 +37,8 @@ and your file is `app`. The header names the layers in order:
 actions, composed from: spark (MintPlayer.Spark) → app (App_Data/actions.json)
 ```
 
-It runs before the host is built, opens no database, and needs no new line in `Program.cs`:
-`SynchronizeSparkModelsIfRequested` handles it next to the model verbs. At startup `UseSpark` logs
+It opens no database and needs no new line in `Program.cs`: `app.RunSparkCommandIfRequestedAsync(args)` runs it
+like the model verbs. At startup `UseSpark` logs
 each library layer once, for example `Spark layers: authorization (MintPlayer.Spark.Authorization)
 ships model, translations.`
 

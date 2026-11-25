@@ -355,7 +355,7 @@ the [CORS guide](../../../docs/guide-cors.md).
 | `UseSpark(Action<UseSparkOptions>)` | Add Spark middleware with per-app options |
 | `MapSpark()` | Map Spark REST endpoints |
 | `SynchronizeSparkModels<T>()` | Sync entity models from SparkContext |
-| `builder.SynchronizeSparkModelsIfRequested(args)` | Build step: sync or verify the model, then return from `Main` |
+| `app.RunSparkCommandIfRequestedAsync(args)` | After `Build()`: runs the requested `--spark-` command (sync or verify the model, security, each package's own; `--spark-help` lists them), then return from `Main` |
 
 RavenDB indexes are deployed by `UseSpark()` itself — there is nothing to call.
 

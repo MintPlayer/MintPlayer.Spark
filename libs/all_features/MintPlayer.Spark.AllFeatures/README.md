@@ -32,7 +32,7 @@ That's the whole wiring. The source generator discovers your `SparkContext`, `Sp
 
 - **`AddSparkFull`** — registers Spark + every feature it detects in your project (and the discovered Actions/Recipients/Custom Actions/Cron jobs).
 - **`UseSparkFull()`** — adds the Spark middleware pipeline. Model synchronization moved to the
-  builder phase: call `builder.SynchronizeSparkModelsIfRequested(args)` before `builder.Build()`.
+  builder phase: call `app.RunSparkCommandIfRequestedAsync(args)` right after `builder.Build()`.
 - **`MapSparkFull`** — maps all Spark + Identity endpoints.
 
 ## What's bundled

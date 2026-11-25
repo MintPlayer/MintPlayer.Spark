@@ -45,9 +45,11 @@ How it works:
 
   ```csharp
   var app = builder.Build();
-  if (await app.RegenerateSparkImageVariantsIfRequested(args))
+  if (await app.RunSparkCommandIfRequestedAsync(args))
       return;
   ```
+
+  That one line runs every Spark command (`--spark-help` lists them); `AddFiles` registers this one.
 
   Without a processor, an image is stored as uploaded, with no variants, and startup logs a warning.
 - **The client.** Add `withFileAttributes()` from `@mintplayer/ng-spark/files` to `provideSpark(...)`. It renders every

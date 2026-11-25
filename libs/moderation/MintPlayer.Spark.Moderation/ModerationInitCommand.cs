@@ -1,9 +1,11 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Hosting;
+using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Authorization;
+using MintPlayer.Spark.Abstractions.Commands;
 using MintPlayer.Spark.Moderation.Services;
 
 namespace MintPlayer.Spark.Moderation;
@@ -15,7 +17,7 @@ namespace MintPlayer.Spark.Moderation;
 /// The rights the library ships itself (the <c>Moderation</c> pseudo-type's, composition M9) are not
 /// printed: they need only the slot bindings.
 /// </summary>
-public static class SparkModerationInitExtensions
+internal static class SparkModerationInitExtensions
 {
     internal const string InitFlag = "--spark-init-moderation";
 
@@ -37,23 +39,16 @@ public static class SparkModerationInitExtensions
     private static HashSet<string> TypeActions => typeActions.Value;
 
     /// <summary>
-    /// Handles <c>--spark-init-moderation</c>; returns <see langword="true"/> when it did and the host
-    /// should return from <c>Main</c>.
+    /// Prints the rights for <c>--spark-init-moderation</c> (<see cref="SparkModerationInitCommand"/>, #536 D34).
+    /// <paramref name="configuration"/> already holds <c>App_Data/moderation.json</c>: <c>AddModeration</c> adds it.
     /// </summary>
-    /// <example><code>if (builder.InitializeSparkModerationIfRequested(args)) return;</code></example>
-    public static bool InitializeSparkModerationIfRequested(this WebApplicationBuilder builder, string[] args)
+    internal static void PrintRights(IConfiguration configuration, string contentRootPath)
     {
-        ArgumentNullException.ThrowIfNull(builder);
-        if (!args.Contains(InitFlag))
-            return false;
-
-        builder.Configuration.AddSparkModerationFile();
         var options = new SparkModerationOptions();
-        builder.Configuration.GetSection(SparkModerationConfigurationExtensions.SectionName).Bind(options);
-        var types = ModeratableTypeNames(SparkModelFiles.Compose(builder.Environment.ContentRootPath).Select(t => t.Json));
-        var shipped = OptedOut(SparkSecurityFiles.PathFor(builder.Environment.ContentRootPath)) ? new HashSet<string>() : ShippedRights();
+        configuration.GetSection(SparkModerationConfigurationExtensions.SectionName).Bind(options);
+        var types = ModeratableTypeNames(SparkModelFiles.Compose(contentRootPath).Select(t => t.Json));
+        var shipped = OptedOut(SparkSecurityFiles.PathFor(contentRootPath)) ? new HashSet<string>() : ShippedRights();
         Console.WriteLine(Render(options, types, shipped));
-        return true;
     }
 
     /// <summary>The library's alias (composition D16): the prefix of its slots and of its rights' keys.</summary>
@@ -217,5 +212,18 @@ public static class SparkModerationInitExtensions
         }
         value = default;
         return false;
+    }
+}
+
+/// <summary><c>--spark-init-moderation</c> (#536 D34), registered by <c>AddModeration</c>. Opens no database.</summary>
+internal sealed partial class SparkModerationInitCommand : ISparkCommand
+{
+    [Inject] private readonly IConfiguration configuration;
+    [Inject] private readonly IHostEnvironment environment;
+
+    public Task<int> RunAsync(IReadOnlyList<string> args, CancellationToken cancellationToken)
+    {
+        SparkModerationInitExtensions.PrintRights(configuration, environment.ContentRootPath);
+        return Task.FromResult(0);
     }
 }

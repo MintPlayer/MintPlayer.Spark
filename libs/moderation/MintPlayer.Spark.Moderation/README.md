@@ -93,7 +93,8 @@ earnable, not even through `Earnable`.
 the report leaves them out; the application binds those slots. It writes nothing:
 
 ```csharp
-if (builder.InitializeSparkModerationIfRequested(args)) return;
+var app = builder.Build();
+if (await app.RunSparkCommandIfRequestedAsync(args)) return;   // dotnet run -- --spark-init-moderation
 ```
 
 ## Rights (no wildcards, D3)

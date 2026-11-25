@@ -30,7 +30,7 @@ public class SparkOptions
     /// <c>spark.SynchronizeModelIfMissing()</c>.
     /// </summary>
     /// <remarks>
-    /// Honoured by <c>SynchronizeSparkModelsIfRequested</c>, which already runs before <c>Build()</c>. It never
+    /// Honoured by <c>RunSparkCommandIfRequestedAsync</c> when no command is requested, before the app runs. It never
     /// overwrites: one model file in the directory and it does nothing. It never runs outside Development, where
     /// a missing model must stay a startup failure (<c>ModelHashVerifier</c>).
     /// </remarks>

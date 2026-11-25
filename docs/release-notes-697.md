@@ -29,6 +29,19 @@ tags, and everything ships once the merged pull request is backported to `releas
    sets it; `KeysPath` is unchanged.
 4. **`ISparkQueryProvider.Search` takes the words** (M3, S2b): `Search(source, properties, IReadOnlyList<string> words)`,
    plain text with no wildcards. A provider adds its own syntax; RavenDB still wraps each word in `*`.
+5. **Spark's commands run after `Build()`, through one call** (M3, D34). `builder.SynchronizeSparkModelsIfRequested`
+   (and `<TContext>`), `InitializeSparkSecurityIfRequested`, `VerifySparkSecurityIfRequested` and
+   `InitializeSparkModerationIfRequested` are gone. Replace the block before `Build()` with this, after it:
+   ```csharp
+   using MintPlayer.Spark.Commands;
+
+   var app = builder.Build();
+   if (await app.RunSparkCommandIfRequestedAsync(args))
+       return;
+   ```
+   The flags are unchanged and `--spark-help` lists them. Building the host opens no connection, so the model and
+   security commands still run in CI without a database. An unknown `--spark-` flag now exits 2 instead of starting
+   the app.
 
 ## New
 
@@ -39,3 +52,6 @@ tags, and everything ships once the merged pull request is backported to `releas
    and the index-binding, live-update and expiration messages no longer assume RavenDB.
 3. **`SparkExpressions.Captured(value, type)`** (M3, S2b): a request value as a captured field, which EF turns into a
    query parameter instead of a literal. Spark's own column filters and id restrictions use it.
+4. **`ISparkCommand`** (M3, D34): a package registers a command-line command with
+   `services.AddSparkCommand<TCommand>("--spark-…", description)`. It is constructed from DI only when its flag is
+   passed, and `--spark-help` lists every registered one.

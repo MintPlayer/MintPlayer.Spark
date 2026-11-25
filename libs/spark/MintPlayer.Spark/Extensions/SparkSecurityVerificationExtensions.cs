@@ -1,8 +1,8 @@
-using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Authorization;
+using MintPlayer.Spark.Commands;
 using System.Text;
 
 namespace MintPlayer.Spark.Extensions;
@@ -26,7 +26,7 @@ namespace MintPlayer.Spark.Extensions;
 /// the model commands run there.
 /// </para>
 /// </summary>
-public static class SparkSecurityVerificationExtensions
+internal static class SparkSecurityVerificationExtensions
 {
     internal const string VerifyFlag = "--spark-verify-security";
     internal const string SynchronizeFlag = "--spark-synchronize-security";
@@ -47,20 +47,10 @@ public static class SparkSecurityVerificationExtensions
     /// <item><c>--spark-verify-security</c> writes nothing and exits 3 if the posture has changed (with
     /// a warning of its own when the anonymous surface did), 2 if the configuration does not compose.</item>
     /// </list>
+    /// Both are <see cref="Abstractions.Commands.ISparkCommand"/>s since #536 D34. Returns whether one ran.
     /// </summary>
-    /// <returns>
-    /// <see langword="true"/> when a command was handled and the host should return from
-    /// <c>Main</c>; <see langword="false"/> when neither flag was passed.
-    /// </returns>
-    /// <example>
-    /// <code>
-    /// if (builder.VerifySparkSecurityIfRequested(args))
-    ///     return;
-    /// </code>
-    /// </example>
-    public static bool VerifySparkSecurityIfRequested(this WebApplicationBuilder builder, string[] args)
+    internal static bool RunSecurityPosture(SparkCommandHost builder, string[] args)
     {
-        ArgumentNullException.ThrowIfNull(builder);
         ArgumentNullException.ThrowIfNull(args);
 
         var verifyOnly = args.Contains(VerifyFlag);
@@ -71,9 +61,10 @@ public static class SparkSecurityVerificationExtensions
         if (!OrderRights(SparkAppData.Path(builder.Environment.ContentRootPath, SecurityFileName), verifyOnly))
             return true;
 
-        // Only the reporter is resolved, so nothing that would need a database is ever constructed.
-        using var provider = builder.Services.BuildServiceProvider();
-        var reporter = provider.GetService<ISecurityPostureReporter>();
+        // Only the reporter is resolved, so nothing that would need a database is ever constructed. On the built app
+        // that is the command scope's provider; a caller without one gets a throwaway provider, as before D34.
+        using var owned = builder.Provider is null ? builder.Services.BuildServiceProvider() : null;
+        var reporter = (builder.Provider ?? owned!).GetService<ISecurityPostureReporter>();
 
         if (reporter is null)
         {
