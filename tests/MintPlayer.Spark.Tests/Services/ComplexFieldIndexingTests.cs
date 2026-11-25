@@ -12,7 +12,7 @@ namespace MintPlayer.Spark.Tests.Services;
 /// engine-dependent — on a Lucene-defaulted server the verbatim map indexes fine, so without the
 /// pin these tests pass vacuously and the regression they guard becomes invisible.
 /// </summary>
-public class ComplexFieldIndexingTests : SparkTestDriver
+public class ComplexFieldIndexingTests : RavenSparkTestDriver
 {
     public class Address
     {

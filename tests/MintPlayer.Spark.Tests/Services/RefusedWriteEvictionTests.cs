@@ -19,7 +19,7 @@ namespace MintPlayer.Spark.Tests.Services;
 /// it, orphaned from the save that was refused.
 /// </summary>
 /// <remarks>Fixture names start with <c>Ev</c>: ActionsResolver matches actions classes by simple name across the assembly.</remarks>
-public class RefusedWriteEvictionTests : SparkTestDriver
+public class RefusedWriteEvictionTests : RavenSparkTestDriver
 {
     private static readonly Guid NoteTypeId = Guid.Parse("e6f60000-0000-4000-8000-e6f600000001");
 
@@ -29,7 +29,7 @@ public class RefusedWriteEvictionTests : SparkTestDriver
     {
         await base.InitializeAsync();
         factory = new SparkEndpointFactory<EvContext>(
-            Store,
+            Store.AsSparkTestDatabase(),
             [NoteModel()],
             configureServices: services => services.AddScoped<EvNoteActions>(),
             configureSpark: spark => spark.AddInterceptor<EvSideWritingInterceptor>());

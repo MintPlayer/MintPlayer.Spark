@@ -16,7 +16,7 @@ namespace MintPlayer.Spark.Tests.Services;
 /// safely: the mapper now refuses it.
 /// </para>
 /// </summary>
-public class AsDetailFailClosedTests : SparkTestDriver
+public class AsDetailFailClosedTests : RavenSparkTestDriver
 {
     private static readonly Guid ParentTypeId = Guid.Parse("d0da1100-0000-0000-0000-d0da11000000");
 

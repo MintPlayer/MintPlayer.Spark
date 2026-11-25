@@ -20,7 +20,7 @@ namespace MintPlayer.Spark.Tests.Queries;
 /// ⚠️ Every test host scans this whole assembly for indexes, so the fixture indexes here take part in every host's catalog
 /// election: each claims only its own fixture type (PRD §7, M1/M2 notes).
 /// </remarks>
-public class DefaultIndexEndToEndTests : SparkTestDriver
+public class DefaultIndexEndToEndTests : RavenSparkTestDriver
 {
     // ---- (a) A hand-written claim beats a [GenerateIndex] index (D5) ------------------------------------------------
 
@@ -100,7 +100,7 @@ public class DefaultIndexEndToEndTests : SparkTestDriver
         model.PersistentObject.IndexName.Should().Be(nameof(DeProfessions_Lookup), "the claim shapes the model");
         model.PersistentObject.QueryType.Should().Be(typeof(VDeProfessionLookup).FullName);
 
-        var factory = Track(new SparkEndpointFactory<DeProfessionContext>(Store, [model], configureIndexCatalog: catalog =>
+        var factory = Track(new SparkEndpointFactory<DeProfessionContext>(Store.AsSparkTestDatabase(), [model], configureIndexCatalog: catalog =>
         {
             catalog.RegisterIndex(typeof(DeProfessions_Overview));
             catalog.RegisterIndex(typeof(DeProfessions_Lookup));
@@ -168,7 +168,7 @@ public class DefaultIndexEndToEndTests : SparkTestDriver
         var referenceQuery = site.PersistentObject.Attributes.Single(a => a.Name == nameof(DeSite.OrganizationId)).Query;
         referenceQuery.Should().Be("GetDeOrganizations");
 
-        var factory = Track(new SparkEndpointFactory<DeSiteContext>(Store, [site, organization]));
+        var factory = Track(new SparkEndpointFactory<DeSiteContext>(Store.AsSparkTestDatabase(), [site, organization]));
         using (var session = Store.OpenAsyncSession())
         {
             await session.StoreAsync(new DeOrganization { Name = "Acme", IsActive = true }, "deorganizations/1");

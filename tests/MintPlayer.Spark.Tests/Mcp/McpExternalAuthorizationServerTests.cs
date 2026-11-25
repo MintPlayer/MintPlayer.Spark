@@ -20,8 +20,8 @@ namespace MintPlayer.Spark.Tests.Mcp;
 /// the token scope as a write cap, local groups, and revocation. Real Identity, real RavenDB, the real Mcp gate; the
 /// external server is <see cref="TestIssuer"/> (in-memory keys).
 /// </summary>
-public class McpExternalAuthorizationServerTests(SparkSharedDatabase database)
-    : SparkSharedTestDriver(database), IClassFixture<SparkSharedDatabase>
+public class McpExternalAuthorizationServerTests(RavenSparkSharedDatabase database)
+    : RavenSparkSharedTestDriver(database), IClassFixture<RavenSparkSharedDatabase>
 {
     private readonly TestIssuer issuer = new();
 

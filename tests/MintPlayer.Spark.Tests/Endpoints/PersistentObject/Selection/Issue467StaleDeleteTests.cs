@@ -17,7 +17,7 @@ namespace MintPlayer.Spark.Tests.Endpoints.PersistentObject.Selection;
 /// <c>/po/delete-many</c>), taken from the load or the query row. (b) is a probe: it records what
 /// Raven returns.
 /// </remarks>
-public class Issue467StaleDeleteTests(ITestOutputHelper output) : SparkTestDriver
+public class Issue467StaleDeleteTests(ITestOutputHelper output) : RavenSparkTestDriver
 {
     private const string Id = "I467Items/1";
 

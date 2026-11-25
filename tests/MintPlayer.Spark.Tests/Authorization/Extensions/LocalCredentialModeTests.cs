@@ -29,8 +29,8 @@ namespace MintPlayer.Spark.Tests.Authorization.Extensions;
 /// route table. A status-code assertion would pass just as happily against shadowing middleware,
 /// which is the design this feature exists to avoid.
 /// </remarks>
-public class LocalCredentialModeTests(SparkSharedDatabase database)
-    : SparkSharedTestDriver(database), IClassFixture<SparkSharedDatabase>
+public class LocalCredentialModeTests(RavenSparkSharedDatabase database)
+    : RavenSparkSharedTestDriver(database), IClassFixture<RavenSparkSharedDatabase>
 {
     private const string StubProvider = "StubProvider";
 

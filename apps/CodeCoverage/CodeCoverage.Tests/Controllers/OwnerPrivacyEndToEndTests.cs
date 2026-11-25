@@ -490,12 +490,12 @@ public class OwnerPrivacyEndToEndTests(OwnerPrivacyHostFixture host) : IClassFix
 /// (an organization with every owner-only setting filled with a findable value), its public repository <c>open</c> and its
 /// private repository <c>secret</c>.
 /// <para>
-/// On <see cref="SparkTestDriver"/>, whose store carries Spark's conventions, as the host's does: the host reads what the
+/// On <see cref="RavenSparkTestDriver"/>, whose store carries Spark's conventions, as the host's does: the host reads what the
 /// tests write to its database. Without them a <see cref="System.Drawing.Color"/> is stored as <c>"0, 153, 0"</c>, which
 /// the host's <c>#rrggbb</c> converter cannot read.
 /// </para>
 /// </summary>
-public sealed class OwnerPrivacyHostFixture : SparkTestDriver
+public sealed class OwnerPrivacyHostFixture : RavenSparkTestDriver
 {
     // Like CoverageRavenTest: fork pull requests get no licence, and nothing here needs a licensed feature.
     protected override bool RequireLicense => false;

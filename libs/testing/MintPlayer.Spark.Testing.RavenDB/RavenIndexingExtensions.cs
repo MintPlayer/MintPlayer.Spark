@@ -27,7 +27,7 @@ namespace MintPlayer.Spark.Testing;
 /// <para>
 /// This is the <b>single</b> index-wait implementation in the library;
 /// <see cref="RavenIndexHelper.WaitForNonStaleAsync"/> forwards here. Prefer
-/// <see cref="SparkTestDriver.SeedAsync"/> where a test owns the write — a server-side wait scoped
+/// <see cref="RavenSparkTestDriver.SeedAsync"/> where a test owns the write — a server-side wait scoped
 /// to the indexes that write actually touched beats polling every index in the database.
 /// </para>
 /// </summary>

@@ -12,7 +12,7 @@ namespace MintPlayer.Spark.Tests.IdentityProvider;
 /// attacker-controlled, so an unrecognised value must never reach the HTML.
 /// </summary>
 public class OidcPageThemeTests(OidcSharedHost host)
-    : SparkSharedTestDriver(host), IClassFixture<OidcSharedHost>
+    : RavenSparkSharedTestDriver(host), IClassFixture<OidcSharedHost>
 {
     private const string MediaBlock = "@media (prefers-color-scheme: dark){:root:not([data-bs-theme=light])";
 

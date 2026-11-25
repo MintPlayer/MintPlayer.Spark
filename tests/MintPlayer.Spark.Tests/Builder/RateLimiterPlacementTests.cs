@@ -27,8 +27,8 @@ namespace MintPlayer.Spark.Tests.Builder;
 /// request costs no credential validation.
 /// </para>
 /// </summary>
-public class RateLimiterPlacementTests(SparkSharedDatabase database)
-    : SparkSharedTestDriver(database), IClassFixture<SparkSharedDatabase>
+public class RateLimiterPlacementTests(RavenSparkSharedDatabase database)
+    : RavenSparkSharedTestDriver(database), IClassFixture<RavenSparkSharedDatabase>
 {
     private static readonly Guid PersonTypeId = Guid.Parse("66666666-eeee-eeee-eeee-666666666666");
 
@@ -64,7 +64,7 @@ public class RateLimiterPlacementTests(SparkSharedDatabase database)
         // PermitLimit 1 over a long window: the first request is admitted, everything after it in
         // this test is rejected, with no chance of the window rolling over mid-test.
         await using var factory = new SparkEndpointFactory<TestSparkContext>(
-            Store,
+            Store.AsSparkTestDatabase(),
             [TestModels.Person(PersonTypeId)],
             configureSpark: spark => spark
                 .AddCredentialScheme<AuthenticationSchemeOptions, CountingHandler>(CountingScheme)
@@ -100,7 +100,7 @@ public class RateLimiterPlacementTests(SparkSharedDatabase database)
         CountingHandler.Invocations = 0;
 
         await using var factory = new SparkEndpointFactory<TestSparkContext>(
-            Store,
+            Store.AsSparkTestDatabase(),
             [TestModels.Person(PersonTypeId)],
             configureSpark: spark => spark
                 .AddCredentialScheme<AuthenticationSchemeOptions, CountingHandler>(CountingScheme)

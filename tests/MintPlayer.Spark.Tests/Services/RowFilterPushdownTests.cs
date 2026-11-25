@@ -25,7 +25,7 @@ namespace MintPlayer.Spark.Tests.Services;
 /// because a constant predicate need not (and may not) survive query translation.
 /// </para>
 /// </summary>
-public class RowFilterPushdownTests : SparkTestDriver
+public class RowFilterPushdownTests : RavenSparkTestDriver
 {
     public class Note
     {

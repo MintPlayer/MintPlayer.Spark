@@ -18,7 +18,7 @@ namespace MintPlayer.Spark.Tests.Replication;
 /// baked into the message at send time. A retry after the source module finally
 /// registers (or rotates URL) hits the freshly-loaded value.
 /// </summary>
-public class EtlScriptDeploymentRecipientTests : SparkTestDriver
+public class EtlScriptDeploymentRecipientTests : RavenSparkTestDriver
 {
     private readonly string _modulesDatabase = $"SparkModulesTest-{Guid.NewGuid():N}";
     private const string SourceModule = "Fleet";

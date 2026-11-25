@@ -29,7 +29,7 @@ namespace MintPlayer.Spark.Tests.Authentication;
 /// nothing.
 /// </para>
 /// </summary>
-public class CredentialSchemeTests : MintPlayer.Spark.Testing.SparkTestDriver
+public class CredentialSchemeTests : MintPlayer.Spark.Testing.RavenSparkTestDriver
 {
     private static readonly Guid PersonTypeId = Guid.Parse("55555555-dddd-dddd-dddd-555555555555");
 
@@ -62,7 +62,7 @@ public class CredentialSchemeTests : MintPlayer.Spark.Testing.SparkTestDriver
     }
 
     private SparkEndpointFactory NewFactory() => new(
-        Store,
+        Store.AsSparkTestDatabase(),
         [TestModels.Person(PersonTypeId)],
         configureSpark: spark => spark.AddCredentialScheme<AuthenticationSchemeOptions, StubCredentialHandler>(StubScheme));
 

@@ -22,7 +22,7 @@ namespace MintPlayer.Spark.Tests.Authorization;
 /// it.
 /// </para>
 /// </remarks>
-public class QueryWithoutReadTests : SparkTestDriver
+public class QueryWithoutReadTests : RavenSparkTestDriver
 {
     private static readonly Guid DocTypeId = Guid.Parse("7d7d0000-1111-2222-3333-444455556666");
     private static readonly Guid AllDocsQueryId = Guid.Parse("7d7d1111-1111-2222-3333-444455556666");
@@ -52,7 +52,7 @@ public class QueryWithoutReadTests : SparkTestDriver
         params string[] rights)
     {
         var factory = new SparkEndpointFactory<GuardedContext>(
-            Store, [Model()], security: SparkTestSecurity.Empty.Granting(rights));
+            Store.AsSparkTestDatabase(), [Model()], security: SparkTestSecurity.Empty.Granting(rights));
 
         await SeedAsync(async session =>
         {
@@ -149,7 +149,7 @@ public class QueryWithoutReadTests : SparkTestDriver
     public async Task Denying_Read_does_not_deny_Query()
     {
         var factory = new SparkEndpointFactory<GuardedContext>(
-            Store, [Model()],
+            Store.AsSparkTestDatabase(), [Model()],
             security: SparkTestSecurity.Empty
                 .Granting("Query/GuardedDoc")
                 .Denying("Read/GuardedDoc"));

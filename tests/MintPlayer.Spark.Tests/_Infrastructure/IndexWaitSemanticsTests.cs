@@ -17,7 +17,7 @@ namespace MintPlayer.Spark.Tests._Infrastructure;
 /// mechanisms is carrying a test matters the moment someone changes one of them.
 /// </para>
 /// </summary>
-public class IndexWaitSemanticsTests : SparkTestDriver
+public class IndexWaitSemanticsTests : RavenSparkTestDriver
 {
     public class Thing
     {

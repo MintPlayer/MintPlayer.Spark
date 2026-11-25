@@ -8,8 +8,8 @@ namespace MintPlayer.Spark.Testing;
 /// </summary>
 /// <remarks>
 /// Both drivers share this, and so does a suite with its own <c>RavenTestDriver</c> base that must
-/// share the process with them. <see cref="SparkTestDriver"/> takes a database per test case;
-/// <see cref="SparkSharedDatabase"/> takes one per test class. They must not disagree about how the
+/// share the process with them. <see cref="RavenSparkTestDriver"/> takes a database per test case;
+/// <see cref="RavenSparkSharedDatabase"/> takes one per test class. They must not disagree about how the
 /// server is licensed, and neither may configure it twice — <c>ConfigureServer</c> throws once the
 /// server has started.
 /// <para>
@@ -53,7 +53,7 @@ public static class SparkEmbeddedServer
             // CREATION; AdminDatabasesHandler.WaitForDeletionToComplete resolves the DELETION budget
             // from `parameters.TimeToWaitForConfirmation ?? TimeSpan.FromSeconds(15)`, a hard-coded
             // fallback that never consults server configuration. The deletion side is handled
-            // client-side in SparkTestDriver.DisposeAsync, which explains the mechanism.
+            // client-side in RavenSparkTestDriver.DisposeAsync, which explains the mechanism.
             // The server is no longer copied into bin/ — it would be a 623 MB build output and
             // Nx caches bin/Debug. It is provisioned once into a temp directory instead. ~~Null
             // leaves RavenDB's default (AppContext.BaseDirectory) in place.~~ Null makes RavenDB throw

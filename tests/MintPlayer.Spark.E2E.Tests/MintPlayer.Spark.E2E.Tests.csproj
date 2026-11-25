@@ -31,7 +31,7 @@
 
   <ItemGroup>
     <!-- Embedded Raven + license helper -->
-    <ProjectReference Include="..\..\libs\testing\MintPlayer.Spark.Testing\MintPlayer.Spark.Testing.csproj" />
+    <ProjectReference Include="..\..\libs\testing\MintPlayer.Spark.Testing.RavenDB\MintPlayer.Spark.Testing.RavenDB.csproj" />
     <!-- SparkUser / SparkUserClaim types for direct admin seeding -->
     <ProjectReference Include="..\..\libs\authorization\MintPlayer.Spark.Authorization\MintPlayer.Spark.Authorization.csproj" />
     <!-- SyncActionRequest / ModuleInformation payloads for the cross-module sync tests. -->
@@ -67,5 +67,6 @@
     this for free.
   -->
   <Import Project="..\..\libs\testing\MintPlayer.Spark.Testing\Targets\spark-testing.targets" />
+  <Import Project="..\..\libs\testing\MintPlayer.Spark.Testing.RavenDB\Targets\spark-testing-ravendb.targets" />
 
 </Project>

@@ -60,7 +60,7 @@ public class CanaryVaultEntry
 /// </para>
 /// </remarks>
 public class ConstructionRightsTests(ConstructionRightsTests.Host host)
-    : SparkSharedTestDriver(host), IClassFixture<ConstructionRightsTests.Host>, IDisposable
+    : RavenSparkSharedTestDriver(host), IClassFixture<ConstructionRightsTests.Host>, IDisposable
 {
     private static readonly Guid VaultTypeId = Guid.Parse("c4a40000-0000-4000-8000-00000000c001");
     private static readonly Guid VaultsQueryId = Guid.Parse("c4a40000-0000-4000-8000-00000000c002");
@@ -153,7 +153,7 @@ public class ConstructionRightsTests(ConstructionRightsTests.Host host)
         }
 
         protected override SparkEndpointFactory<CanaryContext> CreateFactory() => new(
-            Store,
+            Store.AsSparkTestDatabase(),
             [VaultModel(), EntryModel()],
             configureServices: services =>
             {

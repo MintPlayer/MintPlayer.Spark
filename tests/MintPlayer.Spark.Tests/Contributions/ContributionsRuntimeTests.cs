@@ -28,7 +28,7 @@ namespace MintPlayer.Spark.Tests.Contributions;
 /// project imports <c>spark-contributions.targets</c>. Fixture names start with <c>Co</c>, because the
 /// actions resolver matches by simple name across the assembly.
 /// </remarks>
-public class ContributionsRuntimeTests : SparkTestDriver
+public class ContributionsRuntimeTests : RavenSparkTestDriver
 {
     private static readonly Guid SongTypeId = Guid.Parse("c0d10000-0000-4000-8000-c0d100000001");
     private static readonly Guid LyricsTypeId = Guid.Parse("c0d10000-0000-4000-8000-c0d100000002");
@@ -60,7 +60,7 @@ public class ContributionsRuntimeTests : SparkTestDriver
         var probe = new CoProbe();
         var race = new CoRace(Store);
         var factory = new SparkEndpointFactory(
-            Store,
+            Store.AsSparkTestDatabase(),
             [SongModel(), LyricsModel(), ContributionModel()],
             configureServices: s =>
             {

@@ -13,7 +13,7 @@ namespace MintPlayer.Spark.Tests.Services;
 /// transient/dynamic dispatch, the duplicate-key guard, the key-rename collision check, and
 /// the explicit "cannot mutate transient" guard rails.
 /// </summary>
-public class LookupReferenceServiceTests : SparkTestDriver
+public class LookupReferenceServiceTests : RavenSparkTestDriver
 {
     private readonly ILookupReferenceDiscoveryService _discovery = Substitute.For<ILookupReferenceDiscoveryService>();
 

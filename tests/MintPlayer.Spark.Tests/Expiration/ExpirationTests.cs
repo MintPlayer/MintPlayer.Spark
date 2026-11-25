@@ -29,7 +29,7 @@ namespace MintPlayer.Spark.Tests.Expiration;
 /// expired document is still <b>stored</b>, so it is the filter — not a deletion — that hid it.
 /// Fixture names start with <c>Ex</c>: <c>ActionsResolver</c> matches actions classes by simple name.
 /// </remarks>
-public class ExpirationTests : SparkTestDriver
+public class ExpirationTests : RavenSparkTestDriver
 {
     private static readonly Guid PageTypeId = Guid.Parse("0e5f0000-0000-4000-8000-000000000001");
     private static readonly Guid NoteTypeId = Guid.Parse("0e5f0000-0000-4000-8000-000000000002");
@@ -50,7 +50,7 @@ public class ExpirationTests : SparkTestDriver
     private async Task<Host> StartAsync(Action<MintPlayer.Spark.Abstractions.Builder.ISparkBuilder>? spark = null)
     {
         var factory = new SparkEndpointFactory<ExContext>(
-            Store,
+            Store.AsSparkTestDatabase(),
             [PageModel(), NoteModel(), FolderModel()],
             configureServices: s => s.AddScoped<ExPageActions>(),
             configureSpark: spark,
@@ -398,7 +398,7 @@ public class ExpirationTests : SparkTestDriver
     public async Task A_library_that_writes_expires_itself_gets_expiration_without_any_expiring_type()
     {
         await using var factory = new SparkEndpointFactory<ExPlainContext>(
-            Store, [PlainModel()], configureSpark: spark => spark.Registry.RequireDocumentExpiration("a library"));
+            Store.AsSparkTestDatabase(), [PlainModel()], configureSpark: spark => spark.Registry.RequireDocumentExpiration("a library"));
 
         var record = await Store.Maintenance.Server.SendAsync(new GetDatabaseRecordOperation(Store.Database));
 
@@ -428,7 +428,7 @@ public class ExpirationTests : SparkTestDriver
     {
         // ExPlain expires nothing; the organizations library's layer (referenced by this test project)
         // brings OrganizationInvitation, an IExpiring type, into every composed model.
-        await using var factory = new SparkEndpointFactory<ExPlainContext>(Store, [PlainModel()]);
+        await using var factory = new SparkEndpointFactory<ExPlainContext>(Store.AsSparkTestDatabase(), [PlainModel()]);
 
         var record = await Store.Maintenance.Server.SendAsync(new GetDatabaseRecordOperation(Store.Database));
 
@@ -456,7 +456,7 @@ public class ExpirationTests : SparkTestDriver
         var model = PlainModel();
         model.PersistentObject.ExpiresAfter = TimeSpan.FromDays(1);
 
-        var act = () => new SparkEndpointFactory<ExPlainContext>(Store, [model]);
+        var act = () => new SparkEndpointFactory<ExPlainContext>(Store.AsSparkTestDatabase(), [model]);
 
         act.Should().Throw<InvalidOperationException>().Which.Message.Should().Contain("ExPlain declares \"expiresAfter\" but");
     }
@@ -464,7 +464,7 @@ public class ExpirationTests : SparkTestDriver
     [Fact]
     public void An_explicitly_implemented_ExpiresAtUtc_refuses_startup()
     {
-        var act = () => new SparkEndpointFactory<ExBrokenContext>(Store,
+        var act = () => new SparkEndpointFactory<ExBrokenContext>(Store.AsSparkTestDatabase(),
             [new EntityTypeFile { PersistentObject = new EntityTypeDefinition { Id = Guid.NewGuid(), Name = "ExBroken", ClrType = typeof(ExBroken).FullName!, Attributes = [] } }]);
 
         act.Should().Throw<InvalidOperationException>().Which.Message.Should().Contain("ExBroken.ExpiresAtUtc is not a public property");

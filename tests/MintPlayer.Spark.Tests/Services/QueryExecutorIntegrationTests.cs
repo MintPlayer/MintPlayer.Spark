@@ -15,11 +15,11 @@ using MintPlayer.Spark.Tests._Infrastructure;
 namespace MintPlayer.Spark.Tests.Services;
 
 /// <summary>
-/// Integration tests for QueryExecutor that exercise real RavenDB through SparkTestDriver.
+/// Integration tests for QueryExecutor that exercise real RavenDB through RavenSparkTestDriver.
 /// Database queries reflect on a SparkContext subclass for the IQueryable property; these
 /// tests use a fixture context with seeded Person documents.
 /// </summary>
-public class QueryExecutorIntegrationTests : SparkTestDriver
+public class QueryExecutorIntegrationTests : RavenSparkTestDriver
 {
     private static readonly Guid PersonTypeId = Guid.Parse("eeeeeeee-2222-2222-2222-222222222222");
 

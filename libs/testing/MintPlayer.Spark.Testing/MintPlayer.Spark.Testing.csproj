@@ -6,7 +6,7 @@
     <Nullable>enable</Nullable>
     <IsPackable>true</IsPackable>
     <!--
-      This is a test-utilities library (SparkTestDriver, SparkEndpointFactory, JsonFixtureImporter,
+      This is a test-utilities library (RavenSparkTestDriver, SparkEndpointFactory, JsonFixtureImporter,
       VerifyDefaults), not a test project. It references xunit for IAsyncLifetime types but has no
       [Fact] tests. IsTestProject=false stops `dotnet test <sln>` from invoking VSTest on it, which
       would discover no tests and exit non-zero even though nothing is wrong.
@@ -18,8 +18,8 @@
     <Version>0.0.0-PLACEHOLDER</Version>
     <Authors>MintPlayer</Authors>
     <Company>MintPlayer</Company>
-    <Description>Test harness for writing integration tests against MintPlayer.Spark apps: an embedded RavenDB driver (SparkTestDriver), an in-memory Spark host factory (SparkEndpointFactory), an antiforgery-aware HTTP client, JSON fixture seeding, index helpers, and Verify snapshot defaults.</Description>
-    <PackageTags>spark;testing;integration-tests;ravendb;xunit;testhost</PackageTags>
+    <Description>Provider-neutral test harness for MintPlayer.Spark apps: the test drivers (SparkTestDriver, SparkSharedDatabase), an in-memory Spark host factory (SparkEndpointFactory), the security and route-table helpers, and Verify snapshot defaults. Add the provider package for your database: MintPlayer.Spark.Testing.RavenDB, .SqlServer or .PostgreSql.</Description>
+    <PackageTags>spark;testing;integration-tests;xunit;testhost</PackageTags>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/MintPlayer/MintPlayer.Spark</PackageProjectUrl>
     <RepositoryUrl>https://github.com/MintPlayer/MintPlayer.Spark.git</RepositoryUrl>
@@ -44,20 +44,24 @@
          IHost + TestServer, so it needs TestHost but not the heavier Mvc.Testing/WebApplicationFactory. -->
     <PackageReference Include="Microsoft.AspNetCore.TestHost" Version="11.0.0" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
-    <PackageReference Include="RavenDB.TestDriver" Version="7.2.7" />
     <PackageReference Include="Verify.Xunit" Version="31.12.5" />
     <PackageReference Include="xunit" Version="2.9.3" />
   </ItemGroup>
 
   <ItemGroup>
     <Using Include="Xunit" />
-    <!-- RavenServerProvisioningTests drives RavenServerLocator.Provision with its own paths. -->
+    <!-- SparkTestDatabasesTests drives the provider choice with its own candidates. -->
     <InternalsVisibleTo Include="MintPlayer.Spark.Tests" />
   </ItemGroup>
 
+  <!--
+    Neutral (#536 D35): no database client. The provider packages (.RavenDB, .SqlServer, .PostgreSql) plug a database
+    into SparkEndpointFactory through ISparkTestDatabase. InMemory is no database, so its test database lives here
+    (a project opts into it with [assembly: SparkTestDatabase(typeof(InMemorySparkTestDatabaseProvider))]).
+  -->
   <ItemGroup>
     <ProjectReference Include="..\..\spark\MintPlayer.Spark\MintPlayer.Spark.csproj" />
-    <ProjectReference Include="..\..\spark\MintPlayer.Spark.RavenDB\MintPlayer.Spark.RavenDB.csproj" />
+    <ProjectReference Include="..\..\spark\MintPlayer.Spark.InMemory\MintPlayer.Spark.InMemory.csproj" />
     <ProjectReference Include="..\..\spark\MintPlayer.Spark.Abstractions\MintPlayer.Spark.Abstractions.csproj" />
   </ItemGroup>
 

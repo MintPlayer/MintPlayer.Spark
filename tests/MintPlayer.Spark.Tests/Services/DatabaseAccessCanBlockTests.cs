@@ -19,7 +19,7 @@ namespace MintPlayer.Spark.Tests.Services;
 /// and must not regress.
 /// </para>
 /// </summary>
-public class DatabaseAccessCanBlockTests : SparkTestDriver
+public class DatabaseAccessCanBlockTests : RavenSparkTestDriver
 {
     private static readonly Guid DocTypeId = Guid.Parse("243a0001-2430-2430-2430-243a00012430");
     private static readonly Guid PlainTypeId = Guid.Parse("243a0002-2430-2430-2430-243a00022430");
@@ -40,7 +40,7 @@ public class DatabaseAccessCanBlockTests : SparkTestDriver
     {
         await base.InitializeAsync();
         _factory = new SparkEndpointFactory<GuardedContext>(
-            Store,
+            Store.AsSparkTestDatabase(),
             [GuardedDocModel.For(DocTypeId), PlainDocModel.For(PlainTypeId)],
             configureServices: services =>
             {

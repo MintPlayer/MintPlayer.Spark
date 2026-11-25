@@ -29,7 +29,7 @@ namespace MintPlayer.Spark.Tests.Services;
 /// </para>
 /// </remarks>
 public class SortColumnDisclosureTests(SortColumnDisclosureTests.Host host)
-    : SparkSharedTestDriver(host), IClassFixture<SortColumnDisclosureTests.Host>, IDisposable
+    : RavenSparkSharedTestDriver(host), IClassFixture<SortColumnDisclosureTests.Host>, IDisposable
 {
     private static readonly Guid VaultTypeId = Guid.Parse("eeee5555-eeee-eeee-eeee-eeee55555555");
 
@@ -108,7 +108,7 @@ public class SortColumnDisclosureTests(SortColumnDisclosureTests.Host host)
             await Store.WaitForIndexingAsync();
         }
 
-        protected override SparkEndpointFactory<TestContext> CreateFactory() => new(Store, [VaultModel()],
+        protected override SparkEndpointFactory<TestContext> CreateFactory() => new(Store.AsSparkTestDatabase(), [VaultModel()],
             configureIndexCatalog: catalog => catalog.RegisterIndex(typeof(Vaults_Overview)));
     }
 

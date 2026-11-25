@@ -20,8 +20,8 @@ namespace MintPlayer.Spark.Tests.Endpoints;
 /// single-request test passes either way, which is why the test below is order-dependent across
 /// two requests on one host.
 /// </remarks>
-public class SubQueryPruningTests(SparkSharedDatabase database)
-    : SparkSharedTestDriver(database), IClassFixture<SparkSharedDatabase>
+public class SubQueryPruningTests(RavenSparkSharedDatabase database)
+    : RavenSparkSharedTestDriver(database), IClassFixture<RavenSparkSharedDatabase>
 {
     private static readonly Guid DocTypeId = Guid.Parse("6c6c0000-1111-2222-3333-444455556666");
     private static readonly Guid ChildQueryId = Guid.Parse("6c6c1111-1111-2222-3333-444455556666");
@@ -64,7 +64,7 @@ public class SubQueryPruningTests(SparkSharedDatabase database)
             new SparkQuery { Id = ChildQueryId, Name = "ChildDocs", Alias = "childdocs", Source = "Database.Docs", EntityType = "GuardedDoc" },
         ];
 
-        await using var granted = new SparkEndpointFactory<GuardedContext>(Store, [model], services => services.UseFixtureModelOnly());
+        await using var granted = new SparkEndpointFactory<GuardedContext>(Store.AsSparkTestDatabase(), [model], services => services.UseFixtureModelOnly());
         using (var client = granted.CreateClient())
             (await QueriesFromListAsync(client)).Should().Equal("childdocs");
 
@@ -80,7 +80,7 @@ public class SubQueryPruningTests(SparkSharedDatabase database)
         ];
 
         await using var denied = new SparkEndpointFactory<GuardedContext>(
-            Store, [crossType], services => services.UseFixtureModelOnly(),
+            Store.AsSparkTestDatabase(), [crossType], services => services.UseFixtureModelOnly(),
             security: SparkTestSecurity.Permissive.Without("SecretDoc"));
 
         using (var client = denied.CreateClient())
@@ -103,7 +103,7 @@ public class SubQueryPruningTests(SparkSharedDatabase database)
         ];
 
         await using var factory = new SparkEndpointFactory<GuardedContext>(
-            Store, [model],
+            Store.AsSparkTestDatabase(), [model],
             configureServices: services =>
             {
                 services.UseFixtureModelOnly();
@@ -139,7 +139,7 @@ public class SubQueryPruningTests(SparkSharedDatabase database)
         var model = GuardedDocModel.For(DocTypeId);
         model.PersistentObject.Queries = ["nosuchquery"];
 
-        await using var factory = new SparkEndpointFactory<GuardedContext>(Store, [model], services => services.UseFixtureModelOnly());
+        await using var factory = new SparkEndpointFactory<GuardedContext>(Store.AsSparkTestDatabase(), [model], services => services.UseFixtureModelOnly());
         using var client = factory.CreateClient();
 
         (await QueriesFromListAsync(client)).Should().Equal("nosuchquery");

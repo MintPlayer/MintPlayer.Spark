@@ -14,7 +14,7 @@ namespace MintPlayer.Spark.Tests.Moderation;
 /// #460 §3.12 fraud measures 6 (nightly detector), 7 (compensating reversals), 8 (review surface) and
 /// 9 (hashed network observations). Every scenario is driven by the host's clock.
 /// </summary>
-public class ModerationFraudTests : SparkTestDriver
+public class ModerationFraudTests : RavenSparkTestDriver
 {
     private const string Alice = "users/alice", Bob = "users/bob", Carol = "users/carol", Dave = "users/dave", Erin = "users/erin";
 

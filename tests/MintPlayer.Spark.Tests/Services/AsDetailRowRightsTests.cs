@@ -17,8 +17,8 @@ namespace MintPlayer.Spark.Tests.Services;
 /// code read them, while the save replaced the collection wholesale. Anyone who could edit the parent
 /// could add, alter and remove rows of a type they had no rights to.
 /// </remarks>
-public class AsDetailRowRightsTests(SparkSharedDatabase database)
-    : SparkSharedTestDriver(database), IClassFixture<SparkSharedDatabase>
+public class AsDetailRowRightsTests(RavenSparkSharedDatabase database)
+    : RavenSparkSharedTestDriver(database), IClassFixture<RavenSparkSharedDatabase>
 {
     private static readonly Guid ParentTypeId = Guid.Parse("d0da1100-0000-0000-0000-d0da11000001");
 

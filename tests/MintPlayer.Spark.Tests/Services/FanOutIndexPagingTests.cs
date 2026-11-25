@@ -23,7 +23,7 @@ namespace MintPlayer.Spark.Tests.Services;
 /// whether a given map fans out is not knowable — the map exists only as a rendered string.
 /// </para>
 /// </remarks>
-public class FanOutIndexPagingTests : SparkTestDriver
+public class FanOutIndexPagingTests : RavenSparkTestDriver
 {
 
     private static readonly Guid FanoutProbeTypeId = Guid.Parse("ffff7777-ffff-ffff-ffff-ffff77777777");
@@ -92,7 +92,7 @@ public class FanOutIndexPagingTests : SparkTestDriver
     private IQueryExecutor Executor()
     {
         _factory = new SparkEndpointFactory<TestContext>(
-            Store, [FanoutProbeModel()],
+            Store.AsSparkTestDatabase(), [FanoutProbeModel()],
             configureIndexCatalog: catalog => catalog.RegisterIndex(typeof(FanoutProbes_ByTag)));
 
         return _factory.GetService<IQueryExecutor>();

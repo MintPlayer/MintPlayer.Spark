@@ -25,7 +25,7 @@ namespace MintPlayer.Spark.Tests.Endpoints.Queries;
 /// </para>
 /// </remarks>
 public class KeyedEmbeddedBreadcrumbColumnTests(KeyedEmbeddedBreadcrumbColumnTests.Host host)
-    : SparkSharedTestDriver(host), IClassFixture<KeyedEmbeddedBreadcrumbColumnTests.Host>
+    : RavenSparkSharedTestDriver(host), IClassFixture<KeyedEmbeddedBreadcrumbColumnTests.Host>
 {
     private static readonly Guid ServiceTypeId = Guid.Parse("6c1f0a52-3d94-4a1e-8b77-2f5c9d0e4a11");
     private static readonly Guid GateTypeId = Guid.Parse("7d2e1b63-4ea5-4b2f-9c88-3a6d0e1f5b22");
@@ -35,7 +35,7 @@ public class KeyedEmbeddedBreadcrumbColumnTests(KeyedEmbeddedBreadcrumbColumnTes
     public sealed class Host : SharedSparkHost<TestSparkContext>
     {
         protected override SparkEndpointFactory<TestSparkContext> CreateFactory()
-            => new SparkEndpointFactory(Store, [ServiceModel(), GateModel()]);
+            => new SparkEndpointFactory(Store.AsSparkTestDatabase(), [ServiceModel(), GateModel()]);
     }
 
     /// <summary>Keyed exactly as <c>ValueObjectKeyGenerator</c> keys a <c>[ValueObject]</c>.</summary>

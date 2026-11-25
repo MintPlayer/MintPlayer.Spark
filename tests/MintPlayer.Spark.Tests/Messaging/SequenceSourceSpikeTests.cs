@@ -28,7 +28,7 @@ namespace MintPlayer.Spark.Tests.Messaging;
 /// the figures the PRD records (§4.1, M16b).
 /// </para>
 /// </summary>
-public class SequenceSourceSpikeTests(ITestOutputHelper output) : SparkTestDriver
+public class SequenceSourceSpikeTests(ITestOutputHelper output) : RavenSparkTestDriver
 {
     private const int Producers = 8;
     /// <summary>Messages per candidate: 100 by default (CI); the PRD figures are <c>SPARK_SPIKE_SM7_N=1000</c>.</summary>

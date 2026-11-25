@@ -22,7 +22,7 @@ namespace MintPlayer.Spark.Tests.Contributions;
 /// Without <c>ViewDeleted</c> the flag is ignored silently (SoftDelete's row policy), so the answer is
 /// the default list. Fixtures are the generated <c>CoSong.Lyrics</c> types of <see cref="ContributionsRuntimeTests"/>.
 /// </summary>
-public class ContributionsHiddenVisibilityTests : SparkTestDriver
+public class ContributionsHiddenVisibilityTests : RavenSparkTestDriver
 {
     private static readonly Guid SongTypeId = Guid.Parse("c0d20000-0000-4000-8000-c0d200000001");
     private static readonly Guid LyricsTypeId = Guid.Parse("c0d20000-0000-4000-8000-c0d200000002");
@@ -57,7 +57,7 @@ public class ContributionsHiddenVisibilityTests : SparkTestDriver
 
         var identity = new CoIdentity { Id = Alice };
         var factory = new SparkEndpointFactory(
-            Store,
+            Store.AsSparkTestDatabase(),
             [SongModel(), LyricsModel(), ContributionModel(), CurrentModel()],
             configureServices: s =>
             {

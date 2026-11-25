@@ -23,8 +23,8 @@ namespace MintPlayer.Spark.Tests.Authorization.Extensions;
 /// The page's script itself runs in a browser and is exercised by the Fleet E2E suite; what is
 /// pinned here is everything the server decides — what reaches the page, and how it is encoded.
 /// </remarks>
-public class ExternalLoginHandoffTests(SparkSharedDatabase database)
-    : SparkSharedTestDriver(database), IClassFixture<SparkSharedDatabase>
+public class ExternalLoginHandoffTests(RavenSparkSharedDatabase database)
+    : RavenSparkSharedTestDriver(database), IClassFixture<RavenSparkSharedDatabase>
 {
     private const string TestScheme = "TestExternal";
     private const string ValidNonce = "AbCdEfGhIjKlMnOpQrStUvWxYz012-_9";

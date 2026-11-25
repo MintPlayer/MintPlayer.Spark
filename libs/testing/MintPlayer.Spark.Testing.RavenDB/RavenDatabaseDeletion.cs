@@ -12,7 +12,7 @@ namespace MintPlayer.Spark.Testing;
 /// Call <see cref="DeleteOnDispose"/> from the driver's <c>PreInitialize</c> override, which
 /// <c>RavenTestDriver.GetDocumentStore()</c> runs for EVERY store it creates — the fixture's own
 /// <c>Store</c> and every inline <c>using var store = GetDocumentStore();</c> in a test alike.
-/// Users: <c>SparkTestDriver</c>, <c>SparkSharedDatabase</c>, and (linked by source)
+/// Users: <c>RavenSparkTestDriver</c>, <c>RavenSparkSharedDatabase</c>, and (linked by source)
 /// <c>apps/CodeCoverage/CodeCoverage.Tests/CoverageRavenTest</c>.
 /// </para>
 /// <para>
@@ -23,7 +23,7 @@ namespace MintPlayer.Spark.Testing;
 /// Sending the operation ourselves first, from <c>BeforeDispose</c> (which the store raises before
 /// <c>AfterDispose</c>), is the only way to set the budget; the driver's delete then runs anyway and
 /// its handler swallows the resulting <c>DatabaseDoesNotExistException</c>. See
-/// <c>SparkTestDriver.DisposeAsync</c> for the measured history, including approaches already rejected.
+/// <c>RavenSparkTestDriver.DisposeAsync</c> for the measured history, including approaches already rejected.
 /// </para>
 /// <para>
 /// ⚠️ <b>Zero, and it has to be zero</b> — not a short timeout. With zero, the server's

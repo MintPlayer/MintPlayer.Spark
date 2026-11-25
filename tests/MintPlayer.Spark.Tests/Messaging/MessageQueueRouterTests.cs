@@ -19,7 +19,7 @@ namespace MintPlayer.Spark.Tests.Messaging;
 /// claim, a failing pump step, and a drain that times out. The intervals are options, so no clock
 /// seam is needed — they are simply set small.
 /// </summary>
-public class MessageQueueRouterTests : SparkTestDriver
+public class MessageQueueRouterTests : RavenSparkTestDriver
 {
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(20);
 

@@ -22,8 +22,8 @@ namespace MintPlayer.Spark.Tests.Authorization.Extensions;
 /// (Succeeded vs. first-time create) need a real OAuth round-trip and are covered
 /// by the Fleet E2E suite.
 /// </summary>
-public class MapSparkIdentityApiTests(SparkSharedDatabase database)
-    : SparkSharedTestDriver(database), IClassFixture<SparkSharedDatabase>
+public class MapSparkIdentityApiTests(RavenSparkSharedDatabase database)
+    : RavenSparkSharedTestDriver(database), IClassFixture<RavenSparkSharedDatabase>
 {
     private async Task<TestServer> StartHostAsync()
     {

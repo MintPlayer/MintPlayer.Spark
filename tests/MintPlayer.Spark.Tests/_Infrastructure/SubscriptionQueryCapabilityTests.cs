@@ -21,7 +21,7 @@ namespace MintPlayer.Spark.Tests._Infrastructure;
 /// #258 and #233.
 /// </para>
 /// </summary>
-public class SubscriptionQueryCapabilityTests : SparkTestDriver
+public class SubscriptionQueryCapabilityTests : RavenSparkTestDriver
 {
     /// <summary>Mirrors the fields of <c>SparkSyncAction</c> that the real subscription query reads.</summary>
     public class Widget

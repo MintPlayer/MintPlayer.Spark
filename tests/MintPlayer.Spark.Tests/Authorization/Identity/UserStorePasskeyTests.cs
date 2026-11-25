@@ -11,7 +11,7 @@ namespace MintPlayer.Spark.Tests.Authorization.Identity;
 /// attention here, because every way of getting it wrong is silent: a reservation left behind burns
 /// a credential id permanently, and one never taken lets two users claim the same credential.
 /// </summary>
-public class UserStorePasskeyTests : SparkTestDriver
+public class UserStorePasskeyTests : RavenSparkTestDriver
 {
     private static byte[] CredentialId(byte seed) => [seed, 2, 3, 4, 5, 6, 7, 8];
 

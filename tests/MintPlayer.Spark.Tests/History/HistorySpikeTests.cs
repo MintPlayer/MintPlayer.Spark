@@ -14,7 +14,7 @@ namespace MintPlayer.Spark.Tests.History;
 /// the measured values (§4.1).
 /// </summary>
 /// <remarks>Fixture names start with <c>HSpike</c>: kept apart from every other fixture's types.</remarks>
-public class HistorySpikeTests(ITestOutputHelper output) : SparkTestDriver
+public class HistorySpikeTests(ITestOutputHelper output) : RavenSparkTestDriver
 {
     private const string Docs = "HSpikeDocs";
     private const string Others = "HSpikeOthers";

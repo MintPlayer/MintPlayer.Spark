@@ -23,7 +23,7 @@ namespace MintPlayer.Spark.Tests.Services;
 /// precisely the cardinality oracle this codebase already refused once on an author-supplied total.
 /// </para>
 /// </remarks>
-public class PagingPushdownParityTests : SparkTestDriver
+public class PagingPushdownParityTests : RavenSparkTestDriver
 {
     private static readonly Guid PagedLedgerTypeId = Guid.Parse("bbbb2222-bbbb-bbbb-bbbb-bbbb22222222");
 
@@ -88,7 +88,7 @@ public class PagingPushdownParityTests : SparkTestDriver
     private IQueryExecutor Executor(IRowSecurity? rowSecurity = null)
     {
         _factory = new SparkEndpointFactory<TestContext>(
-            Store, [PagedLedgerModel()],
+            Store.AsSparkTestDatabase(), [PagedLedgerModel()],
             configureServices: rowSecurity is null
                 ? null
                 : services => services.AddSingleton(rowSecurity),

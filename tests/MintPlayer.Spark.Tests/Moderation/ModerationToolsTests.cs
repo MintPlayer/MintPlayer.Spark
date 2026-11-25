@@ -14,7 +14,7 @@ namespace MintPlayer.Spark.Tests.Moderation;
 /// suspensions' server-side write block, the new-account throttle (429), and a moderator's delete
 /// reversing the votes of the post.
 /// </summary>
-public class ModerationToolsTests : SparkTestDriver
+public class ModerationToolsTests : RavenSparkTestDriver
 {
     private const string Alice = "users/alice", Bob = "users/bob", Carol = "users/carol";
 

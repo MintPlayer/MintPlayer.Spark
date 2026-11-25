@@ -18,7 +18,7 @@ namespace MintPlayer.Spark.Tests.Cron;
 /// throws or has an invalid expression, the concurrent-run path, and the compare-exchange claim
 /// used for cluster-wide exactly-once execution.
 /// </summary>
-public class SparkCronSchedulerTests : SparkTestDriver
+public class SparkCronSchedulerTests : RavenSparkTestDriver
 {
     private sealed class TestBuilder : ISparkBuilder
     {

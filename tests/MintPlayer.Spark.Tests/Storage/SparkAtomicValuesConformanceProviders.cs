@@ -35,7 +35,7 @@ public sealed class RavenAtomicValuesConformanceTests : SparkAtomicValuesConform
         DateTime.Parse(read!.Value, null, System.Globalization.DateTimeStyles.RoundtripKind).ToUniversalTime().Should().Be(at);
     }
 
-    private sealed class Driver : SparkTestDriver
+    private sealed class Driver : RavenSparkTestDriver
     {
         public IDocumentStore DocumentStore => Store;
     }

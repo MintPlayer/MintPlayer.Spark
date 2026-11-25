@@ -29,7 +29,7 @@ const WEIGHTS_FILE = path.join(ROOT, 'tools', 'test-shard-weights.json');
 
 /** Tests that start RavenDB (embedded) or an app host take seconds each; pure unit tests take milliseconds. */
 export const RAVEN_FACTOR = 4;
-const HEAVY = /\b(SparkTestDriver|RavenTestDriver|SparkSharedDatabase|CoverageRavenTest|WebApplicationFactory|TestServer|SparkAppTestHost|IDocumentStore)\b/;
+const HEAVY = /\b(RavenSparkTestDriver|RavenTestDriver|RavenSparkSharedDatabase|SparkTestDriver|SparkSharedDatabase|CoverageRavenTest|WebApplicationFactory|TestServer|SparkAppTestHost|IDocumentStore)\b/;
 const TEST_ATTRIBUTE = /\[(Fact|Theory|InlineData)\b/g;
 const HAS_TEST = /\[(Fact|Theory)\b/;
 const CLASS = /^\s*(?:(?:public|internal|sealed|static|partial|abstract)\s+)*class\s+([A-Za-z_][A-Za-z0-9_]*)/gm;

@@ -174,6 +174,10 @@ jobs:
         # Read by tools/test-shard.mjs; an input of the MintPlayer.Spark.Tests task, so each shard is
         # cached on its own.
         SPARK_TEST_SHARD: ${{ matrix.shard }}
+        # #536 D35: MintPlayer.Spark.Tests references four test databases (RavenDB, InMemory, SqlServer,
+        # PostgreSql), so its provider-neutral classes need this to pick one. Assemblies with one provider
+        # ignore it.
+        SPARK_TEST_DATABASE: RavenDB
 
     # upload-artifact roots the artifact at the deepest folder ALL matched files share, so a job that only
     # produced tests/MintPlayer.Spark.Tests/coverage/** would lose that prefix, and the coverage job would

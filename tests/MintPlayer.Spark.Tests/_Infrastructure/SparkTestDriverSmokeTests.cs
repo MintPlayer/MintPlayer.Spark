@@ -5,7 +5,7 @@ using Raven.Client.Documents.Session;
 
 namespace MintPlayer.Spark.Tests._Infrastructure;
 
-public class SparkTestDriverSmokeTests : SparkTestDriver
+public class SparkTestDriverSmokeTests : RavenSparkTestDriver
 {
     private class Widget
     {
@@ -31,7 +31,7 @@ public class SparkTestDriverSmokeTests : SparkTestDriver
     }
 
     /// <summary>
-    /// The host resolves the driver's own <see cref="SparkTestDriver.Store"/>, not a second store of
+    /// The host resolves the driver's own <see cref="RavenSparkTestDriver.Store"/>, not a second store of
     /// its own — so a fixture written through <c>Store</c> and a service reading through
     /// <c>IDatabaseAccess</c> are looking at one database.
     /// </summary>
@@ -47,7 +47,7 @@ public class SparkTestDriverSmokeTests : SparkTestDriver
     [Fact]
     public async Task The_host_uses_the_drivers_store()
     {
-        await using var factory = new SparkEndpointFactory(Store, []);
+        await using var factory = new SparkEndpointFactory(Store.AsSparkTestDatabase(), []);
 
         factory.GetService<IDocumentStore>().Should().BeSameAs(Store);
 

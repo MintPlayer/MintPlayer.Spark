@@ -351,7 +351,7 @@ public abstract class SparkAppTestHost : IAsyncLifetime
     /// proof that a deployment took effect, as opposed to merely being authorized.
     /// <para>
     /// Requires a licence that includes the ETL feature. The repository's default licence does not;
-    /// a RavenDB developer licence does. <see cref="SparkTestDriver"/> reads
+    /// a RavenDB developer licence does. <see cref="RavenSparkTestDriver"/> reads
     /// <c>RAVENDB_LICENSE</c> or the repo-root <c>raven-license.log</c>.
     /// </para>
     /// </summary>
@@ -1040,11 +1040,11 @@ public abstract class SparkAppTestHost : IAsyncLifetime
 }
 
 /// <summary>
-/// Exposes the protected <see cref="SparkTestDriver.Store"/> so <see cref="SparkAppTestHost"/>
+/// Exposes the protected <see cref="RavenSparkTestDriver.Store"/> so <see cref="SparkAppTestHost"/>
 /// can seed into the embedded Raven. Inheriting a non-test-class type keeps xUnit from
 /// picking up this file's base class.
 /// </summary>
-public sealed class SparkTestDriverHost : SparkTestDriver
+public sealed class SparkTestDriverHost : RavenSparkTestDriver
 {
     public new IDocumentStore Store => base.Store;
 }

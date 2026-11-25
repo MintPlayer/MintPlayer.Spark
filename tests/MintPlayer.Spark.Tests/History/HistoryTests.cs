@@ -31,7 +31,7 @@ namespace MintPlayer.Spark.Tests.History;
 /// Fixture names start with <c>Hi</c>: <c>ActionsResolver</c> matches actions classes by simple
 /// name across the whole assembly, and these types must not meet another fixture's.
 /// </remarks>
-public class HistoryTests(ITestOutputHelper output) : SparkTestDriver
+public class HistoryTests(ITestOutputHelper output) : RavenSparkTestDriver
 {
     private static readonly Guid NoteTypeId = Guid.Parse("46030000-0000-4000-8000-000000000001");
     private static readonly Guid LineTypeId = Guid.Parse("46030000-0000-4000-8000-000000000002");
@@ -50,7 +50,7 @@ public class HistoryTests(ITestOutputHelper output) : SparkTestDriver
     private async Task<Host> StartAsync(string? userId = Alice, SparkTestSecurity? security = null, Action<SparkHistoryOptions>? history = null)
     {
         var factory = new SparkEndpointFactory<HiContext>(
-            Store,
+            Store.AsSparkTestDatabase(),
             [NoteModel(), LineModel()],
             configureServices: services =>
             {

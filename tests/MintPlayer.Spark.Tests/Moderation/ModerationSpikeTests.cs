@@ -18,7 +18,7 @@ namespace MintPlayer.Spark.Tests.Moderation;
 /// #460 M12 spikes S-MOD-A (map-reduce indexes from an add-on assembly) and S-MOD-E (vote + ledger
 /// entry atomic on the shared request session). Kept as tests so the answers stay pinned.
 /// </summary>
-public class ModerationSpikeTests(ITestOutputHelper output) : SparkTestDriver
+public class ModerationSpikeTests(ITestOutputHelper output) : RavenSparkTestDriver
 {
     private readonly List<IAsyncDisposable> factories = [];
 
@@ -32,7 +32,7 @@ public class ModerationSpikeTests(ITestOutputHelper output) : SparkTestDriver
     private SparkEndpointFactory<MsSpikeContext> Start()
     {
         var factory = new SparkEndpointFactory<MsSpikeContext>(
-            Store,
+            Store.AsSparkTestDatabase(),
             [],
             // Exactly what AddModeration does: declare the add-on assembly; core's UseSpark deploys it.
             configureSpark: spark => spark.AddIndexesFrom(typeof(Moderation_VotePairs).Assembly));

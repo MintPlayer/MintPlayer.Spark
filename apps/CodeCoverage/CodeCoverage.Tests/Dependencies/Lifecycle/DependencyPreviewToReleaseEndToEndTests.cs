@@ -12,7 +12,7 @@ using Xunit;
 namespace CodeCoverage.Tests.Dependencies.Lifecycle;
 
 /// <summary>
-/// #617 end to end on <see cref="SparkTestDriver"/> (owner request 2026-11-09, docs/code-coverage/sdk-updates-PRD.md §12
+/// #617 end to end on <see cref="RavenSparkTestDriver"/> (owner request 2026-11-09, docs/code-coverage/sdk-updates-PRD.md §12
 /// M1): the stored <see cref="PlatformRelease"/> rows the collector writes, the <c>platforms</c> input the lookup dispatch
 /// carries, the platform record the action builds from it (as previewToGa.test.ts proves on the action's side), and the
 /// plan the saga commits. A repository on the 11.0 RC, the day 11.0 is released: the plan moves it to the release in the
@@ -20,7 +20,7 @@ namespace CodeCoverage.Tests.Dependencies.Lifecycle;
 /// <para>Red before #617 M3: the in-channel candidate was a minor channel "move" to itself with no riders, so the RC
 /// package stayed in a group of its own and the SDK moved without it.</para>
 /// </summary>
-public class DependencyPreviewToReleaseEndToEndTests : SparkTestDriver
+public class DependencyPreviewToReleaseEndToEndTests : RavenSparkTestDriver
 {
     // Like CoverageRavenTest: fork pull requests get no licence, and nothing here needs a licensed feature.
     protected override bool RequireLicense => false;

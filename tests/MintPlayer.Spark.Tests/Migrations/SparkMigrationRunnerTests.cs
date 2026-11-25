@@ -15,7 +15,7 @@ namespace MintPlayer.Spark.Tests.Migrations;
 /// its lease (#536 S15): ordered run, per-version marker documents (idempotent across runs), and fail-fast. The
 /// pre-seeded locks are bare <see cref="DateTime"/> values, as the runner wrote them before #536.
 /// </summary>
-public class SparkMigrationRunnerTests : SparkTestDriver
+public class SparkMigrationRunnerTests : RavenSparkTestDriver
 {
     // Shared observer so we can see what ran, across DI scopes.
     public sealed class Recorder { public List<long> Applied { get; } = []; }

@@ -11,7 +11,7 @@ namespace MintPlayer.Spark.Tests.Moderation;
 /// hidden post indistinguishable from a missing one, voter eligibility (3), caps (4), delayed crediting
 /// (5), diversity (2) and the privilege gates (1). Time is the host's clock, never the wall clock.
 /// </summary>
-public class ModerationVoteTests : SparkTestDriver
+public class ModerationVoteTests : RavenSparkTestDriver
 {
     private const string Alice = "users/alice", Bob = "users/bob", Carol = "users/carol", Dave = "users/dave", Erin = "users/erin";
 

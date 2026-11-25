@@ -30,7 +30,7 @@ namespace MintPlayer.Spark.Tests.Services;
 /// </para>
 /// </summary>
 public class SearchPushdownTests(SearchPushdownTests.SeededCars cars)
-    : SparkSharedTestDriver(cars), IClassFixture<SearchPushdownTests.SeededCars>
+    : RavenSparkSharedTestDriver(cars), IClassFixture<SearchPushdownTests.SeededCars>
 {
     public class Car
     {
@@ -85,7 +85,7 @@ public class SearchPushdownTests(SearchPushdownTests.SeededCars cars)
     ];
 
     /// <summary>The class's database: <see cref="Models"/> stored and <see cref="Cars_Search"/> caught up.</summary>
-    public sealed class SeededCars : SparkSharedDatabase
+    public sealed class SeededCars : RavenSparkSharedDatabase
     {
         public override async Task InitializeAsync()
         {
@@ -373,7 +373,7 @@ public class SearchPushdownTests(SearchPushdownTests.SeededCars cars)
 /// The <see cref="SearchPushdownTests"/> case that adds a document to the seeded cars. It stays on a database per
 /// case: on the class's shared one, its van would turn up in the other cases' <c>volkswagen</c> searches.
 /// </summary>
-public class SearchPushdownWriteTests : SparkTestDriver
+public class SearchPushdownWriteTests : RavenSparkTestDriver
 {
     /// <summary>
     /// A row filter still excludes rows the search term matches. The counterpart to the RQL assertion in

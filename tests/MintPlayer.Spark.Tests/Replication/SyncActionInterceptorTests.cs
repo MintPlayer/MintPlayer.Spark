@@ -12,7 +12,7 @@ using Raven.Client.Documents;
 
 namespace MintPlayer.Spark.Tests.Replication;
 
-public class SyncActionInterceptorTests : SparkTestDriver
+public class SyncActionInterceptorTests : RavenSparkTestDriver
 {
     private SyncActionInterceptor NewInterceptor(string moduleName = "Fleet") =>
         new(Store, Options.Create(new SparkReplicationOptions

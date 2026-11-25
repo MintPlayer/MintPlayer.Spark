@@ -67,7 +67,7 @@ public class RavenSparkViewTests : IAsyncLifetime
         definition.Maps.Should().ContainSingle().Which.Should().Contain("LoadDocument").And.NotContain("Id =");
     }
 
-    private sealed class Driver : SparkTestDriver
+    private sealed class Driver : RavenSparkTestDriver
     {
         public IDocumentStore DocumentStore => Store;
 

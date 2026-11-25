@@ -21,7 +21,7 @@ namespace MintPlayer.Spark.Tests.Endpoints.Queries;
 /// find, and the projector emits an empty cell.
 /// </para>
 /// </summary>
-public class QueryIdRestrictionTests : SparkTestDriver
+public class QueryIdRestrictionTests : RavenSparkTestDriver
 {
     private static readonly Guid GadgetTypeId = Guid.Parse("aa11bb22-cc33-dd44-ee55-ff6677889900");
     private static readonly Guid GadgetQueryId = Guid.Parse("bb22cc33-dd44-ee55-ff66-778899001122");
@@ -71,7 +71,7 @@ public class QueryIdRestrictionTests : SparkTestDriver
     public async Task Restricting_returns_exactly_the_named_rows()
     {
         var model = GadgetModel();
-        await using var factory = new SparkEndpointFactory(Store, [model]);
+        await using var factory = new SparkEndpointFactory(Store.AsSparkTestDatabase(), [model]);
 
         var result = await RunAsync(factory, model, ["gadgets/3", "gadgets/1"]);
 
@@ -83,7 +83,7 @@ public class QueryIdRestrictionTests : SparkTestDriver
     {
         // The whole reason a selection re-runs its query instead of loading documents.
         var model = GadgetModel();
-        await using var factory = new SparkEndpointFactory(Store, [model]);
+        await using var factory = new SparkEndpointFactory(Store.AsSparkTestDatabase(), [model]);
 
         var result = await RunAsync(factory, model, ["gadgets/2"]);
 
@@ -98,7 +98,7 @@ public class QueryIdRestrictionTests : SparkTestDriver
         // A restricted run is "these rows", not "a page of these rows". Honouring take here is how a
         // bulk action silently acts on the first few of a large selection.
         var model = GadgetModel();
-        await using var factory = new SparkEndpointFactory(Store, [model]);
+        await using var factory = new SparkEndpointFactory(Store.AsSparkTestDatabase(), [model]);
 
         var result = await RunAsync(factory, model, ["gadgets/1", "gadgets/2", "gadgets/3"], take: 1);
 
@@ -111,7 +111,7 @@ public class QueryIdRestrictionTests : SparkTestDriver
         // Narrowing never invents a row. The caller's all-or-nothing check turns the short result
         // into a refusal; that decision is not this layer's.
         var model = GadgetModel();
-        await using var factory = new SparkEndpointFactory(Store, [model]);
+        await using var factory = new SparkEndpointFactory(Store.AsSparkTestDatabase(), [model]);
 
         var result = await RunAsync(factory, model, ["gadgets/1", "gadgets/nope"]);
 
@@ -122,7 +122,7 @@ public class QueryIdRestrictionTests : SparkTestDriver
     public async Task An_unrestricted_run_is_unaffected()
     {
         var model = GadgetModel();
-        await using var factory = new SparkEndpointFactory(Store, [model]);
+        await using var factory = new SparkEndpointFactory(Store.AsSparkTestDatabase(), [model]);
 
         var result = await RunAsync(factory, model, restrictTo: null);
 
@@ -138,7 +138,7 @@ public class QueryIdRestrictionTests : SparkTestDriver
         // the receiver and not the first argument) survived a green suite and was found by clicking
         // the demo. WidgetlessActions deliberately declares no hook.
         var model = GadgetModel(source: "Custom.GetQueryableGadgets", name: "Widgetless");
-        await using var factory = new SparkEndpointFactory(Store, [model]);
+        await using var factory = new SparkEndpointFactory(Store.AsSparkTestDatabase(), [model]);
 
         var result = await RunAsync(factory, model, ["gadgets/1", "gadgets/3"]);
 
@@ -173,7 +173,7 @@ public class QueryIdRestrictionTests : SparkTestDriver
             await session.StoreAsync(new Person { FirstName = "Carol", LastName = "Davis" }, "people/3");
         });
 
-        await using var factory = new SparkEndpointFactory(Store, [personType]);
+        await using var factory = new SparkEndpointFactory(Store.AsSparkTestDatabase(), [personType]);
         using var scope = factory.GetService<IServiceScopeFactory>().CreateScope();
         var executor = scope.ServiceProvider.GetRequiredService<IQueryExecutor>();
 
@@ -192,7 +192,7 @@ public class QueryIdRestrictionTests : SparkTestDriver
         // semantic — narrowing at the SOURCE would let a caller name rows the query never returned,
         // and the all-or-nothing count could not tell.
         var model = GadgetModel(source: "Custom.GetPlainList", name: "PlainList");
-        await using var factory = new SparkEndpointFactory(Store, [model]);
+        await using var factory = new SparkEndpointFactory(Store.AsSparkTestDatabase(), [model]);
 
         var result = await RunAsync(factory, model, ["gadgets/2"]);
 
@@ -208,7 +208,7 @@ public class QueryIdRestrictionTests : SparkTestDriver
         // arbitrary narrowing of a path with no reason to care, and it stranded any row keyed by an
         // int, a Guid, or a value-object key while its grid rendered perfectly.
         var model = GadgetModel(source: "Custom.GetUnnarrowable", name: "Unnarrowable");
-        await using var factory = new SparkEndpointFactory(Store, [model]);
+        await using var factory = new SparkEndpointFactory(Store.AsSparkTestDatabase(), [model]);
 
         var result = await RunAsync(factory, model, ["1"]);
 
@@ -223,7 +223,7 @@ public class QueryIdRestrictionTests : SparkTestDriver
         // rendered a flawless grid and threw the moment anyone ticked a box. Both now read the
         // same place.
         var model = GadgetModel(source: "Custom.GetWeaklyDeclared", name: "WeaklyDeclared");
-        await using var factory = new SparkEndpointFactory(Store, [model]);
+        await using var factory = new SparkEndpointFactory(Store.AsSparkTestDatabase(), [model]);
 
         var result = await RunAsync(factory, model, ["gadgets/2"]);
 
@@ -259,7 +259,7 @@ public class QueryIdRestrictionTests : SparkTestDriver
             await session.StoreAsync(new Person { FirstName = "Bob", LastName = "Jones" }, "people/2");
         });
 
-        await using var factory = new SparkEndpointFactory(Store, [personType]);
+        await using var factory = new SparkEndpointFactory(Store.AsSparkTestDatabase(), [personType]);
         using var scope = factory.GetService<IServiceScopeFactory>().CreateScope();
         var executor = scope.ServiceProvider.GetRequiredService<IQueryExecutor>();
 
@@ -279,7 +279,7 @@ public class QueryIdRestrictionTests : SparkTestDriver
         var paged = GadgetModel(source: "Custom.GetGadgetPage");
         var plain = GadgetModel();
 
-        await using var factory = new SparkEndpointFactory(Store, [plain]);
+        await using var factory = new SparkEndpointFactory(Store.AsSparkTestDatabase(), [plain]);
         using var scope = factory.GetService<IServiceScopeFactory>().CreateScope();
         var executor = scope.ServiceProvider.GetRequiredService<IQueryExecutor>();
 

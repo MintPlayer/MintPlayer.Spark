@@ -16,10 +16,15 @@ Spark is **not** Vidyano. If you have written tests for the originating framewor
 
 ## Hard rules (read first)
 
-- **Pick the right driver.** `SparkTestDriver` gives a **fresh database per test case**;
-  `SparkSharedDatabase` + `SparkSharedTestDriver` give **one per test class**. The shared one is
+- **Pick the right driver.** `RavenSparkTestDriver` gives a **fresh database per test case**;
+  `RavenSparkSharedDatabase` + `RavenSparkSharedTestDriver` give **one per test class**. The shared one is
   faster; the per-case one is what you need the moment a test asserts on an unscoped count, uses
   a fixed id, or does anything database-wide. [Details](#choosing-a-driver).
+- **The `Raven*` drivers are RavenDB-only** (package `MintPlayer.Spark.Testing.RavenDB`). A test that
+  should hold on every database derives from the neutral `SparkTestDriver` / `SparkSharedDatabase`,
+  passes `Database` to `SparkEndpointFactory` and seeds through `factory.SeedAsync`, with no
+  `IDocumentStore` in sight. A project referencing several provider packages runs on the one
+  `SPARK_TEST_DATABASE` names (`RavenDB`, `SqlServer`, `PostgreSql`, `InMemory`); there is no default.
 - **A 404 does not mean "not found".** Spark answers 404 for *denied* as well as *absent*, on
   purpose, so it is not an existence oracle. Asserting `NotFound` proves refusal-**or**-absence —
   never absence. [Details](#the-404-rule-audit-m-3).
@@ -48,7 +53,7 @@ Spark is **not** Vidyano. If you have written tests for the originating framewor
 
 Both ship. Neither replaces the other.
 
-| | `SparkTestDriver` | `SparkSharedDatabase` + `SparkSharedTestDriver` |
+| | `RavenSparkTestDriver` | `RavenSparkSharedDatabase` + `RavenSparkSharedTestDriver` |
 |---|---|---|
 | Database | per test **case** | per test **class** |
 | Isolation | total | class-local — tests see each other's documents |
@@ -58,7 +63,7 @@ Both ship. Neither replaces the other.
 Per-case (the conservative default):
 
 ```csharp
-public class CarTests : SparkTestDriver
+public class CarTests : RavenSparkTestDriver
 {
     [Fact]
     public async Task Reads_back_what_it_wrote()
@@ -74,7 +79,7 @@ public class CarTests : SparkTestDriver
 Per-class — note the fixture owns the database *and* anything expensive built on it:
 
 ```csharp
-public sealed class CarHost : SparkSharedDatabase
+public sealed class CarHost : RavenSparkSharedDatabase
 {
     public SparkEndpointFactory<FleetContext> Factory { get; private set; } = null!;
 
@@ -92,7 +97,7 @@ public sealed class CarHost : SparkSharedDatabase
 }
 
 public class CarQueryTests(CarHost host)
-    : SparkSharedTestDriver(host), IClassFixture<CarHost>
+    : RavenSparkSharedTestDriver(host), IClassFixture<CarHost>
 {
     [Fact]
     public async Task Lists_the_car_it_seeded()
@@ -139,7 +144,7 @@ pins that.
 ### What a shared database forbids
 
 These are the ways a class silently breaks when moved. All of them are reasons to **stay on
-`SparkTestDriver`** — that is what it is for, not a workaround:
+`RavenSparkTestDriver`** — that is what it is for, not a workaround:
 
 - **Unscoped counts.** `Query<T>().CountAsync()`, `SingleAsync()` over a collection,
   `Should().BeEmpty()`, `TotalRecords.Should().Be(3)`. Assert on the ids you seeded.

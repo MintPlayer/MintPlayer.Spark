@@ -15,7 +15,7 @@ namespace MintPlayer.Spark.Tests.Services;
 /// full HandleSaveAsync / HandleDeleteAsync flows against a real document store
 /// through <see cref="SparkEndpointFactory{TContext}"/>.
 /// </summary>
-public class SyncActionHandlerIntegrationTests : SparkTestDriver
+public class SyncActionHandlerIntegrationTests : RavenSparkTestDriver
 {
     private static readonly Guid DocTypeId = Guid.Parse("9c0a33aa-33aa-33aa-33aa-9c0a33aa33aa");
 
@@ -25,7 +25,7 @@ public class SyncActionHandlerIntegrationTests : SparkTestDriver
     public override async Task InitializeAsync()
     {
         await base.InitializeAsync();
-        _factory = new SparkEndpointFactory<GuardedContext>(Store, [GuardedDocModel.For(DocTypeId)]);
+        _factory = new SparkEndpointFactory<GuardedContext>(Store.AsSparkTestDatabase(), [GuardedDocModel.For(DocTypeId)]);
         _handler = _factory.GetService<ISyncActionHandler>();
     }
 

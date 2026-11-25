@@ -37,7 +37,7 @@ namespace MintPlayer.Spark.Tests.Builder;
 /// <c>DisableCors</c>, which the last fact here pins.
 /// </para>
 /// </remarks>
-public class SparkCorsDefaultTests : SparkTestDriver
+public class SparkCorsDefaultTests : RavenSparkTestDriver
 {
     private const string Origin = "https://elsewhere.test";
 
@@ -56,7 +56,7 @@ public class SparkCorsDefaultTests : SparkTestDriver
     [InlineData("/spark/aliases")]
     public async Task Sparks_own_endpoints_answer_cross_origin_by_default(string path)
     {
-        await using var factory = new SparkEndpointFactory<TestSparkContext>(Store, models: []);
+        await using var factory = new SparkEndpointFactory<TestSparkContext>(Store.AsSparkTestDatabase(), models: []);
         using var client = factory.CreateClient();
 
         using var response = await client.SendAsync(Preflight(path));
@@ -77,7 +77,7 @@ public class SparkCorsDefaultTests : SparkTestDriver
     public async Task An_endpoint_under_the_spark_prefix_can_opt_out()
     {
         await using var factory = new SparkEndpointFactory<TestSparkContext>(
-            Store,
+            Store.AsSparkTestDatabase(),
             models: [],
             configureSpark: spark => spark.Registry.AddEndpoints(
                 endpoints => endpoints.MapGet("/spark/no-cors-here", () => "ok").WithMetadata(new Microsoft.AspNetCore.Cors.DisableCorsAttribute())));
@@ -94,7 +94,7 @@ public class SparkCorsDefaultTests : SparkTestDriver
     public async Task An_endpoint_outside_the_spark_prefix_gets_nothing_by_default()
     {
         await using var factory = new SparkEndpointFactory<TestSparkContext>(
-            Store,
+            Store.AsSparkTestDatabase(),
             models: [],
             configureSpark: spark => spark.Registry.AddEndpoints(
                 endpoints => endpoints.MapGet("/elsewhere", () => "ok")));
@@ -111,7 +111,7 @@ public class SparkCorsDefaultTests : SparkTestDriver
     public async Task An_endpoint_outside_the_spark_prefix_can_opt_in()
     {
         await using var factory = new SparkEndpointFactory<TestSparkContext>(
-            Store,
+            Store.AsSparkTestDatabase(),
             models: [],
             configureSpark: spark => spark.Registry.AddEndpoints(
                 endpoints => endpoints.MapGet("/elsewhere-cors", () => "ok")

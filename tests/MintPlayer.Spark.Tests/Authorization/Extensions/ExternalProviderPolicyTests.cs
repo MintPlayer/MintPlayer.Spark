@@ -23,7 +23,7 @@ namespace MintPlayer.Spark.Tests.Authorization.Extensions;
 /// #460 D7 — per-provider verified-email trust and display-name user names — and spike SP-C, measured
 /// against the handlers' own option defaults and claim actions (no live provider is contacted).
 /// </summary>
-public class ExternalProviderPolicyTests(ITestOutputHelper output) : SparkTestDriver
+public class ExternalProviderPolicyTests(ITestOutputHelper output) : RavenSparkTestDriver
 {
     private const string Stub = "StubProvider";
 

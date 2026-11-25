@@ -33,7 +33,7 @@ namespace MintPlayer.Spark.Tests.Authorization.Extensions;
 /// redirect branch gets its own test below since it used to drop the outcome entirely.
 /// </para>
 /// </remarks>
-public class ExternalLoginLinkingTests : SparkTestDriver
+public class ExternalLoginLinkingTests : RavenSparkTestDriver
 {
     private SignInManager<SparkUser> _signInManager = null!;
     private UserManager<SparkUser> _userManager = null!;

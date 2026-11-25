@@ -29,7 +29,7 @@ namespace MintPlayer.Spark.Tests.Authorization.Extensions;
 /// SP3 asks which store methods the handler reaches for, and therefore whether
 /// <c>IUserPasskeyStore</c> sits on the sign-in hot path.
 /// </summary>
-public class PasskeyCeremonyStateTests : SparkTestDriver
+public class PasskeyCeremonyStateTests : RavenSparkTestDriver
 {
     private const string NoCeremonyMarker = "no passkey attestation is underway";
 

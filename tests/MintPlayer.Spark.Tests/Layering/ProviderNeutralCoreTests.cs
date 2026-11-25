@@ -10,13 +10,15 @@ namespace MintPlayer.Spark.Tests.Layering;
 /// </summary>
 public class ProviderNeutralCoreTests
 {
-    private static readonly string[] DatabaseClients = ["Raven.Client", "Microsoft.EntityFrameworkCore", "Npgsql", "Microsoft.Data.SqlClient"];
+    private static readonly string[] DatabaseClients =
+        ["Raven.Client", "Raven.TestDriver", "Microsoft.EntityFrameworkCore", "Npgsql", "Microsoft.Data.SqlClient", "MintPlayer.Spark.RavenDB", "MintPlayer.Spark.Relational"];
 
     public static TheoryData<string> NeutralAssemblies => new()
     {
         typeof(ISparkStore).Assembly.GetName().Name!,                               // MintPlayer.Spark.Abstractions
         typeof(SparkExtensions).Assembly.GetName().Name!,                           // MintPlayer.Spark
         typeof(MintPlayer.Spark.Migrations.ISparkMigration).Assembly.GetName().Name!, // MintPlayer.Spark.Migrations
+        typeof(MintPlayer.Spark.Testing.SparkTestDriver).Assembly.GetName().Name!,  // MintPlayer.Spark.Testing (D35)
     };
 
     [Theory]

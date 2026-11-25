@@ -31,7 +31,7 @@ namespace MintPlayer.Spark.Tests.Services;
 /// <c>ReplacementOf/</c> prefix asserted here.
 /// </para>
 /// </remarks>
-public class IndexFieldsOnlyRedeployTests : SparkTestDriver
+public class IndexFieldsOnlyRedeployTests : RavenSparkTestDriver
 {
     private const int SeedCount = 500;
     private const string ReplacementPrefix = "ReplacementOf/";

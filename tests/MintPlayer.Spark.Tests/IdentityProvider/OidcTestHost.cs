@@ -37,14 +37,14 @@ namespace MintPlayer.Spark.Tests.IdentityProvider;
 /// cases of a class share state, so every client id and e-mail a case seeds goes through
 /// <see cref="ClientId"/> and <see cref="UserEmail"/>, and a case asserts only on records it can
 /// trace to its own application or user, never on a whole collection. See
-/// <see cref="SparkSharedDatabase"/> for the full set of rules.
+/// <see cref="RavenSparkSharedDatabase"/> for the full set of rules.
 /// </para>
 /// <para>
 /// A class that changes database-wide state (disabling a scope every client shares) uses the
 /// parameterless constructor instead, which gives each case a host and database of its own.
 /// </para>
 /// </summary>
-public abstract class OidcTestHost : SparkSharedTestDriver, IAsyncLifetime
+public abstract class OidcTestHost : RavenSparkSharedTestDriver, IAsyncLifetime
 {
     private readonly OidcSharedHost host;
     private readonly bool ownsHost;
@@ -71,7 +71,7 @@ public abstract class OidcTestHost : SparkSharedTestDriver, IAsyncLifetime
 
     /// <summary>
     /// A client id unique to this test case: <paramref name="name"/> plus the case's
-    /// <see cref="SparkSharedTestDriver.Scope"/>. The cases of a class share one database, so two
+    /// <see cref="RavenSparkSharedTestDriver.Scope"/>. The cases of a class share one database, so two
     /// cases both seeding <c>"webapp"</c> would leave two applications behind one client id.
     /// The default redirect URI follows it (<c>https://{clientId}.test/cb</c>).
     /// </summary>
@@ -94,7 +94,7 @@ public abstract class OidcTestHost : SparkSharedTestDriver, IAsyncLifetime
         Action<MintPlayer.Spark.IdentityProvider.Configuration.SparkIdentityProviderOptions>? configureIdentityProvider = null,
         Action<IServiceCollection>? configureServices = null) =>
         new SparkEndpointFactory<OidcTestContext>(
-            store,
+            store.AsSparkTestDatabase(),
             models: [],
             configureServices: configureServices,
             configureSpark: spark =>

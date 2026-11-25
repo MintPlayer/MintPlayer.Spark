@@ -49,7 +49,9 @@ function nx(args, { env = process.env, capture = false } = {}) {
   return { status: result.status ?? 1, stdout: result.stdout ?? '' };
 }
 
-const env = { MSBUILDDISABLENODEREUSE: '1', ...process.env };
+// #536 D35: MintPlayer.Spark.Tests references four test databases; its neutral classes run on the one this
+// names. RavenDB, as on CI, unless the caller picked another.
+const env = { MSBUILDDISABLENODEREUSE: '1', SPARK_TEST_DATABASE: 'RavenDB', ...process.env };
 
 function finish(status) {
   // The compiler server and any reusable nodes another tool started would otherwise outlive the run.

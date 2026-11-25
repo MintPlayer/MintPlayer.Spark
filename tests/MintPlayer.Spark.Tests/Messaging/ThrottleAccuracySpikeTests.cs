@@ -34,7 +34,7 @@ namespace MintPlayer.Spark.Tests.Messaging;
 /// figures of the 1000-message run (<c>SPARK_SPIKE_SM3_BULK=1000</c>).
 /// </para>
 /// </summary>
-public class ThrottleAccuracySpikeTests(ITestOutputHelper output) : SparkTestDriver
+public class ThrottleAccuracySpikeTests(ITestOutputHelper output) : RavenSparkTestDriver
 {
     private const string BulkQueue = "spike-bulk";
     private const string TransactionalQueue = "spike-transactional";

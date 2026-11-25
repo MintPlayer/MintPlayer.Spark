@@ -29,7 +29,7 @@ namespace MintPlayer.Spark.Tests.Mail;
 /// default), payload protection, suppression, the SMTP failure classification, VERP, List-Unsubscribe,
 /// campaign fan-out, bounces and the startup refusals. Every type used here is local to this file.
 /// </summary>
-public class MailManagerTests : SparkTestDriver
+public class MailManagerTests : RavenSparkTestDriver
 {
     private string contentRoot = null!;
 

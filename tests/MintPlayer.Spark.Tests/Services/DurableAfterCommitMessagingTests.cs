@@ -16,7 +16,7 @@ namespace MintPlayer.Spark.Tests.Services;
 /// the recipient, the framework's dispatcher, and the payload surviving serialization. Every other test
 /// of durable interceptors uses <c>TestAfterCommitOutbox</c>, which cannot catch a wiring break here.
 /// </summary>
-public class DurableAfterCommitMessagingTests : SparkTestDriver
+public class DurableAfterCommitMessagingTests : RavenSparkTestDriver
 {
     private static readonly Guid NoteTypeId = Guid.Parse("46a1c7e0-4600-4600-4600-46a1c7e04684");
 
@@ -27,7 +27,7 @@ public class DurableAfterCommitMessagingTests : SparkTestDriver
     public async Task A_committed_save_reaches_its_durable_interceptor_through_Messaging_with_its_facts()
     {
         await using var factory = new SparkEndpointFactory<DurableContext>(
-            Store,
+            Store.AsSparkTestDatabase(),
             [InterceptedNoteModel.For(NoteTypeId), DurableAfterCommitInterceptorTests.DurableNoteModel()],
             configureServices: services => services.AddSingleton(log).AddSingleton(committed),
             configureSpark: spark => spark
@@ -69,7 +69,7 @@ public class DurableAfterCommitMessagingTests : SparkTestDriver
     public async Task A_refused_save_publishes_no_message()
     {
         await using var factory = new SparkEndpointFactory<DurableContext>(
-            Store,
+            Store.AsSparkTestDatabase(),
             [InterceptedNoteModel.For(NoteTypeId), DurableAfterCommitInterceptorTests.DurableNoteModel()],
             configureServices: services => services.AddSingleton(log).AddSingleton(committed),
             configureSpark: spark => spark

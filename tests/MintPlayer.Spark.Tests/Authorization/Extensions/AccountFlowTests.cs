@@ -17,7 +17,7 @@ namespace MintPlayer.Spark.Tests.Authorization.Extensions;
 /// #460 D6 (confirmed email, reset confirms), D8 (personal data, deletion) and D16 (account pages,
 /// SPA links) through the real endpoints.
 /// </summary>
-public class AccountFlowTests : SparkTestDriver
+public class AccountFlowTests : RavenSparkTestDriver
 {
     #region D6 — confirmation and recovery
 

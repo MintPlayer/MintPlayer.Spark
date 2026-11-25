@@ -18,7 +18,7 @@ namespace MintPlayer.Spark.Tests.Reflection;
 /// identical, deterministic output across calls — a regression in the cache (e.g. wrong key,
 /// stale entry, swallowed exception) would surface as a divergent second result.
 /// </summary>
-public class JsonSeededReflectionCacheTests : SparkTestDriver
+public class JsonSeededReflectionCacheTests : RavenSparkTestDriver
 {
     private static readonly Guid PersonTypeId = Guid.Parse("11111111-2222-3333-4444-555555555555");
 
@@ -45,7 +45,7 @@ public class JsonSeededReflectionCacheTests : SparkTestDriver
             },
         };
 
-        _factory = new SparkEndpointFactory<TestSparkContext>(Store, [personModel]);
+        _factory = new SparkEndpointFactory<TestSparkContext>(Store.AsSparkTestDatabase(), [personModel]);
         _executor = _factory.GetService<IQueryExecutor>();
 
         // Seed from the JSON fixture copied to the test output directory by the .csproj

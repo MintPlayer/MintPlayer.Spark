@@ -19,7 +19,7 @@ namespace MintPlayer.Spark.Tests.Authorization.Identity;
 /// store, a restart over the persisted Raven key ring, legacy plaintext, the backfill's idempotence,
 /// the unreadable-key rule, and the token path CodeCoverage's GitHub refresh uses.
 /// </summary>
-public class UserSecretsAtRestTests : SparkTestDriver
+public class UserSecretsAtRestTests : RavenSparkTestDriver
 {
     /// <summary>
     /// A container resolving Identity over the test store with Spark's own Data Protection wiring —

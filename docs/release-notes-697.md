@@ -49,6 +49,15 @@ tags, and everything ships once the merged pull request is backported to `releas
    package no longer brings `RavenDB.Client` along: a migration that injects `IAsyncDocumentSession` needs the
    app's own RavenDB reference (`MintPlayer.Spark.RavenDB` brings it). The lock is now a renewed 2-minute lease
    instead of a 30-minute one, and a lock the previous version left behind is still respected until it expires.
+7. **The RavenDB test harness moved to `MintPlayer.Spark.Testing.RavenDB`** (M5, D35). `MintPlayer.Spark.Testing` is
+   provider-neutral now and references no database client. Replace the package reference with
+   `MintPlayer.Spark.Testing.RavenDB`, and rename the base classes:
+   - `SparkTestDriver` → `RavenSparkTestDriver`
+   - `SparkSharedDatabase` → `RavenSparkSharedDatabase`
+   - `SparkSharedTestDriver` → `RavenSparkSharedTestDriver`
+
+   The namespace is unchanged. `SparkEndpointFactory` takes an `ISparkTestDatabase`: pass `Store.AsSparkTestDatabase()`
+   where you passed `Store`. The old names now belong to the neutral drivers (below).
 
 ## New
 
@@ -118,3 +127,9 @@ tags, and everything ships once the merged pull request is backported to `releas
 10. **`ISparkStoredTypes` and `AddSparkStoredType<T>()`** (M4, D36): the list of types a store keeps, from the app
     model plus explicit registrations. `SparkCollectionNames.Of(type)` is the collection (table) name every provider
     uses.
+11. **Provider-neutral tests** (M5, D35): a class deriving from `SparkTestDriver` (per case) or `SparkSharedDatabase`
+    (per class) gets a `Database`, passes it to `SparkEndpointFactory` and seeds with `factory.SeedAsync(session => …)`.
+    It runs on whichever database the project's test package provides: `MintPlayer.Spark.Testing.RavenDB`,
+    `MintPlayer.Spark.Testing.SqlServer` (`SPARK_TEST_SQLSERVER`, else LocalDB, else a Testcontainers container),
+    `MintPlayer.Spark.Testing.PostgreSql` (`SPARK_TEST_POSTGRESQL`, else an embedded server), or InMemory from the
+    neutral package. A project with several picks one with `SPARK_TEST_DATABASE`.

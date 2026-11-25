@@ -13,8 +13,8 @@ namespace MintPlayer.Spark.Tests.IdentityProvider;
 /// MCP-only apps"): the default keeps every flow and endpoint, a chosen set is mapped and advertised and nothing else is,
 /// and a set that cannot work refuses startup, naming the dependency.
 /// </summary>
-public class OidcSurfaceTests(SparkSharedDatabase database)
-    : SparkSharedTestDriver(database), IClassFixture<SparkSharedDatabase>
+public class OidcSurfaceTests(RavenSparkSharedDatabase database)
+    : RavenSparkSharedTestDriver(database), IClassFixture<RavenSparkSharedDatabase>
 {
     private const string Issuer = "https://idp.test";
 

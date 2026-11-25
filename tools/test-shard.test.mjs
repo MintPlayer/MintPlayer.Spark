@@ -63,7 +63,7 @@ internal class Helper { }`);
 
 test('tests after a nested helper class belong to the top-level class', () => {
   const fileScoped = parseTestFile(`namespace A.B;
-public class Widgets : SparkTestDriver
+public class Widgets : RavenSparkTestDriver
 {
     public sealed class Widgets_ByName : AbstractIndexCreationTask<Widget> { public Widgets_ByName() { Map = x => x; } }
     [Fact] public void X() {}

@@ -21,7 +21,7 @@ using static MintPlayer.Spark.Tests.Mcp._Infrastructure.McpWire;
 namespace MintPlayer.Spark.Tests.Mcp;
 
 /// <summary>A database of its own for <see cref="McpRemoteHost.OtherEmbeddedServer"/>: another application, another store.</summary>
-public sealed class McpRemoteSecondDatabase : SparkSharedDatabase;
+public sealed class McpRemoteSecondDatabase : RavenSparkSharedDatabase;
 
 /// <summary>
 /// A Spark identity provider as the external authorization server (setup 2) of <b>another</b> application's MCP endpoint
@@ -31,8 +31,8 @@ public sealed class McpRemoteSecondDatabase : SparkSharedDatabase;
 /// the provider's user through the linked login; no other endpoint accepts the token. Real Identity, IdentityProvider and
 /// Mcp gate in each host; a scripted agent.
 /// </summary>
-public class McpRemoteResourceTests(SparkSharedDatabase database, McpRemoteSecondDatabase second)
-    : SparkSharedTestDriver(database), IClassFixture<SparkSharedDatabase>, IClassFixture<McpRemoteSecondDatabase>
+public class McpRemoteResourceTests(RavenSparkSharedDatabase database, McpRemoteSecondDatabase second)
+    : RavenSparkSharedTestDriver(database), IClassFixture<RavenSparkSharedDatabase>, IClassFixture<McpRemoteSecondDatabase>
 {
     private const string LoopbackRedirect = "http://127.0.0.1:53682/callback";
 
@@ -307,7 +307,7 @@ public class McpRemoteResourceTests(SparkSharedDatabase database, McpRemoteSecon
     public void ForMcp_without_the_mcp_server_still_refuses_startup()
     {
         var act = () => new SparkEndpointFactory<GuardedContext>(
-            Store,
+            Store.AsSparkTestDatabase(),
             McpAccountHost.Models(),
             configureSpark: spark =>
             {

@@ -22,8 +22,8 @@ namespace MintPlayer.Spark.Tests.Endpoints.Queries;
 /// query was never told to sign in. The 401 is uniform (the gate runs before the query is resolved
 /// into rows), so it opens no existence oracle: a real query and an unknown id get the same answer.
 /// </remarks>
-public class QueryExecuteAnonymousDenialTests(SparkSharedDatabase database)
-    : SparkSharedTestDriver(database), IClassFixture<SparkSharedDatabase>
+public class QueryExecuteAnonymousDenialTests(RavenSparkSharedDatabase database)
+    : RavenSparkSharedTestDriver(database), IClassFixture<RavenSparkSharedDatabase>
 {
     private static readonly Guid DocTypeId = Guid.Parse("d18d0000-1111-2222-3333-444455556666");
     private static readonly Guid AllDocsQueryId = Guid.Parse("d18d1111-1111-2222-3333-444455556666");
@@ -67,7 +67,7 @@ public class QueryExecuteAnonymousDenialTests(SparkSharedDatabase database)
     }
 
     private SparkEndpointFactory<GuardedContext> HostThatCanSignIn(SparkTestSecurity security) => new(
-        Store,
+        Store.AsSparkTestDatabase(),
         [Model()],
         configureSpark: spark => spark.AddCredentialScheme<AuthenticationSchemeOptions, StubUserHandler>(StubScheme),
         security: security);
@@ -124,7 +124,7 @@ public class QueryExecuteAnonymousDenialTests(SparkSharedDatabase database)
     [Fact]
     public async Task Host_with_no_way_to_sign_in_still_answers_404()
     {
-        await using var factory = new SparkEndpointFactory<GuardedContext>(Store, [Model()], security: SparkTestSecurity.Empty);
+        await using var factory = new SparkEndpointFactory<GuardedContext>(Store.AsSparkTestDatabase(), [Model()], security: SparkTestSecurity.Empty);
         using var client = factory.CreateClient();
 
         using var response = await ExecuteAsync(client, AllDocsQueryId);

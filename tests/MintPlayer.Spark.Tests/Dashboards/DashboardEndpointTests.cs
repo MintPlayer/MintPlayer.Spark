@@ -18,7 +18,7 @@ namespace MintPlayer.Spark.Tests.Dashboards;
 /// values; an anonymous caller and a signed-in non-administrator get Spark's one denial on the load (404) and on the
 /// live subscription (<c>gone</c>), and no provider runs for them.
 /// </summary>
-public class DashboardEndpointTests : SparkTestDriver
+public class DashboardEndpointTests : RavenSparkTestDriver
 {
     private static readonly Guid TypeId = Guid.Parse("5eda5b00-0000-4000-8000-000000000001");
     private const string DatabaseStatisticsTypeId = "81451b51-5162-5c37-af6e-8e682800cafd";
@@ -85,7 +85,7 @@ public class DashboardEndpointTests : SparkTestDriver
     {
         TdProvider.Reset();
         var factory = new SparkEndpointFactory<StContext>(
-            Store,
+            Store.AsSparkTestDatabase(),
             [Model()],
             configureServices: services => services.AddSingleton<IStartupFilter, StPrincipalStartupFilter>(),
             configureSpark: spark => spark.AddDashboards(
@@ -262,7 +262,7 @@ public class DashboardEndpointTests : SparkTestDriver
         var act = () =>
         {
             var factory = new SparkEndpointFactory<StContext>(
-                Store,
+                Store.AsSparkTestDatabase(),
                 [Model()],
                 configureServices: services => services.AddSingleton<IStartupFilter, StPrincipalStartupFilter>(),
                 configureSpark: spark => spark.AddDashboards(dashboards => dashboards.Add("TdMissing", d => d.Provider<TdProvider>())),

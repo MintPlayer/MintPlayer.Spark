@@ -8,7 +8,7 @@ using TestModels = MintPlayer.Spark.Tests.Endpoints.PersistentObject.TestModels;
 
 namespace MintPlayer.Spark.Tests.Endpoints.Queries;
 
-public class ExecuteQueryEndpointTests : SparkTestDriver
+public class ExecuteQueryEndpointTests : RavenSparkTestDriver
 {
     private static readonly Guid PersonTypeId = Guid.Parse("aaaa3333-3333-3333-3333-aaaaaaaaaaaa");
     private static readonly Guid AllPeopleQueryId = Guid.Parse("bbbb3333-3333-3333-3333-bbbbbbbbbbbb");
@@ -31,7 +31,7 @@ public class ExecuteQueryEndpointTests : SparkTestDriver
             },
         ];
 
-        _factory = new SparkEndpointFactory(Store, [personType]);
+        _factory = new SparkEndpointFactory(Store.AsSparkTestDatabase(), [personType]);
         _client = new SparkClient(_factory.CreateClient(), ownsClient: true);
     }
 

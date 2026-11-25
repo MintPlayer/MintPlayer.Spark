@@ -39,7 +39,7 @@
 
   <ItemGroup>
     <Content Include="Reflection\Fixtures\**\*.json" CopyToOutputDirectory="PreserveNewest" />
-    <!-- #467 fixtures seeded through SparkTestDriver.SeedFromJsonAsync. -->
+    <!-- #467 fixtures seeded through RavenSparkTestDriver.SeedFromJsonAsync. -->
     <Content Include="Endpoints\PersistentObject\Selection\Data\*.json" CopyToOutputDirectory="PreserveNewest" />
     <!-- DateTimeOffset sort/filter fixtures (docs/datetimeoffset_query_sort_filter_PRD.md). -->
     <Content Include="Services\Data\*.json" CopyToOutputDirectory="PreserveNewest" />
@@ -113,7 +113,13 @@
     <ProjectReference Include="..\..\libs\migrations\MintPlayer.Spark.Migrations\MintPlayer.Spark.Migrations.csproj" />
     <ProjectReference Include="..\..\libs\all_features\MintPlayer.Spark.AllFeatures\MintPlayer.Spark.AllFeatures.csproj" />
     <ProjectReference Include="..\..\libs\client\MintPlayer.Spark.Client\MintPlayer.Spark.Client.csproj" />
-    <ProjectReference Include="..\..\libs\testing\MintPlayer.Spark.Testing\MintPlayer.Spark.Testing.csproj" />
+    <ProjectReference Include="..\..\libs\testing\MintPlayer.Spark.Testing.RavenDB\MintPlayer.Spark.Testing.RavenDB.csproj" />
+    <!--
+      #536 D35: the neutral classes (on SparkTestDriver, not RavenSparkTestDriver) run on every database. With four
+      providers referenced, SPARK_TEST_DATABASE picks one (O16); the RavenDB-pinned classes ignore it.
+    -->
+    <ProjectReference Include="..\..\libs\testing\MintPlayer.Spark.Testing.SqlServer\MintPlayer.Spark.Testing.SqlServer.csproj" />
+    <ProjectReference Include="..\..\libs\testing\MintPlayer.Spark.Testing.PostgreSql\MintPlayer.Spark.Testing.PostgreSql.csproj" />
     <!-- #264 M6: the schema generator, called in-process by the schema guard tests. -->
     <ProjectReference Include="..\..\tools\SchemaGenerator\MintPlayer.Spark.SchemaGenerator.csproj" />
   </ItemGroup>
@@ -124,6 +130,16 @@
     this for free.
   -->
   <Import Project="..\..\libs\testing\MintPlayer.Spark.Testing\Targets\spark-testing.targets" />
+  <Import Project="..\..\libs\testing\MintPlayer.Spark.Testing.RavenDB\Targets\spark-testing-ravendb.targets" />
+  <Import Project="..\..\libs\testing\MintPlayer.Spark.Testing.SqlServer\Targets\spark-testing-sqlserver.targets" />
+  <Import Project="..\..\libs\testing\MintPlayer.Spark.Testing.PostgreSql\Targets\spark-testing-postgresql.targets" />
+  <ItemGroup>
+    <!-- InMemory is no database, so no package writes its attribute: opted into here. -->
+    <AssemblyAttribute Include="MintPlayer.Spark.Testing.SparkTestDatabaseAttribute">
+      <_Parameter1>typeof(MintPlayer.Spark.Testing.InMemorySparkTestDatabaseProvider)</_Parameter1>
+      <_Parameter1_IsLiteral>true</_Parameter1_IsLiteral>
+    </AssemblyAttribute>
+  </ItemGroup>
   <Import Project="..\..\libs\contributions\MintPlayer.Spark.Contributions\Targets\spark-contributions.targets" />
 
 </Project>

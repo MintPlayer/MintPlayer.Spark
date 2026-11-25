@@ -28,7 +28,7 @@ namespace MintPlayer.Spark.Tests.Contributions;
 /// modifier) — against R3. Fixture names start with <c>Ca</c> (the actions resolver matches by simple
 /// name across the assembly).
 /// </remarks>
-public class ContributionsAuditedTargetTests : SparkTestDriver
+public class ContributionsAuditedTargetTests : RavenSparkTestDriver
 {
     private static readonly Guid PostTypeId = Guid.Parse("c0d60000-0000-4000-8000-c0d600000001");
     private static readonly Guid NoteTypeId = Guid.Parse("c0d60000-0000-4000-8000-c0d600000002");
@@ -65,7 +65,7 @@ public class ContributionsAuditedTargetTests : SparkTestDriver
 
         var identity = new CoIdentity { Id = Translator };
         var factory = new SparkEndpointFactory(
-            Store,
+            Store.AsSparkTestDatabase(),
             [PostModel(), NoteModel()],
             configureServices: s =>
             {

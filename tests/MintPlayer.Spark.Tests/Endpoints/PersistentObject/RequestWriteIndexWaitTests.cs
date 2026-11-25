@@ -30,7 +30,7 @@ namespace MintPlayer.Spark.Tests.Endpoints.PersistentObject;
 /// <c>WaitForIndexesAfterSaveChanges</c>, waited inside the commit request and answered a committed
 /// write with HTTP 500 when the index was disposed during the wait — the last two tests pin that case.
 /// </remarks>
-public class RequestWriteIndexWaitTests : SparkTestDriver
+public class RequestWriteIndexWaitTests : RavenSparkTestDriver
 {
     private static readonly Guid PersonTypeId = Guid.Parse("7a1e5c30-2b4d-4e8f-9a61-0c3d5e7f9b21");
 
@@ -51,7 +51,7 @@ public class RequestWriteIndexWaitTests : SparkTestDriver
     public override async Task InitializeAsync()
     {
         await base.InitializeAsync();
-        _factory = new SparkEndpointFactory(Store, [TestModels.Person(PersonTypeId)],
+        _factory = new SparkEndpointFactory(Store.AsSparkTestDatabase(), [TestModels.Person(PersonTypeId)],
             configureServices: services => services.AddSingleton<ILoggerProvider>(logs));
         _client = new SparkClient(_factory.CreateClient(), ownsClient: true);
 

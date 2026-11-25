@@ -20,7 +20,7 @@ namespace MintPlayer.Spark.Tests.Services;
 /// Read check before its label is rendered). What this adds is that the check it asks is the composed
 /// one: a row hidden by a <em>policy</em>, not by its Actions class, is redacted just the same.
 /// </remarks>
-public class RowPolicyBreadcrumbTests : SparkTestDriver
+public class RowPolicyBreadcrumbTests : RavenSparkTestDriver
 {
     public interface IBpSoftDeletable
     {

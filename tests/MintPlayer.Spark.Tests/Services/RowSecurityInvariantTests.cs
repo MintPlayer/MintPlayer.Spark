@@ -28,7 +28,7 @@ namespace MintPlayer.Spark.Tests.Services;
 /// These tests fail if Spark ever grows that shape.
 /// </para>
 /// </remarks>
-public class RowSecurityInvariantTests : SparkTestDriver
+public class RowSecurityInvariantTests : RavenSparkTestDriver
 {
     private static readonly Guid DocTypeId = Guid.Parse("5c1d77bb-77bb-77bb-77bb-5c1d77bb77bb");
 
@@ -38,7 +38,7 @@ public class RowSecurityInvariantTests : SparkTestDriver
     public override async Task InitializeAsync()
     {
         await base.InitializeAsync();
-        _factory = new SparkEndpointFactory<GuardedContext>(Store, [FilteredDocModel.For(DocTypeId)]);
+        _factory = new SparkEndpointFactory<GuardedContext>(Store.AsSparkTestDatabase(), [FilteredDocModel.For(DocTypeId)]);
         _dbAccess = _factory.GetService<IDatabaseAccess>();
     }
 

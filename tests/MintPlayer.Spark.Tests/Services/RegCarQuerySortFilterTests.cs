@@ -35,7 +35,7 @@ namespace MintPlayer.Spark.Tests.Services;
 /// </para>
 /// </remarks>
 public class RegCarQuerySortFilterTests(RegCarQuerySortFilterTests.SeededRegCars host)
-    : SparkSharedTestDriver(host), IClassFixture<RegCarQuerySortFilterTests.SeededRegCars>, IDisposable
+    : RavenSparkSharedTestDriver(host), IClassFixture<RegCarQuerySortFilterTests.SeededRegCars>, IDisposable
 {
     internal static readonly Guid RegCarTypeId = Guid.Parse("ffff7777-ffff-ffff-ffff-ffff77777777");
     internal const string FixturePath = "Services/Data/reg-cars.json";
@@ -173,7 +173,7 @@ public class RegCarQuerySortFilterTests(RegCarQuerySortFilterTests.SeededRegCars
         }
 
         protected override SparkEndpointFactory<RegContext> CreateFactory() =>
-            new(Store, [RegCarModel()],
+            new(Store.AsSparkTestDatabase(), [RegCarModel()],
                 configureIndexCatalog: catalog =>
                 {
                     catalog.RegisterIndex(typeof(RegCars_Overview));

@@ -24,7 +24,7 @@ namespace MintPlayer.Spark.Tests.Services;
 /// row security and then delegates, so testing the actions class directly tests the half that never
 /// had the guard. That asymmetry is easy to walk into and worth stating here.
 /// </remarks>
-public class RowFilterWritePathTests : SparkTestDriver
+public class RowFilterWritePathTests : RavenSparkTestDriver
 {
     private static readonly Guid DocTypeId = Guid.Parse("5c1d77bb-77bb-77bb-77bb-5c1d77bb77bb");
 
@@ -34,7 +34,7 @@ public class RowFilterWritePathTests : SparkTestDriver
     public override async Task InitializeAsync()
     {
         await base.InitializeAsync();
-        _factory = new SparkEndpointFactory<GuardedContext>(Store, new[] { FilteredDocModel.For(DocTypeId) });
+        _factory = new SparkEndpointFactory<GuardedContext>(Store.AsSparkTestDatabase(), new[] { FilteredDocModel.For(DocTypeId) });
         _dbAccess = _factory.GetService<IDatabaseAccess>();
     }
 

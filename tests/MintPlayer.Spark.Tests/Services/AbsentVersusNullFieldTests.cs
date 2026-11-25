@@ -26,7 +26,7 @@ namespace MintPlayer.Spark.Tests.Services;
 /// These fixtures deliberately do not.
 /// </para>
 /// </remarks>
-public class AbsentVersusNullFieldTests : SparkTestDriver
+public class AbsentVersusNullFieldTests : RavenSparkTestDriver
 {
     public class NullProbe
     {

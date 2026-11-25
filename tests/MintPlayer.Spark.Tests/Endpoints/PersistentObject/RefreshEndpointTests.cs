@@ -23,7 +23,7 @@ namespace MintPlayer.Spark.Tests.Endpoints.PersistentObject;
 /// </para>
 /// </summary>
 public class RefreshEndpointTests(RefreshEndpointTests.Host host)
-    : SparkSharedTestDriver(host), IClassFixture<RefreshEndpointTests.Host>, IDisposable
+    : RavenSparkSharedTestDriver(host), IClassFixture<RefreshEndpointTests.Host>, IDisposable
 {
     private static readonly Guid CarTypeId = Guid.Parse("7e5f0000-0000-4000-8000-000000000001");
 
@@ -34,7 +34,7 @@ public class RefreshEndpointTests(RefreshEndpointTests.Host host)
     public sealed class Host : SharedSparkHost<RefreshTestContext>
     {
         protected override SparkEndpointFactory<RefreshTestContext> CreateFactory()
-            => new(Store, [RefreshTestModels.Car(CarTypeId)]);
+            => new(Store.AsSparkTestDatabase(), [RefreshTestModels.Car(CarTypeId)]);
     }
 
     private readonly SparkEndpointFactory<RefreshTestContext> _factory = host.Factory;

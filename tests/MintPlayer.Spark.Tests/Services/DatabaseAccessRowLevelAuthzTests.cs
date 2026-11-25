@@ -14,7 +14,7 @@ namespace MintPlayer.Spark.Tests.Services;
 /// <c>DefaultPersistentObjectActions{T}.IsAllowedAsync</c>, discovered by convention through
 /// <see cref="ActionsResolver"/> — see <see cref="GuardedDocActions"/> in _Infrastructure.
 /// </summary>
-public class DatabaseAccessRowLevelAuthzTests : SparkTestDriver
+public class DatabaseAccessRowLevelAuthzTests : RavenSparkTestDriver
 {
     private static readonly Guid DocTypeId = Guid.Parse("7b0a11aa-11aa-11aa-11aa-7b0a11aa11aa");
 
@@ -24,7 +24,7 @@ public class DatabaseAccessRowLevelAuthzTests : SparkTestDriver
     public override async Task InitializeAsync()
     {
         await base.InitializeAsync();
-        _factory = new SparkEndpointFactory<GuardedContext>(Store, new[] { GuardedDocModel.For(DocTypeId) });
+        _factory = new SparkEndpointFactory<GuardedContext>(Store.AsSparkTestDatabase(), new[] { GuardedDocModel.For(DocTypeId) });
         _dbAccess = _factory.GetService<IDatabaseAccess>();
     }
 

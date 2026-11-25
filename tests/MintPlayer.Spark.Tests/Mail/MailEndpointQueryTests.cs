@@ -15,7 +15,7 @@ namespace MintPlayer.Spark.Tests.Mail;
 /// the endpoints read <c>Request.Query</c> by hand, and kept when they became <c>[QueryParam]</c>
 /// properties (endpoints generator completion M3b, PRD D3a).
 /// </summary>
-public class MailEndpointQueryTests : SparkTestDriver
+public class MailEndpointQueryTests : RavenSparkTestDriver
 {
     private static readonly string Secret = new('s', 40);
 
@@ -25,7 +25,7 @@ public class MailEndpointQueryTests : SparkTestDriver
     public override async Task InitializeAsync()
     {
         await base.InitializeAsync();
-        _factory = new SparkEndpointFactory(Store, [], configureSpark: spark =>
+        _factory = new SparkEndpointFactory(Store.AsSparkTestDatabase(), [], configureSpark: spark =>
         {
             spark.AddMessaging();
             spark.AddMailManager(o =>

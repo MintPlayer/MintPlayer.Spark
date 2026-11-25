@@ -6,7 +6,7 @@ using Raven.Client.Documents.Operations;
 namespace MintPlayer.Spark.Testing;
 
 /// <summary>
-/// Public index/indexing helpers usable from any test context — <see cref="SparkTestDriver"/>
+/// Public index/indexing helpers usable from any test context — <see cref="RavenSparkTestDriver"/>
 /// subclasses, the Fleet E2E host, or plain <c>IDocumentStore</c>-holding fixtures. Exists
 /// because <see cref="Raven.TestDriver.RavenTestDriver.WaitForIndexing"/> is protected and
 /// therefore not reachable from code that doesn't derive from <c>RavenTestDriver</c>.

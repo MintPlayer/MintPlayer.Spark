@@ -10,7 +10,7 @@ namespace MintPlayer.Spark.Tests.Endpoints.PersistentObject;
 /// Verifies that Spark's antiforgery middleware rejects mutating requests without
 /// an X-XSRF-TOKEN header. See PRD-Testing.md §13.1.
 /// </summary>
-public class AntiforgerySecurityTests : MintPlayer.Spark.Testing.SparkTestDriver
+public class AntiforgerySecurityTests : MintPlayer.Spark.Testing.RavenSparkTestDriver
 {
     private static readonly Guid PersonTypeId = Guid.Parse("55555555-dddd-dddd-dddd-555555555555");
 
@@ -20,7 +20,7 @@ public class AntiforgerySecurityTests : MintPlayer.Spark.Testing.SparkTestDriver
     public override async Task InitializeAsync()
     {
         await base.InitializeAsync();
-        _factory = new SparkEndpointFactory(Store, [TestModels.Person(PersonTypeId)]);
+        _factory = new SparkEndpointFactory(Store.AsSparkTestDatabase(), [TestModels.Person(PersonTypeId)]);
         _bareClient = _factory.CreateClient();
     }
 

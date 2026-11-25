@@ -13,7 +13,7 @@ namespace MintPlayer.Spark.Tests.Messaging;
 
 /// <summary>
 /// End-to-end tests for <see cref="MessageSubscriptionWorker"/> driving real RavenDB
-/// subscriptions via <see cref="SparkTestDriver"/>. Each test seeds a <see cref="SparkMessage"/>,
+/// subscriptions via <see cref="RavenSparkTestDriver"/>. Each test seeds a <see cref="SparkMessage"/>,
 /// starts the worker, and polls for the resulting terminal document state.
 /// <para>
 /// Workers are intentionally constructed directly (bypassing <see cref="MessageSubscriptionManager"/>)
@@ -21,7 +21,7 @@ namespace MintPlayer.Spark.Tests.Messaging;
 /// each message transitions independently.
 /// </para>
 /// </summary>
-public class MessageSubscriptionWorkerE2ETests : SparkTestDriver
+public class MessageSubscriptionWorkerE2ETests : RavenSparkTestDriver
 {
     private static readonly TimeSpan PollTimeout = TimeSpan.FromSeconds(20);
 

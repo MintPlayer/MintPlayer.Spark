@@ -172,8 +172,8 @@ internal sealed class ExternalTwoFactorTestHost
 /// what <see cref="SignInManager{TUser}"/> reads, and the stubs answer for them. What is pinned is
 /// everything the endpoints decide from those answers. The full popup round trip in a browser is E2E.
 /// </remarks>
-public class ExternalLoginTwoFactorTests(SparkSharedDatabase database)
-    : SparkSharedTestDriver(database), IClassFixture<SparkSharedDatabase>
+public class ExternalLoginTwoFactorTests(RavenSparkSharedDatabase database)
+    : RavenSparkSharedTestDriver(database), IClassFixture<RavenSparkSharedDatabase>
 {
     private const string ValidNonce = "AbCdEfGhIjKlMnOpQrStUvWxYz012-_9";
     private const string PagePath = "/spark/auth/external-login/two-factor";

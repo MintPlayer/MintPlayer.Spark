@@ -22,7 +22,7 @@ namespace MintPlayer.Spark.Tests.Messaging;
 /// <see cref="LaneBuffer.StarvationCap"/> expedited ones in a row. The flag is persisted on every publish
 /// path, sorted by the feeder's page, and needs no subscription of its own.
 /// </summary>
-public class ExpediteTests(ITestOutputHelper output) : SparkTestDriver
+public class ExpediteTests(ITestOutputHelper output) : RavenSparkTestDriver
 {
     private static readonly DateTime T0 = new(2026, 10, 16, 12, 0, 0, DateTimeKind.Utc);
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(30);

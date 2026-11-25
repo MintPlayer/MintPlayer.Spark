@@ -18,7 +18,7 @@ namespace MintPlayer.Spark.Tests.Services;
 /// It also cannot warn and continue: loading such a document marks it dirty, so the next unrelated
 /// save writes random ids into a document nobody edited.
 /// </remarks>
-public class ValueObjectKeyVerifierTests : SparkTestDriver
+public class ValueObjectKeyVerifierTests : RavenSparkTestDriver
 {
     public class Order
     {

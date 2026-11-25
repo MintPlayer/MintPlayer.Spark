@@ -29,7 +29,7 @@ namespace MintPlayer.Spark.Tests.Services;
 /// the observable the F2 tests check. Fixture names start with <c>Mz</c> because ActionsResolver
 /// matches actions classes by simple name across the assembly.
 /// </remarks>
-public class MaterializeInterceptorTests : SparkTestDriver
+public class MaterializeInterceptorTests : RavenSparkTestDriver
 {
     private static readonly Guid SongTypeId = Guid.Parse("4d7a0000-0000-4000-8000-4d7a00000001");
     private static readonly Guid LineTypeId = Guid.Parse("4d7a0000-0000-4000-8000-4d7a00000002");
@@ -50,7 +50,7 @@ public class MaterializeInterceptorTests : SparkTestDriver
     private async Task<Host> StartAsync(SparkTestSecurity? security = null)
     {
         var factory = new SparkEndpointFactory<MzContext>(
-            Store,
+            Store.AsSparkTestDatabase(),
             [SongModel(), LineModel()],
             configureServices: services =>
             {

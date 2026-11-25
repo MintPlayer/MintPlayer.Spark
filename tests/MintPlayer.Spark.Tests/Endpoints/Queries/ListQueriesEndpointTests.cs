@@ -6,8 +6,8 @@ using TestModels = MintPlayer.Spark.Tests.Endpoints.PersistentObject.TestModels;
 
 namespace MintPlayer.Spark.Tests.Endpoints.Queries;
 
-public class ListQueriesEndpointTests(SparkSharedDatabase database)
-    : SparkSharedTestDriver(database), IClassFixture<SparkSharedDatabase>
+public class ListQueriesEndpointTests(RavenSparkSharedDatabase database)
+    : RavenSparkSharedTestDriver(database), IClassFixture<RavenSparkSharedDatabase>
 {
     private static readonly Guid PersonTypeId = Guid.Parse("aaaa2222-2222-2222-2222-aaaaaaaaaaaa");
     private static readonly Guid AllPeopleQueryId = Guid.Parse("bbbb2222-2222-2222-2222-bbbbbbbbbbbb");
@@ -17,7 +17,7 @@ public class ListQueriesEndpointTests(SparkSharedDatabase database)
     public async Task List_returns_empty_when_no_queries_defined()
     {
         var personType = TestModels.Person(Guid.NewGuid()); // no Queries
-        await using var factory = new SparkEndpointFactory(Store, [personType], services => services.UseFixtureModelOnly());
+        await using var factory = new SparkEndpointFactory(Store.AsSparkTestDatabase(), [personType], services => services.UseFixtureModelOnly());
         using var client = new SparkClient(factory.CreateClient(), ownsClient: true);
 
         var queries = await client.ListQueriesAsync();
@@ -35,7 +35,7 @@ public class ListQueriesEndpointTests(SparkSharedDatabase database)
             new SparkQuery { Id = OnlyAdminsQueryId, Name = "OnlyAdmins", Source = "Custom.GetAdmins", EntityType = "Person" },
         ];
 
-        await using var factory = new SparkEndpointFactory(Store, [personType], services => services.UseFixtureModelOnly());
+        await using var factory = new SparkEndpointFactory(Store.AsSparkTestDatabase(), [personType], services => services.UseFixtureModelOnly());
         using var client = new SparkClient(factory.CreateClient(), ownsClient: true);
 
         var queries = await client.ListQueriesAsync();

@@ -13,7 +13,7 @@ namespace MintPlayer.Spark.Tests.Endpoints.PersistentObject;
 /// matters beyond tidiness, because the throw came before the permission check, so a 500 set against
 /// a refusal told an unauthorized caller the type exists.
 /// </summary>
-public class MissingPersistentObjectBodyTests : SparkTestDriver
+public class MissingPersistentObjectBodyTests : RavenSparkTestDriver
 {
     private static readonly Guid PersonTypeId = Guid.Parse("55555555-eeee-eeee-eeee-555555555555");
 
@@ -23,7 +23,7 @@ public class MissingPersistentObjectBodyTests : SparkTestDriver
     public override async Task InitializeAsync()
     {
         await base.InitializeAsync();
-        _factory = new SparkEndpointFactory(Store, [TestModels.Person(PersonTypeId)]);
+        _factory = new SparkEndpointFactory(Store.AsSparkTestDatabase(), [TestModels.Person(PersonTypeId)]);
         _client = new SparkClient(_factory.CreateClient(), ownsClient: true);
 
         using var session = Store.OpenAsyncSession();

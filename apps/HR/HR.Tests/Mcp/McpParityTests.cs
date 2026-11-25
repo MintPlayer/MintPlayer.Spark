@@ -28,7 +28,7 @@ namespace HR.Tests.Mcp;
 /// by <c>get</c> unless asked for (<c>include</c>), as the comparison asks for a person's jobs.
 /// </para>
 /// </remarks>
-public class McpParityTests : SparkTestDriver
+public class McpParityTests : RavenSparkTestDriver
 {
     private const string Prefix = "hr_";
 

@@ -19,7 +19,7 @@ namespace MintPlayer.Spark.Tests.Builder;
 /// Kept under test because <c>UseSparkOptions.App</c> not being set would silently break any
 /// future option that depends on it.
 /// </summary>
-public class UseSparkOptionsTests : SparkTestDriver
+public class UseSparkOptionsTests : RavenSparkTestDriver
 {
     [Fact]
     public async Task UseSpark_with_options_invokes_callback_and_sets_options_App_property()

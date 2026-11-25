@@ -21,7 +21,7 @@ namespace MintPlayer.Spark.Tests.Replication;
 /// <c>SparkModulesTest</c> database on the embedded test server, and the outbound
 /// HTTP call is intercepted by <see cref="StubHttpMessageHandler"/>.
 /// </summary>
-public class SyncActionSubscriptionWorkerE2ETests : SparkTestDriver
+public class SyncActionSubscriptionWorkerE2ETests : RavenSparkTestDriver
 {
     private readonly string _modulesDatabase = $"SparkModulesTest-{Guid.NewGuid():N}";
     private const string OwnerModule = "Fleet";

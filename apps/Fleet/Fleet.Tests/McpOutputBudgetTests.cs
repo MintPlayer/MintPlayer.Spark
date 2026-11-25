@@ -31,7 +31,7 @@ namespace Fleet.Tests;
 /// three languages and a manager, 200 managers, 50 companies; one car with a service history of 120 entries (a decade of
 /// monthly services: the long tail of <c>get</c>, which returns detail rows inline).
 /// </remarks>
-public class McpOutputBudgetTests(ITestOutputHelper output) : SparkTestDriver
+public class McpOutputBudgetTests(ITestOutputHelper output) : RavenSparkTestDriver
 {
     /// <summary>10k tokens at 4 characters a token: Claude Code warns above 10k tokens of tool output (D10).</summary>
     private const int Budget = 40_000;

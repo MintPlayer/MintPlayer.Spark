@@ -43,9 +43,9 @@
 	</ItemGroup>
 
 	<ItemGroup>
-		<!-- The embedded server, database deletion, JSON seeding, SparkTestDriver and the route-table
+		<!-- The embedded server, database deletion, JSON seeding, RavenSparkTestDriver and the route-table
 		     snapshot (endpoints_generator_completion_plan.md M0), shared with the library's test hosts. -->
-		<ProjectReference Include="..\..\..\libs\testing\MintPlayer.Spark.Testing\MintPlayer.Spark.Testing.csproj" />
+		<ProjectReference Include="..\..\..\libs\testing\MintPlayer.Spark.Testing.RavenDB\MintPlayer.Spark.Testing.RavenDB.csproj" />
 		<ProjectReference Include="..\CodeCoverage\CodeCoverage.csproj" />
 		<!-- #693 M11 (D16): the changelog copy is tested on the in-memory store as well as on RavenDB. -->
 		<ProjectReference Include="..\..\..\libs\spark\MintPlayer.Spark.InMemory\MintPlayer.Spark.InMemory.csproj" />

@@ -31,8 +31,8 @@ namespace MintPlayer.Spark.Tests.Authorization.Extensions;
 /// <c>EmailSenderRegistrationTests</c>, which measured it.
 /// </para>
 /// </remarks>
-public class ConfirmByEmailStartupGuardTests(SparkSharedDatabase database)
-    : SparkSharedTestDriver(database), IClassFixture<SparkSharedDatabase>
+public class ConfirmByEmailStartupGuardTests(RavenSparkSharedDatabase database)
+    : RavenSparkSharedTestDriver(database), IClassFixture<RavenSparkSharedDatabase>
 {
     private sealed class RecordingLinkConfirmationSender : ISparkLinkConfirmationSender<SparkUser>
     {

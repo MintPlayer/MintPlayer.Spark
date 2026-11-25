@@ -29,7 +29,7 @@ namespace Fleet.Tests;
 /// row security included. The scripted agent follows the M3b tests (<c>McpEmbeddedAuthorizationServerTests</c>), whose
 /// helpers live in the library's test project; one application per test process (see <c>SparkAppRouteHost</c>).
 /// </summary>
-public class McpEmbeddedServerTests : SparkTestDriver
+public class McpEmbeddedServerTests : RavenSparkTestDriver
 {
     private const string Issuer = "https://fleet.example";
     private const string CanonicalUrl = "https://fleet.example/mcp";

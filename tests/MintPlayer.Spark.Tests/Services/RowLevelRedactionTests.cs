@@ -17,7 +17,7 @@ namespace MintPlayer.Spark.Tests.Services;
 /// and reaches into AsDetail children via dotted names — the one place a row filter can't.
 /// The motivating case is Coverage's <c>Repository.BadgeToken</c>: readable row, secret field.
 /// </summary>
-public class RowLevelRedactionTests : SparkTestDriver
+public class RowLevelRedactionTests : RavenSparkTestDriver
 {
     private static readonly Guid RepoTypeId = Guid.Parse("e9e9e9e9-9999-9999-9999-e9e9e9e9e9e9");
 

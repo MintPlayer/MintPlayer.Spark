@@ -12,7 +12,7 @@ namespace SeoTester.Tests.Crawler;
 /// still be whole: its pages are the ones it stored, whoever wrote them last, and never one an earlier scan left behind; and
 /// its render and PageSpeed findings stay with it even when the other scan's fetch replaces the page they were added to.
 /// </summary>
-public class RunPagesTests : SparkTestDriver
+public class RunPagesTests : RavenSparkTestDriver
 {
     private const string SiteId = "Sites/1-A";
     private const string ThisRun = "AuditRuns/2-A";

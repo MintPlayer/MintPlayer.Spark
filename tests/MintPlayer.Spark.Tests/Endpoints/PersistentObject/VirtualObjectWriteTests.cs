@@ -15,8 +15,8 @@ namespace MintPlayer.Spark.Tests.Endpoints.PersistentObject;
 /// framework keeps the type-level rights in front of them and writes nothing itself. Without the hooks the type is
 /// refused as before (reference add-new PRD D11).
 /// </summary>
-public class VirtualObjectWriteTests(SparkSharedDatabase database)
-    : SparkSharedTestDriver(database), IClassFixture<SparkSharedDatabase>
+public class VirtualObjectWriteTests(RavenSparkSharedDatabase database)
+    : RavenSparkSharedTestDriver(database), IClassFixture<RavenSparkSharedDatabase>
 {
     private static readonly Guid NoteTypeId = Guid.Parse("66666666-ffff-ffff-ffff-666666666666");
     private static readonly Guid PageTypeId = Guid.Parse("77777777-aaaa-aaaa-aaaa-777777777777");
@@ -32,7 +32,7 @@ public class VirtualObjectWriteTests(SparkSharedDatabase database)
     };
 
     private SparkEndpointFactory Factory(VirtualNoteBook book, IPermissionService? permissions = null)
-        => new(Store, [Model(NoteTypeId, "VirtualNote"), Model(PageTypeId, "VirtualStartPage")], services =>
+        => new(Store.AsSparkTestDatabase(), [Model(NoteTypeId, "VirtualNote"), Model(PageTypeId, "VirtualStartPage")], services =>
         {
             services.AddSingleton(book);
             if (permissions is not null)

@@ -19,7 +19,7 @@ namespace MintPlayer.Spark.Tests.Endpoints.LookupReferences;
 /// drive each endpoint's status-code translation, antiforgery enforcement, and
 /// InvalidOperationException → 400 mapping.
 /// </summary>
-public class LookupReferenceEndpointTests : SparkTestDriver
+public class LookupReferenceEndpointTests : RavenSparkTestDriver
 {
     private static readonly Guid PersonTypeId = Guid.Parse("aaaaaaaa-1111-1111-1111-111111111111");
 
@@ -28,7 +28,7 @@ public class LookupReferenceEndpointTests : SparkTestDriver
     private SparkEndpointFactory CreateFactory(ILookupReferenceService stub)
     {
         return new SparkEndpointFactory(
-            Store,
+            Store.AsSparkTestDatabase(),
             [TestModels.Person(PersonTypeId)],
             services =>
             {
@@ -116,7 +116,7 @@ public class LookupReferenceEndpointTests : SparkTestDriver
     };
 
     private SparkEndpointFactory CreateFactory(ILookupReferenceService stub, SparkTestSecurity security) => new(
-        Store,
+        Store.AsSparkTestDatabase(),
         [ProbeBindingCarBrand()],
         services =>
         {

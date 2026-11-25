@@ -13,7 +13,7 @@ namespace MintPlayer.Spark.Tests.Services;
 /// skipped and a warning logged on every write to the collection. The name is now validated and quoted by
 /// <see cref="SparkIndexWait"/> itself, never spliced unchecked.
 /// </summary>
-public class SparkIndexWaitQuotedNameTests : SparkTestDriver
+public class SparkIndexWaitQuotedNameTests : RavenSparkTestDriver
 {
     public class Thing
     {

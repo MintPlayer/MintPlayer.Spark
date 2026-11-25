@@ -17,12 +17,12 @@ namespace MintPlayer.Spark.Tests.IdentityProvider;
 /// serving a password form on <c>/connect/login</c> — which is worse than having no flag at all,
 /// because the flag would be believed.
 /// </remarks>
-public class OidcLocalCredentialModeTests(SparkSharedDatabase database)
-    : SparkSharedTestDriver(database), IClassFixture<SparkSharedDatabase>
+public class OidcLocalCredentialModeTests(RavenSparkSharedDatabase database)
+    : RavenSparkSharedTestDriver(database), IClassFixture<RavenSparkSharedDatabase>
 {
     private SparkEndpointFactory<OidcTestContext> CreateFactory(SparkLocalCredentials mode) =>
         new(
-            Store,
+            Store.AsSparkTestDatabase(),
             models: [],
             configureSpark: spark =>
             {
@@ -57,7 +57,7 @@ public class OidcLocalCredentialModeTests(SparkSharedDatabase database)
         var start = async () =>
         {
             await using var factory = new SparkEndpointFactory<OidcTestContext>(
-                Store,
+                Store.AsSparkTestDatabase(),
                 models: [],
                 configureSpark: spark => spark.AddIdentityProvider(options =>
                 {

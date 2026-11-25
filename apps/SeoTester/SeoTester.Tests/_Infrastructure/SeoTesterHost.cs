@@ -188,7 +188,7 @@ internal static class SeoRequests
 }
 
 /// <summary>The one SeoTester host the tests share (see <see cref="SeoTesterWebAppFactory"/>'s remarks).</summary>
-public class SeoTesterHostFixture : SparkTestDriver
+public class SeoTesterHostFixture : RavenSparkTestDriver
 {
     /// <summary>Host settings of this fixture (a subclass tunes the crawl for its collection).</summary>
     protected virtual IReadOnlyDictionary<string, string?>? HostSettings => null;

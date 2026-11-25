@@ -9,7 +9,8 @@
     { "project": "model/MintPlayer.Spark.Model/MintPlayer.Spark.Model.csproj" },
     { "project": "source_generators/MintPlayer.Spark.SourceGenerators/MintPlayer.Spark.SourceGenerators.csproj" },
     { "project": "source_generators/MintPlayer.Spark.LibraryGenerators/MintPlayer.Spark.LibraryGenerators.csproj" },
-    { "project": "testing/MintPlayer.Spark.Testing/MintPlayer.Spark.Testing.csproj", "$comment": "SparkApp.Tests (RavenDB only: SparkTestDriver runs an embedded RavenDB)." }
+    { "project": "testing/MintPlayer.Spark.Testing/MintPlayer.Spark.Testing.csproj", "$comment": "The provider-neutral harness under SparkApp.Tests (#536 D35)." },
+    { "project": "testing/MintPlayer.Spark.Testing.RavenDB/MintPlayer.Spark.Testing.RavenDB.csproj", "$comment": "SparkApp.Tests (RavenDB only: RavenSparkTestDriver runs an embedded RavenDB)." }
   ],
 
   "features": [
@@ -317,7 +318,13 @@
     { "project": "files/MintPlayer.Spark.Files.FileSystem/MintPlayer.Spark.Files.FileSystem.csproj", "reason": "unreleased" },
     { "project": "files/MintPlayer.Spark.Files.Images.NetVips/MintPlayer.Spark.Files.Images.NetVips.csproj", "reason": "unreleased" },
     { "project": "files/MintPlayer.Spark.Files.Images.SkiaSharp/MintPlayer.Spark.Files.Images.SkiaSharp.csproj", "reason": "unreleased" },
-    { "project": "files/MintPlayer.Spark.Files.S3/MintPlayer.Spark.Files.S3.csproj", "reason": "unreleased" }
+    { "project": "files/MintPlayer.Spark.Files.S3/MintPlayer.Spark.Files.S3.csproj", "reason": "unreleased" },
+    { "project": "spark/MintPlayer.Spark.Relational/MintPlayer.Spark.Relational.csproj", "reason": "unreleased" },
+    { "project": "spark/MintPlayer.Spark.Relational.Design/MintPlayer.Spark.Relational.Design.csproj", "reason": "unreleased" },
+    { "project": "spark/MintPlayer.Spark.SqlServer/MintPlayer.Spark.SqlServer.csproj", "reason": "unreleased" },
+    { "project": "spark/MintPlayer.Spark.PostgreSql/MintPlayer.Spark.PostgreSql.csproj", "reason": "unreleased" },
+    { "project": "testing/MintPlayer.Spark.Testing.SqlServer/MintPlayer.Spark.Testing.SqlServer.csproj", "reason": "unreleased" },
+    { "project": "testing/MintPlayer.Spark.Testing.PostgreSql/MintPlayer.Spark.Testing.PostgreSql.csproj", "reason": "unreleased" }
   ],
 
   "$reasons": {

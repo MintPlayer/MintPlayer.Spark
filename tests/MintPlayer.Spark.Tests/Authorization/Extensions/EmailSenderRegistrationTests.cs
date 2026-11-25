@@ -31,8 +31,8 @@ namespace MintPlayer.Spark.Tests.Authorization.Extensions;
 /// guard needs to know precisely what the no-op looks like — which is what this test records.
 /// </para>
 /// </remarks>
-public class EmailSenderRegistrationTests(SparkSharedDatabase database)
-    : SparkSharedTestDriver(database), IClassFixture<SparkSharedDatabase>
+public class EmailSenderRegistrationTests(RavenSparkSharedDatabase database)
+    : RavenSparkSharedTestDriver(database), IClassFixture<RavenSparkSharedDatabase>
 {
     private async Task<IHost> StartAsync(Action<IServiceCollection>? configure = null)
     {

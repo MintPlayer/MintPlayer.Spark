@@ -25,7 +25,7 @@ namespace MintPlayer.Spark.Tests.Services;
 /// </para>
 /// </remarks>
 public class ColumnFilterDisclosureTests(ColumnFilterDisclosureTests.Host host)
-    : SparkSharedTestDriver(host), IClassFixture<ColumnFilterDisclosureTests.Host>, IAsyncLifetime
+    : RavenSparkSharedTestDriver(host), IClassFixture<ColumnFilterDisclosureTests.Host>, IAsyncLifetime
 {
     private static readonly Guid CrateTypeId = Guid.Parse("cccc3333-cccc-cccc-cccc-cccc33333333");
 
@@ -132,7 +132,7 @@ public class ColumnFilterDisclosureTests(ColumnFilterDisclosureTests.Host host)
     }
 
     private static SparkEndpointFactory<TestContext> NewFactory(IDocumentStore store, EntityTypeFile model) => new(
-        store, [model],
+        store.AsSparkTestDatabase(), [model],
         configureIndexCatalog: catalog => catalog.RegisterIndex(typeof(Crates_Overview)));
 
     private SparkEndpointFactory<TestContext>? _factory;

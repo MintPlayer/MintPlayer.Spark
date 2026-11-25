@@ -34,7 +34,7 @@ namespace MintPlayer.Spark.Tests.Extensions;
 /// change to the package's placement fails here and not just in its own repository.
 /// </para>
 /// </remarks>
-public class XsrfMintingPlacementTests : SparkTestDriver
+public class XsrfMintingPlacementTests : RavenSparkTestDriver
 {
     private const string CookieName = "XSRF-TOKEN";
 

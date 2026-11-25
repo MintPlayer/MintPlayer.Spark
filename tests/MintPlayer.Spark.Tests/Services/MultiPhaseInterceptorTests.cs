@@ -18,7 +18,7 @@ namespace MintPlayer.Spark.Tests.Services;
 /// #482 (M7) until <c>IAfterLoad</c> was declared. The second test refuses that shape everywhere.
 /// </para>
 /// </summary>
-public class MultiPhaseInterceptorTests : SparkTestDriver
+public class MultiPhaseInterceptorTests : RavenSparkTestDriver
 {
     private static readonly Guid NoteTypeId = Guid.Parse("46a1c7e0-4600-4600-4600-46a1c7e04601");
 
@@ -27,7 +27,7 @@ public class MultiPhaseInterceptorTests : SparkTestDriver
     {
         var log = new InterceptionLog();
         await using var factory = new SparkEndpointFactory<InterceptedContext>(
-            Store,
+            Store.AsSparkTestDatabase(),
             [InterceptedNoteModel.For(NoteTypeId)],
             configureServices: services => services.AddSingleton(log),
             configureSpark: spark => spark.AddInterceptor<AllPhasesInterceptor>());

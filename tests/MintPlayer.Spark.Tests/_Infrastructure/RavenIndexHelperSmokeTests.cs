@@ -6,12 +6,12 @@ using Raven.Client.Documents.Indexes;
 namespace MintPlayer.Spark.Tests._Infrastructure;
 
 /// <summary>
-/// Exercises <see cref="SparkTestDriver.IndexAssemblies"/> + <see cref="RavenIndexHelper"/> so a
+/// Exercises <see cref="RavenSparkTestDriver.IndexAssemblies"/> + <see cref="RavenIndexHelper"/> so a
 /// subclass that declares an index gets it deployed and indexed before the first <c>[Fact]</c>
 /// runs. A bug in the index-wait plumbing surfaces here as a stale-query failure instead of
 /// mysteriously flaky behaviour inside a real test.
 /// </summary>
-public class RavenIndexHelperSmokeTests : SparkTestDriver
+public class RavenIndexHelperSmokeTests : RavenSparkTestDriver
 {
     public class Widget
     {
@@ -84,7 +84,7 @@ public class RavenIndexHelperSmokeTests : SparkTestDriver
         // "the indexes stayed stale", which tells the reader nothing actionable.
         // Stop indexing FIRST, then write — otherwise the document is indexed before the freeze
         // and there is nothing stale to wait on. (Maintenance operations are database-scoped, and
-        // SparkTestDriver gives every test its own database, so this cannot affect another test.)
+        // RavenSparkTestDriver gives every test its own database, so this cannot affect another test.)
         await Store.Maintenance.SendAsync(new Raven.Client.Documents.Operations.Indexes.StopIndexingOperation());
         try
         {

@@ -11,7 +11,7 @@ namespace MintPlayer.Spark.Tests._Infrastructure;
 /// <summary>
 /// Convenience subclass that pins <see cref="SparkEndpointFactory{TContext}"/> to
 /// <see cref="TestSparkContext"/> so existing endpoint tests can keep using
-/// <c>new SparkEndpointFactory(Store, [...])</c> without naming the generic argument.
+/// <c>new SparkEndpointFactory(Store.AsSparkTestDatabase(), [...])</c> without naming the generic argument.
 /// New tests (in this or downstream projects) can instantiate
 /// <see cref="SparkEndpointFactory{TContext}"/> directly with their own context type.
 /// </summary>
@@ -23,12 +23,12 @@ public sealed class SparkEndpointFactory : SparkEndpointFactory<TestSparkContext
     /// about authorization wants.
     /// </param>
     public SparkEndpointFactory(
-        IDocumentStore testStore,
+        ISparkTestDatabase database,
         EntityTypeFile[] models,
         Action<IServiceCollection>? configureServices = null,
         Action<ISparkBuilder>? configureSpark = null,
         SparkTestSecurity? security = null)
-        : base(testStore, models, configureServices, configureSpark, security: security)
+        : base(database, models, configureServices, configureSpark, security: security)
     {
     }
 }

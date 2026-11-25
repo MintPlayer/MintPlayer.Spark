@@ -16,7 +16,7 @@ namespace MintPlayer.Spark.Tests.SoftDelete;
 /// behaviour. The PRD records the run with <c>RAVENDB_LICENSE</c> pointing at the Community licence
 /// file (§4.1, H1).
 /// </remarks>
-public class PurgeRevisionsSpikeTests(ITestOutputHelper output) : SparkTestDriver
+public class PurgeRevisionsSpikeTests(ITestOutputHelper output) : RavenSparkTestDriver
 {
     private const string Collection = "H1SpikeDocs";
 

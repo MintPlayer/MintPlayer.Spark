@@ -16,8 +16,8 @@ namespace MintPlayer.Spark.Tests.Mcp;
 /// who the caller is (bearer only, cookies ignored), the uniform refusals, the Origin check, redaction parity
 /// with the web endpoint, and the call limits.
 /// </summary>
-public class McpServerTests(SparkSharedDatabase database)
-    : SparkSharedTestDriver(database), IClassFixture<SparkSharedDatabase>
+public class McpServerTests(RavenSparkSharedDatabase database)
+    : RavenSparkSharedTestDriver(database), IClassFixture<RavenSparkSharedDatabase>
 {
     private const string VisibleDocId = "GuardedDocs/mcp-visible";
     private const string FilteredDocId = "FilteredDocs/mcp-alice";

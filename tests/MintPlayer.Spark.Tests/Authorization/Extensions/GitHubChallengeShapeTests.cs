@@ -32,8 +32,8 @@ namespace MintPlayer.Spark.Tests.Authorization.Extensions;
 /// permissions actually match. Those live on github.com.
 /// </para>
 /// </remarks>
-public class GitHubChallengeShapeTests(SparkSharedDatabase database)
-    : SparkSharedTestDriver(database), IClassFixture<SparkSharedDatabase>
+public class GitHubChallengeShapeTests(RavenSparkSharedDatabase database)
+    : RavenSparkSharedTestDriver(database), IClassFixture<RavenSparkSharedDatabase>
 {
     private const string ClientId = "test-client-id";
 

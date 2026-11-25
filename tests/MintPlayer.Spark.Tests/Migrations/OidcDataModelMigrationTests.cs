@@ -15,7 +15,7 @@ namespace MintPlayer.Spark.Tests.Migrations;
 /// <c>Auto/OidcApplications/ByAllowedScopes</c> on every fresh database (the CodeCoverage app's startup, 2026-10-17).
 /// Indexes belong to the application, so the migration scans the collection instead.
 /// </remarks>
-public class OidcDataModelMigrationTests : SparkTestDriver
+public class OidcDataModelMigrationTests : RavenSparkTestDriver
 {
     private sealed class LegacyView
     {

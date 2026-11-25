@@ -21,7 +21,7 @@ namespace MintPlayer.Spark.Tests.Queries;
 /// So each marked index here claims its <b>own</b> pair of entity types — sharing <c>MmCar</c> between the
 /// viewed and the viewless index would fail every Spark host in the assembly at startup.
 /// </remarks>
-public class MultiMapDefaultIndexTests : SparkTestDriver
+public class MultiMapDefaultIndexTests : RavenSparkTestDriver
 {
     public abstract class MmVehicle
     {
@@ -206,7 +206,7 @@ public class MultiMapDefaultIndexTests : SparkTestDriver
 
         // Both context roots get their model, so the host describes the whole context either way.
         var factory = new SparkEndpointFactory<MmContext>(
-            Store, [Model(typeof(MmCar), nameof(MmVehicles), 1), Model(typeof(MmVan), nameof(MmFleetNoView), 2)],
+            Store.AsSparkTestDatabase(), [Model(typeof(MmCar), nameof(MmVehicles), 1), Model(typeof(MmVan), nameof(MmFleetNoView), 2)],
             configureServices: services => services.AddScoped<MmCarActions>().AddScoped<MmVanActions>(),
             configureIndexCatalog: catalog =>
             {

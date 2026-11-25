@@ -15,7 +15,7 @@ namespace MintPlayer.Spark.Tests.Settings;
 /// value never throws; the snapshot is refreshed after the cache duration (a fake clock) and at once on
 /// the instance that invalidates it; the seeder is idempotent and never writes <c>Value</c>.
 /// </summary>
-public class SparkSettingsTests : SparkTestDriver
+public class SparkSettingsTests : RavenSparkTestDriver
 {
     public static class StSettings
     {

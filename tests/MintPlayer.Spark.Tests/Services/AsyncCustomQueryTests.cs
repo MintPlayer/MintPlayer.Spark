@@ -33,7 +33,7 @@ namespace MintPlayer.Spark.Tests.Services;
 /// </para>
 /// </remarks>
 public class AsyncCustomQueryTests(AsyncCustomQueryTests.SeededCrews host)
-    : SparkSharedTestDriver(host), IClassFixture<AsyncCustomQueryTests.SeededCrews>, IDisposable
+    : RavenSparkSharedTestDriver(host), IClassFixture<AsyncCustomQueryTests.SeededCrews>, IDisposable
 {
     private static readonly Guid CrewTypeId = Guid.Parse("cccc3333-cccc-cccc-cccc-cccc33333333");
     private static readonly Guid SquadTypeId = Guid.Parse("dddd4444-dddd-dddd-dddd-dddd44444444");
@@ -177,7 +177,7 @@ public class AsyncCustomQueryTests(AsyncCustomQueryTests.SeededCrews host)
         }
 
         protected override SparkEndpointFactory<TestContext> CreateFactory() =>
-            new(Store, [CrewModel(), SquadModel()],
+            new(Store.AsSparkTestDatabase(), [CrewModel(), SquadModel()],
                 configureIndexCatalog: catalog =>
                 {
                     catalog.RegisterIndex(typeof(Crews_Overview));

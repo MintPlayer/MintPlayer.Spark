@@ -53,7 +53,7 @@ public sealed class RavenSparkStoreConformanceTests : SparkStoreConformanceTests
         found.Select(d => d.Id).Should().Equal(["ConfDocs/indexed-1"]);
     }
 
-    private sealed class Driver : SparkTestDriver
+    private sealed class Driver : RavenSparkTestDriver
     {
         public IDocumentStore DocumentStore => Store;
     }

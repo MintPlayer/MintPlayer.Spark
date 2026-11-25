@@ -12,7 +12,7 @@ public sealed class StandaloneNewEndpointHost : SharedSparkHost<TestSparkContext
     internal static readonly Guid PersonTypeId = Guid.Parse("55555555-ffff-ffff-ffff-555555555555");
 
     protected override SparkEndpointFactory<TestSparkContext> CreateFactory()
-        => new SparkEndpointFactory(Store, [TestModels.Person(PersonTypeId)]);
+        => new SparkEndpointFactory(Store.AsSparkTestDatabase(), [TestModels.Person(PersonTypeId)]);
 }
 
 /// <summary>
@@ -20,7 +20,7 @@ public sealed class StandaloneNewEndpointHost : SharedSparkHost<TestSparkContext
 /// New test builds an <c>AsDetail</c> row, so the standalone branch had never run.
 /// </summary>
 public class StandaloneNewEndpointTests(StandaloneNewEndpointHost host)
-    : SparkSharedTestDriver(host), IClassFixture<StandaloneNewEndpointHost>
+    : RavenSparkSharedTestDriver(host), IClassFixture<StandaloneNewEndpointHost>
 {
     private static readonly Guid PersonTypeId = StandaloneNewEndpointHost.PersonTypeId;
 
@@ -58,7 +58,7 @@ public class StandaloneNewEndpointTests(StandaloneNewEndpointHost host)
     public async Task New_without_the_New_right_is_refused()
     {
         await using var factory = new SparkEndpointFactory(
-            Store, [TestModels.Person(PersonTypeId)], security: SparkTestSecurity.Empty);
+            Store.AsSparkTestDatabase(), [TestModels.Person(PersonTypeId)], security: SparkTestSecurity.Empty);
         using var client = new SparkClient(factory.CreateClient(), ownsClient: true);
 
         var ex = (await new Func<Task>(() => client.NewPersistentObjectAsync(PersonTypeId)).Should().ThrowExactlyAsync<SparkClientException>()).Which;

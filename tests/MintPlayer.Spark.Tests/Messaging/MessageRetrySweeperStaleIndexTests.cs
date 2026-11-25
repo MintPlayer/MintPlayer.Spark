@@ -20,7 +20,7 @@ namespace MintPlayer.Spark.Tests.Messaging;
 /// rewritten by every sweep until the index caught up, 11 times in one run.
 /// </para>
 /// </summary>
-public class MessageRetrySweeperStaleIndexTests : SparkTestDriver
+public class MessageRetrySweeperStaleIndexTests : RavenSparkTestDriver
 {
     protected override IEnumerable<System.Reflection.Assembly> IndexAssemblies
         => [typeof(SparkMessages_ByQueue).Assembly];

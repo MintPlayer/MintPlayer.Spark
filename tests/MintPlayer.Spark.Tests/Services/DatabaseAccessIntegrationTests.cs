@@ -16,7 +16,7 @@ namespace MintPlayer.Spark.Tests.Services;
 /// <c>typeof(T).GetProperty("Id")</c>. Sister file to
 /// <see cref="DatabaseAccessRowLevelAuthzTests"/> which covers the Get/list authz path.
 /// </summary>
-public class DatabaseAccessIntegrationTests : SparkTestDriver
+public class DatabaseAccessIntegrationTests : RavenSparkTestDriver
 {
     private static readonly Guid DocTypeId = Guid.Parse("8b0a22aa-22aa-22aa-22aa-8b0a22aa22aa");
 
@@ -26,7 +26,7 @@ public class DatabaseAccessIntegrationTests : SparkTestDriver
     public override async Task InitializeAsync()
     {
         await base.InitializeAsync();
-        _factory = new SparkEndpointFactory<GuardedContext>(Store, [GuardedDocModel.For(DocTypeId)]);
+        _factory = new SparkEndpointFactory<GuardedContext>(Store.AsSparkTestDatabase(), [GuardedDocModel.For(DocTypeId)]);
         _dbAccess = _factory.GetService<IDatabaseAccess>();
     }
 

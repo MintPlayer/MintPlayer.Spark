@@ -20,7 +20,7 @@ namespace MintPlayer.Spark.Tests.Services;
 /// load" check would refuse. The second half pins the refusals.
 /// </para>
 /// </summary>
-public class ReferenceTargetCollectionTests : SparkTestDriver
+public class ReferenceTargetCollectionTests : RavenSparkTestDriver
 {
     private static readonly Guid CarTypeId = Guid.Parse("251c0000-0000-4000-8000-251c00000001");
     private static readonly Guid PersonTypeId = Guid.Parse("251c0000-0000-4000-8000-251c00000002");
@@ -34,7 +34,7 @@ public class ReferenceTargetCollectionTests : SparkTestDriver
     public override async Task InitializeAsync()
     {
         await base.InitializeAsync();
-        _factory = new SparkEndpointFactory<RtContext>(Store, [PersonModel(), StopModel(), CarModel()]);
+        _factory = new SparkEndpointFactory<RtContext>(Store.AsSparkTestDatabase(), [PersonModel(), StopModel(), CarModel()]);
     }
 
     public override async Task DisposeAsync()

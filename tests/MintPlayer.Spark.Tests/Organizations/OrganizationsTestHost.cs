@@ -27,7 +27,7 @@ namespace MintPlayer.Spark.Tests.Organizations;
 /// <c>X-Og-User</c> header (a signed-in user id without a cookie). Fixture names start with <c>Og</c>:
 /// <c>ActionsResolver</c> matches actions classes by simple name.
 /// </summary>
-public abstract class OrganizationsTestHost : SparkTestDriver
+public abstract class OrganizationsTestHost : RavenSparkTestDriver
 {
     internal static readonly Guid NoteTypeId = Guid.Parse("0a6e0000-0000-4000-8000-000000000001");
     internal static readonly Guid NotesQueryId = Guid.Parse("0a6e0000-0000-4000-8000-000000000011");
@@ -85,7 +85,7 @@ public abstract class OrganizationsTestHost : SparkTestDriver
     private SparkEndpointFactory<OgContext> CreateFactory()
     {
         var created = new SparkEndpointFactory<OgContext>(
-            Store,
+            Store.AsSparkTestDatabase(),
             [NoteModel(), .. ExtraModels],
             configureServices: services =>
             {

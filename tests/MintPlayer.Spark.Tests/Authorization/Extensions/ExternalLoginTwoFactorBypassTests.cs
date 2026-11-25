@@ -15,8 +15,8 @@ namespace MintPlayer.Spark.Tests.Authorization.Extensions;
 /// <c>Bypass2faForExternalLogin</c>). Mapped only while <c>AllowUserBypass</c> is on, and switching it on
 /// needs a valid authenticator code: a stolen session alone must not weaken the account.
 /// </summary>
-public class ExternalLoginTwoFactorBypassTests(SparkSharedDatabase database)
-    : SparkSharedTestDriver(database), IClassFixture<SparkSharedDatabase>
+public class ExternalLoginTwoFactorBypassTests(RavenSparkSharedDatabase database)
+    : RavenSparkSharedTestDriver(database), IClassFixture<RavenSparkSharedDatabase>
 {
     private const string Route = "/spark/auth/manage/external-login-two-factor";
 

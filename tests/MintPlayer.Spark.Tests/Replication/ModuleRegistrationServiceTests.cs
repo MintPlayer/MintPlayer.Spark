@@ -16,8 +16,8 @@ namespace MintPlayer.Spark.Tests.Replication;
 /// <see cref="ModuleInformation"/> on first registration, and updating it in-place
 /// on re-registration.
 /// </summary>
-public class ModuleRegistrationServiceTests(SparkSharedDatabase database)
-    : SparkSharedTestDriver(database), IClassFixture<SparkSharedDatabase>
+public class ModuleRegistrationServiceTests(RavenSparkSharedDatabase database)
+    : RavenSparkSharedTestDriver(database), IClassFixture<RavenSparkSharedDatabase>
 {
     private readonly string _modulesDatabase = $"SparkModulesTest-{Guid.NewGuid():N}";
 

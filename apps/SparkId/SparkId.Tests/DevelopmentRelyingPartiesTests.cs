@@ -11,7 +11,7 @@ namespace SparkId.Tests;
 /// shape is what Spark's <c>SparkId</c> OpenID Connect preset sends, compared ordinally by the provider, so a drift
 /// breaks every demo's local sign-in.
 /// </summary>
-public class DevelopmentRelyingPartiesTests : SparkTestDriver
+public class DevelopmentRelyingPartiesTests : RavenSparkTestDriver
 {
     [Fact]
     public async Task A_relying_party_is_a_confidential_PKCE_client_with_the_presets_exact_redirects_and_a_hashed_secret()

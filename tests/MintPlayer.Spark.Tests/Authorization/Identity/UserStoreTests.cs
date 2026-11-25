@@ -14,7 +14,7 @@ namespace MintPlayer.Spark.Tests.Authorization.Identity;
 /// cluster-safe email uniqueness — a regression in the email-reservation flow silently breaks
 /// registration across the entire authentication stack.
 /// </summary>
-public class UserStoreTests : SparkTestDriver
+public class UserStoreTests : RavenSparkTestDriver
 {
     // #460 D5: the store protects the authenticator key and tokens, so it needs a key ring. One
     // ephemeral ring per test class instance, shared by every store the test creates.

@@ -9,7 +9,7 @@ namespace MintPlayer.Spark.Tests._Infrastructure;
 
 /// <summary>
 /// Opt-in reordering of the cases WITHIN a test class, to prove a class that shares one database
-/// (<c>SparkSharedDatabase</c>) does not depend on the order its tests run in.
+/// (<c>RavenSparkSharedDatabase</c>) does not depend on the order its tests run in.
 /// </summary>
 /// <remarks>
 /// <para>

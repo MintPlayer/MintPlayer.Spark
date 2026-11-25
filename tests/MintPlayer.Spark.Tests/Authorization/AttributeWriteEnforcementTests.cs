@@ -124,7 +124,7 @@ public class WrContext : SparkContext
 /// attribute kind, W3 the create path, W5 indistinguishable blanking, and the M2c-2a residuals
 /// (a) retry prompts, (b) dotted per-row names in an embedded row's breadcrumb, (c) nested classes.
 /// </summary>
-public class AttributeWriteEnforcementTests : SparkTestDriver
+public class AttributeWriteEnforcementTests : RavenSparkTestDriver
 {
     internal static readonly Guid ItemTypeId = Guid.Parse("a77b0000-0000-4000-8000-00000000b001");
     private static readonly Guid TagTypeId = Guid.Parse("a77b0000-0000-4000-8000-00000000b002");
@@ -159,7 +159,7 @@ public class AttributeWriteEnforcementTests : SparkTestDriver
         protection.Names.AddRange(protectedNames);
 
         var factory = new SparkEndpointFactory<WrContext>(
-            Store,
+            Store.AsSparkTestDatabase(),
             [ItemModel(), TagModel(), LineModel(), SpecModel(), NestedModel()],
             configureServices: services =>
             {

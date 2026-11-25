@@ -26,7 +26,7 @@ namespace MintPlayer.Spark.Tests.Services;
 /// </para>
 /// </remarks>
 public class AsDetailRowIdentityRoundTripTests(AsDetailRowIdentityRoundTripTests.Host host)
-    : SparkSharedTestDriver(host), IClassFixture<AsDetailRowIdentityRoundTripTests.Host>
+    : RavenSparkSharedTestDriver(host), IClassFixture<AsDetailRowIdentityRoundTripTests.Host>
 {
     private static readonly Guid OrderTypeId = Guid.Parse("5e1f0000-0000-4000-8000-5e1f00000001");
     private static readonly Guid LineTypeId = Guid.Parse("5e1f0000-0000-4000-8000-5e1f00000002");
@@ -104,7 +104,7 @@ public class AsDetailRowIdentityRoundTripTests(AsDetailRowIdentityRoundTripTests
     public sealed class Host : SharedSparkHost<OrderContext>
     {
         protected override SparkEndpointFactory<OrderContext> CreateFactory()
-            => new(Store, [OrderModel(), LineModel()]);
+            => new(Store.AsSparkTestDatabase(), [OrderModel(), LineModel()]);
     }
 
     private readonly SparkEndpointFactory<OrderContext> _factory = host.Factory;

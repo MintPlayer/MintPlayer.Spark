@@ -48,7 +48,7 @@ namespace MintPlayer.Spark.Tests.IdentityProvider;
 /// </para>
 /// </summary>
 public class OidcAdminRouteTests(OidcAdminRouteTests.AdminRouteHost host)
-    : SparkSharedTestDriver(host), IClassFixture<OidcAdminRouteTests.AdminRouteHost>
+    : RavenSparkSharedTestDriver(host), IClassFixture<OidcAdminRouteTests.AdminRouteHost>
 {
     /// <summary>Nothing of the package's: its persistent objects come from its library layer.</summary>
     public sealed class AdminContext : SparkContext
@@ -63,7 +63,7 @@ public class OidcAdminRouteTests(OidcAdminRouteTests.AdminRouteHost host)
 
         protected override SparkEndpointFactory<AdminContext> CreateFactory() =>
             new(
-                Store,
+                Store.AsSparkTestDatabase(),
                 models: [],
                 configureSpark: spark =>
                 {

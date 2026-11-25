@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
 	<!--
-	  Tests on MintPlayer.Spark.Testing: SparkTestDriver gives each test its own database on an embedded RavenDB
+	  Tests on MintPlayer.Spark.Testing.RavenDB: RavenSparkTestDriver gives each test its own database on an embedded RavenDB
 	  server, and SparkEndpointFactory boots a Spark host in process. The embedded server needs a RavenDB licence:
 	  set RAVENDB_LICENSE to the licence JSON or to the path of its file, or put raven-license.log next to the
 	  solution (it is in .gitignore).
@@ -22,7 +22,7 @@
 
 	<!-- Versions are in ../Directory.Packages.props (central package management). -->
 	<ItemGroup>
-		<PackageReference Include="MintPlayer.Spark.Testing" />
+		<PackageReference Include="MintPlayer.Spark.Testing.RavenDB" />
 		<PackageReference Include="Microsoft.NET.Test.Sdk" />
 		<PackageReference Include="xunit" />
 		<PackageReference Include="xunit.runner.visualstudio" PrivateAssets="all"

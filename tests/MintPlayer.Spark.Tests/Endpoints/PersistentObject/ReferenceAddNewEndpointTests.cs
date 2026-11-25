@@ -22,7 +22,7 @@ namespace MintPlayer.Spark.Tests.Endpoints.PersistentObject;
 /// Every fixture type is prefixed <c>Ran</c>: actions classes are found by short name across the
 /// test assembly, so a second <c>SupplierActions</c> anywhere would be picked up here.
 /// </remarks>
-public class ReferenceAddNewEndpointTests : SparkTestDriver
+public class ReferenceAddNewEndpointTests : RavenSparkTestDriver
 {
     private static readonly Guid ShopTypeId = Guid.Parse("7a2e0000-0000-4000-8000-7a2e00000001");
     private static readonly Guid SupplierTypeId = Guid.Parse("7a2e0000-0000-4000-8000-7a2e00000002");
@@ -226,7 +226,7 @@ public class ReferenceAddNewEndpointTests : SparkTestDriver
     {
         await base.InitializeAsync();
         _factory = new SparkEndpointFactory<RanContext>(
-            Store,
+            Store.AsSparkTestDatabase(),
             [ShopModel(), SupplierModel(), LabelModel(), TagModel(), CodeModel()],
             configureServices: services =>
             {

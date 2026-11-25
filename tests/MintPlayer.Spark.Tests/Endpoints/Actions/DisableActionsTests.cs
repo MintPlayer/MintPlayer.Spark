@@ -29,7 +29,7 @@ using Po = Abstractions.PersistentObject;
 /// The fixture's names start with <c>DisProbe</c> for the reason given on <c>RetryFromEveryHookTests</c>:
 /// <c>ActionsResolver</c> matches actions classes by simple name across the whole assembly.
 /// </remarks>
-public class DisableActionsTests : SparkTestDriver
+public class DisableActionsTests : RavenSparkTestDriver
 {
     private static readonly Guid ProbeTypeId = Guid.Parse("d13d0000-0000-4000-8000-d13d00000001");
     private static readonly Guid ProbesQueryId = Guid.Parse("d13d0000-0000-4000-8000-d13d00000002");
@@ -179,7 +179,7 @@ public class DisableActionsTests : SparkTestDriver
         Action<MintPlayer.Spark.Abstractions.Builder.ISparkBuilder>? configureSpark = null,
         SparkTestSecurity? security = null)
         => new(
-            Store,
+            Store.AsSparkTestDatabase(),
             [ProbeModel()],
             configureServices: services =>
             {

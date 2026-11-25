@@ -13,6 +13,7 @@
         "{workspaceRoot}/tools/test-shard-weights.json",
         "{workspaceRoot}/tests/MintPlayer.Spark.SourceGenerators.Tests/VerifyResults/SearchIndexGeneratorTests/*.verified.txt",
         { "env": "SPARK_TEST_SHARD" },
+        { "env": "SPARK_TEST_DATABASE" },
         { "env": "SPARK_OPENSEARCH_URI" }
       ],
       "options": {

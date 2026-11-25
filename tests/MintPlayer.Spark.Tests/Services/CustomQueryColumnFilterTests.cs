@@ -29,7 +29,7 @@ namespace MintPlayer.Spark.Tests.Services;
 /// </para>
 /// </remarks>
 public class CustomQueryColumnFilterTests(CustomQueryColumnFilterTests.Host host)
-    : SparkSharedTestDriver(host), IClassFixture<CustomQueryColumnFilterTests.Host>, IDisposable
+    : RavenSparkSharedTestDriver(host), IClassFixture<CustomQueryColumnFilterTests.Host>, IDisposable
 {
     private static readonly Guid ParcelTypeId = Guid.Parse("bbbb7777-bbbb-bbbb-bbbb-bbbb77777777");
     private static readonly Guid SecuredParcelTypeId = Guid.Parse("bbbb8888-bbbb-bbbb-bbbb-bbbb88888888");
@@ -192,7 +192,7 @@ public class CustomQueryColumnFilterTests(CustomQueryColumnFilterTests.Host host
         }
 
         protected override SparkEndpointFactory<ParcelContext> CreateFactory()
-            => new(Store, [ParcelModel(), SecuredParcelModel()]);
+            => new(Store.AsSparkTestDatabase(), [ParcelModel(), SecuredParcelModel()]);
     }
 
     private Microsoft.Extensions.DependencyInjection.IServiceScope? _scope;

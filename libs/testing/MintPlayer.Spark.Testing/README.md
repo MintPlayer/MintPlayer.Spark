@@ -1,15 +1,26 @@
 # MintPlayer.Spark.Testing
 
-Test-utilities library for writing automated tests against Spark apps. It provides an embedded RavenDB driver, an in-memory Spark host factory, antiforgery-aware HTTP helpers, JSON fixture seeding, index helpers, and Verify snapshot defaults.
+Test-utilities library for writing automated tests against Spark apps. It provides a provider-neutral test driver, an in-memory Spark host factory, antiforgery-aware HTTP helpers and Verify snapshot defaults. The database comes from a provider package (#536 D35):
 
-> This is a **test-utilities** library, not a test project — it references xUnit for the `IAsyncLifetime` type but contains no `[Fact]`s (`IsTestProject=false`). Add it to your own xUnit test project as a `<PackageReference>`. It is xUnit-based and pulls in `RavenDB.TestDriver` (which bundles an embedded RavenDB server) and `Verify.Xunit`, so treat it as a batteries-included integration-test harness.
+| Package | Database | Server |
+|---|---|---|
+| `MintPlayer.Spark.Testing` | InMemory | none (references no database client) |
+| `MintPlayer.Spark.Testing.RavenDB` | RavenDB | embedded (`RavenDB.TestDriver`), needs a licence; also the RavenDB-specific drivers, JSON fixtures and index helpers below |
+| `MintPlayer.Spark.Testing.SqlServer` | SQL Server | `SPARK_TEST_SQLSERVER` (a connection string without a database), else LocalDB on Windows, else a Testcontainers container |
+| `MintPlayer.Spark.Testing.PostgreSql` | PostgreSQL | `SPARK_TEST_POSTGRESQL`, else an embedded server (MysticMind.PostgresEmbed), the named instance `spark-tests`, which keeps running and which later runs attach to |
+
+Each provider package adds `[assembly: SparkTestDatabase(typeof(…Provider))]` to the test project on build (set `SparkTestDatabaseAttributes=false` to opt out). A project that references one provider runs on it; a project that references several picks one with the `SPARK_TEST_DATABASE` environment variable (`RavenDB`, `SqlServer`, `PostgreSql`, `InMemory`, ignoring case). There is no default: without the variable such a project fails, naming the candidates.
+
+> This is a **test-utilities** library, not a test project — it references xUnit for the `IAsyncLifetime` type but contains no `[Fact]`s (`IsTestProject=false`). Add it to your own xUnit test project as a `<PackageReference>`.
 
 ## What's in the box
 
 | Type | Purpose |
 |------|---------|
-| `SparkTestDriver` | xUnit base class that creates a fresh in-memory RavenDB database per test case and exposes a ready `IDocumentStore Store`. |
-| `SparkEndpointFactory<TContext>` | Boots a minimal in-memory Spark HTTP host (ASP.NET Core `TestServer`) wired to a supplied store, for endpoint/integration tests. |
+| `SparkTestDriver` | xUnit base class: a fresh database per test case on the chosen provider, as `ISparkTestDatabase Database`. Pass it to `SparkEndpointFactory`, seed through `factory.SeedAsync`. |
+| `SparkSharedDatabase` + `SparkSharedTestDriver` | One database per test class, on the chosen provider. |
+| `RavenSparkTestDriver` (`.RavenDB`) | xUnit base class that creates a fresh in-memory RavenDB database per test case and exposes a ready `IDocumentStore Store`. `Store.AsSparkTestDatabase()` hands it to a factory. |
+| `SparkEndpointFactory<TContext>` | Boots a minimal in-memory Spark HTTP host (ASP.NET Core `TestServer`) on a supplied `ISparkTestDatabase`, for endpoint/integration tests. |
 | ~~`SparkTestClient`~~ | **Removed.** It was a CSRF shim that knew nothing about envelopes, retry or `PersistentObject`, and could not re-prime its token after a login. Use `SparkClient` from `MintPlayer.Spark.Client` — it does the same cookie/token work, and everything else besides. |
 | `JsonFixtureImporter` | Seeds a store from RavenDB query-result-format JSON fixture files. |
 | `RavenIndexHelper` | Deploys indexes and waits for them to be registered and non-stale (usable from any store-holding fixture). |
@@ -23,13 +34,33 @@ Test-utilities library for writing automated tests against Spark apps. It provid
 
 ```xml
 <ItemGroup>
-  <ProjectReference Include="..\MintPlayer.Spark.Testing\MintPlayer.Spark.Testing.csproj" />
+  <PackageReference Include="MintPlayer.Spark.Testing.RavenDB" />
 </ItemGroup>
 ```
 
+### Provider-neutral tests — `SparkTestDriver`
+
+A class on the neutral driver contains no provider code, so it runs unchanged on every database its project references:
+
+```csharp
+public class CarTests : SparkTestDriver
+{
+    [Fact]
+    public async Task Seeded_cars_are_listed()
+    {
+        await using var host = new SparkEndpointFactory<FleetContext>(Database, [FleetModels.Car(CarTypeId)]);
+        await host.SeedAsync(session => session.StoreAsync(new Car { Plate = "1-ABC-123" }));
+        using var client = new SparkClient(host.CreateClient(), ownsClient: true);
+        (await client.ExecuteQueryAsync(CarsQueryId)).Items.Should().ContainSingle();
+    }
+}
+```
+
+On SQL Server and PostgreSQL the database's schema comes from the model, as the app's migrations would make it; a later host on the same database applies only its differences.
+
 ### 2. Provide a RavenDB license
 
-RavenDB 7.x requires a license even for the embedded TestDriver. `SparkTestDriver` loads one from, in order:
+RavenDB 7.x requires a license even for the embedded TestDriver. `RavenSparkTestDriver` loads one from, in order:
 
 1. The `RAVENDB_LICENSE` environment variable (JSON content — CI-friendly).
 2. A `raven-license.log` file at the repository root (local development).
@@ -38,14 +69,14 @@ If neither is present, tests fail at initialization with a clear message. See [r
 
 ## Usage
 
-### Data-layer tests — `SparkTestDriver`
+### Data-layer tests — `RavenSparkTestDriver`
 
-Derive from `SparkTestDriver` to get an embedded store. Override `IndexAssemblies` to auto-deploy and wait on indexes before the test body runs.
+Derive from `RavenSparkTestDriver` to get an embedded store. Override `IndexAssemblies` to auto-deploy and wait on indexes before the test body runs.
 
 > **Each test case gets its own database.** xUnit constructs a new instance of the test class for every `[Fact]` and every `[Theory]` row, so `InitializeAsync` — and the `CreateDatabaseOperation` behind it — runs per test, not per class. All of those databases live on one shared embedded server, so a large suite should cap test parallelism in `xunit.runner.json`; running unconstrained can make the server unresponsive under CI load.
 
 ```csharp
-public class PersonQueryTests : SparkTestDriver
+public class PersonQueryTests : RavenSparkTestDriver
 {
     // Indexes in this assembly are deployed and awaited during InitializeAsync.
     protected override IEnumerable<Assembly> IndexAssemblies => [typeof(People_ByName).Assembly];
@@ -128,12 +159,12 @@ Never substitute a fixed `Task.Delay` — it makes a test that passes prove only
 "Settled" means **deployed and up to date**, not just up to date:
 
 ```csharp
-await WaitForIndexesAsync();   // on SparkTestDriver — carries this fixture's declared index names
+await WaitForIndexesAsync();   // on RavenSparkTestDriver — carries this fixture's declared index names
 ```
 
 The second half alone is a trap. *"Every index is non-stale"* is universally quantified, so on a
 database with no indexes — where every fixture starts, since each test gets its own — it is
-vacuously true and returns instantly, having guaranteed nothing. `SparkTestDriver` remembers the
+vacuously true and returns instantly, having guaranteed nothing. `RavenSparkTestDriver` remembers the
 indexes it deployed (from `IndexAssemblies` or `DeployIndexesAsync`) and passes them along, so a
 wait cannot pass because the index it was waiting for was never registered.
 
@@ -157,10 +188,10 @@ Failures are typed, because the causes are unrelated:
 
 ### Endpoint/integration tests — `SparkEndpointFactory<TContext>`
 
-Boots a real Spark middleware pipeline over `TestServer`, against a store you supply (typically `Store` from a `SparkTestDriver`). It writes the supplied model definitions into a per-test temp content root, so `ModelLoader` sees exactly the entity types your fixture declares.
+Boots a real Spark middleware pipeline over `TestServer`, against a store you supply (typically `Store` from a `RavenSparkTestDriver`). It writes the supplied model definitions into a per-test temp content root, so `ModelLoader` sees exactly the entity types your fixture declares.
 
 ```csharp
-public class CarEndpointTests : SparkTestDriver
+public class CarEndpointTests : RavenSparkTestDriver
 {
     // The route takes the entity type's ID, not its name — so the fixture declares the id and
     // builds its model from it.
@@ -170,7 +201,7 @@ public class CarEndpointTests : SparkTestDriver
     public async Task Create_then_get_round_trips()
     {
         await using var factory = new SparkEndpointFactory<FleetContext>(
-            testStore: Store,
+            database: Store.AsSparkTestDatabase(),
             models: [FleetModels.Car(CarTypeId)],
             configureServices: services =>
             {

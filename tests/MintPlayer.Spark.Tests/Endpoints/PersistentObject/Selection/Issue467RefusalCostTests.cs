@@ -12,7 +12,7 @@ namespace MintPlayer.Spark.Tests.Endpoints.PersistentObject.Selection;
 /// same number of database requests as a 2-row one. Measured on the request executor the host shares
 /// with this test, around the request alone.
 /// </summary>
-public class Issue467RefusalCostTests(ITestOutputHelper output) : SparkTestDriver
+public class Issue467RefusalCostTests(ITestOutputHelper output) : RavenSparkTestDriver
 {
     private I467Host _host = null!;
 

@@ -49,7 +49,7 @@ internal static class McpExternalHost
         IntrospectionStub? introspection = null,
         bool developersEdit = false)
         => new(
-            store,
+            store.AsSparkTestDatabase(),
             McpAccountHost.Models(),
             configureServices: services =>
             {

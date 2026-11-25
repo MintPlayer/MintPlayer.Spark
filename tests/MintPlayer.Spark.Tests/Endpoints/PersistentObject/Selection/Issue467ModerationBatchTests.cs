@@ -9,7 +9,7 @@ namespace MintPlayer.Spark.Tests.Endpoints.PersistentObject.Selection;
 /// nothing is written, and that the refusal names the locked row by its breadcrumb.
 /// </summary>
 /// <remarks>Reuses the Moderation fixture (<see cref="MoHost"/>: MoPost is moderatable and soft-deletable).</remarks>
-public class Issue467ModerationBatchTests : SparkTestDriver
+public class Issue467ModerationBatchTests : RavenSparkTestDriver
 {
     private const string Alice = "users/alice";
 

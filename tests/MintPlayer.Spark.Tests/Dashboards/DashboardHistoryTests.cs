@@ -20,7 +20,7 @@ namespace MintPlayer.Spark.Tests.Dashboards;
 /// under two concurrent samplers, single-valued series, and a collection configuration that merges instead of
 /// replacing another collection's policies or revisions.
 /// </summary>
-public class DashboardHistoryTests : SparkTestDriver
+public class DashboardHistoryTests : RavenSparkTestDriver
 {
     /// <summary>One sampler host: its own lease identity, the shared database.</summary>
     private DashboardSampler Sampler(DashboardCatalog catalog, IDocumentStore? store = null)

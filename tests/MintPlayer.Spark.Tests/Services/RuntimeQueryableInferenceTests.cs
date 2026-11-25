@@ -20,7 +20,7 @@ namespace MintPlayer.Spark.Tests.Services;
 /// this test is the only thing that would notice.
 /// </para>
 /// </summary>
-public class RuntimeQueryableInferenceTests : SparkTestDriver
+public class RuntimeQueryableInferenceTests : RavenSparkTestDriver
 {
     private class Thing
     {

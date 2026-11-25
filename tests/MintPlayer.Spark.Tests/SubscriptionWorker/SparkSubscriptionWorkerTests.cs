@@ -13,11 +13,11 @@ namespace MintPlayer.Spark.Tests.SubscriptionWorker;
 /// The lifecycle of <see cref="SparkSubscriptionWorker{T}"/> itself, independent of any product
 /// worker: graceful stop, create-vs-update, a throwing batch, and the non-recoverable exits.
 /// <para>
-/// Each test runs in its own database (SparkTestDriver), and each creates at most one subscription,
+/// Each test runs in its own database (RavenSparkTestDriver), and each creates at most one subscription,
 /// so none of them competes with the Community licence cap. The missing-database test creates none.
 /// </para>
 /// </summary>
-public class SparkSubscriptionWorkerTests : SparkTestDriver
+public class SparkSubscriptionWorkerTests : RavenSparkTestDriver
 {
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(20);
 

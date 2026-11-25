@@ -25,12 +25,12 @@ public sealed class GetQueryEndpointHost : SharedSparkHost<TestSparkContext>
             },
         ];
 
-        return new SparkEndpointFactory(Store, [personType]);
+        return new SparkEndpointFactory(Store.AsSparkTestDatabase(), [personType]);
     }
 }
 
 public class GetQueryEndpointTests(GetQueryEndpointHost host)
-    : SparkSharedTestDriver(host), IClassFixture<GetQueryEndpointHost>, IDisposable
+    : RavenSparkSharedTestDriver(host), IClassFixture<GetQueryEndpointHost>, IDisposable
 {
     private static readonly Guid AllPeopleQueryId = GetQueryEndpointHost.AllPeopleQueryId;
 

@@ -20,7 +20,7 @@ namespace MintPlayer.Spark.Tests.Settings;
 /// X3 (<c>docs/seo_analyzer_PRD.md</c>): per-user quotas on custom actions, evaluated after authentication and
 /// every other gate, with the limit and window read from settings (X9), counted in a sliding window.
 /// </summary>
-public class SparkQuotaTests : SparkTestDriver
+public class SparkQuotaTests : RavenSparkTestDriver
 {
     private static readonly Guid NoteTypeId = Guid.Parse("0a3c0000-0000-4000-8000-000000000001");
 
@@ -43,7 +43,7 @@ public class SparkQuotaTests : SparkTestDriver
     }
 
     private SparkEndpointFactory<QpContext> Factory => factory ??= new SparkEndpointFactory<QpContext>(
-        Store,
+        Store.AsSparkTestDatabase(),
         [new EntityTypeFile
         {
             PersistentObject = new EntityTypeDefinition

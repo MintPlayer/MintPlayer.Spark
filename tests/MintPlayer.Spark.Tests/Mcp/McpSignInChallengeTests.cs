@@ -17,8 +17,8 @@ namespace MintPlayer.Spark.Tests.Mcp;
 /// real HTTP 401 whose JSON-RPC error tells the agent how to start its client's sign-in, uniformly for exposed,
 /// unexposed and unknown targets. Without OAuth the refusal stays a tool error (covered by <see cref="McpServerTests"/>).
 /// </summary>
-public class McpSignInChallengeTests(SparkSharedDatabase database)
-    : SparkSharedTestDriver(database), IClassFixture<SparkSharedDatabase>
+public class McpSignInChallengeTests(RavenSparkSharedDatabase database)
+    : RavenSparkSharedTestDriver(database), IClassFixture<RavenSparkSharedDatabase>
 {
     private const string MetadataUrl = "https://acme.example/.well-known/oauth-protected-resource/mcp";
     private const string ServerIssuer = "https://id.acme.example";

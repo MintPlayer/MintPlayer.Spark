@@ -20,7 +20,7 @@ namespace MintPlayer.Spark.Tests.Builder;
 /// coverage.mintplayer.com's existing key ring, written by the repository CodeCoverage used to carry,
 /// must still decrypt what it protected, or every production user is signed out once on deploy.
 /// </summary>
-public class SparkDataProtectionTests : SparkTestDriver
+public class SparkDataProtectionTests : RavenSparkTestDriver
 {
     private const string Purpose = "Spark.Tests.DataProtection";
 

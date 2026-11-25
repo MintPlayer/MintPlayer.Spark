@@ -11,7 +11,7 @@ namespace MintPlayer.Spark.Tests.Moderation;
 /// caller's behalf that are not PO saves (a contribution). The contributions side of the seam (a guard
 /// refusing writes nothing) is <c>ContributionsRuntimeTests</c>; this is Moderation's answer.
 /// </summary>
-public class ModerationSatelliteWriteGuardTests : SparkTestDriver
+public class ModerationSatelliteWriteGuardTests : RavenSparkTestDriver
 {
     private static async Task EnsureAsync(MoHost host, Type documentType, string documentId)
     {

@@ -11,7 +11,7 @@ namespace MintPlayer.Spark.Tests.Moderation;
 /// #460 D12 / D14: moderation.json is the lowest-precedence IConfiguration source, every threshold is
 /// overridable, and validation runs on the layered result against security.json.
 /// </summary>
-public class ModerationConfigurationTests : SparkTestDriver
+public class ModerationConfigurationTests : RavenSparkTestDriver
 {
     private static SparkModerationOptions Bind(IConfiguration configuration)
     {

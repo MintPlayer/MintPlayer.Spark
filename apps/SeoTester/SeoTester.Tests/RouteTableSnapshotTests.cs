@@ -9,7 +9,7 @@ namespace SeoTester.Tests;
 /// <c>SPARK_UPDATE_ROUTE_SNAPSHOT=1</c> to accept an intended change.
 /// </summary>
 [Collection(_Infrastructure.SeoTesterHostCollection.Name)]
-public class RouteTableSnapshotTests : SparkTestDriver
+public class RouteTableSnapshotTests : RavenSparkTestDriver
 {
     [Fact]
     public Task Route_table_matches_the_committed_snapshot()

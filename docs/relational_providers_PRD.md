@@ -368,6 +368,21 @@ those drivers. The relational providers have no equivalent of `RavenTestDriver`;
   providers and Testcontainers, against D34's rule that an app names its provider once.
 - **Guard:** the layering tests (`tests/MintPlayer.Spark.Tests/Layering/`) fail when `Abstractions` or `MintPlayer.Spark`
   references a provider assembly or a database client.
+- **As built (M5a, 2026-11-25; plan §1):**
+  - The choice: each provider package's build targets write `[assembly: SparkTestDatabase(typeof(…))]`. One attribute
+    decides; with several, `SPARK_TEST_DATABASE` picks one, and there is no default. `MintPlayer.Spark.Tests`
+    references all four, so CI and `test:affected` set `RavenDB`.
+  - The InMemory provider lives in the neutral package (it needs no client). The guard covers the neutral Testing
+    package too.
+  - **Create-and-migrate per test case is cheap enough, so no template clone and no Respawn:** measured 0.77–1 s per
+    case on SQL Server and 0.65–1 s on PostgreSQL, including the host boot and the drop. The first case pays the
+    server's warm-up (17 s and 4–5 s).
+  - The schema comes from the model's migration operations (framework migrations first), through a test
+    `ISparkSchemaMigrator`. A later host on the same database applies only its differences.
+  - The embedded PostgreSQL runs as one named instance per machine (`spark-tests`), kept running and attached to.
+    The library's default, an ephemeral instance per process, left nine `postgres.exe` running after each test run.
+  - Not moved: the JSON fixtures (RavenDB's query-result format) and `RqlRecorder` stay in `.RavenDB`. A neutral
+    query recorder comes when a ported library's test needs one.
 
 **D36 (M4a, 2026-11-25): core says which types are tables.** A relational provider needs its entity list when it
 builds the EF model; RavenDB and InMemory never needed one. Core's `ISparkStoredTypes` (Abstractions, implemented by

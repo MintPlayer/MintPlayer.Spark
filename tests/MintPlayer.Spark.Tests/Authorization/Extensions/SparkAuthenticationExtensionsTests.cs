@@ -19,7 +19,7 @@ public class SparkAuthenticationExtensionsTests
     public void AddSparkAuthentication_registers_RavenDb_user_and_role_stores()
     {
         // Inspect the descriptor rather than resolving — UserStore<T> needs IDocumentStore
-        // to construct, and registering a real Raven instance is the SparkTestDriver's job.
+        // to construct, and registering a real Raven instance is the RavenSparkTestDriver's job.
         // The shape contract here is "the right implementation type is bound to the right
         // interface as Scoped".
         var services = new ServiceCollection();

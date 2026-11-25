@@ -25,7 +25,7 @@ namespace MintPlayer.Spark.Tests.Contributions;
 /// <see cref="ISatelliteAuditSink"/>. Fixtures are the generated <c>CoSong.Lyrics</c> types of
 /// <see cref="ContributionsRuntimeTests"/>.
 /// </summary>
-public class ContributionsSurfaceTests : SparkTestDriver
+public class ContributionsSurfaceTests : RavenSparkTestDriver
 {
     private static readonly Guid SongTypeId = Guid.Parse("c0d20000-0000-4000-8000-c0d200000001");
     private static readonly Guid LyricsTypeId = Guid.Parse("c0d20000-0000-4000-8000-c0d200000002");
@@ -58,7 +58,7 @@ public class ContributionsSurfaceTests : SparkTestDriver
         var identity = new CoIdentity { Id = Alice };
         var audit = new CoAuditLog();
         var factory = new SparkEndpointFactory(
-            Store,
+            Store.AsSparkTestDatabase(),
             [SongModel(), LyricsModel(), ContributionModel(), CurrentModel()],
             configureServices: s =>
             {

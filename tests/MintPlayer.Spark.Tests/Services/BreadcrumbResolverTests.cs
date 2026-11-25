@@ -14,7 +14,7 @@ namespace MintPlayer.Spark.Tests.Services;
 /// assertions), reference-array joining, row-level redaction, the projection-only-root fallback,
 /// and cycle termination.
 /// </summary>
-public class BreadcrumbResolverTests : SparkTestDriver
+public class BreadcrumbResolverTests : RavenSparkTestDriver
 {
     // --- entities ---
     public class BR_Person { public string? Id { get; set; } public string FirstName { get; set; } = ""; public string LastName { get; set; } = ""; public string? Manager { get; set; } }

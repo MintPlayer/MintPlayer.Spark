@@ -351,9 +351,47 @@ rounds, milestones and status. Branch `feat/536-sql-server-provider`, draft PR #
     milestone, and D23's pass-through `__DocumentId` keeps the stored document ids unchanged (S-ID4: no re-key).
   - The S2b query-seam items (`Search` takes words; captured values) and the S5 view declarations are M3's
     (§4 item 3), not M2's.
+- **In progress: M5** (§4 item 5).
+  - **M5a (2026-11-25): the split test harness (S17, PRD D35).**
+    - `MintPlayer.Spark.Testing` is neutral now: it references `MintPlayer.Spark` and `MintPlayer.Spark.InMemory`,
+      no database client (the layering guard `ProviderNeutralCoreTests` covers it, and now also refuses
+      `Raven.TestDriver`, `MintPlayer.Spark.RavenDB` and `MintPlayer.Spark.Relational`).
+      - `ISparkTestDatabaseProvider` (`Name`, `CreateDatabaseAsync`) and `ISparkTestDatabase` (`UseProvider` inside
+        `AddSpark`, `ConfigureServices` after it, `WaitForConsistencyAsync`, `DisposeAsync` drops the database).
+      - `SparkTestDriver` (per case) and `SparkSharedDatabase` + `SparkSharedTestDriver` (per class) expose `Database`.
+      - `SparkEndpointFactory` takes an `ISparkTestDatabase` and gained `SeedAsync(ISparkSession)` and
+        `WaitForConsistencyAsync`. The InMemory provider is in the neutral package.
+    - **Choosing the database (O16):** each provider package's build targets add
+      `[assembly: SparkTestDatabase(typeof(…Provider))]`. One attribute decides; with several, `SPARK_TEST_DATABASE`
+      picks one ignoring case. No attribute, several without the variable, an unknown name or a type that is no
+      provider all fail, naming the candidates. CI sets `SPARK_TEST_DATABASE: RavenDB` on every test step (it is an
+      input of the Spark.Tests task), and `npm run test:affected` defaults it the same way.
+    - **`MintPlayer.Spark.Testing.RavenDB`** got the RavenDB code by `git mv`: the drivers became
+      `RavenSparkTestDriver`, `RavenSparkSharedDatabase`, `RavenSparkSharedTestDriver` (same namespace, so no using
+      changed), plus the embedded server, the licence, index deployment, the JSON fixtures and `RqlRecorder`.
+      `store.AsSparkTestDatabase()` hands a raw store to a factory. A script renamed the 313 files that used them;
+      the compiler's CS1503 positions placed the remaining 32 `.AsSparkTestDatabase()` calls.
+    - **`MintPlayer.Spark.Testing.SqlServer`:** `SPARK_TEST_SQLSERVER`, then LocalDB on Windows, then Testcontainers
+      (`mssql/server:2022-CU21`). **`.PostgreSql`:** `SPARK_TEST_POSTGRESQL`, then MysticMind.PostgresEmbed (MIT)
+      as the named instance `spark-tests` (AttachIfRunning, KeepRunningAfterExit, in `%LOCALAPPDATA%\pgembed`).
+      - **Finding:** the embedded server's default, an ephemeral instance per test process, left its nine
+        `postgres.exe` running after the test host exited and wrote its instance into the test's bin folder. The
+        named instance is started once per machine and attached to afterwards. Cold start 26 s, warm attach 13 s for
+        the class.
+      - Each test database is `spark_t_<12 hex>`, checked against that pattern before it is spliced into `DROP`. Its
+        schema comes from the model through a replaced `ISparkSchemaMigrator`: the framework migrations, then the
+        model's operations; a later host on the same database applies only its differences.
+      - Per case (create, framework migrations, model schema, host boot, drop): SQL Server 0.77–1 s, PostgreSQL
+        0.65–1 s; the first case pays the warm-up (SQL Server 17 s, PostgreSQL 4–5 s).
+    - Tests: `NeutralHarnessTests` (CRUD through the endpoints, seeded rows listed by a query, a later host reads an
+      earlier one's write) 3/3 on each of RavenDB, InMemory, SQL Server and PostgreSQL; `SparkTestDatabasesTests` 7/7.
+    - The template's test project references `MintPlayer.Spark.Testing.RavenDB`; `features.json` lists it in core
+      and the four relational packages as unreleased. Templates.Tests 23/23.
 - **Local spike servers left running:**
   - SQL Server: `SparkSpike536` on `localhost` and `localhost\MSSQLSERVER01`
   - Docker `spark536-pg` (`postgres:18`, 127.0.0.1:55432). M4 needs it again.
+  - The embedded PostgreSQL instance `spark-tests` (M5a), started by the PostgreSQL test package when
+    `SPARK_TEST_POSTGRESQL` is unset. It keeps running on purpose.
   - Docker `spark536-maria` (`mariadb:11.8`, 127.0.0.1:53306) is no longer needed: `docker rm -f spark536-maria`.
 
   The PostgreSQL password is in `docs/relational_spike/Program.cs`. The spikes read it from `SPARK536_PG_PASSWORD`.
@@ -615,7 +653,7 @@ None. O8 and O9 were decided on 2026-11-24 (owner, PRD §10):
      not all at once.
 
    This comes with the split test harness (S17, PRD D35): `MintPlayer.Spark.Testing` becomes neutral, today's
-   RavenDB code moves to `MintPlayer.Spark.Testing.RavenDB`, and `.SqlServer`/`.PostgreSql` join.
+   RavenDB code moves to `MintPlayer.Spark.Testing.RavenDB`, and `.SqlServer`/`.PostgreSql` join. ✅ M5a (§1).
 6. **Tier 1 and Tier 2 ports** (PRD §5), plus the lookup lost-update fix.
 7. **Tier 3:** S7/S14 subscriptions and messaging, S8 revisions, S16 moderation. Then search with `LIKE` (S10).
 8. **Tier 4:** identity_provider, and dashboards (S9).

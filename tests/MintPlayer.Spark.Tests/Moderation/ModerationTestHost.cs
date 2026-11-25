@@ -189,7 +189,7 @@ public sealed class MoHost : IAsyncDisposable
     {
         clock ??= new MoClock();
         var factory = new SparkEndpointFactory<MoContext>(
-            store,
+            store.AsSparkTestDatabase(),
             [PostModel(), LineModel(), PlainModel()],
             configureServices: services =>
             {

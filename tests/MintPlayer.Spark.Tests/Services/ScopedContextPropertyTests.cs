@@ -22,7 +22,7 @@ namespace MintPlayer.Spark.Tests.Services;
 /// never consults the context property, so authorization still belongs in a row rule.
 /// </para>
 /// </remarks>
-public class ScopedContextPropertyTests : SparkTestDriver
+public class ScopedContextPropertyTests : RavenSparkTestDriver
 {
     private static readonly Guid AccountTypeId = Guid.Parse("aaaa1111-aaaa-aaaa-aaaa-aaaa11111111");
 
@@ -72,7 +72,7 @@ public class ScopedContextPropertyTests : SparkTestDriver
     {
         await new Accounts_Overview().ExecuteAsync(Store);
 
-        var factory = new SparkEndpointFactory<ScopedTestContext>(Store, [AccountModel(indexName)],
+        var factory = new SparkEndpointFactory<ScopedTestContext>(Store.AsSparkTestDatabase(), [AccountModel(indexName)],
             configureIndexCatalog: catalog => catalog.RegisterIndex(typeof(Accounts_Overview)));
 
         await SeedAsync(async session =>

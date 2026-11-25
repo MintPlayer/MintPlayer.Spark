@@ -4,7 +4,7 @@ using Raven.Client.Documents;
 namespace MintPlayer.Spark.Tests.Testing;
 
 /// <summary>
-/// <see cref="SparkTestDriver.RequireLicense"/> (issue #265, F6).
+/// <see cref="RavenSparkTestDriver.RequireLicense"/> (issue #265, F6).
 /// <para>
 /// <b>What this can and cannot cover.</b> The licence-less path is a property of the *process*:
 /// <c>ConfigureServer</c> is static and runs once, from a static constructor, before any fixture
@@ -22,7 +22,7 @@ namespace MintPlayer.Spark.Tests.Testing;
 /// genuinely has no licence, and is the exact scenario the option exists for.
 /// </para>
 /// </summary>
-public class SparkTestDriverLicenseTests : SparkTestDriver
+public class SparkTestDriverLicenseTests : RavenSparkTestDriver
 {
     // The relaxed setting must be a no-op when a licence IS present, which is the case in this repo
     // and on any CI run with the secret available.
@@ -57,7 +57,7 @@ public class SparkTestDriverLicenseTests : SparkTestDriver
         new StrictFixture().Strictness.Should().BeTrue();
     }
 
-    private sealed class StrictFixture : SparkTestDriver
+    private sealed class StrictFixture : RavenSparkTestDriver
     {
         // Inherits RequireLicense without overriding it. Exposed rather than asserted through
         // reflection so the test breaks at compile time if the member is renamed or removed.

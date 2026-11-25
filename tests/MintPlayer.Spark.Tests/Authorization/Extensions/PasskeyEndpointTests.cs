@@ -21,7 +21,7 @@ namespace MintPlayer.Spark.Tests.Authorization.Extensions;
 /// careful <em>not</em> to say. The endpoints that matter here are anonymous, so their failure
 /// shapes are the security-relevant part.
 /// </summary>
-public class PasskeyEndpointTests : SparkTestDriver
+public class PasskeyEndpointTests : RavenSparkTestDriver
 {
     private async Task<IHost> StartAsync(
         SparkPasskeys passkeys,

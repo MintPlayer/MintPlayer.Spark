@@ -69,8 +69,8 @@ public class McpWtContext : SparkContext
 /// Tokens: <c>Bearer plan:{user}:{client}:{grant}:{rw|r}[:car-r]</c> — the last segment narrows the grant's type choice
 /// for <c>McpWtCar</c> to Read.
 /// </remarks>
-public class McpPlanTests(SparkSharedDatabase database)
-    : SparkSharedTestDriver(database), IClassFixture<SparkSharedDatabase>
+public class McpPlanTests(RavenSparkSharedDatabase database)
+    : RavenSparkSharedTestDriver(database), IClassFixture<RavenSparkSharedDatabase>
 {
     private const string Scheme = "PlanBearer";
     private const string CarsQuery = "mcpwtcars";
@@ -132,7 +132,7 @@ public class McpPlanTests(SparkSharedDatabase database)
             !resource.EndsWith("/McpWtDriver", StringComparison.OrdinalIgnoreCase) && !denied.Contains(resource));
 
         return new SparkEndpointFactory<McpWtContext>(
-            Store,
+            Store.AsSparkTestDatabase(),
             Models(carPermissions),
             configureServices: services =>
             {

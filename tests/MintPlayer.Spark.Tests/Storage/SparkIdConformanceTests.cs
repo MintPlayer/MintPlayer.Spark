@@ -247,7 +247,7 @@ public sealed class RavenSparkIdConformanceTests : SparkIdConformanceTests
         second.Should().NotBe(first);
     }
 
-    private sealed class Driver : SparkTestDriver
+    private sealed class Driver : RavenSparkTestDriver
     {
         public IDocumentStore DocumentStore => Store;
     }

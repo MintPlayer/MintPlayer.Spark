@@ -19,7 +19,7 @@ namespace MintPlayer.Spark.Tests.Endpoints.Queries;
 /// </para>
 /// </summary>
 public class StringPresentationColumnTests(StringPresentationColumnTests.Host host)
-    : SparkSharedTestDriver(host), IClassFixture<StringPresentationColumnTests.Host>
+    : RavenSparkSharedTestDriver(host), IClassFixture<StringPresentationColumnTests.Host>
 {
     private static readonly Guid GalleryTypeId = Guid.Parse("1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d");
     private static readonly Guid GalleryQueryId = Guid.Parse("2b3c4d5e-6f7a-4b8c-9d0e-1f2a3b4c5d6e");
@@ -31,7 +31,7 @@ public class StringPresentationColumnTests(StringPresentationColumnTests.Host ho
     public sealed class Host : SharedSparkHost<TestSparkContext>
     {
         protected override SparkEndpointFactory<TestSparkContext> CreateFactory()
-            => new SparkEndpointFactory(Store, [GalleryModel()]);
+            => new SparkEndpointFactory(Store.AsSparkTestDatabase(), [GalleryModel()]);
     }
 
     /// <summary>
@@ -141,7 +141,7 @@ public class StringPresentationColumnTests(StringPresentationColumnTests.Host ho
             },
         ];
 
-        await using var factory = new SparkEndpointFactory(Store, [model]);
+        await using var factory = new SparkEndpointFactory(Store.AsSparkTestDatabase(), [model]);
         var result = await ExecuteAsync(factory);
 
         result.Columns.Should().NotContain(c => c.Name == "Hidden");
@@ -163,7 +163,7 @@ public class StringPresentationColumnTests(StringPresentationColumnTests.Host ho
             },
         ];
 
-        await using var factory = new SparkEndpointFactory(Store, [model]);
+        await using var factory = new SparkEndpointFactory(Store.AsSparkTestDatabase(), [model]);
         var result = await ExecuteAsync(factory);
 
         result.Columns.Should().NotContain(c => c.Name == "DetailOnly");

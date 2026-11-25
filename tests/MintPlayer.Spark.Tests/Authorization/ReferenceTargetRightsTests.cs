@@ -59,7 +59,7 @@ public class RtContext : SparkContext
 /// Before: <c>BreadcrumbResolver</c> rendered the placeholder, but the attribute and the target id were
 /// still sent (<c>EntityMapper</c> kept <c>Value</c>, <c>QueryResultProjector</c> sent Value/ObjectId).
 /// </remarks>
-public class ReferenceTargetRightsTests : SparkTestDriver
+public class ReferenceTargetRightsTests : RavenSparkTestDriver
 {
     private static readonly Guid CarTypeId = Guid.Parse("a77c0000-0000-4000-8000-00000000d001");
     private static readonly Guid DriverTypeId = Guid.Parse("a77c0000-0000-4000-8000-00000000d002");
@@ -83,7 +83,7 @@ public class ReferenceTargetRightsTests : SparkTestDriver
     private async Task<(SparkClient Client, HttpClient Http)> StartAsync(string[] grants)
     {
         var factory = new SparkEndpointFactory<RtContext>(
-            Store,
+            Store.AsSparkTestDatabase(),
             [CarModel(), DriverModel()],
             configureServices: services =>
             {

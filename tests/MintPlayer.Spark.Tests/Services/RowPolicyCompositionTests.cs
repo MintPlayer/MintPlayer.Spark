@@ -19,7 +19,7 @@ namespace MintPlayer.Spark.Tests.Services;
 /// rule by parameter rebinding, constant folding, the system-context opt-out, the (type, action) memo,
 /// and the <see cref="RowRuleKinds"/> split of spike S5.
 /// </summary>
-public class RowPolicyCompositionTests : SparkTestDriver
+public class RowPolicyCompositionTests : RavenSparkTestDriver
 {
     public interface IRpSoftDeletable
     {

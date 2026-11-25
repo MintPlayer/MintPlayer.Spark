@@ -19,8 +19,8 @@ namespace MintPlayer.Spark.Tests.Mcp;
 /// everything else, advertises only what it maps, and the M3b agent flows (metadata document, loopback registration,
 /// refresh) still work through it.
 /// </summary>
-public class McpAgentsOnlyProviderTests(SparkSharedDatabase database)
-    : SparkSharedTestDriver(database), IClassFixture<SparkSharedDatabase>
+public class McpAgentsOnlyProviderTests(RavenSparkSharedDatabase database)
+    : RavenSparkSharedTestDriver(database), IClassFixture<RavenSparkSharedDatabase>
 {
     private const string LoopbackRedirect = "http://127.0.0.1:53682/callback";
 

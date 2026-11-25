@@ -9,7 +9,7 @@ namespace MintPlayer.Spark;
 /// </summary>
 /// <remarks>
 /// They had drifted: production set <c>Conventions.Serialization</c> while
-/// <c>SparkTestDriver</c> and <c>SparkSharedDatabase</c> set only the id conventions, and
+/// <c>RavenSparkTestDriver</c> and <c>RavenSparkSharedDatabase</c> set only the id conventions, and
 /// <c>SparkEndpointFactory</c> substitutes the driver's store for the one <c>AddSpark</c> registered —
 /// so the middleware's configuration never applied under test. A green suite proved nothing about
 /// production for anything serializer-shaped.

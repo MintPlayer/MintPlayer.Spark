@@ -209,6 +209,9 @@
   </Folder>
   <Folder Name="/libs/testing/">
     <Project Path="libs/testing/MintPlayer.Spark.Testing/MintPlayer.Spark.Testing.csproj" />
+    <Project Path="libs/testing/MintPlayer.Spark.Testing.RavenDB/MintPlayer.Spark.Testing.RavenDB.csproj" />
+    <Project Path="libs/testing/MintPlayer.Spark.Testing.SqlServer/MintPlayer.Spark.Testing.SqlServer.csproj" />
+    <Project Path="libs/testing/MintPlayer.Spark.Testing.PostgreSql/MintPlayer.Spark.Testing.PostgreSql.csproj" />
   </Folder>
   <Folder Name="/libs/webhooks/">
     <Project Path="libs/webhooks/MintPlayer.Spark.Webhooks.GitHub.DevTunnel/MintPlayer.Spark.Webhooks.GitHub.DevTunnel.csproj" />

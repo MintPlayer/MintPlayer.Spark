@@ -29,7 +29,7 @@ namespace MintPlayer.Spark.Tests.Services;
 /// revisit the decision above, not to relax the assertion.
 /// </para>
 /// </remarks>
-public class UnindexedFieldDegradationTests : SparkTestDriver
+public class UnindexedFieldDegradationTests : RavenSparkTestDriver
 {
     private static readonly Guid CrateTypeId = Guid.Parse("dddd4444-dddd-dddd-dddd-dddd44444444");
 
@@ -102,7 +102,7 @@ public class UnindexedFieldDegradationTests : SparkTestDriver
     private IQueryExecutor Executor()
     {
         _factory = new SparkEndpointFactory<LedgerContext>(
-            Store, [LedgerModel()],
+            Store.AsSparkTestDatabase(), [LedgerModel()],
             configureIndexCatalog: catalog => catalog.RegisterIndex(typeof(DegradationLedgers_Overview)));
 
         return _factory.GetService<IQueryExecutor>();

@@ -17,7 +17,7 @@ namespace MintPlayer.Spark.Tests.Messaging;
 /// (<c>AttemptCount + RateLimitParks / RateLimitParksPerAttempt &gt;= MaxAttempts</c>), and the dead-letter
 /// reason says whether the parks made up most of it. Also: a shutdown cancellation is not a failure.
 /// </summary>
-public class RetryAfterTests : SparkTestDriver
+public class RetryAfterTests : RavenSparkTestDriver
 {
     private const string Owner = "this-node/0001";
     private const string Queue = "retry-after-tests";

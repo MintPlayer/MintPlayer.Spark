@@ -35,8 +35,8 @@ namespace MintPlayer.Spark.Tests.Endpoints;
 /// (<c>apps/{App}/{App}.Tests</c>, one test project per application).
 /// </para>
 /// </remarks>
-public class RouteTableSnapshotTests(SparkSharedDatabase database)
-    : SparkSharedTestDriver(database), IClassFixture<SparkSharedDatabase>
+public class RouteTableSnapshotTests(RavenSparkSharedDatabase database)
+    : RavenSparkSharedTestDriver(database), IClassFixture<RavenSparkSharedDatabase>
 {
     private const string FixtureDirectory = "tests/MintPlayer.Spark.Tests/Endpoints/RouteSnapshots";
 
@@ -127,7 +127,7 @@ public class RouteTableSnapshotTests(SparkSharedDatabase database)
     {
         // Development: the identity provider generates its own signing key only there.
         await using var factory = new SparkEndpointFactory<TestSparkContext>(
-            Store,
+            Store.AsSparkTestDatabase(),
             models: [],
             configureSpark: Compositions[configuration],
             environment: "Development");

@@ -23,7 +23,7 @@ namespace MintPlayer.Spark.Tests.Endpoints.PersistentObject;
 /// Fixture names start with <c>Bq</c>: <c>ActionsResolver</c> matches actions classes by simple name
 /// across the whole assembly, and these types must not meet another fixture's.
 /// </remarks>
-public class SubQueryActionsTests : SparkTestDriver
+public class SubQueryActionsTests : RavenSparkTestDriver
 {
     private static readonly Guid ParentTypeId = Guid.Parse("46150000-0000-4000-8000-000000000001");
     private static readonly Guid ChildTypeId = Guid.Parse("46150000-0000-4000-8000-000000000002");
@@ -46,7 +46,7 @@ public class SubQueryActionsTests : SparkTestDriver
     private async Task<Host> StartAsync(SparkTestSecurity? security = null)
     {
         var factory = new SparkEndpointFactory<BqContext>(
-            Store,
+            Store.AsSparkTestDatabase(),
             Models(),
             configureServices: s => s.AddSingleton<BqRecorder>(),
             configureSpark: spark => spark.AddSoftDelete(),

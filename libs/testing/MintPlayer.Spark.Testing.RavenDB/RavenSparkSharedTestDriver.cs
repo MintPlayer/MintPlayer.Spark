@@ -8,10 +8,10 @@ namespace MintPlayer.Spark.Testing;
 /// one per test case.
 /// </summary>
 /// <remarks>
-/// Pair with <see cref="SparkSharedDatabase"/> through xUnit's <c>IClassFixture&lt;&gt;</c>:
+/// Pair with <see cref="RavenSparkSharedDatabase"/> through xUnit's <c>IClassFixture&lt;&gt;</c>:
 /// <code>
-/// public class CarQueryTests(SparkSharedDatabase database)
-///     : SparkSharedTestDriver(database), IClassFixture&lt;SparkSharedDatabase&gt;
+/// public class CarQueryTests(RavenSparkSharedDatabase database)
+///     : RavenSparkSharedTestDriver(database), IClassFixture&lt;RavenSparkSharedDatabase&gt;
 /// {
 ///     [Fact]
 ///     public async Task Lists_the_cars_it_seeded()
@@ -29,25 +29,25 @@ namespace MintPlayer.Spark.Testing;
 /// <para>
 /// <c>RavenTestDriver</c> ties a store's lifetime to the instance that created it, and xUnit builds
 /// a fresh instance of a test class for every case — so deriving from it forces a database per
-/// case, which is exactly what <see cref="SparkTestDriver"/> is for. Here the fixture owns the
+/// case, which is exactly what <see cref="RavenSparkTestDriver"/> is for. Here the fixture owns the
 /// database and this class only borrows it, which is what lets one database serve many test cases
 /// (and, just as importantly, lets a <c>SparkEndpointFactory</c> be built once for the class
 /// instead of once per case).
 /// </para>
 ///
-/// <para><b>⚠️ Read <see cref="SparkSharedDatabase"/> before using this.</b></para>
+/// <para><b>⚠️ Read <see cref="RavenSparkSharedDatabase"/> before using this.</b></para>
 /// <para>
 /// Tests in the class see each other's documents. No unscoped counts, no reused ids, nothing
 /// database-wide. When any of those is what a class needs, keep it on
-/// <see cref="SparkTestDriver"/> — that is not a workaround, it is what the per-case driver exists
+/// <see cref="RavenSparkTestDriver"/> — that is not a workaround, it is what the per-case driver exists
 /// for.
 /// </para>
 /// </remarks>
-public abstract class SparkSharedTestDriver
+public abstract class RavenSparkSharedTestDriver
 {
-    private readonly SparkSharedDatabase database;
+    private readonly RavenSparkSharedDatabase database;
 
-    protected SparkSharedTestDriver(SparkSharedDatabase database)
+    protected RavenSparkSharedTestDriver(RavenSparkSharedDatabase database)
     {
         ArgumentNullException.ThrowIfNull(database);
         this.database = database;
@@ -89,7 +89,7 @@ public abstract class SparkSharedTestDriver
     /// </remarks>
     protected string Id(string suffix) => $"{Scope}/{suffix}";
 
-    /// <inheritdoc cref="SparkTestDriver.SeedAsync"/>
+    /// <inheritdoc cref="RavenSparkTestDriver.SeedAsync"/>
     protected async Task SeedAsync(Func<IAsyncDocumentSession, Task> seed, TimeSpan? timeout = null)
     {
         ArgumentNullException.ThrowIfNull(seed);
@@ -103,7 +103,7 @@ public abstract class SparkSharedTestDriver
         await session.SaveChangesAsync();
     }
 
-    /// <inheritdoc cref="SparkTestDriver.SeedFromJsonAsync"/>
+    /// <inheritdoc cref="RavenSparkTestDriver.SeedFromJsonAsync"/>
     protected Task SeedFromJsonAsync(params string[] relativeOrAbsolutePaths)
     {
         var resolved = relativeOrAbsolutePaths
@@ -112,7 +112,7 @@ public abstract class SparkSharedTestDriver
         return JsonFixtureImporter.ImportAsync(Store, resolved);
     }
 
-    /// <inheritdoc cref="SparkSharedDatabase.WaitForIndexesAsync"/>
+    /// <inheritdoc cref="RavenSparkSharedDatabase.WaitForIndexesAsync"/>
     protected Task WaitForIndexesAsync(TimeSpan? timeout = null, CancellationToken cancellationToken = default)
         => database.WaitForIndexesAsync(timeout, cancellationToken);
 }

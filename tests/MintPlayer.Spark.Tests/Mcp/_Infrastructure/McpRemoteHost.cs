@@ -53,7 +53,7 @@ internal static class McpRemoteHost
         Action<SparkIdentityProviderMcpResource>? configureRemote = null,
         Action<SparkIdentityProviderOptions>? configureIdp = null)
         => new(
-            store,
+            store.AsSparkTestDatabase(),
             McpAccountHost.Models(),
             configureServices: services =>
             {
@@ -98,7 +98,7 @@ internal static class McpRemoteHost
     /// <summary>The application at <see cref="RemoteUrl"/>: setup 2 bound to the provider, validating with <paramref name="provider"/>'s keys.</summary>
     public static SparkEndpointFactory<GuardedContext> Resource(IDocumentStore store, OpenIdConnectConfiguration provider)
         => new(
-            store,
+            store.AsSparkTestDatabase(),
             McpAccountHost.Models(),
             configureServices: services =>
             {
@@ -136,7 +136,7 @@ internal static class McpRemoteHost
     /// <summary>An application with an authorization server of its own, at <see cref="McpEmbeddedHost.Issuer"/> with its own key.</summary>
     public static SparkEndpointFactory<GuardedContext> OtherEmbeddedServer(IDocumentStore store, string signingKeyPath)
         => new(
-            store,
+            store.AsSparkTestDatabase(),
             McpAccountHost.Models(),
             configureSpark: spark =>
             {

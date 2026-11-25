@@ -18,7 +18,7 @@ namespace MintPlayer.Spark.Tests.Messaging;
 /// discovered.
 /// </para>
 /// </summary>
-public class MessageSubscriptionManagerLifecycleTests : SparkTestDriver
+public class MessageSubscriptionManagerLifecycleTests : RavenSparkTestDriver
 {
     protected override IEnumerable<System.Reflection.Assembly> IndexAssemblies
         => [typeof(MintPlayer.Spark.Messaging.Indexes.SparkMessages_ByQueue).Assembly];

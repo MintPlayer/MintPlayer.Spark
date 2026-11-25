@@ -1,0 +1,44 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net11.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>true</IsPackable>
+    <!-- Test utilities, not a test project: see MintPlayer.Spark.Testing.csproj. -->
+    <IsTestProject>false</IsTestProject>
+
+    <!-- NuGet Package Metadata -->
+    <PackageId>MintPlayer.Spark.Testing.RavenDB</PackageId>
+    <Version>0.0.0-PLACEHOLDER</Version>
+    <Authors>MintPlayer</Authors>
+    <Company>MintPlayer</Company>
+    <Description>RavenDB for MintPlayer.Spark's test harness: an embedded RavenDB server (RavenSparkTestDriver, RavenSparkSharedDatabase), the RavenDB test database for SparkEndpointFactory, JSON fixture seeding, index helpers and the RQL recorder.</Description>
+    <PackageTags>spark;testing;integration-tests;ravendb;xunit;testhost</PackageTags>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/MintPlayer/MintPlayer.Spark</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/MintPlayer/MintPlayer.Spark.git</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- O16: the build writes [assembly: SparkTestDatabase(typeof(RavenSparkTestDatabaseProvider))] into the test project. -->
+    <None Include="Targets\spark-testing-ravendb.targets" Pack="true" PackagePath="build\MintPlayer.Spark.Testing.RavenDB.targets" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="RavenDB.TestDriver" Version="7.2.7" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+    <!-- RavenServerProvisioningTests drives RavenServerLocator.Provision with its own paths. -->
+    <InternalsVisibleTo Include="MintPlayer.Spark.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\MintPlayer.Spark.Testing\MintPlayer.Spark.Testing.csproj" />
+    <ProjectReference Include="..\..\spark\MintPlayer.Spark.RavenDB\MintPlayer.Spark.RavenDB.csproj" />
+  </ItemGroup>
+
+</Project>

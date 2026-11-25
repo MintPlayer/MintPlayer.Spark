@@ -98,6 +98,10 @@ parallel `Angular apps` job (`--exclude='*,!@spark-demo/*,!@spark-apps/*'`; `nx 
   a `RAVENDB_LICENSE` that holds the Community licence gives a `LicenseLimitException` ("revisions
   1000 > licensed 2") that CI never sees.
 
+**`MintPlayer.Spark.Tests` references four test databases** (RavenDB, InMemory, SqlServer, PostgreSql; #536 D35),
+so its provider-neutral classes (`SparkTestDriver`, `SparkSharedDatabase`) need `SPARK_TEST_DATABASE` to pick one.
+CI and `npm run test:affected` set `RavenDB`; set it yourself for a single-class `dotnet test`.
+
 ### The local sweep: `npm run test:affected`
 
 One script runs every **affected** test project, unit and E2E together (`tools/test-local.mjs`;
@@ -116,7 +120,7 @@ CI never calls it). Extra arguments go to `nx affected`, e.g. `-- --skip-nx-cach
   nx, then sets `SPARK_E2E_SKIP_APP_BUILD=1` so `SparkAppTestHost` skips its own per-app
   `dotnet build`. The variable is opt-in; unset (CI) the host still builds. A new E2E host app must
   be added to `E2E_APPS` in the script.
-- Every RavenTestDriver base (`SparkTestDriver`, `SparkSharedDatabase`, `CoverageRavenTest`)
+- Every RavenTestDriver base (`RavenSparkTestDriver`, `RavenSparkSharedDatabase`, `CoverageRavenTest`)
   deletes its databases without the server's 15 s confirmation wait, through
   `RavenDatabaseDeletion.DeleteOnDispose` in `PreInitialize`. This applies on CI as well.
 

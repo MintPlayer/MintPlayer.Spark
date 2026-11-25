@@ -15,7 +15,7 @@ namespace MintPlayer.Spark.Tests.Endpoints.Queries;
 /// data the caller can't see. Uses <see cref="SparkClient.ExecuteQueryAsync(Guid,int,int,string,string,string,System.Threading.CancellationToken)"/>
 /// so the test expresses "run query X with parent Y" directly.
 /// </summary>
-public class ExecuteQueryParentGateTests : SparkTestDriver
+public class ExecuteQueryParentGateTests : RavenSparkTestDriver
 {
     private static readonly Guid DocTypeId = Guid.Parse("42420000-1111-2222-3333-444455556666");
     private static readonly Guid ChildrenQueryId = Guid.Parse("42421111-1111-2222-3333-444455556666");
@@ -42,7 +42,7 @@ public class ExecuteQueryParentGateTests : SparkTestDriver
             },
         ];
 
-        _factory = new SparkEndpointFactory<GuardedContext>(Store, new[] { docType });
+        _factory = new SparkEndpointFactory<GuardedContext>(Store.AsSparkTestDatabase(), new[] { docType });
         _client = new SparkClient(_factory.CreateClient(), ownsClient: true);
     }
 

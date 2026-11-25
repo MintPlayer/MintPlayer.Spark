@@ -25,7 +25,7 @@ namespace MintPlayer.Spark.Tests.Services;
 /// none (D3).
 /// </para>
 /// </summary>
-public class RowLevelWithCheckTests : SparkTestDriver
+public class RowLevelWithCheckTests : RavenSparkTestDriver
 {
     private static readonly Guid NoteTypeId = Guid.Parse("d8d8d8d8-8888-8888-8888-d8d8d8d8d8d8");
 
@@ -178,7 +178,7 @@ public class RowLevelWithCheckTests : SparkTestDriver
     private static readonly Guid WcNoteTypeId = Guid.Parse("d8d8d8d8-8888-8888-8888-d8d8d8d8d8d9");
 
     /// <summary>A host whose WcNote rows belong to alice, stamped by the type's own before-save interceptor.</summary>
-    private SparkEndpointFactory<WcContext> Host() => new(Store, [new EntityTypeFile
+    private SparkEndpointFactory<WcContext> Host() => new(Store.AsSparkTestDatabase(), [new EntityTypeFile
     {
         PersistentObject = new EntityTypeDefinition
         {
