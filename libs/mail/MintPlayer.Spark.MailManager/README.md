@@ -244,7 +244,7 @@ await mailer.SendAsync(new SparkMailRequest
 
 **Delivery ids.** Each mail gets a 32-hex delivery id: `Message-ID: <{id}@{From domain}>`, the VERP
 address and `SparkMailDeliveries/{id}` (status `Sent`/`Suppressed`/`Failed`/`Bounced`, the address,
-`@expires` after `DeliveryRetentionDays`, default 30). Delivery is at-least-once: a crash after the
+`ExpiresAtUtc` after `DeliveryRetentionDays`, default 30; any store). Delivery is at-least-once: a crash after the
 relay accepted and before the message completed sends it again, with the **same** `Message-ID`, so a
 duplicate is identifiable. That is documented, not "fixed".
 

@@ -11,7 +11,7 @@
 		<Version>0.0.0-PLACEHOLDER</Version>
 		<Authors>MintPlayer</Authors>
 		<Company>MintPlayer</Company>
-		<Description>Cron-scheduled background jobs for MintPlayer.Spark. Define jobs by implementing ISparkCronJob, declare the schedule with a static abstract CronSchedule, and let the scheduler run them. Multi-node safe via RavenDB compare-exchange locking.</Description>
+		<Description>Cron-scheduled background jobs for MintPlayer.Spark. Define jobs by implementing ISparkCronJob, declare the schedule with a static abstract CronSchedule, and let the scheduler run them. Multi-node safe via the store's atomic values (compare-exchange on RavenDB, a table on SQL Server and PostgreSQL).</Description>
 		<PackageTags>cron;scheduler;background-service;ravendb;ncrontab</PackageTags>
 		<PackageLicenseExpression>MIT</PackageLicenseExpression>
 		<PackageProjectUrl>https://github.com/MintPlayer/MintPlayer.Spark</PackageProjectUrl>
@@ -31,7 +31,6 @@
 		</PackageReference>
 		<PackageReference Include="MintPlayer.SourceGenerators.Attributes" Version="13.1.2" GeneratePathProperty="true" />
 		<PackageReference Include="NCrontab" Version="3.4.0" />
-		<PackageReference Include="RavenDB.Client" Version="7.2.7" />
 	</ItemGroup>
 
 	<ItemGroup>

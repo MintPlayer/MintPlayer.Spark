@@ -5,7 +5,7 @@ Cron-scheduled background jobs for [MintPlayer.Spark](https://github.com/MintPla
 Define a job by implementing `ISparkCronJob` and declaring its schedule with a `static abstract`
 member — the schedule lives with the job, not at the registration call site. Each job runs in its
 own loop as part of an ASP.NET Core `BackgroundService`. The scheduler runs each job on its cron
-schedule, and is safe to run on multiple nodes: a RavenDB compare-exchange claim ensures every
+schedule, and is safe to run on multiple nodes: an atomic claim in the store ensures every
 occurrence fires exactly once across the cluster. It follows the same conventions as the rest of
 Spark (`[Inject]` dependencies, source-generated registration on `ISparkBuilder`).
 
@@ -26,7 +26,7 @@ A cron job is a unit of recurring work scheduled by a cron expression. The sched
 - Runs one independent loop per registered job.
 - Computes the next occurrence (in **UTC**) using [NCrontab](https://github.com/atifaziz/NCrontab).
 - Resolves a fresh instance of the job from a DI scope for every run, so `[Inject]` dependencies work like any scoped service.
-- Claims each occurrence cluster-wide via a RavenDB compare-exchange key, so the job runs on exactly one node.
+- Claims each occurrence cluster-wide via one of the store's atomic values (`ISparkAtomicValues`), so the job runs on exactly one node. It works on every store: compare-exchange on RavenDB, a table on SQL Server and PostgreSQL.
 
 > **Time zone:** schedules are always interpreted in UTC. NCrontab is not DST-aware, so there is intentionally no per-job time zone. To run at a local wall-clock time, write the UTC equivalent in the expression.
 
@@ -38,13 +38,13 @@ put the work in `RunAsync`:
 ```csharp
 using MintPlayer.Spark.Cron;
 using MintPlayer.SourceGenerators.Attributes;
-using Raven.Client.Documents.Session;
+using MintPlayer.Spark.Abstractions.Storage;
 
 public partial class NightlyCleanup : ISparkCronJob
 {
     public static string CronSchedule => "0 0 * * *"; // 00:00 UTC daily
 
-    [Inject] private readonly IAsyncDocumentSession session;
+    [Inject] private readonly ISparkSession session;
     [Inject] private readonly ILogger<NightlyCleanup> logger;
 
     public async Task RunAsync(CancellationToken cancellationToken)
@@ -165,17 +165,17 @@ Each registered job runs its own loop inside the `SparkCronScheduler` background
 ## Multi-Node Execution
 
 When the app is deployed to multiple instances, every node runs the same loops — but only one may
-execute each occurrence. Coordination uses a single RavenDB compare-exchange key per job:
+execute each occurrence. Coordination uses a single atomic value per job (`ISparkAtomicValues`: compare-exchange on
+RavenDB, the `AtomicValues` table on SQL Server and PostgreSQL):
 
 - Key: `cron/{jobName}` (where `jobName` is the registration name).
 - Value: the latest claimed occurrence as an ISO-8601 UTC timestamp.
 
 Before running, a node reads the key and compares (ordinal) the stored occurrence against the one it
 is about to run. If the stored value is greater than or equal, the occurrence is already claimed and
-the node skips it. Otherwise it attempts an atomic compare-and-swap with the read index; only the
-node whose swap succeeds runs the job. Because compare-exchange is cluster-wide and strongly
-consistent (Raft), exactly one node wins per occurrence. Using a single key per job (updated in
-place) keeps the number of compare-exchange values bounded.
+the node skips it. Otherwise it attempts an atomic compare-and-swap with the version it read; only the
+node whose swap succeeds runs the job, so exactly one node wins per occurrence. Using a single key per
+job (updated in place) keeps the number of values bounded.
 
 The stored value is treated as **untrusted**. A value that does not parse as a UTC timestamp, or
 that is implausibly far in the future (more than a day ahead of the occurrence being claimed — a
@@ -188,7 +188,7 @@ job across the cluster.
 
 - A job that throws is logged and does **not** stop its schedule — the next occurrence is computed as normal.
 - `OperationCanceledException` during shutdown is treated as a graceful stop, not an error.
-- A failure to reach RavenDB while claiming an occurrence is logged and that single run is skipped; the loop continues.
+- A failure to reach the store while claiming an occurrence is logged and that single run is skipped; the loop continues.
 
 ## Security & Trust Model
 
@@ -208,7 +208,7 @@ iterate tenants inside `RunAsync`) rather than relying on an ambient principal.
 ## No Catch-Up
 
 Scheduling is computed in memory; there is no persisted run history. If every node is down across an
-occurrence, that occurrence is simply skipped — there is no missed-run replay. (The compare-exchange
+occurrence, that occurrence is simply skipped — there is no missed-run replay. (The atomic
 value records the last claimed occurrence, so adding catch-up later would be an additive change.)
 
 ## Requirements
