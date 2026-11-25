@@ -42,6 +42,10 @@ tags, and everything ships once the merged pull request is backported to `releas
    The flags are unchanged and `--spark-help` lists them. Building the host opens no connection, so the model and
    security commands still run in CI without a database. An unknown `--spark-` flag now exits 2 instead of starting
    the app.
+6. **`MintPlayer.Spark.Migrations` no longer references RavenDB** (M3, S15). It runs on any store provider, and the
+   package no longer brings `RavenDB.Client` along: a migration that injects `IAsyncDocumentSession` needs the
+   app's own RavenDB reference (`MintPlayer.Spark.RavenDB` brings it). The lock is now a renewed 2-minute lease
+   instead of a 30-minute one, and a lock the previous version left behind is still respected until it expires.
 
 ## New
 
@@ -55,3 +59,7 @@ tags, and everything ships once the merged pull request is backported to `releas
 4. **`ISparkCommand`** (M3, D34): a package registers a command-line command with
    `services.AddSparkCommand<TCommand>("--spark-…", description)`. It is constructed from DI only when its flag is
    passed, and `--spark-help` lists every registered one.
+5. **`ISparkAtomicValues` and `ISparkStoreLock`** (M3, S6/S15): the neutral compare-exchange (get, compare-and-swap,
+   delete, by version) that every provider implements, and a lease over it that core implements once: it renews
+   itself while held, frees after its time to live when its holder dies, and cancels `Lost` when someone else took
+   it.

@@ -111,6 +111,11 @@ public static class SparkExtensions
         // The command-line commands (#536 D34): keyed by their flag, run by app.RunSparkCommandIfRequestedAsync(args).
         Commands.SparkCoreCommands.AddSparkCoreCommands(services);
 
+        // The lease every provider gets over its atomic values (#536 S6/S15): migrations, and later cron, messaging and
+        // dashboards. A provider registers ISparkAtomicValues; nothing here touches a store until a lease is taken.
+        Microsoft.Extensions.DependencyInjection.Extensions.ServiceCollectionDescriptorExtensions.TryAddSingleton(services, TimeProvider.System);
+        Microsoft.Extensions.DependencyInjection.Extensions.ServiceCollectionDescriptorExtensions.TryAddSingleton<Abstractions.Storage.ISparkStoreLock, SparkStoreLock>(services);
+
         // Forwarded headers (#460, D15) — trusted from private ranges by default, placed at the
         // front of the pipeline by a startup filter. An application no longer configures or calls
         // UseForwardedHeaders() itself; see SparkForwardedHeadersOptions.

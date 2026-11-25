@@ -43,11 +43,15 @@ spark.AddMigrations(m => m.AddMigration<M_202606081200_SeedDemo>());
 
 ## Guarantees
 
-- **Run-once per database** — each applied version writes a `SparkMigrationRecords/{version}`
+- **Run-once per database** — each applied version writes a `sparkmigrationrecords/{version}`
   marker document; a migration whose marker exists is skipped.
 - **Ordered** — migrations run ascending by `Version`.
-- **Multi-node safe** — a cluster-wide RavenDB compare-exchange lock (`spark/migrations/lock`,
-  30-minute lease) ensures only one node applies migrations at a time.
+- **Any store** — the runner uses only the neutral store (`ISparkStore`) and its lease (`ISparkStoreLock`), so it runs
+  on every store provider. A migration's own code takes what it needs: an `ISparkSession`, or the provider's client.
+- **Multi-node safe** — a lease on the store (`spark/migrations/lock`; on RavenDB a compare-exchange value) ensures
+  only one node applies migrations at a time. The holder renews it while it runs, however long that takes; a killed
+  node stops renewing, and its lease frees after 2 minutes. The other nodes wait rather than serve un-migrated data.
+  A lost lease cancels the running migration's token.
 - **Fail-fast** — a migration that throws aborts startup and is left unmarked, so it retries on the
   next start. Call `SaveChangesAsync` yourself; the version marker is written only after `UpAsync`
   returns successfully.

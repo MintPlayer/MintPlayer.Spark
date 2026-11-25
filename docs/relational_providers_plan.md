@@ -72,6 +72,21 @@ rounds, milestones and status. Branch `feat/536-sql-server-provider`, draft PR #
     posture code read descriptors; (3) the posture command runs on the app's provider, and the throwaway
     `BuildServiceProvider()` remains only for that test path. The null-guard tests went with the public methods.
     Test: `AddSpark_registers_the_core_commands`.
+  - **M3d, atomic values and the lease (S6/S15, the first slice):** `ISparkAtomicValues` (get, `TryPutAsync` with
+    an expected version where 0 means absent, `TryDeleteAsync`; **string values**, since every user so far stores a
+    timestamp and a relational column then needs no serializer) in Abstractions, implemented by RavenDB
+    (compare-exchange, index = version) and InMemory (a dictionary). `ISparkStoreLock`/`ISparkLease` are implemented
+    once in core (`Services/SparkStoreLock.cs`) over the values: value `{holder}|{expires}`, renewed by
+    compare-and-swap every third of the TTL, `Lost` cancelled when a renewal finds another holder or the store stays
+    unreachable past expiry. A bare timestamp reads as a lease of an unknown holder (the runner's pre-#536 lock), and
+    an unreadable value is taken over. The data-migration runner moved onto `ISparkStore` + the lease: TTL 30 → 2
+    minutes now that it renews (a killed runner frees in 2 minutes, a long run is no longer taken over at 30), the
+    35-minute wait budget kept so a lock the old version left is outlived, and the migration token is linked to
+    `Lost`. `MintPlayer.Spark.Migrations` dropped its RavenDB requirement and its `RavenDB.Client` reference. Tests:
+    `SparkAtomicValuesConformanceTests` (Raven + InMemory, plus a DateTime-written value read as text),
+    `SparkStoreLockTests` (9), `SparkMigrationRunnerTests` unchanged in substance (their pre-seeded locks are old-format
+    DateTimes): 56 green. Not yet: cron, messaging and dashboards on the values/lease (the feature-library port), and
+    the rest of S6 (`SetExpiry`, `StreamAsync`, `Reserve/Release`, `UpdateWhere/DeleteWhere`, `PatchAppend`).
   - Order: the core pieces in `libs/` first (the struct, the model registry, the generator for `__DocumentId`, JSON,
     the route binder), then the feature libraries, then the apps.
   - It touches the three production apps (CodeCoverage, SeoTester, MintPlayer). RavenDB stays green at the end of the

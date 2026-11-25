@@ -4,14 +4,14 @@ namespace MintPlayer.Spark.Migrations;
 /// A one-time database migration. Implement this on a non-abstract class and Spark will run it
 /// once, in <see cref="Version"/> order, at application startup — after indexes are created and
 /// before the app serves requests. Each migration runs in its own DI scope, so it can take
-/// dependencies via <c>[Inject]</c> (e.g. <see cref="Raven.Client.Documents.Session.IAsyncDocumentSession"/>),
+/// dependencies via <c>[Inject]</c> (an <c>ISparkSession</c>, or the provider's own client such as RavenDB's <c>IAsyncDocumentSession</c>),
 /// exactly like a cron job.
 /// </summary>
 /// <remarks>
 /// Discovery is by interface — no attribute or base class. The source generator finds every
 /// non-abstract implementer and wires them into the generated <c>spark.AddMigrations()</c>.
 /// A migration is applied at most once per database (tracked by a per-version marker document)
-/// and is safe to run from multiple nodes at once (a cluster-wide compare-exchange lock serialises
+/// and is safe to run from multiple nodes at once (a lease on the store, <c>ISparkStoreLock</c>, serialises
 /// the run). Convention for <see cref="Version"/> is a sortable timestamp, e.g. <c>202606081200</c>.
 /// </remarks>
 public interface ISparkMigration
