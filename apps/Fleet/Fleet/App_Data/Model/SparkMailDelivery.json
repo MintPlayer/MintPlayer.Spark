@@ -42,6 +42,17 @@
         "rules": []
       },
       {
+        "id": "93de06a4-c5d8-4286-a2a6-0e885468c060",
+        "name": "ExpiresAtUtc",
+        "dataType": "datetime",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 8,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
         "id": "0a4d0c24-cc71-4127-b27b-99a62b4fb462",
         "name": "Status",
         "dataType": "string",
