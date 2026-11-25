@@ -47,6 +47,9 @@ public static class SparkBuilderMessagingExtensions
         // a terminal message can linger that long, which nothing depends on.
         builder.Registry.RequireDocumentExpiration("Messaging");
 
+        // D42: SparkMessages_ByState, the view the feeder's page and the sweeper query, deployed with the app's indexes.
+        builder.Registry.AddIndexAssembly(typeof(Models.SparkMessages_ByState).Assembly);
+
         return builder;
     }
 

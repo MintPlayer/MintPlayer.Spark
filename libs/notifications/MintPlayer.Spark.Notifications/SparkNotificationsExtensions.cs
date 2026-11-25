@@ -42,12 +42,9 @@ public static class SparkNotificationsExtensions
     /// <see cref="ISparkAccountDirectory"/> (<c>AddAuthentication&lt;TUser&gt;()</c> registers one), and Web Push
     /// also needs <c>AddMessaging()</c> (startup says so).
     /// </summary>
-    [global::MintPlayer.Spark.Abstractions.Storage.SparkRequiresStore("Spark.Notifications", Provider = global::MintPlayer.Spark.Abstractions.Storage.SparkStoreProviders.RavenDb)]
     public static ISparkBuilder AddNotifications(this ISparkBuilder builder, Action<SparkNotificationsOptions>? configure = null)
     {
-        // #551 D13: notifications are kept in RavenDB, through its own client.
-        global::MintPlayer.Spark.Abstractions.Storage.SparkStoreRequirementExtensions.RequireStore(builder, "Spark.Notifications", provider: global::MintPlayer.Spark.Abstractions.Storage.SparkStoreProviders.RavenDb);
-
+        // #536: notifications run on any store (ISparkStore); Web Push needs Messaging, which brings its own requirement.
         var services = builder.Services;
         if (services.Any(d => d.ServiceType == typeof(NotificationsMarker)))
         {

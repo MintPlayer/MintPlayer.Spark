@@ -22,7 +22,7 @@ namespace MintPlayer.Spark.Tests.Messaging;
 /// each message transitions independently.
 /// </para>
 /// </summary>
-public class MessageSubscriptionWorkerE2ETests : RavenSparkTestDriver
+public class MessageSubscriptionWorkerE2ETests : MessagingRavenTestDriver
 {
     private static readonly TimeSpan PollTimeout = TimeSpan.FromSeconds(20);
 

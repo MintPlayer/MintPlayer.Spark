@@ -10,7 +10,7 @@ using MintPlayer.Spark.MailManager;
 using MintPlayer.Spark.Messaging;
 using MintPlayer.Spark.Notifications.Messaging;
 using MintPlayer.Spark.Notifications.Models;
-using Raven.Client.Documents;
+using MintPlayer.Spark.Abstractions.Storage;
 
 namespace MintPlayer.Spark.Notifications.Services;
 
@@ -21,7 +21,7 @@ namespace MintPlayer.Spark.Notifications.Services;
 /// expiring with the visitor (<see cref="SparkVisitorOptions.Lifetime"/>).
 /// </remarks>
 internal sealed class SparkNotifier(
-    IDocumentStore store,
+    ISparkStore store,
     IServiceProvider services,
     SparkWebPushSender push,
     IOptions<SparkNotificationsOptions> options,
@@ -53,7 +53,7 @@ internal sealed class SparkNotifier(
         var mails = new List<ISparkAccount>();
         var pushes = 0;
 
-        using var session = store.OpenAsyncSession();
+        using var session = store.OpenSession();
         var userIds = Clean(notification.UserIds);
         // A visitor id always carries its prefix, so one can never address a user's notifications.
         var visitorIds = Clean(notification.VisitorIds).Where(id => id.StartsWith(SparkVisitorOptions.IdPrefix, StringComparison.Ordinal)).ToList();
@@ -100,10 +100,10 @@ internal sealed class SparkNotifier(
             if (channels.Push && push.Client is not null && outbox is not null)
             {
                 var payload = SparkWebPushSender.Payload(notificationId, title, notification.Body, AbsoluteUrl() ?? notification.Url, notification.Category);
-                var devices = await session.Advanced.LoadStartingWithAsync<PushSubscription>(PushSubscription.PrefixFor(userId), pageSize: 64, token: cancellationToken);
+                var devices = await session.LoadStartingWithAsync<PushSubscription>(PushSubscription.PrefixFor(userId), pageSize: 64, cancellationToken: cancellationToken);
                 foreach (var device in devices)
                 {
-                    await outbox.EnqueueAsync(session.AsSparkSession(), new WebPushDeliveryMessage
+                    await outbox.EnqueueAsync(session, new WebPushDeliveryMessage
                     {
                         SubscriptionId = device.Id.Value,
                         Payload = payload,
@@ -174,7 +174,7 @@ internal sealed class SparkNotifier(
     };
 
     /// <summary>The user's preference for the organization, else their default, else the configured defaults.</summary>
-    internal async Task<SparkNotificationChannels> ChannelsAsync(Raven.Client.Documents.Session.IAsyncDocumentSession session, string userId, string? organizationId, CancellationToken cancellationToken)
+    internal async Task<SparkNotificationChannels> ChannelsAsync(ISparkSession session, string userId, string? organizationId, CancellationToken cancellationToken)
     {
         var scoped = NotificationPreference.IdFor(userId, organizationId).Value;
         var fallback = NotificationPreference.IdFor(userId, null).Value;

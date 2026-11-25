@@ -5,7 +5,7 @@ using MintPlayer.Spark.Messaging.Abstractions;
 using MintPlayer.Spark.Notifications.Models;
 using MintPlayer.Spark.Notifications.Services;
 using MintPlayer.Spark.WebPush;
-using Raven.Client.Documents;
+using MintPlayer.Spark.Abstractions.Storage;
 
 namespace MintPlayer.Spark.Notifications.Messaging;
 
@@ -39,7 +39,7 @@ public sealed class WebPushDeliveryMessage
 /// configuration problem (VAPID keys, payload) and parks the message as failed.
 /// </summary>
 internal sealed class WebPushDeliveryHandler(
-    IDocumentStore store,
+    ISparkStore store,
     SparkWebPushSender sender,
     ILogger<WebPushDeliveryHandler> logger) : IRecipient<WebPushDeliveryMessage>
 {
@@ -49,7 +49,7 @@ internal sealed class WebPushDeliveryHandler(
             throw new NonRetryableException("Web Push is not configured (Spark:Notifications:WebPush).");
 
         PushSubscription? subscription;
-        using (var session = store.OpenAsyncSession())
+        using (var session = store.OpenSession())
             subscription = await session.LoadAsync<PushSubscription>(message.SubscriptionId, cancellationToken);
         if (subscription is null)
             return; // unsubscribed meanwhile
@@ -70,9 +70,9 @@ internal sealed class WebPushDeliveryHandler(
             case WebPushOutcome.Delivered:
                 return;
             case WebPushOutcome.SubscriptionGone:
-                using (var session = store.OpenAsyncSession())
+                using (var session = store.OpenSession())
                 {
-                    session.Delete(message.SubscriptionId);
+                    session.Delete(typeof(PushSubscription), message.SubscriptionId);
                     await session.SaveChangesAsync(cancellationToken);
                 }
                 logger.LogInformation("Push subscription {SubscriptionId} is gone ({Status}); deleted.", message.SubscriptionId, (int)result.StatusCode);

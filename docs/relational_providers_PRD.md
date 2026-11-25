@@ -509,6 +509,31 @@ no schema, so it never showed.
 *Evidence:* `NeutralMessagingTests` went from 0/3 to 3/3 on SQL Server and PostgreSQL. The RavenDB messaging set,
 including the containers built without `AddSpark`, stayed green (227/227).
 
+**D42 (M7b follow-up, 2026-11-25): messaging queries a declared view, never the collection.** D40's plain collection
+queries made RavenDB build `Auto/SparkMessages/ByExpediteAndNextAttemptAtUtcAndPriorityAndQueuedAtUtcAndStatusAndWakeUp`
+on first use. CI failed on it: CodeCoverage forbids auto indexes (`DependencyOnboardingTamperEndToEndTests`, D-O22),
+because an app cannot deploy them ahead of time. The owner confirmed it: "you need to query the index to prevent
+auto-indexes".
+- **The view.** `SparkMessages_ByState : SparkView<SparkMessageState>` holds the fields the feeder's page and the
+  sweeper filter and sort on. Per D32 it is a RavenDB static index, an SQL view and LINQ in memory. `AddMessaging`
+  declares messaging's assembly an index assembly, so `UseSpark` deploys the view with the app's indexes.
+- **`ISparkSession.Query<TRow, TView>()` takes a view on every store.** SQL already did. RavenDB now queries the
+  static index of the view's name, and InMemory renders the view. A native RavenDB index still works as before, and
+  InMemory still refuses one.
+- **Tests.** The hand-built RavenDB messaging fixtures derive from `MessagingRavenTestDriver`. It deploys the view and
+  waits for it before the first test, as `UseSpark` does. The shared `RavenIndexHelper` stays native-only: the smoke
+  fixture passes the whole test assembly, which holds SQL-only views RavenDB cannot render.
+- **Staleness.** The page and the sweeper read the index as it is, as they did before D40. Neither waits: the
+  subscription batch covers what the page misses, and every write re-checks its predicate on the loaded document.
+
+*Evidence:*
+- `NeutralMessagingTests` 4/4 on RavenDB, InMemory, SQL Server and PostgreSQL. The new assertion: on RavenDB a
+  delivery leaves no `Auto/SparkMessages` index, and `SparkMessages_ByState` exists.
+- RavenDB messaging 217/217, in 49 s against 5 min 13 s before the fixtures waited for the view. Before the fix, 13
+  failed with `IndexDoesNotExistException` or a sweeper that found nothing in a freshly deployed index.
+- Subscription worker, replication, storage, notifications, apps, webhooks and layering 663/663.
+- `DependencyOnboardingTamperEndToEndTests` and `NoAutoIndex*` 39/39.
+
 **D3: the version is a `bigint` column on every table**, a concurrency token the provider increments. *(S4, §8.11:
 it is on every root table and covers the aggregate. A change to a child row (D25) or a join row (D26) moves the
 root's version, which EF alone does not do.)*

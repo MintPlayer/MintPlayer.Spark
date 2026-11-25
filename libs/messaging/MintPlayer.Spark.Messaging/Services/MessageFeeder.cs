@@ -193,15 +193,34 @@ internal sealed class MessageFeeder : SparkSubscriptionWorker<SparkMessage>
     private async Task<IReadOnlyList<SparkMessage>> ReadPageAsync(CancellationToken cancellationToken)
     {
         using var session = store.OpenSession();
-        return await session.ToListAsync(
-            session.Query<SparkMessage>()
-                .Where(Claimable)
+        // The declared view (D42), never the collection: on RavenDB a collection query builds an auto index.
+        var rows = await session.ToListAsync(
+            session.Query<SparkMessageState, SparkMessages_ByState>()
+                .Where(ClaimableState)
                 .OrderByDescending(m => m.Priority)
                 .ThenByDescending(m => m.Expedite)
                 .ThenBy(m => m.QueuedAtUtc)
                 .Take(PageSize),
             cancellationToken);
+        // Only the sort keys are read from a page entry; FeedGroupAsync loads every document it claims.
+        return [.. rows.Select(r => new SparkMessage
+        {
+            Id = r.Id,
+            QueueName = r.QueueName,
+            Status = r.Status,
+            Priority = r.Priority,
+            Expedite = r.Expedite,
+            QueuedAtUtc = r.QueuedAtUtc,
+            CreatedAtUtc = r.CreatedAtUtc,
+            NextAttemptAtUtc = r.NextAttemptAtUtc,
+            WakeUp = r.WakeUp,
+        })];
     }
+
+    /// <summary><see cref="Claimable"/> over the view's rows.</summary>
+    internal static readonly Expression<Func<SparkMessageState, bool>> ClaimableState =
+        m => (m.Status == EMessageStatus.Pending && (m.NextAttemptAtUtc == null || m.WakeUp == true))
+            || (m.Status == EMessageStatus.Failed && m.WakeUp == true);
 
     /// <summary>
     /// One priority group: one load, the admission decision per message, one write for every claim and

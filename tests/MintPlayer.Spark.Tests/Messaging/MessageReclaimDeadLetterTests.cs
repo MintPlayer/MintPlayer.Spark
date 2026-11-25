@@ -21,7 +21,7 @@ namespace MintPlayer.Spark.Tests.Messaging;
 /// the first pickup, the message still at <c>Processing</c> on a claim that has lapsed.
 /// </para>
 /// </summary>
-public class MessageReclaimDeadLetterTests : RavenSparkTestDriver
+public class MessageReclaimDeadLetterTests : MessagingRavenTestDriver
 {
     private const string Owner = "this-node/0001";
 

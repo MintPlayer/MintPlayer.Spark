@@ -47,8 +47,27 @@ internal sealed class RavenSparkSession : ISparkSession
     public IQueryable<T> Query<T>(TimeSpan waitForIndexes) where T : class
         => AbsentIsNull(Session.Query<T>().Customize(c => c.WaitForNonStaleResults(waitForIndexes)));
 
+    /// <remarks>
+    /// A <see cref="Abstractions.Views.SparkView{TRow}"/> is the static index deployed under its name (#536 D32, D42); the
+    /// row's members are its stored fields, so the rows read from it are the row type.
+    /// </remarks>
     public IQueryable<T> Query<T, TIndex>() where T : class where TIndex : class, new()
-        => AbsentIsNull(IndexQuery<T, TIndex>.Open(Session));
+        => AbsentIsNull(typeof(Abstractions.Views.ISparkView).IsAssignableFrom(typeof(TIndex))
+            ? Session.Query<T>(ViewName<T, TIndex>.Name)
+            : IndexQuery<T, TIndex>.Open(Session));
+
+    private static class ViewName<T, TView> where T : class
+    {
+        public static readonly string Name = Resolve();
+
+        private static string Resolve()
+        {
+            var view = Abstractions.Views.SparkViewEntries.Instantiate(typeof(TView));
+            if (view.RowType != typeof(T))
+                throw new InvalidOperationException($"View {view.Name} yields {view.RowType.Name}, not {typeof(T).Name}.");
+            return view.Name;
+        }
+    }
 
     /// <summary>O11: <c>== null</c> also finds a field the document never wrote (<see cref="RavenAbsentNullRewriter"/>).</summary>
     private static IQueryable<T> AbsentIsNull<T>(IQueryable<T> query)

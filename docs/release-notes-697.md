@@ -74,9 +74,12 @@ tags, and everything ships once the merged pull request is backported to `releas
 12. **Messaging runs on any store with subscriptions** (M7b, D40), and its package no longer references RavenDB:
     - `IMessageOutbox.EnqueueAsync` and `ISparkAfterCommitOutbox.EnqueueAsync` take an `ISparkSession`, not a RavenDB
       session. Wrap a raw session with `session.AsSparkSession()`.
-    - The indexes `SparkMessages_ByPriority` and `SparkMessages_ByQueue` and `CreateSparkMessagingIndexes` are gone;
-      the feeder and the retry sweeper use plain queries. On an existing RavenDB database the two indexes stay until
-      you delete them.
+    - The indexes `SparkMessages_ByPriority` and `SparkMessages_ByQueue` and `CreateSparkMessagingIndexes` are gone.
+      The feeder and the retry sweeper query one view, `SparkMessages_ByState`, which `UseSpark` deploys with the
+      app's indexes: a static index on RavenDB, an SQL view on SQL Server and PostgreSQL. On an existing RavenDB
+      database the two old indexes stay until you delete them. A test that builds messaging without `UseSpark` must
+      deploy the view itself.
+    - `AddNotifications()` no longer requires RavenDB: notifications run on any store.
     - The messaging lease moved from the compare-exchange key `spark/messaging/leader` to `spark/messaging/lease`.
       While old and new hosts run side by side during a deploy, each version holds its own lease. Stop the old
       hosts before starting the new ones.
@@ -168,3 +171,5 @@ tags, and everything ships once the merged pull request is backported to `releas
 13. **`ISparkStoreReadiness`** (M7b, D41): a background service awaits `WaitAsync()` before its first store access.
     On a relational store it returns once `UseSpark` has applied the schema; elsewhere it returns at once. A feature
     library registers it with `services.AddSparkStoreReadiness()`.
+14. **`ISparkSession.Query<TRow, TView>()` takes a `SparkView` on every store** (D42). RavenDB queries the view's static
+    index and InMemory renders it; SQL Server and PostgreSQL already read the SQL view.

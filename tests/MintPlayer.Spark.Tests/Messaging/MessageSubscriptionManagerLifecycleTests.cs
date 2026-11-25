@@ -19,7 +19,7 @@ namespace MintPlayer.Spark.Tests.Messaging;
 /// discovered.
 /// </para>
 /// </summary>
-public class MessageSubscriptionManagerLifecycleTests : RavenSparkTestDriver
+public class MessageSubscriptionManagerLifecycleTests : MessagingRavenTestDriver
 {
 
     [Fact]

@@ -20,7 +20,7 @@ namespace MintPlayer.Spark.Tests.Messaging;
 /// batch that delivered it (the no-starvation argument), the admission decision taken before the
 /// claim, and configuration beating code for <c>Priority</c>.
 /// </summary>
-public class QueuePriorityTests(ITestOutputHelper output) : RavenSparkTestDriver
+public class QueuePriorityTests(ITestOutputHelper output) : MessagingRavenTestDriver
 {
     private static readonly DateTime T0 = new(2026, 9, 29, 12, 0, 0, DateTimeKind.Utc);
 

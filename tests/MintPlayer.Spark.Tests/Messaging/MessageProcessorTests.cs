@@ -18,7 +18,7 @@ namespace MintPlayer.Spark.Tests.Messaging;
 /// only ever deliver well-formed messages to registered handlers, so every dead-letter path here was
 /// untested — and they are the paths an attacker who can write into <c>SparkMessages</c> exercises.
 /// </summary>
-public class MessageProcessorTests : RavenSparkTestDriver
+public class MessageProcessorTests : MessagingRavenTestDriver
 {
     private const string Owner = "this-node/0001";
 

@@ -445,9 +445,22 @@ rounds, milestones and status. Branch `feat/536-sql-server-provider`, draft PR #
       - CodeCoverage 286/286
     - **CI fix.** `SparkStoreRequirementTests` assumed InMemory lacks Subscriptions, which M7a changed; it now uses
       Revisions.
-  - **Next:** Notifications' `SparkNotifier`/`WebPushDelivery` and Apps off the `AsSparkSession()` bridge and their
-    RavenDB pins; then the rest of M6 (templates, Tier 2); cron, the subscription worker's remaining hosted services
-    and others adopt `ISparkStoreReadiness` as they are ported.
+  - **M7c (2026-11-25): Notifications on any store; messaging queries a view (PRD D42).**
+    - **Notifications drop `RavenDB.Client` and their RavenDB pin.** `SparkNotifier` and `WebPushDelivery` take
+      `ISparkStore`, and the outbox gets the notifier's own neutral session. The model's 90-day expiry comes from the
+      store's stamper (`ISparkStoreExpiration`). InMemory has no stamper, so its rows carry no expiry.
+    - **D42.** CI on 9e6ea3bfc failed on one test: CodeCoverage forbids auto indexes, and D40's plain queries made
+      RavenDB build one. Messaging now queries `SparkMessages_ByState`, a `SparkView`, and `Query<TRow, TView>()`
+      takes a view on RavenDB and InMemory too.
+    - **Evidence.**
+      - `NeutralNotificationTests` 1/1 and `NeutralMessagingTests` 4/4, on all four databases
+      - the notification suites 23/23 on all four databases
+      - RavenDB messaging 217/217
+      - neighbouring suites 663/663
+      - the CodeCoverage auto-index tests 39/39
+  - **Next:** Apps off the `AsSparkSession()` bridge and its RavenDB pin (Patch → load-modify-save); then the rest of
+    M6 (templates, Tier 2). Cron, the subscription worker's remaining hosted services and others adopt
+    `ISparkStoreReadiness` as they are ported.
 - **Local spike servers left running:**
   - SQL Server: `SparkSpike536` on `localhost` and `localhost\MSSQLSERVER01`
   - Docker `spark536-pg` (`postgres:18`, 127.0.0.1:55432). M4 needs it again.

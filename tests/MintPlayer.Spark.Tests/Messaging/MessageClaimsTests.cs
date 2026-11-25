@@ -11,7 +11,7 @@ namespace MintPlayer.Spark.Tests.Messaging;
 /// Another owner is simulated by writing its id onto the message — the same data another host
 /// would leave behind.
 /// </summary>
-public class MessageClaimsTests : RavenSparkTestDriver
+public class MessageClaimsTests : MessagingRavenTestDriver
 {
     private const string Us = "this-node/0001";
     private const string Them = "other-node/0002";

@@ -14,7 +14,7 @@ namespace MintPlayer.Spark.Tests.Messaging;
 /// host would have written (#536 D40: the lease as JSON in <c>ISparkAtomicValues</c>). That is all a second host is, from the lease's point of view.
 /// </para>
 /// </summary>
-public class MessagingLeaseManagerTests : RavenSparkTestDriver
+public class MessagingLeaseManagerTests : MessagingRavenTestDriver
 {
     private const string LeaseKey = "spark/messaging/lease";
     private const string ForeignNode = "other-host/ffff";

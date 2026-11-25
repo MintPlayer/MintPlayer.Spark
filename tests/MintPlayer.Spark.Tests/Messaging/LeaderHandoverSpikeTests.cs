@@ -30,7 +30,7 @@ namespace MintPlayer.Spark.Tests.Messaging;
 /// 30 s lease. Asserts no loss, no duplicate on the graceful path, and at most one duplicate per lane
 /// (a handler that finished on the crashed host but could not record it) on the crash path; prints the gaps.
 /// </summary>
-public class LeaderHandoverSpikeTests(ITestOutputHelper output) : RavenSparkTestDriver
+public class LeaderHandoverSpikeTests(ITestOutputHelper output) : MessagingRavenTestDriver
 {
     private const string High = "sm8-high";
     private const string Normal = "sm8-normal";

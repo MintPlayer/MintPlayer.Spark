@@ -20,7 +20,7 @@ namespace MintPlayer.Spark.Tests.Messaging;
 /// rewritten by every sweep until the index caught up, 11 times in one run.
 /// </para>
 /// </summary>
-public class MessageRetrySweeperStaleIndexTests : RavenSparkTestDriver
+public class MessageRetrySweeperStaleIndexTests : MessagingRavenTestDriver
 {
 
     private MessageRetrySweeper NewSweeper()

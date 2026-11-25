@@ -113,9 +113,17 @@ internal sealed class InMemorySparkSession : ISparkSession
         await Task.CompletedTask;
     }
 
+    /// <remarks>A <see cref="Abstractions.Views.SparkView{TRow}"/> is rendered as LINQ to objects (#536 D32, D42); a native index is not.</remarks>
     public IQueryable<T> Query<T, TIndex>() where T : class where TIndex : class, new()
-        => throw new NotSupportedException(
-            $"The in-memory store has no indexes ({typeof(TIndex).Name}). Query the collection with Query<{typeof(T).Name}>() instead.");
+    {
+        if (!typeof(Abstractions.Views.ISparkView).IsAssignableFrom(typeof(TIndex)))
+            throw new NotSupportedException(
+                $"The in-memory store has no indexes ({typeof(TIndex).Name}). Query the collection with Query<{typeof(T).Name}>() instead.");
+        var view = (Abstractions.Views.ISparkView)new TIndex();
+        if (view.RowType != typeof(T))
+            throw new InvalidOperationException($"View {view.Name} yields {view.RowType.Name}, not {typeof(T).Name}.");
+        return (IQueryable<T>)InMemoryViewRenderer.Render(view, this);
+    }
 
     public Task<T?> LoadAsync<T>(string id, CancellationToken cancellationToken = default) where T : class
         => Task.FromResult(LoadOne(id, typeof(T)) as T);

@@ -102,11 +102,12 @@ internal sealed partial class MessageRetrySweeper : BackgroundService
             cancellationToken);
     }
 
-    private async Task<IReadOnlyList<string>> CandidateIdsAsync(System.Linq.Expressions.Expression<Func<SparkMessage, bool>> predicate, CancellationToken cancellationToken)
+    /// <remarks>The declared view (D42), never the collection: on RavenDB a collection query builds an auto index.</remarks>
+    private async Task<IReadOnlyList<string>> CandidateIdsAsync(System.Linq.Expressions.Expression<Func<SparkMessageState, bool>> predicate, CancellationToken cancellationToken)
     {
         using var session = store.OpenSession();
-        var ids = await session.ToListAsync(session.Query<SparkMessage>().Where(predicate).Select(m => m.Id).Take(MaxMessagesPerSweep), cancellationToken);
-        return [.. ids.OfType<string>()];
+        var rows = await session.ToListAsync(session.Query<SparkMessageState, SparkMessages_ByState>().Where(predicate).Take(MaxMessagesPerSweep), cancellationToken);
+        return [.. rows.Select(r => r.Id).OfType<string>()];
     }
 
     /// <summary>

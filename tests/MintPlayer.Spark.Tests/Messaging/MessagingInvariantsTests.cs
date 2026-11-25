@@ -24,7 +24,7 @@ namespace MintPlayer.Spark.Tests.Messaging;
 /// delivery was entirely dead, which is how five production queues went unnoticed for months.
 /// </para>
 /// </summary>
-public class MessagingInvariantsTests : RavenSparkTestDriver
+public class MessagingInvariantsTests : MessagingRavenTestDriver
 {
     private static readonly TimeSpan PollTimeout = TimeSpan.FromSeconds(30);
 

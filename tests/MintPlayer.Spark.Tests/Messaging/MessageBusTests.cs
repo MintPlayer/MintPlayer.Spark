@@ -10,7 +10,7 @@ using Raven.Client.Documents.Session;
 
 namespace MintPlayer.Spark.Tests.Messaging;
 
-public class MessageBusTests : RavenSparkTestDriver
+public class MessageBusTests : MessagingRavenTestDriver
 {
     private record OrderPlaced(string OrderId, decimal Amount);
 

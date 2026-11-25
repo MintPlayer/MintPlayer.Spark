@@ -89,6 +89,15 @@ public class NeutralMessagingTests : SparkTestDriver
         message.QueueName.Should().Be(Queue);
         message.QueuedAtUtc.Should().HaveValue("the feeder captures the sequence on its claim");
         message.AttemptCount.Should().Be(1);
+
+        // D42: the page and the sweeper query the declared view; a collection query would make RavenDB build an auto
+        // index, which an app cannot deploy ahead of time (CodeCoverage D-O22).
+        if (host.GetService<IServiceProvider>().GetService<Raven.Client.Documents.IDocumentStore>() is { } raven)
+        {
+            var names = await raven.Maintenance.SendAsync(new Raven.Client.Documents.Operations.Indexes.GetIndexNamesOperation(0, 1024));
+            names.Should().NotContain(n => n.StartsWith("Auto/SparkMessages", StringComparison.OrdinalIgnoreCase));
+            names.Should().Contain(nameof(SparkMessages_ByState));
+        }
     }
 
     [Fact]
