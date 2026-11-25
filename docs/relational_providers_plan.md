@@ -48,6 +48,19 @@ rounds, milestones and status. Branch `feat/536-sql-server-provider`, draft PR #
     provider's own `In` keeps its constant, since the relational provider builds its own. Tests:
     `CapturedFilterValueTests` (red first: 3 value constants found), `SearchPushdownTests`, and 14 column-filter
     classes on RavenDB, 130 green. Still open in M3: the neutral view declarations (S5/D32), IoC (D34).
+  - **M3c-1, the command runner (D34):** `ISparkCommand` (`RunAsync(args, ct)` → exit code) and
+    `services.AddSparkCommand<T>(flag, description)` in Abstractions (`Commands/`), keyed scoped by the flag;
+    `app.RunSparkCommandIfRequestedAsync(args)` in core (`Commands/SparkCommandRunner.cs`) resolves only the
+    requested command in a scope. **Deviations from D34's text, same intent:** (1) the help line is a
+    `SparkCommandDescription` singleton registered beside the command, so `--spark-help` constructs nothing without
+    reading `ServiceDescriptor`s; (2) an unknown `--spark-` flag is refused with exit 2 instead of starting the
+    host (every `--spark-` flag in the repo is a command, so a typo must not boot the web server). Last registration
+    of a flag wins for both the command and its help line. Test: `SparkCommandRunnerTests` (7).
+    **NEXT, M3c-2:** move the five commands (synchronize/verify model + describe, init security,
+    verify/synchronize security, init moderation, image variants) onto it, the apps' and template's `Program.cs`
+    to one line after `Build()`, the generator comment (`SparkFullGenerator.Producer.cs:156`), the AGENTS guide, and
+    the ~60 test call sites; `SynchronizeIfMissing` (no flag) becomes the runner's no-command step; retire
+    `SparkSecurityVerificationExtensions.cs:75`'s throwaway `BuildServiceProvider()`.
   - Order: the core pieces in `libs/` first (the struct, the model registry, the generator for `__DocumentId`, JSON,
     the route binder), then the feature libraries, then the apps.
   - It touches the three production apps (CodeCoverage, SeoTester, MintPlayer). RavenDB stays green at the end of the
