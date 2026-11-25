@@ -606,11 +606,50 @@ rounds, milestones and status. Branch `feat/536-sql-server-provider`, draft PR #
       - model synchronize, verify-model, synchronize-security and verify-security pass against local PostgreSQL;
       - `security.json`: everyone reads, Administrators maintain Books and Authors and read History;
       - `programUnits.json`, `translations.json`, and `revisions` enabled on Book.
-    - **Next:**
-      - an E2E host on PostgreSQL (SparkAppTestHost generalized from RavenDB) with tests;
-      - the E2E CI job's PostgreSQL server;
-      - README/AGENTS.md;
-      - the M9 guides.
+      - **E2E on PostgreSQL:** `SparkAppDescriptor.Store` (`RavenDb`, `PostgreSql`). For a PostgreSQL app the host
+        creates an empty database on the test server (`PostgreSqlAppDatabase`: `SPARK_TEST_POSTGRESQL`, else the embedded
+        instance), passes it as `ConnectionStrings:Spark`, and lets the app apply the schema and data migrations at
+        startup. The admin is promoted through a standalone `RelationalSparkStore` and `UserStore<SparkUser>`, not raw
+        SQL (claims are jsonb, and the version and change stamp must move). `SqlDemoTestHost`, collection
+        `SqlDemoE2E`, `SqlDemoTests` (5): the view's rows with the joined author, a book without an author, History's
+        revisions authored by the admin, registration with the mailed confirmation link, and the books page in a
+        browser.
+      - CI: both E2E shards start PostgreSQL 18 (`postgres: true` in `test.yml`'s matrix). `tools/test-local.mjs` builds
+        SqlDemo for a local E2E run, and `verify-coverage-paths.mjs` expects the `sqldemo-host-*` reports.
+      - `apps/SqlDemo/README.md`; CLAUDE.md lists the app.
+    - **Framework defect 2: the model depended on assembly load order.** SqlDemo refused to start ("The Spark model has
+      changes that no migration covers") while synchronize found none. The startup check's error now lists the
+      operations (`SparkMigrationOperations.Describe`, shared with synchronize): `DropTable Authors`, `DropForeignKey on
+      Books`, `AlterColumn Books.Author`, the view's `Sql`. `SparkTypeResolver` resolves a `clrType` by scanning the
+      loaded assemblies' types. That scan loaded `SqlDemo.Library` (a view in the app assembly derives from a type over
+      `Book`), but it searched only the assemblies listed before it, and it caches a miss for good. `Author` was looked up
+      first and never resolved; `Book` was found afterwards. The scan now looks again in the assemblies it loaded until
+      none are new. `SparkTypeResolverLoadOrderTests` compiles two assemblies with Roslyn and loads only the app's (red,
+      then green).
+    - **Framework defect 3:** `AddMigrations()` never declared `SparkMigrationRecord` a stored type, so a SQL store had no
+      table for the runner's markers ("SparkMigrationRecord is not a stored type"). It does now
+      (`SparkMigrationsExtensionsTests.AddMigrations_makes_the_applied_marker_a_stored_type`, red then green), and
+      SqlDemo's initial migration was scaffolded again (the app has never been deployed), now with `SparkMigrationRecords`.
+    - **App changes the E2E run asked for:**
+      - `Book` is `IAuditable`, so History's revisions name their author (`ModifiedBy`);
+      - `BookActions` and `AuthorActions` own their row security (`ISparkOwnsRowSecurity` with a rationale), because the
+        startup check refuses an anonymous `QueryRead` grant without a row rule.
+    - **Framework defect 4: #251's reference check loaded the target untyped.** The first book with an author failed
+      with 500 "System.Object is not a stored type". RavenDB finds an id in any collection; a SQL key is unique in its
+      table only. `ISparkSession.LoadReferencedAsync(target, ids)` is new: RavenDB and memory keep the untyped load,
+      the relational session loads from the target's table, and `ReferenceTargetValidation` groups the candidates by
+      target. `NeutralReferenceTargetTests` (3: a stored target, a row of another type, a missing target) went red on
+      PostgreSQL, then green on both; `ReferenceTargetCollectionTests` stayed 16/16 on RavenDB.
+    - **Framework defect 5: an untyped load threw on SQL.** `ISparkReadAccess.MayReadAsync(id)` (a log readable exactly
+      when its related record is, #660 G15) was the last untyped load in the framework. A relational `LoadAsync<object>`
+      now routes each id to the one table its collection prefix names (D23 rule 2, `SparkRelationalModel.TableOfId`),
+      and an id no table claims is not found. The Log keeps its id-only API and RavenDB's stored logs need no
+      migration. `NeutralReadAccessTests` (3: readable, missing, no such collection) red on PostgreSQL, then green on
+      both.
+    - **Result:** the SqlDemo E2E run is 5/5 green locally on PostgreSQL.
+    - **The guide:** `docs/guide-relational-stores.md` (choosing a store, a table per stored type, ids and references,
+      migrations, views, capabilities, testing).
+    - **Next:** commit and push M9a + M9b, then CI.
   - **M8c (in progress): revisit earlier milestones under D46** (RavenDB's format may change through a migration). Look
     for designs that kept RavenDB's old format only for its own sake, and for stale values left behind.
     - Done: the compare-exchange value `spark/dashboards/sampler` (M8a) is deleted by

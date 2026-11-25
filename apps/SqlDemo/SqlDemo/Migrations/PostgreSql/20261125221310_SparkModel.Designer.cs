@@ -13,8 +13,8 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace SqlDemo.Migrations.PostgreSql;
 
 [DbContext(typeof(SparkDbContext))]
-[Migration("20261125212319_SparkModel")]
-partial class _20261125212319_SparkModel
+[Migration("20261125221310_SparkModel")]
+partial class _20261125221310_SparkModel
 {
     /// <inheritdoc />
     protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -583,6 +583,40 @@ partial class _20261125212319_SparkModel
                     .HasAnnotation("Spark:ViewTables", "SparkMessages");
             });
 
+        modelBuilder.Entity("MintPlayer.Spark.Migrations.SparkMigrationRecord", b =>
+            {
+                b.Property<string>("Id")
+                    .HasMaxLength(450)
+                    .HasColumnType("character varying(450)")
+                    .UseCollation("C");
+
+                b.Property<DateTimeOffset>("AppliedOnUtc")
+                    .HasColumnType("timestamp with time zone");
+
+                b.Property<string>("Name")
+                    .HasColumnType("text");
+
+                b.Property<ulong>("SparkChangeStamp")
+                    .ValueGeneratedOnAddOrUpdate()
+                    .HasColumnType("xid8")
+                    .HasDefaultValueSql("pg_current_xact_id()");
+
+                b.Property<DateTimeOffset?>("SparkExpiresAt")
+                    .HasColumnType("timestamp with time zone");
+
+                b.Property<long>("Version")
+                    .IsConcurrencyToken()
+                    .HasColumnType("bigint");
+
+                b.HasKey("Id");
+
+                b.HasIndex("SparkChangeStamp");
+
+                b.HasIndex("SparkExpiresAt");
+
+                b.ToTable("SparkMigrationRecords");
+            });
+
         modelBuilder.Entity("MintPlayer.Spark.Relational.Model.SparkAtomicValueRow", b =>
             {
                 b.Property<string>("Key")
@@ -782,6 +816,14 @@ partial class _20261125212319_SparkModel
                 b.Property<string>("Isbn")
                     .HasColumnType("text")
                     .HasAnnotation("Spark:AttributeId", "0a5d4ed0-c5b1-4398-85b1-a924571277f7");
+
+                b.Property<DateTimeOffset?>("ModifiedAt")
+                    .HasColumnType("timestamp with time zone")
+                    .HasAnnotation("Spark:AttributeId", "8e600af2-879a-478f-8776-826341d0c59d");
+
+                b.Property<string>("ModifiedBy")
+                    .HasColumnType("text")
+                    .HasAnnotation("Spark:AttributeId", "30293eda-d1a5-4a61-8ffc-ec7bc6ea356d");
 
                 b.Property<ulong>("SparkChangeStamp")
                     .ValueGeneratedOnAddOrUpdate()

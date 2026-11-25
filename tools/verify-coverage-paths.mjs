@@ -40,8 +40,9 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 // One slug per app the E2E suite hosts (SparkAppDescriptor.CoverageSlug): Fleet, QnA since #460 M13, HR since #264,
-// SparkId since the identity-provider platform (docs/identity_provider_platform_PRD.md I0), MintPlayer since SSR (docs/spark_ssr_PRD.md M5).
-const E2E_HOST_REPORT = /^tests\/MintPlayer\.Spark\.E2E\.Tests\/coverage\/(fleet|qna|hr|sparkid|mintplayer)-host-[^/]+\/coverage\.cobertura\.xml$/;
+// SparkId since the identity-provider platform (docs/identity_provider_platform_PRD.md I0), MintPlayer since SSR (docs/spark_ssr_PRD.md M5),
+// SqlDemo since the relational providers (#536 M9).
+const E2E_HOST_REPORT = /^tests\/MintPlayer\.Spark\.E2E\.Tests\/coverage\/(fleet|qna|hr|sparkid|mintplayer|sqldemo)-host-[^/]+\/coverage\.cobertura\.xml$/;
 
 /**
  * The marker SparkAppTestHost writes into a host's report directory before it starts the app under
@@ -129,6 +130,13 @@ export const EXPECTED_REPORTS = [
     glob: 'tests/MintPlayer.Spark.E2E.Tests/coverage/mintplayer-host-*/coverage.cobertura.xml',
     match: E2E_HOST_REPORT,
     required: hostReportRequired('mintplayer'),
+  },
+  // The SqlDemo host (SqlDemoTestHost, #536), the same shape: the framework on PostgreSQL.
+  {
+    name: 'E2E SqlDemo host subprocess coverage',
+    glob: 'tests/MintPlayer.Spark.E2E.Tests/coverage/sqldemo-host-*/coverage.cobertura.xml',
+    match: E2E_HOST_REPORT,
+    required: hostReportRequired('sqldemo'),
   },
   { name: 'MintPlayer.Spark.SourceGenerators.Tests', glob: 'tests/MintPlayer.Spark.SourceGenerators.Tests/coverage/**/coverage.cobertura.xml' },
   { name: 'MintPlayer.Spark.Client.Tests', glob: 'tests/MintPlayer.Spark.Client.Tests/coverage/**/coverage.cobertura.xml' },

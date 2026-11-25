@@ -80,6 +80,22 @@ public class SparkMigrationsExtensionsTests
         migDescriptor.Lifetime.Should().Be(ServiceLifetime.Scoped);
     }
 
+    /// <summary>
+    /// #536: a store with a schema has a table only for a stored type, and the runner writes a marker per applied
+    /// migration. Without it SqlDemo's first start failed: "SparkMigrationRecord is not a stored type".
+    /// </summary>
+    [Fact]
+    public void AddMigrations_makes_the_applied_marker_a_stored_type()
+    {
+        var builder = new SparkBuilder(new ServiceCollection());
+
+        builder.AddMigrations(m => m.AddMigration<Mig_A>());
+
+        using var services = builder.Services.BuildServiceProvider();
+        services.GetRequiredService<Microsoft.Extensions.Options.IOptions<global::MintPlayer.Spark.Abstractions.Storage.SparkStoredTypeOptions>>()
+            .Value.Types.Should().Contain(typeof(SparkMigrationRecord));
+    }
+
     // SparkModuleRegistry keeps its middleware actions in a private
     // Dictionary<SparkMiddlewareStage, List<Action<IApplicationBuilder>>>. We count registrations by
     // reflection so we never have to actually run the startup hook (which would call

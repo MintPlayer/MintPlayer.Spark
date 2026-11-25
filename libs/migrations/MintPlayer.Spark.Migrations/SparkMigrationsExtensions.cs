@@ -42,6 +42,8 @@ public static class SparkMigrationsExtensions
 
             var registry = new SparkMigrationRegistry();
             builder.Services.AddSingleton(registry);
+            // The runner's marker per applied migration: a store with a schema keeps a table for it (#536).
+            global::MintPlayer.Spark.Abstractions.Storage.SparkStoredTypeServiceCollectionExtensions.AddSparkStoredType<SparkMigrationRecord>(builder.Services);
 
             // Run pending migrations once at startup. Registry middleware actions execute during
             // UseSpark, after CreateSparkIndexes and before the request pipeline serves traffic —

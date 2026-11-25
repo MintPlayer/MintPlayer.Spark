@@ -281,3 +281,25 @@ tags, and everything ships once the merged pull request is backported to `releas
 21. **The identity provider on every store** (M8b, D47): OpenID Connect, OAuth 2.1, device flow, DPoP, the MCP
     authorization server and the administration screens. Its queries are `SparkView`s, deployed with the app's. On SQL
     Server and PostgreSQL its tables come from the app's migration. The `INC:Tokens` counter is RavenDB only.
+22. **`apps/SqlDemo`** (M9b): a Spark app on PostgreSQL, with Messaging, MailManager, History and local accounts. Its
+    book list is a SQL view. The E2E suite runs it against a PostgreSQL server (`SparkAppDescriptor.Store`), and the
+    guide [SQL Server & PostgreSQL](guide-relational-stores.md) covers a relational app end to end.
+23. **`ISparkSession.LoadReferencedAsync(target, ids)`** (M9b): loads the documents a reference names for a caller that
+    checks their collection itself. RavenDB and memory look in every collection; a store with a table per type looks
+    in the target's table. On SQL Server and PostgreSQL an untyped `LoadAsync<object>(id)` now finds the row in the
+    table its collection prefix names. A custom `ISparkSession` implementation must add the member.
+
+## Fixed
+
+1. **Provider attributes declared too few capabilities** (M9b). `UsePostgreSql`, `UseSqlServer` and `UseInMemory`
+   said only `ChangeNotifications`, so the compile-time check SPARK060 refused `AddMessaging()` and `AddHistory()` on
+   them. They now declare `Subscriptions` and `Revisions` too, and a test compares each attribute with the store's
+   `Capabilities`.
+2. **An entity type could vanish from the model depending on assembly load order** (M9b). Resolving a model type
+   loaded the library that declares it, but the lookup did not search the assemblies it had just loaded and cached the
+   miss.
+3. **`AddMigrations()` declares its marker a stored type** (M9b), so a SQL store has a table for the applied data
+   migrations.
+4. **The reference check on save loaded the target untyped** (M9b, #251), which a SQL store cannot do: saving a
+   reference failed with "System.Object is not a stored type". `ISparkReadAccess` (who may read a log) had the same
+   defect.

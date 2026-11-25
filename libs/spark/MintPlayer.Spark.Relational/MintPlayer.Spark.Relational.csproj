@@ -40,6 +40,8 @@
 		<InternalsVisibleTo Include="MintPlayer.Spark.SqlServer" />
 		<InternalsVisibleTo Include="MintPlayer.Spark.PostgreSql" />
 		<InternalsVisibleTo Include="MintPlayer.Spark.Relational.Tests" />
+		<!-- The E2E host promotes its seeded admin through a store of its own over the app's database (SqlDemo). -->
+		<InternalsVisibleTo Include="MintPlayer.Spark.E2E.Tests" />
 	</ItemGroup>
 
 </Project>

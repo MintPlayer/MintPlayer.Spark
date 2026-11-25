@@ -42,8 +42,9 @@ jobs:
           - { name: Spark.Tests 2/4, artifact: spark-2, projects: MintPlayer.Spark.Tests, shard: 2/4 }
           - { name: Spark.Tests 3/4, artifact: spark-3, projects: MintPlayer.Spark.Tests, shard: 3/4 }
           - { name: Spark.Tests 4/4, artifact: spark-4, projects: MintPlayer.Spark.Tests, shard: 4/4 }
-          - { name: E2E 1/2, artifact: e2e-1, projects: MintPlayer.Spark.E2E.Tests, shard: 1/2, playwright: true }
-          - { name: E2E 2/2, artifact: e2e-2, projects: MintPlayer.Spark.E2E.Tests, shard: 2/2, playwright: true }
+          # postgres: SqlDemo's host runs the app on PostgreSQL (#536 M9); the shard packing decides which shard holds it.
+          - { name: E2E 1/2, artifact: e2e-1, projects: MintPlayer.Spark.E2E.Tests, shard: 1/2, playwright: true, postgres: true }
+          - { name: E2E 2/2, artifact: e2e-2, projects: MintPlayer.Spark.E2E.Tests, shard: 2/2, playwright: true, postgres: true }
           - { name: CodeCoverage.Tests, artifact: codecoverage, projects: CodeCoverage.Tests }
           - { name: SeoTester.Tests 1/2, artifact: seotester-1, projects: SeoTester.Tests, shard: 1/2, playwright: true }
           - { name: SeoTester.Tests 2/2, artifact: seotester-2, projects: SeoTester.Tests, shard: 2/2, playwright: true }
@@ -84,8 +85,9 @@ jobs:
     # named in SPARK_TEST_*_IMAGE, which tools/test-servers.mjs puts in the Nx cache key. PostgreSQL 17, the floor, runs
     # the D31 behaviour tests only ("PostgreSQL 17" below). fsync and friends are off: a throwaway server, and the
     # suites create a database per class or case.
+    # The E2E shards (matrix.postgres) get PostgreSQL 18 alone, for SqlDemo's host.
     - name: Databases
-      if: matrix.database
+      if: matrix.database || matrix.postgres
       run: |
         password="Sp1-$(openssl rand -hex 16)"
         echo "::add-mask::$password"
@@ -96,14 +98,17 @@ jobs:
           echo "SPARK_TEST_SQLSERVER_IMAGE=$image" >> "$GITHUB_ENV"
         else
           image=18.7
-          for server in "postgres 5432 $image" "postgres17 5433 17.12"; do
-            set -- $server
+          postgres() {
             docker run -d --name "$1" -p "$2:5432" -e POSTGRES_PASSWORD="$password" "postgres:$3" \
               -c fsync=off -c synchronous_commit=off -c full_page_writes=off
-          done
+          }
+          postgres postgres 5432 "$image"
           echo "SPARK_TEST_POSTGRESQL=Host=localhost;Port=5432;Username=postgres;Password=$password" >> "$GITHUB_ENV"
           echo "SPARK_TEST_POSTGRESQL_IMAGE=$image" >> "$GITHUB_ENV"
-          echo "SPARK_TEST_POSTGRESQL17=Host=localhost;Port=5433;Username=postgres;Password=$password" >> "$GITHUB_ENV"
+          if [ "${{ matrix.database }}" = PostgreSql ]; then
+            postgres postgres17 5433 17.12
+            echo "SPARK_TEST_POSTGRESQL17=Host=localhost;Port=5433;Username=postgres;Password=$password" >> "$GITHUB_ENV"
+          fi
         fi
 
     - name: Setup
@@ -202,8 +207,10 @@ jobs:
           probe || { docker logs mssql 2>&1 | tail -50; exit 1; }
         fi
         # Over TCP: the image's first-start initialisation runs a server on the Unix socket only.
-        if [ "${{ matrix.database }}" = PostgreSql ]; then
-          for server in postgres postgres17; do
+        if [ "${{ matrix.database }}" = PostgreSql ] || [ "${{ matrix.postgres }}" = true ]; then
+          servers=postgres
+          if [ "${{ matrix.database }}" = PostgreSql ]; then servers="postgres postgres17"; fi
+          for server in $servers; do
             for i in $(seq 1 60); do docker exec "$server" pg_isready -h 127.0.0.1 -U postgres > /dev/null && break; sleep 1; done
             docker exec "$server" pg_isready -h 127.0.0.1 -U postgres || { docker logs "$server" 2>&1 | tail -50; exit 1; }
           done

@@ -7,7 +7,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace SqlDemo.Migrations.PostgreSql;
 
 /// <inheritdoc />
-public partial class _20261125212319_SparkModel : Migration
+public partial class _20261125221310_SparkModel : Migration
 {
     /// <inheritdoc />
     protected override void Up(MigrationBuilder migrationBuilder)
@@ -151,6 +151,22 @@ public partial class _20261125212319_SparkModel : Migration
             });
 
         migrationBuilder.CreateTable(
+            name: "SparkMigrationRecords",
+            columns: table => new
+            {
+                Id = table.Column<string>(type: "character varying(450)", maxLength: 450, nullable: false, collation: "C"),
+                Version = table.Column<long>(type: "bigint", nullable: false),
+                Name = table.Column<string>(type: "text", nullable: true),
+                AppliedOnUtc = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
+                SparkChangeStamp = table.Column<ulong>(type: "xid8", nullable: false, defaultValueSql: "pg_current_xact_id()"),
+                SparkExpiresAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true)
+            },
+            constraints: table =>
+            {
+                table.PrimaryKey("PK_SparkMigrationRecords", x => x.Id);
+            });
+
+        migrationBuilder.CreateTable(
             name: "SparkPendingExternalLogins",
             columns: table => new
             {
@@ -239,6 +255,8 @@ public partial class _20261125212319_SparkModel : Migration
                 Isbn = table.Column<string>(type: "text", nullable: true),
                 CreatedBy = table.Column<string>(type: "text", nullable: true),
                 CreatedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
+                ModifiedBy = table.Column<string>(type: "text", nullable: true),
+                ModifiedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
                 SparkChangeStamp = table.Column<ulong>(type: "xid8", nullable: false, defaultValueSql: "pg_current_xact_id()"),
                 SparkExpiresAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
                 Version = table.Column<long>(type: "bigint", nullable: false)
@@ -330,6 +348,16 @@ public partial class _20261125212319_SparkModel : Migration
             column: "SparkExpiresAt");
 
         migrationBuilder.CreateIndex(
+            name: "IX_SparkMigrationRecords_SparkChangeStamp",
+            table: "SparkMigrationRecords",
+            column: "SparkChangeStamp");
+
+        migrationBuilder.CreateIndex(
+            name: "IX_SparkMigrationRecords_SparkExpiresAt",
+            table: "SparkMigrationRecords",
+            column: "SparkExpiresAt");
+
+        migrationBuilder.CreateIndex(
             name: "IX_SparkPendingExternalLogins_SparkChangeStamp",
             table: "SparkPendingExternalLogins",
             column: "SparkChangeStamp");
@@ -371,6 +399,8 @@ public partial class _20261125212319_SparkModel : Migration
 
         migrationBuilder.Sql("CREATE TRIGGER spark_change_stamp BEFORE INSERT OR UPDATE ON \"SparkMessages\" FOR EACH ROW EXECUTE FUNCTION spark.set_change_stamp();");
 
+        migrationBuilder.Sql("CREATE TRIGGER spark_change_stamp BEFORE INSERT OR UPDATE ON \"SparkMigrationRecords\" FOR EACH ROW EXECUTE FUNCTION spark.set_change_stamp();");
+
         migrationBuilder.Sql("CREATE TRIGGER spark_change_stamp BEFORE INSERT OR UPDATE ON \"SparkPendingExternalLogins\" FOR EACH ROW EXECUTE FUNCTION spark.set_change_stamp();");
 
         migrationBuilder.Sql("CREATE TRIGGER spark_change_stamp BEFORE INSERT OR UPDATE ON \"SparkRoles\" FOR EACH ROW EXECUTE FUNCTION spark.set_change_stamp();");
@@ -408,6 +438,9 @@ public partial class _20261125212319_SparkModel : Migration
 
         migrationBuilder.DropTable(
             name: "SparkMessages");
+
+        migrationBuilder.DropTable(
+            name: "SparkMigrationRecords");
 
         migrationBuilder.DropTable(
             name: "SparkPendingExternalLogins");

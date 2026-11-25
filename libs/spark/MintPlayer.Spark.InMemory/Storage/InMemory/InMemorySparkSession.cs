@@ -155,6 +155,10 @@ internal sealed class InMemorySparkSession : ISparkSession
     public Task<IReadOnlyDictionary<string, object?>> LoadAsync(Type entityType, IEnumerable<string> ids, CancellationToken cancellationToken = default)
         => Task.FromResult<IReadOnlyDictionary<string, object?>>(LoadMany(ids, entityType));
 
+    /// <remarks>Untyped, as on RavenDB: an id names one document across every collection, and the caller checks which one.</remarks>
+    public Task<IReadOnlyDictionary<string, object?>> LoadReferencedAsync(Type target, IEnumerable<string> ids, CancellationToken cancellationToken = default)
+        => LoadAsync<object>(ids, cancellationToken);
+
     public Task<IReadOnlyList<T>> LoadStartingWithAsync<T>(string idPrefix, int start = 0, int pageSize = 25, string? startAfter = null, CancellationToken cancellationToken = default) where T : class
     {
         Request();

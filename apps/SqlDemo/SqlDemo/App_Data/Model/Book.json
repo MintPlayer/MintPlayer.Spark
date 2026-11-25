@@ -75,6 +75,30 @@
         "rules": []
       },
       {
+        "id": "8e600af2-879a-478f-8776-826341d0c59d",
+        "name": "ModifiedAt",
+        "dataType": "datetime",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 9,
+        "isArray": false,
+        "inQueryType": false,
+        "showedOn": "None",
+        "rules": []
+      },
+      {
+        "id": "30293eda-d1a5-4a61-8ffc-ec7bc6ea356d",
+        "name": "ModifiedBy",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 8,
+        "isArray": false,
+        "inQueryType": false,
+        "showedOn": "None",
+        "rules": []
+      },
+      {
         "id": "0ad98d62-ddb6-4f2a-b720-c9a7d488bbac",
         "name": "Title",
         "dataType": "string",

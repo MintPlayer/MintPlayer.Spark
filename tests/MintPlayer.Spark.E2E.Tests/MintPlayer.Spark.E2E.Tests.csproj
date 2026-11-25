@@ -32,6 +32,9 @@
   <ItemGroup>
     <!-- Embedded Raven + license helper -->
     <ProjectReference Include="..\..\libs\testing\MintPlayer.Spark.Testing.RavenDB\MintPlayer.Spark.Testing.RavenDB.csproj" />
+    <!-- The PostgreSQL test server, for the apps on PostgreSQL (SqlDemo, #536). Its targets are not imported: the
+         RavenDB provider stays this project's SparkTestDatabase, and the PostgreSQL apps get their database from the host. -->
+    <ProjectReference Include="..\..\libs\testing\MintPlayer.Spark.Testing.PostgreSql\MintPlayer.Spark.Testing.PostgreSql.csproj" />
     <!-- SparkUser / SparkUserClaim types for direct admin seeding -->
     <ProjectReference Include="..\..\libs\authorization\MintPlayer.Spark.Authorization\MintPlayer.Spark.Authorization.csproj" />
     <!-- SyncActionRequest / ModuleInformation payloads for the cross-module sync tests. -->

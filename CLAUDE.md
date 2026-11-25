@@ -21,6 +21,10 @@ server, and the users are the legacy site's real accounts. Its plan, decisions a
 - **`apps/DemoApp`** is the minimal Spark app: core only, no Authorization, no identity provider. It
   is the guides' running example and the only app on plain `AddSpark` (SPARK030). New features don't
   land there.
+- **`apps/SqlDemo`** is the relational providers' demo (#536): Spark on **PostgreSQL** (`UsePostgreSql`,
+  `ConnectionStrings:Spark`). Its schema is in `Migrations/PostgreSql`, written by `--spark-synchronize-model`, and its
+  book list is a SQL view (`Views/Books_WithAuthor.cs`). Its E2E host (`SqlDemoTestHost`) needs a PostgreSQL server:
+  `SPARK_TEST_POSTGRESQL`, or else the embedded instance the test package starts.
 
 Two consequences worth knowing before editing it:
 
@@ -33,7 +37,7 @@ Two consequences worth knowing before editing it:
 
 ## Running the apps: never start the Angular dev server yourself
 
-Every app (`apps/CodeCoverage`, `apps/DemoApp`, `apps/Fleet`, `apps/HR`, `apps/QnA`, `apps/SparkId`) hosts its SPA through
+Every app (`apps/CodeCoverage`, `apps/DemoApp`, `apps/Fleet`, `apps/HR`, `apps/QnA`, `apps/SparkId`, `apps/SqlDemo`) hosts its SPA through
 **`UseAngularCliServer`** — the ASP.NET Core host spawns `npm start` itself and proxies it. So:
 
 - **`dotnet run` is the whole command.** Do not run `ng serve` / `npm start` alongside it; a second

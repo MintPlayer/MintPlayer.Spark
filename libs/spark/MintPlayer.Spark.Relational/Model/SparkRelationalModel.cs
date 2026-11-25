@@ -227,6 +227,16 @@ public sealed class SparkRelationalModel
         return Tables.Where(t => t.Root.IsAssignableFrom(type)).OrderByDescending(t => Depth(t.Root)).FirstOrDefault();
     }
 
+    /// <summary>
+    /// The table an id names by its collection prefix (D23 rule 2), when that table's key can hold the rest;
+    /// <see langword="null"/> when no table claims it. Table names hold no <c>/</c>, so at most one prefix matches.
+    /// </summary>
+    public SparkTable? TableOfId(string id)
+    {
+        var lowered = id.ToLowerInvariant();
+        return Tables.FirstOrDefault(t => lowered.StartsWith(t.Prefix, StringComparison.Ordinal) && t.KeyValue(lowered) is not null);
+    }
+
     public SparkTable RequireTable(Type type)
         => TableOf(type) ?? throw new InvalidOperationException(
             $"{type.FullName} is not a stored type. List it in the Spark model, or add it with services.AddSparkStoredType<{type.Name}>().");

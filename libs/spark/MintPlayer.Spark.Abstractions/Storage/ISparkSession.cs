@@ -71,6 +71,15 @@ public interface ISparkSession : IDisposable
     Task<IReadOnlyDictionary<string, object?>> LoadAsync(Type entityType, IEnumerable<string> ids, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// The documents <paramref name="ids"/> name, for a reference to <paramref name="target"/> whose caller checks each
+    /// one's stored collection itself (<see cref="GetStoredCollectionName"/>). RavenDB and memory find an id in any
+    /// collection, as stored: a document of another type, or one whose CLR type no longer resolves, comes back for the
+    /// caller to refuse or accept. A store with a table per type keys its rows per table (#536 D23), so it looks in
+    /// <paramref name="target"/>'s table, where every row is a target.
+    /// </summary>
+    Task<IReadOnlyDictionary<string, object?>> LoadReferencedAsync(Type target, IEnumerable<string> ids, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Documents whose id starts with <paramref name="idPrefix"/>, in id order; with <paramref name="startAfter"/>, only
     /// those whose id sorts after it (keyset paging). The order is the store's own (collation, case-insensitive ids).
     /// </summary>

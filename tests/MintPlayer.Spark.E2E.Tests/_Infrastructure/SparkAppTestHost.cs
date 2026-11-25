@@ -59,13 +59,26 @@ public sealed record SparkAppDescriptor(
     /// configures SMTP: MailManager refuses to start with both set.
     /// </summary>
     public bool UsesMailPickup { get; init; }
+
+    /// <summary>
+    /// The app's store. A RavenDB app gets a database on the host's embedded server (<c>Spark:RavenDb</c>); a PostgreSQL
+    /// app (#536) gets one on the PostgreSQL test server (<c>ConnectionStrings:Spark</c>) and applies its schema itself.
+    /// </summary>
+    public SparkAppStore Store { get; init; } = SparkAppStore.RavenDb;
+}
+
+/// <summary>The store a <see cref="SparkAppDescriptor"/>'s app runs on.</summary>
+public enum SparkAppStore
+{
+    RavenDb,
+    PostgreSql,
 }
 
 /// <summary>What <see cref="SparkAppTestHost.ConfigureAppSettings"/> can use to build the override settings.</summary>
 /// <param name="HttpsUrl">The app's https base URL.</param>
 /// <param name="HttpUrl">The app's plain-http base URL.</param>
 /// <param name="HttpPort">The port of <paramref name="HttpUrl"/>.</param>
-/// <param name="RavenUrls">The embedded Raven server's URLs.</param>
+/// <param name="RavenUrls">The embedded Raven server's URLs; empty for an app on PostgreSQL.</param>
 /// <param name="ProjectDirectory">Absolute path of the app project (the content root).</param>
 public sealed record SparkAppHostContext(
     string HttpsUrl,
@@ -75,7 +88,8 @@ public sealed record SparkAppHostContext(
     string ProjectDirectory);
 
 /// <summary>
-/// Runs a real Spark app, backed by an embedded RavenDB, so tests can drive its full Angular SPA and
+/// Runs a real Spark app, backed by an embedded RavenDB (or, for <see cref="SparkAppStore.PostgreSql"/>, a database on
+/// the PostgreSQL test server), so tests can drive its full Angular SPA and
 /// ASP.NET Core stack end to end. Owns (1) the embedded Raven server and the per-host databases, (2) the
 /// app's <c>dotnet run</c> subprocess, optionally under <c>dotnet-coverage</c>, (3) a generated
 /// <c>appsettings.{Env}.json</c>, (4) a seeded admin, (5) the per-host mail pickup folder.
@@ -188,6 +202,7 @@ public abstract class SparkAppTestHost : IAsyncLifetime
     private string? _hostCoverageReport;
 
     private SparkTestDriverHost? _raven;
+    private PostgreSqlAppDatabase? _postgres;
     private Process? _appProcess;
     private string? _appUrl;
     private string? _appHttpUrl;
@@ -206,6 +221,10 @@ public abstract class SparkAppTestHost : IAsyncLifetime
     /// <summary>URLs of the embedded Raven server, for tests that build cross-module payloads.</summary>
     public string[] RavenUrls => RavenServer.Store.Urls;
     public string AdminName => AdminUserName;
+
+    /// <summary>The seeded admin's user id, as History stamps it (<c>CreatedBy</c>).</summary>
+    public string AdminId => _adminId ?? throw new InvalidOperationException("Host not initialized");
+    private string? _adminId;
     public string AdminEmailAddress => AdminEmail;
     public string AdminPass => _password;
 
@@ -251,7 +270,12 @@ public abstract class SparkAppTestHost : IAsyncLifetime
     }
 
     /// <summary>The embedded Raven server, for subclasses that seed extra databases.</summary>
-    protected SparkTestDriverHost RavenServer => _raven ?? throw new InvalidOperationException("Host not initialized");
+    protected SparkTestDriverHost RavenServer => _raven ?? throw new InvalidOperationException(
+        App.Store == SparkAppStore.RavenDb ? "Host not initialized" : $"{App.AppName} runs on {App.Store}, not on the embedded RavenDB.");
+
+    /// <summary>The app's database on the PostgreSQL test server (<see cref="SparkAppStore.PostgreSql"/>).</summary>
+    protected PostgreSqlAppDatabase PostgreSqlDatabase => _postgres ?? throw new InvalidOperationException(
+        App.Store == SparkAppStore.PostgreSql ? "Host not initialized" : $"{App.AppName} runs on {App.Store}, not on PostgreSQL.");
 
     /// <summary>
     /// Returns the last <paramref name="maxLines"/> lines captured from the app's stdout/stderr.
@@ -268,7 +292,7 @@ public abstract class SparkAppTestHost : IAsyncLifetime
 
     /// <summary>
     /// Adds the app's own entries to the generated <c>appsettings.{Env}.json</c>. The base has already set
-    /// <c>Spark:RavenDb</c>, <c>Spark:DataProtection:Storage = Store</c>, <c>Spark:HttpsRedirection = false</c>,
+    /// <c>Spark:RavenDb</c> (or, on PostgreSQL, <c>ConnectionStrings:Spark</c>), <c>Spark:DataProtection:Storage = Store</c>, <c>Spark:HttpsRedirection = false</c>,
     /// <c>Spark:RateLimiter:PermitLimit</c> and (in pickup mode) <c>Spark:Mail:PickupFolder</c>; an entry set
     /// here wins. A file the app reads from its content root is registered with
     /// <see cref="RegisterTemporaryFile"/> so dispose removes it.
@@ -315,6 +339,9 @@ public abstract class SparkAppTestHost : IAsyncLifetime
     public async Task<string> SeedUserAsync(string email, string password, string? groupName, string? roleName = null, string? userName = null)
     {
         await RegisterAsync(email, password, userName ?? email[..email.IndexOf('@')], $"Seed register for '{email}'");
+
+        if (App.Store == SparkAppStore.PostgreSql)
+            return await PostgreSqlDatabase.PromoteAsync(email, groupName, roleName);
 
         using var appStore = OpenAppStore();
 
@@ -439,17 +466,26 @@ public abstract class SparkAppTestHost : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        _raven = new SparkTestDriverHost();
-        await _raven.InitializeAsync();
-
-        var ravenUrls = _raven.Store.Urls;
-
-        // Embedded Raven may persist databases across test-process invocations — wipe + recreate
-        // so every run starts from a known-empty state.
-        foreach (var database in new[] { TestDatabase }.Concat(ExtraDatabases))
+        string[] ravenUrls = [];
+        if (App.Store == SparkAppStore.PostgreSql)
         {
-            DeleteIfExists(_raven.Store, database);
-            _raven.Store.Maintenance.Server.Send(new CreateDatabaseOperation(new DatabaseRecord(database)));
+            // Created empty; the app applies the framework schema, its migrations and its data migrations at startup.
+            _postgres = await PostgreSqlAppDatabase.CreateAsync(TestDatabase);
+        }
+        else
+        {
+            _raven = new SparkTestDriverHost();
+            await _raven.InitializeAsync();
+
+            ravenUrls = _raven.Store.Urls;
+
+            // Embedded Raven may persist databases across test-process invocations — wipe + recreate
+            // so every run starts from a known-empty state.
+            foreach (var database in new[] { TestDatabase }.Concat(ExtraDatabases))
+            {
+                DeleteIfExists(_raven.Store, database);
+                _raven.Store.Maintenance.Server.Send(new CreateDatabaseOperation(new DatabaseRecord(database)));
+            }
         }
 
         await BuildOnceAsync(App);
@@ -495,6 +531,10 @@ public abstract class SparkAppTestHost : IAsyncLifetime
 
         if (_raven is not null)
             await _raven.DisposeAsync();
+
+        // After the app is gone: a database another process still holds open is dropped WITH (FORCE) anyway.
+        if (_postgres is not null)
+            await _postgres.DisposeAsync();
     }
 
     /// <summary>
@@ -539,6 +579,16 @@ public abstract class SparkAppTestHost : IAsyncLifetime
             lock (_logLock) _appLog.Add($"[coverage] no report was written at {_hostCoverageReport}");
     }
 
+    /// <summary>A client of the app with no session (it accepts the host's self-signed certificate); the caller disposes it.</summary>
+    public SparkClient NewClient()
+    {
+        var handler = new HttpClientHandler
+        {
+            ServerCertificateCustomValidationCallback = HttpClientHandler.DangerousAcceptAnyServerCertificateValidator,
+        };
+        return new SparkClient(new HttpClient(handler) { BaseAddress = new Uri(AppUrl) }, ownsClient: true);
+    }
+
     /// <summary>
     /// Registers through the real endpoint with the typed client. Since #460 (M5) register requires an
     /// antiforgery token like every mutating account route; a bare POST is refused with an empty 400.
@@ -546,11 +596,7 @@ public abstract class SparkAppTestHost : IAsyncLifetime
     /// </summary>
     private async Task RegisterAsync(string email, string password, string userName, string failurePrefix)
     {
-        var handler = new HttpClientHandler
-        {
-            ServerCertificateCustomValidationCallback = HttpClientHandler.DangerousAcceptAnyServerCertificateValidator,
-        };
-        using var client = new SparkClient(new HttpClient(handler) { BaseAddress = new Uri(AppUrl) }, ownsClient: true);
+        using var client = NewClient();
         try
         {
             await client.RegisterAsync(email, password, userName);
@@ -566,6 +612,12 @@ public abstract class SparkAppTestHost : IAsyncLifetime
         // Register via the public endpoint so the password hash is compatible with whatever
         // PasswordHasher version the app's Identity is configured with.
         await RegisterAsync(AdminEmail, _password, AdminUserName, "Register");
+
+        if (App.Store == SparkAppStore.PostgreSql)
+        {
+            _adminId = await PostgreSqlDatabase.PromoteAsync(AdminEmail, AdminGroup, AdminGroup);
+            return;
+        }
 
         // Now patch the stored user: mark email confirmed + add the admin group claim and role.
         using var appStore = OpenAppStore();
@@ -594,6 +646,7 @@ public abstract class SparkAppTestHost : IAsyncLifetime
             user.Roles.Add(AdminGroup);
 
         await session.SaveChangesAsync();
+        _adminId = user.Id;
     }
 
     /// <summary>
@@ -827,12 +880,6 @@ public abstract class SparkAppTestHost : IAsyncLifetime
 
         var spark = new JsonObject
         {
-            ["RavenDb"] = new JsonObject
-            {
-                ["Urls"] = new JsonArray(ravenUrls[0]),
-                ["Database"] = TestDatabase,
-                ["EnsureDatabaseCreated"] = true,
-            },
             // #460 D5: the app's base appsettings no longer choose a key store, and outside Development
             // Spark refuses to start without one. The key ring lives in the per-host database.
             ["DataProtection"] = new JsonObject { ["Storage"] = "Store" },
@@ -853,6 +900,20 @@ public abstract class SparkAppTestHost : IAsyncLifetime
         }
 
         var settings = new JsonObject { ["Spark"] = spark };
+        if (App.Store == SparkAppStore.PostgreSql)
+        {
+            settings["ConnectionStrings"] = new JsonObject { ["Spark"] = PostgreSqlDatabase.ConnectionString };
+        }
+        else
+        {
+            spark["RavenDb"] = new JsonObject
+            {
+                ["Urls"] = new JsonArray(ravenUrls[0]),
+                ["Database"] = TestDatabase,
+                ["EnsureDatabaseCreated"] = true,
+            };
+        }
+
         await ConfigureAppSettings(settings, new SparkAppHostContext(httpsUrl, _appHttpUrl, httpPort, ravenUrls, appDir));
         await File.WriteAllTextAsync(_overrideSettingsFile, settings.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
 

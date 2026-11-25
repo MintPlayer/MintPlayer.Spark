@@ -190,6 +190,7 @@ MintPlayer.Spark/
 | [Templates](libs/templates/MintPlayer.Spark.Templates/README.md) | `dotnet new spark-app` and its options, the item templates, which versions a template pins, testing the template |
 | [spark and create-spark-app](libs/cli/README.md) | `dnx create-spark-app`, `spark new`, and `spark add` for entities, actions, custom actions, lookups and indexes |
 | [Getting Started](libs/spark/MintPlayer.Spark/README.md) | PersistentObject pattern, SparkContext, entity definitions, model synchronization |
+| [SQL Server & PostgreSQL](docs/guide-relational-stores.md) | Spark on a relational database: `UseSqlServer`/`UsePostgreSql`, a table per stored type, `Id<T>` keys and references, schema changes as EF migrations written by model synchronize, `SparkView`s as SQL views, which capabilities each store offers, and testing on each database |
 | [Reference Attributes](docs/guide-reference-attributes.md) | Entity-to-entity links, lookup references, reference selection modals |
 | [AsDetail Attributes](docs/guide-asdetail-attributes.md) | Embedded objects, array/collection AsDetail, inline and modal editing |
 | [Queries & Sorting](docs/guide-queries-and-sorting.md) | Index-based queries, projections, column sorting, query definitions |

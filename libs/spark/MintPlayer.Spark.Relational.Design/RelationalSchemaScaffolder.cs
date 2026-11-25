@@ -56,7 +56,7 @@ public sealed class RelationalSchemaScaffolder : ISparkSchemaScaffolder
 
         return new SparkScaffoldResult(
             [.. new[] { files.MigrationFile, files.MetadataFile, files.SnapshotFile }.OfType<string>()],
-            [.. operations.Select(Describe)],
+            [.. operations.Select(Schema.SparkMigrationOperations.Describe)],
             reporter.Warnings);
     }
 
@@ -140,22 +140,6 @@ public sealed class RelationalSchemaScaffolder : ISparkSchemaScaffolder
     private static string? AttributeIdOf(IColumn? column)
         => column?.PropertyMappings.Select(m => m.Property.FindAnnotation(SparkDbContext.AttributeIdAnnotation)?.Value as string)
             .FirstOrDefault(id => id is not null);
-
-    private static string Describe(MigrationOperation operation)
-    {
-        var kind = operation.GetType().Name.Replace("Operation", "", StringComparison.Ordinal);
-        return operation switch
-        {
-            CreateTableOperation create => $"{kind} {create.Name}",
-            DropTableOperation dropTable => $"{kind} {dropTable.Name}",
-            ColumnOperation column => $"{kind} {column.Table}.{column.Name}",
-            RenameColumnOperation rename => $"{kind} {rename.Table}.{rename.Name} -> {rename.NewName}",
-            DropColumnOperation drop => $"{kind} {drop.Table}.{drop.Name}",
-            CreateIndexOperation index => $"{kind} {index.Name} on {index.Table}",
-            ITableMigrationOperation table => $"{kind} on {table.Table}",
-            _ => kind,
-        };
-    }
 
     /// <summary>A new instance of the snapshot class per scaffold: a new, mutable model (dotnet/efcore#36016).</summary>
     private sealed class FreshSnapshotMigrationsAssembly : IMigrationsAssembly

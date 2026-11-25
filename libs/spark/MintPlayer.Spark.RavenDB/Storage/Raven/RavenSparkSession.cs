@@ -140,6 +140,10 @@ internal sealed class RavenSparkSession : ISparkSession
         return result;
     }
 
+    /// <remarks>Untyped: an id names one document across every collection, and the caller checks which one.</remarks>
+    public Task<IReadOnlyDictionary<string, object?>> LoadReferencedAsync(Type target, IEnumerable<string> ids, CancellationToken cancellationToken = default)
+        => LoadAsync<object>(ids, cancellationToken);
+
     public async Task<IReadOnlyList<T>> LoadStartingWithAsync<T>(string idPrefix, int start = 0, int pageSize = 25, string? startAfter = null, CancellationToken cancellationToken = default) where T : class
         => [.. await Session.Advanced.LoadStartingWithAsync<T>(idPrefix, null, start, pageSize, startAfter: startAfter, token: cancellationToken)];
 

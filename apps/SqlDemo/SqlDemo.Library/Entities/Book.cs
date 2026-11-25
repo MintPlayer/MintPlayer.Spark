@@ -8,10 +8,11 @@ namespace SqlDemo.Entities;
 /// an SQL view on PostgreSQL, where the RavenDB demos use a static index (#536 D32).
 /// </summary>
 /// <remarks>
-/// <see cref="IAuditCreated"/> (#271): <c>CreatedBy</c> and <c>CreatedAt</c> are generated into this partial type and
-/// stamped by History on create, and the revisions History keeps (<c>App_Data/Model/Book.json</c>) are rows too.
+/// <see cref="IAuditable"/> (#271): <c>CreatedBy</c>/<c>CreatedAt</c> and <c>ModifiedBy</c>/<c>ModifiedAt</c> are
+/// generated into this partial type and stamped by History. The revisions History keeps (<c>App_Data/Model/Book.json</c>)
+/// are rows too, and each one names its author through <c>ModifiedBy</c>.
 /// </remarks>
-public partial class Book : IAuditCreated
+public partial class Book : IAuditable
 {
     /// <summary>Unique identifier of the book, assigned automatically on creation.</summary>
     public Id<Book> Id { get; set; }

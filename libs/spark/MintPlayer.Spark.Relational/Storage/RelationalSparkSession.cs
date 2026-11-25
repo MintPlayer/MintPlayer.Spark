@@ -140,6 +140,9 @@ public sealed partial class RelationalSparkSession : ISparkSession
 
     public async Task<IReadOnlyDictionary<string, T?>> LoadAsync<T>(IEnumerable<string> ids, CancellationToken cancellationToken = default) where T : class
     {
+        if (typeof(T) == typeof(object))
+            return (IReadOnlyDictionary<string, T?>)(object)await LoadUntypedAsync(ids, cancellationToken);
+
         var requested = ids.Where(id => id is not null).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         var table = Model.RequireTable(typeof(T));
         var found = new Dictionary<string, T>(StringComparer.Ordinal);
@@ -171,6 +174,28 @@ public sealed partial class RelationalSparkSession : ISparkSession
         return result;
     }
 
+    /// <summary>
+    /// An untyped load, which RavenDB answers from any collection: here each id goes to the one table its collection
+    /// prefix names (D23 rule 2), and the row is of that table's types because a key is unique in its table only. An id
+    /// no table claims is not found (#536 M9b: <c>ISparkReadAccess</c>, which opens a log's related record by its id).
+    /// </summary>
+    private async Task<IReadOnlyDictionary<string, object?>> LoadUntypedAsync(IEnumerable<string> ids, CancellationToken cancellationToken)
+    {
+        var result = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+        foreach (var group in ids.Where(id => id is not null).Distinct(StringComparer.OrdinalIgnoreCase).GroupBy(Model.TableOfId))
+        {
+            if (group.Key is null)
+            {
+                foreach (var id in group)
+                    result[id] = null;
+                continue;
+            }
+            foreach (var (id, row) in await LoadAsync(group.Key.Root, group, cancellationToken))
+                result[id] = row;
+        }
+        return result;
+    }
+
     public Task<IReadOnlyDictionary<string, T?>> LoadAsync<T>(IEnumerable<string> ids, IReadOnlyCollection<string> includePaths, CancellationToken cancellationToken = default) where T : class
         => LoadAsync<T>(ids, cancellationToken);
 
@@ -179,6 +204,13 @@ public sealed partial class RelationalSparkSession : ISparkSession
 
     public async Task<object?> LoadAsync(Type entityType, string id, CancellationToken cancellationToken = default)
         => (await LoadAsync(entityType, [id], cancellationToken))[id];
+
+    /// <remarks>
+    /// A key is unique in its table only (D23), so the target's table is the one place to look, and a row found there is
+    /// a target or a derived type sharing the table.
+    /// </remarks>
+    public Task<IReadOnlyDictionary<string, object?>> LoadReferencedAsync(Type target, IEnumerable<string> ids, CancellationToken cancellationToken = default)
+        => LoadAsync(target, ids, cancellationToken);
 
     public async Task<IReadOnlyDictionary<string, object?>> LoadAsync(Type entityType, IEnumerable<string> ids, CancellationToken cancellationToken = default)
     {

@@ -40,6 +40,12 @@ public sealed class PostgreSqlSparkTestDatabaseProvider : ISparkTestDatabaseProv
             ct => DropAsync(serverConnectionString, name, connectionString, ct));
     }
 
+    /// <summary>
+    /// The connection string to the server, without a database: <see cref="Variable"/>'s, or the embedded instance's,
+    /// started on first use. For a host that runs the app in a process of its own and creates its database itself.
+    /// </summary>
+    public static Task<string> ServerConnectionStringAsync(CancellationToken cancellationToken = default) => ServerAsync(cancellationToken);
+
     private static async Task<string> ServerAsync(CancellationToken cancellationToken)
     {
         if (server is { } known)

@@ -39,7 +39,9 @@ namespace MintPlayer.Spark.Services;
 /// another shape); an untyped one materializes it as itself, or as a JObject when its
 /// <c>@Raven-Clr-Type</c> is stale, which still carries the metadata. A document in the target
 /// collection passes whatever its CLR type metadata says; one in another collection passes only as a
-/// genuine subtype of the target, stored in that subtype's own collection.
+/// genuine subtype of the target, stored in that subtype's own collection. A store with a table per type
+/// loads from the target's table instead (<see cref="ISparkSession.LoadReferencedAsync"/>), since its keys
+/// are unique per table only.
 /// </para>
 /// </remarks>
 internal interface IReferenceTargetValidation
@@ -88,23 +90,22 @@ internal sealed partial class ReferenceTargetValidation : IReferenceTargetValida
         // committed (an Actions class creating the person and then the car, a write batch) — is judged
         // from that session, without a server call. Everything else from a side session, so nothing
         // this check loads (a foreign document, a stale-typed JObject) ends up tracked in the request.
-        var ids = candidates.Select(c => c.Id).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-        var found = new Dictionary<string, (object Doc, ISparkSession Session)>(StringComparer.OrdinalIgnoreCase);
-        foreach (var id in ids.Where(requestSession.IsLoaded))
-            if (await requestSession.LoadAsync<object>(id, cancellationToken) is { } tracked)
-                found[id] = (tracked, requestSession);
-
+        // The load names the target (#536 M9b): RavenDB and memory look an id up in every collection, but a
+        // store with a table per type keys its rows per table, so it can only look in the target's.
+        var found = new Dictionary<(Type, string), (object Doc, ISparkSession Session)>(KeyComparer.Instance);
         using var sideSession = store.OpenSession();
-        var remaining = ids.Where(id => !found.ContainsKey(id)).ToList();
-        if (remaining.Count > 0)
-            foreach (var (id, doc) in await sideSession.LoadAsync<object>(remaining, cancellationToken))
-                if (doc is not null)
-                    found[id] = (doc, sideSession);
+        foreach (var group in candidates.GroupBy(c => c.Target))
+        {
+            var target = group.Key;
+            var ids = group.Select(c => c.Id).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            await LoadIntoAsync(requestSession, target, ids.Where(requestSession.IsLoaded).ToList(), found, cancellationToken);
+            await LoadIntoAsync(sideSession, target, ids.Where(id => !found.ContainsKey((target, id))).ToList(), found, cancellationToken);
+        }
 
         var result = new ValidationResult();
         foreach (var (attributeName, target, id) in candidates)
         {
-            if (found.TryGetValue(id, out var hit) && IsInTargetCollection(hit.Session, hit.Doc, target))
+            if (found.TryGetValue((target, id), out var hit) && IsInTargetCollection(hit.Session, hit.Doc, target))
                 continue;
             if (result.Errors.Any(e => e.AttributeName == attributeName))
                 continue;
@@ -121,6 +122,17 @@ internal sealed partial class ReferenceTargetValidation : IReferenceTargetValida
 
         if (!result.IsValid)
             throw new SparkSaveValidationException(result);
+    }
+
+    private static async Task LoadIntoAsync(
+        ISparkSession session, Type target, List<string> ids,
+        Dictionary<(Type, string), (object Doc, ISparkSession Session)> found, CancellationToken cancellationToken)
+    {
+        if (ids.Count == 0)
+            return;
+        foreach (var (id, doc) in await session.LoadReferencedAsync(target, ids, cancellationToken))
+            if (doc is not null)
+                found[(target, id)] = (doc, session);
     }
 
     private bool IsInTargetCollection(ISparkSession session, object doc, Type target)
