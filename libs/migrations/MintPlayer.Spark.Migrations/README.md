@@ -7,15 +7,15 @@ Define a migration by implementing `ISparkMigration` on a non-abstract class and
 indexes are created and before the app serves requests.
 
 ```csharp
+using MintPlayer.Spark.Abstractions.Storage;
 using MintPlayer.Spark.Migrations;
-using Raven.Client.Documents.Session;
 
 public partial class M_202606081200_SeedDemo : ISparkMigration
 {
     public static long Version => 202606081200;          // sortable timestamp; must be unique
     public static string? Description => "Seed demo data";
 
-    [Inject] private readonly IAsyncDocumentSession session;   // full scoped DI, like a cron job
+    [Inject] private readonly ISparkSession session;   // full scoped DI, like a cron job; any store
 
     public async Task UpAsync(CancellationToken cancellationToken)
     {

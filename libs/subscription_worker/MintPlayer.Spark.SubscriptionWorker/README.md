@@ -1,6 +1,9 @@
 # MintPlayer.Spark.SubscriptionWorker
 
-A RavenDB subscription worker framework with built-in retry logic, incremental backoff, categorized exception handling, and ASP.NET Core lifecycle management. Fully independent -- no dependency on the core Spark CRUD framework. Any project with a RavenDB `IDocumentStore` can use it.
+Background workers that react to stored documents, on whichever store the application uses: RavenDB, SQL Server,
+PostgreSQL or the in-memory store. A worker is an ASP.NET Core `BackgroundService` over the store's durable
+subscriptions (`ISparkSubscriptions`): every document of a type that matches a filter, delivered in commit order as its
+current state, the backlog included, at least once.
 
 ## Installation
 
@@ -8,323 +11,143 @@ A RavenDB subscription worker framework with built-in retry logic, incremental b
 dotnet add package MintPlayer.Spark.SubscriptionWorker
 ```
 
-If you also use the Spark source generators (for auto-registration), ensure the `MintPlayer.Spark.SourceGenerators` package is referenced.
+The base class lives in `MintPlayer.Spark.SubscriptionWorker.Abstractions`; a library that only defines workers can
+reference that package alone. The host that registers them references this one.
 
-## Overview
+## Quick start
 
-A subscription worker continuously listens for document changes in RavenDB via the [Data Subscriptions](https://ravendb.net/docs/article-page/latest/csharp/client-api/data-subscriptions/what-are-data-subscriptions) mechanism. When documents match the subscription's RQL query, RavenDB delivers them in batches to the worker for processing.
+### 1. Write a worker
 
-`SparkSubscriptionWorker<T>` wraps this into an ASP.NET Core `BackgroundService` with:
-
-- Automatic subscription creation/update on startup
-- A connection loop that reconnects after errors or normal completion
-- Categorized exception handling (retryable vs. fatal)
-- Per-document retry tracking via `RetryNumerator`
-- Lifecycle hooks for startup, shutdown, and batch completion
-
-## Quick Start
-
-### 1. Create a Subscription Worker
-
-Extend `SparkSubscriptionWorker<T>` and implement two abstract methods:
-
-- `ConfigureSubscription()` -- returns the RQL query that filters which documents are delivered
-- `ProcessBatchAsync()` -- handles each batch of documents
+Extend `SparkSubscriptionWorker<T>`, give it a filter, and handle each batch:
 
 ```csharp
+using System.Linq.Expressions;
+using MintPlayer.Spark.Abstractions.Storage;
 using MintPlayer.Spark.SubscriptionWorker;
-using Raven.Client.Documents;
-using Raven.Client.Documents.Subscriptions;
 
 public partial class OrderProcessingWorker : SparkSubscriptionWorker<Order>
 {
-    private readonly RetryNumerator _retryNumerator = new();
+    // The base class takes ISparkSubscriptions, ILoggerFactory and ISparkStoreReadiness through [Inject];
+    // the source generator writes the constructor. Declare your own dependencies the same way, which is
+    // why the class must be `partial`.
+    [Inject] private readonly ISparkStore store;
 
-    // No constructor: the base class takes its IDocumentStore and ILoggerFactory through
-    // [Inject], and the source generator emits the constructor. Declare your own dependencies
-    // the same way — which is why the class must be `partial`.
-    [Inject] private readonly IOrderService _orders;
+    // Which documents are delivered; null (the default) delivers every Order.
+    protected override Expression<Func<Order, bool>>? Filter => o => o.Status == "Pending";
 
-    protected override SubscriptionCreationOptions ConfigureSubscription()
-        => new() { Query = "from Orders where Status = 'Pending'" };
-
-    protected override async Task ProcessBatchAsync(
-        SubscriptionBatch<Order> batch, CancellationToken cancellationToken)
+    protected override async Task ProcessBatchAsync(SparkSubscriptionBatch<Order> batch, CancellationToken cancellationToken)
     {
-        using var session = batch.OpenAsyncSession();
-
+        using var session = store.OpenSession();
         foreach (var item in batch.Items)
         {
-            try
-            {
-                var order = item.Result;
-                // Process the order...
-                order.Status = "Processed";
-                await _retryNumerator.ClearRetryAsync(session, order);
-            }
-            catch (Exception ex)
-            {
-                var retry = await _retryNumerator.TrackRetryAsync(
-                    session, item.Result, ex, Logger);
-                if (!retry.WillRetry)
-                {
-                    Logger.LogError(ex, "Permanently failed processing order {Id} after {Attempts} attempts",
-                        item.Id, retry.AttemptCount);
-                }
-            }
+            var order = item.Document;
+            order.Status = "Processed";
+            // The version the batch read: the save fails if someone changed the order since.
+            await session.StoreAsync(order, item.Version, item.Id, cancellationToken);
         }
-
         await session.SaveChangesAsync(cancellationToken);
     }
 }
 ```
 
-> **Breaking change (built with `MintPlayer.SourceGenerators` 12.2.0):** the generated base constructor follows
-> declaration order and is now `SparkSubscriptionWorker<T>(IDocumentStore store, ILoggerFactory loggerFactory)`;
-> it was `(ILoggerFactory, IDocumentStore)`. A subclass that writes its own constructor must swap its base call to
-> `: base(store, loggerFactory)`. Subclasses that leave the constructor to `[Inject]`, as above, need no change.
+A filter is a pure predicate over the document's fields. Never put the clock in it (`DateTime.UtcNow`): RavenDB
+evaluates it once per change, not per read, so a time comparison silently never matches. Materialize "the time has
+come" as a field that another component sets (see [Spark Messaging](#real-world-example-spark-messaging)).
 
-#### Subscription Naming
+### 2. Register it
 
-By default, the subscription name in RavenDB is derived from the class name by stripping common suffixes:
-
-- `OrderProcessingWorker` becomes `"OrderProcessing"`
-- `OrderProcessingSubscriptionWorker` becomes `"OrderProcessing"`
-
-Override `SubscriptionName` to set a custom name:
+With the Spark source generators referenced, every non-abstract `SparkSubscriptionWorker<T>` subclass in your project is
+registered by one generated call:
 
 ```csharp
-protected override string SubscriptionName => "MyCustomSubscription";
-```
-
-### 2. Register the Worker
-
-#### Option A: Source-Generated Registration (Recommended)
-
-If your project references `MintPlayer.Spark.SourceGenerators`, a source generator discovers all `SparkSubscriptionWorker<T>` subclasses in your project and generates an `AddSubscriptionWorkers()` extension on `ISparkBuilder`:
-
-```csharp
-// Program.cs
-builder.Services.AddSparkSubscriptions();
 builder.Services.AddSpark(builder.Configuration, spark =>
 {
     spark.AddSubscriptionWorkers();   // source-generated
 });
 ```
 
-The generated code calls `AddSubscriptionWorker<T>()` for each worker class found, registering each as a hosted service. It is emitted by `SubscriptionWorkerRegistrationGenerator` into your own root namespace, so it is only visible from your assembly.
-
-#### Option B: Manual Registration
-
-Register workers individually:
+Or register a worker yourself:
 
 ```csharp
-builder.Services.AddSparkSubscriptions();
 builder.Services.AddSubscriptionWorker<OrderProcessingWorker>();
 ```
 
-## How It Works
+`AddSubscriptionWorker<T>()` also registers the store readiness the worker waits for.
 
-### Subscription Lifecycle
+## What a worker guarantees
 
-Each worker runs as a `BackgroundService`:
+The guarantees are the store's (`ISparkSubscriptions`), the same on every provider:
 
-1. **Startup**: `EnsureSubscriptionExistsAsync` creates or updates the RavenDB subscription (idempotent -- if it already exists, the query is updated).
-2. **`OnWorkerStartedAsync()`**: Lifecycle hook called after the subscription is ready, before the first batch.
-3. **Connection loop**: Opens a subscription worker connection and starts receiving document batches.
-4. **Batch processing**: Calls `ProcessBatchAsync()` for each batch, then `OnBatchCompletedAsync(itemCount)`.
-5. **Error recovery**: Catches and categorizes exceptions with automatic reconnection (see table below).
-6. **Shutdown**: Triggered by `CancellationToken` cancellation (e.g., app shutdown). Calls `OnWorkerStoppedAsync()`.
+- **Exclusive.** One runner per subscription name at a time, across hosts. A second host waits without error and takes
+  over when the first stops or dies (RavenDB's `WaitForFree`; on the other stores an `ISparkStoreLock` lease).
+- **At least once.** A batch is acknowledged when `ProcessBatchAsync` returns. If it throws, or the host dies, the same
+  batch is delivered again after `RetryDelay`. So a handler checks the state it acts on: write with the item's
+  `Version`, or claim the document first.
+- **Current state.** A document changed twice before its delivery is delivered once, as it is now. One that stopped
+  matching the filter is not delivered.
 
-### Categorized Exception Handling
+RavenDB runs its own data subscriptions. The in-memory and relational stores keep a cursor over their commit order in
+`ISparkAtomicValues`.
 
-The connection loop classifies exceptions into three categories.
+## Lifecycle
 
-#### Retryable Errors
-
-These errors cause the worker to wait and then reconnect:
-
-| Exception | Wait Time | Description |
-|---|---|---|
-| `SubscriptionInUseException` | `RetryDelay * 2` | Another node holds the subscription |
-| `SubscriberErrorException` | `RetryDelay` | Error in the subscriber callback |
-| Other unexpected exceptions (when `KeepRunning = true`) | `RetryDelay` | Transient errors |
-
-#### Non-Recoverable Errors
-
-These errors cause the worker to stop permanently and call `OnNonRecoverableErrorAsync()`:
-
-| Exception | Description |
-|---|---|
-| `SubscriptionClosedException` | The subscription was deleted or disabled |
-| `DatabaseDoesNotExistException` | The target database does not exist |
-| `SubscriptionDoesNotExistException` | The subscription was removed |
-| `SubscriptionInvalidStateException` | The subscription is in an invalid state |
-| `AuthorizationException` | Authentication/authorization failure |
-| Other unexpected exceptions (when `KeepRunning = false`) | Any error when auto-reconnect is disabled |
-
-#### Cancellation
-
-`OperationCanceledException` when the `CancellationToken` is cancelled triggers a graceful shutdown.
+1. The worker waits until the store is ready: on a relational store, until `UseSpark` has applied the schema.
+2. It creates the subscription, or updates its filter. A definition the store refuses (a licence cap, for example) is
+   **thrown**, and it stops the host: an application whose queue is silently dead is worse than one that will not
+   run.
+3. `OnWorkerStartedAsync()` runs.
+4. Batches arrive. After each `ProcessBatchAsync`, `OnBatchCompletedAsync(itemCount)` runs.
+5. A handler that throws, or a lost connection, is retried after `RetryDelay` and logged as a warning.
+6. A subscription that cannot go on (deleted under the worker, a missing database, refused authorization, or failing
+   for longer than `MaxDownTime`) ends the worker: `OnNonRecoverableErrorAsync(exception)` runs, and the host keeps
+   running.
+7. On shutdown, or after a non-recoverable error, `OnWorkerStoppedAsync()` runs.
 
 ## Configuration
 
-Override virtual properties on your worker class to tune behavior:
+Override these on the worker:
 
 ```csharp
-public class OrderProcessingWorker : SparkSubscriptionWorker<Order>
-{
-    // Subscription name in RavenDB (default: class name minus "Worker"/"SubscriptionWorker")
-    protected override string SubscriptionName => "MyCustomSubscription";
+// The subscription's name: its cursor and its exclusivity are per name.
+// Default: the class name without "SubscriptionWorker" or "Worker" (OrderProcessingWorker → "OrderProcessing").
+protected override string SubscriptionName => "OrderProcessing";
 
-    // Target database (default: null = store default)
-    protected override string? Database => null;
+// Which documents are delivered. Default: null, every document of T.
+protected override Expression<Func<Order, bool>>? Filter => o => o.Status == "Pending";
 
-    // Max documents per batch (default: 256)
-    protected override int MaxDocsPerBatch => 100;
+// Most documents per batch. Default: 256.
+protected override int MaxDocsPerBatch => 100;
 
-    // Whether to reconnect after normal subscription completion (default: true)
-    protected override bool KeepRunning => true;
+// Wait before a failed batch or connection is retried. Default: 30 seconds.
+protected override TimeSpan RetryDelay => TimeSpan.FromSeconds(30);
 
-    // Wait time before connection retry (default: 30 seconds)
-    protected override TimeSpan RetryDelay => TimeSpan.FromSeconds(30);
-
-    // Max erroneous period before giving up on connection (default: 5 minutes)
-    protected override TimeSpan MaxDownTime => TimeSpan.FromMinutes(5);
-}
+// How long the subscription may keep failing before the worker gives up. Default: 5 minutes.
+protected override TimeSpan MaxDownTime => TimeSpan.FromMinutes(5);
 ```
 
-### Global Options
+`Logger` is an `ILogger` in the concrete worker's category.
 
-`AddSparkSubscriptions()` accepts an optional configuration callback, but
-`SparkSubscriptionOptions` currently carries no options:
-
-```csharp
-builder.Services.AddSparkSubscriptions();
-```
-
-> Earlier versions documented `WaitForNonStaleIndexes` and `NonStaleIndexTimeout` here. Nothing ever
-> read them — the workers never waited on indexes — so they were removed rather than left looking
-> like a configured guarantee. If a worker depends on an index being current, wait for the specific
-> query it needs rather than gating startup on every index in the database.
-
-### Lifecycle Hooks
-
-Override these virtual methods to react to worker events:
+### Lifecycle hooks
 
 ```csharp
-// Called after startup, before the first batch
 protected override Task OnWorkerStartedAsync() => Task.CompletedTask;
-
-// Called when the worker stops (graceful or error)
 protected override Task OnWorkerStoppedAsync() => Task.CompletedTask;
-
-// Called after each batch is successfully processed
 protected override Task OnBatchCompletedAsync(int itemCount) => Task.CompletedTask;
-
-// Called when a non-recoverable error occurs (before stopping)
 protected override Task OnNonRecoverableErrorAsync(Exception exception) => Task.CompletedTask;
 ```
 
-## RetryNumerator: Per-Document Retry Tracking
+### Writing your own constructor
 
-`RetryNumerator` tracks failed processing attempts for individual documents using RavenDB counters and the `@refresh` metadata mechanism.
+The generated base constructor is
+`SparkSubscriptionWorker<T>(ISparkSubscriptions subscriptions, ILoggerFactory loggerFactory, ISparkStoreReadiness storeReadiness)`.
+A worker that writes its own constructor (for instance one that is built by hand rather than resolved from DI) calls
+`: base(subscriptions, loggerFactory, storeReadiness)`.
 
-### How It Works
+## Real-world example: Spark Messaging
 
-1. When `TrackRetryAsync()` is called for a failed document, it increments a RavenDB counter on the document.
-2. It sets the `@refresh` metadata to a future timestamp, which causes RavenDB to redeliver the document to the subscription at that time.
-3. If the maximum number of attempts is exhausted, the counter is cleared and the document is "parked" for a longer delay (default: 1 day).
-
-### Configuration
-
-```csharp
-var retryNumerator = new RetryNumerator
-{
-    MaxAttempts = 5,                                // default: 5
-    BaseDelay = TimeSpan.FromSeconds(30),           // default: 30s
-    CounterName = "SparkRetryAttempts",             // default
-    ExhaustedDelay = TimeSpan.FromDays(1),          // default: 1 day
-};
-```
-
-### Backoff Schedule
-
-`RetryNumerator` uses linear incremental backoff (`BaseDelay * attempt`):
-
-| Attempt | Delay |
-|---|---|
-| 1 | 30 seconds |
-| 2 | 60 seconds |
-| 3 | 90 seconds |
-| 4 | 120 seconds |
-| 5 | 150 seconds |
-| Exhausted | 1 day (parked) |
-
-When an attempt fails, `TrackRetryAsync` increments the counter and sets `@refresh` metadata to schedule redelivery. After max attempts, the counter is deleted and the document is parked for `ExhaustedDelay`.
-
-### Usage in ProcessBatchAsync
-
-```csharp
-protected override async Task ProcessBatchAsync(
-    SubscriptionBatch<Order> batch, CancellationToken cancellationToken)
-{
-    using var session = batch.OpenAsyncSession();
-
-    foreach (var item in batch.Items)
-    {
-        try
-        {
-            // Process the document...
-            await _retryNumerator.ClearRetryAsync(session, item.Result);
-        }
-        catch (Exception ex)
-        {
-            var retry = await _retryNumerator.TrackRetryAsync(
-                session, item.Result, ex, Logger);
-            // retry.WillRetry is false when max attempts are exhausted;
-            // retry.AttemptCount and retry.NextAttemptAtUtc describe this failure.
-        }
-    }
-
-    await session.SaveChangesAsync(cancellationToken);
-}
-```
-
-Call `ClearRetryAsync()` after successful processing to remove any leftover retry counters from previous failures.
-
-## Revision Subscriptions
-
-For change detection (comparing previous vs. current document state), subscribe to `Revision<T>`:
-
-```csharp
-public partial class CompanyChangeWorker : SparkSubscriptionWorker<Revision<Company>>
-{
-    protected override SubscriptionCreationOptions ConfigureSubscription()
-        => new() { Query = "from Companies (Revisions = true)" };
-
-    protected override async Task ProcessBatchAsync(
-        SubscriptionBatch<Revision<Company>> batch, CancellationToken cancellationToken)
-    {
-        using var session = batch.OpenAsyncSession();
-        foreach (var item in batch.Items)
-        {
-            var previous = item.Result.Previous;
-            var current = item.Result.Current;
-            // React to changes between previous and current...
-        }
-        await session.SaveChangesAsync(cancellationToken);
-    }
-}
-```
-
-This requires RavenDB document revisions to be enabled on the collection.
-
-## Real-World Example: Spark Messaging
-
-The [`MintPlayer.Spark.Messaging`](../../messaging/MintPlayer.Spark.Messaging/README.md) package uses
-`SparkSubscriptionWorker<T>` internally. `MessageFeeder` subscribes to `SparkMessage` documents for
-**every** queue at once, claims each one, and routes it to an in-process per-queue lane:
+[`MintPlayer.Spark.Messaging`](../../messaging/MintPlayer.Spark.Messaging/README.md) runs on one worker, `MessageFeeder`.
+It subscribes to the `SparkMessage` documents of **every** queue at once, claims each one, and hands it to the queue's
+in-process lane:
 
 ```csharp
 internal sealed class MessageFeeder : SparkSubscriptionWorker<SparkMessage>
@@ -332,99 +155,56 @@ internal sealed class MessageFeeder : SparkSubscriptionWorker<SparkMessage>
     // No trailing hyphen: the startup cleanup deletes "SparkMessaging-*", and this name
     // escapes that prefix by exactly one character.
     protected override string SubscriptionName => "SparkMessaging";
-    protected override int MaxDocsPerBatch => 256; // FeederBatchSize
 
-    protected override SubscriptionCreationOptions ConfigureSubscription()
-    {
-        // No QueueName predicate — one subscription serves all queues, which also means no
-        // queue name is interpolated into RQL.
-        return new SubscriptionCreationOptions
-        {
-            Query = @"from SparkMessages
-                      where (Status = 'Pending' and (NextAttemptAtUtc = null or WakeUp = true))
-                         or (Status = 'Failed' and WakeUp = true)"
-        };
-    }
+    // No queue-name predicate: one subscription serves all queues.
+    protected override Expression<Func<SparkMessage, bool>> Filter =>
+        m => (m.Status == EMessageStatus.Pending && (m.NextAttemptAtUtc == null || m.WakeUp == true))
+          || (m.Status == EMessageStatus.Failed && m.WakeUp == true);
 
-    protected override async Task ProcessBatchAsync(
-        SubscriptionBatch<SparkMessage> batch, CancellationToken cancellationToken)
+    protected override async Task ProcessBatchAsync(SparkSubscriptionBatch<SparkMessage> batch, CancellationToken cancellationToken)
     {
-        foreach (var item in batch.Items)
-        {
-            // Merge with the sorted page (#460 M16b), claim under optimistic concurrency and save
-            // BEFORE acknowledging the batch,
-            // then hand the id to the queue's lane. No handler runs on this path.
-        }
+        // Merge with the sorted page, claim each message under optimistic concurrency and save BEFORE
+        // returning (which acknowledges the batch), then hand the id to its queue's lane.
     }
 }
 ```
 
-Two things in that query are worth copying, because both were learned the hard way:
+Two things in it are worth copying, because both were learned the hard way:
 
-- **`WakeUp = true`, never `NextAttemptAtUtc <= now()`.** A subscription where-clause cannot evaluate
-  time — a `now()` comparison silently never matches, so a message parked for a retry would never be
-  redelivered. "The backoff has elapsed" must be materialized as plain field state by a component
-  that *can* evaluate time; `MessageRetrySweeper` sets the boolean, and the patch that sets it is
-  also what bumps the change vector to trigger re-evaluation.
-- **The claim is saved before the batch is acknowledged.** Subscriptions re-deliver an
-  unacknowledged batch on reconnect but never a acknowledged one, so a status written *after* the
-  acknowledgement — with nothing that reads it — leaves a crashed host's message stranded for ever.
-- **One `batch.OpenAsyncSession()` per batch, ever.** RavenDB throws `InvalidOperationException`
-  ("Session can only be opened once per each Subscription batch") on the second, which surfaces as a
-  subscriber error and the worker's retry delay. `MessageFeeder` opens several sessions per batch (the
-  sorted page, one per priority, a conflict fallback), so it uses `DocumentStore.OpenAsyncSession()`;
-  #460 M16 got this wrong and stalled 30 s on every batch that mixed priorities.
+- **`WakeUp == true`, never `NextAttemptAtUtc <= now`.** The filter cannot evaluate time, so a message parked for a
+  retry would never be delivered again. `MessageRetrySweeper` evaluates time and sets the boolean, and that write is
+  also what makes the subscription look at the message again.
+- **The claim is saved before the batch is acknowledged.** An acknowledged batch is never delivered again, so a status
+  written after the acknowledgement, with nothing that reads it, would leave a crashed host's message stranded forever.
 
-## Extension Methods
+## Extension methods
 
 | Method | Description |
 |--------|-------------|
-| `AddSparkSubscriptions()` | Register subscription infrastructure. Takes no configuration callback — the former `SparkSubscriptionOptions` was an empty class whose only effect was to register an options object nothing read |
-| `AddSubscriptionWorker<TWorker>()` | Register a single worker as a hosted service |
+| `AddSubscriptionWorker<TWorker>()` | Registers one worker as a hosted service, with the store readiness it waits for |
+| `AddSparkSubscriptions()` | Registers nothing: there is nothing to configure |
+| `spark.AddSubscriptionWorkers()` | Source-generated: registers every `SparkSubscriptionWorker<T>` subclass in your project |
 
-### Source-Generated
-
-| Method | Description |
-|--------|-------------|
-| `spark.AddSubscriptionWorkers()` | Auto-registers all `SparkSubscriptionWorker<T>` subclasses in your project |
-
-### Source Generator Details
-
-The `SubscriptionWorkerRegistrationGenerator` source generator scans your project for all non-abstract classes that inherit from `SparkSubscriptionWorker<T>` (at any depth in the inheritance chain). It generates a static extension method:
+The generator (`SubscriptionWorkerRegistrationGenerator`) finds every non-abstract class that inherits from
+`SparkSubscriptionWorker<T>`, at any depth, and emits into your root namespace:
 
 ```csharp
-// Auto-generated: SparkSubscriptionWorkerRegistrations.g.cs
-namespace YourProject
+// SparkSubscriptionWorkerRegistrations.g.cs
+internal static class SparkSubscriptionWorkersBuilderExtensions
 {
-    internal static class SparkSubscriptionWorkersBuilderExtensions
+    internal static ISparkBuilder AddSubscriptionWorkers(this ISparkBuilder builder)
     {
-        internal static ISparkBuilder AddSubscriptionWorkers(this ISparkBuilder builder)
-        {
-            SparkSubscriptionExtensions.AddSubscriptionWorker<OrderProcessingWorker>(builder.Services);
-            SparkSubscriptionExtensions.AddSubscriptionWorker<CompanyChangeWorker>(builder.Services);
-            return builder;
-        }
+        SparkSubscriptionExtensions.AddSubscriptionWorker<OrderProcessingWorker>(builder.Services);
+        return builder;
     }
 }
 ```
-
-This eliminates the need to manually register each worker in `Program.cs`.
 
 ## Requirements
 
-- .NET 10.0+
-- RavenDB 6.2+
-- An `IDocumentStore` registered in the DI container (provided by `AddSpark()` or registered manually)
-
-## Complete Example
-
-See the following files for working implementations:
-
-- `SparkSubscriptionWorker.cs` -- abstract base class with connection loop and error handling
-- `RetryNumerator.cs` -- per-document retry tracking
-- `SparkSubscriptionExtensions.cs` -- DI registration helpers
-- `../MintPlayer.Spark.Messaging/Services/MessageSubscriptionWorker.cs` -- real-world usage in the messaging package
-- `../MintPlayer.Spark.SourceGenerators/Generators/SubscriptionWorkerRegistrationGenerator.cs` -- source generator for auto-registration
+- .NET 11
+- A Spark store with subscriptions (`SparkStoreCapabilities.Subscriptions`): RavenDB, SQL Server, PostgreSQL and the
+  in-memory store all have them.
 
 ## License
 

@@ -98,7 +98,7 @@ nothing but the four fields changes. Refused with 403 when the Actions class's
 **Purge** — `POST /spark/po/purge { objectTypeId, id }` → 204. Needs `Purge/T`; the row must already
 be deleted. The document is deleted (the before-delete interceptors run, with `IsPurge` set),
 then every revision of it, force-created ones included. Refused with 403 when the hook withholds
-`Purge` or `Delete`. Cannot be undone. See [Purge needs database-admin](#purge-needs-database-admin).
+`Purge` or `Delete`. Cannot be undone. See [Purge needs database-admin on RavenDB](#purge-needs-database-admin-on-ravendb).
 
 **A refused delete leaves nothing behind.** The mark is set on the request session's copy of the
 row; if a before-delete interceptor (a lock, say) refuses the delete, `IDatabaseAccess` evicts that copy, so
@@ -199,9 +199,12 @@ Analyzer **SPARK022** flags `!x.IsDeleted` and `x.IsDeleted == false` on an `ISo
 expression a provider translates: both drop every document without the field. Write
 `x.IsDeleted != true`.
 
-## Purge needs database-admin
+## Purge needs database-admin on RavenDB
 
-Purge deletes the document, then runs RavenDB's `DeleteRevisionsOperation` — a **database-admin**
+Purge deletes the document, then its revisions through the store's `ISparkRevisions`. SQL Server, PostgreSQL and the
+in-memory store write their own revision rows and may always delete them, so this section concerns RavenDB only.
+
+On RavenDB the revisions go through `DeleteRevisionsOperation` — a **database-admin**
 operation (deleting a document is not). On a secured server the client certificate the app connects
 with must therefore have **Admin** access to that database (the certificate's per-database access
 level), or no purge can finish.

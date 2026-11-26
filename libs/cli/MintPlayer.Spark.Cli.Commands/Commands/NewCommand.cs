@@ -16,7 +16,7 @@ public partial class NewCommand : ICliCommand
     [CliOption("--output", "-o", Description = "The directory to create; defaults to the name."), NoInterfaceMember]
     public string? Output { get; set; }
 
-    [CliOption("--store", Description = "RavenDB (default) or InMemory. Most features need RavenDB."), NoInterfaceMember]
+    [CliOption("--store", Description = "RavenDB (default) or InMemory. Sign-in, Replication and the OpenSearch engine need RavenDB."), NoInterfaceMember]
     public string? Store { get; set; }
 
     [CliOption("--auth", Description = "none (default), authorization (local accounts) or oidc (an external identity provider)."), NoInterfaceMember]

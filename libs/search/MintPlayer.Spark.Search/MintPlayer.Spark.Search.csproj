@@ -13,7 +13,7 @@
 		<Version>0.0.0-PLACEHOLDER</Version>
 		<Authors>MintPlayer</Authors>
 		<Company>MintPlayer</Company>
-		<Description>Search across the entity types of a MintPlayer.Spark application: suggestions and results with unambiguous labels, every hit re-read through Spark's query path so rights and row security apply, a RavenDB provider by default and pluggable search engines.</Description>
+		<Description>Search across the entity types of a MintPlayer.Spark application: suggestions and results with unambiguous labels, every hit re-read through Spark's query path so rights and row security apply, the store's own search by default (RavenDB's generated index; on SQL Server, PostgreSQL and memory the collections themselves) and pluggable search engines.</Description>
 		<PackageTags>search;suggestions;ravendb;spark</PackageTags>
 		<PackageLicenseExpression>MIT</PackageLicenseExpression>
 		<PackageProjectUrl>https://github.com/MintPlayer/MintPlayer.Spark</PackageProjectUrl>

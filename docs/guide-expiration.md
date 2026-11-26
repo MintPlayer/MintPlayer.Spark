@@ -1,9 +1,10 @@
 # Document expiration: declare it, Spark stamps and hides
 
 A document that should disappear after a while (a crawl's per-page results, a cool-down marker, an
-invitation) implements `IExpiring`. Spark writes RavenDB's `@expires` for it on every store, hides it
-from every Spark read once its time has passed, and enables expiration on the database with the one
-frequency the Community licence allows.
+invitation) implements `IExpiring`. Spark marks it for the store's expiration on every write (RavenDB's
+`@expires`; the row's `SparkExpiresAt` column on SQL Server and PostgreSQL), hides it from every Spark read once its
+time has passed, and turns the store's sweep on with the one frequency RavenDB's Community licence allows. The
+in-memory store has no sweep: an expired document stays hidden until the process ends.
 
 Decisions and evidence: [seo_analyzer_PRD.md](seo_analyzer_PRD.md) X1 and §12 "Spike S6".
 
@@ -44,16 +45,18 @@ public class PageResult : IExpiring                 // MintPlayer.Spark.Abstract
 
 A store-level `OnBeforeStore` (`libs/spark/MintPlayer.Spark/Expiration/ExpirationStamper.cs`), so it
 covers the persistent-object pipeline **and** raw sessions: a message handler, a cron job, a migration.
-A persistent-object interceptor could not: on a create it has no id and no metadata yet.
+A persistent-object interceptor could not: on a create it has no id and no metadata yet. On SQL Server and
+PostgreSQL the same stamp is a before-save hook of the store (`RelationalExpiration`), which copies `ExpiresAtUtc`
+into the row's `SparkExpiresAt` column.
 
-Not covered, because RavenDB raises no event for them: **patches, bulk inserts and ETL**. Code using
+Not covered on RavenDB, because it raises no event for them: **patches, bulk inserts and ETL**. Code using
 those writes `@expires` itself (ISO 8601 UTC).
 
 ## Hiding expired documents
 
-RavenDB deletes an expired document at its next sweep, and on the **Community licence the sweep runs at
-most every 36 hours**. A document can therefore linger up to 36 h past its time. The guarantee is the read
-filter, not the sweep:
+The store deletes an expired document at its next sweep, every `DeleteFrequency` (below): **36 hours**, because on
+RavenDB's **Community licence the sweep runs at most every 36 hours**, and Spark keeps that floor on every store. A
+document can therefore linger up to 36 h past its time. The guarantee is the read filter, not the sweep:
 
 - A row policy (`ExpirationRowPolicy`) adds `!(ExpiresAtUtc <= now)` to every path that asks row security:
   lists, custom queries and sub-queries, distinct values, live pushes, breadcrumbs, reference pickers, the
@@ -74,8 +77,8 @@ MailManager, Moderation and the identity provider do; they write `@expires` them
 
 | Key | Default | Meaning |
 |---|---|---|
-| `Spark:Expiration:DeleteFrequency` | `1.12:00:00` (36 h) | How often RavenDB sweeps. Startup **refuses anything shorter, on every licence**. |
-| `Spark:Expiration:ConfigureDatabase` | `true` | `false` leaves the database record to the operator. Stamping and hiding still work. |
+| `Spark:Expiration:DeleteFrequency` | `1.12:00:00` (36 h) | How often the store sweeps (RavenDB's database record; a timer on SQL Server and PostgreSQL). Startup **refuses anything shorter, on every licence and store**. |
+| `Spark:Expiration:ConfigureDatabase` | `true` | `false` turns no sweep on: RavenDB's database record is left to the operator, and the relational providers delete nothing. Stamping and hiding still work. |
 
 ⚠️ The floor is checked in code because no test can catch it otherwise: Community refuses a shorter
 frequency and **the RavenDB process dies** on the configuration change, while the Developer licence that

@@ -348,5 +348,5 @@ handler.
 ## Related
 
 - **[HTTP API Specification](../../../docs/Spark-API-Specification.md)** — the protocol this client speaks
-- **[Testing Harness](../../testing/MintPlayer.Spark.Testing/README.md)** — embedded RavenDB, in-process host factory, `Wire` request builders
+- **[Testing Harness](../../testing/MintPlayer.Spark.Testing/README.md)** — test databases (embedded RavenDB, SQL Server, PostgreSQL, in memory), in-process host factory, `Wire` request builders
 - **[Manager & Retry Actions](../../../docs/guide-manager-retry-actions.md)** — writing the hooks that prompt

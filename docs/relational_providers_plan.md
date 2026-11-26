@@ -52,6 +52,20 @@ rounds, milestones and status. Branch `feat/536-sql-server-provider`, draft PR #
     - **NuGet READMEs** for the seven new packages (SqlServer, PostgreSql, Relational, Relational.Design,
       Testing.RavenDB, Testing.SqlServer, Testing.PostgreSql), packed through `PackageReadmeFile`. A local
       `dotnet pack` of `MintPlayer.Spark.SqlServer` holds `README.md`.
+    - **Documentation sweep (2026-11-26).** The existing docs still described a RavenDB-only framework, and the
+      first check had missed them. They now name the store each feature needs:
+      - the root README;
+      - the core, SubscriptionWorker, Messaging, History, Migrations, SoftDelete, IdentityProvider, MCP, Client and
+        CLI READMEs;
+      - the NuGet descriptions of six packages;
+      - `guide-expiration.md` and `guide-reference-attributes.md`;
+      - `diagnostics.md` (SPARK056 takes `IQueryable<T>`).
+
+      Two passages were wrong, not only dated:
+      - The core README said the in-memory store has no subscriptions or revisions.
+      - The Messaging README named the two indexes D42 replaced.
+
+      Code comments that named those indexes, or `@last-modified`, follow D40 and D42.
   - **O13 built (2026-11-26).** It was decided 2026-11-24 (PRD §10) but never implemented. `SparkDbContext` mapped
     a `__stored_<Name>` field when one existed, but no generator emitted one, so SQL ignored every getter (HR's
     `FullName` could not be filtered or sorted).

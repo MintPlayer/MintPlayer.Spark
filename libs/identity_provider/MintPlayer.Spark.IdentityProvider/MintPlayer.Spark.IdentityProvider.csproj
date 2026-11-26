@@ -16,7 +16,7 @@
 		<Version>0.0.0-PLACEHOLDER</Version>
 		<Authors>MintPlayer</Authors>
 		<Company>MintPlayer</Company>
-		<Description>Self-contained OIDC Identity Provider for MintPlayer.Spark. Adds Authorization Code + PKCE flow with RavenDB storage. No external OIDC framework required.</Description>
+		<Description>Self-contained OIDC Identity Provider for MintPlayer.Spark. Adds Authorization Code + PKCE flow, stored in the application's Spark store. No external OIDC framework required.</Description>
 		<PackageTags>oidc;identity-provider;openid-connect;authorization-code;pkce;ravendb</PackageTags>
 		<PackageLicenseExpression>MIT</PackageLicenseExpression>
 		<PackageProjectUrl>https://github.com/MintPlayer/MintPlayer.Spark</PackageProjectUrl>

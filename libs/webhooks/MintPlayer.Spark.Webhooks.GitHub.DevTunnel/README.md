@@ -84,7 +84,7 @@ Both are extensions on `GitHubWebhooksOptions` and are called inside `spark.AddG
 
 ## Requirements
 
-- .NET 10.0+
+- .NET 11.0
 - `MintPlayer.Spark.Webhooks.GitHub` (referenced automatically)
 - A GitHub App with a webhook secret (see the [core package README](../MintPlayer.Spark.Webhooks.GitHub/README.md))
 

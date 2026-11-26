@@ -1,8 +1,8 @@
 # MintPlayer.Spark.Messaging
 
-A durable message bus for MintPlayer.Spark with RavenDB persistence, scoped recipients, queue-isolated processing, and automatic retry. Fully opt-in -- the core Spark library remains unchanged.
+A durable message bus for MintPlayer.Spark on any Spark store (RavenDB, SQL Server, PostgreSQL or memory), with scoped recipients, queue-isolated processing, and automatic retry. Fully opt-in -- the core Spark library remains unchanged.
 
-Messages are persisted as documents, processed via RavenDB data subscriptions, and retried automatically on failure. Different queues run independently so a failing message in one queue never blocks another.
+Messages are persisted as documents in the store, delivered through its durable subscriptions (`ISparkSubscriptions`), and retried automatically on failure. Different queues run independently so a failing message in one queue never blocks another.
 
 ## Overview
 
@@ -102,7 +102,7 @@ public partial class NotifyEmployeesRecipient : ICheckpointRecipient<CompanyUpda
 }
 ```
 
-The checkpoint is a free-form string -- use an index, offset, cursor, or any serialized state. Each call to `SaveAsync` overwrites the previous checkpoint and is persisted to RavenDB immediately.
+The checkpoint is a free-form string -- use an index, offset, cursor, or any serialized state. Each call to `SaveAsync` overwrites the previous checkpoint and is persisted to the store immediately.
 
 ### 3. Register Services
 
@@ -115,9 +115,9 @@ builder.Services.AddSpark(builder.Configuration, spark =>
 });
 ```
 
-`AddMessaging()` reuses the `IDocumentStore` singleton already registered by `AddSpark()`, and
-deploys the `SparkMessages/ByQueue` index for you — there is nothing to call after `Build()`. It
-does not depend on any Spark CRUD types.
+`AddMessaging()` uses the store the application already configured (`ISparkStore` and its
+`ISparkSubscriptions`), and registers the `SparkMessages_ByState` view with the application's indexes — there is
+nothing to call after `Build()`. It does not depend on any Spark CRUD types.
 
 `AddRecipients()` is generated at compile time by the `RecipientRegistrationGenerator` source
 generator. It discovers all `IRecipient<T>` implementations in your project and registers them
@@ -149,7 +149,7 @@ public partial class PersonActions : DefaultPersistentObjectActions<Person>, IAf
 }
 ```
 
-Both `BroadcastAsync` and `DelayBroadcastAsync` store a `SparkMessage` document in RavenDB and return immediately (fire-and-forget). The subscription workers pick them up asynchronously.
+Both `BroadcastAsync` and `DelayBroadcastAsync` store a `SparkMessage` document and return immediately (fire-and-forget). The subscription workers pick them up asynchronously.
 
 #### Delayed Messages
 
@@ -253,7 +253,7 @@ them. A durable interceptor registered without `AddMessaging()` is a startup err
 
 ### Message Processing
 
-Internally the messaging library uses **one RavenDB data subscription for every queue** (via
+Internally the messaging library uses **one subscription for every queue** (via
 `MintPlayer.Spark.SubscriptionWorker`), with per-queue ordering provided by in-process lanes:
 
 1. At startup, `MessageSubscriptionManager` prunes any legacy `SparkMessaging-*` definitions, then
@@ -261,7 +261,8 @@ Internally the messaging library uses **one RavenDB data subscription for every 
 2. It competes for a cluster-wide **messaging lease**; only the holder feeds
 3. The holder runs a single `MessageFeeder` on the subscription `SparkMessaging`, whose query has
    **no `QueueName` predicate**, in batches of up to `FeederBatchSize`
-4. On each batch the feeder merges it with the top of the sorted `SparkMessages_ByPriority` index and
+4. On each batch the feeder merges it with the top of the claimable messages, sorted, from the view
+   `SparkMessages_ByState`, and
    **claims** those messages highest priority first — `Status = Processing`, `OwnerId`,
    `ClaimExpiresAtUtc`, saved under optimistic concurrency *before* the batch is acknowledged — and
    routes each to a lane keyed by queue name (see *Priority lanes*)
@@ -390,7 +391,7 @@ AttemptCount + ReclaimCount`), otherwise `MaxAttempts`. `RateLimitParksPerAttemp
 
 #### How redelivery works
 
-RavenDB subscriptions re-evaluate a document only when it is *written* — time passing does not re-run the subscription query, and the query itself cannot evaluate time (a `NextAttemptAtUtc <= now()` where-clause silently never matches). So a background sweeper does the time evaluation: every `FallbackPollInterval` (default 30s) it finds messages whose `NextAttemptAtUtc` has passed and patches `WakeUp = true` onto them. That write both makes the message match the subscription query again and triggers the re-evaluation that delivers it. The worker clears `WakeUp` on pickup, so a message parked for another backoff round waits for the sweeper again.
+A subscription re-evaluates a document only when it is *written*, on every store — time passing does not re-run the subscription's filter, and the filter cannot evaluate time (on RavenDB a `NextAttemptAtUtc <= now()` where-clause silently never matches). So a background sweeper does the time evaluation: every `FallbackPollInterval` (default 30s) it finds messages whose `NextAttemptAtUtc` has passed and patches `WakeUp = true` onto them. That write both makes the message match the subscription query again and triggers the re-evaluation that delivers it. The worker clears `WakeUp` on pickup, so a message parked for another backoff round waits for the sweeper again.
 
 `FallbackPollInterval` is therefore the redelivery granularity: a due message is picked up at most that long after its scheduled retry time (or delayed-broadcast due time).
 
@@ -453,7 +454,7 @@ spark.AddMessaging(options =>
 | `Priority` | `Low`, `Normal` (default) or `High` (or `-1`/`0`/`1`): the order in which the single feeder serves queues, strictly, across the whole backlog — see *Priority lanes* below. Stamped on each message at publish. `SingleSubscription` mode only. |
 
 `SparkMessagingOptions.FeederBatchSize` (default 256, `Spark:Messaging:FeederBatchSize`) is the
-feeder's page: how many messages it reads from the sorted index per wake-up, and how many one
+feeder's page: how many messages it reads from the sorted view per wake-up, and how many one
 subscription batch may hold.
 
 ```json
@@ -499,7 +500,7 @@ out the relay or trip a provider's rate limit). MailManager declares exactly tha
 
 Separate queues are separate lanes, so a slow bulk *handler* never delays a transactional one. But in
 `SingleSubscription` mode every queue's documents reach the process through one subscription, in
-etag order, and a feeder that follows that order must claim what is in front before it sees what is
+commit order, and a feeder that follows that order must claim what is in front before it sees what is
 behind: measured in S-M3 before M16 (#460 PRD §4.1), a transactional message published behind a 1,000-message bulk backlog waited up
 to 5.8 s (9.4 s on a loaded machine), because each bulk message cost a load and a claim of its own and
 then a second write when its lane deferred it.
@@ -508,19 +509,22 @@ The feeder therefore serves a **sorted page** on every wake-up (#460 M16b; M16's
 before it could only reorder the 256 messages one batch held):
 
 - **The subscription is the wake-up signal, not the order.** The one leader-elected `SparkMessaging`
-  subscription is unchanged: same query, no `now()`, never deleted or recreated, and still what makes
-  feeding exclusive (`WaitForFree`) and what claims are taken against.
+  subscription is unchanged: same filter, no clock, never deleted or recreated, and still what makes
+  feeding exclusive (`WaitForFree` on RavenDB, a lease on the other stores) and what claims are taken against.
 - **Strict priority over the whole queue.** When a batch arrives, the feeder reads the top
-  `FeederBatchSize` (default 256) claimable messages from the `SparkMessages_ByPriority` index,
-  ordered **`Priority desc, Sequence asc`**, merges them with the batch, and claims the lot highest
+  `FeederBatchSize` (default 256) claimable messages from the view `SparkMessages_ByState` (a static index on
+  RavenDB, an SQL view on SQL Server and PostgreSQL), ordered **`Priority desc, Expedite desc, QueuedAtUtc asc`**,
+  merges them with the batch, and claims the lot highest
   priority first: one load and one write per priority (claims and throttle deferrals together), then
   routing. A `High` message published behind any `Low` backlog is served on the next wake-up.
-- **FIFO within a priority is server-assigned.** `Sequence` is the database server's `@last-modified`
-  of the write that made the message claimable, captured into `SparkMessage.QueuedAtUtc` on the
-  feeder's first write to it (its claim or deferral, so no extra write). Never the publisher's clock.
-  A retry, a reclaim or a throttle wake-up keeps the message's place. Ties (none measured) break by id.
-- **Nothing the index has not seen yet is skipped.** The page is read as the index stands, never
-  waited for; a message that is not indexed yet is in the subscription batch and is served from there
+- **FIFO within a priority is assigned by the feeder** (#536 D40). `SparkMessage.QueuedAtUtc` is set on the
+  messaging lease holder's clock, the one writer of every `QueuedAtUtc`, after every place already handed out: the
+  batch in delivery order (commit order on every store), then what only the page holds. It is stored with the
+  feeder's first write to the message (its claim or deferral, so no extra write). Never the publisher's clock.
+  A retry, a reclaim or a throttle wake-up keeps the message's place. Ties (none measured) break by id. (It
+  replaced RavenDB's `@last-modified`, #460 M16b, which no other store has.)
+- **Nothing the view has not seen yet is skipped.** The page is read as the view stands, never
+  waited for; on RavenDB a message that is not indexed yet is in the subscription batch and is served from there
   (measured index lag under a 1,000-message bulk load: tens of milliseconds, S-M7).
 - **No starvation, and no aging needed.** Every message a batch delivers is served in that batch,
   whatever the page holds, and the subscription walks the queue in commit order. A `Low` message
@@ -528,21 +532,21 @@ before it could only reorder the 256 messages one batch held):
   higher-priority messages per batch pulled ahead of it. Strict priority can delay `Low`, never starve
   it; a test keeps several pages of `High` outstanding throughout and `Low` still completes.
 - **Priority is stamped at publish.** `SparkMessage.Priority` is written from the queue's setting when
-  the message is published (an index cannot read configuration), so a changed `Priority` applies to
+  the message is published (a view cannot read configuration), so a changed `Priority` applies to
   messages published after the change.
-- **Why not a subscription per priority.** Community caps a database at 3 subscriptions, one of which
-  Replication may already use.
+- **Why not a subscription per priority.** RavenDB's Community licence caps a database at 3 subscriptions, one of
+  which Replication may already use.
 
 Throttling is unchanged: a message its queue cannot start yet is deferred before its claim, and a
-deferred message leaves the "pending now" set (and the index) until the sweeper wakes it at its slot.
+deferred message leaves the "pending now" set (and the page) until the sweeper wakes it at its slot.
 What it still does not do: a lane filled to its capacity (512 claimed messages) by an **unthrottled**
 slow low-priority queue back-pressures the feeder. Throttle bulk queues (MailManager's `mail-bulk` is).
-The feeder needs the index, which `AddMessaging()` deploys; without it the feeder logs one warning and
-serves each batch alone, priority first within it (M16's window). The measured figures are in the #460 PRD (§4.1, M16b).
+The feeder needs the view, which `AddMessaging()` registers with the application's indexes (on SQL Server and
+PostgreSQL, a view in the schema that `--spark-synchronize-model` writes). A batch whose page cannot be read fails, and the subscription delivers it again after the
+retry delay. The measured figures are in the #460 PRD (§4.1, M16b).
 
 `SubscriptionPerQueue` mode is unaffected: each queue has its own subscription, delivered one message
-at a time, and nothing is shared to prioritise. The index is deployed in both modes; only the single
-feeder reads it.
+at a time, and nothing is shared to prioritise. The view is deployed in both modes; the retry sweeper reads it too.
 
 ### Expedited messages
 
@@ -557,8 +561,8 @@ the queue's `Priority` above still ranks first. It is for rare, human-triggered 
 - **No starvation.** After 10 expedited messages in a row, one ready normal message goes next. With no
   normal message waiting, expedited ones keep going, and the first normal one to arrive goes next.
   The counter is per lane, shared by all of its pumps.
-- **The feeder pulls it ahead too.** `SparkMessages_ByPriority` sorts `Priority desc, Expedite desc,
-  Sequence asc`, so an expedited message behind more than a page of its own queue's backlog is claimed
+- **The feeder pulls it ahead too.** The feeder's page sorts `Priority desc, Expedite desc,
+  QueuedAtUtc asc`, so an expedited message behind more than a page of its own queue's backlog is claimed
   on the next wake-up. No subscription is added.
 - Persisted on every publish path (`BroadcastAsync`, `BroadcastOnceAsync`, `IMessageOutbox`), so a
   retry keeps it. Ignored in `SubscriptionPerQueue` mode.
@@ -601,9 +605,10 @@ mostly on failures or reclaims), `RateLimited` (it spent it mostly on rate-limit
 allow-list, unresolvable, empty payload) or `Expired` (`ExpiresAtUtc` passed, or the next retry or
 throttle slot would have fallen after it). The status stays `DeadLettered`; there is no new status.
 
-## RavenDB Document Model
+## Document Model
 
-Messages are stored as `SparkMessage` documents in the `SparkMessages` collection:
+Messages are stored as `SparkMessage` documents in the `SparkMessages` collection (a table on SQL Server and
+PostgreSQL):
 
 | Field | Type | Description |
 |---|---|---|
@@ -627,11 +632,11 @@ Messages are stored as `SparkMessage` documents in the `SparkMessages` collectio
 | `RateLimitedUntilUtc` | `DateTime?` | When the message's latest rate-limit park ends; null when not waiting for one |
 | `ScrubPayloadOnTerminal` | `bool` | Clear `PayloadJson` once terminal |
 | `Priority` | `int` | The queue's `SparkQueuePriority` at publish (`-1` Low, `0` Normal, `1` High); the single feeder's sort key |
-| `QueuedAtUtc` | `DateTime?` | The server's `@last-modified` when the message became claimable, captured on the feeder's first write; its FIFO place within a priority |
+| `QueuedAtUtc` | `DateTime?` | Its FIFO place within a priority: assigned by the feeder on the messaging lease holder's clock, stored with its first write |
 
-Two static indexes cover the collection: `SparkMessages_ByQueue` (the sweeper's due and abandoned
-messages) and `SparkMessages_ByPriority` (only the claimable-now messages, sorted
-`Priority desc, Sequence asc`, read by the single feeder).
+One view covers the collection: `SparkMessages_ByState` (`SparkView`: a static index on RavenDB, an SQL view on
+SQL Server and PostgreSQL). The single feeder reads its claimable-now messages, sorted
+`Priority desc, Expedite desc, QueuedAtUtc asc`, and the retry sweeper its due and abandoned ones.
 
 Each entry in the `Handlers` array tracks an individual recipient:
 
@@ -646,7 +651,7 @@ Each entry in the `Handlers` array tracks an individual recipient:
 | `CompletedAtUtc` | `DateTime?` | When this handler completed successfully |
 | `Checkpoint` | `string?` | Last checkpoint saved by `ICheckpointRecipient<T>` handlers |
 
-Example document in RavenDB Studio:
+Example document:
 
 ```json
 {
@@ -673,7 +678,7 @@ Example document in RavenDB Studio:
 
 In this example, `LogCompanyUpdated` completed on the first attempt and will not be re-executed. `NotifyEmployeesRecipient` failed twice and will resume from checkpoint `"37"` on the next retry.
 
-You can query message status directly in RavenDB Studio for observability. Completed and dead-lettered messages are automatically expired after `RetentionDays` (default 7) using RavenDB's built-in document expiration, which `UseSpark()` enables (at most every 36 h, the Community licence floor, so a terminal message can linger that long; see `docs/guide-expiration.md`).
+You can query message status directly in the database (RavenDB Studio, or SQL) for observability. Completed and dead-lettered messages are automatically expired after `RetentionDays` (default 7) through the store's document expiration, which `UseSpark()` enables (the sweep runs every 36 h, RavenDB's Community licence floor, so a terminal message can linger that long; see `docs/guide-expiration.md`).
 
 ## API Reference
 
@@ -696,7 +701,7 @@ You can query message status directly in RavenDB Studio for observability. Compl
 
 | Method | Description |
 |--------|-------------|
-| `spark.AddMessaging(Action<SparkMessagingOptions>?)` | Register messaging services and deploy the `SparkMessages/ByQueue` index |
+| `spark.AddMessaging(Action<SparkMessagingOptions>?)` | Register messaging services and the `SparkMessages_ByState` view |
 
 | Type (`MintPlayer.Spark.Messaging`) | Description |
 |------|-------------|
@@ -723,9 +728,9 @@ See the DemoApp for a working example:
 
 ## Requirements
 
-- .NET 10.0+
-- RavenDB 6.2+
-- An `IDocumentStore` registered in the DI container (provided by `AddSpark()` or registered manually)
+- .NET 11
+- A Spark store with subscriptions (`SparkStoreCapabilities.Subscriptions`): RavenDB 6.2+, SQL Server, PostgreSQL or
+  the in-memory store. `AddMessaging()` refuses another at startup.
 - `MintPlayer.Spark.SubscriptionWorker` (referenced automatically)
 
 ## License

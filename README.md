@@ -10,7 +10,7 @@ A low-code web application framework for .NET that eliminates boilerplate code. 
 - **Zero Boilerplate** - Generic middleware handles all CRUD operations
 - **Configuration Over Code** - Entity definitions stored as JSON files, auto-generated from C# classes
 - **Dynamic UI** - Angular frontend automatically renders forms and lists based on entity metadata
-- **RavenDB Integration** - Document database with index support for optimized queries
+- **Your choice of database** - RavenDB (indexes), SQL Server or PostgreSQL (tables, EF migrations, SQL views), or in memory, behind one storage abstraction
 
 ## Technology Stack
 
@@ -18,7 +18,7 @@ A low-code web application framework for .NET that eliminates boilerplate code. 
 |-----------|------------|
 | Backend | .NET 11.0 |
 | Frontend | Angular 22 |
-| Database | RavenDB 6.2+ |
+| Database | RavenDB 6.2+, SQL Server, PostgreSQL, or in memory ([relational stores](docs/guide-relational-stores.md)) |
 | UI Library | @mintplayer/ng-bootstrap |
 
 ### RavenDB licences
@@ -122,7 +122,7 @@ the wrong order, so it surfaces when you compile rather than as behaviour that n
 ```csharp
 public class MySparkContext : SparkContext
 {
-    public IRavenQueryable<Person> People => Session.Query<Person>();
+    public IQueryable<Person> People => Session.Query<Person>();
 }
 ```
 
@@ -138,17 +138,23 @@ MintPlayer.Spark/
 ├── libs/
 │   ├── spark/
 │   │   ├── MintPlayer.Spark/                     # Core framework library (CRUD)
-│   │   └── MintPlayer.Spark.Abstractions/        # Shared interfaces and models
+│   │   ├── MintPlayer.Spark.Abstractions/        # Shared interfaces and models, the storage abstraction (ISparkStore)
+│   │   ├── MintPlayer.Spark.RavenDB/             # The RavenDB store (UseRavenDb)
+│   │   ├── MintPlayer.Spark.SqlServer/           # The SQL Server store (UseSqlServer)
+│   │   ├── MintPlayer.Spark.PostgreSql/          # The PostgreSQL store (UsePostgreSql)
+│   │   ├── MintPlayer.Spark.Relational/          # What the two SQL stores share (EF Core)
+│   │   ├── MintPlayer.Spark.Relational.Design/   # Schema migrations written by --spark-synchronize-model
+│   │   └── MintPlayer.Spark.InMemory/            # The in-memory store (UseInMemory)
 │   ├── authorization/
 │   │   └── MintPlayer.Spark.Authorization/       # Optional auth + group-based access control
 │   ├── messaging/
-│   │   ├── MintPlayer.Spark.Messaging/           # Durable message bus with RavenDB persistence
+│   │   ├── MintPlayer.Spark.Messaging/           # Durable message bus on any store
 │   │   └── MintPlayer.Spark.Messaging.Abstractions/  # Messaging interfaces (IMessageBus, IRecipient<T>)
 │   ├── replication/
 │   │   ├── MintPlayer.Spark.Replication/         # Cross-module ETL replication
 │   │   └── MintPlayer.Spark.Replication.Abstractions/  # Replication interfaces and models
 │   ├── subscription_worker/
-│   │   ├── MintPlayer.Spark.SubscriptionWorker/  # RavenDB subscription-based background workers
+│   │   ├── MintPlayer.Spark.SubscriptionWorker/  # Background workers over the store's durable subscriptions
 │   │   └── MintPlayer.Spark.SubscriptionWorker.Abstractions/
 │   ├── cron/
 │   │   └── MintPlayer.Spark.Cron/                # Cron-scheduled background jobs (multi-node safe)
@@ -166,7 +172,10 @@ MintPlayer.Spark/
 │   ├── source_generators/
 │   │   └── MintPlayer.Spark.SourceGenerators/    # Compile-time DI code generation
 │   ├── testing/
-│   │   └── MintPlayer.Spark.Testing/             # Test harness: embedded RavenDB driver, in-memory host factory
+│   │   ├── MintPlayer.Spark.Testing/             # Provider-neutral test harness: drivers, in-memory host factory
+│   │   ├── MintPlayer.Spark.Testing.RavenDB/     # Embedded RavenDB test databases
+│   │   ├── MintPlayer.Spark.Testing.SqlServer/   # SQL Server test databases
+│   │   └── MintPlayer.Spark.Testing.PostgreSql/  # PostgreSQL test databases
 │   ├── socket_extensions/
 │   │   └── MintPlayer.Dotnet.SocketExtensions/   # WebSocket read/write helpers
 │   └── node_packages/                            # Angular libraries (@mintplayer/ng-spark, auth entries under ng-spark/auth)
@@ -177,7 +186,8 @@ MintPlayer.Spark/
 │   ├── Fleet/                                    # Fleet management demo (auth, messaging, replication)
 │   ├── HR/                                       # HR demo (auth, messaging, replication)
 │   ├── QnA/                                      # Q&A demo (#460: moderation, soft delete, history, mail, account pages)
-│   └── SparkId/                                  # The demo identity provider (HR, Fleet and QnA sign in here)
+│   ├── SparkId/                                  # The demo identity provider (HR, Fleet and QnA sign in here)
+│   └── SqlDemo/                                  # Spark on PostgreSQL: EF migrations and a SQL view
 └── docs/                                         # Documentation (guides, prd/, code-coverage/, codecov/)
 ```
 
@@ -211,7 +221,7 @@ MintPlayer.Spark/
 | [Theming (light / dark / Auto)](docs/guide-theming.md) | The pre-boot script and `<head>` order per app, Auto following the OS live vs a sticky Light/Dark choice, the `bs-theme-mode` cookie and `cookieDomain`, and recolouring through `--spark-shell-*` and `--bs-*` custom properties (not Sass `$*-dark`) |
 | [TranslatedString & i18n](docs/guide-translated-strings.md) | Multi-language support for labels, descriptions, and validation messages |
 | [Attribute Descriptions](docs/guide-attribute-descriptions.md) | Help text per attribute, rendered as an [i] tooltip; seeded from `[Description]` or `///` summaries on synchronize |
-| [Identity & external login](libs/authorization/MintPlayer.Spark.Authorization/README.md) | The optional identity package: RavenDB-backed ASP.NET Identity, OAuth providers, JWT bearer, and the Angular half |
+| [Identity & external login](libs/authorization/MintPlayer.Spark.Authorization/README.md) | The optional identity package: ASP.NET Identity on the application's store, OAuth providers, JWT bearer, and the Angular half |
 | [Identity provider](libs/identity_provider/MintPlayer.Spark.IdentityProvider/README.md) | Making a Spark app an OpenID Connect provider: the library layer and its two groups, endpoints, options, keys, consent, sessions, and resource servers (`AddSparkResourceServer`, `RequireScope`) |
 | [Registering applications (developers)](docs/guide-identity-provider-developers.md) | For developers using a Spark identity provider: becoming a developer, teams and invitations, Development and Live, secrets shown once, scopes and API resources, client authentication, dynamic registration |
 | [MCP server (planned)](docs/guide-mcp.md) | Letting AI agents (Claude Code, Codex, Gemini) use your app as the signed-in user: three sign-in setups, `agentPermissions` per app, type and grant, generic and own tools, propose → apply for changes, fencing untrusted text. End users: [Connect an AI agent](docs/guide-mcp-agents.md) |
@@ -223,11 +233,11 @@ MintPlayer.Spark/
 | [Manager & Retry Actions](docs/guide-manager-retry-actions.md) | IManager interface, confirmation dialogs, chained retry actions |
 | [CORS](docs/guide-cors.md) | Which endpoints a page on another origin may read: Spark's own answer cross-origin by default, a library's and your own do not, and how each opts in or out — plus why the wildcard makes the dangerous configuration unreachable |
 | [Rate Limiting](docs/guide-rate-limiting.md) | Opting into the fixed-window limiter, metering your own path prefixes, where the middleware sits, and why a second `UseRateLimiter()` halves your budget |
-| [Durable Message Bus](libs/messaging/MintPlayer.Spark.Messaging/README.md) | RavenDB-backed messaging with per-handler retry isolation, checkpoint support, and queue isolation |
+| [Durable Message Bus](libs/messaging/MintPlayer.Spark.Messaging/README.md) | Messaging on any store with per-handler retry isolation, checkpoint support, and queue isolation |
 | [Outgoing mail (MailManager)](docs/guide-outgoing-mail.md) | Transports and why none is silent, Development fail-closed and Mailpit, DNS and the relay container, templates, bulk pacing, bounces and suppression ([package README](libs/mail/MintPlayer.Spark.MailManager/README.md)) |
 | [Settings](docs/guide-settings.md) | Admin-changeable feature switches and limits: `SparkSetting<T>` declared in code, stored value over configuration over default, the `settings:administrators` slot, seeding, save validation and the 30 s cache ([package README](libs/settings/MintPlayer.Spark.Settings/README.md)) |
 | [Notifications & Web Push](docs/guide-notifications.md) | One `ISparkNotifier` call reaches a user in-app (live over `/spark/live`), by mail and by Web Push, through their channels per organization; the hand-rolled RFC 8291/8292 library, VAPID keys, the push-service allow-list, and the Angular bell and opt-in ([package README](libs/notifications/MintPlayer.Spark.Notifications/README.md), [Web Push README](libs/webpush/MintPlayer.Spark.WebPush/README.md)) |
-| [Dashboards](docs/guide-dashboards.md) | Administrator dashboards as live virtual pages: `IDashboardProvider`, the `dashboards:administrators` slot, built-in RavenDB statistics and host metrics, history on single-valued RavenDB time series, and ng-spark's tile layout with the meter, stat and table renderers ([package README](libs/dashboards/MintPlayer.Spark.Dashboards/README.md)) |
+| [Dashboards](docs/guide-dashboards.md) | Administrator dashboards as live virtual pages: `IDashboardProvider`, the `dashboards:administrators` slot, built-in database statistics and host metrics, history (single-valued RavenDB time series, or sample rows on the other stores), and ng-spark's tile layout with the meter, stat and table renderers ([package README](libs/dashboards/MintPlayer.Spark.Dashboards/README.md)) |
 | [Boards](docs/guide-boards.md) | Pages of tiles that each signed-in user arranges: default boards in `App_Data/boards.json`, the `query`, `count`, `persistentObject` and `programUnit` kinds, filtering by rights on every read and save, per-user layouts per column count, and "Pin to dashboard" ([package README](libs/boards/MintPlayer.Spark.Boards/README.md)) |
 | [Server-side rendering](docs/guide-ssr.md) | Pages rendered on the server with their data and hydrated in the browser: `AddPrerendering`/`UseSparkPrerendering`, the in-process supplier (same endpoints, same authorization, byte-equal responses), boards on their paths, the development watch build, and the model's `seo` mapping plus `withSeo` for titles, robots, canonical, Open Graph and JSON-LD |
 | [Object URLs and languages](docs/guide-object-urls.md) | Every object's canonical `href` and the server's 301 to it, slugs (`"slug": false` per type), a type at its own URL (`"route"` + `sparkObjectRoute`), natural-key URLs through `ISparkEntityRedirect`, and the language in the URL: `?lang`, `withLanguageUrls()`, hreflang tags, sitemap alternates and the link-based language picker |
@@ -237,22 +247,22 @@ MintPlayer.Spark/
 | [Score renderers](docs/guide-score-renderers.md) | Gauge, threshold bar, trend and delta attribute renderers in ng-spark, configured by options; what CodeCoverage's coverage bar, sparkline and delta are built on |
 | [Organizations](docs/guide-organizations.md) | Users in organizations with Owner/Admin/Member/Viewer roles, a personal organization per user, invitations and join requests by mail, and `IOrganizationOwned`: rows reached only by members with the role the action needs; cascade delete and export hooks ([package README](libs/organizations/MintPlayer.Spark.Organizations/README.md)) |
 | [Soft Delete](libs/soft_delete/MintPlayer.Spark.SoftDelete/README.md) | `ISoftDeletable`: a delete becomes a mark, deleted rows hidden on every path, restore and purge, the recycle bin |
-| [History](libs/history/MintPlayer.Spark.History/README.md) | RavenDB revisions from the model, audit stamping, revision reads and revert through the save pipeline, licence limits |
+| [History](libs/history/MintPlayer.Spark.History/README.md) | Revisions from the model on any store, audit stamping, revision reads and revert through the save pipeline, RavenDB's licence limits |
 | [Audit fields](docs/guide-auditing.md) | `IAuditCreated` / `IAuditModified` / `IAuditable`, `ISoftDeletable`, `IModeratable`: declare the interface and the members are generated; who stamps them, and which writes are not stamped |
 | [Stored logs](docs/guide-logging.md) | `spark.AddLogs()`: what any `ILogger` logs inside a log scope is saved as a `Log` document on any store, readable only by whoever may read its related record; nothing is granted by default ([package README](libs/logging/MintPlayer.Spark.Logging/README.md)) |
 | [Moderation](docs/guide-moderation.md) | Votes, reputation, earned privileges as groups, vote-fraud defences, flags, lock/suspend ([package README](libs/moderation/MintPlayer.Spark.Moderation/README.md)) |
 | [Contributions](docs/guide-contributions.md) | Per-user versions of a property with latest-wins: `[Contribution]` / `[ContributionSlot]`, the current-document design, withdraw and revert, rights without a `Contribute` verb, moderation, the ng-spark pieces ([package README](libs/contributions/MintPlayer.Spark.Contributions/README.md)) |
 | [Cross-Module Synchronization](docs/guide-cross-module-sync.md) | Entity replication between modules with write-back support |
 | [Cross-Module mTLS](docs/guide-replication-mtls.md) | Issuing and pinning the client certificates that authenticate one module to another |
-| [Subscription Workers](libs/subscription_worker/MintPlayer.Spark.SubscriptionWorker/README.md) | RavenDB subscription-based background processing with retry handling |
-| [Cron Jobs](libs/cron/MintPlayer.Spark.Cron/README.md) | Cron-scheduled background jobs, UTC schedules, schedule overrides, multi-node compare-exchange locking |
+| [Subscription Workers](libs/subscription_worker/MintPlayer.Spark.SubscriptionWorker/README.md) | Background processing over the store's durable subscriptions, with retry handling |
+| [Cron Jobs](libs/cron/MintPlayer.Spark.Cron/README.md) | Cron-scheduled background jobs, UTC schedules, schedule overrides, multi-node locking through the store's atomic values |
 | [Apps & outbound webhooks](docs/guide-apps-webhooks.md) | Signed Standard Webhooks to your users and organizations: `[WebhookEvent]` and the public catalog, publishing in the write's session (keyed for code that runs twice), entity events, owner kinds, retries, ordering and the delivery log; Apps that users install, with installation tokens and granted permissions ([package README](libs/apps/MintPlayer.Spark.Apps/README.md)) |
 | [Receiving webhooks](docs/guide-webhook-receivers.md) | Typed events from a Spark site's catalog (`spark webhooks generate`), the Spark, ASP.NET Core, .NET and Node receivers, secrets and rotation, answering and deduplicating, and an App's installation token |
 | [GitHub Webhooks](libs/webhooks/MintPlayer.Spark.Webhooks.GitHub/README.md) | React to GitHub events via typed messages, with smee.io and WebSocket dev tunneling |
 | [GitHub Webhooks — Dev Tunnel](libs/webhooks/MintPlayer.Spark.Webhooks.GitHub.DevTunnel/README.md) | Dev-only: receive real webhook deliveries on localhost via smee.io or WebSocket forwarding from production |
 | [Docker Deployment](docs/guide-docker-deployment.md) | Deploy with Docker Compose, RavenDB configuration, Traefik reverse proxy, and the forwarded-headers trust list Spark configures |
 | [Data Protection](docs/guide-data-protection.md) | Where the key ring lives (`Spark:DataProtection`), why an unpersisted one refuses to start outside Development, and why an unmounted key folder signs everyone out on redeploy |
-| [Testing Harness](libs/testing/MintPlayer.Spark.Testing/README.md) | Embedded RavenDB driver, in-memory Spark host factory, antiforgery-aware HTTP client, JSON fixtures, Verify defaults |
+| [Testing Harness](libs/testing/MintPlayer.Spark.Testing/README.md) | Test databases on every store (embedded RavenDB, SQL Server, PostgreSQL, in memory), in-memory Spark host factory, antiforgery-aware HTTP client, JSON fixtures, Verify defaults |
 | [Testing without a browser — `SparkClient`](libs/client/MintPlayer.Spark.Client/README.md) | Drive a real Spark backend from C# over the same protocol the Angular frontend uses: CRUD, queries, actions, auth. What it covers, what it cannot do yet, and why it will never replace browser tests |
 | [`@mintplayer/ng-spark`](libs/node_packages/ng-spark/README.md) | The Angular front end: `provideSpark()`, `sparkRoutes()` and every secondary entry point — panels, soft delete, history, moderation, renderers, client operations, `withSparkTimezone` |
 | [`@mintplayer/ng-spark/auth`](libs/node_packages/ng-spark/auth/README.md) | The Angular half of Authorization: `withAuth()`, `sparkAuthRoutes(...)` with `withLocalLogin` / `withRegistration` / `withExternalLogin` / `withPasskeys` / `withAccount()`, the guards and entry points |
@@ -263,7 +273,7 @@ MintPlayer.Spark/
 - **[Spark Client API](libs/client/MintPlayer.Spark.Client/README.md)** - The typed .NET client for that protocol, and what it can and cannot test
 - **[Spark Library API](libs/spark/MintPlayer.Spark/README.md)** - Detailed API reference and usage guide
 - **[Messaging API](libs/messaging/MintPlayer.Spark.Messaging/README.md)** - Message bus API reference
-- **[Cron Jobs](libs/cron/MintPlayer.Spark.Cron/README.md)** - Cron-scheduled background jobs: `ISparkCronJob`, schedule overrides, multi-node compare-exchange locking
+- **[Cron Jobs](libs/cron/MintPlayer.Spark.Cron/README.md)** - Cron-scheduled background jobs: `ISparkCronJob`, schedule overrides, multi-node locking through the store's atomic values
 - **[Product Requirements Document](docs/prd/PRD.md)** - Full specification and architecture
 - **[Compiler diagnostics](docs/diagnostics.md)** - Every `SPARK*` diagnostic, what raises it, and its code fix
 - **[Release notes 11.0.0-preview.91](docs/release-notes-preview-91.md)** - The #460 release: breaking changes, new packages, the operator checklist
@@ -273,9 +283,9 @@ MintPlayer.Spark/
 
 ### Prerequisites
 
-- [.NET 10.0 SDK](https://dotnet.microsoft.com/download)
+- [.NET 11.0 SDK](https://dotnet.microsoft.com/download)
 - [Node.js 20+](https://nodejs.org/)
-- [RavenDB 6.2+](https://ravendb.net/) (local instance or Docker)
+- [RavenDB 6.2+](https://ravendb.net/) (local instance or Docker) for the demos; `apps/SqlDemo` needs PostgreSQL instead
 - IDE: Visual Studio 2025 / VS Code / JetBrains Rider
 
 ### Building the Project

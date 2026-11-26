@@ -780,7 +780,7 @@ See the demo apps for working authorization setups:
 
 ## Requirements
 
-- .NET 10.0+
+- .NET 11.0
 - A Spark store: RavenDB 6.2+, SQL Server, PostgreSQL or in memory
 - Node.js (for automatic npm integration)
 - Angular 22+ (for frontend components)

@@ -17,7 +17,7 @@ Or install the tool once: `dotnet tool install -g MintPlayer.Spark.Cli`, then `s
 |---|---|
 | `[name]` | The solution, app project and namespace. |
 | `-o`, `--output` | The directory to create; defaults to the name. |
-| `--store RavenDB\|InMemory` | Most features need RavenDB. |
+| `--store RavenDB\|InMemory` | Sign-in, Replication and the OpenSearch engine need RavenDB. The SQL Server and PostgreSQL stores are not offered yet: add them to the generated app by hand (`UseSqlServer`/`UsePostgreSql`, as `apps/SqlDemo` does). |
 | `--auth none\|authorization\|oidc` | Local accounts, or an external provider with `--oidc-authority <url>`. |
 | `--features a,b` | Feature flags (`migrations,history,…`) or `none`; prerequisites are added. |
 | `--no-client` | No Angular client. |

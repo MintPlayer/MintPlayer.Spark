@@ -12,7 +12,7 @@
 		<Version>0.0.0-PLACEHOLDER</Version>
 		<Authors>MintPlayer</Authors>
 		<Company>MintPlayer</Company>
-		<Description>Durable message bus for MintPlayer.Spark with RavenDB persistence, scoped recipients, queue isolation, and retry logic.</Description>
+		<Description>Durable message bus for MintPlayer.Spark on any store with subscriptions (RavenDB, SQL Server, PostgreSQL or memory), with scoped recipients, queue isolation, and retry logic.</Description>
 		<PackageTags>messaging;message-bus;ravendb;background-service</PackageTags>
 		<PackageLicenseExpression>MIT</PackageLicenseExpression>
 		<PackageProjectUrl>https://github.com/MintPlayer/MintPlayer.Spark</PackageProjectUrl>

@@ -213,7 +213,7 @@ value records the last claimed occurrence, so adding catch-up later would be an 
 
 ## Requirements
 
-- .NET 10.0+
+- .NET 11.0
 - An `IDocumentStore` registered in the DI container (provided by `AddSpark()`).
 - For source-generated registration: `MintPlayer.Spark.SourceGenerators`.
 

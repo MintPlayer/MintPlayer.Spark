@@ -11,7 +11,7 @@ namespace MintPlayer.Spark.Tests.Messaging;
 
 /// <summary>
 /// <see cref="MessageRetrySweeper"/> takes its ids from a query, and on RavenDB a query answers from an index that
-/// under load lags the documents by seconds (#536 D40: a plain query, so an auto-index, where it used to be the
+/// under load lags the documents by seconds (#536 D42: the view SparkMessages_ByState, where it used to be the
 /// static SparkMessages_ByQueue). Each test lets the sweep's queries build their indexes, indexes a message, stops
 /// indexing, then moves the document on, so the query lists it in a state it has left: exactly what a loaded host
 /// sees. The sweep must judge the document, not the query's answer.

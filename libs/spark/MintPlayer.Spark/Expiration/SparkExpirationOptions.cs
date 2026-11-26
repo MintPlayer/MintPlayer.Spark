@@ -10,7 +10,7 @@ public sealed class SparkExpirationOptions
     public const string SectionName = "Spark:Expiration";
 
     /// <summary>
-    /// How often RavenDB sweeps expired documents. Default and minimum
+    /// How often the store sweeps expired documents (<see cref="MintPlayer.Spark.Abstractions.Storage.ISparkStoreExpiration.EnableSweep"/>). Default and minimum
     /// <see cref="SparkExpiration.MinimumDeleteFrequency"/> (36 hours): the Community licence refuses
     /// anything more frequent, and startup refuses it on every licence so a Developer licence in CI
     /// cannot hide the mistake.
