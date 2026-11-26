@@ -61,7 +61,8 @@ public sealed record SparkViewSql(string Sql, IReadOnlyList<string> Tables);
 /// <item>D3: a <c>Version</c> bigint concurrency token on every table, moved by the session.</item>
 /// <item>D6: a <c>SparkChangeStamp</c> on every table, moved by the database, which the change feed reads.</item>
 /// <item>D7: text keys and the FK columns pointing at them compare bytes (the dialect's binary collation).</item>
-/// <item>D25: a <c>[ValueObject]</c> collection is a child table keyed by (owner id, row key), deleted with its owner.</item>
+/// <item>D25: a <c>[ValueObject]</c> collection is a child table keyed by (owner id, row key), deleted with its owner;
+/// <see cref="PositionProperty"/> keeps the list's order.</item>
 /// <item>D26: an id property is an FK column, a reference list a join table; neither is an EF navigation.</item>
 /// <item>D1: a value without a relational shape is a JSON column.</item>
 /// </list>
@@ -77,6 +78,12 @@ public sealed class SparkDbContext : DbContext
 
     /// <summary>D6: the change stamp, which the database moves on every insert and update of the row (#536 M4e).</summary>
     public const string StampProperty = "SparkChangeStamp";
+
+    /// <summary>
+    /// D25/D26: a child or join row's position in its list, so a list loads in the order it was stored, as a document
+    /// keeps it (and <c>[Sortable]</c>, "the order is the array position", persists).
+    /// </summary>
+    public const string PositionProperty = "SparkPosition";
 
     internal const int KeyLength = SparkFrameworkSchema.KeyLength;
 
@@ -134,6 +141,7 @@ public sealed class SparkDbContext : DbContext
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
         => optionsBuilder
+            .AddInterceptors(Storage.SparkListPositions.Interceptor)
             .ReplaceService<IModelCacheKeyFactory, SparkModelCacheKeyFactory>()
             .ReplaceService<Microsoft.EntityFrameworkCore.Migrations.IMigrationsModelDiffer, Schema.SparkMigrationsModelDiffer>();
 
@@ -268,6 +276,7 @@ public sealed class SparkDbContext : DbContext
             KeyColumn(ownerKey, owner.IdProperty.PropertyType, owner);
             child.Property(rowKey).HasMaxLength(KeyLength).ValueGeneratedNever();
             child.HasKey(OwnerIdProperty, rowKey);
+            child.Property<int>(PositionProperty);
             foreach (var member in element.GetProperties(BindingFlags.Public | BindingFlags.Instance).Where(p => p.GetIndexParameters().Length == 0))
             {
                 if (member.Name == rowKey)
@@ -345,6 +354,7 @@ public sealed class SparkDbContext : DbContext
                 target.HasMaxLength(KeyLength).UseCollation(Setup.Dialect.KeyCollation);
             }
             b.HasKey(OwnerIdProperty, TargetIdProperty);
+            b.IndexerProperty<int>(PositionProperty);
             b.HasOne(owner.Root).WithMany().HasForeignKey(OwnerIdProperty).OnDelete(DeleteBehavior.Cascade);
             if (join.Target is { } t && join.ElementType == t.IdProperty.PropertyType)
                 b.HasOne(t.Root).WithMany().HasForeignKey(TargetIdProperty).OnDelete(DeleteBehavior.Restrict);

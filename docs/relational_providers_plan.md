@@ -4,17 +4,39 @@ Issue [#536](https://github.com/MintPlayer/MintPlayer.Spark/issues/536). The wha
 [`relational_providers_PRD.md`](relational_providers_PRD.md). This file holds the how and when: spikes, grilling
 rounds, milestones and status. Branch `feat/536-sql-server-provider`, draft PR #697, **one pull request** (O1).
 
-## 1. Status (2026-11-25)
+## 1. Status (2026-11-26)
 
-- **Now (2026-11-26): done. Every milestone M1–M9 is implemented and PR #697 is ready for review.** The pull-request
-  run 45720024787 (head 7f7fe9e82) is green, including the SQL Server and PostgreSQL legs. The first run's three
-  failures are fixed (M9b, "First CI run"). Two things remain, both for the owner:
-  - **GitGuardian:** the check fails on six false positives in earlier commits of the PR. Five are
-    `apps/SqlDemo/SqlDemo/App_Data/modelHashes.json` hashes. The sixth is `password="$(openssl rand -hex 16)"` in
-    `.github/workflows/test.yml`, a value made fresh per run. Every commit is scanned, so they were cleared in the
-    dashboard (Ignore, false positive) on 2026-11-26; the next push rescans.
-  - **Decisions O18, O19 and O20** (PRD §10): the owner took every recommendation on 2026-11-26. Work after the
-    green run, uncommitted until all three are built (then one commit and push):
+- **Now (2026-11-26): M1–M9 and O18–O20 are built (pushed as 460a17281). An audit of the plan's older entries found
+  two items, both built since; only O21 waits, on the owner.** PR #697 stays ready for review.
+  - **Built after the audit:**
+    1. **A list's order on SQL** (PRD D25, defect, fixed). Child and join tables now have `SparkPosition`. It is
+       written on save, and the load is ordered by it: join rows in the query, child rows through the
+       `SparkListPositions` materialization interceptor.
+       - `RelationalStoreTests.Child_and_reference_lists_keep_their_order` was red first and is now green on LocalDB
+         and PostgreSQL 18.
+       - SqlDemo has no child or join tables, so a regenerated migration came out identical and was not kept.
+    2. **The view shapes EF cannot render are refused by name** (PRD D43 "Limits"): maps that assign different
+       members, and a reduce that gathers a list. `RelationalViewTests.A_multi_map_whose_maps_assign_different_members_is_refused`
+       and `A_reduce_that_gathers_a_list_is_refused` were red first, and are green on both.
+    - **Found on the way:** `PostgreSqlBehaviourTests.D6_the_horizon_…` failed once in a full Relational.Tests run.
+      - The horizon was 39416 against a fast stamp of 39417.
+      - The cause: `pg_snapshot_xmin` is the oldest transaction running on the whole server. Another test class
+        running at the same time held it below the fast stamp after the slow transaction ended.
+      - The test now asserts what D6 relies on: the slow transaction is in the snapshot's running list while it is
+        open, and is gone once it commits. SQL Server's `MIN_ACTIVE_ROWVERSION()` is per database, so its twin is
+        unaffected.
+  - **Open, for the owner:** O21 (PRD §10), whether SQL stores an enum by name, as RavenDB does, or as an integer.
+  - **Recorded, not planned:** an index on a reduce view's group-key columns (M7e's other TODO: SQL Server reads the
+    whole 2,250-cell view in 565–711 ms, "fast enough"); the template's SQL store choices (after the packages' first
+    release, SPARKTPL001) and the `sparkindex` item template (M6k).
+  - **M4a's "known gaps" list, closed since:** `DateTime.Kind` (O18), the `DateTimeOffset` offset (D5, instants),
+    NULLS FIRST (S18, `SparkQuerySqlGenerator`), the Integer kind (M4b HiLo), arrays as child collections
+    (`CollectionElement` takes arrays), JSON columns (`TranslatedString`, primitive lists), and `[Sortable]` order
+    (item 1, `SparkPosition`). Enums are O21.
+  - **GitGuardian:** six false positives in earlier commits (five SqlDemo `modelHashes.json` hashes, and
+    `password="$(openssl rand -hex 16)"` in `test.yml`) were ignored in the dashboard on 2026-11-26; the push rescans.
+  - **Decisions O18, O19 and O20** (PRD §10): the owner took every recommendation on 2026-11-26; built and pushed
+    in 460a17281:
     - **O18 built:** every `DateTime` reads as UTC on SQL (base dialect converter). Conformance green on both SQL
       databases (74/74) and Raven/InMemory. The analyzer note is SPARK066 (Info, `RelationalDateTimeAnalyzer`, only
       where a relational store is referenced); `RelationalDateTimeAnalyzerTests` 2/2, red first; `docs/diagnostics.md`.
@@ -45,7 +67,7 @@ rounds, milestones and status. Branch `feat/536-sql-server-provider`, draft PR #
       - PRD O20 recorded (decided, built, measurements, costs).
     - Verified before the push: Relational.Tests on PG 18 + LocalDB 239/241 (2 skipped), Spark.Tests' InMemory and
       RavenDB conformance classes 115/116 (1 skipped), `RelationalDateTimeAnalyzerTests` 2/2. Release notes and the
-      PR body record the three decisions. Next: CI on the push, and GitGuardian's rescan.
+      PR body record the three decisions. CI run 45783875101 on 460a17281.
 
   The entries below are each milestone's record; the oldest bullets describe the state of their day.
 - **M1 (the gate spikes) is done.** Everything so far is docs and throwaway spikes
@@ -55,10 +77,10 @@ rounds, milestones and status. Branch `feat/536-sql-server-provider`, draft PR #
   - S1, S2, S12 and S13 are done too. Since round 3 they are history for the storage model.
   - The latest spike prototype is `docs/relational_spike/s2b/`: an EF implementation of the storage seam with views,
     versions and D30. It has 64/64 tests green on both databases, and its README says how to rerun it.
-- **Every decision is made; nothing is open** (§3):
+- **Decisions** (§3): O21 is open (2026-11-26); everything else is decided:
   - grilling rounds 1–5
   - the commercial-framework comparison and the LLM rounds 6–9
-  - O1–O17 (O8 and O9 on 2026-11-24)
+  - O1–O17 (O8 and O9 on 2026-11-24), O18–O20 (2026-11-26)
 - **Scope:** SQL Server (2022, 2025) and PostgreSQL (17 and later; CI on 18, O8). MariaDB is deferred (O6). Tier 4
   (identity_provider, dashboards) is in. The demo is a new `apps/SqlDemo`.
 - **Storage model (round 3):**
@@ -789,18 +811,20 @@ rounds, milestones and status. Branch `feat/536-sql-server-provider`, draft PR #
     - **Spike S16-V** (`RelationalReduceViewSpikeTests`, `SPARK_S16_SPIKE=1`): 100k events, 1,000 users, 30 days, no index
       on the group key. One user's cells: PostgreSQL 10 ms warm (46 cold), SQL Server 55–66 ms warm (929 cold); the
       whole view (2,250 cells): PostgreSQL 23–33 ms, SQL Server 565–711 ms. Fast enough for moderation's reads (a
-      user's reputation, the nightly detector). TODO: an index on the group-key columns would cut SQL Server's.
+      user's reputation, the nightly detector). TODO: an index on the group-key columns would cut SQL Server's
+      *(2026-11-26: recorded, not planned; §1)*.
     - **Investigation (2026-11-25, owner asked):**
       - EF translates `Concat` of member-init projections from different tables to `UNION ALL` when both sides assign
         **every** member (else `ProjectionMappingCountMismatch`; `SelectExpression.cs:2320`), and a `GroupBy` with
         scalar aggregates over it (`AdHocMiscellaneousQueryRelationalTestBase.cs:2600`). The column type comes from the
         first side: give it a typed value, never a bare `null`. Use `0`, not `null`, for a sum a map lacks. A collection
-        inside a group (`g.ToList()`) throws. The renderer must refuse those shapes with a clear message (TODO).
+        inside a group (`g.ToList()`) throws. The renderer must refuse those shapes with a clear message
+        *(done 2026-11-26, §1 item 2: `RefuseUnevenMaps`, `RefuseListsInReduce`)*.
       - Repo survey: the PRD's "no index uses multi-map or fan-out" is wrong. `apps/MintPlayer/.../Likes_Count.cs:14` is a
         multi-map **with fan-out** (`from subjectId in u.Likes`) and a reduce, and the generated `Spark_Search` is a
         multi-map without reduce (S10). Moderation's three reduces are single-map. `[GenerateIndex]` cannot emit
         multi-maps. Fan-out (`SelectMany` over a list) is NOT supported by views yet (TODO: EF primitive collections →
-        `OPENJSON`/`jsonb_array_elements`; RavenDB `from x in d.List`).
+        `OPENJSON`/`jsonb_array_elements`; RavenDB `from x in d.List`) *(done in M7g, PRD D43)*.
     - **Relational limit found:** a row type maps to one SQL view (`SparkRelationalModel.MapViews`), so two views
       cannot share a row type.
     - **Evidence (views part, commit after `1c72801d2`):** `NeutralReduceViewTests` (single-map reduce through

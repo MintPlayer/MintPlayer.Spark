@@ -541,6 +541,13 @@ the aggregate tables of the S16 row and the §"Map-reduce index" table row (*rou
   (PostgreSQL) and 55–66 ms (SQL Server) warm; the whole 2,250-cell view in 23–33 ms and 565–711 ms.
 - **Limits:** every map assigns every member (EF's set operations require it), a sum a map lacks is `0`, the reduce
   uses keys and scalar aggregates only, a reduce view has no `Id` and is never an entity type's default.
+  - **Refused by name (2026-11-26):** EF's own errors for the first two did not say which map or member, so the view
+    renderer refuses them first, with a `NotSupportedException` that names the view.
+    - Maps that assign different members are refused, naming each map's source type and the members it leaves out.
+    - A reduce that gathers a list per group (`g.ToList()`, `g.SelectMany(…)`) is refused, naming the members.
+    - Tests: `RelationalViewTests.A_multi_map_whose_maps_assign_different_members_is_refused` and
+      `A_reduce_that_gathers_a_list_is_refused`, red first on both SQL databases.
+    - RavenDB has neither limit.
 - **Fan-out maps (M7g, 2026-11-25):** `from x in s.Set<T>() from item in x.List select new TRow { … }` yields one row
   per list item (`Likes_Count`).
   - RavenDB renders `docs.SelectMany(x => x.List, (x, item) => …)`.
@@ -1040,6 +1047,24 @@ EF tools would have to rebuild).
 - Child rows already have ids (`ValueObjectKeyGenerator` emits `string Id`).
 - A child table is keyed by (owner id, child id), with an FK to the owner and cascade delete.
 - On RavenDB they stay embedded in the parent document.
+- **Defect found and fixed 2026-11-26: a list's order was lost on SQL.**
+  - **The defect:** a document keeps a list in its stored order. A child table (and D26's join table) had no ordinal
+    column, so rows loaded in key order. So an AsDetail list showed reordered after a reload, and `[Sortable]` (order is
+    the array position) could not persist a drag.
+  - **Evidence:** `RelationalStoreTests.Child_and_reference_lists_keep_their_order` was red on SQL Server (LocalDB) and
+    PostgreSQL 18. Jobs stored as c, a, b loaded as a, b, c; skills stored as sql, csharp loaded as csharp, sql.
+  - **The fix:** every child and join table has a framework column `SparkPosition` (`SparkDbContext.PositionProperty`).
+    - On save, the session numbers each child row by its place in the list (`WriteChildPositions`), and writes a join
+      row's position. A kept join row moves in place rather than being deleted and inserted. A reorder is a change, so
+      it moves the owner's version, as it changes a document on RavenDB.
+    - On load, join rows are ordered by position.
+    - EF loads an owned collection in key order and takes no ordered include for it. So a materialization interceptor
+      (`SparkListPositions`) notes each child row's position, and the session sorts the lists it has just loaded.
+    - A list holding a row the session already tracked is left alone, because its order may be an unsaved edit.
+  - **Verified:** the test is green on both SQL databases, and Relational.Tests passes on both.
+    - SqlDemo has no child or join tables, so its migration is unchanged.
+    - RavenDB and memory keep a list's order in the document. Their primitive-list order is already asserted by the
+      conformance suite's `PatchAppend` test.
 
 **D26 (round 3): references are real foreign keys, with no navigation properties.**
 - `Id<T>` and `Id<T>?` are FK columns.
@@ -1992,7 +2017,8 @@ Round 3 replaced all of these (D1, D23–D27).
 
 ## 10. Open questions for the owner
 
-**All answered (2026-11-24): none is open.** Grilling round 2 (owner) answered O1, O2, O3 and O6. Round 3 reversed
+**Open: O21 (found 2026-11-26).** O18–O20 were found in M4b/M5b and decided by the owner on 2026-11-26 (built).
+Everything before them was answered on 2026-11-24. Grilling round 2 (owner) answered O1, O2, O3 and O6. Round 3 reversed
 D1 and added D23–D27, and the commercial-framework comparison added D30. Round 5 decided O10–O13. The owner
 decided O14–O17, and O8 and O9 last. The plan §3 has the log.
 
@@ -2240,6 +2266,7 @@ decided O14–O17, and O8 and O9 last. The plan §3 has the log.
   The question as it stood (found in M5b, 2026-11-25): measured with the store conformance suite, a
   row named `Alpha` queried with `Name == "ALPHA"` and `Name.StartsWith("al")`:
 
+
   | Provider | `==` | `StartsWith` | Why |
   |---|---|---|---|
   | RavenDB | found | found | the auto-index's default analyzer lowercases terms |
@@ -2258,6 +2285,19 @@ decided O14–O17, and O8 and O9 last. The plan §3 has the log.
   - Recommendation: (a). The trap: a nondeterministic collation makes `DISTINCT` and `GROUP BY` fold `Alpha` and `ALPHA`
     into one value, as RavenDB's facets already do. The conformance guard keeps its data unambiguous in case until this
     is decided.
+- **O21, how an enum is stored on SQL (open, found 2026-11-26):** RavenDB stores an enum by name (the client's
+  `SaveEnumsAsIntegers` is false and Spark keeps it), InMemory too (`StringEnumConverter`), but EF maps an enum to an
+  integer column (SqlDemo's `Status` is `integer`). Equality filters agree (`Queries_filter_on_strings_enums_dates_and_guids`
+  is green everywhere); two things differ:
+  - **Sorting:** RavenDB orders by name, SQL by value.
+  - **Changing the enum:** inserting or reordering members without explicit values silently changes the meaning of
+    stored rows on SQL; renaming a member orphans stored values on RavenDB.
+  - (a) **Store by name on SQL too** (`HasConversion<string>()` for every enum): RavenDB's meaning, sorting agrees,
+    and the column is readable; it costs a wider column and a string compare.
+  - (b) **Keep integers** and document the difference.
+  - Recommendation: (a), the same reasoning as O20: apps were written against RavenDB. The trap: an enum with
+    `[Flags]` stored by name is `"Read, Write"`, which a bitwise filter cannot use; (a) would keep `[Flags]` enums as
+    integers.
 
 ## 11. Out of scope
 

@@ -238,6 +238,12 @@ tags, and everything ships once the merged pull request is backported to `releas
       becomes `RenameColumn`, plus `AlterColumn` when the type changed as well. A conversion the database cannot make
       fails the migration rather than dropping the column; edit the scaffolded migration then. Two attributes with
       different ids are never paired, even when EF would have guessed a rename.
+    - **A list keeps its order** (D25): every child and join table has a `SparkPosition` column, written on save, and
+      a list loads in the order it was stored, as a document keeps it. So an AsDetail list and a `[Sortable]` drag
+      survive a reload. Reordering a list is a change, so it moves the document's version.
+    - **Views SQL cannot write are refused by name** (D43): a multi-map whose maps assign different members (each map
+      names the members it leaves out; assign a typed default such as `0`), and a reduce that gathers a list per group
+      (`g.ToList()`), fail at startup with the view's name. RavenDB takes both.
 
     **Migrations (M4c):** at startup (or with `--spark-migrate`) the provider creates the database, applies Spark's
     own schema (schema `spark`) and then the app's EF migrations, holding a lock in the server's maintenance database

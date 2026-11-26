@@ -515,6 +515,7 @@ public sealed partial class RelationalSparkSession : ISparkSession
             await ResolveExistingRowsAsync(cancellationToken);
             await ResolveUnversionedDeletesAsync(cancellationToken);
             await ApplyPatchesAsync(cancellationToken);
+            WriteChildPositions();
             var changedOwners = await WriteJoinRowsAsync(cancellationToken);
             MoveVersions(changedOwners);
             await ApplyReservationsAsync(cancellationToken);
@@ -640,7 +641,36 @@ public sealed partial class RelationalSparkSession : ISparkSession
         }
     }
 
-    /// <summary>D26: rewrites an owner's join rows when its list differs from what is stored. Returns the owners changed.</summary>
+    /// <summary>
+    /// D25: numbers each child row by its place in its list, so the list loads back in that order. A moved row is a
+    /// changed row, so a reorder moves the owner's version (<see cref="MoveVersions"/>), as it changes a document.
+    /// </summary>
+    private void WriteChildPositions()
+    {
+        db.ChangeTracker.DetectChanges();
+        foreach (var root in Roots().Where(e => e.State != EntityState.Deleted).ToList())
+            foreach (var collection in root.Collections.Where(c => c.Metadata.TargetEntityType.IsOwned()))
+            {
+                if (collection.CurrentValue is null)
+                    continue;
+                var position = 0;
+                foreach (var item in collection.CurrentValue)
+                {
+                    if (item is not null && collection.FindEntry(item) is { State: not EntityState.Deleted } child)
+                    {
+                        var stored = child.Property(SparkDbContext.PositionProperty);
+                        if (!Equals(stored.CurrentValue, position))
+                            stored.CurrentValue = position;
+                    }
+                    position++;
+                }
+            }
+    }
+
+    /// <summary>
+    /// D26: rewrites an owner's join rows when its list differs from what is stored, in its order (a kept row moves in
+    /// place). Returns the owners changed.
+    /// </summary>
     private async Task<HashSet<object>> WriteJoinRowsAsync(CancellationToken cancellationToken)
     {
         var changed = new HashSet<object>(ReferenceEqualityComparer.Instance);
@@ -661,18 +691,40 @@ public sealed partial class RelationalSparkSession : ISparkSession
             foreach (var entity in mine)
             {
                 var ownerId = GetId(entity)!;
-                var wanted = SparkIdValues.ToTexts(join.Property.GetValue(entity)).Select(t => t.ToLowerInvariant()).ToHashSet(StringComparer.Ordinal);
-                var existing = byOwner[ownerId].ToList();
-                if (wanted.SetEquals(existing.Select(r => SparkIdValues.ToText(r[SparkDbContext.TargetIdProperty])!.ToLowerInvariant())))
-                    continue;
-                set.RemoveRange(existing);
-                foreach (var target in wanted)
+                var wanted = SparkIdValues.ToTexts(join.Property.GetValue(entity)).Select(t => t.ToLowerInvariant()).Distinct(StringComparer.Ordinal).ToList();
+                var existing = new Dictionary<string, Dictionary<string, object>>(StringComparer.Ordinal);
+                var dirty = false;
+                foreach (var row in byOwner[ownerId])
+                {
+                    var target = SparkIdValues.ToText(row[SparkDbContext.TargetIdProperty])!.ToLowerInvariant();
+                    if (!wanted.Contains(target, StringComparer.Ordinal) || !existing.TryAdd(target, row))
+                    {
+                        set.Remove(row);
+                        dirty = true;
+                    }
+                }
+                for (var position = 0; position < wanted.Count; position++)
+                {
+                    if (existing.TryGetValue(wanted[position], out var row))
+                    {
+                        var place = set.Entry(row).Property(SparkDbContext.PositionProperty);
+                        if (!Equals(place.CurrentValue, position))
+                        {
+                            place.CurrentValue = position;
+                            dirty = true;
+                        }
+                        continue;
+                    }
                     set.Add(new Dictionary<string, object>
                     {
                         [SparkDbContext.OwnerIdProperty] = owner.IdProperty.GetValue(entity)!,
-                        [SparkDbContext.TargetIdProperty] = SparkIdValues.FromText(join.ElementType, target)!,
+                        [SparkDbContext.TargetIdProperty] = SparkIdValues.FromText(join.ElementType, wanted[position])!,
+                        [SparkDbContext.PositionProperty] = position,
                     });
-                changed.Add(entity);
+                    dirty = true;
+                }
+                if (dirty)
+                    changed.Add(entity);
             }
         }
         return changed;
@@ -1088,10 +1140,15 @@ public sealed partial class RelationalSparkSession : ISparkSession
         return Roots().FirstOrDefault(e => table.Root.IsInstanceOfType(e.Entity) && string.Equals(GetId(e.Entity), id, StringComparison.OrdinalIgnoreCase));
     }
 
-    /// <summary>Fills the reference lists (D26) of materialized owners: one query per join table.</summary>
+    /// <summary>
+    /// Puts the child lists (D25) of materialized owners in their stored order, and fills their reference lists (D26),
+    /// in order too: one query per join table.
+    /// </summary>
     internal async Task HydrateAsync(IEnumerable<object> rows, CancellationToken cancellationToken)
     {
         var list = rows.ToList();
+        foreach (var row in list)
+            SparkListPositions.Sort(db.Model, row);
         foreach (var join in Model.Joins)
         {
             var owners = list.Where(join.Owner.IsInstanceOfType).ToList();
@@ -1101,9 +1158,12 @@ public sealed partial class RelationalSparkSession : ISparkSession
             var links = await db.Set<Dictionary<string, object>>(join.Name).AsNoTracking()
                 .Where(JoinOwnerIn(owner, [.. owners.Select(o => owner.IdProperty.GetValue(o)!)]))
                 .ToListAsync(cancellationToken);
-            var byOwner = links.ToLookup(l => SparkIdValues.ToText(l[SparkDbContext.OwnerIdProperty])!, l => SparkIdValues.ToText(l[SparkDbContext.TargetIdProperty])!, StringComparer.OrdinalIgnoreCase);
+            var byOwner = links
+                .Select(l => (Owner: SparkIdValues.ToText(l[SparkDbContext.OwnerIdProperty])!, Target: SparkIdValues.ToText(l[SparkDbContext.TargetIdProperty])!, Position: (int)l[SparkDbContext.PositionProperty]))
+                .OrderBy(l => l.Position).ThenBy(l => l.Target, StringComparer.Ordinal)
+                .ToLookup(l => l.Owner, l => l.Target, StringComparer.OrdinalIgnoreCase);
             foreach (var o in owners)
-                join.Property.SetValue(o, SparkIdValues.ToCollection(join.Property.PropertyType, byOwner[GetId(o)!].Order(StringComparer.Ordinal)));
+                join.Property.SetValue(o, SparkIdValues.ToCollection(join.Property.PropertyType, byOwner[GetId(o)!]));
         }
     }
 

@@ -100,6 +100,39 @@ public sealed class VwElsewhereNames : SparkView<VVwName>
         s.Set<VwElsewhere>().Select(e => new VVwName { Id = s.IdOf(e), Name = e.Name });
 }
 
+public class VVwTally
+{
+    public string Name { get; set; } = string.Empty;
+    public int People { get; set; }
+    public int Companies { get; set; }
+}
+
+/// <summary>A multi-map whose second map leaves a member out: SQL's UNION ALL takes the same columns from every map.</summary>
+public sealed class VwUnevenTallies : SparkView<VVwTally>
+{
+    public override Expression<Func<ISparkViewSource, IQueryable<VVwTally>>> Map => s =>
+        s.Set<VwPerson>().Select(p => new VVwTally { Name = p.LastName, People = 1, Companies = 0 })
+            .Concat(s.Set<VwCompany>().Select(c => new VVwTally { Name = c.Name, People = 0 }));
+}
+
+public class VVwRoster
+{
+    public string Company { get; set; } = string.Empty;
+    public List<string> People { get; set; } = [];
+}
+
+/// <summary>A reduce that gathers a list per group: SQL's GROUP BY yields one value per group, not a list.</summary>
+public sealed class VwRosters : SparkView<VVwRoster>
+{
+    public override Expression<Func<ISparkViewSource, IQueryable<VVwRoster>>> Map => s =>
+        s.Set<VwPerson>().Select(p => new VVwRoster { Company = p.LastName, People = new List<string> { p.FirstName } });
+
+    public override Expression<Func<IEnumerable<VVwRoster>, IEnumerable<VVwRoster>>> Reduce => rows =>
+        from r in rows
+        group r by r.Company into g
+        select new VVwRoster { Company = g.Key, People = g.SelectMany(x => x.People).ToList() };
+}
+
 /// <summary>
 /// <see cref="SparkView{TRow}"/> as an SQL view (#536 M4d, D32): EF writes the SQL, the schema creates the view, a
 /// query reads it like a table, and a migration drops and recreates it when it or a table it reads changes.
@@ -263,6 +296,26 @@ public abstract class RelationalViewTests : IAsyncLifetime
 
         error.Should().BeOfType<InvalidOperationException>();
         error!.Message.Should().Contain("VwCaptured").And.Contain("constant");
+    }
+
+    [SkippableFact]
+    public void A_multi_map_whose_maps_assign_different_members_is_refused()
+    {
+        var server = RequireServer;
+        var error = Record.Exception(() => RelationalTestDatabase.Open(server, Types, null, "spark_vw_never", [new VwUnevenTallies()]));
+
+        error.Should().BeOfType<NotSupportedException>();
+        error!.Message.Should().Contain("VwUnevenTallies").And.Contain("VwCompany").And.Contain("Companies");
+    }
+
+    [SkippableFact]
+    public void A_reduce_that_gathers_a_list_is_refused()
+    {
+        var server = RequireServer;
+        var error = Record.Exception(() => RelationalTestDatabase.Open(server, Types, null, "spark_vw_never", [new VwRosters()]));
+
+        error.Should().BeOfType<NotSupportedException>();
+        error!.Message.Should().Contain("VwRosters").And.Contain("People");
     }
 
     [SkippableFact]

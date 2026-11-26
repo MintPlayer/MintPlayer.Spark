@@ -44,9 +44,13 @@ internal static class RelationalViewRenderer
     public static IQueryable Query(ISparkView view, SparkDbContext db)
     {
         var body = new Rewriter(view.Definition, db).Visit(view.Definition.Body);
+        RefuseUnevenMaps(body, view);
         body = KeyBesideRow(body, view);
         if (view.ReduceDefinition is { } reduce)
+        {
+            RefuseListsInReduce(reduce, view);
             body = ReduceRewriter.Over(reduce, body);
+        }
         var root = Set(db, view.CollectionType);
         var query = root.Provider.CreateQuery(body);
         var rewrite = typeof(JoinRewriter).GetMethod(nameof(JoinRewriter.Rewrite))!.MakeGenericMethod(query.ElementType);
@@ -97,6 +101,92 @@ internal static class RelationalViewRenderer
         generic[^1] = wrapper;
         return Expression.Call(select.Method.GetGenericMethodDefinition().MakeGenericMethod(generic),
             [.. select.Arguments.SkipLast(1), Expression.Quote(lambda)]);
+    }
+
+    /// <summary>
+    /// A multi-map's maps (<c>a.Concat(b)</c>) become a <c>UNION ALL</c>, which takes the same columns from every map. EF
+    /// refuses maps that assign different members (ProjectionMappingCountMismatch) without naming them; this names the
+    /// view, the map and the members it leaves out. RavenDB's <c>AddMap</c> has no such limit (PRD "Limits").
+    /// </summary>
+    private static void RefuseUnevenMaps(Expression body, ISparkView view)
+    {
+        var maps = new List<Expression>();
+        Flatten(body, maps);
+        if (maps.Count < 2)
+            return;
+        var assigned = maps.Select(Assigned).ToList();
+        if (assigned.Any(a => a is null))
+            return; // a map that ends in no member-init projection: EF decides
+        var all = assigned.SelectMany(a => a!).ToHashSet(StringComparer.Ordinal);
+        var gaps = maps.Select((map, i) => (Source: SourceOf(map), Missing: all.Except(assigned[i]!).Order(StringComparer.Ordinal).ToList()))
+            .Where(g => g.Missing.Count > 0).ToList();
+        if (gaps.Count > 0)
+            throw new NotSupportedException(
+                $"View {view.Name}: every map of a multi-map view must assign the same members, as SQL's UNION ALL takes the same columns from each; "
+                + string.Join("; ", gaps.Select(g => $"the map over {g.Source} leaves out {string.Join(", ", g.Missing)}"))
+                + ". Assign them a typed default in that map (0, not null).");
+
+        static void Flatten(Expression e, List<Expression> maps)
+        {
+            if (e is MethodCallExpression { Method.Name: nameof(Queryable.Concat) } concat && concat.Method.DeclaringType == typeof(Queryable))
+            {
+                Flatten(concat.Arguments[0], maps);
+                Flatten(concat.Arguments[1], maps);
+            }
+            else
+                maps.Add(e);
+        }
+
+        // The members the map's last projection assigns, or null when it has none in member-init form.
+        static HashSet<string>? Assigned(Expression map)
+        {
+            var e = map;
+            while (e is MethodCallExpression call && call.Method.DeclaringType == typeof(Queryable))
+            {
+                if (call.Method.Name is nameof(Queryable.Select) or nameof(Queryable.SelectMany))
+                    return call.Arguments[^1] is UnaryExpression { Operand: LambdaExpression { Body: MemberInitExpression init } }
+                        ? init.Bindings.Select(b => b.Member.Name).ToHashSet(StringComparer.Ordinal)
+                        : null;
+                e = call.Arguments[0];
+            }
+            return null;
+        }
+
+        static string SourceOf(Expression map)
+        {
+            var e = map;
+            while (e is MethodCallExpression call && call.Method.DeclaringType == typeof(Queryable))
+                e = call.Arguments[0];
+            return e.Type.IsGenericType ? e.Type.GetGenericArguments()[0].Name : e.Type.Name;
+        }
+    }
+
+    /// <summary>
+    /// A reduce's row holds one value per group: its key, or an aggregate (<c>Sum</c>, <c>Count</c>, <c>Min</c>, <c>Max</c>).
+    /// A list gathered per group (<c>g.ToList()</c>, <c>g.SelectMany(…)</c>) has no <c>GROUP BY</c> form, and EF's own
+    /// error does not name it; this names the view and the members (PRD "Limits").
+    /// </summary>
+    private static void RefuseListsInReduce(LambdaExpression reduce, ISparkView view)
+    {
+        var finder = new ListAssignmentFinder();
+        finder.Visit(reduce.Body);
+        if (finder.Members.Count > 0)
+            throw new NotSupportedException(
+                $"View {view.Name}: its reduce gathers a list into {string.Join(", ", finder.Members)}, and SQL's GROUP BY yields one value per group (its key, Sum, Count, Min or Max). "
+                + "On the relational providers a reduced row holds no list; read the list from the documents instead.");
+    }
+
+    private sealed class ListAssignmentFinder : ExpressionVisitor
+    {
+        public List<string> Members { get; } = [];
+
+        protected override MemberAssignment VisitMemberAssignment(MemberAssignment node)
+        {
+            var type = node.Member is PropertyInfo property ? property.PropertyType : ((FieldInfo)node.Member).FieldType;
+            if (type != typeof(string) && type != typeof(byte[]) && typeof(System.Collections.IEnumerable).IsAssignableFrom(type))
+                Members.Add(node.Member.Name);
+            return base.VisitMemberAssignment(node);
+        }
     }
 
     /// <summary><c>IdOf(row)</c> while the declaration is rewritten; only ever the row's <c>Id</c> binding.</summary>

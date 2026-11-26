@@ -1,3 +1,4 @@
+using System.Globalization;
 using Npgsql;
 
 namespace MintPlayer.Spark.Relational.Tests.Behaviour;
@@ -47,10 +48,17 @@ public sealed class PostgreSqlBehaviourTests : PostgreSqlBehaviourDatabase
         await using var reader = await OpenAsync();
         const string horizon = "SELECT pg_snapshot_xmin(pg_current_snapshot())::text";
         ulong.Parse(await ScalarAsync<string>(reader, horizon)).Should().BeLessThanOrEqualTo(slowStamp);
+        (await ScalarAsync<bool>(reader, HoldsTheHorizon, null, ("xid", slowStamp.ToString(CultureInfo.InvariantCulture)))).Should().BeTrue();
 
+        // The horizon is the oldest transaction running on the whole server, and the other test classes share it: one of
+        // theirs can hold it below the fast stamp after the slow one ends (2026-11-26: 39416, the fast stamp 39417). So
+        // what D6 relies on is asserted instead: the slow transaction no longer holds it.
         await tx.CommitAsync();
-        ulong.Parse(await ScalarAsync<string>(reader, horizon)).Should().BeGreaterThan(fastStamp);
+        (await ScalarAsync<bool>(reader, HoldsTheHorizon, null, ("xid", slowStamp.ToString(CultureInfo.InvariantCulture)))).Should().BeFalse();
     }
+
+    /// <summary>Whether transaction <c>@xid</c> is still running in a new snapshot, and so keeps the horizon at or below it.</summary>
+    private const string HoldsTheHorizon = "SELECT CAST(@xid AS text)::xid8 = ANY (ARRAY(SELECT pg_snapshot_xip(pg_current_snapshot())))";
 
     [SkippableFact]
     public async Task D7_the_C_collation_tells_case_apart()

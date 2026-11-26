@@ -130,6 +130,42 @@ public abstract class RelationalStoreTests : IAsyncLifetime
         session.GetVersion(loaded).Should().Be("1");
     }
 
+    /// <summary>
+    /// A list keeps its order, as a document does: a <c>[ValueObject]</c> list (child table) and a reference list (join
+    /// table), stored in an order their keys do not sort in, then reordered (<c>[Sortable]</c> is "order is the array
+    /// position").
+    /// </summary>
+    [SkippableFact]
+    public async Task Child_and_reference_lists_keep_their_order()
+    {
+        RequireServer();
+        var (_, person) = await SeedAsync();
+        using (var session = Store.OpenSession())
+        {
+            var stored = (await session.LoadAsync<RelPerson>(person.Id.Value))!;
+            stored.Jobs = [new RelJob { Id = "c", Title = "first" }, new RelJob { Id = "a", Title = "second" }, new RelJob { Id = "b", Title = "third" }];
+            stored.Skills = [Skill("sql"), Skill("csharp")];
+            await session.SaveChangesAsync();
+        }
+
+        using (var session = Store.OpenSession())
+        {
+            var loaded = (await session.LoadAsync<RelPerson>(person.Id.Value))!;
+            loaded.Skills.Should().Equal(Skill("sql"), Skill("csharp"));
+            loaded.Jobs.Select(j => j.Title).Should().Equal("first", "second", "third");
+            loaded.Jobs.Reverse();
+            loaded.Skills.Reverse();
+            await session.SaveChangesAsync();
+        }
+
+        using (var session = Store.OpenSession())
+        {
+            var reordered = (await session.LoadAsync<RelPerson>(person.Id.Value))!;
+            reordered.Jobs.Select(j => j.Title).Should().Equal("third", "second", "first");
+            reordered.Skills.Should().Equal(Skill("csharp"), Skill("sql"));
+        }
+    }
+
     [SkippableFact]
     public async Task An_upper_case_id_finds_the_row()
     {
