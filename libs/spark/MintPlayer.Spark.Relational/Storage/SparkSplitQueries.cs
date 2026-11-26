@@ -15,9 +15,9 @@ namespace MintPlayer.Spark.Relational.Storage;
 /// </summary>
 /// <remarks>
 /// An interceptor, so every read gets it (session queries, loads, the change feed) without each call site saying
-/// <c>AsSplitQuery()</c>. A query that states <c>AsSingleQuery()</c> or <c>AsSplitQuery()</c> itself is left as written.
-/// The statements of a split read are not one snapshot: a write between them can pair an owner with newer child rows,
-/// where a single statement (and a RavenDB document) is read whole.
+/// <c>AsSplitQuery()</c>. A query that states <c>AsSingleQuery()</c> keeps its one statement, as a view's does
+/// (<see cref="RelationalViewRenderer"/>). The statements of a split read are not one snapshot: a write between them can
+/// pair an owner with newer child rows, where a single statement (and a RavenDB document) is read whole.
 /// </remarks>
 internal static class SparkSplitQueries
 {
@@ -28,38 +28,35 @@ internal static class SparkSplitQueries
     private static readonly MethodInfo AsSingleQuery = typeof(RelationalQueryableExtensions).GetMethod(nameof(RelationalQueryableExtensions.AsSingleQuery))!;
 
     /// <summary>
-    /// Whether a read of <paramref name="type"/> joins two or more child tables: its own collections, its derived types'
-    /// (TPH rows of any of them), and the collections of the rows in those tables.
+    /// Whether a read of <paramref name="type"/> joins two or more child tables: its own (inherited ones included) and its
+    /// derived types', whose rows a TPH query returns too. Child tables are the only owned types the model maps
+    /// (<c>SparkDbContext.MapChildTable</c>), and a child row has no child table of its own, so there is nothing nested.
     /// </summary>
-    internal static bool JoinsSeveralChildTables(IEntityType type) => ChildTables(type) >= 2;
-
-    private static int ChildTables(IEntityType type)
+    internal static bool JoinsSeveralChildTables(IEntityType type)
         => type.GetNavigations()
             .Concat(type.GetDerivedTypes().SelectMany(t => t.GetDeclaredNavigations()))
-            .Where(n => n.TargetEntityType.IsOwned())
-            .Sum(n => (n.IsCollection ? 1 : 0) + ChildTables(n.TargetEntityType));
+            .Count(n => n.IsCollection && n.TargetEntityType.IsOwned()) >= 2;
 
     private sealed class SplitInterceptor : IQueryExpressionInterceptor
     {
         public Expression QueryCompilationStarting(Expression queryExpression, QueryExpressionEventData eventData)
         {
-            var finder = new StatedFinder();
+            var finder = new SingleQueryFinder();
             finder.Visit(queryExpression);
-            return finder.Stated ? queryExpression : new Splitter().Visit(queryExpression);
+            return finder.Found ? queryExpression : new Splitter().Visit(queryExpression);
         }
     }
 
-    /// <summary>Finds an <c>AsSingleQuery()</c> or <c>AsSplitQuery()</c> the query already has.</summary>
-    private sealed class StatedFinder : ExpressionVisitor
+    /// <summary>Finds an <c>AsSingleQuery()</c> the query states. (One that states <c>AsSplitQuery()</c> is split anyway.)</summary>
+    private sealed class SingleQueryFinder : ExpressionVisitor
     {
-        public bool Stated { get; private set; }
+        public bool Found { get; private set; }
 
         protected override Expression VisitMethodCall(MethodCallExpression node)
         {
-            if (node.Method.IsGenericMethod && node.Method.GetGenericMethodDefinition() is var definition
-                && (definition == AsSplitQuery || definition == AsSingleQuery))
+            if (node.Method.IsGenericMethod && node.Method.GetGenericMethodDefinition() == AsSingleQuery)
             {
-                Stated = true;
+                Found = true;
                 return node;
             }
             return base.VisitMethodCall(node);

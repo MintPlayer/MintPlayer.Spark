@@ -43,6 +43,34 @@ public class RelCourse
     public string Name { get; set; } = string.Empty;
 }
 
+[ValueObject]
+public class RelPart
+{
+    public string Id { get; set; } = Guid.NewGuid().ToString("N");
+    public string Name { get; set; } = string.Empty;
+}
+
+[ValueObject]
+public class RelAxle
+{
+    public string Id { get; set; } = Guid.NewGuid().ToString("N");
+    public int Load { get; set; }
+}
+
+/// <summary>TPH with one child table on the base type…</summary>
+public class RelVehicle
+{
+    public Id<RelVehicle> Id { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public List<RelPart> Parts { get; set; } = [];
+}
+
+/// <summary>…and a second on the derived type, whose rows a query over the base type returns too.</summary>
+public class RelTruck : RelVehicle
+{
+    public List<RelAxle> Axles { get; set; } = [];
+}
+
 public enum RelLevel { Junior, Medior, Senior }
 
 [Flags]
@@ -119,7 +147,7 @@ public abstract class RelationalStoreTests : IAsyncLifetime
     {
         if (Server is { } server)
             database = await RelationalTestDatabase.CreateAsync(
-                server, [typeof(RelCompany), typeof(RelSkill), typeof(RelPerson), typeof(RelNote)],
+                server, [typeof(RelCompany), typeof(RelSkill), typeof(RelPerson), typeof(RelNote), typeof(RelVehicle), typeof(RelTruck)],
                 configureContext: options => options.AddInterceptors(commands));
     }
 
@@ -402,6 +430,49 @@ public abstract class RelationalStoreTests : IAsyncLifetime
         reads.Should().NotContain(sql => childTables.All(table => sql.Contains(table)), "each child table is read in a statement of its own");
         foreach (var table in childTables)
             reads.Count(sql => sql.Contains(table)).Should().Be(2, $"the load and the query each read {table} once");
+    }
+
+    /// <summary>
+    /// The same under TPH: a query over the base type returns the derived rows with their child tables, so a second
+    /// child table on a derived type splits the base type's reads, though the base type declares only one.
+    /// </summary>
+    [SkippableFact]
+    public async Task A_child_table_on_a_derived_type_splits_the_base_type_reads()
+    {
+        RequireServer();
+        var truck = new RelTruck
+        {
+            Id = NewId<RelVehicle>("relvehicles"),
+            Name = "T1",
+            Parts = [new RelPart { Name = "p1" }, new RelPart { Name = "p2" }],
+            Axles = [new RelAxle { Load = 1 }, new RelAxle { Load = 2 }, new RelAxle { Load = 3 }],
+        };
+        using (var session = Store.OpenSession())
+        {
+            await session.StoreAsync(truck);
+            await session.SaveChangesAsync();
+        }
+        string[] childTables;
+        using (var db = database!.Store.NewContext())
+            childTables = [.. db.Model.FindEntityType(typeof(RelTruck))!.GetNavigations().Where(n => n.IsCollection).Select(n => n.TargetEntityType.GetTableName()!)];
+        childTables.Should().HaveCount(2);
+
+        lock (commands.Reads)
+            commands.Reads.Clear();
+        using (var session = Store.OpenSession())
+        {
+            var vehicles = await session.ToListAsync(session.Query<RelVehicle>());
+            vehicles.Should().ContainSingle();
+            vehicles[0].Should().BeOfType<RelTruck>();
+            var loaded = (RelTruck)vehicles[0];
+            loaded.Parts.Select(p => p.Name).Should().Equal("p1", "p2");
+            loaded.Axles.Select(a => a.Load).Should().Equal(1, 2, 3);
+        }
+
+        string[] reads;
+        lock (commands.Reads)
+            reads = [.. commands.Reads];
+        reads.Should().NotContain(sql => childTables.All(table => sql.Contains(table)), "each child table is read in a statement of its own");
     }
 
     [SkippableFact]

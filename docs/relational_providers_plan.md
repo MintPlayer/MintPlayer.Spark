@@ -77,6 +77,12 @@ rounds, milestones and status. Branch `feat/536-sql-server-provider`, draft PR #
         A view is one `SELECT`, so the renderer now states `AsSingleQuery()`, which the interceptor leaves alone.
         Red first: `A_view_over_a_type_with_two_child_tables_is_one_statement` (`VwTeam`, members and coaches)
         failed on both servers with the CI error. It is green, with all view tests (24).
+      - 90c7731aa: CI green (31 checks). Its coverage left a dead recursion: the model maps no owned type inside a child
+        table, so there is nothing nested to count. It also left an untested derived-type arm and a check for a
+        stated `AsSplitQuery()`, which changes nothing. The count is now the owned collections of the type and its
+        derived types. The finder looks for `AsSingleQuery()` only.
+        `A_child_table_on_a_derived_type_splits_the_base_type_reads` (TPH: `RelVehicle` has parts, `RelTruck` adds
+        axles) was red on both servers without the derived arm. Relational.Tests: 259 green.
     - The RavenDB client references outside the RavenDB packages were checked too. Each is RavenDB-only by design or
       branches on the provider:
       - data migrations;
