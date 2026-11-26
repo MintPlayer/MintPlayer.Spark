@@ -122,6 +122,25 @@ public abstract class AppsTestHost : OrganizationsTestHost
         return (await session.LoadAsync<WebhookEndpoint>(WebhookEndpoint.IdPrefix + endpointId))!;
     }
 
+    /// <summary>
+    /// The endpoint once <paramref name="holds"/> is true of it; a failure bound, not a wait. The engine writes an
+    /// endpoint's change after the delivery's own save (<c>WebhookDeliveryHandler.SaveAsync</c>, #536 M6d: no store
+    /// has RavenDB's patch in the same save), so a settled delivery does not yet mean the endpoint changed.
+    /// </summary>
+    internal async Task<WebhookEndpoint> UntilEndpointAsync(string endpointId, Func<WebhookEndpoint, bool> holds, string what)
+    {
+        WebhookEndpoint endpoint = null!;
+        try
+        {
+            await Until(async () => holds(endpoint = await EndpointAsync(endpointId)), $"{endpointId}: {what}");
+        }
+        catch (TimeoutException ex)
+        {
+            throw new TimeoutException($"{ex.Message} Endpoint: {System.Text.Json.JsonSerializer.Serialize(endpoint)}", ex);
+        }
+        return endpoint;
+    }
+
     /// <summary>Polls <paramref name="probe"/> until it holds; a failure bound, not a wait.</summary>
     internal static async Task Until(Func<Task<bool>> probe, string what, int seconds = 20)
     {

@@ -196,7 +196,7 @@ public class WebhookDeliveryTests : AppsTestHost
         delivery.Status.Should().Be(WebhookDeliveryStatus.Succeeded);
         delivery.Attempts.Select(a => a.StatusCode).Should().Equal([500, 204]);
         delivery.Attempts[0].ResponseBody.Should().Be("boom");
-        (await EndpointAsync(endpointId)).ConsecutiveFailures.Should().Be(0, "a success ends the failure streak");
+        await UntilEndpointAsync(endpointId, e => e.ConsecutiveFailures == 0, "a success ends the failure streak");
     }
 
     [Fact]
@@ -228,8 +228,7 @@ public class WebhookDeliveryTests : AppsTestHost
         await UntilSettledAsync(endpointId, 1);
 
         Receiver.Received.Count.Should().Be(1, "410 is never retried");
-        var endpoint = await EndpointAsync(endpointId);
-        endpoint.Enabled.Should().BeFalse();
+        var endpoint = await UntilEndpointAsync(endpointId, e => !e.Enabled, "410 disables the endpoint");
         endpoint.DisabledReason.Should().Contain("410");
         await UntilDisabledHandlerToldAsync(endpointId);
         DisabledCount(endpointId).Should().Be(1);
@@ -350,7 +349,7 @@ public class WebhookDeliveryTests : AppsTestHost
         await UntilSettledAsync(endpointId, 1);
 
         Receiver.Received.Count.Should().Be(1, "the first failure past 5 days disables the endpoint; no retry follows");
-        (await EndpointAsync(endpointId)).Enabled.Should().BeFalse();
+        await UntilEndpointAsync(endpointId, e => !e.Enabled, "the failure past 5 days disables the endpoint");
         await UntilDisabledHandlerToldAsync(endpointId);
         DisabledCount(endpointId).Should().Be(1);
 
@@ -396,7 +395,7 @@ public class WebhookDeliveryTests : AppsTestHost
         var delivery = (await DeliveriesAsync(endpointId)).Single();
         delivery.Status.Should().Be(WebhookDeliveryStatus.Failed);
         delivery.Attempts.Should().ContainSingle("a refused address is not retried").Which.Error.Should().Be("Refused: The target address is not allowed.");
-        (await EndpointAsync(endpointId)).ConsecutiveFailures.Should().Be(1);
+        await UntilEndpointAsync(endpointId, e => e.ConsecutiveFailures == 1, "the refusal counts against the endpoint");
     }
 
     [Fact]

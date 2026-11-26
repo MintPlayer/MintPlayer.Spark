@@ -170,12 +170,6 @@ public interface ISparkSession : IDisposable
     Task<long> DeleteWhereAsync<T>(System.Linq.Expressions.Expression<Func<T, bool>> predicate, CancellationToken cancellationToken = default) where T : class;
 
     /// <summary>
-    /// Sets members of every <typeparamref name="T"/> matching <paramref name="predicate"/> in the store, now and
-    /// set-based (#536 S6; RavenDB's patch by query, SQL's <c>UPDATE … WHERE</c>), and returns how many. Each updated
-    /// row gets a new version.
-    /// </summary>
-    /// <remarks>The same limits as <see cref="DeleteWhereAsync{T}"/>: no <see cref="BeforeStore"/>, and tracked copies go stale.</remarks>
-    /// <summary>
     /// Appends <paramref name="item"/> to the list at <paramref name="list"/> of the stored document
     /// <paramref name="id"/> (#536 S6). <see cref="SaveChangesAsync"/> applies it to the stored document, not to a
     /// copy this session read, so concurrent appends all land where a load-modify-save would lose one or conflict.
@@ -183,6 +177,12 @@ public interface ISparkSession : IDisposable
     /// </summary>
     void PatchAppend<T, TItem>(string id, System.Linq.Expressions.Expression<Func<T, IEnumerable<TItem>>> list, TItem item) where T : class;
 
+    /// <summary>
+    /// Sets members of every <typeparamref name="T"/> matching <paramref name="predicate"/> in the store, now and
+    /// set-based (#536 S6; RavenDB's patch by query, SQL's <c>UPDATE … WHERE</c>), and returns how many. Each updated
+    /// row gets a new version.
+    /// </summary>
+    /// <remarks>The same limits as <see cref="DeleteWhereAsync{T}"/>: no <see cref="BeforeStore"/>, and tracked copies go stale.</remarks>
     Task<long> UpdateWhereAsync<T>(System.Linq.Expressions.Expression<Func<T, bool>> predicate, Action<SparkSetters<T>> set, CancellationToken cancellationToken = default) where T : class;
 
     Task SaveChangesAsync(CancellationToken cancellationToken = default);
