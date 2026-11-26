@@ -54,11 +54,35 @@ public abstract class SparkRelationalDialect
             ? dialect
             : throw new InvalidOperationException($"No Spark dialect is registered for the EF provider '{efProviderName}'.");
 
-    /// <summary>Type-wide column conventions: decimal precision, date and time types (S12).</summary>
-    public virtual void ConfigureConventions(ModelConfigurationBuilder builder) { }
+    /// <summary>
+    /// Type-wide column conventions: decimal precision, date and time types (S12). The base reads every
+    /// <see cref="DateTime"/> as UTC (#536 O18); a dialect that overrides this calls it first.
+    /// </summary>
+    public virtual void ConfigureConventions(ModelConfigurationBuilder builder)
+        => builder.Properties<DateTime>().HaveConversion<UtcDateTimeConverter>();
+
+    /// <summary>
+    /// A column keeps a <see cref="DateTime"/>'s ticks, not its kind (#536 O18). Spark and its libraries write
+    /// <c>DateTime.UtcNow</c>, so a value reads back as UTC; a local value is written as its UTC instant, and an
+    /// unspecified one keeps its ticks. The ticks go to the database unspecified: Npgsql refuses a UTC value for
+    /// <c>timestamp without time zone</c>.
+    /// </summary>
+    private sealed class UtcDateTimeConverter() : Microsoft.EntityFrameworkCore.Storage.ValueConversion.ValueConverter<DateTime, DateTime>(
+        value => DateTime.SpecifyKind(value.Kind == DateTimeKind.Local ? value.ToUniversalTime() : value, DateTimeKind.Unspecified),
+        value => DateTime.SpecifyKind(value, DateTimeKind.Utc));
 
     /// <summary>Makes <paramref name="property"/> a JSON column, written by its converter.</summary>
     public virtual void JsonColumn(PropertyBuilder property) { }
+
+    /// <summary>
+    /// Shapes an ordinary text column (not a key, not a reference) so that comparisons ignore case, as on RavenDB (#536
+    /// O20). SQL Server's ordinary columns take the database's collation, case-insensitive by default; PostgreSQL's
+    /// default collation respects case, so its dialect sets one that doesn't.
+    /// </summary>
+    public virtual void TextColumn(PropertyBuilder property) { }
+
+    /// <summary>What the framework migration <c>SparkFramework0004</c> creates for <see cref="TextColumn"/>, or <see langword="null"/>.</summary>
+    public virtual string? IgnoreCaseFrameworkSql => null;
 
     /// <summary>Classifies a database exception, or <see langword="null"/> when it is no constraint error.</summary>
     public abstract SparkConstraintError? Classify(Exception databaseException);

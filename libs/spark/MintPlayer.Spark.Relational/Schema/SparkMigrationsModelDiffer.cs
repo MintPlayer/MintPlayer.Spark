@@ -19,7 +19,8 @@ namespace MintPlayer.Spark.Relational.Schema;
 /// value column its type's default, but a required collection column none, which PostgreSQL refuses for the
 /// existing rows ("contains null values"). It gets the empty collection: <c>'[]'</c> in JSON, <c>'{}'</c> for a native
 /// array.</item>
-/// </list>
+/// <item>O19: a table's columns are paired by their model attribute before EF's name and shape rules, so a renamed
+/// attribute keeps its column's data.</item>
 /// <item>D32: EF ignores an entity type mapped to a view. A Spark view carries its SQL and the tables it reads as
 /// annotations; a view is dropped first and created last when it appears, disappears, its SQL changes, or an
 /// operation touches a table it reads (PostgreSQL refuses to alter a column a view depends on, and SQL Server keeps a
@@ -63,6 +64,119 @@ public sealed class SparkMigrationsModelDiffer : Microsoft.EntityFrameworkCore.M
             AddCollectionDefaults(operations, target);
         return WithViews(WithStampTriggers(operations), source, target);
     }
+
+    /// <summary>
+    /// O19: a table's columns are paired by their model attribute (<see cref="Model.SparkDbContext.AttributeIdAnnotation"/>)
+    /// first. EF pairs by name and then guesses by shape, so on its own:
+    /// <list type="bullet">
+    /// <item>an attribute renamed with a new type became a drop and an add, losing the column's data. Paired, EF's column
+    /// diff renames the column, then alters its type. The database converts the data where it can (int to bigint, a
+    /// number to text); where it can't, the migration fails, and never silently empties the column.</item>
+    /// <item>an attribute removed while a new one of the same shape was added became a rename, carrying the old
+    /// attribute's data into the new one.</item>
+    /// </list>
+    /// EF's own rules follow, each allowed only where one side has no attribute: a column the model doesn't describe
+    /// (the key, the stamp, a snapshot from before attribute ids) is paired as EF would. A choice made here can't be
+    /// undone after the fact: <c>DiffCollection</c> records every pair for the index and key diffs, which is why the
+    /// rules are replaced, not the operations corrected.
+    /// </summary>
+    protected override IEnumerable<MigrationOperation> Diff(IEnumerable<IColumn> source, IEnumerable<IColumn> target, DiffContext diffContext)
+        => DiffCollection(
+            source,
+            target,
+            diffContext,
+            Diff,
+            (t, c) => Add(t, c),
+            Remove,
+            (s, t, _) => AttributeIdOf(s) is { } id && id == AttributeIdOf(t),
+            (s, t, _) => EitherUnattributed(s, t) && string.Equals(s.Name, t.Name, StringComparison.OrdinalIgnoreCase),
+            (s, t, c) => EitherUnattributed(s, t) && SamePropertyOnSamePath(s, t, c),
+            (s, t, _) => EitherUnattributed(s, t) && s.PropertyMappings.Any(sm =>
+                t.PropertyMappings.Any(tm => string.Equals(sm.Property.Name, tm.Property.Name, StringComparison.OrdinalIgnoreCase))),
+            (s, t, c) => EitherUnattributed(s, t) && ColumnStructureEquals(s, t) && SamePropertyOnSamePath(s, t, c),
+            (s, t, _) => EitherUnattributed(s, t) && ColumnStructureEquals(s, t) && ColumnAnnotationsEqual(s, t, matchValues: true),
+            (s, t, _) => EitherUnattributed(s, t) && ColumnStructureEquals(s, t) && ColumnAnnotationsEqual(s, t, matchValues: false),
+            (s, t, _) => EitherUnattributed(s, t) && ColumnStructureEquals(s, t));
+
+    /// <summary>The model attribute a column stores, if the model describes it.</summary>
+    internal static string? AttributeIdOf(IColumn column)
+        => column.PropertyMappings
+            .Select(m => m.Property.FindAnnotation(Model.SparkDbContext.AttributeIdAnnotation)?.Value as string)
+            .FirstOrDefault(id => id is not null);
+
+    /// <summary>Two attributed columns are one column only by their id: EF's name and shape rules don't apply to them.</summary>
+    private static bool EitherUnattributed(IColumn source, IColumn target) => AttributeIdOf(source) is null || AttributeIdOf(target) is null;
+
+    // EF's column-pairing rules (MigrationsModelDiffer.Diff over columns and its private helpers), re-expressed with
+    // public API.
+
+    private static bool SamePropertyOnSamePath(IColumn source, IColumn target, DiffContext diffContext)
+        => source.PropertyMappings.Any(sm => target.PropertyMappings.Any(tm =>
+            string.Equals(sm.Property.Name, tm.Property.Name, StringComparison.OrdinalIgnoreCase)
+            && EntityTypePathEquals(sm.Property.DeclaringType, tm.Property.DeclaringType, diffContext)));
+
+    private static bool ColumnAnnotationsEqual(IColumn source, IColumn target, bool matchValues)
+    {
+        var sourceAnnotations = source.GetAnnotations().ToList();
+        var targetAnnotations = target.GetAnnotations().ToList();
+        if (sourceAnnotations.Count != targetAnnotations.Count)
+            return false;
+        foreach (var sourceAnnotation in sourceAnnotations)
+        {
+            var match = targetAnnotations.FindIndex(t => t.Name == sourceAnnotation.Name && (!matchValues || t.Value == sourceAnnotation.Value));
+            if (match < 0)
+                return false;
+            targetAnnotations.RemoveAt(match);
+        }
+        return true;
+    }
+
+    private static bool ColumnStructureEquals(IColumn source, IColumn target)
+    {
+        if (!source.TryGetDefaultValue(out var sourceDefault))
+            sourceDefault = null;
+        if (!target.TryGetDefaultValue(out var targetDefault))
+            targetDefault = null;
+        return source.StoreType == target.StoreType
+            && source.IsRowVersion == target.IsRowVersion
+            && source.IsNullable == target.IsNullable
+            && source.Precision == target.Precision
+            && source.Scale == target.Scale
+            && source.IsUnicode == target.IsUnicode
+            && source.MaxLength == target.MaxLength
+            && source.IsFixedLength == target.IsFixedLength
+            && source.Collation == target.Collation
+            && MultilineEquals(source.Comment, target.Comment)
+            && source.IsStored == target.IsStored
+            && MultilineEquals(source.ComputedColumnSql, target.ComputedColumnSql)
+            && Equals(sourceDefault, targetDefault)
+            && MultilineEquals(source.DefaultValueSql, target.DefaultValueSql);
+    }
+
+    private static bool EntityTypePathEquals(ITypeBase source, ITypeBase target, DiffContext diffContext)
+    {
+        var sourceTable = diffContext.FindTable(source);
+        var targetTable = diffContext.FindTable(target);
+        if ((sourceTable is null && targetTable is null)
+            || (sourceTable?.EntityTypeMappings.Count() == 1 && targetTable?.EntityTypeMappings.Count() == 1))
+            return true;
+        if (source.Name != target.Name)
+            return false;
+        if (source is IEntityType sourceEntity && target is IEntityType targetEntity)
+        {
+            var nextSource = sourceTable?.GetRowInternalForeignKeys(sourceEntity).FirstOrDefault()?.PrincipalEntityType;
+            var nextTarget = targetTable?.GetRowInternalForeignKeys(targetEntity).FirstOrDefault()?.PrincipalEntityType;
+            return (nextSource is null && nextTarget is null)
+                || (nextSource is not null && nextTarget is not null && EntityTypePathEquals(nextSource, nextTarget, diffContext));
+        }
+        if (source is IComplexType sourceComplex && target is IComplexType targetComplex)
+            return EntityTypePathEquals(sourceComplex.ComplexProperty.DeclaringType, targetComplex.ComplexProperty.DeclaringType, diffContext);
+        return false;
+    }
+
+    private static bool MultilineEquals(string? source, string? target)
+        => ReferenceEquals(source, target)
+           || (source is not null && target is not null && string.Equals(source.ReplaceLineEndings(), target.ReplaceLineEndings(), StringComparison.Ordinal));
 
     private SparkRelationalDialect Dialect => currentContext.Context is Model.SparkDbContext spark
         ? spark.Setup.Dialect

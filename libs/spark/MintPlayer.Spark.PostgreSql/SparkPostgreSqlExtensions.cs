@@ -34,7 +34,7 @@ public sealed class PostgreSqlSparkDialect : SparkRelationalDialect
             pg.MigrationsHistoryTable(migrations.HistoryTable, migrations.HistorySchema);
         });
 
-        builder.ReplaceService<Microsoft.EntityFrameworkCore.Query.IQuerySqlGeneratorFactory, NullsFirstQuerySqlGeneratorFactory>();
+        builder.ReplaceService<Microsoft.EntityFrameworkCore.Query.IQuerySqlGeneratorFactory, SparkQuerySqlGeneratorFactory>();
         builder.ReplaceService<Microsoft.EntityFrameworkCore.Migrations.IHistoryRepository, AdvisoryLockHistoryRepository>();
     }
 
@@ -42,23 +42,113 @@ public sealed class PostgreSqlSparkDialect : SparkRelationalDialect
     /// D4: nulls first ascending and last descending, as on SQL Server, InMemory and RavenDB (PostgreSQL's default is the
     /// reverse). Npgsql's generator appends <c>NULLS FIRST</c> / <c>NULLS LAST</c> to every <c>ORDER BY</c> when its
     /// reverse-null-ordering flag is on; the option that sets it went internal in 11.0, so this factory passes the flag.
+    /// O20: the generator is <see cref="SparkQuerySqlGenerator"/>.
     /// </summary>
-#pragma warning disable EF1001 // Npgsql's generator is pubternal; the conformance case Nulls_sort_first_ascending_and_last_descending pins it.
-    internal sealed class NullsFirstQuerySqlGeneratorFactory(
+#pragma warning disable EF1001 // Npgsql's generator is pubternal; the conformance cases Nulls_sort_first_ascending_and_last_descending and Substrings_and_column_patterns_ignore_case pin it.
+    internal sealed class SparkQuerySqlGeneratorFactory(
         Microsoft.EntityFrameworkCore.Query.QuerySqlGeneratorDependencies dependencies,
         Microsoft.EntityFrameworkCore.Storage.IRelationalTypeMappingSource typeMappingSource,
         Npgsql.EntityFrameworkCore.PostgreSQL.Infrastructure.Internal.INpgsqlSingletonOptions options)
         : Microsoft.EntityFrameworkCore.Query.IQuerySqlGeneratorFactory
     {
         public Microsoft.EntityFrameworkCore.Query.QuerySqlGenerator Create()
-            => new Npgsql.EntityFrameworkCore.PostgreSQL.Query.Internal.NpgsqlQuerySqlGenerator(
-                dependencies, typeMappingSource, reverseNullOrderingEnabled: true, options.PostgresVersion);
+            => new SparkQuerySqlGenerator(dependencies, typeMappingSource, options.PostgresVersion);
+    }
+
+    /// <summary>
+    /// O20: PostgreSQL refuses a pattern or substring search on a column of <see cref="IgnoreCaseCollation"/>, which is
+    /// nondeterministic: version 17 refuses <c>LIKE</c>, <c>ILIKE</c> and <c>strpos</c>, version 18 still <c>ILIKE</c>
+    /// (measured, PRD O20). Npgsql renders <c>StartsWith</c>, <c>EndsWith</c> and <c>Contains</c> with a constant or a
+    /// captured value as <c>LIKE</c>, and <c>Contains</c> with a column as <c>strpos</c>. So every <c>LIKE</c> and
+    /// <c>ILIKE</c> compares its text under the database's deterministic collation (<c>COLLATE "default"</c>) with
+    /// <c>ILIKE</c>, and <c>strpos</c> compares lowered text: case is ignored on every column, keys included (ids
+    /// compare ignoring case, D7). Equality and <c>left()</c>/<c>right()</c> (a pattern from a column) honour the
+    /// collation themselves. The cost: such a <c>LIKE</c> uses no index, which a nondeterministic collation's
+    /// <c>LIKE</c> does not either.
+    /// </summary>
+    internal sealed class SparkQuerySqlGenerator(
+        Microsoft.EntityFrameworkCore.Query.QuerySqlGeneratorDependencies dependencies,
+        Microsoft.EntityFrameworkCore.Storage.IRelationalTypeMappingSource typeMappingSource,
+        Version? postgresVersion)
+        : Npgsql.EntityFrameworkCore.PostgreSQL.Query.Internal.NpgsqlQuerySqlGenerator(dependencies, typeMappingSource, reverseNullOrderingEnabled: true, postgresVersion)
+    {
+        protected override void GenerateLike(Microsoft.EntityFrameworkCore.Query.SqlExpressions.LikeExpression like, bool negated)
+            => IgnoringCase(like.Match, like.Pattern, like.EscapeChar, negated);
+
+        protected override System.Linq.Expressions.Expression VisitILike(
+            Npgsql.EntityFrameworkCore.PostgreSQL.Query.Expressions.Internal.PgILikeExpression like, bool negated = false)
+        {
+            IgnoringCase(like.Match, like.Pattern, like.EscapeChar, negated);
+            return like;
+        }
+
+        private void IgnoringCase(
+            Microsoft.EntityFrameworkCore.Query.SqlExpressions.SqlExpression match,
+            Microsoft.EntityFrameworkCore.Query.SqlExpressions.SqlExpression pattern,
+            Microsoft.EntityFrameworkCore.Query.SqlExpressions.SqlExpression? escape,
+            bool negated)
+        {
+            Sql.Append("(");
+            Visit(match);
+            Sql.Append(") COLLATE \"default\"");
+            Sql.Append(negated ? " NOT ILIKE " : " ILIKE ");
+            Visit(pattern);
+            if (escape is not null)
+            {
+                Sql.Append(" ESCAPE ");
+                Visit(escape);
+            }
+        }
+
+        /// <summary>
+        /// A string list (<c>text[]</c>, <c>Tags.Contains(x)</c>, which Npgsql renders <c>x = ANY (column)</c>): a collation
+        /// on an array column breaks EF's translation of <c>Contains</c>, so the item takes it here. An <c>IN</c> list
+        /// (<c>x = ANY (@p)</c>) is left alone: its column's own collation decides, and a key keeps its index.
+        /// </summary>
+        protected override System.Linq.Expressions.Expression VisitArrayAny(
+            Npgsql.EntityFrameworkCore.PostgreSQL.Query.Expressions.Internal.PgAnyExpression any)
+        {
+            if (any is not { OperatorType: Npgsql.EntityFrameworkCore.PostgreSQL.Query.Expressions.Internal.PgAnyOperatorType.Equal,
+                    Array: Microsoft.EntityFrameworkCore.Query.SqlExpressions.ColumnExpression }
+                || any.Item.Type != typeof(string))
+                return base.VisitArrayAny(any);
+            Sql.Append("(");
+            Visit(any.Item);
+            Sql.Append(") COLLATE ").Append(IgnoreCaseCollation).Append(" = ANY (");
+            Visit(any.Array);
+            Sql.Append(")");
+            return any;
+        }
+
+        protected override System.Linq.Expressions.Expression VisitSqlFunction(Microsoft.EntityFrameworkCore.Query.SqlExpressions.SqlFunctionExpression function)
+        {
+            if (function is not { Name: "strpos", IsBuiltIn: true, Arguments: [var text, var part] })
+                return base.VisitSqlFunction(function);
+            Sql.Append("strpos(lower((");
+            Visit(text);
+            Sql.Append(") COLLATE \"default\"), lower(");
+            Visit(part);
+            Sql.Append("))");
+            return function;
+        }
     }
 #pragma warning restore EF1001
 
     public override string EfProviderName => "Npgsql.EntityFrameworkCore.PostgreSQL";
 
     public override string KeyCollation => "C";
+
+    /// <summary>
+    /// O20: the collation of an ordinary text column. ICU's root locale at strength 2 (<c>ks-level2</c>) ignores case but
+    /// not accents, as RavenDB's lowercasing analyzer does; nondeterministic, so <c>Alpha = ALPHA</c>.
+    /// <c>SparkFramework0004</c> creates it, in the schema the app's tables go to.
+    /// </summary>
+    public const string IgnoreCaseCollation = "spark_ignore_case";
+
+    public override void TextColumn(PropertyBuilder property) => property.UseCollation(IgnoreCaseCollation);
+
+    public override string? IgnoreCaseFrameworkSql
+        => $"CREATE COLLATION IF NOT EXISTS {IgnoreCaseCollation} (provider = icu, locale = 'und-u-ks-level2', deterministic = false);";
 
     /// <summary>
     /// A session advisory lock in the <c>postgres</c> maintenance database, keyed by a hash of
@@ -107,18 +197,16 @@ public sealed class PostgreSqlSparkDialect : SparkRelationalDialect
 
     /// <summary>
     /// A <see cref="DateTime"/> is <c>timestamp without time zone</c>, as <c>datetime2</c> is on SQL Server: Npgsql refuses
-    /// to write a non-UTC value to <c>timestamptz</c>. A <see cref="DateTimeOffset"/> is <c>timestamptz</c>, written as
-    /// its UTC instant (Npgsql refuses other offsets too); it reads back with offset 0, the same instant (D5).
+    /// to write a non-UTC value to <c>timestamptz</c>. The base writes its ticks and reads them as UTC (O18). A
+    /// <see cref="DateTimeOffset"/> is <c>timestamptz</c>, written as its UTC instant (Npgsql refuses other offsets too);
+    /// it reads back with offset 0, the same instant (D5).
     /// </summary>
     public override void ConfigureConventions(ModelConfigurationBuilder builder)
     {
-        builder.Properties<DateTime>().HaveColumnType("timestamp without time zone").HaveConversion<TicksDateTimeConverter>();
+        base.ConfigureConventions(builder);
+        builder.Properties<DateTime>().HaveColumnType("timestamp without time zone");
         builder.Properties<DateTimeOffset>().HaveConversion<UtcDateTimeOffsetConverter>();
     }
-
-    /// <summary>The ticks as written, whatever the kind (Npgsql refuses a UTC value here too): what <c>datetime2</c> keeps.</summary>
-    private sealed class TicksDateTimeConverter() : Microsoft.EntityFrameworkCore.Storage.ValueConversion.ValueConverter<DateTime, DateTime>(
-        value => DateTime.SpecifyKind(value, DateTimeKind.Unspecified), value => value);
 
     private sealed class UtcDateTimeOffsetConverter() : Microsoft.EntityFrameworkCore.Storage.ValueConversion.ValueConverter<DateTimeOffset, DateTimeOffset>(
         value => value.ToUniversalTime(), value => value);

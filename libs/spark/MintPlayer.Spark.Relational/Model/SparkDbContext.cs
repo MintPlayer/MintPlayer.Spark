@@ -211,7 +211,9 @@ public sealed class SparkDbContext : DbContext
                 ignore(property.Name);
                 return;
             }
-            column(property.Name).HasField("__stored_" + property.Name).UsePropertyAccessMode(PropertyAccessMode.PreferFieldDuringConstruction);
+            var stored = column(property.Name).HasField("__stored_" + property.Name).UsePropertyAccessMode(PropertyAccessMode.PreferFieldDuringConstruction);
+            if (property.PropertyType == typeof(string))
+                Setup.Dialect.TextColumn(stored);
             return;
         }
         if (!IsMapped(property))
@@ -231,6 +233,8 @@ public sealed class SparkDbContext : DbContext
             json.HasConversion(SparkJsonColumns.Converter(property.PropertyType), SparkJsonColumns.Comparer(property.PropertyType));
             Setup.Dialect.JsonColumn(json);
         }
+        else if (property.PropertyType == typeof(string))
+            Setup.Dialect.TextColumn(column(property.Name)); // O20: compares ignoring case, as on RavenDB
     }
 
     /// <summary>Whether EF can't map the type as a column (or a primitive collection) itself.</summary>

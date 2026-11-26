@@ -24,8 +24,49 @@ public abstract class RelationalStoreConformanceTests : SparkStoreConformanceTes
         return database.Store;
     }
 
-    /// <summary>A SQL column keeps a <see cref="DateTime"/>'s ticks, not its kind (open question O18).</summary>
-    protected override bool KeepsDateTimeKind => false;
+    /// <summary>A SQL column keeps a <see cref="DateTime"/>'s ticks, not its kind; the store reads it as UTC (O18).</summary>
+    protected override DateTimeKind UnspecifiedReadsAs => DateTimeKind.Utc;
+
+    /// <summary>
+    /// O18: a <see cref="DateTimeKind.Local"/> value is stored as its UTC instant, so reading it back as UTC names the
+    /// same moment. Writing its local ticks would shift it by the machine's offset.
+    /// </summary>
+    [SkippableFact]
+    public async Task A_local_DateTime_is_stored_as_its_utc_instant()
+    {
+        var local = new DateTime(2026, 7, 1, 14, 0, 0, DateTimeKind.Local);
+        using (var write = Store.OpenSession())
+        {
+            await write.StoreAsync(new ConfDoc { Id = "ConfDocs/local", Name = "Local", Utc = local, Unspecified = local, MaybeAt = local });
+            await write.SaveChangesAsync();
+        }
+
+        using var session = Store.OpenSession();
+        var loaded = await session.LoadAsync<ConfDoc>("ConfDocs/local");
+
+        loaded!.Utc.Kind.Should().Be(DateTimeKind.Utc);
+        loaded.Utc.Should().Be(local.ToUniversalTime());
+        loaded.MaybeAt!.Value.Kind.Should().Be(DateTimeKind.Utc);
+        loaded.MaybeAt.Value.Should().Be(local.ToUniversalTime());
+    }
+
+    /// <summary>O18: a query compares a UTC value against the stored UTC ticks, on SQL Server and on PostgreSQL alike.</summary>
+    [SkippableFact]
+    public async Task A_utc_DateTime_filters_against_the_stored_value()
+    {
+        var at = new DateTime(2026, 7, 1, 14, 0, 0, DateTimeKind.Utc);
+        using (var write = Store.OpenSession())
+        {
+            await write.StoreAsync(new ConfDoc { Id = "ConfDocs/early", Name = "Early", Utc = at.AddHours(-1) });
+            await write.StoreAsync(new ConfDoc { Id = "ConfDocs/late", Name = "Late", Utc = at.AddHours(1) });
+            await write.SaveChangesAsync();
+        }
+
+        using var session = Store.OpenSession();
+        var later = await session.ToListAsync(session.Query<ConfDoc>().Where(d => d.Utc > at));
+
+        later.Select(d => d.Name).Should().BeEquivalentTo(["Late"]);
+    }
 
     /// <summary>
     /// D16 on a table: a row written before a property existed reads it as the CLR default once the migration that

@@ -11,9 +11,41 @@ rounds, milestones and status. Branch `feat/536-sql-server-provider`, draft PR #
   failures are fixed (M9b, "First CI run"). Two things remain, both for the owner:
   - **GitGuardian:** the check fails on six false positives in earlier commits of the PR. Five are
     `apps/SqlDemo/SqlDemo/App_Data/modelHashes.json` hashes. The sixth is `password="$(openssl rand -hex 16)"` in
-    `.github/workflows/test.yml`, a value made fresh per run. Every commit is scanned, so they are cleared in the
-    dashboard (Ignore, false positive) and the check re-run.
-  - **Decisions O18, O19 and O20** (PRD §10): each has its interim behaviour in place and a recommendation.
+    `.github/workflows/test.yml`, a value made fresh per run. Every commit is scanned, so they were cleared in the
+    dashboard (Ignore, false positive) on 2026-11-26; the next push rescans.
+  - **Decisions O18, O19 and O20** (PRD §10): the owner took every recommendation on 2026-11-26. Work after the
+    green run, uncommitted until all three are built (then one commit and push):
+    - **O18 built:** every `DateTime` reads as UTC on SQL (base dialect converter). Conformance green on both SQL
+      databases (74/74) and Raven/InMemory. The analyzer note is SPARK066 (Info, `RelationalDateTimeAnalyzer`, only
+      where a relational store is referenced); `RelationalDateTimeAnalyzerTests` 2/2, red first; `docs/diagnostics.md`.
+    - **O19 built:** `SparkMigrationsModelDiffer` pairs columns by attribute id first (rename + alter), and never pairs
+      two different attributes; `RefuseSplitAttributes` is gone. `RelationalSchemaScaffolderTests` 18/18,
+      `RenamedAttributeTests` 4/4 on LocalDB and PostgreSQL 18.
+    - **O20 built (record it in PRD O20):** measured on PG 17.12 and 18.7 with a probe collation. `=`, `IN`, `left()`
+      and `right()` honour a nondeterministic collation on both. 17 refuses `LIKE`, `ILIKE` and `strpos`; 18 refuses
+      only `ILIKE` and `starts_with`. `(x) COLLATE "default" ILIKE p` works on both. Built:
+      - `PostgreSqlSparkDialect.TextColumn` gives ordinary string columns `spark_ignore_case`; `SparkFramework0004`
+        creates it; keys stay `C`.
+      - `SparkQuerySqlGenerator` (was `NullsFirstQuerySqlGeneratorFactory`) renders every `LIKE`/`ILIKE` as
+        `(x) COLLATE "default" ILIKE`, `strpos` over `lower()`, and `x = ANY (text[] column)` with the collation on the
+        item. A collation on the array column itself breaks EF's `Contains`: measured, reverted.
+      - InMemory: `IgnoreCaseQuery` rewrites string `==`/`Equals`/`StartsWith`/`EndsWith`/`Contains`/list `Contains`
+        to `OrdinalIgnoreCase`; sets are left to their comparer.
+      - Tests: `String_comparisons_ignore_case` (neutral: green on Raven, SQL Server, PG 18, InMemory; red first on PG
+        and InMemory) and `Substrings_and_column_patterns_ignore_case` (Raven opts out: no `Contains` in its LINQ).
+      - PG 17.12 (`postgres:17.12` container): every PostgreSql class in Relational.Tests green (119, 1 skipped),
+        `PostgreSqlStoreConformanceTests` 39/39 with both O20 cases. `PostgreSqlBehaviourTests` 13/13 on 17 and 18,
+        including the new `O20_an_ICU_level2_collation_…` record of the measurements.
+      - ICU is a requirement of the PostgreSQL provider now. Every server tested has it: the `postgres` images CI runs,
+        and zonky's embedded binaries (`icu*77.dll` on Windows; `--with-icu` in its Debian and Alpine build scripts for
+        every non-lite build).
+      - SqlDemo: its migration is regenerated as one `20261126081712_SparkModel` (unreleased; 49 text columns now
+        `spark_ignore_case`, keys still `C`). A second synchronize writes nothing; `--spark-migrate` on an empty PG 18
+        database applies framework 0004 before the app's tables.
+      - PRD O20 recorded (decided, built, measurements, costs).
+    - Verified before the push: Relational.Tests on PG 18 + LocalDB 239/241 (2 skipped), Spark.Tests' InMemory and
+      RavenDB conformance classes 115/116 (1 skipped), `RelationalDateTimeAnalyzerTests` 2/2. Release notes and the
+      PR body record the three decisions. Next: CI on the push, and GitGuardian's rescan.
 
   The entries below are each milestone's record; the oldest bullets describe the state of their day.
 - **M1 (the gate spikes) is done.** Everything so far is docs and throwaway spikes

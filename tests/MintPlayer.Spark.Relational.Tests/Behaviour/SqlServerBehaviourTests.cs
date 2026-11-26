@@ -94,7 +94,8 @@ public sealed class SqlServerBehaviourTests : SqlServerBehaviourDatabase
         await ExecuteAsync(db, "CREATE TABLE S (Id int PRIMARY KEY, Name nvarchar(50))");
         await ExecuteAsync(db, "INSERT INTO S VALUES (1, N'Alpha')");
         (await ScalarAsync<int>(db, "SELECT COUNT(*) FROM S WHERE Name LIKE N'%alp%'")).Should().Be(1);
-        (await ScalarAsync<int>(db, "SELECT COUNT(*) FROM S WHERE Name = N'ALPHA'")).Should().Be(1, "O20: equality ignores case too");
+        (await ScalarAsync<int>(db, "SELECT COUNT(*) FROM S WHERE Name = N'ALPHA'"))
+            .Should().Be(1, "O20: equality ignores case too, under the database's (default, case-insensitive) collation");
     }
 
     [SkippableFact]

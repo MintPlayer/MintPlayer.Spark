@@ -72,7 +72,7 @@ internal sealed class InMemorySparkSession : ISparkSession
     public IQueryable<T> Query<T>() where T : class
     {
         Request();
-        return Rows<T>(GetCollectionName(typeof(T))).AsQueryable();
+        return IgnoreCaseQuery.Wrap(Rows<T>(GetCollectionName(typeof(T))).AsQueryable());
     }
 
     private IEnumerable<T> Rows<T>(string collection) where T : class

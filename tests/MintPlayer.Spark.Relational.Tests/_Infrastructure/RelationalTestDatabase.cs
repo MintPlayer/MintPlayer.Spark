@@ -57,20 +57,25 @@ public sealed class RelationalTestDatabase : IAsyncDisposable
     /// </summary>
     public static async Task<RelationalTestDatabase> CreateAsync(
         RelationalTestServer server, IEnumerable<Type> types, Action<ModelBuilder>? configureModel = null, string? database = null,
-        IEnumerable<ISparkView>? views = null)
+        IEnumerable<ISparkView>? views = null, Func<Type, string, Guid?>? attributeId = null)
     {
-        var store = Open(server, types, configureModel, database ?? "spark_rel_" + Guid.NewGuid().ToString("N")[..12], views);
+        var store = Open(server, types, configureModel, database ?? "spark_rel_" + Guid.NewGuid().ToString("N")[..12], views, attributeId);
         await RelationalSchema.CreateFromModelAsync(store);
         return new RelationalTestDatabase(store);
     }
 
-    /// <summary>A store over <paramref name="database"/> with the model of <paramref name="types"/>; creates nothing.</summary>
+    /// <summary>
+    /// A store over <paramref name="database"/> with the model of <paramref name="types"/>; creates nothing.
+    /// <paramref name="attributeId"/> gives a property its model attribute's id, as the app's model files do (O19).
+    /// </summary>
     public static RelationalSparkStore Open(
-        RelationalTestServer server, IEnumerable<Type> types, Action<ModelBuilder>? configureModel, string database, IEnumerable<ISparkView>? views = null)
+        RelationalTestServer server, IEnumerable<Type> types, Action<ModelBuilder>? configureModel, string database,
+        IEnumerable<ISparkView>? views = null, Func<Type, string, Guid?>? attributeId = null)
     {
         var model = SparkRelationalModel.Build(types, t => SparkRelationalExtensions.KindOf(t, new SparkIdOptions()), views);
         return new RelationalSparkStore(
-            new SparkContextSetup(model, server.Dialect, configureModel is null ? [] : [configureModel]), server.ConnectionStringFor(database));
+            new SparkContextSetup(model, server.Dialect, configureModel is null ? [] : [configureModel], attributeId),
+            server.ConnectionStringFor(database));
     }
 
     public async ValueTask DisposeAsync()

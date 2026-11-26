@@ -77,7 +77,30 @@ public sealed class PostgreSqlBehaviourTests : PostgreSqlBehaviourDatabase
         await using var db = await OpenAsync();
         (await ScalarAsync<bool>(db, "SELECT 'Alpha' LIKE '%alp%'")).Should().BeFalse();
         (await ScalarAsync<bool>(db, "SELECT 'Alpha' ILIKE '%alp%'")).Should().BeTrue();
-        (await ScalarAsync<bool>(db, "SELECT 'Alpha' = 'ALPHA'")).Should().BeFalse("O20: equality respects case");
+        (await ScalarAsync<bool>(db, "SELECT 'Alpha' = 'ALPHA'")).Should().BeFalse("O20: the default collation respects case");
+    }
+
+    /// <summary>
+    /// O20: what the dialect's case-insensitive collation relies on, on every supported version (17 and 18). Equality
+    /// ignores case under it, a pattern search on such a column fails on 17, and <c>COLLATE "default"</c> with
+    /// <c>ILIKE</c>, which <c>SparkQuerySqlGenerator</c> renders, works on both.
+    /// </summary>
+    [SkippableFact]
+    public async Task O20_an_ICU_level2_collation_ignores_case_and_ILIKE_needs_the_default_collation()
+    {
+        await using var db = await OpenAsync();
+        await ExecuteAsync(db, "CREATE COLLATION IF NOT EXISTS beh_ignore_case (provider = icu, locale = 'und-u-ks-level2', deterministic = false)");
+        await ExecuteAsync(db, "CREATE TABLE ci (name text COLLATE beh_ignore_case)");
+        await ExecuteAsync(db, "INSERT INTO ci VALUES ('Alpha')");
+
+        (await ScalarAsync<long>(db, "SELECT COUNT(*) FROM ci WHERE name = 'ALPHA'")).Should().Be(1);
+        (await ScalarAsync<long>(db, "SELECT COUNT(*) FROM ci WHERE name IN ('ALPHA', 'x')")).Should().Be(1);
+        (await ScalarAsync<long>(db, "SELECT COUNT(*) FROM ci WHERE (name) COLLATE \"default\" ILIKE 'al%'")).Should().Be(1);
+        (await ScalarAsync<long>(db, "SELECT COUNT(*) FROM ci WHERE strpos(lower((name) COLLATE \"default\"), lower('LP')) > 0")).Should().Be(1);
+        (await ScalarAsync<long>(db, "SELECT COUNT(DISTINCT name) FROM (VALUES ('Alpha' COLLATE beh_ignore_case), ('ALPHA')) v(name)"))
+            .Should().Be(1, "the trap: DISTINCT and GROUP BY fold case, as RavenDB's facets do");
+        var refused = await Record.ExceptionAsync(() => ScalarAsync<long>(db, "SELECT COUNT(*) FROM ci WHERE name ILIKE 'al%'"));
+        refused.Should().NotBeNull("ILIKE refuses a nondeterministic collation on 17 and 18");
     }
 
     [SkippableFact]

@@ -22,7 +22,8 @@ public class MigPerson
 /// </summary>
 public abstract partial class RelationalSchemaMigratorTests : IAsyncLifetime
 {
-    private static readonly string[] FrameworkMigrations = ["20261125000001_SparkFramework0001", "20261125000002_SparkFramework0002", "20261126000003_SparkFramework0003"];
+    private static readonly string[] FrameworkMigrations =
+        ["20261125000001_SparkFramework0001", "20261125000002_SparkFramework0002", "20261126000003_SparkFramework0003", "20261126000004_SparkFramework0004"];
 
     private readonly List<RelationalSparkStore> created = [];
 

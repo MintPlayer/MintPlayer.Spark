@@ -21,6 +21,9 @@ public sealed class RavenSparkStoreConformanceTests : SparkStoreConformanceTests
     protected override IQueryable<T> Settled<T>(IQueryable<T> query)
         => ((IRavenQueryable<T>)query).Customize(c => c.WaitForNonStaleResults(TimeSpan.FromSeconds(30)));
 
+    /// <summary>RavenDB's LINQ refuses <c>string.Contains</c> ("use Search()"); its auto-indexes match terms, not substrings.</summary>
+    protected override bool QueriesSubstrings => false;
+
     public override async Task DisposeAsync() => await driver.DisposeAsync();
 
     /// <summary>A patch that deletes the property, so the document is the shape an older entity wrote.</summary>

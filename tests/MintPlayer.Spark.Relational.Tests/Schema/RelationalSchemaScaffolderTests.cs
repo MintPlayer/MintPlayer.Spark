@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.EntityFrameworkCore.Migrations;
+using Microsoft.EntityFrameworkCore.Migrations.Operations;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Storage;
 using MintPlayer.Spark.Relational.Design;
@@ -32,31 +33,70 @@ public abstract class RelationalSchemaScaffolderTests : IDisposable
                 SparkRelationalModel.Build(types, t => SparkRelationalExtensions.KindOf(t, new SparkIdOptions()), views), Dialect, []),
             NowhereConnectionString, migrationsAssembly: typeof(RelationalSchemaScaffolderTests).Assembly.GetName().Name);
 
+    /// <summary>
+    /// The operations from V1's <paramref name="v1Property"/> to V2's <paramref name="v2Property"/>, columns of one table
+    /// (<c>RenPeople</c>); <paramref name="sameAttribute"/> says whether the model gives them one attribute id.
+    /// </summary>
+    private IReadOnlyList<MigrationOperation> RenameOperations(Type v1, string v1Property, Type v2, string v2Property, bool sameAttribute)
+    {
+        var id = Guid.NewGuid();
+        RelationalSparkStore Versioned(Type type, string property, Guid attribute)
+            => new(new SparkContextSetup(
+                    SparkRelationalModel.Build([type], t => SparkRelationalExtensions.KindOf(t, new SparkIdOptions())), Dialect,
+                    [mb => mb.Entity(type).ToTable("RenPeople")], (t, p) => t == type && p == property ? attribute : null),
+                NowhereConnectionString);
+        using var before = Versioned(v1, v1Property, id).NewContext();
+        using var after = Versioned(v2, v2Property, sameAttribute ? id : Guid.NewGuid()).NewContext();
+        return after.GetService<IMigrationsModelDiffer>().GetDifferences(
+            before.GetService<IDesignTimeModel>().Model.GetRelationalModel(),
+            after.GetService<IDesignTimeModel>().Model.GetRelationalModel());
+    }
+
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
-    public void A_renamed_attribute_is_not_dropped_and_added(bool sameAttribute)
+    public void A_renamed_attribute_whose_type_changed_is_renamed_and_altered(bool sameAttribute)
     {
-        // V1's Name (text) and V2's Rank (a number) are columns of one table; the model says whether they are one
-        // attribute. EF renames a column itself when only the name changed; a changed type too makes a drop and an add.
-        var name = Guid.NewGuid();
-        RelationalSparkStore Versioned(Type type, string property, Guid id)
-            => new(new SparkContextSetup(
-                    SparkRelationalModel.Build([type], t => SparkRelationalExtensions.KindOf(t, new SparkIdOptions())), Dialect,
-                    [mb => mb.Entity(type).ToTable("RenPeople")], (t, p) => t == type && p == property ? id : null),
-                NowhereConnectionString);
-        using var v1 = Versioned(typeof(RenPersonV1), nameof(RenPersonV1.Name), name).NewContext();
-        using var v2 = Versioned(typeof(RenPersonV2), nameof(RenPersonV2.Rank), sameAttribute ? name : Guid.NewGuid()).NewContext();
-        var previous = v1.GetService<IDesignTimeModel>().Model.GetRelationalModel();
-        var target = v2.GetService<IDesignTimeModel>().Model.GetRelationalModel();
-        var operations = v2.GetService<IMigrationsModelDiffer>().GetDifferences(previous, target);
-
-        var refusal = Record.Exception(() => RelationalSchemaScaffolder.RefuseSplitAttributes(previous, target, operations));
+        // V1's Name (text) and V2's Rank (a number). EF pairs columns by name and shape, so on its own a changed type
+        // makes a drop and an add, which loses the data (O19). The attribute id decides.
+        var operations = RenameOperations(typeof(RenPersonV1), nameof(RenPersonV1.Name), typeof(RenPersonV2), nameof(RenPersonV2.Rank), sameAttribute);
 
         if (sameAttribute)
-            refusal.Should().BeOfType<InvalidOperationException>().Which.Message.Should().Contain("RenPeople.Name -> Rank");
+        {
+            operations.OfType<RenameColumnOperation>().Should().ContainSingle(r => r.Table == "RenPeople" && r.Name == "Name" && r.NewName == "Rank");
+            operations.OfType<AlterColumnOperation>().Should().ContainSingle(a => a.Table == "RenPeople" && a.Name == "Rank");
+            operations.OfType<DropColumnOperation>().Should().BeEmpty();
+            operations.OfType<AddColumnOperation>().Should().BeEmpty();
+        }
         else
-            refusal.Should().BeNull();
+        {
+            operations.OfType<DropColumnOperation>().Should().ContainSingle(d => d.Name == "Name");
+            operations.OfType<AddColumnOperation>().Should().ContainSingle(a => a.Name == "Rank");
+            operations.OfType<RenameColumnOperation>().Should().BeEmpty();
+        }
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void Two_attributes_of_one_shape_are_paired_only_when_they_are_one_attribute(bool sameAttribute)
+    {
+        // V1's Name and V3's Title are both text. EF's shape heuristic renames one into the other, which would carry an
+        // attribute's data into an unrelated new one; the attribute id decides (O19, the mirror case).
+        var operations = RenameOperations(typeof(RenPersonV1), nameof(RenPersonV1.Name), typeof(RenPersonV3), nameof(RenPersonV3.Title), sameAttribute);
+
+        if (sameAttribute)
+        {
+            operations.OfType<RenameColumnOperation>().Should().ContainSingle(r => r.Name == "Name" && r.NewName == "Title");
+            operations.OfType<DropColumnOperation>().Should().BeEmpty();
+            operations.OfType<AddColumnOperation>().Should().BeEmpty();
+        }
+        else
+        {
+            operations.OfType<RenameColumnOperation>().Should().BeEmpty();
+            operations.OfType<DropColumnOperation>().Should().ContainSingle(d => d.Name == "Name");
+            operations.OfType<AddColumnOperation>().Should().ContainSingle(a => a.Name == "Title");
+        }
     }
 
     [Fact]
@@ -86,6 +126,23 @@ public abstract class RelationalSchemaScaffolderTests : IDisposable
         code.Should().Contain("name: \"MigPeople\"");
         // The framework schema belongs to Spark's own migrations (D24), never to the app's.
         code.Should().NotContain("Reservations");
+    }
+
+    [Fact]
+    public void The_snapshot_keeps_each_columns_attribute()
+    {
+        // The next migration is diffed against the snapshot, so the attribute ids must survive it, or a rename made after
+        // this migration would pair by name and shape again (O19).
+        var attribute = Guid.NewGuid();
+        var store = new RelationalSparkStore(new SparkContextSetup(
+                SparkRelationalModel.Build([typeof(MigPerson)], t => SparkRelationalExtensions.KindOf(t, new SparkIdOptions())), Dialect, [],
+                (t, p) => t == typeof(MigPerson) && p == nameof(MigPerson.Name) ? attribute : null),
+            NowhereConnectionString, migrationsAssembly: typeof(RelationalSchemaScaffolderTests).Assembly.GetName().Name);
+
+        var result = RelationalSchemaScaffolder.Scaffold(store, new SparkScaffoldRequest(project, "Initial"));
+
+        var snapshot = File.ReadAllText(result.Files.Single(f => f.EndsWith("ModelSnapshot.cs", StringComparison.Ordinal)));
+        snapshot.Should().Contain(Model.SparkDbContext.AttributeIdAnnotation).And.Contain(attribute.ToString("D"));
     }
 
     [Fact]
@@ -120,6 +177,12 @@ public class RenPersonV2
 {
     public Id<RenPersonV2> Id { get; set; }
     public int Rank { get; set; }
+}
+
+public class RenPersonV3
+{
+    public Id<RenPersonV3> Id { get; set; }
+    public string Title { get; set; } = string.Empty;
 }
 
 public sealed class SqlServerSchemaScaffolderTests : RelationalSchemaScaffolderTests

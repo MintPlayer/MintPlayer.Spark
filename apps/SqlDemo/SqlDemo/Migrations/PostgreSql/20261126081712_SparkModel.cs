@@ -7,7 +7,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace SqlDemo.Migrations.PostgreSql;
 
 /// <inheritdoc />
-public partial class _20261125224818_SparkModel : Migration
+public partial class _20261126081712_SparkModel : Migration
 {
     /// <inheritdoc />
     protected override void Up(MigrationBuilder migrationBuilder)
@@ -17,20 +17,20 @@ public partial class _20261125224818_SparkModel : Migration
             columns: table => new
             {
                 Id = table.Column<string>(type: "character varying(450)", maxLength: 450, nullable: false, collation: "C"),
-                UserId = table.Column<string>(type: "text", nullable: false),
+                UserId = table.Column<string>(type: "text", nullable: false, collation: "spark_ignore_case"),
                 Kind = table.Column<int>(type: "integer", nullable: false),
-                ClientId = table.Column<string>(type: "text", nullable: true),
-                Name = table.Column<string>(type: "text", nullable: true),
-                VerifiedHost = table.Column<string>(type: "text", nullable: true),
+                ClientId = table.Column<string>(type: "text", nullable: true, collation: "spark_ignore_case"),
+                Name = table.Column<string>(type: "text", nullable: true, collation: "spark_ignore_case"),
+                VerifiedHost = table.Column<string>(type: "text", nullable: true, collation: "spark_ignore_case"),
                 Permissions = table.Column<int>(type: "integer", nullable: false),
                 Types = table.Column<string>(type: "jsonb", nullable: true),
                 CreatedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
                 ExpiresAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
                 LastUsedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
-                TokenHash = table.Column<string>(type: "text", nullable: true),
-                SecurityStamp = table.Column<string>(type: "text", nullable: true),
-                OidcGrantId = table.Column<string>(type: "text", nullable: true),
-                Issuer = table.Column<string>(type: "text", nullable: true),
+                TokenHash = table.Column<string>(type: "text", nullable: true, collation: "spark_ignore_case"),
+                SecurityStamp = table.Column<string>(type: "text", nullable: true, collation: "spark_ignore_case"),
+                OidcGrantId = table.Column<string>(type: "text", nullable: true, collation: "spark_ignore_case"),
+                Issuer = table.Column<string>(type: "text", nullable: true, collation: "spark_ignore_case"),
                 RevokedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
                 SparkChangeStamp = table.Column<ulong>(type: "xid8", nullable: false, defaultValueSql: "pg_current_xact_id()"),
                 SparkExpiresAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
@@ -46,8 +46,8 @@ public partial class _20261125224818_SparkModel : Migration
             columns: table => new
             {
                 Id = table.Column<Guid>(type: "uuid", nullable: false),
-                Name = table.Column<string>(type: "text", nullable: false),
-                Country = table.Column<string>(type: "text", nullable: true),
+                Name = table.Column<string>(type: "text", nullable: false, collation: "spark_ignore_case"),
+                Country = table.Column<string>(type: "text", nullable: true, collation: "spark_ignore_case"),
                 SparkChangeStamp = table.Column<ulong>(type: "xid8", nullable: false, defaultValueSql: "pg_current_xact_id()"),
                 SparkExpiresAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
                 Version = table.Column<long>(type: "bigint", nullable: false)
@@ -62,7 +62,7 @@ public partial class _20261125224818_SparkModel : Migration
             columns: table => new
             {
                 Id = table.Column<string>(type: "character varying(450)", maxLength: 450, nullable: false, collation: "C"),
-                Name = table.Column<string>(type: "text", nullable: false),
+                Name = table.Column<string>(type: "text", nullable: false, collation: "spark_ignore_case"),
                 Values = table.Column<string>(type: "jsonb", nullable: false),
                 SparkChangeStamp = table.Column<ulong>(type: "xid8", nullable: false, defaultValueSql: "pg_current_xact_id()"),
                 SparkExpiresAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
@@ -78,13 +78,13 @@ public partial class _20261125224818_SparkModel : Migration
             columns: table => new
             {
                 Id = table.Column<string>(type: "character varying(450)", maxLength: 450, nullable: false, collation: "C"),
-                Email = table.Column<string>(type: "text", nullable: false),
-                Template = table.Column<string>(type: "text", nullable: false),
-                Stream = table.Column<string>(type: "text", nullable: false),
-                CampaignId = table.Column<string>(type: "text", nullable: true),
+                Email = table.Column<string>(type: "text", nullable: false, collation: "spark_ignore_case"),
+                Template = table.Column<string>(type: "text", nullable: false, collation: "spark_ignore_case"),
+                Stream = table.Column<string>(type: "text", nullable: false, collation: "spark_ignore_case"),
+                CampaignId = table.Column<string>(type: "text", nullable: true, collation: "spark_ignore_case"),
                 Status = table.Column<int>(type: "integer", nullable: false),
                 UpdatedAtUtc = table.Column<DateTime>(type: "timestamp without time zone", nullable: false),
-                Detail = table.Column<string>(type: "text", nullable: true),
+                Detail = table.Column<string>(type: "text", nullable: true, collation: "spark_ignore_case"),
                 ExpiresAtUtc = table.Column<DateTime>(type: "timestamp without time zone", nullable: true),
                 SparkChangeStamp = table.Column<ulong>(type: "xid8", nullable: false, defaultValueSql: "pg_current_xact_id()"),
                 SparkExpiresAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
@@ -118,7 +118,7 @@ public partial class _20261125224818_SparkModel : Migration
             columns: table => new
             {
                 Id = table.Column<string>(type: "character varying(450)", maxLength: 450, nullable: false, collation: "C"),
-                MessageId = table.Column<string>(type: "text", nullable: false),
+                MessageId = table.Column<string>(type: "text", nullable: false, collation: "spark_ignore_case"),
                 HandlerIndex = table.Column<int>(type: "integer", nullable: false),
                 Steps = table.Column<List<string>>(type: "text[]", nullable: false),
                 SparkChangeStamp = table.Column<ulong>(type: "xid8", nullable: false, defaultValueSql: "pg_current_xact_id()"),
@@ -135,9 +135,9 @@ public partial class _20261125224818_SparkModel : Migration
             columns: table => new
             {
                 Id = table.Column<string>(type: "character varying(450)", maxLength: 450, nullable: false, collation: "C"),
-                QueueName = table.Column<string>(type: "text", nullable: false),
-                MessageType = table.Column<string>(type: "text", nullable: false),
-                PayloadJson = table.Column<string>(type: "text", nullable: false),
+                QueueName = table.Column<string>(type: "text", nullable: false, collation: "spark_ignore_case"),
+                MessageType = table.Column<string>(type: "text", nullable: false, collation: "spark_ignore_case"),
+                PayloadJson = table.Column<string>(type: "text", nullable: false, collation: "spark_ignore_case"),
                 CreatedAtUtc = table.Column<DateTime>(type: "timestamp without time zone", nullable: false),
                 NextAttemptAtUtc = table.Column<DateTime>(type: "timestamp without time zone", nullable: true),
                 Priority = table.Column<int>(type: "integer", nullable: false),
@@ -155,7 +155,7 @@ public partial class _20261125224818_SparkModel : Migration
                 Handlers = table.Column<string>(type: "jsonb", nullable: false),
                 WakeUp = table.Column<bool>(type: "boolean", nullable: false),
                 LastWakeUpUtc = table.Column<DateTime>(type: "timestamp without time zone", nullable: true),
-                OwnerId = table.Column<string>(type: "text", nullable: true),
+                OwnerId = table.Column<string>(type: "text", nullable: true, collation: "spark_ignore_case"),
                 ClaimExpiresAtUtc = table.Column<DateTime>(type: "timestamp without time zone", nullable: true),
                 SparkChangeStamp = table.Column<ulong>(type: "xid8", nullable: false, defaultValueSql: "pg_current_xact_id()"),
                 SparkExpiresAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
@@ -172,7 +172,7 @@ public partial class _20261125224818_SparkModel : Migration
             {
                 Id = table.Column<string>(type: "character varying(450)", maxLength: 450, nullable: false, collation: "C"),
                 Version = table.Column<long>(type: "bigint", nullable: false),
-                Name = table.Column<string>(type: "text", nullable: true),
+                Name = table.Column<string>(type: "text", nullable: true, collation: "spark_ignore_case"),
                 AppliedOnUtc = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
                 SparkChangeStamp = table.Column<ulong>(type: "xid8", nullable: false, defaultValueSql: "pg_current_xact_id()"),
                 SparkExpiresAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true)
@@ -187,11 +187,11 @@ public partial class _20261125224818_SparkModel : Migration
             columns: table => new
             {
                 Id = table.Column<string>(type: "character varying(450)", maxLength: 450, nullable: false, collation: "C"),
-                TokenHash = table.Column<string>(type: "text", nullable: false),
-                UserId = table.Column<string>(type: "text", nullable: false),
-                LoginProvider = table.Column<string>(type: "text", nullable: false),
-                ProviderKey = table.Column<string>(type: "text", nullable: false),
-                ProviderDisplayName = table.Column<string>(type: "text", nullable: true),
+                TokenHash = table.Column<string>(type: "text", nullable: false, collation: "spark_ignore_case"),
+                UserId = table.Column<string>(type: "text", nullable: false, collation: "spark_ignore_case"),
+                LoginProvider = table.Column<string>(type: "text", nullable: false, collation: "spark_ignore_case"),
+                ProviderKey = table.Column<string>(type: "text", nullable: false, collation: "spark_ignore_case"),
+                ProviderDisplayName = table.Column<string>(type: "text", nullable: true, collation: "spark_ignore_case"),
                 ExpiresAtUtc = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
                 ConsumedAtUtc = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
                 SparkChangeStamp = table.Column<ulong>(type: "xid8", nullable: false, defaultValueSql: "pg_current_xact_id()"),
@@ -208,9 +208,9 @@ public partial class _20261125224818_SparkModel : Migration
             columns: table => new
             {
                 Id = table.Column<string>(type: "character varying(450)", maxLength: 450, nullable: false, collation: "C"),
-                Name = table.Column<string>(type: "text", nullable: true),
-                NormalizedName = table.Column<string>(type: "text", nullable: true),
-                ConcurrencyStamp = table.Column<string>(type: "text", nullable: true),
+                Name = table.Column<string>(type: "text", nullable: true, collation: "spark_ignore_case"),
+                NormalizedName = table.Column<string>(type: "text", nullable: true, collation: "spark_ignore_case"),
+                ConcurrencyStamp = table.Column<string>(type: "text", nullable: true, collation: "spark_ignore_case"),
                 Claims = table.Column<string>(type: "jsonb", nullable: false),
                 SparkChangeStamp = table.Column<ulong>(type: "xid8", nullable: false, defaultValueSql: "pg_current_xact_id()"),
                 SparkExpiresAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
@@ -226,24 +226,24 @@ public partial class _20261125224818_SparkModel : Migration
             columns: table => new
             {
                 Id = table.Column<string>(type: "character varying(450)", maxLength: 450, nullable: false, collation: "C"),
-                UserName = table.Column<string>(type: "text", nullable: true),
-                NormalizedUserName = table.Column<string>(type: "text", nullable: true),
-                Email = table.Column<string>(type: "text", nullable: true),
-                NormalizedEmail = table.Column<string>(type: "text", nullable: true),
+                UserName = table.Column<string>(type: "text", nullable: true, collation: "spark_ignore_case"),
+                NormalizedUserName = table.Column<string>(type: "text", nullable: true, collation: "spark_ignore_case"),
+                Email = table.Column<string>(type: "text", nullable: true, collation: "spark_ignore_case"),
+                NormalizedEmail = table.Column<string>(type: "text", nullable: true, collation: "spark_ignore_case"),
                 EmailConfirmed = table.Column<bool>(type: "boolean", nullable: false),
-                PasswordHash = table.Column<string>(type: "text", nullable: true),
-                SecurityStamp = table.Column<string>(type: "text", nullable: true),
-                ConcurrencyStamp = table.Column<string>(type: "text", nullable: true),
-                PhoneNumber = table.Column<string>(type: "text", nullable: true),
+                PasswordHash = table.Column<string>(type: "text", nullable: true, collation: "spark_ignore_case"),
+                SecurityStamp = table.Column<string>(type: "text", nullable: true, collation: "spark_ignore_case"),
+                ConcurrencyStamp = table.Column<string>(type: "text", nullable: true, collation: "spark_ignore_case"),
+                PhoneNumber = table.Column<string>(type: "text", nullable: true, collation: "spark_ignore_case"),
                 PhoneNumberConfirmed = table.Column<bool>(type: "boolean", nullable: false),
                 TwoFactorEnabled = table.Column<bool>(type: "boolean", nullable: false),
                 LockoutEnd = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
                 LockoutEnabled = table.Column<bool>(type: "boolean", nullable: false),
                 AccessFailedCount = table.Column<int>(type: "integer", nullable: false),
-                AuthenticatorKey = table.Column<string>(type: "text", nullable: true),
+                AuthenticatorKey = table.Column<string>(type: "text", nullable: true, collation: "spark_ignore_case"),
                 CreatedAtUtc = table.Column<DateTime>(type: "timestamp without time zone", nullable: true),
-                RegistrationMethod = table.Column<string>(type: "text", nullable: true),
-                PreferredCulture = table.Column<string>(type: "text", nullable: true),
+                RegistrationMethod = table.Column<string>(type: "text", nullable: true, collation: "spark_ignore_case"),
+                PreferredCulture = table.Column<string>(type: "text", nullable: true, collation: "spark_ignore_case"),
                 BypassTwoFactorForExternalLogin = table.Column<bool>(type: "boolean", nullable: false),
                 Roles = table.Column<List<string>>(type: "text[]", nullable: false),
                 Claims = table.Column<string>(type: "jsonb", nullable: false),
@@ -265,13 +265,13 @@ public partial class _20261125224818_SparkModel : Migration
             columns: table => new
             {
                 Id = table.Column<Guid>(type: "uuid", nullable: false),
-                Title = table.Column<string>(type: "text", nullable: false),
+                Title = table.Column<string>(type: "text", nullable: false, collation: "spark_ignore_case"),
                 Author = table.Column<Guid>(type: "uuid", nullable: true),
                 Year = table.Column<int>(type: "integer", nullable: false),
-                Isbn = table.Column<string>(type: "text", nullable: true),
-                CreatedBy = table.Column<string>(type: "text", nullable: true),
+                Isbn = table.Column<string>(type: "text", nullable: true, collation: "spark_ignore_case"),
+                CreatedBy = table.Column<string>(type: "text", nullable: true, collation: "spark_ignore_case"),
                 CreatedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
-                ModifiedBy = table.Column<string>(type: "text", nullable: true),
+                ModifiedBy = table.Column<string>(type: "text", nullable: true, collation: "spark_ignore_case"),
                 ModifiedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
                 SparkChangeStamp = table.Column<ulong>(type: "xid8", nullable: false, defaultValueSql: "pg_current_xact_id()"),
                 SparkExpiresAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),

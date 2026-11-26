@@ -1097,8 +1097,9 @@ test the databases, not Spark; the conformance suite tests Spark on top of them.
 it afterwards; without the dialect's variable (`SPARK_TEST_SQLSERVER`, `SPARK_TEST_POSTGRESQL`) the tests skip. Every
 row above has a test except O13, which tests EF's mapping rather than the server and joins the conformance suite with
 the O13 tier port (M6). Beyond the table: the SQL Server unique-index error is 2601 (the constraint's is 2627, both
-mapped), and the equality cases assert O20's measured difference (SQL Server ignores case, PostgreSQL does not), so
-deciding O20 will update them.
+mapped), and the equality cases record what the servers do by default (SQL Server ignores case, PostgreSQL does not).
+O20 (decided) added `O20_an_ICU_level2_collation_…`, which records what the PostgreSQL dialect's collation relies on,
+on 17 and 18.
 
 **D32 (owner, 2026-11-24): `[GenerateIndex]` renders an SQL view and indexes from the same source generator.**
 - **How a view compares to a RavenDB index.** Both are a named projection defined in code and queried like a
@@ -2140,7 +2141,19 @@ decided O14–O17, and O8 and O9 last. The plan §3 has the log.
     only); (c) a separate `dotnet` tool, which needs the design-time `DbContext` factory D33 avoids.
   - Trap: a deployment that copies `bin` instead of publishing ships 17 MB of Roslyn with no warning. It costs
     size, not correctness, and the guide says "publish, don't copy `bin`".
-- **O18, `DateTime.Kind` on SQL (open, found in M4b, 2026-11-25):** a document keeps a `DateTime`'s kind (RavenDB writes
+- **O18, `DateTime.Kind` on SQL (decided 2026-11-26 by the owner: (b), read as UTC; built):** the base
+  `SparkRelationalDialect.ConfigureConventions` maps every `DateTime` and `DateTime?` through `UtcDateTimeConverter`: a
+  local value is written as its UTC instant, every value goes to the column as unspecified ticks (Npgsql's rule), and
+  reads back with Kind Utc. PostgreSQL's and SQL Server's dialects call the base. Evidence: the conformance suite's
+  `Values_round_trip_through_a_new_session` now asserts Kind Utc for a UTC value on every store (red on both SQL
+  databases first), `UnspecifiedReadsAs` is Utc on SQL, and `A_local_DateTime_is_stored_as_its_utc_instant` (with a
+  `DateTime?`) and `A_utc_DateTime_filters_against_the_stored_value` are green on SQL Server (LocalDB) and PostgreSQL 18:
+  74/74; RavenDB and InMemory 83/83. The analyzer note is SPARK066 (Info, `RelationalDateTimeAnalyzer`): a public
+  `DateTime`/`DateTime?` property of a type a `SparkContext` exposes as `IQueryable<T>` (or of its base type), raised
+  only where the compilation references a relational store (`SparkRelationalDialect` resolves), since RavenDB keeps
+  the kind. `RelationalDateTimeAnalyzerTests`: red first (no analyzer), then green; the base type's property is
+  noted, `DateTimeOffset`/`DateOnly`/static/unstored properties are not, nor anything without a relational store.
+  The question as it stood (found in M4b, 2026-11-25): a document keeps a `DateTime`'s kind (RavenDB writes
   `Z` for UTC, nothing for Unspecified); a `datetime2` or `timestamp without time zone` column keeps the ticks only.
   The store conformance suite (`Values_round_trip_through_a_new_session`) shows it: on both SQL databases a UTC value
   reads back with the same ticks and Kind Unspecified. PostgreSQL makes it worse: Npgsql refuses to write a UTC
@@ -2155,7 +2168,25 @@ decided O14–O17, and O8 and O9 last. The plan §3 has the log.
     a column, and EF's converters cannot span two columns, so it needs its own mapping.
   - Recommendation: (b), plus an analyzer note steering new code to `DateTimeOffset` (D5) and `DateOnly`. The suite's
     `KeepsDateTimeKind` switch skips only the kind assertions until this is decided.
-- **O19, a renamed attribute on SQL (open, found in M4d, 2026-11-25):** D24 refuses a migration that drops and re-adds
+- **O19, a renamed attribute on SQL (decided 2026-11-26 by the owner: (b), rename + alter, with the mirror split;
+  built):** `SparkMigrationsModelDiffer` overrides EF's column diff. It pairs a table's columns by attribute id
+  (`Spark:AttributeId` on the property) first, then applies EF's own seven rules (name, property + path, property, shape
+  + property, shape + annotations, shape), each only where one side has no attribute id: the key, the stamp, a snapshot
+  from before attribute ids. Paired, EF's `Diff(IColumn, IColumn)` emits `RenameColumn`, then `AlterColumn` for the new
+  type. Two attributed columns with different ids are never paired, so the mirror case becomes a drop and an add.
+  Replacing the rules, not correcting the operations afterwards, is required: `DiffCollection` records every pair in
+  the `DiffContext` the index and key diffs read. `RefuseSplitAttributes` is gone. Evidence:
+  - `RelationalSchemaScaffolderTests` (no server, both dialects). Name (text) → Rank (int) with one id gives a single
+    `RenameColumn` and a single `AlterColumn`, with different ids a drop and an add. Name → Title (both text) is
+    renamed only with one id. Red before the override (4 cases), green after. `The_snapshot_keeps_each_columns_attribute`
+    shows the ids reach the snapshot, which the next migration diffs against.
+  - `RenamedAttributeTests` on SQL Server (LocalDB) and PostgreSQL 18, data applied through the operations. `int` Score
+    42 → `long` Points reads 42. `string` Label "not a number" → `int` Number fails the migration: PostgreSQL with
+    42804 "cannot be cast automatically", SQL Server with "Conversion failed". PostgreSQL refuses any type change that
+    needs a USING clause (text → int), even for text that holds numbers, because Npgsql emits none. SQL Server converts
+    value by value. Either way the migration fails, and the column is never silently emptied; the developer edits the
+    scaffolded migration.
+  The question as it stood: D24 refused a migration that dropped and re-added
   the column of one attribute id (`RelationalSchemaScaffolder.RefuseSplitAttributes`), because applying it loses the
   column's data. Measured: EF's differ renames a column itself when only its name changed (its heuristic matches
   columns of the same shape, even for unrelated attributes), so the refusal fires on a rename **with** a type change.
@@ -2166,7 +2197,47 @@ decided O14–O17, and O8 and O9 last. The plan §3 has the log.
   - Recommendation: (b); it keeps the data for every convertible change and fails loudly otherwise. The flip side
     of EF's heuristic (an unrelated drop + add of the same shape becomes a rename, carrying data into a new
     attribute) is the mirror case: (b) would also split that rename when the ids differ.
-- **O20, case in string equality (open, found in M5b, 2026-11-25):** measured with the store conformance suite, a
+- **O20, case in string equality (decided 2026-11-26 by the owner: (a), ignore case everywhere; built):** every
+  string comparison a query makes ignores case on every provider, as on RavenDB. Measured first on PostgreSQL 17.12
+  and 18.7 with a probe collation (ICU `und-u-ks-level2`, nondeterministic), recorded as
+  `PostgreSqlBehaviourTests.O20_an_ICU_level2_collation_ignores_case_and_ILIKE_needs_the_default_collation`:
+
+  | On a nondeterministic column | 17.12 | 18.7 |
+  |---|---|---|
+  | `=`, `IN`, `left()`/`right()` = | ignores case | ignores case |
+  | `LIKE`, `strpos` | refused ("nondeterministic collations are not supported for substring searches") | ignores case |
+  | `ILIKE`, `starts_with` | refused | refused |
+  | `(x) COLLATE "default" ILIKE p`, `strpos(lower((x) COLLATE "default"), lower(p))` | ignores case | ignores case |
+  | `('RED' COLLATE ci) = ANY (text[])` | ignores case | ignores case |
+  | `DISTINCT`, `GROUP BY` | fold `Alpha` and `ALPHA` into one | same |
+
+  Built:
+  - **PostgreSQL:** `PostgreSqlSparkDialect.TextColumn` gives every ordinary string column (and a stored computed one)
+    the collation `spark_ignore_case`, which framework migration `SparkFramework0004` creates (`CREATE COLLATION IF NOT
+    EXISTS`, through `SparkRelationalDialect.IgnoreCaseFrameworkSql`). Keys stay `C` (D7), so the key scans' `LIKE`
+    still works on 17. `SparkQuerySqlGenerator` renders every `LIKE`/`ILIKE` as `(x) COLLATE "default" ILIKE p`, `strpos`
+    over `lower()` on the default collation, and `item = ANY (text[] column)` with the collation on the item. The
+    collation cannot go on the `text[]` column itself: EF then fails to translate `List<string>.Contains` (measured on
+    both databases, reverted).
+  - **SQL Server:** nothing; ordinary columns take the database's case-insensitive default collation.
+  - **InMemory:** `IgnoreCaseQuery` wraps the session's and the views' queryables and rewrites string `==`, `!=`,
+    `Equals`, `StartsWith`, `EndsWith`, `Contains` and a string list's `Contains` to `OrdinalIgnoreCase`. A set keeps
+    its own comparer.
+  - **ICU is required** on the PostgreSQL server. Every server tested has it: the `postgres` Docker images CI runs, and
+    the embedded test server (zonky's binaries: `icu*77.dll` on Windows, `--with-icu` in its Debian and Alpine build
+    scripts for every non-lite build).
+  - Evidence: the neutral conformance cases `String_comparisons_ignore_case` (`==`, captured `==`, `!=`, a key list's
+    `Contains`, `StartsWith`/`EndsWith` with a constant and a captured value, a tag list's `Contains`) and
+    `Substrings_and_column_patterns_ignore_case` (`Contains`, `!StartsWith`, a pattern read from another column;
+    RavenDB opts out, its LINQ has no `Contains`). Red first on PostgreSQL and InMemory; green on RavenDB, SQL Server
+    (LocalDB), PostgreSQL 17.12 (39/39 conformance) and 18.7, and InMemory. SqlDemo's migration, regenerated, puts
+    the collation on its 49 text columns; `--spark-migrate` applies it to an empty database.
+  - What it costs: `DISTINCT` and `GROUP BY` fold case (as RavenDB's facets do); a unique index on a string column
+    refuses values that differ only in case; a `LIKE` on a text column cannot use a B-tree index; a `text[]` filter
+    written with `@>` (a GIN index's operator) is not rewritten and still respects case; a complex value stored as JSON
+    is not collated.
+
+  The question as it stood (found in M5b, 2026-11-25): measured with the store conformance suite, a
   row named `Alpha` queried with `Name == "ALPHA"` and `Name.StartsWith("al")`:
 
   | Provider | `==` | `StartsWith` | Why |

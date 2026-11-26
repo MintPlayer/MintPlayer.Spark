@@ -13,8 +13,8 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace SqlDemo.Migrations.PostgreSql;
 
 [DbContext(typeof(SparkDbContext))]
-[Migration("20261125224818_SparkModel")]
-partial class _20261125224818_SparkModel
+[Migration("20261126081712_SparkModel")]
+partial class _20261126081712_SparkModel
 {
     /// <inheritdoc />
     protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -34,7 +34,8 @@ partial class _20261125224818_SparkModel
                     .UseCollation("C");
 
                 b.Property<string>("ClientId")
-                    .HasColumnType("text");
+                    .HasColumnType("text")
+                    .UseCollation("spark_ignore_case");
 
                 b.Property<DateTimeOffset>("CreatedAt")
                     .HasColumnType("timestamp with time zone");
@@ -43,7 +44,8 @@ partial class _20261125224818_SparkModel
                     .HasColumnType("timestamp with time zone");
 
                 b.Property<string>("Issuer")
-                    .HasColumnType("text");
+                    .HasColumnType("text")
+                    .UseCollation("spark_ignore_case");
 
                 b.Property<int>("Kind")
                     .HasColumnType("integer");
@@ -52,10 +54,12 @@ partial class _20261125224818_SparkModel
                     .HasColumnType("timestamp with time zone");
 
                 b.Property<string>("Name")
-                    .HasColumnType("text");
+                    .HasColumnType("text")
+                    .UseCollation("spark_ignore_case");
 
                 b.Property<string>("OidcGrantId")
-                    .HasColumnType("text");
+                    .HasColumnType("text")
+                    .UseCollation("spark_ignore_case");
 
                 b.Property<int>("Permissions")
                     .HasColumnType("integer");
@@ -64,7 +68,8 @@ partial class _20261125224818_SparkModel
                     .HasColumnType("timestamp with time zone");
 
                 b.Property<string>("SecurityStamp")
-                    .HasColumnType("text");
+                    .HasColumnType("text")
+                    .UseCollation("spark_ignore_case");
 
                 b.Property<ulong>("SparkChangeStamp")
                     .ValueGeneratedOnAddOrUpdate()
@@ -75,17 +80,20 @@ partial class _20261125224818_SparkModel
                     .HasColumnType("timestamp with time zone");
 
                 b.Property<string>("TokenHash")
-                    .HasColumnType("text");
+                    .HasColumnType("text")
+                    .UseCollation("spark_ignore_case");
 
                 b.Property<string>("Types")
                     .HasColumnType("jsonb");
 
                 b.Property<string>("UserId")
                     .IsRequired()
-                    .HasColumnType("text");
+                    .HasColumnType("text")
+                    .UseCollation("spark_ignore_case");
 
                 b.Property<string>("VerifiedHost")
-                    .HasColumnType("text");
+                    .HasColumnType("text")
+                    .UseCollation("spark_ignore_case");
 
                 b.Property<long>("Version")
                     .IsConcurrencyToken()
@@ -115,14 +123,17 @@ partial class _20261125224818_SparkModel
 
                 b.Property<string>("LoginProvider")
                     .IsRequired()
-                    .HasColumnType("text");
+                    .HasColumnType("text")
+                    .UseCollation("spark_ignore_case");
 
                 b.Property<string>("ProviderDisplayName")
-                    .HasColumnType("text");
+                    .HasColumnType("text")
+                    .UseCollation("spark_ignore_case");
 
                 b.Property<string>("ProviderKey")
                     .IsRequired()
-                    .HasColumnType("text");
+                    .HasColumnType("text")
+                    .UseCollation("spark_ignore_case");
 
                 b.Property<ulong>("SparkChangeStamp")
                     .ValueGeneratedOnAddOrUpdate()
@@ -134,11 +145,13 @@ partial class _20261125224818_SparkModel
 
                 b.Property<string>("TokenHash")
                     .IsRequired()
-                    .HasColumnType("text");
+                    .HasColumnType("text")
+                    .UseCollation("spark_ignore_case");
 
                 b.Property<string>("UserId")
                     .IsRequired()
-                    .HasColumnType("text");
+                    .HasColumnType("text")
+                    .UseCollation("spark_ignore_case");
 
                 b.Property<long>("Version")
                     .IsConcurrencyToken()
@@ -165,13 +178,16 @@ partial class _20261125224818_SparkModel
                     .HasColumnType("jsonb");
 
                 b.Property<string>("ConcurrencyStamp")
-                    .HasColumnType("text");
+                    .HasColumnType("text")
+                    .UseCollation("spark_ignore_case");
 
                 b.Property<string>("Name")
-                    .HasColumnType("text");
+                    .HasColumnType("text")
+                    .UseCollation("spark_ignore_case");
 
                 b.Property<string>("NormalizedName")
-                    .HasColumnType("text");
+                    .HasColumnType("text")
+                    .UseCollation("spark_ignore_case");
 
                 b.Property<ulong>("SparkChangeStamp")
                     .ValueGeneratedOnAddOrUpdate()
@@ -205,7 +221,8 @@ partial class _20261125224818_SparkModel
                     .HasColumnType("integer");
 
                 b.Property<string>("AuthenticatorKey")
-                    .HasColumnType("text");
+                    .HasColumnType("text")
+                    .UseCollation("spark_ignore_case");
 
                 b.Property<bool>("BypassTwoFactorForExternalLogin")
                     .HasColumnType("boolean");
@@ -215,13 +232,15 @@ partial class _20261125224818_SparkModel
                     .HasColumnType("jsonb");
 
                 b.Property<string>("ConcurrencyStamp")
-                    .HasColumnType("text");
+                    .HasColumnType("text")
+                    .UseCollation("spark_ignore_case");
 
                 b.Property<DateTime?>("CreatedAtUtc")
                     .HasColumnType("timestamp without time zone");
 
                 b.Property<string>("Email")
-                    .HasColumnType("text");
+                    .HasColumnType("text")
+                    .UseCollation("spark_ignore_case");
 
                 b.Property<bool>("EmailConfirmed")
                     .HasColumnType("boolean");
@@ -237,36 +256,43 @@ partial class _20261125224818_SparkModel
                     .HasColumnType("jsonb");
 
                 b.Property<string>("NormalizedEmail")
-                    .HasColumnType("text");
+                    .HasColumnType("text")
+                    .UseCollation("spark_ignore_case");
 
                 b.Property<string>("NormalizedUserName")
-                    .HasColumnType("text");
+                    .HasColumnType("text")
+                    .UseCollation("spark_ignore_case");
 
                 b.Property<string>("Passkeys")
                     .IsRequired()
                     .HasColumnType("jsonb");
 
                 b.Property<string>("PasswordHash")
-                    .HasColumnType("text");
+                    .HasColumnType("text")
+                    .UseCollation("spark_ignore_case");
 
                 b.Property<string>("PhoneNumber")
-                    .HasColumnType("text");
+                    .HasColumnType("text")
+                    .UseCollation("spark_ignore_case");
 
                 b.Property<bool>("PhoneNumberConfirmed")
                     .HasColumnType("boolean");
 
                 b.Property<string>("PreferredCulture")
-                    .HasColumnType("text");
+                    .HasColumnType("text")
+                    .UseCollation("spark_ignore_case");
 
                 b.Property<string>("RegistrationMethod")
-                    .HasColumnType("text");
+                    .HasColumnType("text")
+                    .UseCollation("spark_ignore_case");
 
                 b.PrimitiveCollection<List<string>>("Roles")
                     .IsRequired()
                     .HasColumnType("text[]");
 
                 b.Property<string>("SecurityStamp")
-                    .HasColumnType("text");
+                    .HasColumnType("text")
+                    .UseCollation("spark_ignore_case");
 
                 b.Property<ulong>("SparkChangeStamp")
                     .ValueGeneratedOnAddOrUpdate()
@@ -289,6 +315,7 @@ partial class _20261125224818_SparkModel
 
                 b.Property<string>("UserName")
                     .HasColumnType("text")
+                    .UseCollation("spark_ignore_case")
                     .HasAnnotation("Spark:AttributeId", "78698642-85ae-5c15-bcd7-8885dc64c60b");
 
                 b.Property<long>("Version")
@@ -312,14 +339,17 @@ partial class _20261125224818_SparkModel
                     .UseCollation("C");
 
                 b.Property<string>("CampaignId")
-                    .HasColumnType("text");
+                    .HasColumnType("text")
+                    .UseCollation("spark_ignore_case");
 
                 b.Property<string>("Detail")
-                    .HasColumnType("text");
+                    .HasColumnType("text")
+                    .UseCollation("spark_ignore_case");
 
                 b.Property<string>("Email")
                     .IsRequired()
-                    .HasColumnType("text");
+                    .HasColumnType("text")
+                    .UseCollation("spark_ignore_case");
 
                 b.Property<DateTime?>("ExpiresAtUtc")
                     .HasColumnType("timestamp without time zone");
@@ -337,11 +367,13 @@ partial class _20261125224818_SparkModel
 
                 b.Property<string>("Stream")
                     .IsRequired()
-                    .HasColumnType("text");
+                    .HasColumnType("text")
+                    .UseCollation("spark_ignore_case");
 
                 b.Property<string>("Template")
                     .IsRequired()
-                    .HasColumnType("text");
+                    .HasColumnType("text")
+                    .UseCollation("spark_ignore_case");
 
                 b.Property<DateTime>("UpdatedAtUtc")
                     .HasColumnType("timestamp without time zone");
@@ -440,24 +472,28 @@ partial class _20261125224818_SparkModel
 
                 b.Property<string>("MessageType")
                     .IsRequired()
-                    .HasColumnType("text");
+                    .HasColumnType("text")
+                    .UseCollation("spark_ignore_case");
 
                 b.Property<DateTime?>("NextAttemptAtUtc")
                     .HasColumnType("timestamp without time zone");
 
                 b.Property<string>("OwnerId")
-                    .HasColumnType("text");
+                    .HasColumnType("text")
+                    .UseCollation("spark_ignore_case");
 
                 b.Property<string>("PayloadJson")
                     .IsRequired()
-                    .HasColumnType("text");
+                    .HasColumnType("text")
+                    .UseCollation("spark_ignore_case");
 
                 b.Property<int>("Priority")
                     .HasColumnType("integer");
 
                 b.Property<string>("QueueName")
                     .IsRequired()
-                    .HasColumnType("text");
+                    .HasColumnType("text")
+                    .UseCollation("spark_ignore_case");
 
                 b.Property<DateTime?>("QueuedAtUtc")
                     .HasColumnType("timestamp without time zone");
@@ -510,7 +546,8 @@ partial class _20261125224818_SparkModel
 
                 b.Property<string>("MessageId")
                     .IsRequired()
-                    .HasColumnType("text");
+                    .HasColumnType("text")
+                    .UseCollation("spark_ignore_case");
 
                 b.Property<ulong>("SparkChangeStamp")
                     .ValueGeneratedOnAddOrUpdate()
@@ -561,7 +598,8 @@ partial class _20261125224818_SparkModel
 
                 b.Property<string>("QueueName")
                     .IsRequired()
-                    .HasColumnType("text");
+                    .HasColumnType("text")
+                    .UseCollation("spark_ignore_case");
 
                 b.Property<DateTime?>("QueuedAtUtc")
                     .HasColumnType("timestamp without time zone");
@@ -594,7 +632,8 @@ partial class _20261125224818_SparkModel
                     .HasColumnType("timestamp with time zone");
 
                 b.Property<string>("Name")
-                    .HasColumnType("text");
+                    .HasColumnType("text")
+                    .UseCollation("spark_ignore_case");
 
                 b.Property<ulong>("SparkChangeStamp")
                     .ValueGeneratedOnAddOrUpdate()
@@ -770,7 +809,8 @@ partial class _20261125224818_SparkModel
 
                 b.Property<string>("Name")
                     .IsRequired()
-                    .HasColumnType("text");
+                    .HasColumnType("text")
+                    .UseCollation("spark_ignore_case");
 
                 b.Property<ulong>("SparkChangeStamp")
                     .ValueGeneratedOnAddOrUpdate()
@@ -804,11 +844,13 @@ partial class _20261125224818_SparkModel
 
                 b.Property<string>("Country")
                     .HasColumnType("text")
+                    .UseCollation("spark_ignore_case")
                     .HasAnnotation("Spark:AttributeId", "72001031-0bfb-483e-85fc-b243661e1526");
 
                 b.Property<string>("Name")
                     .IsRequired()
                     .HasColumnType("text")
+                    .UseCollation("spark_ignore_case")
                     .HasAnnotation("Spark:AttributeId", "71346a2b-4db3-4817-a62f-11d6a4e4b463");
 
                 b.Property<ulong>("SparkChangeStamp")
@@ -847,10 +889,12 @@ partial class _20261125224818_SparkModel
 
                 b.Property<string>("CreatedBy")
                     .HasColumnType("text")
+                    .UseCollation("spark_ignore_case")
                     .HasAnnotation("Spark:AttributeId", "b732344f-c468-4416-8a4d-97ce27a65f2f");
 
                 b.Property<string>("Isbn")
                     .HasColumnType("text")
+                    .UseCollation("spark_ignore_case")
                     .HasAnnotation("Spark:AttributeId", "0a5d4ed0-c5b1-4398-85b1-a924571277f7");
 
                 b.Property<DateTimeOffset?>("ModifiedAt")
@@ -859,6 +903,7 @@ partial class _20261125224818_SparkModel
 
                 b.Property<string>("ModifiedBy")
                     .HasColumnType("text")
+                    .UseCollation("spark_ignore_case")
                     .HasAnnotation("Spark:AttributeId", "30293eda-d1a5-4a61-8ffc-ec7bc6ea356d");
 
                 b.Property<ulong>("SparkChangeStamp")
@@ -872,6 +917,7 @@ partial class _20261125224818_SparkModel
                 b.Property<string>("Title")
                     .IsRequired()
                     .HasColumnType("text")
+                    .UseCollation("spark_ignore_case")
                     .HasAnnotation("Spark:AttributeId", "0ad98d62-ddb6-4f2a-b720-c9a7d488bbac");
 
                 b.Property<long>("Version")
@@ -902,14 +948,17 @@ partial class _20261125224818_SparkModel
                     .HasColumnType("uuid");
 
                 b.Property<string>("AuthorName")
-                    .HasColumnType("text");
+                    .HasColumnType("text")
+                    .UseCollation("spark_ignore_case");
 
                 b.Property<string>("Isbn")
-                    .HasColumnType("text");
+                    .HasColumnType("text")
+                    .UseCollation("spark_ignore_case");
 
                 b.Property<string>("Title")
                     .IsRequired()
-                    .HasColumnType("text");
+                    .HasColumnType("text")
+                    .UseCollation("spark_ignore_case");
 
                 b.Property<int>("Year")
                     .HasColumnType("integer");

@@ -81,10 +81,13 @@ public sealed partial class SqlServerSparkDialect : SparkRelationalDialect
 
     /// <summary>
     /// <c>decimal(38, 18)</c>, not EF's <c>decimal(18, 2)</c>, which rounds a document's <c>1234.5678</c> to <c>1234.57</c>:
-    /// 20 integer and 18 fractional digits.
+    /// 20 integer and 18 fractional digits. The base reads a <see cref="DateTime"/> as UTC (O18).
     /// </summary>
     public override void ConfigureConventions(ModelConfigurationBuilder builder)
-        => builder.Properties<decimal>().HavePrecision(38, 18);
+    {
+        base.ConfigureConventions(builder);
+        builder.Properties<decimal>().HavePrecision(38, 18);
+    }
 
     /// <summary>
     /// SQL Server names the constraint, index or column only inside its message, which is localized by the session's

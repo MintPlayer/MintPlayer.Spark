@@ -26,6 +26,7 @@ public abstract class SparkStoreConformanceTests : IAsyncLifetime
         public bool Flag { get; set; }
         public DateTime Utc { get; set; }
         public DateTime Unspecified { get; set; }
+        public DateTime? MaybeAt { get; set; }
         public DateOnly Day { get; set; }
         public Guid Key { get; set; }
         public ConfStatus Status { get; set; }
@@ -62,10 +63,11 @@ public abstract class SparkStoreConformanceTests : IAsyncLifetime
     protected static string? Canon(string? id) => id?.ToLowerInvariant();
 
     /// <summary>
-    /// Whether a <see cref="DateTime"/> reads back with the <see cref="DateTime.Kind"/> it was written with. RavenDB and
-    /// InMemory keep it in the document; a SQL column keeps the ticks only (#536, open question O18).
+    /// The <see cref="DateTime.Kind"/> an <see cref="DateTimeKind.Unspecified"/> value reads back with. RavenDB and
+    /// InMemory keep the kind in the document; a SQL column keeps the ticks only, and the relational stores read every
+    /// <see cref="DateTime"/> as UTC (#536 O18). A UTC value reads back as UTC on every store.
     /// </summary>
-    protected virtual bool KeepsDateTimeKind => true;
+    protected virtual DateTimeKind UnspecifiedReadsAs => DateTimeKind.Unspecified;
 
     /// <summary>A query whose reads see every committed write: RavenDB's indexes are eventually consistent.</summary>
     protected virtual IQueryable<T> Settled<T>(IQueryable<T> query) => query;
@@ -115,11 +117,8 @@ public abstract class SparkStoreConformanceTests : IAsyncLifetime
         loaded.Flag.Should().BeTrue();
         loaded.Utc.Should().Be(expected.Utc);
         loaded.Unspecified.Should().Be(expected.Unspecified);
-        if (KeepsDateTimeKind)
-        {
-            loaded.Utc.Kind.Should().Be(DateTimeKind.Utc);
-            loaded.Unspecified.Kind.Should().Be(DateTimeKind.Unspecified);
-        }
+        loaded.Utc.Kind.Should().Be(DateTimeKind.Utc);
+        loaded.Unspecified.Kind.Should().Be(UnspecifiedReadsAs);
         loaded.Day.Should().Be(expected.Day);
         loaded.Key.Should().Be(expected.Key);
         loaded.Status.Should().Be(ConfStatus.Published);
@@ -751,14 +750,14 @@ public abstract class SparkStoreConformanceTests : IAsyncLifetime
         (await IdsAsync(q => q)).Should().BeEquivalentTo(["confabsent/set"]);
     }
 
-    private async Task<List<string?>> IdsAsync(Func<IQueryable<ConfDoc>, IQueryable<ConfDoc>> shape)
+    protected async Task<List<string?>> IdsAsync(Func<IQueryable<ConfDoc>, IQueryable<ConfDoc>> shape)
     {
         using var session = Store.OpenSession();
         var rows = await session.ToListAsync(shape(Settled(session.Query<ConfDoc>())));
         return rows.Select(d => Canon(d.Id)).ToList();
     }
 
-    private static ConfDoc Row(string id, int count, string name = "Sample", ConfStatus? maybe = null, string? nothing = null, params string[] tags)
+    protected static ConfDoc Row(string id, int count, string name = "Sample", ConfStatus? maybe = null, string? nothing = null, params string[] tags)
     {
         var doc = Sample(id);
         doc.Count = count;
@@ -870,5 +869,58 @@ public abstract class SparkStoreConformanceTests : IAsyncLifetime
         (await IdsAsync(q => q.Where(d => d.MaybeStatus != ConfStatus.Published || d.Count == 4)))
             .Should().BeEquivalentTo(["confshapes/b", "confshapes/c", "confshapes/d"]);
         (await IdsAsync(q => q.Where(d => d.Count >= 2).Where(d => d.Nothing == null))).Should().BeEquivalentTo(["confshapes/b", "confshapes/d"]);
+    }
+
+    /// <summary>
+    /// #536 O20: a string comparison ignores case on every provider, as on RavenDB, whose auto-indexes lowercase their
+    /// terms: an app moved off RavenDB keeps every row a filter found. Each shape is written both ways a query writes it
+    /// (a constant and a captured value), which providers translate differently.
+    /// </summary>
+    [SkippableFact]
+    public async Task String_comparisons_ignore_case()
+    {
+        await StoreAsync(
+            Row("ConfCase/a", 1, "Alpha", null, null, "Red"),
+            Row("ConfCase/b", 2, "Beta", null, null, "blue"));
+        var upper = "ALPHA";
+        var prefix = "aL";
+        var suffix = "TA";
+        var keys = new[] { "BETA" };
+        var tag = "RED";
+
+        (await IdsAsync(q => q.Where(d => d.Name == "ALPHA"))).Should().BeEquivalentTo(["confcase/a"]);
+        (await IdsAsync(q => q.Where(d => d.Name == upper))).Should().BeEquivalentTo(["confcase/a"]);
+        (await IdsAsync(q => q.Where(d => d.Name != "alpha"))).Should().BeEquivalentTo(["confcase/b"]);
+        (await IdsAsync(q => q.Where(d => keys.Contains(d.Name)))).Should().BeEquivalentTo(["confcase/b"]);
+        (await IdsAsync(q => q.Where(d => d.Name.StartsWith("aL")))).Should().BeEquivalentTo(["confcase/a"]);
+        (await IdsAsync(q => q.Where(d => d.Name.StartsWith(prefix)))).Should().BeEquivalentTo(["confcase/a"]);
+        (await IdsAsync(q => q.Where(d => d.Name.EndsWith("TA")))).Should().BeEquivalentTo(["confcase/b"]);
+        (await IdsAsync(q => q.Where(d => d.Name.EndsWith(suffix)))).Should().BeEquivalentTo(["confcase/b"]);
+        (await IdsAsync(q => q.Where(d => d.Tags.Contains("RED")))).Should().BeEquivalentTo(["confcase/a"]);
+        (await IdsAsync(q => q.Where(d => d.Tags.Contains(tag)))).Should().BeEquivalentTo(["confcase/a"]);
+    }
+
+    /// <summary>Whether the provider's LINQ translates <see cref="string.Contains(string)"/> (RavenDB's does not: it has Search).</summary>
+    protected virtual bool QueriesSubstrings => true;
+
+    /// <summary>
+    /// O20, the shapes beyond RavenDB's LINQ: a substring, and a pattern read from another column. PostgreSQL renders them
+    /// as <c>LIKE</c>, <c>strpos</c>, <c>left()</c> and <c>right()</c>, and refuses <c>LIKE</c> and <c>strpos</c> on a
+    /// case-insensitive column before version 18.
+    /// </summary>
+    [SkippableFact]
+    public async Task Substrings_and_column_patterns_ignore_case()
+    {
+        Skip.IfNot(QueriesSubstrings, "The provider's LINQ has no substring query.");
+        await StoreAsync(
+            Row("ConfCase/a", 1, "Alpha", null, "AL"),
+            Row("ConfCase/b", 2, "Beta", null, "zz"));
+        var middle = "LP";
+
+        (await IdsAsync(q => q.Where(d => d.Name.Contains("LP")))).Should().BeEquivalentTo(["confcase/a"]);
+        (await IdsAsync(q => q.Where(d => d.Name.Contains(middle)))).Should().BeEquivalentTo(["confcase/a"]);
+        (await IdsAsync(q => q.Where(d => !d.Name.StartsWith("al")))).Should().BeEquivalentTo(["confcase/b"]);
+        (await IdsAsync(q => q.Where(d => d.Nothing != null && d.Name.Contains(d.Nothing)))).Should().BeEquivalentTo(["confcase/a"]);
+        (await IdsAsync(q => q.Where(d => d.Nothing != null && d.Name.StartsWith(d.Nothing)))).Should().BeEquivalentTo(["confcase/a"]);
     }
 }

@@ -216,12 +216,28 @@ tags, and everything ships once the merged pull request is backported to `releas
    (M4e): every table has a `SparkChangeStamp` column the database moves on each write (`rowversion`; on PostgreSQL
    an `xid8` set by a trigger the migrations create), deletes leave a row in `spark.Tombstones` for a day, and the
    change feed polls every `options.ChangeFeedPollInterval` (1 s). An open transaction delays the feed until it ends,
-   on PostgreSQL even one in another database on the same server. A migration that drops and re-adds the column of a renamed attribute (same id) is
-   refused (open question O19).
+   on PostgreSQL even one in another database on the same server.
     The relational providers also keep atomic values (so leases work), integer ids (a HiLo), the Data Protection key
     ring, expiry and the expiration sweep, reservations, streams, set-based delete/update and appends. A `decimal`
-    is `decimal(38,18)` on SQL Server. A `DateTime` keeps its ticks but not its `Kind` (open question O18); prefer
-    `DateTimeOffset`.
+    is `decimal(38,18)` on SQL Server.
+
+    - **A `DateTime` reads back as UTC** (O18): the columns keep the ticks but not the `Kind`, so a local value is
+      written as its UTC instant and every value reads with Kind Utc. A value written as `DateTime.UtcNow` round-trips;
+      an unspecified one (a `datetime-local` input) is shown shifted. Prefer `DateTimeOffset` for an instant and
+      `DateOnly` for a date; **SPARK066** (Info) notes every stored `DateTime` in a project that references a
+      relational store.
+    - **String comparisons ignore case on every provider** (O20), as they always did on RavenDB: `==`, `!=`,
+      `Equals`, `StartsWith`, `EndsWith`, `Contains` and a list's `Contains`. On PostgreSQL every ordinary text column
+      gets the ICU collation `spark_ignore_case` (Spark's framework migration creates it, so **the server needs ICU**,
+      which the official images and installers have) and the provider renders `LIKE` as `ILIKE` on the default
+      collation, which PostgreSQL 17 needs. Keys stay binary. `DISTINCT`, `GROUP BY` and a unique index on a text
+      column treat values that differ only in case as one. On SQL Server the database's default (case-insensitive)
+      collation already did this. **InMemory** now ignores case too; a test that relied on its ordinal comparison
+      changes.
+    - **A renamed attribute keeps its data** (O19): the migration differ pairs columns by attribute id, so a rename
+      becomes `RenameColumn`, plus `AlterColumn` when the type changed as well. A conversion the database cannot make
+      fails the migration rather than dropping the column; edit the scaffolded migration then. Two attributes with
+      different ids are never paired, even when EF would have guessed a rename.
 
     **Migrations (M4c):** at startup (or with `--spark-migrate`) the provider creates the database, applies Spark's
     own schema (schema `spark`) and then the app's EF migrations, holding a lock in the server's maintenance database

@@ -21,9 +21,10 @@ internal static class InMemoryViewRenderer
         if (view.ReduceDefinition is { } reduce)
             rows = reduce.Compile().DynamicInvoke(rows)!;
 
-        // Materialized once: a query that is enumerated twice (count, then page) must not run the view twice.
+        // Materialized once: a query that is enumerated twice (count, then page) must not run the view twice. Its rows
+        // compare strings ignoring case, as the collection's do (O20).
         var list = typeof(Enumerable).GetMethod(nameof(Enumerable.ToList))!.MakeGenericMethod(view.RowType).Invoke(null, [rows])!;
-        return Queryable.AsQueryable((System.Collections.IEnumerable)list);
+        return IgnoreCaseQuery.Wrap(Queryable.AsQueryable((System.Collections.IEnumerable)list));
     }
 
     private sealed class Rewriter(LambdaExpression definition, ISparkSession session) : SparkViewRewriter(definition)
