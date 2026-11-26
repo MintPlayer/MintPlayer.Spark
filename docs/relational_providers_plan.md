@@ -89,6 +89,47 @@ rounds, milestones and status. Branch `feat/536-sql-server-provider`, draft PR #
       - CodeCoverage.Tests 470/470 (webhooks, parse sessions, backports, dependency updates, workflow hooks, merge
         queue, formatting, API tokens); SeoTester.Tests crawler, audits and rendering 62 passed, 1 skipped; MintPlayer
         `SongHeroTests` 8/8.
+    - **Pushed as 3cac2a7d7: CI green (31 checks), patch coverage 90.2% (795/881).** PR body updated (changelog
+      `feat!` line, a D50 section, 18 breaking changes, D1–D50).
+    - **Review of #697 and the `Clear()` tests (2026-11-26, built):**
+      - The `Clear()` retry branches had no test (patch coverage: `WebhookScheduler.cs` 130/134, `WebhookFanOut.cs`
+        64/67). New `tests/MintPlayer.Spark.Tests/Apps/WebhookChainRetryTests.cs`: a second session rewrites the chain
+        inside the first's save (`Store.OnBeforeStore`), during a fan-out and during a completion. Each must retry, start
+        the delivery once, and keep the other write (a marker in `Waiting`). Deliveries are held at the receiver while
+        the test reads the chain.
+      - **Red, then restored:** with both `session.Clear()` calls commented out, the fan-out threw
+        `SparkStoreConcurrencyException` and the completion kept the stale head ("found …msg_first"). Both calls are
+        back.
+      - **Review of #697 (owner, 2026-11-26).** Two read-only reviewers covered the D50 commit (libs; apps) and the
+        review-fix commits 291ddf35a and 7b37e23d3. Confirmed in the code:
+        - **R1, request budget (D50 regression).** `Clear()` keeps RavenDB's request count, so the retries on the scope's
+          session share one budget of 30. Before D50 each attempt opened its own session. A fan-out attempt to one endpoint
+          costs about 5 requests, so the 7th attempt hit the cap although the loop allows 10. `ResumeAsync` runs after
+          `EnableAsync`'s own reads and write. `BackportRecipient.FailedAsync` records the failure after a run that may have
+          spent the budget; it used to open a fresh session. Fix: the existing `IgnoreMaxRequests()` around the bounded
+          loops and the failure record. Red tests: `WebhookChainRetryTests` (8 lost races; a completion with 4 requests
+          left) and `BackportRecipientTests.A_run_that_used_its_request_budget_before_the_forge_failed_still_records_the_failure`.
+        - **R2, scoped outbox resolved from the root (pre-existing, worse since D50).** `SparkAppsExtensions.ValidateStartup`
+          and `SparkNotificationsExtensions.ValidateStartup` resolved the scoped `IMessageOutbox` from
+          `app.ApplicationServices`. That throws under `ValidateScopes` (Development), and since D50 it also builds a root
+          `ISparkSession`. Fix: ask `IServiceProviderIsService` for the registration. Red tests:
+          `SparkAppTests.The_startup_check_finds_the_scoped_outbox_without_resolving_it_from_the_root`,
+          `NotificationStartupTests`.
+        - **Red, then green** (local, RavenDB): without the budget fix, both new chain tests failed with "The maximum
+          number of requests (30) allowed for this session has been reached" and the backport failure record was
+          missing (`found <null>`). Without the startup fix, both startup tests failed with "Cannot resolve scoped
+          service 'MintPlayer.Spark.Messaging.IMessageOutbox' from root provider." With both fixes: Spark.Tests 13/13
+          (`WebhookChainRetryTests` 4, `NotificationStartupTests` 2, `SparkAppTests` 7) and CodeCoverage
+          `BackportRecipientTests` 42/42.
+        - Checked, not changed (reported to the owner):
+          - `RavenSparkSession.SaveChangesAsync` marks the claims after the commit, outside the try. A mark that throws
+            reports a committed save as failed. Only an unreachable server throws there: a stale index returns
+            `Successful = false`. The state left behind is the same as a crash between commit and mark, which the claims
+            already tolerate.
+          - `StoreSearchProvider` pages by offset and does not deduplicate `found`, so a row inserted between two pages of
+            one search can be listed twice.
+      - Owner question still open: `SparkNotifier` keeps its own scope (an independent commit), or writes in the
+        caller's session.
   - **O13 built (2026-11-26).** It was decided 2026-11-24 (PRD §10) but never implemented. `SparkDbContext` mapped
     a `__stored_<Name>` field when one existed, but no generator emitted one, so SQL ignored every getter (HR's
     `FullName` could not be filtered or sorted).

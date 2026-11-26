@@ -125,7 +125,9 @@ public static class SparkAppsExtensions
 
     internal static void ValidateStartup(IServiceProvider services)
     {
-        if (services.GetService<IMessageOutbox>() is null)
+        // Asks for the registration and builds nothing: the outbox is scoped (over the scope's session, #536 D50), and this
+        // runs on the root provider.
+        if (!services.GetRequiredService<IServiceProviderIsService>().IsService(typeof(IMessageOutbox)))
             throw new InvalidOperationException("Spark Apps needs Messaging: call spark.AddMessaging(). Every event and delivery is a durable message.");
         if (SparkAppsFeature.IsOn(services) && services.GetService<MintPlayer.Spark.IdentityProvider.Configuration.SparkIdentityProviderOptions>() is null)
             throw new InvalidOperationException("apps.EnableApps() needs the identity provider: call spark.AddIdentityProvider(). An App is an OAuth client of this site (D5).");

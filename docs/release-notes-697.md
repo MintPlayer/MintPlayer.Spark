@@ -350,3 +350,6 @@ tags, and everything ships once the merged pull request is backported to `releas
 7. **The identity provider logs a key ring it cannot decrypt as an error** (PRD D47). The background reload logged a
    stored key that this instance's Data Protection key ring cannot decrypt as a warning, though the next start fails
    on it. It is an error now; the keys already held keep signing.
+8. **Spark Apps and Web Push start in Development** (D50 review). Their startup checks resolved the scoped
+   `IMessageOutbox` from the root provider, which throws "Cannot resolve scoped service … from root provider" where
+   scopes are validated (Development's default). They now only ask whether it is registered.

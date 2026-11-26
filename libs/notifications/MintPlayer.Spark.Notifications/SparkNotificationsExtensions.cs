@@ -119,7 +119,9 @@ public static class SparkNotificationsExtensions
         }
         if (push.TimeToLive < TimeSpan.Zero || push.TimeToLive > TimeSpan.FromDays(28))
             throw new InvalidOperationException("Spark:Notifications:WebPush:TimeToLive must be between 0 and 28 days.");
-        if (services.GetService<IMessageOutbox>() is null)
+        // Asks for the registration and builds nothing: the outbox is scoped (over the scope's session, #536 D50), and this
+        // runs on the root provider.
+        if (!services.GetRequiredService<IServiceProviderIsService>().IsService(typeof(IMessageOutbox)))
             throw new InvalidOperationException(
                 "Web Push is configured (Spark:Notifications:WebPush) but Messaging is not: call spark.AddMessaging(). "
                 + "Each push is a durable message, retried while the push service is unavailable.");

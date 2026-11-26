@@ -7,6 +7,7 @@ using CodeCoverage.Tests.MergeQueue;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using Raven.Client.Documents;
+using Raven.Client.Documents.Session;
 using Xunit;
 
 namespace CodeCoverage.Tests.PackageVersioning;
@@ -47,6 +48,9 @@ public class BackportRecipientTests : CoverageRavenTest
             .Returns(new ForgePushAccess(new ForgeWriterAccess("https://example.invalid/acme/widgets.git", "https://example.invalid/acme/widgets.git", "x", "y"), null));
     }
 
+    /// <summary>The scope's session of the run <see cref="HandleAsync(IDocumentStore, string, EBackportSource, string[])"/> starts.</summary>
+    private IAsyncDocumentSession? runSession;
+
     private Task HandleAsync(IDocumentStore store, string actor, EBackportSource source, params string[] lines)
         => HandleAsync(store, actor, source, false, lines);
 
@@ -58,6 +62,7 @@ public class BackportRecipientTests : CoverageRavenTest
             await seed.SaveChangesAsync();
         }
         using var session = store.OpenAsyncSession();
+        runSession = session;
         await new BackportRecipient(session, new SingleForgeResolver(integration), [forge], [git], writer, regenerations, outbox, TimeProvider.System, Tests.Commands.CommandTestKit.Lifecycle(store, Reactions), NullLogger<BackportRecipient>.Instance, webhooks.Publisher)
             .HandleAsync(new BackportMessage { RepositoryId = RepositoryId, Number = 7, Lines = lines, ActorLogin = actor, Source = source, Draft = draft });
     }
@@ -301,6 +306,29 @@ public class BackportRecipientTests : CoverageRavenTest
         var attempt = await AttemptAsync(store, "8.x");
         attempt.Outcome.Should().Be(BackportAttempt.Failed);
         attempt.Detail.Should().StartWith(thrown is ForgeAccessDeniedException ? "the App is missing the pull_requests=write permission" : "the forge answered an error");
+    }
+
+    /// <summary>
+    /// #536 D50: the failure is recorded in the run's own session after Clear(), which keeps the run's request count. Before,
+    /// a fresh session had RavenDB's 30 requests of its own; a run that used its budget must still leave the record.
+    /// </summary>
+    [Fact]
+    public async Task A_run_that_used_its_request_budget_before_the_forge_failed_still_records_the_failure()
+    {
+        using var store = GetDocumentStore();
+        // The run spends its whole budget, then the forge fails; recording the failure needs one more request (the save).
+        async Task<EForgeRepositoryRole> SpendThenFail()
+        {
+            var session = runSession!;
+            while (session.Advanced.NumberOfRequests < session.Advanced.MaxNumberOfRequestsPerSession)
+                await session.LoadAsync<BackportAttempt>($"BackportAttempts/elsewhere-{session.Advanced.NumberOfRequests}");
+            throw new ForgeRequestException("GitHub answered 502", 502);
+        }
+        git.GetActorRoleAsync(Arg.Any<Repository>(), "maintainer", Arg.Any<CancellationToken>()).Returns(_ => SpendThenFail());
+
+        await HandleAsync(store, "maintainer", EBackportSource.Comment, "8.x");
+
+        (await AttemptAsync(store, "8.x")).Should().BeEquivalentTo(new { Outcome = BackportAttempt.Failed });
     }
 
     [Fact]

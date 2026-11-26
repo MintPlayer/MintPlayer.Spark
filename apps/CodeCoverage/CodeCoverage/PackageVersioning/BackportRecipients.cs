@@ -9,6 +9,7 @@ using CodeCoverage.MergeQueue;
 using CodeCoverage.Versioning.Releases;
 using Microsoft.Extensions.Logging;
 using MintPlayer.SourceGenerators.Attributes;
+using MintPlayer.Spark;
 using MintPlayer.Spark.Messaging;
 using MintPlayer.Spark.Messaging.Abstractions;
 
@@ -137,13 +138,15 @@ public partial class BackportRecipient : IRecipient<BackportMessage>
     /// Segment B: a backport the forge failed is recorded for every line asked for (under the name it was asked by, since
     /// the line may not have been resolved), so it shows on the repository page although no comment could be posted.
     /// Clear() first forgets whatever the failed run left pending in the scope's session, so only the failure records commit,
-    /// with the webhooks the publisher stores in that session (#536 D50).
+    /// with the webhooks the publisher stores in that session (#536 D50). Clear() keeps the run's request count, so the
+    /// records (one per line asked for) are not held to what the run left of the budget.
     /// </summary>
     private async Task FailedAsync(Repository repository, BackportMessage message, string detail, CancellationToken cancellationToken)
     {
         try
         {
             session.Advanced.Clear();
+            using var budget = session.IgnoreMaxRequests();
             foreach (var line in message.Lines.Distinct(StringComparer.Ordinal))
                 await BackportAttempts.RecordAsync(session, webhooks, repository, message.Number, null, line, BackportAttempt.Failed, null, detail, time.GetUtcNow().UtcDateTime,
                     cancellationToken, logId);

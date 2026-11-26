@@ -29,6 +29,9 @@ internal sealed partial class WebhookFanOut : IRecipient<WebhookEventRaised>
     public async Task HandleAsync(WebhookEventRaised message, CancellationToken cancellationToken = default)
     {
         var owner = new WebhookOwner(message.OwnerKind, message.OwnerKey);
+        // Every attempt reads again on the scope's session, and Clear() keeps its request count: the attempts bound the
+        // requests, not the session's budget, which each attempt had to itself in a session of its own before #536 D50.
+        using var budget = session.IgnoreMaxRequests();
         for (var attempt = 1; ; attempt++)
         {
             // A chain changed by another event in between is read again; so is a delivery made by a concurrent run.

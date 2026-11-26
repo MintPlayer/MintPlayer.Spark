@@ -826,6 +826,17 @@ it only invites passing the wrong one.
   `ISparkSession.Clear()`, which forgets the attempt's tracked and pending writes, and read again. CodeCoverage's
   `BackportRecipient.FailedAsync` clears the scope's session (RavenDB `Advanced.Clear()`) before recording the
   failure, so the failed run's pending writes do not commit with it.
+- **A retry on the scope's session lifts its request budget** (`IgnoreMaxRequests()`, which restores the cap when the
+  loop ends). `Clear()` keeps RavenDB's request count, and before D50 every attempt opened a session of its own with
+  RavenDB's 30 requests. On one session, a fan-out to one endpoint (≈5 requests an attempt) hit the cap at its 7th
+  attempt although the loop allows 10. `ResumeAsync` runs after `EnableAsync` has read and written the endpoint, and
+  `FailedAsync` records after a run that may have spent the budget. The attempt counter bounds these loops, and the
+  lines asked for bound the failure records. *(Review of #697, 2026-11-26.)*
+- **A startup check never resolves the scoped outbox from the root.** `SparkAppsExtensions.ValidateStartup` and
+  `SparkNotificationsExtensions.ValidateStartup` ask `IServiceProviderIsService` whether `IMessageOutbox` is
+  registered. Resolving it from `app.ApplicationServices` throws under `ValidateScopes` (Development), and since D50 it
+  also built a root `ISparkSession` that lived until shutdown. *(Review of #697, 2026-11-26; the outbox was already
+  scoped before D50.)*
 - **A scope of its own only for a separate unit of work, with the reason at the call:** `SparkNotifier` commits the
   notifications on their own, whatever the caller has pending. CodeCoverage's `ParseSessionRecipient.ReportParseFailure`
   reports through a fresh scope because the scope's session may be what failed (exhausted request budget, faulted
@@ -845,6 +856,14 @@ it only invites passing the wrong one.
 - Found on the way: without the session parameter, `WebhookPublisher`'s internal core had the keyed overload's shape,
   and the keyed overload resolved to itself (stack overflow, red in
   `WebhookDeliveryTests.A_keyed_publish_that_runs_twice_queues_the_event_once`). The core is `PublishWithIdAsync`.
+- The `Clear()` retries: `WebhookChainRetryTests` has a second session rewrite the chain inside the first's save. Without
+  `Clear()` the fan-out threw `SparkStoreConcurrencyException` and the completion kept the stale head.
+- The request budget: without `IgnoreMaxRequests()`, a fan-out that lost 8 races and a completion with 4 requests left
+  failed with "The maximum number of requests (30) allowed for this session has been reached", and
+  `BackportRecipientTests` lost the failure record of a run that had spent its budget. The startup checks, without the
+  registration check, failed with "Cannot resolve scoped service 'MintPlayer.Spark.Messaging.IMessageOutbox' from root
+  provider" (`SparkAppTests`, `NotificationStartupTests`, `ValidateScopes` on). All green with the fixes: Spark.Tests
+  13/13, `BackportRecipientTests` 42/42.
 
 **D3: the version is a `bigint` column on every table**, a concurrency token the provider increments. *(S4, §8.11:
 it is on every root table and covers the aggregate. A change to a child row (D25) or a join row (D26) moves the

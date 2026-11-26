@@ -116,6 +116,9 @@ internal sealed partial class WebhookScheduler
     /// </summary>
     private async Task WithChainAsync(string endpointPublicId, Func<WebhookChain, Task<bool>> change, CancellationToken cancellationToken)
     {
+        // The attempts bound the requests, not the session's budget: Clear() keeps the count, and the caller may have spent
+        // part of it (EnableAsync reads and writes the endpoint first). Before #536 D50 every attempt had a session of its own.
+        using var budget = session.IgnoreMaxRequests();
         for (var attempt = 1; ; attempt++)
         {
             session.OptimisticConcurrency = true;
