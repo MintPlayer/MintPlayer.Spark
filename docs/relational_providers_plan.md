@@ -33,6 +33,11 @@ rounds, milestones and status. Branch `feat/536-sql-server-provider`, draft PR #
     - Both wait now, red then green (`BackgroundStoreReadinessTests`). The other hosted services were audited; PRD D41
       "The rest" lists why each needs no gate. Pushed as bed95c264, CI green (31 checks). Its real coverage (491374f7c)
       left one branch per service: a host stopping during the wait. Two tests now pin it (a clean end, no store call).
+    - **Found on the way (ee33ffc23, Spark.Tests 2/4):** `WebhookDeliveryTests.Gone_…` read `Enabled = true` right after
+      the delivery settled. M6d's `WebhookDeliveryHandler.SaveAsync` saves the delivery, then each endpoint change in
+      its own session, by design: no store but RavenDB has a patch in the same save. Four reads assumed the old atomic
+      save: 410, the 5-day disable, the success reset and the refused count. They now wait through
+      `AppsTestHost.UntilEndpointAsync`, a failure bound that prints the endpoint (d2295a799, 22/22 locally, CI green).
     - **Found by its coverage (a CI defect):** the E2E suite never ran on bed95c264. `MintPlayer.Spark.E2E.Tests:test`
       came from the Nx remote cache, and its coverage carried the old `DeferredFileScanner.cs` (no readiness wait,
       174 lines against 189). The E2E project had no Nx dependency on the six apps it hosts, so a change to a library
