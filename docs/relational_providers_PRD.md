@@ -2017,7 +2017,8 @@ Round 3 replaced all of these (D1, D23–D27).
 
 ## 10. Open questions for the owner
 
-**Nothing is open.** O21 was found in the plan audit and decided by the owner on 2026-11-26 (built). O18–O20 were
+**Nothing is open.** O13 (decided 2026-11-24) is built since 2026-11-26: that day's audit found it had never been
+implemented (SQL ignored every getter; no generator emitted the `__stored_` field). O21 was found in the plan audit and decided by the owner on 2026-11-26 (built). O18–O20 were
 found in M4b/M5b and decided by the owner on 2026-11-26 (built).
 Everything before them was answered on 2026-11-24. Grilling round 2 (owner) answered O1, O2, O3 and O6. Round 3 reversed
 D1 and added D23–D27, and the commercial-framework comparison added D30. Round 5 decided O10–O13. The owner
@@ -2097,6 +2098,53 @@ decided O14–O17, and O8 and O9 last. The plan §3 has the log.
   - **Formula changes:** the generator emits a hash of each stored getter's body into the model, and synchronize
     reports which types' stored getters changed. Recomputing them is an explicit migration the developer chooses,
     never automatic, because rewriting rows re-triggers the subscriptions (O15). The same holds on RavenDB.
+  - **Built 2026-11-26.** The audit that day found the decision unimplemented: `SparkDbContext` mapped a
+    `__stored_<Name>` field when one existed, but nothing emitted it (only spike S2b had hand-written one), so SQL
+    ignored every getter and HR's `FullName` could not be filtered or sorted there.
+    - `SparkStoredGetterAttribute(property, formula)` (`MintPlayer.Spark.Attributes`, `FieldPrefix = "__stored_"`).
+    - `StoredGetterGenerator` (`MintPlayer.Spark.LibraryGenerators`). The stored types are an `Id<Self>` entity, a
+      type deriving from one, and a `[ValueObject]`. The members are public instance getters with a body, with no
+      setter, not an override, and not `[JsonIgnore]`. For each one it emits `private T __stored_<Name>;` and
+      `[SparkStoredGetter("<Name>", "<sha-256 of the body's tokens>")]` on the type. Trivia doesn't count, so
+      reformatting or a comment keeps the hash.
+    - Two diagnostics:
+      - SPARK067 (warning): no field possible. Either a non-partial derived type (SPARK064 and SPARK016 already
+        cover the others), or a record, whose synthesized equality would include the field.
+      - SPARK068 (warning): the getter reads the clock (`DateTime`/`DateTimeOffset` `Now`/`UtcNow`/`Today`,
+        `Environment.TickCount`, `Stopwatch`, any `TimeProvider`) or an expression of another entity type.
+    - `SparkDbContext.MapValue`:
+      - A get-only member with the field takes the column path of a settable member of its type: JSON, primitive
+        list, enum by name (O21), id, or scalar. On top of that it gets `HasField` plus `PreferFieldDuringConstruction`.
+      - The field is looked up on the declaring type.
+      - A get-only id is a plain value, with no foreign key.
+    - `modelHashes.json` `storedGetters`, keyed `{Entity}.{Property}`, including a base type's getters. It is part
+      of the model hash when non-empty, so a model without stored getters keeps its hash. A new or changed formula
+      fails verification with the line "stored getter X: formula changed". Synchronize prints the changed and the
+      new getters, says saved rows keep the old value until saved again, and points to a data migration
+      (`ISparkMigration`).
+    - RavenDB documents are unchanged: `StoredGetterRavenDocumentTests` shows that Spark's contract resolver writes
+      the getter and not the private field.
+    - **Evidence:**
+      - `StoredGetterGeneratorTests`: 7 tests, green.
+      - `A_stored_getter_is_written_on_every_save_and_queries_as_its_column` (PostgreSQL 18 + LocalDB):
+        - red first, on `RelPerson.Home` (JSON): "could not be mapped";
+        - green after the `MapValue` change;
+        - covers string, bool, enum, list, JSON and child-table getters;
+        - a change to `Name` rewrites `Display`;
+        - filter, sort, ignore-case;
+        - no column without the field or with `[JsonIgnore]`.
+      - The neutral `A_get_only_member_is_stored_and_filters_and_sorts`: green on all four stores.
+      - `StoredGetterHashTests`: 4/4, plus the existing hash and gate tests (60).
+    - **The apps:** the solution build gives no SPARK067/068 warning. `--spark-verify-model` then failed exactly
+      for the models that gained stored getters:
+      - CodeCoverage: 7 — `Account`/`Repository.OwnerKey`, `Commit.Date`, `UpcomingChangelog.Notes`/`Packages`,
+        `VersioningRun.Tags`/`RefusedPackages`;
+      - HR: `Person.FullName`;
+      - MintPlayer: `Person.FullName`.
+
+      All of these RavenDB already writes into the documents. Their `modelHashes.json` was re-synchronized, and
+      verify passes. SqlDemo's synchronize wrote no migration ("no model change"), so no feature-package table
+      moved.
 - **O15, mixed-case ids in production RavenDB data (decided 2026-11-24: (a), no re-key, gated by S-ID4):** the owner
   first proposed a migration that lowercases every document id in the production apps. All five LLMs that answered
   round 10 chose (a), and the owner followed the recommendation ("I'll follow your decision").

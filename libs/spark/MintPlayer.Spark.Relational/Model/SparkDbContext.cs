@@ -173,7 +173,8 @@ public sealed class SparkDbContext : DbContext
                 continue;
             }
 
-            if (ReferenceTarget(property) is { } target && IsMapped(property))
+            // A get-only id (O13) is a plain value: stored through its field when it has one, without a foreign key.
+            if (ReferenceTarget(property) is { } target && IsMapped(property) && property.CanWrite)
             {
                 var column = entity.Property(property.Name);
                 if (Setup.Model.TableOf(target) is { } targetTable)
@@ -189,7 +190,7 @@ public sealed class SparkDbContext : DbContext
                 continue;
             }
 
-            MapValue(property, entity.Ignore, name => entity.Property(name), name => entity.PrimitiveCollection(name), type);
+            MapValue(property, entity.Ignore, name => entity.Property(name), name => entity.PrimitiveCollection(name));
         }
 
         // D24: the column remembers its attribute, so a rename (same attribute, new name) can't pass as a drop and an add.
@@ -207,44 +208,61 @@ public sealed class SparkDbContext : DbContext
            ?? (property.PropertyType == typeof(string) ? property.GetCustomAttribute<ReferenceAttribute>()?.TargetType : null);
 
     /// <summary>
-    /// A plain member: a column EF maps itself, or a JSON column for a value without a relational shape. Get-only members
-    /// are not stored, except O13's stored computed members (a generated <c>__stored_</c> backing field).
+    /// A plain member: a column EF maps itself, or a JSON column for a value without a relational shape. A get-only
+    /// member is stored when it has O13's generated backing field (<see cref="SparkStoredGetterAttribute.FieldPrefix"/>):
+    /// it takes the same column as a settable member of its type, and EF writes the field when it loads a row and reads
+    /// the getter when it saves, so the column holds the getter's value as the document does. Without the field it is
+    /// not stored.
     /// </summary>
     private void MapValue(PropertyInfo property, Func<string, object> ignore, Func<string, PropertyBuilder> column,
-        Func<string, PrimitiveCollectionBuilder> list, Type declaring)
+        Func<string, PrimitiveCollectionBuilder> list)
     {
-        if (!property.CanWrite)
-        {
-            if (declaring.GetField("__stored_" + property.Name, BindingFlags.NonPublic | BindingFlags.Instance) is null)
-            {
-                ignore(property.Name);
-                return;
-            }
-            PlainColumn(column(property.Name).HasField("__stored_" + property.Name).UsePropertyAccessMode(PropertyAccessMode.PreferFieldDuringConstruction), property.PropertyType);
-            return;
-        }
-        if (!IsMapped(property))
+        var storedField = property.CanWrite ? null : StoredField(property);
+        if (!IsMapped(property) || (!property.CanWrite && storedField is null))
         {
             ignore(property.Name);
             return;
         }
+
+        PropertyBuilder Column() => storedField is null
+            ? column(property.Name)
+            : column(property.Name).HasField(storedField).UsePropertyAccessMode(PropertyAccessMode.PreferFieldDuringConstruction);
+
         if (SparkIdValues.TargetOf(property.PropertyType) is not null)
         {
             if (SparkIdConverters.ForUnstored(property.PropertyType) is { } converter)
-                column(property.Name).HasConversion(converter);
+                Column().HasConversion(converter);
+            else if (storedField is not null)
+                Column();
             return;
         }
         if (NeedsJson(property.PropertyType))
         {
-            var json = column(property.Name);
+            var json = Column();
             json.HasConversion(SparkJsonColumns.Converter(property.PropertyType), SparkJsonColumns.Comparer(property.PropertyType));
             Setup.Dialect.JsonColumn(json);
         }
-        else if (SparkRelationalModel.CollectionElement(property.PropertyType) is { } element && IsNamedEnum(element))
-            list(property.Name).ElementType(e => e.HasConversion<string>()); // O21: a list of enums holds their names, as the document does
+        else if (property.PropertyType != typeof(byte[]) && SparkRelationalModel.CollectionElement(property.PropertyType) is { } element)
+        {
+            if (!IsNamedEnum(element) && storedField is null)
+                return; // EF maps a settable primitive collection itself
+            var primitives = list(property.Name);
+            if (storedField is not null)
+                primitives.HasField(storedField).UsePropertyAccessMode(PropertyAccessMode.PreferFieldDuringConstruction);
+            if (IsNamedEnum(element))
+                primitives.ElementType(e => e.HasConversion<string>()); // O21: a list of enums holds their names, as the document does
+        }
         else if (property.PropertyType == typeof(string) || IsNamedEnum(property.PropertyType))
-            PlainColumn(column(property.Name), property.PropertyType);
+            PlainColumn(Column(), property.PropertyType);
+        else if (storedField is not null)
+            Column(); // EF maps a settable scalar itself; a get-only one only through its field
     }
+
+    /// <summary>O13: the generated backing field of a get-only member, on the type that declares the member.</summary>
+    private static string? StoredField(PropertyInfo property)
+        => property.DeclaringType?.GetField(
+            SparkStoredGetterAttribute.FieldPrefix + property.Name,
+            BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.DeclaredOnly)?.Name;
 
     /// <summary>
     /// A scalar column's shape where it differs from EF's default: text compares ignoring case (O20), and an enum is
@@ -314,7 +332,7 @@ public sealed class SparkDbContext : DbContext
                         column.HasConversion(converter);
                     continue;
                 }
-                MapValue(member, child.Ignore, name => child.Property(name), name => child.PrimitiveCollection(name), element);
+                MapValue(member, child.Ignore, name => child.Property(name), name => child.PrimitiveCollection(name));
             }
         });
     }
@@ -352,7 +370,7 @@ public sealed class SparkDbContext : DbContext
                     column.HasConversion(converter);
                 continue;
             }
-            MapValue(property, entity.Ignore, name => entity.Property(name), name => entity.PrimitiveCollection(name), view.RowType);
+            MapValue(property, entity.Ignore, name => entity.Property(name), name => entity.PrimitiveCollection(name));
         }
 
         if (Setup.RenderedViews?.GetValueOrDefault(view.Name) is { } rendered)

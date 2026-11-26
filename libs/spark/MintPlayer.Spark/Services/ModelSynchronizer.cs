@@ -449,10 +449,42 @@ internal partial class ModelSynchronizer : IModelSynchronizer
     {
         // Computed after every model file has been written, so the file hash covers the output of
         // this same run.
+        var previous = ModelHashFile.Read(hostEnvironment.ContentRootPath);
         var hashFile = BuildModelHashes(contextType, indexCatalog, hostEnvironment.ContentRootPath);
         hashFile.Write(hostEnvironment.ContentRootPath);
 
         Console.WriteLine($"Model hash: {hashFile.ModelHash} -> {ModelHashFile.PathFor(hostEnvironment.ContentRootPath)}");
+        foreach (var line in DescribeStoredGetterChanges(previous, hashFile))
+            Console.WriteLine(line);
+    }
+
+    /// <summary>
+    /// #536 O13: the stored getters whose formula changed, or that are new, since the previous hash file. A stored
+    /// getter's value is written when its row is saved, on every store, so the rows saved before keep the old value (or
+    /// none). Recomputing them is a data migration the developer chooses, never automatic: rewriting every row
+    /// re-triggers subscriptions and messaging. Empty on a first synchronize, which has nothing to compare.
+    /// </summary>
+    internal static IReadOnlyList<string> DescribeStoredGetterChanges(ModelHashFile? previous, ModelHashFile current)
+    {
+        if (previous is null)
+            return [];
+
+        var before = previous.StoredGetters ?? [];
+        var changed = (current.StoredGetters ?? [])
+            .Where(g => before.TryGetValue(g.Key, out var formula) && !string.Equals(formula, g.Value, StringComparison.Ordinal))
+            .Select(g => g.Key)
+            .ToList();
+        var added = (current.StoredGetters ?? []).Keys.Where(key => !before.ContainsKey(key)).ToList();
+        if (changed.Count == 0 && added.Count == 0)
+            return [];
+
+        var lines = new List<string>();
+        if (changed.Count > 0)
+            lines.Add($"Stored getters whose formula changed: {string.Join(", ", changed)}. Rows saved before keep the old value until they are saved again.");
+        if (added.Count > 0)
+            lines.Add($"Stored getters that are new: {string.Join(", ", added)}. Rows saved before hold no value for them until they are saved again.");
+        lines.Add("  On every store: the value is written when a row is saved. To recompute the saved rows now, add a data migration (ISparkMigration) that loads and saves them.");
+        return lines;
     }
 
     /// <summary>
@@ -564,13 +596,16 @@ internal partial class ModelSynchronizer : IModelSynchronizer
         var modelFiles = ModelHashFile.CombineFileHashes(fileHashes);
         var configHashes = ModelHashFile.ComputeConfigHashes(contentRootPath);
         var (libraries, layers) = ModelHashFile.ComputeLayers(contentRootPath);
+        var storedGetters = ModelHashFile.ComputeStoredGetters(shapes.Select(s => s.Type));
 
         return new ModelHashFile
         {
             ModelHash = SparkModelShape.ComputeModelHash(
                 perEntity, contextRoots, modelFiles,
                 configHashes.Count > 0 ? ModelHashFile.CombineFileHashes(configHashes) : null,
-                ModelHashFile.CombineLayerHashes(layers)),
+                ModelHashFile.CombineLayerHashes(layers),
+                storedGetters.Count > 0 ? ModelHashFile.CombineFileHashes(storedGetters) : null),
+            StoredGetters = storedGetters.Count > 0 ? storedGetters : null,
             ContextRoots = contextRoots,
             ModelFiles = modelFiles,
             Files = fileHashes,

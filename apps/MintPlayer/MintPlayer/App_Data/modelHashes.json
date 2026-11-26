@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "modelHash": "3672fe70d5feff72530553cdbb8622a53df3035f60148d47d11d827a51bfa85b",
+  "modelHash": "f0e87f843e99ddeac8c7bdfb97b31b3f24dd2583fc90969d178c3b93aa0e88cc",
   "contextRoots": "0a57797fc64a2524af70bdcc95198f5f4f2e96ee0ca7c67cb5ded14c179833a9",
   "modelFiles": "36aeae5bcba80a4790371dbac5736a7402711eef7f6143a8d1b56775b95a2fa1",
   "files": {
@@ -59,5 +59,8 @@
       "authorization": "fb0d34fa66e732b157e4e222fb9c357e4219cf6d85177473103874e8c1090427",
       "spark": "5974b38c8164cafbfb22c012c52fb46dd27264181d772b9f004de1829d1838e6"
     }
+  },
+  "storedGetters": {
+    "Person.FullName": "fdb2ef65cd1baa77abb30c30fdd262c3196ae16b7d533beaecaa8ae1a32b7be7"
   }
 }

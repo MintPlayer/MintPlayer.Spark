@@ -249,6 +249,14 @@ tags, and everything ships once the merged pull request is backported to `releas
       name). Members can be inserted or reordered freely; renaming one needs a data migration, as on RavenDB. A
       `[Flags]` enum stays an integer, so a bitwise filter still runs in the database. **InMemory** now sorts an enum
       by its name as well; a test that relied on sorting by value changes.
+    - **A computed member is stored** (O13), as RavenDB writes it into the document: every public get-only member of a
+      stored type (an `Id<Self>` entity, a type deriving from one, a `[ValueObject]`) gets a generated private backing
+      field (`MintPlayer.Spark.LibraryGenerators`), so it is a column holding the getter's value from the last save, and
+      HR's `FullName` filters and sorts in SQL. The type must be `partial` (**SPARK067**; a record is refused, because
+      its equality would include the field). **SPARK068** warns when a stored getter reads the clock or another entity.
+      `modelHashes.json` records each stored getter's formula (`storedGetters`, part of the model hash), so a changed
+      formula fails verification until synchronize runs, and synchronize names it: saved rows keep the old value until
+      they are saved again, on every store, and recomputing them is a data migration you choose.
 
     **Migrations (M4c):** at startup (or with `--spark-migrate`) the provider creates the database, applies Spark's
     own schema (schema `spark`) and then the app's EF migrations, holding a lock in the server's maintenance database

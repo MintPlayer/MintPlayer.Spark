@@ -46,6 +46,12 @@ Values keep the meaning they have in a RavenDB document:
   in the database.
 - **Lists:** a list loads in the order it was saved.
 - **`DateTime`:** reads back as UTC (SPARK066). Prefer `DateTimeOffset` for an instant.
+- **Computed members:** a get-only member such as `FullName => $"{FirstName} {LastName}"` is stored, as RavenDB writes
+  it into the document. `MintPlayer.Spark.LibraryGenerators` gives it a private backing field; the column holds the
+  getter's value from the row's last save, and a filter or sort on it runs in the database. The type must be
+  `partial` (SPARK067). A getter that reads the clock or another entity is only as fresh as the last save (SPARK068).
+  When a getter's formula changes, synchronize names it: rows saved before keep the old value until they are saved
+  again, so recompute them with a data migration if they must change now. This holds on RavenDB too.
 
 Feature packages keep their state in tables too: users and roles, messages, mail deliveries, revisions, migration
 markers. The framework's own tables (atomic values, reservations, revisions, tombstones, data-protection keys) are in

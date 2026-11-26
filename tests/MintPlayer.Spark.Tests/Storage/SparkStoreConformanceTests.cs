@@ -35,6 +35,15 @@ public abstract class SparkStoreConformanceTests : IAsyncLifetime
         public ConfAddress? Address { get; set; }
         public List<string> Tags { get; set; } = [];
         public DateTimeOffset At { get; set; }
+
+        /// <summary>
+        /// #536 O13: a stored getter. The field is what <c>StoredGetterGenerator</c> emits for a stored type; this
+        /// project doesn't run it.
+        /// </summary>
+        public string Label => $"{Name} {Count}";
+#pragma warning disable CS0169
+        private string? __stored_Label;
+#pragma warning restore CS0169
     }
 
     /// <summary>The same collection's documents as an older shape wrote them: no Count, Flag or Tags.</summary>
@@ -457,6 +466,32 @@ public abstract class SparkStoreConformanceTests : IAsyncLifetime
         ascending.Select(d => d.Status).Should().Equal(ConfStatus.Archived, ConfStatus.Draft, ConfStatus.Published);
         var descending = await session.ToListAsync(Settled(session.Query<ConfDoc>()).OrderByDescending(d => d.Status));
         descending.Select(d => d.Status).Should().Equal(ConfStatus.Published, ConfStatus.Draft, ConfStatus.Archived);
+    }
+
+    /// <summary>
+    /// #536 O13: a get-only member is stored as the document holds it, on every store: a save after a change to what it
+    /// reads rewrites it, and a filter and a sort on it read the stored value.
+    /// </summary>
+    [SkippableFact]
+    public async Task A_get_only_member_is_stored_and_filters_and_sorts()
+    {
+        var first = Sample("ConfLabels/first");
+        first.Name = "Beta";
+        var second = Sample("ConfLabels/second");
+        second.Name = "Alpha";
+        await StoreAsync(first, second);
+        using (var session = Store.OpenSession())
+        {
+            var stored = (await session.LoadAsync<ConfDoc>("ConfLabels/first"))!;
+            stored.Name = "Gamma";
+            await session.SaveChangesAsync();
+        }
+
+        using var query = Store.OpenSession();
+        (await query.CountAsync(Settled(query.Query<ConfDoc>()).Where(d => d.Label == "Gamma 42"))).Should().Be(1);
+        (await query.CountAsync(Settled(query.Query<ConfDoc>()).Where(d => d.Label == "Beta 42"))).Should().Be(0);
+        var sorted = await query.ToListAsync(Settled(query.Query<ConfDoc>()).OrderBy(d => d.Label));
+        sorted.Select(d => d.Label).Should().Equal("Alpha 42", "Gamma 42");
     }
 
     [SkippableFact]

@@ -6,7 +6,27 @@ rounds, milestones and status. Branch `feat/536-sql-server-provider`, draft PR #
 
 ## 1. Status (2026-11-26)
 
-- **Now (2026-11-26): M1–M9 and O18–O21 are built. Nothing is open.** O18–O20 were pushed as 460a17281. The audit of
+- **Now (2026-11-26): M1–M9, O13 and O18–O21 are built.**
+  - **O13 built (2026-11-26).** It was decided 2026-11-24 (PRD §10) but never implemented. `SparkDbContext` mapped
+    a `__stored_<Name>` field when one existed, but no generator emitted one, so SQL ignored every getter (HR's
+    `FullName` could not be filtered or sorted).
+    - `SparkStoredGetterAttribute` (Attributes; `FieldPrefix`).
+    - `StoredGetterGenerator` + `StoredGetterReporter`. SPARK067 covers a record or a non-partial derived type;
+      SPARK068 a getter that reads the clock or another entity. 7 tests in `StoredGetterGeneratorTests`, green; the
+      whole SourceGenerators.Tests is green.
+    - `SparkDbContext.MapValue`: a get-only member with the field takes the normal column path (JSON, primitive
+      list, enum, id, scalar) plus `HasField`. The field is looked up on the declaring type. A get-only id is a plain
+      value (no FK).
+      - Red first: `RelPerson.Home` (JSON) "could not be mapped".
+      - Then `A_stored_getter_is_written_on_every_save_and_queries_as_its_column` went green on PG 18 + LocalDB.
+    - The neutral `A_get_only_member_is_stored_and_filters_and_sorts`: green on all four stores.
+    - `StoredGetterRavenDocumentTests`: the RavenDB document keeps the getter and not the field.
+    - `modelHashes.json` `storedGetters`, part of the model hash when non-empty. Verify names a new, removed or
+      changed formula; synchronize prints them, with the `ISparkMigration` advice. `StoredGetterHashTests` 4/4.
+    - The apps: CodeCoverage (7 getters), HR and MintPlayer (`Person.FullName`) were re-synchronized; their
+      `modelHashes.json` change, and RavenDB already stored all of them. The other six verify in sync. SqlDemo's
+      synchronize wrote no migration.
+  O18–O20 were pushed as 460a17281. The audit of
   the plan's older entries found two items, built and pushed as 85958deb3, and O21, which the owner decided and which
   is built. PR #697 stays ready for review.
   - **O21 built** (owner 2026-11-26: by name; `[Flags]` stays an integer; PRD §10):
@@ -492,7 +512,8 @@ rounds, milestones and status. Branch `feat/536-sql-server-provider`, draft PR #
     runs on `ISparkStore`; the row policy uses `ids.Contains(x.OrganizationId)`, which RavenDB's session rewrites
     into `In()`. The package drops its RavenDB references. Organizations + Notifications 67/67 on RavenDB.
   - **Next in M6:** Apps (Patch → load-modify-save; webhooks wait for messaging, M7), templates and AllFeatures'
-    generator, then Tier 2 (mail, mcp, cron, contributions, authorization user store, search, files) and O13.
+    generator, then Tier 2 (mail, mcp, cron, contributions, authorization user store, search, files) and O13
+    (O13 built 2026-11-26, see §1).
   - **M7a (2026-11-25): `ISparkSubscriptions` (PRD D39, spikes S7 + S14).** Messaging comes before Apps and the rest
     of Notifications, which enqueue through it. The neutral subscription: RavenDB data subscriptions on RavenDB, a
     commit-stamp cursor plus a lease (`SparkCursorSubscriptions`) on InMemory, SQL Server and PostgreSQL. The
@@ -1174,7 +1195,8 @@ source-generated from one id template per entity (PRD D23 rule 12).
 - **O12:** a framework `Revisions` table with whole-aggregate JSON snapshots, opt-in per type as today. The owner
   left its presence to me: always present in the provider's framework schema.
 - **O13:** stored get-only properties, recomputed on save, through a generated backing field and
-  `PreferFieldDuringConstruction` (the owner suggested source generation). S2b proves it.
+  `PreferFieldDuringConstruction` (the owner suggested source generation). S2b proves it. Built 2026-11-26
+  (`StoredGetterGenerator`, §1).
 
 ### Still open
 

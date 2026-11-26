@@ -26,6 +26,12 @@ public class RelJob
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
     public string Title { get; set; } = string.Empty;
     public DateOnly Start { get; set; }
+
+    /// <summary>O13 in a child table. The field is what <c>StoredGetterGenerator</c> emits; this project doesn't run it.</summary>
+    public string Label => Title.ToUpperInvariant();
+#pragma warning disable CS0169
+    private string? __stored_Label;
+#pragma warning restore CS0169
 }
 
 public enum RelLevel { Junior, Medior, Senior }
@@ -55,6 +61,25 @@ public class RelPerson
     public RelAddress? Address { get; set; }
     public TranslatedString? Title { get; set; }
     public List<string> Tags { get; set; } = [];
+
+    // O13: stored getters. The fields are what StoredGetterGenerator emits; this project doesn't run it.
+    public string Display => $"{Name} ({Age})";
+    public bool Adult => Age >= 18;
+    public RelLevel Band => Age >= 40 ? RelLevel.Senior : RelLevel.Junior;
+    public List<string> Initials => Name.Length == 0 ? [] : [Name[..1]];
+    public RelAddress? Home => Address is null ? null : new RelAddress { Street = Address.Street.ToUpperInvariant(), Number = Address.Number };
+    /// <summary>No backing field: not stored on SQL.</summary>
+    public string Unstored => Name;
+    /// <summary>A backing field, but <c>[JsonIgnore]</c>: the document doesn't hold it, so neither does the table.</summary>
+    [System.Text.Json.Serialization.JsonIgnore] public string Ignored => Name;
+#pragma warning disable CS0169
+    private string? __stored_Display;
+    private bool __stored_Adult;
+    private RelLevel __stored_Band;
+    private List<string>? __stored_Initials;
+    private RelAddress? __stored_Home;
+    private string? __stored_Ignored;
+#pragma warning restore CS0169
 }
 
 /// <summary>A whole-text id (a <see cref="string"/> <c>Id</c>), as documents written before #536 M2 have.</summary>
@@ -144,10 +169,65 @@ public abstract class RelationalStoreTests : IAsyncLifetime
     }
 
     /// <summary>
-    /// A list keeps its order, as a document does: a <c>[ValueObject]</c> list (child table) and a reference list (join
-    /// table), stored in an order their keys do not sort in, then reordered (<c>[Sortable]</c> is "order is the array
-    /// position").
+    /// O13: a get-only member with a generated backing field is a column, written from the getter on every save (here a
+    /// change to <c>Name</c> rewrites <c>Display</c>), in a child table too, and LINQ on it filters and sorts in SQL. A
+    /// getter without the field has no column.
     /// </summary>
+    [SkippableFact]
+    public async Task A_stored_getter_is_written_on_every_save_and_queries_as_its_column()
+    {
+        RequireServer();
+        var (_, person) = await SeedAsync();
+        (await ReadStoredGettersAsync()).Should().Be(("Ann (41)", true, "DEVELOPER"));
+
+        using (var session = Store.OpenSession())
+        {
+            var stored = (await session.LoadAsync<RelPerson>(person.Id.Value))!;
+            stored.Name = "Bob";
+            stored.Jobs[0].Title = "Lead";
+            await session.StoreAsync(new RelPerson { Id = NewId<RelPerson>("relpeople"), Name = "Cy", Age = 9 });
+            await session.SaveChangesAsync();
+        }
+
+        (await ReadStoredGettersAsync()).Should().Be(("Bob (41)", true, "LEAD"));
+        await using (var db = database!.Store.NewContext())
+        {
+            var people = db.Model.FindEntityType(typeof(RelPerson))!;
+            people.FindProperty(nameof(RelPerson.Unstored)).Should().BeNull();
+            people.FindProperty(nameof(RelPerson.Ignored)).Should().BeNull();
+        }
+
+        using (var session = Store.OpenSession())
+        {
+            (await session.CountAsync(session.Query<RelPerson>().Where(p => p.Display == "bob (41)"))).Should().Be(1); // O20: text ignores case
+            (await session.CountAsync(session.Query<RelPerson>().Where(p => p.Adult))).Should().Be(1);
+            (await session.CountAsync(session.Query<RelPerson>().Where(p => p.Band == RelLevel.Senior))).Should().Be(1);
+            (await session.CountAsync(session.Query<RelPerson>().Where(p => p.Initials.Contains("B")))).Should().Be(1);
+            var bob = (await session.LoadAsync<RelPerson>(person.Id.Value))!;
+            bob.Home!.Street.Should().Be("MAIN");
+            var sorted = await session.ToListAsync(session.Query<RelPerson>().OrderByDescending(p => p.Display));
+            sorted.Select(p => p.Display).Should().Equal("Cy (9)", "Bob (41)");
+        }
+    }
+
+    private async Task<(string Display, bool Adult, string Label)> ReadStoredGettersAsync()
+    {
+        await using var db = database!.Store.NewContext();
+        var sql = db.GetService<ISqlGenerationHelper>();
+        var people = db.Model.FindEntityType(typeof(RelPerson))!;
+        var jobs = people.FindNavigation(nameof(RelPerson.Jobs))!.TargetEntityType;
+        var connection = db.Database.GetDbConnection();
+        await connection.OpenAsync();
+        await using var command = connection.CreateCommand();
+        command.CommandText =
+            $"SELECT p.{sql.DelimitIdentifier("Display")}, p.{sql.DelimitIdentifier("Adult")}, j.{sql.DelimitIdentifier("Label")} " +
+            $"FROM {sql.DelimitIdentifier(people.GetTableName()!, people.GetSchema())} p, {sql.DelimitIdentifier(jobs.GetTableName()!, jobs.GetSchema())} j " +
+            $"WHERE p.{sql.DelimitIdentifier("Age")} = 41";
+        await using var reader = await command.ExecuteReaderAsync();
+        (await reader.ReadAsync()).Should().BeTrue();
+        return (reader.GetString(0), Convert.ToBoolean(reader.GetValue(1)), reader.GetString(2));
+    }
+
     /// <summary>
     /// O21: an enum is stored by its name, as RavenDB stores it: in its column, in a list column, and inside a JSON
     /// column. A <c>[Flags]</c> enum stays a number, so a bitwise filter still runs in SQL.
@@ -204,6 +284,11 @@ public abstract class RelationalStoreTests : IAsyncLifetime
         }
     }
 
+    /// <summary>
+    /// A list keeps its order, as a document does: a <c>[ValueObject]</c> list (child table) and a reference list (join
+    /// table), stored in an order their keys do not sort in, then reordered (<c>[Sortable]</c> is "order is the array
+    /// position").
+    /// </summary>
     [SkippableFact]
     public async Task Child_and_reference_lists_keep_their_order()
     {
