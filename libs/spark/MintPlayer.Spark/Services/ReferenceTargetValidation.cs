@@ -231,6 +231,10 @@ internal sealed partial class ReferenceTargetValidation : IReferenceTargetValida
                 yield break;
             case JsonElement:
                 yield break;
+            case ISparkId typed:
+                // A stored typed id (#536 D23), which the default case below took for an entity and found no Id on.
+                if (!typed.IsEmpty) yield return typed.Value;
+                yield break;
             case IEnumerable items:
                 foreach (var item in items)
                     if (item?.ToString() is { Length: > 0 } id)

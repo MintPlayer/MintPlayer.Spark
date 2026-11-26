@@ -200,6 +200,37 @@ public class ReferenceTargetCollectionTests : SparkTestDriver
     }
 
     [Fact]
+    public async Task A_dangling_typed_id_the_row_already_holds_does_not_block_an_edit()
+    {
+        // The stored ids were read only as strings and lists, so a typed id the row holds counted as the caller's new claim.
+        await SeedAsync((new RT_Car { Plate = "OLD", Owner = Id<RT_Person>.FromTrusted("rt_people/deleted") }, "rt_cars/1"));
+
+        var po = Car(id: "rt_cars/1", plate: "NEW");
+        po.AddAttribute(new PersistentObjectAttribute { Name = "Owner", DataType = "Reference", Value = "rt_people/deleted", IsValueChanged = true });
+        await SaveAsync(po);
+
+        var car = await LoadCarAsync("rt_cars/1");
+        car!.Plate.Should().Be("NEW");
+        car.Owner.Should().Be(Id<RT_Person>.FromTrusted("rt_people/deleted"));
+    }
+
+    [Fact]
+    public async Task A_typed_id_reference_loads_with_the_breadcrumb_of_its_target()
+    {
+        // The breadcrumb resolver took a reference value only as a string or a list, so it never loaded a typed id's
+        // target, and the form showed the raw id.
+        await SeedAsync((new RT_Person { Name = "Ada" }, "rt_people/1"));
+        var po = Car(plate: "CAR-1");
+        po.AddAttribute(new PersistentObjectAttribute { Name = "Owner", DataType = "Reference", Value = "rt_people/1", IsValueChanged = true });
+        var saved = await SaveAsync(po);
+
+        using var scope = _factory.CreateScope();
+        var loaded = await scope.ServiceProvider.GetRequiredService<IDatabaseAccess>().GetPersistentObjectAsync(CarTypeId, saved.Id!);
+
+        loaded!.Attributes.Single(a => a.Name == "Owner").Breadcrumb.Should().Be("Ada");
+    }
+
+    [Fact]
     public async Task A_reference_to_a_document_this_request_stored_but_has_not_committed_saves()
     {
         // An Actions class (or a write batch) that creates the person and then the car in one request:
@@ -334,6 +365,7 @@ public class ReferenceTargetCollectionTests : SparkTestDriver
                     Id = Guid.NewGuid(), Name = "Stops", DataType = "AsDetail", AsDetailType = typeof(RT_Stop).FullName, IsArray = true,
                 },
                 Ref("Badge", typeof(RT_Badge)),
+                Ref("Owner", typeof(RT_Person)),
             ],
         },
     };
@@ -385,6 +417,10 @@ public class RT_Car
 
     [Reference(typeof(RT_Badge))]
     public string? Badge { get; set; }
+
+    /// <summary>A typed id (#536 D23).</summary>
+    [Reference(typeof(RT_Person))]
+    public Id<RT_Person>? Owner { get; set; }
 }
 
 public class RT_PersonActions : DefaultPersistentObjectActions<RT_Person>

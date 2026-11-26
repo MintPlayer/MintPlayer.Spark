@@ -87,6 +87,25 @@ public static class SparkIdValues
     }
 
     /// <summary>
+    /// The ids a reference property's value holds: its one id (a string or a boxed <see cref="Id{T}"/>), or each id of a
+    /// collection. Anything else, <see langword="null"/> included, holds none.
+    /// </summary>
+    public static IEnumerable<string> ReferenceTexts(object? value)
+    {
+        switch (value)
+        {
+            case string or ISparkId:
+                if (ToText(value) is { } single)
+                    yield return single;
+                yield break;
+            case IEnumerable:
+                foreach (var text in ToTexts(value))
+                    yield return text;
+                yield break;
+        }
+    }
+
+    /// <summary>
     /// A collection of the shape <paramref name="collectionType"/> (a list, an array or an interface a list
     /// implements) filled with the ids in <paramref name="texts"/>.
     /// </summary>

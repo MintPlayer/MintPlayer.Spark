@@ -715,24 +715,10 @@ internal partial class BreadcrumbResolver : IBreadcrumbResolver
 
     private static string FormatScalar(object? value) => value?.ToString() ?? string.Empty;
 
-    /// <summary>A reference property is a single id (string) or an array of ids ([Reference] List&lt;string&gt;).</summary>
+    /// <summary>
+    /// A reference property is a single id (a string or an <c>Id&lt;T&gt;</c>) or a collection of them. A typed id used
+    /// to match neither of the string and list cases here, so its target was never loaded and the form showed the raw id.
+    /// </summary>
     private static IEnumerable<string> ExtractIds(object entity, string propertyName)
-    {
-        var value = ReadValue(entity, propertyName);
-        switch (value)
-        {
-            case null:
-                yield break;
-            case string s:
-                if (!string.IsNullOrEmpty(s)) yield return s;
-                yield break;
-            case IEnumerable enumerable:
-                foreach (var item in enumerable)
-                {
-                    var id = item?.ToString();
-                    if (!string.IsNullOrEmpty(id)) yield return id;
-                }
-                yield break;
-        }
-    }
+        => SparkIdValues.ReferenceTexts(ReadValue(entity, propertyName));
 }
