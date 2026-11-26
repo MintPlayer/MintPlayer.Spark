@@ -17,7 +17,7 @@ partial class SparkDbContextModelSnapshot : ModelSnapshot
     // If you encounter a merge conflict in the line below, it means you need to
     // discard one of the migration branches and recreate its migrations on top of
     // the other branch. See https://aka.ms/efcore-docs-migrations-conflicts for more info.
-    public override string LastMigrationId => "20261126081712_SparkModel";
+    public override string LastMigrationId => "20261126093841_SparkModel";
 
     protected override void BuildModel(ModelBuilder modelBuilder)
     {
@@ -49,8 +49,10 @@ partial class SparkDbContextModelSnapshot : ModelSnapshot
                     .HasColumnType("text")
                     .UseCollation("spark_ignore_case");
 
-                b.Property<int>("Kind")
-                    .HasColumnType("integer");
+                b.Property<string>("Kind")
+                    .IsRequired()
+                    .HasColumnType("text")
+                    .UseCollation("spark_ignore_case");
 
                 b.Property<DateTimeOffset?>("LastUsedAt")
                     .HasColumnType("timestamp with time zone");
@@ -364,8 +366,10 @@ partial class SparkDbContextModelSnapshot : ModelSnapshot
                 b.Property<DateTimeOffset?>("SparkExpiresAt")
                     .HasColumnType("timestamp with time zone");
 
-                b.Property<int>("Status")
-                    .HasColumnType("integer");
+                b.Property<string>("Status")
+                    .IsRequired()
+                    .HasColumnType("text")
+                    .UseCollation("spark_ignore_case");
 
                 b.Property<string>("Stream")
                     .IsRequired()
@@ -403,8 +407,10 @@ partial class SparkDbContextModelSnapshot : ModelSnapshot
                 b.Property<bool>("All")
                     .HasColumnType("boolean");
 
-                b.Property<int>("Reason")
-                    .HasColumnType("integer");
+                b.Property<string>("Reason")
+                    .IsRequired()
+                    .HasColumnType("text")
+                    .UseCollation("spark_ignore_case");
 
                 b.Property<ulong>("SparkChangeStamp")
                     .ValueGeneratedOnAddOrUpdate()
@@ -453,8 +459,9 @@ partial class SparkDbContextModelSnapshot : ModelSnapshot
                 b.Property<DateTime>("CreatedAtUtc")
                     .HasColumnType("timestamp without time zone");
 
-                b.Property<int?>("DeadLetterReason")
-                    .HasColumnType("integer");
+                b.Property<string>("DeadLetterReason")
+                    .HasColumnType("text")
+                    .UseCollation("spark_ignore_case");
 
                 b.Property<bool>("Expedite")
                     .HasColumnType("boolean");
@@ -517,8 +524,10 @@ partial class SparkDbContextModelSnapshot : ModelSnapshot
                 b.Property<DateTimeOffset?>("SparkExpiresAt")
                     .HasColumnType("timestamp with time zone");
 
-                b.Property<int>("Status")
-                    .HasColumnType("integer");
+                b.Property<string>("Status")
+                    .IsRequired()
+                    .HasColumnType("text")
+                    .UseCollation("spark_ignore_case");
 
                 b.Property<long>("Version")
                     .IsConcurrencyToken()
@@ -606,8 +615,10 @@ partial class SparkDbContextModelSnapshot : ModelSnapshot
                 b.Property<DateTime?>("QueuedAtUtc")
                     .HasColumnType("timestamp without time zone");
 
-                b.Property<int>("Status")
-                    .HasColumnType("integer");
+                b.Property<string>("Status")
+                    .IsRequired()
+                    .HasColumnType("text")
+                    .UseCollation("spark_ignore_case");
 
                 b.Property<bool>("WakeUp")
                     .HasColumnType("boolean");

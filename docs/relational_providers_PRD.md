@@ -2017,7 +2017,8 @@ Round 3 replaced all of these (D1, D23–D27).
 
 ## 10. Open questions for the owner
 
-**Open: O21 (found 2026-11-26).** O18–O20 were found in M4b/M5b and decided by the owner on 2026-11-26 (built).
+**Nothing is open.** O21 was found in the plan audit and decided by the owner on 2026-11-26 (built). O18–O20 were
+found in M4b/M5b and decided by the owner on 2026-11-26 (built).
 Everything before them was answered on 2026-11-24. Grilling round 2 (owner) answered O1, O2, O3 and O6. Round 3 reversed
 D1 and added D23–D27, and the commercial-framework comparison added D30. Round 5 decided O10–O13. The owner
 decided O14–O17, and O8 and O9 last. The plan §3 has the log.
@@ -2285,7 +2286,42 @@ decided O14–O17, and O8 and O9 last. The plan §3 has the log.
   - Recommendation: (a). The trap: a nondeterministic collation makes `DISTINCT` and `GROUP BY` fold `Alpha` and `ALPHA`
     into one value, as RavenDB's facets already do. The conformance guard keeps its data unambiguous in case until this
     is decided.
-- **O21, how an enum is stored on SQL (open, found 2026-11-26):** RavenDB stores an enum by name (the client's
+- **O21, how an enum is stored on SQL (decided 2026-11-26 by the owner: (a), by name, `[Flags]` stays an integer;
+  built):** an enum is stored by its name on every provider, and sorts by its name. The owner's condition: if sorting
+  by name were not convenient on SQL Server, keep integers and document it. It is: a column that holds names sorts by
+  name with a plain `ORDER BY`, on its ordinary collation.
+
+  Built:
+  - **SQL (both):** `SparkDbContext.PlainColumn` gives every enum property without `[Flags]` (nullable too, and a
+    stored computed one) `HasConversion<string>()` and the dialect's text column (on PostgreSQL the `spark_ignore_case`
+    collation, O20). A `List<enum>` converts its elements (`PrimitiveCollectionBuilder.ElementType(e =>
+    e.HasConversion<string>())`; in EF 11 an element type is fixed when the property is created, so
+    `IMutableProperty.SetElementType` afterwards leaves a property without one, measured as a `NullReferenceException`
+    in `MapValue`). An enum inside a JSON column (an embedded object, a dictionary) is written by name too
+    (`JsonStringEnumConverter` in `SparkJsonColumns`; a number still reads). A `[Flags]` enum stays an integer column,
+    so `(x & Flag) != 0` still translates.
+  - **InMemory:** it already stored names, but LINQ to objects sorts an enum by value. `IgnoreCaseQuery` rewrites an
+    `OrderBy`/`ThenBy` (and descending) whose key is an enum without `[Flags]` to sort by the name, as a string sorts
+    there.
+  - **RavenDB:** nothing; it already stored and sorted by name.
+  - **SqlDemo:** its migration, regenerated, turns the framework's five enum columns (`SparkMailDeliveries.Kind`,
+    `.Status`, `.Reason`, `SparkMessages.Status`, `.DeadLetterReason`) from `integer` into `text`. The view SQL did
+    not change: no view compares an enum with a constant. `--spark-migrate` applies it to an empty PostgreSQL 18
+    database (the five columns and the `SparkMessages_ByState` view's `Status` read back as `text`), and a second
+    synchronize writes nothing.
+  - Also green with the change: the full Relational.Tests (249, 2 skipped), the neutral `NeutralMessagingTests`,
+    `NeutralMailStoreTests` and `NeutralReduceViewTests` on both SQL databases (11/11 each), and the RavenDB and InMemory
+    conformance classes.
+  - Evidence: the neutral conformance case `An_enum_sorts_by_its_name` (red first on SQL Server, PostgreSQL and
+    InMemory: `Draft` before `Archived`; green on RavenDB) and `RelationalStoreTests.An_enum_is_stored_by_its_name_and_a_flags_enum_as_a_number`
+    (reads the raw columns: `"Senior"`, a nullable `"Medior"`, a list of names, a JSON column with `"Medior"`, a
+    `[Flags]` value `3`; then filters by `==`, a nullable `==`, a list's `Contains` and a bitwise flag). Green on
+    RavenDB, InMemory, SQL Server (LocalDB) and PostgreSQL 18.
+  - What it costs: a wider column and a string compare. An enum's members can now be reordered or inserted freely on
+    SQL; renaming a member orphans stored rows there, as it already did on RavenDB (a data migration renames them).
+  - Not converted: an existing database's integer enum columns. There is no released SQL provider, so there are none.
+
+  The question as it stood (found 2026-11-26): RavenDB stores an enum by name (the client's
   `SaveEnumsAsIntegers` is false and Spark keeps it), InMemory too (`StringEnumConverter`), but EF maps an enum to an
   integer column (SqlDemo's `Status` is `integer`). Equality filters agree (`Queries_filter_on_strings_enums_dates_and_guids`
   is green everywhere); two things differ:

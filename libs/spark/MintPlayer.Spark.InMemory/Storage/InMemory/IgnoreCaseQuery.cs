@@ -10,7 +10,7 @@ namespace MintPlayer.Spark.Storage.InMemory;
 /// rewritten before it runs: <c>==</c>, <c>!=</c> and <c>Equals</c> between strings, a string's <c>StartsWith</c>,
 /// <c>EndsWith</c> and <c>Contains</c>, and <c>Contains</c> on a list or array of strings take
 /// <see cref="StringComparison.OrdinalIgnoreCase"/>. A call that states its own comparison, and a set's <c>Contains</c>
-/// (the set carries its comparer), are left as written.
+/// (the set carries its comparer), are left as written. An enum sorts by its name (O21), as the other stores sort it.
 /// </summary>
 internal static class IgnoreCaseQuery
 {
@@ -113,6 +113,19 @@ internal static class IgnoreCaseQuery
                 && Sequence(node.Arguments[0]) is { } sequence)
                 return Expression.Call(SequenceContains, Visit(sequence), Visit(node.Arguments[1]), Comparer);
 
+            // #536 O21: an enum sorts by its name, as RavenDB and the SQL stores (which store names) sort it, and the name
+            // sorts as any string sorts here. A [Flags] enum stays a number there, so it sorts by value here too.
+            if (method.DeclaringType == typeof(Queryable)
+                && method.Name is nameof(Queryable.OrderBy) or nameof(Queryable.OrderByDescending) or nameof(Queryable.ThenBy) or nameof(Queryable.ThenByDescending)
+                && node.Arguments.Count == 2 && StripQuotes(node.Arguments[1]) is LambdaExpression key && IsNamedEnum(key.ReturnType))
+            {
+                Expression name = Nullable.GetUnderlyingType(key.Body.Type) is null
+                    ? Expression.Call(Expression.Convert(key.Body, typeof(object)), ObjectToString)
+                    : Expression.Call(key.Body, key.Body.Type.GetMethod(nameof(ToString), Type.EmptyTypes)!); // none: "", first, as SQL's NULLS FIRST
+                var byName = method.GetGenericMethodDefinition().MakeGenericMethod(method.GetGenericArguments()[0], typeof(string));
+                return Expression.Call(byName, Visit(node.Arguments[0]), Expression.Quote(Expression.Lambda(Visit(name), key.Parameters)));
+            }
+
             // A list's own Contains (List<string>.Contains); a set's is left to the set's comparer.
             if (method is { IsStatic: false, Name: "Contains" } && parameters.Length == 1 && parameters[0].ParameterType == typeof(string)
                 && typeof(IEnumerable<string>).IsAssignableFrom(method.DeclaringType)
@@ -121,6 +134,13 @@ internal static class IgnoreCaseQuery
 
             return base.VisitMethodCall(node);
         }
+
+        private static readonly MethodInfo ObjectToString = typeof(object).GetMethod(nameof(ToString), Type.EmptyTypes)!;
+
+        private static Expression StripQuotes(Expression e) => e is UnaryExpression { NodeType: ExpressionType.Quote } quote ? quote.Operand : e;
+
+        private static bool IsNamedEnum(Type type)
+            => (Nullable.GetUnderlyingType(type) ?? type) is { IsEnum: true } clr && clr.GetCustomAttribute<FlagsAttribute>() is null;
 
         /// <summary>The sequence of strings behind <paramref name="argument"/>, unwrapping C# 14's implicit span conversion.</summary>
         private static Expression? Sequence(Expression argument)

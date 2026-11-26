@@ -244,6 +244,11 @@ tags, and everything ships once the merged pull request is backported to `releas
     - **Views SQL cannot write are refused by name** (D43): a multi-map whose maps assign different members (each map
       names the members it leaves out; assign a typed default such as `0`), and a reduce that gathers a list per group
       (`g.ToList()`), fail at startup with the view's name. RavenDB takes both.
+    - **An enum is stored, and sorts, by its name** (O21), as on RavenDB: every enum without `[Flags]` is a text
+      column holding the member's name (a list of enums holds names, and an enum inside a JSON column is written by
+      name). Members can be inserted or reordered freely; renaming one needs a data migration, as on RavenDB. A
+      `[Flags]` enum stays an integer, so a bitwise filter still runs in the database. **InMemory** now sorts an enum
+      by its name as well; a test that relied on sorting by value changes.
 
     **Migrations (M4c):** at startup (or with `--spark-migrate`) the provider creates the database, applies Spark's
     own schema (schema `spark`) and then the app's EF migrations, holding a lock in the server's maintenance database

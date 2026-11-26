@@ -189,7 +189,7 @@ public sealed class SparkDbContext : DbContext
                 continue;
             }
 
-            MapValue(property, entity.Ignore, name => entity.Property(name), type);
+            MapValue(property, entity.Ignore, name => entity.Property(name), name => entity.PrimitiveCollection(name), type);
         }
 
         // D24: the column remembers its attribute, so a rename (same attribute, new name) can't pass as a drop and an add.
@@ -210,7 +210,8 @@ public sealed class SparkDbContext : DbContext
     /// A plain member: a column EF maps itself, or a JSON column for a value without a relational shape. Get-only members
     /// are not stored, except O13's stored computed members (a generated <c>__stored_</c> backing field).
     /// </summary>
-    private void MapValue(PropertyInfo property, Func<string, object> ignore, Func<string, PropertyBuilder> column, Type declaring)
+    private void MapValue(PropertyInfo property, Func<string, object> ignore, Func<string, PropertyBuilder> column,
+        Func<string, PrimitiveCollectionBuilder> list, Type declaring)
     {
         if (!property.CanWrite)
         {
@@ -219,9 +220,7 @@ public sealed class SparkDbContext : DbContext
                 ignore(property.Name);
                 return;
             }
-            var stored = column(property.Name).HasField("__stored_" + property.Name).UsePropertyAccessMode(PropertyAccessMode.PreferFieldDuringConstruction);
-            if (property.PropertyType == typeof(string))
-                Setup.Dialect.TextColumn(stored);
+            PlainColumn(column(property.Name).HasField("__stored_" + property.Name).UsePropertyAccessMode(PropertyAccessMode.PreferFieldDuringConstruction), property.PropertyType);
             return;
         }
         if (!IsMapped(property))
@@ -241,9 +240,34 @@ public sealed class SparkDbContext : DbContext
             json.HasConversion(SparkJsonColumns.Converter(property.PropertyType), SparkJsonColumns.Comparer(property.PropertyType));
             Setup.Dialect.JsonColumn(json);
         }
-        else if (property.PropertyType == typeof(string))
-            Setup.Dialect.TextColumn(column(property.Name)); // O20: compares ignoring case, as on RavenDB
+        else if (SparkRelationalModel.CollectionElement(property.PropertyType) is { } element && IsNamedEnum(element))
+            list(property.Name).ElementType(e => e.HasConversion<string>()); // O21: a list of enums holds their names, as the document does
+        else if (property.PropertyType == typeof(string) || IsNamedEnum(property.PropertyType))
+            PlainColumn(column(property.Name), property.PropertyType);
     }
+
+    /// <summary>
+    /// A scalar column's shape where it differs from EF's default: text compares ignoring case (O20), and an enum is
+    /// stored by its name (O21), both as on RavenDB.
+    /// </summary>
+    private void PlainColumn(PropertyBuilder column, Type type)
+    {
+        if (type == typeof(string))
+            Setup.Dialect.TextColumn(column);
+        else if (IsNamedEnum(type))
+        {
+            column.HasConversion<string>();
+            Setup.Dialect.TextColumn(column);
+        }
+    }
+
+    /// <summary>
+    /// O21: an enum (or nullable enum) stored by its name, as RavenDB stores it, so sorting and a changed member order
+    /// mean the same on every store. A <c>[Flags]</c> enum stays a number: its name is a list ("Read, Write") that a
+    /// bitwise filter cannot use.
+    /// </summary>
+    internal static bool IsNamedEnum(Type type)
+        => (Nullable.GetUnderlyingType(type) ?? type) is { IsEnum: true } clr && clr.GetCustomAttribute<FlagsAttribute>() is null;
 
     /// <summary>Whether EF can't map the type as a column (or a primitive collection) itself.</summary>
     private static bool NeedsJson(Type type)
@@ -290,7 +314,7 @@ public sealed class SparkDbContext : DbContext
                         column.HasConversion(converter);
                     continue;
                 }
-                MapValue(member, child.Ignore, name => child.Property(name), element);
+                MapValue(member, child.Ignore, name => child.Property(name), name => child.PrimitiveCollection(name), element);
             }
         });
     }
@@ -328,7 +352,7 @@ public sealed class SparkDbContext : DbContext
                     column.HasConversion(converter);
                 continue;
             }
-            MapValue(property, entity.Ignore, name => entity.Property(name), view.RowType);
+            MapValue(property, entity.Ignore, name => entity.Property(name), name => entity.PrimitiveCollection(name), view.RowType);
         }
 
         if (Setup.RenderedViews?.GetValueOrDefault(view.Name) is { } rendered)

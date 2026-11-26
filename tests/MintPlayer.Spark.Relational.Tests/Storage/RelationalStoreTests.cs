@@ -1,3 +1,6 @@
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Storage;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Storage;
 using MintPlayer.Spark.Relational.Tests._Infrastructure;
@@ -25,10 +28,16 @@ public class RelJob
     public DateOnly Start { get; set; }
 }
 
+public enum RelLevel { Junior, Medior, Senior }
+
+[Flags]
+public enum RelRights { None = 0, Read = 1, Write = 2 }
+
 public class RelAddress
 {
     public string Street { get; set; } = string.Empty;
     public int Number { get; set; }
+    public RelLevel Level { get; set; }
 }
 
 public class RelPerson
@@ -36,6 +45,10 @@ public class RelPerson
     public Id<RelPerson> Id { get; set; }
     public string Name { get; set; } = string.Empty;
     public int Age { get; set; }
+    public RelLevel Level { get; set; }
+    public RelLevel? NextLevel { get; set; }
+    public List<RelLevel> PastLevels { get; set; } = [];
+    public RelRights Rights { get; set; }
     public Id<RelCompany>? CompanyId { get; set; }
     public List<Id<RelSkill>> Skills { get; set; } = [];
     public List<RelJob> Jobs { get; set; } = [];
@@ -135,6 +148,62 @@ public abstract class RelationalStoreTests : IAsyncLifetime
     /// table), stored in an order their keys do not sort in, then reordered (<c>[Sortable]</c> is "order is the array
     /// position").
     /// </summary>
+    /// <summary>
+    /// O21: an enum is stored by its name, as RavenDB stores it: in its column, in a list column, and inside a JSON
+    /// column. A <c>[Flags]</c> enum stays a number, so a bitwise filter still runs in SQL.
+    /// </summary>
+    [SkippableFact]
+    public async Task An_enum_is_stored_by_its_name_and_a_flags_enum_as_a_number()
+    {
+        RequireServer();
+        var (_, person) = await SeedAsync();
+        using (var session = Store.OpenSession())
+        {
+            var stored = (await session.LoadAsync<RelPerson>(person.Id.Value))!;
+            stored.Level = RelLevel.Senior;
+            stored.NextLevel = RelLevel.Medior;
+            stored.PastLevels = [RelLevel.Junior, RelLevel.Medior];
+            stored.Rights = RelRights.Read | RelRights.Write;
+            stored.Address!.Level = RelLevel.Medior;
+            await session.SaveChangesAsync();
+        }
+
+        await using (var db = database!.Store.NewContext())
+        {
+            var sql = db.GetService<ISqlGenerationHelper>();
+            var people = db.Model.FindEntityType(typeof(RelPerson))!;
+            var columns = string.Join(", ", new[] { "Level", "NextLevel", "PastLevels", "Rights", "Address" }.Select(sql.DelimitIdentifier));
+            var connection = db.Database.GetDbConnection();
+            await connection.OpenAsync();
+            await using var command = connection.CreateCommand();
+            command.CommandText = $"SELECT {columns} FROM {sql.DelimitIdentifier(people.GetTableName()!, people.GetSchema())}";
+            await using var reader = await command.ExecuteReaderAsync();
+            (await reader.ReadAsync()).Should().BeTrue();
+            reader.GetValue(0).Should().Be("Senior");
+            reader.GetValue(1).Should().Be("Medior");
+            var pastLevels = reader.GetValue(2) is string[] array ? string.Join(",", array) : (string)reader.GetValue(2); // PostgreSQL: text[]; SQL Server: JSON
+            pastLevels.Should().Contain("Junior").And.Contain("Medior");
+            Convert.ToInt32(reader.GetValue(3)).Should().Be(3);
+            ((string)reader.GetValue(4)).Should().Contain("\"Medior\"");
+        }
+
+        using (var session = Store.OpenSession())
+        {
+            var loaded = (await session.LoadAsync<RelPerson>(person.Id.Value))!;
+            loaded.Level.Should().Be(RelLevel.Senior);
+            loaded.NextLevel.Should().Be(RelLevel.Medior);
+            loaded.PastLevels.Should().Equal(RelLevel.Junior, RelLevel.Medior);
+            loaded.Rights.Should().Be(RelRights.Read | RelRights.Write);
+            loaded.Address!.Level.Should().Be(RelLevel.Medior);
+
+            (await session.CountAsync(session.Query<RelPerson>().Where(p => p.Level == RelLevel.Senior))).Should().Be(1);
+            (await session.CountAsync(session.Query<RelPerson>().Where(p => p.NextLevel == RelLevel.Medior))).Should().Be(1);
+            (await session.CountAsync(session.Query<RelPerson>().Where(p => p.PastLevels.Contains(RelLevel.Medior)))).Should().Be(1);
+            (await session.CountAsync(session.Query<RelPerson>().Where(p => (p.Rights & RelRights.Write) != 0))).Should().Be(1);
+            (await session.CountAsync(session.Query<RelPerson>().Where(p => p.Level == RelLevel.Junior))).Should().Be(0);
+        }
+    }
+
     [SkippableFact]
     public async Task Child_and_reference_lists_keep_their_order()
     {

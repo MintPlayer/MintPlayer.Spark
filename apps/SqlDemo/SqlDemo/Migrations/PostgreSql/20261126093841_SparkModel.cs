@@ -7,7 +7,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace SqlDemo.Migrations.PostgreSql;
 
 /// <inheritdoc />
-public partial class _20261126081712_SparkModel : Migration
+public partial class _20261126093841_SparkModel : Migration
 {
     /// <inheritdoc />
     protected override void Up(MigrationBuilder migrationBuilder)
@@ -18,7 +18,7 @@ public partial class _20261126081712_SparkModel : Migration
             {
                 Id = table.Column<string>(type: "character varying(450)", maxLength: 450, nullable: false, collation: "C"),
                 UserId = table.Column<string>(type: "text", nullable: false, collation: "spark_ignore_case"),
-                Kind = table.Column<int>(type: "integer", nullable: false),
+                Kind = table.Column<string>(type: "text", nullable: false, collation: "spark_ignore_case"),
                 ClientId = table.Column<string>(type: "text", nullable: true, collation: "spark_ignore_case"),
                 Name = table.Column<string>(type: "text", nullable: true, collation: "spark_ignore_case"),
                 VerifiedHost = table.Column<string>(type: "text", nullable: true, collation: "spark_ignore_case"),
@@ -82,7 +82,7 @@ public partial class _20261126081712_SparkModel : Migration
                 Template = table.Column<string>(type: "text", nullable: false, collation: "spark_ignore_case"),
                 Stream = table.Column<string>(type: "text", nullable: false, collation: "spark_ignore_case"),
                 CampaignId = table.Column<string>(type: "text", nullable: true, collation: "spark_ignore_case"),
-                Status = table.Column<int>(type: "integer", nullable: false),
+                Status = table.Column<string>(type: "text", nullable: false, collation: "spark_ignore_case"),
                 UpdatedAtUtc = table.Column<DateTime>(type: "timestamp without time zone", nullable: false),
                 Detail = table.Column<string>(type: "text", nullable: true, collation: "spark_ignore_case"),
                 ExpiresAtUtc = table.Column<DateTime>(type: "timestamp without time zone", nullable: true),
@@ -102,7 +102,7 @@ public partial class _20261126081712_SparkModel : Migration
                 Id = table.Column<string>(type: "character varying(450)", maxLength: 450, nullable: false, collation: "C"),
                 All = table.Column<bool>(type: "boolean", nullable: false),
                 Streams = table.Column<List<string>>(type: "text[]", nullable: false),
-                Reason = table.Column<int>(type: "integer", nullable: false),
+                Reason = table.Column<string>(type: "text", nullable: false, collation: "spark_ignore_case"),
                 UpdatedAtUtc = table.Column<DateTime>(type: "timestamp without time zone", nullable: false),
                 SparkChangeStamp = table.Column<ulong>(type: "xid8", nullable: false, defaultValueSql: "pg_current_xact_id()"),
                 SparkExpiresAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
@@ -147,10 +147,10 @@ public partial class _20261126081712_SparkModel : Migration
                 QueuedAtUtc = table.Column<DateTime>(type: "timestamp without time zone", nullable: true),
                 AttemptCount = table.Column<int>(type: "integer", nullable: false),
                 MaxAttempts = table.Column<int>(type: "integer", nullable: false),
-                Status = table.Column<int>(type: "integer", nullable: false),
+                Status = table.Column<string>(type: "text", nullable: false, collation: "spark_ignore_case"),
                 CompletedAtUtc = table.Column<DateTime>(type: "timestamp without time zone", nullable: true),
                 ExpiresAtUtc = table.Column<DateTime>(type: "timestamp without time zone", nullable: true),
-                DeadLetterReason = table.Column<int>(type: "integer", nullable: true),
+                DeadLetterReason = table.Column<string>(type: "text", nullable: true, collation: "spark_ignore_case"),
                 ScrubPayloadOnTerminal = table.Column<bool>(type: "boolean", nullable: false),
                 Handlers = table.Column<string>(type: "jsonb", nullable: false),
                 WakeUp = table.Column<bool>(type: "boolean", nullable: false),

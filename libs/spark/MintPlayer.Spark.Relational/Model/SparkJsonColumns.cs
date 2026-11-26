@@ -17,6 +17,7 @@ internal static class SparkJsonColumns
     {
         var options = new JsonSerializerOptions(JsonSerializerDefaults.General);
         options.Converters.Add(new IdJsonConverterFactory());
+        options.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter()); // O21: names, as the document holds them; numbers still read
         return options;
     }
 

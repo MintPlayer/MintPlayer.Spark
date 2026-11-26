@@ -437,6 +437,28 @@ public abstract class SparkStoreConformanceTests : IAsyncLifetime
         (await session.CountAsync(Settled(session.Query<ConfDoc>()))).Should().Be(2);
     }
 
+    /// <summary>
+    /// #536 O21: every provider stores an enum by its name, as RavenDB does, so a sort follows the names, not the values:
+    /// Archived (2), Draft (0), Published (1).
+    /// </summary>
+    [SkippableFact]
+    public async Task An_enum_sorts_by_its_name()
+    {
+        var draft = Sample("ConfEnums/draft");
+        draft.Status = ConfStatus.Draft;
+        var published = Sample("ConfEnums/published");
+        published.Status = ConfStatus.Published;
+        var archived = Sample("ConfEnums/archived");
+        archived.Status = ConfStatus.Archived;
+        await StoreAsync(draft, published, archived);
+
+        using var session = Store.OpenSession();
+        var ascending = await session.ToListAsync(Settled(session.Query<ConfDoc>()).OrderBy(d => d.Status));
+        ascending.Select(d => d.Status).Should().Equal(ConfStatus.Archived, ConfStatus.Draft, ConfStatus.Published);
+        var descending = await session.ToListAsync(Settled(session.Query<ConfDoc>()).OrderByDescending(d => d.Status));
+        descending.Select(d => d.Status).Should().Equal(ConfStatus.Published, ConfStatus.Draft, ConfStatus.Archived);
+    }
+
     [SkippableFact]
     public async Task Queried_documents_are_tracked_by_the_session()
     {

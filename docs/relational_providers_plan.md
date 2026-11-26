@@ -6,8 +6,20 @@ rounds, milestones and status. Branch `feat/536-sql-server-provider`, draft PR #
 
 ## 1. Status (2026-11-26)
 
-- **Now (2026-11-26): M1–M9 and O18–O20 are built (pushed as 460a17281). An audit of the plan's older entries found
-  two items, both built since; only O21 waits, on the owner.** PR #697 stays ready for review.
+- **Now (2026-11-26): M1–M9 and O18–O21 are built. Nothing is open.** O18–O20 were pushed as 460a17281. The audit of
+  the plan's older entries found two items, built and pushed as 85958deb3, and O21, which the owner decided and which
+  is built. PR #697 stays ready for review.
+  - **O21 built** (owner 2026-11-26: by name; `[Flags]` stays an integer; PRD §10):
+    - SQL: `SparkDbContext.PlainColumn` stores a non-`[Flags]` enum as `HasConversion<string>()` in the dialect's text
+      column. A `List<enum>` converts its elements through `PrimitiveCollectionBuilder.ElementType`; EF 11 fixes the
+      element type at creation, and `SetElementType` afterwards left none (a measured NRE). JSON columns write names
+      (`JsonStringEnumConverter`).
+    - InMemory: `IgnoreCaseQuery` sorts an enum key by its name, with the comparer a string sort uses there.
+    - SqlDemo's migration, regenerated as `20261126093841_SparkModel`: the framework's five enum columns become `text`.
+      Nothing else changed.
+    - Tests: `An_enum_sorts_by_its_name` (neutral; red first on SQL Server, PostgreSQL and InMemory, green on RavenDB)
+      and `RelationalStoreTests.An_enum_is_stored_by_its_name_and_a_flags_enum_as_a_number` (raw columns, then
+      filters). All green on the four stores.
   - **Built after the audit:**
     1. **A list's order on SQL** (PRD D25, defect, fixed). Child and join tables now have `SparkPosition`. It is
        written on save, and the load is ordered by it: join rows in the query, child rows through the
@@ -25,14 +37,13 @@ rounds, milestones and status. Branch `feat/536-sql-server-provider`, draft PR #
       - The test now asserts what D6 relies on: the slow transaction is in the snapshot's running list while it is
         open, and is gone once it commits. SQL Server's `MIN_ACTIVE_ROWVERSION()` is per database, so its twin is
         unaffected.
-  - **Open, for the owner:** O21 (PRD §10), whether SQL stores an enum by name, as RavenDB does, or as an integer.
   - **Recorded, not planned:** an index on a reduce view's group-key columns (M7e's other TODO: SQL Server reads the
     whole 2,250-cell view in 565–711 ms, "fast enough"); the template's SQL store choices (after the packages' first
     release, SPARKTPL001) and the `sparkindex` item template (M6k).
   - **M4a's "known gaps" list, closed since:** `DateTime.Kind` (O18), the `DateTimeOffset` offset (D5, instants),
     NULLS FIRST (S18, `SparkQuerySqlGenerator`), the Integer kind (M4b HiLo), arrays as child collections
     (`CollectionElement` takes arrays), JSON columns (`TranslatedString`, primitive lists), and `[Sortable]` order
-    (item 1, `SparkPosition`). Enums are O21.
+    (item 1, `SparkPosition`), and enums (O21, by name).
   - **GitGuardian:** six false positives in earlier commits (five SqlDemo `modelHashes.json` hashes, and
     `password="$(openssl rand -hex 16)"` in `test.yml`) were ignored in the dashboard on 2026-11-26; the push rescans.
   - **Decisions O18, O19 and O20** (PRD §10): the owner took every recommendation on 2026-11-26; built and pushed
@@ -77,10 +88,10 @@ rounds, milestones and status. Branch `feat/536-sql-server-provider`, draft PR #
   - S1, S2, S12 and S13 are done too. Since round 3 they are history for the storage model.
   - The latest spike prototype is `docs/relational_spike/s2b/`: an EF implementation of the storage seam with views,
     versions and D30. It has 64/64 tests green on both databases, and its README says how to rerun it.
-- **Decisions** (§3): O21 is open (2026-11-26); everything else is decided:
+- **Decisions** (§3): everything is decided:
   - grilling rounds 1–5
   - the commercial-framework comparison and the LLM rounds 6–9
-  - O1–O17 (O8 and O9 on 2026-11-24), O18–O20 (2026-11-26)
+  - O1–O17 (O8 and O9 on 2026-11-24), O18–O21 (2026-11-26)
 - **Scope:** SQL Server (2022, 2025) and PostgreSQL (17 and later; CI on 18, O8). MariaDB is deferred (O6). Tier 4
   (identity_provider, dashboards) is in. The demo is a new `apps/SqlDemo`.
 - **Storage model (round 3):**

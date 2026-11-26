@@ -39,6 +39,14 @@ declare. A type's properties are columns. Value objects and collections are JSON
 Server, `jsonb` on PostgreSQL). Every table also has Spark's own columns: `Version` for optimistic concurrency (a stale
 save is still a 409), the change stamp that live updates and subscriptions read, and `SparkExpiresAt`.
 
+Values keep the meaning they have in a RavenDB document:
+- **Text:** string comparisons ignore case (on PostgreSQL through the ICU collation `spark_ignore_case`, so the server
+  needs ICU).
+- **Enums:** an enum is stored, and sorts, by its name; a `[Flags]` enum stays an integer, so a bitwise filter runs
+  in the database.
+- **Lists:** a list loads in the order it was saved.
+- **`DateTime`:** reads back as UTC (SPARK066). Prefer `DateTimeOffset` for an instant.
+
 Feature packages keep their state in tables too: users and roles, messages, mail deliveries, revisions, migration
 markers. The framework's own tables (atomic values, reservations, revisions, tombstones, data-protection keys) are in
 the `spark` schema, under their own migration history.
