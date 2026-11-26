@@ -147,7 +147,7 @@ internal sealed partial class MessageSubscriptionManager : BackgroundService
         if (Options.SubscriptionMode == ESubscriptionMode.SingleSubscription)
         {
             router.Start(leaseLifetime.Token);
-            feeder = new MessageFeeder(router, processor.Admission, subscriptions, documentStore, options, loggerFactory);
+            feeder = new MessageFeeder(router, processor.Admission, subscriptions, documentStore, options, loggerFactory, storeReadiness);
             feederTask = feeder.StartAsync(leaseLifetime.Token);
             await feederTask;
             logger.LogInformation(
@@ -159,7 +159,7 @@ internal sealed partial class MessageSubscriptionManager : BackgroundService
         foreach (var queueName in queueNames)
         {
             var worker = new MessageSubscriptionWorker(
-                queueName, subscriptions, documentStore, serviceProvider, options, loggerFactory);
+                queueName, subscriptions, documentStore, serviceProvider, options, loggerFactory, storeReadiness);
             lock (perQueueWorkers) perQueueWorkers.Add(worker);
             logger.LogInformation("Starting subscription worker for queue '{QueueName}'", queueName);
             await worker.StartAsync(leaseLifetime.Token);

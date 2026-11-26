@@ -505,12 +505,42 @@ no schema, so it never showed.
   A container built without `AddSpark` still resolves it.
 - Messaging's manager waits on it before the legacy cleanup and the lease. The retry sweeper needs no gate of its own,
   because it runs only while the lease is held. Cron, the subscription worker and the other hosted services adopt it
-  when they are ported.
+  when they are ported. They have (audit below, 2026-11-26).
 - Rejected: catching the store error in each loop and retrying. That puts an error in every first boot's log, delays
   messaging by a poll interval, and leaves each new background service to rediscover the race.
 
 *Evidence:* `NeutralMessagingTests` went from 0/3 to 3/3 on SQL Server and PostgreSQL. The RavenDB messaging set,
 including the containers built without `AddSpark`, stayed green (227/227).
+
+**The rest, audited 2026-11-26.** The plan audit found two hosted services whose first step reads a store table and did
+not wait.
+- **The services that now wait:**
+  - `SparkSubscriptionWorker<T>` writes the subscription registry (`EnsureAsync`) on its first line. That is outside
+    its catch, so a failure stops the host. This affected app-defined workers and Replication's
+    `SyncActionSubscriptionWorker`.
+  - Files' `DeferredFileScanService` sweeps the uploads at once.
+
+  Both now wait on `ISparkStoreReadiness` before that first step. A stop during the wait ends them without a fault.
+  The base worker takes the readiness through `[Inject]`. Messaging's `MessageFeeder` and `MessageSubscriptionWorker`
+  pass the readiness their manager already waited on. `AddSubscriptionWorker<T>` and `AddSparkFiles` register it.
+- **The services that need no gate:**
+  - Cron already waits.
+  - Contributions' shape check already waits.
+  - `SparkUserBackfill` and `DashboardSampler` wait for `ApplicationStarted`. That comes after the pipeline is built,
+    and `UseSpark` applies the schema synchronously while building it.
+  - `MessageRetrySweeper` and Replication's retry sweeper delay first and run only under the lease.
+  - The identity provider's key rotation and agent-client cleanup first tick after 6 hours.
+  - `FilesReconcileService` touches only object storage at once; it reads the store at its first tick.
+  - `DashboardNotifier` reads no store.
+  - `OpenSearchSync` reads RavenDB's `IDocumentStore` directly.
+- *Evidence:* `BackgroundStoreReadinessTests` (2). A substitute readiness signals when it is awaited and holds the
+  service, because `BackgroundService` runs `ExecuteAsync` on its own task, so "nothing ran yet" after `StartAsync`
+  proves nothing.
+  - Red first: neither service ever awaited the readiness.
+  - Green after the change: nothing touches the store before release, and the registry write or the first sweep
+    follows it.
+  - The worker, messaging, replication and file-scanning classes on RavenDB: 41/41.
+  - `NeutralMessagingTests` + `NeutralFilesStoreTests` on PostgreSQL: 8/8.
 
 **D42 (M7b follow-up, 2026-11-25): messaging queries a declared view, never the collection.** D40's plain collection
 queries made RavenDB build `Auto/SparkMessages/ByExpediteAndNextAttemptAtUtcAndPriorityAndQueuedAtUtcAndStatusAndWakeUp`

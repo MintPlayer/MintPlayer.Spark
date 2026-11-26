@@ -30,6 +30,9 @@ public abstract partial class SparkSubscriptionWorker<T> : BackgroundService whe
 
     [Inject] private readonly ILoggerFactory loggerFactory;
 
+    /// <summary>#536 D41: on a store with a schema, the registry the subscription writes first exists once <c>UseSpark</c> applied it.</summary>
+    [Inject] private readonly ISparkStoreReadiness storeReadiness;
+
     /// <summary>The subscription name. Defaults to class name minus common suffixes.</summary>
     protected virtual string SubscriptionName
         => GetType().Name
@@ -68,6 +71,16 @@ public abstract partial class SparkSubscriptionWorker<T> : BackgroundService whe
 
     protected sealed override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        // #536 D41: the host starts this before UseSpark applies a relational schema; the registry has no table until then.
+        try
+        {
+            await storeReadiness.WaitAsync(stoppingToken);
+        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        {
+            return;
+        }
+
         var definition = new SparkSubscriptionDefinition<T>(SubscriptionName, Filter);
         // Outside the catch below on purpose: a definition the store refuses fails startup.
         await Subscriptions.EnsureAsync(definition, stoppingToken);

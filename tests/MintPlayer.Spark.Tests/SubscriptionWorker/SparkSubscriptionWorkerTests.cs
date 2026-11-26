@@ -4,6 +4,7 @@ using MintPlayer.Spark.Abstractions.Storage;
 using MintPlayer.Spark.Storage.Raven;
 using MintPlayer.Spark.SubscriptionWorker;
 using MintPlayer.Spark.Testing;
+using NSubstitute;
 using Raven.Client.Documents.Subscriptions;
 using Raven.Client.Exceptions.Documents.Subscriptions;
 
@@ -29,8 +30,11 @@ public class SparkSubscriptionWorkerTests : RavenSparkTestDriver
         public string? Name { get; set; }
     }
 
+    /// <summary>RavenDB has no schema: its readiness is complete at once (#536 D41).</summary>
+    private static readonly ISparkStoreReadiness Ready = new SparkStoreReadiness(Substitute.For<IServiceProvider>());
+
     private sealed class ProbeWorker(ISparkSubscriptions subscriptions)
-        : SparkSubscriptionWorker<ProbeDoc>(subscriptions, NullLoggerFactory.Instance)
+        : SparkSubscriptionWorker<ProbeDoc>(subscriptions, NullLoggerFactory.Instance, Ready)
     {
         public const string Name = "Probe";
 

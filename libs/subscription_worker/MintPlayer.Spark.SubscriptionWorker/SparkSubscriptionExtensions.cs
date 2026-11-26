@@ -18,11 +18,12 @@ public static class SparkSubscriptionExtensions
         => services;
 
     /// <summary>
-    /// Registers a subscription worker as a hosted service.
+    /// Registers a subscription worker as a hosted service, with the store readiness it waits on (#536 D41).
     /// </summary>
     public static IServiceCollection AddSubscriptionWorker<TWorker>(this IServiceCollection services)
         where TWorker : class, IHostedService
     {
+        global::MintPlayer.Spark.Abstractions.Storage.SparkStoreReadinessServiceCollectionExtensions.AddSparkStoreReadiness(services);
         services.AddHostedService<TWorker>();
         return services;
     }

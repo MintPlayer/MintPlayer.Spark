@@ -164,7 +164,9 @@ public class MessageSubscriptionWorkerE2ETests : MessagingRavenTestDriver
             Store.SparkStore(),
             serviceProvider,
             serviceProvider.GetRequiredService<IOptions<SparkMessagingOptions>>(),
-            NullLoggerFactory.Instance);
+            NullLoggerFactory.Instance,
+            // RavenDB has no schema, so its readiness is complete at once (#536 D41).
+            new MintPlayer.Spark.Abstractions.Storage.SparkStoreReadiness(NSubstitute.Substitute.For<IServiceProvider>()));
     }
 
     /// <summary>

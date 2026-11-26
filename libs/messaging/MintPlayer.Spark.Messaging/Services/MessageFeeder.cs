@@ -64,8 +64,9 @@ internal sealed class MessageFeeder : SparkSubscriptionWorker<SparkMessage>
         ISparkSubscriptions subscriptions,
         ISparkStore store,
         IOptions<SparkMessagingOptions> options,
-        ILoggerFactory loggerFactory)
-        : base(subscriptions, loggerFactory)
+        ILoggerFactory loggerFactory,
+        ISparkStoreReadiness storeReadiness)
+        : base(subscriptions, loggerFactory, storeReadiness)
     {
         this.store = store;
         this.router = router;

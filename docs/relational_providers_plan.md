@@ -24,7 +24,14 @@ rounds, milestones and status. Branch `feat/536-sql-server-provider`, draft PR #
     - `modelHashes.json` `storedGetters`, part of the model hash when non-empty. Verify names a new, removed or
       changed formula; synchronize prints them, with the `ISparkMigration` advice. `StoredGetterHashTests` 5/5.
     - Pushed as bf8c643b3, CI green (31 checks). Its coverage showed untested clock arms and new/removed drift
-      lines; tests for both followed.
+      lines; tests for both followed (88581a4bc, CI green).
+  - **The plan's stale "Next" and "In progress" lines (2026-11-26):** each was checked against the log below and
+    marked done. §4 items 5–9 now carry ✅ with their milestone references.
+    - One line was not done: D41's "the subscription worker and the other hosted services adopt `ISparkStoreReadiness`
+      when they are ported". `SparkSubscriptionWorker` (app and replication workers) and Files' `DeferredFileScanService`
+      read a table before the schema existed.
+    - Both wait now, red then green (`BackgroundStoreReadinessTests`). The other hosted services were audited; PRD D41
+      "The rest" lists why each needs no gate.
     - The apps: CodeCoverage (7 getters), HR and MintPlayer (`Person.FullName`) were re-synchronized; their
       `modelHashes.json` change, and RavenDB already stored all of them. The other six verify in sync. SqlDemo's
       synchronize wrote no migration.
@@ -127,7 +134,7 @@ rounds, milestones and status. Branch `feat/536-sql-server-provider`, draft PR #
 - **Upstream:** S3 and S19 found two EF bugs. Their pull requests, dotnet/efcore#39784 and npgsql/efcore.pg#4163,
   are open with the CLA signed. The workarounds are in D24 (`FreshSnapshotMigrationsAssembly`) and D33
   (`AdvisoryLockHistoryRepository`), and they go once the fixes ship (§5).
-- **Done: M2,** `Id<T>` and the typed contract on RavenDB and InMemory (§4 item 2). **In progress: M3** (§4 item 3).
+- **Done: M2,** `Id<T>` and the typed contract on RavenDB and InMemory (§4 item 2). M3 followed (§4 item 3, done).
   - **Release note:** `docs/release-notes-697.md` gets each milestone's breaking changes as they land.
   - **M3a, core clean-ups (PRD §2.3):** `SparkDataProtectionStorage.RavenDb` → `Store` (no shim; production
     sets only `KeysPath`, so only test hosts and docs changed; the "set Storage = File" hint named a value that
@@ -448,7 +455,7 @@ rounds, milestones and status. Branch `feat/536-sql-server-provider`, draft PR #
     milestone, and D23's pass-through `__DocumentId` keeps the stored document ids unchanged (S-ID4: no re-key).
   - The S2b query-seam items (`Search` takes words; captured values) and the S5 view declarations are M3's
     (§4 item 3), not M2's.
-- **In progress: M5** (§4 item 5).
+- **M5 (done 2026-11-25, §4 item 5).**
   - **M5a (2026-11-25): the split test harness (S17, PRD D35).**
     - `MintPlayer.Spark.Testing` is neutral now: it references `MintPlayer.Spark` and `MintPlayer.Spark.InMemory`,
       no database client (the layering guard `ProviderNeutralCoreTests` covers it, and now also refuses
@@ -498,7 +505,8 @@ rounds, milestones and status. Branch `feat/536-sql-server-provider`, draft PR #
     `PostgreSqlBehaviourTests` (12) on a shared `BehaviourDatabase` base, raw SQL against a throwaway database per
     class. 25/25 locally. Every row of the D31 table except O13 (moves to M6). CI runs them once M8 adds the service
     containers and the `postgres:17` leg.
-- **In progress: M6, the Tier 1 and Tier 2 ports.**
+- **M6, the Tier 1 and Tier 2 ports (done 2026-11-25, §4 item 6).** The entries below are dated; a "Next" line in
+  them was the state on that date.
   - **M6a (2026-11-25): `ISparkSession.OptimisticConcurrency` (PRD D37) and Settings.** Tier 1 sets RavenDB's
     `OptimisticConcurrencyMode.Writes` in about 15 places, so the neutral session got the switch (conformance 4/4 on
     each of the four providers). `MintPlayer.Spark.Settings` (settings, seeder, quotas) now runs on `ISparkStore` and
@@ -513,9 +521,20 @@ rounds, milestones and status. Branch `feat/536-sql-server-provider`, draft PR #
     four providers. Organizations (service, reader, row policy, interceptors, hooks, actions, current organization)
     runs on `ISparkStore`; the row policy uses `ids.Contains(x.OrganizationId)`, which RavenDB's session rewrites
     into `In()`. The package drops its RavenDB references. Organizations + Notifications 67/67 on RavenDB.
-  - **Next in M6:** Apps (Patch → load-modify-save; webhooks wait for messaging, M7), templates and AllFeatures'
-    generator, then Tier 2 (mail, mcp, cron, contributions, authorization user store, search, files) and O13
-    (O13 built 2026-11-26, see §1).
+  - **Next in M6, as of M6c (all built since):** Apps (Patch → load-modify-save; webhooks wait for messaging, M7),
+    templates and AllFeatures' generator, then Tier 2 (mail, mcp, cron, contributions, authorization user store,
+    search, files) and O13. Built as:
+    - Apps: M6d.
+    - Templates: M6k.
+    - AllFeatures: M6l.
+    - Mail: M6e.
+    - MCP: M6g.
+    - Cron: M6f.
+    - Contributions: M6i.
+    - Authorization and its user store: M6j.
+    - Search: M7f.
+    - Files: M6h.
+    - O13: 2026-11-26, §1.
   - **M7a (2026-11-25): `ISparkSubscriptions` (PRD D39, spikes S7 + S14).** Messaging comes before Apps and the rest
     of Notifications, which enqueue through it. The neutral subscription: RavenDB data subscriptions on RavenDB, a
     commit-stamp cursor plus a lease (`SparkCursorSubscriptions`) on InMemory, SQL Server and PostgreSQL. The
@@ -614,8 +633,8 @@ rounds, milestones and status. Branch `feat/536-sql-server-provider`, draft PR #
         `DashboardEndpointTests` 8/8 (moved to `SparkTestDriver`).
       - The RavenDB Dashboards suite 24/24, CodeCoverage `HostMetricsDashboardTests` 11/11 and the templates tests
         23/23.
-    - **Next:** M8b IdentityProvider, then M9.
-  - **M8b (in progress, 2026-11-25): the identity provider on any store (PRD D47).** Design in D47. The survey found
+    - **Next (done since: M8b, M9):** M8b IdentityProvider, then M9.
+  - **M8b (done 2026-11-25, `8b32534fb`): the identity provider on any store (PRD D47).** Design in D47. The survey found
     69 files with RavenDB code: about 15 collection queries with a filter, 2 static indexes, 3 raw queries, 2
     patches, `@expires` metadata, one time series, the client-id compare-exchange, and the developer status as an
     undeclared field on the user document.
@@ -686,7 +705,7 @@ rounds, milestones and status. Branch `feat/536-sql-server-provider`, draft PR #
       - Fix: entries unused for more than 3 days deleted. The threshold is now 72h, and the server sweeps hourly
         (`src/sweep-interval.patch` in the cache stack, with a Go test, red then green).
       - After: 65 GB, disk 75%.
-  - **M9b (2026-11-25, in progress): `apps/SqlDemo`**, the PostgreSQL demo (O3).
+  - **M9b (done 2026-11-25): `apps/SqlDemo`**, the PostgreSQL demo (O3).
     - **The app:** `Author` and `Book` (`IAuditCreated`). Messaging, MailManager, History, local accounts with confirmed
       e-mail. The Book list reads `Books_WithAuthor`, a `[DefaultIndex]` `SparkView` with a `Load<Author>` join. Model
       synchronize wrote it as a `CREATE VIEW` in `Migrations/PostgreSql`, and `Books.Author` gets a real FK.
@@ -766,7 +785,7 @@ rounds, milestones and status. Branch `feat/536-sql-server-provider`, draft PR #
       - `LiveSessionTests.L7`: sign-in answered 401. `OrganizationsTestHost.SeedUserAsync` wrote raw users without
         reservations, and since M6j the user store finds a user by name or e-mail only through them (D42). The seed
         now claims them with `SparkUserReservations.ClaimAsync`.
-    - **Next:** every check green, then mark the PR ready.
+    - **Next (done):** every check green, then mark the PR ready.
   - **M8c (done 2026-11-25): revisit earlier milestones under D46** (RavenDB's format may change through a migration). Look
     for designs that kept RavenDB's old format only for its own sake, and for stale values left behind. Besides the
     items below, M9b's review kept the Log's id-only related record (no format change needed, defect 5) and found
@@ -794,7 +813,7 @@ rounds, milestones and status. Branch `feat/536-sql-server-provider`, draft PR #
       - The other RavenDB view, index and catalog tests 50/50.
     - `apps/MintPlayer`'s `Likes_Count` stays a native RavenDB index. It is production, and moving it to a `SparkView`
       would rebuild its index there for no change in behaviour. The view form is proven by the test above.
-    - **Next:** M8 IdentityProvider + Dashboards (S9), then M9.
+    - **Next (done since: M8a, M8b, M9):** M8 IdentityProvider + Dashboards (S9), then M9.
   - **M7f (2026-11-25): S10, site search on any store (PRD D44).** RavenDB keeps the generated `Spark_Search` index and
     `RavenSearchProvider`. Every other store gets `StoreSearchProvider` (`libs/search/MintPlayer.Spark.Search/`):
     - A substring prefilter per word over the type's search fields (`LIKE`/`strpos`, a parameter per word, `IsDeleted`
@@ -823,7 +842,7 @@ rounds, milestones and status. Branch `feat/536-sql-server-provider`, draft PR #
       - `SearchStoreRequirementTests` + `SparkStoreRequirementTests` 8/8.
     - **Still open from M6k:** the `sparkindex` item template stays a RavenDB index. A `SparkView` has no `[Search]`
       companion, and D44 needs none: on SQL the collections are searched directly.
-    - **Next:**
+    - **Next (all done since: M7g, M8a, M8b, M9a, M9b):**
       - Fan-out views (`Likes_Count`).
       - M8: IdentityProvider and Dashboards (S9).
       - M9: `apps/SqlDemo` plus E2E, CI database legs, guides.
@@ -919,7 +938,7 @@ rounds, milestones and status. Branch `feat/536-sql-server-provider`, draft PR #
       - **Evidence:** `NeutralReduceViewTests` 4/4 on all four databases (map view, stream, multi-map, reduce). The
         moderation suites (`Tests.Moderation` + `Issue467ModerationBatchTests`) **54/54 on InMemory, SQL Server,
         PostgreSQL and RavenDB** (2026-11-25).
-    - **Next:** S10 (done in M7f; not a view, D44), then fan-out views, M8, M9.
+    - **Next (all done since):** S10 (done in M7f; not a view, D44), then fan-out views, M8, M9.
   - **M7d (2026-11-25): S8 revisions — History and SoftDelete on any store.** `ISparkRevisions` (Abstractions) is the
     neutral revisions API: `ConfigureAsync` (merge, returns the changed collections), `GetLimitsAsync`, `ListAsync`
     (newest first), `GetAsync` (scoped to the id and the type's collection; a delete revision has no content),
@@ -1012,8 +1031,9 @@ rounds, milestones and status. Branch `feat/536-sql-server-provider`, draft PR #
     - **Evidence:** `NeutralContributionsStoreTests` (prefix = collection, latest wins, rebuild + shape check) 3/3 on
       all four databases; the Contributions suites on RavenDB 59/59; the generator tests 72/72 (snapshots re-accepted
       after review).
-  - **Next:** Tier 3 (S16 Moderation, S10 search), then Tier 4. Cron, the subscription worker's remaining hosted services and others adopt
-    `ISparkStoreReadiness` as they are ported.
+  - **Next (done since: M7e, M7f, M8, M6f):** Tier 3 (S16 Moderation, S10 search), then Tier 4. Cron, the subscription worker's remaining hosted services and others adopt
+    `ISparkStoreReadiness` as they are ported. Cron did in M6f. The 2026-11-26 audit found the subscription worker
+    and Files' deferred scan still unguarded; both wait now (PRD D41, "The rest", `BackgroundStoreReadinessTests`).
 - **Local spike servers left running:**
   - SQL Server: `SparkSpike536` on `localhost` and `localhost\MSSQLSERVER01`
   - Docker `spark536-pg` (`postgres:18`, 127.0.0.1:55432). M4 needs it again.
@@ -1270,7 +1290,8 @@ None. O8 and O9 were decided on 2026-11-24 (owner, PRD §10):
      - the schema in tests comes from the migration operations, never `EnsureCreated` (which skips views)
    - constraint-error translation (D30), as S4 proved it: the constraint name matched against EF's model, never the
      message's wording (SQL Server localizes it); a duplicate PK is concurrency; a length error located by value
-5. **Conformance:** the two relational subclasses, plus new cases on all four providers:
+5. ✅ **Conformance:** the two relational subclasses, plus new cases on all four providers. Done 2026-11-25 (§1 M5a–M5c);
+   CI runs the neutral classes on every store (M9a).
    - row security, `DateTimeOffset`, paging and null ordering
    - `Id<T>` round trips, lowercase ids (an upper-case `GetById` is found everywhere) and escaped prefixes
    - expiry, atomic values, leases, reservations and streaming
@@ -1282,10 +1303,37 @@ None. O8 and O9 were decided on 2026-11-24 (owner, PRD §10):
 
    This comes with the split test harness (S17, PRD D35): `MintPlayer.Spark.Testing` becomes neutral, today's
    RavenDB code moves to `MintPlayer.Spark.Testing.RavenDB`, and `.SqlServer`/`.PostgreSql` join. ✅ M5a (§1).
-6. **Tier 1 and Tier 2 ports** (PRD §5), plus the lookup lost-update fix.
-7. **Tier 3:** S7/S14 subscriptions and messaging, S8 revisions, S16 moderation. Then search with `LIKE` (S10).
-8. **Tier 4:** identity_provider, and dashboards (S9).
-9. **Demo, CI, docs:**
+6. ✅ **Tier 1 and Tier 2 ports** (PRD §5), plus the lookup lost-update fix. Done 2026-11-25:
+   - Settings: M6a.
+   - Boards: M6b.
+   - Organizations: M6c.
+   - Apps: M6d.
+   - MailManager: M6e.
+   - Cron: M6f.
+   - MCP: M6g.
+   - Files: M6h.
+   - Contributions: M6i.
+   - Authorization: M6j.
+   - The app template: M6k.
+   - AllFeatures: M6l.
+   - The lookup fix: in M9b, `NeutralLookupReferenceTests`.
+   - O13's stored getters: built 2026-11-26.
+7. ✅ **Tier 3:** S7/S14 subscriptions and messaging, S8 revisions, S16 moderation. Then search with `LIKE` (S10). Done
+   2026-11-25:
+   - Subscriptions and messaging: M7a–M7c.
+   - Revisions: M7d.
+   - Map-reduce and multi-map views, then Moderation: M7e.
+   - Search: M7f, D44.
+   - Fan-out views: M7g.
+8. ✅ **Tier 4:** identity_provider, and dashboards (S9). Done 2026-11-25:
+   - Dashboards: M8a.
+   - The identity provider: M8b, pushed as `8b32534fb`.
+   - Revisiting the earlier milestones under D46: M8c.
+9. ✅ **Demo, CI, docs.** Done 2026-11-25/26:
+   - CI legs: M9a.
+   - SqlDemo with its E2E on PostgreSQL: M9b.
+   - The guide: `docs/guide-relational-stores.md`.
+   - The PR was marked ready. Every check is green on `88581a4bc`.
    - **`apps/SqlDemo`**, using the ported libraries, with E2E coverage
    - CI: pinned `mcr.microsoft.com/mssql/server:2025-*` and `postgres:18` service containers, plus `postgres:17` for the
      D31 behaviour tests only (O8). They join existing job

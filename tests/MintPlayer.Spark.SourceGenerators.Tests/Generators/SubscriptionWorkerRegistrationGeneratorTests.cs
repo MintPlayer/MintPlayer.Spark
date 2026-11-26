@@ -21,7 +21,7 @@ public class SubscriptionWorkerRegistrationGeneratorTests
 
             public class CarEventsWorker : SparkSubscriptionWorker<Car>
             {
-                public CarEventsWorker(ISparkSubscriptions s, ILoggerFactory l) : base(s, l) { }
+                public CarEventsWorker(ISparkSubscriptions s, ILoggerFactory l, ISparkStoreReadiness r) : base(s, l, r) { }
                 protected override Task ProcessBatchAsync(SparkSubscriptionBatch<Car> batch, CancellationToken ct)
                     => Task.CompletedTask;
             }

@@ -72,7 +72,8 @@ public static class SparkFilesExtensions
         builder.AddInterceptor<FileStoreInterceptor>();
         // A store outside RavenDB is swept for what a crash between commit and store left behind; the service idles otherwise.
         services.AddHostedService<FilesReconcileService>();
-        // Deferred scanning only (D6); idles otherwise.
+        // Deferred scanning only (D6); idles otherwise. Its first sweep waits for the schema (#536 D41).
+        global::MintPlayer.Spark.Abstractions.Storage.SparkStoreReadinessServiceCollectionExtensions.AddSparkStoreReadiness(services);
         services.AddHostedService<DeferredFileScanService>();
 
         // Staging documents expire (IExpiring), and their RavenDB attachments with them.

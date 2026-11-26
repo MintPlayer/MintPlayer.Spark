@@ -115,9 +115,12 @@ tags, and everything ships once the merged pull request is backported to `releas
       hosts before starting the new ones.
     - `SparkSubscriptionWorker<T>` runs on `ISparkSubscriptions`. `Filter` is a LINQ expression, `ProcessBatchAsync`
       takes a `SparkSubscriptionBatch<T>`, and the RavenDB-specific members (`DocumentStore`, `Database`,
-      `ConfigureSubscription`) are gone. The constructor now takes `ISparkSubscriptions` and an `ILoggerFactory`.
-    - On a relational store, messaging's background work waits for `UseSpark` to apply the schema
-      (`ISparkStoreReadiness`, below).
+      `ConfigureSubscription`) are gone. The constructor now takes `ISparkSubscriptions`, an `ILoggerFactory` and an
+      `ISparkStoreReadiness`. A `partial` worker with `[Inject]` gets this constructor generated. A hand-written
+      constructor passes all three to `base(...)`.
+    - On a relational store, messaging's background work, every subscription worker and Files' deferred scan wait for
+      `UseSpark` to apply the schema (`ISparkStoreReadiness`, below). Before, a worker on a fresh database could
+      write its registry before the table existed and stop the host.
     - `RetryNumerator`, a RavenDB counter, moved from `MintPlayer.Spark.SubscriptionWorker.Abstractions` to
       `MintPlayer.Spark.Replication.Services`, the namespace of its only user.
 13. **History and SoftDelete no longer reference RavenDB's client** (M7d, S8). They work through `ISparkRevisions` and

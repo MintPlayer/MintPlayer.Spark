@@ -122,11 +122,25 @@ internal sealed partial class DeferredFileScanService : BackgroundService
     [Inject] private readonly TimeProvider clock;
     [Inject] private readonly ILogger<DeferredFileScanService> logger;
 
-    protected override Task ExecuteAsync(CancellationToken stoppingToken)
+    /// <summary>#536 D41: the sweep reads the uploads, whose table exists once <c>UseSpark</c> applied the schema.</summary>
+    [Inject] private readonly ISparkStoreReadiness storeReadiness;
+
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         if (options.Value.ScanMode != SparkFileScanMode.Deferred || runner.Scanner is null)
-            return Task.CompletedTask;
-        return Task.WhenAll(DrainAsync(stoppingToken), SweepAsync(stoppingToken));
+            return;
+
+        // #536 D41: the host starts this before UseSpark applies a relational schema; the uploads have no table until then.
+        try
+        {
+            await storeReadiness.WaitAsync(stoppingToken);
+        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        {
+            return;
+        }
+
+        await Task.WhenAll(DrainAsync(stoppingToken), SweepAsync(stoppingToken));
     }
 
     private async Task DrainAsync(CancellationToken stoppingToken)

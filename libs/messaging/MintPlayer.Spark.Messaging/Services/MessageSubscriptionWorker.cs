@@ -43,8 +43,9 @@ internal sealed class MessageSubscriptionWorker : SparkSubscriptionWorker<SparkM
         ISparkStore store,
         IServiceProvider serviceProvider,
         IOptions<SparkMessagingOptions> options,
-        ILoggerFactory loggerFactory)
-        : base(subscriptions, loggerFactory)
+        ILoggerFactory loggerFactory,
+        ISparkStoreReadiness storeReadiness)
+        : base(subscriptions, loggerFactory, storeReadiness)
     {
         _queueName = queueName;
         _store = store;
